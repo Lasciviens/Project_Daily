@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useRef, type KeyboardEvent, type ReactNode } from 'react'
 import { ImageOff, RotateCcw, Search, Wand2 } from 'lucide-react'
 import type { MatchBasis, SsCandidate, SsMediaEntry } from '../../../scraper/ssTypes'
 import { SsImage } from '../../../scraper/SsImage'
@@ -37,10 +37,29 @@ export function TgSegmented<T extends string>({ value, options, onChange, label,
   size?: 'sm' | 'md'
 }) {
   const h = size === 'sm' ? 'min-h-[32px] px-2.5 text-[12px]' : 'min-h-[36px] px-3 text-[13px]'
+  const group = useRef<HTMLDivElement>(null)
+  // A radio group is one Tab stop; the arrows (and Home/End) move and select,
+  // skipping disabled options, as the radio pattern promises.
+  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    const enabled = options.filter(o => !o.disabled)
+    if (!enabled.length) return
+    const at = enabled.findIndex(o => o.value === value)
+    let next: number
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') next = (at + 1) % enabled.length
+    else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') next = (at - 1 + enabled.length) % enabled.length
+    else if (e.key === 'Home') next = 0
+    else if (e.key === 'End') next = enabled.length - 1
+    else return
+    e.preventDefault()
+    const v = enabled[next].value
+    onChange(v)
+    group.current?.querySelector<HTMLElement>(`[data-value="${CSS.escape(v)}"]`)?.focus()
+  }
+  const focusable = options.some(o => o.value === value && !o.disabled) ? value : options.find(o => !o.disabled)?.value
   return (
     // Never squeezed by its neighbours (shrink-0), but never wider than its
     // box either (max-w-full): only a genuinely narrow box truncates a label.
-    <div role="radiogroup" aria-label={label} className="inline-flex max-w-full shrink-0 self-start justify-self-start rounded-[10px] border border-[var(--tg-border)] bg-[var(--tg-panel-2)] p-0.5">
+    <div ref={group} role="radiogroup" aria-label={label} onKeyDown={onKeyDown} className="inline-flex max-w-full shrink-0 self-start justify-self-start rounded-[10px] border border-[var(--tg-border)] bg-[var(--tg-panel-2)] p-0.5">
       {options.map(o => {
         const on = o.value === value
         return (
@@ -49,6 +68,8 @@ export function TgSegmented<T extends string>({ value, options, onChange, label,
             type="button"
             role="radio"
             aria-checked={on}
+            data-value={o.value}
+            tabIndex={o.value === focusable ? 0 : -1}
             disabled={o.disabled}
             title={o.hint}
             onClick={() => onChange(o.value)}

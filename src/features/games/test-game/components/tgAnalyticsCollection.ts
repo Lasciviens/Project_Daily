@@ -93,21 +93,41 @@ export function seriesShareNote(share: number): string | null {
 }
 
 // ─── Layout ──────────────────────────────────────────────────────────────────
-// Spans and a reorder pair cards of similar height per row. Screen-reader
-// order stays Ratings · Worth next · Platforms · Genres · Studios · Decades ·
+// Spans and a visual reorder pair cards of similar height per row: the short
+// cards (Ratings, Worth next, Decades, Players) together, the tall ranked
+// lists (Platforms, Genres, Studios, Series) together. Screen-reader order
+// stays Ratings · Worth next · Platforms · Genres · Studios · Decades ·
 // Players · Series; only the visual rows move.
-//                2 columns                                             3 columns                                                     4 columns
-// with Series:   [Ratings · Worth] [Platforms · Genres]                [Ratings · Worth · Platforms] [Genres · Studios · Decades]    [Ratings · Worth · Platforms · Genres]
-//                [Studios · Series] [Decades · Players]                [Players · Series ··]                                         [Studios · Decades · Players · Series]
-// no Series:     [Ratings ··] [Worth · Platforms]                      [Ratings ·· · Worth] [Platforms · Genres · Studios]           [Ratings · Worth · Platforms · Genres]
-//                [Genres · Studios] [Decades · Players]                [Decades ·· · Players]                                        [Studios · Decades ·· · Players]
-export function collectionLayout(hasSeries: boolean): { ratings: string; decades: string; players: string; series: string } {
+//                2 columns                                   3 columns                                                          4 columns
+// with Series:   [Ratings · Worth] [Platforms · Genres]      [Ratings · Worth · Decades] [Platforms · Genres · Studios]         [Ratings · Worth · Decades · Players]
+//                [Studios · Series] [Decades · Players]      [Players · Series ··]                                              [Platforms · Genres · Studios · Series]
+// no Series:     [Ratings ··] [Worth · Platforms]            [Ratings ·· · Worth] [Platforms · Genres · Studios]                [Ratings · Worth · Decades · Players]
+//                [Genres · Studios] [Decades · Players]      [Decades ·· · Players]                                             [Platforms · Genres · Studios ··]
+export interface TgaCollectionLayout {
+  ratings: string; worth: string; platforms: string; genres: string
+  studios: string; decades: string; players: string; series: string
+}
+
+export function collectionLayout(hasSeries: boolean): TgaCollectionLayout {
   return hasSeries
     ? {
-      ratings: '',
-      decades: '@2xl:order-1 @[62rem]:order-none',
-      players: '@2xl:order-1 @[62rem]:order-none',
-      series: '@[62rem]:col-span-2 @[100rem]:col-span-1',
+      ratings: '@[62rem]:order-1',
+      worth: '@[62rem]:order-1',
+      platforms: '@[62rem]:order-2',
+      genres: '@[62rem]:order-2',
+      studios: '@[62rem]:order-2',
+      decades: '@2xl:order-1',
+      players: '@2xl:order-1 @[62rem]:order-3 @[100rem]:order-1',
+      series: '@[62rem]:order-3 @[62rem]:col-span-2 @[100rem]:order-2 @[100rem]:col-span-1',
     }
-    : { ratings: '@2xl:col-span-2 @[100rem]:col-span-1', decades: '@[62rem]:col-span-2', players: '', series: '' }
+    : {
+      ratings: '@2xl:col-span-2 @[100rem]:col-span-1 @[100rem]:order-1',
+      worth: '@[100rem]:order-1',
+      platforms: '@[100rem]:order-2',
+      genres: '@[100rem]:order-2',
+      studios: '@[100rem]:order-2 @[100rem]:col-span-2',
+      decades: '@[62rem]:col-span-2 @[100rem]:col-span-1 @[100rem]:order-1',
+      players: '@[100rem]:order-1',
+      series: '',
+    }
 }

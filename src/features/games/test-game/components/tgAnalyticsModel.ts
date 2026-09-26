@@ -169,7 +169,12 @@ export function isStalePlaying(g: TgGame, today: number, days = 60): boolean {
   return !Number.isFinite(t) || today - t >= days * 86_400_000
 }
 
-export function computeKpis(scoped: TgGame[], start: number | null, end?: number | null, today?: number): TgaKpis {
+/**
+ * The headline figures for the games in view. `whole` is the library before
+ * the time window: the queue and idle Playing are states of the whole library
+ * (a game idle for 60 days has no session in a 30-day window by definition).
+ */
+export function computeKpis(scoped: TgGame[], start: number | null, end?: number | null, today?: number, whole: TgGame[] = scoped): TgaKpis {
   const played = tileGames('playtime', scoped, null)
   const rated = tileGames('rating', scoped, null)
   const backlog = tileGames('backlog', scoped, null)
@@ -180,7 +185,7 @@ export function computeKpis(scoped: TgGame[], start: number | null, end?: number
     // "No platform" is a bucket, not a platform you own.
     platforms: new Set(scoped.map(g => g.platformKey).filter(k => k !== NO_PLATFORM)).size,
     playing: tileGames('playing', scoped, start, end).length,
-    queued: scoped.filter(g => g.play_order != null).length,
+    queued: whole.filter(g => g.play_order != null).length,
     backlog: backlog.length,
     backlogUnplayed: backlog.filter(g => (playSeconds(g) ?? 0) <= 0 && !lastPlayedIso(g)).length,
     completed: tileGames('completed', scoped, start, end).length,
@@ -191,7 +196,7 @@ export function computeKpis(scoped: TgGame[], start: number | null, end?: number
     avgStars: rated.length ? Math.round((starSum / rated.length) * 100) / 100 : null,
     played: tileGames('played', scoped, null).length,
     started: scoped.filter(isStarted).length,
-    stalePlaying: today == null ? 0 : scoped.filter(g => isStalePlaying(g, today)).length,
+    stalePlaying: today == null ? 0 : whole.filter(g => isStalePlaying(g, today)).length,
   }
 }
 
@@ -258,10 +263,15 @@ export function mostPlayed(scoped: TgGame[], n = 8): TgaPlayed[] {
 }
 
 /** Latest sessions first. A launch shorter than five minutes (checking a ROM boots) is not play. */
-export function recentlyPlayed(scoped: TgGame[], n = 8): TgaPlayed[] {
+/**
+ * The latest sessions. In a window only sessions inside it: a game can enter
+ * the window through a finish or start date alone, and its year-old last
+ * session isn't "recent" there.
+ */
+export function recentlyPlayed(scoped: TgGame[], n = 8, start: number | null = null, end?: number | null): TgaPlayed[] {
   return scoped
     .map(game => ({ game, seconds: playSeconds(game), last: lastPlayedIso(game) }))
-    .filter(x => Number.isFinite(at(x.last)) && isRealSession(x.seconds))
+    .filter(x => Number.isFinite(at(x.last)) && isRealSession(x.seconds) && (start == null || inWindow(x.last, start, end)))
     .sort((a, b) => at(b.last) - at(a.last))
     .slice(0, n)
 }

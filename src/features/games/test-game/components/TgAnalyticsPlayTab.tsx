@@ -1,6 +1,6 @@
 import { usePsnStatus } from '../../hooks/usePlayStation'
 import { usePlayData, type TgaBase } from './tgAnalyticsData'
-import { TGA_GRID } from './tgAnalyticsFormat'
+import { TGA_GRID, TGA_GRID_3 } from './tgAnalyticsFormat'
 import { TGA_SPAN_ROW, TGA_SPAN_SPREAD_ALONE } from './tgAnalyticsPlay'
 import { TgAnalyticsCoverage } from './TgAnalyticsCoverage'
 import { TgAnalyticsLibraries } from './TgAnalyticsLibraries'
@@ -14,13 +14,16 @@ import { TgAnalyticsTrophies } from './TgAnalyticsTrophies'
 //   3 cols  [Coverage · Most played · Spread] [Libraries ···] [Trophies]
 //   4 cols  [Coverage · Most played · Spread · Trophies] [Libraries ····]
 // Libraries only shows for All; Trophies only with a PlayStation connection.
-// Without Trophies, Spread takes two columns where it would stand alone.
+// Without Trophies there are three cards to a row, so the grid stops at three
+// columns (a fourth left Spread stretched over two with a hole under it), and
+// at two columns Spread takes the whole last row.
 const GRID = `${TGA_GRID} grid-flow-row-dense`
+const GRID_3 = `${TGA_GRID_3} grid-flow-row-dense`
 
 function Cards({ base, trophies }: { base: TgaBase; trophies: boolean }) {
   const d = usePlayData(base)
   return (
-    <div className={GRID}>
+    <div className={trophies ? GRID : GRID_3}>
       <TgAnalyticsCoverage coverage={d.coverage} library={base.library} />
       <TgAnalyticsLibraries rows={d.libraries} className={TGA_SPAN_ROW} />
       <TgAnalyticsMostPlayed items={d.mostPlayed} launched={d.mostLaunched} />

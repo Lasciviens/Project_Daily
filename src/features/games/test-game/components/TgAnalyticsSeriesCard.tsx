@@ -1,5 +1,5 @@
 import type { seriesRows } from './tgAnalyticsMore'
-import { fmtInt, plural } from './tgAnalyticsFormat'
+import { fmtInt, plural, TGA_TINT } from './tgAnalyticsFormat'
 import { seriesLine, seriesShareNote } from './tgAnalyticsCollection'
 import { TgAnalyticsCard } from './TgAnalyticsCard'
 
@@ -23,7 +23,7 @@ export function TgAnalyticsSeriesCard({ series, className = '' }: { series: Retu
             <p className="mt-0.5 truncate text-[11.5px] text-[var(--tg-muted)]">{seriesLine(row)}</p>
             <span
               aria-hidden title={`${fmtInt(row.completed)} of ${fmtInt(row.games)} completed`}
-              className="mt-1.5 block h-1.5 overflow-hidden rounded-full bg-[color-mix(in_srgb,var(--tg-accent)_22%,var(--tg-panel))]"
+              className={`mt-1.5 block h-1.5 overflow-hidden rounded-full ${TGA_TINT}`}
             >
               <span className="block h-full rounded-full bg-[var(--tg-accent)]" style={{ width: `${(row.completed / row.games) * 100}%` }} />
             </span>

@@ -86,9 +86,11 @@ export function TgMobileScope({ platforms, header }: { platforms: PlatformCount[
   }
 
   return (
-    <div className="min-w-0">
+    <div className="min-w-0 flex-1">
       <h2 className="truncate text-[16px] font-bold leading-tight">{header.title}</h2>
-      <p className="tg-muted truncate text-[12px]" title={header.subtitleTitle}>{header.subtitle}</p>
+      {/* Two lines on a phone: the queue's split doesn't fit one, and a hover title can't be read on touch. */}
+      <p className="tg-muted line-clamp-2 text-[12px] leading-snug" title={header.note ? undefined : header.subtitleTitle}>{header.subtitle}</p>
+      {header.note && <p className="tg-muted truncate text-[12px] leading-snug">{header.note}</p>}
     </div>
   )
 }

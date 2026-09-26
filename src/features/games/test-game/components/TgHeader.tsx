@@ -7,12 +7,13 @@ const IDLE_TAB = 'bg-[var(--tg-tab-idle-bg,color-mix(in_srgb,var(--tg-panel)_55%
 
 /** The main column's heading: logo, title, count line and the tab pills. */
 export function TgHeader({ config }: { config: TgHeaderConfig }) {
-  const { title, subtitle, subtitleTitle, logo, platformKey, tabs, activeTab, activeTabs, onTab, onClear, action } = config
+  const { title, subtitle, subtitleTitle, note, inlineAction, logo, platformKey, tabs, activeTab, activeTabs, onTab, onClear, action } = config
   const isPlatform = logo === 'platform' && !!platformKey
 
   return (
     <header className="shrink-0 pb-1.5 pt-3">
-      <div className={`flex min-h-[44px] items-center ${isPlatform ? 'gap-5' : 'gap-3.5'}`}>
+      {/* Wraps before the title is squeezed: an action drops under it. */}
+      <div className={`flex min-h-[44px] flex-wrap items-center gap-y-2 ${isPlatform ? 'gap-x-5' : 'gap-x-3.5'}`}>
         {isPlatform ? (
           <div className="flex h-11 min-w-[110px] max-w-[170px] shrink-0 items-center">
             <PlatformWordmark platformKey={platformKey} />
@@ -20,14 +21,16 @@ export function TgHeader({ config }: { config: TgHeaderConfig }) {
         ) : (
           <SectionGlyph logo={logo} />
         )}
-        <div className="min-w-0 flex-1">
-          <h1 className="truncate text-[24px] font-semibold leading-7 tracking-[-0.01em] text-[var(--tg-text)]">{title}</h1>
-          <p className="mt-0.5 flex min-w-0 items-center gap-2 text-[11px] leading-4 text-[var(--tg-muted)]">
-            <span className="truncate tabular-nums" title={subtitleTitle}>{subtitle}</span>
+        <div className="min-w-[min(100%,13rem)] flex-1">
+          <h1 data-tg-heading tabIndex={-1} className="truncate text-[24px] font-semibold leading-7 tracking-[-0.01em] text-[var(--tg-text)] focus:outline-none">{title}</h1>
+          <p className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-2 text-[11px] leading-4 text-[var(--tg-muted)]">
+            <span className="truncate tabular-nums" title={note ? subtitle : subtitleTitle ?? subtitle}>{subtitle}</span>
+            {inlineAction}
             {onClear && (
               <button type="button" onClick={onClear} className="shrink-0 font-semibold text-[var(--tg-accent)] [@media(pointer:coarse)]:min-h-[44px]">Clear filters</button>
             )}
           </p>
+          {note && <p className="truncate text-[11px] leading-4 text-[var(--tg-muted)]" title={subtitleTitle}>{note}</p>}
         </div>
         {action}
       </div>

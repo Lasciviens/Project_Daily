@@ -64,8 +64,12 @@ export const shownOf = (shown: number, total: number) => `Showing ${fmtInt(shown
 // ─── KPI tiles ───────────────────────────────────────────────────────────────
 
 /** Playing: idle games first, since they are the part of the figure that isn't true today. */
-export function playingSub(k: TgaKpis): string {
-  if (k.stalePlaying > 0) return `${fmtInt(k.stalePlaying)} with no session in 60+ days`
+export function playingSub(k: TgaKpis, windowed = false): string {
+  if (k.stalePlaying > 0) {
+    return windowed
+      ? `${fmtInt(k.stalePlaying)} Playing in the library idle 60+ days`
+      : `${fmtInt(k.stalePlaying)} with no session in 60+ days`
+  }
   return k.queued ? `${fmtInt(k.queued)} in your play queue` : 'Nothing queued next'
 }
 
@@ -85,6 +89,12 @@ export function completedSub(k: TgaKpis, windowed: boolean): string {
   return `${fmtPct(k.completed, k.started)} of games you’ve started · ${fmtPct(k.completed, k.completionBase)} of owned`
 }
 
+/** Backlog: in a window these games were played in it, so "no play time" would always read 0. */
+export function backlogSub(k: TgaKpis, windowed: boolean): string {
+  if (windowed) return k.backlog ? 'played here, still marked Backlog' : 'Nothing in Backlog was played'
+  return k.backlog ? `${fmtInt(k.backlogUnplayed)} with no play time` : 'Backlog is clear'
+}
+
 /** Played: the share with no recorded play — ES-DE only counts what it launched, so never "never played". */
 export function playedSub(k: TgaKpis): string {
   const none = k.games - k.played
@@ -97,9 +107,13 @@ export function playedSub(k: TgaKpis): string {
 /** "idle 94 days" — or, with no session date at all, says so. */
 export const idleLabel = (idleDays: number | null) => (idleDays == null ? 'no session recorded' : `idle ${plural(idleDays, 'day')}`)
 
-/** Who set Playing: you (a start date) or an importer promoting a game with real hours. */
+/**
+ * What the data can say about who set Playing: a start date means the status
+ * pills did. No date covers an importer's promotion, but also the edit form
+ * and anything set before start dates were kept — so it says "no start date".
+ */
 export function idleSplit(b: { chosen: number; auto: number }): string {
-  return `${fmtInt(b.chosen)} chosen by you · ${fmtInt(b.auto)} set by an import`
+  return `${fmtInt(b.chosen)} with a start date · ${fmtInt(b.auto)} with none (often an import)`
 }
 
 /** "3 hidden titles aren't counted here (2 hidden by you, 1 app or non-game)". */

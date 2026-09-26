@@ -84,7 +84,8 @@ export function TgQueueView({ games, ranks, selectedId, onSelect, fill, onPlan }
     <ol
       ref={listRef}
       aria-label="Play queue"
-      className={`tg-queue tg-panel space-y-1 p-1.5 sm:p-2 ${fill ? 'tg-scroll-y h-full' : ''} ${dragId ? 'is-dragging' : ''}`}
+      // Capped: on a monitor a full-width row put a title ~1400px from its own buttons.
+      className={`tg-queue tg-panel w-full max-w-[72rem] space-y-1 p-1.5 sm:p-2 ${fill ? 'tg-scroll-y h-full' : ''} ${dragId ? 'is-dragging' : ''}`}
     >
       {ordered.map((g, i) => (
         <TgQueueViewRow

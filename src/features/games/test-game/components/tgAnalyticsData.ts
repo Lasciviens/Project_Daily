@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { formatPlaytime } from '../../api/playtimeFormat'
-import type { TgGame } from '../testGameModel'
+import { NO_PLATFORM, type TgGame } from '../testGameModel'
 import {
   computeKpis, genreRows, libraryGames, libraryOf, mostPlayed, platformRows, recentlyPlayed,
   scopeByWindow, statusMix, windowEnd, windowStart, type TgaLibrary, type TgaWindow,
@@ -56,12 +56,13 @@ export function useTgAnalyticsBase(games: TgGame[], period: TgaWindow, library: 
 
 export function useOverviewData(b: TgaBase) {
   return useMemo(() => ({
-    kpis: computeKpis(b.scoped, b.start, b.end, b.today),
+    kpis: computeKpis(b.scoped, b.start, b.end, b.today, b.inLibrary),
     mix: statusMix(b.scoped),
     // The timeline reads the whole library's dates and plots only the window's range.
     activity: activitySeries(b.inLibrary, b.period, b.today),
-    playing: playingBreakdown(b.scoped, b.today),
-    recent: recentlyPlayed(b.scoped),
+    // Idle is a state of the whole library, never of a window (see computeKpis).
+    playing: playingBreakdown(b.inLibrary, b.today),
+    recent: recentlyPlayed(b.scoped, 8, b.start, b.end),
     facts: funFacts(b.scoped, fmtHours),
     hidden: hiddenCounts(b.games, b.library),
   }), [b])
@@ -87,7 +88,8 @@ export function useCollectionData(b: TgaBase) {
       scores: scoreSeries(b.scoped),
       // "Worth playing next" is about the library, not a period: it reads every game in it.
       worthNext: topUnplayedByScore(b.inLibrary),
-      platformCount: platforms.counts.length,
+      // "No platform" is a bucket, not a platform you own (the Games tile agrees).
+      platformCount: platforms.counts.filter(c => c.key !== NO_PLATFORM).length,
       genres: genreRows(b.scoped),
       developers: studioRows(b.scoped, 'developer'),
       publishers: studioRows(b.scoped, 'publisher'),

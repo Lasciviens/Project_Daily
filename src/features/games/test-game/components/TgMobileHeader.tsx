@@ -9,7 +9,6 @@ import { TgMobileScope } from './TgMobileScope'
 import { TgMobileListTools } from './TgMobileListTools'
 import { TgRandomButton } from './TgRandomButton'
 import { TgProviderSync } from './TgProviderSync'
-import { TgQueueCleanup } from './TgQueueCleanup'
 
 // Horizontal padding that also clears a landscape notch — the design's ~20px
 // phone gutter, matching the grid's cover edges. The chip row's scroll padding
@@ -63,7 +62,7 @@ export function TgMobileHeader({ platforms, genres, studios, statusCounts, heade
       <div className={`flex h-[60px] items-center justify-between gap-3 ${GUTTER}`}>
         <div className="flex min-w-0 items-center gap-2.5">
           <TgMobileGamepad size={30} className="shrink-0 text-[var(--tg-text)]" />
-          <h1 className="truncate text-[19px] font-bold tracking-[-0.01em]">Game Library</h1>
+          <h1 data-tg-heading tabIndex={-1} className="truncate text-[19px] font-bold tracking-[-0.01em] focus:outline-none">Game Library</h1>
         </div>
         <div className="flex shrink-0 items-center gap-1">
           {section === 'scrape' && (
@@ -120,11 +119,14 @@ export function TgMobileHeader({ platforms, genres, studios, statusCounts, heade
         {section === 'library' && (header.platformKey === 'steam' || header.platformKey === 'playstation') && (
           <TgProviderSync library={header.platformKey} games={libraryGames ?? []} compact />
         )}
-        {section === 'queue' && <TgQueueCleanup games={libraryGames ?? []} compact />}
         {hasFilters && (
           <TgMobileListTools genres={genres} studios={studios} statusCounts={statusCounts} showStatus={showStatus} showSort={showSort} resultCount={resultCount} />
         )}
       </div>
+      {/* Its own line: beside the title it pushed Filters off the screen. */}
+      {section === 'queue' && header.inlineAction && (
+        <div className={`-mt-1 flex items-center pb-1 text-[12.5px] ${GUTTER}`}>{header.inlineAction}</div>
+      )}
       {/* Filtered: how many games are left, and one tap back to all of them. */}
       {hasFilters && header.onClear && (
         <div className={`-mt-1 flex items-center gap-2 pb-2 text-[12px] ${GUTTER}`}>

@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { ChevronRight } from 'lucide-react'
 import { STATUS_TEXT } from '../testGameModel'
-import type { TgaLibrary, TgaStatus } from './tgAnalyticsModel'
+import type { TgaStatus } from './tgAnalyticsModel'
 import { TGA_ROW_H, fmtInt, fmtPct } from './tgAnalyticsFormat'
-import { openLibrary } from './tgAnalyticsNav'
+import { useAnalyticsHandoff } from './tgAnalyticsHandoff'
+import { gamesWithStatus } from './tgAnalyticsLists'
 import { TgStatusIcon } from './TgStatusIcon'
 import { TgAnalyticsCard } from './TgAnalyticsCard'
 
@@ -14,14 +15,14 @@ const ROW = `-mx-2 grid w-[calc(100%+1rem)] grid-cols-[15px_minmax(0,1fr)_auto_2
  * page's status colours, separated by 2px of the card's own surface. Colour
  * never works alone — every segment has its glyph, name, count and share in
  * the legend, and pointing at either one highlights both. A status with games
- * opens them in the Library.
+ * opens exactly those games in the Library.
  */
-export function TgAnalyticsStatusMix({ mix, total, library }: {
+export function TgAnalyticsStatusMix({ mix, total }: {
   mix: { status: TgaStatus; count: number }[]
   total: number
-  library: TgaLibrary
 }) {
   const [hot, setHot] = useState<TgaStatus | null>(null)
+  const handoff = useAnalyticsHandoff()
   const present = mix.filter(m => m.count > 0)
 
   return (
@@ -43,7 +44,7 @@ export function TgAnalyticsStatusMix({ mix, total, library }: {
           const body = (
             <>
               <TgStatusIcon status={m.status} size={15} />
-              <span className={`min-w-0 truncate text-[13px] ${m.count ? 'text-[var(--tg-text-2)]' : 'text-[var(--tg-faint)]'}`}>
+              <span className={`min-w-0 truncate text-[13px] ${m.count ? 'text-[var(--tg-text-2)]' : 'text-[var(--tg-muted)]'}`}>
                 {STATUS_TEXT[m.status]}
               </span>
               <span className="text-[13px] font-semibold tabular-nums text-[var(--tg-text)]">{fmtInt(m.count)}</span>
@@ -58,7 +59,7 @@ export function TgAnalyticsStatusMix({ mix, total, library }: {
               {m.count > 0 ? (
                 <button
                   type="button"
-                  onClick={() => openLibrary({ library, status: m.status })}
+                  onClick={() => handoff.open(STATUS_TEXT[m.status], gamesWithStatus(handoff.base?.scoped ?? [], m.status), { status: m.status })}
                   aria-label={`Show ${fmtInt(m.count)} ${STATUS_TEXT[m.status]} ${m.count === 1 ? 'game' : 'games'} in the library, ${fmtPct(m.count, total)}`}
                   className={`${ROW} ${hot === m.status ? 'bg-[var(--tg-hover)]' : ''} [@media(hover:none)]:active:bg-[var(--tg-hover)]`}
                 >

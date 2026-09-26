@@ -75,7 +75,7 @@ ok(A.tileGames('played', scoped, null).length, kp.played, 'Played tile = its dri
 
 // ── Idle and hidden ──
 ok([C.idleLabel(94), C.idleLabel(1), C.idleLabel(null)], ['idle 94 days', 'idle 1 day', 'no session recorded'], 'idle labels')
-ok(C.idleSplit({ chosen: 2, auto: 3 }), '2 chosen by you · 3 set by an import', 'idle split')
+ok(C.idleSplit({ chosen: 2, auto: 3 }), '2 with a start date · 3 with none (often an import)', 'idle split says what the data shows')
 ok(C.hiddenNote({ total: 3, explicit: 2, auto: 1 }), '3 hidden titles aren’t counted here (2 hidden by you, 1 app or non-game)', 'hidden: both kinds')
 ok(C.hiddenNote({ total: 1, explicit: 1, auto: 0 }), '1 hidden title isn’t counted here (1 hidden by you)', 'hidden: singular, one kind')
 ok(C.hiddenNote({ total: 4, explicit: 0, auto: 4 }), '4 hidden titles aren’t counted here (4 apps and non-games)', 'hidden: apps only')

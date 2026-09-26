@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { Building2 } from 'lucide-react'
-import type { TgaLibrary } from './tgAnalyticsModel'
 import type { studioRows, TgaStudioField } from './tgAnalyticsMore'
-import { openLibrary } from './tgAnalyticsNav'
+import { useAnalyticsHandoff } from './tgAnalyticsHandoff'
+import { gamesByStudio } from './tgAnalyticsLists'
 import { studiosMeta } from './tgAnalyticsCollection'
 import { TgAnalyticsBarList } from './TgAnalyticsBarList'
 import { TgAnalyticsCard, TgAnalyticsEmpty } from './TgAnalyticsCard'
@@ -17,14 +17,15 @@ const FIELDS: { value: TgaStudioField; label: string }[] = [
 
 /**
  * The studios with the most games, by developer or by publisher. A row opens
- * the library filtered to that studio; the folded "N more" row only lists them.
+ * exactly the games it counts (by that one field); the folded "N more" row
+ * only lists them.
  */
-export function TgAnalyticsStudios({ developers, publishers, library, className = '' }: {
+export function TgAnalyticsStudios({ developers, publishers, className = '' }: {
   developers: Studios
   publishers: Studios
-  library: TgaLibrary
   className?: string
 }) {
+  const handoff = useAnalyticsHandoff()
   // Opens on whichever field has anything recorded.
   const [field, setField] = useState<TgaStudioField>(() => (developers.rows.length || !publishers.rows.length ? 'developer' : 'publisher'))
   const data = field === 'developer' ? developers : publishers
@@ -39,7 +40,10 @@ export function TgAnalyticsStudios({ developers, publishers, library, className 
           <TgAnalyticsBarList
             rows={data.rows}
             openLabel={row => `Show games by ${row.label} in the library`}
-            onOpen={row => { if (row.target) openLibrary({ library, studio: row.target }) }}
+            onOpen={row => {
+              if (!row.target) return
+              handoff.open(`${field === 'developer' ? 'Developer' : 'Publisher'}: ${row.label}`, gamesByStudio(handoff.base?.scoped ?? [], field, row.target))
+            }}
           />
         </div>
       ) : (

@@ -1,7 +1,7 @@
 import { Activity } from 'lucide-react'
 import type { TgaWindow } from './tgAnalyticsModel'
 import type { TgaActivity } from './tgAnalyticsSeries'
-import { TGA_RANGE } from './tgAnalyticsFormat'
+import { TGA_RANGE, TGA_RANGE_SHORT } from './tgAnalyticsFormat'
 import { activityMeta, activityNote, isActivityEmpty } from './tgAnalyticsActivity'
 import { TgAnalyticsActivityChart } from './TgAnalyticsActivityChart'
 import { TgActivityLegend } from './TgAnalyticsActivityParts'
@@ -20,8 +20,8 @@ export function TgAnalyticsActivity({ series, period, className = '' }: { series
   return (
     <TgAnalyticsCard
       label="Activity" className={className}
-      // The range is already in the controls; a narrow card drops it rather than truncating the counts.
-      meta={<>{activityMeta(series)}<span className="hidden @[30rem]:inline"> {TGA_RANGE[period]}</span></>}
+      // A narrow card keeps a short range ("24 mo") so the counts never read as the whole library's.
+      meta={<>{activityMeta(series)}<span className="hidden @[30rem]:inline"> {TGA_RANGE[period]}</span><span className="@[30rem]:hidden"> · {TGA_RANGE_SHORT[period]}</span></>}
     >
       {empty ? (
         <TgAnalyticsEmpty

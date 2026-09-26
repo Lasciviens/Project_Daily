@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { ChevronRight } from 'lucide-react'
 import type { TgaBarRow } from './tgAnalyticsModel'
-import { TGA_ROW_H, fmtInt } from './tgAnalyticsFormat'
+import { TGA_ROW_H, TGA_TINT, fmtInt } from './tgAnalyticsFormat'
 
 /**
  * Horizontal bars, one series: every bar in the accent, length = count,
@@ -9,7 +9,12 @@ import { TGA_ROW_H, fmtInt } from './tgAnalyticsFormat'
  * with a target opens that shelf; a folded "N more" row only lists its names.
  * A row with a `part` is two-tone: the whole bar is the row's count in a
  * soft tint, the filled share (played, completed…) in the accent over it.
+ * The folded row sums a long tail, so it draws no bar and never sets the
+ * scale (it would dwarf every named row); a zero draws nothing.
  */
+/** The key the models give their folded "N more" row. */
+const FOLD = '__others'
+
 export function TgAnalyticsBarList({ rows, icon, onOpen, openLabel }: {
   rows: TgaBarRow[]
   icon?: (row: TgaBarRow) => ReactNode
@@ -17,7 +22,8 @@ export function TgAnalyticsBarList({ rows, icon, onOpen, openLabel }: {
   /** "Open the PS2 shelf" — the action a row performs, for its accessible name. */
   openLabel: (row: TgaBarRow) => string
 }) {
-  const max = Math.max(1, ...rows.map(r => r.count))
+  const max = Math.max(1, ...rows.filter(r => r.key !== FOLD).map(r => r.count))
+  const width = (row: TgaBarRow) => (row.count > 0 ? `max(3px, ${Math.min(100, (row.count / max) * 100)}%)` : '0')
   const cols = icon
     ? 'grid-cols-[20px_minmax(4.5rem,7.5rem)_minmax(0,1fr)_minmax(3.25rem,auto)_14px]'
     : 'grid-cols-[minmax(5rem,8.5rem)_minmax(0,1fr)_minmax(3.25rem,auto)_14px]'
@@ -33,14 +39,14 @@ export function TgAnalyticsBarList({ rows, icon, onOpen, openLabel }: {
               {row.title && <span className="sr-only">: {row.title}</span>}
             </span>
             <span className="flex h-full items-center">
-              {row.part != null ? (
-                <span className="relative h-2.5 overflow-hidden rounded-r-[4px] bg-[color-mix(in_srgb,var(--tg-accent)_22%,var(--tg-panel))]" style={{ width: `max(3px, ${(row.count / max) * 100}%)` }}>
+              {row.key === FOLD ? null : row.part != null ? (
+                <span className={`relative h-2.5 overflow-hidden rounded-r-[4px] ${TGA_TINT}`} style={{ width: width(row) }}>
                   <span className="absolute inset-y-0 left-0 bg-[var(--tg-accent)] transition-[filter] duration-150 [@media(hover:hover)]:group-hover:brightness-110" style={{ width: `${row.count ? Math.min(100, (row.part / row.count) * 100) : 0}%` }} />
                 </span>
               ) : (
                 <span
                   className={`h-2.5 rounded-r-[4px] transition-[filter] duration-150 [@media(hover:hover)]:group-hover:brightness-110 ${row.target ? 'bg-[var(--tg-accent)]' : 'bg-[color-mix(in_srgb,var(--tg-accent)_45%,var(--tg-panel))]'}`}
-                  style={{ width: `max(3px, ${(row.count / max) * 100}%)` }}
+                  style={{ width: width(row) }}
                 />
               )}
             </span>

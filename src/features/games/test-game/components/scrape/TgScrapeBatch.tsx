@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { Check, RotateCcw, Search, Undo2, Wand2 } from 'lucide-react'
-import { platformInfo, type TgGame } from '../../testGameModel'
+import { coverCandidates, platformInfo, type TgGame } from '../../testGameModel'
 import { useTestGameStore, type ScrapeBatchState } from '../../testGameStore'
 import type { FindResult } from '../../../scraper/ssApi'
 import { EXACT_BASES, modeCounts } from '../../../scraper/ssPlan'
@@ -24,7 +24,8 @@ function matches(g: TgGame, f: Filter) {
   if (f === 'todo') return !isScraped(g)
   // Matched by the old scraper: an id, but never saved by this version.
   if (f === 'old') return isScraped(g) && !g.ss_scraped_at
-  if (f === 'no_cover') return !g.primary_cover_url
+  // No picture at all — the rule Data health's "Cover art" row counts (a handheld cover counts).
+  if (f === 'no_cover') return coverCandidates(g).length === 0
   if (f === 'no_desc') return !g.description?.trim()
   return true
 }

@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react'
 import { BarChart3, Tags } from 'lucide-react'
 import { platformInfo, type TgGame } from '../testGameModel'
-import type { TgaBarRow, TgaLibrary } from './tgAnalyticsModel'
+import type { TgaBarRow } from './tgAnalyticsModel'
 import { TGA_PLATFORM_METRICS, platformRowsBy, type TgaPlatformMetric } from './tgAnalyticsMore'
 import { fmtHours } from './tgAnalyticsData'
-import { plural } from './tgAnalyticsFormat'
-import { openLibrary } from './tgAnalyticsNav'
+import { plural, TGA_TINT } from './tgAnalyticsFormat'
+import { useAnalyticsHandoff } from './tgAnalyticsHandoff'
+import { gamesOfPlatform, gamesWithGenre } from './tgAnalyticsLists'
 import { TGA_PLATFORM_EMPTY, platformLegend, platformOpenLabel } from './tgAnalyticsCollection'
 import { PlatformIcon } from './platformArt'
 import { TgAnalyticsBarList } from './TgAnalyticsBarList'
@@ -21,7 +22,7 @@ export function TgAnalyticsPartLegend({ filled, rest, className = '' }: { filled
     <ul aria-label="Legend" className={`mb-2 flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-[var(--tg-muted)] ${className}`}>
       <li className="flex items-center gap-1.5"><span aria-hidden className={`${SWATCH} bg-[var(--tg-accent)]`} />{filled}</li>
       <li className="flex items-center gap-1.5">
-        <span aria-hidden className={`${SWATCH} bg-[color-mix(in_srgb,var(--tg-accent)_22%,var(--tg-panel))]`} />{rest}
+        <span aria-hidden className={`${SWATCH} ${TGA_TINT}`} />{rest}
       </li>
     </ul>
   )
@@ -29,14 +30,15 @@ export function TgAnalyticsPartLegend({ filled, rest, className = '' }: { filled
 
 /**
  * Platforms ranked by one metric — games, play time, played share or
- * completions. A row opens that platform's shelf (its completed games, when
- * ranking by completions).
+ * completions. A row opens exactly that platform's games in view (its
+ * completed ones, when ranking by completions).
  */
 export function TgAnalyticsPlatforms({ scoped, platforms, className = '' }: { scoped: TgGame[]; platforms: number; className?: string }) {
   const [metric, setMetric] = useState<TgaPlatformMetric>('games')
   const rows = useMemo(() => platformRowsBy(scoped, metric, fmtHours), [scoped, metric])
   const legend = platformLegend(metric)
   const empty = TGA_PLATFORM_EMPTY[metric]
+  const handoff = useAnalyticsHandoff()
 
   return (
     <TgAnalyticsCard label="Platforms" meta={plural(platforms, 'platform')} className={className}>
@@ -57,7 +59,11 @@ export function TgAnalyticsPlatforms({ scoped, platforms, className = '' }: { sc
             icon={row => <PlatformIcon family={row.target ? platformInfo(row.target).family : 'other'} className="h-[18px] w-[18px]" />}
             openLabel={row => platformOpenLabel(metric, row)}
             onOpen={row => {
-              if (row.target) openLibrary({ platform: row.target, status: metric === 'completed' ? 'completed' : undefined })
+              if (!row.target) return
+              const completed = metric === 'completed'
+              handoff.open(completed ? `${row.label} · Completed` : row.label, gamesOfPlatform(scoped, row.target, completed), {
+                platform: row.target, status: completed ? 'completed' : undefined,
+              })
             }}
           />
         </>
@@ -68,11 +74,12 @@ export function TgAnalyticsPlatforms({ scoped, platforms, className = '' }: { sc
   )
 }
 
-/** The most common genres. A row opens the library filtered to that genre, on the analytics library's shelf. */
-export function TgAnalyticsGenres({ rows, total, tagged, games, library, className = '' }: {
-  rows: TgaBarRow[]; total: number; tagged: number; games: number; library: TgaLibrary; className?: string
+/** The most common genres. A row opens exactly the games in view with that genre. */
+export function TgAnalyticsGenres({ rows, total, tagged, games, className = '' }: {
+  rows: TgaBarRow[]; total: number; tagged: number; games: number; className?: string
 }) {
   const untagged = games - tagged
+  const handoff = useAnalyticsHandoff()
   return (
     <TgAnalyticsCard
       label="Top genres" className={className}
@@ -82,7 +89,7 @@ export function TgAnalyticsGenres({ rows, total, tagged, games, library, classNa
         <TgAnalyticsBarList
           rows={rows}
           openLabel={row => `Show ${row.label} games in the library`}
-          onOpen={row => { if (row.target) openLibrary({ library, genre: row.target }) }}
+          onOpen={row => { if (row.target) handoff.open(row.label, gamesWithGenre(handoff.base?.scoped ?? [], row.target)) }}
         />
       ) : (
         <TgAnalyticsEmpty icon={Tags} title="No genres recorded" hint="Genres arrive with ScreenScraper, Steam and PlayStation metadata, or from a game's Edit form." />

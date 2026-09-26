@@ -62,25 +62,29 @@ export function TgAnalyticsActivityChart({ series, height, caption }: { series: 
           </BarChart>
         </ResponsiveContainer>
       </div>
-      <table className="sr-only">
-        <caption>{caption}</caption>
-        <thead>
-          <tr>
-            <th scope="col">Period</th>
-            {libraries.map(lib => <th key={lib} scope="col">{TGA_LIB_LABEL[lib]}</th>)}
-            <th scope="col">Completions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map(r => (
-            <tr key={r.key}>
-              <th scope="row">{r.full}</th>
-              {libraries.map(lib => <td key={lib}>{fmtInt(r[lib])}</td>)}
-              <td>{fmtInt(r.completed)}</td>
+      {/* In a clipped box: a table ignores a 1px width, and on a phone this one
+          widened the page and pushed the tab bar off screen. */}
+      <div className="sr-only">
+        <table>
+          <caption>{caption}</caption>
+          <thead>
+            <tr>
+              <th scope="col">Period</th>
+              {libraries.map(lib => <th key={lib} scope="col">{TGA_LIB_LABEL[lib]}</th>)}
+              <th scope="col">Completions</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {rows.map(r => (
+              <tr key={r.key}>
+                <th scope="row">{r.full}</th>
+                {libraries.map(lib => <td key={lib}>{fmtInt(r[lib])}</td>)}
+                <td>{fmtInt(r.completed)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </>
   )
 }

@@ -1,8 +1,8 @@
 import { ChevronRight, Eye } from 'lucide-react'
-import type { TgaLibrary } from './tgAnalyticsModel'
 import { fmtInt, plural } from './tgAnalyticsFormat'
 import { HIDDEN_AUTO_NOTE, HIDDEN_EMPTY_HINT } from './tgAnalyticsHealthCopy'
-import { openLibrary } from './tgAnalyticsNav'
+import { useAnalyticsHandoff } from './tgAnalyticsHandoff'
+import { hiddenGames } from './tgAnalyticsLists'
 import { TgAnalyticsCard, TgAnalyticsEmpty } from './TgAnalyticsCard'
 
 function Tile({ label, value, sub }: { label: string; value: number; sub: string }) {
@@ -20,11 +20,11 @@ function Tile({ label, value, sub }: { label: string; value: number; sub: string
  * non-games hidden until someone gives them a status. The button shows them
  * in the Library, where each one can be unhidden.
  */
-export function TgAnalyticsHiddenTitles({ hidden, library, className = '' }: {
+export function TgAnalyticsHiddenTitles({ hidden, className = '' }: {
   hidden: { total: number; explicit: number; auto: number }
-  library: TgaLibrary
   className?: string
 }) {
+  const handoff = useAnalyticsHandoff()
   if (hidden.total === 0) {
     return (
       <TgAnalyticsCard label="Hidden titles" className={className}>
@@ -47,7 +47,7 @@ export function TgAnalyticsHiddenTitles({ hidden, library, className = '' }: {
           <div className="mt-auto pt-4">
             <button
               type="button"
-              onClick={() => openLibrary({ library, status: 'hidden' })}
+              onClick={() => { const b = handoff.base; if (b) handoff.open('Hidden', hiddenGames(b.games, b.library), { status: 'hidden', wholeLibrary: true }) }}
               className="tg-btn tg-btn-secondary min-h-[36px] w-full px-3 text-[13px] @[22rem]:w-auto [@media(pointer:coarse)]:min-h-[44px]"
             >
               Show hidden titles

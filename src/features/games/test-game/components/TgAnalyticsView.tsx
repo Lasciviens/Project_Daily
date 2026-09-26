@@ -5,6 +5,7 @@ import { formatDay } from '../testGameModel'
 import type { TgaLibrary, TgaTile } from './tgAnalyticsModel'
 import { useLibraryCounts, useTgAnalyticsBase } from './tgAnalyticsData'
 import { useToday } from './tgAnalyticsClock'
+import { useTgBreakpoint } from '../useTgBreakpoint'
 import { TGA_RANGE } from './tgAnalyticsFormat'
 import { TgAnalyticsControls } from './TgAnalyticsControls'
 import { TgAnalyticsTabs } from './TgAnalyticsTabs'
@@ -15,6 +16,7 @@ import { TgAnalyticsCollectionTab } from './TgAnalyticsCollectionTab'
 import { TgAnalyticsHealthTab } from './TgAnalyticsHealthTab'
 import { TgAnalyticsScopeEmpty, TgAnalyticsSkeleton } from './TgAnalyticsStates'
 import { TgEmptyState, TgErrorState } from './TgStates'
+import { TgaBaseContext } from './tgAnalyticsHandoff'
 
 // The Analytics section: the whole library in numbers, computed on the
 // client from the same cached rows the shelves read (useTestGameLibrary
@@ -34,6 +36,7 @@ export function TgAnalyticsView({ lib }: { lib: TestGameLibrary }) {
   const tab = useTestGameStore(s => s.analyticsTab)
   const setTab = useTestGameStore(s => s.setAnalyticsTab)
   const panelId = useId()
+  const phone = useTgBreakpoint() === 'mobile'
 
   const [drill, setDrill] = useState<TgaTile | null>(null)
 
@@ -62,10 +65,11 @@ export function TgAnalyticsView({ lib }: { lib: TestGameLibrary }) {
       <TgAnalyticsControls
         period={period} onPeriod={setPeriod} library={library} onLibrary={setLibrary} libraryCounts={counts}
         caption={caption} providersLoading={lib.providersLoading} providerError={lib.providerError != null}
-        onRetryProviders={lib.retryProviders}
+        onRetryProviders={lib.retryProviders} compact={phone}
       />
       <TgAnalyticsTabs tab={tab} onTab={setTab} panelId={panelId} />
 
+      <TgaBaseContext.Provider value={base}>
       <div id={panelId} role="tabpanel" aria-labelledby={`tga-tab-${tab}`} className="flex flex-col gap-5">
         {empty ? (
           <TgAnalyticsScopeEmpty
@@ -77,6 +81,7 @@ export function TgAnalyticsView({ lib }: { lib: TestGameLibrary }) {
           : tab === 'health' ? <TgAnalyticsHealthTab base={base} />
           : <TgAnalyticsOverviewTab base={base} onDrill={setDrill} />}
       </div>
+      </TgaBaseContext.Provider>
       <TgAnalyticsDrill kind={drill} scoped={base.scoped} start={base.start} end={base.end} library={library} onClose={() => setDrill(null)} />
     </div>
   )

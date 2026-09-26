@@ -38,13 +38,14 @@ function Row({ line, rank, top, mode }: { line: Line; rank: number; top: number;
     <li>
       <button type="button" onClick={() => openGameFromAnalytics(game.id)} aria-label={`${game.title}, ${value}. Open details`}
         className={`${PRESS} -mx-2 grid w-[calc(100%+1rem)] grid-cols-[1.1rem_32px_minmax(0,1fr)_auto] items-center gap-x-3 px-2 py-1`}>
-        <span className="text-right text-[12px] font-semibold tabular-nums text-[var(--tg-faint)]">{rank}</span>
+        <span className="text-right text-[12px] font-semibold tabular-nums text-[var(--tg-muted)]">{rank}</span>
         <span className={`${FRAME} h-11 w-8 rounded-[5px]`}>
           <TgCover game={game} mode="contain" />
         </span>
         <span className="min-w-0">
           <span className="block truncate text-[13px] font-medium text-[var(--tg-text)]">{game.title}</span>
-          <span className="mt-0.5 block truncate text-[11.5px] text-[var(--tg-muted)]" title={sub}>{sub}</span>
+          {/* Two lines in a narrow card: one cut the last-played date off every row. */}
+          <span className="mt-0.5 line-clamp-2 text-[11.5px] leading-snug text-[var(--tg-muted)]" title={sub}>{sub}</span>
           <span aria-hidden className="mt-1 block h-[3px] rounded-full bg-[var(--tg-accent)] opacity-80" style={{ width: `max(4px, ${(amount / top) * 100}%)` }} />
         </span>
         <span className="self-start whitespace-nowrap pt-px text-right text-[13px] font-semibold tabular-nums text-[var(--tg-text)]">{value}</span>
@@ -90,16 +91,15 @@ export function TgAnalyticsRecent({ items, className = '' }: { items: TgaPlayed[
         <ul className={RECENT_GRID}>
           {items.map(({ game, seconds, last }) => (
             <li key={game.id} className="min-w-0">
-              <button type="button" onClick={() => openGameFromAnalytics(game.id)} aria-label={`${game.title}. Open details`}
+              <button type="button" onClick={() => openGameFromAnalytics(game.id)} aria-label={`${game.title}, last played ${formatDay(last)}${seconds ? `, ${hours(seconds)} in total` : ''}. Open details`}
                 className="group block w-full rounded-lg text-left">
               <span className={`${FRAME} block aspect-[0.72] w-full rounded-lg transition-[filter] [@media(hover:hover)]:group-hover:brightness-110`}>
                 <TgCover game={game} mode="contain" />
               </span>
               <span className="mt-2 block truncate text-[12px] font-medium text-[var(--tg-text)]" title={game.title}>{game.title}</span>
-              <span className="mt-0.5 block truncate text-[11px] text-[var(--tg-muted)]">
-                {formatDay(last)}
-                {seconds ? <span className="text-[var(--tg-faint)]"> · {hours(seconds)}</span> : null}
-              </span>
+              {/* Date and play time on their own lines: one line cut the hours to "22…". */}
+              <span className="mt-0.5 block truncate text-[11px] text-[var(--tg-muted)]">{formatDay(last)}</span>
+              {seconds ? <span className="block truncate text-[11px] tabular-nums text-[var(--tg-muted)]" title={hours(seconds)}>{hours(seconds)}</span> : null}
               </button>
             </li>
           ))}

@@ -17,12 +17,12 @@ export function TgAnalyticsCollectionTab({ base }: { base: TgaBase }) {
   return (
     <div className={TGA_GRID}>
       <TgAnalyticsScores ratings={d.ratings} scores={d.scores} className={at.ratings} />
-      <TgAnalyticsWorthNext items={d.worthNext} windowed={base.start != null} />
-      <TgAnalyticsPlatforms scoped={base.scoped} platforms={d.platformCount} />
+      <TgAnalyticsWorthNext items={d.worthNext} windowed={base.start != null} className={at.worth} />
+      <TgAnalyticsPlatforms scoped={base.scoped} platforms={d.platformCount} className={at.platforms} />
       <TgAnalyticsGenres
-        rows={d.genres.rows} total={d.genres.total} tagged={d.genres.tagged} games={base.scoped.length} library={base.library}
+        rows={d.genres.rows} total={d.genres.total} tagged={d.genres.tagged} games={base.scoped.length} className={at.genres}
       />
-      <TgAnalyticsStudios developers={d.developers} publishers={d.publishers} library={base.library} />
+      <TgAnalyticsStudios developers={d.developers} publishers={d.publishers} className={at.studios} />
       <TgAnalyticsDecades decades={d.decades} className={at.decades} />
       <TgAnalyticsPlayers players={d.players} className={at.players} />
       <TgAnalyticsSeriesCard series={d.series} className={at.series} />

@@ -29,11 +29,13 @@ interface Input {
   statusCounts: StatusCounts
   /** How many games the current section shows. */
   visibleCount: number
+  /** The shelf's games before search and filters — the "of N". */
+  shelfTotal?: number
   /** A status section's platform scope after the stale-scope fallback. */
   scopePlatform?: string
 }
 
-export function useTgHeaderConfig({ games, platform, statusCounts: sCounts, visibleCount, scopePlatform: effectiveScope }: Input): TgHeaderConfig {
+export function useTgHeaderConfig({ games, platform, statusCounts: sCounts, visibleCount, shelfTotal, scopePlatform: effectiveScope }: Input): TgHeaderConfig {
   const section = useTestGameStore(s => s.section)
   const statuses = useTestGameStore(s => s.statuses)
   const storedScope = useTestGameStore(s => s.scopePlatform)
@@ -41,6 +43,7 @@ export function useTgHeaderConfig({ games, platform, statusCounts: sCounts, visi
   const genres = useTestGameStore(s => s.genres)
   const studios = useTestGameStore(s => s.studios)
   const search = useTestGameStore(s => s.search)
+  const libraryScope = useTestGameStore(s => s.libraryScope)
   const clearFilters = useTestGameStore(s => s.clearFilters)
   const setSearch = useTestGameStore(s => s.setSearch)
   const advancedTab = useTestGameStore(s => s.advancedTab)
@@ -60,12 +63,12 @@ export function useTgHeaderConfig({ games, platform, statusCounts: sCounts, visi
   const fixedStatus = STATUS_SECTIONS[section]
   return useMemo((): TgHeaderConfig => {
     // Filters or a search narrowing a game list: "12 of 310 games" + Clear.
-    const narrowed = statuses.length > 0 || genres.length > 0 || studios.length > 0 || search.trim() !== ''
+    const narrowed = statuses.length > 0 || genres.length > 0 || studios.length > 0 || search.trim() !== '' || libraryScope != null
     const clear = narrowed ? () => { clearFilters(); setSearch('') } : undefined
     if (section === 'library') {
       return {
         title: platformInfo(platform).name,
-        subtitle: narrowed ? `${visibleCount.toLocaleString('en-GB')} of ${plural(sCounts.all, 'game')}` : plural(sCounts.all, 'game'),
+        subtitle: `${narrowed ? `${visibleCount.toLocaleString('en-GB')} of ${plural(shelfTotal ?? sCounts.all, 'game')}` : plural(sCounts.all, 'game')}${libraryScope ? ` · from Analytics: ${libraryScope.label}` : ''}`,
         onClear: clear,
         // A provider shelf syncs from its provider — an explicit tap, never on load.
         action: platform === 'steam' || platform === 'playstation' ? createElement(TgProviderSync, { library: platform, games }) : undefined,
@@ -106,15 +109,27 @@ export function useTgHeaderConfig({ games, platform, statusCounts: sCounts, visi
       const queued = games.filter(g => !g.hidden && g.play_order != null)
       const playing = queued.filter(g => g.play_status === 'playing').length
       const q = queueInsights(games)
+      // Up next = still to play and not already being played; Completed and
+      // Dropped games left in the queue are "finished", the same split as the
+      // forecast and "Remove N finished".
+      const upNext = Math.max(0, q.toPlay - playing)
+      const n = (x: number) => x.toLocaleString('en-GB')
       // A rough forecast, and it says so: the median play time of what you've completed, times what's left.
       // Whole hours: minutes would claim a precision the estimate hasn't got.
       const hours = q.forecastSeconds != null ? Math.round(q.forecastSeconds / 3600) : null
-      const forecast = hours == null ? '' : hours < 1 ? ' · under an hour to play through' : ` · roughly ${plural(hours, 'hour')} to play through`
+      const note = hours == null ? undefined : hours < 1 ? 'Under an hour to play through' : `Roughly ${plural(hours, 'hour')} to play through`
       return {
         title: 'Play Queue',
-        subtitle: `${plural(queued.length, 'game')} queued · ${playing.toLocaleString('en-GB')} playing · ${(queued.length - playing).toLocaleString('en-GB')} up next${visibleCount !== queued.length ? ` · ${visibleCount.toLocaleString('en-GB')} shown` : ''}${forecast}`,
-        subtitleTitle: q.forecastSeconds != null ? `Queued games still to play × the median play time of your ${q.basis} completed games — it knows nothing about these games' own length.` : undefined,
-        action: q.finished.length ? createElement(TgQueueCleanup, { games }) : undefined,
+        subtitle: [
+          `${plural(queued.length, 'game')} queued`,
+          `${n(playing)} playing`,
+          `${n(upNext)} up next`,
+          q.finished.length ? `${n(q.finished.length)} finished` : null,
+          visibleCount !== queued.length ? `${n(visibleCount)} shown` : null,
+        ].filter(Boolean).join(' · '),
+        note,
+        subtitleTitle: note ? `Queued games still to play × the median play time of your ${q.basis} completed games — it knows nothing about these games' own length.` : undefined,
+        inlineAction: q.finished.length ? createElement(TgQueueCleanup, { games }) : undefined,
         logo: 'queue', tabs: [], activeTab: null,
       }
     }
@@ -138,6 +153,6 @@ export function useTgHeaderConfig({ games, platform, statusCounts: sCounts, visi
       activeTab: advancedTab,
       onTab: (k) => setAdvancedTab(k as AdvancedTab),
     }
-  }, [section, platform, sCounts, statuses, fixedStatus, games, scopePlatform, visibleCount,
+  }, [section, platform, sCounts, shelfTotal, statuses, fixedStatus, games, scopePlatform, visibleCount, libraryScope,
       advancedTab, reviewCount, setStatus, setScopePlatform, setAdvancedTab, scrapeMode, setScrapeMode, search, genres, studios, clearFilters, setSearch])
 }

@@ -38,7 +38,7 @@ export function TgAnalyticsPlaytime({ buckets, concentration: c, className = '' 
                       aria-label={`${game.title} (${lib.label}), ${fmtHours(seconds)}. Open details`}
                       className={`grid w-full grid-cols-[1rem_10px_minmax(0,1fr)_auto] items-center gap-x-2.5 rounded-[10px] px-2 text-left ${TGA_ROW_H} ${PRESS}`}
                     >
-                      <span className="text-right text-[12px] font-semibold tabular-nums text-[var(--tg-faint)]">{i + 1}</span>
+                      <span className="text-right text-[12px] font-semibold tabular-nums text-[var(--tg-muted)]">{i + 1}</span>
                       <span aria-hidden title={lib.label} className="h-2.5 w-2.5 rounded-full" style={{ background: lib.color }} />
                       <span className="truncate text-[13px] font-medium text-[var(--tg-text)]">{game.title}</span>
                       <span className="whitespace-nowrap text-right text-[13px] font-semibold tabular-nums text-[var(--tg-text)]">{fmtHours(seconds)}</span>

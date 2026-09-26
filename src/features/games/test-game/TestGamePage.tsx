@@ -33,9 +33,9 @@ import { lazyWithReload } from '../../../shared/utils/lazyWithReload'
 
 // Analytics, Scrape and Advanced load on first visit: most sessions only
 // browse the shelves, and together they are the bulk of the page's code.
-const TgAnalyticsView = lazyWithReload(() => import('./components/TgAnalyticsView').then(m => m.TgAnalyticsView), TgChunkFailed)
-const TgScrapeView = lazyWithReload(() => import('./components/scrape/TgScrapeView').then(m => m.TgScrapeView), TgChunkFailed)
-const TgAdvancedView = lazyWithReload(() => import('./components/TgAdvancedView').then(m => m.TgAdvancedView), TgChunkFailed)
+const TgAnalyticsView = lazyWithReload('games-analytics', () => import('./components/TgAnalyticsView').then(m => m.TgAnalyticsView), TgChunkFailed)
+const TgScrapeView = lazyWithReload('games-scrape', () => import('./components/scrape/TgScrapeView').then(m => m.TgScrapeView), TgChunkFailed)
+const TgAdvancedView = lazyWithReload('games-advanced', () => import('./components/TgAdvancedView').then(m => m.TgAdvancedView), TgChunkFailed)
 
 const SECTION_FALLBACK = <div aria-busy="true" className="h-full" />
 
@@ -45,6 +45,7 @@ export function TestGamePage() {
   const section = useTestGameStore(s => s.section)
   const pickedGenres = useTestGameStore(s => s.genres)
   const pickedStudios = useTestGameStore(s => s.studios)
+  const libraryScope = useTestGameStore(s => s.libraryScope)
   const view = useTestGameStore(s => s.view)
   const search = useTestGameStore(s => s.search)
   const statuses = useTestGameStore(s => s.statuses)
@@ -66,7 +67,7 @@ export function TestGamePage() {
   const panelRef = useRef<HTMLElement>(null)
 
   const {
-    counts, shown, others, effectivePlatform, effectiveScopePlatform, isGameSection, genres, studios, statusCounts: sCounts, visible, ranks, navCounts,
+    counts, shown, others, effectivePlatform, effectiveScopePlatform, isGameSection, genres, studios, statusCounts: sCounts, shelfTotal, visible, ranks, navCounts,
   } = useTgLibraryView(lib)
 
   // Looked up in the whole library, not the current view: a status changed in
@@ -101,7 +102,7 @@ export function TestGamePage() {
     }
   }, [bp, detailOpen, collapsed])
 
-  const header = useTgHeaderConfig({ games: lib.games, platform: effectivePlatform, statusCounts: sCounts, visibleCount: visible.length, scopePlatform: effectiveScopePlatform })
+  const header = useTgHeaderConfig({ games: lib.games, platform: effectivePlatform, statusCounts: sCounts, visibleCount: visible.length, shelfTotal, scopePlatform: effectiveScopePlatform })
 
   // ── Actions ───────────────────────────────────────────────────────────────
   const actions: TgActions = useMemo(() => ({
@@ -153,7 +154,7 @@ export function TestGamePage() {
   // What makes the list a different list. A change scrolls it back to the
   // top (and remounts the phone grid's paging); a status edit or a refetch
   // does not change it, so those keep the scroll position.
-  const listKey = [section, effectivePlatform, effectiveScopePlatform, statuses.join(','), pickedGenres.join(','), pickedStudios.join(','), sort, search.trim()].join('|')
+  const listKey = [section, effectivePlatform, effectiveScopePlatform, statuses.join(','), pickedGenres.join(','), pickedStudios.join(','), libraryScope?.label ?? '', sort, search.trim()].join('|')
 
   // Phone: every section shares one scroller. Each section's depth is kept,
   // so Queue → Library returns to the same card; a new filter starts at the top.
@@ -175,7 +176,7 @@ export function TestGamePage() {
     // shelf, a queued PlayStation game): wait for them rather than say "empty".
     if (visible.length === 0 && lib.providersLoading) return <TgLoadingShelf />
     if (lib.games.length === 0) return <TgEmptyState kind="library" />
-    if (visible.length === 0) return <TgEmptyState kind={search.trim() || pickedGenres.length || pickedStudios.length ? 'filtered' : section === 'queue' ? 'queue' : 'section'} />
+    if (visible.length === 0) return <TgEmptyState kind={search.trim() || pickedGenres.length || pickedStudios.length || libraryScope ? 'filtered' : section === 'queue' ? 'queue' : 'section'} />
     const selId = selected?.id ?? null
     if (section === 'queue') {
       return <TgQueueView games={visible} ranks={ranks} selectedId={selId} onSelect={onSelect} fill={layout === 'desktop'} onPlan={actions.planSession} />
@@ -198,7 +199,7 @@ export function TestGamePage() {
     if (section === 'advanced') {
       return (
         <Suspense fallback={SECTION_FALLBACK}>
-          <TgAdvancedView onOpenDetail={actions.openFull} games={lib.games} randomPool={visible} randomScope={{ platform: effectivePlatform, search, genres: pickedGenres }} />
+          <TgAdvancedView onOpenDetail={actions.openFull} games={lib.games} loading={lib.isLoading} error={lib.isError ? lib.error : null} onRetry={lib.refetch} />
         </Suspense>
       )
     }

@@ -13,8 +13,13 @@ export type TgHeaderLogo =
 export interface TgHeaderConfig {
   title: string
   subtitle: string
-  /** More about the subtitle, on hover (the queue forecast's basis). */
+  /** More about the subtitle or note, on hover (the queue forecast's basis). */
   subtitleTitle?: string
+  /** A second, lighter line under the count (the queue's play-through forecast). */
+  note?: string
+  /** A small text action right after the count, like Clear filters. Left-aligned,
+   *  so the tablet's detail overlay never sits over it (the queue's cleanup). */
+  inlineAction?: ReactNode
   logo: TgHeaderLogo
   platformKey?: string
   tabs: TgHeaderTab[]

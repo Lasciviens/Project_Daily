@@ -1,11 +1,11 @@
 import { useMemo } from 'react'
 import { Trophy } from 'lucide-react'
 import type { PsnTrophyTitle } from '../../api/psnApi'
-import { fmtInt, plural } from './tgAnalyticsFormat'
+import { fmtInt, plural, TGA_TINT } from './tgAnalyticsFormat'
 import { TGA_TROPHY_GRADES, titlePlatform, titleProgress, trophyStats } from './tgAnalyticsTrophies'
 import { TgAnalyticsEmpty } from './TgAnalyticsCard'
 
-const TRACK = 'relative block overflow-hidden rounded-full bg-[color-mix(in_srgb,var(--tg-accent)_22%,var(--tg-panel))]'
+const TRACK = `relative block overflow-hidden rounded-full ${TGA_TINT}`
 const FILL = 'absolute inset-y-0 left-0 rounded-full bg-[var(--tg-accent)]'
 const BONE = 'tg-skeleton rounded-md'
 const pct = (p: number) => `${Math.round(p)}%`
@@ -66,7 +66,7 @@ export function TgAnalyticsTrophiesBody({ titles }: { titles: PsnTrophyTitle[] }
             )
           })}
         </ul>
-        <p className="mt-2 text-[11.5px] text-[var(--tg-faint)]">Filled = earned, of every trophy those sets hold.</p>
+        <p className="mt-2 text-[11.5px] text-[var(--tg-muted)]">Filled = earned, of every trophy those sets hold.</p>
       </div>
 
       <div className="min-w-0">

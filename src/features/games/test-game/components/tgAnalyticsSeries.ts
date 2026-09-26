@@ -129,6 +129,12 @@ export interface TgaActivity {
   /** Latest sessions older than the plotted range (all time only). */
   earlier: number
   completed: number
+  /**
+   * All time only: Completed games the chart can't place, so the Completed
+   * tile's count adds up — no finish date, finished before the chart starts,
+   * or a finish date in the future (a typo, most likely).
+   */
+  unplaced: { undated: number; earlier: number; future: number }
   /** The libraries that appear on the chart, in stacking order. */
   libraries: TgaLib[]
 }
@@ -146,6 +152,7 @@ export function activitySeries(games: TgGame[], period: TgaWindow, today: number
   const index = new Map(columns.map(c => [c.key, c]))
   const seen = new Set<TgaLib>()
   let total = 0, earlier = 0, completed = 0
+  const unplaced = { undated: 0, earlier: 0, future: 0 }
   for (const g of games) {
     const lib: TgaLib = g.library === 'steam' || g.library === 'playstation' ? g.library : 'retro'
     const last = lastPlayedIso(g)
@@ -160,9 +167,14 @@ export function activitySeries(games: TgGame[], period: TgaWindow, today: number
     if (isCompletion(g, timeline.first, end)) {
       const c = index.get(timeline.keyOf(Date.parse(g.finished_at!)))
       if (c) { c.completed++; completed++ }
+    } else if (period === 'all' && g.play_status === 'completed') {
+      const f = g.finished_at ? Date.parse(g.finished_at) : NaN
+      if (!Number.isFinite(f)) unplaced.undated++
+      else if (f >= end) unplaced.future++
+      else unplaced.earlier++
     }
   }
-  return { columns, unit: timeline.unit, total, earlier, completed, libraries: TGA_LIBS.filter(l => seen.has(l)) }
+  return { columns, unit: timeline.unit, total, earlier, completed, unplaced, libraries: TGA_LIBS.filter(l => seen.has(l)) }
 }
 
 /**

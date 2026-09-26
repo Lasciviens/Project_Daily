@@ -2,7 +2,7 @@ import { useDeferredValue, useMemo } from 'react'
 import { useTestGameStore } from './testGameStore'
 import {
   ALL_PLATFORMS, OTHER_PLATFORMS, STATUS_SECTIONS,
-  applyStatus, foldGenres, needsReviewReasons, platformCounts, studioOptions, queueOrder, queueRanks,
+  applyStatus, effectiveStatus, foldGenres, needsReviewReasons, platformCounts, studioOptions, queueOrder, queueRanks,
   scopeGames, sortGames, splitPlatforms, statusCounts,
   type PlatformCount, type StatusCounts, type TgGame,
 } from './testGameModel'
@@ -27,6 +27,8 @@ export interface TgLibraryView {
   /** Developer/publisher options for the Studio filter. */
   studios: { studio: string; count: number }[]
   statusCounts: StatusCounts
+  /** Games on the shelf before search and filters narrow it. */
+  shelfTotal: number
   /** The current section's games in display order (Advanced: the Random pool). */
   visible: TgGame[]
   /** ONE queue numbering for the badges, the queue rows and the ⋯ menu. */
@@ -45,6 +47,8 @@ export function useTgLibraryView(lib: TestGameLibrary): TgLibraryView {
   const studios = useDeferredValue(useTestGameStore(s => s.studios))
   const sort = useTestGameStore(s => s.sort)
   const search = useDeferredValue(useTestGameStore(s => s.search))
+  const libraryScope = useTestGameStore(s => s.libraryScope)
+  const ids = useMemo(() => (libraryScope ? new Set(libraryScope.ids) : null), [libraryScope])
 
   const counts = useMemo(() => platformCounts(lib.games), [lib.games])
   const { shown, others } = useMemo(() => splitPlatforms(counts, 8), [counts])
@@ -66,29 +70,35 @@ export function useTgLibraryView(lib: TestGameLibrary): TgLibraryView {
   // games of that status left would show an empty grid under the label "All".
   const effectiveScopePlatform = useMemo(() => {
     if (!fixedStatus || scopePlatform === ALL_PLATFORMS || settling) return scopePlatform
-    return lib.games.some(g => !g.hidden && g.play_status === fixedStatus && g.platformKey === scopePlatform) ? scopePlatform : ALL_PLATFORMS
+    return lib.games.some(g => !g.hidden && effectiveStatus(g) === fixedStatus && g.platformKey === scopePlatform) ? scopePlatform : ALL_PLATFORMS
   }, [fixedStatus, scopePlatform, settling, lib.games])
   const isGameSection = section !== 'analytics' && section !== 'advanced' && section !== 'scrape'
   // Sorted once per library change or sort change; every filter below keeps
   // that order, so a keystroke filters a sorted list instead of re-sorting.
   const sorted = useMemo(() => sortGames(lib.games, sort), [lib.games, sort])
   const scope = useMemo(
-    () => scopeGames(sorted, { section, platform: effectivePlatform, otherKeys, scopePlatform: effectiveScopePlatform, search, genres, studios }),
-    [sorted, section, effectivePlatform, otherKeys, effectiveScopePlatform, search, genres, studios],
+    () => scopeGames(sorted, { section, platform: effectivePlatform, otherKeys, scopePlatform: effectiveScopePlatform, search, genres, studios, ids }),
+    [sorted, section, effectivePlatform, otherKeys, effectiveScopePlatform, search, genres, studios, ids],
   )
   const genreList = useMemo(
     // The Hidden view lists hidden games, so its genre list counts them too.
-    () => foldGenres(scopeGames(lib.games, { section, platform: effectivePlatform, otherKeys, scopePlatform: effectiveScopePlatform, search, studios }),
+    () => foldGenres(scopeGames(lib.games, { section, platform: effectivePlatform, otherKeys, scopePlatform: effectiveScopePlatform, search, studios, ids }),
       section === 'library' && statuses.includes('hidden')),
-    [lib.games, section, effectivePlatform, otherKeys, effectiveScopePlatform, search, statuses, studios],
+    [lib.games, section, effectivePlatform, otherKeys, effectiveScopePlatform, search, statuses, studios, ids],
   )
   // Each facet's options are narrowed by every OTHER filter, never by itself.
   const studioList = useMemo(
-    () => studioOptions(scopeGames(lib.games, { section, platform: effectivePlatform, otherKeys, scopePlatform: effectiveScopePlatform, search, genres }),
+    () => studioOptions(scopeGames(lib.games, { section, platform: effectivePlatform, otherKeys, scopePlatform: effectiveScopePlatform, search, genres, ids }),
       section === 'library' && statuses.includes('hidden')),
-    [lib.games, section, effectivePlatform, otherKeys, effectiveScopePlatform, search, genres, statuses],
+    [lib.games, section, effectivePlatform, otherKeys, effectiveScopePlatform, search, genres, statuses, ids],
   )
   const sCounts = useMemo(() => statusCounts(scope), [scope])
+  // The shelf before any narrowing (search, genre, studio, an Analytics list):
+  // the "of N" in "12 of 310 games" — the narrowed scope made it "12 of 12".
+  const shelfTotal = useMemo(
+    () => statusCounts(scopeGames(lib.games, { section, platform: effectivePlatform, otherKeys, scopePlatform: effectiveScopePlatform, search: '' })).all,
+    [lib.games, section, effectivePlatform, otherKeys, effectiveScopePlatform],
+  )
 
   const visible = useMemo(() => {
     if (section === 'queue') return queueOrder(applyStatus(scope, 'all'))
@@ -107,6 +117,6 @@ export function useTgLibraryView(lib: TestGameLibrary): TgLibraryView {
 
   return {
     counts, shown, others, effectivePlatform, effectiveScopePlatform, isGameSection, genres: genreList, studios: studioList,
-    statusCounts: sCounts, visible, ranks, navCounts,
+    statusCounts: sCounts, shelfTotal, visible, ranks, navCounts,
   }
 }

@@ -75,10 +75,27 @@ export interface TgaFreshness {
   games: number
   /** The newest sync stamp of any game in the library (ES-DE, Steam or PlayStation import). */
   lastSync: string | null
-  /** Whole days since then; null without a stamp. */
+  /** Calendar days since then (yesterday at 23:00 is 1, not 0); null without a stamp. */
   days: number | null
   /** Older than `staleDays`. */
   stale: boolean
+}
+
+const localMidnight = (ms: number) => { const d = new Date(ms); d.setHours(0, 0, 0, 0); return d.getTime() }
+
+/** Calendar days from `t` to `today` (local midnight); rounded so a 23- or 25-hour DST day still counts as one. */
+export function calendarDaysSince(t: number, today: number): number {
+  return t >= today ? 0 : Math.max(1, Math.round((today - localMidnight(t)) / 86_400_000))
+}
+
+/**
+ * A source's own sync stamp. A ScreenScraper save used to stamp `synced_at`
+ * too (with the same instant as `ss_scraped_at`), which made the handheld look
+ * freshly synced; such a stamp is not the source's.
+ */
+function sourceStamp(g: TgGame): string | null {
+  if (!g.synced_at) return null
+  return g.ss_scraped_at && g.ss_scraped_at === g.synced_at ? null : g.synced_at
 }
 
 /** When each library last heard from its source. */
@@ -89,10 +106,11 @@ export function freshness(games: TgGame[], today: number, staleDays = 7): TgaFre
     let last: string | null = null
     let lastT = -Infinity
     for (const g of gs) {
-      const t = g.synced_at ? Date.parse(g.synced_at) : NaN
-      if (Number.isFinite(t) && t > lastT) { lastT = t; last = g.synced_at }
+      const stamp = sourceStamp(g)
+      const t = stamp ? Date.parse(stamp) : NaN
+      if (Number.isFinite(t) && t > lastT) { lastT = t; last = stamp }
     }
-    const days = last ? Math.max(0, Math.floor((today - lastT) / 86_400_000)) : null
+    const days = last ? calendarDaysSince(lastT, today) : null
     return { library, games: gs.length, lastSync: last, days, stale: days == null ? gs.length > 0 : days > staleDays }
   }).filter(f => f.games > 0)
 }

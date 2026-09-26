@@ -1,8 +1,9 @@
 import { platformInfo } from '../testGameModel'
 import type { TgaLibrary } from './tgAnalyticsModel'
 import type { TgaPlayCoverage } from './tgAnalyticsMore'
-import { fmtInt, fmtPct, plural } from './tgAnalyticsFormat'
-import { openLibrary } from './tgAnalyticsNav'
+import { fmtInt, fmtPct, plural, TGA_TINT } from './tgAnalyticsFormat'
+import { useAnalyticsHandoff } from './tgAnalyticsHandoff'
+import { gamesOfPlatform } from './tgAnalyticsLists'
 import { coverageNote } from './tgAnalyticsPlay'
 import { PlatformIcon } from './platformArt'
 import { TgAnalyticsBarList } from './TgAnalyticsBarList'
@@ -11,15 +12,16 @@ import { TgAnalyticsCard } from './TgAnalyticsCard'
 // The same two tones TgAnalyticsBarList draws a `part` row with.
 const SWATCH = 'h-2.5 w-3.5 shrink-0 rounded-[3px]'
 const FILLED = 'bg-[var(--tg-accent)]'
-const TINT = 'bg-[color-mix(in_srgb,var(--tg-accent)_22%,var(--tg-panel))]'
+const TINT = TGA_TINT
 
 /**
  * How much of the library has recorded play: the headline, then one bar per
  * platform — the whole bar is the platform's games, the filled part the ones
- * with recorded play. A row opens that platform's shelf.
+ * with recorded play. A row opens that platform's games in view.
  */
 export function TgAnalyticsCoverage({ coverage, library }: { coverage: TgaPlayCoverage; library: TgaLibrary }) {
   const { total, played, unplayed, rows } = coverage
+  const handoff = useAnalyticsHandoff()
   return (
     <TgAnalyticsCard label="Play coverage" meta={plural(total, 'game')}>
       <p className="flex items-baseline gap-2">
@@ -38,8 +40,8 @@ export function TgAnalyticsCoverage({ coverage, library }: { coverage: TgaPlayCo
       <TgAnalyticsBarList
         rows={rows}
         icon={row => <PlatformIcon family={row.target ? platformInfo(row.target).family : 'other'} className="h-[18px] w-[18px]" />}
-        openLabel={row => `Open the ${row.label} shelf`}
-        onOpen={row => { if (row.target) openLibrary({ platform: row.target }) }}
+        openLabel={row => `Show the ${row.label} games in the library`}
+        onOpen={row => { if (row.target) handoff.open(row.label, gamesOfPlatform(handoff.base?.scoped ?? [], row.target), { platform: row.target }) }}
       />
     </TgAnalyticsCard>
   )

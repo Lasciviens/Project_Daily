@@ -81,6 +81,9 @@ interface TgState {
   analyticsLibrary: TgaLibrary
   /** Which Analytics tab is open (persisted, like the view). */
   analyticsTab: TgaTab
+  /** The Library narrowed to exactly the games behind an Analytics number
+   *  (not persisted; any navigation or Clear drops it). */
+  libraryScope: { ids: string[]; label: string } | null
   /** The game the Scrape page is working on (not persisted). */
   scrapeTargetId: string | null
   scrapeMode: ScrapeMode
@@ -103,7 +106,7 @@ interface TgState {
   toggleGenre: (g: string) => void
   toggleStudio: (studio: string) => void
   setStudios: (list: string[]) => void
-  /** Drops every status, genre and studio filter (not the search or the sort). */
+  /** Drops every status, genre and studio filter and an Analytics hand-off (not the search or the sort). */
   clearFilters: () => void
   setSort: (s: TgSort) => void
   setView: (v: TgView) => void
@@ -120,6 +123,7 @@ interface TgState {
   setAnalyticsPeriod: (p: TgaWindow) => void
   setAnalyticsLibrary: (l: TgaLibrary) => void
   setAnalyticsTab: (t: TgaTab) => void
+  setLibraryScope: (scope: { ids: string[]; label: string } | null) => void
   /** Opens the Scrape page on a game (the detail's Scrape button, a batch row). */
   openScrape: (gameId: string | null) => void
   setScrapeTarget: (gameId: string | null) => void
@@ -153,6 +157,7 @@ export const useTestGameStore = create<TgState>()(
       analyticsPeriod: 'all',
       analyticsLibrary: 'all',
       analyticsTab: 'overview',
+      libraryScope: null,
       scrapeTargetId: null,
       scrapeMode: 'search',
       scrapeSearch: null,
@@ -168,11 +173,11 @@ export const useTestGameStore = create<TgState>()(
       // otherwise lingered as a filter the user had to find and clear.
       // Re-tapping the section you are on keeps an open ScreenScraper review.
       setSection: (section) => set(s => ({
-        section, statuses: [], scopePlatform: ALL_PLATFORMS, ...(s.section !== section && { scrapeReview: null, ...LEAVE_SHELF }),
+        section, statuses: [], scopePlatform: ALL_PLATFORMS, libraryScope: null, ...(s.section !== section && { scrapeReview: null, ...LEAVE_SHELF }),
         ...(section === 'library' && { platform: ALL_PLATFORMS, genres: [], studios: [], ...(s.platform !== ALL_PLATFORMS && LEAVE_SHELF) }),
       })),
       setPlatform: (platform) => set(s => ({
-        platform, section: 'library', statuses: [],
+        platform, section: 'library', statuses: [], libraryScope: null,
         ...((s.platform !== platform || s.section !== 'library') && LEAVE_SHELF),
       })),
       setScopePlatform: (scopePlatform) => set({ scopePlatform }),
@@ -184,7 +189,7 @@ export const useTestGameStore = create<TgState>()(
       toggleGenre: (genre) => set(s => ({ genres: toggleValue(s.genres, genre) })),
       toggleStudio: (studio) => set(s => ({ studios: toggleValue(s.studios, studio) })),
       setStudios: (studios) => set({ studios }),
-      clearFilters: () => set({ statuses: [], genres: [], studios: [] }),
+      clearFilters: () => set({ statuses: [], genres: [], studios: [], libraryScope: null }),
       setSort: (sort) => set({ sort }),
       setView: (view) => set({ view }),
       setSearch: (search) => set({ search }),
@@ -206,6 +211,7 @@ export const useTestGameStore = create<TgState>()(
       setAnalyticsPeriod: (analyticsPeriod) => set({ analyticsPeriod }),
       setAnalyticsLibrary: (analyticsLibrary) => set({ analyticsLibrary }),
       setAnalyticsTab: (analyticsTab) => set({ analyticsTab }),
+      setLibraryScope: (libraryScope) => set({ libraryScope }),
       openScrape: (scrapeTargetId) => set(s => ({
         scrapeTargetId, scrapeMode: 'search', section: 'scrape', scrapeReview: null,
         ...(s.section !== 'scrape' && LEAVE_SHELF),

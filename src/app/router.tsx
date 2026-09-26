@@ -23,7 +23,7 @@ import { lazyWithReload } from '../shared/utils/lazyWithReload'
 // out of every other route's first download. lazyWithReload survives a chunk
 // that disappeared in a deploy (see src/shared/utils/lazyWithReload.ts).
 
-const TestGamePage = lazyWithReload(() =>
+const TestGamePage = lazyWithReload('games-page', () =>
   import('../features/games/test-game/TestGamePage').then(m => m.TestGamePage))
 
 export function Router() {

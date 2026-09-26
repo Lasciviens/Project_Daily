@@ -183,7 +183,102 @@ ok([H.reviewReasonCounts(hl).games, H.reviewReasonCounts(hl).reasons.find(r => r
 const inv = H.assetInventory(hl)
 ok([inv.images, inv.bytes, inv.games, inv.categories.map(c => c.category)], [2, 1500, 1, ['covers', 'screenshots']], 'ES-DE originals tallied per category, biggest first')
 const fr = H.freshness([game({ library: 'retro', synced_at: '2026-09-24T10:00:00Z' }), game({ library: 'steam', synced_at: '2026-09-01T10:00:00Z' }), game({ library: 'playstation' })], today)
-ok(fr.map(f => [f.library, f.days, f.stale]), [['retro', 0, false], ['steam', 23, true], ['playstation', null, true]], 'freshness per library; no stamp at all is stale')
+ok(fr.map(f => [f.library, f.days, f.stale]), [['retro', 1, false], ['steam', 24, true], ['playstation', null, true]], 'freshness per library in calendar days; no stamp at all is stale')
+{
+  const late = today - 3_600_000 // 23:00 yesterday
+  ok(H.calendarDaysSince(late, today), 1, 'a sync late last night was yesterday, not today')
+  ok([H.calendarDaysSince(today + 5_000, today), H.calendarDaysSince(today - 8 * 86_400_000 + 3_600_000, today)], [0, 8], 'today is 0; eight calendar days ago is 8')
+  const eight = new Date(today - 7 * 86_400_000 - 3_600_000).toISOString() // 23:00, 8 calendar days back
+  ok(H.freshness([game({ library: 'retro', synced_at: eight })], today)[0].stale, true, 'stale by calendar days: 8 days ago is past a week')
+  const scraped = new Date(today + 60_000).toISOString()
+  const fr2 = H.freshness([
+    game({ library: 'retro', synced_at: scraped, ss_scraped_at: scraped }),
+    game({ library: 'retro', synced_at: '2026-09-20T10:00:00Z' }),
+  ], today)
+  ok(fr2[0].lastSync, '2026-09-20T10:00:00Z', 'a ScreenScraper save is not the handheld syncing')
+}
 ok(H.hiddenCounts([game({ hidden: true, play_status: 'hidden' }), game({ hidden: true, library: 'steam' }), game({})], 'all'), { total: 2, explicit: 1, auto: 1 }, 'hidden: chosen vs automatic')
+
+
+// ── Hand-offs: each row opens exactly the games it counts (tgAnalyticsLists) ──
+{
+  const L = require('../src/features/games/test-game/components/tgAnalyticsLists.ts')
+  const Mo = require('../src/features/games/test-game/components/tgAnalyticsMore.ts')
+  const mixed = [
+    game({ play_status: 'completed', platformKey: 'snes', genres: ['RPG'], developer: 'Square', publisher: 'Nintendo' }),
+    game({ play_status: null, platformKey: 'snes', genres: ['rpg', 'Action'], developer: 'square' }),
+    game({ play_status: 'playing', platformKey: 'gba', genres: ['Action'], publisher: 'Square' }),
+    game({ play_status: 'backlog', platformKey: 'gba', genres: ['Puzzle'], developer: 'Nintendo', publisher: 'Nintendo' }),
+    game({ play_status: 'completed', platformKey: 'gba', genres: [' Action '] }),
+    game({ play_status: 'hidden', hidden: true, platformKey: 'gba', genres: ['Action'] }),
+    game({ hidden: true, library: 'steam', notAGame: true, platformKey: 'steam' }),
+  ]
+  const scoped = A.libraryGames(mixed, 'all')
+  for (const m of A.statusMix(scoped)) ok(L.gamesWithStatus(scoped, m.status).length, m.count, `status mix ${m.status}: list = row`)
+  for (const metric of ['games', 'completed']) {
+    for (const r of Mo.platformRowsBy(scoped, metric, x => String(x))) {
+      const want = metric === 'games' ? r.count : r.part
+      ok(L.gamesOfPlatform(scoped, r.target, metric === 'completed').length, want, `platforms by ${metric} ${r.key}: list = row`)
+    }
+  }
+  for (const r of A.genreRows(scoped).rows.filter(r => r.target)) ok(L.gamesWithGenre(scoped, r.target).length, r.count, `genre ${r.label}: list = row`)
+  for (const field of ['developer', 'publisher']) {
+    for (const r of Mo.studioRows(scoped, field).rows.filter(r => r.target)) ok(L.gamesByStudio(scoped, field, r.target).length, r.count, `${field} ${r.label}: list = row`)
+  }
+  const H2 = require('../src/features/games/test-game/components/tgAnalyticsHealth.ts')
+  for (const l of ['all', 'retro', 'steam']) ok(L.hiddenGames(mixed, l).length, H2.hiddenCounts(mixed, l).total, `hidden (${l}): list = count`)
+  const cov = Mo.playCoverage(scoped)
+  for (const r of cov.rows.filter(r => r.target)) ok(L.gamesOfPlatform(scoped, r.target).length, r.count, `coverage ${r.key}: list = row`)
+}
+
+// ── Idle and the queue are whole-library states, never windowed ──
+{
+  const Mo = require('../src/features/games/test-game/components/tgAnalyticsMore.ts')
+  const idle = game({ play_status: 'playing', last_played_at: '2026-05-01T10:00:00Z', play_order: 1 })
+  const active = game({ play_status: 'playing', last_played_at: '2026-09-20T10:00:00Z' })
+  const whole = [idle, active]
+  const start = A.windowStart('30d', today)
+  const scoped = A.scopeByWindow(whole, start)
+  ok(scoped.includes(idle), false, 'an idle game has no session in a 30-day window')
+  const k = A.computeKpis(scoped, start, A.windowEnd(today), today, whole)
+  ok([k.stalePlaying, k.queued, k.playing], [1, 1, 1], 'idle and queued count the whole library; Playing counts the window')
+  ok(Mo.playingBreakdown(whole, today).stale.map(x => x.game.id), [idle.id], 'the idle card reads the whole library')
+}
+
+
+// ── Review round: formats, windowed recents, genre hours, unplaced completions ──
+{
+  const F = require('../src/features/games/test-game/components/tgAnalyticsFormat.ts')
+  ok([F.fmtPct(249, 250), F.fmtPct(1, 250), F.fmtPct(250, 250), F.fmtPct(0, 250), F.fmtPct(99, 100), F.fmtPct(1, 3)], ['>99%', '<1%', '100%', '0%', '99%', '33%'], 'shares never round away their extremes')
+  ok([F.kpiPlaytime(14 * 86400 + 17 * 3600 + 50 * 60), F.kpiPlaytime(5 * 3600 + 7 * 60), F.kpiPlaytime(212 * 86400 + 14 * 3600 + 31 * 60)], ['14d 18h', '5h 7m', '212d 15h'], 'KPI playtime: whole hours from a day up')
+  const Mo = require('../src/features/games/test-game/components/tgAnalyticsMore.ts')
+  const played = Mo.platformRowsBy([game({ platformKey: 'arcade', play_seconds: 3600, last_played_at: '2026-09-01T10:00:00Z' }), ...Array.from({ length: 249 }, () => game({ platformKey: 'arcade' }))], 'played', x => String(x))
+  ok(played[0].valueLabel, '<1%', 'a platform with played games never reads 0%')
+
+  const start = A.windowStart('30d', today)
+  const oldSession = game({ title: 'Finished lately', play_status: 'completed', finished_at: '2026-09-10T10:00:00Z', last_played_at: '2025-08-21T10:00:00Z', play_seconds: 36000 })
+  const fresh = game({ title: 'Fresh', last_played_at: '2026-09-20T10:00:00Z', play_seconds: 3600 })
+  const scoped = A.scopeByWindow([oldSession, fresh], start)
+  ok(scoped.length, 2, 'a finish date alone brings a game into the window')
+  ok(A.recentlyPlayed(scoped, 8, start, A.windowEnd(today)).map(x => x.game.title), ['Fresh'], 'recently played in a window lists only sessions inside it')
+  ok(A.recentlyPlayed(scoped).map(x => x.game.title), ['Fresh', 'Finished lately'], 'all time keeps every session')
+
+  const facts = Mo.funFacts([game({ genres: ['Action', 'action'], play_seconds: 36000, last_played_at: '2026-09-01T10:00:00Z' }), game({ genres: ['RPG'], play_seconds: 54000, last_played_at: '2026-09-01T10:00:00Z' })], x => `${x / 3600}h`)
+  ok(facts.find(f => f.key === 'genre')?.value, 'RPG · 15h', 'a game counts once per genre, however it is spelled')
+
+  const S2 = require('../src/features/games/test-game/components/tgAnalyticsSeries.ts')
+  const AC = require('../src/features/games/test-game/components/tgAnalyticsActivity.ts')
+  const done = [
+    game({ play_status: 'completed', finished_at: '2026-06-01T10:00:00Z' }),
+    game({ play_status: 'completed' }),
+    game({ play_status: 'completed', finished_at: '2020-01-01T10:00:00Z' }),
+    game({ play_status: 'completed', finished_at: '2027-03-01T10:00:00Z' }),
+  ]
+  const act = S2.activitySeries(done, 'all', today)
+  ok([act.completed, act.unplaced], [1, { undated: 1, earlier: 1, future: 1 }], 'all time: every Completed game is either plotted or accounted for')
+  ok(act.completed + act.unplaced.undated + act.unplaced.earlier + act.unplaced.future, A.computeKpis(A.libraryGames(done, 'all'), null).completed, 'plotted + unplaced = the Completed tile')
+  ok(AC.activityNote(act), 'Not shown: 1 completion with no finish date · 1 completion finished before it starts · 1 completion dated in the future.', 'the note names what is missing')
+  ok(S2.activitySeries(done, '30d', today).unplaced, { undated: 0, earlier: 0, future: 0 }, 'a window has nothing unplaced (its tile counts the window)')
+}
 
 console.log(`verify-tg-analytics: ${n} assertions passed`)

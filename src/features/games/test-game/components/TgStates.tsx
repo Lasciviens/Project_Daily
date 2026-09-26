@@ -137,6 +137,21 @@ export function TgChunkFailed() {
   )
 }
 
+/**
+ * The same message for a dialog whose code didn't load. A dialog renders
+ * outside the page layout, so an in-flow card would land below the page —
+ * the click would seem to do nothing. This one floats above everything.
+ */
+export function TgChunkFailedDialog() {
+  return (
+    <div role="alert" className="tg-portal fixed inset-x-4 bottom-[max(1.5rem,env(safe-area-inset-bottom))] z-[90] mx-auto flex max-w-md flex-wrap items-center gap-3 rounded-2xl border border-[var(--tg-border-strong)] bg-[var(--tg-panel)] p-4 text-[var(--tg-text)] shadow-[shadow:var(--tg-menu-shadow)]">
+      <TriangleAlert aria-hidden size={20} strokeWidth={2} className="shrink-0 text-[var(--tg-red)]" />
+      <p className="min-w-0 flex-1 text-[13px] leading-snug">This window couldn't be loaded. Check your connection, then reload to get the latest version.</p>
+      <button type="button" className="tg-btn tg-btn-primary" onClick={() => window.location.reload()}>Reload</button>
+    </div>
+  )
+}
+
 export function TgErrorState({ error, onRetry }: { error: unknown; onRetry: () => void }) {
   return (
     <StateCard icon={<TriangleAlert {...ICON} />} tone="danger" title="Couldn't load your library" actions={

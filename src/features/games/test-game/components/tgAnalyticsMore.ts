@@ -14,6 +14,7 @@ import {
   NO_PLATFORM, genreKey, lastPlayedIso, platformCounts, platformLabels, playCount, playSeconds, type TgGame,
 } from '../testGameModel'
 import { libraryOf, type TgaBarRow, type TgaLibrary } from './tgAnalyticsModel'
+import { fmtPct } from './tgAnalyticsFormat'
 
 const at = (iso: string | null | undefined) => (iso ? Date.parse(iso) : NaN)
 const byTitle = (a: TgGame, b: TgGame) => a.title.localeCompare(b.title)
@@ -205,7 +206,7 @@ export function platformRowsBy(scoped: TgGame[], metric: TgaPlatformMetric, fmtH
     switch (metric) {
       case 'games': return { ...base, count: a.games, rank: a.games }
       case 'hours': return { ...base, count: a.seconds, valueLabel: fmtHours(a.seconds), rank: a.seconds }
-      case 'played': return { ...base, count: a.games, part: a.played, valueLabel: `${Math.round((a.played / a.games) * 100)}%`, title: `${a.played} of ${a.games} played`, rank: a.played / a.games }
+      case 'played': return { ...base, count: a.games, part: a.played, valueLabel: fmtPct(a.played, a.games), title: `${a.played} of ${a.games} played`, rank: a.played / a.games }
       case 'completed': return { ...base, count: a.games, part: a.completed, valueLabel: String(a.completed), title: `${a.completed} of ${a.games} completed`, rank: a.completed }
     }
   })
@@ -222,7 +223,7 @@ export interface TgaPlayingBreakdown {
   total: number
   /** Chosen by you (Playing has a start date — setPlayStatus stamps one). */
   chosen: number
-  /** Set by an importer's "has real hours" promotion (no start date). */
+  /** No start date: usually an importer's "has real hours" promotion, but also the edit form or a pre-090 status. */
   auto: number
   /** Playing, but no session in `staleDays` days (or none at all), longest idle first. */
   stale: { game: TgGame; last: string | null; idleDays: number | null }[]
@@ -436,9 +437,12 @@ export function funFacts(scoped: TgGame[], fmtHours: (seconds: number) => string
     const s = playSeconds(g) ?? 0
     if (s <= 0) continue
     if (g.platformKey !== NO_PLATFORM) byPlatform.set(g.platformKey, (byPlatform.get(g.platformKey) ?? 0) + s)
+    // Once per game per genre, however it is spelled (as the Top genres card counts).
+    const credited = new Set<string>()
     for (const raw of g.genres ?? []) {
       const name = raw.trim()
-      if (!name) continue
+      if (!name || credited.has(genreKey(name))) continue
+      credited.add(genreKey(name))
       const e = byGenre.get(genreKey(name)) ?? { name, seconds: 0 }
       e.seconds += s
       byGenre.set(genreKey(name), e)

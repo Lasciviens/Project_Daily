@@ -3,20 +3,21 @@ import { Toaster } from '../../../../shared/components/Toaster'
 import { UnifiedPlanModal } from '../../../../shared/components/plan-modal'
 import { ErrorBoundary } from '../../../../shared/components/ErrorBoundary'
 import { lazyWithReload } from '../../../../shared/utils/lazyWithReload'
+import { useHistoryDismiss } from '../../../../shared/hooks/useHistoryDismiss'
 import type { SteamGame } from '../../api/steamApi'
 import { psnGamesFromLibrary } from '../../api/psnLibraryFallback'
 import type { TgGame } from '../testGameModel'
 import type { TgActions } from '../tgTypes'
 import type { TgBreakpoint } from '../useTgBreakpoint'
 import { TgDetailSheet } from './TgDetailSheet'
-import { TgChunkFailed } from './TgStates'
+import { TgChunkFailedDialog } from './TgStates'
 import { useTgAddGame } from './tgAddGame'
 
 // The classic edit form, Add game and the provider modals load on first use.
-const GameDetailModal = lazyWithReload(() => import('../../components/GameDetailModal').then(m => m.GameDetailModal), TgChunkFailed)
-const AddGameModal = lazyWithReload(() => import('../../components/AddGameModal').then(m => m.AddGameModal), TgChunkFailed)
-const SteamGameModal = lazyWithReload(() => import('../../components/SteamGameModal').then(m => m.SteamGameModal), TgChunkFailed)
-const PsnGameModal = lazyWithReload(() => import('../../components/PsnGameModal').then(m => m.PsnGameModal), TgChunkFailed)
+const GameDetailModal = lazyWithReload('games-edit', () => import('../../components/GameDetailModal').then(m => m.GameDetailModal), TgChunkFailedDialog)
+const AddGameModal = lazyWithReload('games-add', () => import('../../components/AddGameModal').then(m => m.AddGameModal), TgChunkFailedDialog)
+const SteamGameModal = lazyWithReload('games-steam', () => import('../../components/SteamGameModal').then(m => m.SteamGameModal), TgChunkFailedDialog)
+const PsnGameModal = lazyWithReload('games-psn', () => import('../../components/PsnGameModal').then(m => m.PsnGameModal), TgChunkFailedDialog)
 
 // Every modal the page owns, in one place the shell renders OUTSIDE its
 // layout tree, so switching layouts never remounts (and so closes) one. The
@@ -67,6 +68,9 @@ export function TgModals({ bp, actions, sheetGame, onCloseSheet, editId, fullId,
   // Add game stays mounted once opened, so it keeps its closing animation.
   const [addMounted, setAddMounted] = useState(false)
   if (addOpen && !addMounted) setAddMounted(true)
+  // The shared planner has no Back handling of its own (plan-modal/ is not
+  // edited here): without this, Back closed the sheet under it instead.
+  useHistoryDismiss(planGame != null, onClosePlan)
   return (
     <>
       {/* Widening past the phone layout closes the sheet (its history entry

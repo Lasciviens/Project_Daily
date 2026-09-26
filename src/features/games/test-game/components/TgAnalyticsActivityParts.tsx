@@ -15,7 +15,7 @@ export function TgActivityAxisTick({ x, y, label }: TickProps & { label?: { line
   return (
     <g transform={`translate(${Number(x)},${Number(y)})`}>
       <text textAnchor="middle" dy={11} fontSize={11} fill="var(--tg-muted)">{label.line1}</text>
-      {label.line2 && <text textAnchor="middle" dy={25} fontSize={10.5} fontWeight={600} fill="var(--tg-faint)">{label.line2}</text>}
+      {label.line2 && <text textAnchor="middle" dy={25} fontSize={10.5} fontWeight={600} fill="var(--tg-muted)">{label.line2}</text>}
     </g>
   )
 }

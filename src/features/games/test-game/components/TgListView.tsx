@@ -86,7 +86,7 @@ function SortHead({ label, sorts, className = '' }: { label: string; sorts: TgSo
     <button
       type="button" onClick={() => setSort(next)} aria-pressed={active}
       aria-label={`Sort by ${label.toLowerCase()}${active ? ' (current)' : ''}`}
-      className={`inline-flex min-h-[32px] items-center gap-1 text-left uppercase tracking-[inherit] ${active ? 'text-[var(--tg-text)]' : ''} ${className}`}
+      className={`inline-flex min-h-[32px] items-center gap-1 text-left uppercase [@media(pointer:coarse)]:min-h-[44px] tracking-[inherit] ${active ? 'text-[var(--tg-text)]' : ''} ${className}`}
     >
       {label}
       {active && (sort === 'title-desc' ? <ArrowUp aria-hidden className="h-3 w-3" /> : <ArrowDown aria-hidden className="h-3 w-3" />)}

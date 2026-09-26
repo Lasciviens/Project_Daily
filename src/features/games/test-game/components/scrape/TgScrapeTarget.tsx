@@ -1,6 +1,6 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import { Check, ChevronRight, Search } from 'lucide-react'
-import { platformInfo, type TgGame } from '../../testGameModel'
+import { coverCandidates, platformInfo, type TgGame } from '../../testGameModel'
 import { TgCover } from '../TgCover'
 import { TgScrapeDialog } from './TgScrapeDialog'
 import { isScraped, primaryVariant, scrapedId } from './tgScrapeModel'
@@ -17,7 +17,7 @@ const SHOWN = 150
 
 function matches(g: TgGame, f: PickFilter): boolean {
   if (f === 'todo') return !isScraped(g)
-  if (f === 'no_cover') return !g.primary_cover_url && !(g.platforms ?? []).some(p => p.cover_url)
+  if (f === 'no_cover') return coverCandidates(g).length === 0
   if (f === 'no_desc') return !g.description?.trim()
   return true
 }

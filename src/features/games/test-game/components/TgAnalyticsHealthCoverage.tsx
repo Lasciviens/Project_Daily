@@ -1,6 +1,6 @@
 import { FileSearch, Wand2 } from 'lucide-react'
 import type { TgaCoverageField } from './tgAnalyticsHealth'
-import { plural } from './tgAnalyticsFormat'
+import { plural, TGA_TINT } from './tgAnalyticsFormat'
 import { coverageFix, coverageFootnote, coverageMeta, coverageScopeNote } from './tgAnalyticsHealthCopy'
 import { TgAnalyticsCard, TgAnalyticsEmpty } from './TgAnalyticsCard'
 import { TgAnalyticsHealthCoverageRow } from './TgAnalyticsHealthCoverageRow'
@@ -36,7 +36,7 @@ export function TgAnalyticsHealthCoverage({ coverage, className = '' }: {
           <ul aria-label="Legend" className="mb-2 flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-[var(--tg-muted)]">
             <li className="flex items-center gap-1.5"><span aria-hidden className={`${SWATCH} bg-[var(--tg-accent)]`} />Filled</li>
             <li className="flex items-center gap-1.5">
-              <span aria-hidden className={`${SWATCH} bg-[color-mix(in_srgb,var(--tg-accent)_22%,var(--tg-panel))]`} />Missing
+              <span aria-hidden className={`${SWATCH} ${TGA_TINT}`} />Missing
             </li>
             {fixable && (
               <li className="flex items-center gap-1.5">

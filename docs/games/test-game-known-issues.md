@@ -18,8 +18,8 @@ real-data audit, each adversarially verified.
 - **Site integration (owner decision 2026-09-25):** the Games page stays full-screen with its own chrome for now.
   The plan is to restyle the WHOLE website in this page's visual language later, rather than squeeze this page into
   the current shell. Don't wrap it in `<Layout>` in the meantime.
-- The Advanced tabs (Needs review, ScreenScraper, Steam, PlayStation) reuse the old page's components. Needs review
-  now reads the page's own rows and shows a failed library load as an error; the Steam and PlayStation tabs use
+- The Advanced tabs (Needs review, Steam, PlayStation) reuse the old page's components. Needs review reads the
+  page's own rows and shows the library's loading and failed states as such; the Steam and PlayStation tabs use
   the provider rule for hidden titles (`isHiddenEntry`) while the library uses `isHiddenRow`, so their hidden counts
   can differ by a few titles. Goes away when those tabs are rebuilt natively.
 - `esde-sync` should also write `games.play_seconds / play_count / last_played_at` (edge-function change,

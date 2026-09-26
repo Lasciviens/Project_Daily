@@ -26,17 +26,17 @@ const LAYOUT = {
 /** Overview: the headline tiles, then activity, the status mix, what's idle, recent sessions and a few facts. */
 export function TgAnalyticsOverviewTab({ base, onDrill }: { base: TgaBase; onDrill: (t: TgaTile) => void }) {
   const d = useOverviewData(base)
-  const hasIdle = d.playing.total > 0
+  const hasIdle = d.playing.stale.length > 0
   const hasFacts = d.facts.length > 0
   const at = LAYOUT[hasIdle ? (hasFacts ? 'all' : 'noFacts') : hasFacts ? 'noIdle' : 'neither']
   return (
     <>
       <TgAnalyticsKpis k={d.kpis} windowed={base.start != null} onOpen={onDrill} />
-      <TgAnalyticsHiddenNote hidden={d.hidden} library={base.library} />
+      <TgAnalyticsHiddenNote hidden={d.hidden} />
       <div className={TGA_GRID}>
         <TgAnalyticsActivity series={d.activity} period={base.period} className={TGA_SPAN_WIDE} />
-        <TgAnalyticsStatusMix mix={d.mix} total={base.scoped.length} library={base.library} />
-        <TgAnalyticsIdle breakdown={d.playing} library={base.library} className={at.idle} />
+        <TgAnalyticsStatusMix mix={d.mix} total={base.scoped.length} />
+        <TgAnalyticsIdle breakdown={d.playing} windowed={base.start != null} className={at.idle} />
         <TgAnalyticsRecent items={d.recent} className={at.recent} />
         <TgAnalyticsFacts facts={d.facts} className={at.facts} />
       </div>

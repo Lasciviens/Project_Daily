@@ -1,5 +1,5 @@
 import { useHealthData, type TgaBase } from './tgAnalyticsData'
-import { TGA_GRID } from './tgAnalyticsFormat'
+import { TGA_GRID, TGA_GRID_3 } from './tgAnalyticsFormat'
 import { TgAnalyticsHealthCoverage } from './TgAnalyticsHealthCoverage'
 import { TgAnalyticsReview } from './TgAnalyticsReview'
 import { TgAnalyticsFreshness } from './TgAnalyticsFreshness'
@@ -31,11 +31,12 @@ export function TgAnalyticsHealthTab({ base }: { base: TgaBase }) {
   const sources = base.library === 'all' ? d.freshness : d.freshness.filter(r => r.library === base.library)
 
   if (d.coverage.retro === 0) {
+    // Three cards: a fourth column would stand empty on a monitor.
     return (
-      <div className={TGA_GRID}>
+      <div className={TGA_GRID_3}>
         <TgAnalyticsHealthCoverage coverage={d.coverage} />
         <TgAnalyticsFreshness rows={sources} />
-        <TgAnalyticsHiddenTitles hidden={d.hidden} library={base.library} />
+        <TgAnalyticsHiddenTitles hidden={d.hidden} />
       </div>
     )
   }
@@ -45,7 +46,7 @@ export function TgAnalyticsHealthTab({ base }: { base: TgaBase }) {
       <TgAnalyticsReview review={d.review} />
       <TgAnalyticsFreshness rows={sources} className={AFTER_AT_TWO} />
       <TgAnalyticsAssets assets={d.assets} className={IMAGES} />
-      <TgAnalyticsHiddenTitles hidden={d.hidden} library={base.library} className={HIDDEN} />
+      <TgAnalyticsHiddenTitles hidden={d.hidden} className={HIDDEN} />
     </div>
   )
 }

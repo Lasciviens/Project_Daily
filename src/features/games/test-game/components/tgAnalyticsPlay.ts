@@ -21,8 +21,8 @@ export const TGA_LIB_META: Record<TgaLib, { label: string; color: string }> = {
 // Spans for the Play tab's grid (see TgAnalyticsPlayTab for the rows they make).
 /** Libraries compared: always a full row — a table reads best across the width. */
 export const TGA_SPAN_ROW = 'col-span-full'
-/** Play-time spread without a Trophies card beside it: two columns wherever a lone card would leave a hole. */
-export const TGA_SPAN_SPREAD_ALONE = '@2xl:col-span-2 @[62rem]:col-span-1 @[100rem]:col-span-2'
+/** Play-time spread without a Trophies card: a full row at two columns (the grid then stops at three, see TgAnalyticsPlayTab). */
+export const TGA_SPAN_SPREAD_ALONE = '@2xl:col-span-2 @[62rem]:col-span-1'
 
 /** What "no recorded play" can and can't mean for the library in view. */
 export function coverageNote(library: TgaLibrary): string {

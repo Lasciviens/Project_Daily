@@ -437,6 +437,8 @@ export interface FilterOptions {
   studios?: readonly string[]
   /** Genre filter: a game matches ANY picked genre; empty = every genre. */
   genres?: readonly string[]
+  /** Library only: exactly these games (a hand-off from an Analytics number). */
+  ids?: ReadonlySet<string> | null
   search: string
 }
 
@@ -454,6 +456,10 @@ export function scopeGames(games: TgGame[], o: Omit<FilterOptions, 'statuses'>):
     gs = gs.filter(g => keys.has(g.platformKey))
   } else if (o.platform && o.platform !== ALL_PLATFORMS) {
     gs = gs.filter(g => g.platformKey === o.platform)
+  }
+  if (o.ids && o.section === 'library') {
+    const ids = o.ids
+    gs = gs.filter(g => ids.has(g.id))
   }
   if (o.genres?.length) {
     const want = new Set(o.genres.map(genreKey))

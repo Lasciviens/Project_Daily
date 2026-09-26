@@ -89,28 +89,45 @@ ok(C.seriesShareNote(0.15), 'Only 15% of games have a series recorded — Screen
 ok(C.seriesShareNote(0.004).startsWith('Only <1% '), true, 'a tiny share never reads as 0%')
 
 // ── Layout ───────────────────────────────────────────────────────────────────
-const withS = C.collectionLayout(true)
-const noS = C.collectionLayout(false)
-ok(withS.series.includes('@[62rem]:col-span-2') && withS.series.includes('@[100rem]:col-span-1'), true, 'Series spans two of three columns, one of four')
-ok(withS.decades === withS.players && withS.decades.includes('@2xl:order-1'), true, 'at two columns Decades and Players pair after Series')
-ok(noS.ratings.includes('@2xl:col-span-2') && noS.ratings.includes('@[100rem]:col-span-1'), true, 'without Series, Ratings takes a row at two columns')
-ok(noS.decades, '@[62rem]:col-span-2', 'without Series, Decades fills the last row at three and four columns')
-// Column spans per breakpoint must fill whole rows (8 or 7 cards, the rest span 1).
-const span = (cls, bp) => {
-  const order = ['@2xl', '@[62rem]', '@[100rem]']
-  let s = 1
-  for (const b of order.slice(0, order.indexOf(bp) + 1)) {
-    const m = cls.match(new RegExp(b.replace(/[[\]@]/g, '\\$&') + ':col-span-(\\d)'))
-    if (m) s = Number(m[1])
+// Simulates the grid: each card's order and span at a breakpoint (the latest
+// variant at or below it wins), then packs rows. Every row must be whole and
+// hold cards of one height class, so no short card stands beside a tall one.
+const BPS = ['@2xl', '@[62rem]', '@[100rem]']
+const esc = b => b.replace(/[[\]@]/g, '\\$&')
+const pick = (cls, bp, what) => {
+  let v = what === 'span' ? 1 : 0
+  for (const b of BPS.slice(0, BPS.indexOf(bp) + 1)) {
+    const m = cls.match(new RegExp(esc(b) + ':' + (what === 'span' ? 'col-span' : 'order') + '-(\\d)'))
+    if (m) v = Number(m[1])
   }
-  return s
+  return v
 }
-for (const [layout, cards] of [[withS, 8], [noS, 7]]) {
-  for (const [bp, colsN] of [['@2xl', 2], ['@[62rem]', 3], ['@[100rem]', 4]]) {
-    // Four cards take no layout class; without Series its (empty) slot renders nothing.
-    const total = Object.values(layout).reduce((s, c) => s + span(c, bp), 0) + 4 - (cards === 7 ? 1 : 0)
-    ok(total % colsN, 0, `${cards} cards fill whole rows at ${colsN} columns`)
+const CARDS = ['ratings', 'worth', 'platforms', 'genres', 'studios', 'decades', 'players', 'series']
+const TALL = new Set(['platforms', 'genres', 'studios', 'series'])
+const rowsOf = (layout, bp, cols, cards) => {
+  const placed = cards.map((k, i) => ({ k, i, order: pick(layout[k], bp, 'order'), span: pick(layout[k], bp, 'span') }))
+    .sort((a, b) => a.order - b.order || a.i - b.i)
+  const rows = []; let row = [], used = 0
+  for (const c of placed) {
+    if (used + c.span > cols) { rows.push(row); row = []; used = 0 }
+    row.push(c.k); used += c.span
+  }
+  if (row.length) rows.push({ cards: row, open: cols - used })
+  return rows.map(r => (Array.isArray(r) ? { cards: r, open: 0 } : r))
+}
+for (const [hasSeries, cards] of [[true, CARDS], [false, CARDS.filter(k => k !== 'series')]]) {
+  const layout = C.collectionLayout(hasSeries)
+  for (const [bp, cols] of [['@2xl', 2], ['@[62rem]', 3], ['@[100rem]', 4]]) {
+    const rows = rowsOf(layout, bp, cols, cards)
+    ok(rows.every(r => r.open === 0), true, `${hasSeries ? 'with' : 'no'} Series at ${cols} columns: whole rows (${rows.map(r => r.cards.join('+')).join(' | ')})`)
+    if (cols > 2) {
+      // The one mixed row: Series spans two columns there and lays its list out in two, halving its height to Players'.
+      const fine = r => r.cards.every(k => TALL.has(k)) || r.cards.every(k => !TALL.has(k)) || r.cards.join('+') === 'players+series'
+      ok(rows.every(fine), true,
+        `${hasSeries ? 'with' : 'no'} Series at ${cols} columns: each row is all short or all tall (${rows.map(r => r.cards.join('+')).join(' | ')})`)
+    }
   }
 }
+ok(rowsOf(C.collectionLayout(true), '@[100rem]', 4, CARDS).map(r => r.cards), [['ratings', 'worth', 'decades', 'players'], ['platforms', 'genres', 'studios', 'series']], 'four columns: short cards first, then the ranked lists')
 
 console.log(`verify-tg-analytics-collection: ${n} assertions passed`)

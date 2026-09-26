@@ -5,7 +5,7 @@
 // can load it as is.
 
 import type { ScrapeBatchState } from '../testGameStore'
-import type { TgaCoverageField, TgaCoverageFix, TgaFreshness } from './tgAnalyticsHealth'
+import { calendarDaysSince, type TgaCoverageField, type TgaCoverageFix, type TgaFreshness } from './tgAnalyticsHealth'
 import { fmtInt, fmtPct, plural } from './tgAnalyticsFormat'
 
 type Lib = TgaFreshness['library']
@@ -13,18 +13,14 @@ type Lib = TgaFreshness['library']
 // ─── Metadata coverage ───────────────────────────────────────────────────────
 
 /** A share that never claims 100% while a game is still missing the field, nor 0% once one has it. */
-export function coveragePct(filled: number, total: number): string {
-  if (!total || filled <= 0) return '0%'
-  if (filled >= total) return '100%'
-  const p = fmtPct(filled, total)
-  return p === '100%' ? '>99%' : p
-}
+export const coveragePct = (filled: number, total: number): string => fmtPct(filled, total)
 
 export type TgaFixAction =
   | { kind: 'scrape'; filter: ScrapeBatchState['filter']; short: string; name: string }
   | { kind: 'review'; short: string; name: string }
 
-// The batch filters: 'no_cover' lists retro games without a saved cover,
+// The batch filters: 'no_cover' lists retro games with no picture at all (the
+// same rule as the Cover art row),
 // 'no_desc' those without a description, 'todo' those never matched on
 // ScreenScraper — so a gap in an already-matched game isn't in that list.
 const FIX: Record<Exclude<TgaCoverageFix, null>, TgaFixAction> = {
@@ -107,20 +103,10 @@ export const SOURCE_META: Record<Lib, { name: string; color: string }> = {
   playstation: { name: 'PlayStation', color: 'var(--tg-lib-playstation)' },
 }
 
-const DAY = 86_400_000
-const startOfDay = (ms: number) => { const d = new Date(ms); d.setHours(0, 0, 0, 0); return d.getTime() }
-
-/**
- * Calendar days from the sync to `today` (local midnight): 0 today, 1
- * yesterday. The model's `days` counts whole days up to the start of today —
- * right for its stale flag, but it would call a sync last night "today".
- */
+/** Calendar days from the sync to `today` (local midnight): 0 today, 1 yesterday — the same count as the stale flag. */
 export function syncDaysAgo(lastSync: string | null, today: number): number | null {
   const t = lastSync ? Date.parse(lastSync) : NaN
-  if (!Number.isFinite(t)) return null
-  if (t >= today) return 0
-  // Rounded, so a DST day of 23 or 25 hours still counts as one.
-  return Math.max(1, Math.round((today - startOfDay(t)) / DAY))
+  return Number.isFinite(t) ? calendarDaysSince(t, today) : null
 }
 
 export function syncAgo(lastSync: string | null, today: number): string {

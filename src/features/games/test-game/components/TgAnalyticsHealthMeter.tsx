@@ -1,3 +1,5 @@
+import { TGA_TINT } from './tgAnalyticsFormat'
+
 /**
  * A thin bar for the Data health cards. With `track`, the whole width is the
  * total in a soft accent tint and the filled share sits over it in the accent
@@ -9,7 +11,7 @@ export function TgAnalyticsHealthMeter({ value, max, track = false }: { value: n
   return (
     <span
       aria-hidden
-      className={`relative block h-2 w-full overflow-hidden rounded-full ${track ? 'bg-[color-mix(in_srgb,var(--tg-accent)_22%,var(--tg-panel))]' : ''}`}
+      className={`relative block h-2 w-full overflow-hidden rounded-full ${track ? TGA_TINT : ''}`}
     >
       {value > 0 && (
         <span

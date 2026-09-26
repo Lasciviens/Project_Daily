@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useUpdateGame } from '../../hooks/useGames'
 import type { TgGame } from '../testGameModel'
 
@@ -14,9 +14,23 @@ export function TgDetailNotes({ game }: { game: TgGame }) {
   const [base, setBase] = useState(saved)
   if (saved !== base) { setBase(saved); if (draft === base) setDraft(saved) }
 
+  // Closing the phone sheet with Back unmounts the box while it still has
+  // focus, so no blur ever fires: an unsaved draft is saved on unmount too.
+  const pending = useRef<{ id: string; text: string } | null>(null)
+  const mutate = useRef(update.mutate)
+  useEffect(() => { mutate.current = update.mutate })
+  useEffect(() => {
+    pending.current = draft.trim() !== saved.trim() ? { id: game.id, text: draft.trim() } : null
+  }, [draft, saved, game.id])
+  useEffect(() => () => {
+    const p = pending.current
+    if (p) mutate.current({ id: p.id, patch: { play_notes: p.text || null } })
+  }, [])
+
   const commit = () => {
     const next = draft.trim()
     if (next === saved.trim()) return
+    pending.current = null
     update.mutate({ id: game.id, patch: { play_notes: next || null } })
   }
   return (

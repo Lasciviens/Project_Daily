@@ -33,9 +33,17 @@ export function activityRows(series: TgaActivity): TgaActivityRow[] {
 /** "12 games · 3 completions" — the card adds the range (TGA_RANGE) where there's room. */
 export const activityMeta = (series: TgaActivity) => `${plural(series.total, 'game')} · ${plural(series.completed, 'completion')}`
 
-/** What the chart leaves out, or null. */
-export const activityNote = (series: TgaActivity) =>
-  series.earlier > 0 ? `Not shown: ${plural(series.earlier, 'game')} last played before this chart starts.` : null
+/** What the chart leaves out — sessions and completions it has no place for — or null. */
+export function activityNote(series: TgaActivity): string | null {
+  const u = series.unplaced
+  const parts = [
+    series.earlier > 0 ? `${plural(series.earlier, 'game')} last played before this chart starts` : null,
+    u.undated > 0 ? `${plural(u.undated, 'completion')} with no finish date` : null,
+    u.earlier > 0 ? `${plural(u.earlier, 'completion')} finished before it starts` : null,
+    u.future > 0 ? `${plural(u.future, 'completion')} dated in the future` : null,
+  ].filter(Boolean)
+  return parts.length ? `Not shown: ${parts.join(' · ')}.` : null
+}
 
 export const isActivityEmpty = (series: TgaActivity) => series.total === 0 && series.completed === 0
 

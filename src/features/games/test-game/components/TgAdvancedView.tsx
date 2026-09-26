@@ -6,7 +6,7 @@ import { SteamTab } from '../../components/SteamTab'
 import { PlayStationTab } from '../../components/PlayStationTab'
 import { useTestGameStore, type AdvancedTab } from '../testGameStore'
 import { needsReviewList, type TgGame } from '../testGameModel'
-import type { TgRandomScope } from '../advancedTabs'
+import { TgErrorState } from './TgStates'
 
 // The previous Games page's tools the new design has no place for yet,
 // mounted verbatim — same components, same hooks, same data. The header
@@ -30,13 +30,14 @@ const TABS: Record<AdvancedTab, { title: string; intro: string; Icon: LucideIcon
   },
 }
 
-export function TgAdvancedView({ onOpenDetail, games = [] }: {
+export function TgAdvancedView({ onOpenDetail, games = [], loading = false, error = null, onRetry }: {
   onOpenDetail: (id: string) => void
   /** The page's rows — Needs review is computed from them, not re-fetched. */
   games?: TgGame[]
-  /** Accepted for older callers; Random lives in the top bar now. */
-  randomPool?: TgGame[]
-  randomScope?: TgRandomScope
+  /** The library is still loading or failed: Needs review must not read "nothing needs attention" then. */
+  loading?: boolean
+  error?: unknown
+  onRetry?: () => void
 }) {
   const tab = useTestGameStore(s => s.advancedTab)
   // A persisted tab from an older build may no longer exist.
@@ -55,7 +56,11 @@ export function TgAdvancedView({ onOpenDetail, games = [] }: {
       content = <ErrorBoundary label="PlayStation" action="test_game_psn_tab"><PlayStationTab /></ErrorBoundary>
       break
     default:
-      content = <NeedsReviewTab onOpenDetail={onOpenDetail} items={reviewItems} />
+      content = error != null && onRetry
+        ? <TgErrorState error={error} onRetry={onRetry} />
+        : loading
+          ? <p role="status" className="py-12 text-center text-[13px] tg-muted">Loading your library…</p>
+          : <NeedsReviewTab onOpenDetail={onOpenDetail} items={reviewItems} />
   }
 
   return (

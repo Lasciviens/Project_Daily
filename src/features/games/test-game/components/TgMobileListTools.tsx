@@ -29,7 +29,7 @@ export function TgMobileListTools({ genres, studios, statusCounts, showStatus, s
   const filtered = active > 0
 
   return (
-    <div className="flex min-w-0 shrink items-center gap-2">
+    <div className="flex shrink-0 items-center gap-2">
       {showSort && (
         <button
           type="button"

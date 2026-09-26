@@ -2157,9 +2157,12 @@ async function applyOne(userId: string, input: ApplyInput): Promise<Rec> {
   }
   const gamePatch: Rec = {
     ...plan.games, media: listMedia, provider_data: providerData,
-    ss_jeu_id: cand.jeu_id, ss_scraped_at: fetchedAt, synced_at: fetchedAt, needs_review: false,
+    // Not synced_at: that is the SOURCE's stamp (ES-DE, Steam, PlayStation),
+    // which Analytics reads as "last heard from the handheld". ss_scraped_at
+    // records the scrape.
+    ss_jeu_id: cand.jeu_id, ss_scraped_at: fetchedAt, needs_review: false,
   }
-  const platPatch: Rec = platform ? { ...plan.platform, synced_at: fetchedAt } : {}
+  const platPatch: Rec = platform ? { ...plan.platform } : {}
 
   // Journal FIRST, with what each column held before. provider_data is
   // journaled as a fingerprint (its full value is rebuilt, not diffed), and
@@ -2167,7 +2170,7 @@ async function applyOne(userId: string, input: ApplyInput): Promise<Rec> {
   const written: Rec = {}
   const priorAll: Rec = {}
   for (const [k, v] of Object.entries(gamePatch)) {
-    if (k === 'synced_at' || k === 'needs_review') continue
+    if (k === 'needs_review') continue
     written[k] = k === 'provider_data' ? { v: 2, jeu_id: cand.jeu_id, fetched_at: fetchedAt } : v
     let p = game[k] ?? null
     if (k === 'provider_data' && p && typeof p === 'object') {
@@ -2177,7 +2180,6 @@ async function applyOne(userId: string, input: ApplyInput): Promise<Rec> {
     priorAll[k] = p
   }
   for (const [k, v] of Object.entries(platPatch)) {
-    if (k === 'synced_at') continue
     written[PLATFORM_KEY(k)] = v
     priorAll[PLATFORM_KEY(k)] = platform?.[k] ?? null
   }
