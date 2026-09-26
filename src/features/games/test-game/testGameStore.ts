@@ -64,6 +64,8 @@ interface TgState {
   statuses: PlayStatus[]
   /** Multi-select genre filter; a game matches ANY of them; empty = all genres. */
   genres: string[]
+  /** Multi-select studio filter (developer or publisher); empty = all. */
+  studios: string[]
   sort: TgSort
   view: TgView
   search: string
@@ -97,7 +99,9 @@ interface TgState {
   setGenres: (list: string[]) => void
   toggleStatus: (s: PlayStatus) => void
   toggleGenre: (g: string) => void
-  /** Drops every status and genre filter (not the search or the sort). */
+  toggleStudio: (studio: string) => void
+  setStudios: (list: string[]) => void
+  /** Drops every status, genre and studio filter (not the search or the sort). */
   clearFilters: () => void
   setSort: (s: TgSort) => void
   setView: (v: TgView) => void
@@ -135,6 +139,7 @@ export const useTestGameStore = create<TgState>()(
       scopePlatform: ALL_PLATFORMS,
       statuses: [],
       genres: [],
+      studios: [],
       sort: 'recent',
       view: 'shelf',
       search: '',
@@ -160,7 +165,7 @@ export const useTestGameStore = create<TgState>()(
       // Re-tapping the section you are on keeps an open ScreenScraper review.
       setSection: (section) => set(s => ({
         section, statuses: [], scopePlatform: ALL_PLATFORMS, ...(s.section !== section && { scrapeReview: null, ...LEAVE_SHELF }),
-        ...(section === 'library' && { platform: ALL_PLATFORMS, genres: [], ...(s.platform !== ALL_PLATFORMS && LEAVE_SHELF) }),
+        ...(section === 'library' && { platform: ALL_PLATFORMS, genres: [], studios: [], ...(s.platform !== ALL_PLATFORMS && LEAVE_SHELF) }),
       })),
       setPlatform: (platform) => set(s => ({
         platform, section: 'library', statuses: [],
@@ -173,7 +178,9 @@ export const useTestGameStore = create<TgState>()(
       setGenres: (genres) => set({ genres }),
       toggleStatus: (status) => set(s => ({ statuses: toggleValue(s.statuses, status) })),
       toggleGenre: (genre) => set(s => ({ genres: toggleValue(s.genres, genre) })),
-      clearFilters: () => set({ statuses: [], genres: [] }),
+      toggleStudio: (studio) => set(s => ({ studios: toggleValue(s.studios, studio) })),
+      setStudios: (studios) => set({ studios }),
+      clearFilters: () => set({ statuses: [], genres: [], studios: [] }),
       setSort: (sort) => set({ sort }),
       setView: (view) => set({ view }),
       setSearch: (search) => set({ search }),

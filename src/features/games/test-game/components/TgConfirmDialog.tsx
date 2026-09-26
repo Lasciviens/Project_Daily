@@ -1,4 +1,5 @@
 import { Dialog, DialogBackdrop, DialogPanel, DialogTitle } from '@headlessui/react'
+import { useHistoryDismiss } from '../../../../shared/hooks/useHistoryDismiss'
 
 interface Props {
   open: boolean
@@ -19,6 +20,7 @@ interface Props {
  * the phone sheet and the overlay (both z-40).
  */
 export function TgConfirmDialog({ open, title, message, confirmLabel, danger, onConfirm, onClose, secondary }: Props) {
+  useHistoryDismiss(open, onClose)
   return (
     <Dialog open={open} onClose={onClose} className="tg-portal relative z-50">
       <DialogBackdrop transition className="fixed inset-0 bg-black/50 backdrop-blur-[2px] transition duration-200 data-[closed]:opacity-0" />

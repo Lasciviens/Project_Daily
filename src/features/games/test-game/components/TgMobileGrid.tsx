@@ -1,12 +1,15 @@
 import { memo, useEffect, useRef, useState } from 'react'
 import { Star } from 'lucide-react'
-import { formatStars, starsFromRating, type TgGame } from '../testGameModel'
+import { cardMeta, formatStars, starsFromRating, type TgGame } from '../testGameModel'
+import { useTestGameStore } from '../testGameStore'
+import { formatPlaytime } from '../../api/playtimeFormat'
+import { CardMetaLine } from './TgGameCard'
 import { TgCover } from './TgCover'
 import { TgStatusIcon } from './TgStatusIcon'
 import { cardsForDepth, recalledDepth } from './tgScrollMemory'
 import { gameCardLabel, statusLabel } from './TgStatusMeta'
 
-const MobileCard = memo(function MobileCard({ game, onSelect }: { game: TgGame; onSelect: (id: string) => void }) {
+const MobileCard = memo(function MobileCard({ game, onSelect, meta }: { game: TgGame; onSelect: (id: string) => void; meta: string }) {
   const stars = starsFromRating(game.rating)
   return (
     <button
@@ -26,6 +29,7 @@ const MobileCard = memo(function MobileCard({ game, onSelect }: { game: TgGame; 
       <div className="mt-2 truncate text-[13px] font-semibold leading-[1.35] text-[var(--tg-text)]">
         {game.title}
       </div>
+      <CardMetaLine game={game} meta={meta} />
       <div className="mt-1 flex items-center justify-between gap-2 text-[11px] leading-[1.3]">
         <span data-status={game.play_status} className="flex min-w-0 items-center gap-1.5">
           <TgStatusIcon status={game.play_status} size={12} />
@@ -58,6 +62,7 @@ const STEP = 96
  * it was left at (tgScrollMemory), so the restored scroll lands there.
  */
 export function TgMobileGrid({ games, onSelect, listKey }: { games: TgGame[]; onSelect: (id: string) => void; listKey?: string }) {
+  const sort = useTestGameStore(s => s.sort)
   const [limit, setLimit] = useState(() => Math.max(FIRST, listKey ? cardsForDepth(recalledDepth(listKey)) : 0))
   const sentinel = useRef<HTMLDivElement>(null)
   const more = games.length > limit
@@ -78,7 +83,7 @@ export function TgMobileGrid({ games, onSelect, listKey }: { games: TgGame[]; on
   return (
     <>
       <div className="grid grid-cols-2 gap-x-6 gap-y-6 pb-4">
-        {(more ? games.slice(0, limit) : games).map(g => <MobileCard key={g.id} game={g} onSelect={onSelect} />)}
+        {(more ? games.slice(0, limit) : games).map(g => <MobileCard key={g.id} game={g} onSelect={onSelect} meta={cardMeta(g, sort, formatPlaytime)} />)}
       </div>
       {more && <div ref={sentinel} aria-hidden className="h-px" />}
     </>

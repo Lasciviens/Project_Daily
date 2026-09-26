@@ -1,4 +1,5 @@
 import { Toaster } from '../../../../shared/components/Toaster'
+import { UnifiedPlanModal } from '../../../../shared/components/plan-modal'
 import { ErrorBoundary } from '../../../../shared/components/ErrorBoundary'
 import { GameDetailModal } from '../../components/GameDetailModal'
 import { AddGameModal } from '../../components/AddGameModal'
@@ -50,9 +51,12 @@ interface Props {
   fullId: string | null
   provider: TgGame | null
   onClose: (which: 'edit' | 'full' | 'provider') => void
+  /** The game a play session is being planned for (the calendar planner). */
+  planGame: TgGame | null
+  onClosePlan: () => void
 }
 
-export function TgModals({ bp, actions, sheetGame, onCloseSheet, editId, fullId, provider, onClose }: Props) {
+export function TgModals({ bp, actions, sheetGame, onCloseSheet, editId, fullId, provider, onClose, planGame, onClosePlan }: Props) {
   const addOpen = useTgAddGame(s => s.open)
   const setAddOpen = useTgAddGame(s => s.setOpen)
   return (
@@ -77,6 +81,17 @@ export function TgModals({ bp, actions, sheetGame, onCloseSheet, editId, fullId,
         <ErrorBoundary label="PlayStation" action="test_game_psn_modal">
           <PsnGameModal game={psnGamesFromLibrary([provider])[0]} onClose={() => onClose('provider')} />
         </ErrorBoundary>
+      )}
+      {/* The app's one planner (a time block in the Games category); it keeps
+          the app palette — plan-modal/ takes no theme and is not edited here. */}
+      {planGame && (
+        <UnifiedPlanModal
+          open
+          onClose={onClosePlan}
+          mode="schedule"
+          config={{ heading: 'Plan a gaming session' }}
+          defaults={{ title: `🎮 ${planGame.title}`, duration: 60, category: 'games', color: 'purple' }}
+        />
       )}
       <Toaster positionClassName={TOAST_POSITION[bp]} />
     </>

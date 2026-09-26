@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { useRemoveFromQueue, useReorderQueue } from '../../hooks/useGames'
+import { useRemoveFromQueue, useReorderQueue, useSetPlayStatus } from '../../hooks/useGames'
 import type { TgGame } from '../testGameModel'
 import { displayRanks, effectiveOrder, moveUpdates, withOrderOverrides } from './TgQueueViewOrder'
 import { useQueueDrag } from './TgQueueViewDrag'
@@ -15,12 +15,15 @@ interface Props {
   onSelect: (id: string) => void
   /** Tablet/desktop: fill the column and scroll inside it. The phone lets the page scroll. */
   fill: boolean
+  /** Plan a session in the calendar (the shell's planner). */
+  onPlan?: (game: TgGame) => void
 }
 
-export function TgQueueView({ games, ranks, selectedId, onSelect, fill }: Props) {
+export function TgQueueView({ games, ranks, selectedId, onSelect, fill, onPlan }: Props) {
   const qc = useQueryClient()
   const { mutateAsync: reorder } = useReorderQueue()
   const { mutate: removeFromQueue } = useRemoveFromQueue()
+  const { mutate: setPlayStatus } = useSetPlayStatus()
   const [overrides, setOverrides] = useState<Record<string, number>>({})
   // Moves are written one after another: two parallel writes to the same row
   // can land in either order and leave two rows on one slot.
@@ -74,6 +77,8 @@ export function TgQueueView({ games, ranks, selectedId, onSelect, fill }: Props)
   const { dragId, onPointerDown } = useQueueDrag(listRef, reorderTo)
 
   const remove = useCallback((id: string) => removeFromQueue(id), [removeFromQueue])
+  // Through the status write that stamps started_at (not a bare update).
+  const play = useCallback((id: string) => setPlayStatus({ id, status: 'playing' }), [setPlayStatus])
 
   return (
     <ol
@@ -94,6 +99,8 @@ export function TgQueueView({ games, ranks, selectedId, onSelect, fill }: Props)
           onMove={move}
           onRemove={remove}
           onDragStart={onPointerDown}
+          onPlay={play}
+          onPlan={onPlan}
         />
       ))}
     </ol>

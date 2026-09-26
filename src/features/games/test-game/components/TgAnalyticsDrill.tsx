@@ -8,6 +8,7 @@ import { drillFigure, drillNote, drillTitle, shownOf } from './tgAnalyticsDrillC
 import { openGameFromAnalytics } from './tgAnalyticsOpen'
 import { TgAnalyticsDrillList } from './TgAnalyticsDrillList'
 import { TgMobileSheet } from './TgMobileSheet'
+import { useHistoryDismiss } from '../../../../shared/hooks/useHistoryDismiss'
 
 // A KPI tile's drill-down: exactly the games its number counts, under the
 // current window × library. The list comes from tileGames — the same function
@@ -42,6 +43,7 @@ function Body({ kind, games, windowed, scope, onPick }: {
 }
 
 function Drawer({ open, onClose, title, children }: { open: boolean; onClose: () => void; title: string; children: ReactNode }) {
+  useHistoryDismiss(open, onClose)
   return (
     <Dialog open={open} onClose={onClose} className="tg-portal relative z-[60]">
       <DialogBackdrop transition className="fixed inset-0 bg-black/40 transition duration-200 data-[closed]:opacity-0" />

@@ -1,5 +1,5 @@
 import { memo, type KeyboardEvent, type PointerEvent } from 'react'
-import { ChevronDown, ChevronUp, GripVertical, X } from 'lucide-react'
+import { CalendarPlus, ChevronDown, ChevronUp, GripVertical, Play, X } from 'lucide-react'
 import { formatPlaytime } from '../../api/playtimeFormat'
 import {
   STATUS_TEXT, formatDay, lastPlayedIso, playSeconds, subtitleParts,
@@ -21,6 +21,10 @@ interface Props {
   onMove: (id: string, dir: -1 | 1) => void
   onRemove: (id: string) => void
   onDragStart: (e: PointerEvent<HTMLElement>, id: string) => void
+  /** Start playing it now (stamps the start date) — absent when it already is. */
+  onPlay?: (id: string) => void
+  /** Plan a session in the calendar. */
+  onPlan?: (game: TgGame) => void
 }
 
 const ICON = { size: 18, strokeWidth: 2 } as const
@@ -32,7 +36,7 @@ function keepFocus(el: HTMLElement) {
 }
 
 export const TgQueueViewRow = memo(function TgQueueViewRow({
-  game, position, selected, dragging, canMoveUp, canMoveDown, onSelect, onMove, onRemove, onDragStart,
+  game, position, selected, dragging, canMoveUp, canMoveDown, onSelect, onMove, onRemove, onDragStart, onPlay, onPlan,
 }: Props) {
   const seconds = playSeconds(game)
   const last = lastPlayedIso(game)
@@ -54,7 +58,7 @@ export const TgQueueViewRow = memo(function TgQueueViewRow({
     <li
       data-queue-id={game.id}
       onKeyDown={onKeyDown}
-      className={`relative flex items-center gap-1 sm:gap-2 rounded-xl pr-1 transition-colors ${
+      className={`@container/qrow relative flex items-center gap-1 @[30rem]/qrow:gap-2 rounded-xl pr-1 transition-colors ${
         dragging ? 'is-dragged' : ''
       } ${selected ? 'bg-[var(--tg-accent-soft)]' : 'hover:bg-[var(--tg-hover)]'}`}
     >
@@ -65,7 +69,7 @@ export const TgQueueViewRow = memo(function TgQueueViewRow({
         onClick={e => e.preventDefault()}
         aria-label={`Reorder ${game.title}, #${position}. Drag, or use the up and down arrow keys`}
         title="Drag to reorder"
-        className="tg-icon-btn tg-queue-grip -mr-1 shrink-0 touch-none select-none sm:mr-0"
+        className="tg-icon-btn tg-queue-grip -mr-1 shrink-0 touch-none select-none @[30rem]/qrow:mr-0"
       >
         <GripVertical {...ICON} />
       </button>
@@ -74,10 +78,10 @@ export const TgQueueViewRow = memo(function TgQueueViewRow({
         onClick={() => onSelect(game.id)}
         aria-pressed={selected}
         aria-label={`#${position} ${game.title}, ${statusText}${playtime ? `, ${playtime} played` : ''}`}
-        className="flex-1 min-w-0 min-h-[76px] flex items-center gap-3 sm:gap-4 py-2 text-left rounded-lg"
+        className="flex-1 min-w-0 min-h-[76px] flex items-center gap-3 @[30rem]/qrow:gap-4 py-2 text-left rounded-lg"
       >
         <span
-          className={`hidden sm:block w-11 shrink-0 text-right text-[22px] font-bold leading-none tabular-nums ${
+          className={`hidden @[38rem]/qrow:block w-11 shrink-0 text-right text-[22px] font-bold leading-none tabular-nums ${
             position === 1 ? 'text-[var(--tg-accent)]' : 'text-[var(--tg-faint)]'
           }`}
         >
@@ -86,7 +90,7 @@ export const TgQueueViewRow = memo(function TgQueueViewRow({
 
         <span className="relative block w-11 h-[60px] shrink-0 overflow-hidden rounded-md bg-[var(--tg-panel-2)] shadow-[shadow:var(--tg-cover-shadow)]">
           <TgCover game={game} mode="contain" />
-          <span className="sm:hidden absolute left-0 top-0 min-w-[18px] rounded-br-md bg-[var(--tg-accent)] px-1 text-center text-[10px] font-bold leading-[16px] text-[var(--tg-on-accent)] tabular-nums">
+          <span className="@[38rem]/qrow:hidden absolute left-0 top-0 min-w-[18px] rounded-br-md bg-[var(--tg-accent)] px-1 text-center text-[10px] font-bold leading-[16px] text-[var(--tg-on-accent)] tabular-nums">
             {position}
           </span>
         </span>
@@ -100,21 +104,35 @@ export const TgQueueViewRow = memo(function TgQueueViewRow({
           </span>
         </span>
 
-        <span className="hidden lg:flex w-40 shrink-0 flex-col items-end text-right text-[12px]">
+        <span className="hidden @[48rem]/qrow:flex w-40 shrink-0 flex-col items-end text-right text-[12px]">
           <span className="font-medium text-[var(--tg-text-2)] tabular-nums">
             {playtime ?? '—'}
           </span>
-          <span className="tg-faint">{last ? `Last played ${formatDay(last)}` : 'Never played'}</span>
+          <span className="tg-faint">{last ? `Last played ${formatDay(last)}` : 'No recorded play'}</span>
         </span>
       </button>
 
       <div className="flex shrink-0 items-center">
-        {/* The phone has the grip (and its arrow keys); the buttons would squeeze the title. */}
-        <button type="button" className={`${CONTROL} max-sm:!hidden`} disabled={!canMoveUp}
+        {/* Start it / plan it — the queue's two next steps. The controls follow the ROW's
+            width, not the viewport's: a phone row and a row squeezed beside the open
+            details both keep only Remove (the grip reorders; the details start or plan it). */}
+        {onPlay && status !== 'playing' && (
+          <button type="button" className={`${CONTROL} !hidden @[38rem]/qrow:!inline-flex hover:!text-[var(--tg-accent)]`} onClick={() => onPlay(game.id)}
+            aria-label={`Mark ${game.title} as playing`} title="Mark as playing">
+            <Play {...ICON} />
+          </button>
+        )}
+        {onPlan && (
+          <button type="button" className={`${CONTROL} !hidden @[38rem]/qrow:!inline-flex`} onClick={() => onPlan(game)}
+            aria-label={`Plan a session of ${game.title}`} title="Plan a session">
+            <CalendarPlus {...ICON} />
+          </button>
+        )}
+        <button type="button" className={`${CONTROL} !hidden @[30rem]/qrow:!inline-flex`} disabled={!canMoveUp}
           onClick={e => { onMove(game.id, -1); keepFocus(e.currentTarget) }} aria-label={`Move ${game.title} up`} title="Move up">
           <ChevronUp {...ICON} />
         </button>
-        <button type="button" className={`${CONTROL} max-sm:!hidden`} disabled={!canMoveDown}
+        <button type="button" className={`${CONTROL} !hidden @[30rem]/qrow:!inline-flex`} disabled={!canMoveDown}
           onClick={e => { onMove(game.id, 1); keepFocus(e.currentTarget) }} aria-label={`Move ${game.title} down`} title="Move down">
           <ChevronDown {...ICON} />
         </button>

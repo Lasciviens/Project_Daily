@@ -6,6 +6,7 @@ import { LibraryControls } from './LibraryControls'
 import { useLibraryEntry } from '../hooks/useGames'
 import { steamGameHeaderUrl, type SteamGame } from '../api/steamApi'
 import { formatPlaytime } from '../api/playtimeFormat'
+import { useHistoryDismiss } from '../../../shared/hooks/useHistoryDismiss'
 
 // Detail popup for one owned Steam game — the anchor piece of the Steam tab
 // (the user asked for a popup showing a game's details). Pulls together
@@ -54,6 +55,7 @@ function PlatformSplit({ game }: { game: SteamGame }) {
 }
 
 export function SteamGameModal({ game, onClose }: { game: SteamGame; onClose: () => void }) {
+  useHistoryDismiss(true, onClose)
   const details = useSteamAppDetails(game.appid)
   const reviews = useSteamAppReviews(game.appid)
   const [wantPlayers, setWantPlayers] = useState(false)

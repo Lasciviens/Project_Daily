@@ -8,6 +8,7 @@ import {
 import { UnifiedPlanModal } from '../../../shared/components/plan-modal'
 import { ConfirmDialog } from '../../../shared/components/ConfirmDialog'
 import { InfoBubble } from '../../../shared/components/InfoBubble'
+import { useHistoryDismiss } from '../../../shared/hooks/useHistoryDismiss'
 import { useTestGameStore } from '../test-game/testGameStore'
 import { CoverImg, CoverBackdrop, RatingBadge, SystemChip } from './gameCardKit'
 import { systemMeta } from '../systemMeta'
@@ -405,6 +406,8 @@ interface Props {
 }
 
 export function GameDetailModal({ gameId, onClose, initialEditing = false, className = '' }: Props) {
+  // Back (Android, the iOS edge swipe, the browser) closes this rather than leaving the page.
+  useHistoryDismiss(true, onClose)
   // Opened straight into the form, it waits for a fresh read: a cached detail
   // can predate a status/rating/scrape write made on the page since.
   const { data: game, isLoading, isFetchedAfterMount } = useGameDetail(gameId, initialEditing ? { refetchOnMount: 'always' } : undefined)

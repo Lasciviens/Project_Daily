@@ -1,3 +1,4 @@
+import type { TgGame } from '../testGameModel'
 import { createContext } from 'react'
 
 /**
@@ -6,3 +7,6 @@ import { createContext } from 'react'
  * it instead of re-deriving all three libraries per open detail.
  */
 export const TgRanksContext = createContext<ReadonlyMap<string, number> | null>(null)
+
+/** The page's rows, for blocks that relate a game to the rest (its series). */
+export const TgGamesContext = createContext<readonly TgGame[]>([])

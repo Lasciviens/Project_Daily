@@ -7,6 +7,7 @@ import { OWNERSHIP_LABEL, type Ownership } from '../providerEntries'
 import { formatPlaytime } from '../api/playtimeFormat'
 import { LibraryControls } from './LibraryControls'
 import { useLibraryEntry } from '../hooks/useGames'
+import { useHistoryDismiss } from '../../../shared/hooks/useHistoryDismiss'
 
 // Detail popup for one PSN game. Opens from either view:
 //   - the playtime library (a store SKU) → the trophy set has to be bridged
@@ -42,6 +43,7 @@ interface Props {
 }
 
 export function PsnGameModal({ game, title, purchased, ownership, onClose }: Props) {
+  useHistoryDismiss(true, onClose)
   const [imgOk, setImgOk] = useState(true)
   // Keyed by the store SKU, which is what the import writes as external_ref.
   // A trophy-only entry has no npTitleId, so it simply has no library row.

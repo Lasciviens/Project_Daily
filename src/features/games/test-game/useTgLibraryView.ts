@@ -2,7 +2,7 @@ import { useDeferredValue, useMemo } from 'react'
 import { useTestGameStore } from './testGameStore'
 import {
   ALL_PLATFORMS, OTHER_PLATFORMS, STATUS_SECTIONS,
-  applyStatus, foldGenres, platformCounts, queueOrder, queueRanks,
+  applyStatus, foldGenres, needsReviewReasons, platformCounts, studioOptions, queueOrder, queueRanks,
   scopeGames, sortGames, splitPlatforms, statusCounts,
   type PlatformCount, type StatusCounts, type TgGame,
 } from './testGameModel'
@@ -24,12 +24,14 @@ export interface TgLibraryView {
   /** Library, queue and the three status sections (not Analytics / Advanced). */
   isGameSection: boolean
   genres: { genre: string; count: number }[]
+  /** Developer/publisher options for the Studio filter. */
+  studios: { studio: string; count: number }[]
   statusCounts: StatusCounts
   /** The current section's games in display order (Advanced: the Random pool). */
   visible: TgGame[]
   /** ONE queue numbering for the badges, the queue rows and the ⋯ menu. */
   ranks: Map<string, number>
-  navCounts: { queue: number; wishlist: number; completed: number; backlog: number }
+  navCounts: { queue: number; wishlist: number; completed: number; backlog: number; review: number }
 }
 
 export function useTgLibraryView(lib: TestGameLibrary): TgLibraryView {
@@ -40,6 +42,7 @@ export function useTgLibraryView(lib: TestGameLibrary): TgLibraryView {
   // filter-sort-render of ~1,000 games catches up a frame later.
   const statuses = useDeferredValue(useTestGameStore(s => s.statuses))
   const genres = useDeferredValue(useTestGameStore(s => s.genres))
+  const studios = useDeferredValue(useTestGameStore(s => s.studios))
   const sort = useTestGameStore(s => s.sort)
   const search = useDeferredValue(useTestGameStore(s => s.search))
 
@@ -70,14 +73,20 @@ export function useTgLibraryView(lib: TestGameLibrary): TgLibraryView {
   // that order, so a keystroke filters a sorted list instead of re-sorting.
   const sorted = useMemo(() => sortGames(lib.games, sort), [lib.games, sort])
   const scope = useMemo(
-    () => scopeGames(sorted, { section, platform: effectivePlatform, otherKeys, scopePlatform: effectiveScopePlatform, search, genres }),
-    [sorted, section, effectivePlatform, otherKeys, effectiveScopePlatform, search, genres],
+    () => scopeGames(sorted, { section, platform: effectivePlatform, otherKeys, scopePlatform: effectiveScopePlatform, search, genres, studios }),
+    [sorted, section, effectivePlatform, otherKeys, effectiveScopePlatform, search, genres, studios],
   )
   const genreList = useMemo(
     // The Hidden view lists hidden games, so its genre list counts them too.
-    () => foldGenres(scopeGames(lib.games, { section, platform: effectivePlatform, otherKeys, scopePlatform: effectiveScopePlatform, search }),
+    () => foldGenres(scopeGames(lib.games, { section, platform: effectivePlatform, otherKeys, scopePlatform: effectiveScopePlatform, search, studios }),
       section === 'library' && statuses.includes('hidden')),
-    [lib.games, section, effectivePlatform, otherKeys, effectiveScopePlatform, search, statuses],
+    [lib.games, section, effectivePlatform, otherKeys, effectiveScopePlatform, search, statuses, studios],
+  )
+  // Each facet's options are narrowed by every OTHER filter, never by itself.
+  const studioList = useMemo(
+    () => studioOptions(scopeGames(lib.games, { section, platform: effectivePlatform, otherKeys, scopePlatform: effectiveScopePlatform, search, genres }),
+      section === 'library' && statuses.includes('hidden')),
+    [lib.games, section, effectivePlatform, otherKeys, effectiveScopePlatform, search, genres, statuses],
   )
   const sCounts = useMemo(() => statusCounts(scope), [scope])
 
@@ -91,11 +100,13 @@ export function useTgLibraryView(lib: TestGameLibrary): TgLibraryView {
   const ranks = useMemo(() => queueRanks(lib.games), [lib.games])
   const navCounts = useMemo(() => {
     const all = statusCounts(lib.games)
-    return { queue: ranks.size, wishlist: all.wishlist, completed: all.completed, backlog: all.backlog }
+    // Needs review, from the rows the page holds (the same rule the tab lists).
+    const review = lib.games.reduce((n, g) => n + (needsReviewReasons(g).length > 0 ? 1 : 0), 0)
+    return { queue: ranks.size, wishlist: all.wishlist, completed: all.completed, backlog: all.backlog, review }
   }, [lib.games, ranks])
 
   return {
-    counts, shown, others, effectivePlatform, effectiveScopePlatform, isGameSection, genres: genreList,
+    counts, shown, others, effectivePlatform, effectiveScopePlatform, isGameSection, genres: genreList, studios: studioList,
     statusCounts: sCounts, visible, ranks, navCounts,
   }
 }

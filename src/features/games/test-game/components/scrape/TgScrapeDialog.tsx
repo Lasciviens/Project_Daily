@@ -3,6 +3,7 @@ import { Dialog, DialogBackdrop, DialogPanel, DialogTitle } from '@headlessui/re
 import { X } from 'lucide-react'
 import { useTgBreakpoint } from '../../useTgBreakpoint'
 import { TgMobileSheet } from '../TgMobileSheet'
+import { useHistoryDismiss } from '../../../../../shared/hooks/useHistoryDismiss'
 
 /**
  * The Scrape page's pop-ups: the phone's drag-to-close bottom sheet, a centred
@@ -18,6 +19,8 @@ export function TgScrapeDialog({ open, onClose, title, footer, children, wide = 
   wide?: boolean
 }) {
   const bp = useTgBreakpoint()
+  // The phone sheet handles Back itself.
+  useHistoryDismiss(open && bp !== 'mobile', onClose)
   if (bp === 'mobile') return <TgMobileSheet open={open} onClose={onClose} title={title} footer={footer}>{children}</TgMobileSheet>
   return (
     <Dialog open={open} onClose={onClose} className="tg-portal relative z-[60]">

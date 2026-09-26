@@ -8,6 +8,8 @@ import { TgDetailDescription } from './TgDetailDescription'
 import { TgDetailActions } from './TgDetailActions'
 import { TgDetailFields } from './TgDetailFields'
 import { TgDetailScreenScraper } from './TgDetailScreenScraper'
+import { TgDetailNotes } from './TgDetailNotes'
+import { TgDetailSeries } from './TgDetailSeries'
 import { TgScreenshotStrip } from './TgScreenshotStrip'
 import { useSteamExtras } from './useSteamExtras'
 import { useStableValue } from './useStableValue'
@@ -91,6 +93,8 @@ export function TgDetailPanel({ game, actions, variant, onClose }: Props) {
               scraped record); a bad field loses its own block, never the panel. */}
           {/* The phone sheet builds the long record once its slide-in is done
               (the selection has rested), not during the animation. */}
+          <TgDetailNotes key={`notes-${game.id}`} game={game} />
+          <TgDetailSeries game={game} />
           {(variant !== 'sheet' || settledId === game.id) && (
             <ErrorBoundary key={`f-${game.id}`} label="Details" action="games_detail_fields"><TgDetailFields game={game} /></ErrorBoundary>
           )}

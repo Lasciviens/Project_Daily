@@ -368,4 +368,37 @@ ok([M.isNotAGame(psnApp, null), M.isNotAGame(psnGame, null), M.isNotAGame(psnOld
 ok(M.deriveGames([psnApp])[0].hidden, true, 'an importer-promoted app (Playing, no dates) is hidden like a Steam tool')
 ok(M.deriveGames([{ ...psnApp, started_at: '2026-01-01T00:00:00Z' }])[0].hidden, false, 'a status the user chose keeps it visible')
 
+// ── Series sort, card meta, studios, series siblings ──
+const sr = M.deriveGames([
+  game({ id: 's3', title: 'Zelda: Link to the Past', series_name: 'Zelda', release_year: 1991, play_status: 'completed' }),
+  game({ id: 's1', title: 'Zelda', series_name: 'zelda', release_year: 1986 }),
+  game({ id: 'n1', title: 'Another game' }),
+  game({ id: 'm1', title: 'Metroid', series_name: 'Metroid', release_year: 1986, developer: 'Nintendo R&D1', publisher: 'Nintendo' }),
+  game({ id: 'm2', title: 'Super Metroid', series_name: 'Metroid', release_year: 1994, developer: 'Nintendo', publisher: 'NINTENDO' }),
+])
+ok(M.sortGames(sr, 'series').map(g => g.id), ['m1', 'm2', 's1', 's3', 'n1'], 'series sort: series together in release order, no series last')
+const pt = mins => `${mins}m`
+ok(M.cardMeta(sr[0], 'year-asc', pt), '1991', 'card meta follows the sort: year')
+ok(M.cardMeta(sr[2], 'recent', pt), 'No recorded play', 'card meta: no session is said plainly')
+ok(M.cardMeta(sr[0], 'series', pt), 'Zelda', 'card meta: the series under Series')
+ok(M.extraVariants(game({ platforms: [plat('snes'), plat('gc')] })), 1, '+N counts the other copies')
+ok(M.studioOptions(sr).slice(0, 2), [{ studio: 'Nintendo', count: 2 }, { studio: 'Nintendo R&D1', count: 1 }], 'studios fold case-insensitively and count a game once (developer and publisher)')
+ok(M.scopeGames(sr, { section: 'library', platform: M.ALL_PLATFORMS, studios: ['nintendo'], search: '' }).map(g => g.id).sort(), ['m1', 'm2'], 'the studio filter matches developer OR publisher')
+const sib = M.seriesSiblings(sr, sr.find(g => g.id === 's1'))
+ok([sib.series, sib.games.map(g => g.id), sib.completed], ['zelda', ['s1', 's3'], 1], 'series siblings: release order, completed count, case-insensitive series')
+ok(M.seriesSiblings(sr, sr.find(g => g.id === 'n1')), null, 'no series → no strip')
+
+// ── Arrow keys over rows of cards (bookcase, cover grid, list) ──
+const N = require('../src/features/games/test-game/components/tgGridNav.ts')
+ok(N.gridStep('ArrowRight', 2, 9, 4), 3, 'Right walks the list')
+ok(N.gridStep('ArrowLeft', 0, 9, 4), 0, 'Left stops at the first card')
+ok(N.gridStep('ArrowDown', 1, 9, 4), 5, 'Down moves one row')
+ok(N.gridStep('ArrowDown', 6, 9, 4), 9, 'Down from a full row onto the shorter last row lands on its last card')
+ok(N.gridStep('ArrowDown', 9, 9, 4), 9, 'Down on the last row stays')
+ok(N.gridStep('ArrowUp', 2, 9, 4), 2, 'Up on the first row stays')
+ok([N.gridStep('Home', 7, 9, 4), N.gridStep('End', 1, 9, 4)], [0, 9], 'Home / End jump to the ends')
+ok([N.gridStep('ArrowDown', 3, 9, 1), N.gridStep('ArrowRight', 3, 9, 1)], [4, null], 'a list (one column) ignores Left / Right')
+ok(N.gridStep('ArrowDown', -1, 9, 4), 4, 'nothing selected: moves from the first card')
+ok([N.gridStep('Enter', 1, 9, 4), N.gridStep('ArrowDown', 0, -1, 4)], [null, null], 'other keys and an empty list do nothing')
+
 console.log(`verify-test-game-model: ${n} assertions passed`)

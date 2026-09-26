@@ -10,7 +10,7 @@ import { TgSidebarItem } from './TgSidebarItem'
 import { TgSidebarPlatforms } from './TgSidebarPlatforms'
 import { useTgAddGame } from './tgAddGame'
 
-interface NavCounts { queue: number; wishlist: number; completed: number; backlog: number }
+interface NavCounts { queue: number; wishlist: number; completed: number; backlog: number; review?: number }
 
 // Library uses the logo's solid pad, as the design draws it; the rest are lucide.
 const NAV: { key: TgSection; label: string; icon: ComponentType<{ className?: string; strokeWidth?: number }>; count?: keyof NavCounts }[] = [
@@ -113,6 +113,7 @@ export function TgSidebar({ counts, platforms, others }: {
           label="Advanced"
           active={section === 'advanced'}
           onClick={() => setSection('advanced')}
+          count={counts.review || undefined}
         />
         <Link to="/games-legacy" className="mt-0.5 flex min-h-[30px] items-center gap-2 rounded-[10px] px-3 text-[12px] font-medium text-[var(--tg-muted)] transition-colors [@media(hover:hover)]:hover:bg-[var(--tg-hover)] [@media(hover:hover)]:hover:text-[var(--tg-text)] [@media(pointer:coarse)]:min-h-[44px]">
           <History aria-hidden className="h-3.5 w-3.5 shrink-0" strokeWidth={2} />

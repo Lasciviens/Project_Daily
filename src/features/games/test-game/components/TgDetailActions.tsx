@@ -22,7 +22,8 @@ export function TgDetailActions({ game, actions, variant }: { game: TgGame; acti
   const pad = variant === 'sheet' ? 'pb-[max(16px,env(safe-area-inset-bottom))]' : 'pb-4'
   const Icon = queued ? ListChecks : ListPlus
   return (
-    <div className={`grid shrink-0 grid-cols-[minmax(0,0.89fr)_minmax(0,1fr)_44px] gap-2.5 px-5 pt-2 ${pad}`}>
+    // The queue button is the widest label ("In queue · #12"); Scrape / Edit are short.
+    <div className={`grid shrink-0 grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_44px] gap-2.5 px-5 pt-2 ${pad}`}>
       <button
         type="button"
         onClick={toggle}

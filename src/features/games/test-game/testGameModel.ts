@@ -16,7 +16,7 @@ import { psnKind } from '../providerEntries'
  *  views across EVERY platform; `library` is scoped by the platform list. */
 export type TgSection = 'library' | 'queue' | 'wishlist' | 'completed' | 'backlog' | 'analytics' | 'scrape' | 'advanced'
 export type TgView = 'shelf' | 'grid' | 'list'
-export type TgSort = 'title' | 'title-desc' | 'recent' | 'playtime' | 'rating' | 'year-desc' | 'year-asc' | 'added'
+export type TgSort = 'title' | 'title-desc' | 'recent' | 'playtime' | 'rating' | 'year-desc' | 'year-asc' | 'added' | 'series'
 export type TgStatusFilter = 'all' | PlayStatus
 
 export const ALL_PLATFORMS = 'all'
@@ -35,6 +35,7 @@ export const SORT_LABEL: Record<TgSort, string> = {
   'year-desc': 'Newest',
   'year-asc': 'Oldest',
   added: 'Recently added',
+  series: 'Series',
 }
 
 export const STATUS_SECTIONS: Partial<Record<TgSection, PlayStatus>> = {
@@ -358,12 +359,26 @@ export const genreKey = (s: string) => s.trim().toLocaleLowerCase('en')
  * view lists its own genres).
  */
 export function foldGenres(games: readonly TgGame[], includeHidden = false): { genre: string; count: number }[] {
+  return foldValues(games, g => g.genres ?? [], includeHidden).map(({ value, count }) => ({ genre: value, count }))
+}
+
+/**
+ * Developer and publisher as one "studio" facet (91% filled for retro), folded
+ * like genres; a game counts once per studio even when it is both.
+ */
+export function studioOptions(games: readonly TgGame[], includeHidden = false): { studio: string; count: number }[] {
+  return foldValues(games, g => [g.developer, g.publisher].filter((x): x is string => !!x), includeHidden)
+    .map(({ value, count }) => ({ studio: value, count }))
+}
+
+/** Case-insensitive value counts over a per-game list, most common spelling shown. */
+function foldValues(games: readonly TgGame[], pick: (g: TgGame) => readonly string[], includeHidden: boolean): { value: string; count: number }[] {
   const counts = new Map<string, number>()
   const spellings = new Map<string, Map<string, number>>()
   for (const g of games) {
     if (g.hidden && !includeHidden) continue
     const seen = new Set<string>()
-    for (const raw of g.genres ?? []) {
+    for (const raw of pick(g)) {
       const label = raw.trim()
       if (!label) continue
       const k = genreKey(label)
@@ -378,8 +393,8 @@ export function foldGenres(games: readonly TgGame[], includeHidden = false): { g
   const labelOf = (k: string) => [...(spellings.get(k) ?? new Map<string, number>()).entries()]
     .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0] ?? k
   return [...counts.entries()]
-    .map(([k, count]) => ({ genre: labelOf(k), count }))
-    .sort((a, b) => b.count - a.count || a.genre.localeCompare(b.genre))
+    .map(([k, count]) => ({ value: labelOf(k), count }))
+    .sort((a, b) => b.count - a.count || a.value.localeCompare(b.value))
 }
 
 export function genreOptions(games: TgGame[]): { genre: string; count: number }[] {
@@ -412,6 +427,8 @@ export interface FilterOptions {
   scopePlatform?: string
   /** Status filter: empty = every visible game (see applyStatus). */
   statuses: readonly PlayStatus[]
+  /** Studio filter (developer OR publisher): ANY picked studio; empty = all. */
+  studios?: readonly string[]
   /** Genre filter: a game matches ANY picked genre; empty = every genre. */
   genres?: readonly string[]
   search: string
@@ -435,6 +452,10 @@ export function scopeGames(games: TgGame[], o: Omit<FilterOptions, 'statuses'>):
   if (o.genres?.length) {
     const want = new Set(o.genres.map(genreKey))
     gs = gs.filter(g => (g.genres ?? []).some(x => want.has(genreKey(x))))
+  }
+  if (o.studios?.length) {
+    const want = new Set(o.studios.map(genreKey))
+    gs = gs.filter(g => [g.developer, g.publisher].some(x => !!x && want.has(genreKey(x))))
   }
   if (o.search.trim()) gs = gs.filter(g => matchesSearch(g, o.search))
   return gs
@@ -502,6 +523,12 @@ export function sortGames<T extends Game>(games: T[], sort: TgSort): T[] {
     case 'year-desc':  return gs.sort((a, b) => (b.release_year ?? -Infinity) - (a.release_year ?? -Infinity) || byTitle(a, b))
     case 'year-asc':   return gs.sort((a, b) => (a.release_year ?? Infinity) - (b.release_year ?? Infinity) || byTitle(a, b))
     case 'added':      return gs.sort((a, b) => time(b.created_at) - time(a.created_at) || byTitle(a, b))
+    // A series together in release order; games without one after, by title.
+    case 'series':     return gs.sort((a, b) => {
+      const sa = a.series_name?.trim() ?? '', sb = b.series_name?.trim() ?? ''
+      if (!sa !== !sb) return sa ? -1 : 1
+      return collator.compare(sa, sb) || (a.release_year ?? Infinity) - (b.release_year ?? Infinity) || byTitle(a, b)
+    })
     default:           return gs.sort(byTitle)
   }
 }
@@ -794,3 +821,37 @@ export function subtitleParts(g: TgGame, genreFallback?: string | null): string[
 export function lastPlayedIso(g: Game): string | null { return playStatsOf(g).last }
 export function playSeconds(g: Game): number | null { return playStatsOf(g).seconds }
 export function playCount(g: Game): number | null { return playStatsOf(g).count }
+
+// ─── Card meta & series ──────────────────────────────────────────────────────
+
+/**
+ * The one muted line a card shows under its title, following the sort (the
+ * number the list is ordered by is the one worth reading): play time, last
+ * session, year, date added, series — else platform · year.
+ */
+export function cardMeta(g: TgGame, sort: TgSort, playtime: (minutes: number) => string): string {
+  const platform = platformInfo(g.platformKey).short
+  switch (sort) {
+    case 'playtime': { const s = playSeconds(g); return s != null && s > 0 ? playtime(s / 60) : 'No recorded play' }
+    case 'recent': { const last = lastPlayedIso(g); return last ? formatDay(last) : 'No recorded play' }
+    case 'year-desc':
+    case 'year-asc': return g.release_year ? String(g.release_year) : 'Year unknown'
+    case 'added': return `Added ${formatDay(g.created_at)}`
+    case 'series': return g.series_name?.trim() || 'No series'
+    default: return [platform, g.release_year].filter(Boolean).join(' · ')
+  }
+}
+
+/** Other copies of the game beyond the one it is filed under ("+1"). */
+export const extraVariants = (g: Pick<TgGame, 'platforms'>) => Math.max(0, (g.platforms?.length ?? 0) - 1)
+
+/** The rest of a game's series in release order, with how many are completed. */
+export function seriesSiblings(games: readonly TgGame[], g: TgGame): { series: string; games: TgGame[]; completed: number } | null {
+  const series = g.series_name?.trim()
+  if (!series) return null
+  const key = series.toLocaleLowerCase('en')
+  const all = games.filter(x => !x.hidden && x.series_name?.trim().toLocaleLowerCase('en') === key)
+  if (all.length < 2) return null
+  const ordered = [...all].sort((a, b) => (a.release_year ?? Infinity) - (b.release_year ?? Infinity) || collator.compare(a.title, b.title))
+  return { series, games: ordered, completed: ordered.filter(x => x.play_status === 'completed').length }
+}

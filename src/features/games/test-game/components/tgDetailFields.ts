@@ -103,7 +103,6 @@ export function detailSections(game: TgGame): DetailSection[] {
     // A finish date on a game that is no longer Completed (a replay, or a
     // status changed back) is history, not the current state.
     !finishedShown && { label: game.play_status === 'completed' ? 'Finished' : 'Previously finished', value: day(game.finished_at) },
-    { label: 'Play notes', value: clean(game.play_notes), long: true },
     { label: 'Game log', value: clean(game.game_log), long: true },
   ])
   const source = rows([

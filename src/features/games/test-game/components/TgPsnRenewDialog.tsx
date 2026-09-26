@@ -3,6 +3,7 @@ import { X } from 'lucide-react'
 import { PsnNpssoForm } from '../../components/PsnNpssoForm'
 import { usePsnProfile, usePsnStatus } from '../../hooks/usePlayStation'
 import { psnLine } from './tgConnections'
+import { useHistoryDismiss } from '../../../../shared/hooks/useHistoryDismiss'
 
 // Re-authenticating PlayStation at the point you notice it — the one sanctioned
 // exception to "connections live in Developer → Connections" (CLAUDE.md).
@@ -32,6 +33,7 @@ function Body({ onClose }: { onClose: () => void }) {
 }
 
 export function TgPsnRenewDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  useHistoryDismiss(open, onClose)
   return (
     <Dialog open={open} onClose={onClose} className="tg-portal relative z-[70]">
       <DialogBackdrop transition className="fixed inset-0 bg-black/45 transition duration-200 data-[closed]:opacity-0" />

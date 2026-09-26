@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Dialog, DialogPanel, DialogBackdrop } from '@headlessui/react'
 import { useCreateGame } from '../hooks/useGames'
 import { InfoBubble } from '../../../shared/components/InfoBubble'
+import { useHistoryDismiss } from '../../../shared/hooks/useHistoryDismiss'
 import { STATUS_LABEL, STATUSES } from '../gamesMeta'
 import type { PlayStatus } from '../types'
 
@@ -24,6 +25,7 @@ interface Props {
 }
 
 export function AddGameModal({ open, onClose, className = '' }: Props) {
+  useHistoryDismiss(open, onClose)
   const [title, setTitle]           = useState('')
   const [year, setYear]             = useState('')
   const [publisher, setPublisher]   = useState('')

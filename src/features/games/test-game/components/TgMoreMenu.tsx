@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
-import { Award, Ellipsis, Gamepad2, Eye, EyeOff, Flag, FlagOff, Info, ListPlus, ListX, Pencil, Trash2, Trophy } from 'lucide-react'
+import { Award, CalendarPlus, Ellipsis, Gamepad2, Eye, EyeOff, Flag, FlagOff, Info, ListPlus, ListX, Pencil, Trash2, Trophy } from 'lucide-react'
 import { useDeleteGame, useUpdateGame } from '../../hooks/useGames'
 import { STATUS_TEXT, type TgGame } from '../testGameModel'
 import type { PlayStatus } from '../../types'
@@ -62,6 +62,7 @@ export function TgMoreMenu({ game, actions }: { game: TgGame; actions: TgActions
         >
           <Item icon={<Pencil aria-hidden className={ICON} strokeWidth={1.9} />} onClick={() => actions.openEdit(game.id)}>Edit details</Item>
           {launchSteam && <Item icon={<Gamepad2 aria-hidden className={ICON} strokeWidth={1.9} />} onClick={launchSteam}>Launch on Steam</Item>}
+          <Item icon={<CalendarPlus aria-hidden className={ICON} strokeWidth={1.9} />} onClick={() => actions.planSession(game)}>Plan a session…</Item>
           <div className="tg-menu-sep" role="separator" />
           {queued ? (
             <Item icon={<ListX aria-hidden className={ICON} strokeWidth={1.9} />} onClick={queue.toggle}>

@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import type { TgGame } from './testGameModel'
 
 // Shared contracts between the Test-Game shell and its components.
@@ -20,6 +21,10 @@ export interface TgHeaderConfig {
    *  when set it wins over `activeTab` for highlighting. */
   activeTabs?: readonly string[]
   onTab?: (key: string) => void
+  /** Present while filters or a search narrow the list: clears them all. */
+  onClear?: () => void
+  /** A control at the title row's end (e.g. Sync on a provider shelf). */
+  action?: ReactNode
 }
 
 /** Things any component may ask the shell to open. The shell owns every
@@ -31,4 +36,6 @@ export interface TgActions {
   openFull: (id: string) => void
   /** Steam achievements/store page or PlayStation trophies (existing modals). */
   openProvider: (game: TgGame) => void
+  /** Plan a play session in the calendar (the app's shared planner). */
+  planSession: (game: TgGame) => void
 }

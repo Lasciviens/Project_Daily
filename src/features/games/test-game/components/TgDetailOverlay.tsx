@@ -24,7 +24,8 @@ interface Props {
 const MOTION = 'transition ease-[cubic-bezier(0.22,1,0.36,1)] duration-300 data-[leave]:duration-200 data-[leave]:ease-in data-[closed]:translate-x-full data-[closed]:opacity-0'
 // Flush with the right edge (rounded on the left only), from just under the
 // top bar down to where the games end. The panel is 380px on a tablet (more of
-// a narrow column stays visible), 400 on a laptop, 420 on a monitor.
+// a narrow column stays visible), 400 on a laptop, 420 on a monitor — set as
+// --tg-ov on TgDetailOverlayHost, which also reserves it for the queue.
 const FRAME = 'absolute right-0 top-0 z-20 border border-r-0 border-[var(--tg-border-strong)] bg-[var(--tg-panel)] pr-[env(safe-area-inset-right)] shadow-[shadow:var(--tg-menu-shadow)]'
 
 /** Whether keyboard focus is inside one of `els` — closing it would strand focus on the page body. */
@@ -99,7 +100,7 @@ export function TgDetailOverlay({ game, collapsed, actions, onCollapse, onExpand
           tabIndex={-1}
           aria-label={label}
           onKeyDown={onKeyDown}
-          className={`${FRAME} ${MOTION} bottom-[max(1.25rem,env(safe-area-inset-bottom))] flex w-[calc(380px+env(safe-area-inset-right))] max-w-[calc(100%-2.5rem)] xl:w-[calc(400px+env(safe-area-inset-right))] overflow-hidden rounded-l-[18px] focus-visible:!rounded-l-[18px] focus-visible:!rounded-r-none focus-visible:!outline-none 2xl:w-[calc(420px+env(safe-area-inset-right))]`}
+          className={`${FRAME} ${MOTION} bottom-[max(1.25rem,env(safe-area-inset-bottom))] flex w-[calc(var(--tg-ov,380px)+env(safe-area-inset-right))] max-w-[calc(100%-2.5rem)] overflow-hidden rounded-l-[18px] focus-visible:!rounded-l-[18px] focus-visible:!rounded-r-none focus-visible:!outline-none`}
         >
           {/* Controls first: Tab from the region reaches Collapse / Close
               before the whole card. */}

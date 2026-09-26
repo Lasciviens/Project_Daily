@@ -1,5 +1,5 @@
 import { memo, type CSSProperties } from 'react'
-import { formatStars, starsFromRating, type TgGame } from '../testGameModel'
+import { extraVariants, formatStars, starsFromRating, type TgGame } from '../testGameModel'
 import { TgCover } from './TgCover'
 import { TgStarIcon } from './TgStars'
 import { TgStatusIcon } from './TgStatusIcon'
@@ -21,6 +21,8 @@ interface Props {
   tabIndex?: number
   /** The cover wall centres art that doesn't fill its slot; the shelf stands it on the plank. */
   coverAlign?: 'center' | 'bottom'
+  /** A muted line under the title (the grid's sort-aware meta); the shelf leaves it out. */
+  meta?: string
 }
 
 /**
@@ -30,7 +32,7 @@ interface Props {
  * Memoised: a library can hold well over a thousand of these, and a selection
  * change should repaint two cards, not all of them.
  */
-export const TgGameCard = memo(function TgGameCard({ game, selected, onSelect, width, coverHeight, tabIndex, coverAlign = 'bottom' }: Props) {
+export const TgGameCard = memo(function TgGameCard({ game, selected, onSelect, width, coverHeight, tabIndex, coverAlign = 'bottom', meta }: Props) {
   const stars = starsFromRating(game.rating)
   const size = width == null && coverHeight == null ? undefined : ({
     ...(width != null && { '--tg-card-w': `${width}px` }),
@@ -58,6 +60,7 @@ export const TgGameCard = memo(function TgGameCard({ game, selected, onSelect, w
         <span title={game.title} className="mt-2 block truncate text-[12px] font-medium leading-[18px] text-[var(--tg-text)]">
           {game.title}
         </span>
+        {meta != null && <CardMetaLine game={game} meta={meta} />}
         <span className="mt-1 flex items-center justify-between gap-1.5 text-[12px] leading-4">
           <span data-status={game.play_status} className="flex min-w-0 items-center gap-1.5">
             <TgStatusIcon status={game.play_status} />
@@ -74,3 +77,15 @@ export const TgGameCard = memo(function TgGameCard({ game, selected, onSelect, w
     </button>
   )
 })
+
+/** The sort's number, a "+N" when the game has other copies, a dot when it is flagged for review. */
+export function CardMetaLine({ game, meta }: { game: TgGame; meta: string }) {
+  const more = extraVariants(game)
+  return (
+    <span className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[11px] leading-4 tabular-nums text-[var(--tg-muted)]">
+      <span className="truncate">{meta}</span>
+      {more > 0 && <span className="shrink-0 rounded bg-[var(--tg-panel-2)] px-1 text-[10px] font-semibold" title={`${more} more cop${more === 1 ? 'y' : 'ies'}: ${game.platforms.map(p => p.system).join(', ')}`}>+{more}</span>}
+      {game.needs_review && <span aria-label="Flagged for review" title="Flagged for review" className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--tg-amber,#f59e0b)]" />}
+    </span>
+  )
+}

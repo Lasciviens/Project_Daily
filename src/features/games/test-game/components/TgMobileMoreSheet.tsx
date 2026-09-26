@@ -23,7 +23,7 @@ const ROW_IDLE = 'active:bg-[var(--tg-hover)] [@media(hover:hover)]:hover:bg-[va
 export function TgMobileMoreSheet({ open, onClose, counts }: {
   open: boolean
   onClose: () => void
-  counts: { completed: number; backlog: number }
+  counts: { completed: number; backlog: number; review?: number }
 }) {
   const navigate = useNavigate()
   const section = useTestGameStore(s => s.section)
@@ -37,7 +37,7 @@ export function TgMobileMoreSheet({ open, onClose, counts }: {
     { key: 'backlog', label: 'Backlog', Icon: Archive, count: counts.backlog },
     { key: 'analytics', label: 'Analytics', Icon: ChartColumn },
     { key: 'scrape', label: 'Scrape (ScreenScraper)', Icon: Wand2 },
-    { key: 'advanced', label: 'Advanced tools', Icon: SlidersHorizontal },
+    { key: 'advanced', label: 'Advanced tools', Icon: SlidersHorizontal, count: counts.review || undefined },
   ]
 
   function go(key: TgSection) {

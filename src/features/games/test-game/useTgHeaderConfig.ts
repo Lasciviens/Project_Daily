@@ -1,4 +1,5 @@
-import { useMemo } from 'react'
+import { createElement, useMemo } from 'react'
+import { TgProviderSync } from './components/TgProviderSync'
 import { useTestGameStore, type AdvancedTab, type ScrapeMode } from './testGameStore'
 import {
   ALL_PLATFORMS, OTHER_PLATFORMS, STATUS_SECTIONS, STATUS_TABS, STATUS_TEXT,
@@ -37,7 +38,10 @@ export function useTgHeaderConfig({ games, platform, statusCounts: sCounts, visi
   const storedScope = useTestGameStore(s => s.scopePlatform)
   const scopePlatform = effectiveScope ?? storedScope
   const genres = useTestGameStore(s => s.genres)
+  const studios = useTestGameStore(s => s.studios)
   const search = useTestGameStore(s => s.search)
+  const clearFilters = useTestGameStore(s => s.clearFilters)
+  const setSearch = useTestGameStore(s => s.setSearch)
   const advancedTab = useTestGameStore(s => s.advancedTab)
   const setStatus = useTestGameStore(s => s.setStatus)
   const setScopePlatform = useTestGameStore(s => s.setScopePlatform)
@@ -54,10 +58,16 @@ export function useTgHeaderConfig({ games, platform, statusCounts: sCounts, visi
 
   const fixedStatus = STATUS_SECTIONS[section]
   return useMemo((): TgHeaderConfig => {
+    // Filters or a search narrowing a game list: "12 of 310 games" + Clear.
+    const narrowed = statuses.length > 0 || genres.length > 0 || studios.length > 0 || search.trim() !== ''
+    const clear = narrowed ? () => { clearFilters(); setSearch('') } : undefined
     if (section === 'library') {
       return {
         title: platformInfo(platform).name,
-        subtitle: plural(sCounts.all, 'game'),
+        subtitle: narrowed ? `${visibleCount.toLocaleString('en-GB')} of ${plural(sCounts.all, 'game')}` : plural(sCounts.all, 'game'),
+        onClear: clear,
+        // A provider shelf syncs from its provider — an explicit tap, never on load.
+        action: platform === 'steam' || platform === 'playstation' ? createElement(TgProviderSync, { library: platform, games }) : undefined,
         logo: platform === ALL_PLATFORMS ? 'all' : platform === OTHER_PLATFORMS ? 'others' : 'platform',
         platformKey: platform,
         tabs: STATUS_TABS.map(s => ({ key: s, label: STATUS_TEXT[s], count: sCounts[s] })),
@@ -75,13 +85,14 @@ export function useTgHeaderConfig({ games, platform, statusCounts: sCounts, visi
     if (fixedStatus) {
       // The genre and search filters apply to the counts too (the platform
       // scope does not — the tabs ARE the platform scope).
-      const inStatus = scopeGames(games, { section, platform: ALL_PLATFORMS, scopePlatform: ALL_PLATFORMS, search, genres })
+      const inStatus = scopeGames(games, { section, platform: ALL_PLATFORMS, scopePlatform: ALL_PLATFORMS, search, genres, studios })
       const byPlatform = platformCounts(inStatus)
       const labels = platformLabels(byPlatform)
       return {
         title: SECTION_TITLE[section],
         subtitle: `${plural(inStatus.length, 'game')} across ${plural(byPlatform.length, 'platform')}`,
         logo: section as TgHeaderConfig['logo'],
+        onClear: clear,
         tabs: [
           { key: ALL_PLATFORMS, label: 'All', count: inStatus.length },
           ...byPlatform.map(p => ({ key: p.key, label: labels.get(p.key) ?? p.info.short, count: p.count })),
@@ -91,7 +102,13 @@ export function useTgHeaderConfig({ games, platform, statusCounts: sCounts, visi
       }
     }
     if (section === 'queue') {
-      return { title: 'Play Queue', subtitle: `${plural(visibleCount, 'game')} · in play order`, logo: 'queue', tabs: [], activeTab: null }
+      const queued = games.filter(g => !g.hidden && g.play_order != null)
+      const playing = queued.filter(g => g.play_status === 'playing').length
+      return {
+        title: 'Play Queue',
+        subtitle: `${plural(queued.length, 'game')} queued · ${playing.toLocaleString('en-GB')} playing · ${(queued.length - playing).toLocaleString('en-GB')} up next${visibleCount !== queued.length ? ` · ${visibleCount.toLocaleString('en-GB')} shown` : ''}`,
+        logo: 'queue', tabs: [], activeTab: null,
+      }
     }
     if (section === 'analytics') {
       return { title: 'Analytics', subtitle: 'Your library in numbers', logo: 'analytics', tabs: [], activeTab: null }
@@ -114,5 +131,5 @@ export function useTgHeaderConfig({ games, platform, statusCounts: sCounts, visi
       onTab: (k) => setAdvancedTab(k as AdvancedTab),
     }
   }, [section, platform, sCounts, statuses, fixedStatus, games, scopePlatform, visibleCount,
-      advancedTab, reviewCount, setStatus, setScopePlatform, setAdvancedTab, scrapeMode, setScrapeMode, search, genres])
+      advancedTab, reviewCount, setStatus, setScopePlatform, setAdvancedTab, scrapeMode, setScrapeMode, search, genres, studios, clearFilters, setSearch])
 }
