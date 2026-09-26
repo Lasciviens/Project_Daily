@@ -1,31 +1,37 @@
-import { useMemo, useState } from 'react'
-import { ArrowLeft, ExternalLink, Wand2 } from 'lucide-react'
+import { useMemo, useState, type ReactNode } from 'react'
+import { ExternalLink, TriangleAlert, Wand2 } from 'lucide-react'
 import type { TgGame } from '../../testGameModel'
 import type { SsCandidate, SsField, SsMediaChoice, SsPrefs } from '../../../scraper/ssTypes'
 import type { MediaMode } from '../../../scraper/ssMediaCatalog'
 import { ssGamePage, type ApplyResult } from '../../../scraper/ssApi'
 import { withOverrides } from '../../../scraper/ssRules'
-import { useApplyScrape } from '../../../scraper/useScrape'
+import { FIELD_MEDIA } from '../../../scraper/ssPlan'
+import { useApplyScrape, useStorageUsage } from '../../../scraper/useScrape'
 import {
-  applySummary, candidateLine, choiceToPolicy, fieldRows, formToRom, initialChoice, mediaRows, summaryText,
-  type FieldChoice, type SearchForm,
+  applySummary, candidateLine, choiceToPolicy, fieldRows, formToRom, initialChoice, mediaRows, summaryText, writingChoice,
+  type FieldChoice, type FieldRow, type SearchForm,
 } from './tgScrapeModel'
-import { TgBasisBadges, TgCandidateCover, TgFlagChips, TgScrapeCard, TgSsAttribution } from './TgScrapeParts'
+import { TgBasisBadges, TgCandidateCover, TgFlagChips, TgScrapeCard, TgSsAttribution, TgSwitch } from './TgScrapeParts'
 import { TgScrapeFieldList } from './TgScrapeFieldList'
 import { TgScrapeMediaGrid } from './TgScrapeMediaGrid'
 import { TgScrapeRecord } from './TgScrapeRecord'
 import { TgScrapeApplied } from './TgScrapeApplied'
 
+const MEDIA_FIELD: Record<string, SsField> = Object.fromEntries(Object.entries(FIELD_MEDIA).map(([f, t]) => [t, f as SsField]))
+
 /**
  * One result against one game: compare every field, choose every file, see
  * everything else they know, then save exactly that. Starts from the saved
  * defaults ("What to save"); every choice here applies to this save only.
+ * The save uses the SEARCH that found the result (its system and ROM info),
+ * never a later edit of the form.
  */
-export function TgScrapeReview({ game, candidate, prefs, form, onBack }: {
+export function TgScrapeReview({ game, candidate, prefs, searchForm, wide, onBack }: {
   game: TgGame | null
   candidate: SsCandidate
   prefs: SsPrefs
-  form: SearchForm
+  searchForm: SearchForm
+  wide: boolean
   onBack?: () => void
 }) {
   const [titleRegion, setTitleRegion] = useState<string | null>(null)
@@ -35,19 +41,47 @@ export function TgScrapeReview({ game, candidate, prefs, form, onBack }: {
   const rows = useMemo(() => (game ? fieldRows(game, effective) : []), [game, effective])
   const mRows = useMemo(() => mediaRows(candidate, prefs), [candidate, prefs])
 
-  const [choices, setChoices] = useState<Partial<Record<SsField, FieldChoice>>>(
-    () => Object.fromEntries(rows.map(r => [r.field, initialChoice(r, prefs.fields[r.field])])),
-  )
+  const [choices, setChoices] = useState<Partial<Record<SsField, FieldChoice>>>(() => {
+    const init = game ? fieldRows(game, candidate) : []
+    return Object.fromEntries(init.map(r => [r.field, initialChoice(r, prefs.fields[r.field])]))
+  })
   const [modes, setModes] = useState<Record<string, MediaMode>>(() => Object.fromEntries(mRows.map(r => [r.type, r.mode])))
   const [tokens, setTokens] = useState<Record<string, string>>(() => Object.fromEntries(mRows.map(r => [r.type, r.chosen.token])))
   const [snapshot, setSnapshot] = useState(prefs.snapshot)
-  const [applied, setApplied] = useState<{ runId: string; result: ApplyResult } | null>(null)
+  const [applied, setApplied] = useState<{ runId: string; result: ApplyResult; rows: FieldRow[] } | null>(null)
   const apply = useApplyScrape()
+  const storage = useStorageUsage(!!game)
 
   const modeOf = (type: string) => modes[type] ?? 'skip'
+  // One decision per image: choosing to write a cover means copying the box
+  // front, and taking the box front off "Copy" means the cover stays yours.
+  const setChoice = (field: SsField, c: FieldChoice) => {
+    setChoices(s => ({ ...s, [field]: c }))
+    const type = FIELD_MEDIA[field]
+    if (type && c !== 'keep' && modeOf(type) !== 'store') setModes(s => ({ ...s, [type]: 'store' }))
+  }
+  const setMode = (type: string, m: MediaMode) => {
+    setModes(s => ({ ...s, [type]: m }))
+    const field = MEDIA_FIELD[type]
+    if (field && m !== 'store') setChoices(s => ({ ...s, [field]: 'keep' }))
+  }
+  // Picking a variant is picking it to be saved.
+  const pickVariant = (field: 'title' | 'description', key: string | null) => {
+    if (field === 'title') setTitleRegion(key); else setDescLang(key)
+    const row = rows.find(r => r.field === field)
+    if (key && row) setChoices(s => ({ ...s, [field]: writingChoice(row) }))
+  }
+
   const mediaPlan = mRows.map(r => ({ row: r, mode: modeOf(r.type), entry: r.entries.find(e => e.token === tokens[r.type]) ?? r.chosen }))
   const summary = applySummary(rows, choices, mediaPlan, prefs.imageScale)
   const nothing = summary.fields === 0 && summary.store === 0 && summary.onDemand === 0 && !snapshot
+
+  // Tell BEFORE saving when copies will not happen.
+  const budget = (storage.data?.budget_mb ?? prefs.budgetMb) * 1024 * 1024
+  const storageNote = !game || summary.store === 0 || storage.isLoading ? null
+    : storage.data === null ? 'Copies need migration 104 — until then these images are shown online instead.'
+    : storage.data && storage.data.total + summary.bytes > budget ? `Your storage is at ${Math.round(storage.data.total / 1048576)} MB of the ${Math.round(budget / 1048576)} MB budget — some copies will be shown online instead.`
+    : null
 
   const save = () => {
     if (!game) return
@@ -56,85 +90,114 @@ export function TgScrapeReview({ game, candidate, prefs, form, onBack }: {
       .filter(m => m.mode !== 'skip')
       .map(m => ({ type: m.row.type, token: m.entry.token, mode: m.mode === 'store' ? 'store' : 'on_demand' }))
     apply.mutate({
-      game_id: game.id, jeu_id: candidate.jeu_id, system: form.system || candidate.system.id,
-      rom: form.useRom ? formToRom(form) : null, fields, media, matched_by: candidate.matched_by,
+      game_id: game.id, jeu_id: candidate.jeu_id, system: searchForm.system || candidate.system.id,
+      rom: searchForm.useRom ? formToRom(searchForm) : null, fields, media, matched_by: candidate.matched_by,
       overrides: { title_region: titleRegion, description_lang: descLang },
-      // The snapshot switch applies to this save only; the saved default is unchanged.
+      // The full-record switch applies to this save only (the budget can
+      // never be raised this way — the server reads the saved one).
       ...(snapshot !== prefs.snapshot ? { prefs: { ...prefs, snapshot } } : {}),
     }, {
-      onSuccess: (r) => setApplied({ runId: r.run_id, result: r.result }),
+      onSuccess: (r) => setApplied({ runId: r.run_id, result: r.result, rows }),
     })
   }
 
-  if (applied && game) return <TgScrapeApplied game={game} runId={applied.runId} result={applied.result} onBack={onBack} onAgain={() => setApplied(null)} />
+  if (applied && game) {
+    return (
+      <Scroller wide={wide}>
+        <TgScrapeApplied game={game} runId={applied.runId} result={applied.result} rows={applied.rows} onBack={onBack} onAgain={() => setApplied(null)} />
+      </Scroller>
+    )
+  }
 
-  return (
+  const saveBar = game && (
+    <div className="flex items-center gap-3">
+      <p className="line-clamp-2 min-w-0 flex-1 text-[12px] leading-snug tabular-nums text-[var(--tg-text-2)]">
+        {summaryText(summary)}{snapshot ? ' · full record' : ''}
+      </p>
+      <button type="button" onClick={save} disabled={apply.isPending || nothing} className="tg-btn tg-btn-primary shrink-0 !px-5">
+        <Wand2 aria-hidden className={`h-4 w-4 ${apply.isPending ? 'animate-pulse' : ''}`} strokeWidth={2.2} />
+        {apply.isPending ? 'Saving…' : 'Save'}
+      </button>
+    </div>
+  )
+
+  const body = (
     <div className="flex flex-col gap-4">
-      {onBack && (
-        <button type="button" onClick={onBack} className="inline-flex min-h-[44px] items-center gap-1.5 self-start text-[13.5px] font-semibold text-[var(--tg-accent)]">
-          <ArrowLeft className="h-4 w-4" strokeWidth={2.2} aria-hidden /> Results
-        </button>
-      )}
-
       <section className="tg-panel flex gap-4 p-4">
         <TgCandidateCover candidate={candidate} regions={prefs.regions} width={360} className="h-[150px] w-[108px] shrink-0 overflow-hidden rounded-lg sm:h-[190px] sm:w-[136px]" />
         <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-          <h2 className="text-[19px] font-bold leading-tight tracking-[-0.01em]">{String(candidate.values.title ?? `#${candidate.jeu_id}`)}</h2>
-          <p className="text-[12.5px] tg-muted">{candidateLine(candidate) || '—'}</p>
+          <h2 className="text-[19px] font-bold leading-tight tracking-[-0.01em]">{String(effective.values.title ?? `#${candidate.jeu_id}`)}</h2>
+          <p className="text-[12.5px] tg-muted">{[candidateLine(candidate), candidate.values.publisher].filter(Boolean).join(' · ') || '—'}</p>
           <div className="flex flex-wrap gap-1"><TgBasisBadges basis={candidate.matched_by} /><TgFlagChips flags={candidate.flags} /></div>
-          {candidate.rom?.filename && <p className="truncate text-[11.5px] tg-faint" title={candidate.rom.filename}>Matched dump: {candidate.rom.filename}</p>}
-          <a href={ssGamePage(candidate.jeu_id)} target="_blank" rel="noreferrer" className="mt-auto inline-flex min-h-[36px] items-center gap-1 self-start text-[12.5px] font-semibold text-[var(--tg-accent)]">
+          {candidate.rom?.filename && (
+            <p className="line-clamp-2 break-all font-mono text-[11px] leading-snug tg-muted">Dump: {candidate.rom.filename}</p>
+          )}
+          <a href={ssGamePage(candidate.jeu_id)} target="_blank" rel="noreferrer" className="mt-auto inline-flex min-h-[44px] items-center gap-1 self-start text-[12.5px] font-semibold text-[var(--tg-accent)]">
             ScreenScraper #{candidate.jeu_id} <ExternalLink className="h-3.5 w-3.5" aria-hidden />
           </a>
         </div>
       </section>
 
       {game ? (
-        <TgScrapeCard title="Fields" aside={<span className="text-[11.5px] tg-muted">vs. {game.title}</span>}>
+        <TgScrapeCard title="Fields" aside={<span className="text-[11.5px] tg-muted">yours → theirs</span>}>
           <TgScrapeFieldList
-            rows={rows} choices={choices} onChoice={(f, c) => setChoices(s => ({ ...s, [f]: c }))} mediaModeOf={modeOf}
+            game={game} candidate={candidate} rows={rows} choices={choices} onChoice={setChoice} mediaModeOf={modeOf} tokens={tokens}
             names={candidate.names} synopses={candidate.synopses}
-            titleRegion={titleRegion} descLang={descLang} onTitleRegion={setTitleRegion} onDescLang={setDescLang}
-            readOnly={false}
+            titleRegion={titleRegion} descLang={descLang} onTitleRegion={k => pickVariant('title', k)} onDescLang={k => pickVariant('description', k)}
           />
         </TgScrapeCard>
       ) : (
         <p className="tg-panel p-4 text-[13px] tg-muted">Pick a game to compare its fields and save this result to it.</p>
       )}
 
-      <TgScrapeCard title={`Artwork & files · ${candidate.media.length}`} aside={<span className="text-[11.5px] tg-muted">Save · Link · Skip</span>}>
+      <TgScrapeCard title={`Artwork & files · ${candidate.media.length}`}>
         <TgScrapeMediaGrid
           candidate={candidate} rows={mRows} modes={modes} tokens={tokens}
-          onMode={(t, m) => setModes(s => ({ ...s, [t]: m }))} onToken={(t, k) => setTokens(s => ({ ...s, [t]: k }))}
+          onMode={setMode} onToken={(t, k) => setTokens(s => ({ ...s, [t]: k }))}
           readOnly={!game}
         />
       </TgScrapeCard>
 
-      <TgScrapeCard
-        title="Everything else"
-        aside={game ? (
-          <label className="inline-flex min-h-[36px] cursor-pointer items-center gap-2 text-[12px] font-semibold text-[var(--tg-text-2)]">
-            <input type="checkbox" checked={snapshot} onChange={e => setSnapshot(e.target.checked)} className="h-4 w-4 accent-[var(--tg-accent)]" />
-            Save their full record
-          </label>
-        ) : undefined}
-      >
+      <TgScrapeCard title="Everything else">
+        {game && (
+          <div className="-mt-1 mb-2 border-b border-[var(--tg-border)] pb-2">
+            <TgSwitch on={snapshot} onChange={setSnapshot} label="Save their full record" hint="Every title, date, rating board, dump and hack — in the database, not in storage." />
+          </div>
+        )}
         <TgScrapeRecord candidate={candidate} />
       </TgScrapeCard>
 
       <TgSsAttribution className="px-1" />
+      {storageNote && (
+        <p className="flex items-start gap-2 rounded-xl bg-[var(--tg-red-soft)] px-3 py-2 text-[12px] leading-snug text-[var(--tg-red)]">
+          <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden /> {storageNote}
+        </p>
+      )}
+    </div>
+  )
 
-      {game && (
-        <div className="sticky bottom-0 z-[2] -mx-1 flex flex-col gap-2 rounded-[16px] border border-[var(--tg-border-strong)] bg-[var(--tg-panel)] p-3 shadow-[shadow:var(--tg-menu-shadow)] sm:flex-row sm:items-center sm:gap-4">
-          <p className="text-center text-[12px] tabular-nums text-[var(--tg-text-2)] sm:flex-1 sm:text-left">
-            {summaryText(summary)}{snapshot ? ' · full record' : ''}
-          </p>
-          <button type="button" onClick={save} disabled={apply.isPending || nothing} className="tg-btn tg-btn-primary w-full sm:w-auto sm:max-w-[60%]">
-            <Wand2 aria-hidden className={`h-4 w-4 ${apply.isPending ? 'animate-pulse' : ''}`} strokeWidth={2.2} />
-            {apply.isPending ? 'Saving…' : `Save to ${game.title.length > 28 ? `${game.title.slice(0, 27)}…` : game.title}`}
-          </button>
+  if (wide) {
+    return (
+      <div className="flex h-full min-h-0 flex-col">
+        <div className="tg-scroll-y min-h-0 flex-1 pb-4 pr-1">{body}</div>
+        {saveBar && <div className="mt-2 shrink-0 rounded-[16px] border border-[var(--tg-border-strong)] bg-[var(--tg-panel)] p-3 shadow-[shadow:var(--tg-menu-shadow)]">{saveBar}</div>}
+      </div>
+    )
+  }
+  return (
+    <div className="flex flex-col gap-4">
+      {body}
+      {saveBar && (
+        // Full-bleed and opaque, its background reaching down over the
+        // scroller's bottom padding, so nothing scrolls visibly beneath it.
+        <div className="sticky bottom-0 z-[2] -mx-5 border-t border-[var(--tg-border)] bg-[var(--tg-bg)] px-5 py-2.5 shadow-[0_40px_0_0_var(--tg-bg)]">
+          {saveBar}
         </div>
       )}
     </div>
   )
+}
+
+function Scroller({ wide, children }: { wide: boolean; children: ReactNode }) {
+  return wide ? <div className="tg-scroll-y min-h-0 flex-1 pb-6">{children}</div> : <>{children}</>
 }

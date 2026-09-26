@@ -31,13 +31,16 @@ eq(M.cleanSearchName('Sonic The Hedgehog (USA, Europe) [!]'), 'Sonic The Hedgeho
 eq(M.cleanSearchName('Contra III [Hack by X] (MSU1)'), 'Contra III', 'every bracket group stripped')
 let f = M.formForGame(game())
 eq([f.name, f.system, f.filename, f.jeuId], ['Sonic The Hedgehog', 'genesis', 'Sonic The Hedgehog (USA, Europe).md', ''], 'form from a game')
-eq(M.formForGame(game({ external_source: 'screenscraper', external_ref: '5' })).jeuId, '5', 'a matched game prefills its id')
-eq(M.formForGame(null), M.EMPTY_FORM, 'no game → empty form')
+eq(M.formForGame(game({ external_source: 'screenscraper', external_ref: '5' })).jeuId, '5', 'an old-scraper match prefills its id')
+eq(M.formForGame(game({ ss_jeu_id: '77' })).jeuId, '77', 'the ss_jeu_id marker prefills its id')
+ok(M.isScraped({ external_source: 'esde', ss_jeu_id: '77' }) && !M.isScraped({ external_source: 'esde' }), 'scraped = ss_jeu_id (never external_source, which ES-DE owns)')
+eq(M.formForGame(null), { ...M.EMPTY_FORM, useRom: false }, 'no game → empty form, name search only')
 eq(M.romFilled(f), 1, 'filename counts as ROM info')
 eq(M.formToRom({ ...f, crc: 'F9394E97', size: '524288' }), { filename: 'Sonic The Hedgehog (USA, Europe).md', size: 524288, crc: 'F9394E97', md5: null, sha1: null, serial: null }, 'form → ROM query')
 eq(M.formToRom(M.EMPTY_FORM), null, 'no ROM info → null')
-eq(M.formProblem(M.EMPTY_FORM), 'Type a name, add ROM info, or enter a ScreenScraper id.', 'empty form cannot search')
-eq(M.formProblem({ ...M.EMPTY_FORM, name: 'x', useName: false }), 'Type a name, add ROM info, or enter a ScreenScraper id.', 'a switched-off name does not count')
+eq(M.formProblem(M.EMPTY_FORM), 'Type a name to search for.', 'empty form cannot search')
+eq(M.formProblem({ ...M.EMPTY_FORM, name: 'x', useName: false }), 'Add ROM info (a file name, a hash or an id) — or search by name.', 'a switched-off name does not count')
+eq(M.formProblem({ ...M.EMPTY_FORM, crc: 'zz' }), 'Fix the highlighted ROM info first.', 'an invalid hash blocks the search')
 eq(M.formProblem({ ...M.EMPTY_FORM, jeuId: '5' }), null, 'an id alone can search')
 
 // ── Candidate helpers ──
@@ -50,13 +53,14 @@ const cand = {
     { type: 'ss', region: null, token: 'ss', ep: 'img', size: 3000 },
     { type: 'manuel', region: 'eu', token: 'manuel(eu)', ep: 'manual', size: 2500000 },
     { type: 'flyer', region: null, token: 'flyer', ep: 'img', size: null },
+    { type: 'mystery-type', region: null, token: 'mystery-type', ep: 'img', size: null },
     { type: 'mixrbv1', region: null, token: 'mixrbv1', ep: 'img', size: 100 },
   ],
   names: [], synopses: [], flags: [],
 }
 ok(M.isExact(cand) && !M.isExact({ matched_by: ['name'] }), 'exact = found by more than a name')
-eq(M.candidateLine(cand), 'Megadrive · 1991 · SEGA', 'result line')
-eq(M.mediaCount(cand), '6 files', 'file count')
+eq(M.candidateLine(cand), 'Megadrive · 1991', 'result line: system · year')
+eq(M.mediaCount(cand), '7 images & files', 'file count')
 
 // ── Field review ──
 const rows = M.fieldRows(game(), cand)
@@ -79,11 +83,11 @@ eq(M.choiceToPolicy('keep'), 'skip', 'Keep = skip')
 
 // ── Media review ──
 const mrows = M.mediaRows(cand, prefs)
-eq(mrows.map(r => r.type), ['box-2D', 'ss', 'mixrbv1', 'manuel', 'flyer'], 'catalogue order, unknown types last')
+eq(mrows.map(r => r.type), ['box-2D', 'ss', 'mixrbv1', 'flyer', 'manuel', 'mystery-type'], 'catalogue order, unknown types last')
 eq(mrows[0].chosen.region, 'eu', 'region order picks the EU box')
 eq(mrows.find(r => r.type === 'manuel').mode, 'on_demand', 'a manual defaults to Link')
 eq(mrows.find(r => r.type === 'mixrbv1').mode, 'skip', 'composites default to Skip')
-eq(mrows.find(r => r.type === 'flyer').mode, 'on_demand', 'an unknown type is linkable')
+eq(mrows.find(r => r.type === 'mystery-type').mode, 'on_demand', 'an unknown image type is shown online')
 ok(!mrows.find(r => r.type === 'manuel').canStore, 'a manual can never be saved')
 eq(M.groupMediaRows(mrows).map(g => g.key), ['box', 'screens', 'art', 'extras', 'documents'], 'groups keep catalogue order')
 eq(M.mediaRows(cand, { ...prefs, media: { manuel: 'store' } }).find(r => r.type === 'manuel').mode, 'on_demand', 'store is never offered for a manual')
@@ -92,11 +96,11 @@ eq(M.mediaRows(cand, { ...prefs, media: { manuel: 'store' } }).find(r => r.type 
 const plan = mrows.map(r => ({ row: r, mode: r.mode, entry: r.chosen }))
 const choices = Object.fromEntries(rows.map(r => [r.field, M.initialChoice(r, prefs.fields[r.field])]))
 const s = M.applySummary(rows, choices, plan, 1)
-eq([s.store, s.onDemand, s.skip], [2, 2, 1], 'modes counted')
+eq([s.store, s.onDemand, s.skip], [2, 3, 1], 'modes counted')
 ok(s.bytes > 0 && s.bytes < 200_000, 'stored bytes estimated from capped sizes')
 eq(M.estimateStored({ type: 'ss', size: 3000 }, 1), 3000, 'a small original is not inflated')
 eq(M.estimateStored({ type: 'box-2D', size: 900000 }, 1), 70000, 'a big original is capped at the resized typical size')
-ok(M.summaryText(s).includes('saves 2 images'), 'summary text')
+ok(/2 images copied \(≈ .+\) · 3 shown online/.test(M.summaryText(s)), 'summary text')
 eq(M.summaryText({ fields: 0, store: 0, onDemand: 0, skip: 3, bytes: 0 }), 'Nothing selected to save', 'empty summary')
 eq([M.formatBytes(512), M.formatBytes(2048), M.formatBytes(5 * 1024 * 1024), M.formatBytes(null)], ['512 B', '2 KB', '5.0 MB', '—'], 'formatBytes')
 eq([M.display(null), M.display(['a', 'b']), M.display(80), M.display(7.25)], ['—', 'a, b', '80', '7.3'], 'display')

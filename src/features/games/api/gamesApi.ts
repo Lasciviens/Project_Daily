@@ -106,6 +106,8 @@ const GAME_LIST_COLUMNS = [
   'esde_playcount', 'esde_last_played', 'esde_playtime_seconds', 'created_at', 'updated_at',
   // 090 · 096 · 099
   'started_at', 'finished_at', 'library', 'play_seconds', 'play_count', 'last_played_at', 'media',
+  // 104 — the ScreenScraper match marker (never external_source, which ES-DE keys on)
+  'ss_jeu_id', 'ss_scraped_at',
 ].join(', ')
 
 const PLATFORM_LIST_COLUMNS = [
@@ -118,15 +120,26 @@ const PLATFORM_LIST_COLUMNS = [
   'esde_source_hash', 'esde_assets',
 ].join(', ')
 
-/** Runs a list read with the named columns, and once more with `*` if the
- *  database is older than one of them. */
+/** Runs a list read with the named columns. When the database is older than
+ *  one of them, that column is dropped and the read retried — `*` only as the
+ *  last resort, since it also pulls the heavy provider/ES-DE blobs for every
+ *  row. */
 async function withListColumns<T>(columns: string, read: (columns: string) => Promise<T>): Promise<T> {
-  try {
-    return await read(columns)
-  } catch (e) {
-    if (!isMissingColumn(e)) throw e
-    return read('*')
+  let cols = columns
+  for (let attempt = 0; attempt < 4; attempt++) {
+    try {
+      return await read(cols)
+    } catch (e) {
+      if (!isMissingColumn(e)) throw e
+      const msg = (e as { message?: string }).message ?? ''
+      const missing = /column\s+(?:"?\w+"?\.)?"?(\w+)"?\s+does not exist/i.exec(msg)?.[1]
+        ?? /Could not find the '(\w+)' column/i.exec(msg)?.[1]
+      const list = cols.split(', ')
+      if (!missing || !list.includes(missing)) break
+      cols = list.filter(c => c !== missing).join(', ')
+    }
   }
+  return read('*')
 }
 
 /** Every platform row this user owns — RLS already scopes it, so no filter. */

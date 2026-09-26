@@ -1,3 +1,4 @@
+import { ChevronLeft } from 'lucide-react'
 import { useTestGameStore } from '../testGameStore'
 import {
   ALL_PLATFORMS, OTHER_PLATFORMS, STATUS_SECTIONS, platformInfo, platformLabels, splitPlatforms,
@@ -16,6 +17,8 @@ export function TgMobileScope({ platforms, header }: { platforms: PlatformCount[
   const section = useTestGameStore(s => s.section)
   const platform = useTestGameStore(s => s.platform)
   const setPlatform = useTestGameStore(s => s.setPlatform)
+  const scrapeReview = useTestGameStore(s => (s.scrapeMode === 'search' ? s.scrapeReview : null))
+  const setScrapeReview = useTestGameStore(s => s.setScrapeReview)
 
   if (section === 'library') {
     // The shell's effective platform: a persisted platform with no games left
@@ -64,6 +67,20 @@ export function TgMobileScope({ platforms, header }: { platforms: PlatformCount[
             align="start"
           />
         )}
+      </div>
+    )
+  }
+
+  // A ScreenScraper result under review is a step of its own: Back sits
+  // here, always on screen, however far the review has scrolled.
+  if (section === 'scrape' && scrapeReview) {
+    return (
+      <div className="flex min-w-0 items-center gap-1">
+        <button type="button" onClick={() => setScrapeReview(null)} aria-label="Back to results"
+          className="-ml-2 inline-flex min-h-[44px] shrink-0 items-center gap-0.5 pr-1.5 text-[14px] font-semibold text-[var(--tg-accent)]">
+          <ChevronLeft className="h-5 w-5" strokeWidth={2.2} aria-hidden /> Results
+        </button>
+        <p className="tg-muted min-w-0 truncate text-[13px]">{scrapeReview.title}</p>
       </div>
     )
   }

@@ -94,6 +94,8 @@
 .tg-root { background: var(--tg-bg); }
 
 .dark .tg-root, .dark .tg-portal {
+  /* Native controls (date pickers, scrollbars, select popups) follow the theme. */
+  color-scheme: dark;
   --tg-bg: #06090f;
   --tg-sidebar: #090d15;
   --tg-panel: #0d121c;

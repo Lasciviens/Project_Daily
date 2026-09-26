@@ -1,9 +1,9 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { Check, ChevronRight, Search } from 'lucide-react'
 import { platformInfo, type TgGame } from '../../testGameModel'
 import { TgCover } from '../TgCover'
 import { TgScrapeDialog } from './TgScrapeDialog'
-import { primaryVariant } from './tgScrapeModel'
+import { isScraped, primaryVariant, scrapedId } from './tgScrapeModel'
 import { romFileName } from '../../../scraper/ssPlan'
 
 type PickFilter = 'todo' | 'no_cover' | 'no_desc' | 'all'
@@ -15,47 +15,51 @@ const FILTERS: { key: PickFilter; label: string }[] = [
 ]
 const SHOWN = 150
 
-const scraped = (g: TgGame) => g.external_source === 'screenscraper'
 function matches(g: TgGame, f: PickFilter): boolean {
-  if (f === 'todo') return !scraped(g)
+  if (f === 'todo') return !isScraped(g)
   if (f === 'no_cover') return !g.primary_cover_url && !(g.platforms ?? []).some(p => p.cover_url)
   if (f === 'no_desc') return !g.description?.trim()
   return true
 }
 
-/** The game being scraped, and the way to pick another. */
-export function TgScrapeTarget({ games, target, loading, onPick }: {
+/** The game being scraped, the way to pick another, and (folded) the search
+ *  that ran for it — one compact panel on the phone. */
+export function TgScrapeTarget({ games, target, loading, onPick, footer }: {
   games: TgGame[]
   target: TgGame | null
   loading: boolean
   onPick: (id: string | null) => void
+  footer?: ReactNode
 }) {
   const [open, setOpen] = useState(false)
   const p = primaryVariant(target)
   const file = romFileName(p?.esde_path)
+  const prevId = target ? scrapedId(target) : null
 
   return (
     <>
       {target ? (
-        <div className="tg-panel flex items-center gap-3.5 p-3">
-          <div className="relative h-[84px] w-[60px] shrink-0">
-            <TgCover game={target} mode="natural" align="center" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="tg-section-label">Scraping</p>
-            <p className="mt-0.5 line-clamp-2 text-[15px] font-semibold leading-snug">{target.title}</p>
-            <p className="mt-0.5 truncate text-[12px] tg-muted">
-              {platformInfo(target.platformKey).name}{file ? ` · ${file}` : ''}
-            </p>
-            {scraped(target) && (
-              <p className="mt-1 inline-flex items-center gap-1 text-[11.5px] font-semibold text-[var(--tg-green)]">
-                <Check className="h-3.5 w-3.5" strokeWidth={2.4} aria-hidden /> Matched before (ScreenScraper #{target.external_ref})
+        <div className="tg-panel overflow-hidden">
+          <div className="flex items-center gap-3 p-3">
+            <div className="relative h-[64px] w-[46px] shrink-0">
+              <TgCover game={target} mode="natural" align="center" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="line-clamp-2 text-[14.5px] font-semibold leading-snug">{target.title}</p>
+              <p className="mt-0.5 truncate text-[12px] tg-muted">
+                {platformInfo(target.platformKey).name}{file ? ` · ${file}` : ''}
               </p>
-            )}
+              {prevId && (
+                <p className="mt-0.5 inline-flex items-center gap-1 text-[11.5px] font-semibold text-[var(--tg-green)]">
+                  <Check className="h-3.5 w-3.5" strokeWidth={2.4} aria-hidden /> Matched before · #{prevId}
+                </p>
+              )}
+            </div>
+            <button type="button" onClick={() => setOpen(true)} className="tg-btn tg-btn-secondary shrink-0 !px-3 !text-[13px]">
+              Change
+            </button>
           </div>
-          <button type="button" onClick={() => setOpen(true)} className="tg-btn tg-btn-secondary !min-h-[40px] shrink-0 !px-3 !text-[13px]">
-            Change
-          </button>
+          {footer && <div className="border-t border-[var(--tg-border)]">{footer}</div>}
         </div>
       ) : (
         <button
@@ -109,7 +113,7 @@ function TgScrapeGamePicker({ open, onClose, games, currentId, onPick }: {
           {FILTERS.map(f => (
             <button
               key={f.key} type="button" aria-pressed={filter === f.key} onClick={() => setFilter(f.key)}
-              className={`tg-tab !h-[34px] shrink-0 !px-3 !text-[12.5px] ${filter === f.key ? 'is-active' : 'bg-[var(--tg-panel-2)]'}`}
+              className={`tg-tab min-h-[44px] shrink-0 !px-3 !text-[12.5px] ${filter === f.key ? 'is-active' : 'bg-[var(--tg-panel-2)]'}`}
             >
               {f.label} <span className="tabular-nums opacity-70">{counts[f.key]}</span>
             </button>
@@ -135,7 +139,7 @@ function TgScrapeGamePicker({ open, onClose, games, currentId, onPick }: {
                   <span className="block truncate text-[13.5px] font-medium">{g.title}</span>
                   <span className="block truncate text-[11.5px] tg-muted">
                     {platformInfo(g.platformKey).name}
-                    {scraped(g) ? ' · matched' : ''}
+                    {isScraped(g) ? ' · matched' : ''}
                     {!g.description?.trim() ? ' · no description' : ''}
                   </span>
                 </span>

@@ -1,21 +1,24 @@
 import { useState } from 'react'
-import type { SsField, SsLocalized } from '../../../scraper/ssTypes'
+import type { TgGame } from '../../testGameModel'
+import type { SsCandidate, SsField, SsLocalized } from '../../../scraper/ssTypes'
 import type { MediaMode } from '../../../scraper/ssMediaCatalog'
 import { FIELD_MEDIA, sameValue } from '../../../scraper/ssPlan'
-import { display, writes, type FieldChoice, type FieldRow } from './tgScrapeModel'
-import { TgSegmented } from './TgScrapeParts'
+import { pickMediaEntry } from '../../../scraper/ssRules'
+import { display, type FieldChoice, type FieldRow } from './tgScrapeModel'
+import { TgSegmented, TgSsMedia } from './TgScrapeParts'
 
 const LONG = 180
 
-function Value({ v, muted, clamp }: { v: unknown; muted?: boolean; clamp?: boolean }) {
-  const text = display(v)
+function Value({ v, field, muted, clamp }: { v: unknown; field: SsField; muted?: boolean; clamp?: boolean }) {
+  const text = display(v, field)
   const [open, setOpen] = useState(false)
   const long = clamp && text.length > LONG
   return (
     <span className={`block min-w-0 break-words text-[13px] leading-snug ${muted ? 'tg-muted' : 'text-[var(--tg-text)]'}`}>
       {long && !open ? `${text.slice(0, LONG)}…` : text}
       {long && (
-        <button type="button" onClick={() => setOpen(o => !o)} className="ml-1 text-[12px] font-semibold text-[var(--tg-accent)]">
+        // Inline so the line box keeps its height; the ::after extends the tap target.
+        <button type="button" onClick={() => setOpen(o => !o)} className="relative ml-1 inline text-[12px] font-semibold text-[var(--tg-accent)] after:absolute after:-inset-x-2 after:-inset-y-3 after:content-['']">
           {open ? 'Less' : 'More'}
         </button>
       )}
@@ -32,8 +35,8 @@ function Variants({ list, value, onPick, label }: { list: SsLocalized[]; value: 
         <button
           key={v.key} type="button" role="radio" aria-checked={value === v.key} title={v.text}
           onClick={() => onPick(value === v.key ? null : v.key)}
-          className={`h-[26px] rounded-md px-2 text-[11px] font-semibold uppercase [@media(pointer:coarse)]:h-[34px] ${
-            value === v.key ? 'bg-[var(--tg-accent)] text-[var(--tg-on-accent)]' : 'bg-[var(--tg-panel-2)] text-[var(--tg-text-2)]'
+          className={`min-h-[30px] min-w-[40px] rounded-md px-2 text-[11px] font-semibold uppercase [@media(pointer:coarse)]:min-h-[44px] ${
+            value === v.key ? 'bg-[var(--tg-seg-active-bg,var(--tg-accent-soft))] text-[var(--tg-nav-active-text,var(--tg-accent))] shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--tg-accent)_35%,transparent)]' : 'bg-[var(--tg-panel-2)] text-[var(--tg-text-2)]'
           }`}
         >
           {v.key}
@@ -43,75 +46,90 @@ function Variants({ list, value, onPick, label }: { list: SsLocalized[]; value: 
   )
 }
 
+/** Yours and theirs as pictures — the one decision that is purely visual. */
+function ImagePair({ current, candidate, type, token }: { current: unknown; candidate: SsCandidate; type: string; token: string | undefined }) {
+  const entry = candidate.media.find(m => m.token === token && m.type === type) ?? pickMediaEntry(candidate.media, type, [])
+  const box = 'relative h-[62px] w-[62px] overflow-hidden rounded-lg border border-[var(--tg-border)] bg-[var(--tg-panel-2)]'
+  return (
+    <div className="mt-1 flex items-center gap-2">
+      <span className={box} title="Yours">
+        {typeof current === 'string' && current
+          ? <img src={current} alt="Yours" loading="lazy" className="h-full w-full object-contain" />
+          : <span className="grid h-full place-items-center text-[10.5px] tg-faint">None</span>}
+      </span>
+      <span aria-hidden className="text-[12px] tg-faint">→</span>
+      <TgSsMedia candidate={candidate} entry={entry ?? null} width={200} className={box} alt="Theirs" />
+    </div>
+  )
+}
+
 /**
- * Field by field: yours beside theirs, and Keep / Fill / Replace for each.
- * Fill only exists where yours is empty and Replace only where it is not, so
- * every choice on screen means exactly what it says.
+ * Field by field: the label and its Keep / Fill / Replace on one line, yours
+ * and theirs underneath (pictures for image fields). Fill only exists where
+ * yours is empty, Replace only where it is not. Identical fields and fields
+ * they have nothing for fold into one line each.
  */
-export function TgScrapeFieldList({ rows, choices, onChoice, mediaModeOf, names, synopses, titleRegion, descLang, onTitleRegion, onDescLang, readOnly }: {
+export function TgScrapeFieldList({ candidate, rows, choices, onChoice, mediaModeOf, tokens, names, synopses, titleRegion, descLang, onTitleRegion, onDescLang }: {
+  game: TgGame
+  candidate: SsCandidate
   rows: FieldRow[]
   choices: Partial<Record<SsField, FieldChoice>>
   onChoice: (field: SsField, c: FieldChoice) => void
   mediaModeOf: (type: string) => MediaMode
+  tokens: Record<string, string>
   names: SsLocalized[]
   synopses: SsLocalized[]
   titleRegion: string | null
   descLang: string | null
   onTitleRegion: (k: string | null) => void
   onDescLang: (k: string | null) => void
-  readOnly: boolean
 }) {
-  const [showAll, setShowAll] = useState(false)
   const [showSame, setShowSame] = useState(false)
-  // A picked title/description variant is what gets compared, not the default.
-  const theirsOf = (r: FieldRow): unknown => {
-    if (r.field === 'title' && titleRegion) return names.find(n => n.key === titleRegion)?.text ?? r.theirs
-    if (r.field === 'description' && descLang) return synopses.find(s => s.key === descLang)?.text ?? r.theirs
-    return r.theirs
-  }
-  const isSame = (r: FieldRow) => !r.isImage && sameValue(r.current, theirsOf(r))
+  const [showNothing, setShowNothing] = useState(false)
+  const isSame = (r: FieldRow) => !r.isImage && sameValue(r.current, r.theirs)
   const offered = rows.filter(r => !r.theirsEmpty)
   const same = offered.filter(isSame)
   const nothing = rows.filter(r => r.theirsEmpty)
-  const shown = [...offered.filter(r => !isSame(r)), ...(showSame ? same : []), ...(showAll ? nothing : [])]
+  const shown = [...offered.filter(r => !isSame(r)), ...(showSame ? same : []), ...(showNothing ? nothing : [])]
 
   return (
     <div className="flex flex-col divide-y divide-[var(--tg-border)]">
       {shown.map(r => {
         const choice = choices[r.field] ?? 'keep'
-        const mediaType = FIELD_MEDIA[r.field]
-        const mode = mediaType ? mediaModeOf(mediaType) : undefined
+        const type = FIELD_MEDIA[r.field]
         const rowSame = isSame(r)
-        const willWrite = !rowSame && writes({ ...r, same: false }, choice, mode)
-        const theirs = theirsOf(r)
-        const options: { value: FieldChoice; label: string; disabled?: boolean; hint?: string }[] = [
+        const options: { value: FieldChoice; label: string }[] = [
           { value: 'keep', label: 'Keep' },
           r.currentEmpty ? { value: 'fill', label: 'Fill' } : { value: 'replace', label: 'Replace' },
         ]
-        const imageNote = r.isImage && !r.theirsEmpty && mode !== 'store'
-          ? 'Saved only when this image is set to Save below'
-          : null
         return (
-          <div key={r.field} className="grid grid-cols-1 gap-2 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start sm:gap-4">
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <span className="text-[12.5px] font-semibold text-[var(--tg-text)]">{r.label}</span>
-                {willWrite && <span className="rounded bg-[var(--tg-green-soft)] px-1.5 text-[10.5px] font-semibold text-[var(--tg-green)]">will {r.currentEmpty ? 'fill' : 'replace'}</span>}
-                {rowSame && <span className="text-[11px] tg-faint">same as yours</span>}
-              </div>
-              <div className="mt-1 grid grid-cols-[3.25rem_minmax(0,1fr)] gap-x-2 gap-y-1">
-                <span className="text-[11px] uppercase tracking-[0.06em] tg-faint">Yours</span>
-                <Value v={r.isImage ? (r.currentEmpty ? null : 'Has an image') : r.current} muted clamp />
-                <span className="text-[11px] uppercase tracking-[0.06em] tg-faint">Theirs</span>
-                <Value v={r.isImage ? (r.theirsEmpty ? null : 'Available') : theirs} clamp />
-              </div>
-              {r.field === 'title' && <Variants list={names} value={titleRegion} onPick={onTitleRegion} label="Title variant" />}
-              {r.field === 'description' && <Variants list={synopses} value={descLang} onPick={onDescLang} label="Description language" />}
-              {imageNote && <p className="mt-1 text-[11px] tg-faint">{imageNote}</p>}
+          <div key={r.field} className="py-2.5">
+            <div className="flex min-h-[36px] items-center justify-between gap-2">
+              <span className="min-w-0 truncate text-[12.5px] font-semibold text-[var(--tg-text)]">
+                {r.label}
+                {rowSame && <span className="ml-1.5 text-[11px] font-normal tg-faint">same as yours</span>}
+              </span>
+              {!r.theirsEmpty && !rowSame && (
+                <TgSegmented size="sm" label={`${r.label}: what to do`} value={choice} options={options} onChange={c => onChoice(r.field, c)} />
+              )}
             </div>
-            {!readOnly && !r.theirsEmpty && !rowSame && (
-              <TgSegmented size="sm" label={`${r.label}: what to do`} value={choice} options={options} onChange={c => onChoice(r.field, c)} />
+            {r.isImage && type ? (
+              <>
+                {!r.theirsEmpty && <ImagePair current={r.current} candidate={candidate} type={type} token={tokens[type]} />}
+                {!r.theirsEmpty && choice !== 'keep' && mediaModeOf(type) !== 'store' && (
+                  <p className="mt-1 text-[11px] tg-faint">Their image is set to Online below — switch it to Copy to use it here.</p>
+                )}
+              </>
+            ) : (
+              <div className="mt-0.5 grid grid-cols-[3.25rem_minmax(0,1fr)] gap-x-2 gap-y-0.5">
+                <span className="text-[11px] uppercase tracking-[0.06em] tg-faint">Yours</span>
+                <Value v={r.current} field={r.field} muted clamp />
+                <span className="text-[11px] uppercase tracking-[0.06em] tg-faint">Theirs</span>
+                <Value v={r.theirs} field={r.field} clamp />
+              </div>
             )}
+            {r.field === 'title' && <Variants list={names} value={titleRegion} onPick={onTitleRegion} label="Title variant" />}
+            {r.field === 'description' && <Variants list={synopses} value={descLang} onPick={onDescLang} label="Description language" />}
           </div>
         )
       })}
@@ -122,9 +140,9 @@ export function TgScrapeFieldList({ rows, choices, onChoice, mediaModeOf, names,
         </button>
       )}
       {nothing.length > 0 && (
-        <button type="button" onClick={() => setShowAll(s => !s)} className="min-h-[44px] text-left text-[12.5px] leading-snug">
+        <button type="button" onClick={() => setShowNothing(s => !s)} className="min-h-[44px] text-left text-[12.5px] leading-snug">
           <span className="tg-muted">They have nothing for: {nothing.map(r => r.label).join(', ')} </span>
-          <span className="font-semibold text-[var(--tg-accent)]">{showAll ? 'Hide' : 'Show'}</span>
+          <span className="font-semibold text-[var(--tg-accent)]">{showNothing ? 'Hide' : 'Show'}</span>
         </button>
       )}
     </div>

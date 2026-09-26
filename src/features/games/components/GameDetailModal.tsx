@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { Dialog, DialogPanel, DialogBackdrop } from '@headlessui/react'
 import {
   useGameDetail, useUpdateGame, useDeleteGame, useAddToQueue, useRemoveFromQueue,
@@ -436,6 +436,7 @@ export function GameDetailModal({ gameId, onClose, initialEditing = false, class
   // form (/games).
   const finishEditing = initialEditing ? onClose : () => setEditing(false)
   const navigate = useNavigate()
+  const location = useLocation()
   const openScrape = useTestGameStore(s => s.openScrape)
 
   function handleSave(id: string, patch: GamePatch) {
@@ -523,7 +524,7 @@ export function GameDetailModal({ gameId, onClose, initialEditing = false, class
                     {game.play_order != null ? `✕ Remove from Queue (#${game.play_order})` : '🎮 Add to Queue'}
                   </button>
                   <button onClick={() => setPlanOpen(true)} className="text-xs font-semibold px-3 py-1.5 min-h-[44px] rounded-lg bg-accent-100 hover:bg-accent-200 text-accent-700 transition-colors">📅 Plan session</button>
-                  <button onClick={() => { onClose(); openScrape(game.id); navigate('/games') }} className="text-xs font-semibold px-3 py-1.5 min-h-[44px] rounded-lg bg-ink-100 hover:bg-ink-200 text-ink-700 transition-colors">✨ Scrape</button>
+                  <button onClick={() => { onClose(); openScrape(game.id); if (location.pathname !== '/games') navigate('/games') }} className="text-xs font-semibold px-3 py-1.5 min-h-[44px] rounded-lg bg-ink-100 hover:bg-ink-200 text-ink-700 transition-colors">✨ Scrape</button>
                   <button onClick={() => setConfirmDelete(true)} className="text-xs font-semibold px-3 py-1.5 min-h-[44px] rounded-lg bg-ink-100 hover:bg-red-100 text-ink-500 hover:text-red-600 transition-colors">🗑 Delete</button>
                 </div>
               </div>

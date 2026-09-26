@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react'
-import { Search, X } from 'lucide-react'
+import { Search, Settings2, X } from 'lucide-react'
 import { useTestGameStore } from '../testGameStore'
 import type { PlatformCount, StatusCounts } from '../testGameModel'
 import type { TgHeaderConfig } from '../tgTypes'
@@ -26,6 +26,8 @@ export function TgMobileHeader({ platforms, genres, statusCounts, header, onRand
   const section = useTestGameStore(s => s.section)
   const search = useTestGameStore(s => s.search)
   const setSearch = useTestGameStore(s => s.setSearch)
+  const scrapeReviewing = useTestGameStore(s => s.section === 'scrape' && s.scrapeMode === 'search' && !!s.scrapeReview)
+  const setScrapeSettingsOpen = useTestGameStore(s => s.setScrapeSettingsOpen)
   const [searchOpen, setSearchOpen] = useState(false)
   // An open but empty field doesn't follow you to another section (it would
   // come back focused, keyboard up, on a tab where you never asked for it).
@@ -57,6 +59,11 @@ export function TgMobileHeader({ platforms, genres, statusCounts, header, onRand
           <h1 className="truncate text-[19px] font-bold tracking-[-0.01em]">Game Library</h1>
         </div>
         <div className="flex shrink-0 items-center gap-1">
+          {section === 'scrape' && (
+            <button type="button" onClick={() => setScrapeSettingsOpen(true)} aria-label="What to save" className="tg-icon-btn">
+              <Settings2 size={20} strokeWidth={1.9} />
+            </button>
+          )}
           {hasFilters && <TgRandomButton onPick={onRandom} />}
           {hasFilters && (
             <button
@@ -108,7 +115,7 @@ export function TgMobileHeader({ platforms, genres, statusCounts, header, onRand
         )}
       </div>
 
-      {(section === 'advanced' || section === 'scrape') && header.tabs.length > 0 && (
+      {(section === 'advanced' || (section === 'scrape' && !scrapeReviewing)) && header.tabs.length > 0 && (
         <div className={`tg-scroll-x flex gap-2 pb-2 ${GUTTER} ${SCROLL_GUTTER}`}>
           {header.tabs.map(t => {
             const active = t.key === header.activeTab

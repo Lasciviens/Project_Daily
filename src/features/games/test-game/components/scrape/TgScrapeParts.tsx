@@ -2,9 +2,10 @@ import type { ReactNode } from 'react'
 import { ImageOff, Search, Wand2 } from 'lucide-react'
 import type { MatchBasis, SsCandidate, SsMediaEntry } from '../../../scraper/ssTypes'
 import { SsImage } from '../../../scraper/SsImage'
-import { ssMediaUrl } from '../../../scraper/ssApi'
+import { refOf, ssMediaUrl } from '../../../scraper/ssApi'
 import { pickMediaEntry } from '../../../scraper/ssRules'
 import { mediaInfo } from '../../../scraper/ssMediaCatalog'
+import { EXACT_BASES } from '../../../scraper/ssPlan'
 import { BASIS_LABEL } from './tgScrapeModel'
 
 // Small building blocks shared by the Scrape page's pieces.
@@ -13,7 +14,7 @@ export function TgScrapeCard({ title, aside, children, className = '' }: { title
   return (
     <section className={`tg-panel p-4 ${className}`}>
       {(title || aside) && (
-        <div className="mb-3 flex min-h-[28px] items-center justify-between gap-3">
+        <div className="mb-3 flex min-h-[28px] flex-wrap items-center justify-between gap-x-3 gap-y-1">
           {title && <h2 className="tg-section-label">{title}</h2>}
           {aside}
         </div>
@@ -23,7 +24,11 @@ export function TgScrapeCard({ title, aside, children, className = '' }: { title
   )
 }
 
-/** A compact segmented choice. Options can be disabled with a reason. */
+/**
+ * A compact segmented choice. The selected option uses the page's soft
+ * "active segment" look — only a page's one commit button is solid accent.
+ * 44px tall on touch screens.
+ */
 export function TgSegmented<T extends string>({ value, options, onChange, label, size = 'md' }: {
   value: T
   options: { value: T; label: string; disabled?: boolean; hint?: string }[]
@@ -31,7 +36,7 @@ export function TgSegmented<T extends string>({ value, options, onChange, label,
   label: string
   size?: 'sm' | 'md'
 }) {
-  const h = size === 'sm' ? 'min-h-[32px] px-2.5 text-[12px] [@media(pointer:coarse)]:min-h-[40px]' : 'min-h-[36px] px-3 text-[13px] [@media(pointer:coarse)]:min-h-[44px]'
+  const h = size === 'sm' ? 'min-h-[32px] px-2.5 text-[12px]' : 'min-h-[36px] px-3 text-[13px]'
   return (
     <div role="radiogroup" aria-label={label} className="inline-flex shrink-0 self-start justify-self-start rounded-[10px] border border-[var(--tg-border)] bg-[var(--tg-panel-2)] p-0.5">
       {options.map(o => {
@@ -45,8 +50,10 @@ export function TgSegmented<T extends string>({ value, options, onChange, label,
             disabled={o.disabled}
             title={o.hint}
             onClick={() => onChange(o.value)}
-            className={`${h} rounded-[8px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
-              on ? 'bg-[var(--tg-accent)] text-[var(--tg-on-accent)]' : 'text-[var(--tg-text-2)] [@media(hover:hover)]:hover:bg-[var(--tg-hover)]'
+            className={`${h} rounded-[8px] font-semibold transition-colors [@media(pointer:coarse)]:min-h-[44px] disabled:cursor-not-allowed disabled:opacity-40 ${
+              on
+                ? 'bg-[var(--tg-seg-active-bg,var(--tg-accent-soft))] text-[var(--tg-nav-active-text,var(--tg-accent))] shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--tg-accent)_35%,transparent)]'
+                : 'text-[var(--tg-text-2)] [@media(hover:hover)]:hover:bg-[var(--tg-hover)]'
             }`}
           >
             {o.label}
@@ -57,26 +64,48 @@ export function TgSegmented<T extends string>({ value, options, onChange, label,
   )
 }
 
-const BASIS_TONE: Record<MatchBasis, string> = {
-  hash: 'bg-[var(--tg-green-soft)] text-[var(--tg-green)]',
-  filename: 'bg-[var(--tg-green-soft)] text-[var(--tg-green)]',
-  serial: 'bg-[var(--tg-green-soft)] text-[var(--tg-green)]',
-  id: 'bg-[var(--tg-blue-soft)] text-[var(--tg-blue)]',
-  previous: 'bg-[var(--tg-blue-soft)] text-[var(--tg-blue)]',
-  filename_guess: 'bg-[var(--tg-grey-soft)] text-[var(--tg-text-2)]',
-  name: 'bg-[var(--tg-grey-soft)] text-[var(--tg-text-2)]',
+/** An on/off switch in the page's style (no native checkbox). */
+export function TgSwitch({ on, onChange, label, hint }: { on: boolean; onChange: (v: boolean) => void; label: string; hint?: string }) {
+  return (
+    <button
+      type="button" role="switch" aria-checked={on} onClick={() => onChange(!on)}
+      className="flex min-h-[44px] w-full items-center justify-between gap-3 text-left"
+    >
+      <span className="min-w-0">
+        <span className="block text-[13px] font-medium text-[var(--tg-text)]">{label}</span>
+        {hint && <span className="block text-[11.5px] leading-snug tg-muted">{hint}</span>}
+      </span>
+      <span aria-hidden className={`relative h-[26px] w-[44px] shrink-0 rounded-full transition-colors ${on ? 'bg-[var(--tg-accent)]' : 'bg-[var(--tg-border-strong)]'}`}>
+        <span className={`absolute top-[3px] h-5 w-5 rounded-full bg-white shadow transition-[left] ${on ? 'left-[21px]' : 'left-[3px]'}`} />
+      </span>
+    </button>
+  )
 }
 
-/** How a result was found: ROM identity reads green (strong), a name grey (weak). */
+const EXACT_TONE = 'bg-[var(--tg-green-soft)] text-[var(--tg-green)]'
+const SOFT_TONE = 'bg-[var(--tg-grey-soft)] text-[var(--tg-text-2)]'
+const toneOf = (b: MatchBasis) => (EXACT_BASES.includes(b) ? EXACT_TONE : b === 'previous' ? 'bg-[var(--tg-blue-soft)] text-[var(--tg-blue)]' : SOFT_TONE)
+
+/** How a result was found: ROM identity reads green (strong), a name or a
+ *  filename guess grey (weak), the previous match blue. */
 export function TgBasisBadges({ basis }: { basis: MatchBasis[] }) {
   return (
     <span className="flex flex-wrap gap-1">
       {basis.map(b => (
-        <span key={b} className={`inline-flex h-[20px] items-center rounded-md px-1.5 text-[10.5px] font-semibold uppercase tracking-[0.04em] ${BASIS_TONE[b]}`}>
+        <span key={b} className={`inline-flex h-[22px] items-center rounded-md px-1.5 text-[11px] font-semibold ${toneOf(b)}`}>
           {BASIS_LABEL[b]}
         </span>
       ))}
     </span>
+  )
+}
+
+/** A neutral chip (system, "your system"). */
+export function TgChip({ children, tone = 'neutral' }: { children: ReactNode; tone?: 'neutral' | 'good' }) {
+  return (
+    <span className={`inline-flex h-[22px] items-center rounded-md px-1.5 text-[11px] font-semibold ${
+      tone === 'good' ? EXACT_TONE : 'border border-[var(--tg-border)] bg-[var(--tg-panel)] text-[var(--tg-text-2)]'
+    }`}>{children}</span>
   )
 }
 
@@ -88,8 +117,8 @@ export function TgFlagChips({ flags }: { flags: string[] }) {
       {flags.map(f => (
         <span
           key={f}
-          className={`inline-flex h-[20px] items-center rounded-md px-1.5 text-[10.5px] font-semibold ${
-            f === 'best dump' ? 'bg-[var(--tg-green-soft)] text-[var(--tg-green)]' : 'bg-[var(--tg-red-soft)] text-[var(--tg-red)]'
+          className={`inline-flex h-[22px] items-center rounded-md px-1.5 text-[11px] font-semibold ${
+            f === 'best dump' ? EXACT_TONE : 'bg-[var(--tg-red-soft)] text-[var(--tg-red)]'
           }`}
         >
           {f}
@@ -101,14 +130,14 @@ export function TgFlagChips({ flags }: { flags: string[] }) {
 
 /** One file of a candidate through the proxy, with a drawn placeholder. */
 export function TgSsMedia({ candidate, entry, width, className = '', imgClassName = 'h-full w-full object-contain', alt = '' }: {
-  candidate: Pick<SsCandidate, 'jeu_id' | 'system' | 'media_sig'>
+  candidate: Pick<SsCandidate, 'jeu_id' | 'system' | 'media_sig' | 'media_exp'>
   entry: SsMediaEntry | null
   width: number
   className?: string
   imgClassName?: string
   alt?: string
 }) {
-  const src = entry ? ssMediaUrl({ jeuId: candidate.jeu_id, systemId: candidate.system.id, sig: candidate.media_sig }, entry, { width, format: mediaInfo(entry.type).alpha ? 'png' : 'jpg' }) : null
+  const src = entry ? ssMediaUrl(refOf(candidate), entry, { width, format: mediaInfo(entry.type).alpha ? 'png' : 'jpg' }) : null
   return (
     <SsImage
       src={src}
@@ -126,7 +155,7 @@ export function TgSsMedia({ candidate, entry, width, className = '', imgClassNam
 }
 
 /** A candidate's box front (else 3D box, else screenshot) as a small cover. */
-export function TgCandidateCover({ candidate, regions, width = 160, className = '' }: {
+export function TgCandidateCover({ candidate, regions, width = 200, className = '' }: {
   candidate: SsCandidate
   regions: string[]
   width?: number
@@ -141,7 +170,7 @@ export function TgCandidateCover({ candidate, regions, width = 160, className = 
 export function TgScrapeEmpty({ hasTarget, hasResults }: { hasTarget: boolean; hasResults: boolean }) {
   const Icon = hasResults ? Search : Wand2
   const text = !hasTarget
-    ? 'Pick a game on the left, then search. You can search without one too — you just cannot save.'
+    ? 'Pick a game on the left, then search. You can search without one too — you can look, just not save.'
     : hasResults ? 'Open a result to compare it with your game and choose what to save.'
     : 'Search by name, by ROM file or hash, or by ScreenScraper id.'
   return (

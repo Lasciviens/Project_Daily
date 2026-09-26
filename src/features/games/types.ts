@@ -102,6 +102,9 @@ export interface Game {
   /** Mirrored artwork, ScreenScraper media type → public Storage URL
    *  (migration 099). Optional: absent before 099 and `{}` for most rows. */
   media?:                Record<string, string> | null
+  /** The ScreenScraper game id this row was matched to (migration 104). */
+  ss_jeu_id?:            string | null
+  ss_scraped_at?:        string | null
   esde_playcount:        number | null
   esde_last_played:      string | null
   esde_playtime_seconds: number | null
