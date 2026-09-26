@@ -251,16 +251,11 @@ export function FoodLogModal({ open = true, onClose, date, defaultSlot, defaultQ
   async function handleSaveMeal() {
     if (basket.length === 0 || !mealName.trim()) return
     const servingsN = Math.max(1, Number(sanitizeDecimal(mealServings)) || 1)
-    const r1 = (n: number) => Math.round(n * 10) / 10
-    const m = basket.reduce((a, it) => {
-      const s = ingredientSnapshot(it.ingredient, it.grams)
-      return { calories: a.calories + (s.calories ?? 0), protein_g: a.protein_g + (s.protein_g ?? 0), carbs_g: a.carbs_g + (s.carbs_g ?? 0), fat_g: a.fat_g + (s.fat_g ?? 0), fiber_g: a.fiber_g + (s.fiber_g ?? 0), sugar_g: a.sugar_g + (s.sugar_g ?? 0) }
-    }, { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0, fiber_g: 0, sugar_g: 0 })
-    const per = (v: number) => r1(v / servingsN)
     try {
+      // 'from_ingredients': the save computes macros from the basket, and every
+      // later ingredient edit recomputes them. 'manual' froze the total forever.
       await createRecipe.mutateAsync({
-        title: mealName.trim(), servings: servingsN, macro_mode: 'manual',
-        calories: per(m.calories), protein_g: per(m.protein_g), carbs_g: per(m.carbs_g), fat_g: per(m.fat_g), fiber_g: per(m.fiber_g), sugar_g: per(m.sugar_g),
+        title: mealName.trim(), servings: servingsN, macro_mode: 'from_ingredients',
         is_temp: !saveToLibrary,
         ingredients: basket.map(it => ({ name: it.ingredient.name, quantity: it.grams, unit: 'g', note: null, library_ingredient_id: it.ingredient.id })),
       })

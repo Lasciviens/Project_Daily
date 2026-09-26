@@ -6,7 +6,7 @@ import { Button, IconButton, SegmentedControl } from '../../../shared/ui'
 import { useCreateRecipe, useUpdateRecipe } from '../hooks/useRecipes'
 import { useIngredientLibrary, useCreateIngredientLibraryItem } from '../hooks/useIngredientLibrary'
 import { parseRecipeText, parseRecipeFromUrl, estimateRecipeMacros } from '../../ai/api/aiApi'
-import { sumMacros } from '../api/recipesApi'
+import { canComputeFromIngredients, sumMacros } from '../api/recipesApi'
 import { MacroWarningBadge } from './MacroWarningBadge'
 import { checkMacroConsistency } from '../macroSanity'
 import type { RecipeWithIngredients, IngredientDraft, MacroMode, IngredientLibraryItem } from '../types'
@@ -83,7 +83,10 @@ export function RecipeModal({ open = true, onClose, recipe }: Props) {
           : [{ ...EMPTY_ROW }])
         setInstructions(recipe.instructions ?? '')
         setDescription(recipe.description ?? '')
-        setMacroMode(recipe.macro_mode)
+        // A manual recipe whose ingredients are all library-linked by weight came
+        // from the logger's old "Save meal"; it edits as 'from_ingredients', so changing an ingredient changes the total.
+        setMacroMode(recipe.macro_mode === 'manual' && canComputeFromIngredients(recipe.ingredients)
+          ? 'from_ingredients' : recipe.macro_mode)
         setCategory(recipe.category ?? '')
         setCalories(recipe.calories?.toString() ?? '')
         setProtein(recipe.protein_g?.toString() ?? '')
