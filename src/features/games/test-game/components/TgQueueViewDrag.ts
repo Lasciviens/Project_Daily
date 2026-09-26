@@ -25,6 +25,9 @@ interface Session {
   lastY: number
   startScroll: number
   scroller: HTMLElement | null
+  /** The scroller's auto-scroll band, measured once at the start (not per frame). */
+  edgeTop: number
+  edgeBottom: number
   frame: number
 }
 
@@ -60,10 +63,7 @@ class QueueDrag {
     if (!s) return
     const sc = s.scroller
     if (sc) {
-      const rect = sc.getBoundingClientRect()
-      // The phone scroller runs under the fixed tab bar; its bottom padding says how far.
-      const bottom = rect.bottom - parseFloat(getComputedStyle(sc).paddingBottom || '0')
-      const top = Math.max(rect.top, 0)
+      const top = s.edgeTop, bottom = s.edgeBottom
       let v = 0
       if (s.lastY < top + EDGE) v = -MAX_SPEED * Math.min(1, (top + EDGE - s.lastY) / EDGE)
       else if (s.lastY > bottom - EDGE) v = MAX_SPEED * Math.min(1, (s.lastY - (bottom - EDGE)) / EDGE)
@@ -108,9 +108,15 @@ class QueueDrag {
     const cur = rows[from]
     const next = rows[from + 1] ?? rows[from - 1]
     const gap = rows[from + 1] ? next.top - (cur.top + cur.height) : cur.top - (next.top + next.height)
+    // The scroller does not move while a finger holds the grip, so its edges
+    // are read once — getComputedStyle every frame forced a style recalc.
+    // The phone scroller runs under the fixed tab bar; its bottom padding says how far.
+    const rect = scroller?.getBoundingClientRect()
     const s: Session = {
       pointerId: e.pointerId, handle, rows, from, to: from, shift: cur.height + Math.max(0, gap),
       startY: e.clientY, lastY: e.clientY, startScroll: scroll, scroller, frame: 0,
+      edgeTop: Math.max(rect?.top ?? 0, 0),
+      edgeBottom: (rect?.bottom ?? 0) - (scroller ? parseFloat(getComputedStyle(scroller).paddingBottom || '0') : 0),
     }
     this.s = s
     this.setDragId(id)

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties, type PointerEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type PointerEvent } from 'react'
 
 // Drag-down-to-close for the phone bottom sheet. The grab handle and title
 // row drag with pointer events (`touch-action: none` there, so the browser
@@ -7,11 +7,16 @@ import { useEffect, useRef, useState, type CSSProperties, type PointerEvent } fr
 // that can cancel the native overscroll — scrolling a scrolled list is never
 // hijacked. Release past a distance threshold, or a quick flick, closes;
 // anything else springs back.
+//
+// The panel and backdrop move through their own style properties, never
+// through React state: a drag re-renders nothing, however heavy the sheet's
+// content (it used to re-render the whole sheet on every pointer move).
 
 const SLOP = 6 // px before a body touch counts as a drag
 const CLOSE_FRACTION = 0.25
 const CLOSE_MAX_PX = 140
 const FLICK_PX_PER_MS = 0.55
+const SETTLE_MS = 220
 
 interface Track { startY: number; lastY: number; lastT: number; v: number }
 
@@ -20,28 +25,60 @@ function reducedMotion() {
 }
 
 export function useTgSheetDrag(open: boolean, onClose: () => void) {
-  const [offset, setOffset] = useState(0)
-  const [dragging, setDragging] = useState(false)
-  const [panelEl, setPanelEl] = useState<HTMLElement | null>(null)
+  // The panel lives in a ref for the style writes and in state so the effects
+  // re-run when the Dialog remounts it.
+  const panelRef = useRef<HTMLElement | null>(null)
+  const [panelEl, setPanelElState] = useState<HTMLElement | null>(null)
+  const setPanelEl = useCallback((el: HTMLElement | null) => { panelRef.current = el; setPanelElState(el) }, [])
   const [bodyEl, setBodyEl] = useState<HTMLElement | null>(null)
+  const backdropRef = useRef<HTMLDivElement | null>(null)
   const track = useRef<Track | null>(null)
   const offsetRef = useRef(0)
+  const heightRef = useRef(400)
+  const settleTimer = useRef(0)
   const closeRef = useRef(onClose)
   useEffect(() => { closeRef.current = onClose }, [onClose])
 
-  // A reopened sheet starts back at rest (adjusting state during render).
-  const [wasOpen, setWasOpen] = useState(open)
-  if (open !== wasOpen) {
-    setWasOpen(open)
-    if (open) { setOffset(0); setDragging(false) }
+  /** Drops every inline style a drag left, handing the panel back to its CSS transitions. */
+  const clear = () => {
+    window.clearTimeout(settleTimer.current)
+    offsetRef.current = 0
+    for (const el of [panelRef.current, backdropRef.current]) {
+      if (!el) continue
+      el.style.removeProperty('transform')
+      el.style.removeProperty('transition')
+      el.style.removeProperty('opacity')
+    }
   }
 
-  useEffect(() => { if (open) offsetRef.current = 0 }, [open])
+  const paint = (px: number, dragging: boolean) => {
+    offsetRef.current = px
+    const settle = reducedMotion() ? 'none' : `transform ${SETTLE_MS}ms cubic-bezier(0.2, 0.8, 0.2, 1)`
+    const p = panelRef.current
+    if (p) {
+      p.style.transition = dragging ? 'none' : settle
+      p.style.transform = `translateY(${px}px)`
+    }
+    const b = backdropRef.current
+    if (b) {
+      b.style.transition = dragging ? 'none' : `opacity ${SETTLE_MS}ms ease-out`
+      b.style.opacity = String(Math.max(0, 1 - px / heightRef.current))
+    }
+  }
 
-  const apply = (px: number) => { offsetRef.current = px; setOffset(px) }
+  // A reopened (or remounted) sheet starts at rest.
+  useEffect(() => {
+    if (!open) return
+    track.current = null
+    clear()
+    // panelEl is here so a remounted panel is reset too.
+  }, [open, panelEl])
+  useEffect(() => () => window.clearTimeout(settleTimer.current), [])
+
   const begin = (y: number) => {
+    window.clearTimeout(settleTimer.current)
+    heightRef.current = panelRef.current?.offsetHeight || 400
     track.current = { startY: y - offsetRef.current, lastY: y, lastT: performance.now(), v: 0 }
-    setDragging(true)
   }
   const move = (y: number) => {
     const t = track.current
@@ -50,20 +87,22 @@ export function useTgSheetDrag(open: boolean, onClose: () => void) {
     const dt = Math.max(1, now - t.lastT)
     t.v = 0.6 * ((y - t.lastY) / dt) + 0.4 * t.v
     t.lastY = y; t.lastT = now
-    apply(Math.max(0, y - t.startY))
+    paint(Math.max(0, y - t.startY), true)
   }
   const end = () => {
     const t = track.current
     track.current = null
-    setDragging(false)
     if (!t) return
-    const height = panelEl?.offsetHeight ?? 400
+    const height = heightRef.current
     const d = offsetRef.current
     if (d > Math.min(CLOSE_MAX_PX, height * CLOSE_FRACTION) || (t.v > FLICK_PX_PER_MS && d > 16)) {
-      apply(height) // stays off-screen while the Dialog runs its leave transition
+      paint(height, false) // stays off-screen while the Dialog runs its leave transition
       closeRef.current()
+    } else if (d > 0) {
+      paint(0, false)
+      settleTimer.current = window.setTimeout(clear, SETTLE_MS + 30)
     } else {
-      apply(0)
+      clear()
     }
   }
 
@@ -99,9 +138,9 @@ export function useTgSheetDrag(open: boolean, onClose: () => void) {
       bodyEl.removeEventListener('touchend', onEnd)
       bodyEl.removeEventListener('touchcancel', onEnd)
     }
-    // begin/move/end only touch refs and stable setters.
+    // begin/move/end only touch refs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bodyEl, panelEl])
+  }, [bodyEl])
 
   // Handle + title row. A press on a control there (Reset) stays a click:
   // the pointer is only captured once it has really moved.
@@ -122,14 +161,5 @@ export function useTgSheetDrag(open: boolean, onClose: () => void) {
     onPointerCancel: end,
   }
 
-  const height = panelEl?.offsetHeight || 1
-  const settle = reducedMotion() ? 'none' : 'transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1)'
-  const panelStyle: CSSProperties | undefined = offset || dragging
-    ? { transform: `translateY(${offset}px)`, transition: dragging ? 'none' : settle }
-    : undefined
-  const backdropStyle: CSSProperties | undefined = offset
-    ? { opacity: Math.max(0, 1 - offset / height), transition: dragging ? 'none' : undefined }
-    : undefined
-
-  return { setPanelEl, setBodyEl, handleProps, panelStyle, backdropStyle }
+  return { setPanelEl, setBodyEl, backdropRef, handleProps }
 }
