@@ -67,15 +67,22 @@ function Suggestion({ children, onApply }: { children: ReactNode; onApply: () =>
 }
 
 export function DayTargetsEditor({ date = todayStr(), onDone }: { date?: string; onDone: () => void }) {
-  const { targets, update, isSaving } = useDayTargets()
+  const { targets, update, isSaving, isLoaded } = useDayTargets()
   const profiles = useDayTargetProfiles()
-  const coach = useNutritionCoach(date, targets)
   const [draft, setDraft] = useState<DayTargets>(targets)
-  const patch = (p: Partial<DayTargets>) => setDraft(d => ({ ...d, ...p }))
+  // Opened before the saved goals arrived → take them once they do (unless
+  // the user already started editing the placeholder).
+  const [seededFromReal, setSeededFromReal] = useState(isLoaded)
+  const [touched, setTouched] = useState(false)
+  if (isLoaded && !seededFromReal) { setSeededFromReal(true); if (!touched) setDraft(targets) }
+  // Suggestions follow the goal being edited, not the one currently saved.
+  const coach = useNutritionCoach(date, { ...targets, goal: draft.goal, calories: draft.calories })
+  const patch = (p: Partial<DayTargets>) => { setTouched(true); setDraft(d => ({ ...d, ...p })) }
 
   function selectGoal(g: NutritionGoal) {
     const profile = profiles[g]
     if (profile) { patch({ goal: g, ...profile }); return }
+    setTouched(true)
     setDraft(d => {
       const maintainCalories = profiles.maintain?.calories ?? d.calories
       const calorieDelta = g === 'cut' ? -500 : g === 'gain' ? 300 : 0
@@ -168,7 +175,7 @@ export function DayTargetsEditor({ date = todayStr(), onDone }: { date?: string;
 
       <div className="flex items-center justify-end gap-2 border-t border-line pt-3">
         <Button variant="ghost" onClick={onDone}>Cancel</Button>
-        <Button variant="primary" onClick={save} loading={isSaving}>Save goals</Button>
+        <Button variant="primary" onClick={save} loading={isSaving} disabled={!isLoaded}>Save goals</Button>
       </div>
     </div>
   )

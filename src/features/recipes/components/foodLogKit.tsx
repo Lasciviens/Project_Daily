@@ -1,7 +1,8 @@
+import { useState, type InputHTMLAttributes } from 'react'
 import { Listbox, ListboxButton, ListboxOptions, ListboxOption } from '@headlessui/react'
 import { ChevronDown, Star, X } from 'lucide-react'
 import { cx } from '../../../shared/ui'
-import { SLOT_OPTIONS, foodEmoji } from './foodLogUtils'
+import { SLOT_OPTIONS, foodEmoji, sanitizeDecimal } from './foodLogUtils'
 import type { MealSlot } from '../types'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -108,5 +109,24 @@ export function FoodTile({ title, imageUrl, group, calories, isFavorite, onAdd, 
         </button>
       )}
     </div>
+  )
+}
+
+// A number field that keeps what the user typed ("1.", "0.") while reporting
+// the parsed value — binding a parsed number straight to `value` swallowed the
+// decimal point, so 1.5 could not be typed.
+export function DecimalInput({ value, onValue, ...rest }: {
+  value: number | null
+  onValue: (v: number | null) => void
+} & Omit<InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange'>) {
+  const [text, setText] = useState(value == null ? '' : String(value))
+  const [seen, setSeen] = useState(value)
+  if (value !== seen) {
+    setSeen(value)
+    if ((text === '' ? null : Number(text)) !== value) setText(value == null ? '' : String(value))
+  }
+  return (
+    <input {...rest} inputMode="decimal" value={text}
+      onChange={e => { const t = sanitizeDecimal(e.target.value); setText(t); onValue(t === '' ? null : Number(t)) }} />
   )
 }

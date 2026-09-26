@@ -1,6 +1,6 @@
 import { supabase } from '../../../integrations/supabase/client'
 import { requireUser } from '../../../shared/utils/requireUser'
-import type { FoodLogEntry, FoodLogEntryInput, IngredientLibraryItem, Recipe } from '../types'
+import type { FoodLogEntry, FoodLogEntryInput, IngredientLibraryItem, MealSlot, Recipe } from '../types'
 import { WEIGHT_UNITS } from './recipesApi'
 
 // The food DIARY (food_log_entries, migration 053) — what was actually eaten.
@@ -50,6 +50,21 @@ export async function addFoodLogEntries(entries: FoodLogEntryInput[]): Promise<v
 
 export async function deleteFoodLogEntry(id: string): Promise<void> {
   const { error } = await supabase.from('food_log_entries').delete().eq('id', id)
+  if (error) throw error
+}
+
+/** Deletes rows and returns them exactly as they were — what "Undo" re-inserts. */
+export async function deleteFoodLogEntriesReturning(ids: string[]): Promise<FoodLogEntry[]> {
+  if (ids.length === 0) return []
+  const { data, error } = await supabase.from('food_log_entries').delete().in('id', ids).select('*')
+  if (error) throw error
+  return (data ?? []) as FoodLogEntry[]
+}
+
+/** Puts deleted rows back unchanged (same id, date, slot, group, created_at). */
+export async function restoreFoodLogEntries(rows: FoodLogEntry[]): Promise<void> {
+  if (rows.length === 0) return
+  const { error } = await supabase.from('food_log_entries').insert(rows)
   if (error) throw error
 }
 
@@ -121,6 +136,18 @@ export interface RecentFood {
   fiber_g:               number | null
   sugar_g:               number | null
   count:                 number
+  /** How often it was logged per meal slot (recents only) — for slot-aware suggestions. */
+  slotCounts?:           Partial<Record<string, number>>
+}
+
+/** A recent/favourite food as a new diary row for `date`/`slot`, the way it was last eaten. */
+export function recentToEntry(r: RecentFood, date: string, slot: MealSlot): FoodLogEntryInput {
+  return {
+    date, meal_slot: slot,
+    library_ingredient_id: r.library_ingredient_id, recipe_id: r.recipe_id, custom_title: r.custom_title,
+    quantity: r.quantity, unit: r.unit,
+    calories: r.calories, protein_g: r.protein_g, carbs_g: r.carbs_g, fat_g: r.fat_g, fiber_g: r.fiber_g, sugar_g: r.sugar_g,
+  }
 }
 
 export async function fetchRecentFoods(fromDate: string, slot?: string): Promise<RecentFood[]> {
@@ -147,7 +174,11 @@ export async function fetchRecentFoods(fromDate: string, slot?: string): Promise
     const key = row.library_ingredient_id ?? row.recipe_id ?? `c:${title.toLowerCase()}`
     if (hidden.has(key)) continue
     const existing = byKey.get(key)
-    if (existing) { existing.count++; continue }
+    if (existing) {
+      existing.count++
+      existing.slotCounts![row.meal_slot] = (existing.slotCounts![row.meal_slot] ?? 0) + 1
+      continue
+    }
     byKey.set(key, {
       key, title,
       library_ingredient_id: row.library_ingredient_id,
@@ -162,9 +193,10 @@ export async function fetchRecentFoods(fromDate: string, slot?: string): Promise
       fiber_g:               row.fiber_g,
       sugar_g:               row.sugar_g,
       count:                 1,
+      slotCounts:            { [row.meal_slot]: 1 },
     })
   }
-  return [...byKey.values()].sort((a, b) => b.count - a.count).slice(0, 8)
+  return [...byKey.values()].sort((a, b) => b.count - a.count).slice(0, 16)
 }
 
 // food_favorites / food_recent_hidden (migration 087) may not be applied yet —

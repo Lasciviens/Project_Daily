@@ -13,6 +13,7 @@ import { formatLocalDate } from '../../../shared/utils/dateUtils'
 import { MacroBar } from './MacroBar'
 import { CookMode } from './CookMode'
 import type { RecipeWithIngredients, MealSlot } from '../types'
+import { sanitizeDecimal } from './foodLogUtils'
 
 function slotForNow(): MealSlot {
   const h = new Date().getHours()
@@ -47,7 +48,13 @@ function scaledQty(q: number | null, factor: number): string {
 
 export function RecipeDetail({ recipe, onClose, onEdit }: Props) {
   const [servings, setServings] = useState(recipe.servings)
-  const [ate, setAte] = useState(1)   // portions EATEN (≠ recipe base yield)
+  // The popup follows the live row — re-base the scaling when its yield changes.
+  const [baseServings, setBaseServings] = useState(recipe.servings)
+  if (recipe.servings !== baseServings) { setBaseServings(recipe.servings); setServings(recipe.servings) }
+  // Portions EATEN (≠ recipe base yield), kept as typed so "1." and "0.5" work.
+  const [ateText, setAteText] = useState('1')
+  const ate = Math.max(0, Number(ateText.replace(',', '.')) || 0)
+  const setAte = (f: (a: number) => number) => setAteText(String(f(ate)))
   // "I ate this" target — defaults to today + the time-of-day slot, but both are
   // editable so a past meal can be backfilled to the right day/slot.
   const [logDate, setLogDate] = useState(formatLocalDate(new Date()))
@@ -176,8 +183,8 @@ export function RecipeDetail({ recipe, onClose, onEdit }: Props) {
             <div className="flex items-center overflow-hidden rounded-control border border-line bg-surface-2">
               <button type="button" onClick={() => setAte(a => Math.max(0.1, Math.round((a - 0.5) * 10) / 10))} aria-label="Fewer portions eaten"
                 className="grid min-h-[44px] min-w-[36px] place-items-center text-fg-2 hover:bg-surface-hover"><Minus className="h-4 w-4" aria-hidden /></button>
-              <input value={ate} aria-label="Portions eaten" inputMode="decimal"
-                onChange={e => { const n = Number(e.target.value.replace(',', '.')); setAte(Number.isFinite(n) && n > 0 ? n : 0) }}
+              <input value={ateText} aria-label="Portions eaten" inputMode="decimal"
+                onChange={e => setAteText(sanitizeDecimal(e.target.value))}
                 className="min-h-[44px] w-10 bg-transparent text-center text-body font-bold text-fg tabular-nums focus:outline-none" />
               <button type="button" onClick={() => setAte(a => Math.round((a + 0.5) * 10) / 10)} aria-label="More portions eaten"
                 className="grid min-h-[44px] min-w-[36px] place-items-center text-fg-2 hover:bg-surface-hover"><Plus className="h-4 w-4" aria-hidden /></button>

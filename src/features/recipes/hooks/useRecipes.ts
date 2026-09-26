@@ -56,7 +56,7 @@ export function useDeleteRecipe() {
     action:         'delete_recipe',
     successMessage: 'Recipe deleted',
     mutationFn:     (id: string) => deleteRecipe(id),
-    invalidates:    ['recipes'],
+    invalidates:    ['recipes', 'nutrition'],
   })
 }
 

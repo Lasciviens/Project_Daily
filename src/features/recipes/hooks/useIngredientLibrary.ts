@@ -53,6 +53,6 @@ export function useDeleteIngredientLibraryItem() {
   return useMutationWithFeedback({
     action:      'delete_ingredient_library_item',
     mutationFn:  (id: string) => deleteIngredientLibraryItem(id),
-    invalidates: [qk.ingredients.all],
+    invalidates: [qk.ingredients.all, 'recipes', 'nutrition'],
   })
 }

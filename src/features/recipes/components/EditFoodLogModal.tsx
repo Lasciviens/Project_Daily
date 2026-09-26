@@ -12,6 +12,9 @@ import { MacroWarningBadge } from './MacroWarningBadge'
 import { checkMacroConsistency } from '../macroSanity'
 import type { MealSlot } from '../types'
 import type { DayMeal } from '../../daily/api/dayNutritionApi'
+import { WEIGHT_UNITS } from '../api/recipesApi'
+
+const amountUnit = (u: string | null | undefined) => (u && WEIGHT_UNITS.has(u.trim().toLowerCase()) ? u.trim().toLowerCase() : 'g')
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Edit a DIARY row (food_log_entries) in place — the piece that was missing:
@@ -68,11 +71,10 @@ export function EditFoodLogModal({ meal, date, onClose }: Props) {
     let patch: Parameters<typeof update.mutateAsync>[0]['patch']
     if (kind === 'library' && lib) {
       if (amt <= 0) { toast.error('Enter grams'); return }
-      // REAL BUG, fixed: this used to hardcode unit: 'g' regardless of the
-      // library ingredient's own unit (some are 'ml') — editing such an
-      // entry silently relabelled its stored unit, even though the macro
-      // math itself (ingredientSnapshot) is unit-agnostic and unaffected.
-      patch = { meal_slot: slot, quantity: amt, unit: lib.unit || 'g', ...ingredientSnapshot(lib, amt) }
+      // The amount is grams/ml (the per-100g math assumes it), so only a
+      // weight/volume unit may be stored — a free-text library unit ("stk")
+      // would stop the row's totals from ever being recalculated.
+      patch = { meal_slot: slot, quantity: amt, unit: amountUnit(lib.unit), ...ingredientSnapshot(lib, amt) }
     } else if (kind === 'recipe' && recipe) {
       if (amt <= 0) { toast.error('Enter servings'); return }
       patch = { meal_slot: slot, quantity: amt, unit: 'serving', ...recipeSnapshot(recipe, amt) }
@@ -119,7 +121,7 @@ export function EditFoodLogModal({ meal, date, onClose }: Props) {
             <label htmlFor="efl-amount" className="field-label">Amount ({lib.name})</label>
             <div className="flex items-center gap-2">
               <input id="efl-amount" value={amount} onChange={e => setAmount(sanitizeDecimal(e.target.value))} inputMode="decimal" className="input w-24 text-right tabular-nums" />
-              <span className="text-meta text-fg-muted">{lib.unit || 'g'}</span>
+              <span className="text-meta text-fg-muted">{amountUnit(lib.unit)}</span>
               {lib.serving_grams != null && lib.serving_label && (
                 <span className="text-meta text-fg-muted tabular-nums">≈ {Math.round((amt / lib.serving_grams) * 10) / 10}× {lib.serving_label}</span>
               )}

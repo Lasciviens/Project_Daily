@@ -22,7 +22,10 @@ const json = (body: unknown, status = 200) =>
 // deno-lint-ignore no-explicit-any
 type AnyRecord = Record<string, any>
 const num = (v: unknown, d = 0): number => { const n = Number(v); return Number.isFinite(n) ? n : d }
-const todayUTC = () => new Date().toISOString().slice(0, 10)
+// The user's own calendar day (Europe/Oslo), never UTC: a log between 00:00
+// and 01:00/02:00 local time used to land on yesterday.
+const HOME_TZ = 'Europe/Oslo'
+const todayLocal = () => new Date().toLocaleDateString('en-CA', { timeZone: HOME_TZ })
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -59,9 +62,10 @@ const PHONE_PERSONA =
   "Sen Lasci'nin kişisel asistanısın. Türkçe, kısa ve net cevap ver; düz metin " +
   '(kısa maddeler olabilir, markdown yok). Sana verilen DATA dışında bilgi uydurma.'
 
-// yyyy-MM-dd, `days` from today (UTC).
-function dateFromTodayUTC(days: number): string {
-  const d = new Date(); d.setUTCDate(d.getUTCDate() + days); return d.toISOString().slice(0, 10)
+// yyyy-MM-dd, `days` from today (local calendar day, calendar-safe arithmetic).
+function dateFromToday(days: number): string {
+  const [y, m, d] = todayLocal().split('-').map(Number)
+  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10)
 }
 
 // Build a COMPACT brief context server-side (today's tasks + schedule + upcoming
@@ -70,7 +74,7 @@ function dateFromTodayUTC(days: number): string {
 // every query is user-scoped EXPLICITLY. Best-effort: a failing section is
 // omitted, never breaks the brief. Column names mirror briefingApi.ts.
 async function buildBriefContext(userId: string): Promise<string> {
-  const today = todayUTC()
+  const today = todayLocal()
   const lines: string[] = [`DATE: ${today}`]
   try {
     const { data: tasks } = await supabase.from('tasks')
@@ -100,7 +104,7 @@ async function buildBriefContext(userId: string): Promise<string> {
     const { data: tr } = await supabase.from('time_blocks')
       .select('title, date, start_time')
       .eq('user_id', userId).eq('category', 'training')
-      .gte('date', today).lte('date', dateFromTodayUTC(14))
+      .gte('date', today).lte('date', dateFromToday(14))
       .order('date', { ascending: true }).limit(5)
     if (tr?.length) {
       lines.push('\nYAKLAŞAN ANTRENMANLAR:')
@@ -148,7 +152,7 @@ async function askAi(opts: {
 // overlapping [start,end] sessions keeping the LONGEST per cluster (duplicate/
 // subset re-reports of one night), attribute to the Oslo wake day, last 7 days.
 async function computeSleepNightsGw(userId: string): Promise<AnyRecord[]> {
-  const since = dateFromTodayUTC(-7)
+  const since = dateFromToday(-7)
   const { data } = await supabase.from('health_metrics')
     .select('value').eq('user_id', userId).eq('metric_name', 'sleep_analysis').gte('date', since)
   const parse = (s: unknown): number | null => {
@@ -391,7 +395,7 @@ Deno.serve(async (req) => {
       case 'log_supplement': {
         const title = (typeof body.title === 'string' && body.title.trim()) || 'Kreatin 5 g'
         const err = await insertFoodLog(userId, {
-          date: body.date ?? todayUTC(), meal_slot: 'supplement',
+          date: body.date ?? todayLocal(), meal_slot: 'supplement',
           custom_title: title, calories: num(body.calories, 0),
         })
         return err ? json({ ok: false, error: err.message }, 400) : json({ ok: true, logged: title })
@@ -402,7 +406,7 @@ Deno.serve(async (req) => {
         const title = typeof body.title === 'string' ? body.title.trim() : ''
         if (!title) return json({ ok: false, error: 'title required' }, 400)
         const err = await insertFoodLog(userId, {
-          date: body.date ?? todayUTC(), meal_slot: body.meal_slot ?? 'snack', custom_title: title,
+          date: body.date ?? todayLocal(), meal_slot: body.meal_slot ?? 'snack', custom_title: title,
           calories: num(body.calories, 0), protein_g: num(body.protein_g, 0),
           carbs_g: num(body.carbs_g, 0), fat_g: num(body.fat_g, 0),
         })
@@ -411,7 +415,7 @@ Deno.serve(async (req) => {
 
       // ── Deterministic: today's eaten totals (for the widget) ──
       case 'nutrition_today': {
-        const date = body.date ?? todayUTC()
+        const date = body.date ?? todayLocal()
         let { data, error } = await supabase.from('food_log_entries')
           .select('calories, protein_g').eq('user_id', userId).eq('date', date).eq('status', 'eaten')
         if (error && (error.code === '42703' || error.code === 'PGRST204') && /status/i.test(error.message ?? '')) {
@@ -439,14 +443,14 @@ Deno.serve(async (req) => {
         const amount = num(body.amount_ml, 250)
         if (amount <= 0) return json({ ok: false, error: 'amount_ml must be > 0' }, 400)
         const { error } = await supabase.from('water_log_entries')
-          .insert({ user_id: userId, date: body.date ?? todayUTC(), amount_ml: Math.round(amount) })
+          .insert({ user_id: userId, date: body.date ?? todayLocal(), amount_ml: Math.round(amount) })
         return error ? json({ ok: false, error: error.message }, 400) : json({ ok: true, logged_ml: Math.round(amount) })
       }
 
       // ── Deterministic: recently-eaten foods (dedup, snapshot macros) — for
       //    the phone logger's "re-log" chips. Mirrors the client's fetchRecentFoods. ──
       case 'recent_foods': {
-        const fromDate = body.from ?? dateFromTodayUTC(-30)
+        const fromDate = body.from ?? dateFromToday(-30)
         const cols = 'meal_slot, custom_title, calories, protein_g, carbs_g, fat_g, ingredient:recipe_ingredient_library(name), recipe:recipes(title)'
         const base = () => {
           let q = supabase.from('food_log_entries').select(cols)
