@@ -1,17 +1,22 @@
+import { Suspense, useState } from 'react'
 import { Toaster } from '../../../../shared/components/Toaster'
 import { UnifiedPlanModal } from '../../../../shared/components/plan-modal'
 import { ErrorBoundary } from '../../../../shared/components/ErrorBoundary'
-import { GameDetailModal } from '../../components/GameDetailModal'
-import { AddGameModal } from '../../components/AddGameModal'
-import { SteamGameModal } from '../../components/SteamGameModal'
-import { PsnGameModal } from '../../components/PsnGameModal'
+import { lazyWithReload } from '../../../../shared/utils/lazyWithReload'
 import type { SteamGame } from '../../api/steamApi'
 import { psnGamesFromLibrary } from '../../api/psnLibraryFallback'
 import type { TgGame } from '../testGameModel'
 import type { TgActions } from '../tgTypes'
 import type { TgBreakpoint } from '../useTgBreakpoint'
 import { TgDetailSheet } from './TgDetailSheet'
+import { TgChunkFailed } from './TgStates'
 import { useTgAddGame } from './tgAddGame'
+
+// The classic edit form, Add game and the provider modals load on first use.
+const GameDetailModal = lazyWithReload(() => import('../../components/GameDetailModal').then(m => m.GameDetailModal), TgChunkFailed)
+const AddGameModal = lazyWithReload(() => import('../../components/AddGameModal').then(m => m.AddGameModal), TgChunkFailed)
+const SteamGameModal = lazyWithReload(() => import('../../components/SteamGameModal').then(m => m.SteamGameModal), TgChunkFailed)
+const PsnGameModal = lazyWithReload(() => import('../../components/PsnGameModal').then(m => m.PsnGameModal), TgChunkFailed)
 
 // Every modal the page owns, in one place the shell renders OUTSIDE its
 // layout tree, so switching layouts never remounts (and so closes) one. The
@@ -59,6 +64,9 @@ interface Props {
 export function TgModals({ bp, actions, sheetGame, onCloseSheet, editId, fullId, provider, onClose, planGame, onClosePlan }: Props) {
   const addOpen = useTgAddGame(s => s.open)
   const setAddOpen = useTgAddGame(s => s.setOpen)
+  // Add game stays mounted once opened, so it keeps its closing animation.
+  const [addMounted, setAddMounted] = useState(false)
+  if (addOpen && !addMounted) setAddMounted(true)
   return (
     <>
       {/* Widening past the phone layout closes the sheet (its history entry
@@ -69,19 +77,22 @@ export function TgModals({ bp, actions, sheetGame, onCloseSheet, editId, fullId,
         actions={actions}
         onClose={onCloseSheet}
       />
-      {editId && <GameDetailModal gameId={editId} initialEditing className={LEGACY} onClose={() => onClose('edit')} />}
-      {fullId && <GameDetailModal gameId={fullId} className={LEGACY} onClose={() => onClose('full')} />}
-      <AddGameModal open={addOpen} className={LEGACY} onClose={() => setAddOpen(false)} />
-      {provider?.library === 'steam' && provider.steamAppId != null && (
-        <ErrorBoundary label="Steam" action="test_game_steam_modal">
-          <SteamGameModal game={toSteamGame(provider)} onClose={() => onClose('provider')} />
-        </ErrorBoundary>
-      )}
-      {provider?.library === 'playstation' && (
-        <ErrorBoundary label="PlayStation" action="test_game_psn_modal">
-          <PsnGameModal game={psnGamesFromLibrary([provider])[0]} onClose={() => onClose('provider')} />
-        </ErrorBoundary>
-      )}
+      {/* Each mounts only once it is opened, so its code loads on first use. */}
+      <Suspense fallback={null}>
+        {editId && <GameDetailModal gameId={editId} initialEditing className={LEGACY} onClose={() => onClose('edit')} />}
+        {fullId && <GameDetailModal gameId={fullId} className={LEGACY} onClose={() => onClose('full')} />}
+        {addMounted && <AddGameModal open={addOpen} className={LEGACY} onClose={() => setAddOpen(false)} />}
+        {provider?.library === 'steam' && provider.steamAppId != null && (
+          <ErrorBoundary label="Steam" action="test_game_steam_modal">
+            <SteamGameModal game={toSteamGame(provider)} onClose={() => onClose('provider')} />
+          </ErrorBoundary>
+        )}
+        {provider?.library === 'playstation' && (
+          <ErrorBoundary label="PlayStation" action="test_game_psn_modal">
+            <PsnGameModal game={psnGamesFromLibrary([provider])[0]} onClose={() => onClose('provider')} />
+          </ErrorBoundary>
+        )}
+      </Suspense>
       {/* The app's one planner (a time block in the Games category); it keeps
           the app palette — plan-modal/ takes no theme and is not edited here. */}
       {planGame && (

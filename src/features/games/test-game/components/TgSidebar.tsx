@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ComponentType, type RefObject } from 'react'
 import { Link } from 'react-router-dom'
 import {
-  Archive, ArrowLeft, History, ChartColumn, CircleCheckBig, Heart, Plus, SlidersHorizontal, SquarePlay, Wand2,
+  Archive, ArrowLeft, ChartColumn, CircleCheckBig, Heart, Plus, SlidersHorizontal, SquarePlay, Wand2,
 } from 'lucide-react'
 import { useTestGameStore } from '../testGameStore'
 import type { PlatformCount, TgSection } from '../testGameModel'
@@ -115,10 +115,6 @@ export function TgSidebar({ counts, platforms, others }: {
           onClick={() => setSection('advanced')}
           count={counts.review || undefined}
         />
-        <Link to="/games-legacy" className="mt-0.5 flex min-h-[30px] items-center gap-2 rounded-[10px] px-3 text-[12px] font-medium text-[var(--tg-muted)] transition-colors [@media(hover:hover)]:hover:bg-[var(--tg-hover)] [@media(hover:hover)]:hover:text-[var(--tg-text)] [@media(pointer:coarse)]:min-h-[44px]">
-          <History aria-hidden className="h-3.5 w-3.5 shrink-0" strokeWidth={2} />
-          Legacy Games page
-        </Link>
         <Link to="/home" className="mt-0.5 flex min-h-[30px] items-center gap-2 rounded-[10px] px-3 text-[12px] font-medium text-[var(--tg-muted)] transition-colors [@media(hover:hover)]:hover:bg-[var(--tg-hover)] [@media(hover:hover)]:hover:text-[var(--tg-text)] [@media(pointer:coarse)]:min-h-[44px]">
           <ArrowLeft aria-hidden className="h-3.5 w-3.5 shrink-0" strokeWidth={2} />
           Back to Lasci&apos;s Board

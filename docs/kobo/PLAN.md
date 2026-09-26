@@ -908,8 +908,8 @@ convention. It owns:
 Route `/#/books` → `BooksPage`, shaped like the Games page since that is explicitly the
 model the owner named:
 
-- **Library** — collection grid, cover-forward, filter/sort, the `gameCardKit` anatomy
-- **Queue** — reading order, drag-to-reorder (`PlayQueue` precedent)
+- **Library** — collection grid, cover-forward, filter/sort, the Games page card anatomy (`test-game/components/TgGameCard.tsx`)
+- **Queue** — reading order, drag-to-reorder (the Games page queue precedent: `test-game/components/TgQueueViewDrag.ts`)
 - **Today / Goal** — daily minutes ring + streak
 - **Stats** — time-of-day heatmap, per-book time-to-finish, reading speed
 - **Notes** — highlights + the owner's own reviews

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import './testGame.css'
 import { useTestGameLibrary } from './useTestGameLibrary'
 import { useTestGameStore } from './testGameStore'
@@ -19,18 +19,25 @@ import { TgDetailOverlayBackdrop } from './components/TgDetailOverlayBackdrop'
 import { TgModals } from './components/TgModals'
 import { TgMobileHeader, TgBottomTabs, TgMobileGrid } from './components/TgMobile'
 import { TgQueueView } from './components/TgQueueView'
-import { TgAnalyticsView } from './components/TgAnalyticsView'
 import { ErrorBoundary } from '../../../shared/components/ErrorBoundary'
-import { TgAdvancedView } from './components/TgAdvancedView'
-import { TgScrapeView } from './components/scrape/TgScrapeView'
 import { recalledDepth, rememberDepth } from './components/tgScrollMemory'
 import { TgGamesContext, TgRanksContext } from './components/tgRanks'
-import { TgEmptyState, TgLoadingShelf, TgErrorState, TgProviderError } from './components/TgStates'
+import { TgChunkFailed, TgEmptyState, TgLoadingShelf, TgErrorState, TgProviderError } from './components/TgStates'
+import { TgAnalyticsSkeleton } from './components/TgAnalyticsStates'
+import { lazyWithReload } from '../../../shared/utils/lazyWithReload'
 
 // /#/test-game — the Games page rebuilt on the "Game Library" design. It lives
 // outside the app shell (its own sidebar, top bar and phone tab bar, as the
 // design draws them) and reads and writes the SAME tables through the SAME
 // hooks as /#/games. What the design has no place for yet lives under Advanced.
+
+// Analytics, Scrape and Advanced load on first visit: most sessions only
+// browse the shelves, and together they are the bulk of the page's code.
+const TgAnalyticsView = lazyWithReload(() => import('./components/TgAnalyticsView').then(m => m.TgAnalyticsView), TgChunkFailed)
+const TgScrapeView = lazyWithReload(() => import('./components/scrape/TgScrapeView').then(m => m.TgScrapeView), TgChunkFailed)
+const TgAdvancedView = lazyWithReload(() => import('./components/TgAdvancedView').then(m => m.TgAdvancedView), TgChunkFailed)
+
+const SECTION_FALLBACK = <div aria-busy="true" className="h-full" />
 
 export function TestGamePage() {
   const lib = useTestGameLibrary()
@@ -180,10 +187,20 @@ export function TestGamePage() {
   }
 
   function renderSection(layout: 'desktop' | 'mobile') {
-    if (section === 'analytics') return <ErrorBoundary label="Analytics" action="games_analytics"><TgAnalyticsView lib={lib} /></ErrorBoundary>
-    if (section === 'scrape') return <TgScrapeView games={lib.games} loading={lib.isLoading} layout={layout} />
+    if (section === 'analytics') {
+      return (
+        <ErrorBoundary label="Analytics" action="games_analytics">
+          <Suspense fallback={<div className="@container pb-4 pt-2"><TgAnalyticsSkeleton /></div>}><TgAnalyticsView lib={lib} /></Suspense>
+        </ErrorBoundary>
+      )
+    }
+    if (section === 'scrape') return <Suspense fallback={SECTION_FALLBACK}><TgScrapeView games={lib.games} loading={lib.isLoading} layout={layout} /></Suspense>
     if (section === 'advanced') {
-      return <TgAdvancedView onOpenDetail={actions.openFull} games={lib.games} randomPool={visible} randomScope={{ platform: effectivePlatform, search, genres: pickedGenres }} />
+      return (
+        <Suspense fallback={SECTION_FALLBACK}>
+          <TgAdvancedView onOpenDetail={actions.openFull} games={lib.games} randomPool={visible} randomScope={{ platform: effectivePlatform, search, genres: pickedGenres }} />
+        </Suspense>
+      )
     }
     return renderGames(layout)
   }

@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
 import {
-  fetchGameStats, fetchAllGames, fetchGameDetail, fetchGamesNeedingReview, fetchPlayQueue,
+  fetchGameStats, fetchAllGames, fetchGameDetail, fetchPlayQueue,
   createGame, updateGame, deleteGame, reorderQueue, addToQueue, removeFromQueue,
   addPlatform, updatePlatform, deletePlatform, setPrimaryVariant, setPlayStatus,
   fetchLibraryGames,
@@ -13,7 +13,6 @@ import type { Game, GamePatch, CreateGameInput, GamePlatformInput, PlayStatus, G
 const GAMES_QK  = ['games', 'all']
 const QUEUE_QK  = ['games', 'queue']
 const STATS_QK  = ['games', 'stats']
-const REVIEW_QK = ['games', 'needs-review']
 
 // Every mutation below reaches the WHOLE 'games' namespace rather than one
 // narrow key — the same reasoning this app applies to schedule mutations
@@ -46,10 +45,6 @@ export function useGameDetail(id: string | null, opts?: { refetchOnMount?: boole
     queryKey: ['games', 'detail', id], queryFn: () => fetchGameDetail(id!), enabled: !!id, staleTime: 60_000,
     ...(opts?.refetchOnMount !== undefined && { refetchOnMount: opts.refetchOnMount }),
   })
-}
-
-export function useGamesNeedingReview(enabled = true) {
-  return useQuery({ queryKey: REVIEW_QK, queryFn: fetchGamesNeedingReview, staleTime: 60_000, enabled })
 }
 
 export function usePlayQueue(enabled = true) {

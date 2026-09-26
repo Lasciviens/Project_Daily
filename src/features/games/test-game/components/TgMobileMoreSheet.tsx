@@ -1,7 +1,7 @@
 import { useState, type ComponentType } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  Archive, ArrowLeft, History, ChartColumn, CircleCheckBig, Plus, SlidersHorizontal, Wand2,
+  Archive, ArrowLeft, ChartColumn, CircleCheckBig, Plus, SlidersHorizontal, Wand2,
   type LucideProps,
 } from 'lucide-react'
 import { useTestGameStore } from '../testGameStore'
@@ -111,16 +111,8 @@ export function TgMobileMoreSheet({ open, onClose, counts }: {
         Refresh library
       </button>
 
-      {/* Both replace the sheet's own history entry, so Back from the
-          destination returns here instead of to a stale overlay entry. */}
-      <button
-        type="button"
-        onClick={() => navigate('/games-legacy', { replace: true })}
-        className={`${ROW} text-[var(--tg-text-2)] ${ROW_IDLE}`}
-      >
-        <History size={19} strokeWidth={1.8} aria-hidden className="shrink-0" />
-        Legacy Games page
-      </button>
+      {/* Replaces the sheet's own history entry, so Back from Home returns
+          here instead of to a stale overlay entry. */}
       <button
         type="button"
         onClick={() => navigate('/home', { replace: true })}

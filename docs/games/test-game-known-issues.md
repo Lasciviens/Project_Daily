@@ -1,6 +1,7 @@
-# Test-Game (`/#/test-game`) — known issues
+# Games page (`/#/games`) — known issues
 
-Live tracking list for the Game Library redesign test page. First live demo: the deploy snapshot of the
+Live tracking list for the Games page (the "Game Library" design; it started as the `/#/test-game` test page
+and replaced the old page, which was deleted on 2026-09-26). First live demo: the deploy snapshot of the
 fix round (PR #491). Items move to "Fixed" as follow-up PRs land. Findings come from a six-reviewer pass
 (desktop/phone visual fidelity, data wiring, runtime at ~1,500 games, feature coverage, rules/a11y) plus a
 real-data audit, each adversarially verified.
@@ -26,7 +27,7 @@ real-data audit, each adversarially verified.
 - Display-sized derivatives for ES-DE fanart/screenshots (the page downloads the originals) — needs the RP6
   uploader (Codex task C7).
 
-## Old Games page — what was not carried over, on purpose (audit 2026-09-26)
+## Old Games page — what was not carried over, on purpose (audit 2026-09-26, page deleted the same day)
 Everything else the old page did is on the new one (search, multi-select filters, every sort incl. series, grid and
 list, add, random, queue with drag, Mark as playing and Plan a session, status/rating/notes/edit/delete/hide, review
 flag, platform CRUD via Manage platforms, the Steam / PlayStation / Needs-review tabs, stats and drill-downs).

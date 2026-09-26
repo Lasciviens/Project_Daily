@@ -12,7 +12,7 @@ import { useHistoryDismiss } from '../../../shared/hooks/useHistoryDismiss'
 import { useTestGameStore } from '../test-game/testGameStore'
 import { CoverImg, CoverBackdrop, RatingBadge, SystemChip } from './gameCardKit'
 import { systemMeta } from '../systemMeta'
-import { formatPlaytime, playStatsOf } from '../gameStats'
+import { formatPlaytimeFromSeconds, playStatsOf } from '../gameStats'
 import { dateInputToIso, diffPatch, isoToDateInput } from '../api/gameEdit'
 import {
   STATUS_LABEL, STATUSES,
@@ -66,7 +66,7 @@ function StatusQuickBar({ game }: { game: Game }) {
 // ES-DE syncs against, which is the only way to tell two same-system variants
 // apart when their titles match.
 function PlatformDetails({ platform }: { platform: GamePlatform }) {
-  const playtime = formatPlaytime(platform.esde_playtime_seconds)
+  const playtime = formatPlaytimeFromSeconds(platform.esde_playtime_seconds)
   const bits: React.ReactNode[] = []
   // Every figure is labelled. An emoji alone does not say what the number is.
   if (platform.esde_playcount != null && platform.esde_playcount > 0) bits.push(<span key="pc">▶ Launched {platform.esde_playcount}×</span>)
@@ -593,9 +593,9 @@ export function GameDetailModal({ gameId, onClose, initialEditing = false, class
                 <Section title={`Play Stats (${game.library === 'steam' ? 'Steam' : game.library === 'playstation' ? 'PlayStation' : 'ES-DE'})`}>
                   <div className="flex flex-wrap gap-3 text-xs text-ink-600">
                     {playStatsOf(game).count != null && <span className="font-semibold">▶ Launched {playStatsOf(game).count}×</span>}
-                    {/* formatPlaytime, not seconds/3600 — a 40-minute session used
+                    {/* formatPlaytimeFromSeconds, not seconds/3600 — a 40-minute session used
                         to print "0h", which reads as "never played". */}
-                    {formatPlaytime(playStatsOf(game).seconds) && <span className="font-semibold">⏱ Played {formatPlaytime(playStatsOf(game).seconds)} in total</span>}
+                    {formatPlaytimeFromSeconds(playStatsOf(game).seconds) && <span className="font-semibold">⏱ Played {formatPlaytimeFromSeconds(playStatsOf(game).seconds)} in total</span>}
                     {playStatsOf(game).last && <span>🕐 Last played {fmtDate(playStatsOf(game).last)}</span>}
                     {game.platforms.length > 1 && (
                       <InfoBubble label="Across variants?">Summed across every variant of this game. Each platform row below carries its own figures.</InfoBubble>

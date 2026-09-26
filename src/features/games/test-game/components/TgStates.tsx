@@ -126,6 +126,17 @@ function messageOf(error: unknown): string {
   return 'Something went wrong while loading your games.'
 }
 
+/** A section's code didn't load (after the one reload lazyWithReload allows). */
+export function TgChunkFailed() {
+  return (
+    <StateCard icon={<TriangleAlert {...ICON} />} tone="danger" title="This part of the page couldn't be loaded" actions={
+      <button type="button" className="tg-btn tg-btn-primary" onClick={() => window.location.reload()}>Reload</button>
+    }>
+      Check your connection, then reload to get the latest version of the app.
+    </StateCard>
+  )
+}
+
 export function TgErrorState({ error, onRetry }: { error: unknown; onRetry: () => void }) {
   return (
     <StateCard icon={<TriangleAlert {...ICON} />} tone="danger" title="Couldn't load your library" actions={

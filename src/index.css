@@ -135,8 +135,8 @@
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { @apply bg-ink-300 rounded-full; }
 
-  /* Was referenced in several horizontal-scroll strips (nav, DailyPage,
-     GamesPage) but never actually defined — a real fix, not just tidying,
+  /* Was referenced in several horizontal-scroll strips (nav, DailyPage, the
+     old Games page) but never actually defined — a real fix, not just tidying,
      since a scroll strip with no scrollbar AND no other affordance gives no
      hint at all that it scrolls. */
   .scrollbar-none {
@@ -405,32 +405,4 @@ select:focus-visible,
 .recharts-surface:focus-visible,
 .recharts-wrapper :focus-visible {
   outline: none;
-}
-
-/* ─── Long grids: skip what is off screen ──────────────────────────────────
-   `content-visibility: auto` lets the browser skip layout, style, paint and
-   compositing for a card that is not near the viewport — the single biggest
-   win on a 1000-card library, and it needs no virtualisation library and no
-   change to the markup's structure. Supported in Safari/iOS since 18.
-
-   `contain-intrinsic-size: auto <h>` is what makes it safe: it gives a skipped
-   card a PLACEHOLDER height so the scrollbar and the scroll position stay
-   honest, and `auto` means "remember the real height once measured, and use
-   that from then on". Without it the page would shrink and jump as cards were
-   skipped. The values are the measured card heights at each breakpoint.
-
-   Deliberately NOT applied to the fixed chrome or to anything animated: a
-   skipped subtree cannot be read by scripts, so it belongs only on rows of
-   content that are purely presentational until scrolled to. */
-.cv-card {
-  content-visibility: auto;
-  contain-intrinsic-size: auto 260px;
-}
-.cv-tile {
-  content-visibility: auto;
-  contain-intrinsic-size: auto 150px;
-}
-@media (min-width: 640px) {
-  .cv-card { contain-intrinsic-size: auto 300px; }
-  .cv-tile { contain-intrinsic-size: auto 180px; }
 }

@@ -194,6 +194,6 @@ export interface GamePlatformInput {
   version_title?:     string | null
 }
 
-// The Stats panel's computed shape lives in gameStats.ts (GameStatsShape) —
-// it is derived from raw rows under the user's chosen window/library filters,
-// not a fetch result, so it belongs with the computation.
+// The stats shape Home's Games widget shows lives in gameStats.ts
+// (GameStatsShape) — derived from raw rows, not a fetch result, so it belongs
+// with the computation.

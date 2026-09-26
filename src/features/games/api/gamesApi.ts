@@ -221,15 +221,13 @@ export async function fetchGameDetail(id: string): Promise<Game> {
 }
 
 /**
- * Raw rows for the Stats panel, across EVERY library — retro, Steam and
- * PlayStation together (migration 096). The panel filters by window and by
- * library and totals the result itself (`gameStats.ts::computeGameStats`), so
- * this deliberately aggregates nothing: the numbers depend on what the user
- * picked, not on what the query returned.
+ * Raw rows for Home's Games widget, across EVERY library — retro, Steam and
+ * PlayStation together (migration 096). The widget totals them itself
+ * (`gameStats.ts::computeGameStats`), so this deliberately aggregates nothing.
  */
 export async function fetchGameStats(): Promise<{ rows: StatsRow[]; platforms: { game_id: string; system: string }[] }> {
   // Paginated for the same reason as fetchAllGames: capped at one page, every
-  // total on the Stats panel would silently stop counting at 1000.
+  // total would silently stop counting at 1000.
   const COLUMNS = 'id, title, play_status, is_iconic, is_coop, needs_review, rating, esde_playcount, esde_playtime_seconds, esde_last_played'
   const WITH_096 = `${COLUMNS}, library, play_seconds, play_count, last_played_at`
 
@@ -247,22 +245,6 @@ export async function fetchGameStats(): Promise<{ rows: StatsRow[]; platforms: {
   return { rows, platforms }
 }
 
-// Games flagged needs_review OR missing metadata a real library entry should
-// have — the lightweight replacement for RP5's 18-rule audit-score view (see
-// migration 089's header note: that view was one-time cataloguing QA, not an
-// ongoing personal-use feature, so it isn't ported — this is a plain filter
-// over already-fetched data instead of a permanent SQL view).
-export async function fetchGamesNeedingReview(): Promise<Game[]> {
-  const all = await fetchAllGames()
-  return all.filter(g =>
-    g.needs_review
-    || !g.primary_cover_url
-    || !g.genres?.length
-    || !g.release_year
-    || g.platforms.length === 0
-    || !g.platforms.some(p => p.is_primary_variant)
-  )
-}
 
 export async function fetchPlayQueue(): Promise<QueueGame[]> {
   const rows = await withListColumns(GAME_LIST_COLUMNS, async cols => {

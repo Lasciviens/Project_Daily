@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useSetPlayStatus, useUpdateGame } from '../hooks/useGames'
 import { STATUS_LABEL, STATUSES } from '../gamesMeta'
-import { formatPlaytime, playStatsOf } from '../gameStats'
+import { formatPlaytimeFromSeconds, playStatsOf } from '../gameStats'
 import type { Game, PlayStatus } from '../types'
 
 // The personal side of a game — status, rating, flags, notes — for the
@@ -117,9 +117,9 @@ export function LibraryControls({ entry, notImportedHint }: {
           className="w-full text-sm px-3 py-2 rounded-lg border border-ink-200 bg-cream-50 focus:outline-none focus:ring-2 focus:ring-accent-400" />
       </div>
 
-      {formatPlaytime(play.seconds) && (
+      {formatPlaytimeFromSeconds(play.seconds) && (
         <p className="text-[11px] text-ink-400">
-          ⏱ Played {formatPlaytime(play.seconds)} in total{play.count != null ? ` · launched ${play.count}×` : ''}
+          ⏱ Played {formatPlaytimeFromSeconds(play.seconds)} in total{play.count != null ? ` · launched ${play.count}×` : ''}
         </p>
       )}
     </div>

@@ -1,4 +1,4 @@
-import { lazy, Suspense, type ComponentType } from 'react'
+import { Suspense } from 'react'
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { SessionGuard } from '../security/sessionGuard'
 import { ErrorBoundary } from '../shared/components/ErrorBoundary'
@@ -13,76 +13,15 @@ import { RecipesPage } from '../features/recipes/pages/RecipesPage'
 import { MediaPage } from '../features/media/pages/MediaPage'
 import { WorkPage } from '../features/work/pages/WorkPage'
 import { TrainingPage } from '../features/training/pages/TrainingPage'
-import { GamesPage } from '../features/games/pages/GamesPage'
-import { GamesLibraryDemoPage } from '../features/games/pages/GamesLibraryDemoPage'
-import { GamesCoverDemoPage } from '../features/games/pages/GamesCoverDemoPage'
 import { ProjectsPage } from '../features/projects/pages/ProjectsPage'
 import { WishesPage } from '../features/wishes/pages/WishesPage'
 import { DeveloperPage } from '../features/developer/pages/DeveloperPage'
-import { logError } from '../shared/utils/logError'
+import { lazyWithReload } from '../shared/utils/lazyWithReload'
 
-// ── Games (the redesigned page), loaded on demand ───────────────────────────
-// A full-screen page outside the app shell, so its ~150 kB of JS and its
-// stylesheet stay out of every other route's first download.
-//
-// A lazy chunk can fail to load after a deploy: skipWaiting + clientsClaim
-// (vite.config.ts) swap the service worker under an open tab, whose old entry
-// bundle still asks for a chunk hash the server no longer has. The first
-// failure reloads the page once (fresh index.html, fresh hashes); a
-// sessionStorage flag stops that from ever looping, and a second failure shows
-// a plain reload prompt instead of a blank page.
-
-const CHUNK_RELOAD_FLAG = 'lasci.chunk-reload'
-
-function ChunkLoadFailed() {
-  return (
-    <div role="alert" className="grid min-h-[100dvh] place-items-center bg-canvas p-6 text-center">
-      <div className="max-w-sm">
-        <p className="text-base font-semibold text-ink-900">This page couldn't be loaded</p>
-        <p className="mt-1.5 text-sm text-ink-600">Check your connection, then reload to get the latest version of the app.</p>
-        <button
-          type="button"
-          onClick={() => window.location.reload()}
-          className="btn-primary mt-4 min-h-[44px] px-5"
-        >
-          Reload
-        </button>
-      </div>
-    </div>
-  )
-}
-
-/** Records the one reload we allow; false when it was already spent — or when
- *  storage is blocked, since a reload we cannot record could loop forever. */
-function markReloadAttempt(): boolean {
-  try {
-    if (sessionStorage.getItem(CHUNK_RELOAD_FLAG) === '1') return false
-    sessionStorage.setItem(CHUNK_RELOAD_FLAG, '1')
-    return true
-  } catch {
-    return false
-  }
-}
-
-function lazyWithReload<P extends object>(load: () => Promise<ComponentType<P>>) {
-  return lazy(async (): Promise<{ default: ComponentType<P> }> => {
-    try {
-      const component = await load()
-      try { sessionStorage.removeItem(CHUNK_RELOAD_FLAG) } catch { /* storage blocked: nothing to clear */ }
-      return { default: component }
-    } catch (err) {
-      // Logged either way: a stale chunk after a deploy is expected, but an
-      // exception thrown while the page module evaluates lands here too, and
-      // without a record it would only ever look like "check your connection".
-      void logError((err as Error)?.message ?? 'Lazy route failed to load', { action: 'lazy_route_load' })
-      if (markReloadAttempt()) {
-        window.location.reload()
-        return new Promise(() => {}) // keep the fallback up until the reload lands
-      }
-      return { default: ChunkLoadFailed }
-    }
-  })
-}
+// ── Games, loaded on demand ─────────────────────────────────────────────────
+// A full-screen page outside the app shell, so its JS and its stylesheet stay
+// out of every other route's first download. lazyWithReload survives a chunk
+// that disappeared in a deploy (see src/shared/utils/lazyWithReload.ts).
 
 const TestGamePage = lazyWithReload(() =>
   import('../features/games/test-game/TestGamePage').then(m => m.TestGamePage))
@@ -94,10 +33,10 @@ export function Router() {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
 
-        {/* Games: rebuilt on the "Game Library" design. Outside <Layout> on
-            purpose — it draws its own sidebar, top bar and phone tab bar —
-            but behind the same guard. The previous page lives on at
-            /games-legacy; /test-game (its name while under test) redirects. */}
+        {/* Games: the "Game Library" design. Outside <Layout> on purpose — it
+            draws its own sidebar, top bar and phone tab bar — but behind the
+            same guard. The old page's addresses (/games-legacy, the two demo
+            pages, /test-game from its time under test) redirect here. */}
         <Route
           path="/games"
           element={
@@ -113,6 +52,9 @@ export function Router() {
           }
         />
         <Route path="/test-game" element={<Navigate to="/games" replace />} />
+        <Route path="/games-legacy" element={<Navigate to="/games" replace />} />
+        <Route path="/games-demo" element={<Navigate to="/games" replace />} />
+        <Route path="/games-cover-demo" element={<Navigate to="/games" replace />} />
 
         <Route
           element={
@@ -134,9 +76,6 @@ export function Router() {
           <Route path="/media" element={<MediaPage />} />
           <Route path="/work"     element={<WorkPage />} />
           <Route path="/training"  element={<TrainingPage />} />
-          <Route path="/games-legacy" element={<GamesPage />} />
-          <Route path="/games-demo" element={<GamesLibraryDemoPage />} />
-          <Route path="/games-cover-demo" element={<GamesCoverDemoPage />} />
           <Route path="/projects"  element={<ProjectsPage />} />
           <Route path="/wishes"    element={<WishesPage />} />
           <Route path="/developer" element={<DeveloperPage />} />

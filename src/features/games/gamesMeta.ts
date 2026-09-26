@@ -1,6 +1,6 @@
-// Shared status label + color maps for Games views (GamesPage,
-// PlayQueueTab, GameDetailModal) — was independently forked
-// (sometimes under a different const name) in all 4.
+// Shared status labels and colours for the Games components that keep the
+// app's palette (GameDetailModal, AddGameModal, LibraryControls, Home's
+// Games widget). The Games page itself colours statuses with its own tokens.
 
 export const STATUS_LABEL: Record<string, string> = {
   playing: 'Playing', completed: 'Completed', wishlist: 'Wishlist',
@@ -14,14 +14,6 @@ export const STATUS_COLOR: Record<string, string> = {
   backlog:   'bg-ink-100 text-ink-500',
   dropped:   'bg-red-100 text-red-600',
   hidden:    'bg-ink-200 text-ink-500',
-}
-
-export const STATUS_BORDER: Record<string, string> = {
-  playing:   'border-l-orange-400',
-  completed: 'border-l-green-500',
-  wishlist:  'border-l-purple-500',
-  backlog:   'border-l-ink-300',
-  dropped:   'border-l-red-400',
 }
 
 // The status PICKER. 'hidden' is deliberately absent: it is set by its own

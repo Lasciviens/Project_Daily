@@ -1,17 +1,9 @@
 import { useState } from 'react'
 import { systemMeta } from '../systemMeta'
-import { formatPlaytimeShort, playStatsOf } from '../gameStats'
 import type { Game } from '../types'
 
-// Shared anatomy for every cover-led game card (Grid, Compact, Poster).
-//
-// The three used to hand-build their own badges, so the same fact sat in a
-// different corner on each view — the rating was bottom-left on Grid and inside
-// the hover panel on Poster, and the platform appeared on neither. One kit, one
-// placement rule:
-//
-//   top-left  = year          top-right = my rating
-//   bottom    = platform + flags, over the cover's own gradient
+// Cover, rating and platform pieces shared by the Games components that keep
+// the app's palette (GameDetailModal, NeedsReviewTab).
 //
 // `CoverBackdrop` is the "give them a background" piece: the same cover URL,
 // blurred and dimmed behind the card body, so a card picks up the artwork's own
@@ -75,43 +67,5 @@ export function SystemChip({ game, size = 'md' }: { game: Game; size?: 'sm' | 'm
     }`}>
       {meta.label}{extra > 0 && <span className="opacity-75 font-semibold">+{extra}</span>}
     </span>
-  )
-}
-
-/** Iconic / co-op / needs-review markers, in that fixed order. */
-export function FlagBadges({ game, size = 'md' }: { game: Game; size?: 'sm' | 'md' }) {
-  const sm = size === 'sm'
-  return (
-    <>
-      {game.is_iconic && <span className={sm ? 'text-[10px] leading-none drop-shadow' : 'text-xs leading-none drop-shadow'} title="Iconic">⭐</span>}
-      {game.is_coop && <span className={`font-bold bg-cyan-500 text-white rounded-md leading-none ${sm ? 'text-[9px] px-1 py-0.5' : 'text-[10px] px-1.5 py-1'}`} title="Co-op">2P</span>}
-      {game.needs_review && <span className={sm ? 'text-[10px] leading-none drop-shadow' : 'text-xs leading-none drop-shadow'} title="Needs review">🔎</span>}
-    </>
-  )
-}
-
-/**
- * Recorded play time, from ES-DE. Renders nothing at all when there is none —
- * a library where most rows have never been launched should not be covered in
- * "0h" chips claiming otherwise.
- */
-export function PlaytimeBadge({ game, size = 'md' }: { game: Game; size?: 'sm' | 'md' }) {
-  const play = playStatsOf(game)
-  const t = formatPlaytimeShort(play.seconds)
-  if (!t) return null
-  return (
-    <span className={`font-bold rounded-md bg-black/80 text-white/90 shadow-sm leading-none ${
-      size === 'sm' ? 'text-[9px] px-1 py-0.5' : 'text-[10px] px-1.5 py-1'
-    }`} title={`Played ${t} in total across ${play.count ?? 0} launches`}>⏱{t}</span>
-  )
-}
-
-/** Release year, on the cover — the fastest way to tell two versions apart. */
-export function YearBadge({ year, size = 'md' }: { year: number | null; size?: 'sm' | 'md' }) {
-  if (year == null) return null
-  return (
-    <span className={`font-bold rounded-md bg-black/80 text-white/90 shadow-sm leading-none ${
-      size === 'sm' ? 'text-[9px] px-1 py-0.5' : 'text-[10px] px-1.5 py-1'
-    }`}>{year}</span>
   )
 }
