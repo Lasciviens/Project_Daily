@@ -2,7 +2,7 @@ import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
 import { ArrowRight, CalendarPlus, Check, ExternalLink, MapPin, MoreHorizontal, Pencil, Trash2, Undo2, Ban } from 'lucide-react'
 import { ToneDot, TonePill } from '../../../shared/ui'
 import { resolveWishWindow, wishPeriodLabel } from '../wishRules'
-import { WINDOW_TONE, WISH_PRIORITY_TONE } from '../wishTones'
+import { SCHEDULED_TONE, WINDOW_TONE, WISH_PRIORITY_TONE } from '../wishTones'
 import type { WishItem, WishStatus } from '../types'
 
 interface Props {
@@ -62,7 +62,7 @@ export function WishCard({ wish, today, onEdit, onPlan, onStatus, onDelete }: Pr
         {period && <TonePill tone={WINDOW_TONE[state]}>{period}</TonePill>}
         {wish.status === 'planned' && (
           <span title="A task was created from this wish — the wish stays here as the memory">
-            <TonePill tone="accent"><ArrowRight aria-hidden className="h-3 w-3" /> scheduled</TonePill>
+            <TonePill tone={SCHEDULED_TONE}><ArrowRight aria-hidden className="h-3 w-3" /> scheduled</TonePill>
           </span>
         )}
         {wish.status === 'dropped' && <TonePill tone="neutral">Not any more</TonePill>}
