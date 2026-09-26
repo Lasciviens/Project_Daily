@@ -9,10 +9,15 @@
 // Defaults are set by the storage budget, not by taste. The Free plan's 1 GB is
 // a hard wall (a project over quota ends up answering 402 to EVERY request, not
 // just Games), and 537 MB of it already holds ES-DE originals. So only what the
-// library, the detail hero and the screenshot strip actually show is stored,
-// small; everything else is fetched through the signed proxy when looked at,
-// and composites/theme assets are skipped. Measured sizes at these widths:
-// box art 24-61 KB as JPEG/WebP at 640 px, a transparent logo ~14 KB.
+// app actually shows is copied, small — the cover, screenshot, title screen and
+// fan art (library, hero, screenshot strip) and the HD logo (the variant's
+// wheel_url) — and even those only when the copy will be used (ssPlan.ts
+// decideMediaModes). Everything else is shown online through the signed proxy
+// when looked at; composites and theme assets are skipped. Measured sizes at
+// these widths: box art 24-61 KB at 640 px, a transparent logo ~14 KB.
+//
+// Pictograms (genre, rating, publisher logos) are not game media — their
+// `parent` is not `jeu` — and are kept as an inventory only (extra_media).
 
 /** save a resized copy in Storage · fetch through the proxy when viewed · ignore */
 export type MediaMode = 'store' | 'on_demand' | 'skip'
@@ -50,7 +55,7 @@ const T = (type: string, label: string, group: MediaGroup, mode: MediaMode, widt
 
 export const MEDIA_TYPES: MediaTypeInfo[] = [
   T('box-2D', 'Box front', 'box', 'store', 640),
-  T('box-2D-back', 'Box back', 'box', 'store', 640),
+  T('box-2D-back', 'Box back', 'box', 'on_demand', 640),
   T('box-2D-side', 'Box spine', 'box', 'on_demand', 320),
   T('box-3D', '3D box', 'box', 'on_demand', 640, true),
   T('box-texture', 'Box texture (unfolded)', 'box', 'on_demand', 1280),
@@ -70,10 +75,13 @@ export const MEDIA_TYPES: MediaTypeInfo[] = [
   T('screenmarquee', 'Screen marquee', 'logos', 'on_demand', 640, true),
   T('screenmarqueesmall', 'Screen marquee (small)', 'logos', 'on_demand', 480, true),
   T('bezel-16-9', 'Bezel 16:9', 'extras', 'skip', 1280, true),
+  T('bezel-4-3', 'Bezel 4:3', 'extras', 'skip', 1280, true),
+  T('maps', 'Maps', 'extras', 'on_demand', 1280),
+  T('box-scan', 'Box scan', 'box', 'on_demand', 1280),
+  T('support-scan', 'Cartridge / disc scan', 'support', 'on_demand', 1280),
+  T('flyer', 'Flyer', 'art', 'on_demand', 1280),
+  T('figurine', 'Figurine', 'art', 'on_demand', 640, true),
   T('themehs', 'HyperSpin theme', 'extras', 'skip', 960, true),
-  T('pictocouleur', 'Pictogram (colour)', 'extras', 'skip', 240, true),
-  T('pictoliste', 'Pictogram (list)', 'extras', 'skip', 240, true),
-  T('pictomonochrome', 'Pictogram (mono)', 'extras', 'skip', 240, true),
   T('manuel', 'Manual (PDF)', 'documents', 'on_demand', 0, false, 'pdf'),
   T('video-normalized', 'Video (normalized)', 'video', 'skip', 0, false, 'video'),
   T('video', 'Video (original)', 'video', 'skip', 0, false, 'video'),

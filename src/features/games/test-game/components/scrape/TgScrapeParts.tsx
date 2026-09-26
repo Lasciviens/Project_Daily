@@ -62,6 +62,8 @@ const BASIS_TONE: Record<MatchBasis, string> = {
   filename: 'bg-[var(--tg-green-soft)] text-[var(--tg-green)]',
   serial: 'bg-[var(--tg-green-soft)] text-[var(--tg-green)]',
   id: 'bg-[var(--tg-blue-soft)] text-[var(--tg-blue)]',
+  previous: 'bg-[var(--tg-blue-soft)] text-[var(--tg-blue)]',
+  filename_guess: 'bg-[var(--tg-grey-soft)] text-[var(--tg-text-2)]',
   name: 'bg-[var(--tg-grey-soft)] text-[var(--tg-text-2)]',
 }
 

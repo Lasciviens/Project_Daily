@@ -83,6 +83,8 @@ for (const s of SECRETS) ok(!stripped.includes(s), `stripCredentials leaves no $
 ok(!/"url"/.test(stripped) && !/downloadurl/.test(stripped), 'stripCredentials drops url and downloadurl keys')
 ok(stripped.includes('Sonic The Hedgehog'), 'stripCredentials keeps the data')
 eq(R.stripCredentials({ note: `see ${url0}` }), {}, 'a credential-bearing string under any key is dropped')
+eq(R.stripCredentials({ ssuser: { id: SSID, niveau: '10' } }, SECRETS), { ssuser: { niveau: '10' } }, 'a raw secret value (their ssuser.id is the login) is dropped')
+eq(R.stripCredentials({ u: 'x?devpassword%3Dabc' }), {}, 'a percent-encoded credential parameter is dropped')
 eq(R.stripCredentials({ roms: Array.from({ length: 400 }, (_, i) => ({ i })) }).roms.length, 300, 'long rom lists are capped')
 
 // ── Media inventory ─────────────────────────────────────────────────────────
@@ -101,11 +103,16 @@ eq(R.pickMediaEntry(inv, 'support-2D', ['eu']).support, '1', 'first disc before 
 eq(R.pickMediaEntry(inv, 'wheel', ['eu']), null, 'missing type → null')
 
 // ── Candidate mapping ───────────────────────────────────────────────────────
-const cand = R.toCandidate(JEU, ['filename'], { regions: ['eu', 'us'], languages: ['en'] })
-eq(cand.values.title, 'Sonic The Hedgehog', 'title prefers their canonical ss name')
+const cand = R.toCandidate(JEU, ['filename'], { regions: ['ss', 'eu', 'us'], languages: ['en'] })
+eq(cand.values.title, 'Sonic The Hedgehog', 'title follows the region order (ss first here)')
+eq(R.toCandidate(JEU, ['name'], { regions: ['wor'], languages: ['en'] }).values.title, 'Sonic the Hedgehog', 'the region order decides the title — ss is not forced first')
 eq(cand.values.description, 'English text', 'description follows the language order')
 eq(cand.values.release_year, 1991, 'earliest year')
 eq(cand.values.release_date, '1991-06-23', 'release date for the ROM region (us first in rom regions)')
+eq(cand.values.version_title, 'USA, Europe', 'version title from the matched dump tags')
+eq(R.romTags('Sonic (USA) (Rev 1) [!].md'), 'USA · Rev 1 · !', 'romTags keeps every tag')
+eq([cand.publisher_id, cand.developer_id], ['10', '11'], 'publisher/developer ids kept (company logos)')
+eq(cand.extra_media.map(m => m.parent), ['genre'], 'pictograms kept as an inventory, not dropped')
 eq(cand.values.publisher, 'SEGA', 'publisher from {id,text}')
 eq(cand.values.developer, 'Sonic Team', 'developer')
 eq(cand.values.genres, ['Platform', 'Action'], 'primary genre leads, English names')
@@ -136,6 +143,7 @@ eq(R.classifyText(200, 'CRCOK'), 'unchanged', 'CRCOK')
 eq(R.classifyText(404, 'Erreur : Jeu non trouvée !'), 'not_found', '404')
 eq(R.classifyText(430, 'Votre quota de scrape est dépassé'), 'quota', '430')
 eq(R.classifyText(429, ''), 'busy', '429')
+eq(R.classifyText(431, ''), 'ko_quota', '431 is the failed-lookup allowance')
 eq(R.classifyText(423, ''), 'closed', '423')
 
 // ── Search planning ─────────────────────────────────────────────────────────
@@ -156,6 +164,23 @@ eq(kinds(P.planSearch({ jeuId: '5', rom: { serial: 'SLUS-123' } })), ['id', 'ser
 eq(kinds(P.planSearch({ name: 'Sonic', rom: { crc: 'f9394e97' }, useRom: false })), ['name'], 'ROM info can be switched off')
 eq(kinds(P.planSearch({ name: 'Sonic', rom: { crc: 'f9394e97' }, useName: false })), ['hash'], 'name can be switched off')
 eq(P.romFileName('C:\\roms\\snes\\Axelay (USA).sfc'), 'Axelay (USA).sfc', 'Windows path reduced to a filename')
+eq(P.planSearch({ rom: { filename: 'x.md', sha1: 'a'.repeat(40) } }).queries[0].params, { romtype: 'rom', sha1: 'a'.repeat(40) }, 'MD5/SHA1 without CRC or system: the hash goes alone (romnom would need a system)')
+eq(P.planSearch({ rom: { filename: 'x.md', crc: 'f9394e97' } }).queries[0].params.romnom, 'x.md', 'with a CRC the filename rides along')
+
+// ── Filename verification ──
+const fc = (filename, sys = 1, extra = {}) => ({ rom: { filename, size: null, crc: null, ...extra }, system: { id: sys } })
+ok(P.verifyFilenameMatch({ filename: './Sonic (USA).md', systemId: 1 }, fc('sonic (usa).md')), 'same file (case, directory) verifies')
+ok(P.verifyFilenameMatch({ filename: 'Sonic (USA).zip', systemId: 1 }, fc('Sonic (USA).md')), 'zip vs inner file verifies (extension ignored)')
+ok(!P.verifyFilenameMatch({ filename: 'Sonic (Hack).zip', systemId: 1 }, fc('Amy Rose in Sonic.md')), 'their guess for an unknown file does not verify')
+ok(!P.verifyFilenameMatch({ filename: 'Sonic (USA).md', systemId: 1 }, fc('Sonic (USA).md', 203)), 'another system does not verify')
+ok(!P.verifyFilenameMatch({ filename: 'Sonic (USA).md', systemId: 1 }, { rom: null, system: { id: 1 } }), 'no rom block does not verify')
+ok(!P.verifyFilenameMatch({ filename: 'Sonic (USA).md', systemId: 1, crc: 'aaaaaaaa' }, fc('Sonic (USA).md', 1, { crc: 'bbbbbbbb' })), 'a different CRC does not verify')
+
+// ── Which copies to store ──
+const ch = [{ type: 'box-2D', mode: 'store' }, { type: 'ss', mode: 'store' }, { type: 'sstitle', mode: 'store' }, { type: 'box-3D', mode: 'on_demand' }]
+eq(P.decideMediaModes(ch, { explicit: false, fieldWrites: { cover: false, screenshot: true }, esdeCategories: ['titlescreens'] }),
+  { 'box-2D': 'on_demand', ss: 'store', sstitle: 'on_demand', 'box-3D': 'on_demand' }, 'batch: copy only what will be used and is not on the handheld already')
+eq(P.decideMediaModes(ch, { explicit: true, fieldWrites: {}, esdeCategories: ['covers'] })['box-2D'], 'store', 'an explicit review choice is respected')
 
 // ── Merge ───────────────────────────────────────────────────────────────────
 const c = (id, basis, rom = null) => ({ jeu_id: id, matched_by: [basis], rom, rom_id: null, values: {}, flags: [] })
@@ -184,7 +209,7 @@ ok(P.sameValue(1991, '1991') && !P.sameValue(['a', 'b'], ['b', 'a']), 'sameValue
 
 // ── Preferences ─────────────────────────────────────────────────────────────
 const d = P.defaultPrefs()
-eq([d.fields.title, d.fields.cover, d.snapshot, d.budgetMb], ['fill', 'fill', true, 800], 'defaults fill gaps, snapshot on, 800 MB budget')
+eq([d.fields.title, d.fields.cover, d.snapshot, d.budgetMb, d.regions[0]], ['fill', 'fill', true, 800, 'ss'], 'defaults fill gaps, snapshot on, 800 MB budget, canonical title first')
 const n = P.normalizePrefs({ fields: { title: 'replace', bogus: 'x', genres: 'nope' }, media: { manuel: 'store', 'box-2D': 'skip', 'bad type!': 'store' }, imageScale: 9, regions: ['EU', 'x!', 'us'], budgetMb: 5 })
 eq([n.fields.title, n.fields.genres], ['replace', 'fill'], 'valid policies kept, invalid ones defaulted')
 eq(n.media, { manuel: 'on_demand', 'box-2D': 'skip' }, 'a manual cannot be stored; bad keys dropped')
@@ -203,28 +228,42 @@ eq(C.mediaInfo('flyer').mode, 'on_demand', 'an unknown type is usable on demand'
 ok(C.MEDIA_TYPES.every(t => t.kind !== 'image' || t.width > 0), 'every image type has a width')
 
 // ── Proxy ───────────────────────────────────────────────────────────────────
-const ref = { jeuId: '5', systemId: 1, sig: 'A'.repeat(32) }
+const EXP = 1790000000
+const ref = { jeuId: '5', systemId: 1, sig: 'A'.repeat(32), exp: EXP }
 const q = X.proxyQuery(ref, { ep: 'img', token: 'box-2D(us)' }, { width: 160, format: 'jpg' })
-eq(q, 'j=5&s=1&m=box-2D%28us%29&w=160&f=jpg&k=' + 'A'.repeat(32), 'proxy query is stable')
+eq(q, `j=5&s=1&m=box-2D%28us%29&w=200&f=jpg&x=${EXP}&k=` + 'A'.repeat(32), 'proxy query is stable, width snapped up to a served size')
 const parsed = X.parseProxyQuery(new URLSearchParams(q))
-eq([parsed.jeuId, parsed.systemId, parsed.token, parsed.width, parsed.format], ['5', 1, 'box-2D(us)', 160, 'jpg'], 'proxy query round-trips')
-eq(X.upstreamFor(parsed), { file: 'mediaJeu.php', params: { systemeid: '1', jeuid: '5', media: 'box-2D(us)', maxwidth: '160', outputformat: 'jpg' } }, 'upstream request')
-const vq = X.parseProxyQuery(new URLSearchParams(X.proxyQuery(ref, { ep: 'video', token: 'video-normalized' }, { width: 300 })))
+eq([parsed.jeuId, parsed.systemId, parsed.token, parsed.width, parsed.format, parsed.exp], ['5', 1, 'box-2D(us)', 200, 'jpg', EXP], 'proxy query round-trips')
+eq(X.upstreamFor(parsed), { file: 'mediaJeu.php', params: { systemeid: '1', jeuid: '5', media: 'box-2D(us)', maxwidth: '200', outputformat: 'jpg' } }, 'upstream request')
+eq([X.snapWidth(80), X.snapWidth(360), X.snapWidth(5000), X.snapWidth(null)], [120, 360, 1280, null], 'widths snap to the served set')
+const e1 = X.mediaExpiry(Date.UTC(2026, 8, 25)), e2 = X.mediaExpiry(Date.UTC(2026, 8, 26))
+ok(e1 === e2 && e1 * 1000 > Date.UTC(2026, 8, 25) + 7 * 864e5 && e1 * 1000 <= Date.UTC(2026, 8, 25) + 14 * 864e5, 'expiry is stable within a week and 1-2 weeks ahead')
+ok('error' in X.parseProxyQuery(new URLSearchParams(`j=5&s=1&m=box-2D&w=160&x=${EXP}&k=` + 'A'.repeat(32))), 'a width outside the served set is refused')
+ok('error' in X.parseProxyQuery(new URLSearchParams('j=5&s=1&m=box-2D&k=' + 'A'.repeat(32))), 'a link without expiry is refused')
+ok(X.isScrapeCopyOf('0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0', '0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0/box-2D-kx12ab.jpg'), 'this game own copy is deletable')
+ok(!X.isScrapeCopyOf('0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0', '0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0/esde/x/abc.png'), 'an ES-DE object is never a scrape copy')
+ok(!X.isScrapeCopyOf('0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0', 'aaaaaaaa-4b5a-6978-8796-a5b4c3d2e1f0/box-2D.jpg'), 'another game copy is not this game')
+eq([X.safeRedirect('https://api.screenscraper.fr/x', '/y'), X.safeRedirect('https://a.screenscraper.fr/x', 'https://neoclone.screenscraper.fr/m.php?a=1'), X.safeRedirect('https://a.screenscraper.fr/x', 'http://neoclone.screenscraper.fr/m'), X.safeRedirect('https://a.screenscraper.fr/x', 'https://evil.example/')],
+  ['https://api.screenscraper.fr/y', 'https://neoclone.screenscraper.fr/m.php?a=1', null, null], 'redirects only to https screenscraper.fr')
+const vq = X.parseProxyQuery(new URLSearchParams(X.proxyQuery(ref, { ep: 'video', token: 'video-normalized' }, { width: 360 })))
 eq([vq.ep, vq.width, X.upstreamFor(vq).file], ['video', null, 'mediaVideoJeu.php'], 'videos are never resized')
-for (const [bad, why] of [['j=5x&s=1&m=box-2D&k=' + 'A'.repeat(32), 'game id'], ['j=5&s=1&m=box-2D(us)%26x=1&k=' + 'A'.repeat(32), 'token injection'],
-  ['j=5&s=1&m=box-2D&k=short', 'short signature'], ['j=5&s=1&m=box-2D&w=9999&k=' + 'A'.repeat(32), 'width'], ['j=5&s=1&e=file&m=x&k=' + 'A'.repeat(32), 'endpoint']]) {
+for (const [bad, why] of [[`j=5x&s=1&m=box-2D&x=${EXP}&k=` + 'A'.repeat(32), 'game id'], [`j=5&s=1&m=box-2D(us)%26y=1&x=${EXP}&k=` + 'A'.repeat(32), 'token injection'],
+  [`j=5&s=1&m=box-2D&x=${EXP}&k=short`, 'short signature'], [`j=5&s=1&m=box-2D&w=9999&x=${EXP}&k=` + 'A'.repeat(32), 'width'], [`j=5&s=1&e=file&m=x&x=${EXP}&k=` + 'A'.repeat(32), 'endpoint']]) {
   ok('error' in X.parseProxyQuery(new URLSearchParams(bad)), `proxy refuses a bad ${why}`)
 }
 ok(X.allowedContentType('img', 'image/png') && !X.allowedContentType('img', 'text/html'), 'images only on img')
+ok(!X.allowedContentType('img', 'image/svg+xml'), 'SVG (script) is never served')
+eq([X.imageExtension('image/jpeg'), X.imageExtension('image/svg+xml')], ['jpg', null], 'stored extension follows the real type')
 ok(X.allowedContentType('manual', 'application/pdf') && !X.allowedContentType('video', 'text/plain'), 'pdf and video types')
 ok(X.safeEqual('abc', 'abc') && !X.safeEqual('abc', 'abd') && !X.safeEqual('abc', 'ab'), 'safeEqual')
 
 ;(async () => {
-  const s1 = await X.signMedia('service-key', '5', 1)
-  const s2 = await X.signMedia('service-key', '5', 1)
-  const s3 = await X.signMedia('service-key', '6', 1)
-  const s4 = await X.signMedia('other-key', '5', 1)
-  eq([s1.length, s1 === s2, s1 === s3, s1 === s4], [32, true, false, false], 'signature: deterministic, bound to game and key')
+  const s1 = await X.signMedia('service-key', '5', 1, EXP)
+  const s2 = await X.signMedia('service-key', '5', 1, EXP)
+  const s3 = await X.signMedia('service-key', '6', 1, EXP)
+  const s4 = await X.signMedia('other-key', '5', 1, EXP)
+  const s5 = await X.signMedia('service-key', '5', 1, EXP + 1)
+  eq([s1.length, s1 === s2, s1 === s3, s1 === s4, s1 === s5], [32, true, false, false, false], 'signature: deterministic, bound to game, key and expiry')
   ok(/^[A-Za-z0-9_-]+$/.test(s1), 'signature is base64url')
 
   // ── Both edge functions carry the current shared code ──

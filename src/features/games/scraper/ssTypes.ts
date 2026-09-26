@@ -8,15 +8,18 @@ export type SsGameField =
   | 'title' | 'description' | 'release_year' | 'publisher' | 'developer'
   | 'genres' | 'modes' | 'players' | 'age_rating' | 'series_name'
   | 'cover' | 'screenshot' | 'fanart'
-export type SsPlatformField = 'release_date' | 'region' | 'rating'
+export type SsPlatformField = 'release_date' | 'region' | 'rating' | 'wheel' | 'version_title' | 'rom_status'
 export type SsField = SsGameField | SsPlatformField
 
 /** fill = only when empty · replace = overwrite what is there · skip = never */
 export type FieldPolicy = 'fill' | 'replace' | 'skip'
 
-/** How a search result was found. `hash`/`filename` are ROM identity (strong),
- *  `name` is a text search (weak), `id` is a ScreenScraper game id. */
-export type MatchBasis = 'hash' | 'filename' | 'serial' | 'id' | 'name'
+/** How a search result was found. `hash` and a VERIFIED `filename` (their
+ *  answer names the same dump) are ROM identity; `filename_guess` is their
+ *  best guess for a filename they do not know (a renamed or hacked ROM);
+ *  `previous` is the id this game was matched to before; `id` an id typed in;
+ *  `name` a text search (weak). */
+export type MatchBasis = 'hash' | 'filename' | 'filename_guess' | 'serial' | 'id' | 'previous' | 'name'
 
 /** Which ScreenScraper media endpoint a file comes from. */
 export type MediaEndpoint = 'img' | 'video' | 'manual'
@@ -60,11 +63,20 @@ export interface SsRomInfo {
   clone_of: string | null
 }
 
+/** A file ScreenScraper attaches to something other than the game itself — a
+ *  genre or rating pictogram, a publisher logo, a hack's screenshot. Kept as
+ *  an inventory (what exists), not served. */
+export interface SsExtraMedia { parent: string; parent_label: string | null; type: string; region: string | null; format: string | null; size: number | null }
+
+export interface SsHack { id: string | null; name: string | null; author: string | null; status: string | null; version: string | null; synopses: SsLocalized[] }
+
 /** A normalized search result. Carries values, never a media URL. */
 export interface SsCandidate {
   jeu_id: string
   rom_id: string | null
   system: { id: number | null; name: string | null }
+  publisher_id: string | null
+  developer_id: string | null
   matched_by: MatchBasis[]
   /** Mapped values in the user's preferred language/region order. */
   values: Partial<Record<SsField, string | number | string[] | null>>
@@ -92,10 +104,22 @@ export interface SsCandidate {
   roms_total: number
   hacks_total: number
   actions_total: number
+  /** Their controls / colours text (arcade cabinets mostly), when given. */
+  controls: string | null
+  colours: string | null
+  /** Tips and tricks, per language. */
+  tips: { lang: string; title: string | null; text: string }[]
+  /** Hacks of this game they know (no download links — those carry credentials). */
+  hacks: SsHack[]
+  /** Control mappings as text ("BTN-A|BTN-B=Spin Dash"). */
+  actions: string[]
   flags: string[]
   media: SsMediaEntry[]
-  /** Signs `jeu_id|system` for the media proxy (see ssProxy.ts). */
+  extra_media: SsExtraMedia[]
+  /** Signs `jeu_id|system|expiry` for the media proxy (see ssProxy.ts). */
   media_sig: string | null
+  /** Unix seconds the signature stops working. */
+  media_exp: number | null
 }
 
 export interface SsRomQuery {

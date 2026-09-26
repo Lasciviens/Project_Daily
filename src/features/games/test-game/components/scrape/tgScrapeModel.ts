@@ -77,7 +77,8 @@ export function formProblem(f: SearchForm): string | null {
 // ─── Results ─────────────────────────────────────────────────────────────────
 
 export const BASIS_LABEL: Record<MatchBasis, string> = {
-  hash: 'ROM hash', filename: 'ROM file', serial: 'Serial', id: 'ScreenScraper id', name: 'Name',
+  hash: 'Exact ROM', filename: 'ROM file', filename_guess: 'File name guess', serial: 'Serial',
+  id: 'ScreenScraper id', previous: 'Previous match', name: 'Name match',
 }
 /** Found by what identifies the ROM itself (not just a similar name). */
 export const isExact = (c: Pick<SsCandidate, 'matched_by'>) => c.matched_by.some(b => b !== 'name')

@@ -10,7 +10,7 @@
 // (ES-DE, Skyscraper, RomM, Batocera, Recalbox), recorded in
 // docs/games/screenscraper-integration.md §16 — not guessed.
 
-import type { MatchBasis, MediaEndpoint, SsCandidate, SsLocalized, SsMediaEntry, SsRomInfo } from './ssTypes'
+import type { MatchBasis, MediaEndpoint, SsCandidate, SsExtraMedia, SsHack, SsLocalized, SsMediaEntry, SsRomInfo } from './ssTypes'
 
 // deno-lint-ignore no-explicit-any
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -35,7 +35,8 @@ export function scrubSecrets(text: string, secrets: (string | undefined | null)[
   return out.replace(/\b(devid|devpassword|ssid|sspassword)=[^&\s"']*/gi, '$1=[REDACTED]')
 }
 
-const CREDENTIAL_PARAM = /\b(devid|devpassword|ssid|sspassword)=/i
+// `=` or its percent-encoded form, as it appears inside a nested encoded URL.
+const CREDENTIAL_PARAM = /\b(devid|devpassword|ssid|sspassword)(=|%3d)/i
 const URL_KEYS = new Set(['url', 'downloadurl', 'commandRequested'])
 
 /** Caps for arrays that can run long on a popular game. */
@@ -44,20 +45,25 @@ export const SNAPSHOT_CAPS: Record<string, number> = { roms: 300, hacks: 50, med
 /**
  * A deep copy of a ScreenScraper payload with every URL removed — the only
  * form in which any part of their answer may be stored or sent to a browser.
- * Drops URL keys outright and any other string that carries a credential
- * parameter, so a URL hiding under a key nobody anticipated is still caught.
+ * Drops URL keys outright, any string that carries a credential parameter
+ * (plain or percent-encoded), and any string containing one of the secret
+ * VALUES themselves (their `ssuser.id` is the member login in plain text).
  */
-export function stripCredentials(value: unknown, depth = 0): unknown {
+export function stripCredentials(value: unknown, secrets: (string | null | undefined)[] = [], depth = 0): unknown {
   if (depth > 12) return null
-  if (typeof value === 'string') return CREDENTIAL_PARAM.test(value) ? null : value
-  if (Array.isArray(value)) return value.map(v => stripCredentials(v, depth + 1))
+  if (typeof value === 'string') {
+    if (CREDENTIAL_PARAM.test(value)) return null
+    for (const s of secrets) if (s && s.length >= 4 && value.includes(s)) return null
+    return value
+  }
+  if (Array.isArray(value)) return value.map(v => stripCredentials(v, secrets, depth + 1))
   if (value && typeof value === 'object') {
     const out: Rec = {}
     for (const [k, v] of Object.entries(value as Rec)) {
       if (URL_KEYS.has(k)) continue
       let next = v
       if (Array.isArray(v) && SNAPSHOT_CAPS[k] != null && v.length > SNAPSHOT_CAPS[k]) next = v.slice(0, SNAPSHOT_CAPS[k])
-      const clean = stripCredentials(next, depth + 1)
+      const clean = stripCredentials(next, secrets, depth + 1)
       if (clean !== null && clean !== undefined) out[k] = clean
     }
     return out
@@ -239,6 +245,19 @@ export function mediaInventory(medias: unknown): SsMediaEntry[] {
   return out
 }
 
+/** Files attached to something other than the game (pictograms, logos, hack
+ *  art) — what exists, without URLs. */
+export function extraMediaInventory(medias: unknown): SsExtraMedia[] {
+  const out: SsExtraMedia[] = []
+  for (const m of arr(medias)) {
+    const parent = str(m.parent)
+    const type = str(m.type)
+    if (!parent || parent === 'jeu' || !type) continue
+    out.push({ parent, parent_label: str(m.subparent), type, region: str(m.region)?.toLowerCase() ?? null, format: str(m.format)?.toLowerCase() ?? null, size: num(m.size) })
+  }
+  return out.slice(0, 200)
+}
+
 /** One file of a type, in region order: the wanted regions, then world, their
  *  own, then anything. First disc before later ones. */
 export function pickMediaEntry(inventory: SsMediaEntry[], type: string, regions: string[]): SsMediaEntry | null {
@@ -268,6 +287,46 @@ export function candidateFlags(jeu: Rec, rom: SsRomInfo | null): string[] {
   return flags
 }
 
+/** Their controles/couleurs arrive as "0", a string, or a list of objects. */
+function looseText(v: unknown): string | null {
+  if (Array.isArray(v)) {
+    const parts = v.map(e => (e && typeof e === 'object' ? str((e as Rec).text) ?? str((e as Rec).controle) ?? str((e as Rec).hexa) : str(e))).filter((x): x is string => !!x)
+    return parts.length ? parts.join(', ') : null
+  }
+  const s = str(v)
+  return s && s !== '0' ? s : null
+}
+
+function tipsOf(list: unknown, languages: string[]): { lang: string; title: string | null; text: string }[] {
+  const all = arr(list).map(t => ({ lang: String(t.langue ?? '').toLowerCase(), title: str(t.titre), text: str(t.description) ?? str(t.text) ?? '' }))
+    .filter(t => t.text)
+  const rank = (l: string) => { const i = languages.indexOf(l); return i < 0 ? languages.length : i }
+  return all.sort((a, b) => rank(a.lang) - rank(b.lang)).slice(0, 40)
+}
+
+function hacksOf(list: unknown): SsHack[] {
+  return arr(list).slice(0, 50).map(h => ({
+    id: str(h.id), name: str(h.name) ?? str(h.nom), author: str(h.developpeur), status: str(h.status),
+    version: str(h.version), synopses: localizedList(h.synopsis, 'langue'),
+  }))
+}
+
+function actionsOf(list: unknown, languages: string[]): string[] {
+  return arr(list).slice(0, 50)
+    .map(a => pickPreferred(localizedList(a.controle, 'langue'), languages)?.text ?? null)
+    .filter((x): x is string => !!x)
+}
+
+/**
+ * "Sonic The Hedgehog (USA, Europe) (Rev 1) [!].md" → "USA, Europe · Rev 1 · !":
+ * the dump's own tags, the honest name of this version.
+ */
+export function romTags(filename: string | null | undefined): string | null {
+  if (!filename) return null
+  const tags = [...filename.replace(/\.[A-Za-z0-9]{1,5}$/, '').matchAll(/[([]([^)\]]+)[)\]]/g)].map(m => m[1].trim()).filter(Boolean)
+  return tags.length ? tags.join(' · ') : null
+}
+
 /** Their names for non-games carry a `ZZZ(notgame):` prefix. */
 const cleanName = (s: string) => s.replace(/^ZZZ\(notgame\):\s*/i, '').trim()
 
@@ -287,13 +346,17 @@ export function toCandidate(jeu: Rec, matchedBy: MatchBasis[], opts: MapOptions,
   const genres = groupNames(jeu.genres, opts.languages)
   const modes = groupNames(jeu.modes, opts.languages)
   const families = groupNames(jeu.familles, opts.languages)
-  const title = pickPreferred(names, ['ss', ...opts.regions])?.text ?? null
+  // The user's own region order decides the title too; `ss` (their canonical
+  // name) is one entry in that order, not a hard prefix.
+  const title = pickPreferred(names, opts.regions)?.text ?? null
   const description = pickPreferred(synopses, opts.languages)?.text ?? null
 
   return {
     jeu_id: String(jeu.id ?? ''),
     rom_id: str(jeu.romid),
     system: { id: num((jeu.systeme as Rec | undefined)?.id), name: str(jeu.systeme) },
+    publisher_id: str((jeu.editeur as Rec | undefined)?.id),
+    developer_id: str((jeu.developpeur as Rec | undefined)?.id),
     matched_by: matchedBy,
     values: {
       title,
@@ -309,6 +372,7 @@ export function toCandidate(jeu: Rec, matchedBy: MatchBasis[], opts: MapOptions,
       release_date: releaseDateFor(dates, rom?.regions ?? [], opts.regions),
       region: rom?.regions.length ? rom.regions.join(', ') : null,
       rating: rating100(n20),
+      version_title: rom ? romTags(rom.filename) : null,
     },
     names, synopses, dates, classifications,
     genres, modes, families,
@@ -326,9 +390,16 @@ export function toCandidate(jeu: Rec, matchedBy: MatchBasis[], opts: MapOptions,
     roms_total: roms.length,
     hacks_total: arr(jeu.hacks).length,
     actions_total: arr(jeu.actions).length,
+    controls: looseText(jeu.controles),
+    colours: looseText(jeu.couleurs),
+    tips: tipsOf(jeu.tips, opts.languages),
+    hacks: hacksOf(jeu.hacks),
+    actions: actionsOf(jeu.actions, opts.languages),
     flags: candidateFlags(jeu, rom),
     media: mediaInventory(jeu.medias),
+    extra_media: extraMediaInventory(jeu.medias),
     media_sig: null,
+    media_exp: null,
   }
 }
 
@@ -350,7 +421,7 @@ export const isRealJeu = (j: unknown): j is Rec => !!j && typeof j === 'object' 
 
 // ─── Their plain-text answers ────────────────────────────────────────────────
 
-export type SsTextKind = 'not_found' | 'no_media' | 'unchanged' | 'login' | 'quota' | 'closed' | 'busy' | 'bad_request' | 'other'
+export type SsTextKind = 'not_found' | 'no_media' | 'unchanged' | 'login' | 'quota' | 'ko_quota' | 'closed' | 'busy' | 'bad_request' | 'other'
 
 /**
  * ScreenScraper answers errors in plain text, often with HTTP 200 (a failed
@@ -362,7 +433,8 @@ export function classifyText(status: number, body: string): SsTextKind {
   if (/^\s*nomedia\b/.test(b)) return 'no_media'
   if (status === 404 || /non trouv/.test(b)) return 'not_found'
   if (status === 403 || /erreur de login|identifiants/.test(b)) return 'login'
-  if (status === 430 || status === 431 || /quota/.test(b)) return 'quota'
+  if (status === 431 || /non reconnu|roms? inconnu/.test(b)) return 'ko_quota'
+  if (status === 430 || /quota/.test(b)) return 'quota'
   if (status === 423 || status === 401 || /ferm|closed/.test(b)) return 'closed'
   if (status === 429 || /thread|trop de|too many/.test(b)) return 'busy'
   if (status === 400 || /champs obligatoires|manque/.test(b)) return 'bad_request'
@@ -375,6 +447,7 @@ export const TEXT_MESSAGE: Record<SsTextKind, string> = {
   unchanged: 'Unchanged since last time.',
   login: 'ScreenScraper refused the login — check the four SCREENSCRAPER_* secrets.',
   quota: "Today's ScreenScraper allowance is used up; it resets at midnight CET.",
+  ko_quota: 'Too many unrecognised lookups today (their separate allowance for misses); it resets at midnight CET.',
   closed: 'ScreenScraper is closed right now (their servers are overloaded) — try again later.',
   busy: 'ScreenScraper is busy (too many requests at once) — try again in a moment.',
   bad_request: 'ScreenScraper rejected the request as incomplete.',

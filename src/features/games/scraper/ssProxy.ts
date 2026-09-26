@@ -10,10 +10,11 @@
 //
 // Why signed: the function has to run without JWT verification (an <img> tag
 // cannot send a header), and an open proxy would let anyone spend this
-// account's daily allowance. The signature binds ONE game on ONE system, so a
-// leaked URL can fetch that game's own box art and nothing else — which is why
-// it does not expire (it is also what lets a saved game keep browsing its
-// media months later).
+// account's daily allowance. The signature binds ONE game on ONE system until
+// an expiry, and only a few fixed widths are served — so a leaked link fetches
+// that game's own media, a handful of variants, for a week at most.
+// Signatures are minted on demand by screenscraper-sync (owner only) and never
+// stored, so rotating the signing key breaks nothing permanently.
 
 import type { MediaEndpoint, SsMediaEntry } from './ssTypes'
 import { MEDIA_TOKEN } from './ssRules'
@@ -21,9 +22,26 @@ import { MEDIA_TOKEN } from './ssRules'
 export const PROXY_PATH = '/functions/v1/screenscraper-media'
 
 /** The exact bytes that get signed. Versioned so the scheme can change. */
-export const sigPayload = (jeuId: string, systemId: number | string) => `ssm1|${jeuId}|${systemId}`
+export const sigPayload = (jeuId: string, systemId: number | string, exp: number) => `ssm2|${jeuId}|${systemId}|${exp}`
 
-export interface ProxyRef { jeuId: string; systemId: number; sig: string }
+export interface ProxyRef { jeuId: string; systemId: number; sig: string; exp: number }
+
+/** The only widths served. Few distinct URLs per file keep both the browser
+ *  cache and ScreenScraper's allowance intact. */
+export const PROXY_WIDTHS = [120, 200, 360, 640, 1280] as const
+/** The smallest served width at least as large as asked (or the largest). */
+export function snapWidth(w: number | null | undefined): number | null {
+  if (w == null || !Number.isFinite(w) || w <= 0) return null
+  return PROXY_WIDTHS.find(x => x >= w) ?? PROXY_WIDTHS[PROXY_WIDTHS.length - 1]
+}
+
+const WEEK = 7 * 24 * 3600
+/** A signature's expiry: the end of NEXT week (unix seconds). The same value
+ *  all week long, so proxy URLs — and the browser's cache of them — stay
+ *  stable, while no link outlives two weeks. */
+export const mediaExpiry = (nowMs: number) => (Math.floor(nowMs / 1000 / WEEK) + 2) * WEEK
+/** Longest validity a request may claim — refuses a forged far-future expiry. */
+export const MAX_EXPIRY_AHEAD = 2 * WEEK + 60
 
 export interface ProxyRequest {
   jeuId: string
@@ -34,6 +52,7 @@ export interface ProxyRequest {
   width: number | null
   format: 'png' | 'jpg' | null
   sig: string
+  exp: number
 }
 
 const EP: MediaEndpoint[] = ['img', 'video', 'manual']
@@ -48,7 +67,9 @@ export function parseProxyQuery(q: URLSearchParams): ProxyRequest | { error: str
   const w = q.get('w')
   const f = q.get('f')
   const sig = q.get('k') ?? ''
+  const x = q.get('x') ?? ''
   if (!/^\d{1,10}$/.test(j)) return { error: 'bad game id' }
+  if (!/^\d{9,11}$/.test(x)) return { error: 'bad expiry' }
   if (!/^\d{1,6}$/.test(s)) return { error: 'bad system id' }
   if (!EP.includes(ep)) return { error: 'bad endpoint' }
   if (!MEDIA_TOKEN.test(token)) return { error: 'bad media token' }
@@ -56,12 +77,12 @@ export function parseProxyQuery(q: URLSearchParams): ProxyRequest | { error: str
   let width: number | null = null
   if (w != null && w !== '') {
     const n = Number(w)
-    if (!Number.isInteger(n) || n < 32 || n > 2500) return { error: 'bad width' }
+    if (!(PROXY_WIDTHS as readonly number[]).includes(n)) return { error: 'bad width' }
     width = n
   }
   const format = f === 'png' || f === 'jpg' ? f : null
   if (f != null && f !== '' && !format) return { error: 'bad format' }
-  return { jeuId: j, systemId: Number(s), ep, token, width: ep === 'img' ? width : null, format: ep === 'img' ? format : null, sig }
+  return { jeuId: j, systemId: Number(s), ep, token, width: ep === 'img' ? width : null, format: ep === 'img' ? format : null, sig, exp: Number(x) }
 }
 
 /** The query string for one file. Order is fixed so equal requests are equal
@@ -72,8 +93,10 @@ export function proxyQuery(ref: ProxyRef, entry: Pick<SsMediaEntry, 'ep' | 'toke
   p.set('s', String(ref.systemId))
   if (entry.ep !== 'img') p.set('e', entry.ep)
   p.set('m', entry.token)
-  if (entry.ep === 'img' && opts.width) p.set('w', String(Math.round(opts.width)))
+  const w = entry.ep === 'img' ? snapWidth(opts.width) : null
+  if (w) p.set('w', String(w))
   if (entry.ep === 'img' && opts.format) p.set('f', opts.format)
+  p.set('x', String(ref.exp))
   p.set('k', ref.sig)
   return p.toString()
 }
@@ -89,17 +112,48 @@ export function upstreamFor(req: ProxyRequest): { file: string; params: Record<s
   return { file: UPSTREAM_FILE[req.ep], params }
 }
 
-/** Where a stored copy lives. Keyed by our own game id so a re-scrape
- *  overwrites its own object instead of growing a second one. */
-export const storedPath = (gameId: string, type: string, ext: string) => `${gameId}/${type}.${ext}`
+/**
+ * Where a stored copy lives: under our own game id, with a per-upload stamp,
+ * so a re-scrape never overwrites bytes an undo may point back at (a reused
+ * path would serve the new picture under the restored URL).
+ */
+export const storedPath = (gameId: string, type: string, stamp: string, ext: string) => `${gameId}/${type}-${stamp}.${ext}`
 
+/** Is this a stored ScreenScraper copy of THIS game — the only kind of object
+ *  undo or cleanup may ever delete? */
+export function isScrapeCopyOf(gameId: string, path: string): boolean {
+  if (!/^[0-9a-f-]{36}$/i.test(gameId)) return false
+  return path.startsWith(`${gameId}/`) && /^[0-9a-f-]{36}\/[A-Za-z0-9-]{1,60}\.(png|jpg|jpeg|webp|gif)$/i.test(path)
+}
+
+/** Image types that may be served or stored — never SVG (script) or HTML. */
+const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif']
 /** The content types the proxy passes through; anything else (their plain-text
  *  errors included) is not a file. */
 export function allowedContentType(ep: MediaEndpoint, contentType: string): boolean {
-  const t = contentType.toLowerCase()
-  if (ep === 'img') return t.startsWith('image/')
-  if (ep === 'video') return t.startsWith('video/') || t === 'application/octet-stream'
+  const t = contentType.toLowerCase().split(';')[0].trim()
+  if (ep === 'img') return IMAGE_TYPES.includes(t)
+  if (ep === 'video') return t === 'video/mp4' || t === 'video/webm' || t === 'application/octet-stream'
   return t === 'application/pdf' || t === 'application/octet-stream'
+}
+/** The file extension for a stored image of this content type. */
+export function imageExtension(contentType: string): 'png' | 'jpg' | 'webp' | 'gif' | null {
+  const t = contentType.toLowerCase().split(';')[0].trim()
+  return t === 'image/png' ? 'png' : t === 'image/jpeg' ? 'jpg' : t === 'image/webp' ? 'webp' : t === 'image/gif' ? 'gif' : null
+}
+
+/**
+ * A redirect target that may be fetched: https, on a screenscraper.fr host.
+ * Their credentials sit in the query string, so following a Location to an
+ * arbitrary host (or plain http) would hand them over.
+ */
+export function safeRedirect(base: string, location: string | null): string | null {
+  if (!location) return null
+  let u: URL
+  try { u = new URL(location, base) } catch { return null }
+  if (u.protocol !== 'https:') return null
+  const host = u.hostname.toLowerCase()
+  return host === 'screenscraper.fr' || host.endsWith('.screenscraper.fr') ? u.toString() : null
 }
 
 /** Constant-time comparison for signatures. */
@@ -118,15 +172,15 @@ export function base64url(bytes: Uint8Array): string {
 }
 
 /**
- * HMAC-SHA256 over `sigPayload`, keyed from the project's service-role key.
- * That key is injected into every function, so the two functions agree
- * without a new secret to set up; it is hashed with a label first so the
- * signing key is never the service key itself. 32 characters (192 bits).
+ * HMAC-SHA256 over `sigPayload`. The secret is SCREENSCRAPER_MEDIA_KEY when
+ * set, else the service-role key (injected into every function, so the two
+ * functions agree with no setup) — hashed with a label first so the signing
+ * key is never the secret itself. 32 characters (192 bits).
  */
-export async function signMedia(serviceKey: string, jeuId: string, systemId: number | string): Promise<string> {
+export async function signMedia(secret: string, jeuId: string, systemId: number | string, exp: number): Promise<string> {
   const enc = new TextEncoder()
-  const raw = await crypto.subtle.digest('SHA-256', enc.encode(`screenscraper-media-v1:${serviceKey}`))
+  const raw = await crypto.subtle.digest('SHA-256', enc.encode(`screenscraper-media-v2:${secret}`))
   const key = await crypto.subtle.importKey('raw', raw, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
-  const mac = await crypto.subtle.sign('HMAC', key, enc.encode(sigPayload(jeuId, systemId)))
+  const mac = await crypto.subtle.sign('HMAC', key, enc.encode(sigPayload(jeuId, systemId, exp)))
   return base64url(new Uint8Array(mac)).slice(0, 32)
 }

@@ -4,37 +4,37 @@
 // Every URL ScreenScraper hands out carries devid/devpassword/ssid/sspassword
 // in its query string, so it can never reach a browser, a log or the database.
 // This function takes a signed reference instead — ?j=<game>&s=<system>&m=
-// <their media token>&k=<signature> (+ w/f for a resized image, e for a video
-// or manual) — adds the credentials server-side and streams the bytes back.
-// Nothing is stored: this is how "fetch on demand" media costs no Storage at
-// all. (Stored copies are made by screenscraper-sync, not here.)
+// <their media token>&x=<expiry>&k=<signature> (+ w/f for a resized image, e
+// for a video or manual) — adds the credentials server-side and streams the
+// bytes back. Nothing is stored: this is how "online" media costs no Storage.
+// (Stored copies are made by screenscraper-sync, not here.)
 //
 // ── Auth: JWT verification OFF, signature ON ───────────────────────────────
 // An <img> or <video> tag cannot send an Authorization header, so platform
-// JWT checks must be off for this function (supabase/config.toml). Instead
-// every request carries an HMAC that screenscraper-sync issued, binding ONE
-// game on ONE system. Without a valid signature nothing is fetched, so the
-// account's daily allowance cannot be spent by strangers; with one, the most a
-// leaked link fetches is that one game's own artwork.
+// JWT checks are off for this function (supabase/config.toml). Instead every
+// request carries an HMAC that screenscraper-sync minted for the OWNER only,
+// binding ONE game on ONE system until an expiry (at most two weeks), and only
+// a few fixed widths are served. A leaked link therefore fetches one game's
+// own media, a handful of variants, for a week or two — never anything else.
 //
 // ── Politeness ──────────────────────────────────────────────────────────────
 // ScreenScraper answers 429 above the account's thread limit and 401/423 when
-// their servers are overloaded or closed. The browser side queues proxy loads
-// (a few at a time); here a busy answer is retried once after a short pause
-// and otherwise passed on as 503 with Retry-After, never as a broken image
-// the browser would cache.
+// their servers are overloaded or closed. The browser queues proxy loads (3 at
+// a time); here a busy answer is retried once after a pause, and otherwise
+// passed on as 503 with Retry-After — never as a broken image a browser caches.
 //
 // ── Security, all load-bearing ─────────────────────────────────────────────
 //  1. No upstream URL, header or body text is ever returned or logged; errors
 //     are fixed short strings.
-//  2. Redirects are not followed with credentials: `redirect: 'manual'`, and
-//     a Location is followed once, bare.
-//  3. Only the content types a media file can have are passed through, and
-//     only a whitelist of response headers.
+//  2. A redirect is followed at most once, by hand, and only to an https
+//     screenscraper.fr host — their credentials sit in the query string.
+//  3. Only real media types pass (png/jpeg/webp/gif, pdf, mp4/webm — never
+//     SVG or HTML), with a response-header whitelist, `nosniff` and a sandbox
+//     CSP.
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
+  'Access-Control-Allow-Methods': 'GET, OPTIONS',
   'Access-Control-Allow-Headers': 'range, apikey, authorization, x-client-info',
   'Access-Control-Expose-Headers': 'content-length, content-range, accept-ranges',
 }
@@ -45,7 +45,8 @@ const DEVID = Deno.env.get('SCREENSCRAPER_DEVID') ?? ''
 const DEVPASSWORD = Deno.env.get('SCREENSCRAPER_DEVPASSWORD') ?? ''
 const SSID = Deno.env.get('SCREENSCRAPER_SSID') ?? ''
 const SSPASSWORD = Deno.env.get('SCREENSCRAPER_SSPASSWORD') ?? ''
-const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+const MEDIA_KEY = Deno.env.get('SCREENSCRAPER_MEDIA_KEY') || (Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '')
+const TIMEOUT_MS = 30_000
 
 const text = (status: number, body: string, extra: Record<string, string> = {}) =>
   new Response(body, { status, headers: { ...CORS, 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store', ...extra } })
@@ -67,15 +68,18 @@ type SsGameField =
   | 'title' | 'description' | 'release_year' | 'publisher' | 'developer'
   | 'genres' | 'modes' | 'players' | 'age_rating' | 'series_name'
   | 'cover' | 'screenshot' | 'fanart'
-type SsPlatformField = 'release_date' | 'region' | 'rating'
+type SsPlatformField = 'release_date' | 'region' | 'rating' | 'wheel' | 'version_title' | 'rom_status'
 type SsField = SsGameField | SsPlatformField
 
 /** fill = only when empty · replace = overwrite what is there · skip = never */
 type FieldPolicy = 'fill' | 'replace' | 'skip'
 
-/** How a search result was found. `hash`/`filename` are ROM identity (strong),
- *  `name` is a text search (weak), `id` is a ScreenScraper game id. */
-type MatchBasis = 'hash' | 'filename' | 'serial' | 'id' | 'name'
+/** How a search result was found. `hash` and a VERIFIED `filename` (their
+ *  answer names the same dump) are ROM identity; `filename_guess` is their
+ *  best guess for a filename they do not know (a renamed or hacked ROM);
+ *  `previous` is the id this game was matched to before; `id` an id typed in;
+ *  `name` a text search (weak). */
+type MatchBasis = 'hash' | 'filename' | 'filename_guess' | 'serial' | 'id' | 'previous' | 'name'
 
 /** Which ScreenScraper media endpoint a file comes from. */
 type MediaEndpoint = 'img' | 'video' | 'manual'
@@ -119,11 +123,20 @@ interface SsRomInfo {
   clone_of: string | null
 }
 
+/** A file ScreenScraper attaches to something other than the game itself — a
+ *  genre or rating pictogram, a publisher logo, a hack's screenshot. Kept as
+ *  an inventory (what exists), not served. */
+interface SsExtraMedia { parent: string; parent_label: string | null; type: string; region: string | null; format: string | null; size: number | null }
+
+interface SsHack { id: string | null; name: string | null; author: string | null; status: string | null; version: string | null; synopses: SsLocalized[] }
+
 /** A normalized search result. Carries values, never a media URL. */
 interface SsCandidate {
   jeu_id: string
   rom_id: string | null
   system: { id: number | null; name: string | null }
+  publisher_id: string | null
+  developer_id: string | null
   matched_by: MatchBasis[]
   /** Mapped values in the user's preferred language/region order. */
   values: Partial<Record<SsField, string | number | string[] | null>>
@@ -151,10 +164,22 @@ interface SsCandidate {
   roms_total: number
   hacks_total: number
   actions_total: number
+  /** Their controls / colours text (arcade cabinets mostly), when given. */
+  controls: string | null
+  colours: string | null
+  /** Tips and tricks, per language. */
+  tips: { lang: string; title: string | null; text: string }[]
+  /** Hacks of this game they know (no download links — those carry credentials). */
+  hacks: SsHack[]
+  /** Control mappings as text ("BTN-A|BTN-B=Spin Dash"). */
+  actions: string[]
   flags: string[]
   media: SsMediaEntry[]
-  /** Signs `jeu_id|system` for the media proxy (see ssProxy.ts). */
+  extra_media: SsExtraMedia[]
+  /** Signs `jeu_id|system|expiry` for the media proxy (see ssProxy.ts). */
   media_sig: string | null
+  /** Unix seconds the signature stops working. */
+  media_exp: number | null
 }
 
 interface SsRomQuery {
@@ -206,10 +231,15 @@ interface SsPrefs {
 // Defaults are set by the storage budget, not by taste. The Free plan's 1 GB is
 // a hard wall (a project over quota ends up answering 402 to EVERY request, not
 // just Games), and 537 MB of it already holds ES-DE originals. So only what the
-// library, the detail hero and the screenshot strip actually show is stored,
-// small; everything else is fetched through the signed proxy when looked at,
-// and composites/theme assets are skipped. Measured sizes at these widths:
-// box art 24-61 KB as JPEG/WebP at 640 px, a transparent logo ~14 KB.
+// app actually shows is copied, small — the cover, screenshot, title screen and
+// fan art (library, hero, screenshot strip) and the HD logo (the variant's
+// wheel_url) — and even those only when the copy will be used (ssPlan.ts
+// decideMediaModes). Everything else is shown online through the signed proxy
+// when looked at; composites and theme assets are skipped. Measured sizes at
+// these widths: box art 24-61 KB at 640 px, a transparent logo ~14 KB.
+//
+// Pictograms (genre, rating, publisher logos) are not game media — their
+// `parent` is not `jeu` — and are kept as an inventory only (extra_media).
 
 /** save a resized copy in Storage · fetch through the proxy when viewed · ignore */
 type MediaMode = 'store' | 'on_demand' | 'skip'
@@ -247,7 +277,7 @@ const T = (type: string, label: string, group: MediaGroup, mode: MediaMode, widt
 
 const MEDIA_TYPES: MediaTypeInfo[] = [
   T('box-2D', 'Box front', 'box', 'store', 640),
-  T('box-2D-back', 'Box back', 'box', 'store', 640),
+  T('box-2D-back', 'Box back', 'box', 'on_demand', 640),
   T('box-2D-side', 'Box spine', 'box', 'on_demand', 320),
   T('box-3D', '3D box', 'box', 'on_demand', 640, true),
   T('box-texture', 'Box texture (unfolded)', 'box', 'on_demand', 1280),
@@ -267,10 +297,13 @@ const MEDIA_TYPES: MediaTypeInfo[] = [
   T('screenmarquee', 'Screen marquee', 'logos', 'on_demand', 640, true),
   T('screenmarqueesmall', 'Screen marquee (small)', 'logos', 'on_demand', 480, true),
   T('bezel-16-9', 'Bezel 16:9', 'extras', 'skip', 1280, true),
+  T('bezel-4-3', 'Bezel 4:3', 'extras', 'skip', 1280, true),
+  T('maps', 'Maps', 'extras', 'on_demand', 1280),
+  T('box-scan', 'Box scan', 'box', 'on_demand', 1280),
+  T('support-scan', 'Cartridge / disc scan', 'support', 'on_demand', 1280),
+  T('flyer', 'Flyer', 'art', 'on_demand', 1280),
+  T('figurine', 'Figurine', 'art', 'on_demand', 640, true),
   T('themehs', 'HyperSpin theme', 'extras', 'skip', 960, true),
-  T('pictocouleur', 'Pictogram (colour)', 'extras', 'skip', 240, true),
-  T('pictoliste', 'Pictogram (list)', 'extras', 'skip', 240, true),
-  T('pictomonochrome', 'Pictogram (mono)', 'extras', 'skip', 240, true),
   T('manuel', 'Manual (PDF)', 'documents', 'on_demand', 0, false, 'pdf'),
   T('video-normalized', 'Video (normalized)', 'video', 'skip', 0, false, 'video'),
   T('video', 'Video (original)', 'video', 'skip', 0, false, 'video'),
@@ -357,7 +390,8 @@ function scrubSecrets(text: string, secrets: (string | undefined | null)[]): str
   return out.replace(/\b(devid|devpassword|ssid|sspassword)=[^&\s"']*/gi, '$1=[REDACTED]')
 }
 
-const CREDENTIAL_PARAM = /\b(devid|devpassword|ssid|sspassword)=/i
+// `=` or its percent-encoded form, as it appears inside a nested encoded URL.
+const CREDENTIAL_PARAM = /\b(devid|devpassword|ssid|sspassword)(=|%3d)/i
 const URL_KEYS = new Set(['url', 'downloadurl', 'commandRequested'])
 
 /** Caps for arrays that can run long on a popular game. */
@@ -366,20 +400,25 @@ const SNAPSHOT_CAPS: Record<string, number> = { roms: 300, hacks: 50, medias: 50
 /**
  * A deep copy of a ScreenScraper payload with every URL removed — the only
  * form in which any part of their answer may be stored or sent to a browser.
- * Drops URL keys outright and any other string that carries a credential
- * parameter, so a URL hiding under a key nobody anticipated is still caught.
+ * Drops URL keys outright, any string that carries a credential parameter
+ * (plain or percent-encoded), and any string containing one of the secret
+ * VALUES themselves (their `ssuser.id` is the member login in plain text).
  */
-function stripCredentials(value: unknown, depth = 0): unknown {
+function stripCredentials(value: unknown, secrets: (string | null | undefined)[] = [], depth = 0): unknown {
   if (depth > 12) return null
-  if (typeof value === 'string') return CREDENTIAL_PARAM.test(value) ? null : value
-  if (Array.isArray(value)) return value.map(v => stripCredentials(v, depth + 1))
+  if (typeof value === 'string') {
+    if (CREDENTIAL_PARAM.test(value)) return null
+    for (const s of secrets) if (s && s.length >= 4 && value.includes(s)) return null
+    return value
+  }
+  if (Array.isArray(value)) return value.map(v => stripCredentials(v, secrets, depth + 1))
   if (value && typeof value === 'object') {
     const out: Rec = {}
     for (const [k, v] of Object.entries(value as Rec)) {
       if (URL_KEYS.has(k)) continue
       let next = v
       if (Array.isArray(v) && SNAPSHOT_CAPS[k] != null && v.length > SNAPSHOT_CAPS[k]) next = v.slice(0, SNAPSHOT_CAPS[k])
-      const clean = stripCredentials(next, depth + 1)
+      const clean = stripCredentials(next, secrets, depth + 1)
       if (clean !== null && clean !== undefined) out[k] = clean
     }
     return out
@@ -561,6 +600,19 @@ function mediaInventory(medias: unknown): SsMediaEntry[] {
   return out
 }
 
+/** Files attached to something other than the game (pictograms, logos, hack
+ *  art) — what exists, without URLs. */
+function extraMediaInventory(medias: unknown): SsExtraMedia[] {
+  const out: SsExtraMedia[] = []
+  for (const m of arr(medias)) {
+    const parent = str(m.parent)
+    const type = str(m.type)
+    if (!parent || parent === 'jeu' || !type) continue
+    out.push({ parent, parent_label: str(m.subparent), type, region: str(m.region)?.toLowerCase() ?? null, format: str(m.format)?.toLowerCase() ?? null, size: num(m.size) })
+  }
+  return out.slice(0, 200)
+}
+
 /** One file of a type, in region order: the wanted regions, then world, their
  *  own, then anything. First disc before later ones. */
 function pickMediaEntry(inventory: SsMediaEntry[], type: string, regions: string[]): SsMediaEntry | null {
@@ -590,6 +642,46 @@ function candidateFlags(jeu: Rec, rom: SsRomInfo | null): string[] {
   return flags
 }
 
+/** Their controles/couleurs arrive as "0", a string, or a list of objects. */
+function looseText(v: unknown): string | null {
+  if (Array.isArray(v)) {
+    const parts = v.map(e => (e && typeof e === 'object' ? str((e as Rec).text) ?? str((e as Rec).controle) ?? str((e as Rec).hexa) : str(e))).filter((x): x is string => !!x)
+    return parts.length ? parts.join(', ') : null
+  }
+  const s = str(v)
+  return s && s !== '0' ? s : null
+}
+
+function tipsOf(list: unknown, languages: string[]): { lang: string; title: string | null; text: string }[] {
+  const all = arr(list).map(t => ({ lang: String(t.langue ?? '').toLowerCase(), title: str(t.titre), text: str(t.description) ?? str(t.text) ?? '' }))
+    .filter(t => t.text)
+  const rank = (l: string) => { const i = languages.indexOf(l); return i < 0 ? languages.length : i }
+  return all.sort((a, b) => rank(a.lang) - rank(b.lang)).slice(0, 40)
+}
+
+function hacksOf(list: unknown): SsHack[] {
+  return arr(list).slice(0, 50).map(h => ({
+    id: str(h.id), name: str(h.name) ?? str(h.nom), author: str(h.developpeur), status: str(h.status),
+    version: str(h.version), synopses: localizedList(h.synopsis, 'langue'),
+  }))
+}
+
+function actionsOf(list: unknown, languages: string[]): string[] {
+  return arr(list).slice(0, 50)
+    .map(a => pickPreferred(localizedList(a.controle, 'langue'), languages)?.text ?? null)
+    .filter((x): x is string => !!x)
+}
+
+/**
+ * "Sonic The Hedgehog (USA, Europe) (Rev 1) [!].md" → "USA, Europe · Rev 1 · !":
+ * the dump's own tags, the honest name of this version.
+ */
+function romTags(filename: string | null | undefined): string | null {
+  if (!filename) return null
+  const tags = [...filename.replace(/\.[A-Za-z0-9]{1,5}$/, '').matchAll(/[([]([^)\]]+)[)\]]/g)].map(m => m[1].trim()).filter(Boolean)
+  return tags.length ? tags.join(' · ') : null
+}
+
 /** Their names for non-games carry a `ZZZ(notgame):` prefix. */
 const cleanName = (s: string) => s.replace(/^ZZZ\(notgame\):\s*/i, '').trim()
 
@@ -609,13 +701,17 @@ function toCandidate(jeu: Rec, matchedBy: MatchBasis[], opts: MapOptions, maxRom
   const genres = groupNames(jeu.genres, opts.languages)
   const modes = groupNames(jeu.modes, opts.languages)
   const families = groupNames(jeu.familles, opts.languages)
-  const title = pickPreferred(names, ['ss', ...opts.regions])?.text ?? null
+  // The user's own region order decides the title too; `ss` (their canonical
+  // name) is one entry in that order, not a hard prefix.
+  const title = pickPreferred(names, opts.regions)?.text ?? null
   const description = pickPreferred(synopses, opts.languages)?.text ?? null
 
   return {
     jeu_id: String(jeu.id ?? ''),
     rom_id: str(jeu.romid),
     system: { id: num((jeu.systeme as Rec | undefined)?.id), name: str(jeu.systeme) },
+    publisher_id: str((jeu.editeur as Rec | undefined)?.id),
+    developer_id: str((jeu.developpeur as Rec | undefined)?.id),
     matched_by: matchedBy,
     values: {
       title,
@@ -631,6 +727,7 @@ function toCandidate(jeu: Rec, matchedBy: MatchBasis[], opts: MapOptions, maxRom
       release_date: releaseDateFor(dates, rom?.regions ?? [], opts.regions),
       region: rom?.regions.length ? rom.regions.join(', ') : null,
       rating: rating100(n20),
+      version_title: rom ? romTags(rom.filename) : null,
     },
     names, synopses, dates, classifications,
     genres, modes, families,
@@ -648,9 +745,16 @@ function toCandidate(jeu: Rec, matchedBy: MatchBasis[], opts: MapOptions, maxRom
     roms_total: roms.length,
     hacks_total: arr(jeu.hacks).length,
     actions_total: arr(jeu.actions).length,
+    controls: looseText(jeu.controles),
+    colours: looseText(jeu.couleurs),
+    tips: tipsOf(jeu.tips, opts.languages),
+    hacks: hacksOf(jeu.hacks),
+    actions: actionsOf(jeu.actions, opts.languages),
     flags: candidateFlags(jeu, rom),
     media: mediaInventory(jeu.medias),
+    extra_media: extraMediaInventory(jeu.medias),
     media_sig: null,
+    media_exp: null,
   }
 }
 
@@ -672,7 +776,7 @@ const isRealJeu = (j: unknown): j is Rec => !!j && typeof j === 'object' && str(
 
 // ─── Their plain-text answers ────────────────────────────────────────────────
 
-type SsTextKind = 'not_found' | 'no_media' | 'unchanged' | 'login' | 'quota' | 'closed' | 'busy' | 'bad_request' | 'other'
+type SsTextKind = 'not_found' | 'no_media' | 'unchanged' | 'login' | 'quota' | 'ko_quota' | 'closed' | 'busy' | 'bad_request' | 'other'
 
 /**
  * ScreenScraper answers errors in plain text, often with HTTP 200 (a failed
@@ -684,7 +788,8 @@ function classifyText(status: number, body: string): SsTextKind {
   if (/^\s*nomedia\b/.test(b)) return 'no_media'
   if (status === 404 || /non trouv/.test(b)) return 'not_found'
   if (status === 403 || /erreur de login|identifiants/.test(b)) return 'login'
-  if (status === 430 || status === 431 || /quota/.test(b)) return 'quota'
+  if (status === 431 || /non reconnu|roms? inconnu/.test(b)) return 'ko_quota'
+  if (status === 430 || /quota/.test(b)) return 'quota'
   if (status === 423 || status === 401 || /ferm|closed/.test(b)) return 'closed'
   if (status === 429 || /thread|trop de|too many/.test(b)) return 'busy'
   if (status === 400 || /champs obligatoires|manque/.test(b)) return 'bad_request'
@@ -697,6 +802,7 @@ const TEXT_MESSAGE: Record<SsTextKind, string> = {
   unchanged: 'Unchanged since last time.',
   login: 'ScreenScraper refused the login — check the four SCREENSCRAPER_* secrets.',
   quota: "Today's ScreenScraper allowance is used up; it resets at midnight CET.",
+  ko_quota: 'Too many unrecognised lookups today (their separate allowance for misses); it resets at midnight CET.',
   closed: 'ScreenScraper is closed right now (their servers are overloaded) — try again later.',
   busy: 'ScreenScraper is busy (too many requests at once) — try again in a moment.',
   bad_request: 'ScreenScraper rejected the request as incomplete.',
@@ -716,18 +822,36 @@ const TEXT_MESSAGE: Record<SsTextKind, string> = {
 //
 // Why signed: the function has to run without JWT verification (an <img> tag
 // cannot send a header), and an open proxy would let anyone spend this
-// account's daily allowance. The signature binds ONE game on ONE system, so a
-// leaked URL can fetch that game's own box art and nothing else — which is why
-// it does not expire (it is also what lets a saved game keep browsing its
-// media months later).
+// account's daily allowance. The signature binds ONE game on ONE system until
+// an expiry, and only a few fixed widths are served — so a leaked link fetches
+// that game's own media, a handful of variants, for a week at most.
+// Signatures are minted on demand by screenscraper-sync (owner only) and never
+// stored, so rotating the signing key breaks nothing permanently.
 
 
 const PROXY_PATH = '/functions/v1/screenscraper-media'
 
 /** The exact bytes that get signed. Versioned so the scheme can change. */
-const sigPayload = (jeuId: string, systemId: number | string) => `ssm1|${jeuId}|${systemId}`
+const sigPayload = (jeuId: string, systemId: number | string, exp: number) => `ssm2|${jeuId}|${systemId}|${exp}`
 
-interface ProxyRef { jeuId: string; systemId: number; sig: string }
+interface ProxyRef { jeuId: string; systemId: number; sig: string; exp: number }
+
+/** The only widths served. Few distinct URLs per file keep both the browser
+ *  cache and ScreenScraper's allowance intact. */
+const PROXY_WIDTHS = [120, 200, 360, 640, 1280] as const
+/** The smallest served width at least as large as asked (or the largest). */
+function snapWidth(w: number | null | undefined): number | null {
+  if (w == null || !Number.isFinite(w) || w <= 0) return null
+  return PROXY_WIDTHS.find(x => x >= w) ?? PROXY_WIDTHS[PROXY_WIDTHS.length - 1]
+}
+
+const WEEK = 7 * 24 * 3600
+/** A signature's expiry: the end of NEXT week (unix seconds). The same value
+ *  all week long, so proxy URLs — and the browser's cache of them — stay
+ *  stable, while no link outlives two weeks. */
+const mediaExpiry = (nowMs: number) => (Math.floor(nowMs / 1000 / WEEK) + 2) * WEEK
+/** Longest validity a request may claim — refuses a forged far-future expiry. */
+const MAX_EXPIRY_AHEAD = 2 * WEEK + 60
 
 interface ProxyRequest {
   jeuId: string
@@ -738,6 +862,7 @@ interface ProxyRequest {
   width: number | null
   format: 'png' | 'jpg' | null
   sig: string
+  exp: number
 }
 
 const EP: MediaEndpoint[] = ['img', 'video', 'manual']
@@ -752,7 +877,9 @@ function parseProxyQuery(q: URLSearchParams): ProxyRequest | { error: string } {
   const w = q.get('w')
   const f = q.get('f')
   const sig = q.get('k') ?? ''
+  const x = q.get('x') ?? ''
   if (!/^\d{1,10}$/.test(j)) return { error: 'bad game id' }
+  if (!/^\d{9,11}$/.test(x)) return { error: 'bad expiry' }
   if (!/^\d{1,6}$/.test(s)) return { error: 'bad system id' }
   if (!EP.includes(ep)) return { error: 'bad endpoint' }
   if (!MEDIA_TOKEN.test(token)) return { error: 'bad media token' }
@@ -760,12 +887,12 @@ function parseProxyQuery(q: URLSearchParams): ProxyRequest | { error: string } {
   let width: number | null = null
   if (w != null && w !== '') {
     const n = Number(w)
-    if (!Number.isInteger(n) || n < 32 || n > 2500) return { error: 'bad width' }
+    if (!(PROXY_WIDTHS as readonly number[]).includes(n)) return { error: 'bad width' }
     width = n
   }
   const format = f === 'png' || f === 'jpg' ? f : null
   if (f != null && f !== '' && !format) return { error: 'bad format' }
-  return { jeuId: j, systemId: Number(s), ep, token, width: ep === 'img' ? width : null, format: ep === 'img' ? format : null, sig }
+  return { jeuId: j, systemId: Number(s), ep, token, width: ep === 'img' ? width : null, format: ep === 'img' ? format : null, sig, exp: Number(x) }
 }
 
 /** The query string for one file. Order is fixed so equal requests are equal
@@ -776,8 +903,10 @@ function proxyQuery(ref: ProxyRef, entry: Pick<SsMediaEntry, 'ep' | 'token'>, op
   p.set('s', String(ref.systemId))
   if (entry.ep !== 'img') p.set('e', entry.ep)
   p.set('m', entry.token)
-  if (entry.ep === 'img' && opts.width) p.set('w', String(Math.round(opts.width)))
+  const w = entry.ep === 'img' ? snapWidth(opts.width) : null
+  if (w) p.set('w', String(w))
   if (entry.ep === 'img' && opts.format) p.set('f', opts.format)
+  p.set('x', String(ref.exp))
   p.set('k', ref.sig)
   return p.toString()
 }
@@ -793,17 +922,48 @@ function upstreamFor(req: ProxyRequest): { file: string; params: Record<string, 
   return { file: UPSTREAM_FILE[req.ep], params }
 }
 
-/** Where a stored copy lives. Keyed by our own game id so a re-scrape
- *  overwrites its own object instead of growing a second one. */
-const storedPath = (gameId: string, type: string, ext: string) => `${gameId}/${type}.${ext}`
+/**
+ * Where a stored copy lives: under our own game id, with a per-upload stamp,
+ * so a re-scrape never overwrites bytes an undo may point back at (a reused
+ * path would serve the new picture under the restored URL).
+ */
+const storedPath = (gameId: string, type: string, stamp: string, ext: string) => `${gameId}/${type}-${stamp}.${ext}`
 
+/** Is this a stored ScreenScraper copy of THIS game — the only kind of object
+ *  undo or cleanup may ever delete? */
+function isScrapeCopyOf(gameId: string, path: string): boolean {
+  if (!/^[0-9a-f-]{36}$/i.test(gameId)) return false
+  return path.startsWith(`${gameId}/`) && /^[0-9a-f-]{36}\/[A-Za-z0-9-]{1,60}\.(png|jpg|jpeg|webp|gif)$/i.test(path)
+}
+
+/** Image types that may be served or stored — never SVG (script) or HTML. */
+const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif']
 /** The content types the proxy passes through; anything else (their plain-text
  *  errors included) is not a file. */
 function allowedContentType(ep: MediaEndpoint, contentType: string): boolean {
-  const t = contentType.toLowerCase()
-  if (ep === 'img') return t.startsWith('image/')
-  if (ep === 'video') return t.startsWith('video/') || t === 'application/octet-stream'
+  const t = contentType.toLowerCase().split(';')[0].trim()
+  if (ep === 'img') return IMAGE_TYPES.includes(t)
+  if (ep === 'video') return t === 'video/mp4' || t === 'video/webm' || t === 'application/octet-stream'
   return t === 'application/pdf' || t === 'application/octet-stream'
+}
+/** The file extension for a stored image of this content type. */
+function imageExtension(contentType: string): 'png' | 'jpg' | 'webp' | 'gif' | null {
+  const t = contentType.toLowerCase().split(';')[0].trim()
+  return t === 'image/png' ? 'png' : t === 'image/jpeg' ? 'jpg' : t === 'image/webp' ? 'webp' : t === 'image/gif' ? 'gif' : null
+}
+
+/**
+ * A redirect target that may be fetched: https, on a screenscraper.fr host.
+ * Their credentials sit in the query string, so following a Location to an
+ * arbitrary host (or plain http) would hand them over.
+ */
+function safeRedirect(base: string, location: string | null): string | null {
+  if (!location) return null
+  let u: URL
+  try { u = new URL(location, base) } catch { return null }
+  if (u.protocol !== 'https:') return null
+  const host = u.hostname.toLowerCase()
+  return host === 'screenscraper.fr' || host.endsWith('.screenscraper.fr') ? u.toString() : null
 }
 
 /** Constant-time comparison for signatures. */
@@ -822,16 +982,16 @@ function base64url(bytes: Uint8Array): string {
 }
 
 /**
- * HMAC-SHA256 over `sigPayload`, keyed from the project's service-role key.
- * That key is injected into every function, so the two functions agree
- * without a new secret to set up; it is hashed with a label first so the
- * signing key is never the service key itself. 32 characters (192 bits).
+ * HMAC-SHA256 over `sigPayload`. The secret is SCREENSCRAPER_MEDIA_KEY when
+ * set, else the service-role key (injected into every function, so the two
+ * functions agree with no setup) — hashed with a label first so the signing
+ * key is never the secret itself. 32 characters (192 bits).
  */
-async function signMedia(serviceKey: string, jeuId: string, systemId: number | string): Promise<string> {
+async function signMedia(secret: string, jeuId: string, systemId: number | string, exp: number): Promise<string> {
   const enc = new TextEncoder()
-  const raw = await crypto.subtle.digest('SHA-256', enc.encode(`screenscraper-media-v1:${serviceKey}`))
+  const raw = await crypto.subtle.digest('SHA-256', enc.encode(`screenscraper-media-v2:${secret}`))
   const key = await crypto.subtle.importKey('raw', raw, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
-  const mac = await crypto.subtle.sign('HMAC', key, enc.encode(sigPayload(jeuId, systemId)))
+  const mac = await crypto.subtle.sign('HMAC', key, enc.encode(sigPayload(jeuId, systemId, exp)))
   return base64url(new Uint8Array(mac)).slice(0, 32)
 }
 
@@ -850,7 +1010,7 @@ const GAME_FIELDS = [
   'genres', 'modes', 'players', 'age_rating', 'series_name',
   'cover', 'screenshot', 'fanart',
 ] as const
-const PLATFORM_FIELDS = ['release_date', 'region', 'rating'] as const
+const PLATFORM_FIELDS = ['release_date', 'region', 'rating', 'wheel', 'version_title', 'rom_status'] as const
 const ALL_FIELDS: SsField[] = [...GAME_FIELDS, ...PLATFORM_FIELDS]
 
 const FIELD_LABEL: Record<SsField, string> = {
@@ -859,6 +1019,7 @@ const FIELD_LABEL: Record<SsField, string> = {
   players: 'Players', age_rating: 'Age rating', series_name: 'Series',
   cover: 'Cover', screenshot: 'Screenshot', fanart: 'Fan art',
   release_date: 'Release date (this version)', region: 'Region (this ROM)', rating: 'ScreenScraper score',
+  wheel: 'Logo', version_title: 'Version (this ROM)', rom_status: 'ROM verified',
 }
 
 /** Field → the column it writes. Media fields take the chosen image's URL. */
@@ -879,10 +1040,21 @@ const FIELD_COLUMN: Record<SsField, { table: 'games' | 'game_platforms'; column:
   release_date: { table: 'game_platforms', column: 'release_date' },
   region: { table: 'game_platforms', column: 'region' },
   rating: { table: 'game_platforms', column: 'rating' },
+  wheel: { table: 'game_platforms', column: 'wheel_url' },
+  version_title: { table: 'game_platforms', column: 'version_title' },
+  rom_status: { table: 'game_platforms', column: 'rom_status' },
 }
 
 /** Media field → the media type that supplies it. */
-const FIELD_MEDIA: Partial<Record<SsField, string>> = { cover: 'box-2D', screenshot: 'ss', fanart: 'fanart' }
+const FIELD_MEDIA: Partial<Record<SsField, string>> = { cover: 'box-2D', screenshot: 'ss', fanart: 'fanart', wheel: 'wheel-hd' }
+
+/** Media type → the ES-DE asset category that already holds the same picture.
+ *  A type whose picture the handheld has already uploaded is not copied again
+ *  by default (it would spend the budget on a duplicate). */
+const ESDE_CATEGORY: Record<string, string> = {
+  'box-2D': 'covers', 'box-3D': '3dboxes', ss: 'screenshots', sstitle: 'titlescreens', fanart: 'fanart',
+  'box-2D-back': 'backcovers', 'wheel-hd': 'marquees', 'support-2D': 'physicalmedia',
+}
 
 // ─── Preferences ─────────────────────────────────────────────────────────────
 
@@ -893,7 +1065,8 @@ function defaultPrefs(): SsPrefs {
   for (const f of ALL_FIELDS) fields[f] = 'fill'
   return {
     v: 1, fields, media: {}, imageScale: 1,
-    regions: ['wor', 'eu', 'us', 'ss', 'jp'],
+    // `ss` first: their canonical title ("Sonic The Hedgehog"), not a regional one.
+    regions: ['ss', 'wor', 'eu', 'us', 'jp'],
     languages: ['en', 'fr', 'de', 'es', 'it', 'pt'],
     snapshot: true,
     budgetMb: 800,
@@ -1018,7 +1191,11 @@ function planSearch(input: SearchInput): SearchPlan {
     }
     const base: Record<string, string> = { romtype: 'rom', ...(file ? { romnom: file } : {}), ...(size ? { romtaille: size } : {}) }
     if (Object.keys(hashes).length) {
-      queries.push({ kind: 'hash', endpoint: 'jeuInfos.php', params: withSys({ ...base, ...hashes }) })
+      // A filename needs a system unless a CRC travels with it; an MD5/SHA1
+      // alone identifies the dump, so without either the name is left out
+      // rather than turning a good lookup into their 400.
+      const hashBase = hashes.crc || sys ? base : { romtype: 'rom' }
+      queries.push({ kind: 'hash', endpoint: 'jeuInfos.php', params: withSys({ ...hashBase, ...hashes }) })
     } else if (file) {
       if (sys) queries.push({ kind: 'filename', endpoint: 'jeuInfos.php', params: { ...base, systemeid: sys } })
       else notes.push({ kind: 'filename', message: 'A filename lookup needs a system — pick one, or add a CRC/MD5/SHA1.' })
@@ -1035,7 +1212,60 @@ function planSearch(input: SearchInput): SearchPlan {
   return { queries, notes }
 }
 
-const BASIS_RANK: Record<MatchBasis, number> = { id: 0, hash: 1, serial: 2, filename: 3, name: 4 }
+const BASIS_RANK: Record<MatchBasis, number> = { id: 0, hash: 1, serial: 2, filename: 3, previous: 4, filename_guess: 5, name: 6 }
+
+/** Bases that prove which dump (or entry) this is — a batch may pre-tick these. */
+const EXACT_BASES: MatchBasis[] = ['hash', 'filename', 'serial', 'id']
+
+/** "./roms/Sonic (USA).zip" → "sonic (usa)": the comparable part of a ROM name
+ *  (their list may name the .zip or the file inside it). */
+function romStem(name: string | null | undefined): string | null {
+  const base = romFileName(name)
+  if (!base) return null
+  return base.replace(/\.[A-Za-z0-9]{1,5}$/, '').trim().toLowerCase() || null
+}
+
+/**
+ * Is a filename lookup's answer really about THIS file? ScreenScraper answers
+ * an unknown filename with its best guess, which is how 604 games once landed
+ * in ROM-hack collections. Verified only when their `rom` block names the same
+ * file, on the system asked for, and — when sent — the same size/CRC.
+ */
+function verifyFilenameMatch(
+  query: { filename?: string | null; systemId?: number | null; size?: number | null; crc?: string | null },
+  c: Pick<SsCandidate, 'rom' | 'system'>,
+): boolean {
+  const want = romStem(query.filename)
+  if (!want || !c.rom) return false
+  if (romStem(c.rom.filename) !== want) return false
+  if (query.systemId != null && c.system.id != null && query.systemId !== c.system.id) return false
+  if (query.size != null && c.rom.size != null && Number(query.size) !== c.rom.size) return false
+  if (query.crc && c.rom.crc && query.crc.toLowerCase() !== c.rom.crc.toLowerCase()) return false
+  return true
+}
+
+/**
+ * The stored-copy decision per media type for one game. A type is copied only
+ * when that copy will be used: a field-backed type (box front → cover, …) only
+ * when its field will be written, any other type only when the handheld has
+ * not already uploaded the same picture — unless the user chose Copy for this
+ * game explicitly in the review. Everything not copied is kept online.
+ */
+function decideMediaModes(
+  choices: { type: string; mode: 'store' | 'on_demand' }[],
+  opts: { explicit: boolean; fieldWrites: Partial<Record<SsField, boolean>>; esdeCategories: string[] },
+): Record<string, 'store' | 'on_demand'> {
+  const out: Record<string, 'store' | 'on_demand'> = {}
+  const fieldOf = Object.fromEntries(Object.entries(FIELD_MEDIA).map(([f, t]) => [t, f as SsField]))
+  for (const c of choices) {
+    if (c.mode !== 'store' || opts.explicit) { out[c.type] = c.mode; continue }
+    const field = fieldOf[c.type]
+    if (field) { out[c.type] = opts.fieldWrites[field] ? 'store' : 'on_demand'; continue }
+    const cat = ESDE_CATEGORY[c.type]
+    out[c.type] = cat && opts.esdeCategories.includes(cat) ? 'on_demand' : 'store'
+  }
+  return out
+}
 
 /**
  * One list from several lookups: an entry found more than once is shown once,
@@ -1131,16 +1361,19 @@ function upstreamUrl(req: ProxyRequest): string {
   return u.toString()
 }
 
-/** One upstream fetch; a redirect is followed once WITHOUT the credentials. */
+/** One upstream fetch; a redirect is followed once, by hand, and only to an
+ *  https screenscraper.fr host. Throws a fixed message on any failure. */
 async function fetchUpstream(url: string, range: string | null): Promise<Response> {
   const headers: Record<string, string> = { 'User-Agent': SOFTNAME }
   if (range) headers.Range = range
-  let res = await fetch(url, { redirect: 'manual', headers })
+  const opts = { redirect: 'manual' as const, headers, signal: AbortSignal.timeout(TIMEOUT_MS) }
+  let res = await fetch(url, opts)
   if (res.status >= 300 && res.status < 400) {
-    const location = res.headers.get('location')
+    const target = safeRedirect(url, res.headers.get('location'))
     await res.body?.cancel()
-    if (!location) return new Response(null, { status: 502 })
-    res = await fetch(location, { redirect: 'follow', headers: range ? { Range: range } : {} })
+    if (!target) return new Response(null, { status: 502 })
+    res = await fetch(target, opts)
+    if (res.status >= 300 && res.status < 400) { await res.body?.cancel(); return new Response(null, { status: 502 }) }
   }
   return res
 }
@@ -1149,13 +1382,17 @@ const PASS_HEADERS = ['content-type', 'content-length', 'content-range', 'accept
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS })
-  if (req.method !== 'GET' && req.method !== 'HEAD') return text(405, 'Method Not Allowed')
-  if (!DEVID || !DEVPASSWORD || !SERVICE_KEY) return text(503, 'not configured')
+  // GET only: a HEAD would still cost a full upstream request.
+  if (req.method !== 'GET') return text(405, 'Method Not Allowed')
+  if (!DEVID || !DEVPASSWORD || !MEDIA_KEY) return text(503, 'not configured')
 
   const parsed = parseProxyQuery(new URL(req.url).searchParams)
   if ('error' in parsed) return text(400, parsed.error)
+  const nowSec = Math.floor(Date.now() / 1000)
+  if (parsed.exp < nowSec) return text(403, 'link expired', { 'Cache-Control': 'no-store' })
+  if (parsed.exp > nowSec + MAX_EXPIRY_AHEAD) return text(403, 'bad expiry')
 
-  const expected = await signMedia(SERVICE_KEY, parsed.jeuId, parsed.systemId)
+  const expected = await signMedia(MEDIA_KEY, parsed.jeuId, parsed.systemId, parsed.exp)
   if (!safeEqual(expected, parsed.sig)) return text(403, 'bad signature')
 
   const url = upstreamUrl(parsed)
@@ -1189,12 +1426,12 @@ Deno.serve(async (req) => {
       const v = res.headers.get(h)
       if (v) headers.set(h, v)
     }
-    // Same signed parameters, same bytes — safe to cache for a year. A new
-    // version of their artwork arrives under a new token or a re-scrape.
-    headers.set('Cache-Control', 'public, max-age=31536000, immutable')
+    // Same signed parameters, same bytes — cache until the link expires.
+    headers.set('Cache-Control', `public, max-age=${Math.max(60, parsed.exp - nowSec)}, immutable`)
     headers.set('Cross-Origin-Resource-Policy', 'cross-origin')
     headers.set('X-Content-Type-Options', 'nosniff')
-    if (req.method === 'HEAD') { await res.body?.cancel(); return new Response(null, { status: res.status, headers }) }
+    headers.set('Content-Security-Policy', "default-src 'none'; sandbox")
+    headers.set('Content-Disposition', 'inline')
     return new Response(res.body, { status: res.status, headers })
   }
 

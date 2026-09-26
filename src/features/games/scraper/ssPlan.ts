@@ -17,7 +17,7 @@ export const GAME_FIELDS = [
   'genres', 'modes', 'players', 'age_rating', 'series_name',
   'cover', 'screenshot', 'fanart',
 ] as const
-export const PLATFORM_FIELDS = ['release_date', 'region', 'rating'] as const
+export const PLATFORM_FIELDS = ['release_date', 'region', 'rating', 'wheel', 'version_title', 'rom_status'] as const
 export const ALL_FIELDS: SsField[] = [...GAME_FIELDS, ...PLATFORM_FIELDS]
 
 export const FIELD_LABEL: Record<SsField, string> = {
@@ -26,6 +26,7 @@ export const FIELD_LABEL: Record<SsField, string> = {
   players: 'Players', age_rating: 'Age rating', series_name: 'Series',
   cover: 'Cover', screenshot: 'Screenshot', fanart: 'Fan art',
   release_date: 'Release date (this version)', region: 'Region (this ROM)', rating: 'ScreenScraper score',
+  wheel: 'Logo', version_title: 'Version (this ROM)', rom_status: 'ROM verified',
 }
 
 /** Field → the column it writes. Media fields take the chosen image's URL. */
@@ -46,10 +47,21 @@ export const FIELD_COLUMN: Record<SsField, { table: 'games' | 'game_platforms'; 
   release_date: { table: 'game_platforms', column: 'release_date' },
   region: { table: 'game_platforms', column: 'region' },
   rating: { table: 'game_platforms', column: 'rating' },
+  wheel: { table: 'game_platforms', column: 'wheel_url' },
+  version_title: { table: 'game_platforms', column: 'version_title' },
+  rom_status: { table: 'game_platforms', column: 'rom_status' },
 }
 
 /** Media field → the media type that supplies it. */
-export const FIELD_MEDIA: Partial<Record<SsField, string>> = { cover: 'box-2D', screenshot: 'ss', fanart: 'fanart' }
+export const FIELD_MEDIA: Partial<Record<SsField, string>> = { cover: 'box-2D', screenshot: 'ss', fanart: 'fanart', wheel: 'wheel-hd' }
+
+/** Media type → the ES-DE asset category that already holds the same picture.
+ *  A type whose picture the handheld has already uploaded is not copied again
+ *  by default (it would spend the budget on a duplicate). */
+export const ESDE_CATEGORY: Record<string, string> = {
+  'box-2D': 'covers', 'box-3D': '3dboxes', ss: 'screenshots', sstitle: 'titlescreens', fanart: 'fanart',
+  'box-2D-back': 'backcovers', 'wheel-hd': 'marquees', 'support-2D': 'physicalmedia',
+}
 
 // ─── Preferences ─────────────────────────────────────────────────────────────
 
@@ -60,7 +72,8 @@ export function defaultPrefs(): SsPrefs {
   for (const f of ALL_FIELDS) fields[f] = 'fill'
   return {
     v: 1, fields, media: {}, imageScale: 1,
-    regions: ['wor', 'eu', 'us', 'ss', 'jp'],
+    // `ss` first: their canonical title ("Sonic The Hedgehog"), not a regional one.
+    regions: ['ss', 'wor', 'eu', 'us', 'jp'],
     languages: ['en', 'fr', 'de', 'es', 'it', 'pt'],
     snapshot: true,
     budgetMb: 800,
@@ -185,7 +198,11 @@ export function planSearch(input: SearchInput): SearchPlan {
     }
     const base: Record<string, string> = { romtype: 'rom', ...(file ? { romnom: file } : {}), ...(size ? { romtaille: size } : {}) }
     if (Object.keys(hashes).length) {
-      queries.push({ kind: 'hash', endpoint: 'jeuInfos.php', params: withSys({ ...base, ...hashes }) })
+      // A filename needs a system unless a CRC travels with it; an MD5/SHA1
+      // alone identifies the dump, so without either the name is left out
+      // rather than turning a good lookup into their 400.
+      const hashBase = hashes.crc || sys ? base : { romtype: 'rom' }
+      queries.push({ kind: 'hash', endpoint: 'jeuInfos.php', params: withSys({ ...hashBase, ...hashes }) })
     } else if (file) {
       if (sys) queries.push({ kind: 'filename', endpoint: 'jeuInfos.php', params: { ...base, systemeid: sys } })
       else notes.push({ kind: 'filename', message: 'A filename lookup needs a system — pick one, or add a CRC/MD5/SHA1.' })
@@ -202,7 +219,60 @@ export function planSearch(input: SearchInput): SearchPlan {
   return { queries, notes }
 }
 
-const BASIS_RANK: Record<MatchBasis, number> = { id: 0, hash: 1, serial: 2, filename: 3, name: 4 }
+const BASIS_RANK: Record<MatchBasis, number> = { id: 0, hash: 1, serial: 2, filename: 3, previous: 4, filename_guess: 5, name: 6 }
+
+/** Bases that prove which dump (or entry) this is — a batch may pre-tick these. */
+export const EXACT_BASES: MatchBasis[] = ['hash', 'filename', 'serial', 'id']
+
+/** "./roms/Sonic (USA).zip" → "sonic (usa)": the comparable part of a ROM name
+ *  (their list may name the .zip or the file inside it). */
+export function romStem(name: string | null | undefined): string | null {
+  const base = romFileName(name)
+  if (!base) return null
+  return base.replace(/\.[A-Za-z0-9]{1,5}$/, '').trim().toLowerCase() || null
+}
+
+/**
+ * Is a filename lookup's answer really about THIS file? ScreenScraper answers
+ * an unknown filename with its best guess, which is how 604 games once landed
+ * in ROM-hack collections. Verified only when their `rom` block names the same
+ * file, on the system asked for, and — when sent — the same size/CRC.
+ */
+export function verifyFilenameMatch(
+  query: { filename?: string | null; systemId?: number | null; size?: number | null; crc?: string | null },
+  c: Pick<SsCandidate, 'rom' | 'system'>,
+): boolean {
+  const want = romStem(query.filename)
+  if (!want || !c.rom) return false
+  if (romStem(c.rom.filename) !== want) return false
+  if (query.systemId != null && c.system.id != null && query.systemId !== c.system.id) return false
+  if (query.size != null && c.rom.size != null && Number(query.size) !== c.rom.size) return false
+  if (query.crc && c.rom.crc && query.crc.toLowerCase() !== c.rom.crc.toLowerCase()) return false
+  return true
+}
+
+/**
+ * The stored-copy decision per media type for one game. A type is copied only
+ * when that copy will be used: a field-backed type (box front → cover, …) only
+ * when its field will be written, any other type only when the handheld has
+ * not already uploaded the same picture — unless the user chose Copy for this
+ * game explicitly in the review. Everything not copied is kept online.
+ */
+export function decideMediaModes(
+  choices: { type: string; mode: 'store' | 'on_demand' }[],
+  opts: { explicit: boolean; fieldWrites: Partial<Record<SsField, boolean>>; esdeCategories: string[] },
+): Record<string, 'store' | 'on_demand'> {
+  const out: Record<string, 'store' | 'on_demand'> = {}
+  const fieldOf = Object.fromEntries(Object.entries(FIELD_MEDIA).map(([f, t]) => [t, f as SsField]))
+  for (const c of choices) {
+    if (c.mode !== 'store' || opts.explicit) { out[c.type] = c.mode; continue }
+    const field = fieldOf[c.type]
+    if (field) { out[c.type] = opts.fieldWrites[field] ? 'store' : 'on_demand'; continue }
+    const cat = ESDE_CATEGORY[c.type]
+    out[c.type] = cat && opts.esdeCategories.includes(cat) ? 'on_demand' : 'store'
+  }
+  return out
+}
 
 /**
  * One list from several lookups: an entry found more than once is shown once,

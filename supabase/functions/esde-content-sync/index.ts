@@ -44,6 +44,26 @@ function imageType(bytes: Uint8Array): { mime: string; extension: string } | nul
   return null // PDFs/videos/unknown bytes are never uploaded, even with an image filename.
 }
 
+// ── Storage wall ────────────────────────────────────────────────────────────
+// The Free plan's 1 GB bucket quota is a hard wall: past it the project is
+// eventually locked with 402 on EVERY request. The ScreenScraper scraper
+// already refuses to store past its budget; this upload shares the bucket, so
+// it refuses past the same hard cap. 413 is not retried by the device script,
+// so a full bucket stops the run cleanly instead of hammering it.
+const STORAGE_HARD_CAP = 950 * 1024 * 1024
+async function storageRefusal(incoming: number): Promise<{ used: number } | null> {
+  const { data, error } = await db.rpc('game_media_usage') as { data: unknown; error: unknown }
+  // Before migration 104 the function does not exist: behave as before it.
+  if (error) {
+    const code = (error as { code?: string }).code
+    if (code === 'PGRST202' || code === '42883') return null
+    throw error
+  }
+  if (!Array.isArray(data)) return null
+  const used = (data as { bytes?: number }[]).reduce((sum, row) => sum + Number(row.bytes ?? 0), 0)
+  return used + incoming > STORAGE_HARD_CAP ? { used } : null
+}
+
 Deno.serve(async req => {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors })
   if (req.method !== 'POST') return reply({ error: 'POST required' }, 405)
@@ -93,6 +113,8 @@ Deno.serve(async req => {
       const bytes = await readBytes(req, 20000000), type = imageType(bytes)
       requireValue(type && bytes.length === body.size, 'Expected supported image; PDF/video excluded')
       requireValue(await digest(bytes) === body.sha256, 'Image hash mismatch')
+      const full = await storageRefusal(bytes.length)
+      if (full) return reply({ error: 'storage_full', used: full.used, cap: STORAGE_HARD_CAP }, 413)
       const object = `${owner}/esde/${variant.id}/${body.sha256}.${type!.extension}`
       const { error: uploadError } = await db.storage.from('game-media').upload(object, bytes,
         { contentType: type!.mime, cacheControl: '31536000', upsert: true })
