@@ -48,6 +48,8 @@ export function buildCanonicalSessions(sets: readonly ProgressSetRow[], exercise
       kind: r.set_type === 'dropset' ? 'dropset' : r.set_type === 'failure' ? 'failure' : 'normal',
       weightKg: r.weight_kg, reps: r.reps,
       durationSeconds: r.duration_seconds, distanceMeters: r.distance_meters,
+      // Carried for display only (the session cards, "Last time", the coach).
+      ...(r.rpe != null ? { rpe: r.rpe } : {}),
     }))
     const comparableWorkingSets = allSets.filter(s => s.kind !== 'dropset')
     out.push({

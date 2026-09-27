@@ -19,7 +19,7 @@ require('sucrase/register')
 process.env.TZ = 'Europe/Oslo'
 
 const rf = require('../src/features/training/routineForm')
-const { formatSet, formatDurationShort, formatDistance } = require('../src/features/training/setFormat')
+const { formatSet, formatDurationShort, formatDistance, formatRpe, rpeSuffix, anyRpe } = require('../src/features/training/setFormat')
 const { planStatus, pickNextTrainingSession } = require('../src/features/training/trainingPlanModel')
 const { buildMeasurementPayload, ALL_FIELDS } = require('../src/features/training/bodyMeasurementFields')
 const { workoutLocalDay, localDayBoundsIso, workoutWindowFilter } = require('../src/features/training/workoutDates')
@@ -122,6 +122,16 @@ check('unknown type shows what is there', formatSet({ weight_kg: 50, reps: 5, du
 check('empty set → dash', formatSet({}, 'weight_reps') === '—')
 check('duration helper hours', formatDurationShort(3900) === '1h 5m')
 check('distance helper metres', formatDistance(400) === '400 m')
+// RPE — Hevy logs 6–10 in half steps; one suffix for every screen and the coach.
+check('RPE: whole number, no trailing ".0"', formatRpe(8) === '8' && formatRpe(8.5) === '8.5')
+check('RPE suffix for one rated set', rpeSuffix(8) === ' @ RPE 8')
+check('RPE suffix empty when not rated (null/undefined)', rpeSuffix(null) === '' && rpeSuffix(undefined) === '')
+check('RPE suffix per set in order', rpeSuffix([8, 9, 10]) === ' @ RPE 8/9/10', rpeSuffix([8, 9, 10]))
+check('RPE suffix collapses when every set is the same', rpeSuffix([9, 9, 9]) === ' @ RPE 9')
+check('RPE suffix marks an unrated set inside a rated group', rpeSuffix([8, null, 9.5]) === ' @ RPE 8/–/9.5', rpeSuffix([8, null, 9.5]))
+check('RPE suffix empty for a group with no rating', rpeSuffix([null, undefined]) === '')
+check('formatSet itself never prints RPE (the table has its own column)', formatSet({ weight_kg: 80, reps: 8, rpe: 9 }, 'weight_reps') === '80 kg × 8')
+check('anyRpe', anyRpe([{ rpe: null }, { rpe: 7 }]) && !anyRpe([{ rpe: null }, {}]))
 
 // ─── trainingPlanModel ──────────────────────────────────────────────────────
 console.log('\n== trainingPlanModel ==')

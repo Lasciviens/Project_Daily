@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 /*
- * Verification — src/features/health/cut/energyBalance.ts, the cut report
- * (food diary vs Apple energy vs the weight trend). Real module through
+ * Verification — src/features/health/goal/energyBalance.ts, the energy half
+ * of the goal report (food diary vs Apple energy vs the weight trend). Real module through
  * sucrase, no test framework.
  *
  * Run: node scripts/verify-energy-balance.cjs
  */
 require('sucrase/register')
-const EB = require('../src/features/health/cut/energyBalance.ts')
-const { buildCutReport, linearFit, movingAverage7, rateBand, proteinBand, addDays, ENERGY_DENSITY_KCAL_PER_KG: D } = EB
+const EB = require('../src/features/health/goal/energyBalance.ts')
+const { buildEnergyReport: buildCutReport, linearFit, movingAverage7, proteinBand, addDays, neededDays, ENERGY_DENSITY_KCAL_PER_KG: D } = EB
 
 let passed = 0
 const failures = []
@@ -27,7 +27,7 @@ const days = n => Array.from({ length: n }, (_, i) => addDays(FROM, i))
 /** A synthetic window: `intake` eaten per logged day, Apple `tdee`, and a
  *  straight weight line losing `kgPerDay` from `startKg` (weigh-ins every day
  *  incl. the morning after the window). `noise` alternates ± on the weights. */
-function scenario({ n = 28, intake = 2000, tdee = 2700, kgPerDay, startKg = 90, logEvery = 1, noise = 0, protein = 160, cutStartDate = null, goalWeightKg = null }) {
+function scenario({ n = 28, intake = 2000, tdee = 2700, kgPerDay, startKg = 90, logEvery = 1, noise = 0, protein = 160, phaseStartDate = null, goal = 'cut' }) {
   const ds = days(n)
   const to = ds[ds.length - 1]
   return {
@@ -35,7 +35,7 @@ function scenario({ n = 28, intake = 2000, tdee = 2700, kgPerDay, startKg = 90, 
     intake: ds.filter((_, i) => i % logEvery === 0).map(date => ({ date, kcal: intake, proteinG: protein })),
     energy: ds.map(date => ({ date, activeKcal: tdee - 1900, basalKcal: 1900 })),
     weights: [...ds, addDays(to, 1)].map((date, i) => ({ date, kg: startKg + kgPerDay * i + (noise ? (i % 2 ? noise : -noise) : 0) })),
-    cutStartDate, goalWeightKg,
+    phaseStartDate, goal,
   }
 }
 
@@ -105,7 +105,7 @@ function scenario({ n = 28, intake = 2000, tdee = 2700, kgPerDay, startKg = 90, 
   check('§5.2 no confidence', r.confidence, null)
   check('§5.3 three things missing', r.missing.length, 3)
   check('§5.4 names the food shortfall', /Food logged on 5 of 28 days/.test(r.missing[0]), true)
-  check('§5.5 no rate band from 3 weigh-ins', r.rate, null)
+  check('§5.5 no pace trend from 3 weigh-ins', r.hasTrend, false)
   // Half-logged days (a coffee) don't count as logged
   const t = scenario({ kgPerDay: -0.1 })
   t.intake = t.intake.map((x, i) => (i < 20 ? { ...x, kcal: 300 } : x))
@@ -124,26 +124,30 @@ function scenario({ n = 28, intake = 2000, tdee = 2700, kgPerDay, startKg = 90, 
 
 // §6 Water-weight early window: fast loss in the first weeks of a cut
 {
-  const r = buildCutReport(scenario({ n: 14, kgPerDay: -1500 / D, cutStartDate: FROM }))
+  const r = buildCutReport(scenario({ n: 14, kgPerDay: -1500 / D, phaseStartDate: FROM }))
   check('§6.1 early phase flagged', r.earlyPhase, true)
   check('§6.2 verdict faster', r.verdict, 'faster')
   check('§6.3 water/glycogen named first, then the short window', r.reasons.slice(0, 2), ['early_water', 'short_window'])
   check('§6.4 confidence capped below high', r.confidence !== 'high', true)
-  const late = buildCutReport(scenario({ n: 28, kgPerDay: -1500 / D, cutStartDate: '2026-06-01' }))
+  const late = buildCutReport(scenario({ n: 28, kgPerDay: -1500 / D, phaseStartDate: '2026-06-01' }))
   check('§6.5 a cut started two months ago is not early', late.earlyPhase, false)
+  check('§6.6 a cut started 5 days before the window is early', buildCutReport(scenario({ kgPerDay: -0.1, phaseStartDate: addDays(FROM, -5) })).earlyPhase, true)
+  check('§6.7 a cut started 10 days before the window is not', buildCutReport(scenario({ kgPerDay: -0.1, phaseStartDate: addDays(FROM, -10) })).earlyPhase, false)
+  check('§6.8 a phase starting after the window is not early', buildCutReport(scenario({ kgPerDay: -0.1, phaseStartDate: addDays(FROM, 40) })).earlyPhase, false)
 }
 
-// §7 %BW rate bands (Garthe 2011: ~0.7 %/wk vs ~1.4 %/wk)
-check('§7.1 gaining', rateBand(-0.3), 'gaining')
-check('§7.2 stalled', rateBand(0.1), 'stalled')
-check('§7.3 slow', rateBand(0.4), 'slow')
-check('§7.4 target at 0.7', rateBand(0.7), 'target')
-check('§7.5 1.0 is still target', rateBand(1.0), 'target')
-check('§7.6 fast at 1.2', rateBand(1.2), 'fast')
-check('§7.7 very fast above 1.4', rateBand(1.6), 'very_fast')
+// §7 Early weeks follow the phase: a gain's water refill shows as "slower"
+//    (more weight than the surplus predicts), maintain has no early phase
 {
-  const r = buildCutReport(scenario({ kgPerDay: -(0.007 * 90) / 7 }))
-  check('§7.8 0.63 kg/week at 90 kg → target band', r.rate, 'target')
+  const g = buildCutReport(scenario({ n: 14, goal: 'gain', intake: 3000, tdee: 2700, kgPerDay: 900 / D, phaseStartDate: FROM }))
+  check('§7.1 gain early phase flagged', g.earlyPhase, true)
+  check('§7.2 gaining faster than a 300 kcal surplus predicts → slower verdict', g.verdict, 'slower')
+  check('§7.3 …with glycogen/water named first', g.reasons[0], 'early_water')
+  check('§7.4 gain water note in the confidence notes', g.confidenceNotes.some(n => /gain/.test(n)), true)
+  const m = buildCutReport(scenario({ n: 14, goal: 'maintain', kgPerDay: -1500 / D, phaseStartDate: FROM }))
+  check('§7.5 maintain has no early phase', m.earlyPhase, false)
+  check('§7.6 a surplus reads as a negative logged deficit', g.loggedDeficit, -300)
+  check('§7.7 neededDays', [neededDays(14), neededDays(28), neededDays(56)], [9, 17, 34])
 }
 
 // §8 Protein g/kg (Morton 2018 floor 1.6, upper ~2.2) and per kg FFM (Helms)
@@ -152,26 +156,11 @@ check('§8.2 in range', proteinBand(1.8), 'in_range')
 check('§8.3 high', proteinBand(2.5), 'high')
 {
   const s = scenario({ kgPerDay: -0.05, protein: 144, startKg: 80 })
-  s.scale = [
-    { date: FROM, weightKg: 80, fatMassKg: 16, leanMassKg: 64 },
-    { date: addDays(FROM, 21), weightKg: 78.5, fatMassKg: 14.8, leanMassKg: 63.7 },
-  ]
+  s.leanMassKg = 63.7
   const r = buildCutReport(s)
   near('§8.4 g/kg from the trend weight', r.protein.gPerKg, 144 / (80 - 0.05 * 28), 0.01)
-  near('§8.5 g/kg FFM from the latest scale lean mass', r.protein.gPerKgFfm, 144 / 63.7, 0.01)
-  near('§8.6 fat change', r.composition.fatChangeKg, -1.2, 0.001)
-  near('§8.7 lean change', r.composition.leanChangeKg, -0.3, 0.001)
-  near('§8.8 lean share of the loss', r.composition.leanShareOfLoss, 0.2, 0.001)
-}
-
-// §9 Projection to a goal weight
-{
-  const r = buildCutReport(scenario({ kgPerDay: -0.1, goalWeightKg: 85 }))
-  // trend at the last weigh-in: 90 − 0.1 × 28 = 87.2 → 2.2 kg at 0.1/day = 22 days
-  check('§9.1 days to goal', r.projection.days, 22)
-  check('§9.2 date', r.projection.date, addDays(addDays(FROM, 28), 22))
-  check('§9.3 not losing', buildCutReport(scenario({ kgPerDay: 0, goalWeightKg: 85 })).projection, 'not_losing')
-  check('§9.4 already there', buildCutReport(scenario({ kgPerDay: -0.1, goalWeightKg: 88 })).projection, 'reached')
+  near('§8.5 g/kg FFM from the scale lean mass', r.protein.gPerKgFfm, 144 / 63.7, 0.01)
+  check('§8.6 no lean mass → no FFM figure', buildCutReport(scenario({ kgPerDay: -0.05 })).protein.gPerKgFfm, null)
 }
 
 // §10 Helpers

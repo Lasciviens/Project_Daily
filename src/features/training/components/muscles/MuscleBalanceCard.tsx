@@ -1,42 +1,48 @@
 import { Card, SectionLabel, useChartColors } from '../../../../shared/ui'
 import { InfoBubble } from '../../../../shared/components/InfoBubble'
+import { PAIR_META, balanceInfo, type BalanceComparison, type BalancePair, type RatioRead } from '../../plan/muscleBalance'
+import { CounterpartLine, RatioValue, WhyLine } from '../balance/BalanceBits'
 import type { Balance } from './muscleVolumeModel'
 
-function RatioRow({ label, a, b, warn, verdict, bubble }: { label: string; a: number; b: number; warn: boolean; verdict: string; bubble: React.ReactNode }) {
+function RatioRow({ read, comparison }: { read: RatioRead; comparison: BalanceComparison | null }) {
   const c = useChartColors()
-  const total = a + b || 1
-  const pa = Math.round((a / total) * 100)
+  const m = PAIR_META[read.pair]
+  const total = read.a + read.b || 1
+  const pa = Math.round((read.a / total) * 100)
   return (
-    <div>
-      <div className="mb-0.5 flex items-center justify-between gap-2 text-meta">
-        <span className="flex items-center gap-1 text-fg-2">{label} <InfoBubble>{bubble}</InfoBubble></span>
-        <span data-tone={warn ? 'warn' : 'success'} className={warn ? 'tone-text font-semibold' : 'text-fg-muted'}>{verdict}{warn ? ' ⚠' : ' ✓'}</span>
+    <div className="flex flex-col gap-1">
+      <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5">
+        <span className="flex items-center gap-1 text-meta text-fg-2">{m.label} <InfoBubble>{balanceInfo(read.pair)}</InfoBubble></span>
+        <RatioValue read={read} size="body" />
       </div>
-      <div className="flex h-2 overflow-hidden rounded-full bg-surface-2" title={`${a.toFixed(1)} vs ${b.toFixed(1)}`}>
+      <div className="flex h-2 overflow-hidden rounded-full bg-surface-2" aria-hidden>
         <div style={{ width: `${pa}%`, backgroundColor: c.series[0] }} />
         <div style={{ width: `${100 - pa}%`, backgroundColor: c.series[2] }} />
       </div>
+      <p className="flex justify-between gap-2 text-meta tabular-nums text-fg-muted">
+        <span>{read.a} {m.a}</span><span>{read.b} {m.b} sets/week</span>
+      </p>
+      {comparison && <CounterpartLine label="Planned in your program" read={comparison.planned} />}
+      <WhyLine comparison={comparison} />
     </div>
   )
 }
 
-export function MuscleBalanceCard({ balance, windowDays }: { balance: Balance; windowDays: number }) {
-  if (balance.pushPull == null && balance.quadHam == null) return null
+/** Push:pull and quad:hamstring of what was DONE in the window — the same
+ *  ratio and verdict (muscleBalance.ts) as the Program tab's planned card,
+ *  with the planned number beside it and a line on why they differ. */
+export function MuscleBalanceCard({ balance, windowLabel, comparison }: {
+  balance: Balance
+  /** "in the last 30 days" or "1 Sep – 14 Sep". */
+  windowLabel: string
+  comparison: Record<BalancePair, BalanceComparison> | null
+}) {
+  if (balance.pushPull.lean === 'none' && balance.quadHam.lean === 'none') return null
   return (
-    <Card className="flex max-w-xl flex-col gap-2.5">
-      <SectionLabel>Muscle balance · last {windowDays} days</SectionLabel>
-      {balance.pushPull != null && (
-        <RatioRow label="Push vs Pull" a={balance.push} b={balance.pull}
-          warn={balance.pushPull < 0.8 || balance.pushPull > 1.25}
-          verdict={balance.pushPull > 1.25 ? 'push-heavy' : balance.pushPull < 0.8 ? 'pull-heavy' : 'balanced'}
-          bubble={<p><strong>Push</strong> = chest, shoulders, triceps. <strong>Pull</strong> = back, biceps, traps. Training them roughly evenly keeps your physique and posture balanced. (A rough balance guide — there's no strong evidence a specific ratio is required.)</p>} />
-      )}
-      {balance.quadHam != null && (
-        <RatioRow label="Quads vs Hamstrings" a={balance.quad} b={balance.ham}
-          warn={balance.quadHam > 1.5}
-          verdict={balance.quadHam > 1.5 ? 'quad-dominant' : 'balanced'}
-          bubble={<p>Front vs back of the thigh. Big quad dominance is often paired with lagging hamstrings — balance it with curls or Romanian deadlifts. (Balance guidance, not a medical claim.)</p>} />
-      )}
+    <Card className="flex max-w-xl flex-col gap-3">
+      <SectionLabel>Muscle balance · done {windowLabel}</SectionLabel>
+      {balance.pushPull.lean !== 'none' && <RatioRow read={balance.pushPull} comparison={comparison?.pushPull ?? null} />}
+      {balance.quadHam.lean !== 'none' && <RatioRow read={balance.quadHam} comparison={comparison?.quadHam ?? null} />}
     </Card>
   )
 }

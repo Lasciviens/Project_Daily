@@ -358,15 +358,27 @@ function sessionMs(s: unknown): number | null {
 // duplicate pair is deterministic and is always the fullest report — the answer
 // no longer depends on the order the query returned rows in.
 //
+// A report is ALSO a duplicate when less than 15 minutes of it lies outside a
+// better-ranked session. Live case (two exporters, one night): a 27-minute
+// fragment overhung the full night by 3 minutes, sat just under the 90% ratio,
+// and added its whole 0.46 h on top. Summing adds the fragment's ENTIRE total,
+// not just the overhang, so dropping it is the smaller error; a real second
+// block of an interrupted night lies hours outside the first, never minutes.
+//
 // ⚠️ This merge still cannot invent data that never arrived. HAE's "Since Last
-// Sync" mode can split a night and never send the early piece; two aggregate
-// rows carry no per-segment timestamps, so a genuinely lost sub-session is
-// unrecoverable. Mitigation is HAE's "Previous 7 Days" reconciliation
-// automation, which re-sends a complete night as ONE row. But do NOT diagnose a
-// short night as a delivery gap without checking the rows first — the case
-// documented here as "the early session never arrived" (2026-07-17, Apple 8h8m
-// vs our 4h56m) is exactly what this bug also looks like from the outside.
+// Sync" mode only looks a few hours back for sleep (measured: ~6 h before its
+// previous run), and the Watch hands a night to the iPhone some minutes after
+// you wake. A run in that gap exports no sleep, and the next one no longer
+// reaches the start of the night, so every later row is a fragment sharing the
+// same sleepEnd. Aggregate rows carry no per-segment timestamps, so the lost
+// start is unrecoverable here. Mitigation: the "Sleep catch-up" automation
+// (docs/health-auto-export/06-sleep-catch-up.json, Date Range "Default")
+// re-sends whole nights within hours; sleepCompleteness.ts flags a night that
+// still looks cut. But do NOT diagnose a short night as a delivery gap without
+// checking the rows first — the case documented here as "the early session
+// never arrived" (2026-07-17, Apple 8h8m vs our 4h56m) was really a merge bug.
 const SESSION_CONTAINMENT_RATIO = 0.9
+const SESSION_MIN_EXTRA_MS = 15 * 60_000
 function mergeSleepSessions(preAggregated: HealthMetric[]): HealthMetric[] {
   interface Sess { p: HealthMetric; start: number; end: number; total: number; order: number }
   const timed: Sess[] = []
@@ -397,7 +409,7 @@ function mergeSleepSessions(preAggregated: HealthMetric[]): HealthMetric[] {
     const overlap = Math.min(s.end, other.end) - Math.max(s.start, other.start)
     if (overlap <= 0) return false
     const span = s.end - s.start
-    return span > 0 && overlap / span >= SESSION_CONTAINMENT_RATIO
+    return span > 0 && (overlap / span >= SESSION_CONTAINMENT_RATIO || span - overlap < SESSION_MIN_EXTRA_MS)
   }
 
   const survivors: Sess[] = []
@@ -411,13 +423,19 @@ function mergeSleepSessions(preAggregated: HealthMetric[]): HealthMetric[] {
 
 export interface SleepSessionInterval { startMs: number; endMs: number; totalSleep: number }
 
+/** The night's session rows that survive the merge (re-reports and fragments
+ *  dropped), with their original HAE strings — the local wall-clock digits of
+ *  sleepStart are what sleepCompleteness.ts compares against your usual bedtime. */
+export function keptSleepSessionRows(points: HealthMetric[], nightKey: string): HealthMetric[] {
+  return mergeSleepSessions(points.filter(p => sleepNightKey(p) === nightKey && typeof p.value?.totalSleep === 'number'))
+}
+
 // The night's distinct sleep session windows (post overlap-merge), for the
 // session-interval timeline. Session-level ONLY — the source data carries no
 // per-stage segment timing (verified against every live row), so this is the
 // finest honest granularity available.
 export function extractSleepSessions(points: HealthMetric[], nightKey: string): SleepSessionInterval[] {
-  const pts = points.filter(p => sleepNightKey(p) === nightKey && typeof p.value?.totalSleep === 'number')
-  return mergeSleepSessions(pts)
+  return keptSleepSessionRows(points, nightKey)
     .map(p => {
       const start = sessionMs(p.value?.sleepStart)
       const end   = sessionMs(p.value?.sleepEnd)
@@ -440,8 +458,9 @@ export function extractSleepSessions(points: HealthMetric[], nightKey: string): 
 //   1. A night belongs to the day you WOKE UP (sleepNightKey).
 //   2. A night with any manual row uses ONLY its manual rows — a manual entry
 //      is a deliberate correction, never summed with or shadowed by the Watch.
-//   3. Pre-aggregated sessions: drop one only when ≥90% of its window lies
-//      inside a better-ranked session (a re-report); sum the rest (an
+//   3. Pre-aggregated sessions: drop one when ≥90% of its window lies inside
+//      a better-ranked session, or less than 15 min of it lies outside one (a
+//      re-report or a "Since Last Sync" fragment); sum the rest (an
 //      interrupted night is two real blocks).
 //   4. Raw per-stage rows: Core + REM + Deep + plain Asleep = total sleep;
 //      Awake is reported but never added to the total.

@@ -24,6 +24,14 @@ export interface AthleteProfile {
   birth_year: number | null
   sex: BiologicalSex | null
   height_cm: number | null
+  /** Migration 111 — body goals and the current phase's start (the phase
+   *  itself is day_targets.goal). Always present on a fetched row (null before
+   *  111 is applied). */
+  goal_weight_kg: number | null
+  goal_body_fat_pct: number | null
+  goal_muscle_mass_kg: number | null
+  /** yyyy-MM-dd */
+  phase_start_date: string | null
   updated_at: string
 }
 

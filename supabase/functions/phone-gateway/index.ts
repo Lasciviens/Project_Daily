@@ -156,8 +156,9 @@ async function askAi(opts: {
 //      carries an offset, else the row's date.
 //   2. A night with any manual row uses ONLY its manual rows (a deliberate
 //      correction — this copy used to ignore manual rows entirely).
-//   3. Pre-aggregated sessions: drop one only when >=90% of its window lies
-//      inside a better-ranked session (a re-report); sum the rest (an
+//   3. Pre-aggregated sessions: drop one when >=90% of its window lies inside
+//      a better-ranked session, or less than 15 min of it lies outside one (a
+//      re-report or a "Since Last Sync" fragment); sum the rest (an
 //      interrupted night is two real blocks).
 //   4. Raw per-stage rows: Core + REM + Deep + Asleep = total; Awake not added.
 async function computeSleepNightsGw(userId: string): Promise<AnyRecord[]> {
@@ -176,6 +177,7 @@ async function computeSleepNightsGw(userId: string): Promise<AnyRecord[]> {
     return String(r.date)
   }
   const CONTAINMENT = 0.9
+  const MIN_EXTRA_MS = 15 * 60_000
   const byNight = new Map<string, AnyRecord[]>()
   for (const r of (data ?? []) as AnyRecord[]) {
     const k = nightKey(r)
@@ -212,7 +214,7 @@ async function computeSleepNightsGw(userId: string): Promise<AnyRecord[]> {
         const dup = kept.some(k => {
           const overlap = Math.min(s.end, k.end) - Math.max(s.start, k.start)
           const span = s.end - s.start
-          return overlap > 0 && span > 0 && overlap / span >= CONTAINMENT
+          return overlap > 0 && span > 0 && (overlap / span >= CONTAINMENT || span - overlap < MIN_EXTRA_MS)
         })
         if (!dup) kept.push(s)
       }

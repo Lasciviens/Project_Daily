@@ -58,7 +58,7 @@ export function buildExerciseChartRows(sessions: readonly CanonicalExerciseSessi
       total: p.total,
       volume,
       loadChanged,
-      setsLabel: formatSessionSets(s.allSets, metricKind),
+      setsLabel: formatSessionSets(s.allSets, metricKind, { rpe: true }),
     }
   })
 }

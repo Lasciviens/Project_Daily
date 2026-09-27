@@ -6,7 +6,8 @@ import { formatDurationBetween as fmtDuration } from '../../../shared/utils/form
 import { fmtTrainingDateTime as fmtDateTime } from '../dateFormat'
 import type { HevySet } from '../types.hevy'
 import { SET_TYPE_META } from '../setTypeMeta'
-import { formatSet } from '../setFormat'
+import { anyRpe, formatRpe, formatSet } from '../setFormat'
+import { WorkoutSessionSummary } from './log/WorkoutSessionSummary'
 
 interface Props {
   /** null = closed (controlled callers); the `hevy-workout` entity modal always passes an id. */
@@ -21,6 +22,42 @@ function SetTypeBadge({ type }: { type: HevySet['type'] }) {
       className="tone-soft tone-text inline-flex h-5 w-5 items-center justify-center rounded text-micro font-bold">
       {cfg.short}
     </span>
+  )
+}
+
+/** One exercise's sets. The RPE column appears only where a set of this
+ *  exercise was rated in Hevy (never a column of dashes); the RPE explainer
+ *  sits on the session summary's Avg RPE tile above. */
+function SetTable({ sets, exerciseType }: { sets: HevySet[]; exerciseType?: string | null }) {
+  const rated = anyRpe(sets)
+  return (
+    <div className="-mx-1 overflow-x-auto">
+      <table className="w-full min-w-[280px] text-meta">
+        <thead>
+          <tr className="section-label">
+            <th className="w-6 px-1 py-1.5 text-left font-semibold">#</th>
+            <th className="w-8 px-1 py-1.5 text-left font-semibold">Type</th>
+            <th className="px-1 py-1.5 text-left font-semibold">Set</th>
+            {rated && (
+              <th className="w-14 px-1 py-1.5 text-left font-semibold">
+                RPE
+              </th>
+            )}
+          </tr>
+        </thead>
+        <tbody>
+          {sets.slice().sort((a, b) => a.index - b.index).map(set => (
+            <tr key={set.id} className="border-t border-line tabular-nums">
+              <td className="px-1 py-1.5 text-fg-muted">{set.index + 1}</td>
+              <td className="px-1 py-1.5"><SetTypeBadge type={set.type} /></td>
+              {/* Per exercise type: kg × reps, seconds, metres, assistance. */}
+              <td className="px-1 py-1.5 text-fg-2">{formatSet(set, exerciseType)}</td>
+              {rated && <td className="px-1 py-1.5 font-medium text-fg-2">{set.rpe != null ? formatRpe(set.rpe) : '—'}</td>}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   )
 }
 
@@ -42,6 +79,9 @@ export function HevyWorkoutDetail({ workoutId, onClose }: Props) {
         </div>
       )}
 
+      {/* Session stats, the Apple Watch numbers and top sets (log/WorkoutSessionSummary). */}
+      {!isLoading && workout && <WorkoutSessionSummary workout={workout} />}
+
       {!isLoading && workout && exercises.length === 0 && (
         <p className="py-4 text-center text-body text-fg-muted">No exercise data</p>
       )}
@@ -60,29 +100,7 @@ export function HevyWorkoutDetail({ workoutId, onClose }: Props) {
               </div>
 
               {ex.sets && ex.sets.length > 0 && (
-                <div className="-mx-1 overflow-x-auto">
-                  <table className="w-full min-w-[280px] text-meta">
-                    <thead>
-                      <tr className="section-label">
-                        <th className="w-6 px-1 py-1.5 text-left font-semibold">#</th>
-                        <th className="w-8 px-1 py-1.5 text-left font-semibold">Type</th>
-                        <th className="px-1 py-1.5 text-left font-semibold">Set</th>
-                        <th className="px-1 py-1.5 text-left font-semibold">RPE</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {ex.sets.slice().sort((a, b) => a.index - b.index).map(set => (
-                        <tr key={set.id} className="border-t border-line tabular-nums">
-                          <td className="px-1 py-1.5 text-fg-muted">{set.index + 1}</td>
-                          <td className="px-1 py-1.5"><SetTypeBadge type={set.type} /></td>
-                          {/* Per exercise type: kg × reps, seconds, metres, assistance. */}
-                          <td className="px-1 py-1.5 text-fg-2">{formatSet(set, ex.template?.type)}</td>
-                          <td className="px-1 py-1.5 text-fg-muted">{set.rpe !== null ? `RPE ${set.rpe}` : '—'}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <SetTable sets={ex.sets} exerciseType={ex.template?.type} />
               )}
             </div>
           ))}

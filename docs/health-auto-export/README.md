@@ -16,6 +16,7 @@ each one after importing** (see caveats below) rather than trusting it blindly.
 | `03-workouts-recurring.json` | Recurring workout sync | Date Range: **Since Last Sync** · every 3h |
 | `04-health-metrics-backfill-onetime.json` | One-time historical seed for metrics | Previous 7 Days, Batch Requests ON |
 | `05-workouts-backfill-onetime.json` | One-time historical seed for workouts | Previous 7 Days, Batch Requests ON |
+| `06-sleep-catch-up.json` | **Sleep catch-up** — re-sends whole nights (sleep stages + the sleep-only vitals) the same day, so a night cut by "Since Last Sync" is repaired within hours instead of waiting for the weekly run. **Set this up — see below.** | Date Range: **Default** · every 2h · metrics: Sleep Analysis, Respiratory Rate, Apple Sleeping Wrist Temperature, Breathing Disturbances |
 
 ## Required app settings (and why)
 
@@ -37,6 +38,10 @@ each one after importing** (see caveats below) rather than trusting it blindly.
   needed. Keep a separate weekly **"Previous 7 Days"** automation as a
   reconciliation safety net (iOS background execution is opportunistic, not
   guaranteed).
+- **"Since Last Sync" cuts nights** — it is fine for everything the iPhone
+  receives live, but not for sleep. Add the sleep catch-up automation (`06`,
+  next section); keep "Sleep Analysis" ticked in the recurring one too (it is
+  the earliest copy of a night, and the app picks the most complete row).
 - **Enable all Health Metrics**, not a curated subset (the confirmed real-world
   setting in CLAUDE.md). The `metrics` array in these files is a large subset
   captured when they were built — after importing, tick anything missing in the app
@@ -51,6 +56,85 @@ for a Workouts export made the app fail per-day with "Data caching did not
 complete successfully" for 6 of 7 days in a real one-time backfill run (only
 1 day actually made it through). Both workouts configs (`03`, `05`) now set
 these to `false`.
+
+## Sleep catch-up automation (`06`) — why and how
+
+### What goes wrong without it
+
+Sleep showed a night several hours too short for up to six days, until the
+weekly "Previous 7 Days" run re-sent it. The cause, measured against a month of
+live rows (creation times vs sleep start/end; example times below are
+illustrative):
+
+1. The regular automation ("Since Last Sync") re-summarises **Sleep Analysis**
+   from a window that starts **about 6 hours before its previous run** — every
+   sleep row it sends starts within an hour before that point (or later, if you
+   were still awake then). Health Auto Export's documentation doesn't describe
+   this; it is what the data shows on every night checked.
+2. The Apple Watch passes a night to the iPhone **some minutes after you wake**
+   (sleep stages, respiratory rate, wrist temperature and breathing
+   disturbances all arrive together; heart rate, HRV and blood oxygen arrive
+   live and are not affected).
+3. When a run lands in that gap — e.g. you wake at 08:25, the automation runs
+   at 08:35 before the Watch has handed over — it exports no sleep. The next
+   run (say 10:45) only looks back to 02:35, so a night that began at 00:45
+   arrives as **02:30 → 08:25**, and every later run sends shorter fragments
+   ending at the same 08:25. The start never arrives again.
+
+This happened on roughly half the nights in a month (15 minutes to 3 hours lost
+each time). Respiratory rate for such a night is lost the same way, so the
+"Breathing during sleep" cards had gaps too.
+
+### What the catch-up does
+
+A second, sleep-only automation with Date Range **"Default"** — Health Auto
+Export's own description: *"Syncs data for the full previous day plus data up
+to the current date and time"*. Every run re-sends yesterday and today whole,
+so the first run after the Watch hands over delivers the complete night, and
+nothing depends on when the previous run happened.
+
+It is safe to re-send the same nights every two hours:
+
+- `health-export-webhook` stores a sleep row under its own **sleepStart**
+  (`recorded_at`), upserting on `(user_id, metric_name, recorded_at, source)`.
+  The complete night lands as its own row (or overwrites the earlier copy with
+  the same start); the app (`healthAggregate.ts`, and the AI/phone copies in
+  `ai-proxy`/`phone-gateway`) keeps the most complete row per wake-day and
+  drops the fragments — nothing is summed twice.
+- Respiratory rate, wrist temperature and breathing disturbances arrive one row
+  per clock hour / per night, so a re-send overwrites the same row.
+- The payload is tiny (four metrics, two days).
+
+Why not change the regular automation to "Default" instead: it would re-send two
+days of *every* metric each run, and its hourly step/energy buckets would switch
+from the "since last sync" phase to clock hours — the step/energy duplicate
+handling was tuned against the current behaviour, and a phase change there is a
+separate, riskier change for no sleep benefit. Keep the weekly reconciliation
+(`02`) as the safety net for runs iOS skips.
+
+Until the catch-up has run, the Health page's Sleep window flags a night that
+still looks cut ("may be incomplete", `sleepCompleteness.ts`): it starts at
+least 2 hours after your early-side bedtime and is shorter than usual.
+
+### Setup (once, on the iPhone)
+
+1. Import `06-sleep-catch-up.json` (steps below), or create it by hand:
+   Automations → **+** → REST API.
+2. Check, and fix in the app UI if the import got any of it wrong:
+   - **Data Type**: Health Metrics.
+   - **Health Metrics**: exactly **Sleep Analysis**, **Respiratory Rate**,
+     **Apple Sleeping Wrist Temperature**, **Breathing Disturbances** (tick any
+     the import missed — the file's names follow the other files' list, but
+     "Breathing Disturbances" was not in that list, so check it by eye).
+   - **Date Range**: **Default** (the exact picker label).
+   - **Summarize Data**: ON · **Time Grouping**: Hours · **Export Version**: 2.
+   - **Sync Cadence**: every **2 hours** (iOS decides the real timing; two
+     hours means a cut night is normally whole by late morning).
+   - **URL** and **Authorization** header: the same as the recurring automation.
+3. Test once, a few hours after waking: tap the automation → **Export Now** /
+   **Manual Export**. Then open Health → Sleep → **Raw data**: a row should
+   start at your real bedtime, and a "may be incomplete" note (if one was shown)
+   disappears.
 
 ## Import steps (per file)
 

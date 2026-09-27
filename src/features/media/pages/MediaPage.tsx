@@ -38,14 +38,13 @@ export function MediaPage() {
         // Ends where the column + rail end, not at the viewport edge.
         className="max-w-[93.25rem]"
         title="Media"
-        actions={
-          <SegmentedControl<Tab>
-            value={tab}
-            onChange={setTab}
-            options={[{ value: 'movies', label: 'Movies' }, { value: 'tv', label: 'TV series' }]}
-          />
-        }
-      />
+      >
+        <SegmentedControl<Tab>
+          value={tab}
+          onChange={setTab}
+          options={[{ value: 'movies', label: 'Movies' }, { value: 'tv', label: 'TV series' }]}
+        />
+      </PageHeader>
 
       <div className="flex items-start gap-5">
         {/* Capped so a monitor doesn't smear a two-poster library across

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { InfoBubble } from '../../../shared/components/InfoBubble'
 import { useBodyCompositionReports } from '../hooks/useBodyCompositionReports'
-import { latestAndPrevious, reportsInWindow, BODY_COMP_FIELDS, BODY_COMP_WINDOWS, type BodyCompWindow } from '../bodyCompositionAggregate'
+import { latestAndPrevious, reportsInWindow, BODY_COMP_FIELDS, BODY_COMP_WINDOWS, type BodyCompFieldKey, type BodyCompWindow } from '../bodyCompositionAggregate'
 import { BodyCompStatGrid } from './BodyCompStatGrid'
 import { BodyCompTrendChart } from './BodyCompTrendChart'
 import { BodyCompHistoryTable } from './BodyCompHistoryTable'
@@ -10,12 +10,13 @@ import { fmtDateTimeEnGB } from '../../../shared/utils/enGBDate'
 
 // Smart-scale "body composition analysis report" scans (migration 085,
 // imported via phone-gateway's import_body_composition action — see
-// CLAUDE.md's iPhone surface section). Weight and body fat % are NOT repeated
-// here: the scale's readings already feed the ONE weight and body-fat charts
-// above (bodyweight.ts merges scale, Hevy and Apple Health), and two "Weight"
-// charts in one card disagreed (H-12). This panel keeps what only the scale
-// measures; the full scan table below still lists every field.
-const SCALE_ONLY_FIELDS = BODY_COMP_FIELDS.filter(f => f.key !== 'weight_kg' && f.key !== 'body_fat_percent')
+// CLAUDE.md's iPhone surface section). Weight, body fat % and lean mass are
+// NOT repeated here: the scale writes them into Apple Health, and the Body
+// window's own charts above already draw them (two "Weight" charts in one
+// card disagreed, H-12). This panel keeps what only the report carries; the
+// full scan table below still lists every field.
+const SHOWN_ABOVE: readonly BodyCompFieldKey[] = ['weight_kg', 'body_fat_percent', 'lean_body_mass_kg']
+const SCALE_ONLY_FIELDS = BODY_COMP_FIELDS.filter(f => !SHOWN_ABOVE.includes(f.key))
 
 export function BodyCompositionPanel() {
   const { data: reports = [], isLoading } = useBodyCompositionReports()
@@ -41,8 +42,8 @@ export function BodyCompositionPanel() {
       <div className="flex items-center gap-1.5">
         <p className="section-label">Smart scale reports</p>
         <InfoBubble label="About smart scale reports">
-          Imported from a smart-scale report photo via the phone shortcut. The scale's weight and body fat % appear in the
-          weight and body-fat charts above; everything else it measures is here. Averages and trend below use whichever
+          Imported from a smart-scale report photo via the phone shortcut. The scale's weight, body fat % and lean mass
+          are in the charts above; everything else the report measures is here. Averages and trend below use whichever
           period is selected; the stat cards always compare the latest scan to the one right before it.
         </InfoBubble>
       </div>

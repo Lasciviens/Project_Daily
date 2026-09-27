@@ -44,8 +44,9 @@ export function ProjectsPage() {
     <PageContainer>
       <PageHeader
         title="Projects"
-        subtitle={projects.length > 0 ? `${activeCount} active · ${projects.length} total` : undefined}
-        actions={projects.length > 0 ? newButton : undefined}
+        // A placeholder while loading keeps this row from popping in (and the grid from jumping).
+        subtitle={isLoading ? <Skeleton className="my-0.5 h-4 w-32" /> : projects.length > 0 ? `${activeCount} active · ${projects.length} total` : undefined}
+        actions={isLoading || projects.length > 0 ? newButton : undefined}
       />
 
       {isLoading ? (

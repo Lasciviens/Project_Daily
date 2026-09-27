@@ -1,15 +1,16 @@
 import { useMemo } from 'react'
-import { format, parseISO } from 'date-fns'
 import { shiftDateStr, todayStr } from '../../../shared/utils/dateUtils'
 import { makeWindow, type HealthWindow } from '../healthWindowStats'
+import { dayNavLabel, spanLabel } from '../healthDateLabels'
 import type { Period } from './PeriodToggle'
 import type { HealthRange } from './sectionTypes'
 
 // Health's windows are ROLLING: "7 days" is the seven days ending on the
-// anchor, "30 days" the thirty ending on it. They are labelled that way ("Last
-// 7 days"), never "(this week)" — Training's weeks start on Monday, and a
-// rolling window labelled as a calendar week meant two different things
-// across tabs (T42 / H-17).
+// anchor, "30 days" the thirty ending on it. The period buttons say so ("7
+// days"), and the navigator shows the exact dates ("21–27 Sep") — never
+// "(this week)": Training's weeks start on Monday, and a rolling window
+// labelled as a calendar week meant two different things across tabs
+// (T42 / H-17).
 export const SPAN_DAYS: Record<Period, number> = { day: 1, week: 7, month: 30, quarter: 90, year: 365 }
 
 // Every Health read starts at least this far back, whatever the period: the
@@ -44,31 +45,19 @@ export function stepAnchor(period: Period, anchor: string, dir: 1 | -1): string 
   return next > today ? today : next
 }
 
-function rangeLabel(from: string, to: string): string {
-  const fromD = parseISO(from), toD = parseISO(to)
-  return format(fromD, 'MMM yyyy') === format(toD, 'MMM yyyy')
-    ? `${format(fromD, 'd')}–${format(toD, 'd MMM')}`
-    : format(fromD, 'yyyy') === format(toD, 'yyyy')
-      ? `${format(fromD, 'd MMM')} – ${format(toD, 'd MMM')}`
-      : `${format(fromD, 'd MMM yyyy')} – ${format(toD, 'd MMM yyyy')}`
-}
-
-export function labelForAnchor(period: Period, anchor: string): string {
-  const today = todayStr()
-  if (period === 'day') {
-    if (anchor === today) return 'Today'
-    if (anchor === shiftDateStr(today, -1)) return 'Yesterday'
-    return format(parseISO(anchor), 'EEE, d MMM')
-  }
+/** The period navigator's label: the dates only ("21–27 Sep", "Sun 27 Sep",
+ *  "28 Sep 2025 – 27 Sep 2026"). No "Last 7 days" prefix — the lit period
+ *  button already says that, and a prefix made the label's width jump with
+ *  every period switch. */
+export function labelForAnchor(period: Period, anchor: string, today = todayStr()): string {
   const { from, to } = rangeForAnchor(period, anchor)
-  const span = rangeLabel(from, to)
-  return anchor === today ? `${period === 'year' ? 'Last 12 months' : `Last ${SPAN_DAYS[period]} days`} · ${span}` : span
+  return spanLabel(from, to, today)
 }
 
 /** Short noun for the headline eyebrow: "last 7 days", "21–27 Sep", "today". */
 export function windowNoun(period: Period, anchor: string): string {
   const today = todayStr()
-  if (period === 'day') return anchor === today ? 'today' : format(parseISO(anchor), 'EEE d MMM')
+  if (period === 'day') return anchor === today ? 'today' : dayNavLabel(anchor, today)
   const { from, to } = rangeForAnchor(period, anchor)
-  return anchor === today ? (period === 'year' ? 'last 12 months' : `last ${SPAN_DAYS[period]} days`) : rangeLabel(from, to)
+  return anchor === today ? (period === 'year' ? 'last 12 months' : `last ${SPAN_DAYS[period]} days`) : spanLabel(from, to, today)
 }

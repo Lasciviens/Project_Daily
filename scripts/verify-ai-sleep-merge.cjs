@@ -35,6 +35,7 @@ const round = (n) => Math.round(n * 100) / 100
 // version compared only the summed total and let a per-session (not per-night)
 // row defect through.
 const CONTAINMENT = 0.9
+const MIN_EXTRA_MS = 15 * 60_000
 const ms = (s) => {
   if (typeof s !== 'string') return null
   const iso = s.trim().replace(' ', 'T').replace(/\s*([+-]\d{2}):?(\d{2})$/, '$1:$2')
@@ -65,7 +66,7 @@ function mergeRows(pre) {
     const dup = kept.some(k => {
       const overlap = Math.min(s.end, k.end) - Math.max(s.start, k.start)
       const span = s.end - s.start
-      return overlap > 0 && span > 0 && overlap / span >= CONTAINMENT
+      return overlap > 0 && span > 0 && (overlap / span >= CONTAINMENT || span - overlap < MIN_EXTRA_MS)
     })
     if (!dup) kept.push(s)
   }
@@ -145,6 +146,40 @@ const cases = [
     row(at('20', '01:30:00'), at('20', '06:00:00'), 4.5),
   ], 5.5],
   ['a single clean night', [row(at('20', '00:51:00'), at('20', '09:55:00'), 8.64)], 8.64],
+  // "Since Last Sync" re-summarises the same night on every run from a window
+  // that starts ~6 h before its previous run, so a night arrives as a chain of
+  // rows sharing ONE sleepEnd with later and later starts (shape of the live
+  // rows, values synthetic). The complete row wins; fragments are never added.
+  ['a complete night and its "Since Last Sync" fragment chain', [
+    row(at('20', '01:05:00'), at('20', '08:30:00'), 7.2),
+    row(at('20', '03:10:00'), at('20', '08:30:00'), 5.1),
+    row(at('20', '03:50:00'), at('20', '08:30:00'), 4.5),
+    row(at('20', '08:05:00'), at('20', '08:30:00'), 0.4),
+  ], 7.2],
+  // The same chain when the run that should have carried the whole night
+  // exported nothing: the EARLIEST fragment is the most complete — never the
+  // latest partial, never a sum.
+  ['a cut night: fragments only', [
+    row(at('20', '02:50:00'), at('20', '09:25:00'), 5.9),
+    row(at('20', '07:40:00'), at('20', '09:25:00'), 1.3),
+  ], 5.9],
+  // Two exporters, one night: a short fragment overhangs the full night by
+  // 3 minutes (89.6% contained). Summing would add its whole 0.46 h.
+  ['a fragment overhanging the full night by 3 minutes', [
+    row(at('19', '23:42:00'), at('20', '07:25:00'), 7.48, 'Other exporter'),
+    row(at('20', '07:00:26'), at('20', '07:27:52'), 0.46),
+  ], 7.48],
+  // …but a block with 20 minutes of its own outside the night is real sleep.
+  ['a second block with 20 min of its own', [
+    row(at('20', '01:00:00'), at('20', '07:00:00'), 6.0),
+    row(at('20', '06:50:00'), at('20', '07:20:00'), 0.5),
+  ], 6.5],
+  // The same session under two source spellings (a curly apostrophe vs a
+  // no-break space — HAE sent both before the webhook canonicalised them).
+  ['one session under two source spellings', [
+    row(at('20', '00:40:00'), at('20', '08:00:00'), 7.1, 'Furkan’s Apple Watch'),
+    row(at('20', '00:40:00'), at('20', '08:00:00'), 7.1, 'Furkan’s Apple\u00a0Watch'),
+  ], 7.1],
 ]
 
 for (const [label, rows, expected] of cases) {
@@ -203,6 +238,22 @@ for (const [label, rows, expected] of cases) {
   const web = computeSleepSummary(raw)
   check('raw     · total = Core+REM+Deep+Asleep', ai[0].hours, 5.75)
   check('raw     · AGREE', [ai[0].hours, ai[0].awake_h], [round(web[0].total), round(web[0].awake)])
+}
+
+// ─── Drift guard: the edge files still carry the mirrored rule ───────────────
+// The mirror above is only worth something while it matches the real copies.
+{
+  const fs = require('fs')
+  const path = require('path')
+  const read = (f) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8')
+  const ai = read('supabase/functions/ai-proxy/index.ts')
+  const gw = read('supabase/functions/phone-gateway/index.ts')
+  check('drift   · ai-proxy containment + 15-min remainder rule',
+    [ai.includes('const SLEEP_CONTAINMENT = 0.9'), ai.includes('const SLEEP_MIN_EXTRA_MS = 15 * 60_000'),
+     ai.includes('overlap / span >= SLEEP_CONTAINMENT || span - overlap < SLEEP_MIN_EXTRA_MS')], [true, true, true])
+  check('drift   · phone-gateway containment + 15-min remainder rule',
+    [gw.includes('const CONTAINMENT = 0.9'), gw.includes('const MIN_EXTRA_MS = 15 * 60_000'),
+     gw.includes('overlap / span >= CONTAINMENT || span - overlap < MIN_EXTRA_MS')], [true, true, true])
 }
 
 console.log(`\n${passed} passed, ${failures.length} failed`)

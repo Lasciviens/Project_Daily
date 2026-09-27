@@ -1,6 +1,7 @@
 import { InfoBubble } from '../../../../shared/components/InfoBubble'
 import type { TrendStats } from '../../healthTrendStats'
-import { fmtDayMonth } from '../healthFormat'
+import { todayStr } from '../../../../shared/utils/dateUtils'
+import { weekRangeLabel } from '../../healthDateLabels'
 
 // The trend numbers for one metric: 7/30/90-day change, weekly rate, best and
 // worst complete week, and whether it has become steadier. Every figure comes
@@ -26,13 +27,14 @@ function Cell({ label, value, sub }: { label: string; value: string; sub?: strin
     <div className="min-w-0 rounded-row bg-surface-2 px-2.5 py-2">
       <p className="text-micro font-medium text-fg-muted">{label}</p>
       <p className="text-body font-semibold tabular-nums text-fg">{value}</p>
-      {sub && <p className="truncate text-micro font-normal text-fg-faint">{sub}</p>}
+      {sub && <p className="text-micro font-normal leading-snug text-fg-faint">{sub}</p>}
     </div>
   )
 }
 
 export function TrendStatsBlock({ stats, format, formatDelta, per, direction, rateUnit, className }: Props) {
-  const weekLabel = (w: { weekStart: string }) => `week of ${fmtDayMonth(w.weekStart)}`
+  // The Monday–Sunday range, not just its Monday ("7–13 Jul").
+  const weekLabel = (w: { weekStart: string }) => weekRangeLabel(w.weekStart, todayStr())
   const v = stats.variability
   const hasAny = stats.changes.some(c => c.delta != null) || stats.best || stats.rate || v.verdict
   if (!hasAny) return <p className={`text-meta text-fg-muted ${className ?? ''}`}>Not enough history yet for trend statistics.</p>

@@ -45,7 +45,7 @@ export function TgBottomTabs({ counts }: {
     <>
       <nav
         aria-label="Game Library sections"
-        className="tg-bottom-bar fixed inset-x-0 bottom-0 z-40 flex pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]"
+        className="tg-bottom-bar fixed inset-x-0 bottom-[calc(-1*var(--ios-viewport-gap,0px))] z-40 flex pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]"
       >
         <TabButton label="Library" active={section === 'library'} onClick={() => go('library')}>
           {section === 'library' ? <TgMobileGamepad size={24} /> : <Gamepad2 {...icon} />}

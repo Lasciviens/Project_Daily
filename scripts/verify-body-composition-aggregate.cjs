@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /*
- * Verification — bodyCompositionAggregate.ts (Training → Health → Body's
- * smart-scale reports panel). Against the REAL un-mocked module via sucrase
+ * Verification — bodyCompositionAggregate.ts (Health → Body → "More from the
+ * scale", the smart-scale reports panel). Against the REAL un-mocked module via sucrase
  * (this repo has no unit-test runner by convention).
  *
  * Run: node scripts/verify-body-composition-aggregate.cjs
@@ -10,7 +10,7 @@ require('sucrase/register')
 
 const {
   BODY_COMP_FIELDS, fieldMeta, reportsInWindow, latestAndPrevious, deltaFor,
-  average, computeTrend,
+  average, computeTrend, dailySeries,
 } = require('../src/features/health/bodyCompositionAggregate')
 
 let passed = 0
@@ -131,6 +131,22 @@ console.log('\n6 · computeTrend — direction + rate from a real least-squares 
     report('2026-09-06T08:23:00.000Z', { weight_kg: 83.60 }),
   ], 'weight_kg')
   check('real noisy data produces a finite result, never NaN', real !== null && Number.isFinite(real.perWeek))
+}
+
+console.log('\n7 · dailySeries — one value per local day, for a time-scaled line')
+{
+  const dayOf = iso => iso.slice(0, 10)
+  const reports = [
+    report('2026-01-03T18:00:00.000Z', { weight_kg: 81.0 }),
+    report('2026-01-01T07:00:00.000Z', { weight_kg: 80.0 }),
+    report('2026-01-03T07:00:00.000Z', { weight_kg: 80.6 }),
+    report('2026-01-02T07:00:00.000Z', { weight_kg: NaN }),
+  ]
+  const s = dailySeries(reports, 'weight_kg', dayOf)
+  check('ascending, one entry per day', JSON.stringify(s.map(p => p.date)) === JSON.stringify(['2026-01-01', '2026-01-03']), JSON.stringify(s))
+  check('two scans on one day → the later one', s[1].value === 81.0, String(s[1].value))
+  check('a non-finite value leaves the day out', !s.some(p => p.date === '2026-01-02'))
+  check('empty in, empty out', dailySeries([], 'weight_kg', dayOf).length === 0)
 }
 
 console.log(`\n${passed} passed, ${failed} failed\n`)

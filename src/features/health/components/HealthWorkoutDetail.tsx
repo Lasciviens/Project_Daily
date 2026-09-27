@@ -8,6 +8,7 @@ import type { HealthWorkoutSummary } from '../api/healthApi'
 import { fmtDateEnGB } from '../../../shared/utils/enGBDate'
 import { fmtDuration } from './healthFormat'
 import { WorkoutRouteMap } from './WorkoutRouteMap'
+import { energyKcal, heartRateRecoveryDrop, heartRateSeries, rawHHMM as hhmm, rawQty as qty, type RawWorkout as Raw } from '../workoutRaw'
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  HealthWorkoutDetail — the rich per-workout data Health Auto Export sends
@@ -19,21 +20,8 @@ import { WorkoutRouteMap } from './WorkoutRouteMap'
 //  type-checked before it renders and the body sits in an ErrorBoundary (H-23).
 // ─────────────────────────────────────────────────────────────────────────────
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any -- HAE workout `raw` is a free-form jsonb blob; we read a handful of fields defensively.
-type Raw = Record<string, any>
-
-// HAE numeric fields are either a plain number or a { qty, units } object.
-function qty(v: unknown): number | null {
-  if (typeof v === 'number' && Number.isFinite(v)) return v
-  if (v && typeof v === 'object' && typeof (v as Raw).qty === 'number') return (v as Raw).qty
-  return null
-}
-
-function hhmm(iso: unknown): string {
-  if (typeof iso !== 'string') return ''
-  const d = new Date(iso)
-  return isNaN(d.getTime()) ? '' : `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-}
+// The raw-field readers (qty, timestamps, HR curve, recovery, energy units)
+// live in ../workoutRaw so the Training session detail reads them the same way.
 
 function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
@@ -47,9 +35,8 @@ function Stat({ label, value, sub }: { label: string; value: string; sub?: strin
 
 function RawDetails({ summary, raw }: { summary: HealthWorkoutSummary; raw: Raw }) {
   const c = useChartColors()
-  // kcal (HAE sends energy in kcal despite our column being named *_kj).
-  const active = summary.active_energy_kj ?? qty(raw.activeEnergyBurned)
-  const total = summary.total_energy_kj ?? qty(raw.totalEnergy)
+  const active = energyKcal(summary.active_energy_kj, raw.activeEnergyBurned)
+  const total = energyKcal(summary.total_energy_kj, raw.totalEnergy)
   const distance = qty(raw.distance)
   const avgSpeed = qty(raw.avgSpeed) ?? qty(raw.speed)
   const maxSpeed = qty(raw.maxSpeed)
@@ -62,17 +49,8 @@ function RawDetails({ summary, raw }: { summary: HealthWorkoutSummary; raw: Raw 
   const pace = avgSpeed && avgSpeed > 0 ? 60 / avgSpeed : null // min/km
   const paceStr = pace != null ? (() => { const t = Math.round(pace * 60); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}` })() : null
 
-  const hrSeries = Array.isArray(raw.heartRateData)
-    ? raw.heartRateData.flatMap((p: Raw) => {
-        const avg = qty(p?.Avg)
-        if (avg == null) return []
-        return [{ label: hhmm(p?.date), avg: Math.round(avg), range: [Math.round(qty(p?.Min) ?? avg), Math.round(qty(p?.Max) ?? avg)] }]
-      })
-    : []
-  const recoveryVals = Array.isArray(raw.heartRateRecovery)
-    ? raw.heartRateRecovery.map((p: Raw) => qty(p?.Avg)).filter((v: number | null): v is number => v != null)
-    : []
-  const recovery = recoveryVals.length > 1 ? Math.round(recoveryVals[0] - recoveryVals[recoveryVals.length - 1]) : null
+  const hrSeries = heartRateSeries(raw)
+  const recovery = heartRateRecoveryDrop(raw)
 
   return (
     <div className="flex flex-col gap-4">

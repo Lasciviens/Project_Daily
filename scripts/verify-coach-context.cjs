@@ -14,6 +14,10 @@
  *      that no longer exist (stale program).
  *   5. formatPtSnapshot / buildCoachJson — program, decisions, limitation
  *      names and the 'no program' state reach both coaches.
+ *   8. coachBalance / balanceLines — push:pull and quad:hamstring, planned vs
+ *      done, from the same pipeline as the Program tab and Muscles card.
+ *   7. Missed current-program sessions (and their skip reasons) reach both
+ *      coaches, and the PT prompt documents the "Missed:" line.
  *
  * Run: node scripts/verify-coach-context.cjs
  */
@@ -22,7 +26,7 @@ const {
   resolveMovementPattern, movementPatternLabel, restrictionsBySlug, limitedSlugsFromLimitations, weeklySetGap, MUSCLE_LANDMARKS,
 } = require('../src/features/training/muscleMap')
 const { computeProgressModel } = require('../src/features/training/progressModel')
-const { formatPtSnapshot, buildCoachJson, limitationName } = require('../src/features/training/coach/coachFormat')
+const { formatPtSnapshot, buildCoachJson, limitationName, PT_SYSTEM_PROMPT } = require('../src/features/training/coach/coachFormat')
 const { summarizeWorkingSets, sessionsFromHistory } = require('../src/features/training/coach/coachModel')
 
 let passed = 0, failed = 0
@@ -140,6 +144,80 @@ console.log('\n5 · Coach snapshot + JSON')
   const noProgram = { ...data, progress: computeProgressModel({ ...base, currentProgram: [] }) }
   check('no program → snapshot says so, no Karar lines', /PROGRAM: seçilmemiş/.test(formatPtSnapshot(noProgram)) && !/Karar:/.test(formatPtSnapshot(noProgram)))
   check('no program → JSON program.selected false, no progress', buildCoachJson(noProgram, 30).program.selected === false && !('progress' in buildCoachJson(noProgram, 30)))
+}
+
+console.log('\n6 · RPE (Hevy) in both coaches — compact, context only')
+{
+  // The same history with the w2 working sets rated 8/9/10 (and a rated warm-up).
+  const rpeOf = { 0: 8, 1: 9, 2: 10, [-1]: 5 }
+  const rated = { ...history, sets: history.sets.map(x => (x.workout_id === 'w2' ? { ...x, rpe: rpeOf[x.set_index] } : x)) }
+  check('set summary lists working-set RPE in order (warm-up rating left out)', summarizeWorkingSets(rated.sets.filter(x => x.workout_id === 'w2')) === '3×10@60kg @ RPE 8/9/10', summarizeWorkingSets(rated.sets.filter(x => x.workout_id === 'w2')))
+  check('set summary unchanged without RPE', summarizeWorkingSets(history.sets.filter(x => x.workout_id === 'w1')) === '3×8@60kg')
+  const progressRated = computeProgressModel({ ...base, history: rated, currentProgram: [{ routine_id: 'r1' }] })
+  const progressPlain = computeProgressModel({ ...base, currentProgram: [{ routine_id: 'r1' }] })
+  const mk = (h, progress) => ({
+    today: '2026-09-23', profile: null, limitations: [], progress, routines: base.routines, sessions: sessionsFromHistory(h), sessionsThisWeek: 1,
+    weeklyMuscleSets: [], sleep: [], steps: [], activeKcal: [], bodyweight: [],
+  })
+  const text = formatPtSnapshot(mk(rated, progressRated))
+  check('snapshot workout line carries RPE, previous session unrated', text.includes('Bench Press: 3×10@60kg @ RPE 8/9/10 (önceki: 3×8@60kg)'), text)
+  check('Karar "son:" carries RPE', /son: 60 kg × 10\/10\/10 @ RPE 8\/9\/10 ·/.test(text), text.split('\n').find(l => l.includes('Karar')))
+  check('RPE never changes the Karar action', progressRated.decisions[0].currentAction === progressPlain.decisions[0].currentAction)
+  const json = buildCoachJson(mk(rated, progressRated), 30)
+  check('JSON progress.last carries RPE', json.progress[0].last === '60 kg × 10/10/10 @ RPE 8/9/10', json.progress[0].last)
+  check('JSON workout sets carry RPE', json.workouts[0].ex[0].s === '3×10@60kg @ RPE 8/9/10', json.workouts[0].ex[0].s)
+  check('JSON explains the RPE suffix once', /RPE/.test(json.about) && /never overrides/.test(json.about))
+  check('PT prompt documents the RPE suffix (snapshot contract)', PT_SYSTEM_PROMPT.includes('@ RPE 8/9/10') && /never overrides a Karar/.test(PT_SYSTEM_PROMPT))
+}
+
+console.log('\n7 · Missed current-program sessions (plan/skippedRoutines.ts, migration 112)')
+{
+  const { missedLine } = require('../src/features/training/coach/coachFormat')
+  const progress = computeProgressModel({ ...base, currentProgram: [{ routine_id: 'r1' }] })
+  const missed = [
+    { kind: 'overdue', routineId: 'r1', title: 'Push Day', lastTrained: '2026-09-14', daysSince: 9, dueDate: '2026-09-21', weekStart: '2026-09-21' },
+    { kind: 'skipped', routineId: 'r2', title: 'Legs', lastTrained: '2026-09-10', daysSince: 13, dueDate: '2026-09-17', weekStart: '2026-09-14', skip: { id: 's', routine_id: 'r2', week_start: '2026-09-14', reason: 'Sick — flu' } },
+  ]
+  const data = {
+    today: '2026-09-23', profile: null, limitations: [], progress, routines: base.routines, sessions: sessionsFromHistory(history), sessionsThisWeek: 1,
+    weeklyMuscleSets: [], sleep: [], steps: [], activeKcal: [], bodyweight: [], missedSessions: missed,
+  }
+  check('overdue line', missedLine(missed[0]) === 'Missed: Push Day — not done in 9 days (due 2026-09-21)', missedLine(missed[0]))
+  check('skipped line carries the reason', missedLine(missed[1]).endsWith('· skipped: Sick — flu'), missedLine(missed[1]))
+  const text = formatPtSnapshot(data)
+  check('snapshot lists them under PROGRAM', /PROGRAM: [^\n]*\n  Missed: Push Day/.test(text), text.split('\n').slice(0, 6).join(' | '))
+  const json = buildCoachJson(data, 30)
+  check('JSON program.missed with status and reason', json.program.missed?.length === 2 && json.program.missed[1].status === 'skipped' && json.program.missed[1].reason === 'Sick — flu', JSON.stringify(json.program.missed))
+  const none = buildCoachJson({ ...data, missedSessions: [] }, 30)
+  check('nothing missed → no missed key, no Missed line', !('missed' in none.program) && !/Missed:/.test(formatPtSnapshot({ ...data, missedSessions: undefined })))
+  check('PT prompt documents the Missed line (snapshot contract)', PT_SYSTEM_PROMPT.includes('"Missed:" lines under PROGRAM') && PT_SYSTEM_PROMPT.includes('skipped: <reason>'))
+}
+
+console.log('\n8 · Push:pull balance — the same numbers the app shows (plan/muscleBalance.ts)')
+{
+  const { coachBalance } = require('../src/features/training/coach/coachModel')
+  const { balanceLines } = require('../src/features/training/coach/coachFormat')
+  // A pull exercise added to the Push routine's sessions that the routine
+  // doesn't have — Back credited once although Hevy lists lats + upper_back.
+  const pull = (w, date, i) => ({ ...set(w, date, 50, 10, i), exercise_template_id: 'lpd' })
+  const h = {
+    sets: [...history.sets, pull('w1', '2026-09-14', 3), pull('w1', '2026-09-14', 4), pull('w2', '2026-09-21', 3), pull('w2', '2026-09-21', 4)],
+    templates: [...history.templates, { id: 'lpd', title: 'Lat Pulldown (Machine)', type: 'weight_reps', primary_muscle_group: 'lats', secondary_muscle_groups: ['upper_back', 'biceps'] }],
+  }
+  const b = coachBalance({ history: h, templates: [], routines: base.routines, programRoutineIds: ['r1'], trainingDaysPerWeek: 1, scheduledTrainingDays: 0, today: '2026-09-23' })
+  check('planned from the program: bench 3 sets × (chest 1 + triceps 0.5) → push 4.5, no pull', b.planned.pushPull.a === 4.5 && b.planned.pushPull.lean === 'a' && b.planned.pushPull.ratio === null, b.planned.pushPull)
+  // done 30 d: bench 6 sets × 1.5 = 9 push; pulldown 4 sets × (Back 1 + biceps 0.5) = 6 pull → per week × 7/30
+  check('done over 30 days, Back credited once', b.done.pushPull.a === 2.1 && b.done.pushPull.b === 1.4 && b.done.pushPull.ratio === 1.5 && b.done.pushPull.lean === 'balanced', b.done.pushPull)
+  check('why names the added exercise', /Lat Pulldown \(Machine\)/.test(b.comparison.pushPull.why ?? ''), b.comparison.pushPull.why)
+  const lines = balanceLines(b)
+  check('snapshot BALANCE lines: planned + done + Why', lines[0].startsWith('BALANCE (weekly sets; planned = current program, done = last 30 days)') && /Push : pull: planned push only \(push-heavy\) · done 1\.50 : 1 \(balanced\)/.test(lines[1]) && lines[2].trim().startsWith('Why:') && lines.length === 3, lines)
+  const progress = computeProgressModel({ ...base, currentProgram: [{ routine_id: 'r1' }] })
+  const data = { today: '2026-09-23', profile: null, limitations: [], progress, routines: base.routines, sessions: [], sessionsThisWeek: 0, weeklyMuscleSets: [], sleep: [], steps: [], activeKcal: [], bodyweight: [], balance: b }
+  check('snapshot carries the BALANCE block', formatPtSnapshot(data).includes('BALANCE (weekly sets'))
+  const json = buildCoachJson(data, 30)
+  check('JSON balance: rule, planned, done_30d, why', /1\.5×/.test(json.balance.rule) && json.balance.planned.push_pull.lean === 'push-heavy' && json.balance.done_30d.push_pull.ratio === '1.50 : 1' && json.balance.why.length === 1, json.balance)
+  check('no balance → no block, no key', !formatPtSnapshot({ ...data, balance: undefined }).includes('BALANCE') && !('balance' in buildCoachJson({ ...data, balance: undefined }, 30)))
+  check('PT prompt documents BALANCE (snapshot contract)', PT_SYSTEM_PROMPT.includes('- BALANCE:') && PT_SYSTEM_PROMPT.includes('never compute your own ratio'))
 }
 
 console.log(`\n${passed} passed, ${failed} failed\n`)

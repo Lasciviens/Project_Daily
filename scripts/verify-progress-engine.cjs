@@ -1594,5 +1594,43 @@ console.log('\n== 20. Audit round (2026-09-27) — targets, expectations, trend 
   }
 }
 
+console.log('\n== 21. RPE (Hevy) is carried for display only ==')
+{
+  const base = [
+    ...uniformRows('r1', '2026-09-01', 'rpe', 60, [10, 10, 10]),
+    ...uniformRows('r2', '2026-09-08', 'rpe', 60, [12, 12, 12]),
+    ...uniformRows('r3', '2026-09-15', 'rpe', 62.5, [9, 8, 8]),
+  ]
+  const rpes = [7, 8, 9, 8, 9, 10, 9.5, 10, 10]
+  const rated = base.map((r, i) => ({ ...r, rpe: rpes[i] }))
+  const plainSessions = buildCanonicalSessions(base, 'rpe')
+  const ratedSessions = buildCanonicalSessions(rated, 'rpe')
+  check('21: an unrated set carries no rpe key (set shape unchanged)', plainSessions.every(s => s.allSets.every(x => !('rpe' in x))))
+  check('21: a rated set carries its own rpe, in set order', ratedSessions[2].allSets.map(x => x.rpe).join(',') === '9.5,10,10')
+  const exp = resolveExpectation('rpe', 'est1rm', 3, () => ({ repMin: 8, repMax: 12, targetSets: 3 }), () => null)
+  const run = sessions => evaluateExerciseProgress({ exerciseTemplateId: 'rpe', metricKind: 'est1rm', sessions, expectation: exp }, DEFAULT_POLICY)
+  const noRpe = (k, v) => (k === 'rpe' ? undefined : v)
+  const plain = run(plainSessions)
+  check('21: rated vs unrated — identical decision, targets, evidence and events', JSON.stringify(run(ratedSessions), noRpe) === JSON.stringify(plain, noRpe))
+  const at = v => buildCanonicalSessions(base.map(r => ({ ...r, rpe: v })), 'rpe')
+  check('21: every set at RPE 6 vs every set at RPE 10 — still the identical decision', JSON.stringify(run(at(6)), noRpe) === JSON.stringify(run(at(10)), noRpe) && JSON.stringify(run(at(10)), noRpe) === JSON.stringify(plain, noRpe))
+
+  const latest = ratedSessions[2].allSets
+  check('21: formatSessionSets leaves RPE off unless asked (comparison lines, sentences)', formatSessionSets(latest, 'est1rm') === '62.5 kg × 9/8/8', formatSessionSets(latest, 'est1rm'))
+  check('21: formatSessionSets { rpe: true } — per set, in order', formatSessionSets(latest, 'est1rm', { rpe: true }) === '62.5 kg × 9/8/8 @ RPE 9.5/10/10', formatSessionSets(latest, 'est1rm', { rpe: true }))
+  const backoff = buildCanonicalSessions([
+    row('b', '2026-09-20', 'bo', 1, 100, 5, 'normal', { rpe: 9 }),
+    row('b', '2026-09-20', 'bo', 2, 80, 9, 'normal', { rpe: 8 }),
+    row('b', '2026-09-20', 'bo', 3, 80, 8, 'normal', { rpe: 9 }),
+  ], 'bo')[0].allSets
+  check('21: top set + backoffs — each load group keeps its own RPE', formatSessionSets(backoff, 'est1rm', { rpe: true }) === '100 kg × 5 @ RPE 9 · 80 kg × 9/8 @ RPE 8/9', formatSessionSets(backoff, 'est1rm', { rpe: true }))
+  const same = buildCanonicalSessions(uniformRows('s', '2026-09-20', 'same', 60, [10, 10, 10]).map(r => ({ ...r, rpe: 9 })), 'same')[0].allSets
+  check('21: one RPE for a group rated the same on every set', formatSessionSets(same, 'est1rm', { rpe: true }) === '60 kg × 10/10/10 @ RPE 9')
+  const partly = buildCanonicalSessions(repsOnlyRows('p', '2026-09-20', 'po', [8, 8, 6]).map((r, i) => ({ ...r, rpe: [8, null, 10][i] })), 'po')[0].allSets
+  check('21: reps-only, one set unrated — "–" keeps the positions', formatSessionSets(partly, 'reps', { rpe: true }) === '8/8/6 reps @ RPE 8/–/10', formatSessionSets(partly, 'reps', { rpe: true }))
+  check('21: a target never carries an RPE', formatSetGroups([{ weightKg: 60, quantity: 10 }, { weightKg: 60, quantity: 10 }], 'est1rm') === '60 kg × 10/10')
+  check('21: the chart tooltip shows the session\'s RPE', buildExerciseChartRows(ratedSessions, 'est1rm')[2].setsLabel === '62.5 kg × 9/8/8 @ RPE 9.5/10/10')
+}
+
 console.log(`\n${failed === 0 ? '✅ ALL PASS' : '❌ FAILURES'} — ${passed} passed, ${failed} failed\n`)
 process.exit(failed === 0 ? 0 : 1)

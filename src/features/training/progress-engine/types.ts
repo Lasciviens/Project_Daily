@@ -18,6 +18,10 @@ export interface CanonicalSet {
   reps: number | null
   durationSeconds: number | null
   distanceMeters: number | null
+  /** hevy_sets.rpe, present only when the set was rated in Hevy. DISPLAY
+   *  ONLY — no engine function reads it, so no decision, target or evidence
+   *  level depends on whether (or how) a set was rated. */
+  rpe?: number
 }
 
 export type SessionLoadStructure = 'uniform_working_load' | 'top_set_and_backoff' | 'mixed_load'

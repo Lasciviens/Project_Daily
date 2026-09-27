@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { PageContainer, PageHeader } from '../../../shared/ui'
 import { ErrorBoundary } from '../../../shared/components/ErrorBoundary'
 import { useHealthProfile } from '../../training/hooks/useAthleteProfile'
-import { CutReportCard } from '../cut/CutReportCard'
+import { GoalReportCard } from '../goal/GoalReportCard'
 import { DateNav } from '../components/DateNav'
 import { PeriodToggle } from '../components/PeriodToggle'
 import { labelForAnchor, stepAnchor, useRangeWindow } from '../components/dateNav'
@@ -12,6 +12,7 @@ import { SleepSection } from '../components/SleepSection'
 import { StepsSection } from '../components/StepsSection'
 import { EnergySection } from '../components/EnergySection'
 import { HeartSection } from '../components/HeartSection'
+import { VitalsReadingCard } from '../components/VitalsReadingCard'
 import { BodySection } from '../components/BodySection'
 import { CardioFitnessSection } from '../components/CardioFitnessSection'
 import { HealthWorkoutsList } from '../components/HealthWorkoutsList'
@@ -62,18 +63,21 @@ export function HealthPage() {
   return (
     <PageContainer width="full">
       <PageHeader title="Health" actions={<ProfileChip today={today} />} className="max-w-[76rem]">
-        <div className="flex flex-wrap items-center gap-2">
+        {/* Period first, then the dates: the toggle's segments are equal-width
+            and the date label has a fixed width, so neither moves when the
+            period or the date changes. */}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          <div className="scroll-x max-w-full">
+            <PeriodToggle value={period} onChange={setPeriod} dayLabel={anchor === today ? 'Today' : 'Day'} />
+          </div>
           <DateNav
-            label={labelForAnchor(period, anchor)}
+            label={labelForAnchor(period, anchor, today)}
             onPrev={() => setAnchor(a => stepAnchor(period, a, -1))}
             onNext={() => setAnchor(a => stepAnchor(period, a, 1))}
             canGoNext={anchor < today}
             value={anchor}
             onPick={d => setAnchor(d > today ? today : d)}
           />
-          <div className="scroll-x max-w-full">
-            <PeriodToggle value={period} onChange={setPeriod} dayLabel={anchor === today ? 'Today' : 'Day'} />
-          </div>
         </div>
       </PageHeader>
 
@@ -109,15 +113,18 @@ export function HealthPage() {
               <Guard name="Energy"><EnergySection range={range} /></Guard>
               <p className="text-meta text-fg-muted">
                 What you eat lives in <Link to="/recipes" className="font-medium text-accent-600 underline underline-offset-2">Food</Link>;{' '}
-                <button type="button" className="font-medium text-accent-600 underline underline-offset-2" onClick={() => setSection('cut')}>the cut report</button> compares it with this burn.
+                <button type="button" className="font-medium text-accent-600 underline underline-offset-2" onClick={() => setSection('goal')}>Goal progress</button> compares it with this burn.
               </p>
               <MetricMiniGrid title="More activity" metrics={ACTIVITY_EXTRA_METRICS} window={miniWindow} onViewDay={viewDay} hideWhenEmpty standalone="h3" />
               <MetricMiniGrid title="Mobility" metrics={MOBILITY_METRICS} window={miniWindow} onViewDay={viewDay} hideWhenEmpty standalone="h3" />
+              {/* Moved from Body, which shows the smart scale only (owner). */}
+              <MetricMiniGrid title="Daily habits & environment" metrics={HABIT_METRICS} window={miniWindow} onViewDay={viewDay} hideWhenEmpty standalone="h3" />
             </SectionPanel>
           )}
 
           {section === 'heart' && (
             <SectionPanel id="heart" note="Each against your own usual range.">
+              <Guard name="Vitals reading"><VitalsReadingCard range={range} /></Guard>
               <Guard name="Heart"><HeartSection range={range} /></Guard>
               <TrendCard title="Resting heart rate trend" stats={buildTrendStats(hero.rhr.series, { to: anchor, direction: 'down' })}
                 format={v => num(v)} formatDelta={v => `${signed(v)} bpm`} direction="down" rateUnit="bpm/week" />
@@ -128,16 +135,14 @@ export function HealthPage() {
 
           {section === 'body' && (
             <SectionPanel id="body">
+              {/* Its weight trend card sits inside: scale readings only, like the charts. */}
               <Guard name="Body"><BodySection range={range} /></Guard>
-              <TrendCard title="Weight trend" stats={buildTrendStats(hero.weight.series, { to: anchor, direction: null, sparse: true })}
-                format={v => `${num(v, 1)} kg`} formatDelta={v => `${signed(v, 1)} kg`} direction={null} rateUnit="kg/week" />
-              <MetricMiniGrid title="Daily habits & environment" metrics={HABIT_METRICS} window={miniWindow} onViewDay={viewDay} hideWhenEmpty standalone="h3" />
             </SectionPanel>
           )}
 
-          {section === 'cut' && (
-            <SectionPanel id="cut" note="Your logged food against the scale — are you losing weight as fast as your calories say you should?">
-              <Guard name="Cut report"><CutReportCard /></Guard>
+          {section === 'goal' && (
+            <SectionPanel id="goal" note="Your weight, fat and muscle against the phase you picked — cut, maintain or gain — and your own goals.">
+              <Guard name="Goal progress"><GoalReportCard /></Guard>
             </SectionPanel>
           )}
 

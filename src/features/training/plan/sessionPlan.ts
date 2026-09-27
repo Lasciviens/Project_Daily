@@ -8,8 +8,16 @@
 //
 // No decision is made here: the target is the engine's (progress-engine
 // targets.ts), this only lines it up with the routine.
+//
+// RPE (logged per set in Hevy) is shown on "Last time" and read into one
+// light note — near your limit / room to push (lastSessionEffort). The note
+// is informational and NEVER changes the target: the owner decided that no
+// decision depends on RPE (the engine reads none — a rated and an unrated
+// exercise must get the same target), RPE is self-reported and people misjudge
+// the reps they have left by about one (Halperin 2022), and there is only a
+// short history of rated sets.
 
-import type { CanonicalExerciseSession, ExerciseProgressResult, ProgressMetricKind } from '../progress-engine/types'
+import type { CanonicalExerciseSession, CanonicalSet, ExerciseProgressResult, ProgressMetricKind } from '../progress-engine/types'
 import { formatSessionSets, formatSetTargets } from '../progress-engine/format'
 import { routineTargetFromSets, repRangeLabel } from '../progress-engine/policies'
 
@@ -45,8 +53,55 @@ export interface PlanRow {
   target: string | null
   targetHeadline: string | null
   decision: ExerciseProgressResult | null
+  /** Last session's sets, each group with its RPE when rated ("… @ RPE 8/9/10"). */
   lastSets: string | null
   lastDate: string | null
+  /** At least one set of the last session was rated in Hevy. */
+  lastHasRpe: boolean
+  /** The last session's effort read from its RPE, or null (too few rated sets). */
+  lastEffort: LastEffort | null
+}
+
+// ─── Effort from RPE (informational only) ───────────────────────────────────
+// Hevy's mapping: reps in reserve ≈ 10 − RPE. An average of 9.5+ ≈ 0–½ reps
+// left; 7 or lower ≈ 3+ left. Working sets = normal + failure (dropsets are
+// deliberately taken past the point, so they'd skew the read).
+
+export const NEAR_LIMIT_RPE = 9.5
+export const ROOM_TO_PUSH_RPE = 7
+
+export type EffortNote = 'near_limit' | 'room_to_push'
+
+export interface LastEffort {
+  /** Average RPE of the rated working sets, one decimal. */
+  averageRpe: number
+  ratedSets: number
+  workingSets: number
+  /** null = an ordinary effort (between 7 and 9.5) — nothing to say. */
+  note: EffortNote | null
+  /** The card's sentence, or null with no note. */
+  text: string | null
+}
+
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
+const isRated = (v: number | undefined): v is number => typeof v === 'number' && Number.isFinite(v) && v > 0
+
+/** Needs RPE on at least half of the session's working sets — one rated set
+ *  out of four is not the session's effort (the research note: no effort
+ *  read from a small share of rated sets). */
+export function lastSessionEffort(sets: readonly CanonicalSet[]): LastEffort | null {
+  const working = sets.filter(s => s.kind !== 'dropset')
+  const rated = working.map(s => s.rpe).filter(isRated)
+  if (working.length === 0 || rated.length === 0 || rated.length * 2 < working.length) return null
+  const averageRpe = Math.round((rated.reduce((a, b) => a + b, 0) / rated.length) * 10) / 10
+  const note: EffortNote | null = averageRpe >= NEAR_LIMIT_RPE ? 'near_limit' : averageRpe <= ROOM_TO_PUSH_RPE ? 'room_to_push' : null
+  const over = rated.length === working.length ? plural(working.length, 'working set') : `${rated.length} of ${plural(working.length, 'working set')}`
+  const text = note === 'near_limit'
+    ? `Last time was near your limit (RPE 9.5+) — average ${averageRpe} over ${over}, about 0–½ reps left.`
+    : note === 'room_to_push'
+      ? `Last time left room to push (RPE 7 or lower) — average ${averageRpe} over ${over}, about 3+ reps left.`
+      : null
+  return { averageRpe, ratedSets: rated.length, workingSets: working.length, note, text }
 }
 
 function routineLoadsText(sets: readonly RoutineSetInput[], kind: ProgressMetricKind): string | null {
@@ -88,7 +143,9 @@ export function buildSessionPlan(
       restSeconds: parseRest(ex.rest_seconds),
       prescription, routineLoads: routineLoadsText(sets, kind),
       target, targetHeadline: next?.headline ?? null, decision,
-      lastSets: latest ? formatSessionSets(latest.allSets, kind) : null, lastDate: latest?.date ?? null,
+      lastSets: latest ? formatSessionSets(latest.allSets, kind, { rpe: true }) : null, lastDate: latest?.date ?? null,
+      lastHasRpe: !!latest && latest.allSets.some(s => isRated(s.rpe)),
+      lastEffort: latest ? lastSessionEffort(latest.allSets) : null,
     }
   })
 }

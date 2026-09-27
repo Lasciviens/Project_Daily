@@ -1,0 +1,105 @@
+import type { Tone } from '../../../shared/ui'
+import type { Confidence, Phase, ProteinBand, Reason, Verdict } from './energyBalance'
+import type { CompositionVerdict, GoalKind, RateStatus } from './bodyGoal'
+
+// Plain-language copy for the goal report. Never a diagnosis: each line says
+// what the numbers show and the most common explanation.
+
+export const PHASE_LABEL: Record<Phase, string> = { cut: 'Cut', maintain: 'Maintain', gain: 'Gain' }
+
+export const PHASE_QUESTION: Record<Phase, string> = {
+  cut: 'Are you losing fat at the right pace — and keeping your muscle?',
+  maintain: 'Are you holding your weight — and what is it made of?',
+  gain: 'Are you gaining at the right pace — and is it muscle?',
+}
+
+/** The energy verdict, phase-aware: 'slower' = the scale sits higher than the
+ *  numbers predict, 'faster' = lower. */
+export function verdictCopy(v: Verdict, phase: Phase): { title: string; tone: Tone } {
+  if (v === 'on_track') return { title: 'Your scale matches your numbers', tone: 'success' }
+  if (phase === 'gain') return v === 'slower' ? { title: 'Gaining faster than your numbers say', tone: 'warn' } : { title: 'Gaining slower than your numbers say', tone: 'info' }
+  if (phase === 'maintain') return v === 'slower' ? { title: 'Your weight runs above what your numbers predict', tone: 'warn' } : { title: 'Your weight runs below what your numbers predict', tone: 'info' }
+  return v === 'slower' ? { title: 'Losing slower than your numbers say', tone: 'warn' } : { title: 'Losing faster than your numbers say', tone: 'info' }
+}
+
+export function reasonCopy(r: Reason, phase: Phase): string {
+  switch (r) {
+    case 'partial_logging': return 'Some days are missing or half-logged in the diary, so the average intake is likely too low.'
+    case 'intake_underlogged': return 'Most likely: the diary misses some of what you eat. Food records typically miss 19–41 % of intake — oils, sauces, snacks and portion sizes are the usual culprits.'
+    case 'apple_overestimates': return 'Also common: Apple\'s energy reads high. Wrist wearables were off by ~28 % on average in a 2025 review, mostly overestimating active energy.'
+    case 'early_water': return phase === 'gain'
+      ? 'This window includes the start of your gain. Refilling glycogen and water adds weight that holds little energy — this settles down.'
+      : 'This window includes the start of your cut. Early loss is largely glycogen and water, which weighs a lot but holds little energy — this settles down.'
+    case 'short_window': return 'A 14-day window is short: a salty meal or a hard training day can move the scale by a kilo.'
+    case 'apple_underestimates': return 'Apple may be reading your burn low, or the diary over-counts (rare — logging usually misses food rather than adding it).'
+    case 'intake_overlogged': return 'If this lasts over several windows, check that eaten portions aren\'t logged twice.'
+  }
+}
+
+export const CONFIDENCE_COPY: Record<Confidence, { label: string; tone: Tone }> = {
+  high: { label: 'High confidence', tone: 'success' },
+  medium: { label: 'Medium confidence', tone: 'neutral' },
+  low: { label: 'Low confidence', tone: 'warn' },
+}
+
+export const RATE_COPY: Record<RateStatus, { label: string; tone: Tone }> = {
+  on_track: { label: 'On track', tone: 'success' },
+  stable: { label: 'Steady', tone: 'success' },
+  too_slow: { label: 'Too slow', tone: 'info' },
+  too_fast: { label: 'Too fast', tone: 'warn' },
+  way_too_fast: { label: 'Much too fast', tone: 'danger' },
+  wrong_way: { label: 'Wrong direction', tone: 'warn' },
+  drifting_down: { label: 'Drifting down', tone: 'info' },
+  drifting_up: { label: 'Drifting up', tone: 'info' },
+}
+
+/** Tone of a fat/muscle verdict, read through the phase. */
+export function compositionTone(v: CompositionVerdict, phase: Phase): Tone {
+  switch (v) {
+    case 'recomp': case 'fat_loss_lean_kept': return phase === 'gain' ? 'info' : 'success'
+    case 'lean_gain': case 'lean_gain_some_fat': return phase === 'cut' ? 'info' : 'success'
+    case 'fat_loss_some_lean': case 'mostly_fat_gain': return 'warn'
+    case 'losing_lean': case 'fat_gain_lean_loss': return 'danger'
+    case 'stable': return phase === 'maintain' ? 'success' : 'neutral'
+    case 'not_enough_data': return 'neutral'
+  }
+}
+
+export const COMPOSITION_LABEL: Record<CompositionVerdict, string> = {
+  recomp: 'Fat down, muscle up',
+  fat_loss_lean_kept: 'Losing fat, keeping muscle',
+  fat_loss_some_lean: 'Losing fat and some muscle',
+  losing_lean: 'Losing muscle',
+  lean_gain: 'Gaining lean mass',
+  lean_gain_some_fat: 'Gaining lean mass, some fat',
+  mostly_fat_gain: 'Gaining mostly fat',
+  fat_gain_lean_loss: 'Fat up, muscle down',
+  stable: 'No clear change',
+  not_enough_data: 'Not enough scale data',
+}
+
+export const PROTEIN_COPY: Record<ProteinBand, { label: string; tone: Tone }> = {
+  below_floor: { label: 'Below 1.6 g/kg', tone: 'warn' },
+  in_range: { label: '1.6–2.2 g/kg', tone: 'success' },
+  high: { label: 'Above 2.2 g/kg', tone: 'success' },
+}
+
+export const GOAL_META: Record<GoalKind, { label: string; unit: string; dp: number; source: string }> = {
+  weight: { label: 'Weight', unit: 'kg', dp: 1, source: 'trend weight' },
+  bodyFat: { label: 'Body fat', unit: '%', dp: 1, source: 'smart scale' },
+  muscle: { label: 'Muscle mass', unit: 'kg', dp: 1, source: 'scale report (muscle % × weight)' },
+}
+
+export function signed(v: number, dp = 0, unit = ''): string {
+  const s = Math.abs(v).toFixed(dp)
+  return `${v > 0 ? '+' : v < 0 ? '−' : '±'}${s}${unit}`
+}
+
+export function kcal(v: number | null): string {
+  return v == null ? '—' : Math.round(v).toLocaleString('en-GB')
+}
+
+/** The report's name for the source string an app wrote. */
+export function sourceLabel(s: string | null): string {
+  return s == null ? 'the scale' : s === 'report' ? 'the scale reports' : s
+}

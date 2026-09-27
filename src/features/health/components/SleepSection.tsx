@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { TonePill } from '../../../shared/ui'
 import { shiftDateStr, todayStr } from '../../../shared/utils/dateUtils'
 import {
@@ -19,6 +19,9 @@ import { SleepStageBar } from './SleepStageBar'
 import { ManualSleepForm } from './ManualSleepForm'
 import { SleepRawRows } from './SleepRawRows'
 import { fmtAxisFor, fmtDayLong, fmtDayMonth, windowCaption } from './healthFormat'
+import { nightEndingOn, nightMissingText } from '../healthDateLabels'
+import { findIncompleteNights } from '../sleepCompleteness'
+import { SleepIncompleteNote } from './SleepIncompleteNote'
 
 // Nights are filed under the day you WOKE UP, so "today" in Day mode is last
 // night — a finished night that always counts (H-01).
@@ -33,8 +36,16 @@ export function SleepSection({ range }: { range: HealthRange }) {
   const points = sleep.points.filter(p => { const k = sleepNightKey(p); return k >= win.from && k <= win.to })
   const manual = manualNightKeys(sleep.points)
   const sources = sleepSourcesByNight(sleep.points)
+  // Nights in view whose start never arrived from Health Auto Export (the whole
+  // fetched range is the baseline, so pass all of it).
+  const incomplete = useMemo(
+    () => findIncompleteNights(sleep.points, sleep.nights, win.from, win.to),
+    [sleep.points, sleep.nights, win.from, win.to],
+  )
 
-  const dayNight = isDay ? inWindow.find(n => n.date === anchor) ?? null : null
+  // The night that ENDED on the selected day — never the newest night on record.
+  const endNight = nightEndingOn(inWindow, anchor)
+  const dayNight = isDay ? endNight : null
   const periodNight: SleepSummary | null = !isDay && inWindow.length ? {
     date: win.to,
     total: mean(inWindow.map(n => n.total)) as number,
@@ -70,7 +81,7 @@ export function SleepSection({ range }: { range: HealthRange }) {
         <div className="flex flex-wrap items-end gap-2">
           <HeadlineStat
             label={headline}
-            value={sleep.isLoading ? '…' : s.value != null ? fmtHrs(s.value) : '—'}
+            value={sleep.isLoading ? '…' : isDay ? (dayNight ? fmtHrs(dayNight.total) : '—') : s.value != null ? fmtHrs(s.value) : '—'}
             unit={!isDay && s.value != null ? '/night' : undefined}
             sub={isDay ? null : windowCaption(s, { unitNoun: 'nights' })}
             trend={<TrendBadge pct={s.deltaPct} />}
@@ -78,11 +89,20 @@ export function SleepSection({ range }: { range: HealthRange }) {
           {isDay && dayNight && manual.has(anchor) && <TonePill tone="neutral" className="mb-1">Manual</TonePill>}
         </div>
         {isDay && !dayNight && !sleep.isLoading && (
-          <p className="mt-1 text-meta text-fg-muted">No sleep recorded for this night — pick another day, or add it by hand below.</p>
+          <p className="mt-1 text-meta text-fg-muted">{nightMissingText(anchor, win.today)} — pick another day, or add it by hand below.</p>
         )}
         {!isDay && s.best && s.worst && (
           <p className="mt-1 text-meta text-fg-muted">
             Longest {fmtHrs(s.best.value)} ({fmtDayMonth(s.best.date)}) · shortest {fmtHrs(s.worst.value)} ({fmtDayMonth(s.worst.date)})
+          </p>
+        )}
+        {/* The window's last night is the one that ended on its last day —
+            said so when it is missing, never swapped for an older night. */}
+        {!isDay && !sleep.isLoading && (
+          <p className="mt-1 text-meta text-fg-2">
+            {endNight
+              ? <>{anchor === win.today ? 'Last night' : `Night of ${fmtDayMonth(shiftDateStr(anchor, -1))}–${fmtDayMonth(anchor)}`}: <b className="font-semibold tabular-nums text-fg">{fmtHrs(endNight.total)}</b></>
+              : `${nightMissingText(anchor, win.today)}.`}
           </p>
         )}
         {!isDay && inWindow.length === 0 && !sleep.isLoading && (
@@ -90,6 +110,7 @@ export function SleepSection({ range }: { range: HealthRange }) {
         )}
       </div>
 
+      {!sleep.isLoading && <SleepIncompleteNote nights={incomplete} today={win.today} />}
       {sessions.length > 0 && <SleepNightChart sessions={sessions} />}
       {replaced && (
         <p className="text-meta text-fg-muted">The Watch's data for this night is replaced by your manual entry.</p>

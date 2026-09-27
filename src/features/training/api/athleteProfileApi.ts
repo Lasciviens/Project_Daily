@@ -36,6 +36,20 @@ const HEALTH_PROFILE_COLUMNS = ['birth_year', 'sex', 'height_cm'] as const
 export const NOT_MIGRATED_110 =
   'Birth year, sex and height can’t be saved yet — migration 110 (athlete_profile health fields) has not been applied.'
 
+// goal_weight_kg / goal_body_fat_pct / goal_muscle_mass_kg / phase_start_date
+// arrive with migration 111 (Health → Goal progress). Same treatment as 110.
+const BODY_GOAL_COLUMNS = ['goal_weight_kg', 'goal_body_fat_pct', 'goal_muscle_mass_kg', 'phase_start_date'] as const
+
+export const NOT_MIGRATED_111 =
+  'Body goals can’t be saved to your account yet — migration 111 (athlete_profile body goals) has not been applied.'
+
+// Column groups that arrive with a later migration than the table itself. A
+// write naming one on a DB without it drops that group and retries the rest.
+const OPTIONAL_COLUMN_GROUPS: { columns: readonly string[]; notMigrated: string }[] = [
+  { columns: HEALTH_PROFILE_COLUMNS, notMigrated: NOT_MIGRATED_110 },
+  { columns: BODY_GOAL_COLUMNS, notMigrated: NOT_MIGRATED_111 },
+]
+
 function finiteOrNull(v: unknown): number | null {
   if (v == null || v === '') return null
   const n = Number(v)
@@ -50,15 +64,20 @@ function normalizeProfile(row: Record<string, unknown>): AthleteProfile {
     sex,
     // numeric(5,1) — PostgREST may hand it back as a string.
     height_cm:  finiteOrNull(row.height_cm),
+    goal_weight_kg:      finiteOrNull(row.goal_weight_kg),
+    goal_body_fat_pct:   finiteOrNull(row.goal_body_fat_pct),
+    goal_muscle_mass_kg: finiteOrNull(row.goal_muscle_mass_kg),
+    phase_start_date:    typeof row.phase_start_date === 'string' && /^\d{4}-\d{2}-\d{2}/.test(row.phase_start_date)
+      ? row.phase_start_date.slice(0, 10) : null,
   }
 }
 
-/** A write that names one of the 110 columns on a DB without them (PGRST204 / 42703). */
-function isMissingHealthColumn(e: unknown): boolean {
+/** The optional column group a write named on a DB without it (PGRST204 / 42703), if any. */
+function missingColumnGroup(e: unknown): (typeof OPTIONAL_COLUMN_GROUPS)[number] | null {
   const x = e as { code?: string; message?: string }
-  if (x?.code !== 'PGRST204' && x?.code !== '42703') return false
+  if (x?.code !== 'PGRST204' && x?.code !== '42703') return null
   const msg = x?.message ?? ''
-  return HEALTH_PROFILE_COLUMNS.some(col => msg.includes(col))
+  return OPTIONAL_COLUMN_GROUPS.find(g => g.columns.some(col => msg.includes(col))) ?? null
 }
 
 export async function fetchAthleteProfile(): Promise<AthleteProfile | null> {
@@ -81,21 +100,23 @@ export async function upsertAthleteProfile(input: UpsertAthleteProfileInput): Pr
   const row: Record<string, unknown> = { user_id: user.id, ...input }
   let { data, error } = await run(row)
 
-  // Pre-110: retry without the health columns so the rest of the patch still
-  // saves. Only a real value the user typed is reported as lost — clearing a
-  // field that can't exist yet is a no-op, not an error.
-  if (error && isMissingHealthColumn(error)) {
-    const lostValue = HEALTH_PROFILE_COLUMNS.some(col => row[col] != null)
-    for (const col of HEALTH_PROFILE_COLUMNS) delete row[col]
+  // Pre-110 / pre-111: retry without the missing group's columns so the rest
+  // of the patch still saves. Only a real value the user typed is reported as
+  // lost — clearing a field that can't exist yet is a no-op, not an error.
+  let lost: string | null = null
+  for (let i = 0; error && i < OPTIONAL_COLUMN_GROUPS.length; i++) {
+    const group = missingColumnGroup(error)
+    if (!group) break
+    const lostValue = group.columns.some(col => row[col] != null)
+    for (const col of group.columns) delete row[col]
+    if (lostValue && !lost) lost = group.notMigrated
     const hasOtherFields = Object.keys(row).length > 1
-    if (hasOtherFields || !lostValue) {
-      ;({ data, error } = await run(row))
-      if (error) throw isMissingTable(error) ? new Error(NOT_MIGRATED) : error
-    }
-    if (lostValue) throw new Error(NOT_MIGRATED_110)
+    if (hasOtherFields || !lostValue) ({ data, error } = await run(row))
+    else { error = null; break }
   }
 
   if (error) throw isMissingTable(error) ? new Error(NOT_MIGRATED) : error
+  if (lost) throw new Error(lost)
   if (!data) throw new Error('Athlete profile save returned no row.')
   return normalizeProfile(data)
 }

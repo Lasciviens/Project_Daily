@@ -61,8 +61,8 @@ export function MeasurementModal({ isOpen, onClose, initial }: MeasurementModalP
     })
   }
 
-  // The newest weight the app knows from another source (smart scale or
-  // Apple Health), offered as a one-tap fill.
+  // The newest weight the app knows from another source (the smart scale via
+  // Apple Health, or its photo report), offered as a one-tap fill.
   const { data: latest } = useLatestBodyweight()
   const suggestion = latest && latest.source !== 'hevy' ? latest : null
 

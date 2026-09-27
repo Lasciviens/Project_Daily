@@ -1,5 +1,5 @@
 import { Timer } from 'lucide-react'
-import { Card, TonePill } from '../../../../shared/ui'
+import { Card, ToneDot, TonePill } from '../../../../shared/ui'
 import { InfoBubble } from '../../../../shared/components/InfoBubble'
 import { ExerciseThumb } from '../../exerciseMedia'
 import { actionLabel, nextTargetUnavailableText } from '../../progress-engine/copy'
@@ -7,6 +7,7 @@ import { fmtTrainingDate } from '../../dateFormat'
 import { ACTION_TONE } from '../../plan/actionTone'
 import type { PlanRow } from '../../plan/sessionPlan'
 import { SourceNote } from '../program/SourceNote'
+import { RpeInfoBubble } from '../RpeInfoBubble'
 
 function fmtRest(seconds: number): string {
   if (seconds < 60) return `${seconds}s rest`
@@ -15,9 +16,12 @@ function fmtRest(seconds: number): string {
 }
 
 /** One exercise of the next session: GIF, what the program prescribes, the
- *  engine's set-by-set target and last session. The routine's own exercise
- *  notes live in Library → Routines (collapsed there), not here. */
-export function NextExerciseCard({ row }: { row: PlanRow }) {
+ *  engine's set-by-set target and last session (with its Hevy RPE, and a note
+ *  when that effort was near the limit or easy — informational, the target
+ *  never changes for it). The routine's own exercise notes live in Library →
+ *  Routines (collapsed there), not here. `explainRpe` shows the RPE explainer
+ *  (once per tab, on the first card with a rated last session). */
+export function NextExerciseCard({ row, explainRpe = false }: { row: PlanRow; explainRpe?: boolean }) {
   const d = row.decision
   return (
     <Card padded={false} className="flex flex-col gap-2 p-3 sm:p-4">
@@ -64,6 +68,16 @@ export function NextExerciseCard({ row }: { row: PlanRow }) {
         <p className="text-meta text-fg-muted">
           Last time{row.lastDate ? ` (${fmtTrainingDate(row.lastDate + 'T12:00:00')})` : ''}:{' '}
           <span className="font-medium tabular-nums text-fg-2">{row.lastSets}</span>
+          {explainRpe && row.lastHasRpe && <> <RpeInfoBubble /></>}
+        </p>
+      )}
+      {row.lastEffort?.note && row.lastEffort.text && (
+        <p className="flex items-start gap-2 text-meta text-fg-2">
+          {/* Info tone for both: near the limit is not a problem to fix (sets
+              0–3 reps short of failure all build muscle) — a warning colour
+              would read as "back off" against the engine's target. */}
+          <ToneDot tone="info" className="mt-1 shrink-0" />
+          {row.lastEffort.text}
         </p>
       )}
     </Card>

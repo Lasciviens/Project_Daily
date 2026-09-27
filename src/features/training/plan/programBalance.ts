@@ -15,15 +15,20 @@
 //    recreational lifters (Baz-Valle 2022 for trained men: 12–20).
 //  - MEV/MAV/MRV (Renaissance Periodization) are PRACTITIONER heuristics, not
 //    trial-derived; they are shown next to the tiers and labelled as such.
-//  - Push:pull ~1:1 and hamstring ≥0.5× quad are heuristics with no trial
-//    support as thresholds (Kolber 2009 observed shoulder imbalances in
-//    recreational lifters; van Dyk 2019: programmes with the Nordic hamstring
-//    curl roughly halved hamstring injuries in athletes).
+//  - The push:pull and quad:hamstring ratio + verdict come from
+//    muscleBalance.ts — the same function the Muscles body map and the AI
+//    coach use. Only the knee-flexion check and the planned-week notes live
+//    here (van Dyk 2019: programmes with the Nordic hamstring curl roughly
+//    halved hamstring injuries in athletes).
 
 import {
-  MUSCLE_LANDMARKS, BANDS_META, MAJOR_MUSCLES, bandForWeeklySets, contribution, labelForSlug,
-  scaleLandmarksForExperience, slugForHevyGroup, type Landmarks,
+  MUSCLE_LANDMARKS, BANDS_META, MAJOR_MUSCLES, bandForWeeklySets, creditedMuscles, labelForSlug,
+  scaleLandmarksForExperience, templateMuscleCredit, type Landmarks,
 } from '../muscleMap'
+import {
+  BALANCE_LIMIT, PULL_SLUGS, PUSH_SLUGS, balanceTotals, readMuscleBalance,
+  type MuscleBalance, type PlannedRoutineBalance,
+} from './muscleBalance'
 import type { ExperienceLevel, MusclePreference } from '../types.athlete'
 import type { Tone } from '../../../shared/ui/Tone'
 
@@ -88,18 +93,61 @@ export function plannedWeeklySets(
       if (n === 0) continue
       const m = templateMuscles.get(ex.exercise_template_id)
       if (!m) continue
-      const primary = slugForHevyGroup(m.primary)
-      if (primary) add(primary, n * contribution(ex.exercise_template_id, primary, 'primary'), { exerciseTitle: ex.title, routineTitle: r.title, sets: n, role: 'primary' })
-      for (const sec of m.secondary) {
-        const slug = slugForHevyGroup(sec)
-        if (!slug || slug === primary) continue
-        add(slug, n * contribution(ex.exercise_template_id, slug, 'secondary'), { exerciseTitle: ex.title, routineTitle: r.title, sets: n, role: 'secondary' })
+      const c = templateMuscleCredit(m.primary, m.secondary)
+      for (const cr of creditedMuscles(ex.exercise_template_id, c.primarySlug, c.secondarySlugs)) {
+        add(cr.slug, n * cr.weight, { exerciseTitle: ex.title, routineTitle: r.title, sets: n, role: cr.role })
       }
     }
   }
   return [...by.values()]
     .map(m => ({ ...m, weeklySets: round1(m.weeklySets), directSets: round1(m.directSets) }))
     .sort((a, b) => b.weeklySets - a.weeklySets || a.slug.localeCompare(b.slug))
+}
+
+/** A routine as stored (hevy_routines + exercises + sets). */
+export interface RoutineLike {
+  id: string
+  title: string
+  exercises?: readonly { exercise_template_id: string; title: string; sets?: readonly { type: string }[] }[] | null
+}
+
+export interface PlannedProgram<R extends RoutineLike> {
+  /** The current-program routines that still exist, in routine-list order. */
+  current: R[]
+  input: ProgramRoutineInput[]
+  passes: number
+  templateMuscles: Map<string, TemplateMuscles>
+  planned: PlannedMuscle[]
+  byRoutine: PlannedRoutineBalance[]
+  balance: MuscleBalance
+}
+
+/** The current program's planned week — the ONE pipeline behind the Program
+ *  tab, the planned side of the Muscles balance card and the AI coach's
+ *  balance line. Passes per week come from the training-days target, else
+ *  the weekdays the recurring training blocks cover. */
+export function buildPlannedProgram<R extends RoutineLike>(args: {
+  routines: readonly R[]
+  programRoutineIds: readonly string[]
+  templates: readonly { id: string; primary_muscle_group: string | null; secondary_muscle_groups?: string[] | null }[]
+  trainingDaysPerWeek: number | null
+  scheduledTrainingDays: number
+}): PlannedProgram<R> {
+  const ids = new Set(args.programRoutineIds)
+  const current = args.routines.filter(r => ids.has(r.id))
+  const passes = passesPerWeek(args.trainingDaysPerWeek ?? (args.scheduledTrainingDays || null), current.length)
+  const templateMuscles = new Map<string, TemplateMuscles>(args.templates.map(t => [t.id, { primary: t.primary_muscle_group, secondary: t.secondary_muscle_groups ?? [] }]))
+  const input: ProgramRoutineInput[] = current.map(r => ({
+    id: r.id, title: r.title,
+    exercises: (r.exercises ?? []).map(ex => ({ exercise_template_id: ex.exercise_template_id, title: ex.title, sets: ex.sets ?? [] })),
+  }))
+  const planned = plannedWeeklySets(input, templateMuscles, passes)
+  const bySlug = new Map(planned.map(p => [p.slug, p.weeklySets]))
+  return {
+    current, input, passes, templateMuscles, planned,
+    byRoutine: plannedBalanceByRoutine(input, templateMuscles),
+    balance: readMuscleBalance(balanceTotals(s => bySlug.get(s) ?? 0)),
+  }
 }
 
 // ── Pelland 2025 hypertrophy tiers (Table 3) ────────────────────────────────
@@ -229,22 +277,32 @@ export function readProgramMuscles(
 }
 
 // ── Balance ────────────────────────────────────────────────────────────────
-export const PUSH_SLUGS = ['chest', 'deltoids', 'triceps'] as const
-export const PULL_SLUGS = ['upper-back', 'trapezius', 'biceps'] as const
+export { PUSH_SLUGS, PULL_SLUGS }
 
-export interface BalanceRead {
-  push: number
-  pull: number
-  /** push ÷ pull, null when one side has no sets. */
-  pushPullRatio: number | null
-  pushPullFlag: 'push_heavy' | 'pull_heavy' | null
-  quad: number
-  ham: number
-  /** hamstring ÷ quad, null without quad sets. */
-  hamQuadRatio: number | null
-  hamQuadFlag: boolean
+/** Weekly sets per side for one pass of each routine — what the "why do
+ *  planned and done differ" line compares a routine's sessions against. */
+export function plannedBalanceByRoutine(
+  routines: readonly ProgramRoutineInput[],
+  templateMuscles: ReadonlyMap<string, TemplateMuscles>,
+): PlannedRoutineBalance[] {
+  const totalsOf = (r: ProgramRoutineInput) => {
+    const bySlug = new Map(plannedWeeklySets([r], templateMuscles, 1).map(p => [p.slug, p.weeklySets]))
+    return balanceTotals(s => bySlug.get(s) ?? 0)
+  }
+  return routines.map(r => ({
+    id: r.id, title: r.title, perPass: totalsOf(r),
+    exercises: r.exercises.map(ex => ({
+      templateId: ex.exercise_template_id, title: ex.title, sets: workingSetCount(ex.sets),
+      perPass: totalsOf({ ...r, exercises: [ex] }),
+    })),
+  }))
+}
+
+export interface BalanceNote { text: string; tone: Tone }
+
+export interface BalanceRead extends MuscleBalance {
   hasKneeFlexion: boolean
-  notes: string[]
+  notes: BalanceNote[]
 }
 
 const KNEE_FLEXION_RE = /nordic|(leg|lying|seated|hamstring|standing|glute[- ]?ham)[\s-]*curl|\bghr\b/i
@@ -253,46 +311,40 @@ export function isKneeFlexionExercise(title: string): boolean {
   return KNEE_FLEXION_RE.test(title)
 }
 
+/** The planned week's balance: the shared ratio + verdict, plus notes on
+ *  what to change in the PROGRAM. A restriction that explains the lean says
+ *  so instead of prescribing the fix. */
 export function readBalance(
   planned: readonly PlannedMuscle[],
   exerciseTitles: readonly string[],
   restrictions: ReadonlyMap<string, 'avoid' | 'limit'> = new Map(),
 ): BalanceRead {
-  const sets = (slug: string) => planned.find(p => p.slug === slug)?.weeklySets ?? 0
-  const push = round1(PUSH_SLUGS.reduce((s, k) => s + sets(k), 0))
-  const pull = round1(PULL_SLUGS.reduce((s, k) => s + sets(k), 0))
-  const quad = sets('quadriceps')
-  const ham = sets('hamstring')
-  const pushPullRatio = push > 0 && pull > 0 ? Math.round((push / pull) * 100) / 100 : null
-  let pushPullFlag: BalanceRead['pushPullFlag'] = null
-  if (push > 0 && pull === 0) pushPullFlag = 'push_heavy'
-  else if (pull > 0 && push === 0) pushPullFlag = 'pull_heavy'
-  else if (pushPullRatio != null && pushPullRatio > 1.5) pushPullFlag = 'push_heavy'
-  else if (pushPullRatio != null && pushPullRatio < 0.67) pushPullFlag = 'pull_heavy'
-  const hamQuadRatio = quad > 0 ? Math.round((ham / quad) * 100) / 100 : null
-  const hamQuadFlag = hamQuadRatio != null && hamQuadRatio < 0.5
+  const bySlug = new Map(planned.map(p => [p.slug, p.weeklySets]))
+  const balance = readMuscleBalance(balanceTotals(s => bySlug.get(s) ?? 0))
+  const { pushPull, quadHam } = balance
   const hasKneeFlexion = exerciseTitles.some(isKneeFlexionExercise)
 
   const restricted = (slugs: readonly string[]) => slugs.some(s => restrictions.get(s) === 'avoid')
-  const notes: string[] = []
-  if (pushPullFlag === 'push_heavy') {
-    notes.push(restricted(PULL_SLUGS)
+  const notes: BalanceNote[] = []
+  const note = (text: string, tone: Tone = 'warn') => notes.push({ text, tone })
+  if (pushPull.lean === 'a') {
+    note(restricted(PULL_SLUGS)
       ? 'More pushing than pulling — an active limitation on pulling may explain it.'
-      : 'More pushing than pulling planned. Adding a row or pulldown brings it closer to 1:1.')
-  } else if (pushPullFlag === 'pull_heavy') {
-    notes.push(restricted(PUSH_SLUGS)
+      : 'More pushing than pulling planned. Adding a row or pulldown brings it closer to 1 : 1.')
+  } else if (pushPull.lean === 'b') {
+    note(restricted(PUSH_SLUGS)
       ? 'More pulling than pushing — an active limitation on pressing may explain it.'
-      : 'More pulling than pushing planned. That is rarely a problem; add a press if you want it even.')
+      : 'More pulling than pushing planned. That is rarely a problem; add a press if you want it even.', 'info')
   }
-  if (hamQuadFlag) {
-    notes.push(restricted(['hamstring'])
-      ? 'Hamstrings get under half the quad sets — an active limitation may explain it.'
-      : 'Hamstrings get under half the quad sets. A hinge or a curl evens it out.')
+  if (quadHam.lean === 'a') {
+    note(restricted(['hamstring'])
+      ? `Quads get over ${BALANCE_LIMIT}× the hamstring sets — an active limitation may explain it.`
+      : `Quads get over ${BALANCE_LIMIT}× the hamstring sets. A hinge or a leg curl evens it out.`)
   }
-  if (!hasKneeFlexion && (quad > 0 || ham > 0)) {
-    notes.push('No knee-flexion hamstring exercise (a leg curl or Nordic curl) in the program.')
+  if (!hasKneeFlexion && (quadHam.a > 0 || quadHam.b > 0)) {
+    note('No knee-flexion hamstring exercise (a leg curl or Nordic curl) in the program.')
   }
-  return { push, pull, pushPullRatio, pushPullFlag, quad, ham, hamQuadRatio, hamQuadFlag, hasKneeFlexion, notes }
+  return { ...balance, hasKneeFlexion, notes }
 }
 
 /** Status tone for a muscle read — never "harmful" for high volume. */

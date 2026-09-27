@@ -264,8 +264,11 @@ the tokens (`pt-header`, `pb-tabbar`), never magic numbers.
 </PageContainer>
 ```
 
-On phones the page title may move into the shell header (the shell shows the route label); the
-`PageHeader` then carries only actions and tabs.
+The shell (top bar from 768px, phone header below) is the ONLY visible page name. `PageHeader`'s
+`title` is a screen-reader-only h1 at every width; pass `showTitle` only when the title is content
+rather than the route name (Daily's date nav). With no visible title or subtitle, children (left) and
+actions (right) share the first row — no empty line. Don't add a tagline subtitle; it costs a line.
+`cx` is a plain join (not tailwind-merge): override `mb-4 sm:mb-6` with both prefixes or `!mb-*`.
 
 ### 6.3 Grids
 

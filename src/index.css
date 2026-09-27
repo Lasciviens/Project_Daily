@@ -155,6 +155,8 @@
   #root {
     height: 100vh;
     height: 100dvh;
+    /* + the iOS standalone shortfall (iosViewportFix.ts), 0 elsewhere */
+    height: calc(100dvh + var(--ios-viewport-gap, 0px));
   }
 
   /* Kill the grey WebKit tap flash + the 300ms double-tap-zoom delay on

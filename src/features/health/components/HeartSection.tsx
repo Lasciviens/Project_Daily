@@ -2,6 +2,8 @@ import { useChartColors } from '../../../shared/ui'
 import { normalizeSpo2 } from '../benchmarks/healthBenchmarks'
 import { useHeartRateHourly } from '../hooks/useHealthExport'
 import { useHeartWindow, useMetricWindow } from '../hooks/useHealthWindow'
+import { useVitalsReading } from '../hooks/useVitalsReading'
+import { VITAL_SPECS, type VitalKey } from '../vitalsReading'
 import type { HealthWindow } from '../healthWindowStats'
 import type { HealthRange } from './sectionTypes'
 import { useRangeWindow, windowNoun } from './dateNav'
@@ -46,6 +48,16 @@ export function HeartSection({ range }: { range: HealthRange }) {
   const viewDay = (date: string) => { setPeriod('day'); setAnchor(date) }
   const common = { from: win.from, to: win.to, fetchFrom: win.fetchFrom, onViewDay: viewDay }
   const s = resting.summary
+  // The bands use the reading's usual ranges (the 60 days BEFORE the viewed
+  // day/period), so each chart agrees with "What your numbers say" above.
+  // Same queries as the card and the charts — no extra request.
+  const { reading } = useVitalsReading(win)
+  const band = (key: VitalKey, fallbackText: string) => {
+    const usual = reading.rows.find(r => r.key === key)?.usual ?? null
+    return usual
+      ? { usual, range: VITAL_SPECS[key].range ?? undefined, rangeText: VITAL_SPECS[key].rangeRule }
+      : { range: VITAL_SPECS[key].range ?? undefined, rangeText: fallbackText }
+  }
 
   return (
     <SectionCard dimmed={resting.isPlaceholderData}>
@@ -76,18 +88,19 @@ export function HeartSection({ range }: { range: HealthRange }) {
         </div>
       )}
 
-      <RecoveryTrend metric="resting_heart_rate" title="Resting heart rate" unit="bpm" color={c.series[3]} rolling {...common} />
-      <RecoveryTrend metric="heart_rate_variability" title="HRV (SDNN)" unit="ms" color={c.series[1]} rolling {...common} />
+      <RecoveryTrend metric="resting_heart_rate" title="Resting heart rate" unit="bpm" color={c.series[3]} rolling
+        {...band('rhr', 'the median of the last 60 days ± 5 bpm')} {...common} />
+      <RecoveryTrend metric="heart_rate_variability" title="HRV (SDNN)" unit="ms" color={c.series[1]} rolling
+        {...band('hrv', 'the average of the last 60 days, ± one standard deviation')} {...common} />
       <RecoveryTrend metric="blood_oxygen_saturation" title="Blood oxygen (SpO₂)" unit="%" color={c.series[0]}
-        transform={normalizeSpo2} range={{ mode: 'sd', k: 2, minHalfWidth: 1 }}
-        rangeText="your 60-day average ± 2 standard deviations (at least ± 1 point)"
+        transform={normalizeSpo2} {...band('spo2', 'your 60-day average ± 2 standard deviations (at least ± 1 point)')}
         refLines={[{ y: 95, label: '95%' }]} {...common} />
       <RecoveryTrend metric="respiratory_rate" title="Respiratory rate (sleep)" unit="br/min" decimals={1} color={c.series[4]}
-        range={{ mode: 'median', halfWidth: 1.5 }} rangeText="your 60-day median ± 1.5 breaths a minute" {...common} />
+        {...band('resp', 'your 60-day median ± 1.5 breaths a minute')} {...common} />
       <RecoveryTrend metric="apple_sleeping_wrist_temperature" title="Wrist temperature (sleep)" unit="°C" decimals={1} color={c.series[5]}
-        deviation range={{ mode: 'sd', k: 2, minHalfWidth: 0.3 }}
-        rangeText="your 60-night average ± 2 standard deviations (at least ± 0.3 °C); a rise lasting several nights is what matters" {...common} />
-      <RecoveryTrend metric="walking_heart_rate_average" title="Walking heart rate" unit="bpm" color={c.series[2]} rolling rollingDays={14} {...common} />
+        deviation {...band('temp', 'your 60-night average ± 2 standard deviations (at least ± 0.3 °C); a rise lasting several nights is what matters')} {...common} />
+      <RecoveryTrend metric="walking_heart_rate_average" title="Walking heart rate" unit="bpm" color={c.series[2]} rolling rollingDays={14}
+        {...band('walking', 'the median of the last 60 days ± 4 bpm')} {...common} />
     </SectionCard>
   )
 }

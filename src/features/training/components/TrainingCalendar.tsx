@@ -13,7 +13,9 @@ import { addDays, getMondayOfWeek, ymd, type CalendarPlanItem } from './calendar
 
 // Training calendar: Hevy workouts, Strava activities and planned sessions
 // (one-off blocks + projected recurring templates) for the visible week or
-// month. Views, day cells and the detail panel live in ./calendar/.
+// month — a plan a workout covered folds into that workout's entry
+// (calendar/calendarSessions.ts). Views, day cells and the detail panel live
+// in ./calendar/.
 
 // ─── TrainingCalendar (top-level) ─────────────────────────────────────────────
 
@@ -30,12 +32,14 @@ export function TrainingCalendar() {
     month: new Date().getMonth(),
   }))
 
-  // A task-linked plan block must open the TASK, never the block via
-  // `timeBlock` (that minted a second task — the real duplicate-task bug).
-  // The shared block editor applies that routing rule once for every caller;
-  // a recurring occurrence opens its template (it can never be task-linked).
+  // Reached only through a row's ⋯ menu ("Edit plan") — tapping a session
+  // opens the workout, never the schedule editor. A task-linked plan block
+  // must open the TASK, never the block via `timeBlock` (that minted a second
+  // task — the real duplicate-task bug); the shared block editor applies that
+  // routing rule once for every caller; a recurring occurrence opens its
+  // template (it can never be task-linked).
   const modal = useEntityModal()
-  const openPlan = useCallback((item: CalendarPlanItem) => {
+  const editPlan = useCallback((item: CalendarPlanItem) => {
     if (item.kind === 'recurring' && item.scheduleBlock) {
       modal.open({ kind: 'schedule-block', id: item.scheduleBlock.id, config: { heading: 'Edit recurring session' } })
     } else if (item.timeBlock) {
@@ -85,7 +89,7 @@ export function TrainingCalendar() {
     return m
   }, [planBlocks, trainingScheduleBlocks, rangeFrom, rangeTo])
 
-  const shared = { workouts, activities, plansByDate, todayStr, onOpenWorkout: openWorkout, onOpenPlan: openPlan }
+  const shared = { workouts, activities, plansByDate, todayStr, onOpenWorkout: openWorkout, onEditPlan: editPlan }
 
   return (
     <Card className="w-full">

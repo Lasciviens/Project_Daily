@@ -76,9 +76,11 @@ export function WishesPage() {
     <PageContainer>
       <PageHeader
         title="Wishes"
-        subtitle={wishes.length > 0 ? `${openCount} open now · ${wishes.length} total` : undefined}
+        // A placeholder while loading keeps the count line from popping in.
+        subtitle={isLoading ? <Skeleton className="my-0.5 h-4 w-40" /> : wishes.length > 0 ? `${openCount} open now · ${wishes.length} total` : undefined}
       />
-      <p className="-mt-2 mb-4 max-w-md text-body text-fg-muted">
+      {/* Hugs the count line when there is one; with no wishes the header renders nothing visible. */}
+      <p className={`${isLoading || wishes.length > 0 ? '-mt-2 ' : ''}mb-4 max-w-md text-body text-fg-muted`}>
         Things you want to do, not things you must. A season only decides when they come back to you — never when they are late.
       </p>
 

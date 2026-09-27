@@ -332,6 +332,9 @@ console.log('\n== 11. computeWeeklySetsPerMuscleTrend ==')
   check('dense range: every week from 3 Aug to 14 Sep (7 weeks), zeros included', ranged.length === 7 && ranged[ranged.length - 1].sets === 0, JSON.stringify(ranged))
   check('dense range: the latest value is the untilWeek (0), not the last trained week (1)', ranged[ranged.length - 1].weekStart === '2026-09-14')
   check('an empty range (from after until) returns []', computeWeeklySetsPerMuscleTrend(sets, templateMuscles, 'chest', contributionFn, { fromWeek: '2026-09-21', untilWeek: '2026-09-14' }).length === 0)
+  // Hevy's lats (primary) + upper_back (secondary) both land on Back: one set credits it once.
+  const lpd = computeWeeklySetsPerMuscleTrend([mk('lpd', '2026-08-03')], new Map([['lpd', { primarySlug: 'upper-back', secondarySlugs: ['upper-back'] }]]), 'upper-back', contributionFn)
+  check('a slug that is both primary and secondary is credited once (1.0, not 1.5)', lpd[0].sets === 1, JSON.stringify(lpd))
 }
 
 console.log('\n== 12. recoveryAggregate — weekly sleep / resting-HR gating ==')

@@ -51,14 +51,14 @@ export function WeightDetail({ hero, onViewDay }: Props) {
         {w.lastKg != null && w.lastDate && <>Last weigh-in {num(w.lastKg, 1)} kg on {fmtDayMonth(w.lastDate)}{lastSource ? ` (${BODYWEIGHT_SOURCE_LABEL[lastSource]})` : ''}. </>}
         {w.perWeek != null && <>Over the last 28 days the trend is <b className="text-fg">{signed(w.perWeek, 2)} kg a week</b>.</>}
       </Summary>
-      <DailyTrend series={w.series} from={addDaysIso(A, -89)} to={A} kind="dots" rolling label="weigh-in" unit="kg"
+      <DailyTrend series={w.series} from={addDaysIso(A, -89)} to={A} kind="line" rolling label="weigh-in" unit="kg"
         ariaLabel="Weigh-ins over the last 90 days with the 7-day average" color={c.series[1]}
         formatValue={v => num(v, 1)} yDomain={['auto', 'auto']} onViewDay={onViewDay} />
       <TrendStatsBlock stats={stats} format={v => `${num(v, 1)} kg`} formatDelta={v => `${signed(v, 1)} kg`} direction={null} rateUnit="kg/week" />
       <p className="text-meta text-fg-muted">
         {w.fatPct != null && <>Latest body fat {num(w.fatPct, 1)}%. </>}
         {w.waistCm != null && w.waistDate && <>Latest waist {num(w.waistCm, 1)} cm ({fmtDayMonth(w.waistDate)}, Hevy). </>}
-        Your cut report — calories against the scale — has its own tab, Cut report.
+        Whether this pace is right for your cut, maintenance or gain — and whether it is fat or muscle — is in the Goal progress tab.
       </p>
       {w.whtr != null && (
         <div className="border-t border-line pt-4">

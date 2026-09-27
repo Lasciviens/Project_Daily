@@ -24,7 +24,7 @@ export function ExerciseWeekCard({ exercise, anchor }: { exercise: HealthHero['e
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="min-w-0">
           <p className="section-label mb-1">Minutes per week</p>
-          <WeeklyBars data={minutes} refY={150} refLabel="150" label="minutes" unit="min" color={c.series[2]} ariaLabel="Exercise minutes per complete week" />
+          <WeeklyBars data={minutes} refY={150} refLabel="150" label="of exercise" unit="min" color={c.series[2]} ariaLabel="Exercise minutes per complete week" />
         </div>
         <div className="min-w-0">
           <p className="section-label mb-1">Strength days per week</p>

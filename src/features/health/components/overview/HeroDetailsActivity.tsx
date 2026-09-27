@@ -1,11 +1,12 @@
 import type { ReactNode } from 'react'
 import { useChartColors } from '../../../../shared/ui'
+import { todayStr } from '../../../../shared/utils/dateUtils'
 import { addDaysIso } from '../../healthWindowStats'
 import { buildTrendStats, fmtClock, weeklyBuckets } from '../../healthTrendStats'
 import { SRC } from '../../benchmarks/sources'
 import { HealthTrendChart } from '../HealthTrendChart'
 import { SLEEP_COLOR } from '../sleepStages'
-import { fmtDayMonth } from '../healthFormat'
+import { nightMissingText, weekRangeLabel } from '../../healthDateLabels'
 import type { HealthHero } from './useHealthHero'
 import { DailyTrend } from './DailyTrend'
 import { MetricExplainer } from './MetricExplainer'
@@ -27,7 +28,9 @@ export function SleepDetail({ hero, onViewDay }: Props) {
   return (
     <div className="flex flex-col gap-5">
       <Summary>
-        {sleep.lastNight != null && <>{hero.isToday ? 'Last night' : 'That night'} you slept <b className="text-fg">{hm(sleep.lastNight)}</b>. </>}
+        {sleep.lastNight != null
+          ? <>{hero.isToday ? 'Last night' : 'That night'} you slept <b className="text-fg">{hm(sleep.lastNight)}</b>. </>
+          : <>{nightMissingText(A, hero.today)}. </>}
         {sleep.avg7 != null && <>Your 7-night average is <b className="text-fg">{hm(sleep.avg7)}</b> ({sleep.nights7} nights) against the 7 h guideline.</>}
       </Summary>
       <DailyTrend series={sleep.nights} from={addDaysIso(A, -29)} to={A} kind="bar" rolling label="asleep" unit=""
@@ -65,7 +68,7 @@ export function StepsDetail({ hero, onViewDay }: Props) {
         {steps.todaySoFar != null && <>; today so far {num(steps.todaySoFar)}</>}.
       </Summary>
       <DailyTrend series={steps.series} from={addDaysIso(A, -89)} to={A} kind="bar" rolling label="steps" unit=""
-        ariaLabel="Steps per day, last 90 days" band={{ y1: 7000, y2: 8000, label: '7,000–8,000' }} onViewDay={onViewDay} />
+        ariaLabel="Steps per day, last 90 days" band={{ y1: 7000, y2: 8000, label: '7,000–8,000', labelSide: 'right' }} onViewDay={onViewDay} />
       <TrendStatsBlock stats={stats} format={v => num(v)} formatDelta={v => signed(v)} direction="up" rateUnit="steps/day per week" />
       <div className="border-t border-line pt-4">
         <MetricExplainer metric="step_count" ctx={ctx} value={steps.avg7} cls={steps.cls} />
@@ -74,13 +77,15 @@ export function StepsDetail({ hero, onViewDay }: Props) {
   )
 }
 
+// Each bar is a Monday–Sunday week, labelled as its range ("7–13 Jul") on
+// the axis and in the tooltip — a single date read like one day.
 export function WeeklyBars({ data, refY, refLabel, label, unit, ariaLabel, color }: {
   data: { weekStart: string; value: number }[]; refY: number; refLabel: string; label: string; unit: string; ariaLabel: string; color: string
 }) {
   if (!data.length) return null
   return (
     <HealthTrendChart
-      data={data.map(w => ({ label: fmtDayMonth(w.weekStart), value: w.value }))}
+      data={data.map(w => ({ label: weekRangeLabel(w.weekStart), title: weekRangeLabel(w.weekStart, todayStr()), value: w.value }))}
       series={[{ key: 'value', label, color, kind: 'bar' }]}
       unit={unit}
       ariaLabel={ariaLabel}
@@ -106,7 +111,7 @@ export function ExerciseDetail({ hero }: Props) {
       </Summary>
       <div>
         <p className="section-label mb-1">Exercise minutes per week (complete weeks)</p>
-        <WeeklyBars data={minutesWeeks} refY={150} refLabel="150 min" label="minutes" unit="min" color={c.series[2]}
+        <WeeklyBars data={minutesWeeks} refY={150} refLabel="150 min" label="of exercise" unit="min" color={c.series[2]}
           ariaLabel="Apple exercise minutes per complete week" />
       </div>
       <div>
