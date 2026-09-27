@@ -4,6 +4,7 @@ import { registerSW } from 'virtual:pwa-register'
 import '@fontsource-variable/inter/wght.css'
 import './index.css'
 import { Providers } from './app/providers'
+import { installIosViewportFix } from './app/iosViewportFix'
 
 // `immediate: true` checks for an update right away (and periodically after)
 // and reloads automatically when one is found — this is what actually makes
@@ -11,6 +12,7 @@ import { Providers } from './app/providers'
 // installed but never activated until every tab was closed, so a shipped
 // fix could sit invisible behind a stale service worker indefinitely.
 registerSW({ immediate: true })
+installIosViewportFix()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

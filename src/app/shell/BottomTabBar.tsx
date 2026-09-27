@@ -34,7 +34,7 @@ export function BottomTabBar() {
     <>
       <nav
         aria-label="Main"
-        className="vt-pin-tabbar glass-chrome fixed inset-x-0 bottom-0 z-chrome select-none border-t border-line pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]"
+        className="vt-pin-tabbar glass-chrome fixed inset-x-0 bottom-[calc(-1*var(--ios-viewport-gap,0px))] z-chrome select-none border-t border-line pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]"
       >
         <div className="flex h-tabbar items-stretch">
           {TAB_ENTRIES.map((entry, index) => {
