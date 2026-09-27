@@ -1,5 +1,29 @@
 import type { Dispatch, SetStateAction } from 'react'
+import { Activity, Dumbbell, Footprints, Gauge, HeartPulse, Moon, Scale, TrendingDown, type LucideIcon } from 'lucide-react'
 import type { Period } from './PeriodToggle'
+
+/** The Health page's windows (tabs), in the metric ranking's order with the
+ *  overview first. Kept in `?section=` so a link or a reload opens the same
+ *  window. The page was one long scroll for a while; the owner preferred
+ *  windows, so every group has its own tab again. */
+export type HealthSectionId = 'overview' | 'sleep' | 'activity' | 'heart' | 'body' | 'cut' | 'cardio' | 'workouts'
+
+export const HEALTH_SECTIONS: { id: HealthSectionId; label: string; icon: LucideIcon }[] = [
+  { id: 'overview', label: 'Overview',       icon: Activity },
+  { id: 'sleep',    label: 'Sleep',          icon: Moon },
+  { id: 'activity', label: 'Activity',       icon: Footprints },
+  { id: 'heart',    label: 'Heart & vitals', icon: HeartPulse },
+  { id: 'body',     label: 'Body',           icon: Scale },
+  { id: 'cut',      label: 'Cut report',     icon: TrendingDown },
+  { id: 'cardio',   label: 'Cardio fitness', icon: Gauge },
+  { id: 'workouts', label: 'Workouts',       icon: Dumbbell },
+]
+
+export const DEFAULT_HEALTH_SECTION: HealthSectionId = 'overview'
+
+export function parseHealthSection(raw: string | null): HealthSectionId {
+  return HEALTH_SECTIONS.some(s => s.id === raw) ? raw as HealthSectionId : DEFAULT_HEALTH_SECTION
+}
 
 /** ONE day+period selection shared by every Health section.
  *

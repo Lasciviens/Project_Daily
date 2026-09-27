@@ -1,11 +1,11 @@
 import { useState, type ReactNode } from 'react'
-import { Check, ChevronDown, Flame, Trophy } from 'lucide-react'
+import { Check, ChevronDown, Flame } from 'lucide-react'
 import { TonePill, type Tone } from '../../../shared/ui'
 import { InfoBubble } from '../../../shared/components/InfoBubble'
 import {
   actionLabel, evidenceLabel, scopeLabel, recentTrendLabel, recentTrendMeaning, currentLoadProgressLabel,
   currentLoadProgressMeaning, buildExplanationSentence, progressEvidenceExplanation, recommendationEvidenceExplanation,
-  nextTargetUnavailableText, dataQualityFlagCopy,
+  nextTargetUnavailableText, dataQualityFlagCopy, visibleEvents,
 } from '../progress-engine/copy'
 import { RULE_CATALOG } from '../progress-engine/ruleCatalog'
 import { formatSessionSets, fmtDuration } from '../progress-engine/format'
@@ -36,22 +36,6 @@ function formatSetLine(set: CanonicalSet, metricKind: ProgressMetricKind): strin
       return set.weightKg != null ? `${set.weightKg} kg assist × ${set.reps ?? '—'}${tag}` : `${set.reps ?? '—'} reps${tag}`
     default:
       return set.weightKg != null ? `${set.weightKg} kg × ${set.reps ?? '—'}${tag}` : `${set.reps ?? '—'} reps${tag}`
-  }
-}
-
-/** A metric-generic VALUE (a load, or top-set reps/seconds/metres) in its own unit. */
-function formatPrimaryValue(value: number, metricKind: ProgressMetricKind): string {
-  switch (metricKind) {
-    case 'est1rm':
-    case 'addedWeight':
-    case 'assistedWeight':
-      return `${value} kg`
-    case 'reps':
-      return `${value} reps`
-    case 'duration':
-      return fmtDuration(value)
-    case 'distance':
-      return `${value} m`
   }
 }
 
@@ -119,20 +103,10 @@ function SessionCard({ label, session, metricKind }: { label: string; session: C
   )
 }
 
-function EventChip({ event, metricKind }: { event: ExerciseProgressResult['events'][number]; metricKind: ProgressMetricKind }) {
+function EventChip({ event }: { event: ExerciseProgressResult['events'][number] }) {
   const info = RULE_CATALOG[event.code]
-  const weightBased = isWeightBasedMetric(metricKind)
   let chip: ReactNode
-  if (event.code === 'LOAD_PR') {
-    const value = event.values.value
-    chip = <TonePill tone="success"><Trophy className="h-3 w-3" aria-hidden /> {weightBased ? '6-month best load' : '6-month best'} — {value != null ? formatPrimaryValue(value as number, metricKind) : '—'}</TonePill>
-  } else if (event.code === 'REP_PR_AT_LOAD') {
-    const at = weightBased && event.values.loadKg != null ? ` @ ${formatPrimaryValue(event.values.loadKg as number, metricKind)}` : ''
-    chip = <TonePill tone="success"><Trophy className="h-3 w-3" aria-hidden /> Rep best — {event.values.reps}{at}</TonePill>
-  } else if (event.code === 'TOTAL_REPS_PR_AT_LOAD') {
-    const at = weightBased && event.values.loadKg != null ? ` @ ${formatPrimaryValue(event.values.loadKg as number, metricKind)}` : ''
-    chip = <TonePill tone="success"><Trophy className="h-3 w-3" aria-hidden /> Total-reps best — {event.values.total}{at}</TonePill>
-  } else if (event.code === 'TARGET_COMPLETED') {
+  if (event.code === 'TARGET_COMPLETED') {
     chip = <TonePill tone="info"><Check className="h-3 w-3" aria-hidden /> Target completed</TonePill>
   } else if (event.code === 'PROGRESSION_STREAK') {
     chip = <TonePill tone="star"><Flame className="h-3 w-3" aria-hidden /> {event.values.streakLength}-session streak</TonePill>
@@ -189,7 +163,7 @@ export function DecisionDetail({ result, sessions, metricKind, title }: { result
             {result.evidence.recommendation && (
               <span className="inline-flex items-center gap-1"><EvidencePill level={result.evidence.recommendation} label="Decision evidence" /><InfoBubble><b>Decision evidence</b> {recommendationEvidenceExplanation(result)}</InfoBubble></span>
             )}
-            {result.events.map(e => <EventChip key={e.code} event={e} metricKind={metricKind} />)}
+            {visibleEvents(result.events).map(e => <EventChip key={e.code} event={e} />)}
           </div>
         </div>
       </div>

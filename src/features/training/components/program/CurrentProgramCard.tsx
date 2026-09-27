@@ -24,6 +24,7 @@ export function CurrentProgramCard({ routines, lastTrained, today }: {
   return (
     <Card className="max-w-2xl">
       <CardHeader
+        wrap
         icon={<ListChecks />}
         title={<span className="inline-flex items-center gap-1.5">Current program <InfoBubble>Everything on Next, Program and Progress is scoped to these routines. Old routines stay in your history but no longer decide targets or verdicts.</InfoBubble></span>}
         subtitle={routines.length > 0 ? `${routines.length} ${routines.length === 1 ? 'routine' : 'routines'}` : 'Not chosen yet'}
@@ -32,11 +33,13 @@ export function CurrentProgramCard({ routines, lastTrained, today }: {
       {showPicker ? (
         <CurrentProgramPicker onSaved={() => setEditing(false)} />
       ) : (
-        <ul className="flex flex-wrap gap-2">
+        // Rows, not chips: a chip never wraps (.chip is nowrap), so a long
+        // routine name ran off the card on a phone.
+        <ul className="flex flex-col divide-y divide-line">
           {routines.map(r => (
-            <li key={r.id} className="chip gap-1.5 text-body">
-              <span className="font-semibold text-fg">{r.title}</span>
-              <span className="text-meta text-fg-muted">· {r.exercises?.length ?? 0} exercises · {lastDone(lastTrained.get(r.id), today)}</span>
+            <li key={r.id} className="flex min-w-0 flex-col py-2 first:pt-0 last:pb-0 sm:flex-row sm:items-baseline sm:gap-2">
+              <span className="min-w-0 break-words text-body font-semibold text-fg">{r.title}</span>
+              <span className="text-meta text-fg-muted">{r.exercises?.length ?? 0} exercises · last done {lastDone(lastTrained.get(r.id), today)}</span>
             </li>
           ))}
         </ul>

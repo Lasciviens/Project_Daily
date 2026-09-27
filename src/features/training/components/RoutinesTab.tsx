@@ -19,6 +19,26 @@ function SetChip({ s, exerciseType }: { s: HevyRoutineSet; exerciseType?: string
   return <TonePill tone={meta.tone} className="tabular-nums"><span className="sr-only">{meta.label}: </span>{label}</TonePill>
 }
 
+// ─── Exercise notes (collapsed by default — they can be long) ────────────────
+
+function ExerciseNotes({ notes }: { notes: string }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="mt-0.5">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen(v => !v)}
+        className="-ml-1 inline-flex min-h-[44px] items-center gap-1 px-1 text-meta font-medium text-fg-muted"
+      >
+        <ChevronDown aria-hidden className={`h-3.5 w-3.5 transition-transform ${open ? 'rotate-180' : ''}`} />
+        {open ? 'Hide notes' : 'Notes'}
+      </button>
+      {open && <p className="whitespace-pre-line text-meta italic text-fg-muted">{notes}</p>}
+    </div>
+  )
+}
+
 // ─── Routine Card ─────────────────────────────────────────────────────────────
 
 const EXERCISES_PREVIEW = 5
@@ -76,7 +96,7 @@ function RoutineCard({ routine, typeById, onEdit }: { routine: HevyRoutine; type
                       <div className="mt-1 flex flex-wrap gap-1">
                         {(ex.sets ?? []).map((s, i) => <SetChip key={s.id ?? i} s={s} exerciseType={typeById.get(ex.exercise_template_id)} />)}
                       </div>
-                      {ex.notes && <p className="mt-1 text-meta italic text-fg-muted">{ex.notes}</p>}
+                      {ex.notes?.trim() && <ExerciseNotes notes={ex.notes.trim()} />}
                     </div>
                   </div>
                 ))}

@@ -46,7 +46,7 @@ export function HevyWorkoutCard({ workout, onClick, matchedTask }: Props) {
         className="flex min-h-[60px] w-full flex-col gap-1 px-4 py-3 text-left transition-colors hover:bg-surface-hover"
       >
         <div className="flex w-full items-start justify-between gap-3">
-          <span className="truncate text-body font-semibold text-fg">{workout.title}</span>
+          <span className="line-clamp-2 break-words text-body font-semibold text-fg">{workout.title}</span>
           <span className="shrink-0 whitespace-nowrap text-body font-semibold tabular-nums text-fg-2">{duration}</span>
         </div>
 

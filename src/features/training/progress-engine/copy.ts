@@ -5,10 +5,22 @@
 import { RULE_CATALOG, DATA_QUALITY_FLAG_CODE } from './ruleCatalog'
 import type {
   CanonicalSet, CurrentAction, DataQualityFlag, EvaluationScope, EvidenceLevel, ExerciseProgressResult,
-  RecentProgressTrendState, CurrentLoadProgressState, ProgressMetricKind,
+  RecentProgressTrendState, CurrentLoadProgressState, ProgressEventCode, ProgressMetricKind,
 } from './types'
 import { isWeightBasedMetric } from './metricStrategy'
 import { formatSessionSets, formatQuantity, quantityUnitFor } from './format'
+
+/** Personal-record events. The engine still emits them (a record in the
+ *  latest session is evidence for the program verdict), but the owner asked
+ *  for records to be gone from the UI, so no screen shows one. */
+export const RECORD_EVENT_CODES: ReadonlySet<ProgressEventCode> = new Set<ProgressEventCode>([
+  'LOAD_PR', 'REP_PR_AT_LOAD', 'TOTAL_REPS_PR_AT_LOAD', 'ESTIMATED_STRENGTH_PR',
+])
+
+/** The events a screen may show: everything but records. */
+export function visibleEvents(events: ExerciseProgressResult['events']): ExerciseProgressResult['events'] {
+  return events.filter(e => !RECORD_EVENT_CODES.has(e.code))
+}
 
 /** The load-axis terminology a metric kind can honestly support (§5): only
  *  est1rm/addedWeight/assistedWeight represent a literal weight — "Load

@@ -34,22 +34,27 @@ interface CardHeaderProps {
   action?: ReactNode
   /** 'label' = uppercase eyebrow (dense cards); 'title' = 15px heading. */
   variant?: 'label' | 'title'
+  /** Let a long title/subtitle wrap instead of cutting it off, and drop the
+   *  action onto its own line when the row is too narrow (phones). Off by
+   *  default: most headers are short and read best on one line. */
+  wrap?: boolean
   className?: string
 }
 
-export function CardHeader({ title, icon, subtitle, action, variant = 'title', className }: CardHeaderProps) {
+export function CardHeader({ title, icon, subtitle, action, variant = 'title', wrap = false, className }: CardHeaderProps) {
+  const fit = wrap ? 'break-words' : 'truncate'
   return (
-    <header className={cx('mb-3 flex min-h-[28px] items-center gap-2.5', className)}>
+    <header className={cx('mb-3 flex min-h-[28px] items-center gap-2.5', wrap && 'flex-wrap', className)}>
       {icon != null && (
         <span aria-hidden className="grid h-7 w-7 shrink-0 place-items-center rounded-control bg-accent-50 text-accent-600 [&_svg]:h-4 [&_svg]:w-4">
           {icon}
         </span>
       )}
-      <div className="min-w-0 flex-1">
+      <div className={cx('flex-1', wrap ? 'min-w-[12rem]' : 'min-w-0')}>
         {variant === 'label'
-          ? <h3 className="section-label truncate">{title}</h3>
-          : <h3 className="truncate text-lead font-semibold text-fg">{title}</h3>}
-        {subtitle != null && <p className="truncate text-meta text-fg-muted">{subtitle}</p>}
+          ? <h3 className={cx('section-label', fit)}>{title}</h3>
+          : <h3 className={cx('text-lead font-semibold text-fg', fit)}>{title}</h3>}
+        {subtitle != null && <p className={cx('text-meta text-fg-muted', fit)}>{subtitle}</p>}
       </div>
       {action != null && <div className="flex shrink-0 items-center gap-1">{action}</div>}
     </header>

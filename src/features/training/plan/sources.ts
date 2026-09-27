@@ -62,12 +62,6 @@ export const SOURCES = {
     citation: 'Craven J et al. Effects of Acute Sleep Loss on Physical Performance: A Systematic and Meta-Analytical Review. Sports Med 2022.',
     url: 'https://pubmed.ncbi.nlm.nih.gov/35708888/',
   },
-  mccrary2015: {
-    id: 'mccrary2015', short: 'McCrary 2015',
-    citation: 'McCrary JM, Ackermann BJ, Halaki M. A systematic review of the effects of upper body warm-up on performance and injury. Br J Sports Med 2015.',
-    // Not in the research files: linked as a PubMed search, not a guessed id.
-    url: 'https://pubmed.ncbi.nlm.nih.gov/?term=McCrary+Ackermann+Halaki+upper+body+warm-up',
-  },
   bell2023: {
     id: 'bell2023', short: 'Bell 2023',
     citation: 'Bell L et al. Integrating Deloading into Strength and Physique Sports Training Programmes: An International Delphi Consensus Approach. Sports Med Open 2023.',

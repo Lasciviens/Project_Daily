@@ -21,6 +21,7 @@ export function RoutineProgramCard({ routine, overrides, lastDoneText }: {
   return (
     <Card>
       <CardHeader
+        wrap
         title={routine.title}
         subtitle={`${exercises.length} exercises · ${totalSets} working sets · last done ${lastDoneText}`}
         action={<button type="button" className="min-h-[44px] text-meta font-semibold text-accent-600" onClick={() => openPlanRoutine(routine)}>Plan</button>}

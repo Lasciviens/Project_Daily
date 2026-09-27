@@ -14,13 +14,13 @@ import { ProgressOverview } from '../progress/ProgressOverview'
 import { ExerciseDecisionTable } from '../progress/ExerciseDecisionTable'
 import { useProgressDataContext } from '../progress/progressDataContext'
 import { ImprovementCard } from './improve/ImprovementCard'
-import { MuscleRecoveryMap } from './improve/MuscleRecoveryMap'
+import { MuscleRecencyList } from './improve/MuscleRecencyList'
 
 // The Progress tab, top to bottom: the window's improvement summary (lifts
-// improved, main-lift e1RM change, bodyweight, a record timeline) → the
-// engine's program verdict and per-exercise decisions → days since each
-// muscle was trained → the weekly-volume body map and the supporting charts
-// behind toggles. The engine runs once for the page (TrainingProgressProvider)
+// improved, main-lift e1RM change, bodyweight) → the
+// engine's program verdict and per-exercise decisions → the weekly-volume
+// body map (open by default — its colours are the point) → days since each
+// muscle was trained (a list) → the supporting charts behind a toggle. The engine runs once for the page (TrainingProgressProvider)
 // and is read here through ProgressDataContext. Settled engine rules:
 // docs/training/progress-engine/.
 //
@@ -50,11 +50,8 @@ export function ProgressTab() {
       <ImprovementCard preferIds={preferIds} />
       <ProgressOverview />
       <ExerciseDecisionTable />
-      <MuscleRecoveryMap />
-
-      <Disclosure label="Show weekly volume per muscle (body map)" openLabel="Hide weekly volume per muscle">
-        <WorkedMuscles />
-      </Disclosure>
+      <WorkedMuscles />
+      <MuscleRecencyList />
 
       <Disclosure label="Show supporting charts & analysis" openLabel="Hide supporting charts">
         {/* One column up to 2xl; two chart columns on a wide monitor. */}

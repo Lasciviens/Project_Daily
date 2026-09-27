@@ -17,8 +17,8 @@ import { ExerciseTrendChart } from '../progress/ExerciseTrendChart'
 //  second, independent best-e1RM calculation plus the retired rep-range
 //  check.
 //
-//  DISTINCT from Personal Records (all-time best single set) and Muscles
-//  (a muscle's total weekly training dose).
+//  DISTINCT from the Muscles body map (a muscle's total weekly training
+//  dose).
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function ExerciseProgressChart() {
@@ -84,7 +84,7 @@ export function ExerciseProgressChart() {
           <ChartNote className="flex flex-col gap-1">
             {metricKind === 'addedWeight' && <p>Shows added weight only — your bodyweight isn&apos;t included, so this understates the total load.</p>}
             <p>Read the trend over several sessions, not session to session — sleep, stress and fatigue move a single day&apos;s numbers more than strength does.</p>
-            <p>This is one exercise&apos;s own numbers over time — not your all-time PR (see Personal Records) or the muscle&apos;s weekly dose (see Muscles).</p>
+            <p>This is one exercise&apos;s own numbers over time — not the muscle&apos;s weekly dose (see the weekly volume body map).</p>
           </ChartNote>
           <p className="text-meta tabular-nums text-fg-faint">Last session: {formatDate(sessions[sessions.length - 1].date)}</p>
         </>

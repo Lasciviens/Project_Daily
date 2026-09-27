@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { Activity, Dumbbell, Footprints, HeartPulse, Moon, Scale } from 'lucide-react'
 import { ModalShell } from '../../../../shared/modals'
+import { Button } from '../../../../shared/ui'
+import { HEALTH_SECTIONS, type HealthSectionId } from '../sectionTypes'
 import { fmtClock } from '../../healthTrendStats'
 import type { HealthHero as Hero } from './useHealthHero'
 import { HeroTile } from './HeroTile'
@@ -19,10 +21,23 @@ const TITLES: Record<TileId, string> = {
   sleep: 'Sleep', steps: 'Steps', exercise: 'Exercise this week', rhr: 'Resting heart rate', weight: 'Weight', vitals: 'Overnight vitals',
 }
 
-export function HealthHero({ hero, onViewDay }: { hero: Hero; onViewDay: (date: string) => void }) {
+/** The window that holds each tile's full charts. */
+const TILE_SECTION: Record<TileId, HealthSectionId> = {
+  sleep: 'sleep', steps: 'activity', exercise: 'activity', rhr: 'heart', weight: 'body', vitals: 'heart',
+}
+
+export function HealthHero({ hero, onViewDay, onOpenSection }: {
+  hero: Hero
+  onViewDay: (date: string) => void
+  onOpenSection?: (id: HealthSectionId) => void
+}) {
   const [open, setOpen] = useState<TileId | null>(null)
   // "View this day" from a sheet's chart closes the sheet first.
   const viewDay = (date: string) => { setOpen(null); onViewDay(date) }
+  const target = open ? HEALTH_SECTIONS.find(s => s.id === TILE_SECTION[open]) : undefined
+  const footer = open && target && onOpenSection
+    ? <Button className="w-full sm:w-auto" onClick={() => { setOpen(null); onOpenSection(target.id) }}>Open the {target.label} tab</Button>
+    : undefined
   const { sleep, steps, exercise, rhr, weight, vitals } = hero
   const band = (c: { label: string; tone: 'danger' | 'warn' | 'neutral' | 'success' | 'info' } | null, prefix = '') =>
     c ? { label: `${prefix}${c.label}`, tone: c.tone } : null
@@ -101,7 +116,7 @@ export function HealthHero({ hero, onViewDay }: { hero: Hero; onViewDay: (date: 
           why="Counted against your own usual ranges, the way Apple’s Vitals app does — how many are outside, never a score." />
       </div>
 
-      <ModalShell open={open != null} onClose={() => setOpen(null)} title={open ? TITLES[open] : ''} size="lg">
+      <ModalShell open={open != null} onClose={() => setOpen(null)} title={open ? TITLES[open] : ''} size="lg" footer={footer}>
         {open === 'sleep' && <SleepDetail hero={hero} onViewDay={viewDay} />}
         {open === 'steps' && <StepsDetail hero={hero} onViewDay={viewDay} />}
         {open === 'exercise' && <ExerciseDetail hero={hero} onViewDay={viewDay} />}
