@@ -23,7 +23,7 @@ function Change({ label, t, unit, dp = 1 }: { label: ReactNode; t: SeriesTrend |
 
 /** Fat mass vs lean mass (and the reports' muscle mass) from the smart
  *  scale, with how much the readings can support. */
-export function CompositionSection({ phase, comp }: { phase: Phase; comp: CompositionResult }) {
+export function CompositionSection({ phase, comp, extended }: { phase: Phase; comp: CompositionResult; extended: boolean }) {
   const conf = comp.confidence ? CONFIDENCE_COPY[comp.confidence] : null
   return (
     <GoalBlock title="Fat and muscle" info={<>
@@ -50,6 +50,7 @@ export function CompositionSection({ phase, comp }: { phase: Phase; comp: Compos
           </p>
         </>
       )}
+      {extended && <p className="text-meta text-fg-muted">Reads the last 28 days — telling fat from muscle needs more readings than the weight trend.</p>}
       {comp.otherSources.length > 0 && (
         <p className="text-meta text-fg-muted">
           Left out: {comp.otherSources.map(sourceLabel).join(', ')} — two scales or apps can read the same body a few % apart.

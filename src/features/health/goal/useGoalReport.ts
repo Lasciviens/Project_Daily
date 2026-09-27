@@ -8,7 +8,7 @@ import { useBodyCompositionReports } from '../hooks/useBodyCompositionReports'
 import { fetchEatenDiaryRows } from './diaryTotalsApi'
 import type { EnergyDay } from './energyBalance'
 import { compositionReadings, type AppleScalePoint, type ScaleReport } from './bodyGoal'
-import { buildGoalReport, type GoalReport } from './goalReport'
+import { buildGoalReport, MIN_COMPOSITION_DAYS, type GoalReport } from './goalReport'
 import { useBodyGoals, usePhase } from './useBodyGoals'
 
 export type GoalWindow = 14 | 28 | 56
@@ -35,7 +35,9 @@ export function useGoalReport(windowDays: GoalWindow) {
   // Six days before the window feed the first moving-average points; today's
   // morning weigh-in reflects yesterday.
   const weightFrom = startBound ? earlier(startBound, shiftDateStr(from, -6)) : shiftDateStr(from, -6)
-  const scaleFrom = startBound ? earlier(startBound, from) : from
+  // Fat vs muscle reads at least MIN_COMPOSITION_DAYS (goalReport.ts), ending today.
+  const compFrom = earlier(from, shiftDateStr(today, -(MIN_COMPOSITION_DAYS - 1)))
+  const scaleFrom = startBound ? earlier(startBound, compFrom) : compFrom
 
   const diary = useQuery({
     queryKey: qk.health.cutDiary(from, to),

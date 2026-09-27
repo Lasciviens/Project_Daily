@@ -59,7 +59,7 @@ function GoalReportBody({ days }: { days: GoalWindow }) {
       <GoalPathPanel path={r.path} />
       <div className="grid gap-3 @2xl:grid-cols-2">
         <PaceSection phase={phase} rate={r.rate} meanKg={e.weight.meanKg} />
-        <CompositionSection phase={phase} comp={r.comp} />
+        <CompositionSection phase={phase} comp={r.comp} extended={r.compFrom < d.from} />
       </div>
       <div>
         <p className="section-label mb-1">Weight trend</p>

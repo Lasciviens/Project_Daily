@@ -23,6 +23,8 @@ export interface GoalReportInputs extends Omit<EnergyInputs, 'goal' | 'phaseStar
 
 export interface GoalReport {
   phase: Phase
+  /** First day the fat/muscle trend reads — at least MIN_COMPOSITION_DAYS back. */
+  compFrom: string
   energy: EnergyReport
   rate: RateVerdict | null
   comp: CompositionResult
@@ -31,6 +33,10 @@ export interface GoalReport {
   /** Latest scale lean / muscle mass, for labels. */
   latest: { leanKg: number | null; muscleKg: number | null; fatPct: number | null; date: string | null }
 }
+
+/** Fat vs muscle needs more readings than the weight trend, so it always reads
+ *  at least this many days, whatever the window. */
+export const MIN_COMPOSITION_DAYS = 28
 
 /** A weight change counts as moving once it beats 0.3 kg and twice its own noise. */
 export const MIN_WEIGHT_CHANGE_KG = 0.3
@@ -41,7 +47,9 @@ function trendOf(t: SeriesTrend | null): GoalSeries['trend'] {
 
 export function buildGoalReport(inp: GoalReportInputs): GoalReport {
   const windowEnd = addDays(inp.to, 1)
-  const comp = analyseComposition(inp.readings, inp.from, windowEnd)
+  const minFrom = addDays(windowEnd, -(MIN_COMPOSITION_DAYS - 1))
+  const compFrom = inp.from < minFrom ? inp.from : minFrom
+  const comp = analyseComposition(inp.readings, compFrom, windowEnd)
 
   const newestFirst = [...inp.readings].sort((a, b) => b.date.localeCompare(a.date))
   const newest = (pick: (r: CompositionReading) => number | null, source?: string | null) =>
@@ -84,7 +92,7 @@ export function buildGoalReport(inp: GoalReportInputs): GoalReport {
 
   const path = buildPath({ phase: inp.phase, rate, comp, energy, weightKg: w.currentTrendKg ?? w.meanKg })
   return {
-    phase: inp.phase, energy, rate, comp, path, goals,
+    phase: inp.phase, compFrom, energy, rate, comp, path, goals,
     latest: {
       leanKg: leanReading?.leanMassKg ?? null,
       muscleKg: muscleReading?.muscleMassKg ?? null,

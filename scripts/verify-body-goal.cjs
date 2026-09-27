@@ -174,6 +174,8 @@ const TO = addDays(FROM, 28)
   const mixed = V([...a, ...b])
   check('§5.17 the source with more readings wins', mixed.source, 'NewApp')
   check('§5.18 the other is named, not mixed in', mixed.otherSources, ['OldApp'])
+  const withReport = V([...series({ n: 28 }), ...series({ n: 28, every: 3, source: BG.REPORT_SOURCE })])
+  check('§5.18b the scale\'s own photo reports are not named as another scale', withReport.otherSources, [])
   check('§5.19 no fake fat loss from the switch', mixed.verdict, 'stable')
   check('§5.20 low confidence on 4 weekly readings', V(series({ n: 28, every: 7, fatPerDay: -0.08 })).confidence, 'low')
   check('§5.20b medium on 6 readings over 25 days', V(series({ n: 28, every: 5, fatPerDay: -0.06 })).confidence, 'medium')
@@ -267,6 +269,13 @@ const TO = addDays(FROM, 28)
   check('§8.6 muscle goal not set', r.goals.muscle, null)
   near('§8.7 lean mass feeds protein per kg FFM', r.energy.protein.gPerKgFfm, 170 / r.latest.leanKg, 0.01)
   check('§8.8 energy verdict still there', r.energy.verdict, 'on_track')
+  // A 14-day window: fat vs muscle still reads the last 28 days.
+  const short = GR.buildGoalReport({
+    from: addDays(FROM, 14), to, phase: 'cut', phaseStartDate: null,
+    intake: [], energy: [], weights: readings.map(x => ({ date: x.date, kg: x.weightKg })), weightHistory: [], readings,
+    goals: { weightKg: null, bodyFatPct: null, muscleMassKg: null },
+  })
+  check('§8.9 composition reads 28 days even in a 14-day window', [short.compFrom, short.comp.verdict], [addDays(to, -26), 'fat_loss_lean_kept'])
 }
 
 // ── §9 Goal settings: account first, device values fill the gaps ──────────

@@ -259,7 +259,8 @@ export interface CompositionResult {
   missing: string | null
 }
 
-/** The source with the most body-fat readings in [from, to] (ties → newest). */
+/** The source with the most body-fat readings in [from, to] (ties → newest),
+ *  and the other sources worth naming as left out. */
 export function pickSource(readings: CompositionReading[], from: string, to: string): { source: string | null; others: string[] } {
   const counts = new Map<string, { n: number; last: string }>()
   for (const r of readings) {
@@ -269,7 +270,10 @@ export function pickSource(readings: CompositionReading[], from: string, to: str
     counts.set(r.source, c)
   }
   const ranked = [...counts.entries()].sort((a, b) => b[1].n - a[1].n || b[1].last.localeCompare(a[1].last))
-  return { source: ranked[0]?.[0] ?? null, others: ranked.slice(1).map(([s]) => s) }
+  // Worth naming: another source with a real series. The photo reports are the
+  // scale's own printout (read separately for muscle), so they aren't "another scale".
+  const others = ranked.slice(1).filter(([s, c]) => c.n >= 2 && s !== REPORT_SOURCE).map(([s]) => s)
+  return { source: ranked[0]?.[0] ?? null, others }
 }
 
 const dir = (t: SeriesTrend | null) => (!t || !t.significant ? 0 : t.change > 0 ? 1 : -1)
