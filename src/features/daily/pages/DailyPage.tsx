@@ -87,7 +87,7 @@ export function DailyPage() {
   return (
     <PageContainer>
       <PageHeader
-        titleOnPhone
+        showTitle
         className="!mb-4"
         title={
           <DateNav

@@ -62,18 +62,21 @@ export function HealthPage() {
   return (
     <PageContainer width="full">
       <PageHeader title="Health" actions={<ProfileChip today={today} />} className="max-w-[76rem]">
-        <div className="flex flex-wrap items-center gap-2">
+        {/* Period first, then the dates: the toggle's segments are equal-width
+            and the date label has a fixed width, so neither moves when the
+            period or the date changes. */}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          <div className="scroll-x max-w-full">
+            <PeriodToggle value={period} onChange={setPeriod} dayLabel={anchor === today ? 'Today' : 'Day'} />
+          </div>
           <DateNav
-            label={labelForAnchor(period, anchor)}
+            label={labelForAnchor(period, anchor, today)}
             onPrev={() => setAnchor(a => stepAnchor(period, a, -1))}
             onNext={() => setAnchor(a => stepAnchor(period, a, 1))}
             canGoNext={anchor < today}
             value={anchor}
             onPick={d => setAnchor(d > today ? today : d)}
           />
-          <div className="scroll-x max-w-full">
-            <PeriodToggle value={period} onChange={setPeriod} dayLabel={anchor === today ? 'Today' : 'Day'} />
-          </div>
         </div>
       </PageHeader>
 

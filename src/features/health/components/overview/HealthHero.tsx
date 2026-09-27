@@ -10,6 +10,7 @@ import { changeTone, hm, num, signed, signedHm } from './heroFormat'
 import { ExerciseDetail, SleepDetail, StepsDetail } from './HeroDetailsActivity'
 import { RhrDetail, VitalsDetail, WeightDetail } from './HeroDetailsBody'
 import { fmtDayMonth } from '../healthFormat'
+import { nightMissingText, nightNoun } from '../../healthDateLabels'
 
 // "How you're doing": the six tier-1 tiles from the metric ranking
 // (docs/training-health/research/research-rank.json), in its order. No
@@ -60,12 +61,15 @@ export function HealthHero({ hero, onViewDay, onOpenSection }: {
         How you’re doing <span className="text-meta font-normal text-fg-muted">· as of {hero.isToday ? 'today' : fmtDayMonth(hero.anchor)}</span>
       </h2>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        {/* Only the night that ended on this day counts as "last night" — a
+            missing night says so; it is never replaced by an older one. */}
         <HeroTile icon={<Moon />} label="Sleep" onOpen={() => setOpen('sleep')} isLoading={sleep.isLoading}
-          empty={sleep.avg7 == null && sleep.lastNight == null ? 'No sleep recorded in the last week.' : null}
-          value={hm(sleep.lastNight ?? sleep.avg7)}
-          unit={sleep.lastNight != null ? (hero.isToday ? 'last night' : 'that night') : '7-night average'}
+          empty={sleep.avg7 == null && sleep.lastNight == null ? `${nightMissingText(hero.anchor, hero.today)}, and too few nights this week for an average.` : null}
+          value={sleep.lastNight != null ? hm(sleep.lastNight) : '—'}
+          unit={nightNoun(hero.anchor, hero.today)}
           sub={<>
-            {sleep.avg7 != null && sleep.lastNight != null && <>7-night average {hm(sleep.avg7)} · </>}
+            {sleep.lastNight == null && <>{nightMissingText(hero.anchor, hero.today)}. </>}
+            {sleep.avg7 != null && <>7-night average {hm(sleep.avg7)} · </>}
             {sleep.wake ? <>wake {fmtClock(sleep.wake.center)} ± {Math.round(sleep.wake.sd)} min</> : 'wake-time spread needs 5 nights'}
           </>}
           change={sleepDelta != null ? { text: `${signedHm(sleepDelta)} vs previous 7`, tone: changeTone(sleepDelta, 'up', 0.25) } : null}

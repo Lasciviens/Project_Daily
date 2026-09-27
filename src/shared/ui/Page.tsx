@@ -13,32 +13,73 @@ export function PageContainer({
 }
 
 interface PageHeaderProps {
+  /** The page name. Visually hidden (the shell already shows it) unless `showTitle`. */
   title: ReactNode
   subtitle?: ReactNode
-  /** Right side on wide screens, wraps under the title on phones. */
+  /** Right side of the first row; its own row on phones. */
   actions?: ReactNode
-  /** A tab row / filter row rendered under the title line. */
+  /** A tab row / filter row. It takes the first row itself when nothing else is visible there. */
   children?: ReactNode
   className?: string
   /**
-   * Phones show the route title in the shell header (THEME.md §6.2), so the
-   * H1 is visually hidden below md (still read by screen readers). Set this
-   * when the title is not the route name but content — e.g. Daily's date nav.
+   * The shell (top bar from 768px, phone header below it) already shows the
+   * route name, so the H1 is visually hidden at every width and only read by
+   * screen readers (THEME.md §6.2). Set this when the title is content rather
+   * than the route name — e.g. Daily's date nav.
    */
-  titleOnPhone?: boolean
+  showTitle?: boolean
 }
 
-export function PageHeader({ title, subtitle, actions, children, className, titleOnPhone = false }: PageHeaderProps) {
+/**
+ * Page header: the (screen-reader) H1 plus the page's own controls.
+ *
+ * Layouts, so a hidden title never leaves an empty line:
+ * - visible title or subtitle → that on the left, `actions` on the right,
+ *   `children` on the next row;
+ * - neither → `children` (left) and `actions` (right) share the first row;
+ *   they wrap when the row is too narrow, and on phones the actions get
+ *   their own row above the children;
+ * - nothing visible at all → only the hidden H1, no margin.
+ */
+/** `cond && <X/>` hands over `false` when the condition fails; treat it like nothing. */
+const shown = (node: ReactNode) => node != null && node !== false && node !== ''
+
+export function PageHeader({ title, subtitle, actions, children, className, showTitle = false }: PageHeaderProps) {
+  const [hasSubtitle, hasActions, hasChildren] = [shown(subtitle), shown(actions), shown(children)]
+  const heading = (
+    <h1 className={showTitle ? 'text-head font-bold tracking-tight text-fg sm:text-page' : 'sr-only'}>{title}</h1>
+  )
+  if (!showTitle && !hasSubtitle) {
+    if (!hasChildren && !hasActions) return <header>{heading}</header>
+    return (
+      <header className={cx('mb-4 sm:mb-6', className)}>
+        {heading}
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
+          {hasChildren && <div className="min-w-0 flex-[1_1_auto]">{children}</div>}
+          {hasActions && (
+            <div className={cx(
+              'ml-auto flex flex-wrap items-center gap-2',
+              // Phones keep the actions on their own right-aligned row above the tabs.
+              hasChildren && 'max-md:order-first max-md:basis-full max-md:justify-end',
+            )}>
+              {actions}
+            </div>
+          )}
+        </div>
+      </header>
+    )
+  }
+
   return (
     <header className={cx('mb-4 sm:mb-6', className)}>
-      <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-3">
+      <div className={cx('flex flex-wrap justify-between gap-x-4 gap-y-3', showTitle ? 'items-end' : 'items-center')}>
         <div className="min-w-0">
-          <h1 className={cx('text-head font-bold tracking-tight text-fg sm:text-page', !titleOnPhone && 'max-md:sr-only')}>{title}</h1>
-          {subtitle != null && <p className="mt-0.5 text-body text-fg-muted">{subtitle}</p>}
+          {heading}
+          {hasSubtitle && <p className={cx('text-body text-fg-muted', showTitle && 'mt-0.5')}>{subtitle}</p>}
         </div>
-        {actions != null && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
+        {hasActions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
       </div>
-      {children != null && <div className="mt-4">{children}</div>}
+      {hasChildren && <div className="mt-4">{children}</div>}
     </header>
   )
 }

@@ -18,6 +18,7 @@ import { useMetricWindow, useSleepWindow } from '../../hooks/useHealthWindow'
 import { useBodyweightSeries } from '../../hooks/useBodyweight'
 import { useLatestHealthValue } from '../../hooks/useHealthExport'
 import { LONG_BACK_DAYS } from '../dateNav'
+import { nightEndingOn } from '../../healthDateLabels'
 
 // Everything the six hero tiles, their detail sheets and the insights list
 // need, computed ONCE for the viewed day. The hero ignores the period control
@@ -40,21 +41,34 @@ export interface VitalItem {
   rangeRule: string
 }
 
+export interface SleepTimelineNight {
+  date: string
+  /** Sleep onset / wake, minutes after midnight. */
+  onset: number
+  wake: number
+  /** Hours asleep that night (the measured total), null when unknown. */
+  asleep: number | null
+}
+
 export interface HealthHero {
   anchor: string
+  /** Today's date (the clock), for "last night" vs "that night". */
+  today: string
   isToday: boolean
   ctx: BenchmarkContext
   profile: HealthProfile | undefined
   sleep: {
     nights: DayValue[]
+    /** The night that ended on the anchor day — never an older one (null = none recorded). */
     lastNight: number | null
     avg7: number | null
     prevAvg7: number | null
     nights7: number
     wake: { center: number; sd: number; n: number } | null
     onset: { center: number; sd: number; n: number } | null
-    /** Onset and wake per night (minutes after midnight) over the last 14 nights. */
-    timeline: { date: string; onset: number; wake: number }[]
+    /** Onset and wake per night (minutes after midnight) over the last 14
+     *  nights, plus that night's hours asleep. */
+    timeline: SleepTimelineNight[]
     cls: Classification | null
     regularityCls: Classification | null
     isLoading: boolean
@@ -154,13 +168,14 @@ export function useHealthHero(win: HealthWindow): HealthHero {
 
   const sleep = useMemo<HealthHero['sleep']>(() => {
     const nights = sleepQ.nights.map(n => ({ date: n.date, value: n.total }))
-    const last = nights.find(n => n.date === A)?.value ?? null
+    // Last night = the night filed under the anchor day, never the newest one on record.
+    const last = nightEndingOn(nights, A)?.value ?? null
     const cur = periodChange(nights, { to: A, days: 7, minPoints: 3 })
-    const timeline: { date: string; onset: number; wake: number }[] = []
+    const timeline: SleepTimelineNight[] = []
     for (let i = 13; i >= 0; i--) {
       const date = addDaysIso(A, -i)
       const b = nightBounds(extractSleepSessions(sleepQ.points, date))
-      if (b) timeline.push({ date, onset: minutesOfDay(b.onsetMs), wake: minutesOfDay(b.wakeMs) })
+      if (b) timeline.push({ date, onset: minutesOfDay(b.onsetMs), wake: minutesOfDay(b.wakeMs), asleep: nightEndingOn(nights, date)?.value ?? null })
     }
     const wake = timeOfDaySpread(timeline.map(t => t.wake))
     const onset = timeOfDaySpread(timeline.map(t => t.onset))
@@ -300,5 +315,5 @@ export function useHealthHero(win: HealthWindow): HealthHero {
     }
   }, [hrvQ.daily, respQ.daily, spo2Q.daily, tempQ.daily, hrvQ.isLoading, respQ.isLoading, spo2Q.isLoading, tempQ.isLoading, A, ctx])
 
-  return { anchor: A, isToday, ctx, profile, sleep, steps, exercise, rhr, weight, vitals, vo2: vo2Q.data ?? null }
+  return { anchor: A, today, isToday, ctx, profile, sleep, steps, exercise, rhr, weight, vitals, vo2: vo2Q.data ?? null }
 }

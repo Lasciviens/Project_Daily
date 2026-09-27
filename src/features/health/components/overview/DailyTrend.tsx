@@ -17,7 +17,7 @@ interface Props {
   color?: string
   /** Add a 7-day average line (needs 3 readings in each 7 days). */
   rolling?: boolean
-  band?: { y1: number; y2: number; label?: string }
+  band?: { y1: number; y2: number; label?: string; labelSide?: 'left' | 'right' }
   refLines?: { y: number; label: string }[]
   formatValue?: (v: number) => string
   yDomain?: [number | 'auto' | 'dataMin', number | 'auto' | 'dataMax']

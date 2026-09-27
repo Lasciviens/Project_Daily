@@ -19,6 +19,7 @@ import { SleepStageBar } from './SleepStageBar'
 import { ManualSleepForm } from './ManualSleepForm'
 import { SleepRawRows } from './SleepRawRows'
 import { fmtAxisFor, fmtDayLong, fmtDayMonth, windowCaption } from './healthFormat'
+import { nightEndingOn, nightMissingText } from '../healthDateLabels'
 
 // Nights are filed under the day you WOKE UP, so "today" in Day mode is last
 // night — a finished night that always counts (H-01).
@@ -34,7 +35,8 @@ export function SleepSection({ range }: { range: HealthRange }) {
   const manual = manualNightKeys(sleep.points)
   const sources = sleepSourcesByNight(sleep.points)
 
-  const dayNight = isDay ? inWindow.find(n => n.date === anchor) ?? null : null
+  // Day mode shows the night that ENDED on the selected day — never the newest night on record.
+  const dayNight = isDay ? nightEndingOn(inWindow, anchor) : null
   const periodNight: SleepSummary | null = !isDay && inWindow.length ? {
     date: win.to,
     total: mean(inWindow.map(n => n.total)) as number,
@@ -70,7 +72,7 @@ export function SleepSection({ range }: { range: HealthRange }) {
         <div className="flex flex-wrap items-end gap-2">
           <HeadlineStat
             label={headline}
-            value={sleep.isLoading ? '…' : s.value != null ? fmtHrs(s.value) : '—'}
+            value={sleep.isLoading ? '…' : isDay ? (dayNight ? fmtHrs(dayNight.total) : '—') : s.value != null ? fmtHrs(s.value) : '—'}
             unit={!isDay && s.value != null ? '/night' : undefined}
             sub={isDay ? null : windowCaption(s, { unitNoun: 'nights' })}
             trend={<TrendBadge pct={s.deltaPct} />}
@@ -78,7 +80,7 @@ export function SleepSection({ range }: { range: HealthRange }) {
           {isDay && dayNight && manual.has(anchor) && <TonePill tone="neutral" className="mb-1">Manual</TonePill>}
         </div>
         {isDay && !dayNight && !sleep.isLoading && (
-          <p className="mt-1 text-meta text-fg-muted">No sleep recorded for this night — pick another day, or add it by hand below.</p>
+          <p className="mt-1 text-meta text-fg-muted">{nightMissingText(anchor, win.today)} — pick another day, or add it by hand below.</p>
         )}
         {!isDay && s.best && s.worst && (
           <p className="mt-1 text-meta text-fg-muted">

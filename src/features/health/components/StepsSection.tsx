@@ -61,7 +61,7 @@ export function StepsSection({ range }: { range: HealthRange }) {
             ariaLabel={isDay ? 'Steps per hour' : 'Steps per day'}
             height={150}
             onViewDay={isDay ? undefined : viewDay}
-            band={isDay ? undefined : { y1: 7000, y2: 8000, label: '7,000–8,000 a day' }}
+            band={isDay ? undefined : { y1: 7000, y2: 8000, label: '7,000–8,000 a day', labelSide: 'right' }}
           />
         )}
       {!isDay && (

@@ -6,6 +6,7 @@ import { makeWindow } from '../../../health/healthWindowStats'
 import { useEnergyWindow, useHeartWindow, useMetricWindow, useSleepWindow } from '../../../health/hooks/useHealthWindow'
 import { useLatestBodyweight } from '../../../health/hooks/useBodyweight'
 import { BODYWEIGHT_SOURCE_LABEL } from '../../../health/bodyweight'
+import { nightEndingOn, nightMissingText, nightNoun } from '../../../health/healthDateLabels'
 import { todayStr } from '../../../../shared/utils/dateUtils'
 import { useDragScroll } from '../../../../shared/hooks/useDragScroll'
 import { fmtDateEnGB } from '../../../../shared/utils/enGBDate'
@@ -29,7 +30,7 @@ function Panel({ icon, label, children }: { icon: React.ReactNode; label: string
 }
 const Big = ({ children }: { children: React.ReactNode }) => <p className="text-title font-bold leading-none tabular-nums text-fg">{children}</p>
 const Sub = ({ children }: { children: React.ReactNode }) => <p className="text-meta text-fg-muted">{children}</p>
-const Empty = ({ loading }: { loading: boolean }) => <p className="py-1 text-meta text-fg-muted">{loading ? '…' : 'No data'}</p>
+const Empty = ({ loading, text = 'No data' }: { loading: boolean; text?: string }) => <p className="py-1 text-meta text-fg-muted">{loading ? '…' : text}</p>
 
 export function HealthCard({ date }: { date: string }) {
   const drag = useDragScroll<HTMLDivElement>()
@@ -43,7 +44,8 @@ export function HealthCard({ date }: { date: string }) {
   const heart = useHeartWindow(win)
   const weight = useLatestBodyweight(date)
 
-  const night = sleep.summary.value
+  // The night that ended on this day (filed under the wake-up date) — never an older one.
+  const night = nightEndingOn(sleep.nights, date)?.total ?? null
   const stepVal = steps.summary.value
   const active = energy.activeSummary.value
   const hr = heart.daily.find(d => d.date === date)
@@ -56,7 +58,9 @@ export function HealthCard({ date }: { date: string }) {
       {/* Swipeable strip — snap + edge fade signals there's more to the side */}
       <div {...drag} className={`-mx-1 flex gap-2 overflow-x-auto scrollbar-none scroll-fade-x snap-x-mandatory px-1 pb-1 ${drag.className}`}>
         <Panel icon={<Moon aria-hidden />} label="Sleep">
-          {night != null ? (<><Big>{fmtHrs(night)}</Big><Sub>{isToday ? 'last night' : 'that night'}</Sub></>) : <Empty loading={sleep.isLoading} />}
+          {night != null
+            ? (<><Big>{fmtHrs(night)}</Big><Sub>{nightNoun(date, today)}</Sub></>)
+            : <Empty loading={sleep.isLoading} text={nightMissingText(date, today)} />}
         </Panel>
         <Panel icon={<Footprints aria-hidden />} label="Steps">
           {stepVal != null ? (<><Big>{round(stepVal).toLocaleString('en-GB')}</Big><Sub>{isToday ? 'steps so far' : 'steps'}</Sub></>) : <Empty loading={steps.isLoading} />}

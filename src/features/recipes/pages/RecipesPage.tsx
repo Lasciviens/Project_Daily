@@ -58,8 +58,6 @@ export function RecipesPage() {
     <PageContainer>
       <PageHeader
         title="Food"
-        subtitle="Log meals, plan the week and keep your recipes and foods"
-        className="max-md:[&_h1+p]:hidden"
         actions={<>
           <FoodTabs />
           {tab === 'library' && <Button icon={<Plus />} onClick={addRecipe}>Add recipe</Button>}

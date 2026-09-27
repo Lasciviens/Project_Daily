@@ -1,6 +1,7 @@
 import { InfoBubble } from '../../../../shared/components/InfoBubble'
 import type { TrendStats } from '../../healthTrendStats'
-import { fmtDayMonth } from '../healthFormat'
+import { todayStr } from '../../../../shared/utils/dateUtils'
+import { weekRangeLabel } from '../../healthDateLabels'
 
 // The trend numbers for one metric: 7/30/90-day change, weekly rate, best and
 // worst complete week, and whether it has become steadier. Every figure comes
@@ -32,7 +33,8 @@ function Cell({ label, value, sub }: { label: string; value: string; sub?: strin
 }
 
 export function TrendStatsBlock({ stats, format, formatDelta, per, direction, rateUnit, className }: Props) {
-  const weekLabel = (w: { weekStart: string }) => `week of ${fmtDayMonth(w.weekStart)}`
+  // The Monday–Sunday range, not just its Monday ("7–13 Jul").
+  const weekLabel = (w: { weekStart: string }) => weekRangeLabel(w.weekStart, todayStr())
   const v = stats.variability
   const hasAny = stats.changes.some(c => c.delta != null) || stats.best || stats.rate || v.verdict
   if (!hasAny) return <p className={`text-meta text-fg-muted ${className ?? ''}`}>Not enough history yet for trend statistics.</p>

@@ -50,8 +50,6 @@ export function ShopPage() {
         <PageContainer>
           <PageHeader
             title="Shop"
-            subtitle="Wishlist — things you're planning to buy"
-            className="max-md:[&_h1+p]:hidden"
             actions={<>
               <FoodTabs />
               <IconButton label="Ask the shopping assistant" bordered onClick={openAssistant} className="hidden md:inline-grid lg:hidden"><Sparkles /></IconButton>
