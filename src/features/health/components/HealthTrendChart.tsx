@@ -37,6 +37,8 @@ export interface TrendSeries {
   dotColor?: (p: TrendPoint) => string
   /** Line: draw the readings as dots only (the trend is another series). */
   dotsOnly?: boolean
+  /** Line: a plain solid line with no dot per point (hover still marks one). */
+  plain?: boolean
 }
 
 interface Props {
@@ -147,7 +149,7 @@ export function HealthTrendChart({
             ) : (
               <Line key={s.key} dataKey={s.key} name={s.label} stroke={s.dotsOnly ? 'none' : s.color} connectNulls={!!s.connectNulls}
                 strokeWidth={s.dashed ? 1.5 : 2} strokeDasharray={s.dashed ? '5 4' : undefined}
-                dot={s.dashed ? false : s.dotColor
+                dot={s.dashed || s.plain ? false : s.dotColor
                   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- recharts dot render props
                   ? (props: any) => props.value == null ? <g key={props.key} /> : (
                       <circle key={props.key} cx={props.cx} cy={props.cy} r={3.5} fill={s.dotColor!(props.payload)} stroke="none" />

@@ -9,6 +9,7 @@ import {
 } from '../progress-engine/copy'
 import { RULE_CATALOG } from '../progress-engine/ruleCatalog'
 import { formatSessionSets, fmtDuration } from '../progress-engine/format'
+import { rpeSuffix } from '../setFormat'
 import type { ExerciseProgressResult, CanonicalExerciseSession, CanonicalSet, EvidenceLevel, ProgressMetricKind } from '../progress-engine/types'
 import { isWeightBasedMetric } from '../progress-engine/metricStrategy'
 import { ExerciseThumb, ExerciseGifPicker } from '../exerciseMedia'
@@ -22,9 +23,10 @@ import { ExerciseTrendChart } from './ExerciseTrendChart'
 const EVIDENCE_TONE: Record<EvidenceLevel, Tone> = { strong: 'success', moderate: 'warn', limited: 'neutral' }
 
 // Every set renders its OWN load and quantity, never a representative weight
-// glued onto every set's reps.
+// glued onto every set's reps — and its RPE when it was rated in Hevy
+// ("80 kg × 8 @ RPE 8.5 (failure)").
 function formatSetLine(set: CanonicalSet, metricKind: ProgressMetricKind): string {
-  const tag = set.kind !== 'normal' ? ` (${set.kind})` : ''
+  const tag = `${rpeSuffix(set.rpe)}${set.kind !== 'normal' ? ` (${set.kind})` : ''}`
   switch (metricKind) {
     case 'duration':
       if (set.durationSeconds == null) return `—${tag}`
@@ -215,7 +217,7 @@ export function DecisionDetail({ result, sessions, metricKind, title }: { result
               {olderSessions.map(s => (
                 <li key={s.workoutId} className="border-b border-line py-1 text-meta last:border-0">
                   <p className="tabular-nums text-fg-muted">{formatDate(s.date)}{s.workoutTitle ? ` · ${s.workoutTitle}` : ''}</p>
-                  <p className="font-medium tabular-nums text-fg-2">{formatSessionSets(s.allSets, metricKind)}</p>
+                  <p className="font-medium tabular-nums text-fg-2">{formatSessionSets(s.allSets, metricKind, { rpe: true })}</p>
                 </li>
               ))}
             </ul>

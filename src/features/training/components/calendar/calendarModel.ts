@@ -2,9 +2,10 @@ import { formatLocalDate, localDayOf } from '../../../../shared/utils/dateUtils'
 import { fmtDateEnGB } from '../../../../shared/utils/enGBDate'
 import type { Tone } from '../../../../shared/ui'
 import { workoutLocalDay } from '../../workoutDates'
-import { planStatus, type PlanStatus } from '../../trainingPlanModel'
+import type { PlanStatus } from '../../trainingPlanModel'
 import type { HevyWorkout, StravaActivity } from '../../types.hevy'
 import type { TimeBlock, ScheduleBlock } from '../../../daily/types'
+import { matchDaySessions, type DaySession, type OpenPlan } from './calendarSessions'
 
 // Training calendar data model — the plan/workout/activity shape of one day
 // and the pure helpers the week and month views share.
@@ -25,8 +26,9 @@ export interface CalendarPlanItem {
 // Local YYYY-MM-DD (avoids the UTC shift that toISOString would introduce)
 export const ymd = formatLocalDate
 
-// A plan on a day that has a workout or a Strava activity is DONE — it used
-// to show red "missed" right next to that day's green workout.
+// A plan a workout covers is no longer drawn at all (it folds into that
+// workout's entry, see calendarSessions); a plan left open is 'done' only when
+// a Strava activity covered the day.
 export const PLAN_TONE: Record<PlanStatus, Tone> = { today: 'warn', upcoming: 'info', done: 'success', missed: 'danger' }
 export const WORKOUT_TONE: Tone = 'success'
 
@@ -64,22 +66,27 @@ export function getWorkoutDuration(w: HevyWorkout): number | null {
 
 export interface DayData {
   date: Date
-  workouts: HevyWorkout[]
   activities: StravaActivity[]
-  plans: CalendarPlanItem[]
+  /** One per Hevy workout, carrying the plans it covered. */
+  sessions: DaySession[]
+  /** Plans no workout covered. */
+  openPlans: OpenPlan[]
 }
 
-export function dayDataFor(dateStr: string, date: Date, workouts: HevyWorkout[], activities: StravaActivity[], plansByDate: Map<string, CalendarPlanItem[]>): DayData {
-  return {
-    date,
-    workouts: workouts.filter(w => workoutLocalDay(w) === dateStr),
-    activities: activities.filter(a => activityDay(a) === dateStr),
+export function dayDataFor(dateStr: string, date: Date, workouts: HevyWorkout[], activities: StravaActivity[], plansByDate: Map<string, CalendarPlanItem[]>, todayStr: string): DayData {
+  const dayActivities = activities.filter(a => activityDay(a) === dateStr)
+  const { sessions, openPlans } = matchDaySessions({
+    date: dateStr,
+    todayStr,
     plans: plansByDate.get(dateStr) ?? [],
-  }
+    workouts: workouts.filter(w => workoutLocalDay(w) === dateStr),
+    hasActivity: dayActivities.length > 0,
+  })
+  return { date, activities: dayActivities, sessions, openPlans }
 }
 
-export function statusOf(day: DayData, todayStr: string): PlanStatus {
-  return planStatus(ymd(day.date), todayStr, day.workouts.length > 0 || day.activities.length > 0)
+export function isDayEmpty(day: DayData): boolean {
+  return day.sessions.length === 0 && day.openPlans.length === 0 && day.activities.length === 0
 }
 
 export interface ViewProps {
@@ -92,6 +99,7 @@ export interface ViewProps {
   onToday: () => void
   onSwitchView: () => void
   onOpenWorkout: (id: string) => void
-  onOpenPlan: (p: CalendarPlanItem) => void
+  /** The schedule editor — a secondary action (⋯ → Edit plan), never a row's tap. */
+  onEditPlan: (p: CalendarPlanItem) => void
 }
 

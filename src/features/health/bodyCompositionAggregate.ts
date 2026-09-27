@@ -1,7 +1,7 @@
 import type { BodyCompositionReport } from './api/bodyCompositionApi'
 
-// Pure aggregation for the smart-scale body-composition reports UI (Training
-// → Health → Body). No React, no Supabase — sucrase-verifiable per this
+// Pure aggregation for the smart-scale body-composition reports UI (Health →
+// Body → "More from the scale"). No React, no Supabase — sucrase-verifiable per this
 // repo's no-unit-test-framework convention (scripts/verify-*.cjs).
 
 export type BodyCompFieldKey =
@@ -20,8 +20,8 @@ export interface BodyCompFieldMeta {
 }
 
 // One persistent categorical colour per field, never reassigned when the
-// picker switches (each chart shows one series at a time). Weight/Body fat/BMI
-// match the series BodySection uses for the same metric from Apple Health.
+// picker switches (each chart shows one series at a time). Weight, body fat
+// and lean mass match the series the Body window's own charts use for them.
 // visceral_fat_index deliberately gets no alarm colour — this table stores the
 // report's numbers, never the device's own risk judgment.
 export const BODY_COMP_FIELDS: BodyCompFieldMeta[] = [
@@ -85,6 +85,20 @@ export function latestAndPrevious(reports: BodyCompositionReport[]): {
   const latest = sorted[sorted.length - 1] ?? null
   const previous = sorted.length >= 2 ? sorted[sorted.length - 2] : null
   return { latest, previous }
+}
+
+/** One value per local day for a field — the day's last scan — ascending,
+ *  for a time-scaled line (two scans a day would otherwise stack on one
+ *  date). `dayOf` maps a measured_at instant to its local yyyy-MM-dd day. */
+export function dailySeries(
+  reports: BodyCompositionReport[], key: BodyCompFieldKey, dayOf: (iso: string) => string,
+): { date: string; value: number }[] {
+  const byDay = new Map<string, number>()
+  for (const r of sortedAsc(reports)) {
+    const v = r[key]
+    if (typeof v === 'number' && Number.isFinite(v)) byDay.set(dayOf(r.measured_at), v)
+  }
+  return [...byDay].map(([date, value]) => ({ date, value })).sort((a, b) => a.date.localeCompare(b.date))
 }
 
 export interface FieldDelta { delta: number; deltaPercent: number | null }

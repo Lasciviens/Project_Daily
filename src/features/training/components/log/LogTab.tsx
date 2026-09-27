@@ -7,16 +7,17 @@ import { StravaTab } from '../StravaTab'
 import { BodyMeasurementsTab } from '../BodyMeasurementsTab'
 import { LogHevyWorkoutModal } from '../LogHevyWorkoutModal'
 
-type LogView = 'workouts' | 'cardio' | 'body'
+type LogView = 'workouts' | 'strava' | 'body'
 
 const VIEWS: { value: LogView; label: string }[] = [
   { value: 'workouts', label: 'Workouts' },
-  { value: 'cardio',   label: 'Cardio (Strava)' },
+  { value: 'strava',   label: 'Strava' },
   { value: 'body',     label: 'Body' },
 ]
 
 /** Log: what you actually did — Hevy workouts with the calendar, Strava
- *  cardio, and body measurements, behind one filter. */
+ *  activities (labelled by the service, not "cardio": it holds walks, rides
+ *  and anything else Strava records), and body measurements, behind one filter. */
 export function LogTab() {
   const [view, setView] = useState<LogView>('workouts')
   const [logOpen, setLogOpen] = useState(false)
@@ -34,7 +35,7 @@ export function LogTab() {
           <aside className="w-full max-w-[440px] xl:w-[440px] xl:shrink-0"><TrainingCalendar /></aside>
         </div>
       )}
-      {view === 'cardio' && <StravaTab />}
+      {view === 'strava' && <StravaTab />}
       {view === 'body' && <BodyMeasurementsTab />}
 
       <LogHevyWorkoutModal isOpen={logOpen} onClose={() => setLogOpen(false)} />

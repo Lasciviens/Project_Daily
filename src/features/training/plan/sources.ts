@@ -67,6 +67,22 @@ export const SOURCES = {
     citation: 'Bell L et al. Integrating Deloading into Strength and Physique Sports Training Programmes: An International Delphi Consensus Approach. Sports Med Open 2023.',
     url: 'https://pubmed.ncbi.nlm.nih.gov/37730925/',
   },
+  // RPE / reps in reserve (the Next card's effort note and the RPE explainer).
+  robinson2024: {
+    id: 'robinson2024', short: 'Robinson 2024',
+    citation: 'Robinson ZP et al. Exploring the Dose-Response Relationship Between Estimated Resistance Training Proximity to Failure, Strength Gain, and Muscle Hypertrophy. Sports Med 2024.',
+    url: 'https://pubmed.ncbi.nlm.nih.gov/38970765/',
+  },
+  refalo2023: {
+    id: 'refalo2023', short: 'Refalo 2023',
+    citation: 'Refalo MC et al. Influence of Resistance Training Proximity-to-Failure on Skeletal Muscle Hypertrophy. Sports Med 2023.',
+    url: 'https://pubmed.ncbi.nlm.nih.gov/36334240/',
+  },
+  halperin2022: {
+    id: 'halperin2022', short: 'Halperin 2022',
+    citation: 'Halperin I et al. Accuracy in Predicting Repetitions to Task Failure in Resistance Exercise. Sports Med 2022.',
+    url: 'https://pubmed.ncbi.nlm.nih.gov/34542869/',
+  },
 } as const satisfies Record<string, Source>
 
 export type SourceId = keyof typeof SOURCES

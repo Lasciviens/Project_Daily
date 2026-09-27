@@ -1,9 +1,11 @@
 import type { Slug } from 'react-muscle-highlighter'
+import { subDays } from 'date-fns'
 import { localDayOf } from '../../../../shared/utils/dateUtils'
 import {
-  bandForWeeklySets, contribution, labelForSlug, weeklySetGap,
+  bandForWeeklySets, creditedMuscles, labelForSlug, templateMuscleCredit, weeklySetGap,
   type Landmarks, type MuscleRole, type SlugRestriction, type WeeklySetGap,
 } from '../../muscleMap'
+import { balanceTotals, ratioText, readMuscleBalance, type MuscleBalance } from '../../plan/muscleBalance'
 import type { AthleteLimitation } from '../../types.athlete'
 import type { Tone } from '../../../../shared/ui'
 
@@ -18,6 +20,14 @@ export const PRESETS: { id: Exclude<Period, 'custom'>; label: string; days: numb
   { id: '30d', label: '30 days', days: 30 },
   { id: '90d', label: '90 days', days: 90 },
 ]
+
+/** The last `days` days ending tonight — the Muscles tab's preset window.
+ *  Anything else reading "done in the last 30 days" (the Program tab's
+ *  balance card) uses this too, so both share one query and one number. */
+export function presetWindowIso(anchorDay: string, days: number): { fromIso: string; toIso: string } {
+  const end = new Date(`${anchorDay}T23:59:59`)
+  return { fromIso: subDays(end, days).toISOString(), toIso: end.toISOString() }
+}
 
 export const ROLE_LABEL: Record<MuscleRole, string> = { primary: 'Primary', secondary: 'Secondary', tertiary: 'Tertiary' }
 export const ROLE_BADGE: Record<MuscleRole, string> = {
@@ -64,8 +74,20 @@ export function bandGuidance(band: number, L?: Landmarks): string {
 
 export interface ExerciseHit { sets: number; credited: number; role: MuscleRole; lastDate: string; templateId: string }
 export interface SlugAgg { credited: number; dates: Set<string>; directDates: Set<string>; exercises: Map<string, ExerciseHit> }
-export interface VolumeRow { templateId: string; workoutId: string; workoutDate: string; workingSets: number }
+export interface VolumeRow { templateId: string; workoutId: string; workoutDate: string; workingSets: number; routineId?: string | null }
 export interface Tpl { primary: Slug | null; secondaries: Slug[]; title: string }
+
+/** Template id → the body slugs it credits (each once — templateMuscleCredit). */
+export function buildTplById(
+  templates: readonly { id: string; title: string; primary_muscle_group: string | null; secondary_muscle_groups?: string[] | null }[],
+): Map<string, Tpl> {
+  const m = new Map<string, Tpl>()
+  for (const t of templates) {
+    const c = templateMuscleCredit(t.primary_muscle_group, t.secondary_muscle_groups)
+    m.set(t.id, { primary: c.primarySlug, secondaries: c.secondarySlugs, title: t.title })
+  }
+  return m
+}
 
 export interface VolumeAggregate {
   perSlug: Record<string, SlugAgg>
@@ -75,8 +97,9 @@ export interface VolumeAggregate {
 }
 
 /** Credited working sets per slug from one window's volume rows (primary 1.0,
- *  secondary 0.5 via contribution()). Days are LOCAL days — workoutDate is an
- *  instant, and its UTC date put a 00:30 session on the previous day. */
+ *  each distinct secondary 0.5 — creditedMuscles, the rule every volume
+ *  screen shares). Days are LOCAL days — workoutDate is an instant, and its
+ *  UTC date put a 00:30 session on the previous day. */
 export function aggregateVolume(volume: readonly VolumeRow[], tplById: Map<string, Tpl>): VolumeAggregate {
   const acc: Record<string, SlugAgg> = {}
   const add = (slug: string, credit: number, day: string, title: string, ws: number, role: MuscleRole, direct: boolean, templateId: string) => {
@@ -98,14 +121,12 @@ export function aggregateVolume(volume: readonly VolumeRow[], tplById: Map<strin
     const day = localDayOf(row.workoutDate) ?? ''
     workouts.add(row.workoutId)
     totalWorkingSets += row.workingSets
-    if (t.primary) {
-      add(t.primary, row.workingSets * contribution(row.templateId, t.primary, 'primary'), day, t.title, row.workingSets, 'primary', true, row.templateId)
-    } else {
+    if (!t.primary) {
       unattributedSets += row.workingSets
       if (row.workingSets > 0) unattributedTitles.add(t.title)
     }
-    for (const s of t.secondaries) {
-      add(s, row.workingSets * contribution(row.templateId, s, 'secondary'), day, t.title, row.workingSets, 'secondary', false, row.templateId)
+    for (const c of creditedMuscles(row.templateId, t.primary, t.secondaries)) {
+      add(c.slug, row.workingSets * c.weight, day, t.title, row.workingSets, c.role, c.role === 'primary', row.templateId)
     }
   }
   return { perSlug: acc, unattributed: { sets: unattributedSets, exercises: unattributedTitles.size }, totalWorkingSets, workoutCount: workouts.size }
@@ -182,14 +203,12 @@ export function readMuscle(ctx: MuscleReadContext, slug: Slug): MuscleRead {
 export type VerdictIcon = 'down' | 'add' | 'up' | 'balance'
 export interface Verdict { headline: string; bullets: { icon: VerdictIcon; text: string }[]; extra: number }
 
-export interface Balance { push: number; pull: number; pushPull: number | null; quad: number; ham: number; quadHam: number | null }
+export type Balance = MuscleBalance
 
+/** Done push:pull and quad:hamstring over the window — muscleBalance.ts's
+ *  shared ratio + verdict over the same weekly numbers the body map shows. */
 export function computeBalance(ctx: Pick<MuscleReadContext, 'perSlug' | 'weeks'>): Balance {
-  const s = (slug: string) => weeklyOf(ctx, slug)
-  const push = s('chest') + s('deltoids') + s('triceps')
-  const pull = s('upper-back') + s('biceps') + s('trapezius')
-  const quad = s('quadriceps'), ham = s('hamstring')
-  return { push, pull, pushPull: pull > 0 ? push / pull : null, quad, ham, quadHam: ham > 0 ? quad / ham : null }
+  return readMuscleBalance(balanceTotals(slug => weeklyOf(ctx, slug)))
 }
 
 export interface MajorBuckets { inGrowth: number; close: number; needWork: number }
@@ -252,8 +271,10 @@ export function buildVerdict(args: {
       ? `Add ~${d.sets} sets/wk to ${labelForSlug(u.slug)} (≈ ${d.sessions === 1 ? 'one more session' : `${d.sessions} more sessions`}) to reach the growth range.`
       : `Train ${labelForSlug(u.slug)} more — ${u.wk.toFixed(1)}/wk.`) })
   }
-  if (balance.pushPull != null && (balance.pushPull > 1.25 || balance.pushPull < 0.8)) {
-    bullets.push({ icon: 'balance', text: balance.pushPull > 1.25 ? `You're push-heavy — add back & biceps (pull) work.` : `You're pull-heavy — add chest/shoulder (push) work.` })
+  // Only the side worth fixing becomes a bullet — pull-heavy is rarely a
+  // problem (muscleBalance.leanTone), so it stays on the balance card.
+  if (balance.pushPull.lean === 'a') {
+    bullets.push({ icon: 'balance', text: `You're push-heavy (${ratioText(balance.pushPull)}) — add back & biceps (pull) work.` })
   }
   const top = bullets.slice(0, 3)
   const needCount = untrained.length + under.length

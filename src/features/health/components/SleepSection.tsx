@@ -35,8 +35,9 @@ export function SleepSection({ range }: { range: HealthRange }) {
   const manual = manualNightKeys(sleep.points)
   const sources = sleepSourcesByNight(sleep.points)
 
-  // Day mode shows the night that ENDED on the selected day — never the newest night on record.
-  const dayNight = isDay ? nightEndingOn(inWindow, anchor) : null
+  // The night that ENDED on the selected day — never the newest night on record.
+  const endNight = nightEndingOn(inWindow, anchor)
+  const dayNight = isDay ? endNight : null
   const periodNight: SleepSummary | null = !isDay && inWindow.length ? {
     date: win.to,
     total: mean(inWindow.map(n => n.total)) as number,
@@ -85,6 +86,15 @@ export function SleepSection({ range }: { range: HealthRange }) {
         {!isDay && s.best && s.worst && (
           <p className="mt-1 text-meta text-fg-muted">
             Longest {fmtHrs(s.best.value)} ({fmtDayMonth(s.best.date)}) · shortest {fmtHrs(s.worst.value)} ({fmtDayMonth(s.worst.date)})
+          </p>
+        )}
+        {/* The window's last night is the one that ended on its last day —
+            said so when it is missing, never swapped for an older night. */}
+        {!isDay && !sleep.isLoading && (
+          <p className="mt-1 text-meta text-fg-2">
+            {endNight
+              ? <>{anchor === win.today ? 'Last night' : `Night of ${fmtDayMonth(shiftDateStr(anchor, -1))}–${fmtDayMonth(anchor)}`}: <b className="font-semibold tabular-nums text-fg">{fmtHrs(endNight.total)}</b></>
+              : `${nightMissingText(anchor, win.today)}.`}
           </p>
         )}
         {!isDay && inWindow.length === 0 && !sleep.isLoading && (

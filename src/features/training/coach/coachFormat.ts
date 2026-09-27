@@ -99,7 +99,7 @@ export function formatPtSnapshot(d: CoachData): string {
     }
     for (const r of progress.decisions) {
       const title = progress.titleById.get(r.exerciseTemplateId) ?? r.exerciseTemplateId
-      const latest = r.currentState.latest ? formatSessionSets(r.currentState.latest.sets, r.metricKind) : '—'
+      const latest = r.currentState.latest ? formatSessionSets(r.currentState.latest.sets, r.metricKind, { rpe: true }) : '—'
       const next = nextTargetText(r)
       const nextText = next ? ` · sonraki: ${next}` : ''
       lines.push(`  Karar: ${title}: ${r.currentAction} "${actionLabel(r.currentAction)}" · son: ${latest}${nextText} · kanıt ${r.evidence.progress}`)
@@ -167,7 +167,7 @@ export function buildCoachJson(d: CoachData, windowDays: number): Record<string,
   const { profile, progress } = d
   const ctx: Record<string, unknown> = {
     period: `${from}..${d.today}`,
-    about: 'program + progress are the app\'s own Progress-tab results (same engine): keep advice consistent with them; if you disagree, say why with numbers.',
+    about: 'program + progress are the app\'s own Progress-tab results (same engine): keep advice consistent with them; if you disagree, say why with numbers. "@ RPE 8/9/10" after sets = effort logged per working set in Hevy (reps in reserve ≈ 10 − RPE, self-reported; absent = not logged) — context only, never overrides progress.',
   }
   if (profile) ctx.profile = { goal: profile.goal, level: profile.experience_level, days: profile.training_days_per_week, equip: profile.equipment_access, notes: profile.notes }
   if (d.limitations.length) {
@@ -189,7 +189,7 @@ export function buildCoachJson(d: CoachData, windowDays: number): Record<string,
       n: progress.titleById.get(r.exerciseTemplateId) ?? r.exerciseTemplateId,
       tid: r.exerciseTemplateId,
       action: r.currentAction,
-      last: r.currentState.latest ? formatSessionSets(r.currentState.latest.sets, r.metricKind) : null,
+      last: r.currentState.latest ? formatSessionSets(r.currentState.latest.sets, r.metricKind, { rpe: true }) : null,
       next: nextTargetText(r),
       target: r.expectation.repMin != null ? `${r.expectation.repMin}-${r.expectation.repMax}` : null,
       evidence: r.evidence.progress,
@@ -237,6 +237,7 @@ DATA SNAPSHOT (read-only, pre-aggregated; you have no tools):
 - PROGRAM: the routines the user marked as their CURRENT program (their real split — never assume another one) and sessions logged this calendar week (Monday → today) vs their target. "seçilmemiş" = no program picked yet: then there are no progress decisions; mention once that choosing the current program (Training → Coach → Profile) unlocks per-exercise advice.
 - İLERLEME + "Karar:" lines: the app's own progress engine — the SAME per-exercise decisions the Progress tab shows. Format "Karar: Exercise: ACTION "Action title" · son: <latest sets> · sonraki: <next-session target> · kanıt <limited|moderate|strong>". ACTION values: READY_TO_INCREASE (add load as in "sonraki"), BUILD_AT_CURRENT_LOAD / HOLD_STEADY (same load, chase reps toward the target), CONFIRM_BEFORE_INCREASING / CONFIRM_AT_CURRENT_LOAD (repeat once to confirm), WATCH_FOR_PLATEAU / WATCH_FOR_REGRESSION (flag it), REVIEW_LOAD_REDUCTION (load went down — ask whether deliberate), LOG_COMPARABLE_SESSION (last session not comparable), INSUFFICIENT_DATA (too few sessions).
 - Workout lines: "Exercise: sets×reps@kg (önceki: …)". "önceki" = same exercise, the last session it appeared. Warm-ups already excluded.
+- RPE: a workout line or a Karar "son:" may end with "@ RPE 8/9/10" — the effort the user logged per working set in Hevy, in set order (6-10 scale; reps in reserve ≈ 10 − RPE; one value = every set the same; "–" = that set unrated). Self-reported, and people underestimate reps left by ~1. Absent = not logged — never read missing RPE as easy or hard. Context only: RPE never overrides a Karar or changes a target; you may mention it (e.g. every set at RPE 10 = at the limit, check that form held).
 - Weekly volume: hard sets per muscle over the last 7 days vs landmarks (e.g. "Chest: 14 set/hf [MEV 8 · MAV 20 · MRV 22]"); "(kısıtlı: avoid|limit)" = an active limitation reaches that muscle. MEV=minimum effective, MAV=growth sweet spot, MRV=recoverable ceiling.
 - Sleep "6.2h (7g ort 6.8h)", steps, active kcal, body weight trend, subjective feeling + free text.
 

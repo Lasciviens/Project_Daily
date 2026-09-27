@@ -2246,12 +2246,13 @@ const DB_CATALOG: Record<string, CatalogEntry> = {
   athlete_profile: {
     access: 'rw',
     purpose: "The user's durable training profile/settings — a SINGLETON: at most ONE row per user, keyed by user_id (there is no id column, unlike every other table here). Not a list. Consult before giving any training/programming advice so recommendations match their real goal/experience/equipment; prefer the get_athlete_profile tool to read it (returns limitations too in the same call).",
-    columns: 'user_id(uuid, PRIMARY KEY — not "id"), goal(strength|hypertrophy|fat_loss|general), experience_level(novice|intermediate|advanced), training_age_years(numeric, nullable), training_days_per_week(int, nullable), equipment_access(home|gym|both), notes(text, nullable), birth_year(smallint, nullable), sex(male|female, nullable), height_cm(numeric, nullable), updated_at',
+    columns: 'user_id(uuid, PRIMARY KEY — not "id"), goal(strength|hypertrophy|fat_loss|general), experience_level(novice|intermediate|advanced), training_age_years(numeric, nullable), training_days_per_week(int, nullable), equipment_access(home|gym|both), notes(text, nullable), birth_year(smallint, nullable), sex(male|female, nullable), height_cm(numeric, nullable), goal_weight_kg(numeric, nullable), goal_body_fat_pct(numeric — body fat % as the smart scale reports it, nullable), goal_muscle_mass_kg(numeric — the scale report muscle % × weight, not lean mass, nullable), phase_start_date(date — first day of the current cut/maintain/gain phase, nullable), updated_at',
     rules: [
       'There is at most one row for this user — never insert a second one once a row exists.',
       'To write: first db_query this table with filters={} to check whether a row already exists (or call get_athlete_profile). If none exists, db_insert one. If one exists, db_update it — but db_update refuses an empty filters object, so pass filters={"user_id":"<the user_id value from the row you just queried>"} to satisfy that check; every row already carries its own user_id in the query result, and it is always the correct value since every read/write here is scoped to you anyway.',
       'This table has no id column, so a db_insert response\'s id/ids fields will read null for it — check success/rows instead to confirm the write went through.',
       'Only change goal/experience_level/equipment_access when the user actually states a change; do not infer a new goal from one offhand remark.',
+      'The cut/maintain/gain PHASE is not stored here — it is day_targets.goal; goal_weight_kg/goal_body_fat_pct/goal_muscle_mass_kg/phase_start_date are the body goals the Health page\'s Goal progress report measures against.',
     ].join(' '),
   },
   // athlete_limitations is rw for the same reason — a normal list table, not a

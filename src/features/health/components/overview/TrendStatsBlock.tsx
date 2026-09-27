@@ -27,7 +27,7 @@ function Cell({ label, value, sub }: { label: string; value: string; sub?: strin
     <div className="min-w-0 rounded-row bg-surface-2 px-2.5 py-2">
       <p className="text-micro font-medium text-fg-muted">{label}</p>
       <p className="text-body font-semibold tabular-nums text-fg">{value}</p>
-      {sub && <p className="truncate text-micro font-normal text-fg-faint">{sub}</p>}
+      {sub && <p className="text-micro font-normal leading-snug text-fg-faint">{sub}</p>}
     </div>
   )
 }

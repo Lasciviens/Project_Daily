@@ -11,9 +11,9 @@ export function CalendarLegend() {
   const items: { tone?: Tone; label: string }[] = [
     { tone: PLAN_TONE.today, label: PLAN_STATUS_LABEL.today },
     { tone: PLAN_TONE.upcoming, label: PLAN_STATUS_LABEL.upcoming },
-    { tone: PLAN_TONE.done, label: PLAN_STATUS_LABEL.done },
     { tone: PLAN_TONE.missed, label: PLAN_STATUS_LABEL.missed },
-    { tone: WORKOUT_TONE, label: 'Workout' },
+    // A covered plan folds into its workout, so green reads "done" for both.
+    { tone: WORKOUT_TONE, label: 'Done' },
     { label: 'Strava' },
   ]
   return (

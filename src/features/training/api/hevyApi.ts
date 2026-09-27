@@ -129,6 +129,8 @@ export interface ExerciseVolumeRow {
   workoutId:   string
   workoutDate: string   // ISO — effective date (start_time ?? hevy_created_at)
   workingSets: number   // sets with type !== 'warmup'
+  /** The Hevy routine the session was started from (null = freeform). */
+  routineId:   string | null
 }
 
 type WorkoutDateRow = { id: string; start_time: string | null; hevy_created_at: string }
@@ -147,9 +149,10 @@ async function fetchExercisesForWorkouts(workoutIds: string[]): Promise<Exercise
 // Per-exercise WORKING-set counts over a date range, for the volume-based
 // muscle map. Effective date = start_time (hevy_created_at fallback).
 export async function fetchMuscleVolume(fromISO: string, toISO: string): Promise<ExerciseVolumeRow[]> {
-  const workouts = await fetchWorkoutsInWindow<WorkoutDateRow>('id, start_time, hevy_created_at', fromISO, toISO)
+  const workouts = await fetchWorkoutsInWindow<WorkoutDateRow & { routine_id: string | null }>('id, start_time, hevy_created_at, routine_id', fromISO, toISO)
   if (!workouts.length) return []
   const dateByWorkout = new Map(workouts.map(w => [w.id, w.start_time ?? w.hevy_created_at]))
+  const routineByWorkout = new Map(workouts.map(w => [w.id, w.routine_id ?? null]))
 
   const exRows = await fetchExercisesForWorkouts([...dateByWorkout.keys()])
   if (!exRows.length) return []
@@ -168,6 +171,7 @@ export async function fetchMuscleVolume(fromISO: string, toISO: string): Promise
       workoutId:   e.hevy_workout_id,
       workoutDate: dateByWorkout.get(e.hevy_workout_id) ?? '',
       workingSets: workingByExercise.get(e.id) ?? 0,
+      routineId:   routineByWorkout.get(e.hevy_workout_id) ?? null,
     }))
     .filter(r => r.templateId)
 }

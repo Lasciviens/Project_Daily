@@ -1,17 +1,15 @@
 import { useMemo, useState } from 'react'
 import { DateNav } from '../../../../shared/components/DateNav'
 import { ToneDot } from '../../../../shared/ui'
-import { workoutLocalDay } from '../../workoutDates'
-import { planStatus } from '../../trainingPlanModel'
 import { CalendarLegend, CalViewToggle, StravaDot } from './CalendarBits'
 import { DayDetailPanel } from './DayDetailPanel'
-import { PLAN_TONE, WORKOUT_TONE, activityDay, dayDataFor, ymd, type ViewProps } from './calendarModel'
+import { PLAN_TONE, WORKOUT_TONE, dayDataFor, ymd, type DayData, type ViewProps } from './calendarModel'
 
 // ─── Month View ───────────────────────────────────────────────────────────────
 
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
-export function MonthView({ year, month, workouts, activities, plansByDate, todayStr, onPrev, onNext, onToday, onSwitchView, onOpenWorkout, onOpenPlan }: ViewProps & { year: number; month: number }) {
+export function MonthView({ year, month, workouts, activities, plansByDate, todayStr, onPrev, onNext, onToday, onSwitchView, onOpenWorkout, onEditPlan }: ViewProps & { year: number; month: number }) {
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
 
   const { cells, monthLabel } = useMemo(() => {
@@ -27,12 +25,19 @@ export function MonthView({ year, month, workouts, activities, plansByDate, toda
     return { cells, monthLabel }
   }, [year, month])
 
-  const workoutDates = useMemo(() => new Set(workouts.map(workoutLocalDay)), [workouts])
-  const activityDates = useMemo(() => new Set(activities.map(activityDay).filter(Boolean) as string[]), [activities])
+  // One matched day per cell, so a dot means the same thing as the detail
+  // below it: a covered plan is part of its workout, not a second dot.
+  const dayByDate = useMemo(() => {
+    const m = new Map<string, DayData>()
+    for (const date of cells) {
+      if (!date) continue
+      const key = ymd(date)
+      m.set(key, dayDataFor(key, date, workouts, activities, plansByDate, todayStr))
+    }
+    return m
+  }, [cells, workouts, activities, plansByDate, todayStr])
 
-  const selectedDay = useMemo(() => selectedDate
-    ? dayDataFor(selectedDate, new Date(`${selectedDate}T12:00:00`), workouts, activities, plansByDate)
-    : null, [selectedDate, workouts, activities, plansByDate])
+  const selectedDay = selectedDate ? dayByDate.get(selectedDate) ?? null : null
 
   return (
     <div className="flex flex-col gap-3">
@@ -51,11 +56,11 @@ export function MonthView({ year, month, workouts, activities, plansByDate, toda
         {cells.map((date, idx) => {
           if (!date) return <div key={`empty-${idx}`} className="aspect-square" />
           const dateStr = ymd(date)
-          const hasWorkout = workoutDates.has(dateStr)
-          const hasActivity = activityDates.has(dateStr)
-          const hasPlan = plansByDate.has(dateStr)
+          const day = dayByDate.get(dateStr)
+          const hasWorkout = (day?.sessions.length ?? 0) > 0
+          const hasActivity = (day?.activities.length ?? 0) > 0
+          const openPlan = day?.openPlans[0]
           const isSelected = selectedDate === dateStr
-          const tone = PLAN_TONE[planStatus(dateStr, todayStr, hasWorkout || hasActivity)]
           return (
             <button
               key={dateStr}
@@ -73,8 +78,8 @@ export function MonthView({ year, month, workouts, activities, plansByDate, toda
                 {date.getDate()}
               </span>
               <span className="mt-0.5 flex gap-0.5">
-                {hasPlan && <ToneDot tone={tone} className="!h-1.5 !w-1.5" />}
                 {hasWorkout && <ToneDot tone={WORKOUT_TONE} className="!h-1.5 !w-1.5" />}
+                {openPlan && <ToneDot tone={PLAN_TONE[openPlan.status]} className="!h-1.5 !w-1.5" />}
                 {hasActivity && <StravaDot className="h-1.5 w-1.5" />}
               </span>
             </button>
@@ -83,7 +88,7 @@ export function MonthView({ year, month, workouts, activities, plansByDate, toda
       </div>
 
       <CalendarLegend />
-      <DayDetailPanel day={selectedDay} todayStr={todayStr} onOpenWorkout={onOpenWorkout} onOpenPlan={onOpenPlan} />
+      <DayDetailPanel day={selectedDay} todayStr={todayStr} onOpenWorkout={onOpenWorkout} onEditPlan={onEditPlan} />
     </div>
   )
 }

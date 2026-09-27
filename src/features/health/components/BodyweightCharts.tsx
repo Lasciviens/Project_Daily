@@ -1,124 +1,145 @@
 import { useChartColors } from '../../../shared/ui'
 import { InfoBubble } from '../../../shared/components/InfoBubble'
-import { BODYWEIGHT_SOURCE_LABEL, type BodyweightPoint, type BodyweightSource } from '../bodyweight'
+import type { ScaleDay } from '../bodyweight'
 import { daysBetweenIso, fillDays, linearTrendPerDay, rollingMean } from '../healthWindowStats'
-import { HealthTrendChart, type TrendPoint } from './HealthTrendChart'
+import { HealthTrendChart, type TrendPoint, type TrendSeries } from './HealthTrendChart'
 import { fmtDayMonth } from './healthFormat'
 
-// ONE weight chart and ONE body-fat chart from the merged series (smart
-// scale + Hevy + Apple Health, see bodyweight.ts). Readings are dots coloured
-// by the source that won the day; the line is the 7-day average, which is the
-// honest trend — single weigh-ins swing 1-2 kg with water and food.
+// The smart scale's weight, body fat and lean mass as plain lines (owner:
+// "only show the scale… don't need dots"). Hand-typed Hevy weights are left
+// out here (scaleOnly in bodyweight.ts). The weight chart adds the 7-day
+// average, the honest trend: single weigh-ins swing 1-2 kg with water and food.
 
 const STALE_AFTER_DAYS = 3
 
-function useSourceColors(): Record<BodyweightSource, string> {
-  const c = useChartColors()
-  return { scale: c.series[1], hevy: c.series[2], apple: c.series[0] }
-}
-
 interface Props {
-  points: BodyweightPoint[]
-  latest: BodyweightPoint | null | undefined
+  /** Scale readings inside [from, to]. */
+  days: ScaleDay[]
+  /** The newest scale weight on or before `to` (may be older than `from`). */
+  latest: ScaleDay | null
   from: string
   to: string
   onViewDay: (date: string) => void
 }
 
-export function BodyweightCharts({ points, latest, from, to, onViewDay }: Props) {
-  const c = useChartColors()
-  const colors = useSourceColors()
-  const bySource = new Map(points.map(p => [p.date, p]))
+type Field = 'kg' | 'fatPct' | 'leanKg'
 
-  const weightDense = fillDays(points.map(p => ({ date: p.date, value: p.kg })), from, to)
-  const weightMean = rollingMean(weightDense, 7, 2)
-  const weightData: TrendPoint[] = weightDense.map((d, i) => ({
-    label: fmtDayMonth(d.date), date: d.date, kg: d.value, mean7: weightMean[i].value, source: bySource.get(d.date)?.source,
-  }))
-  const fatPts = points.filter(p => p.fatPct != null)
-  const fatDense = fillDays(fatPts.map(p => ({ date: p.date, value: p.fatPct as number })), from, to)
-  const fatMean = rollingMean(fatDense, 7, 2)
-  const fatData: TrendPoint[] = fatDense.map((d, i) => ({
-    label: fmtDayMonth(d.date), date: d.date, fat: d.value, mean7: fatMean[i].value, source: bySource.get(d.date)?.fatSource ?? undefined,
+function dense(days: ScaleDay[], field: Field, from: string, to: string) {
+  const readings = days.filter(d => d[field] != null).map(d => ({ date: d.date, value: d[field] as number }))
+  return { readings, filled: fillDays(readings, from, to) }
+}
+
+/** A solid line through the readings; a lone reading keeps its dot, since a
+ *  line with one point draws nothing. */
+function readingLine(key: string, label: string, color: string, count: number): TrendSeries {
+  return count >= 2
+    ? { key, label, color, kind: 'line', plain: true, connectNulls: true }
+    : { key, label, color, kind: 'line' }
+}
+
+export function BodyweightCharts({ days, latest, from, to, onViewDay }: Props) {
+  const c = useChartColors()
+
+  const weight = dense(days, 'kg', from, to)
+  const weightMean = rollingMean(weight.filled, 7, 2)
+  const weightData: TrendPoint[] = weight.filled.map((d, i) => ({
+    label: fmtDayMonth(d.date), date: d.date, kg: d.value, mean7: weightMean[i].value,
   }))
 
   // Trend over the last four weeks of readings, in kg/week — never
   // first-vs-last raw readings, which a single water-heavy morning can flip.
-  const recent = points.filter(p => daysBetweenIso(p.date, to) <= 27)
+  const recent = weight.readings.filter(p => daysBetweenIso(p.date, to) <= 27)
   const trend = recent.length >= 3 && daysBetweenIso(recent[0].date, recent[recent.length - 1].date) >= 7
-    ? linearTrendPerDay(recent.map(p => ({ date: p.date, value: p.kg })))
+    ? linearTrendPerDay(recent)
     : null
+  const perWeek = trend ? trend.slopePerDay * 7 : null
   const stale = latest ? daysBetweenIso(latest.date, to) : null
-  const dot = (p: TrendPoint) => colors[(p.source as BodyweightSource) ?? 'apple'] ?? c.series[0]
-  const describe = (p: TrendPoint) => p.source
-    ? <p className="text-fg-muted">{BODYWEIGHT_SOURCE_LABEL[p.source as BodyweightSource]}</p>
-    : null
+  // Body fat and lean mass side by side once the card is wide enough — only
+  // when both have readings, so a lone chart keeps the full width.
+  const pair = days.some(d => d.fatPct != null) && days.some(d => d.leanKg != null)
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="@container flex flex-col gap-4">
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
           <p className="section-label flex items-center gap-1">
             Weight
             <InfoBubble label="Where weight comes from">
-              One series from three sources. On a day with more than one, a weight typed into Hevy wins (a deliberate
-              entry), then the smart scale, then Apple Health (often a copy of another device's reading).
+              Your smart scale, read from Apple Health — the scale's app writes every weigh-in there. A scale report
+              imported from a photo fills a day Apple Health hasn't synced yet. Weights typed into Hevy aren't shown
+              here. The dashed line is the 7-day average: a single weigh-in swings 1–2 kg with water and food.
             </InfoBubble>
           </p>
           <p className="text-kpi font-bold leading-tight tabular-nums text-fg">
-            {latest ? latest.kg.toFixed(1) : '—'}{latest && <span className="text-body font-normal text-fg-muted"> kg</span>}
+            {latest?.kg != null ? latest.kg.toFixed(1) : '—'}{latest?.kg != null && <span className="text-body font-normal text-fg-muted"> kg</span>}
           </p>
           {latest && (
             <p className="text-meta text-fg-muted">
-              {fmtDayMonth(latest.date)} · {BODYWEIGHT_SOURCE_LABEL[latest.source]}
+              Smart scale · {fmtDayMonth(latest.date)}
               {stale != null && stale >= STALE_AFTER_DAYS && (
                 <span data-tone="warn" className="tone-text font-medium"> · {stale} days before the day you're viewing</span>
               )}
             </p>
           )}
         </div>
-        {trend && (
+        {trend && perWeek != null && (
           <p className="text-meta text-fg-muted">
-            Trend <span className="font-semibold tabular-nums text-fg">{trend.slopePerDay * 7 > 0 ? '+' : trend.slopePerDay * 7 < 0 ? '−' : '±'}{Math.abs(trend.slopePerDay * 7).toFixed(2)} kg/week</span> (last 4 weeks, {trend.n} weigh-ins)
+            Trend <span className="font-semibold tabular-nums text-fg">{perWeek > 0 ? '+' : perWeek < 0 ? '−' : '±'}{Math.abs(perWeek).toFixed(2)} kg/week</span> (last 4 weeks, {trend.n} weigh-ins)
           </p>
         )}
       </div>
-      {points.length === 0
-        ? <p className="py-6 text-center text-meta text-fg-muted">No weigh-ins in the last 90 days.</p>
+      {weight.readings.length === 0
+        ? <p className="py-6 text-center text-meta text-fg-muted">No scale readings in the last 90 days.</p>
         : (
-          <HealthTrendChart data={weightData} unit="kg" ariaLabel="Weight per day with 7-day average" height={170}
-            formatValue={v => v.toFixed(1)} onViewDay={onViewDay} describe={describe}
+          <HealthTrendChart data={weightData} unit="kg" ariaLabel="Weight from the smart scale with its 7-day average" height={180}
+            formatValue={v => v.toFixed(1)} onViewDay={onViewDay}
             series={[
-              { key: 'kg', label: 'weigh-in', color: c.series[1], kind: 'line', dotsOnly: true, dotColor: dot },
+              readingLine('kg', 'weigh-in', c.series[1], weight.readings.length),
               { key: 'mean7', label: '7-day average', color: c.series[1], kind: 'line', dashed: true, connectNulls: true },
             ]} />
         )}
-      <SourceLegend colors={colors} used={new Set(points.map(p => p.source))} />
 
-      {fatPts.length > 0 && (
-        <div className="flex flex-col gap-1">
-          <p className="section-label">Body fat</p>
-          <HealthTrendChart data={fatData} unit="%" ariaLabel="Body fat per day with 7-day average" height={140}
-            formatValue={v => v.toFixed(1)} onViewDay={onViewDay} describe={describe}
-            series={[
-              { key: 'fat', label: 'reading', color: c.series[2], kind: 'line', dotsOnly: true, dotColor: dot },
-              { key: 'mean7', label: '7-day average', color: c.series[2], kind: 'line', dashed: true, connectNulls: true },
-            ]} />
-        </div>
-      )}
+      <div className={`grid grid-cols-1 gap-4 ${pair ? '@2xl:grid-cols-2' : ''}`}>
+        <ScaleMetricChart days={days} field="fatPct" from={from} to={to} onViewDay={onViewDay}
+          title="Body fat" unit="%" color={c.series[2]} ariaLabel="Body fat from the smart scale" />
+        <ScaleMetricChart days={days} field="leanKg" from={from} to={to} onViewDay={onViewDay}
+          title="Lean mass" unit="kg" color={c.series[4]} ariaLabel="Lean mass from the smart scale"
+          info="Everything that isn't fat — muscle, water, bone and organs — as the scale estimates it: your weight minus its fat estimate. It moves with hydration and food in the gut, so read it over weeks, not from one morning." />
+      </div>
     </div>
   )
 }
 
-function SourceLegend({ colors, used }: { colors: Record<BodyweightSource, string>; used: Set<BodyweightSource> }) {
-  if (!used.size) return null
+function ScaleMetricChart({ days, field, from, to, onViewDay, title, unit, color, ariaLabel, info }: {
+  days: ScaleDay[]
+  field: Field
+  from: string
+  to: string
+  onViewDay: (date: string) => void
+  title: string
+  unit: string
+  color: string
+  ariaLabel: string
+  info?: string
+}) {
+  const { readings, filled } = dense(days, field, from, to)
+  if (!readings.length) return null
+  const last = readings[readings.length - 1]
+  const data: TrendPoint[] = filled.map(d => ({ label: fmtDayMonth(d.date), date: d.date, value: d.value }))
   return (
-    <div className="-mt-2 flex flex-wrap gap-3 text-meta text-fg-muted">
-      {(['scale', 'hevy', 'apple'] as const).filter(s => used.has(s)).map(s => (
-        <span key={s} className="flex items-center gap-1.5">
-          <span className="h-2 w-2 rounded-full" style={{ backgroundColor: colors[s] }} />{BODYWEIGHT_SOURCE_LABEL[s]}
-        </span>
-      ))}
+    <div className="flex min-w-0 flex-col gap-1">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-2">
+        <p className="section-label flex items-center gap-1">
+          {title}
+          {info && <InfoBubble label={`About ${title.toLowerCase()}`}>{info}</InfoBubble>}
+        </p>
+        <p className="text-meta text-fg-muted">
+          <span className="font-semibold tabular-nums text-fg">{last.value.toFixed(1)} {unit}</span> · {fmtDayMonth(last.date)}
+        </p>
+      </div>
+      <HealthTrendChart data={data} unit={unit} ariaLabel={ariaLabel} height={140}
+        formatValue={v => v.toFixed(1)} onViewDay={onViewDay}
+        series={[readingLine('value', title.toLowerCase(), color, readings.length)]} />
     </div>
   )
 }

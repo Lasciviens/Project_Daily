@@ -50,16 +50,31 @@ export function slugForHevyGroup(group: string | null | undefined): Slug | null 
  *  one mapping built once instead of two near-identical inline loops. */
 export interface TemplateMuscleCredit { primarySlug: Slug | null; secondarySlugs: Slug[] }
 
+/** The body slugs an exercise credits, each ONCE: its primary, then every
+ *  secondary that lands on a different slug. Hevy lists "lats" and
+ *  "upper_back" separately but both map to the one Back slug, so a lat
+ *  pulldown (primary lats, secondary upper_back) or a Romanian deadlift
+ *  (secondaries upper_back + lats) used to credit Back 1.5× / 1.0× per set on
+ *  some screens and 1.0× / 0.5× on others — the real cause of the Program and
+ *  Muscles screens disagreeing on push:pull. One set trains a region once. */
+export function templateMuscleCredit(
+  primaryGroup: string | null | undefined,
+  secondaryGroups: readonly (string | null | undefined)[] | null | undefined,
+): TemplateMuscleCredit {
+  const primarySlug = slugForHevyGroup(primaryGroup)
+  const secondarySlugs: Slug[] = []
+  for (const g of secondaryGroups ?? []) {
+    const s = slugForHevyGroup(g)
+    if (s && s !== primarySlug && !secondarySlugs.includes(s)) secondarySlugs.push(s)
+  }
+  return { primarySlug, secondarySlugs }
+}
+
 export function buildTemplateMuscleMap(
   templates: { id: string; primary_muscle_group: string | null; secondary_muscle_groups: string[] }[],
 ): Map<string, TemplateMuscleCredit> {
   const m = new Map<string, TemplateMuscleCredit>()
-  for (const t of templates) {
-    m.set(t.id, {
-      primarySlug: slugForHevyGroup(t.primary_muscle_group),
-      secondarySlugs: t.secondary_muscle_groups.map(slugForHevyGroup).filter((s): s is Slug => s != null),
-    })
-  }
+  for (const t of templates) m.set(t.id, templateMuscleCredit(t.primary_muscle_group, t.secondary_muscle_groups))
   return m
 }
 
@@ -93,6 +108,27 @@ export const CONTRIBUTION_OVERRIDES: Record<string, Partial<Record<string, numbe
 export function contribution(templateId: string, slug: string, role: MuscleRole): number {
   const override = CONTRIBUTION_OVERRIDES[templateId]?.[slug]
   return override != null ? override : ROLE_WEIGHTS[role]
+}
+
+export interface MuscleCredit { slug: Slug; role: 'primary' | 'secondary'; weight: number }
+
+/** What ONE working set of an exercise credits, per body slug — the single
+ *  counting rule every volume screen uses (primary 1.0, each distinct
+ *  secondary 0.5, via contribution(); a slug is never credited twice). Pass
+ *  the raw lists: duplicates and a secondary equal to the primary are
+ *  dropped here even if the caller didn't use templateMuscleCredit. */
+export function creditedMuscles(
+  templateId: string,
+  primary: Slug | null | undefined,
+  secondaries: readonly (Slug | null | undefined)[],
+): MuscleCredit[] {
+  const out: MuscleCredit[] = []
+  if (primary) out.push({ slug: primary, role: 'primary', weight: contribution(templateId, primary, 'primary') })
+  for (const s of secondaries) {
+    if (!s || out.some(c => c.slug === s)) continue
+    out.push({ slug: s, role: 'secondary', weight: contribution(templateId, s, 'secondary') })
+  }
+  return out
 }
 
 // ── Per-muscle weekly working-set landmarks ─────────────────────────────────

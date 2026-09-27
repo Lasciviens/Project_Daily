@@ -138,7 +138,7 @@ function denseWeekKeys(dataWeeks: Iterable<string>, untilWeek?: string): string[
 // Only exercise types where weight×reps is a real "load" quantity contribute
 // — duration/distance/reps-only types have no weight-based tonnage and would
 // otherwise silently mix apples and oranges into one number.
-const TONNAGE_TYPES = new Set(['weight_reps', 'short_distance_weight', 'bodyweight_weighted'])
+export const TONNAGE_TYPES: ReadonlySet<string> = new Set(['weight_reps', 'short_distance_weight', 'bodyweight_weighted'])
 
 export interface WeeklyVolumePoint {
   weekStart: string // Monday, 'yyyy-MM-dd'

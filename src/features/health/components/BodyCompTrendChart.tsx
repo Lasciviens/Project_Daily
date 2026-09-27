@@ -1,15 +1,14 @@
 import { useState } from 'react'
 import type { BodyCompositionReport } from '../api/bodyCompositionApi'
-import { BODY_COMP_FIELDS, average, computeTrend, type BodyCompFieldKey, type BodyCompFieldMeta } from '../bodyCompositionAggregate'
-import { BarLineChart } from '../../../shared/components/charts/BarLineChart'
+import { BODY_COMP_FIELDS, average, computeTrend, dailySeries, type BodyCompFieldKey, type BodyCompFieldMeta } from '../bodyCompositionAggregate'
+import { fillDays } from '../healthWindowStats'
 import { useChartColors } from '../../../shared/ui'
-import { fmtDateEnGB } from '../../../shared/utils/enGBDate'
-
-function fmtDay(iso: string): string {
-  return fmtDateEnGB(new Date(iso), { day: 'numeric', month: 'short' })
-}
+import { localDayOf } from '../../../shared/utils/dateUtils'
+import { HealthTrendChart, type TrendPoint } from './HealthTrendChart'
+import { fmtDayMonth } from './healthFormat'
 
 const TREND_ARROW: Record<'up' | 'down' | 'flat', string> = { up: '↗', down: '↘', flat: '→' }
+const dayOf = (iso: string) => localDayOf(iso) ?? iso.slice(0, 10)
 
 // One featured chart with a metric picker, rather than 14 permanent small
 // multiples — this table has enough fields that showing all of them as
@@ -17,7 +16,8 @@ const TREND_ARROW: Record<'up' | 'down' | 'flat', string> = { up: '↗', down: '
 // Training Progress redesign explicitly moved away from (see CLAUDE.md's
 // Progress-tab small-multiples/indexed-chart notes). Every metric here is
 // single-series (no legend needed) so the picker can reuse one persistent
-// colour per field without any simultaneous-identity concern.
+// colour per field without any simultaneous-identity concern. Drawn like the
+// Body window's scale charts: a plain line on a real date axis, no dots.
 export function BodyCompTrendChart({ reportsInWindow, fields = BODY_COMP_FIELDS }: {
   reportsInWindow: BodyCompositionReport[]
   fields?: BodyCompFieldMeta[]
@@ -26,10 +26,14 @@ export function BodyCompTrendChart({ reportsInWindow, fields = BODY_COMP_FIELDS 
   const meta = fields.find(f => f.key === metric) ?? fields[0]
   const c = useChartColors()
 
-  const points = reportsInWindow.filter(r => Number.isFinite(r[metric]))
-  const chartData = points.map(r => ({ label: fmtDay(r.measured_at), value: Math.round(r[metric] * 10 ** meta.decimals) / 10 ** meta.decimals }))
-  const avg = average(reportsInWindow, metric)
-  const trend = computeTrend(reportsInWindow, metric)
+  const points = dailySeries(reportsInWindow, meta.key, dayOf)
+  const round = (v: number) => Math.round(v * 10 ** meta.decimals) / 10 ** meta.decimals
+  const chartData: TrendPoint[] = points.length
+    ? fillDays(points, points[0].date, points[points.length - 1].date)
+        .map(d => ({ label: fmtDayMonth(d.date), date: d.date, value: d.value == null ? null : round(d.value) }))
+    : []
+  const avg = average(reportsInWindow, meta.key)
+  const trend = computeTrend(reportsInWindow, meta.key)
 
   return (
     <div className="flex flex-col gap-3">
@@ -48,11 +52,15 @@ export function BodyCompTrendChart({ reportsInWindow, fields = BODY_COMP_FIELDS 
         ))}
       </div>
 
-      {chartData.length === 0 ? (
+      {points.length === 0 ? (
         <p className="py-6 text-center text-body text-fg-muted">No data for this metric in the selected period.</p>
       ) : (
         <>
-          <BarLineChart data={chartData} dataKey="value" color={c.series[meta.series]} unit={meta.unit} tooltipLabel={meta.label} height={180} />
+          <HealthTrendChart data={chartData} unit={meta.unit} ariaLabel={`${meta.label} from the scale reports`} height={180}
+            formatValue={v => v.toFixed(meta.decimals)}
+            series={[points.length >= 2
+              ? { key: 'value', label: meta.label.toLowerCase(), color: c.series[meta.series], kind: 'line', plain: true, connectNulls: true }
+              : { key: 'value', label: meta.label.toLowerCase(), color: c.series[meta.series], kind: 'line' }]} />
           <div className="flex flex-wrap gap-x-4 gap-y-1 text-meta text-fg-muted">
             {avg != null && (
               <p>Average (period): <span className="font-semibold tabular-nums text-fg">{avg.toFixed(meta.decimals)} {meta.unit}</span></p>

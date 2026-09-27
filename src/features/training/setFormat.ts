@@ -7,6 +7,9 @@
 // What a set shows depends on how the exercise is logged (Hevy's
 // CustomExerciseType on the template). Without a type (templates not loaded
 // yet) it shows whichever values the set actually carries.
+//
+// RPE (the effort rating logged per set in Hevy) is written ONLY here too:
+// `rpeSuffix` owns the " @ RPE 8" suffix every screen and the AI coach use.
 
 export interface SetValueFields {
   weight_kg?:        number | null
@@ -97,4 +100,34 @@ export function formatSet(set: SetValueFields, exerciseType?: string | null): st
     default:
       return join([weightReps(w, r), dur, dist])
   }
+}
+
+// ─── RPE ─────────────────────────────────────────────────────────────────────
+// Hevy's RPE scale: 6–10 in half steps, 10 = no rep left. Reps in reserve ≈
+// 10 − RPE (Hevy's own mapping). Display only — no decision in this app reads
+// it (the progress engine's targets never change because of RPE).
+
+const hasRpe = (v: number | null | undefined): v is number => typeof v === 'number' && Number.isFinite(v) && v > 0
+
+/** "8", "8.5" — never a trailing ".0". */
+export function formatRpe(rpe: number): string {
+  return String(Math.round(rpe * 10) / 10)
+}
+
+type RpeInput = number | null | undefined | readonly (number | null | undefined)[]
+const isRpeList = (v: RpeInput): v is readonly (number | null | undefined)[] => Array.isArray(v)
+
+/** " @ RPE 8" for a rated set; '' when nothing was rated. Several sets written
+ *  as one group read " @ RPE 8/9/10" in set order (" @ RPE 9" when all were
+ *  the same), and an unrated set inside a partly rated group shows "–". */
+export function rpeSuffix(rpe: RpeInput): string {
+  const list = isRpeList(rpe) ? rpe : [rpe]
+  if (!list.some(hasRpe)) return ''
+  const texts = list.map(v => (hasRpe(v) ? formatRpe(v) : '–'))
+  return ` @ RPE ${new Set(texts).size === 1 ? texts[0] : texts.join('/')}`
+}
+
+/** True when at least one of these sets carries an RPE. */
+export function anyRpe(sets: readonly { rpe?: number | null }[]): boolean {
+  return sets.some(s => hasRpe(s.rpe))
 }

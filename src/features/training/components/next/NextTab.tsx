@@ -131,6 +131,8 @@ export function NextTab({ onGoTo }: { onGoTo: (tab: TrainingTabId) => void }) {
     )
   }
 
+  // The RPE explainer once, on the first card whose last session was rated.
+  const firstRatedRow = plan.rows.findIndex(r => r.lastHasRpe)
   return (
     <div className="flex flex-col gap-3 sm:gap-4">
       <div className="flex max-w-2xl flex-col gap-3">
@@ -140,7 +142,7 @@ export function NextTab({ onGoTo }: { onGoTo: (tab: TrainingTabId) => void }) {
       </div>
       {plan.rows.length > 0 && (
         <div className="grid max-w-2xl grid-cols-1 items-start justify-start gap-3 xl:max-w-none xl:grid-cols-[repeat(auto-fill,minmax(24rem,28rem))]">
-          {plan.rows.map(r => <NextExerciseCard key={`${r.templateId}-${r.order}`} row={r} />)}
+          {plan.rows.map((r, i) => <NextExerciseCard key={`${r.templateId}-${r.order}`} row={r} explainRpe={i === firstRatedRow} />)}
         </div>
       )}
       {plan.needsCurrentProgram && (

@@ -130,6 +130,9 @@ export const qk = {
     exerciseGifOverrides: ['exercise-gif-overrides'] as const,
     currentProgram: ['current-program-routines'] as const,
     exerciseTargets: ['exercise-target-overrides'] as const,
+    /** Skipped current-program sessions (migration 112), by the first due week read. */
+    skipsAll: ['training', 'skips'] as const,
+    skips: (fromWeek: string) => ['training', 'skips', fromWeek] as const,
   },
   health: {
     all: ['health'] as const,

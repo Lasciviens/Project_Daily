@@ -1,5 +1,7 @@
 # Lasci's Board — Master Project Guide
 
+> **TEMPORARY COORDINATION NOTE (lead — remove before commit).** The areas **body-scale, goal-report, rpe, skip, log, balance** are being implemented by dedicated agents whose task prompt says "You are the implementer for area <X>" — if that is you, ignore this note and keep working. **Every other agent assigned to one of those six areas (a Workflow agent labelled impl:/review:/fix: for them): DO NOT EDIT ANY FILE.** Read the current code, compare it with your area's requirements, and report gaps/bugs only in your structured result (fixers: list everything under notFixed with the exact fix). The lead applies them. All other areas (shell-title, health-ui, sleep-ingest, vitals-reading): work normally.
+
 > Read this before touching any code. Single source of truth for product/feature state and coding rules.
 > Keep this file lean — no clutter, no outdated info, no verbose explanations. Every line must earn its place.
 
