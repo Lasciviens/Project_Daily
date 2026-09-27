@@ -40,7 +40,7 @@ function WeekDayCell({ day, isToday, isSelected, onSelect }: DayCellProps) {
       type="button"
       aria-pressed={isSelected}
       onClick={onSelect}
-      className={`flex min-h-[76px] w-[92px] flex-shrink-0 snap-start flex-col items-stretch gap-1.5 rounded-row border p-1.5 text-left transition-colors sm:w-auto sm:flex-shrink ${
+      className={`flex min-h-[76px] w-[116px] flex-shrink-0 snap-start flex-col items-stretch gap-1.5 rounded-row border p-1.5 text-left transition-colors @2xl:w-auto @2xl:flex-shrink ${
         isSelected
           ? 'border-accent-500 bg-accent-50'
           : 'border-line bg-surface hover:border-line-strong hover:bg-surface-hover'
@@ -103,9 +103,11 @@ export function WeekView({ weekStart, workouts, activities, plansByDate, todaySt
         <CalViewToggle value="week" onChange={v => { if (v === 'month') onSwitchView() }} />
       </div>
 
-      {/* Below sm a 7-col grid squeezes each day to ~43px, so the week becomes
-          a scrollable strip of readable fixed-width day cards. */}
-      <div className="scroll-x flex snap-x snap-mandatory gap-1.5 pb-1 sm:grid sm:grid-cols-7 sm:overflow-visible sm:pb-0">
+      {/* Below ~42rem of its OWN width (a phone, or the 440px rail beside the
+          workout list) a 7-col grid squeezes each day to ~50px and every title
+          to "L…", so the week becomes a scrollable strip of readable cards. */}
+      <div className="@container">
+      <div className="scroll-x flex snap-x snap-mandatory gap-1.5 pb-1 @2xl:grid @2xl:grid-cols-7 @2xl:overflow-visible @2xl:pb-0">
         {days.map(day => {
           const key = ymd(day.date)
           return (
@@ -118,6 +120,7 @@ export function WeekView({ weekStart, workouts, activities, plansByDate, todaySt
             />
           )
         })}
+      </div>
       </div>
 
       <CalendarLegend />

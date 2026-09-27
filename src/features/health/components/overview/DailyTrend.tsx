@@ -10,7 +10,9 @@ interface Props {
   series: readonly DayValue[]
   from: string
   to: string
-  kind: 'bar' | 'dots'
+  /** 'line' = a plain connected line with no dot per point (the scale's
+   *  weight, matching the Body window). */
+  kind: 'bar' | 'dots' | 'line'
   label: string
   unit: string
   ariaLabel: string
@@ -31,7 +33,7 @@ export function DailyTrend({
   const c = useChartColors()
   const col = color ?? c.series[0]
   const dense = fillDays(series, from, to)
-  const mean7 = rolling ? rollingMean(dense, 7, kind === 'dots' ? 1 : 3) : null
+  const mean7 = rolling ? rollingMean(dense, 7, kind === 'bar' ? 3 : 1) : null
   const long = dense.length > 45
   const data = dense.map((d, i) => ({
     label: long ? fmtDayMonth(d.date) : fmtAxisDay(d.date), date: d.date, value: d.value, mean7: mean7?.[i].value ?? null,
@@ -43,8 +45,10 @@ export function DailyTrend({
       series={[
         kind === 'bar'
           ? { key: 'value', label, color: col, kind: 'bar' }
-          : { key: 'value', label, color: col, kind: 'line', dotsOnly: true },
-        ...(rolling ? [{ key: 'mean7', label: '7-day average', color: col, kind: 'line' as const, dashed: true, connectNulls: kind === 'dots' }] : []),
+          : kind === 'line'
+            ? { key: 'value', label, color: col, kind: 'line', plain: true, connectNulls: true }
+            : { key: 'value', label, color: col, kind: 'line', dotsOnly: true },
+        ...(rolling ? [{ key: 'mean7', label: '7-day average', color: col, kind: 'line' as const, dashed: true, connectNulls: kind !== 'bar' }] : []),
       ]}
       unit={unit}
       ariaLabel={ariaLabel}

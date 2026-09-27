@@ -58,7 +58,8 @@ export function useGoalReport(windowDays: GoalWindow) {
   const reportsReady = !reports.isLoading || reports.isError
 
   const report: GoalReport | null = useMemo(() => {
-    if (!diaryRows || !activeRows || !basalRows || !weightRows || !scaleReady || !reportsReady) return null
+    // The phase decides every verdict — don't judge against the placeholder goal.
+    if (!diaryRows || !activeRows || !basalRows || !weightRows || !scaleReady || !reportsReady || !phase.isLoaded) return null
     const energy = new Map<string, EnergyDay>()
     for (const d of activeRows) energy.set(d.date, { date: d.date, activeKcal: d.value, basalKcal: null })
     for (const d of basalRows) energy.set(d.date, { ...(energy.get(d.date) ?? { date: d.date, activeKcal: null }), basalKcal: d.value })
@@ -91,7 +92,7 @@ export function useGoalReport(windowDays: GoalWindow) {
 
   return {
     report, from, to, goals, phase,
-    isLoading: diary.isLoading || active.isLoading || basal.isLoading || weights.isLoading || !scaleReady || !reportsReady,
+    isLoading: diary.isLoading || active.isLoading || basal.isLoading || weights.isLoading || !scaleReady || !reportsReady || !phase.isLoaded,
     isError: diary.isError || active.isError || basal.isError || weights.isError,
   }
 }

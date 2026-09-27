@@ -33,27 +33,34 @@ export function WeeklyScheduleCard({ templates, targetDays, routineCount, passes
           </Button>
         }
       />
-      <div className="grid grid-cols-7 gap-1">
+      {/* A list of day rows while the card is narrow (a phone: seven columns
+          cut every routine name to "Lo…"), the 7-column week from ~40rem. */}
+      <div className="@container">
+      <div className="grid grid-cols-1 gap-1 @xl:grid-cols-7">
         {WEEK.map(d => {
           const items = templates.filter(t => t.days_of_week.includes(d.dow)).sort((a, b) => a.start_time.localeCompare(b.start_time))
           return (
-            <div key={d.dow} className={`flex min-h-[64px] flex-col gap-1 rounded-row border p-1.5 ${weekdays.has(d.dow) ? 'border-accent-200 bg-accent-50' : 'border-line bg-surface'}`}>
-              <span className="text-micro font-semibold uppercase text-fg-muted">{d.label}</span>
-              {items.map(t => (
-                <button
-                  key={t.id}
-                  type="button"
-                  onClick={() => modal.open({ kind: 'schedule-block', id: t.id, config: { heading: 'Edit recurring session' } })}
-                  className="min-h-[44px] truncate rounded-control text-left text-meta font-medium text-fg hover:underline"
-                  title={`${t.title} · ${t.start_time.slice(0, 5)}`}
-                >
-                  <span className="block truncate">{t.title}</span>
-                  <span className="block text-micro font-normal tabular-nums normal-case text-fg-muted">{t.start_time.slice(0, 5)}</span>
-                </button>
-              ))}
+            <div key={d.dow} className={`flex items-start gap-2 rounded-row border px-2 py-1 @xl:min-h-[64px] @xl:flex-col @xl:gap-1 @xl:p-1.5 ${weekdays.has(d.dow) ? 'border-accent-200 bg-accent-50' : 'border-line bg-surface'}`}>
+              <span className="w-9 shrink-0 pt-1 text-micro font-semibold uppercase text-fg-muted @xl:w-auto @xl:pt-0">{d.label}</span>
+              {items.length === 0 && <span className="pt-0.5 text-meta text-fg-faint @xl:hidden">Rest</span>}
+              <div className="flex min-w-0 flex-1 flex-col @xl:w-full">
+                {items.map(t => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => modal.open({ kind: 'schedule-block', id: t.id, config: { heading: 'Edit recurring session' } })}
+                    className="flex min-h-[44px] min-w-0 items-baseline gap-2 rounded-control text-left text-meta font-medium text-fg hover:underline @xl:block"
+                    title={`${t.title} · ${t.start_time.slice(0, 5)}`}
+                  >
+                    <span className="min-w-0 break-words @xl:block @xl:truncate">{t.title}</span>
+                    <span className="shrink-0 text-micro font-normal tabular-nums normal-case text-fg-muted @xl:block">{t.start_time.slice(0, 5)}</span>
+                  </button>
+                ))}
+              </div>
             </div>
           )
         })}
+      </div>
       </div>
       <div className="mt-3 flex flex-col gap-1 border-t border-line pt-3">
         <p className="flex items-center gap-1.5 text-meta text-fg-muted">

@@ -30,8 +30,8 @@ export interface GoalReport {
   comp: CompositionResult
   path: GoalPath
   goals: { weight: GoalProgress | null; bodyFat: GoalProgress | null; muscle: GoalProgress | null }
-  /** Latest scale lean / muscle mass, for labels. */
-  latest: { leanKg: number | null; muscleKg: number | null; fatPct: number | null; date: string | null }
+  /** Latest scale lean mass, muscle mass and body fat, for labels. */
+  latest: { leanKg: number | null; muscleKg: number | null; fatPct: number | null }
 }
 
 /** Fat vs muscle needs more readings than the weight trend, so it always reads
@@ -97,7 +97,6 @@ export function buildGoalReport(inp: GoalReportInputs): GoalReport {
       leanKg: leanReading?.leanMassKg ?? null,
       muscleKg: muscleReading?.muscleMassKg ?? null,
       fatPct: fatReading?.fatPct ?? null,
-      date: [leanReading?.date, fatReading?.date].filter(Boolean).sort().pop() ?? null,
     },
   }
 }

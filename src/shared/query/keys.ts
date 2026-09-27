@@ -155,7 +155,7 @@ export const qk = {
     bodyweight: (from: string, to: string) => ['health', 'bodyweight', from, to] as const,
     bodyweightLatest: (onOrBefore?: string) => ['health', 'bodyweight', 'latest', onOrBefore ?? 'now'] as const,
     bodyComposition: ['health', 'body-composition-reports'] as const,
-    /** Eaten diary totals (date, kcal, protein) for the cut report. */
+    /** Eaten diary totals (date, kcal, protein) for Health → Goal progress (was the cut report). */
     cutDiaryAll: ['health', 'cut-diary'] as const,
     cutDiary: (from: string, to: string) => ['health', 'cut-diary', from, to] as const,
   },

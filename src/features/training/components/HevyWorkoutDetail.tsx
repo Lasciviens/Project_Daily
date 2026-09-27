@@ -7,7 +7,6 @@ import { fmtTrainingDateTime as fmtDateTime } from '../dateFormat'
 import type { HevySet } from '../types.hevy'
 import { SET_TYPE_META } from '../setTypeMeta'
 import { anyRpe, formatRpe, formatSet } from '../setFormat'
-import { RpeInfoBubble } from './RpeInfoBubble'
 import { WorkoutSessionSummary } from './log/WorkoutSessionSummary'
 
 interface Props {
@@ -27,9 +26,9 @@ function SetTypeBadge({ type }: { type: HevySet['type'] }) {
 }
 
 /** One exercise's sets. The RPE column appears only where a set of this
- *  exercise was rated in Hevy (never a column of dashes); `explainRpe` puts
- *  the RPE explainer on the first rated exercise of the workout. */
-function SetTable({ sets, exerciseType, explainRpe }: { sets: HevySet[]; exerciseType?: string | null; explainRpe: boolean }) {
+ *  exercise was rated in Hevy (never a column of dashes); the RPE explainer
+ *  sits on the session summary's Avg RPE tile above. */
+function SetTable({ sets, exerciseType }: { sets: HevySet[]; exerciseType?: string | null }) {
   const rated = anyRpe(sets)
   return (
     <div className="-mx-1 overflow-x-auto">
@@ -41,7 +40,7 @@ function SetTable({ sets, exerciseType, explainRpe }: { sets: HevySet[]; exercis
             <th className="px-1 py-1.5 text-left font-semibold">Set</th>
             {rated && (
               <th className="w-14 px-1 py-1.5 text-left font-semibold">
-                <span className="inline-flex items-center gap-1">RPE{explainRpe && <RpeInfoBubble />}</span>
+                RPE
               </th>
             )}
           </tr>
@@ -65,7 +64,6 @@ function SetTable({ sets, exerciseType, explainRpe }: { sets: HevySet[]; exercis
 export function HevyWorkoutDetail({ workoutId, onClose }: Props) {
   const { data: workout, isLoading } = useHevyWorkoutDetail(workoutId)
   const exercises = workout?.exercises?.slice().sort((a, b) => a.index - b.index) ?? []
-  const firstRatedId = exercises.find(ex => anyRpe(ex.sets ?? []))?.id
 
   return (
     <ModalShell
@@ -102,7 +100,7 @@ export function HevyWorkoutDetail({ workoutId, onClose }: Props) {
               </div>
 
               {ex.sets && ex.sets.length > 0 && (
-                <SetTable sets={ex.sets} exerciseType={ex.template?.type} explainRpe={ex.id === firstRatedId} />
+                <SetTable sets={ex.sets} exerciseType={ex.template?.type} />
               )}
             </div>
           ))}

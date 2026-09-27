@@ -27,7 +27,7 @@ export function GoalReportCard() {
   return (
     <Card className="@container">
       <CardHeader title="Goal progress" icon={<Target />} wrap
-        subtitle={PHASE_QUESTION[phase.phase]}
+        subtitle={phase.isLoaded ? PHASE_QUESTION[phase.phase] : 'Is your body moving the right way for your goal?'}
         action={(
           <InfoBubble label="How goal progress works">
             It reads your weight trend, the smart scale&apos;s fat and lean mass, what you logged eating and what Apple says you burned,

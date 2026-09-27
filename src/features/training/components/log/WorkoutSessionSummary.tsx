@@ -5,6 +5,7 @@ import { formatRpe, formatSet, rpeSuffix } from '../../setFormat'
 import { summarizeWorkout } from '../../workoutSessionStats'
 import type { HevyWorkout } from '../../types.hevy'
 import { SessionStat } from './SessionStat'
+import { RpeInfoBubble } from '../RpeInfoBubble'
 import { WorkoutHealthStats } from './WorkoutHealthStats'
 
 /** The top of a logged session's detail: what the workout added up to
@@ -31,7 +32,7 @@ export function WorkoutSessionSummary({ workout }: { workout: HevyWorkout }) {
         />
         {stats.avgRpe != null ? (
           <SessionStat
-            label="Avg RPE"
+            label={<>Avg RPE <RpeInfoBubble /></>}
             value={formatRpe(stats.avgRpe)}
             sub={`${stats.ratedSets} of ${stats.workingSets} sets rated`}
           />

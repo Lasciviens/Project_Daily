@@ -3,7 +3,7 @@
 // (scripts/verify-body-goal.cjs). Never a diagnosis: each line says what the
 // numbers show and the usual fix.
 
-import { type CompositionResult, type CompositionVerdict, type Phase, type RateVerdict, type Tone } from './bodyGoal'
+import { kcalForPace, PHASE_TARGET, type CompositionResult, type CompositionVerdict, type Phase, type RateVerdict, type Tone } from './bodyGoal'
 import type { EnergyReport } from './energyBalance'
 
 export type StepKey = 'calories' | 'protein' | 'training' | 'data' | 'early' | 'keep'
@@ -27,7 +27,7 @@ const LEAN_LOSS: CompositionVerdict[] = ['losing_lean', 'fat_loss_some_lean', 'f
 
 export const PHASE_RANGE_LABEL: Record<Phase, string> = {
   cut: '0.5–1 % of bodyweight a week',
-  maintain: 'within ±0.25 % a week',
+  maintain: '±0.25 % a week',
   gain: '0.25–0.5 % of bodyweight a week',
 }
 
@@ -90,12 +90,12 @@ const COMPOSITION_TITLE: Record<CompositionVerdict, string> = {
 
 /** "Losing 0.62 kg a week (0.74 % of bodyweight) — inside the 0.5–1 % range." */
 export function paceSentence(phase: Phase, rate: RateVerdict): string {
-  const verb = rate.kgPerWeek < 0 ? 'Losing' : rate.kgPerWeek > 0 ? 'Gaining' : 'Holding at'
+  const move = rate.kgPerWeek < 0 ? `Losing ${fmtKg(rate.kgPerWeek)} a week` : rate.kgPerWeek > 0 ? `Gaining ${fmtKg(rate.kgPerWeek)} a week` : 'No change in weight'
   const where = rate.status === 'on_track' || rate.status === 'stable' ? 'inside'
     : rate.status === 'too_slow' ? 'slower than' : rate.status === 'wrong_way' ? 'the opposite way to' : rate.status === 'drifting_down' ? 'below'
     : rate.status === 'drifting_up' ? 'above' : 'faster than'
   const lean = phase === 'cut' && (rate.status === 'on_track' || rate.status === 'too_fast') ? ' The leaner you are, the closer to 0.5 % you should stay.' : ''
-  return `${verb} ${fmtKg(rate.kgPerWeek)} a week (${pctAbs(rate.pctPerWeek)} of bodyweight) — ${where} the ${PHASE_RANGE_LABEL[phase]} range.${lean}`
+  return `${move} (${pctAbs(rate.pctPerWeek)} of bodyweight) — ${where} the ${PHASE_RANGE_LABEL[phase]} range.${lean}`
 }
 
 const LEAD: Partial<Record<RateVerdict['status'], Record<Phase, string>>> = {
@@ -113,10 +113,10 @@ function calorieStep(phase: Phase, rate: RateVerdict): PathStep | null {
   const lead = LEAD[rate.status]?.[phase] || 'To reach the range'
   const dirWord = (k: number) => (k > 0 ? 'more' : 'less')
   const intake = rate.suggestedIntake != null ? ` (around ${n0(rate.suggestedIntake)} kcal logged a day)` : ''
-  const aim = phase === 'maintain' ? 'to hold your weight steady' : `to reach ${pctAbs(a.pct)} a week (${fmtKg(a.kgPerWeek)})`
+  const aim = phase === 'maintain' ? '' : ` to reach ${pctAbs(a.pct)} a week (${fmtKg(a.kgPerWeek)})`
   const mid = rate.adjustMid && rate.adjustMid.kcal !== a.kcal
     ? `; about ${n0(Math.abs(rate.adjustMid.kcal))} ${dirWord(rate.adjustMid.kcal)} aims at the middle of the range, ${pctAbs(rate.adjustMid.pct)}` : ''
-  return { key: 'calories', text: `${lead}: eat about ${n0(Math.abs(a.kcal))} kcal a day ${dirWord(a.kcal)}${intake} ${aim}${mid}.` }
+  return { key: 'calories', text: `${lead}: eat about ${n0(Math.abs(a.kcal))} kcal a day ${dirWord(a.kcal)}${intake}${aim}${mid}.` }
 }
 
 export function buildPath({ phase, rate, comp, energy, weightKg }: PathInputs): GoalPath {
@@ -133,6 +133,12 @@ export function buildPath({ phase, rate, comp, energy, weightKg }: PathInputs): 
   }
 
   const leanLoss = LEAN_LOSS.includes(comp.verdict)
+  // Muscle going with the fat at a pace that is "in range": slow to the gentle end.
+  const slowEdge = PHASE_TARGET.cut.hi
+  if (phase === 'cut' && leanLoss && !cal && rate && weightKg && rate.pctPerWeek < slowEdge) {
+    const k = kcalForPace(rate.pctPerWeek, slowEdge, weightKg)
+    steps.push({ key: 'calories', text: `To protect muscle, slow down: eat about ${n0(k)} kcal a day more to lose about ${pctAbs(slowEdge)} a week (${fmtKg((slowEdge / 100) * weightKg)}).` })
+  }
   const p = energy.protein
   if (weightKg && p.gPerKg != null && p.band === 'below_floor') {
     const upper = phase === 'cut' || leanLoss ? `, up to ${n0(weightKg * 2.2)} g` : ''
@@ -161,7 +167,8 @@ export function buildPath({ phase, rate, comp, energy, weightKg }: PathInputs): 
     steps.push({ key: 'data', text: `${comp.missing ?? ''} Weigh in on the smart scale most mornings — same time, after the toilet, before food or drink — so it can separate fat from muscle.`.trim() })
   }
   if (tone === 'success' && !steps.some(s => s.key === 'calories' || s.key === 'protein')) {
-    steps.unshift({ key: 'keep', text: 'Keep doing what you are doing — this is the pace and the change to aim for.' })
+    const both = comp.verdict !== 'not_enough_data' && comp.verdict !== 'stable'
+    steps.unshift({ key: 'keep', text: `Keep doing what you are doing — this is the pace${both ? ' and the change' : ''} to aim for.` })
   }
   return { title, tone, summary, steps }
 }
