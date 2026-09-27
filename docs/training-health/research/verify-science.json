@@ -1,0 +1,453 @@
+{
+ "checked": 66,
+ "corrections": [
+  {
+   "metricOrTopic": "Pelland 2025 study size and counting method",
+   "claim": "Bayesian meta-regression of 67 studies and 2,058 participants; 'fractional' counting (indirect set = 0.5) fitted best",
+   "verdict": "correct",
+   "correction": "Confirmed. Detail: the hypertrophy volume model itself used 35 studies, 220 effects and 1,032 participants; the strength model used 66 studies and 2,020 participants. Europe PMC lists the issue year as Sports Med 2026 (published online in 2025).",
+   "source": "Pelland et al., Sports Med (PMID 41343037), abstract via Europe PMC + full-text PDF \u00a73.6.1\u20133.6.2"
+  },
+  {
+   "metricOrTopic": "Pelland hypertrophy volume tiers (Table 3)",
+   "claim": "MED 4; 5\u201310 ~6 sets per extra detectable gain; 11\u201318 ~8.5; 19\u201329 ~10.75; 30\u201342 ~12.5; 43+ no data",
+   "verdict": "correct",
+   "correction": "Matches Table 3 exactly. The smallest detectable effect size for hypertrophy is 2.05%. The best-fit model is a square root, with diminishing returns and no clear plateau. Few studies tested ~25+ sets.",
+   "source": "Pelland 2025 full text, Table 3 and Discussion"
+  },
+  {
+   "metricOrTopic": "Pelland strength volume tiers (Table 4)",
+   "claim": "MED 1 set; higher efficiency at 2; intermediate at 3\u20134; no consistent gain above detection from 5; detection threshold 3.96%; reciprocal model with functional plateau",
+   "verdict": "correct",
+   "correction": "Matches Table 4. The 'higher efficiency' tier is 2 sets (~0.75 extra sets per detectable gain), and 'intermediate' is 3\u20134 sets (~2.25).",
+   "source": "Pelland 2025 full text, Table 4, \u00a73.6.2"
+  },
+  {
+   "metricOrTopic": "Pelland frequency effects",
+   "claim": "Strength: fractional frequency 1 \u2192 ES 12.72%, 2 \u2192 17.32%; hypertrophy posterior probability <100%",
+   "verdict": "correct",
+   "correction": "Confirmed: 12.72% (95% CrI 10.57\u201315.05) to 17.32% (CrI from 14.34). The reciprocal model fitted best for both outcomes.",
+   "source": "Pelland 2025 full text \u00a73.5.1\u20133.5.2"
+  },
+  {
+   "metricOrTopic": "Per-session volume ceiling (Remmert preprint)",
+   "claim": "Point of undetectable superiority at ~11 fractional sets per session for hypertrophy and ~2 direct sets for strength",
+   "verdict": "correct",
+   "correction": "Confirmed in the SportRxiv abstract, 2025. The authors say to interpret it cautiously because data at very high per-session volumes are sparse. It is a preprint and not peer reviewed.",
+   "source": "https://sportrxiv.org/index.php/server/preprint/view/537"
+  },
+  {
+   "metricOrTopic": "Schoenfeld 2017 volume dose-response",
+   "claim": "Each extra weekly set \u2248 +0.37% muscle gain (ES +0.023)",
+   "verdict": "correct",
+   "correction": "Confirmed (15 studies, 34 treatment groups).",
+   "source": "J Sports Sci 2017, PMID 27433992 (Europe PMC abstract)"
+  },
+  {
+   "metricOrTopic": "Baz-Valle 2022",
+   "claim": "Trained men: no difference 12\u201320 vs >20 sets for quads and biceps; triceps favoured >20; 12\u201320 recommended",
+   "verdict": "correct",
+   "correction": "Confirmed. Small review: 7 studies, 6 of them meta-analysed. Quads p=0.19, biceps p=0.59, triceps p=0.01.",
+   "source": "J Hum Kinet 2022, PMID 35291645"
+  },
+  {
+   "metricOrTopic": "ACSM 2026 position stand (Currier et al.)",
+   "claim": "137 systematic reviews; hypertrophy enhanced by \u226510 sets/wk; strength by \u226580% 1RM, full ROM, 2\u20133 sets, early in the session, \u22652 sessions/wk; failure, equipment and set structure not consistently influential",
+   "verdict": "correct",
+   "correction": "Confirmed (>30,000 participants). Currier BS is first author. The abstract also names eccentric overload as enhancing hypertrophy.",
+   "source": "Med Sci Sports Exerc 2026, PMID 41843416 (Europe PMC)"
+  },
+  {
+   "metricOrTopic": "Schoenfeld 2019 frequency",
+   "claim": "25 studies; no meaningful difference when volume is equated",
+   "verdict": "correct",
+   "correction": "Confirmed.",
+   "source": "J Sports Sci 2019, PMID 30558493"
+  },
+  {
+   "metricOrTopic": "Grgic 2018 strength frequency",
+   "claim": "ES 0.74/0.82/0.93/1.08 for 1/2/3/4+ sessions; no effect when volume equated (p=0.421); 22 studies",
+   "verdict": "correct",
+   "correction": "Confirmed.",
+   "source": "Sports Med 2018, PMID 29470825"
+  },
+  {
+   "metricOrTopic": "Schoenfeld 2017 low vs high load",
+   "claim": "21 studies, all sets to failure; greater 1RM gains with high loads (>60% 1RM); similar hypertrophy",
+   "verdict": "correct",
+   "correction": "Confirmed. Low load was defined as \u226460% 1RM. No difference was found for isometric strength.",
+   "source": "J Strength Cond Res 2017;31:3508-23, PMID 28834797"
+  },
+  {
+   "metricOrTopic": "ACSM 2009 loading and rest",
+   "claim": "8\u201312RM novices; periodised 1\u201312RM with emphasis on 1\u20136RM and 3\u20135 min rest for strength; 6\u201312RM with 1\u20132 min rest for hypertrophy",
+   "verdict": "correct",
+   "correction": "Confirmed against the abstract.",
+   "source": "Med Sci Sports Exerc 2009, PMID 19204579"
+  },
+  {
+   "metricOrTopic": "ACSM 2009 load-increase rule",
+   "claim": "Per ACSM 2009, raise load 2\u201310% after 1\u20132 reps over target: ~2\u20135% for upper-body or isolation lifts, ~5\u201310% for lower-body compounds (app rule fires after one qualifying session)",
+   "verdict": "imprecise",
+   "correction": "ACSM gives no 2\u20135%/5\u201310% sub-bands and does not say upper vs lower body. The full text reads: 2\u201310% ('lower percent for small muscle mass exercises, higher percent increase for large muscle mass exercises'), applied when the lifter can do 1\u20132 reps over target 'on two consecutive training sessions' (Evidence category B). The app's READY-TO-ADD-LOAD rule should require two consecutive qualifying sessions, or be labelled a stricter heuristic. The upper/lower % split is an NSCA-style practitioner convention.",
+   "source": "ACSM 2009 full text p.~691 (tourniquets.org mirror PDF of MSSE 41:687-708)"
+  },
+  {
+   "metricOrTopic": "Robinson 2024 proximity to failure",
+   "claim": "Strength slopes compatible with zero; hypertrophy slopes negative with CIs excluding zero; exploratory",
+   "verdict": "correct",
+   "correction": "Confirmed.",
+   "source": "Sports Med 2024, PMID 38970765"
+  },
+  {
+   "metricOrTopic": "Refalo 2023",
+   "claim": "15 studies; set failure vs non-failure ES 0.19 (0.00\u20130.37); momentary failure vs non-failure ES 0.12 (\u22120.13 to 0.37)",
+   "verdict": "correct",
+   "correction": "Confirmed.",
+   "source": "Sports Med 2023, PMID 36334240"
+  },
+  {
+   "metricOrTopic": "Grgic 2022 failure vs non-failure",
+   "claim": "Strength ES \u22120.09; hypertrophy ES 0.22 n.s.; trained-hypertrophy ES 0.15; non-failure favoured for strength when volume not equated (ES \u22120.32)",
+   "verdict": "correct",
+   "correction": "Confirmed (15 studies, young adults only).",
+   "source": "J Sport Health Sci 2022, PMID 33497853"
+  },
+  {
+   "metricOrTopic": "Halperin 2022 RIR prediction accuracy",
+   "claim": "Reps to failure underpredicted by 0.95 on average; more accurate closer to failure and at \u226412 reps",
+   "verdict": "correct",
+   "correction": "Confirmed: 0.95 reps (95% CI 0.17\u20131.73) across 12 studies and 414 participants, with very high heterogeneity (I\u00b2\u224898%).",
+   "source": "Sports Med 2022, PMID 34542869"
+  },
+  {
+   "metricOrTopic": "Plotkin 2022 load vs rep progression",
+   "claim": "8-week RCT in trained lifters; similar hypertrophy, strength and endurance",
+   "verdict": "correct",
+   "correction": "Confirmed (n=43, lower body, 2\u00d7/week). Rectus femoris growth slightly favoured rep progression and 1RM slightly favoured load progression, both of questionable practical size.",
+   "source": "PeerJ 2022;10:e14142, PMID 36199287"
+  },
+  {
+   "metricOrTopic": "Kassiano 2025 exercise variation",
+   "claim": "Varied vs constant exercises: thickness +7.5\u201319.3% vs +7.8\u201317.7%; similar 1RM",
+   "verdict": "correct",
+   "correction": "Numbers confirmed. Context the app should not overgeneralise: 70 young women, 10 weeks, lower-body only, 2 sets of 10\u201315RM.",
+   "source": "Res Q Exerc Sport 2025, PMID 39388663"
+  },
+  {
+   "metricOrTopic": "van Dyk 2019 Nordic hamstring",
+   "claim": "15 studies, 8,459 athletes; RR 0.49; RCT-only 0.52",
+   "verdict": "correct",
+   "correction": "Confirmed: RR 0.49 (0.32\u20130.74); 8 RCTs RR 0.52 (0.32\u20130.85); after removing high risk of bias 0.55.",
+   "source": "Br J Sports Med 2019, PMID 30808663"
+  },
+  {
+   "metricOrTopic": "Green 2020 hamstring risk factors",
+   "claim": "78 studies; older age and prior hamstring injury are the strongest risk factors",
+   "verdict": "correct",
+   "correction": "Confirmed: 78 studies, 8,319 injuries, 71,324 athletes. Older age SMD 1.6; prior injury RR 2.7.",
+   "source": "Br J Sports Med 2020, PMID 32299793"
+  },
+  {
+   "metricOrTopic": "Kolber 2009 shoulder",
+   "claim": "Recreational lifters had greater agonist/antagonist ratios and reduced mobility; training biased to pecs/delts",
+   "verdict": "correct",
+   "correction": "Confirmed (90 men: 60 lifters, 30 controls; cross-sectional).",
+   "source": "J Strength Cond Res 2009, PMID 19077737"
+  },
+  {
+   "metricOrTopic": "Coleman 2024 deload RCT",
+   "claim": "n=39 trained; 1-week cessation mid 9-week programme: no difference in hypertrophy, power or endurance but smaller lower-body strength gains",
+   "verdict": "correct",
+   "correction": "Confirmed (29 men, 10 women; only the lower body was supervised).",
+   "source": "PeerJ 2024, PMID 38274324"
+  },
+  {
+   "metricOrTopic": "Bell 2023 deload Delphi",
+   "claim": "Deloading every 4\u20136 weeks for ~7 days; 100% agreement on lowering sets; regular 4\u20138-week deloads precautionary",
+   "verdict": "correct",
+   "correction": "All three are verbatim in the full text (the 4\u20136 week figure is background citing their survey, ref 22).",
+   "source": "Sports Med Open 2023, PMC10511399 full text"
+  },
+  {
+   "metricOrTopic": "Deload magnitude",
+   "claim": "Reduced-volume deload: cut sets or reps by ~40\u201350% and keep the load",
+   "verdict": "unverifiable",
+   "correction": "None of the cited sources (Bell 2023, Coleman 2024, Meeusen 2013) gives a 40\u201350% figure. Bell reports only that coaches reduce sets and/or reps, and that intensity may or may not be kept. Label it a practitioner heuristic.",
+   "source": "Bell 2023 full text (PMC10511399)"
+  },
+  {
+   "metricOrTopic": "Meeusen 2013 overtraining consensus",
+   "claim": "No single marker meets all criteria",
+   "verdict": "correct",
+   "correction": "Confirmed.",
+   "source": "Med Sci Sports Exerc 2013, PMID 23247672"
+  },
+  {
+   "metricOrTopic": "Momma 2022 muscle-strengthening and mortality",
+   "claim": "16 cohorts; 10\u201317% lower risk; J-shape with maximum ~10\u201320% reduction at ~30\u201360 min/wk; diabetes L-shaped to 60 min; higher volumes unclear",
+   "verdict": "correct",
+   "correction": "Confirmed.",
+   "source": "Br J Sports Med 2022, PMID 35228201"
+  },
+  {
+   "metricOrTopic": "Saeidifard 2019",
+   "claim": "11 studies, 370,256 participants; RT HR 0.79 (0.69\u20130.91); RT+aerobic 0.60 (0.49\u20130.72); CV mortality 0.83 (0.67\u20131.03)",
+   "verdict": "correct",
+   "correction": "Confirmed.",
+   "source": "Eur J Prev Cardiol 2019, PMID 31104484"
+  },
+  {
+   "metricOrTopic": "WHO 2020 aerobic dose",
+   "claim": "150\u2013300 min moderate or 75\u2013150 min vigorous per week plus muscle strengthening",
+   "verdict": "correct",
+   "correction": "Confirmed.",
+   "source": "Br J Sports Med 2020, PMID 33239350"
+  },
+  {
+   "metricOrTopic": "ACSM 2011 (Garber) dose and HR intensity bands",
+   "claim": "\u2265150 min moderate / \u226575 min vigorous; \u2265500\u20131,000 MET-min/wk; moderate 64\u201376% HRmax, vigorous 77\u201395%",
+   "verdict": "correct",
+   "correction": "Confirmed (abstract; intensity table in the position stand).",
+   "source": "Med Sci Sports Exerc 2011, PMID 21694556"
+  },
+  {
+   "metricOrTopic": "Tanaka 2001 HRmax",
+   "claim": "HRmax = 208 \u2212 0.7\u00d7age; 351 studies, 18,712 subjects; lab cross-validation n=514; independent of sex and activity",
+   "verdict": "correct",
+   "correction": "Confirmed. The lab equation was 209 \u2212 0.7\u00d7age, virtually identical.",
+   "source": "J Am Coll Cardiol 2001, PMID 11153730"
+  },
+  {
+   "metricOrTopic": "HUNT3 VO2max norms (Loe 2013)",
+   "claim": "Men 20\u201329 = 54.4\u00b18.4, 30\u201339 = 49.1\u00b17.5, 40\u201349 = 47.2\u00b17.7, 50\u201359 = 42.6\u00b17.4; n=3,816; from Tables 2\u20133",
+   "verdict": "correct",
+   "correction": "Values match Table 2. Table 3 repeats the maxima with slightly different SDs (e.g. 30\u201339 = 49.1\u00b17.7). 3,816 is the title n; the tables analyse 1,929 men + 1,881 women (3,810). Treadmill running with direct gas analysis.",
+   "source": "PLoS One 2013, PMC3654926 full-text tables"
+  },
+  {
+   "metricOrTopic": "NTNU CERG fitness numbers",
+   "claim": "Rounded means 54/49/47/42/39/34; inactive vs active men 50\u201359 = 38 vs 47",
+   "verdict": "correct",
+   "correction": "Confirmed on the page. It also gives men 20\u201329 inactive 47 vs active 60.",
+   "source": "https://www.ntnu.edu/cerg/fitness-numbers"
+  },
+  {
+   "metricOrTopic": "FRIEND 2015 percentiles",
+   "claim": "Men 50th percentile 48.0 (20\u201329) \u2192 24.4 (70\u201379)",
+   "verdict": "correct",
+   "correction": "Confirmed (7,783 treadmill tests, ~10% decline per decade).",
+   "source": "Mayo Clin Proc 2015, PMID 26455884"
+  },
+  {
+   "metricOrTopic": "FRIEND 2022 comparison values",
+   "claim": "US FRIEND 50th percentile: men 20\u201329 = 48.0, declining ~4 mL/kg/min per decade in the 2022 update",
+   "verdict": "imprecise",
+   "correction": "48.0 is the 2015 value. The 2022 update's treadmill standards are 1.5\u20134.6 mL/kg/min LOWER than 2015, so the 2022 men 20\u201329 median is below 48.0. The 4.0 mL/kg/min (13.5%) per-decade decline is correct, but for treadmill only; cycle is 4.3 (16.4%). The app must use one version and one test mode (treadmill vs cycle) consistently and not mix the 2015 table with 2022 slopes.",
+   "source": "Mayo Clin Proc 2022, PMID 34809986 (abstract)"
+  },
+  {
+   "metricOrTopic": "Kodama 2009 CRF and mortality",
+   "claim": "+1 MET = 13% lower all-cause and 15% lower CHD/CVD risk",
+   "verdict": "correct",
+   "correction": "RR 0.87 (0.84\u20130.90) all-cause and 0.85 (0.82\u20130.88) CHD/CVD; 33 studies.",
+   "source": "JAMA 2009;301:2024-35, PMID 19454641"
+  },
+  {
+   "metricOrTopic": "Mandsager 2018",
+   "claim": "122,007 treadmill tests; elite vs low adjusted HR 0.20 (0.16\u20130.24); no upper limit",
+   "verdict": "correct",
+   "correction": "Confirmed. Caveats: patients referred for clinical exercise testing; CRF estimated from treadmill workload (METs), not measured VO2.",
+   "source": "JAMA Netw Open 2018, PMID 30646252"
+  },
+  {
+   "metricOrTopic": "Apple Watch Series 10 validation (Lambe 2026)",
+   "claim": "n=40; mean difference \u22126.25; LoA \u221218.23 to 5.73; MAE 6.79; MAPE 13.2%; correct FRIEND band in only 14%",
+   "verdict": "correct",
+   "correction": "Confirmed. The 14% is 5 participants; a further 34% were within one adjacent band.",
+   "source": "Mayo Clin Proc Digit Health 2026, PMID 42094313"
+  },
+  {
+   "metricOrTopic": "Apple Watch validation (Lambe 2025)",
+   "claim": "n=30; underestimation 6.07; MAE 6.92; MAPE 13.31%",
+   "verdict": "correct",
+   "correction": "Figures confirmed (the abstract's LoA are \u22126.11 to 18.26 in lab-minus-watch sign). 30 were recruited and 28 analysed.",
+   "source": "PLoS One 2025, PMID 40373042 / PMC12080799"
+  },
+  {
+   "metricOrTopic": "Applying the Apple Watch bias to a low-fitness user",
+   "claim": "The owner's low VO2max may be partly measurement error; show 'Apple tended to read ~6 low'",
+   "verdict": "imprecise",
+   "correction": "The ~6 mL/kg/min underestimate comes from mostly very fit samples. In Lambe 2025 all but one participant rated Good/Excellent/Superior. In Lambe 2026 the lower-fitness subgroup (\u226470th percentile, n=10) had mean difference \u22122.41 (95% CI \u22125.28 to 0.47, not significant), vs \u22127.79 in the \u226580th-percentile group. Caserman 2024 (Apple Watch Series 7), cited by Lambe 2025, found overestimation in people with poor fitness. For a low-fitness user, do not apply a '~6 low' correction. Keep the symmetric \u00b17 band and read the trend.",
+   "source": "Lambe 2026 full text (PMC13141568) subgroup analysis; Lambe 2025 Discussion (PMC12080799) citing Caserman et al. JMIR Biomed Eng 2024;9:e59459"
+  },
+  {
+   "metricOrTopic": "Milanovi\u0107 2015 VO2max training",
+   "claim": "28 studies, 723 adults, baseline 40.8\u00b17.9; ET +4.9 (\u00b11.4); HIIT +5.5 (\u00b11.2); +3.2 at lower baseline; +3.0 longer interventions; HIIT vs ET +1.2 (\u00b10.9)",
+   "verdict": "correct",
+   "correction": "Confirmed. The \u00b1 values are 95% confidence limits, and the +3.2/+3.0 moderators apply to HIIT. For endurance training the lower-baseline moderator was only +1.4 (\u00b12.0).",
+   "source": "Sports Med 2015;45:1469-81, PMID 26243014"
+  },
+  {
+   "metricOrTopic": "Helgerud 2007 4\u00d74",
+   "claim": "4\u00d74 at 90\u201395% HRmax: +7.2% (55.5 \u2192 60.4); 15/15 +5.5%; stroke volume ~+10%; 3\u00d7/wk, 8 wk, work-matched, moderately trained men",
+   "verdict": "correct",
+   "correction": "Confirmed (n=40). 15/15 went 60.5 \u2192 64.4. The protocol used a 10-min warm-up at ~70% HRmax and 3-min active rest at 70% HRmax.",
+   "source": "Med Sci Sports Exerc 2007;39:665-71 (PDF linked in research)"
+  },
+  {
+   "metricOrTopic": "Bacon 2013 HIIT meta-analysis",
+   "claim": "37 studies, 6\u201313 weeks; +0.51 L/min (0.43\u20130.60)",
+   "verdict": "correct",
+   "correction": "Confirmed (334 subjects, 40 training groups; longer intervals gave ~0.8\u20130.9 L/min).",
+   "source": "PLoS One 2013;8:e73182, PMID 24066036"
+  },
+  {
+   "metricOrTopic": "Scribbans 2016 intensity tertiles",
+   "claim": "Intensity tertiles gave similar VO2max gains",
+   "verdict": "correct",
+   "correction": "Confirmed: +0.29 / +0.26 / +0.35 L/min, no significant difference (28 studies).",
+   "source": "Int J Exerc Sci 2016, PMID 27182424"
+  },
+  {
+   "metricOrTopic": "Montero & Lundby 2017 non-response",
+   "claim": "Non-response fell from 60 \u2192 300 min/wk and disappeared with +120 min/wk",
+   "verdict": "correct",
+   "correction": "Confirmed (n=78, 6-week blocks). Note that non-response was defined by maximal power output (Wmax), not VO2max.",
+   "source": "J Physiol 2017, PMID 28133739"
+  },
+  {
+   "metricOrTopic": "Storoschuk 2025 Zone 2",
+   "claim": "Evidence does not support Zone 2 as optimal; higher intensities critical especially at lower volumes",
+   "verdict": "correct",
+   "correction": "Confirmed (narrative review).",
+   "source": "Sports Med 2025, PMID 40560504"
+  },
+  {
+   "metricOrTopic": "Paluch 2022 daily steps",
+   "claim": "15 cohorts, 47,471 adults, 3,013 deaths; Q1 3,553 ref; HR 0.60 (5,801), 0.55 (7,842), 0.47 (10,901); plateau 6\u20138k (\u226560 y) and 8\u201310k (<60 y)",
+   "verdict": "correct",
+   "correction": "Confirmed.",
+   "source": "Lancet Public Health 2022, PMID 35247352"
+  },
+  {
+   "metricOrTopic": "Stens 2023 steps",
+   "claim": "12 studies, 111,309 people; significant from 2,517 steps vs 2,000; optimum ~8,763 (aHR 0.40); CVD ~7,126; cadence independently protective; larger effects with hip vs wrist devices",
+   "verdict": "correct",
+   "correction": "Confirmed: 2,517 (aHR 0.92); 8,763 (0.40); CVD 7,126 (0.49). The conclusion rounds these to ~2,600 and ~8,800.",
+   "source": "J Am Coll Cardiol 2023, PMID 37676198"
+  },
+  {
+   "metricOrTopic": "Wrist-worn step counts",
+   "claim": "Wrist-worn devices undercount relative to the hip accelerometers used in some cohorts",
+   "verdict": "wrong",
+   "correction": "The direction is reversed. In free living, wrist-worn devices generally record MORE steps than hip-worn ones: research-grade wrist accelerometers ~15\u201330% more, consumer wrist devices ~3\u201315% more. They undercount only when the wrist is still, e.g. pushing a cart or stroller. Stens 2023 only reports stronger risk gradients with hip-worn accelerometers. If anything, placing wrist counts on hip-derived ladders may overstate where the user sits.",
+   "source": "CDC Prev Chronic Dis 2022 (21_0343); Frontiers Med 2019 PMC6849483; Stens 2023 abstract"
+  },
+  {
+   "metricOrTopic": "Schumann 2022 concurrent training",
+   "claim": "43 studies; SMD \u22120.06 max strength, \u22120.01 hypertrophy, \u22120.28 explosive; worse in the same session (p=0.043) than with \u22653 h separation",
+   "verdict": "correct",
+   "correction": "Confirmed. Note that Schumann found NO significant moderator for cycling vs running; the running-specific interference comes from Wilson 2012 and Lundberg 2022. 'Rowing' is not examined in any cited source, so that part is unverifiable.",
+   "source": "Sports Med 2022, PMID 34757594"
+  },
+  {
+   "metricOrTopic": "Wilson 2012 concurrent training",
+   "claim": "21 studies; hypertrophy ES 0.85 concurrent vs 1.23 strength-only; running not cycling caused decrements; frequency and duration negatively correlated",
+   "verdict": "correct",
+   "correction": "Confirmed (422 effect sizes; correlations r \u22120.26 to \u22120.35 for frequency, \u22120.29 to \u22120.75 for duration).",
+   "source": "J Strength Cond Res 2012, PMID 22002517"
+  },
+  {
+   "metricOrTopic": "Lundberg 2022 fiber hypertrophy",
+   "claim": "15 studies; overall SMD \u22120.23 (\u22120.46 to \u22120.00); type I with running \u22120.81",
+   "verdict": "correct",
+   "correction": "Confirmed: running type I \u22120.81 (\u22121.26 to \u22120.36). Overall type I was \u22120.34 (n.s.) and type II \u22120.13 (n.s.).",
+   "source": "Sports Med 2022, PMID 35476184"
+  },
+  {
+   "metricOrTopic": "Aune 2017 resting HR",
+   "claim": "87 studies; RR per 10 bpm 1.17 (1.14\u20131.19) all-cause; also higher CHD, sudden cardiac death, heart failure, AF, stroke and cancer risk",
+   "verdict": "imprecise",
+   "correction": "The all-cause figure is correct. AF is wrong in the list: the RR per 10 bpm was 0.97 (0.92\u20131.02), a J-shaped association, not a linear increase. Sudden cardiac death was borderline, 1.09 (1.00\u20131.18). CHD 1.07, HF 1.18, stroke 1.06, CVD 1.15, cancer 1.14.",
+   "source": "Nutr Metab Cardiovasc Dis 2017, PMID 28552551"
+  },
+  {
+   "metricOrTopic": "Cole 1999 heart-rate recovery",
+   "claim": "HRR \u226412 bpm at 1 min \u2192 RR of death 4.0 (3.0\u20135.2), independent of workload (\u22484\u00d7 risk)",
+   "verdict": "imprecise",
+   "correction": "4.0 (3.0\u20135.2) is the UNIVARIATE RR. After adjusting for age, sex, medications, perfusion defects, cardiac risk factors, resting HR, HR change during exercise and workload, the adjusted RR was 2.0 (95% CI 1.5\u20132.7). The 'independent of workload' finding belongs to the 2.0 figure, so the copy should say ~2\u00d7 (adjusted). Population: 2,428 clinically referred adults, mean age 57.",
+   "source": "N Engl J Med 1999;341:1351-7, PMID 10536127 (abstract + NEJM results text)"
+  },
+  {
+   "metricOrTopic": "Shaffer & Ginsberg 2017 HRV norms",
+   "claim": "24-h, short-term and ultra-short HRV norms are not interchangeable",
+   "verdict": "correct",
+   "correction": "Confirmed.",
+   "source": "Front Public Health 2017, PMID 29034226"
+  },
+  {
+   "metricOrTopic": "Plews 2013 HRV monitoring",
+   "claim": "Day-to-day HRV needs rolling averages and individual baselines; the same direction can mean different things",
+   "verdict": "correct",
+   "correction": "Confirmed.",
+   "source": "Sports Med 2013, PMID 23852425"
+  },
+  {
+   "metricOrTopic": "Watson 2015 sleep",
+   "claim": "Adults should regularly sleep \u22657 h",
+   "verdict": "correct",
+   "correction": "Confirmed (AASM/SRS consensus).",
+   "source": "J Clin Sleep Med 2015, PMID 25979105"
+  },
+  {
+   "metricOrTopic": "Craven 2022 sleep loss",
+   "claim": "69 publications, 227 outcomes; \u22127.56% (\u221211.9 to \u22123.13); significant for all categories; ~0.4%/h awake; PM affected, AM largely not",
+   "verdict": "correct",
+   "correction": "Confirmed (89% male participants).",
+   "source": "Sports Med 2022, PMID 35708888"
+  },
+  {
+   "metricOrTopic": "Nedeltcheva 2010 sleep during deficit",
+   "claim": "n=10, 14-day deficit; 5.5 vs 8.5 h cut fat loss 55% (0.6 vs 1.4 kg) and raised FFM loss 60% (2.4 vs 1.5 kg)",
+   "verdict": "correct",
+   "correction": "Confirmed. It was a randomized crossover in overweight, non-training adults (mean age 41, BMI 27.4), not lifters.",
+   "source": "Ann Intern Med 2010, PMID 20921542"
+  },
+  {
+   "metricOrTopic": "Lamon 2021 sleep deprivation and MPS",
+   "claim": "n=13 crossover; one night without sleep: MPS \u221218%, cortisol +21%, testosterone \u221224%",
+   "verdict": "correct",
+   "correction": "Confirmed (7 men, 6 women).",
+   "source": "Physiol Rep 2021, PMID 33400856"
+  },
+  {
+   "metricOrTopic": "Morton 2018 protein breakpoint",
+   "claim": "49 RCTs, 1,863 participants; no further FFM gain above 1.62 g/kg/day (CI ~1.03\u20132.20)",
+   "verdict": "imprecise",
+   "correction": "The numbers are right: breakpoint 1.62 (95% CI 1.03\u20132.20) g/kg/day. But the biphasic model came from 42 study arms (723 participants) and was NOT statistically significant (p=0.079). The authors themselves suggest ~2.2 g/kg/day 'for those seeking to maximise' FFM gains. Present 1.6 as a floor, not a proven ceiling.",
+   "source": "Br J Sports Med 2018, PMC5867436 full text (Figure 5 and Discussion)"
+  },
+  {
+   "metricOrTopic": "Schoenfeld & Aragon 2018 protein per meal",
+   "claim": "0.4 g/kg per meal over \u22654 meals to reach \u22651.6 g/kg/day; up to 0.55 g/kg per meal at 2.2 g/kg/day",
+   "verdict": "correct",
+   "correction": "Confirmed (narrative review).",
+   "source": "J Int Soc Sports Nutr 2018, PMID 29497353"
+  },
+  {
+   "metricOrTopic": "Helms 2014 protein on a cut",
+   "claim": "6 studies; energy-restricted lean trained athletes need 2.3\u20133.1 g/kg FFM",
+   "verdict": "correct",
+   "correction": "Confirmed. 'Lean' was defined as \u226423% body fat for males.",
+   "source": "Int J Sport Nutr Exerc Metab 2014, PMID 24092765"
+  },
+  {
+   "metricOrTopic": "Nes 2011 non-exercise VO2peak model",
+   "claim": "4,637 healthy adults; age, waist, leisure activity and resting HR strongest predictors; 61% (men) and 56% (women) variance; SEE 5.70 and 5.14",
+   "verdict": "correct",
+   "correction": "Confirmed. The final models included 2,067 men and 2,193 women.",
+   "source": "Med Sci Sports Exerc 2011, PMID 21502897"
+  }
+ ]
+}

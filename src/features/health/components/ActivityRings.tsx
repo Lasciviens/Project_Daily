@@ -83,7 +83,7 @@ export function ActivityRings({ win, date, goals }: { win: HealthWindow; date: s
             </span>
           </div>
         ))}
-        <p className="flex items-center gap-1 text-micro text-fg-muted">
+        <div className="flex items-center gap-1 text-micro text-fg-muted">
           {partial ? 'So far today' : null}{partial && usingDefaults ? ' · ' : null}
           {usingDefaults && (
             <>
@@ -94,7 +94,7 @@ export function ActivityRings({ win, date, goals }: { win: HealthWindow; date: s
               </InfoBubble>
             </>
           )}
-        </p>
+        </div>
       </div>
     </div>
   )
