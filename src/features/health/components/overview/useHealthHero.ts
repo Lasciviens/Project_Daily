@@ -301,8 +301,9 @@ export function useHealthHero(win: HealthWindow): HealthHero {
         key: 'hrv', label: 'HRV', unit: 'ms', decimals: 0, value: hrv7, date: hrv7 != null ? A : null, range: hrvRange,
         state: vitalState(hrv7, hrvRange), rangeRule: '7-day average against your 60-day mean ± 1 SD (Plews 2013)',
       },
-      item('resp', 'Respiratory rate', 'br/min', 1, respQ.daily, { mode: 'median', halfWidth: 1.5 }, 30,
-        'Latest night against your 30-night median ± 1.5 breaths/min'),
+      // 60 prior nights, like the chart band and the Heart & vitals reading (vitalsReading.ts).
+      item('resp', 'Respiratory rate', 'br/min', 1, respQ.daily, { mode: 'median', halfWidth: 1.5 }, 60,
+        'Latest night against your 60-night median ± 1.5 breaths/min'),
       item('spo2', 'Blood oxygen', '%', 0, spo2Series, { mode: 'sd', k: 2, minHalfWidth: 1 }, 60,
         'Latest night against your 60-night mean ± 2 SD (at least ± 1 point)'),
       item('temp', 'Wrist temperature', '°C', 1, tempQ.daily, { mode: 'sd', k: 2, minHalfWidth: 0.3 }, 60,

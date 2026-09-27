@@ -191,5 +191,32 @@ console.log('\n7 · Missed current-program sessions (plan/skippedRoutines.ts, mi
   check('PT prompt documents the Missed line (snapshot contract)', PT_SYSTEM_PROMPT.includes('"Missed:" lines under PROGRAM') && PT_SYSTEM_PROMPT.includes('skipped: <reason>'))
 }
 
+console.log('\n8 · Push:pull balance — the same numbers the app shows (plan/muscleBalance.ts)')
+{
+  const { coachBalance } = require('../src/features/training/coach/coachModel')
+  const { balanceLines } = require('../src/features/training/coach/coachFormat')
+  // A pull exercise added to the Push routine's sessions that the routine
+  // doesn't have — Back credited once although Hevy lists lats + upper_back.
+  const pull = (w, date, i) => ({ ...set(w, date, 50, 10, i), exercise_template_id: 'lpd' })
+  const h = {
+    sets: [...history.sets, pull('w1', '2026-09-14', 3), pull('w1', '2026-09-14', 4), pull('w2', '2026-09-21', 3), pull('w2', '2026-09-21', 4)],
+    templates: [...history.templates, { id: 'lpd', title: 'Lat Pulldown (Machine)', type: 'weight_reps', primary_muscle_group: 'lats', secondary_muscle_groups: ['upper_back', 'biceps'] }],
+  }
+  const b = coachBalance({ history: h, templates: [], routines: base.routines, programRoutineIds: ['r1'], trainingDaysPerWeek: 1, scheduledTrainingDays: 0, today: '2026-09-23' })
+  check('planned from the program: bench 3 sets → push 6, no pull', b.planned.pushPull.a === 6 && b.planned.pushPull.lean === 'a' && b.planned.pushPull.ratio === null, b.planned.pushPull)
+  // done 30 d: bench 6 sets × 2 credit = 12 push; pulldown 4 sets × (Back 1 + biceps 0.5) = 6 pull → per week ×7/30
+  check('done over 30 days, Back credited once', b.done.pushPull.a === 2.8 && b.done.pushPull.b === 1.4 && b.done.pushPull.ratio === 2, b.done.pushPull)
+  check('why names the added exercise', /Lat Pulldown \(Machine\)/.test(b.comparison.pushPull.why ?? ''), b.comparison.pushPull.why)
+  const lines = balanceLines(b)
+  check('snapshot BALANCE lines: planned + done + Why', lines[0].startsWith('BALANCE (weekly sets; planned = current program, done = last 30 days)') && /Push : pull: planned push only \(push-heavy\) · done 2\.00 : 1 \(push-heavy\)/.test(lines[1]) && lines[2].trim().startsWith('Why:'), lines)
+  const progress = computeProgressModel({ ...base, currentProgram: [{ routine_id: 'r1' }] })
+  const data = { today: '2026-09-23', profile: null, limitations: [], progress, routines: base.routines, sessions: [], sessionsThisWeek: 0, weeklyMuscleSets: [], sleep: [], steps: [], activeKcal: [], bodyweight: [], balance: b }
+  check('snapshot carries the BALANCE block', formatPtSnapshot(data).includes('BALANCE (weekly sets'))
+  const json = buildCoachJson(data, 30)
+  check('JSON balance: rule, planned, done_30d, why', /1\.5×/.test(json.balance.rule) && json.balance.planned.push_pull.lean === 'push-heavy' && json.balance.done_30d.push_pull.ratio === '2.00 : 1' && json.balance.why.length === 1, json.balance)
+  check('no balance → no block, no key', !formatPtSnapshot({ ...data, balance: undefined }).includes('BALANCE') && !('balance' in buildCoachJson({ ...data, balance: undefined }, 30)))
+  check('PT prompt documents BALANCE (snapshot contract)', PT_SYSTEM_PROMPT.includes('- BALANCE:') && PT_SYSTEM_PROMPT.includes('never compute your own ratio'))
+}
+
 console.log(`\n${passed} passed, ${failed} failed\n`)
 if (failed > 0) process.exit(1)

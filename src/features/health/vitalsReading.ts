@@ -121,7 +121,7 @@ export const VITAL_SPECS: Record<VitalKey, VitalSpec> = {
     unit: 'bpm', decimals: 0, group: 'recovery', concern: 'above', good: 'below',
     range: { mode: 'median', halfWidth: 5 }, minHistory: 14, smoothDays: 1, deviation: false,
     about: 'Your lowest steady heart rate while awake and still, worked out by the Watch each day. Fatigue, stress, heat, alcohol and illness push it up.',
-    rangeRule: 'your median over the 60 days before, ± 5 bpm — a sustained rise of more than 5 bpm is the recognised signal',
+    rangeRule: 'your median over the 60 days before this day or period, ± 5 bpm — a sustained rise of more than 5 bpm is the recognised signal',
     sources: [VITALS_SRC.quer2021, SRC.appleWatchHrv2024, SRC.reimers2018],
   },
   hrv: {
@@ -129,7 +129,7 @@ export const VITAL_SPECS: Record<VitalKey, VitalSpec> = {
     unit: 'ms', decimals: 0, group: 'recovery', concern: 'below', good: 'above',
     range: { mode: 'sd', k: 1 }, minHistory: 14, smoothDays: 7, deviation: false,
     about: 'Heart rate variability: how much the time between heartbeats varies (Apple measures SDNN). Higher usually means more rested; strain, poor sleep, alcohol and illness lower it.',
-    rangeRule: 'your average over the 60 days before ± 1 standard deviation, judged on the 7-day average (Plews 2013)',
+    rangeRule: 'your average over the 60 days before this day or period, ± 1 standard deviation, judged on the 7-day average (Plews 2013)',
     sources: [SRC.plews2013, SRC.appleWatchHrv2024, SRC.shaffer2017],
   },
   resp: {
@@ -137,7 +137,7 @@ export const VITAL_SPECS: Record<VitalKey, VitalSpec> = {
     unit: 'br/min', decimals: 1, group: 'recovery', concern: 'above', good: null,
     range: { mode: 'median', halfWidth: 1.5 }, minHistory: 10, smoothDays: 1, deviation: false,
     about: 'Breaths per minute while you sleep. It is very steady from night to night, so a rise is one of the first things to change when you get ill.',
-    rangeRule: 'your median over the 60 days before ± 1.5 breaths a minute; a rise of 3 or more is the level linked with infection',
+    rangeRule: 'your median over the 60 days before this day or period, ± 1.5 breaths a minute; a rise of 3 or more is the level linked with infection',
     sources: [SRC.natarajan2021, VITALS_SRC.appleVitals],
   },
   spo2: {
@@ -145,7 +145,7 @@ export const VITAL_SPECS: Record<VitalKey, VitalSpec> = {
     unit: '%', decimals: 0, group: 'recovery', concern: 'below', good: null,
     range: { mode: 'sd', k: 2, minHalfWidth: 1 }, minHistory: 10, smoothDays: 1, deviation: false,
     about: 'How much oxygen your blood carries, from spot readings while you sleep.',
-    rangeRule: 'your average over the 60 days before ± 2 standard deviations (at least ± 1 point)',
+    rangeRule: 'your average over the 60 days before this day or period, ± 2 standard deviations (at least ± 1 point)',
     transform: normalizeSpo2,
     sources: [SRC.appleSpo2Review, SRC.boulos2019, SRC.whoOximetry, VITALS_SRC.appleVitals],
   },
@@ -154,7 +154,7 @@ export const VITAL_SPECS: Record<VitalKey, VitalSpec> = {
     unit: '°C', decimals: 1, group: 'recovery', concern: 'above', good: null,
     range: { mode: 'sd', k: 2, minHalfWidth: 0.3 }, minHistory: 10, smoothDays: 1, deviation: true,
     about: 'Your overnight wrist-skin temperature compared with your usual night — Apple shows it the same way, as a difference.',
-    rangeRule: 'your average night over the 60 days before ± 2 standard deviations (at least ± 0.3 °C), shown as the difference from it',
+    rangeRule: 'your average night over the 60 days before this day or period, ± 2 standard deviations (at least ± 0.3 °C), shown as the difference from it',
     sources: [VITALS_SRC.appleWristTemp, VITALS_SRC.smarr2020, VITALS_SRC.appleVitals],
   },
   walking: {
@@ -162,7 +162,7 @@ export const VITAL_SPECS: Record<VitalKey, VitalSpec> = {
     unit: 'bpm', decimals: 0, group: 'fitness', concern: 'above', good: 'below',
     range: { mode: 'median', halfWidth: 4 }, minHistory: 10, smoothDays: 7, deviation: false,
     about: 'Your average heart rate during ordinary walking through the day. It is a light, repeatable effort, so it drifts down as fitness improves.',
-    rangeRule: 'your median over the 60 days before ± 4 bpm (about the Watch’s heart-rate error — a rule of thumb), judged on the 7-day average',
+    rangeRule: 'your median over the 60 days before this day or period, ± 4 bpm (about the Watch’s heart-rate error — a rule of thumb), judged on the 7-day average',
     sources: [SRC.appleWatchHrv2024],
   },
   hrr: {
