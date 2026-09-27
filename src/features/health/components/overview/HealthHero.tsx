@@ -1,0 +1,114 @@
+import { useState } from 'react'
+import { Activity, Dumbbell, Footprints, HeartPulse, Moon, Scale } from 'lucide-react'
+import { ModalShell } from '../../../../shared/modals'
+import { fmtClock } from '../../healthTrendStats'
+import type { HealthHero as Hero } from './useHealthHero'
+import { HeroTile } from './HeroTile'
+import { changeTone, hm, num, signed, signedHm } from './heroFormat'
+import { ExerciseDetail, SleepDetail, StepsDetail } from './HeroDetailsActivity'
+import { RhrDetail, VitalsDetail, WeightDetail } from './HeroDetailsBody'
+import { fmtDayMonth } from '../healthFormat'
+
+// "How you're doing": the six tier-1 tiles from the metric ranking
+// (docs/training-health/research/research-rank.json), in its order. No
+// composite score (house rule) — each tile stands on its own reference.
+
+type TileId = 'sleep' | 'steps' | 'exercise' | 'rhr' | 'weight' | 'vitals'
+
+const TITLES: Record<TileId, string> = {
+  sleep: 'Sleep', steps: 'Steps', exercise: 'Exercise this week', rhr: 'Resting heart rate', weight: 'Weight', vitals: 'Overnight vitals',
+}
+
+export function HealthHero({ hero, onViewDay }: { hero: Hero; onViewDay: (date: string) => void }) {
+  const [open, setOpen] = useState<TileId | null>(null)
+  // "View this day" from a sheet's chart closes the sheet first.
+  const viewDay = (date: string) => { setOpen(null); onViewDay(date) }
+  const { sleep, steps, exercise, rhr, weight, vitals } = hero
+  const band = (c: { label: string; tone: 'danger' | 'warn' | 'neutral' | 'success' | 'info' } | null, prefix = '') =>
+    c ? { label: `${prefix}${c.label}`, tone: c.tone } : null
+
+  const sleepDelta = sleep.avg7 != null && sleep.prevAvg7 != null ? sleep.avg7 - sleep.prevAvg7 : null
+  const stepsDelta = steps.avg7 != null && steps.prevAvg7 != null ? steps.avg7 - steps.prevAvg7 : null
+  const exDelta = exercise.minutes7 != null && exercise.prevMinutes7 != null ? exercise.minutes7 - exercise.prevMinutes7 : null
+  const hrvDelta = vitals.hrv7 != null && vitals.hrvRange ? vitals.hrv7 - vitals.hrvRange.center : null
+  const weightStale = weight.ma7 == null && weight.lastDate != null
+
+  const bodyCls = weight.whtrCls ? band(weight.whtrCls, 'Waist-to-height · ') : band(weight.bmiCls, 'BMI · ')
+  const bodyExtras = [
+    weight.bmi != null ? `BMI ${num(weight.bmi, 1)}` : null,
+    weight.whtr != null ? `WHtR ${num(weight.whtr, 2)}` : null,
+  ].filter(Boolean).join(' · ')
+
+  return (
+    <section aria-labelledby="health-hero-title" className="flex flex-col gap-3">
+      <h2 id="health-hero-title" className="text-lead font-semibold text-fg">
+        How you’re doing <span className="text-meta font-normal text-fg-muted">· as of {hero.isToday ? 'today' : fmtDayMonth(hero.anchor)}</span>
+      </h2>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <HeroTile icon={<Moon />} label="Sleep" onOpen={() => setOpen('sleep')} isLoading={sleep.isLoading}
+          empty={sleep.avg7 == null && sleep.lastNight == null ? 'No sleep recorded in the last week.' : null}
+          value={hm(sleep.lastNight ?? sleep.avg7)}
+          unit={sleep.lastNight != null ? (hero.isToday ? 'last night' : 'that night') : '7-night average'}
+          sub={<>
+            {sleep.avg7 != null && sleep.lastNight != null && <>7-night average {hm(sleep.avg7)} · </>}
+            {sleep.wake ? <>wake {fmtClock(sleep.wake.center)} ± {Math.round(sleep.wake.sd)} min</> : 'wake-time spread needs 5 nights'}
+          </>}
+          change={sleepDelta != null ? { text: `${signedHm(sleepDelta)} vs previous 7`, tone: changeTone(sleepDelta, 'up', 0.25) } : null}
+          band={band(sleep.cls)}
+          why="Regularly under 7 h is linked to weight gain, diabetes and heart disease (AASM/SRS); a steady wake time predicted mortality even better (Windred 2024)." />
+
+        <HeroTile icon={<Footprints />} label="Steps" onOpen={() => setOpen('steps')} isLoading={steps.isLoading}
+          empty={steps.avg7 == null ? 'Too few days with steps in the last week.' : null}
+          value={num(steps.avg7)} unit="/day, 7-day average"
+          sub={hero.isToday ? <>Today so far {num(steps.todaySoFar)}</> : null}
+          change={stepsDelta != null ? { text: `${signed(stepsDelta)} vs previous 7`, tone: changeTone(stepsDelta, 'up', 500) } : null}
+          band={band(steps.cls)}
+          why="The benefit keeps rising to about 7,000–8,000 a day and then levels off (Paluch 2022, Ding 2025)." />
+
+        <HeroTile icon={<Dumbbell />} label="Exercise this week" onOpen={() => setOpen('exercise')} isLoading={exercise.isLoading}
+          empty={exercise.minutes7 == null && exercise.strengthDays7 === 0 ? 'No exercise minutes or workouts in the last 7 days.' : null}
+          value={num(exercise.minutes7 ?? 0)} unit="of 150 min"
+          sub={<>Strength days {exercise.strengthDays7} of 2 (Hevy)</>}
+          change={exDelta != null ? { text: `${signed(exDelta)} min vs previous 7`, tone: changeTone(exDelta, 'up', 20) } : null}
+          band={band(exercise.cls)}
+          why="WHO: 150+ min of moderate activity and 2+ strength days a week; meeting it is linked to about 30% lower mortality (Arem 2015)." />
+
+        <HeroTile icon={<HeartPulse />} label="Resting heart rate" onOpen={() => setOpen('rhr')} isLoading={rhr.isLoading}
+          empty={rhr.avg7 == null ? 'Too few resting heart-rate readings this week.' : null}
+          value={num(rhr.avg7)} unit="bpm, 7-day average"
+          sub={rhr.baseline ? <>Your 60-day baseline {num(rhr.baseline.median)} bpm</> : 'Baseline needs 14 days of readings'}
+          change={rhr.delta != null ? { text: `${signed(rhr.delta)} bpm vs baseline`, tone: rhr.delta >= 5 ? 'warn' : rhr.delta <= -3 ? 'success' : 'neutral' } : null}
+          band={band(rhr.cls)}
+          why="A rise of 5+ bpm over your own baseline often means illness, alcohol, heat, short sleep or hard training. Lower over months usually means fitter." />
+
+        <HeroTile icon={<Scale />} label="Weight" onOpen={() => setOpen('weight')} isLoading={weight.isLoading}
+          empty={weight.lastKg == null ? 'No weigh-ins yet.' : null}
+          value={num(weight.ma7 ?? weight.lastKg, 1)} unit={weightStale ? 'kg, last weigh-in' : 'kg, 7-day average'}
+          sub={<>
+            {weight.lastDate && <>Last weigh-in {fmtDayMonth(weight.lastDate)}</>}
+            {bodyExtras && <> · {bodyExtras}</>}
+          </>}
+          change={weight.perWeek != null ? { text: `${signed(weight.perWeek, 2)} kg/week (28 days)`, tone: 'neutral' } : null}
+          band={bodyCls}
+          why="The 7-day average and the 28-day slope are the honest trend — single weigh-ins swing 1–2 kg with water and food." />
+
+        <HeroTile icon={<Activity />} label="Overnight vitals" onOpen={() => setOpen('vitals')} isLoading={vitals.isLoading}
+          empty={vitals.hrv7 == null && vitals.summary.checked === 0 ? 'Not enough overnight readings yet.' : null}
+          value={num(vitals.hrv7)} unit="ms HRV, 7-day average"
+          sub={vitals.hrvRange ? <>Your usual {num(vitals.hrvRange.low)}–{num(vitals.hrvRange.high)} ms</> : 'Usual range needs 14 days of HRV'}
+          change={hrvDelta != null ? { text: `${signed(hrvDelta)} ms vs your average`, tone: 'neutral' } : null}
+          band={vitals.summary.tone ? { label: vitals.summary.text, tone: vitals.summary.tone } : null}
+          why="Counted against your own usual ranges, the way Apple’s Vitals app does — how many are outside, never a score." />
+      </div>
+
+      <ModalShell open={open != null} onClose={() => setOpen(null)} title={open ? TITLES[open] : ''} size="lg">
+        {open === 'sleep' && <SleepDetail hero={hero} onViewDay={viewDay} />}
+        {open === 'steps' && <StepsDetail hero={hero} onViewDay={viewDay} />}
+        {open === 'exercise' && <ExerciseDetail hero={hero} onViewDay={viewDay} />}
+        {open === 'rhr' && <RhrDetail hero={hero} onViewDay={viewDay} />}
+        {open === 'weight' && <WeightDetail hero={hero} onViewDay={viewDay} />}
+        {open === 'vitals' && <VitalsDetail hero={hero} onViewDay={viewDay} />}
+      </ModalShell>
+    </section>
+  )
+}

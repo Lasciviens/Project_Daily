@@ -25,114 +25,58 @@ export interface MiniMetricWindow {
   period: Period
 }
 
-// Every HealthKit metric Health Auto Export actually sends us that doesn't
-// warrant its own full chart, grouped onto the section it's most conceptually
-// related to (no dedicated "Activity" page exists, so these ride along under
-// Steps/Heart/Sleep/Body as a mini-card matrix below each section's main
-// widget).
-//
-// Audited against the live health_metrics inventory on 2026-09-24 (47 distinct
-// metrics in the table vs. what this file renders). Fourteen cards were
-// removed for never having received a single row, and six metrics that were
-// arriving with no home in the UI were added. A card is only worth existing
-// if HealthKit actually feeds it -- see each group's own note.
+// The compact cards, grouped by the metric ranking's sections
+// (docs/training-health/research/research-rank.json). Tier-3 metrics only —
+// the tier-1/2 ones have full charts — and each grid hides itself when none of
+// its metrics has data in the window. Tier 4 (push count, UV, ambient noise,
+// headphone audio, mindful minutes, handwashing, HealthKit nutrition) is
+// deliberately not shown; the rows still land in health_metrics and keep their
+// aggregation rules. Running dynamics and cycling distance belong to a single
+// workout, so they live in the workout detail, not as permanent cards.
 
-export const STEPS_EXTRA_METRICS: MiniMetricConfig[] = [
-  { metric: 'walking_speed', title: 'Walking Speed', unit: 'km/h', decimals: 2,
-    description: 'Average pace while walking — a steady/rising trend usually tracks fitness.' },
-  { metric: 'walking_step_length', title: 'Step Length', unit: 'cm', decimals: 1,
-    description: 'Distance covered per step — tends to shorten with fatigue, age, or injury.' },
-  { metric: 'walking_asymmetry_percentage', title: 'Walk Asymmetry', unit: '%', decimals: 1,
-    description: 'How unevenly your left/right steps land — 0% is perfectly symmetric gait.' },
-  { metric: 'walking_double_support_percentage', title: 'Double Support', unit: '%', decimals: 1,
-    description: 'Share of each walking cycle with both feet on the ground — lower generally means steadier, more confident walking.' },
-  { metric: 'stair_speed_up', title: 'Stair Speed Up', unit: 'm/s', decimals: 2,
-    description: 'How fast you climb stairs — Apple’s cardio-fitness proxy from the Watch.' },
-  { metric: 'stair_speed_down', title: 'Stair Speed Down', unit: 'm/s', decimals: 2,
-    description: 'How fast you descend stairs — a balance & mobility indicator.' },
-  { metric: 'six_minute_walking_test_distance', title: '6-Min Walk', unit: 'm', decimals: 0,
-    description: 'Apple’s estimate of how far you could walk in six minutes — a standard clinical mobility measure, updated occasionally rather than daily.' },
-  { metric: 'walking_heart_rate_average', title: 'Walking HR', unit: 'bpm', decimals: 0,
-    description: 'Average heart rate during normal walking — trends down as fitness improves.' },
-  { metric: 'physical_effort', title: 'Physical Effort', unit: 'MET', decimals: 2,
-    description: 'Metabolic intensity of daily movement — higher means more strenuous activity.' },
-  { metric: 'apple_stand_time', title: 'Stand Time', unit: 'min', decimals: 0,
-    description: 'Total minutes spent standing/moving today — feeds the Stand ring on Overview.' },
-  { metric: 'flights_climbed', title: 'Flights Climbed', unit: 'floors', decimals: 0,
-    description: 'Equivalent flights of stairs climbed today.' },
-  { metric: 'cycling_distance', title: 'Cycling Distance', unit: 'km', decimals: 2,
-    description: 'Distance cycled today — only recorded on days the Watch detects a ride.' },
-  { metric: 'push_count', title: 'Pushes', unit: 'pushes', decimals: 0,
-    description: 'HealthKit "wheelchair push count" — if you don’t use a wheelchair, this is likely misdetected (check Watch Settings → Accessibility → Wheelchair).' },
+export const ACTIVITY_EXTRA_METRICS: MiniMetricConfig[] = [
+  { metric: 'flights_climbed', title: 'Flights climbed', unit: 'floors', decimals: 0,
+    description: 'Equivalent flights of stairs climbed. About 5 a day (roughly 50 steps) is a common everyday target.' },
+  { metric: 'apple_stand_hour', title: 'Stand hours', unit: 'h', decimals: 0,
+    description: 'Hours with at least a minute of standing and moving — a count of sitting breaks, not exercise. Apple’s target is 12.' },
+  { metric: 'apple_stand_time', title: 'Stand time', unit: 'min', decimals: 0,
+    description: 'Total minutes spent standing or moving.' },
 ]
 
-// Nutrition had ten cards here (water, sugar, protein, carbs, fiber, caffeine,
-// fat, vitamin D, magnesium, plus Fitbit's Active Zone Minutes). Not one had
-// ever received a row: food is logged in this app's own Food tab, which never
-// writes to Apple Health, and Active Zone Minutes died with the Fitbit
-// integration. The whole group was removed on 2026-09-24 rather than left as
-// ten permanent em dashes under Energy.
-
-export const HEART_EXTRA_METRICS: MiniMetricConfig[] = [
-  { metric: 'cardio_recovery', title: 'Cardio Recovery', unit: 'bpm', decimals: 0,
-    description: 'How much your heart rate drops in the minute after exercise — higher is fitter.' },
-  { metric: 'vo2_max', title: 'VO₂ Max', unit: 'ml/kg·min', decimals: 1,
-    description: 'Cardio fitness — estimated max oxygen uptake; higher is fitter. Apple estimates it from outdoor walks/runs, so it only updates on those days.' },
-  { metric: 'heart_rate_variability', title: 'HRV', unit: 'ms', decimals: 0,
-    description: 'Heart rate variability — beat-to-beat variation in SDNN; higher generally reflects better recovery. Mostly captured overnight.' },
+export const MOBILITY_METRICS: MiniMetricConfig[] = [
+  { metric: 'walking_speed', title: 'Walking speed', unit: 'km/h', decimals: 2,
+    description: 'Your usual pace while walking. At or above 1.0 m/s (3.6 km/h) is the usual healthy-gait line (Studenski 2011); only a sustained decline matters.' },
+  { metric: 'walking_step_length', title: 'Step length', unit: 'cm', decimals: 1,
+    description: 'Distance per step — tends to shorten with fatigue, age or injury.' },
+  { metric: 'walking_asymmetry_percentage', title: 'Walking asymmetry', unit: '%', decimals: 1,
+    description: 'How unevenly your left and right steps land; 0% is perfectly even. A sustained rise from your own baseline is the signal.' },
+  { metric: 'walking_double_support_percentage', title: 'Double support', unit: '%', decimals: 1,
+    description: 'Share of each walking cycle with both feet on the ground — lower generally means steadier walking.' },
+  { metric: 'stair_speed_up', title: 'Stair speed up', unit: 'm/s', decimals: 2,
+    description: 'How fast you climb stairs.' },
+  { metric: 'stair_speed_down', title: 'Stair speed down', unit: 'm/s', decimals: 2,
+    description: 'How fast you descend stairs — a balance and mobility indicator.' },
+  { metric: 'six_minute_walking_test_distance', title: '6-minute walk', unit: 'm', decimals: 0,
+    description: 'Apple’s estimate of how far you could walk in six minutes — a standard clinical mobility measure, updated occasionally.' },
 ]
 
-// Running dynamics — form metrics captured during a run, so they only exist on
-// run days (currently two rows each, from 2026-07-05). Kept rather than
-// removed: unlike the nutrition group these DO arrive, just rarely.
-export const RUNNING_EXTRA_METRICS: MiniMetricConfig[] = [
-  { metric: 'running_speed', title: 'Run Speed', unit: 'km/h', decimals: 1,
-    description: 'Average running speed on your latest run.' },
-  { metric: 'running_power', title: 'Run Power', unit: 'W', decimals: 0,
-    description: 'Running power output — effort delivered, like cycling watts.' },
-  { metric: 'running_stride_length', title: 'Stride Length', unit: 'm', decimals: 2,
-    description: 'Distance covered per running stride.' },
-  { metric: 'running_vertical_oscillation', title: 'Vertical Oscillation', unit: 'cm', decimals: 1,
-    description: 'How much you bounce vertically per stride — lower is usually more efficient.' },
-  { metric: 'running_ground_contact_time', title: 'Ground Contact', unit: 'ms', decimals: 0,
-    description: 'Time each foot spends on the ground per stride — lower tends to mean a snappier turnover.' },
+export const CARDIO_EXTRA_METRICS: MiniMetricConfig[] = [
+  { metric: 'cardio_recovery', title: 'Cardio recovery', unit: 'bpm', decimals: 0,
+    description: 'How far your heart rate drops in the minute after a workout — higher is fitter. Compare like with like (the same kind of workout); a drop of 12 bpm or less was linked to higher mortality (Cole 1999).' },
+  { metric: 'physical_effort', title: 'Physical effort', unit: 'MET', decimals: 2,
+    description: 'Apple’s estimate of the metabolic intensity of your movement (1 MET = resting).' },
 ]
 
+// Blood oxygen, respiratory rate and wrist temperature moved to Heart &
+// overnight vitals as full trends against your own range.
 export const SLEEP_EXTRA_METRICS: MiniMetricConfig[] = [
-  // blood_oxygen_saturation, NOT oxygen_saturation. The latter was the
-  // Fitbit-era name; it stopped receiving rows on 2026-08-30 when that
-  // integration was removed, so this card had been reading a dead metric ever
-  // since while the Watch's own readings piled up under the name below.
-  { metric: 'blood_oxygen_saturation', title: 'Blood Oxygen', unit: '%', decimals: 0,
-    description: 'Overnight SpO2 from the Watch — sustained dips can flag breathing disturbances.' },
-  { metric: 'breathing_disturbances', title: 'Breathing Disturbances', unit: 'count', decimals: 1,
-    description: 'Apple’s nightly count of interruptions in your breathing — a screening signal, never a diagnosis.' },
-  { metric: 'respiratory_rate', title: 'Respiratory Rate', unit: 'br/min', decimals: 1,
-    description: 'Breaths per minute — mostly captured overnight by the Watch during sleep.' },
-  // HealthKit stores the absolute overnight wrist temperature (~35 °C); Apple's
-  // own app shows it as a deviation from your baseline. The card does the
-  // same (H-15) rather than printing ~35 °C under a "deviation" label.
-  { metric: 'apple_sleeping_wrist_temperature', title: 'Wrist Temp', unit: '°C', decimals: 1, deviation: true,
-    description: 'Overnight wrist temperature compared with your usual night (the median of your previous 60 nights). A rise that lasts several nights can flag illness or cycle changes.' },
-  // Removed 2026-09-24: sleeping_heart_rate (Fitbit-only, never a single row)
-  // and skin_temperature (Fitbit's name for what Wrist Temp above already
-  // shows from the Watch; last row 2026-08-29).
+  { metric: 'breathing_disturbances', title: 'Breathing disturbances', unit: 'count', decimals: 1,
+    description: 'Apple’s nightly count of interruptions in your breathing — a screening signal, never a diagnosis. Apple flags a pattern as elevated only over 30 nights.' },
 ]
 
-// Ambient Noise / Headphone Audio / Mindful Minutes / Falls Detected / Sexual
-// Activity were removed on explicit user request (2026-09-06) — not dead data,
-// just judged not worth a permanent card; they still land in health_metrics.
-export const BODY_EXTRA_METRICS: MiniMetricConfig[] = [
-  // UV Exposure and Handwashing removed on request (2026-09-24). uv_exposure
-  // had never produced a single row -- that card could only ever read "—" --
-  // and handwashing stopped arriving on 2026-08-20. Daylight Time takes the
-  // sun/environment slot UV held; it moved here from Steps, where it sat among
-  // gait metrics it has nothing to do with.
-  { metric: 'time_in_daylight', title: 'Daylight Time', unit: 'min', decimals: 0,
-    description: 'Minutes spent in outdoor daylight — linked to sleep quality & mood.' },
-  // Waist circumference removed on request (2026-09-24): it already comes
-  // through Hevy's own body measurements, and two sources for one tape reading
-  // is one too many.
+export const HABIT_METRICS: MiniMetricConfig[] = [
+  { metric: 'time_in_daylight', title: 'Time in daylight', unit: 'min', decimals: 0,
+    description: 'Minutes in outdoor daylight — linked to sleep timing and mood. In Norway it swings hugely with the season.' },
   { metric: 'toothbrushing', title: 'Toothbrushing', unit: 's', decimals: 0, showTodayCount: true, showTodayTimes: true,
-    description: 'Total time spent brushing teeth today.' },
+    description: 'Time spent brushing. The usual advice is twice a day, two minutes each.' },
 ]

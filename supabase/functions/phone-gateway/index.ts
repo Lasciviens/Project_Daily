@@ -148,80 +148,105 @@ async function askAi(opts: {
   }
 }
 
-// Deterministic sleep nights (port of ai-proxy's computeSleepNights): merge
-// overlapping [start,end] sessions keeping the LONGEST per cluster (duplicate/
-// subset re-reports of one night), attribute to the Oslo wake day, last 7 days.
+// Deterministic sleep nights, last 7 days. THIRD hand-mirrored copy of
+// healthAggregate.ts's SLEEP CONTRACT (the others: the web app's
+// computeSleepSummary and ai-proxy's summarizeSleepNights) — CHANGE ONE,
+// CHANGE ALL THREE; scripts/verify-ai-sleep-merge.cjs checks the rules:
+//   1. A night belongs to the day you WOKE UP: sleepEnd's local date when it
+//      carries an offset, else the row's date.
+//   2. A night with any manual row uses ONLY its manual rows (a deliberate
+//      correction — this copy used to ignore manual rows entirely).
+//   3. Pre-aggregated sessions: drop one only when >=90% of its window lies
+//      inside a better-ranked session (a re-report); sum the rest (an
+//      interrupted night is two real blocks).
+//   4. Raw per-stage rows: Core + REM + Deep + Asleep = total; Awake not added.
 async function computeSleepNightsGw(userId: string): Promise<AnyRecord[]> {
   const since = dateFromToday(-7)
   const { data } = await supabase.from('health_metrics')
-    .select('value').eq('user_id', userId).eq('metric_name', 'sleep_analysis').gte('date', since)
+    .select('value, date, source, recorded_at').eq('user_id', userId).eq('metric_name', 'sleep_analysis').gte('date', since)
   const parse = (s: unknown): number | null => {
     if (typeof s !== 'string') return null
     const iso = s.trim().replace(' ', 'T').replace(/\s*([+-]\d{2}):?(\d{2})$/, '$1:$2')
     let t = Date.parse(iso); if (!Number.isFinite(t)) t = Date.parse(s)
     return Number.isFinite(t) ? t : null
   }
-  const sess = ((data ?? []) as AnyRecord[]).map(r => {
-    const v = r.value ?? {}
-    return { v, start: parse(v.sleepStart), end: parse(v.sleepEnd), total: num(v.totalSleep) }
-  }).filter(s => s.start != null && s.end != null && (s.end as number) > (s.start as number))
-  // THIRD hand-mirrored copy of healthAggregate.ts's mergeSleepSessions (the
-  // others are in ai-proxy and the web app). CHANGE ONE, CHANGE ALL THREE;
-  // scripts/verify-ai-sleep-merge.cjs asserts they agree.
-  //
-  // REAL BUG this replaced: "any time-overlap means the same sleep, keep only
-  // the longest" deleted a genuine second block of an interrupted night,
-  // because Apple counts the awake stretch at the edge of BOTH blocks so their
-  // windows overlap by a few minutes. Measured on the web copy: 4.10h + 4.35h
-  // with five minutes of edge overlap reported 4.35h against Apple's 8.45h.
-  // A duplicate re-report is substantially CONTAINED in what it duplicates;
-  // two real blocks only touch at the edges.
+  const nightKey = (r: AnyRecord): string => {
+    const end = r.value?.sleepEnd
+    if (typeof end === 'string' && /^\d{4}-\d{2}-\d{2}/.test(end) && /[+-]\d{2}:?\d{2}$/.test(end.trim())) return end.slice(0, 10)
+    return String(r.date)
+  }
   const CONTAINMENT = 0.9
-  const ranked = [...sess].sort((a, b) =>
-    (b.total - a.total) ||
-    (((b.end as number) - (b.start as number)) - ((a.end as number) - (a.start as number))))
-  const kept: typeof sess = []
-  for (const s of ranked) {
-    const dup = kept.some(k => {
-      const overlap = Math.min(s.end as number, k.end as number) - Math.max(s.start as number, k.start as number)
-      const span = (s.end as number) - (s.start as number)
-      return overlap > 0 && span > 0 && overlap / span >= CONTAINMENT
-    })
-    if (!dup) kept.push(s)
+  const byNight = new Map<string, AnyRecord[]>()
+  for (const r of (data ?? []) as AnyRecord[]) {
+    const k = nightKey(r)
+    const arr = byNight.get(k)
+    if (arr) arr.push(r); else byNight.set(k, [r])
   }
-  kept.sort((a, b) => (a.start as number) - (b.start as number))
-  const hm  = (m: number | null) => m == null ? null : new Date(m).toLocaleTimeString('en-GB', { timeZone: 'Europe/Oslo', hour: '2-digit', minute: '2-digit' })
-  const day = (m: number) => new Date(m).toLocaleDateString('en-CA', { timeZone: 'Europe/Oslo' })
-  // Sum the surviving sessions PER NIGHT, matching healthAggregate.ts and
-  // ai-proxy. One row per SESSION was fine while the merge kept exactly one
-  // per night; once an interrupted night legitimately keeps two, the Shortcut
-  // would read a single block as the whole night.
-  interface Night { date: string; hours: number; in_bed_h: number | null; deep_h: number; core_h: number; rem_h: number; awake_h: number; startMs: number; endMs: number }
-  const byNight = new Map<string, Night>()
-  for (const s of kept) {
-    const v = s.v, inS = parse(v.inBedStart), inE = parse(v.inBedEnd)
-    const inBed = (inS != null && inE != null && inE > inS) ? (inE - inS) / 3600000 : null
-    const date = day(s.end as number)
-    const n = byNight.get(date)
-    if (!n) {
-      byNight.set(date, { date, hours: s.total, in_bed_h: inBed,
-        deep_h: num(v.deep), core_h: num(v.core), rem_h: num(v.rem), awake_h: num(v.awake),
-        startMs: s.start as number, endMs: s.end as number })
-    } else {
-      n.hours += s.total
-      n.in_bed_h = inBed == null ? n.in_bed_h : (n.in_bed_h ?? 0) + inBed
-      n.deep_h += num(v.deep); n.core_h += num(v.core); n.rem_h += num(v.rem); n.awake_h += num(v.awake)
-      n.startMs = Math.min(n.startMs, s.start as number)
-      n.endMs   = Math.max(n.endMs, s.end as number)
-    }
-  }
+  const hm = (m: number | null) => m == null ? null : new Date(m).toLocaleTimeString('en-GB', { timeZone: 'Europe/Oslo', hour: '2-digit', minute: '2-digit' })
   const r2 = (n: number) => Math.round(n * 100) / 100
-  return [...byNight.values()].map(n => ({
-    date: n.date, hours: r2(n.hours),
-    in_bed_h: n.in_bed_h == null ? null : r2(n.in_bed_h),
-    deep_h: r2(n.deep_h), core_h: r2(n.core_h), rem_h: r2(n.rem_h), awake_h: r2(n.awake_h),
-    start: hm(n.startMs), end: hm(n.endMs),
-  })).sort((a, b) => a.date.localeCompare(b.date))
+  const out: AnyRecord[] = []
+  for (const [date, pts] of byNight) {
+    const manual = pts.filter(p => p.source === 'manual')
+    const src = manual.length > 0 ? manual : pts
+    const pre = src.filter(p => typeof p.value?.totalSleep === 'number')
+    let core = 0, rem = 0, deep = 0, awake = 0, total = 0
+    let inBed: number | null = null, startMs: number | null = null, endMs: number | null = null
+    if (pre.length > 0) {
+      // Rule 3 (mergeSleepSessions): exact re-sends first, then containment.
+      interface Sess { v: AnyRecord; start: number; end: number; total: number; order: number }
+      const timed: Sess[] = []
+      const untimed: AnyRecord[] = []
+      const seen = new Set<string>()
+      for (const r of pre) {
+        const v = r.value ?? {}
+        const key = [v.sleepStart ?? r.recorded_at, v.sleepEnd ?? '', v.totalSleep ?? ''].join('|')
+        if (seen.has(key)) continue
+        seen.add(key)
+        const start = parse(v.sleepStart), end = parse(v.sleepEnd)
+        if (start != null && end != null && end > start) timed.push({ v, start, end, total: num(v.totalSleep), order: timed.length })
+        else untimed.push(v)
+      }
+      const ranked = [...timed].sort((a, b) => (b.total - a.total) || ((b.end - b.start) - (a.end - a.start)) || (a.order - b.order))
+      const kept: Sess[] = []
+      for (const s of ranked) {
+        const dup = kept.some(k => {
+          const overlap = Math.min(s.end, k.end) - Math.max(s.start, k.start)
+          const span = s.end - s.start
+          return overlap > 0 && span > 0 && overlap / span >= CONTAINMENT
+        })
+        if (!dup) kept.push(s)
+      }
+      for (const v of [...untimed, ...kept.map(k => k.v)]) {
+        core += num(v.core); rem += num(v.rem); deep += num(v.deep); awake += num(v.awake)
+        total += typeof v.totalSleep === 'number' ? v.totalSleep : num(v.core) + num(v.rem) + num(v.deep)
+      }
+      for (const k of kept) {
+        startMs = startMs == null ? k.start : Math.min(startMs, k.start)
+        endMs = endMs == null ? k.end : Math.max(endMs, k.end)
+        const inS = parse(k.v.inBedStart), inE = parse(k.v.inBedEnd)
+        if (inS != null && inE != null && inE > inS) inBed = (inBed ?? 0) + (inE - inS) / 3600000
+      }
+    } else {
+      let asleep = 0
+      for (const p of src) {
+        const stage = p.value?.value, qty = p.value?.qty
+        if (typeof qty !== 'number') continue
+        if (stage === 'Core') core += qty
+        else if (stage === 'REM') rem += qty
+        else if (stage === 'Deep') deep += qty
+        else if (stage === 'Awake') awake += qty
+        else if (stage === 'Asleep') asleep += qty
+      }
+      total = core + rem + deep + asleep
+      if (!(total > 0 || awake > 0)) continue
+    }
+    out.push({
+      date, hours: r2(total), in_bed_h: inBed == null ? null : r2(inBed),
+      deep_h: r2(deep), core_h: r2(core), rem_h: r2(rem), awake_h: r2(awake),
+      start: hm(startMs), end: hm(endMs), manual: manual.length > 0,
+    })
+  }
+  return out.sort((a, b) => String(a.date).localeCompare(String(b.date)))
 }
 
 // ── Body composition report import (smart-scale OCR → Shortcut → gateway) ──

@@ -26,20 +26,36 @@ function isHourBoundary(recordedAt) {
   return recordedAt.slice(14, 19) === '00:00'
 }
 
+const MINUTE_GRAIN_MIN_MINUTES = 7
+
 function collapseDuplicateSumPoints(rows) {
-  const byKey = new Map()
+  const byHour = new Map()
   const passthrough = []
   for (const r of rows) {
     if (!SUM_METRICS_FOR_DEDUP.has(r.metric_name) || typeof r.value?.qty !== 'number') { passthrough.push(r); continue }
     const key = `${r.metric_name}|${String(r.recorded_at).slice(0, 13)}`
-    const kept = byKey.get(key)
-    if (!kept) { byKey.set(key, r); continue }
-    const keptIsBoundary = isHourBoundary(String(kept.recorded_at))
-    const rIsBoundary = isHourBoundary(String(r.recorded_at))
-    if (rIsBoundary && !keptIsBoundary) byKey.set(key, r)
-    else if (rIsBoundary === keptIsBoundary && r.value.qty > kept.value.qty) byKey.set(key, r)
+    const arr = byHour.get(key)
+    if (arr) arr.push(r); else byHour.set(key, [r])
   }
-  return [...byKey.values(), ...passthrough]
+  const kept = []
+  for (const hourRows of byHour.values()) {
+    if (hourRows.length === 1) { kept.push(hourRows[0]); continue }
+    const perMinute = new Map()
+    for (const r of hourRows) {
+      const k = String(r.recorded_at).slice(0, 16)
+      const cur = perMinute.get(k)
+      if (!cur || r.value.qty > cur.value.qty) perMinute.set(k, r)
+    }
+    if (perMinute.size >= MINUTE_GRAIN_MIN_MINUTES) { kept.push(...perMinute.values()); continue }
+    let winner = hourRows[0]
+    for (const r of hourRows.slice(1)) {
+      const rIsBoundary = isHourBoundary(String(r.recorded_at)), wIsBoundary = isHourBoundary(String(winner.recorded_at))
+      if (rIsBoundary && !wIsBoundary) winner = r
+      else if (rIsBoundary === wIsBoundary && r.value.qty > winner.value.qty) winner = r
+    }
+    kept.push(winner)
+  }
+  return [...kept, ...passthrough]
 }
 
 function row(metric, recordedAt, qty, source) {
@@ -100,6 +116,48 @@ console.log('\n5 · Two genuinely different real hours both count in full')
   const out = collapseDuplicateSumPoints(rows)
   check('both kept as distinct real hours', out.length === 2)
   check('sums to 150', out.reduce((a, r) => a + r.value.qty, 0) === 150)
+}
+
+console.log('\n6 · Minute-grain hour (>= 7 distinct minutes): minutes are summed, same-minute twins collapse')
+{
+  const rows = []
+  for (let m = 0; m < 30; m++) rows.push(row('step_count', `2026-07-20T10:${String(m).padStart(2, '0')}:00Z`, 50, 'Watch'))
+  // a float-noise workout twin in minute 5
+  rows.push(row('step_count', '2026-07-20T10:05:00Z', 49.9999, 'Watch'))
+  const out = collapseDuplicateSumPoints(rows)
+  const total = out.reduce((a, r) => a + r.value.qty, 0)
+  check('30 minutes × 50 steps → 1500, not 50 and not 1549.9999', Math.abs(total - 1500) < 1e-9, String(total))
+}
+
+console.log('\n7 · Six distinct minutes stays hour-grain (boundary row wins)')
+{
+  const rows = [row('step_count', '2026-07-20T11:00:00Z', 300, 'Watch')]
+  for (let m = 10; m < 15; m++) rows.push(row('step_count', `2026-07-20T11:${m}:00Z`, 400, 'Watch'))
+  const out = collapseDuplicateSumPoints(rows)
+  check('keeps only the boundary row (300)', out.length === 1 && out[0].value.qty === 300, JSON.stringify(out.map(r => r.value.qty)))
+}
+
+console.log('\n8 · The mirror AGREES with the web app (healthAggregate.collapsedPoints)')
+{
+  require('sucrase/register')
+  const { collapsedPoints } = require('../src/features/health/healthAggregate.ts')
+  const sum = (xs) => Math.round(xs.reduce((a, r) => a + r.value.qty, 0) * 1e6) / 1e6
+  const fixtures = {
+    'hour-grain re-deliveries': [
+      row('step_count', '2026-09-06T06:00:00Z', 83.7, 'A|B'), row('step_count', '2026-09-06T06:39:34Z', 64.2, 'A'),
+      row('step_count', '2026-09-06T07:12:00Z', 20, 'A'), row('step_count', '2026-09-06T07:40:00Z', 25, 'A'),
+    ],
+    'minute-grain hour': Array.from({ length: 12 }, (_, m) => row('step_count', `2026-09-06T08:${String(m * 5).padStart(2, '0')}:00Z`, 10 + m, 'A')),
+    'mixed day': [
+      ...Array.from({ length: 9 }, (_, m) => row('step_count', `2026-09-06T09:${String(m).padStart(2, '0')}:30Z`, 7, 'A')),
+      row('step_count', '2026-09-06T10:00:00Z', 500, 'A'), row('step_count', '2026-09-06T10:00:00Z', 500, 'A|A'),
+    ],
+  }
+  for (const [label, rows] of Object.entries(fixtures)) {
+    const edge = sum(collapseDuplicateSumPoints(rows))
+    const web = sum(collapsedPoints('step_count', rows))
+    check(`${label}: edge ${edge} === web ${web}`, edge === web)
+  }
 }
 
 console.log(`\n${passed} passed, ${failed} failed\n`)

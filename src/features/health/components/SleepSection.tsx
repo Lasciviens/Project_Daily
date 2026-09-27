@@ -18,7 +18,7 @@ import { SLEEP_COLOR } from './sleepStages'
 import { SleepStageBar } from './SleepStageBar'
 import { ManualSleepForm } from './ManualSleepForm'
 import { SleepRawRows } from './SleepRawRows'
-import { fmtAxisDay, fmtDayLong, fmtDayMonth, windowCaption } from './healthFormat'
+import { fmtAxisFor, fmtDayLong, fmtDayMonth, windowCaption } from './healthFormat'
 
 // Nights are filed under the day you WOKE UP, so "today" in Day mode is last
 // night — a finished night that always counts (H-01).
@@ -62,7 +62,7 @@ export function SleepSection({ range }: { range: HealthRange }) {
   const viewDay = (date: string) => { setPeriod('day'); setAnchor(date) }
 
   const chartData = fillDays(inWindow.map(n => ({ date: n.date, value: n.total })), win.from, win.to)
-    .map(d => ({ label: fmtAxisDay(d.date), date: d.date, total: d.value }))
+    .map(d => ({ label: fmtAxisFor(d.date, win.totalDays), date: d.date, total: d.value }))
 
   return (
     <SectionCard dimmed={sleep.isPlaceholderData}>
@@ -82,7 +82,7 @@ export function SleepSection({ range }: { range: HealthRange }) {
         )}
         {!isDay && s.best && s.worst && (
           <p className="mt-1 text-meta text-fg-muted">
-            Longest {fmtHrs(s.best.value)} ({fmtAxisDay(s.best.date)}) · shortest {fmtHrs(s.worst.value)} ({fmtAxisDay(s.worst.date)})
+            Longest {fmtHrs(s.best.value)} ({fmtDayMonth(s.best.date)}) · shortest {fmtHrs(s.worst.value)} ({fmtDayMonth(s.worst.date)})
           </p>
         )}
         {!isDay && inWindow.length === 0 && !sleep.isLoading && (
@@ -113,6 +113,7 @@ export function SleepSection({ range }: { range: HealthRange }) {
           ariaLabel="Hours asleep per night"
           height={140}
           formatValue={fmtHrs}
+          refLines={[{ y: 7, label: '7 h' }]}
           onViewDay={viewDay}
           extraActions={date => [{ label: 'Correct by hand', onClick: () => openForm(date) }]}
           describe={p => {
@@ -125,7 +126,7 @@ export function SleepSection({ range }: { range: HealthRange }) {
         <p className="text-micro text-fg-faint">Each bar is the night that ended that morning. {fmtDayLong(win.from)} – {fmtDayLong(win.to)}.</p>
       )}
 
-      <MetricMiniGrid title="Sleep extras" metrics={SLEEP_EXTRA_METRICS} window={{ from: win.from, to: win.to, period }} onViewDay={viewDay} />
+      <MetricMiniGrid title="Breathing during sleep" metrics={SLEEP_EXTRA_METRICS} window={{ from: win.from, to: win.to, period }} onViewDay={viewDay} hideWhenEmpty />
       <SleepRawRows points={points} />
     </SectionCard>
   )

@@ -1336,70 +1336,104 @@ async function getCalendarEvents(supabase: AnyRecord, userId: string, args: AnyR
 // day) — this mirrors the frontend's healthAggregate.ts aggregation rules
 // (sum for cumulative quantities, min/max/avg for heart_rate, last-reading
 // for resting HR) so the AI reports the same numbers the Health tab shows.
-// Sleep needs OVERLAP-MERGE (keep the LONGEST session per cluster of
-// overlapping [start,end] windows — duplicate/subset re-reports of one night),
-// NOT a qty sum, so it's computed separately from the metric loop. Overlap is
-// absolute-time (timezone-independent); each kept night is then attributed to
-// its Oslo wake day.
-async function computeSleepNights(supabase: AnyRecord, userId: string, since: string): Promise<AnyRecord[]> {
-  const { data } = await supabase.from('health_metrics')
-    .select('value').eq('user_id', userId).eq('metric_name', 'sleep_analysis').gte('date', since)
-  const ms = (s: unknown): number | null => {
-    if (typeof s !== 'string') return null
-    const iso = s.trim().replace(' ', 'T').replace(/\s*([+-]\d{2}):?(\d{2})$/, '$1:$2')
-    let t = Date.parse(iso); if (!Number.isFinite(t)) t = Date.parse(s)
-    return Number.isFinite(t) ? t : null
-  }
-  const sessions = ((data ?? []) as AnyRecord[]).map(r => {
+//
+// Sleep follows healthAggregate.ts's SLEEP CONTRACT (hand-mirrored — ai-proxy
+// is a self-contained Deno function and cannot import it; phone-gateway's
+// computeSleepNightsGw is the third copy; scripts/verify-ai-sleep-merge.cjs
+// runs the mirror against the web app's computeSleepSummary):
+//   1. A night belongs to the day you WOKE UP: the local date of sleepEnd when
+//      it carries an offset ("2026-07-17 07:27:08 +0200"), else the row's date.
+//   2. A night with any manual row uses ONLY its manual rows — a manual entry
+//      is a deliberate correction (these copies used to ignore manual rows, so
+//      the AI quoted the Watch's night the user had corrected).
+//   3. Pre-aggregated sessions: drop one only when >=90% of its own window lies
+//      inside a better-ranked session (a re-report); sum the rest (an
+//      interrupted night is two real blocks — "any overlap ⇒ keep the longest"
+//      reported 4.35h for a real 8.45h night).
+//   4. Raw per-stage rows: Core + REM + Deep + Asleep = total; Awake never added.
+const SLEEP_CONTAINMENT = 0.9
+function sleepMs(s: unknown): number | null {
+  if (typeof s !== 'string') return null
+  const iso = s.trim().replace(' ', 'T').replace(/\s*([+-]\d{2}):?(\d{2})$/, '$1:$2')
+  let t = Date.parse(iso); if (!Number.isFinite(t)) t = Date.parse(s)
+  return Number.isFinite(t) ? t : null
+}
+function sleepNightKeyOf(r: AnyRecord): string {
+  const end = r.value?.sleepEnd
+  if (typeof end === 'string' && /^\d{4}-\d{2}-\d{2}/.test(end) && /[+-]\d{2}:?\d{2}$/.test(end.trim())) return end.slice(0, 10)
+  return String(r.date)
+}
+/** Rule 3: the night's pre-aggregated rows minus re-reports (untimed rows are kept). */
+function mergeSleepSessionRows(pre: AnyRecord[]): AnyRecord[] {
+  const timed: { r: AnyRecord; start: number; end: number; total: number; order: number }[] = []
+  const untimed: AnyRecord[] = []
+  const seen = new Set<string>()
+  for (const r of pre) {
     const v = r.value ?? {}
-    return { start: ms(v.sleepStart), end: ms(v.sleepEnd), total: Number(v.totalSleep) || 0,
-             deep: Number(v.deep) || 0, core: Number(v.core) || 0, rem: Number(v.rem) || 0, awake: Number(v.awake) || 0 }
-  }).filter(s => s.start != null && s.end != null && (s.end as number) > (s.start as number))
-  // Hand-mirrored from healthAggregate.ts's mergeSleepSessions -- ai-proxy is a
-  // self-contained Deno function and cannot import it. CHANGE ONE, CHANGE THE
-  // OTHER; the web app's copy is the one with the assertions
-  // (scripts/verify-sleep-aggregate.cjs).
-  //
-  // REAL BUG this replaced: the rule was "any time-overlap ⇒ same sleep ⇒ keep
-  // only the longest". Right for a duplicate re-report, catastrophic for a
-  // normal interrupted night -- waking briefly makes Apple count the awake
-  // stretch at the edge of BOTH blocks, so two genuinely different parts of one
-  // night overlap by a few minutes and the smaller one was deleted. Measured on
-  // the web copy: 4.10h + 4.35h with five minutes of edge overlap reported
-  // 4.35h where Apple Health showed 8.45h.
-  //
-  // A duplicate is substantially CONTAINED in what it duplicates; two real
-  // blocks touch only at the edges. So drop a session only when >=90% of its
-  // own window lies inside a better-ranked one.
-  const CONTAINMENT = 0.9
-  const ranked = [...sessions].sort((a, b) =>
-    (b.total - a.total) ||
-    (((b.end as number) - (b.start as number)) - ((a.end as number) - (a.start as number))))
-  const kept: typeof sessions = []
+    const key = [v.sleepStart ?? r.recorded_at, v.sleepEnd ?? '', v.totalSleep ?? ''].join('|')
+    if (seen.has(key)) continue
+    seen.add(key)
+    const start = sleepMs(v.sleepStart), end = sleepMs(v.sleepEnd)
+    if (start != null && end != null && end > start) timed.push({ r, start, end, total: Number(v.totalSleep) || 0, order: timed.length })
+    else untimed.push(r)
+  }
+  const ranked = [...timed].sort((a, b) => (b.total - a.total) || ((b.end - b.start) - (a.end - a.start)) || (a.order - b.order))
+  const kept: typeof timed = []
   for (const s of ranked) {
     const dup = kept.some(k => {
-      const overlap = Math.min(s.end as number, k.end as number) - Math.max(s.start as number, k.start as number)
-      const span = (s.end as number) - (s.start as number)
-      return overlap > 0 && span > 0 && overlap / span >= CONTAINMENT
+      const overlap = Math.min(s.end, k.end) - Math.max(s.start, k.start)
+      const span = s.end - s.start
+      return overlap > 0 && span > 0 && overlap / span >= SLEEP_CONTAINMENT
     })
     if (!dup) kept.push(s)
   }
-  // Sum the surviving sessions PER NIGHT, the way healthAggregate.ts does.
-  // Returning one row per session (as this did) was fine while the merge kept
-  // exactly one session per night, and became wrong the moment an interrupted
-  // night legitimately kept two: the caller got two rows for the same date and
-  // nothing summed them, so the model would quote one block as the night.
-  const byNight = new Map<string, AnyRecord>()
-  for (const s of kept) {
-    const date = new Date(s.end as number).toLocaleDateString('en-CA', { timeZone: 'Europe/Oslo' })
-    const n = byNight.get(date) ?? { date, hours: 0, deep_h: 0, core_h: 0, rem_h: 0, awake_h: 0 }
-    n.hours += s.total; n.deep_h += s.deep; n.core_h += s.core; n.rem_h += s.rem; n.awake_h += s.awake
-    byNight.set(date, n)
+  kept.sort((a, b) => a.start - b.start)
+  return [...untimed, ...kept.map(k => k.r)]
+}
+/** One summary per wake-day night (rules 1–4). */
+function summarizeSleepNights(rows: AnyRecord[]): AnyRecord[] {
+  const byNight = new Map<string, AnyRecord[]>()
+  for (const r of rows) {
+    const k = sleepNightKeyOf(r)
+    const arr = byNight.get(k)
+    if (arr) arr.push(r); else byNight.set(k, [r])
   }
   const r2 = (n: number) => Math.round(n * 100) / 100
-  return [...byNight.values()]
-    .map(n => ({ date: n.date, hours: r2(n.hours), deep_h: r2(n.deep_h), core_h: r2(n.core_h), rem_h: r2(n.rem_h), awake_h: r2(n.awake_h) }))
-    .sort((a, b) => a.date.localeCompare(b.date))
+  const out: AnyRecord[] = []
+  for (const [date, pts] of byNight) {
+    const manual = pts.filter(p => p.source === 'manual')
+    const src = manual.length > 0 ? manual : pts
+    const pre = src.filter(p => typeof p.value?.totalSleep === 'number')
+    let core = 0, rem = 0, deep = 0, awake = 0, total = 0
+    if (pre.length > 0) {
+      for (const p of mergeSleepSessionRows(pre)) {
+        const v = p.value
+        core += Number(v.core) || 0; rem += Number(v.rem) || 0; deep += Number(v.deep) || 0; awake += Number(v.awake) || 0
+        total += typeof v.totalSleep === 'number' ? v.totalSleep : (Number(v.core) || 0) + (Number(v.rem) || 0) + (Number(v.deep) || 0)
+      }
+    } else {
+      let asleep = 0
+      for (const p of src) {
+        const stage = p.value?.value, qty = p.value?.qty
+        if (typeof qty !== 'number') continue
+        if (stage === 'Core') core += qty
+        else if (stage === 'REM') rem += qty
+        else if (stage === 'Deep') deep += qty
+        else if (stage === 'Awake') awake += qty
+        else if (stage === 'Asleep') asleep += qty
+      }
+      total = core + rem + deep + asleep
+      if (!(total > 0 || awake > 0)) continue
+    }
+    out.push({ date, hours: r2(total), deep_h: r2(deep), core_h: r2(core), rem_h: r2(rem), awake_h: r2(awake), manual: manual.length > 0 })
+  }
+  return out.sort((a, b) => String(a.date).localeCompare(String(b.date)))
+}
+
+async function computeSleepNights(supabase: AnyRecord, userId: string, since: string): Promise<AnyRecord[]> {
+  const { data } = await supabase.from('health_metrics')
+    .select('value, date, source, recorded_at').eq('user_id', userId).eq('metric_name', 'sleep_analysis').gte('date', since)
+  return summarizeSleepNights((data ?? []) as AnyRecord[])
 }
 
 // Mirrors healthAggregate.ts's hour-level dedup (hand-synced, not imported --
@@ -1434,20 +1468,45 @@ function isHourBoundary(recordedAt: string): boolean {
   return recordedAt.slice(14, 19) === '00:00'
 }
 
+// ROUND 3 (mirrors healthAggregate.ts's H-06 rule): the hour-only rule
+// assumes HOUR-grain rows ("Time Grouping: Hours"). Older rows and any raw
+// per-sample export are MINUTE-grain — dozens of independent increments per
+// hour — and keeping one row per hour turned 60 × 50 steps into 50. An hour
+// with at least MINUTE_GRAIN_MIN_MINUTES distinct minutes is read as
+// minute-grain: same-minute twins collapse (largest wins) and the minutes are
+// SUMMED. Fewer distinct minutes keeps the hour-only rule above.
+// scripts/verify-ai-health-stats-dedup.cjs mirrors this and checks it against
+// the web app's collapsedPoints.
+const MINUTE_GRAIN_MIN_MINUTES = 7
+
 function collapseDuplicateSumPoints(rows: AnyRecord[]): AnyRecord[] {
-  const byKey = new Map<string, AnyRecord>()
+  const byHour = new Map<string, AnyRecord[]>()
   const passthrough: AnyRecord[] = []
   for (const r of rows) {
     if (!SUM_METRICS_FOR_DEDUP.has(r.metric_name) || typeof r.value?.qty !== 'number') { passthrough.push(r); continue }
     const key = `${r.metric_name}|${String(r.recorded_at).slice(0, 13)}` // metric + UTC hour bucket
-    const kept = byKey.get(key)
-    if (!kept) { byKey.set(key, r); continue }
-    const keptIsBoundary = isHourBoundary(String(kept.recorded_at))
-    const rIsBoundary = isHourBoundary(String(r.recorded_at))
-    if (rIsBoundary && !keptIsBoundary) byKey.set(key, r)
-    else if (rIsBoundary === keptIsBoundary && r.value.qty > kept.value.qty) byKey.set(key, r)
+    const arr = byHour.get(key)
+    if (arr) arr.push(r); else byHour.set(key, [r])
   }
-  return [...byKey.values(), ...passthrough]
+  const kept: AnyRecord[] = []
+  for (const hourRows of byHour.values()) {
+    if (hourRows.length === 1) { kept.push(hourRows[0]); continue }
+    const perMinute = new Map<string, AnyRecord>()
+    for (const r of hourRows) {
+      const k = String(r.recorded_at).slice(0, 16)
+      const cur = perMinute.get(k)
+      if (!cur || r.value.qty > cur.value.qty) perMinute.set(k, r)
+    }
+    if (perMinute.size >= MINUTE_GRAIN_MIN_MINUTES) { kept.push(...perMinute.values()); continue }
+    let winner = hourRows[0]
+    for (const r of hourRows.slice(1)) {
+      const rIsBoundary = isHourBoundary(String(r.recorded_at)), wIsBoundary = isHourBoundary(String(winner.recorded_at))
+      if (rIsBoundary && !wIsBoundary) winner = r
+      else if (rIsBoundary === wIsBoundary && r.value.qty > winner.value.qty) winner = r
+    }
+    kept.push(winner)
+  }
+  return [...kept, ...passthrough]
 }
 
 async function getHealthStats(supabase: AnyRecord, userId: string, args: AnyRecord): Promise<AnyRecord> {
@@ -2187,7 +2246,7 @@ const DB_CATALOG: Record<string, CatalogEntry> = {
   athlete_profile: {
     access: 'rw',
     purpose: "The user's durable training profile/settings — a SINGLETON: at most ONE row per user, keyed by user_id (there is no id column, unlike every other table here). Not a list. Consult before giving any training/programming advice so recommendations match their real goal/experience/equipment; prefer the get_athlete_profile tool to read it (returns limitations too in the same call).",
-    columns: 'user_id(uuid, PRIMARY KEY — not "id"), goal(strength|hypertrophy|fat_loss|general), experience_level(novice|intermediate|advanced), training_age_years(numeric, nullable), training_days_per_week(int, nullable), equipment_access(home|gym|both), notes(text, nullable), updated_at',
+    columns: 'user_id(uuid, PRIMARY KEY — not "id"), goal(strength|hypertrophy|fat_loss|general), experience_level(novice|intermediate|advanced), training_age_years(numeric, nullable), training_days_per_week(int, nullable), equipment_access(home|gym|both), notes(text, nullable), birth_year(smallint, nullable), sex(male|female, nullable), height_cm(numeric, nullable), updated_at',
     rules: [
       'There is at most one row for this user — never insert a second one once a row exists.',
       'To write: first db_query this table with filters={} to check whether a row already exists (or call get_athlete_profile). If none exists, db_insert one. If one exists, db_update it — but db_update refuses an empty filters object, so pass filters={"user_id":"<the user_id value from the row you just queried>"} to satisfy that check; every row already carries its own user_id in the query result, and it is always the correct value since every read/write here is scoped to you anyway.',

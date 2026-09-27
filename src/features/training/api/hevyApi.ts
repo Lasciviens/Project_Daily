@@ -1,8 +1,7 @@
 import { supabase } from '../../../integrations/supabase/client'
-import { fetchBodyweightSeries } from '../../health/api/bodyweightApi'
 import { workoutWindowFilter, localDayBoundsIso, workoutLocalDay } from '../workoutDates'
 import { computePersonalRecords, PR_SET_TYPES, type PersonalRecord, type PRSetInput, type PRTemplateInput } from '../personalRecords'
-import type { ProgressSetRow, ProgressTemplateRow, BodyweightAnchor } from '../progressAggregate'
+import type { ProgressSetRow, ProgressTemplateRow } from '../progressAggregate'
 import type {
   HevyWorkout,
   HevyWorkoutExercise,
@@ -254,17 +253,6 @@ export async function fetchTrainingHistory(fromISO: string, toISO: string): Prom
     sets,
     templates: templates.map(t => ({ ...t, secondary_muscle_groups: secondariesByTemplate.get(t.id) ?? [] })),
   }
-}
-
-// ─── Bodyweight history (Relative Strength chart, Progress KPI) ──────────────
-// The ONE merged bodyweight series (Hevy log > smart scale > Apple Health,
-// see health/bodyweight.ts), so Progress shows the same weight as Health and
-// the Body tab instead of its own Hevy+Apple union.
-export type { BodyweightAnchor }
-
-export async function fetchBodyweightHistory(fromDate: string, toDate: string): Promise<BodyweightAnchor[]> {
-  const series = await fetchBodyweightSeries(fromDate, toDate)
-  return series.map(p => ({ date: p.date, kg: p.kg }))
 }
 
 // ─── Workout detail ──────────────────────────────────────────────────────────

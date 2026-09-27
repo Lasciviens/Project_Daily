@@ -272,33 +272,101 @@ export const PATTERN_AFFECTED_SLUGS: Record<MovementPattern, { slug: Slug; weigh
   isolation: [],
 }
 
-/** Which slugs carry an active training restriction, and how hard — the
- *  cross-check `trainingInsights.ts`'s Training Analysis panel needs before
- *  it tells a user to add volume to a muscle they've deliberately limited
- *  (a sports-scientist review, 2026-09-01, flagged the missing check as this
- *  app's most serious correctness defect: the panel is presented as a
- *  canonical verdict, and advice that contradicts a restriction the app
- *  already stores is worse than no advice). 'monitor'-severity limitations
- *  are excluded — that severity means "watch it", not "restricted", so it
- *  carries no volume implication. Same exact `PATTERN_AFFECTED_SLUGS[...] ??
- *  []` lookup WorkedMuscles.tsx already uses for its own flagged-muscle
- *  state — one mapping, not two — which also means the same caveat applies
- *  here: `movement_pattern` is free text on the DB side (see PATTERN_AFFECTED_SLUGS's
- *  own header comment), so a limitation whose phrasing doesn't match one of
- *  the nine `MovementPattern` keys exactly produces no match, same as it
- *  already does for the Muscles tab today. Worst case wins when two
- *  limitations disagree on one muscle ('avoid' never downgrades to 'limit'). */
-export function limitedSlugsFromLimitations(
-  limitations: { movement_pattern: string; severity: 'avoid' | 'limit' | 'monitor'; active: boolean }[],
-): Map<Slug, 'avoid' | 'limit'> {
-  const out = new Map<Slug, 'avoid' | 'limit'>()
+// ── Free-text movement patterns ──────────────────────────────────────────────
+// `athlete_limitations.movement_pattern` is free text on the DB side (no CHECK
+// enum; the AI and older rows write phrasings like "heavy_hip_hinge"), so every
+// reader resolves it here — the same rule everywhere — instead of indexing
+// MOVEMENT_PATTERN_LABEL directly (that printed 'undefined' in the coach prompt
+// and a blank name in the limitations list for any value outside the enum).
+const PATTERN_KEYWORDS: readonly [MovementPattern, RegExp][] = [
+  ['hinge',            /hinge|deadlift|\brdl\b|good.?morning/],
+  ['squat',            /squat/],
+  ['lunge',            /lunge|split.?squat|single.?leg|step.?up/],
+  ['vertical_press',   /overhead|vertical.?press|shoulder.?press|military/],
+  ['horizontal_press', /horizontal.?press|bench|push.?up|chest.?press/],
+  ['vertical_pull',    /vertical.?pull|pull.?up|chin.?up|pulldown/],
+  ['horizontal_pull',  /horizontal.?pull|\brow/],
+  ['carry',            /carry/],
+  ['isolation',        /isolation|single.?joint/],
+]
+
+/** The enum pattern a stored value means: the exact key, else the first
+ *  unambiguous keyword match ("heavy_hip_hinge" → hinge), else null. */
+export function resolveMovementPattern(raw: string | null | undefined): MovementPattern | null {
+  if (!raw) return null
+  const v = raw.trim().toLowerCase()
+  if (v in MOVEMENT_PATTERN_LABEL) return v as MovementPattern
+  const text = v.replace(/[_-]+/g, ' ')
+  for (const [pattern, re] of PATTERN_KEYWORDS) if (re.test(text)) return pattern
+  return null
+}
+
+/** A readable name for any stored value: the enum label, else the free text
+ *  itself made readable ("unilateral_balance_left" → "Unilateral balance left"). */
+export function movementPatternLabel(raw: string | null | undefined): string {
+  const v = (raw ?? '').trim()
+  if (v in MOVEMENT_PATTERN_LABEL) return MOVEMENT_PATTERN_LABEL[v as MovementPattern]
+  const text = v.replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim()
+  return text ? text.charAt(0).toUpperCase() + text.slice(1) : 'Unnamed limitation'
+}
+
+export interface LimitationLike {
+  movement_pattern: string
+  severity: 'avoid' | 'limit' | 'monitor'
+  active: boolean
+}
+
+/** One flagged muscle: the worst restriction on it and every limitation that
+ *  reaches it (for "which limitation and why"). */
+export interface SlugRestriction<L extends LimitationLike = LimitationLike> {
+  weight: 'avoid' | 'limit'
+  items: { weight: 'avoid' | 'limit'; limitation: L }[]
+}
+
+/** Which muscles carry an active training restriction, how hard, and from
+ *  which limitations — the ONE rule the Muscles map, Training Analysis and the
+ *  AI coach share. Rules: only ACTIVE limitations; 'monitor' is excluded (that
+ *  severity means "watch it", not "restricted", so it carries no volume or
+ *  colour implication); the pattern is resolved from free text
+ *  (resolveMovementPattern), so "heavy_hip_hinge" counts as a hinge; the worst
+ *  case wins when two limitations reach one muscle ('avoid' never downgrades to
+ *  'limit'). A sports-scientist review (2026-09-01) called the missing check
+ *  this app's most serious correctness defect: advice to add volume to a
+ *  muscle the user deliberately restricted is worse than no advice. */
+export function restrictionsBySlug<L extends LimitationLike>(limitations: readonly L[]): Map<Slug, SlugRestriction<L>> {
+  const out = new Map<Slug, SlugRestriction<L>>()
   for (const lim of limitations) {
     if (!lim.active || lim.severity === 'monitor') continue
-    for (const { slug, weight } of PATTERN_AFFECTED_SLUGS[lim.movement_pattern as MovementPattern] ?? []) {
-      if (out.get(slug) !== 'avoid') out.set(slug, weight)
+    const pattern = resolveMovementPattern(lim.movement_pattern)
+    for (const { slug, weight } of pattern ? PATTERN_AFFECTED_SLUGS[pattern] : []) {
+      const cur = out.get(slug) ?? { weight, items: [] }
+      cur.items.push({ weight, limitation: lim })
+      if (weight === 'avoid') cur.weight = 'avoid'
+      out.set(slug, cur)
     }
   }
   return out
+}
+
+/** Worst restriction per muscle only (Training Analysis' cross-check). */
+export function limitedSlugsFromLimitations(limitations: readonly LimitationLike[]): Map<Slug, 'avoid' | 'limit'> {
+  return new Map([...restrictionsBySlug(limitations)].map(([slug, r]) => [slug, r.weight]))
+}
+
+/** How far a weekly-set figure sits from the growth range (MEV–MRV), in
+ *  whole sets: below MEV → add (≈4 sets per extra session); above MRV → cut. */
+export type WeeklySetGap =
+  | { kind: 'add'; sets: number; sessions: number; mev: number; mav: number }
+  | { kind: 'cut'; sets: number; mrv: number }
+
+export function weeklySetGap(weeklySets: number, L: Landmarks | undefined): WeeklySetGap | null {
+  if (!L) return null
+  if (weeklySets < L.mev) {
+    const deficit = Math.max(1, Math.round(L.mev - weeklySets))
+    return { kind: 'add', sets: deficit, sessions: Math.max(1, Math.ceil(deficit / 4)), mev: L.mev, mav: L.mav }
+  }
+  if (weeklySets > L.mrv) return { kind: 'cut', sets: Math.max(1, Math.round(weeklySets - L.mrv)), mrv: L.mrv }
+  return null
 }
 
 // ── Experience-scaled landmarks ──────────────────────────────────────────────

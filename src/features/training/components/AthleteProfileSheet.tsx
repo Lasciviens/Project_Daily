@@ -6,7 +6,7 @@ import { useAthleteProfile, useUpsertAthleteProfile } from '../hooks/useAthleteP
 import type { Equipment, ExperienceLevel, TrainingGoal } from '../types.athlete'
 import { LimitationsList } from './LimitationsList'
 import { MusclePreferencesList } from './MusclePreferencesList'
-import { CurrentProgramPicker } from './CurrentProgramPicker'
+import { Link } from 'react-router-dom'
 
 // Settings-style form, not a save-and-close dialog: every field autosaves on
 // change/blur (same convention as the Food Today Goals editor's pills/steppers
@@ -138,7 +138,10 @@ export function AthleteProfileSheet({ open, onClose }: Props) {
 
         <div className="border-t border-line pt-4">
           <p className="field-label">Current program</p>
-          <CurrentProgramPicker />
+          <p className="text-meta text-fg-muted">
+            Which routines you&apos;re running now lives on the Training page&apos;s Program tab, next to what they plan per muscle.{' '}
+            <Link to="/training?tab=program" onClick={onClose} className="font-semibold text-accent-600">Open Program</Link>
+          </p>
         </div>
       </div>
     </ModalShell>

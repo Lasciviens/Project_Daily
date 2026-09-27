@@ -120,14 +120,12 @@ export const qk = {
     measurementForDate: (date: string) => ['hevy', 'measurements', 'date', date] as const,
     muscleVolume: (from: string, to: string) => ['hevy', 'muscle-volume', from, to] as const,
     trainingHistory: (from: string) => ['hevy', 'training-history', from] as const,
-    bodyweightHistory: (from: string, to: string) => ['hevy', 'bodyweight-history', from, to] as const,
   },
   strava: { all: ['strava'] as const, activities: (opts: object) => ['strava', 'activities', opts] as const },
   training: {
     all: ['training'] as const,
     stravaStatus: () => ['training', 'strava-status'] as const,
     ptAssessments: ['pt-assessments'] as const,
-    bodyComposition: ['body-composition-reports'] as const,
     exerciseGifDb: ['exercise-gif-db'] as const,
     exerciseGifOverrides: ['exercise-gif-overrides'] as const,
     currentProgram: ['current-program-routines'] as const,
@@ -154,6 +152,9 @@ export const qk = {
     bodyweight: (from: string, to: string) => ['health', 'bodyweight', from, to] as const,
     bodyweightLatest: (onOrBefore?: string) => ['health', 'bodyweight', 'latest', onOrBefore ?? 'now'] as const,
     bodyComposition: ['health', 'body-composition-reports'] as const,
+    /** Eaten diary totals (date, kcal, protein) for the cut report. */
+    cutDiaryAll: ['health', 'cut-diary'] as const,
+    cutDiary: (from: string, to: string) => ['health', 'cut-diary', from, to] as const,
   },
   games: { all: ['games'] as const },
   logs: {

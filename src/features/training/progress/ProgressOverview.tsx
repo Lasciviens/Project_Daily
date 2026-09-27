@@ -1,4 +1,5 @@
-import { useState, type ReactNode } from 'react'
+import { useNavigate } from 'react-router-dom'
+import type { ReactNode } from 'react'
 import { Settings2 } from 'lucide-react'
 import { useSetCurrentProgramRoutines } from '../hooks/useAthleteProfile'
 import { useProgressDataContext } from './progressDataContext'
@@ -6,7 +7,6 @@ import { progressVerdictHeadline, workloadLabel, type ProgramDecision } from '..
 import type { BodyweightChange } from '../progressAggregate'
 import { InfoBubble } from '../../../shared/components/InfoBubble'
 import { Button, Card, CardHeader, Skeleton, type Tone } from '../../../shared/ui'
-import { AthleteProfileSheet } from '../components/AthleteProfileSheet'
 
 // The page's headline — answers "what's happening / why / how reliable" in
 // the first viewport. Two DISTINCT facets are shown side by side and never
@@ -29,14 +29,11 @@ const WORKLOAD_TONE: Record<ProgramDecision['workload'], Tone> = {
 }
 
 function ProgramSettingsButton({ label }: { label: string }) {
-  const [open, setOpen] = useState(false)
+  const navigate = useNavigate()
   return (
-    <>
-      <Button variant="ghost" size="sm" className="gap-1.5 !px-2" onClick={() => setOpen(true)}>
-        <Settings2 aria-hidden className="h-4 w-4" /> {label}
-      </Button>
-      <AthleteProfileSheet open={open} onClose={() => setOpen(false)} />
-    </>
+    <Button variant="ghost" size="sm" className="gap-1.5 !px-2" onClick={() => navigate('/training?tab=program')}>
+      <Settings2 aria-hidden className="h-4 w-4" /> {label}
+    </Button>
   )
 }
 
