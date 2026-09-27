@@ -1,6 +1,6 @@
 import { useChartColors } from '../../../shared/ui'
 import { InfoBubble } from '../../../shared/components/InfoBubble'
-import type { ScaleDay } from '../bodyweight'
+import { currentDeviceSeries, scaleChartDomain, type ScaleDay } from '../bodyweight'
 import { daysBetweenIso, fillDays, linearTrendPerDay, rollingMean } from '../healthWindowStats'
 import { HealthTrendChart, type TrendPoint, type TrendSeries } from './HealthTrendChart'
 import { fmtDayMonth } from './healthFormat'
@@ -9,8 +9,12 @@ import { fmtDayMonth } from './healthFormat'
 // "only show the scale… don't need dots"). Hand-typed Hevy weights are left
 // out here (scaleOnly in bodyweight.ts). The weight chart adds the 7-day
 // average, the honest trend: single weigh-ins swing 1-2 kg with water and food.
+// Body fat and lean mass come from the scale in use only (currentDeviceSeries):
+// two scales' estimates don't line up, while their weights do.
 
 const STALE_AFTER_DAYS = 3
+// The smallest y-range each chart shows, so a flat week stays flat on screen.
+const MIN_SPAN: Record<Field, number> = { kg: 3, fatPct: 3, leanKg: 3 }
 
 interface Props {
   /** Scale readings inside [from, to]. */
@@ -56,7 +60,9 @@ export function BodyweightCharts({ days, latest, from, to, onViewDay }: Props) {
   const stale = latest ? daysBetweenIso(latest.date, to) : null
   // Body fat and lean mass side by side once the card is wide enough — only
   // when both have readings, so a lone chart keeps the full width.
-  const pair = days.some(d => d.fatPct != null) && days.some(d => d.leanKg != null)
+  const fat = currentDeviceSeries(days, 'fatPct')
+  const lean = currentDeviceSeries(days, 'leanKg')
+  const pair = fat.readings.length > 0 && lean.readings.length > 0
 
   return (
     <div className="@container flex flex-col gap-4">
@@ -92,7 +98,7 @@ export function BodyweightCharts({ days, latest, from, to, onViewDay }: Props) {
         ? <p className="py-6 text-center text-meta text-fg-muted">No scale readings in the last 90 days.</p>
         : (
           <HealthTrendChart data={weightData} unit="kg" ariaLabel="Weight from the smart scale with its 7-day average" height={180}
-            formatValue={v => v.toFixed(1)} onViewDay={onViewDay}
+            formatValue={v => v.toFixed(1)} onViewDay={onViewDay} yDomain={scaleChartDomain(weight.readings.map(r => r.value), MIN_SPAN.kg)}
             series={[
               readingLine('kg', 'weigh-in', c.series[1], weight.readings.length),
               { key: 'mean7', label: '7-day average', color: c.series[1], kind: 'line', dashed: true, connectNulls: true },
@@ -100,9 +106,9 @@ export function BodyweightCharts({ days, latest, from, to, onViewDay }: Props) {
         )}
 
       <div className={`grid grid-cols-1 gap-4 ${pair ? '@2xl:grid-cols-2' : ''}`}>
-        <ScaleMetricChart days={days} field="fatPct" from={from} to={to} onViewDay={onViewDay}
+        <ScaleMetricChart series={fat} field="fatPct" from={from} to={to} onViewDay={onViewDay}
           title="Body fat" unit="%" color={c.series[2]} ariaLabel="Body fat from the smart scale" />
-        <ScaleMetricChart days={days} field="leanKg" from={from} to={to} onViewDay={onViewDay}
+        <ScaleMetricChart series={lean} field="leanKg" from={from} to={to} onViewDay={onViewDay}
           title="Lean mass" unit="kg" color={c.series[4]} ariaLabel="Lean mass from the smart scale"
           info="Everything that isn't fat — muscle, water, bone and organs — as the scale estimates it: your weight minus its fat estimate. It moves with hydration and food in the gut, so read it over weeks, not from one morning." />
       </div>
@@ -110,8 +116,8 @@ export function BodyweightCharts({ days, latest, from, to, onViewDay }: Props) {
   )
 }
 
-function ScaleMetricChart({ days, field, from, to, onViewDay, title, unit, color, ariaLabel, info }: {
-  days: ScaleDay[]
+function ScaleMetricChart({ series, field, from, to, onViewDay, title, unit, color, ariaLabel, info }: {
+  series: ReturnType<typeof currentDeviceSeries>
   field: Field
   from: string
   to: string
@@ -122,8 +128,9 @@ function ScaleMetricChart({ days, field, from, to, onViewDay, title, unit, color
   ariaLabel: string
   info?: string
 }) {
-  const { readings, filled } = dense(days, field, from, to)
+  const { readings, since, dropped } = series
   if (!readings.length) return null
+  const filled = fillDays(readings, from, to)
   const last = readings[readings.length - 1]
   const data: TrendPoint[] = filled.map(d => ({ label: fmtDayMonth(d.date), date: d.date, value: d.value }))
   return (
@@ -137,8 +144,18 @@ function ScaleMetricChart({ days, field, from, to, onViewDay, title, unit, color
           <span className="font-semibold tabular-nums text-fg">{last.value.toFixed(1)} {unit}</span> · {fmtDayMonth(last.date)}
         </p>
       </div>
+      {dropped > 0 && since && (
+        <p className="flex items-center gap-1 text-micro text-fg-muted">
+          Your current scale only, since {fmtDayMonth(since)}
+          <InfoBubble label="Why earlier readings are left out">
+            {dropped} earlier {dropped === 1 ? 'reading came' : 'readings came'} from a different scale. Scales estimate
+            {' '}{title.toLowerCase()} with their own formulas, so readings from two scales don't line up — joining them would
+            show a jump that never happened. Weight is the same on both, so the weight chart keeps every reading.
+          </InfoBubble>
+        </p>
+      )}
       <HealthTrendChart data={data} unit={unit} ariaLabel={ariaLabel} height={140}
-        formatValue={v => v.toFixed(1)} onViewDay={onViewDay}
+        formatValue={v => v.toFixed(1)} onViewDay={onViewDay} yDomain={scaleChartDomain(readings.map(r => r.value), MIN_SPAN[field])}
         series={[readingLine('value', title.toLowerCase(), color, readings.length)]} />
     </div>
   )

@@ -1,6 +1,6 @@
 import { supabase } from '../../../integrations/supabase/client'
 
-// Eaten diary totals over a date range, for the cut report. A narrow read
+// Eaten diary totals over a date range, for the goal report. A narrow read
 // (date + calories + protein only) instead of fetchFoodLogRange's joined rows,
 // and paginated: 56 days of a detailed diary can pass PostgREST's 1,000-row cap.
 // Totals are the derived eaten macros (migration 106), so they already follow

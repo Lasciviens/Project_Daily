@@ -12,6 +12,7 @@ import { SleepSection } from '../components/SleepSection'
 import { StepsSection } from '../components/StepsSection'
 import { EnergySection } from '../components/EnergySection'
 import { HeartSection } from '../components/HeartSection'
+import { VitalsReadingCard } from '../components/VitalsReadingCard'
 import { BodySection } from '../components/BodySection'
 import { CardioFitnessSection } from '../components/CardioFitnessSection'
 import { HealthWorkoutsList } from '../components/HealthWorkoutsList'
@@ -116,11 +117,14 @@ export function HealthPage() {
               </p>
               <MetricMiniGrid title="More activity" metrics={ACTIVITY_EXTRA_METRICS} window={miniWindow} onViewDay={viewDay} hideWhenEmpty standalone="h3" />
               <MetricMiniGrid title="Mobility" metrics={MOBILITY_METRICS} window={miniWindow} onViewDay={viewDay} hideWhenEmpty standalone="h3" />
+              {/* Moved from Body, which shows the smart scale only (owner). */}
+              <MetricMiniGrid title="Daily habits & environment" metrics={HABIT_METRICS} window={miniWindow} onViewDay={viewDay} hideWhenEmpty standalone="h3" />
             </SectionPanel>
           )}
 
           {section === 'heart' && (
             <SectionPanel id="heart" note="Each against your own usual range.">
+              <Guard name="Vitals reading"><VitalsReadingCard range={range} /></Guard>
               <Guard name="Heart"><HeartSection range={range} /></Guard>
               <TrendCard title="Resting heart rate trend" stats={buildTrendStats(hero.rhr.series, { to: anchor, direction: 'down' })}
                 format={v => num(v)} formatDelta={v => `${signed(v)} bpm`} direction="down" rateUnit="bpm/week" />
@@ -134,7 +138,6 @@ export function HealthPage() {
               <Guard name="Body"><BodySection range={range} /></Guard>
               <TrendCard title="Weight trend" stats={buildTrendStats(hero.weight.series, { to: anchor, direction: null, sparse: true })}
                 format={v => `${num(v, 1)} kg`} formatDelta={v => `${signed(v, 1)} kg`} direction={null} rateUnit="kg/week" />
-              <MetricMiniGrid title="Daily habits & environment" metrics={HABIT_METRICS} window={miniWindow} onViewDay={viewDay} hideWhenEmpty standalone="h3" />
             </SectionPanel>
           )}
 

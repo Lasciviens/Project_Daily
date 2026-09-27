@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { TonePill } from '../../../shared/ui'
 import { shiftDateStr, todayStr } from '../../../shared/utils/dateUtils'
 import {
@@ -20,6 +20,8 @@ import { ManualSleepForm } from './ManualSleepForm'
 import { SleepRawRows } from './SleepRawRows'
 import { fmtAxisFor, fmtDayLong, fmtDayMonth, windowCaption } from './healthFormat'
 import { nightEndingOn, nightMissingText } from '../healthDateLabels'
+import { findIncompleteNights } from '../sleepCompleteness'
+import { SleepIncompleteNote } from './SleepIncompleteNote'
 
 // Nights are filed under the day you WOKE UP, so "today" in Day mode is last
 // night — a finished night that always counts (H-01).
@@ -34,6 +36,12 @@ export function SleepSection({ range }: { range: HealthRange }) {
   const points = sleep.points.filter(p => { const k = sleepNightKey(p); return k >= win.from && k <= win.to })
   const manual = manualNightKeys(sleep.points)
   const sources = sleepSourcesByNight(sleep.points)
+  // Nights in view whose start never arrived from Health Auto Export (the whole
+  // fetched range is the baseline, so pass all of it).
+  const incomplete = useMemo(
+    () => findIncompleteNights(sleep.points, sleep.nights, win.from, win.to),
+    [sleep.points, sleep.nights, win.from, win.to],
+  )
 
   // The night that ENDED on the selected day — never the newest night on record.
   const endNight = nightEndingOn(inWindow, anchor)
@@ -102,6 +110,7 @@ export function SleepSection({ range }: { range: HealthRange }) {
         )}
       </div>
 
+      {!sleep.isLoading && <SleepIncompleteNote nights={incomplete} today={win.today} />}
       {sessions.length > 0 && <SleepNightChart sessions={sessions} />}
       {replaced && (
         <p className="text-meta text-fg-muted">The Watch's data for this night is replaced by your manual entry.</p>

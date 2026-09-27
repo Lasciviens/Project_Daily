@@ -28,28 +28,21 @@ export interface WorkoutSessionStats {
 
 const num = (v: number | null | undefined): number => (typeof v === 'number' && Number.isFinite(v) ? v : 0)
 
-const WEIGHT_FIRST = new Set(['weight_reps', 'short_distance_weight', 'weight_distance', 'weight_duration', 'bodyweight_weighted'])
 const REPS_ONLY = new Set(['reps_only', 'bodyweight_reps'])
 const DURATION = new Set(['duration', 'floors_duration', 'steps_duration'])
 
-/** Positive when `a` is the better (top) set for this exercise type. */
+/** Positive when `a` is the better (top) set for this exercise type. Weighted
+ *  and unknown types: heaviest, then most reps (then longer / farther). */
 export function compareSets(a: HevySet, b: HevySet, type: string | null | undefined): number {
   const t = type ?? ''
-  if (t === 'bodyweight_assisted') {
-    // The weight is ASSISTANCE: less of it is harder, then more reps.
-    return (num(b.weight_kg) - num(a.weight_kg)) || (num(a.reps) - num(b.reps))
-  }
+  // The weight is ASSISTANCE: less of it is harder, then more reps.
+  if (t === 'bodyweight_assisted') return (num(b.weight_kg) - num(a.weight_kg)) || (num(a.reps) - num(b.reps))
   if (REPS_ONLY.has(t)) return (num(a.reps) - num(b.reps)) || (num(a.weight_kg) - num(b.weight_kg))
   if (DURATION.has(t)) return (num(a.duration_seconds) - num(b.duration_seconds)) || (num(a.custom_metric) - num(b.custom_metric))
-  if (t === 'distance_duration') {
-    // Farther, then faster.
-    return (num(a.distance_meters) - num(b.distance_meters)) || (num(b.duration_seconds) - num(a.duration_seconds))
-  }
-  if (WEIGHT_FIRST.has(t) || !t) {
-    return (num(a.weight_kg) - num(b.weight_kg)) || (num(a.reps) - num(b.reps))
-      || (num(a.duration_seconds) - num(b.duration_seconds)) || (num(a.distance_meters) - num(b.distance_meters))
-  }
+  // Farther, then faster.
+  if (t === 'distance_duration') return (num(a.distance_meters) - num(b.distance_meters)) || (num(b.duration_seconds) - num(a.duration_seconds))
   return (num(a.weight_kg) - num(b.weight_kg)) || (num(a.reps) - num(b.reps))
+    || (num(a.duration_seconds) - num(b.duration_seconds)) || (num(a.distance_meters) - num(b.distance_meters))
 }
 
 export function summarizeWorkout(exercises: readonly HevyWorkoutExercise[]): WorkoutSessionStats {
@@ -72,7 +65,8 @@ export function summarizeWorkout(exercises: readonly HevyWorkoutExercise[]): Wor
         volume += s.weight_kg * s.reps
         volumeSets++
       }
-      if (typeof s.rpe === 'number' && Number.isFinite(s.rpe)) { rpeSum += s.rpe; ratedSets++ }
+      // Same rule as setFormat's RPE suffix: a positive, finite value was rated.
+      if (typeof s.rpe === 'number' && Number.isFinite(s.rpe) && s.rpe > 0) { rpeSum += s.rpe; ratedSets++ }
     }
     if (working.length === 0) continue
     const best = working.reduce((top, s) => (compareSets(s, top, type) > 0 ? s : top))

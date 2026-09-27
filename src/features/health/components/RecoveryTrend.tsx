@@ -1,7 +1,7 @@
 import { InfoBubble } from '../../../shared/components/InfoBubble'
 import { shiftDateStr } from '../../../shared/utils/dateUtils'
 import { fillDays, rollingMean, type DayValue } from '../healthWindowStats'
-import { usualRange } from '../healthTrendStats'
+import { usualRange, type UsualRange } from '../healthTrendStats'
 import { useHealthDaily } from '../hooks/useHealthExport'
 import { HealthTrendChart } from './HealthTrendChart'
 import { fmtAxisDay, fmtDayMonth } from './healthFormat'
@@ -31,6 +31,11 @@ interface Props {
   /** Usual-range rule; default mean ± 1 SD. */
   range?: { mode: 'sd'; k: number; minHalfWidth?: number } | { mode: 'median'; halfWidth: number }
   rangeText?: string
+  /** A usual range worked out elsewhere — the Heart & vitals reading's, from
+   *  the 60 days BEFORE the viewed day or period — so the band and the
+   *  reading's table show the same numbers. Without one (too little history
+   *  before the period) the band falls back to the last 60 days. */
+  usual?: UsualRange | null
   /** Plot the difference from the usual-range centre (wrist temperature). */
   deviation?: boolean
   /** Map raw daily values (e.g. SpO₂ fraction → %); null drops a day. */
@@ -40,7 +45,7 @@ interface Props {
 }
 
 export function RecoveryTrend({
-  metric, title, unit, color, from, to, fetchFrom, decimals = 0, rolling, rollingDays = 7, range, rangeText, deviation, transform, refLines, onViewDay,
+  metric, title, unit, color, from, to, fetchFrom, decimals = 0, rolling, rollingDays = 7, range, rangeText, usual: usualOverride, deviation, transform, refLines, onViewDay,
 }: Props) {
   const histFrom = shiftDateStr(to, -59)
   const contextFrom = shiftDateStr(to, -29)
@@ -52,7 +57,7 @@ export function RecoveryTrend({
     ? raw.map(d => ({ date: d.date, value: transform(d.value) })).filter((d): d is DayValue => d.value != null)
     : raw
   const hist = data.filter(d => d.date >= histFrom && d.date <= to).map(d => d.value)
-  const usual = usualRange(hist, range ?? { mode: 'sd', k: 1 }, 14)
+  const usual = usualOverride ?? usualRange(hist, range ?? { mode: 'sd', k: 1 }, 14)
   const shift = deviation && usual ? usual.center : 0
   const dense = fillDays(data.map(d => ({ date: d.date, value: d.value - shift })), chartFrom, to)
   const mean7 = rolling ? rollingMean(dense, rollingDays, 3) : null

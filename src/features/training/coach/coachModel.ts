@@ -1,9 +1,13 @@
-import { MUSCLE_LANDMARKS, buildTemplateMuscleMap, contribution, limitedSlugsFromLimitations, scaleLandmarksForExperience } from '../muscleMap'
+import { MUSCLE_LANDMARKS, buildTemplateMuscleMap, creditedMuscles, limitedSlugsFromLimitations, scaleLandmarksForExperience } from '../muscleMap'
 import type { ProgressSetRow } from '../progressAggregate'
 import { rpeSuffix } from '../setFormat'
 import type { TrainingHistory } from '../api/hevyApi'
 import type { AthleteLimitation, AthleteProfile } from '../types.athlete'
 import type { CoachMuscleDose, CoachSession } from './coachFormat'
+import { buildPlannedProgram, type RoutineLike } from '../plan/programBalance'
+import { comparePlannedDone, type BalanceComparison, type BalancePair, type MuscleBalance } from '../plan/muscleBalance'
+import { aggregateVolume, buildTplById, computeBalance, volumeRowsFromSets } from '../components/muscles/muscleVolumeModel'
+import { shiftDateStr } from '../../../shared/utils/dateUtils'
 
 // Pure pieces of the coach data set, derived from the one training-history
 // read (scripts/verify-coach-context.cjs). coachData.ts does the fetching.
@@ -63,8 +67,7 @@ export function weeklyMuscleDose(
     if (s.date < from || s.set_type === 'warmup') continue
     const c = credit.get(s.exercise_template_id)
     if (!c) continue
-    if (c.primarySlug) perSlug.set(c.primarySlug, (perSlug.get(c.primarySlug) ?? 0) + contribution(s.exercise_template_id, c.primarySlug, 'primary'))
-    for (const slug of c.secondarySlugs) perSlug.set(slug, (perSlug.get(slug) ?? 0) + contribution(s.exercise_template_id, slug, 'secondary'))
+    for (const cr of creditedMuscles(s.exercise_template_id, c.primarySlug, c.secondarySlugs)) perSlug.set(cr.slug, (perSlug.get(cr.slug) ?? 0) + cr.weight)
   }
   const restricted = limitedSlugsFromLimitations(limitations)
   return [...perSlug.entries()]
@@ -77,4 +80,43 @@ export function weeklyMuscleDose(
         restriction: restricted.get(slug as Parameters<typeof restricted.get>[0]) ?? null,
       }
     })
+}
+
+export interface CoachBalance {
+  windowDays: number
+  /** Planned in the current program; null without one. */
+  planned: MuscleBalance | null
+  done: MuscleBalance
+  comparison: Record<BalancePair, BalanceComparison> | null
+}
+
+/** Push:pull and quad:hamstring for the coach — the same pipeline as the
+ *  Program tab (planned) and the Muscles body map (done in the last 30
+ *  days), so the coach quotes the numbers the user sees. */
+export function coachBalance(args: {
+  history: TrainingHistory
+  /** The full template list (falls back to the history's templates). */
+  templates: readonly { id: string; title: string; primary_muscle_group: string | null; secondary_muscle_groups?: string[] | null }[]
+  routines: readonly RoutineLike[]
+  programRoutineIds: readonly string[]
+  trainingDaysPerWeek: number | null
+  scheduledTrainingDays: number
+  today: string
+  windowDays?: number
+}): CoachBalance {
+  const windowDays = args.windowDays ?? 30
+  const templates = args.templates.length ? args.templates : args.history.templates
+  const tplById = buildTplById(templates)
+  const rows = volumeRowsFromSets(args.history.sets, shiftDateStr(args.today, -(windowDays - 1)), args.today)
+  const done = computeBalance({ perSlug: aggregateVolume(rows, tplById).perSlug, weeks: windowDays / 7 })
+  const plan = buildPlannedProgram({
+    routines: args.routines, programRoutineIds: args.programRoutineIds, templates,
+    trainingDaysPerWeek: args.trainingDaysPerWeek, scheduledTrainingDays: args.scheduledTrainingDays,
+  })
+  return {
+    windowDays,
+    planned: plan.current.length ? plan.balance : null,
+    done,
+    comparison: comparePlannedDone(plan, { rows, tplById, balance: done, windowDays }),
+  }
 }

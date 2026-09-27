@@ -15,7 +15,7 @@
 require('sucrase/register')
 const {
   mergeBodyweight, latestBodyweight, splitAppleBodyRows, isManualAppleSource, scaleOnly, isScaleSource,
-  BODYWEIGHT_PRECEDENCE, BODYWEIGHT_SOURCE_LABEL,
+  scaleChartDomain, appleDevice, currentDeviceSeries, BODYWEIGHT_PRECEDENCE, BODYWEIGHT_SOURCE_LABEL,
 } = require('../src/features/health/bodyweight.ts')
 
 let passed = 0
@@ -107,10 +107,45 @@ const EMPTY = { scale: [], report: [], hevy: [] }
   })
   const s = scaleOnly(pts)
   check('§6.1 a Hevy-only day is dropped', s.map(d => d.date), ['2026-09-20', '2026-09-21'])
-  check('§6.2 a scale day keeps weight, fat and lean', s[0], { date: '2026-09-20', kg: 81.5, fatPct: 19.0, leanKg: 63.0 })
-  check('§6.3 a hand-typed fat % on a scale day is not shown as the scale', s[1], { date: '2026-09-21', kg: 81.2, fatPct: null, leanKg: null })
+  const pick = d => ({ date: d.date, kg: d.kg, fatPct: d.fatPct, leanKg: d.leanKg })
+  check('§6.2 a scale day keeps weight, fat and lean', pick(s[0]), { date: '2026-09-20', kg: 81.5, fatPct: 19.0, leanKg: 63.0 })
+  check('§6.3 a hand-typed fat % on a scale day is not shown as the scale', pick(s[1]), { date: '2026-09-21', kg: 81.2, fatPct: null, leanKg: null })
   check('§6.4 the scale and its report are the scale; Hevy is not', [isScaleSource('scale'), isScaleSource('report'), isScaleSource('hevy'), isScaleSource(null)], [true, true, false, false])
   check('§6.5 every source has a label', Object.keys(BODYWEIGHT_SOURCE_LABEL).sort(), ['hevy', 'report', 'scale'])
+}
+
+// §7 Chart range: noise must not fill the chart
+{
+  check('§7.1 a narrow range widens to the minimum span, rounded out', scaleChartDomain([82.1, 82.6, 82.4], 3), [80, 84])
+  check('§7.2 a wide range keeps its readings, rounded out to 4 even steps', scaleChartDomain([80.2, 86.7], 3), [80, 88])
+  check('§7.3 no readings → no fixed range', scaleChartDomain([], 3), undefined)
+  check('§7.4 non-finite values are ignored', scaleChartDomain([NaN, 21.4], 3), [19, 23])
+  check('§7.5 a kcal-sized range rounds to tens', scaleChartDomain([1748, 1771], 70), [1720, 1800])
+  check('§7.6 a small span rounds to tenths without float noise', scaleChartDomain([8.31, 8.44], 0.5), [8, 8.8])
+  check('§7.7 a range near zero never goes below it', scaleChartDomain([0.2, 0.3], 3), [0, 4])
+}
+
+// §8 Two scales: weight joins up, body fat and lean mass never share a line
+{
+  check('§8.1 the device is the scale part of an Apple source', [appleDevice('Old Scale'), appleDevice('Hevy|New Scale'), appleDevice('New Scale|Hevy'), appleDevice(''), appleDevice('Hevy')],
+    ['Old Scale', 'New Scale', 'New Scale', null, 'Hevy'])
+  const row = (metric, date, qty, source) => ({ metric, date, at: `${date}T07:00:00Z`, source, qty })
+  const split = splitAppleBodyRows([
+    row('weight_body_mass', '2026-08-10', 84.3, 'Old Scale'), row('body_fat_percentage', '2026-08-10', 27.0, 'Old Scale'),
+    row('weight_body_mass', '2026-08-12', 84.4, 'Old Scale'), row('body_fat_percentage', '2026-08-12', 27.1, 'Old Scale'),
+    row('weight_body_mass', '2026-08-13', 84.5, 'New Scale'), row('body_fat_percentage', '2026-08-13', 25.0, 'New Scale'),
+    row('lean_body_mass', '2026-08-13', 63.4, 'New Scale'),
+    row('weight_body_mass', '2026-08-15', 84.2, 'New Scale'), row('body_fat_percentage', '2026-08-15', 24.8, 'Hevy|New Scale'),
+  ])
+  const report = [R('2026-08-16', 84.0, 24.6)]
+  const days = scaleOnly(mergeBodyweight({ scale: split.scale, report, hevy: [] }))
+  check('§8.2 weight keeps every day from both scales', days.filter(d => d.kg != null).map(d => d.date), ['2026-08-10', '2026-08-12', '2026-08-13', '2026-08-15', '2026-08-16'])
+  const fat = currentDeviceSeries(days, 'fatPct')
+  check('§8.3 body fat only from the scale in use (plus its photo report)', fat.readings.map(r => r.date), ['2026-08-13', '2026-08-15', '2026-08-16'])
+  check('§8.4 …which scale, since when, and how many readings were left out', [fat.device, fat.since, fat.dropped], ['New Scale', '2026-08-13', 2])
+  const lean = currentDeviceSeries(days, 'leanKg')
+  check('§8.5 nothing left out when one scale reported it', [lean.readings.length, lean.dropped], [1, 0])
+  check('§8.6 no readings → empty', currentDeviceSeries([], 'fatPct'), { readings: [], device: null, since: null, dropped: 0 })
 }
 
 console.log(`\n${passed} passed, ${failures.length} failed`)

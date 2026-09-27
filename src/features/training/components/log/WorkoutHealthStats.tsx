@@ -73,7 +73,7 @@ export function WorkoutHealthStats({ startTime, endTime }: { startTime: string; 
       {heading}
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         <SessionStat label="Avg heart rate" value={avg ?? '—'} unit={avg != null ? 'bpm' : undefined} sub={max != null ? `max ${max} bpm` : undefined} />
-        <SessionStat label="Active energy" value={active ?? '—'} unit={active != null ? 'kcal' : undefined} sub="burned by the workout" />
+        <SessionStat label="Active energy" value={active ?? '—'} unit={active != null ? 'kcal' : undefined} sub="above resting" />
         <SessionStat label="Total energy" value={total ?? '—'} unit={total != null ? 'kcal' : undefined} sub="incl. resting burn" />
         <SessionStat label="Watch time" value={match.duration_seconds != null ? formatDurationSeconds(match.duration_seconds) : '—'} sub={match.name} />
       </div>

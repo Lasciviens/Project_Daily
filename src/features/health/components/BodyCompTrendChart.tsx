@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { BodyCompositionReport } from '../api/bodyCompositionApi'
 import { BODY_COMP_FIELDS, average, computeTrend, dailySeries, type BodyCompFieldKey, type BodyCompFieldMeta } from '../bodyCompositionAggregate'
+import { scaleChartDomain } from '../bodyweight'
 import { fillDays } from '../healthWindowStats'
 import { useChartColors } from '../../../shared/ui'
 import { localDayOf } from '../../../shared/utils/dateUtils'
@@ -34,6 +35,9 @@ export function BodyCompTrendChart({ reportsInWindow, fields = BODY_COMP_FIELDS 
     : []
   const avg = average(reportsInWindow, meta.key)
   const trend = computeTrend(reportsInWindow, meta.key)
+  // Scan-to-scan noise must not fill the chart: at least 2 units (4 for whole-
+  // number fields), or 4 % of the level for big numbers such as BMR.
+  const yDomain = scaleChartDomain(points.map(p => p.value), Math.max(meta.decimals ? 2 : 4, Math.abs(avg ?? 0) * 0.04))
 
   return (
     <div className="flex flex-col gap-3">
@@ -57,7 +61,7 @@ export function BodyCompTrendChart({ reportsInWindow, fields = BODY_COMP_FIELDS 
       ) : (
         <>
           <HealthTrendChart data={chartData} unit={meta.unit} ariaLabel={`${meta.label} from the scale reports`} height={180}
-            formatValue={v => v.toFixed(meta.decimals)}
+            formatValue={v => v.toFixed(meta.decimals)} yDomain={yDomain}
             series={[points.length >= 2
               ? { key: 'value', label: meta.label.toLowerCase(), color: c.series[meta.series], kind: 'line', plain: true, connectNulls: true }
               : { key: 'value', label: meta.label.toLowerCase(), color: c.series[meta.series], kind: 'line' }]} />

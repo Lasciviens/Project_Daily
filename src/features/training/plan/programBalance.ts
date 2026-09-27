@@ -26,7 +26,7 @@ import {
   scaleLandmarksForExperience, templateMuscleCredit, type Landmarks,
 } from '../muscleMap'
 import {
-  PULL_SLUGS, PUSH_SLUGS, balanceTotals, readMuscleBalance,
+  BALANCE_LIMIT, PULL_SLUGS, PUSH_SLUGS, balanceTotals, readMuscleBalance,
   type MuscleBalance, type PlannedRoutineBalance,
 } from './muscleBalance'
 import type { ExperienceLevel, MusclePreference } from '../types.athlete'
@@ -102,6 +102,52 @@ export function plannedWeeklySets(
   return [...by.values()]
     .map(m => ({ ...m, weeklySets: round1(m.weeklySets), directSets: round1(m.directSets) }))
     .sort((a, b) => b.weeklySets - a.weeklySets || a.slug.localeCompare(b.slug))
+}
+
+/** A routine as stored (hevy_routines + exercises + sets). */
+export interface RoutineLike {
+  id: string
+  title: string
+  exercises?: readonly { exercise_template_id: string; title: string; sets?: readonly { type: string }[] }[] | null
+}
+
+export interface PlannedProgram<R extends RoutineLike> {
+  /** The current-program routines that still exist, in routine-list order. */
+  current: R[]
+  input: ProgramRoutineInput[]
+  passes: number
+  templateMuscles: Map<string, TemplateMuscles>
+  planned: PlannedMuscle[]
+  byRoutine: PlannedRoutineBalance[]
+  balance: MuscleBalance
+}
+
+/** The current program's planned week — the ONE pipeline behind the Program
+ *  tab, the planned side of the Muscles balance card and the AI coach's
+ *  balance line. Passes per week come from the training-days target, else
+ *  the weekdays the recurring training blocks cover. */
+export function buildPlannedProgram<R extends RoutineLike>(args: {
+  routines: readonly R[]
+  programRoutineIds: readonly string[]
+  templates: readonly { id: string; primary_muscle_group: string | null; secondary_muscle_groups?: string[] | null }[]
+  trainingDaysPerWeek: number | null
+  scheduledTrainingDays: number
+}): PlannedProgram<R> {
+  const ids = new Set(args.programRoutineIds)
+  const current = args.routines.filter(r => ids.has(r.id))
+  const passes = passesPerWeek(args.trainingDaysPerWeek ?? (args.scheduledTrainingDays || null), current.length)
+  const templateMuscles = new Map<string, TemplateMuscles>(args.templates.map(t => [t.id, { primary: t.primary_muscle_group, secondary: t.secondary_muscle_groups ?? [] }]))
+  const input: ProgramRoutineInput[] = current.map(r => ({
+    id: r.id, title: r.title,
+    exercises: (r.exercises ?? []).map(ex => ({ exercise_template_id: ex.exercise_template_id, title: ex.title, sets: ex.sets ?? [] })),
+  }))
+  const planned = plannedWeeklySets(input, templateMuscles, passes)
+  const bySlug = new Map(planned.map(p => [p.slug, p.weeklySets]))
+  return {
+    current, input, passes, templateMuscles, planned,
+    byRoutine: plannedBalanceByRoutine(input, templateMuscles),
+    balance: readMuscleBalance(balanceTotals(s => bySlug.get(s) ?? 0)),
+  }
 }
 
 // ── Pelland 2025 hypertrophy tiers (Table 3) ────────────────────────────────
@@ -239,15 +285,24 @@ export function plannedBalanceByRoutine(
   routines: readonly ProgramRoutineInput[],
   templateMuscles: ReadonlyMap<string, TemplateMuscles>,
 ): PlannedRoutineBalance[] {
-  return routines.map(r => {
+  const totalsOf = (r: ProgramRoutineInput) => {
     const bySlug = new Map(plannedWeeklySets([r], templateMuscles, 1).map(p => [p.slug, p.weeklySets]))
-    return { id: r.id, title: r.title, perPass: balanceTotals(s => bySlug.get(s) ?? 0) }
-  })
+    return balanceTotals(s => bySlug.get(s) ?? 0)
+  }
+  return routines.map(r => ({
+    id: r.id, title: r.title, perPass: totalsOf(r),
+    exercises: r.exercises.map(ex => ({
+      templateId: ex.exercise_template_id, title: ex.title, sets: workingSetCount(ex.sets),
+      perPass: totalsOf({ ...r, exercises: [ex] }),
+    })),
+  }))
 }
+
+export interface BalanceNote { text: string; tone: Tone }
 
 export interface BalanceRead extends MuscleBalance {
   hasKneeFlexion: boolean
-  notes: string[]
+  notes: BalanceNote[]
 }
 
 const KNEE_FLEXION_RE = /nordic|(leg|lying|seated|hamstring|standing|glute[- ]?ham)[\s-]*curl|\bghr\b/i
@@ -270,23 +325,24 @@ export function readBalance(
   const hasKneeFlexion = exerciseTitles.some(isKneeFlexionExercise)
 
   const restricted = (slugs: readonly string[]) => slugs.some(s => restrictions.get(s) === 'avoid')
-  const notes: string[] = []
+  const notes: BalanceNote[] = []
+  const note = (text: string, tone: Tone = 'warn') => notes.push({ text, tone })
   if (pushPull.lean === 'a') {
-    notes.push(restricted(PULL_SLUGS)
+    note(restricted(PULL_SLUGS)
       ? 'More pushing than pulling — an active limitation on pulling may explain it.'
       : 'More pushing than pulling planned. Adding a row or pulldown brings it closer to 1 : 1.')
   } else if (pushPull.lean === 'b') {
-    notes.push(restricted(PUSH_SLUGS)
+    note(restricted(PUSH_SLUGS)
       ? 'More pulling than pushing — an active limitation on pressing may explain it.'
-      : 'More pulling than pushing planned. That is rarely a problem; add a press if you want it even.')
+      : 'More pulling than pushing planned. That is rarely a problem; add a press if you want it even.', 'info')
   }
   if (quadHam.lean === 'a') {
-    notes.push(restricted(['hamstring'])
-      ? 'Quads get over 1.5× the hamstring sets — an active limitation may explain it.'
-      : 'Quads get over 1.5× the hamstring sets. A hinge or a leg curl evens it out.')
+    note(restricted(['hamstring'])
+      ? `Quads get over ${BALANCE_LIMIT}× the hamstring sets — an active limitation may explain it.`
+      : `Quads get over ${BALANCE_LIMIT}× the hamstring sets. A hinge or a leg curl evens it out.`)
   }
   if (!hasKneeFlexion && (quadHam.a > 0 || quadHam.b > 0)) {
-    notes.push('No knee-flexion hamstring exercise (a leg curl or Nordic curl) in the program.')
+    note('No knee-flexion hamstring exercise (a leg curl or Nordic curl) in the program.')
   }
   return { ...balance, hasKneeFlexion, notes }
 }

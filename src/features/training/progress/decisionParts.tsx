@@ -9,7 +9,8 @@ import {
 } from '../progress-engine/copy'
 import { RULE_CATALOG } from '../progress-engine/ruleCatalog'
 import { formatSessionSets, fmtDuration } from '../progress-engine/format'
-import { rpeSuffix } from '../setFormat'
+import { anyRpe, rpeSuffix } from '../setFormat'
+import { RpeInfoBubble } from '../components/RpeInfoBubble'
 import type { ExerciseProgressResult, CanonicalExerciseSession, CanonicalSet, EvidenceLevel, ProgressMetricKind } from '../progress-engine/types'
 import { isWeightBasedMetric } from '../progress-engine/metricStrategy'
 import { ExerciseThumb, ExerciseGifPicker } from '../exerciseMedia'
@@ -88,11 +89,11 @@ export function ExposureLine({ result }: { result: ExerciseProgressResult }) {
   )
 }
 
-function SessionCard({ label, session, metricKind }: { label: string; session: CanonicalExerciseSession | undefined; metricKind: ProgressMetricKind }) {
+function SessionCard({ label, session, metricKind, explainRpe = false }: { label: string; session: CanonicalExerciseSession | undefined; metricKind: ProgressMetricKind; explainRpe?: boolean }) {
   if (!session) return null
   return (
     <div className="rounded-row border border-line bg-surface p-3">
-      <p className="section-label">{label}</p>
+      <p className="section-label flex items-center gap-1.5">{label}{explainRpe && <RpeInfoBubble />}</p>
       <p className="text-meta tabular-nums text-fg-muted">{formatDate(session.date)}{session.workoutTitle ? ` · ${session.workoutTitle}` : ''}</p>
       <ul className="mt-1.5 flex flex-col gap-0.5">
         {session.allSets.map((s, i) => (
@@ -145,6 +146,9 @@ export function DecisionDetail({ result, sessions, metricKind, title }: { result
   const [showAllSessions, setShowAllSessions] = useState(false)
   const [showChart, setShowChart] = useState(false)
   const olderSessions = sessions.slice(0, -2).reverse()
+  const previous = sessions[sessions.length - 2], latest = sessions[sessions.length - 1]
+  // The RPE explainer once per detail, on the first session card with a rated set.
+  const explainRpeOn = previous && anyRpe(previous.allSets) ? 'previous' : latest && anyRpe(latest.allSets) ? 'latest' : null
   const actionInfo = RULE_CATALOG[result.currentAction]
 
   return (
@@ -186,8 +190,8 @@ export function DecisionDetail({ result, sessions, metricKind, title }: { result
       <NextTargetTiles result={result} />
 
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-        <SessionCard label="Previous" session={sessions[sessions.length - 2]} metricKind={metricKind} />
-        <SessionCard label="Latest" session={sessions[sessions.length - 1]} metricKind={metricKind} />
+        <SessionCard label="Previous" session={previous} metricKind={metricKind} explainRpe={explainRpeOn === 'previous'} />
+        <SessionCard label="Latest" session={latest} metricKind={metricKind} explainRpe={explainRpeOn === 'latest'} />
       </div>
 
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">

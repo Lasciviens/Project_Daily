@@ -50,7 +50,8 @@ export function rawHHMM(v: unknown): string {
   return d ? `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}` : ''
 }
 
-export interface HeartRatePoint {
+// A type alias (not an interface) so it fits the chart's index-signature point type.
+export type HeartRatePoint = {
   label: string
   avg: number
   range: [number, number]

@@ -2,12 +2,12 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { qk, STALE } from '../../../shared/query'
 import { fetchBodyweightSeries, fetchLatestBodyweight } from '../api/bodyweightApi'
 
-// The ONE bodyweight read (smart scale + Hevy + Apple Health, merged with the
-// precedence documented in bodyweight.ts). Body, Progress, the nutrition
+// The ONE bodyweight read (the smart scale via Apple Health, its photo report,
+// then Hevy — merged with the precedence documented in bodyweight.ts). Body, Progress, the nutrition
 // coach, the PT coach and Daily should all read these instead of picking a
 // table each. Invalidate qk.health.bodyweightAll after writing a weight.
 
-/** Every day in [from, to] with a weight: [{ date, kg, fatPct, source, fatSource }]. */
+/** Every day in [from, to] with a weight: [{ date, kg, fatPct, leanKg, source, fatSource, leanSource }]. */
 export function useBodyweightSeries(from: string, to: string, opts: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: qk.health.bodyweight(from, to),

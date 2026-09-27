@@ -10,6 +10,7 @@ import { useNextPlan, type NextPlan } from './useNextPlan'
 import { useRecoveryNotes } from './useRecoveryNotes'
 import { NextExerciseCard } from './NextExerciseCard'
 import { SourceNote } from '../program/SourceNote'
+import { MissedSessionsCard } from '../program/MissedSessions'
 
 function whenText(date: string, startTime: string | null, today: string): string {
   const d = daysBetween(today, date)
@@ -137,6 +138,7 @@ export function NextTab({ onGoTo }: { onGoTo: (tab: TrainingTabId) => void }) {
     <div className="flex flex-col gap-3 sm:gap-4">
       <div className="flex max-w-2xl flex-col gap-3">
         <SessionHeader plan={plan} />
+        <MissedSessionsCard />
         <RecoveryLine />
         <Alerts plan={plan} />
       </div>

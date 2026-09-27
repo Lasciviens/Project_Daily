@@ -118,6 +118,15 @@ export function sidesText(r: RatioRead): string {
   return `${r.a} ${m.a} vs ${r.b} ${m.b} sets/week`
 }
 
+/** The InfoBubble text for one ratio — identical on both cards. */
+export function balanceInfo(pair: BalancePair): string {
+  const m = PAIR_META[pair]
+  const base = `${m.a[0].toUpperCase()}${m.a.slice(1)} (${m.aMuscles}) sets ÷ ${m.b} (${m.bMuscles}) sets per week, counted like every volume screen: 1 for the main muscle, 0.5 for each helper. Flagged when one side gets more than ${BALANCE_LIMIT}× the other — a rule of thumb, not a trial-backed cut-off.`
+  return pair === 'pushPull'
+    ? `${base} Pushing much more than pulling is the common pattern in recreational lifters; the other way round is rarely a problem. Shoulders count as push, although rear-delt work is pulling.`
+    : `${base} Doing a knee-flexion exercise (a leg curl or the Nordic curl) is the part with evidence behind it.`
+}
+
 const shareA = (r: RatioRead) => (r.a + r.b > 0 ? r.a / (r.a + r.b) : 0.5)
 
 export function balanceDisagrees(planned: RatioRead, done: RatioRead): boolean {
@@ -131,12 +140,17 @@ export function balanceDisagrees(planned: RatioRead, done: RatioRead): boolean {
 
 // ── Why planned and done differ ─────────────────────────────────────────────
 
+/** One exercise's planned sets per pass. */
+export interface PlannedExerciseBalance { templateId: string; title: string; sets: number; perPass: BalanceTotals }
 /** What one routine of the current program plans per pass. */
-export interface PlannedRoutineBalance { id: string; title: string; perPass: BalanceTotals }
+export interface PlannedRoutineBalance { id: string; title: string; perPass: BalanceTotals; exercises: PlannedExerciseBalance[] }
 
 /** One done-volume row (the Muscles tab's volume rows fit as-is). */
 export interface BalanceVolumeRow { workoutId: string; routineId?: string | null; templateId: string; workingSets: number }
-export interface BalanceTemplate { primary: Slug | null; secondaries: readonly Slug[] }
+export interface BalanceTemplate { primary: Slug | null; secondaries: readonly Slug[]; title?: string }
+
+/** One exercise's done volume inside a source, over the whole window. */
+export interface DoneExerciseBalance { templateId: string; title: string; sets: number; totals: BalanceTotals }
 
 export interface BalanceSource {
   /** Program routine id; null = every session outside the current program. */
@@ -144,32 +158,44 @@ export interface BalanceSource {
   title: string
   /** Planned sets per pass (program routines only). */
   perPass: BalanceTotals | null
+  plannedExercises: PlannedExerciseBalance[]
   doneSessions: number
   /** Credited sets over the whole window (not per week). */
   doneTotals: BalanceTotals
+  doneExercises: DoneExerciseBalance[]
 }
 
 const ZERO: BalanceTotals = { push: 0, pull: 0, quad: 0, ham: 0 }
 
 /** Done volume split by where it came from: each current-program routine
  *  (sessions started from it) and everything else (freeform sessions, other
- *  routines). Same counting as every volume screen (creditedMuscles). */
+ *  routines), per exercise too. Same counting as every volume screen
+ *  (creditedMuscles). */
 export function doneBalanceSources(
   rows: readonly BalanceVolumeRow[],
   templates: ReadonlyMap<string, BalanceTemplate>,
   program: readonly PlannedRoutineBalance[],
 ): BalanceSource[] {
+  type Acc = { sessions: Set<string>; perSlug: Map<string, number>; byEx: Map<string, { title: string; sets: number; perSlug: Map<string, number> }> }
   const inProgram = new Map(program.map(r => [r.id, r]))
-  const acc = new Map<string | null, { sessions: Set<string>; perSlug: Map<string, number> }>()
-  for (const r of program) acc.set(r.id, { sessions: new Set(), perSlug: new Map() })
-  acc.set(null, { sessions: new Set(), perSlug: new Map() })
+  const fresh = (): Acc => ({ sessions: new Set(), perSlug: new Map(), byEx: new Map() })
+  const acc = new Map<string | null, Acc>()
+  for (const r of program) acc.set(r.id, fresh())
+  acc.set(null, fresh())
+  const bump = (m: Map<string, number>, k: string, v: number) => m.set(k, (m.get(k) ?? 0) + v)
   for (const row of rows) {
     const t = templates.get(row.templateId)
     if (!t) continue
     const key = row.routineId && inProgram.has(row.routineId) ? row.routineId : null
     const a = acc.get(key)!
     a.sessions.add(row.workoutId)
-    for (const c of creditedMuscles(row.templateId, t.primary, t.secondaries)) a.perSlug.set(c.slug, (a.perSlug.get(c.slug) ?? 0) + row.workingSets * c.weight)
+    const ex = a.byEx.get(row.templateId) ?? { title: t.title ?? 'Exercise', sets: 0, perSlug: new Map<string, number>() }
+    ex.sets += row.workingSets
+    for (const c of creditedMuscles(row.templateId, t.primary, t.secondaries)) {
+      bump(a.perSlug, c.slug, row.workingSets * c.weight)
+      bump(ex.perSlug, c.slug, row.workingSets * c.weight)
+    }
+    a.byEx.set(row.templateId, ex)
   }
   const out: BalanceSource[] = []
   for (const [key, a] of acc) {
@@ -178,8 +204,10 @@ export function doneBalanceSources(
       routineId: key,
       title: routine?.title ?? 'Sessions outside your program',
       perPass: routine?.perPass ?? null,
+      plannedExercises: routine?.exercises ?? [],
       doneSessions: a.sessions.size,
       doneTotals: balanceTotals(s => a.perSlug.get(s) ?? 0),
+      doneExercises: [...a.byEx.entries()].map(([templateId, e]) => ({ templateId, title: e.title, sets: e.sets, totals: balanceTotals(s => e.perSlug.get(s) ?? 0) })),
     })
   }
   return out
@@ -187,12 +215,39 @@ export function doneBalanceSources(
 
 const sideOf = (pair: BalancePair, t: BalanceTotals) => (pair === 'pushPull' ? { a: t.push, b: t.pull } : { a: t.quad, b: t.ham })
 const times = (n: number) => `${n}×`
+const perSession = (n: number) => `about ${round1(n)} set${round1(n) === 1 ? '' : 's'} a session`
+
+/** The exercise that moved one side of a routine's sessions most, in the
+ *  direction the side moved: an exercise added that the routine doesn't
+ *  have, or a routine exercise done with more/fewer sets than prescribed. */
+function exerciseBehind(s: BalanceSource, pair: BalancePair, side: 'a' | 'b', sign: 1 | -1, word: string): string | null {
+  const planned = new Map(s.plannedExercises.map(e => [e.templateId, e]))
+  const done = new Map(s.doneExercises.map(e => [e.templateId, e]))
+  let best: { delta: number; text: string } | null = null
+  for (const id of new Set([...planned.keys(), ...done.keys()])) {
+    const p = planned.get(id), d = done.get(id)
+    const doneSide = d ? sideOf(pair, d.totals)[side] / s.doneSessions : 0
+    const planSide = p ? sideOf(pair, p.perPass)[side] : 0
+    const delta = (doneSide - planSide) * sign
+    if (delta <= 0 || (best && delta <= best.delta)) continue
+    const doneSets = d ? d.sets / s.doneSessions : 0
+    const title = d?.title ?? p?.title ?? 'an exercise'
+    const text = !p
+      ? `In ${s.title} you also do ${title} (${perSession(doneSets)}), which isn't in that routine — extra ${word} the plan doesn't count.`
+      : !d
+        ? `In ${s.title} you've skipped ${title} (the routine has ${p.sets} set${p.sets === 1 ? '' : 's'}), so less ${word} got done.`
+        : `In ${s.title} you do ${sign > 0 ? 'more' : 'fewer'} ${title} sets than it prescribes (${perSession(doneSets)} vs ${p.sets}), so ${sign > 0 ? 'more' : 'less'} ${word} got done.`
+    best = { delta, text }
+  }
+  return best?.text ?? null
+}
 
 /** One plain line saying why planned and done disagree, or null when they
  *  don't. The gap is split exactly into (1) program routines done more or
  *  less often than planned, (2) more or fewer sets logged than a routine
  *  prescribes, (3) sessions outside the program — and the part that moved
- *  the ratio most in the direction it moved is named. */
+ *  the ratio most in the direction it moved is named (down to the exercise
+ *  where one explains it). */
 export function explainBalanceGap(args: {
   pair: BalancePair
   planned: RatioRead
@@ -209,7 +264,7 @@ export function explainBalanceGap(args: {
   const Pa = Math.max(planned.a, 1), Pb = Math.max(planned.b, 1)
   const effect = (ca: number, cb: number) => (ca / Pa - cb / Pb) * (towardA ? 1 : -1)
 
-  type Cand = { e: number; text: string }
+  type Cand = { e: number; text: () => string }
   const cands: Cand[] = []
   const days = `${windowDays} days`
   for (const s of sources) {
@@ -220,7 +275,7 @@ export function explainBalanceGap(args: {
       const word = a / Pa >= b / Pb ? m.work.a : m.work.b
       cands.push({
         e: effect(a, b),
-        text: `${s.doneSessions} session${s.doneSessions === 1 ? '' : 's'} outside your program in the last ${days} added ${word} (about ${round1(a)} ${m.a} and ${round1(b)} ${m.b} sets a week).`,
+        text: () => `${s.doneSessions} session${s.doneSessions === 1 ? '' : 's'} outside your program in the last ${days} added ${word} (about ${round1(a)} ${m.a} and ${round1(b)} ${m.b} sets a week).`,
       })
       continue
     }
@@ -234,25 +289,29 @@ export function explainBalanceGap(args: {
       const text = s.doneSessions === 0
         ? `You haven't done ${s.title} in the last ${days} (the plan has it about ${times(expected)}), so its ${mainWord} is missing.`
         : df < 0
-          ? `You did ${s.title} ${times(s.doneSessions)} in the last ${days} — the plan has it about ${times(expected)} — so less of its ${mainWord} got done.`
+          ? `You did ${s.title} ${times(s.doneSessions)} in the last ${days} — the plan has it about ${times(expected)} — so less ${mainWord} got done.`
           : `You did ${s.title} ${times(s.doneSessions)} in the last ${days} — the plan has it about ${times(expected)} — adding more ${mainWord}.`
-      cands.push({ e: effect(df * per.a, df * per.b), text })
+      cands.push({ e: effect(df * per.a, df * per.b), text: () => text })
     }
-    // (2) sets logged vs prescribed
+    // (2) sets logged vs prescribed, named down to the exercise
     if (s.doneSessions > 0) {
-      const la = got.a / s.doneSessions, lb = got.b / s.doneSessions
-      const da = la - per.a, db = lb - per.b
-      const useA = Math.abs(da) / Pa >= Math.abs(db) / Pb
-      const d = useA ? da : db
-      const word = useA ? m.a : m.b
+      const da = got.a / s.doneSessions - per.a, db = got.b / s.doneSessions - per.b
+      const e = effect(da * perWeekDone, db * perWeekDone)
+      // The side that moved the ratio the right way most: more A or less B
+      // when it leaned toward A, the mirror otherwise.
+      const pushA = (towardA ? da : -da) / Pa, pushB = (towardA ? -db : db) / Pb
+      const side: 'a' | 'b' = pushA >= pushB ? 'a' : 'b'
+      const sign: 1 | -1 = side === 'a' ? (towardA ? 1 : -1) : (towardA ? -1 : 1)
+      const word = side === 'a' ? m.work.a : m.work.b
       cands.push({
-        e: effect(da * perWeekDone, db * perWeekDone),
-        text: `In ${s.title} you log ${d > 0 ? 'more' : 'fewer'} ${word} sets than it prescribes (about ${round1(useA ? la : lb)} a session vs ${round1(useA ? per.a : per.b)} planned).`,
+        e,
+        text: () => exerciseBehind(s, pair, side, sign, word)
+          ?? `In ${s.title} you log ${sign > 0 ? 'more' : 'fewer'} ${side === 'a' ? m.a : m.b} sets than it prescribes, so ${sign > 0 ? 'more' : 'less'} ${word} got done.`,
       })
     }
   }
   const best = cands.filter(c => c.e > 0).sort((x, y) => y.e - x.e)[0]
-  if (best) return best.text
+  if (best) return best.text()
   return `The last ${days} lean more to ${towardA ? m.work.a : m.work.b} than the program's plan.`
 }
 
@@ -278,4 +337,20 @@ export function compareBalance(args: {
     return { pair, planned, done, disagree: balanceDisagrees(planned, done), why }
   }
   return { pushPull: one('pushPull'), quadHam: one('quadHam') }
+}
+
+/** Planned (current program) vs done (a window) for both ratios, with the
+ *  one-line "why" where they differ. Null without a current program. */
+export function comparePlannedDone(
+  plan: { current: readonly unknown[]; balance: MuscleBalance; byRoutine: readonly PlannedRoutineBalance[]; passes: number },
+  done: { rows: readonly BalanceVolumeRow[]; tplById: ReadonlyMap<string, BalanceTemplate>; balance: MuscleBalance; windowDays: number },
+): Record<BalancePair, BalanceComparison> | null {
+  if (plan.current.length === 0) return null
+  return compareBalance({
+    planned: plan.balance,
+    done: done.balance,
+    sources: doneBalanceSources(done.rows, done.tplById, plan.byRoutine),
+    passesPerWeek: plan.passes,
+    windowDays: done.windowDays,
+  })
 }

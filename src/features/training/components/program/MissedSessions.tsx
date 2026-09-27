@@ -34,7 +34,7 @@ function Row({ item, today, onSkip }: { item: RoutineAttention; today: string; o
   const detail = item.kind === 'overdue'
     ? `${capitalize(missedText(item))} · was due ${shortDay(item.dueDate)}`
     : item.kind === 'skipped'
-      ? `Skipped the ${shortDay(item.dueDate)} session — ${item.skip.reason}`
+      ? `Skipped the ${shortDay(item.dueDate)} session: ${item.skip.reason}`
       : `Replanned for ${plannedDayText(item.plannedDate, today)}`
   return (
     <li className={cx('flex flex-col gap-2 rounded-row px-3 py-2.5 sm:flex-row sm:items-center sm:gap-3', item.kind === 'overdue' ? 'bg-warn-soft' : 'bg-surface-2')}>

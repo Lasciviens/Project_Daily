@@ -16,7 +16,7 @@ import { DETAIL_FIELDS, HERO_FIELDS, fmtMeasDate as fmtDate } from '../bodyMeasu
 import type { HevyBodyMeasurement } from '../types.hevy'
 
 // ─── Weight trend ─────────────────────────────────────────────────────────────
-// The ONE bodyweight series (Hevy log > smart scale > Apple Health), on a
+// The ONE bodyweight series (smart scale > its report > Hevy log), on a
 // real time axis. It replaces a hand-drawn SVG that spaced readings by index
 // (a three-week gap looked like a day), drew body fat by index onto the
 // weight chart's positions (so fat % sat on the wrong dates) and read only
@@ -62,8 +62,9 @@ function WeightTrendCard({ expanded, onToggleExpand }: { expanded: boolean; onTo
         <p className="section-label flex items-center gap-1">
           {metric === 'weight' ? 'Weight' : 'Body fat'} · last 6 months
           <InfoBubble label="Where these readings come from">
-            One series from three sources. On a day with more than one, a weight typed into Hevy wins, then the smart
-            scale, then Apple Health. The same numbers Health and Progress show.
+            Your smart scale first (read from Apple Health, where its app writes every weigh-in), then a scale report
+            imported from a photo; a weight typed into Hevy only fills a day with no scale reading. The same numbers
+            Health and Progress use.
           </InfoBubble>
         </p>
         <div className="flex items-center gap-1">

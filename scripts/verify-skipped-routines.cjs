@@ -121,6 +121,24 @@ console.log('\nreadMissedSessions')
   check('singular: 1 day', S.missedText({ daysSince: 1 }) === 'not done in 1 day')
 }
 
+console.log('\nmissedSessionsFrom (raw rows)')
+{
+  const today = '2026-09-27'
+  const routines = [{ id: 'lb', title: 'Lower B' }, { id: 'ua', title: 'Upper A' }, { id: 'old', title: 'Old Routine' }]
+  // created_at 22:30 UTC on 16 Sep = 00:30 on 17 Sep in Oslo → joined 17 Sep.
+  const program = [{ routine_id: 'lb', created_at: '2026-09-02T08:29:31Z' }, { routine_id: 'ua', created_at: '2026-09-16T22:30:00Z' }, { routine_id: 'gone', created_at: '2026-09-02T08:00:00Z' }]
+  const last = new Map([['lb', '2026-09-18']])
+  const r = S.missedSessionsFrom({ routines, program, lastTrained: last, blocks: [], skips: [], today })
+  check('program rows → only routines that still exist (never-done first)', r.map(x => x.routineId).join() === 'ua,lb', J(r.map(x => x.routineId)))
+  check('join day is the LOCAL day of created_at', r.find(x => x.routineId === 'ua')?.dueDate === '2026-09-24', J(r.find(x => x.routineId === 'ua')))
+  const planned = S.missedSessionsFrom({ routines, program, lastTrained: last, blocks: [{ title: 'Leg day', date: '2026-09-28', start_time: '17:00:00', source_type: 'training_session', source_id: 'lb' }], skips: [], today })
+  check('a training_session block with the routine id → replanned', planned.find(x => x.routineId === 'lb')?.kind === 'replanned')
+  const manualSrc = S.missedSessionsFrom({ routines, program, lastTrained: last, blocks: [{ title: 'Leg day', date: '2026-09-28', source_type: 'manual', source_id: 'lb' }], skips: [], today })
+  check('source_id is only trusted on a training_session block', manualSrc.find(x => x.routineId === 'lb')?.kind === 'overdue')
+  check('no program → nothing', S.missedSessionsFrom({ routines, program: [], lastTrained: last, blocks: [], skips: [], today }).length === 0)
+  check('skips read from 8 weeks before this Monday', S.skipsFromWeek(today) === '2026-07-27', S.skipsFromWeek(today))
+}
+
 console.log('\nskip reasons')
 check('chip + details', S.composeSkipReason('Sick', '  flu since Thursday ') === 'Sick — flu since Thursday')
 check('chip alone', S.composeSkipReason('Travel', '   ') === 'Travel')

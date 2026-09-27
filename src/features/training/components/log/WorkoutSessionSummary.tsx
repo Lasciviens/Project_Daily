@@ -1,10 +1,9 @@
 import { useMemo } from 'react'
 import { InfoBubble } from '../../../../shared/components/InfoBubble'
 import { formatDurationBetween } from '../../../../shared/utils/formatDuration'
-import { formatRpe, formatSetWithRpe } from '../../setFormat'
+import { formatRpe, formatSet, rpeSuffix } from '../../setFormat'
 import { summarizeWorkout } from '../../workoutSessionStats'
 import type { HevyWorkout } from '../../types.hevy'
-import { RpeInfoBubble } from '../RpeInfoBubble'
 import { SessionStat } from './SessionStat'
 import { WorkoutHealthStats } from './WorkoutHealthStats'
 
@@ -32,7 +31,7 @@ export function WorkoutSessionSummary({ workout }: { workout: HevyWorkout }) {
         />
         {stats.avgRpe != null ? (
           <SessionStat
-            label={<>Avg RPE <RpeInfoBubble /></>}
+            label="Avg RPE"
             value={formatRpe(stats.avgRpe)}
             sub={`${stats.ratedSets} of ${stats.workingSets} sets rated`}
           />
@@ -56,7 +55,7 @@ export function WorkoutSessionSummary({ workout }: { workout: HevyWorkout }) {
             {stats.topSets.map(t => (
               <li key={t.exerciseId} className="flex min-h-[32px] items-baseline justify-between gap-3 border-t border-line py-1.5 text-meta">
                 <span className="min-w-0 truncate text-fg-2">{t.title}</span>
-                <span className="shrink-0 font-medium tabular-nums text-fg">{formatSetWithRpe(t.set, t.type)}</span>
+                <span className="shrink-0 font-medium tabular-nums text-fg">{formatSet(t.set, t.type)}{rpeSuffix(t.set.rpe)}</span>
               </li>
             ))}
           </ul>

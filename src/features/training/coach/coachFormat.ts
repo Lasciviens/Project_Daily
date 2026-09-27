@@ -3,6 +3,9 @@ import { MOVEMENT_PATTERN_LABEL, labelForSlug, movementPatternLabel, resolveMove
 import type { ProgressData } from '../progressModel'
 import type { AthleteLimitation, AthleteProfile } from '../types.athlete'
 import type { HevyRoutine } from '../types.hevy'
+import { missedText, type RoutineAttention } from '../plan/skippedRoutines'
+import { PAIR_META, leanLabel, ratioText, sidesText, type BalancePair, type RatioRead } from '../plan/muscleBalance'
+import type { CoachBalance } from './coachModel'
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  The ONE AI-coach context, rendered two ways from the same CoachData:
@@ -42,6 +45,10 @@ export interface CoachData {
   steps: CoachDay[]
   activeKcal: CoachDay[]
   bodyweight: CoachWeight[]
+  /** Current-program routines not done for 7+ days, with their skip / plan (plan/skippedRoutines.ts). */
+  missedSessions?: RoutineAttention[]
+  /** Push:pull and quad:hamstring, planned vs done (plan/muscleBalance.ts — the numbers the app shows). */
+  balance?: CoachBalance | null
 }
 
 const r1 = (n: number) => Math.round(n * 10) / 10
@@ -94,6 +101,7 @@ export function formatPtSnapshot(d: CoachData): string {
     lines.push(`PROGRAM: ${progress.staleProgram ? 'kayıtlı rutinler artık Hevy\'de yok' : 'seçilmemiş'} — ilerleme kararı yok. Bu hafta ${d.sessionsThisWeek} antrenman${target}.`)
   } else {
     lines.push(`PROGRAM: ${programTitles(d).join(', ')} · bu hafta ${d.sessionsThisWeek} antrenman${target}`)
+    for (const m of d.missedSessions ?? []) lines.push(`  ${missedLine(m)}`)
     if (progress.program) {
       lines.push(`İLERLEME: ${progressVerdictHeadline(progress.program.progressVerdict)} — ${progress.program.improvingCount}/${progress.program.analyzableCount} hareket gelişiyor · iş yükü: ${workloadLabel(progress.program.workload)}${progress.program.corroboratingSignal ? ` (${progress.program.corroboratingSignal})` : ''}`)
     }
@@ -130,6 +138,9 @@ export function formatPtSnapshot(d: CoachData): string {
     }
   }
 
+  // ── Push:pull / quad:hamstring — the app's own numbers ──
+  if (d.balance) lines.push(...balanceLines(d.balance))
+
   // ── Recovery: sleep, steps, energy, weight ──
   const nights = d.sleep.filter(n => n.date >= shiftIso(d.today, -8))
   const last = nights[nights.length - 1]
@@ -160,6 +171,48 @@ function shiftIso(date: string, days: number): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
+/** "Missed: Lower B — not done in 9 days (due 2026-09-25) · skipped: Sick". */
+export function missedLine(m: RoutineAttention): string {
+  const state = m.kind === 'skipped' ? ` · skipped: ${m.skip.reason}` : m.kind === 'replanned' ? ` · replanned for ${m.plannedDate}` : ''
+  return `Missed: ${m.title} — ${missedText(m)} (due ${m.dueDate})${state}`
+}
+
+function missedJson(m: RoutineAttention): Record<string, unknown> {
+  return {
+    t: m.title, days_since: m.daysSince, due: m.dueDate, status: m.kind,
+    ...(m.kind === 'skipped' ? { reason: m.skip.reason } : {}),
+    ...(m.kind === 'replanned' ? { planned: m.plannedDate } : {}),
+  }
+}
+
+const PAIRS: BalancePair[] = ['pushPull', 'quadHam']
+const ratioWithLean = (r: RatioRead) => `${ratioText(r)} (${leanLabel(r)})`
+
+/** "BALANCE (…):" + one line per ratio + a "Why:" line where planned and
+ *  done differ. */
+export function balanceLines(b: CoachBalance): string[] {
+  const lines = [`BALANCE (weekly sets; planned = current program, done = last ${b.windowDays} days):`]
+  for (const pair of PAIRS) {
+    const done = b.done[pair]
+    const planned = b.planned?.[pair]
+    lines.push(`  ${PAIR_META[pair].label}: ${planned ? `planned ${ratioWithLean(planned)} · ` : ''}done ${ratioWithLean(done)}${done.lean !== 'none' ? ` — ${sidesText(done)}` : ''}`)
+    const why = b.comparison?.[pair].why
+    if (why) lines.push(`    Why: ${why}`)
+  }
+  return lines
+}
+
+function balanceJson(b: CoachBalance): Record<string, unknown> {
+  const one = (r: RatioRead) => ({ ratio: ratioText(r), lean: leanLabel(r), a: r.a, b: r.b })
+  const why = PAIRS.map(p => b.comparison?.[p].why).filter((w): w is string => !!w)
+  return {
+    rule: 'weekly sets (primary 1, each distinct secondary 0.5); push = chest+shoulders+triceps, pull = back+traps+biceps; ratios push÷pull and quad÷ham; a side is heavy above 1.5×; push/quad-heavy is worth fixing, the other way rarely matters. Same numbers as the app (Program tab = planned, Progress → Muscles = done) — quote these, never recompute.',
+    ...(b.planned ? { planned: { push_pull: one(b.planned.pushPull), quad_ham: one(b.planned.quadHam) } } : {}),
+    [`done_${b.windowDays}d`]: { push_pull: one(b.done.pushPull), quad_ham: one(b.done.quadHam) },
+    ...(why.length ? { why } : {}),
+  }
+}
+
 // ── Coach mode: compact JSON ────────────────────────────────────────────────
 
 export function buildCoachJson(d: CoachData, windowDays: number): Record<string, unknown> {
@@ -182,6 +235,7 @@ export function buildCoachJson(d: CoachData, windowDays: number): Record<string,
         sessions_this_week: d.sessionsThisWeek,
         target_days: profile?.training_days_per_week ?? null,
         verdict: progress.program?.progressVerdict ?? null,
+        ...(d.missedSessions?.length ? { missed: d.missedSessions.map(missedJson) } : {}),
         workload: progress.program?.workload ?? null,
       }
   if (!progress.needsCurrentProgram) {
@@ -209,6 +263,7 @@ export function buildCoachJson(d: CoachData, windowDays: number): Record<string,
         : `${s.reps ?? '?'}@${s.weight_kg ?? 0}`).join(','),
     })),
   }))
+  if (d.balance) ctx.balance = balanceJson(d.balance)
   if (d.weeklyMuscleSets.length) {
     ctx.weekly_sets = d.weeklyMuscleSets.map(m => ({ m: m.slug, s: r1(m.sets), mev: m.landmarks?.mev ?? null, mav: m.landmarks?.mav ?? null, mrv: m.landmarks?.mrv ?? null, ...(m.restriction ? { restricted: m.restriction } : {}) }))
   }
@@ -235,10 +290,12 @@ FOLLOW-UP: if a PREVIOUS ASSESSMENT section is present, note briefly whether its
 DATA SNAPSHOT (read-only, pre-aggregated; you have no tools):
 - PROFİL: athlete's goal / experience level / equipment access / training days per week — only the fields the user actually set. Followed by one "Kısıtlama: <hareket> (severity) — <note>" line per active limitation; "[= X]" names the standard movement pattern a free-text limitation is read as. Severity reading: (avoid) = this movement pattern is off the table entirely, no exceptions; (limit) = usable only at reduced load/volume; (monitor) = no restriction, just keep it in view. Absent entirely = no profile/limitations on file yet.
 - PROGRAM: the routines the user marked as their CURRENT program (their real split — never assume another one) and sessions logged this calendar week (Monday → today) vs their target. "seçilmemiş" = no program picked yet: then there are no progress decisions; mention once that choosing the current program (Training → Coach → Profile) unlocks per-exercise advice.
+- "Missed:" lines under PROGRAM: a current-program routine not logged for more than 7 days, with the day it was due; "skipped: <reason>" = the user skipped that session on purpose and said why (respect it — no guilt, don't re-plan it); "replanned for <date>" = already planned again. Absent = nothing missed.
 - İLERLEME + "Karar:" lines: the app's own progress engine — the SAME per-exercise decisions the Progress tab shows. Format "Karar: Exercise: ACTION "Action title" · son: <latest sets> · sonraki: <next-session target> · kanıt <limited|moderate|strong>". ACTION values: READY_TO_INCREASE (add load as in "sonraki"), BUILD_AT_CURRENT_LOAD / HOLD_STEADY (same load, chase reps toward the target), CONFIRM_BEFORE_INCREASING / CONFIRM_AT_CURRENT_LOAD (repeat once to confirm), WATCH_FOR_PLATEAU / WATCH_FOR_REGRESSION (flag it), REVIEW_LOAD_REDUCTION (load went down — ask whether deliberate), LOG_COMPARABLE_SESSION (last session not comparable), INSUFFICIENT_DATA (too few sessions).
 - Workout lines: "Exercise: sets×reps@kg (önceki: …)". "önceki" = same exercise, the last session it appeared. Warm-ups already excluded.
 - RPE: a workout line or a Karar "son:" may end with "@ RPE 8/9/10" — the effort the user logged per working set in Hevy, in set order (6-10 scale; reps in reserve ≈ 10 − RPE; one value = every set the same; "–" = that set unrated). Self-reported, and people underestimate reps left by ~1. Absent = not logged — never read missing RPE as easy or hard. Context only: RPE never overrides a Karar or changes a target; you may mention it (e.g. every set at RPE 10 = at the limit, check that form held).
 - Weekly volume: hard sets per muscle over the last 7 days vs landmarks (e.g. "Chest: 14 set/hf [MEV 8 · MAV 20 · MRV 22]"); "(kısıtlı: avoid|limit)" = an active limitation reaches that muscle. MEV=minimum effective, MAV=growth sweet spot, MRV=recoverable ceiling.
+- BALANCE: push:pull (chest+shoulders+triceps ÷ back+traps+biceps) and quad:hamstring weekly sets, "planned" in the current program and "done" in the last 30 days — the exact numbers the app's Program tab and Progress → Muscles show. A side is heavy above 1.5×; push- or quad-heavy is worth fixing, pull- or hamstring-heavy rarely matters. "Why:" = the app's own reason planned and done differ (e.g. an exercise added to a routine that the routine lacks). Quote these; never compute your own ratio.
 - Sleep "6.2h (7g ort 6.8h)", steps, active kcal, body weight trend, subjective feeling + free text.
 
 DECISION RULES (apply in this order):
@@ -246,7 +303,7 @@ DECISION RULES (apply in this order):
 2. Recovery gate: sleep <6h OR ("çok yorgun" + sleep below 7d avg) → today is technique/maintenance: keep exercises, -20-30% load or -1 set per exercise, no max-effort attempts. Sleep <5h two nights running → recommend rest or light cardio day.
 3. Overreach: any muscle ≥MRV, or İLERLEME iş yükü "Review workload", or performance regressed on 2+ lifts vs prev while feeling "çok yorgun" → deload cue: halve sets for that muscle this week, keep loads.
 4. Progressive overload: follow the Karar lines — they already apply double progression against each exercise's own target. For the TEK öncelik pick one exercise and use its "sonraki" target as written (READY_TO_INCREASE first, then a WATCH_* flag). Never contradict a Karar; if the recovery gate overrides it, say so explicitly. Only when there is no Karar line (no program picked, or an exercise outside it): all target sets hit at same load as prev → +2.5kg (upper) / +5kg (lower compounds), or +1-2 reps where 2.5kg is too big a jump; reps dropped vs prev → hold load, chase reps.
-5. Volume steering: muscle below MEV (and not kısıtlı) → name it and prescribe the fix concretely inside the user's PROGRAM ("hamstring 4 set/hf, MEV 6 — Legs günü 3 set leg curl ekle"). Between MEV-MAV = good, say which. Watch push:pull balance across the week.
+5. Volume steering: muscle below MEV (and not kısıtlı) → name it and prescribe the fix concretely inside the user's PROGRAM ("hamstring 4 set/hf, MEV 6 — Legs günü 3 set leg curl ekle"). Between MEV-MAV = good, say which. Balance: use the BALANCE lines as written; flag push-heavy / quad-heavy (with the planned vs done number) and fix it inside the PROGRAM.
 6. Rest day: assess recovery, flag the next routine of the PROGRAM, note steps/energy if notably low (<5k steps → suggest a walk).
 
 EVIDENCE GUARDRAILS:

@@ -86,7 +86,7 @@ export interface NutritionCoach {
 export function useNutritionCoach(date: string, targets: DayTargets): NutritionCoach {
   const { goal } = targets
   const from = shiftDateStr(date, -WEIGHT_WINDOW_DAYS)
-  // The ONE merged bodyweight series (Hevy > smart scale > Apple Health).
+  // The ONE merged bodyweight series (smart scale > its report > Hevy).
   const { data: wPts = [] } = useBodyweightSeries(from, date)
   const { data: loggedDates = [] } = useQuery({
     queryKey: qk.foodLog.loggedDates(date),

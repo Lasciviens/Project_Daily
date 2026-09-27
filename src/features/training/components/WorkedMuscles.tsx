@@ -12,13 +12,15 @@ import { DateInput } from '../../../shared/components/DateInput'
 import { InfoBubble } from '../../../shared/components/InfoBubble'
 import { todayStr } from '../../../shared/utils/dateUtils'
 import {
-  slugForHevyGroup, MUSCLE_LANDMARKS, SIDE_SLUGS, labelForSlug, MAJOR_MUSCLES,
+  MUSCLE_LANDMARKS, SIDE_SLUGS, labelForSlug, MAJOR_MUSCLES,
   scaleLandmarksForExperience, EXPERIENCE_MULTIPLIER, restrictionsBySlug, type Landmarks,
 } from '../muscleMap'
 import {
-  PRESETS, BAND_WORD, aggregateVolume, bandOf, buildVerdict, computeBalance, readMuscle, weeklyOf,
-  type MuscleReadContext, type Period, type Tpl, type VolumeRow,
+  PRESETS, BAND_WORD, aggregateVolume, bandOf, buildTplById, buildVerdict, computeBalance, presetWindowIso, readMuscle, weeklyOf,
+  type MuscleReadContext, type Period, type VolumeRow,
 } from './muscles/muscleVolumeModel'
+import { usePlannedProgram } from '../hooks/useMuscleBalance'
+import { comparePlannedDone } from '../plan/muscleBalance'
 import { MuscleVerdictBanner } from './muscles/MuscleVerdictBanner'
 import { MuscleBodyPanel } from './muscles/MuscleBodyPanel'
 import { MuscleBalanceCard } from './muscles/MuscleBalanceCard'
@@ -55,9 +57,12 @@ export function WorkedMuscles() {
       end   = new Date(`${customTo}T23:59:59`)
       days  = Math.max(1, differenceInCalendarDays(end, start) + 1)
     } else {
+      // presetWindowIso: the same window (and query) the Program tab's
+      // "done in the last 30 days" balance reads.
       days = PRESETS.find(p => p.id === period)?.days ?? 30
-      end  = new Date(`${anchorDay}T23:59:59`)
-      start = subDays(end, days)
+      const w = presetWindowIso(anchorDay, days)
+      end   = new Date(w.toIso)
+      start = new Date(w.fromIso)
     }
     const priorEnd = new Date(start.getTime() - 1000)
     const priorStart = subDays(priorEnd, days)
@@ -88,15 +93,7 @@ export function WorkedMuscles() {
   const { data: volume = [], isLoading } = useMuscleVolume(fromIso, toIso, enabled)
   const { data: priorVolume = [] } = useMuscleVolume(priorFromIso, priorToIso, enabled)
 
-  const tplById = useMemo(() => {
-    const m = new Map<string, Tpl>()
-    for (const t of templates) {
-      const primary = slugForHevyGroup(t.primary_muscle_group)
-      const secondaries = (t.secondary_muscle_groups ?? []).map(slugForHevyGroup).filter((s): s is Slug => !!s)
-      m.set(t.id, { primary, secondaries, title: t.title })
-    }
-    return m
-  }, [templates])
+  const tplById = useMemo(() => buildTplById(templates), [templates])
 
   const current = useMemo(() => aggregateVolume(volume as VolumeRow[], tplById), [volume, tplById])
   const prior = useMemo(() => aggregateVolume(priorVolume as VolumeRow[], tplById), [priorVolume, tplById])
@@ -140,6 +137,12 @@ export function WorkedMuscles() {
   )
 
   const balance = useMemo(() => computeBalance(ctx), [ctx])
+  // Planned (Program tab) vs done here — same ratio function; a custom range
+  // isn't "the last N days", so it shows the done ratio alone.
+  const plan = usePlannedProgram()
+  const comparison = useMemo(
+    () => (period === 'custom' ? null : comparePlannedDone(plan, { rows: volume as VolumeRow[], tplById, balance, windowDays })),
+    [period, plan, volume, tplById, balance, windowDays])
   const { verdict, buckets } = useMemo(
     () => buildVerdict({ ctx, majors: MAJOR_MUSCLES, priorHasData, windowDays, smallSample, balance }),
     [ctx, priorHasData, windowDays, smallSample, balance])
@@ -212,7 +215,9 @@ export function WorkedMuscles() {
               : `No workouts logged in the last ${windowDays} days.`}
         </p>
 
-        {hasData && <MuscleBalanceCard balance={balance} windowDays={windowDays} />}
+        {hasData && <MuscleBalanceCard balance={balance} windowLabel={period === 'custom' && customValid
+          ? `${format(new Date(`${customFrom}T00:00:00`), 'd MMM')} – ${format(new Date(`${customTo}T00:00:00`), 'd MMM')}`
+          : `in the last ${windowDays} days`} comparison={comparison} />}
 
         {sideChips.length > 0 && (
           <div>

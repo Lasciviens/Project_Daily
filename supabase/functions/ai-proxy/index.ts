@@ -1346,12 +1346,15 @@ async function getCalendarEvents(supabase: AnyRecord, userId: string, args: AnyR
 //   2. A night with any manual row uses ONLY its manual rows — a manual entry
 //      is a deliberate correction (these copies used to ignore manual rows, so
 //      the AI quoted the Watch's night the user had corrected).
-//   3. Pre-aggregated sessions: drop one only when >=90% of its own window lies
-//      inside a better-ranked session (a re-report); sum the rest (an
+//   3. Pre-aggregated sessions: drop one when >=90% of its own window lies
+//      inside a better-ranked session, or less than 15 min of it lies outside
+//      one (a re-report or a "Since Last Sync" fragment — summing adds the
+//      fragment's WHOLE total, not just its overhang); sum the rest (an
 //      interrupted night is two real blocks — "any overlap ⇒ keep the longest"
 //      reported 4.35h for a real 8.45h night).
 //   4. Raw per-stage rows: Core + REM + Deep + Asleep = total; Awake never added.
 const SLEEP_CONTAINMENT = 0.9
+const SLEEP_MIN_EXTRA_MS = 15 * 60_000
 function sleepMs(s: unknown): number | null {
   if (typeof s !== 'string') return null
   const iso = s.trim().replace(' ', 'T').replace(/\s*([+-]\d{2}):?(\d{2})$/, '$1:$2')
@@ -1383,7 +1386,7 @@ function mergeSleepSessionRows(pre: AnyRecord[]): AnyRecord[] {
     const dup = kept.some(k => {
       const overlap = Math.min(s.end, k.end) - Math.max(s.start, k.start)
       const span = s.end - s.start
-      return overlap > 0 && span > 0 && overlap / span >= SLEEP_CONTAINMENT
+      return overlap > 0 && span > 0 && (overlap / span >= SLEEP_CONTAINMENT || span - overlap < SLEEP_MIN_EXTRA_MS)
     })
     if (!dup) kept.push(s)
   }

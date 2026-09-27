@@ -96,6 +96,25 @@ export interface VolumeAggregate {
   workoutCount: number
 }
 
+/** Volume rows from per-set history rows (warm-ups out), for a caller that
+ *  holds the training history rather than the volume query — the AI coach.
+ *  Days are inclusive local 'yyyy-MM-dd'. */
+export function volumeRowsFromSets(
+  sets: readonly { workout_id: string; date: string; exercise_template_id: string; set_type: string; routine_id?: string | null }[],
+  fromDay: string,
+  toDay: string,
+): VolumeRow[] {
+  const by = new Map<string, VolumeRow>()
+  for (const s of sets) {
+    if (s.set_type === 'warmup' || s.date < fromDay || s.date > toDay) continue
+    const key = `${s.workout_id}|${s.exercise_template_id}`
+    const row = by.get(key) ?? { templateId: s.exercise_template_id, workoutId: s.workout_id, workoutDate: `${s.date}T12:00:00`, workingSets: 0, routineId: s.routine_id ?? null }
+    row.workingSets += 1
+    by.set(key, row)
+  }
+  return [...by.values()]
+}
+
 /** Credited working sets per slug from one window's volume rows (primary 1.0,
  *  each distinct secondary 0.5 — creditedMuscles, the rule every volume
  *  screen shares). Days are LOCAL days — workoutDate is an instant, and its

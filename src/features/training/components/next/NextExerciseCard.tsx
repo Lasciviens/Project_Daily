@@ -1,15 +1,13 @@
 import { Timer } from 'lucide-react'
-import { Card, ToneDot, TonePill, type Tone } from '../../../../shared/ui'
+import { Card, ToneDot, TonePill } from '../../../../shared/ui'
 import { InfoBubble } from '../../../../shared/components/InfoBubble'
 import { ExerciseThumb } from '../../exerciseMedia'
 import { actionLabel, nextTargetUnavailableText } from '../../progress-engine/copy'
 import { fmtTrainingDate } from '../../dateFormat'
 import { ACTION_TONE } from '../../plan/actionTone'
-import type { EffortNote, PlanRow } from '../../plan/sessionPlan'
+import type { PlanRow } from '../../plan/sessionPlan'
 import { SourceNote } from '../program/SourceNote'
 import { RpeInfoBubble } from '../RpeInfoBubble'
-
-const EFFORT_TONE: Record<EffortNote, Tone> = { near_limit: 'warn', room_to_push: 'info' }
 
 function fmtRest(seconds: number): string {
   if (seconds < 60) return `${seconds}s rest`
@@ -68,14 +66,17 @@ export function NextExerciseCard({ row, explainRpe = false }: { row: PlanRow; ex
 
       {row.lastSets && (
         <p className="text-meta text-fg-muted">
-          Last time{row.lastDate ? ` (${fmtTrainingDate(row.lastDate + 'T12:00:00')})` : ''}
-          {explainRpe && row.lastHasRpe && <> <RpeInfoBubble /></>}:{' '}
+          Last time{row.lastDate ? ` (${fmtTrainingDate(row.lastDate + 'T12:00:00')})` : ''}:{' '}
           <span className="font-medium tabular-nums text-fg-2">{row.lastSets}</span>
+          {explainRpe && row.lastHasRpe && <> <RpeInfoBubble /></>}
         </p>
       )}
       {row.lastEffort?.note && row.lastEffort.text && (
         <p className="flex items-start gap-2 text-meta text-fg-2">
-          <ToneDot tone={EFFORT_TONE[row.lastEffort.note]} className="mt-1 shrink-0" />
+          {/* Info tone for both: near the limit is not a problem to fix (sets
+              0–3 reps short of failure all build muscle) — a warning colour
+              would read as "back off" against the engine's target. */}
+          <ToneDot tone="info" className="mt-1 shrink-0" />
           {row.lastEffort.text}
         </p>
       )}

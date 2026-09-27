@@ -1,15 +1,17 @@
-// Cut report — does the scale agree with the calorie numbers? Pure and
-// import-free (scripts/verify-energy-balance.cjs).
+// Goal progress — does the scale agree with the calorie numbers? Pure and
+// import-free (scripts/verify-energy-balance.cjs). The phase-aware verdicts
+// (pace, fat vs muscle, goals) live in bodyGoal.ts on top of this.
 //
 // Three independent measurements meet here:
 //   intake       — the food diary (eaten food_log_entries), LOGGED days only
 //   expenditure  — Apple Health active + basal energy per day
-//   weight       — the merged bodyweight series (Hevy > smart scale > Apple)
+//   weight       — the merged bodyweight series (bodyweight.ts)
 // If all three were perfect, (Apple burn − intake) × days ÷ energy density
-// would equal the weight the trend line lost. They never are, so the report
-// works backwards too: the OBSERVED burn ("observed TDEE") is the intake plus
-// the energy the weight change stands for, and the gap between that and
-// Apple's figure says which way the numbers disagree.
+// would equal the weight the trend line lost (or gained). They never are, so
+// the report works backwards too: the OBSERVED burn ("observed TDEE") is the
+// intake plus the energy the weight change stands for, and the gap between
+// that and Apple's figure says which way the numbers disagree. The same math
+// runs for a deficit (cut), a surplus (gain) or neither (maintain).
 //
 // ENERGY DENSITY — 7,700 kcal per kg of weight lost (3,500 kcal/lb, 32.2 MJ/kg).
 //   Hall KD. What is the required energy deficit per unit weight loss?
@@ -24,7 +26,9 @@
 //   weight drops faster than the deficit predicts at the start of a cut.
 // A lean person loses more lean tissue per kg than an obese one, so for a lean
 // lifter 7,700 is if anything a slight overestimate — treat every kcal figure
-// below as ±15 %, not exact.
+// below as ±15 %, not exact. The same figure is used for weight GAINED: a
+// surplus stores a similar fat/lean mix, and the first weeks of a gain refill
+// glycogen and water, so weight rises faster than the surplus predicts.
 //
 // WHY THE NUMBERS USUALLY DISAGREE (the "likely reason" copy):
 //   • Food records under-report intake by roughly 19-41 % against doubly
@@ -38,11 +42,8 @@
 // Both push the same way: the logged deficit looks bigger than the real one,
 // so "slower than your numbers say" is the common result, not a failure.
 //
-// RATE — Garthe I et al. Effect of two different weight-loss rates on body
-//   composition and strength and power-related performance in elite athletes.
-//   Int J Sport Nutr Exerc Metab 2011;21:97-104 (PMID 21558571): at ~0.7 % of
-//   bodyweight a week lean mass ROSE 2.1 %; at ~1.4 % it was unchanged. The
-//   authors: 0.7 %/wk to gain lean mass, up to 1.0-1.4 %/wk to keep it.
+// RATE — the phase-aware pace bands (Garthe 2011, Helms 2014, Iraki 2019)
+//   live in bodyGoal.ts.
 //
 // PROTEIN — Morton RW et al. Br J Sports Med 2018 (PMID 28698222): no further
 //   fat-free-mass gain above 1.62 g/kg/day (95 % CI 1.03-2.20; the breakpoint
@@ -64,15 +65,18 @@ export const MIN_LOGGED_DAY_KCAL = 800
 // Weight trend differences smaller than this (kcal/day) are inside what the
 // method can resolve over a few weeks of daily weigh-ins.
 export const MATCH_TOLERANCE_KCAL = 200
-// The first weeks of a cut lose glycogen and water (Thomas 2013).
+// The first weeks of a cut lose glycogen and water (Thomas 2013); the first
+// weeks of a gain put them back.
 export const EARLY_PHASE_DAYS = 21
+export const EARLY_GAIN_DAYS = 14
+
+export type Phase = 'cut' | 'maintain' | 'gain'
 
 export interface IntakeDay { date: string; kcal: number; proteinG: number }
 export interface EnergyDay { date: string; activeKcal: number | null; basalKcal: number | null }
 export interface WeighIn { date: string; kg: number }
-export interface ScaleReading { date: string; weightKg: number; fatMassKg: number | null; leanMassKg: number | null }
 
-export interface CutInputs {
+export interface EnergyInputs {
   /** Inclusive days. `to` should be the last COMPLETE day (yesterday). */
   from: string
   to: string
@@ -81,18 +85,18 @@ export interface CutInputs {
   /** Merged weigh-ins; readings up to the day after `to` are used (a morning
    *  weigh-in reflects the day before), earlier ones feed the moving average. */
   weights: WeighIn[]
-  scale?: ScaleReading[]
-  goal?: 'cut' | 'maintain' | 'gain' | null
+  goal?: Phase | null
   targetKcal?: number | null
-  goalWeightKg?: number | null
-  /** The day the cut started, if known — flags the water-heavy early weeks. */
-  cutStartDate?: string | null
+  /** The day the current cut/gain started, if known — flags the water-heavy
+   *  early weeks. */
+  phaseStartDate?: string | null
+  /** Latest lean mass from the scale, for protein per kg of fat-free mass. */
+  leanMassKg?: number | null
   energyDensity?: number
 }
 
 export type Verdict = 'on_track' | 'slower' | 'faster'
 export type Confidence = 'low' | 'medium' | 'high'
-export type RateBand = 'gaining' | 'stalled' | 'slow' | 'target' | 'fast' | 'very_fast'
 export type ProteinBand = 'below_floor' | 'in_range' | 'high'
 export type Reason =
   | 'intake_underlogged' | 'partial_logging' | 'apple_overestimates'
@@ -100,7 +104,7 @@ export type Reason =
 
 export interface TrendPoint { date: string; kg: number; avg7: number }
 
-export interface CutReport {
+export interface EnergyReport {
   days: number
   intake: { loggedDays: number; partialDays: number; completeness: number; meanKcal: number | null; meanProteinG: number | null }
   apple: { days: number; meanActive: number | null; meanBasal: number | null; meanTdee: number | null }
@@ -114,7 +118,7 @@ export interface CutReport {
     /** Standard error of the slope (kg/day) — the trend's own noise. */
     slopeSe: number | null
     kgPerWeek: number | null
-    /** Positive = losing. */
+    /** Positive = losing (a share of the mean weight). */
     pctPerWeek: number | null
     meanKg: number | null
     currentTrendKg: number | null
@@ -133,10 +137,9 @@ export interface CutReport {
   /** What stops a verdict, in plain words. Empty when there is one. */
   missing: string[]
   earlyPhase: boolean
-  rate: RateBand | null
+  /** Enough weigh-ins for a pace: 4+ spanning a week. */
+  hasTrend: boolean
   protein: { gPerKg: number | null; band: ProteinBand | null; gPerKgFfm: number | null }
-  composition: { from: string; to: string; fatChangeKg: number | null; leanChangeKg: number | null; leanShareOfLoss: number | null } | null
-  projection: { goalKg: number; days: number; date: string } | 'not_losing' | 'reached' | 'too_far' | null
   plannedDeficit: number | null
 }
 
@@ -181,22 +184,16 @@ export function movingAverage7(weights: WeighIn[]): TrendPoint[] {
   })
 }
 
-export function rateBand(pctLossPerWeek: number): RateBand {
-  if (pctLossPerWeek < -0.1) return 'gaining'
-  if (pctLossPerWeek < 0.25) return 'stalled'
-  if (pctLossPerWeek < 0.5) return 'slow'
-  if (pctLossPerWeek <= 1.0) return 'target'
-  if (pctLossPerWeek <= 1.4) return 'fast'
-  return 'very_fast'
-}
-
 export function proteinBand(gPerKg: number): ProteinBand {
   if (gPerKg < 1.6) return 'below_floor'
   if (gPerKg <= 2.2) return 'in_range'
   return 'high'
 }
 
-export function buildCutReport(inp: CutInputs): CutReport {
+/** Days of food / Apple energy a window needs before a verdict. */
+export function neededDays(days: number): number { return Math.max(7, Math.ceil(days * 0.6)) }
+
+export function buildEnergyReport(inp: EnergyInputs): EnergyReport {
   const density = inp.energyDensity ?? ENERGY_DENSITY_KCAL_PER_KG
   const days = daysBetween(inp.from, inp.to) + 1
   const inWin = (d: string) => d >= inp.from && d <= inp.to
@@ -246,7 +243,7 @@ export function buildCutReport(inp: CutInputs): CutReport {
   const tdeeGap = observedTdee != null && meanTdee != null ? observedTdee - meanTdee : null
 
   // ── enough data for a verdict? ────────────────────────────────────────────
-  const needDays = Math.max(7, Math.ceil(days * 0.6))
+  const needDays = neededDays(days)
   const needSpan = Math.max(10, Math.ceil(days * 0.5))
   const missing: string[] = []
   if (fullDays.length < needDays) missing.push(`Food logged on ${fullDays.length} of ${days} days — needs ${needDays}.`)
@@ -254,8 +251,9 @@ export function buildCutReport(inp: CutInputs): CutReport {
   if (trendWeights.length < 4) missing.push(`${trendWeights.length} weigh-in${trendWeights.length === 1 ? '' : 's'} in the window — needs 4.`)
   else if (spanDays < needSpan) missing.push(`Weigh-ins span ${spanDays} days — needs ${needSpan}.`)
 
-  const earlyPhase = !!inp.cutStartDate && daysBetween(inp.cutStartDate, inp.from) < EARLY_PHASE_DAYS
-    && daysBetween(inp.cutStartDate, inp.to) >= 0
+  const earlyDays = inp.goal === 'gain' ? EARLY_GAIN_DAYS : inp.goal === 'cut' ? EARLY_PHASE_DAYS : 0
+  const earlyPhase = !!inp.phaseStartDate && earlyDays > 0 && daysBetween(inp.phaseStartDate, inp.from) < earlyDays
+    && daysBetween(inp.phaseStartDate, inp.to) >= 0
 
   let verdict: Verdict | null = null
   const reasons: Reason[] = []
@@ -267,12 +265,15 @@ export function buildCutReport(inp: CutInputs): CutReport {
     const tol = Math.max(MATCH_TOLERANCE_KCAL, 1.5 * seKcal)
     if (Math.abs(tdeeGap) <= tol) verdict = 'on_track'
     else if (tdeeGap < 0) {
+      // The scale sits higher than the numbers predict: less lost / more gained.
       verdict = 'slower'
+      if (earlyPhase && inp.goal === 'gain') reasons.push('early_water')
       if (completeness < 0.85 || partialDays > 0) reasons.push('partial_logging')
       reasons.push('intake_underlogged', 'apple_overestimates')
     } else {
+      // The scale sits lower than the numbers predict: more lost / less gained.
       verdict = 'faster'
-      if (earlyPhase) reasons.push('early_water')
+      if (earlyPhase && inp.goal === 'cut') reasons.push('early_water')
       if (days <= 14) reasons.push('short_window')
       reasons.push('apple_underestimates', 'intake_overlogged')
     }
@@ -286,50 +287,22 @@ export function buildCutReport(inp: CutInputs): CutReport {
     if (seKcal <= 150) score++; else confidenceNotes.push(`The weight trend is noisy (±${Math.round(seKcal)} kcal/day).`)
     confidence = score >= 4 ? 'high' : score >= 2 ? 'medium' : 'low'
     if (earlyPhase) {
-      confidenceNotes.push('Early weeks of a cut — part of the loss is glycogen and water.')
+      confidenceNotes.push(inp.goal === 'gain'
+        ? 'Early weeks of a gain — part of the gain is glycogen and water.'
+        : 'Early weeks of a cut — part of the loss is glycogen and water.')
       if (confidence === 'high') confidence = 'medium'
     }
   }
 
-  // ── rate, protein, composition, projection ────────────────────────────────
-  const rate = pctPerWeek != null && trendWeights.length >= 4 && spanDays >= 7 ? rateBand(pctPerWeek) : null
-
-  const scaleIn = (inp.scale ?? []).filter(s => inWin(s.date) || s.date === weightEnd)
-    .sort((a, b) => a.date.localeCompare(b.date))
-  const latestScale = [...(inp.scale ?? [])].sort((a, b) => a.date.localeCompare(b.date)).pop() ?? null
+  // ── protein ───────────────────────────────────────────────────────────────
+  const hasTrend = trendWeights.length >= 4 && spanDays >= 7
   const kgForProtein = currentTrendKg ?? meanKg
   const gPerKg = meanProteinG != null && kgForProtein ? meanProteinG / kgForProtein : null
-  const ffm = latestScale?.leanMassKg ?? null
+  const ffm = inp.leanMassKg ?? null
   const protein = {
     gPerKg: round(gPerKg, 2),
     band: gPerKg != null ? proteinBand(gPerKg) : null,
     gPerKgFfm: meanProteinG != null && ffm ? round(meanProteinG / ffm, 2) : null,
-  }
-
-  let composition: CutReport['composition'] = null
-  if (scaleIn.length >= 2) {
-    const a = scaleIn[0], b = scaleIn[scaleIn.length - 1]
-    if (daysBetween(a.date, b.date) >= 7) {
-      const fat = a.fatMassKg != null && b.fatMassKg != null ? b.fatMassKg - a.fatMassKg : null
-      const lean = a.leanMassKg != null && b.leanMassKg != null ? b.leanMassKg - a.leanMassKg : null
-      const lost = a.weightKg - b.weightKg
-      composition = {
-        from: a.date, to: b.date,
-        fatChangeKg: round(fat, 2), leanChangeKg: round(lean, 2),
-        leanShareOfLoss: lean != null && lost > 0.3 ? round(Math.max(0, -lean) / lost, 2) : null,
-      }
-    }
-  }
-
-  let projection: CutReport['projection'] = null
-  if (inp.goalWeightKg && currentTrendKg != null && slope != null && trendWeights.length >= 4) {
-    const gap = currentTrendKg - inp.goalWeightKg
-    if (gap <= 0) projection = 'reached'
-    else if (slope >= -0.005) projection = 'not_losing'
-    else {
-      const d = Math.ceil(Math.round((gap / -slope) * 1e6) / 1e6)
-      projection = d > 730 ? 'too_far' : { goalKg: inp.goalWeightKg, days: d, date: addDays(trendWeights[trendWeights.length - 1].date, d) }
-    }
   }
 
   return {
@@ -346,7 +319,7 @@ export function buildCutReport(inp: CutInputs): CutReport {
     expectedChangeKg: round(expectedChangeKg, 2),
     observedTdee: round(observedTdee),
     tdeeGap: round(tdeeGap),
-    verdict, reasons, confidence, confidenceNotes, missing, earlyPhase, rate, protein, composition, projection,
+    verdict, reasons, confidence, confidenceNotes, missing, earlyPhase, hasTrend, protein,
     plannedDeficit: meanTdee != null && inp.targetKcal ? round(meanTdee - inp.targetKcal) : null,
   }
 }

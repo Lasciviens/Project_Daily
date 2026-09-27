@@ -14,7 +14,7 @@ import { TRAINING_TABS, parseTrainingTab, type TrainingTabId } from './trainingT
 
 // Training: Next (what to do today, set by set) · Program (the plan and what
 // it adds up to) · Progress (what changed) · Log (what you did: workouts,
-// cardio, body) · Library (exercises, routines, records) · Coach. The tab
+// Strava, body) · Library (exercises, routines, records) · Coach. The tab
 // lives in `?tab=` so links and Back work. Every tab is content-sized and
 // left-aligned; the old right-hand calendar rail now sits inside Log.
 export function TrainingPage() {

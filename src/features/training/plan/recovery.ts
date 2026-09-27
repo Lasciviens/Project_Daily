@@ -15,7 +15,7 @@
 //    workout (the research file's frequency rule). There is no validated
 //    per-muscle "recovered" clock, so the list shows days, not readiness.
 
-import { contribution, slugForHevyGroup } from '../muscleMap'
+import { creditedMuscles, templateMuscleCredit } from '../muscleMap'
 import type { ProgressSetRow } from '../progressAggregate'
 
 export const SLEEP_GUIDELINE_H = 7
@@ -79,12 +79,9 @@ export function computeMuscleLastTrained(
     const m = templateMuscles.get(s.exercise_template_id)
     if (!m) continue
     const w = perWorkout.get(s.workout_id) ?? { date: s.date, credit: new Map<string, number>() }
-    const primary = slugForHevyGroup(m.primary)
-    if (primary) w.credit.set(primary, (w.credit.get(primary) ?? 0) + contribution(s.exercise_template_id, primary, 'primary'))
-    for (const g of m.secondary) {
-      const slug = slugForHevyGroup(g)
-      if (!slug || slug === primary) continue
-      w.credit.set(slug, (w.credit.get(slug) ?? 0) + contribution(s.exercise_template_id, slug, 'secondary'))
+    const c = templateMuscleCredit(m.primary, m.secondary)
+    for (const cr of creditedMuscles(s.exercise_template_id, c.primarySlug, c.secondarySlugs)) {
+      w.credit.set(cr.slug, (w.credit.get(cr.slug) ?? 0) + cr.weight)
     }
     perWorkout.set(s.workout_id, w)
   }

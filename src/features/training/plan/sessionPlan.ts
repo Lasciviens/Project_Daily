@@ -97,9 +97,9 @@ export function lastSessionEffort(sets: readonly CanonicalSet[]): LastEffort | n
   const note: EffortNote | null = averageRpe >= NEAR_LIMIT_RPE ? 'near_limit' : averageRpe <= ROOM_TO_PUSH_RPE ? 'room_to_push' : null
   const over = rated.length === working.length ? plural(working.length, 'working set') : `${rated.length} of ${plural(working.length, 'working set')}`
   const text = note === 'near_limit'
-    ? `Last time was near your limit (RPE 9.5+): average RPE ${averageRpe} over ${over}, about 0–½ reps left.`
+    ? `Last time was near your limit (RPE 9.5+) — average ${averageRpe} over ${over}, about 0–½ reps left.`
     : note === 'room_to_push'
-      ? `Last time left room to push (RPE 7 or lower): average RPE ${averageRpe} over ${over}, about 3+ reps left.`
+      ? `Last time left room to push (RPE 7 or lower) — average ${averageRpe} over ${over}, about 3+ reps left.`
       : null
   return { averageRpe, ratedSets: rated.length, workingSets: working.length, note, text }
 }

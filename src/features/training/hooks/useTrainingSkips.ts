@@ -2,24 +2,15 @@ import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
 import { qk, STALE } from '../../../shared/query'
-import { localDayOf, shiftDateStr } from '../../../shared/utils/dateUtils'
+import { shiftDateStr } from '../../../shared/utils/dateUtils'
 import { useTrainingBlocks } from '../../daily/hooks/useSchedule'
 import { createTrainingSkip, deleteTrainingSkip, fetchTrainingSkips, type CreateTrainingSkipInput } from '../api/trainingSkipsApi'
 import { lastTrainedByRoutine } from '../progress-engine'
-import { readMissedSessions, shiftDay, weekStartOf, type RoutineAttention } from '../plan/skippedRoutines'
-import type { PlannedRef } from '../plan/nextSession'
+import { missedSessionsFrom, skipsFromWeek, type RoutineAttention } from '../plan/skippedRoutines'
 import { useHevyRoutines } from './useHevyRoutines'
 import { useCurrentProgramRoutines } from './useAthleteProfile'
 import { useTrainingHistory } from './useTrainingProgress'
 import { useTodayStr, NEXT_SESSION_LOOKAHEAD_DAYS } from './useTrainingSessions'
-
-/** How far back skips are read: the rule only needs last week's, the coach
- *  context shows a few weeks. */
-export const SKIP_LOOKBACK_WEEKS = 8
-
-export function skipsFromWeek(today: string): string {
-  return shiftDay(weekStartOf(today), -7 * SKIP_LOOKBACK_WEEKS)
-}
 
 export function useTrainingSkips() {
   const fromWeek = skipsFromWeek(useTodayStr())
@@ -67,21 +58,22 @@ export function useMissedSessions(): MissedSessions {
   const routines = routinesQ.data
   const program = programQ.data
   const history = historyQ.data
-  const blocks = blocksQ.data
-  const skips = skipsQ.data
+  const blocksData = blocksQ.data
+  const blocksFailed = blocksQ.isError
+  const skipsData = skipsQ.data
+  const skipsFailed = skipsQ.isError
 
   const items = useMemo<RoutineAttention[]>(() => {
+    // A failed plan/skip read shows the flags rather than hiding them (the
+    // worst case is a flag for a session already skipped or planned).
+    const blocks = blocksData ?? (blocksFailed ? [] : undefined)
+    const skips = skipsData ?? (skipsFailed ? [] : undefined)
     if (isLoading || !routines || !program || !history || !blocks || !skips) return []
-    const joined = new Map(program.map(p => [p.routine_id, localDayOf(p.created_at)]))
-    const current = routines.filter(r => joined.has(r.id)).map(r => ({ id: r.id, title: r.title, joinedOn: joined.get(r.id) ?? null }))
-    // One-off blocks only: a recurring template always has a next occurrence
-    // and would silence the flag for good (see skippedRoutines.ts).
-    const upcoming: PlannedRef[] = blocks.map(b => ({
-      title: b.title, date: b.date, startTime: b.start_time?.slice(0, 5) ?? null,
-      sourceId: b.source_type === 'training_session' ? b.source_id ?? null : null,
-    }))
-    return readMissedSessions({ program: current, routines, lastTrained: lastTrainedByRoutine(history.sets), upcoming, skips, today })
-  }, [isLoading, routines, program, history, blocks, skips, today])
+    // One-off blocks only (this range query never returns recurring
+    // templates): a weekly repeat always has a next date and would silence
+    // the flag for good (see skippedRoutines.ts).
+    return missedSessionsFrom({ routines, program, lastTrained: lastTrainedByRoutine(history.sets), blocks, skips, today })
+  }, [isLoading, routines, program, history, blocksData, blocksFailed, skipsData, skipsFailed, today])
 
   return { isLoading, items, today }
 }

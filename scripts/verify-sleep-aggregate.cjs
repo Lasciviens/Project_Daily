@@ -20,6 +20,7 @@ const {
   sleepStageShares,
   manualNightKeys,
   sleepSourcesByNight,
+  keptSleepSessionRows,
 } = require('../src/features/health/healthAggregate.ts')
 
 let passed = 0
@@ -283,6 +284,31 @@ check('§8.3 extractSleepSessions on an unknown night → empty',
   const manual = segment('Core', 5, { date: '2026-07-18', source: 'manual' })
   check('§10.2 manual nights are listed by their night key', [...manualNightKeys([watch, manual])], ['2026-07-18'])
   check('§10.3 a manual row is labelled Manual', [...sleepSourcesByNight([manual]).get('2026-07-18')], ['Manual'])
+}
+
+// ─── §11 "Since Last Sync" fragments (2026-09-27) ────────────────────────────
+// The regular automation re-summarises a night on every run from a window that
+// starts ~6 h before its previous run, so one night arrives as a chain of rows
+// sharing ONE sleepEnd with later and later starts (synthetic values, the shape
+// of the live rows). The most complete row must win and nothing may be summed.
+{
+  const full  = session({ start: at('16', '01:05:00'), end: at('16', '08:30:00'), total: 7.2, core: 4, rem: 2, deep: 1.2, date: '2026-07-16' })
+  const frag1 = session({ start: at('16', '03:10:00'), end: at('16', '08:30:00'), total: 5.1, core: 3, rem: 1.6, deep: 0.5, date: '2026-07-16' })
+  const frag2 = session({ start: at('16', '08:05:00'), end: at('16', '08:30:00'), total: 0.4, core: 0.4, date: '2026-07-16' })
+  check('§11.1 the complete row wins over its fragment chain',
+    computeSleepSummary([frag2, frag1, full]).map(n => [n.date, round(n.total), round(n.core)]), [['2026-07-16', 7.2, 4]])
+  check('§11.2 keptSleepSessionRows returns only the complete row, with its original strings',
+    keptSleepSessionRows([frag1, full, frag2], '2026-07-16').map(p => p.value.sleepStart), [at('16', '01:05:00')])
+  check('§11.3 a cut night (fragments only) keeps the EARLIEST fragment, never the latest, never a sum',
+    round(computeSleepSummary([frag2, frag1])[0].total), 5.1)
+
+  // Two exporters: a 27-minute fragment overhangs the full night by 3 minutes
+  // (89.6% inside it). Summing added its whole 0.46 h; < 15 min of its own ⇒ duplicate.
+  const other = session({ start: at('15', '23:42:00'), end: at('16', '07:25:00'), total: 7.48, source: 'Other exporter', date: '2026-07-16' })
+  const hang  = session({ start: at('16', '07:00:26'), end: at('16', '07:27:52'), total: 0.46, date: '2026-07-16' })
+  check('§11.4 a fragment with < 15 min outside the night is a duplicate', round(computeSleepSummary([other, hang])[0].total), 7.48)
+  const tail  = session({ start: at('16', '06:50:00'), end: at('16', '07:45:00'), total: 0.5, date: '2026-07-16' })
+  check('§11.5 a block with 20 min of its own outside the night is kept', round(computeSleepSummary([other, tail])[0].total), 7.98)
 }
 
 // ─── Report ──────────────────────────────────────────────────────────────────

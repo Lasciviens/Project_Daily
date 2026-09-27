@@ -450,9 +450,10 @@ export function computeWeeklySetsPerMuscleTrend(
     if (s.set_type === 'warmup') continue
     const muscles = templateMuscles.get(s.exercise_template_id)
     if (!muscles) continue
-    let credit = 0
-    if (muscles.primarySlug === slug) credit += contributionFn(s.exercise_template_id, slug, 'primary')
-    if (muscles.secondarySlugs.includes(slug)) credit += contributionFn(s.exercise_template_id, slug, 'secondary')
+    // A slug is credited once per set, at its best role (muscleMap.creditedMuscles).
+    const credit = muscles.primarySlug === slug
+      ? contributionFn(s.exercise_template_id, slug, 'primary')
+      : muscles.secondarySlugs.includes(slug) ? contributionFn(s.exercise_template_id, slug, 'secondary') : 0
     if (credit === 0) continue
     const week = mondayOf(s.date)
     byWeek.set(week, (byWeek.get(week) ?? 0) + credit)

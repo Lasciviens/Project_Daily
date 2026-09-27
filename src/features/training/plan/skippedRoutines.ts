@@ -147,6 +147,44 @@ export function readMissedSessions(input: {
     .map(x => x.a)
 }
 
+/** Local yyyy-MM-dd of an ISO timestamp (a UTC slice is a day early after
+ *  local midnight). */
+function localDayOfIso(iso: string | null | undefined): string | null {
+  if (!iso) return null
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return null
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+/** readMissedSessions from the raw rows the app already reads — the Training
+ *  tabs (useMissedSessions) and the AI coach context share this so they can't
+ *  disagree. `blocks` are ONE-OFF training time_blocks only; a block planned
+ *  from a routine carries its id as source_id (source_type training_session). */
+export function missedSessionsFrom(input: {
+  routines: readonly RoutineRef[]
+  program: readonly { routine_id: string; created_at?: string | null }[]
+  lastTrained: ReadonlyMap<string, string>
+  blocks: readonly { title: string; date: string; start_time?: string | null; source_type?: string | null; source_id?: string | null }[]
+  skips: readonly SkipRecord[]
+  today: string
+}): RoutineAttention[] {
+  const joined = new Map(input.program.map(p => [p.routine_id, localDayOfIso(p.created_at)]))
+  const program = input.routines.filter(r => joined.has(r.id)).map(r => ({ id: r.id, title: r.title, joinedOn: joined.get(r.id) ?? null }))
+  const upcoming: PlannedRef[] = input.blocks.map(b => ({
+    title: b.title, date: b.date, startTime: b.start_time?.slice(0, 5) ?? null,
+    sourceId: b.source_type === 'training_session' ? b.source_id ?? null : null,
+  }))
+  return readMissedSessions({ program, routines: input.routines, lastTrained: input.lastTrained, upcoming, skips: input.skips, today: input.today })
+}
+
+/** How far back skips are read: the rule only needs last week's; the coach
+ *  context and the audit trail are served by a few more. */
+export const SKIP_LOOKBACK_WEEKS = 8
+
+export function skipsFromWeek(today: string): string {
+  return shiftDay(weekStartOf(today), -7 * SKIP_LOOKBACK_WEEKS)
+}
+
 /** "Sick" + "flu since Thursday" → "Sick — flu since Thursday"; either part alone is fine. */
 export function composeSkipReason(chip: string | null, details: string): string {
   const d = details.trim()

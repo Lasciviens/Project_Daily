@@ -1,6 +1,6 @@
 import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
 import { CalendarPlus, ChevronRight, MoreHorizontal, Pencil } from 'lucide-react'
-import { Button, IconButton, ToneDot, TonePill } from '../../../../shared/ui'
+import { Button, IconButton, ToneDot } from '../../../../shared/ui'
 import { PLAN_STATUS_LABEL } from '../../trainingPlanModel'
 import { formatDistance } from '../../setFormat'
 import { openPlanSession } from '../../planTraining'
@@ -68,9 +68,12 @@ function OpenPlanRow({ open, onEditPlan }: { open: OpenPlan; onEditPlan: (p: Cal
       <ToneDot tone={PLAN_TONE[status]} />
       <span className="flex min-w-0 flex-1 flex-col">
         <span className="truncate text-body font-medium text-fg-2">{p.kind === 'recurring' && '⟳ '}{p.title}</span>
-        {at && <span className="text-meta tabular-nums text-fg-muted">{at}</span>}
+        {/* The status sits under the title (a pill beside it cut long routine names to a few letters). */}
+        <span className="flex flex-wrap gap-x-1.5 text-meta tabular-nums text-fg-muted">
+          {at && <span>{at}</span>}
+          <span data-tone={PLAN_TONE[status]} className="tone-text font-medium">{at && '· '}{PLAN_STATUS_LABEL[status]}</span>
+        </span>
       </span>
-      <TonePill tone={PLAN_TONE[status]} className="shrink-0">{PLAN_STATUS_LABEL[status]}</TonePill>
       <PlanMenu plans={[p]} onEditPlan={onEditPlan} />
     </div>
   )

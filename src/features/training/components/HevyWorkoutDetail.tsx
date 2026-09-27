@@ -8,6 +8,7 @@ import type { HevySet } from '../types.hevy'
 import { SET_TYPE_META } from '../setTypeMeta'
 import { anyRpe, formatRpe, formatSet } from '../setFormat'
 import { RpeInfoBubble } from './RpeInfoBubble'
+import { WorkoutSessionSummary } from './log/WorkoutSessionSummary'
 
 interface Props {
   /** null = closed (controlled callers); the `hevy-workout` entity modal always passes an id. */
@@ -79,6 +80,9 @@ export function HevyWorkoutDetail({ workoutId, onClose }: Props) {
           {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} rounded="rounded-row" className="h-12" />)}
         </div>
       )}
+
+      {/* Session stats, the Apple Watch numbers and top sets (log/WorkoutSessionSummary). */}
+      {!isLoading && workout && <WorkoutSessionSummary workout={workout} />}
 
       {!isLoading && workout && exercises.length === 0 && (
         <p className="py-4 text-center text-body text-fg-muted">No exercise data</p>
