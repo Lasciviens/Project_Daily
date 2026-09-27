@@ -14,7 +14,13 @@ const groups = {
   /** An episode was marked (un)watched: progress, next-up, planned blocks, recents. */
   episodeWatched: [qk.media.watchedAll, qk.media.nextEpisodeAll, qk.media.tv, qk.media.recent(), qk.schedule.all],
   media: [qk.media.movies, qk.media.tv, qk.media.watchedAll, qk.media.nextEpisodeAll, qk.media.recent()],
-  training: [qk.hevy.all, qk.strava.all, qk.training.all, qk.health.all],
+  /** Hevy/Strava data changed (a sync, a logged workout, a routine edit):
+   *  every Training view, the current program it scopes, and Health (body
+   *  measurements feed the bodyweight series). */
+  training: [
+    qk.hevy.all, qk.strava.all, qk.training.all, qk.health.all,
+    qk.training.currentProgram, qk.training.exerciseTargets, qk.training.ptAssessments,
+  ],
   /** After an Ask-AI turn: every table the assistant can write. */
   aiWrite: [
     qk.tasks.all, qk.schedule.all, qk.calendar.all,
@@ -22,6 +28,9 @@ const groups = {
     qk.shop.all, qk.projects.all, qk.media.movies, qk.media.tv, qk.media.watchedAll, qk.media.nextEpisodeAll,
     qk.wishes.all, qk.devRequests.all, qk.memory.all, qk.work.all,
     qk.athlete.profile, qk.athlete.limitations, qk.athlete.musclePrefs,
+    // Coach mode edits and creates Hevy routines through hevy-api, and the
+    // assistant can write the current program / targets / assessments.
+    qk.hevy.routines(), qk.training.currentProgram, qk.training.exerciseTargets, qk.training.ptAssessments,
   ],
 } satisfies Record<string, readonly QueryKey[]>
 

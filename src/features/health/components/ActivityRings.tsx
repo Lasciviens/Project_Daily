@@ -1,24 +1,28 @@
-import { useHealthMetricSeries } from '../hooks/useHealthExport'
-import { computeDailySeries } from '../healthAggregate'
+import { InfoBubble } from '../../../shared/components/InfoBubble'
+import type { HealthWindow } from '../healthWindowStats'
+import { useHealthDaily } from '../hooks/useHealthExport'
+import { DEFAULT_RING_GOALS, type RingGoals } from './ringGoals'
 
-// Inspired by Apple Health's activity rings (Move/Exercise/Stand) — own
-// palette, own goal defaults (no per-user goal setting exists yet).
-// Apple's Move/Exercise/Stand ring colours are identity data users know by
-// colour (THEME.md §2.5), so they stay literal in both themes.
+// Move / Exercise / Stand for one day. Apple's ring colours are identity data
+// users know by colour (THEME.md §2.5), so they stay literal in both themes.
+//
+// Ring GOALS: Health Auto Export doesn't send Apple's activity summary, so
+// your real goals aren't in the data (checked against the full metric
+// inventory). Until a health profile stores them, these are placeholders and
+// the card says so, rather than presenting 500 kcal as if it were your goal
+// (T41). Pass `goals` to use real ones.
+
 const RINGS = [
-  { key: 'active_energy',       label: 'Move',     unit: 'kcal', goal: 500, color: '#f43f5e' },
-  { key: 'apple_exercise_time', label: 'Exercise',  unit: 'min',  goal: 30,  color: '#22c55e' },
-  { key: 'apple_stand_hour',    label: 'Stand',     unit: 'hr',   goal: 12,  color: '#38bdf8' },
-] as const
+  { key: 'active_energy',       goal: 'move' as const,     label: 'Move',     unit: 'kcal', color: '#f43f5e' },
+  { key: 'apple_exercise_time', goal: 'exercise' as const, label: 'Exercise', unit: 'min',  color: '#22c55e' },
+  { key: 'apple_stand_hour',    goal: 'stand' as const,    label: 'Stand',    unit: 'hr',   color: '#38bdf8' },
+]
 
-// Takes the day being viewed rather than hardcoding today: the rings are
-// part of the Overview section, and Health now has ONE shared day selector
-// at the top, so "go back a day" has to move this too — it used to stay
-// pinned to today no matter what the rest of the page was showing.
-function useRingValue(metricKey: string, dateStr: string) {
-  const { data: points = [], isLoading } = useHealthMetricSeries(metricKey, dateStr, dateStr)
-  const series = computeDailySeries(metricKey, points)
-  return { value: series[0]?.value ?? 0, isLoading }
+// Reads the page window's range so the day shares the download the panel and
+// sections already made.
+function useRingValue(metricKey: string, win: HealthWindow, date: string) {
+  const { data, isLoading } = useHealthDaily(metricKey, win.fetchFrom, win.to)
+  return { value: data?.find(d => d.date === date)?.value ?? null, isLoading }
 }
 
 function RingArc({ cx, cy, r, pct, color, strokeWidth }: {
@@ -40,12 +44,15 @@ function RingArc({ cx, cy, r, pct, color, strokeWidth }: {
   )
 }
 
-export function ActivityRings({ dateStr }: { dateStr: string }) {
-  const move = useRingValue('active_energy', dateStr)
-  const exercise = useRingValue('apple_exercise_time', dateStr)
-  const stand = useRingValue('apple_stand_hour', dateStr)
+export function ActivityRings({ win, date, goals }: { win: HealthWindow; date: string; goals?: Partial<RingGoals> }) {
+  const g: RingGoals = { ...DEFAULT_RING_GOALS, ...goals }
+  const usingDefaults = !goals || RINGS.some(r => goals[r.goal] == null)
+  const move = useRingValue('active_energy', win, date)
+  const exercise = useRingValue('apple_exercise_time', win, date)
+  const stand = useRingValue('apple_stand_hour', win, date)
   const values = [move.value, exercise.value, stand.value]
   const loading = move.isLoading || exercise.isLoading || stand.isLoading
+  const partial = date === win.today
 
   const size = 176
   const center = size / 2
@@ -54,37 +61,40 @@ export function ActivityRings({ dateStr }: { dateStr: string }) {
 
   return (
     <div className="card flex w-fit max-w-full flex-wrap items-center gap-4 p-4 sm:gap-5 sm:p-5">
-      {/* Ring shrinks on a phone (viewBox keeps the geometry; only the rendered
-          box size changes) so it doesn't dominate the mobile viewport. */}
-      <div className="relative shrink-0 w-[132px] h-[132px] sm:w-[176px] sm:h-[176px]">
+      <div className="relative h-[132px] w-[132px] shrink-0 sm:h-[176px] sm:w-[176px]">
         {loading && <div className="skeleton absolute inset-0 !rounded-full" />}
-        <svg viewBox={`0 0 ${size} ${size}`} className="w-full h-full">
-          {RINGS.map((ring, i) => {
-            const r = center - strokeWidth / 2 - i * (strokeWidth + gap)
-            return (
-              <RingArc
-                key={ring.key}
-                cx={center} cy={center} r={r}
-                pct={values[i] / ring.goal}
-                color={ring.color}
-                strokeWidth={strokeWidth}
-              />
-            )
-          })}
+        <svg viewBox={`0 0 ${size} ${size}`} className="h-full w-full" role="img"
+          aria-label={RINGS.map((r, i) => `${r.label} ${values[i] == null ? 'no data' : Math.round(values[i] as number)} of ${g[r.goal]} ${r.unit}`).join(', ')}>
+          {RINGS.map((ring, i) => (
+            <RingArc key={ring.key} cx={center} cy={center} r={center - strokeWidth / 2 - i * (strokeWidth + gap)}
+              pct={(values[i] ?? 0) / g[ring.goal]} color={ring.color} strokeWidth={strokeWidth} />
+          ))}
         </svg>
       </div>
 
-      <div className="flex flex-col gap-2.5 min-w-[140px]">
+      <div className="flex min-w-[150px] flex-col gap-2.5">
         {RINGS.map((ring, i) => (
           <div key={ring.key} className="flex items-center gap-2">
             <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: ring.color }} />
             <span className="flex-1 text-meta text-fg-muted">{ring.label}</span>
             <span className="text-body font-bold tabular-nums text-fg">
-              {Math.round(values[i])}
-              <span className="text-micro font-normal text-fg-muted">/{ring.goal} {ring.unit}</span>
+              {values[i] == null ? '—' : Math.round(values[i] as number)}
+              <span className="text-micro font-normal text-fg-muted">/{g[ring.goal]} {ring.unit}</span>
             </span>
           </div>
         ))}
+        <p className="flex items-center gap-1 text-micro text-fg-muted">
+          {partial ? 'So far today' : null}{partial && usingDefaults ? ' · ' : null}
+          {usingDefaults && (
+            <>
+              Placeholder goals
+              <InfoBubble label="About the ring goals">
+                Apple Health doesn't export your own Move, Exercise and Stand goals, so these rings use placeholder
+                goals (500 kcal, 30 min, 12 hours). The values themselves are yours.
+              </InfoBubble>
+            </>
+          )}
+        </p>
       </div>
     </div>
   )

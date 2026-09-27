@@ -2,9 +2,8 @@ import { useMemo, useState } from 'react'
 import { Combobox, ComboboxInput, ComboboxOptions, ComboboxOption } from '@headlessui/react'
 import { ComposedChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine } from 'recharts'
 import { useTrainingHistory, useBodyweightHistory } from '../hooks/useTrainingProgress'
-import {
-  computeExerciseProgression, metricKindForExerciseType, computeRelativeStrengthTrend, indexRelativeStrengthTrend,
-} from '../progressAggregate'
+import { metricKindForExerciseType, computeRelativeStrengthTrend, indexRelativeStrengthTrend } from '../progressAggregate'
+import { buildCanonicalSessions, sessionBestE1rm } from '../progress-engine'
 import { fmtTrainingDate as formatDate } from '../dateFormat'
 import { Skeleton, useChartColors } from '../../../shared/ui'
 import { TOOLTIP_BOX } from '../../../shared/components/charts/chartKit'
@@ -98,7 +97,9 @@ export function RelativeStrengthChart() {
 
   const chartData = useMemo(() => {
     if (!data || !selected || !anchors) return []
-    const points = computeExerciseProgression(data.sets, selected.id, 'est1rm')
+    // The engine's own per-session best e1RM — the same number the decision
+    // table's estimated-1RM line shows for the same session.
+    const points = buildCanonicalSessions(data.sets, selected.id).map(s => ({ date: s.date, topValue: sessionBestE1rm(s.comparableWorkingSets) }))
     const ratioPoints = computeRelativeStrengthTrend(points, anchors)
     const indexed = indexRelativeStrengthTrend(ratioPoints)
     return ratioPoints.map((p, i) => ({ ...p, ...indexed[i], label: fmtDay(p.date) }))
@@ -173,9 +174,9 @@ export function RelativeStrengthChart() {
 
           <ChartNote className="flex flex-col gap-1">
             <p>
-              Both lines start at 100 on {formatDate(chartData[0]!.date)} — a value of 106 means +6% from that point, whichever line it&apos;s on. Strength can rise
-              because you got stronger <em>or</em> because you lost weight, and the dashed bodyweight line is drawn on the SAME scale on purpose, so which one
-              actually moved is a direct visual comparison, not mental division.
+              Both lines start at 100 on {formatDate(chartData[0]!.date)} — a value of 106 means +6% from that point. Strength is your estimated 1RM
+              against that first session; bodyweight is drawn on the same scale. If strength rises while bodyweight falls, your strength relative to
+              bodyweight rose even more; if both rise together, the gain may partly be the extra bodyweight.
             </p>
             <p>
               Bodyweight is taken from a weigh-in within 14 days, or interpolated between two weigh-ins less than 3 weeks apart.{' '}

@@ -1,17 +1,22 @@
-import { HeartPulse, Map as MapIcon } from 'lucide-react'
+import { HeartPulse } from 'lucide-react'
 import { ModalShell } from '../../../shared/modals'
-import { useChartColors } from '../../../shared/ui'
+import { Skeleton, useChartColors } from '../../../shared/ui'
+import { ErrorBoundary } from '../../../shared/components/ErrorBoundary'
 import { BarLineChart } from '../../../shared/components/charts/BarLineChart'
-import type { HealthWorkout } from '../api/healthApi'
+import { useHealthWorkout } from '../hooks/useHealthExport'
+import type { HealthWorkoutSummary } from '../api/healthApi'
 import { fmtDateEnGB } from '../../../shared/utils/enGBDate'
+import { fmtDuration } from './healthFormat'
+import { WorkoutRouteMap } from './WorkoutRouteMap'
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  HealthWorkoutDetail — surfaces the RICH per-workout data Health Auto Export
-//  sends inside `raw` that the summary row never showed: a per-interval heart-
-//  rate curve (avg + min/max band), GPS route map (outdoor), pace/speed,
-//  cadence, distance, elevation, weather, HR recovery, step count. Everything
-//  is read from the stored `raw` jsonb client-side (no schema change) — before
-//  this, all of it was ingested and then ignored.
+//  HealthWorkoutDetail — the rich per-workout data Health Auto Export sends
+//  inside `raw`: a per-interval heart-rate curve (avg + min/max band), GPS
+//  route, pace/speed, cadence, distance, elevation, weather, HR recovery, step
+//  count. The summary row renders at once; `raw` is fetched only when this
+//  opens (the list no longer downloads it for every row, H-07). Everything in
+//  `raw` is free-form jsonb whose shape HAE doesn't document, so each field is
+//  type-checked before it renders and the body sits in an ErrorBoundary (H-23).
 // ─────────────────────────────────────────────────────────────────────────────
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- HAE workout `raw` is a free-form jsonb blob; we read a handful of fields defensively.
@@ -19,21 +24,15 @@ type Raw = Record<string, any>
 
 // HAE numeric fields are either a plain number or a { qty, units } object.
 function qty(v: unknown): number | null {
-  if (typeof v === 'number') return v
+  if (typeof v === 'number' && Number.isFinite(v)) return v
   if (v && typeof v === 'object' && typeof (v as Raw).qty === 'number') return (v as Raw).qty
   return null
 }
 
-function hhmm(iso: string | null | undefined): string {
-  if (!iso) return ''
+function hhmm(iso: unknown): string {
+  if (typeof iso !== 'string') return ''
   const d = new Date(iso)
   return isNaN(d.getTime()) ? '' : `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-}
-
-function fmtDuration(seconds: number | null): string {
-  if (!seconds) return '—'
-  const mins = Math.round(seconds / 60)
-  return mins < 60 ? `${mins}m` : `${Math.floor(mins / 60)}h ${mins % 60}m`
 }
 
 function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
@@ -46,43 +45,11 @@ function Stat({ label, value, sub }: { label: string; value: string; sub?: strin
   )
 }
 
-// Normalised SVG polyline of the GPS route (no map tiles — CSP blocks external
-// hosts anyway, and a shape is enough to recognise the run). lat north-up.
-function RouteMap({ route }: { route: Raw[] }) {
+function RawDetails({ summary, raw }: { summary: HealthWorkoutSummary; raw: Raw }) {
   const c = useChartColors()
-  const pts = route
-    .map(p => ({ lat: Number(p?.latitude), lon: Number(p?.longitude) }))
-    .filter(p => Number.isFinite(p.lat) && Number.isFinite(p.lon))
-  if (pts.length < 2) return null
-  const lats = pts.map(p => p.lat), lons = pts.map(p => p.lon)
-  const minLat = Math.min(...lats), maxLat = Math.max(...lats)
-  const minLon = Math.min(...lons), maxLon = Math.max(...lons)
-  const W = 320, H = 200, PAD = 12
-  // Keep aspect roughly correct: lon degrees shrink by cos(lat).
-  const latRange = Math.max(maxLat - minLat, 1e-6)
-  const lonRange = Math.max(maxLon - minLon, 1e-6)
-  const sx = (lon: number) => PAD + ((lon - minLon) / lonRange) * (W - 2 * PAD)
-  const sy = (lat: number) => PAD + (1 - (lat - minLat) / latRange) * (H - 2 * PAD)
-  const d = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${sx(p.lon).toFixed(1)},${sy(p.lat).toFixed(1)}`).join(' ')
-  return (
-    <div className="rounded-row border border-line bg-surface p-2">
-      <p className="section-label mb-1 flex items-center gap-1 px-1"><MapIcon className="h-3.5 w-3.5" aria-hidden /> Route</p>
-      <svg viewBox={`0 0 ${W} ${H}`} className="h-auto w-full" aria-hidden="true">
-        <path d={d} fill="none" stroke={c.series[0]} strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round" />
-        <circle cx={sx(pts[0].lon)} cy={sy(pts[0].lat)} r={4} fill={c.success} />
-        <circle cx={sx(pts[pts.length - 1].lon)} cy={sy(pts[pts.length - 1].lat)} r={4} fill={c.danger} />
-      </svg>
-    </div>
-  )
-}
-
-export function HealthWorkoutDetail({ workout, onClose }: { workout: HealthWorkout; onClose: () => void }) {
-  const c = useChartColors()
-  const raw: Raw = workout.raw ?? {}
-
   // kcal (HAE sends energy in kcal despite our column being named *_kj).
-  const active = workout.active_energy_kj ?? qty(raw.activeEnergyBurned)
-  const total = workout.total_energy_kj ?? qty(raw.totalEnergy)
+  const active = summary.active_energy_kj ?? qty(raw.activeEnergyBurned)
+  const total = summary.total_energy_kj ?? qty(raw.totalEnergy)
   const distance = qty(raw.distance)
   const avgSpeed = qty(raw.avgSpeed) ?? qty(raw.speed)
   const maxSpeed = qty(raw.maxSpeed)
@@ -91,69 +58,78 @@ export function HealthWorkoutDetail({ workout, onClose }: { workout: HealthWorko
   const temp = qty(raw.temperature)
   const humidity = qty(raw.humidity)
   const intensity = qty(raw.intensity)
-  const steps = Array.isArray(raw.stepCount) ? Math.round(raw.stepCount.reduce((s: number, p: Raw) => s + (qty(p) ?? 0), 0)) : null
+  const steps = Array.isArray(raw.stepCount) ? Math.round(raw.stepCount.reduce((s: number, p: unknown) => s + (qty(p) ?? 0), 0)) : null
   const pace = avgSpeed && avgSpeed > 0 ? 60 / avgSpeed : null // min/km
-  // Compute min:ss jointly so 59.5s doesn't render "5:60" (round total seconds).
   const paceStr = pace != null ? (() => { const t = Math.round(pace * 60); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}` })() : null
 
-  // HR curve — per-interval Avg with a faint [Min,Max] band. `qty` tolerates
-  // either a plain number or {qty} (HAE varies by field); `?.` guards a stray
-  // null array element (free-form jsonb) so one bad point can't crash the modal.
   const hrSeries = Array.isArray(raw.heartRateData)
-    ? raw.heartRateData
-        .map((p: Raw) => ({ label: hhmm(p?.date), avg: qty(p?.Avg), range: [qty(p?.Min), qty(p?.Max)] }))
-        .filter((p: { avg: number | null }): p is { label: string; avg: number; range: [number, number] } => p.avg != null)
-        .map((p: { label: string; avg: number; range: (number | null)[] }) => ({ label: p.label, avg: Math.round(p.avg), range: [Math.round(p.range[0] ?? p.avg), Math.round(p.range[1] ?? p.avg)] }))
+    ? raw.heartRateData.flatMap((p: Raw) => {
+        const avg = qty(p?.Avg)
+        if (avg == null) return []
+        return [{ label: hhmm(p?.date), avg: Math.round(avg), range: [Math.round(qty(p?.Min) ?? avg), Math.round(qty(p?.Max) ?? avg)] }]
+      })
     : []
+  const recoveryVals = Array.isArray(raw.heartRateRecovery)
+    ? raw.heartRateRecovery.map((p: Raw) => qty(p?.Avg)).filter((v: number | null): v is number => v != null)
+    : []
+  const recovery = recoveryVals.length > 1 ? Math.round(recoveryVals[0] - recoveryVals[recoveryVals.length - 1]) : null
 
-  const recovery = Array.isArray(raw.heartRateRecovery) && raw.heartRateRecovery.length > 1
-    ? (() => {
-        const vals = raw.heartRateRecovery.map((p: Raw) => qty(p?.Avg)).filter((v): v is number => v != null)
-        return vals.length > 1 ? Math.round(vals[0] - vals[vals.length - 1]) : null
-      })()
-    : null
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap gap-2">
+        <Stat label="Duration" value={fmtDuration(summary.duration_seconds)} />
+        {total != null && <Stat label="Energy" value={`${Math.round(total)}`} sub="kcal total" />}
+        {active != null && <Stat label="Active" value={`${Math.round(active)}`} sub="kcal" />}
+        {summary.avg_heart_rate != null && <Stat label="Avg HR" value={`${Math.round(summary.avg_heart_rate)}`} sub={summary.max_heart_rate != null ? `max ${Math.round(summary.max_heart_rate)}` : 'bpm'} />}
+        {distance != null && <Stat label="Distance" value={distance.toFixed(2)} sub="km" />}
+        {paceStr != null && <Stat label="Pace" value={paceStr} sub="min/km" />}
+        {avgSpeed != null && <Stat label="Avg speed" value={avgSpeed.toFixed(1)} sub={maxSpeed != null ? `max ${maxSpeed.toFixed(1)} km/h` : 'km/h'} />}
+        {cadence != null && <Stat label="Cadence" value={`${Math.round(cadence)}`} sub="spm" />}
+        {steps != null && steps > 0 && <Stat label="Steps" value={steps.toLocaleString('en-GB')} />}
+        {elevation != null && elevation > 0 && <Stat label="Elevation" value={`${Math.round(elevation)}`} sub="m up" />}
+        {recovery != null && <Stat label="HR recovery" value={`${recovery}`} sub="bpm drop" />}
+        {intensity != null && <Stat label="Intensity" value={intensity.toFixed(1)} sub="kcal/hr·kg" />}
+        {temp != null && <Stat label="Weather" value={`${Math.round(temp)}°`} sub={humidity != null ? `${Math.round(humidity)}% hum` : undefined} />}
+      </div>
+      {hrSeries.length > 1 && (
+        <div>
+          <p className="section-label mb-1 flex items-center gap-1"><HeartPulse className="h-3.5 w-3.5" aria-hidden /> Heart rate</p>
+          <BarLineChart data={hrSeries} dataKey="avg" rangeKey="range" color={c.series[3]} unit="bpm" tooltipLabel="Avg HR" height={160} />
+        </div>
+      )}
+      {Array.isArray(raw.route) && <WorkoutRouteMap route={raw.route} />}
+    </div>
+  )
+}
 
+export function HealthWorkoutDetail({ summary, onClose }: { summary: HealthWorkoutSummary; onClose: () => void }) {
+  const { data: full, isLoading, isError } = useHealthWorkout(summary.id)
+  const raw: Raw = full?.raw && typeof full.raw === 'object' ? full.raw : {}
+  const location = typeof raw.location === 'string' ? raw.location : null
   return (
     <ModalShell
       onClose={onClose}
       size="md"
-      title={workout.name}
+      title={summary.name}
       subtitle={<>
-        {workout.start_time && fmtDateEnGB(new Date(workout.start_time), { weekday: 'short', day: 'numeric', month: 'short' })}
-        {' · '}{hhmm(workout.start_time)}–{hhmm(workout.end_time)}
-        {raw.location && ` · ${raw.location}`}
+        {summary.start_time && fmtDateEnGB(new Date(summary.start_time), { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}
+        {' · '}{hhmm(summary.start_time)}–{hhmm(summary.end_time)}
+        {location && ` · ${location}`}
       </>}
     >
-          <div className="flex flex-col gap-4">
-
-            {/* Stat chips (only render what exists) */}
-            <div className="flex flex-wrap gap-2">
-              <Stat label="Duration" value={fmtDuration(workout.duration_seconds)} />
-              {total != null && <Stat label="Energy" value={`${Math.round(total)}`} sub="kcal total" />}
-              {active != null && <Stat label="Active" value={`${Math.round(active)}`} sub="kcal" />}
-              {workout.avg_heart_rate != null && <Stat label="Avg HR" value={`${Math.round(workout.avg_heart_rate)}`} sub={workout.max_heart_rate != null ? `max ${Math.round(workout.max_heart_rate)}` : 'bpm'} />}
-              {distance != null && <Stat label="Distance" value={distance.toFixed(2)} sub="km" />}
-              {paceStr != null && <Stat label="Pace" value={paceStr} sub="min/km" />}
-              {avgSpeed != null && <Stat label="Avg Speed" value={avgSpeed.toFixed(1)} sub={maxSpeed != null ? `max ${maxSpeed.toFixed(1)} km/h` : 'km/h'} />}
-              {cadence != null && <Stat label="Cadence" value={`${Math.round(cadence)}`} sub="spm" />}
-              {steps != null && steps > 0 && <Stat label="Steps" value={steps.toLocaleString('en-GB')} />}
-              {elevation != null && elevation > 0 && <Stat label="Elevation" value={`${Math.round(elevation)}`} sub="m up" />}
-              {recovery != null && <Stat label="HR Recovery" value={`${recovery}`} sub="bpm drop" />}
-              {intensity != null && <Stat label="Intensity" value={intensity.toFixed(1)} sub="kcal/hr·kg" />}
-              {temp != null && <Stat label="Weather" value={`${Math.round(temp)}°`} sub={humidity != null ? `${Math.round(humidity)}% hum` : undefined} />}
-            </div>
-
-            {/* HR curve */}
-            {hrSeries.length > 1 && (
-              <div>
-                <p className="section-label mb-1 flex items-center gap-1"><HeartPulse className="h-3.5 w-3.5" aria-hidden /> Heart rate</p>
-                <BarLineChart data={hrSeries} dataKey="avg" rangeKey="range" color={c.series[3]} unit="bpm" tooltipLabel="Avg HR" height={160} />
-              </div>
-            )}
-
-            {/* GPS route */}
-            {Array.isArray(raw.route) && <RouteMap route={raw.route} />}
+      <ErrorBoundary label="Workout details" action="health_workout_detail">
+        {isLoading ? (
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-wrap gap-2">{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} rounded="rounded-row" className="h-14 w-24" />)}</div>
+            <Skeleton rounded="rounded-row" className="h-40" />
           </div>
+        ) : (
+          <>
+            {isError && <p className="mb-2 text-meta text-fg-muted">The detailed data couldn't be loaded; showing the summary only.</p>}
+            <RawDetails summary={summary} raw={raw} />
+          </>
+        )}
+      </ErrorBoundary>
     </ModalShell>
   )
 }

@@ -1,9 +1,7 @@
 import { Popover, PopoverButton, PopoverPanel } from '@headlessui/react'
 import { RefreshCw, Settings2 } from 'lucide-react'
 import { Button, IconButton } from '../../../shared/ui'
-import { useInitialHevySync } from '../hooks/useHevyPRs'
-import { useIncrementalHevySync } from '../hooks/useHevyWorkouts'
-import { useHevySyncState } from '../hooks/useHevySync'
+import { useHevySyncState, useIncrementalHevySync, useInitialHevySync } from '../hooks/useHevySync'
 import { formatTrainingTime } from '../dateFormat'
 
 // Deliberately numeric DD/MM/YYYY (not the "12 Aug 2024" style used

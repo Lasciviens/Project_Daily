@@ -1,8 +1,8 @@
 import { useMemo } from 'react'
 import { Bar, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ComposedChart } from 'recharts'
 import { useTrainingHistory } from '../hooks/useTrainingProgress'
-import { computeWeeklyVolumeTrend, rollingAverage } from '../progressAggregate'
-import { lastCompleteWeek } from '../trainingInsights'
+import { computeWeeklyVolumeTrend, rollingAverage, lastCompleteWeek } from '../progressAggregate'
+import { todayStr } from '../../../shared/utils/dateUtils'
 import { fmtWeekRange } from '../dateFormat'
 import { compactAxisTick } from '../../../shared/components/charts/axisFormat'
 import { Skeleton, useChartColors } from '../../../shared/ui'
@@ -48,12 +48,11 @@ export function WeeklyVolumeChart() {
 
   const chartData = useMemo(() => {
     if (!data) return []
-    // The current, still-in-progress week is excluded — plotted alongside
-    // finished weeks it always reads as a cliff (sports-scientist review,
-    // 2026-09-01: this is the exact partial-week bug trainingInsights.ts
-    // already guards against; the chart hadn't).
-    const last = lastCompleteWeek(new Date().toISOString().slice(0, 10))
-    const weeks = computeWeeklyVolumeTrend(data.sets, data.templates).filter(w => w.weekStart <= last)
+    // Dense up to the last COMPLETE week: the in-progress week is left out
+    // (it always reads as a cliff), and a break since your last session shows
+    // as zero weeks instead of the chart quietly ending at the last one.
+    const last = lastCompleteWeek(todayStr())
+    const weeks = computeWeeklyVolumeTrend(data.sets, data.templates, last).filter(w => w.weekStart <= last)
     const avg = rollingAverage(weeks, 4)
     return weeks.map((w, i) => ({ label: fmtWeek(w.weekStart), weekStart: w.weekStart, tonnage: w.tonnageKg, avg4wk: avg[i] ?? undefined }))
   }, [data])

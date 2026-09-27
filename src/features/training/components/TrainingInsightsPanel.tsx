@@ -1,20 +1,19 @@
 import { useMemo } from 'react'
-import { nowMs } from '../dateFormat'
+import { daysAgoStr } from '../../../shared/utils/dateUtils'
 import { useTrainingHistory, useBodyweightHistory } from '../hooks/useTrainingProgress'
 import { useAthleteProfile, useAthleteLimitations } from '../hooks/useAthleteProfile'
 import {
-  computeConsistencyByWeek, computeWeeklyVolumeTrend, computeRepRangeDistribution,
-  computeExerciseProgression, computeRelativeStrengthTrend, metricKindForExerciseType,
-  repRangeVariedSignificantly, computeWeeklySetsPerMuscleTrend,
+  computeConsistencyByWeek, computeWeeklyVolumeTrend, computeRepRangeDistribution, computeRelativeStrengthTrend,
+  metricKindForExerciseType, computeWeeklySetsPerMuscleTrend, lastCompleteWeek,
 } from '../progressAggregate'
 import {
-  groupFindings, computeConsistencyFindings, computeVolumeFindings, computeMuscleFindings,
-  computeRepRangeFindings, computeRelativeStrengthFindings, computeExerciseTrendFindings,
-  lastCompleteWeek as lastCompleteWeekOf,
-  type Finding, type MuscleFindingInput, type RelativeStrengthFindingInput, type ExerciseTrendFindingInput,
+  groupFindings, clausesFor, computeConsistencyFindings, computeVolumeFindings, computeMuscleFindings,
+  computeRepRangeFindings, computeRelativeStrengthFindings, computeExerciseTrendFindings, FINDING_CLAUSES,
+  type Finding, type MuscleFindingInput, type RelativeStrengthFindingInput,
 } from '../trainingInsights'
+import { buildCanonicalSessions, sessionBestE1rm } from '../progress-engine'
 import { buildTemplateMuscleMap, contribution, MAJOR_MUSCLES, MUSCLE_LANDMARKS, scaleLandmarksForExperience, labelForSlug, limitedSlugsFromLimitations } from '../muscleMap'
-import { METRIC_META } from '../progressMetricMeta'
+import { useProgressDataContext } from '../progress/progressDataContext'
 import { Skeleton, ToneDot, TonePill, type Tone } from '../../../shared/ui'
 import { ChartCard } from './ChartCard'
 
@@ -39,71 +38,72 @@ const TIER_META: Record<Finding['tier'], { label: string; tone: Tone }> = {
 //  from — NEVER_HIDES applies here too: where there isn't enough data for a
 //  rule, that's said explicitly rather than the section just being absent.
 //
-//  A simplification from the agent's full spec, noted rather than hidden:
-//  "stalled vs progressing" uses a first-3-vs-last-3-session mean comparison
-//  rather than a least-squares slope — simpler, testable, and the agent's own
-//  spec already leaned on the same mean comparison for the bodyweight-
-//  strength rules. A true OLS-slope "Stalled & Progressing" table remains a
-//  tracked fast-follow (see ProgressTab.tsx's header comment).
+//  Per-exercise findings come straight from the progress engine (the same
+//  results the decision table shows, current-program scoped) — ONE
+//  per-exercise verdict source, so this panel can't call a lift "flat" that
+//  the table calls "Ready to increase". Each shared caveat prints once per
+//  group, not inside every sentence.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const MIN_COMPLETE_WEEKS = 6
 const REP_RANGE_WINDOW_DAYS = 90
-
-function todayStr(): string {
-  return new Date().toISOString().slice(0, 10)
-}
 
 export function TrainingInsightsPanel() {
   const { data, isLoading: loadingHistory } = useTrainingHistory()
   const { data: anchors, isLoading: loadingBw } = useBodyweightHistory()
   const { data: profile } = useAthleteProfile()
   const { data: limitations } = useAthleteLimitations(true)
+  const progress = useProgressDataContext()
 
-  const isLoading = loadingHistory || loadingBw
-  const today = todayStr()
+  const isLoading = loadingHistory || loadingBw || progress.isLoading
+  const today = progress.today
 
   const findings = useMemo<Finding[] | null>(() => {
     if (!data || !anchors) return null
 
-    const consistencyWeeks = computeConsistencyByWeek(data.sets)
-    const lastComplete = lastCompleteWeekOf(today)
+    const lastComplete = lastCompleteWeek(today)
+    // Dense up to the last COMPLETE week, so a recent break shows as zero
+    // weeks instead of the series quietly ending at the last logged week.
+    const consistencyWeeks = computeConsistencyByWeek(data.sets, lastComplete)
     const completeWeeks = consistencyWeeks.filter(w => w.weekStart <= lastComplete)
     if (completeWeeks.length < MIN_COMPLETE_WEEKS) return []
 
     const out: Finding[] = []
     out.push(...computeConsistencyFindings(consistencyWeeks, today, profile?.training_days_per_week))
-    out.push(...computeVolumeFindings(computeWeeklyVolumeTrend(data.sets, data.templates), today))
+    out.push(...computeVolumeFindings(computeWeeklyVolumeTrend(data.sets, data.templates, lastComplete), today))
 
     const templateMuscles = buildTemplateMuscleMap(data.templates)
     const limitedSlugs = limitedSlugsFromLimitations(limitations ?? [])
+    const firstWeek = completeWeeks[0].weekStart
     const muscleInputs: MuscleFindingInput[] = [...MAJOR_MUSCLES].map(slug => ({
       slug, label: labelForSlug(slug),
-      weekly: computeWeeklySetsPerMuscleTrend(data.sets, templateMuscles, slug, contribution),
+      weekly: computeWeeklySetsPerMuscleTrend(data.sets, templateMuscles, slug, contribution, { fromWeek: firstWeek, untilWeek: lastComplete }),
       landmarks: MUSCLE_LANDMARKS[slug] ? scaleLandmarksForExperience(MUSCLE_LANDMARKS[slug], profile?.experience_level) : undefined,
       restriction: limitedSlugs.get(slug),
     }))
     out.push(...computeMuscleFindings(muscleInputs, today))
 
-    const cutoff = new Date(nowMs() - REP_RANGE_WINDOW_DAYS * 86_400_000).toISOString().slice(0, 10)
+    const cutoff = daysAgoStr(REP_RANGE_WINDOW_DAYS)
     out.push(...computeRepRangeFindings(computeRepRangeDistribution(data.sets.filter(s => s.date >= cutoff))))
 
+    // Relative strength uses the engine's own per-session best e1RM.
     const est1rmTemplates = data.templates.filter(t => metricKindForExerciseType(t.type) === 'est1rm')
     const relInputs: RelativeStrengthFindingInput[] = est1rmTemplates.map(t => ({
       title: t.title,
-      points: computeRelativeStrengthTrend(computeExerciseProgression(data.sets, t.id, 'est1rm'), anchors),
+      points: computeRelativeStrengthTrend(
+        buildCanonicalSessions(data.sets, t.id).map(s => ({ date: s.date, topValue: sessionBestE1rm(s.comparableWorkingSets) })),
+        anchors,
+      ),
     }))
     out.push(...computeRelativeStrengthFindings(relInputs, anchors.length))
 
-    const exerciseInputs: ExerciseTrendFindingInput[] = data.templates.map(t => {
-      const kind = metricKindForExerciseType(t.type)
-      const points = computeExerciseProgression(data.sets, t.id, kind)
-      return { title: t.title, points, repRangeVaried: repRangeVariedSignificantly(points), unit: METRIC_META[kind].unit }
-    })
-    out.push(...computeExerciseTrendFindings(exerciseInputs))
+    out.push(...computeExerciseTrendFindings(
+      progress.decisions.map(result => ({ title: progress.titleById.get(result.exerciseTemplateId) ?? 'Unknown exercise', result })),
+      !progress.needsCurrentProgram,
+    ))
 
     return out
-  }, [data, anchors, profile, limitations, today])
+  }, [data, anchors, profile, limitations, today, progress.decisions, progress.titleById, progress.needsCurrentProgram])
 
   if (isLoading) return <Skeleton rounded="rounded-card" className="h-40" />
 
@@ -148,6 +148,7 @@ export function TrainingInsightsPanel() {
 
 function FindingGroupSection({ title, tone, findings }: { title: string; tone: Tone; findings: Finding[] }) {
   if (findings.length === 0) return null
+  const clauses = clausesFor(findings)
   return (
     <div className="flex max-w-3xl flex-col gap-2">
       <p className="flex items-center gap-1.5 text-body font-semibold text-fg"><ToneDot tone={tone} />{title}</p>
@@ -159,6 +160,12 @@ function FindingGroupSection({ title, tone, findings }: { title: string; tone: T
           </li>
         ))}
       </ul>
+      {/* Each shared caveat once, under the group — never repeated per finding. */}
+      {clauses.length > 0 && (
+        <ul className="flex flex-col gap-1 border-l-2 border-line pl-2.5 text-meta text-fg-muted">
+          {clauses.map(c => <li key={c}>{FINDING_CLAUSES[c]}</li>)}
+        </ul>
+      )}
     </div>
   )
 }

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { BodyCompositionReport } from '../api/bodyCompositionApi'
-import { BODY_COMP_FIELDS, average, computeTrend, type BodyCompFieldKey } from '../bodyCompositionAggregate'
+import { BODY_COMP_FIELDS, average, computeTrend, type BodyCompFieldKey, type BodyCompFieldMeta } from '../bodyCompositionAggregate'
 import { BarLineChart } from '../../../shared/components/charts/BarLineChart'
 import { useChartColors } from '../../../shared/ui'
 import { fmtDateEnGB } from '../../../shared/utils/enGBDate'
@@ -18,9 +18,12 @@ const TREND_ARROW: Record<'up' | 'down' | 'flat', string> = { up: '↗', down: '
 // Progress-tab small-multiples/indexed-chart notes). Every metric here is
 // single-series (no legend needed) so the picker can reuse one persistent
 // colour per field without any simultaneous-identity concern.
-export function BodyCompTrendChart({ reportsInWindow }: { reportsInWindow: BodyCompositionReport[] }) {
-  const [metric, setMetric] = useState<BodyCompFieldKey>('weight_kg')
-  const meta = BODY_COMP_FIELDS.find(f => f.key === metric)!
+export function BodyCompTrendChart({ reportsInWindow, fields = BODY_COMP_FIELDS }: {
+  reportsInWindow: BodyCompositionReport[]
+  fields?: BodyCompFieldMeta[]
+}) {
+  const [metric, setMetric] = useState<BodyCompFieldKey>(fields[0].key)
+  const meta = fields.find(f => f.key === metric) ?? fields[0]
   const c = useChartColors()
 
   const points = reportsInWindow.filter(r => Number.isFinite(r[metric]))
@@ -31,7 +34,7 @@ export function BodyCompTrendChart({ reportsInWindow }: { reportsInWindow: BodyC
   return (
     <div className="flex flex-col gap-3">
       <div role="tablist" aria-label="Metric" className="scroll-x -mx-1 flex gap-1 px-1 sm:flex-wrap">
-        {BODY_COMP_FIELDS.map(f => (
+        {fields.map(f => (
           <button
             key={f.key}
             type="button"

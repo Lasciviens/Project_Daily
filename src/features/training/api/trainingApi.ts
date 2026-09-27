@@ -19,16 +19,22 @@ export async function fetchStravaStatus(): Promise<StravaStatus> {
 export async function fetchStravaActivities(opts: {
   limit?: number
   type?: string
+  /** ISO instants on start_date (Strava's own UTC start). */
+  from?: string
+  to?: string
 } = {}): Promise<StravaActivity[]> {
-  const { limit = 20, type } = opts
+  const { limit = 20, type, from, to } = opts
 
   let query = supabase
     .from('strava_activities')
     .select('*')
-    .order('start_date', { ascending: false })
+    .order('start_date', { ascending: false, nullsFirst: false })
+    .order('id', { ascending: true })
     .limit(limit)
 
   if (type) query = query.eq('type', type)
+  if (from) query = query.gte('start_date', from)
+  if (to)   query = query.lte('start_date', to)
 
   const { data, error } = await query
   if (error) throw error

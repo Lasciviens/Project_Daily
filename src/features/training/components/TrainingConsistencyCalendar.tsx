@@ -2,7 +2,8 @@ import { useMemo } from 'react'
 import { Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, BarChart, ReferenceLine } from 'recharts'
 import { useTrainingHistory } from '../hooks/useTrainingProgress'
 import { useAthleteProfile } from '../hooks/useAthleteProfile'
-import { computeConsistencyByWeek, currentStreakWeeks } from '../progressAggregate'
+import { computeConsistencyByWeek, currentStreakWeeks, mondayOf } from '../progressAggregate'
+import { todayStr } from '../../../shared/utils/dateUtils'
 import { fmtWeekRange } from '../dateFormat'
 import { Skeleton, useChartColors } from '../../../shared/ui'
 import { useTooltipStyle } from '../../../shared/components/charts/chartKit'
@@ -37,11 +38,16 @@ export function TrainingConsistencyCalendar() {
   const c = useChartColors()
   const tip = useTooltipStyle()
 
+  // Dense up to THIS week, so a break since the last session shows as zero
+  // bars and ends the streak (a three-month break used to leave the streak
+  // at its old value). The in-progress week is drawn, but only counts toward
+  // the streak once it has a session.
+  const currentWeek = mondayOf(todayStr())
   const { weeks, streak } = useMemo(() => {
     if (!data) return { weeks: [], streak: 0 }
-    const weeks = computeConsistencyByWeek(data.sets)
-    return { weeks, streak: currentStreakWeeks(weeks, 1) }
-  }, [data])
+    const weeks = computeConsistencyByWeek(data.sets, currentWeek)
+    return { weeks, streak: currentStreakWeeks(weeks, 1, currentWeek) }
+  }, [data, currentWeek])
 
   if (isLoading) return <Skeleton rounded="rounded-card" className="h-24" />
   if (weeks.length === 0) {
@@ -52,7 +58,8 @@ export function TrainingConsistencyCalendar() {
     )
   }
 
-  const last12 = weeks.slice(-12)
+  // "Weeks with 2+" counts complete weeks only — the running week isn't over.
+  const last12 = weeks.filter(w => w.weekStart < currentWeek).slice(-12)
   const weeksWith2Plus = last12.filter(w => w.sessionCount >= 2).length
   const target = profile?.training_days_per_week ?? null
   const chartData = weeks.slice(-16).map(w => ({ label: fmtWeek(w.weekStart), weekStart: w.weekStart, sessions: w.sessionCount }))
@@ -61,7 +68,7 @@ export function TrainingConsistencyCalendar() {
     <ChartCard title="Training consistency">
       <div className="flex flex-wrap items-center gap-3 text-meta text-fg-2">
         <span><strong className="tabular-nums text-fg">{streak}</strong> week{streak === 1 ? '' : 's'} streak</span>
-        <span><strong className="tabular-nums text-fg">{weeksWith2Plus}</strong>/{last12.length} weeks ≥2 sessions</span>
+        <span><strong className="tabular-nums text-fg">{weeksWith2Plus}</strong>/{last12.length} complete weeks ≥2 sessions</span>
       </div>
 
       <div style={{ height: 110 }}>
@@ -93,7 +100,8 @@ export function TrainingConsistencyCalendar() {
       <ChartNote>
         Consistency is a precondition for volume adding up over time, not a claim that more sessions itself drives gains
         — training frequency alone showed no benefit at equal weekly volume.
-        {target == null && ' Set a weekly training-days target in Training → Coach → Profile to see it plotted here.'}
+        {target == null && ' Set a weekly training-days target (Progress card → Program) to see it plotted here.'}
+        {' The last bar is this week so far.'}
       </ChartNote>
     </ChartCard>
   )

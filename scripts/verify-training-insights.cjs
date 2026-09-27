@@ -16,8 +16,10 @@
  *   6. computeRelativeStrengthFindings — the bodyweight-attribution rule
  *      (ratio moved because bodyweight moved, not strength) and the
  *      insufficient-bodyweight-data null case.
- *   7. computeExerciseTrendFindings — progressing/stalled/regressing, and
- *      the rep-range-varied skip.
+ *   7. computeExerciseTrendFindings — now fed by the progress engine's own
+ *      ExerciseProgressResult (one per-exercise verdict source): progressing,
+ *      slipping back, plateau, limited evidence skipped, and the
+ *      "pick your program" line when no current program is set.
  *   8. sortFindings — measured before evidence-based before heuristic.
  *   9. muscleMap.ts's limitedSlugsFromLimitations + computeMuscleFindings'
  *      restriction reframe — the correctness fix a follow-up sports-scientist
@@ -25,9 +27,12 @@
  *      must acknowledge an active limitation, never silently contradict it.
  *  10. groupFindings — actionability grouping (working/attention/unassessable),
  *      added from a second review + research pass (2026-09-01): nothing is
- *      dropped, and the insufficient-data/rep-range-varied cases get their
- *      own always-visible "unassessable" group rather than being buried in a
- *      flat tier-sorted list.
+ *      dropped, and the can't-assess cases get their own always-visible
+ *      "unassessable" group rather than being buried in a flat list.
+ *  11. Shared caveats (clauses) print once per group, never inside every
+ *      finding; "strong" consistency means the target minus at most one
+ *      session; experience-scaled landmarks stay ordered (mv ≤ mev < mav <
+ *      mrv) at every level.
  *
  *   Run:  node scripts/verify-training-insights.cjs
  */
@@ -36,9 +41,10 @@ require('sucrase/register')
 const {
   lastCompleteWeek, computeConsistencyFindings, computeVolumeFindings, computeMuscleFindings,
   computeRepRangeFindings, computeRelativeStrengthFindings, computeExerciseTrendFindings, sortFindings, groupFindings,
+  clausesFor, FINDING_CLAUSES,
 } = require('../src/features/training/trainingInsights')
 const { mondayOf } = require('../src/features/training/progressAggregate')
-const { limitedSlugsFromLimitations } = require('../src/features/training/muscleMap')
+const { limitedSlugsFromLimitations, scaleLandmarksForExperience, MUSCLE_LANDMARKS, bandForWeeklySets } = require('../src/features/training/muscleMap')
 
 let passed = 0
 let failed = 0
@@ -174,25 +180,24 @@ console.log('\n== 6. computeRelativeStrengthFindings ==')
   check('both ratio and absolute est1RM rise -> the real-strength-gain finding', gain.some(f => f.id === 'rel-strength-gain-Squat' && f.positive === true))
 }
 
-console.log('\n== 7. computeExerciseTrendFindings ==')
+console.log('\n== 7. computeExerciseTrendFindings (engine-fed) ==')
 {
-  const mk = (v, date) => ({ date, topValue: v, volume: null, topWeightKg: v, topReps: 5 })
-  const dates = ['2026-06-01', '2026-06-15', '2026-07-01', '2026-07-15', '2026-08-01', '2026-08-15']
-
-  const progressing = computeExerciseTrendFindings([{ title: 'Deadlift', points: dates.map((d, i) => mk(100 + i * 5, d)), repRangeVaried: false, unit: 'kg' }])
-  check('a clear rise across sessions -> progressing', progressing.some(f => f.id === 'exercise-progressing-Deadlift' && f.positive === true))
-
-  const stalled = computeExerciseTrendFindings([{ title: 'Overhead Press', points: dates.map(d => mk(61, d)), repRangeVaried: false, unit: 'kg' }])
-  check('an unchanged top-set value -> stalled, positive=null', stalled.some(f => f.id === 'exercise-stalled-Overhead Press' && f.positive === null))
-
-  const regressing = computeExerciseTrendFindings([{ title: 'Lat Pulldown', points: dates.map((d, i) => mk(70 - i * 2, d)), repRangeVaried: false, unit: 'kg' }])
-  check('a clear fall across sessions -> regressing', regressing.some(f => f.id === 'exercise-regressing-Lat Pulldown' && f.positive === false))
-
-  const varied = computeExerciseTrendFindings([{ title: 'Bench Press', points: dates.map((d, i) => mk(100 + i * 5, d)), repRangeVaried: true, unit: 'kg' }])
-  check('repRangeVaried=true skips the verdict but still renders an explicit "can\'t assess" line (NEVER_HIDES)',
-    varied.length === 1 && varied[0].id === 'exercise-varied-Bench Press' && varied[0].positive === null)
-
-  check('too few sessions -> no finding at all', computeExerciseTrendFindings([{ title: 'New Move', points: [mk(50, '2026-08-01'), mk(52, '2026-08-08')], repRangeVaried: false, unit: 'kg' }]).length === 0)
+  const result = (id, trend, progress = 'strong') => ({
+    exerciseTemplateId: id,
+    trend: { recentWindowSessions: 6, recentPositiveSignals: 3, recentNegativeSignals: 0, currentLoadCycleSessions: 5, currentLoadProgress: 'ACCUMULATING', ...trend },
+    evidence: { progress },
+  })
+  const progressing = computeExerciseTrendFindings([{ title: 'Deadlift', result: result('dl', { recentProgressTrend: 'PROGRESSING' }) }], true)
+  check('the engine\'s PROGRESSING trend -> a positive finding citing its own window', progressing.length === 1 && progressing[0].positive === true && progressing[0].text.includes('last 6 comparable sessions'))
+  const slipping = computeExerciseTrendFindings([{ title: 'Lat Pulldown', result: result('lp', { recentProgressTrend: 'REGRESSION_RISK', recentPositiveSignals: 0, recentNegativeSignals: 3 }) }], true)
+  check('the engine\'s REGRESSION_RISK -> a negative finding', slipping.length === 1 && slipping[0].positive === false)
+  const plateau = computeExerciseTrendFindings([{ title: 'Overhead Press', result: result('ohp', { recentProgressTrend: 'FLAT_NORMAL_VARIATION', currentLoadProgress: 'POSSIBLE_PLATEAU' }) }], true)
+  check('a flat trend with a possible plateau -> a neutral plateau finding', plateau.length === 1 && plateau[0].positive === null && plateau[0].id.startsWith('exercise-plateau-'))
+  check('limited evidence -> no verdict at all (the table still shows it)', computeExerciseTrendFindings([{ title: 'New Move', result: result('nm', { recentProgressTrend: 'PROGRESSING' }, 'limited') }], true).length === 0)
+  check('insufficient history -> no verdict', computeExerciseTrendFindings([{ title: 'X', result: result('x', { recentProgressTrend: 'INSUFFICIENT_HISTORY' }) }], true).length === 0)
+  const noProgram = computeExerciseTrendFindings([], false)
+  check('no current program -> one explicit "pick your program" line (NEVER_HIDES), grouped as unassessable',
+    noProgram.length === 1 && groupFindings(noProgram).unassessable.length === 1)
 }
 
 console.log('\n== 8. sortFindings ==')
@@ -236,16 +241,51 @@ console.log('\n== 10. groupFindings ==')
     { id: 'exercise-regressing-B', tier: 'measured', positive: false, text: '' },
     { id: 'volume-flat', tier: 'measured', positive: null, text: '' },
     { id: 'relative-strength-null', tier: 'measured', positive: null, text: '' },
-    { id: 'exercise-varied-C', tier: 'measured', positive: null, text: '' },
+    { id: 'exercise-no-program', tier: 'measured', positive: null, text: '' },
   ]
   const grouped = groupFindings(findings)
   check('a positive finding lands in "working"', grouped.working.map(f => f.id).includes('exercise-progressing-A'))
   check('a negative finding lands in "attention"', grouped.attention.map(f => f.id).includes('exercise-regressing-B'))
   check('a neutral (null) informational finding is folded into "attention", not its own bucket', grouped.attention.map(f => f.id).includes('volume-flat'))
   check('the insufficient-bodyweight-data finding is pulled into its own "unassessable" group', grouped.unassessable.map(f => f.id).includes('relative-strength-null'))
-  check('a rep-range-varied skip is also "unassessable" (NEVER_HIDES payoff, never silently dropped)', grouped.unassessable.map(f => f.id).includes('exercise-varied-C'))
+  check('the no-program line is also "unassessable" (NEVER_HIDES payoff, never silently dropped)', grouped.unassessable.map(f => f.id).includes('exercise-no-program'))
   check('nothing is dropped — every finding lands in exactly one group',
     grouped.working.length + grouped.attention.length + grouped.unassessable.length === findings.length)
+}
+
+console.log('\n== 11. Clauses once per group, honest "strong", ordered landmarks ==')
+{
+  const today = '2026-09-01'
+  const last = lastCompleteWeek(today)
+  const mk = (offset, sessionCount) => ({ weekStart: shiftWeek(last, -offset), sessionCount })
+  const weeks = n => Array.from({ length: 8 }, (_, i) => mk(7 - i, n))
+  check('T35: a median of 2 against a 4-day target is NOT "strong" any more', !computeConsistencyFindings(weeks(2), today, 4).some(f => f.id === 'consistency-strong'))
+  check('T35: a median of 3 against a 4-day target (one short) IS "strong"', computeConsistencyFindings(weeks(3), today, 4).some(f => f.id === 'consistency-strong'))
+  check('T35: a 2-day target has to be met in full (median 1 is not strong)', !computeConsistencyFindings(weeks(1), today, 2).some(f => f.id === 'consistency-strong'))
+
+  const gaps = computeConsistencyFindings(Array.from({ length: 12 }, (_, i) => mk(11 - i, i % 4 === 0 ? 0 : 2)), today)
+  check('T35: the consistency caveat is NOT repeated inside the finding text', gaps.every(f => !f.text.includes(FINDING_CLAUSES.consistency)))
+  check('T35: it travels as a clause the panel prints once', gaps.every(f => f.clause === 'consistency'))
+
+  const hamWeekly = Array.from({ length: 8 }, (_, i) => ({ weekStart: shiftWeek(last, -i), sets: 2 }))
+  const muscles = computeMuscleFindings([
+    { slug: 'hamstring', label: 'Hamstrings', weekly: hamWeekly, landmarks: MUSCLE_LANDMARKS.hamstring },
+    { slug: 'calves', label: 'Calves', weekly: hamWeekly, landmarks: MUSCLE_LANDMARKS.calves },
+  ], today)
+  check('T35: two under-MEV findings share ONE muscle clause', muscles.length === 2 && clausesFor(muscles).length === 1 && muscles.every(f => !f.text.includes('Renaissance')))
+
+  let ordered = true
+  const bad = []
+  for (const level of ['novice', 'intermediate', 'advanced']) {
+    for (const [slug, L] of Object.entries(MUSCLE_LANDMARKS)) {
+      const S = scaleLandmarksForExperience(L, level)
+      if (!(S.mv <= S.mev && S.mev < S.mav && S.mav < S.mrv)) { ordered = false; bad.push(`${level}/${slug}`) }
+    }
+  }
+  check('T12: mv ≤ mev < mav < mrv for every muscle at every experience level', ordered, bad.join(', '))
+  const chestNovice = scaleLandmarksForExperience(MUSCLE_LANDMARKS.chest, 'novice')
+  check('T12: novice chest MRV sits above MAV (was 19 < 20)', chestNovice.mrv > chestNovice.mav)
+  check('T12: 19.5 sets for a novice chest reads "Optimal growth", never over-MRV at the same time', bandForWeeklySets('chest', 19.5, chestNovice) === 3 && 19.5 <= chestNovice.mrv)
 }
 
 console.log(`\n${passed} passed, ${failed} failed\n`)

@@ -5,7 +5,7 @@ import { Button, EmptyState } from '../../../shared/ui'
 import { useHevyExerciseTemplates } from '../hooks/useHevyExerciseTemplates'
 import { useHevyRoutineFolders, useCreateHevyRoutine, useUpdateHevyRoutine } from '../hooks/useHevyRoutines'
 import {
-  blankExercise, blankSet, formToPayload, newKey, routineToForm, setFieldsForType,
+  blankExercise, blankSet, formToPayload, newKey, routineToForm, sanitizeInteger, setFieldsForType,
   type FormExercise, type FormSet, type RoutineForm,
 } from '../routineForm'
 import { ExerciseSearch, SetRow } from './RoutineFormParts'
@@ -218,16 +218,16 @@ function RoutineFormContent({ title, onClose, initial }: RoutineFormProps) {
                           <label className="flex flex-col gap-1 min-w-0">
                             <span className="text-meta font-semibold text-fg-muted">Rest (sec)</span>
                             <input
-                              type="number" inputMode="numeric" value={ex.rest_seconds}
-                              onChange={e => patchExercise(ex._key, { rest_seconds: e.target.value })}
+                              type="text" inputMode="numeric" value={ex.rest_seconds}
+                              onChange={e => patchExercise(ex._key, { rest_seconds: sanitizeInteger(e.target.value) })}
                               placeholder="e.g. 90" className="input w-full"
                             />
                           </label>
                           <label className="flex flex-col gap-1 min-w-0">
                             <span className="text-meta font-semibold text-fg-muted">Superset group</span>
                             <input
-                              type="number" inputMode="numeric" value={ex.superset_id}
-                              onChange={e => patchExercise(ex._key, { superset_id: e.target.value })}
+                              type="text" inputMode="numeric" value={ex.superset_id}
+                              onChange={e => patchExercise(ex._key, { superset_id: sanitizeInteger(e.target.value) })}
                               placeholder="none" className="input w-full"
                             />
                           </label>

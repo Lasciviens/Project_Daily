@@ -11,8 +11,8 @@ import { bestComparableSet } from './normalize'
 import { buildRepresentativePoints, buildLoadCycles, computeRecentProgressTrend, computeCurrentLoadProgress, type LoadCycle } from './trend'
 import { evaluatePair, sessionRangeCompliance } from './comparability'
 import { detectProgressEvents, detectEstimatedStrengthPr } from './events'
-import { buildNextTargets } from './targets'
-import { selectRepresentativeSet, metricValueOf, isQualifiedForPositiveSignal } from './metricStrategy'
+import { buildNextTargets, nextTargetBlocker } from './targets'
+import { isQualifiedForPositiveSignal, sessionBestE1rm } from './metricStrategy'
 
 function round1(n: number): number { return Math.round(n * 10) / 10 }
 
@@ -25,23 +25,10 @@ function toExposure(session: CanonicalExerciseSession, metricKind: ProgressMetri
   }
 }
 
-/** Selects the HIGHEST actual e1RM value logged this session — never
- *  "whichever set has the most reps" (a real bug: 60kg x8's e1RM (~76kg) is
- *  materially higher than 45kg x12's (~63kg), so a reps-based pick would
- *  silently report the wrong number as "current strength"). Bypasses the
- *  top-set-and-backoff role-lock via 'uniform_working_load' for the same
- *  reason `detectEstimatedStrengthPr` does in events.ts — this is about the
- *  best e1RM the session actually produced, not which set played the
- *  "top set" role. */
-function bestE1RMForSession(s: CanonicalExerciseSession): number | null {
-  const best = selectRepresentativeSet(s.comparableWorkingSets, 'uniform_working_load', 'est1rm')
-  return metricValueOf(best, 'est1rm')
-}
-
 function buildCurrentState(previous: CanonicalExerciseSession, latest: CanonicalExerciseSession, metricKind: ProgressMetricKind, loadChangePercent: number | null): CurrentStateSummary {
   let estimatedStrengthChange: CurrentStateSummary['estimatedStrengthChange'] = null
   if (metricKind === 'est1rm') {
-    const from = bestE1RMForSession(previous), to = bestE1RMForSession(latest)
+    const from = sessionBestE1rm(previous.comparableWorkingSets), to = sessionBestE1rm(latest.comparableWorkingSets)
     if (from != null && to != null && from > 0) {
       estimatedStrengthChange = { fromKg: round1(from), toKg: round1(to), percent: round1((to / from - 1) * 100) }
     }
@@ -122,6 +109,10 @@ export function evaluateExerciseProgress(input: EvaluateExerciseProgressInput, p
   const weekSpan = comparableSessions >= 2 ? Math.round(daysBetween(sessions[0].date, sessions[sessions.length - 1].date) / 7) : 0
 
   if (comparableSessions < 2) {
+    const only = sessions[0]
+    // One session is enough for a "repeat it and add a rep" plan — the
+    // start of a trend — even though there is nothing to compare yet.
+    const firstTargets = only ? buildNextTargets(only, expectation, metricKind, 'INSUFFICIENT_DATA', policy, explicitIncrementKg, equipmentClass, [], null) : null
     return {
       algorithmVersion: ALGORITHM_VERSION, exerciseTemplateId, metricKind,
       observedTransition: 'NO_COMPARISON', repDelta: 'NOT_APPLICABLE', rangeCompliance: 'NOT_EVALUATED', evaluationScope: 'NOT_EVALUATED',
@@ -130,7 +121,9 @@ export function evaluateExerciseProgress(input: EvaluateExerciseProgressInput, p
       evidence: { progress: 'limited', recommendation: null },
       reasons: [{ code: 'INSUFFICIENT_DATA', severity: 'info', values: { comparableSessions } }],
       events: [], currentState: { previous: null, latest: sessions[0] ? toExposure(sessions[0], metricKind) : null, loadChangePercent: null, estimatedStrengthChange: null },
-      nextTargets: null, expectation, comparableSessions, weekSpan,
+      nextTargets: firstTargets,
+      nextTargetBlocker: only ? nextTargetBlocker(only, expectation, metricKind, 'INSUFFICIENT_DATA') : 'no_sets',
+      expectation, comparableSessions, weekSpan,
     }
   }
 
@@ -197,6 +190,8 @@ export function evaluateExerciseProgress(input: EvaluateExerciseProgressInput, p
   }
   if (pair.rangeCompliance === 'BELOW_MINIMUM') reasons.push({ code: 'BELOW_TARGET_MINIMUM', severity: 'caution', values: { repMin: expectation.repMin } })
   if (pair.repDelta === 'REP_INCREASE') reasons.push({ code: 'REP_INCREASE_CLEAN', severity: 'positive', values: {} })
+  if (pair.repDelta === 'REP_NO_CHANGE') reasons.push({ code: 'REPS_UNCHANGED', severity: 'info', values: {} })
+  if (pair.repDelta === 'REP_DECLINE') reasons.push({ code: 'REPS_DECLINED', severity: 'caution', values: {} })
   if (currentAction === 'REVIEW_LOAD_REDUCTION') reasons.push({ code: 'LOAD_DECREASED_UNKNOWN_INTENT', severity: 'caution', values: { fromKg: bestComparableSet(previous, metricKind)?.weightKg ?? null, toKg: bestComparableSet(latest, metricKind)?.weightKg ?? null } })
   if (metricKind === 'assistedWeight' && pair.progressDirection === true) reasons.push({ code: 'ASSISTANCE_REDUCED', severity: 'positive', values: {} })
   if (currentAction === 'WATCH_FOR_PLATEAU' || currentAction === 'WATCH_FOR_REGRESSION') reasons.push({ code: 'NO_TREND_AT_CURRENT_LOAD', severity: 'caution', values: { sessionsAtLoad: clp.n } })
@@ -231,7 +226,8 @@ export function evaluateExerciseProgress(input: EvaluateExerciseProgressInput, p
     },
     evidence: { progress: computeProgressEvidence(recent.n, recent.weekSpan), recommendation: recommendationEvidence },
     reasons, events, currentState,
-    nextTargets: buildNextTargets(latest, expectation, metricKind, currentAction, policy, explicitIncrementKg, equipmentClass, observedLoadIncrements(cycles, metricKind)),
+    nextTargets: buildNextTargets(latest, expectation, metricKind, currentAction, policy, explicitIncrementKg, equipmentClass, observedLoadIncrements(cycles, metricKind), previous),
+    nextTargetBlocker: nextTargetBlocker(latest, expectation, metricKind, currentAction),
     expectation, comparableSessions, weekSpan,
   }
 }

@@ -8,7 +8,7 @@ import { fetchBodyCompositionReports } from '../api/bodyCompositionApi'
 // serves every window without a re-query per toggle.
 export function useBodyCompositionReports() {
   return useQuery({
-    queryKey: qk.training.bodyComposition,
+    queryKey: qk.health.bodyComposition,
     queryFn:  fetchBodyCompositionReports,
     staleTime: STALE.default,
   })

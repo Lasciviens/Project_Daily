@@ -11,7 +11,7 @@
 // scales be tuned until any two series look coupled, which is a causality
 // claim made with a scale factor instead of words. Nothing here computes a
 // composite "readiness" number; each lane is its own real measurement.
-import { mondayOf } from '../training/progressAggregate'
+import { mondayOfStr as mondayOf } from '../../shared/utils/dateUtils'
 import type { SleepSummary, DailyValue } from './healthAggregate'
 
 // A week needs at least this many tracked nights/days before it gets plotted

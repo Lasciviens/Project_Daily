@@ -182,26 +182,6 @@ export const MAJOR_MUSCLES: ReadonlySet<Slug> = new Set<Slug>([
   'quadriceps', 'hamstring', 'gluteal', 'abs', 'trapezius',
 ])
 
-// "What to do next" for a muscle: how far its weekly sets are from the nearest
-// edge of the growth sweet spot, translated to whole sets and rough sessions
-// (≈4 added sets ≈ one more session). Returns null when it's in range / no
-// landmark. Numbers are rounded — landmark integers aren't precise (see notes).
-export function setDeltaToRange(slug: string, weeklySets: number):
-  | { kind: 'add'; sets: number; sessions: number; mev: number; mav: number }
-  | { kind: 'cut'; sets: number; mrv: number }
-  | null {
-  const L = MUSCLE_LANDMARKS[slug]
-  if (!L) return null
-  if (weeklySets < L.mev) {
-    const deficit = Math.max(1, Math.round(L.mev - weeklySets))
-    return { kind: 'add', sets: deficit, sessions: Math.max(1, Math.ceil(deficit / 4)), mev: L.mev, mav: L.mav }
-  }
-  if (weeklySets > L.mrv) {
-    return { kind: 'cut', sets: Math.max(1, Math.round(weeklySets - L.mrv)), mrv: L.mrv }
-  }
-  return null
-}
-
 // ── Athlete profile: movement-pattern taxonomy + limitation → muscle seam ───
 // A short, fixed vocabulary of standard resistance-training movement patterns
 // (not exotic — the same categories any S&C coach or a functional movement
@@ -325,18 +305,23 @@ export function limitedSlugsFromLimitations(
 // RP framework: MEV/MRV shift with training age (a novice grows on less
 // volume and can't yet tolerate as much; an advanced lifter needs more to
 // keep progressing and can recover from more). MV/MAV are left UNSCALED on
-// purpose — this was a cross-examined agreement, not an oversight: scaling
-// the whole landmark set by experience would overclaim precision on a table
-// that is already a heuristic, not a measured constant (same honesty as
-// ROLE_WEIGHTS/BANDS_META above).
+// purpose — scaling the whole landmark set by experience would overclaim
+// precision on a table that is already a heuristic, not a measured constant
+// (same honesty as ROLE_WEIGHTS/BANDS_META above).
 export const EXPERIENCE_MULTIPLIER: Record<ExperienceLevel, number> = {
   novice:       0.85,
   intermediate: 1,
   advanced:     1.15,
 }
 
+/** Scales MEV/MRV for experience, then keeps the landmarks in order:
+ *  mv ≤ mev < mav < mrv. Scaling MRV alone once put a novice's "maximum
+ *  recoverable" line BELOW the top of the "optimal" band (chest MAV 20 vs
+ *  MRV 19), so 19.5 sets read "Optimal growth" and "over MRV" at once. */
 export function scaleLandmarksForExperience(L: Landmarks, level: ExperienceLevel | null | undefined): Landmarks {
   if (!level) return L
   const m = EXPERIENCE_MULTIPLIER[level]
-  return { ...L, mev: Math.round(L.mev * m), mrv: Math.round(L.mrv * m) }
+  const mev = Math.min(Math.max(Math.round(L.mev * m), L.mv), L.mav - 1)
+  const mrv = Math.max(Math.round(L.mrv * m), L.mav + 1)
+  return { ...L, mev, mrv }
 }

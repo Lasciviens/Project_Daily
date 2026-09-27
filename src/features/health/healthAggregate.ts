@@ -73,6 +73,10 @@ function hourKeyOf(p: HealthMetric): string {
   return p.recorded_at.slice(0, 13) // "yyyy-MM-ddTHH", UTC hour bucket
 }
 
+function minuteKeyOf(p: HealthMetric): string {
+  return p.recorded_at.slice(0, 16) // "yyyy-MM-ddTHH:mm"
+}
+
 // A row landing exactly on the hour (":00:00") is Health Auto Export's own
 // "this hour is now closed, here is its final total" delivery -- prefer it
 // over a mid-hour "since last sync, here's the partial total so far" row
@@ -84,24 +88,72 @@ function isHourBoundary(p: HealthMetric): boolean {
   return p.recorded_at.slice(14, 19) === '00:00' // minute:second
 }
 
+// ROUND 3 (H-06): the hour-only rule above assumes every hour is HOUR-grain
+// ("Time Grouping: Hours"). Rows exported before that setting, and any raw
+// per-sample export, are MINUTE-grain: dozens of independent increments per
+// hour (the 2026-07-20 rows documented at the top of this file). Keeping one
+// row per hour for those turned an hour of 60 × 50 steps into 50.
+//
+// The two shapes differ in how many distinct minutes an hour carries:
+//   - hour-grain re-delivery: the closed-hour row (possibly re-sent under
+//     several source strings, all at the same instant) plus the odd mid-hour
+//     partial from a "Since Last Sync" run. Background syncs fire at most a
+//     few times an hour, so live hours carry 1-3 distinct minutes.
+//   - minute-grain: one row per active minute, typically dozens.
+// So an hour with at least MINUTE_GRAIN_MIN_MINUTES distinct minutes is read
+// as minute-grain: same-minute twins still collapse (largest wins, the
+// float-noise workout twins) and the minutes are SUMMED. Fewer distinct
+// minutes keeps the hour-only rule, so every live-confirmed re-delivery case
+// behaves exactly as before. Known limit: a minute-grain hour with only a few
+// active minutes (a quiet hour) is read as hour-grain and keeps its largest
+// row, an undercount of a small number rather than a double count.
+// scripts/verify-health-source-dedup.cjs locks in both shapes.
+const MINUTE_GRAIN_MIN_MINUTES = 7
+
 function collapseIntraStreamMinuteDuplicates(points: HealthMetric[]): HealthMetric[] {
-  const byHour = new Map<string, HealthMetric>()
+  const byHour = new Map<string, HealthMetric[]>()
   const passthrough: HealthMetric[] = []
-  let dropped = 0
   for (const p of points) {
-    const q = p.value?.qty
-    if (typeof q !== 'number') { passthrough.push(p); continue }
+    if (typeof p.value?.qty !== 'number') { passthrough.push(p); continue }
     const k = hourKeyOf(p)
-    const kept = byHour.get(k)
-    if (!kept) { byHour.set(k, p); continue }
-    dropped++
-    const keptIsBoundary = isHourBoundary(kept)
-    const pIsBoundary = isHourBoundary(p)
-    if (pIsBoundary && !keptIsBoundary) byHour.set(k, p)
-    else if (pIsBoundary === keptIsBoundary && q > (kept.value?.qty as number)) byHour.set(k, p)
+    const arr = byHour.get(k)
+    if (arr) arr.push(p)
+    else byHour.set(k, [p])
+  }
+  const kept: HealthMetric[] = []
+  let dropped = 0
+  for (const rows of byHour.values()) {
+    if (rows.length === 1) { kept.push(rows[0]); continue }
+    const perMinute = new Map<string, HealthMetric>()
+    for (const p of rows) {
+      const k = minuteKeyOf(p)
+      const cur = perMinute.get(k)
+      if (!cur || (p.value.qty as number) > (cur.value.qty as number)) perMinute.set(k, p)
+    }
+    if (perMinute.size >= MINUTE_GRAIN_MIN_MINUTES) {
+      kept.push(...perMinute.values())
+      dropped += rows.length - perMinute.size
+      continue
+    }
+    let winner = rows[0]
+    for (const p of rows.slice(1)) {
+      const pIsBoundary = isHourBoundary(p), wIsBoundary = isHourBoundary(winner)
+      if (pIsBoundary && !wIsBoundary) winner = p
+      else if (pIsBoundary === wIsBoundary && (p.value.qty as number) > (winner.value.qty as number)) winner = p
+    }
+    kept.push(winner)
+    dropped += rows.length - 1
   }
   if (dropped === 0) return points
-  return [...byHour.values(), ...passthrough]
+  return [...kept, ...passthrough]
+}
+
+/** The points a 'sum' metric actually counts after the duplicate collapse —
+ *  for anything that counts or lists rows (e.g. "2× that day" for
+ *  toothbrushing) so it agrees with the total shown next to it. Other metrics
+ *  come back unchanged. */
+export function collapsedPoints(metricName: string, points: HealthMetric[]): HealthMetric[] {
+  return getAggregationType(metricName) === 'sum' ? collapseIntraStreamMinuteDuplicates(points) : points
 }
 
 const KJ_PER_KCAL = 4.184
@@ -163,11 +215,13 @@ export function computeDailySeries(metricName: string, points: HealthMetric[]): 
   return result.sort((a, b) => a.date.localeCompare(b.date))
 }
 
-export interface HourlyValue { hour: number; label: string; value: number }
+export interface HourlyValue { hour: number; label: string; value: number | null }
 
 // One number per hour-of-day (0-23) for a single day's points — used by the
 // Steps/Energy sections' hourly bar charts. Uses the browser's local timezone
-// to bucket (recorded_at is an absolute instant either way).
+// to bucket (recorded_at is an absolute instant either way). An hour with no
+// reading is null, never 0: every future hour of today and every Watch-off
+// hour is a gap, not a measured zero.
 export function computeHourlyBuckets(metricName: string, points: HealthMetric[]): HourlyValue[] {
   let resolved = points
   if (getAggregationType(metricName) === 'sum') resolved = collapseIntraStreamMinuteDuplicates(resolved)
@@ -178,24 +232,25 @@ export function computeHourlyBuckets(metricName: string, points: HealthMetric[])
     if (arr) arr.push(p)
     else byHour.set(h, [p])
   }
-  return Array.from({ length: 24 }, (_, h) => ({
-    hour: h,
-    label: `${String(h).padStart(2, '0')}:00`,
-    value: Math.round((aggregateGroup(byHour.get(h) ?? [], metricName) ?? 0) * 100) / 100,
-  }))
+  return Array.from({ length: 24 }, (_, h) => {
+    const v = aggregateGroup(byHour.get(h) ?? [], metricName)
+    return { hour: h, label: `${String(h).padStart(2, '0')}:00`, value: v == null ? null : Math.round(v * 100) / 100 }
+  })
 }
 
-export interface DailyRange { date: string; min: number; max: number; avg: number }
+// A missing field is null, never 0: an Avg-only point used to report
+// "0–0 bpm" as the day's range, and an empty hour plotted 0 bpm.
+export interface DailyRange { date: string; min: number | null; max: number | null; avg: number | null }
 
-function rangeFromPoints(pts: HealthMetric[]): { min: number; max: number; avg: number } | null {
+function rangeFromPoints(pts: HealthMetric[]): { min: number | null; max: number | null; avg: number | null } | null {
   const mins = pts.map(p => p.value?.Min).filter((v): v is number => typeof v === 'number')
   const maxs = pts.map(p => p.value?.Max).filter((v): v is number => typeof v === 'number')
   const avgs = pts.map(p => p.value?.Avg).filter((v): v is number => typeof v === 'number')
   if (!mins.length && !maxs.length && !avgs.length) return null
   return {
-    min: mins.length ? Math.min(...mins) : 0,
-    max: maxs.length ? Math.max(...maxs) : 0,
-    avg: avgs.length ? avgs.reduce((a, b) => a + b, 0) / avgs.length : 0,
+    min: mins.length ? Math.min(...mins) : null,
+    max: maxs.length ? Math.max(...maxs) : null,
+    avg: avgs.length ? avgs.reduce((a, b) => a + b, 0) / avgs.length : null,
   }
 }
 
@@ -211,7 +266,7 @@ export function computeHeartRateDailySeries(points: HealthMetric[]): DailyRange[
   return result.sort((a, b) => a.date.localeCompare(b.date))
 }
 
-export interface HourlyRange { hour: number; label: string; min: number; max: number; avg: number }
+export interface HourlyRange { hour: number; label: string; min: number | null; max: number | null; avg: number | null }
 
 // Same as computeHeartRateDailySeries but bucketed by hour-of-day, for a
 // single day's "Day" view.
@@ -224,7 +279,7 @@ export function computeHeartRateHourlySeries(points: HealthMetric[]): HourlyRang
     else byHour.set(h, [p])
   }
   return Array.from({ length: 24 }, (_, h) => {
-    const range = rangeFromPoints(byHour.get(h) ?? []) ?? { min: 0, max: 0, avg: 0 }
+    const range = rangeFromPoints(byHour.get(h) ?? []) ?? { min: null, max: null, avg: null }
     return { hour: h, label: `${String(h).padStart(2, '0')}:00`, ...range }
   })
 }
@@ -248,7 +303,7 @@ const SLEEP_STAGE_KEYS = ['Core', 'REM', 'Deep', 'Awake', 'Asleep'] as const
 // session to the previous calendar day, keying on `date` alone would split
 // one real night across two chart bars. Rows without a parseable sleepEnd
 // (manual entries, raw segments) keep their stored date.
-function sleepNightKey(p: HealthMetric): string {
+export function sleepNightKey(p: HealthMetric): string {
   const end = p.value?.sleepEnd
   if (typeof end === 'string' && /^\d{4}-\d{2}-\d{2}/.test(end) && /[+-]\d{2}:?\d{2}$/.test(end.trim())) {
     // Apple exports a local-time string with an explicit offset ("...+0200") —
@@ -379,6 +434,21 @@ export function extractSleepSessions(points: HealthMetric[], nightKey: string): 
 // only measured values are shown for sleep. Don't reintroduce derived sleep
 // metrics without asking.)
 
+// ── THE SLEEP CONTRACT (T36) ─────────────────────────────────────────────────
+// Every surface that reports a night (this page, ai-proxy's get_health_stats,
+// phone-gateway's sleep action) must agree on these five rules:
+//   1. A night belongs to the day you WOKE UP (sleepNightKey).
+//   2. A night with any manual row uses ONLY its manual rows — a manual entry
+//      is a deliberate correction, never summed with or shadowed by the Watch.
+//   3. Pre-aggregated sessions: drop one only when ≥90% of its window lies
+//      inside a better-ranked session (a re-report); sum the rest (an
+//      interrupted night is two real blocks).
+//   4. Raw per-stage rows: Core + REM + Deep + plain Asleep = total sleep;
+//      Awake is reported but never added to the total.
+//   5. No derived sleep metrics (score, efficiency) — measured values only.
+// scripts/verify-sleep-aggregate.cjs pins this file; verify-ai-sleep-merge.cjs
+// checks the edge copies against it (they don't read manual rows yet — rule 2
+// — and the script reports that as a known divergence).
 export function computeSleepSummary(points: HealthMetric[]): SleepSummary[] {
   const byDate = new Map<string, HealthMetric[]>()
   for (const p of points) {
@@ -461,4 +531,44 @@ export function formatSleepHours(hours: number): string {
   if (!Number.isFinite(hours)) return '—'
   const total = Math.round(hours * 60)
   return `${Math.floor(total / 60)}h ${total % 60}m`
+}
+
+/** Nights (wake-day keys) that carry a manual entry. A manual entry replaces
+ *  the Watch's figures for that night (computeSleepSummary), so anything drawn
+ *  from the Watch's own sessions must say it was replaced. */
+export function manualNightKeys(points: HealthMetric[]): Set<string> {
+  const out = new Set<string>()
+  for (const p of points) if (p.source === 'manual') out.add(sleepNightKey(p))
+  return out
+}
+
+/** Where each night's rows came from, keyed by the SAME wake-day key the
+ *  summary uses (keying by the stored `date` attached the "Manual" pill and the
+ *  tooltip sources to the wrong night whenever the two differed). */
+export function sleepSourcesByNight(points: HealthMetric[]): Map<string, Set<string>> {
+  const out = new Map<string, Set<string>>()
+  for (const p of points) {
+    const key = sleepNightKey(p)
+    const set = out.get(key) ?? new Set<string>()
+    set.add(p.source === 'manual' ? 'Manual' : (p.source || 'Unknown'))
+    out.set(key, set)
+  }
+  return out
+}
+
+export type SleepStageKey = 'deep' | 'core' | 'rem' | 'unstaged' | 'awake'
+export interface SleepStageShare { key: SleepStageKey; hours: number; pct: number }
+
+/** Each stage's share of the time in the sleep window (asleep + awake). The
+ *  old bar divided by total SLEEP while also drawing Awake, so the shares came
+ *  to more than 100% and the Awake segment was clipped. Sleep with no stage
+ *  (Apple's plain "Asleep") is its own 'unstaged' share so the bar still sums
+ *  to the whole night. */
+export function sleepStageShares(s: SleepSummary): SleepStageShare[] {
+  const staged = s.deep + s.core + s.rem
+  const unstagedRaw = Math.max(0, s.total - staged)
+  const unstaged = unstagedRaw < 1 / 60 ? 0 : unstagedRaw
+  const parts: [SleepStageKey, number][] = [['deep', s.deep], ['core', s.core], ['rem', s.rem], ['unstaged', unstaged], ['awake', s.awake]]
+  const denom = parts.reduce((a, [, h]) => a + Math.max(0, h), 0)
+  return parts.map(([key, h]) => ({ key, hours: Math.max(0, h), pct: denom > 0 ? (Math.max(0, h) / denom) * 100 : 0 }))
 }

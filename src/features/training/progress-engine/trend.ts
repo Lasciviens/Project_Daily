@@ -14,6 +14,8 @@ function daysBetweenDates(a: string, b: string): number {
 
 export interface RepresentativePoint {
   date: string
+  /** The session's own workout id — a stable key (two sessions can share a date). */
+  workoutId?: string
   loadStructure: CanonicalExerciseSession['loadStructure']
   /** The representative set's raw weight — the load-cycle grouping key.
    *  Null for a metric/session with no weight axis (reps/duration/distance
@@ -38,6 +40,7 @@ export function buildRepresentativePoints(sessions: readonly CanonicalExerciseSe
     const rep = s.loadStructure === 'mixed_load' ? null : selectRepresentativeSet(s.comparableWorkingSets, s.loadStructure, metricKind)
     return {
       date: s.date,
+      workoutId: s.workoutId,
       loadStructure: s.loadStructure,
       weightKg: rep?.weightKg ?? null,
       metricValue: metricValueOf(rep, metricKind),
@@ -95,23 +98,41 @@ export function linearFit(y: readonly number[]): { slope: number; residualSpread
   return { slope, residualSpread }
 }
 
-/** Scoped to the CURRENT load cycle only (a fixed representative load/
- *  assistance level) — so what's being regressed is `total`, the metric's
- *  own additive quantity (reps/duration/distance), which is ALWAYS "more is
- *  better" regardless of metric kind: at a FIXED assistance level, more
- *  reps is still the improvement for assistedWeight too (the assisted-
- *  weight inversion applies only to the load axis itself — the assistance
- *  weight — which is what changes BETWEEN cycles, not within one; see
- *  `metricKind` param, kept for API stability / future per-kind display
- *  needs, but deliberately unused for direction here). `ACCUMULATING`
- *  requires a REAL slope in the improving direction (not merely nonzero —
- *  gated by `accumulationSlopeFloor` so pure noise can never masquerade as
- *  progress); a flat, low-noise read resolves to `TOO_EARLY_TO_JUDGE` while
- *  still inside the post-load-change grace window, `BUILDING_BASELINE` once
- *  past grace but short of the plateau floor, and only then
- *  `POSSIBLE_PLATEAU`. Mixed-load / not-evaluable points (`total == null`)
- *  are excluded before regression ever runs — never a NaN in the domain
- *  model. */
+/** One-sided 95% critical t values by degrees of freedom (n − 2) — the
+ *  significance bar a slope must clear to count as a real direction. */
+const T_CRITICAL_ONE_SIDED_95 = [Infinity, 6.314, 2.92, 2.353, 2.132, 2.015, 1.943, 1.895, 1.86, 1.833, 1.812]
+
+/** |slope| / standard error of the slope for a least-squares fit over
+ *  session index (x = 0..n−1). Infinity for a perfect non-flat fit. */
+export function slopeTStatistic(slope: number, residualSpread: number, n: number): number {
+  if (n < 3) return 0
+  const ssr = n * residualSpread * residualSpread
+  const s = Math.sqrt(ssr / (n - 2))
+  const sxx = (n * (n * n - 1)) / 12
+  const se = s / Math.sqrt(sxx)
+  if (se === 0) return slope === 0 ? 0 : Infinity
+  return Math.abs(slope) / se
+}
+
+export function tCriticalOneSided95(n: number): number {
+  const df = n - 2
+  if (df <= 0) return Infinity
+  return df < T_CRITICAL_ONE_SIDED_95.length ? T_CRITICAL_ONE_SIDED_95[df] : 1.75
+}
+
+/** The floors in the series' OWN unit: absolute reps for rep-counted totals,
+ *  a share of the mean for seconds/metres (an absolute "1 rep" noise floor
+ *  applied to plank seconds meant a timed hold could never read ACCUMULATING
+ *  or POSSIBLE_PLATEAU at all). */
+export function currentLoadFloors(metricKind: ProgressMetricKind, series: readonly number[], policy: ExerciseProgressionPolicy): { noise: number; accumulation: number; decline: number } {
+  const p = policy.plateau
+  if (metricKind === 'duration' || metricKind === 'distance') {
+    const mean = Math.abs(series.reduce((a, b) => a + b, 0) / (series.length || 1))
+    return { noise: p.relativeNoiseFloor * mean, accumulation: p.relativeSlopeFloor * mean, decline: p.relativeSlopeFloor * mean }
+  }
+  return { noise: p.residualNoiseFloor, accumulation: p.accumulationSlopeFloor, decline: p.declineSlopeFloor }
+}
+
 /** Among points with a real total, picks the comparable-set-count that most
  *  of them actually share — the "current" set-count segment to regress
  *  over. A 2-set session must never be regressed alongside a 3-set session:
@@ -132,12 +153,28 @@ function dominantSetCount(points: readonly RepresentativePoint[]): number {
   return best
 }
 
+/** Scoped to the CURRENT load cycle only (a fixed representative load/
+ *  assistance level) — so what's being regressed is `total`, the metric's
+ *  own additive quantity (reps/duration/distance), which is ALWAYS "more is
+ *  better" regardless of metric kind (the assisted-weight inversion applies
+ *  to the load axis, which changes BETWEEN cycles, never within one).
+ *  `metricKind` only picks the unit the floors are expressed in.
+ *
+ *  A direction (ACCUMULATING or DECLINING) needs the SAME evidence either
+ *  way: a slope past its floor AND either a low-noise series or a slope
+ *  statistically distinguishable from flat (one-sided 95% t-test). The old
+ *  gate demanded low noise only for improvement, so a noisy climb read
+ *  "stable" while its mirror-image noisy decline read "declining". With no
+ *  real direction, a noisy series is STABLE_VARIATION; a quiet flat one
+ *  resolves to TOO_EARLY_TO_JUDGE inside the post-load-change grace window,
+ *  BUILDING_BASELINE past grace but short of the plateau floor, and only
+ *  then POSSIBLE_PLATEAU. Mixed-load / not-evaluable points (`total ==
+ *  null`) are excluded before regression ever runs — never a NaN. */
 export function computeCurrentLoadProgress(
   cyclePoints: readonly RepresentativePoint[],
   metricKind: ProgressMetricKind,
   policy: ExerciseProgressionPolicy,
 ): { state: CurrentLoadProgressState; n: number; slope: number | null; residualSpread: number | null } {
-  void metricKind // kept for signature stability; total's direction never inverts (see doc above)
   const withTotal = cyclePoints.filter(p => p.total != null)
   if (withTotal.length < 3) return { state: 'INSUFFICIENT_HISTORY', n: withTotal.length, slope: null, residualSpread: null }
 
@@ -151,12 +188,14 @@ export function computeCurrentLoadProgress(
 
   const series = usable.map(p => p.total as number)
   const { slope, residualSpread } = linearFit(series)
-  const { accumulationSlopeFloor, declineSlopeFloor, residualNoiseFloor, graceSessions, minSessions } = policy.plateau
+  const { graceSessions, minSessions } = policy.plateau
+  const floors = currentLoadFloors(metricKind, series, policy)
+  const significant = residualSpread <= floors.noise || slopeTStatistic(slope, residualSpread, series.length) >= tCriticalOneSided95(series.length)
 
   let state: CurrentLoadProgressState
-  if (slope >= accumulationSlopeFloor && residualSpread <= residualNoiseFloor) state = 'ACCUMULATING'
-  else if (slope <= -declineSlopeFloor) state = 'DECLINING'
-  else if (residualSpread > residualNoiseFloor) state = 'STABLE_VARIATION'
+  if (slope >= floors.accumulation && significant) state = 'ACCUMULATING'
+  else if (slope <= -floors.decline && significant) state = 'DECLINING'
+  else if (residualSpread > floors.noise) state = 'STABLE_VARIATION'
   else if (usable.length <= graceSessions) state = 'TOO_EARLY_TO_JUDGE'
   else if (usable.length < minSessions) state = 'BUILDING_BASELINE'
   else state = 'POSSIBLE_PLATEAU'

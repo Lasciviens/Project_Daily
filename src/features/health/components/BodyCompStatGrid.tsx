@@ -1,5 +1,5 @@
 import type { BodyCompositionReport } from '../api/bodyCompositionApi'
-import { BODY_COMP_FIELDS, deltaFor, type BodyCompFieldKey } from '../bodyCompositionAggregate'
+import { BODY_COMP_FIELDS, deltaFor, type BodyCompFieldKey, type BodyCompFieldMeta } from '../bodyCompositionAggregate'
 
 // One card per report field — "all the data" from the latest scan at a
 // glance, mirroring MetricMiniCard's small-card anatomy (icon+label / big
@@ -39,14 +39,15 @@ function StatCard({
 // person's own goal (this table has no concept of one), so every arrow stays
 // neutral ink, same reasoning as WeeklyChangesPanel's un-scored change flags.
 export function BodyCompStatGrid({
-  latest, previous,
+  latest, previous, fields = BODY_COMP_FIELDS,
 }: {
   latest: BodyCompositionReport
   previous: BodyCompositionReport | null
+  fields?: BodyCompFieldMeta[]
 }) {
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
-      {BODY_COMP_FIELDS.map(f => (
+      {fields.filter(f => Number.isFinite(latest[f.key])).map(f => (
         <StatCard key={f.key} fieldKey={f.key} value={latest[f.key]} delta={deltaFor(latest, previous, f.key)} />
       ))}
     </div>

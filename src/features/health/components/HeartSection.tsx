@@ -1,88 +1,83 @@
-import { useHealthMetricSeries } from '../hooks/useHealthExport'
-import { computeHeartRateDailySeries, computeHeartRateHourlySeries, computeDailySeries } from '../healthAggregate'
-import { todayStr } from '../../../shared/utils/dateUtils'
+import { useChartColors } from '../../../shared/ui'
+import { fillDays } from '../healthWindowStats'
+import { useHeartRateHourly } from '../hooks/useHealthExport'
+import { useHeartWindow, useMetricWindow } from '../hooks/useHealthWindow'
 import type { HealthRange } from './sectionTypes'
-import { BarLineChart } from '../../../shared/components/charts/BarLineChart'
-import { rangeForAnchor, labelForAnchor } from './dateNav'
+import { useRangeWindow, windowNoun } from './dateNav'
 import { MetricMiniGrid } from './MetricMiniGrid'
 import { HEART_EXTRA_METRICS } from './miniMetrics'
-import { useChartColors } from '../../../shared/ui'
-import { HeadlineStat, SectionCard, SideStat } from './sectionKit'
+import { HealthTrendChart } from './HealthTrendChart'
+import { RecoveryTrend } from './RecoveryTrend'
+import { HeadlineStat, SectionCard, SideStat, TrendBadge } from './sectionKit'
+import { fmtAxisDay, windowCaption } from './healthFormat'
 
-function fmtDay(dateStr: string): string {
-  return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric' })
-}
+const r = (v: number | null | undefined) => (v == null ? '—' : String(Math.round(v)))
 
 export function HeartSection({ range }: { range: HealthRange }) {
-  const today = todayStr()
   const { anchor, setAnchor, period, setPeriod } = range
   const c = useChartColors()
+  const win = useRangeWindow(range)
+  const isDay = win.isDay
 
-  // The mini-metric cards read the SAME window the rest of the page is on
-  // (they used to be pinned to the last 7 days ending today, so they sat
-  // frozen while this control moved).
-  const miniWindow = { ...rangeForAnchor(period, anchor), period }
+  const heart = useHeartWindow(win)
+  const resting = useMetricWindow('resting_heart_rate', win, { kind: 'average', todayComplete: true })
+  const hrv = useMetricWindow('heart_rate_variability', win)
+  const hourly = useHeartRateHourly(anchor, win.fetchFrom)
 
-  // Headline follows the SELECTED PERIOD: Day → that day's min–max + resting
-  // + HRV; Week/Month → period averages of the daily values, from the same
-  // range the chart shows (in Day mode from==to==anchor, so nothing extra
-  // is fetched vs the old anchor-only queries).
-  const isDay = period === 'day'
-  const { from, to } = rangeForAnchor(period, anchor)
-  const { data: rangePoints = [], isLoading } = useHealthMetricSeries('heart_rate', from, to)
-  const { data: restingPoints = [] } = useHealthMetricSeries('resting_heart_rate', from, to)
-  const { data: hrvPoints = [] } = useHealthMetricSeries('heart_rate_variability', from, to)
+  const day = isDay ? heart.daily.find(d => d.date === anchor) : undefined
+  const dayRange = day && day.min != null && day.max != null ? `${Math.round(day.min)}–${Math.round(day.max)}` : null
 
-  const hrDaily = computeHeartRateDailySeries(rangePoints)
-  const restingDaily = computeDailySeries('resting_heart_rate', restingPoints)
-  const hrvDaily = computeDailySeries('heart_rate_variability', hrvPoints)
-
-  const mean = (xs: number[]) => (xs.length ? xs.reduce((s, x) => s + x, 0) / xs.length : null)
-  const dayRange = isDay ? hrDaily[0] : undefined
-  const avgBpm = !isDay ? mean(hrDaily.map(d => d.avg)) : null
-  const spanMin = !isDay && hrDaily.length ? Math.min(...hrDaily.map(d => d.min)) : null
-  const spanMax = !isDay && hrDaily.length ? Math.max(...hrDaily.map(d => d.max)) : null
-  const resting = isDay ? restingDaily[0]?.value : mean(restingDaily.map(d => d.value))
-  const hrv = isDay ? hrvDaily[0]?.value : mean(hrvDaily.map(d => d.value))
-
+  // An hour with no reading — every future hour of today, a charging hour —
+  // is a gap, not a plunge to 0 bpm (H-03).
   const chartData = isDay
-    ? computeHeartRateHourlySeries(rangePoints).map(r => ({ label: r.label, avg: Math.round(r.avg) }))
-    : hrDaily.map(r => ({ label: fmtDay(r.date), date: r.date, avg: Math.round(r.avg) }))
+    ? (hourly.data ?? []).map(h => ({ label: h.label, avg: h.avg }))
+    : fillDays(heart.daily.filter(d => d.avg != null).map(d => ({ date: d.date, value: d.avg as number })), win.from, win.to)
+        .map(d => ({ label: fmtAxisDay(d.date), date: d.date, avg: d.value }))
+
+  const viewDay = (date: string) => { setPeriod('day'); setAnchor(date) }
+  const noData = !heart.isLoading && !heart.daily.some(d => d.date >= win.from && d.date <= win.to)
 
   return (
-    <SectionCard>
+    <SectionCard dimmed={heart.isPlaceholderData}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <HeadlineStat
-          label={<>Heart rate {isDay
-            ? (anchor === today ? 'today' : `· ${labelForAnchor('day', anchor)}`)
-            : period === 'week' ? '· weekly average' : '· monthly average'}</>}
-          value={isLoading ? '…'
-            : isDay ? (dayRange ? `${Math.round(dayRange.min)}–${Math.round(dayRange.max)}` : '—')
-            : (avgBpm != null ? Math.round(avgBpm) : '—')}
-          unit={`bpm${!isDay && avgBpm != null ? ' avg' : ''}`}
+          label={isDay ? `Heart rate ${dayRange ? 'range' : 'average'} · ${windowNoun(period, anchor)}` : `Average heart rate · ${windowNoun(period, anchor)}`}
+          value={heart.isLoading ? '…' : isDay ? (dayRange ?? r(day?.avg)) : r(heart.summary.value)}
+          unit={(isDay ? (dayRange ?? day?.avg) : heart.summary.value) != null ? 'bpm' : undefined}
+          sub={isDay ? (heart.summary.partialToday ? 'So far today' : null) : windowCaption(heart.summary)}
+          // All-day average heart rate has no "better" direction: it moves
+          // with how active the day was. The badge stays neutral (H-13).
+          trend={isDay ? null : <TrendBadge pct={heart.summary.deltaPct} />}
         />
         <div className="flex gap-4">
-          {!isDay && spanMin != null && spanMax != null && <SideStat value={`${Math.round(spanMin)}–${Math.round(spanMax)}`} label="range" />}
-          {resting != null && <SideStat value={Math.round(resting)} label={isDay ? 'resting' : 'avg resting'} />}
-          {hrv != null && <SideStat value={Math.round(hrv)} label={isDay ? 'HRV ms' : 'avg HRV'} />}
+          {!isDay && heart.lo != null && heart.hi != null && <SideStat value={`${Math.round(heart.lo)}–${Math.round(heart.hi)}`} label="range" />}
+          {resting.summary.value != null && <SideStat value={r(resting.summary.value)} label={isDay ? 'resting' : 'avg resting'} />}
+          {hrv.summary.value != null && <SideStat value={r(hrv.summary.value)} label={isDay ? 'HRV ms' : 'avg HRV ms'} />}
         </div>
       </div>
 
-      <BarLineChart
-        data={chartData}
-        dataKey="avg"
-        color={c.series[3]}
-        unit="bpm"
-        tooltipLabel="Avg heart rate"
-        height={160}
-        xInterval={period === 'day' ? 3 : period === 'month' ? 3 : 0}
-        onPointClick={period !== 'day' ? (point) => {
-          const date = point.date
-          if (typeof date === 'string') { setPeriod('day'); setAnchor(date) }
-        } : undefined}
-      />
+      {noData
+        ? <p className="py-6 text-center text-meta text-fg-muted">No heart rate recorded {isDay ? 'on this day' : 'in this window'}.</p>
+        : (
+          <HealthTrendChart
+            data={chartData}
+            series={[{ key: 'avg', label: 'average', color: c.series[3], kind: 'line' }]}
+            unit="bpm"
+            ariaLabel={isDay ? 'Average heart rate per hour' : 'Average heart rate per day'}
+            height={150}
+            onViewDay={isDay ? undefined : viewDay}
+          />
+        )}
 
-      <MetricMiniGrid title="Cardio extras" metrics={HEART_EXTRA_METRICS} window={miniWindow} />
+      {/* Resting HR and HRV are the recovery markers; average HR mostly
+          reflects how active the day was. Each gets its own trend against
+          your usual range over the last 60 days (H-13). */}
+      <RecoveryTrend metric="resting_heart_rate" title="Resting heart rate" unit="bpm" color={c.series[3]}
+        to={win.to} from={win.from} onViewDay={viewDay} />
+      <RecoveryTrend metric="heart_rate_variability" title="HRV (SDNN)" unit="ms" color={c.series[1]}
+        to={win.to} from={win.from} rolling onViewDay={viewDay} />
+
+      <MetricMiniGrid title="Cardio extras" metrics={HEART_EXTRA_METRICS} window={{ from: win.from, to: win.to, period }} onViewDay={viewDay} />
     </SectionCard>
   )
 }

@@ -1,9 +1,11 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { RefreshCw, Unplug } from 'lucide-react'
 import { useStravaStatus, useSyncStrava, useDisconnectStrava, useConnectStrava } from '../hooks/useTrainingSessions'
 import { buildStravaOAuthUrl } from '../api/stravaApi'
 import { Button, IconButton } from '../../../shared/ui'
-import { STRAVA_ORANGE } from '../stravaMeta'
+import { toast } from '../../../app/store'
+import { STRAVA_CALLBACK_KEYS, STRAVA_ORANGE, parseStravaCallback } from '../stravaMeta'
 import { StravaLogo } from './StravaIcons'
 
 export function StravaWidget() {
@@ -12,21 +14,35 @@ export function StravaWidget() {
   const disconnect = useDisconnectStrava()
   const connect    = useConnectStrava()
   const connectWithCode = connect.mutate
+  const [, setSearchParams] = useSearchParams()
+  // StrictMode runs effects twice; a Strava code can be exchanged only once.
+  const handledRef = useRef(false)
 
-  // Handle OAuth redirect — HashRouter puts Strava's ?code= inside the hash:
-  // e.g. /#/training?code=abc&scope=...  → parsed from window.location.hash
+  // Finish the OAuth redirect. Strava sends the user back to
+  // #/developer?tab=connections (stravaApi's REDIRECT_URI — this widget only
+  // renders on that tab, so the redirect and the exchange live together).
   useEffect(() => {
-    const hashQuery = window.location.hash.includes('?') ? window.location.hash.split('?')[1] : ''
-    const params = new URLSearchParams(hashQuery)
-    const code   = params.get('code')
-    const scope  = params.get('scope')
-    if (!code || !scope) return
+    if (handledRef.current) return
+    const callback = parseStravaCallback(window.location.search, window.location.hash)
+    if (!callback) return
+    handledRef.current = true
 
-    // Strip the query string from the hash without a reload
-    const cleanHash = window.location.hash.split('?')[0]
-    window.history.replaceState({}, '', window.location.pathname + cleanHash)
-    connectWithCode(code)
-  }, [connectWithCode])
+    // Drop Strava's params without a reload: first a real query Strava may
+    // have put before the hash, then the hash query (keeping ?tab=).
+    if (window.location.search) {
+      window.history.replaceState(window.history.state, '', window.location.pathname + window.location.hash)
+    }
+    setSearchParams(p => {
+      for (const k of STRAVA_CALLBACK_KEYS) p.delete(k)
+      return p
+    }, { replace: true })
+
+    if (callback.error) {
+      toast.warning(callback.error === 'access_denied' ? 'Strava connection cancelled' : `Strava connection failed: ${callback.error}`)
+      return
+    }
+    if (callback.code) connectWithCode(callback.code)
+  }, [connectWithCode, setSearchParams])
 
   if (isLoading || connect.isPending) {
     return (

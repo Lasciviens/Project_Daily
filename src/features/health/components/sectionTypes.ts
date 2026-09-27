@@ -10,9 +10,9 @@ export type SectionId = 'overview' | 'steps' | 'energy' | 'heart' | 'sleep' | 'b
  *  useState<Period>('week') of their own and rendered their own DateNav +
  *  PeriodToggle *inside* the section body. So changing the day in Steps left
  *  Heart on a different day, each section's date lived at a different scroll
- *  depth, and Overview/Body had no day control at all. HealthTab now owns
- *  this once, renders it above the section pills, and hands it down — so one
- *  day change moves every section together.
+ *  depth, and Overview/Body had no day control at all. HealthPage owns this
+ *  once, HealthTab renders the control above the section pills, and every
+ *  section and the side panel read it — one day change moves them together.
  *
  *  `setAnchor`/`setPeriod` are passed down (not just the values) because the
  *  chart drill-down needs them: clicking a bar in a Week/Month chart jumps to

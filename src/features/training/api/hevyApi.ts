@@ -1,11 +1,14 @@
 import { supabase } from '../../../integrations/supabase/client'
+import { fetchBodyweightSeries } from '../../health/api/bodyweightApi'
+import { workoutWindowFilter, localDayBoundsIso, workoutLocalDay } from '../workoutDates'
+import { computePersonalRecords, PR_SET_TYPES, type PersonalRecord, type PRSetInput, type PRTemplateInput } from '../personalRecords'
+import type { ProgressSetRow, ProgressTemplateRow, BodyweightAnchor } from '../progressAggregate'
 import type {
   HevyWorkout,
   HevyWorkoutExercise,
   HevySet,
   HevyExerciseTemplate,
   HevyBodyMeasurement,
-  HevyPR,
   HevyRoutine,
   HevyRoutineExercise,
   HevyRoutineSet,
@@ -13,106 +16,114 @@ import type {
   HevySyncState,
 } from '../types.hevy'
 
+// ─── Paged reads ─────────────────────────────────────────────────────────────
+// PostgREST caps every response at 1,000 rows (no max_rows override in
+// config.toml), so every read that can grow past that pages — and pages are
+// ORDERED by a unique column, because Postgres doesn't keep LIMIT/OFFSET
+// pages stable without one (rows could repeat or vanish between pages).
+// Long id lists go through `.in()` in chunks: a few hundred uuids in one GET
+// query string is 20+ KB.
+
+const PAGE = 1000
+const IN_CHUNK = 150
+
+type PageResult<T> = PromiseLike<{ data: T[] | null; error: unknown }>
+
+/** Every page of an ordered query. `parallel` > 1 fetches that many pages
+ *  per round trip (for the big all-time reads); the first short page ends it. */
+async function fetchAllPages<T>(page: (from: number, to: number) => PageResult<T>, parallel = 1): Promise<T[]> {
+  const out: T[] = []
+  for (let offset = 0; ; offset += PAGE * parallel) {
+    const batch = await Promise.all(Array.from({ length: parallel }, (_, i) => page(offset + i * PAGE, offset + (i + 1) * PAGE - 1)))
+    for (const { data, error } of batch) {
+      if (error) throw error
+      const rows = data ?? []
+      out.push(...rows)
+      if (rows.length < PAGE) return out
+    }
+  }
+}
+
+function chunks<T>(xs: readonly T[], size = IN_CHUNK): T[][] {
+  const out: T[][] = []
+  for (let i = 0; i < xs.length; i += size) out.push(xs.slice(i, i + size))
+  return out
+}
+
+/** Every row whose `ids` column matches, paged and chunked. */
+async function fetchByIds<T>(ids: readonly string[], page: (part: string[], from: number, to: number) => PageResult<T>): Promise<T[]> {
+  if (ids.length === 0) return []
+  const parts = await Promise.all(chunks(ids).map(part => fetchAllPages<T>((f, t) => page(part, f, t))))
+  return parts.flat()
+}
+
+// ─── Workout dates ───────────────────────────────────────────────────────────
+// Effective date = start_time, else hevy_created_at (workoutDates.ts).
+export { workoutWindowFilter, localDayBoundsIso, workoutLocalDay }
+
 // ─── Workouts ────────────────────────────────────────────────────────────────
+
+/** A workout row plus, when asked for, what the list card shows. */
+export interface HevyWorkoutListItem extends HevyWorkout {
+  exercise_count?: number
+  /** Up to three distinct primary muscles, in exercise order. */
+  muscle_groups?:  string[]
+}
+
+type WorkoutRowWithExercises = HevyWorkout & { hevy_workout_exercises?: { exercise_template_id: string | null; index: number }[] }
 
 export async function fetchHevyWorkouts(opts: {
   limit?: number
   offset?: number
+  /** ISO instants on the workout's effective date. */
   from?: string
   to?: string
-} = {}): Promise<HevyWorkout[]> {
-  const { limit = 20, offset = 0, from, to } = opts
+  /** Adds exercise_count + muscle_groups (the Workouts list cards). */
+  includeExercises?: boolean
+} = {}): Promise<HevyWorkoutListItem[]> {
+  const { limit = 20, offset = 0, from, to, includeExercises = false } = opts
 
   let query = supabase
     .from('hevy_workouts')
-    .select('*')
+    .select(includeExercises ? '*, hevy_workout_exercises(exercise_template_id, index)' : '*')
+    .order('start_time', { ascending: false, nullsFirst: false })
     .order('hevy_created_at', { ascending: false })
-    .range(offset, offset + limit - 1)
+    .order('id', { ascending: true })
+  if (from || to) query = query.or(workoutWindowFilter(from, to))
 
-  if (from) query = query.gte('hevy_created_at', from)
-  if (to)   query = query.lte('hevy_created_at', to)
-
-  const { data, error } = await query
+  const { data, error } = await query.range(offset, offset + limit - 1)
   if (error) throw error
-  return data ?? []
+  const rows = (data ?? []) as unknown as WorkoutRowWithExercises[]
+  if (!includeExercises) return rows
+
+  const templateIds = [...new Set(rows.flatMap(w => (w.hevy_workout_exercises ?? []).map(e => e.exercise_template_id).filter((id): id is string => !!id)))]
+  const templates = await fetchByIds<{ id: string; primary_muscle_group: string | null }>(templateIds, (part, f, t) =>
+    supabase.from('hevy_exercise_templates').select('id, primary_muscle_group').in('id', part).order('id').range(f, t))
+  const muscleById = new Map(templates.map(t => [t.id, t.primary_muscle_group]))
+
+  return rows.map(({ hevy_workout_exercises: exercises = [], ...w }) => {
+    const groups: string[] = []
+    for (const ex of [...exercises].sort((a, b) => a.index - b.index)) {
+      const mg = ex.exercise_template_id ? muscleById.get(ex.exercise_template_id) : null
+      if (mg && !groups.includes(mg)) groups.push(mg)
+      if (groups.length >= 3) break
+    }
+    return { ...w, exercise_count: exercises.length, muscle_groups: groups }
+  })
 }
 
-export interface WorkedTemplatesResult {
-  templateIds:  string[]   // one entry per exercise-instance (for per-muscle counts)
-  workoutCount: number      // distinct workouts in the range
-}
-
-// All exercise_template_ids performed in workouts within a date range, plus the
-// workout count. Used by the Muscles body map. Matches on the workout's real
-// date (start_time), falling back to hevy_created_at when start_time is null —
-// the same effective-date rule the Workouts tab uses, so a workout without a
-// start_time is never silently dropped.
-export async function fetchWorkoutExerciseTemplateIds(fromISO: string, toISO: string): Promise<WorkedTemplatesResult> {
-  const inRange = `and(start_time.gte.${fromISO},start_time.lte.${toISO})`
-  const nullFallback = `and(start_time.is.null,hevy_created_at.gte.${fromISO},hevy_created_at.lte.${toISO})`
-
-  const { data: workouts, error: wErr } = await supabase
-    .from('hevy_workouts')
-    .select('id')
-    .or(`${inRange},${nullFallback}`)
-  if (wErr) throw wErr
-  const ids = (workouts ?? []).map(w => w.id)
-  if (ids.length === 0) return { templateIds: [], workoutCount: 0 }
-
-  const { data: exercises, error: eErr } = await supabase
-    .from('hevy_workout_exercises')
-    .select('exercise_template_id')
-    .in('hevy_workout_id', ids)
-  if (eErr) throw eErr
-  return {
-    templateIds:  (exercises ?? []).map(e => e.exercise_template_id).filter(Boolean),
-    workoutCount: ids.length,
-  }
-}
-
-export interface WorkoutWithTemplates {
-  id:          string
-  date:        string        // ISO — the workout's effective date (start_time ?? hevy_created_at)
-  title:       string | null
-  templateIds: string[]
-}
-
-// Per-workout exercise template ids over a date range (effective date = start_time
-// with hevy_created_at fallback), for building per-muscle training history / the
-// "last trained this muscle" line. Ordered newest-first.
-export async function fetchWorkoutsWithTemplateIds(fromISO: string, toISO: string): Promise<WorkoutWithTemplates[]> {
-  const inRange = `and(start_time.gte.${fromISO},start_time.lte.${toISO})`
-  const nullFallback = `and(start_time.is.null,hevy_created_at.gte.${fromISO},hevy_created_at.lte.${toISO})`
-
-  const { data: workouts, error: wErr } = await supabase
-    .from('hevy_workouts')
-    .select('id, title, start_time, hevy_created_at')
-    .or(`${inRange},${nullFallback}`)
-  if (wErr) throw wErr
-  if (!workouts?.length) return []
-
-  const { data: exercises, error: eErr } = await supabase
-    .from('hevy_workout_exercises')
-    .select('hevy_workout_id, exercise_template_id')
-    .in('hevy_workout_id', workouts.map(w => w.id))
-  if (eErr) throw eErr
-
-  const byWorkout = new Map<string, string[]>()
-  for (const e of (exercises ?? []) as { hevy_workout_id: string; exercise_template_id: string }[]) {
-    if (!e.exercise_template_id) continue
-    const bucket = byWorkout.get(e.hevy_workout_id) ?? []
-    bucket.push(e.exercise_template_id)
-    byWorkout.set(e.hevy_workout_id, bucket)
-  }
-
-  return (workouts as { id: string; title: string | null; start_time: string | null; hevy_created_at: string }[])
-    .map(w => ({
-      id:          w.id,
-      date:        w.start_time ?? w.hevy_created_at,
-      title:       w.title,
-      templateIds: byWorkout.get(w.id) ?? [],
-    }))
-    .sort((a, b) => (a.date < b.date ? 1 : -1))
+/** Every workout performed on the LOCAL days [fromDate, toDate] — the
+ *  calendar and week counts read this instead of "the latest N". */
+export async function fetchHevyWorkoutsInRange(fromDate: string, toDate: string): Promise<HevyWorkout[]> {
+  const { fromISO, toISO } = localDayBoundsIso(fromDate, toDate)
+  return fetchAllPages<HevyWorkout>((f, t) =>
+    supabase
+      .from('hevy_workouts')
+      .select('*')
+      .or(workoutWindowFilter(fromISO, toISO))
+      .order('start_time', { ascending: false, nullsFirst: false })
+      .order('id', { ascending: true })
+      .range(f, t))
 }
 
 export interface ExerciseVolumeRow {
@@ -122,50 +133,35 @@ export interface ExerciseVolumeRow {
   workingSets: number   // sets with type !== 'warmup'
 }
 
-// Per-exercise WORKING-set counts over a date range, for the volume-based muscle
-// map. Effective date = start_time (hevy_created_at fallback). Paginated on the
-// sets read so a long window with many sets is never silently truncated at the
-// 1000-row PostgREST cap.
+type WorkoutDateRow = { id: string; start_time: string | null; hevy_created_at: string }
+type ExerciseRow = { id: string; hevy_workout_id: string; exercise_template_id: string }
+
+async function fetchWorkoutsInWindow<T extends WorkoutDateRow>(cols: string, fromISO: string, toISO: string): Promise<T[]> {
+  return fetchAllPages<T>((f, t) =>
+    supabase.from('hevy_workouts').select(cols).or(workoutWindowFilter(fromISO, toISO)).order('id').range(f, t) as unknown as PageResult<T>)
+}
+
+async function fetchExercisesForWorkouts(workoutIds: string[]): Promise<ExerciseRow[]> {
+  return fetchByIds<ExerciseRow>(workoutIds, (part, f, t) =>
+    supabase.from('hevy_workout_exercises').select('id, hevy_workout_id, exercise_template_id').in('hevy_workout_id', part).order('id').range(f, t))
+}
+
+// Per-exercise WORKING-set counts over a date range, for the volume-based
+// muscle map. Effective date = start_time (hevy_created_at fallback).
 export async function fetchMuscleVolume(fromISO: string, toISO: string): Promise<ExerciseVolumeRow[]> {
-  const inRange = `and(start_time.gte.${fromISO},start_time.lte.${toISO})`
-  const nullFallback = `and(start_time.is.null,hevy_created_at.gte.${fromISO},hevy_created_at.lte.${toISO})`
+  const workouts = await fetchWorkoutsInWindow<WorkoutDateRow>('id, start_time, hevy_created_at', fromISO, toISO)
+  if (!workouts.length) return []
+  const dateByWorkout = new Map(workouts.map(w => [w.id, w.start_time ?? w.hevy_created_at]))
 
-  const { data: workouts, error: wErr } = await supabase
-    .from('hevy_workouts')
-    .select('id, start_time, hevy_created_at')
-    .or(`${inRange},${nullFallback}`)
-  if (wErr) throw wErr
-  if (!workouts?.length) return []
-  const dateByWorkout = new Map<string, string>()
-  for (const w of workouts as { id: string; start_time: string | null; hevy_created_at: string }[]) {
-    dateByWorkout.set(w.id, w.start_time ?? w.hevy_created_at)
-  }
+  const exRows = await fetchExercisesForWorkouts([...dateByWorkout.keys()])
+  if (!exRows.length) return []
 
-  const { data: exercises, error: eErr } = await supabase
-    .from('hevy_workout_exercises')
-    .select('id, hevy_workout_id, exercise_template_id')
-    .in('hevy_workout_id', [...dateByWorkout.keys()])
-  if (eErr) throw eErr
-  if (!exercises?.length) return []
-  const exRows = exercises as { id: string; hevy_workout_id: string; exercise_template_id: string }[]
-  const exIds = exRows.map(e => e.id)
-
-  // Count working sets per exercise, paginated.
+  const sets = await fetchByIds<{ id: string; hevy_exercise_id: string; type: string | null }>(exRows.map(e => e.id), (part, f, t) =>
+    supabase.from('hevy_sets').select('id, hevy_exercise_id, type').in('hevy_exercise_id', part).order('id').range(f, t))
   const workingByExercise = new Map<string, number>()
-  const PAGE = 1000
-  for (let offset = 0; ; offset += PAGE) {
-    const { data: sets, error: sErr } = await supabase
-      .from('hevy_sets')
-      .select('hevy_exercise_id, type')
-      .in('hevy_exercise_id', exIds)
-      .range(offset, offset + PAGE - 1)
-    if (sErr) throw sErr
-    const page = (sets ?? []) as { hevy_exercise_id: string; type: string | null }[]
-    for (const s of page) {
-      if (s.type === 'warmup') continue
-      workingByExercise.set(s.hevy_exercise_id, (workingByExercise.get(s.hevy_exercise_id) ?? 0) + 1)
-    }
-    if (page.length < PAGE) break
+  for (const s of sets) {
+    if (s.type === 'warmup') continue
+    workingByExercise.set(s.hevy_exercise_id, (workingByExercise.get(s.hevy_exercise_id) ?? 0) + 1)
   }
 
   return exRows
@@ -179,18 +175,11 @@ export async function fetchMuscleVolume(fromISO: string, toISO: string): Promise
 }
 
 // ─── Progress (exercise progression / weekly volume / consistency) ───────────
-// One bulk fetch feeding all of progressAggregate.ts's pure functions —
-// mirrors fetchMuscleVolume's own "fetch once, derive many views client-side"
-// shape rather than a separate round trip per chart.
-import type { ProgressSetRow, ProgressTemplateRow } from '../progressAggregate'
-import { fetchHealthMetricSeries } from '../../health/api/healthApi'
-import { computeDailySeries } from '../../health/healthAggregate'
+// One bulk fetch feeding all of progressAggregate.ts's pure functions.
 
 // The aggregation functions only need `id`/`type`; the exercise-picker UI
-// also needs a name and muscle group to render/filter/group by.
-// `secondary_muscle_groups` (added for the weekly-sets-per-muscle trend) —
-// same `hevy_exercise_template_muscles` join fetchHevyExerciseTemplates
-// already does, so a muscle-attributed exercise never needs a second query.
+// also needs a name and muscle group, and the weekly-sets-per-muscle trend
+// credits secondary muscles from hevy_exercise_template_muscles.
 export interface TrainingExerciseTemplate extends ProgressTemplateRow {
   title: string
   primary_muscle_group: string | null
@@ -202,130 +191,83 @@ export interface TrainingHistory {
   templates: TrainingExerciseTemplate[]
 }
 
+type HistorySetRow = {
+  id: string; hevy_exercise_id: string; exercise_template_id: string; index: number
+  type: ProgressSetRow['set_type']
+  weight_kg: number | null; reps: number | null
+  duration_seconds: number | null; distance_meters: number | null
+  rpe: number | null
+}
+
 export async function fetchTrainingHistory(fromISO: string, toISO: string): Promise<TrainingHistory> {
-  const inRange = `and(start_time.gte.${fromISO},start_time.lte.${toISO})`
-  const nullFallback = `and(start_time.is.null,hevy_created_at.gte.${fromISO},hevy_created_at.lte.${toISO})`
+  type W = WorkoutDateRow & { title: string | null; routine_id: string | null }
+  const workouts = await fetchWorkoutsInWindow<W>('id, title, start_time, hevy_created_at, routine_id', fromISO, toISO)
+  if (!workouts.length) return { sets: [], templates: [] }
 
-  const { data: workouts, error: wErr } = await supabase
-    .from('hevy_workouts')
-    .select('id, title, start_time, hevy_created_at, routine_id')
-    .or(`${inRange},${nullFallback}`)
-  if (wErr) throw wErr
-  if (!workouts?.length) return { sets: [], templates: [] }
+  // A session is filed under the LOCAL day it started (the same day the
+  // calendar, Workouts and Daily show). The UTC date put a 00:30 Oslo session
+  // on the previous day — and a Monday 00:30 one in the previous week.
+  const workoutById = new Map(workouts.map(w => [w.id, w]))
 
-  // Workout day is the raw ISO date's own leading 10 chars — matches
-  // TrainingCalendar's own workoutDay() convention exactly, so a session
-  // lands on the same calendar day here as it does on that calendar.
-  const dateByWorkout = new Map<string, string>()
-  const routineByWorkout = new Map<string, string | null>()
-  const titleByWorkout = new Map<string, string>()
-  for (const w of workouts as { id: string; title: string; start_time: string | null; hevy_created_at: string; routine_id: string | null }[]) {
-    dateByWorkout.set(w.id, (w.start_time ?? w.hevy_created_at).slice(0, 10))
-    routineByWorkout.set(w.id, w.routine_id)
-    titleByWorkout.set(w.id, w.title)
-  }
-
-  const { data: exercises, error: eErr } = await supabase
-    .from('hevy_workout_exercises')
-    .select('id, hevy_workout_id, exercise_template_id')
-    .in('hevy_workout_id', [...dateByWorkout.keys()])
-  if (eErr) throw eErr
-  if (!exercises?.length) return { sets: [], templates: [] }
-  const exRows = exercises as { id: string; hevy_workout_id: string; exercise_template_id: string }[]
+  const exRows = await fetchExercisesForWorkouts([...workoutById.keys()])
+  if (!exRows.length) return { sets: [], templates: [] }
   const workoutIdByExercise = new Map(exRows.map(e => [e.id, e.hevy_workout_id]))
-  const exIds = exRows.map(e => e.id)
+
+  const rows = await fetchByIds<HistorySetRow>(exRows.map(e => e.id), (part, f, t) =>
+    supabase
+      .from('hevy_sets')
+      .select('id, hevy_exercise_id, exercise_template_id, index, type, weight_kg, reps, duration_seconds, distance_meters, rpe')
+      .in('hevy_exercise_id', part)
+      .order('id')
+      .range(f, t))
 
   const sets: ProgressSetRow[] = []
-  const PAGE = 1000
-  for (let offset = 0; ; offset += PAGE) {
-    const { data: page, error: sErr } = await supabase
-      .from('hevy_sets')
-      .select('hevy_exercise_id, exercise_template_id, index, type, weight_kg, reps, duration_seconds, distance_meters, rpe')
-      .in('hevy_exercise_id', exIds)
-      .range(offset, offset + PAGE - 1)
-    if (sErr) throw sErr
-    const rows = (page ?? []) as {
-      hevy_exercise_id: string; exercise_template_id: string; index: number
-      type: 'normal' | 'warmup' | 'dropset' | 'failure'
-      weight_kg: number | null; reps: number | null
-      duration_seconds: number | null; distance_meters: number | null
-      rpe: number | null
-    }[]
-    for (const s of rows) {
-      const workoutId = workoutIdByExercise.get(s.hevy_exercise_id)
-      const date = workoutId ? dateByWorkout.get(workoutId) : undefined
-      if (!workoutId || !date) continue
-      sets.push({
-        workout_id: workoutId, date, exercise_template_id: s.exercise_template_id,
-        set_type: s.type, weight_kg: s.weight_kg, reps: s.reps,
-        duration_seconds: s.duration_seconds, distance_meters: s.distance_meters,
-        routine_id: routineByWorkout.get(workoutId) ?? null, rpe: s.rpe,
-        set_index: s.index, workout_title: titleByWorkout.get(workoutId) ?? null,
-      })
-    }
-    if (rows.length < PAGE) break
+  for (const s of rows) {
+    const workoutId = workoutIdByExercise.get(s.hevy_exercise_id)
+    const w = workoutId ? workoutById.get(workoutId) : undefined
+    const date = w ? workoutLocalDay(w) : ''
+    if (!workoutId || !w || !date) continue
+    sets.push({
+      workout_id: workoutId, date, exercise_template_id: s.exercise_template_id,
+      set_type: s.type, weight_kg: s.weight_kg, reps: s.reps,
+      duration_seconds: s.duration_seconds, distance_meters: s.distance_meters,
+      routine_id: w.routine_id ?? null, rpe: s.rpe,
+      set_index: s.index, workout_title: w.title ?? null,
+    })
   }
 
   const templateIds = [...new Set(sets.map(s => s.exercise_template_id))]
-  const { data: templates, error: tErr } = await supabase
-    .from('hevy_exercise_templates')
-    .select('id, title, type, primary_muscle_group')
-    .in('id', templateIds)
-  if (tErr) throw tErr
-
-  // Same join fetchHevyExerciseTemplates already does for the Exercises tab —
-  // reused here so the weekly-sets-per-muscle trend credits secondary
-  // muscles exactly like the Muscles tab does, with no separate mapping.
-  const { data: muscleRows, error: mErr } = await supabase
-    .from('hevy_exercise_template_muscles')
-    .select('exercise_template_id, muscle_group')
-    .in('exercise_template_id', templateIds)
-  if (mErr) throw mErr
+  const [templates, muscleRows] = await Promise.all([
+    fetchByIds<{ id: string; title: string; type: string; primary_muscle_group: string | null }>(templateIds, (part, f, t) =>
+      supabase.from('hevy_exercise_templates').select('id, title, type, primary_muscle_group').in('id', part).order('id').range(f, t)),
+    fetchByIds<{ id: string; exercise_template_id: string; muscle_group: string }>(templateIds, (part, f, t) =>
+      supabase.from('hevy_exercise_template_muscles').select('id, exercise_template_id, muscle_group').in('exercise_template_id', part).order('id').range(f, t)),
+  ])
   const secondariesByTemplate = new Map<string, string[]>()
-  for (const m of (muscleRows ?? []) as { exercise_template_id: string; muscle_group: string }[]) {
+  for (const m of muscleRows) {
     const bucket = secondariesByTemplate.get(m.exercise_template_id) ?? []
     bucket.push(m.muscle_group)
     secondariesByTemplate.set(m.exercise_template_id, bucket)
   }
 
-  const fullTemplates: TrainingExerciseTemplate[] = (templates ?? []).map(t => ({
-    ...t,
-    secondary_muscle_groups: secondariesByTemplate.get(t.id) ?? [],
-  }))
-
-  return { sets, templates: fullTemplates }
+  return {
+    sets,
+    templates: templates.map(t => ({ ...t, secondary_muscle_groups: secondariesByTemplate.get(t.id) ?? [] })),
+  }
 }
 
-// ─── Bodyweight history (Relative Strength chart) ────────────────────────────
-// Unions the user's own manual body-measurement log (hevy_body_measurements)
-// with an automated scale reading synced through Apple Health/Fitbit
-// (health_metrics.weight_body_mass). Per a same-day conflict this app's own
-// established convention ("manual" always outranks a device) is applied:
-// hevy_body_measurements wins, the health-metrics reading only fills days
-// the manual log has no entry for.
-export interface BodyweightAnchor { date: string; kg: number }
+// ─── Bodyweight history (Relative Strength chart, Progress KPI) ──────────────
+// The ONE merged bodyweight series (Hevy log > smart scale > Apple Health,
+// see health/bodyweight.ts), so Progress shows the same weight as Health and
+// the Body tab instead of its own Hevy+Apple union.
+export type { BodyweightAnchor }
 
 export async function fetchBodyweightHistory(fromDate: string, toDate: string): Promise<BodyweightAnchor[]> {
-  const { data: hevyRows, error } = await supabase
-    .from('hevy_body_measurements')
-    .select('date, weight_kg')
-    .gte('date', fromDate)
-    .lte('date', toDate)
-    .not('weight_kg', 'is', null)
-  if (error) throw error
-
-  const byDate = new Map<string, number>()
-  for (const r of (hevyRows ?? []) as { date: string; weight_kg: number }[]) byDate.set(r.date, r.weight_kg)
-
-  const healthPoints = await fetchHealthMetricSeries('weight_body_mass', fromDate, toDate)
-  for (const { date, value } of computeDailySeries('weight_body_mass', healthPoints)) {
-    if (!byDate.has(date)) byDate.set(date, value)
-  }
-
-  return [...byDate.entries()]
-    .map(([date, kg]) => ({ date, kg }))
-    .sort((a, b) => a.date.localeCompare(b.date))
+  const series = await fetchBodyweightSeries(fromDate, toDate)
+  return series.map(p => ({ date: p.date, kg: p.kg }))
 }
+
+// ─── Workout detail ──────────────────────────────────────────────────────────
 
 export async function fetchHevyWorkoutDetail(id: string): Promise<HevyWorkout | null> {
   const { data: workout, error: workoutErr } = await supabase
@@ -344,26 +286,25 @@ export async function fetchHevyWorkoutDetail(id: string): Promise<HevyWorkout | 
   if (exErr) throw exErr
 
   const exerciseList: HevyWorkoutExercise[] = exercises ?? []
-
   if (exerciseList.length > 0) {
-    const exerciseIds = exerciseList.map(e => e.id)
-
-    const { data: sets, error: setsErr } = await supabase
-      .from('hevy_sets')
-      .select('*')
-      .in('hevy_exercise_id', exerciseIds)
-      .order('index')
-    if (setsErr) throw setsErr
-
+    const [sets, templates] = await Promise.all([
+      fetchByIds<HevySet>(exerciseList.map(e => e.id), (part, f, t) =>
+        supabase.from('hevy_sets').select('*').in('hevy_exercise_id', part).order('index').order('id').range(f, t)),
+      // The template's type decides how each set is written (kg × reps,
+      // seconds, metres, assistance).
+      fetchByIds<HevyExerciseTemplate>([...new Set(exerciseList.map(e => e.exercise_template_id))], (part, f, t) =>
+        supabase.from('hevy_exercise_templates').select('*').in('id', part).order('id').range(f, t)),
+    ])
     const setsByExercise = new Map<string, HevySet[]>()
-    for (const s of (sets ?? []) as HevySet[]) {
+    for (const s of sets) {
       const bucket = setsByExercise.get(s.hevy_exercise_id) ?? []
       bucket.push(s)
       setsByExercise.set(s.hevy_exercise_id, bucket)
     }
-
+    const templateById = new Map(templates.map(t => [t.id, t]))
     for (const ex of exerciseList) {
       ex.sets = setsByExercise.get(ex.id) ?? []
+      ex.template = templateById.get(ex.exercise_template_id)
     }
   }
 
@@ -371,113 +312,42 @@ export async function fetchHevyWorkoutDetail(id: string): Promise<HevyWorkout | 
 }
 
 // ─── Personal Records ─────────────────────────────────────────────────────────
+// All-time, so every working set is paged in (ordered by id): the old read
+// had no pagination and no order, so records came from an arbitrary first
+// 1,000 sets — about four months of training. The ranking itself is pure
+// (personalRecords.ts).
 
-export async function fetchHevyPRs(): Promise<HevyPR[]> {
-  // Fetch all normal sets with weight — GROUP BY not available in supabase-js,
-  // so aggregate on the client side after fetching the needed columns.
-  const { data: sets, error: setsErr } = await supabase
-    .from('hevy_sets')
-    .select('exercise_template_id, weight_kg, reps, hevy_exercise_id')
-    .eq('type', 'normal')
-    .not('weight_kg', 'is', null)
-  if (setsErr) throw setsErr
+export type { PersonalRecord }
 
-  if (!sets?.length) return []
-  type PRSetRow = { exercise_template_id: string; weight_kg: number; reps: number | null; hevy_exercise_id: string }
-  const prSets = sets as PRSetRow[]
+export async function fetchHevyPRs(): Promise<PersonalRecord[]> {
+  type SetRow = Omit<PRSetInput, 'workout_id' | 'performed_at'> & { hevy_exercise_id: string }
+  const [sets, exercises, workouts, templates] = await Promise.all([
+    fetchAllPages<SetRow>((f, t) =>
+      supabase
+        .from('hevy_sets')
+        .select('id, hevy_exercise_id, exercise_template_id, type, weight_kg, reps, duration_seconds, distance_meters')
+        .in('type', [...PR_SET_TYPES])
+        .order('id')
+        .range(f, t), 4),
+    fetchAllPages<{ id: string; hevy_workout_id: string }>((f, t) =>
+      supabase.from('hevy_workout_exercises').select('id, hevy_workout_id').order('id').range(f, t), 4),
+    fetchAllPages<WorkoutDateRow>((f, t) =>
+      supabase.from('hevy_workouts').select('id, start_time, hevy_created_at').order('id').range(f, t), 2),
+    fetchAllPages<PRTemplateInput>((f, t) =>
+      supabase.from('hevy_exercise_templates').select('id, title, type, primary_muscle_group').order('id').range(f, t)),
+  ])
+  if (!sets.length) return []
 
-  // We need the workout date — join via hevy_workout_exercises → hevy_workouts
-  const exerciseIds = [...new Set(prSets.map(s => s.hevy_exercise_id))]
-
-  const { data: exercises, error: exErr } = await supabase
-    .from('hevy_workout_exercises')
-    .select('id, hevy_workout_id')
-    .in('id', exerciseIds)
-  if (exErr) throw exErr
-
-  const exerciseRows = (exercises ?? []) as { id: string; hevy_workout_id: string }[]
-  const workoutIds = [...new Set(exerciseRows.map(e => e.hevy_workout_id))]
-
-  const { data: workouts, error: wErr } = await supabase
-    .from('hevy_workouts')
-    .select('id, start_time, hevy_created_at')
-    .in('id', workoutIds)
-  if (wErr) throw wErr
-
-  // Build lookup maps. REAL BUG (fixed): `achieved_at` used to come straight
-  // from `hevy_created_at` (the SYNC timestamp — when the row was imported),
-  // not when the workout actually happened, so "sorted by most recent" in
-  // HevyPRList was really sorting by import order. Every other query in this
-  // file (fetchHevyWorkouts, fetchWorkoutsWithTemplateIds, fetchTrainingHistory)
-  // already prefers `start_time ?? hevy_created_at` — this now matches them.
-  const workoutDateById = new Map<string, string>(
-    ((workouts ?? []) as { id: string; start_time: string | null; hevy_created_at: string }[]).map(w => [w.id, w.start_time ?? w.hevy_created_at])
-  )
-  const workoutIdByExerciseId = new Map<string, string>(
-    exerciseRows.map(e => [e.id, e.hevy_workout_id])
-  )
-
-  // Fetch exercise templates for titles and muscle groups
-  const templateIds = [...new Set(prSets.map(s => s.exercise_template_id))]
-
-  const { data: templates, error: tErr } = await supabase
-    .from('hevy_exercise_templates')
-    .select('id, title, primary_muscle_group')
-    .in('id', templateIds)
-  if (tErr) throw tErr
-
-  const templateById = new Map<string, HevyExerciseTemplate>(
-    ((templates ?? []) as HevyExerciseTemplate[]).map(t => [t.id, t])
-  )
-
-  // Aggregate: per exercise_template_id find the set with max weight_kg
-  type PRAccumulator = {
-    weight_kg: number
-    reps: number | null
-    hevy_exercise_id: string
+  const workoutIdByExercise = new Map(exercises.map(e => [e.id, e.hevy_workout_id]))
+  const dateByWorkout = new Map(workouts.map(w => [w.id, w.start_time ?? w.hevy_created_at]))
+  const inputs: PRSetInput[] = []
+  for (const s of sets) {
+    const workoutId = workoutIdByExercise.get(s.hevy_exercise_id)
+    const performedAt = workoutId ? dateByWorkout.get(workoutId) : undefined
+    if (!workoutId || !performedAt) continue
+    inputs.push({ ...s, workout_id: workoutId, performed_at: performedAt })
   }
-  const prMap = new Map<string, PRAccumulator>()
-  // Distinct workout ids seen per exercise_template_id — a session with 4
-  // sets of squats is ONE "time performed", not 4 (used for the Personal
-  // Records "at least 3 times" filter below).
-  const workoutIdsByTemplate = new Map<string, Set<string>>()
-
-  for (const s of prSets) {
-    const current = prMap.get(s.exercise_template_id)
-    if (!current || s.weight_kg > current.weight_kg) {
-      prMap.set(s.exercise_template_id, {
-        weight_kg: s.weight_kg,
-        reps: s.reps ?? null,
-        hevy_exercise_id: s.hevy_exercise_id,
-      })
-    }
-    const workoutId = workoutIdByExerciseId.get(s.hevy_exercise_id)
-    if (workoutId) {
-      let ids = workoutIdsByTemplate.get(s.exercise_template_id)
-      if (!ids) { ids = new Set(); workoutIdsByTemplate.set(s.exercise_template_id, ids) }
-      ids.add(workoutId)
-    }
-  }
-
-  const prs: HevyPR[] = []
-  for (const [templateId, best] of prMap) {
-    const template = templateById.get(templateId)
-    if (!template) continue
-    const workoutId = workoutIdByExerciseId.get(best.hevy_exercise_id)
-    const achievedAt = workoutId ? (workoutDateById.get(workoutId) ?? '') : ''
-    prs.push({
-      exercise_template_id: templateId,
-      title: template.title,
-      primary_muscle_group: template.primary_muscle_group,
-      max_weight_kg: best.weight_kg,
-      reps_at_max: best.reps,
-      achieved_at: achievedAt,
-      times_performed: workoutIdsByTemplate.get(templateId)?.size ?? 1,
-    })
-  }
-
-  // Sort by title for a stable, predictable order
-  return prs.sort((a, b) => a.title.localeCompare(b.title))
+  return computePersonalRecords(inputs, templates)
 }
 
 // ─── Body Measurements ────────────────────────────────────────────────────────
@@ -492,6 +362,17 @@ export async function fetchBodyMeasurements(limit = 50): Promise<HevyBodyMeasure
   return data ?? []
 }
 
+/** What is stored for one date right now (null when nothing is) — the
+ *  measurement form loads it fresh whenever its date changes. */
+export async function fetchBodyMeasurementForDate(date: string): Promise<HevyBodyMeasurement | null> {
+  const { data, error } = await supabase
+    .from('hevy_body_measurements')
+    .select('*')
+    .eq('date', date)
+    .maybeSingle()
+  if (error) throw error
+  return data ?? null
+}
 
 // ─── Edge Function Calls ──────────────────────────────────────────────────────
 
@@ -507,97 +388,76 @@ async function throwEdgeFunctionError(res: Response): Promise<never> {
   throw new Error(message)
 }
 
+async function postEdge(fn: string, body?: unknown): Promise<unknown> {
+  const { data: { session } } = await supabase.auth.getSession()
+  const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/${fn}`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${session?.access_token}`,
+      'Content-Type': 'application/json',
+    },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  })
+  if (!res.ok) await throwEdgeFunctionError(res)
+  return res.json()
+}
+
 export async function triggerInitialHevySync(): Promise<{
   exercise_templates: number
   routines: number
   workouts: number
   body_measurements: number
 }> {
-  const { data: { session } } = await supabase.auth.getSession()
-  const res = await fetch(
-    `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/hevy-initial-sync`,
-    {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${session?.access_token}`,
-        'Content-Type': 'application/json',
-      },
-    }
-  )
-  if (!res.ok) await throwEdgeFunctionError(res)
-  return res.json()
+  return postEdge('hevy-initial-sync') as Promise<{ exercise_templates: number; routines: number; workouts: number; body_measurements: number }>
 }
 
 export async function triggerIncrementalHevySync(): Promise<{
   updated: number
   deleted: number
+  routines?: number
 }> {
-  const { data: { session } } = await supabase.auth.getSession()
-  const res = await fetch(
-    `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/hevy-incremental-sync`,
-    {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${session?.access_token}`,
-        'Content-Type': 'application/json',
-      },
-    }
-  )
-  if (!res.ok) await throwEdgeFunctionError(res)
-  return res.json()
+  return postEdge('hevy-incremental-sync') as Promise<{ updated: number; deleted: number; routines?: number }>
+}
+
+// Writes go through hevy-api (Hevy stays the source of truth; the function
+// upserts the local mirror from Hevy's own response).
+export async function callHevyApi(action: string, payload: unknown): Promise<unknown> {
+  return postEdge('hevy-api', { action, payload })
 }
 
 // ─── Routines ─────────────────────────────────────────────────────────────────
+// Hevy's public API has no routine DELETE endpoint (checked against its
+// published OpenAPI, 2026-09-27: /v1/routines has GET/POST, /{id} GET/PUT).
+// A routine is deleted in the Hevy app and disappears here on the next Sync,
+// which prunes local routines Hevy no longer returns.
 
 export async function fetchHevyRoutines(): Promise<HevyRoutine[]> {
-  const { data: routines, error: rErr } = await supabase
-    .from('hevy_routines')
-    .select('*')
-    .order('hevy_updated_at', { ascending: false })
-  if (rErr) throw rErr
-  if (!routines?.length) return []
+  const routines = await fetchAllPages<HevyRoutine>((f, t) =>
+    supabase.from('hevy_routines').select('*').order('hevy_updated_at', { ascending: false }).order('id').range(f, t))
+  if (!routines.length) return []
 
-  const routineIds = routines.map(r => r.id)
+  const exerciseList = await fetchByIds<HevyRoutineExercise>(routines.map(r => r.id), (part, f, t) =>
+    supabase.from('hevy_routine_exercises').select('*').in('hevy_routine_id', part).order('index').order('id').range(f, t))
 
-  const { data: exercises, error: eErr } = await supabase
-    .from('hevy_routine_exercises')
-    .select('*')
-    .in('hevy_routine_id', routineIds)
-    .order('index')
-  if (eErr) throw eErr
-
-  const exerciseList: HevyRoutineExercise[] = exercises ?? []
-  const exerciseIds = exerciseList.map(e => e.id)
-
+  const sets = await fetchByIds<HevyRoutineSet>(exerciseList.map(e => e.id), (part, f, t) =>
+    supabase.from('hevy_routine_sets').select('*').in('hevy_routine_exercise_id', part).order('index').order('id').range(f, t))
   const setMap = new Map<string, HevyRoutineSet[]>()
-  if (exerciseIds.length > 0) {
-    const { data: sets, error: sErr } = await supabase
-      .from('hevy_routine_sets')
-      .select('*')
-      .in('hevy_routine_exercise_id', exerciseIds)
-      .order('index')
-    if (sErr) throw sErr
-    for (const s of (sets ?? []) as HevyRoutineSet[]) {
-      const bucket = setMap.get(s.hevy_routine_exercise_id) ?? []
-      bucket.push(s)
-      setMap.set(s.hevy_routine_exercise_id, bucket)
-    }
-  }
-
-  for (const ex of exerciseList) {
-    ex.sets = setMap.get(ex.id) ?? []
+  for (const s of sets) {
+    const bucket = setMap.get(s.hevy_routine_exercise_id) ?? []
+    bucket.push(s)
+    setMap.set(s.hevy_routine_exercise_id, bucket)
   }
 
   const exercisesByRoutine = new Map<string, HevyRoutineExercise[]>()
-  for (const ex of exerciseList) {
+  for (const ex of [...exerciseList].sort((a, b) => a.index - b.index)) {
+    ex.sets = (setMap.get(ex.id) ?? []).sort((a, b) => a.index - b.index)
     const bucket = exercisesByRoutine.get(ex.hevy_routine_id) ?? []
     bucket.push(ex)
     exercisesByRoutine.set(ex.hevy_routine_id, bucket)
   }
 
-  // Fetch folders
-  const folderIds = [...new Set(routines.map(r => r.folder_id).filter(Boolean) as number[])]
-  const folderMap = new Map<number, { id: number; title: string }>()
+  const folderIds = [...new Set(routines.map(r => r.folder_id).filter((id): id is number => id != null))]
+  const folderMap = new Map<number, HevyRoutine['folder']>()
   if (folderIds.length > 0) {
     const { data: folders, error: fErr } = await supabase
       .from('hevy_routine_folders')
@@ -605,37 +465,33 @@ export async function fetchHevyRoutines(): Promise<HevyRoutine[]> {
       .in('id', folderIds)
     if (fErr) throw fErr
     for (const f of (folders ?? []) as { id: number; title: string }[]) {
-      folderMap.set(f.id, f)
+      folderMap.set(f.id, f as HevyRoutine['folder'])
     }
   }
 
   return routines.map(r => ({
     ...r,
     exercises: exercisesByRoutine.get(r.id) ?? [],
-    folder: r.folder_id ? (folderMap.get(r.folder_id) as HevyRoutine['folder']) : undefined,
+    folder: r.folder_id != null ? folderMap.get(r.folder_id) : undefined,
   }))
 }
 
 // ─── Exercise Templates ───────────────────────────────────────────────────────
+// hevy-initial-sync imports Hevy's whole library, so both reads page: past
+// 1,000 rows the end of the alphabet used to vanish from Exercises, the log
+// form and routine search.
 
 export async function fetchHevyExerciseTemplates(): Promise<HevyExerciseTemplate[]> {
-  const { data: templates, error: tErr } = await supabase
-    .from('hevy_exercise_templates')
-    .select('*')
-    .order('title')
-  if (tErr) throw tErr
-  if (!templates?.length) return []
-
-  const templateIds = templates.map(t => t.id)
-
-  const { data: muscles, error: mErr } = await supabase
-    .from('hevy_exercise_template_muscles')
-    .select('exercise_template_id, muscle_group')
-    .in('exercise_template_id', templateIds)
-  if (mErr) throw mErr
+  const [templates, muscles] = await Promise.all([
+    fetchAllPages<HevyExerciseTemplate>((f, t) =>
+      supabase.from('hevy_exercise_templates').select('*').order('title').order('id').range(f, t)),
+    fetchAllPages<{ id: string; exercise_template_id: string; muscle_group: string }>((f, t) =>
+      supabase.from('hevy_exercise_template_muscles').select('id, exercise_template_id, muscle_group').order('id').range(f, t)),
+  ])
+  if (!templates.length) return []
 
   const musclesByTemplate = new Map<string, string[]>()
-  for (const m of (muscles ?? []) as { exercise_template_id: string; muscle_group: string }[]) {
+  for (const m of muscles) {
     const bucket = musclesByTemplate.get(m.exercise_template_id) ?? []
     bucket.push(m.muscle_group)
     musclesByTemplate.set(m.exercise_template_id, bucket)
@@ -645,35 +501,6 @@ export async function fetchHevyExerciseTemplates(): Promise<HevyExerciseTemplate
     ...t,
     secondary_muscle_groups: musclesByTemplate.get(t.id) ?? [],
   }))
-}
-
-// ─── Hevy API (write operations via Edge Function) ────────────────────────────
-
-export async function callHevyApi(action: string, payload: unknown): Promise<unknown> {
-  const { data: { session } } = await supabase.auth.getSession()
-  const res = await fetch(
-    `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/hevy-api`,
-    {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${session?.access_token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ action, payload }),
-    }
-  )
-  if (!res.ok) await throwEdgeFunctionError(res)
-  return res.json()
-}
-
-// ─── Delete routine from local DB only (no Hevy API delete exists) ────────────
-
-export async function deleteHevyRoutineLocal(id: string): Promise<void> {
-  const { error } = await supabase
-    .from('hevy_routines')
-    .delete()
-    .eq('id', id)
-  if (error) throw error
 }
 
 // ─── Routine Folders ──────────────────────────────────────────────────────────

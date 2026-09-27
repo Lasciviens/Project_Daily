@@ -130,6 +130,29 @@ for (const [label, rows, expected] of cases) {
     [round(aiNights(rev)[0].hours), round(computeSleepSummary(rev)[0].total)], [expected, expected])
 }
 
+// ─── The manual-night contract (audit T36) ───────────────────────────────────
+// The web app's rule: a night with a manual entry uses ONLY the manual rows
+// (it is a deliberate correction), filed under the night date the user chose.
+// These assertions pin the web side. The edge copies (ai-proxy
+// computeSleepNights, phone-gateway computeSleepNightsGw) read only rows with
+// sleepStart/sleepEnd, so they don't see manual rows at all — reported below
+// as a known divergence (not a failure) until those functions adopt the rule.
+{
+  const manualRows = [
+    { id: 'm1', metric_name: 'sleep_analysis', date: '2026-07-20', source: 'manual', recorded_at: '2026-07-20T06:00:00Z', value: { value: 'Deep', qty: 1.2, source: 'manual' } },
+    { id: 'm2', metric_name: 'sleep_analysis', date: '2026-07-20', source: 'manual', recorded_at: '2026-07-20T06:00:01Z', value: { value: 'Core', qty: 4.8, source: 'manual' } },
+    { id: 'm3', metric_name: 'sleep_analysis', date: '2026-07-20', source: 'manual', recorded_at: '2026-07-20T06:00:02Z', value: { value: 'REM', qty: 2.0, source: 'manual' } },
+  ]
+  const watch = row(at('20', '02:00:00'), at('20', '06:00:00'), 4.0)
+  const web = computeSleepSummary([watch, ...manualRows])
+  check('manual  · the manual entry replaces the Watch night', [web.length, round(web[0].total)], [1, 8])
+  check('manual  · filed under the night the user picked', web[0].date, '2026-07-20')
+  const ai = aiNights([watch, ...manualRows])
+  if (ai.length !== 1 || round(ai[0].hours) !== 8) {
+    console.log(`  ! known divergence: the edge copies report ${ai.map(n => `${n.date} ${n.hours}h`).join(', ') || 'no night'} for a manually corrected 8h night (they ignore manual rows).`)
+  }
+}
+
 console.log(`\n${passed} passed, ${failures.length} failed`)
 if (failures.length) {
   console.log('\nFailures:')

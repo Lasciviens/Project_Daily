@@ -1,16 +1,19 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useStravaActivities } from '../hooks/useStravaActivities'
 import { useStravaStatus } from '../hooks/useTrainingSessions'
 import { formatDurationSeconds as formatDuration } from '../../../shared/utils/formatDuration'
 import type { StravaActivity } from '../types.hevy'
 import { Activity, Gauge, Heart, MapPin, Mountain, Timer } from 'lucide-react'
-import { Card, EmptyState, Skeleton, StatTile } from '../../../shared/ui'
+import { Card, EmptyState, SegmentedControl, Skeleton, StatTile } from '../../../shared/ui'
 import { STRAVA_ORANGE, STRAVA_TYPE_LABEL } from '../stravaMeta'
 import { StravaTypeIcon } from './StravaIcons'
 import { fmtDateEnGB } from '../../../shared/utils/enGBDate'
 
 type ActivityType = 'all' | 'run' | 'cycling' | 'walk' | 'swim' | 'other'
+type Window = '30' | '90' | '365'
+
+const WINDOW_LABEL: Record<Window, string> = { '30': 'Last 30 days', '90': 'Last 90 days', '365': 'Last 12 months' }
 
 const TYPE_FILTERS: ActivityType[] = ['all', 'run', 'cycling', 'walk', 'swim', 'other']
 
@@ -63,10 +66,20 @@ function ActivityCard({ activity }: { activity: StravaActivity }) {
 
 export function StravaTab() {
   const [filterType, setFilterType] = useState<ActivityType>('all')
+  // The totals cover a named window — they used to sum whatever the latest
+  // 50 rows happened to be and read like a lifetime total.
+  const [period, setPeriod] = useState<Window>('30')
+  const from = useMemo(() => {
+    const d = new Date()
+    d.setHours(0, 0, 0, 0)
+    d.setDate(d.getDate() - Number(period) + 1)
+    return d.toISOString()
+  }, [period])
 
   const { data: status } = useStravaStatus()
   const { data: activities = [], isLoading } = useStravaActivities({
-    limit: 50,
+    limit: 500,
+    from,
     type: filterType === 'all' ? undefined : filterType,
   })
 
@@ -75,12 +88,18 @@ export function StravaTab() {
 
   return (
     <div className="space-y-4">
-      {/* Stats strip */}
+      <SegmentedControl<Window>
+        size="sm"
+        value={period}
+        onChange={setPeriod}
+        options={(Object.keys(WINDOW_LABEL) as Window[]).map(w => ({ value: w, label: WINDOW_LABEL[w] }))}
+      />
+
       {activities.length > 0 && (
         <div className="grid max-w-xl grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3">
-          <StatTile label="Activities" value={activities.length} />
-          <StatTile label="Distance" value={totalDistanceKm.toFixed(1)} unit="km" />
-          <StatTile label="Duration" value={formatDuration(totalDurationSec)} />
+          <StatTile label="Activities" value={activities.length} hint={WINDOW_LABEL[period]} />
+          <StatTile label="Distance" value={totalDistanceKm.toFixed(1)} unit="km" hint={WINDOW_LABEL[period]} />
+          <StatTile label="Duration" value={formatDuration(totalDurationSec)} hint={WINDOW_LABEL[period]} />
         </div>
       )}
 
@@ -110,8 +129,8 @@ export function StravaTab() {
         <EmptyState
           bordered
           icon={<Activity />}
-          title="No Strava activities yet"
-          description={status?.connected ? 'Sync from Developer → Connections.' : 'Connect Strava in Developer → Connections.'}
+          title={`No Strava activities · ${WINDOW_LABEL[period].toLowerCase()}`}
+          description={status?.connected ? 'Pick a longer window, or sync from Developer → Connections.' : 'Connect Strava in Developer → Connections.'}
           action={<Link to="/developer?tab=connections" className="text-meta font-semibold text-accent-600">Open Connections</Link>}
         />
       ) : (

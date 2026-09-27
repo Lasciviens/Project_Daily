@@ -5,7 +5,7 @@
 
 import type { ProgressSetRow } from '../progressAggregate'
 import type { CanonicalExerciseSession, CanonicalSet, SessionLoadStructure, ProgressMetricKind } from './types'
-import { selectRepresentativeSet, totalQuantity } from './metricStrategy'
+import { selectRepresentativeSet } from './metricStrategy'
 
 /** A 2-set heavier-then-lighter session is ALWAYS a valid top-set/backoff
  *  shape by definition (there is only one possible "rest" value) —
@@ -62,18 +62,6 @@ export function buildCanonicalSessions(sets: readonly ProgressSetRow[], exercise
   return out.sort((a, b) => a.date.localeCompare(b.date) || a.workoutId.localeCompare(b.workoutId))
 }
 
-/** @deprecated kept only as a thin wrapper for any not-yet-migrated caller;
- *  new code should use `totalQuantity` from `metricStrategy.ts` directly,
- *  which is metric-aware (reps for rep-based kinds, duration/distance for
- *  those kinds) and returns null — never a partial sum — the moment any
- *  set is missing the metric's own quantity. */
-export function totalComparableReps(session: CanonicalExerciseSession): number | null {
-  if (session.comparableWorkingSets.length === 0) return null
-  const values = session.comparableWorkingSets.map(s => s.reps)
-  if (values.some(v => v == null)) return null
-  return (values as number[]).reduce((a, b) => a + b, 0)
-}
-
 /** The session's representative set for this metric — real metric-strategy
  *  dispatch (`metricStrategy.ts`), never a naive "most reps wins": est1rm
  *  respects the <=12-rep e1RM ceiling, assistedWeight picks the LOWEST
@@ -84,19 +72,4 @@ export function totalComparableReps(session: CanonicalExerciseSession): number |
  *  must treat that as NOT_EVALUATED, never as a comparison against zero. */
 export function bestComparableSet(session: CanonicalExerciseSession, metricKind: ProgressMetricKind): CanonicalSet | null {
   return selectRepresentativeSet(session.comparableWorkingSets, session.loadStructure, metricKind)
-}
-
-/** The session's representative load for display — never a fabricated
- *  average across differing loads. Only meaningful for weight-based metric
- *  kinds; null for reps/duration/distance sessions, which have no load axis. */
-export function representativeWeightKg(session: CanonicalExerciseSession, metricKind: ProgressMetricKind): number | null {
-  return bestComparableSet(session, metricKind)?.weightKg ?? null
-}
-
-/** The session's total comparable quantity for this metric (Σ reps, Σ
- *  duration, or Σ distance, matching the metric kind) — null the moment
- *  any comparable set is missing that quantity, or the session is
- *  mixed_load (a caller-level concern; this function is metric-purity only). */
-export function totalForMetric(session: CanonicalExerciseSession, metricKind: ProgressMetricKind): number | null {
-  return totalQuantity(session.comparableWorkingSets, metricKind)
 }

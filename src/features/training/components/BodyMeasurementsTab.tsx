@@ -1,180 +1,122 @@
 import { useState, useMemo } from 'react'
 import { flushSync } from 'react-dom'
-import { ChevronDown, Maximize2, Minimize2, Pencil, Plus, Ruler } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
+import { ChevronDown, ChevronRight, Maximize2, Minimize2, Pencil, Plus, Ruler } from 'lucide-react'
 import { useHevyBodyMeasurements } from '../hooks/useHevyBodyMeasurements'
-import { Button, Card, EmptyState, IconButton, Skeleton, useChartColors } from '../../../shared/ui'
+import { useBodyweightSeries } from '../../health/hooks/useBodyweight'
+import { BODYWEIGHT_SOURCE_LABEL, type BodyweightPoint } from '../../health/bodyweight'
+import { TOOLTIP_BOX, useAxisTick } from '../../../shared/components/charts/chartKit'
+import { InfoBubble } from '../../../shared/components/InfoBubble'
+import { Button, Card, EmptyState, IconButton, SegmentedControl, Skeleton, useChartColors } from '../../../shared/ui'
+import { daysAgoStr, todayStr } from '../../../shared/utils/dateUtils'
+import { fmtDateEnGB } from '../../../shared/utils/enGBDate'
 import { MeasurementModal } from './BodyMeasurementModal'
 import { DETAIL_FIELDS, HERO_FIELDS, fmtMeasDate as fmtDate } from '../bodyMeasurementFields'
 import type { HevyBodyMeasurement } from '../types.hevy'
 
-// ─── Weight Chart ─────────────────────────────────────────────────────────────
+// ─── Weight trend ─────────────────────────────────────────────────────────────
+// The ONE bodyweight series (Hevy log > smart scale > Apple Health), on a
+// real time axis. It replaces a hand-drawn SVG that spaced readings by index
+// (a three-week gap looked like a day), drew body fat by index onto the
+// weight chart's positions (so fat % sat on the wrong dates) and read only
+// the Hevy log — a different "current weight" than Health and Progress.
 
-function WeightChart({ measurements, expanded, onToggleExpand }: {
-  measurements: HevyBodyMeasurement[]
-  expanded: boolean
-  onToggleExpand: () => void
-}) {
-  const c = useChartColors()
-  const chartData = useMemo(() => {
-    return [...measurements]
-      .filter(m => m.weight_kg != null)
-      .sort((a, b) => a.date.localeCompare(b.date))
-      .slice(-30)
-  }, [measurements])
+type Metric = 'weight' | 'fat'
+const TREND_DAYS = 180
 
-  const fatData = useMemo(() => {
-    return [...measurements]
-      .filter(m => m.fat_percent != null)
-      .sort((a, b) => a.date.localeCompare(b.date))
-      .slice(-30)
-  }, [measurements])
+interface TrendRow { t: number; date: string; value: number; source: BodyweightPoint['source'] }
 
-  if (chartData.length < 2) return null
-
-  const W = 400
-  const H = 120
-  const PAD = { top: 10, right: 10, bottom: 20, left: 36 }
-  const innerW = W - PAD.left - PAD.right
-  const innerH = H - PAD.top - PAD.bottom
-
-  const weights = chartData.map(m => m.weight_kg as number)
-  const minW = Math.min(...weights)
-  const maxW = Math.max(...weights)
-  const rangeW = maxW - minW || 1
-  const paddedMin = minW - rangeW * 0.1
-  const paddedMax = maxW + rangeW * 0.1
-  const paddedRange = paddedMax - paddedMin
-
-  function xFrac(i: number, len: number): number {
-    return len === 1 ? 0.5 : i / (len - 1)
-  }
-  function toX(frac: number): number { return PAD.left + frac * innerW }
-  function toY(val: number, min: number, range: number): number {
-    return PAD.top + innerH - ((val - min) / range) * innerH
-  }
-
-  const weightPath = chartData
-    .map((m, i) => {
-      const x = toX(xFrac(i, chartData.length))
-      const y = toY(m.weight_kg as number, paddedMin, paddedRange)
-      return `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`
-    })
-    .join(' ')
-
-  // Fat percent on secondary axis (only if enough data)
-  let fatPath: string | null = null
-  if (fatData.length >= 2) {
-    const fats = fatData.map(m => m.fat_percent as number)
-    const minF = Math.min(...fats)
-    const maxF = Math.max(...fats)
-    const rangeF = maxF - minF || 1
-    const pMinF = minF - rangeF * 0.1
-    const pMaxF = maxF + rangeF * 0.1
-    const pRangeF = pMaxF - pMinF
-
-    // Map fat data to same x positions as weight data (approx by index)
-    fatPath = fatData
-      .map((m, i) => {
-        const x = toX(xFrac(i, fatData.length))
-        const y = toY(m.fat_percent as number, pMinF, pRangeF)
-        return `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`
-      })
-      .join(' ')
-  }
-
-  const firstLabel = chartData[0].date.slice(5).replace('-', '/')
-  const lastLabel  = chartData[chartData.length - 1].date.slice(5).replace('-', '/')
-
-  // Headline numbers for the compact (narrow-container) presentation.
-  const lastW  = chartData[chartData.length - 1].weight_kg as number
-  const firstW = chartData[0].weight_kg as number
-  const deltaW = Math.round((lastW - firstW) * 10) / 10
-
-  // DENSITY PILOT (Body = all strategies): this card is itself a @container.
-  // In a narrow grid cell it renders as a HEADLINE + sparkline (number-first,
-  // Tufte-style); once its own box is ≥28rem it becomes the full chart with
-  // axes and legend. Clicking the card zoom-morphs it to full-width via the
-  // View Transitions API (see BodyMeasurementsTab).
+function TrendTooltip({ active, payload, unit }: { active?: boolean; payload?: { payload: TrendRow }[]; unit: string }) {
+  const p = active ? payload?.[0]?.payload : undefined
+  if (!p) return null
   return (
-    <button
-      type="button"
-      onClick={onToggleExpand}
-      style={{ viewTransitionName: 'body-weight-card' }}
-      className="card-interactive @container w-full cursor-pointer overflow-hidden p-4 text-left"
-      aria-label={expanded ? 'Shrink weight chart' : 'Expand weight chart'}
-    >
-      <div className="mb-2 flex items-center justify-between">
-        <p className="section-label">Weight over time</p>
-        {expanded
-          ? <Minimize2 className="h-3.5 w-3.5 text-fg-faint" aria-hidden />
-          : <Maximize2 className="h-3.5 w-3.5 text-fg-faint" aria-hidden />}
+    <div className={TOOLTIP_BOX}>
+      <p className="font-medium text-fg-muted">{fmtDate(p.date)}</p>
+      <p className="font-semibold text-fg">{p.value.toFixed(1)} {unit}</p>
+      <p className="text-fg-muted">{BODYWEIGHT_SOURCE_LABEL[p.source]}</p>
+    </div>
+  )
+}
+
+function WeightTrendCard({ expanded, onToggleExpand }: { expanded: boolean; onToggleExpand: () => void }) {
+  const c = useChartColors()
+  const tick = useAxisTick()
+  const [metric, setMetric] = useState<Metric>('weight')
+  const today = todayStr()
+  const { data: points = [], isLoading } = useBodyweightSeries(daysAgoStr(TREND_DAYS), today)
+
+  const rows: TrendRow[] = useMemo(() => points
+    .map(p => ({ t: new Date(`${p.date}T12:00:00`).getTime(), date: p.date, value: (metric === 'weight' ? p.kg : p.fatPct) as number, source: metric === 'weight' ? p.source : (p.fatSource ?? p.source) }))
+    .filter(r => r.value != null && Number.isFinite(r.value)), [points, metric])
+
+  if (isLoading) return <Skeleton rounded="rounded-card" className="h-48" />
+  const unit = metric === 'weight' ? 'kg' : '%'
+  const latest = rows[rows.length - 1]
+  const first = rows[0]
+  const delta = latest && first && rows.length > 1 ? Math.round((latest.value - first.value) * 10) / 10 : null
+
+  return (
+    <Card className="@container flex flex-col gap-2" style={{ viewTransitionName: 'body-weight-card' }}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="section-label flex items-center gap-1">
+          {metric === 'weight' ? 'Weight' : 'Body fat'} · last 6 months
+          <InfoBubble label="Where these readings come from">
+            One series from three sources. On a day with more than one, a weight typed into Hevy wins, then the smart
+            scale, then Apple Health. The same numbers Health and Progress show.
+          </InfoBubble>
+        </p>
+        <div className="flex items-center gap-1">
+          <SegmentedControl<Metric>
+            size="sm"
+            value={metric}
+            onChange={setMetric}
+            options={[{ value: 'weight', label: 'Weight' }, { value: 'fat', label: 'Body fat' }]}
+          />
+          <IconButton label={expanded ? 'Shrink chart' : 'Expand chart'} onClick={onToggleExpand} className="hidden @md:inline-flex">
+            {expanded ? <Minimize2 /> : <Maximize2 />}
+          </IconButton>
+        </div>
       </div>
 
-      {/* Compact tier — shown only while the container is narrow */}
-      <div className="flex items-baseline gap-2 @md:hidden">
-        <span className="text-kpi font-bold tabular-nums text-fg">{lastW}</span>
-        <span className="text-meta text-fg-muted">kg</span>
-        {/* A change in weight is a fact, not a verdict — no good/bad colour. */}
-        <span className="text-meta font-semibold tabular-nums text-fg-2">
-          {deltaW > 0 ? '▲' : deltaW < 0 ? '▼' : '—'} {Math.abs(deltaW)} kg
-        </span>
-      </div>
+      {latest ? (
+        <div className="flex flex-wrap items-baseline gap-2">
+          <span className="text-kpi font-bold tabular-nums text-fg">{latest.value.toFixed(1)}</span>
+          <span className="text-meta text-fg-muted">{unit} · {fmtDate(latest.date)} · {BODYWEIGHT_SOURCE_LABEL[latest.source]}</span>
+          {/* A change is a fact, not a verdict — no good/bad colour. */}
+          {delta != null && (
+            <span className="text-meta font-semibold tabular-nums text-fg-2">
+              {delta > 0 ? '▲' : delta < 0 ? '▼' : '—'} {Math.abs(delta)} {unit} since {fmtDate(first.date)}
+            </span>
+          )}
+        </div>
+      ) : (
+        <p className="text-body text-fg-muted">No {metric === 'weight' ? 'weight' : 'body-fat'} readings in the last 6 months.</p>
+      )}
 
-      <div className={expanded ? '' : '@md:block hidden'}>
-      {/* Expanded keeps the chart's own aspect ratio (viewBox scaling) and
-          caps at max-w-4xl — bigger, never stretched into a wall-to-wall
-          smear. Compact keeps the original fixed-height fit. */}
-      <svg
-        viewBox={`0 0 ${W} ${H}`}
-        className={expanded ? 'w-full max-w-4xl h-auto' : 'w-full'}
-        style={expanded ? undefined : { height: H }}
-        aria-hidden="true"
-      >
-        {/* Y-axis labels */}
-        <text x={PAD.left - 4} y={PAD.top + 4} textAnchor="end" fontSize={9} fill={c.axis}>{paddedMax.toFixed(1)}</text>
-        <text x={PAD.left - 4} y={PAD.top + innerH} textAnchor="end" fontSize={9} fill={c.axis}>{paddedMin.toFixed(1)}</text>
-
-        {/* Grid lines */}
-        <line x1={PAD.left} y1={PAD.top} x2={PAD.left + innerW} y2={PAD.top} stroke={c.grid} strokeWidth={1} />
-        <line x1={PAD.left} y1={PAD.top + innerH / 2} x2={PAD.left + innerW} y2={PAD.top + innerH / 2} stroke={c.grid} strokeWidth={1} />
-        <line x1={PAD.left} y1={PAD.top + innerH} x2={PAD.left + innerW} y2={PAD.top + innerH} stroke={c.grid} strokeWidth={1} />
-
-        {/* Fat % line (dashed, secondary) */}
-        {fatPath && (
-          <path d={fatPath} fill="none" stroke={c.series[5]} strokeWidth={1.5} strokeDasharray="4 3" />
-        )}
-
-        {/* Weight line */}
-        <path d={weightPath} fill="none" stroke={c.series[0]} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
-
-        {/* Dots */}
-        {chartData.map((m, i) => {
-          const x = toX(xFrac(i, chartData.length))
-          const y = toY(m.weight_kg as number, paddedMin, paddedRange)
-          return (
-            <circle key={m.id} cx={x} cy={y} r={2.5} fill={c.series[0]} />
-          )
-        })}
-
-        {/* X-axis labels */}
-        <text x={toX(0)} y={H - 3} textAnchor="start" fontSize={9} fill={c.axis}>{firstLabel}</text>
-        <text x={toX(1)} y={H - 3} textAnchor="end" fontSize={9} fill={c.axis}>{lastLabel}</text>
-      </svg>
-
-      {fatPath && (
-        <div className="mt-1 flex gap-4 text-micro text-fg-muted">
-          <span className="flex items-center gap-1">
-            <span className="inline-block h-0.5 w-4 rounded" style={{ background: c.series[0] }} />
-            Weight (kg)
-          </span>
-          <span className="flex items-center gap-1">
-            <span className="inline-block w-4 border-t border-dashed" style={{ borderColor: c.series[5] }} />
-            Body fat (%)
-          </span>
+      {rows.length >= 2 && (
+        <div className={expanded ? 'aspect-[3/1] w-full max-w-4xl' : 'h-40 w-full max-w-2xl'}>
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={rows} margin={{ top: 6, right: 8, left: -12, bottom: 0 }}>
+              <CartesianGrid stroke={c.grid} vertical={false} />
+              <XAxis
+                dataKey="t" type="number" scale="time" domain={['dataMin', 'dataMax']}
+                tickFormatter={v => fmtDateEnGB(new Date(v), { day: 'numeric', month: 'short' })}
+                tick={tick} tickLine={false} axisLine={false} minTickGap={24}
+              />
+              {/* A trend line may zoom (THEME.md §2.5); the ticks are real values. */}
+              <YAxis domain={['auto', 'auto']} tick={tick} tickLine={false} axisLine={false} width={44} tickFormatter={v => Number(v).toFixed(metric === 'weight' ? 0 : 1)} />
+              <Tooltip cursor={false} content={<TrendTooltip unit={unit} />} wrapperStyle={{ pointerEvents: 'none' }} />
+              <Line type="monotone" dataKey="value" stroke={c.series[0]} strokeWidth={2} dot={{ r: 2.5, fill: c.series[0] }} isAnimationActive={false} />
+            </LineChart>
+          </ResponsiveContainer>
         </div>
       )}
-      </div>
-    </button>
+
+      <Link to="/health" className="flex min-h-[44px] items-center gap-1 self-start text-meta font-semibold text-accent-600">
+        Full trend in Health <ChevronRight className="h-3.5 w-3.5" aria-hidden />
+      </Link>
+    </Card>
   )
 }
 
@@ -189,7 +131,7 @@ function LatestHeroCard({
     <Card>
       <div className="mb-2 flex items-start justify-between gap-3">
         <div>
-          <p className="section-label">Latest</p>
+          <p className="section-label">Latest entry</p>
           <p className="mt-0.5 text-body font-semibold text-fg-2">{fmtDate(m.date)}</p>
         </div>
         <IconButton label="Edit this measurement" onClick={onEdit} className="-mr-2 -mt-2"><Pencil /></IconButton>
@@ -323,7 +265,7 @@ export function BodyMeasurementsTab() {
         <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-3 items-start">
           <LatestHeroCard m={latest} onEdit={() => setEditTarget(latest)} />
           <div className={chartExpanded ? 'col-span-full' : '@3xl:col-span-2'}>
-            <WeightChart measurements={measurements} expanded={chartExpanded} onToggleExpand={toggleChart} />
+            <WeightTrendCard expanded={chartExpanded} onToggleExpand={toggleChart} />
           </div>
 
           {/* History */}
@@ -344,7 +286,6 @@ export function BodyMeasurementsTab() {
         key={logKey}
         isOpen={logOpen}
         onClose={() => setLogOpen(false)}
-        existing={measurements}
       />
 
       {/* Edit existing */}

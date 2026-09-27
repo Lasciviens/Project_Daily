@@ -17,6 +17,9 @@ const {
   computeSleepSummary,
   extractSleepSessions,
   estimateSleepStageProportions,
+  sleepStageShares,
+  manualNightKeys,
+  sleepSourcesByNight,
 } = require('../src/features/health/healthAggregate.ts')
 
 let passed = 0
@@ -248,6 +251,39 @@ check('§8.2 a night with only Awake time still reports',
   computeSleepSummary([segment('Awake', 0.3)]).length, 1)
 check('§8.3 extractSleepSessions on an unknown night → empty',
   extractSleepSessions([session({ start: at('17', '02:00:00'), end: at('17', '06:00:00'), total: 4 })], '2026-01-01'), [])
+
+// ─── §9 Stage bar shares (H-05) ──────────────────────────────────────────────
+// The bar used to divide every stage, Awake included, by total SLEEP: core 4,
+// rem 1.5, deep 1, awake 0.8 drew 112% and clipped the Awake segment.
+{
+  const night = { date: '2026-07-17', core: 4, rem: 1.5, deep: 1, awake: 0.8, total: 6.5 }
+  const shares = sleepStageShares(night)
+  check('§9.1 the shares add up to 100%', round(shares.reduce((a, s) => a + s.pct, 0)), 100)
+  check('§9.2 Awake is a share of the time in the sleep window',
+    round(shares.find(s => s.key === 'awake').pct), round(0.8 / 7.3 * 100))
+  check('§9.3 no unstaged share when the stages make up the total',
+    shares.find(s => s.key === 'unstaged').hours, 0)
+  // Apple's plain "Asleep" (no stage) counts in total sleep but in no stage.
+  const plain = { date: 'x', core: 2, rem: 0, deep: 0, awake: 0, total: 5 }
+  const p = sleepStageShares(plain)
+  check('§9.4 unstaged sleep gets its own share, so the bar is still whole',
+    [round(p.find(s => s.key === 'unstaged').hours), round(p.reduce((a, s) => a + s.pct, 0))], [3, 100])
+  check('§9.5 an empty night gives 0% everywhere, never NaN',
+    sleepStageShares({ date: 'x', core: 0, rem: 0, deep: 0, awake: 0, total: 0 }).every(s => s.pct === 0), true)
+}
+
+// ─── §10 Manual nights and per-night sources (H-20) ──────────────────────────
+// The sources map was keyed by the stored `date` while the bars use the wake
+// day; a night whose session was stored under the previous date got its
+// "Manual"/source label on the wrong bar.
+{
+  const watch = session({ start: at('16', '23:00:00'), end: at('17', '06:30:00'), total: 7, date: '2026-07-16' })
+  const sources = sleepSourcesByNight([watch])
+  check('§10.1 sources are keyed by the wake day', [...sources.keys()], ['2026-07-17'])
+  const manual = segment('Core', 5, { date: '2026-07-18', source: 'manual' })
+  check('§10.2 manual nights are listed by their night key', [...manualNightKeys([watch, manual])], ['2026-07-18'])
+  check('§10.3 a manual row is labelled Manual', [...sleepSourcesByNight([manual]).get('2026-07-18')], ['Manual'])
+}
 
 // ─── Report ──────────────────────────────────────────────────────────────────
 console.log(`\n${passed} passed, ${failures.length} failed`)

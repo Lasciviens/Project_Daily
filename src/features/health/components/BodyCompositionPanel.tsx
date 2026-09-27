@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { InfoBubble } from '../../../shared/components/InfoBubble'
 import { useBodyCompositionReports } from '../hooks/useBodyCompositionReports'
-import { latestAndPrevious, reportsInWindow, BODY_COMP_WINDOWS, type BodyCompWindow } from '../bodyCompositionAggregate'
+import { latestAndPrevious, reportsInWindow, BODY_COMP_FIELDS, BODY_COMP_WINDOWS, type BodyCompWindow } from '../bodyCompositionAggregate'
 import { BodyCompStatGrid } from './BodyCompStatGrid'
 import { BodyCompTrendChart } from './BodyCompTrendChart'
 import { BodyCompHistoryTable } from './BodyCompHistoryTable'
@@ -10,17 +10,18 @@ import { fmtDateTimeEnGB } from '../../../shared/utils/enGBDate'
 
 // Smart-scale "body composition analysis report" scans (migration 085,
 // imported via phone-gateway's import_body_composition action — see
-// CLAUDE.md's iPhone surface section). Rendered inside BodySection, its OWN
-// card, deliberately separate from the Apple-Health-sourced weight/fat/BMI/
-// lean-mass mini-charts above it: a DIFFERENT source (a dedicated smart
-// scale, not Health Auto Export or Hevy) with a much richer field set (14
-// measured values vs. 4), never merged or joined with either per CLAUDE.md's
-// explicit rule.
+// CLAUDE.md's iPhone surface section). Weight and body fat % are NOT repeated
+// here: the scale's readings already feed the ONE weight and body-fat charts
+// above (bodyweight.ts merges scale, Hevy and Apple Health), and two "Weight"
+// charts in one card disagreed (H-12). This panel keeps what only the scale
+// measures; the full scan table below still lists every field.
+const SCALE_ONLY_FIELDS = BODY_COMP_FIELDS.filter(f => f.key !== 'weight_kg' && f.key !== 'body_fat_percent')
+
 export function BodyCompositionPanel() {
   const { data: reports = [], isLoading } = useBodyCompositionReports()
   const [window, setWindow] = useState<BodyCompWindow>('90d')
 
-  if (isLoading) return null
+  if (isLoading) return <div className="h-24 rounded-row skeleton" aria-hidden />
   if (reports.length === 0) {
     return (
       <div className="flex flex-col gap-2 border-t border-line pt-3">
@@ -40,9 +41,9 @@ export function BodyCompositionPanel() {
       <div className="flex items-center gap-1.5">
         <p className="section-label">Smart scale reports</p>
         <InfoBubble label="About smart scale reports">
-          Imported from a smart-scale report photo via the phone shortcut — a separate device from Apple Health and Hevy,
-          never merged with either. Averages and trend below use whichever period is selected; the stat cards always
-          compare the latest scan to the one right before it, regardless of the period.
+          Imported from a smart-scale report photo via the phone shortcut. The scale's weight and body fat % appear in the
+          weight and body-fat charts above; everything else it measures is here. Averages and trend below use whichever
+          period is selected; the stat cards always compare the latest scan to the one right before it.
         </InfoBubble>
       </div>
 
@@ -51,7 +52,7 @@ export function BodyCompositionPanel() {
         {' · '}{reports.length} scan{reports.length === 1 ? '' : 's'} total
       </p>
 
-      <BodyCompStatGrid latest={latest!} previous={previous} />
+      <BodyCompStatGrid latest={latest!} previous={previous} fields={SCALE_ONLY_FIELDS} />
 
       <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
         <p className="section-label">Trend</p>
@@ -62,7 +63,7 @@ export function BodyCompositionPanel() {
           options={BODY_COMP_WINDOWS.map(w => ({ value: w.key, label: w.label }))}
         />
       </div>
-      <BodyCompTrendChart reportsInWindow={windowed} />
+      <BodyCompTrendChart reportsInWindow={windowed} fields={SCALE_ONLY_FIELDS} />
 
       <BodyCompHistoryTable reports={reports} />
     </div>

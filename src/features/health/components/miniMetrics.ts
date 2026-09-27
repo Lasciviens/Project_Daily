@@ -1,4 +1,29 @@
-import type { MiniMetricConfig } from './MetricMiniCard'
+import type { Period } from './PeriodToggle'
+
+export interface MiniMetricConfig {
+  metric: string
+  title: string
+  unit: string
+  decimals: number
+  /** Shown in an info bubble next to the title, not as a permanent paragraph. */
+  description: string
+  // Shows how many times it happened on the viewed day alongside the main
+  // value — for metrics where "how many times" matters as much as the total
+  // (e.g. toothbrushing).
+  showTodayCount?: boolean
+  // Lists the time-of-day of each occurrence on the viewed day (e.g.
+  // "08:44, 23:03") — for metrics where WHEN it happened is useful.
+  showTodayTimes?: boolean
+  /** Show the reading against the median of your previous 60 nights instead
+   *  of the absolute value (how Apple shows wrist temperature). */
+  deviation?: boolean
+}
+
+export interface MiniMetricWindow {
+  from: string
+  to: string
+  period: Period
+}
 
 // Every HealthKit metric Health Auto Export actually sends us that doesn't
 // warrant its own full chart, grouped onto the section it's most conceptually
@@ -84,8 +109,11 @@ export const SLEEP_EXTRA_METRICS: MiniMetricConfig[] = [
     description: 'Apple’s nightly count of interruptions in your breathing — a screening signal, never a diagnosis.' },
   { metric: 'respiratory_rate', title: 'Respiratory Rate', unit: 'br/min', decimals: 1,
     description: 'Breaths per minute — mostly captured overnight by the Watch during sleep.' },
-  { metric: 'apple_sleeping_wrist_temperature', title: 'Wrist Temp', unit: '°C', decimals: 1,
-    description: 'Overnight skin temperature deviation — can flag illness or cycle changes.' },
+  // HealthKit stores the absolute overnight wrist temperature (~35 °C); Apple's
+  // own app shows it as a deviation from your baseline. The card does the
+  // same (H-15) rather than printing ~35 °C under a "deviation" label.
+  { metric: 'apple_sleeping_wrist_temperature', title: 'Wrist Temp', unit: '°C', decimals: 1, deviation: true,
+    description: 'Overnight wrist temperature compared with your usual night (the median of your previous 60 nights). A rise that lasts several nights can flag illness or cycle changes.' },
   // Removed 2026-09-24: sleeping_heart_rate (Fitbit-only, never a single row)
   // and skin_temperature (Fitbit's name for what Wrist Temp above already
   // shows from the Watch; last row 2026-08-29).
