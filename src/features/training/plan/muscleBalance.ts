@@ -110,8 +110,6 @@ export function leanTone(r: RatioRead): Tone {
   return r.lean === 'a' ? 'warn' : r.lean === 'b' ? 'info' : r.lean === 'balanced' ? 'success' : 'neutral'
 }
 
-export const isFlagged = (r: RatioRead) => r.lean === 'a'
-
 /** "34.5 push vs 18 pull sets/week". */
 export function sidesText(r: RatioRead): string {
   const m = PAIR_META[r.pair]

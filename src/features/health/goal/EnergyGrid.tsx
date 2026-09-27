@@ -37,7 +37,7 @@ export function EnergyGrid({ r, targetKcal, phase }: { r: EnergyReport; targetKc
         hint={planned != null ? <>Planned from your target: {signed(planned)}</> : undefined}
         info={phase === 'maintain' ? 'Logged intake − Apple burn: negative is a deficit, positive a surplus.' : undefined} />
       <Fact label="Expected change" value={r.expectedChangeKg != null ? signed(r.expectedChangeKg, 2) : '—'} unit="kg"
-        hint={`from the logged deficit over ${r.days} days`}
+        hint={`from the logged ${phase === 'cut' ? 'deficit' : phase === 'gain' ? 'surplus' : 'balance'} over ${r.days} days`}
         info={<>Deficit (or surplus) × days ÷ 7,700 kcal per kg. 7,700 kcal/kg is the classic figure (Hall, Int J Obes 2008). Pure fat holds ~9,400 kcal/kg and lean tissue much less, so the real figure varies; in the first weeks of a cut or gain more of the change is glycogen and water, which weighs more per kcal (Thomas et al., Metabolism 2013). Read it as ±15 %.</>} />
       <Fact label="Actual trend change" value={r.weight.changeKg != null ? signed(r.weight.changeKg, 2) : '—'} unit="kg" strong
         hint={r.weight.weighIns ? `least-squares line through ${r.weight.weighIns} weigh-ins` : 'no weigh-ins'}

@@ -12,8 +12,10 @@ const V = require('../src/features/health/vitalsReading.ts')
 
 let passed = 0
 const failures = []
+// Numbers and units are joined with a no-break space; compare them as spaces.
+const norm = v => JSON.stringify(v)?.replace(/\\u00a0|\u00a0/g, ' ')
 function check(label, actual, expected) {
-  if (JSON.stringify(actual) === JSON.stringify(expected)) passed++
+  if (norm(actual) === norm(expected)) passed++
   else failures.push(`${label}\n    expected ${JSON.stringify(expected)}\n    actual   ${JSON.stringify(actual)}`)
 }
 function ok(label, cond, detail) {
@@ -244,6 +246,8 @@ const row = (reading, key) => reading.rows.find(r => r.key === key)
   check('§13.3 fmtVital minus sign', V.fmtVital(-2.34, 1), '−2.3')
   check('§13.4 fmtSignedVital', [V.fmtSignedVital(0.04, 1), V.fmtSignedVital(-3, 0), V.fmtSignedVital(2, 0)], ['±0.0', '−3', '+2'])
   check('§13.5 thousands separator', V.fmtVital(1234.5, 0), '1,235')
+  check('§13.6 SpO₂ changes are in points (singular for 1)',
+    [V.displayChange(-1, V.VITAL_SPECS.spo2), V.displayChange(2, V.VITAL_SPECS.spo2), V.displayChange(-3, V.VITAL_SPECS.rhr)], ['−1 point', '+2 points', '−3 bpm'])
 }
 
 // ─── §14 A developing run inside a normal period ─────────────────────────────

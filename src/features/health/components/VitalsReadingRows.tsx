@@ -1,6 +1,6 @@
 import { InfoBubble } from '../../../shared/components/InfoBubble'
 import { TonePill, type Tone } from '../../../shared/ui'
-import { displayUsual, displayValue, fmtSignedVital, type VitalRow } from '../vitalsReading'
+import { displayChange, displayUsual, displayValue, type VitalRow } from '../vitalsReading'
 import { fmtDayMonth } from './healthFormat'
 
 // The stats of "What your numbers say": one row per signal — value · your
@@ -25,22 +25,27 @@ function basisText(row: VitalRow, to: string): string | null {
   if (row.value == null) return null
   if (row.basis === 'smoothed') return '7-day average'
   if (row.basis === 'latest') return row.valueDate ? `latest, ${fmtDayMonth(row.valueDate)}` : 'latest'
-  if (row.basis === 'period') return `average of ${row.readings} day${row.readings === 1 ? '' : 's'}`
+  if (row.basis === 'period') {
+    // Heart-rate recovery is one reading per workout, not per day.
+    const noun = row.spec.lookbackDays ? 'workout' : 'day'
+    if (row.readings === 1 && row.valueDate) return `1 ${noun}, ${fmtDayMonth(row.valueDate)}`
+    return `average of ${row.readings} ${noun}s`
+  }
   return row.valueDate && row.valueDate !== to ? `from ${fmtDayMonth(row.valueDate)}` : null
 }
 
 function changeText(row: VitalRow): string | null {
   if (row.deltaVsPrevious == null) return null
-  const unit = row.spec.unit === '%' ? ' pts' : ` ${row.spec.unit}`
-  return `${fmtSignedVital(row.deltaVsPrevious, row.spec.decimals)}${unit} ${row.previousLabel}`
+  return `${displayChange(row.deltaVsPrevious, row.spec)} ${row.previousLabel}`
 }
 
+/** "above on 2 of 7 days", "above on 2, below on 1 of 7 days". */
 function daysOff(row: VitalRow): string | null {
   if (row.daysChecked == null || !row.daysChecked) return null
   const parts: string[] = []
-  if (row.daysAbove) parts.push(`${row.daysAbove} above`)
-  if (row.daysBelow) parts.push(`${row.daysBelow} below`)
-  return parts.length ? `${parts.join(', ')} · of ${row.daysChecked} days` : null
+  if (row.daysAbove) parts.push(`above on ${row.daysAbove}`)
+  if (row.daysBelow) parts.push(`below on ${row.daysBelow}`)
+  return parts.length ? `${parts.join(', ')} of ${row.daysChecked} days` : null
 }
 
 function Label({ row }: { row: VitalRow }) {
@@ -78,11 +83,12 @@ export function VitalsReadingRows({ rows, to }: { rows: VitalRow[]; to: string }
           return (
             <li key={row.key} className="flex flex-col gap-1 py-2.5">
               <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-body"><Label row={row} /><Status row={row} /></div>
-              <p className="flex flex-wrap gap-x-2 text-meta tabular-nums text-fg-2">
-                <span><span className="font-semibold text-fg">{displayValue(row)}</span>{basis && <span className="text-fg-muted"> ({basis})</span>}</span>
-                <span className="text-fg-muted">· {row.referenceKind === 'population' ? 'typical' : 'your usual'} {displayUsual(row)}</span>
-                {change && <span className="text-fg-muted">· {change}</span>}
+              <p className="text-meta tabular-nums text-fg-2">
+                <span className="font-semibold text-fg">{displayValue(row)}</span>
+                {basis && <span className="text-fg-muted"> ({basis})</span>}
+                <span className="text-fg-muted"> · {row.referenceKind === 'population' ? 'typical' : 'your usual'} <span className="whitespace-nowrap">{displayUsual(row)}</span></span>
               </p>
+              {change && <p className="text-meta tabular-nums text-fg-muted">{change}</p>}
               <p className="text-meta text-fg-muted">{row.meaning}</p>
             </li>
           )
@@ -118,7 +124,14 @@ export function VitalsReadingRows({ rows, to }: { rows: VitalRow[]; to: string }
                   {row.referenceKind === 'population' && <span className="block text-meta text-fg-muted">typical</span>}
                 </td>
                 <td className="py-2.5 pr-3"><Status row={row} /></td>
-                <td className="py-2.5 text-meta tabular-nums text-fg-muted">{changeText(row) ?? '—'}</td>
+                <td className="py-2.5 text-meta tabular-nums text-fg-muted">
+                  {row.deltaVsPrevious == null ? '—' : (
+                    <>
+                      <span className="whitespace-nowrap font-semibold text-fg-2">{displayChange(row.deltaVsPrevious, row.spec)}</span>
+                      <span className="block whitespace-nowrap">{row.previousLabel}</span>
+                    </>
+                  )}
+                </td>
               </tr>
             )
           })}

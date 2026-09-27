@@ -15,6 +15,8 @@ import { VitalsReadingRows } from './VitalsReadingRows'
 // All of it comes from vitalsReading.ts (pure, verified) over the same
 // downloads the charts use. A count of what's off, never a score.
 
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
+
 function LoadingCard() {
   return (
     <Card className="flex flex-col gap-3" aria-busy>
@@ -38,7 +40,7 @@ export function VitalsReadingCard({ range }: { range: HealthRange }) {
         className="mb-0"
         icon={<Stethoscope />}
         title="What your numbers say"
-        subtitle={`${windowNoun(range.period, range.anchor)} · each signal against your own usual range`}
+        subtitle={`${cap(windowNoun(range.period, range.anchor))} · compared with the ${BASELINE_DAYS} days before`}
         action={(
           <InfoBubble label="How this reading works">
             <span className="block">

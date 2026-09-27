@@ -7,9 +7,9 @@ import { GOAL_LIMITS, validGoal, type GoalSettings } from './goalSettings'
 type NumField = keyof typeof GOAL_LIMITS
 
 const FIELDS: { key: NumField; label: string; unit: string }[] = [
-  { key: 'goalWeightKg', label: 'Goal weight', unit: 'kg' },
-  { key: 'goalBodyFatPct', label: 'Goal body fat', unit: '%' },
-  { key: 'goalMuscleMassKg', label: 'Goal muscle mass', unit: 'kg' },
+  { key: 'goalWeightKg', label: 'Weight', unit: 'kg' },
+  { key: 'goalBodyFatPct', label: 'Body fat', unit: '%' },
+  { key: 'goalMuscleMassKg', label: 'Muscle mass', unit: 'kg' },
 ]
 
 const text = (v: number | null) => (v != null ? String(v) : '')

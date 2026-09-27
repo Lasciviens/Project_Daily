@@ -131,6 +131,9 @@ function scenario({ n = 28, intake = 2000, tdee = 2700, kgPerDay, startKg = 90, 
   check('§6.4 confidence capped below high', r.confidence !== 'high', true)
   const late = buildCutReport(scenario({ n: 28, kgPerDay: -1500 / D, phaseStartDate: '2026-06-01' }))
   check('§6.5 a cut started two months ago is not early', late.earlyPhase, false)
+  check('§6.6 a cut started 5 days before the window is early', buildCutReport(scenario({ kgPerDay: -0.1, phaseStartDate: addDays(FROM, -5) })).earlyPhase, true)
+  check('§6.7 a cut started 10 days before the window is not', buildCutReport(scenario({ kgPerDay: -0.1, phaseStartDate: addDays(FROM, -10) })).earlyPhase, false)
+  check('§6.8 a phase starting after the window is not early', buildCutReport(scenario({ kgPerDay: -0.1, phaseStartDate: addDays(FROM, 40) })).earlyPhase, false)
 }
 
 // §7 Early weeks follow the phase: a gain's water refill shows as "slower"

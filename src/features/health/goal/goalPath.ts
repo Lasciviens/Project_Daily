@@ -153,8 +153,8 @@ export function buildPath({ phase, rate, comp, energy, weightKg }: PathInputs): 
 
   if (energy.earlyPhase) {
     steps.push({ key: 'early', text: phase === 'gain'
-      ? 'First two weeks of the gain: part of the rise is glycogen and water, so the pace looks faster than the tissue you are adding.'
-      : 'First three weeks of the cut: part of the drop is glycogen and water, so the pace looks faster than the fat you are losing.' })
+      ? 'This window includes the start of your gain: part of the rise is glycogen and water, so the pace looks faster than the tissue you are adding.'
+      : 'This window includes the start of your cut: part of the drop is glycogen and water, so the pace looks faster than the fat you are losing.' })
   }
   if (!rate) steps.push({ key: 'data', text: 'Weigh in at least 4 times over a week to see your pace.' })
   if (comp.verdict === 'not_enough_data') {

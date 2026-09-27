@@ -13,7 +13,8 @@ function Change({ label, t, unit, dp = 1 }: { label: ReactNode; t: SeriesTrend |
         <dd className="tabular-nums">
           <span className={t.significant ? 'text-lead font-semibold text-fg' : 'text-lead font-semibold text-fg-muted'}>{signed(t.change, dp, ` ${unit}`)}</span>
           <span className="block text-meta text-fg-muted">
-            {t.significant ? `${signed(t.perWeek, 2)} ${unit}/week` : 'within noise'} · now {t.current.toFixed(dp)} {unit}
+            <span className="whitespace-nowrap">{t.significant ? `${signed(t.perWeek, 2)} ${unit}/week` : 'within noise'}</span>
+            {' · '}<span className="whitespace-nowrap">now {t.current.toFixed(dp)} {unit}</span>
           </span>
         </dd>
       ) : <dd className="text-body text-fg-muted">—</dd>}

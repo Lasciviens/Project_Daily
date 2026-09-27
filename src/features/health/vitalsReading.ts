@@ -267,10 +267,19 @@ export function fmtSignedVital(v: number, decimals: number): string {
   return `${v > 0 ? '+' : '−'}${s}`
 }
 
+// A no-break space keeps a number and its unit on one line ("2.6 br/min").
+const NBSP = '\u00a0'
 /** The unit after a difference: a change in SpO₂ is in percentage points. */
-const unitGap = (unit: string) => (unit === '%' ? ' points' : ` ${unit}`)
+const unitGap = (unit: string) => (unit === '%' ? `${NBSP}points` : `${NBSP}${unit}`)
 /** "97%", "58 bpm". */
-const withUnit = (v: string, unit: string) => (unit === '%' ? `${v}%` : `${v} ${unit}`)
+const withUnit = (v: string, unit: string) => (unit === '%' ? `${v}%` : `${v}${NBSP}${unit}`)
+
+/** A change against the period before: "+2 bpm", "−1 point". */
+export function displayChange(delta: number, spec: Pick<VitalSpec, 'unit' | 'decimals'>): string {
+  const text = fmtSignedVital(delta, spec.decimals)
+  if (spec.unit !== '%') return `${text}${NBSP}${spec.unit}`
+  return `${text}${NBSP}${text.replace(/^[+−±]/, '') === '1' ? 'point' : 'points'}`
+}
 
 /** The value as shown: a deviation metric reads "+0.4 °C" against your usual night. */
 export function displayValue(row: Pick<VitalRow, 'value' | 'usual' | 'spec'>): string {
@@ -427,7 +436,7 @@ function readRow(spec: VitalSpec, s: readonly DayValue[], from: string, to: stri
     status = stateOf(value, spec, usual)
     if (status === 'unknown') {
       reason = 'no-history'
-      reasonText = `Not enough history to know your usual yet: ${history.length} of the ${spec.minHistory} readings needed in the 60 days before.`
+      reasonText = `Not enough history to know your usual yet: ${history.length} of the ${spec.minHistory} readings needed in the ${BASELINE_DAYS} days before.`
     }
   }
   const signal = signalOf(status, spec)
@@ -510,7 +519,7 @@ function meaningOf(row: VitalRow, isDay: boolean): string {
       if (status === 'above') return 'Warmer than your usual night — common after alcohol, a late workout, a warm room or when getting ill. A rise over several nights matters more than one.'
       return 'Cooler than your usual night — usually a cold room or a loose band.'
     case 'walking':
-      if (status === 'inside') return `Normal for you${isDay ? ' (7-day average)' : ''}.`
+      if (status === 'inside') return 'Normal for you.'
       if (status === 'above') return `${absDelta(row)} higher than usual on ordinary walks — heat, poor sleep, illness, dehydration or a break from training can do this.`
       return `${absDelta(row)} lower than usual on ordinary walks — consistent with better fitness.`
     case 'hrr':

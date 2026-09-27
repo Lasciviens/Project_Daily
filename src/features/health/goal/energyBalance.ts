@@ -65,10 +65,11 @@ export const MIN_LOGGED_DAY_KCAL = 800
 // Weight trend differences smaller than this (kcal/day) are inside what the
 // method can resolve over a few weeks of daily weigh-ins.
 export const MATCH_TOLERANCE_KCAL = 200
-// The first weeks of a cut lose glycogen and water (Thomas 2013); the first
-// weeks of a gain put them back.
-export const EARLY_PHASE_DAYS = 21
-export const EARLY_GAIN_DAYS = 14
+// The first week or two of a cut lose glycogen and water (Thomas 2013); the
+// first weeks of a gain put them back. That shift inflates a window which
+// contains the phase start or begins less than this many days after it; a
+// window that starts later already has it behind it.
+export const EARLY_PHASE_DAYS = 7
 
 export type Phase = 'cut' | 'maintain' | 'gain'
 
@@ -251,9 +252,8 @@ export function buildEnergyReport(inp: EnergyInputs): EnergyReport {
   if (trendWeights.length < 4) missing.push(`${trendWeights.length} weigh-in${trendWeights.length === 1 ? '' : 's'} in the window — needs 4.`)
   else if (spanDays < needSpan) missing.push(`Weigh-ins span ${spanDays} days — needs ${needSpan}.`)
 
-  const earlyDays = inp.goal === 'gain' ? EARLY_GAIN_DAYS : inp.goal === 'cut' ? EARLY_PHASE_DAYS : 0
-  const earlyPhase = !!inp.phaseStartDate && earlyDays > 0 && daysBetween(inp.phaseStartDate, inp.from) < earlyDays
-    && daysBetween(inp.phaseStartDate, inp.to) >= 0
+  const earlyPhase = !!inp.phaseStartDate && (inp.goal === 'cut' || inp.goal === 'gain')
+    && daysBetween(inp.phaseStartDate, inp.from) < EARLY_PHASE_DAYS && daysBetween(inp.phaseStartDate, inp.to) >= 0
 
   let verdict: Verdict | null = null
   const reasons: Reason[] = []
@@ -288,8 +288,8 @@ export function buildEnergyReport(inp: EnergyInputs): EnergyReport {
     confidence = score >= 4 ? 'high' : score >= 2 ? 'medium' : 'low'
     if (earlyPhase) {
       confidenceNotes.push(inp.goal === 'gain'
-        ? 'Early weeks of a gain — part of the gain is glycogen and water.'
-        : 'Early weeks of a cut — part of the loss is glycogen and water.')
+        ? 'This window includes the start of your gain — part of the gain is glycogen and water.'
+        : 'This window includes the start of your cut — part of the loss is glycogen and water.')
       if (confidence === 'high') confidence = 'medium'
     }
   }
