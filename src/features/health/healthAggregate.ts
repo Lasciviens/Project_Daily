@@ -447,8 +447,8 @@ export function extractSleepSessions(points: HealthMetric[], nightKey: string): 
 //      Awake is reported but never added to the total.
 //   5. No derived sleep metrics (score, efficiency) — measured values only.
 // scripts/verify-sleep-aggregate.cjs pins this file; verify-ai-sleep-merge.cjs
-// checks the edge copies against it (they don't read manual rows yet — rule 2
-// — and the script reports that as a known divergence).
+// checks the edge copies (ai-proxy, phone-gateway) against it; all three
+// honour every rule, including the manual-entry rule.
 export function computeSleepSummary(points: HealthMetric[]): SleepSummary[] {
   const byDate = new Map<string, HealthMetric[]>()
   for (const p of points) {

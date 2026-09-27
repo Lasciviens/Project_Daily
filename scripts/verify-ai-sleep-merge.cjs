@@ -27,30 +27,39 @@ function check(label, actual, expected) {
 }
 const round = (n) => Math.round(n * 100) / 100
 
-// ─── The mirror: the edge functions' merge AND per-night grouping ───────────
-// Keep in step with supabase/functions/ai-proxy/index.ts and
-// supabase/functions/phone-gateway/index.ts by hand. This mirrors the whole
-// pipeline, not just the merge: an earlier version of this script compared
-// only the summed total, which let a real defect through — the merge was fixed
-// to keep both blocks of an interrupted night, but the edge copies still
-// returned one row PER SESSION, so a caller got two rows for the same date and
-// nothing summed them.
+// ─── The mirror: the edge functions' whole sleep pipeline ────────────────────
+// Keep in step with supabase/functions/ai-proxy/index.ts (summarizeSleepNights)
+// and supabase/functions/phone-gateway/index.ts (computeSleepNightsGw) by hand.
+// It mirrors the whole contract — wake-day night key, manual-wins, the
+// containment merge PER NIGHT, raw-stage sums — not just the merge: an earlier
+// version compared only the summed total and let a per-session (not per-night)
+// row defect through.
 const CONTAINMENT = 0.9
-function aiNights(rows) {
-  const ms = (s) => {
-    if (typeof s !== 'string') return null
-    const iso = s.trim().replace(' ', 'T').replace(/\s*([+-]\d{2}):?(\d{2})$/, '$1:$2')
-    let t = Date.parse(iso); if (!Number.isFinite(t)) t = Date.parse(s)
-    return Number.isFinite(t) ? t : null
-  }
-  const sessions = rows.map(r => {
+const ms = (s) => {
+  if (typeof s !== 'string') return null
+  const iso = s.trim().replace(' ', 'T').replace(/\s*([+-]\d{2}):?(\d{2})$/, '$1:$2')
+  let t = Date.parse(iso); if (!Number.isFinite(t)) t = Date.parse(s)
+  return Number.isFinite(t) ? t : null
+}
+function nightKeyOf(r) {
+  const end = r.value?.sleepEnd
+  if (typeof end === 'string' && /^\d{4}-\d{2}-\d{2}/.test(end) && /[+-]\d{2}:?\d{2}$/.test(end.trim())) return end.slice(0, 10)
+  return String(r.date)
+}
+function mergeRows(pre) {
+  const timed = []
+  const untimed = []
+  const seen = new Set()
+  for (const r of pre) {
     const v = r.value ?? {}
-    return { start: ms(v.sleepStart), end: ms(v.sleepEnd), total: Number(v.totalSleep) || 0,
-             deep: Number(v.deep) || 0, core: Number(v.core) || 0, rem: Number(v.rem) || 0 }
-  }).filter(s => s.start != null && s.end != null && s.end > s.start)
-
-  const ranked = [...sessions].sort((a, b) =>
-    (b.total - a.total) || ((b.end - b.start) - (a.end - a.start)))
+    const key = [v.sleepStart ?? r.recorded_at, v.sleepEnd ?? '', v.totalSleep ?? ''].join('|')
+    if (seen.has(key)) continue
+    seen.add(key)
+    const start = ms(v.sleepStart), end = ms(v.sleepEnd)
+    if (start != null && end != null && end > start) timed.push({ r, start, end, total: Number(v.totalSleep) || 0, order: timed.length })
+    else untimed.push(r)
+  }
+  const ranked = [...timed].sort((a, b) => (b.total - a.total) || ((b.end - b.start) - (a.end - a.start)) || (a.order - b.order))
   const kept = []
   for (const s of ranked) {
     const dup = kept.some(k => {
@@ -60,17 +69,45 @@ function aiNights(rows) {
     })
     if (!dup) kept.push(s)
   }
-
+  kept.sort((a, b) => a.start - b.start)
+  return [...untimed, ...kept.map(k => k.r)]
+}
+function aiNights(rows) {
   const byNight = new Map()
-  for (const s of kept) {
-    const date = new Date(s.end).toLocaleDateString('en-CA', { timeZone: 'Europe/Oslo' })
-    const n = byNight.get(date) ?? { date, hours: 0, deep_h: 0, core_h: 0, rem_h: 0 }
-    n.hours += s.total; n.deep_h += s.deep; n.core_h += s.core; n.rem_h += s.rem
-    byNight.set(date, n)
+  for (const r of rows) {
+    const k = nightKeyOf(r)
+    if (!byNight.has(k)) byNight.set(k, [])
+    byNight.get(k).push(r)
   }
-  return [...byNight.values()]
-    .map(n => ({ date: n.date, hours: round(n.hours), deep_h: round(n.deep_h), core_h: round(n.core_h), rem_h: round(n.rem_h) }))
-    .sort((a, b) => a.date.localeCompare(b.date))
+  const out = []
+  for (const [date, pts] of byNight) {
+    const manual = pts.filter(p => p.source === 'manual')
+    const src = manual.length > 0 ? manual : pts
+    const pre = src.filter(p => typeof p.value?.totalSleep === 'number')
+    let core = 0, rem = 0, deep = 0, awake = 0, total = 0
+    if (pre.length > 0) {
+      for (const p of mergeRows(pre)) {
+        const v = p.value
+        core += Number(v.core) || 0; rem += Number(v.rem) || 0; deep += Number(v.deep) || 0; awake += Number(v.awake) || 0
+        total += typeof v.totalSleep === 'number' ? v.totalSleep : (Number(v.core) || 0) + (Number(v.rem) || 0) + (Number(v.deep) || 0)
+      }
+    } else {
+      let asleep = 0
+      for (const p of src) {
+        const stage = p.value?.value, qty = p.value?.qty
+        if (typeof qty !== 'number') continue
+        if (stage === 'Core') core += qty
+        else if (stage === 'REM') rem += qty
+        else if (stage === 'Deep') deep += qty
+        else if (stage === 'Awake') awake += qty
+        else if (stage === 'Asleep') asleep += qty
+      }
+      total = core + rem + deep + asleep
+      if (!(total > 0 || awake > 0)) continue
+    }
+    out.push({ date, hours: round(total), deep_h: round(deep), core_h: round(core), rem_h: round(rem), awake_h: round(awake) })
+  }
+  return out.sort((a, b) => a.date.localeCompare(b.date))
 }
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
@@ -131,12 +168,10 @@ for (const [label, rows, expected] of cases) {
 }
 
 // ─── The manual-night contract (audit T36) ───────────────────────────────────
-// The web app's rule: a night with a manual entry uses ONLY the manual rows
-// (it is a deliberate correction), filed under the night date the user chose.
-// These assertions pin the web side. The edge copies (ai-proxy
-// computeSleepNights, phone-gateway computeSleepNightsGw) read only rows with
-// sleepStart/sleepEnd, so they don't see manual rows at all — reported below
-// as a known divergence (not a failure) until those functions adopt the rule.
+// A night with a manual entry uses ONLY the manual rows (a deliberate
+// correction), filed under the night date the user chose. The edge copies
+// adopted the rule (they used to ignore manual rows), so these are real
+// assertions now, not a reported divergence.
 {
   const manualRows = [
     { id: 'm1', metric_name: 'sleep_analysis', date: '2026-07-20', source: 'manual', recorded_at: '2026-07-20T06:00:00Z', value: { value: 'Deep', qty: 1.2, source: 'manual' } },
@@ -148,9 +183,26 @@ for (const [label, rows, expected] of cases) {
   check('manual  · the manual entry replaces the Watch night', [web.length, round(web[0].total)], [1, 8])
   check('manual  · filed under the night the user picked', web[0].date, '2026-07-20')
   const ai = aiNights([watch, ...manualRows])
-  if (ai.length !== 1 || round(ai[0].hours) !== 8) {
-    console.log(`  ! known divergence: the edge copies report ${ai.map(n => `${n.date} ${n.hours}h`).join(', ') || 'no night'} for a manually corrected 8h night (they ignore manual rows).`)
-  }
+  check('manual  · edge copies: the manual entry replaces the Watch night', [ai.length, ai[0] && ai[0].hours], [1, 8])
+  check('manual  · AGREE on stages', [ai[0].deep_h, ai[0].core_h, ai[0].rem_h], [round(web[0].deep), round(web[0].core), round(web[0].rem)])
+
+  // A manual night never shadows a neighbouring Watch night.
+  const nextNight = row(at('20', '23:30:00'), at('21', '07:00:00'), 7.0)
+  const both = aiNights([watch, ...manualRows, nextNight])
+  const webBoth = computeSleepSummary([watch, ...manualRows, nextNight])
+  check('manual  · the next Watch night is untouched', both.map(n => [n.date, n.hours]), webBoth.map(n => [n.date, round(n.total)]))
+}
+
+// ─── Raw per-stage rows (rule 4): Awake is reported, never added ─────────────
+{
+  const raw = ['Core', 'REM', 'Deep', 'Awake', 'Asleep'].map((stage, i) => ({
+    id: `r${i}`, metric_name: 'sleep_analysis', date: '2026-07-22', source: 'Watch', recorded_at: `2026-07-22T0${i}:00:00Z`,
+    value: { value: stage, qty: [3, 1.5, 1, 0.5, 0.25][i] },
+  }))
+  const ai = aiNights(raw)
+  const web = computeSleepSummary(raw)
+  check('raw     · total = Core+REM+Deep+Asleep', ai[0].hours, 5.75)
+  check('raw     · AGREE', [ai[0].hours, ai[0].awake_h], [round(web[0].total), round(web[0].awake)])
 }
 
 console.log(`\n${passed} passed, ${failures.length} failed`)

@@ -9,7 +9,7 @@ const groups = {
   taskGraph: [qk.tasks.all, qk.schedule.all, qk.calendar.all],
   schedule: [qk.schedule.all, qk.calendar.all],
   /** Anything in the food diary / plan / targets / water. */
-  nutrition: [qk.foodLog.all, qk.mealPlan.all, qk.water.all, qk.dayTargets.all, qk.dayTargets.profiles],
+  nutrition: [qk.foodLog.all, qk.mealPlan.all, qk.water.all, qk.dayTargets.all, qk.dayTargets.profiles, qk.health.cutDiaryAll],
   recipes: [qk.recipes.all, qk.ingredients.all, qk.mealPlan.all],
   /** An episode was marked (un)watched: progress, next-up, planned blocks, recents. */
   episodeWatched: [qk.media.watchedAll, qk.media.nextEpisodeAll, qk.media.tv, qk.media.recent(), qk.schedule.all],

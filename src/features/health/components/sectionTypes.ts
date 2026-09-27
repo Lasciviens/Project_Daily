@@ -1,8 +1,5 @@
 import type { Dispatch, SetStateAction } from 'react'
-import { Activity, Flame, Footprints, HeartPulse, Moon, Scale, type LucideIcon } from 'lucide-react'
 import type { Period } from './PeriodToggle'
-
-export type SectionId = 'overview' | 'steps' | 'energy' | 'heart' | 'sleep' | 'body'
 
 /** ONE day+period selection shared by every Health section.
  *
@@ -11,8 +8,8 @@ export type SectionId = 'overview' | 'steps' | 'energy' | 'heart' | 'sleep' | 'b
  *  PeriodToggle *inside* the section body. So changing the day in Steps left
  *  Heart on a different day, each section's date lived at a different scroll
  *  depth, and Overview/Body had no day control at all. HealthPage owns this
- *  once, HealthTab renders the control above the section pills, and every
- *  section and the side panel read it — one day change moves them together.
+ *  once, renders the control in the header, and every section and the hero
+ *  read it — one day change moves them together.
  *
  *  `setAnchor`/`setPeriod` are passed down (not just the values) because the
  *  chart drill-down needs them: clicking a bar in a Week/Month chart jumps to
@@ -23,12 +20,3 @@ export interface HealthRange {
   period:    Period
   setPeriod: Dispatch<SetStateAction<Period>>
 }
-
-export const SECTIONS: { id: SectionId; label: string; icon: LucideIcon }[] = [
-  { id: 'overview', label: 'Overview', icon: Activity },
-  { id: 'steps',    label: 'Steps',    icon: Footprints },
-  { id: 'energy',   label: 'Energy',   icon: Flame },
-  { id: 'heart',    label: 'Heart',    icon: HeartPulse },
-  { id: 'sleep',    label: 'Sleep',    icon: Moon },
-  { id: 'body',     label: 'Body',     icon: Scale },
-]

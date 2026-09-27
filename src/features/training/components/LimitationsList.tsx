@@ -5,7 +5,7 @@ import { Button } from '../../../shared/ui'
 import {
   useAthleteLimitations, useCreateLimitation, useUpdateLimitation, useDeleteLimitation,
 } from '../hooks/useAthleteProfile'
-import { MOVEMENT_PATTERN_LABEL, type MovementPattern } from '../muscleMap'
+import { MOVEMENT_PATTERN_LABEL, movementPatternLabel, resolveMovementPattern, type MovementPattern } from '../muscleMap'
 import type { AthleteLimitation, LimitationSeverity } from '../types.athlete'
 
 // The limitations half of AthleteProfileSheet — split out once the sheet's
@@ -21,7 +21,6 @@ const SEVERITY_OPTIONS: { id: LimitationSeverity; label: string }[] = [
 ]
 
 const PATTERN_OPTIONS = Object.entries(MOVEMENT_PATTERN_LABEL) as [MovementPattern, string][]
-
 
 function SeverityPills({ value, onChange }: { value: LimitationSeverity; onChange: (v: LimitationSeverity) => void }) {
   return (
@@ -46,7 +45,19 @@ function LimitationRow({ item, onDeleteRequest }: { item: AthleteLimitation; onD
   return (
     <li className={`flex flex-col gap-2 rounded-row border border-line p-3 ${item.active ? '' : 'opacity-50'}`}>
       <div className="flex items-center justify-between gap-2">
-        <span className="text-body font-semibold text-fg">{MOVEMENT_PATTERN_LABEL[item.movement_pattern]}</span>
+        <span className="min-w-0 text-body font-semibold text-fg">
+          {movementPatternLabel(item.movement_pattern)}
+          {/* A free-text pattern (written by the AI or an older row) says which
+              standard pattern the app reads it as — or that it reads none. */}
+          {!(item.movement_pattern in MOVEMENT_PATTERN_LABEL) && (
+            <span className="block text-meta font-normal text-fg-muted">
+              {(() => {
+                const p = resolveMovementPattern(item.movement_pattern)
+                return p ? `Read as: ${MOVEMENT_PATTERN_LABEL[p]}` : 'Not matched to a movement pattern — no muscle is flagged for it'
+              })()}
+            </span>
+          )}
+        </span>
         <div className="flex items-center gap-1.5 shrink-0">
           <button
             type="button"
@@ -83,7 +94,7 @@ export function LimitationsList() {
 
   async function confirmDelete(item: AthleteLimitation) {
     const ok = await entityModal.confirm({
-      title: 'Delete this limitation?', message: MOVEMENT_PATTERN_LABEL[item.movement_pattern],
+      title: 'Delete this limitation?', message: movementPatternLabel(item.movement_pattern),
       confirmLabel: 'Delete', destructive: true,
     })
     if (ok) del.mutate(item.id)

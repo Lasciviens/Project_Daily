@@ -13,11 +13,17 @@ import type { MiniMetricConfig, MiniMetricWindow } from './miniMetrics'
 // each card used to run its own paginated query (~21 for the Steps view,
 // H-08). Cards with nothing to show fold into a "Not recorded" list instead of
 // a wall of em dashes (H-22); they stay one tap away.
-export function MetricMiniGrid({ title, metrics, window, onViewDay }: {
+export function MetricMiniGrid({ title, metrics, window, onViewDay, hideWhenEmpty, standalone, id }: {
   title: string
   metrics: MiniMetricConfig[]
   window: MiniMetricWindow
   onViewDay?: (date: string) => void
+  /** Tier-3 cards: render nothing at all when no metric has data, and never
+   *  list the empty ones. */
+  hideWhenEmpty?: boolean
+  /** Its own card with a heading of this level, instead of a block inside a card. */
+  standalone?: 'h2' | 'h3'
+  id?: string
 }) {
   const [showEmpty, setShowEmpty] = useState(false)
   const latestMetrics = metrics.filter(m => getAggregationType(m.metric) === 'latest').map(m => m.metric)
@@ -35,14 +41,17 @@ export function MetricMiniGrid({ title, metrics, window, onViewDay }: {
       hasData: miniCardSummary(getAggregationType(m.metric), daily, l, window, today).hasData }
   })
   const withData = cards.filter(c => c.hasData)
-  const empty = cards.filter(c => !c.hasData)
+  const empty = hideWhenEmpty ? [] : cards.filter(c => !c.hasData)
+  if (hideWhenEmpty && !loading && withData.length === 0) return null
   const render = (c: (typeof cards)[number]) => (
     <MetricMiniCard key={c.m.metric} config={c.m} window={window} points={c.points} daily={c.daily} latest={c.latest} onViewDay={onViewDay} />
   )
 
   return (
-    <div className="flex flex-col gap-2 border-t border-line pt-3">
-      <p className="section-label">{title}</p>
+    <div id={id} className={standalone ? 'card flex w-full max-w-4xl scroll-mt-4 flex-col gap-2 p-4 sm:p-5' : 'flex flex-col gap-2 border-t border-line pt-3'}>
+      {standalone === 'h2' ? <h2 className="text-lead font-semibold text-fg">{title}</h2>
+        : standalone === 'h3' ? <h3 className="text-body font-semibold text-fg">{title}</h3>
+        : <p className="section-label">{title}</p>}
       {loading ? (
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
           {Array.from({ length: Math.min(4, metrics.length) }).map((_, i) => <Skeleton key={i} rounded="rounded-row" className="h-24" />)}

@@ -24,14 +24,14 @@ export function useHevyBodyMeasurementForDate(date: string, { enabled = true }: 
 }
 
 // hevy_body_measurements is one of the bodyweight series' sources, so a save
-// refreshes Health (qk.health.all) and Progress' bodyweight history
-// (['hevy','bodyweight-history']) along with the measurement list.
+// refreshes the merged series (qk.health.bodyweightAll — Health, Progress,
+// the nutrition coach) and the rest of Health along with the measurement list.
 export function useUpsertBodyMeasurement() {
   return useMutationWithFeedback({
     action:         'upsert_body_measurement',
     loadingMessage: 'Saving measurement…',
     successMessage: 'Measurement saved',
     mutationFn:     (payload: Record<string, unknown>) => callHevyApi('upsert_body_measurement', payload),
-    invalidates:    [qk.hevy.all, qk.health.all],
+    invalidates:    [qk.hevy.all, qk.health.bodyweightAll, qk.health.all],
   })
 }

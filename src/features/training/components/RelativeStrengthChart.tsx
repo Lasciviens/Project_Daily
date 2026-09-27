@@ -66,6 +66,7 @@ function IndexedTooltip({ active, payload, label }: any) {
 
 export function RelativeStrengthChart() {
   const { data, isLoading: loadingHistory } = useTrainingHistory()
+  // The ONE merged bodyweight series (Hevy > smart scale > Apple Health).
   const { data: anchors, isLoading: loadingBw } = useBodyweightHistory()
   const [query, setQuery] = useState('')
   const [selectedId, setSelectedId] = useState<string | null>(null)

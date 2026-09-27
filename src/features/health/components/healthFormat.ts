@@ -11,6 +11,12 @@ export function fmtAxisDay(date: string): string {
   return localDate(date).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric' })
 }
 
+/** Axis label for a daily point: "Mon 21" in short windows, "21 Sep" once the
+ *  window is long enough that a weekday name would repeat ambiguously. */
+export function fmtAxisFor(date: string, totalDays: number): string {
+  return totalDays > 45 ? fmtDayMonth(date) : fmtAxisDay(date)
+}
+
 /** "21 Sep" (plus the year when it isn't this year). */
 export function fmtDayMonth(date: string): string {
   const d = localDate(date)

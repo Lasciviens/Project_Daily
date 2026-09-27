@@ -7,6 +7,8 @@ import {
 } from '../../daily/components/dayAgendaProjection'
 import { completedWithinLast24h, isOverdue } from '../../todo/taskRules'
 import { shiftDateStr, todayStr } from '../../../shared/utils/dateUtils'
+import { pickNextTrainingSession, type NextTrainingSession } from '../../training/trainingPlanModel'
+import { NEXT_SESSION_LOOKAHEAD_DAYS } from '../../training/hooks/useTrainingSessions'
 import type { ScheduleBlock } from '../../daily/types'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -31,15 +33,9 @@ export interface NextUpItem {
   taskId?: string | null
 }
 
-export interface NextTrainingItem {
-  kind: 'block' | 'recurring'
-  id: string
-  title: string
-  date: string
-  /** 'HH:mm', or null for an unscheduled one-off block. */
-  startTime: string | null
-  taskId?: string | null
-}
+/** The ONE next-training definition (trainingPlanModel.pickNextTrainingSession),
+ *  shared with the Training banner and Daily. */
+export type NextTrainingItem = NextTrainingSession
 
 export interface TodayOverview {
   tasks: { open: number; done: number; overdue: number; total: number }
@@ -49,8 +45,6 @@ export interface TodayOverview {
   nextTraining: NextTrainingItem | null
   isLoading: boolean
 }
-
-const TRAINING_LOOKAHEAD_DAYS = 30
 
 const hourLabel = (h: number) => {
   const whole = Math.floor(h)
@@ -62,7 +56,7 @@ const dayOfWeekOf = (dateStr: string) => new Date(`${dateStr}T00:00:00`).getDay(
 
 export function useTodayOverview(date: string = todayStr()): TodayOverview {
   const prevDay = shiftDateStr(date, -1)
-  const trainingTo = shiftDateStr(date, TRAINING_LOOKAHEAD_DAYS)
+  const trainingTo = shiftDateStr(date, NEXT_SESSION_LOOKAHEAD_DAYS)
 
   const tasksQ = useTasksForDay(new Date(`${date}T00:00:00`), 'today')
   const blocksQ = useTimeBlocks(date)
@@ -112,24 +106,16 @@ export function useTodayOverview(date: string = todayStr()): TodayOverview {
       .map(i => ({ ...i, inProgress: isToday && i.startHour <= nowHour && i.endHour > nowHour }))
       .sort((a, b) => a.startHour - b.startHour)
 
-    // Next training: one-off training blocks plus recurring training templates
-    // projected day by day over the look-ahead window.
-    const nowHHMM = hourLabel(nowHour)
-    const candidates: NextTrainingItem[] = (trainingQ.data ?? [])
-      .filter(b => b.date > date || (b.date === date && (!isToday || (b.start_time ?? '99:99').slice(0, 5) >= nowHHMM)))
-      .map(b => ({ kind: 'block' as const, id: b.id, title: b.title, date: b.date, startTime: b.start_time?.slice(0, 5) ?? null, taskId: b.task_id }))
-    const trainingTemplates = templates.filter(t => t.category === 'training')
-    if (trainingTemplates.length > 0) {
-      for (let i = 0; i <= TRAINING_LOOKAHEAD_DAYS; i++) {
-        const day = shiftDateStr(date, i)
-        const hit = projectRecurringBlocksForDay(day, dayOfWeekOf(day), trainingTemplates)
-          .filter(p => !p.spillover && (day !== date || !isToday || p.startHour >= nowHour))
-          .sort((a, b) => a.startHour - b.startHour)[0]
-        if (hit) { candidates.push({ kind: 'recurring', id: hit.canonicalId, title: hit.title, date: day, startTime: hourLabel(hit.startHour) }); break }
-      }
-    }
-    const nextTraining = candidates
-      .sort((a, b) => (a.date + (a.startTime ?? '99:99')).localeCompare(b.date + (b.startTime ?? '99:99')))[0] ?? null
+    // Next training from the viewed day on: one-off training blocks plus
+    // recurring training templates — the same pure rule the Training banner
+    // uses (useNextTrainingSession). Only today filters out passed times.
+    const nextTraining = pickNextTrainingSession({
+      blocks:        trainingQ.data ?? [],
+      templates:     templates.filter(t => t.category === 'training'),
+      today:         date,
+      nowHHMM:       isToday ? hourLabel(nowHour) : '00:00',
+      lookaheadDays: NEXT_SESSION_LOOKAHEAD_DAYS,
+    })
 
     return {
       tasks: taskCounts,

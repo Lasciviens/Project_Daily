@@ -1,7 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { qk, STALE } from '../../../shared/query'
-import { useHealthMetricSeries } from '../../health/hooks/useHealthExport'
-import { computeDailySeries } from '../../health/healthAggregate'
+import { useBodyweightSeries } from '../../health/hooks/useBodyweight'
 import { fetchLoggedDates } from '../../recipes/api/foodLogApi'
 import { shiftDateStr } from '../../../shared/utils/dateUtils'
 import type { DayTargets, NutritionGoal } from './useDayTargets'
@@ -87,23 +86,21 @@ export interface NutritionCoach {
 export function useNutritionCoach(date: string, targets: DayTargets): NutritionCoach {
   const { goal } = targets
   const from = shiftDateStr(date, -WEIGHT_WINDOW_DAYS)
-  const { data: wPts = [] } = useHealthMetricSeries('weight_body_mass', from, date)
+  // The ONE merged bodyweight series (Hevy > smart scale > Apple Health).
+  const { data: wPts = [] } = useBodyweightSeries(from, date)
   const { data: loggedDates = [] } = useQuery({
     queryKey: qk.foodLog.loggedDates(date),
     queryFn:  () => fetchLoggedDates(shiftDateStr(date, -(CONSISTENCY_WINDOW_DAYS - 1)), date),
     staleTime: STALE.default,
   })
 
-  const wSeries = computeDailySeries('weight_body_mass', wPts)
+  const wSeries = wPts.map(p => ({ date: p.date, value: p.kg }))
   // Use a SMOOTHED weight (mean of the last up-to-7 daily points), not a single
   // latest reading — day-to-day water/glycogen swings (1-2kg) otherwise make the
   // protein suggestion and calorie floor jump around (Faz 9 fix).
   const recent = wSeries.slice(-7)
-  let weightKg = recent.length ? Math.round((recent.reduce((a, d) => a + d.value, 0) / recent.length) * 10) / 10 : null
-  // Sanity guard: weight_body_mass is assumed kg (Health Auto Export can emit
-  // imperial by locale — same class as the documented kJ/kcal bug). A value
-  // this large can't be a human weight in kg, so don't derive targets from it.
-  if (weightKg != null && (weightKg < 25 || weightKg > 300)) weightKg = null
+  // (The merged series already drops values outside a human kg range.)
+  const weightKg = recent.length ? Math.round((recent.reduce((a, d) => a + d.value, 0) / recent.length) * 10) / 10 : null
 
   const trend = trendKgPerWeek(wSeries)
   const weighIns = wSeries.length

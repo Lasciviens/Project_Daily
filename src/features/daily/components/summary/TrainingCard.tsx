@@ -1,38 +1,53 @@
 import { useState, useMemo } from 'react'
+import { format, parseISO } from 'date-fns'
 import { Dumbbell, Plus } from 'lucide-react'
 import { Cell, CellHeader, CellLink } from './cellKit'
-import { useTimeBlocks } from '../../hooks/useSchedule'
-import { useHevyWorkouts } from '../../../training/hooks/useHevyWorkouts'
+import { useTrainingBlocks, useScheduleBlocks } from '../../hooks/useSchedule'
+import { projectRecurringBlocksForDay } from '../dayAgendaProjection'
+import { useHevyWorkoutsRange } from '../../../training/hooks/useHevyWorkouts'
 import { useHevyRoutines } from '../../../training/hooks/useHevyRoutines'
-import { useEntityModal } from '../../../../shared/modals'
+import { NEXT_SESSION_LOOKAHEAD_DAYS } from '../../../training/hooks/useTrainingSessions'
+import { pickNextTrainingSession } from '../../../training/trainingPlanModel'
+import { openPlanRoutine } from '../../../training/planTraining'
 import { ToneDot, TonePill } from '../../../../shared/ui'
-import { formatLocalDate } from '../../../../shared/utils/dateUtils'
-import type { HevyRoutine } from '../../../training/types.hevy'
+import { shiftDateStr, todayStr } from '../../../../shared/utils/dateUtils'
 
-// Rest-day state now offers the actual routine list inline — picking one
-// opens the same Plan modal RoutinesTab uses, prefilled for THIS day, so
-// scheduling a session never requires leaving Daily.
+interface PlannedRow { id: string; title: string; time: string | null; recurring: boolean }
+
+const hhmm = (hour: number) => {
+  const h = Math.floor(hour), m = Math.round((hour - h) * 60)
+  return `${String(h + Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`
+}
+
+// The viewed day's training: what was logged (Hevy, filed under the LOCAL day
+// it was performed), else what is planned — one-off training blocks AND the
+// recurring training templates that fall on this day — else a rest day that
+// names the next planned session (the same pickNextTrainingSession rule the
+// Training banner and Home use) and offers the routine list inline; picking
+// one opens the shared "plan routine" request prefilled for this day.
 export function TrainingCard({ date }: { date: string }) {
-  const { data: blocks = [] } = useTimeBlocks(date)
-  const { data: recent = [] } = useHevyWorkouts({ limit: 30 })
+  const lookaheadTo = shiftDateStr(date, NEXT_SESSION_LOOKAHEAD_DAYS)
+  const { data: trainingBlocks = [] } = useTrainingBlocks(date, lookaheadTo)
+  const { data: templates = [] } = useScheduleBlocks()
+  const { data: loggedToday = [] } = useHevyWorkoutsRange(date, date)
   const { data: routines = [] } = useHevyRoutines()
-
-  const modal = useEntityModal()
   const [showPicker, setShowPicker] = useState(false)
 
-  const planned = blocks.filter(b => b.category === 'training')
-  const loggedToday = useMemo(
-    () => recent.filter(w => w.start_time && formatLocalDate(new Date(w.start_time)) === date),
-    [recent, date],
-  )
+  const trainingTemplates = useMemo(() => templates.filter(t => t.category === 'training'), [templates])
 
-  const planRoutine = (r: HevyRoutine) => modal.open({
-    kind: 'time-block',
-    config: { heading: 'Plan routine' },
-    defaults: { title: r.title, date, category: 'training', color: 'accent', alsoCreateTask: true },
-    source: { sourceType: 'training_session', sourceId: r.id, taskSourceType: 'training_session' },
-    onSaved: () => setShowPicker(false),
-  })
+  const planned: PlannedRow[] = useMemo(() => [
+    ...trainingBlocks.filter(b => b.date === date)
+      .map(b => ({ id: b.id, title: b.title, time: b.start_time?.slice(0, 5) ?? null, recurring: false })),
+    ...projectRecurringBlocksForDay(date, new Date(`${date}T00:00:00`).getDay(), trainingTemplates)
+      .filter(p => !p.spillover)
+      .map(p => ({ id: `${p.canonicalId}__${date}`, title: p.title, time: hhmm(p.startHour), recurring: true })),
+  ].sort((a, b) => (a.time ?? '99:99').localeCompare(b.time ?? '99:99')), [trainingBlocks, trainingTemplates, date])
+
+  // Only needed on a rest day: the next session after the viewed day.
+  const next = useMemo(() => planned.length ? null : pickNextTrainingSession({
+    blocks: trainingBlocks, templates: trainingTemplates, today: shiftDateStr(date, 1), nowHHMM: '00:00',
+    lookaheadDays: NEXT_SESSION_LOOKAHEAD_DAYS - 1,
+  }), [planned.length, trainingBlocks, trainingTemplates, date])
 
   return (
     <Cell>
@@ -53,15 +68,20 @@ export function TrainingCard({ date }: { date: string }) {
           {planned.map(b => (
             <div key={b.id} className="flex items-center gap-2 text-body">
               <ToneDot tone="accent" />
-              <span className="flex-1 truncate text-fg">{b.title}</span>
-              {b.start_time && <span className="shrink-0 text-meta tabular-nums text-fg-muted">{b.start_time.slice(0, 5)}</span>}
+              <span className="flex-1 truncate text-fg">{b.recurring && '⟳ '}{b.title}</span>
+              {b.time && <span className="shrink-0 text-meta tabular-nums text-fg-muted">{b.time}</span>}
             </div>
           ))}
-          <p className="mt-0.5 text-meta text-fg-muted">Planned — not logged yet</p>
+          <p className="mt-0.5 text-meta text-fg-muted">
+            {date < todayStr() ? 'Planned — nothing logged' : 'Planned — not logged yet'}
+          </p>
         </div>
       ) : (
         <div className="flex flex-col gap-1.5">
-          <p className="text-body text-fg-muted">Rest day — nothing planned.</p>
+          <p className="text-body text-fg-muted">
+            Rest day — nothing planned.
+            {next && <> Next: <span className="text-fg-2">{next.title}</span> · {format(parseISO(next.date), 'EEE d MMM')}{next.startTime ? ` ${next.startTime}` : ''}</>}
+          </p>
           {!showPicker ? (
             <button
               type="button"
@@ -78,7 +98,7 @@ export function TrainingCard({ date }: { date: string }) {
                 <li key={r.id}>
                   <button
                     type="button"
-                    onClick={() => planRoutine(r)}
+                    onClick={() => openPlanRoutine(r, { date, onSaved: () => setShowPicker(false) })}
                     className="row row-interactive w-full border border-line text-left"
                   >
                     <span className="flex-1 truncate text-body font-medium text-fg">{r.title}</span>

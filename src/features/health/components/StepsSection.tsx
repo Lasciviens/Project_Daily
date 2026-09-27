@@ -4,11 +4,9 @@ import { useHealthHourly } from '../hooks/useHealthExport'
 import { useMetricWindow } from '../hooks/useHealthWindow'
 import type { HealthRange } from './sectionTypes'
 import { useRangeWindow, windowNoun } from './dateNav'
-import { MetricMiniGrid } from './MetricMiniGrid'
-import { STEPS_EXTRA_METRICS, RUNNING_EXTRA_METRICS } from './miniMetrics'
 import { HealthTrendChart } from './HealthTrendChart'
 import { HeadlineStat, SectionCard, SideStat, TrendBadge } from './sectionKit'
-import { fmtAxisDay, fmtInt, windowCaption } from './healthFormat'
+import { fmtAxisFor, fmtInt, windowCaption } from './healthFormat'
 
 export function StepsSection({ range }: { range: HealthRange }) {
   const { anchor, setAnchor, period, setPeriod } = range
@@ -31,7 +29,7 @@ export function StepsSection({ range }: { range: HealthRange }) {
   // gap, never a zero bar (H-10).
   const chartData = isDay
     ? (hourly.data ?? []).map(h => ({ label: h.label, steps: h.value }))
-    : fillDays(steps.daily, win.from, win.to).map(d => ({ label: fmtAxisDay(d.date), date: d.date, steps: d.value }))
+    : fillDays(steps.daily, win.from, win.to).map(d => ({ label: fmtAxisFor(d.date, win.totalDays), date: d.date, steps: d.value }))
 
   const viewDay = (date: string) => { setPeriod('day'); setAnchor(date) }
   const noData = !steps.isLoading && s.daysWithData === 0
@@ -63,11 +61,14 @@ export function StepsSection({ range }: { range: HealthRange }) {
             ariaLabel={isDay ? 'Steps per hour' : 'Steps per day'}
             height={150}
             onViewDay={isDay ? undefined : viewDay}
+            band={isDay ? undefined : { y1: 7000, y2: 8000, label: '7,000–8,000 a day' }}
           />
         )}
-
-      <MetricMiniGrid title="Mobility & activity" metrics={STEPS_EXTRA_METRICS} window={{ from: win.from, to: win.to, period }} onViewDay={viewDay} />
-      <MetricMiniGrid title="Running dynamics" metrics={RUNNING_EXTRA_METRICS} window={{ from: win.from, to: win.to, period }} onViewDay={viewDay} />
+      {!isDay && (
+        <p className="text-micro text-fg-faint">
+          Shaded: 7,000–8,000 steps a day, where the mortality benefit starts to level off (Paluch 2022, Ding 2025).
+        </p>
+      )}
     </SectionCard>
   )
 }

@@ -6,7 +6,7 @@ import type { HealthRange } from './sectionTypes'
 import { useRangeWindow, windowNoun } from './dateNav'
 import { HealthTrendChart } from './HealthTrendChart'
 import { HeadlineStat, SectionCard, TrendBadge } from './sectionKit'
-import { fmtAxisDay, fmtInt } from './healthFormat'
+import { fmtAxisFor, fmtInt } from './healthFormat'
 
 export function EnergySection({ range }: { range: HealthRange }) {
   const { anchor, setAnchor, period, setPeriod } = range
@@ -43,7 +43,7 @@ export function EnergySection({ range }: { range: HealthRange }) {
   } else {
     const basal = new Map(fillDays(energy.basal, win.from, win.to).map(d => [d.date, d.value]))
     chartData = fillDays(energy.active, win.from, win.to).map(d => ({
-      label: fmtAxisDay(d.date), date: d.date, active: d.value, basal: basal.get(d.date) ?? null,
+      label: fmtAxisFor(d.date, win.totalDays), date: d.date, active: d.value, basal: basal.get(d.date) ?? null,
     }))
   }
 
