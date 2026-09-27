@@ -82,7 +82,7 @@ export function GoalsSection({ report, settings, fromDevice, saving, onSave }: {
         {settings.phaseStartDate
           ? `Phase started ${fmtDayMonth(settings.phaseStartDate)} — progress is measured from there.`
           : 'Add the day this phase started to see progress from your starting point.'}
-        {fromDevice && ' Saved on this device only until migration 111 is applied.'}
+        {fromDevice && ' Stored on this device for now — saving moves them to your account (needs migration 111).'}
       </p>
     </GoalBlock>
   )

@@ -135,9 +135,8 @@ export function HealthPage() {
 
           {section === 'body' && (
             <SectionPanel id="body">
+              {/* Its weight trend card sits inside: scale readings only, like the charts. */}
               <Guard name="Body"><BodySection range={range} /></Guard>
-              <TrendCard title="Weight trend" stats={buildTrendStats(hero.weight.series, { to: anchor, direction: null, sparse: true })}
-                format={v => `${num(v, 1)} kg`} formatDelta={v => `${signed(v, 1)} kg`} direction={null} rateUnit="kg/week" />
             </SectionPanel>
           )}
 
