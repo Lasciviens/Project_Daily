@@ -1,6 +1,5 @@
 import { supabase } from '../../../integrations/supabase/client'
 import { workoutWindowFilter, localDayBoundsIso, workoutLocalDay } from '../workoutDates'
-import { computePersonalRecords, PR_SET_TYPES, type PersonalRecord, type PRSetInput, type PRTemplateInput } from '../personalRecords'
 import type { ProgressSetRow, ProgressTemplateRow } from '../progressAggregate'
 import type {
   HevyWorkout,
@@ -297,45 +296,6 @@ export async function fetchHevyWorkoutDetail(id: string): Promise<HevyWorkout | 
   }
 
   return { ...workout, exercises: exerciseList }
-}
-
-// ─── Personal Records ─────────────────────────────────────────────────────────
-// All-time, so every working set is paged in (ordered by id): the old read
-// had no pagination and no order, so records came from an arbitrary first
-// 1,000 sets — about four months of training. The ranking itself is pure
-// (personalRecords.ts).
-
-export type { PersonalRecord }
-
-export async function fetchHevyPRs(): Promise<PersonalRecord[]> {
-  type SetRow = Omit<PRSetInput, 'workout_id' | 'performed_at'> & { hevy_exercise_id: string }
-  const [sets, exercises, workouts, templates] = await Promise.all([
-    fetchAllPages<SetRow>((f, t) =>
-      supabase
-        .from('hevy_sets')
-        .select('id, hevy_exercise_id, exercise_template_id, type, weight_kg, reps, duration_seconds, distance_meters')
-        .in('type', [...PR_SET_TYPES])
-        .order('id')
-        .range(f, t), 4),
-    fetchAllPages<{ id: string; hevy_workout_id: string }>((f, t) =>
-      supabase.from('hevy_workout_exercises').select('id, hevy_workout_id').order('id').range(f, t), 4),
-    fetchAllPages<WorkoutDateRow>((f, t) =>
-      supabase.from('hevy_workouts').select('id, start_time, hevy_created_at').order('id').range(f, t), 2),
-    fetchAllPages<PRTemplateInput>((f, t) =>
-      supabase.from('hevy_exercise_templates').select('id, title, type, primary_muscle_group').order('id').range(f, t)),
-  ])
-  if (!sets.length) return []
-
-  const workoutIdByExercise = new Map(exercises.map(e => [e.id, e.hevy_workout_id]))
-  const dateByWorkout = new Map(workouts.map(w => [w.id, w.start_time ?? w.hevy_created_at]))
-  const inputs: PRSetInput[] = []
-  for (const s of sets) {
-    const workoutId = workoutIdByExercise.get(s.hevy_exercise_id)
-    const performedAt = workoutId ? dateByWorkout.get(workoutId) : undefined
-    if (!workoutId || !performedAt) continue
-    inputs.push({ ...s, workout_id: workoutId, performed_at: performedAt })
-  }
-  return computePersonalRecords(inputs, templates)
 }
 
 // ─── Body Measurements ────────────────────────────────────────────────────────

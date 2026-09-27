@@ -222,7 +222,7 @@ export function buildHealthInsights(input: HealthInsightInput): Insight[] {
         ? `In a small diet study, 5.5 h instead of 8.5 h in bed meant 60% more of the weight lost came from lean mass (Nedeltcheva 2010). ${c.meaning}`
         : c.meaning,
       action: short
-        ? 'Fix your wake time and move bedtime earlier until the average reaches 7 h. On short nights, train earlier in the day and skip PR attempts — afternoon performance suffered most.'
+        ? 'Fix your wake time and move bedtime earlier until the average reaches 7 h. On short nights, train earlier in the day and skip max-effort attempts — afternoon performance suffered most.'
         : null,
       sources: short ? [...c.sources, SRC.craven2022, SRC.lamon2021, SRC.nedeltcheva2010] : c.sources,
     })

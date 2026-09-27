@@ -1,11 +1,9 @@
-import { useState } from 'react'
-import { ChevronDown, Timer } from 'lucide-react'
+import { Timer } from 'lucide-react'
 import { Card, TonePill } from '../../../../shared/ui'
 import { InfoBubble } from '../../../../shared/components/InfoBubble'
 import { ExerciseThumb } from '../../exerciseMedia'
 import { actionLabel, nextTargetUnavailableText } from '../../progress-engine/copy'
 import { fmtTrainingDate } from '../../dateFormat'
-import { formatPlates } from '../../plan/warmup'
 import { ACTION_TONE } from '../../plan/actionTone'
 import type { PlanRow } from '../../plan/sessionPlan'
 import { SourceNote } from '../program/SourceNote'
@@ -16,39 +14,9 @@ function fmtRest(seconds: number): string {
   return s ? `${m}m ${s}s rest` : `${m} min rest`
 }
 
-function WarmupList({ row }: { row: PlanRow }) {
-  const [open, setOpen] = useState(false)
-  if (row.warmup.length === 0) return null
-  return (
-    <div className="border-t border-line pt-2">
-      <button type="button" aria-expanded={open} onClick={() => setOpen(v => !v)} className="btn-ghost btn-sm -ml-2 gap-1 px-2 text-meta">
-        <ChevronDown aria-hidden className={`h-3.5 w-3.5 transition-transform ${open ? 'rotate-180' : ''}`} />
-        Warm-up · {row.warmup.length} {row.warmup.length === 1 ? 'set' : 'sets'} before {row.topSetKg} kg
-      </button>
-      {open && (
-        <div className="mt-1 flex flex-col gap-2">
-          <ol className="flex flex-col gap-1">
-            {row.warmup.map((w, i) => (
-              <li key={i} className="flex flex-wrap items-baseline gap-x-2 text-body tabular-nums text-fg-2">
-                <span className="font-semibold text-fg">{w.weightKg} kg × {w.reps}</span>
-                <span className="text-meta text-fg-muted">{w.label}</span>
-                {w.platesPerSide.length > 0 && <span className="text-meta text-fg-muted">· per side {formatPlates(w.platesPerSide)}</span>}
-              </li>
-            ))}
-          </ol>
-          <p className="text-meta text-fg-muted">
-            A coaching convention: a few lighter, lower-rep sets ramp you up without tiring you. Rounded to plates you can load
-            (20 kg bar, 1.25 kg smallest plate) or the rack/stack step.
-          </p>
-          <SourceNote ids={['mccrary2015']} prefix="Evidence for warming up" />
-        </div>
-      )}
-    </div>
-  )
-}
-
 /** One exercise of the next session: GIF, what the program prescribes, the
- *  engine's set-by-set target, last session and the warm-up ramp. */
+ *  engine's set-by-set target and last session. The routine's own exercise
+ *  notes live in Library → Routines (collapsed there), not here. */
 export function NextExerciseCard({ row }: { row: PlanRow }) {
   const d = row.decision
   return (
@@ -98,9 +66,6 @@ export function NextExerciseCard({ row }: { row: PlanRow }) {
           <span className="font-medium tabular-nums text-fg-2">{row.lastSets}</span>
         </p>
       )}
-      {row.notes && <p className="text-meta italic text-fg-muted">{row.notes}</p>}
-
-      <WarmupList row={row} />
     </Card>
   )
 }

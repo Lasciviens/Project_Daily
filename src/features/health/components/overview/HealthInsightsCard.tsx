@@ -41,7 +41,7 @@ export function HealthInsightsCard({ hero }: { hero: HealthHero }) {
   const shown = all ? insights : insights.slice(0, SHOW)
   return (
     <Card className="w-full max-w-4xl">
-      <CardHeader icon={<Lightbulb />} title="What your numbers say" subtitle="Population evidence — associations, not a diagnosis" />
+      <CardHeader wrap icon={<Lightbulb />} title="What your numbers say" subtitle="Population evidence — associations, not a diagnosis" />
       <ul className="-my-1 divide-y divide-line">
         {shown.map(i => <InsightRow key={i.id} insight={i} />)}
       </ul>

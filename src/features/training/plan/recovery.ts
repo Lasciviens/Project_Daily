@@ -6,14 +6,14 @@
 //  - Last night's sleep against the ≥7 h adult guideline (Watson 2015,
 //    AASM/SRS consensus). After a night of ≤6 h, performance drops on average
 //    (Craven 2022, Sports Med meta-analysis: about −7.6% across tasks), so the
-//    line suggests not chasing records that day.
+//    line suggests no max-effort attempts that day.
 //  - Resting heart rate: the last-7-day average against your own 60-day
 //    median. A rise of ≥5 bpm is a common monitoring convention for fatigue,
 //    illness or stress (a heuristic, not a validated threshold — see the
 //    "Deloads and fatigue signals" entry in research-science.json).
 //  - Days since each muscle last got at least 2 fractional sets in one
 //    workout (the research file's frequency rule). There is no validated
-//    per-muscle "recovered" clock, so the map shows days, not readiness.
+//    per-muscle "recovered" clock, so the list shows days, not readiness.
 
 import { contribution, slugForHevyGroup } from '../muscleMap'
 import type { ProgressSetRow } from '../progressAggregate'
@@ -37,7 +37,7 @@ export function sleepNote(lastNight: { date: string; hours: number } | null, tod
   if (!lastNight || lastNight.hours <= 0) return null
   if (lastNight.date !== today && lastNight.date !== yesterday) return null
   const h = fmtHours(lastNight.hours)
-  if (lastNight.hours < SHORT_SLEEP_H) return { tone: 'warn', text: `Slept ${h} — a short night. Performance usually dips; not a day to chase records.` }
+  if (lastNight.hours < SHORT_SLEEP_H) return { tone: 'warn', text: `Slept ${h} — a short night. Performance usually dips; not a day for max-effort attempts.` }
   if (lastNight.hours < SLEEP_GUIDELINE_H) return { tone: 'neutral', text: `Slept ${h} — a little under the 7-hour guideline.` }
   return { tone: 'success', text: `Slept ${h} — the 7-hour guideline is met.` }
 }
@@ -103,14 +103,19 @@ export function computeMuscleLastTrained(
 
 export type RecencyBucket = 'today' | 'd1_2' | 'd3_4' | 'd5_7' | 'd8_14' | 'd15' | 'never'
 
-export const RECENCY_BUCKETS: { key: RecencyBucket; label: string }[] = [
-  { key: 'today', label: 'Today' },
-  { key: 'd1_2',  label: '1–2 days' },
-  { key: 'd3_4',  label: '3–4 days' },
-  { key: 'd5_7',  label: '5–7 days' },
-  { key: 'd8_14', label: '8–14 days' },
-  { key: 'd15',   label: '15+ days' },
-  { key: 'never', label: 'Not in history' },
+/** The colour group each bucket shows in: trained in the last 2 days, within
+ *  a week, a week or two ago (worth a look in a current program), or longer. */
+export type RecencyTone = 'success' | 'info' | 'warn' | 'neutral'
+
+export const RECENCY_TONE: Record<RecencyBucket, RecencyTone> = {
+  today: 'success', d1_2: 'success', d3_4: 'info', d5_7: 'info', d8_14: 'warn', d15: 'neutral', never: 'neutral',
+}
+
+export const RECENCY_LEGEND: { tone: RecencyTone; label: string }[] = [
+  { tone: 'success', label: '0–2 days' },
+  { tone: 'info',    label: '3–7 days' },
+  { tone: 'warn',    label: '8–14 days' },
+  { tone: 'neutral', label: '15+ days or never' },
 ]
 
 export function recencyBucket(daysSince: number | null | undefined): RecencyBucket {

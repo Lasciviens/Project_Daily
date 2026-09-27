@@ -3,12 +3,11 @@
  * Verification — the Training tabs' pure plan modules (src/features/training/plan/),
  * against the REAL un-mocked modules through sucrase (no unit-test runner by
  * this repo's convention):
- *   warmup.ts          — plate loading, step rounding, the warm-up ramp
  *   nextSession.ts     — which routine is next, the engine-fed alerts
- *   sessionPlan.ts     — routine + engine target + last session + warm-up
+ *   sessionPlan.ts     — routine + engine target + last session
  *   programBalance.ts  — planned weekly sets per muscle, tiers, preferences,
  *                        restrictions, push:pull and quad:ham balance
- *   improvement.ts     — lift changes over a window, main lifts, PR timeline
+ *   improvement.ts     — lift changes over a window, main lifts, bodyweight
  *   recovery.ts        — sleep / resting-HR lines, days since each muscle
  *
  *   Run:  node scripts/verify-training-plan.cjs
@@ -16,7 +15,6 @@
 require('sucrase/register')
 process.env.TZ = 'Europe/Oslo'
 
-const W = require('../src/features/training/plan/warmup')
 const N = require('../src/features/training/plan/nextSession')
 const S = require('../src/features/training/plan/sessionPlan')
 const P = require('../src/features/training/plan/programBalance')
@@ -30,43 +28,6 @@ function check(name, cond, detail) {
   else { failed++; console.log(`  ✗ ${name}${detail ? ' — ' + detail : ''}`) }
 }
 const J = JSON.stringify
-
-// ─── warmup.ts ──────────────────────────────────────────────────────────────
-console.log('\nwarmup')
-{
-  const l = W.loadBarbell(61, 20)
-  check('loadBarbell never overshoots (61 → 60)', l.weightKg === 60, J(l))
-  check('loadBarbell plates per side greedy (60 → 20)', J(l.platesPerSide) === '[20]', J(l.platesPerSide))
-  check('loadBarbell 102.5 → 25+15+1.25', J(W.loadBarbell(102.5).platesPerSide) === '[25,15,1.25]', J(W.loadBarbell(102.5)))
-  check('loadBarbell below the bar → empty bar', W.loadBarbell(12).weightKg === 20)
-  check('loadBarbell with only 20s and 5s', W.loadBarbell(47, 20, [20, 5]).weightKg === 40)
-  check('roundToStep 13 by 2 → 14', W.roundToStep(13, 2) === 14)
-  check('roundToStep 12.9 by 2.5 → 12.5', W.roundToStep(12.9, 2.5) === 12.5)
-
-  const bench = W.buildWarmupSets(100, { equipment: 'barbell' })
-  check('100 kg barbell: bar + 40/60/80/90', J(bench.map(s => s.weightKg)) === '[20,40,60,80,90]', J(bench.map(s => s.weightKg)))
-  check('reps descend as load rises', J(bench.map(s => s.reps)) === '[10,5,3,2,1]', J(bench.map(s => s.reps)))
-  check('first set is labelled the empty bar', bench[0].label === 'Empty bar' && bench[0].pctOfTop === 0)
-  check('ramp labels are real percentages', bench[1].label === '40%' && bench[4].label === '90%')
-  check('pctOfTop computed from the loaded weight', bench[2].pctOfTop === 60)
-  check('plates per side reported (80 → 25+5)', J(bench[3].platesPerSide) === '[25,5]', J(bench[3].platesPerSide))
-
-  const light = W.buildWarmupSets(40, { equipment: 'barbell' })
-  check('40 kg barbell: rounding collapses duplicates (no set at or above top)', light.every((s, i) => s.weightKg < 40 && (i === 0 || s.weightKg > light[i - 1].weightKg)), J(light.map(s => s.weightKg)))
-  check('40 kg barbell: no 90% single under 100 kg', !light.some(s => s.pctOfTop >= 90))
-  check('top set at bar weight: no warm-up', W.buildWarmupSets(20, { equipment: 'barbell' }).length === 0)
-  check('null top set: no warm-up', W.buildWarmupSets(null, { equipment: 'barbell' }).length === 0)
-
-  const db = W.buildWarmupSets(30, { equipment: 'dumbbell' })
-  check('30 kg dumbbell rounds to 2 kg steps (12/18/24)', J(db.map(s => s.weightKg)) === '[12,18,24]', J(db.map(s => s.weightKg)))
-  check('5 kg dumbbell: no ramp for a light isolation lift', W.buildWarmupSets(5, { equipment: 'dumbbell' }).length === 0)
-  check('60 kg barbell: skips a set under 5 kg above the bar (22.5)', J(W.buildWarmupSets(60, { equipment: 'barbell' }).map(s => s.weightKg)) === '[20,35,47.5]', J(W.buildWarmupSets(60, { equipment: 'barbell' }).map(s => s.weightKg)))
-  check('label shows the real share of the top set', db[1].label === '60%')
-  const machine = W.buildWarmupSets(70, { equipment: 'machine', stepKg: 5 })
-  check('machine with a 5 kg stack step (30/40/55)', J(machine.map(s => s.weightKg)) === '[30,40,55]', J(machine.map(s => s.weightKg)))
-  check('formatPlates groups repeats', W.formatPlates([20, 20, 5, 1.25]) === '2×20 + 5 + 1.25')
-  check('formatPlates of nothing is empty', W.formatPlates([]) === '')
-}
 
 // ─── nextSession.ts ─────────────────────────────────────────────────────────
 console.log('\nnextSession')
@@ -135,15 +96,13 @@ console.log('\nsessionPlan')
   const b = rows[1]
   check('target keeps backoff loads on backoff sets', b.target === '102.5 kg × 6 · 80 kg × 10/9', b.target)
   check('prescription from routine working sets (warm-up excluded)', b.prescription === '3 × 6-8 reps', b.prescription)
-  check('top set = heaviest target set', b.topSetKg === 102.5)
-  check('warm-up built for the top set (barbell, ends below it)', b.warmup.length >= 4 && b.warmup[b.warmup.length - 1].weightKg < 102.5 && b.warmup[0].label === 'Empty bar', J(b.warmup))
   check('last session formatted with each set\'s own load', b.lastSets === '100 kg × 8 · 80 kg × 10', b.lastSets)
   check('rest seconds parsed', b.restSeconds === 120)
   const c = rows[0]
   check('no decision: routine loads shown, no target', c.target === null && c.routineLoads === '14 kg × 10/10', J(c))
-  check('no decision: top set falls back to routine weight, dumbbell ramp', c.topSetKg === 14 && c.warmup.every(w => w.weightKg < 14))
   const p = rows[2]
-  check('bodyweight reps: no warm-up ramp', p.metricKind === 'reps' && p.warmup.length === 0)
+  check('bodyweight reps keep their own metric', p.metricKind === 'reps')
+  check('routine exercise notes are not carried into the plan', !('notes' in p) && !('warmup' in p))
   check('fixed-rep prescription "1 × 8 reps"', p.prescription === '1 × 8 reps', p.prescription)
 }
 
@@ -257,17 +216,11 @@ console.log('\nimprovement')
   check('main lifts: e1RM kinds only, judged only', J(main.map(m => m.templateId)) === '["b","f"]', J(main.map(m => m.templateId)))
   check('main lifts: preferred ids ranked first', I.mainLifts(changes, 5, new Set(['f']))[0].templateId === 'f')
 
-  const prs = I.computePrTimeline(sets, templates, '2026-09-27', 12)
-  check('PR timeline newest first', prs[0].date >= prs[prs.length - 1].date)
-  check('bench PRs after 2 prior sessions only (Aug 20, Sep 1, Sep 20)', J(prs.filter(p => p.templateId === 'b').map(p => p.date)) === '["2026-09-20","2026-09-01","2026-08-20"]', J(prs.filter(p => p.templateId === 'b')))
-  check('assisted PR = less assistance', prs.some(p => p.templateId === 'p' && p.value === 20 && p.previousBest === 25))
-  check('equal value is not a PR', !prs.some(p => p.templateId === 'f'))
   const bw = [{ date: '2026-07-10', kg: 90 }, { date: '2026-07-12', kg: 89 }, { date: '2026-08-01', kg: 88 }, { date: '2026-09-20', kg: 86 }, { date: '2026-09-25', kg: 85 }]
   const bwc = I.bodyweightOverWindow(bw, '2026-09-27', 12)
   check('bodyweight over window: first-14 vs last-14 day means', bwc && bwc.startKg === 89.5 && bwc.endKg === 85.5 && bwc.deltaKg === -4, J(bwc))
   check('bodyweight over window: overlapping stretches → null', I.bodyweightOverWindow([{ date: '2026-09-20', kg: 80 }, { date: '2026-09-25', kg: 81 }], '2026-09-27', 4) === null)
   check('bodyweight over window: one weigh-in → null', I.bodyweightOverWindow([{ date: '2026-09-20', kg: 80 }], '2026-09-27', 4) === null)
-  check('window limits the timeline (4 weeks: only Sep sessions)', I.computePrTimeline(sets, templates, '2026-09-27', 4).every(p => p.date >= '2026-08-31'))
 }
 
 // ─── recovery.ts ────────────────────────────────────────────────────────────
@@ -297,6 +250,7 @@ console.log('\nrecovery')
   check('triceps: 4 × 0.5 = 2 secondary sets count', last.get('triceps').lastDate === '2026-09-20' && last.get('triceps').credit === 2)
   check('future-dated sets ignored', R.computeMuscleLastTrained([row('z', '2026-10-01', 'fly'), row('z', '2026-10-01', 'fly')], tm, '2026-09-27').size === 0)
   check('buckets', R.recencyBucket(0) === 'today' && R.recencyBucket(2) === 'd1_2' && R.recencyBucket(4) === 'd3_4' && R.recencyBucket(7) === 'd5_7' && R.recencyBucket(14) === 'd8_14' && R.recencyBucket(30) === 'd15' && R.recencyBucket(null) === 'never')
+  check('recency tones: recent green, within a week info, 8–14 days warn, older grey', R.RECENCY_TONE.today === 'success' && R.RECENCY_TONE.d1_2 === 'success' && R.RECENCY_TONE.d5_7 === 'info' && R.RECENCY_TONE.d8_14 === 'warn' && R.RECENCY_TONE.d15 === 'neutral' && R.RECENCY_TONE.never === 'neutral')
 }
 
 console.log(`\n${passed} passed, ${failed} failed`)

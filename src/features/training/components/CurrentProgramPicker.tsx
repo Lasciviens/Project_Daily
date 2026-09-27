@@ -53,12 +53,12 @@ export function CurrentProgramPicker({ onSaved }: { onSaved?: () => void } = {})
         Which routines are you running now? Check more than one for a split (e.g. Upper + Lower). Next, Program and Progress
         only use these — never guessed from recent activity, so a skipped week never makes it look like your program changed.
       </p>
-      <ul className="flex max-w-md flex-col gap-1.5">
+      <ul className="flex w-full max-w-md flex-col gap-1.5">
         {routines.map(r => (
           <li key={r.id}>
             <label className="row cursor-pointer border border-line">
               <input type="checkbox" checked={checked.has(r.id)} onChange={() => toggle(r.id)} className="h-[18px] w-[18px] shrink-0 accent-accent-500" />
-              <span className="flex-1 text-body text-fg">{r.title}</span>
+              <span className="min-w-0 flex-1 break-words py-2 text-body text-fg">{r.title}</span>
               {savedIds.size === 0 && suggested.has(r.id) && (
                 <span className="chip shrink-0 border-accent-200 bg-accent-50 text-accent-700" title={`Trained in the last ${SUGGESTION_WINDOW_DAYS} days`}>Recently trained</span>
               )}

@@ -145,19 +145,6 @@ export interface HevyBodyMeasurement {
   updated_at: string
 }
 
-// Personal record per exercise
-export interface HevyPR {
-  exercise_template_id: string
-  title: string
-  primary_muscle_group: string | null
-  max_weight_kg: number
-  reps_at_max: number | null
-  achieved_at: string  // ISO date of the workout
-  /** Distinct workouts this exercise appears in (a 4-set session counts once) —
-      used to filter the PR list to exercises trained often enough to matter. */
-  times_performed: number
-}
-
 // Strava activity (matches strava_activities table from 025 migration)
 export interface StravaActivity {
   id: string

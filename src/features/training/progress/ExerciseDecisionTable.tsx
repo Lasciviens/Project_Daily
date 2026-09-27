@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { ChevronDown } from 'lucide-react'
 import { useProgressDataContext } from './progressDataContext'
-import { actionLabel, improvementScore } from '../progress-engine/copy'
+import { actionLabel, improvementScore, visibleEvents } from '../progress-engine/copy'
 import type { ExerciseProgressResult, CanonicalExerciseSession, CurrentAction, EvidenceLevel, ProgressMetricKind } from '../progress-engine/types'
 import { InfoBubble } from '../../../shared/components/InfoBubble'
 import { Card, EmptyState, TonePill, type Tone } from '../../../shared/ui'
@@ -101,11 +101,11 @@ function withinDateWindow(result: ExerciseProgressResult, window: DateWindow, to
 }
 
 /** Something actually moved in the latest pair: the load, the reps, or a
- *  6-month best / completed target. */
+ *  completed target / progression streak (records are not shown anywhere). */
 function hasRecentChange(d: ExerciseProgressResult): boolean {
   return d.observedTransition === 'LOAD_INCREASED' || d.observedTransition === 'LOAD_DECREASED'
     || d.repDelta === 'REP_INCREASE' || d.repDelta === 'REP_DECLINE'
-    || d.events.some(e => e.emphasis === 'primary')
+    || visibleEvents(d.events).some(e => e.emphasis === 'primary')
 }
 
 type RowProps = { result: ExerciseProgressResult; sessions: CanonicalExerciseSession[]; metricKind: ProgressMetricKind; title: string }

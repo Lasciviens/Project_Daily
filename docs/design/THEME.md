@@ -192,7 +192,7 @@ Use the React primitive when one exists; the CSS class is for places a component
 | Need | Use |
 |---|---|
 | A panel | `<Card>` (`.card`), interactive `<Card as="button" interactive>` (`.card-interactive`) |
-| Card heading | `<CardHeader title icon subtitle action />`, dense: `variant="label"` |
+| Card heading | `<CardHeader title icon subtitle action />`, dense: `variant="label"`; `wrap` lets a long title/subtitle wrap (and the action drop below it on a phone) instead of being cut off — use it wherever the text is user data (a routine name) or a sentence that must be read |
 | Eyebrow label | `<SectionLabel>` (`.section-label`) |
 | Buttons | `<Button variant="primary|secondary|ghost|danger" size="md|sm" icon loading block>` |
 | Icon-only button | `<IconButton label="…">` (label is required: it's the accessible name) |

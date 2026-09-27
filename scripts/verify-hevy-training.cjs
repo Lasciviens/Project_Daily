@@ -6,8 +6,6 @@
  *   routineForm.ts          — strict Hevy payloads for routines AND logged
  *                             workouts, start/end times, validation, sanitisers
  *   setFormat.ts            — one set formatter per exercise type
- *   personalRecords.ts      — the one PR definition (failure sets, assisted =
- *                             least assistance, deterministic ties, 12-rep e1RM)
  *   trainingPlanModel.ts    — plan done/missed, next session incl. recurring
  *   bodyMeasurementFields.ts— explicit-null clears, refusal of an empty day
  *   workoutDates.ts         — local-day filing and range bounds
@@ -22,7 +20,6 @@ process.env.TZ = 'Europe/Oslo'
 
 const rf = require('../src/features/training/routineForm')
 const { formatSet, formatDurationShort, formatDistance } = require('../src/features/training/setFormat')
-const { computePersonalRecords, topLoadRecords, isLoadRecord } = require('../src/features/training/personalRecords')
 const { planStatus, pickNextTrainingSession } = require('../src/features/training/trainingPlanModel')
 const { buildMeasurementPayload, ALL_FIELDS } = require('../src/features/training/bodyMeasurementFields')
 const { workoutLocalDay, localDayBoundsIso, workoutWindowFilter } = require('../src/features/training/workoutDates')
@@ -125,54 +122,6 @@ check('unknown type shows what is there', formatSet({ weight_kg: 50, reps: 5, du
 check('empty set → dash', formatSet({}, 'weight_reps') === '—')
 check('duration helper hours', formatDurationShort(3900) === '1h 5m')
 check('distance helper metres', formatDistance(400) === '400 m')
-
-// ─── personalRecords ────────────────────────────────────────────────────────
-console.log('\n== personalRecords ==')
-{
-  const T = [
-    { id: 'BP', title: 'Bench Press', type: 'weight_reps', primary_muscle_group: 'chest' },
-    { id: 'AP', title: 'Assisted Pull-up', type: 'bodyweight_assisted', primary_muscle_group: 'lats' },
-    { id: 'PU', title: 'Push-up', type: 'bodyweight_reps', primary_muscle_group: 'chest' },
-    { id: 'PL', title: 'Plank', type: 'duration', primary_muscle_group: 'abdominals' },
-  ]
-  let n = 0
-  const S = (tpl, w, day, type, weight, reps, extra = {}) => ({ id: `s${String(++n).padStart(3, '0')}`, exercise_template_id: tpl, workout_id: w, performed_at: `2026-0${day}T10:00:00+00:00`, type, weight_kg: weight, reps, duration_seconds: null, distance_meters: null, ...extra })
-  const sets = [
-    S('BP', 'w1', '1-05', 'normal', 100, 5),
-    S('BP', 'w2', '2-05', 'failure', 105, 3),     // failure set is the heaviest → counts
-    S('BP', 'w2', '2-05', 'warmup', 140, 1),      // warm-up never counts
-    S('BP', 'w3', '3-05', 'dropset', 150, 2),     // drop set never counts
-    S('BP', 'w4', '4-05', 'normal', 105, 6),      // same weight, more reps → wins the tie
-    S('BP', 'w5', '5-05', 'normal', 105, 6),      // exact tie later → first achieved kept
-    S('BP', 'w5', '5-05', 'normal', 90, 15),      // >12 reps: no e1RM
-    S('AP', 'w1', '1-05', 'normal', 40, 8),
-    S('AP', 'w4', '4-05', 'normal', 20, 8),       // least assistance = best
-    S('AP', 'w5', '5-05', 'normal', 25, 10),
-    S('PU', 'w1', '1-05', 'normal', null, 20),
-    S('PU', 'w2', '2-05', 'normal', null, 30),
-    S('PL', 'w1', '1-05', 'normal', null, null, { duration_seconds: 60 }),
-    S('PL', 'w3', '3-05', 'normal', null, null, { duration_seconds: 95 }),
-  ]
-  const prs = computePersonalRecords(sets, T)
-  const by = id => prs.find(p => p.exercise_template_id === id)
-  const bp = by('BP')
-  check('failure sets count, warm-up/drop sets never do', bp.best_value === 105)
-  check('tie on weight → more reps wins', bp.reps === 6)
-  check('exact tie → the FIRST time it was achieved', bp.achieved_at.startsWith('2026-04-05'))
-  check('best e1RM uses the shared 12-rep-capped est1RM', bp.best_est_1rm === 126, String(bp.best_est_1rm))
-  check('times performed = distinct workouts with a normal/failure set (w3 had only a drop set)', bp.times_performed === 4, String(bp.times_performed))
-  check('assisted: least assistance is the record (was the weakest session)', by('AP').best_value === 20 && by('AP').metric_kind === 'assistedWeight')
-  check('reps-only: most reps', by('PU').best_value === 30 && by('PU').reps === 30)
-  check('duration: longest set', by('PL').best_value === 95)
-  check('only weight × reps exercises are load records', isLoadRecord(bp) && !isLoadRecord(by('AP')) && !isLoadRecord(by('PL')))
-  const top = topLoadRecords(prs, 5, {})
-  check('top lifts exclude assisted/bodyweight/timed work', top.length === 1 && top[0].exercise_template_id === 'BP')
-  check('top lifts respect the minimum sessions', topLoadRecords(prs, 5, { minTimes: 6 }).length === 0)
-  check('top lifts respect the muscle filter', topLoadRecords(prs, 5, { muscle: 'lats' }).length === 0 && topLoadRecords(prs, 5, { muscle: 'chest' }).length === 1)
-  const again = computePersonalRecords([...sets].reverse(), T)
-  check('input order never changes the result', JSON.stringify(again) === JSON.stringify(prs))
-  check('unknown template ids are skipped, not crashed on', computePersonalRecords([S('XX', 'w9', '1-01', 'normal', 50, 5)], T).length === 0)
-}
 
 // ─── trainingPlanModel ──────────────────────────────────────────────────────
 console.log('\n== trainingPlanModel ==')

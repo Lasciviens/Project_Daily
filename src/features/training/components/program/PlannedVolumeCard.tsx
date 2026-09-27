@@ -50,6 +50,7 @@ export function PlannedVolumeCard({ muscles, passes }: { muscles: MuscleRead[]; 
   return (
     <Card className="max-w-2xl">
       <CardHeader
+        wrap
         icon={<BarChart3 />}
         title={<span className="inline-flex items-center gap-1.5">Planned sets per muscle
           <InfoBubble>

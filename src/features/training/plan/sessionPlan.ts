@@ -1,16 +1,17 @@
 // One routine turned into "what to lift today": per exercise the program's
 // prescription, the progress engine's set-by-set target (each set keeps its
-// own load — backoff sets keep the backoff weight), last session's numbers
-// and a warm-up ramp for the top set. Pure — runtime imports only from other
-// pure modules — tested by scripts/verify-training-plan.cjs.
+// own load — backoff sets keep the backoff weight) and last session's
+// numbers. Pure — runtime imports only from other pure modules — tested by
+// scripts/verify-training-plan.cjs. (A warm-up ramp and the routine's
+// exercise notes were shown here once; both removed on the owner's call —
+// the notes stay in Library → Routines.)
 //
 // No decision is made here: the target is the engine's (progress-engine
 // targets.ts), this only lines it up with the routine.
 
 import type { CanonicalExerciseSession, ExerciseProgressResult, ProgressMetricKind } from '../progress-engine/types'
 import { formatSessionSets, formatSetTargets } from '../progress-engine/format'
-import { routineTargetFromSets, repRangeLabel, inferEquipmentClass } from '../progress-engine/policies'
-import { buildWarmupSets, type WarmupSet } from './warmup'
+import { routineTargetFromSets, repRangeLabel } from '../progress-engine/policies'
 
 export interface RoutineSetInput {
   type: string
@@ -26,7 +27,6 @@ export interface RoutineExerciseInput {
   exercise_template_id: string
   title: string
   index: number
-  notes?: string | null
   rest_seconds?: string | number | null
   sets?: readonly RoutineSetInput[]
 }
@@ -36,7 +36,6 @@ export interface PlanRow {
   title: string
   order: number
   metricKind: ProgressMetricKind
-  notes: string | null
   restSeconds: number | null
   /** "3 × 8-12 reps" from the routine, or null when nothing is prescribed. */
   prescription: string | null
@@ -48,12 +47,7 @@ export interface PlanRow {
   decision: ExerciseProgressResult | null
   lastSets: string | null
   lastDate: string | null
-  /** Heaviest set of the target (else of last session, else of the routine). */
-  topSetKg: number | null
-  warmup: WarmupSet[]
 }
-
-const WEIGHTED: ReadonlySet<ProgressMetricKind> = new Set<ProgressMetricKind>(['est1rm'])
 
 function routineLoadsText(sets: readonly RoutineSetInput[], kind: ProgressMetricKind): string | null {
   const working = sets.filter(s => s.type !== 'warmup')
@@ -68,11 +62,6 @@ function parseRest(v: string | number | null | undefined): number | null {
   if (v == null) return null
   const n = typeof v === 'number' ? v : Number(v)
   return Number.isFinite(n) && n > 0 ? n : null
-}
-
-function maxKg(values: readonly (number | null)[]): number | null {
-  const xs = values.filter((v): v is number => v != null && v > 0)
-  return xs.length ? Math.max(...xs) : null
 }
 
 export function buildSessionPlan(
@@ -94,17 +83,12 @@ export function buildSessionPlan(
     const latest = sessions[sessions.length - 1] ?? null
     const next = decision?.nextTargets?.nextSession ?? null
     const target = next?.setTargets ? formatSetTargets(next.setTargets, kind) : null
-    const topSetKg = maxKg(next?.setTargets?.map(t => t.weightKg) ?? [])
-      ?? next?.loadKg ?? maxKg(latest?.comparableWorkingSets.map(s => s.weightKg) ?? [])
-      ?? maxKg(sets.filter(s => s.type !== 'warmup').map(s => s.weight_kg))
-    const warmup = WEIGHTED.has(kind) ? buildWarmupSets(topSetKg, { equipment: inferEquipmentClass(ex.title) }) : []
     return {
       templateId: id, title: ex.title, order: i + 1, metricKind: kind,
-      notes: ex.notes?.trim() || null, restSeconds: parseRest(ex.rest_seconds),
+      restSeconds: parseRest(ex.rest_seconds),
       prescription, routineLoads: routineLoadsText(sets, kind),
       target, targetHeadline: next?.headline ?? null, decision,
       lastSets: latest ? formatSessionSets(latest.allSets, kind) : null, lastDate: latest?.date ?? null,
-      topSetKg, warmup,
     }
   })
 }

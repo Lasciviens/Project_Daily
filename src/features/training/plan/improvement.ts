@@ -33,7 +33,7 @@ export function higherIsBetter(kind: ProgressMetricKind): boolean {
 const COUNTED = new Set(['normal', 'failure'])
 
 /** One session's number in the exercise's own metric, or null. Warm-ups and
- *  dropsets never count (the same sets the Personal Records list uses). */
+ *  dropsets never count. */
 export function sessionTopValue(sets: readonly ProgressSetRow[], kind: ProgressMetricKind): number | null {
   const vals: number[] = []
   for (const s of sets) {
@@ -159,40 +159,6 @@ export function mainLifts(changes: readonly LiftChange[], n = 5, preferIds: Read
     .filter(c => c.kind === 'est1rm' && c.status !== 'insufficient')
     .sort((a, b) => Number(preferIds.has(b.templateId)) - Number(preferIds.has(a.templateId)) || b.sessions - a.sessions || (b.end ?? 0) - (a.end ?? 0))
     .slice(0, n)
-}
-
-export interface PrEvent {
-  date: string
-  templateId: string
-  title: string
-  kind: ProgressMetricKind
-  value: number
-  previousBest: number
-}
-
-/** Sessions inside the window that beat every earlier session of the same
- *  exercise in the loaded history (at least `minPrior` earlier sessions — a
- *  second-ever session "beating" the first isn't a record). Newest first. */
-export function computePrTimeline(
-  sets: readonly ProgressSetRow[], templates: readonly TemplateInfo[], today: string, weeks: number, minPrior = 2,
-): PrEvent[] {
-  const from = windowStart(today, weeks)
-  const byId = new Map(templates.map(t => [t.id, t]))
-  const events: PrEvent[] = []
-  for (const id of new Set(sets.map(s => s.exercise_template_id))) {
-    const t = byId.get(id)
-    const kind = metricKindForExerciseType(t?.type ?? 'weight_reps')
-    const series = exerciseSeries(sets.filter(s => s.date <= today), id, kind)
-    let best: number | null = null
-    series.forEach((p, i) => {
-      if (best != null && i >= minPrior && p.date >= from) {
-        const beats = higherIsBetter(kind) ? p.value > best : p.value < best
-        if (beats) events.push({ date: p.date, templateId: id, title: t?.title ?? 'Unknown exercise', kind, value: p.value, previousBest: best })
-      }
-      best = best == null ? p.value : better(kind, best, p.value)
-    })
-  }
-  return events.sort((a, b) => b.date.localeCompare(a.date) || a.title.localeCompare(b.title))
 }
 
 export interface WindowBodyweight { startKg: number; endKg: number; deltaKg: number; startDate: string; endDate: string }

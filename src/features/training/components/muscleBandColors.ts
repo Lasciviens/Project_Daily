@@ -1,24 +1,24 @@
-import { useMemo } from 'react'
-import { useChartColors } from '../../../shared/ui'
-
 /**
- * Resolved colours for the six volume bands (index = band) and the two
- * limitation flags, for SVG fills and swatches. Both "maintenance" bands are
- * informational, so maintenance takes the teal categorical series to stay
- * distinguishable from below-maintenance; flags take the violet series so they
- * never read as a status colour.
+ * Colours for the weekly-volume body map: the six volume bands (index = band)
+ * and the two limitation flags, for SVG fills and swatches.
+ *
+ * One fixed palette, not theme tokens: the diagram always sits on a dark stage
+ * (bg-scrim) in both themes, and the light-theme tone values are too dark and
+ * too close to each other there — after the restyle below-maintenance (cyan),
+ * maintenance (teal) and optimal (green) looked alike and untrained grey was
+ * brighter than trained muscles. The bands are a category the user reads by
+ * colour, so they stay literal in this one constant (THEME.md §2, identity
+ * colours). Flags are violet so they never read as a status colour.
  */
-export function useBandColors() {
-  const c = useChartColors()
-  return useMemo(() => ({
-    bands: [c.neutral, c.info, c.series[0], c.success, c.warn, c.danger],
-    flag: { avoid: c.series[1], limit: withAlpha(c.series[1], 0.55) },
-    untrained: c.neutral,
-  }), [c])
-}
+export const BODY_MAP_COLORS = {
+  bands: ['#4b5563', '#3b82f6', '#14b8a6', '#22c55e', '#f59e0b', '#ef4444'] as const,
+  flag: { avoid: '#7c3aed', limit: '#a78bfa' },
+  untrained: '#4b5563',
+} as const
 
-/** `rgb(r, g, b)` → `rgb(r g b / a)`; other strings pass through. */
-export function withAlpha(rgb: string, alpha: number): string {
-  const m = rgb.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/)
-  return m ? `rgb(${m[1]} ${m[2]} ${m[3]} / ${alpha})` : rgb
+export type BodyMapColors = typeof BODY_MAP_COLORS
+
+/** Kept as a hook so call sites read the same way as useChartColors(). */
+export function useBandColors(): BodyMapColors {
+  return BODY_MAP_COLORS
 }
