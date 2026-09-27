@@ -21,7 +21,8 @@
 //               reading at all.
 // Days never merge across sources for the WEIGHT; body fat % and lean mass
 // come from the weight's source when it has one, else from the next source
-// that reported one that day (fatSource / leanSource say which).
+// that reported one that day (fatSource / leanSource say which; fatDevice /
+// leanDevice which scale, since two scales' estimates don't line up).
 
 export type BodyweightSource = 'scale' | 'report' | 'hevy'
 

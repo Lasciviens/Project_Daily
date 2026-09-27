@@ -63,28 +63,33 @@ function energyStub({ kgPerWeek, meanKg = 90, meanKcal = 2400, loggedDays = 28, 
   }
 }
 
-// ── §2 kcal advice: to the middle of the range, rounded to 50 ─────────────
+// ── §2 kcal advice: the nearest edge of the range (and the middle) ────────
 {
-  // Cut at 0.3 %/wk at 90 kg → middle 0.75 %: 0.45 % × 90 kg × 7700 / 7 ≈ 445.5 → 450 less
+  // Cut at 0.3 %/wk at 90 kg → edge 0.5 %: 0.2 % × 90 kg × 7700 / 7 = 198 → 200 less;
+  // middle 0.75 %: 445.5 → 450 less.
   const r = BG.buildRateVerdict('cut', energyStub({ kgPerWeek: -0.27 }), { intakeReliable: true })
   check('§2.1 too slow', r.status, 'too_slow')
-  check('§2.2 eat ~450 kcal/day less', r.adjustKcal, -450)
-  check('§2.3 suggested logged intake 2,400 − 450', r.suggestedIntake, 1950)
-  near('§2.4 target kg/week at 0.75 %', r.targetKgPerWeek, -0.675, 0.01)
+  check('§2.2 eat ~200 kcal/day less to reach 0.5 %', [r.adjust.kcal, r.adjust.pct], [-200, -0.5])
+  check('§2.3 ~450 less aims at the middle', [r.adjustMid.kcal, r.adjustMid.pct], [-450, -0.75])
+  check('§2.4 suggested logged intake 2,400 − 200', r.suggestedIntake, 2200)
+  near('§2.5 0.5 % of 90 kg a week', r.adjust.kgPerWeek, -0.45, 1e-9)
   const fast = BG.buildRateVerdict('cut', energyStub({ kgPerWeek: -1.35 }), { intakeReliable: false })
-  check('§2.5 1.5 %/wk → way too fast', fast.status, 'way_too_fast')
-  check('§2.6 eat ~750 kcal/day more to slow to 0.75 %', fast.adjustKcal, 750)
-  check('§2.7 no suggested intake when the diary is thin', fast.suggestedIntake, null)
+  check('§2.6 1.5 %/wk → way too fast', fast.status, 'way_too_fast')
+  check('§2.7 back to 1 %: ~500 more; to 0.75 %: ~750 more', [fast.adjust.kcal, fast.adjustMid.kcal], [500, 750])
+  check('§2.8 no suggested intake when the diary is thin', fast.suggestedIntake, null)
   const on = BG.buildRateVerdict('cut', energyStub({ kgPerWeek: -0.63 }), { intakeReliable: true })
-  check('§2.8 on track → no adjustment', [on.status, on.adjustKcal, on.suggestedIntake], ['on_track', null, null])
+  check('§2.9 on track → no adjustment', [on.status, on.adjust, on.adjustMid, on.suggestedIntake], ['on_track', null, null, null])
   const gain = BG.buildRateVerdict('gain', energyStub({ kgPerWeek: 0.09, meanKg: 80 }), { intakeReliable: true })
-  // 0.1125 % → middle 0.375: 0.2625 % × 80 × 7700 / 7 = 231 → 250 more
-  check('§2.9 gain too slow → eat 250 more', [gain.status, gain.adjustKcal], ['too_slow', 250])
+  // 0.1125 % → edge 0.25: 0.1375 % × 80 × 1100 = 121 → 100 more; middle: 231 → 250
+  check('§2.10 gain too slow → 100 more (250 for the middle)', [gain.status, gain.adjust.kcal, gain.adjustMid.kcal], ['too_slow', 100, 250])
   const drift = BG.buildRateVerdict('maintain', energyStub({ kgPerWeek: -0.36, meanKg: 80 }), { intakeReliable: true })
-  // −0.45 %/wk → 0: 0.45 % × 80 × 1100 = 396 → 400 more
-  check('§2.10 maintain drifting down → eat 400 more', [drift.status, drift.adjustKcal], ['drifting_down', 400])
+  // −0.45 %/wk → 0: 0.45 % × 80 × 1100 = 396 → 400 more; maintain has no "middle" step
+  check('§2.11 maintain drifting down → back to steady: 400 more', [drift.status, drift.adjust.kcal, drift.adjustMid], ['drifting_down', 400, null])
+  const near05 = BG.buildRateVerdict('cut', energyStub({ kgPerWeek: -0.44 }), { intakeReliable: true })
+  check('§2.12 a hair outside the range still gets a 50 kcal step, never 0', near05.adjust.kcal, -50)
   const none = energyStub({ kgPerWeek: -0.5 }); none.hasTrend = false
-  check('§2.11 no trend → no verdict', BG.buildRateVerdict('cut', none, { intakeReliable: true }), null)
+  check('§2.13 no trend → no verdict', BG.buildRateVerdict('cut', none, { intakeReliable: true }), null)
+  check('§2.14 kcalForPace: 1 % of 70 kg a week ≈ 770 → 750; a tiny step is 50', [BG.kcalForPace(0, -1, 70), BG.kcalForPace(0, 0.01, 70)], [-750, 50])
 }
 
 // ── §3 Scale readings: one per source and day, never mixed ─────────────────
@@ -109,6 +114,8 @@ const A = (metric, date, source, value, hh = '07') => ({ metric, date, recordedA
   check('§3.7 report muscle mass = weight × muscle %', rep.muscleMassKg, 56)
   check('§3.8 four readings (two sources, two days, one report)', rs.length, 4)
   check('§3.9 an impossible weight is dropped', BG.compositionReadings([A('weight_body_mass', FROM, 'X', 900)], []).length, 0)
+  const joined = BG.compositionReadings([A('weight_body_mass', FROM, 'ScaleApp|Phone', 80), A('body_fat_percentage', FROM, 'Phone|ScaleApp|Phone', 20)], [])
+  check('§3.10 the same joined source in another order is one source', [joined.length, joined[0].source, joined[0].fatPct], [1, 'Phone|ScaleApp', 20])
 }
 
 /** Daily readings from one source: weight, fat and lean moving linearly. */
@@ -211,10 +218,10 @@ const TO = addDays(FROM, 28)
   ok('§7.3 …pace sentence names the range', /inside the 0\.5–1 %/.test(good.summary[0]), good.summary)
   const slow = P('cut', rate('cut', -0.27), 'fat_loss_lean_kept')
   check('§7.4 cut slow → can speed up', slow.title, 'Losing fat, keeping muscle — you can speed up')
-  ok('§7.5 …by a concrete amount', /To speed up: eat about 450 kcal a day less — around 1,950 kcal logged a day/.test(slow.steps[0].text), slow.steps[0])
+  ok('§7.5 …by a concrete amount, with the middle as the alternative', /To speed up: eat about 200 kcal a day less \(around 2,200 kcal logged a day\) to reach 0\.5 % a week \(0\.45 kg\); about 450 less aims at the middle of the range, 0\.75 %\./.test(slow.steps[0].text), slow.steps[0])
   const fast = P('cut', rate('cut', -1.35), 'fat_loss_some_lean', energyStub({ kgPerWeek: -1.35, protein: 120, band: 'below_floor' }))
   check('§7.6 cut way too fast → muscle at risk', [fast.title, fast.tone], ['Too fast — muscle is at risk', 'danger'])
-  ok('§7.7 …slow down step', /To slow down and protect muscle: eat about 750 kcal a day more/.test(fast.steps[0].text), fast.steps[0])
+  ok('§7.7 …slow down step', /To slow down and protect muscle: eat about 500 kcal a day more \(around 2,900 kcal logged a day\) to reach 1 % a week \(0\.9 kg\)/.test(fast.steps[0].text), fast.steps[0])
   ok('§7.8 …protein step with grams (1.6 → 144 g, 2.2 → 198 g)', fast.steps.some(s => s.key === 'protein' && /144 g a day/.test(s.text) && /198 g/.test(s.text)), fast.steps)
   ok('§7.9 …lift heavy', fast.steps.some(s => s.key === 'training' && /lifting heavy/.test(s.text)), fast.steps)
   check('§7.10 losing lean outranks pace', P('cut', rate('cut', -0.63), 'losing_lean').title, 'Losing muscle faster than fat')

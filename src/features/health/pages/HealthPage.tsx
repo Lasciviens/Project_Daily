@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { PageContainer, PageHeader } from '../../../shared/ui'
 import { ErrorBoundary } from '../../../shared/components/ErrorBoundary'
 import { useHealthProfile } from '../../training/hooks/useAthleteProfile'
-import { CutReportCard } from '../cut/CutReportCard'
+import { GoalReportCard } from '../goal/GoalReportCard'
 import { DateNav } from '../components/DateNav'
 import { PeriodToggle } from '../components/PeriodToggle'
 import { labelForAnchor, stepAnchor, useRangeWindow } from '../components/dateNav'
@@ -113,7 +113,7 @@ export function HealthPage() {
               <Guard name="Energy"><EnergySection range={range} /></Guard>
               <p className="text-meta text-fg-muted">
                 What you eat lives in <Link to="/recipes" className="font-medium text-accent-600 underline underline-offset-2">Food</Link>;{' '}
-                <button type="button" className="font-medium text-accent-600 underline underline-offset-2" onClick={() => setSection('cut')}>the cut report</button> compares it with this burn.
+                <button type="button" className="font-medium text-accent-600 underline underline-offset-2" onClick={() => setSection('goal')}>Goal progress</button> compares it with this burn.
               </p>
               <MetricMiniGrid title="More activity" metrics={ACTIVITY_EXTRA_METRICS} window={miniWindow} onViewDay={viewDay} hideWhenEmpty standalone="h3" />
               <MetricMiniGrid title="Mobility" metrics={MOBILITY_METRICS} window={miniWindow} onViewDay={viewDay} hideWhenEmpty standalone="h3" />
@@ -141,9 +141,9 @@ export function HealthPage() {
             </SectionPanel>
           )}
 
-          {section === 'cut' && (
-            <SectionPanel id="cut" note="Your logged food against the scale — are you losing weight as fast as your calories say you should?">
-              <Guard name="Cut report"><CutReportCard /></Guard>
+          {section === 'goal' && (
+            <SectionPanel id="goal" note="Your weight, fat and muscle against the phase you picked — cut, maintain or gain — and your own goals.">
+              <Guard name="Goal progress"><GoalReportCard /></Guard>
             </SectionPanel>
           )}
 

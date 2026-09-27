@@ -1,12 +1,12 @@
 import type { Dispatch, SetStateAction } from 'react'
-import { Activity, Dumbbell, Footprints, Gauge, HeartPulse, Moon, Scale, TrendingDown, type LucideIcon } from 'lucide-react'
+import { Activity, Dumbbell, Footprints, Gauge, HeartPulse, Moon, Scale, Target, type LucideIcon } from 'lucide-react'
 import type { Period } from './PeriodToggle'
 
 /** The Health page's windows (tabs), in the metric ranking's order with the
  *  overview first. Kept in `?section=` so a link or a reload opens the same
  *  window. The page was one long scroll for a while; the owner preferred
  *  windows, so every group has its own tab again. */
-export type HealthSectionId = 'overview' | 'sleep' | 'activity' | 'heart' | 'body' | 'cut' | 'cardio' | 'workouts'
+export type HealthSectionId = 'overview' | 'sleep' | 'activity' | 'heart' | 'body' | 'goal' | 'cardio' | 'workouts'
 
 export const HEALTH_SECTIONS: { id: HealthSectionId; label: string; icon: LucideIcon }[] = [
   { id: 'overview', label: 'Overview',       icon: Activity },
@@ -14,7 +14,7 @@ export const HEALTH_SECTIONS: { id: HealthSectionId; label: string; icon: Lucide
   { id: 'activity', label: 'Activity',       icon: Footprints },
   { id: 'heart',    label: 'Heart & vitals', icon: HeartPulse },
   { id: 'body',     label: 'Body',           icon: Scale },
-  { id: 'cut',      label: 'Cut report',     icon: TrendingDown },
+  { id: 'goal',     label: 'Goal progress',  icon: Target },
   { id: 'cardio',   label: 'Cardio fitness', icon: Gauge },
   { id: 'workouts', label: 'Workouts',       icon: Dumbbell },
 ]
@@ -22,6 +22,8 @@ export const HEALTH_SECTIONS: { id: HealthSectionId; label: string; icon: Lucide
 export const DEFAULT_HEALTH_SECTION: HealthSectionId = 'overview'
 
 export function parseHealthSection(raw: string | null): HealthSectionId {
+  // The goal report was the "cut report" (?section=cut) until it followed the chosen phase.
+  if (raw === 'cut') return 'goal'
   return HEALTH_SECTIONS.some(s => s.id === raw) ? raw as HealthSectionId : DEFAULT_HEALTH_SECTION
 }
 

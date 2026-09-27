@@ -3,7 +3,7 @@
 // (scripts/verify-body-goal.cjs). Never a diagnosis: each line says what the
 // numbers show and the usual fix.
 
-import { PHASE_TARGET, type CompositionResult, type CompositionVerdict, type Phase, type RateVerdict, type Tone } from './bodyGoal'
+import { type CompositionResult, type CompositionVerdict, type Phase, type RateVerdict, type Tone } from './bodyGoal'
 import type { EnergyReport } from './energyBalance'
 
 export type StepKey = 'calories' | 'protein' | 'training' | 'data' | 'early' | 'keep'
@@ -20,8 +20,9 @@ export interface PathInputs {
 }
 
 const n0 = (v: number) => Math.round(v).toLocaleString('en-GB')
-const pctAbs = (v: number) => `${Math.abs(v).toFixed(2).replace(/0$/, '')} %`
-const fmtKg = (v: number) => `${Math.abs(v).toFixed(2).replace(/0$/, '')} kg`
+const trim = (v: number) => String(Number(Math.abs(v).toFixed(2)))
+const pctAbs = (v: number) => `${trim(v)} %`
+const fmtKg = (v: number) => `${trim(v)} kg`
 const LEAN_LOSS: CompositionVerdict[] = ['losing_lean', 'fat_loss_some_lean', 'fat_gain_lean_loss']
 
 export const PHASE_RANGE_LABEL: Record<Phase, string> = {
@@ -107,12 +108,15 @@ const LEAD: Partial<Record<RateVerdict['status'], Record<Phase, string>>> = {
 }
 
 function calorieStep(phase: Phase, rate: RateVerdict): PathStep | null {
-  if (rate.adjustKcal == null) return null
+  const a = rate.adjust
+  if (!a) return null
   const lead = LEAD[rate.status]?.[phase] || 'To reach the range'
-  const more = rate.adjustKcal > 0
-  const target = phase === 'maintain' ? 'a steady weight' : `about ${pctAbs(PHASE_TARGET[phase].mid)} a week (${fmtKg(rate.targetKgPerWeek)})`
-  const intake = rate.suggestedIntake != null ? ` — around ${n0(rate.suggestedIntake)} kcal logged a day` : ''
-  return { key: 'calories', text: `${lead}: eat about ${n0(Math.abs(rate.adjustKcal))} kcal a day ${more ? 'more' : 'less'}${intake}, aiming at ${target}.` }
+  const dirWord = (k: number) => (k > 0 ? 'more' : 'less')
+  const intake = rate.suggestedIntake != null ? ` (around ${n0(rate.suggestedIntake)} kcal logged a day)` : ''
+  const aim = phase === 'maintain' ? 'to hold your weight steady' : `to reach ${pctAbs(a.pct)} a week (${fmtKg(a.kgPerWeek)})`
+  const mid = rate.adjustMid && rate.adjustMid.kcal !== a.kcal
+    ? `; about ${n0(Math.abs(rate.adjustMid.kcal))} ${dirWord(rate.adjustMid.kcal)} aims at the middle of the range, ${pctAbs(rate.adjustMid.pct)}` : ''
+  return { key: 'calories', text: `${lead}: eat about ${n0(Math.abs(a.kcal))} kcal a day ${dirWord(a.kcal)}${intake} ${aim}${mid}.` }
 }
 
 export function buildPath({ phase, rate, comp, energy, weightKg }: PathInputs): GoalPath {

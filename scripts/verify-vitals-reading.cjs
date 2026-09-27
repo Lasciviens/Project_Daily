@@ -298,6 +298,38 @@ const row = (reading, key) => reading.rows.find(r => r.key === key)
   ok('§18.3 every row has an about text and a range rule', r.rows.every(x => x.spec.about && x.spec.rangeRule))
 }
 
+// ─── §19 Persistence inside a period, even when the run broke ────────────────
+{
+  const pattern = [60, 70, 70, 60, 70, 70, 60] // i = 0 … 6 (today first)
+  const s = baseSeries({ resting_heart_rate: tail(series(TO, DAYS, () => 60), 7, i => pattern[i]) })
+  const r = period(s, 7)
+  const rhr = row(r, 'rhr')
+  check('§19.1 4 of 7 days above, the last day back in range', [rhr.daysAbove, rhr.daysChecked, rhr.run], [4, 7, null])
+  check('§19.2 headline with the day count', r.verdict.headline, 'One signal is off: resting heart rate averaged 6 bpm above your usual (high on 4 of 7 days).')
+  ok('§19.3 persistence says how many days', r.verdict.notes.some(n => n.startsWith('It has been off on 4 of 7 days in this period')), JSON.stringify(r.verdict.notes))
+  check('§19.4 → warn', r.verdict.tone, 'warn')
+  const two = baseSeries({ resting_heart_rate: tail(series(TO, DAYS, () => 60), 7, i => [60, 80, 60, 80, 60, 60, 60][i]) })
+  const r2 = period(two, 7)
+  check('§19.5 2 high days (mean above) is not "persistent"', [row(r2, 'rhr').status, r2.verdict.tone], ['above', 'neutral'])
+}
+
+// ─── §20 Smoothed signals have no per-day count ──────────────────────────────
+{
+  const s = baseSeries({ heart_rate_variability: tail(series(TO, DAYS, i => 45 + 3 * wob(i)), 7, () => 30) })
+  const r = period(s, 7)
+  const h = row(r, 'hrv')
+  check('§20.1 HRV week below, no day counts', [h.status, h.daysChecked], ['below', null])
+  check('§20.2 headline without a count', r.verdict.headline, 'One signal is off: HRV averaged below your usual range.')
+  ok('§20.3 a low 7-day average for a week is persistent', r.verdict.tone === 'warn' && r.verdict.notes.some(n => n.includes('readings in a row')), JSON.stringify(r.verdict))
+}
+
+// ─── §21 A difference on the edge of the rule gets a decimal ─────────────────
+{
+  const r = day(baseSeries({ resting_heart_rate: tail(series(TO, DAYS, () => 60), 1, () => 65.4) }))
+  check('§21.1 5.4 above the median is above ± 5', row(r, 'rhr').status, 'above')
+  check('§21.2 and reads "5.4", not "5"', r.verdict.headline, 'One signal is off: resting heart rate is 5.4 bpm above your usual.')
+}
+
 console.log(`${passed} passed, ${failures.length} failed`)
 if (failures.length) {
   for (const f of failures) console.log(`✗ ${f}`)

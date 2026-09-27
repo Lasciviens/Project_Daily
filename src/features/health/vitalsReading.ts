@@ -434,7 +434,9 @@ function readRow(spec: VitalSpec, s: readonly DayValue[], from: string, to: stri
 
   // Day by day inside a period (and the run at its end).
   let daysAbove: number | null = null, daysBelow: number | null = null, daysChecked: number | null = null
-  if (!isDay && basis === 'period' && (usual || spec.floor != null)) {
+  // (Smoothed signals are left out: a single day of HRV swings too much to
+  // judge, and counting 7-day averages as "days" would read oddly.)
+  if (!isDay && basis === 'period' && spec.smoothDays <= 1 && (usual || spec.floor != null)) {
     daysAbove = 0; daysBelow = 0; daysChecked = 0
     for (const d of inSpan(s, from, to)) {
       const v = perDay(spec, s, d.date)
@@ -464,7 +466,11 @@ function readRow(spec: VitalSpec, s: readonly DayValue[], from: string, to: stri
 // ── Words ────────────────────────────────────────────────────────────────────
 
 function absDelta(row: VitalRow): string {
-  return `${fmtVital(Math.abs(row.deltaVsUsual ?? 0), row.spec.decimals)}${unitGap(row.spec.unit)}`
+  const d = Math.abs(row.deltaVsUsual ?? 0)
+  const { range, decimals, unit } = row.spec
+  // "5 bpm above" next to a ± 5 rule reads as inside it; say 5.4 instead.
+  const onEdge = range?.mode === 'median' && Number(d.toFixed(decimals)) <= range.halfWidth
+  return `${fmtVital(d, onEdge ? decimals + 1 : decimals)}${unitGap(unit)}`
 }
 
 function meaningOf(row: VitalRow, isDay: boolean): string {
@@ -542,6 +548,23 @@ function persistentDays(row: VitalRow): number {
   return row.run.days
 }
 
+/** Off for PERSISTENT_DAYS readings in a row, or (a period) on at least that
+ *  many days and at least half of them. null = a one-off. */
+function persistence(row: VitalRow, isDay: boolean): { days: number; of: number | null } | null {
+  const run = persistentDays(row)
+  if (run >= PERSISTENT_DAYS) return { days: run, of: null }
+  if (!isDay && row.daysChecked) {
+    const n = (row.status === 'above' ? row.daysAbove : row.daysBelow) ?? 0
+    if (n >= PERSISTENT_DAYS && n * 2 >= row.daysChecked) return { days: n, of: row.daysChecked }
+  }
+  return null
+}
+
+function persistenceText(p: { days: number; of: number | null }): string {
+  if (p.of == null) return `for ${p.days} readings in a row`
+  return p.days === p.of ? 'on every day of this period' : `on ${p.days} of ${p.of} days in this period`
+}
+
 function daysOffText(row: VitalRow): string | null {
   if (row.daysChecked == null || !row.daysChecked) return null
   const n = row.status === 'above' ? row.daysAbove : row.status === 'below' ? row.daysBelow : null
@@ -591,22 +614,19 @@ function buildVerdict(rows: VitalRow[], isDay: boolean, totalDays: number): Vita
       if (r.run.days >= PERSISTENT_DAYS) tone = 'neutral'
     }
   } else {
-    const persistent = concerns.filter(r => persistentDays(r) >= PERSISTENT_DAYS || (!isDay && r.daysChecked != null && r.daysChecked >= PERSISTENT_DAYS
-      && ((r.status === 'above' ? r.daysAbove : r.daysBelow) ?? 0) * 2 >= r.daysChecked))
+    const persistent = concerns
+      .map(r => ({ r, p: persistence(r, isDay) }))
+      .filter((x): x is { r: VitalRow; p: { days: number; of: number | null } } => x.p != null)
     const phrases = concerns.map(r => {
       const off = !isDay ? daysOffText(r) : null
       return `${phraseOf(r, isDay)}${off ? ` (${off})` : ''}`
     })
     label = `${concerns.length} signal${concerns.length === 1 ? '' : 's'} off`
     if (concerns.length === 1) {
-      const r = concerns[0]
       headline = `One signal is off: ${phrases[0]}.`
       if (persistent.length) {
         tone = 'warn'
-        const n = persistentDays(r)
-        notes.push(n >= PERSISTENT_DAYS
-          ? `It has been off for ${n} readings in a row — worth easing off hard training and putting sleep first. If it carries on or you feel unwell, rest.`
-          : 'It was off on most days of this period — worth easing off hard training and putting sleep first. If it carries on or you feel unwell, rest.')
+        notes.push(`It has been off ${persistenceText(persistent[0].p)} — worth easing off hard training and putting sleep first. If it carries on or you feel unwell, rest.`)
       } else {
         tone = 'neutral'
         notes.push(isDay
@@ -617,11 +637,8 @@ function buildVerdict(rows: VitalRow[], isDay: boolean, totalDays: number): Vita
       tone = 'warn'
       headline = `${countWord(concerns.length)} recovery signals are off: ${listJoin(phrases)} — together these often mean fatigue, illness coming on, alcohol or short sleep.`
       if (persistent.length) {
-        const r = persistent[0]
-        const n = persistentDays(r)
-        notes.push(n >= PERSISTENT_DAYS
-          ? `${r.spec.label} has been off for ${n} readings in a row — ease off hard training and put sleep first; if you feel unwell, rest.`
-          : 'They were off on most days of this period — ease off hard training and put sleep first; if you feel unwell, rest.')
+        const { r, p } = persistent[0]
+        notes.push(`${r.spec.label} has been off ${persistenceText(p)} — ease off hard training and put sleep first; if you feel unwell, rest.`)
       } else {
         notes.push('One bad day is noise; three in a row is worth easing off.')
       }

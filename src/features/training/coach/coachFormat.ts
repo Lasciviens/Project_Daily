@@ -195,6 +195,7 @@ export function balanceLines(b: CoachBalance): string[] {
   for (const pair of PAIRS) {
     const done = b.done[pair]
     const planned = b.planned?.[pair]
+    if (done.lean === 'none' && (!planned || planned.lean === 'none')) continue
     lines.push(`  ${PAIR_META[pair].label}: ${planned ? `planned ${ratioWithLean(planned)} · ` : ''}done ${ratioWithLean(done)}${done.lean !== 'none' ? ` — ${sidesText(done)}` : ''}`)
     const why = b.comparison?.[pair].why
     if (why) lines.push(`    Why: ${why}`)

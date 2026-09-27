@@ -13,6 +13,7 @@ function Ratio({ read, comparison, doneLabel }: { read: RatioRead; comparison: B
       <RatioValue read={read} />
       <p className="text-meta tabular-nums text-fg-muted">{sidesText(read)}</p>
       {comparison && <CounterpartLine label={doneLabel} read={comparison.done} />}
+      <WhyLine comparison={comparison} />
     </div>
   )
 }
@@ -29,17 +30,11 @@ export function BalanceCard({ balance, comparison, doneWindowDays }: {
   const doneLabel = `Done in the last ${doneWindowDays} days`
   return (
     <Card className="max-w-2xl">
-      <CardHeader icon={<Scale />} title="Balance" subtitle="Planned in your program · weekly sets, same counting as above" />
+      <CardHeader icon={<Scale />} title="Balance" subtitle="Planned in your program · weekly sets" />
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Ratio read={balance.pushPull} comparison={comparison?.pushPull ?? null} doneLabel={doneLabel} />
         <Ratio read={balance.quadHam} comparison={comparison?.quadHam ?? null} doneLabel={doneLabel} />
       </div>
-      {(comparison?.pushPull.why || comparison?.quadHam.why) && (
-        <div className="mt-3 flex flex-col gap-1.5">
-          <WhyLine comparison={comparison.pushPull} />
-          <WhyLine comparison={comparison.quadHam} />
-        </div>
-      )}
       {balance.notes.length > 0 && (
         <ul className="mt-3 flex flex-col gap-1 border-t border-line pt-3">
           {balance.notes.map((n, i) => <li key={i} className="flex items-start gap-2 text-body text-fg-2"><ToneDot tone={n.tone} className="mt-1.5 shrink-0" />{n.text}</li>)}

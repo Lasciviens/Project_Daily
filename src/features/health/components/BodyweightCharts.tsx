@@ -144,6 +144,9 @@ function ScaleMetricChart({ series, field, from, to, onViewDay, title, unit, col
           <span className="font-semibold tabular-nums text-fg">{last.value.toFixed(1)} {unit}</span> · {fmtDayMonth(last.date)}
         </p>
       </div>
+      <HealthTrendChart data={data} unit={unit} ariaLabel={ariaLabel} height={140}
+        formatValue={v => v.toFixed(1)} onViewDay={onViewDay} yDomain={scaleChartDomain(readings.map(r => r.value), MIN_SPAN[field])}
+        series={[readingLine('value', title.toLowerCase(), color, readings.length)]} />
       {dropped > 0 && since && (
         <p className="flex items-center gap-1 text-micro text-fg-muted">
           Your current scale only, since {fmtDayMonth(since)}
@@ -154,9 +157,6 @@ function ScaleMetricChart({ series, field, from, to, onViewDay, title, unit, col
           </InfoBubble>
         </p>
       )}
-      <HealthTrendChart data={data} unit={unit} ariaLabel={ariaLabel} height={140}
-        formatValue={v => v.toFixed(1)} onViewDay={onViewDay} yDomain={scaleChartDomain(readings.map(r => r.value), MIN_SPAN[field])}
-        series={[readingLine('value', title.toLowerCase(), color, readings.length)]} />
     </div>
   )
 }

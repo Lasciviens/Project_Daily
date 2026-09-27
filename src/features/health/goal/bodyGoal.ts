@@ -21,8 +21,9 @@
 //            the range) most of the extra is fat.
 //   maintain within ±0.25 %/wk — a heuristic band about as wide as the
 //            trend's own noise over a few weeks; not a published cut-off.
-// The kcal advice moves the pace to the MIDDLE of the phase's range using the
-// same 7,700 kcal/kg as energyBalance.ts (±15 %).
+// The kcal advice gives the smallest change that reaches the phase's range (and
+// the one that aims at its middle), with the same 7,700 kcal/kg as
+// energyBalance.ts (±15 %).
 //
 // FAT vs MUSCLE — from the smart scale's body fat % and lean mass. Consumer
 // bioimpedance swings with hydration, glycogen and food: under lab control
@@ -75,40 +76,56 @@ export function classifyRate(phase: Phase, pct: number): RateStatus {
   return pct <= GAIN_LIMIT ? 'too_fast' : 'way_too_fast'
 }
 
+export interface RateAdjust {
+  /** kcal/day to change intake by (+ = eat more), rounded to 50 (at least 50). */
+  kcal: number
+  /** The signed %BW/week it aims at. */
+  pct: number
+  /** …as kg/week at this weight. */
+  kgPerWeek: number
+}
+
 export interface RateVerdict {
   status: RateStatus
   /** Signed %BW/week (+ = gaining). */
   pctPerWeek: number
   /** Signed kg/week. */
   kgPerWeek: number
-  /** kg/week at the middle of the phase's range, for this weight. */
-  targetKgPerWeek: number
-  /** kcal/day to change intake by to reach the middle of the range (+ = eat
-   *  more), rounded to 50. null when already in range. */
-  adjustKcal: number | null
-  /** Logged intake + adjustKcal — only when the diary covers enough days. */
+  /** The smallest change that reaches the range — its nearest edge (maintain:
+   *  back to a steady weight). null when already in range. */
+  adjust: RateAdjust | null
+  /** The change that aims at the middle of the range (cut and gain only). */
+  adjustMid: RateAdjust | null
+  /** Logged intake + adjust.kcal — only when the diary covers enough days. */
   suggestedIntake: number | null
 }
 
-const round50 = (v: number) => Math.round(v / 50) * 50
+/** kcal/day between two paces (signed %BW/week) at a weight, rounded to 50, at least 50. */
+export function kcalForPace(fromPct: number, toPct: number, kg: number, density = ENERGY_DENSITY): number {
+  const raw = ((toPct - fromPct) / 100) * kg * density / 7
+  return Math.sign(raw) * Math.max(50, Math.round(Math.abs(raw) / 50) * 50)
+}
 
 export function buildRateVerdict(phase: Phase, energy: EnergyReport, opts: { intakeReliable: boolean }): RateVerdict | null {
   const w = energy.weight
   if (!energy.hasTrend || w.kgPerWeek == null || w.pctPerWeek == null || !w.meanKg) return null
+  const kg = w.meanKg
   const pct = -w.pctPerWeek
   const status = classifyRate(phase, pct)
   const t = PHASE_TARGET[phase]
+  const at = (target: number): RateAdjust => ({ kcal: kcalForPace(pct, target, kg), pct: target, kgPerWeek: Math.round((target / 100) * kg * 100) / 100 })
   const inRange = status === 'on_track' || status === 'stable'
-  const raw = ((t.mid - pct) / 100) * w.meanKg * ENERGY_DENSITY / 7
-  const adjustKcal = inRange ? null : round50(raw) || null
+  const edge = phase === 'maintain' ? t.mid : pct < t.lo ? t.lo : t.hi
+  const adjust = inRange ? null : at(edge)
+  const adjustMid = inRange || phase === 'maintain' ? null : at(t.mid)
   const intake = energy.intake.meanKcal
   return {
     status,
     pctPerWeek: Math.round(pct * 100) / 100,
     kgPerWeek: w.kgPerWeek,
-    targetKgPerWeek: Math.round((t.mid / 100) * w.meanKg * 100) / 100,
-    adjustKcal,
-    suggestedIntake: adjustKcal != null && opts.intakeReliable && intake != null ? round50(intake + adjustKcal) : null,
+    adjust,
+    adjustMid,
+    suggestedIntake: adjust && opts.intakeReliable && intake != null ? Math.round((intake + adjust.kcal) / 50) * 50 : null,
   }
 }
 
@@ -130,6 +147,12 @@ export const REPORT_SOURCE = 'report'
 export interface AppleScalePoint { metric: string; date: string; recordedAt: string; source: string; value: number }
 export interface ScaleReport { date: string; weightKg: number; fatPct: number; fatMassKg: number; leanMassKg: number; musclePct: number | null }
 
+/** Health Auto Export joins the contributing apps/devices with '|' in no fixed
+ *  order; the same set is the same source. */
+export function canonicalSource(s: string): string {
+  return [...new Set(s.split('|').map(p => p.trim()).filter(Boolean))].sort().join('|') || s
+}
+
 const inRangeNum = (v: number | null | undefined, lo: number, hi: number) =>
   typeof v === 'number' && Number.isFinite(v) && v >= lo && v <= hi ? v : null
 
@@ -139,8 +162,9 @@ const inRangeNum = (v: number | null | undefined, lo: number, hi: number) =>
 export function compositionReadings(apple: AppleScalePoint[], reports: ScaleReport[]): CompositionReading[] {
   const byKey = new Map<string, { date: string; source: string; kg?: number; fat?: number; lean?: number }>()
   for (const p of [...apple].sort((a, b) => a.recordedAt.localeCompare(b.recordedAt))) {
-    const key = `${p.source}|${p.date}`
-    const cur = byKey.get(key) ?? { date: p.date, source: p.source }
+    const source = canonicalSource(p.source)
+    const key = `${source}\u0000${p.date}`
+    const cur = byKey.get(key) ?? { date: p.date, source }
     if (p.metric === 'weight_body_mass') cur.kg = inRangeNum(p.value, 25, 300) ?? cur.kg
     // Apple stores body fat either as a fraction (0.18) or a percentage (18).
     else if (p.metric === 'body_fat_percentage') cur.fat = inRangeNum(p.value <= 1 ? p.value * 100 : p.value, 2, 75) ?? cur.fat

@@ -16,7 +16,7 @@ export function SleepIncompleteNote({ nights, today }: { nights: IncompleteNight
     ? 'Last night'
     : `The night of ${fmtDayMonth(shiftDateStr(night.date, -1))}–${fmtDayMonth(night.date)}`
   return (
-    <div data-tone="warn" role="note" className="tone-soft flex gap-2 rounded-row px-3 py-2 text-meta text-fg-2">
+    <div data-tone="warn" role="note" className="tone-soft flex w-fit max-w-xl gap-2 rounded-row px-3 py-2 text-meta text-fg-2">
       <AlertTriangle aria-hidden className="tone-text mt-0.5 h-4 w-4 shrink-0" />
       <div className="min-w-0">
         {/* A div, not a p: the InfoBubble's panel is a div. */}

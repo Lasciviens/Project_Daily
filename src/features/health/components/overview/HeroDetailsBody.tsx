@@ -58,7 +58,7 @@ export function WeightDetail({ hero, onViewDay }: Props) {
       <p className="text-meta text-fg-muted">
         {w.fatPct != null && <>Latest body fat {num(w.fatPct, 1)}%. </>}
         {w.waistCm != null && w.waistDate && <>Latest waist {num(w.waistCm, 1)} cm ({fmtDayMonth(w.waistDate)}, Hevy). </>}
-        Your cut report — calories against the scale — has its own tab, Cut report.
+        Whether this pace is right for your cut, maintenance or gain — and whether it is fat or muscle — is in the Goal progress tab.
       </p>
       {w.whtr != null && (
         <div className="border-t border-line pt-4">
