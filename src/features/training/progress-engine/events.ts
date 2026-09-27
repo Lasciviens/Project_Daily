@@ -1,12 +1,13 @@
-// Progress engine — deterministic, all-history achievement detection.
-// Never windowed (see trend.ts for the separate, windowed trend reads):
-// an earlier successful load cycle must never lose its PR just because it
-// falls outside the recent-trend window.
+// Progress engine — deterministic achievement detection over EVERY session
+// the engine is given — never windowed to the recent-trend window (see
+// trend.ts), so an earlier successful load cycle keeps its best. The input
+// is the loaded history (the last 6 months of the current program), so the
+// copy calls these "best in 6 months", never an all-time PR.
 
 import type { CanonicalExerciseSession, ProgressEvent, ExpectationRange, ExerciseProgressionPolicy, ProgressMetricKind } from './types'
 import type { RepresentativePoint } from './trend'
 import { isPositiveLoadChange } from './policies'
-import { isWeightBasedMetric, isCleanProgression, metricValueOf, selectRepresentativeSet, isQualifiedForPositiveSignal } from './metricStrategy'
+import { isWeightBasedMetric, isCleanProgression, metricValueOf, isQualifiedForPositiveSignal, sessionBestE1rm } from './metricStrategy'
 
 export function detectProgressEvents(
   points: readonly RepresentativePoint[],
@@ -184,10 +185,7 @@ export function detectEstimatedStrengthPr(
   metricKind: ProgressMetricKind,
 ): ProgressEvent | null {
   if (metricKind !== 'est1rm') return null
-  const e1rmOf = (s: CanonicalExerciseSession) => {
-    const best = selectRepresentativeSet(s.comparableWorkingSets, 'uniform_working_load', 'est1rm')
-    return metricValueOf(best, 'est1rm')
-  }
+  const e1rmOf = (s: CanonicalExerciseSession) => sessionBestE1rm(s.comparableWorkingSets)
   const prior = sessions.slice(0, latestIndex).map(e1rmOf).filter((v): v is number => v != null)
   const latest = e1rmOf(sessions[latestIndex])
   const priorMax = prior.length ? Math.max(...prior) : null

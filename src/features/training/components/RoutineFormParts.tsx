@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react'
 import { Combobox, ComboboxInput, ComboboxOptions, ComboboxOption } from '@headlessui/react'
 import { X } from 'lucide-react'
 import { SET_TYPE_OPTIONS, type SetType } from '../setTypeMeta'
-import type { FormSet, setFieldsForType } from '../routineForm'
+import { RPE_OPTIONS, sanitizeDecimal, sanitizeInteger, type FormSet, type setFieldsForType } from '../routineForm'
 import type { HevyExerciseTemplate } from '../types.hevy'
 
 export const inputCls = 'input w-full px-2 text-center'
@@ -78,11 +78,16 @@ interface SetRowProps {
   useRange:  boolean
   canRemove: boolean
   showLabel: boolean
+  /** Workouts log RPE; routines can't carry it (Hevy rejects it there). */
+  showRpe?:  boolean
   onChange:  (patch: Partial<FormSet>) => void
   onRemove:  () => void
 }
 
-export function SetRow({ set, index, fields, useRange, canRemove, showLabel, onChange, onRemove }: SetRowProps) {
+// Text inputs with inputMode, never type="number": a number input empties a
+// comma decimal ("62,5") on a Norwegian keypad. The sanitisers turn ',' into
+// '.' and drop anything that isn't a digit.
+export function SetRow({ set, index, fields, useRange, canRemove, showLabel, showRpe, onChange, onRemove }: SetRowProps) {
   return (
     <div className="flex items-end gap-2">
       {/* Set number badge */}
@@ -112,8 +117,8 @@ export function SetRow({ set, index, fields, useRange, canRemove, showLabel, onC
         {fields.weight && (
           <SetField label="kg" showLabel={showLabel}>
             <input
-              type="number" inputMode="decimal" value={set.weight_kg}
-              onChange={e => onChange({ weight_kg: e.target.value })}
+              type="text" inputMode="decimal" value={set.weight_kg}
+              onChange={e => onChange({ weight_kg: sanitizeDecimal(e.target.value) })}
               placeholder="–" className={inputCls}
             />
           </SetField>
@@ -122,8 +127,8 @@ export function SetRow({ set, index, fields, useRange, canRemove, showLabel, onC
         {fields.reps && !useRange && (
           <SetField label="Reps" showLabel={showLabel}>
             <input
-              type="number" inputMode="numeric" value={set.reps}
-              onChange={e => onChange({ reps: e.target.value })}
+              type="text" inputMode="numeric" value={set.reps}
+              onChange={e => onChange({ reps: sanitizeInteger(e.target.value) })}
               placeholder="–" className={inputCls}
             />
           </SetField>
@@ -133,14 +138,14 @@ export function SetRow({ set, index, fields, useRange, canRemove, showLabel, onC
           <SetField label="Rep range" showLabel={showLabel} wide>
             <div className="flex items-center gap-1">
               <input
-                type="number" inputMode="numeric" value={set.rep_range_start}
-                onChange={e => onChange({ rep_range_start: e.target.value })}
+                type="text" inputMode="numeric" value={set.rep_range_start} aria-label="Minimum reps"
+                onChange={e => onChange({ rep_range_start: sanitizeInteger(e.target.value) })}
                 placeholder="min" className={inputCls}
               />
               <span className="shrink-0 text-meta text-fg-faint">–</span>
               <input
-                type="number" inputMode="numeric" value={set.rep_range_end}
-                onChange={e => onChange({ rep_range_end: e.target.value })}
+                type="text" inputMode="numeric" value={set.rep_range_end} aria-label="Maximum reps"
+                onChange={e => onChange({ rep_range_end: sanitizeInteger(e.target.value) })}
                 placeholder="max" className={inputCls}
               />
             </div>
@@ -150,8 +155,8 @@ export function SetRow({ set, index, fields, useRange, canRemove, showLabel, onC
         {fields.duration && (
           <SetField label="Sec" showLabel={showLabel}>
             <input
-              type="number" inputMode="numeric" value={set.duration_seconds}
-              onChange={e => onChange({ duration_seconds: e.target.value })}
+              type="text" inputMode="numeric" value={set.duration_seconds}
+              onChange={e => onChange({ duration_seconds: sanitizeInteger(e.target.value) })}
               placeholder="–" className={inputCls}
             />
           </SetField>
@@ -160,10 +165,24 @@ export function SetRow({ set, index, fields, useRange, canRemove, showLabel, onC
         {fields.distance && (
           <SetField label="Meters" showLabel={showLabel}>
             <input
-              type="number" inputMode="numeric" value={set.distance_meters}
-              onChange={e => onChange({ distance_meters: e.target.value })}
+              type="text" inputMode="numeric" value={set.distance_meters}
+              onChange={e => onChange({ distance_meters: sanitizeInteger(e.target.value) })}
               placeholder="–" className={inputCls}
             />
+          </SetField>
+        )}
+
+        {showRpe && (
+          <SetField label="RPE" showLabel={showLabel}>
+            <select
+              value={set.rpe ?? ''}
+              onChange={e => onChange({ rpe: e.target.value })}
+              aria-label={`Set ${index + 1} RPE`}
+              className="select w-full px-1 text-center"
+            >
+              <option value="">–</option>
+              {RPE_OPTIONS.map(v => <option key={v} value={String(v)}>{v}</option>)}
+            </select>
           </SetField>
         )}
       </div>

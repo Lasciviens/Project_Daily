@@ -1,5 +1,6 @@
-// Pure aggregation functions for the Training "Progress" tab (exercise
-// progression, weekly volume trend, training consistency) — kept import-free
+// Pure aggregation functions for the Training "Progress" tab (the e1RM
+// formula, metric dispatch, weekly volume, sessions per week, relative
+// strength, rep ranges, sets per muscle) — kept import-free
 // (no supabase client, no React) so it's testable via sucrase, matching the
 // health/dayAgenda convention elsewhere in this repo.
 //
@@ -19,13 +20,11 @@ export interface ProgressSetRow {
   duration_seconds: number | null
   distance_meters:  number | null
   /** The workout's own hevy_workouts.routine_id — null for a freeform (no
-   *  routine) session. Used by progressDecisions.ts to scope "current
-   *  program" history; unused by every function in this file. */
+   *  routine) session. Used by progress-engine/program.ts to scope "current
+   *  program" history and to find when each routine was last trained. */
   routine_id?:      string | null
   /** hevy_sets.rpe — optional effort rating (0-10), null when not logged.
-   *  100% null in this app's real data as of 2026-09-01, but the schema
-   *  supports it and progressDecisions.ts uses it as bonus evidence once
-   *  the athlete starts logging it — never a required field. */
+   *  Carried for display only; no decision in this app depends on it. */
   rpe?:             number | null
   /** hevy_sets.index — the set's own order within its exercise, e.g. for
    *  building a real ordered set vector (progress-engine/normalize.ts).
@@ -41,14 +40,16 @@ export interface ProgressTemplateRow {
 }
 
 // ── Est. 1RM (Epley) ────────────────────────────────────────────────────────
-// Matches the existing Personal Records feature's formula EXACTLY (same
-// number must never appear as two different "1RM"s on two screens).
+// THE one estimated-1RM formula in the app — the progress engine, the charts
+// and the Personal Records list all import this; never re-implement it (two
+// formulas once put two different "1RM"s for the same set on two screens).
 // Epley/Brzycki both carry material error above ~12 reps (commonly cited
-// ~±10% even at ≤10 reps) — sets outside that range are not eligible.
-const EST_1RM_MAX_REPS = 12
+// ~±10% even at ≤10 reps) — sets outside that range are not eligible and
+// return null, which a caller shows as "n/a above 12 reps", never a number.
+export const EST_1RM_MAX_REPS = 12
 
-export function est1RM(weightKg: number, reps: number): number | null {
-  if (reps <= 0 || reps > EST_1RM_MAX_REPS) return null
+export function est1RM(weightKg: number, reps: number | null | undefined): number | null {
+  if (reps == null || !Number.isFinite(weightKg) || reps <= 0 || reps > EST_1RM_MAX_REPS) return null
   if (reps === 1) return weightKg
   return Math.round(weightKg * (1 + reps / 30) * 10) / 10
 }
@@ -84,107 +85,53 @@ export function metricKindForExerciseType(type: string): ProgressMetricKind {
   }
 }
 
-export interface ExerciseSessionPoint {
-  date:   string
-  /** The metric this session's "top set" produced, per metricKindForExerciseType
-   *  — null when no eligible set exists that session (e.g. every set was >12
-   *  reps for an est1rm-type exercise). */
-  topValue: number | null
-  /** Total volume (Σ weight_kg × reps) across included working sets this
-   *  session — meaningful only when weight_kg is populated; null otherwise
-   *  (bodyweight_reps/duration/distance types have no weight-based volume). */
-  volume: number | null
-  /** The literal best set's own weight/reps, for tooltips regardless of
-   *  which derived metric is plotted. */
-  topWeightKg: number | null
-  topReps:     number | null
+// ── Week keys ───────────────────────────────────────────────────────────────
+function ymd(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-/** One exercise's progression across every session it appears in, within the
- *  rows already fetched. `warmup` sets are excluded entirely (matches the
- *  Muscles feature's own convention); `dropset`/`failure` are included — a
- *  dropset structurally can't win the "best set" selection (it follows a
- *  heavier set by construction), and a failure set is a real top effort that
- *  must stay eligible. */
-export function computeExerciseProgression(
-  sets: ProgressSetRow[],
-  templateId: string,
-  metricKind: ProgressMetricKind,
-): ExerciseSessionPoint[] {
-  const bySession = new Map<string, ProgressSetRow[]>()
-  for (const s of sets) {
-    if (s.exercise_template_id !== templateId) continue
-    if (s.set_type === 'warmup') continue
-    const key = `${s.date}|${s.workout_id}`
-    const arr = bySession.get(key)
-    if (arr) arr.push(s)
-    else bySession.set(key, [s])
-  }
-
-  const out: ExerciseSessionPoint[] = []
-  for (const [key, rows] of bySession) {
-    const date = key.split('|')[0]
-
-    // "Best set" selection per metric kind — never an average (see the
-    // strength-coach review: averaging a top set with backoff sets is
-    // volume-of-sets-dependent and misleading).
-    let best: ProgressSetRow | null = null
-    let bestScore = -Infinity
-    for (const r of rows) {
-      let score: number | null = null
-      if (metricKind === 'est1rm' && r.weight_kg != null && r.reps != null) {
-        score = est1RM(r.weight_kg, r.reps)
-      } else if (metricKind === 'reps' && r.reps != null) {
-        score = r.reps
-      } else if (metricKind === 'addedWeight' && r.weight_kg != null) {
-        score = r.weight_kg
-      } else if (metricKind === 'assistedWeight' && r.weight_kg != null) {
-        // Inverted: LESS assistance is the improvement — see progress-tab
-        // guardrail copy. Selection still picks the "best" (least assisted)
-        // set of the session by negating for comparison.
-        score = -r.weight_kg
-      } else if (metricKind === 'duration' && r.duration_seconds != null) {
-        score = r.duration_seconds
-      } else if (metricKind === 'distance' && r.distance_meters != null) {
-        score = r.distance_meters
-      }
-      if (score != null && score > bestScore) { bestScore = score; best = r }
-    }
-
-    let topValue: number | null = null
-    if (best) {
-      if (metricKind === 'est1rm') topValue = best.weight_kg != null && best.reps != null ? est1RM(best.weight_kg, best.reps) : null
-      else if (metricKind === 'reps') topValue = best.reps
-      else if (metricKind === 'addedWeight') topValue = best.weight_kg
-      else if (metricKind === 'assistedWeight') topValue = best.weight_kg
-      else if (metricKind === 'duration') topValue = best.duration_seconds
-      else if (metricKind === 'distance') topValue = best.distance_meters
-    }
-
-    // Volume is always Σ weight×reps across the session's included sets,
-    // regardless of which metric is being plotted — only meaningful (non-null)
-    // when at least one set has both fields.
-    let volume: number | null = null
-    for (const r of rows) {
-      if (r.weight_kg != null && r.reps != null) volume = (volume ?? 0) + r.weight_kg * r.reps
-    }
-
-    out.push({
-      date, topValue, volume,
-      topWeightKg: best?.weight_kg ?? null,
-      topReps: best?.reps ?? null,
-    })
-  }
-
-  return out.sort((a, b) => a.date.localeCompare(b.date))
+/** Monday date ('yyyy-MM-dd') of the LOCAL week a local date falls in — the
+ *  one definition of "a week" for the whole Progress tab (recoveryAggregate.ts
+ *  keys its sleep/resting-HR weeks the same way via shared mondayOfStr). */
+export function mondayOf(dateStr: string): string {
+  const d = new Date(dateStr + 'T00:00:00')
+  const day = (d.getDay() + 6) % 7
+  d.setDate(d.getDate() - day)
+  return ymd(d)
 }
 
-/** Whether the plotted exercise's rep range varied enough across the period
- *  to warrant the rep-range-change caveat (strength-coach spec: ±4 reps). */
-export function repRangeVariedSignificantly(points: ExerciseSessionPoint[]): boolean {
-  const reps = points.map(p => p.topReps).filter((r): r is number => r != null)
-  if (reps.length < 2) return false
-  return Math.max(...reps) - Math.min(...reps) >= 4
+/** A week key shifted by N whole weeks (negative = earlier). */
+export function shiftWeek(weekStart: string, weeks: number): string {
+  const d = new Date(weekStart + 'T00:00:00')
+  d.setDate(d.getDate() + weeks * 7)
+  return ymd(d)
+}
+
+/** The last calendar week that's actually finished — a partial current week
+ *  always looks like a collapse, so every trend and "last week" read uses
+ *  this, never the week `today` falls in. `today` must be a LOCAL date. */
+export function lastCompleteWeek(today: string): string {
+  return shiftWeek(mondayOf(today), -1)
+}
+
+/** Every Monday from `fromWeek` to `untilWeek` inclusive (both week keys). */
+export function weeksBetween(fromWeek: string, untilWeek: string): string[] {
+  const out: string[] = []
+  for (let w = fromWeek; w <= untilWeek; w = shiftWeek(w, 1)) out.push(w)
+  return out
+}
+
+/** The span a dense weekly series covers: from the first week with data to
+ *  the later of the last week with data and `untilWeek`. Filling up to
+ *  `untilWeek` (usually the last complete week, or the current week) is what
+ *  keeps a break honest — a series that stops at the last logged week hides
+ *  every empty week after it (a three-month break read as an unbroken
+ *  streak). Returns [] when there is no data at all. */
+function denseWeekKeys(dataWeeks: Iterable<string>, untilWeek?: string): string[] {
+  const sorted = [...dataWeeks].sort()
+  if (sorted.length === 0) return []
+  const last = untilWeek && untilWeek > sorted[sorted.length - 1] ? untilWeek : sorted[sorted.length - 1]
+  return weeksBetween(sorted[0], last)
 }
 
 // ── Weekly volume trend ─────────────────────────────────────────────────────
@@ -193,26 +140,20 @@ export function repRangeVariedSignificantly(points: ExerciseSessionPoint[]): boo
 // otherwise silently mix apples and oranges into one number.
 const TONNAGE_TYPES = new Set(['weight_reps', 'short_distance_weight', 'bodyweight_weighted'])
 
-/** Monday date ('yyyy-MM-dd') of the week a given date falls in — used as the
- *  chart's x-axis label instead of the raw ISO week string. Exported so
- *  recoveryAggregate.ts (sleep/resting-HR weekly grouping) and the
- *  weekly-change-flags helper below key their own weeks identically to this
- *  file's — one definition of "a week" for the whole Progress tab. */
-export function mondayOf(dateStr: string): string {
-  const d = new Date(dateStr + 'T00:00:00')
-  const day = (d.getDay() + 6) % 7
-  d.setDate(d.getDate() - day)
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
-
 export interface WeeklyVolumePoint {
   weekStart: string // Monday, 'yyyy-MM-dd'
   tonnageKg: number
 }
 
+/** DENSE weekly tonnage: every week from the first tonnage week to
+ *  max(last tonnage week, `untilWeek`), untrained weeks as an explicit zero.
+ *  Dense so `rollingAverage` averages CALENDAR weeks (a sparse series once
+ *  let a "4-week average" span 7+ real weeks after a break) and so a break
+ *  since the last logged week shows as zeros instead of vanishing. */
 export function computeWeeklyVolumeTrend(
   sets: ProgressSetRow[],
   templates: ProgressTemplateRow[],
+  untilWeek?: string,
 ): WeeklyVolumePoint[] {
   const typeById = new Map(templates.map(t => [t.id, t.type]))
   const byWeek = new Map<string, number>()
@@ -224,28 +165,7 @@ export function computeWeeklyVolumeTrend(
     const wk = mondayOf(s.date)
     byWeek.set(wk, (byWeek.get(wk) ?? 0) + s.weight_kg * s.reps)
   }
-  if (byWeek.size === 0) return []
-
-  // DENSE series — every week from the first tonnage week to the last,
-  // untrained-for-tonnage weeks included as an explicit zero. Real bug this
-  // fixes (sports-scientist review, 2026-09-01): a sparse series (only weeks
-  // with tonnage) meant `rollingAverage` silently averaged the last N ARRAY
-  // ENTRIES rather than the last N CALENDAR weeks — after a break, a
-  // "4-week average" could quietly span 7+ real weeks — and the chart's own
-  // x-axis spacing didn't correspond to elapsed time. Same technique as
-  // computeConsistencyByWeek; this is also what lets trainingInsights.ts's
-  // calendar-anchored `shiftWeek` lookups and this chart agree on the exact
-  // same number for the same week.
-  const weeks = [...byWeek.keys()].sort()
-  const out: WeeklyVolumePoint[] = []
-  const cursor = new Date(weeks[0] + 'T00:00:00')
-  const last = new Date(weeks[weeks.length - 1] + 'T00:00:00')
-  while (cursor <= last) {
-    const key = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}-${String(cursor.getDate()).padStart(2, '0')}`
-    out.push({ weekStart: key, tonnageKg: Math.round(byWeek.get(key) ?? 0) })
-    cursor.setDate(cursor.getDate() + 7)
-  }
-  return out
+  return denseWeekKeys(byWeek.keys(), untilWeek).map(weekStart => ({ weekStart, tonnageKg: Math.round(byWeek.get(weekStart) ?? 0) }))
 }
 
 /** Trailing N-week simple moving average, aligned to the same weekStart keys
@@ -258,47 +178,75 @@ export function rollingAverage(points: WeeklyVolumePoint[], windowWeeks: number)
   })
 }
 
-// ── Training consistency ────────────────────────────────────────────────────
+// ── Sessions per week (the ONE definition) ──────────────────────────────────
+// A "session" is one distinct workout id, filed under the LOCAL day it
+// happened on. Every "sessions this week" readout (Progress adherence, the
+// Workouts tab, Home, the coach snapshot) should go through these so they
+// agree on the same number. Callers map their own rows to {id, date}: a
+// ProgressSetRow is {id: workout_id, date}; a Hevy workout is
+// {id, date: localDayOf(start_time ?? hevy_created_at)}.
+export interface DatedSession { id: string; date: string }
+
 export interface ConsistencyWeek {
   weekStart: string // Monday
   sessionCount: number
 }
 
-export function computeConsistencyByWeek(sets: ProgressSetRow[]): ConsistencyWeek[] {
-  const workoutsByMonday = new Map<string, Set<string>>()
-  for (const s of sets) {
-    const monday = mondayOf(s.date)
-    const set = workoutsByMonday.get(monday) ?? new Set<string>()
-    set.add(s.workout_id)
-    workoutsByMonday.set(monday, set)
+function sessionIdsByWeek(sessions: readonly DatedSession[]): Map<string, Set<string>> {
+  const byWeek = new Map<string, Set<string>>()
+  for (const s of sessions) {
+    const wk = mondayOf(s.date)
+    const ids = byWeek.get(wk) ?? new Set<string>()
+    ids.add(s.id)
+    byWeek.set(wk, ids)
   }
-  if (workoutsByMonday.size === 0) return []
-
-  // DENSE series — every calendar week from first to last, INCLUDING weeks
-  // with zero sessions. Real bug this fixes: a sparse map (only weeks that
-  // have at least one row) makes a genuine gap week invisible to
-  // currentStreakWeeks below — two weeks with sessions either side of a
-  // completely untrained week would read as one unbroken streak instead of
-  // a streak of 1, because there was no zero-session entry between them to
-  // stop the scan at.
-  const mondays = [...workoutsByMonday.keys()].sort()
-  const out: ConsistencyWeek[] = []
-  const cursor = new Date(mondays[0] + 'T00:00:00')
-  const last = new Date(mondays[mondays.length - 1] + 'T00:00:00')
-  while (cursor <= last) {
-    const key = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}-${String(cursor.getDate()).padStart(2, '0')}`
-    out.push({ weekStart: key, sessionCount: workoutsByMonday.get(key)?.size ?? 0 })
-    cursor.setDate(cursor.getDate() + 7)
-  }
-  return out
+  return byWeek
 }
 
-/** Current streak of consecutive weeks (most recent first) with at least
- *  `minSessions` logged sessions — stops at the first gap. */
-export function currentStreakWeeks(weeks: ConsistencyWeek[], minSessions = 1): number {
+/** Distinct sessions in the week starting `weekStart` (0 when none). */
+export function sessionsInWeek(sessions: readonly DatedSession[], weekStart: string): number {
+  return sessionIdsByWeek(sessions).get(weekStart)?.size ?? 0
+}
+
+/** Distinct sessions in the calendar week `today` (a LOCAL date) falls in —
+ *  Monday up to today. 0 on a Monday with nothing logged, never last week's
+ *  count. */
+export function sessionsThisWeek(sessions: readonly DatedSession[], today: string): number {
+  return sessionsInWeek(sessions, mondayOf(today))
+}
+
+/** DENSE sessions-per-week from the first week with a session to
+ *  max(last session week, `untilWeek`) — zero weeks included, so a streak or
+ *  an adherence count can't glue two trained weeks across a gap, and a break
+ *  since the last logged week still shows up. */
+export function weeklySessionCounts(sessions: readonly DatedSession[], untilWeek?: string): ConsistencyWeek[] {
+  const byWeek = sessionIdsByWeek(sessions)
+  return denseWeekKeys(byWeek.keys(), untilWeek).map(weekStart => ({ weekStart, sessionCount: byWeek.get(weekStart)?.size ?? 0 }))
+}
+
+/** One DatedSession per workout in a set list. */
+export function sessionsFromSets(sets: readonly Pick<ProgressSetRow, 'workout_id' | 'date'>[]): DatedSession[] {
+  const seen = new Map<string, string>()
+  for (const s of sets) if (!seen.has(s.workout_id)) seen.set(s.workout_id, s.date)
+  return [...seen].map(([id, date]) => ({ id, date }))
+}
+
+export function computeConsistencyByWeek(sets: ProgressSetRow[], untilWeek?: string): ConsistencyWeek[] {
+  return weeklySessionCounts(sessionsFromSets(sets), untilWeek)
+}
+
+/** Consecutive weeks (most recent first) with at least `minSessions`
+ *  sessions — stops at the first week that falls short. When the series ends
+ *  with the still-running `inProgressWeek`, that week is skipped rather than
+ *  counted as a miss (a Tuesday hasn't failed the week yet) — unless it has
+ *  already met the bar, in which case it counts. */
+export function currentStreakWeeks(weeks: ConsistencyWeek[], minSessions = 1, inProgressWeek?: string): number {
   let streak = 0
   for (let i = weeks.length - 1; i >= 0; i--) {
-    if (weeks[i].sessionCount >= minSessions) streak++
+    const w = weeks[i]
+    const meets = w.sessionCount >= minSessions
+    if (i === weeks.length - 1 && inProgressWeek && w.weekStart === inProgressWeek && !meets) continue
+    if (meets) streak++
     else break
   }
   return streak
@@ -372,12 +320,17 @@ export interface RelativeStrengthPoint {
   estimated: boolean
 }
 
-/** Combines one exercise's own session points (from computeExerciseProgression
- *  with metricKind='est1rm') with resolved bodyweight to produce a
- *  strength-per-bodyweight trend. Sessions with no usable bodyweight nearby
- *  are dropped rather than guessed — see resolveBodyweightForDate. */
+/** One session's best estimated 1RM — the progress engine's own per-session
+ *  value (progress-engine/metricStrategy.ts `sessionBestE1rm`), so this chart
+ *  and the decision table read the same number for the same session. */
+export interface SessionStrengthPoint { date: string; topValue: number | null }
+
+/** Combines one exercise's per-session best e1RM with resolved bodyweight to
+ *  produce a strength-per-bodyweight trend. Sessions with no usable
+ *  bodyweight nearby are dropped rather than guessed — see
+ *  resolveBodyweightForDate. */
 export function computeRelativeStrengthTrend(
-  points: ExerciseSessionPoint[],
+  points: readonly SessionStrengthPoint[],
   anchors: BodyweightAnchor[],
 ): RelativeStrengthPoint[] {
   const sorted = [...anchors].sort((a, b) => a.date.localeCompare(b.date))
@@ -449,8 +402,8 @@ function bucketForReps(reps: number): RepBucket {
 export interface RepBucketCount { key: string; label: string; count: number }
 
 /** Whole-set counts per rep bucket. Warmups excluded (this file's standing
- *  convention); dropsets and failure sets ARE counted — a real dose, matching
- *  computeExerciseProgression's own eligibility — which does bias toward the
+ *  convention); dropsets and failure sets ARE counted — a real dose — which
+ *  does bias toward the
  *  higher buckets when a lifter uses them heavily (flagged in the UI copy).
  *  `templateFilter` narrows to one muscle group's primary-attributed exercises
  *  only — deliberately NOT the Muscles tab's fractional secondary credit
@@ -471,136 +424,26 @@ export function computeRepRangeDistribution(
   return REP_BUCKETS.map(b => ({ key: b.key, label: b.label, count: counts.get(b.key) ?? 0 }))
 }
 
-// ── Weekly change flags ("Big changes this week") ───────────────────────────
-// Ships INSTEAD OF an acute:chronic workload ratio (ACWR) — a strength-coach
-// review explicitly advised against ACWR here: its injury-prediction evidence
-// is team-sport running/GPS load, it has drawn sustained statistical
-// criticism (mathematical coupling between the acute and chronic windows,
-// unstable "sweet spot" thresholds), and this app's OWN Weekly Volume
-// guardrail already tells the user tonnage conflates load and reps — you
-// can't build a risk flag on a quantity already documented as ambiguous, and
-// a solo lifter's log has none of the sample size the original research
-// relied on. This mechanical, per-exercise, no-score, no-colour alternative
-// only ever asks "did this go up sharply versus your OWN last month" — never
-// "is this risky".
-export type WeeklyChangeKind = 'new' | 'load' | 'volume'
-export interface WeeklyChangeFlag {
-  templateId: string
-  kind: WeeklyChangeKind
-  /** Present for 'load'/'volume' — fraction, e.g. 0.12 for +12%. */
-  pct?: number
-  thisWeekValue?: number
-  priorMedian?: number
-}
-
-const LOAD_JUMP_PCT = 0.10
-const SET_JUMP_PCT = 0.30
-const MIN_PRIOR_WEEKS = 3
-const NOVEL_GAP_WEEKS = 8
-
-function median(nums: number[]): number {
-  const sorted = [...nums].sort((a, b) => a - b)
-  const mid = Math.floor(sorted.length / 2)
-  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2
-}
-
-/** Per-exercise week-over-week change detection for the exercises trained in
- *  the week containing `anchorDate`. Compares this week's top-set metric and
- *  working-set count against the MEDIAN of up to the 4 preceding weeks this
- *  exercise appears in (median, not mean, so one deload week can't manufacture
- *  a flag on the return). An exercise with no appearance in the last
- *  NOVEL_GAP_WEEKS weeks (or ever) is flagged 'new' unconditionally — no
- *  threshold needed, since unfamiliar-movement soreness is a real, common,
- *  and otherwise-invisible pattern in this data. */
-export function computeWeeklyChangeFlags(
-  sets: ProgressSetRow[],
-  templates: ProgressTemplateRow[],
-  anchorDate: string,
-): WeeklyChangeFlag[] {
-  const typeById = new Map(templates.map(t => [t.id, t.type]))
-  const currentWeek = mondayOf(anchorDate)
-
-  interface WeekEntry { best: number | null; setCount: number }
-  const weeklyByTemplate = new Map<string, Map<string, WeekEntry>>()
-
-  for (const s of sets) {
-    if (s.set_type === 'warmup') continue
-    const type = typeById.get(s.exercise_template_id)
-    if (!type) continue
-    const metricKind = metricKindForExerciseType(type)
-    const week = mondayOf(s.date)
-
-    let byWeek = weeklyByTemplate.get(s.exercise_template_id)
-    if (!byWeek) { byWeek = new Map(); weeklyByTemplate.set(s.exercise_template_id, byWeek) }
-    let entry = byWeek.get(week)
-    if (!entry) { entry = { best: null, setCount: 0 }; byWeek.set(week, entry) }
-    entry.setCount++
-
-    let score: number | null = null
-    if (metricKind === 'est1rm' && s.weight_kg != null && s.reps != null) score = est1RM(s.weight_kg, s.reps)
-    else if (metricKind === 'reps' && s.reps != null) score = s.reps
-    else if (metricKind === 'addedWeight' && s.weight_kg != null) score = s.weight_kg
-    else if (metricKind === 'assistedWeight' && s.weight_kg != null) score = -s.weight_kg
-    else if (metricKind === 'duration' && s.duration_seconds != null) score = s.duration_seconds
-    else if (metricKind === 'distance' && s.distance_meters != null) score = s.distance_meters
-    if (score != null && (entry.best == null || score > entry.best)) entry.best = score
-  }
-
-  const out: WeeklyChangeFlag[] = []
-  for (const [templateId, byWeek] of weeklyByTemplate) {
-    const thisWeek = byWeek.get(currentWeek)
-    if (!thisWeek) continue
-
-    const priorWeekKeys = [...byWeek.keys()].filter(w => w < currentWeek).sort()
-    const lastTrainedWeek = priorWeekKeys[priorWeekKeys.length - 1]
-    const weeksSinceLast = lastTrainedWeek
-      ? Math.round(daysBetween(lastTrainedWeek, currentWeek) / 7)
-      : Infinity
-
-    if (!lastTrainedWeek || weeksSinceLast >= NOVEL_GAP_WEEKS) {
-      out.push({ templateId, kind: 'new' })
-      continue
-    }
-
-    const window = priorWeekKeys.slice(-4)
-    if (window.length < MIN_PRIOR_WEEKS) continue
-
-    const priorBests = window.map(w => byWeek.get(w)!.best).filter((v): v is number => v != null)
-    if (priorBests.length > 0 && thisWeek.best != null) {
-      const medianBest = median(priorBests)
-      if (medianBest > 0) {
-        const pct = thisWeek.best / medianBest - 1
-        if (pct >= LOAD_JUMP_PCT) out.push({ templateId, kind: 'load', pct, thisWeekValue: thisWeek.best, priorMedian: medianBest })
-      }
-    }
-
-    const priorSetCounts = window.map(w => byWeek.get(w)!.setCount)
-    const medianSets = median(priorSetCounts)
-    if (medianSets > 0) {
-      const pct = thisWeek.setCount / medianSets - 1
-      if (pct >= SET_JUMP_PCT) out.push({ templateId, kind: 'volume', pct, thisWeekValue: thisWeek.setCount, priorMedian: medianSets })
-    }
-  }
-
-  return out
-}
-
 // ── Weekly sets per muscle (trend, not a snapshot) ──────────────────────────
 // The Muscles tab already shows weekly-equivalent sets/muscle for a single
-// rolling window (30/90 days). This is the sports-scientist review's top
-// pick for "what else": the SAME currency — hard sets/muscle/week, the one
-// training measure in this app with an actual dose-response meta-analysis
-// behind it (Schoenfeld 2017; Pelland 2025) — but as a per-week TREND, reusing
-// muscleMap.ts's contribution()/HEVY_TO_SLUG exactly rather than a second,
-// parallel volume model.
-export interface MuscleWeekEntry { templateId: string; primarySlug: string | null; secondarySlugs: string[] }
+// rolling window (30/90 days). This is the same currency — hard
+// sets/muscle/week (Schoenfeld 2017; Pelland 2025) — as a per-week TREND,
+// reusing muscleMap.ts's contribution()/HEVY_TO_SLUG exactly rather than a
+// second, parallel volume model.
 export interface MuscleWeeklyPoint { weekStart: string; sets: number }
 
+/** Weekly credited sets for one muscle. With `range`, the series is DENSE
+ *  from `range.fromWeek` to `range.untilWeek` (zeros included, weeks outside
+ *  the range dropped) — so "last week" is always last week, never the last
+ *  week this muscle happened to be trained, and two trained weeks either
+ *  side of a gap never join into one line. Without `range`, only weeks with
+ *  credit are returned. */
 export function computeWeeklySetsPerMuscleTrend(
   sets: ProgressSetRow[],
   templateMuscles: Map<string, { primarySlug: string | null; secondarySlugs: string[] }>,
   slug: string,
   contributionFn: (templateId: string, slug: string, role: 'primary' | 'secondary') => number,
+  range?: { fromWeek: string; untilWeek: string },
 ): MuscleWeeklyPoint[] {
   const byWeek = new Map<string, number>()
   for (const s of sets) {
@@ -614,7 +457,45 @@ export function computeWeeklySetsPerMuscleTrend(
     const week = mondayOf(s.date)
     byWeek.set(week, (byWeek.get(week) ?? 0) + credit)
   }
+  const round = (n: number) => Math.round(n * 10) / 10
+  if (range) {
+    if (range.fromWeek > range.untilWeek) return []
+    return weeksBetween(range.fromWeek, range.untilWeek).map(weekStart => ({ weekStart, sets: round(byWeek.get(weekStart) ?? 0) }))
+  }
   return [...byWeek.entries()]
-    .map(([weekStart, total]) => ({ weekStart, sets: Math.round(total * 10) / 10 }))
+    .map(([weekStart, total]) => ({ weekStart, sets: round(total) }))
     .sort((a, b) => a.weekStart.localeCompare(b.weekStart))
+}
+
+// ── Bodyweight change (Progress overview KPI) ───────────────────────────────
+// A raw latest-minus-older difference is dominated by day-to-day water
+// swings, and silently read "0 kg over ~1 days" when the latest weigh-in was
+// itself older than two weeks. This compares two short AVERAGES instead: the
+// week ending at the latest weigh-in against the window 14–28 days before it.
+export type BodyweightChange =
+  | { kind: 'change'; deltaKg: number; recentAvgKg: number; priorAvgKg: number; days: number }
+  | { kind: 'stale'; latestKg: number; daysAgo: number }
+  | { kind: 'insufficient' }
+
+const BW_STALE_DAYS = 14
+const BW_RECENT_DAYS = 7
+const BW_PRIOR_FROM_DAYS = 14
+const BW_PRIOR_TO_DAYS = 28
+
+export function bodyweightChange(anchors: readonly BodyweightAnchor[], today: string): BodyweightChange {
+  const sorted = [...anchors].sort((a, b) => a.date.localeCompare(b.date))
+  if (sorted.length === 0) return { kind: 'insufficient' }
+  const latest = sorted[sorted.length - 1]
+  const daysAgo = daysBetween(latest.date, today)
+  if (daysAgo > BW_STALE_DAYS) return { kind: 'stale', latestKg: latest.kg, daysAgo }
+  const ago = (a: BodyweightAnchor) => daysBetween(a.date, latest.date)
+  const recent = sorted.filter(a => ago(a) >= 0 && ago(a) < BW_RECENT_DAYS)
+  const prior = sorted.filter(a => ago(a) >= BW_PRIOR_FROM_DAYS && ago(a) <= BW_PRIOR_TO_DAYS)
+  if (recent.length === 0 || prior.length === 0) return { kind: 'insufficient' }
+  const avg = (xs: BodyweightAnchor[]) => xs.reduce((sum, a) => sum + a.kg, 0) / xs.length
+  const recentAvgKg = Math.round(avg(recent) * 10) / 10
+  const priorAvgKg = Math.round(avg(prior) * 10) / 10
+  const recentMid = recent[Math.floor(recent.length / 2)].date
+  const priorMid = prior[Math.floor(prior.length / 2)].date
+  return { kind: 'change', deltaKg: Math.round((recentAvgKg - priorAvgKg) * 10) / 10, recentAvgKg, priorAvgKg, days: Math.max(1, daysBetween(priorMid, recentMid)) }
 }

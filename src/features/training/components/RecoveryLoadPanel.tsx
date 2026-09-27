@@ -1,14 +1,14 @@
 import { useMemo } from 'react'
 import { Bar, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ComposedChart, BarChart, LineChart } from 'recharts'
 import { useTrainingHistory } from '../hooks/useTrainingProgress'
-import { useHealthMetricSeries } from '../hooks/useHealthExport'
-import { computeSleepSummary, computeDailySeries, formatSleepHours } from '../healthAggregate'
-import { computeWeeklyVolumeTrend } from '../progressAggregate'
-import { computeWeeklySleepTrend, computeWeeklyRestingHRTrend } from '../recoveryAggregate'
-import { lastCompleteWeek } from '../trainingInsights'
-import { fmtWeekRange, nowMs } from '../dateFormat'
+import { useHealthMetricSeries } from '../../health/hooks/useHealthExport'
+import { computeSleepSummary, computeDailySeries, formatSleepHours } from '../../health/healthAggregate'
+import { computeWeeklyVolumeTrend, lastCompleteWeek } from '../progressAggregate'
+import { computeWeeklySleepTrend, computeWeeklyRestingHRTrend } from '../../health/recoveryAggregate'
+import { fmtWeekRange } from '../dateFormat'
+import { daysAgoStr, todayStr } from '../../../shared/utils/dateUtils'
 import { Skeleton, useChartColors } from '../../../shared/ui'
-import { useTooltipStyle } from './chartKit'
+import { useTooltipStyle } from '../../../shared/components/charts/chartKit'
 import { ChartCard, ChartEmpty, ChartNote } from './ChartCard'
 import { fmtDateEnGB } from '../../../shared/utils/enGBDate'
 
@@ -61,8 +61,8 @@ export function RecoveryLoadPanel() {
   const tip = useTooltipStyle()
   const tick = { fontSize: 9, fill: c.axis }
 
-  const toStr = new Date().toISOString().slice(0, 10)
-  const fromStr = new Date(nowMs() - WINDOW_DAYS * 86_400_000).toISOString().slice(0, 10)
+  const toStr = todayStr()
+  const fromStr = daysAgoStr(WINDOW_DAYS)
 
   const { data: sleepPoints = [], isLoading: loadingSleep } = useHealthMetricSeries('sleep_analysis', fromStr, toStr)
   const { data: rhrPoints = [], isLoading: loadingRhr } = useHealthMetricSeries('resting_heart_rate', fromStr, toStr)
@@ -74,7 +74,7 @@ export function RecoveryLoadPanel() {
   // stay visually aligned even though they're three separate chart
   // instances (recharts has no built-in shared-X-axis-across-charts primitive).
   const weeks = useMemo(() => {
-    const tonnage = training ? computeWeeklyVolumeTrend(training.sets, training.templates) : []
+    const tonnage = training ? computeWeeklyVolumeTrend(training.sets, training.templates, lastCompleteWeek(toStr)) : []
     const sleep = computeWeeklySleepTrend(computeSleepSummary(sleepPoints))
     const rhr = computeWeeklyRestingHRTrend(computeDailySeries('resting_heart_rate', rhrPoints))
     const all = new Set<string>([...tonnage.map(w => w.weekStart), ...sleep.map(w => w.weekStart), ...rhr.map(w => w.weekStart)])

@@ -278,6 +278,10 @@ function corsHeaders(origin: string | null): Record<string, string> {
 // ---------------------------------------------------------------------------
 // Hevy API helper
 // ---------------------------------------------------------------------------
+class HevyApiError extends Error {
+  constructor(public status: number, message: string) { super(message) }
+}
+
 async function hevyRequest(
   method: string,
   path: string,
@@ -291,7 +295,7 @@ async function hevyRequest(
   })
   if (!res.ok) {
     const body = await res.text().catch(() => '')
-    throw new Error(`Hevy API ${res.status} ${method} ${path}: ${body}`)
+    throw new HevyApiError(res.status, `Hevy API ${res.status} ${method} ${path}: ${body}`)
   }
   // Tolerant parse: some Hevy write endpoints return 2xx with an EMPTY body
   // (live-verified on PUT /v1/body_measurements/{date}) — res.json() on that
@@ -319,13 +323,44 @@ function unwrapEntity<T = any>(data: any, key: string): T {
 // ---------------------------------------------------------------------------
 // Action handlers
 // ---------------------------------------------------------------------------
+// Hevy's POST/PUT /v1/workouts accept exactly these keys (published OpenAPI,
+// checked 2026-09-27) and 400 on anything else ("… is not allowed"):
+//   workout:  title, description, start_time, end_time, is_private, exercises
+//   exercise: exercise_template_id, superset_id, notes, sets
+//   set:      type, weight_kg, reps, distance_meters, duration_seconds, custom_metric, rpe
+// No routine_id, no index/title. The web form already builds this shape
+// (routineForm.workoutFormToPayload); this whitelist is the belt-and-braces
+// guard so no caller can send a key Hevy rejects.
+const WORKOUT_KEYS = ['title', 'description', 'start_time', 'end_time', 'is_private'] as const
+const WORKOUT_SET_KEYS = ['type', 'weight_kg', 'reps', 'distance_meters', 'duration_seconds', 'custom_metric', 'rpe'] as const
+
+// deno-lint-ignore no-explicit-any
+function sanitizeWorkoutBody(payload: any): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  for (const k of WORKOUT_KEYS) if (payload?.[k] !== undefined) out[k] = payload[k]
+  // deno-lint-ignore no-explicit-any
+  out.exercises = (payload?.exercises ?? []).map((ex: any) => ({
+    exercise_template_id: ex?.exercise_template_id,
+    superset_id:          ex?.superset_id ?? ex?.supersets_id ?? null,
+    notes:                ex?.notes ?? null,
+    // deno-lint-ignore no-explicit-any
+    sets: (ex?.sets ?? []).map((set: any) => {
+      const o: Record<string, unknown> = {}
+      for (const k of WORKOUT_SET_KEYS) o[k] = set?.[k] ?? null
+      if (o.type == null) o.type = 'normal'
+      return o
+    }),
+  }))
+  return out
+}
+
 async function handleCreateWorkout(
   supabase: ReturnType<typeof createClient>,
   userId: string,
   hevyApiKey: string,
-  payload: unknown,
+  payload: Record<string, unknown>,
 ) {
-  const data = await hevyRequest('POST', '/v1/workouts', hevyApiKey, { workout: payload })
+  const data = await hevyRequest('POST', '/v1/workouts', hevyApiKey, { workout: sanitizeWorkoutBody(payload) })
   const workout = unwrapEntity<HevyWorkout>(data, 'workout')
   if (!workout?.id) throw new Error('Hevy returned no workout id from create_workout')
   await upsertWorkoutToDb(supabase, userId, workout)
@@ -342,7 +377,7 @@ async function handleUpdateWorkout(
   if (!workoutId) throw new Error('payload.id is required for update_workout')
   // id belongs in the URL only — Hevy rejects it inside the request body
   const { id: _id, ...workoutBody } = payload
-  const data = await hevyRequest('PUT', `/v1/workouts/${workoutId}`, hevyApiKey, { workout: workoutBody })
+  const data = await hevyRequest('PUT', `/v1/workouts/${workoutId}`, hevyApiKey, { workout: sanitizeWorkoutBody(workoutBody) })
   const workout = unwrapEntity<HevyWorkout>(data, 'workout')
   if (!workout?.id) throw new Error('Hevy returned no workout id from update_workout')
   await upsertWorkoutToDb(supabase, userId, workout)
@@ -412,38 +447,63 @@ async function handleUpsertBodyMeasurement(
   ] as const
 
   // MERGE semantics (real data-loss bug this fixes): Hevy's PUT replaces the
-  // WHOLE day's measurement, and the old DB upsert wrote `payload.X ?? null`
-  // for every column — so a partial save (e.g. just tapping the weight
-  // suggestion chip and hitting Save) silently WIPED the other values the
-  // user had already recorded for that date, both in Hevy and locally.
-  // Now: load what's already stored for the date, overlay only the fields
-  // the caller actually provided, and send/store the full merged set —
-  // partial entry fills gaps, never destroys.
-  const { data: existing } = await supabase
+  // WHOLE day's measurement ("all fields are overwritten; omitted fields are
+  // set to null" — its OpenAPI), and the old DB upsert wrote
+  // `payload.X ?? null` for every column — so a partial save (e.g. just
+  // tapping the weight suggestion chip and hitting Save) silently WIPED the
+  // other values already recorded for that date, both in Hevy and locally.
+  // Now: load what's stored for the date and overlay the caller's fields:
+  //   key absent  → keep the stored value
+  //   key = null  → clear it (the user emptied the field)
+  //   key = n     → set it
+  // If that read FAILS the save stops — merging onto "nothing stored" would
+  // replace the whole day with only the provided fields (the same data loss).
+  const { data: existing, error: readErr } = await supabase
     .from('hevy_body_measurements')
     .select('*')
     .eq('user_id', userId)
     .eq('date', date)
     .maybeSingle()
+  if (readErr) throw new Error(`Couldn't read the stored measurement for ${date}, so nothing was saved: ${readErr.message}`)
 
   const merged: Record<string, number | null> = {}
   for (const key of MEASUREMENT_KEYS) {
+    const has = Object.prototype.hasOwnProperty.call(payload, key)
     const provided = (payload as Record<string, unknown>)[key]
-    const hasProvided = provided !== null && provided !== undefined && provided !== '' && !Number.isNaN(provided)
-    merged[key] = hasProvided ? Number(provided) : ((existing?.[key] as number | null) ?? null)
+    if (!has || provided === undefined) {
+      merged[key] = (existing?.[key] as number | null) ?? null
+    } else if (provided === null) {
+      merged[key] = null
+    } else {
+      const n = Number(provided)
+      if (provided === '' || !Number.isFinite(n) || n < 0) throw new Error(`Invalid value for ${key}`)
+      merged[key] = n
+    }
   }
 
   // Hevy 400s on ANY null field ("Expected number, received null") — nulls
   // must be OMITTED from the request body, not sent (live-verified; this was
-  // why every save used to fail). Send the merged non-null set.
+  // why every save used to fail). An omitted field is stored as null.
   const hevyBody: Record<string, number> = {}
   for (const [k, v] of Object.entries(merged)) {
     if (v !== null) hevyBody[k] = v
   }
-  // Nothing known for the date at all → still record the (empty) row locally
-  // below, but there's nothing Hevy would accept; skip the remote call.
-  if (Object.keys(hevyBody).length > 0) {
+  // Hevy has no DELETE for a body measurement, and an empty PUT isn't a
+  // documented way to clear a day — refuse instead of leaving Hevy and the
+  // local row disagreeing (the next Sync would bring the values back).
+  if (Object.keys(hevyBody).length === 0) {
+    throw new Error(existing
+      ? "Hevy can't delete a whole day's measurement — keep at least one value, or delete the entry in the Hevy app."
+      : 'Nothing to save — enter at least one value.')
+  }
+  // PUT is the live-verified write. Hevy's OpenAPI says PUT answers 404 when
+  // it has no entry for the date and POST (409 when one exists) creates it —
+  // so a 404 falls back to POST instead of failing a first-time save.
+  try {
     await hevyRequest('PUT', `/v1/body_measurements/${date}`, hevyApiKey, hevyBody)
+  } catch (err) {
+    if (!(err instanceof HevyApiError) || err.status !== 404) throw err
+    await hevyRequest('POST', '/v1/body_measurements', hevyApiKey, { date, ...hevyBody })
   }
 
   const now = new Date().toISOString()

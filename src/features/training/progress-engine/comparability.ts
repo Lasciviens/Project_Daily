@@ -116,9 +116,19 @@ export function evaluatePair(
     rangeCompliance = complianceFromReps(latestWorking.map(s => s.reps), expectation)
   }
 
+  // A complete top-set+backoff session whose backoff sets all clear the
+  // minimum has had EVERY prescribed set checked — the top set against the
+  // range, each backoff against its floor — so a top set at the top of the
+  // range may earn READY_TO_INCREASE (the top set's load goes up). Without
+  // this, a top-set scheme could never be told to add load at all.
+  const backoffsClearMinimum = latest.loadStructure === 'top_set_and_backoff'
+    && matchesPrescribedCount
+    && [...latestWorking].sort((a, b) => a.order - b.order).slice(1)
+      .every(s => s.reps != null && (expectation.repMin == null || s.reps >= expectation.repMin))
+
   const currentAction = deriveCurrentAction({
-    evaluationScope, rangeCompliance, observedTransition, repDelta, progressDirection, metricKind,
-    compromised: dataQualityFlags.length > 0,
+    evaluationScope, rangeCompliance, observedTransition, repDelta, progressDirection,
+    compromised: dataQualityFlags.length > 0, backoffsClearMinimum,
   })
 
   return { observedTransition, repDelta, rangeCompliance, evaluationScope, dataQualityFlags, currentAction, progressDirection, loadChangePercent }
@@ -152,24 +162,28 @@ export function sessionRangeCompliance(
 
 function deriveCurrentAction(input: {
   evaluationScope: EvaluationScope; rangeCompliance: RangeCompliance; observedTransition: ObservedTransition
-  repDelta: RepDelta; progressDirection: boolean | null; metricKind: ProgressMetricKind; compromised: boolean
+  repDelta: RepDelta; progressDirection: boolean | null; compromised: boolean; backoffsClearMinimum: boolean
 }): CurrentAction {
-  const { evaluationScope, rangeCompliance, observedTransition, repDelta, progressDirection, metricKind, compromised } = input
+  const { evaluationScope, rangeCompliance, observedTransition, repDelta, progressDirection, compromised, backoffsClearMinimum } = input
 
-  if (evaluationScope === 'NOT_EVALUATED') return 'HOLD_STEADY'
+  // Nothing comparable this session (mixed loads, or nothing the metric can
+  // read) — ask for a comparable session instead of pretending it held steady.
+  if (evaluationScope === 'NOT_EVALUATED') return 'LOG_COMPARABLE_SESSION'
 
-  // A raw load decrease has unknown intent — external-load types never get
-  // "deload" language auto-generated (§8). Assisted-weight is the one
-  // metric kind where a raw decrease IS the positive direction, handled by
-  // the progressDirection branch below instead.
-  if (observedTransition === 'LOAD_DECREASED' && metricKind !== 'assistedWeight') return 'REVIEW_LOAD_REDUCTION'
+  // observedTransition is already direction-aware: LOAD_DECREASED means the
+  // metric moved the easy way — a lighter weight, or MORE assistance on an
+  // assisted exercise. Intent is unknown either way, so it's never labelled a
+  // deload (§8). (A drop in assistance reads LOAD_INCREASED and is handled as
+  // forward motion below.)
+  if (observedTransition === 'LOAD_DECREASED') return 'REVIEW_LOAD_REDUCTION'
 
-  // §2: READY_TO_INCREASE requires the FULL prescribed structure to have
-  // been evaluated — a TOP_SET_ONLY read (a top_set_and_backoff session)
-  // can independently reach ALL_SETS_AT_TOP off its own top set alone,
-  // with the backoff sets never checked at all; that's real, but never
-  // enough on its own to recommend a load increase.
-  const readyEligible = evaluationScope === 'ALL_PRESCRIBED_WORKING_SETS' && rangeCompliance === 'ALL_SETS_AT_TOP'
+  // §2: READY_TO_INCREASE requires every prescribed set to have been checked:
+  // a full uniform session at the top of the range, or a complete top-set +
+  // backoff session whose top set is at the top and whose backoff sets all
+  // clear the minimum. A top set alone, with backoff work missing or short,
+  // is never enough.
+  const readyEligible = rangeCompliance === 'ALL_SETS_AT_TOP'
+    && (evaluationScope === 'ALL_PRESCRIBED_WORKING_SETS' || (evaluationScope === 'TOP_SET_ONLY' && backoffsClearMinimum))
 
   const isForwardMotion = progressDirection === true || (observedTransition === 'LOAD_UNCHANGED' && repDelta === 'REP_INCREASE')
   if (isForwardMotion) {
@@ -178,5 +192,8 @@ function deriveCurrentAction(input: {
     return compromised ? 'CONFIRM_AT_CURRENT_LOAD' : 'BUILD_AT_CURRENT_LOAD'
   }
   if (readyEligible) return compromised ? 'CONFIRM_AT_CURRENT_LOAD' : 'READY_TO_INCREASE'
+  // Evaluated, but no forward motion: the same numbers, a small dip, or a
+  // set count that didn't line up. The target layer turns this into a
+  // concrete "repeat it and add a rep" (or "get back to last time") plan.
   return 'HOLD_STEADY'
 }

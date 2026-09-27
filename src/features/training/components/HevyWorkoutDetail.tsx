@@ -6,6 +6,7 @@ import { formatDurationBetween as fmtDuration } from '../../../shared/utils/form
 import { fmtTrainingDateTime as fmtDateTime } from '../dateFormat'
 import type { HevySet } from '../types.hevy'
 import { SET_TYPE_META } from '../setTypeMeta'
+import { formatSet } from '../setFormat'
 
 interface Props {
   /** null = closed (controlled callers); the `hevy-workout` entity modal always passes an id. */
@@ -33,7 +34,7 @@ export function HevyWorkoutDetail({ workoutId, onClose }: Props) {
       onClose={onClose}
       size="lg"
       title={workout?.title ?? (isLoading ? 'Loading…' : 'Workout')}
-      subtitle={workout ? `${fmtDateTime(workout.start_time ?? null)} · ${fmtDuration(workout.start_time ?? null, workout.end_time ?? null)}` : undefined}
+      subtitle={workout ? [fmtDateTime(workout.start_time ?? workout.hevy_created_at), fmtDuration(workout.start_time ?? null, workout.end_time ?? null)].filter(Boolean).join(' · ') : undefined}
     >
       {isLoading && (
         <div className="space-y-2">
@@ -65,7 +66,7 @@ export function HevyWorkoutDetail({ workoutId, onClose }: Props) {
                       <tr className="section-label">
                         <th className="w-6 px-1 py-1.5 text-left font-semibold">#</th>
                         <th className="w-8 px-1 py-1.5 text-left font-semibold">Type</th>
-                        <th className="px-1 py-1.5 text-left font-semibold">Weight × reps</th>
+                        <th className="px-1 py-1.5 text-left font-semibold">Set</th>
                         <th className="px-1 py-1.5 text-left font-semibold">RPE</th>
                       </tr>
                     </thead>
@@ -74,9 +75,8 @@ export function HevyWorkoutDetail({ workoutId, onClose }: Props) {
                         <tr key={set.id} className="border-t border-line tabular-nums">
                           <td className="px-1 py-1.5 text-fg-muted">{set.index + 1}</td>
                           <td className="px-1 py-1.5"><SetTypeBadge type={set.type} /></td>
-                          <td className="px-1 py-1.5 text-fg-2">
-                            {set.weight_kg !== null ? `${set.weight_kg} kg` : '—'}{' × '}{set.reps !== null ? set.reps : '—'}
-                          </td>
+                          {/* Per exercise type: kg × reps, seconds, metres, assistance. */}
+                          <td className="px-1 py-1.5 text-fg-2">{formatSet(set, ex.template?.type)}</td>
                           <td className="px-1 py-1.5 text-fg-muted">{set.rpe !== null ? `RPE ${set.rpe}` : '—'}</td>
                         </tr>
                       ))}

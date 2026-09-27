@@ -3,39 +3,20 @@ import { PageContainer, PageHeader } from '../../../shared/ui'
 import { HevyTab } from '../components/HevyTab'
 import { PTCoachTab } from '../components/PTCoachTab'
 import { StravaTab } from '../components/StravaTab'
-import { HealthTab } from '../components/HealthTab'
 import { HevySyncButton } from '../components/HevySyncButton'
 import { TrainingCalendar } from '../components/TrainingCalendar'
 import { NextSessionBanner } from '../components/NextSessionBanner'
-import { HealthStatsPanel } from '../components/health/HealthStatsPanel'
-import type { SectionId, HealthRange } from '../components/health/sectionTypes'
-import { useAnchorDate } from '../components/health/useAnchorDate'
-import type { Period } from '../components/health/PeriodToggle'
 
-type Tab = 'hevy' | 'strava' | 'health' | 'coach'
+type Tab = 'hevy' | 'strava' | 'coach'
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'hevy', label: 'Hevy' },
   { id: 'strava', label: 'Strava' },
-  { id: 'health', label: 'Health' },
   { id: 'coach', label: 'Coach' },
 ]
 
 export function TrainingPage() {
   const [tab, setTab] = useState<Tab>('hevy')
-  const [healthSection, setHealthSection] = useState<SectionId>('overview')
-  // The Health tab's day/period selection is lifted here for the same reason
-  // `healthSection` already is: HealthStatsPanel is rendered in the right rail,
-  // a SIBLING of HealthTab, and it has to describe the window the user
-  // actually has selected. While it lived inside HealthTab the panel could not
-  // see it at all, which is why every one of its numbers sat frozen.
-  const [healthAnchor, setHealthAnchor] = useAnchorDate()
-  const [healthPeriod, setHealthPeriod] = useState<Period>('week')
-  const healthRange: HealthRange = {
-    anchor: healthAnchor, setAnchor: setHealthAnchor,
-    period: healthPeriod, setPeriod: setHealthPeriod,
-  }
-
   // The active pill is always scrolled into view rather than hidden under the
   // pinned sync buttons on a narrow phone.
   const activePillRef = useRef<HTMLButtonElement>(null)
@@ -43,9 +24,9 @@ export function TrainingPage() {
     activePillRef.current?.scrollIntoView({ inline: 'nearest', block: 'nearest' })
   }, [tab])
 
-  // Hevy + Health both fill the space up to the calendar rail on big
-  // monitors now — routine cards with exercise GIFs need the room.
-  const wide = tab === 'health' || tab === 'hevy'
+  // Hevy fills the space up to the calendar rail on big monitors — routine
+  // cards with exercise GIFs need the room.
+  const wide = tab === 'hevy'
 
   return (
     <PageContainer width="full">
@@ -82,12 +63,11 @@ export function TrainingPage() {
         <div className={`w-full min-w-0 lg:max-w-4xl ${wide ? '2xl:max-w-[88rem] 2xl:flex-1' : ''}`}>
           {tab === 'hevy'   && <HevyTab />}
           {tab === 'strava' && <StravaTab />}
-          {tab === 'health' && <HealthTab section={healthSection} onSectionChange={setHealthSection} range={healthRange} />}
           {tab === 'coach'  && <PTCoachTab />}
         </div>
 
         <aside className="flex w-full flex-col gap-4 lg:w-[440px] lg:flex-shrink-0">
-          {tab === 'health' ? <HealthStatsPanel section={healthSection} range={healthRange} /> : <TrainingCalendar />}
+          <TrainingCalendar />
           <NextSessionBanner />
         </aside>
       </div>

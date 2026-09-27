@@ -8,15 +8,15 @@
  *   1. est1RM — Epley formula, the ≤12-rep eligibility cutoff, the reps=1
  *      identity case.
  *   2. metricKindForExerciseType — the per-exercise-type dispatch table.
- *   3. computeExerciseProgression — best-set (never average) selection per
- *      session, warmup exclusion, dropset/failure eligibility, the inverted
- *      assisted-exercise selection, and volume summation.
- *   4. repRangeVariedSignificantly — the ±4-rep caveat trigger.
+ *   3. Sessions per week — the ONE definition (distinct workouts, local
+ *      week), 0 on a Monday with nothing logged, never last week's count.
+ *   4. Week keys — lastCompleteWeek / shiftWeek / weeksBetween.
  *   5. computeWeeklyVolumeTrend — TONNAGE_TYPES-only inclusion, warmup
- *      exclusion.
+ *      exclusion, dense fill up to `untilWeek` (a break stays visible).
  *   6. rollingAverage — null-before-window, correct windowed mean.
  *   7. computeConsistencyByWeek / currentStreakWeeks — session-per-week
- *      counting and streak termination at a real gap.
+ *      counting, streak termination at a real gap, a trailing break ending
+ *      the streak, and the in-progress week never counted as a miss.
  *
  * Follow-up review (2026-08-31) — three originally-deferred charts plus each
  * agent's own top "extra" recommendation:
@@ -25,10 +25,14 @@
  *      ladder, and est1rm-only eligibility.
  *   9. computeRepRangeDistribution — bucket boundaries, warmup exclusion,
  *      dropset/failure inclusion, muscle-group filtering.
- *  10. computeWeeklyChangeFlags — new-exercise detection, load/volume median
- *      comparison, the minimum-prior-weeks gate.
+ *  10. computeWeeklyChangeFlags (now progress-engine/weeklyChanges.ts) —
+ *      new-exercise detection, load/volume median comparison, the
+ *      minimum-prior-weeks gate.
  *  11. computeWeeklySetsPerMuscleTrend — primary+secondary credit via the
- *      same contribution() seam the Muscles tab uses.
+ *      same contribution() seam the Muscles tab uses, and the dense range
+ *      that makes "last week" mean last week.
+ *  13. bodyweightChange — 7-day average vs 14–28 days before, a stale
+ *      latest weigh-in reported as stale (never "0 kg over ~1 days").
  *  12. recoveryAggregate.ts — weekly sleep/resting-HR aggregation and the
  *      minimum-nights/days-per-week gate.
  *
@@ -37,12 +41,14 @@
 require('sucrase/register')
 
 const {
-  est1RM, metricKindForExerciseType, computeExerciseProgression, repRangeVariedSignificantly,
+  est1RM, metricKindForExerciseType,
   computeWeeklyVolumeTrend, rollingAverage, computeConsistencyByWeek, currentStreakWeeks,
   resolveBodyweightForDate, computeRelativeStrengthTrend, indexRelativeStrengthTrend, REP_BUCKETS, computeRepRangeDistribution,
-  computeWeeklyChangeFlags, computeWeeklySetsPerMuscleTrend, mondayOf,
+  computeWeeklySetsPerMuscleTrend, mondayOf, shiftWeek, lastCompleteWeek, weeksBetween,
+  sessionsInWeek, sessionsThisWeek, weeklySessionCounts, sessionsFromSets, bodyweightChange,
 } = require('../src/features/training/progressAggregate')
-const { computeWeeklySleepTrend, computeWeeklyRestingHRTrend } = require('../src/features/training/recoveryAggregate')
+const { computeWeeklyChangeFlags } = require('../src/features/training/progress-engine/weeklyChanges')
+const { computeWeeklySleepTrend, computeWeeklyRestingHRTrend } = require('../src/features/health/recoveryAggregate')
 const { fmtWeekRange } = require('../src/features/training/dateFormat')
 
 let passed = 0
@@ -75,73 +81,29 @@ console.log('\n== 2. metricKindForExerciseType ==')
   check('an unknown/future type falls back to est1rm, not a crash', metricKindForExerciseType('some_new_type') === 'est1rm')
 }
 
-console.log('\n== 3. computeExerciseProgression ==')
+console.log('\n== 3. Sessions per week (the ONE definition) ==')
 {
-  const T = 'tpl-1'
-  const mk = (over) => ({
-    workout_id: 'w1', date: '2026-08-01', exercise_template_id: T,
-    set_type: 'normal', weight_kg: null, reps: null, duration_seconds: null, distance_meters: null,
-    ...over,
-  })
-
-  // Warmup excluded, best set (not average) wins.
-  const sets1 = [
-    mk({ set_type: 'warmup', weight_kg: 200, reps: 1 }), // would dominate if not excluded
-    mk({ weight_kg: 100, reps: 5 }),
-    mk({ weight_kg: 90, reps: 8 }),
+  const sessions = [
+    { id: 'w1', date: '2026-09-14' }, { id: 'w2', date: '2026-09-16' }, { id: 'w2', date: '2026-09-16' },
+    { id: 'w3', date: '2026-09-21' },
   ]
-  const p1 = computeExerciseProgression(sets1, T, 'est1rm')
-  check('one session point produced', p1.length === 1)
-  check('warmup set never becomes the top value', p1[0].topValue !== est1RM(200, 1))
-  check('best set (100kg x5) wins over a lighter backoff set, not an average', p1[0].topWeightKg === 100 && p1[0].topReps === 5)
-  check('volume sums ALL included sets (warmup excluded), not just the top one',
-    p1[0].volume === 100 * 5 + 90 * 8)
-
-  // A dropset can't outrank the heavier set that precedes it (real case: same session).
-  const sets2 = [
-    mk({ weight_kg: 100, reps: 5 }),
-    mk({ set_type: 'dropset', weight_kg: 70, reps: 8 }),
-  ]
-  const p2 = computeExerciseProgression(sets2, T, 'est1rm')
-  check('a dropset (lighter, by construction) never wins the top-set selection', p2[0].topWeightKg === 100)
-
-  // A failure set IS eligible to be the top set (est1RM(100,5)=116.7 <
-  // est1RM(110,5)=128.3 — a genuinely higher estimate, not just heavier).
-  const sets3 = [
-    mk({ weight_kg: 100, reps: 5 }),
-    mk({ set_type: 'failure', weight_kg: 110, reps: 5 }),
-  ]
-  const p3 = computeExerciseProgression(sets3, T, 'est1rm')
-  check('a failure set can win the top-set selection (a real top effort)', p3[0].topWeightKg === 110)
-
-  // Assisted exercise: LESS assistance is the improvement -> selection picks the lightest assist weight.
-  const sets4 = [
-    mk({ weight_kg: 20, reps: 8 }), // 20kg of assistance
-    mk({ weight_kg: 10, reps: 6 }), // less assistance = harder = "best"
-  ]
-  const p4 = computeExerciseProgression(sets4, T, 'assistedWeight')
-  check('assisted-exercise selection picks the LEAST assistance as the top set', p4[0].topWeightKg === 10)
-
-  // Multiple sessions sort by date.
-  const sets5 = [
-    mk({ workout_id: 'w2', date: '2026-08-08', weight_kg: 105, reps: 5 }),
-    mk({ workout_id: 'w1', date: '2026-08-01', weight_kg: 100, reps: 5 }),
-  ]
-  const p5 = computeExerciseProgression(sets5, T, 'est1rm')
-  check('sessions are sorted oldest-first', p5[0].date === '2026-08-01' && p5[1].date === '2026-08-08')
-
-  // A different exercise's sets are never mixed in.
-  const sets6 = [mk({ weight_kg: 100, reps: 5 }), mk({ exercise_template_id: 'other', weight_kg: 999, reps: 1 })]
-  const p6 = computeExerciseProgression(sets6, T, 'est1rm')
-  check('a different exercise_template_id is never included', p6.length === 1 && p6[0].topWeightKg === 100)
+  check('sessionsInWeek counts DISTINCT workouts', sessionsInWeek(sessions, '2026-09-14') === 2)
+  check('sessionsThisWeek on Wednesday 23 Sep counts Mon–today of THAT week (1)', sessionsThisWeek(sessions, '2026-09-23') === 1)
+  check('sessionsThisWeek on a Monday with nothing logged is 0 — never last week\'s count', sessionsThisWeek(sessions, '2026-09-28') === 0)
+  const dense = weeklySessionCounts(sessions, '2026-10-05')
+  check('weeklySessionCounts fills to untilWeek with zero weeks', dense.length === 4 && dense[2].sessionCount === 0 && dense[3].weekStart === '2026-10-05' && dense[3].sessionCount === 0, JSON.stringify(dense))
+  check('weeklySessionCounts never goes back before the first session', dense[0].weekStart === '2026-09-14')
+  check('no sessions -> empty series', weeklySessionCounts([], '2026-09-28').length === 0)
+  const fromSets = sessionsFromSets([{ workout_id: 'a', date: '2026-09-01' }, { workout_id: 'a', date: '2026-09-01' }, { workout_id: 'b', date: '2026-09-02' }])
+  check('sessionsFromSets: one session per workout id', fromSets.length === 2)
 }
 
-console.log('\n== 4. repRangeVariedSignificantly ==')
+console.log('\n== 4. Week keys ==')
 {
-  const pts = (reps) => reps.map(r => ({ date: '2026-01-01', topValue: 1, volume: 1, topWeightKg: 1, topReps: r }))
-  check('a consistent rep range (3 reps apart) does NOT trigger the caveat', repRangeVariedSignificantly(pts([5, 6, 8])) === false)
-  check('a rep range that swings ≥4 DOES trigger the caveat', repRangeVariedSignificantly(pts([5, 12])) === true)
-  check('fewer than 2 data points never triggers it', repRangeVariedSignificantly(pts([5])) === false)
+  check('mondayOf a Sunday is the Monday before it', mondayOf('2026-09-27') === '2026-09-21')
+  check('lastCompleteWeek is the week BEFORE the one today falls in', lastCompleteWeek('2026-09-27') === '2026-09-14' && lastCompleteWeek('2026-09-21') === '2026-09-14')
+  check('shiftWeek crosses a month boundary', shiftWeek('2026-09-28', 1) === '2026-10-05' && shiftWeek('2026-10-05', -1) === '2026-09-28')
+  check('weeksBetween is inclusive', weeksBetween('2026-09-07', '2026-09-21').join(',') === '2026-09-07,2026-09-14,2026-09-21')
 }
 
 console.log('\n== 5. computeWeeklyVolumeTrend ==')
@@ -171,6 +133,11 @@ console.log('\n== 5. computeWeeklyVolumeTrend ==')
   const denseWeeks = computeWeeklyVolumeTrend(denseSets, templates)
   check('a gap week between two tonnage weeks is a dense, explicit zero entry — not skipped',
     denseWeeks.length === 3 && denseWeeks[1].tonnageKg === 0, JSON.stringify(denseWeeks))
+
+  // A break AFTER the last logged week must show as zeros up to untilWeek.
+  const tillNow = computeWeeklyVolumeTrend(denseSets, templates, '2026-09-07')
+  check('untilWeek dense-fills a trailing break (3 Aug → 7 Sep = 6 weeks, last 3 zero)',
+    tillNow.length === 6 && tillNow.slice(-3).every(w => w.tonnageKg === 0), JSON.stringify(tillNow))
 }
 
 console.log('\n== 6. rollingAverage ==')
@@ -199,6 +166,24 @@ console.log('\n== 7. computeConsistencyByWeek / currentStreakWeeks ==')
     currentStreakWeeks(weeks, 1) === 1)
   check('a stricter minSessions=2 threshold breaks the streak (last week only had 1 session)',
     currentStreakWeeks(weeks, 2) === 0)
+
+  // T14 — five weekly sessions then a three-month break: the streak is 0.
+  const fiveWeeks = ['2026-06-01', '2026-06-08', '2026-06-15', '2026-06-22', '2026-06-29']
+    .map((d, i) => ({ workout_id: `f${i}`, date: d, exercise_template_id: 'a', set_type: 'normal', weight_kg: 1, reps: 1, duration_seconds: null, distance_meters: null }))
+  const beforeFix = computeConsistencyByWeek(fiveWeeks)
+  check('without untilWeek the series stops at the last logged week (the old, dishonest read)', currentStreakWeeks(beforeFix, 1) === 5)
+  const today = '2026-09-26'
+  const honest = computeConsistencyByWeek(fiveWeeks, lastCompleteWeek(today))
+  check('dense to the last complete week, a 3-month break ends the streak (0)', currentStreakWeeks(honest, 1) === 0)
+  check('the last complete week is really in the series', honest[honest.length - 1].weekStart === lastCompleteWeek(today))
+
+  // The in-progress week never counts as a miss, but counts once it meets the bar.
+  const steady = ['2026-09-07', '2026-09-14'].map((d, i) => ({ workout_id: `s${i}`, date: d, exercise_template_id: 'a', set_type: 'normal', weight_kg: 1, reps: 1, duration_seconds: null, distance_meters: null }))
+  const current = mondayOf('2026-09-22')
+  const withEmptyCurrent = computeConsistencyByWeek(steady, current)
+  check('a still-empty current week is skipped, not counted as a miss (streak 2)', currentStreakWeeks(withEmptyCurrent, 1, current) === 2)
+  const withCurrent = computeConsistencyByWeek([...steady, { workout_id: 's9', date: '2026-09-22', exercise_template_id: 'a', set_type: 'normal', weight_kg: 1, reps: 1, duration_seconds: null, distance_meters: null }], current)
+  check('a current week that already met the bar counts (streak 3)', currentStreakWeeks(withCurrent, 1, current) === 3)
 }
 
 console.log('\n== 7b. fmtWeekRange (dateFormat.ts) ==')
@@ -341,6 +326,12 @@ console.log('\n== 11. computeWeeklySetsPerMuscleTrend ==')
   const triceps = computeWeeklySetsPerMuscleTrend(sets, templateMuscles, 'triceps', contributionFn)
   check('secondary credit (0.5) for a muscle only trained indirectly, both weeks bench appears',
     triceps.length === 2 && triceps.every(w => w.sets === 0.5), JSON.stringify(triceps))
+
+  // T15 — with a range the series is dense, so "last week" is last week.
+  const ranged = computeWeeklySetsPerMuscleTrend(sets, templateMuscles, 'chest', contributionFn, { fromWeek: '2026-08-03', untilWeek: '2026-09-14' })
+  check('dense range: every week from 3 Aug to 14 Sep (7 weeks), zeros included', ranged.length === 7 && ranged[ranged.length - 1].sets === 0, JSON.stringify(ranged))
+  check('dense range: the latest value is the untilWeek (0), not the last trained week (1)', ranged[ranged.length - 1].weekStart === '2026-09-14')
+  check('an empty range (from after until) returns []', computeWeeklySetsPerMuscleTrend(sets, templateMuscles, 'chest', contributionFn, { fromWeek: '2026-09-21', untilWeek: '2026-09-14' }).length === 0)
 }
 
 console.log('\n== 12. recoveryAggregate — weekly sleep / resting-HR gating ==')
@@ -358,6 +349,22 @@ console.log('\n== 12. recoveryAggregate — weekly sleep / resting-HR gating =='
   check('5 tracked days -> a real median is shown', fullRhr[0].medianBpm === 60)
   const sparseRhr = computeWeeklyRestingHRTrend(days(3, 60))
   check('fewer than 4 days -> null', sparseRhr[0].medianBpm === null)
+}
+
+console.log('\n== 13. bodyweightChange (Progress KPI) ==')
+{
+  const today = '2026-09-26'
+  const stale = bodyweightChange([{ date: '2026-08-20', kg: 80 }, { date: '2026-09-01', kg: 79 }], today)
+  check('T25: a latest weigh-in older than 14 days is reported as stale (never "0 kg over ~1 days")', stale.kind === 'stale' && stale.daysAgo === 25 && stale.latestKg === 79)
+  const anchors = [
+    { date: '2026-08-30', kg: 81.0 }, { date: '2026-09-02', kg: 80.6 }, { date: '2026-09-05', kg: 80.8 },
+    { date: '2026-09-20', kg: 80.2 }, { date: '2026-09-22', kg: 79.6 }, { date: '2026-09-25', kg: 79.8 },
+  ]
+  const change = bodyweightChange(anchors, today)
+  check('compares the latest week\'s AVERAGE with the average 14–28 days before it', change.kind === 'change' && change.recentAvgKg === 79.9 && change.priorAvgKg === 80.8, JSON.stringify(change))
+  check('delta is the difference of the two averages', change.kind === 'change' && change.deltaKg === -0.9)
+  check('one weigh-in only -> insufficient', bodyweightChange([{ date: '2026-09-25', kg: 80 }], today).kind === 'insufficient')
+  check('no weigh-ins -> insufficient', bodyweightChange([], today).kind === 'insufficient')
 }
 
 console.log(`\n${passed} passed, ${failed} failed\n`)

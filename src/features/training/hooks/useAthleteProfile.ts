@@ -18,9 +18,10 @@ import {
   deleteExerciseTargetOverride,
 } from '../api/athleteProfileApi'
 import type {
-  UpsertAthleteProfileInput, CreateLimitationInput, UpdateLimitationInput,
+  AthleteProfile, UpsertAthleteProfileInput, CreateLimitationInput, UpdateLimitationInput,
   UpsertMusclePreferenceInput, UpsertExerciseTargetInput,
 } from '../types.athlete'
+import { toHealthProfile, type HealthProfile } from '../../health/benchmarks/healthBenchmarks'
 
 // One profile row per user + a separate list of limitations. Own query
 // namespaces; every mutation invalidates its own so the Training settings UI
@@ -34,6 +35,15 @@ export function limitationsKey(activeOnly = false) {
 
 export function useAthleteProfile() {
   return useQuery({ queryKey: PROFILE_KEY, queryFn: fetchAthleteProfile, staleTime: STALE.default })
+}
+
+const selectHealthProfile = (row: AthleteProfile | null): HealthProfile => toHealthProfile(row)
+
+/** Birth year, sex and height (migration 110) from the same cached profile row —
+ *  the Health page's reference ranges read this. Shares the profile query, so
+ *  saving through useUpsertAthleteProfile refreshes both. */
+export function useHealthProfile() {
+  return useQuery({ queryKey: PROFILE_KEY, queryFn: fetchAthleteProfile, staleTime: STALE.default, select: selectHealthProfile })
 }
 
 export function useUpsertAthleteProfile() {

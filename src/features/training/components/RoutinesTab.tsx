@@ -1,59 +1,34 @@
-import { useState } from 'react'
-import { useHevyRoutines, useDeleteHevyRoutineLocal } from '../hooks/useHevyRoutines'
-import { CalendarPlus, ChevronDown, ClipboardList, Pencil, Plus, Trash2 } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { useHevyRoutines } from '../hooks/useHevyRoutines'
+import { useHevyExerciseTemplates } from '../hooks/useHevyExerciseTemplates'
+import { CalendarPlus, ChevronDown, ClipboardList, Pencil, Plus } from 'lucide-react'
 import { Button, Card, EmptyState, IconButton, Skeleton, TonePill } from '../../../shared/ui'
 import { SET_TYPE_META } from '../setTypeMeta'
-import { entityModal } from '../../../shared/modals'
+import { formatSet } from '../setFormat'
+import { openPlanRoutine } from '../planTraining'
 import { NewRoutineModal, EditRoutineModal } from './RoutineModals'
 import { ExerciseThumb } from '../exerciseMedia'
 import type { HevyRoutine, HevyRoutineSet } from '../types.hevy'
 
 // ─── Set chip display ─────────────────────────────────────────────────────────
 
-function setLabel(s: HevyRoutineSet): string {
-  const parts: string[] = []
-  if (s.weight_kg != null)   parts.push(`${s.weight_kg}kg`)
-  if (s.reps != null)        parts.push(`${s.reps}`)
-  else if (s.rep_range_start != null && s.rep_range_end != null)
-    parts.push(`${s.rep_range_start}–${s.rep_range_end}`)
-  if (s.rpe != null)         parts.push(`RPE${s.rpe}`)
-  if (s.duration_seconds != null) parts.push(`${s.duration_seconds}s`)
-  if (s.distance_meters != null)  parts.push(`${s.distance_meters}m`)
-  return parts.join('×') || '—'
-}
-
-function SetChip({ s }: { s: HevyRoutineSet }) {
-  if (s.type === 'normal' || !SET_TYPE_META[s.type]) return <span className="chip tabular-nums">{setLabel(s)}</span>
+function SetChip({ s, exerciseType }: { s: HevyRoutineSet; exerciseType?: string }) {
+  const label = formatSet(s, exerciseType)
+  if (s.type === 'normal' || !SET_TYPE_META[s.type]) return <span className="chip tabular-nums">{label}</span>
   const meta = SET_TYPE_META[s.type]
-  return <TonePill tone={meta.tone} className="tabular-nums"><span className="sr-only">{meta.label}: </span>{setLabel(s)}</TonePill>
+  return <TonePill tone={meta.tone} className="tabular-nums"><span className="sr-only">{meta.label}: </span>{label}</TonePill>
 }
 
 // ─── Routine Card ─────────────────────────────────────────────────────────────
 
 const EXERCISES_PREVIEW = 5
 
-function RoutineCard({ routine, onEdit }: { routine: HevyRoutine; onEdit: (r: HevyRoutine) => void }) {
+function RoutineCard({ routine, typeById, onEdit }: { routine: HevyRoutine; typeById: Map<string, string>; onEdit: (r: HevyRoutine) => void }) {
   const [expanded, setExpanded] = useState(false)
   const [showAllExercises, setShowAllExercises] = useState(false)
-  const deleteMutation = useDeleteHevyRoutineLocal()
 
   const exerciseCount = routine.exercises?.length ?? 0
   const setCount      = routine.exercises?.reduce((acc, ex) => acc + (ex.sets?.length ?? 0), 0) ?? 0
-
-  async function handleDelete() {
-    const ok = await entityModal.confirm({ title: `Delete "${routine.title}"?`, message: 'This removes it from your local data and cannot be undone.', confirmLabel: 'Delete', destructive: true })
-    if (!ok) return
-    deleteMutation.mutate(routine.id)
-  }
-
-  function plan() {
-    entityModal.open({
-      kind: 'time-block',
-      config: { heading: 'Plan routine' },
-      defaults: { title: routine.title, category: 'training', color: 'accent', alsoCreateTask: true },
-      source: { sourceType: 'training_session', sourceId: routine.id, taskSourceType: 'training_session' },
-    })
-  }
 
   return (
     <Card padded={false} className="overflow-hidden">
@@ -74,16 +49,8 @@ function RoutineCard({ routine, onEdit }: { routine: HevyRoutine; onEdit: (r: He
         </button>
 
         <div className="flex shrink-0 items-center gap-0.5">
-          <Button size="sm" icon={<CalendarPlus />} onClick={plan}>Plan</Button>
+          <Button size="sm" icon={<CalendarPlus />} onClick={() => openPlanRoutine(routine)}>Plan</Button>
           <IconButton label="Edit routine" onClick={() => onEdit(routine)}><Pencil /></IconButton>
-          <IconButton
-            label="Delete from local data"
-            onClick={handleDelete}
-            disabled={deleteMutation.isPending}
-            className="hover:!bg-danger-soft hover:!text-danger disabled:opacity-50"
-          >
-            <Trash2 />
-          </IconButton>
           <IconButton label={expanded ? 'Collapse' : 'Expand'} onClick={() => setExpanded(o => !o)}>
             <ChevronDown className={`transition-transform ${expanded ? 'rotate-180' : ''}`} />
           </IconButton>
@@ -107,7 +74,7 @@ function RoutineCard({ routine, onEdit }: { routine: HevyRoutine; onEdit: (r: He
                         {ex.title}
                       </p>
                       <div className="mt-1 flex flex-wrap gap-1">
-                        {(ex.sets ?? []).map((s, i) => <SetChip key={s.id ?? i} s={s} />)}
+                        {(ex.sets ?? []).map((s, i) => <SetChip key={s.id ?? i} s={s} exerciseType={typeById.get(ex.exercise_template_id)} />)}
                       </div>
                       {ex.notes && <p className="mt-1 text-meta italic text-fg-muted">{ex.notes}</p>}
                     </div>
@@ -135,6 +102,8 @@ function RoutineCard({ routine, onEdit }: { routine: HevyRoutine; onEdit: (r: He
 
 export function RoutinesTab() {
   const { data: routines = [], isLoading } = useHevyRoutines()
+  const { data: templates = [] } = useHevyExerciseTemplates()
+  const typeById = useMemo(() => new Map(templates.map(t => [t.id, t.type])), [templates])
   const [newOpen,       setNewOpen]       = useState(false)
   const [editingRoutine, setEditingRoutine] = useState<HevyRoutine | null>(null)
 
@@ -148,19 +117,21 @@ export function RoutinesTab() {
 
   return (
     <>
-      <div className="mb-3 flex items-center justify-between gap-3">
+      <div className="mb-1 flex items-center justify-between gap-3">
         <div>
           <h3 className="text-lead font-semibold text-fg">Routines</h3>
           <p className="text-meta tabular-nums text-fg-muted">{routines.length} routine{routines.length !== 1 ? 's' : ''}</p>
         </div>
         <Button variant="primary" icon={<Plus />} onClick={() => setNewOpen(true)}>New routine</Button>
       </div>
+      {/* Hevy's API can create and edit routines but has no delete. */}
+      <p className="mb-3 max-w-xl text-meta text-fg-muted">To delete a routine, delete it in the Hevy app — it disappears here on the next Sync.</p>
 
       {routines.length === 0 ? (
         <EmptyState bordered icon={<ClipboardList />} title="No routines yet" description="Sync from Hevy or create one here." />
       ) : (
         <div className="grid grid-cols-1 items-start gap-3 xl:grid-cols-2">
-          {routines.map(r => <RoutineCard key={r.id} routine={r} onEdit={setEditingRoutine} />)}
+          {routines.map(r => <RoutineCard key={r.id} routine={r} typeById={typeById} onEdit={setEditingRoutine} />)}
         </div>
       )}
 

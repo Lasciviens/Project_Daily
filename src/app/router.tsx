@@ -12,6 +12,7 @@ import { RecipesPage } from '../features/recipes/pages/RecipesPage'
 import { MediaPage } from '../features/media/pages/MediaPage'
 import { WorkPage } from '../features/work/pages/WorkPage'
 import { TrainingPage } from '../features/training/pages/TrainingPage'
+import { HealthPage } from '../features/health/pages/HealthPage'
 import { ProjectsPage } from '../features/projects/pages/ProjectsPage'
 import { WishesPage } from '../features/wishes/pages/WishesPage'
 import { DeveloperPage } from '../features/developer/pages/DeveloperPage'
@@ -72,6 +73,7 @@ export function Router() {
           <Route path="/media" element={<MediaPage />} />
           <Route path="/work"     element={<WorkPage />} />
           <Route path="/training"  element={<TrainingPage />} />
+          <Route path="/health"    element={<HealthPage />} />
           <Route path="/projects"  element={<ProjectsPage />} />
           <Route path="/wishes"    element={<WishesPage />} />
           <Route path="/developer" element={<DeveloperPage />} />

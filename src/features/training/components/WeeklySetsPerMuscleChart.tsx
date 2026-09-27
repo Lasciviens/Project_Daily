@@ -2,12 +2,12 @@ import { useMemo } from 'react'
 import { Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ComposedChart, ReferenceLine, ReferenceArea } from 'recharts'
 import { useTrainingHistory } from '../hooks/useTrainingProgress'
 import { useAthleteProfile } from '../hooks/useAthleteProfile'
-import { computeWeeklySetsPerMuscleTrend } from '../progressAggregate'
-import { lastCompleteWeek } from '../trainingInsights'
+import { computeWeeklySetsPerMuscleTrend, lastCompleteWeek, mondayOf } from '../progressAggregate'
+import { todayStr } from '../../../shared/utils/dateUtils'
 import { fmtWeekRange } from '../dateFormat'
 import { buildTemplateMuscleMap, labelForSlug, contribution, MAJOR_MUSCLES, MUSCLE_LANDMARKS, scaleLandmarksForExperience, bandForWeeklySets, BANDS_META } from '../muscleMap'
 import { Card, CardHeader, Skeleton, TonePill, useChartColors } from '../../../shared/ui'
-import { useTooltipStyle } from './chartKit'
+import { useTooltipStyle } from '../../../shared/components/charts/chartKit'
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Weekly Sets per Muscle — the sports-scientist review's top-priority "what
@@ -53,11 +53,13 @@ function MuscleSparkline({ card, experienceLevel }: { card: MuscleCardData; expe
       <div className="flex items-center justify-between gap-1">
         <p className="truncate text-meta font-semibold text-fg">{label}</p>
         {latest != null && (
-          <TonePill tone={BANDS_META[band].tone} className="shrink-0 tabular-nums">{latest}/wk</TonePill>
+          <span title="Last complete week" className="inline-flex shrink-0">
+            <TonePill tone={BANDS_META[band].tone} className="tabular-nums">{latest}/wk</TonePill>
+          </span>
         )}
       </div>
 
-      {chartData.length === 0 ? (
+      {chartData.every(w => w.sets === 0) ? (
         <p className="py-4 text-center text-micro font-normal text-fg-muted">No sets logged</p>
       ) : (
         <div style={{ height: 56 }}>
@@ -109,13 +111,17 @@ export function WeeklySetsPerMuscleChart() {
 
   const cards = useMemo<MuscleCardData[]>(() => {
     if (!data) return []
-    // Exclude the current, still-in-progress week — the badge is the most
-    // prominent number on each card, and sourcing it from a partial week
-    // understates real weekly volume until the week is actually over
-    // (sports-scientist review, 2026-09-01).
-    const last = lastCompleteWeek(new Date().toISOString().slice(0, 10))
+    // One dense range for every muscle: from your first logged week to the
+    // last COMPLETE week (the in-progress week would understate the badge).
+    // Dense, so the badge is LAST WEEK's number — a muscle last trained six
+    // weeks ago reads 0/wk, not its old count — and the sparkline never joins
+    // two trained weeks across a gap.
+    const last = lastCompleteWeek(todayStr())
+    const firstDate = data.sets.reduce<string | null>((min, s) => (min == null || s.date < min ? s.date : min), null)
+    if (!firstDate) return []
+    const range = { fromWeek: mondayOf(firstDate), untilWeek: last }
     return [...MAJOR_MUSCLES].map(slug => {
-      const weekly = computeWeeklySetsPerMuscleTrend(data.sets, templateMuscles, slug, contribution).filter(p => p.weekStart <= last)
+      const weekly = computeWeeklySetsPerMuscleTrend(data.sets, templateMuscles, slug, contribution, range)
       const landmarks = MUSCLE_LANDMARKS[slug]
       const scaled = landmarks ? scaleLandmarksForExperience(landmarks, profile?.experience_level) : null
       const latest = weekly.length > 0 ? weekly[weekly.length - 1].sets : null
@@ -143,7 +149,7 @@ export function WeeklySetsPerMuscleChart() {
           {profile?.experience_level ? ', adjusted ±15% for your experience level' : ''} — an unvalidated adjustment on top of an already-heuristic baseline.
           MRV isn&apos;t coloured as a warning: going over it isn&apos;t asserted harmful, since effort, sleep and recovery (all unmeasured here) decide that.
         </p>
-        <p>Sets don&apos;t capture effort, tempo or range of motion, none of which are logged. Read the trend, not any single week.</p>
+        <p>The badge is last complete week&apos;s count. Sets don&apos;t capture effort, tempo or range of motion, none of which are logged. Read the trend, not any single week.</p>
       </div>
     </Card>
   )

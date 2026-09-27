@@ -26,11 +26,18 @@
  *   came to 3309 kcal, hour-level collapse brings the SAME rows to 1164
  *   kcal (a sane ~80 kcal/hour).
  *
+ *   Round 3 (H-06): the hour-only rule kept ONE row per hour even for
+ *   MINUTE-grain history (rows exported before "Time Grouping: Hours", one
+ *   row per active minute), turning 60 × 50 steps into 50. An hour with at
+ *   least 7 distinct minutes is now read as minute-grain: same-minute twins
+ *   collapse, the minutes sum. Cases 7-11 lock that in without loosening
+ *   cases 1-6.
+ *
  * Run: node scripts/verify-health-source-dedup.cjs
  */
 require('sucrase/register')
 
-const { computeDailySeries } = require('../src/features/training/healthAggregate')
+const { computeDailySeries, computeHourlyBuckets, collapsedPoints } = require('../src/features/health/healthAggregate')
 
 let passed = 0
 let failed = 0
@@ -113,6 +120,68 @@ console.log('\n6 · Two genuinely different real hours both count in full (no cr
   ]
   const series = computeDailySeries('active_energy', points)
   check('two real distinct hours sum to 7.0', series.length === 1 && Math.abs(series[0].value - 7.0) < 1e-9)
+}
+
+console.log('\n7 · Minute-grain history: 60 one-minute rows of 50 steps in one hour sum to 3000 (was counted as 50)')
+{
+  const points = []
+  for (let m = 0; m < 60; m++) points.push(pt(`2026-07-20T16:${String(m).padStart(2, '0')}:00Z`, 50, 'Watch'))
+  const series = computeDailySeries('active_energy', points)
+  check('3000, not 50', series.length === 1 && Math.abs(series[0].value - 3000) < 1e-9, JSON.stringify(series))
+}
+
+console.log('\n8 · Minute-grain with float-noise workout twins: each minute counts once, then the minutes sum')
+{
+  const points = []
+  for (let m = 0; m < 30; m++) {
+    const at = `2026-07-20T17:${String(m).padStart(2, '0')}:27Z`
+    points.push(pt(at, 106.86025364796929, 'Watch'))
+    points.push(pt(at.replace(':27Z', ':41Z'), 106.86025364796926, 'Watch')) // same minute, twin
+  }
+  const series = computeDailySeries('active_energy', points)
+  check('30 minutes × 106.86 ≈ 3205.8 (twins dropped, not 6411.6, not 106.86)',
+    series.length === 1 && Math.abs(series[0].value - 30 * 106.86025364796929) < 1e-6, JSON.stringify(series))
+}
+
+console.log('\n9 · A re-delivered hour-grain hour right next to a minute-grain hour: each keeps its own rule')
+{
+  const points = [
+    pt('2026-09-06T06:00:00Z', 83.7, 'Lasci 17 Pro|Watch'),
+    pt('2026-09-06T06:00:00Z', 83.7, 'Lasci 17 Pro|Watch|Watch'),
+    pt('2026-09-06T06:39:34Z', 64.2, 'Watch'),
+  ]
+  for (let m = 0; m < 10; m++) points.push(pt(`2026-09-06T07:${String(10 + m)}:05Z`, 5, 'Watch'))
+  const series = computeDailySeries('active_energy', points)
+  check('83.7 (hour 06, collapsed) + 50 (hour 07, ten minutes summed) = 133.7',
+    series.length === 1 && Math.abs(series[0].value - 133.7) < 1e-9, JSON.stringify(series))
+}
+
+console.log('\n10 · Known limit, documented: a quiet minute-grain hour (under 7 minutes) keeps its largest row')
+{
+  const points = [
+    pt('2026-07-20T03:12:10Z', 12, 'Watch'),
+    pt('2026-07-20T03:31:44Z', 30, 'Watch'),
+    pt('2026-07-20T03:48:02Z', 5, 'Watch'),
+  ]
+  const series = computeDailySeries('active_energy', points)
+  check('30 (an undercount of a small hour, never a double count of a re-delivered one)',
+    series.length === 1 && Math.abs(series[0].value - 30) < 1e-9, JSON.stringify(series))
+}
+
+console.log('\n11 · collapsedPoints and the hourly chart agree with the daily total')
+{
+  const points = [
+    pt('2026-09-06T08:00:00Z', 40, 'Watch'),
+    pt('2026-09-06T08:00:00Z', 40, 'Watch|Watch'),
+    pt('2026-09-06T08:21:09Z', 22, 'Watch'),
+  ]
+  const kept = collapsedPoints('active_energy', points)
+  check('one row survives for the re-delivered hour', kept.length === 1 && kept[0].value.qty === 40, JSON.stringify(kept.map(k => k.value.qty)))
+  const hourly = computeHourlyBuckets('active_energy', points)
+  const sum = hourly.reduce((s, h) => s + (h.value ?? 0), 0)
+  check('hourly buckets add up to the same 40', Math.abs(sum - 40) < 1e-9, String(sum))
+  check('an hour with no reading is null, not 0', hourly.filter(h => h.value == null).length === 23)
+  check('a non-sum metric is never collapsed', collapsedPoints('walking_speed', points).length === 3)
 }
 
 console.log(`\n${passed} passed, ${failed} failed\n`)

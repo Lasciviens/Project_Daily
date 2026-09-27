@@ -9,6 +9,8 @@ export type TrainingGoal = 'strength' | 'hypertrophy' | 'fat_loss' | 'general'
 export type ExperienceLevel = 'novice' | 'intermediate' | 'advanced'
 export type Equipment = 'home' | 'gym' | 'both'
 export type LimitationSeverity = 'avoid' | 'limit' | 'monitor'
+/** Selects which published reference table applies (migration 110). */
+export type BiologicalSex = 'male' | 'female'
 
 export interface AthleteProfile {
   user_id: string
@@ -18,6 +20,10 @@ export interface AthleteProfile {
   training_days_per_week: number | null
   equipment_access: Equipment | null
   notes: string | null
+  /** Migration 110. Always present on a fetched row (null before 110 is applied). */
+  birth_year: number | null
+  sex: BiologicalSex | null
+  height_cm: number | null
   updated_at: string
 }
 

@@ -307,11 +307,19 @@ async function refreshRoutines(supabase: any, userId: string): Promise<number> {
   let page = 1
   let total = 0
   const seenIds = new Set<string>()
+  // Pruning below deletes every local routine Hevy didn't return, so it may
+  // only run after a COMPLETE listing: every page up to page_count read, in
+  // the documented shape. An odd response (no `routines` array, an empty page
+  // before the last one) keeps the local rows instead of wiping them.
+  let complete = false
   while (true) {
     const data = await hevyGet(`/v1/routines?page=${page}&pageSize=10`)
+    // page_count missing → read on until an empty page.
+    const pageCount = data?.page_count != null && Number.isFinite(Number(data.page_count)) ? Number(data.page_count) : null
+    if (!Array.isArray(data?.routines)) break
     // deno-lint-ignore no-explicit-any
-    const routines: any[] = data.routines ?? []
-    if (routines.length === 0) break
+    const routines: any[] = data.routines
+    if (routines.length === 0) { complete = pageCount == null || page >= pageCount; break }
     const now = new Date().toISOString()
     for (const routine of routines) {
       seenIds.add(routine.id)
@@ -347,7 +355,8 @@ async function refreshRoutines(supabase: any, userId: string): Promise<number> {
       }
     }
     total += routines.length
-    if (page >= data.page_count) break
+    if (pageCount != null && page >= pageCount) { complete = true; break }
+    if (page >= 500) break // runaway guard; incomplete → no pruning
     page++
   }
 
@@ -361,7 +370,11 @@ async function refreshRoutines(supabase: any, userId: string): Promise<number> {
   // hevy_routine_exercises/hevy_routine_sets via their ON DELETE CASCADE FKs
   // (024_hevy.sql). Safe even when seenIds is empty (a real zero-routines
   // account) — hevyGet throws on a non-ok response, so we only ever reach
-  // here after a genuinely successful full fetch, never a transient failure.
+  // here after a genuinely successful full fetch, never a transient failure
+  // (and only when the listing was complete — see `complete` above).
+  // Hevy's public API has no routine DELETE, so this is also how a routine
+  // deleted in the Hevy app leaves the web app: the Routines tab says so.
+  if (!complete) return total
   const { data: localRoutines, error: localErr } = await supabase
     .from('hevy_routines').select('id').eq('user_id', userId)
   if (localErr) throw localErr

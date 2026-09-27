@@ -1,23 +1,21 @@
-import type { ReactNode } from 'react'
-import { useProgressData } from '../hooks/useProgressData'
+import { useState, type ReactNode } from 'react'
+import { Settings2 } from 'lucide-react'
 import { useSetCurrentProgramRoutines } from '../hooks/useAthleteProfile'
-import { progressVerdictHeadline, workloadLabel } from '../progressCopy'
+import { useProgressDataContext } from './progressDataContext'
+import { progressVerdictHeadline, workloadLabel, type ProgramDecision } from '../progress-engine/program'
+import type { BodyweightChange } from '../progressAggregate'
 import { InfoBubble } from '../../../shared/components/InfoBubble'
-import type { ProgramDecision } from '../progressDecisions'
 import { Button, Card, CardHeader, Skeleton, type Tone } from '../../../shared/ui'
+import { AthleteProfileSheet } from '../components/AthleteProfileSheet'
 
 // The page's headline — answers "what's happening / why / how reliable" in
-// the first viewport, per the redesign's own acceptance criteria. Two
-// DISTINCT facets are shown side by side, deliberately never collapsed into
-// one score: progressVerdict (is this exercise-level progress real?) and
-// workload (should the program as a whole change?).
+// the first viewport. Two DISTINCT facets are shown side by side and never
+// collapsed into one score: progressVerdict (is progress real across the
+// program?) and workload (should the training load itself change?).
 //
-// GATING (real bug, fixed 2026-09-02): this used to silently treat every
-// logged exercise as "current" whenever no program was explicitly selected
-// — an unreliable verdict built from a mix of the current program and
-// exercises abandoned months ago. It now refuses to produce a verdict at
-// all in that state and asks for an explicit selection instead, offering a
-// recency-based suggestion the athlete must still confirm.
+// GATING: with no current program selected it refuses to produce a verdict
+// and asks for a selection, offering the routines actually TRAINED in the
+// last 28 days as a suggestion the athlete must still confirm.
 
 const VERDICT_TONE: Record<ProgramDecision['progressVerdict'], Tone> = {
   progressing: 'success',
@@ -28,25 +26,35 @@ const VERDICT_TONE: Record<ProgramDecision['progressVerdict'], Tone> = {
 const WORKLOAD_TONE: Record<ProgramDecision['workload'], Tone> = {
   continue: 'success',
   review_workload: 'warn',
-  ease_off: 'danger',
+}
+
+function ProgramSettingsButton({ label }: { label: string }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <>
+      <Button variant="ghost" size="sm" className="gap-1.5 !px-2" onClick={() => setOpen(true)}>
+        <Settings2 aria-hidden className="h-4 w-4" /> {label}
+      </Button>
+      <AthleteProfileSheet open={open} onClose={() => setOpen(false)} />
+    </>
+  )
 }
 
 function GatingCard() {
-  const { suggestedRoutines } = useProgressData()
+  const { suggestedRoutines } = useProgressDataContext()
   const setProgram = useSetCurrentProgramRoutines()
 
   return (
     <div className="flex flex-col items-start gap-3 rounded-card border-2 border-dashed border-accent-200 bg-surface p-5">
       <p className="section-label text-accent-600">Setup needed</p>
-      <p className="text-title font-semibold text-fg">Select your current training program to generate progress decisions.</p>
+      <p className="text-title font-semibold text-fg">Select your current training program to get progress decisions.</p>
       <p className="max-w-2xl text-body text-fg-muted">
-        Every decision below (increase/keep/watch, the overall verdict) is scoped to the routines you
-        confirm here — never guessed from recent activity alone, so an old program never quietly mixes in with what
-        you&apos;re training today.
+        Every decision below is scoped to the routines you confirm here — never guessed from recent activity alone, so an
+        old program never quietly mixes in with what you&apos;re training today.
       </p>
       {suggestedRoutines.length > 0 && (
         <div className="flex w-full flex-col gap-2">
-          <p className="text-meta text-fg-muted">Recently trained — looks like your current program?</p>
+          <p className="text-meta text-fg-muted">Trained in the last 4 weeks — is this your current program?</p>
           <div className="flex flex-wrap gap-2">
             {suggestedRoutines.map(r => <span key={r.id} className="chip text-body">{r.title}</span>)}
           </div>
@@ -55,7 +63,7 @@ function GatingCard() {
           </Button>
         </div>
       )}
-      <p className="text-meta text-fg-muted">Or pick exactly which routines count in Training → Coach → Profile → Current program.</p>
+      <ProgramSettingsButton label="Pick routines myself" />
     </div>
   )
 }
@@ -70,41 +78,53 @@ function SummaryCard({ label, value, tone, note, info }: { label: string; value:
   )
 }
 
+function bodyweightText(bw: BodyweightChange): { value: string; note: string } {
+  if (bw.kind === 'change') return { value: `${bw.deltaKg > 0 ? '+' : ''}${bw.deltaKg} kg`, note: `${bw.priorAvgKg} → ${bw.recentAvgKg} kg (weekly averages)` }
+  if (bw.kind === 'stale') return { value: `${bw.latestKg} kg`, note: `last weigh-in ${bw.daysAgo} days ago` }
+  return { value: '—', note: 'not enough weigh-ins yet' }
+}
+
 export function ProgressOverview() {
-  const { isLoading, needsCurrentProgram, program, summary } = useProgressData()
+  const { isLoading, needsCurrentProgram, program, summary } = useProgressDataContext()
 
   if (isLoading) return <Skeleton rounded="rounded-card" className="h-32" />
   if (needsCurrentProgram) return <GatingCard />
   if (!program || !summary) return null
 
-  const adherenceText = summary.adherence?.target
-    ? `${summary.adherence.completedThisWeek} of ${summary.adherence.target} planned`
-    : `${summary.adherence?.completedThisWeek ?? 0} logged`
-  const bwText = summary.bodyweightDirection
-    ? `${summary.bodyweightDirection.deltaKg > 0 ? '+' : ''}${summary.bodyweightDirection.deltaKg} kg`
-    : '—'
+  const { adherence } = summary
+  const adherenceText = adherence.target ? `${adherence.completedThisWeek} of ${adherence.target}` : `${adherence.completedThisWeek}`
+  const bw = bodyweightText(summary.bodyweight)
 
   return (
     <Card className="flex flex-col gap-4">
-      <CardHeader variant="label" title="Progress" className="!mb-0" />
+      <CardHeader variant="label" title="Progress" className="!mb-0" action={<ProgramSettingsButton label="Program" />} />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div>
           <p className="section-label flex items-center gap-1.5">
             Progress result
-            <InfoBubble><b>Progress result</b>Compares each analyzable exercise&apos;s recent direction. &quot;Progressing&quot; needs most of them trending up; &quot;Mixed&quot; means it&apos;s genuinely split.</InfoBubble>
+            <InfoBubble>
+              <b>Progress result</b> An exercise counts as improved when its recent trend is progressing (load or clean reps went
+              up more often than down over its last few comparable sessions), or when the latest session set a 6-month best or
+              completed its target. &quot;Progressing&quot; means more than half of the judgeable exercises improved; otherwise
+              &quot;Mixed&quot;. Holding the same load doesn&apos;t count as improving on its own.
+            </InfoBubble>
           </p>
           <p data-tone={VERDICT_TONE[program.progressVerdict]} className="tone-text mt-1 text-kpi font-bold tracking-tight">{progressVerdictHeadline(program.progressVerdict)}</p>
           <p className="mt-1 text-meta text-fg-muted">
             {summary.exerciseProgress.analyzable > 0
-              ? `${summary.exerciseProgress.improving} of ${summary.exerciseProgress.analyzable} analyzable current-program movements improved.`
-              : 'Not enough current-program history yet to judge any exercise reliably.'}
+              ? `${summary.exerciseProgress.improving} of ${summary.exerciseProgress.analyzable} judgeable exercises in your current program improved.`
+              : 'Not enough current-program history yet to judge any exercise.'}
           </p>
         </div>
         <div>
           <p className="section-label flex items-center gap-1.5">
             Workload decision
-            <InfoBubble><b>Workload decision</b>A different question from progress: should you change the training load itself? Needs at least 2 different exercises declining PLUS a second signal (e.g. sleep down) — never from one exercise alone.</InfoBubble>
+            <InfoBubble>
+              <b>Workload decision</b> A different question from progress: should the training load itself change? It needs at
+              least 2 exercises declining at their current load session after session PLUS a second, independent signal (average
+              sleep down by more than 45 minutes a night over the last 2 complete weeks) — never one exercise alone.
+            </InfoBubble>
           </p>
           <p data-tone={WORKLOAD_TONE[program.workload]} className="tone-text mt-1 text-kpi font-bold tracking-tight">{workloadLabel(program.workload)}</p>
           <p className="mt-1 text-meta text-fg-muted">
@@ -117,21 +137,20 @@ export function ProgressOverview() {
 
       <div className="grid grid-cols-2 gap-4 border-t border-line pt-3 lg:grid-cols-4">
         <SummaryCard
-          label="Routine adherence" value={adherenceText} note="this week, so far"
-          info={<><b>Routine adherence</b>How many sessions you&apos;ve logged this week against your own stated weekly target — never judged before the week is actually over.</>}
+          label="Sessions" value={adherenceText} note={adherence.target ? 'planned, this week so far' : 'this week so far'}
+          info={<><b>Sessions this week</b> Current-program workouts logged since Monday, against your weekly training-days target (set it under Program). It&apos;s a running count for the week in progress, not a verdict — the week isn&apos;t over yet.</>}
         />
         <SummaryCard
-          label="Exercise progress" value={`${summary.exerciseProgress.improving}/${summary.exerciseProgress.analyzable}`} note="of exercises judgeable so far"
-          info={<><b>Exercise progress</b>Of the current-program exercises with enough logged sessions to judge (the &quot;analyzable&quot; ones — see Data confidence for the full program count), how many are increasing or holding at the top of their range.</>}
+          label="Improved" value={`${summary.exerciseProgress.improving}/${summary.exerciseProgress.analyzable}`} note="judgeable exercises"
+          info={<><b>Improved</b> Of the current-program exercises with at least 2 comparable sessions, how many improved by the same rule as the progress result above (a progressing trend, a 6-month best or a completed target).</>}
         />
         <SummaryCard
-          label="Bodyweight" value={bwText} 
-          note={summary.bodyweightDirection ? `over ~${summary.bodyweightDirection.days} days` : 'not enough weigh-ins yet'}
-          info={<><b>Bodyweight direction</b>A plain before/after comparison, not a smoothed trend — read the direction over months, not this one number.</>}
+          label="Bodyweight" value={bw.value} note={bw.note}
+          info={<><b>Bodyweight</b> The average of your weigh-ins in the week up to the latest one, against the average 2–4 weeks before it — averages, so a single day&apos;s water swing doesn&apos;t move it. If the latest weigh-in is more than 2 weeks old, it just says when that was.</>}
         />
         <SummaryCard
-          label="Data confidence" value={`${summary.dataConfidence.reliable}/${summary.dataConfidence.total}`} note="of ALL current-program exercises"
-          info={<><b>Data confidence</b>Out of every exercise actually in your current program&apos;s routines (a different, larger denominator than &quot;Exercise progress&quot; above, which only counts the ones already judgeable), how many have enough comparable sessions (3+) to trust their trend at all.</>}
+          label="Enough history" value={`${summary.dataConfidence.reliable}/${summary.dataConfidence.total}`} note="of all current-program exercises"
+          info={<><b>Enough history</b> Of every exercise in your current program&apos;s routines, how many have at least 4 comparable sessions spanning at least 2 weeks in their recent window — enough for a moderate or strong trend read.</>}
         />
       </div>
     </Card>

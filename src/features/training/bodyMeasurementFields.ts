@@ -42,3 +42,47 @@ export const DETAIL_FIELDS = ALL_FIELDS.slice(3)
 export function fmtMeasDate(dateStr: string): string {
   return formatTrainingDate(new Date(dateStr + 'T00:00:00'))
 }
+
+// ─── Save payload ─────────────────────────────────────────────────────────────
+// hevy-api MERGES a save into what is stored for the date: a key that is
+// absent keeps the stored value, an explicit null clears it, a number sets
+// it. So the form sends only what changed its mind:
+//   typed value              → the number
+//   a stored value, now empty → null (the user cleared it)
+//   empty and nothing stored  → omitted
+// Hevy has no way to delete a whole day's entry, so a save that would leave
+// the day with no values at all is refused here with a reason.
+
+export type MeasurementValues = Record<MeasKey, string>
+export type StoredMeasurement = Partial<Record<MeasKey, number | null>>
+
+export function buildMeasurementPayload(
+  date: string,
+  values: MeasurementValues,
+  stored: StoredMeasurement | null,
+): { payload: Record<string, unknown>; error: string | null } {
+  const payload: Record<string, unknown> = { date }
+  let remaining = 0
+  for (const f of ALL_FIELDS) {
+    const raw = (values[f.key] ?? '').trim()
+    const had = stored?.[f.key] != null
+    if (raw === '' || raw === '.') {
+      if (had) payload[f.key] = null
+      continue
+    }
+    const n = Number(raw)
+    if (!Number.isFinite(n) || n < 0) return { payload, error: `${f.label} isn't a valid number.` }
+    payload[f.key] = n
+    remaining++
+  }
+  if (!date) return { payload, error: 'Pick a date.' }
+  if (remaining === 0) {
+    return {
+      payload,
+      error: stored && ALL_FIELDS.some(f => stored[f.key] != null)
+        ? 'Hevy can’t delete a whole day. Keep at least one value, or delete the entry in the Hevy app.'
+        : 'Enter at least one value.',
+    }
+  }
+  return { payload, error: null }
+}

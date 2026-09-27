@@ -1,0 +1,187 @@
+{
+ "checked": 128,
+ "corrections": [
+  {
+   "metricOrTopic": "Ranking method: tiers vs the stated 35/25/20/20 weights",
+   "claim": "Metrics were ordered by weighting evidence/availability/interest/actionability roughly 35/25/20/20.",
+   "verdict": "wrong",
+   "correction": "Recomputing 0.35E+0.25A+0.2I+0.2C from the JSON's own scores does not reproduce the tiers. Order: steps 5.0, exercise 4.8, sleep duration 4.45, regularity 4.05, RHR 4.05, active energy 3.9, weight 3.75, walking distance 3.7, flights 3.5, VO2 max 3.45, breathing disturbances 3.4, BMI 3.35, stand 3.15, HR day range 3.15, daylight 3.05, HRV 3.05, \u2026 SpO2 2.5, WHtR 2.45, respiratory rate 2.3, cardio recovery 2.15. Active energy (tier 2) beats weight (tier 1). Walking distance (tier 3) beats every tier-2 item except active energy. SpO2, WHtR, respiratory rate and cardio recovery (tier 2) score below tier-3 stand, HR range, daylight, toothbrushing and alerts. HRV, which heads hero tile 6, ranks 16th, below VO2 max (10th). Either say the tiers are editorial or re-tier from the scores.",
+   "source": "Arithmetic on the JSON's own evidence/availability/interest/actionability scores"
+  },
+  {
+   "metricOrTopic": "Interest score: resting HR (4) vs VO2 max (3)",
+   "claim": "RHR interest 4; VO2 max interest 3 ('mid-table').",
+   "verdict": "imprecise",
+   "correction": "The data don't rank RHR above VO2 max. Wearable searches favour VO2 max about 3x ('apple watch vo2 max' 0.202 vs 'apple watch resting heart rate' 0.063). Generic searches favour RHR only 1.00 vs 0.70. The JMIR 70.5% and GWI 44% figures are for 'heart rate' in general, not RHR. Equal scores (3 or 4) are the defensible reading. This doesn't move VO2 max into tier 1 (3.45 becomes 3.65, still below weight at 3.75).",
+   "source": "Ranker's own Trends files scratchpad/rank/wearable.json and generic2.json; PMC11888053; PMC9022022"
+  },
+  {
+   "metricOrTopic": "Interest scores not backed by data",
+   "claim": "Walking speed 1, toothbrushing 0.5, handwashing 0.5, stand hours 2, wrist temperature 1, weight 4.",
+   "verdict": "unverifiable",
+   "correction": "These scores aren't consistently tied to the Trends data. 'walking speed' is 0.34 of 'resting heart rate' but scores 1, while 'heart rate variability' (0.39) gets 3 and 'visceral fat' (0.42) gets 2. Toothbrushing was never queried, and handwashing is 0.002 (absolute 0.1/100). 'apple watch stand' 0.73, 'apple watch temperature' 0.61 and 'apple watch weight' 0.89 were written off as accessory or spec searches without checking related queries. If even part of that traffic is about the features, stand and wrist temperature are under-scored. Weight 4 rests only on calculator-inflated 'bmi'.",
+   "source": "scratchpad/rank/generic2.json, wearable.json, wearable2.json"
+  },
+  {
+   "metricOrTopic": "Google Trends precision",
+   "claim": "Walking steadiness 0.002; 'bmi' 9.3x; blood pressure, atrial fibrillation and 'normal heart rate' ratios.",
+   "verdict": "imprecise",
+   "correction": "'apple watch walking steadiness' has a raw mean of 0.0 on Google's integer 0-100 scale, so 0.002 is below Trends' resolution. Report it as \u22480. 'bmi', 'blood pressure', 'atrial fibrillation' and 'normal heart rate' come from a batch whose anchor averaged only 2.8/100. At that level, integer rounding alone makes those ratios uncertain by roughly \u00b120% or more.",
+   "source": "scratchpad/rank/wearable.json (steadiness row), generic2.json (anchor 2.8 batch)"
+  },
+  {
+   "metricOrTopic": "Trends: HRV relative to 'apple watch heart rate'",
+   "claim": "HRV 0.26",
+   "verdict": "imprecise",
+   "correction": "The raw files show 'apple watch hrv' 0.215 and 'apple watch heart rate variability' 0.047 (last 52 weeks). The only way to get 0.26 is to add the two together, and the summary doesn't say so. Use 0.22, or state that it is the sum.",
+   "source": "scratchpad/rank/wearable.json, wearable2.json"
+  },
+  {
+   "metricOrTopic": "Trends: generic-phrase ratios",
+   "claim": "'deep sleep' 0.97, 'vo2 max' 0.70, 'blood oxygen' 0.72, 'calories burned' 0.68, 'body fat percentage' 0.50, 'steps a day' 0.47, 'heart rate variability' 0.39 (up from 0.23)",
+   "verdict": "unverifiable",
+   "correction": "None of these are in the work files the summary names. generic2.json holds only the other generic batches, and the batch behind the 'resting heart rate, heart rate variability, vo2 max, blood oxygen, deep sleep' link isn't saved. These can't be checked as reported.",
+   "source": "scratchpad/rank/ directory listing and file contents"
+  },
+  {
+   "metricOrTopic": "JMIR 2025 survey denominators",
+   "claim": "n=475 in 2023; share rating each feature useful: heart rate 70.5%, steps 65.9% (94.5% in 2016) \u2026 meditation 50%",
+   "verdict": "imprecise",
+   "correction": "Every percentage is correct, but the usefulness items were asked only of the 387 current users, not all 475. Example: meditation is 193/387 = 50%. The 44% Apple share (210/475) is of all 475.",
+   "source": "JMIR 2025, PMC11888053 full text"
+  },
+  {
+   "metricOrTopic": "GWI citation",
+   "claim": "GlobalWebIndex 2019 via Pardini/PMC review: steps 60%, HR 44%, calories 42%, sleep 40%; 53% want blood pressure",
+   "verdict": "imprecise",
+   "correction": "The numbers are right. The PMC review (PMC9022022, 'Wearable activity trackers \u2013 advanced technology or advanced marketing?') is by Shei et al., not Pardini. It cites the GWI 2020 Digital Healthcare report on a 2019 survey, so this interest data is 7 years old.",
+   "source": "PMC9022022 full text (Europe PMC)"
+  },
+  {
+   "metricOrTopic": "Resting HR: effect of endurance training",
+   "claim": "Endurance training lowers it about 6 bpm (Reimers 2018)",
+   "verdict": "wrong",
+   "correction": "In Reimers, pooled resting HR in endurance-training groups fell from 72.4 to 68.0 bpm: \u22124.4 bpm, or \u22126.0%. The net effect vs controls was 2.7-5.8 bpm depending on sex. The '6' is a percentage. The ~6.2 bpm figure is from Huang 2005, in older adults.",
+   "source": "Reimers CD et al. J Clin Med 2018 (PMC6306777), results table and discussion"
+  },
+  {
+   "metricOrTopic": "Flights climbed: ESC 2024 meta-analysis",
+   "claim": "9 studies, 480,520 people; 24% lower all-cause and 39% lower CV mortality",
+   "verdict": "imprecise",
+   "correction": "The cited abstract says 8 studies with 473,197 participants. Mortality was pooled from 5 studies (455,578): all-cause RR 0.70 (30% lower) and CV mortality RR 0.65 (35% lower). The 9 studies / ~480,000 / 24% / 39% figures are from the ESC press release (480,479). 480,520 matches neither source. Use the abstract's numbers with the abstract's link.",
+   "source": "Eur J Prev Cardiol 2024;31(Suppl 1):zwae175.405; ESC press coverage (Healio, 26 Apr 2024)"
+  },
+  {
+   "metricOrTopic": "Physical effort: citation",
+   "claim": "Apple white paper (Nov 2024): effort estimates and calorimetry",
+   "verdict": "imprecise",
+   "correction": "The white paper's 'Effort' section is Workout Effort, a per-session intensity rating that feeds training load. It doesn't describe the HealthKit physical_effort series (METs, kcal/hr\u00b7kg). There is no source here for the METs series.",
+   "source": "Apple, Using Apple Watch to measure heart rate, calorimetry and activity (Nov 2024), p. 25"
+  },
+  {
+   "metricOrTopic": "iPhone mobility paper: coverage and the 80% figure",
+   "claim": "\u22655 estimates a day for 80% of users who carry the phone in a pocket; the same paper cited for stair speed and walking steadiness",
+   "verdict": "imprecise",
+   "correction": "The paper says: 'For users who have received at least one walking bout estimate, on average over 80 percent of them will receive at least five estimates of their Mobility metrics per day.' That is conditional on getting any estimate, not on pocket carry. The paper covers walking speed, step length, double support and asymmetry only. It has nothing on stair speed or walking steadiness; steadiness has its own Apple paper.",
+   "source": "Apple, Measuring Walking Quality Through iPhone Mobility Metrics (May 2022), text search"
+  },
+  {
+   "metricOrTopic": "Hypertension notifications: sensitivity",
+   "claim": "Catch 41% of hypertension (Series 9+, 30-day analysis); cited to Apple Support 117296",
+   "verdict": "imprecise",
+   "correction": "The figures are right: sensitivity 41.2%, specificity 92.3%, stage 2 sensitivity 53.7%, 30-day window, Series 9+/Ultra 2+. But the cited support page has no sensitivity figure. Cite Apple's September 2025 validation paper.",
+   "source": "apple.com/health/pdf/Hypertension_Notifications_Validation_Paper_September_2025.pdf; support.apple.com/en-us/117296"
+  },
+  {
+   "metricOrTopic": "Hero tile 6 'modelled on Apple's Vitals app'",
+   "claim": "HRV headline plus outlier count across HRV, respiratory rate, SpO\u2082, wrist temperature, sleeping HR, modelled on Apple Vitals",
+   "verdict": "imprecise",
+   "correction": "On a Series 11, Apple's Vitals are overnight heart rate, respiratory rate, blood oxygen, wrist temperature and sleep duration. HRV replaces sleep duration only on Series 12/Ultra 4. An HRV-led tile is therefore not Apple's model for this watch. Apple notifies when 'multiple' metrics are out of range, which matches the outlier-count idea.",
+   "source": "support.apple.com/en-us/120142"
+  },
+  {
+   "metricOrTopic": "VO\u2082 max: error band and noise threshold",
+   "claim": "Show a \u00b16 ml/kg/min uncertainty band; changes under ~3 ml/kg/min are within noise; reads 4.5-6.3 low; 14% in the correct FRIEND band",
+   "verdict": "imprecise",
+   "correction": "The bias range is right across three studies: Caserman \u22124.5, Lambe \u22126.07, Series 10 \u22126.25. The claim cites only the Series 10 study. 14% = 5 of 35 analysed, and 25 of the 35 were at or above the 80th percentile. But \u00b16 is roughly the mean absolute error (6.79), not a 95% band. Limits of agreement are \u221218.2 to +5.7 (Series 10) and \u22126.1 to +18.3 criterion\u2212watch (Lambe), about \u00b112 around the bias. The '~3 ml/kg/min noise' threshold has no source; the Series 10 authors say longitudinal reliability is untested.",
+   "source": "Mayo Clin Proc Digit Health 2026 (PMC13141568); prior verify-bench.json (Lambe PMC12080799, Caserman PMC11325102)"
+  },
+  {
+   "metricOrTopic": "VO\u2082 max: availability score 2",
+   "claim": "Only ~2 run days since July, so availability 2",
+   "verdict": "imprecise",
+   "correction": "Outdoor Walk and Hiking workouts also produce estimates, not only runs, so run days are the wrong proxy. Availability should come from counting actual vo2_max rows. That count wasn't checked here because the repo rule forbids unrequested DB access.",
+   "source": "support.apple.com/en-us/108790 ('Outdoor Walk, Outdoor Run, Hiking')"
+  },
+  {
+   "metricOrTopic": "Sleep staging accuracy",
+   "claim": "Apple staging is weak: light \u221274 min, REM +30 min vs PSG (Sleep Med 2026)",
+   "verdict": "imprecise",
+   "correction": "The numbers are right: light \u221273.8 \u00b1 61.6 min, REM +30.3 \u00b1 36.3 min. But they come from 19 people wearing a Series 7 against home PSG, and that study ranked Apple Watch best of the three devices tested. One small study of an older model is thin support for calling it 'weak'. Say 'limited agreement in one small study'.",
+   "source": "Alhejaili et al. Sleep Med 2026, doi 10.1016/j.sleep.2026.109059 (Europe PMC abstract)"
+  },
+  {
+   "metricOrTopic": "Sleep stage share bug",
+   "claim": "The current code divides by total sleep while also drawing Awake, so shares exceed 100%",
+   "verdict": "imprecise",
+   "correction": "This is stale. The working tree already has sleepStageShares(), which divides by asleep + awake (src/features/health/healthAggregate.ts ~line 560), used by the new SleepStageBar.tsx. The fix is uncommitted, so the bug exists only at HEAD.",
+   "source": "git status / working tree of /home/user/Project_Daily"
+  },
+  {
+   "metricOrTopic": "Handwashing evidence",
+   "claim": "Each handwashing event is linked to ~3% lower daily probability of a respiratory infection",
+   "verdict": "imprecise",
+   "correction": "The 3% point estimate is right, but its 80% credible interval (\u22121% to 7%) includes no effect. It comes from just 6 RCTs, 3 of them at high risk of bias.",
+   "source": "Epidemiol Infect 2022 (PMC9044525) abstract"
+  },
+  {
+   "metricOrTopic": "Waist-to-height ratio: NICE classes",
+   "claim": "NICE: <0.5 healthy, 0.5-0.59 increased, \u22650.6 high, valid for muscular adults",
+   "verdict": "imprecise",
+   "correction": "NICE rec 1.9.14 defines 'healthy' as 0.4-0.49, not everything below 0.5. The classes apply to people with BMI under 35 kg/m\u00b2, including adults with high muscle mass. The BMI caution for muscular adults is rec 1.9.12. The Box 1 measuring method is quoted correctly.",
+   "source": "NICE NG246, section 1.9 (fetched page text)"
+  },
+  {
+   "metricOrTopic": "Sleep regularity: '~60-minute window'",
+   "claim": "A ~60-minute bed/wake window is the top-quintile behaviour",
+   "verdict": "unverifiable",
+   "correction": "Windred reports the Sleep Regularity Index (0-100), not bed/wake spread in minutes, and gives no minute threshold. The HRs quoted are right: fully adjusted 0.80/0.75/0.72/0.70 for quintiles 2-5, n=60,977, mean age 62.8.",
+   "source": "Windred 2024 Sleep (PMC10782501)"
+  },
+  {
+   "metricOrTopic": "Owner-data and export claims",
+   "claim": "SpO\u2082 12-20 readings/day; ~2 run days since July; handwashing stopped 2026-08-20; toothbrushing arrives daily; Sleep Score not exported via HealthKit",
+   "verdict": "unverifiable",
+   "correction": "The owner-data figures would need a live DB query, which the repo rule forbids without the user's explicit request. No source was found either way on whether watchOS 26 Sleep Score is exposed through HealthKit.",
+   "source": "CLAUDE.md data-access rule; web search (MacRumors, Macworld) found nothing on HealthKit export"
+  },
+  {
+   "metricOrTopic": "Evidence core: sleep, steps, exercise, resting HR",
+   "claim": "Cappuccio RR 1.12/1.30 (1.38M); Paluch Q4 0.47, plateaus 8-10k/6-8k; Ding 7k vs 2k HR 0.53; Banach +1k HR 0.85; Arem 0.61 at 3-5x; Strain 21% (20 vs 15 kJ/kg/d) and 30% (20% vs 10% MVPA); Ekelund 60-75 min; Zhang 1.09/10 bpm (46 studies); Aune 1.17 (87 studies); RHR MAE 3.73",
+   "verdict": "correct",
+   "correction": "All confirmed against the abstracts. Banach pooled 17 cohorts (226,889).",
+   "source": "Europe PMC abstracts: PMC2864873, PMC9289978, PMID 40713949, 37555441, PMC4451435, PMC7116559, PMID 27475271, PMC4754196, PMID 28552551, PMC11478500"
+  },
+  {
+   "metricOrTopic": "Evidence core: HRV, VO\u2082 max, sleep apnea, body, cardio recovery",
+   "claim": "Hillebrand RR 1.35; exercise SDNN SMD 0.58; Apple HRV \u22128.3 ms, MAPE 29%; Mandsager 5.04; Kodama 0.87/MET; Lang 0.47; Apple OSA sensitivity 66.3% (89.1% severe), specificity 98.5%, 30 days with \u226510 nights; Xie severe OSA 2.13, CPAP 0.66; GBMC 1.39 per 5 kg/m\u00b2 in Europe; Srikanthan 0.80; Cole 2.0; Qiu 1.68",
+   "verdict": "correct",
+   "correction": "All confirmed. Details: Hillebrand compares the lowest vs highest SDNN level. Apple's moderate-OSA sensitivity is 43.4%, which supports 'misses more than half of moderate cases'.",
+   "source": "Europe PMC abstracts; Apple Sleep Apnea Notifications paper (Sep 2024); support.apple.com/en-us/120031"
+  },
+  {
+   "metricOrTopic": "Apple cadence claims",
+   "claim": "Background HR every 5 min while still; one resting HR per day, published at day end, sleep excluded; one daily walking HR; tachograms every 4 h / 2 h (IRN) / 15 min (AFib History); cardio recovery 3 min, 85% predicted HRmax, 55 bpm cap; VO\u2082 max only from Outdoor Walk/Run/Hiking; wrist temp every 5 s after ~5 nights; Exercise ring = \u2265 brisk-walk intensity",
+   "verdict": "correct",
+   "correction": "All match Apple's documents. Nuances: resting HR 'is updated periodically throughout the day' before the single end-of-day value, and inside workouts the Exercise ring also credits 'sustained exertions at a personalized moderate intensity'. Wrist temperature needs Sleep Focus for 4+ hours.",
+   "source": "Apple white paper Nov 2024 (pp. 12-13, 23); support.apple.com/en-us/108790, 102674"
+  },
+  {
+   "metricOrTopic": "Other evidence",
+   "claim": "Song 2023 HR 0.84/0.78, stopping 1.32; Windred PNAS aHR 0.66-0.83; Park +1 brushing \u22129%; TM \u22123.3 mmHg; Ahmadi standing >2 h and sitting >10 h; Studenski 0.88/0.1 m/s; 6MWT \u22124%/10 m; Quer AUC 0.80 vs 0.71; Perez PPV 0.84; WHO 80 dB/40 h and 90 dB/4 h; Lancet hearing loss; WHO SpO\u2082 95-100%; SpO\u2082 LoA \u00b12.7-5.9; respiratory-rate CV 2-10%; AASM 48% (n=2,007); Rock Health 35/26/21% (n=8,000)",
+   "verdict": "correct",
+   "correction": "All confirmed. Context worth keeping: the SpO\u2082 agreement data are from Series 6. Ahmadi's n=83,013 is for the orthostatic analysis (75,897 for CVD). Rock Health's percentages are of wearable owners, fielded 1-23 Dec 2025 and published June 2026. The Lancet 2024 Commission ties hearing loss with LDL as the largest single risk factor, each 7%.",
+   "source": "Europe PMC abstracts; WHO pulse oximetry manual; WHO safe-listening Q&A; AASM survey PDF; rockhealth.com 2025 survey"
+  }
+ ]
+}

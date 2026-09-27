@@ -47,6 +47,12 @@ export interface ExpectationRange {
   label: string
 }
 
+/** What a routine prescribes for one exercise: working sets only (warm-ups
+ *  and dropsets excluded — the same definition as a session's comparable
+ *  working sets), and either a rep range or a fixed rep count (a 5×5 is
+ *  repMin = repMax = 5). */
+export interface RoutineTarget { repMin: number; repMax: number; targetSets: number }
+
 export type ObservedTransition = 'NO_COMPARISON' | 'LOAD_INCREASED' | 'LOAD_DECREASED' | 'LOAD_UNCHANGED'
 export type RepDelta = 'REP_INCREASE' | 'REP_DECLINE' | 'REP_NO_CHANGE' | 'NOT_APPLICABLE'
 export type RangeCompliance = 'ALL_SETS_AT_TOP' | 'ALL_SETS_AT_OR_ABOVE_MIN' | 'BELOW_MINIMUM' | 'NOT_EVALUATED'
@@ -71,6 +77,11 @@ export type CurrentAction =
   | 'REVIEW_LOAD_REDUCTION'
   | 'WATCH_FOR_PLATEAU'
   | 'WATCH_FOR_REGRESSION'
+  /** The latest session couldn't be compared at all (mixed loads, or nothing
+   *  the tracked metric can read) — log one session with a consistent
+   *  structure. Distinct from HOLD_STEADY, which is an evaluated session that
+   *  simply didn't move. */
+  | 'LOG_COMPARABLE_SESSION'
 
 export type RecentProgressTrendState = 'INSUFFICIENT_HISTORY' | 'PROGRESSING' | 'FLAT_NORMAL_VARIATION' | 'REGRESSION_RISK'
 export type CurrentLoadProgressState =
@@ -150,14 +161,32 @@ export interface CurrentStateSummary {
   estimatedStrengthChange: { fromKg: number; toKg: number; percent: number } | null
 }
 
+/** The unit a set-level target counts in: reps for every rep-based metric,
+ *  seconds for a timed hold, metres for a distance exercise. */
+export type TargetQuantityUnit = 'reps' | 'seconds' | 'metres'
+
+/** One planned set: its OWN load (a top-set+backoff session keeps the backoff
+ *  load on the backoff sets) and the quantity to aim for. */
+export interface SetTarget {
+  weightKg: number | null
+  quantity: number
+}
+
 export interface NextTargetResult {
   nextSession: {
     headline: string
+    /** The top/working load the target is built around — the top set's load
+     *  for a top-set+backoff session. */
     loadKg: number | null
     targetSets: number | null
+    /** The concrete plan, set by set, in order. Null only when the action has
+     *  no set-level plan (a bodyweight movement that is ready to progress:
+     *  "add weight or a harder variation"). */
+    setTargets: readonly SetTarget[] | null
+    quantityUnit: TargetQuantityUnit
     minimumTotalReps: number | null
-    /** The real per-position floor — every position must be met AND the
-     *  total must be met; no comparable set may decrease. */
+    /** The real per-position floor (in `quantityUnit`) — every position must
+     *  be met AND the total must be met; no comparable set may decrease. */
     minimumSetReps: readonly number[] | null
     explanationCode: string
   }
@@ -168,6 +197,17 @@ export interface NextTargetResult {
     explanationCode: string
   }
 }
+
+/** Why `nextTargets` is null — the copy layer explains the ACTUAL cause
+ *  instead of one generic "not clean" message. */
+export type NextTargetBlocker =
+  | 'no_sets'
+  | 'mixed_load'
+  | 'set_count_mismatch'
+  | 'missing_values'
+  /** The action itself carries no numeric target (a load reduction of
+   *  unknown intent). */
+  | 'action'
 
 export interface ExerciseProgressResult {
   algorithmVersion: string
@@ -192,6 +232,7 @@ export interface ExerciseProgressResult {
   events: readonly ProgressEvent[]
   currentState: CurrentStateSummary
   nextTargets: NextTargetResult | null
+  nextTargetBlocker: NextTargetBlocker | null
   expectation: ExpectationRange
   comparableSessions: number
   weekSpan: number
@@ -209,9 +250,14 @@ export interface ExerciseProgressionPolicy {
   plateau: {
     graceSessions: number      // default 3
     minSessions: number        // default 5
+    /** Rep-counted totals (every rep-based metric kind): absolute floors. */
     residualNoiseFloor: number // default 1.0 (RMS reps)
     accumulationSlopeFloor: number // default 0.3 (reps/session)
     declineSlopeFloor: number  // default 0.3 (reps/session)
+    /** Seconds/metres totals (duration/distance kinds) have no fixed unit
+     *  size, so their floors are a share of the series' own mean. */
+    relativeNoiseFloor: number // default 0.04 (4% of the mean)
+    relativeSlopeFloor: number // default 0.01 (1% of the mean per session)
   }
   decline: {
     absoluteFloor: number   // default 3 reps
@@ -225,7 +271,7 @@ export interface ExerciseProgressionPolicy {
 }
 
 export interface RoutineTargetLookup {
-  (exerciseTemplateId: string): { repMin: number; repMax: number; targetSets: number } | null
+  (exerciseTemplateId: string): RoutineTarget | null
 }
 export interface UserOverrideLookup {
   (exerciseTemplateId: string): { repMin: number; repMax: number } | null

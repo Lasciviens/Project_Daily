@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react'
-import { ExternalLink, FileText, Film, Undo2 } from 'lucide-react'
+import { ExternalLink, FileText, Film, Play, Undo2 } from 'lucide-react'
 import { formatDay, type TgGame } from '../testGameModel'
 import { useTestGameStore } from '../testGameStore'
 import type { SsCandidate, SsMediaEntry } from '../../scraper/ssTypes'
@@ -10,6 +10,7 @@ import { mediaInfo } from '../../scraper/ssMediaCatalog'
 import { mediaModeFor } from '../../scraper/ssPlan'
 import { pickMediaEntry } from '../../scraper/ssRules'
 import { TgLightbox } from './TgLightbox'
+import { TgVideoPlayer } from './TgVideoPlayer'
 import { TgConfirmDialog } from './TgConfirmDialog'
 import { TgScrapeRecord } from './scrape/TgScrapeRecord'
 import { TgSsAttribution } from './scrape/TgScrapeParts'
@@ -61,6 +62,7 @@ function ProviderBlock({ game, data, again }: { game: TgGame; data: GameScrapeDa
   const undo = useUndoScrape()
   const [all, setAll] = useState(false)
   const [zoom, setZoom] = useState<number | null>(null)
+  const [video, setVideo] = useState<{ src: string; label: string } | null>(null)
   const [confirmUndo, setConfirmUndo] = useState(false)
   const candidate: SsCandidate = { ...(data.summary as SsCandidate), media: data.summary?.media ?? [], media_sig: data.sig?.sig ?? null, media_exp: data.sig?.exp ?? null }
   const ref = { jeuId: p.jeu_id, systemId: p.system_id, sig: data.sig?.sig ?? null, exp: data.sig?.exp ?? null }
@@ -120,6 +122,14 @@ function ProviderBlock({ game, data, again }: { game: TgGame; data: GameScrapeDa
                     <SsImage src={src} proxied={!t.stored} className="h-full w-full" imgClassName="h-full w-full object-contain"
                       fallback={<span className="absolute inset-0 grid place-items-center text-[10px] tg-faint">…</span>} />
                   </button>
+                ) : t.kind === 'video' ? (
+                  <button type="button" disabled={!ssMediaUrl(ref, t.entry)}
+                    onClick={() => { const u = ssMediaUrl(ref, t.entry); if (u) setVideo({ src: u, label: t.label }) }}
+                    aria-label={`Play ${t.label}`}
+                    className="relative grid aspect-square place-items-center rounded-lg border border-[var(--tg-border)] bg-[var(--tg-panel-2)] text-[var(--tg-accent)] disabled:opacity-40">
+                    <Film className="h-6 w-6" aria-hidden />
+                    <span className="absolute bottom-1.5 right-1.5 grid h-6 w-6 place-items-center rounded-full bg-[var(--tg-accent)] text-[var(--tg-on-accent)]"><Play className="h-3 w-3 fill-current" aria-hidden /></span>
+                  </button>
                 ) : (
                   <a href={ssMediaUrl(ref, t.entry) ?? undefined} target="_blank" rel="noreferrer" aria-label={`Open ${t.label}`}
                     className="grid aspect-square place-items-center rounded-lg border border-[var(--tg-border)] bg-[var(--tg-panel-2)] text-[var(--tg-accent)]">
@@ -154,6 +164,7 @@ function ProviderBlock({ game, data, again }: { game: TgGame; data: GameScrapeDa
         {again}
       </div>
       <TgLightbox images={zoomUrls} index={zoom} onClose={() => setZoom(null)} onIndex={setZoom} />
+      <TgVideoPlayer src={video?.src ?? null} title={`${game.title} · ${video?.label ?? 'Video'}`} onClose={() => setVideo(null)} />
       <TgConfirmDialog
         open={confirmUndo}
         title={`Undo the last scrape of ${game.title}?`}

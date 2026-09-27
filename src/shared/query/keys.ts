@@ -105,6 +105,8 @@ export const qk = {
     all: ['hevy'] as const,
     workouts: (opts: object) => ['hevy', 'workouts', opts] as const,
     workoutsAll: ['hevy', 'workouts'] as const,
+    /** Every workout on the local days [from, to] (calendar, week counts). */
+    workoutsRange: (from: string, to: string) => ['hevy', 'workouts', 'range', from, to] as const,
     workout: (id: string) => ['hevy', 'workout', id] as const,
     syncStatus: () => ['hevy', 'sync-status'] as const,
     syncCursor: () => ['hevy', 'sync-cursor'] as const,
@@ -114,6 +116,8 @@ export const qk = {
     prs: () => ['hevy', 'prs'] as const,
     measurements: (limit?: number) => ['hevy', 'measurements', limit] as const,
     measurementsAll: ['hevy', 'measurements'] as const,
+    /** What is stored for one date (the measurement form's fresh read). */
+    measurementForDate: (date: string) => ['hevy', 'measurements', 'date', date] as const,
     muscleVolume: (from: string, to: string) => ['hevy', 'muscle-volume', from, to] as const,
     trainingHistory: (from: string) => ['hevy', 'training-history', from] as const,
     bodyweightHistory: (from: string, to: string) => ['hevy', 'bodyweight-history', from, to] as const,
@@ -131,10 +135,25 @@ export const qk = {
   },
   health: {
     all: ['health'] as const,
-    workouts: (opts: object) => ['health', 'workouts', opts] as const,
-    metrics: (opts: object) => ['health', 'metrics', opts] as const,
+    /** Workout rows without the heavy `raw` payload, for a date window. */
+    workoutSummaries: (from: string, to: string) => ['health', 'workouts', 'summaries', from, to] as const,
+    /** One workout with its `raw` payload (HR curve, route) — loaded on open. */
+    workout: (id: string) => ['health', 'workouts', 'detail', id] as const,
+    /** Raw points of one metric; every daily/hourly view of it shares this read. */
     metricSeries: (metric: string, from: string, to: string) => ['health', 'metric-series', metric, from, to] as const,
     metricSeriesAll: (metric: string) => ['health', 'metric-series', metric] as const,
+    /** Several metrics in ONE request (the mini-card grids). */
+    metricBatch: (metrics: readonly string[], from: string, to: string) =>
+      ['health', 'metric-batch', [...metrics].sort().join(','), from, to] as const,
+    /** Newest reading ever of one metric, on or before a day ('now' = no upper bound). */
+    latest: (metric: string, onOrBefore?: string) => ['health', 'latest', metric, onOrBefore ?? 'now'] as const,
+    /** The same for several metrics in one query (a different cached shape). */
+    latestMany: (metrics: readonly string[], onOrBefore?: string) =>
+      ['health', 'latest-many', [...metrics].sort().join(','), onOrBefore ?? 'now'] as const,
+    bodyweightAll: ['health', 'bodyweight'] as const,
+    bodyweight: (from: string, to: string) => ['health', 'bodyweight', from, to] as const,
+    bodyweightLatest: (onOrBefore?: string) => ['health', 'bodyweight', 'latest', onOrBefore ?? 'now'] as const,
+    bodyComposition: ['health', 'body-composition-reports'] as const,
   },
   games: { all: ['games'] as const },
   logs: {

@@ -5,10 +5,8 @@
 // (est1rm's <=12-rep ceiling, distance requiring a real duration to pair
 // with it) are never duplicated or drifted per call site.
 
-import { est1RM } from '../progressAggregate'
+import { est1RM, EST_1RM_MAX_REPS } from '../progressAggregate'
 import type { CanonicalSet, ExpectationRange, ProgressMetricKind, RangeCompliance, SessionLoadStructure } from './types'
-
-const EST_1RM_MAX_REPS = 12
 
 /** Metric kinds whose representative "load" is a literal weight — used to
  *  decide whether direction/transition reads compare `weightKg` (this
@@ -139,6 +137,15 @@ export function selectRepresentativeSet(
     const sv = strategy.valueOf(s)
     return (strategy.higherIsBetter ? sv > bv : sv < bv) ? s : best
   }, null as CanonicalSet | null)
+}
+
+/** A session's highest estimated 1RM across its comparable working sets —
+ *  the set with the best e1RM VALUE, never "whichever set has the most reps"
+ *  (60 kg × 8 ≈ 76 kg beats 45 kg × 12 ≈ 63 kg), regardless of which set
+ *  played the top-set role. The ONE per-session e1RM every consumer uses
+ *  (current state, the estimated-strength event, the charts). */
+export function sessionBestE1rm(sets: readonly CanonicalSet[]): number | null {
+  return metricValueOf(selectRepresentativeSet(sets, 'uniform_working_load', 'est1rm'), 'est1rm')
 }
 
 /** The metric's own natural additive quantity for one set — reps for every

@@ -13,20 +13,36 @@
 // answer — and a `tier` so the UI never lets a heuristic read as a
 // measurement. Kept import-free of runtime deps (only type-only imports),
 // same convention as progressAggregate.ts, so it's testable via sucrase.
-import { mondayOf } from './progressAggregate'
+import { lastCompleteWeek, shiftWeek } from './progressAggregate'
 import type {
-  ConsistencyWeek, WeeklyVolumePoint, RepBucketCount, ExerciseSessionPoint, RelativeStrengthPoint,
+  ConsistencyWeek, WeeklyVolumePoint, RepBucketCount, RelativeStrengthPoint,
 } from './progressAggregate'
 import type { Landmarks } from './muscleMap'
+import type { ExerciseProgressResult } from './progress-engine/types'
 import { fmtDateEnGB } from '../../shared/utils/enGBDate'
 
+export { lastCompleteWeek }
+
 export type FindingTier = 'measured' | 'evidence' | 'heuristic'
+
+/** A caveat shared by a whole family of findings — printed ONCE under the
+ *  group, never repeated inside every sentence (a 250-character disclaimer
+ *  on every muscle finding turned the panel into a wall of repeated text). */
+export type FindingClause = 'consistency' | 'volume' | 'muscle' | 'repRange'
+export const FINDING_CLAUSES: Record<FindingClause, string> = {
+  consistency: 'Only logged workouts count — a session you did but didn\'t log looks the same as one you skipped.',
+  volume: 'Tonnage is a training input, not a stimulus or an outcome: 100 kg × 5 and 50 kg × 10 count the same, and it moves whenever your exercise mix changes.',
+  muscle: 'MEV/MAV/MRV are a practitioner framework (Renaissance Periodization), not measured thresholds. What is well supported is the shape — more weekly sets, more growth, with diminishing returns (Schoenfeld 2017; Pelland 2025) — not the exact numbers.',
+  repRange: 'Muscle growth is roughly equivalent across about 5–30 reps when sets are taken close to failure (Schoenfeld 2017; Morton 2016), so no rep bucket is wrong on its own. This log has no effort data, so it can\'t tell how close to failure your sets were.',
+}
+
 export interface Finding {
   id: string
   tier: FindingTier
   /** true = good news, false = a gap/regression, null = purely informational. */
   positive: boolean | null
   text: string
+  clause?: FindingClause
 }
 
 const TIER_ORDER: Record<FindingTier, number> = { measured: 0, evidence: 1, heuristic: 2 }
@@ -55,11 +71,18 @@ export function sortFindings(findings: Finding[]): Finding[] {
 // group that DOES get pulled out on its own is "Can't assess yet" — an
 // explicit NEVER_HIDES payoff a flat list buries mid-scroll.
 export type FindingGroup = 'working' | 'attention' | 'unassessable'
-const UNASSESSABLE_IDS = new Set(['relative-strength-null'])
+const UNASSESSABLE_IDS = new Set(['relative-strength-null', 'exercise-no-program'])
 
 function findingGroup(f: Finding): FindingGroup {
-  if (UNASSESSABLE_IDS.has(f.id) || f.id.startsWith('exercise-varied-')) return 'unassessable'
+  if (UNASSESSABLE_IDS.has(f.id)) return 'unassessable'
   return f.positive === true ? 'working' : 'attention'
+}
+
+/** The distinct shared caveats a list of findings needs, in first-seen order. */
+export function clausesFor(findings: readonly Finding[]): FindingClause[] {
+  const out: FindingClause[] = []
+  for (const f of findings) if (f.clause && !out.includes(f.clause)) out.push(f.clause)
+  return out
 }
 
 export function groupFindings(findings: Finding[]): Record<FindingGroup, Finding[]> {
@@ -68,24 +91,11 @@ export function groupFindings(findings: Finding[]): Record<FindingGroup, Finding
   return out
 }
 
-function shiftWeek(weekStart: string, weeks: number): string {
-  const d = new Date(weekStart + 'T00:00:00')
-  d.setDate(d.getDate() + weeks * 7)
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
-
-/** The last calendar week that's actually finished — a partial current week
- *  always looks like a collapse, so every trend rule below excludes it. */
-export function lastCompleteWeek(anchorDate: string): string {
-  return shiftWeek(mondayOf(anchorDate), -1)
-}
-
 function pct(n: number): string {
   return `${n >= 0 ? '+' : ''}${Math.round(n * 100)}%`
 }
 
 // ── A. Consistency / adherence ──────────────────────────────────────────────
-const CONSISTENCY_CLAUSE = 'This counts logged workouts only — a session you did and did not log is indistinguishable from one you skipped.'
 
 // `targetPerWeek` (athlete_profile.training_days_per_week) is what "strong"
 // is actually measured against — a real bug, fixed: this used to hardcode
@@ -93,8 +103,14 @@ const CONSISTENCY_CLAUSE = 'This counts logged workouts only — a session you d
 // program and a 2-day program both needed the same fixed median to read as
 // "strong", and the chart (TrainingConsistencyCalendar) already read the
 // real target while this text engine silently didn't, so the two visibly
-// disagreed. Falls back to the old fixed threshold only when no target is
-// stored yet, so behaviour for a profile-less user is unchanged.
+// disagreed. "Strong" allows missing ONE session a week for a target of 3+
+// (a median of 2 against a 4-day target used to read "strong" — half the
+// target); a 1–2 day target has to be met in full. Falls back to a fixed
+// median of 2 when no target is stored yet.
+//
+// `weeksAll` should be dense up to the last complete week
+// (computeConsistencyByWeek(sets, lastCompleteWeek(today))) so a recent
+// break shows up as zero weeks instead of vanishing.
 export function computeConsistencyFindings(weeksAll: ConsistencyWeek[], anchorDate: string, targetPerWeek?: number | null): Finding[] {
   const last = lastCompleteWeek(anchorDate)
   const complete = weeksAll.filter(w => w.weekStart <= last)
@@ -104,11 +120,12 @@ export function computeConsistencyFindings(weeksAll: ConsistencyWeek[], anchorDa
   const last8 = complete.slice(-8)
   const trainedWeeks8 = last8.filter(w => w.sessionCount >= 1).length
   const median8 = median(last8.map(w => w.sessionCount))
-  const strongBar = targetPerWeek && targetPerWeek > 0 ? targetPerWeek * 0.5 : 2
+  const strongBar = targetPerWeek && targetPerWeek > 0 ? (targetPerWeek >= 3 ? targetPerWeek - 1 : targetPerWeek) : 2
   if (last8.length >= 6 && trainedWeeks8 >= last8.length - 1 && median8 >= strongBar) {
     out.push({
       id: 'consistency-strong', tier: 'measured', positive: true,
-      text: `You trained in ${trainedWeeks8} of the last ${last8.length} weeks, median ${median8} session${median8 === 1 ? '' : 's'} per week. This is the most reliable number on this page — a straight count of logged workouts, with no interpretation on top. ${CONSISTENCY_CLAUSE}`,
+      text: `You trained in ${trainedWeeks8} of the last ${last8.length} weeks, median ${median8} session${median8 === 1 ? '' : 's'} per week${targetPerWeek ? ` against your target of ${targetPerWeek}` : ''}. This is the most reliable number on this page — a straight count of logged workouts, with no interpretation on top.`,
+      clause: 'consistency',
     })
   }
 
@@ -116,7 +133,8 @@ export function computeConsistencyFindings(weeksAll: ConsistencyWeek[], anchorDa
   if (gapWeeks.length >= 3) {
     out.push({
       id: 'consistency-gaps', tier: 'measured', positive: false,
-      text: `${gapWeeks.length} of your last ${Math.min(12, complete.length)} complete weeks had no logged session (week${gapWeeks.length === 1 ? '' : 's'} of ${gapWeeks.map(w => fmtWeekLabel(w.weekStart)).join(', ')}). Every trend on this page is computed across those gaps, so lines will look flatter than your actual training did. ${CONSISTENCY_CLAUSE}`,
+      text: `${gapWeeks.length} of your last ${Math.min(12, complete.length)} complete weeks had no logged session (week${gapWeeks.length === 1 ? '' : 's'} of ${gapWeeks.map(w => fmtWeekLabel(w.weekStart)).join(', ')}). Every trend on this page is computed across those gaps, so lines will look flatter than your actual training did.`,
+      clause: 'consistency',
     })
   }
 
@@ -137,7 +155,6 @@ export function computeConsistencyFindings(weeksAll: ConsistencyWeek[], anchorDa
 }
 
 // ── B. Volume trend (tonnage) ───────────────────────────────────────────────
-const VOLUME_CLAUSE = 'Tonnage is a training input, not a stimulus and not an outcome — 100kg×5 and 50kg×10 tally identically, and it moves whenever your exercise selection changes.'
 
 function rollingAvgEndingAt(tonnageByWeek: Map<string, number>, endWeek: string, windowWeeks: number): number {
   let sum = 0
@@ -158,26 +175,28 @@ export function computeVolumeFindings(weekly: WeeklyVolumePoint[], anchorDate: s
   if (then > 0 && now >= then * 1.15) {
     return [{
       id: 'volume-up', tier: 'measured', positive: true,
-      text: `Your 4-week rolling tonnage is up ${pct(now / then - 1)} versus 8 weeks ago (${fmtKg(then)} → ${fmtKg(now)} per week). ${VOLUME_CLAUSE} A rise this size is consistent with doing more work — it isn't by itself evidence you got stronger. Cross-check the per-exercise findings below.`,
+      text: `Your 4-week rolling tonnage is up ${pct(now / then - 1)} versus 8 weeks ago (${fmtKg(then)} → ${fmtKg(now)} per week). A rise this size is consistent with doing more work — it isn't by itself evidence you got stronger. Cross-check the per-exercise findings below.`,
+      clause: 'volume',
     }]
   }
   if (then > 0 && now <= then * 0.85) {
     return [{
       id: 'volume-down', tier: 'measured', positive: null,
-      text: `Your 4-week rolling tonnage is down ${pct(now / then - 1)} versus 8 weeks ago (${fmtKg(then)} → ${fmtKg(now)} per week). ${VOLUME_CLAUSE} A decline isn't automatically bad — a deload, a shift toward machines/isolation work, or a rep-range change all lower tonnage without lowering stimulus.`,
+      text: `Your 4-week rolling tonnage is down ${pct(now / then - 1)} versus 8 weeks ago (${fmtKg(then)} → ${fmtKg(now)} per week). A decline isn't automatically bad — a deload, a shift toward machines/isolation work, or a rep-range change all lower tonnage without lowering stimulus.`,
+      clause: 'volume',
     }]
   }
   if (then > 0 && Math.abs(now / then - 1) < 0.1) {
     return [{
       id: 'volume-flat', tier: 'measured', positive: null,
-      text: `Your 4-week rolling tonnage has stayed within ${pct(Math.abs(now / then - 1))} for 8 weeks (${fmtKg(then)} → ${fmtKg(now)} per week). ${VOLUME_CLAUSE} Flat isn't a failure state — progression can happen inside a flat tonnage number (closer to failure, better range of motion, slower tempo), none of which this data records.`,
+      text: `Your 4-week rolling tonnage has stayed within ${pct(Math.abs(now / then - 1))} for 8 weeks (${fmtKg(then)} → ${fmtKg(now)} per week). Flat isn't a failure state — progression can happen inside a flat tonnage number (closer to failure, better range of motion, slower tempo), none of which this data records.`,
+      clause: 'volume',
     }]
   }
   return []
 }
 
 // ── C. Weekly sets per muscle vs landmarks ──────────────────────────────────
-const MUSCLE_CLAUSE = 'MEV/MAV/MRV are a practitioner framework (Renaissance Periodization), not measured thresholds — what\'s well supported is the shape (more weekly sets → more growth, with diminishing returns; Schoenfeld 2017; Pelland 2025), not the specific numbers.'
 
 export interface MuscleFindingInput {
   slug: string; label: string; weekly: { weekStart: string; sets: number }[]; landmarks: Landmarks | undefined
@@ -209,18 +228,17 @@ export function computeMuscleFindings(inputs: MuscleFindingInput[], anchorDate: 
 
     const underCount = last8.filter(v => v < landmarks.mev).length
     if (underCount >= 6 && meanSets < landmarks.mev) {
-      out.push({ id: `muscle-under-${label}`, tier: 'heuristic', positive: false, text: `${label} averaged ${round1(meanSets)} sets/week over the last 8 weeks and was below ${landmarks.mev} (this app's MEV convention) in ${underCount} of those weeks. At this dose you're most likely maintaining rather than building.${restrictionClause} ${MUSCLE_CLAUSE}` })
+      out.push({ id: `muscle-under-${label}`, tier: 'heuristic', positive: false, clause: 'muscle', text: `${label} averaged ${round1(meanSets)} sets/week over the last 8 weeks and was below ${landmarks.mev} (this app's MEV convention) in ${underCount} of those weeks. At this dose you're most likely maintaining rather than building.${restrictionClause}` })
     }
     const overCount = last8.filter(v => v > landmarks.mrv).length
     if (overCount >= 4) {
-      out.push({ id: `muscle-over-${label}`, tier: 'heuristic', positive: null, text: `${label} exceeded ${landmarks.mrv} sets/week (this app's MRV convention) in ${overCount} of the last 8 weeks (peak ${Math.max(...last8)}). Whether that's "too much" depends on effort per set, sleep and recovery — none of which this measures. If you're recovering and still progressing, there's nothing to fix here. ${MUSCLE_CLAUSE}` })
+      out.push({ id: `muscle-over-${label}`, tier: 'heuristic', positive: null, clause: 'muscle', text: `${label} exceeded ${landmarks.mrv} sets/week (this app's MRV convention) in ${overCount} of the last 8 weeks (peak ${Math.max(...last8)}). Whether that's "too much" depends on effort per set, sleep and recovery — none of which this measures. If you're recovering and still progressing, there's nothing to fix here.` })
     }
   }
   return out
 }
 
 // ── D. Rep-range distribution ───────────────────────────────────────────────
-const REP_RANGE_CLAUSE = 'Hypertrophy is roughly equivalent across about 5-30 reps when sets are taken close to failure (Schoenfeld 2017; Morton 2016) — there\'s no "the hypertrophy rep range", so no bucket here is wrong on its own. This app has no effort/RIR data, so it can\'t tell how close to failure your sets were.'
 
 export function computeRepRangeFindings(buckets: RepBucketCount[]): Finding[] {
   const total = buckets.reduce((a, b) => a + b.count, 0)
@@ -229,12 +247,12 @@ export function computeRepRangeFindings(buckets: RepBucketCount[]): Finding[] {
 
   const top = [...buckets].sort((a, b) => b.count - a.count)[0]
   if (top && top.count / total >= 0.7) {
-    out.push({ id: 'rep-range-concentration', tier: 'evidence', positive: null, text: `${Math.round((top.count / total) * 100)}% of your ${total} working sets in the last 90 days sat in ${top.label} (${top.count} sets). ${REP_RANGE_CLAUSE} Strength gains do specifically favour heavier loads even where hypertrophy doesn't — a log with almost nothing under 6 reps is optimised for size over maximal strength.` })
+    out.push({ id: 'rep-range-concentration', tier: 'evidence', positive: null, clause: 'repRange', text: `${Math.round((top.count / total) * 100)}% of your ${total} working sets in the last 90 days sat in ${top.label} (${top.count} sets). Strength gains do specifically favour heavier loads even where hypertrophy doesn't — a log with almost nothing under 6 reps is optimised for size over maximal strength.` })
   }
 
   const heavy = buckets.find(b => b.key === '1-5')
   if (heavy && heavy.count === 0 && total >= 100) {
-    out.push({ id: 'rep-range-no-heavy', tier: 'evidence', positive: false, text: `You logged zero working sets in the 1-5 rep range across ${total} sets in 90 days. That's fine for hypertrophy — see above — but strength adaptations are load-specific and favour heavy work even when hypertrophy is equivalent. If maximal strength is a goal, this is the clearest actionable gap on this page. ${REP_RANGE_CLAUSE}` })
+    out.push({ id: 'rep-range-no-heavy', tier: 'evidence', positive: false, clause: 'repRange', text: `You logged zero working sets in the 1–5 rep range across ${total} sets in 90 days. That's fine for hypertrophy, but strength adaptations are load-specific and favour heavy work even when hypertrophy is equivalent. If maximal strength is a goal, this is the clearest actionable gap on this page.` })
   }
 
   return out
@@ -273,28 +291,30 @@ export function computeRelativeStrengthFindings(inputs: RelativeStrengthFindingI
   return out
 }
 
-// ── F. Stalled vs progressing per exercise ──────────────────────────────────
-export interface ExerciseTrendFindingInput { title: string; points: ExerciseSessionPoint[]; repRangeVaried: boolean; unit: string }
+// ── F. Per-exercise trend — straight from the progress engine ───────────────
+// ONE per-exercise verdict source: these findings read the engine's own
+// ExerciseProgressResult (current-program scoped, least-squares trend, the
+// same numbers the decision table shows), so Training Analysis can never say
+// "flat" about a lift the table calls "Ready to increase". The old
+// first-3-vs-last-3 comparison over all history, gated on the retired
+// rep-range check, is gone.
+export interface ExerciseTrendFindingInput { title: string; result: ExerciseProgressResult }
 
-export function computeExerciseTrendFindings(inputs: ExerciseTrendFindingInput[]): Finding[] {
+export function computeExerciseTrendFindings(inputs: readonly ExerciseTrendFindingInput[], hasCurrentProgram: boolean): Finding[] {
+  if (!hasCurrentProgram) {
+    return [{ id: 'exercise-no-program', tier: 'measured', positive: null, text: 'Per-exercise trends need your current program — pick it on the Progress card above and each lift in it gets a read here.' }]
+  }
   const out: Finding[] = []
-  for (const { title, points, repRangeVaried, unit } of inputs) {
-    const eligible = points.filter(p => p.topValue != null)
-    if (eligible.length < 6 || daysSpan(eligible[0].date, eligible[eligible.length - 1].date) < 56) continue
-
-    if (repRangeVaried) {
-      out.push({ id: `exercise-varied-${title}`, tier: 'measured', positive: null, text: `${title}'s rep range changed enough across this period that its trend can't be read reliably (see the Exercise Progress chart's own caveat) — skipped here rather than shown as a false stall or gain.` })
-      continue
-    }
-
-    const v0 = mean(eligible.slice(0, 3).map(p => p.topValue!))
-    const v1 = mean(eligible.slice(-3).map(p => p.topValue!))
-    if (v1 >= v0 * 1.03) {
-      out.push({ id: `exercise-progressing-${title}`, tier: 'measured', positive: true, text: `${title} is progressing: top-set ${round1(v0)} → ${round1(v1)} ${unit} across ${eligible.length} sessions. Measured from your own top working set each session, warm-ups excluded.` })
-    } else if (Math.abs(v1 / v0 - 1) < 0.02) {
-      out.push({ id: `exercise-stalled-${title}`, tier: 'measured', positive: null, text: `${title} has been flat for ${eligible.length} sessions: top-set ${round1(v0)} → ${round1(v1)} ${unit}. Flat is normal and not a problem by itself — but effort per set, rest length, sleep and nutrition are all unrecorded here, so this data can't say why.` })
-    } else if (v1 <= v0 * 0.95) {
-      out.push({ id: `exercise-regressing-${title}`, tier: 'measured', positive: false, text: `${title}'s top-set estimate fell ${pct(v1 / v0 - 1)} (${round1(v0)} → ${round1(v1)} ${unit}) over ${eligible.length} sessions. Before reading this as lost strength, check whether you changed grip, tempo or equipment — none of which is recorded.` })
+  for (const { title, result } of inputs) {
+    const { trend } = result
+    if (trend.recentProgressTrend === 'INSUFFICIENT_HISTORY' || result.evidence.progress === 'limited') continue
+    const basis = `over your last ${trend.recentWindowSessions} comparable sessions (${trend.recentPositiveSignals} step${trend.recentPositiveSignals === 1 ? '' : 's'} forward, ${trend.recentNegativeSignals} back)`
+    if (trend.recentProgressTrend === 'PROGRESSING') {
+      out.push({ id: `exercise-progressing-${result.exerciseTemplateId}`, tier: 'measured', positive: true, text: `${title} is progressing ${basis}.` })
+    } else if (trend.recentProgressTrend === 'REGRESSION_RISK') {
+      out.push({ id: `exercise-regressing-${result.exerciseTemplateId}`, tier: 'measured', positive: false, text: `${title} has slipped back ${basis}. Check grip, tempo, equipment, sleep and recovery before reading it as lost strength — none of them is recorded.` })
+    } else if (trend.currentLoadProgress === 'POSSIBLE_PLATEAU') {
+      out.push({ id: `exercise-plateau-${result.exerciseTemplateId}`, tier: 'measured', positive: null, text: `${title} has been flat for ${trend.currentLoadCycleSessions} sessions at the same load. Flat is normal and not a problem by itself — see its row in the table for the next target.` })
     }
   }
   return out

@@ -28,24 +28,76 @@ function isMissingTable(e: unknown): boolean {
 const NOT_MIGRATED =
   'Athlete profile is not available yet — migration 070 (athlete_profile / athlete_limitations) has not been applied.'
 
+// birth_year / sex / height_cm arrive with migration 110. `select('*')`
+// already tolerates their absence; normalizeProfile just turns "missing" into
+// an explicit null so every consumer sees the same shape before and after 110.
+const HEALTH_PROFILE_COLUMNS = ['birth_year', 'sex', 'height_cm'] as const
+
+export const NOT_MIGRATED_110 =
+  'Birth year, sex and height can’t be saved yet — migration 110 (athlete_profile health fields) has not been applied.'
+
+function finiteOrNull(v: unknown): number | null {
+  if (v == null || v === '') return null
+  const n = Number(v)
+  return Number.isFinite(n) ? n : null
+}
+
+function normalizeProfile(row: Record<string, unknown>): AthleteProfile {
+  const sex = row.sex === 'male' || row.sex === 'female' ? row.sex : null
+  return {
+    ...(row as unknown as AthleteProfile),
+    birth_year: finiteOrNull(row.birth_year),
+    sex,
+    // numeric(5,1) — PostgREST may hand it back as a string.
+    height_cm:  finiteOrNull(row.height_cm),
+  }
+}
+
+/** A write that names one of the 110 columns on a DB without them (PGRST204 / 42703). */
+function isMissingHealthColumn(e: unknown): boolean {
+  const x = e as { code?: string; message?: string }
+  if (x?.code !== 'PGRST204' && x?.code !== '42703') return false
+  const msg = x?.message ?? ''
+  return HEALTH_PROFILE_COLUMNS.some(col => msg.includes(col))
+}
+
 export async function fetchAthleteProfile(): Promise<AthleteProfile | null> {
   const { data, error } = await supabase.from('athlete_profile').select('*').maybeSingle()
   if (error) {
     if (isMissingTable(error)) return null
     throw error
   }
-  return data
+  return data ? normalizeProfile(data) : null
 }
 
 export async function upsertAthleteProfile(input: UpsertAthleteProfileInput): Promise<AthleteProfile> {
   const user = await requireUser()
-  const { data, error } = await supabase
+  const run = (row: Record<string, unknown>) => supabase
     .from('athlete_profile')
-    .upsert({ user_id: user.id, ...input }, { onConflict: 'user_id' })
+    .upsert(row, { onConflict: 'user_id' })
     .select()
     .single()
+
+  const row: Record<string, unknown> = { user_id: user.id, ...input }
+  let { data, error } = await run(row)
+
+  // Pre-110: retry without the health columns so the rest of the patch still
+  // saves. Only a real value the user typed is reported as lost — clearing a
+  // field that can't exist yet is a no-op, not an error.
+  if (error && isMissingHealthColumn(error)) {
+    const lostValue = HEALTH_PROFILE_COLUMNS.some(col => row[col] != null)
+    for (const col of HEALTH_PROFILE_COLUMNS) delete row[col]
+    const hasOtherFields = Object.keys(row).length > 1
+    if (hasOtherFields || !lostValue) {
+      ;({ data, error } = await run(row))
+      if (error) throw isMissingTable(error) ? new Error(NOT_MIGRATED) : error
+    }
+    if (lostValue) throw new Error(NOT_MIGRATED_110)
+  }
+
   if (error) throw isMissingTable(error) ? new Error(NOT_MIGRATED) : error
-  return data
+  if (!data) throw new Error('Athlete profile save returned no row.')
+  return normalizeProfile(data)
 }
 
 export async function fetchAthleteLimitations(activeOnly = false): Promise<AthleteLimitation[]> {

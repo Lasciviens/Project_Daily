@@ -1,7 +1,8 @@
 import { useMemo } from 'react'
 import { useTrainingHistory } from '../hooks/useTrainingProgress'
-import { computeWeeklyChangeFlags, metricKindForExerciseType, type WeeklyChangeFlag } from '../progressAggregate'
+import { computeWeeklyChangeFlags, type WeeklyChangeFlag } from '../progress-engine'
 import { METRIC_META } from '../progressMetricMeta'
+import { todayStr } from '../../../shared/utils/dateUtils'
 import { ArrowUp, Sparkles } from 'lucide-react'
 import { Skeleton } from '../../../shared/ui'
 import { ChartCard, ChartNote } from './ChartCard'
@@ -19,18 +20,21 @@ import { ChartCard, ChartNote } from './ChartCard'
 //  against your OWN last month.
 // ─────────────────────────────────────────────────────────────────────────────
 
-function todayStr(): string {
-  return new Date().toISOString().slice(0, 10)
+function round1(n: number | undefined): string {
+  return n == null ? '—' : String(Math.round(n * 10) / 10)
 }
 
-function describeFlag(flag: WeeklyChangeFlag, title: string, type: string): string {
+/** Labelled by the exercise's OWN metric: "Est. 1RM +12%" (an Epley estimate,
+ *  never called the top set's load), "Assistance −25%", "Top set reps +20%". */
+function describeFlag(flag: WeeklyChangeFlag, title: string): string {
   if (flag.kind === 'new') return `${title} — new or returning exercise`
-  const meta = METRIC_META[metricKindForExerciseType(type)]
   const pct = Math.round((flag.pct ?? 0) * 100)
-  if (flag.kind === 'load') {
-    return `${title} — load +${pct}% (top set ${flag.thisWeekValue} ${meta.unit} vs 4-wk median ${flag.priorMedian} ${meta.unit})`
+  if (flag.kind === 'load' && flag.metricKind) {
+    const meta = METRIC_META[flag.metricKind]
+    const sign = meta.invert ? '−' : '+'
+    return `${title} — ${meta.label} ${sign}${pct}% (${round1(flag.thisWeekValue)} ${meta.unit} this week vs 4-week median ${round1(flag.priorMedian)} ${meta.unit})`
   }
-  return `${title} — volume +${pct}% (${flag.thisWeekValue} sets vs 4-wk median ${flag.priorMedian})`
+  return `${title} — working sets +${pct}% (${flag.thisWeekValue} this week vs 4-week median ${round1(flag.priorMedian)})`
 }
 
 export function WeeklyChangesPanel() {
@@ -42,7 +46,6 @@ export function WeeklyChangesPanel() {
   }, [data])
 
   const titleById = useMemo(() => new Map(data?.templates.map(t => [t.id, t.title]) ?? []), [data])
-  const typeById = useMemo(() => new Map(data?.templates.map(t => [t.id, t.type]) ?? []), [data])
 
   if (isLoading) return <Skeleton rounded="rounded-card" className="h-24" />
 
@@ -62,7 +65,7 @@ export function WeeklyChangesPanel() {
               {f.kind === 'new'
                 ? <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-fg-muted" aria-label="New" />
                 : <ArrowUp className="mt-0.5 h-3.5 w-3.5 shrink-0 text-fg-muted" aria-label="Up" />}
-              <span>{describeFlag(f, titleById.get(f.templateId) ?? 'Unknown exercise', typeById.get(f.templateId) ?? '')}</span>
+              <span>{describeFlag(f, titleById.get(f.templateId) ?? 'Unknown exercise')}</span>
             </li>
           ))}
         </ul>
@@ -70,13 +73,13 @@ export function WeeklyChangesPanel() {
 
       <ChartNote className="mt-1 flex flex-col gap-1">
         <p>
-          This is a change detector, not a risk score. It compares this week&apos;s top-set load and set count for each exercise against your own median over
-          the previous four weeks. A flag means &quot;this went up sharply&quot; — it does not mean you&apos;re injured, overreaching, or doing anything wrong.
+          This is a change detector, not a risk score. It compares this week&apos;s best set (by each exercise&apos;s own measure — estimated 1RM, added
+          weight, assistance, reps or time) and working-set count against your own median over the previous four weeks. A flag means &quot;this went up sharply&quot; — it does not mean you&apos;re injured, overreaching, or doing anything wrong.
           Deliberately pushing a lift is supposed to trigger this.
         </p>
         <p>New or returning exercises are flagged with no threshold — unfamiliar movements cause more soreness than familiar ones at the same load, which is normal.</p>
         <p>
-          The +10% load / +30% set thresholds are coaching rules of thumb, not measured cut-offs. We deliberately don&apos;t show an acute:chronic workload
+          The +10% best-set / +30% set thresholds are coaching rules of thumb, not measured cut-offs. We deliberately don&apos;t show an acute:chronic workload
           ratio here — it comes from team-sport running data with heavily criticised injury-prediction claims, and lifting tonnage is a poor load proxy
           anyway (100 kg × 5 and 50 kg × 10 count the same).
         </p>

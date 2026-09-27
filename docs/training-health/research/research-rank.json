@@ -1,0 +1,998 @@
+{
+ "summary": "I ranked every metric the app receives from Health Auto Export (read from healthMetrics.ts, miniMetrics.ts and the section components) plus the smart-scale body_composition_reports fields. Each metric got four scores: evidence, availability on a Series 11 + iPhone, interest, and actionability. For the ordering I weighted them roughly 35/25/20/20. The earlier fact-checked bands (research-bench.json + verify-bench.json) are reused, not redone. New evidence was added for stairs, sitting/standing, sleep apnea, AFib, daylight, audio, toothbrushing, hand hygiene, muscle mass, active energy and meditation.\n\nAVAILABILITY. Apple's own documents set the cadence:\n- Heart rate: background reading every 5 min while still.\n- Resting HR: ONE value per day, published at the end of the day; sleep is excluded.\n- Walking HR: one average per day.\n- HRV: tachograms every ~4 h (2 h if irregular-rhythm notifications are on, 15 min with AFib History).\n- Cardio recovery: only for 3 min after a Workout-app session ends.\n- VO2 max: only during Outdoor Walk, Outdoor Run or Hiking workouts.\n- Wrist temperature: nightly, sampled every 5 s, after a 5-night baseline.\n- SpO2: periodic background readings; 12-20 a day in this owner's data.\n- iPhone gait metrics: \u22655 estimates a day for 80% of users who carry the phone in a pocket.\n\nINTEREST. Real data, from four sources:\n- JMIR 2025 repeat survey (n=475 in 2023; 44% Apple users), share rating each feature useful: heart rate 70.5% (now the top feature), steps 65.9% (down from 94.5% in 2016), active minutes 65.2%, sleep 59.9%, energy burned 58.6%, energy intake 49.6%, stairs 48.9%.\n- GWI: steps 60%, heart rate 44%, calories 42%, sleep 40%. The most-wanted future metric is blood pressure (53%).\n- Rock Health, Dec 2025 (n=8,000): wearables are used for activity 35%, sleep 26%, heart rate 21%.\n- AASM, June 2025 (n=2,007): 48% of US adults have used a sleep tracker.\n- My own Google Trends pull (worldwide, 5 years, last-52-week mean, shared anchor term across batches). Relative to 'apple watch heart rate' = 1.00: sleep 2.52, steps 0.76, calories 0.56, ECG 0.53, blood oxygen 0.23, HRV 0.26, VO2 max 0.20, hypertension 0.20, sleep apnea 0.17, sleep score 0.13, AFib 0.10, resting HR 0.06, wrist temp 0.06, respiratory rate 0.04, exercise minutes 0.02, cardio recovery 0.02, walking steadiness 0.002.\n- Generic phrases relative to 'resting heart rate' = 1.00: 'how much sleep' 1.03, 'deep sleep' 0.97, 'muscle mass' 0.82, 'blood oxygen' 0.72, 'vo2 max' 0.70, 'calories burned' 0.68, 'body fat percentage' 0.50, 'steps a day' 0.47, 'heart rate variability' 0.39, 'walking speed' 0.34, 'heart rate recovery' 0.11.\n- Trends caveats: I chose the phrases myself; English only; 'hrv' collides with the Honda HR-V; 'apple watch stand/weight/temperature' mostly mean accessories or device specs; 'bmi' and 'blood pressure' include calculator and clinical searches.\n\nVERDICT. Sleep is by far the most-searched wearable topic. Heart rate is the most-valued feature. Steps and exercise minutes carry the strongest dose-response evidence and have continuous data. Resting HR combines strong meta-analytic evidence, one clean value per day and good accuracy (MAE 3.7 bpm).\n\nVO2 max, on its merits: evidence 5 (strongest single mortality predictor). But availability is 2: it is only estimated on qualifying outdoor workouts, and this owner has had about 2 run days since July. The estimate reads 4.5-6.3 ml/kg/min low, and only 14% of people were placed in the right FRIEND band. Interest is mid-table. So it goes to TIER 2 in a Cardio fitness section, showing the latest estimate with its date. It is not in the hero.\n\nTIER 1 (6 metrics): sleep duration, sleep regularity, daily steps, weekly exercise minutes, resting HR, weight trend.\n\nOwner removals: I respected the owner's 2026-09-06 removals (headphone audio, ambient noise, mindful minutes, falls, sexual activity) as tier 4. Headphone exposure is the one with a real case to revisit (WHO weekly dose; hearing loss is among the largest modifiable dementia risk factors).\n\nGaps to flag:\n1. Health Auto Export's notification arrays (irregular rhythm, high/low HR, and I assume sleep-apnea/hypertension) are not ingested, so the proposed alerts strip needs ingestion work first.\n2. Apple's Sleep Score and the scale's body_score are composite scores. They break the house rule and Sleep Score is not exported anyway; omit both.\n3. Walking steadiness, AFib burden and UV receive no rows.\n4. Nutrition lives in the Food tab and never reaches HealthKit.\n\nWork files: my Trends script and raw results are in /tmp/claude-0/-home-user-Project-Daily/b452d12b-ea53-5a35-ae2d-b72be8855daf/scratchpad/rank/ (trends.py, generic2.json, wearable.json, wearable2.json). No repo files were touched.",
+ "ranked": [
+  {
+   "metric": "sleep_analysis (asleep duration)",
+   "displayName": "Sleep duration",
+   "tier": 1,
+   "evidenceScore": 4,
+   "availabilityScore": 5,
+   "interestScore": 5,
+   "actionability": 4,
+   "whyItMatters": "Mortality is U-shaped: short sleep RR 1.12 and long sleep RR 1.30 (Cappuccio 2010, 1.38 M people). AASM/SRS says adults need \u22657 h. Interest: the #1 wearable search topic, at 2.5x 'apple watch heart rate'. 48% of US adults have used a sleep tracker (AASM 2025), 26% of wearable owners track sleep (Rock Health 2025) and 59.9% rate it useful (JMIR 2023). Data arrive every night the watch is worn to bed.",
+   "bestView": "Last night's ASLEEP time plus the 7-night average against a 7 h line. A 30-night bar chart with the same reference line. Exclude nights with no watch data from averages rather than counting them as zero.",
+   "pitfalls": "Guideline and mortality evidence mostly uses self-reported sleep, which overestimates; watch 'asleep' is always less than time in bed, so 6h40 asleep is not the same as '6h40 in bed'. Wake-day attribution and naps must be consistent. Nights without the watch are missing, not short.",
+   "sources": [
+    {
+     "citation": "Cappuccio FP et al. Sleep duration and all-cause mortality: SR and meta-analysis. Sleep 2010",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC2864873/"
+    },
+    {
+     "citation": "Watson NF et al. AASM/SRS consensus: recommended amount of sleep for adults. Sleep 2015",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC4434546/"
+    },
+    {
+     "citation": "AASM Sleep Prioritization Survey 2025 (n=2,007): 48% have used a sleep tracking device",
+     "url": "https://aasm.org/wp-content/uploads/2026/01/sleep-prioritization-survey-2025-using-sleep-tracking-devices.pdf"
+    },
+    {
+     "citation": "Google Trends, worldwide 5 y (retrieved 27 Sep 2026): 'apple watch sleep' 2.52x 'apple watch heart rate' over the last 52 weeks",
+     "url": "https://trends.google.com/trends/explore?date=today%205-y&q=apple%20watch%20heart%20rate,apple%20watch%20sleep,apple%20watch%20steps,apple%20watch%20calories,apple%20watch%20hrv"
+    }
+   ]
+  },
+  {
+   "metric": "step_count",
+   "displayName": "Daily steps",
+   "tier": 1,
+   "evidenceScore": 5,
+   "availabilityScore": 5,
+   "interestScore": 5,
+   "actionability": 5,
+   "whyItMatters": "The best-replicated device-measured dose-response. Paluch 2022 (15 cohorts, 47,471 adults): Q4 vs Q1 HR 0.47, with the plateau at 8-10k/day under 60 and 6-8k at 60+. Ding 2025: 7,000 vs 2,000 steps HR 0.53 for all-cause mortality. Banach 2023: +1,000 steps/day HR 0.85. Interest: the most-tracked metric in GWI (60%); JMIR 65.9% useful (down from 94.5% in 2016). The watch counts continuously. Easiest lever in the app.",
+   "bestView": "7-day average vs a 7,000-8,000/day band, with today's running count as a secondary line. A 90-day trend with a 7-day moving average. Exclude the in-progress day from averages.",
+   "pitfalls": "Watch + iPhone streams must not be summed; the app has already hit the duplicate-hour / re-delivered-source bug class. Arm-heavy activity inflates counts and pushing a cart deflates them. The research cohorts mostly used hip accelerometers.",
+   "sources": [
+    {
+     "citation": "Paluch AE et al. Daily steps and all-cause mortality: meta-analysis of 15 cohorts. Lancet Public Health 2022",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC9289978/"
+    },
+    {
+     "citation": "Ding D et al. Daily steps and health outcomes: dose-response meta-analysis. Lancet Public Health 2025",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/40713949/"
+    },
+    {
+     "citation": "Banach M et al. Daily step count and all-cause and CV mortality: meta-analysis. Eur J Prev Cardiol 2023",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/37555441/"
+    },
+    {
+     "citation": "GlobalWebIndex 2019 via Pardini/PMC review: steps 60%, heart rate 44%, calories 42%, sleep 40%",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC9022022/"
+    },
+    {
+     "citation": "Changing User Experience of Wearable Activity Monitors Over 7 Years. JMIR 2025 (feature-usefulness table)",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC11888053/"
+    }
+   ]
+  },
+  {
+   "metric": "apple_exercise_time (weekly total) + Hevy strength days",
+   "displayName": "Weekly exercise minutes",
+   "tier": 1,
+   "evidenceScore": 5,
+   "availabilityScore": 5,
+   "interestScore": 4,
+   "actionability": 5,
+   "whyItMatters": "WHO 2020: 150-300 min moderate or 75-150 min vigorous per week, plus \u22652 strength days. Arem 2015 (661k adults): HR 0.61 at 3-5x the minimum. Strain 2020 (96k UK Biobank, wrist devices): at equal volume, a higher MVPA share had 30% lower mortality. Ekelund 2016: 60-75 min/day of moderate activity removes the mortality excess of 8 h/day sitting. Interest: 'active minutes' rated useful by 65.2% (JMIR 2023). Few people search the phrase; they look at the ring.",
+   "bestView": "Rolling 7-day (or Mon-Sun) total vs a 150-min line, with strength days pulled from Hevy vs the WHO \u22652/week. Weekly bars for the last 12 weeks.",
+   "pitfalls": "Apple's Exercise ring counts minutes at or above brisk-walk intensity and cannot separate vigorous minutes, so the 2:1 weighting can't be applied from ring minutes alone. Strength sessions often undercount; take strength from Hevy, not the ring.",
+   "sources": [
+    {
+     "citation": "Bull FC et al. WHO 2020 guidelines on physical activity and sedentary behaviour. BJSM 2020",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC7719906/"
+    },
+    {
+     "citation": "Arem H et al. Leisure time physical activity and mortality: pooled dose-response. JAMA Intern Med 2015",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC4451435/"
+    },
+    {
+     "citation": "Strain T et al. Wearable-device-measured physical activity and future health risk. Nat Med 2020",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC7116559/"
+    },
+    {
+     "citation": "Apple. Using Apple Watch to measure heart rate, calorimetry and activity (Nov 2024): Exercise ring = minutes at \u2265 brisk-walk intensity",
+     "url": "https://www.apple.com/health/pdf/Heart_Rate_Calorimetry_Activity_on_Apple_Watch_November_2024.pdf"
+    }
+   ]
+  },
+  {
+   "metric": "sleep_analysis (derived: bed/wake timing spread)",
+   "displayName": "Sleep regularity",
+   "tier": 1,
+   "evidenceScore": 4,
+   "availabilityScore": 5,
+   "interestScore": 2,
+   "actionability": 5,
+   "whyItMatters": "Windred 2024 (60,977 UK Biobank adults, accelerometer): higher sleep regularity was linked to 20-30% lower all-cause mortality when fully adjusted (HR 0.80-0.70 across SRI quintiles 2-5), and regularity predicted mortality more strongly than duration. It is the most directly controllable sleep lever (a fixed wake time). It comes free from the nightly sleep data. Interest is low only because Apple has no named metric for it; there is no usage data.",
+   "bestView": "The spread (SD, minutes) of wake time and sleep-onset over the last 14 nights, shown as a bed/wake timeline of horizontal bars. A ~60-minute window is the top-quintile behaviour. Fold it into the Sleep hero tile as a second line rather than a separate tile.",
+   "pitfalls": "The true SRI needs minute-level sleep/wake data; SD of onset/wake is a proxy. Require \u226510 of 14 nights. The Windred cohort averaged 63 years old. Don't count missing nights as irregular. Quote one adjustment model consistently.",
+   "sources": [
+    {
+     "citation": "Windred DP et al. Sleep regularity is a stronger predictor of mortality risk than sleep duration. Sleep 2024",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC10782501/"
+    }
+   ]
+  },
+  {
+   "metric": "resting_heart_rate",
+   "displayName": "Resting heart rate",
+   "tier": 1,
+   "evidenceScore": 4,
+   "availabilityScore": 5,
+   "interestScore": 4,
+   "actionability": 3,
+   "whyItMatters": "Zhang 2016 (46 studies, 1.25 M people): each +10 bpm RR 1.09 all-cause. Aune 2017 (87 studies): 1.17 per +10 bpm. Apple publishes exactly one value per day, from the most inactive awake periods (sleep excluded), and it agrees well with a chest strap (MAE 3.7 bpm). Interest: 'resting heart rate' is searched about as often as 'how much sleep' (1.00 vs 1.03) and more than 'vo2 max' (0.70). Heart rate is the top-rated wearable feature (70.5%, JMIR 2023). Endurance training lowers it about 6 bpm (Reimers 2018).",
+   "bestView": "7-day average vs a personal 60-day baseline (delta in bpm), with NHANES percentiles as context only. A 6-month line with a 7-day moving average. A sustained rise of \u22655 bpm over baseline is the signal.",
+   "pitfalls": "Illness, alcohol, heat, dehydration, short sleep and hard training raise it for days; one day is noise. NHANES is a seated clinic pulse (30 s x2), not Apple's background estimate. It is published at the end of the day, so 'today' is empty until tonight.",
+   "sources": [
+    {
+     "citation": "Zhang D et al. Resting heart rate and all-cause and CV mortality: meta-analysis. CMAJ 2016",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC4754196/"
+    },
+    {
+     "citation": "Aune D et al. Resting heart rate and risk of CVD, cancer and all-cause mortality: dose-response meta-analysis. NMCD 2017",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/28552551/"
+    },
+    {
+     "citation": "Apple. Heart rate, calorimetry and activity white paper (Nov 2024): one daily resting HR, sleep excluded",
+     "url": "https://www.apple.com/health/pdf/Heart_Rate_Calorimetry_Activity_on_Apple_Watch_November_2024.pdf"
+    },
+    {
+     "citation": "Validity of Apple Watch Series 9/Ultra 2 for HRV and RHR (2024): RHR MAE 3.73 bpm",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC11478500/"
+    },
+    {
+     "citation": "Google Trends generic set (retrieved 27 Sep 2026): resting heart rate vs HRV/VO2 max/blood oxygen/deep sleep",
+     "url": "https://trends.google.com/trends/explore?date=today%205-y&q=resting%20heart%20rate,heart%20rate%20variability,vo2%20max,blood%20oxygen,deep%20sleep"
+    }
+   ]
+  },
+  {
+   "metric": "weight_body_mass + body_composition_reports.weight_kg (+ Hevy body measurements)",
+   "displayName": "Weight trend",
+   "tier": 1,
+   "evidenceScore": 4,
+   "availabilityScore": 3,
+   "interestScore": 4,
+   "actionability": 4,
+   "whyItMatters": "Weight drives BMI-linked risk (GBMC 2016: lowest mortality at BMI 20-25; HR 1.39 per +5 kg/m\u00b2 in Europe). In this app it is also the input that steers the Food coach's calorie adjustments, so a clean trend matters beyond display. Interest: 'bmi' is searched about 9x 'resting heart rate', inflated by calculators. Availability is only as good as weigh-ins.",
+   "bestView": "One merged 7-day moving-average line, with raw weigh-ins as dots, and the kg/week slope over the last 28 days. Show the date of the latest weigh-in when it's stale.",
+   "pitfalls": "Water swings of \u00b11-2 kg day to day. The same weigh-in can arrive via the scale report AND Apple Health, so de-duplicate by timestamp. Keep time of day consistent (morning, fasted). Never show first-vs-last raw readings as 'change'.",
+   "sources": [
+    {
+     "citation": "Global BMI Mortality Collaboration. BMI and all-cause mortality: IPD meta-analysis of 239 studies. Lancet 2016",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC4995441/"
+    },
+    {
+     "citation": "Google Trends generic set (retrieved 27 Sep 2026): 'bmi' 9.3x 'resting heart rate' (calculator searches included)",
+     "url": "https://trends.google.com/trends/explore?date=today%205-y&q=resting%20heart%20rate,bmi,normal%20heart%20rate,blood%20pressure,atrial%20fibrillation"
+    }
+   ]
+  },
+  {
+   "metric": "heart_rate_variability",
+   "displayName": "Heart rate variability (SDNN)",
+   "tier": 2,
+   "evidenceScore": 3,
+   "availabilityScore": 4,
+   "interestScore": 3,
+   "actionability": 2,
+   "whyItMatters": "Low HRV predicts first CV events (Hillebrand 2013: lowest vs highest SDNN RR 1.35). Exercise training raises SDNN (SMD 0.58). Apple records a tachogram about every 4 h when you are still, so there are several readings a day plus overnight. Interest is rising: the generic phrase grew from 0.23 to 0.39 of 'resting heart rate' (5-year vs last-year mean), and WHOOP/Oura build recovery scores on it. As a single number for a person it is noisy, so it belongs in the Heart & overnight vitals section as a personal-baseline read.",
+   "bestView": "7-day rolling mean vs the personal 60-day mean \u00b11 SD band (Plews-style). Use overnight readings only if they can be isolated. Population age norms only as greyed context labelled 'different method'.",
+   "pitfalls": "Apple SDNN from ~1-min PPG windows reads \u22128.3 ms low vs a chest strap (MAPE 29%). Not comparable with 5-min ECG or 24-h SDNN norms. Never mix it with RMSSD (Oura, WHOOP, Garmin). Daytime and overnight readings differ a lot. Ectopic beats inflate SDNN.",
+   "sources": [
+    {
+     "citation": "Hillebrand S et al. HRV and first CV event in populations without known CVD. Europace 2013",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/23370966/"
+    },
+    {
+     "citation": "Apple white paper (Nov 2024): default tachogram cadence every 4 h, 2 h with IRN, 15 min with AFib History",
+     "url": "https://www.apple.com/health/pdf/Heart_Rate_Calorimetry_Activity_on_Apple_Watch_November_2024.pdf"
+    },
+    {
+     "citation": "Validity of Apple Watch Series 9/Ultra 2 for serial HRV measurement (2024)",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC11478500/"
+    },
+    {
+     "citation": "Effects of exercise training on HRV in healthy adults: meta-analysis of RCTs. Cureus 2024",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC11250637/"
+    }
+   ]
+  },
+  {
+   "metric": "vo2_max",
+   "displayName": "Cardio fitness (VO\u2082 max estimate)",
+   "tier": 2,
+   "evidenceScore": 5,
+   "availabilityScore": 2,
+   "interestScore": 3,
+   "actionability": 3,
+   "whyItMatters": "On evidence alone it is the strongest single predictor here: Mandsager 2018 low vs elite HR 5.04; Kodama 2009 RR 0.87 per MET; Lang 2024 umbrella review high vs low HR 0.47. It ranks below tier 1 on availability and precision. Apple only estimates it during Outdoor Walk, Outdoor Run or Hiking workouts in the Workout app, and this owner's run metrics show about 2 run days since July. The estimate reads 4.5-6.3 ml/kg/min low, and only 14% were placed in the correct FRIEND band. Interest is mid-table: generic 0.70 of 'resting heart rate', wearable 0.20 of 'apple watch heart rate'.",
+   "bestView": "In a Cardio fitness section: the latest estimate WITH its date and 'N days ago', a \u00b16 ml/kg/min uncertainty band, and placement on FRIEND/HUNT3 age-sex tables. Each estimate plotted as a dot over 6-12 months, never interpolated.",
+   "pitfalls": "Sporadic, and stale values look current. It underestimates fit people more. It needs age and sex. Changes under ~3 ml/kg/min are within noise. Indoor and strength workouts never update it.",
+   "sources": [
+    {
+     "citation": "Mandsager K et al. CRF and long-term mortality. JAMA Netw Open 2018",
+     "url": "https://jamanetwork.com/journals/jamanetworkopen/fullarticle/2707428"
+    },
+    {
+     "citation": "Lang JJ et al. CRF as a predictor of morbidity and mortality (umbrella review). BJSM 2024",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC11103301/"
+    },
+    {
+     "citation": "Apple Support: Cardio Fitness estimates come from Outdoor Walk, Outdoor Run or Hiking workouts",
+     "url": "https://support.apple.com/en-us/108790"
+    },
+    {
+     "citation": "Accuracy of VO2 max estimates from Apple Watch Series 10. Mayo Clin Proc Digit Health 2026",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC13141568/"
+    },
+    {
+     "citation": "Google Trends wearable set (retrieved 27 Sep 2026): 'apple watch vo2 max' 0.20x 'apple watch heart rate'",
+     "url": "https://trends.google.com/trends/explore?date=today%205-y&q=apple%20watch%20heart%20rate,apple%20watch%20vo2%20max,apple%20watch%20blood%20oxygen,apple%20watch%20ecg,apple%20watch%20resting%20heart%20rate"
+    }
+   ]
+  },
+  {
+   "metric": "active_energy",
+   "displayName": "Active energy (Move)",
+   "tier": 2,
+   "evidenceScore": 3,
+   "availabilityScore": 5,
+   "interestScore": 4,
+   "actionability": 4,
+   "whyItMatters": "Device-measured activity energy predicts mortality: Strain 2020 found 20 vs 15 kJ/kg/day PAEE linked to 21% lower hazard. Interest is high: calories burned 42% (GWI), energy burned rated useful by 58.6% (JMIR), wearable search 0.56 of heart rate. But no brand measures energy accurately (Fuller 2020), so it works as a Move-goal trend, not a health band.",
+   "bestView": "Daily bars vs the owner's own Move goal plus the weekly total. Active + basal as a TDEE trend handed to Food goals.",
+   "pitfalls": "An estimate; it has been inflated 2-3x by re-delivered hourly rows before. Check kJ vs kcal. The Move goal is personal, not a reference range.",
+   "sources": [
+    {
+     "citation": "Strain T et al. Wearable-device-measured physical activity and future health risk. Nat Med 2020",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC7116559/"
+    },
+    {
+     "citation": "Fuller D et al. Reliability and validity of commercially available wearables (no brand accurate for EE). JMIR mHealth 2020",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC7509623/"
+    },
+    {
+     "citation": "JMIR 2025 7-year survey: energy burned rated useful by 58.6% (2023)",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC11888053/"
+    }
+   ]
+  },
+  {
+   "metric": "breathing_disturbances",
+   "displayName": "Breathing disturbances",
+   "tier": 2,
+   "evidenceScore": 4,
+   "availabilityScore": 4,
+   "interestScore": 3,
+   "actionability": 2,
+   "whyItMatters": "This is Apple's nightly count behind its FDA-cleared sleep apnea notifications: a 30-day window with \u226510 nights, sensitivity 66.3% (about 89% for severe), specificity 98.5%. Untreated severe obstructive sleep apnea carries HR 2.13 for all-cause mortality (27 cohorts, 3.16 M people), and CPAP-treated patients had HR 0.66 vs untreated. Interest: 'sleep apnea' is searched 2.6x 'resting heart rate'.",
+   "bestView": "30-night chart with Apple's own Elevated / Not elevated classification if exported; otherwise the nightly count vs the personal median. Lives in the Sleep section.",
+   "pitfalls": "Screening, not diagnosis; it misses more than half of moderate cases. Alcohol, a cold or sleeping position raise it. Never map the count to an AHI.",
+   "sources": [
+    {
+     "citation": "Apple Support: Sleep apnea notifications (30-day evaluation)",
+     "url": "https://support.apple.com/en-us/120031"
+    },
+    {
+     "citation": "Xie C et al. All-cause and CV mortality in OSA with or without CPAP: meta-analysis. Sleep Breath 2017",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/27502205/"
+    },
+    {
+     "citation": "Apple. Estimating breathing disturbances and sleep apnea risk from Apple Watch (Sep 2024)",
+     "url": "https://www.apple.com/health/pdf/sleep-apnea/Sleep_Apnea_Notifications_on_Apple_Watch_September_2024.pdf"
+    }
+   ]
+  },
+  {
+   "metric": "blood_oxygen_saturation",
+   "displayName": "Blood oxygen (SpO\u2082)",
+   "tier": 2,
+   "evidenceScore": 2,
+   "availabilityScore": 4,
+   "interestScore": 3,
+   "actionability": 1,
+   "whyItMatters": "Its value is catching abnormal lows (lung disease, altitude, sleep-disordered breathing). WHO normal is 95-100%, and there is no dose-response inside the normal range. The Series 11 takes periodic background readings day and night (12-20 a day in this owner's data); the US-only restriction doesn't apply in Norway. Interest is moderate: generic 0.72 of 'resting heart rate', wearable 0.23. It is one of Apple's five Vitals metrics.",
+   "bestView": "Per-night average and lowest reading vs the personal range, with a 95% reference line, inside the Overnight vitals group.",
+   "pitfalls": "Limits of agreement \u00b12.7-5.9 points, with outliers up to 15. Motion and a loose band cause false lows. One low reading means nothing, and an average hides dips.",
+   "sources": [
+    {
+     "citation": "WHO Pulse Oximetry Training Manual (normal 95-100%)",
+     "url": "https://cdn.who.int/media/docs/default-source/patient-safety/pulse-oximetry/who-ps-pulse-oxymetry-training-manual-en.pdf"
+    },
+    {
+     "citation": "Accuracy of Apple Watch SpO2 in adults: systematic review. Cureus 2023",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC10039641/"
+    },
+    {
+     "citation": "Apple Support: Blood Oxygen app, background measurements",
+     "url": "https://support.apple.com/en-us/120358"
+    },
+    {
+     "citation": "Apple Support: Vitals app (overnight HR, respiratory rate, wrist temperature, blood oxygen, sleep duration)",
+     "url": "https://support.apple.com/en-us/120142"
+    }
+   ]
+  },
+  {
+   "metric": "respiratory_rate",
+   "displayName": "Respiratory rate (sleep)",
+   "tier": 2,
+   "evidenceScore": 2,
+   "availabilityScore": 4,
+   "interestScore": 2,
+   "actionability": 1,
+   "whyItMatters": "Very stable within a person (14-day CV 2-10% in young adults), so a rise over your own baseline is an early illness signal (wearable COVID detection). There is no mortality dose-response in healthy people. Measured nightly during sleep; one of Apple's Vitals.",
+   "bestView": "Nightly value vs the 30-day personal median with a \u00b11.5 br/min band, inside Overnight vitals.",
+   "pitfalls": "The distribution data come from Fitbit's algorithm, not Apple's. Clinical '12-20' is not a wearable norm. Illness, alcohol and altitude raise it.",
+   "sources": [
+    {
+     "citation": "Natarajan A et al. Respiratory rate from wearables and COVID-19 detection. npj Digit Med 2021",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC8443549/"
+    },
+    {
+     "citation": "Apple Support: Vitals app",
+     "url": "https://support.apple.com/en-us/120142"
+    }
+   ]
+  },
+  {
+   "metric": "body_fat_percentage + body_composition_reports.body_fat_percent",
+   "displayName": "Body fat %",
+   "tier": 2,
+   "evidenceScore": 3,
+   "availabilityScore": 3,
+   "interestScore": 3,
+   "actionability": 3,
+   "whyItMatters": "More informative than BMI for a lifter. Gallagher's bands inherit their meaning from BMI outcomes. It is the recomposition outcome the Food and Training features aim at. Interest: generic 0.50 of 'resting heart rate'.",
+   "bestView": "A 4-week moving average from ONE device, on the same chart as lean mass, with Gallagher bands as context.",
+   "pitfalls": "Bioimpedance differs from DXA by several points and swings with hydration. Don't mix Apple-entered values with scale reports. Measure morning and fasted.",
+   "sources": [
+    {
+     "citation": "Gallagher D et al. Healthy percentage body fat ranges. Am J Clin Nutr 2000",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/10966886/"
+    },
+    {
+     "citation": "Google Trends generic set (retrieved 27 Sep 2026): 'body fat percentage' 0.50x 'resting heart rate'",
+     "url": "https://trends.google.com/trends/explore?date=today%205-y&q=resting%20heart%20rate,body%20fat%20percentage,calories%20burned,steps%20a%20day,respiratory%20rate"
+    }
+   ]
+  },
+  {
+   "metric": "lean_body_mass + body_composition_reports.lean_body_mass_kg / skeletal_muscle_percent / skeletal_muscle_index",
+   "displayName": "Lean / muscle mass",
+   "tier": 2,
+   "evidenceScore": 3,
+   "availabilityScore": 3,
+   "interestScore": 3,
+   "actionability": 3,
+   "whyItMatters": "Srikanthan 2014 (NHANES III, bioimpedance muscle-mass index): top vs bottom quartile HR 0.80 for all-cause mortality in older adults. For a lifter it is the outcome of training plus protein. Interest: 'muscle mass' 0.82 of 'resting heart rate', above VO2 max.",
+   "bestView": "kg trend (28-day moving average) beside body fat on one chart; change per month; optionally beside Hevy volume.",
+   "pitfalls": "Bioimpedance lean mass includes water, glycogen and creatine shifts. Device-specific: don't mix sources. Muscle % and SMI are the scale's own derivations.",
+   "sources": [
+    {
+     "citation": "Srikanthan P, Karlamangla AS. Muscle mass index as a predictor of longevity in older adults. Am J Med 2014",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC4035379/"
+    },
+    {
+     "citation": "Google Trends generic set (retrieved 27 Sep 2026): 'muscle mass' 0.82x 'resting heart rate'",
+     "url": "https://trends.google.com/trends/explore?date=today%205-y&q=resting%20heart%20rate,muscle%20mass,visceral%20fat,waist%20to%20height%20ratio,walking%20speed"
+    }
+   ]
+  },
+  {
+   "metric": "flights_climbed",
+   "displayName": "Flights climbed",
+   "tier": 2,
+   "evidenceScore": 3,
+   "availabilityScore": 5,
+   "interestScore": 2,
+   "actionability": 4,
+   "whyItMatters": "Song 2023 (458,860 UK Biobank adults, 12.5 y): vs 0 flights, 6-10 flights/day ASCVD HR 0.84 and 11-15 HR 0.78; people who stopped climbing had HR 1.32. The ESC 2024 meta-analysis (9 studies, 480,520 people) found 24% lower all-cause and 39% lower CV mortality. Recorded continuously and easy to change. Stairs rated useful by 48.9% (JMIR 2023), with almost no search interest.",
+   "bestView": "Daily flights with a \u22655 flights/day (~50 steps) reference line, and the 7-day average in the Activity section.",
+   "pitfalls": "The studies used self-reported stair use, while Apple counts ~3 m elevation gain, hills included. Observational only.",
+   "sources": [
+    {
+     "citation": "Song Z et al. Daily stair climbing and risk of ASCVD. Atherosclerosis 2023",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/37813749/"
+    },
+    {
+     "citation": "Evaluating the cardiovascular benefits of stair climbing: SR and meta-analysis. Eur J Prev Cardiol 2024 (ESC abstract)",
+     "url": "https://academic.oup.com/eurjpc/article/31/Supplement_1/zwae175.405/7692518"
+    }
+   ]
+  },
+  {
+   "metric": "waist_circumference (from Hevy) \u00f7 height",
+   "displayName": "Waist-to-height ratio",
+   "tier": 2,
+   "evidenceScore": 4,
+   "availabilityScore": 1,
+   "interestScore": 1,
+   "actionability": 3,
+   "whyItMatters": "It discriminates cardiometabolic risk better than BMI or waist alone (Ashwell 2012, >300k adults). NICE classes: <0.5 healthy, 0.5-0.59 increased, \u22650.6 high, valid for muscular adults. For a lifter it is the adiposity check BMI can't give. Waist comes from Hevy measurements, since the owner removed the Apple waist card.",
+   "bestView": "Latest ratio with its date and NICE band inside Body; monthly trend when there are \u22653 measurements.",
+   "pitfalls": "Needs height (athlete_profile). Measure midway between the lowest rib and the top of the hip, after breathing out (NICE Box 1). Manual and sporadic.",
+   "sources": [
+    {
+     "citation": "NICE NG246 recs 1.9.14-1.9.15: waist-to-height ratio classes",
+     "url": "https://www.nice.org.uk/guidance/ng246/chapter/Identifying-and-assessing-overweight-obesity-and-central-adiposity"
+    },
+    {
+     "citation": "Ashwell M et al. WHtR is a better screening tool than waist or BMI. Obes Rev 2012",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/22106927/"
+    }
+   ]
+  },
+  {
+   "metric": "body_mass_index + body_composition_reports.bmi",
+   "displayName": "BMI",
+   "tier": 2,
+   "evidenceScore": 4,
+   "availabilityScore": 3,
+   "interestScore": 4,
+   "actionability": 2,
+   "whyItMatters": "Strong population curve (GBMC 2016: lowest mortality at 20-25). Heavily searched (9x 'resting heart rate', calculator-inflated). But NICE says to interpret with caution in people with high muscle mass, which fits this owner, so show it as context beside WHtR, not as a verdict.",
+   "bestView": "A secondary line under Weight in the Body section, computed from the 7-day average weight and height, with the muscular-build caveat and WHtR next to it.",
+   "pitfalls": "It labels muscular people as overweight. The scale's BMI and a computed BMI can differ, so use one.",
+   "sources": [
+    {
+     "citation": "Global BMI Mortality Collaboration. Lancet 2016",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC4995441/"
+    },
+    {
+     "citation": "NICE NG246 recs 1.9.10-1.9.13 (BMI caution for high muscle mass)",
+     "url": "https://www.nice.org.uk/guidance/ng246/chapter/Identifying-and-assessing-overweight-obesity-and-central-adiposity"
+    }
+   ]
+  },
+  {
+   "metric": "cardio_recovery",
+   "displayName": "Cardio recovery",
+   "tier": 2,
+   "evidenceScore": 3,
+   "availabilityScore": 2,
+   "interestScore": 1,
+   "actionability": 2,
+   "whyItMatters": "Slow heart-rate recovery predicts mortality: \u226412 bpm at 1 min adjusted RR 2.0 (Cole 1999); attenuated recovery HR 1.68 (Qiu 2017). Apple measures it for 3 min only after a Workout-app session ends. It predicts the 60-s drop after submaximal exercise at 85% of predicted max HR, capped at 55 bpm. So data come only on workout days. Almost no search interest (0.017).",
+   "bestView": "In Cardio fitness beside VO2 max: per-workout dots plus a 30-day median, compared only like-for-like (same workout type). The \u226412 bpm line is labelled 'indicative'.",
+   "pitfalls": "The research used maximal treadmill tests; Apple's value is a submaximal prediction. Values depend on stopping vs cooling down, and strength sessions behave differently.",
+   "sources": [
+    {
+     "citation": "Cole CR et al. Heart-rate recovery immediately after exercise as a predictor of mortality. NEJM 1999",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/10536127/"
+    },
+    {
+     "citation": "Qiu S et al. Heart rate recovery and CV events/all-cause mortality: meta-analysis. JAHA 2017",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC5524096/"
+    },
+    {
+     "citation": "Apple white paper (Nov 2024): cardio recovery = 3-min post-workout monitoring, predicted 60-s HRR at 85% HRmax, capped at 55 bpm",
+     "url": "https://www.apple.com/health/pdf/Heart_Rate_Calorimetry_Activity_on_Apple_Watch_November_2024.pdf"
+    }
+   ]
+  },
+  {
+   "metric": "heart_rate",
+   "displayName": "Heart rate (day range)",
+   "tier": 3,
+   "evidenceScore": 2,
+   "availabilityScore": 5,
+   "interestScore": 5,
+   "actionability": 1,
+   "whyItMatters": "The most-valued wearable feature (70.5% useful, JMIR 2023; tracked by 44%, GWI) and the context for everything else in the Heart section. But a daily average or range has no outcome band; resting HR and HRV carry the evidence. Background readings every 5 min while still, every 5 s in workouts.",
+   "bestView": "Day view only: a 24-h min-max band with sleep shaded. Not a trend tile, and never a daily average compared across days.",
+   "pitfalls": "A daily average mixes workouts and rest. Background samples exist only while you are still.",
+   "sources": [
+    {
+     "citation": "Apple white paper (Nov 2024): background HR every 5 min when still",
+     "url": "https://www.apple.com/health/pdf/Heart_Rate_Calorimetry_Activity_on_Apple_Watch_November_2024.pdf"
+    },
+    {
+     "citation": "JMIR 2025 7-year survey: heart rate the top-rated useful feature (70.5%)",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC11888053/"
+    }
+   ]
+  },
+  {
+   "metric": "sleep_analysis (core/deep/REM/awake)",
+   "displayName": "Sleep stages & awake time",
+   "tier": 3,
+   "evidenceScore": 1,
+   "availabilityScore": 5,
+   "interestScore": 4,
+   "actionability": 1,
+   "whyItMatters": "High curiosity ('deep sleep' 0.97 and 'rem sleep' 0.68 of 'resting heart rate') but no outcome dose-response for stage shares in healthy adults. Apple staging is weak: light sleep \u221274 min, REM +30 min vs PSG. Show it as description, never as a target.",
+   "bestView": "Inside Sleep: a nightly stacked bar with Awake as its own segment (shares of time in bed, not of sleep), plus a 30-night average against Boulos lab ranges \u00b110 points. Never label a value 'bad'.",
+   "pitfalls": "The current code divides by total sleep while also drawing Awake, so shares exceed 100%. Don't coach 'more deep sleep'. Accuracy note required.",
+   "sources": [
+    {
+     "citation": "Boulos MI et al. Normal PSG parameters in healthy adults (Table 2). Lancet Respir Med 2019",
+     "url": "https://omc.ohri.ca/psgnorms/PSGnorm_Table2.pdf"
+    },
+    {
+     "citation": "Performance of consumer sleep trackers vs actigraphy and PSG. Sleep Med 2026",
+     "url": "https://doi.org/10.1016/j.sleep.2026.109059"
+    },
+    {
+     "citation": "Google Trends generic set (retrieved 27 Sep 2026): 'rem sleep', 'how much sleep', 'sleep score'",
+     "url": "https://trends.google.com/trends/explore?date=today%205-y&q=resting%20heart%20rate,sleep%20score,rem%20sleep,how%20much%20sleep,heart%20rate%20recovery"
+    }
+   ]
+  },
+  {
+   "metric": "apple_sleeping_wrist_temperature",
+   "displayName": "Wrist temperature (sleep)",
+   "tier": 3,
+   "evidenceScore": 2,
+   "availabilityScore": 4,
+   "interestScore": 1,
+   "actionability": 1,
+   "whyItMatters": "A nightly deviation from a baseline set over 5 nights (sampled every 5 s during sleep). It flags illness and cycle changes; sensor data plus symptoms detected COVID better than symptoms alone (AUC 0.80 vs 0.71). No outcome evidence. It is one of Apple's five Vitals, so it belongs in the Overnight vitals row.",
+   "bestView": "Nightly deviation (\u00b0C) vs the personal range as a small sparkline inside Overnight vitals; flag only multi-night shifts.",
+   "pitfalls": "Deviation only, never absolute body temperature. Room temperature and bedding shift it. Needs Sleep Focus for \u22654 h.",
+   "sources": [
+    {
+     "citation": "Apple Support: Track nightly wrist temperature changes",
+     "url": "https://support.apple.com/en-us/102674"
+    },
+    {
+     "citation": "Quer G et al. Wearable sensor data and self-reported symptoms for COVID-19 detection. Nat Med 2021",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/33122860/"
+    }
+   ]
+  },
+  {
+   "metric": "apple_stand_hour, apple_stand_time",
+   "displayName": "Stand hours",
+   "tier": 3,
+   "evidenceScore": 2,
+   "availabilityScore": 5,
+   "interestScore": 2,
+   "actionability": 4,
+   "whyItMatters": "The Stand ring is really a sitting-break prompt (\u22651 min standing or moving in the hour). Standing itself is not protective: Ahmadi 2024 (83,013 adults, device-measured) found more standing did not lower CVD risk, standing >2 h/day raised orthostatic circulatory risk, and sitting >10 h/day raised both. The sitting risk is offset by 60-75 min/day of moderate activity (Ekelund 2016).",
+   "bestView": "A compact 'x of 12 hours with a break' strip in Activity, framed as sitting breaks, not exercise.",
+   "pitfalls": "A stand hour is not stand duration. Don't present standing as a health intervention.",
+   "sources": [
+    {
+     "citation": "Ahmadi MN et al. Device-measured stationary behaviour and CV and orthostatic circulatory disease. Int J Epidemiol 2024",
+     "url": "https://academic.oup.com/ije/article/53/6/dyae136/7822310"
+    },
+    {
+     "citation": "Ekelund U et al. Does physical activity attenuate the association of sitting time with mortality? Lancet 2016",
+     "url": "https://www.thelancet.com/pdfs/journals/lancet/PIIS0140-6736(16)30370-1.pdf"
+    }
+   ]
+  },
+  {
+   "metric": "walking_running_distance",
+   "displayName": "Walking + running distance",
+   "tier": 3,
+   "evidenceScore": 3,
+   "availabilityScore": 5,
+   "interestScore": 3,
+   "actionability": 4,
+   "whyItMatters": "Mirrors steps (same evidence), in km, which is more intuitive for walks and runs. Redundant with steps as a headline.",
+   "bestView": "A secondary figure under the Steps chart (km today and 7-day average).",
+   "pitfalls": "Stride calibration; GPS vs pedometer distance. Don't sum Watch and iPhone streams.",
+   "sources": [
+    {
+     "citation": "Paluch AE et al. Lancet Public Health 2022 (steps evidence carries over)",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC9289978/"
+    }
+   ]
+  },
+  {
+   "metric": "basal_energy_burned",
+   "displayName": "Resting (basal) energy",
+   "tier": 3,
+   "evidenceScore": 1,
+   "availabilityScore": 5,
+   "interestScore": 2,
+   "actionability": 1,
+   "whyItMatters": "Not an outcome predictor. Useful as a sanity check (a Mifflin band catches the duplicate-row bug that once showed ~5,400 kcal/day) and as half of the TDEE hand-off to Food.",
+   "bestView": "Folded into an active + basal = daily burn figure in Activity; a warning chip if outside a plausible band for the owner's size.",
+   "pitfalls": "Model-based from age, sex, height and weight; underestimates muscular people.",
+   "sources": [
+    {
+     "citation": "Mifflin MD et al. Predictive equation for resting energy expenditure. Am J Clin Nutr 1990",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/2305711/"
+    }
+   ]
+  },
+  {
+   "metric": "walking_heart_rate_average",
+   "displayName": "Walking heart rate",
+   "tier": 3,
+   "evidenceScore": 2,
+   "availabilityScore": 5,
+   "interestScore": 1,
+   "actionability": 2,
+   "whyItMatters": "One daily average from automatic walking spot checks. It tends to fall as fitness improves, a light-exercise baseline that updates every day, unlike VO2 max. There is no validated outcome band. Almost no search interest (0.017).",
+   "bestView": "A 90-day trend with a 14-day moving average, in the Heart/Cardio section as a daily fitness proxy.",
+   "pitfalls": "Depends on walking pace, terrain and heat.",
+   "sources": [
+    {
+     "citation": "Apple white paper (Nov 2024): walking HR spot checks and one daily average",
+     "url": "https://www.apple.com/health/pdf/Heart_Rate_Calorimetry_Activity_on_Apple_Watch_November_2024.pdf"
+    }
+   ]
+  },
+  {
+   "metric": "physical_effort",
+   "displayName": "Physical effort (METs)",
+   "tier": 3,
+   "evidenceScore": 2,
+   "availabilityScore": 4,
+   "interestScore": 1,
+   "actionability": 2,
+   "whyItMatters": "Apple's estimated metabolic intensity of movement. METs underpin the MET-minute guidelines, but this Apple-specific series has no validated band of its own.",
+   "bestView": "A compact card in Cardio fitness or Activity; its main use is behind the scenes (intensity context for exercise minutes).",
+   "pitfalls": "Model output tied to Apple's calorimetry; averaging across a day hides the peaks.",
+   "sources": [
+    {
+     "citation": "Apple white paper (Nov 2024): effort estimates and calorimetry",
+     "url": "https://www.apple.com/health/pdf/Heart_Rate_Calorimetry_Activity_on_Apple_Watch_November_2024.pdf"
+    }
+   ]
+  },
+  {
+   "metric": "walking_speed",
+   "displayName": "Walking speed",
+   "tier": 3,
+   "evidenceScore": 3,
+   "availabilityScore": 4,
+   "interestScore": 1,
+   "actionability": 2,
+   "whyItMatters": "In adults 65+ each +0.1 m/s gives survival HR 0.88 (Studenski 2011), but in younger adults it mostly matters when it declines. iPhone mobility metrics arrive \u22655 times a day for 80% of people who carry the phone in a pocket. Generic interest 0.34.",
+   "bestView": "A Mobility card with a 90-day trend and the \u22651.0 m/s reference; highlight only a sustained decline.",
+   "pitfalls": "Passive everyday walking, not a timed clinical walk. Needs an up-to-date height. The survival thresholds are for 65+.",
+   "sources": [
+    {
+     "citation": "Studenski S et al. Gait speed and survival in older adults. JAMA 2011",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC3080184/"
+    },
+    {
+     "citation": "Apple. Measuring walking quality through iPhone mobility metrics (May 2022)",
+     "url": "https://www.apple.com/healthcare/docs/site/Measuring_Walking_Quality_Through_iPhone_Mobility_Metrics.pdf"
+    }
+   ]
+  },
+  {
+   "metric": "walking_asymmetry_percentage, walking_double_support_percentage, walking_step_length",
+   "displayName": "Gait: asymmetry, double support, step length",
+   "tier": 3,
+   "evidenceScore": 2,
+   "availabilityScore": 4,
+   "interestScore": 1,
+   "actionability": 1,
+   "whyItMatters": "Markers of injury and mobility decline (asymmetry appears with a one-sided injury; double support rises with fear of falling; step length is predictive of falls). Validated against a pressure-mat walkway. For a healthy adult they are mostly an injury or rehab tracker.",
+   "bestView": "Compact Mobility cards with a 90-day trend; flag only a sustained change from the personal baseline.",
+   "pitfalls": "Phone placement matters (pocket or hip). Carrying bags or walking on slopes distorts readings.",
+   "sources": [
+    {
+     "citation": "Apple. Measuring walking quality through iPhone mobility metrics (May 2022)",
+     "url": "https://www.apple.com/healthcare/docs/site/Measuring_Walking_Quality_Through_iPhone_Mobility_Metrics.pdf"
+    },
+    {
+     "citation": "Validity and reliability of the Apple Health app on iPhone for gait parameters. 2023",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC10067003/"
+    }
+   ]
+  },
+  {
+   "metric": "stair_speed_up, stair_speed_down",
+   "displayName": "Stair speed",
+   "tier": 3,
+   "evidenceScore": 2,
+   "availabilityScore": 3,
+   "interestScore": 1,
+   "actionability": 1,
+   "whyItMatters": "An iPhone-derived functional-capacity indicator; limited outcome evidence of its own.",
+   "bestView": "A compact Mobility card with a trend line.",
+   "pitfalls": "Only on stair-climbing bouts with the phone carried; sparse.",
+   "sources": [
+    {
+     "citation": "Apple. Measuring walking quality through iPhone mobility metrics (May 2022)",
+     "url": "https://www.apple.com/healthcare/docs/site/Measuring_Walking_Quality_Through_iPhone_Mobility_Metrics.pdf"
+    }
+   ]
+  },
+  {
+   "metric": "six_minute_walking_test_distance",
+   "displayName": "6-minute walk (estimate)",
+   "tier": 3,
+   "evidenceScore": 3,
+   "availabilityScore": 2,
+   "interestScore": 1,
+   "actionability": 1,
+   "whyItMatters": "A standard clinical prognostic test (e.g. after cardiac surgery, +10 m \u2248 4% lower mortality). Apple re-estimates it occasionally from everyday walking. Little meaning for a healthy young adult.",
+   "bestView": "Latest estimate with its date in Mobility.",
+   "pitfalls": "An estimate, not a performed test. The prognostic data come from clinical populations.",
+   "sources": [
+    {
+     "citation": "6MWT distance at discharge and mortality after cardiac surgery. Sci Rep 2024",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/38291336/"
+    }
+   ]
+  },
+  {
+   "metric": "walking steadiness (HKQuantityTypeIdentifierAppleWalkingSteadiness)",
+   "displayName": "Walking steadiness",
+   "tier": 3,
+   "evidenceScore": 3,
+   "availabilityScore": 1,
+   "interestScore": 1,
+   "actionability": 2,
+   "whyItMatters": "Apple's fall-risk classification (OK / Low / Very Low), validated against 12-month falls. It receives NO rows today (it isn't in METRIC_AGGREGATION) and has near-zero search interest (0.002).",
+   "bestView": "Only if data appear: the latest classification with its date in Mobility.",
+   "pitfalls": "Needs regular phone carry; mainly meaningful for older adults.",
+   "sources": [
+    {
+     "citation": "Apple. Measuring walking quality through iPhone mobility metrics (May 2022)",
+     "url": "https://www.apple.com/healthcare/docs/site/Measuring_Walking_Quality_Through_iPhone_Mobility_Metrics.pdf"
+    }
+   ]
+  },
+  {
+   "metric": "time_in_daylight",
+   "displayName": "Time in daylight",
+   "tier": 3,
+   "evidenceScore": 3,
+   "availabilityScore": 4,
+   "interestScore": 1,
+   "actionability": 4,
+   "whyItMatters": "Windred 2024 (PNAS, 88,905 UK Biobank adults wearing light sensors): brighter daytime light went with lower all-cause mortality (aHR 0.66-0.83 in the top decile vs the darkest half), mostly cardiometabolic. Apple estimates outdoor minutes from the ambient light sensor, GPS and motion. Easy to act on; almost no search interest (0.045).",
+   "bestView": "Daily minutes with a 7-day average in a 'Daily habits & environment' row; a winter/summer comparison is informative in Oslo.",
+   "pitfalls": "The study measured light intensity over 1 week, not minutes outdoors. Sleeves, shade and clouds cause undercounts. No evidence-based minute target for adults.",
+   "sources": [
+    {
+     "citation": "Windred DP et al. Brighter nights and darker days predict higher mortality risk. PNAS 2024",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC11513964/"
+    },
+    {
+     "citation": "Apple Support: See time spent in daylight on Apple Watch",
+     "url": "https://support.apple.com/guide/watch/see-time-in-daylight-apd3ab22534c/watchos"
+    }
+   ]
+  },
+  {
+   "metric": "toothbrushing",
+   "displayName": "Toothbrushing",
+   "tier": 3,
+   "evidenceScore": 3,
+   "availabilityScore": 3,
+   "interestScore": 0.5,
+   "actionability": 5,
+   "whyItMatters": "Park 2019 (247,696 Korean adults, 9.5 y): each extra daily brushing was linked to 9% fewer major CV events (observational; causality with periodontitis is unproven). It arrives daily from a connected toothbrush. Trivial to act on.",
+   "bestView": "Sessions per day (target 2) and total time in the habits row.",
+   "pitfalls": "Comes from the toothbrush app, not the watch. Observational evidence only.",
+   "sources": [
+    {
+     "citation": "Park SY et al. Improved oral hygiene care attenuates the CV risk of oral health disease. Eur Heart J 2019",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/30561631/"
+    }
+   ]
+  },
+  {
+   "metric": "running_speed, running_power, running_stride_length, running_vertical_oscillation, running_ground_contact_time, cycling_distance",
+   "displayName": "Running dynamics & cycling distance",
+   "tier": 3,
+   "evidenceScore": 1,
+   "availabilityScore": 1,
+   "interestScore": 1,
+   "actionability": 2,
+   "whyItMatters": "Performance and form metrics with no health-outcome evidence. They exist only on run or ride days (about two run days since July).",
+   "bestView": "Inside the workout detail for that run or ride only, never as permanent cards showing dashes on other days.",
+   "pitfalls": "Averaging across runs of different types misleads.",
+   "sources": [
+    {
+     "citation": "Apple white paper (Nov 2024): workout metrics and calorimetry",
+     "url": "https://www.apple.com/health/pdf/Heart_Rate_Calorimetry_Activity_on_Apple_Watch_November_2024.pdf"
+    }
+   ]
+  },
+  {
+   "metric": "body_composition_reports: visceral_fat_index, subcutaneous_fat_kg, body_water_percent, protein_percent, bmr_kcal",
+   "displayName": "More from the smart scale",
+   "tier": 3,
+   "evidenceScore": 1,
+   "availabilityScore": 3,
+   "interestScore": 2,
+   "actionability": 1,
+   "whyItMatters": "Bioimpedance derivations with device-specific algorithms. 'Visceral fat' draws some curiosity (0.42 of 'resting heart rate'), but a scale's visceral index is not a validated imaging measure.",
+   "bestView": "A collapsed 'More from the scale' table with a history row; no bands and no hero use.",
+   "pitfalls": "Hydration-driven swings; not comparable across scale brands.",
+   "sources": [
+    {
+     "citation": "Google Trends generic set (retrieved 27 Sep 2026): 'visceral fat' 0.42x 'resting heart rate'",
+     "url": "https://trends.google.com/trends/explore?date=today%205-y&q=resting%20heart%20rate,muscle%20mass,visceral%20fat,waist%20to%20height%20ratio,walking%20speed"
+    }
+   ]
+  },
+  {
+   "metric": "Health notifications (irregular rhythm, high/low HR, hypertension, sleep apnea), ECG recordings, fall events",
+   "displayName": "Health alerts & ECG",
+   "tier": 3,
+   "evidenceScore": 5,
+   "availabilityScore": 1,
+   "interestScore": 3,
+   "actionability": 2,
+   "whyItMatters": "Rare but the highest-stakes signals. The Apple Heart Study had a PPV of 0.84 for AF on a subsequent irregular-pulse notification; AF sharply raises stroke risk. Hypertension notifications (Series 9+, 30-day PPG analysis) catch 41% of hypertension. Blood pressure is the most-wanted wearable metric (53%, GWI), and 'apple watch ecg' is searched 0.53x heart rate. All are events or on-demand, not daily series. Health Auto Export's notification arrays are NOT ingested today, and the ECG export shape is unverified.",
+   "bestView": "A conditional strip at the top of the page, rendered only when an event exists in the window (date, type, and a 'talk to a doctor' link), never an empty card.",
+   "pitfalls": "Notifications are screening: a missing alert is not reassurance (41% hypertension sensitivity, 66% sleep apnea sensitivity). Needs ingestion work first.",
+   "sources": [
+    {
+     "citation": "Perez MV et al. Large-scale assessment of a smartwatch to identify AF (Apple Heart Study). NEJM 2019",
+     "url": "https://www.nejm.org/doi/full/10.1056/NEJMoa1901183"
+    },
+    {
+     "citation": "Apple Support: Hypertension notifications",
+     "url": "https://support.apple.com/en-us/117296"
+    },
+    {
+     "citation": "GlobalWebIndex via PMC review: 53% want to track blood pressure",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC9022022/"
+    },
+    {
+     "citation": "Google Trends wearable set (retrieved 27 Sep 2026): 'apple watch ecg' 0.53x, 'apple watch hypertension' 0.20x 'apple watch heart rate'",
+     "url": "https://trends.google.com/trends/explore?date=today%205-y&q=apple%20watch%20heart%20rate,apple%20watch%20vitals,apple%20watch%20hypertension,apple%20watch%20cardio%20recovery,apple%20watch%20noise"
+    }
+   ]
+  },
+  {
+   "metric": "headphone_audio_exposure",
+   "displayName": "Headphone audio exposure",
+   "tier": 4,
+   "evidenceScore": 3,
+   "availabilityScore": 3,
+   "interestScore": 2,
+   "actionability": 4,
+   "whyItMatters": "WHO safe listening: 80 dB for up to 40 h/week (90 dB for 4 h). Hearing loss is one of the largest modifiable dementia risk factors in the 2024 Lancet Commission. The owner removed this card on 2026-09-06, so keep it off the default page. If ever revisited, the only version worth having is a weekly dose as % of the WHO limit.",
+   "bestView": "(If re-enabled) 7-day exposure as % of the WHO weekly dose, not daily dB averages.",
+   "pitfalls": "A daily mean dB is meaningless for dose; only counts while using headphones.",
+   "sources": [
+    {
+     "citation": "WHO: Deafness and hearing loss, safe listening",
+     "url": "https://www.who.int/news-room/questions-and-answers/item/deafness-and-hearing-loss-safe-listening"
+    },
+    {
+     "citation": "Lancet Commission on dementia prevention, intervention and care 2024",
+     "url": "https://www.thelancet.com/commissions-do/dementia-prevention-intervention-and-care"
+    }
+   ]
+  },
+  {
+   "metric": "environmental_audio_exposure",
+   "displayName": "Ambient noise",
+   "tier": 4,
+   "evidenceScore": 2,
+   "availabilityScore": 4,
+   "interestScore": 2,
+   "actionability": 2,
+   "whyItMatters": "The owner removed it on 2026-09-06. The traffic-noise and CVD literature uses residential Lden, not what a watch hears (your own voice, gyms, concerts). Low interpretive value.",
+   "bestView": "Hidden.",
+   "pitfalls": "Not comparable with environmental-noise epidemiology.",
+   "sources": [
+    {
+     "citation": "Google Trends wearable set (retrieved 27 Sep 2026): 'apple watch noise' 0.44x (mixes the Noise app with device-noise queries)",
+     "url": "https://trends.google.com/trends/explore?date=today%205-y&q=apple%20watch%20heart%20rate,apple%20watch%20vitals,apple%20watch%20hypertension,apple%20watch%20cardio%20recovery,apple%20watch%20noise"
+    }
+   ]
+  },
+  {
+   "metric": "mindful_minutes",
+   "displayName": "Mindful minutes",
+   "tier": 4,
+   "evidenceScore": 1.5,
+   "availabilityScore": 1,
+   "interestScore": 2,
+   "actionability": 4,
+   "whyItMatters": "The owner removed it on 2026-09-06. Meditation effects are modest (transcendental meditation \u22123.3 mmHg systolic, fading after 3 months). Meditation was rated useful by 50% of wearable users (JMIR 2023), but data are sparse.",
+   "bestView": "Hidden; Breathe-session HRV already lands in the HRV series.",
+   "pitfalls": "Only logs sessions started in an app.",
+   "sources": [
+    {
+     "citation": "Effects of transcendental meditation on blood pressure: meta-analysis. J Cardiovasc Nurs 2022",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/35412731/"
+    }
+   ]
+  },
+  {
+   "metric": "handwashing",
+   "displayName": "Handwashing",
+   "tier": 4,
+   "evidenceScore": 2,
+   "availabilityScore": 0.5,
+   "interestScore": 0.5,
+   "actionability": 4,
+   "whyItMatters": "Hand hygiene RCTs: each handwashing event is linked to ~3% lower daily probability of a respiratory infection. It stopped arriving on 2026-08-20 and was removed on request.",
+   "bestView": "Hidden.",
+   "pitfalls": "The watch's detection must be enabled; counts are not a quality measure.",
+   "sources": [
+    {
+     "citation": "Effect of hand hygiene frequency on acute respiratory infections: meta-analysis. Epidemiol Infect 2022",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC9044525/"
+    }
+   ]
+  },
+  {
+   "metric": "AFib History / atrial fibrillation burden",
+   "displayName": "AFib burden",
+   "tier": 4,
+   "evidenceScore": 5,
+   "availabilityScore": 0,
+   "interestScore": 2,
+   "actionability": 1,
+   "whyItMatters": "Only available to users with a diagnosed AF who enable AFib History, so there is no data for this owner. The screening side is covered by the alerts strip.",
+   "bestView": "Hidden unless rows appear.",
+   "pitfalls": "Weekly burden estimate; not for undiagnosed users.",
+   "sources": [
+    {
+     "citation": "Apple white paper (Nov 2024): AFib History raises tachogram cadence to 15 min",
+     "url": "https://www.apple.com/health/pdf/Heart_Rate_Calorimetry_Activity_on_Apple_Watch_November_2024.pdf"
+    }
+   ]
+  },
+  {
+   "metric": "dietary_water, protein, carbohydrates, total_fat, fiber, dietary_sugar, caffeine, vitamin_d, magnesium",
+   "displayName": "Nutrition intake",
+   "tier": 4,
+   "evidenceScore": 4,
+   "availabilityScore": 0,
+   "interestScore": 3,
+   "actionability": 5,
+   "whyItMatters": "Energy intake is increasingly valued (49.6% useful in 2023 vs 36% in 2016), but this owner logs food in the app's own Food tab, which never writes to Apple Health, so these HealthKit metrics are empty. Link to Food instead of duplicating it.",
+   "bestView": "A 'Nutrition lives in Food' link from the Activity/TDEE area.",
+   "pitfalls": "Showing empty nutrition cards reads as missing data.",
+   "sources": [
+    {
+     "citation": "JMIR 2025 7-year survey: energy consumed rated useful by 49.6% (2023) vs 36% (2016)",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC11888053/"
+    }
+   ]
+  },
+  {
+   "metric": "Apple Sleep Score (watchOS 26), body_composition_reports.body_score",
+   "displayName": "Composite scores (Sleep Score, scale body score)",
+   "tier": 4,
+   "evidenceScore": 1,
+   "availabilityScore": 1,
+   "interestScore": 2,
+   "actionability": 1,
+   "whyItMatters": "Proprietary composite scores break the app's no-composite-score rule. Apple's Sleep Score isn't exported through HealthKit to Health Auto Export anyway. Interest is small ('apple watch sleep score' 0.13x heart rate). Show the underlying duration and regularity instead.",
+   "bestView": "Omit.",
+   "pitfalls": "Opaque weighting; changes with firmware.",
+   "sources": [
+    {
+     "citation": "MacRumors: watchOS 26 Sleep Score",
+     "url": "https://www.macrumors.com/2025/09/10/watchos-26-sleep-score/"
+    },
+    {
+     "citation": "Google Trends wearable set (retrieved 27 Sep 2026): 'apple watch sleep score' 0.13x 'apple watch heart rate'",
+     "url": "https://trends.google.com/trends/explore?date=today%205-y&q=apple%20watch%20heart%20rate,apple%20watch%20sleep%20score,apple%20watch%20afib,apple%20watch%20respiratory%20rate,apple%20watch%20wrist%20temperature"
+    }
+   ]
+  },
+  {
+   "metric": "push_count, uv_exposure, sexual_activity, number_of_times_fallen, apple_move_time, legacy Fitbit names (oxygen_saturation, skin_temperature, active_zone_minutes, sleeping_heart_rate)",
+   "displayName": "Not applicable / dead / private",
+   "tier": 4,
+   "evidenceScore": 0,
+   "availabilityScore": 0,
+   "interestScore": 0,
+   "actionability": 0,
+   "whyItMatters": "Push count is wheelchair-mode data that is likely misdetected. UV never produced a row. Sexual activity is private and removed on request. Falls are events (they belong in the alerts strip, not a card). Move time is for wheelchair and child Move rings. The Fitbit names are dead since 2026-08-30.",
+   "bestView": "Hide; keep the aggregation rules so historical rows don't fall through.",
+   "pitfalls": "Leaving them as permanent '\u2014' cards adds noise.",
+   "sources": [
+    {
+     "citation": "Apple white paper (Nov 2024): wheelchair pushes and Move/Exercise definitions",
+     "url": "https://www.apple.com/health/pdf/Heart_Rate_Calorimetry_Activity_on_Apple_Watch_November_2024.pdf"
+    }
+   ]
+  }
+ ],
+ "heroProposal": "HERO: 6 tiles, in this order. No composite health score, per the house rule. Each tile shows the value, the change vs the previous window, one colour band against a cited reference, and one line of why it matters.\n1. SLEEP: last night's asleep time + 7-night average vs \u22657 h (AASM/SRS). Second line: wake-time spread over 14 nights (regularity; Windred 2024). It is first because it is the only complete result each morning and the most-searched wearable topic (2.5x heart rate).\n2. STEPS: 7-day average vs a 7,000-8,000/day band (Paluch 2022, Ding 2025), with today's running count underneath.\n3. EXERCISE THIS WEEK: rolling 7-day moderate-equivalent minutes vs 150, plus Hevy strength days vs \u22652 (WHO 2020).\n4. RESTING HR: 7-day average vs the personal 60-day baseline in \u00b1bpm (Zhang 2016 / Aune 2017 context).\n5. WEIGHT: 7-day moving average + kg/week over 28 days, with the date of the last weigh-in. BMI and WHtR as small secondary text.\n6. OVERNIGHT VITALS: HRV 7-day vs its personal \u00b11 SD band as the headline number, plus a status line 'all in your usual range' / 'N outside your range' across HRV, respiratory rate, SpO\u2082, wrist temperature and sleeping HR. This is modelled on Apple's own Vitals app (a count of outliers vs your own range, not a weighted score). If that feels too close to a score, swap it for a plain HRV-vs-baseline tile.\nVO\u2082 max is deliberately NOT a hero tile. It is sporadic (only estimated on Outdoor Walk, Run or Hike workouts; about 2 run days since July), reads 4.5-6.3 ml/kg/min low, and only 14% of people land in the right band. It leads the Cardio fitness section instead, showing its date.\n\nSECTION ORDER:\n0. Alerts strip (conditional): rendered only when an event exists in the window: irregular rhythm, high/low HR, hypertension, sleep apnea notification, ECG, fall. This needs Health Auto Export's notification arrays ingested first.\n1. Hero (the 6 tiles above).\n2. Sleep:\n   - asleep-time bars with a 7 h line\n   - bed/wake timeline and regularity spread\n   - stages as a stacked bar with Awake as its own segment and an accuracy note\n   - breathing disturbances over 30 nights\n3. Activity:\n   - steps (+ distance as a secondary figure)\n   - weekly exercise minutes + Hevy strength days\n   - active energy vs Move goal\n   - flights climbed with a \u22655/day line\n   - stand hours framed as sitting breaks\n   - daily burn (active + basal) handed to Food\n4. Heart & overnight vitals:\n   - resting HR vs baseline\n   - HRV band\n   - SpO\u2082 with the 95% line\n   - respiratory rate\n   - wrist temperature deviation\n   - walking HR trend\n   - day heart-rate range (day view only)\n5. Body:\n   - merged weight 7-day average + kg/week\n   - body fat and lean mass on one chart from one device\n   - waist-to-height when a Hevy waist exists\n   - BMI as context\n   - collapsed 'More from the scale'\n6. Cardio fitness:\n   - VO\u2082 max (latest + date + \u00b16 band + FRIEND/HUNT3 placement; dots over 6-12 months)\n   - cardio recovery per workout, like-for-like only\n   - physical effort\n7. Mobility (compact cards):\n   - walking speed with the \u22651.0 m/s line\n   - step length, asymmetry, double support\n   - stair speed\n   - 6-minute walk estimate\n   - walking steadiness only if rows appear\n8. Daily habits & environment:\n   - time in daylight\n   - toothbrushing\n   - headphone weekly dose only if the owner re-enables it\n9. Workouts: Apple workouts with HR curves. Running dynamics and cycling distance live inside the workout detail, never as permanent cards.\n\nHIDDEN (tier 4): ambient noise, mindful minutes, handwashing, AFib burden, HealthKit nutrition (link to Food instead), Sleep Score / scale body score, push count, UV, sexual activity, legacy Fitbit names."
+}

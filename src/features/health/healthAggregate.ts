@@ -1,0 +1,574 @@
+// Pure aggregation functions over raw health_metrics points — collapses
+// point-in-time rows (one per incoming sample, any source) into daily
+// numbers for rings/summary cards/charts. Kept separate from healthApi.ts
+// (which only fetches) so these are trivially unit-testable without a DB.
+import { getAggregationType } from './healthMetrics'
+import type { HealthMetric } from './api/healthApi'
+
+// ── Intra-stream duplicate collapse (display-level, sum metrics only) ───────
+// A SINGLE stream can carry overlapping samples of the same physical activity:
+// starting a Fitness-app workout makes HealthKit hold both the regular step
+// samples AND workout-associated ones, and Health Auto Export exports every
+// sample with only its START time (no interval end) — so Apple's own
+// interval-overlap dedup can't be replicated here. Live proof (2026-07-20,
+// 16–17h, watch stream): 88 of 94 minutes had TWO points with essentially the
+// same qty (106.86025364796929 vs …26 — float-noise twins), inflating the day
+// by thousands of steps even though only one stream was involved.
+//
+// Backstop rule: within one stream, one MINUTE keeps only its LARGEST point —
+// overlapping same-minute samples are the same seconds counted twice, and the
+// larger one is the fuller window. Applied only to 'sum'-type metrics (for
+// average/minmaxavg/latest, duplicate values don't distort the result). This
+// is display-level only: the DB keeps every raw point — the ROOT fix is
+// Health Auto Export's "Aggregate Data" export setting; this backstop
+// protects whatever raw shape actually arrives. Cross-minute window overlap
+// (a ~2-min sample every ~40s) is NOT fully recoverable without interval
+// ends; expect residual inflation until the source exports pre-aggregated
+// data.
+//
+// REAL BUG, round 1 (2026-09-06, live-confirmed): "stream" used to mean the
+// raw `source` STRING, but Health Auto Export's `source` is a "|"-joined list
+// of contributing devices that is NEITHER deduped NOR consistently ordered
+// between exports -- the SAME hour, from the SAME device(s), showed up as
+// both `"Furkan's Apple Watch"` and `"Furkan's Apple Watch|Furkan's Apple
+// Watch"`. The original fix canonicalized this string (dedupe + sort the
+// "|"-joined parts, fold a stray NBSP) and grouped duplicates by canonical
+// source + exact minute \u2014 round 2 below replaced that grouping key entirely
+// (source turned out not to matter at all), so no canonicalization is done
+// in THIS file any more. `health-export-webhook`'s own `canonicalizeSource`
+// still canonicalizes the `source` COLUMN at ingest time (a separate,
+// still-valid fix \u2014 it keeps future re-deliveries from bloating the table
+// with as many redundant rows), it's only this display-side grouping that
+// changed.
+//
+// REAL BUG, round 2 (2026-09-06, live-confirmed the SAME day -- round 1
+// wasn't enough): after triggering Health Auto Export's 7-day/30-day
+// reconciliation automations, basal energy showed ~5400 kcal/day average
+// (physiologically implausible -- a real BMR is ~1600-2400) and steps read
+// 2-3x too high. Live data showed why: EVERY hour carries not two but often
+// THREE rows -- two exact duplicates (round 1's bug) PLUS a THIRD at a
+// DIFFERENT minute (e.g. "06:00:00" qty=83.7 and "06:39:34" qty=64.2) whose
+// `source` is a DIFFERENT device combination (just "Watch" instead of
+// "Watch|Lasci 17 Pro") -- so round 1's per-minute-per-canonical-source key
+// treated it as a genuinely different stream and summed it on top. But the
+// VALUES across an hour's rows are all nearly identical regardless of which
+// devices are listed (confirmed live: 77.55 / 77.64 / 77.60 kcal for the
+// SAME real hour) -- these are not independent per-device contributions to
+// add together, they are Health Auto Export re-reporting the SAME real
+// hour's already-merged HealthKit total multiple times as its sync
+// automations re-fire (the regular near-real-time sync, then a
+// reconciliation pass minutes or days later) -- the `source` list just
+// reflects whichever raw samples happened to be available to HealthKit's
+// own merge at THAT sync moment, not a second real measurement. Health Auto
+// Export's "Time Grouping: Hours" setting means there is supposed to be
+// exactly ONE row per hour; every extra row for an hour already seen is a
+// re-delivery, never additional data -- so grouping must be by HOUR ONLY,
+// deliberately ignoring both the exact minute and the source string.
+// Verified against real numbers: a naive sum for one partial day totaled
+// 3309 kcal of basal energy; hour-level collapse (this function) brings the
+// SAME rows down to 1164 kcal -- a sane ~80 kcal/hour. Still display-level
+// only (the DB keeps every raw row) and still 'sum'-type metrics only --
+// average/minmaxavg/latest metrics don't distort this way.
+function hourKeyOf(p: HealthMetric): string {
+  return p.recorded_at.slice(0, 13) // "yyyy-MM-ddTHH", UTC hour bucket
+}
+
+function minuteKeyOf(p: HealthMetric): string {
+  return p.recorded_at.slice(0, 16) // "yyyy-MM-ddTHH:mm"
+}
+
+// A row landing exactly on the hour (":00:00") is Health Auto Export's own
+// "this hour is now closed, here is its final total" delivery -- prefer it
+// over a mid-hour "since last sync, here's the partial total so far" row
+// even when the partial happens to read larger (a partial should never beat
+// a closed hour's own number). Only when NEITHER row in an hour landed
+// exactly on the boundary (both partial) does the larger of the two win, as
+// the more complete partial available.
+function isHourBoundary(p: HealthMetric): boolean {
+  return p.recorded_at.slice(14, 19) === '00:00' // minute:second
+}
+
+// ROUND 3 (H-06): the hour-only rule above assumes every hour is HOUR-grain
+// ("Time Grouping: Hours"). Rows exported before that setting, and any raw
+// per-sample export, are MINUTE-grain: dozens of independent increments per
+// hour (the 2026-07-20 rows documented at the top of this file). Keeping one
+// row per hour for those turned an hour of 60 × 50 steps into 50.
+//
+// The two shapes differ in how many distinct minutes an hour carries:
+//   - hour-grain re-delivery: the closed-hour row (possibly re-sent under
+//     several source strings, all at the same instant) plus the odd mid-hour
+//     partial from a "Since Last Sync" run. Background syncs fire at most a
+//     few times an hour, so live hours carry 1-3 distinct minutes.
+//   - minute-grain: one row per active minute, typically dozens.
+// So an hour with at least MINUTE_GRAIN_MIN_MINUTES distinct minutes is read
+// as minute-grain: same-minute twins still collapse (largest wins, the
+// float-noise workout twins) and the minutes are SUMMED. Fewer distinct
+// minutes keeps the hour-only rule, so every live-confirmed re-delivery case
+// behaves exactly as before. Known limit: a minute-grain hour with only a few
+// active minutes (a quiet hour) is read as hour-grain and keeps its largest
+// row, an undercount of a small number rather than a double count.
+// scripts/verify-health-source-dedup.cjs locks in both shapes.
+const MINUTE_GRAIN_MIN_MINUTES = 7
+
+function collapseIntraStreamMinuteDuplicates(points: HealthMetric[]): HealthMetric[] {
+  const byHour = new Map<string, HealthMetric[]>()
+  const passthrough: HealthMetric[] = []
+  for (const p of points) {
+    if (typeof p.value?.qty !== 'number') { passthrough.push(p); continue }
+    const k = hourKeyOf(p)
+    const arr = byHour.get(k)
+    if (arr) arr.push(p)
+    else byHour.set(k, [p])
+  }
+  const kept: HealthMetric[] = []
+  let dropped = 0
+  for (const rows of byHour.values()) {
+    if (rows.length === 1) { kept.push(rows[0]); continue }
+    const perMinute = new Map<string, HealthMetric>()
+    for (const p of rows) {
+      const k = minuteKeyOf(p)
+      const cur = perMinute.get(k)
+      if (!cur || (p.value.qty as number) > (cur.value.qty as number)) perMinute.set(k, p)
+    }
+    if (perMinute.size >= MINUTE_GRAIN_MIN_MINUTES) {
+      kept.push(...perMinute.values())
+      dropped += rows.length - perMinute.size
+      continue
+    }
+    let winner = rows[0]
+    for (const p of rows.slice(1)) {
+      const pIsBoundary = isHourBoundary(p), wIsBoundary = isHourBoundary(winner)
+      if (pIsBoundary && !wIsBoundary) winner = p
+      else if (pIsBoundary === wIsBoundary && (p.value.qty as number) > (winner.value.qty as number)) winner = p
+    }
+    kept.push(winner)
+    dropped += rows.length - 1
+  }
+  if (dropped === 0) return points
+  return [...kept, ...passthrough]
+}
+
+/** The points a 'sum' metric actually counts after the duplicate collapse —
+ *  for anything that counts or lists rows (e.g. "2× that day" for
+ *  toothbrushing) so it agrees with the total shown next to it. Other metrics
+ *  come back unchanged. */
+export function collapsedPoints(metricName: string, points: HealthMetric[]): HealthMetric[] {
+  return getAggregationType(metricName) === 'sum' ? collapseIntraStreamMinuteDuplicates(points) : points
+}
+
+const KJ_PER_KCAL = 4.184
+const ENERGY_METRICS = new Set(['active_energy', 'basal_energy_burned'])
+
+function qtyOf(point: HealthMetric, metricName?: string): number | null {
+  const v = point.value?.qty
+  if (typeof v !== 'number') return null
+  if (metricName && ENERGY_METRICS.has(metricName) && point.unit?.toLowerCase().includes('kj')) {
+    return v / KJ_PER_KCAL
+  }
+  return v
+}
+
+function groupByDate(points: HealthMetric[]): Map<string, HealthMetric[]> {
+  const byDate = new Map<string, HealthMetric[]>()
+  for (const p of points) {
+    const arr = byDate.get(p.date)
+    if (arr) arr.push(p)
+    else byDate.set(p.date, [p])
+  }
+  return byDate
+}
+
+// Collapses a group of points into a single number per the metric's
+// aggregation type. Apple Health is the sole data source, so this stays
+// source-blind on purpose — no cross-stream resolution needed.
+function aggregateGroup(points: HealthMetric[], metricName: string): number | null {
+  const aggType = getAggregationType(metricName)
+  const qtys = points.map(p => qtyOf(p, metricName)).filter((v): v is number => v != null)
+  if (aggType === 'sum') return qtys.length ? qtys.reduce((a, b) => a + b, 0) : null
+  if (aggType === 'average') return qtys.length ? qtys.reduce((a, b) => a + b, 0) / qtys.length : null
+  if (aggType === 'latest') {
+    const sorted = [...points].sort((a, b) => a.recorded_at.localeCompare(b.recorded_at))
+    for (let i = sorted.length - 1; i >= 0; i--) {
+      const q = qtyOf(sorted[i], metricName)
+      if (q != null) return q
+    }
+    return null
+  }
+  // 'minmaxavg' (heart_rate) and 'sleep' (sleep_analysis) have their own
+  // shape-specific merges below — this generic path shouldn't be called for
+  // them, but average-of-qty is a harmless fallback if it ever is.
+  return qtys.length ? qtys.reduce((a, b) => a + b, 0) / qtys.length : null
+}
+
+export interface DailyValue { date: string; value: number }
+
+// One number per day for sum/average/latest-type metrics.
+export function computeDailySeries(metricName: string, points: HealthMetric[]): DailyValue[] {
+  let resolved = points
+  if (getAggregationType(metricName) === 'sum') resolved = collapseIntraStreamMinuteDuplicates(resolved)
+  const byDate = groupByDate(resolved)
+  const result: DailyValue[] = []
+  for (const [date, pts] of byDate) {
+    const value = aggregateGroup(pts, metricName)
+    if (value != null) result.push({ date, value })
+  }
+  return result.sort((a, b) => a.date.localeCompare(b.date))
+}
+
+export interface HourlyValue { hour: number; label: string; value: number | null }
+
+// One number per hour-of-day (0-23) for a single day's points — used by the
+// Steps/Energy sections' hourly bar charts. Uses the browser's local timezone
+// to bucket (recorded_at is an absolute instant either way). An hour with no
+// reading is null, never 0: every future hour of today and every Watch-off
+// hour is a gap, not a measured zero.
+export function computeHourlyBuckets(metricName: string, points: HealthMetric[]): HourlyValue[] {
+  let resolved = points
+  if (getAggregationType(metricName) === 'sum') resolved = collapseIntraStreamMinuteDuplicates(resolved)
+  const byHour = new Map<number, HealthMetric[]>()
+  for (const p of resolved) {
+    const h = new Date(p.recorded_at).getHours()
+    const arr = byHour.get(h)
+    if (arr) arr.push(p)
+    else byHour.set(h, [p])
+  }
+  return Array.from({ length: 24 }, (_, h) => {
+    const v = aggregateGroup(byHour.get(h) ?? [], metricName)
+    return { hour: h, label: `${String(h).padStart(2, '0')}:00`, value: v == null ? null : Math.round(v * 100) / 100 }
+  })
+}
+
+// A missing field is null, never 0: an Avg-only point used to report
+// "0–0 bpm" as the day's range, and an empty hour plotted 0 bpm.
+export interface DailyRange { date: string; min: number | null; max: number | null; avg: number | null }
+
+function rangeFromPoints(pts: HealthMetric[]): { min: number | null; max: number | null; avg: number | null } | null {
+  const mins = pts.map(p => p.value?.Min).filter((v): v is number => typeof v === 'number')
+  const maxs = pts.map(p => p.value?.Max).filter((v): v is number => typeof v === 'number')
+  const avgs = pts.map(p => p.value?.Avg).filter((v): v is number => typeof v === 'number')
+  if (!mins.length && !maxs.length && !avgs.length) return null
+  return {
+    min: mins.length ? Math.min(...mins) : null,
+    max: maxs.length ? Math.max(...maxs) : null,
+    avg: avgs.length ? avgs.reduce((a, b) => a + b, 0) / avgs.length : null,
+  }
+}
+
+// heart_rate-shaped points ({Min,Avg,Max} per point) — a real day range needs
+// the min of all mins / max of all maxes, not just the last window's numbers.
+export function computeHeartRateDailySeries(points: HealthMetric[]): DailyRange[] {
+  const byDate = groupByDate(points)
+  const result: DailyRange[] = []
+  for (const [date, pts] of byDate) {
+    const range = rangeFromPoints(pts)
+    if (range) result.push({ date, ...range })
+  }
+  return result.sort((a, b) => a.date.localeCompare(b.date))
+}
+
+export interface HourlyRange { hour: number; label: string; min: number | null; max: number | null; avg: number | null }
+
+// Same as computeHeartRateDailySeries but bucketed by hour-of-day, for a
+// single day's "Day" view.
+export function computeHeartRateHourlySeries(points: HealthMetric[]): HourlyRange[] {
+  const byHour = new Map<number, HealthMetric[]>()
+  for (const p of points) {
+    const h = new Date(p.recorded_at).getHours()
+    const arr = byHour.get(h)
+    if (arr) arr.push(p)
+    else byHour.set(h, [p])
+  }
+  return Array.from({ length: 24 }, (_, h) => {
+    const range = rangeFromPoints(byHour.get(h) ?? []) ?? { min: null, max: null, avg: null }
+    return { hour: h, label: `${String(h).padStart(2, '0')}:00`, ...range }
+  })
+}
+
+export interface SleepSummary { date: string; core: number; rem: number; deep: number; awake: number; total: number }
+
+const SLEEP_STAGE_KEYS = ['Core', 'REM', 'Deep', 'Awake', 'Asleep'] as const
+
+// sleep_analysis arrives in two shapes depending on Health Auto Export's
+// "Summarize" setting: pre-aggregated (one point/day with
+// core/rem/deep/awake/totalSleep fields already computed) or raw per-segment
+// points ({value:'Core'|'Deep'|'REM'|'Awake'|'Asleep', qty: hours, start, end}
+// — one row per sleep-stage transition). Handle both.
+
+// The night a sleep session belongs to = the day you WOKE UP (Apple's own
+// convention). For pre-aggregated sessions we derive it from the session's
+// own sleepEnd (a local-time string like "2026-07-17 07:27:08 +0200" — the
+// date part IS the local wake day, no timezone math needed) rather than
+// trusting the ingest-stamped `date` blindly: an interrupted night can arrive
+// as multiple sessions, and if the exporter ever attributes a pre-midnight
+// session to the previous calendar day, keying on `date` alone would split
+// one real night across two chart bars. Rows without a parseable sleepEnd
+// (manual entries, raw segments) keep their stored date.
+export function sleepNightKey(p: HealthMetric): string {
+  const end = p.value?.sleepEnd
+  if (typeof end === 'string' && /^\d{4}-\d{2}-\d{2}/.test(end) && /[+-]\d{2}:?\d{2}$/.test(end.trim())) {
+    // Apple exports a local-time string with an explicit offset ("...+0200") —
+    // its date part IS the local wake day, use it directly (no tz math).
+    return end.slice(0, 10)
+  }
+  return p.date
+}
+
+// "2026-07-17 02:00:51 +0200" (Health Auto Export's local-time format) → ms.
+// REAL cross-engine bug: V8 (Chrome/desktop) is lenient and parses this
+// space-separated form directly, but Safari/JavaScriptCore (every iPhone,
+// including the installed PWA) returns Invalid Date for it. When it did,
+// sessionMs returned null → overlapping sleep sessions were treated as
+// "untimed" → NOT overlap-merged → summed, so a single night with a duplicate
+// re-report showed as e.g. 14h on mobile while desktop correctly showed 8.6h.
+// Fix: normalize to strict ISO 8601 ("...T..HH:MM:SS+02:00") first, which
+// every engine parses; fall back to the raw string only if that somehow fails.
+function sessionMs(s: unknown): number | null {
+  if (typeof s !== 'string') return null
+  const iso = s.trim()
+    .replace(' ', 'T')                              // date/time separator
+    .replace(/\s*([+-]\d{2}):?(\d{2})$/, '$1:$2')   // " +0200" → "+02:00"
+  let t = new Date(iso).getTime()
+  if (!Number.isFinite(t)) t = new Date(s).getTime()
+  return Number.isFinite(t) ? t : null
+}
+
+// Drops pre-aggregated sessions that are DUPLICATE REPORTS of another session,
+// and keeps everything else so the night's real blocks are summed.
+//
+// REAL BUG this replaced (reported as "Health sleep is far lower than Apple
+// Health"): the old rule was "any time-overlap at all ⇒ same sleep ⇒ keep only
+// the longest", which is right for a re-report and catastrophic for a normal
+// interrupted night. When you wake briefly and go back to sleep, Apple counts
+// the awake stretch at the edge of BOTH blocks, so the two session windows
+// overlap by a few minutes while being genuinely different sleep. Measured:
+// 23:10→03:20 (4.10h) plus 03:15→07:40 (4.35h) — five minutes of edge overlap
+// — reported 4.35h where Apple showed 8.45h. Half the night, deleted by a
+// rounding artifact at a boundary.
+//
+// The distinction that actually holds: a duplicate re-report is substantially
+// CONTAINED in the session it duplicates (an exact resend, or a partial
+// "Since Last Sync" delivery that shares a start and stops early, or the
+// 02:00→07:27 / 03:36→07:27 subset pair seen live). Two real blocks of one
+// night touch only at the edges. So a session is dropped only when ≥90% of its
+// own window lies inside a better-ranked session's window; anything less is
+// kept and summed. Sessions with unparseable times are kept as-is (can't prove
+// containment).
+//
+// Ranking is (totalSleep desc, duration desc, input order) so the survivor of a
+// duplicate pair is deterministic and is always the fullest report — the answer
+// no longer depends on the order the query returned rows in.
+//
+// ⚠️ This merge still cannot invent data that never arrived. HAE's "Since Last
+// Sync" mode can split a night and never send the early piece; two aggregate
+// rows carry no per-segment timestamps, so a genuinely lost sub-session is
+// unrecoverable. Mitigation is HAE's "Previous 7 Days" reconciliation
+// automation, which re-sends a complete night as ONE row. But do NOT diagnose a
+// short night as a delivery gap without checking the rows first — the case
+// documented here as "the early session never arrived" (2026-07-17, Apple 8h8m
+// vs our 4h56m) is exactly what this bug also looks like from the outside.
+const SESSION_CONTAINMENT_RATIO = 0.9
+function mergeSleepSessions(preAggregated: HealthMetric[]): HealthMetric[] {
+  interface Sess { p: HealthMetric; start: number; end: number; total: number; order: number }
+  const timed: Sess[] = []
+  const untimed: HealthMetric[] = []
+  const seenExact = new Set<string>()
+  for (const p of preAggregated) {
+    const start = sessionMs(p.value?.sleepStart)
+    const end   = sessionMs(p.value?.sleepEnd)
+    // Identity is the whole session, never its start alone: two rows can share
+    // a sleepStart and still be different reports (a partial delivery and the
+    // complete re-export). Keying on the start alone made the answer depend on
+    // which row the query returned first.
+    const key   = [p.value?.sleepStart ?? p.recorded_at, p.value?.sleepEnd ?? '', p.value?.totalSleep ?? ''].join('|')
+    if (seenExact.has(key)) continue // the same session under two row keys
+    seenExact.add(key)
+    if (start != null && end != null && end > start) {
+      timed.push({ p, start, end, total: p.value?.totalSleep ?? 0, order: timed.length })
+    } else {
+      untimed.push(p)
+    }
+  }
+  // Fullest report first, so a duplicate is always judged against the better
+  // copy of itself and the survivor never depends on row order.
+  const ranked = [...timed].sort((a, b) =>
+    (b.total - a.total) || ((b.end - b.start) - (a.end - a.start)) || (a.order - b.order))
+
+  const isDuplicateOf = (s: Sess, other: Sess): boolean => {
+    const overlap = Math.min(s.end, other.end) - Math.max(s.start, other.start)
+    if (overlap <= 0) return false
+    const span = s.end - s.start
+    return span > 0 && overlap / span >= SESSION_CONTAINMENT_RATIO
+  }
+
+  const survivors: Sess[] = []
+  for (const s of ranked) {
+    if (!survivors.some(k => isDuplicateOf(s, k))) survivors.push(s)
+  }
+  // Back to chronological order — callers render these as a timeline.
+  survivors.sort((a, b) => a.start - b.start)
+  return [...untimed, ...survivors.map(s => s.p)]
+}
+
+export interface SleepSessionInterval { startMs: number; endMs: number; totalSleep: number }
+
+// The night's distinct sleep session windows (post overlap-merge), for the
+// session-interval timeline. Session-level ONLY — the source data carries no
+// per-stage segment timing (verified against every live row), so this is the
+// finest honest granularity available.
+export function extractSleepSessions(points: HealthMetric[], nightKey: string): SleepSessionInterval[] {
+  const pts = points.filter(p => sleepNightKey(p) === nightKey && typeof p.value?.totalSleep === 'number')
+  return mergeSleepSessions(pts)
+    .map(p => {
+      const start = sessionMs(p.value?.sleepStart)
+      const end   = sessionMs(p.value?.sleepEnd)
+      return start != null && end != null && end > start
+        ? { startMs: start, endMs: end, totalSleep: p.value?.totalSleep ?? 0 }
+        : null
+    })
+    .filter((s): s is SleepSessionInterval => s !== null)
+    .sort((a, b) => a.startMs - b.startMs)
+}
+
+// (Derived sleep metrics used to live here — a heuristic 0–100 "sleep score"
+// and a clinical sleep-efficiency % — BOTH removed on explicit user decision:
+// only measured values are shown for sleep. Don't reintroduce derived sleep
+// metrics without asking.)
+
+// ── THE SLEEP CONTRACT (T36) ─────────────────────────────────────────────────
+// Every surface that reports a night (this page, ai-proxy's get_health_stats,
+// phone-gateway's sleep action) must agree on these five rules:
+//   1. A night belongs to the day you WOKE UP (sleepNightKey).
+//   2. A night with any manual row uses ONLY its manual rows — a manual entry
+//      is a deliberate correction, never summed with or shadowed by the Watch.
+//   3. Pre-aggregated sessions: drop one only when ≥90% of its window lies
+//      inside a better-ranked session (a re-report); sum the rest (an
+//      interrupted night is two real blocks).
+//   4. Raw per-stage rows: Core + REM + Deep + plain Asleep = total sleep;
+//      Awake is reported but never added to the total.
+//   5. No derived sleep metrics (score, efficiency) — measured values only.
+// scripts/verify-sleep-aggregate.cjs pins this file; verify-ai-sleep-merge.cjs
+// checks the edge copies against it (they don't read manual rows yet — rule 2
+// — and the script reports that as a known divergence).
+export function computeSleepSummary(points: HealthMetric[]): SleepSummary[] {
+  const byDate = new Map<string, HealthMetric[]>()
+  for (const p of points) {
+    const key = sleepNightKey(p)
+    const arr = byDate.get(key)
+    if (arr) arr.push(p)
+    else byDate.set(key, [p])
+  }
+  const result: SleepSummary[] = []
+  for (const [date, pts] of byDate) {
+    // A manual entry is a deliberate correction for that specific night — it
+    // must win over synced Watch data for the same date, not just get summed
+    // or shadowed by it. Real bug this fixes: whenever ANY Watch point (even
+    // a pre-aggregated one) existed for a date, the branch below took it
+    // unconditionally and never looked at the manual per-segment rows for
+    // that same date, so a manual backfill silently never showed up whenever
+    // the Watch had already reported something.
+    const manualPts = pts.filter(p => p.source === 'manual')
+    const sourcePts = manualPts.length > 0 ? manualPts : pts
+
+    const preAggregated = sourcePts.filter(p => typeof p.value?.totalSleep === 'number')
+    if (preAggregated.length > 0) {
+      // SUM every DISTINCT session for the night — a night can genuinely have
+      // more than one session (interrupted sleep, nap). But sessions that
+      // OVERLAP in time are the same sleep reported twice with different
+      // windows (verified live: after a webhook redeploy + re-export, one
+      // night had a 02:00→07:27/4.94h row AND a 03:36→…/3.34h subset row —
+      // naive summing showed 8.28h for what was really 4.94h of sleep).
+      // mergeSleepSessions clusters overlapping [sleepStart, sleepEnd]
+      // windows and keeps only the longest session per cluster.
+      const kept = mergeSleepSessions(preAggregated)
+      let core = 0, rem = 0, deep = 0, awake = 0, total = 0
+      for (const p of kept) {
+        const v = p.value
+        core += v.core ?? 0; rem += v.rem ?? 0; deep += v.deep ?? 0; awake += v.awake ?? 0
+        total += v.totalSleep ?? ((v.core ?? 0) + (v.rem ?? 0) + (v.deep ?? 0))
+      }
+      result.push({ date, core, rem, deep, awake, total })
+      continue
+    }
+
+    const stageSum: Record<string, number> = { Core: 0, REM: 0, Deep: 0, Awake: 0, Asleep: 0 }
+    for (const p of sourcePts) {
+      const stage = p.value?.value
+      const qty = p.value?.qty
+      if (typeof stage === 'string' && typeof qty === 'number' && SLEEP_STAGE_KEYS.includes(stage as typeof SLEEP_STAGE_KEYS[number])) {
+        stageSum[stage] += qty
+      }
+    }
+    const core = stageSum.Core, rem = stageSum.REM, deep = stageSum.Deep, awake = stageSum.Awake
+    const total = core + rem + deep + stageSum.Asleep
+    if (total > 0 || awake > 0) result.push({ date, core, rem, deep, awake, total })
+  }
+  return result.sort((a, b) => a.date.localeCompare(b.date))
+}
+
+// Average share of Deep/Core/REM (normalized to sum to 1) across nights with
+// real stage data — used to back-fill a manually-logged night (the user only
+// enters a total when the Watch wasn't worn to sleep) with a realistic
+// breakdown instead of leaving it as one undifferentiated bucket. Awake time
+// is deliberately excluded from the split (a manual entry has no way to know
+// how long you were briefly awake, so it's left at 0 rather than guessed).
+export function estimateSleepStageProportions(summaries: SleepSummary[]): { deep: number; core: number; rem: number } | null {
+  const withStages = summaries
+    .map(s => ({ ...s, stageTotal: s.deep + s.core + s.rem }))
+    .filter(s => s.stageTotal > 0)
+  if (!withStages.length) return null
+  const fractions = withStages.map(s => ({ deep: s.deep / s.stageTotal, core: s.core / s.stageTotal, rem: s.rem / s.stageTotal }))
+  const avgOf = (key: 'deep' | 'core' | 'rem') => fractions.reduce((sum, f) => sum + f[key], 0) / fractions.length
+  return { deep: avgOf('deep'), core: avgOf('core'), rem: avgOf('rem') }
+}
+
+// Sleep durations are read as wall-clock, never as a decimal fraction of an
+// hour: "6h 52m" is instantly comparable to a bedtime/wake time, "6.8h" makes
+// the reader do the ×60 themselves. Lived in three hand-copied definitions
+// (SleepSection, Daily's HealthCard) while HealthStatsPanel printed a raw
+// `toFixed(1)` instead — one exported formatter so every sleep hour figure in
+// the app reads the same way.
+export function formatSleepHours(hours: number): string {
+  if (!Number.isFinite(hours)) return '—'
+  const total = Math.round(hours * 60)
+  return `${Math.floor(total / 60)}h ${total % 60}m`
+}
+
+/** Nights (wake-day keys) that carry a manual entry. A manual entry replaces
+ *  the Watch's figures for that night (computeSleepSummary), so anything drawn
+ *  from the Watch's own sessions must say it was replaced. */
+export function manualNightKeys(points: HealthMetric[]): Set<string> {
+  const out = new Set<string>()
+  for (const p of points) if (p.source === 'manual') out.add(sleepNightKey(p))
+  return out
+}
+
+/** Where each night's rows came from, keyed by the SAME wake-day key the
+ *  summary uses (keying by the stored `date` attached the "Manual" pill and the
+ *  tooltip sources to the wrong night whenever the two differed). */
+export function sleepSourcesByNight(points: HealthMetric[]): Map<string, Set<string>> {
+  const out = new Map<string, Set<string>>()
+  for (const p of points) {
+    const key = sleepNightKey(p)
+    const set = out.get(key) ?? new Set<string>()
+    set.add(p.source === 'manual' ? 'Manual' : (p.source || 'Unknown'))
+    out.set(key, set)
+  }
+  return out
+}
+
+export type SleepStageKey = 'deep' | 'core' | 'rem' | 'unstaged' | 'awake'
+export interface SleepStageShare { key: SleepStageKey; hours: number; pct: number }
+
+/** Each stage's share of the time in the sleep window (asleep + awake). The
+ *  old bar divided by total SLEEP while also drawing Awake, so the shares came
+ *  to more than 100% and the Awake segment was clipped. Sleep with no stage
+ *  (Apple's plain "Asleep") is its own 'unstaged' share so the bar still sums
+ *  to the whole night. */
+export function sleepStageShares(s: SleepSummary): SleepStageShare[] {
+  const staged = s.deep + s.core + s.rem
+  const unstagedRaw = Math.max(0, s.total - staged)
+  const unstaged = unstagedRaw < 1 / 60 ? 0 : unstagedRaw
+  const parts: [SleepStageKey, number][] = [['deep', s.deep], ['core', s.core], ['rem', s.rem], ['unstaged', unstaged], ['awake', s.awake]]
+  const denom = parts.reduce((a, [, h]) => a + Math.max(0, h), 0)
+  return parts.map(([key, h]) => ({ key, hours: Math.max(0, h), pct: denom > 0 ? (Math.max(0, h) / denom) * 100 : 0 }))
+}

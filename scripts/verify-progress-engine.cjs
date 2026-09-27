@@ -15,6 +15,15 @@
  * restored user-override > routine > default expectation priority, and the
  * new 'measured_fact' evidence tier.
  *
+ * Section 20 locks in the 2026-09-27 audit round: set-by-set targets that
+ * keep each set's own load (top set + backoffs), a concrete "repeat and add
+ * a rep" target when reps repeat, fixed-rep routine prescriptions (5×5) and
+ * dropset-free set counts, honest below-minimum copy, no default range for
+ * bodyweight reps, per-unit trend floors for seconds/metres, a symmetric
+ * trend significance test, assisted-weight load reductions, cause-specific
+ * "no target" copy, the shared set formatter, the single e1RM formula, the
+ * chart series and direction-aware weekly change flags.
+ *
  * Proves everything against the REAL un-mocked modules (loaded via
  * sucrase — this repo has no unit-test runner by convention).
  *
@@ -23,7 +32,7 @@
 require('sucrase/register')
 
 const {
-  classifyLoadStructure, buildCanonicalSessions, bestComparableSet, totalComparableReps, totalForMetric,
+  classifyLoadStructure, buildCanonicalSessions, bestComparableSet,
 } = require('../src/features/training/progress-engine/normalize')
 const {
   isMetricEligible, metricValueOf, selectRepresentativeSet, quantityFor, totalQuantity, isCleanProgression,
@@ -43,8 +52,17 @@ const { evaluateExerciseProgress } = require('../src/features/training/progress-
 const { RULE_CATALOG } = require('../src/features/training/progress-engine/ruleCatalog')
 const {
   actionLabel, evidenceLabel, scopeLabel, buildExplanationSentence, progressEvidenceExplanation,
-  recommendationEvidenceExplanation, improvementScore,
+  recommendationEvidenceExplanation, improvementScore, nextTargetUnavailableText, recentTrendMeaning,
+  currentLoadProgressMeaning, dataQualityFlagCopy, recentTrendLabel, currentLoadProgressLabel,
 } = require('../src/features/training/progress-engine/copy')
+const { routineTargetFromSets, repRangeLabel } = require('../src/features/training/progress-engine/policies')
+const { formatSetGroups, formatSessionSets } = require('../src/features/training/progress-engine/format')
+const { planStayTargets, nextTargetBlocker } = require('../src/features/training/progress-engine/targets')
+const { slopeTStatistic, currentLoadFloors } = require('../src/features/training/progress-engine/trend')
+const { computeWeeklyChangeFlags } = require('../src/features/training/progress-engine/weeklyChanges')
+const { sessionBestE1rm } = require('../src/features/training/progress-engine/metricStrategy')
+const { est1RM, EST_1RM_MAX_REPS } = require('../src/features/training/progressAggregate')
+const { buildExerciseChartRows } = require('../src/features/training/progress-engine/chartSeries')
 
 let passed = 0, failed = 0
 function check(name, cond, detail) {
@@ -106,7 +124,7 @@ console.log('\n== 2. buildCanonicalSessions ==')
   check('warmup excluded entirely from allSets', sessions[0].allSets.length === 3)
   check('failure set retained and tagged, counted as a working set', sessions[1].comparableWorkingSets.some(s => s.kind === 'failure'))
   check('sessions sorted ascending by date', sessions[0].date < sessions[1].date)
-  check('totalComparableReps sums working sets (failure included)', totalComparableReps(sessions[1]) === 27)
+  check('totalQuantity sums working sets (failure included)', totalQuantity(sessions[1].comparableWorkingSets, 'est1rm') === 27)
 }
 
 console.log('\n== 3. metricStrategy — real per-metric dispatch (§1) ==')
@@ -191,7 +209,7 @@ console.log('\n== 3b. weight_duration composite honesty (BLOCKER #5) ==')
       row('w1', '2026-08-01', 'weightedplank', 2, 20, null, 'normal', { duration_seconds: 50 })]
     const s = buildCanonicalSessions(rows, 'weightedplank')[0]
     check('#5: a weight_duration session has no representative set for the duration metric', bestComparableSet(s, 'duration') === null)
-    check('#5: a weight_duration session has no evaluable total for the duration metric', totalForMetric(s, 'duration') === null)
+    check('#5: a weight_duration session has no evaluable total for the duration metric', totalQuantity(s.comparableWorkingSets, 'duration') === null)
   }
 }
 
@@ -266,7 +284,7 @@ console.log('\n== 5. evaluatePair ==')
     const latestSess = buildCanonicalSessions([row('w2', '2026-09-02', 'ex1', 1, 100, 5), row('w2', '2026-09-02', 'ex1', 2, 90, 6), row('w2', '2026-09-02', 'ex1', 3, 95, 5)], 'ex1')[0]
     const r = evaluatePair(prevSess, latestSess, DEFAULT_EXPECTATION(5, 8, 3), 'est1rm', DEFAULT_POLICY)
     check('mixed_load -> evaluationScope and rangeCompliance both NOT_EVALUATED', r.evaluationScope === 'NOT_EVALUATED' && r.rangeCompliance === 'NOT_EVALUATED')
-    check('mixed_load -> currentAction is HOLD_STEADY, never a fabricated recommendation', r.currentAction === 'HOLD_STEADY')
+    check('mixed_load -> currentAction is LOG_COMPARABLE_SESSION (never HOLD_STEADY, never a fabricated recommendation)', r.currentAction === 'LOG_COMPARABLE_SESSION')
   }
   // A 2-set backoff session's compliance scope is TOP_SET_ONLY.
   {
@@ -436,7 +454,10 @@ console.log('\n== 7. buildNextTargets — action-aware (§6), null on set-count 
     check('a session with a null rep count -> buildNextTargets returns null', buildNextTargets(incompleteSess, DEFAULT_EXPECTATION(6, 10, 1), 'est1rm', 'BUILD_AT_CURRENT_LOAD', DEFAULT_POLICY, null, null, []) === null)
 
     const holdSess = buildCanonicalSessions(uniformRows('w1', '2026-09-02', 'hold', 60, [8, 8, 8]), 'hold')[0]
-    check('HOLD_STEADY (no forward motion, no top-range) issues no numeric target either', buildNextTargets(holdSess, DEFAULT_EXPECTATION(6, 10, 3), 'est1rm', 'HOLD_STEADY', DEFAULT_POLICY, null, null, []) === null)
+    const holdTarget = buildNextTargets(holdSess, DEFAULT_EXPECTATION(6, 10, 3), 'est1rm', 'HOLD_STEADY', DEFAULT_POLICY, null, null, [])
+    check('HOLD_STEADY (repeated reps) now issues a CONCRETE target: +1 rep on the first set below the top (9/8/8)',
+      holdTarget !== null && holdTarget.nextSession.setTargets.map(t => t.quantity).join('/') === '9/8/8' && holdTarget.nextSession.loadKg === 60)
+    check('REVIEW_LOAD_REDUCTION issues no numeric target (intent unknown)', buildNextTargets(holdSess, DEFAULT_EXPECTATION(6, 10, 3), 'est1rm', 'REVIEW_LOAD_REDUCTION', DEFAULT_POLICY, null, null, []) === null)
   }
 }
 
@@ -816,8 +837,10 @@ console.log('\n== 12. evaluateExerciseProgress — worked examples ==')
     const result = evaluateExerciseProgress({ exerciseTemplateId: 'backsquat', metricKind: 'est1rm', sessions, expectation }, DEFAULT_POLICY)
     check('Back Squat: both MISSING_PRESCRIBED_SET and MIXED_LOAD_SESSION flagged', result.dataQualityFlags.includes('MISSING_PRESCRIBED_SET') && result.dataQualityFlags.includes('MIXED_LOAD_SESSION'))
     check('Back Squat: evaluationScope NOT_EVALUATED, never a fabricated compliance read', result.evaluationScope === 'NOT_EVALUATED')
-    check('Back Squat: currentAction HOLD_STEADY', result.currentAction === 'HOLD_STEADY')
+    check('Back Squat: currentAction LOG_COMPARABLE_SESSION', result.currentAction === 'LOG_COMPARABLE_SESSION')
     check('Back Squat: no numeric progression recommendation for a mixed-load session', result.nextTargets === null)
+    check('Back Squat: the blocker names the real cause (mixed_load)', result.nextTargetBlocker === 'mixed_load')
+    check('Back Squat: the no-target copy talks about mixed loads, not logging in general', nextTargetUnavailableText(result).includes('mixed loads'))
   }
 
   // Assisted Pull-up — metric dispatch inversion + TOO_EARLY_TO_JUDGE.
@@ -907,6 +930,8 @@ console.log('\n== 16. RULE_CATALOG completeness (documentation-sync requirement)
     'LOAD_PR', 'REP_PR_AT_LOAD', 'TOTAL_REPS_PR_AT_LOAD', 'ESTIMATED_STRENGTH_PR', 'TARGET_COMPLETED', 'PROGRESSION_STREAK',
     'BUILD_AT_CURRENT_LOAD', 'READY_TO_INCREASE', 'CONFIRM_BEFORE_INCREASING', 'CONFIRM_AT_CURRENT_LOAD',
     'HOLD_STEADY', 'REVIEW_LOAD_REDUCTION', 'WATCH_FOR_PLATEAU', 'WATCH_FOR_REGRESSION', 'INSUFFICIENT_DATA',
+    'LOG_COMPARABLE_SESSION', 'REPS_UNCHANGED', 'REPS_DECLINED',
+    'DATA_QUALITY_PROGRAM_CHANGED',
   ])
   let missing = []
   for (const code of emittedCodes) if (!RULE_CATALOG[code]) missing.push(code)
@@ -1142,31 +1167,33 @@ console.log('\n== 19. Third correction round — 7 boundary fixes ==')
       result.currentAction === 'BUILD_AT_CURRENT_LOAD' && result.reasons.some(r => r.code === 'AWAITING_TOP_RANGE_CONFIRMATION' && r.values.confirmations === 1))
   }
 
-  // BLOCKER 2 — TOP_SET_ONLY must never independently produce
-  // READY_TO_INCREASE; that action requires the FULL prescribed structure
-  // (ALL_PRESCRIBED_WORKING_SETS), never a top-set-only read.
+  // BLOCKER 2 (revised 2026-09-27) — a top set alone is never enough for
+  // READY_TO_INCREASE: the backoff work must be complete AND every backoff
+  // set must clear the minimum. When it does, every prescribed set has been
+  // checked, and the top set may go up (otherwise a top-set scheme could
+  // never be told to add load at all).
   {
-    // A COMPLETE top_set_and_backoff session (2 of a 2-set target — the
-    // program genuinely prescribes just a top set + one backoff set), top
-    // set at the range max. evaluationScope here IS a real TOP_SET_ONLY
-    // (never NOT_EVALUATED — this is testing the READY_TO_INCREASE gate
-    // itself, not blocker 1's completeness gate).
-    const prevSession = buildCanonicalSessions([row('w1', '2026-08-01', 'topsetready', 1, 55, 8), row('w1', '2026-08-01', 'topsetready', 2, 50, 8)], 'topsetready')[0]
-    const latestSession = buildCanonicalSessions([row('w2', '2026-08-08', 'topsetready', 1, 55, 10), row('w2', '2026-08-08', 'topsetready', 2, 50, 10)], 'topsetready')[0]
+    const prevSession = buildCanonicalSessions([row('w1', '2026-08-01', 'topsetready', 1, 55, 8), row('w1', '2026-08-01', 'topsetready', 2, 50, 4)], 'topsetready')[0]
+    const latestSession = buildCanonicalSessions([row('w2', '2026-08-08', 'topsetready', 1, 55, 10), row('w2', '2026-08-08', 'topsetready', 2, 50, 4)], 'topsetready')[0]
     const expectation = DEFAULT_EXPECTATION(6, 10, 2)
     const pair = evaluatePair(prevSession, latestSession, expectation, 'est1rm', DEFAULT_POLICY)
-    check('2 fixture: evaluationScope really is TOP_SET_ONLY (a genuine top_set_and_backoff read, not blocker 1\'s NOT_EVALUATED)', pair.evaluationScope === 'TOP_SET_ONLY')
+    check('2 fixture: evaluationScope really is TOP_SET_ONLY', pair.evaluationScope === 'TOP_SET_ONLY')
     check('2 fixture: rangeCompliance really is ALL_SETS_AT_TOP (the top set hit the range max)', pair.rangeCompliance === 'ALL_SETS_AT_TOP')
-    check('2: TOP_SET_ONLY + ALL_SETS_AT_TOP never independently produces READY_TO_INCREASE', pair.currentAction !== 'READY_TO_INCREASE')
+    check('2: top set at the top but a backoff set BELOW the minimum never produces READY_TO_INCREASE', pair.currentAction !== 'READY_TO_INCREASE')
 
-    // Contrast: the SAME read shape via ALL_PRESCRIBED_WORKING_SETS (a
-    // plain uniform session, exact count, all sets at the top) DOES reach
-    // READY_TO_INCREASE — proving the gate is scope-specific, not a blanket
-    // suppression of the action.
+    const prevOk = buildCanonicalSessions([row('w1', '2026-08-01', 'topsetready2', 1, 55, 8), row('w1', '2026-08-01', 'topsetready2', 2, 50, 10)], 'topsetready2')[0]
+    const latestOk = buildCanonicalSessions([row('w2', '2026-08-08', 'topsetready2', 1, 55, 10), row('w2', '2026-08-08', 'topsetready2', 2, 50, 10)], 'topsetready2')[0]
+    const okPair = evaluatePair(prevOk, latestOk, expectation, 'est1rm', DEFAULT_POLICY)
+    check('2: a COMPLETE top-set + backoff session (top at the top, every backoff >= minimum) DOES reach READY_TO_INCREASE', okPair.currentAction === 'READY_TO_INCREASE')
+
+    const missingBackoff = buildCanonicalSessions([row('w2', '2026-08-08', 'topsetready3', 1, 55, 10), row('w2', '2026-08-08', 'topsetready3', 2, 50, 10)], 'topsetready3')[0]
+    const missingPair = evaluatePair(prevOk, missingBackoff, DEFAULT_EXPECTATION(6, 10, 3), 'est1rm', DEFAULT_POLICY)
+    check('2: a top-set session missing a prescribed backoff set never reaches READY_TO_INCREASE', missingPair.currentAction !== 'READY_TO_INCREASE')
+
     const prevUniform = buildCanonicalSessions(uniformRows('w1', '2026-08-01', 'uniformready', 60, [8, 8]), 'uniformready')[0]
     const latestUniform = buildCanonicalSessions(uniformRows('w2', '2026-08-08', 'uniformready', 60, [10, 10]), 'uniformready')[0]
     const uniformPair = evaluatePair(prevUniform, latestUniform, expectation, 'est1rm', DEFAULT_POLICY)
-    check('2 contrast: ALL_PRESCRIBED_WORKING_SETS + ALL_SETS_AT_TOP DOES reach READY_TO_INCREASE (the gate is scope-specific)',
+    check('2 contrast: ALL_PRESCRIBED_WORKING_SETS + ALL_SETS_AT_TOP reaches READY_TO_INCREASE',
       uniformPair.evaluationScope === 'ALL_PRESCRIBED_WORKING_SETS' && uniformPair.currentAction === 'READY_TO_INCREASE')
   }
 
@@ -1316,6 +1343,254 @@ console.log('\n== 19. Third correction round — 7 boundary fixes ==')
     check('6 fixture: repDelta really is REP_INCREASE for this est1rm-kind pair', estResult.repDelta === 'REP_INCREASE')
     const estSentence = buildExplanationSentence(estResult)
     check('6: an est1rm-kind REP_INCREASE explanation keeps "Same load, and total reps went up" (no regression)', estSentence.includes('Same load') && estSentence.includes('total reps'))
+  }
+}
+
+console.log('\n== 20. Audit round (2026-09-27) — targets, expectations, trend gates, copy ==')
+{
+  const evalRows = (templateId, rows, metricKind, expectation) => {
+    const sessions = buildCanonicalSessions(rows, templateId)
+    return { sessions, result: evaluateExerciseProgress({ exerciseTemplateId: templateId, metricKind, sessions, expectation, equipmentClass: 'barbell' }, DEFAULT_POLICY) }
+  }
+  const backoffRows = (workoutId, date, templateId, top, backoffs) => [
+    row(workoutId, date, templateId, 0, top[0], top[1]),
+    ...backoffs.map(([w, r], i) => row(workoutId, date, templateId, i + 1, w, r)),
+  ]
+
+  // T1 — top-set + backoff: backoff reps stay at the BACKOFF load.
+  {
+    const rows = [
+      ...backoffRows('w1', '2026-09-01', 'topback', [100, 5], [[80, 10], [80, 10]]),
+      ...backoffRows('w2', '2026-09-08', 'topback', [102.5, 5], [[80, 9], [80, 8]]),
+    ]
+    const { result } = evalRows('topback', rows, 'est1rm', DEFAULT_EXPECTATION(5, 8, 3))
+    const t = result.nextTargets
+    check('T1: top-set+backoff still gets a target', t !== null)
+    check('T1: set targets keep each set\'s OWN load (102.5 kg top, 80 kg backoffs)', t && t.nextSession.setTargets.map(x => x.weightKg).join(',') === '102.5,80,80')
+    check('T1: +1 rep goes on the top set (below the top of 5-8): 6, then the backoffs\' own 9/8', t && t.nextSession.setTargets.map(x => x.quantity).join('/') === '6/9/8')
+    check('T1: the headline never glues the backoff reps onto the top-set weight',
+      t && t.nextSession.headline.includes('102.5 kg × 6 · 80 kg × 9/8') && !t.nextSession.headline.includes('Stay at 102.5 kg'))
+    check('T1: the exposure shows per-load groups, never one weight on every set',
+      formatSessionSets(result.currentState.latest.sets, 'est1rm') === '102.5 kg × 5 · 80 kg × 9/8')
+    check('T1: the explanation sentence uses the grouped exposure too', buildExplanationSentence(result).includes('102.5 kg × 5 · 80 kg × 9/8'))
+  }
+  // T1b — a complete top-set + backoff session at the top: only the TOP set's load goes up.
+  {
+    const rows = [
+      ...backoffRows('w1', '2026-09-01', 'topready', [100, 7], [[80, 10], [80, 10]]),
+      ...backoffRows('w2', '2026-09-08', 'topready', [100, 8], [[80, 10], [80, 10]]),
+    ]
+    const { result } = evalRows('topready', rows, 'est1rm', DEFAULT_EXPECTATION(5, 8, 3))
+    check('T1b: complete top-set + backoff at the top -> READY_TO_INCREASE', result.currentAction === 'READY_TO_INCREASE')
+    const t = result.nextTargets
+    check('T1b: only the top set goes up (102.5 × 5), the backoffs keep 80 × 10/10', t && t.nextSession.setTargets.map(x => `${x.weightKg}x${x.quantity}`).join(',') === '102.5x5,80x10,80x10')
+    check('T1b: the headline says "top set"', t && t.nextSession.headline.includes('top set'))
+  }
+
+  // T2 — repeating the same reps is a concrete "add a rep", not a logging problem.
+  {
+    const rows = [...uniformRows('w1', '2026-09-01', 'repeat', 60, [10, 10, 10]), ...uniformRows('w2', '2026-09-08', 'repeat', 60, [10, 10, 10])]
+    const { result } = evalRows('repeat', rows, 'est1rm', DEFAULT_EXPECTATION(8, 12, 3))
+    check('T2: same reps at the same load -> HOLD_STEADY ("Repeat and add a rep")', result.currentAction === 'HOLD_STEADY' && actionLabel('HOLD_STEADY') === 'Repeat and add a rep')
+    check('T2: it carries a concrete target 11/10/10 at 60 kg', result.nextTargets && result.nextTargets.nextSession.setTargets.map(x => x.quantity).join('/') === '11/10/10')
+    check('T2: headline reads "Stay at 60 kg: aim for 11/10/10 reps — one more rep on set 1"',
+      result.nextTargets && result.nextTargets.nextSession.headline.startsWith('Stay at 60 kg: aim for 11/10/10 reps') && result.nextTargets.nextSession.headline.includes('one more rep on set 1'))
+    check('T2: no target blocker (the session WAS clean)', result.nextTargetBlocker === null)
+    const sentence = buildExplanationSentence(result)
+    check('T2: explanation says repeat + add a rep, never blames logging', sentence.includes('add one rep') && !/clean|log/i.test(sentence))
+    check('T2: REPS_UNCHANGED reason recorded', result.reasons.some(r => r.code === 'REPS_UNCHANGED'))
+  }
+  // T2b — a dip at the same load: "get back to last time".
+  {
+    const rows = [...uniformRows('w1', '2026-09-01', 'dip', 60, [10, 10, 10]), ...uniformRows('w2', '2026-09-08', 'dip', 60, [10, 9, 8])]
+    const { result } = evalRows('dip', rows, 'est1rm', DEFAULT_EXPECTATION(8, 12, 3))
+    check('T2b: a rep decline at the same load -> REP_DECLINE + HOLD_STEADY', result.repDelta === 'REP_DECLINE' && result.currentAction === 'HOLD_STEADY')
+    check('T2b: target is last time\'s 10/10/10 (RECOVER_PREVIOUS)', result.nextTargets && result.nextTargets.nextSession.explanationCode === 'RECOVER_PREVIOUS' && result.nextTargets.nextSession.setTargets.map(x => x.quantity).join('/') === '10/10/10')
+    check('T2b: the floor stays this session\'s 10/9/8', result.nextTargets && result.nextTargets.nextSession.minimumSetReps.join('/') === '10/9/8')
+    check('T2b: explanation names the drop', buildExplanationSentence(result).includes('dropped from 30 to 27'))
+  }
+  // planStayTargets unit rules.
+  {
+    const e = DEFAULT_EXPECTATION(8, 12, 3)
+    check('stay plan: the first set BELOW THE MINIMUM gets the rep first', planStayTargets([set(1, 60, 12), set(2, 60, 7), set(3, 60, 6)], null, 'est1rm', e).position === 1)
+    check('stay plan: all sets at the top -> repeat to confirm, no fabricated 13th rep', planStayTargets([set(1, 60, 12), set(2, 60, 12), set(3, 60, 12)], null, 'est1rm', e).code === 'REPEAT_TO_CONFIRM')
+    const noRange = DEFAULT_EXPECTATION(null, null, 3)
+    check('stay plan without a range: the first set below the session\'s best (6/6/5 -> set 3)', planStayTargets([set(1, null, 6), set(2, null, 6), set(3, null, 5)], null, 'reps', noRange).position === 2)
+    const dur = planStayTargets([set(1, null, null, 'normal', { durationSeconds: 45 }), set(2, null, null, 'normal', { durationSeconds: 40 })], null, 'duration', DEFAULT_EXPECTATION(null, null, 2))
+    check('stay plan for a timed hold adds 5 s to the first set below the best', dur.targets.map(t => t.quantity).join('/') === '45/45')
+    const dist = planStayTargets([set(1, null, null, 'normal', { distanceMeters: 400, durationSeconds: 90 })], null, 'distance', DEFAULT_EXPECTATION(null, null, 1))
+    check('stay plan for distance is match-or-beat (no fabricated metre step)', dist.code === 'MATCH_OR_BEAT')
+  }
+
+  // T3 + T4 — the routine's own prescription.
+  {
+    const fixed = routineTargetFromSets([
+      { type: 'warmup', reps: 10, rep_range_start: null, rep_range_end: null },
+      ...Array.from({ length: 5 }, () => ({ type: 'normal', reps: 5, rep_range_start: null, rep_range_end: null })),
+    ])
+    check('T3: a fixed-rep routine (5x5, no range) is the target: 5-5 reps over 5 sets', fixed && fixed.repMin === 5 && fixed.repMax === 5 && fixed.targetSets === 5)
+    const ranged = routineTargetFromSets([{ type: 'normal', reps: null, rep_range_start: 8, rep_range_end: 12 }, { type: 'normal', reps: null, rep_range_start: 8, rep_range_end: 12 }])
+    check('T3: a ranged routine keeps its range', ranged && ranged.repMin === 8 && ranged.repMax === 12 && ranged.targetSets === 2)
+    check('T3: nothing prescribed -> null', routineTargetFromSets([{ type: 'normal', reps: null, rep_range_start: null, rep_range_end: null }]) === null)
+    const withDrop = routineTargetFromSets([
+      ...Array.from({ length: 3 }, () => ({ type: 'normal', reps: null, rep_range_start: 8, rep_range_end: 12 })),
+      { type: 'dropset', reps: null, rep_range_start: 8, rep_range_end: 12 },
+    ])
+    check('T4: a routine dropset never counts as a prescribed working set (3, not 4)', withDrop && withDrop.targetSets === 3)
+    check('repRangeLabel: fixed reps read "5 reps", a range "8-12 reps"', repRangeLabel(5, 5) === '5 reps' && repRangeLabel(8, 12) === '8-12 reps')
+
+    const expectation = resolveExpectation('fivebyfive', 'est1rm', 5, () => fixed, () => null)
+    check('T3: the label says "Your program\'s target: 5 reps"', expectation.label === "Your program's target: 5 reps")
+    const rows = [...uniformRows('w1', '2026-09-01', 'fivebyfive', 100, [5, 5, 5, 5, 5]), ...uniformRows('w2', '2026-09-08', 'fivebyfive', 102.5, [5, 5, 5, 5, 5])]
+    const { result } = evalRows('fivebyfive', rows, 'est1rm', expectation)
+    check('T3: a clean 5x5 after a load increase is on target -> READY_TO_INCREASE, never "below minimum"', result.currentAction === 'READY_TO_INCREASE' && result.rangeCompliance === 'ALL_SETS_AT_TOP')
+    check('T3: next load 105 kg (barbell 2.5)', result.nextTargets && result.nextTargets.nextSession.loadKg === 105)
+
+    const dropExpectation = resolveExpectation('dropready', 'est1rm', 3, () => withDrop, () => null)
+    const dropRows = [
+      ...uniformRows('w1', '2026-09-01', 'dropready', 60, [11, 11, 11]), row('w1', '2026-09-01', 'dropready', 4, 40, 12, 'dropset'),
+      ...uniformRows('w2', '2026-09-08', 'dropready', 60, [12, 12, 12]), row('w2', '2026-09-08', 'dropready', 4, 40, 12, 'dropset'),
+    ]
+    const drop = evalRows('dropready', dropRows, 'est1rm', dropExpectation).result
+    check('T4: 3x12 at the top + a dropset -> READY_TO_INCREASE (no MISSING_PRESCRIBED_SET)', drop.currentAction === 'READY_TO_INCREASE' && drop.dataQualityFlags.length === 0)
+  }
+
+  // T8 — below-minimum copy branches on what actually happened.
+  {
+    const rows = [...uniformRows('w1', '2026-09-01', 'belowmin', 60, [10, 9, 9]), ...uniformRows('w2', '2026-09-08', 'belowmin', 60, [9, 8, 6])]
+    const { result } = evalRows('belowmin', rows, 'est1rm', DEFAULT_EXPECTATION(8, 12, 3))
+    const sentence = buildExplanationSentence(result)
+    check('T8: same load + below minimum never claims the load increased', result.observedTransition === 'LOAD_UNCHANGED' && !/increased/i.test(sentence))
+    check('T8: names the set and the minimum', sentence.includes('set 3 fell below your minimum of 8 (6 reps)'))
+    const upRows = [...uniformRows('w1', '2026-09-01', 'belowup', 60, [10, 10, 10]), ...uniformRows('w2', '2026-09-08', 'belowup', 65, [9, 8, 6])]
+    const up = evalRows('belowup', upRows, 'est1rm', DEFAULT_EXPECTATION(8, 12, 3)).result
+    check('T8: load up + below minimum keeps "Load increased … confirm"', /^Load increased/.test(buildExplanationSentence(up)) && buildExplanationSentence(up).includes('confirm'))
+  }
+
+  // T9 — bodyweight reps: no default range, sub-10 progress counts, no "increment" talk.
+  {
+    const e = resolveExpectation('pullup', 'reps', 3, () => null, () => null)
+    check('T9: bodyweight reps with no saved target -> not_configured, labelled "every extra rep counts"', e.source === 'not_configured' && e.label.includes('every extra rep counts'))
+    const rows = [
+      ...repsOnlyRows('w1', '2026-08-18', 'pullup', [6, 5, 5]),
+      ...repsOnlyRows('w2', '2026-08-25', 'pullup', [6, 6, 5]),
+      ...repsOnlyRows('w3', '2026-09-01', 'pullup', [7, 6, 6]),
+      ...repsOnlyRows('w4', '2026-09-08', 'pullup', [8, 7, 6]),
+    ]
+    const sessions = buildCanonicalSessions(rows, 'pullup')
+    const result = evaluateExerciseProgress({ exerciseTemplateId: 'pullup', metricKind: 'reps', sessions, expectation: e }, DEFAULT_POLICY)
+    check('T9: 6/5/5 -> 8/7/6 builds (never "confirm before increasing")', result.currentAction === 'BUILD_AT_CURRENT_LOAD')
+    check('T9: the recent trend reads PROGRESSING', result.trend.recentProgressTrend === 'PROGRESSING')
+    check('T9: the target is a rep plan with no weight — bring the first lagging set up (8/8/6 reps)', result.nextTargets && result.nextTargets.nextSession.loadKg === null && result.nextTargets.nextSession.headline.includes('8/8/6 reps'))
+    check('T9: with no target saved the copy says every extra rep counts, never "no readable data"', buildExplanationSentence(result).includes('every extra rep counts') && !buildExplanationSentence(result).includes('readable'))
+
+    const readyRows = [...repsOnlyRows('w1', '2026-09-01', 'pullready', [9, 10, 10]), ...repsOnlyRows('w2', '2026-09-08', 'pullready', [10, 10, 10])]
+    const ready = evalRows('pullready', readyRows, 'reps', DEFAULT_EXPECTATION(6, 10, 3)).result
+    check('T9: a bodyweight movement at the top of a saved range -> READY_TO_INCREASE', ready.currentAction === 'READY_TO_INCREASE')
+    check('T9: READY for bodyweight says "add weight … or a harder variation", never "smallest increment"',
+      ready.nextTargets && ready.nextTargets.nextSession.headline.includes('harder variation') && !ready.nextTargets.nextSession.headline.includes('increment') && ready.nextTargets.nextSession.setTargets === null)
+  }
+
+  // T10 — seconds/metres use their own floors.
+  {
+    const pts = totals => totals.map(t => ({ loadStructure: 'uniform_working_load', total: t, comparableSetCount: 3 }))
+    check('T10: a plank climbing 90→135 s totals reads ACCUMULATING (was STABLE_VARIATION on rep floors)',
+      computeCurrentLoadProgress(pts([90, 105, 120, 135]), 'duration', DEFAULT_POLICY).state === 'ACCUMULATING')
+    check('T10: a noisy-but-rising plank (slope ≈ +8.8 s, residual ≈ 4.6) is a real direction, not "stable"',
+      computeCurrentLoadProgress(pts([100, 112, 114, 128, 133]), 'duration', DEFAULT_POLICY).state === 'ACCUMULATING')
+    check('T10: five flat plank sessions can now read POSSIBLE_PLATEAU', computeCurrentLoadProgress(pts([120, 121, 120, 119, 120]), 'duration', DEFAULT_POLICY).state === 'POSSIBLE_PLATEAU')
+    const f = currentLoadFloors('duration', [100, 100], DEFAULT_POLICY)
+    check('T10: duration floors are a share of the mean (4% noise, 1%/session slope)', Math.abs(f.noise - 4) < 1e-9 && Math.abs(f.accumulation - 1) < 1e-9)
+    check('T10: rep floors stay absolute (1.0 / 0.3)', currentLoadFloors('est1rm', [30, 30], DEFAULT_POLICY).noise === 1 && currentLoadFloors('reps', [30], DEFAULT_POLICY).accumulation === 0.3)
+  }
+
+  // T11 — the same evidence bar in both directions.
+  {
+    const pts = totals => totals.map(t => ({ loadStructure: 'uniform_working_load', total: t, comparableSetCount: 3 }))
+    const up = computeCurrentLoadProgress(pts([24, 27, 25, 28, 27, 30]), 'est1rm', DEFAULT_POLICY)
+    const down = computeCurrentLoadProgress(pts([30, 27, 29, 26, 27, 24]), 'est1rm', DEFAULT_POLICY)
+    check('T11: a noisy climb and its mirror-image decline get MIRRORED states', (up.state === 'ACCUMULATING') === (down.state === 'DECLINING') && up.state !== down.state)
+    check('T11: the noisy climb is no longer read as "stable"', up.state === 'ACCUMULATING')
+    const noisyUp = computeCurrentLoadProgress(pts([20, 26, 22, 28, 24, 30]), 'est1rm', DEFAULT_POLICY)
+    const noisyDown = computeCurrentLoadProgress(pts([30, 24, 28, 22, 26, 20]), 'est1rm', DEFAULT_POLICY)
+    check('T11: a slope that doesn\'t clear the t-test reads STABLE_VARIATION in BOTH directions', noisyUp.state === 'STABLE_VARIATION' && noisyDown.state === 'STABLE_VARIATION')
+    check('T11: slopeTStatistic is symmetric in sign', slopeTStatistic(0.94, 1.1, 6) === slopeTStatistic(-0.94, 1.1, 6))
+  }
+
+  // Assisted — MORE assistance is a load reduction to review, less is progress.
+  {
+    const rows = [...uniformRows('w1', '2026-09-01', 'moreassist', 30, [8, 8, 8]), ...uniformRows('w2', '2026-09-08', 'moreassist', 40, [8, 8, 8])]
+    const { result } = evalRows('moreassist', rows, 'assistedWeight', DEFAULT_EXPECTATION(6, 10, 3))
+    check('assisted: more assistance -> REVIEW_LOAD_REDUCTION (not a silent hold)', result.currentAction === 'REVIEW_LOAD_REDUCTION')
+    check('assisted: the copy says "Assistance increased"', buildExplanationSentence(result).startsWith('Assistance increased'))
+    const readyRows = [...uniformRows('w1', '2026-09-01', 'assistready', 20, [9, 10, 10]), ...uniformRows('w2', '2026-09-08', 'assistready', 20, [10, 10, 10])]
+    const ready = evalRows('assistready', readyRows, 'assistedWeight', DEFAULT_EXPECTATION(6, 10, 3)).result
+    check('assisted READY: "cut assistance … down from", never "up from"', ready.nextTargets && ready.nextTargets.nextSession.headline.includes('cut assistance') && ready.nextTargets.nextSession.headline.includes('down from') && !ready.nextTargets.nextSession.headline.includes('up from'))
+  }
+
+  // Blockers — the ACTUAL cause, never a generic "not clean".
+  {
+    const rows = [...uniformRows('w1', '2026-09-01', 'shortsets', 60, [10, 10, 10]), ...uniformRows('w2', '2026-09-08', 'shortsets', 60, [10, 10])]
+    const { result } = evalRows('shortsets', rows, 'est1rm', DEFAULT_EXPECTATION(8, 12, 3))
+    check('blocker: 2 logged vs 3 prescribed -> set_count_mismatch', result.nextTargetBlocker === 'set_count_mismatch')
+    check('blocker copy names both counts', nextTargetUnavailableText(result).includes('logged 2') && nextTargetUnavailableText(result).includes('prescribes 3'))
+    const sessions = buildCanonicalSessions(uniformRows('w1', '2026-09-08', 'solo', 50, [8, 8, 8]), 'solo')
+    check('nextTargetBlocker is null for a clean HOLD_STEADY session', nextTargetBlocker(sessions[0], DEFAULT_EXPECTATION(8, 12, 3), 'est1rm', 'HOLD_STEADY') === null)
+    const first = evaluateExerciseProgress({ exerciseTemplateId: 'solo', metricKind: 'est1rm', sessions, expectation: resolveExpectation('solo', 'est1rm', 3, () => null, () => null), equipmentClass: 'barbell' }, DEFAULT_POLICY)
+    check('a single session still gets a "repeat and add a rep" target (9/8/8)', first.currentAction === 'INSUFFICIENT_DATA' && first.nextTargets && first.nextTargets.nextSession.setTargets.map(x => x.quantity).join('/') === '9/8/8')
+  }
+
+  // Formatting + copy vocabulary.
+  {
+    check('formatSetGroups: uniform', formatSetGroups([{ weightKg: 60, quantity: 10 }, { weightKg: 60, quantity: 10 }], 'est1rm') === '60 kg × 10/10')
+    check('formatSetGroups: assisted', formatSetGroups([{ weightKg: 15, quantity: 8 }], 'assistedWeight') === '15 kg assist × 8')
+    check('formatSetGroups: reps only', formatSetGroups([{ weightKg: null, quantity: 6 }, { weightKg: null, quantity: 5 }], 'reps') === '6/5 reps')
+    check('formatSetGroups: duration', formatSetGroups([{ weightKg: null, quantity: 45 }, { weightKg: null, quantity: 70 }], 'duration') === '45s/1m 10s')
+    check('every trend state has a plain-English meaning',
+      ['INSUFFICIENT_HISTORY', 'PROGRESSING', 'FLAT_NORMAL_VARIATION', 'REGRESSION_RISK'].every(st => recentTrendMeaning(st).length > 20 && recentTrendLabel(st))
+      && ['INSUFFICIENT_HISTORY', 'TOO_EARLY_TO_JUDGE', 'BUILDING_BASELINE', 'ACCUMULATING', 'STABLE_VARIATION', 'POSSIBLE_PLATEAU', 'DECLINING'].every(st => currentLoadProgressMeaning(st).length > 20 && currentLoadProgressLabel(st)))
+    check('data-quality flags render as catalog titles, never raw enums', dataQualityFlagCopy('MISSING_PRESCRIBED_SET').title === 'Fewer sets than prescribed' && !dataQualityFlagCopy('MIXED_LOAD_SESSION').title.includes('_'))
+    check('PR events are labelled "6 months", never all-time', RULE_CATALOG.LOAD_PR.title.includes('6 months'))
+    check('READY_TO_INCREASE definition cites ACSM\'s two-session guidance honestly', RULE_CATALOG.READY_TO_INCREASE.shortDefinition.includes('two consecutive sessions'))
+  }
+
+  // One e1RM formula.
+  {
+    check('est1RM is the single formula: 100 × 5 -> 116.7', est1RM(100, 5) === 116.7)
+    check('est1RM returns null above the 12-rep ceiling (shown as "n/a")', EST_1RM_MAX_REPS === 12 && est1RM(60, 15) === null && est1RM(60, null) === null)
+    check('sessionBestE1rm picks the best VALUE (60×8 beats 45×12)', sessionBestE1rm([set(1, 45, 12), set(2, 60, 8)]) === est1RM(60, 8))
+  }
+
+  // T30 — the drill-down chart's series comes from the engine's own points.
+  {
+    const rows = [
+      ...uniformRows('w1', '2026-09-01', 'chart', 60, [10, 10, 10]),
+      ...uniformRows('w2', '2026-09-01', 'chart', 60, [11, 10, 10]), // a second session on the SAME day
+      ...uniformRows('w3', '2026-09-08', 'chart', 62.5, [8, 8, 8]),
+    ]
+    const series = buildExerciseChartRows(buildCanonicalSessions(rows, 'chart'), 'est1rm')
+    check('T30: one row per session, keyed by workout id (two sessions on one date stay distinct)', series.length === 3 && new Set(series.map(r => r.key)).size === 3)
+    check('T30: same-day sessions get distinct x positions on the time axis', series[0].ts !== series[1].ts && series[1].ts < series[2].ts)
+    check('T30: primary = the working load; the load change is marked', series[2].primary === 62.5 && series[2].loadChanged && !series[1].loadChanged)
+    check('T30: est. 1RM is the secondary series', series[0].e1rm === est1RM(60, 10))
+    check('T30: each row carries its own set list for the tooltip', series[2].setsLabel === '62.5 kg × 8/8/8')
+    const assisted = buildExerciseChartRows(buildCanonicalSessions([...uniformRows('a1', '2026-09-01', 'as', 20, [8, 8, 8]), ...uniformRows('a2', '2026-09-08', 'as', 15, [8, 8, 8])], 'as'), 'assistedWeight')
+    check('T30: assisted primary is the assistance kg (the chart flips the axis), with no e1RM line', assisted[1].primary === 15 && assisted[1].e1rm === null && assisted[1].loadChanged)
+  }
+
+  // T29 — weekly change flags use the engine's direction-aware strategies.
+  {
+    const templates = [{ id: 'assist', type: 'bodyweight_assisted' }, { id: 'bench', type: 'weight_reps' }]
+    const weeks = ['2026-08-10', '2026-08-17', '2026-08-24', '2026-08-31']
+    const rows = []
+    weeks.forEach((d, i) => { rows.push(row(`a${i}`, d, 'assist', 0, 40, 8), row(`b${i}`, d, 'bench', 0, 100, 5)) })
+    rows.push(row('a9', '2026-09-08', 'assist', 0, 30, 8), row('b9', '2026-09-08', 'bench', 0, 100, 5))
+    const flags = computeWeeklyChangeFlags(rows, templates, '2026-09-09')
+    const a = flags.find(f => f.templateId === 'assist' && f.kind === 'load')
+    check('T29: 40 → 30 kg assistance flags as a 25% improvement (it never flagged before)', a && Math.abs(a.pct - 0.25) < 1e-9 && a.metricKind === 'assistedWeight')
+    check('T29: an unchanged lift raises no load flag', !flags.some(f => f.templateId === 'bench' && f.kind === 'load'))
+    const worse = [...rows.filter(r => r.workout_id !== 'a9'), row('a9', '2026-09-08', 'assist', 0, 50, 8)]
+    check('T29: MORE assistance never flags as a "load jump"', !computeWeeklyChangeFlags(worse, templates, '2026-09-09').some(f => f.templateId === 'assist' && f.kind === 'load'))
   }
 }
 

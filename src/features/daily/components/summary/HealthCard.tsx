@@ -1,18 +1,20 @@
+import { useMemo } from 'react'
 import { Flame, Footprints, Heart, HeartPulse, Moon, Scale } from 'lucide-react'
 import { Cell, CellHeader, CellLink } from './cellKit'
-import { useHealthMetricSeries } from '../../../training/hooks/useHealthExport'
-import {
-  computeSleepSummary,
-  computeDailySeries, computeHeartRateDailySeries,
-  formatSleepHours as fmtHrs,
-} from '../../../training/healthAggregate'
-import { shiftDateStr } from '../../../../shared/utils/dateUtils'
+import { formatSleepHours as fmtHrs } from '../../../health/healthAggregate'
+import { makeWindow } from '../../../health/healthWindowStats'
+import { useEnergyWindow, useHeartWindow, useMetricWindow, useSleepWindow } from '../../../health/hooks/useHealthWindow'
+import { useLatestBodyweight } from '../../../health/hooks/useBodyweight'
+import { BODYWEIGHT_SOURCE_LABEL } from '../../../health/bodyweight'
+import { todayStr } from '../../../../shared/utils/dateUtils'
+import { useDragScroll } from '../../../../shared/hooks/useDragScroll'
+import { fmtDateEnGB } from '../../../../shared/utils/enGBDate'
 
-// A SCROLLABLE health widget (replaces the sleep-only card): one horizontal
-// snap-strip you swipe through to browse the day's health at a glance —
-// Sleep, Steps, Energy, Heart, Weight — each a compact panel. Every panel
-// reuses the SAME aggregation code as Training → Health, so numbers can't
-// disagree. Deep-dives live in Training; this is the glance.
+// A SCROLLABLE health glance: one horizontal snap-strip — Sleep, Steps,
+// Energy, Heart, Weight — for the day Daily is showing. Every number comes
+// from the same window hooks as the Health page's Day view (one day, same
+// rules, same cache), so the two can't disagree; the weight is the one merged
+// bodyweight series (smart scale + Hevy + Apple Health).
 
 const round = (n: number, d = 0) => { const p = 10 ** d; return Math.round(n * p) / p }
 
@@ -27,50 +29,57 @@ function Panel({ icon, label, children }: { icon: React.ReactNode; label: string
 }
 const Big = ({ children }: { children: React.ReactNode }) => <p className="text-title font-bold leading-none tabular-nums text-fg">{children}</p>
 const Sub = ({ children }: { children: React.ReactNode }) => <p className="text-meta text-fg-muted">{children}</p>
-const Empty = () => <p className="py-1 text-meta text-fg-muted">No data</p>
-import { useDragScroll } from '../../../../shared/hooks/useDragScroll'
-import { fmtDateEnGB } from '../../../../shared/utils/enGBDate'
+const Empty = ({ loading }: { loading: boolean }) => <p className="py-1 text-meta text-fg-muted">{loading ? '…' : 'No data'}</p>
 
 export function HealthCard({ date }: { date: string }) {
   const drag = useDragScroll<HTMLDivElement>()
-  // Sleep (night that ended on `date`) — 2-day window for midnight attribution.
-  const { data: sleepPts = [] } = useHealthMetricSeries('sleep_analysis', shiftDateStr(date, -1), date)
-  const sleep = computeSleepSummary(sleepPts).find(s => s.date === date) ?? null
+  const today = todayStr()
+  const win = useMemo(() => makeWindow(date, date, today), [date, today])
+  const isToday = date === today
 
-  const { data: stepPts = [] }   = useHealthMetricSeries('step_count', date, date)
-  const steps = computeDailySeries('step_count', stepPts).find(d => d.date === date)?.value ?? null
+  const sleep = useSleepWindow(win)
+  const steps = useMetricWindow('step_count', win)
+  const energy = useEnergyWindow(win)
+  const heart = useHeartWindow(win)
+  const weight = useLatestBodyweight(date)
 
-  const { data: energyPts = [] } = useHealthMetricSeries('active_energy', date, date)
-  const energy = computeDailySeries('active_energy', energyPts).find(d => d.date === date)?.value ?? null
-
-  const { data: hrPts = [] }     = useHealthMetricSeries('heart_rate', date, date)
-  const hr = computeHeartRateDailySeries(hrPts).find(d => d.date === date) ?? null
-
-  // Weight is 'latest' — a 30d window, newest wins.
-  const { data: wPts = [] }      = useHealthMetricSeries('weight_body_mass', shiftDateStr(date, -30), date)
-  const wSeries = computeDailySeries('weight_body_mass', wPts)
-  const weight = wSeries.length ? wSeries[wSeries.length - 1] : null
+  const night = sleep.summary.value
+  const stepVal = steps.summary.value
+  const active = energy.activeSummary.value
+  const hr = heart.daily.find(d => d.date === date)
+  const w = weight.data
 
   return (
     <Cell>
-      <CellHeader icon={<HeartPulse />} title="Health" action={<CellLink to="/training">Details</CellLink>} />
+      <CellHeader icon={<HeartPulse />} title="Health" action={<CellLink to={`/health?date=${date}&period=day`}>Details</CellLink>} />
 
       {/* Swipeable strip — snap + edge fade signals there's more to the side */}
       <div {...drag} className={`-mx-1 flex gap-2 overflow-x-auto scrollbar-none scroll-fade-x snap-x-mandatory px-1 pb-1 ${drag.className}`}>
         <Panel icon={<Moon aria-hidden />} label="Sleep">
-          {sleep ? (<><Big>{fmtHrs(sleep.total)}</Big><Sub>slept</Sub></>) : <Empty />}
+          {night != null ? (<><Big>{fmtHrs(night)}</Big><Sub>{isToday ? 'last night' : 'that night'}</Sub></>) : <Empty loading={sleep.isLoading} />}
         </Panel>
         <Panel icon={<Footprints aria-hidden />} label="Steps">
-          {steps != null ? (<><Big>{round(steps).toLocaleString('en-GB')}</Big><Sub>steps today</Sub></>) : <Empty />}
+          {stepVal != null ? (<><Big>{round(stepVal).toLocaleString('en-GB')}</Big><Sub>{isToday ? 'steps so far' : 'steps'}</Sub></>) : <Empty loading={steps.isLoading} />}
         </Panel>
         <Panel icon={<Flame aria-hidden />} label="Energy">
-          {energy != null ? (<><Big>{round(energy)}</Big><Sub>active kcal</Sub></>) : <Empty />}
+          {active != null ? (<><Big>{round(active)}</Big><Sub>active kcal{isToday ? ' so far' : ''}</Sub></>) : <Empty loading={energy.isLoading} />}
         </Panel>
         <Panel icon={<Heart aria-hidden />} label="Heart">
-          {hr ? (<><Big>{round(hr.avg)}</Big><Sub>avg · {round(hr.min)}–{round(hr.max)} bpm</Sub></>) : <Empty />}
+          {hr?.avg != null ? (
+            <>
+              <Big>{round(hr.avg)}</Big>
+              <Sub>avg{hr.min != null && hr.max != null ? ` · ${round(hr.min)}–${round(hr.max)}` : ''} bpm</Sub>
+            </>
+          ) : <Empty loading={heart.isLoading} />}
         </Panel>
         <Panel icon={<Scale aria-hidden />} label="Weight">
-          {weight ? (<><Big>{round(weight.value, 1)}</Big><Sub>kg · {fmtDateEnGB(new Date(weight.date + 'T00:00:00'), { day: 'numeric', month: 'short' })}</Sub></>) : <Empty />}
+          {w ? (
+            <>
+              <Big>{round(w.kg, 1)}</Big>
+              <Sub>kg · {fmtDateEnGB(new Date(w.date + 'T00:00:00'), { day: 'numeric', month: 'short' })}</Sub>
+              <p className="text-micro text-fg-faint">{BODYWEIGHT_SOURCE_LABEL[w.source]}</p>
+            </>
+          ) : <Empty loading={weight.isLoading} />}
         </Panel>
       </div>
     </Cell>

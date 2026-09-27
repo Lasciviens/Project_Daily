@@ -1,0 +1,222 @@
+{
+ "checked": 72,
+ "corrections": [
+  {
+   "metricOrTopic": "breathing_disturbances: validation figures",
+   "claim": "Validation: sensitivity 66.6%, specificity 95.9%. Summary says these come from Apple's own FDA-validation white paper.",
+   "verdict": "imprecise",
+   "correction": "66.6% / 95.9% are from Apple's own sequestered algorithm-testing set (7,220 nights, 2,542 participants). The separate clinical validation study behind FDA clearance (1,499 enrolled, 1,448 completed) reported sensitivity 66.3% (95% CI 62.2\u201370.3) and specificity 98.5% (98.0\u201399.0). The weighted sensitivity hides a big split: 43.4% for moderate apnea and 89.1% for severe. So 'misses about a third of moderate\u2013severe cases' understates it for moderate apnea, where it misses about 57%. Screening-card copy should quote the clinical-study numbers and the moderate/severe split.",
+   "source": "Apple white paper 'Estimating Breathing Disturbances and Sleep Apnea Risk from Apple Watch' (Sept 2024), pp. 5 and 7, Table 3: https://www.apple.com/health/pdf/sleep-apnea/Sleep_Apnea_Notifications_on_Apple_Watch_September_2024.pdf"
+  },
+  {
+   "metricOrTopic": "breathing_disturbances: notification rule, units, design set",
+   "claim": "Events per hour; \u226510 nights in a non-rolling 30-day window starting 30 days after onboarding, \u226550% Elevated; 3,936 design nights / 7,220 test nights; AASM 4% rule; not equivalent to AHI",
+   "verdict": "correct",
+   "correction": "Every number matches the white paper: 3,936 nights from 2,160 participants in design, 7,220 nights from 2,542 participants in testing, and the 4% hypopnea rule. Apple Support adds that the feature is for people aged 18+ without a sleep apnea diagnosis, on Series 9 / Ultra 2 / SE 3 or later.",
+   "source": "Apple white paper Sept 2024, p. 5; https://support.apple.com/en-us/120031"
+  },
+  {
+   "metricOrTopic": "Stand hours: Ekelund 2019 threshold",
+   "claim": "Mortality risk rose gradually from ~7.5\u20139 h and was statistically higher from \u22659.5 h/day",
+   "verdict": "imprecise",
+   "correction": "The paper says the dose-response 'increased gradually from about 7.5 to 9 hours and were more pronounced at greater than 9.5 hours'. It does not say risk became statistically significant only from 9.5 h. The other figures are correct: n=36,383, mean age 62.6, quarters HR 1.00/1.28/1.71/2.63, HR 1.48 (1.22\u20131.79) at 10 h/day and 2.92 (2.24\u20133.83) at 12 h/day. Replace 'statistically higher from \u22659.5 h' with 'more pronounced above 9.5 h'.",
+   "source": "Ekelund U et al. BMJ 2019;366:l4570, https://pmc.ncbi.nlm.nih.gov/articles/PMC6699591/"
+  },
+  {
+   "metricOrTopic": "Stand hours: Ekelund 2016 / 2020, Dunstan 2012",
+   "claim": "Ekelund 2016 >35.5 MET-h/week (~60\u201375 min/day) removed the excess risk of sitting >8 h (HR 1.04, 0.99\u20131.10); Ekelund 2020 n=44,370, 30\u201340 min MVPA; Dunstan n=19, glucose iAUC 6.9\u21925.2, insulin 829\u2192634",
+   "verdict": "correct",
+   "correction": "All verified: 1,005,791 people in 13 sitting-time studies; HR 1.04 (0.99\u20131.10); 60\u201375 min/day moderate activity. Ekelund 2020: 44,370 people in 9 cohorts, ~30\u201340 min/day MVPA. Dunstan: glucose iAUC 6.9 \u2192 5.2 (light) and 4.9 (moderate); insulin 828.6 \u2192 633.6 pmol/L\u00b7h; breaks every 20 min.",
+   "source": "Europe PMC abstract PMID 27475271; https://pmc.ncbi.nlm.nih.gov/articles/PMC7719907/; https://pmc.ncbi.nlm.nih.gov/articles/PMC3329818/"
+  },
+  {
+   "metricOrTopic": "Stand goal range",
+   "claim": "Stand goal adjustable 6\u201312 h, default 12 (MacRumors, secondary)",
+   "verdict": "unverifiable",
+   "correction": "MacRumors does say the goal 'can be dropped to six hours. Twelve hours continues to be the maximum.' Apple's own pages (HT204517, 'Adjust your Activity ring goals') only say you can increase or decrease the Stand hours and give no bounds. Keep it labelled as a secondary source; if the page needs a fixed number, read the user's actual Stand goal instead of hard-coding 12.",
+   "source": "https://www.macrumors.com/2020/09/16/watchos-7-activity-goal-customization/; https://support.apple.com/guide/watch/adjust-your-activity-ring-goals-apd29b30023c/watchos"
+  },
+  {
+   "metricOrTopic": "PAL categories (FAO/WHO/UNU)",
+   "claim": "1.40\u20131.69 / 1.70\u20131.99 / 2.00\u20132.40; \u22651.75 desirable; >2.40 hard to maintain",
+   "verdict": "correct",
+   "correction": "Matches Table 5.3 and the text ('a desirable PAL' corresponds to 1.75 and higher).",
+   "source": "https://www.fao.org/4/y5686e/y5686e07.htm"
+  },
+  {
+   "metricOrTopic": "Apple Watch living meta-analysis 2026",
+   "claim": "82 studies; energy-expenditure error 'inconsistent and frequently large'; SpO2 bias \u22120.04%, LoA \u22124.0 to +3.9; AF sensitivity 0.79, specificity 0.91",
+   "verdict": "correct",
+   "correction": "All match the abstract: 82 studies, 430,052 participants; SpO2 LoA \u22124.00 to 3.94; AF sensitivity 0.79 (0.61\u20130.90), specificity 0.91 (0.81\u20130.96). The same paper's pooled heart-rate LoA is \u22127.19 to +6.64 bpm, which is relevant to the walking-HR noise band below.",
+   "source": "NPJ Digit Med 2026, https://pmc.ncbi.nlm.nih.gov/articles/PMC12823594/"
+  },
+  {
+   "metricOrTopic": "walking_heart_rate_average: noise band",
+   "claim": "\u00b14 bpm \u2248 the watch's heart-rate error at rest (MAE 3.7 bpm), so smaller shifts are noise",
+   "verdict": "imprecise",
+   "correction": "The 3.73 bpm MAE (95% CI 2.97\u20134.49) comes from 39 adults measured lying supine and still each morning (Series 9 / Ultra 2 vs Polar H10). It is not a walking measurement. PPG error during motion is larger: the pooled LoA across conditions is \u22127.19 to +6.64 bpm. Also, the 7-day-median vs 28-day-median comparison averages away per-sample error, so the noise band should come from the user's own week-to-week spread (e.g., the SD of weekly medians), not from single-reading MAE. Keep it labelled HEURISTIC and drop the justification.",
+   "source": "https://pmc.ncbi.nlm.nih.gov/articles/PMC11478500/; https://pmc.ncbi.nlm.nih.gov/articles/PMC12823594/"
+  },
+  {
+   "metricOrTopic": "Physical effort bands (2024 Compendium)",
+   "claim": "Sedentary 1.0\u20131.5, light 1.6\u20132.9, moderate 3.0\u20135.9, vigorous \u22656.0 METs; MET = 3.5 ml/kg/min; Apple excludes HR/temperature/altitude",
+   "verdict": "correct",
+   "correction": "Verified in the Compendium and Apple's HealthKit doc ('excluding other factors such as temperature, altitude, or heart rate'). The repo confirms physical_effort is aggregated as 'average' (healthMetrics.ts:42), so the dilution warning applies to the current code.",
+   "source": "https://pmc.ncbi.nlm.nih.gov/articles/PMC10818145/; https://developer.apple.com/documentation/healthkit/hkquantitytypeidentifier/physicaleffort"
+  },
+  {
+   "metricOrTopic": "Wrist temperature: Apple ovulation study",
+   "claim": "Apple's 2025 study (262 women, 889 cycles) estimated ovulation with MAE 1.22\u20131.59 days in cycles with a \u22650.2 \u00b0C signal",
+   "verdict": "imprecise",
+   "correction": "262 menstruating females aged 14+ were enrolled with 899 cycles; 260 participants with 889 cycles were analysed. The MAE figures are right: 1.59 days in ongoing cycles (Algorithm 1) and 1.22 days in completed cycles (Algorithm 2) with a \u22650.2 \u00b0C signal. Say '260 participants (aged \u226514), 889 cycles'. Apple-funded.",
+   "source": "Hum Reprod 2025, Europe PMC abstract PMC11879225"
+  },
+  {
+   "metricOrTopic": "Wrist temperature: Smarr 2020 and Apple baseline",
+   "claim": "Oura ring, n=50 COVID-19 cases, symptom-window rise +0.63 \u00b1 1 \u00b0C; Apple baseline after ~5 nights; sampled every 5 s",
+   "verdict": "correct",
+   "correction": "Verified. Note the Smarr value is a finger (distal) temperature and the within-group SD (\u00b11 \u00b0C) is larger than the mean shift, so a +0.5 \u00b0C 'marked rise' threshold has weak support. It is rightly labelled HEURISTIC. Apple docs say Health waits 'about five nights' before showing the deviation.",
+   "source": "https://pmc.ncbi.nlm.nih.gov/articles/PMC7736301/; https://support.apple.com/en-us/102674; https://developer.apple.com/documentation/healthkit/hkquantitytypeidentifier/applesleepingwristtemperature"
+  },
+  {
+   "metricOrTopic": "Respiratory rate (Natarajan 2021)",
+   "claim": "Central 90% 11.8\u201319.2, mean 15.4; 14-day CV 2.3\u20139.5% at 20\u201324; 36.4% symptomatic / 23.7% asymptomatic COVID cases had \u22651 night \u2265+3/min",
+   "verdict": "correct",
+   "correction": "Verified. The CV range is 2.3\u20139.5% for men and 2.3\u20139.2% for women aged 20\u201324, widening to up to 21.7% at 65\u201369. The COVID window was 1 day before to 5 days after symptom onset or test. The population data are from Fitbit.",
+   "source": "https://pmc.ncbi.nlm.nih.gov/articles/PMC8443549/"
+  },
+  {
+   "metricOrTopic": "Overnight vitals composite (Apple Vitals)",
+   "claim": "7-night setup; notification when \u22652 metrics out of range; Series 11 tracks HR, RR, SpO2, wrist temp, sleep duration; Series 12 / Ultra 4 swap sleep duration for HRV",
+   "verdict": "correct",
+   "correction": "Apple Support confirms the 7-day setup, the 'multiple metrics' next-morning notification, the five metrics, and that Series 12 / Ultra 4 replace sleep duration with HRV. The 5th\u201395th-percentile rule is still the author's own heuristic; Apple does not publish its range method.",
+   "source": "https://support.apple.com/en-us/120142"
+  },
+  {
+   "metricOrTopic": "Walking asymmetry / double support / step length (Apple mobility white paper)",
+   "claim": "Asymmetry \u226535% PPV 83.4% (brace-induced, 51 adults 26\u201355); double support typical 20\u201340%, older adults 28.4 \u00b1 3.3%, median MDC 3.2%; step length older adults 61/68/71 cm, MDC 7\u20139 cm; reference cohort 64\u201395",
+   "verdict": "correct",
+   "correction": "All verified: Cohort B n=51, age 26\u201355, knee brace locked to 30\u00b0; PPV 83.4% (348/417); double support 28.38 \u00b1 3.34% at self-selected pace; MDC median 3.17% (design) and 3.18% (validation); step length 0.61/0.68/0.71 m; step-length MDC median 0.09 m (design) and 0.07 m (validation); Cohort A age 64\u201392 (design) and 65\u201395 (validation).",
+   "source": "Apple, Measuring Walking Quality Through iPhone Mobility Metrics (May 2022): https://www.apple.com/healthcare/docs/site/Measuring_Walking_Quality_Through_iPhone_Mobility_Metrics.pdf"
+  },
+  {
+   "metricOrTopic": "iPhone gait validity (Sci Rep 2023)",
+   "claim": "Double support ICC 0.58 adults, 0.42 seniors; step length ICC 0.78 adults; adults (mean age 31) 71.8 \u00b1 6.8 vs 69.0 \u00b1 6.2 cm; 27.1 \u00b1 1.8%",
+   "verdict": "correct",
+   "correction": "Verified. Adults n=28, mean age 31.3; seniors n=28, mean age 75.6. Step length ICC was 0.76 in seniors, so step length holds up in older adults too, unlike double support.",
+   "source": "https://pmc.ncbi.nlm.nih.gov/articles/PMC10067003/"
+  },
+  {
+   "metricOrTopic": "Six-minute walk: Apple ceiling and references",
+   "claim": "Apple max 500 m, weekly, \u22658 h/day 3 days/week, \u226510 such days in 4 weeks; Chetta men 638 \u00b1 44 / women 593 \u00b1 57 m (n=102, age 20\u201350); Enright equations, medians 576/494 m, 117 men / 173 women, ~40% variance",
+   "verdict": "correct",
+   "correction": "All verified word for word against the HealthKit doc and both abstracts.",
+   "source": "https://developer.apple.com/documentation/healthkit/hkquantitytypeidentifier/sixminutewalktestdistance; Europe PMC abstracts PMID 16466676 and 9817683"
+  },
+  {
+   "metricOrTopic": "Time in daylight (Burns 2021)",
+   "claim": "n\u2248400,000; median 150 min (IQR 90\u2013210); each additional hour associated with lower odds of lifetime major depression (OR 0.92\u20130.98)",
+   "verdict": "imprecise",
+   "correction": "0.92\u20130.98 is the 95% confidence interval, not a range of odds ratios ('95% CI OR: 0.92\u20130.98'). The abstract gives no point estimate. Label it '95% CI 0.92\u20130.98' so the UI doesn't turn it into '2\u20138% lower'. Median 2.5 h (IQR 1.5\u20133.5 h) and self-report are correct.",
+   "source": "Burns AC et al. J Affect Disord 2021, https://pmc.ncbi.nlm.nih.gov/articles/PMC8892387/"
+  },
+  {
+   "metricOrTopic": "Time in daylight: Windred 2024 PNAS / Brown 2022 / IMI",
+   "claim": "88,905 people; daytime-light aHR 0.66\u20130.83 at the 90\u2013100th percentile vs 0\u201350th; \u2265250 lux melanopic EDI by day, <10 lux in the 3 h before sleep, <1 lux asleep; IMI 80\u2013120 min for children",
+   "verdict": "correct",
+   "correction": "All verified. The Windred range spans model adjustments. Night light at the 90\u2013100th percentile: aHR 1.21\u20131.34.",
+   "source": "https://pmc.ncbi.nlm.nih.gov/articles/PMC11513964/; https://pmc.ncbi.nlm.nih.gov/articles/PMC8929548/; https://www.apple.com/newsroom/2023/06/apple-provides-powerful-insights-into-new-areas-of-health/"
+  },
+  {
+   "metricOrTopic": "Headphone / environmental audio (WHO-ITU, Apple, NIOSH)",
+   "claim": "Mode 1 adults 80 dB 40 h/week, Mode 2 children 75 dB; 85 dB 12.5 h, 90 dB 4 h, 95 dB 1 h 15, 100 dB 20 min; Apple daily guide 5 h 30 / 1 h 45 / 30 min / 10 min / a few min; NIOSH 85 dBA 8 h, 3 dB exchange",
+   "verdict": "correct",
+   "correction": "All verified. WHO lists 100 dB as '20 mins'; strict equal-energy maths gives about 24 min, so the dose formula and WHO's table disagree slightly at 100 dB. Show the formula result, not the table. Apple's notification threshold uses a 3-minute average. The repo confirms both audio metrics are aggregated as arithmetic 'average' (healthMetrics.ts:45\u201346).",
+   "source": "https://www.who.int/news-room/questions-and-answers/item/deafness-and-hearing-loss-safe-listening; WHO-ITU standard summary PDF; https://support.apple.com/en-us/102315; https://www.cdc.gov/niosh/noise/about/noise.html"
+  },
+  {
+   "metricOrTopic": "Headphone accuracy with Apple/Beats",
+   "claim": "Accuracy is best with Apple/Beats headphones (Apple does not state this on the page read)",
+   "verdict": "correct",
+   "correction": "Apple does state it, in the iPhone User Guide: headphone audio measurements are most accurate with Apple or Beats headphones, and levels for other headphones are estimated from device volume. Cite that page.",
+   "source": "https://support.apple.com/guide/iphone/check-your-headphone-audio-levels-iph0596a9152/ios"
+  },
+  {
+   "metricOrTopic": "Mindful minutes (Goyal 2014)",
+   "claim": "47 RCTs, 3,515 participants; anxiety 0.38 (8 wk) / 0.22 (3\u20136 mo); depression 0.30 / 0.23; pain 0.33; not better than active treatments",
+   "verdict": "correct",
+   "correction": "Verified word for word. Note the depression 8-week CI is 0.00\u20130.59.",
+   "source": "JAMA Intern Med 2014, Europe PMC abstract PMC4142584"
+  },
+  {
+   "metricOrTopic": "AF: Apple Heart Study / KP-RHYTHM / AFib History",
+   "claim": "0.52% of 419,297 notified over a median of 117 days; 34% AF on patch; 84% concordance; KP-RHYTHM 1,965 patients, top tertile \u226511.4% burden \u22483.1\u00d7 risk; AFib History \u226522 y, shown as '2% or less', irregular-rhythm notifications cannot run at the same time",
+   "verdict": "correct",
+   "correction": "All verified (adjusted HRs 3.13 and 3.16). One missing availability condition: AFib History needs the Watch worn \u226512 h/day, 5 days/week. Irregular-rhythm notifications are also turned off automatically when AFib History is set up.",
+   "source": "Europe PMC abstracts PMC8112605 and PMC6145663; https://support.apple.com/en-us/108375"
+  },
+  {
+   "metricOrTopic": "Lean mass / FFMI / sarcopenia",
+   "claim": "Schutz FFMI median 18.9 (M) / 15.4 (F) at 18\u201334, n=5,635; Kouri natural limit ~25 with 6.3\u00d7(1.80\u2212h); EWGSOP2 grip <27 kg, ASM <20 kg, ASM/h\u00b2 <7.0 (M); <15 kg, <5.5 (F)",
+   "verdict": "correct",
+   "correction": "All verified. EWGSOP2 women's grip cut-off is <16 kg (useful if the page shows the grip step). Oddity: the Schutz abstract says participants were aged 24\u201398 while reporting 18\u201334 medians; this inconsistency is in the source.",
+   "source": "Europe PMC abstracts PMID 12080449 and 7496846; https://pmc.ncbi.nlm.nih.gov/articles/PMC6322506/ (Table 3)"
+  },
+  {
+   "metricOrTopic": "Consumer BIA accuracy caveat",
+   "claim": "Skeletal-muscle % agreement with DXA weak even for a clinical InBody; body-fat MAPE 14\u201321%",
+   "verdict": "imprecise",
+   "correction": "The numbers come from a study of a Samsung Galaxy Watch5 (wrist BIA) and a clinical InBody 770, not a consumer bathroom scale. Body-fat MAPE: watch 14.4%, InBody 21.3%. Skeletal-muscle % MAPE: 20.3% and 36.1%, with CCC 0.45 and 0.25. Describe it as 'even clinical BIA'. Don't present it as a smart-scale figure; the user's scale was not tested.",
+   "source": "https://pmc.ncbi.nlm.nih.gov/articles/PMC12669227/"
+  },
+  {
+   "metricOrTopic": "Consumer BIA muscle-mass limits of agreement",
+   "claim": "Consumer devices' muscle-mass limits of agreement were up to \u00b14 kg (and the derived '<2 kg change = noise' rule)",
+   "verdict": "unverifiable",
+   "correction": "No source is given for \u00b14 kg (the sources list is cut off), and I could not trace it. Keep the '<2 kg = noise' rule as a labelled HEURISTIC, or base it on the user's own repeat-weigh-in SD.",
+   "source": "Not found; nearest checked source https://pmc.ncbi.nlm.nih.gov/articles/PMC12669227/ reports % LoA, not kg"
+  },
+  {
+   "metricOrTopic": "Benito 2020 muscle gain",
+   "claim": "Resistance-training interventions add ~1.5 kg of muscle on average, so gains well above ~1 kg/month in a trained adult are more likely water or glycogen",
+   "verdict": "imprecise",
+   "correction": "Benito reports +1.53 kg (95% CI 1.30\u20131.76) of FFM+LMM+SMM over whole interventions (>2 weeks) in healthy adult males, 111 studies. That is a per-intervention figure in mostly novice men, not per month and not for trained adults. The '~1 kg/month' threshold is the author's extrapolation and should be labelled HEURISTIC.",
+   "source": "Benito PJ et al. IJERPH 2020, PMID 32079265 (Europe PMC abstract)"
+  },
+  {
+   "metricOrTopic": "Sleep Regularity Index HRs (carried over from the first research)",
+   "claim": "Fully adjusted HRs only: 20\u201330% lower mortality, not 20\u201348%",
+   "verdict": "correct",
+   "correction": "Confirmed. Fully adjusted HRs for Q2\u2013Q5 vs Q1 are 0.80, 0.75, 0.72, 0.70. The abstract's 20\u201348% combines the fully adjusted low end with the minimally adjusted Q5 (0.52). Quintile cut-offs: Q1 <71.65, Q2 71.65\u201378.56, Q3 78.56\u201383.16, Q4 83.17\u201387.31, Q5 \u226587.32.",
+   "source": "Windred DP et al. Sleep 2024, https://pmc.ncbi.nlm.nih.gov/articles/PMC10782501/"
+  },
+  {
+   "metricOrTopic": "Data availability claims",
+   "claim": "Walking Steadiness not in HAE; Breathing Disturbances iOS 18+; AFib Burden exported; irregular-rhythm/ECG disabled in config; handwashing stopped 2026-08-20; UV never had a row",
+   "verdict": "correct",
+   "correction": "HAE's supported list has no Walking Steadiness, has 'Breathing Disturbances (iOS 18.0+)', 'Atrial Fibrillation Burden', and separate Heart Rate Notifications and ECG sections. All five repo HAE configs set includeECG:false and includeHeartRateNotifications:false. miniMetrics.ts:126\u2013128 records handwashing/UV stopping on 2026-08-20. Only the 'UV never had a row' part could not be checked without the live DB, which is opt-in.",
+   "source": "https://help.healthyapps.dev/en/health-auto-export/getting-started/supported-data/; repo docs/health-auto-export/*.json; src/features/health/components/miniMetrics.ts"
+  },
+  {
+   "metricOrTopic": "Walking Steadiness numeric cut-offs",
+   "claim": "Apple's numeric OK/Low/Very Low boundaries are not published as text; available only via HKAppleWalkingSteadinessMinimum/MaximumQuantity(for:)",
+   "verdict": "unverifiable",
+   "correction": "The class definitions (WWDC21), the weekly score and the notification timing (~1 month after dropping, then about every 3 months) are verified. I could not confirm or refute that no Apple text publishes numeric boundaries; the Apple Support article didn't render. Moot for now, since HAE can't deliver the metric.",
+   "source": "https://developer.apple.com/videos/play/wwdc2021/10287/"
+  },
+  {
+   "metricOrTopic": "Ranking: interest axis",
+   "claim": "Tiers weight 'general interest' (the author's qualitative judgement, not measured search data)",
+   "verdict": "unverifiable",
+   "correction": "No source supports any interest score. The only usage figures found (~80% of smartwatch users track steps, ~75% heart rate) come from a non-peer-reviewed market-stats site, which supports steps and HR at the top and nothing more. It is also internally inconsistent. Sleep stages are among the most viewed sleep screens, so a real interest weight would push them above Tier 3. The Sleep Regularity Index and the overnight-vitals composite are not native Apple Health screens, so general interest in them is probably low; their Tier 1/2 placement rests on evidence alone. Either drop interest as a ranking axis or state that the tiers are evidence \u00d7 availability only.",
+   "source": "No measured source available; search result scoop.market.us/smartwatch-statistics (low quality)"
+  },
+  {
+   "metricOrTopic": "Ranking: availability axis ('data this owner actually has')",
+   "claim": "Tier 2 includes irregular rhythm / AF (once ingested), heart-rate recovery, walking speed; Tier 1 includes weight trend with waist from Hevy",
+   "verdict": "imprecise",
+   "correction": "Availability was asserted, not measured; no DB query was run, and live-data access is opt-in per CLAUDE.md. Specific problems: (1) Irregular-rhythm notifications are rare events (0.52% of users over ~4 months in the Apple Heart Study), and AFib Burden needs a diagnosed AF, so for this owner there is effectively no data. This belongs as an alert rule, not a Tier 2 tile. (2) Heart-rate recovery and the 6-minute walk are sparse (post-workout or weekly). (3) Walking speed and the other gait metrics depend on carrying the iPhone near the waist. (4) Waist from Hevy and smart-scale body composition exist only when manually logged. Before fixing tiers, run a per-metric days-with-data count over the last 90 days (with the owner's explicit OK).",
+   "source": "Perez MV et al. NEJM 2019 (PMC8112605); CLAUDE.md Session Workflow (live-data opt-in); HealthKit sixMinuteWalkTestDistance doc"
+  }
+ ]
+}

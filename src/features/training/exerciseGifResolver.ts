@@ -67,10 +67,13 @@ export function resolveExerciseGif(
   templateId: string | undefined,
   title: string,
   overridesByTemplateId: Map<string, string>,
-  db: IndexedExercise[],
+  db: IndexedExercise[] | null | undefined,
 ): ResolvedExerciseMedia | null {
   const overrideUrl = templateId ? overridesByTemplateId.get(templateId) : undefined
   if (overrideUrl) return { gifUrl: overrideUrl, name: title, instructions: [], overridden: true }
+  // The manifest is only needed for the fuzzy match — a manually set GIF
+  // must still show when the jsDelivr manifest failed to load.
+  if (!db) return null
   const match = matchExercise(title, db)
   if (!match) return null
   return { gifUrl: match.gifUrl, name: match.name, instructions: match.instructions, overridden: false }

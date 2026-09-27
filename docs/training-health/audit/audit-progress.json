@@ -1,0 +1,488 @@
+{
+ "summary": "I audited the Progress sub-tab and the Coach tab without changing any files. All four verify scripts pass (engine 223/223, decisions 76/76, training-progress 70/70, insights 37/37) and `npx tsc --noEmit -p tsconfig.app.json` is clean. I confirmed each engine finding by running scratch scripts in the scratchpad against the real modules.\n\nThe worst problems are in \"what to do next\":\n- For a top-set + backoff session, the target tells you to do the backoff reps at the top-set weight.\n- Repeating the same reps (the most common result) produces no target, blames your logging, and lands under \"Needs attention\".\n- Routines that set fixed reps (for example 5x5) are judged against a made-up 8\u201312 range, so a correctly done 5x5 reads \"below minimum\".\n- A dropset in a routine blocks \"Ready to increase\" forever.\n\nThe next group gives numbers that disagree across screens:\n- For novices, the muscle \"maximum recoverable\" line ends up below the top of the \"optimal\" band (chest, back, quads).\n- Several weekly series stop at the last week you logged, not today. After a 3-month break the streak still says 5 weeks, and the \"this week\" adherence number shows last week.\n- The per-muscle weekly badges show the last week that muscle was trained, not last week.\n- The Personal Records list only reads the first 1000 sets, so records can be wrong or missing.\n- There are three separate per-exercise progress calculations plus the AI coach's own rules. Training Analysis, the decision table and the coach can each say something different about the same lift.\n\n**Dead code:**\n- the per-exercise half of `progressDecisions.ts`\n- most of `progressCopy.ts`\n- `muscleMap.setDeltaToRange`\n- the old `repRangeVariedSignificantly` check, which Training Analysis and the exercise chart still call even though the new engine replaced it\n- muscle preferences, which are saved but read by nothing\n\n**Missing for \"see my plan, my improvements, what to do next\":**\n- No screen shows the next workout with a target for every exercise, even though the engine already works these targets out.\n- No screen shows the program itself. The current-program picker is hidden in Coach \u2192 settings.\n- Nothing summarises improvement over a period. PR events only fire for the latest session.\n- The AI coach never sees the engine's decisions or your program. It works from a hardcoded \"bro-split\" description.\n\n**Proposed Training layout, after Health moves out:**\n1. **Next** (default tab), answering \"what do I do today?\". The next planned session, merging one-off and recurring blocks, and every exercise with its engine target set by set (including backoff weights), last session's numbers and the GIF. Add one plain line of recovery context (last night's sleep, no score) and alerts such as \"2 lifts ready to increase\" or \"Bench flat for 5 sessions\".\n2. **Program**, answering \"what is my plan?\". Current-program routines, chosen here instead of in Coach. The weekly schedule. Each routine's exercises with rep and set targets, editable (the `exercise_target_overrides` table finally gets a UI). Planned weekly sets per muscle against the MEV\u2013MAV range as a program design check, respecting limitations and muscle preferences.\n3. **Progress**, answering \"am I improving?\". A 4/12/26-week window with lifts improved, estimated-1RM change for main lifts, one PR timeline with a single definition, and bodyweight next to relative strength. Then the decision table, with a real per-exercise chart (dated axis, load-change markers). Then weekly volume, sets per muscle and consistency against target, all zero-filled up to today. Training Analysis becomes an \"Insights\" section fed by the engine and scoped to the current program.\n4. **Log**: the workout list, calendar and workout detail, with Strava activities merged in as a filter instead of a separate vendor tab.\n5. **Library**: exercises (GIF fixes), the routine editor, body measurements.\n6. **Coach**: the AI assessment, fed the engine's results and the program, plus profile, limitations and preferences settings.\n\n**Suggested fix order:**\n1. The four target / expected-reps bugs.\n2. Zero-filling weekly series to today, and fixing the adherence number.\n3. Paging the Personal Records read with a stable order.\n4. Making the engine the only per-exercise source and deleting the dead code.\n5. Feeding the engine's results into the AI coach.\n6. The new layout.",
+ "findings": [
+  {
+   "id": "T1",
+   "severity": "high",
+   "category": "bug",
+   "title": "Next target for top-set+backoff sessions prescribes backoff reps at the top-set load",
+   "files": [
+    "src/features/training/progress-engine/targets.ts:60",
+    "src/features/training/progress-engine/targets.ts:95",
+    "src/features/training/progress-engine/targets.ts:100",
+    "src/features/training/progress/decisionParts.tsx:108",
+    "src/features/training/progress/decisionParts.tsx:121",
+    "src/features/training/progress-engine/copy.ts:225"
+   ],
+   "evidence": "`const load = bestComparableSet(latest, metricKind)?.weightKg` (the TOP set's load) then `const minimumSetReps = repsN.slice()` over ALL sets and headline `Stay at ${loadLabel}. Match or beat ${minimumSetReps.join('/')} on every set`. Probe: sessions 100x5,80x10,80x10 -> 102.5x5,80x9,80x8 produced 'Stay at 102.5 kg. Match or beat 5/9/8 on every set' (the 9/8 were at 80 kg). ExposureLine/fmtExposure also render `${weightKg} kg \u00d7 ${reps}` gluing one weight onto every set's reps ('102.5 kg \u00d7 5/9/8'), contradicting the file's own \u00a78 comment 'never a representative weight glued onto every set's rep count'.",
+   "fix": "Build per-position targets as {kg, reps} pairs from each comparable set's own weightKg (e.g. '102.5\u00d75, then 80\u00d79, 80\u00d78'); for top_set_and_backoff express progression as top-set target + backoff floor. In ExposureLine/fmtExposure render per-set loads whenever loadStructure !== 'uniform_working_load' (e.g. '102.5\u00d75 \u00b7 80\u00d79/8'). Add a verify assertion for the backoff headline."
+  },
+  {
+   "id": "T2",
+   "severity": "high",
+   "category": "ux",
+   "title": "Repeating the same reps (most common case) gives no target, falsely blames logging, and is filed under 'Needs attention'",
+   "files": [
+    "src/features/training/progress-engine/targets.ts:29",
+    "src/features/training/progress-engine/targets.ts:88",
+    "src/features/training/progress/decisionParts.tsx:281",
+    "src/features/training/progress/ExerciseDecisionTable.tsx:146",
+    "src/features/training/progress-engine/comparability.ts:434"
+   ],
+   "evidence": "deriveCurrentAction returns 'HOLD_STEADY' for any non-forward, non-top-of-range pair; `STAY_AT_LOAD_ACTIONS` excludes HOLD_STEADY so buildNextTargets returns null. Probe: 60x10x3 twice (range 8-12) -> HOLD_STEADY, nextTargets null, explanation 'No change worth acting on at this load yet.' The UI then shows 'No numeric progression recommendation for this session \u2014 it didn't share one clean load/backoff shape or a complete set of reps. Log one clean, complete session' (false: the session was clean). filterByTab: `case 'attention': ... || d.currentAction === 'HOLD_STEADY'`.",
+   "fix": "Treat an evaluated, compliant HOLD_STEADY like BUILD_AT_CURRENT_LOAD for targets (per-position floor + 'add one rep somewhere'); only show the 'not clean' message when loadStructure is mixed, reps are missing or set count mismatches (branch on the actual cause). Move HOLD_STEADY to the 'Building' tab unless rangeCompliance is BELOW_MINIMUM; relabel it 'Repeat and add a rep'."
+  },
+  {
+   "id": "T3",
+   "severity": "high",
+   "category": "bug",
+   "title": "Routine fixed-rep prescriptions are ignored; generic 8-12 default is applied (a clean 5x5 reads 'below minimum')",
+   "files": [
+    "src/features/training/hooks/useProgressData.ts:132",
+    "src/features/training/hooks/useProgressData.ts:138",
+    "src/features/training/progress-engine/policies.ts:35"
+   ],
+   "evidence": "routineTarget only returns when `s.rep_range_start != null && s.rep_range_end != null`; hevy_routine_sets also has a plain `reps` column (types.hevy.ts HevyRoutineSet.reps) and CLAUDE.md documents that Hevy routines send fixed `reps` when no range is entered. Probe: 5x5 @100 -> 5x5 @102.5 with the resulting default expectation -> 'Confirm before increasing | Load increased, but at least one set fell below the target minimum'. The routine's prescribed weight_kg is also discarded.",
+   "fix": "In routineTarget, when working sets carry `reps` but no range, return {repMin: reps, repMax: reps, targetSets}; label 'Your program's target: 5 reps'. Optionally expose the routine's prescribed weight_kg in the expectation so the Next view can show plan vs actual."
+  },
+  {
+   "id": "T4",
+   "severity": "high",
+   "category": "bug",
+   "title": "A dropset in a routine permanently blocks READY_TO_INCREASE (targetSets counts dropsets, logged comparable sets exclude them)",
+   "files": [
+    "src/features/training/hooks/useProgressData.ts:136",
+    "src/features/training/progress-engine/normalize.ts:203",
+    "src/features/training/progress-engine/comparability.ts:293"
+   ],
+   "evidence": "`const workingSets = (ex.sets ?? []).filter(s => s.type !== 'warmup')` -> targetSets includes dropsets, while `comparableWorkingSets = allSets.filter(s => s.kind !== 'dropset')`. Probe: 3x12 top-of-range + dropset, target 4 -> scope LOGGED_SETS_ONLY, flags ['MISSING_PRESCRIBED_SET'], action HOLD_STEADY; same data with target 3 -> READY_TO_INCREASE.",
+   "fix": "Filter `s.type !== 'warmup' && s.type !== 'dropset'` when computing targetSets (same definition as comparableWorkingSets). Add a verify case."
+  },
+  {
+   "id": "T5",
+   "severity": "high",
+   "category": "data",
+   "title": "Personal Records read is unpaginated (1000-row cap) and uses a different PR definition than the engine's 'Load PR'",
+   "files": [
+    "src/features/training/api/hevyApi.ts:375",
+    "src/features/training/api/hevyApi.ts:379",
+    "src/features/training/progress-engine/ruleCatalog.ts:93",
+    "src/features/training/progress-engine/events.ts:36"
+   ],
+   "evidence": "fetchHevyPRs: `.from('hevy_sets').select(...).eq('type','normal').not('weight_kg','is',null)` with no .range()/order \u2014 the same file elsewhere paginates because of 'the 1000-row PostgREST cap', so PRs/Top-5 are computed from an arbitrary first 1000 sets. The engine's LOAD_PR is 'The highest comparable working load ever logged' but only scans 182 days of current-program sessions (failure sets included), while Personal Records is all-time, normal sets only, max weight \u2014 two 'PR' numbers that can disagree on screen.",
+   "fix": "Paginate with .order('id') (or a Postgres RPC doing GROUP BY exercise_template_id). Define one PR concept (all-time max load + best e1RM) shared by the PR list and decision events; rename the engine event to '6-month best' if it stays windowed."
+  },
+  {
+   "id": "T6",
+   "severity": "high",
+   "category": "duplicate",
+   "title": "AI Coach and decision engine are two independent 'what to do next' brains that can contradict each other",
+   "files": [
+    "src/features/training/api/ptCoachApi.ts:22",
+    "src/features/training/api/ptCoachApi.ts:36",
+    "src/features/training/api/ptCoachApi.ts:130",
+    "src/features/training/api/ptCoachApi.ts:151"
+   ],
+   "evidence": "Prompt hardcodes 'hypertrophy focus, bro-split: Back/Chest/Leg/Arm/Shoulder days, 3-4x/wk' regardless of athlete_profile.goal/training_days and current_program_routines; rule 4 '+2.5kg (upper) / +5kg (lower)\u2026 if all target sets hit' without ever receiving rep targets; snapshot volume is 'birincil kas' (primary-only), trailing 7 days, unscaled `MUSCLE_LANDMARKS[slug]`, while Muscles/WeeklySetsPerMuscle credit secondaries 0.5 and scale landmarks by experience. The engine's currentAction/nextTargets are never sent.",
+   "fix": "Add an engine block to the snapshot (per current-program exercise: action label, next-session headline, expectation label) plus the current program's routine titles; drop the hardcoded split/goal and derive from the profile; compute volume with computeWeeklySetsPerMuscleTrend + scaleLandmarksForExperience over the last complete week; instruct the prompt to explain/align with engine targets rather than invent new increments."
+  },
+  {
+   "id": "T7",
+   "severity": "medium",
+   "category": "duplicate",
+   "title": "Three per-exercise progression implementations with different scope; Training Analysis still uses the retired rep-range check",
+   "files": [
+    "src/features/training/components/TrainingInsightsPanel.tsx:98",
+    "src/features/training/components/TrainingInsightsPanel.tsx:101",
+    "src/features/training/progressAggregate.ts:109",
+    "src/features/training/progressAggregate.ts:184",
+    "src/features/training/components/ExerciseProgressChart.tsx:72",
+    "src/features/training/progress/decisionParts.tsx:196"
+   ],
+   "evidence": "computeExerciseProgression (best e1RM, ALL 182-day sets, every program) feeds ExerciseProgressChart, RelativeStrengthChart and Training Analysis rule F; `repRangeVaried: repRangeVariedSignificantly(points)` is the check trend.ts calls 'the retired repRangeVariedSignificantly'. The decision table uses progress-engine buildRepresentativePoints (working weight, current program only) and its own 'Show progress chart'. computeWeeklyChangeFlags has a fourth scoring switch. Result: Training Analysis can say an exercise is 'flat' or 'can't be read reliably' while the table says 'Ready to increase', and Analysis covers exercises no longer in the program.",
+   "fix": "Make progress-engine the single per-exercise source: rule F consumes ExerciseProgressResult.trend (current-program scoped); the exercise chart plots engine points with e1RM as a secondary series; reuse metricStrategy's STRATEGIES in computeWeeklyChangeFlags; delete repRangeVariedSignificantly and computeExerciseProgression once migrated (RelativeStrength can take engine e1RM per session)."
+  },
+  {
+   "id": "T8",
+   "severity": "medium",
+   "category": "bug",
+   "title": "'Below minimum' explanation always says the load/top set increased, even when it didn't",
+   "files": [
+    "src/features/training/progress-engine/copy.ts:170",
+    "src/features/training/progress-engine/copy.ts:172"
+   ],
+   "evidence": "`if (result.rangeCompliance === 'BELOW_MINIMUM') { ... return `${phrase.increased}, but at least one set fell below the target minimum\u2026` }` is reached for any below-minimum pair. Probe: 60x10/9/9 -> 60x9/8/6 (LOAD_UNCHANGED) -> 'Load increased, but at least one set fell below the target minimum \u2014 confirm before increasing again.'",
+   "fix": "Branch on observedTransition/repDelta: LOAD_INCREASED keeps the current text; LOAD_UNCHANGED -> 'Same load, but set 3 fell below your minimum of 8 (6 reps)'; REP_DECLINE -> name the drop. Add verify cases for each branch."
+  },
+  {
+   "id": "T9",
+   "severity": "medium",
+   "category": "bug",
+   "title": "Bodyweight-reps default range 10\u201315 makes sub-10 pull-up progress invisible and tells you to 'increase' with nothing to add",
+   "files": [
+    "src/features/training/progress-engine/policies.ts:38",
+    "src/features/training/progress-engine/metricStrategy.ts:277",
+    "src/features/training/progress-engine/targets.ts:73"
+   ],
+   "evidence": "`reps: { repMin: 10, repMax: 15 }` default + isQualifiedForPositiveSignal returns false when BELOW_MINIMUM. Probe: pull-ups 6/5/5 -> 6/6/5 -> 7/6/6 -> 8/7/6 -> action 'Confirm before increasing', recentProgressTrend FLAT_NORMAL_VARIATION, text 'Your top set improved, but at least one set fell below the target minimum \u2014 confirm before increasing again.' READY_TO_INCREASE for reps kind renders 'use the smallest available increment' for a bodyweight movement.",
+   "fix": "For metricKind 'reps' with source 'default', use no minimum (progress = more reps) or not_configured; copy for reps-kind READY_TO_INCREASE should say 'add weight (weighted variant) or a harder progression'."
+  },
+  {
+   "id": "T10",
+   "severity": "medium",
+   "category": "bug",
+   "title": "Current-load plateau/accumulation thresholds are in reps but applied to seconds and metres",
+   "files": [
+    "src/features/training/progress-engine/trend.ts:157",
+    "src/features/training/progress-engine/policies.ts:17"
+   ],
+   "evidence": "`if (slope >= accumulationSlopeFloor && residualSpread <= residualNoiseFloor) state = 'ACCUMULATING'` with residualNoiseFloor 1.0 '(RMS reps)'; for duration/distance the regressed `total` is seconds/metres. Probe: plank totals rising 30\u219245 s per set (slope +8.8 s/session, residual 4.6) -> STABLE_VARIATION; duration/distance exercises can essentially never reach ACCUMULATING or POSSIBLE_PLATEAU.",
+   "fix": "Normalise by the series mean (residual/mean \u2264 ~4%, slope/mean \u2265 ~1%/session) or define per-metric floors in the policy; add duration/distance fixtures to verify-progress-engine."
+  },
+  {
+   "id": "T11",
+   "severity": "medium",
+   "category": "bug",
+   "title": "Asymmetric trend gate: noisy improvement reads 'stable', the mirror-image noisy decline reads 'Watch for regression'",
+   "files": [
+    "src/features/training/progress-engine/trend.ts:157",
+    "src/features/training/progress-engine/trend.ts:158",
+    "src/features/training/progress-engine/evaluate.ts:402"
+   ],
+   "evidence": "ACCUMULATING requires `residualSpread <= residualNoiseFloor` but DECLINING only needs `slope <= -declineSlopeFloor`. Probe at same load: totals 24,27,25,28,27,30 -> STABLE_VARIATION (slope +0.94, resid 1.10); 30,27,29,26,27,24 -> DECLINING -> WATCH_FOR_REGRESSION (slope \u22120.94, resid 1.10). Workload review counts these declines.",
+   "fix": "Apply the same significance test in both directions (e.g. |slope| \u2265 floor AND |slope|\u00b7\u221an > k\u00b7residual), otherwise STABLE_VARIATION."
+  },
+  {
+   "id": "T12",
+   "severity": "medium",
+   "category": "bug",
+   "title": "Novice landmark scaling puts MRV below MAV (chest, upper back, quads)",
+   "files": [
+    "src/features/training/muscleMap.ts:341",
+    "src/features/training/components/WeeklySetsPerMuscleChart.tsx:176",
+    "src/features/training/trainingInsights.ts:214"
+   ],
+   "evidence": "`return { ...L, mev: Math.round(L.mev * m), mrv: Math.round(L.mrv * m) }` leaves MAV unscaled. Probe (novice): chest {mev 7, mav 20, mrv 19}, upper-back {mav 22, mrv 21}, quadriceps {mav 18, mrv 17}. bandForWeeklySets at 19.5 sets says 'Optimal growth' while computeMuscleFindings flags 'exceeded MRV 19'; the sparkline draws the MRV line inside the green MEV\u2013MAV band.",
+   "fix": "Scale MAV with the same multiplier, or clamp `mrv = Math.max(scaledMrv, mav + 1)` and `mav = Math.min(mav, mrv - 1)`; add a verify assertion that mv \u2264 mev \u2264 mav < mrv for every level."
+  },
+  {
+   "id": "T13",
+   "severity": "medium",
+   "category": "bug",
+   "title": "'Routine adherence \u2014 this week, so far' actually shows the last LOGGED week's session count",
+   "files": [
+    "src/features/training/hooks/useProgressData.ts:217",
+    "src/features/training/hooks/useProgressData.ts:218",
+    "src/features/training/progressAggregate.ts:284"
+   ],
+   "evidence": "`const thisWeekSessions = consistencyWeeks[consistencyWeeks.length - 1]?.sessionCount` but computeConsistencyByWeek dense-fills only 'from first to last' logged Monday, so on a Monday with nothing logged (or after a break) the card shows last week's (or an older week's) count labelled 'this week, so far'.",
+   "fix": "Count distinct workout_ids with mondayOf(date) === mondayOf(localToday) (0 when absent)."
+  },
+  {
+   "id": "T14",
+   "severity": "medium",
+   "category": "bug",
+   "title": "Weekly series stop at the last logged week, hiding a break: streak, consistency findings and volume trend ignore trailing gaps",
+   "files": [
+    "src/features/training/progressAggregate.ts:267",
+    "src/features/training/progressAggregate.ts:213",
+    "src/features/training/components/TrainingConsistencyCalendar.tsx:43",
+    "src/features/training/components/TrainingConsistencyCalendar.tsx:55",
+    "src/features/training/trainingInsights.ts:100",
+    "src/features/training/components/WeeklyVolumeChart.tsx:56"
+   ],
+   "evidence": "Both dense-fill loops run `while (cursor <= last)` where last = latest logged week. Probe: five weekly sessions ending 29 Jun, today 26 Sep -> last week {2026-06-29, 1}, currentStreakWeeks = 5. computeConsistencyFindings filters `weeksAll.filter(w => w.weekStart <= last)` so 'You trained in N of the last 8 weeks' is measured before the break; the 16-week bar chart and 12-week '\u22652 sessions' also end at the break and include the partial current week.",
+   "fix": "Add an `untilWeek` parameter (mondayOf(localToday)) and dense-fill to it; streak/last12 should use complete weeks (exclude the current partial week unless it already meets the bar)."
+  },
+  {
+   "id": "T15",
+   "severity": "medium",
+   "category": "bug",
+   "title": "Weekly-sets-per-muscle badge shows the last week the muscle was trained, not last week",
+   "files": [
+    "src/features/training/components/WeeklySetsPerMuscleChart.tsx:121",
+    "src/features/training/progressAggregate.ts:599"
+   ],
+   "evidence": "computeWeeklySetsPerMuscleTrend returns only weeks with credit (sparse) and the chart uses `const latest = weekly.length > 0 ? weekly[weekly.length - 1].sets : null`. A muscle last trained 6 weeks ago with 8 sets shows a coloured '8/wk' pill; sparklines connect non-adjacent weeks. Training Analysis zero-fills (`byWeek.get(...) ?? 0`) so the two panels disagree for the same muscle.",
+   "fix": "Dense-fill the per-muscle series from the window start to lastCompleteWeek with zeros (same helper as T14) and read latest at lastCompleteWeek."
+  },
+  {
+   "id": "T16",
+   "severity": "medium",
+   "category": "bug",
+   "title": "Current-program suggestion uses routine edit time, not when it was trained",
+   "files": [
+    "src/features/training/hooks/useProgressData.ts:125",
+    "src/features/training/components/CurrentProgramPicker.tsx:36",
+    "src/features/training/components/CurrentProgramPicker.tsx:69"
+   ],
+   "evidence": "`routines.filter(r => new Date(r.hevy_updated_at).getTime() >= cutoff)` under the heading 'Recently trained \u2014 looks like your current program?'. hevy_updated_at is when the routine was last edited in Hevy; a routine trained weekly but never edited is not suggested, an old one edited yesterday is.",
+   "fix": "Derive lastTrainedByRoutine from training history (hevy_workouts.routine_id + date, already fetched in useTrainingHistory) and suggest routines trained in the last 28 days."
+  },
+  {
+   "id": "T17",
+   "severity": "medium",
+   "category": "bug",
+   "title": "Free-text limitation patterns render 'undefined' in the coach prompt and a blank title in settings",
+   "files": [
+    "src/features/training/api/ptCoachApi.ts:97",
+    "src/features/training/components/LimitationsList.tsx:49",
+    "src/features/training/components/LimitationsList.tsx:86"
+   ],
+   "evidence": "`K\u0131s\u0131tlama: ${MOVEMENT_PATTERN_LABEL[lim.movement_pattern]} (${lim.severity})` and `{MOVEMENT_PATTERN_LABEL[item.movement_pattern]}`. CLAUDE.md records the owner's live rows as `unilateral_balance_left` and `heavy_hip_hinge` (AI-written, not enum keys), so the coach reads 'K\u0131s\u0131tlama: undefined (limit)' and the list row has no name; existing rows cannot change pattern.",
+   "fix": "Fallback `MOVEMENT_PATTERN_LABEL[p] ?? p.replace(/_/g, ' ')`; add a pattern select to existing rows; have ai-proxy's catalog rules map free text onto the nine MovementPattern keys (and a one-off data fix for the two rows)."
+  },
+  {
+   "id": "T18",
+   "severity": "medium",
+   "category": "duplicate",
+   "title": "Muscle restriction logic implemented twice with different semantics; user-chosen severity ignored",
+   "files": [
+    "src/features/training/components/WorkedMuscles.tsx:224",
+    "src/features/training/muscleMap.ts:311",
+    "src/features/training/components/WorkedMuscles.tsx:268",
+    "src/features/training/components/WorkedMuscles.tsx:281"
+   ],
+   "evidence": "WorkedMuscles flagsBySlug loops every active limitation including 'monitor'; limitedSlugsFromLimitations skips 'monitor'. Both take the weight from PATTERN_AFFECTED_SLUGS, so a 'limit' squat limitation reports quadriceps as 'avoid'. WorkedMuscles also re-implements bandForWeeklySets (bandFor) and setDeltaToRange (deltaFor) locally.",
+   "fix": "One `restrictionsBySlug(limitations)` in muscleMap returning min(severity, patternWeight) and excluding monitor, used by both panels and the coach snapshot; call `bandForWeeklySets(slug, w, landmarksFor(slug))`; delete the local copies and the dead muscleMap.setDeltaToRange."
+  },
+  {
+   "id": "T19",
+   "severity": "medium",
+   "category": "clean-code",
+   "title": "progressDecisions.ts / progressCopy.ts are mostly dead code with names that collide with the engine",
+   "files": [
+    "src/features/training/progressDecisions.ts:106",
+    "src/features/training/progressDecisions.ts:307",
+    "src/features/training/progressCopy.ts:7",
+    "src/features/training/hooks/useProgressData.ts:35",
+    "src/features/training/progress-engine/normalize.ts:221"
+   ],
+   "evidence": "Only computeProgramDecision (+ progressVerdictHeadline/workloadLabel) is imported. rpeToRir, computeTrendConfidence, resolveExpectation, computeRpeEvidence, computeActionConfidence and computeExerciseDecision are unused, as are statusLabel, decisionHeadline, statusVerb and composeConfidenceSentence. progressDecisions exports its own ExpectationRange/CurrentStateSummary/RoutineTargetLookup types, same names as progress-engine's. 'ease_off' workload is never produced. useProgressData needs the toLegacyStatusShape adapter to feed it. normalize.ts keeps deprecated totalComparableReps/representativeWeightKg/totalForMetric.",
+   "fix": "Move computeProgramDecision into progress-engine/program.ts, taking ExerciseProgressResult directly. Delete the rest and the adapter, drop 'ease_off', and prune verify-progress-decisions to the program tests."
+  },
+  {
+   "id": "T20",
+   "severity": "medium",
+   "category": "bug",
+   "title": "Muscle preferences (priority / exclude direct) are saved but read by nothing",
+   "files": [
+    "src/features/training/components/MusclePreferencesList.tsx:64",
+    "src/features/training/trainingInsights.ts:204",
+    "src/features/training/hooks/useAthleteProfile.ts:101"
+   ],
+   "evidence": "The only useMusclePreferences consumer is MusclePreferencesList itself (its reader MuscleDoseSummary was deleted). Setting Abs to 'Exclude direct work' still yields Training Analysis 'Abs received zero credited working sets\u2026', and neither WorkedMuscles nor the coach snapshot sees preferences.",
+   "fix": "Pass preferences into computeMuscleFindings (reframe zero/under findings for exclude_direct, highlight priority), into the WorkedMuscles verdict and the coach snapshot \u2014 or hide the setting until wired."
+  },
+  {
+   "id": "T21",
+   "severity": "medium",
+   "category": "perf",
+   "title": "The whole decision engine runs once per useProgressData call (2\u20133\u00d7 per render); unstable [] defaults defeat memo",
+   "files": [
+    "src/features/training/progress/ProgressOverview.tsx:35",
+    "src/features/training/progress/ProgressOverview.tsx:74",
+    "src/features/training/progress/ExerciseDecisionTable.tsx:157",
+    "src/features/training/hooks/useProgressData.ts:103"
+   ],
+   "evidence": "ProgressOverview, GatingCard and ExerciseDecisionTable each call useProgressData(), each with its own useMemo running buildCanonicalSessions/evaluateExerciseProgress for every exercise plus computeSleepSummary. `const { data: bodyweight = [] }`, `sleepPoints = []`, `targetOverrides = []` create new arrays each render while those queries load or error, so the memo recomputes on every render.",
+   "fix": "Compute once in ProgressTab and pass it down through a small context or props. Hoist module-level EMPTY_ARRAY constants for defaults."
+  },
+  {
+   "id": "T22",
+   "severity": "medium",
+   "category": "db-path",
+   "title": "Training history reads are fragile: unpaginated exercise read, unordered pages, huge IN() URLs",
+   "files": [
+    "src/features/training/api/hevyApi.ts:229",
+    "src/features/training/api/hevyApi.ts:240",
+    "src/features/training/api/hevyApi.ts:145",
+    "src/features/training/api/hevyApi.ts:156"
+   ],
+   "evidence": "fetchTrainingHistory reads hevy_workout_exercises with `.in('hevy_workout_id', \u2026)` and no range. More than 1000 rows (e.g. 5 sessions/week \u00d7 8 exercises \u00d7 26 weeks) are silently truncated and those sets vanish. The paged hevy_sets reads use `.range(offset, \u2026)` without `.order()`, so pages can skip or duplicate rows. Every page resends `.in('hevy_exercise_id', exIds)` with hundreds of UUIDs in the URL.",
+   "fix": "Add .order('id') to every paged read and paginate the exercises read. Better: a SECURITY INVOKER Postgres function or view `training_history(from, to)` returning flat set rows joined to workout date/routine/title, used by both fetchTrainingHistory and fetchMuscleVolume."
+  },
+  {
+   "id": "T23",
+   "severity": "medium",
+   "category": "ux",
+   "title": "Decision-table tabs: 'Recent changes' is identical to 'All exercises', and actions are misfiled",
+   "files": [
+    "src/features/training/progress/ExerciseDecisionTable.tsx:141",
+    "src/features/training/progress/ExerciseDecisionTable.tsx:145",
+    "src/features/training/progress/ExerciseDecisionTable.tsx:147"
+   ],
+   "evidence": "`case 'all': return withDecision` and `case 'recent': default: return withDecision`. 'Building at new weight' includes CONFIRM_BEFORE_INCREASING even when the load never changed (e.g. the pull-up case in T9). 'Needs attention' includes HOLD_STEADY (T2).",
+   "fix": "'Recent changes' = exercises trained in the last 14 days whose latest pair shows a transition or event (LOAD_INCREASED/REP_INCREASE/PR). 'Building' = BUILD/CONFIRM_AT_CURRENT_LOAD/compliant HOLD_STEADY. 'Needs attention' = WATCH_*, REVIEW_LOAD_REDUCTION, BELOW_MINIMUM."
+  },
+  {
+   "id": "T24",
+   "severity": "medium",
+   "category": "ux",
+   "title": "Progress overview help text contradicts the actual math",
+   "files": [
+    "src/features/training/progress/ProgressOverview.tsx:95",
+    "src/features/training/progress/ProgressOverview.tsx:121",
+    "src/features/training/progress/ProgressOverview.tsx:125",
+    "src/features/training/progress/ProgressOverview.tsx:134",
+    "src/features/training/progress/ProgressOverview.tsx:58"
+   ],
+   "evidence": "'Compares each analyzable exercise's recent direction\u2026 trending up', but the verdict counts the latest pair's currentAction. 'increasing or holding at the top of their range', but it counts BUILD_AT_CURRENT_LOAD (forward motion below the top) and excludes HOLD_STEADY. 'enough comparable sessions (3+)', but reliable = evidence moderate/strong = \u22654 sessions over \u22652 weeks. 'never judged before the week is actually over' next to a partial and wrong week (T13). 'Training \u2192 Coach \u2192 Profile \u2192 Current program': no such tab exists; it is a gear icon opening a sheet.",
+   "fix": "Rewrite each InfoBubble to state the real rule, or change the math to match. Replace the navigation hint with a button that opens AthleteProfileSheet scrolled to Current program (and later the Program tab)."
+  },
+  {
+   "id": "T25",
+   "severity": "medium",
+   "category": "bug",
+   "title": "Bodyweight KPI reads '0 kg over ~1 days' when the latest weigh-in is older than two weeks",
+   "files": [
+    "src/features/training/hooks/useProgressData.ts:225",
+    "src/features/training/hooks/useProgressData.ts:228"
+   ],
+   "evidence": "`const older = [...bodyweight].reverse().find(b => new Date(b.date).getTime() <= twoWeeksAgo) ?? bodyweight[0]`. When latestBw is itself older than 14 days, `older === latestBw`, so deltaKg is 0 and days is Math.max(1, 0) = 1. It is also a raw two-point difference that daily water swings dominate.",
+   "fix": "If the latest weigh-in is older than 14 days, show 'last weigh-in N days ago'. Otherwise compare 7-day averages (or an EWMA trend) now vs 14\u201328 days ago."
+  },
+  {
+   "id": "T26",
+   "severity": "medium",
+   "category": "duplicate",
+   "title": "'Next session' banner ignores recurring training blocks that the calendar right above it shows",
+   "files": [
+    "src/features/training/components/NextSessionBanner.tsx:30",
+    "src/features/training/components/NextSessionBanner.tsx:33",
+    "src/features/training/components/TrainingCalendar.tsx:571"
+   ],
+   "evidence": "NextSessionBanner only reads `useTrainingBlocks(today, to)` (one-off time_blocks). TrainingCalendar also loads `useScheduleBlocks()` and calls `projectRecurringBlocksForDay`. With a recurring Mon/Wed/Fri plan the calendar shows sessions while the banner shows nothing or a later one-off.",
+   "fix": "Create a shared `useUpcomingTrainingSessions(from, to)` merging one-offs and projected recurring occurrences, consumed by both the banner and the calendar (and the proposed Next tab)."
+  },
+  {
+   "id": "T27",
+   "severity": "medium",
+   "category": "ux",
+   "title": "Sleep 'corroborating signal' can compare stale weeks and include the partial week",
+   "files": [
+    "src/features/training/hooks/useProgressData.ts:200",
+    "src/features/training/hooks/useProgressData.ts:204"
+   ],
+   "evidence": "computeWeeklySleepTrend is sparse, and `withData.slice(-2)` / `slice(-4, -2)` take the last weeks that HAVE data, possibly months old. It also includes the in-progress week, yet the label says 'over the last 2 weeks'.",
+   "fix": "Explicitly compare lastCompleteWeek and lastCompleteWeek-1 against the two weeks before, requiring the \u22654-night gate in each."
+  },
+  {
+   "id": "T28",
+   "severity": "low",
+   "category": "ux",
+   "title": "Relative-strength chart copy describes the old ratio chart",
+   "files": [
+    "src/features/training/components/RelativeStrengthChart.tsx:176"
+   ],
+   "evidence": "The note says 'Strength can rise because you got stronger or because you lost weight', but the plotted strengthIndex is the est. 1RM indexed to 100 (indexRelativeStrengthTrend), which does not rise when bodyweight falls. Only a strength/bodyweight ratio would.",
+   "fix": "Rewrite: 'Strength = your est. 1RM vs the first session; bodyweight on the same scale. If strength rises while bodyweight falls, relative strength rose even more.' Optionally add the ratio as a third line."
+  },
+  {
+   "id": "T29",
+   "severity": "low",
+   "category": "bug",
+   "title": "'Big changes this week' mislabels an est. 1RM as the top-set load; assisted exercises never flag",
+   "files": [
+    "src/features/training/components/WeeklyChangesPanel.tsx:31",
+    "src/features/training/progressAggregate.ts:543",
+    "src/features/training/progressAggregate.ts:571"
+   ],
+   "evidence": "`load +${pct}% (top set ${flag.thisWeekValue} ${meta.unit}\u2026)`: for est1rm the value is an Epley estimate, not the top set's load. Assisted exercises score `-s.weight_kg`, and `if (medianBest > 0)` is always false for negative scores, so they never produce a load flag (probe: 30\u219240 kg assistance gave no flag).",
+   "fix": "Label using METRIC_META ('Est. 1RM +12%', 'Assistance \u221225%'). Compute pct from absolute values with direction handled by higherIsBetterFor."
+  },
+  {
+   "id": "T30",
+   "severity": "low",
+   "category": "ux",
+   "title": "Per-exercise progress chart in the drill-down has no axes/values and misleads for assisted lifts",
+   "files": [
+    "src/features/training/progress/decisionParts.tsx:192",
+    "src/features/training/progress/decisionParts.tsx:237",
+    "src/features/training/progress/decisionParts.tsx:202"
+   ],
+   "evidence": "A hand-rolled div bar chart: values only in a hover `title` (nothing on touch), only the last date label, evenly spaced bars instead of a time axis. `key={r.date}` duplicates for two sessions on one day. For assistedWeight `primary: p.weightKg` makes taller bars mean more assistance (worse) with no note. CLAUDE.md claims it is a BarLineChart with real dates.",
+   "fix": "Use the shared BarLineChart with a date axis and value labels, mark load changes, invert and explain assistance, and key by workoutId."
+  },
+  {
+   "id": "T31",
+   "severity": "low",
+   "category": "a11y",
+   "title": "Decision table rows are mouse-only",
+   "files": [
+    "src/features/training/progress/ExerciseDecisionTable.tsx:107"
+   ],
+   "evidence": "`<tr className=\"cursor-pointer \u2026\" aria-expanded={open} onClick={() => setOpen(v => !v)}>`: no tabIndex, role or key handler, so keyboard users cannot expand a row.",
+   "fix": "Put a <button aria-expanded> in the Exercise cell that toggles the row (keep row click as a convenience)."
+  },
+  {
+   "id": "T32",
+   "severity": "low",
+   "category": "ux",
+   "title": "Engine jargon and raw enum flags shown without explanation",
+   "files": [
+    "src/features/training/progress/decisionParts.tsx:278",
+    "src/features/training/progress/decisionParts.tsx:298",
+    "src/features/training/progress-engine/copy.ts:206"
+   ],
+   "evidence": "`{f.replace(/_/g, ' ')}` renders 'missing prescribed set' as a warn pill. Labels like 'Stable \u2014 noisy', 'Building baseline', 'Accumulating', 'Regression risk' and the 'Recommendation' evidence column have no InfoBubble. The owner explicitly asked for explanations.",
+   "fix": "Map flags to RULE_CATALOG titles and definitions in an InfoBubble. Give each trend state a one-line plain-English meaning ('Reps rising at this weight', 'Too few sessions at this weight to tell')."
+  },
+  {
+   "id": "T33",
+   "severity": "low",
+   "category": "bug",
+   "title": "UTC 'today' and UTC workout dates shift days and week boundaries for Oslo",
+   "files": [
+    "src/features/training/components/TrainingInsightsPanel.tsx:53",
+    "src/features/training/components/WeeklyChangesPanel.tsx:22",
+    "src/features/training/components/WeeklyVolumeChart.tsx:55",
+    "src/features/training/components/WeeklySetsPerMuscleChart.tsx:207",
+    "src/features/training/hooks/useProgressData.ts:109",
+    "src/features/training/api/hevyApi.ts:223"
+   ],
+   "evidence": "Several places use `new Date().toISOString().slice(0, 10)` for today, and `(w.start_time ?? w.hevy_created_at).slice(0, 10)` dates a workout by its UTC day. A 00:30 Oslo session lands on yesterday, and between 00:00 and 02:00 on Monday the 'last complete week' is off by one.",
+   "fix": "Use shared todayStr() (local) everywhere, and derive the workout day with a local-date formatter (the same helper TrainingCalendar should use)."
+  },
+  {
+   "id": "T34",
+   "severity": "low",
+   "category": "clean-code",
+   "title": "Stale doc references and a wrong precedence comment",
+   "files": [
+    "src/features/training/components/ProgressTab.tsx:51",
+    "src/features/training/progressDecisions.ts:7",
+    "src/features/training/types.athlete.ts:219"
+   ],
+   "evidence": "Comments point to docs/progress-redesign/PLAN.md, which no longer exists. types.athlete says an override is 'rung 2 of the expectation source order (routine's own target > this > \u2026)' while progress-engine resolveExpectation checks the override first.",
+   "fix": "Remove the dead doc references (point to docs/training/progress-engine/) and correct the precedence comment (and CLAUDE.md's matching line)."
+  },
+  {
+   "id": "T35",
+   "severity": "low",
+   "category": "ux",
+   "title": "Training Analysis repeats long disclaimers in every finding and calls half the target 'strong adherence'",
+   "files": [
+    "src/features/training/trainingInsights.ts:212",
+    "src/features/training/trainingInsights.ts:107",
+    "src/features/training/trainingInsights.ts:237"
+   ],
+   "evidence": "MUSCLE_CLAUSE (about 250 chars) is appended to every under/over-MEV finding and REP_RANGE_CLAUSE to each rep finding, producing walls of repeated text. `const strongBar = targetPerWeek \u2026 ? targetPerWeek * 0.5 : 2` labels a median of 2 sessions against a 4-day target 'consistency-strong'.",
+   "fix": "Show each clause once per group as a footnote or InfoBubble. Use strongBar = max(1, targetPerWeek - 1) or 0.8 \u00d7 target."
+  },
+  {
+   "id": "T36",
+   "severity": "medium",
+   "category": "ux",
+   "title": "Missing for the owner's goal: no 'next workout' view, no program view, no improvement summary",
+   "files": [
+    "src/features/training/pages/TrainingPage.tsx:17",
+    "src/features/training/components/HevyTab.tsx:217",
+    "src/features/training/components/AthleteProfileSheet.tsx:141",
+    "src/features/training/progress-engine/evaluate.ts:468"
+   ],
+   "evidence": "Tabs are vendor-named (Hevy/Strava/Health/Coach), and Hevy defaults to 'Workouts'. The decision engine lives at Hevy \u2192 4th sub-tab. Per-exercise nextTargets exist (evaluate.ts builds them) but only appear inside an expanded table row. The current program (the 'plan') can only be set at the bottom of Coach \u2192 gear \u2192 sheet, and no screen shows the program's routines, targets and weekly planned sets. Events (PRs, streaks) are computed only for the latest session, so there is no 'what improved in the last 4/12 weeks' view.",
+   "fix": "Restructure Training into Next (default) \u00b7 Program \u00b7 Progress \u00b7 Log \u00b7 Library \u00b7 Coach, as described in the summary. Build the Next view from engine nextTargets for the routine of the next planned session (T26's shared hook). Build Program from current_program_routines + routine sets + planned sets per muscle vs landmarks. Give Progress a period selector with e1RM deltas, a unified PR timeline and bodyweight/relative strength."
+  }
+ ]
+}

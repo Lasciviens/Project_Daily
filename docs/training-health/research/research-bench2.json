@@ -1,0 +1,1360 @@
+{
+ "summary": "Reference information for 26 Apple Health / smart-scale data points that the first research (research-bench.json) did not cover. It builds on that work and its corrections: the Sleep Regularity Index uses the fact-checked Windred cut-offs, quoting fully adjusted HRs only (20\u201330% lower mortality, not 20\u201348%). Every number below comes from a source I opened: Europe PMC abstracts or full text, Apple support pages, Apple white papers (mobility May 2022, sleep apnea Sept 2024), Apple's HealthKit developer docs, WHO/FAO/NIOSH/ADA pages, and the Health Auto Export (HAE) supported-data list. Numbers I derived myself or could not source are labelled HEURISTIC or 'my interpretation'.\n\nFINDINGS THAT CHANGE WHAT THE PAGE CAN SHOW\n1. Walking Steadiness can't be shown today. HAE's own supported-data list does not include it, so no row can reach health_metrics. Apple's numeric OK/Low/Very Low cut-offs are not published as text either; HealthKit only returns them at runtime.\n2. Irregular Rhythm Notifications and ECG results are not ingested. HAE exports them in its heart-rate-notification and ECG sections, but the app's config sets includeHeartRateNotifications:false and includeECG:false, and CLAUDE.md lists them as a known ingest gap. AFib Burden is exported, but only exists if the user has a diagnosed AF and has set up AFib History (age \u226522).\n3. Apple caps the 6-minute-walk estimate at 500 m (HealthKit docs). A healthy man aged 20\u201350 has a lab reference of about 638 \u00b1 44 m (Chetta 2006), so his value will simply read 500. Show '\u2265500 m (Apple's ceiling)', not a percentile.\n4. Breathing Disturbances are events per hour (Apple white paper), not a 'count' as the current card says. They are not equal to the apnea-hypopnea index. Apple's per-night 'Elevated' cut-off is not published.\n5. Audio exposure values are dB (Leq) and cannot be averaged arithmetically. The app's 'average' aggregation understates loud exposure. The weekly WHO dose also needs each sample's duration, which hourly-summarised HAE rows may not carry.\n6. physical_effort (METs) arrives as hourly averages. Averaging those across a day dilutes every bout to 'light', so use minutes at \u22653 METs instead.\n7. Walking asymmetry, double support and step length come from the iPhone carried near the waist, not the Watch. Apple's reference cohort was aged 64\u201395. iPhone double-support time has poor-to-moderate validity (ICC 0.58 in adults).\n8. Wrist temperature, overnight SpO2 and respiratory rate should be judged against the user's own baseline, the way Apple's Vitals app does. Vitals sets a typical range after 7 nights and sends a morning notification only when two or more overnight metrics are out of range.\n\nSUGGESTED PRIORITY FOR THE WHOLE HEALTH PAGE (evidence strength \u00d7 data this owner actually has \u00d7 general interest; interest is my qualitative judgement, not measured search data)\n- Tier 1 (headline, daily data, strongest outcome evidence): steps; sleep duration + Sleep Regularity Index; resting HR; weekly moderate/vigorous minutes; weight trend (with waist from Hevy). VO2 max stays one tile among these, not the centre.\n- Tier 2 (strong evidence or a validated device classification): HRV trend; overnight vitals composite (respiratory rate, SpO2, wrist temperature, sleeping HR); breathing disturbances / sleep-apnea screening; irregular rhythm / AF (once ingested); body composition (body fat %, lean mass / FFMI); heart-rate recovery; walking speed; sleep efficiency and awake time; stand hours / sedentary time.\n- Tier 3 (context, trend only): active energy / PAL; physical effort; walking HR average; daylight; headphone and environmental audio; flights climbed; double support; asymmetry; step length; stair speed; 6-minute walk; mindful minutes; toothbrushing; sleep stages.\n- Not worth reference tiles: running dynamics (no health reference), push count (misdetected for non-wheelchair users), cycling distance, sexual activity, handwashing (stopped arriving 2026-08-20), UV (never had a row).\n\nSource quality notes: the Stand goal range (6\u201312 h, default 12) comes only from tech press (MacRumors), since Apple's pages don't state it. The widely quoted Enright lower-limit offsets (\u2212153 m men / \u2212139 m women) are not in the abstract and were not verified, so they are not used. The Apple sleep-apnea specificity/sensitivity figures come from Apple's own FDA-validation white paper.",
+ "metrics": [
+  {
+   "metric": "apple_stand_hour / apple_stand_time (Stand hours, sedentary context)",
+   "unit": "hours with \u22651 min standing+moving (0\u201324); stand time in minutes",
+   "whatItMeans": "How many hours of the day you stood up and moved for at least one minute. It is a prompt to break up sitting, not a measure of how long you sat.",
+   "referenceKind": "guideline_target",
+   "bands": [
+    {
+     "label": "Apple default Stand goal met",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": "\u226512 stand hours/day",
+     "interpretation": "Apple's default goal. The goal can be lowered to 6 hours but not raised above 12 (watchOS 7+; secondary source). Meeting it means you broke up sitting in most waking hours."
+    },
+    {
+     "label": "Below default goal",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": "<12 stand hours/day (or below the user's own goal)",
+     "interpretation": "Several waking hours with no standing break. There is no outcome study on 'stand hours' themselves."
+    },
+    {
+     "label": "Sedentary time context (accelerometer, not stand hours)",
+     "sex": "both",
+     "ageRange": "middle-aged/older (mean 62.6 y)",
+     "range": "\u22659.5 h/day sedentary",
+     "interpretation": "Ekelund 2019: mortality risk rose gradually from ~7.5\u20139 h and was statistically higher from \u22659.5 h/day. The dose-response curve gave HR 1.48 at 10 h/day and 2.92 at 12 h/day. Least vs most sedentary quarter: HR 2.63."
+    },
+    {
+     "label": "Activity that offsets sitting",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": "~30\u201340 min/day MVPA (accelerometer); ~60\u201375 min/day moderate (self-report)",
+     "interpretation": "Ekelund 2020 (44,370 people): about 30\u201340 min/day of MVPA attenuated the sitting\u2013mortality link. Ekelund 2016 (>1 M people): >35.5 MET-h/week (~60\u201375 min/day) removed the excess risk of sitting >8 h/day (HR 1.04, 0.99\u20131.10)."
+    }
+   ],
+   "baselineRule": "Guideline/device target. Daily stand hours = sum of apple_stand_hour for the day, compared with 12 (or the user's own Stand goal if known). Show as 'X of 12'. Optional HEURISTIC: the longest run of consecutive waking hours without a stand hour, since the Dunstan 2012 trial broke sitting every 20 min. Never convert stand hours into 'sedentary hours'.",
+   "healthLinks": "No study links stand-hour counts to outcomes; the evidence is about sedentary time. In Ekelund 2019 (8 cohorts, n=36,383, accelerometer), sedentary quarters had HR 1.00 / 1.28 / 1.71 / 2.63. In a randomised crossover trial (Dunstan 2012, n=19 overweight adults), 2-min light walking breaks every 20 min cut the post-meal glucose area from 6.9 to 5.2 mmol/L\u00b7h and insulin from 829 to 634 pmol/L\u00b7h.",
+   "howToImprove": "Stand and walk for 1\u20132 minutes at least once an hour; every 20\u201330 min during long desk sessions (Dunstan used every 20 min). Keep daily moderate-to-vigorous activity at \u226530\u201340 min, which blunts the sitting risk.",
+   "caveats": "A stand hour needs only 1 minute, so 12/12 can coexist with 10+ h of sitting. Stand hours are counted only while the Watch is worn. The sedentary evidence is observational, from older cohorts (mean age ~62). Evidence on breaking up sitting comes from short acute trials.",
+   "sources": [
+    {
+     "citation": "Apple Support. Track daily activity with Apple Watch (Stand ring = stood and moved \u22651 min per hour)",
+     "url": "https://support.apple.com/en-us/HT204517"
+    },
+    {
+     "citation": "MacRumors 2020. watchOS 7 lets you customize Stand hours (6\u201312 h) \u2014 secondary",
+     "url": "https://www.macrumors.com/2020/09/16/watchos-7-activity-goal-customization/"
+    },
+    {
+     "citation": "Ekelund U et al. Dose-response associations between accelerometry measured physical activity and sedentary time and all cause mortality. BMJ 2019",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC6699591/"
+    },
+    {
+     "citation": "Ekelund U et al. Does physical activity attenuate, or even eliminate, the detrimental association of sitting time with mortality? Lancet 2016",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/27475271/"
+    },
+    {
+     "citation": "Ekelund U et al. Joint associations of accelerometer-measured physical activity and sedentary time with all-cause mortality. Br J Sports Med 2020",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC7719907/"
+    },
+    {
+     "citation": "Dunstan DW et al. Breaking up prolonged sitting reduces postprandial glucose and insulin responses. Diabetes Care 2012",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC3329818/"
+    }
+   ],
+   "confidence": "medium"
+  },
+  {
+   "metric": "active_energy + basal_energy_burned \u2192 total daily energy and Physical Activity Level (PAL)",
+   "unit": "kcal/day; PAL = total \u00f7 basal (unitless)",
+   "whatItMeans": "Active energy is what you burn by moving; adding basal (resting) energy gives total daily energy. Dividing total by basal gives the Physical Activity Level, a standard way to describe how active a lifestyle is. This is context, not a target.",
+   "referenceKind": "population_bands",
+   "bands": [
+    {
+     "label": "Sedentary or light activity lifestyle",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": "PAL 1.40\u20131.69",
+     "interpretation": "FAO/WHO/UNU Table 5.3."
+    },
+    {
+     "label": "Active or moderately active lifestyle",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": "PAL 1.70\u20131.99",
+     "interpretation": "The consultation called PAL \u22651.75 'desirable' for lowering the risk of overweight and chronic disease."
+    },
+    {
+     "label": "Vigorous or vigorously active lifestyle",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": "PAL 2.00\u20132.40",
+     "interpretation": "PAL values >2.40 are 'difficult to maintain over a long period'."
+    },
+    {
+     "label": "Data-quality check",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": "basal energy outside \u00b115% of Mifflin\u2013St Jeor",
+     "interpretation": "From the first research: treat as a data problem (e.g., duplicated rows), not physiology."
+    }
+   ],
+   "baselineRule": "Population bands applied to a 7-day mean: PAL_week = \u03a3(active+basal) \u00f7 \u03a3 basal over the last 7 complete days. Never judge a single day. Show total kcal as context, with no 'good/bad' colour. Run the basal sanity check against Mifflin\u2013St Jeor (first research) before computing PAL.",
+   "healthLinks": "Energy figures are not outcome predictors themselves. PAL is a descriptive category used to set energy requirements. Outcome evidence for activity sits with steps and weekly moderate/vigorous minutes (first research).",
+   "howToImprove": "Not a target. Raise activity via steps, exercise minutes and breaking up sitting; PAL follows.",
+   "caveats": "A 2026 living meta-analysis (82 studies) found Apple Watch energy-expenditure error 'inconsistent and frequently large', so PAL inherits that error. Apple's basal energy is model-based (age, sex, height, weight), so PAL \u2248 1 + active/basal mostly reflects the active-energy estimate. Apple's personal Move goal is not a health standard.",
+   "sources": [
+    {
+     "citation": "FAO/WHO/UNU. Human energy requirements (2004), Chapter 5, Table 5.3 PAL categories",
+     "url": "https://www.fao.org/4/y5686e/y5686e07.htm"
+    },
+    {
+     "citation": "The accuracy of Apple Watch measurements: a living systematic review and meta-analysis. NPJ Digit Med 2026",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC12823594/"
+    },
+    {
+     "citation": "Mifflin MD et al. A new predictive equation for resting energy expenditure. Am J Clin Nutr 1990",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/2305711/"
+    }
+   ],
+   "confidence": "medium"
+  },
+  {
+   "metric": "physical_effort (Apple Physical Effort)",
+   "unit": "METs (kcal\u00b7kg\u207b\u00b9\u00b7h\u207b\u00b9)",
+   "whatItMeans": "Apple's estimate of how hard your movement is, in metabolic equivalents (1 MET \u2248 resting). It excludes heart rate, temperature and altitude.",
+   "referenceKind": "guideline_target",
+   "bands": [
+    {
+     "label": "Sedentary",
+     "sex": "both",
+     "ageRange": "adults 19\u201359",
+     "range": "1.0\u20131.5 METs",
+     "interpretation": "2024 Adult Compendium classification."
+    },
+    {
+     "label": "Light",
+     "sex": "both",
+     "ageRange": "adults 19\u201359",
+     "range": "1.6\u20132.9 METs",
+     "interpretation": "Counts toward 'any movement' but not toward WHO moderate minutes."
+    },
+    {
+     "label": "Moderate",
+     "sex": "both",
+     "ageRange": "adults 19\u201359",
+     "range": "3.0\u20135.9 METs",
+     "interpretation": "Counts toward the WHO 150\u2013300 min/week moderate target (first research)."
+    },
+    {
+     "label": "Vigorous",
+     "sex": "both",
+     "ageRange": "adults 19\u201359",
+     "range": "\u22656.0 METs",
+     "interpretation": "1 vigorous minute \u2248 2 moderate minutes (WHO)."
+    }
+   ],
+   "baselineRule": "Classify each sample (ideally minute-level) into the Compendium bands and count minutes \u22653.0 METs (moderate) and \u22656.0 (vigorous). Weekly moderate-equivalent = moderate + 2\u00d7vigorous, compared with 150\u2013300 min. Do NOT show a daily mean of hourly averages; that is what the app does today, and it pushes almost every day into 'light'.",
+   "healthLinks": "The bands carry the WHO/ACSM intensity definitions behind the 150\u2013300 min/week guideline. Physical effort itself has no outcome studies.",
+   "howToImprove": "Accumulate more minutes at \u22653 METs (brisk walking uphill, cycling, intervals).",
+   "caveats": "HAE's 'Time Grouping: Hours' averages each hour: a 20-min brisk walk inside an otherwise seated hour reads ~2 METs. Use apple_exercise_time for the weekly dose and physical effort for intensity character. MET values are standardised to 3.5 ml/kg/min and ignore individual resting metabolism.",
+   "sources": [
+    {
+     "citation": "Herrmann SD et al. 2024 Adult Compendium of Physical Activities. J Sport Health Sci 2024",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC10818145/"
+    },
+    {
+     "citation": "Apple Developer. HKQuantityTypeIdentifier.physicalEffort",
+     "url": "https://developer.apple.com/documentation/healthkit/hkquantitytypeidentifier/physicaleffort"
+    },
+    {
+     "citation": "Bull FC et al. WHO 2020 guidelines on physical activity and sedentary behaviour. Br J Sports Med 2020",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/33239350/"
+    }
+   ],
+   "confidence": "medium"
+  },
+  {
+   "metric": "walking_heart_rate_average",
+   "unit": "bpm",
+   "whatItMeans": "Your average heart rate during ordinary walking through the day. Apple says it is 'correlated to fitness level' because it reflects how efficiently your heart works at a light, repeatable effort.",
+   "referenceKind": "personal_baseline",
+   "bands": [
+    {
+     "label": "Within your usual range",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": "7-day median within \u00b14 bpm of your 28-day median",
+     "interpretation": "HEURISTIC: \u00b14 bpm \u2248 the watch's heart-rate error at rest (MAE 3.7 bpm, first research), so smaller shifts are noise."
+    },
+    {
+     "label": "Higher than usual",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": "7-day median \u22655 bpm above the 28-day median",
+     "interpretation": "HEURISTIC: consider illness, poor sleep, heat, dehydration, or a break from training. Check against resting HR and the overnight vitals."
+    },
+    {
+     "label": "Lower than usual (long-term)",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": "a downward drift over 8\u201312 weeks",
+     "interpretation": "Consistent with better aerobic fitness, as Apple's documentation implies. Not validated as a fitness score."
+    }
+   ],
+   "baselineRule": "Personal baseline. Baseline = median of daily values over the previous 28 days, needing \u226514 days with data. Current = median of the last 7 days. Report the difference in bpm. No population bands exist.",
+   "healthLinks": "No outcome study for this metric. Apple's HealthKit documentation states it is correlated with fitness level.",
+   "howToImprove": "Aerobic training lowers it over weeks to months; it is a trend readout, not a target.",
+   "caveats": "Depends on walking pace, hills, heat and carried load. Apple replaces the current and previous day's samples as better estimates arrive, so the last two days can change after an HAE sync. Walking workouts are included.",
+   "sources": [
+    {
+     "citation": "Apple Developer. HKQuantityTypeIdentifier.walkingHeartRateAverage",
+     "url": "https://developer.apple.com/documentation/healthkit/hkquantitytypeidentifier/walkingheartrateaverage"
+    },
+    {
+     "citation": "Apple Watch Series 9/Ultra 2 heart-rate validation (MAE 3.7 bpm) \u2014 from the first research",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC11478500/"
+    }
+   ],
+   "confidence": "low"
+  },
+  {
+   "metric": "apple_sleeping_wrist_temperature (as deviation from baseline)",
+   "unit": "\u00b0C deviation from personal baseline (HealthKit stores absolute ~35 \u00b0C)",
+   "whatItMeans": "Your overnight wrist-skin temperature compared with your usual nights. Apple Watch Series 8+ samples every 5 seconds during sleep and stores one environment-corrected value per night; Apple shows it as a change from your baseline.",
+   "referenceKind": "personal_baseline",
+   "bands": [
+    {
+     "label": "Within usual variation",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": "\u22120.2 to +0.2 \u00b0C",
+     "interpretation": "Below the \u22650.2 \u00b0C shift that Apple's own cycle algorithm treats as the typical ovulation-associated change. HEURISTIC when applied to men."
+    },
+    {
+     "label": "Mild rise",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": "+0.2 to +0.5 \u00b0C",
+     "interpretation": "Common after alcohol, late exercise, a warm room or jet lag. In women, the post-ovulation (luteal) phase. Not a flag on its own."
+    },
+    {
+     "label": "Marked rise",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": "\u2265+0.5 \u00b0C on \u22652 consecutive nights",
+     "interpretation": "HEURISTIC. In Smarr 2020 (Oura ring, n=50 COVID-19 cases) the mean skin-temperature rise during symptoms was +0.63 \u00b1 1 \u00b0C. Treat as a possible-illness flag, especially if respiratory rate or resting HR is also up."
+    },
+    {
+     "label": "Drop",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": "\u2264\u22120.5 \u00b0C",
+     "interpretation": "Usually environmental (cold room, loose band). My interpretation; no source grades drops."
+    }
+   ],
+   "baselineRule": "Personal baseline. Deviation = tonight's value \u2212 median of the previous 60 nights with data (the app's current rule, which is sound). Show nothing until \u22655 prior nights exist (Apple sets its baseline after about 5 nights). Flag only persistent changes (\u22652 consecutive nights), and ideally only together with a second vital (see the overnight vitals composite).",
+   "healthLinks": "Rises track illness and fever (Smarr 2020: wearable temperature rises correlated with self-reported fever and could precede symptom recognition) and the menstrual cycle. Apple's 2025 study (262 women, 889 cycles) estimated ovulation retrospectively with MAE 1.22\u20131.59 days in cycles with a \u22650.2 \u00b0C signal. No link to long-term outcomes.",
+   "howToImprove": "Not a target. Keep the bedroom temperature and band fit consistent so real changes stand out.",
+   "caveats": "Apple: 'not a thermometer', cannot take on-demand readings, and cannot diagnose fever. Night-to-night values are affected by diet, exercise, alcohol, sleep environment, jet lag, menstrual cycle and illness. The Smarr magnitudes come from a finger ring, not a wrist. No study gives a validated illness threshold for Apple Watch wrist temperature.",
+   "sources": [
+    {
+     "citation": "Apple Support. About wrist temperature on Apple Watch (baseline after about 5 nights)",
+     "url": "https://support.apple.com/en-us/102674"
+    },
+    {
+     "citation": "Apple Developer. HKQuantityTypeIdentifier.appleSleepingWristTemperature",
+     "url": "https://developer.apple.com/documentation/healthkit/hkquantitytypeidentifier/applesleepingwristtemperature"
+    },
+    {
+     "citation": "Performance of algorithms using wrist temperature for retrospective ovulation day estimate and next menses prediction. Hum Reprod 2025 (Apple-funded)",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC11879225/"
+    },
+    {
+     "citation": "Smarr BL et al. Feasibility of continuous fever monitoring using wearable devices. Sci Rep 2020",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC7736301/"
+    }
+   ],
+   "confidence": "low"
+  },
+  {
+   "metric": "blood_oxygen_saturation (overnight, as a personal-baseline signal)",
+   "unit": "% SpO2, nightly mean of spot readings during sleep",
+   "whatItMeans": "How saturated your blood is with oxygen during sleep. For a healthy person the value matters mainly when it moves away from your own normal, not as an absolute score.",
+   "referenceKind": "personal_baseline",
+   "bands": [
+    {
+     "label": "Population context (awake)",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": "95\u2013100%",
+     "interpretation": "WHO normal range (from the first research)."
+    },
+    {
+     "label": "Population context (asleep, PSG)",
+     "sex": "male",
+     "ageRange": "adults",
+     "range": "mean \u224894.7\u201395.0%; lowest \u224888\u201392%",
+     "interpretation": "Boulos 2019 (from the first research): healthy men average ~94.7% during sleep, so a nightly mean around 94% is not abnormal."
+    },
+    {
+     "label": "Outside your typical range",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": "nightly mean below your 30-night 5th percentile, on \u22652 nights",
+     "interpretation": "HEURISTIC, modelled on Apple Vitals' 'outside typical range'. Stronger if another overnight vital is also out of range."
+    }
+   ],
+   "baselineRule": "Personal baseline. Nightly value = mean of blood_oxygen_saturation samples between sleep start and end, needing \u22653 samples. Typical range = 5th\u201395th percentile of the previous 30 nights (\u22657 nights before showing anything, matching Vitals' 7-night setup). Flag a night below the range only if it repeats (\u22652 nights) or coincides with another out-of-range vital.",
+   "healthLinks": "No outcome dose-response in healthy people. Its value is spotting sustained drops (altitude, respiratory illness, sleep-disordered breathing). Apple's Vitals app uses it as one of five overnight signals.",
+   "howToImprove": "Not a training target.",
+   "caveats": "2026 meta-analysis: Apple Watch SpO2 has low mean bias (\u22120.04%) but wide limits of agreement (\u22124.0 to +3.9 points), so a 1\u20132-point shift on one night is within noise. Readings fail with motion or a loose band.",
+   "sources": [
+    {
+     "citation": "Apple Support. Track your overnight vitals with Apple Watch (Vitals app)",
+     "url": "https://support.apple.com/en-us/120142"
+    },
+    {
+     "citation": "The accuracy of Apple Watch measurements: a living systematic review and meta-analysis. NPJ Digit Med 2026",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC12823594/"
+    },
+    {
+     "citation": "WHO Pulse Oximetry Training Manual (normal 95\u2013100%) \u2014 from the first research",
+     "url": "https://cdn.who.int/media/docs/default-source/patient-safety/pulse-oximetry/who-ps-pulse-oxymetry-training-manual-en.pdf"
+    },
+    {
+     "citation": "Boulos MI et al. Normal PSG parameters in healthy adults. Lancet Respir Med 2019 (Table 3) \u2014 from the first research",
+     "url": "https://omc.ohri.ca/psgnorms/PSGnorm_Table3.pdf"
+    }
+   ],
+   "confidence": "medium"
+  },
+  {
+   "metric": "respiratory_rate (overnight, as a personal-baseline signal)",
+   "unit": "breaths/min during sleep",
+   "whatItMeans": "Breaths per minute while asleep. It is very stable within a person, so a rise above your own normal is an early illness signal.",
+   "referenceKind": "personal_baseline",
+   "bands": [
+    {
+     "label": "Population typical (central 90%)",
+     "sex": "both",
+     "ageRange": "20\u201369",
+     "range": "11.8\u201319.2 (mean 15.4)",
+     "interpretation": "Natarajan 2021 (first research)."
+    },
+    {
+     "label": "Stable",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": "within +3 breaths/min of your baseline",
+     "interpretation": "Normal within-person variation is small: a 14-day CV of 2.3\u20139.5% at age 20\u201324."
+    },
+    {
+     "label": "Elevated vs baseline",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": "\u22653 breaths/min above your baseline",
+     "interpretation": "Natarajan 2021: 36.4% of symptomatic and 23.7% of asymptomatic COVID-19 cases had \u22651 such night around symptom onset."
+    }
+   ],
+   "baselineRule": "Personal baseline. Nightly value = mean respiratory_rate during the sleep window. Baseline = median of the previous 14\u201330 nights (\u22657 nights needed). Flag nights \u2265+3 breaths/min above baseline; flag more strongly if repeated or paired with another vital.",
+   "healthLinks": "No verified mortality link in healthy people. Its value is as an early illness or overreaching signal (Natarajan 2021).",
+   "howToImprove": "Not a target.",
+   "caveats": "The population figures come from Fitbit's algorithm; Apple's differs slightly in absolute values, so rely on the personal delta. Alcohol and altitude also raise it (not sourced here).",
+   "sources": [
+    {
+     "citation": "Natarajan A et al. Measurement of respiratory rate using wearable devices and applications to COVID-19 detection. npj Digit Med 2021 \u2014 from the first research",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC8443549/"
+    },
+    {
+     "citation": "Apple Support. Track your overnight vitals with Apple Watch",
+     "url": "https://support.apple.com/en-us/120142"
+    }
+   ],
+   "confidence": "medium"
+  },
+  {
+   "metric": "overnight_vitals_composite (Apple Vitals-style: sleeping heart rate, respiratory rate, blood oxygen, wrist temperature, sleep duration)",
+   "unit": "number of overnight metrics outside your typical range (0\u20135)",
+   "whatItMeans": "One combined overnight check: how many of your five overnight vitals fell outside your own typical range last night. Apple sends an alert only when several move together, because a single metric wanders often.",
+   "referenceKind": "device_classification",
+   "bands": [
+    {
+     "label": "All typical",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": "0 metrics out of range",
+     "interpretation": "Nothing to report."
+    },
+    {
+     "label": "One outlier",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": "1 metric out of range",
+     "interpretation": "Apple does not notify for a single outlier. Show it quietly."
+    },
+    {
+     "label": "Multiple outliers",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": "\u22652 metrics out of range",
+     "interpretation": "Apple sends a next-morning notification and names possible factors: medications, elevation, alcohol intake, illness."
+    }
+   ],
+   "baselineRule": "Device classification, replicated because Apple does not publish its range definition. Wait for \u22657 nights of data (Apple's setup period). Per metric, typical range = 5th\u201395th percentile of the previous 30 nights (HEURISTIC). Wrist temperature uses its deviation, respiratory rate its +3 rule, SpO2 its lower tail. Count outliers per night and raise a morning card only at \u22652. On Series 11 the five overnight metrics are heart rate, respiratory rate, blood oxygen, wrist temperature and sleep duration (Series 12 / Ultra 4 swap sleep duration for HRV).",
+   "healthLinks": "A multi-signal approach reduces false alarms from any single noisy sensor. Illness studies (Smarr 2020; Natarajan 2021) show temperature, heart rate and respiratory rate rising together around infection.",
+   "howToImprove": "Not a target. It is a heads-up to rest, hydrate, skip hard training and watch for symptoms.",
+   "caveats": "Apple: 'not intended for medical use'. The percentile rule is a heuristic, since Apple's exact range method is unpublished. Needs the Watch worn to sleep most nights.",
+   "sources": [
+    {
+     "citation": "Apple Support. Track your overnight (and daytime) vitals with Apple Watch",
+     "url": "https://support.apple.com/en-us/120142"
+    },
+    {
+     "citation": "Smarr BL et al. Feasibility of continuous fever monitoring using wearable devices. Sci Rep 2020",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC7736301/"
+    }
+   ],
+   "confidence": "medium"
+  },
+  {
+   "metric": "breathing_disturbances (sleep apnea notifications)",
+   "unit": "events per hour of sleep (Apple's own unit, not a count)",
+   "whatItMeans": "Apple Watch uses its accelerometer to detect brief interruptions in breathing during sleep. The nightly value feeds a 30-day screen for possible moderate-to-severe sleep apnea.",
+   "referenceKind": "device_classification",
+   "bands": [
+    {
+     "label": "Not Elevated (night)",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": "below Apple's per-night cut-off (not published)",
+     "interpretation": "Apple's own nightly label. The app should not invent the cut-off."
+    },
+    {
+     "label": "Elevated (night)",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": "above Apple's per-night cut-off (not published)",
+     "interpretation": "Alcohol, upper-respiratory illness and some medications can raise it."
+    },
+    {
+     "label": "Notification rule (30-day window)",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": "\u226510 nights with a value in a 30-day window AND \u226550% of them Elevated",
+     "interpretation": "Apple notifies of possible moderate-to-severe sleep apnea. Validation: sensitivity 66.6%, specificity 95.9%. Fewer than 10 nights = no evaluation."
+    },
+    {
+     "label": "Clinical context only: AHI categories",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": "normal <5; mild 5\u2013<15; moderate 15\u2013<30; severe \u226530 events/h",
+     "interpretation": "Apple: breathing disturbances 'aren't equivalent to the AHI'. Moderate\u2013severe (AHI \u226515) warrants treatment regardless of symptoms."
+    }
+   ],
+   "baselineRule": "Device classification. Show the nightly value and trend. If HAE also delivers Apple's Elevated flag, show the share of elevated nights in the current 30-day window and the '\u226510 nights, \u226550%' rule; otherwise show only the trend and do not classify. Windows are non-rolling 30-day blocks starting 30 days after onboarding.",
+   "healthLinks": "Untreated sleep apnea raises the risk of high blood pressure, heart attack and stroke (Apple white paper, citing clinical guidelines). The screen was built on 3,936 design nights and tested on 7,220 sequestered nights, with AASM scoring (4% desaturation rule).",
+   "howToImprove": "If notified: discuss with a doctor (home sleep test). Alcohol before bed and nasal congestion raise the values.",
+   "caveats": "Not for people already diagnosed with sleep apnea. It misses about a third of moderate\u2013severe cases (sensitivity 66.6%). HAE exports it only on iOS 18+. The app's card currently says 'count', which should be 'events/h'.",
+   "sources": [
+    {
+     "citation": "Apple. Estimating Breathing Disturbances and Sleep Apnea Risk from Apple Watch (white paper, Sept 2024)",
+     "url": "https://www.apple.com/health/pdf/sleep-apnea/Sleep_Apnea_Notifications_on_Apple_Watch_September_2024.pdf"
+    },
+    {
+     "citation": "Apple Support. Sleep apnea notifications on your Apple Watch",
+     "url": "https://support.apple.com/en-us/120031"
+    },
+    {
+     "citation": "HealthyApps. Health Auto Export supported data (Breathing Disturbances, iOS 18.0+)",
+     "url": "https://help.healthyapps.dev/en/health-auto-export/getting-started/supported-data/"
+    }
+   ],
+   "confidence": "high"
+  },
+  {
+   "metric": "walking_steadiness (Apple Walking Steadiness)",
+   "unit": "score 0\u20131 shown as %, plus classification OK / Low / Very Low",
+   "whatItMeans": "An iPhone estimate of your balance, strength and gait, built from walking speed, step length, double support and asymmetry. It predicts the risk of a fall due to a mobility limitation in the next 12 months.",
+   "referenceKind": "device_classification",
+   "bands": [
+    {
+     "label": "OK",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": "Apple classification (numeric boundary not published)",
+     "interpretation": "'Healthy, confident walker\u2026 risk of falling due to a mobility-related health issue is low' (Apple, WWDC21)."
+    },
+    {
+     "label": "Low",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": "Apple classification",
+     "interpretation": "'More compromised mobility\u2026 may need to take more precautions to prevent falling' in challenging situations."
+    },
+    {
+     "label": "Very Low",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": "Apple classification",
+     "interpretation": "'Noticeably compromised steadiness\u2026 at high risk of falling'."
+    }
+   ],
+   "baselineRule": "Device classification only; never compute your own. Apple saves a new score weekly (higher = better). Notifications come about one month after dropping to Low/Very Low, then every three months if the class persists. The numeric boundaries exist only in HealthKit functions (HKAppleWalkingSteadinessMinimum/MaximumQuantity(for:)) and are not published as text.",
+   "healthLinks": "Designed to predict mobility-related fall risk over 12 months. Its inputs are established fall-risk gait markers.",
+   "howToImprove": "Apple's Health app pairs Low/Very Low with balance and strength exercises. Leg strength and balance training are the usual approach.",
+   "caveats": "DATA AVAILABILITY: Health Auto Export does not list Walking Steadiness among supported metrics, so this app cannot receive it today. Requires the iPhone carried near the waist on flat ground. No independent peer-reviewed validation of the numeric cut-offs was found.",
+   "sources": [
+    {
+     "citation": "Apple Support. Measure your walking steadiness with your iPhone",
+     "url": "https://support.apple.com/en-us/102504"
+    },
+    {
+     "citation": "Apple WWDC21. Measure health with motion (classification definitions, weekly score, notifications)",
+     "url": "https://developer.apple.com/videos/play/wwdc2021/10287/"
+    },
+    {
+     "citation": "Apple Developer. HKAppleWalkingSteadinessClassification",
+     "url": "https://developer.apple.com/documentation/healthkit/hkapplewalkingsteadinessclassification"
+    },
+    {
+     "citation": "HealthyApps. Health Auto Export supported data (Walking Steadiness not listed)",
+     "url": "https://help.healthyapps.dev/en/health-auto-export/getting-started/supported-data/"
+    }
+   ],
+   "confidence": "medium"
+  },
+  {
+   "metric": "walking_asymmetry_percentage",
+   "unit": "% of steps where one foot is faster or slower than the other",
+   "whatItMeans": "The share of walking time in which your left and right steps differ in timing. 0% means perfectly even; it rises with a limp from pain, injury or stiffness.",
+   "referenceKind": "personal_baseline",
+   "bands": [
+    {
+     "label": "Symmetric (ideal direction)",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": "0%, lower is better",
+     "interpretation": "Apple does not grade severity; it reports the % of time asymmetric gait was detected."
+    },
+    {
+     "label": "Apple's asymmetry-detection threshold",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": "\u226535%",
+     "interpretation": "In Apple's validation, iPhone asymmetry \u226535% identified asymmetric walking with 83.4% positive predictive value against a pressure mat (asymmetry induced with a locked knee brace). My interpretation: sustained \u226535% is consistent with a real limp."
+    }
+   ],
+   "baselineRule": "Personal baseline. Weekly median (the iPhone records 10\u201330 samples/day). Flag (a) a weekly median \u226535% for \u22652 consecutive weeks, or (b) a clear rise vs your own 8-week median, e.g. after an injury. No population percentiles exist.",
+   "healthLinks": "Asymmetry emerges with one-sided pathology or injury (Apple white paper). There is no outcome study for the percentage itself.",
+   "howToImprove": "Address the cause (pain, injury, footwear). Useful for tracking rehab progress.",
+   "caveats": "iPhone-derived (pocket or waist, flat ground), not Watch-derived. Apple's validation of the asymmetry threshold used 51 healthy adults aged 26\u201355 wearing a brace, whose mechanics may differ from real injury.",
+   "sources": [
+    {
+     "citation": "Apple. Measuring Walking Quality Through iPhone Mobility Metrics (white paper, May 2022)",
+     "url": "https://www.apple.com/healthcare/docs/site/Measuring_Walking_Quality_Through_iPhone_Mobility_Metrics.pdf"
+    },
+    {
+     "citation": "Apple Developer. HKQuantityTypeIdentifier.walkingAsymmetryPercentage",
+     "url": "https://developer.apple.com/documentation/healthkit/hkquantitytypeidentifier/walkingasymmetrypercentage"
+    }
+   ],
+   "confidence": "low"
+  },
+  {
+   "metric": "walking_double_support_percentage",
+   "unit": "% of the gait cycle with both feet on the ground",
+   "whatItMeans": "How much of each step you spend with both feet on the ground. Lower values mean more time balancing on one foot, which Apple links to better balance and lower fall risk.",
+   "referenceKind": "device_classification",
+   "bands": [
+    {
+     "label": "Below typical walking range",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": "<20%",
+     "interpretation": "Usually fast walking (faster pace lowers it). Not a concern."
+    },
+    {
+     "label": "Typical walking",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": "20\u201340%",
+     "interpretation": "Apple's stated typical range, 'with lower values indicating better balance'. Healthy adults (mean age 31) measured 27.1 \u00b1 1.8% on iPhone; older adults (64\u201395) 28.4 \u00b1 3.3% at self-selected pace on a pressure mat."
+    },
+    {
+     "label": "Above typical range",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": ">40%",
+     "interpretation": "More time on two feet: slow or cautious gait. My interpretation: worth watching if persistent."
+    }
+   ],
+   "baselineRule": "Device classification (Apple's 20\u201340% range) plus a personal trend. Use the weekly median and treat changes <3 percentage points as noise (Apple's median minimal detectable change 3.2%).",
+   "healthLinks": "Lower double support time correlates with better walking stability and lower fall risk (Apple white paper).",
+   "howToImprove": "Balance and leg-strength training; walking at a comfortable but brisk pace.",
+   "caveats": "Weakest of the iPhone gait metrics: agreement with a lab sensor was poor to moderate (ICC 0.58 adults, 0.42 seniors). Strongly speed-dependent. Requires the iPhone near the waist.",
+   "sources": [
+    {
+     "citation": "Apple. Measuring Walking Quality Through iPhone Mobility Metrics (white paper, May 2022)",
+     "url": "https://www.apple.com/healthcare/docs/site/Measuring_Walking_Quality_Through_iPhone_Mobility_Metrics.pdf"
+    },
+    {
+     "citation": "Apple Developer. HKQuantityTypeIdentifier.walkingDoubleSupportPercentage",
+     "url": "https://developer.apple.com/documentation/healthkit/hkquantitytypeidentifier/walkingdoublesupportpercentage"
+    },
+    {
+     "citation": "Validity and reliability of the Apple Health app on iPhone for measuring gait parameters in children, adults, and seniors. Sci Rep 2023",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC10067003/"
+    }
+   ],
+   "confidence": "medium"
+  },
+  {
+   "metric": "walking_step_length",
+   "unit": "cm (distance from front foot to back foot)",
+   "whatItMeans": "How long your walking steps are. It shortens with fatigue, pain, age or cautious walking, so a drop against your own norm matters more than the number.",
+   "referenceKind": "personal_baseline",
+   "bands": [
+    {
+     "label": "Adult context (brisk 6-min walk, mean age 31)",
+     "sex": "both",
+     "ageRange": "adults ~18\u201345",
+     "range": "71.8 \u00b1 6.8 cm (iPhone)",
+     "interpretation": "The iPhone read ~2.9 cm longer than a lab inertial sensor (69.0 \u00b1 6.2 cm)."
+    },
+    {
+     "label": "Older-adult context (pressure mat)",
+     "sex": "both",
+     "ageRange": "64\u201395",
+     "range": "slow 61 \u00b1 8 cm; self-selected 68 \u00b1 8 cm; fast 71 \u00b1 7 cm",
+     "interpretation": "Apple's validation cohort (mean height 1.66 m)."
+    }
+   ],
+   "baselineRule": "Personal baseline. Weekly median vs your 8-week median. Treat changes <8 cm as noise (Apple's median minimal detectable change was 7\u20139 cm).",
+   "healthLinks": "Gait metrics track mobility and ageing; no outcome thresholds for step length alone. Walking speed (first research) is the better-evidenced gait metric.",
+   "howToImprove": "Not a direct target. Improves with strength, mobility and walking speed.",
+   "caveats": "Apple derives it from your Health-app height plus cadence and speed, so a wrong height biases it. Taller people have longer steps. iPhone-derived. Validity was good in adults (ICC 0.78).",
+   "sources": [
+    {
+     "citation": "Apple. Measuring Walking Quality Through iPhone Mobility Metrics (white paper, May 2022)",
+     "url": "https://www.apple.com/healthcare/docs/site/Measuring_Walking_Quality_Through_iPhone_Mobility_Metrics.pdf"
+    },
+    {
+     "citation": "Validity and reliability of the Apple Health app on iPhone for measuring gait parameters. Sci Rep 2023",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC10067003/"
+    },
+    {
+     "citation": "Apple Developer. HKQuantityTypeIdentifier.walkingStepLength",
+     "url": "https://developer.apple.com/documentation/healthkit/hkquantitytypeidentifier/walkingsteplength"
+    }
+   ],
+   "confidence": "low"
+  },
+  {
+   "metric": "stair_speed_up / stair_speed_down",
+   "unit": "m/s",
+   "whatItMeans": "How fast you walk up and down ordinary flights of stairs (\u22653 m / 10 ft) during daily life. Apple Watch Series 5+ records about 20 samples on a typical day.",
+   "referenceKind": "personal_baseline",
+   "bands": [
+    {
+     "label": "No population reference",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": "\u2014",
+     "interpretation": "No published norms for Apple's stair-speed metrics were found. Show the trend only."
+    }
+   ],
+   "baselineRule": "Personal baseline. Weekly median of daily medians vs your own 8-week median. Highlight a change only when it falls outside the interquartile range of the baseline weeks (HEURISTIC). Keep ascent and descent separate.",
+   "healthLinks": "None verified for this metric. Stair climbing capacity reflects leg power and fitness, but no study validated Apple's everyday stair speed against outcomes.",
+   "howToImprove": "Leg strength and power training; general aerobic fitness.",
+   "caveats": "Everyday stairs are climbed at chosen, not maximal, pace, so speed mixes habit and capacity. Not recorded when wheelchair mode is on. Low confidence.",
+   "sources": [
+    {
+     "citation": "Apple Developer. HKQuantityTypeIdentifier.stairAscentSpeed",
+     "url": "https://developer.apple.com/documentation/healthkit/hkquantitytypeidentifier/stairascentspeed"
+    },
+    {
+     "citation": "Apple Developer. HKQuantityTypeIdentifier.stairDescentSpeed",
+     "url": "https://developer.apple.com/documentation/healthkit/hkquantitytypeidentifier/stairdescentspeed"
+    }
+   ],
+   "confidence": "low"
+  },
+  {
+   "metric": "six_minute_walking_test_distance (Apple 6-minute walk estimate)",
+   "unit": "m",
+   "whatItMeans": "Apple's weekly estimate of how far you could walk in a standard clinical six-minute walk test, calculated from everyday motion and workouts.",
+   "referenceKind": "population_bands",
+   "bands": [
+    {
+     "label": "Reference (ages 20\u201350)",
+     "sex": "male",
+     "ageRange": "20\u201350",
+     "range": "638 \u00b1 44 m",
+     "interpretation": "Chetta 2006, 102 healthy Caucasian adults. This exceeds Apple's 500 m ceiling."
+    },
+    {
+     "label": "Reference (ages 20\u201350)",
+     "sex": "female",
+     "ageRange": "20\u201350",
+     "range": "593 \u00b1 57 m",
+     "interpretation": "Chetta 2006."
+    },
+    {
+     "label": "Predicted (ages 40\u201380)",
+     "sex": "male",
+     "ageRange": "40\u201380",
+     "range": "6MWD = 7.57\u00d7height(cm) \u2212 5.02\u00d7age \u2212 1.76\u00d7weight(kg) \u2212 309 m (median measured 576 m)",
+     "interpretation": "Enright & Sherrill 1998 (117 men); explains ~40% of the variance."
+    },
+    {
+     "label": "Predicted (ages 40\u201380)",
+     "sex": "female",
+     "ageRange": "40\u201380",
+     "range": "6MWD = 2.11\u00d7height(cm) \u2212 2.29\u00d7weight(kg) \u2212 5.78\u00d7age + 667 m (median 494 m)",
+     "interpretation": "Enright & Sherrill 1998 (173 women)."
+    },
+    {
+     "label": "Apple ceiling",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": "500 m (maximum estimate)",
+     "interpretation": "HealthKit: 'The maximum estimated distance is 500 m'. Best results when the expected distance is under 500 m."
+    }
+   ],
+   "baselineRule": "If the value equals 500, display '\u2265500 m (Apple's ceiling)' with no verdict. Otherwise, for ages 40\u201380 show % of the Enright prediction; for younger people show the value against the Chetta mean. Do not label 'low' in a healthy person under 60 unless the value is well below 500 and persistent. My interpretation: a sub-500 value in a healthy young adult more likely reflects too little qualifying data or calibration than low capacity.",
+   "healthLinks": "The 6-minute walk is a standard clinical measure of functional capacity. The estimate's value is in older adults and in people recovering from surgery or illness (e.g., knee arthroplasty cohorts).",
+   "howToImprove": "More walking and aerobic fitness. For accuracy, calibrate Apple Watch with outdoor walks and GPS.",
+   "caveats": "Weekly estimate. It needs the Watch worn \u22658 h/day, 3 days/week, and \u226510 such days in the previous 4 weeks. The reference equations assume a supervised, first-time, standardised corridor test. The widely quoted lower-limit offsets (\u2212153 m men / \u2212139 m women) were not verified here.",
+   "sources": [
+    {
+     "citation": "Apple Developer. HKQuantityTypeIdentifier.sixMinuteWalkTestDistance (500 m maximum, weekly, wear requirements)",
+     "url": "https://developer.apple.com/documentation/healthkit/hkquantitytypeidentifier/sixminutewalktestdistance"
+    },
+    {
+     "citation": "Enright PL, Sherrill DL. Reference equations for the six-minute walk in healthy adults. Am J Respir Crit Care Med 1998",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/9817683/"
+    },
+    {
+     "citation": "Chetta A et al. Reference values for the 6-min walk test in healthy subjects 20\u201350 years old. Respir Med 2006",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/16466676/"
+    }
+   ],
+   "confidence": "medium"
+  },
+  {
+   "metric": "time_in_daylight",
+   "unit": "minutes/day",
+   "whatItMeans": "Minutes your Watch's ambient light sensor judged you to be outdoors in daylight. Daytime light supports mood, sleep and the body clock.",
+   "referenceKind": "population_bands",
+   "bands": [
+    {
+     "label": "Below the typical adult range",
+     "sex": "both",
+     "ageRange": "37\u201373",
+     "range": "<90 min/day",
+     "interpretation": "Below the lower quartile of self-reported outdoor daylight time in UK Biobank (IQR 1.5\u20133.5 h)."
+    },
+    {
+     "label": "Typical adult range",
+     "sex": "both",
+     "ageRange": "37\u201373",
+     "range": "90\u2013210 min/day (median 150)",
+     "interpretation": "UK Biobank middle half. Each additional daily hour outdoors was associated with lower odds of lifetime major depression (OR 0.92\u20130.98), less low mood and insomnia, and easier waking."
+    },
+    {
+     "label": "Above the typical range",
+     "sex": "both",
+     "ageRange": "37\u201373",
+     "range": ">210 min/day",
+     "interpretation": "UK Biobank upper quartile."
+    },
+    {
+     "label": "Children (for context)",
+     "sex": "both",
+     "ageRange": "children",
+     "range": "\u226580\u2013120 min/day outdoors",
+     "interpretation": "International Myopia Institute recommendation, quoted by Apple."
+    }
+   ],
+   "baselineRule": "Population bands (UK Biobank quartiles, self-reported) on the 7-day mean. HEURISTIC target: \u226590 min/day, with morning light preferred. Compare within season: in Norway winter daylight is short, so also show the change against the same month last year once data exists.",
+   "healthLinks": "Burns 2021 (n\u2248400,000): more outdoor daylight time was associated with better mood, sleep and circadian outcomes, confirmed longitudinally with smaller effects. Windred 2024 PNAS (88,905 people with light sensors): brighter daytime light carried incrementally lower all-cause mortality (aHR 0.66\u20130.83 at the 90\u2013100th percentile vs the 0\u201350th); brighter night light carried higher risk. Brown 2022 consensus: indoors, aim for \u2265250 lux melanopic EDI at the eye by day, <10 lux in the 3 h before sleep and <1 lux while sleeping.",
+   "howToImprove": "Get outside early in the day (a walk, commute or break outdoors). Keep evenings dim and bedrooms dark.",
+   "caveats": "The wrist sensor is covered by sleeves and is not at eye level, so it can undercount. UK Biobank minutes were self-reported; the mortality study measured light intensity, not minutes. All evidence is observational.",
+   "sources": [
+    {
+     "citation": "Burns AC et al. Time spent in outdoor light is associated with mood, sleep, and circadian rhythm-related outcomes (UK Biobank). J Affect Disord 2021",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC8892387/"
+    },
+    {
+     "citation": "Windred DP et al. Brighter nights and darker days predict higher mortality risk. PNAS 2024",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC11513964/"
+    },
+    {
+     "citation": "Brown TM et al. Recommendations for daytime, evening, and nighttime indoor light exposure. PLoS Biol 2022",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC8929548/"
+    },
+    {
+     "citation": "Apple Newsroom 2023. Time in Daylight via the ambient light sensor; IMI 80\u2013120 min for children",
+     "url": "https://www.apple.com/newsroom/2023/06/apple-provides-powerful-insights-into-new-areas-of-health/"
+    }
+   ],
+   "confidence": "low"
+  },
+  {
+   "metric": "headphone_audio_exposure",
+   "unit": "dB(A) Leq per sample; weekly dose as % of the WHO allowance",
+   "whatItMeans": "How loud your headphone audio has been, and for how long. Hearing damage depends on the total sound dose over the week, not on any single moment.",
+   "referenceKind": "guideline_target",
+   "bands": [
+    {
+     "label": "Within allowance",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": "<100% of weekly dose (80 dB for 40 h/week)",
+     "interpretation": "WHO-ITU adult reference. Equal-energy equivalents per week: 85 dB \u2248 12.5 h, 90 dB \u2248 4 h, 95 dB \u2248 1 h 15 min, 100 dB \u2248 20 min."
+    },
+    {
+     "label": "Allowance reached",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": "\u2265100% of the 7-day dose",
+     "interpretation": "Apple sends a headphone notification when the recommended 7-day limit is reached (e.g., over 80 dB for 40 h in 7 days)."
+    },
+    {
+     "label": "Children",
+     "sex": "both",
+     "ageRange": "children",
+     "range": "75 dB for 40 h/week",
+     "interpretation": "WHO-ITU Mode 2."
+    }
+   ],
+   "baselineRule": "Guideline target. Rolling 7-day dose % = 100 \u00d7 \u03a3 t\u1d62[h] \u00d7 10^((L\u1d62 \u2212 80)/10) \u00f7 40, using each sample's own duration. Any displayed 'average level' must be energy-averaged: L = 10\u00b7log10(\u03a3 t\u1d62\u00b710^(L\u1d62/10) / \u03a3 t\u1d62), never an arithmetic mean of dB values.",
+   "healthLinks": "Excessive recreational sound exposure causes noise-induced hearing loss. The WHO-ITU standard defines the safe weekly allowance. Each +3 dB halves safe time (equal-energy principle, as in NIOSH).",
+   "howToImprove": "Lower the volume (WHO suggests \u226460% of maximum), use noise-cancelling headphones instead of turning up the volume, take listening breaks, and turn on 'Reduce Loud Audio'.",
+   "caveats": "Hourly-summarised HAE rows may carry only an averaged level, not durations, which makes an exact dose impossible; the app's current arithmetic 'average' understates loud exposure. Accuracy is best with Apple/Beats headphones (Apple does not state this on the page read).",
+   "sources": [
+    {
+     "citation": "WHO-ITU. Global standard for safe listening devices and systems (Mode 1: 80 dB for 40 h/week; Mode 2: 75 dB)",
+     "url": "https://cdn.who.int/media/docs/default-source/documents/health-topics/deafness-and-hearing-loss/standard-summary-make-listening-safe.pdf"
+    },
+    {
+     "citation": "WHO Q&A. Deafness and hearing loss: safe listening (weekly limits by level)",
+     "url": "https://www.who.int/news-room/questions-and-answers/item/deafness-and-hearing-loss-safe-listening"
+    },
+    {
+     "citation": "Apple Support. Headphone notifications on your iPhone, iPad, or Apple Watch",
+     "url": "https://support.apple.com/en-us/108968"
+    },
+    {
+     "citation": "NIOSH. Noise and occupational hearing loss (85 dBA, 8 h, 3 dB exchange)",
+     "url": "https://www.cdc.gov/niosh/noise/about/noise.html"
+    }
+   ],
+   "confidence": "high"
+  },
+  {
+   "metric": "environmental_audio_exposure",
+   "unit": "dB(A) Leq",
+   "whatItMeans": "How loud your surroundings were, measured by the Watch microphone as an equivalent continuous sound level.",
+   "referenceKind": "guideline_target",
+   "bands": [
+    {
+     "label": "WHO weekly allowance",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": "80 dB for 40 h/week (same equal-energy table as headphones)",
+     "interpretation": "Apple's Noise app references the WHO-ITU standard."
+    },
+    {
+     "label": "Occupational limit (context)",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": "85 dBA over 8 h; halve the time for each +3 dBA",
+     "interpretation": "NIOSH recommended exposure limit."
+    },
+    {
+     "label": "Apple's temporary-hearing-loss guide (per day)",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": "80 dB ~5 h 30 min; 85 dB ~1 h 45 min; 90 dB ~30 min; 95 dB ~10 min; 100 dB a few minutes",
+     "interpretation": "Apple Noise app. Notifications fire when the 3-minute average reaches the user's chosen threshold."
+    }
+   ],
+   "baselineRule": "Guideline target. Compute the same energy-weighted 7-day dose as for headphones (80 dB / 40 h reference). Optionally a daily 8-h-normalised level L_EX,8h = L_energy-avg + 10\u00b7log10(T/8 h), compared with 85 dBA. Show the count of 3-minute periods \u226590 dB as 'loud events' (HEURISTIC).",
+   "healthLinks": "Sustained loud environments (concerts, loud workplaces, gyms, power tools) contribute to noise-induced hearing loss.",
+   "howToImprove": "Use hearing protection in loud venues and gyms, keep distance from speakers, take quiet breaks.",
+   "caveats": "A wrist microphone can be muffled by sleeves. Averaging dB arithmetically is wrong (energy average needed). The Watch only measures while worn and the Noise app is on.",
+   "sources": [
+    {
+     "citation": "Apple Support. Use the Noise app on your Apple Watch",
+     "url": "https://support.apple.com/en-us/102315"
+    },
+    {
+     "citation": "WHO Q&A. Deafness and hearing loss: safe listening",
+     "url": "https://www.who.int/news-room/questions-and-answers/item/deafness-and-hearing-loss-safe-listening"
+    },
+    {
+     "citation": "NIOSH. Noise and occupational hearing loss",
+     "url": "https://www.cdc.gov/niosh/noise/about/noise.html"
+    },
+    {
+     "citation": "Apple Developer. HKQuantityTypeIdentifier.environmentalAudioExposure",
+     "url": "https://developer.apple.com/documentation/healthkit/hkquantitytypeidentifier/environmentalaudioexposure"
+    }
+   ],
+   "confidence": "medium"
+  },
+  {
+   "metric": "mindful_minutes",
+   "unit": "minutes/day (logged sessions)",
+   "whatItMeans": "Minutes logged in the Mindfulness app or other meditation apps. A behaviour log, not a physiological measurement.",
+   "referenceKind": "personal_baseline",
+   "bands": [
+    {
+     "label": "No evidence-based target",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": "\u2014",
+     "interpretation": "No trial defines a daily 'dose' in logged minutes. Show minutes and days per week without a verdict."
+    }
+   ],
+   "baselineRule": "Descriptive only: weekly minutes and days practised, compared with your own previous 4 weeks. No colour scale, no target.",
+   "healthLinks": "Goyal 2014 (JAMA Intern Med; 47 RCTs with active controls, 3,515 participants): mindfulness programs gave MODERATE-strength evidence of small improvements in anxiety (effect size 0.38 at 8 weeks, 0.22 at 3\u20136 months), depression (0.30 / 0.23) and pain (0.33). Evidence was LOW for stress/distress and mental-health quality of life. There was low evidence of no effect, or insufficient evidence, for positive mood, attention, substance use, eating habits, sleep and weight. Meditation programs were not better than active treatments (drugs, exercise, behavioural therapy).",
+   "howToImprove": "If using it for stress or anxiety, a structured program (e.g., an 8-week course) matches the trials better than scattered minutes.",
+   "caveats": "Trials tested structured programs, not app-logged minutes. Logging is manual or app-dependent, so zero minutes may just mean not logged. Apple's AFib History lists mindful minutes as a lifestyle factor to review, not a treatment.",
+   "sources": [
+    {
+     "citation": "Goyal M et al. Meditation programs for psychological stress and well-being: a systematic review and meta-analysis. JAMA Intern Med 2014",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC4142584/"
+    }
+   ],
+   "confidence": "medium"
+  },
+  {
+   "metric": "atrial_fibrillation_burden + irregular rhythm notifications (+ ECG)",
+   "unit": "AFib History: % of time in AF per week (floor shown as '2% or less'); notifications: events",
+   "whatItMeans": "Atrial fibrillation (AF) is an irregular heart rhythm that raises stroke risk. The Watch can notify of an irregular rhythm suggestive of AF (for people without a diagnosis), and for people already diagnosed it estimates the weekly share of time spent in AF (AFib History).",
+   "referenceKind": "device_classification",
+   "bands": [
+    {
+     "label": "No irregular rhythm notification",
+     "sex": "both",
+     "ageRange": "\u226522",
+     "range": "\u2014",
+     "interpretation": "No signal detected. This does not rule out AF: pooled sensitivity for AF detection is 0.79 (specificity 0.91)."
+    },
+    {
+     "label": "Irregular rhythm notification received",
+     "sex": "both",
+     "ageRange": "\u226522",
+     "range": "any",
+     "interpretation": "Apple: 'talk to your doctor'. In the Apple Heart Study, 0.52% of 419,297 users were notified over a median of 117 days; 34% of those later had AF on an ECG patch; 84% of repeat notifications coincided with AF on the patch."
+    },
+    {
+     "label": "AFib History: low",
+     "sex": "both",
+     "ageRange": "\u226522 with an AF diagnosis",
+     "range": "'2% or less' (never shown as 0%)",
+     "interpretation": "Apple's display floor."
+    },
+    {
+     "label": "AFib History: higher burden (context)",
+     "sex": "both",
+     "ageRange": "adults with paroxysmal AF",
+     "range": "\u226511.4% of monitored time",
+     "interpretation": "KP-RHYTHM (1,965 patients, 14-day ECG patch): the highest burden tertile had ~3.1\u00d7 the adjusted rate of ischaemic stroke/thromboembolism off anticoagulation vs the lower two tertiles. Context for a clinician, not a watch threshold."
+    }
+   ],
+   "baselineRule": "Device classification only. Any irregular rhythm notification or ECG 'AFib' result \u2192 a prominent 'contact your doctor' card. Chest pain, pressure or suspected heart attack \u2192 emergency services (Apple). AFib burden: show the weekly % with Apple's '\u22642%' floor, and flag a sustained week-over-week rise as 'discuss with your clinician' (no validated personal threshold). Never change medication based on it (Apple).",
+   "healthLinks": "AF is a major stroke risk factor. Higher AF burden is associated with higher stroke risk independent of standard risk scores (KP-RHYTHM).",
+   "howToImprove": "Clinical management. Apple lists lifestyle factors to review alongside burden: exercise minutes, sleep, weight, alcohol, mindful minutes.",
+   "caveats": "DATA AVAILABILITY: AFib Burden exists only if the user has a physician-diagnosed AF and has enabled AFib History (\u226522 y); irregular-rhythm notifications cannot be used at the same time. HAE exports irregular-rhythm events under 'Heart Rate Notifications' and ECG separately, but this app's config disables both and the webhook does not ingest them. The Watch checks only periodically and may miss episodes; it cannot detect heart attack or stroke.",
+   "sources": [
+    {
+     "citation": "Apple Support. Track your AFib History with Apple Watch",
+     "url": "https://support.apple.com/en-us/108375"
+    },
+    {
+     "citation": "Apple Support. Heart health notifications on your Apple Watch",
+     "url": "https://support.apple.com/en-us/120276"
+    },
+    {
+     "citation": "Perez MV et al. Large-Scale Assessment of a Smartwatch to Identify Atrial Fibrillation (Apple Heart Study). N Engl J Med 2019",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC8112605/"
+    },
+    {
+     "citation": "Go AS et al. Association of Burden of Atrial Fibrillation With Risk of Ischemic Stroke (KP-RHYTHM). JAMA Cardiol 2018",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC6145663/"
+    },
+    {
+     "citation": "The accuracy of Apple Watch measurements: a living systematic review and meta-analysis. NPJ Digit Med 2026",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC12823594/"
+    },
+    {
+     "citation": "HealthyApps. Health Auto Export supported data (AFib Burden; Irregular Heart Rate Notification; ECG)",
+     "url": "https://help.healthyapps.dev/en/health-auto-export/getting-started/supported-data/"
+    }
+   ],
+   "confidence": "high"
+  },
+  {
+   "metric": "lean_body_mass / muscle (smart scale: lean_body_mass_kg, skeletal_muscle_index, muscle %)",
+   "unit": "kg; FFMI kg/m\u00b2; skeletal muscle index kg/m\u00b2 (definition is manufacturer-specific)",
+   "whatItMeans": "Everything that isn't fat: muscle, organs, bone and water, estimated by the scale's bioimpedance. Dividing by height\u00b2 (fat-free mass index, FFMI) makes it comparable between people.",
+   "referenceKind": "population_bands",
+   "bands": [
+    {
+     "label": "FFMI median, young adults",
+     "sex": "male",
+     "ageRange": "18\u201334",
+     "range": "18.9 kg/m\u00b2",
+     "interpretation": "Schutz 2002 (5,635 Swiss adults, BIA). Men's FFMI did not change with age."
+    },
+    {
+     "label": "FFMI median, young adults",
+     "sex": "female",
+     "ageRange": "18\u201334",
+     "range": "15.4 kg/m\u00b2",
+     "interpretation": "Schutz 2002; modest rise with age in women."
+    },
+    {
+     "label": "Upper natural range",
+     "sex": "male",
+     "ageRange": "adult athletes",
+     "range": "height-normalised FFMI \u224825 (normalised FFMI = FFMI + 6.3\u00d7(1.80 \u2212 height m))",
+     "interpretation": "Kouri 1995: non-steroid-using athletes topped out at ~25.0."
+    },
+    {
+     "label": "Low muscle quantity (sarcopenia confirmation)",
+     "sex": "male",
+     "ageRange": "older adults (can occur earlier)",
+     "range": "appendicular skeletal muscle/height\u00b2 <7.0 kg/m\u00b2 (ASM <20 kg)",
+     "interpretation": "EWGSOP2 cut-off, used only after low grip strength (<27 kg). Compare the scale's 'skeletal muscle index' only if it is appendicular muscle/height\u00b2, which is not documented."
+    },
+    {
+     "label": "Low muscle quantity",
+     "sex": "female",
+     "ageRange": "older adults",
+     "range": "ASM/height\u00b2 <5.5 kg/m\u00b2 (ASM <15 kg)",
+     "interpretation": "EWGSOP2."
+    }
+   ],
+   "baselineRule": "Population bands for FFMI (lean_body_mass_kg \u00f7 height\u00b2); a personal trend for change. Use weigh-ins under the same conditions (morning, before food and exercise \u2014 HEURISTIC). Judge change only over \u22658 weeks from a regression line, and treat changes <2 kg as noise (HEURISTIC, given BIA limits of agreement of about \u00b14 kg). Expected context: resistance-training interventions add about 1.5 kg of muscle on average (Benito 2020), so apparent gains well above ~1 kg/month in a trained adult are more likely water or glycogen.",
+   "healthLinks": "Low muscle mass plus low strength (sarcopenia) predicts disability and mortality in older age (EWGSOP2). In healthy younger adults, FFMI is a physique/fitness descriptor more than a risk marker.",
+   "howToImprove": "Progressive resistance training with adequate protein (see the training research). Slow weight loss preserves lean mass (see the weight trend entry).",
+   "caveats": "Consumer BIA: skeletal-muscle % agreement with DXA was weak even for a clinical InBody device; body-fat MAPE was 14\u201321%. Consumer devices' muscle-mass limits of agreement were up to \u00b14 kg. EWGSOP2: BIA estimates differ by brand and reference population. Hydration, recent meals, exercise and time of day shift readings. The scale's 'body score', visceral fat index and BMR are proprietary.",
+   "sources": [
+    {
+     "citation": "Schutz Y, Kyle UU, Pichard C. Fat-free mass index and fat mass index percentiles in Caucasians aged 18\u201398 y. Int J Obes 2002",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/12080449/"
+    },
+    {
+     "citation": "Kouri EM et al. Fat-free mass index in users and nonusers of anabolic-androgenic steroids. Clin J Sport Med 1995",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/7496846/"
+    },
+    {
+     "citation": "Cruz-Jentoft AJ et al. Sarcopenia: revised European consensus (EWGSOP2). Age Ageing 2019",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC6322506/"
+    },
+    {
+     "citation": "Benito PJ et al. Meta-analysis of the effect of resistance training on whole-body muscle growth in healthy adult males. IJERPH 2020",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC7068252/"
+    },
+    {
+     "citation": "Wearables for health monitoring: body composition estimates of commercial smartwatch and clinical BIA vs DXA. Front Sports Act Living 2025",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC12669227/"
+    },
+    {
+     "citation": "Advancing sarcopenia assessment with wearable and app-based technology: a scoping review. J Nutr Health Aging 2026",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC12994015/"
+    }
+   ],
+   "confidence": "low"
+  },
+  {
+   "metric": "weight_body_mass trend (rate of change)",
+   "unit": "% of body weight per week (from a regression line); kg",
+   "whatItMeans": "How fast your weight is actually moving once day-to-day water swings are averaged out, judged against what you are trying to do (cut, maintain or gain).",
+   "referenceKind": "guideline_target",
+   "bands": [
+    {
+     "label": "Cut: recommended pace",
+     "sex": "both",
+     "ageRange": "adults (training)",
+     "range": "\u22120.5 to \u22121.0 %/week",
+     "interpretation": "Helms 2014: losses of ~0.5\u20131%/week maximise muscle retention. Garthe 2011 (24 elite athletes, 4 lifting sessions/week): a 0.7%/week target increased lean mass +2.1%, while a 1.4%/week target (achieved ~1.0%) left it unchanged (\u22120.2%)."
+    },
+    {
+     "label": "Cut: faster than recommended",
+     "sex": "both",
+     "ageRange": "adults (training)",
+     "range": "< \u22121.0 %/week",
+     "interpretation": "Faster than the muscle-retention guidance."
+    },
+    {
+     "label": "Maintain",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": "about 0 %/week (within noise)",
+     "interpretation": "HEURISTIC: treat |slope| < 0.25%/week as stable."
+    },
+    {
+     "label": "Gain (lean bulk)",
+     "sex": "both",
+     "ageRange": "novice\u2013intermediate lifters",
+     "range": "+0.25 to +0.5 %/week",
+     "interpretation": "Iraki 2019: target gain for novice/intermediate; advanced lifters should aim lower."
+    },
+    {
+     "label": "Unintentional loss \u2014 see a doctor",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": ">5% loss of usual weight over 6\u201312 months without trying",
+     "interpretation": "Standard clinical definition of unintentional weight loss (Bosch 2017), a predictor of morbidity and mortality."
+    }
+   ],
+   "baselineRule": "Guideline target. Slope = least-squares fit over the last 28 days of daily weights (needs \u226510 weigh-ins spanning \u226514 days, as the app's nutrition coach already requires). Express as %/week = slope(kg/week) \u00f7 mean weight \u00d7 100. Judge against the goal in day_targets (cut/maintain/gain). Separately, compare the 6- and 12-month change and flag >5% loss when the goal is not 'cut'.",
+   "healthLinks": "Slower loss preserves lean mass and strength. Unexplained loss >5% warrants medical review. BMI and waist bands are in the first research.",
+   "howToImprove": "Adjust intake by ~10\u201320% steps and re-check after 2\u20133 weeks. Keep protein and resistance training up during a cut.",
+   "caveats": "Daily weight swings with water, glycogen, sodium and gut content, so never judge day to day. Garthe was a small elite-athlete trial and the Helms/Iraki targets are expert reviews (moderate evidence). Scale sources differ (Apple Health, smart scale, Hevy), so use one per chart.",
+   "sources": [
+    {
+     "citation": "Helms ER et al. Evidence-based recommendations for natural bodybuilding contest preparation: nutrition and supplementation. JISSN 2014",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC4033492/"
+    },
+    {
+     "citation": "Garthe I et al. Effect of two different weight-loss rates on body composition and strength and power-related performance in elite athletes. IJSNEM 2011",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/21558571/"
+    },
+    {
+     "citation": "Iraki J et al. Nutrition Recommendations for Bodybuilders in the Off-Season. Sports 2019",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC6680710/"
+    },
+    {
+     "citation": "Bosch X et al. Unintentional weight loss: clinical characteristics and outcomes in a prospective cohort of 2677 patients. PLoS One 2017",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC5384681/"
+    }
+   ],
+   "confidence": "medium"
+  },
+  {
+   "metric": "sleep_regularity (Sleep Regularity Index, SRI)",
+   "unit": "SRI 0\u2013100 (100 = perfectly regular; 0 = random)",
+   "whatItMeans": "How similar your sleep/wake pattern is from one day to the next: the chance you are in the same state (asleep or awake) at any moment and at the same moment 24 hours later. In the largest objective study it predicted mortality more strongly than sleep duration.",
+   "referenceKind": "population_bands",
+   "bands": [
+    {
+     "label": "Least regular quintile",
+     "sex": "both",
+     "ageRange": "adults (UK Biobank, mean 63 y)",
+     "range": "<71.6",
+     "interpretation": "Reference group (roughly 3-hour windows of bed/wake times)."
+    },
+    {
+     "label": "2nd quintile",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": "71.6\u201378.6",
+     "interpretation": "Fully adjusted all-cause mortality HR 0.80 (0.69\u20130.93)."
+    },
+    {
+     "label": "3rd quintile",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": "78.6\u201383.2",
+     "interpretation": "HR 0.75 (0.64\u20130.88). UK Biobank median SRI was 81.0 (IQR 73.8\u201386.3)."
+    },
+    {
+     "label": "4th quintile",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": "83.2\u201387.3",
+     "interpretation": "HR 0.72 (0.61\u20130.84)."
+    },
+    {
+     "label": "Most regular quintile",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": ">87.3",
+     "interpretation": "HR 0.70 (0.59\u20130.83), roughly 1-hour windows. Fully adjusted: 20\u201330% lower mortality than the least regular (not 20\u201348%, which mixed models; fact-checked)."
+    }
+   ],
+   "baselineRule": "Population bands (Windred 2024 quintiles). Computation: build a minute-level asleep/awake vector over the last 7\u201314 days. SRI = 200 \u00d7 (share of minute pairs 24 h apart in the same state) \u2212 100 (so 0.5 agreement = 0 = random, 1.0 = 100; my rearrangement of Windred's definition). Require \u22655 days (120 h) of valid 24-h-separated pairs, as Windred did. From HAE nightly summaries, use sleepStart\u2192sleepEnd as 'asleep' (plus any stage segments if present).",
+   "healthLinks": "Windred 2024 (60,977 UK Biobank participants with accelerometers): higher regularity was associated with lower all-cause, cancer and cardiometabolic mortality, and was a stronger predictor than duration.",
+   "howToImprove": "Fix the wake time, including weekends, and let bedtime follow. Aim for sleep onset within about a 1-hour window on most nights.",
+   "caveats": "Treating one sleepStart\u2192sleepEnd block per night as 'asleep' ignores night awakenings and naps, which likely overestimates SRI compared with Windred's accelerometer method. Missing nights (Watch off) must be excluded, not counted as awake. The cohort was older, so cut-offs may shift in younger people. Evidence is observational.",
+   "sources": [
+    {
+     "citation": "Windred DP et al. Sleep regularity is a stronger predictor of mortality risk than sleep duration. Sleep 2024 (fact-checked in the first pass)",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC10782501/"
+    }
+   ],
+   "confidence": "high"
+  },
+  {
+   "metric": "sleep_efficiency + awake time (wake after sleep onset, WASO)",
+   "unit": "% (asleep \u00f7 time in bed or sleep period); minutes awake after first falling asleep",
+   "whatItMeans": "How much of your time in bed you actually spend asleep, and how many minutes you lie awake after first dropping off. Both describe sleep quality, separately from duration.",
+   "referenceKind": "guideline_target",
+   "bands": [
+    {
+     "label": "Good sleep efficiency",
+     "sex": "both",
+     "ageRange": "all ages incl. adults",
+     "range": "\u226585%",
+     "interpretation": "NSF consensus (Ohayon 2017): an appropriate indicator of good sleep quality."
+    },
+    {
+     "label": "No consensus",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": "75\u201384%",
+     "interpretation": "The panel reached no agreement. Healthy adults measured in sleep labs average 83\u201389% (Boulos 2019, first research)."
+    },
+    {
+     "label": "Poor sleep efficiency",
+     "sex": "both",
+     "ageRange": "adults 26\u201364",
+     "range": "\u226474%",
+     "interpretation": "NSF: does not indicate good sleep quality (\u226464% for young adults 18\u201325)."
+    },
+    {
+     "label": "Good WASO",
+     "sex": "both",
+     "ageRange": "preschool to older adults",
+     "range": "\u226420 min",
+     "interpretation": "NSF: indicates good sleep quality."
+    },
+    {
+     "label": "Poor WASO",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": "\u226541 min",
+     "interpretation": "NSF: does not indicate good sleep quality (\u226551 min for all groups through adults)."
+    },
+    {
+     "label": "Sleep latency / awakenings (context)",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": "latency \u226430 min good, >45 min poor; \u22641 awakening >5 min good, \u22654 poor",
+     "interpretation": "NSF consensus. The Watch cannot measure latency without a known lights-off time."
+    }
+   ],
+   "baselineRule": "Guideline target on the 7-night median, not single nights. If an in-bed time exists (iPhone sleep schedule / Sleep Focus): SE = asleep \u00f7 in bed. Otherwise SE_watch = asleep \u00f7 (sleepEnd \u2212 sleepStart), which excludes latency; label it 'sleep-period efficiency'. WASO = awake minutes between the first and last asleep segment.",
+   "healthLinks": "These are consensus indicators of sleep quality (277 studies, modified Delphi). No outcome dose-response is attached to the thresholds themselves.",
+   "howToImprove": "Keep a regular wake time. Get up if awake for a long time. Limit alcohol and late caffeine. Avoid spending much longer in bed than you sleep.",
+   "caveats": "Watch sleep-period efficiency will read higher than lab efficiency because it excludes the time taken to fall asleep. Wrist-device wake detection is biased in an uncertain direction: a 2025 meta-analysis (24 studies) found consumer devices read efficiency 4.7 points lower and WASO 13 min longer than lab sleep studies (pooled brands), while a 2026 preprint found most wrist devices, Apple Watch Series 9 included (\u03ba 0.56), underestimated WASO.",
+   "sources": [
+    {
+     "citation": "Ohayon M et al. National Sleep Foundation's sleep quality recommendations: first report. Sleep Health 2017",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/28346153/"
+    },
+    {
+     "citation": "Boulos MI et al. Normal polysomnography parameters in healthy adults (Table 2) \u2014 from the first research",
+     "url": "https://omc.ohri.ca/psgnorms/PSGnorm_Table2.pdf"
+    },
+    {
+     "citation": "Lee YJ et al. Performance of consumer wrist-worn sleep tracking devices compared to polysomnography: a meta-analysis. J Clin Sleep Med 2025",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC11874098/"
+    }
+   ],
+   "confidence": "medium"
+  },
+  {
+   "metric": "toothbrushing",
+   "unit": "sessions/day and seconds per session",
+   "whatItMeans": "How often and how long you brush, as logged by a connected toothbrush or app.",
+   "referenceKind": "guideline_target",
+   "bands": [
+    {
+     "label": "Meets ADA guidance",
+     "sex": "both",
+     "ageRange": "all",
+     "range": "\u22652 sessions/day, each \u2265120 s",
+     "interpretation": "ADA: brush twice a day for two minutes with fluoride toothpaste."
+    },
+    {
+     "label": "Below guidance",
+     "sex": "both",
+     "ageRange": "all",
+     "range": "<2 sessions or any session <120 s",
+     "interpretation": "Systematic reviews found 2 minutes removed more plaque than 1 minute."
+    }
+   ],
+   "baselineRule": "Guideline target per day: count sessions (the app already has showTodayCount) and check each session's duration \u2265120 s. Show a 7-day 'days met' count.",
+   "healthLinks": "Plaque control underlies prevention of caries and gum disease. ADA notes the duration evidence relies on plaque indices, a surrogate, not direct caries or gingivitis outcomes.",
+   "howToImprove": "Two sessions of 2 minutes with fluoride toothpaste; use a timer.",
+   "caveats": "Only captures logged sessions (smart toothbrush or manual entry). A missing log is not proof of not brushing.",
+   "sources": [
+    {
+     "citation": "American Dental Association. Home Oral Care",
+     "url": "https://www.ada.org/resources/ada-library/oral-health-topics/home-care"
+    }
+   ],
+   "confidence": "medium"
+  },
+  {
+   "metric": "flights_climbed",
+   "unit": "flights/day",
+   "whatItMeans": "How many flights of stairs you climbed, counted by the iPhone's or Watch's barometer.",
+   "referenceKind": "population_bands",
+   "bands": [
+    {
+     "label": "None",
+     "sex": "both",
+     "ageRange": "adults (UK Biobank)",
+     "range": "0/day",
+     "interpretation": "Reference group."
+    },
+    {
+     "label": "Few",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": "1\u20135/day",
+     "interpretation": "ASCVD HR 0.97 (0.93\u20131.01), not significant."
+    },
+    {
+     "label": "Moderate",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": "6\u201310/day",
+     "interpretation": "HR 0.84 (0.82\u20130.87)."
+    },
+    {
+     "label": "High",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": "11\u201320/day",
+     "interpretation": "HR 0.78 (11\u201315) and 0.77 (16\u201320)."
+    },
+    {
+     "label": "Very high",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": "\u226521/day",
+     "interpretation": "HR 0.81 (0.77\u20130.85)."
+    }
+   ],
+   "baselineRule": "Population bands on the 7-day mean flights/day, shown as an association, not a target.",
+   "healthLinks": "Song 2023 (458,860 UK Biobank adults, median 12.5 y follow-up): climbing >5 flights (~50 steps) a day was associated with lower atherosclerotic cardiovascular disease risk regardless of genetic susceptibility. People who stopped climbing stairs had 32% higher risk than those who never did.",
+   "howToImprove": "Take stairs instead of lifts; they add short bursts of vigorous effort.",
+   "caveats": "UK Biobank stair climbing was self-reported as 'times per day' (~10 steps each). Apple's 'flight' is an elevation-based count whose height is not defined in the developer docs, so match the bands only loosely. Observational.",
+   "sources": [
+    {
+     "citation": "Song Z et al. Daily stair climbing, disease susceptibility, and risk of atherosclerotic cardiovascular disease. Atherosclerosis 2023",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/37813749/"
+    },
+    {
+     "citation": "Apple Developer. HKQuantityTypeIdentifier.flightsClimbed",
+     "url": "https://developer.apple.com/documentation/healthkit/hkquantitytypeidentifier/flightsclimbed"
+    }
+   ],
+   "confidence": "low"
+  }
+ ]
+}

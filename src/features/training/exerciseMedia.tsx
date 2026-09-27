@@ -48,12 +48,14 @@ import { useExerciseImageDb } from './hooks/useExerciseImageDb'
 export function ExerciseThumb({ title, templateId, size = 48 }: { title: string; templateId?: string; size?: number }) {
   const { data: db } = useExerciseImageDb()
   const { data: overrides } = useExerciseGifOverrides()
-  const [failed, setFailed] = useState(false)
+  // The URL that failed to load, not a boolean: saving a fixed GIF changes
+  // the URL, and the new one must get its chance without a remount.
+  const [failedUrl, setFailedUrl] = useState<string | null>(null)
   const [open, setOpen] = useState(false)
   const overridesByTemplateId = useMemo(() => new Map((overrides ?? []).map(o => [o.exercise_template_id, o.gif_url])), [overrides])
-  const match = useMemo(() => (db ? resolveExerciseGif(templateId, title, overridesByTemplateId, db) : null), [title, templateId, overridesByTemplateId, db])
+  const match = useMemo(() => resolveExerciseGif(templateId, title, overridesByTemplateId, db), [title, templateId, overridesByTemplateId, db])
 
-  if (!match || failed) return null
+  if (!match || failedUrl === match.gifUrl) return null
 
   return (
     <>
@@ -64,7 +66,7 @@ export function ExerciseThumb({ title, templateId, size = 48 }: { title: string;
         style={{ width: size, height: size }}
         aria-label={`Show ${title} demo`}
       >
-        <img src={match.gifUrl} alt="" loading="lazy" onError={() => setFailed(true)} className="h-full w-full object-cover" />
+        <img src={match.gifUrl} alt="" loading="lazy" onError={() => setFailedUrl(match.gifUrl)} className="h-full w-full object-cover" />
       </button>
 
       <ModalShell open={open} onClose={() => setOpen(false)} title={title} size="sm">

@@ -1,0 +1,236 @@
+{
+ "checked": 230,
+ "corrections": [
+  {
+   "metricOrTopic": "vo2_max \u2014 Mandsager 2018 HR ladder vs low performers (used in every VO2 band interpretation)",
+   "claim": "Adjusted HR vs the low group: below average 0.71 (\u224829% lower), above average 0.52 (\u224848% lower), high 0.32 (\u224868% lower), elite 0.20",
+   "verdict": "wrong",
+   "correction": "Only elite 0.20 (0.16\u20130.24) is right. The paper states no other 'vs low' HRs in its text. Figure 2C gives them the other way round: Low vs Below Average 1.95 (1.86\u20132.04), Low vs Above Average 2.75 (2.61\u20132.89), Low vs High 3.90 (3.67\u20134.14), Low vs Elite 5.04 (4.10\u20136.20). Inverted, that makes below average \u22480.51 (\u224849% lower), above average \u22480.36 (\u224864% lower), high \u22480.26 (\u224874% lower) and elite 0.20. The figures agree with each other: 2.75/1.95 = 1.41, which is the stated below-vs-above-average HR. Likewise 3.90/2.75 = 1.42 (above average vs high) and 5.04/3.90 = 1.29 (high vs elite, i.e. elite vs high 0.77). The value 0.71 in the paper is a different result: elite vs high in patients aged 70 or older, 0.71 (0.52\u20130.98). Every band's 'HR x vs low' text needs rewriting.",
+   "source": "Mandsager K et al. JAMA Netw Open 2018;1(6):e183605, full-text PDF, Figure 2C table and Results text (check-upcenter.com mirror of the JAMA PDF)"
+  },
+  {
+   "metricOrTopic": "vo2_max \u2014 Mandsager 2018 headline figures",
+   "claim": "n=122,007; median follow-up 8.4 y; low vs elite HR 5.04 (4.10\u20136.20); elite vs high 0.77; smoking 1.41, diabetes 1.40, CAD 1.29; high group = 75th\u201397.6th pct, elite \u226597.7th",
+   "verdict": "correct",
+   "correction": "All confirmed. The CIs are elite vs high 0.77 (0.63\u20130.95), smoking 1.41 (1.36\u20131.46), diabetes 1.40 (1.34\u20131.46) and CAD 1.29 (1.24\u20131.35).",
+   "source": "https://jamanetwork.com/journals/jamanetworkopen/fullarticle/2707428 and the PDF"
+  },
+  {
+   "metricOrTopic": "vo2_max \u2014 Mandsager 2018 MET cut-offs by age (men)",
+   "claim": "18-19 <10.8/10.8\u201312.9/13.0\u201313.9/14\u201316.2/\u226516.3 \u2026 80+ <5.1/5.1\u20136.2/6.3\u20137.2/7.3\u20139.9/\u226510.0, with \u00d73.5 conversions",
+   "verdict": "correct",
+   "correction": "All 8 age rows match Table 2. The \u00d73.5 ml/kg/min conversions are arithmetically right.",
+   "source": "Mandsager 2018 Table 2 (JAMA Netw Open)"
+  },
+  {
+   "metricOrTopic": "vo2_max \u2014 FRIEND 2015 percentiles (men and women)",
+   "claim": "Men 20-29 p25 40.1/p50 48.0/p75 55.2/p95 66.3 \u2026 70-79 20.4/24.4/30.4/39.7; women p5\u2013p95 for all decades",
+   "verdict": "correct",
+   "correction": "Every male band boundary and every female value matches Table 3 (treadmill, measured). The full male rows, including p5/p10/p90 not used in the bands, are: 20-29 29.0/32.1/40.1/48.0/55.2/61.8/66.3; 30-39 27.2/30.2/35.9/42.4/49.2/56.5/59.8; 40-49 24.2/26.8/31.9/37.8/45.0/52.1/55.6; 50-59 20.9/22.8/27.1/32.6/39.7/45.6/50.7; 60-69 17.4/19.8/23.7/28.2/34.5/40.3/43.0; 70-79 16.3/17.1/20.4/24.4/30.4/36.6/39.7.",
+   "source": "https://pmc.ncbi.nlm.nih.gov/articles/PMC4919021/ Table 3"
+  },
+  {
+   "metricOrTopic": "vo2_max \u2014 FRIEND 2022 treadmill percentile tables",
+   "claim": "Men p50 45.4/38.6/34.8/29.4/24.4/20.6/17.7 (20s\u201380s), RER\u22651.1, with full p5\u2013p95 rows for men and women",
+   "verdict": "unverifiable",
+   "correction": "The primary source could not be opened: the Mayo Clinic Proceedings PDF and ScienceDirect both return 403. FitnessNorms does match the research's transcription exactly and labels it RER\u22651.10 treadmill. But Wikipedia's table, which cites the same Kaminsky 2022 paper, gives different treadmill medians for men: 46.5 / 39.7 / 35.3 / 29.2 / 24.6 / 20.6 / 17.6. For women it gives 36.6 / 28.3 / 25.7 / 22.9 / 19.6 / 17.2 / 15.4. That is up to 1.1 ml/kg/min different, probably the other RER table or a different export. Treat the 2022 values as \u00b1~1 ml/kg/min and do not claim which RER table they are. The abstract-level claims are verified: 22,379 tests (16,278 treadmill), treadmill standards 1.5\u20134.6 ml/kg/min lower than 2015, decline 13.5% \u2248 4.0 ml/kg/min per decade, and mean VO2peak similar under RER \u22651.0 vs \u22651.1.",
+   "source": "Europe PMC abstract PMID 34809986; https://fitnessnorms.com/cardio/vo2-max/; https://en.wikipedia.org/wiki/VO2_max"
+  },
+  {
+   "metricOrTopic": "vo2_max \u2014 Kodama 2009",
+   "claim": "33 studies; per 1 MET RR 0.87 all-cause, 0.85 CHD/CVD; low CRF <7.9 METs vs high \u226510.9 RR 1.70; vs intermediate (7.9\u201310.8) RR 1.40",
+   "verdict": "correct",
+   "correction": "Confirmed: 0.87 (0.84\u20130.90), 0.85 (0.82\u20130.88), 1.70 (1.51\u20131.92) and 1.40 (1.32\u20131.48). Two more figures the research left out: low vs high for CHD/CVD was RR 1.56, and the pooled sample was 102,980 people with 6,910 cases (all-cause).",
+   "source": "Europe PMC abstract PMID 19454641 (JAMA 2009)"
+  },
+  {
+   "metricOrTopic": "vo2_max \u2014 Kokkinos 2022",
+   "claim": "750,302 veterans aged 30\u201395; lowest mortality \u224814 METs (HR 0.24); least fit (20th pct) 4.09\u00d7 extremely fit; no rise at extreme fitness",
+   "verdict": "correct",
+   "correction": "Confirmed: men HR 0.24 (0.23\u20130.25), women 0.23, least fit HR 4.09 (3.90\u20134.20) and median follow-up 10.2 y.",
+   "source": "Europe PMC abstract PMID 35926933 (JACC 2022)"
+  },
+  {
+   "metricOrTopic": "vo2_max \u2014 Lang 2024 umbrella review",
+   "claim": "20.9 M observations; per 1 MET 11\u201317% lower all-cause mortality; high vs low HR 0.47; per 1 MET 18% lower heart failure",
+   "verdict": "correct",
+   "correction": "Confirmed: HR 0.89 and 0.83 per MET, high vs low 0.47 (0.39\u20130.56), heart failure per MET 0.82 (0.79\u20130.84). The review covers 199 cohorts and 26 systematic reviews.",
+   "source": "Europe PMC abstract PMID 38599681 (BJSM 2024, PMC11103301)"
+  },
+  {
+   "metricOrTopic": "vo2_max \u2014 Apple Watch validation, Lambe 2025",
+   "claim": "n=28; Series 5\u2013Ultra 2 on watchOS 10+; mean \u22126.07, MAPE 13.3%, LoA \u22126.1 to +18.3",
+   "verdict": "correct",
+   "correction": "Confirmed. 30 were recruited and 28 analysed (2 missed VO2max criteria); devices were Series 5\u20139, SE 2 and Ultra 2, all on watchOS 10+. MAE was 6.92 ml/kg/min. The LoA are expressed as criterion minus watch.",
+   "source": "https://pmc.ncbi.nlm.nih.gov/articles/PMC12080799/"
+  },
+  {
+   "metricOrTopic": "vo2_max \u2014 Apple Watch Series 10 study (Mayo Clin Proc Digit Health 2026)",
+   "claim": "n=35 analysed; mean \u22126.25, MAPE 13.2%, LoA \u221218.2 to +5.7; \u22127.79 in \u226580th pct vs \u22122.41 at \u226470th; 14% correct FRIEND band, 34% one band off",
+   "verdict": "correct",
+   "correction": "All confirmed (40 tested, 35 analysed). Two caveats should appear in the UI copy. First, 25 of the 35 were at or above the 80th percentile, so the sample is skewed toward fit people. Second, the \u226470th-percentile bias of \u22122.41 was not statistically significant (95% CI \u22125.28 to 0.47).",
+   "source": "https://pmc.ncbi.nlm.nih.gov/articles/PMC13141568/"
+  },
+  {
+   "metricOrTopic": "vo2_max \u2014 Caserman 2024 (Series 7) and the 'three validations \u2248 \u22126 ml/kg/min' summary",
+   "claim": "n=19, MAPE 15.8%, ICC 0.47; summary: 'three independent validations show the watch reads low by about 6 ml/kg/min on average'",
+   "verdict": "imprecise",
+   "correction": "n=19, MAPE 15.79%, ICC(2,1) 0.47 (0.06\u20130.75) and RMSE 8.85 are correct. However, Caserman's mean underestimation was about 4.5 ml/kg/min (lab 45.88 vs watch 41.37), not ~6. Its criterion test was also a cycle ergometer, which reads lower than treadmill, unlike the two treadmill studies. The accurate summary is '\u22124.5 to \u22126.3 ml/kg/min across three studies'.",
+   "source": "Europe PMC abstract PMID 39083800 (JMIR Biomed Eng 2024, PMC11325102)"
+  },
+  {
+   "metricOrTopic": "vo2_max \u2014 Milanovi\u0107 2015 training effects",
+   "claim": "28 trials, baseline 40.8; endurance +4.9 (\u00b11.4), HIIT +5.5 (\u00b11.2), HIIT vs continuous +1.2; lower-fit +3.2 with HIIT; longer programmes +2\u20133; 'shorter HIIT repetitions worked slightly better than long ones'",
+   "verdict": "imprecise",
+   "correction": "The core numbers are right: 28 studies, 723 participants, +4.9 \u00b11.4, +5.5 \u00b11.2, +1.2 \u00b10.9, +3.2 and +2.2/+3.0. The \u00b1 values are 95% confidence limits, not SDs. The repetition-length claim is contradicted within the same abstract. Against no-exercise controls, longer HIT repetitions gave a small lesser effect (\u22121.8 \u00b12.7, an unclear estimate). Against endurance training, longer HIT repetitions gave small additional improvements (+2.2 \u00b12.1). Drop the claim, or state that the evidence on repetition length is mixed.",
+   "source": "Europe PMC abstract PMID 26243014 (Sports Med 2015)"
+  },
+  {
+   "metricOrTopic": "resting_heart_rate \u2014 NHANES 1999\u20132008 percentiles",
+   "claim": "Men 20-39 mean 71, p5 52 \u2026 p95 89; 40-59 \u2026; 60-79 \u2026; 80+ (n=197) incl. p2.5 48; women means/p25/p50/p75; measured as a '60-second seated clinic pulse'",
+   "verdict": "imprecise",
+   "correction": "Every percentile value quoted for men and women matches Tables 2\u20133. The method description is wrong, though. A physician counted the radial pulse for 30 seconds after about 4 minutes of seated rest and multiplied by 2 to express it per 60 s; it was not a 60-second count.",
+   "source": "CDC NHSR No. 41 (Ostchega 2011), Methods p.2 and Tables 2\u20133, https://www.cdc.gov/nchs/data/nhsr/nhsr041.pdf"
+  },
+  {
+   "metricOrTopic": "resting_heart_rate \u2014 Zhang 2016 CMAJ",
+   "claim": "46 studies, 1,246,203 people; per +10 bpm RR 1.09 all-cause / 1.08 CV; 60\u201380 RR 1.12, >80 RR 1.45 (CV 1.33) vs lowest category; the 'Lowest-risk category' band is labelled '<60 = reference group in Zhang 2016'",
+   "verdict": "imprecise",
+   "correction": "All the RRs, CIs and sample sizes are correct. The reference category is not stated anywhere as '<60': the paper only says 'compared with the lowest category', which varied from study to study. The dose-response reference was 45 bpm. Relabel the band 'lowest reported category (typically <60)'. The research also omits one detail from the paper: 60\u201380 bpm for CV mortality was RR 1.08 (0.99\u20131.17), which is not significant.",
+   "source": "https://pmc.ncbi.nlm.nih.gov/articles/PMC4754196/ and Europe PMC abstract PMID 26598376"
+  },
+  {
+   "metricOrTopic": "resting_heart_rate \u2014 Aune 2017 and Reimers 2018",
+   "claim": "Aune: 87 studies; per +10 bpm all-cause 1.17, CVD 1.15, CHD 1.07, HF 1.18, SCD 1.09, cancer 1.14, AF J-shaped. Reimers: 191 studies; men endurance 70.3\u219264.0 (SMD \u22120.49); strength \u22122.1 NS; combined \u22122.2 NS",
+   "verdict": "correct",
+   "correction": "All confirmed. Two details for the Reimers figures: strength training in men was SMD \u22120.23 (p=0.081), and combined training rested on only 3 comparisons.",
+   "source": "Europe PMC PMID 28552551; https://pmc.ncbi.nlm.nih.gov/articles/PMC6306777/ Table 2"
+  },
+  {
+   "metricOrTopic": "resting_heart_rate / HRV \u2014 Apple Watch Series 9/Ultra 2 validation",
+   "claim": "RHR bias \u22120.08 bpm, MAE 3.73, MAPE 5.9%; HRV bias \u22128.31 ms, MAE 20.5 ms, MAPE 28.9%, LoA \u221253.8 to +37.2 ms; SDNN every 2\u20134 h",
+   "verdict": "correct",
+   "correction": "All confirmed, with n=39 and 316 measurements. The reference measurements were 5-minute morning supine recordings on a Polar H10 with Kubios.",
+   "source": "https://pmc.ncbi.nlm.nih.gov/articles/PMC11478500/"
+  },
+  {
+   "metricOrTopic": "heart_rate_variability \u2014 Voss 2015 KORA S4 SDNN by decade",
+   "claim": "Men 50.0\u00b120.9 / 44.6\u00b116.8 / 36.8\u00b114.6 / 32.8\u00b114.7 / 29.6\u00b113.2; women 48.7\u00b119.0 / 45.4\u00b120.5 / 36.9\u00b113.8 / 30.6\u00b112.4 / 27.8\u00b111.8",
+   "verdict": "correct",
+   "correction": "All values match Tables 5 (female) and 7 (male). The cohort was 1,906 people (1,124 men).",
+   "source": "https://pmc.ncbi.nlm.nih.gov/articles/PMC4378923/"
+  },
+  {
+   "metricOrTopic": "heart_rate_variability \u2014 Nunan 2010 pooled norm",
+   "claim": "SDNN 50 \u00b1 16 ms, 'pooled from 27 studies of short recordings'",
+   "verdict": "unverifiable",
+   "correction": "The primary table could not be opened; Wiley and Medscape are paywalled. The abstract gives 44 studies and 21,438 participants in total. '50 \u00b1 16 from 27 studies' appears only in secondary snippets. It is a plausible figure, but label it secondary.",
+   "source": "Europe PMC abstract PMID 20663071 (PACE 2010)"
+  },
+  {
+   "metricOrTopic": "heart_rate_variability \u2014 Hillebrand 2013, Umetani 1998, Cureus 2024 exercise meta-analysis",
+   "claim": "Hillebrand: 8 studies, 21,988; lowest vs highest SDNN RR 1.35 (1.10\u20131.67); 10th vs 50th pct 1.50, 90th 0.67 NS; 32\u201345%; 1% per 1%. Umetani: 260 healthy aged 10\u201399, 24-h SDNN to 60% of baseline by 10th decade. Cureus: 16 RCTs, SDNN SMD 0.58 (0.16\u20131.00), RMSSD 0.84, HF 0.89",
+   "verdict": "correct",
+   "correction": "All confirmed. Hillebrand's CIs are 1.50 (1.22\u20131.83) and 0.67 (0.41\u20131.09); the Cureus sample was 623 participants.",
+   "source": "Europe PMC PMIDs 23370966, 9502641, 39015867"
+  },
+  {
+   "metricOrTopic": "step_count \u2014 Paluch 2022",
+   "claim": "15 cohorts, 47,471 adults, median 7.1 y; Q medians 3,553/5,801/7,842/10,901; HR 0.60/0.55/0.47; plateau 6\u20138k (\u226560 y), 8\u201310k (<60 y); 'stepping intensity added little once total steps were accounted for'",
+   "verdict": "imprecise",
+   "correction": "All the numbers are correct. The intensity statement overstates the finding. After adjusting for total steps, peak 30-minute cadence (HR 0.67, 0.56\u20130.83) and peak 60-minute cadence (0.67, 0.50\u20130.90) stayed significant. Only time spent at \u226540 or \u2265100 steps/min was not significant. 'Intensity added little' is true of Saint-Maurice 2020 (HR 0.90, NS), not of Paluch.",
+   "source": "Europe PMC abstract PMID 35247352 (PMC9289978)"
+  },
+  {
+   "metricOrTopic": "step_count \u2014 Saint-Maurice 2020, Banach 2023, Ding 2025",
+   "claim": "SM: n=4,840; <4,000 steps 76.7 vs 8,000\u201311,999 6.9 deaths/1,000 PY; 8k vs 4k HR 0.49; 12k HR 0.35; peak-30 cadence HR 0.90 NS. Banach: 226,889; +1,000 steps HR 0.85; +500 CV HR 0.93. Ding: 7k vs 2k all-cause 0.53, CVD inc 0.75, dementia 0.62, depressive 0.78, falls 0.72",
+   "verdict": "correct",
+   "correction": "All confirmed. Two additions: Banach pooled 17 cohorts, and Ding rates the falls evidence as very low certainty.",
+   "source": "Europe PMC PMIDs 32207799, 37555441, 40713949"
+  },
+  {
+   "metricOrTopic": "sleep \u2014 Windred 2024 sleep regularity",
+   "claim": "SRI quintile cut-offs 71.6/78.6/83.2/87.3; fully adjusted HR 0.80/0.75/0.72/0.70; summary 'higher regularity associated with 20\u201348% lower all-cause mortality (fully adjusted HR 0.70\u20130.80)'; longest-duration quintile HR 0.76",
+   "verdict": "imprecise",
+   "correction": "The cut-offs and fully adjusted HRs are correct, and the duration Q5 fully adjusted HR of 0.76 (0.65\u20130.89) is correct. The '20\u201348%' range mixes models. The 48% end comes from the minimally adjusted model (Q2\u2013Q5 HR 0.72/0.62/0.54/0.52). Fully adjusted, the reduction is 20\u201330% (HR 0.80\u20130.70). Quote one model consistently.",
+   "source": "https://pmc.ncbi.nlm.nih.gov/articles/PMC10782501/ Tables 1\u20133"
+  },
+  {
+   "metricOrTopic": "sleep \u2014 Cappuccio 2010, AASM/SRS, NSF",
+   "claim": "Cappuccio 1.38 M, short RR 1.12, long RR 1.30; NSF 7\u20139 h adults, 7\u20138 h older adults",
+   "verdict": "correct",
+   "correction": "Confirmed: 1,382,999 participants, short 1.12 (1.06\u20131.18), long 1.30 (1.22\u20131.38). The NSF recommends 7\u20139 h for young adults and adults and 7\u20138 h for adults 65+.",
+   "source": "Europe PMC PMIDs 20469800, 29073412"
+  },
+  {
+   "metricOrTopic": "sleep / sleep_stages \u2014 Boulos 2019 PSG norms",
+   "claim": "TST 410.6/386.6/372.0 min (18-34/35-49/50-64), men-only 374.6; 'sleep efficiency \u224884\u201389%'; stage % men-only N1 5.3/N2 52.1/N3 21.0/REM 19.9 and by age",
+   "verdict": "correct",
+   "correction": "Every TST value and stage percentage matches Table 2. One small fix: sleep efficiency across 18\u201364 years is 83.2\u201389.0% (89.0 / 85.4 / 83.2), and 84.3% for men only, so write '\u224883\u201389%'. The age trends for N2, N3 and REM are indeed non-significant.",
+   "source": "Boulos 2019 Table 2 (omc.ohri.ca/psgnorms/PSGnorm_Table2.pdf, embedded image read) and Europe PMC PMID 31006560"
+  },
+  {
+   "metricOrTopic": "sleep_stages \u2014 Apple Watch vs PSG (Sleep Med 2026)",
+   "claim": "n=19 Apple; light \u221273.8 \u00b1 61.6 min; REM +30.3 \u00b1 36.3 min; weak agreement",
+   "verdict": "correct",
+   "correction": "Confirmed. The device was an Apple Watch Series 7, compared with home PSG in healthy adults aged 18\u201345.",
+   "source": "Europe PMC PMID 42258963"
+  },
+  {
+   "metricOrTopic": "bmi \u2014 Global BMI Mortality Collaboration and NICE",
+   "claim": "3.95 M never-smokers, 239 studies; HR 1.51 (15\u201318.5), 1.13 (18.5\u201320), 1.07, 1.20, 1.45, 1.94, 2.76; per +5 kg/m\u00b2 Europe 1.39, men 1.51 vs women 1.30, age 35\u201349 1.52; NICE lower thresholds 23\u201327.4 / \u226527.5 for listed ethnic groups; caution for high muscle mass and 65+",
+   "verdict": "correct",
+   "correction": "All confirmed. Class 3 in the paper is BMI 40\u2013<60. The NICE group list and rec numbers (1.9.10\u20131.9.13) match.",
+   "source": "Europe PMC PMID 27423262 (PMC4995441); NICE NG246 page text"
+  },
+  {
+   "metricOrTopic": "waist \u2014 NICE WHtR, WHO 2008, Ashwell 2012",
+   "claim": "WHtR 0.40\u20130.49 / 0.50\u20130.59 / \u22650.60 for BMI <35, both sexes, all ethnicities, incl. high muscle mass; WHO >94/>102 cm men, WHR \u22650.90; Ashwell >300,000 adults, WHtR +4\u20135% over BMI; waist site midway between lowest rib and hip top was flagged as 'my assumption'",
+   "verdict": "correct",
+   "correction": "All confirmed (NICE recs 1.9.14\u20131.9.15; WHO table: >94 / >102 cm men, >80 / >88 women, WHR \u22650.90 / \u22650.85). The waist site the research called an assumption is exactly NICE Box 1: midway between the bottom of the ribs and the top of the hips, after breathing out naturally. Ashwell pooled 31 papers.",
+   "source": "NICE NG246 (rec 1.9.14, Box 1); WHO 2008 report PDF; Europe PMC PMID 22106927"
+  },
+  {
+   "metricOrTopic": "body_fat_percentage \u2014 Gallagher 2000 bands",
+   "claim": "Men 20-39 <8 / 8\u201319 / 20\u201325 / >25; 40-59 <11 / 11\u201321 / 22\u201328 / >28; 60-79 <13 / 13\u201324 / 25\u201330 / >30; women equivalents; n=1,626 DXA/4C",
+   "verdict": "unverifiable",
+   "correction": "The bands match the secondary chart exactly, but the primary Table was not opened. The abstract confirms n=1,626, 4C and DXA methods, BMI \u226435, and that the bands are provisional. It also shows the sample included three ethnic groups (white, African American and Asian). The bands in circulation are the white and African-American ones, so 'Asian thresholds differ' is correct.",
+   "source": "Europe PMC PMID 10966886; cf.ltkcdn.net body-fat chart PDF"
+  },
+  {
+   "metricOrTopic": "exercise_minutes \u2014 Arem 2015, Momma 2022, WHO 2020",
+   "claim": "Arem 661,137 / 116,686 deaths; HR 0.80, 0.69, 0.63, 0.61 (3\u20135\u00d7), 0.69 (\u226510\u00d7); Momma 10\u201317% lower, J-shape max ~10\u201320% at 30\u201360 min/week; WHO 150\u2013300 / 75\u2013150 min",
+   "verdict": "correct",
+   "correction": "All confirmed. The Momma J-shape figure refers to risk of all-cause mortality, CVD and total cancer, not only mortality from CVD and cancer.",
+   "source": "Europe PMC PMIDs 25844730, 35228201, 33239350"
+  },
+  {
+   "metricOrTopic": "heart_rate_recovery \u2014 Cole 1999 and Qiu 2017",
+   "claim": "Cole: 2,428 adults, 26% abnormal (\u226412 bpm), unadjusted RR 4.0, adjusted 2.0 (1.5\u20132.7). Qiu: 9 cohorts, 41,600; attenuated HR 1.68 all-cause, 1.69 CV; per \u221210 bpm 1.09 / 1.13",
+   "verdict": "correct",
+   "correction": "All confirmed. Qiu's CV-events analysis used only 5 studies (34,267 people), and its per-10-bpm CIs are 1.13 (1.05\u20131.21) and 1.09 (1.01\u20131.19).",
+   "source": "Europe PMC PMIDs 10536127, 28487388"
+  },
+  {
+   "metricOrTopic": "walking_speed \u2014 Studenski 2011 and Bohannon 2011",
+   "claim": "Studenski: 34,485 adults \u226565, HR per 0.1 m/s 0.88; 10-y survival at 75 in men 19\u201387%; thresholds <0.6, \u22480.8, \u22651.0, >1.2 m/s. Bohannon men 1.36/1.43/1.43/1.43/1.34/1.26/0.97 m/s, women 80\u201399 0.94",
+   "verdict": "correct",
+   "correction": "Studenski is fully confirmed, including the proposed cut-points in its Discussion. For Bohannon, the abstract confirms 143.4 cm/s (men 40\u201349) and 94.3 cm/s (women 80\u201399) and the sample of 41 articles and 23,111 subjects. The other male rows (135.8, 143.3, 143.3, 133.9, 126.2, 96.8) match secondary reproductions but not the primary table.",
+   "source": "Europe PMC PMIDs 21205966 (PMC3080184), 21820535"
+  },
+  {
+   "metricOrTopic": "vo2_max \u2014 Apple Cardio Fitness support page",
+   "claim": "Supported range 14\u201365 ml/kg/min; estimates from Outdoor Walk / Run / Hike",
+   "verdict": "correct",
+   "correction": "Confirmed. Classifications are shown only to users aged 20 or over.",
+   "source": "https://support.apple.com/en-us/108790"
+  },
+  {
+   "metricOrTopic": "step_count \u2014 Fuller 2020 wearable accuracy",
+   "claim": "Fitbit, Apple Watch, Samsung measure steps accurately in lab settings; no brand accurate for energy expenditure",
+   "verdict": "correct",
+   "correction": "Confirmed (158 publications, 9 brands).",
+   "source": "Europe PMC PMID 32897239 (PMC7509623)"
+  }
+ ]
+}

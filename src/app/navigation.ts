@@ -1,5 +1,5 @@
 import {
-  Home, CalendarDays, UtensilsCrossed, ShoppingBag, Clapperboard, Dumbbell, Star, Gamepad2,
+  Home, CalendarDays, UtensilsCrossed, ShoppingBag, Clapperboard, Dumbbell, HeartPulse, Star, Gamepad2,
   Briefcase, FolderKanban, Code2, type LucideIcon,
 } from 'lucide-react'
 
@@ -47,7 +47,8 @@ export const NAV: NavEntry[] = [
   { id: 'daily', label: 'Personal', path: '/daily', icon: CalendarDays, group: 'life', tab: 1, keywords: ['daily', 'today', 'tasks', 'schedule', 'agenda'] },
   { id: 'food', label: 'Food', path: '/recipes', icon: UtensilsCrossed, group: 'life', tab: 2, match: ['/recipes', '/shop'], keywords: ['recipes', 'nutrition', 'meals', 'diary'] },
   { id: 'shop', label: 'Shop', path: '/shop', icon: ShoppingBag, group: 'life', parent: 'food', fullHeight: true, keywords: ['wishlist', 'buy', 'shopping'] },
-  { id: 'training', label: 'Training', path: '/training', icon: Dumbbell, group: 'life', tab: 4, keywords: ['hevy', 'workouts', 'health', 'strava'] },
+  { id: 'training', label: 'Training', path: '/training', icon: Dumbbell, group: 'life', tab: 4, keywords: ['hevy', 'workouts', 'program', 'progress', 'strava'] },
+  { id: 'health', label: 'Health', path: '/health', icon: HeartPulse, group: 'life', more: true, keywords: ['apple health', 'sleep', 'steps', 'heart', 'vo2', 'weight'] },
   // Wishes leads the More sheet on purpose: a wish list that has to be hunted
   // for is dead in three weeks, and the 5 primary slots are taken.
   { id: 'wishes', label: 'Wishes', path: '/wishes', icon: Star, group: 'life', more: true, keywords: ['places', 'ideas', 'season'] },

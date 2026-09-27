@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
-import { useProgressData } from '../hooks/useProgressData'
+import { ChevronDown } from 'lucide-react'
+import { useProgressDataContext } from './progressDataContext'
 import { actionLabel, improvementScore } from '../progress-engine/copy'
 import type { ExerciseProgressResult, CanonicalExerciseSession, CurrentAction, EvidenceLevel, ProgressMetricKind } from '../progress-engine/types'
 import { InfoBubble } from '../../../shared/components/InfoBubble'
@@ -7,29 +8,21 @@ import { Card, EmptyState, TonePill, type Tone } from '../../../shared/ui'
 import { DecisionDetail, DisclosureButton, EvidencePill, ExposureLine } from './decisionParts'
 
 // Desktop: a dense decision table. Mobile (<640px): the same rows stack as
-// cards. A tap on any row expands its own drill-down detail in place —
-// the SAME inline-expansion mechanism this repo has used here since before
-// the Phase 2/3 engine rewrite, kept unchanged per the approved contract.
-//
-// This is the corrected production wiring of the progress engine
-// (src/features/training/progress-engine/) approved across several rounds
-// of algorithm review — see docs/training/progress-engine/ for the settled
-// rules. Every row now reads observedTransition/repDelta/rangeCompliance/
-// evaluationScope/dataQualityFlags/currentAction/trend/evidence as
-// independent facets (never one collapsed status), shows the real GIF via
-// the SAME shared resolver ExerciseTemplatesTab already uses, a per-set-
-// position Next Target floor, full per-set session history (never a
-// representative weight glued onto every set's reps), and a metric-aware
-// progress chart — nothing here re-derives the algorithm; it only renders it.
+// cards. Each row expands its own drill-down in place, by mouse, touch or
+// keyboard (the exercise name is a real button). Nothing here re-derives the
+// algorithm (progress-engine/, settled rules in docs/training/progress-engine/);
+// it only renders and filters it.
 
 type Tab = 'recent' | 'increase' | 'building' | 'attention' | 'all'
-const TABS: { id: Tab; label: string }[] = [
-  { id: 'recent', label: 'Recent changes' },
-  { id: 'increase', label: 'Ready to increase' },
-  { id: 'building', label: 'Building at new weight' },
-  { id: 'attention', label: 'Needs attention' },
-  { id: 'all', label: 'All exercises' },
+const TABS: { id: Tab; label: string; hint: string }[] = [
+  { id: 'recent', label: 'Recent changes', hint: 'Trained in the last 14 days and something moved: the load, the reps, or a new best.' },
+  { id: 'increase', label: 'Ready to increase', hint: 'Every prescribed set reached the top of the range — try the next load.' },
+  { id: 'building', label: 'Building', hint: 'Keep the load and add reps toward the top of the range.' },
+  { id: 'attention', label: 'Needs attention', hint: 'Below the minimum, a load reduction to check, or a plateau/decline at this load.' },
+  { id: 'all', label: 'All exercises', hint: 'Every current-program exercise with at least two sessions.' },
 ]
+
+const RECENT_DAYS = 14
 
 type SortMode = 'recent' | 'action_priority' | 'largest_improvement' | 'closest_to_progression' | 'lowest_confidence'
 const SORTS: { id: SortMode; label: string }[] = [
@@ -41,8 +34,9 @@ const SORTS: { id: SortMode; label: string }[] = [
 ]
 
 type DateWindow = 'all' | '4w' | '8w' | '12w'
+// 'all' is the whole loaded history — 6 months, never "all time".
 const DATE_WINDOWS: { id: DateWindow; label: string }[] = [
-  { id: 'all', label: 'All time' },
+  { id: 'all', label: 'Last 6 months' },
   { id: '4w', label: 'Last 4 weeks' },
   { id: '8w', label: 'Last 8 weeks' },
   { id: '12w', label: 'Last 12 weeks' },
@@ -50,8 +44,8 @@ const DATE_WINDOWS: { id: DateWindow; label: string }[] = [
 
 const ACTION_PRIORITY_RANK: Record<CurrentAction, number> = {
   READY_TO_INCREASE: 0, CONFIRM_BEFORE_INCREASING: 1, WATCH_FOR_REGRESSION: 1, WATCH_FOR_PLATEAU: 1,
-  CONFIRM_AT_CURRENT_LOAD: 2, REVIEW_LOAD_REDUCTION: 2, HOLD_STEADY: 2,
-  BUILD_AT_CURRENT_LOAD: 3, INSUFFICIENT_DATA: 4,
+  CONFIRM_AT_CURRENT_LOAD: 2, REVIEW_LOAD_REDUCTION: 2, LOG_COMPARABLE_SESSION: 2,
+  HOLD_STEADY: 3, BUILD_AT_CURRENT_LOAD: 3, INSUFFICIENT_DATA: 4,
 }
 const EVIDENCE_RANK: Record<EvidenceLevel, number> = { limited: 0, moderate: 1, strong: 2 }
 
@@ -61,10 +55,11 @@ const ACTION_TONE: Record<CurrentAction, Tone> = {
   CONFIRM_BEFORE_INCREASING: 'warn',
   CONFIRM_AT_CURRENT_LOAD:   'warn',
   REVIEW_LOAD_REDUCTION:     'warn',
-  HOLD_STEADY:               'neutral',
+  HOLD_STEADY:               'info',
   WATCH_FOR_PLATEAU:         'warn',
   WATCH_FOR_REGRESSION:      'danger',
   INSUFFICIENT_DATA:         'neutral',
+  LOG_COMPARABLE_SESSION:    'neutral',
 }
 
 function sortDecisions(list: ExerciseProgressResult[], sort: SortMode): ExerciseProgressResult[] {
@@ -91,25 +86,53 @@ function sortDecisions(list: ExerciseProgressResult[], sort: SortMode): Exercise
   }
 }
 
-function withinDateWindow(result: ExerciseProgressResult, window: DateWindow): boolean {
+function daysAgo(today: string, days: number): string {
+  const d = new Date(today + 'T00:00:00')
+  d.setDate(d.getDate() - days)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+function withinDateWindow(result: ExerciseProgressResult, window: DateWindow, today: string): boolean {
   if (window === 'all') return true
   const latestDate = result.currentState.latest?.date
   if (!latestDate) return true
   const weeks = window === '4w' ? 4 : window === '8w' ? 8 : 12
-  const cutoff = Date.now() - weeks * 7 * 86_400_000
-  return new Date(latestDate + 'T00:00:00').getTime() >= cutoff
+  return latestDate >= daysAgo(today, weeks * 7)
 }
 
-function DecisionRow({ result, sessions, metricKind, title }: { result: ExerciseProgressResult; sessions: CanonicalExerciseSession[]; metricKind: ProgressMetricKind; title: string }) {
+/** Something actually moved in the latest pair: the load, the reps, or a
+ *  6-month best / completed target. */
+function hasRecentChange(d: ExerciseProgressResult): boolean {
+  return d.observedTransition === 'LOAD_INCREASED' || d.observedTransition === 'LOAD_DECREASED'
+    || d.repDelta === 'REP_INCREASE' || d.repDelta === 'REP_DECLINE'
+    || d.events.some(e => e.emphasis === 'primary')
+}
+
+type RowProps = { result: ExerciseProgressResult; sessions: CanonicalExerciseSession[]; metricKind: ProgressMetricKind; title: string }
+
+function ToggleName({ open, onToggle, title }: { open: boolean; onToggle: () => void; title: string }) {
+  return (
+    <button
+      type="button" aria-expanded={open} onClick={e => { e.stopPropagation(); onToggle() }}
+      className="flex min-h-[44px] items-center gap-1.5 text-left text-body font-semibold text-fg"
+    >
+      <ChevronDown aria-hidden className={`h-4 w-4 shrink-0 text-fg-muted transition-transform ${open ? 'rotate-180' : ''}`} />
+      <span>{title}</span>
+    </button>
+  )
+}
+
+function DecisionRow({ result, sessions, metricKind, title }: RowProps) {
   const [open, setOpen] = useState(false)
   return (
     <>
-      <tr className="cursor-pointer border-b border-line hover:bg-surface-hover" aria-expanded={open} onClick={() => setOpen(v => !v)}>
-        <td className="px-3 py-2.5 text-body font-semibold text-fg">{title}</td>
+      {/* The name button is the keyboard/AT control; a click anywhere on the row is a mouse convenience. */}
+      <tr className="cursor-pointer border-b border-line hover:bg-surface-hover" onClick={() => setOpen(v => !v)}>
+        <td className="px-3 py-1"><ToggleName open={open} onToggle={() => setOpen(v => !v)} title={title} /></td>
         <td className="px-3 py-2.5"><ExposureLine result={result} /></td>
         <td className="px-3 py-2.5"><TonePill tone={ACTION_TONE[result.currentAction]}>{actionLabel(result.currentAction)}</TonePill></td>
-        <td className="px-3 py-2.5"><EvidencePill level={result.evidence.progress} label="Progress evidence" /></td>
-        <td className="px-3 py-2.5">{result.evidence.recommendation ? <EvidencePill level={result.evidence.recommendation} label="Recommendation evidence" /> : <span className="text-meta text-fg-faint">—</span>}</td>
+        <td className="px-3 py-2.5"><EvidencePill level={result.evidence.progress} label="Trend evidence" /></td>
+        <td className="px-3 py-2.5">{result.evidence.recommendation ? <EvidencePill level={result.evidence.recommendation} label="Decision evidence" /> : <span className="text-meta text-fg-faint">—</span>}</td>
       </tr>
       {open && (
         <tr>
@@ -120,41 +143,49 @@ function DecisionRow({ result, sessions, metricKind, title }: { result: Exercise
   )
 }
 
-function DecisionCard({ result, sessions, metricKind, title }: { result: ExerciseProgressResult; sessions: CanonicalExerciseSession[]; metricKind: ProgressMetricKind; title: string }) {
+function DecisionCard({ result, sessions, metricKind, title }: RowProps) {
   const [open, setOpen] = useState(false)
   return (
-    <li className="cursor-pointer rounded-row border border-line p-3" aria-expanded={open} onClick={() => setOpen(v => !v)}>
+    <li className="rounded-row border border-line px-3 pb-3 pt-1">
       <div className="flex items-center justify-between gap-2">
-        <span className="text-body font-semibold text-fg">{title}</span>
+        <ToggleName open={open} onToggle={() => setOpen(v => !v)} title={title} />
         <TonePill tone={ACTION_TONE[result.currentAction]} className="shrink-0">{actionLabel(result.currentAction)}</TonePill>
       </div>
-      <div className="mt-1"><ExposureLine result={result} /></div>
+      <div className="mt-0.5"><ExposureLine result={result} /></div>
       <div className="mt-1.5 flex items-center gap-2">
-        <EvidencePill level={result.evidence.progress} label="Progress evidence" />
-        {result.evidence.recommendation && <EvidencePill level={result.evidence.recommendation} label="Recommendation evidence" />}
+        <EvidencePill level={result.evidence.progress} label="Trend evidence" />
+        {result.evidence.recommendation && <EvidencePill level={result.evidence.recommendation} label="Decision evidence" />}
       </div>
       {open && <DecisionDetail result={result} sessions={sessions} metricKind={metricKind} title={title} />}
     </li>
   )
 }
 
-function filterByTab(decisions: ExerciseProgressResult[], tab: Tab): ExerciseProgressResult[] {
+function filterByTab(decisions: ExerciseProgressResult[], tab: Tab, today: string): ExerciseProgressResult[] {
   const withDecision = decisions.filter(d => d.currentAction !== 'INSUFFICIENT_DATA')
+  const below = (d: ExerciseProgressResult) => d.rangeCompliance === 'BELOW_MINIMUM'
   switch (tab) {
-    case 'increase':  return withDecision.filter(d => d.currentAction === 'READY_TO_INCREASE')
-    case 'building':  return withDecision.filter(d => d.currentAction === 'BUILD_AT_CURRENT_LOAD' || d.currentAction === 'CONFIRM_AT_CURRENT_LOAD' || d.currentAction === 'CONFIRM_BEFORE_INCREASING')
-    case 'attention': return withDecision.filter(d => d.currentAction === 'WATCH_FOR_PLATEAU' || d.currentAction === 'WATCH_FOR_REGRESSION' || d.currentAction === 'REVIEW_LOAD_REDUCTION' || d.currentAction === 'HOLD_STEADY')
-    case 'all':       return withDecision
-    case 'recent':
-    default:          return withDecision
+    case 'increase':
+      return withDecision.filter(d => d.currentAction === 'READY_TO_INCREASE')
+    case 'building':
+      return withDecision.filter(d => !below(d) && (d.currentAction === 'BUILD_AT_CURRENT_LOAD' || d.currentAction === 'CONFIRM_AT_CURRENT_LOAD' || d.currentAction === 'HOLD_STEADY'))
+    case 'attention':
+      return withDecision.filter(d => below(d) || d.currentAction === 'WATCH_FOR_PLATEAU' || d.currentAction === 'WATCH_FOR_REGRESSION' || d.currentAction === 'REVIEW_LOAD_REDUCTION')
+    case 'recent': {
+      const cutoff = daysAgo(today, RECENT_DAYS)
+      return withDecision.filter(d => (d.currentState.latest?.date ?? '') >= cutoff && hasRecentChange(d))
+    }
+    case 'all':
+    default:
+      return withDecision
   }
 }
 
 export function ExerciseDecisionTable() {
   const {
     isLoading, needsCurrentProgram, decisions, titleById, sessionsByTemplateId, metricKindByTemplateId,
-    muscleGroupByTemplateId, routineTitlesByTemplateId,
-  } = useProgressData()
+    muscleGroupByTemplateId, routineTitlesByTemplateId, today,
+  } = useProgressDataContext()
   const [tab, setTab] = useState<Tab>('recent')
   const [sort, setSort] = useState<SortMode>('recent')
   const [query, setQuery] = useState('')
@@ -175,7 +206,7 @@ export function ExerciseDecisionTable() {
     return [...set].sort()
   }, [decisions, routineTitlesByTemplateId])
 
-  const filtered = useMemo(() => filterByTab(decisions, tab), [decisions, tab])
+  const filtered = useMemo(() => filterByTab(decisions, tab, today), [decisions, tab, today])
   const searched = useMemo(() => {
     const q = query.trim().toLowerCase()
     let list = filtered
@@ -183,9 +214,9 @@ export function ExerciseDecisionTable() {
     if (evidenceFilter !== 'any') list = list.filter(d => d.evidence.progress === evidenceFilter)
     if (muscleFilter !== 'any') list = list.filter(d => muscleGroupByTemplateId.get(d.exerciseTemplateId) === muscleFilter)
     if (routineFilter !== 'any') list = list.filter(d => (routineTitlesByTemplateId.get(d.exerciseTemplateId) ?? []).includes(routineFilter))
-    list = list.filter(d => withinDateWindow(d, dateWindow))
+    list = list.filter(d => withinDateWindow(d, dateWindow, today))
     return list
-  }, [filtered, query, titleById, evidenceFilter, dateWindow, muscleFilter, routineFilter, muscleGroupByTemplateId, routineTitlesByTemplateId])
+  }, [filtered, query, titleById, evidenceFilter, dateWindow, muscleFilter, routineFilter, muscleGroupByTemplateId, routineTitlesByTemplateId, today])
   const shown = useMemo(() => sortDecisions(searched, sort), [searched, sort])
   const insufficient = useMemo(() => decisions.filter(d => d.currentAction === 'INSUFFICIENT_DATA'), [decisions])
 
@@ -200,13 +231,14 @@ export function ExerciseDecisionTable() {
 
   return (
     <Card>
-      <div role="tablist" aria-label="Decision view" className="scroll-x -mx-1 mb-3 flex gap-1 px-1 sm:flex-wrap">
+      <div role="tablist" aria-label="Decision view" className="scroll-x -mx-1 mb-1 flex gap-1 px-1 sm:flex-wrap">
         {TABS.map(t => (
           <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)} className="pill-tab shrink-0 px-3">
             {t.label}
           </button>
         ))}
       </div>
+      <p className="mb-3 text-meta text-fg-muted">{TABS.find(t => t.id === tab)?.hint}</p>
 
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <input
@@ -261,7 +293,9 @@ export function ExerciseDecisionTable() {
       </div>
 
       {shown.length === 0 ? (
-        <p className="py-4 text-center text-body text-fg-muted">No exercises in this view yet.</p>
+        <p className="py-4 text-center text-body text-fg-muted">
+          {tab === 'recent' && !filtersActive ? `Nothing changed in the last ${RECENT_DAYS} days — see All exercises for every lift.` : 'No exercises in this view.'}
+        </p>
       ) : (
         <>
           {/* Desktop table */}
@@ -270,13 +304,13 @@ export function ExerciseDecisionTable() {
               <thead>
                 <tr className="section-label border-b border-line-strong text-left">
                   <th className="py-2 px-3">Exercise</th>
-                  <th className="py-2 px-3">Previous → Latest</th>
+                  <th className="py-2 px-3">Last time → latest</th>
                   <th className="py-2 px-3">Decision</th>
                   <th className="py-2 px-3">
-                    <span className="inline-flex items-center gap-1">Progress <InfoBubble><b>Progress evidence</b>How much history supports the recent trend read. Never touched by effort/RPE data.</InfoBubble></span>
+                    <span className="inline-flex items-center gap-1">Trend evidence <InfoBubble><b>Trend evidence</b> How much history backs the trend read: Strong = 6+ comparable sessions over 3+ weeks in the recent window, Moderate = 4+ over 2+ weeks, Limited = less.</InfoBubble></span>
                   </th>
                   <th className="py-2 px-3">
-                    <span className="inline-flex items-center gap-1">Recommendation <InfoBubble><b>Recommendation evidence</b>How much the current action&apos;s own inputs hold up — data completeness and target quality. Never affected by missing effort/RPE data.</InfoBubble></span>
+                    <span className="inline-flex items-center gap-1">Decision evidence <InfoBubble><b>Decision evidence</b> How complete the latest session was for this decision: Strong = every prescribed set logged and checked, Moderate = only the top set (or a set count off the prescription), Limited = a data-quality flag such as a missing set.</InfoBubble></span>
                   </th>
                 </tr>
               </thead>

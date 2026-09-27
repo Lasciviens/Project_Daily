@@ -1,0 +1,456 @@
+{
+ "summary": "Evidence review for turning Training + Health data into rules. Every guideline below was checked against the primary abstract or full text (Europe PMC / PubMed / PLOS / SportRxiv); none rests on second-hand summaries. Each one keeps trial-backed findings apart from practitioner heuristics.\n\nFindings that matter for the app:\n(1) The app's existing muscle-credit rule (1.0 for a primary muscle, 0.5 for a secondary) is the same \"fractional\" set count that fitted best in the largest dose-response meta-regression (Pelland 2025, 67 studies). It is validated, so keep it.\n(2) Replace the RP MEV/MAV/MRV landmark bands, which are heuristics, with Pelland's published efficiency tiers where possible. For hypertrophy: a minimum effective dose of 4 sets a week, then tiers of 5\u201310, 11\u201318, 19\u201329 and 30\u201342 sets. Strength flattens after about 4\u20135 fractional sets a week per lift.\n(3) Apple Watch VO2max underestimated lab VO2max by about 6 mL/kg/min on average in two 2025\u201326 validation studies (MAE about 6.8, MAPE about 13%). It put only 14% of people in the right FRIEND percentile band. The owner's \"low VO2max\" may therefore be partly measurement error. Show a \u00b17 band and read the trend, not the absolute value.\n(4) The app has no age field (no birth_year). Age-normed VO2max, HRmax (208 \u2212 0.7\u00d7age) and the steps targets all need one.\n(5) The current protein coach (2.4 g/kg of bodyweight on a cut) should move to a fat-free-mass basis (2.3\u20133.1 g/kg FFM, Helms 2014). The general target should be \u22651.6 g/kg bodyweight (Morton 2018).\n(6) Concurrent cardio does not hurt whole-muscle hypertrophy or maximal strength (Schumann 2022). Explosive strength and running-based volume are the exceptions.\n(7) Norwegian HUNT3 direct-measure norms are the right comparison population for an Oslo user. Men: 30\u201339 = 49.1\u00b17.5, 40\u201349 = 47.2\u00b17.7, 50\u201359 = 42.6\u00b17.4 mL/kg/min. The US FRIEND values are lower.\n\nAll mortality associations are observational and must be framed as associations, never as predictions.",
+ "guidelines": [
+  {
+   "topic": "Weekly hard sets per muscle (hypertrophy dose-response)",
+   "recommendation": "Count weekly FRACTIONAL sets per muscle: a set counts 1.0 for its primary muscle and 0.5 for each secondary muscle. Warm-ups are excluded; normal, failure and drop sets count. Use Pelland 2025's tiers. <4 = below the minimum effective dose. 4 = minimum effective dose. 5\u201310 = higher efficiency (~6 extra sets per further detectable gain). 11\u201318 = intermediate (~8.5 extra sets per gain). 19\u201329 = lower efficiency (~10.75). 30\u201342 = lowest (~12.5). 43+ = no data, and gains may be smaller. Default target for a recreational lifter is 10\u201320 fractional sets per muscle per week. ACSM 2026: \u226510 sets a week enhances hypertrophy. Baz-Valle 2022: 12\u201320 for trained men. More is still slightly better above 20, at sharply rising cost. Never label a band 'harmful'.",
+   "appRule": "Take complete Mon\u2013Sun weeks only; the current partial week is shown as 'in progress'. For each muscle slug: sum over hevy_sets where type != 'warmup' of contribution(templateId, slug, role), with primary 1.0 and secondary 0.5. That is the existing muscleMap.ts seam, which matches Pelland's 'fractional' method. Classify the 4-week average into the tiers above and show the tier label plus 'sets needed for the next detectable step'. Mark any RP MEV/MAV/MRV band shown next to it as 'practitioner heuristic'. Only flag a muscle when it has been below 4 fractional sets a week for \u22653 of the last 4 complete weeks, or \u226530 sets a week sustained. Cross-check athlete_limitations and athlete_muscle_preferences.exclude_direct before suggesting more volume.",
+   "evidence": "TRIAL-BACKED: Pelland et al. 2025, Sports Med. Bayesian meta-regression of 67 studies, 2,058 participants. The 'fractional' count (indirect sets = 0.5) beat 'total' and 'direct' by Bayes factor. Posterior probability that volume increases hypertrophy = 100%. The best-fit model is a square root (diminishing returns without a clear plateau). Minimum effective dose = 4 fractional sets a week. The tier table above is copied from their Table 3. Few studies tested ~25+ sets, so the upper range is uncertain. Schoenfeld 2017: each extra weekly set \u2248 +0.37% muscle gain (ES +0.023). Baz-Valle 2022 (trained men): no difference between 12\u201320 and >20 sets for quads and biceps, with a triceps advantage for >20. ACSM 2026 overview of 137 systematic reviews: hypertrophy enhanced by \u226510 sets a week. HEURISTIC: per-muscle MV/MEV/MAV/MRV landmarks (Israetel/RP) are not derived from trials and must be labelled as such.",
+   "sources": [
+    {
+     "citation": "Pelland JC et al. The Resistance Training Dose Response: Meta-Regressions Exploring the Effects of Weekly Volume and Frequency on Muscle Hypertrophy and Strength Gains. Sports Med 2025. doi:10.1007/s40279-025-02344-w",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/41343037/"
+    },
+    {
+     "citation": "Schoenfeld BJ, Ogborn D, Krieger JW. Dose-response relationship between weekly resistance training volume and increases in muscle mass. J Sports Sci 2017;35:1073-82",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/27433992/"
+    },
+    {
+     "citation": "Baz-Valle E et al. A Systematic Review of the Effects of Different Resistance Training Volumes on Muscle Hypertrophy. J Hum Kinet 2022",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/35291645/"
+    },
+    {
+     "citation": "Currier BS et al. ACSM Position Stand: Resistance Training Prescription for Muscle Function, Hypertrophy, and Physical Performance in Healthy Adults. Med Sci Sports Exerc 2026. doi:10.1249/mss.0000000000003897",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/41843416/"
+    }
+   ],
+   "confidence": "high"
+  },
+  {
+   "topic": "Weekly sets for strength and per-session volume ceiling",
+   "recommendation": "STRENGTH: 1 fractional set a week per lift is already detectable, and returns flatten by about 4\u20135 fractional sets a week for a given lift (Pelland: extra sets beyond ~5 do not consistently add gains above the detection threshold). ACSM 2026: 2\u20133 sets per exercise at \u226580% 1RM, full range of motion, placed early in the session, \u22652 sessions a week. PER SESSION: hypertrophy benefit becomes undetectable at about 11 fractional sets per muscle per session. For strength, the equivalent point is about 2 direct sets per session for a lift, so spread volume across more sessions instead of stacking it.",
+   "appRule": "Per exercise (exercise_template_id), count working sets per complete week. For the owner's main compound lifts, flag 'strength stimulus likely saturated' only as info when there are >6 direct sets a week without progress. Per muscle per workout: sum fractional sets within one hevy_workout. If >11 for a muscle on a single day AND that muscle is trained only once a week, suggest 'split this volume over 2 sessions' (the gain from sets past ~11 in one session was undetectable). Check exercise order: is the heaviest compound lift the first or second exercise (hevy_workout_exercises index)? If not, show an info note citing ACSM's 'at the beginning of sessions'.",
+   "evidence": "TRIAL-BACKED: Pelland 2025. The strength volume model is reciprocal, with strong diminishing returns and a functional plateau. Their Table 4 gives a minimum effective dose of 1 set, a higher-efficiency tier at 2, intermediate at 3\u20134, and 'no consistent gain above the detection threshold' from 5 on. Their detection threshold is 3.96%, so smaller gains past 5 sets are possible. ACSM 2026: strength enhanced by \u226580% 1RM, complete range of motion, 2\u20133 sets, at the beginning of sessions, \u22652 sessions a week. PRE-PRINT (lower certainty): Remmert et al. 2025, per-session meta-regressions. The point of undetectable superiority was ~11 fractional sets per session for hypertrophy and ~2 direct sets per session for strength.",
+   "sources": [
+    {
+     "citation": "Pelland JC et al. Sports Med 2025 (Tables 3\u20134, volume efficiency tiers)",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/41343037/"
+    },
+    {
+     "citation": "Remmert JF, Pelland JC, Robinson ZP, Hinson SR, Zourdos MC. Is There Too Much of a Good Thing? Meta-Regressions of the Effect of Per-Session Volume on Hypertrophy and Strength. SportRxiv 2025 (preprint)",
+     "url": "https://sportrxiv.org/index.php/server/preprint/view/537"
+    },
+    {
+     "citation": "Currier BS et al. ACSM Position Stand 2026",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/41843416/"
+    }
+   ],
+   "confidence": "medium"
+  },
+  {
+   "topic": "Training frequency per muscle",
+   "recommendation": "HYPERTROPHY: at equal weekly volume, frequency has no meaningful effect. Choose 1\u20133 sessions per muscle per week by preference. Use frequency to (a) keep per-session volume \u2264 ~11 fractional sets and (b) reach the weekly volume target. STRENGTH: frequency matters. Going from 1 to 2 exposures a week per lift is the biggest jump (Pelland: ~12.7% \u2192 ~17.3% strength gain), with diminishing returns beyond that. Train each key lift or pattern \u22652\u00d7 a week. General health floor: every major muscle group \u22652 days a week (WHO 2020, ACSM 2026).",
+   "appRule": "Per muscle, per complete week: frequency = number of distinct workout dates with \u22652 fractional sets for that muscle. Per key lift (the exercises in current_program_routines): exposures a week = distinct dates with \u22651 working set of that exercise or its pattern. Flags: (1) a key lift at 1 exposure a week for \u22654 weeks and the goal includes strength \u2192 'a 2nd weekly exposure is the best-supported strength lever'. (2) A muscle at 1\u00d7/week with >11 fractional sets that day \u2192 split it. Never flag hypertrophy frequency on its own.",
+   "evidence": "TRIAL-BACKED: Schoenfeld, Grgic & Krieger 2019 (25 studies). No significant or meaningful difference between frequencies when volume is equated. In non-equated studies higher frequency is modestly better, through extra volume. Grgic 2018 (strength, 22 studies): ES 0.74 / 0.82 / 0.93 / 1.08 for 1 / 2 / 3 / 4+ sessions a week, but no effect when volume is equated (p = 0.421). Pelland 2025 found frequency's effect on hypertrophy compatible with zero (posterior probability <100%). For strength it was 100% positive, reciprocal-shaped: a 'fractional' frequency of 1 \u2192 ES 12.72%, 2 \u2192 17.32%, then accelerating diminishing returns. The authors attribute this partly to practising the tested movement.",
+   "sources": [
+    {
+     "citation": "Schoenfeld BJ, Grgic J, Krieger J. How many times per week should a muscle be trained to maximize muscle hypertrophy? J Sports Sci 2019",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/30558493/"
+    },
+    {
+     "citation": "Grgic J et al. Effect of Resistance Training Frequency on Gains in Muscular Strength. Sports Med 2018",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/29470825/"
+    },
+    {
+     "citation": "Pelland JC et al. Sports Med 2025",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/41343037/"
+    },
+    {
+     "citation": "Bull FC et al. WHO 2020 guidelines on physical activity and sedentary behaviour. Br J Sports Med 2020",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/33239350/"
+    }
+   ],
+   "confidence": "high"
+  },
+  {
+   "topic": "Rep ranges and load",
+   "recommendation": "HYPERTROPHY: any load from ~30% to ~100% 1RM works when sets are taken close to failure; practically, ~5\u201330 reps per set. There is no special 'hypertrophy range'. ACSM 2009's emphasis on 6\u201312RM is convenience, not a requirement. STRENGTH: 1RM gains are clearly larger with heavy loads, so include regular sets at \u226580% 1RM (roughly \u22646\u20138 reps at 1\u20133 RIR) on the lifts you want strong. ACSM 2009 for intermediate/advanced lifters: a periodised 1\u201312RM range with eventual emphasis on 1\u20136RM, 3\u20135 min rest for heavy sets, and 1\u20132 min rest for hypertrophy work.",
+   "appRule": "For each working set, estimate %1RM = weight_kg / e1RM, where e1RM is the best Epley e1RM for that exercise in the last 8 weeks. Epley is only valid for \u226412 reps; for higher reps, bucket by reps alone. Bucket sets as heavy (\u226580% or \u22646 reps), moderate (7\u201315 reps) or light (16\u201330 reps). Reuse REP_BUCKETS from progressAggregate.ts. Rule: if athlete_profile.goal \u2208 {strength, general} AND <~20% of working sets on the key compound lifts were heavy over 8 weeks \u2192 info note 'heavy exposure is what drives 1RM specifically'. The 20% cutoff is a HEURISTIC and must be labelled. Never flag a hypertrophy set for its rep count while it stays within 5\u201330 reps.",
+   "evidence": "TRIAL-BACKED: Schoenfeld et al. 2017, 21 studies, all sets to failure. 1RM gains were significantly greater with high loads (>60% 1RM); hypertrophy was similar between low and high loads. ACSM 2026 overview: strength enhanced by \u226580% 1RM; hypertrophy not tied to one load band. ACSM 2009: 8\u201312RM for novices; 1\u201312RM periodised with emphasis on 1\u20136RM for strength; 6\u201312RM emphasis with 1\u20132 min rest for hypertrophy. CONSENSUS: the rest-interval figures are position-stand recommendations, not meta-analytic optima.",
+   "sources": [
+    {
+     "citation": "Schoenfeld BJ, Grgic J, Ogborn D, Krieger JW. Strength and Hypertrophy Adaptations Between Low- vs. High-Load Resistance Training. J Strength Cond Res 2017;31:3508-23",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/28834797/"
+    },
+    {
+     "citation": "Currier BS et al. ACSM Position Stand 2026",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/41843416/"
+    },
+    {
+     "citation": "ACSM Position Stand. Progression models in resistance training for healthy adults. Med Sci Sports Exerc 2009;41:687-708",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/19204579/"
+    }
+   ],
+   "confidence": "high"
+  },
+  {
+   "topic": "Proximity to failure (RIR) \u2014 without relying on RPE",
+   "recommendation": "HYPERTROPHY: finish most working sets at ~0\u20133 reps in reserve (RIR). Growth improves as sets end closer to failure, but going to momentary failure itself adds little or nothing. STRENGTH: gains are similar across a wide range of RIR, so 1\u20134 RIR on heavy lifts is fine and less fatiguing. ACSM 2026: training to momentary failure did not consistently change outcomes. Never penalise the absence of failure sets. Remember that people underestimate how many reps they have left by ~1 rep, so a felt '2 RIR' is often really ~3.",
+   "appRule": "Use signals in order of trust. (1) If hevy_sets.rpe is present, RIR = 10 \u2212 RPE (Hevy's own mapping). (2) type = 'failure' \u2192 0 RIR. (3) Inference when RPE is absent, labelled HEURISTIC. At a constant load within a session, a rep drop from the first to the last working set of \u226520% (e.g. 10 \u2192 8 \u2192 7) suggests sets were near failure. Identical reps at identical load across all sets AND across \u22653 consecutive sessions with no progression suggests RIR was likely \u22653; show 'you may have more in the tank \u2014 try adding reps'. Show the share of sets with known effort; do not compute an effort score when <30% of sets carry a signal. Never cap a recommendation's confidence on missing RPE; that is an existing owner decision.",
+   "evidence": "TRIAL-BACKED: Robinson et al. 2024, meta-regression with RIR estimated from study descriptions. Strength slopes were compatible with zero across RIR. Hypertrophy slopes were negative (closer to failure = more growth), with CIs excluding zero; the analysis is exploratory. Refalo et al. 2023 (15 studies): only a trivial advantage for set failure vs non-failure (ES 0.19, CI 0.00\u20130.37), and none for momentary muscular failure vs non-failure (ES 0.12, CI \u22120.13 to 0.37), suggesting a non-linear relationship. Grgic 2022: no overall difference for strength (ES \u22120.09) or hypertrophy (ES 0.22, n.s.); a small hypertrophy benefit of failure in trained people (ES 0.15); non-failure favoured for strength when volume was not equated (ES \u22120.32). Halperin 2022: people underpredict reps to failure by 0.95 reps on average, with better accuracy closer to failure and at \u226412 reps. HEURISTIC: the rep-drop inference rules are not validated.",
+   "sources": [
+    {
+     "citation": "Robinson ZP et al. Exploring the Dose-Response Relationship Between Estimated Resistance Training Proximity to Failure, Strength Gain, and Muscle Hypertrophy. Sports Med 2024",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/38970765/"
+    },
+    {
+     "citation": "Refalo MC et al. Influence of Resistance Training Proximity-to-Failure on Skeletal Muscle Hypertrophy. Sports Med 2023",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/36334240/"
+    },
+    {
+     "citation": "Grgic J et al. Effects of resistance training performed to repetition failure or non-failure on muscular strength and hypertrophy. J Sport Health Sci 2022",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/33497853/"
+    },
+    {
+     "citation": "Halperin I et al. Accuracy in Predicting Repetitions to Task Failure in Resistance Exercise. Sports Med 2022",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/34542869/"
+    },
+    {
+     "citation": "Currier BS et al. ACSM Position Stand 2026",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/41843416/"
+    }
+   ],
+   "confidence": "medium"
+  },
+  {
+   "topic": "Progression \u2014 double progression and when to add load",
+   "recommendation": "Use double progression inside the routine's own rep range (hevy_routine_sets.rep_range_start/end). Add reps at the same load until every working set reaches the top of the range, then add load. Per ACSM 2009, raise the load by 2\u201310% once you can do 1\u20132 reps above the target: ~2\u20135% (1.25\u20132.5 kg) on upper-body or isolation lifts, ~5\u201310% (2.5\u20135 kg) on lower-body compounds. After a load jump, reps falling toward the bottom of the range is expected. Reps below the bottom of the range for 2 sessions in a row means go back to the previous load. Adding reps at a fixed load is an equally valid way to progress for hypertrophy.",
+   "appRule": "Per exercise, compare the latest session with the last comparable one (the existing progress-engine CanonicalExerciseSession). READY TO ADD LOAD: all prescribed working sets at load L have reps \u2265 rep_range_end, or \u2265 target + 1 when no range is set. Suggested next load = L \u00d7 1.025 (upper body/isolation) or L \u00d7 1.05 (lower-body compound), rounded to the nearest available increment (default 2.5 kg, or 1.25 kg for micro-plates/dumbbells), with a floor of +1 increment. PREMATURE: after a load increase, \u22652 sets below rep_range_start in 2 consecutive sessions \u2192 'return to previous load and rebuild reps'. PLATEAU: no rep or load gain across \u22654 comparable sessions over \u22653 weeks \u2192 review. Keep the existing per-set-position floor rule. The +2.5%/+5% split and the 2-session rules are HEURISTICS within ACSM's 2\u201310% band.",
+   "evidence": "CONSENSUS: ACSM 2009 position stand. 'When training at a specific RM load, it is recommended that 2\u201310% increase in load be applied when the individual can perform the current workload for one to two repetitions over the desired number.' TRIAL-BACKED: Plotkin et al. 2022 RCT, 8 weeks, trained lifters. Progressing load (fixed rep range) and progressing reps (fixed load) gave similar hypertrophy and similar strength and endurance gains. ACSM 2026 reaffirms that healthy adults 'should perform progressive RT'. The exact increment and session-count rules are practitioner conventions.",
+   "sources": [
+    {
+     "citation": "ACSM Position Stand. Progression models in resistance training for healthy adults. Med Sci Sports Exerc 2009",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/19204579/"
+    },
+    {
+     "citation": "Plotkin D et al. Progressive overload without progressing load? The effects of load or repetition progression on muscular adaptations. PeerJ 2022;10:e14142",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/36199287/"
+    },
+    {
+     "citation": "Currier BS et al. ACSM Position Stand 2026",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/41843416/"
+    }
+   ],
+   "confidence": "medium"
+  },
+  {
+   "topic": "Exercise selection and balance (push:pull, quad:hamstring, injury-risk levers)",
+   "recommendation": "Equipment type (machines, free weights, bands) does not change average outcomes, and systematically rotating exercises gives similar results to keeping them constant. So choose exercises for comfort, full range of motion and progression tracking. BALANCE (heuristic): keep weekly fractional sets of pushing (chest, front delts, triceps) vs pulling (lats, upper back, rear delts, biceps) at roughly 1:1, flagging outside 0.67\u20131.5. Include direct upper-back and rear-delt/external-rotator work; recreational lifters show measurable shoulder imbalances. Include at least 1 knee-flexion hamstring exercise a week, ideally the Nordic curl, which roughly halves hamstring-strain rates in athletes. Hamstring sets below ~0.5\u00d7 quad sets is a soft flag.",
+   "appRule": "Map primary_muscle_group to groups. PUSH = chest, shoulders (front), triceps. PULL = lats, upper_back, middle back, traps, rear delts (if distinguishable), biceps. QUAD = quadriceps. HAM = hamstrings. Use fractional sets over the last 4 complete weeks. Flags, labelled HEURISTIC: push/pull > 1.5 or < 0.67; ham/quad < 0.5; zero knee-flexion exercises (template title matches curl/nordic/leg curl) in 4 weeks. Suggestion copy names the missing pattern, not a specific exercise. Respect athlete_limitations: never suggest a pattern with severity 'avoid'.",
+   "evidence": "TRIAL-BACKED: ACSM 2026. Equipment type, exercise complexity and set structure did not consistently affect outcomes. Kassiano 2025 RCT: varied vs constant exercises gave similar thickness gains (+7.5\u201319.3% vs +7.8\u201317.7%) and similar 1RM. van Dyk 2019 meta-analysis (15 studies, 8,459 athletes): programmes including the Nordic hamstring exercise cut hamstring injuries (RR 0.49; RCT-only 0.52). OBSERVATIONAL: Kolber 2009. Recreational lifters had significantly greater agonist/antagonist strength ratios and reduced mobility vs controls, with training biased toward pecs/delts and neglect of external rotators and lower traps. Green 2020 (78 studies): older age and prior hamstring injury are the strongest hamstring-strain risk factors; strength ratios are weaker predictors. HEURISTIC: the 1:1 push:pull and 0.5 ham:quad cutoffs have no trial support as thresholds.",
+   "sources": [
+    {
+     "citation": "Currier BS et al. ACSM Position Stand 2026",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/41843416/"
+    },
+    {
+     "citation": "Kassiano W et al. Muscle Hypertrophy and Strength Adaptations to Systematically Varying Resistance Exercises. Res Q Exerc Sport 2025",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/39388663/"
+    },
+    {
+     "citation": "van Dyk N, Behan FP, Whiteley R. Including the Nordic hamstring exercise in injury prevention programmes halves the rate of hamstring injuries. Br J Sports Med 2019",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/30808663/"
+    },
+    {
+     "citation": "Kolber MJ et al. Shoulder joint and muscle characteristics in the recreational weight training population. J Strength Cond Res 2009",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/19077737/"
+    },
+    {
+     "citation": "Green B et al. Recalibrating the risk of hamstring strain injury: 2020 systematic review and meta-analysis. Br J Sports Med 2020",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/32299793/"
+    }
+   ],
+   "confidence": "low"
+  },
+  {
+   "topic": "Deloads and fatigue signals",
+   "recommendation": "Do not schedule a deload by the calendar alone. The only RCT found that a 1-week complete break in a 9-week block slightly reduced strength gains and did not help hypertrophy. Recommend a REDUCED-VOLUME deload (~1 week, cut sets or reps by ~40\u201350%, keep the load) when fatigue signals converge, typically after 4\u20138 weeks of continuous hard training. Performance decline is the most important signal. No single biomarker diagnoses overreaching, so require \u22652 signals.",
+   "appRule": "PROGRAM-level check, extending the existing computeProgramDecision. Signals: (a) \u22652 different key lifts with top-set e1RM or reps at a fixed load down beyond noise (>~3\u20135%) in 2 consecutive comparable sessions; (b) 7-day median resting_heart_rate \u2265 60-day median + 5 bpm; (c) 7-day mean heart_rate_variability (SDNN) < 60-day mean \u2212 1 SD; (d) 7-day mean sleep < 6.5 h (existing \u22654-tracked-nights gate); (e) \u22656 consecutive weeks with \u22652 sessions (computeConsistencyByWeek). Suggest a deload when (a) plus \u22651 of (b), (c) or (d) is present, or when (e) and \u22652 of the others are present. Show a 'why' list and never auto-apply. The thresholds in (a)\u2013(d) are HEURISTICS.",
+   "evidence": "TRIAL-BACKED: Coleman et al. 2024 RCT (n = 39, trained). A 1-week training cessation mid-way through a 9-week high-volume programme gave no difference in hypertrophy, power or endurance but smaller lower-body strength gains vs training continuously. CONSENSUS/PRACTITIONER: Bell et al. 2023 Delphi of strength and physique coaches, with background citing their coach survey. Deloading is 'generally undertaken every 4\u20136 weeks for a period of ~7 days', and volume is usually reduced via fewer sets and/or reps (100% agreement on lowering sets); some regular 4\u20138-week deloads are precautionary. Meeusen 2013 ECSS/ACSM consensus: performance decrement plus fatigue define overreaching, and no marker (hormones, performance tests, psychological, biochemical) meets all criteria on its own. HEURISTIC: the RHR/HRV/sleep cutoffs are monitoring conventions, not validated thresholds.",
+   "sources": [
+    {
+     "citation": "Coleman M et al. Gaining more from doing less? The effects of a one-week deload period during supervised resistance training on muscular adaptations. PeerJ 2024",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/38274324/"
+    },
+    {
+     "citation": "Bell L et al. Integrating Deloading into Strength and Physique Sports Training Programmes: An International Delphi Consensus Approach. Sports Med Open 2023",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/37730925/"
+    },
+    {
+     "citation": "Meeusen R et al. Prevention, diagnosis, and treatment of the overtraining syndrome: ECSS/ACSM joint consensus. Med Sci Sports Exerc 2013",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/23247672/"
+    }
+   ],
+   "confidence": "low"
+  },
+  {
+   "topic": "Muscle-strengthening dose and mortality (J-curve)",
+   "recommendation": "For health, the largest observed risk reduction is at ~30\u201360 min a week of muscle-strengthening activity: ~10\u201320% lower all-cause, CVD and cancer mortality risk (Momma 2022). The biggest single step is going from none to some. Above ~1 h a week the added benefit is unclear (J-shaped), not proven harmful, and very likely confounded; never present high training volume as a mortality risk. Resistance training plus aerobic exercise was associated with ~40% lower all-cause mortality vs no exercise, compared with ~21% for resistance training alone (Saeidifard 2019). WHO: muscle-strengthening on \u22652 days a week.",
+   "appRule": "Weekly resistance-training minutes = \u03a3 over hevy_workouts of (end_time \u2212 start_time), complete weeks, 4-week average. Also count days a week with a Hevy workout. Bands: 0 \u2192 'none: the biggest benefit is starting'; 1\u201329 min \u2192 'some'; 30\u201360 \u2192 'the range with the strongest observed association'; >60 \u2192 'benefit beyond this is unclear in the data; this is for performance/physique goals'. Show a combined badge when WHO aerobic minutes are also met (see aerobic guideline). Frame every sentence as 'associated with', citing cohort evidence.",
+   "evidence": "OBSERVATIONAL (prospective cohorts, meta-analysed). Momma et al. 2022 (16 cohorts): muscle-strengthening activity was associated with 10\u201317% lower risk of all-cause mortality, CVD, total cancer, diabetes and lung cancer. J-shaped curves peaked at ~30\u201360 min a week for all-cause, CVD and cancer; the diabetes curve was L-shaped up to 60 min a week. The authors state the effect of higher volumes 'is unclear'. Saeidifard 2019 (11 studies, 370,256 participants): resistance training vs none HR 0.79 (0.69\u20130.91); combined with aerobic HR 0.60 (0.49\u20130.72); CV mortality borderline (0.83, 0.67\u20131.03). WHO 2020: regular muscle-strengthening for all ages. Causality is not established.",
+   "sources": [
+    {
+     "citation": "Momma H et al. Muscle-strengthening activities are associated with lower risk and mortality in major non-communicable diseases. Br J Sports Med 2022",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/35228201/"
+    },
+    {
+     "citation": "Saeidifard F et al. The association of resistance training with mortality: a systematic review and meta-analysis. Eur J Prev Cardiol 2019",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/31104484/"
+    },
+    {
+     "citation": "Bull FC et al. WHO 2020 guidelines on physical activity and sedentary behaviour. Br J Sports Med 2020",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/33239350/"
+    }
+   ],
+   "confidence": "medium"
+  },
+  {
+   "topic": "Aerobic activity dose for health (how much, how to count it)",
+   "recommendation": "Target 150\u2013300 min a week of moderate aerobic activity, or 75\u2013150 min vigorous, or an equivalent mix (1 vigorous minute \u2248 2 moderate minutes). This is the WHO 2020 and ACSM 2011 guidance, \u2248500\u20131,000 MET-min a week. Define intensity by heart rate: moderate = 64\u201376% of HRmax, vigorous = 77\u201395%. Estimate HRmax as 208 \u2212 0.7 \u00d7 age (Tanaka), or use the highest HR actually recorded in a hard workout if higher. Lifting sessions do not count toward aerobic minutes even though Apple's Exercise ring counts them.",
+   "appRule": "This needs age: add birth_year to athlete_profile. HRmax = max(208 \u2212 0.7 \u00d7 age, 98th-percentile max HR from health_workouts/strava in the last 12 months). For each non-strength cardio session (health_workouts where the name/type is not strength training, and no overlap with a hevy_workout time window; plus strava_activities), classify minutes by average HR: <64% = light (not counted), 64\u201376% = moderate, \u226577% = vigorous. Weekly moderate-equivalent minutes = moderate + 2 \u00d7 vigorous. Show progress toward 150 (minimum) and 300 (upper target). Fallback when HR is missing: use apple_exercise_time minus Hevy-overlapping minutes, labelled 'approximate'.",
+   "evidence": "GUIDELINE/CONSENSUS built on large observational evidence. WHO 2020 (Bull et al.): all adults should do 150\u2013300 min moderate or 75\u2013150 min vigorous aerobic activity a week, plus muscle-strengthening; 'some physical activity is better than none'. ACSM 2011 (Garber et al.): \u2265150 min a week moderate or \u226575 min a week vigorous, \u2265500\u20131,000 MET-min a week, plus resistance training 2\u20133 days a week. TRIAL-DERIVED equation: Tanaka 2001 (351 studies, 18,712 subjects, lab cross-validation in 514): HRmax = 208 \u2212 0.7 \u00d7 age, independent of sex and activity status. The 64\u201376% / 77\u201395% HRmax intensity bands are the ACSM classification (HEURISTIC boundaries).",
+   "sources": [
+    {
+     "citation": "Bull FC et al. WHO 2020 guidelines on physical activity and sedentary behaviour. Br J Sports Med 2020",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/33239350/"
+    },
+    {
+     "citation": "Garber CE et al. ACSM Position Stand. Quantity and quality of exercise for developing and maintaining cardiorespiratory, musculoskeletal, and neuromotor fitness. Med Sci Sports Exerc 2011",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/21694556/"
+    },
+    {
+     "citation": "Tanaka H, Monahan KD, Seals DR. Age-predicted maximal heart rate revisited. J Am Coll Cardiol 2001",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/11153730/"
+    }
+   ],
+   "confidence": "high"
+  },
+  {
+   "topic": "VO2max \u2014 where you stand (norms, mortality gradient, Apple Watch error)",
+   "recommendation": "Compare against directly measured Norwegian norms (HUNT3, healthy volunteers). Men: 20\u201329 = 54.4\u00b18.4, 30\u201339 = 49.1\u00b17.5, 40\u201349 = 47.2\u00b17.7, 50\u201359 = 42.6\u00b17.4 mL/kg/min. The US FRIEND 50th percentile is lower (men 20\u201329 = 48.0, declining ~4 mL/kg/min per decade in the 2022 update). Each +1 MET (3.5 mL/kg/min) is associated with ~13% lower all-cause mortality (Kodama), with no upper limit of benefit observed (Mandsager: elite vs low fitness HR 0.20). CRITICAL CAVEAT: Apple Watch underestimated lab VO2max by ~6 mL/kg/min on average (MAE ~6.8, MAPE ~13%, limits of agreement roughly \u221218 to +6). Treat the watch value as a trend with a \u00b17 band, and suggest a lab or field test before drawing conclusions. Relative VO2max also rises as body fat falls, even at the same heart capacity.",
+   "appRule": "Latest value = median of vo2_max samples over the last 30 days. Show: (1) METs = v / 3.5. (2) Age-group z-score vs HUNT3 mean\u00b1SD and approximate percentile via the normal CDF, labelled 'vs healthy Norwegian volunteers'. (3) FRIEND US median for context. (4) Gap to the age-group mean in mL/kg/min and METs, with the associated risk gradient \u2248 0.87^(\u0394METs), labelled OBSERVATIONAL. (5) A band [v \u2212 7, v + 7] plus the note 'Apple tended to read ~6 low in validation studies'. (6) Absolute VO2 (L/min) = v \u00d7 weight_kg / 1000, and a what-if at the target weight: v_new = absolute \u00d7 1000 / target_kg. (7) A 12-week trend slope from monthly medians. Requires birth_year.",
+   "evidence": "MEASURED NORMS: Loe et al. 2013 (HUNT3, n = 3,816, treadmill with direct gas analysis). Values above are from their Tables 2\u20133; NTNU CERG publishes the same rounded means (54/49/47/42/39/34) and notes inactive vs active 50\u201359 y men at 38 vs 47. FRIEND 2015: men 50th percentile 48.0 (20\u201329) \u2192 24.4 (70\u201379). FRIEND 2022 update: treadmill decline 13.5%, or 4.0 mL/kg/min, per decade. OBSERVATIONAL: Kodama 2009 JAMA meta-analysis, 1 MET higher = 13% lower all-cause and 15% lower CHD/CVD risk. Mandsager 2018 (122,007 treadmill tests): inverse association with no upper limit; elite vs low adjusted HR 0.20 (0.16\u20130.24). VALIDATION: Lambe 2026 (Apple Watch Series 10, n = 40): mean difference \u22126.25 mL/kg/min, LoA \u221218.23 to 5.73, MAE 6.79, MAPE 13.2%; correct FRIEND percentile band in only 14%. Lambe 2025 (n = 30): underestimation 6.07, MAE 6.92, MAPE 13.31%. Small samples, so the direction of bias may not generalise.",
+   "sources": [
+    {
+     "citation": "Loe H, Rognmo \u00d8, Saltin B, Wisl\u00f8ff U. Aerobic capacity reference data in 3816 healthy men and women 20-90 years (HUNT3). PLoS One 2013",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/23691196/"
+    },
+    {
+     "citation": "NTNU CERG. Fitness numbers (HUNT reference means)",
+     "url": "https://www.ntnu.edu/cerg/fitness-numbers"
+    },
+    {
+     "citation": "Kaminsky LA et al. Updated Reference Standards for Cardiorespiratory Fitness (FRIEND). Mayo Clin Proc 2022",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/34809986/"
+    },
+    {
+     "citation": "Kaminsky LA, Arena R, Myers J. Reference Standards for Cardiorespiratory Fitness (FRIEND). Mayo Clin Proc 2015",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/26455884/"
+    },
+    {
+     "citation": "Kodama S et al. Cardiorespiratory fitness as a quantitative predictor of all-cause mortality and cardiovascular events. JAMA 2009;301:2024-35",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/19454641/"
+    },
+    {
+     "citation": "Mandsager K et al. Association of Cardiorespiratory Fitness With Long-term Mortality Among Adults Undergoing Exercise Treadmill Testing. JAMA Netw Open 2018",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/30646252/"
+    },
+    {
+     "citation": "Lambe R et al. Accuracy of VO2 max Estimates From Apple Watch Series 10. Mayo Clin Proc Digit Health 2026",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/42094313/"
+    },
+    {
+     "citation": "Lambe R et al. Investigating the accuracy of Apple Watch VO2 max measurements: A validation study. PLoS One 2025",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/40373042/"
+    }
+   ],
+   "confidence": "high"
+  },
+  {
+   "topic": "VO2max \u2014 how to raise it and what to expect",
+   "recommendation": "Plan: 3 cardio sessions a week for 8\u201312 weeks. One or two are intervals, e.g. the 4\u00d74 protocol: 10 min warm-up, then 4 \u00d7 4 min at 90\u201395% HRmax with 3 min easy (~70% HRmax) between. The rest are moderate continuous sessions (30\u201360 min). Cycling or rowing suits a lifter well (see concurrent training). Expected change for a low-baseline recreational adult: roughly +4 to +6 mL/kg/min over ~8\u201312 weeks, often more from a low start. Meta-analysed gains vs no-exercise controls are +4.9 for endurance training and +5.5 for HIIT, with extra gains at lower baseline fitness. Helgerud's 4\u00d74 group gained +7.2% in 8 weeks. If VO2max has not moved after ~12 weeks, increase the dose (more minutes a week) rather than concluding you are a 'non-responder'.",
+   "appRule": "Count interval sessions a week: cardio workouts where the HR series (health_workouts raw heartRateData) shows \u22653 bouts or \u22658 total minutes at \u226588% HRmax. Fallback: max HR \u2265 90% HRmax and average HR \u2265 80% HRmax. Show an '8\u201312-week block' tracker (sessions done vs planned). Expected-change band: start = the 30-day vo2_max median; projected +3 to +6 mL/kg/min after 8\u201312 weeks, plus the relative gain from any weight loss. After 12 weeks, compare the actual change with the Apple \u00b17 noise band. If the change is < +2 and weekly moderate-equivalent minutes are < 150 \u2192 'dose too low: add ~60\u2013120 min a week' (Montero & Lundby).",
+   "evidence": "TRIAL-BACKED. Milanovi\u0107 2015 meta-analysis (28 studies, 723 adults 18\u201345 y, baseline 40.8\u00b17.9 mL/kg/min). Endurance training vs control +4.9 (\u00b11.4) mL/kg/min. HIIT vs control +5.5 (\u00b11.2), with +3.2 (\u00b11.9) extra at lower baseline fitness and +3.0 (\u00b11.9) extra for longer interventions. HIIT vs endurance training +1.2 (\u00b10.9). Helgerud 2007 RCT (moderately trained men, 3\u00d7/week, 8 weeks, total work matched): 4\u00d74 min at 90\u201395% HRmax raised VO2max +7.2% (55.5 \u2192 60.4) and 15/15 intervals +5.5%, both beating long slow distance and lactate-threshold training; stroke volume +~10%. Bacon 2013 (37 HIIT studies, 6\u201313 weeks): +0.51 L/min (0.43\u20130.60). Scribbans 2016: intensity tertiles gave similar VO2max gains, so lower intensity works at a higher dose. Montero & Lundby 2017: CRF 'non-response' fell as dose rose from 60 to 300 min a week, and disappeared with +120 min a week.",
+   "sources": [
+    {
+     "citation": "Milanovi\u0107 Z, Spori\u0161 G, Weston M. Effectiveness of HIT and Continuous Endurance Training for VO2max Improvements. Sports Med 2015;45:1469-81",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/26243014/"
+    },
+    {
+     "citation": "Helgerud J et al. Aerobic High-Intensity Intervals Improve VO2max More Than Moderate Training. Med Sci Sports Exerc 2007;39:665-71",
+     "url": "https://rcc.hslu.ch/fileadmin/user_upload/downloads/sport/Aerobic_High-Intensity_Intervals_Improve_J.Helgerud_2007.pdf"
+    },
+    {
+     "citation": "Bacon AP et al. VO2max Trainability and High Intensity Interval Training in Humans: A Meta-Analysis. PLoS One 2013;8:e73182",
+     "url": "https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0073182"
+    },
+    {
+     "citation": "Scribbans TD et al. The Effect of Training Intensity on VO2max in Young Healthy Adults. Int J Exerc Sci 2016",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/27182424/"
+    },
+    {
+     "citation": "Montero D, Lundby C. Refuting the myth of non-response to exercise training. J Physiol 2017",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/28133739/"
+    }
+   ],
+   "confidence": "high"
+  },
+  {
+   "topic": "Zone 2 vs higher intensity",
+   "recommendation": "Do not present Zone 2 (easy, below lactate threshold) as the optimal intensity for health or VO2max. Easy volume is useful and low-fatigue for a lifter. But at limited weekly time, including some higher-intensity work gives more VO2max and cardiometabolic benefit per minute. If all cardio sits below ~75% HRmax and VO2max is flat, add 1 interval session a week.",
+   "appRule": "Show weekly minutes per intensity band: <64%, 64\u201376%, 77\u201387%, \u226588% HRmax. If \u226590% of cardio minutes over 8 weeks are <77% HRmax AND the 8-week vo2_max slope is \u2264 0 \u2192 suggest adding 1 interval session. Never add a 'Zone 2 score'.",
+   "evidence": "NARRATIVE REVIEW (expert, evidence-weighing). Storoschuk, Moran-MacDonald, Gibala & Gurd 2025, Sports Med: current evidence does not support Zone 2 as the optimal intensity for mitochondrial or fat-oxidative capacity, and higher intensities (>Zone 2) are critical to maximise cardiometabolic benefit, particularly at lower training volumes. Consistent with Milanovi\u0107 2015 (HIIT \u2265 endurance training for VO2max) and Scribbans 2016 (similar gains when a lower intensity is compensated by more volume).",
+   "sources": [
+    {
+     "citation": "Storoschuk KL et al. Much Ado About Zone 2: A Narrative Review. Sports Med 2025",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/40560504/"
+    },
+    {
+     "citation": "Milanovi\u0107 Z et al. Sports Med 2015",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/26243014/"
+    },
+    {
+     "citation": "Scribbans TD et al. Int J Exerc Sci 2016",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/27182424/"
+    }
+   ],
+   "confidence": "medium"
+  },
+  {
+   "topic": "Daily steps / NEAT",
+   "recommendation": "Target \u22658,000 steps a day on average. Under age 60, the mortality association keeps falling until ~8,000\u201310,000 steps a day (Paluch); for 60+ it levels off at ~6,000\u20138,000. Even ~2,500\u20132,800 steps a day beats 2,000, and the curve flattens near ~8,800 (Stens). A faster pace (cadence) adds benefit independent of the count. Steps are the easiest lever for the owner: they cost almost no recovery from lifting.",
+   "appRule": "7-day and 30-day mean of daily step_count, after the existing hour-level duplicate collapse in healthAggregate.ts. Place the user on Paluch's quartile ladder, relative to the 3,553 reference: ~5,800 \u2192 HR 0.60, ~7,800 \u2192 HR 0.55, ~10,900 \u2192 HR 0.47, labelled OBSERVATIONAL. Show the gap to 8,000 and to 10,000 (under 60). Flag weeks with \u22653 days under 5,000. Wrist-worn devices undercount relative to the hip accelerometers used in some cohorts; mention this once in the explanation.",
+   "evidence": "OBSERVATIONAL (participant-level and study-level cohort meta-analyses). Paluch 2022 (15 cohorts, 47,471 adults, 3,013 deaths): vs quartile 1 (median 3,553 steps a day), HR 0.60 for Q2 (5,801), 0.55 for Q3 (7,842) and 0.47 for Q4 (10,901). Risk declined until 6,000\u20138,000 steps a day in \u226560 y and 8,000\u201310,000 in <60 y. Stens 2023 JACC (12 studies, 111,309 people): significant reduction from 2,517 steps a day (all-cause) vs 2,000, optimal ~8,763 (aHR 0.40) for mortality and ~7,126 for CVD. Cadence was independently protective, and effects were larger with hip-worn than wrist-worn devices.",
+   "sources": [
+    {
+     "citation": "Paluch AE et al. Daily steps and all-cause mortality: a meta-analysis of 15 international cohorts. Lancet Public Health 2022",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/35247352/"
+    },
+    {
+     "citation": "Stens NA et al. Relationship of Daily Step Counts to All-Cause Mortality and Cardiovascular Events. J Am Coll Cardiol 2023",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/37676198/"
+    }
+   ],
+   "confidence": "high"
+  },
+  {
+   "topic": "Concurrent training \u2014 does cardio hurt gains, and how to schedule it",
+   "recommendation": "Cardio alongside lifting does NOT compromise whole-muscle hypertrophy or maximal strength (Schumann 2022). Explosive strength/power can be blunted, especially when both are done in the same session. There may be a small fiber-level hypertrophy cost, mainly with running. Practical rules: separate hard cardio and lifting by \u22653 h (ideally different days for HIIT vs heavy legs). Prefer cycling or rowing for higher cardio volumes. Avoid long or intense running right before leg training. Keep endurance frequency and duration moderate when strength or power is the priority.",
+   "appRule": "For each hevy_workout, find cardio sessions (health_workouts/strava) on the same date. If one is within 3 h before a Hevy session that trains quads/hamstrings/glutes with \u22654 fractional sets, flag 'cardio right before legs'. Escalate the wording if it was running or reached \u226588% HRmax. Weekly running minutes vs cycling/rowing minutes: if running > 150 min a week and the goal is strength/hypertrophy, show an info note (Wilson: running, not cycling, drove the interference). Never flag cardio as 'hurting gains' in general.",
+   "evidence": "TRIAL-BACKED. Schumann et al. 2022 (43 studies): concurrent vs strength-only SMD \u22120.06 (\u22120.20 to 0.09) for maximal strength, \u22120.01 (\u22120.16 to 0.18) for hypertrophy, and \u22120.28 (\u22120.48 to \u22120.08) for explosive strength. Explosive attenuation was worse in the same session (p = 0.043) than with \u22653 h separation. Wilson et al. 2012 (21 studies): concurrent ES for hypertrophy 0.85 vs 1.23 for strength-only. Running, not cycling, caused significant decrements, and endurance frequency and duration correlated negatively with hypertrophy, strength and power. Lundberg et al. 2022 (15 studies): small negative effect on overall fiber hypertrophy, SMD \u22120.23 (\u22120.46 to \u22120.00); type I fibers with running \u22120.81.",
+   "sources": [
+    {
+     "citation": "Schumann M et al. Compatibility of Concurrent Aerobic and Strength Training for Skeletal Muscle Size and Function: An Updated Systematic Review and Meta-Analysis. Sports Med 2022",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/34757594/"
+    },
+    {
+     "citation": "Wilson JM et al. Concurrent training: a meta-analysis examining interference of aerobic and resistance exercises. J Strength Cond Res 2012",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/22002517/"
+    },
+    {
+     "citation": "Lundberg TR et al. The Effects of Concurrent Aerobic and Strength Training on Muscle Fiber Hypertrophy. Sports Med 2022",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/35476184/"
+    }
+   ],
+   "confidence": "high"
+  },
+  {
+   "topic": "Resting heart rate, heart-rate recovery and HRV \u2014 how to interpret",
+   "recommendation": "RESTING HR: lower is generally better. Each +10 bpm is associated with ~17% higher all-cause mortality risk (Aune). Show the personal trend and a 30-day median; aerobic training usually lowers it. HR RECOVERY (Apple 'cardio_recovery', drop in the first minute after exercise): a clinical graded-test threshold of \u226412 bpm at 1 min marks poor recovery (\u22484\u00d7 mortality risk in a clinical cohort). Apple measures after arbitrary workouts, so treat it only as a soft trend note. HRV (Apple SDNN, ultra-short readings): do NOT compare to published 24-hour SDNN norms, which are not interchangeable. Use only your own rolling baseline, and only as a corroborating fatigue signal.",
+   "appRule": "resting_heart_rate: 30-day median plus a 90-day trend slope; context copy uses Aune's per-10-bpm gradient, labelled OBSERVATIONAL. cardio_recovery: 30-day median; if < 12 bpm on \u22653 readings \u2192 soft note 'lower than typical; improves with aerobic fitness; if it persists or you have symptoms, discuss with a doctor'. heart_rate_variability: 7-day rolling mean vs 60-day mean \u00b1 SD, shown as within / below / above your normal range. No absolute 'good/bad' HRV value is ever displayed.",
+   "evidence": "OBSERVATIONAL: Aune 2017 (87 studies): RR per 10 bpm higher resting HR = 1.17 (1.14\u20131.19) for all-cause mortality; also higher CHD, sudden cardiac death, heart failure, AF, stroke and cancer risk. CLINICAL COHORT: Cole 1999 NEJM (2,428 adults referred for exercise testing): HR recovery \u226412 bpm at 1 min \u2192 RR of death 4.0 (3.0\u20135.2), independent of workload. The population and protocol differ from an Apple Watch workout, so the threshold is only indicative. METHODS REVIEWS: Shaffer & Ginsberg 2017: 24-h, short-term (~5 min) and ultra-short (<5 min) HRV norms 'are not interchangeable'; context (recording length, age, sex) sets baselines. Plews 2013: day-to-day HRV monitoring needs averaging (rolling means) and individual baselines; the same direction of change can mean different things in different athletes.",
+   "sources": [
+    {
+     "citation": "Aune D et al. Resting heart rate and the risk of cardiovascular disease, total cancer, and all-cause mortality: dose-response meta-analysis. Nutr Metab Cardiovasc Dis 2017",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/28552551/"
+    },
+    {
+     "citation": "Cole CR et al. Heart-rate recovery immediately after exercise as a predictor of mortality. N Engl J Med 1999",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/10536127/"
+    },
+    {
+     "citation": "Shaffer F, Ginsberg JP. An Overview of Heart Rate Variability Metrics and Norms. Front Public Health 2017",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/29034226/"
+    },
+    {
+     "citation": "Plews DJ et al. Training adaptation and heart rate variability in elite endurance athletes: opening the door to effective monitoring. Sports Med 2013",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/23852425/"
+    }
+   ],
+   "confidence": "medium"
+  },
+  {
+   "topic": "Sleep and recovery for strength",
+   "recommendation": "Aim for \u22657 h of sleep a night (AASM/SRS consensus for adults). After nights of \u22646 h, expect lower performance (~\u22127.6% on average across tasks, strength included), especially if you train later in the day. On short-sleep days, prefer morning sessions and don't chase PRs. During a calorie deficit, short sleep (5.5 vs 8.5 h in bed) shifted weight loss from fat toward lean mass (+60% fat-free-mass loss). One night of total sleep deprivation cut muscle protein synthesis by ~18%.",
+   "appRule": "Nightly hours come from the existing computeSleepNights (Oslo wake-day). Show the 7-day mean against 7 h; flag nights < 6 h. For each Hevy workout, look up the previous night's sleep: if < 6 h, annotate the session ('short sleep before this session'), and exclude or down-weight that session in plateau/regression detection. Bump the severity when the workout started after 14:00 local (Craven: PM sessions more affected). If day_targets.goal = 'cut' and the 14-day mean sleep < 6.5 h \u2192 'short sleep during a cut is linked to more muscle loss'.",
+   "evidence": "CONSENSUS: Watson et al. 2015 AASM/SRS: adults should regularly sleep \u22657 h. TRIAL META-ANALYSIS: Craven et al. 2022 (69 publications, 227 outcomes): sleep loss (\u22646 h) mean \u22127.56% (95% CI \u221211.9 to \u22123.13) exercise performance, significant for every category including strength. Deprivation and late restriction were consistently negative; there was ~0.4% decrease per extra hour awake before exercise; PM tasks were consistently affected, AM largely not. RCT (small): Nedeltcheva 2010 (n = 10, 14-day deficit): 5.5 h vs 8.5 h sleep opportunity cut fat loss by 55% (0.6 vs 1.4 kg) and raised fat-free-mass loss by 60% (2.4 vs 1.5 kg). Lamon 2021 (n = 13 crossover): one night without sleep lowered postprandial muscle protein synthesis by 18%, cortisol +21%, testosterone \u221224%.",
+   "sources": [
+    {
+     "citation": "Watson NF et al. Recommended Amount of Sleep for a Healthy Adult: AASM/SRS Joint Consensus Statement. J Clin Sleep Med 2015",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/25979105/"
+    },
+    {
+     "citation": "Craven J et al. Effects of Acute Sleep Loss on Physical Performance: A Systematic and Meta-Analytical Review. Sports Med 2022",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/35708888/"
+    },
+    {
+     "citation": "Nedeltcheva AV et al. Insufficient sleep undermines dietary efforts to reduce adiposity. Ann Intern Med 2010",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/20921542/"
+    },
+    {
+     "citation": "Lamon S et al. The effect of acute sleep deprivation on skeletal muscle protein synthesis and the hormonal environment. Physiol Rep 2021",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/33400856/"
+    }
+   ],
+   "confidence": "medium"
+  },
+  {
+   "topic": "Protein for hypertrophy (maintenance and cutting)",
+   "recommendation": "Target \u22651.6 g protein per kg bodyweight per day. Morton's breakpoint was 1.62 g/kg, above which extra protein gave no further fat-free-mass gain; the upper end of that estimate's range is ~2.2. Spread it over \u22654 meals at ~0.4 g/kg each (max ~0.55 g/kg per meal). ON A CUT (lean, trained): 2.3\u20133.1 g/kg of FAT-FREE mass, scaled up with deficit size and leanness. Scale by FFM rather than bodyweight so a higher body-fat lifter isn't over-prescribed. The app's current 2.4 g/kg-bodyweight cut target does exactly that.",
+   "appRule": "Daily eaten protein = \u03a3 food_log_entries.protein_g where status = 'eaten'. Bodyweight = latest weight_body_mass. FFM = weight \u00d7 (1 \u2212 body_fat_percentage/100) when BF% was measured within 60 days. Targets: maintain/gain = 1.6 g/kg bodyweight (show 1.6\u20132.2 as the band); cut = 2.3 g/kg FFM (band up to 3.1), falling back to 1.8\u20132.0 g/kg bodyweight without BF%. Meal distribution: count meal slots with \u22650.3 g/kg protein; nudge if < 3. Only evaluate days with \u22652 logged eaten meals (logging-completeness gate, like useNutritionCoach). Replace useNutritionCoach's proteinByGoal cut multiplier accordingly.",
+   "evidence": "TRIAL-BACKED: Morton et al. 2018 BJSM (49 RCTs, 1,863 participants, resistance training \u22656 weeks). Protein supplementation increased strength and fat-free-mass gains. Benefit declined with age and was larger in trained people. Two-phase breakpoint: intakes above ~1.62 g/kg/day gave no further fat-free-mass gain (95% CI of the breakpoint reported ~1.03\u20132.20). REVIEW/HEURISTIC: Schoenfeld & Aragon 2018 recommend 0.4 g/kg per meal across \u22654 meals to reach \u22651.6 g/kg/day, up to 0.55 g/kg per meal at 2.2 g/kg/day. SYSTEMATIC REVIEW (6 studies, small): Helms et al. 2014: energy-restricted, lean, resistance-trained athletes likely need 2.3\u20133.1 g/kg of FFM.",
+   "sources": [
+    {
+     "citation": "Morton RW et al. A systematic review, meta-analysis and meta-regression of the effect of protein supplementation on resistance training-induced gains in muscle mass and strength. Br J Sports Med 2018",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/28698222/"
+    },
+    {
+     "citation": "Schoenfeld BJ, Aragon AA. How much protein can the body use in a single meal for muscle-building? J Int Soc Sports Nutr 2018",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/29497353/"
+    },
+    {
+     "citation": "Helms ER et al. A systematic review of dietary protein during caloric restriction in resistance trained lean athletes: a case for higher intakes. Int J Sport Nutr Exerc Metab 2014",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/24092765/"
+    }
+   ],
+   "confidence": "high"
+  },
+  {
+   "topic": "Estimated fitness without a lab test (context for 'what should my VO2max be')",
+   "recommendation": "When the watch estimate is doubtful, a non-exercise HUNT model gives a second opinion: age, waist circumference, leisure-time activity and resting HR together explain ~61% of VO2peak variance in men. Its error is ~5.7 mL/kg/min, similar to the Apple Watch's. Present it as 'another estimate', never as truth. The two most modifiable inputs are resting HR (lowered by aerobic training) and waist (lowered by fat loss), which is exactly what raises relative VO2max. The definitive answer is a lab CPET or a supervised treadmill test.",
+   "appRule": "Optional. If the user enters waist circumference (not currently stored) and birth_year, show the HUNT-style estimate beside the Apple value with \u00b15.7 mL/kg/min. Only ship the exact equation after verifying the coefficients against the full paper or NTNU's published calculator; they were NOT verified in this research pass. Until then, link to the NTNU CERG fitness calculator instead of computing it.",
+   "evidence": "MODEL DEVELOPMENT/VALIDATION: Nes et al. 2011 (HUNT, 4,637 healthy adults with directly measured VO2peak). Age, waist circumference, leisure-time physical activity and resting HR were the strongest predictors; the models explained 61% (men) and 56% (women) of variance; SEE 5.70 (men) and 5.14 (women); cross-validated by data splitting. UNVERIFIED: third-party pages quote differing coefficient sets, so do not hard-code any of them.",
+   "sources": [
+    {
+     "citation": "Nes BM et al. Estimating VO2peak from a nonexercise prediction model: the HUNT Study, Norway. Med Sci Sports Exerc 2011",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/21502897/"
+    },
+    {
+     "citation": "NTNU CERG. Fitness numbers / fitness calculator",
+     "url": "https://www.ntnu.edu/cerg/fitness-numbers"
+    }
+   ],
+   "confidence": "medium"
+  }
+ ]
+}

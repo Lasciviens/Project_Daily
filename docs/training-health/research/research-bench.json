@@ -1,0 +1,1543 @@
+{
+ "summary": "Reference bands for 15 health metrics that an Apple Watch or iPhone reports, built for an adult man (women added where it was easy). Every number below comes from a source I opened myself, with a few exceptions I label. Primary sources verified directly: FRIEND 2015 VO2max percentiles (PMC full text, Table 3), Mandsager 2018 fitness groups, hazard ratios and MET cut-offs (JAMA Netw Open full text), NHANES resting-pulse percentiles (CDC NHSR 41, PDF parsed), Voss 2015 5-minute SDNN by decade (PMC), Boulos 2019 normal sleep-lab tables (the authors' own table PDFs), NICE NG246 BMI and waist-to-height classes (NICE page text), WHO 2008 waist cut-offs (WHO IRIS PDF), and the WHO pulse-oximetry manual (95\u2013100%). All meta-analysis effect sizes (Kodama, Lang, Kokkinos, Zhang, Aune, Paluch, Saint-Maurice, Banach, Ding, Cappuccio, Windred, Global BMI Mortality Collaboration, Arem, Momma, Cole, Qiu, Studenski, Hillebrand, Natarajan, Milanovi\u0107, Reimers) come from their published abstracts or PMC full text, read via Europe PMC.\n\nLower-confidence items: (1) The FRIEND 2022 treadmill table. The Mayo Clinic Proceedings page blocked every attempt (403), so the 2022 numbers come from a secondary transcription (FitnessNorms, stated as RER \u22651.1). They are consistent with the paper's abstract (medians 1.5\u20134.6 ml/kg/min lower than 2015; average decline about 4 ml/kg/min per decade) and with a second blog's 60\u201369 figures. One PMC paper quotes different 2022 values for older men (25.4 / 21.2 / 17.9), probably from the RER \u22651.0 table. The FRIEND 2015 rows are fully verified. (2) Nunan 2010 (SDNN 50\u00b116 ms) and the Bohannon 2011 walking-speed rows come from search snippets; I did not open the full text. (3) The Gallagher 2000 body-fat bands come from a widely reproduced chart that cites the paper; the primary table was not opened. (4) The clinical 'normal breathing rate 12\u201320' figure was not opened (the Johns Hopkins page returned 403); the wearable-specific distribution (Natarajan 2021) is verified. (5) The descriptor scale (Superior/Excellent/\u2026) attributed to ACSM could not be verified and is not used.\n\nApple Watch caveats matter most:\n- VO2max: three independent validations show the watch reads low by about 6 ml/kg/min on average (MAPE about 13\u201316%). It reads lower still in fitter people: \u22127.8 ml/kg/min at the 80th percentile and above, versus \u22122.4 at the 70th and below. Only 14% of people were placed in their correct FRIEND percentile band. So a 'below average' watch reading may really be average or better.\n- HRV: Apple reports SDNN from about 1-minute PPG windows taken every 2\u20134 hours. It reads \u22128.3 ms low on average against a chest strap, with MAPE 29%. It is not comparable with 5-minute ECG or 24-hour SDNN norms; the personal trend is what to use.\n- Resting heart rate: agrees well with a chest strap (MAE 3.7 bpm).\n- Energy: no wearable brand is accurate for energy expenditure.\n- Sleep stages: agreement with polysomnography is weak (light sleep \u221274 min, REM +30 min).\n\nFor the page's design, I recommend showing where the user sits against the age-matched FRIEND percentile and translating that into the Mandsager and Kodama risk language:\n- Each 1 MET (3.5 ml/kg/min) higher is linked to 11\u201317% lower all-cause mortality.\n- Being in the bottom 25% carries 5\u00d7 the risk of the elite group.\n- Next to that, show the realistic training effect: about +5 ml/kg/min from endurance training or HIIT.",
+ "metrics": [
+  {
+   "metric": "vo2_max",
+   "unit": "ml/kg/min",
+   "whatItMeans": "How much oxygen your body can use per kilogram per minute at maximal effort \u2014 the single best measure of aerobic (cardiorespiratory) fitness, and one of the strongest predictors of how long people live.",
+   "bands": [
+    {
+     "label": "Low (<25th pct) \u2014 FRIEND 2015 measured",
+     "sex": "male",
+     "ageRange": "20-29",
+     "range": "<40.1",
+     "interpretation": "Bottom quarter for age. In Mandsager 2018 (122,007 treadmill tests) the <25th-percentile group had 5.04\u00d7 the adjusted mortality of the elite group (HR 5.04, 95% CI 4.10\u20136.20)."
+    },
+    {
+     "label": "Below average (25th\u201349th)",
+     "sex": "male",
+     "ageRange": "20-29",
+     "range": "40.1\u2013<48.0",
+     "interpretation": "Adjusted mortality HR 0.71 vs the low group (\u224829% lower), but clearly higher risk than fitter groups."
+    },
+    {
+     "label": "Above average (50th\u201374th)",
+     "sex": "male",
+     "ageRange": "20-29",
+     "range": "48.0\u2013<55.2",
+     "interpretation": "HR 0.52 vs low (\u224848% lower adjusted mortality)."
+    },
+    {
+     "label": "High (75th\u201394th)",
+     "sex": "male",
+     "ageRange": "20-29",
+     "range": "55.2\u2013<66.3",
+     "interpretation": "HR 0.32 vs low (\u224868% lower). Mandsager's 'high' group spans the 75th\u201397.6th percentile."
+    },
+    {
+     "label": "Very high (\u226595th)",
+     "sex": "male",
+     "ageRange": "20-29",
+     "range": "\u226566.3",
+     "interpretation": "At or near Mandsager's 'elite' (\u226597.7th): HR 0.20 vs low; elite vs high HR 0.77 \u2014 no upper limit of benefit was observed."
+    },
+    {
+     "label": "Low (<25th pct) \u2014 FRIEND 2015 measured",
+     "sex": "male",
+     "ageRange": "30-39",
+     "range": "<35.9",
+     "interpretation": "Bottom quarter for age; Mandsager 2018: 5.04\u00d7 the adjusted mortality of the elite group."
+    },
+    {
+     "label": "Below average (25th\u201349th)",
+     "sex": "male",
+     "ageRange": "30-39",
+     "range": "35.9\u2013<42.4",
+     "interpretation": "HR 0.71 vs low (\u224829% lower adjusted mortality)."
+    },
+    {
+     "label": "Above average (50th\u201374th)",
+     "sex": "male",
+     "ageRange": "30-39",
+     "range": "42.4\u2013<49.2",
+     "interpretation": "HR 0.52 vs low (\u224848% lower)."
+    },
+    {
+     "label": "High (75th\u201394th)",
+     "sex": "male",
+     "ageRange": "30-39",
+     "range": "49.2\u2013<59.8",
+     "interpretation": "HR 0.32 vs low (\u224868% lower). Note Kokkinos 2022: lowest mortality at \u224814 METs \u2248 49 ml/kg/min in men."
+    },
+    {
+     "label": "Very high (\u226595th)",
+     "sex": "male",
+     "ageRange": "30-39",
+     "range": "\u226559.8",
+     "interpretation": "Near 'elite': HR 0.20 vs low; elite vs high HR 0.77."
+    },
+    {
+     "label": "Low (<25th pct) \u2014 FRIEND 2015 measured",
+     "sex": "male",
+     "ageRange": "40-49",
+     "range": "<31.9",
+     "interpretation": "Bottom quarter for age; 5.04\u00d7 elite-group mortality (Mandsager 2018)."
+    },
+    {
+     "label": "Below average (25th\u201349th)",
+     "sex": "male",
+     "ageRange": "40-49",
+     "range": "31.9\u2013<37.8",
+     "interpretation": "HR 0.71 vs low."
+    },
+    {
+     "label": "Above average (50th\u201374th)",
+     "sex": "male",
+     "ageRange": "40-49",
+     "range": "37.8\u2013<45.0",
+     "interpretation": "HR 0.52 vs low."
+    },
+    {
+     "label": "High (75th\u201394th)",
+     "sex": "male",
+     "ageRange": "40-49",
+     "range": "45.0\u2013<55.6",
+     "interpretation": "HR 0.32 vs low."
+    },
+    {
+     "label": "Very high (\u226595th)",
+     "sex": "male",
+     "ageRange": "40-49",
+     "range": "\u226555.6",
+     "interpretation": "Near 'elite': HR 0.20 vs low."
+    },
+    {
+     "label": "Low (<25th pct) \u2014 FRIEND 2015 measured",
+     "sex": "male",
+     "ageRange": "50-59",
+     "range": "<27.1",
+     "interpretation": "Bottom quarter for age; also below Kodama 2009's 'low CRF' line of 7.9 METs (27.7 ml/kg/min), which carried RR 1.70 for all-cause mortality vs high CRF."
+    },
+    {
+     "label": "Below average (25th\u201349th)",
+     "sex": "male",
+     "ageRange": "50-59",
+     "range": "27.1\u2013<32.6",
+     "interpretation": "HR 0.71 vs low."
+    },
+    {
+     "label": "Above average (50th\u201374th)",
+     "sex": "male",
+     "ageRange": "50-59",
+     "range": "32.6\u2013<39.7",
+     "interpretation": "HR 0.52 vs low."
+    },
+    {
+     "label": "High (75th\u201394th)",
+     "sex": "male",
+     "ageRange": "50-59",
+     "range": "39.7\u2013<50.7",
+     "interpretation": "HR 0.32 vs low."
+    },
+    {
+     "label": "Very high (\u226595th)",
+     "sex": "male",
+     "ageRange": "50-59",
+     "range": "\u226550.7",
+     "interpretation": "Near 'elite': HR 0.20 vs low."
+    },
+    {
+     "label": "Low (<25th pct) \u2014 FRIEND 2015 measured",
+     "sex": "male",
+     "ageRange": "60-69",
+     "range": "<23.7",
+     "interpretation": "Bottom quarter for age; 5.04\u00d7 elite-group mortality."
+    },
+    {
+     "label": "Below average (25th\u201349th)",
+     "sex": "male",
+     "ageRange": "60-69",
+     "range": "23.7\u2013<28.2",
+     "interpretation": "HR 0.71 vs low."
+    },
+    {
+     "label": "Above average (50th\u201374th)",
+     "sex": "male",
+     "ageRange": "60-69",
+     "range": "28.2\u2013<34.5",
+     "interpretation": "HR 0.52 vs low."
+    },
+    {
+     "label": "High (75th\u201394th)",
+     "sex": "male",
+     "ageRange": "60-69",
+     "range": "34.5\u2013<43.0",
+     "interpretation": "HR 0.32 vs low."
+    },
+    {
+     "label": "Very high (\u226595th)",
+     "sex": "male",
+     "ageRange": "60-69",
+     "range": "\u226543.0",
+     "interpretation": "Near 'elite': HR 0.20 vs low."
+    },
+    {
+     "label": "Low (<25th pct) \u2014 FRIEND 2015 measured",
+     "sex": "male",
+     "ageRange": "70-79",
+     "range": "<20.4",
+     "interpretation": "Bottom quarter for age; the benefit gradient held in septuagenarians and octogenarians too (Kokkinos 2022)."
+    },
+    {
+     "label": "Below average (25th\u201349th)",
+     "sex": "male",
+     "ageRange": "70-79",
+     "range": "20.4\u2013<24.4",
+     "interpretation": "HR 0.71 vs low."
+    },
+    {
+     "label": "Above average (50th\u201374th)",
+     "sex": "male",
+     "ageRange": "70-79",
+     "range": "24.4\u2013<30.4",
+     "interpretation": "HR 0.52 vs low."
+    },
+    {
+     "label": "High (75th\u201394th)",
+     "sex": "male",
+     "ageRange": "70-79",
+     "range": "30.4\u2013<39.7",
+     "interpretation": "HR 0.32 vs low."
+    },
+    {
+     "label": "Very high (\u226595th)",
+     "sex": "male",
+     "ageRange": "70-79",
+     "range": "\u226539.7",
+     "interpretation": "Near 'elite': HR 0.20 vs low."
+    },
+    {
+     "label": "FRIEND 2022 treadmill percentiles (RER\u22651.1) \u2014 secondary transcription",
+     "sex": "male",
+     "ageRange": "20-29",
+     "range": "p5 24.8 \u00b7 p25 37.3 \u00b7 p50 45.4 \u00b7 p75 52.6 \u00b7 p95 62.1",
+     "interpretation": "The more US-representative 2022 update; median is 2.6 lower than 2015. Use the same percentile\u2192risk mapping as the 2015 rows. Medium confidence (primary PDF not openable)."
+    },
+    {
+     "label": "FRIEND 2022 treadmill percentiles (RER\u22651.1) \u2014 secondary transcription",
+     "sex": "male",
+     "ageRange": "30-39",
+     "range": "p5 20.6 \u00b7 p25 31.3 \u00b7 p50 38.6 \u00b7 p75 46.5 \u00b7 p95 57.9",
+     "interpretation": "Median 3.8 lower than 2015."
+    },
+    {
+     "label": "FRIEND 2022 treadmill percentiles (RER\u22651.1) \u2014 secondary transcription",
+     "sex": "male",
+     "ageRange": "40-49",
+     "range": "p5 19.7 \u00b7 p25 28.4 \u00b7 p50 34.8 \u00b7 p75 41.8 \u00b7 p95 53.2",
+     "interpretation": "Median 3.0 lower than 2015."
+    },
+    {
+     "label": "FRIEND 2022 treadmill percentiles (RER\u22651.1) \u2014 secondary transcription",
+     "sex": "male",
+     "ageRange": "50-59",
+     "range": "p5 16.5 \u00b7 p25 23.9 \u00b7 p50 29.4 \u00b7 p75 35.5 \u00b7 p95 46.8",
+     "interpretation": "Median 3.2 lower than 2015."
+    },
+    {
+     "label": "FRIEND 2022 treadmill percentiles (RER\u22651.1) \u2014 secondary transcription",
+     "sex": "male",
+     "ageRange": "60-69",
+     "range": "p5 13.8 \u00b7 p25 19.7 \u00b7 p50 24.4 \u00b7 p75 29.9 \u00b7 p95 40.2",
+     "interpretation": "Median 3.8 lower than 2015. (A PMC paper quotes 25.4 for this group \u2014 likely the RER\u22651.0 table; unconfirmed.)"
+    },
+    {
+     "label": "FRIEND 2022 treadmill percentiles (RER\u22651.1) \u2014 secondary transcription",
+     "sex": "male",
+     "ageRange": "70-79",
+     "range": "p5 11.6 \u00b7 p25 16.8 \u00b7 p50 20.6 \u00b7 p75 25.0 \u00b7 p95 35.2",
+     "interpretation": "Median 3.8 lower than 2015."
+    },
+    {
+     "label": "FRIEND 2022 treadmill percentiles (RER\u22651.1) \u2014 secondary transcription",
+     "sex": "male",
+     "ageRange": "80-89",
+     "range": "p5 12.2 \u00b7 p25 15.9 \u00b7 p50 17.7 \u00b7 p75 20.9 \u00b7 p95 25.6",
+     "interpretation": "No 2015 equivalent (2015 stopped at 79)."
+    },
+    {
+     "label": "Mandsager 2018 groups (estimated treadmill METs; \u00d73.5 = ml/kg/min)",
+     "sex": "male",
+     "ageRange": "18-19",
+     "range": "Low <10.8 (<37.8) \u00b7 Below avg 10.8\u201312.9 (37.8\u201345.2) \u00b7 Above avg 13.0\u201313.9 (45.5\u201348.7) \u00b7 High 14\u201316.2 (49.0\u201356.7) \u00b7 Elite \u226516.3 (\u226557.1)",
+     "interpretation": "Cut points behind the HRs above (vs low: below avg 0.71, above avg 0.52, high 0.32, elite 0.20). Estimated METs from treadmill time run higher than directly measured VO2, so these sit above FRIEND's measured values."
+    },
+    {
+     "label": "Mandsager 2018 groups (estimated METs)",
+     "sex": "male",
+     "ageRange": "20-29",
+     "range": "Low <10.3 (<36.1) \u00b7 Below avg 10.3\u201311.9 (36.1\u201341.7) \u00b7 Above avg 12.0\u201313.6 (42.0\u201347.6) \u00b7 High 13.7\u201315.6 (48.0\u201354.6) \u00b7 Elite \u226515.7 (\u226555.0)",
+     "interpretation": "Same HR ladder as above."
+    },
+    {
+     "label": "Mandsager 2018 groups (estimated METs)",
+     "sex": "male",
+     "ageRange": "30-39",
+     "range": "Low <10.0 (<35.0) \u00b7 Below avg 10.0\u201311.1 (35.0\u201338.9) \u00b7 Above avg 11.2\u201312.9 (39.2\u201345.2) \u00b7 High 13.0\u201314.9 (45.5\u201352.2) \u00b7 Elite \u226515.0 (\u226552.5)",
+     "interpretation": "Same HR ladder as above."
+    },
+    {
+     "label": "Mandsager 2018 groups (estimated METs)",
+     "sex": "male",
+     "ageRange": "40-49",
+     "range": "Low <9.8 (<34.3) \u00b7 Below avg 9.8\u201310.9 (34.3\u201338.2) \u00b7 Above avg 11.0\u201312.4 (38.5\u201343.4) \u00b7 High 12.5\u201314.6 (43.8\u201351.1) \u00b7 Elite \u226514.7 (\u226551.5)",
+     "interpretation": "Same HR ladder as above."
+    },
+    {
+     "label": "Mandsager 2018 groups (estimated METs)",
+     "sex": "male",
+     "ageRange": "50-59",
+     "range": "Low <8.2 (<28.7) \u00b7 Below avg 8.2\u20139.9 (28.7\u201334.7) \u00b7 Above avg 10.0\u201311.3 (35.0\u201339.6) \u00b7 High 11.4\u201313.9 (39.9\u201348.7) \u00b7 Elite \u226514.0 (\u226549.0)",
+     "interpretation": "Same HR ladder as above."
+    },
+    {
+     "label": "Mandsager 2018 groups (estimated METs)",
+     "sex": "male",
+     "ageRange": "60-69",
+     "range": "Low <7.0 (<24.5) \u00b7 Below avg 7.0\u20138.4 (24.5\u201329.4) \u00b7 Above avg 8.5\u20139.9 (29.8\u201334.7) \u00b7 High 10.0\u201312.9 (35.0\u201345.2) \u00b7 Elite \u226513.0 (\u226545.5)",
+     "interpretation": "Same HR ladder as above."
+    },
+    {
+     "label": "Mandsager 2018 groups (estimated METs)",
+     "sex": "male",
+     "ageRange": "70-79",
+     "range": "Low <6.0 (<21.0) \u00b7 Below avg 6.0\u20136.9 (21.0\u201324.2) \u00b7 Above avg 7.0\u20138.4 (24.5\u201329.4) \u00b7 High 8.5\u201311.4 (29.8\u201339.9) \u00b7 Elite \u226511.5 (\u226540.3)",
+     "interpretation": "Same HR ladder as above."
+    },
+    {
+     "label": "Mandsager 2018 groups (estimated METs)",
+     "sex": "male",
+     "ageRange": "80+",
+     "range": "Low <5.1 (<17.9) \u00b7 Below avg 5.1\u20136.2 (17.9\u201321.7) \u00b7 Above avg 6.3\u20137.2 (22.1\u201325.2) \u00b7 High 7.3\u20139.9 (25.6\u201334.7) \u00b7 Elite \u226510.0 (\u226535.0)",
+     "interpretation": "Same HR ladder as above."
+    },
+    {
+     "label": "Absolute threshold \u2014 Kodama 2009 'low CRF'",
+     "sex": "both",
+     "ageRange": "all adults",
+     "range": "<7.9 METs (<27.7)",
+     "interpretation": "Meta-analysis of 33 studies: low CRF vs high CRF (\u226510.9 METs \u2248 38.2) RR 1.70 all-cause mortality; vs intermediate (7.9\u201310.8 METs) RR 1.40."
+    },
+    {
+     "label": "Absolute \u2014 Kokkinos 2022 lowest-risk point",
+     "sex": "male",
+     "ageRange": "30-95",
+     "range": "\u224814 METs (\u224849)",
+     "interpretation": "750,302 veterans: lowest mortality at \u224814 METs (HR 0.24); least fit (20th pct) had 4.09\u00d7 the risk of the extremely fit; no rise in risk at extreme fitness."
+    },
+    {
+     "label": "FRIEND 2015 percentiles (verified)",
+     "sex": "female",
+     "ageRange": "20-29",
+     "range": "p5 21.7 \u00b7 p10 23.9 \u00b7 p25 30.5 \u00b7 p50 37.6 \u00b7 p75 44.7 \u00b7 p90 51.3 \u00b7 p95 56.0",
+     "interpretation": "Same percentile\u2192risk logic as men."
+    },
+    {
+     "label": "FRIEND 2015 percentiles (verified)",
+     "sex": "female",
+     "ageRange": "30-39",
+     "range": "p5 19.0 \u00b7 p10 20.9 \u00b7 p25 25.3 \u00b7 p50 30.2 \u00b7 p75 36.1 \u00b7 p90 41.4 \u00b7 p95 45.8",
+     "interpretation": "Same logic."
+    },
+    {
+     "label": "FRIEND 2015 percentiles (verified)",
+     "sex": "female",
+     "ageRange": "40-49",
+     "range": "p5 17.0 \u00b7 p10 18.8 \u00b7 p25 22.1 \u00b7 p50 26.7 \u00b7 p75 32.4 \u00b7 p90 38.4 \u00b7 p95 41.7",
+     "interpretation": "Same logic."
+    },
+    {
+     "label": "FRIEND 2015 percentiles (verified)",
+     "sex": "female",
+     "ageRange": "50-59",
+     "range": "p5 16.0 \u00b7 p10 17.3 \u00b7 p25 19.9 \u00b7 p50 23.4 \u00b7 p75 27.6 \u00b7 p90 32.0 \u00b7 p95 35.9",
+     "interpretation": "Same logic."
+    },
+    {
+     "label": "FRIEND 2015 percentiles (verified)",
+     "sex": "female",
+     "ageRange": "60-69",
+     "range": "p5 13.4 \u00b7 p10 14.6 \u00b7 p25 17.2 \u00b7 p50 20.0 \u00b7 p75 23.8 \u00b7 p90 27.0 \u00b7 p95 29.4",
+     "interpretation": "Same logic."
+    },
+    {
+     "label": "FRIEND 2015 percentiles (verified)",
+     "sex": "female",
+     "ageRange": "70-79",
+     "range": "p5 13.1 \u00b7 p10 13.6 \u00b7 p25 15.6 \u00b7 p50 18.3 \u00b7 p75 20.8 \u00b7 p90 23.1 \u00b7 p95 24.1",
+     "interpretation": "Same logic."
+    },
+    {
+     "label": "FRIEND 2022 (RER\u22651.1) \u2014 secondary",
+     "sex": "female",
+     "ageRange": "20-29 / 30-39 / 40-49 / 50-59",
+     "range": "20s: p5 19.3\u00b7p25 28.6\u00b7p50 35.6\u00b7p75 42.2\u00b7p95 50.1 | 30s: 16.6\u00b723.1\u00b728.3\u00b734.5\u00b745.5 | 40s: 15.3\u00b721.3\u00b725.9\u00b730.9\u00b740.7 | 50s: 14.5\u00b719.5\u00b723.1\u00b727.3\u00b735.3",
+     "interpretation": "Medium confidence (secondary transcription)."
+    },
+    {
+     "label": "FRIEND 2022 (RER\u22651.1) \u2014 secondary",
+     "sex": "female",
+     "ageRange": "60-69 / 70-79 / 80-89",
+     "range": "60s: p5 12.0\u00b7p25 16.4\u00b7p50 19.4\u00b7p75 23.1\u00b7p95 29.7 | 70s: 11.3\u00b714.8\u00b717.1\u00b720.0\u00b724.2 | 80s: 10.7\u00b712.8\u00b715.1\u00b717.2\u00b720.7",
+     "interpretation": "Medium confidence."
+    }
+   ],
+   "healthLinks": "All-cause mortality, with a strong, graded effect and no upper limit found. Mandsager 2018 (JAMA Netw Open; n=122,007; median follow-up 8.4 y): adjusted HR vs the low group (<25th pct) was 0.71 for below average, 0.52 for above average, 0.32 for high and 0.20 for elite (\u226597.7th). Low vs elite HR was 5.04. For comparison, smoking HR was 1.41, diabetes 1.40 and CAD 1.29, so low fitness carried more risk than these classic risk factors. Kokkinos 2022 (JACC; 750,302 veterans aged 30\u201395): lowest risk at \u224814 METs (HR 0.24); the least fit had 4.09\u00d7 the risk of the extremely fit; the pattern held across age, sex and race. Kodama 2009 (JAMA meta-analysis, 33 studies): per 1-MET (3.5 ml/kg/min) higher fitness, all-cause mortality RR 0.87 and CHD/CVD events RR 0.85. Lang 2024 (BJSM umbrella review, 20.9 M observations): per 1 MET, 11\u201317% lower all-cause mortality; high vs low fitness HR 0.47; per 1 MET, 18% lower heart failure.",
+   "howToImprove": "Milanovi\u0107 2015 (Sports Med meta-analysis; 28 controlled trials; healthy adults 18\u201345 with a baseline of 40.8 ml/kg/min): endurance training raised VO2max by +4.9 ml/kg/min (\u00b11.4) and HIIT by +5.5 (\u00b11.2) vs no-exercise controls. HIIT gave a small extra +1.2 over continuous training. Gains were larger for lower-fit people (+3.2 with HIIT) and for longer programmes (+2\u20133 more). Shorter HIIT repetitions worked slightly better than long ones. In MET terms, +5 ml/kg/min \u2248 +1.4 METs, which the per-MET data link to roughly 15\u201320% lower all-cause mortality (an extrapolation from observational data). Because VO2max is per kilogram, losing fat mass at the same absolute oxygen uptake also raises the number proportionally: 5% less body mass gives about 5% higher ml/kg/min (arithmetic). Strength training alone is not a primary VO2max driver; I did not verify an effect size for it. For the watch estimate to update, Apple needs Outdoor Walk, Run or Hike workouts; indoor and gym workouts do not count.",
+   "caveats": "Apple Watch underestimates VO2max:\n- Lambe 2025 (PLOS ONE; n=28; Series 5\u2013Ultra 2 on watchOS 10+): mean \u22126.07 ml/kg/min, MAPE 13.3%, limits of agreement \u22126.1 to +18.3.\n- Series 10 study 2026 (Mayo Clin Proc Digit Health; n=35 analysed): mean \u22126.25, MAPE 13.2%, LoA \u221218.2 to +5.7. Underestimation was \u22127.79 in fitter people (\u226580th pct) vs \u22122.41 at \u226470th pct. Only 14% were placed in the correct FRIEND band, plus 34% one band off.\n- Caserman 2024 (Series 7; n=19): MAPE 15.8%, ICC 0.47.\n\nApple supports a range of 14\u201365 ml/kg/min and estimates only from outdoor walk, run or hike. Practical implication: a watch value in the 'below average' band may really be average or better, especially for a fit person. Show the watch value with a \u00b1~6 ml/kg/min uncertainty and focus on the trend. FRIEND norms are direct lab tests of apparently healthy US adults (treadmill); cycle norms are lower. Mandsager groups come from estimated METs in a clinical referral population, so mapping FRIEND percentiles onto Mandsager HRs is approximate. The FRIEND 2022 numbers are from a secondary transcription (primary blocked, HTTP 403).",
+   "sources": [
+    {
+     "citation": "Kaminsky LA et al. Reference Standards for Cardiorespiratory Fitness Measured With CPX: FRIEND. Mayo Clin Proc 2015;90(11):1515-23 (Table 3, verified)",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC4919021/"
+    },
+    {
+     "citation": "Kaminsky LA et al. Updated Reference Standards for CRF (FRIEND). Mayo Clin Proc 2022;97(2):285-293 (abstract verified; table via secondary source)",
+     "url": "https://doi.org/10.1016/j.mayocp.2021.08.020"
+    },
+    {
+     "citation": "FitnessNorms \u2014 transcription of FRIEND 2022 treadmill RER\u22651.1 percentiles (secondary)",
+     "url": "https://fitnessnorms.com/cardio/vo2-max/"
+    },
+    {
+     "citation": "Mandsager K et al. Association of CRF With Long-term Mortality Among Adults Undergoing Exercise Treadmill Testing. JAMA Netw Open 2018;1(6):e183605",
+     "url": "https://jamanetwork.com/journals/jamanetworkopen/fullarticle/2707428"
+    },
+    {
+     "citation": "Kokkinos P et al. CRF and Mortality Risk Across the Spectra of Age, Race, and Sex. JACC 2022",
+     "url": "https://doi.org/10.1016/j.jacc.2022.05.031"
+    },
+    {
+     "citation": "Kodama S et al. CRF as a quantitative predictor of all-cause mortality and CV events. JAMA 2009",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/19454641/"
+    },
+    {
+     "citation": "Lang JJ et al. CRF is a strong and consistent predictor of morbidity and mortality among adults (overview of meta-analyses). BJSM 2024",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC11103301/"
+    },
+    {
+     "citation": "Lambe R et al. Investigating the accuracy of Apple Watch VO2 max measurements. PLOS ONE 2025",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC12080799/"
+    },
+    {
+     "citation": "Accuracy of VO2 max Estimates From Apple Watch Series 10. Mayo Clin Proc Digit Health 2026",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC13141568/"
+    },
+    {
+     "citation": "Caserman P et al. Accuracy of Smartwatch-Based VO2max Estimation Using Apple Watch Series 7. JMIR Biomed Eng 2024",
+     "url": "https://biomedeng.jmir.org/2024/1/e59459"
+    },
+    {
+     "citation": "Milanovi\u0107 Z et al. Effectiveness of HIT and Continuous Endurance Training for VO2max Improvements. Sports Med 2015",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/26243014/"
+    },
+    {
+     "citation": "Apple Support \u2014 Cardio Fitness (VO2 max) on Apple Watch",
+     "url": "https://support.apple.com/en-us/108790"
+    }
+   ],
+   "confidence": "high"
+  },
+  {
+   "metric": "resting_heart_rate",
+   "unit": "bpm",
+   "whatItMeans": "Your heart rate when fully at rest. A lower resting rate usually reflects a fitter heart and a calmer nervous system; a persistently high one is an independent risk marker.",
+   "bands": [
+    {
+     "label": "NHANES 1999\u20132008 percentiles (seated clinic pulse)",
+     "sex": "male",
+     "ageRange": "20-39",
+     "range": "mean 71 \u00b7 p5 52 \u00b7 p10 55 \u00b7 p25 61 \u00b7 p50 69 \u00b7 p75 76 \u00b7 p90 84 \u00b7 p95 89",
+     "interpretation": "US men without conditions or medication affecting pulse. Below ~61 = bottom quarter (typical of fit men); above ~76 = top quarter."
+    },
+    {
+     "label": "NHANES percentiles",
+     "sex": "male",
+     "ageRange": "40-59",
+     "range": "mean 71 \u00b7 p5 52 \u00b7 p10 55 \u00b7 p25 61 \u00b7 p50 68 \u00b7 p75 77 \u00b7 p90 85 \u00b7 p95 90",
+     "interpretation": "Same interpretation."
+    },
+    {
+     "label": "NHANES percentiles",
+     "sex": "male",
+     "ageRange": "60-79",
+     "range": "mean 70 \u00b7 p5 50 \u00b7 p10 54 \u00b7 p25 60 \u00b7 p50 67 \u00b7 p75 75 \u00b7 p90 84 \u00b7 p95 91",
+     "interpretation": "Same interpretation."
+    },
+    {
+     "label": "NHANES percentiles",
+     "sex": "male",
+     "ageRange": "80+",
+     "range": "mean 71 \u00b7 p2.5 48 \u00b7 p5 51 \u00b7 p10 54 \u00b7 p25 61 \u00b7 p50 68 \u00b7 p75 78 \u00b7 p90 86 \u00b7 p95 94",
+     "interpretation": "Small sample (n=197)."
+    },
+    {
+     "label": "NHANES percentiles",
+     "sex": "female",
+     "ageRange": "20-39 / 40-59 / 60-79",
+     "range": "20\u201339: mean 76, p25 66, p50 74, p75 82 | 40\u201359: mean 73, p25 64, p50 71, p75 79 | 60\u201379: mean 73, p25 64, p50 70, p75 78",
+     "interpretation": "Women run a few bpm higher, especially under 40."
+    },
+    {
+     "label": "Lowest-risk category",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": "<60",
+     "interpretation": "Reference group in Zhang 2016; risk rose linearly from 45 bpm upward for all-cause mortality."
+    },
+    {
+     "label": "Moderately elevated risk",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": "60\u201380",
+     "interpretation": "Zhang 2016 (46 cohorts, 1.25 M people): RR 1.12 (1.07\u20131.17) all-cause mortality vs the lowest category."
+    },
+    {
+     "label": "Elevated risk",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": ">80",
+     "interpretation": "RR 1.45 (1.34\u20131.57) all-cause and 1.33 CV mortality vs the lowest category."
+    }
+   ],
+   "healthLinks": "Zhang 2016 (CMAJ meta-analysis; 46 studies; 1,246,203 people): each +10 bpm gave all-cause mortality RR 1.09 (1.07\u20131.12) and CV mortality RR 1.08. Heart rate 60\u201380 gave RR 1.12 and >80 gave RR 1.45 vs the lowest category. CV mortality rose significantly only from about 90 bpm. Aune 2017 (NMCD dose-response meta-analysis; 87 studies): per +10 bpm, all-cause mortality RR 1.17, CVD 1.15, CHD 1.07, heart failure 1.18, sudden cardiac death 1.09 and total cancer 1.14; atrial fibrillation had a J-shape.",
+   "howToImprove": "Reimers 2018 (J Clin Med meta-analysis; 191 studies): all sports lowered resting heart rate, but only endurance training and yoga did so significantly in both sexes. In men, endurance training took resting HR from 70.3 to 64.0 bpm (\u2248\u22126 bpm; SMD \u22120.49). Strength training gave \u22122.1 bpm, not significant, and combined training \u22122.2, also not significant. Bigger drops occurred with a higher starting resting HR and in younger people. Improving aerobic fitness (see VO2max) is the main lever.",
+   "caveats": "NHANES measured a 60-second seated pulse in a clinic; Apple's Resting Heart Rate is estimated from background readings while you are inactive. Use the percentiles as orientation and the personal trend for decisions. Accuracy is good: Apple Watch Series 9 / Ultra 2 vs Polar H10 showed a bias of \u22120.08 bpm, MAE 3.73 bpm and MAPE 5.9%. Illness, alcohol, heat, dehydration, poor sleep and hard training all raise it temporarily. I did not open the AHA page for the commonly cited 60\u2013100 bpm 'normal' range, so it is omitted.",
+   "sources": [
+    {
+     "citation": "Ostchega Y et al. Resting pulse rate reference data: United States, 1999\u20132008. National Health Statistics Reports No. 41, 2011 (Tables 2\u20133, parsed)",
+     "url": "https://www.cdc.gov/nchs/data/nhsr/nhsr041.pdf"
+    },
+    {
+     "citation": "Zhang D et al. Resting heart rate and all-cause and cardiovascular mortality in the general population: a meta-analysis. CMAJ 2016",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC4754196/"
+    },
+    {
+     "citation": "Aune D et al. Resting heart rate and risk of CVD, total cancer, and all-cause mortality \u2014 dose-response meta-analysis. NMCD 2017",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/28552551/"
+    },
+    {
+     "citation": "Reimers AK et al. Effects of Exercise on the Resting Heart Rate: systematic review and meta-analysis. J Clin Med 2018",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC6306777/"
+    },
+    {
+     "citation": "The Validity of Apple Watch Series 9 and Ultra 2 for Serial Measurements of HRV and Resting Heart Rate (2024)",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC11478500/"
+    }
+   ],
+   "confidence": "high"
+  },
+  {
+   "metric": "heart_rate_variability",
+   "unit": "ms (SDNN)",
+   "whatItMeans": "How much the time between heartbeats varies. More variability generally means your 'rest-and-digest' nervous system is active and you are recovered; it naturally falls with age.",
+   "bands": [
+    {
+     "label": "5-min supine ECG, KORA S4 (mean \u00b1 SD)",
+     "sex": "male",
+     "ageRange": "25-34",
+     "range": "50.0 \u00b1 20.9 (\u224829\u201371 = \u00b11 SD)",
+     "interpretation": "Typical range for age. Below \u224829 ms is low for age (\u2248 >1 SD below the mean). The \u00b11 SD bounds are derived by me; the distribution is skewed, so treat them as approximate."
+    },
+    {
+     "label": "5-min supine ECG (mean \u00b1 SD)",
+     "sex": "male",
+     "ageRange": "35-44",
+     "range": "44.6 \u00b1 16.8 (\u224828\u201361)",
+     "interpretation": "Below \u224828 ms is low for age."
+    },
+    {
+     "label": "5-min supine ECG (mean \u00b1 SD)",
+     "sex": "male",
+     "ageRange": "45-54",
+     "range": "36.8 \u00b1 14.6 (\u224822\u201351)",
+     "interpretation": "Below \u224822 ms is low for age."
+    },
+    {
+     "label": "5-min supine ECG (mean \u00b1 SD)",
+     "sex": "male",
+     "ageRange": "55-64",
+     "range": "32.8 \u00b1 14.7 (\u224818\u201348)",
+     "interpretation": "Below \u224818 ms is low for age."
+    },
+    {
+     "label": "5-min supine ECG (mean \u00b1 SD)",
+     "sex": "male",
+     "ageRange": "65-74",
+     "range": "29.6 \u00b1 13.2 (\u224816\u201343)",
+     "interpretation": "Below \u224816 ms is low for age."
+    },
+    {
+     "label": "5-min supine ECG (mean \u00b1 SD)",
+     "sex": "female",
+     "ageRange": "25-34 / 35-44 / 45-54 / 55-64 / 65-74",
+     "range": "48.7\u00b119.0 / 45.4\u00b120.5 / 36.9\u00b113.8 / 30.6\u00b112.4 / 27.8\u00b111.8",
+     "interpretation": "Sex differences fade after about 50."
+    },
+    {
+     "label": "Short-term HRV pooled norm (Nunan 2010)",
+     "sex": "both",
+     "ageRange": "healthy adults",
+     "range": "SDNN 50 \u00b1 16",
+     "interpretation": "Pooled from 27 studies of short recordings. Medium confidence: taken from a search snippet, full text not opened."
+    },
+    {
+     "label": "Risk gradient (Hillebrand 2013)",
+     "sex": "both",
+     "ageRange": "adults without CVD",
+     "range": "10th vs 50th percentile of SDNN",
+     "interpretation": "Predicted RR of a first CV event 1.50 at the 10th percentile and 0.67 (not significant) at the 90th percentile, both vs the median. Lowest vs highest SDNN category RR 1.35. Each 1% higher SDNN \u2248 1% lower CVD risk."
+    }
+   ],
+   "healthLinks": "Hillebrand 2013 (Europace meta-analysis; 8 studies; 21,988 people without known CVD): lowest vs highest SDNN category RR 1.35 (1.10\u20131.67) for a first CV event. Low HRV was associated with 32\u201345% higher risk overall, and each 1% higher SDNN \u2248 1% lower risk. Umetani 1998 (24-h Holter, 260 healthy people aged 10\u201399): 24-h SDNN declines slowly, reaching about 60% of second-decade values by the tenth decade.",
+   "howToImprove": "Meta-analysis of 16 RCTs in healthy adults (Cureus 2024): exercise training improved SDNN with SMD 0.58 (0.16\u20131.00), RMSSD with SMD 0.84 and HF power with SMD 0.89. That is a moderate effect. The effect size in ms depends on the population. What lowers resting heart rate (endurance training, sleep, less alcohol and stress) tends to raise HRV.",
+   "caveats": "Not comparable across methods. Apple reports SDNN from short PPG windows, about 1 minute during Breathe/Mindfulness sessions and periodically every 2\u20134 hours. The norms above are 5-minute supine ECG, and 24-hour SDNN values are several times larger. Apple Watch Series 9 / Ultra 2 vs Polar H10: bias \u22128.31 ms, MAE 20.5 ms, MAPE 28.9%, limits of agreement \u221253.8 to +37.2 ms. The authors advise tracking relative change, not absolute values. Recommended UI: compare a 7-day average with the person's own 30\u201360-day baseline, and show the age-band norm only as context with a clear 'different method' note. Never mix SDNN with RMSSD, which Oura, Whoop and Garmin use.",
+   "sources": [
+    {
+     "citation": "Voss A et al. Short-term heart rate variability \u2014 influence of gender and age in healthy subjects. PLoS One 2015 (Tables 5 and 7)",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC4378923/"
+    },
+    {
+     "citation": "Nunan D et al. A quantitative systematic review of normal values for short-term HRV in healthy adults. PACE 2010",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/20663071/"
+    },
+    {
+     "citation": "Umetani K et al. Twenty-four hour time domain HRV and heart rate: relations to age and gender over nine decades. JACC 1998",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/9502641/"
+    },
+    {
+     "citation": "Hillebrand S et al. HRV and first cardiovascular event in populations without known CVD. Europace 2013",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/23370966/"
+    },
+    {
+     "citation": "The Validity of Apple Watch Series 9 and Ultra 2 for Serial Measurements of HRV and RHR (2024)",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC11478500/"
+    },
+    {
+     "citation": "Validity of HRV Measured with Apple Watch Series 6 Compared to Laboratory Measures",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC12031371/"
+    },
+    {
+     "citation": "Effects of Exercise Training on HRV in Healthy Adults: SR and meta-analysis of RCTs. Cureus 2024",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC11250637/"
+    }
+   ],
+   "confidence": "medium"
+  },
+  {
+   "metric": "step_count",
+   "unit": "steps/day",
+   "whatItMeans": "Total daily steps \u2014 a simple proxy for how much you move outside of workouts. More steps are linked with lower mortality up to an age-dependent plateau.",
+   "bands": [
+    {
+     "label": "Very low",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": "<4,000",
+     "interpretation": "Highest-risk group. Saint-Maurice 2020 (US adults \u226540): unadjusted death rate 76.7 per 1,000 person-years below 4,000 steps vs 6.9 at 8,000\u201311,999. Paluch 2022's lowest quartile had a median of 3,553."
+    },
+    {
+     "label": "Low",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": "4,000\u20135,999",
+     "interpretation": "Paluch 2022 Q2 (median 5,801): HR 0.60 vs Q1 (40% lower mortality). Banach 2023: each +1,000 steps \u2248 15% lower all-cause mortality (HR 0.85)."
+    },
+    {
+     "label": "Moderate",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": "6,000\u20137,999",
+     "interpretation": "Paluch Q3 (median 7,842): HR 0.55. Ding 2025: 7,000 vs 2,000 steps HR 0.53 (47% lower all-cause mortality), with the curve flattening around 5,000\u20137,000."
+    },
+    {
+     "label": "Plateau zone (\u226560 y)",
+     "sex": "both",
+     "ageRange": "60+",
+     "range": "6,000\u20138,000",
+     "interpretation": "Paluch 2022: in adults 60+, mortality kept falling up to 6,000\u20138,000 steps/day, then levelled off."
+    },
+    {
+     "label": "Plateau zone (<60 y)",
+     "sex": "both",
+     "ageRange": "18-59",
+     "range": "8,000\u201310,000",
+     "interpretation": "Paluch 2022: in adults under 60, mortality kept falling up to 8,000\u201310,000 steps/day. Saint-Maurice 2020: 8,000 vs 4,000 steps HR 0.49."
+    },
+    {
+     "label": "High",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": ">10,000",
+     "interpretation": "Paluch Q4 (median 10,901): HR 0.47, only slightly better than Q3. Saint-Maurice: 12,000 vs 4,000 HR 0.35 (adults \u226540). Fine to aim for, but most of the mortality benefit comes earlier."
+    }
+   ],
+   "healthLinks": "Paluch 2022 (Lancet Public Health; 15 cohorts; 47,471 adults; median follow-up 7.1 y): vs Q1, HR 0.60 for Q2, 0.55 for Q3 and 0.47 for Q4; the plateau depends on age (see bands). Stepping intensity added little once total steps were accounted for. Saint-Maurice 2020 (JAMA; NHANES accelerometer; n=4,840): 8,000 vs 4,000 steps HR 0.49; 12,000 vs 4,000 HR 0.35; peak 30-minute cadence was not significant after adjusting for total steps (HR 0.90). Banach 2023 (Eur J Prev Cardiol; 226,889 people): per +1,000 steps, all-cause mortality HR 0.85; per +500 steps, CV mortality HR 0.93. Ding 2025 (Lancet Public Health dose-response meta-analysis): 7,000 vs 2,000 steps gave HR 0.53 all-cause mortality, 0.75 CVD incidence, 0.62 dementia, 0.78 depressive symptoms and 0.72 falls.",
+   "howToImprove": "Adding about 1,000 steps a day (roughly 10 minutes of walking) is associated with about 15% lower all-cause mortality in the Banach meta-analysis (observational). Walking breaks, commuting on foot, and a 20\u201330-minute walk after meals are the practical levers. Steps count on top of training, which on its own does not cancel a sedentary day. That last point is an interpretation, not sourced.",
+   "caveats": "Wrist devices count steps reasonably well in lab settings (Fuller 2020 systematic review: Fitbit, Apple Watch and Samsung measured steps accurately in lab settings). Arm-heavy activities inflate counts. Pushing a cart or bike, or holding a rail, deflates them. The research cohorts mostly used hip accelerometers. When both iPhone and Watch record, Health de-duplicates using source priority; the app must not sum sources, which is a known bug class in this app.",
+   "sources": [
+    {
+     "citation": "Paluch AE et al. Daily steps and all-cause mortality: a meta-analysis of 15 international cohorts. Lancet Public Health 2022",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC9289978/"
+    },
+    {
+     "citation": "Saint-Maurice PF et al. Association of Daily Step Count and Step Intensity With Mortality Among US Adults. JAMA 2020",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC7093766/"
+    },
+    {
+     "citation": "Banach M et al. The association between daily step count and all-cause and cardiovascular mortality: a meta-analysis. Eur J Prev Cardiol 2023",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/37555441/"
+    },
+    {
+     "citation": "Ding D et al. Daily steps and health outcomes in adults: SR and dose-response meta-analysis. Lancet Public Health 2025",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/40713949/"
+    },
+    {
+     "citation": "Fuller D et al. Reliability and Validity of Commercially Available Wearable Devices for Measuring Steps, EE, and HR. JMIR mHealth uHealth 2020",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC7509623/"
+    }
+   ],
+   "confidence": "high"
+  },
+  {
+   "metric": "sleep",
+   "unit": "hours per night (duration); Sleep Regularity Index 0\u2013100 (regularity)",
+   "whatItMeans": "How long you sleep and how consistent your sleep and wake times are. Both matter: regular timing predicts mortality even more strongly than duration in the largest objective study.",
+   "bands": [
+    {
+     "label": "Short",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": "<6 h",
+     "interpretation": "Windred 2024: the shortest-sleep quintile (<6.02 h, accelerometer) was the reference; the longest (>7.56 h) had HR 0.76. Cappuccio 2010: habitual short sleep RR 1.12 for all-cause mortality (self-report)."
+    },
+    {
+     "label": "Below recommendation",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": "6\u2013<7 h",
+     "interpretation": "AASM/SRS: regularly sleeping <7 h is associated with weight gain, diabetes, hypertension, heart disease, depression and higher risk of death."
+    },
+    {
+     "label": "Recommended",
+     "sex": "both",
+     "ageRange": "18-64",
+     "range": "7\u20139 h",
+     "interpretation": "AASM/SRS: 7 or more hours per night on a regular basis. NSF: 7\u20139 h for young adults and adults."
+    },
+    {
+     "label": "Recommended (older)",
+     "sex": "both",
+     "ageRange": "65+",
+     "range": "7\u20138 h",
+     "interpretation": "NSF recommendation for older adults."
+    },
+    {
+     "label": "Long",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": ">9 h",
+     "interpretation": "Cappuccio 2010: habitual long sleep RR 1.30 (self-report; likely partly illness-related). AASM: >9 h may be appropriate for young adults, when recovering from sleep debt, or during illness; otherwise it is unclear whether it carries risk."
+    },
+    {
+     "label": "Lab-measured sleep in healthy adults (context)",
+     "sex": "male",
+     "ageRange": "18-34 / 35-49 / 50-64",
+     "range": "TST 410.6 / 386.6 / 372.0 min; men-only 374.6 min; sleep efficiency \u224884\u201389%",
+     "interpretation": "Boulos 2019 (169 PSG studies): even healthy people measured by polysomnography sleep about 6.2\u20136.8 h. Measured sleep time runs below self-reported time, so a watch's 6.5\u20137 h 'asleep' is not directly 'short' by self-report standards (my interpretation)."
+    },
+    {
+     "label": "SRI least regular quintile",
+     "sex": "both",
+     "ageRange": "adults (UK Biobank, mean 63 y)",
+     "range": "SRI <71.6",
+     "interpretation": "Reference group. Roughly 3-hour windows for bed and wake times across days."
+    },
+    {
+     "label": "SRI 2nd quintile",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": "71.6\u201378.6",
+     "interpretation": "HR 0.80 (0.69\u20130.93) all-cause mortality vs least regular (fully adjusted)."
+    },
+    {
+     "label": "SRI 3rd quintile",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": "78.6\u201383.2",
+     "interpretation": "HR 0.75 (0.64\u20130.88)."
+    },
+    {
+     "label": "SRI 4th quintile",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": "83.2\u201387.3",
+     "interpretation": "HR 0.72 (0.61\u20130.84)."
+    },
+    {
+     "label": "SRI most regular quintile",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": ">87.3",
+     "interpretation": "HR 0.70 (0.59\u20130.83). In practice: falling asleep and waking within about 1-hour windows on most days."
+    }
+   ],
+   "healthLinks": "Cappuccio 2010 (Sleep meta-analysis; 1.38 M people): short sleep RR 1.12 and long sleep RR 1.30 for all-cause mortality, a U-shaped curve. Windred 2024 (Sleep; 60,977 UK Biobank participants with accelerometers): higher sleep regularity was associated with 20\u201348% lower all-cause mortality (fully adjusted HR 0.70\u20130.80), 16\u201339% lower cancer mortality and 22\u201357% lower cardiometabolic mortality. Regularity predicted mortality more strongly than duration. The AASM/SRS consensus links <7 h with obesity, diabetes, hypertension, heart disease and stroke, depression and higher mortality.",
+   "howToImprove": "Fix the wake time first, including weekends, and let bedtime follow. Aim to fall asleep within about a 1-hour window on most nights; the top-quintile behaviour in Windred 2024 was ~1-hour windows vs ~3-hour windows in the least regular quintile. Get at least 7 h of opportunity for sleep. The observational effect sizes in Windred (HR 0.70\u20130.80) are the best available estimate of what regularity is 'worth'; no RCT on mortality exists.",
+   "caveats": "Most guideline and mortality evidence uses self-reported sleep, which overestimates actual sleep time. The watch measures 'asleep' time, which is always lower than time in bed, so a 7-h self-report is not the same as 7 h asleep on the watch. The SRI needs minute-level sleep/wake data across consecutive days; a simple proxy for the app is the standard deviation of sleep-onset and wake times across the last 7\u201314 nights. The Windred cohort was older (mean 63), so the quintile cut-offs may shift in younger people.",
+   "sources": [
+    {
+     "citation": "Watson NF et al. Recommended Amount of Sleep for a Healthy Adult: AASM/SRS Joint Consensus. Sleep 2015",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC4434546/"
+    },
+    {
+     "citation": "Hirshkowitz M et al. National Sleep Foundation's sleep time duration recommendations. Sleep Health 2015",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/29073412/"
+    },
+    {
+     "citation": "Cappuccio FP et al. Sleep duration and all-cause mortality: SR and meta-analysis of prospective studies. Sleep 2010",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC2864873/"
+    },
+    {
+     "citation": "Windred DP et al. Sleep regularity is a stronger predictor of mortality risk than sleep duration. Sleep 2024",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC10782501/"
+    },
+    {
+     "citation": "Boulos MI et al. Normal polysomnography parameters in healthy adults: SR and meta-analysis. Lancet Respir Med 2019 (Table 2 PDF from authors' site)",
+     "url": "https://omc.ohri.ca/psgnorms/PSGnorm_Table2.pdf"
+    }
+   ],
+   "confidence": "high"
+  },
+  {
+   "metric": "sleep_stages",
+   "unit": "% of total sleep time",
+   "whatItMeans": "How your sleep splits into light (N1/N2), deep (N3) and REM sleep. Useful as context, but wrist devices estimate stages poorly.",
+   "bands": [
+    {
+     "label": "PSG norm \u2014 men only",
+     "sex": "male",
+     "ageRange": "adults",
+     "range": "N1 5.3% \u00b7 N2 52.1% \u00b7 N3 (deep) 21.0% \u00b7 REM 19.9%",
+     "interpretation": "Pooled means from in-lab polysomnography (Boulos 2019)."
+    },
+    {
+     "label": "PSG norm by age",
+     "sex": "both",
+     "ageRange": "18-34",
+     "range": "N1 6.0% \u00b7 N2 51.3% \u00b7 N3 21.4% \u00b7 REM 19.8%",
+     "interpretation": "Pooled mean."
+    },
+    {
+     "label": "PSG norm by age",
+     "sex": "both",
+     "ageRange": "35-49",
+     "range": "N1 8.0% \u00b7 N2 52.2% \u00b7 N3 20.4% \u00b7 REM 19.3%",
+     "interpretation": "Pooled mean."
+    },
+    {
+     "label": "PSG norm by age",
+     "sex": "both",
+     "ageRange": "50-64",
+     "range": "N1 8.7% \u00b7 N2 52.8% \u00b7 N3 18.1% \u00b7 REM 18.7%",
+     "interpretation": "Pooled mean."
+    },
+    {
+     "label": "PSG norm by age",
+     "sex": "both",
+     "ageRange": "65-79",
+     "range": "N1 9.3% \u00b7 N2 53.3% \u00b7 N3 19.9% \u00b7 REM 17.7%",
+     "interpretation": "Pooled mean. In the Boulos meta-regression, the age trends for N2, N3 and REM were not significant; Ohayon 2004 found deep-sleep and REM percentages decline with age."
+    }
+   ],
+   "healthLinks": "I found no verified mortality or disease dose-response bands for stage percentages in healthy adults. Stage norms are descriptive only. Do not label a value 'bad'; label it 'outside the typical lab range'.",
+   "howToImprove": "No stage-specific targets are evidence-based. Regular, sufficient sleep is the lever (see sleep). Alcohol and late heavy meals are commonly cited disruptors, but I did not verify that here.",
+   "caveats": "Sleep Medicine 2026 (Apple Watch Series 7 vs home PSG; n=19 on Apple): Apple underestimated light sleep by \u221273.8 \u00b1 61.6 min and overestimated REM by +30.3 \u00b1 36.3 min. Agreement was generally weak, with wide limits. IEEE EMBC 2023 (Series 8): good at telling sleep from wake, poor at staging. Apple's 'Core' roughly corresponds to N1+N2 and 'Deep' to N3; this is Apple's own description, not verified here. Recommendation: show stage percentages with a strong accuracy note and compare against the lab ranges only loosely (\u00b110 percentage points).",
+   "sources": [
+    {
+     "citation": "Boulos MI et al. Normal polysomnography parameters in healthy adults. Lancet Respir Med 2019 (Table 2)",
+     "url": "https://omc.ohri.ca/psgnorms/PSGnorm_Table2.pdf"
+    },
+    {
+     "citation": "Boulos MI et al. 2019 \u2014 PubMed record",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/31006560/"
+    },
+    {
+     "citation": "Ohayon MM et al. Meta-analysis of quantitative sleep parameters from childhood to old age. Sleep 2004",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/15586779/"
+    },
+    {
+     "citation": "Performance of three consumer sleep-tracking devices compared with Actigraphy and PSG. Sleep Med 2026",
+     "url": "https://doi.org/10.1016/j.sleep.2026.109059"
+    },
+    {
+     "citation": "Apple Watch Sleep and Physiological Tracking Compared to Actigraphy, BCG and PSG. IEEE EMBC 2023",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/38083143/"
+    }
+   ],
+   "confidence": "medium"
+  },
+  {
+   "metric": "body_fat_percentage",
+   "unit": "% body mass",
+   "whatItMeans": "The share of your body weight that is fat. More informative than BMI for muscular people, but only as good as the measuring device.",
+   "bands": [
+    {
+     "label": "Underfat (Gallagher 2000)",
+     "sex": "male",
+     "ageRange": "20-39",
+     "range": "<8%",
+     "interpretation": "Below the provisional healthy range (maps to BMI <18.5)."
+    },
+    {
+     "label": "Healthy",
+     "sex": "male",
+     "ageRange": "20-39",
+     "range": "8\u201319%",
+     "interpretation": "Corresponds to BMI 18.5\u201324.9 in the reference sample."
+    },
+    {
+     "label": "Overfat",
+     "sex": "male",
+     "ageRange": "20-39",
+     "range": "20\u201325%",
+     "interpretation": "Corresponds to BMI 25\u201329.9."
+    },
+    {
+     "label": "Obese",
+     "sex": "male",
+     "ageRange": "20-39",
+     "range": ">25%",
+     "interpretation": "Corresponds to BMI \u226530."
+    },
+    {
+     "label": "Underfat",
+     "sex": "male",
+     "ageRange": "40-59",
+     "range": "<11%",
+     "interpretation": "Below the provisional healthy range."
+    },
+    {
+     "label": "Healthy",
+     "sex": "male",
+     "ageRange": "40-59",
+     "range": "11\u201321%",
+     "interpretation": "Provisional healthy range."
+    },
+    {
+     "label": "Overfat",
+     "sex": "male",
+     "ageRange": "40-59",
+     "range": "22\u201328%",
+     "interpretation": "Overweight-equivalent."
+    },
+    {
+     "label": "Obese",
+     "sex": "male",
+     "ageRange": "40-59",
+     "range": ">28%",
+     "interpretation": "Obesity-equivalent."
+    },
+    {
+     "label": "Underfat",
+     "sex": "male",
+     "ageRange": "60-79",
+     "range": "<13%",
+     "interpretation": "Below the provisional healthy range."
+    },
+    {
+     "label": "Healthy",
+     "sex": "male",
+     "ageRange": "60-79",
+     "range": "13\u201324%",
+     "interpretation": "Provisional healthy range."
+    },
+    {
+     "label": "Overfat",
+     "sex": "male",
+     "ageRange": "60-79",
+     "range": "25\u201330%",
+     "interpretation": "Overweight-equivalent."
+    },
+    {
+     "label": "Obese",
+     "sex": "male",
+     "ageRange": "60-79",
+     "range": ">30%",
+     "interpretation": "Obesity-equivalent."
+    },
+    {
+     "label": "Gallagher 2000",
+     "sex": "female",
+     "ageRange": "20-39 / 40-59 / 60-79",
+     "range": "healthy 21\u201333% / 23\u201334% / 24\u201335%; obese >39% / >40% / >42%",
+     "interpretation": "Female equivalents."
+    },
+    {
+     "label": "ACE: essential fat",
+     "sex": "male",
+     "ageRange": "adults",
+     "range": "2\u20135%",
+     "interpretation": "ACE: below 6% may be dangerously low."
+    },
+    {
+     "label": "ACE: athletes",
+     "sex": "male",
+     "ageRange": "adults",
+     "range": "6\u201313%",
+     "interpretation": "Typical of competitive athletes."
+    },
+    {
+     "label": "ACE: fitness",
+     "sex": "male",
+     "ageRange": "adults",
+     "range": "14\u201317%",
+     "interpretation": "Fit, non-competitive."
+    },
+    {
+     "label": "ACE: average / acceptable",
+     "sex": "male",
+     "ageRange": "adults",
+     "range": "18\u201324%",
+     "interpretation": "ACE: typical for the average non-athlete."
+    },
+    {
+     "label": "ACE: obese",
+     "sex": "male",
+     "ageRange": "adults",
+     "range": "\u226525%",
+     "interpretation": "Excess adiposity."
+    }
+   ],
+   "healthLinks": "Gallagher's bands are not outcome-derived. They were built by linking BMI health cut-offs to measured body fat (DXA / 4-compartment model; n=1,626), so their health meaning is inherited from the BMI\u2013mortality data (see the BMI metric). ACE categories are practitioner categories, not outcome thresholds.",
+   "howToImprove": "Fat loss comes from a sustained energy deficit plus adequate protein and resistance training to keep lean mass. These are the app's existing coaching rules, not re-verified here. Track the trend over weeks; day-to-day readings from bioimpedance scales swing with hydration.",
+   "caveats": "Gallagher's values are for white and African-American adults (Asian thresholds differ) and are labelled provisional by the authors. I verified them from a widely reproduced chart that cites the paper, not the primary table (medium confidence). Smart-scale bioimpedance can differ from DXA by several percentage points and swings with hydration, meal timing and training. Compare only within the same device and conditions; morning and fasted is best.",
+   "sources": [
+    {
+     "citation": "Gallagher D et al. Healthy percentage body fat ranges: an approach for developing guidelines based on BMI. Am J Clin Nutr 2000;72:694-701",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/10966886/"
+    },
+    {
+     "citation": "Reproduction of Gallagher 2000 body fat table (secondary)",
+     "url": "https://cf.ltkcdn.net/exercise/files/1905-body-fat-percentage-chart.pdf"
+    },
+    {
+     "citation": "American Council on Exercise \u2014 body fat percentage averages",
+     "url": "https://www.acefitness.org/about-ace/press-room/in-the-news/8602/body-fat-percentage-charting-averages-in-men-and-women-very-well-health/"
+    }
+   ],
+   "confidence": "medium"
+  },
+  {
+   "metric": "bmi",
+   "unit": "kg/m\u00b2",
+   "whatItMeans": "Weight relative to height. A quick population screen for excess weight, but it cannot tell muscle from fat.",
+   "bands": [
+    {
+     "label": "Underweight",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": "<18.5",
+     "interpretation": "Global BMI Mortality Collaboration: HR 1.51 at 15\u201318.5 vs 22.5\u201325."
+    },
+    {
+     "label": "Low-normal",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": "18.5\u2013<20",
+     "interpretation": "HR 1.13 vs 22.5\u201325."
+    },
+    {
+     "label": "Healthy weight (lowest mortality)",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": "20\u2013<25",
+     "interpretation": "All-cause mortality lowest at 20\u201325 (HR 1.00)."
+    },
+    {
+     "label": "Overweight (lower half)",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": "25\u2013<27.5",
+     "interpretation": "HR 1.07."
+    },
+    {
+     "label": "Overweight (upper half)",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": "27.5\u2013<30",
+     "interpretation": "HR 1.20."
+    },
+    {
+     "label": "Obesity class 1",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": "30\u2013<35",
+     "interpretation": "HR 1.45."
+    },
+    {
+     "label": "Obesity class 2",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": "35\u2013<40",
+     "interpretation": "HR 1.94."
+    },
+    {
+     "label": "Obesity class 3",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": "\u226540",
+     "interpretation": "HR 2.76."
+    },
+    {
+     "label": "Lower thresholds for some ethnic groups (NICE)",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": "overweight 23\u201327.4; obesity \u226527.5",
+     "interpretation": "For South Asian, Chinese, other Asian, Middle Eastern, Black African or African-Caribbean backgrounds."
+    }
+   ],
+   "healthLinks": "Global BMI Mortality Collaboration 2016 (Lancet; 3.95 M never-smokers without chronic disease; 239 studies): mortality was lowest at BMI 20\u201325. Above 25 it rose roughly log-linearly: HR per +5 kg/m\u00b2 was 1.39 in Europe, 1.51 in men vs 1.30 in women, and 1.52 when BMI was measured at age 35\u201349.",
+   "howToImprove": "See body fat and waist. For a muscular lifter, waist-to-height ratio is the better check; NICE says to interpret BMI with caution in people with high muscle mass.",
+   "caveats": "BMI overstates adiposity in muscular people. NICE: interpret with caution in high muscle mass and in people aged 65+, and pair it with waist-to-height ratio. The mortality HRs come from observational data restricted to never-smokers.",
+   "sources": [
+    {
+     "citation": "Global BMI Mortality Collaboration. BMI and all-cause mortality: IPD meta-analysis of 239 prospective studies. Lancet 2016",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC4995441/"
+    },
+    {
+     "citation": "NICE NG246 \u2014 Identifying and assessing overweight, obesity and central adiposity (recs 1.9.10\u20131.9.13)",
+     "url": "https://www.nice.org.uk/guidance/ng246/chapter/Identifying-and-assessing-overweight-obesity-and-central-adiposity"
+    }
+   ],
+   "confidence": "high"
+  },
+  {
+   "metric": "waist",
+   "unit": "cm; waist-to-height ratio (unitless)",
+   "whatItMeans": "Waist size measures belly (central) fat, which drives cardiometabolic risk more than weight alone. Waist-to-height ratio adjusts for body size and works for muscular people too.",
+   "bands": [
+    {
+     "label": "Healthy central adiposity (NICE)",
+     "sex": "both",
+     "ageRange": "adults (BMI <35)",
+     "range": "WHtR 0.40\u20130.49",
+     "interpretation": "No increased health risk. Rule of thumb: keep your waist under half your height."
+    },
+    {
+     "label": "Increased central adiposity",
+     "sex": "both",
+     "ageRange": "adults (BMI <35)",
+     "range": "WHtR 0.50\u20130.59",
+     "interpretation": "Increased risk of type 2 diabetes, hypertension and CVD."
+    },
+    {
+     "label": "High central adiposity",
+     "sex": "both",
+     "ageRange": "adults (BMI <35)",
+     "range": "WHtR \u22650.60",
+     "interpretation": "Further increased health risk."
+    },
+    {
+     "label": "WHO waist \u2014 increased risk",
+     "sex": "male",
+     "ageRange": "adults",
+     "range": ">94 cm",
+     "interpretation": "Increased risk of metabolic complications (Europid men). Women: >80 cm."
+    },
+    {
+     "label": "WHO waist \u2014 substantially increased risk",
+     "sex": "male",
+     "ageRange": "adults",
+     "range": ">102 cm",
+     "interpretation": "Substantially increased risk. Women: >88 cm."
+    },
+    {
+     "label": "WHO waist-hip ratio",
+     "sex": "male",
+     "ageRange": "adults",
+     "range": "\u22650.90",
+     "interpretation": "Substantially increased risk. Women: \u22650.85."
+    }
+   ],
+   "healthLinks": "Ashwell 2012 (Obes Rev meta-analysis; >300,000 adults): waist-to-height ratio discriminated hypertension, type 2 diabetes, dyslipidaemia, metabolic syndrome and CVD better than waist circumference or BMI, improving discrimination over BMI by 4\u20135%. NICE (2022, retained in NG246) lists the risks of higher central adiposity as type 2 diabetes, hypertension and cardiovascular disease.",
+   "howToImprove": "Reduce visceral fat through an energy deficit and regular aerobic plus resistance training. Measure the waist the same way each time (e.g., midway between the lowest rib and the top of the hip bone, after breathing out); the site is my assumption, so check which protocol NICE or WHO specify.",
+   "caveats": "Needs a manual tape measurement; Apple Health stores waist circumference only if entered. The NICE WHtR classes apply to people with BMI <35, both sexes and all ethnicities, including adults with high muscle mass. The WHO 94/102 cm cut-offs are for Europid populations; the IDF uses >90 cm for South Asian, Chinese and Japanese men.",
+   "sources": [
+    {
+     "citation": "NICE NG246 rec 1.9.14\u20131.9.15 \u2014 waist-to-height ratio classes",
+     "url": "https://www.nice.org.uk/guidance/ng246/chapter/Identifying-and-assessing-overweight-obesity-and-central-adiposity"
+    },
+    {
+     "citation": "WHO. Waist circumference and waist-hip ratio: report of a WHO expert consultation, Geneva 2008 (Table A1)",
+     "url": "https://iris.who.int/server/api/core/bitstreams/ca408ade-05c9-4b7c-8967-6ee5b5e0ccd8/content"
+    },
+    {
+     "citation": "Ashwell M et al. WHtR is a better screening tool than waist circumference and BMI for adult cardiometabolic risk factors. Obes Rev 2012",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/22106927/"
+    }
+   ],
+   "confidence": "high"
+  },
+  {
+   "metric": "exercise_minutes",
+   "unit": "minutes/week (moderate-equivalent; 1 vigorous minute \u2248 2 moderate)",
+   "whatItMeans": "How much purposeful moderate-to-vigorous activity you do each week, plus how often you train your muscles.",
+   "bands": [
+    {
+     "label": "Inactive",
+     "sex": "both",
+     "ageRange": "18-64",
+     "range": "0 min",
+     "interpretation": "Reference group in Arem 2015."
+    },
+    {
+     "label": "Some, below guideline",
+     "sex": "both",
+     "ageRange": "18-64",
+     "range": "1\u2013149 min moderate (or <75 vigorous)",
+     "interpretation": "Arem 2015: already HR 0.80 (20% lower mortality) vs none. Some activity is better than none (WHO)."
+    },
+    {
+     "label": "Meets WHO guideline",
+     "sex": "both",
+     "ageRange": "18-64",
+     "range": "150\u2013300 min moderate or 75\u2013150 vigorous",
+     "interpretation": "Arem 2015: 1\u20132\u00d7 the minimum gave HR 0.69 (31% lower mortality)."
+    },
+    {
+     "label": "Above guideline",
+     "sex": "both",
+     "ageRange": "18-64",
+     "range": "300\u2013750 min moderate-equivalent (2\u20135\u00d7 minimum)",
+     "interpretation": "HR 0.63 at 2\u20133\u00d7 and 0.61 at 3\u20135\u00d7 the minimum, where benefit plateaus. Only modest gain beyond meeting the guideline."
+    },
+    {
+     "label": "Very high",
+     "sex": "both",
+     "ageRange": "18-64",
+     "range": ">1,500 min (\u226510\u00d7 minimum)",
+     "interpretation": "No evidence of harm (HR 0.69 vs none)."
+    },
+    {
+     "label": "Muscle-strengthening \u2014 guideline",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": "\u22652 days/week, all major muscle groups",
+     "interpretation": "WHO 2020 recommends regular muscle-strengthening activity; the \u22652 days/week wording is from the full guideline (the abstract says 'regular')."
+    },
+    {
+     "label": "Muscle-strengthening \u2014 sweet spot",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": "\u224830\u201360 min/week",
+     "interpretation": "Momma 2022: a J-shaped curve with a maximum 10\u201320% lower all-cause, CVD and cancer mortality at about 30\u201360 min/week. Benefit at much higher volumes is unclear. Combining it with aerobic activity is better than either alone."
+    }
+   ],
+   "healthLinks": "WHO 2020 (Bull et al., BJSM): all adults should do 150\u2013300 min moderate or 75\u2013150 min vigorous activity per week, or an equivalent combination, plus regular muscle strengthening and less sedentary time. Arem 2015 (JAMA Intern Med; 661,137 adults; 116,686 deaths): HR vs none 0.80 (<1\u00d7 the minimum), 0.69 (1\u20132\u00d7), 0.63 (2\u20133\u00d7), 0.61 (3\u20135\u00d7, the plateau) and 0.69 (\u226510\u00d7, no harm). Momma 2022 (BJSM meta-analysis): muscle strengthening gave 10\u201317% lower all-cause mortality, CVD, total cancer, diabetes and lung cancer.",
+   "howToImprove": "If the Hevy log shows regular lifting, muscle strengthening is covered. The typical gap for lifters is the aerobic side: 150+ min/week, including some vigorous minutes, also drives VO2max and resting heart rate. Resistance-training volume beyond about 60 min/week has no additional mortality benefit in the observational data (J-curve). Train for strength and physique goals, not longevity, past that point.",
+   "caveats": "Apple's Exercise ring counts minutes at or above roughly brisk-walk intensity from heart rate and motion. It does not separate moderate from vigorous, so the 2:1 weighting cannot be applied from ring minutes alone; use workout heart-rate zones if available. Arem's data are self-reported leisure-time activity.",
+   "sources": [
+    {
+     "citation": "Bull FC et al. WHO 2020 guidelines on physical activity and sedentary behaviour. BJSM 2020",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC7719906/"
+    },
+    {
+     "citation": "Arem H et al. Leisure time physical activity and mortality: detailed pooled analysis of the dose-response relationship. JAMA Intern Med 2015",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC4451435/"
+    },
+    {
+     "citation": "Momma H et al. Muscle-strengthening activities are associated with lower risk and mortality in major NCDs. BJSM 2022",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC9209691/"
+    }
+   ],
+   "confidence": "high"
+  },
+  {
+   "metric": "heart_rate_recovery",
+   "unit": "bpm drop in the first minute after exercise",
+   "whatItMeans": "How quickly your heart rate falls right after hard exercise, which reflects how fast your 'calming' (vagal) nervous system kicks back in. A faster drop is better.",
+   "bands": [
+    {
+     "label": "Abnormal",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": "\u226412 bpm",
+     "interpretation": "Cole 1999: 26% of 2,428 adults had this; the unadjusted mortality RR was 4.0, and after full adjustment it was 2.0 (1.5\u20132.7)."
+    },
+    {
+     "label": "Normal",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": ">12 bpm",
+     "interpretation": "Higher is better. Qiu 2017: each 10 bpm smaller recovery \u2248 9% higher all-cause mortality (HR 1.09) and 13% higher CV events (HR 1.13)."
+    }
+   ],
+   "healthLinks": "Cole 1999 (NEJM; 2,428 adults; 6-year follow-up): heart rate recovery \u226412 bpm at 1 minute was independent of workload, perfusion defects and heart-rate change during exercise (adjusted RR 2.0). Qiu 2017 (JAHA meta-analysis; 9 cohorts; 41,600 people): attenuated vs fast recovery HR 1.68 for all-cause mortality and 1.69 for CV events.",
+   "howToImprove": "Aerobic training improves vagal tone. The mechanism is shared with resting heart rate and HRV; I did not verify a dedicated heart-rate-recovery effect size.",
+   "caveats": "The research used symptom-limited, near-maximal graded treadmill tests. Apple's 'Cardio Recovery' is measured after ordinary workouts that may not end at peak effort, and the value depends on the peak heart rate reached and on whether you stop or keep moving. Compare only like-for-like workouts (same activity, similar intensity) and treat the \u226412 bpm cut-off as indicative only.",
+   "sources": [
+    {
+     "citation": "Cole CR et al. Heart-rate recovery immediately after exercise as a predictor of mortality. NEJM 1999",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/10536127/"
+    },
+    {
+     "citation": "Qiu S et al. Heart Rate Recovery and Risk of CV Events and All-Cause Mortality: meta-analysis. JAHA 2017",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC5524096/"
+    }
+   ],
+   "confidence": "medium"
+  },
+  {
+   "metric": "walking_speed",
+   "unit": "m/s (Apple reports km/h; \u00f73.6)",
+   "whatItMeans": "Your usual, everyday walking pace. In older adults it is one of the best simple predictors of survival; in younger adults it mostly flags a problem if it drops.",
+   "bands": [
+    {
+     "label": "Normal usual gait speed (Bohannon 2011)",
+     "sex": "male",
+     "ageRange": "20-29",
+     "range": "1.36 m/s (135.8 cm/s)",
+     "interpretation": "Mean for healthy men. Medium confidence (values taken from a search snippet of the paper's table)."
+    },
+    {
+     "label": "Normal usual gait speed",
+     "sex": "male",
+     "ageRange": "30-39",
+     "range": "1.43 m/s",
+     "interpretation": "Mean."
+    },
+    {
+     "label": "Normal usual gait speed",
+     "sex": "male",
+     "ageRange": "40-49",
+     "range": "1.43 m/s",
+     "interpretation": "Mean (the highest stratum in the meta-analysis)."
+    },
+    {
+     "label": "Normal usual gait speed",
+     "sex": "male",
+     "ageRange": "50-59",
+     "range": "1.43 m/s",
+     "interpretation": "Mean."
+    },
+    {
+     "label": "Normal usual gait speed",
+     "sex": "male",
+     "ageRange": "60-69",
+     "range": "1.34 m/s",
+     "interpretation": "Mean."
+    },
+    {
+     "label": "Normal usual gait speed",
+     "sex": "male",
+     "ageRange": "70-79",
+     "range": "1.26 m/s",
+     "interpretation": "Mean."
+    },
+    {
+     "label": "Normal usual gait speed",
+     "sex": "male",
+     "ageRange": "80-99",
+     "range": "0.97 m/s",
+     "interpretation": "Mean (women 80\u201399: 0.94 m/s)."
+    },
+    {
+     "label": "Poor health / function",
+     "sex": "both",
+     "ageRange": "65+",
+     "range": "<0.6 m/s",
+     "interpretation": "Studenski 2011: increased likelihood of poor health and function."
+    },
+    {
+     "label": "Median life expectancy",
+     "sex": "both",
+     "ageRange": "65+",
+     "range": "\u22480.8 m/s",
+     "interpretation": "Corresponds to median life expectancy at most ages for both sexes."
+    },
+    {
+     "label": "Better than expected",
+     "sex": "both",
+     "ageRange": "65+",
+     "range": "\u22651.0 m/s",
+     "interpretation": "Survival consistently longer than expected for age and sex."
+    },
+    {
+     "label": "Exceptional (proposed)",
+     "sex": "both",
+     "ageRange": "65+",
+     "range": ">1.2 m/s",
+     "interpretation": "Proposed by the authors to suggest exceptional life expectancy; they note more research is needed."
+    }
+   ],
+   "healthLinks": "Studenski 2011 (JAMA; pooled 9 cohorts; 34,485 adults \u226565): each +0.1 m/s gave survival HR 0.88 (0.87\u20130.90). At age 75, predicted 10-year survival ranged from 19% to 87% in men across the range of gait speeds.",
+   "howToImprove": "Walking speed in healthy adults under 60 mainly reflects habit and leg strength. A decline over months is the signal to watch, not a single value.",
+   "caveats": "Clinical norms use a timed 4 m (or 3\u201330 m) walk at usual pace from a standing start. iPhone Walking Speed is measured passively during everyday walking with the phone carried, on flat ground, so it is not the same test. The Studenski survival thresholds apply to people aged 65+.",
+   "sources": [
+    {
+     "citation": "Studenski S et al. Gait speed and survival in older adults. JAMA 2011",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC3080184/"
+    },
+    {
+     "citation": "Bohannon RW, Williams Andrews A. Normal walking speed: a descriptive meta-analysis. Physiotherapy 2011",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/21820535/"
+    }
+   ],
+   "confidence": "medium"
+  },
+  {
+   "metric": "respiratory_rate",
+   "unit": "breaths/min (during sleep)",
+   "whatItMeans": "How many breaths you take per minute while asleep. It is very stable within a person, so a clear rise above your own baseline is more meaningful than the absolute number.",
+   "bands": [
+    {
+     "label": "Below typical range",
+     "sex": "both",
+     "ageRange": "20-69",
+     "range": "<11.8",
+     "interpretation": "Below the central 90% of 10,000 healthy wearable users (Natarajan 2021). Usually not a concern if stable."
+    },
+    {
+     "label": "Typical (central 90%)",
+     "sex": "both",
+     "ageRange": "20-69",
+     "range": "11.8\u201319.2 (mean 15.4)",
+     "interpretation": "Normal nocturnal range. It is slightly lower with age and in men under 50, and lowest around BMI 25."
+    },
+    {
+     "label": "Above typical range",
+     "sex": "both",
+     "ageRange": "20-69",
+     "range": ">19.2",
+     "interpretation": "Outside the central 90% of healthy adults. If persistent, discuss with a clinician."
+    },
+    {
+     "label": "Personal-baseline flag",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": "\u22653 breaths/min above your own baseline",
+     "interpretation": "In Natarajan 2021, 36.4% of symptomatic and 23.7% of asymptomatic COVID-19 cases showed at least one night \u22653/min above their regular rate around symptom onset. A useful illness or overreaching flag."
+    }
+   ],
+   "healthLinks": "No verified mortality dose-response for sleeping respiratory rate in healthy people. Its value is as an early signal of illness (e.g., respiratory infection) relative to personal baseline. Within-person 14-day variability (CV) is small: 2.3\u20139.5% at age 20\u201324, widening to 2.7\u201321.7% in men aged 65\u201369.",
+   "howToImprove": "Not a training target. Rises with nocturnal heart rate, illness, alcohol and altitude. The alcohol and altitude examples are my own statement, not sourced.",
+   "caveats": "The population distribution comes from Fitbit's algorithm (respiratory sinus arrhythmia in beat-to-beat intervals; validated vs sleep studies with MAE 0.46/min, MAPE 3%). Apple's algorithm differs, so absolute values may shift slightly. The widely quoted clinical 'normal 12\u201320 at rest' could not be opened (the Johns Hopkins page returned 403), so it is not used as a verified band.",
+   "sources": [
+    {
+     "citation": "Natarajan A et al. Measurement of respiratory rate using wearable devices and applications to COVID-19 detection. npj Digit Med 2021",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC8443549/"
+    }
+   ],
+   "confidence": "medium"
+  },
+  {
+   "metric": "blood_oxygen",
+   "unit": "% SpO2",
+   "whatItMeans": "The percentage of your blood's haemoglobin carrying oxygen. Healthy lungs at sea level keep it at 95\u2013100%; brief dips during sleep are normal.",
+   "bands": [
+    {
+     "label": "Normal (awake, sea level)",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": "95\u2013100%",
+     "interpretation": "WHO pulse-oximetry manual: the normal saturation range."
+    },
+    {
+     "label": "Below normal range",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": "<95% (repeated, awake, at rest)",
+     "interpretation": "Outside the WHO normal range. Re-measure with the watch snug and still. Repeated low readings warrant medical advice. This is my own interpretation; the source gives no graded thresholds."
+    },
+    {
+     "label": "Typical mean during sleep (PSG)",
+     "sex": "male",
+     "ageRange": "adults",
+     "range": "mean \u224894.7\u201395.0%",
+     "interpretation": "Boulos 2019: pooled mean SaO2 during sleep 95.0% (all), 94.7% (men only), 96.2% (18\u201334), 95.3% (35\u201349)."
+    },
+    {
+     "label": "Typical lowest value during sleep (PSG)",
+     "sex": "male",
+     "ageRange": "adults",
+     "range": "minimum \u224888\u201392%",
+     "interpretation": "Boulos 2019: pooled minimum SaO2 89.2% overall, 87.9% men-only, 91.8% at 18\u201334. Brief night-time dips into the high 80s occur in healthy people; frequent or long dips with snoring suggest sleep apnoea (an interpretation)."
+    }
+   ],
+   "healthLinks": "In healthy adults with values in the normal range, SpO2 has no verified dose-response with long-term outcomes. Its value is detecting abnormal lows (lung disease, altitude, sleep-disordered breathing).",
+   "howToImprove": "Not a training target. Altitude lowers it physiologically.",
+   "caveats": "Apple Watch Series 6 systematic review (5 studies, 973 patients): 95% limits of agreement \u00b12.7 to 5.9 percentage points vs pulse oximeters, no strong systematic bias, but outliers up to 15 points. Readings fail or are wrong with motion or a loose band. In some regions Apple has disabled or altered the blood-oxygen feature on newer models, so check the data exists before building a card around it.",
+   "sources": [
+    {
+     "citation": "WHO Pulse Oximetry Training Manual (normal 95\u2013100%)",
+     "url": "https://cdn.who.int/media/docs/default-source/patient-safety/pulse-oximetry/who-ps-pulse-oxymetry-training-manual-en.pdf"
+    },
+    {
+     "citation": "Boulos MI et al. Normal PSG parameters in healthy adults. Lancet Respir Med 2019 (Table 3 PDF)",
+     "url": "https://omc.ohri.ca/psgnorms/PSGnorm_Table3.pdf"
+    },
+    {
+     "citation": "Accuracy of the Apple Watch Oxygen Saturation Measurement in Adults: A Systematic Review. Cureus 2023",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC10039641/"
+    }
+   ],
+   "confidence": "medium"
+  },
+  {
+   "metric": "basal_energy_burned / active_energy",
+   "unit": "kcal/day",
+   "whatItMeans": "Resting (basal) energy is what your body burns doing nothing. Active energy is the extra you burn by moving. Both are estimates, useful for trends and sanity checks rather than as exact numbers.",
+   "bands": [
+    {
+     "label": "Expected resting energy (Mifflin\u2013St Jeor)",
+     "sex": "male",
+     "ageRange": "19-78",
+     "range": "10\u00d7weight(kg) + 6.25\u00d7height(cm) \u2212 5\u00d7age + 5 (e.g., 80 kg / 180 cm / 35 y \u2248 1,755 kcal)",
+     "interpretation": "The most reliable common equation: it predicts measured resting energy within 10% in more people than other equations. A daily basal value far outside \u00b110\u201315% of this suggests a data problem (e.g., double counting)."
+    },
+    {
+     "label": "Expected resting energy (Mifflin\u2013St Jeor)",
+     "sex": "female",
+     "ageRange": "19-78",
+     "range": "10\u00d7weight + 6.25\u00d7height \u2212 5\u00d7age \u2212 161",
+     "interpretation": "Female equation."
+    },
+    {
+     "label": "Active energy",
+     "sex": "both",
+     "ageRange": "adults",
+     "range": "no health reference band",
+     "interpretation": "No outcome-based norm exists. Use it for your own trend; steps and exercise minutes are the evidence-based activity metrics."
+    }
+   ],
+   "healthLinks": "Energy figures are not outcome predictors themselves. Activity is better judged by steps (mortality plateau 6,000\u201310,000 by age) and weekly moderate or vigorous minutes (WHO 150\u2013300).",
+   "howToImprove": "N/A \u2014 descriptive metric. For weight goals, pair the estimate with scale trends (the nutrition coach's adaptive approach).",
+   "caveats": "Fuller 2020 systematic review of 158 publications: 'For energy expenditure, no brand was accurate.' Apple's basal energy is model-based (age, sex, height, weight). Fat-free mass predicts resting energy better (Mifflin: REE = 19.7\u00d7FFM + 413), so muscular men may burn more than the equation suggests. This app previously showed basal energy of about 5,400 kcal/day because of duplicated rows; a Mifflin sanity band catches that class of bug.",
+   "sources": [
+    {
+     "citation": "Mifflin MD et al. A new predictive equation for resting energy expenditure in healthy individuals. Am J Clin Nutr 1990",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/2305711/"
+    },
+    {
+     "citation": "Frankenfield D et al. Comparison of predictive equations for RMR in healthy nonobese and obese adults: SR. J Am Diet Assoc 2005",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/15883556/"
+    },
+    {
+     "citation": "Fuller D et al. Reliability and Validity of Commercially Available Wearable Devices. JMIR mHealth uHealth 2020",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC7509623/"
+    }
+   ],
+   "confidence": "medium"
+  }
+ ]
+}

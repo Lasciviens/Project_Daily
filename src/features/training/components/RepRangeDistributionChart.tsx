@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { nowMs } from '../dateFormat'
+import { daysAgoStr } from '../../../shared/utils/dateUtils'
 import { useTrainingHistory } from '../hooks/useTrainingProgress'
 import { computeRepRangeDistribution } from '../progressAggregate'
 import { slugForHevyGroup, labelForSlug, MAJOR_MUSCLES } from '../muscleMap'
@@ -51,7 +51,7 @@ export function RepRangeDistributionChart() {
 
   const chartData = useMemo(() => {
     if (!data) return []
-    const cutoff = new Date(nowMs() - period * 86_400_000).toISOString().slice(0, 10)
+    const cutoff = daysAgoStr(period)
     const inWindow = data.sets.filter(s => s.date >= cutoff)
     return computeRepRangeDistribution(inWindow, templateIdsForMuscle)
   }, [data, period, templateIdsForMuscle])
@@ -59,7 +59,7 @@ export function RepRangeDistributionChart() {
   const totalSets = chartData.reduce((a, b) => a + b.count, 0)
   const noRepCount = useMemo(() => {
     if (!data) return 0
-    const cutoff = new Date(nowMs() - period * 86_400_000).toISOString().slice(0, 10)
+    const cutoff = daysAgoStr(period)
     return data.sets.filter(s => s.date >= cutoff && s.set_type !== 'warmup' && s.reps == null).length
   }, [data, period])
 

@@ -2,15 +2,13 @@
 // structured output (reasons/codes/values) and renders sentences; never
 // recreates decision logic. Matches this repo's English-only rule.
 
-import { RULE_CATALOG } from './ruleCatalog'
-import type { CanonicalSet, CurrentAction, EvaluationScope, EvidenceLevel, ExerciseProgressResult, RecentProgressTrendState, CurrentLoadProgressState, ProgressMetricKind } from './types'
+import { RULE_CATALOG, DATA_QUALITY_FLAG_CODE } from './ruleCatalog'
+import type {
+  CanonicalSet, CurrentAction, DataQualityFlag, EvaluationScope, EvidenceLevel, ExerciseProgressResult,
+  RecentProgressTrendState, CurrentLoadProgressState, ProgressMetricKind,
+} from './types'
 import { isWeightBasedMetric } from './metricStrategy'
-
-function fmtDuration(seconds: number): string {
-  if (seconds < 60) return `${Math.round(seconds)}s`
-  const m = Math.floor(seconds / 60), s = Math.round(seconds % 60)
-  return s === 0 ? `${m}m` : `${m}m ${s}s`
-}
+import { formatSessionSets, formatQuantity, quantityUnitFor } from './format'
 
 /** The load-axis terminology a metric kind can honestly support (§5): only
  *  est1rm/addedWeight/assistedWeight represent a literal weight — "Load
@@ -72,46 +70,77 @@ export function recentTrendLabel(state: RecentProgressTrendState): string {
   switch (state) {
     case 'INSUFFICIENT_HISTORY': return 'Not enough history yet'
     case 'PROGRESSING': return 'Progressing'
-    case 'FLAT_NORMAL_VARIATION': return 'Flat / normal variation'
-    case 'REGRESSION_RISK': return 'Regression risk'
+    case 'FLAT_NORMAL_VARIATION': return 'Flat'
+    case 'REGRESSION_RISK': return 'Slipping back'
+  }
+}
+
+/** One plain sentence per trend state — shown in an InfoBubble next to the
+ *  label, so no state name goes unexplained. */
+export function recentTrendMeaning(state: RecentProgressTrendState): string {
+  switch (state) {
+    case 'INSUFFICIENT_HISTORY': return 'Fewer than 3 comparable sessions in the recent window — too few to call a direction.'
+    case 'PROGRESSING': return 'Across your recent sessions, load went up or reps went up cleanly more often than they went down.'
+    case 'FLAT_NORMAL_VARIATION': return 'No clear step up or down across your recent sessions — ordinary session-to-session noise.'
+    case 'REGRESSION_RISK': return 'Across your recent sessions, drops (lighter load or clearly fewer reps) happened at least as often as gains.'
   }
 }
 
 export function currentLoadProgressLabel(state: CurrentLoadProgressState): string {
   switch (state) {
-    case 'INSUFFICIENT_HISTORY': return 'Not enough history at this load'
-    case 'TOO_EARLY_TO_JUDGE': return 'Too early to judge'
-    case 'BUILDING_BASELINE': return 'Building baseline'
-    case 'ACCUMULATING': return 'Accumulating'
-    case 'STABLE_VARIATION': return 'Stable — noisy'
+    case 'INSUFFICIENT_HISTORY': return 'Not enough sessions at this load'
+    case 'TOO_EARLY_TO_JUDGE': return 'Too early to tell'
+    case 'BUILDING_BASELINE': return 'Settling in'
+    case 'ACCUMULATING': return 'Reps rising'
+    case 'STABLE_VARIATION': return 'Up and down'
     case 'POSSIBLE_PLATEAU': return 'Possible plateau'
-    case 'DECLINING': return 'Declining'
+    case 'DECLINING': return 'Reps falling'
   }
 }
 
-/** Metric-aware exposure summary (§4) — reps/duration/distance/assistance
- *  all read their OWN natural quantity, never a bare rep count that reads
- *  as "—/—" for a session that never logged reps at all (a duration/
- *  distance exercise). `weightKg` is the engine's own chosen representative
- *  weight (the TOP set's weight for a top_set_and_backoff session) — never
- *  re-derived here by scanning for "any set with a weight", which could
- *  pick a backoff set instead. */
-function fmtExposure(sets: readonly CanonicalSet[] | undefined, metricKind: ProgressMetricKind, weightKg: number | null): string {
-  if (!sets || sets.length === 0) return '—'
-  switch (metricKind) {
-    case 'duration':
-      return sets.map(s => s.durationSeconds != null ? fmtDuration(s.durationSeconds) : '—').join('/')
-    case 'distance':
-      return sets.map(s => s.distanceMeters != null ? `${s.distanceMeters}m` : '—').join('/')
-    case 'assistedWeight': {
-      const reps = sets.map(s => s.reps ?? '—').join('/')
-      return weightKg != null ? `${reps} @ ${weightKg}kg assist` : reps
-    }
-    default: {
-      const reps = sets.map(s => s.reps ?? '—').join('/')
-      return weightKg != null ? `${reps} @ ${weightKg}kg` : reps
-    }
+export function currentLoadProgressMeaning(state: CurrentLoadProgressState): string {
+  switch (state) {
+    case 'INSUFFICIENT_HISTORY': return 'Fewer than 3 comparable sessions at this exact load — nothing to read yet.'
+    case 'TOO_EARLY_TO_JUDGE': return 'Only a few sessions at this load and nothing has moved yet — normal right after a load change.'
+    case 'BUILDING_BASELINE': return 'A few flat sessions at this load — still short of the 5 it takes to call a plateau.'
+    case 'ACCUMULATING': return 'Your total reps (or time) at this weight are rising session to session — double progression working.'
+    case 'STABLE_VARIATION': return 'Totals at this weight bounce around without a clear direction.'
+    case 'POSSIBLE_PLATEAU': return 'Five or more sessions at this weight with no real change — a review signal, not a diagnosis.'
+    case 'DECLINING': return 'Your totals at this weight are falling by more than normal noise, session after session.'
   }
+}
+
+/** A data-quality flag's plain title and definition (never the raw enum). */
+export function dataQualityFlagCopy(flag: DataQualityFlag): { title: string; definition: string } {
+  const entry = RULE_CATALOG[DATA_QUALITY_FLAG_CODE[flag]]
+  return { title: entry?.title ?? flag, definition: entry?.shortDefinition ?? '' }
+}
+
+/** Metric-aware exposure summary (§4): each set's OWN load and quantity
+ *  (reps, seconds or metres), grouped by load — "60 kg × 10/10/10",
+ *  "102.5 kg × 5 · 80 kg × 9/8", "50s/50s/50s". Never one representative
+ *  weight glued onto every set's reps. */
+function fmtExposure(sets: readonly CanonicalSet[] | undefined, metricKind: ProgressMetricKind): string {
+  return formatSessionSets(sets, metricKind)
+}
+
+/** The first comparable set (in order) below the rep minimum, for naming it
+ *  in copy ("set 3 fell below your minimum of 8"). A top-set+backoff read
+ *  only evaluated the top set, so only the top set is considered there. */
+function firstSetBelowMinimum(result: ExerciseProgressResult): { position: number; reps: number } | null {
+  const repMin = result.expectation.repMin
+  if (repMin == null) return null
+  const sets = [...(result.currentState.latest?.sets ?? [])].filter(s => s.kind !== 'dropset').sort((a, b) => a.order - b.order)
+  const scoped = result.evaluationScope === 'TOP_SET_ONLY' ? sets.slice(0, 1) : sets
+  const i = scoped.findIndex(s => s.reps != null && s.reps < repMin)
+  return i < 0 ? null : { position: i + 1, reps: scoped[i].reps as number }
+}
+
+function totalOf(sets: readonly CanonicalSet[] | undefined, metricKind: ProgressMetricKind): number | null {
+  if (!sets || sets.length === 0) return null
+  const values = sets.filter(s => s.kind !== 'dropset').map(s => metricKind === 'duration' ? s.durationSeconds : metricKind === 'distance' ? s.distanceMeters : s.reps)
+  if (values.some(v => v == null)) return null
+  return (values as number[]).reduce((a, b) => a + b, 0)
 }
 
 /** Builds the primary, dynamic explanation sentence from the result's own
@@ -119,8 +148,8 @@ function fmtExposure(sets: readonly CanonicalSet[] | undefined, metricKind: Prog
  *  prior round, generalized to the new four-facet model. */
 export function buildExplanationSentence(result: ExerciseProgressResult): string {
   const { currentState } = result
-  const previousLabel = fmtExposure(currentState.previous?.sets.filter(s => s.kind !== 'dropset'), result.metricKind, currentState.previous?.representativeWeightKg ?? null)
-  const latestLabel = fmtExposure(currentState.latest?.sets.filter(s => s.kind !== 'dropset'), result.metricKind, currentState.latest?.representativeWeightKg ?? null)
+  const previousLabel = fmtExposure(currentState.previous?.sets.filter(s => s.kind !== 'dropset'), result.metricKind)
+  const latestLabel = fmtExposure(currentState.latest?.sets.filter(s => s.kind !== 'dropset'), result.metricKind)
 
   if (result.evaluationScope === 'NOT_EVALUATED') {
     if (result.currentState.latest?.loadStructure === 'mixed_load') {
@@ -159,17 +188,32 @@ export function buildExplanationSentence(result: ExerciseProgressResult): string
     // general branch doesn't require a clean load shape), so this pairing
     // is real and reachable, not just defensive. Never claim compliance
     // that was never actually checked.
+    const exposure = ` (${previousLabel} → ${latestLabel})`
     if (result.rangeCompliance === 'NOT_EVALUATED') {
-      return `${phrase.increased}${changeClause}, but this session's compliance with your target range wasn't evaluated (${result.currentState.latest?.loadStructure === 'mixed_load' ? 'mixed load' : 'no readable data'}).`
+      if (result.expectation.repMin == null && result.expectation.repMax == null) {
+        return `${phrase.increased}${changeClause}${exposure} — with no rep target saved, every extra rep counts as progress.`
+      }
+      return `${phrase.increased}${changeClause}${exposure}, but this session's compliance with your target range wasn't evaluated (${result.currentState.latest?.loadStructure === 'mixed_load' ? 'mixed load' : 'no readable data'}).`
     }
     const caveat = isWeight
       ? ' Lower reps right after a load increase are expected, not a decline.'
       : ''
-    return `${phrase.increased}${changeClause}, and ${scopeLabel(result.evaluationScope)} stayed at or above the minimum.${caveat}`
+    return `${phrase.increased}${changeClause}${exposure}, and ${scopeLabel(result.evaluationScope)} stayed at or above the minimum.${caveat}`
   }
   if (result.rangeCompliance === 'BELOW_MINIMUM') {
+    // T8: name what actually happened — the old copy said "load increased"
+    // for every below-minimum pair, including ones where nothing changed.
+    const below = firstSetBelowMinimum(result)
+    const which = below ? `set ${below.position} fell below your minimum of ${result.expectation.repMin} (${below.reps} reps)` : 'at least one set fell below your minimum'
     const phrase = axisPhrase(result.metricKind)
-    return `${phrase.increased}, but at least one set fell below the target minimum — confirm before increasing again.`
+    if (result.observedTransition === 'LOAD_INCREASED') {
+      return `${phrase.increased} (${previousLabel} → ${latestLabel}), but ${which} — confirm the new load before increasing again.`
+    }
+    if (result.observedTransition === 'LOAD_UNCHANGED') {
+      const drop = result.repDelta === 'REP_DECLINE' ? `, and total reps dropped (${previousLabel} → ${latestLabel})` : ''
+      return `Same ${phrase.changedNoun}${drop}, but ${which}.`
+    }
+    return `${which.charAt(0).toUpperCase()}${which.slice(1)}.`
   }
   if (result.repDelta === 'REP_INCREASE') {
     // §6: metric-aware — a duration/distance exercise never had "reps" go
@@ -193,7 +237,47 @@ export function buildExplanationSentence(result: ExerciseProgressResult): string
     const r = result.reasons.find(r2 => r2.code === 'AWAITING_TOP_RANGE_CONFIRMATION')
     return `This session hit the top of the range (${r?.values.confirmations ?? 1} confirmation${(r?.values.confirmations ?? 1) === 1 ? '' : 's'} so far, ${r?.values.required} needed) — one more clean session at the top before recommending an increase.`
   }
-  return `No change worth acting on at this load yet.`
+  const unit = quantityUnitFor(result.metricKind)
+  const phrase = axisPhrase(result.metricKind)
+  if (result.repDelta === 'REP_DECLINE') {
+    const unitNoun = totalQuantityNoun(result.metricKind)
+    const from = totalOf(currentState.previous?.sets, result.metricKind), to = totalOf(currentState.latest?.sets, result.metricKind)
+    const numbers = from != null && to != null ? ` from ${formatQuantity(from, unit)} to ${formatQuantity(to, unit)}` : ''
+    return `Same ${phrase.changedNoun}, but ${unitNoun} dropped${numbers} (${previousLabel} → ${latestLabel}). One off day is normal — aim to get back to last time's numbers.`
+  }
+  if (result.repDelta === 'REP_NO_CHANGE') {
+    const add = unit === 'seconds' ? 'add a few seconds' : unit === 'metres' ? 'match or beat it' : 'add one rep'
+    return `Same ${phrase.changedNoun} and about the same ${totalQuantityNoun(result.metricKind)} as last time (${latestLabel}) — repeat it and ${add}.`
+  }
+  if (result.currentAction === 'INSUFFICIENT_DATA') {
+    return `Only one session logged so far (${latestLabel}) — repeat it and add a little to start a trend.`
+  }
+  if (result.dataQualityFlags.includes('MISSING_PRESCRIBED_SET') || result.dataQualityFlags.includes('EXTRA_UNPRESCRIBED_SET')) {
+    return `You logged ${result.currentState.latest?.sets.filter(s => s.kind !== 'dropset').length ?? 0} working sets; your program prescribes ${result.expectation.targetSets}. Log the prescribed sets to get a clean comparison.`
+  }
+  return `No clear change since last time (${previousLabel} → ${latestLabel}) — repeat the session and try to add a little.`
+}
+
+/** Why there is no numeric next target — the ACTUAL cause, never one
+ *  generic "wasn't clean" message (a clean session that simply repeated
+ *  last time used to be told its logging was the problem). */
+export function nextTargetUnavailableText(result: ExerciseProgressResult): string {
+  const logged = result.currentState.latest?.sets.filter(s => s.kind !== 'dropset').length ?? 0
+  switch (result.nextTargetBlocker) {
+    case 'mixed_load':
+      return "The latest session's sets were at mixed loads (not one working load, or one top set plus lighter backoffs), so there's no set-by-set plan to build on. Log one session with a consistent structure."
+    case 'set_count_mismatch':
+      return `You logged ${logged} working set${logged === 1 ? '' : 's'}, but your program prescribes ${result.expectation.targetSets}. Log all ${result.expectation.targetSets} to get a set-by-set target.`
+    case 'missing_values':
+      return "At least one set is missing the value this exercise is tracked by (reps, time or distance), so there's no floor to build a target from."
+    case 'no_sets':
+      return 'No working sets logged for this exercise yet.'
+    case 'action':
+      if (result.currentAction === 'REVIEW_LOAD_REDUCTION') return 'The load went down and the reason isn\'t recorded. If it was intentional (a deload, a new variation), just keep logging; if not, go back to the previous load next time.'
+      return 'No numeric target for this state yet.'
+    default:
+      return 'No numeric target for this session.'
+  }
 }
 
 /** Dynamic, per-instance explanation of the PROGRESS evidence pill (§12) —
@@ -230,7 +314,7 @@ export function recommendationEvidenceExplanation(result: ExerciseProgressResult
   }
   const scope = scopeLabel(evaluationScope)
   if (dataQualityFlags.length > 0) {
-    const flags = dataQualityFlags.map(f => f.replace(/_/g, ' ').toLowerCase()).join(', ')
+    const flags = dataQualityFlags.map(f => dataQualityFlagCopy(f).title.toLowerCase()).join(', ')
     return `Limited: evaluated against ${scope}, but flagged for ${flags} — treat the current action as something to confirm, not a confident recommendation.`
   }
   if (evaluationScope === 'ALL_PRESCRIBED_WORKING_SETS') {

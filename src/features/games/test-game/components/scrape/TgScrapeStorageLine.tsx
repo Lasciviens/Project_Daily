@@ -17,7 +17,7 @@ export function TgScrapeStorageBanner({ now, change, copyLabels, online }: {
   lines.push(change.recordBefore
     ? { sign: '·', text: `Replaces ScreenScraper's text record (about ${formatBytes(change.recordAfter)})` }
     : { sign: '+', text: `Saves ScreenScraper's text record — about ${formatBytes(change.recordAfter)}` })
-  if (online) lines.push({ sign: '·', text: `${online} picture${online === 1 ? '' : 's'} stay online — no storage used` })
+  if (online) lines.push({ sign: '·', text: `${online} picture${online === 1 ? ' stays' : 's stay'} online — no storage used` })
   if (now?.handheldBytes) lines.push({ sign: '·', text: `Your handheld's pictures (${formatBytes(now.handheldBytes)}) are not touched` })
 
   return (
