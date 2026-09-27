@@ -509,7 +509,9 @@ export async function importProviderGames(
   const toInsert = incoming.filter(g => !byRefExisting.has(g.external_ref)).map(g => ({
     ...payload(g),
     // A game arriving with real hours behind it was never a backlog entry.
-    ...(shouldAutoMarkPlaying('backlog', g.play_seconds) ? { play_status: 'playing' } : {}),
+    // Every row carries play_status: PostgREST sends one column set for a
+    // batch and fills a key missing from one row with NULL (NOT NULL column).
+    play_status: shouldAutoMarkPlaying('backlog', g.play_seconds) ? 'playing' : 'backlog',
   }))
 
   let promoted = 0
@@ -519,7 +521,8 @@ export async function importProviderGames(
     // backlog row. Every other status is something the user said.
     const promote = shouldAutoMarkPlaying(row.play_status, g.play_seconds)
     if (promote) promoted++
-    return { id: row.id, ...payload(g), ...providerUpdateFields(row, g), ...(promote ? { play_status: 'playing' } : {}) }
+    // play_status on every row, for the same batch-column reason as above.
+    return { id: row.id, ...payload(g), ...providerUpdateFields(row, g), play_status: promote ? 'playing' : row.play_status }
   })
 
   const fail = (e: unknown) => {
