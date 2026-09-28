@@ -288,12 +288,15 @@ export function analyseComposition(readings: CompositionReading[], from: string,
   const fatPct = fitSeries(series(r => r.fatPct), MIN_FAT_PCT_CHANGE)
   const reportsIn = readings.filter(r => r.source === REPORT_SOURCE && r.date >= from && r.date <= to)
   const muscle = fitSeries(series(r => r.muscleMassKg, reportsIn), MIN_MASS_CHANGE_KG)
-  const spanDays = own.length ? daysBetween(own[0].date, own[own.length - 1].date) : 0
-  const base = { source, otherSources: others, readings: own.length, spanDays, fat, lean, fatPct, muscle }
+  // Count and span only the readings the fat trend can use — a weigh-in the
+  // scale saved without a body fat % (wet feet, failed impedance) isn't one.
+  const withFat = own.filter(r => r.fatMassKg != null)
+  const spanDays = withFat.length ? daysBetween(withFat[0].date, withFat[withFat.length - 1].date) : 0
+  const base = { source, otherSources: others, readings: withFat.length, spanDays, fat, lean, fatPct, muscle }
 
   if (!fat || !lean) {
     const missing = !source ? 'No smart-scale readings with body fat in this window.'
-      : own.length < MIN_READINGS ? `${own.length} scale reading${own.length === 1 ? '' : 's'} in this window — needs ${MIN_READINGS}.`
+      : withFat.length < MIN_READINGS ? `${withFat.length} scale reading${withFat.length === 1 ? '' : 's'} with body fat in this window — needs ${MIN_READINGS}.`
       : `Scale readings span ${spanDays} days — needs ${MIN_SPAN_DAYS} to tell fat from water swings.`
     return { ...base, verdict: 'not_enough_data', leanShare: null, confidence: null, missing }
   }

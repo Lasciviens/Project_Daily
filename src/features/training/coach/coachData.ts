@@ -32,6 +32,11 @@ export async function gatherCoachData(): Promise<CoachData> {
   const today = todayStr()
   const historyFrom = new Date(`${shiftDateStr(today, -TRAINING_HISTORY_DAYS)}T00:00:00`).toISOString()
   const healthFrom = shiftDateStr(today, -31)
+  // The program verdict's sleep signal compares the last 4 COMPLETE weeks
+  // (up to ~34 days back, plus the evening before), so sleep needs a longer
+  // read than the 30-day context — with 31 days its oldest week lost nights
+  // and the coach's workload verdict could differ from the Progress tab's.
+  const sleepFrom = shiftDateStr(today, -42)
   // Balance inputs (the Program tab's): every template and the recurring
   // training days — fetched alongside the reads below.
   const balanceInputs = Promise.all([soft(fetchHevyExerciseTemplates(), []), soft(fetchScheduleBlocks(), [])])
@@ -43,7 +48,7 @@ export async function gatherCoachData(): Promise<CoachData> {
     soft<AthleteLimitation[]>(fetchAthleteLimitations(true), []),
     soft<CurrentProgramRoutine[]>(fetchCurrentProgramRoutines(), []),
     soft<ExerciseTargetOverride[]>(fetchExerciseTargetOverrides(), []),
-    soft<HealthMetric[]>(fetchHealthMetricSeries('sleep_analysis', healthFrom, today), []),
+    soft<HealthMetric[]>(fetchHealthMetricSeries('sleep_analysis', sleepFrom, today), []),
     soft<HealthMetric[]>(fetchHealthMetricSeries('step_count', healthFrom, today), []),
     soft<HealthMetric[]>(fetchHealthMetricSeries('active_energy', healthFrom, today), []),
     soft(fetchBodyweightSeries(shiftDateStr(today, -30), today), []),

@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react'
-import { format, formatDistanceToNow } from 'date-fns'
+import { format } from 'date-fns'
+import { todayStr } from '../../../../shared/utils/dateUtils'
 import { InfoBubble } from '../../../../shared/components/InfoBubble'
 import { ExerciseThumb } from '../../exerciseMedia'
-import { ROLE_BADGE, ROLE_LABEL, type ExerciseHit } from './muscleVolumeModel'
+import { ROLE_BADGE, ROLE_LABEL, daysAgoText, type ExerciseHit } from './muscleVolumeModel'
 
 /** "Which exercises trained it", with a GIF peek per row. */
 export function MuscleExerciseList({ exercises }: { exercises: [string, ExerciseHit][] }) {
@@ -41,7 +42,7 @@ export function MuscleExerciseList({ exercises }: { exercises: [string, Exercise
                   <ExerciseThumb title={name} templateId={hit.templateId} size={64} />
                   <div className="text-meta text-fg-muted">
                     <p className="font-medium text-fg-2">{name}</p>
-                    <p>Last trained {formatDistanceToNow(new Date(`${hit.lastDate}T00:00:00`), { addSuffix: true })}</p>
+                    <p>Last trained {daysAgoText(hit.lastDate, todayStr())}</p>
                     <p className="tabular-nums">{format(new Date(`${hit.lastDate}T00:00:00`), 'EEE d MMM')}</p>
                   </div>
                 </div>

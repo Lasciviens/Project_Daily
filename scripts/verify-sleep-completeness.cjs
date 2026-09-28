@@ -99,6 +99,18 @@ check('§1.8 minutes-after-noon back to a clock', [clockFromNoonMinutes(660), cl
   check('§4.2 a sub-3h night is not part of the baseline', run([...base, nap, cut1], nextDay, nextDay).map(n => n.typicalStartClock), ['01:00'])
 }
 
+// ─── §4b A spread-out baseline never reports a lateness ≤ 0 ─────────────────
+{
+  // Alternating 22:00 / 03:30 starts: the lower quartile is 22:00 but the
+  // median is 00:45, AFTER a flagged 00:15 start — the note used to read
+  // "−1h −30m later than your usual 00:45".
+  const pts = []
+  for (let i = 0; i < 14; i++) { const w = shift('2026-07-01', i); pts.push(i % 2 ? session(w, '22:00', '05:00', 7) : session(w, '03:30', '10:30', 7)) }
+  pts.push(session(nextDay, '00:15', '06:00', 5.5))
+  check('§4b.1 lateness is measured from the early side when the median is not before the start',
+    run(pts, nextDay, nextDay).map(n => [n.startClock, n.typicalStartClock, n.lateByMin]), [['00:15', '22:00', 135]])
+}
+
 // ─── §5 The rule is what the module documents ────────────────────────────────
 check('§5.1 default rule', INCOMPLETE_NIGHT_RULE, {
   lateByMin: 120, shortByMin: 0, startQuantile: 0.25, referenceNights: 14, referenceDays: 28, minReferenceNights: 5, minReferenceHours: 3,

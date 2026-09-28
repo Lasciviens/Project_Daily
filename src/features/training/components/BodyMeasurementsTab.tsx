@@ -256,7 +256,12 @@ export function BodyMeasurementsTab() {
       </div>
 
       {measurements.length === 0 ? (
-        <EmptyState bordered icon={<Ruler />} title="No measurements yet" description="Sync from Hevy or log one now." />
+        // No Hevy entry yet, but the scale may still have weighed in — the
+        // weight trend reads the merged series, so show it anyway.
+        <div className="flex flex-col gap-3">
+          <EmptyState bordered icon={<Ruler />} title="No measurements yet" description="Sync from Hevy or log one now." />
+          <div className={chartExpanded ? undefined : 'max-w-2xl'}><WeightTrendCard expanded={chartExpanded} onToggleExpand={toggleChart} /></div>
+        </div>
       ) : (
         // Bento: auto-fill derives the column count from available width
         // (monitor 3-4 cells, laptop 2, phone 1 — no breakpoints). The chart

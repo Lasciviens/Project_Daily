@@ -1,4 +1,5 @@
 import { Card, TonePill, useChartColors } from '../../../../shared/ui'
+import { todayStr } from '../../../../shared/utils/dateUtils'
 import { addDaysIso } from '../../healthWindowStats'
 import { weeklyBuckets } from '../../healthTrendStats'
 import type { HealthHero } from './useHealthHero'
@@ -10,8 +11,10 @@ import { num } from './heroFormat'
 export function ExerciseWeekCard({ exercise, anchor }: { exercise: HealthHero['exercise']; anchor: string }) {
   const c = useChartColors()
   const from = addDaysIso(anchor, -83)
-  const minutes = weeklyBuckets(exercise.series, { from, to: anchor, agg: 'total', minDays: 1 })
-  const strength = weeklyBuckets(exercise.strengthDays.map(d => ({ date: d.date, value: 1 })), { from, to: anchor, agg: 'total', minDays: 0 })
+  // Complete weeks only: on a Sunday, today's unfinished day must not close its week.
+  const to = anchor === todayStr() ? addDaysIso(anchor, -1) : anchor
+  const minutes = weeklyBuckets(exercise.series, { from, to, agg: 'total', minDays: 1 })
+  const strength = weeklyBuckets(exercise.strengthDays.map(d => ({ date: d.date, value: 1 })), { from, to, agg: 'total', minDays: 0 })
   return (
     <Card className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center justify-between gap-2">

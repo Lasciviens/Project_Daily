@@ -181,6 +181,10 @@ const TO = addDays(FROM, 28)
   check('§5.20b medium on 6 readings over 25 days', V(series({ n: 28, every: 5, fatPerDay: -0.06 })).confidence, 'medium')
   const withMuscle = V([...series({ fatPerDay: -0.05, source: BG.REPORT_SOURCE, muscle: true, leanPerDay: 0.03 })])
   ok('§5.21 report muscle trend follows its lean mass', withMuscle.muscle && withMuscle.muscle.change > 0.5, withMuscle.muscle)
+  // Weigh-ins the scale saved without a body fat % don't count as fat readings.
+  const noFat = [...series({ n: 28, every: 10, fatPerDay: -0.05 }), ...series({ n: 28, every: 3 }).map(r => ({ ...r, fatPct: null, fatMassKg: null }))]
+  const nf = V(noFat)
+  check('§5.23 fat-less weigh-ins are not counted as readings', [nf.verdict, nf.readings, /3 scale readings with body fat/.test(nf.missing)], ['not_enough_data', 3, true])
   check('§5.22 twelve daily readings over 28+ days → high confidence', V(series({ n: 29, fatPerDay: -0.05 })).confidence, 'high')
 }
 

@@ -25,10 +25,12 @@ export interface PlannedProgram extends PlannedProgramData<HevyRoutine> {
 export function usePlannedProgram(): PlannedProgram {
   const { data: routines = [], isLoading: loadingRoutines } = useHevyRoutines()
   const { data: program = [], isLoading: loadingProgram } = useCurrentProgramRoutines()
-  const { data: templates = [] } = useHevyExerciseTemplates()
+  // Templates too: without them every planned set is unattributed and the
+  // cards briefly read "no planned sets" / "no sets".
+  const { data: templates = [], isLoading: loadingTemplates } = useHevyExerciseTemplates()
   const { data: profile } = useAthleteProfile()
   const { data: scheduleBlocks = [] } = useScheduleBlocks()
-  const isLoading = loadingRoutines || loadingProgram
+  const isLoading = loadingRoutines || loadingProgram || loadingTemplates
 
   return useMemo(() => {
     const trainingTemplates = scheduleBlocks.filter(b => b.category === 'training')
@@ -56,14 +58,14 @@ export interface DoneVolume {
 export function useDoneVolume(windowDays: number): DoneVolume {
   const { fromIso, toIso } = presetWindowIso(todayStr(), windowDays)
   const { data: rows = [], isLoading } = useMuscleVolume(fromIso, toIso)
-  const { data: templates = [] } = useHevyExerciseTemplates()
+  const { data: templates = [], isLoading: loadingTemplates } = useHevyExerciseTemplates()
   return useMemo(() => {
     const tplById = buildTplById(templates)
     const agg = aggregateVolume(rows, tplById)
     return {
       windowDays, rows, tplById,
       balance: computeBalance({ perSlug: agg.perSlug, weeks: windowDays / 7 }),
-      workoutCount: agg.workoutCount, isLoading,
+      workoutCount: agg.workoutCount, isLoading: isLoading || loadingTemplates,
     }
-  }, [rows, templates, windowDays, isLoading])
+  }, [rows, templates, windowDays, isLoading, loadingTemplates])
 }

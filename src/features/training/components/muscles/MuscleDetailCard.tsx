@@ -1,10 +1,11 @@
-import { format, formatDistanceToNow } from 'date-fns'
+import { format } from 'date-fns'
+import { todayStr } from '../../../../shared/utils/dateUtils'
 import { Clock, Flag } from 'lucide-react'
 import { InfoBubble } from '../../../../shared/components/InfoBubble'
 import { BANDS_META, labelForSlug, movementPatternLabel } from '../../muscleMap'
 import { useBandColors } from '../muscleBandColors'
 import { MuscleExerciseList } from './MuscleExerciseList'
-import { FLAG_META, TREND_TONE, bandGuidance, trendIcon, type MuscleRead } from './muscleVolumeModel'
+import { FLAG_META, TREND_TONE, bandGuidance, daysAgoText, trendIcon, type MuscleRead } from './muscleVolumeModel'
 
 /** One selected muscle: status, plain guidance, cues, exercises and days. */
 export function MuscleDetailCard({ read, windowDays, priorHasData, isExperienceAdjusted }: {
@@ -115,7 +116,7 @@ export function MuscleDetailCard({ read, windowDays, priorHasData, isExperienceA
         <div>
           <p className="section-label mb-1">
             Trained {dates.length} day{dates.length !== 1 ? 's' : ''}
-            {dates[0] && <span className="normal-case"> · last {formatDistanceToNow(new Date(`${dates[0]}T00:00:00`), { addSuffix: true })}</span>}
+            {dates[0] && <span className="normal-case"> · last {daysAgoText(dates[0], todayStr())}</span>}
           </p>
           {dates.length > 0 && (
             <div className="flex flex-wrap gap-1">

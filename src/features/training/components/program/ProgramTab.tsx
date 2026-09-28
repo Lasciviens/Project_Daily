@@ -50,7 +50,8 @@ export function ProgramTab() {
       overrides: new Map(overrides.map(o => [o.exercise_template_id, o])),
     }
   }, [plan, profile, limitations, prefs, overrides, history])
-  const comparison = useMemo(() => comparePlannedDone(plan, done), [plan, done])
+  // Not before the done volume is in: an empty window reads "— · no sets".
+  const comparison = useMemo(() => (done.isLoading ? null : comparePlannedDone(plan, done)), [plan, done])
 
   if (plan.isLoading) {
     return <div className="flex max-w-2xl flex-col gap-3"><Skeleton rounded="rounded-card" className="h-28" /><Skeleton rounded="rounded-card" className="h-48" /></div>

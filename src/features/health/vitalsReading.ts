@@ -589,6 +589,7 @@ function buildVerdict(rows: VitalRow[], isDay: boolean, totalDays: number): Vita
   const goods = judged.filter(r => r.signal === 'good')
   const neutrals = judged.filter(r => r.signal === 'neutral')
   const notes: string[] = []
+  const goodPhrase = (r: VitalRow) => r.key === 'rhr' ? 'resting heart rate is lower than usual' : r.key === 'hrv' ? 'HRV is higher than usual' : phraseOf(r, isDay)
   const span = isDay ? 'this day' : `these ${totalDays} days`
 
   let tone: VerdictTone
@@ -609,9 +610,15 @@ function buildVerdict(rows: VitalRow[], isDay: boolean, totalDays: number): Vita
     headline = `Not enough readings to judge ${span} yet.`
   } else if (!concerns.length) {
     tone = 'success'
-    label = 'All normal for you'
-    if (goods.length) {
-      const g = goods.map(r => r.key === 'rhr' ? 'resting heart rate is lower than usual' : r.key === 'hrv' ? 'HRV is higher than usual' : phraseOf(r, isDay))
+    label = neutrals.length ? 'Nothing worrying' : 'All normal for you'
+    if (neutrals.length) {
+      // A harmless deviation still sits outside the range its row shows, so
+      // "everything is in your usual range" would contradict the table.
+      const n = neutrals.map(r => r.spec.phraseLabel)
+      headline = `Nothing worrying: ${listJoin(n)} ${n.length === 1 ? 'is' : 'are'} outside your usual range, but in a harmless direction.`
+      if (goods.length) notes.push(`${cap(listJoin(goods.map(goodPhrase)))} — usually a sign you’re well recovered.`)
+    } else if (goods.length) {
+      const g = goods.map(goodPhrase)
       headline = `Everything is in your usual range or better: ${listJoin(g)} — usually a sign you’re well recovered.`
     } else {
       headline = judged.length === 1 ? `${judged[0].spec.label} is in your usual range.` : 'Everything is in your usual range.'

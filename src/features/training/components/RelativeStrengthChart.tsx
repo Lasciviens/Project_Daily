@@ -149,7 +149,7 @@ export function RelativeStrengthChart() {
         </p>
       ) : chartData.length < MIN_POINTS ? (
         <p className="py-8 text-center text-body text-fg-muted">
-          Not enough sessions with a nearby bodyweight reading for {selected.title} yet — log a bodyweight in Training → Body within two weeks of a session to see this trend.
+          Not enough sessions with a nearby bodyweight reading for {selected.title} yet — weigh in on your smart scale (or log a weight in Training → Log → Body) within two weeks of a session to see this trend.
         </p>
       ) : (
         <>

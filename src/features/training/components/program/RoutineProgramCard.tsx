@@ -42,7 +42,7 @@ export function RoutineProgramCard({ routine, overrides, lastDoneText }: {
                   <p className="flex flex-wrap items-center gap-x-1.5 text-meta tabular-nums text-fg-muted">
                     {rt || override
                       ? <span>{rt?.targetSets ?? sets.filter(s => s.type !== 'warmup').length} × {repRangeLabel(override?.rep_range_start ?? rt?.repMin ?? 0, override?.rep_range_end ?? rt?.repMax ?? 0)}</span>
-                      : <span>{sets.length} sets, no rep target</span>}
+                      : <span>{sets.length - warmups} {sets.length - warmups === 1 ? 'set' : 'sets'}, no rep target</span>}
                     {warmups > 0 && <span>· {warmups} warm-up</span>}
                     {override && <TonePill tone="highlight">Your target</TonePill>}
                   </p>

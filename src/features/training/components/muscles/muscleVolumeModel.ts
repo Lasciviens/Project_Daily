@@ -180,6 +180,14 @@ const dayMs = 86_400_000
 const daysBetween = (from: string, to: string) =>
   Math.round((new Date(`${to}T00:00:00`).getTime() - new Date(`${from}T00:00:00`).getTime()) / dayMs)
 
+/** "today" / "yesterday" / "5 days ago" from local calendar days — a
+ *  relative-time formatter measured from local midnight read a session
+ *  trained yesterday as "2 days ago" late in the evening. */
+export function daysAgoText(day: string, today: string): string {
+  const d = daysBetween(day, today)
+  return d <= 0 ? 'today' : d === 1 ? 'yesterday' : `${d} days ago`
+}
+
 export function weeklyOf(ctx: Pick<MuscleReadContext, 'perSlug' | 'weeks'>, slug: string): number {
   return (ctx.perSlug[slug]?.credited ?? 0) / ctx.weeks
 }
@@ -303,7 +311,7 @@ export function buildVerdict(args: {
   else if (persistentOver.length) headline = `Solid work — but you're overcooking ${persistentOver.slice(0, 2).map(o => labelForSlug(o.slug)).join(' & ')}.`
   else if (buckets.inGrowth <= 1 && needCount >= 3) headline = `Just getting started — ${buckets.inGrowth} muscle${buckets.inGrowth !== 1 ? 's' : ''} in the growth range so far. Build from here.`
   else if (needCount >= 3) headline = `Decent base, but ${needCount} muscles need more for growth.`
-  else if (needCount) headline = `Mostly on track — just ${needNames.join(' & ')} needs more.`
+  else if (needCount) headline = `Mostly on track — just ${needNames.join(' & ')} ${needCount === 1 ? 'needs' : 'need'} more.`
   else if (optimalCount >= 4) headline = `Dialled in — most muscles are in the growth sweet spot. Keep it up.`
   else headline = `Here's how your last ${windowDays} days stack up per muscle.`
   return { verdict: { headline, bullets: top, extra: bullets.length - top.length }, buckets, optimalCount }
