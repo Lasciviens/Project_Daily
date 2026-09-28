@@ -93,11 +93,16 @@ literal colour. Tones: `success · warn · danger · info · neutral · highligh
 a `-soft` background.
 
 ```tsx
-<ToneDot tone="success" />                     // 8px dot
-<TonePill tone="warn">Due today</TonePill>      // soft pill with tinted label
+<ToneDot tone="success" />                     // 8px dot (.tone-dot)
+<TonePill tone="warn">Due today</TonePill>      // soft pill with tinted label (.tone-pill)
 <span data-tone="danger" className="tone-text">Overdue</span>
-<div className="bg-danger-soft text-danger">…</div>   // Tailwind classes work too
+<span data-tone="info" className="tone-soft">…</span> // soft tint only
+<div className="bg-danger-soft text-danger">…</div>   // Tailwind classes work too (not for `accent`)
 ```
+
+`data-tone` sets `--tone` / `--tone-soft` / `--tone-fg`; `neutral` labels use the darker
+`--neutral-fg`, since the dot colour is too faint for words. `accent` has no `-soft` Tailwind class —
+use `data-tone="accent"`.
 
 Map a domain enum to tones **once**, next to the enum (e.g. `PRIORITY_TONE: Record<TaskPriority, Tone>`),
 and import that map everywhere. No per-component colour maps.
@@ -111,6 +116,7 @@ and import that map everywhere. No per-component colour maps.
 | `neutral` | idle, unknown, cancelled, not started |
 | `highlight` | a special category the user flagged (wish, favourite) |
 | `star` | ratings, streaks |
+| `accent` | the *current* item (Today, "N open", the default list) and in-flight work (the loading toast) — never good/bad |
 
 ### 2.5 Charts
 
@@ -121,10 +127,15 @@ const c = useChartColors()
 <Bar fill={c.series[0]} /> <CartesianGrid stroke={c.grid} /> <XAxis tick={{ fill: c.axis }} />
 ```
 
-- `c.series[0..5]` — teal, violet, amber, rose, lime, slate: categorical, colour-blind distinct, and
-  deliberately **never the accent hue**. Use them in order.
-- `c.success / c.warn / c.danger` — only when the series *is* a status (e.g. over/under a target).
+- `c.series[0..5]` — teal, violet, amber, rose, lime, slate (`--chart-1…6` in `index.css`):
+  categorical, colour-blind distinct, and deliberately **never the accent hue**. Use them in order.
+- `c.success / c.warn / c.danger / c.info / c.neutral` — only when the series *is* a status (e.g.
+  over/under a target). `c.accent` exists for a selected point, never a series.
 - Grid lines `c.grid`, axis ticks `c.axis`, tooltip surface `c.tooltipBg`.
+- Shared kit in `src/shared/components/charts/`: `BarLineChart` (the canonical translucent bar + dotted
+  line, deduped tooltip, `rangeKey`, `yDomain`), `chartKit.ts` (`TOOLTIP_BOX` for custom tooltip
+  content, `useTooltipStyle()` for recharts' built-in one, `useAxisTick()` — 10px ticks), and
+  `compactAxisTick` (`axisFormat.ts`). Reuse them before styling a chart by hand.
 - **Identity colours stay literal**: third-party brand colours (a transit operator's line colour, a
   fitness service's brand orange) and physiological categories that users know by colour (sleep
   stages) are data, not chrome. Keep them in one constant per feature.
@@ -142,12 +153,12 @@ duration. Dates are always `en-GB` (`15 Sep 2026`, `15/09/2026`).
 |---|---|---|---|
 | `text-page` | 24 / 30 | 700, `tracking-tight` | Page title (≥ `sm`) |
 | `text-head` | 19 / 26 | 700 | Page title on phones, phone header |
-| `text-title` | 17 / 24 | 600 | Popup / sheet title, hero card title |
+| `text-title` | 17 / 24 | 600 | Popup / sheet / drawer title, the top bar's route name, hero card title |
 | `text-lead` | 15 / 22 | 600 | Card title; sheet rows on phones |
 | `text-ui` | 14 / 20 | 600 | Buttons, emphasised rows |
 | `text-body` | 13 / 20 | 400–500 | Body text, controls, list rows (the default UI size) |
 | `text-meta` | 12 / 16 | 400–500 | Subtitles, timestamps, secondary values |
-| `text-micro` | 11 / 16 | 600 uppercase `tracking-[0.09em]` | Eyebrow labels (`.section-label`), chart ticks |
+| `text-micro` | 11 / 16 | 600 uppercase `tracking-[0.09em]` | Eyebrow labels (`.section-label`, `.field-label`), badges |
 | `text-kpi` | 26 / 30 | 700 `tracking-tight` | Big numbers |
 
 Rules: weights are 400/500/600/700 only; bold is for titles and numbers. Do not invent in-between
@@ -179,9 +190,10 @@ badges, avatars, tabs). Thumbnails 6–8px.
 `shadow-menu` (menus, popups, drawers) · `shadow-float` (small floating controls). Dark mode uses
 deeper, darker shadows automatically. Never stack border + heavy shadow + tinted background on one element.
 
-**Layers** (`z-*` classes / CSS vars): `chrome` 40 (header, tab bar, sidebar) · `drawer` 50
-(side drawers) · `sheet` 60 · `popover` 70 · `modal` 100 (+10 per stacked popup) · `confirm` 200 ·
-`toast` 300. Never hard-code `z-[999]`.
+**Layers** (`z-*` classes / CSS vars): `chrome` 40 (phone header, tab bar) · `drawer` 50
+(side drawers) · `sheet` 60 (reserved, unused — `ModalShell` sheets sit on the modal layer) ·
+`popover` 70 (`.menu`, popovers) · `modal` 100 (+10 per stacked popup, from the host's depth) ·
+`confirm` 200 · `toast` 300 (toasts, the offline banner). Never hard-code `z-[999]`.
 
 ---
 
@@ -191,13 +203,13 @@ Use the React primitive when one exists; the CSS class is for places a component
 
 | Need | Use |
 |---|---|
-| A panel | `<Card>` (`.card`), interactive `<Card as="button" interactive>` (`.card-interactive`) |
+| A panel | `<Card>` (`.card`, renders a `<section>`, `p-4 sm:p-5` unless `padded={false}`), interactive `<Card as="button" interactive>` (`.card-interactive`) |
 | Card heading | `<CardHeader title icon subtitle action />`, dense: `variant="label"`; `wrap` lets a long title/subtitle wrap (and the action drop below it on a phone) instead of being cut off — use it wherever the text is user data (a routine name) or a sentence that must be read |
 | Eyebrow label | `<SectionLabel>` (`.section-label`) |
-| Buttons | `<Button variant="primary|secondary|ghost|danger" size="md|sm" icon loading block>` |
-| Icon-only button | `<IconButton label="…">` (label is required: it's the accessible name) |
-| KPI tile | `<StatTile label value unit hint tone onClick />` |
-| Page frame | `<PageContainer width="narrow|wide|full">` + `<PageHeader title subtitle actions>{tabs}</PageHeader>` |
+| Buttons | `<Button variant="primary|secondary|ghost|danger" size="md|sm" icon loading block>` — default `secondary`; `sm` is 36px with a mouse, 44px on touch (`.btn-*`, `.btn-sm`) |
+| Icon-only button | `<IconButton label="…" bordered?>` (label is required: it's the accessible name; `.icon-btn`, `.icon-btn-bordered`) |
+| KPI tile | `<StatTile label value unit hint icon tone onClick />` |
+| Page frame | `<PageContainer width="narrow|wide|full">` (caps `max-w-3xl` · `max-w-[88rem]`, the default · none) + `<PageHeader title subtitle actions showTitle>{tabs}</PageHeader>` |
 | Status | `<ToneDot>` / `<TonePill>` / `data-tone` |
 | Empty state | `<EmptyState icon title description action bordered />` |
 | Loading | `<Skeleton>` / `<SkeletonText>` / `<SkeletonCard>` copying the real geometry |
@@ -207,7 +219,15 @@ Use the React primitive when one exists; the CSS class is for places a component
 | Inputs | `.input`, `.select`, `.field-label` above; focus = accent border + soft halo, no outline |
 | Chips / tags | `.chip`; counts `.count-badge` |
 | Menus | Headless UI `Menu` with `.menu` / `.menu-item` / `.menu-sep` / `.menu-label` |
+| Explain a term | `<InfoBubble label>` (`shared/components`) — the ⓘ popover; never a hand-rolled tooltip |
+| Contain a render crash | `<ErrorBoundary label action>` around surfaces whose data shape isn't guaranteed |
+| Dates | `DateInput`, `DateNav` (prev / next / pick), `WindowChips` (season chips) in `shared/components` |
+| Scrolling strips | `.scroll-x` (no scrollbar) / `.scroll-y` (thin), `.scrollbar-none`, `.snap-x-mandatory` + `snap-start` children |
+| Press feedback on a custom tappable | `.press-feedback` |
+| Keyboard hint | `.kbd` (`⌘K`) |
 | Popups | §8 |
+
+`.scroll-fade-x` is a deliberate no-op (the edge fade was removed on request); don't add new uses.
 
 **Button rules.** One primary per view (the action the screen exists for). Secondary for everything
 else; ghost for tertiary/inline actions; danger only for the final destructive step (inside a
