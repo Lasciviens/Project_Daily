@@ -6,10 +6,12 @@
 // bar off-screen), so measure what `position: fixed; inset: 0` actually
 // covers and expose the shortfall as --ios-viewport-gap (0 everywhere else).
 export function installIosViewportFix(): void {
-  const standalone =
-    (navigator as Navigator & { standalone?: boolean }).standalone === true ||
-    window.matchMedia('(display-mode: standalone)').matches
-  if (!standalone) return
+  // `navigator.standalone` exists only in iOS/iPadOS WebKit and is true only
+  // for a home-screen app. `display-mode: standalone` also matches installed
+  // Android and desktop PWAs, where screen height includes the system bars /
+  // window chrome (a 50-80px "gap" that isn't one), which pushed the tab bar
+  // below the screen and made #root taller than the window.
+  if ((navigator as Navigator & { standalone?: boolean }).standalone !== true) return
 
   const probe = document.createElement('div')
   probe.setAttribute('aria-hidden', 'true')
@@ -19,7 +21,11 @@ export function installIosViewportFix(): void {
 
   const apply = () => {
     const fixedHeight = probe.getBoundingClientRect().height
-    const portrait = window.innerWidth <= window.innerHeight || screen.height >= screen.width
+    // Orientation from the viewport: iOS keeps `screen` in portrait values
+    // whatever the rotation, so comparing screen.height with screen.width
+    // always said "portrait" and a landscape phone measured against the long
+    // side (the gap then fell outside 0..80 by accident).
+    const portrait = window.innerWidth <= window.innerHeight
     const screenHeight = portrait
       ? Math.max(screen.width, screen.height)
       : Math.min(screen.width, screen.height)

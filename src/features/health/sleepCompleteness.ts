@@ -62,9 +62,11 @@ export interface IncompleteNight {
   date: string
   /** Local wall-clock start of the night's first kept session, "04:54". */
   startClock: string
-  /** Median start of the reference nights — what "usually" means on screen. */
+  /** Median start of the reference nights — what "usually" means on screen —
+   *  or the early-side start when the night does not start clearly after the
+   *  median (a very irregular baseline), so the lateness is never ≤ 0. */
   typicalStartClock: string
-  /** Minutes after the typical (median) start. */
+  /** Minutes after typicalStartClock (always > 0). */
   lateByMin: number
   total: number
   /** Median total of the reference nights, hours. */
@@ -72,6 +74,8 @@ export interface IncompleteNight {
 }
 
 const DAY_MS = 86_400_000
+/** Below this, "later than your usual (median) start" is not worth saying. */
+const MIN_REPORTED_LATE_MIN = 15
 
 function shiftDay(date: string, days: number): string {
   return new Date(Date.parse(`${date}T00:00:00Z`) + days * DAY_MS).toISOString().slice(0, 10)
@@ -159,11 +163,14 @@ export function findIncompleteNights(
     if (start - earlyStart < R.lateByMin || shortByMin <= R.shortByMin) return
     flagged.add(night.date)
     if (night.date < from) return
+    // With a spread-out baseline the median can sit AFTER a flagged start
+    // ("−30 min later than your usual 00:45"); say it against the early side.
+    const refStart = start - typicalStart >= MIN_REPORTED_LATE_MIN ? typicalStart : earlyStart
     out.push({
       date: night.date,
       startClock: clockFromNoonMinutes(start),
-      typicalStartClock: clockFromNoonMinutes(typicalStart),
-      lateByMin: Math.round(start - typicalStart),
+      typicalStartClock: clockFromNoonMinutes(refStart),
+      lateByMin: Math.round(start - refStart),
       total: night.total,
       usualTotal,
     })

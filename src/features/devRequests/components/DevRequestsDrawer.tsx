@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useLocation } from 'react-router-dom'
-import { Plus, ChevronRight, Trash2, ArrowUpDown, Zap } from 'lucide-react'
+import { Plus, ChevronRight, Trash2, ArrowUpDown, Zap, Sparkles, Check } from 'lucide-react'
 import { useUIStore } from '../../../app/store'
 import {
   useDevRequests, useUpdateDevRequest, useDeleteDevRequest, useBulkDeleteDevRequests, useReorderDevRequests,
@@ -8,6 +8,7 @@ import {
 import { DEV_REQUEST_STATUS_CYCLE } from '../api/devRequestsApi'
 import { DevRequestCard } from './DevRequestCard'
 import { DevRequestForm } from './DevRequestForm'
+import { ClaudePromptModal } from './ClaudePromptModal'
 import { SideDrawer } from '../../../shared/modals/SideDrawer'
 import { useEntityModal } from '../../../shared/modals'
 import { Button, Skeleton, cx } from '../../../shared/ui'
@@ -42,6 +43,19 @@ export function DevRequestsDrawer() {
   const [draggingId, setDraggingId] = useState<string | null>(null)
   // Completed items collapse out of the way by default — expand on demand.
   const [showDone, setShowDone] = useState(false)
+  // Pick requests → build one prompt for Claude.
+  const [selecting, setSelecting] = useState(false)
+  const [picked, setPicked] = useState<Set<string>>(new Set())
+  const [promptOpen, setPromptOpen] = useState(false)
+
+  function togglePicked(id: string) {
+    setPicked(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }
+  function stopSelecting() { setSelecting(false); setPicked(new Set()) }
 
   function toggleCategoryFilter(c: DevRequestCategory) {
     setCategoryFilters(prev => {
@@ -95,7 +109,30 @@ export function DevRequestsDrawer() {
     reorder.mutate(ids)
   }
 
-  const renderRow = (request: DevRequest, draggable: boolean) => editingId === request.id
+  const renderRow = (request: DevRequest, draggable: boolean) => selecting
+    ? (
+      <button
+        type="button"
+        onClick={() => togglePicked(request.id)}
+        aria-pressed={picked.has(request.id)}
+        className={cx(
+          'flex min-h-[44px] w-full items-start gap-2.5 rounded-row border px-3 py-2.5 text-left transition-colors',
+          picked.has(request.id) ? 'border-accent-500/40 bg-accent-50' : 'border-line bg-surface [@media(hover:hover)]:hover:border-line-strong',
+        )}
+      >
+        <span className={cx(
+          'mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border',
+          picked.has(request.id) ? 'border-accent-500 bg-accent-500 text-on-accent' : 'border-line-strong bg-surface',
+        )}>
+          {picked.has(request.id) && <Check className="h-3.5 w-3.5" aria-hidden />}
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-body font-medium text-fg">{request.title}</span>
+          <span className="block text-meta text-fg-muted">{request.category} · {request.priority}{request.page && request.page !== 'other' ? ` · ${request.page}` : ''}</span>
+        </span>
+      </button>
+    )
+    : editingId === request.id
     ? <DevRequestForm request={request} onDone={() => setEditingId(null)} />
     : (
       <DevRequestCard
@@ -155,9 +192,23 @@ export function DevRequestsDrawer() {
       onClose={close}
       title="Requests & ideas"
       headerActions={
-        <Button variant="ghost" size="sm" icon={<Plus />} onClick={() => setShowNewForm(v => !v)} aria-expanded={showNewForm} className="text-accent-600">
-          New
-        </Button>
+        <>
+          <Button
+            variant="ghost"
+            size="sm"
+            icon={<Sparkles />}
+            onClick={() => (selecting ? stopSelecting() : setSelecting(true))}
+            aria-pressed={selecting}
+            title="Pick requests and build a prompt for Claude"
+          >
+            {selecting ? 'Cancel' : 'Prompt'}
+          </Button>
+          {!selecting && (
+            <Button variant="ghost" size="sm" icon={<Plus />} onClick={() => setShowNewForm(v => !v)} aria-expanded={showNewForm} className="text-accent-600">
+              New
+            </Button>
+          )}
+        </>
       }
       headerExtra={filters}
       widthClassName="w-[28rem]"
@@ -216,6 +267,27 @@ export function DevRequestsDrawer() {
           )}
         </div>
       </div>
+      {selecting && (
+        <div className="flex items-center justify-between gap-2 border-t border-line bg-surface px-4 py-2.5 pb-[calc(0.625rem+env(safe-area-inset-bottom))] sm:px-5">
+          <span className="text-meta text-fg-muted">
+            {picked.size === 0 ? 'Tap requests to pick them' : `${picked.size} picked`}
+          </span>
+          <div className="flex gap-1.5">
+            {sorted.length > 0 && (
+              <Button variant="ghost" size="sm" onClick={() => setPicked(new Set(sorted.map(r => r.id)))}>All open</Button>
+            )}
+            <Button size="sm" icon={<Sparkles />} disabled={picked.size === 0} onClick={() => setPromptOpen(true)}>
+              Build prompt
+            </Button>
+          </div>
+        </div>
+      )}
+      {promptOpen && (
+        <ClaudePromptModal
+          requests={requests.filter(r => picked.has(r.id))}
+          onClose={() => setPromptOpen(false)}
+        />
+      )}
     </SideDrawer>
   )
 }

@@ -132,7 +132,7 @@ export function DayTargetsEditor({ date = todayStr(), onDone }: { date?: string;
       <div className="flex flex-col gap-1.5 border-t border-line pt-3">
         <p className="section-label">Coach</p>
         {coach.weightKg == null ? (
-          <p className="text-meta text-fg-muted">Sync or add a bodyweight (Training → Body) to get protein and calorie suggestions.</p>
+          <p className="text-meta text-fg-muted">Sync or add a bodyweight (weigh in on your scale, or Training → Log → Body) to get protein and calorie suggestions.</p>
         ) : (
           <>
             {coach.proteinForGoal != null && coach.proteinForGoal !== draft.protein ? (

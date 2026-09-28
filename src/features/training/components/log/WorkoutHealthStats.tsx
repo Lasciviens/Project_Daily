@@ -3,7 +3,7 @@ import { HeartPulse, Watch } from 'lucide-react'
 import { Skeleton, useChartColors } from '../../../../shared/ui'
 import { InfoBubble } from '../../../../shared/components/InfoBubble'
 import { BarLineChart } from '../../../../shared/components/charts/BarLineChart'
-import { localDayOf } from '../../../../shared/utils/dateUtils'
+import { formatLocalDate, localDayOf } from '../../../../shared/utils/dateUtils'
 import { formatDurationSeconds } from '../../../../shared/utils/formatDuration'
 import { useHealthWorkout, useHealthWorkoutSummaries } from '../../../health/hooks/useHealthExport'
 import { energyKcal, heartRateRecoveryDrop, heartRateSeries, type RawWorkout } from '../../../health/workoutRaw'
@@ -18,7 +18,11 @@ const round = (v: number | null | undefined) => (typeof v === 'number' && Number
  *  payload, fetched only for the matched workout. */
 export function WorkoutHealthStats({ startTime, endTime }: { startTime: string; endTime: string }) {
   const c = useChartColors()
-  const fromDay = localDayOf(startTime) ?? ''
+  // A watch workout started a little before a session that began just after
+  // midnight sits on the previous local day — look 30 minutes back so it is
+  // still fetched (the query filters by start_time).
+  const startMs = new Date(startTime).getTime()
+  const fromDay = (Number.isFinite(startMs) ? formatLocalDate(new Date(startMs - 30 * 60_000)) : null) ?? ''
   const toDay = localDayOf(endTime) ?? fromDay
   const summaries = useHealthWorkoutSummaries(fromDay, toDay < fromDay ? fromDay : toDay)
   // keepPreviousData would show another day's workouts for a moment.

@@ -154,6 +154,10 @@ export function WorkedMuscles() {
   }
 
   const hasData = Object.keys(ctx.perSlug).length > 0
+  // A custom range is a past window, not "the last N days".
+  const windowLabel = period === 'custom' && customValid
+    ? `${format(new Date(`${customFrom}T00:00:00`), 'd MMM')} – ${format(new Date(`${customTo}T00:00:00`), 'd MMM')}`
+    : `in the last ${windowDays} days`
 
   return (
     <div className="@container w-full">
@@ -208,16 +212,14 @@ export function WorkedMuscles() {
             : isLoading ? 'Loading…'
             : workoutCount > 0
               ? <>
-                  <strong className="tabular-nums text-fg">{workoutCount}</strong> workout{workoutCount !== 1 ? 's' : ''} · last {windowDays} days ·
+                  <strong className="tabular-nums text-fg">{workoutCount}</strong> workout{workoutCount !== 1 ? 's' : ''} · {windowLabel} ·
                   {' '}<strong data-tone="success" className="tone-text tabular-nums">{buckets.inGrowth}</strong> in growth range · <span className="tabular-nums">{buckets.close} close</span> · <span data-tone="warn" className="tone-text tabular-nums">{buckets.needWork} need work</span>
                   <InfoBubble><p>Of the {buckets.inGrowth + buckets.close + buckets.needWork} major muscle groups: <strong>in growth range</strong> = at/above the growth-minimum (MEV); <strong>close</strong> = maintenance, just under; <strong>need work</strong> = below or untrained. Not everyone needs all in range at once. ({totalWorkingSets} working sets total.)</p></InfoBubble>
                 </>
-              : `No workouts logged in the last ${windowDays} days.`}
+              : `No workouts logged ${windowLabel}.`}
         </p>
 
-        {hasData && <MuscleBalanceCard balance={balance} windowLabel={period === 'custom' && customValid
-          ? `${format(new Date(`${customFrom}T00:00:00`), 'd MMM')} – ${format(new Date(`${customTo}T00:00:00`), 'd MMM')}`
-          : `in the last ${windowDays} days`} comparison={comparison} />}
+        {hasData && <MuscleBalanceCard balance={balance} windowLabel={windowLabel} comparison={comparison} />}
 
         {sideChips.length > 0 && (
           <div>

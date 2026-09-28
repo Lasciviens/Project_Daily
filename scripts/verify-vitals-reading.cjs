@@ -197,6 +197,10 @@ const row = (reading, key) => reading.rows.find(r => r.key === key)
   const r = day(s)
   check('§9.1 high SpO₂ / cool wrist are neutral', [row(r, 'spo2').signal, row(r, 'temp').signal], ['neutral', 'neutral'])
   check('§9.2 no warning for them', [r.verdict.tone, r.verdict.concerns], ['success', []])
+  // Their rows read "Above/Below your usual", so the headline must not claim
+  // everything is inside it.
+  check('§9.2b the headline names them instead of "everything is in range"', [r.verdict.label, r.verdict.headline],
+    ['Nothing worrying', 'Nothing worrying: blood oxygen in sleep and wrist temperature are outside your usual range, but in a harmless direction.'])
   ok('§9.3 but they are explained', r.verdict.notes.some(n => n.startsWith('Wrist temperature (sleep): Cooler')), JSON.stringify(r.verdict.notes))
 }
 

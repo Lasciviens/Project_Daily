@@ -3,6 +3,7 @@ import { supabase } from '../../../integrations/supabase/client'
 import { parseFunctionErrorBody } from '../../../shared/utils/functionError'
 import { resolveWishWindow, wishPeriodLabel } from '../../wishes/wishRules'
 import type { WishItem } from '../../wishes/types'
+import { workoutLocalDay } from '../../training/workoutDates'
 
 export interface Message {
   role:    'user' | 'assistant'
@@ -67,14 +68,14 @@ MUSCLE-VOLUME analysis — compute the SAME way the app's Muscles screen does, f
 - FREQUENCY nuance: even in-range, a big muscle trained only 1×/week → suggest splitting the SAME sets across 2 days (better per-set quality), not adding volume. Below-maintenance can also just mean maintained on low volume, not "losing muscle" — don't assert loss.
 
 NUTRITION / FOOD LOGGING — help the user track food with minimum friction (dietitian-distilled):
-- Library is per-100g; a logged diary row (food_log_entries) SNAPSHOTS macros at log time. "100g tavuk yedim" → find the item in recipe_ingredient_library, scale per-100g × grams/100, insert one food_log_entries row (today, time-appropriate meal_slot), confirm what you logged with the macros.
+- Library is per-100g; a logged diary row's macros (food_log_entries) are derived from its source (library item × grams, or recipe × servings) and recompute when the source changes; only custom rows keep typed macros. "100g tavuk yedim" → find the item in recipe_ingredient_library, scale per-100g × grams/100, insert one food_log_entries row (today, time-appropriate meal_slot), confirm what you logged with the macros.
 - Countable foods: "2 eggs" → resolve the item's portion preset (serving_grams) × 2. If a countable food has no preset, ask "how many grams?" ONCE — don't guess a gram weight.
 - SEARCH THE LIBRARY FIRST (recipe_ingredient_library), but it starts SMALL — curated Norwegian staples plus whatever the user has scanned/searched/logged — and GROWS ON-DEMAND. If a food isn't there yet, that's EXPECTED: tell the user to scan its barcode or use "Search branded / online" to add it, then log it. Do NOT fabricate macros for a branded item you can't find — estimate from a close generic row and say so. Library names may carry English + Norwegian ("Chicken breast (kyllingfilet)"), so match either token. Rows with a source_ref (barcode/foodId) are label-declared/official and trusted; source='user' rows are authoritative and must never be overwritten.
 - Genuinely not in the library → do NOT silently invent library macros. Offer to create the entry with clearly-labelled ESTIMATED per-100g values for confirmation, or log a one-off snapshot flagged as an estimate.
 - Meal slots are breakfast/lunch/dinner/snack/supplement — use the "supplement" slot for whey/creatine/vitamins.
 - "How much protein/calories left today?" → sum today's food_log_entries, subtract from the user's goal, answer the GAP ("88g logged, 62g to go"). This is the most-asked question — make it exact from logged data.
 - "Suggest a snack to hit my protein" → compute the gap, prefer foods ALREADY in their library ("a skyr (150g) ≈ 17g — closes most of it").
-- Targets from bodyweight (read latest weight_body_mass): protein 1.8 g/kg maintain/gain, 2.4 g/kg on a cut; calories from a maintain/cut/bulk framing. You CANNOT change the in-app goal/targets yourself (they live in the user's browser, not the DB) — recommend the number and tell them to tap Goals → Apply on the Daily Nutrition card, which already suggests the same from their weight.
+- Targets from bodyweight (read the latest smart-scale weight: health_metrics weight_body_mass, else body_composition_reports, else hevy_body_measurements): protein 1.8 g/kg maintain/gain, 2.4 g/kg on a cut; calories from a maintain/cut/bulk framing. You CANNOT change the in-app goal/targets yourself (they are saved in the app, where you have no write access) — recommend the number and tell them to tap Goals → Apply on the Daily Nutrition card, which already suggests the same from their weight.
 - GUARDRAILS: never present an estimate as exact (flag every non-snapshot number as an estimate); logged data beats guesses; no medical/clinical-diet advice; if a calorie target looks unsafe-low, say so plainly and refuse that number; no micronutrients beyond fiber; no "health score"/food grades; round to whole grams (no false precision).
 
 Workflow rules:
@@ -124,7 +125,10 @@ async function buildContext(): Promise<string> {
       .in('status', ['watching', 'paused']).limit(10),
     supabase.from('time_blocks').select('id, title, start_time, duration_minutes')
       .eq('date', today).order('start_time', { ascending: true }).limit(10),
+    // Newest by when it was PERFORMED (start_time; hevy_created_at only as a
+    // fallback), dated by the local day it started — the Training tab's rule.
     supabase.from('hevy_workouts').select('title, hevy_created_at, start_time, end_time')
+      .order('start_time', { ascending: false, nullsFirst: false })
       .order('hevy_created_at', { ascending: false }).limit(5),
     // A wish whose period has passed is still in the app (nothing is ever
     // hidden) — it is only left OUT OF THIS SUMMARY so the block stays short.
@@ -246,7 +250,7 @@ async function buildContext(): Promise<string> {
       const dur = (s.start_time && s.end_time)
         ? ` (${Math.round((new Date(s.end_time).getTime() - new Date(s.start_time).getTime()) / 60000)}min)`
         : ''
-      lines.push(`  ${s.hevy_created_at?.slice(0, 10)} — ${s.title}${dur}`)
+      lines.push(`  ${workoutLocalDay(s) || '?'} — ${s.title}${dur}`)
     }
   }
 

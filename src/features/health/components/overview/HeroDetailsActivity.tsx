@@ -99,9 +99,11 @@ export function ExerciseDetail({ hero }: Props) {
   const { exercise, anchor: A, ctx } = hero
   const c = useChartColors()
   const from = addDaysIso(A, -83)
-  const minutesWeeks = weeklyBuckets(exercise.series, { from, to: A, agg: 'total', minDays: 1 })
-  const strengthWeeks = weeklyBuckets(exercise.strengthDays.map(d => ({ date: d.date, value: 1 })), { from, to: A, agg: 'total', minDays: 0 })
-  const stats = buildTrendStats(exercise.series, { to: A, direction: 'up', weekAgg: 'total' })
+  // Complete weeks only: on a Sunday, today's unfinished day must not close its week.
+  const weeksTo = hero.isToday ? addDaysIso(A, -1) : A
+  const minutesWeeks = weeklyBuckets(exercise.series, { from, to: weeksTo, agg: 'total', minDays: 1 })
+  const strengthWeeks = weeklyBuckets(exercise.strengthDays.map(d => ({ date: d.date, value: 1 })), { from, to: weeksTo, agg: 'total', minDays: 0 })
+  const stats = buildTrendStats(exercise.series, { to: A, exclude: hero.isToday ? A : null, direction: 'up', weekAgg: 'total' })
   return (
     <div className="flex flex-col gap-5">
       <Summary>

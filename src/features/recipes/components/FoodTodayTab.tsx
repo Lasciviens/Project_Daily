@@ -281,7 +281,7 @@ export function FoodTodayTab({ date }: { date: string }) {
           <CardHeader title="Coach" variant="label" icon={<Brain />} className="hidden sm:flex" />
           <div className={cx(coachOpen ? 'mt-3 flex' : 'hidden', 'flex-col gap-2 text-body sm:mt-0 sm:flex')}>
             {coach.weightKg == null ? (
-              <p className="text-fg-muted">Add a bodyweight in <strong className="font-semibold text-fg-2">Training → Body</strong> (or sync Apple Health) to unlock protein and calorie coaching from your real weight trend.</p>
+              <p className="text-fg-muted">Add a bodyweight in <strong className="font-semibold text-fg-2">Training → Log → Body</strong> (or weigh in on your scale) to unlock protein and calorie coaching from your real weight trend.</p>
             ) : (
               <>
                 {coach.calorieAdvice ? (

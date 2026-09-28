@@ -376,5 +376,14 @@ console.log('\nrecovery')
   check('recency tones: recent green, within a week info, 8–14 days warn, older grey', R.RECENCY_TONE.today === 'success' && R.RECENCY_TONE.d1_2 === 'success' && R.RECENCY_TONE.d5_7 === 'info' && R.RECENCY_TONE.d8_14 === 'warn' && R.RECENCY_TONE.d15 === 'neutral' && R.RECENCY_TONE.never === 'neutral')
 }
 
+// ─── muscleVolumeModel.ts (Muscles body map copy) ───────────────────────────
+console.log('\nmuscleVolumeModel')
+{
+  const V = require('../src/features/training/components/muscles/muscleVolumeModel')
+  check('daysAgoText counts calendar days (yesterday is never "2 days ago")',
+    V.daysAgoText('2026-09-27', '2026-09-27') === 'today' && V.daysAgoText('2026-09-26', '2026-09-27') === 'yesterday' && V.daysAgoText('2026-09-20', '2026-09-27') === '7 days ago')
+  check('daysAgoText across the October DST change', V.daysAgoText('2026-10-24', '2026-10-26') === '2 days ago')
+}
+
 console.log(`\n${passed} passed, ${failed} failed`)
 process.exit(failed ? 1 : 0)

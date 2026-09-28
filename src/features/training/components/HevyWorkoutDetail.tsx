@@ -52,7 +52,7 @@ function SetTable({ sets, exerciseType }: { sets: HevySet[]; exerciseType?: stri
               <td className="px-1 py-1.5"><SetTypeBadge type={set.type} /></td>
               {/* Per exercise type: kg × reps, seconds, metres, assistance. */}
               <td className="px-1 py-1.5 text-fg-2">{formatSet(set, exerciseType)}</td>
-              {rated && <td className="px-1 py-1.5 font-medium text-fg-2">{set.rpe != null ? formatRpe(set.rpe) : '—'}</td>}
+              {rated && <td className="px-1 py-1.5 font-medium text-fg-2">{set.rpe != null && set.rpe > 0 ? formatRpe(set.rpe) : '—'}</td>}
             </tr>
           ))}
         </tbody>
@@ -71,7 +71,7 @@ export function HevyWorkoutDetail({ workoutId, onClose }: Props) {
       onClose={onClose}
       size="lg"
       title={workout?.title ?? (isLoading ? 'Loading…' : 'Workout')}
-      subtitle={workout ? [fmtDateTime(workout.start_time ?? workout.hevy_created_at), fmtDuration(workout.start_time ?? null, workout.end_time ?? null)].filter(Boolean).join(' · ') : undefined}
+      subtitle={workout ? [fmtDateTime(workout.start_time ?? workout.hevy_created_at), fmtDuration(workout.start_time ?? null, workout.end_time ?? null)].filter(s => s && s !== '—').join(' · ') : undefined}
     >
       {isLoading && (
         <div className="space-y-2">
