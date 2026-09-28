@@ -18,15 +18,20 @@ export function buildClaudePrompt(requests: readonly PromptRequest[]): string {
   const items = sorted.map((r, i) => {
     const meta = [r.category, `${r.priority} priority`, r.effort ? `effort ${r.effort}` : null, r.page && r.page !== 'other' ? `page ${r.page}` : null]
       .filter(Boolean).join(' · ')
-    const body = r.description?.trim() ? `\n   ${r.description.trim().replace(/\n+/g, '\n   ')}` : ''
+    // Indented under its item; paragraphs keep one blank line between them.
+    const text = r.description?.trim().replace(/\n\s*\n+/g, '\n\n') ?? ''
+    const body = text ? `\n${text.split('\n').map(l => (l.trim() ? `   ${l}` : '')).join('\n')}` : ''
     return `${i + 1}. **${r.title.trim()}** (${meta})${body}`
   })
   const n = requests.length
+  // Descriptions can carry blocks the composer captured on the page.
+  const captured = requests.some(r => /^\[(?:Picked|Page context)\b/m.test(r.description ?? ''))
   return [
     `Please work on ${n === 1 ? 'this request' : `these ${n} requests`} from my Lasci's Board backlog (Dev Requests), in the order listed:`,
     '',
-    ...items,
+    items.join('\n\n'),
     '',
+    ...(captured ? ['Lines under [Picked …] and [Page context] were captured from the live page: they quote the exact visible labels and headings, so search the code for those strings to find the spot.', ''] : []),
     'Read CLAUDE.md and docs/design/THEME.md first. For each item: find the root cause in the code, make the smallest correct change, verify it (build, typecheck, the relevant scripts/verify-*.cjs), then commit, push and open a draft PR. If an item is ambiguous or needs a decision from me, ask before building it. When you are done, tell me per item what changed and anything I need to do (migrations, edge-function deploys).',
   ].join('\n')
 }

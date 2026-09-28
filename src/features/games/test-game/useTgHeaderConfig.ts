@@ -3,7 +3,7 @@ import { TgProviderSync } from './components/TgProviderSync'
 import { TgQueueCleanup } from './components/TgQueueCleanup'
 import { useTestGameStore, type AdvancedTab, type ScrapeMode } from './testGameStore'
 import {
-  ALL_PLATFORMS, OTHER_PLATFORMS, STATUS_SECTIONS, STATUS_TABS, STATUS_TEXT,
+  ALL_PLATFORMS, STATUS_SECTIONS, STATUS_TABS, STATUS_TEXT,
   needsReviewReasons, platformCounts, platformInfo, platformLabels, queueInsights, scopeGames,
   type StatusCounts, type TgGame, type TgSection, type TgStatusFilter,
 } from './testGameModel'
@@ -11,7 +11,7 @@ import type { TgHeaderConfig } from './tgTypes'
 import { ADVANCED_TABS } from './advancedTabs'
 
 // The main column's heading — title, count line and tab pills — for whichever
-// section is open. The desktop TgHeader and the phone TgMobileHeader both
+// section is open. The tablet/desktop TgHeader and the phone TgMobileHeader both
 // render this one config, so the two layouts can never disagree.
 
 const SECTION_TITLE: Record<TgSection, string> = {
@@ -72,7 +72,7 @@ export function useTgHeaderConfig({ games, platform, statusCounts: sCounts, visi
         onClear: clear,
         // A provider shelf syncs from its provider — an explicit tap, never on load.
         action: platform === 'steam' || platform === 'playstation' ? createElement(TgProviderSync, { library: platform, games }) : undefined,
-        logo: platform === ALL_PLATFORMS ? 'all' : platform === OTHER_PLATFORMS ? 'others' : 'platform',
+        logo: platform === ALL_PLATFORMS ? 'all' : 'platform',
         platformKey: platform,
         tabs: STATUS_TABS.map(s => ({ key: s, label: STATUS_TEXT[s], count: sCounts[s] })),
         // Several statuses can be picked in the filter menus; every picked one

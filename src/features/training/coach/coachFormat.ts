@@ -49,6 +49,8 @@ export interface CoachData {
   missedSessions?: RoutineAttention[]
   /** Push:pull and quad:hamstring, planned vs done (plan/muscleBalance.ts — the numbers the app shows). */
   balance?: CoachBalance | null
+  /** The nutrition goal's phase (day_targets.goal) — cutting / maintaining / gaining. */
+  phase?: 'cut' | 'maintain' | 'gain' | null
 }
 
 const r1 = (n: number) => Math.round(n * 10) / 10
@@ -86,7 +88,8 @@ export function formatPtSnapshot(d: CoachData): string {
   const { profile, progress } = d
 
   const parts: string[] = []
-  if (profile?.goal) parts.push(`Hedef ${profile.goal}`)
+  if (profile?.goal) parts.push(`Odak ${profile.goal}`)
+  if (d.phase) parts.push(`Faz ${d.phase}`)
   if (profile?.experience_level) parts.push(`Seviye ${profile.experience_level}`)
   if (profile?.equipment_access) parts.push(`Ekipman ${profile.equipment_access}`)
   if (profile?.training_days_per_week) parts.push(`Haftada ${profile.training_days_per_week} gün`)
@@ -223,7 +226,8 @@ export function buildCoachJson(d: CoachData, windowDays: number): Record<string,
     period: `${from}..${d.today}`,
     about: 'program + progress are the app\'s own Progress-tab results (same engine): keep advice consistent with them; if you disagree, say why with numbers. "@ RPE 8/9/10" after sets = effort logged per working set in Hevy (reps in reserve ≈ 10 − RPE, self-reported; absent = not logged) — context only, never overrides progress.',
   }
-  if (profile) ctx.profile = { goal: profile.goal, level: profile.experience_level, days: profile.training_days_per_week, equip: profile.equipment_access, notes: profile.notes }
+  if (profile) ctx.profile = { focus: profile.goal, level: profile.experience_level, days: profile.training_days_per_week, equip: profile.equipment_access, notes: profile.notes }
+  if (d.phase) ctx.phase = d.phase
   if (d.limitations.length) {
     ctx.limitations = d.limitations.map(l => ({ pattern: limitationName(l.movement_pattern), severity: l.severity, note: l.note }))
   }
@@ -289,7 +293,7 @@ TONE: an experienced human coach — calm, professional, direct. Honest about pr
 FOLLOW-UP: if a PREVIOUS ASSESSMENT section is present, note briefly whether its main recommendation was applied ("Geçen sefer X önermiştim — uygulanmış/uygulanmamış") and move on. Accountability, not punishment.
 
 DATA SNAPSHOT (read-only, pre-aggregated; you have no tools):
-- PROFİL: athlete's goal / experience level / equipment access / training days per week — only the fields the user actually set. Followed by one "Kısıtlama: <hareket> (severity) — <note>" line per active limitation; "[= X]" names the standard movement pattern a free-text limitation is read as. Severity reading: (avoid) = this movement pattern is off the table entirely, no exceptions; (limit) = usable only at reduced load/volume; (monitor) = no restriction, just keep it in view. Absent entirely = no profile/limitations on file yet.
+- PROFİL: athlete's training focus ("Odak" strength|hypertrophy|general) / nutrition phase ("Faz" cut|maintain|gain — losing fat or gaining weight is the phase, not the focus) / experience level / equipment access / training days per week — only the fields the user actually set. Followed by one "Kısıtlama: <hareket> (severity) — <note>" line per active limitation; "[= X]" names the standard movement pattern a free-text limitation is read as. Severity reading: (avoid) = this movement pattern is off the table entirely, no exceptions; (limit) = usable only at reduced load/volume; (monitor) = no restriction, just keep it in view. Absent entirely = no profile/limitations on file yet.
 - PROGRAM: the routines the user marked as their CURRENT program (their real split — never assume another one) and sessions logged this calendar week (Monday → today) vs their target. "seçilmemiş" = no program picked yet: then there are no progress decisions; mention once that choosing the current program (Training → Coach → Profile) unlocks per-exercise advice.
 - "Missed:" lines under PROGRAM: a current-program routine not logged for more than 7 days, with the day it was due; "skipped: <reason>" = the user skipped that session on purpose and said why (respect it — no guilt, don't re-plan it); "replanned for <date>" = already planned again. Absent = nothing missed.
 - İLERLEME + "Karar:" lines: the app's own progress engine — the SAME per-exercise decisions the Progress tab shows. Format "Karar: Exercise: ACTION "Action title" · son: <latest sets> · sonraki: <next-session target> · kanıt <limited|moderate|strong>". ACTION values: READY_TO_INCREASE (add load as in "sonraki"), BUILD_AT_CURRENT_LOAD / HOLD_STEADY (same load, chase reps toward the target), CONFIRM_BEFORE_INCREASING / CONFIRM_AT_CURRENT_LOAD (repeat once to confirm), WATCH_FOR_PLATEAU / WATCH_FOR_REGRESSION (flag it), REVIEW_LOAD_REDUCTION (load went down — ask whether deliberate), LOG_COMPARABLE_SESSION (last session not comparable), INSUFFICIENT_DATA (too few sessions).

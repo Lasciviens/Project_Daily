@@ -1,5 +1,5 @@
 import {
-  Archive, ChartColumn, CircleCheckBig, Gamepad2, Heart, LibraryBig, Shapes, SlidersHorizontal, SquarePlay, Wand2,
+  Archive, ChartColumn, CircleCheckBig, Gamepad2, Heart, LibraryBig, SlidersHorizontal, SquarePlay, Wand2,
   type LucideIcon,
 } from 'lucide-react'
 import { platformInfo, type PlatformFamily } from '../testGameModel'
@@ -82,7 +82,6 @@ export function PlatformWordmark({ platformKey, className = '' }: { platformKey:
 const SECTION_ICONS: Record<TgHeaderLogo, LucideIcon> = {
   platform: Gamepad2,
   all: LibraryBig,
-  others: Shapes,
   queue: SquarePlay,
   wishlist: Heart,
   completed: CircleCheckBig,

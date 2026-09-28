@@ -35,7 +35,7 @@ function Body({ onClose }: { onClose: () => void }) {
 export function TgPsnRenewDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   useHistoryDismiss(open, onClose)
   return (
-    <Dialog open={open} onClose={onClose} className="tg-portal relative z-[70]">
+    <Dialog open={open} onClose={onClose} className="tg-portal relative z-modal">
       <DialogBackdrop transition className="fixed inset-0 bg-black/45 transition duration-200 data-[closed]:opacity-0" />
       <div className="fixed inset-0 flex items-end justify-center sm:items-center sm:p-4">
         <DialogPanel

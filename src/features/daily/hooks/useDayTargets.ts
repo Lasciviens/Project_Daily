@@ -2,28 +2,22 @@ import { useCallback } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
 import { qk, STALE } from '../../../shared/query'
-import { fetchDayTargets, upsertDayTargets, fetchDayTargetProfiles, DAY_TARGETS_DEFAULTS } from '../api/dayTargetsApi'
-import type { DayTargets, NutritionGoal, DayTargetProfiles } from '../api/dayTargetsApi'
+import { fetchDayTargets, upsertDayTargets, fetchDayTargetProfiles, DAY_TARGETS_PLACEHOLDER } from '../api/dayTargetsApi'
+import type { DayTargets, DayTargetsState, DayTargetsSaveResult, NutritionGoal, DayTargetProfiles } from '../api/dayTargetsApi'
 import { toast } from '../../../app/store'
 
 export type { DayTargets, NutritionGoal, DayTargetProfiles }
 
-// Daily nutrition goals — one ACTIVE DB row per user (migration 086,
-// day_targets), no longer localStorage-only. `placeholderData` (NOT
-// `initialData`) seeds the same DEFAULTS the old localStorage version
-// shipped so every consumer (NutritionCard, FoodTodayTab, WaterTracker,
-// useNutritionCoach) keeps rendering instantly on first paint — but,
-// unlike `initialData`, it does NOT mark the query as already-fetched-and-
-// fresh. REAL BUG this fixes: `initialData` stamps `dataUpdatedAt` as "now"
-// the instant the hook mounts, so combined with `staleTime: 5min` the query
-// read as fresh from the very first render and `fetchDayTargets` never
-// actually ran on a normal page load — every reload silently kept showing
-// the hardcoded defaults instead of the real saved goal, reading exactly
-// like "the DB save isn't working" even though every write DOES land (a
-// save's own `onSettled` invalidate was the only thing that ever forced a
-// real fetch, which is why editing a goal right after loading could look
-// like it worked while a page RELOAD reverted it). `placeholderData`
-// renders the same instant fallback without suppressing the mount-time fetch.
+// The goal — phase + start date, daily targets and body targets — one DB row
+// per user (day_targets, migrations 086 + 113). Every screen reads it here:
+// NutritionCard, FoodTodayTab, WaterTracker, useNutritionCoach, the goal
+// editor, Health's Goal progress and Overview.
+//
+// `placeholderData` (NOT `initialData`) renders the defaults instantly
+// WITHOUT marking the query fresh. REAL BUG this once fixed: `initialData`
+// stamps `dataUpdatedAt` as "now", so with a 5-minute staleTime the fetch
+// never ran on a normal load and every reload showed the defaults instead of
+// the saved goal — reading exactly like "saving doesn't work".
 const QK = qk.dayTargets.all
 const PROFILES_QK = qk.dayTargets.profiles
 
@@ -33,54 +27,62 @@ export function useDayTargets() {
     queryKey: QK,
     queryFn:  fetchDayTargets,
     staleTime: STALE.default,
-    placeholderData: DAY_TARGETS_DEFAULTS,
+    placeholderData: DAY_TARGETS_PLACEHOLDER,
   })
-  const targets = data ?? DAY_TARGETS_DEFAULTS
+  const state = data ?? DAY_TARGETS_PLACEHOLDER
+  const targets = state.targets
 
-  // `update` is the immediate-write path — used by the Coach's one-tap
-  // "Apply" suggestions (a single deliberate action, not a background
-  // autosave) and by the Goals editor's own explicit Save button. Optimistic
-  // so either still feels instant.
-  const mutation = useMutationWithFeedback<DayTargets, DayTargets, { previous?: DayTargets; previousProfiles?: DayTargetProfiles }>({
+  // `update` is the immediate-write path — the goal editor's Save and the
+  // Coach's one-tap "Apply" suggestions (a single deliberate action, not a
+  // background autosave). Optimistic so either still feels instant.
+  // `loaded` is the goal the edit started from — before migration 113 an
+  // edit that leaves the body goals alone doesn't write (or warn about) them.
+  const mutation = useMutationWithFeedback<DayTargetsSaveResult, { next: DayTargets; loaded: DayTargetsState }, { previous?: DayTargetsState; previousProfiles?: DayTargetProfiles }>({
     action:         'update_day_targets',
-    successMessage: 'Saved',
-    mutationFn:     (next: DayTargets) => upsertDayTargets(next),
-    onMutate: async (next) => {
+    successMessage: 'Goal saved',
+    mutationFn:     ({ next, loaded }) => upsertDayTargets(next, loaded),
+    onMutate: async ({ next }) => {
       await qc.cancelQueries({ queryKey: QK })
       await qc.cancelQueries({ queryKey: PROFILES_QK })
-      const previous = qc.getQueryData<DayTargets>(QK)
+      const previous = qc.getQueryData<DayTargetsState>(QK)
       const previousProfiles = qc.getQueryData<DayTargetProfiles>(PROFILES_QK)
-      qc.setQueryData(QK, next)
-      // Also reflect THIS goal's just-saved numbers into the profiles cache
-      // immediately — without this, switching goals right after Save (before
-      // the background refetch below completes) could still read the
-      // pre-save profile and look like the save didn't actually happen.
+      qc.setQueryData<DayTargetsState>(QK, { targets: next, fromDevice: previous?.fromDevice ?? false })
+      // THIS phase's just-saved numbers go into the profiles cache at once, so
+      // switching phases right after Save can't read the pre-save profile.
       qc.setQueryData<DayTargetProfiles>(PROFILES_QK, (old) => ({
         ...(old ?? {}),
         [next.goal]: { calories: next.calories, protein: next.protein, water: next.water },
       }))
       return { previous, previousProfiles }
     },
+    onSuccess: (r) => {
+      qc.setQueryData<DayTargetsState>(QK, r.state)
+      if (r.bodyGoalsSavedTo === 'profile') {
+        toast.warning('Body targets were saved to your training profile — migration 113 isn’t applied yet, so the goal isn’t in one place.')
+      } else if (r.bodyGoalsSavedTo === 'device') {
+        toast.warning('Body targets were saved on this device only — migrations 111 and 113 aren’t applied yet.')
+      }
+    },
     onError: (_err, _next, ctx) => {
       if (ctx?.previous) qc.setQueryData(QK, ctx.previous)
       if (ctx?.previousProfiles) qc.setQueryData(PROFILES_QK, ctx.previousProfiles)
     },
-    invalidates: [QK, PROFILES_QK],
+    invalidates: [QK, PROFILES_QK, qk.athlete.profile],
   })
 
   // Until the real row has loaded, `targets` are the placeholder defaults —
-  // spreading them into a write would overwrite the saved goals.
+  // spreading them into a write would overwrite the saved goal.
   const update = useCallback((patch: Partial<DayTargets>) => {
-    if (isPlaceholderData) { toast.warning('Your goals are still loading — try again in a moment'); return }
-    mutation.mutate({ ...targets, ...patch })
-  }, [targets, mutation, isPlaceholderData])
+    if (isPlaceholderData) { toast.warning('Your goal is still loading — try again in a moment'); return }
+    mutation.mutate({ next: { ...targets, ...patch }, loaded: state })
+  }, [targets, state, mutation, isPlaceholderData])
 
-  return { targets, update, isSaving: mutation.isPending, isLoaded: !isPlaceholderData }
+  return { targets, update, fromDevice: state.fromDevice, isSaving: mutation.isPending, isLoaded: !isPlaceholderData }
 }
 
-// One saved {calories, protein, water} set per goal (migration 088) — the
-// Goals editor's own per-goal memory: switching Cut → Maintain → Cut recalls
-// what was last saved for Cut instead of carrying over Maintain's numbers.
+// One saved {calories, protein, water} set per phase (migration 088) — the
+// editor's per-phase memory: switching Cut → Maintain → Cut recalls what was
+// last saved for Cut instead of carrying over Maintain's numbers.
 export function useDayTargetProfiles() {
   const { data } = useQuery({
     queryKey: PROFILES_QK,

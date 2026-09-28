@@ -85,6 +85,9 @@
     --z-sheet:   60;
     --z-popover: 70;
     --z-modal:   100;
+    /* The request composer: above popups (modal + stacked levels) so it stays
+       usable while one is open, below confirms and toasts. */
+    --z-float:   150;
     --z-confirm: 200;
     --z-toast:   300;
   }

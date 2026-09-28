@@ -1,14 +1,14 @@
 import type { ReactNode } from 'react'
 import type { TgGame } from './testGameModel'
 
-// Shared contracts between the Test-Game shell and its components.
+// Shared contracts between the Games page and its components.
 
 export interface TgHeaderTab { key: string; label: string; count?: number }
 
 /** Which glyph the header shows left of the title. `platform` renders the
  *  platform's wordmark (the design's "PS2" logo); the rest are section icons. */
 export type TgHeaderLogo =
-  | 'platform' | 'all' | 'others' | 'queue' | 'wishlist' | 'completed' | 'backlog' | 'analytics' | 'scrape' | 'advanced'
+  | 'platform' | 'all' | 'queue' | 'wishlist' | 'completed' | 'backlog' | 'analytics' | 'scrape' | 'advanced'
 
 export interface TgHeaderConfig {
   title: string

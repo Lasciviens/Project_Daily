@@ -51,7 +51,7 @@ export function SleepDetail({ hero, onViewDay }: Props) {
       </div>
 
       <div className="border-t border-line pt-4">
-        <MetricExplainer metric="sleep_duration" ctx={ctx} value={sleep.avg7} cls={sleep.cls} />
+        <MetricExplainer metric="sleep_duration" ctx={ctx} value={sleep.avg7} cls={sleep.cls} aim={hero.aims.sleep} />
       </div>
     </div>
   )
@@ -71,7 +71,7 @@ export function StepsDetail({ hero, onViewDay }: Props) {
         ariaLabel="Steps per day, last 90 days" band={{ y1: 7000, y2: 8000, label: '7,000–8,000', labelSide: 'right' }} onViewDay={onViewDay} />
       <TrendStatsBlock stats={stats} format={v => num(v)} formatDelta={v => signed(v)} direction="up" rateUnit="steps/day per week" />
       <div className="border-t border-line pt-4">
-        <MetricExplainer metric="step_count" ctx={ctx} value={steps.avg7} cls={steps.cls} />
+        <MetricExplainer metric="step_count" ctx={ctx} value={steps.avg7} cls={steps.cls} aim={hero.aims.steps} />
       </div>
     </div>
   )
@@ -128,7 +128,7 @@ export function ExerciseDetail({ hero }: Props) {
         understate how close you are.
       </p>
       <div className="border-t border-line pt-4">
-        <MetricExplainer metric="weekly_exercise_minutes" ctx={ctx} value={exercise.minutes7} cls={exercise.cls} />
+        <MetricExplainer metric="weekly_exercise_minutes" ctx={ctx} value={exercise.minutes7} cls={exercise.cls} aim={hero.aims.exercise} />
       </div>
       {exercise.strengthCls && (
         <div className="border-t border-line pt-4">

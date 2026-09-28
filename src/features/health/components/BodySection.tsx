@@ -11,6 +11,7 @@ import { num, signed } from './overview/heroFormat'
 import { TrendCard } from './overview/TrendCard'
 import type { HealthRange } from './sectionTypes'
 import { SectionCard } from './sectionKit'
+import { HevyMeasurementsCard } from './body/HevyMeasurementsCard'
 
 // The smart scale only (owner: "Body: only show the scale… Apple Health gets
 // data from the scale anyway"). Weigh-ins are sparse, so the charts keep a
@@ -19,7 +20,8 @@ import { SectionCard } from './sectionKit'
 // the hero's weight tile uses, and the headline is the newest scale reading in
 // it. The scale report's other fields fold into "More from the scale". The
 // trend card below reads the same scale-only readings, so the window never
-// mixes in a hand-typed Hevy weight the chart above leaves out.
+// mixes in a hand-typed Hevy weight the chart above leaves out. Under them,
+// the Hevy log ("Logged in Hevy") keeps its own card and is never merged in.
 export function BodySection({ range }: { range: HealthRange }) {
   const { anchor, setAnchor, setPeriod } = range
   const from = shiftDateStr(anchor, -89)
@@ -50,6 +52,7 @@ export function BodySection({ range }: { range: HealthRange }) {
         <TrendCard title="Weight trend" stats={buildTrendStats(weighIns, { to: anchor, direction: null, sparse: true })}
           format={v => `${num(v, 1)} kg`} formatDelta={v => `${signed(v, 1)} kg`} direction={null} rateUnit="kg/week" />
       )}
+      <HevyMeasurementsCard anchor={anchor} />
     </>
   )
 }

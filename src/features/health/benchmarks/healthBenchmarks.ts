@@ -30,6 +30,11 @@ export type {
   BenchmarkContext, BenchmarkInfo, BenchmarkMetric, BenchmarkTone, Classification, HealthProfile, NextStep, Sex, Source,
 } from './types'
 export { BENCHMARKS } from './benchmarkInfo'
+export {
+  BETTER_LABEL, TILE_PLAIN, aimFor, aimFromClassification, betterFor, exerciseAim, healthyWeightRange, hrvAim,
+  restingHrAim, sleepAim, stepsAim, vitalsAim, weightAim,
+} from './aimGuidance'
+export type { Aim, AimStatus, Better, Phase } from './aimGuidance'
 export { computeBmi, computeWaistToHeight } from './classifyBody'
 export { moderateEquivalentMinutes } from './classifyActivity'
 export { normalizeSpo2 } from './classifyCardio'

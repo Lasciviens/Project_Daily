@@ -57,6 +57,33 @@ export function spanLabel(from: string, to: string, today: string): string {
   return `${dayMonth(from, false)} – ${dayMonth(to, false)}${yr}`
 }
 
+// ── The page's date bar (numeric) ───────────────────────────────────────────
+// The owner's own format for the bar under the Health tabs (it overrides the
+// general en-GB "27 Sep" style there only): day.month with zero padding —
+// "21.09 – 27.09" — and the year on BOTH ends when either end is outside the
+// current year ("30.12.2025 – 05.01.2026"). A single day is "27.09".
+
+function pad2(n: number): string { return String(n).padStart(2, '0') }
+
+/** "27.09", or "27.09.2025" with the year. */
+export function numericDay(date: string, withYear: boolean): string {
+  const { y, m, d } = parts(date)
+  return `${pad2(d)}.${pad2(m)}${withYear ? `.${y}` : ''}`
+}
+
+/** A window [from, to] for the date bar: "21.09 – 27.09", "30.12.2025 –
+ *  05.01.2026", or "27.09" for one day ("27.09.2025" in another year). */
+export function numericSpanLabel(from: string, to: string, today: string): string {
+  const thisYear = parts(today).y
+  const withYear = parts(from).y !== thisYear || parts(to).y !== thisYear
+  if (from === to) return numericDay(to, withYear)
+  return `${numericDay(from, withYear)} – ${numericDay(to, withYear)}`
+}
+
+/** The longest label numericSpanLabel can produce ("30.12.2025 – 05.01.2026"),
+ *  for sizing the bar's fixed-width date box. */
+export const NUMERIC_SPAN_MAX_CHARS = 23
+
 // ── Weekly bars ──────────────────────────────────────────────────────────────
 
 /**

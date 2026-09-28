@@ -5,7 +5,10 @@ import type { MovementPattern } from './muscleMap'
 // scoped to a MovementPattern (defined in muscleMap.ts, not here — that file
 // is also where a pattern derives to affected muscle slugs via
 // PATTERN_AFFECTED_SLUGS).
-export type TrainingGoal = 'strength' | 'hypertrophy' | 'fat_loss' | 'general'
+/** The training focus. A fat-loss or muscle-gain phase is the nutrition
+ *  goal's phase (day_targets.goal), not this; the DB CHECK still allows the
+ *  retired 'fat_loss', which reads as 'general' (athleteProfileApi). */
+export type TrainingGoal = 'strength' | 'hypertrophy' | 'general'
 export type ExperienceLevel = 'novice' | 'intermediate' | 'advanced'
 export type Equipment = 'home' | 'gym' | 'both'
 export type LimitationSeverity = 'avoid' | 'limit' | 'monitor'

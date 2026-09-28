@@ -36,8 +36,9 @@ export function TgDetailSheet({ game, variant, actions, onClose }: Props) {
   // Android Back / iOS edge-swipe closes the sheet instead of leaving the page.
   useHistoryDismiss(open, onClose)
 
-  // z-40: above the page's own chrome, and at the same level as the shell's
-  // edit modal (GameDetailModal, z-40) which, opened later, stacks on top.
+  // The sheet layer: above the app's phone header and tab bar (chrome) and
+  // its drawers, below the modal layer the classic dialogs (edit form, Add
+  // game) and the lightbox open on, so those stack on top of it.
   // The name goes on the root — in Headless UI v2 that is the role="dialog"
   // element (a label on DialogPanel names nothing).
   return (
@@ -45,7 +46,7 @@ export function TgDetailSheet({ game, variant, actions, onClose }: Props) {
       open={open}
       onClose={onClose}
       aria-label={shown ? `${shown.title} details` : 'Game details'}
-      className="tg-portal relative z-40"
+      className="tg-portal relative z-sheet"
     >
       <DialogBackdrop
         transition

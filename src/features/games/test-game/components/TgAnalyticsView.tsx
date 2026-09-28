@@ -5,7 +5,7 @@ import { formatDay } from '../testGameModel'
 import type { TgaLibrary, TgaTile } from './tgAnalyticsModel'
 import { useLibraryCounts, useTgAnalyticsBase } from './tgAnalyticsData'
 import { useToday } from './tgAnalyticsClock'
-import { useTgBreakpoint } from '../useTgBreakpoint'
+import { useBreakpoint } from '../../../../shared/hooks/useBreakpoint'
 import { TGA_RANGE } from './tgAnalyticsFormat'
 import { TgAnalyticsControls } from './TgAnalyticsControls'
 import { TgAnalyticsTabs } from './TgAnalyticsTabs'
@@ -36,7 +36,7 @@ export function TgAnalyticsView({ lib }: { lib: TestGameLibrary }) {
   const tab = useTestGameStore(s => s.analyticsTab)
   const setTab = useTestGameStore(s => s.setAnalyticsTab)
   const panelId = useId()
-  const phone = useTgBreakpoint() === 'mobile'
+  const phone = useBreakpoint() === 'phone'
 
   const [drill, setDrill] = useState<TgaTile | null>(null)
 

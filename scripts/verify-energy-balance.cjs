@@ -8,7 +8,8 @@
  */
 require('sucrase/register')
 const EB = require('../src/features/health/goal/energyBalance.ts')
-const { buildEnergyReport: buildCutReport, linearFit, movingAverage7, proteinBand, addDays, neededDays, ENERGY_DENSITY_KCAL_PER_KG: D } = EB
+const GC = require('../src/features/health/goal/goalCopy.ts')
+const { buildEnergyReport: buildCutReport, linearFit, movingAverage7, proteinBand, addDays, neededDays, halfLoggedCutoff, isCompleteAppleDay, ENERGY_DENSITY_KCAL_PER_KG: D } = EB
 
 let passed = 0
 const failures = []
@@ -161,6 +162,84 @@ check('§8.3 high', proteinBand(2.5), 'high')
   near('§8.4 g/kg from the trend weight', r.protein.gPerKg, 144 / (80 - 0.05 * 28), 0.01)
   near('§8.5 g/kg FFM from the scale lean mass', r.protein.gPerKgFfm, 144 / 63.7, 0.01)
   check('§8.6 no lean mass → no FFM figure', buildCutReport(scenario({ kgPerDay: -0.05 })).protein.gPerKgFfm, null)
+}
+
+// §9 Paired days: burn − eaten only on days that have BOTH a full diary and a
+//    complete Apple day (the owner's "726 kcal/day" question). Averaging each
+//    source over its own days let an unlogged day add burn with no food.
+{
+  // Apple every day; food on the even days only. The unlogged odd days burn
+  // 600 more, so the old two-average method read an 800 deficit, not 500.
+  const s = scenario({ kgPerDay: -500 / D, intake: 2000, tdee: 2500 })
+  s.energy = s.energy.map((e, i) => (i % 2 ? { ...e, activeKcal: e.activeKcal + 600 } : e))
+  s.intake = s.intake.filter((_, i) => i % 2 === 0)
+  const r = buildCutReport(s)
+  check('§9.1 paired deficit uses the logged days only', r.loggedDeficit, 500)
+  check('§9.2 paired burn / intake', [r.paired.meanBurn, r.paired.meanIntake], [2500, 2000])
+  check('§9.3 14 days used, 14 left out for no food', [r.paired.days, r.paired.excluded], [14, { noFood: 14, halfLogged: 0, appleGap: 0 }])
+  check('§9.4 Apple\'s own average still covers all 28 days', r.apple.meanTdee, 2800)
+  near('§9.5 expected change from the paired deficit', r.expectedChangeKg, (-500 * 28) / D, 0.01)
+  check('§9.6 one row per day of the window', r.daysDetail.length, 28)
+  check('§9.7 a skipped day is marked no_food', r.daysDetail[1].use, 'no_food')
+}
+{
+  // Every reason once: day 0 no food, day 1 half-logged, day 2 an Apple gap.
+  const s = scenario({ kgPerDay: -0.05 })
+  s.intake = s.intake.filter(x => x.date !== FROM).map(x => (x.date === addDays(FROM, 1) ? { ...x, kcal: 500 } : x))
+  s.energy = s.energy.map(e => (e.date === addDays(FROM, 2) ? { ...e, activeKcal: 0, basalKcal: 900 } : e))
+  const r = buildCutReport(s)
+  check('§9.8 left out: 1 no food, 1 half-logged, 1 Apple gap', r.paired.excluded, { noFood: 1, halfLogged: 1, appleGap: 1 })
+  check('§9.9 25 days used', r.paired.days, 25)
+  check('§9.10 uses per day', r.daysDetail.slice(0, 4).map(d => d.use), ['no_food', 'half_logged', 'apple_gap', 'used'])
+  check('§9.11 burn of an Apple-gap day is kept for display', r.daysDetail[2].burnKcal, 900)
+  // Neither food nor Apple counts once, as no food.
+  const t = scenario({ kgPerDay: -0.05 })
+  t.intake = t.intake.slice(1)
+  t.energy = t.energy.slice(1)
+  const u = buildCutReport(t)
+  check('§9.12 a day with neither counts once, as no food', [u.paired.excluded.noFood, u.paired.excluded.appleGap, u.daysDetail[0].burnKcal], [1, 0, null])
+}
+{
+  // Relative half-logged bar: 60 % of the calorie target, nearest 50, ≥ 800.
+  check('§9.13 cut-off follows the target', [halfLoggedCutoff(2500), halfLoggedCutoff(1950), halfLoggedCutoff(1000), halfLoggedCutoff(null), halfLoggedCutoff(0)], [1500, 1150, 800, 800, 800])
+  const s = scenario({ kgPerDay: -0.05, intake: 2400 })
+  s.targetKcal = 2500
+  s.intake = s.intake.map((x, i) => (i < 3 ? { ...x, kcal: 1400 } : x))
+  const r = buildCutReport(s)
+  check('§9.14 a 1,400 day against a 2,500 target is half-logged', [r.intake.partialDays, r.paired.excluded.halfLogged, r.paired.halfLoggedBelow], [3, 3, 1500])
+  check('§9.15 …and is left out of the intake average', r.intake.meanKcal, 2400)
+  const noTarget = buildCutReport({ ...s, targetKcal: null })
+  check('§9.16 without a target the old 800 bar applies', noTarget.intake.partialDays, 0)
+}
+{
+  // The numbers add up: gap × days ÷ density = expected − actual change.
+  const r = buildCutReport(scenario({ kgPerDay: -300 / D, n: 28 }))
+  near('§9.17 gap identity', (r.tdeeGap * r.days) / D, r.expectedChangeKg - r.weight.changeKg, 0.01)
+  near('§9.18 the scale\'s own deficit = −slope × 7,700', r.scaleDeficit, 300, 1)
+  const g = buildCutReport(scenario({ goal: 'gain', intake: 3000, tdee: 2700, kgPerDay: 300 / D }))
+  near('§9.19 a gaining trend is a negative scale deficit', g.scaleDeficit, -300, 1)
+  check('§9.20 no weigh-ins → no scale deficit', buildCutReport({ ...scenario({ kgPerDay: -0.1 }), weights: [] }).scaleDeficit, null)
+}
+{
+  // Food and Apple each cover enough days, but not the SAME days.
+  const s = scenario({ kgPerDay: -0.05 })
+  s.intake = s.intake.slice(0, 17)
+  s.energy = s.energy.map((e, i) => (i < 11 ? { ...e, activeKcal: 0, basalKcal: 900 } : e))
+  const r = buildCutReport(s)
+  check('§9.21 no verdict when the overlap is too small', [r.verdict, r.paired.days], [null, 6])
+  check('§9.22 …and it says so', r.missing.some(m => /only 6 of 28 days/.test(m)), true)
+  check('§9.24 left-out line lists every reason', GC.leftOutLine({ ...r.paired, excluded: { noFood: 2, halfLogged: 1, appleGap: 1 }, halfLoggedBelow: 1150 }),
+    'Left out: 2 days with no food logged · 1 half-logged day (under 1,150 kcal logged) · 1 day with incomplete Apple energy (watch off or not synced).')
+  check('§9.25 left-out line when nothing was left out', /No day was left out/.test(GC.leftOutLine({ ...r.paired, excluded: { noFood: 0, halfLogged: 0, appleGap: 0 } })), true)
+  check('§9.26 deficit vs surplus word', [GC.balanceWord(300), GC.balanceWord(0), GC.balanceWord(-1)], ['deficit', 'deficit', 'surplus'])
+  // The last-7-days comparison (what Activity's and Food's 7-day views cover).
+  const s7 = scenario({ kgPerDay: -0.05, intake: 2000, tdee: 2600 })
+  s7.intake = s7.intake.map((x, i) => (i >= 21 ? { ...x, kcal: 2200 } : x))
+  const r7 = buildCutReport(s7)
+  check('§9.27 last 7 days of a 28-day window', [r7.recent7.days, r7.recent7.meanBurn, r7.recent7.meanIntake, r7.recent7.deficit], [7, 2600, 2200, 400])
+  check('§9.28 …while the whole window reads its own deficit', r7.loggedDeficit, Math.round(2600 - (21 * 2000 + 7 * 2200) / 28))
+  check('§9.29 a 7-day window has no separate last-7 line', buildCutReport(scenario({ n: 7, kgPerDay: -0.05 })).recent7, null)
+  check('§9.23 complete-day rule', [isCompleteAppleDay({ activeKcal: 700, basalKcal: 1900 }), isCompleteAppleDay({ activeKcal: 1600, basalKcal: null }), isCompleteAppleDay({ activeKcal: 0, basalKcal: 1500 })], [true, false, false])
 }
 
 // §10 Helpers

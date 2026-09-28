@@ -60,7 +60,7 @@ export function TgLightbox({ images, index, onClose, onIndex }: Props) {
 
   return (
     // The name goes on the root: in Headless UI v2 that is the role="dialog" element.
-    <Dialog open={open} onClose={onClose} aria-label="Screenshot viewer" className="tg-portal relative z-[90]">
+    <Dialog open={open} onClose={onClose} aria-label="Screenshot viewer" className="tg-portal relative z-modal">
       <DialogBackdrop transition className="fixed inset-0 bg-black/90 transition duration-200 data-[closed]:opacity-0" />
       <div className={`fixed inset-0 flex items-center justify-center ${FRAME}`}>
         <DialogPanel

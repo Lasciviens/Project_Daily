@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { FilterX, Inbox, LibraryBig, ListVideo, Plus, RotateCw, SearchX, TriangleAlert } from 'lucide-react'
 import { useTestGameStore } from '../testGameStore'
-import { useTgBreakpoint } from '../useTgBreakpoint'
+import { useBreakpoint } from '../../../../shared/hooks/useBreakpoint'
 import { STATUS_TEXT, type TgSection } from '../testGameModel'
 import type { PlayStatus } from '../../types'
 import { useTgAddGame } from './tgAddGame'
@@ -98,12 +98,12 @@ export function TgEmptyState({ kind }: { kind: 'library' | 'filtered' | 'queue' 
 
 /** Shaped like the view that will replace it, so the page never flashes. */
 export function TgLoadingShelf() {
-  const bp = useTgBreakpoint()
+  const bp = useBreakpoint()
   const section = useTestGameStore(s => s.section)
   const view = useTestGameStore(s => s.view)
 
   let skeleton: ReactNode
-  if (bp === 'mobile') skeleton = <TgStatesMobileSkeleton />
+  if (bp === 'phone') skeleton = <TgStatesMobileSkeleton />
   else if (section === 'queue') skeleton = <TgStatesListSkeleton variant="queue" />
   else if (view === 'list') skeleton = <TgStatesListSkeleton variant="list" />
   else if (view === 'grid') skeleton = <TgStatesGridSkeleton />
@@ -144,7 +144,7 @@ export function TgChunkFailed() {
  */
 export function TgChunkFailedDialog() {
   return (
-    <div role="alert" className="tg-portal fixed inset-x-4 bottom-[max(1.5rem,env(safe-area-inset-bottom))] z-[90] mx-auto flex max-w-md flex-wrap items-center gap-3 rounded-2xl border border-[var(--tg-border-strong)] bg-[var(--tg-panel)] p-4 text-[var(--tg-text)] shadow-[shadow:var(--tg-menu-shadow)]">
+    <div role="alert" className="tg-portal fixed inset-x-4 bottom-[calc(var(--app-tabbar-h)+env(safe-area-inset-bottom)+8px)] z-toast md:bottom-[max(1.5rem,env(safe-area-inset-bottom))] mx-auto flex max-w-md flex-wrap items-center gap-3 rounded-2xl border border-[var(--tg-border-strong)] bg-[var(--tg-panel)] p-4 text-[var(--tg-text)] shadow-[shadow:var(--tg-menu-shadow)]">
       <TriangleAlert aria-hidden size={20} strokeWidth={2} className="shrink-0 text-[var(--tg-red)]" />
       <p className="min-w-0 flex-1 text-[13px] leading-snug">This window couldn't be loaded. Check your connection, then reload to get the latest version.</p>
       <button type="button" className="tg-btn tg-btn-primary" onClick={() => window.location.reload()}>Reload</button>

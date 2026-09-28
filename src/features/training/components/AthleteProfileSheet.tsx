@@ -15,10 +15,12 @@ import { Link } from 'react-router-dom'
 // already carries its own success toast ("Profile saved"), so each tap gets
 // the mandatory feedback without this component wiring any of its own.
 
-const GOAL_OPTIONS: { value: TrainingGoal; label: string }[] = [
+// The training focus only. Losing fat or gaining weight is the PHASE of the
+// goal (Cut / Maintain / Gain, edited in "Your goal" from Food, Daily or
+// Health), so 'fat_loss' is gone here — an old 'fat_loss' row reads as General.
+const FOCUS_OPTIONS: { value: TrainingGoal; label: string }[] = [
   { value: 'strength',    label: 'Strength' },
   { value: 'hypertrophy', label: 'Hypertrophy' },
-  { value: 'fat_loss',    label: 'Fat loss' },
   { value: 'general',     label: 'General' },
 ]
 
@@ -34,11 +36,12 @@ const EQUIPMENT_OPTIONS: { value: Equipment; label: string }[] = [
   { value: 'both', label: 'Both' },
 ]
 
-function Field({ label, children }: { label: string; children: ReactNode }) {
+function Field({ label, hint, children }: { label: string; hint?: ReactNode; children: ReactNode }) {
   return (
     <div>
       <p className="field-label">{label}</p>
       {children}
+      {hint && <p className="mt-1 text-meta text-fg-muted">{hint}</p>}
     </div>
   )
 }
@@ -78,11 +81,11 @@ export function AthleteProfileSheet({ open, onClose }: Props) {
   return (
     <ModalShell open={open} onClose={onClose} title="Training profile" size="md">
       <div className="flex flex-col gap-5">
-        <Field label="Goal">
+        <Field label="Training focus" hint={<>What your training aims at. Cutting or gaining is the phase of your goal — set it in Your goal, from <Link to="/recipes" onClick={onClose} className="font-semibold text-accent-600">Food</Link> or <Link to="/health?section=goal" onClick={onClose} className="font-semibold text-accent-600">Health → Goal progress</Link>.</>}>
           <SegmentedControl<TrainingGoal>
             value={profile?.goal ?? ('' as TrainingGoal)}
             onChange={goal => upsert.mutate({ goal })}
-            options={GOAL_OPTIONS}
+            options={FOCUS_OPTIONS}
             size="sm"
             fullWidth
           />

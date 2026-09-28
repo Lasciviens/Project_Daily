@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import { isToday } from 'date-fns'
-import { Check, ChevronDown, Copy, MoreHorizontal, Pencil, Plus, Target, UtensilsCrossed, X } from 'lucide-react'
+import { Check, ChevronDown, Copy, MoreHorizontal, Pencil, Plus, UtensilsCrossed, X } from 'lucide-react'
 import { Button, cx } from '../../../../shared/ui'
 import { useEatPlannedEntry } from '../../../recipes/hooks/useMealPlan'
 import { Cell, CellHeader } from './cellKit'
 import { WaterTracker } from './WaterTracker'
+import { GoalSummary } from '../GoalSummary'
 import { useDayNutrition } from '../../hooks/useDayNutrition'
 import { useDayTargets } from '../../hooks/useDayTargets'
 import { useEntityModal } from '../../../../shared/modals/useEntityModal'
@@ -218,9 +219,8 @@ export function NutritionCard({ date }: { date: string }) {
   const coach = useNutritionCoach(date, targets)
   const copyYesterday = useCopyYesterdayMeals()
   const modal = useEntityModal()
-  // The goals editor (draft → Save, per-goal profiles, coach suggestions) is
-  // the shared `day-targets` popup — one copy instead of one per card.
-  const openGoals = () => modal.open({ kind: 'day-targets', date })
+  // The goal (phase, daily targets, body targets) is ONE row edited in the
+  // shared `day-targets` popup — GoalSummary shows it and opens it.
 
   // Empty day → compact one-liner IN PLACE (the cell never moves or grows
   // unless the user expands it or logs something).
@@ -294,7 +294,8 @@ export function NutritionCard({ date }: { date: string }) {
             ))}
           </ul>
 
-          <div className="-mb-1 flex items-center justify-end gap-1 border-t border-line pt-1.5">
+          <div className="-mb-1 flex flex-wrap items-center justify-end gap-x-2 border-t border-line pt-1.5">
+            <GoalSummary date={date} className="min-w-0 basis-full sm:basis-0 sm:flex-1" />
             {filledSlots.size < SLOTS.length && (
               <button
                 type="button"
@@ -304,14 +305,12 @@ export function NutritionCard({ date }: { date: string }) {
                 title="Copy yesterday's meals into empty slots"
               ><Copy className="h-3.5 w-3.5" aria-hidden /> Yesterday</button>
             )}
-            <button type="button" onClick={openGoals} className={cx(footBtn, 'flex items-center gap-1')}>
-              <Target className="h-3.5 w-3.5" aria-hidden /> Goals
-            </button>
           </div>
         </>
       ) : (
         <div className="flex flex-col gap-1">
-          <p className="text-body tabular-nums text-fg-muted">Nothing logged yet · goal {targets.calories} kcal / {targets.protein}g protein</p>
+          <p className="text-body text-fg-muted">Nothing logged yet</p>
+          <GoalSummary date={date} />
           <div className="flex items-center gap-1">
             <button type="button" onClick={() => setExpanded(true)} className={cx(footBtn, '-ml-2.5 flex items-center gap-1')} aria-expanded={false}>
               Meal slots <ChevronDown className="h-3.5 w-3.5" aria-hidden />
@@ -323,9 +322,6 @@ export function NutritionCard({ date }: { date: string }) {
               className={cx(footBtn, 'flex items-center gap-1')}
               title="Log the same meals as yesterday"
             ><Copy className="h-3.5 w-3.5" aria-hidden /> Same as yesterday</button>
-            <button type="button" onClick={openGoals} className={cx(footBtn, 'flex items-center gap-1')}>
-              <Target className="h-3.5 w-3.5" aria-hidden /> Goals
-            </button>
           </div>
         </div>
       )}

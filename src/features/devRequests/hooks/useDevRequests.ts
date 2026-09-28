@@ -4,6 +4,7 @@ import {
   fetchDevRequests, createDevRequest, updateDevRequest, deleteDevRequest, deleteDevRequests, reorderDevRequests,
 } from '../api/devRequestsApi'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
+import { applyReorder } from '../devRequestRules'
 import type { DevRequest, CreateDevRequestInput } from '../types'
 
 const QK = qk.devRequests.all
@@ -48,22 +49,21 @@ export function useBulkDeleteDevRequests() {
 }
 
 // Optimistic — reordering should feel instant; the mutation persists in the
-// background and reconciles on settle.
+// background and reconciles on settle. The changes cover the WHOLE list
+// (planReorder): the old version replaced the cache with only the dragged,
+// filtered rows, so done and filtered-out requests vanished until the refetch.
 export function useReorderDevRequests() {
   const qc = useQueryClient()
   return useMutationWithFeedback({
     action:     'reorder_dev_requests',
-    mutationFn: (ids: string[]) => reorderDevRequests(ids),
-    onMutate:   async (ids: string[]) => {
+    mutationFn: (changes: { id: string; sort_order: number }[]) => reorderDevRequests(changes),
+    onMutate:   async (changes: { id: string; sort_order: number }[]) => {
       await qc.cancelQueries({ queryKey: QK })
       const previous = qc.getQueryData<DevRequest[]>(QK)
-      if (previous) {
-        const byId = new Map(previous.map(r => [r.id, r]))
-        qc.setQueryData(QK, ids.map((id, i) => ({ ...byId.get(id)!, sort_order: i })))
-      }
+      if (previous) qc.setQueryData(QK, applyReorder(previous, changes))
       return { previous }
     },
-    onError: (_err, _ids, mutateResult) => {
+    onError: (_err, _changes, mutateResult) => {
       const ctx = mutateResult as { previous?: DevRequest[] } | undefined
       if (ctx?.previous) qc.setQueryData(QK, ctx.previous)
     },

@@ -4,9 +4,8 @@ import { PageContainer, PageHeader } from '../../../shared/ui'
 import { ErrorBoundary } from '../../../shared/components/ErrorBoundary'
 import { useHealthProfile } from '../../training/hooks/useAthleteProfile'
 import { GoalReportCard } from '../goal/GoalReportCard'
-import { DateNav } from '../components/DateNav'
-import { PeriodToggle } from '../components/PeriodToggle'
-import { labelForAnchor, stepAnchor, useRangeWindow } from '../components/dateNav'
+import { HealthRangeBar } from '../components/HealthRangeBar'
+import { useRangeWindow } from '../components/dateNav'
 import { ActivityRings } from '../components/ActivityRings'
 import { SleepSection } from '../components/SleepSection'
 import { StepsSection } from '../components/StepsSection'
@@ -37,9 +36,9 @@ import { hm, num, signed, signedHm } from '../components/overview/heroFormat'
 // (docs/training-health/research/research-rank.json): Overview holds the six
 // tier-1 tiles and the insights; every group then has its own window, and
 // tier-3 metrics appear as compact cards only when they have data (tier 4
-// left out). No composite health score (house rule). ONE day + period control
-// in the header, kept in the URL (?date=&period=), drives every window; the
-// open window is ?section=. Only the open window mounts, so a window's
+// left out). No composite health score (house rule). ONE day + period bar
+// directly under the tabs, kept in the URL (?date=&period=), drives every
+// window except Goal progress (its own window); the open window is ?section=. Only the open window mounts, so a window's
 // queries run when you open it. (The alerts strip from the plan needs Health
 // Auto Export's notification arrays ingested first — not built.)
 
@@ -62,27 +61,19 @@ export function HealthPage() {
 
   return (
     <PageContainer width="full">
-      <PageHeader title="Health" actions={<ProfileChip today={today} />} className="max-w-[76rem]">
-        {/* Period first, then the dates: the toggle's segments are equal-width
-            and the date label has a fixed width, so neither moves when the
-            period or the date changes. */}
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-          <div className="scroll-x max-w-full">
-            <PeriodToggle value={period} onChange={setPeriod} dayLabel={anchor === today ? 'Today' : 'Day'} />
-          </div>
-          <DateNav
-            label={labelForAnchor(period, anchor, today)}
-            onPrev={() => setAnchor(a => stepAnchor(period, a, -1))}
-            onNext={() => setAnchor(a => stepAnchor(period, a, 1))}
-            canGoNext={anchor < today}
-            value={anchor}
-            onPick={d => setAnchor(d > today ? today : d)}
-          />
-        </div>
+      {/* The section tabs, then the ONE period + date bar directly under them
+          (hidden on Goal progress, which reads its own 14/28/56-day window and
+          shows those dates itself). */}
+      <PageHeader title="Health" actions={<ProfileChip today={today} />} className="max-w-[76rem] !mb-3">
+        <HealthSectionTabs value={section} onChange={setSection} />
       </PageHeader>
 
       <div className="flex flex-col gap-4">
-        <div className="max-w-[76rem]"><HealthSectionTabs value={section} onChange={setSection} /></div>
+        {section !== 'goal' && (
+          <div className="max-w-[76rem]">
+            <HealthRangeBar period={period} setPeriod={setPeriod} anchor={anchor} setAnchor={setAnchor} today={today} />
+          </div>
+        )}
 
         {/* Keyed by window so switching away resets one that crashed. */}
         <Guard key={section} name={label}>
@@ -153,7 +144,7 @@ export function HealthPage() {
           )}
 
           {section === 'workouts' && (
-            <SectionPanel id="workouts" note="Apple Watch workouts; tap one for its heart-rate curve, route and splits.">
+            <SectionPanel id="workouts" note="Apple Watch workouts; tap one for its heart-rate zones, route and the Hevy session logged with it.">
               <Guard name="Workouts"><HealthWorkoutsList win={win} /></Guard>
             </SectionPanel>
           )}

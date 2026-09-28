@@ -74,3 +74,21 @@ export function heartRateRecoveryDrop(raw: RawWorkout): number | null {
   const vals = raw.heartRateRecovery.map((p: RawWorkout) => rawQty(p?.Avg)).filter((v: number | null): v is number => v != null)
   return vals.length > 1 ? Math.round(vals[0] - vals[vals.length - 1]) : null
 }
+
+export interface HeartRateSample {
+  /** Epoch ms of the sample's start. */
+  t: number
+  bpm: number
+}
+
+/** The heart-rate curve with real timestamps (for time-in-zone), oldest first. */
+export function heartRateTimeline(raw: RawWorkout): HeartRateSample[] {
+  if (!Array.isArray(raw.heartRateData)) return []
+  const out: HeartRateSample[] = []
+  for (const p of raw.heartRateData as RawWorkout[]) {
+    const bpm = rawQty(p?.Avg)
+    const d = parseRawDate(p?.date)
+    if (bpm != null && bpm > 0 && d) out.push({ t: d.getTime(), bpm })
+  }
+  return out.sort((a, b) => a.t - b.t)
+}

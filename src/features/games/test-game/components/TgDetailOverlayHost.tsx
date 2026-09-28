@@ -1,4 +1,4 @@
-import { useCallback, type KeyboardEvent, type MouseEvent, type ReactNode, type RefObject } from 'react'
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode, type RefObject } from 'react'
 import { useTestGameStore } from '../testGameStore'
 import type { TgGame } from '../testGameModel'
 import type { TgActions } from '../tgTypes'
@@ -23,6 +23,22 @@ interface Props {
    * usable width beside it; narrower, the overlay covers as on the shelf.
    */
   reserve?: boolean
+}
+
+/** The narrowest content row that still leaves the queue a usable column beside the overlay. */
+const RESERVE_MIN_ROW = 768
+
+/** Whether `ref`'s element is at least `min` px wide, following resizes. */
+function useWideEnough(ref: RefObject<HTMLElement | null>, min: number): boolean {
+  const [wide, setWide] = useState(false)
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const ro = new ResizeObserver(() => setWide(el.clientWidth >= min))
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [ref, min])
+  return wide
 }
 
 /**
@@ -59,17 +75,21 @@ export function TgDetailOverlayHost({ game, actions, header, scroll, children, p
   }
   const collapse = useCallback(() => setCollapsed(true), [setCollapsed])
   const expand = useCallback(() => setCollapsed(false), [setCollapsed])
-  const reserving = reserve && game != null && !collapsed
+  // Measured, not a viewport query: the row's width depends on the app
+  // sidebar and this page's own panel, each of which can be folded. (A
+  // container query would make this row the containing block and stacking
+  // context for everything inside it.)
+  const rowRef = useRef<HTMLDivElement>(null)
+  const roomy = useWideEnough(rowRef, RESERVE_MIN_ROW)
+  const reserving = reserve && roomy && game != null && !collapsed
 
   return (
-    // Right and bottom insets: a landscape phone's notch, an iPad's home
-    // indicator (the sidebar and the top bar pad for theirs). Clips the
-    // overlay's slide. --tg-ov is the expanded overlay's width (TgDetailOverlay).
-    <div className="relative flex min-h-0 flex-1 gap-5 overflow-hidden pb-[max(1.25rem,env(safe-area-inset-bottom))] pl-5 pr-[max(1.25rem,env(safe-area-inset-right))] [--tg-ov:380px] xl:pl-6 xl:pr-[max(1.5rem,env(safe-area-inset-right))] xl:[--tg-ov:400px] 2xl:[--tg-ov:420px]">
-      {/* 992px = a 768px column beside the 224px sidebar. A viewport query, not a
-          container query: container-type would make this row the containing
-          block and stacking context for everything inside it. */}
-      <main className={`flex min-w-0 flex-1 flex-col ${reserving ? 'min-[992px]:pr-[calc(var(--tg-ov)-0.5rem)]' : ''}`}>
+    // Right and bottom insets: an iPad's home indicator, a notch (the app's
+    // top bar pads for the status bar). Clips the overlay's slide. --tg-ov is
+    // the expanded overlay's width (TgDetailOverlay).
+    <div ref={rowRef} className="relative flex min-h-0 flex-1 gap-5 overflow-hidden pb-[max(1rem,env(safe-area-inset-bottom))] pl-5 pr-[max(1.25rem,env(safe-area-inset-right))] [--tg-ov:380px] xl:pl-6 xl:pr-[max(1.5rem,env(safe-area-inset-right))] xl:[--tg-ov:400px] 2xl:[--tg-ov:420px]">
+      {/* A plain column: the app shell's <main> is the page's landmark. */}
+      <div className={`flex min-w-0 flex-1 flex-col ${reserving ? 'pr-[calc(var(--tg-ov)-0.5rem)]' : ''}`}>
         {header}
         <div
           className={`min-h-0 flex-1 ${scroll ? 'tg-scroll-y' : ''}`}
@@ -79,7 +99,7 @@ export function TgDetailOverlayHost({ game, actions, header, scroll, children, p
         >
           {children}
         </div>
-      </main>
+      </div>
       <TgDetailOverlay
         game={game} collapsed={collapsed} actions={actions}
         onCollapse={collapse} onExpand={expand} onClose={closeDetail} panelRef={panelRef}

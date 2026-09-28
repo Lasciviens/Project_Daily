@@ -1,0 +1,54 @@
+import type { ReactNode } from 'react'
+import { ChevronDown, Dumbbell } from 'lucide-react'
+import { cx } from '../../../../shared/ui'
+import { ExerciseThumb } from '../../exerciseMedia'
+
+/** A 32px GIF slot that keeps every row aligned: a quiet placeholder under
+ *  the thumbnail (which renders nothing when no GIF matches). The GIF is its
+ *  own button (tap to enlarge), never nested inside the row's toggle. */
+function ThumbSlot({ title, templateId }: { title: string; templateId: string }) {
+  return (
+    <span className="relative grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-surface-2 text-fg-faint">
+      <Dumbbell aria-hidden className="h-4 w-4" />
+      <span className="absolute inset-0"><ExerciseThumb title={title} templateId={templateId} size={32} /></span>
+    </span>
+  )
+}
+
+/**
+ * One exercise in the session popup: collapsed to a single line (GIF · name ·
+ * a one-line summary), tap to expand its detail below. Rows expand
+ * independently, so two lifts can be compared side by side.
+ */
+export function ExerciseRow({ title, templateId, meta, trailing, open, onToggle, children }: {
+  title: string
+  templateId: string
+  meta: ReactNode
+  /** Right of the text, before the chevron (a status pill). */
+  trailing?: ReactNode
+  open: boolean
+  onToggle: () => void
+  children: ReactNode
+}) {
+  return (
+    <li className="border-t border-line first:border-t-0">
+      <div className="flex items-center gap-2.5">
+        <ThumbSlot title={title} templateId={templateId} />
+        <button
+          type="button"
+          aria-expanded={open}
+          onClick={onToggle}
+          className="flex min-h-[52px] min-w-0 flex-1 items-center gap-2 py-1.5 text-left"
+        >
+          <span className="min-w-0 flex-1">
+            <span className="line-clamp-2 break-words text-body font-medium leading-snug text-fg">{title}</span>
+            <span className="block truncate text-meta tabular-nums text-fg-muted">{meta}</span>
+          </span>
+          {trailing}
+          <ChevronDown aria-hidden className={cx('h-4 w-4 shrink-0 text-fg-faint transition-transform duration-150', open && 'rotate-180')} />
+        </button>
+      </div>
+      {open && <div className="pb-3 pl-[42px]">{children}</div>}
+    </li>
+  )
+}

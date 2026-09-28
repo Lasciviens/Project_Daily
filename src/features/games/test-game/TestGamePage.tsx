@@ -2,14 +2,17 @@ import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, use
 import './testGame.css'
 import { useTestGameLibrary } from './useTestGameLibrary'
 import { useTestGameStore } from './testGameStore'
-import { useTgBreakpoint } from './useTgBreakpoint'
+import { useBreakpoint } from '../../../shared/hooks/useBreakpoint'
+import { useUIStore } from '../../../app/store'
 import { useTgHeaderConfig } from './useTgHeaderConfig'
 import { useTgLibraryView } from './useTgLibraryView'
+import { useTgUrlSync } from './useTgUrlSync'
 import type { TgGame } from './testGameModel'
 import type { TgActions } from './tgTypes'
 import { pickRandomId } from './components/tgRandom'
-import { TgSidebar } from './components/TgSidebar'
-import { TgTopBar } from './components/TgTopBar'
+import { TgNavPanel } from './components/TgNavPanel'
+import { TgToolbar } from './components/TgToolbar'
+import { TgLibraryMenu } from './components/TgLibraryMenu'
 import { TgHeader } from './components/TgHeader'
 import { TgShelf } from './components/TgShelf'
 import { TgGridView } from './components/TgGridView'
@@ -17,7 +20,7 @@ import { TgListView } from './components/TgListView'
 import { TgDetailOverlayHost, type TgPickIntent } from './components/TgDetailOverlayHost'
 import { TgDetailOverlayBackdrop } from './components/TgDetailOverlayBackdrop'
 import { TgModals } from './components/TgModals'
-import { TgMobileHeader, TgBottomTabs, TgMobileGrid } from './components/TgMobile'
+import { TgMobileHeader, TgMobileGrid } from './components/TgMobile'
 import { TgQueueView } from './components/TgQueueView'
 import { ErrorBoundary } from '../../../shared/components/ErrorBoundary'
 import { recalledDepth, rememberDepth } from './components/tgScrollMemory'
@@ -26,10 +29,13 @@ import { TgChunkFailed, TgEmptyState, TgLoadingShelf, TgErrorState, TgProviderEr
 import { TgAnalyticsSkeleton } from './components/TgAnalyticsStates'
 import { lazyWithReload } from '../../../shared/utils/lazyWithReload'
 
-// /#/test-game — the Games page rebuilt on the "Game Library" design. It lives
-// outside the app shell (its own sidebar, top bar and phone tab bar, as the
-// design draws them) and reads and writes the SAME tables through the SAME
-// hooks as /#/games. What the design has no place for yet lives under Advanced.
+// /#/games — the Games page, on the "Game Library" design, inside the app
+// shell like every other page (flagged `fullHeight` + `collapseSidebar` in the
+// nav registry). It keeps its own look (testGame.css, scoped to `.tg-root`),
+// its own navigation panel on the left (sections + every platform grouped by
+// maker) and its own toolbar; on phones the app's header and tab bar frame it
+// and the sections sit in a pill row. The section and platform are in the
+// address (useTgUrlSync).
 
 // Analytics, Scrape and Advanced load on first visit: most sessions only
 // browse the shelves, and together they are the bulk of the page's code.
@@ -40,8 +46,11 @@ const TgAdvancedView = lazyWithReload('games-advanced', () => import('./componen
 const SECTION_FALLBACK = <div aria-busy="true" className="h-full" />
 
 export function TestGamePage() {
+  useTgUrlSync()
   const lib = useTestGameLibrary()
-  const bp = useTgBreakpoint()
+  const bp = useBreakpoint()
+  const phone = bp === 'phone'
+  const reportScroll = useUIStore(s => s.reportScroll)
   const section = useTestGameStore(s => s.section)
   const pickedGenres = useTestGameStore(s => s.genres)
   const pickedStudios = useTestGameStore(s => s.studios)
@@ -67,7 +76,7 @@ export function TestGamePage() {
   const panelRef = useRef<HTMLElement>(null)
 
   const {
-    counts, shown, others, effectivePlatform, effectiveScopePlatform, isGameSection, genres, studios, statusCounts: sCounts, shelfTotal, visible, ranks, navCounts,
+    groups, effectivePlatform, effectiveScopePlatform, isGameSection, genres, studios, statusCounts: sCounts, shelfTotal, visible, ranks, navCounts,
   } = useTgLibraryView(lib)
 
   // Looked up in the whole library, not the current view: a status changed in
@@ -97,7 +106,7 @@ export function TestGamePage() {
   useEffect(() => {
     const was = prevBp.current
     prevBp.current = bp
-    if (was === 'mobile' && bp !== 'mobile' && detailOpen && !collapsed) {
+    if (was === 'phone' && bp !== 'phone' && detailOpen && !collapsed) {
       requestAnimationFrame(() => panelRef.current?.focus({ preventScroll: true }))
     }
   }, [bp, detailOpen, collapsed])
@@ -117,7 +126,7 @@ export function TestGamePage() {
   const onSelect = useCallback((id: string) => {
     const pick = pickRef.current
     pickRef.current = null
-    if (bp === 'mobile') openDetail(id)
+    if (phone) openDetail(id)
     else if (pick === 'arrow') {
       select(id)
       // The expanded overlay covers the right-hand columns. Walking onto a
@@ -135,7 +144,7 @@ export function TestGamePage() {
     else if (activateGame(id) === 'opened' && pick === 'keyboard') {
       requestAnimationFrame(() => panelRef.current?.focus({ preventScroll: true }))
     }
-  }, [bp, openDetail, select, activateGame, setDetailCollapsed])
+  }, [phone, openDetail, select, activateGame, setDetailCollapsed])
   // "Pick a random game" draws from exactly what the page shows (section,
   // platform, status, genre and search all applied) and opens it.
   const pickRandom = useCallback(() => {
@@ -169,7 +178,7 @@ export function TestGamePage() {
   }, [section, listKey])
 
   // ── Content ───────────────────────────────────────────────────────────────
-  function renderGames(layout: 'desktop' | 'mobile') {
+  function renderGames(layout: 'desktop' | 'phone') {
     if (lib.isLoading) return <TgLoadingShelf />
     if (lib.isError) return <TgErrorState error={lib.error} onRetry={lib.refetch} />
     // Steam / PlayStation may still bring this view's games (a saved Steam
@@ -181,13 +190,13 @@ export function TestGamePage() {
     if (section === 'queue') {
       return <TgQueueView games={visible} ranks={ranks} selectedId={selId} onSelect={onSelect} fill={layout === 'desktop'} onPlan={actions.planSession} />
     }
-    if (layout === 'mobile') return <TgMobileGrid key={listKey} listKey={listKey} games={visible} onSelect={onSelect} />
+    if (layout === 'phone') return <TgMobileGrid key={listKey} listKey={listKey} games={visible} onSelect={onSelect} />
     if (view === 'grid') return <TgGridView games={visible} selectedId={selId} onSelect={onSelect} resetKey={listKey} />
     if (view === 'list') return <TgListView games={visible} selectedId={selId} onSelect={onSelect} resetKey={listKey} />
     return <TgShelf games={visible} selectedId={selId} onSelect={onSelect} resetKey={listKey} />
   }
 
-  function renderSection(layout: 'desktop' | 'mobile') {
+  function renderSection(layout: 'desktop' | 'phone') {
     if (section === 'analytics') {
       return (
         <ErrorBoundary label="Analytics" action="games_analytics">
@@ -213,32 +222,39 @@ export function TestGamePage() {
   return (
     <TgRanksContext.Provider value={ranks}>
     <TgGamesContext.Provider value={lib.games}>
-      {bp === 'mobile' ? (
-        <div key="phone" className="tg-root h-[100dvh] flex flex-col overflow-hidden">
-          <TgMobileHeader platforms={counts} genres={genres} studios={studios} statusCounts={sCounts} header={header} onRandom={onRandom} resultCount={visible.length} libraryGames={lib.games} />
+      {phone ? (
+        <div key="phone" className="tg-root flex h-full flex-col overflow-hidden">
+          <TgMobileHeader
+            groups={groups} counts={navCounts} genres={genres} studios={studios} statusCounts={sCounts} header={header}
+            onRandom={onRandom} resultCount={visible.length} libraryGames={lib.games}
+          />
           <div
             ref={phoneScroll}
-            onScroll={e => rememberDepth(listKey, e.currentTarget.scrollTop)}
-            className="flex-1 min-h-0 tg-scroll-y pl-[max(1.25rem,env(safe-area-inset-left))] pr-[max(1.25rem,env(safe-area-inset-right))] pt-2 pb-[calc(76px+env(safe-area-inset-bottom))]"
+            // The app header hides while this list scrolls down, as it does over <main>.
+            onScroll={e => { rememberDepth(listKey, e.currentTarget.scrollTop); reportScroll(e.currentTarget.scrollTop) }}
+            className="tg-scroll-y min-h-0 flex-1 pb-4 pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] pt-2"
           >
             {providerError}
-            {renderSection('mobile')}
+            {renderSection('phone')}
           </div>
-          <TgBottomTabs counts={navCounts} />
         </div>
       ) : (
-        <div key="wide" className="tg-root h-[100dvh] flex overflow-hidden">
-          <TgSidebar counts={navCounts} platforms={shown} others={others} />
-          <div className="relative flex-1 min-w-0 flex flex-col">
+        <div key="wide" className="tg-root flex h-full overflow-hidden">
+          <TgNavPanel counts={navCounts} groups={groups} />
+          <div className="relative flex min-w-0 flex-1 flex-col">
             <TgDetailOverlayBackdrop selected={selected} games={lib.games} />
-            <TgTopBar
-              genres={genres} studios={studios} statusCounts={sCounts} showStatus={section === 'library'}
-              showViews={isGameSection && section !== 'queue'} showSort={isGameSection && section !== 'queue'}
-              showSearch={isGameSection} showGenre={isGameSection} onRandom={onRandom} randomCount={visible.length}
-            />
+            {/* Analytics, Scrape and Advanced have nothing to search or sort:
+                no toolbar row, and the ⋯ menu sits at the end of their heading. */}
+            {isGameSection ? (
+              <TgToolbar
+                genres={genres} studios={studios} statusCounts={sCounts} showStatus={section === 'library'}
+                showViews={section !== 'queue'} showSort={section !== 'queue'}
+                onRandom={onRandom} randomCount={visible.length}
+              />
+            ) : <div aria-hidden className="h-3 shrink-0" />}
             <TgDetailOverlayHost
               game={detailGame} actions={actions} scroll={!isGameSection} pickRef={pickRef} panelRef={panelRef} reserve={section === 'queue'}
-              header={<><TgHeader config={header} />{providerError}</>}
+              header={<><TgHeader config={isGameSection ? header : { ...header, action: <>{header.action}<TgLibraryMenu className="-mr-1" /></> }} />{providerError}</>}
             >
               {renderSection('desktop')}
             </TgDetailOverlayHost>

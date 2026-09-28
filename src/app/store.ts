@@ -56,6 +56,37 @@ export const useUIStore = create<UIState>((set) => ({
   resetChrome: () => { lastChromeY = 0; set({ chromeHidden: false, chromeScrolled: false }) },
 }))
 
+// ─── Sidebar ──────────────────────────────────────────────────────────────────
+
+interface SidebarState {
+  /** The desktop sidebar is folded to its icon rail (the persisted preference). */
+  collapsed: boolean
+  /**
+   * A page that starts with the sidebar folded (`collapseSidebar` in the nav
+   * registry, e.g. Games) holds its own state here while it is open, so the
+   * toggle there never changes the preference other pages use. null = none.
+   */
+  pageCollapsed: boolean | null
+  toggle: () => void
+  /** Called on every route change: whether the new page folds the sidebar by default. */
+  enterRoute: (collapsesByDefault: boolean) => void
+}
+
+export const useSidebarStore = create<SidebarState>()(
+  persist(
+    (set) => ({
+      collapsed: false,
+      pageCollapsed: null,
+      toggle: () => set(s => (s.pageCollapsed != null ? { pageCollapsed: !s.pageCollapsed } : { collapsed: !s.collapsed })),
+      enterRoute: (collapsesByDefault) => set({ pageCollapsed: collapsesByDefault ? true : null }),
+    }),
+    { name: 'app-sidebar', partialize: (s) => ({ collapsed: s.collapsed }) },
+  ),
+)
+
+/** Whether the desktop sidebar is folded right now (the page's own state wins). */
+export const selectSidebarCollapsed = (s: SidebarState) => s.pageCollapsed ?? s.collapsed
+
 // ─── Toast ────────────────────────────────────────────────────────────────────
 
 export type ToastType = 'success' | 'error' | 'loading' | 'info' | 'warning'

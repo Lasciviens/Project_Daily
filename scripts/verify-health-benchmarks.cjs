@@ -233,7 +233,7 @@ for (const m of metrics) for (const v of samples) for (const ctx of [man(42), wo
 check('every classification: label, tone, reference, meaning, https sources, percentile 1–99, gap ≥ 0, no undefined/NaN', invariantOk, invariantDetail)
 check('BENCHMARKS covers all 16 metrics with complete copy', metrics.length === 16 && metrics.every(m => {
   const b = B.BENCHMARKS[m]
-  return b.title && b.unit && b.whatItMeans && b.howToImprove && b.caveats && b.sources.length > 0
+  return b.title && b.unit && b.plain && b.whatItMeans && b.howToImprove && b.caveats && b.sources.length > 0
 })
 )
 check('HEALTH_METRIC_BENCHMARK maps Apple names (cardio_recovery → heart_rate_recovery)', B.HEALTH_METRIC_BENCHMARK.cardio_recovery === 'heart_rate_recovery'
@@ -314,6 +314,165 @@ check('parseHeightCm "180" → 180; "180,5" → 180.5; "180.54" → 180.5',
   P.parseHeightCm('180').value === 180 && P.parseHeightCm('180,5').value === 180.5 && P.parseHeightCm('180.54').value === 180.5)
 check('parseHeightCm "1.82" → asks for centimetres', !P.parseHeightCm('1.82').ok && /centimetres/.test(P.parseHeightCm('1.82').error))
 check('parseHeightCm rejects 99 and 251, clears on ""', !P.parseHeightCm('99').ok && !P.parseHeightCm('251').ok && P.parseHeightCm('').value === null)
+
+console.log('\n§16b What to aim for (Overview tiles and explainers)')
+const A = B // aim helpers are re-exported from the entry point
+check('every metric has a plain sentence (no citation brackets)', metrics.every(m => {
+  const t = B.BENCHMARKS[m].plain
+  return typeof t === 'string' && t.length > 40 && t.length < 330 && !/\(\w+ \d{4}\)/.test(t)
+}), metrics.filter(m => !B.BENCHMARKS[m].plain))
+check('HRV plain sentence spells out the short name and what moves it',
+  /heart rate variability/.test(B.BENCHMARKS.heart_rate_variability.plain) && /sleep|alcohol|training/.test(B.BENCHMARKS.heart_rate_variability.plain))
+check('BMI and SpO₂ plain sentences say what the letters stand for',
+  /body mass index/.test(B.BENCHMARKS.bmi.plain) && /blood oxygen/.test(B.BENCHMARKS.blood_oxygen.plain))
+check('betterFor: resting HR lower, VO2 higher, sleep a range',
+  A.betterFor(B.BENCHMARKS.resting_heart_rate.higherIsBetter) === 'lower' && A.betterFor(B.BENCHMARKS.vo2_max.higherIsBetter) === 'higher'
+  && A.betterFor(B.BENCHMARKS.sleep_duration.higherIsBetter) === 'range' && A.BETTER_LABEL.lower === 'Lower is better')
+
+const r66 = A.restingHrAim({ value: 66, baselineMedian: 64, delta: 2 })
+check('RHR 66 (typical): improve, aims under 60 and says how (cardio)', r66.status === 'improve' && /under 60/.test(r66.text) && /66/.test(r66.text) && /cardio/.test(r66.text), r66)
+const r55 = A.restingHrAim({ value: 55.4, baselineMedian: 56, delta: -0.6 })
+check('RHR 55: keep it, names the personal usual', r55.status === 'keep' && /keep it/.test(r55.text) && /usual 56/.test(r55.text), r55)
+const rUp = A.restingHrAim({ value: 58, baselineMedian: 52, delta: 6 })
+check('RHR 6 above own baseline: watch wins even under 60', rUp.status === 'watch' && /6 above/.test(rUp.text) && /usual 52/.test(rUp.text), rUp)
+const r84 = A.restingHrAim({ value: 84, baselineMedian: null, delta: null })
+check('RHR 84: 80 first, then 60, and a doctor if it stays', r84.status === 'improve' && /80 bpm or lower/.test(r84.text) && /doctor/.test(r84.text))
+check('RHR without a value: general aim, no status', A.restingHrAim({ value: null }).status === null)
+check('RHR 60 is typical (improve), 59.4 rounds to keep', A.restingHrAim({ value: 60 }).status === 'improve' && A.restingHrAim({ value: 59.4 }).status === 'keep')
+// The aim compares the unrounded value, like the band (classifyRestingHr).
+const r596 = A.restingHrAim({ value: 59.6 })
+check('RHR 59.6: band says under 60, so the aim keeps (not "under 60, you’re at 60")',
+  B.classify('resting_heart_rate', 59.6, man(27)).band === 'low' && r596.status === 'keep' && !/you’re at 60/.test(r596.text), r596)
+const r803 = A.restingHrAim({ value: 80.3 })
+check('RHR 80.3: band says over 80, so the aim says 80 first + see a doctor, at one decimal',
+  B.classify('resting_heart_rate', 80.3, man(27)).band === 'high' && /80 bpm or lower/.test(r803.text) && /doctor/.test(r803.text) && /80\.3/.test(r803.text), r803)
+let rhrAgree = true, rhrBad = null
+for (let v = 45; v <= 95; v += 0.05) {
+  const b = B.classify('resting_heart_rate', v, man(27)).band
+  const t = A.restingHrAim({ value: v }).text
+  const ok = b === 'low' ? /stay under 60/.test(t) : b === 'typical' ? /^under 60 bpm/.test(t) : /^80 bpm or lower/.test(t)
+  if (!ok) { rhrAgree = false; rhrBad = { v, b, t }; break }
+}
+check('RHR aim follows the band at every value 45–95 (step 0.05)', rhrAgree, rhrBad)
+
+const hrvLow = A.hrvAim({ value: 30, range: { low: 38, high: 55 } })
+check('HRV below own range: watch, back inside 38–55 ms, rest advice', hrvLow.status === 'watch' && /38–55 ms/.test(hrvLow.text) && /easier day/.test(hrvLow.text), hrvLow)
+check('HRV inside: keep; above: keep (good recovery)', A.hrvAim({ value: 45, range: { low: 38, high: 55 } }).status === 'keep'
+  && /good recovery/.test(A.hrvAim({ value: 60, range: { low: 38, high: 55 } }).text))
+check('HRV with no usual range yet: no status, says it needs 14 days', A.hrvAim({ value: 40, range: null }).status === null && /14 days/.test(A.hrvAim({ value: 40, range: null }).text))
+
+const sShort = A.sleepAim({ avg7: 6.25, wakeSd: 20 })
+check('sleep 6h15: improve, names the average and a bedtime 45 min earlier', sShort.status === 'improve' && /6h 15m/.test(sShort.text) && /45 min earlier/.test(sShort.text), sShort)
+check('sleep 7h30 steady: keep', A.sleepAim({ avg7: 7.5, wakeSd: 25 }).status === 'keep')
+const sIrr = A.sleepAim({ avg7: 7.5, wakeSd: 70 })
+check('sleep enough but wake time ±70: improve regularity', sIrr.status === 'improve' && /±70 min/.test(sIrr.text) && /same wake time/.test(sIrr.text))
+
+const st = A.stepsAim({ avg7: 5400, age: 27 })
+check('steps 5,400 under 60: aim 8,000, 2,600 more ≈ 25 min', st.status === 'improve' && /8,000/.test(st.text) && /2,600 more/.test(st.text) && /25 min/.test(st.text), st)
+check('steps 6,500 at 65: keep (plateau starts at 6,000 from 60)', A.stepsAim({ avg7: 6500, age: 65 }).status === 'keep')
+check('steps 9,000: keep', A.stepsAim({ avg7: 9000, age: 40 }).status === 'keep')
+
+const ex = A.exerciseAim({ minutes7: 110, strengthDays7: 1 })
+check('exercise 110 min + 1 strength day: both gaps named', ex.status === 'improve' && /40 to go/.test(ex.text) && /1 to go/.test(ex.text), ex)
+check('exercise 160 min + 3 days: keep', A.exerciseAim({ minutes7: 160, strengthDays7: 3 }).status === 'keep')
+check('exercise 200 min + 0 days: only the strength gap', !/150 min/.test(A.exerciseAim({ minutes7: 200, strengthDays7: 0 }).text))
+check('exercise 110 min: two 20-minute walks cover the 40', /two brisk 20-minute walks cover it/.test(ex.text), ex.text)
+check('exercise 135 min: one 20-minute walk covers the 15', /one brisk 20-minute walk covers it/.test(A.exerciseAim({ minutes7: 135, strengthDays7: 2 }).text))
+const ex0 = A.exerciseAim({ minutes7: 0, strengthDays7: 2 })
+check('exercise 0 min: 150 to go is not "two or three walks" — a daily amount instead', /150 to go/.test(ex0.text) && !/walks cover/.test(ex0.text) && /about 25 brisk minutes a day/.test(ex0.text), ex0.text)
+let walksOk = true, walksBad = null
+for (let m = 0; m < 150; m++) {
+  const t = A.exerciseAim({ minutes7: m, strengthDays7: 2 }).text
+  const gap = 150 - m
+  const w = /(one|two|three) brisk 20-minute walk/.exec(t)
+  const d = /about (\d+) brisk minutes a day/.exec(t)
+  const covered = w ? ['one', 'two', 'three'].indexOf(w[1]) * 20 + 20 : d ? Number(d[1]) * 7 : 0
+  if (covered < gap) { walksOk = false; walksBad = { m, t }; break }
+}
+check('exercise: the suggested walking always covers the gap (0–149 min)', walksOk, walksBad)
+
+check('healthyWeightRange 180 cm → 59.8–80.8 kg (the one-decimal edges classifyBmi calls healthy)', JSON.stringify(A.healthyWeightRange(180)) === JSON.stringify({ low: 59.8, high: 80.8 }), A.healthyWeightRange(180))
+check('healthyWeightRange 165 cm → 50.3–67.9 kg', JSON.stringify(A.healthyWeightRange(165)) === JSON.stringify({ low: 50.3, high: 67.9 }), A.healthyWeightRange(165))
+let edgesOk = true, edgesBad = null
+for (let h = 150; h <= 205; h += 0.5) {
+  const r = A.healthyWeightRange(h)
+  const bmi = kg => B.computeBmi(kg, h)
+  const up = Math.round((r.high + 0.1) * 10) / 10, down = Math.round((r.low - 0.1) * 10) / 10
+  if (!(bmi(r.high) < 25 && bmi(up) >= 25 && bmi(r.low) >= 18.5 && bmi(down) < 18.5)) { edgesOk = false; edgesBad = { h, r, hi: bmi(r.high), up: bmi(up) }; break }
+}
+check('healthyWeightRange edges are exactly the last healthy one-decimal weights, 150–205 cm', edgesOk, edgesBad)
+check('healthyWeightRange without a sane height → null', A.healthyWeightRange(null) === null && A.healthyWeightRange(50) === null)
+const wOver = A.weightAim({ kg: 83.6, heightCm: 180, goalWeightKg: null, phase: 'cut', whtr: null })
+check('weight 83.6 at 180 cm, no goal: improve to 80.8, 2.8 kg above, set-a-goal hint; sheet adds the waist check (90 cm) and cut pace',
+  wOver.status === 'improve' && /80\.8 kg or less/.test(wOver.text) && /2\.8 kg above/.test(wOver.text) && /set one in Goal progress/.test(wOver.text)
+  && /90 cm/.test(wOver.more) && /0\.4–0\.8 kg a week/.test(wOver.more), wOver)
+const wGoal = A.weightAim({ kg: 82.5, heightCm: 180, goalWeightKg: 78, phase: 'cut' })
+check('weight with a goal: aims at the goal, 4.5 kg to lose; sheet still gives the range', wGoal.status === 'improve' && /^78 kg, your goal/.test(wGoal.text) && /4\.5 kg to lose/.test(wGoal.text) && /59\.8–80\.8 kg/.test(wGoal.more), wGoal)
+check('weight at goal (±0.5): keep', A.weightAim({ kg: 78.3, heightCm: 180, goalWeightKg: 78 }).status === 'keep')
+check('weight in range, no goal: keep', A.weightAim({ kg: 75, heightCm: 180 }).status === 'keep')
+check('weight over BMI 25 with a healthy waist: keep (likely muscle)', A.weightAim({ kg: 84, heightCm: 180, whtr: 0.46 }).status === 'keep'
+  && /likely muscle/.test(A.weightAim({ kg: 84, heightCm: 180, whtr: 0.46 }).text))
+check('weight without a height: asks for it', /add your height/.test(A.weightAim({ kg: 80, heightCm: null }).text))
+check('maintain phase adds no loss pace', !/a week/.test(JSON.stringify(A.weightAim({ kg: 84, heightCm: 180, phase: 'maintain' }))))
+// The aim decides on the same rounded BMI as the band next to it.
+const w809 = A.weightAim({ kg: 80.9, heightCm: 180 })
+check('weight 80.9 at 180 cm (BMI 25.0, band Overweight): improve, never "keep it"',
+  B.classify('bmi', B.computeBmi(80.9, 180), man(27)).band === 'overweight_low' && w809.status === 'improve' && /0\.1 kg above/.test(w809.text), w809)
+check('weight 80.8 at 180 cm (BMI 24.9, band Healthy): keep', A.weightAim({ kg: 80.8, heightCm: 180 }).status === 'keep')
+let wAgree = true, wBad = null
+for (const h of [160, 172.5, 180, 191]) for (let kg = 45; kg <= 110; kg += 0.05) {
+  const bmi = B.computeBmi(kg, h)
+  const a = A.weightAim({ kg, heightCm: h })
+  const want = bmi >= 18.5 && bmi < 25 ? 'keep' : 'improve'
+  if (a.status !== want) { wAgree = false; wBad = { h, kg, bmi, a }; break }
+}
+check('weight aim (no goal, no waist) = keep exactly on the BMI 18.5–24.9 bands, 4 heights × 45–110 kg', wAgree, wBad)
+const wTube = A.weightAim({ kg: 75, heightCm: 180, whtr: 0.53 })
+check('weight in range but waist ≥ half the height (the band shown then): improve, names the 90 cm waist', wTube.status === 'improve' && /90 cm/.test(wTube.text), wTube)
+const wLoading = A.weightAim({ kg: 84, heightCm: 180, phase: 'cut', goalLoaded: false })
+check('while the goal is loading: no "No goal weight yet" and no cut pace', !/goal/i.test(wLoading.text) && !/a week/.test(wLoading.more ?? ''), wLoading)
+check('while the goal is loading a goal passed in is ignored', !/your goal/.test(A.weightAim({ kg: 84, heightCm: 180, goalWeightKg: 78, goalLoaded: false }).text))
+
+check('vitals: two off together → watch naming both, acronym kept', (() => {
+  const a = A.vitalsAim({ checked: 4, outside: ['HRV', 'Respiratory rate'], hrv: null })
+  return a.status === 'watch' && /HRV and respiratory rate/.test(a.text)
+})())
+check('vitals: HRV below its range leads when it is the one off', A.vitalsAim({ checked: 4, outside: ['HRV'], hrv: hrvLow }).status === 'watch')
+check('vitals: one other reading off, HRV fine → keep with "one on its own"', (() => {
+  const a = A.vitalsAim({ checked: 4, outside: ['Blood oxygen'], hrv: A.hrvAim({ value: 45, range: { low: 38, high: 55 } }) })
+  return a.status === 'keep' && /blood oxygen is outside/.test(a.text) && /one on its own/.test(a.text)
+})())
+check('vitals: all inside → the HRV keep line', /38–55 ms/.test(A.vitalsAim({ checked: 4, outside: [], hrv: A.hrvAim({ value: 45, range: { low: 38, high: 55 } }) }).text))
+{
+  // HRV above its usual is a good sign: summarizeVitals leaves it out of `outside`.
+  const TS = require('../src/features/health/healthTrendStats')
+  const hrvHigh = A.hrvAim({ value: 62, range: { low: 38, high: 55 } })
+  const alone = A.vitalsAim({ ...TS.summarizeVitals([{ label: 'HRV', state: 'above', good: 'above' }, { label: 'Respiratory rate', state: 'inside' }]), hrv: hrvHigh })
+  check('vitals: HRV alone above → the HRV "good recovery" aim leads, no "outside" talk', alone.status === 'keep' && /good recovery/.test(alone.text) && !/outside/.test(alone.text), alone)
+  const plus = A.vitalsAim({ ...TS.summarizeVitals([{ label: 'HRV', state: 'above', good: 'above' }, { label: 'Wrist temperature', state: 'above' }, { label: 'Blood oxygen', state: 'inside' }]), hrv: hrvHigh })
+  check('vitals: HRV above + wrist temperature above → never "bring HRV back", not "off together"',
+    !/HRV/.test(plus.text) && !/together/.test(plus.text) && /wrist temperature is outside/.test(plus.text), plus)
+  const raw = A.vitalsAim({ checked: 4, outside: ['HRV', 'Wrist temperature'], hrv: hrvHigh })
+  check('vitals: even handed a raw list with HRV (above) in it, the aim leaves HRV out', !/HRV/.test(raw.text) && raw.status === 'keep', raw)
+}
+
+const vo2Cls = B.classify('vo2_max', 36, man(27))
+const vo2Aim = A.aimFor('vo2_max', 36, vo2Cls, man(27), 'ml/kg/min')
+check('generic aim (VO2 36 at 27): next step with gap in the metric unit and a how', vo2Aim.status === 'improve' && /ml\/kg\/min to go/.test(vo2Aim.text) && /cardio/.test(vo2Aim.text), vo2Aim)
+const bmiAim = A.aimFor('bmi', 25.5, B.classify('bmi', 25.5, man(27)), man(27), 'kg/m²')
+check('generic aim (BMI 25.5): under 25 with the kg at your height, one decimal gap', /BMI under 25/.test(bmiAim.text) && /81 kg/.test(bmiAim.text) && /0\.6 kg\/m² to go/.test(bmiAim.text), bmiAim)
+check('generic aim in % says percentage points; waist-to-height has no unit word',
+  /4\.1 percentage points to go/.test(A.aimFor('body_fat_percentage', 24, B.classify('body_fat_percentage', 24, man(27)), man(27), '%').text)
+  && /0\.03 to go/.test(A.aimFor('waist_to_height', 0.52, B.classify('waist_to_height', 0.52, man(27)), man(27), 'ratio').text))
+check('generic aim on a success band: keep it', A.aimFor('blood_oxygen', 97, B.classify('blood_oxygen', 97, man(27)), man(27), '%').status === 'keep')
+check('aimFor HRV uses the personal baseline in ctx', A.aimFor('heart_rate_variability', 30, null, { ...man(30), baseline: { mean: 46, sd: 8 } }, 'ms').status === 'watch')
+let aimOk = true, aimBad = null
+for (const m of metrics) for (const v of samples) for (const ctx of [man(42), woman(55), nobody, { ...man(30), baseline: { mean: 40, sd: 8 } }]) {
+  const a = A.aimFor(m, v, B.classify(m, v, ctx), ctx, B.BENCHMARKS[m].unit)
+  if (!a.text || /undefined|NaN|null/.test(a.text + (a.more ?? '')) || !['keep', 'improve', 'watch', null].includes(a.status)) { aimOk = false; aimBad = { m, v, a }; break }
+}
+check('aimFor never prints undefined/NaN/null and always has a valid status', aimOk, aimBad)
+check('tile plain copy covers weight, exercise and vitals (HRV spelled out)', A.TILE_PLAIN.weight && A.TILE_PLAIN.exercise && /heart rate variability/.test(A.TILE_PLAIN.vitals))
 
 // §17 needs the real athleteProfileApi, which imports the live Supabase
 // client. Resolve that import (and requireUser) to in-memory fakes so the

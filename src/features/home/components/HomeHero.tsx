@@ -5,7 +5,7 @@ import { CalendarClock, ChevronRight, Dumbbell } from 'lucide-react'
 import { useEntityModal } from '../../../shared/modals'
 import { Card, CardHeader, Skeleton, cx } from '../../../shared/ui'
 import { todayStr } from '../../../shared/utils/dateUtils'
-import { useTodayOverview, type NextUpItem, type NextTrainingItem } from '../hooks/useTodayOverview'
+import { useTodayOverview, type NextUpItem } from '../hooks/useTodayOverview'
 
 const LATER_ROWS = 3
 
@@ -25,7 +25,7 @@ function relativeDay(dateStr: string): string {
 /** Opens a schedule item's editor: one-off blocks route to their task when linked. */
 function useOpenScheduleItem() {
   const modal = useEntityModal()
-  return (item: { kind: NextUpItem['kind'] | NextTrainingItem['kind']; id: string }) => {
+  return (item: { kind: NextUpItem['kind']; id: string }) => {
     // Same headings as Daily's agenda, so one block reads the same everywhere.
     if (item.kind === 'block') modal.open({ kind: 'time-block', id: item.id, config: { heading: 'Edit block' } })
     else if (item.kind === 'recurring') modal.open({ kind: 'schedule-block', id: item.id, config: { heading: 'Edit recurring block' } })
@@ -103,6 +103,9 @@ function NowTile({ label, icon, title, meta, tone, emptyText, onOpen, to }: NowT
 export function HomeHero() {
   const overview = useTodayOverview()
   const openItem = useOpenScheduleItem()
+  // A training session opens as the session (its exercises and targets);
+  // changing the plan is behind the popup's ⋯.
+  const modal = useEntityModal()
   const { nextUp, nextTraining, upcoming } = overview
   const later = upcoming.slice(1, 1 + LATER_ROWS)
 
@@ -139,7 +142,7 @@ export function HomeHero() {
               title={nextTraining?.title}
               meta={nextTraining ? `${relativeDay(nextTraining.date)}${nextTraining.startTime ? ` · ${nextTraining.startTime}` : ''}` : undefined}
               emptyText="None planned"
-              onOpen={nextTraining ? () => openItem(nextTraining) : undefined}
+              onOpen={nextTraining ? () => modal.open({ kind: 'training-session', plan: { kind: nextTraining.kind, id: nextTraining.id, date: nextTraining.date } }) : undefined}
               to="/training"
             />
           </>

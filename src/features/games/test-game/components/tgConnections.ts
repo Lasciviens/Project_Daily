@@ -1,6 +1,6 @@
-// What the profile menu and the phone's More sheet say about PlayStation and
+// What the library's ⋯ menu says about PlayStation and
 // Steam. Pure: the hooks' results go in, one line of status comes out, so the
-// menu and the sheet can never describe the same state differently.
+// menu and the renew dialog can never describe the same state differently.
 //
 // The rules mirror Developer → Connections (ConnectionsTab.tsx): a stored
 // psn_tokens row is not proof of a working session — only the first real

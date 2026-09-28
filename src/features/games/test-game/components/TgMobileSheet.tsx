@@ -24,7 +24,7 @@ export function TgMobileSheet({
   const { setPanelEl, setBodyEl, backdropRef, handleProps } = useSheetDrag(open, onClose)
 
   return (
-    <Dialog open={open} onClose={onClose} className="tg-portal relative z-[60]">
+    <Dialog open={open} onClose={onClose} className="tg-portal relative z-sheet">
       <DialogBackdrop
         ref={backdropRef}
         transition

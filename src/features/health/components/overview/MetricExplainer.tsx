@@ -2,12 +2,15 @@ import { useState } from 'react'
 import { ChevronDown } from 'lucide-react'
 import { TonePill, ToneDot, cx } from '../../../../shared/ui'
 import {
-  BENCHMARKS, type BenchmarkContext, type BenchmarkMetric, type Classification, type Source,
+  BENCHMARKS, BETTER_LABEL, aimFor, betterFor,
+  type Aim, type BenchmarkContext, type BenchmarkMetric, type Classification, type Source,
 } from '../../benchmarks/healthBenchmarks'
 import { HEALTH_DISCLAIMER } from '../../benchmarks/healthGuidance'
 import { referenceLadder } from '../../benchmarks/referenceLadder'
+import { AimLine } from './AimLine'
 
-// The science block of a detail sheet: where the value sits, the whole
+// The science block of a detail sheet: the metric in plain words, which way
+// is better and what to aim for, then where the value sits, the whole
 // reference ladder (built from classify itself, so it can't disagree with the
 // band), what the metric means, how to move it, the caveats and the sources.
 
@@ -66,16 +69,24 @@ export function SourceList({ sources }: { sources: Source[] }) {
   )
 }
 
-export function MetricExplainer({ metric, ctx, value, cls, extraSources = [] }: {
+export function MetricExplainer({ metric, ctx, value, cls, aim, extraSources = [] }: {
   metric: BenchmarkMetric
   ctx: BenchmarkContext
   value: number | null
   cls: Classification | null
+  /** The tile's personal aim; without it the metric's own aim is used. */
+  aim?: Aim
   extraSources?: Source[]
 }) {
   const info = BENCHMARKS[metric]
+  const shownAim = aim ?? aimFor(metric, value, cls, ctx, info.unit)
   return (
     <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-1.5">
+        <p className="text-body font-semibold text-fg">{info.title}</p>
+        <p className="text-meta text-fg-2">{info.plain} <span className="text-fg-muted">{BETTER_LABEL[betterFor(info.higherIsBetter)]}.</span></p>
+        <AimLine aim={shownAim} full />
+      </div>
       {cls && (
         <div className="flex flex-col gap-1.5">
           <div className="flex flex-wrap items-center gap-2">

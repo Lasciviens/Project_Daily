@@ -79,6 +79,8 @@ interface AgendaBlock {
   calendarEvent?: CalendarEvent
   allDay?:        boolean
   spillover:      boolean
+  /** time_blocks / schedule_blocks category — a training row opens the session popup. */
+  category?:      string
 }
 
 // `bare` — render as a chrome-less pane inside a parent surface (Daily's hero
@@ -143,7 +145,7 @@ export function DayAgenda({ date, bare = false }: { date: Date; bare?: boolean }
     blocks.push({
       id: p.id, canonicalId: p.canonicalId, kind: p.kind, title: p.title, dateStr,
       startHour: p.startHour, endHour: p.endHour, taskId: p.taskId, spillover: p.spillover,
-      edgeClass: COLOR_EDGE[original?.color ?? 'blue'] ?? COLOR_EDGE.blue,
+      edgeClass: COLOR_EDGE[original?.color ?? 'blue'] ?? COLOR_EDGE.blue, category: original?.category,
     })
   }
   for (const p of projectOneOffBlocksForDay(timeBlocks, prevTimeBlocks)) {
@@ -151,7 +153,7 @@ export function DayAgenda({ date, bare = false }: { date: Date; bare?: boolean }
     blocks.push({
       id: p.id, canonicalId: p.canonicalId, kind: p.kind, title: p.title, dateStr,
       startHour: p.startHour, endHour: p.endHour, taskId: p.taskId, spillover: p.spillover,
-      edgeClass: COLOR_EDGE[original?.color ?? 'accent'] ?? COLOR_EDGE.accent,
+      edgeClass: COLOR_EDGE[original?.color ?? 'accent'] ?? COLOR_EDGE.accent, category: original?.category,
     })
   }
   for (const e of calEvents ?? []) {
@@ -216,6 +218,14 @@ export function DayAgenda({ date, bare = false }: { date: Date; bare?: boolean }
   // the file-header comment for the routing rule. Always routes through
   // canonicalId, never the (possibly synthetic) spillover row id.
   function openEditor(block: AgendaBlock) {
+    // A training session opens as the session — its exercises and targets,
+    // or what was lifted once logged; changing the plan (and so the task
+    // routing below) is behind that popup's ⋯. A spillover row is the tail
+    // of the session that started the day before.
+    if (block.category === 'training' && block.kind !== 'calendar') {
+      modal.open({ kind: 'training-session', plan: { kind: block.kind, id: block.canonicalId, date: block.spillover ? prevDateStr : dateStr } })
+      return
+    }
     if (block.kind === 'recurring') {
       modal.open({ kind: 'schedule-block', id: block.canonicalId, config: { heading: 'Edit recurring block' } })
       return

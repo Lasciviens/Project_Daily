@@ -1,11 +1,12 @@
 import { useState } from 'react'
-import { ChevronDown, ChevronRight, Smartphone } from 'lucide-react'
+import { ChevronDown, ChevronRight, Dumbbell, Smartphone } from 'lucide-react'
 import { Card, EmptyState, Skeleton } from '../../../shared/ui'
+import { useEntityModal } from '../../../shared/modals'
 import { fmtDateEnGB } from '../../../shared/utils/enGBDate'
 import { useHealthWorkoutSummaries } from '../hooks/useHealthExport'
+import { useHevyMatches } from '../hooks/useWorkoutLinks'
 import type { HealthWorkoutSummary } from '../api/healthApi'
 import type { HealthWindow } from '../healthWindowStats'
-import { HealthWorkoutDetail } from './HealthWorkoutDetail'
 import { fmtDuration } from './healthFormat'
 
 function fmtStart(iso: string | null): string {
@@ -15,11 +16,12 @@ function fmtStart(iso: string | null): string {
   return fmtDateEnGB(d, sameYear ? { weekday: 'short', day: 'numeric', month: 'short' } : { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
-function HealthWorkoutRow({ workout, onOpen }: { workout: HealthWorkoutSummary; onOpen: () => void }) {
+function HealthWorkoutRow({ workout, hevyTitle, onOpen }: { workout: HealthWorkoutSummary; hevyTitle?: string; onOpen: () => void }) {
   return (
     <button
       type="button"
       onClick={onOpen}
+      aria-haspopup="dialog"
       className="flex min-h-[60px] w-full items-center gap-2 rounded-row border border-line bg-surface py-2.5 pl-3 pr-2 text-left transition-colors hover:bg-surface-hover"
     >
       <div className="flex min-w-0 flex-1 flex-col gap-1">
@@ -29,6 +31,12 @@ function HealthWorkoutRow({ workout, onOpen }: { workout: HealthWorkoutSummary; 
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-meta tabular-nums text-fg-muted">{fmtStart(workout.start_time)}</span>
+          {hevyTitle && (
+            <span className="chip min-w-0 max-w-full gap-1">
+              <Dumbbell aria-hidden className="h-3 w-3 shrink-0" />
+              <span className="truncate">Hevy · {hevyTitle}</span>
+            </span>
+          )}
           {workout.avg_heart_rate != null && <span className="chip tabular-nums">avg {Math.round(workout.avg_heart_rate)} bpm</span>}
           {/* HAE sends workout energy in kcal despite the column being named *_kj. */}
           {workout.active_energy_kj != null && <span className="chip tabular-nums">{Math.round(workout.active_energy_kj)} kcal</span>}
@@ -40,17 +48,24 @@ function HealthWorkoutRow({ workout, onOpen }: { workout: HealthWorkoutSummary; 
 }
 
 // Workouts that started inside the selected window. The list reads summary
-// columns only; a workout's HR curve and route load when it's opened (H-07).
+// columns only; a workout's HR curve and route load when it's opened (the
+// `health-workout` popup). One Hevy range read marks the rows that have a
+// Hevy session logged at the same time.
 export function HealthWorkoutsList({ win }: { win: HealthWindow }) {
-  const [expanded, setExpanded] = useState(false)
-  const [selected, setSelected] = useState<HealthWorkoutSummary | null>(null)
+  const modal = useEntityModal()
+  const [expanded, setExpanded] = useState(true)
   const { data: workouts = [], isLoading } = useHealthWorkoutSummaries(win.from, win.to)
+  const hevy = useHevyMatches(win.from, win.to, workouts)
+  const linked = hevy.size
   return (
     <Card padded={false} className="max-w-3xl overflow-hidden">
       <button type="button" aria-expanded={expanded} onClick={() => setExpanded(e => !e)}
-        className="flex min-h-[44px] w-full items-center justify-between px-4 py-2">
-        <p className="section-label">Workouts (Apple Health){!isLoading && ` · ${workouts.length}`}</p>
-        <ChevronDown aria-hidden className={`h-4 w-4 text-fg-faint transition-transform ${expanded ? 'rotate-180' : ''}`} />
+        className="flex min-h-[44px] w-full items-center justify-between gap-2 px-4 py-2 text-left">
+        <p className="section-label">
+          Workouts (Apple Health){!isLoading && ` · ${workouts.length}`}
+          {linked > 0 && <span className="normal-case tracking-normal text-fg-faint"> · {linked} with a Hevy session</span>}
+        </p>
+        <ChevronDown aria-hidden className={`h-4 w-4 shrink-0 text-fg-faint transition-transform ${expanded ? 'rotate-180' : ''}`} />
       </button>
       {expanded && (
         <div className="px-4 pb-4">
@@ -62,12 +77,14 @@ export function HealthWorkoutsList({ win }: { win: HealthWindow }) {
             <EmptyState bordered icon={<Smartphone />} title="No workouts in this window" className="py-10" />
           ) : (
             <div className="flex flex-col gap-1.5">
-              {workouts.map(w => <HealthWorkoutRow key={w.id} workout={w} onOpen={() => setSelected(w)} />)}
+              {workouts.map(w => (
+                <HealthWorkoutRow key={w.id} workout={w} hevyTitle={hevy.get(w.id)?.title}
+                  onOpen={() => modal.open({ kind: 'health-workout', id: w.id })} />
+              ))}
             </div>
           )}
         </div>
       )}
-      {selected && <HealthWorkoutDetail summary={selected} onClose={() => setSelected(null)} />}
     </Card>
   )
 }

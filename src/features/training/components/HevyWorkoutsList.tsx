@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { format, startOfMonth } from 'date-fns'
-import { ChevronLeft, ChevronRight, Dumbbell } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Dumbbell, Plus } from 'lucide-react'
 import { useHevyWorkouts, useHevyWorkoutsRange } from '../hooks/useHevyWorkouts'
 import { useTodayStr } from '../hooks/useTrainingSessions'
 import { useOpenTrainingSessionTasks } from '../../todo/hooks/useTodos'
@@ -15,10 +15,10 @@ import type { Task } from '../../todo/types'
 
 const PAGE_SIZE = 20
 
-/** The Workouts sub-tab: this-week / this-month counts (exact, from a date
- *  range — not "however many of the latest 200 fall in the week"), then the
- *  paged workout cards, newest performed first. */
-export function HevyWorkoutsList() {
+/** Log → Hevy: this-week / this-month counts (exact, from a date range — not
+ *  "however many of the latest 200 fall in the week") with "Log workout",
+ *  then the paged workout cards, newest performed first. */
+export function HevyWorkoutsList({ onLogWorkout }: { onLogWorkout: () => void }) {
   const [page, setPage] = useState(0)
   const today = useTodayStr()
 
@@ -58,10 +58,13 @@ export function HevyWorkoutsList() {
 
   return (
     <>
-      <div className="mb-2 flex flex-wrap gap-3 text-meta text-fg-muted">
-        <span><strong className="tabular-nums text-fg">{weekCount}</strong> this week</span>
-        <span className="text-fg-faint" aria-hidden>·</span>
-        <span><strong className="tabular-nums text-fg">{monthCount}</strong> in {monthLabel}</span>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 sm:max-w-[44.5rem]">
+        <div className="flex flex-wrap gap-3 text-meta text-fg-muted">
+          <span><strong className="tabular-nums text-fg">{weekCount}</strong> this week</span>
+          <span className="text-fg-faint" aria-hidden>·</span>
+          <span><strong className="tabular-nums text-fg">{monthCount}</strong> in {monthLabel}</span>
+        </div>
+        <Button variant="primary" size="sm" icon={<Plus />} onClick={onLogWorkout}>Log workout</Button>
       </div>
 
       {isLoading ? (
@@ -79,7 +82,7 @@ export function HevyWorkoutsList() {
             <HevyWorkoutCard
               key={workout.id}
               workout={workout}
-              onClick={() => entityModal.open({ kind: 'hevy-workout', id: workout.id })}
+              onClick={() => entityModal.open({ kind: 'training-session', workoutId: workout.id })}
               matchedTask={taskByDay.get(workoutLocalDay(workout))}
             />
           ))}

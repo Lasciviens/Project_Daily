@@ -20,19 +20,19 @@ function Fact({ label, value, unit, hint, info, strong }: {
 
 /** The raw numbers behind the verdict, each with its own coverage. */
 export function EnergyGrid({ r, targetKcal, phase }: { r: EnergyReport; targetKcal: number; phase: Phase }) {
-  const pct = Math.round(r.intake.completeness * 100)
+  const p = r.paired
   // Shown the way the phase thinks about it: a deficit on a cut, a surplus on a gain.
   const balanceLabel = phase === 'cut' ? 'Logged deficit' : phase === 'gain' ? 'Logged surplus' : 'Logged balance'
   const toShown = (deficit: number | null) => (deficit == null ? null : phase === 'cut' ? deficit : -deficit)
   const balance = toShown(r.loggedDeficit), planned = toShown(r.plannedDeficit)
   return (
     <dl className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-      <Fact label="Eaten" value={kcal(r.intake.meanKcal)} unit="kcal/day"
-        hint={<>{r.intake.loggedDays} of {r.days} days logged ({pct} %){r.intake.partialDays ? ` · ${r.intake.partialDays} half-logged left out` : ''}</>}
-        info={<>The average of the days you logged. A day with nothing logged is a gap, not a 0 kcal day; a day under 800 kcal is treated as half-logged and left out. Target: {kcal(targetKcal)} kcal.</>} />
-      <Fact label="Apple burn" value={kcal(r.apple.meanTdee)} unit="kcal/day"
-        hint={<>active {kcal(r.apple.meanActive)} + resting {kcal(r.apple.meanBasal)} · {r.apple.days} days</>}
-        info="Apple Health active + resting (basal) energy. Days under 1,550 kcal are watch-off gaps and are left out." />
+      <Fact label="Eaten" value={kcal(p.meanIntake)} unit="kcal/day"
+        hint={<>average of the {p.days} of {r.days} days used</>}
+        info={<>Only days with BOTH a full diary and a complete Apple day count, so the two sides cover the same days. A day with nothing logged is a gap, not a 0 kcal day; a day under {kcal(p.halfLoggedBelow)} kcal (60 % of your {kcal(targetKcal)} kcal target, rounded to the nearest 50 and never under 800) is half-logged and left out.</>} />
+      <Fact label="Apple burn" value={kcal(p.meanBurn)} unit="kcal/day"
+        hint={<>active {kcal(p.meanActive)} + resting {kcal(p.meanBasal)} · same {p.days} days</>}
+        info="Apple Health active + resting (basal) energy on the days used. A day under 1,550 kcal is a watch-off or sync gap and is left out." />
       <Fact label={balanceLabel} value={balance != null ? signed(balance) : '—'} unit="kcal/day"
         hint={planned != null ? <>Planned from your target: {signed(planned)}</> : undefined}
         info={phase === 'maintain' ? 'Logged intake − Apple burn: negative is a deficit, positive a surplus.' : undefined} />

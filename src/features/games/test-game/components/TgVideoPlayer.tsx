@@ -20,7 +20,7 @@ export function TgVideoPlayer({ src, title, onClose }: { src: string | null; tit
   useHistoryDismiss(open, onClose)
 
   return (
-    <Dialog open={open} onClose={onClose} aria-label={`Video: ${title}`} className="tg-portal relative z-[90]">
+    <Dialog open={open} onClose={onClose} aria-label={`Video: ${title}`} className="tg-portal relative z-modal">
       <DialogBackdrop transition className="fixed inset-0 bg-black/90 transition duration-200 data-[closed]:opacity-0" />
       <div className="fixed inset-0 flex items-center justify-center p-[calc(env(safe-area-inset-top)+64px)_calc(env(safe-area-inset-right)+12px)_calc(env(safe-area-inset-bottom)+24px)_calc(env(safe-area-inset-left)+12px)] sm:px-20">
         <DialogPanel
@@ -49,7 +49,7 @@ export function TgVideoPlayer({ src, title, onClose }: { src: string | null; tit
         </DialogPanel>
       </div>
       <button type="button" onClick={onClose} aria-label="Close video"
-        className={`fixed right-[calc(env(safe-area-inset-right)+12px)] top-[calc(env(safe-area-inset-top)+12px)] z-[91] sm:right-[calc(env(safe-area-inset-right)+20px)] sm:top-[calc(env(safe-area-inset-top)+20px)] ${CONTROL}`}>
+        className={`fixed right-[calc(env(safe-area-inset-right)+12px)] top-[calc(env(safe-area-inset-top)+12px)] z-10 sm:right-[calc(env(safe-area-inset-right)+20px)] sm:top-[calc(env(safe-area-inset-top)+20px)] ${CONTROL}`}>
         <X className="h-5 w-5" aria-hidden />
       </button>
     </Dialog>

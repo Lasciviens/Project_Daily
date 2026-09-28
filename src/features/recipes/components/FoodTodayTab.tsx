@@ -1,7 +1,8 @@
 import { useState, type ReactNode } from 'react'
-import { Brain, Check, ChevronRight, Copy, Plus, Settings2, X } from 'lucide-react'
+import { Brain, Check, ChevronRight, Copy, Plus, X } from 'lucide-react'
 import { useDayNutrition } from '../../daily/hooks/useDayNutrition'
 import { useDayTargets } from '../../daily/hooks/useDayTargets'
+import { GoalSummary } from '../../daily/components/GoalSummary'
 import { useEntityModal } from '../../../shared/modals/useEntityModal'
 import { useNutritionCoach } from '../../daily/hooks/useNutritionCoach'
 import { useRemoveFoodLogEntries, useRecentFoods, useAddFoodLogEntries } from '../hooks/useFoodLog'
@@ -100,9 +101,9 @@ export function FoodTodayTab({ date }: { date: string }) {
   // "As meal" groups expanded to their individual items (collapsed by default).
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
 
-  // Goals live in the shared `day-targets` popup (draft → Save). The Coach's
-  // "Apply" buttons stay one deliberate tap that writes immediately.
-  const openGoals = () => modal.open({ kind: 'day-targets', date })
+  // The goal lives in the shared `day-targets` popup (draft → Save), shown
+  // by GoalSummary. The Coach's "Apply" buttons stay one deliberate tap that
+  // writes immediately.
   const openLog = (slot: MealSlot) => modal.open({ kind: 'food-log', date, slot })
   function applyProtein(g: number) { update({ protein: g }) }
   function applyCalories(kcal: number, adjustDate: string) { update({ calories: kcal, lastCalorieAdjust: adjustDate }) }
@@ -230,8 +231,8 @@ export function FoodTodayTab({ date }: { date: string }) {
       {/* Left: summary, water, coach */}
       <div className="flex min-w-0 flex-col gap-3 sm:gap-4">
         <Card>
-          <CardHeader title="Nutrition" variant="label"
-            action={<IconButton label="Nutrition goals" onClick={openGoals} className="-my-2 -mr-2"><Settings2 /></IconButton>} />
+          <CardHeader title="Nutrition" variant="label" />
+          <GoalSummary date={date} className="-mt-2 mb-2" />
           <div className="flex flex-wrap items-center gap-4 sm:gap-5">
             <Ring consumed={consumed} target={targets.calories} size={134} stroke={11} color={MACRO_COLOR.calories}
               label="kcal left" sizeClass="h-[104px] w-[104px] sm:h-[128px] sm:w-[128px]" />
@@ -281,7 +282,7 @@ export function FoodTodayTab({ date }: { date: string }) {
           <CardHeader title="Coach" variant="label" icon={<Brain />} className="hidden sm:flex" />
           <div className={cx(coachOpen ? 'mt-3 flex' : 'hidden', 'flex-col gap-2 text-body sm:mt-0 sm:flex')}>
             {coach.weightKg == null ? (
-              <p className="text-fg-muted">Add a bodyweight in <strong className="font-semibold text-fg-2">Training → Log → Body</strong> (or weigh in on your scale) to unlock protein and calorie coaching from your real weight trend.</p>
+              <p className="text-fg-muted">Add a bodyweight in <strong className="font-semibold text-fg-2">Health → Body</strong> (or weigh in on your scale) to unlock protein and calorie coaching from your real weight trend.</p>
             ) : (
               <>
                 {coach.calorieAdvice ? (
@@ -293,7 +294,7 @@ export function FoodTodayTab({ date }: { date: string }) {
                 ) : coach.onTrack ? (
                   <p className="flex items-center gap-1.5 text-success"><Check aria-hidden className="h-4 w-4 shrink-0" />{coach.onTrack}</p>
                 ) : coach.atFloor ? (
-                  <p className="text-fg-muted">At your calorie floor (~{coach.calorieFloor}) but not losing — take a diet break rather than cutting lower.</p>
+                  <p className="text-fg-muted">At your calorie floor (~{coach.calorieFloor}) — don&apos;t cut lower; take a diet break instead.</p>
                 ) : !coach.consistent ? (
                   <p className="text-fg-muted">Logged {coach.loggedDays7}/7 days — log {Math.max(1, 4 - coach.loggedDays7)} more to unlock the calorie nudge.</p>
                 ) : !coach.weighInsOk ? (

@@ -3,9 +3,10 @@ import { Search, X } from 'lucide-react'
 import { useTestGameStore } from '../testGameStore'
 import { dialogIsOpen, isTypingTarget } from './tgKeys'
 
-const IS_MAC = typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/i.test(navigator.platform || navigator.userAgent)
-
-/** The top bar's search field, bound to the page store. ⌘K / Ctrl+K or "/" focuses it. */
+/**
+ * The toolbar's search field, bound to the page store. "/" focuses it (⌘K /
+ * Ctrl+K belongs to the app's command bar, which searches everything).
+ */
 export function TgTopBarSearch({ className = '' }: { className?: string }) {
   const search = useTestGameStore(s => s.search)
   const setSearch = useTestGameStore(s => s.setSearch)
@@ -16,16 +17,11 @@ export function TgTopBarSearch({ className = '' }: { className?: string }) {
       if (e.defaultPrevented || e.altKey) return
       const input = inputRef.current
       if (!input) return
-      const key = e.key.toLowerCase()
-      const shortcut = (e.metaKey || e.ctrlKey) && key === 'k'
-      const slash = key === '/' && !e.metaKey && !e.ctrlKey && !isTypingTarget(e.target)
-      if (!shortcut && !slash) return
-      if (dialogIsOpen(e.target)) return
+      if (e.key !== '/' || e.metaKey || e.ctrlKey || isTypingTarget(e.target) || dialogIsOpen(e.target)) return
       // Only claim the key when focus actually moves (a hidden field can't take it).
       input.focus()
       if (document.activeElement !== input) return
       e.preventDefault()
-      if (shortcut) input.select()
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
@@ -46,6 +42,7 @@ export function TgTopBarSearch({ className = '' }: { className?: string }) {
         autoComplete="off"
         spellCheck={false}
         aria-label="Search games"
+        aria-keyshortcuts="/"
         placeholder="Search games, consoles, or tags..."
         value={search}
         onChange={e => setSearch(e.target.value)}
@@ -55,7 +52,7 @@ export function TgTopBarSearch({ className = '' }: { className?: string }) {
           if (search) setSearch('')
           else e.currentTarget.blur()
         }}
-        className={`tg-input truncate pl-10 ${search ? 'pr-10 [@media(pointer:coarse)]:pr-11' : 'pr-3 xl:pr-16'}`}
+        className={`tg-input truncate pl-10 ${search ? 'pr-10 [@media(pointer:coarse)]:pr-11' : 'pr-3 xl:pr-10'}`}
       />
       {search ? (
         <button
@@ -72,8 +69,7 @@ export function TgTopBarSearch({ className = '' }: { className?: string }) {
           aria-hidden
           className="tg-kbd pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 !border-transparent !bg-[var(--tg-hover)] [font-family:inherit] max-xl:!hidden"
         >
-          {IS_MAC ? '⌘' : 'Ctrl'}
-          <span className="ml-1">K</span>
+          /
         </kbd>
       )}
     </div>

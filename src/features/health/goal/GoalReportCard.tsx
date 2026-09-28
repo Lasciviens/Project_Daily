@@ -3,8 +3,9 @@ import { ChevronDown, Target } from 'lucide-react'
 import { Card, CardHeader, SkeletonText, cx } from '../../../shared/ui'
 import { InfoBubble } from '../../../shared/components/InfoBubble'
 import { ErrorBoundary } from '../../../shared/components/ErrorBoundary'
-import { fmtDayMonth } from '../components/healthFormat'
-import { useGoalReport, type GoalWindow } from './useGoalReport'
+import { todayStr } from '../../../shared/utils/dateUtils'
+import { numericSpanLabel } from '../healthDateLabels'
+import { goalWindowDates, useGoalReport, type GoalWindow } from './useGoalReport'
 import { usePhase } from './useBodyGoals'
 import { PHASE_QUESTION, verdictCopy } from './goalCopy'
 import { PhaseBar } from './PhaseBar'
@@ -24,6 +25,8 @@ import { EnergyGrid } from './EnergyGrid'
 export function GoalReportCard() {
   const [win, setWin] = useState<`${GoalWindow}`>('28')
   const phase = usePhase()
+  const today = todayStr()
+  const { from, to } = goalWindowDates(Number(win) as GoalWindow, today)
   return (
     <Card className="@container">
       <CardHeader title="Goal progress" icon={<Target />} wrap
@@ -35,7 +38,7 @@ export function GoalReportCard() {
             Today is left out because its diary and energy aren&apos;t finished. An estimate from your own data, not medical advice.
           </InfoBubble>
         )} />
-      <div className="mb-4"><PhaseBar phase={phase} win={win} onWin={setWin} /></div>
+      <div className="mb-4"><PhaseBar win={win} onWin={setWin} windowLabel={numericSpanLabel(from, to, today)} /></div>
       <ErrorBoundary label="Goal progress">
         <GoalReportBody days={Number(win) as GoalWindow} />
       </ErrorBoundary>
@@ -55,7 +58,6 @@ function GoalReportBody({ days }: { days: GoalWindow }) {
   const verdict = e.verdict ? verdictCopy(e.verdict, phase).title : 'not enough data yet'
   return (
     <div className="flex flex-col gap-3">
-      <p className="text-meta tabular-nums text-fg-muted">{fmtDayMonth(d.from)} – {fmtDayMonth(d.to)}</p>
       <GoalPathPanel path={r.path} />
       <div className="grid gap-3 @2xl:grid-cols-2">
         <PaceSection phase={phase} rate={r.rate} meanKg={e.weight.meanKg} />
@@ -65,7 +67,7 @@ function GoalReportBody({ days }: { days: GoalWindow }) {
         <p className="section-label mb-1">Weight trend</p>
         <WeightTrendChart r={e} from={d.from} to={d.to} goalKg={d.goals.settings.goalWeightKg} />
       </div>
-      <GoalsSection report={r} settings={d.goals.settings} fromDevice={d.goals.fromDevice} saving={d.goals.isSaving} onSave={d.goals.save} />
+      <GoalsSection report={r} settings={d.goals.settings} fromDevice={d.goals.fromDevice} />
       <ProteinBlock r={e} phase={phase} targetProtein={d.phase.targetProtein} />
       <section className="rounded-row border border-line">
         <button type="button" aria-expanded={showEnergy} onClick={() => setShowEnergy(v => !v)}
@@ -78,7 +80,7 @@ function GoalReportBody({ days }: { days: GoalWindow }) {
         </button>
         {showEnergy && (
           <div className="flex flex-col gap-3 border-t border-line p-3">
-            <EnergyVerdict r={e} phase={phase} />
+            <EnergyVerdict r={e} phase={phase} from={d.from} to={d.to} />
             <EnergyGrid r={e} targetKcal={d.phase.targetKcal} phase={phase} />
           </div>
         )}

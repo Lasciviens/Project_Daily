@@ -27,7 +27,7 @@ const RETRY_MS = 1200
 // filled instead of leaving a blank band over the footer. The sheet scrolls,
 // so it keeps the design's proportion instead.
 const HERO_SIZE: Record<Variant, string> = {
-  panel: 'h-[clamp(208px,calc(100dvh-500px),440px)] [@media(min-height:1000px)]:h-[clamp(400px,calc(100dvh-600px),640px)]',
+  panel: 'h-[clamp(208px,calc(100dvh-552px),440px)] [@media(min-height:1000px)]:h-[clamp(400px,calc(100dvh-652px),640px)]',
   sheet: 'aspect-[5/3]',
 }
 

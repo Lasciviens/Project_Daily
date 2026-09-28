@@ -25,4 +25,5 @@ export interface CreateDevRequestInput {
   category?:    DevRequestCategory
   priority?:    DevRequestPriority
   effort?:      DevRequestEffort | null
+  sort_order?:  number
 }

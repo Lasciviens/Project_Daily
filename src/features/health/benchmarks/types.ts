@@ -77,6 +77,8 @@ export interface BenchmarkContext {
 export interface BenchmarkInfo {
   title: string
   unit: string
+  /** One plain sentence: what the short name stands for and what it means in everyday life. */
+  plain: string
   whatItMeans: string
   howToImprove: string
   caveats: string

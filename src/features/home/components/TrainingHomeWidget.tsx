@@ -43,7 +43,7 @@ export function TrainingHomeWidget() {
           {w && (
             <button
               type="button"
-              onClick={() => modal.open({ kind: 'hevy-workout', id: w.id })}
+              onClick={() => modal.open({ kind: 'training-session', workoutId: w.id })}
               className="row row-interactive -mx-3 w-[calc(100%+1.5rem)] border-t border-line text-left"
             >
               <span className="min-w-0 flex-1">

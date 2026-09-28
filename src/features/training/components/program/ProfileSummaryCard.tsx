@@ -29,7 +29,7 @@ export function ProfileSummaryCard() {
     <Card className="w-full max-w-md xl:w-96 xl:shrink-0">
       <CardHeader icon={<UserRound />} title="Your training profile" action={<Button size="sm" onClick={() => setOpen(true)}>Edit</Button>} />
       <dl className="divide-y divide-line">
-        <Row label="Goal" value={profile?.goal?.replace('_', ' ') ?? null} />
+        <Row label="Training focus" value={profile?.goal ?? null} />
         <Row label="Experience" value={profile?.experience_level ?? null} />
         <Row label="Training days" value={days ? `${days} a week` : null} />
         <Row label="Equipment" value={profile?.equipment_access ?? null} />

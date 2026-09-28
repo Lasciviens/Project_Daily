@@ -11,6 +11,7 @@ import { ExerciseDetail, SleepDetail, StepsDetail } from './HeroDetailsActivity'
 import { RhrDetail, VitalsDetail, WeightDetail } from './HeroDetailsBody'
 import { fmtDayMonth } from '../healthFormat'
 import { nightMissingText, nightNoun } from '../../healthDateLabels'
+import { BENCHMARKS, BETTER_LABEL, TILE_PLAIN, betterFor } from '../../benchmarks/healthBenchmarks'
 
 // "How you're doing": the six tier-1 tiles from the metric ranking
 // (docs/training-health/research/research-rank.json), in its order. No
@@ -73,32 +74,32 @@ export function HealthHero({ hero, onViewDay, onOpenSection }: {
             {sleep.wake ? <>wake {fmtClock(sleep.wake.center)} ± {Math.round(sleep.wake.sd)} min</> : 'wake-time spread needs 5 nights'}
           </>}
           change={sleepDelta != null ? { text: `${signedHm(sleepDelta)} vs previous 7`, tone: changeTone(sleepDelta, 'up', 0.25) } : null}
-          band={band(sleep.cls)}
-          why="Regularly under 7 h is linked to weight gain, diabetes and heart disease (AASM/SRS); a steady wake time predicted mortality even better (Windred 2024)." />
+          band={band(sleep.cls)} better="7–9 h is best, and a steady wake time" aim={hero.aims.sleep}
+          plain={BENCHMARKS.sleep_duration.plain} />
 
         <HeroTile icon={<Footprints />} label="Steps" onOpen={() => setOpen('steps')} isLoading={steps.isLoading}
           empty={steps.avg7 == null ? 'Too few days with steps in the last week.' : null}
           value={num(steps.avg7)} unit="/day, 7-day average"
           sub={hero.isToday ? <>Today so far {num(steps.todaySoFar)}</> : null}
           change={stepsDelta != null ? { text: `${signed(stepsDelta)} vs previous 7`, tone: changeTone(stepsDelta, 'up', 500) } : null}
-          band={band(steps.cls)}
-          why="The benefit keeps rising to about 7,000–8,000 a day and then levels off (Paluch 2022, Ding 2025)." />
+          band={band(steps.cls)} better={BETTER_LABEL[betterFor(BENCHMARKS.step_count.higherIsBetter)]} aim={hero.aims.steps}
+          plain={BENCHMARKS.step_count.plain} />
 
         <HeroTile icon={<Dumbbell />} label="Exercise this week" onOpen={() => setOpen('exercise')} isLoading={exercise.isLoading}
           empty={exercise.minutes7 == null && exercise.strengthDays7 === 0 ? 'No exercise minutes or workouts in the last 7 days.' : null}
           value={num(exercise.minutes7 ?? 0)} unit="of 150 min"
           sub={<>Strength days {exercise.strengthDays7} of 2 (Hevy)</>}
           change={exDelta != null ? { text: `${signed(exDelta)} min vs previous 7`, tone: changeTone(exDelta, 'up', 20) } : null}
-          band={band(exercise.cls)}
-          why="WHO: 150+ min of moderate activity and 2+ strength days a week; meeting it is linked to about 30% lower mortality (Arem 2015)." />
+          band={band(exercise.cls)} better={BETTER_LABEL.higher} aim={hero.aims.exercise}
+          plain={TILE_PLAIN.exercise} />
 
         <HeroTile icon={<HeartPulse />} label="Resting heart rate" onOpen={() => setOpen('rhr')} isLoading={rhr.isLoading}
           empty={rhr.avg7 == null ? 'Too few resting heart-rate readings this week.' : null}
           value={num(rhr.avg7)} unit="bpm, 7-day average"
           sub={rhr.baseline ? <>Your 60-day baseline {num(rhr.baseline.median)} bpm</> : 'Baseline needs 14 days of readings'}
           change={rhr.delta != null ? { text: `${signed(rhr.delta)} bpm vs baseline`, tone: rhr.delta >= 5 ? 'warn' : rhr.delta <= -3 ? 'success' : 'neutral' } : null}
-          band={band(rhr.cls)}
-          why="A rise of 5+ bpm over your own baseline often means illness, alcohol, heat, short sleep or hard training. Lower over months usually means fitter." />
+          band={band(rhr.cls)} better={BETTER_LABEL.lower} aim={hero.aims.rhr}
+          plain={BENCHMARKS.resting_heart_rate.plain} />
 
         <HeroTile icon={<Scale />} label="Weight" onOpen={() => setOpen('weight')} isLoading={weight.isLoading}
           empty={weight.lastKg == null ? 'No weigh-ins yet.' : null}
@@ -108,8 +109,8 @@ export function HealthHero({ hero, onViewDay, onOpenSection }: {
             {bodyExtras && <> · {bodyExtras}</>}
           </>}
           change={weight.perWeek != null ? { text: `${signed(weight.perWeek, 2)} kg/week (28 days)`, tone: 'neutral' } : null}
-          band={bodyCls}
-          why="The 7-day average and the 28-day slope are the honest trend — single weigh-ins swing 1–2 kg with water and food." />
+          band={bodyCls} better={BETTER_LABEL.range} aim={hero.aims.weight}
+          plain={TILE_PLAIN.weight} />
 
         <HeroTile icon={<Activity />} label="Overnight vitals" onOpen={() => setOpen('vitals')} isLoading={vitals.isLoading}
           empty={vitals.hrv7 == null && vitals.summary.checked === 0 ? 'Not enough overnight readings yet.' : null}
@@ -117,7 +118,8 @@ export function HealthHero({ hero, onViewDay, onOpenSection }: {
           sub={vitals.hrvRange ? <>Your usual {num(vitals.hrvRange.low)}–{num(vitals.hrvRange.high)} ms</> : 'Usual range needs 14 days of HRV'}
           change={hrvDelta != null ? { text: `${signed(hrvDelta)} ms vs your average`, tone: 'neutral' } : null}
           band={vitals.summary.tone ? { label: vitals.summary.text, tone: vitals.summary.tone } : null}
-          why="Counted against your own usual ranges, the way Apple’s Vitals app does — how many are outside, never a score." />
+          better="Inside your own usual range is best" aim={hero.aims.vitals}
+          plain={TILE_PLAIN.vitals} />
       </div>
 
       <ModalShell open={open != null} onClose={() => setOpen(null)} title={open ? TITLES[open] : ''} size="lg" footer={footer}>

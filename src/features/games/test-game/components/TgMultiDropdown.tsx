@@ -13,7 +13,7 @@ const TG_ALL = ''
  * tapped. `values` empty = no filter.
  */
 export function TgMultiDropdown<T extends string>({
-  values, options, allLabel, onChange, buttonLabel, ariaLabel, align = 'start', className = '', icon,
+  values, options, allLabel, onChange, buttonLabel, ariaLabel, align = 'start', className = '', icon, compact = false,
 }: {
   values: readonly T[]
   options: TgOption<T>[]
@@ -24,8 +24,11 @@ export function TgMultiDropdown<T extends string>({
   align?: 'start' | 'end'
   className?: string
   icon?: ReactNode
+  /** Icon-only (TgDropdown's rule): the toolbar is narrow. */
+  compact?: boolean
 }) {
   const active = values.length > 0
+  const iconOnly = !!icon && compact
   const hasDots = options.some(o => o.status)
   const rows: TgOption<string>[] = [{ value: TG_ALL, label: allLabel }, ...options]
   const value: string[] = active ? [...values] : [TG_ALL]
@@ -40,19 +43,19 @@ export function TgMultiDropdown<T extends string>({
     <Listbox value={value} onChange={change} multiple>
       <ListboxLabel className="sr-only">{ariaLabel}</ListboxLabel>
       <ListboxButton
-        title={icon ? buttonLabel : undefined}
-        className={`tg-select relative min-w-0 ${icon && active ? 'max-lg:!border-[var(--tg-accent)]' : ''} ${className}`}
+        title={iconOnly ? buttonLabel : undefined}
+        className={`tg-select relative min-w-0 ${iconOnly && active ? '!border-[var(--tg-accent)]' : ''} ${className}`}
       >
-        {icon && (
-          <span aria-hidden className={`inline-flex lg:hidden ${active ? 'text-[var(--tg-accent)]' : ''}`}>{icon}</span>
+        {iconOnly && (
+          <span aria-hidden className={`inline-flex ${active ? 'text-[var(--tg-accent)]' : ''}`}>{icon}</span>
         )}
-        {icon && active && (
+        {iconOnly && active && (
           <span
             aria-hidden
-            className="absolute right-1 top-1 h-2 w-2 rounded-full bg-[var(--tg-accent)] ring-2 ring-[var(--tg-panel)] lg:hidden"
+            className="absolute right-1 top-1 h-2 w-2 rounded-full bg-[var(--tg-accent)] ring-2 ring-[var(--tg-panel)]"
           />
         )}
-        <span className={icon ? 'sr-only lg:not-sr-only lg:min-w-0 lg:truncate' : 'min-w-0 truncate'}>{buttonLabel}</span>
+        <span className={iconOnly ? 'sr-only' : 'min-w-0 truncate'}>{buttonLabel}</span>
         <ChevronDown aria-hidden className="tg-chev ml-auto shrink-0" strokeWidth={2} />
       </ListboxButton>
       <ListboxOptions

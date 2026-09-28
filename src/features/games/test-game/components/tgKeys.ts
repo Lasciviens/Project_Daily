@@ -1,5 +1,5 @@
 // Keyboard-shortcut guards shared by the page's single-key shortcuts
-// ("/" and ⌘K for search, "r" for a random game).
+// ("/" for search, "r" for a random game).
 
 export function isTypingTarget(t: EventTarget | null): boolean {
   if (!(t instanceof HTMLElement)) return false

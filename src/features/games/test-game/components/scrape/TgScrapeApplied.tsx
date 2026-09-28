@@ -1,7 +1,7 @@
 import { CircleAlert, CircleCheckBig, Link2, Save, Undo2 } from 'lucide-react'
 import type { TgGame } from '../../testGameModel'
 import { useTestGameStore } from '../../testGameStore'
-import { useTgBreakpoint } from '../../useTgBreakpoint'
+import { useBreakpoint } from '../../../../../shared/hooks/useBreakpoint'
 import type { ApplyResult } from '../../../scraper/ssApi'
 import { useUndoScrape } from '../../../scraper/useScrape'
 import { FIELD_LABEL } from '../../../scraper/ssPlan'
@@ -23,7 +23,7 @@ export function TgScrapeApplied({ game, runId, result, rows, onBack, onAgain }: 
   onAgain: () => void
 }) {
   const undo = useUndoScrape()
-  const bp = useTgBreakpoint()
+  const bp = useBreakpoint()
   const setSection = useTestGameStore(s => s.setSection)
   const openDetail = useTestGameStore(s => s.openDetail)
   const activateGame = useTestGameStore(s => s.activateGame)
@@ -34,7 +34,7 @@ export function TgScrapeApplied({ game, runId, result, rows, onBack, onAgain }: 
 
   const openGame = () => {
     setSection('library')
-    if (bp === 'mobile') openDetail(game.id)
+    if (bp === 'phone') openDetail(game.id)
     else activateGame(game.id)
   }
 

@@ -20,12 +20,17 @@ const MAX_HISTORY_DAYS = 730
 
 const earlier = (a: string, b: string) => (a < b ? a : b)
 
+/** The report's window: the last `windowDays` complete days, ending yesterday. */
+export function goalWindowDates(windowDays: GoalWindow, today: string): { from: string; to: string } {
+  const to = shiftDateStr(today, -1)
+  return { from: shiftDateStr(to, -(windowDays - 1)), to }
+}
+
 /** Everything the goal report needs for the last `windowDays` complete days
  *  (today is left out — its diary and energy aren't finished). */
 export function useGoalReport(windowDays: GoalWindow) {
   const today = todayStr()
-  const to = shiftDateStr(today, -1)
-  const from = shiftDateStr(to, -(windowDays - 1))
+  const { from, to } = goalWindowDates(windowDays, today)
 
   const goals = useBodyGoals()
   const phase = usePhase()

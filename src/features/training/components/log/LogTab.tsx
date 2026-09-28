@@ -1,44 +1,29 @@
 import { useState } from 'react'
-import { Plus } from 'lucide-react'
-import { Button, SegmentedControl } from '../../../../shared/ui'
 import { HevyWorkoutsList } from '../HevyWorkoutsList'
-import { TrainingCalendar } from '../TrainingCalendar'
 import { StravaTab } from '../StravaTab'
-import { BodyMeasurementsTab } from '../BodyMeasurementsTab'
 import { LogHevyWorkoutModal } from '../LogHevyWorkoutModal'
+import { TrainingMonthCalendar } from '../calendar/TrainingMonthCalendar'
+import type { LogView } from '../../pages/trainingTabs'
 
-type LogView = 'workouts' | 'strava' | 'body'
-
-const VIEWS: { value: LogView; label: string }[] = [
-  { value: 'workouts', label: 'Workouts' },
-  { value: 'strava',   label: 'Strava' },
-  { value: 'body',     label: 'Body' },
-]
-
-/** Log: what you actually did — Hevy workouts with the calendar, Strava
- *  activities (labelled by the service, not "cardio": it holds walks, rides
- *  and anything else Strava records), and body measurements, behind one filter. */
-export function LogTab() {
-  const [view, setView] = useState<LogView>('workouts')
+/** Log: what you actually did. Hevy (default) is the month calendar — sticky
+ *  on the left from `lg`, on top on a phone — beside the workout cards;
+ *  Strava lists its activities (labelled by the service, not "cardio": it
+ *  holds walks, rides and anything else Strava records). The view is picked
+ *  in the page's tab row (`?view=`). Body measurements live in Health → Body. */
+export function LogTab({ view }: { view: LogView }) {
   const [logOpen, setLogOpen] = useState(false)
+  if (view === 'strava') return <StravaTab />
   return (
-    <div className="flex flex-col gap-3 sm:gap-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <SegmentedControl<LogView> size="sm" value={view} onChange={setView} options={VIEWS} />
-        {view === 'workouts' && <Button variant="primary" size="sm" icon={<Plus />} onClick={() => setLogOpen(true)}>Log workout</Button>}
-      </div>
-
-      {view === 'workouts' && (
-        // Calendar beside the list on a wide screen, under it on a phone.
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-start">
-          <div className="min-w-0 xl:max-w-[46rem] xl:flex-1"><HevyWorkoutsList /></div>
-          <aside className="w-full max-w-[440px] xl:w-[440px] xl:shrink-0"><TrainingCalendar /></aside>
+    <>
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
+        <aside className="w-full max-w-[28rem] lg:sticky lg:top-4 lg:w-[26rem] lg:shrink-0">
+          <TrainingMonthCalendar />
+        </aside>
+        <div className="min-w-0 lg:flex-1">
+          <HevyWorkoutsList onLogWorkout={() => setLogOpen(true)} />
         </div>
-      )}
-      {view === 'strava' && <StravaTab />}
-      {view === 'body' && <BodyMeasurementsTab />}
-
+      </div>
       <LogHevyWorkoutModal isOpen={logOpen} onClose={() => setLogOpen(false)} />
-    </div>
+    </>
   )
 }

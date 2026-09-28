@@ -60,8 +60,12 @@ export const ENERGY_DENSITY_KCAL_PER_KG = 7700
 export const MIN_APPLE_DAY_KCAL = 1550
 // A diary day under this is almost certainly half-logged (a coffee and a
 // snack), not a real 600 kcal day; it's counted as partial and left out of
-// the average so it can't fake a huge deficit.
+// the average so it can't fake a huge deficit. With a calorie target the bar
+// is relative instead (halfLoggedCutoff): a day logged at 1,400 against a
+// 2,500 target is a forgotten dinner, not a real 1,400 kcal day.
 export const MIN_LOGGED_DAY_KCAL = 800
+/** A logged day under this share of the day's calorie target is half-logged. */
+export const HALF_LOGGED_SHARE = 0.6
 // Weight trend differences smaller than this (kcal/day) are inside what the
 // method can resolve over a few weeks of daily weigh-ins.
 export const MATCH_TOLERANCE_KCAL = 200
@@ -105,12 +109,53 @@ export type Reason =
 
 export interface TrendPoint { date: string; kg: number; avg7: number }
 
+/** Why a day of the window was left out of the calorie comparison — food
+ *  reasons first, so a day with neither counts once, as "no food". */
+export type DayUse = 'used' | 'no_food' | 'half_logged' | 'apple_gap'
+
+export interface BalanceDay {
+  date: string
+  /** Logged kcal (0 = nothing logged). */
+  intakeKcal: number
+  /** Apple active + basal, or null with no Apple energy at all. */
+  burnKcal: number | null
+  use: DayUse
+}
+
+/** The days that have BOTH a full diary and a complete Apple day — the only
+ *  days where "burned − eaten" means anything. */
+export interface PairedBalance {
+  days: number
+  meanBurn: number | null
+  meanActive: number | null
+  meanBasal: number | null
+  meanIntake: number | null
+  /** mean(burn − intake) over those days. Positive = a deficit. */
+  deficit: number | null
+  /** The day's logged kcal under this = half-logged. */
+  halfLoggedBelow: number
+  excluded: { noFood: number; halfLogged: number; appleGap: number }
+}
+
+export interface RecentBalance { days: number; meanBurn: number | null; meanIntake: number | null; deficit: number | null }
+
 export interface EnergyReport {
   days: number
   intake: { loggedDays: number; partialDays: number; completeness: number; meanKcal: number | null; meanProteinG: number | null }
   apple: { days: number; meanActive: number | null; meanBasal: number | null; meanTdee: number | null }
-  /** Apple burn − logged intake, per day. Positive = a deficit. */
+  /** Day by day, and the days both sources cover. */
+  daysDetail: BalanceDay[]
+  paired: PairedBalance
+  /** The same comparison over the window's last 7 days — the span Activity's
+   *  and Food's 7-day views cover — or null when the window is 7 days or less. */
+  recent7: RecentBalance | null
+  /** Apple burn − logged intake per day, over the paired days only (a day
+   *  with Apple energy but no diary would add burn and no food). Positive =
+   *  a deficit. */
   loggedDeficit: number | null
+  /** The deficit the weight trend stands for: −trend kg/day × energy density.
+   *  Positive = a deficit. Independent of the diary and of Apple. */
+  scaleDeficit: number | null
   weight: {
     weighIns: number
     spanDays: number
@@ -127,9 +172,9 @@ export interface EnergyReport {
   }
   /** Weight change the logged deficit predicts over the window (negative = loss). */
   expectedChangeKg: number | null
-  /** Intake + energy the weight change stands for, per day. */
+  /** Intake + energy the weight change stands for, per day (paired days). */
   observedTdee: number | null
-  /** observedTdee − Apple TDEE. Negative = you burn less than Apple says (or eat more than logged). */
+  /** observedTdee − Apple TDEE on the same days. Negative = you burn less than Apple says (or eat more than logged). */
   tdeeGap: number | null
   verdict: Verdict | null
   reasons: Reason[]
@@ -157,6 +202,17 @@ export function addDays(d: string, n: number): string { return fromDayNum(dayNum
 
 const mean = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null)
 const round = (v: number | null, dp = 0) => (v == null ? null : Math.round(v * 10 ** dp) / 10 ** dp)
+
+/** burn − intake over the used days among `days` (BalanceDay rows). */
+export function balanceOver(days: readonly BalanceDay[]): RecentBalance {
+  const used = days.filter(d => d.use === 'used' && d.burnKcal != null)
+  return {
+    days: used.length,
+    meanBurn: round(mean(used.map(d => d.burnKcal as number))),
+    meanIntake: round(mean(used.map(d => d.intakeKcal))),
+    deficit: round(mean(used.map(d => (d.burnKcal as number) - d.intakeKcal))),
+  }
+}
 
 /** Ordinary least squares of y on x; slope, intercept and the slope's SE. */
 export function linearFit(xs: number[], ys: number[]): { slope: number; intercept: number; se: number | null } | null {
@@ -194,12 +250,25 @@ export function proteinBand(gPerKg: number): ProteinBand {
 /** Days of food / Apple energy a window needs before a verdict. */
 export function neededDays(days: number): number { return Math.max(7, Math.ceil(days * 0.6)) }
 
+/** The logged-kcal bar under which a day counts as half-logged: 60 % of the
+ *  calorie target (to the nearest 50), never under 800. Without a target, 800. */
+export function halfLoggedCutoff(targetKcal?: number | null): number {
+  if (!targetKcal || !Number.isFinite(targetKcal) || targetKcal <= 0) return MIN_LOGGED_DAY_KCAL
+  return Math.max(MIN_LOGGED_DAY_KCAL, Math.round((targetKcal * HALF_LOGGED_SHARE) / 50) * 50)
+}
+
+/** A finished day with enough Apple energy to be a whole day (basal present). */
+export function isCompleteAppleDay(e: Pick<EnergyDay, 'activeKcal' | 'basalKcal'>): boolean {
+  return e.basalKcal != null && (e.activeKcal ?? 0) + (e.basalKcal ?? 0) > MIN_APPLE_DAY_KCAL
+}
+
 export function buildEnergyReport(inp: EnergyInputs): EnergyReport {
   const density = inp.energyDensity ?? ENERGY_DENSITY_KCAL_PER_KG
   const days = daysBetween(inp.from, inp.to) + 1
   const inWin = (d: string) => d >= inp.from && d <= inp.to
 
   // ── intake (logged days only) ─────────────────────────────────────────────
+  const cutoff = halfLoggedCutoff(inp.targetKcal)
   const intakeByDate = new Map<string, { kcal: number; p: number }>()
   for (const r of inp.intake) {
     if (!inWin(r.date)) continue
@@ -207,19 +276,43 @@ export function buildEnergyReport(inp: EnergyInputs): EnergyReport {
     cur.kcal += r.kcal || 0; cur.p += r.proteinG || 0
     intakeByDate.set(r.date, cur)
   }
-  const fullDays = [...intakeByDate.values()].filter(v => v.kcal >= MIN_LOGGED_DAY_KCAL)
-  const partialDays = [...intakeByDate.values()].filter(v => v.kcal > 0 && v.kcal < MIN_LOGGED_DAY_KCAL).length
+  const fullDays = [...intakeByDate.values()].filter(v => v.kcal >= cutoff)
+  const partialDays = [...intakeByDate.values()].filter(v => v.kcal > 0 && v.kcal < cutoff).length
   const meanKcal = mean(fullDays.map(v => v.kcal))
   const meanProteinG = mean(fullDays.map(v => v.p))
   const completeness = days > 0 ? fullDays.length / days : 0
 
   // ── Apple expenditure (complete days only) ────────────────────────────────
-  const appleDays = inp.energy.filter(e => inWin(e.date)
-    && (e.activeKcal ?? 0) + (e.basalKcal ?? 0) > MIN_APPLE_DAY_KCAL && e.basalKcal != null)
+  const energyByDate = new Map<string, EnergyDay>()
+  for (const e of inp.energy) if (inWin(e.date)) energyByDate.set(e.date, e)
+  const appleDays = [...energyByDate.values()].filter(isCompleteAppleDay)
   const meanActive = mean(appleDays.map(e => e.activeKcal ?? 0))
   const meanBasal = mean(appleDays.map(e => e.basalKcal ?? 0))
   const meanTdee = mean(appleDays.map(e => (e.activeKcal ?? 0) + (e.basalKcal ?? 0)))
-  const loggedDeficit = meanTdee != null && meanKcal != null ? meanTdee - meanKcal : null
+
+  // ── paired days: a full diary AND a complete Apple day ────────────────────
+  // Averaging each source over its own days let a day with Apple energy but
+  // no diary add burn with no food against it, which inflates the deficit.
+  const daysDetail: BalanceDay[] = []
+  const excluded = { noFood: 0, halfLogged: 0, appleGap: 0 }
+  const paired: { burn: number; active: number; basal: number; intake: number }[] = []
+  for (let i = 0; i < days; i++) {
+    const date = addDays(inp.from, i)
+    const intakeKcal = Math.round(intakeByDate.get(date)?.kcal ?? 0)
+    const e = energyByDate.get(date)
+    const burnKcal = e && (e.activeKcal != null || e.basalKcal != null) ? Math.round((e.activeKcal ?? 0) + (e.basalKcal ?? 0)) : null
+    const use: DayUse = intakeKcal <= 0 ? 'no_food'
+      : intakeKcal < cutoff ? 'half_logged'
+        : !e || !isCompleteAppleDay(e) ? 'apple_gap' : 'used'
+    if (use === 'no_food') excluded.noFood++
+    else if (use === 'half_logged') excluded.halfLogged++
+    else if (use === 'apple_gap') excluded.appleGap++
+    else paired.push({ burn: (e!.activeKcal ?? 0) + (e!.basalKcal ?? 0), active: e!.activeKcal ?? 0, basal: e!.basalKcal ?? 0, intake: intakeByDate.get(date)!.kcal })
+    daysDetail.push({ date, intakeKcal, burnKcal, use })
+  }
+  const pairedBurn = mean(paired.map(d => d.burn))
+  const pairedIntake = mean(paired.map(d => d.intake))
+  const loggedDeficit = mean(paired.map(d => d.burn - d.intake))
 
   // ── weight trend ──────────────────────────────────────────────────────────
   const weightEnd = addDays(inp.to, 1)
@@ -239,9 +332,12 @@ export function buildEnergyReport(inp: EnergyInputs): EnergyReport {
   const changeKg = slope != null ? slope * days : null
 
   // ── energy balance ────────────────────────────────────────────────────────
+  // Everything below reads the paired days, so the logged deficit, the
+  // expected change and the gap add up: gap × days ÷ density = expected − actual.
   const expectedChangeKg = loggedDeficit != null ? (-loggedDeficit * days) / density : null
-  const observedTdee = meanKcal != null && slope != null ? meanKcal - slope * density : null
-  const tdeeGap = observedTdee != null && meanTdee != null ? observedTdee - meanTdee : null
+  const observedTdee = pairedIntake != null && slope != null ? pairedIntake - slope * density : null
+  const tdeeGap = observedTdee != null && pairedBurn != null ? observedTdee - pairedBurn : null
+  const scaleDeficit = slope != null ? -slope * density : null
 
   // ── enough data for a verdict? ────────────────────────────────────────────
   const needDays = neededDays(days)
@@ -249,6 +345,9 @@ export function buildEnergyReport(inp: EnergyInputs): EnergyReport {
   const missing: string[] = []
   if (fullDays.length < needDays) missing.push(`Food logged on ${fullDays.length} of ${days} days — needs ${needDays}.`)
   if (appleDays.length < needDays) missing.push(`Complete Apple energy on ${appleDays.length} of ${days} days — needs ${needDays}.`)
+  if (fullDays.length >= needDays && appleDays.length >= needDays && paired.length < needDays) {
+    missing.push(`A full diary and a complete Apple day on only ${paired.length} of ${days} days — needs ${needDays}.`)
+  }
   if (trendWeights.length < 4) missing.push(`${trendWeights.length} weigh-in${trendWeights.length === 1 ? '' : 's'} in the window — needs 4.`)
   else if (spanDays < needSpan) missing.push(`Weigh-ins span ${spanDays} days — needs ${needSpan}.`)
 
@@ -309,7 +408,20 @@ export function buildEnergyReport(inp: EnergyInputs): EnergyReport {
     days,
     intake: { loggedDays: fullDays.length, partialDays, completeness: round(completeness, 2) as number, meanKcal: round(meanKcal), meanProteinG: round(meanProteinG) },
     apple: { days: appleDays.length, meanActive: round(meanActive), meanBasal: round(meanBasal), meanTdee: round(meanTdee) },
+    daysDetail,
+    paired: {
+      days: paired.length,
+      meanBurn: round(pairedBurn),
+      meanActive: round(mean(paired.map(d => d.active))),
+      meanBasal: round(mean(paired.map(d => d.basal))),
+      meanIntake: round(pairedIntake),
+      deficit: round(loggedDeficit),
+      halfLoggedBelow: cutoff,
+      excluded,
+    },
+    recent7: days > 7 ? balanceOver(daysDetail.slice(-7)) : null,
     loggedDeficit: round(loggedDeficit),
+    scaleDeficit: round(scaleDeficit),
     weight: {
       weighIns: trendWeights.length, spanDays, series,
       slopeKgPerDay: round(slope, 4), slopeSe: round(fit?.se ?? null, 4),
@@ -320,6 +432,6 @@ export function buildEnergyReport(inp: EnergyInputs): EnergyReport {
     observedTdee: round(observedTdee),
     tdeeGap: round(tdeeGap),
     verdict, reasons, confidence, confidenceNotes, missing, earlyPhase, hasTrend, protein,
-    plannedDeficit: meanTdee != null && inp.targetKcal ? round(meanTdee - inp.targetKcal) : null,
+    plannedDeficit: (pairedBurn ?? meanTdee) != null && inp.targetKcal ? round((pairedBurn ?? meanTdee)! - inp.targetKcal) : null,
   }
 }

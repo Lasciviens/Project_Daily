@@ -1,6 +1,5 @@
 import { CalendarClock, CalendarPlus, Dumbbell, Moon } from 'lucide-react'
 import { Button, Card, EmptyState, Skeleton, ToneDot } from '../../../../shared/ui'
-import { useEntityModal } from '../../../../shared/modals'
 import { InfoBubble } from '../../../../shared/components/InfoBubble'
 import { fmtDateEnGB } from '../../../../shared/utils/enGBDate'
 import { openPlanRoutine } from '../../planTraining'
@@ -11,6 +10,7 @@ import { useRecoveryNotes } from './useRecoveryNotes'
 import { NextExerciseCard } from './NextExerciseCard'
 import { SourceNote } from '../program/SourceNote'
 import { MissedSessionsCard } from '../program/MissedSessions'
+import { SessionPlanMenu } from '../session/SessionPlanMenu'
 
 function whenText(date: string, startTime: string | null, today: string): string {
   const d = daysBetween(today, date)
@@ -25,14 +25,14 @@ function lastDoneText(last: string | null, today: string): string {
 }
 
 function SessionHeader({ plan }: { plan: NextPlan }) {
-  const modal = useEntityModal()
   const { pick, routine, session, today } = plan
   const title = routine?.title ?? session?.title ?? 'Next session'
-  const openSession = () => {
-    if (!session) return
-    if (session.kind === 'recurring') modal.open({ kind: 'schedule-block', id: session.id, config: { heading: 'Edit recurring session' } })
-    else modal.open({ kind: 'time-block', id: session.id, config: { heading: 'Edit session' } })
-  }
+  // The exercises are already on this page, so the plan itself (date, time,
+  // which routine) is a deliberate second step behind ⋯ — the same menu as
+  // the session popup.
+  const planned = pick?.source === 'planned' && session
+    ? [{ ref: { kind: session.kind, id: session.id, date: session.date }, title: session.title }]
+    : []
   return (
     <Card className="flex flex-col gap-3">
       <div className="flex items-start gap-3">
@@ -45,16 +45,16 @@ function SessionHeader({ plan }: { plan: NextPlan }) {
             {routine ? ` · ${lastDoneText(pick?.lastTrained ?? null, today)}` : ''}
           </p>
         </div>
+        {planned.length > 0 && <span className="-mr-2 -mt-1"><SessionPlanMenu plans={planned} label="Change this session" /></span>}
       </div>
       {pick?.source === 'planned' && !routine && (
         <p className="text-meta text-fg-muted">This session isn&apos;t linked to a Hevy routine, so there&apos;s no exercise list. Plan it from a routine (Library → Routines) to see targets here.</p>
       )}
-      <div className="flex flex-wrap gap-2">
-        {pick?.source === 'planned' && session && <Button size="sm" onClick={openSession}>Edit session</Button>}
-        {pick?.source === 'least_recent' && routine && (
+      {pick?.source === 'least_recent' && routine && (
+        <div className="flex flex-wrap gap-2">
           <Button size="sm" variant="primary" icon={<CalendarPlus />} onClick={() => openPlanRoutine(routine, { date: today })}>Plan this session</Button>
-        )}
-      </div>
+        </div>
+      )}
     </Card>
   )
 }

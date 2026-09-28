@@ -13,6 +13,8 @@ export const BENCHMARKS: Record<BenchmarkMetric, BenchmarkInfo> = {
   vo2_max: {
     title: 'VO₂ max (cardio fitness)',
     unit: 'ml/kg/min',
+    plain:
+      'VO₂ max is the most oxygen your body can use per kilo each minute at full effort — in everyday life, how easily you handle stairs, hills and a hard run. It is one of the strongest markers of long-term health.',
     whatItMeans:
       'How much oxygen your body can use per kilogram per minute at full effort — the standard measure of aerobic fitness and one of the strongest markers of long-term health. In a study of 122,007 treadmill tests, low fitness carried more risk than smoking, diabetes or coronary disease (Mandsager 2018).',
     howToImprove:
@@ -26,6 +28,8 @@ export const BENCHMARKS: Record<BenchmarkMetric, BenchmarkInfo> = {
   resting_heart_rate: {
     title: 'Resting heart rate',
     unit: 'bpm',
+    plain:
+      'How many times your heart beats a minute while you sit or lie still. A fitter heart pumps more blood per beat, so it needs fewer beats — lower usually means fitter.',
     whatItMeans:
       'Your heart rate when fully at rest. Lower usually means a fitter heart; a persistently high one is an independent risk marker — each 10 bpm higher is linked to about 9% higher all-cause mortality (Zhang 2016).',
     howToImprove:
@@ -39,6 +43,8 @@ export const BENCHMARKS: Record<BenchmarkMetric, BenchmarkInfo> = {
   heart_rate_variability: {
     title: 'Heart rate variability (SDNN)',
     unit: 'ms',
+    plain:
+      'HRV (heart rate variability) is how much the gap between heartbeats changes from beat to beat. A rested, recovered body varies more; it drops for a few days after hard training, short sleep, alcohol, stress or a coming cold.',
     whatItMeans:
       'How much the time between heartbeats varies. More variability generally means your rest-and-recover system is active. It falls naturally with age and swings day to day, so it is most useful against your own baseline.',
     howToImprove:
@@ -52,6 +58,8 @@ export const BENCHMARKS: Record<BenchmarkMetric, BenchmarkInfo> = {
   step_count: {
     title: 'Daily steps',
     unit: 'steps/day',
+    plain:
+      'Every step you take in a day, walking around and workouts included. More everyday walking is linked to living longer, up to about 8,000–10,000 a day.',
     whatItMeans:
       'Everyday movement outside workouts. More steps are linked to lower mortality up to an age-dependent plateau: about 8,000–10,000 a day under 60 and 6,000–8,000 from 60 (Paluch 2022).',
     howToImprove:
@@ -65,6 +73,8 @@ export const BENCHMARKS: Record<BenchmarkMetric, BenchmarkInfo> = {
   sleep_duration: {
     title: 'Sleep duration',
     unit: 'h/night',
+    plain:
+      'Time actually asleep as the watch measures it — not time in bed. Adults need 7 hours or more; regularly less shows up in weight, mood, blood pressure and training.',
     whatItMeans:
       'How long you sleep. Adults should regularly get 7 hours or more (AASM/SRS); regularly less is linked to weight gain, diabetes, high blood pressure, heart disease, depression and higher mortality.',
     howToImprove:
@@ -78,6 +88,8 @@ export const BENCHMARKS: Record<BenchmarkMetric, BenchmarkInfo> = {
   sleep_regularity: {
     title: 'Sleep regularity',
     unit: 'min (spread of wake time)',
+    plain:
+      'How much your wake-up time moves from day to day. A steady body clock — waking at about the same time every day — was linked to living longer, even more than sleep length.',
     whatItMeans:
       'How consistent your sleep and wake times are. In 60,977 people with activity trackers, regularity predicted mortality more strongly than duration: the most regular had 20–30% lower mortality after full adjustment (Windred 2024).',
     howToImprove:
@@ -91,6 +103,8 @@ export const BENCHMARKS: Record<BenchmarkMetric, BenchmarkInfo> = {
   body_fat_percentage: {
     title: 'Body fat',
     unit: '%',
+    plain:
+      'The share of your weight that is fat rather than muscle, bone and water. Some is essential; too much, especially round the belly, raises the risk of diabetes and heart disease.',
     whatItMeans:
       'The share of your weight that is fat. More informative than BMI for muscular people, but only as good as the measuring device.',
     howToImprove:
@@ -104,6 +118,8 @@ export const BENCHMARKS: Record<BenchmarkMetric, BenchmarkInfo> = {
   bmi: {
     title: 'BMI',
     unit: 'kg/m²',
+    plain:
+      'BMI (body mass index) is your weight in kilos divided by your height in metres squared. A quick screen for under- and overweight that can’t tell muscle from fat.',
     whatItMeans:
       'Weight relative to height. Mortality in 3.95 million never-smokers was lowest at BMI 20–25 (Global BMI Mortality Collaboration 2016). It cannot tell muscle from fat.',
     howToImprove:
@@ -117,6 +133,8 @@ export const BENCHMARKS: Record<BenchmarkMetric, BenchmarkInfo> = {
   waist_to_height: {
     title: 'Waist-to-height ratio',
     unit: 'ratio',
+    plain:
+      'Your waist measurement divided by your height. It shows belly fat — the kind most linked to diabetes and heart disease; keep your waist under half your height.',
     whatItMeans:
       'Waist divided by height — a measure of belly fat that works for muscular people too. Keep your waist under half your height. It picks out high blood pressure, type 2 diabetes and heart disease risk better than waist size or BMI (Ashwell 2012).',
     howToImprove:
@@ -130,6 +148,8 @@ export const BENCHMARKS: Record<BenchmarkMetric, BenchmarkInfo> = {
   weekly_exercise_minutes: {
     title: 'Weekly activity',
     unit: 'min/week (moderate-equivalent)',
+    plain:
+      'Minutes of activity that get you at least breathing harder, like a brisk walk. 150 a week is WHO’s minimum for health.',
     whatItMeans:
       'Purposeful moderate-to-vigorous activity per week, where 1 vigorous minute counts as 2 moderate ones. WHO 2020 recommends 150–300 moderate or 75–150 vigorous minutes a week, plus muscle strengthening on 2 or more days.',
     howToImprove:
@@ -143,6 +163,8 @@ export const BENCHMARKS: Record<BenchmarkMetric, BenchmarkInfo> = {
   strength_days: {
     title: 'Strength days',
     unit: 'days/week',
+    plain:
+      'Days a week you train your muscles against resistance — weights, machines or bodyweight. Two or more keep muscle and bone strong as you age.',
     whatItMeans:
       'How many days a week you train your muscles. WHO 2020 recommends muscle-strengthening activity for all major muscle groups on 2 or more days a week.',
     howToImprove:
@@ -155,6 +177,8 @@ export const BENCHMARKS: Record<BenchmarkMetric, BenchmarkInfo> = {
   strength_minutes: {
     title: 'Strength training time',
     unit: 'min/week',
+    plain:
+      'Time spent training your muscles each week. The health benefit arrives with the first 30–60 minutes; more is for strength and looks.',
     whatItMeans:
       'Weekly time spent on muscle-strengthening work. The strongest observed health association is at about 30–60 minutes a week: about 10–20% lower risk of death, cardiovascular disease and cancer (Momma 2022).',
     howToImprove:
@@ -168,6 +192,8 @@ export const BENCHMARKS: Record<BenchmarkMetric, BenchmarkInfo> = {
   heart_rate_recovery: {
     title: 'Cardio recovery',
     unit: 'bpm drop in 1 min',
+    plain:
+      'How many beats your heart rate drops in the first minute after hard exercise. A quick drop means your heart switches back to rest well.',
     whatItMeans:
       'How far your heart rate falls in the first minute after hard exercise — how quickly your calming nervous system takes over. Faster is better.',
     howToImprove:
@@ -181,6 +207,8 @@ export const BENCHMARKS: Record<BenchmarkMetric, BenchmarkInfo> = {
   walking_speed: {
     title: 'Walking speed',
     unit: 'km/h',
+    plain:
+      'Your usual pace walking on flat ground, measured by your iPhone. It reflects leg strength and fitness; a slowdown over months matters more than one reading.',
     whatItMeans:
       'Your usual everyday walking pace. In adults over 65 it is one of the best simple predictors of survival (Studenski 2011); in younger adults it mostly matters if it drops.',
     howToImprove:
@@ -194,6 +222,8 @@ export const BENCHMARKS: Record<BenchmarkMetric, BenchmarkInfo> = {
   respiratory_rate: {
     title: 'Respiratory rate',
     unit: 'breaths/min',
+    plain:
+      'Breaths per minute while you sleep. It stays very steady for each person, so a clear rise above your usual often means illness is on its way.',
     whatItMeans:
       'Breaths per minute while asleep. It is very stable within a person, so a clear rise above your own baseline means more than the absolute number.',
     howToImprove: 'Not a training target. It rises with illness and with a higher night-time heart rate.',
@@ -206,6 +236,8 @@ export const BENCHMARKS: Record<BenchmarkMetric, BenchmarkInfo> = {
   blood_oxygen: {
     title: 'Blood oxygen',
     unit: '%',
+    plain:
+      'SpO₂ (blood oxygen) is the share of your red blood cells carrying oxygen. Healthy lungs keep it at 95–100%; it only matters when it stays low.',
     whatItMeans:
       'The share of your blood\'s haemoglobin carrying oxygen. Healthy lungs at sea level keep it at 95–100% while awake; brief dips during sleep are normal.',
     howToImprove: 'Not a training target. Altitude lowers it.',

@@ -1,12 +1,15 @@
-import { TonePill, useChartColors, type Tone } from '../../../../shared/ui'
+import { Pencil } from 'lucide-react'
+import { Button, TonePill, useChartColors, type Tone } from '../../../../shared/ui'
+import { useEntityModal } from '../../../../shared/modals'
 import { addDaysIso } from '../../healthWindowStats'
 import { buildTrendStats, type VitalState } from '../../healthTrendStats'
-import { classify } from '../../benchmarks/healthBenchmarks'
+import { BETTER_LABEL, TILE_PLAIN, classify } from '../../benchmarks/healthBenchmarks'
 import { BODYWEIGHT_SOURCE_LABEL } from '../../bodyweight'
 import { fmtDayMonth } from '../healthFormat'
 import type { HealthHero } from './useHealthHero'
 import { DailyTrend } from './DailyTrend'
 import { MetricExplainer } from './MetricExplainer'
+import { AimLine } from './AimLine'
 import { TrendStatsBlock } from './TrendStatsBlock'
 import { Summary } from './HeroDetailsActivity'
 import { num, signed } from './heroFormat'
@@ -14,6 +17,16 @@ import { num, signed } from './heroFormat'
 // Detail sheets for the Resting HR, Weight and Overnight vitals hero tiles.
 
 interface Props { hero: HealthHero; onViewDay: (date: string) => void }
+
+/** The tile's plain sentence and aim, for the sheets that have no single benchmark metric. */
+function PlainAim({ plain, better, aim }: { plain: string; better: string; aim: HealthHero['aims']['weight'] }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <p className="text-meta text-fg-2">{plain} <span className="text-fg-muted">{better}.</span></p>
+      <AimLine aim={aim} full />
+    </div>
+  )
+}
 
 export function RhrDetail({ hero, onViewDay }: Props) {
   const { rhr, anchor: A, ctx } = hero
@@ -33,7 +46,7 @@ export function RhrDetail({ hero, onViewDay }: Props) {
         yDomain={['auto', 'auto']} onViewDay={onViewDay} />
       <TrendStatsBlock stats={stats} format={v => num(v)} formatDelta={v => `${signed(v)} bpm`} direction="down" rateUnit="bpm/week" />
       <div className="border-t border-line pt-4">
-        <MetricExplainer metric="resting_heart_rate" ctx={ctx} value={rhr.avg7} cls={rhr.cls} />
+        <MetricExplainer metric="resting_heart_rate" ctx={ctx} value={rhr.avg7} cls={rhr.cls} aim={hero.aims.rhr} />
       </div>
     </div>
   )
@@ -42,6 +55,7 @@ export function RhrDetail({ hero, onViewDay }: Props) {
 export function WeightDetail({ hero, onViewDay }: Props) {
   const { weight: w, anchor: A, ctx } = hero
   const c = useChartColors()
+  const modal = useEntityModal()
   const stats = buildTrendStats(w.series, { to: A, direction: null, sparse: true })
   const lastSource = w.lastDate ? w.sources.get(w.lastDate) : undefined
   return (
@@ -51,6 +65,11 @@ export function WeightDetail({ hero, onViewDay }: Props) {
         {w.lastKg != null && w.lastDate && <>Last weigh-in {num(w.lastKg, 1)} kg on {fmtDayMonth(w.lastDate)}{lastSource ? ` (${BODYWEIGHT_SOURCE_LABEL[lastSource]})` : ''}. </>}
         {w.perWeek != null && <>Over the last 28 days the trend is <b className="text-fg">{signed(w.perWeek, 2)} kg a week</b>.</>}
       </Summary>
+      <PlainAim plain={TILE_PLAIN.weight} better={BETTER_LABEL.range} aim={hero.aims.weight} />
+      {/* The goal weight is set in the one goal editor (the `day-targets` popup). */}
+      <Button size="sm" variant="secondary" className="self-start" icon={<Pencil aria-hidden />} onClick={() => modal.open({ kind: 'day-targets' })}>
+        {hero.goalWeightKg != null ? 'Edit goal' : 'Set a goal weight'}
+      </Button>
       <DailyTrend series={w.series} from={addDaysIso(A, -89)} to={A} kind="line" rolling label="weigh-in" unit="kg"
         ariaLabel="Weigh-ins over the last 90 days with the 7-day average" color={c.series[1]}
         formatValue={v => num(v, 1)} yDomain={['auto', 'auto']} onViewDay={onViewDay} />
@@ -77,6 +96,9 @@ export function WeightDetail({ hero, onViewDay }: Props) {
 
 const STATE_TONE: Record<VitalState, Tone> = { inside: 'success', above: 'warn', below: 'warn', unknown: 'neutral' }
 const STATE_LABEL: Record<VitalState, string> = { inside: 'Usual', above: 'Above usual', below: 'Below usual', unknown: 'Not enough data' }
+/** HRV above your usual is a good sign, not a warning. */
+const stateTone = (i: HealthHero['vitals']['items'][number]): Tone => (i.good != null && i.state === i.good ? 'success' : STATE_TONE[i.state])
+const stateLabel = (i: HealthHero['vitals']['items'][number]) => (i.good != null && i.state === i.good ? `${STATE_LABEL[i.state]} (good)` : STATE_LABEL[i.state])
 
 export function VitalsDetail({ hero, onViewDay }: Props) {
   const { vitals: v, anchor: A, ctx } = hero
@@ -89,6 +111,7 @@ export function VitalsDetail({ hero, onViewDay }: Props) {
   return (
     <div className="flex flex-col gap-5">
       <Summary>{v.summary.text}. Each reading is compared with your own usual range, not a population norm, and nothing is added up into a score.</Summary>
+      <PlainAim plain={TILE_PLAIN.vitals} better="Inside your own usual range is best" aim={hero.aims.vitals} />
       <ul className="flex flex-col divide-y divide-line rounded-row border border-line">
         {v.items.map(i => (
           <li key={i.key} className="flex min-h-[52px] flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2">
@@ -105,7 +128,7 @@ export function VitalsDetail({ hero, onViewDay }: Props) {
                 {i.date && i.date !== A ? ` · ${fmtDayMonth(i.date)}` : ''}
               </p>
             </div>
-            <TonePill tone={STATE_TONE[i.state]}>{STATE_LABEL[i.state]}</TonePill>
+            <TonePill tone={stateTone(i)}>{stateLabel(i)}</TonePill>
           </li>
         ))}
       </ul>

@@ -1,25 +1,30 @@
 import { useCallback, useState } from 'react'
 import { Search, Settings2, X } from 'lucide-react'
 import { useTestGameStore } from '../testGameStore'
-import type { PlatformCount, StatusCounts, TgGame } from '../testGameModel'
+import type { PlatformGroup, StatusCounts, TgGame } from '../testGameModel'
 import type { TgHeaderConfig } from '../tgTypes'
-import { TgUserMenu } from './TgUserMenu'
-import { TgMobileGamepad } from './TgMobileGlyph'
 import { TgMobileScope } from './TgMobileScope'
 import { TgMobileListTools } from './TgMobileListTools'
+import { TgMobileSections } from './TgMobileSections'
+import { TgLibraryMenu } from './TgLibraryMenu'
 import { TgRandomButton } from './TgRandomButton'
 import { TgProviderSync } from './TgProviderSync'
+import type { TgNavCounts } from './tgSections'
 
-// Horizontal padding that also clears a landscape notch — the design's ~20px
-// phone gutter, matching the grid's cover edges. The chip row's scroll padding
-// repeats it so a chip scrolled into view keeps the gutter.
-const GUTTER = 'pl-[max(1.25rem,env(safe-area-inset-left))] pr-[max(1.25rem,env(safe-area-inset-right))]'
-const SCROLL_GUTTER = 'scroll-pl-[max(1.25rem,env(safe-area-inset-left))] scroll-pr-[max(1.25rem,env(safe-area-inset-right))]'
+// The shell's 16px phone gutter, clearing a landscape notch. The chip row's
+// scroll padding repeats it so a chip scrolled into view keeps the gutter.
+const GUTTER = 'pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))]'
+const SCROLL_GUTTER = 'scroll-pl-[max(1rem,env(safe-area-inset-left))] scroll-pr-[max(1rem,env(safe-area-inset-right))]'
 
-export function TgMobileHeader({ platforms, genres, studios, statusCounts, header, onRandom, resultCount, libraryGames }: {
+/**
+ * The page's own rows under the app's phone header: the sections (with search
+ * and the ⋯ menu), then what the list is scoped to and its tools.
+ */
+export function TgMobileHeader({ groups, counts, genres, studios, statusCounts, header, onRandom, resultCount, libraryGames }: {
+  groups: PlatformGroup[]
+  counts: TgNavCounts
   /** Opens a random game from the visible list; absent when the list is empty. */
   onRandom?: () => void
-  platforms: PlatformCount[]
   genres: { genre: string; count: number }[]
   studios?: { studio: string; count: number }[]
   /** Games the current filters leave (the count line, the filter sheet's button). */
@@ -58,36 +63,32 @@ export function TgMobileHeader({ platforms, genres, studios, statusCounts, heade
   }, [])
 
   return (
-    <header className="shrink-0 pt-[env(safe-area-inset-top)]">
-      <div className={`flex h-[60px] items-center justify-between gap-3 ${GUTTER}`}>
-        <div className="flex min-w-0 items-center gap-2.5">
-          <TgMobileGamepad size={30} className="shrink-0 text-[var(--tg-text)]" />
-          <h1 data-tg-heading tabIndex={-1} className="truncate text-[19px] font-bold tracking-[-0.01em] focus:outline-none">Game Library</h1>
-        </div>
-        <div className="flex shrink-0 items-center gap-1">
-          {section === 'scrape' && (
-            <button type="button" onClick={() => setScrapeSettingsOpen(true)} aria-label="What to save" className="tg-icon-btn">
-              <Settings2 size={20} strokeWidth={1.9} />
-            </button>
-          )}
-          {hasFilters && <TgRandomButton onPick={onRandom} count={resultCount} />}
-          {hasFilters && (
-            <button
-              type="button"
-              onClick={() => (showSearch ? closeSearch() : setSearchOpen(true))}
-              aria-label={showSearch ? 'Close search' : 'Search games'}
-              aria-expanded={showSearch}
-              className="tg-icon-btn"
-            >
-              <Search size={20} strokeWidth={1.9} />
-            </button>
-          )}
-          <TgUserMenu />
-        </div>
-      </div>
+    <header className="shrink-0">
+      {/* The app header shows "Games"; this names the view for assistive tech
+          and takes focus after an Analytics hand-off. */}
+      <h1 data-tg-heading tabIndex={-1} className="sr-only">{header.title}</h1>
+      <TgMobileSections
+        counts={counts}
+        actions={(
+          <>
+            {hasFilters && (
+              <button
+                type="button"
+                onClick={() => (showSearch ? closeSearch() : setSearchOpen(true))}
+                aria-label={showSearch ? 'Close search' : 'Search games'}
+                aria-expanded={showSearch}
+                className="tg-icon-btn shrink-0"
+              >
+                <Search size={20} strokeWidth={1.9} />
+              </button>
+            )}
+            <TgLibraryMenu withAddGame />
+          </>
+        )}
+      />
 
       {showSearch && (
-        <div className={`pb-2 ${GUTTER}`}>
+        <div className={`pb-1 pt-1.5 ${GUTTER}`}>
           <div className="relative">
             <Search size={17} strokeWidth={1.9} aria-hidden className="tg-faint pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2" />
             <input
@@ -114,14 +115,22 @@ export function TgMobileHeader({ platforms, genres, studios, statusCounts, heade
         </div>
       )}
 
-      <div className={`flex min-h-[48px] items-center justify-between gap-3 pb-2 pt-1 ${GUTTER}`}>
-        <TgMobileScope platforms={platforms} header={header} />
+      <div className={`flex min-h-[52px] items-center justify-between gap-2 pb-2 pt-1 ${GUTTER}`}>
+        <TgMobileScope groups={groups} header={header} />
         {section === 'library' && (header.platformKey === 'steam' || header.platformKey === 'playstation') && (
           <TgProviderSync library={header.platformKey} games={libraryGames ?? []} compact />
         )}
-        {hasFilters && (
-          <TgMobileListTools genres={genres} studios={studios} statusCounts={statusCounts} showStatus={showStatus} showSort={showSort} resultCount={resultCount} />
-        )}
+        <div className="flex shrink-0 items-center gap-1.5">
+          {section === 'scrape' && (
+            <button type="button" onClick={() => setScrapeSettingsOpen(true)} aria-label="What to save" className="tg-icon-btn">
+              <Settings2 size={20} strokeWidth={1.9} />
+            </button>
+          )}
+          {hasFilters && (
+            <TgMobileListTools genres={genres} studios={studios} statusCounts={statusCounts} showStatus={showStatus} showSort={showSort} resultCount={resultCount} />
+          )}
+          {hasFilters && <TgRandomButton onPick={onRandom} count={resultCount} className="-mr-1.5" />}
+        </div>
       </div>
       {/* Its own line: beside the title it pushed Filters off the screen. */}
       {section === 'queue' && header.inlineAction && (
@@ -154,7 +163,6 @@ export function TgMobileHeader({ platforms, genres, studios, statusCounts, heade
           })}
         </div>
       )}
-
     </header>
   )
 }

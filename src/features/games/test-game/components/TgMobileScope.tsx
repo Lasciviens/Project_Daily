@@ -1,53 +1,51 @@
-import { ChevronLeft } from 'lucide-react'
+import { useState } from 'react'
+import { ChevronDown, ChevronLeft } from 'lucide-react'
 import { useTestGameStore } from '../testGameStore'
 import {
-  ALL_PLATFORMS, OTHER_PLATFORMS, STATUS_SECTIONS, platformInfo, platformLabels, splitPlatforms,
-  type PlatformCount,
+  ALL_PLATFORMS, STATUS_SECTIONS, platformInfo, platformLabels,
+  type PlatformGroup,
 } from '../testGameModel'
 import type { TgHeaderConfig } from '../tgTypes'
-import { TgDropdown, type TgOption } from './TgDropdown'
+import { TgDropdown } from './TgDropdown'
+import { TgMobilePlatformSheet } from './TgMobilePlatformSheet'
 
 /**
- * Left side of the phone's second row: what the grid below is scoped to.
- * Library → the design's "PS2 ▾" platform pill. Wishlist/Completed/Backlog →
- * the section name plus its platform scope. Queue/Analytics/Advanced → the
- * section title, nothing to pick.
+ * Left side of the phone's scope row: what the grid below is scoped to.
+ * Library → the design's "PS2 ▾" platform pill, which opens every platform
+ * grouped by maker. Wishlist/Completed/Backlog → the section name plus its
+ * platform scope. Queue/Analytics/Advanced → the section title, nothing to pick.
  */
-export function TgMobileScope({ platforms, header }: { platforms: PlatformCount[]; header: TgHeaderConfig }) {
+export function TgMobileScope({ groups, header }: { groups: PlatformGroup[]; header: TgHeaderConfig }) {
   const section = useTestGameStore(s => s.section)
   const platform = useTestGameStore(s => s.platform)
   const setPlatform = useTestGameStore(s => s.setPlatform)
   const scrapeReview = useTestGameStore(s => (s.scrapeMode === 'search' ? s.scrapeReview : null))
   const setScrapeReview = useTestGameStore(s => s.setScrapeReview)
+  const [pickerOpen, setPickerOpen] = useState(false)
 
   if (section === 'library') {
-    // The shell's effective platform: a persisted platform with no games left
+    // The page's effective platform: a persisted platform with no games left
     // falls back to All there, and the pill must say what the grid shows.
     const current = header.platformKey ?? platform
-    const total = platforms.reduce((n, p) => n + p.count, 0)
     // Two systems sharing a short name ("Arcade") are spelled out in full.
-    const labels = platformLabels(platforms)
-    const options: TgOption<string>[] = [
-      { value: ALL_PLATFORMS, label: 'All platforms', count: total },
-      ...platforms.map(p => ({ value: p.key, label: labels.get(p.key) ?? p.info.short, count: p.count })),
-    ]
-    // "Others" only exists as a desktop sidebar row; the phone lists every
-    // platform by name, but a persisted Others choice must stay visible here.
-    if (current === OTHER_PLATFORMS) {
-      const others = splitPlatforms(platforms, 8).others.reduce((n, p) => n + p.count, 0)
-      options.push({ value: OTHER_PLATFORMS, label: 'Others', count: others })
-    }
+    const labels = platformLabels(groups.flatMap(g => g.platforms))
+    // "All" on the pill (the row is tight at 393px); the sheet spells it out.
+    const label = labels.get(current) ?? platformInfo(current).short
     return (
-      <TgDropdown
-        value={current}
-        options={options}
-        onChange={setPlatform}
-        buttonLabel={labels.get(current) ?? platformInfo(current).short}
-        ariaLabel="Platform"
-        align="start"
-        // The design's platform pill reads larger and bolder than the desktop filter pills.
-        className="!text-[15px] !font-semibold"
-      />
+      <>
+        <button
+          type="button"
+          onClick={() => setPickerOpen(true)}
+          aria-haspopup="dialog"
+          aria-label={`Platform: ${current === ALL_PLATFORMS ? 'All platforms' : label}`}
+          // The design's platform pill reads larger and bolder than the filter pills.
+          className="tg-select min-w-0 !text-[15px] !font-semibold"
+        >
+          <span className="min-w-0 truncate">{label}</span>
+          <ChevronDown aria-hidden className="tg-chev ml-auto shrink-0" strokeWidth={2} />
+        </button>
+        <TgMobilePlatformSheet open={pickerOpen} onClose={() => setPickerOpen(false)} groups={groups} current={current} onPick={setPlatform} />
+      </>
     )
   }
 

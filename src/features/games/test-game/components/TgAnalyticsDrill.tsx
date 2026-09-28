@@ -2,7 +2,7 @@ import { useMemo, useState, type ReactNode } from 'react'
 import { Dialog, DialogBackdrop, DialogPanel, DialogTitle } from '@headlessui/react'
 import { X } from 'lucide-react'
 import { formatDay, type TgGame } from '../testGameModel'
-import { useTgBreakpoint } from '../useTgBreakpoint'
+import { useBreakpoint } from '../../../../shared/hooks/useBreakpoint'
 import { TGA_LIBRARIES, tileGames, type TgaLibrary, type TgaTile } from './tgAnalyticsModel'
 import { drillFigure, drillNote, drillTitle, shownOf } from './tgAnalyticsDrillCopy'
 import { openGameFromAnalytics } from './tgAnalyticsOpen'
@@ -45,7 +45,7 @@ function Body({ kind, games, windowed, scope, onPick }: {
 function Drawer({ open, onClose, title, children }: { open: boolean; onClose: () => void; title: string; children: ReactNode }) {
   useHistoryDismiss(open, onClose)
   return (
-    <Dialog open={open} onClose={onClose} className="tg-portal relative z-[60]">
+    <Dialog open={open} onClose={onClose} className="tg-portal relative z-sheet">
       <DialogBackdrop transition className="fixed inset-0 bg-black/40 transition duration-200 data-[closed]:opacity-0" />
       <div className="fixed inset-0 flex justify-end">
         <DialogPanel
@@ -68,7 +68,7 @@ function Drawer({ open, onClose, title, children }: { open: boolean; onClose: ()
 export function TgAnalyticsDrill({ kind, scoped, start, end, library, onClose }: {
   kind: TgaTile | null; scoped: TgGame[]; start: number | null; end: number; library: TgaLibrary; onClose: () => void
 }) {
-  const bp = useTgBreakpoint()
+  const bp = useBreakpoint()
   // Kept while the sheet animates out, so it doesn't empty mid-transition.
   const [last, setLast] = useState<TgaTile>('games')
   if (kind && kind !== last) setLast(kind)
@@ -80,7 +80,7 @@ export function TgAnalyticsDrill({ kind, scoped, start, end, library, onClose }:
 
   const onPick = (id: string) => {
     onClose()
-    if (bp !== 'mobile') { openGameFromAnalytics(id); return }
+    if (bp !== 'phone') { openGameFromAnalytics(id); return }
     // The phone sheet closes by popping its history entry; open the game's
     // sheet only once that Back has landed, or its own entry would be the one popped.
     let done = false
@@ -91,7 +91,7 @@ export function TgAnalyticsDrill({ kind, scoped, start, end, library, onClose }:
 
   const title = drillTitle(shownKind, windowed)
   const body = <Body key={shownKind} kind={shownKind} games={games} windowed={windowed} scope={scope} onPick={onPick} />
-  return bp === 'mobile'
+  return bp === 'phone'
     ? <TgMobileSheet open={kind != null} onClose={onClose} title={title}>{body}</TgMobileSheet>
     : <Drawer open={kind != null} onClose={onClose} title={title}>{body}</Drawer>
 }

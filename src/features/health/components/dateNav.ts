@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { shiftDateStr, todayStr } from '../../../shared/utils/dateUtils'
 import { makeWindow, type HealthWindow } from '../healthWindowStats'
-import { dayNavLabel, spanLabel } from '../healthDateLabels'
+import { dayNavLabel, numericSpanLabel, spanLabel } from '../healthDateLabels'
 import type { Period } from './PeriodToggle'
 import type { HealthRange } from './sectionTypes'
 
@@ -45,13 +45,13 @@ export function stepAnchor(period: Period, anchor: string, dir: 1 | -1): string 
   return next > today ? today : next
 }
 
-/** The period navigator's label: the dates only ("21–27 Sep", "Sun 27 Sep",
- *  "28 Sep 2025 – 27 Sep 2026"). No "Last 7 days" prefix — the lit period
- *  button already says that, and a prefix made the label's width jump with
- *  every period switch. */
+/** The date bar's label: the window's dates only, numeric in the owner's
+ *  format ("21.09 – 27.09", "27.09", "30.12.2025 – 05.01.2026"). No "Last 7
+ *  days" prefix — the lit period button already says that, and a prefix made
+ *  the label's width jump with every period switch. */
 export function labelForAnchor(period: Period, anchor: string, today = todayStr()): string {
   const { from, to } = rangeForAnchor(period, anchor)
-  return spanLabel(from, to, today)
+  return numericSpanLabel(from, to, today)
 }
 
 /** Short noun for the headline eyebrow: "last 7 days", "21–27 Sep", "today". */

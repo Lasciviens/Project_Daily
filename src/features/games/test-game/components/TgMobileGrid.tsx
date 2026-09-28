@@ -48,9 +48,9 @@ const MobileCard = memo(function MobileCard({ game, onSelect, meta }: { game: Tg
 })
 
 /**
- * The phone's two-column cover grid; tapping a card opens the detail sheet.
- * The design's gutters are ~20px with a ~24px column gap; the 20px comes from
- * the phone scroller in TestGamePage, shared by every section and the header.
+ * The phone's cover grid (two columns upright); tapping a card opens the
+ * detail sheet. A ~24px column gap as the design draws it; the 16px gutter
+ * comes from the phone scroller in TestGamePage, shared by every section.
  */
 const FIRST = 48
 const STEP = 96
@@ -83,7 +83,9 @@ export function TgMobileGrid({ games, onSelect, listKey }: { games: TgGame[]; on
 
   return (
     <>
-      <div className="grid grid-cols-2 gap-x-6 gap-y-6 pb-4">
+      {/* Two columns on a phone held upright; a phone on its side (the same
+          layout, ~820px wide) gets four instead of two giant covers. */}
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(9.5rem,1fr))] gap-x-6 gap-y-6 pb-4">
         {(more ? games.slice(0, limit) : games).map(g => <MobileCard key={g.id} game={g} onSelect={onSelect} meta={cardMeta(g, sort, formatPlaytime)} />)}
       </div>
       {more && <div ref={sentinel} aria-hidden className="h-px" />}

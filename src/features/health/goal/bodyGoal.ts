@@ -106,19 +106,41 @@ export function kcalForPace(fromPct: number, toPct: number, kg: number, density 
   return Math.sign(raw) * Math.max(50, Math.round(Math.abs(raw) / 50) * 50)
 }
 
-export function buildRateVerdict(phase: Phase, energy: EnergyReport, opts: { intakeReliable: boolean }): RateVerdict | null {
-  const w = energy.weight
-  if (!energy.hasTrend || w.kgPerWeek == null || w.pctPerWeek == null || !w.meanKg) return null
-  const kg = w.meanKg
-  const pct = -w.pctPerWeek
+export interface PaceAdvice { status: RateStatus; adjust: RateAdjust | null; adjustMid: RateAdjust | null }
+
+/** THE pace rule — the report's verdict (buildRateVerdict) and the goal
+ *  editor's / Food's coach (coachPace) both read it, so the two can never
+ *  disagree about whether a pace is on track or how far to move calories.
+ *  `pct` is signed (+ = gaining) %BW/week, `kg` the weight it's a share of. */
+export function paceAdvice(phase: Phase, pct: number, kg: number): PaceAdvice {
   const status = classifyRate(phase, pct)
   const t = PHASE_TARGET[phase]
   const at = (target: number): RateAdjust => ({ kcal: kcalForPace(pct, target, kg), pct: target, kgPerWeek: Math.round((target / 100) * kg * 100) / 100 })
   const inRange = status === 'on_track' || status === 'stable'
   const edge = phase === 'maintain' ? t.mid : pct < t.lo ? t.lo : t.hi
-  const adjust = inRange ? null : at(edge)
-  const adjustMid = inRange || phase === 'maintain' ? null : at(t.mid)
-  const intake = energy.intake.meanKcal
+  return {
+    status,
+    adjust: inRange ? null : at(edge),
+    adjustMid: inRange || phase === 'maintain' ? null : at(t.mid),
+  }
+}
+
+/** The coach's reading of a weight trend (kg/week, + = gaining) over a mean
+ *  weight — rounded the way the energy report rounds (%BW to 2 dp, weight to
+ *  1 dp), so over the same weigh-ins it gives the report's exact answer. */
+export function coachPace(phase: Phase, kgPerWeek: number, meanKg: number): PaceAdvice & { pct: number } {
+  const pct = Math.round((kgPerWeek / meanKg) * 100 * 100) / 100
+  return { ...paceAdvice(phase, pct, Math.round(meanKg * 10) / 10), pct }
+}
+
+export function buildRateVerdict(phase: Phase, energy: EnergyReport, opts: { intakeReliable: boolean }): RateVerdict | null {
+  const w = energy.weight
+  if (!energy.hasTrend || w.kgPerWeek == null || w.pctPerWeek == null || !w.meanKg) return null
+  const pct = -w.pctPerWeek
+  const { status, adjust, adjustMid } = paceAdvice(phase, pct, w.meanKg)
+  // The same logged intake the Energy card shows: the paired days (a full
+  // diary AND a complete Apple day); every full diary day only when no day pairs.
+  const intake = energy.paired.days > 0 ? energy.paired.meanIntake : energy.intake.meanKcal
   return {
     status,
     pctPerWeek: Math.round(pct * 100) / 100,
