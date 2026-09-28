@@ -244,7 +244,7 @@ geometry (no spinners in content areas). Empty says what goes here and offers th
 fills it. Errors say what failed and offer a retry; render-time crashes are caught by `ErrorBoundary`.
 
 **Icons.** `lucide-react` only. 16px inside buttons and rows, 18px in icon buttons, 20px in nav,
-22px in the phone tab bar; `strokeWidth` 2 (1.8 in the tab bar). Icons are `aria-hidden` next to a
+22px in the phone tab bar; `strokeWidth` 2 (1.8–1.9 in the phone chrome). Icons are `aria-hidden` next to a
 text label. Emoji are allowed only as user-facing *content* (a meal slot, a season chip), never as
 UI chrome or section markers.
 
@@ -256,22 +256,31 @@ UI chrome or section markers.
 
 | Layout | Width | Shell |
 |---|---|---|
-| **Phone** | < 768px, *or* a landscape phone (`(pointer: coarse) and (max-height: 499px)`) | Compact glass header (title + search + AI + requests + avatar), content, flat glass bottom tab bar with the primary tabs (at most 5) + More |
-| **Tablet / laptop** | 768–1279px | Collapsible icon sidebar (68px) + top bar + content |
+| **Phone** | < 768px, *or* a landscape phone (`(pointer: coarse) and (max-height: 499px)`) | Glass header, 56px (52px below 640px) — logo + title + search + AI + requests + avatar; hides on scroll-down — content, flat glass bottom tab bar (64px + safe area) with the primary tabs (at most 5) + More |
+| **Tablet / laptop** | 768–1279px | Fixed 68px icon rail (not collapsible) + 64px top bar on the canvas + content |
 | **Desktop** | ≥ 1280px | Full sidebar (232px) with labels and groups + top bar + content |
 
 `useBreakpoint()` (`src/shared/hooks/useBreakpoint.ts`) returns `'phone' | 'tablet' | 'desktop'`.
 Prefer CSS (`md:`, `xl:`, container queries) for styling; use the hook only when the *structure*
 differs.
 
-**Navigation** is defined once in `src/app/navigation.ts` — sidebar, phone tab bar, More sheet and
-the command bar all read that registry. Adding a page = one entry there (label, path, icon, group,
-`tab` slot or `more`). Never hand-write a nav list in a component.
+**Navigation** is defined once in `src/app/navigation.ts` — sidebar, shell titles, phone tab bar,
+More sheet and the command bar all read that registry. Adding a page = one entry there (label, path,
+icon, group, `tab` slot or `more`; optional `parent` for a sub-page with no row of its own, `match`,
+`fullHeight`, `keywords`) plus its route in `router.tsx`. Never hand-write a nav list in a component.
 
 **The document never scrolls.** `<main>` is the one scroll container (pull-to-refresh, scroll
-restore and the glass chrome depend on it). Pages must not create their own full-height scroller.
-Header height `--app-header-h`, tab bar `--app-tabbar-h`, sidebar `--app-sidebar-w` — offsets use
-the tokens (`pt-header`, `pb-tabbar`), never magic numbers.
+restore and the glass chrome depend on it). Pages must not create their own full-height scroller;
+the one exception is a page flagged `fullHeight` in the registry (Shop's two panes), whose wrapper
+gets `h-full`. Header height `--app-header-h`, tab bar `--app-tabbar-h`, sidebar `--app-sidebar-w`
+(also Tailwind spacing names: `h-header`, `h-tabbar`, `w-sidebar`) — offsets use the variables, with
+safe areas composed in `calc()` (e.g. `pb-[calc(var(--app-tabbar-h)+env(safe-area-inset-bottom)+16px)]`
+on `<main>`), never magic numbers. `--ios-viewport-gap` (`app/iosViewportFix.ts`) corrects the
+installed iOS PWA's short viewport; phone tab bars sit at `bottom: calc(-1 * var(--ios-viewport-gap))`.
+
+`/games` is the one route outside `AppShell`: it draws its own chrome, carries its own token set
+(`testGame.css`, `.tg-root` / `.tg-portal`) and mounts its own `ModalHost` and `Toaster`. See CLAUDE.md
+→ Games.
 
 ### 6.2 Page anatomy
 
@@ -313,11 +322,12 @@ overflow at 393 / 1469 / 2450px. Verify at those widths (CLAUDE.md → W6).
 | Movement | Duration / curve |
 |---|---|
 | Hover, press, colour changes | 100–150ms ease |
-| Press feedback | `scale(0.98)` buttons, `scale(0.99)` cards |
+| Press feedback | `scale(0.98)` buttons, `scale(0.99)` cards, `.press-feedback` `scale(0.96)` + 85% opacity on other tappables |
 | Popup / sheet enter | 300ms `cubic-bezier(0.2,0.8,0.2,1)` (phone slides up), 200ms fade+scale (dialog) |
-| Popup leave | 200ms |
-| Route change | 180–220ms slide/crossfade (View Transitions) or `.page-in` fallback |
-| Phone content entrance | `.stagger-in` 30ms-stepped cascade |
+| Popup leave | 200ms (dialog, drawer); the phone sheet slides out on its 300ms curve |
+| Route change | 180–220ms slide/crossfade (View Transitions), else the `.page-in` rise (300ms) |
+| Phone content entrance | `.stagger-in` (≤ 639px): children cascade in 35ms steps from 25ms, capped at the 8th |
+| Active tab icon | `animate-tabPop` (300ms overshoot) |
 | Drag-to-close release | 220ms settle |
 
 Everything respects `prefers-reduced-motion` (the global rules already disable the keyframes; custom
@@ -335,9 +345,11 @@ selectors live **outside** `@layer` in `index.css` (Tailwind purges them otherwi
   large pickers).
 - `sm:` and up: centered dialog, 18px radius, sizes `xs` (confirm, 24rem) · `sm` 28rem · `md` 32rem
   (default) · `lg` 42rem · `xl` 56rem.
-- Header: title (`text-title`) + optional subtitle + `headerActions` + a 44px close button; or a
-  `hero` (image/art) with the close button floating over it. Sticky footer for actions: primary on
-  the right, full-width buttons on phones.
+- Backdrop `bg-scrim/45` with a 2px blur (`/70` in dark).
+- Header: title (`text-title`) + optional subtitle + `headerActions` + a 44px close button (on phones
+  the header is a drag handle too); or a `hero` (image/art) with the close button floating over it;
+  no title → pass `ariaLabel`. Body padding defaults to `p-4 sm:p-5` (`bodyClassName` overrides).
+  Sticky footer for actions: primary on the right, full-width buttons on phones.
 - **Back closes only the top popup** (`useHistoryDismiss` is built in). Esc and backdrop close too;
   `dismissible={false}` while a save is in flight.
 - Stacking is automatic: a popup opened from a popup sits above it; confirms use `layer="confirm"`.
@@ -350,10 +362,14 @@ Two ways to use it:
 | **Local sheet** | A UI sub-step owned by one screen: filters, a picker, a scanner, a portion chooser | `<ModalShell open={…} onClose={…}>` or the `Sheet` alias |
 
 Never hand-roll a `Dialog` + backdrop + panel. Never use `window.confirm` / `alert` — use
-`await modal.confirm({ title })`.
+`await modal.confirm({ title })` (it renders `ConfirmDialog`, which also exists as a controlled
+component; prefer the promise form). For a delete that can be reversed, delete at once and offer
+`toast.undo(message, onUndo)` instead of asking first (Food's diary rows).
 
-Side drawers (assistant, requests backlog) use `SideDrawer` (right edge, full height, `z-drawer`,
-Back/Esc aware) and become a bottom sheet on phones.
+Side drawers (assistant, requests backlog) use `SideDrawer` (right edge, full height, 28rem by
+default via `widthClassName`, `headerExtra` for a filter row, Back/Esc aware) and become a
+draggable bottom sheet on phones (`phoneHeight` 88dvh, `phoneStyle` to lift it above the keyboard).
+It sits on `z-drawer`, below the modal layer, so a popup opened from a drawer stacks above it.
 
 ---
 
@@ -371,23 +387,33 @@ modal.open({ kind: 'food-log', date, slot: 'lunch' })
 if (!(await modal.confirm({ title: 'Delete this entry?', confirmLabel: 'Delete' }))) return
 ```
 
-- `<ModalHost/>` is mounted once per shell. It renders the stack from `useModalStore`, each entry
-  lazily loaded (one code chunk per kind), inside an `ErrorBoundary` and `Suspense`.
-- The request union lives in `src/shared/modals/types.ts`; the kind → component map in `registry.ts`.
+- `<ModalHost/>` is mounted once per shell (`AppShell`, and `/games`' `TgModals`). It renders the
+  stack from `useModalStore`, each entry lazily loaded (one code chunk per kind, via `lazyWithReload`:
+  a chunk missing after a deploy reloads once, then shows `ModalChunkFailed`), inside an
+  `ErrorBoundary` and `Suspense`.
+- The request union lives in `src/shared/modals/types.ts`; the kind → component map in `registry.ts`
+  (a mapped type, so an unregistered kind is a compile error). Outside React, `entityModal` offers the
+  same `open` / `close` / `confirm`.
 
 **Contract (non-negotiable):**
 
 1. **Requests carry ids and prefill, never rows.** The popup re-reads its data through the feature's
    query hook (`useTaskById(id)`, `useTimeBlock(id)` …), so a stale list row can never be saved back.
+   Adapters use two helpers from `shared/modals`: `useFirstLoaded(row, query)` freezes the first
+   *fresh* row (a background refetch never re-seeds a form under the user's fingers, and a stale
+   cached row is never trusted), and `<EntityModalPending query what>` renders the popup's own
+   loading / "couldn't load" (with retry) / "no longer exists" states until then.
 2. **Writes go through the feature's mutation hooks** (built on `useMutationWithFeedback`). No
    `supabase` import and no raw api call inside a popup file.
 3. **Invalidation lives in the hook** (`invalidates: ['taskGraph']`), so every screen showing that
    entity refreshes — whichever page opened the popup.
 4. Callbacks in a request (`onSaved`) only for cross-entity follow-ups (e.g. marking the source
    record as planned).
-5. **Adding a kind:** add the request shape to `types.ts`, write `features/<x>/modals/<Name>Modal.tsx`
+5. **Adding a kind:** add the request shape to `types.ts`, write `features/<x>/modals/<Name>EntityModal.tsx`
    exporting a component that takes `EntityModalProps<'kind'>` and renders `ModalShell`, register it in
-   `registry.ts`. Then replace every hand-mounted copy of that popup with `modal.open(...)`.
+   `registry.ts`. Then replace every hand-mounted copy of that popup with `modal.open(...)`. (The
+   planning kinds — `task`, `time-block`, `schedule-block`, `plan-block` — live together in
+   `shared/components/plan-modal/PlanEntityModals.tsx`.)
 6. A route change closes the stack (a popup opened on one page never lingers over another).
 
 ---
@@ -406,8 +432,9 @@ Component ──> feature hook (useX / useUpdateX) ──> feature api (xApi.ts)
   Pure logic (rules, aggregation) lives in import-free `*Rules.ts` / `*Aggregate.ts` modules that can be
   verified with a `scripts/verify-*.cjs` script.
 
-**Query keys** come only from `qk` (`src/shared/query/keys.ts`). Every namespace has an `all` root;
-adding a query = adding its builder there.
+**Query keys** come only from `qk` (`src/shared/query/keys.ts`). Entity namespaces have an `all`
+root; grouping namespaces (`media`, `athlete`, `logs`, `external`) expose one root per entity instead
+(`qk.media.watchedAll`, `qk.athlete.profile`). Adding a query = adding its builder there.
 
 **Stale times** come only from `STALE` (`live` 30s · `short` 1m · `default` 5m · `long` 10m ·
 `hour` · `day` · `never`). Rate-limited external APIs use `hour` and `refetchOnWindowFocus: false`.
@@ -429,6 +456,11 @@ Errors are always toasted and logged to `app_error_logs`. **Callers never wrap `
 their own `toast.error`** — use `try { await m.mutateAsync(v) } catch { return }` only to stop a
 multi-step flow, or `withProgress(() => m.mutateAsync(v), { loading, success })` for per-call copy.
 
+**Toasts** outside a mutation come from `toast` in `src/app/store.ts`: `success` · `error` ·
+`warning` · `info` · `loading` (stays until `toast.dismiss(id)`) · `undo(message, onUndo)`. They
+last 3s (errors 5s, undo 6s), render through the shell's `<Toaster>` (above the tab bar on phones,
+bottom-left of the content elsewhere) and take their colour from a tone.
+
 **Invalidation groups** (`src/shared/query/invalidate.ts`): `taskGraph`, `schedule`, `nutrition`,
 `recipes`, `episodeWatched`, `media`, `training`, `aiWrite`. Name what happened, not which keys.
 
@@ -449,6 +481,7 @@ chrome. English in the product; the only exception is on-phone shortcut/widget s
 ## 12. Accessibility & touch
 
 - 44px minimum hit area on touch (`[@media(pointer:coarse)]:min-h-[44px]` is built into the primitives).
+  Known gap: `.seg-btn` (segmented control) is only 40px on touch.
 - Visible keyboard focus (`:focus-visible` accent outline following the control's radius); inputs use
   the accent halo instead.
 - Icon-only buttons have a label; decorative icons are `aria-hidden`.
