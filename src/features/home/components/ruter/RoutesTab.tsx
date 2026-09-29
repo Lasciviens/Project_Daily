@@ -13,6 +13,7 @@ import { fmtLastUpdated, fmtMinsAgo, fmtTime } from './transitUtils'
 import { toast } from '../../../../app/store'
 import { DateInput } from '../../../../shared/components/DateInput'
 import { todayStr as todayString } from '../../../../shared/utils/dateUtils'
+import { findPlace, type PlaceKind } from '../../transitPlaces'
 
 interface RoutesTabProps {
   /** False while the surrounding widget/sheet is closed: no fetching then. */
@@ -23,6 +24,9 @@ interface RoutesTabProps {
   // then reports back so RuterWidget clears it.
   pendingRouteId?:   string | null
   onRouteConsumed?:  () => void
+  /** "To home" / "To work" (TransitPanel): plan from here to that saved place once. */
+  pendingPlace?:     PlaceKind | null
+  onPlaceConsumed?:  () => void
 }
 
 // Inline "name this route" form — appears both under the draft planner and
@@ -182,7 +186,7 @@ function SavedRouteChip({ route, active, onSelect, onDelete }: {
   )
 }
 
-export function RoutesTab({ active, now, pendingRouteId, onRouteConsumed }: RoutesTabProps) {
+export function RoutesTab({ active, now, pendingRouteId, onRouteConsumed, pendingPlace, onPlaceConsumed }: RoutesTabProps) {
   const { routes, addRoute, removeRoute } = useTransitRoutes()
   const { stops: savedStops } = useTransitStops()
   const { recent: recentSearches, recordSearch } = useTransitRecentSearches()
@@ -225,6 +229,16 @@ export function RoutesTab({ active, now, pendingRouteId, onRouteConsumed }: Rout
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingRouteId, routes])
 
+  // "To home" / "To work": plan from the current location, or from the
+  // default stop when there is no location fix.
+  useEffect(() => {
+    if (!pendingPlace) return
+    const target = findPlace(savedStops, pendingPlace)
+    onPlaceConsumed?.()
+    if (target) void planGpsToStop(target, { fallbackToDefault: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingPlace])
+
   const favoriteStops = useMemo(() => {
     const seen = new Set<string>()
     const stops: { id: string; name: string }[] = []
@@ -266,10 +280,15 @@ export function RoutesTab({ active, now, pendingRouteId, onRouteConsumed }: Rout
     return getCurrentLocation()
   }
 
-  async function planGpsToStop(stop: UserTransitStop) {
+  async function planGpsToStop(stop: UserTransitStop, opts?: { fallbackToDefault?: boolean }) {
     setFromLocState('loading')
     try {
-      const gpsPlace = await resolveGpsPlace()
+      const fallback = opts?.fallbackToDefault ? savedStops.find(s => s.is_default && s.id !== stop.id && s.stop_id.startsWith('NSR:')) : undefined
+      const gpsPlace: TransitPlace = await resolveGpsPlace().catch(err => {
+        if (!fallback) throw err
+        toast.info(`No location — planning from ${fallback.label ?? fallback.stop_name}`)
+        return { kind: 'stop', id: fallback.stop_id, name: fallback.label ?? fallback.stop_name }
+      })
       const isAddress = !stop.stop_id.startsWith('NSR:')
       // Real bug fix: an address favorite has no NSR stop id, so passing it as
       // `{kind:'stop'}` sent an invalid id to EnTur's trip planner (silently no

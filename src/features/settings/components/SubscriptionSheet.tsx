@@ -12,8 +12,8 @@ const CYCLE_LABEL: Record<BillingCycle, string> = { monthly: 'Monthly', yearly: 
 
 function initialInput(sub: ServiceSubscription | null, service?: string): SubscriptionInput {
   if (sub) {
-    const { id: _id, user_id: _u, created_at: _c, updated_at: _up, ...rest } = sub
-    return rest
+    const { service: s, name, account, plan, price, currency, billing_cycle, renews_on, requirement, notes, active } = sub
+    return { service: s, name, account, plan, price, currency, billing_cycle, renews_on, requirement, notes, active }
   }
   return {
     service: service ?? '', name: null, account: null, plan: null, price: null, currency: 'NOK',
