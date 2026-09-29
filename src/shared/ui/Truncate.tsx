@@ -45,7 +45,9 @@ function readPlace(el: HTMLElement) {
   return {
     // A control around the text (a row) or inside it (an ⓘ in a title) rules out a trigger.
     tappable: !!el.parentElement?.closest(TAPPABLE_SELECTOR) || inner,
-    tg: !!el.closest('.tg-root'),
+    // /games draws with its own tokens: the page itself, or one of its
+    // portalled menus and dialogs (they carry `tg-portal`, outside `.tg-root`).
+    tg: !!el.closest('.tg-root, .tg-portal'),
   }
 }
 
@@ -173,6 +175,8 @@ export function Truncate({ children, lines = 1, as = 'span', className, reveal =
           type="button"
           onClick={() => setExpanded(v => !v)}
           aria-expanded={expanded}
+          // A hook for pages with their own palette (/games colours it).
+          data-truncate-more=""
           // A 44px hit area around a text-sized link.
           className="relative block w-fit text-meta font-semibold text-accent-600 after:absolute after:-inset-x-2 after:-inset-y-[14px] after:content-[''] [@media(hover:hover)]:hover:underline"
         >

@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { ChevronDown, Dumbbell } from 'lucide-react'
-import { cx } from '../../../../shared/ui'
+import { Truncate, cx } from '../../../../shared/ui'
 import { ExerciseThumb } from '../../exerciseMedia'
 
 /** A 44px GIF slot that keeps every row aligned: a quiet placeholder under
@@ -42,8 +42,8 @@ export function ExerciseRow({ title, templateId, meta, trailing, open, onToggle,
           className="flex min-h-[52px] min-w-0 flex-1 items-center gap-2 py-1.5 text-left"
         >
           <span className="min-w-0 flex-1">
-            <span className="line-clamp-2 break-words text-body font-medium leading-snug text-fg">{title}</span>
-            <span className="block truncate text-meta tabular-nums text-fg-muted">{meta}</span>
+            <Truncate lines={2} className="text-body font-medium leading-snug text-fg">{title}</Truncate>
+            <Truncate className="text-meta tabular-nums text-fg-muted">{meta}</Truncate>
           </span>
           {trailing}
           <ChevronDown aria-hidden className={cx('h-4 w-4 shrink-0 text-fg-faint transition-transform duration-150', open && 'rotate-180')} />

@@ -14,7 +14,7 @@ import { useEntityModal } from '../../../shared/modals'
 import { EditCalendarEventModal } from '../../calendar/components/EditCalendarEventModal'
 import { useCalendarStore, toast } from '../../../app/store'
 import { qk } from '../../../shared/query'
-import { Button, IconButton, cx } from '../../../shared/ui'
+import { Button, IconButton, Truncate, cx } from '../../../shared/ui'
 import { formatDurationMinutes } from '../../../shared/utils/formatDuration'
 import { projectOneOffBlocksForDay, projectRecurringBlocksForDay, projectCalendarEventForDay } from './dayAgendaProjection'
 import type { CalendarEvent } from '../../calendar/types'
@@ -285,8 +285,10 @@ export function DayAgenda({ date, bare = false }: { date: Date; bare?: boolean }
           overlaps && 'ring-1 ring-inset ring-danger/40',
         )}
       >
-        {/* The whole row is the tap target: py-1.5 + this 32px line = 44px. */}
-        <div className="flex min-h-[32px] items-center gap-2.5">
+        {/* The whole row is the tap target: py-1.5 + this 32px line = 44px.
+            On a phone the quick actions take a line of their own: inline they
+            squeezed the title to nothing and pushed "now" under +30m. */}
+        <div className="flex min-h-[32px] flex-wrap items-center gap-x-2.5 gap-y-1 sm:flex-nowrap">
           <div className="w-[86px] shrink-0 text-meta leading-tight tabular-nums">
             {block.allDay || block.startHour < 0 ? (
               <span className="text-fg-muted">{block.allDay ? 'All day' : 'No time'}</span>
@@ -301,7 +303,9 @@ export function DayAgenda({ date, bare = false }: { date: Date; bare?: boolean }
           <div className="min-w-0 flex-1">
             <p className="flex min-w-0 items-center gap-1.5 text-body font-semibold leading-snug text-fg">
               {block.spillover && <CornerDownRight className="h-3.5 w-3.5 shrink-0 text-fg-faint" aria-label="Continued from yesterday" />}
-              <span className="truncate">{block.title}</span>
+              {/* The row (a div) opens the editor, which shows the whole title
+                  and notes, so a tap never opens a bubble on top of it. */}
+              <Truncate reveal="none">{block.title}</Truncate>
               {isRecurring && <Repeat className="h-3 w-3 shrink-0 text-fg-muted" aria-label="Recurring" />}
               {isCal && <CalendarDays data-tone="success" className="tone-text h-3 w-3 shrink-0" aria-label="Google Calendar" />}
               {taskNotes && <StickyNote className="h-3 w-3 shrink-0 text-fg-faint" aria-label="Has notes" />}
@@ -309,29 +313,31 @@ export function DayAgenda({ date, bare = false }: { date: Date; bare?: boolean }
               {isActive && <span className="shrink-0 text-micro font-semibold text-accent-600">now</span>}
             </p>
             {isSelected && taskNotes && (
-              <p className="mt-0.5 line-clamp-2 text-meta text-fg-muted">{taskNotes}</p>
+              <Truncate as="p" lines={2} reveal="none" className="mt-0.5 text-meta text-fg-muted">{taskNotes}</Truncate>
             )}
           </div>
-          {!isCal && (
-            <div className="flex shrink-0 items-center gap-1" onClick={e => e.stopPropagation()}>
-              {isSelected && block.kind === 'block' && !block.spillover && block.startHour >= 0 && (
+          {!isCal && isSelected && (
+            <div className="order-last flex w-full items-center justify-end gap-1 sm:order-none sm:w-auto sm:shrink-0" onClick={e => e.stopPropagation()}>
+              {block.kind === 'block' && !block.spillover && block.startHour >= 0 && (
                 <button type="button" onClick={postpone30m} className={quickBtn}>+30m</button>
               )}
-              {isSelected && block.kind === 'block' && !block.spillover && (
+              {block.kind === 'block' && !block.spillover && (
                 <button type="button" onClick={postpone1d} className={quickBtn}>+1d</button>
               )}
-              {isSelected && (
-                <button
-                  type="button"
-                  aria-label="Delete block"
-                  onClick={() => {
-                    if (isRecurring) deleteScheduleBlock.mutate(block.canonicalId)
-                    else deleteBlock.mutate({ id: block.canonicalId, dateStr: block.dateStr })
-                    setSelectedId(null)
-                  }}
-                  className={cx(quickBtn, 'hover:text-danger')}
-                ><Trash2 className="h-3.5 w-3.5" aria-hidden /></button>
-              )}
+              <button
+                type="button"
+                aria-label="Delete block"
+                onClick={() => {
+                  if (isRecurring) deleteScheduleBlock.mutate(block.canonicalId)
+                  else deleteBlock.mutate({ id: block.canonicalId, dateStr: block.dateStr })
+                  setSelectedId(null)
+                }}
+                className={cx(quickBtn, 'hover:text-danger')}
+              ><Trash2 className="h-3.5 w-3.5" aria-hidden /></button>
+            </div>
+          )}
+          {!isCal && (
+            <div className="flex shrink-0 items-center" onClick={e => e.stopPropagation()}>
               <button
                 type="button"
                 onClick={() => setSelectedId(isSelected ? null : block.id)}
@@ -369,9 +375,9 @@ export function DayAgenda({ date, bare = false }: { date: Date; bare?: boolean }
         <div className="min-w-0">
           <h2 className="section-label">Schedule</h2>
           {nextBlock && (
-            <p className="mt-0.5 truncate text-meta text-fg-muted">
+            <Truncate as="p" className="mt-0.5 text-meta text-fg-muted" fullText={`Next: ${nextBlock.title} at ${hourToTimeStr(nextBlock.startHour)}`}>
               Next: <span className="font-semibold text-fg-2">{nextBlock.title}</span> at {hourToTimeStr(nextBlock.startHour)}
-            </p>
+            </Truncate>
           )}
         </div>
         <div className="flex shrink-0 items-center gap-1.5">

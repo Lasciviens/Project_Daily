@@ -1,4 +1,5 @@
 import { routeLabel, type PageContext } from '../devRequestContext'
+import { Truncate } from '../../../shared/ui'
 
 /** "Attach page context" — what gets appended on save, and the switch for it. */
 export function PageContextToggle({ start, checked, onChange }: {
@@ -17,9 +18,7 @@ export function PageContextToggle({ start, checked, onChange }: {
       <span className="min-w-0 flex-1">
         <span className="font-medium text-fg-2">Attach page context</span>
         {start && (
-          <span className="block truncate">
-            {routeLabel(start)} · {start.viewport.w}×{start.viewport.h} {start.breakpoint}
-          </span>
+          <Truncate>{`${routeLabel(start)} · ${start.viewport.w}×${start.viewport.h} ${start.breakpoint}`}</Truncate>
         )}
       </span>
     </label>

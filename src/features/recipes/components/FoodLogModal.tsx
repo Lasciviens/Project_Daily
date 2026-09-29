@@ -390,11 +390,11 @@ export function FoodLogModal({ open = true, onClose, date, defaultSlot, defaultQ
                 )}
               </p>
               {(targets.protein > 0 || targets.calories > 0) && (
-                <p className="truncate text-meta text-fg-muted tabular-nums">
+                <Truncate as="p" className="text-meta text-fg-muted tabular-nums">
                   After: <span className={cx(protLeft < 0 && 'text-danger')}>{protLeft >= 0 ? `${protLeft}g protein left` : `${-protLeft}g protein over`}</span>
                   {' · '}
                   <span className={cx(kcalLeft < 0 && 'text-danger')}>{kcalLeft >= 0 ? `${kcalLeft} kcal left` : `${-kcalLeft} kcal over`}</span>
-                </p>
+                </Truncate>
               )}
             </div>
             <Button variant="primary" onClick={handleSave} loading={addEntries.isPending} disabled={basket.length === 0} className="shrink-0 px-6">

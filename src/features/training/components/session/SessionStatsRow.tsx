@@ -4,11 +4,12 @@ import { formatDurationBetween } from '../../../../shared/utils/formatDuration'
 import { formatRpe } from '../../setFormat'
 import type { WorkoutSessionStats } from '../../workoutSessionStats'
 import { RpeInfoBubble } from '../RpeInfoBubble'
+import { Truncate } from '../../../../shared/ui'
 
 function Cell({ value, label }: { value: ReactNode; label: ReactNode }) {
   return (
     <div className="flex min-w-0 flex-col gap-0.5 px-2 py-2 first:pl-3 last:pr-3">
-      <span className="truncate text-ui font-semibold tabular-nums text-fg">{value}</span>
+      <Truncate className="text-ui font-semibold tabular-nums text-fg">{value}</Truncate>
       <span className="flex min-w-0 items-center gap-1 text-micro font-medium text-fg-muted">{label}</span>
     </div>
   )

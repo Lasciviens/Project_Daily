@@ -478,4 +478,9 @@ ok(CF.psnFacts({ profile: null, summary: { trophyLevel: '', progress: 0, tier: 1
 ok(CF.steamFacts({ steamid: '1', personaname: 'x', avatarfull: '', personastate: 1, communityvisibilitystate: 3, timecreated: 1_350_000_000 }), ['Online', 'Member since 2012'], 'Steam: presence and account age')
 ok(CF.steamFacts({ steamid: '1', personaname: 'x', avatarfull: '', personastate: 1, communityvisibilitystate: 3, gameextrainfo: 'Hades' }), ['Playing Hades now'], 'Steam: the current game wins over presence')
 
+// ── A cut header note reveals its explanation too (TgHeader / TgMobileScope) ──
+const TT = require('../src/features/games/test-game/tgTypes.ts')
+ok(TT.headerNoteText('Roughly 12 hours to play through', 'Queued games still to play × the median'), 'Roughly 12 hours to play through. Queued games still to play × the median', 'note + its basis')
+ok(TT.headerNoteText('Under an hour to play through'), 'Under an hour to play through', 'a note without a basis stays as is')
+
 console.log(`verify-test-game-model: ${n} assertions passed`)

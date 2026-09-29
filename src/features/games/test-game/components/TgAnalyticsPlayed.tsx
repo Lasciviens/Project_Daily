@@ -10,6 +10,7 @@ import { TgCover } from './TgCover'
 import { TgAnalyticsCard, TgAnalyticsEmpty } from './TgAnalyticsCard'
 import { TgSegmented } from './scrape/TgScrapeParts'
 import { openGameFromAnalytics } from './tgAnalyticsOpen'
+import { Truncate } from '../../../../shared/ui/Truncate'
 
 const PRESS = 'rounded-[10px] text-left transition-colors [@media(hover:hover)]:hover:bg-[var(--tg-hover)] [@media(hover:none)]:active:bg-[var(--tg-hover)]'
 
@@ -43,9 +44,9 @@ function Row({ line, rank, top, mode }: { line: Line; rank: number; top: number;
           <TgCover game={game} mode="contain" />
         </span>
         <span className="min-w-0">
-          <span className="block truncate text-[13px] font-medium text-[var(--tg-text)]">{game.title}</span>
+          <Truncate className="text-[13px] font-medium text-[var(--tg-text)]">{game.title}</Truncate>
           {/* Two lines in a narrow card: one cut the last-played date off every row. */}
-          <span className="mt-0.5 line-clamp-2 text-[11.5px] leading-snug text-[var(--tg-muted)]" title={sub}>{sub}</span>
+          <Truncate lines={2} className="mt-0.5 text-[11.5px] leading-snug text-[var(--tg-muted)]">{sub}</Truncate>
           <span aria-hidden className="mt-1 block h-[3px] rounded-full bg-[var(--tg-accent)] opacity-80" style={{ width: `max(4px, ${(amount / top) * 100}%)` }} />
         </span>
         <span className="self-start whitespace-nowrap pt-px text-right text-[13px] font-semibold tabular-nums text-[var(--tg-text)]">{value}</span>
@@ -96,10 +97,10 @@ export function TgAnalyticsRecent({ items, className = '' }: { items: TgaPlayed[
               <span className={`${FRAME} block aspect-[0.72] w-full rounded-lg transition-[filter] [@media(hover:hover)]:group-hover:brightness-110`}>
                 <TgCover game={game} mode="contain" />
               </span>
-              <span className="mt-2 block truncate text-[12px] font-medium text-[var(--tg-text)]" title={game.title}>{game.title}</span>
+              <Truncate className="mt-2 text-[12px] font-medium text-[var(--tg-text)]">{game.title}</Truncate>
               {/* Date and play time on their own lines: one line cut the hours to "22…". */}
-              <span className="mt-0.5 block truncate text-[11px] text-[var(--tg-muted)]">{formatDay(last)}</span>
-              {seconds ? <span className="block truncate text-[11px] tabular-nums text-[var(--tg-muted)]" title={hours(seconds)}>{hours(seconds)}</span> : null}
+              <Truncate className="mt-0.5 text-[11px] text-[var(--tg-muted)]">{formatDay(last)}</Truncate>
+              {seconds ? <Truncate className="text-[11px] tabular-nums text-[var(--tg-muted)]">{hours(seconds)}</Truncate> : null}
               </button>
             </li>
           ))}

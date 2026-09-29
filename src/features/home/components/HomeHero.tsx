@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { format, startOfWeek, addDays, getISOWeek, differenceInCalendarDays, parseISO } from 'date-fns'
 import { CalendarClock, ChevronRight, Dumbbell } from 'lucide-react'
 import { useEntityModal } from '../../../shared/modals'
-import { Card, CardHeader, Skeleton, cx } from '../../../shared/ui'
+import { Card, CardHeader, Skeleton, Truncate, cx } from '../../../shared/ui'
 import { todayStr } from '../../../shared/utils/dateUtils'
 import { useTodayOverview, type NextUpItem } from '../hooks/useTodayOverview'
 
@@ -84,13 +84,13 @@ function NowTile({ label, icon, title, meta, tone, emptyText, onOpen, to }: NowT
     <>
       <span className="flex items-center gap-1.5">
         <span aria-hidden className="text-accent-600 [&_svg]:h-3.5 [&_svg]:w-3.5">{icon}</span>
-        <span className="section-label flex-1 truncate">{label}</span>
+        <Truncate className="section-label flex-1">{label}</Truncate>
         <ChevronRight aria-hidden className="h-3.5 w-3.5 shrink-0 text-fg-faint" />
       </span>
       {title ? (
         <>
-          <span className="mt-1 block truncate text-ui font-semibold text-fg">{title}</span>
-          {meta && <span data-tone={tone} className={cx('block truncate text-meta tabular-nums', tone ? 'tone-text font-medium' : 'text-fg-muted')}>{meta}</span>}
+          <Truncate className="mt-1 text-ui font-semibold text-fg">{title}</Truncate>
+          {meta && <span data-tone={tone} className="block min-w-0"><Truncate className={cx('text-meta tabular-nums', tone ? 'tone-text font-medium' : 'text-fg-muted')}>{meta}</Truncate></span>}
         </>
       ) : (
         <span className="mt-1 block text-body text-fg-muted">{emptyText}</span>
@@ -168,7 +168,7 @@ export function HomeHero() {
                 className="row row-interactive -mx-3 w-[calc(100%+1.5rem)] text-left disabled:cursor-default"
               >
                 <span className="w-11 shrink-0 text-meta tabular-nums text-fg-muted">{item.startLabel}</span>
-                <span className="min-w-0 flex-1 truncate text-body text-fg-2">{item.title}</span>
+                <Truncate className="flex-1 text-body text-fg-2">{item.title}</Truncate>
               </button>
             </li>
           ))}

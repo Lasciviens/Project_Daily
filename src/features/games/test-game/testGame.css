@@ -466,6 +466,18 @@
 .tg-info-row .tg-info-value { color: var(--tg-text); font-weight: 500; }
 .tg-thumb { border-radius: 8px; overflow: hidden; border: 1px solid var(--tg-border); background: var(--tg-panel-2); }
 
+/* ─── Cut text (the app's <Truncate>) ─────────────────────────────────────── */
+
+/* Inside this page (or one of its tg-portal menus and dialogs) Truncate puts
+   `tg-portal` on the bubble holding a cut text's full text; drawn with the
+   page's panel and menu shadow instead of the app's surface. The in-place
+   More / Less of a 2–3 line clamp takes the page's accent. */
+.tg-portal[role='tooltip'] {
+  background: var(--tg-panel); border-color: var(--tg-border-strong);
+  color: var(--tg-text); box-shadow: var(--tg-menu-shadow);
+}
+.tg-root [data-truncate-more], .tg-portal [data-truncate-more] { color: var(--tg-accent); }
+
 /* ─── Accessibility ───────────────────────────────────────────────────────── */
 
 .tg-root :focus-visible, .tg-portal :focus-visible, .tg-portal:focus-visible { outline: 2px solid var(--tg-accent); outline-offset: 2px; }

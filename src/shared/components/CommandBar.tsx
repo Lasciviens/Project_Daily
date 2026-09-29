@@ -8,7 +8,7 @@ import { useTasksBySection, useCreateTask } from '../../features/todo/hooks/useT
 import { PRIORITY_TONE, DOMAIN_TONE } from '../../features/todo/taskTones'
 import type { Task } from '../../features/todo/types'
 import { ModalShell, useEntityModal } from '../modals'
-import { ToneDot, TonePill } from '../ui'
+import { ToneDot, TonePill, Truncate } from '../ui'
 import { withProgress } from '../hooks/useMutationWithFeedback'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -180,9 +180,9 @@ function Palette({ onClose }: { onClose: () => void }) {
             <span className="grid h-8 w-8 shrink-0 place-items-center rounded-control bg-accent-50 text-accent-600">
               <Plus className="h-4 w-4" strokeWidth={2.2} aria-hidden />
             </span>
-            <span className="min-w-0 flex-1 truncate">
+            <Truncate className="flex-1" fullText={addQuery ? `Create task: ${addQuery}` : undefined}>
               {addQuery ? <>Create task: <span className="font-semibold text-fg">{addQuery}</span></> : <span className="text-fg-muted">Type a task title after “add ”</span>}
-            </span>
+            </Truncate>
           </ComboboxOption>
         )}
 
@@ -192,7 +192,7 @@ function Palette({ onClose }: { onClose: () => void }) {
             {taskResults.map(item => (
               <ComboboxOption key={item.id} value={item} className={OPTION}>
                 <ToneDot tone={PRIORITY_TONE[item.priority]} />
-                <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                <Truncate className="flex-1">{item.label}</Truncate>
                 <TonePill tone={DOMAIN_TONE[item.domain]} className="shrink-0 capitalize">{item.domain}</TonePill>
               </ComboboxOption>
             ))}

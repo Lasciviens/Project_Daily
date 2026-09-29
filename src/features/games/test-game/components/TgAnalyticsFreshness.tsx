@@ -6,6 +6,7 @@ import { SOURCE_META, sourceFix, sourceTone, syncAgo, type TgaSourceTone } from 
 import { useToday } from './tgAnalyticsClock'
 import { openLibrary } from './tgAnalyticsNav'
 import { TgAnalyticsCard, TgAnalyticsEmpty } from './TgAnalyticsCard'
+import { Truncate } from '../../../../shared/ui/Truncate'
 
 // Amber and red tint a stale source; the icon and the words say the same, so
 // the colour never works alone.
@@ -31,7 +32,7 @@ function Row({ row, today }: { row: TgaFreshness; today: number }) {
     <li className={`rounded-[12px] px-3 py-2.5 ${tone.row}`}>
       <div className="flex min-w-0 items-center gap-2.5">
         <span aria-hidden className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: meta.color }} />
-        <span className="min-w-0 truncate text-[13.5px] font-semibold text-[var(--tg-text)]">{meta.name}</span>
+        <Truncate className="text-[13.5px] font-semibold text-[var(--tg-text)]">{meta.name}</Truncate>
         <span className="ml-auto shrink-0 text-[12px] tabular-nums text-[var(--tg-muted)]" title="Every title from this source, hidden ones included">
           {plural(row.games, 'title')}
         </span>

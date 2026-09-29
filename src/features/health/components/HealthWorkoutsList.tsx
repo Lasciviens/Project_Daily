@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { ChevronDown, ChevronRight, Dumbbell, Smartphone } from 'lucide-react'
-import { Card, EmptyState, Skeleton } from '../../../shared/ui'
+import { Card, EmptyState, Skeleton, Truncate } from '../../../shared/ui'
 import { useEntityModal } from '../../../shared/modals'
 import { fmtDateEnGB } from '../../../shared/utils/enGBDate'
 import { useHealthWorkoutSummaries } from '../hooks/useHealthExport'
@@ -26,7 +26,7 @@ function HealthWorkoutRow({ workout, hevyTitle, onOpen }: { workout: HealthWorko
     >
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <div className="flex items-start justify-between gap-3">
-          <span className="truncate text-body font-semibold text-fg">{workout.name}</span>
+          <Truncate className="text-body font-semibold text-fg">{workout.name}</Truncate>
           <span className="shrink-0 whitespace-nowrap text-body font-semibold tabular-nums text-fg-2">{fmtDuration(workout.duration_seconds)}</span>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -34,7 +34,7 @@ function HealthWorkoutRow({ workout, hevyTitle, onOpen }: { workout: HealthWorko
           {hevyTitle && (
             <span className="chip min-w-0 max-w-full gap-1">
               <Dumbbell aria-hidden className="h-3 w-3 shrink-0" />
-              <span className="truncate">Hevy · {hevyTitle}</span>
+              <Truncate>{`Hevy · ${hevyTitle}`}</Truncate>
             </span>
           )}
           {workout.avg_heart_rate != null && <span className="chip tabular-nums">avg {Math.round(workout.avg_heart_rate)} bpm</span>}

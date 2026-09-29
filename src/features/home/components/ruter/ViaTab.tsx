@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { RefreshCw, X } from 'lucide-react'
 import type { StopResult, TransitPlace } from '../../api/ruterApi'
 import { useTrips } from '../../hooks/useTransitQueries'
-import { Button, IconButton, Skeleton, cx } from '../../../../shared/ui'
+import { Button, IconButton, Skeleton, Truncate, cx } from '../../../../shared/ui'
 import { StopSearchInput } from './StopSearchInput'
 import { TripCard } from './TripCard'
 import { fmtLastUpdated } from './transitUtils'
@@ -23,7 +23,7 @@ function PlacePill({ place, dotColor, onClear }: { place: TransitPlace; dotColor
   return (
     <div className="flex items-center gap-2 px-2.5 py-2 bg-surface-2 border border-line rounded-row min-h-[44px]">
       <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${dotColor}`} />
-      <p className="flex-1 min-w-0 text-body font-medium text-fg truncate">{place.name}</p>
+      <Truncate as="p" className="flex-1 text-body font-medium text-fg">{place.name}</Truncate>
       <IconButton label={`Clear ${place.name}`} onClick={onClear}><X /></IconButton>
     </div>
   )

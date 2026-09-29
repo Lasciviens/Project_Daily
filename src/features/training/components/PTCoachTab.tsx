@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { ChevronDown, Play, RefreshCw } from 'lucide-react'
 import type { PTAssessmentRow } from '../api/ptCoachApi'
 import { usePtAssessments, useGeneratePtAssessment } from '../hooks/usePtCoach'
-import { Button, Card, PageBoard, SectionLabel } from '../../../shared/ui'
+import { Button, Card, PageBoard, SectionLabel, Truncate } from '../../../shared/ui'
 import { COACH_BOARD } from '../trainingBoards'
 import { todayStr } from '../../../shared/utils/dateUtils'
 import { ProfileSummaryCard } from './program/ProfileSummaryCard'
@@ -140,7 +140,7 @@ export function PTCoachTab() {
                       className="flex min-h-[44px] w-full items-center gap-2 px-3 py-2 text-left"
                     >
                       <span className="shrink-0 text-meta font-semibold tabular-nums text-fg">{fmtDate(a.date)}</span>
-                      <span className="flex-1 truncate text-meta text-fg-muted">{FEELING_LABEL[a.feeling] ?? a.feeling}{a.note ? ` · ${a.note}` : ''}</span>
+                      <Truncate className="flex-1 text-meta text-fg-muted">{`${FEELING_LABEL[a.feeling] ?? a.feeling}${a.note ? ` · ${a.note}` : ''}`}</Truncate>
                       <ChevronDown aria-hidden className={`h-4 w-4 shrink-0 text-fg-faint transition-transform ${open ? 'rotate-180' : ''}`} />
                     </button>
                     {open && (

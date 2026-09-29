@@ -3,6 +3,7 @@ import type { TgaTile } from './tgAnalyticsModel'
 import { hoursOf } from './tgAnalyticsDrillCopy'
 import { TgCover } from './TgCover'
 import { TgStars } from './TgStars'
+import { Truncate } from '../../../../shared/ui/Truncate'
 
 const FRAME = 'relative overflow-hidden bg-[var(--tg-panel-2)] ring-1 ring-[var(--tg-border)]'
 
@@ -57,8 +58,8 @@ export function TgAnalyticsDrillList({ kind, games, onPick }: {
               <TgCover game={game} mode="contain" />
             </span>
             <span className="min-w-0">
-              <span className="block truncate text-[13px] font-medium text-[var(--tg-text)]">{game.title}</span>
-              <span className="mt-0.5 block truncate text-[11.5px] text-[var(--tg-muted)]">{detail(kind, game)}</span>
+              <Truncate className="text-[13px] font-medium text-[var(--tg-text)]">{game.title}</Truncate>
+              <Truncate className="mt-0.5 text-[11.5px] text-[var(--tg-muted)]">{detail(kind, game)}</Truncate>
             </span>
             <Figure kind={kind} game={game} />
           </button>

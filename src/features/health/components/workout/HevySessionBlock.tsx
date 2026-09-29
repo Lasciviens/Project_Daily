@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { Dumbbell } from 'lucide-react'
-import { Button, Skeleton } from '../../../../shared/ui'
+import { Button, Skeleton, Truncate } from '../../../../shared/ui'
 import { useEntityModal, type EntityModalRequest } from '../../../../shared/modals'
 import { formatRpe, formatSet, rpeSuffix } from '../../../training/setFormat'
 import { summarizeWorkout } from '../../../training/workoutSessionStats'
@@ -84,7 +84,7 @@ export function HevySessionBlock({ workout, request, onClose }: {
             <ul className="grid grid-cols-1 gap-x-6 sm:grid-cols-2">
               {stats.topSets.slice(0, TOP_SETS).map(t => (
                 <li key={t.exerciseId} className="flex min-h-[32px] items-baseline justify-between gap-3 border-t border-line py-1.5 text-meta">
-                  <span className="min-w-0 truncate text-fg-2">{t.title}</span>
+                  <Truncate className="text-fg-2">{t.title}</Truncate>
                   <span className="shrink-0 font-medium tabular-nums text-fg">{formatSet(t.set, t.type)}{rpeSuffix(t.set.rpe)}</span>
                 </li>
               ))}

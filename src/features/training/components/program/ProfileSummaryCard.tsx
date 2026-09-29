@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { UserRound } from 'lucide-react'
-import { Button, Card, CardHeader, TonePill, type Tone } from '../../../../shared/ui'
+import { Button, Card, CardHeader, TonePill, Truncate, type Tone } from '../../../../shared/ui'
 import { useAthleteProfile, useAthleteLimitations, useMusclePreferences } from '../../hooks/useAthleteProfile'
 import { labelForSlug, movementPatternLabel } from '../../muscleMap'
 import type { LimitationSeverity } from '../../types.athlete'
@@ -44,7 +44,7 @@ export function ProfileSummaryCard() {
             {limitations.map(l => (
               <li key={l.id} className="flex items-center gap-2 text-body text-fg-2">
                 <TonePill tone={SEVERITY_TONE[l.severity]}>{l.severity}</TonePill>
-                <span className="min-w-0 truncate">{movementPatternLabel(l.movement_pattern)}{l.note ? ` — ${l.note}` : ''}</span>
+                <Truncate>{`${movementPatternLabel(l.movement_pattern)}${l.note ? ` — ${l.note}` : ''}`}</Truncate>
               </li>
             ))}
           </ul>

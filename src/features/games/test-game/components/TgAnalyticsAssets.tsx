@@ -5,6 +5,7 @@ import { assetCategoryLabel, assetHeadline, mirroredLine } from './tgAnalyticsHe
 import { formatBytes } from './scrape/tgScrapeModel'
 import { TgAnalyticsCard, TgAnalyticsEmpty } from './TgAnalyticsCard'
 import { TgAnalyticsHealthMeter } from './TgAnalyticsHealthMeter'
+import { Truncate } from '../../../../shared/ui/Truncate'
 
 // A row is its own container: narrow, the name and size sit over the bar and
 // the image count; from 24rem it is one line with fixed-width figures, so the
@@ -19,7 +20,7 @@ function Row({ c, max }: { c: TgaAssetCategory; max: number }) {
   return (
     <li className="@container/arow min-w-0">
       <div className={GRID} title={`${name}: ${plural(c.images, 'image')} on ${plural(c.games, 'game')}`}>
-        <span className="col-start-1 row-start-1 min-w-0 truncate text-[13px] font-medium text-[var(--tg-text)]">{name}</span>
+        <Truncate className="col-start-1 row-start-1 text-[13px] font-medium text-[var(--tg-text)]">{name}</Truncate>
         <span className="col-start-1 row-start-2 @[24rem]/arow:col-start-2 @[24rem]/arow:row-start-1">
           <TgAnalyticsHealthMeter value={c.bytes} max={max} />
         </span>

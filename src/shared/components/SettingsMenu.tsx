@@ -189,7 +189,9 @@ export function SettingsMenu() {
         {user?.email && (
           <div className="px-2.5 pb-2 pt-1.5">
             <p className="text-micro text-fg-faint">Signed in as</p>
-            <p className="truncate text-body font-semibold text-fg">{user.email}</p>
+            {/* Wraps instead of cutting: a Truncate bubble inside a Menu counts as a
+                press outside it, so reading a long address would close the menu. */}
+            <p className="break-all text-body font-semibold text-fg">{user.email}</p>
           </div>
         )}
         <div className="menu-sep" />

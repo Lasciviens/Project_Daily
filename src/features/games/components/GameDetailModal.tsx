@@ -21,6 +21,7 @@ import {
   PERFORMANCE_COLOR, ROM_STATUS_COLOR, EXTERNAL_SOURCE_LABEL,
 } from '../gamesMeta'
 import type { Game, GamePatch, GamePlatform, GamePlatformInput, PlayStatus } from '../types'
+import { Truncate } from '../../../shared/ui/Truncate'
 
 function Section({ title, children, defaultOpen = true }: { title: string; children: React.ReactNode; defaultOpen?: boolean }) {
   const [open, setOpen] = useState(defaultOpen)
@@ -80,9 +81,9 @@ function PlatformDetails({ platform }: { platform: GamePlatform }) {
       {bits.length > 0 && <div className="flex flex-wrap gap-x-3 gap-y-0.5">{bits}</div>}
       {platform.performance_notes && <p className="italic">{platform.performance_notes}</p>}
       {platform.esde_path && (
-        <p className="text-[10px] text-ink-400 truncate" title={platform.esde_path}>
+        <Truncate as="p" fullText={`ROM file: ${platform.esde_path}`} className="text-[10px] text-ink-400">
           ROM file: <span className="font-mono">{platform.esde_path}</span>
-        </p>
+        </Truncate>
       )}
     </div>
   )

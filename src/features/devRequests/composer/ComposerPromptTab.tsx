@@ -5,7 +5,7 @@ import { descriptionPreview } from '../devRequestContext'
 import { buildClaudePrompt } from '../devRequestPrompt'
 import { useDevRequests } from '../hooks/useDevRequests'
 import { toast, useUIStore } from '../../../app/store'
-import { Button, EmptyState, Skeleton, cx } from '../../../shared/ui'
+import { Button, EmptyState, Skeleton, Truncate, cx } from '../../../shared/ui'
 
 /**
  * The prompt for Claude, built from the requests picked in the drawer — and
@@ -60,9 +60,7 @@ export function ComposerPromptTab({ textareaRef }: { textareaRef?: Ref<HTMLTextA
             className="-ml-1 flex min-h-[36px] min-w-0 flex-1 items-center gap-1 rounded-control px-1 text-left text-meta font-semibold text-fg-muted [@media(hover:hover)]:hover:text-fg [@media(pointer:coarse)]:min-h-[44px]"
           >
             <ChevronRight className={cx('h-4 w-4 shrink-0 transition-transform', showList && 'rotate-90')} aria-hidden />
-            <span className="truncate">
-              {count} request{count === 1 ? '' : 's'}{missing > 0 ? ` · ${missing} deleted` : ''}{prompt.edited ? ' · edited' : ''}
-            </span>
+            <Truncate>{`${count} request${count === 1 ? '' : 's'}${missing > 0 ? ` · ${missing} deleted` : ''}${prompt.edited ? ' · edited' : ''}`}</Truncate>
           </button>
           <Button size="sm" variant="ghost" onClick={changeSelection}>Change</Button>
         </div>
@@ -71,8 +69,8 @@ export function ComposerPromptTab({ textareaRef }: { textareaRef?: Ref<HTMLTextA
           <ul className="flex max-h-40 flex-col gap-1 overflow-y-auto">
             {rows.map(r => (
               <li key={r.id} className="rounded-row border border-line bg-surface-2 px-2.5 py-1.5">
-                <span className="block truncate text-body font-medium text-fg">{r.title}</span>
-                {descriptionPreview(r.description) && <span className="line-clamp-2 block text-meta text-fg-muted">{descriptionPreview(r.description)}</span>}
+                <Truncate className="text-body font-medium text-fg">{r.title}</Truncate>
+                {descriptionPreview(r.description) && <Truncate lines={2} className="block text-meta text-fg-muted">{descriptionPreview(r.description)}</Truncate>}
               </li>
             ))}
           </ul>

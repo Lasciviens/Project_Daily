@@ -1,6 +1,6 @@
 import { useEffect, type CSSProperties, type HTMLAttributes, type Ref } from 'react'
 import { ChevronDown, GripVertical, Minus, PenLine, Sparkles, X } from 'lucide-react'
-import { Button, IconButton, SegmentedControl, cx } from '../../../shared/ui'
+import { Button, IconButton, SegmentedControl, Truncate, cx } from '../../../shared/ui'
 import type { ComposerTab } from '../devRequestRules'
 
 // The composer's chrome: the title bar, the Request | Prompt switch, the
@@ -34,7 +34,8 @@ export function ComposerHeader({ title, dirty, phone, onMinimize, onClose, dragP
       className="flex min-h-[48px] shrink-0 select-none items-center gap-1 border-b border-line pl-3 pr-1.5"
     >
       {!phone && <GripVertical className="h-4 w-4 shrink-0 text-fg-faint" aria-hidden />}
-      <h2 className="min-w-0 flex-1 truncate text-ui font-semibold text-fg">{title}</h2>
+      {/* The header is the drag handle: a tap bubble would open after every drag. */}
+      <Truncate as="h2" reveal="none" className="flex-1 text-ui font-semibold text-fg">{title}</Truncate>
       {dirty && (
         <span className="flex shrink-0 items-center gap-1 pr-1 text-meta text-fg-muted">
           <span data-tone="warn" className="tone-dot" aria-hidden />{dirty}
@@ -96,7 +97,7 @@ export function ComposerPill({ label, prompt, dirty, phone, onOpen, pillRef }: {
       )}
     >
       {prompt ? <Sparkles className="h-4 w-4 shrink-0 text-accent-600" aria-hidden /> : <PenLine className="h-4 w-4 shrink-0 text-accent-600" aria-hidden />}
-      <span className="truncate">{label}</span>
+      <Truncate>{label}</Truncate>
       {dirty && <span data-tone="warn" className="tone-dot shrink-0" aria-hidden />}
     </button>
   )
@@ -126,7 +127,8 @@ export function PickBar({ label, onWider, onUse, onCancel, docked }: {
     >
       <div className="min-w-0" aria-live="polite">
         <p className="text-meta text-fg-muted">{label ? 'Selected' : 'Tap anything on the page — scrolling still works'}</p>
-        {label && <p className="truncate text-body font-semibold text-fg">{label}</p>}
+        {/* No tap bubble while picking: a tap on it would be picked as page content. */}
+        {label && <Truncate as="p" reveal="none" className="text-body font-semibold text-fg">{label}</Truncate>}
       </div>
       <div className="flex items-center gap-2">
         <Button size="sm" variant="ghost" onClick={onCancel}>Cancel</Button>

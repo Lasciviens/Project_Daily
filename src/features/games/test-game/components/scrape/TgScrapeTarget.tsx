@@ -5,6 +5,7 @@ import { TgCover } from '../TgCover'
 import { TgScrapeDialog } from './TgScrapeDialog'
 import { isScraped, primaryVariant, scrapedId } from './tgScrapeModel'
 import { romFileName } from '../../../scraper/ssPlan'
+import { Truncate } from '../../../../../shared/ui/Truncate'
 
 type PickFilter = 'todo' | 'no_cover' | 'no_desc' | 'all'
 const FILTERS: { key: PickFilter; label: string }[] = [
@@ -45,10 +46,10 @@ export function TgScrapeTarget({ games, target, loading, onPick, footer }: {
               <TgCover game={target} mode="natural" align="center" />
             </div>
             <div className="min-w-0 flex-1">
-              <p className="line-clamp-2 text-[14.5px] font-semibold leading-snug">{target.title}</p>
-              <p className="mt-0.5 truncate text-[12px] tg-muted">
-                {platformInfo(target.platformKey).name}{file ? ` · ${file}` : ''}
-              </p>
+              <Truncate as="p" lines={2} className="text-[14.5px] font-semibold leading-snug">{target.title}</Truncate>
+              <Truncate as="p" className="mt-0.5 text-[12px] tg-muted">
+                {`${platformInfo(target.platformKey).name}${file ? ` · ${file}` : ''}`}
+              </Truncate>
               {prevId && (
                 <p className="mt-0.5 inline-flex items-center gap-1 text-[11.5px] font-semibold text-[var(--tg-green)]">
                   <Check className="h-3.5 w-3.5" strokeWidth={2.4} aria-hidden /> Matched before · #{prevId}
@@ -145,12 +146,10 @@ function TgScrapeGamePicker({ open, onClose, games, currentId, onPick }: {
                   <TgCover game={g} mode="natural" align="center" />
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[13.5px] font-medium">{g.title}</span>
-                  <span className="block truncate text-[11.5px] tg-muted">
-                    {platformInfo(g.platformKey).name}
-                    {isScraped(g) ? ' · matched' : ''}
-                    {!g.description?.trim() ? ' · no description' : ''}
-                  </span>
+                  <Truncate className="text-[13.5px] font-medium">{g.title}</Truncate>
+                  <Truncate className="text-[11.5px] tg-muted">
+                    {`${platformInfo(g.platformKey).name}${isScraped(g) ? ' · matched' : ''}${!g.description?.trim() ? ' · no description' : ''}`}
+                  </Truncate>
                 </span>
               </button>
             </li>

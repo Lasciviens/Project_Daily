@@ -15,7 +15,7 @@ import {
   useUpdateItem, useDeleteItem,
 } from '../hooks/useProjects'
 import type { Project, ItemType } from '../types'
-import { PROJECT_BOARD, type ProjectSection } from '../projectBoard'
+import { projectLayout, type ProjectSection } from '../projectBoard'
 
 interface Props {
   project:  Project
@@ -137,5 +137,5 @@ export function ProjectDetail({ project, onBack, onDelete }: Props) {
   }
 
   // Which card goes where at each width: projectBoard.ts.
-  return <PageBoard sections={sections} layout={PROJECT_BOARD} stackGap="gap-4" />
+  return <PageBoard sections={sections} layout={projectLayout(view)} stackGap="gap-4" />
 }

@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { Listbox, ListboxButton, ListboxLabel, ListboxOption, ListboxOptions } from '@headlessui/react'
 import { Check, ChevronDown } from 'lucide-react'
+import { Truncate } from '../../../../shared/ui/Truncate'
 
 export interface TgOption<T extends string> { value: T; label: string; count?: number; status?: string }
 
@@ -53,7 +54,7 @@ export function TgDropdown<T extends string>({
             className="absolute right-1 top-1 h-2 w-2 rounded-full bg-[var(--tg-accent)] ring-2 ring-[var(--tg-panel)]"
           />
         )}
-        <span className={iconOnly ? 'sr-only' : 'min-w-0 truncate'}>{buttonLabel}</span>
+        {iconOnly ? <span className="sr-only">{buttonLabel}</span> : <Truncate>{buttonLabel}</Truncate>}
         <ChevronDown aria-hidden className="tg-chev ml-auto shrink-0" strokeWidth={2} />
       </ListboxButton>
       <ListboxOptions
@@ -66,7 +67,7 @@ export function TgDropdown<T extends string>({
             {({ selected }) => (
               <>
                 {hasDots && <span aria-hidden data-status={o.status} className={`tg-dot ${o.status ? '' : 'invisible'}`} />}
-                <span className="min-w-0 flex-1 truncate">{o.label}</span>
+                <Truncate className="flex-1">{o.label}</Truncate>
                 {o.count != null && (
                   <span className="pl-3 text-[12px] font-medium tabular-nums text-[var(--tg-muted)]">{o.count}</span>
                 )}

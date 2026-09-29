@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { detailSections, platformVariants, type DetailRow, type PlatformVariant } from './tgDetailFields'
 import type { TgGame } from '../testGameModel'
+import { Truncate } from '../../../../shared/ui/Truncate'
 
 // The "Details" block: every non-empty field the row carries, grouped as
 // About · Your progress · Platforms · Source (see tgDetailFields). Everything
@@ -31,7 +32,7 @@ function Rows({ rows }: { rows: DetailRow[] }) {
         </div>
       ) : (
         <div key={row.label} className="grid grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] items-start gap-2.5 text-[12.5px] leading-[1.45]">
-          <dt className="truncate text-[var(--tg-muted)]">{row.label}</dt>
+          <dt className="min-w-0 text-[var(--tg-muted)]"><Truncate>{row.label}</Truncate></dt>
           <dd className="break-words font-medium text-[var(--tg-text)]"><Value row={row} /></dd>
         </div>
       ))}
@@ -52,7 +53,7 @@ function Variant({ v }: { v: PlatformVariant }) {
   return (
     <div className="flex flex-col gap-2 rounded-xl border border-[var(--tg-border)] bg-[var(--tg-panel-2)] px-3 py-2.5">
       <div className="flex items-center gap-2">
-        <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-[var(--tg-text)]">{v.name}</span>
+        <Truncate className="flex-1 text-[13px] font-semibold text-[var(--tg-text)]">{v.name}</Truncate>
         {v.primary && (
           <span className="shrink-0 rounded-full bg-[var(--tg-accent-soft)] px-2 py-[1px] text-[11px] font-semibold text-[var(--tg-accent)]">Primary</span>
         )}

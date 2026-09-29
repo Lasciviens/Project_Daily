@@ -4,7 +4,7 @@ import { Search, Sparkles, ClipboardList } from 'lucide-react'
 import { useUIStore } from '../store'
 import { routeTitle } from '../navigation'
 import { SettingsMenu } from '../../shared/components/SettingsMenu'
-import { cx } from '../../shared/ui'
+import { Truncate, cx } from '../../shared/ui'
 
 /**
  * Tablet/desktop top bar (≥768px). No background of its own — it sits on the
@@ -20,7 +20,7 @@ export function AppTopBar() {
 
   return (
     <header className="vt-pin-topbar flex h-[calc(4rem+env(safe-area-inset-top))] shrink-0 items-center gap-2 pl-5 pr-3 pt-[env(safe-area-inset-top)] lg:gap-3 lg:pl-8 lg:pr-5">
-      <p className="min-w-0 max-w-[14rem] shrink truncate text-title font-semibold tracking-tight text-fg">{routeTitle(pathname)}</p>
+      <Truncate as="p" className="max-w-[14rem] shrink text-title font-semibold tracking-tight text-fg">{routeTitle(pathname)}</Truncate>
 
       <button
         type="button"

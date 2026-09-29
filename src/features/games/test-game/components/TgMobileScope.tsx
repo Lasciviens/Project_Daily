@@ -5,9 +5,10 @@ import {
   ALL_PLATFORMS, STATUS_SECTIONS, platformInfo, platformLabels,
   type PlatformGroup,
 } from '../testGameModel'
-import type { TgHeaderConfig } from '../tgTypes'
+import { headerNoteText, type TgHeaderConfig } from '../tgTypes'
 import { TgDropdown } from './TgDropdown'
 import { TgMobilePlatformSheet } from './TgMobilePlatformSheet'
+import { Truncate } from '../../../../shared/ui/Truncate'
 
 /**
  * Left side of the phone's scope row: what the grid below is scoped to.
@@ -43,7 +44,7 @@ export function TgMobileScope({ groups, header }: { groups: PlatformGroup[]; hea
           // The design's platform pill reads larger and bolder than the filter pills.
           className="tg-select min-w-[4.5rem] !text-[15px] !font-semibold"
         >
-          <span className="min-w-0 truncate">{label}</span>
+          <Truncate>{label}</Truncate>
           <ChevronDown aria-hidden className="tg-chev ml-auto shrink-0" strokeWidth={2} />
         </button>
         <TgMobilePlatformSheet open={pickerOpen} onClose={() => setPickerOpen(false)} groups={groups} current={current} onPick={setPlatform} />
@@ -77,17 +78,18 @@ export function TgMobileScope({ groups, header }: { groups: PlatformGroup[]; hea
           className="-ml-2 inline-flex min-h-[44px] shrink-0 items-center gap-0.5 pr-1.5 text-[14px] font-semibold text-[var(--tg-accent)]">
           <ChevronLeft className="h-5 w-5" strokeWidth={2.2} aria-hidden /> Results
         </button>
-        <p className="tg-muted min-w-0 truncate text-[13px]">{scrapeReview.title}</p>
+        <Truncate as="p" className="tg-muted text-[13px]">{scrapeReview.title}</Truncate>
       </div>
     )
   }
 
   return (
     <div className="min-w-0 flex-1">
-      <h2 className="truncate text-[16px] font-bold leading-tight">{header.title}</h2>
-      {/* Two lines on a phone: the queue's split doesn't fit one, and a hover title can't be read on touch. */}
-      <p className="tg-muted line-clamp-2 text-[12px] leading-snug" title={header.note ? undefined : header.subtitleTitle}>{header.subtitle}</p>
-      {header.note && <p className="tg-muted truncate text-[12px] leading-snug">{header.note}</p>}
+      <Truncate as="h2" className="text-[16px] font-bold leading-tight">{header.title}</Truncate>
+      {/* Two lines on a phone: the queue's split doesn't fit one. A tap on a cut
+          line opens a bubble (an in-place "More" would push the list down). */}
+      <Truncate as="p" lines={2} reveal="popover" className="tg-muted text-[12px] leading-snug">{header.subtitle}</Truncate>
+      {header.note && <Truncate as="p" fullText={headerNoteText(header.note, header.subtitleTitle)} className="tg-muted text-[12px] leading-snug">{header.note}</Truncate>}
     </div>
   )
 }

@@ -7,6 +7,7 @@ import { libraryOf } from './tgAnalyticsModel'
 import { openGameFromAnalytics } from './tgAnalyticsOpen'
 import { TgAnalyticsCard, TgAnalyticsEmpty } from './TgAnalyticsCard'
 import { TgAnalyticsPlaytimeBars } from './TgAnalyticsPlaytimeBars'
+import { Truncate } from '../../../../shared/ui/Truncate'
 
 const PRESS = 'transition-colors [@media(hover:hover)]:hover:bg-[var(--tg-hover)] [@media(hover:none)]:active:bg-[var(--tg-hover)]'
 
@@ -40,7 +41,7 @@ export function TgAnalyticsPlaytime({ buckets, concentration: c, className = '' 
                     >
                       <span className="text-right text-[12px] font-semibold tabular-nums text-[var(--tg-muted)]">{i + 1}</span>
                       <span aria-hidden title={lib.label} className="h-2.5 w-2.5 rounded-full" style={{ background: lib.color }} />
-                      <span className="truncate text-[13px] font-medium text-[var(--tg-text)]">{game.title}</span>
+                      <Truncate className="text-[13px] font-medium text-[var(--tg-text)]">{game.title}</Truncate>
                       <span className="whitespace-nowrap text-right text-[13px] font-semibold tabular-nums text-[var(--tg-text)]">{fmtHours(seconds)}</span>
                     </button>
                   </li>

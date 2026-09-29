@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { ChevronDown, ChevronRight, RefreshCw } from 'lucide-react'
-import { Card, IconButton, cx } from '../../../shared/ui'
+import { Card, IconButton, Truncate, cx } from '../../../shared/ui'
 import type { WidgetState } from '../hooks/useWidgetState'
 
 interface WidgetShellProps {
@@ -43,7 +43,7 @@ export function WidgetShell({ title, icon, ws, headerRight, onRefresh, refreshin
           {icon != null && (
             <span aria-hidden className="grid h-7 w-7 shrink-0 place-items-center rounded-control bg-accent-50 text-accent-600 [&_svg]:h-4 [&_svg]:w-4">{icon}</span>
           )}
-          <h2 className="truncate text-lead font-semibold text-fg">{title}</h2>
+          <Truncate as="h2" className="text-lead font-semibold text-fg">{title}</Truncate>
         </button>
         {!ws.collapsed && headerRight != null && <div className="flex items-center">{headerRight}</div>}
         {!ws.collapsed && onRefresh && (

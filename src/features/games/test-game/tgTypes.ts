@@ -34,6 +34,11 @@ export interface TgHeaderConfig {
   action?: ReactNode
 }
 
+/** A cut note reveals its explanation too (the queue forecast's basis). */
+export function headerNoteText(note: string, more?: string): string {
+  return more ? `${note}. ${more}` : note
+}
+
 /** Things any component may ask the shell to open. The shell owns every
  *  modal so two components can never stack two copies of the same dialog. */
 export interface TgActions {

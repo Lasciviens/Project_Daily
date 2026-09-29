@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useSteamAchievements } from '../hooks/useSteam'
 import type { SteamAchievement } from '../api/steamApi'
+import { Truncate } from '../../../shared/ui/Truncate'
 
 // Achievement list for ONE game, shown inside the Steam detail modal.
 // Three Steam endpoints feed this (unlock state + schema for icons/names +
@@ -36,7 +37,7 @@ function AchievementRow({ a }: { a: SteamAchievement }) {
           {a.displayName}
         </p>
         {a.description
-          ? <p className="text-[11px] text-ink-400 leading-snug line-clamp-2">{a.description}</p>
+          ? <Truncate as="p" lines={2} className="text-[11px] text-ink-400 leading-snug">{a.description}</Truncate>
           : a.hidden && !a.achieved
             ? <p className="text-[11px] text-ink-300 italic">Hidden achievement</p>
             : null}

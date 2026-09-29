@@ -19,7 +19,7 @@ import { pageOptionFor } from './devRequestMeta'
 import { SideDrawer } from '../../../shared/modals/SideDrawer'
 import { useEntityModal } from '../../../shared/modals'
 import { useBreakpoint } from '../../../shared/hooks/useBreakpoint'
-import { Button, Skeleton, cx } from '../../../shared/ui'
+import { Button, Skeleton, Truncate, cx } from '../../../shared/ui'
 import type { DevRequest, DevRequestCategory, DevRequestPriority } from '../types'
 
 const PRIORITY_RANK: Record<DevRequestPriority, number> = { urgent: 0, high: 1, medium: 2, low: 3 }
@@ -189,7 +189,7 @@ export function DevRequestsDrawer() {
           </span>
           <span className="min-w-0 flex-1">
             <span className="block text-body font-medium text-fg">{request.title}</span>
-            {preview && <span className="mt-0.5 line-clamp-2 block text-meta text-fg-2">{preview}</span>}
+            {preview && <Truncate lines={2} className="mt-0.5 block text-meta text-fg-2">{preview}</Truncate>}
             <span className="mt-0.5 block text-meta text-fg-muted">{request.category} · {request.priority}{request.page && request.page !== 'other' ? ` · ${request.page}` : ''}</span>
           </span>
         </button>
@@ -297,7 +297,7 @@ export function DevRequestsDrawer() {
             <PenLine className="h-4 w-4 shrink-0 text-fg-muted" aria-hidden />
             <span className="min-w-0 flex-1">
               <span className="block text-meta text-fg-muted">{composerHasNew ? 'In the composer' : 'Unsaved draft'}</span>
-              <span className="block truncate text-body font-medium text-fg">{newDraft.title.trim() || descriptionPreview(newDraft.description, 60) || 'Untitled'}</span>
+              <Truncate className="text-body font-medium text-fg">{newDraft.title.trim() || descriptionPreview(newDraft.description, 60) || 'Untitled'}</Truncate>
             </span>
             <Button size="sm" variant="ghost" onClick={() => discardNewDraft()}>Discard</Button>
             <Button size="sm" onClick={() => (phone ? setDrawer({ newFormOpen: true }) : popOutNew())}>Continue</Button>

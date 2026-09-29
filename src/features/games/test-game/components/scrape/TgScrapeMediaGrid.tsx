@@ -7,6 +7,7 @@ import { TgLightbox } from '../TgLightbox'
 import { TgVideoPlayer } from '../TgVideoPlayer'
 import { MODE_HINT, MODE_LABEL, estimateStored, formatBytes, groupMediaRows, type MediaRow } from './tgScrapeModel'
 import { TgSegmented, TgSsMedia } from './TgScrapeParts'
+import { Truncate } from '../../../../../shared/ui/Truncate'
 
 const MODES: MediaMode[] = ['store', 'on_demand', 'skip']
 const modeOptions = (canStore: boolean) => MODES.map(m => ({
@@ -105,15 +106,15 @@ export function TgScrapeMediaGrid({ candidate, rows, modes, tokens, onMode, onTo
                   <div className="flex min-w-0 flex-1 flex-col gap-1.5">
                     <div className="flex items-start justify-between gap-2">
                       <span className="min-w-0">
-                        <span className="block truncate text-[13px] font-semibold">{r.info.label}</span>
+                        <Truncate className="text-[13px] font-semibold">{r.info.label}</Truncate>
                         {/* What THIS choice costs, so a tap shows its effect right here. */}
-                        <span className={`block truncate text-[11px] tabular-nums ${mode === 'store' && r.canStore ? 'font-semibold text-[var(--tg-text)]' : 'tg-muted'}`}>
+                        <Truncate className={`text-[11px] tabular-nums ${mode === 'store' && r.canStore ? 'font-semibold text-[var(--tg-text)]' : 'tg-muted'}`}>
                           {mode === 'store' && r.canStore
                             ? `Uses ≈ ${formatBytes(estimateStored(entry, imageScale))} of storage`
                             : mode === 'on_demand' ? 'Online · uses no storage'
                             : 'Skipped · not saved'}
                           <span className="font-normal tg-faint">{entry.size ? ` · original ${formatBytes(entry.size)}` : ''}</span>
-                        </span>
+                        </Truncate>
                       </span>
                       {r.info.kind !== 'image' && url && mode !== 'skip' && (
                         <a href={url} target="_blank" rel="noreferrer" className="inline-flex min-h-[44px] shrink-0 items-center gap-1 rounded-md px-1.5 text-[12px] font-semibold text-[var(--tg-accent)]">

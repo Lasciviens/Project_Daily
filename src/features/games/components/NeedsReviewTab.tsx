@@ -1,6 +1,7 @@
 import { InfoBubble } from '../../../shared/components/InfoBubble'
 import { CoverImg, SystemChip } from './gameCardKit'
 import type { Game } from '../types'
+import { Truncate } from '../../../shared/ui/Truncate'
 
 // Replaces RP5's 18-rule, 5-view audit-scoring system with the much smaller
 // thing this app actually needs day to day: a plain list of games missing
@@ -49,7 +50,7 @@ export function NeedsReviewTab({ onOpenDetail, items }: { onOpenDetail: (id: str
                 <CoverImg url={cover} title={g.title} />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-ink-800 truncate">{g.title}</p>
+                <Truncate as="p" className="text-sm font-semibold text-ink-800">{g.title}</Truncate>
                 <div className="flex flex-wrap items-center gap-1 mt-1">
                   <SystemChip game={g} size="sm" />
                   {reasons.map(r => (

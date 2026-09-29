@@ -2,6 +2,7 @@ import { useTestGameStore } from '../testGameStore'
 import { ALL_PLATFORMS, platformLabels, type PlatformGroup } from '../testGameModel'
 import { PlatformIcon } from './platformArt'
 import { TgSidebarItem } from './TgSidebarItem'
+import { Truncate } from '../../../../shared/ui/Truncate'
 
 // Bold glyphs as the design draws them: near-white in dark mode and
 // near-black in light, the accent when active.
@@ -43,7 +44,7 @@ export function TgNavPlatforms({ groups }: { groups: PlatformGroup[] }) {
       {groups.map(g => (
         <section key={g.maker} aria-label={g.label} className="mt-2 first-of-type:mt-0">
           <h3 className="flex items-baseline gap-1.5 pb-0.5 pl-3 pr-2 pt-1 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[var(--tg-faint)]">
-            <span className="truncate">{g.label}</span>
+            <Truncate>{g.label}</Truncate>
             <span className="ml-auto font-medium tabular-nums">{g.total.toLocaleString('en-GB')}</span>
           </h3>
           <div className="flex flex-col gap-px">

@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import { AlertTriangle, ChevronDown, Footprints } from 'lucide-react'
 import { TRANSPORT_ICON, type TripPattern, type TripLeg } from '../../api/ruterApi'
-import { cx } from '../../../../shared/ui'
+import { Truncate, cx } from '../../../../shared/ui'
 import { fmtTime, fmtDuration, fmtDistance, lineStyle, modeFallbackStyle, situationTone } from './transitUtils'
 
 interface TripCardProps {
@@ -90,9 +90,7 @@ function TransitLeg({ leg }: { leg: TripLeg }) {
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5 flex-wrap">
           {leg.destination && (
-            <span className="text-meta font-medium text-fg truncate">
-              {TRANSPORT_ICON[leg.mode] ?? '🚐'} towards {leg.destination}
-            </span>
+            <Truncate className="text-meta font-medium text-fg">{`${TRANSPORT_ICON[leg.mode] ?? '🚐'} towards ${leg.destination}`}</Truncate>
           )}
           {leg.realtime && (
             <span className="w-1.5 h-1.5 rounded-full bg-success inline-block flex-shrink-0" title="Realtime" />
@@ -132,9 +130,7 @@ function WalkLeg({ leg }: { leg: TripLeg }) {
   return (
     <div className="flex items-center gap-3 py-1.5 text-meta text-fg-muted">
       <Footprints aria-hidden className="h-4 w-5 shrink-0 text-fg-faint" />
-      <span className="flex-1 truncate">
-        {leg.to !== leg.from ? `Walk to ${leg.to}` : 'Walk'}
-      </span>
+      <Truncate className="flex-1">{leg.to !== leg.from ? `Walk to ${leg.to}` : 'Walk'}</Truncate>
       <span className="flex-shrink-0 tabular-nums">
         {fmtDuration(leg.duration)}
         {leg.distance > 50 ? ` · ${fmtDistance(leg.distance)}` : ''}

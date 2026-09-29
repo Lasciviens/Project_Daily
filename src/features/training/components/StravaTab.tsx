@@ -5,7 +5,7 @@ import { useStravaStatus } from '../hooks/useTrainingSessions'
 import { formatDurationSeconds as formatDuration } from '../../../shared/utils/formatDuration'
 import type { StravaActivity } from '../types.hevy'
 import { Activity, Gauge, Heart, MapPin, Mountain, Timer } from 'lucide-react'
-import { Card, EmptyState, SegmentedControl, Skeleton, StatTile } from '../../../shared/ui'
+import { Card, EmptyState, SegmentedControl, Skeleton, StatTile, Truncate } from '../../../shared/ui'
 import { STRAVA_ORANGE, STRAVA_TYPE_LABEL } from '../stravaMeta'
 import { StravaTypeIcon } from './StravaIcons'
 import { fmtDateEnGB } from '../../../shared/utils/enGBDate'
@@ -43,7 +43,7 @@ function ActivityCard({ activity }: { activity: StravaActivity }) {
 
       <div className="min-w-0 flex-1">
         <div className="flex items-start justify-between gap-2">
-          <p className="truncate text-body font-semibold leading-snug text-fg">{activity.title}</p>
+          <Truncate as="p" className="text-body font-semibold leading-snug text-fg">{activity.title}</Truncate>
           <span className="shrink-0 text-micro font-semibold" style={{ color: STRAVA_ORANGE }}>Strava</span>
         </div>
         {activity.start_date && <p className="mt-0.5 text-meta tabular-nums text-fg-muted">{formatDate(activity.start_date)}</p>}

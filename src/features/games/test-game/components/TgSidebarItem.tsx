@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { Truncate } from '../../../../shared/ui/Truncate'
 
 /**
  * One navigation row. 31px on a mouse — the design's rhythm, which keeps the
@@ -64,7 +65,8 @@ export function TgSidebarItem({
       className={`tg-nav-item !gap-3.5 !pl-3 !pr-2 [@media(pointer:fine)]:!min-h-[31px] ${active ? 'is-active' : ''}`}
     >
       {icon}
-      <span className="min-w-0 flex-1 truncate">{label}</span>
+      {/* A cut label's tooltip is the row's own title (the full platform name). */}
+      <Truncate className="flex-1" fullText={title}>{label}</Truncate>
       {count != null && (
         <span
           className={`tg-count ${accentCount ? '!bg-[var(--tg-nav-active-count-bg)] !text-[var(--tg-nav-active-text)]' : ''}`}

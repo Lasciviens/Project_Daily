@@ -15,6 +15,7 @@ import { TgConfirmDialog } from './TgConfirmDialog'
 import { TgScrapeRecord } from './scrape/TgScrapeRecord'
 import { TgSsAttribution } from './scrape/TgScrapeParts'
 import { formatBytes } from './scrape/tgScrapeModel'
+import { Truncate } from '../../../../shared/ui/Truncate'
 
 const PREVIEW = 8
 
@@ -136,10 +137,10 @@ function ProviderBlock({ game, data, again }: { game: TgGame; data: GameScrapeDa
                     {t.kind === 'pdf' ? <FileText className="h-6 w-6" aria-hidden /> : <Film className="h-6 w-6" aria-hidden />}
                   </a>
                 )}
-                <span className="line-clamp-2 text-[10.5px] leading-tight tg-muted">
+                <Truncate lines={2} reveal="popover" className="text-[10.5px] leading-tight tg-muted">
                   {t.label}{t.stored ? ' · copy' : ''}
                   <span className="block tabular-nums tg-faint">{formatBytes(t.entry.size)}</span>
-                </span>
+                </Truncate>
               </li>
             )
           })}

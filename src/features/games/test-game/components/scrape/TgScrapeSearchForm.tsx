@@ -5,6 +5,7 @@ import type { SsSystem } from '../../../scraper/ssApi'
 import { searchableLength } from '../../../scraper/ssPlan'
 import { fieldErrors, formProblem, romFilled, searchBy, withSearchBy, type SearchBy, type SearchForm } from './tgScrapeModel'
 import { TgChip, TgSegmented } from './TgScrapeParts'
+import { Truncate } from '../../../../../shared/ui/Truncate'
 
 /** ES-DE folder → the ScreenScraper system it means (lowest id wins, the rule
  *  the server uses — hack collections were numbered after the real console). */
@@ -53,10 +54,11 @@ export function TgScrapeSearchForm({ form, onChange, onSearch, searching, hasTar
   const sysName = form.system ? (resolved?.name ?? form.system) : 'Any system'
 
   if (!open) {
+    const searched = form.useName && form.name.trim() ? `“${form.name.trim()}”` : 'by ROM'
     return (
       <div className="flex items-center gap-2 px-3 py-2">
         <div className="min-w-0 flex-1">
-          <p className="truncate text-[13px]"><span className="tg-muted">Searched </span>{form.useName && form.name.trim() ? `“${form.name.trim()}”` : 'by ROM'}</p>
+          <Truncate as="p" fullText={`Searched ${searched}`} className="text-[13px]"><span className="tg-muted">Searched </span>{searched}</Truncate>
           <div className="mt-1 flex flex-wrap gap-1">
             <TgChip>{sysName}</TgChip>
             {form.useRom && form.filename.trim() && <TgChip>ROM file</TgChip>}
@@ -129,11 +131,11 @@ export function TgScrapeSearchForm({ form, onChange, onSearch, searching, hasTar
         >
           <span className="min-w-0">
             <span className="block text-[13px] font-semibold">ROM info &amp; ScreenScraper id</span>
-            <span className="block truncate text-[11.5px] tg-muted">
+            <Truncate className="text-[11.5px] tg-muted">
               {filled
                 ? [form.filename.trim() ? form.filename.trim() : null, form.crc || form.md5 || form.sha1 ? 'hash' : null, form.jeuId ? (form.previousId ? 'previous match' : `id ${form.jeuId}`) : null].filter(Boolean).join(' · ')
                 : 'A hash finds the exact dump, even under another name'}
-            </span>
+            </Truncate>
           </span>
           <ChevronDown className={`h-4 w-4 shrink-0 tg-muted transition-transform ${romOpen ? 'rotate-180' : ''}`} aria-hidden />
         </button>

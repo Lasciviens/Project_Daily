@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { WEIGHT_UNITS } from '../api/recipesApi'
-import { Button } from '../../../shared/ui'
+import { Button, Truncate } from '../../../shared/ui'
 import { sanitizeDecimal } from './foodLogUtils'
 import type { RecipeWithIngredients } from '../types'
 
@@ -35,7 +35,7 @@ export function MealPortionPicker({ recipe, busy, onLog, onCancel }: {
 
   return (
     <div className="flex flex-col gap-2.5 rounded-card border border-accent-500/25 bg-accent-50 p-3.5">
-      <p className="truncate text-meta font-semibold text-accent-700">How much of “{recipe.title}” did you eat?</p>
+      <Truncate as="p" className="text-meta font-semibold text-accent-700">{`How much of “${recipe.title}” did you eat?`}</Truncate>
       <div className="flex flex-wrap gap-1.5">
         {[25, 50, 75, 100].map(v => (
           <button key={v} type="button" onClick={() => pickPct(String(v))} aria-pressed={p === v} className="pill-tab border border-line bg-surface">

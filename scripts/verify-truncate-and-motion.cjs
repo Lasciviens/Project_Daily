@@ -42,6 +42,13 @@ check('expanded drops the clamp', T.truncateClass(2, true) === 'break-words')
 for (const sel of ['button', 'a[href]', 'label', '[role="button"]', '[role="link"]', '[role="tab"]', 'summary'])
   check(`tappable selector covers ${sel}`, T.TAPPABLE_SELECTOR.split(',').includes(sel))
 
+console.log('bubbleZIndex (text inside a floating layer)')
+check('no positioned layer → own z-popover', T.bubbleZIndex(undefined, 70) === undefined)
+check('a layer below popovers (the tab bar, 40) → own z-popover', T.bubbleZIndex(40, 70) === undefined)
+check('the floating composer (150) → one above it', T.bubbleZIndex(150, 70) === 151)
+check('a layer exactly at the popover level → one above it', T.bubbleZIndex(70, 70) === 71)
+check('a non-number z-index is ignored', T.bubbleZIndex(Number.NaN, 70) === undefined)
+
 console.log('easing + tween')
 check('ease starts at 0', M.easeOutCubic(0) === 0)
 check('ease ends at 1', M.easeOutCubic(1) === 1)

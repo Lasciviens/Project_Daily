@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Dialog, DialogBackdrop, DialogPanel } from '@headlessui/react'
 import { X } from 'lucide-react'
 import { useHistoryDismiss } from '../../../../shared/hooks/useHistoryDismiss'
+import { Truncate } from '../../../../shared/ui/Truncate'
 
 // Same photo-overlay role as TgLightbox: black scrim in both themes.
 const CONTROL = 'inline-flex h-11 w-11 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur transition-colors [@media(hover:hover)]:hover:bg-white/20 active:bg-white/20'
@@ -45,7 +46,7 @@ export function TgVideoPlayer({ src, title, onClose }: { src: string | null; tit
               The video could not be played. ScreenScraper may be busy, or the link has expired — close and open the game again.
             </p>
           )}
-          <p className="line-clamp-1 text-[13px] text-white/70">{title} · via ScreenScraper.fr</p>
+          <Truncate as="p" className="text-[13px] text-white/70">{`${title} · via ScreenScraper.fr`}</Truncate>
         </DialogPanel>
       </div>
       <button type="button" onClick={onClose} aria-label="Close video"

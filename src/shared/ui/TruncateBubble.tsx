@@ -1,7 +1,8 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Portal } from '@headlessui/react'
 import { autoUpdate, flip, offset, shift, useFloating } from '@floating-ui/react'
 import { cx } from './cx'
+import { bubbleZIndex } from './truncateRules'
 
 const BUBBLE = 'z-popover max-w-[min(20rem,85vw)] whitespace-pre-line break-words rounded-control border border-line-strong bg-surface px-2.5 py-1.5 text-meta font-medium text-fg shadow-menu select-text motion-pop-in'
 
@@ -13,6 +14,18 @@ interface TruncateBubbleProps {
   onPointerEnter: () => void
   onPointerLeave: () => void
   onDismiss: () => void
+}
+
+/** The z-index of the text's outermost positioned ancestor that has one. */
+function layerZIndex(el: HTMLElement): number | undefined {
+  let layer: number | undefined
+  for (let n: HTMLElement | null = el; n; n = n.parentElement) {
+    const cs = getComputedStyle(n)
+    if (cs.position === 'static') continue
+    const z = Number.parseInt(cs.zIndex, 10)
+    if (Number.isFinite(z)) layer = z
+  }
+  return layer
 }
 
 /**
@@ -32,6 +45,11 @@ export function TruncateBubble({ reference, text, tg, onPointerEnter, onPointerL
     whileElementsMounted: autoUpdate,
   })
   const own = useRef<HTMLDivElement | null>(null)
+  // Text in a layer above popovers (the request composer) lifts its bubble above that layer.
+  const [zIndex] = useState(() => bubbleZIndex(
+    layerZIndex(reference),
+    Number.parseInt(getComputedStyle(document.documentElement).getPropertyValue('--z-popover'), 10) || 70,
+  ))
   const dismiss = useRef(onDismiss)
   useEffect(() => { dismiss.current = onDismiss })
 
@@ -59,7 +77,7 @@ export function TruncateBubble({ reference, text, tg, onPointerEnter, onPointerL
     <Portal>
       <div
         ref={node => { own.current = node; refs.setFloating(node) }}
-        style={floatingStyles}
+        style={zIndex != null ? { ...floatingStyles, zIndex } : floatingStyles}
         role="tooltip"
         className={cx(BUBBLE, tg && 'tg-portal')}
         onPointerEnter={e => { if (e.pointerType === 'mouse') onPointerEnter() }}

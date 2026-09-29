@@ -4,6 +4,7 @@ import { TGA_ROW_H, fmtInt } from './tgAnalyticsFormat'
 import { coverageFix, coveragePct, type TgaFixAction } from './tgAnalyticsHealthCopy'
 import { openNeedsReview, openScrapeBatch } from './tgAnalyticsNav'
 import { TgAnalyticsHealthMeter } from './TgAnalyticsHealthMeter'
+import { Truncate } from '../../../../shared/ui/Truncate'
 
 const run = (fix: TgaFixAction) => (fix.kind === 'review' ? openNeedsReview() : openScrapeBatch(fix.filter))
 
@@ -17,7 +18,7 @@ const GRID = [
   '@[32rem]/hrow:grid-cols-[minmax(6.5rem,10.5rem)_minmax(0,1fr)_minmax(7.75rem,auto)_4.5rem]',
   TGA_ROW_H,
 ].join(' ')
-const LABEL = 'col-start-1 row-start-1 min-w-0 truncate text-[13px] font-medium text-[var(--tg-text)]'
+const LABEL = 'col-start-1 row-start-1 text-[13px] font-medium text-[var(--tg-text)]'
 const VALUE = 'col-start-2 row-start-1 whitespace-nowrap text-right text-[12.5px] tabular-nums @[28rem]/hrow:col-start-3'
 const BAR = 'col-span-2 col-start-1 row-start-2 @[28rem]/hrow:col-span-1 @[28rem]/hrow:col-start-2 @[28rem]/hrow:row-start-1'
 const ACT = 'col-start-3 row-span-2 row-start-1 flex items-center justify-end gap-1.5 @[28rem]/hrow:col-start-4 @[28rem]/hrow:row-span-1'
@@ -36,7 +37,7 @@ export function TgAnalyticsHealthCoverageRow({ field, retro }: { field: TgaCover
 
   const body = (
     <>
-      <span className={LABEL} title={label}>{label}</span>
+      <Truncate className={LABEL}>{label}</Truncate>
       <span className={VALUE}>
         <span className="text-[var(--tg-muted)]">{fmtInt(filled)} of {fmtInt(total)}</span>
         <span className="text-[var(--tg-faint)]"> · </span>

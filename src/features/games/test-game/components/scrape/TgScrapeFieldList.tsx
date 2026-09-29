@@ -6,6 +6,7 @@ import { FIELD_MEDIA, sameValue } from '../../../scraper/ssPlan'
 import { pickMediaEntry } from '../../../scraper/ssRules'
 import { display, type FieldChoice, type FieldRow } from './tgScrapeModel'
 import { TgSegmented, TgSsMedia } from './TgScrapeParts'
+import { Truncate } from '../../../../../shared/ui/Truncate'
 
 const LONG = 180
 
@@ -121,10 +122,10 @@ export function TgScrapeFieldList({ candidate, rows, choices, onChoice, mediaMod
         return (
           <div key={r.field} className="py-2.5">
             <div className="flex min-h-[36px] items-center justify-between gap-2">
-              <span className="min-w-0 truncate text-[12.5px] font-semibold text-[var(--tg-text)]">
+              <Truncate className="text-[12.5px] font-semibold text-[var(--tg-text)]" fullText={rowSame ? `${r.label} · same as yours` : r.label}>
                 {r.label}
                 {rowSame && <span className="ml-1.5 text-[11px] font-normal tg-faint">same as yours</span>}
-              </span>
+              </Truncate>
               {!r.theirsEmpty && !rowSame && (
                 <TgSegmented size="sm" label={`${r.label}: what to do`} value={choice} options={options} onChange={c => onChoice(r.field, c)} />
               )}

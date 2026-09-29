@@ -1,5 +1,5 @@
 import { Droplets, Wind, CloudRain, MapPin } from 'lucide-react'
-import { SectionLabel } from '../../../shared/ui'
+import { SectionLabel, Truncate } from '../../../shared/ui'
 import { weatherIcon, weatherLabel, type WeatherData } from '../api/weatherApi'
 
 // Weather symbols are content (a forecast glyph), so the emoji from weatherIcon stays.
@@ -11,7 +11,7 @@ export function WeatherNow({ data }: { data: WeatherData }) {
       <span aria-hidden className="text-5xl leading-none">{weatherIcon(c.symbol)}</span>
       <div className="min-w-0">
         <div className="text-kpi font-bold tabular-nums tracking-tight text-fg">{c.temp}°C</div>
-        <div className="truncate text-body text-fg-muted">{weatherLabel(c.symbol)}</div>
+        <Truncate as="div" className="text-body text-fg-muted">{weatherLabel(c.symbol)}</Truncate>
       </div>
       <div className="ml-auto shrink-0 space-y-1 text-right text-meta tabular-nums text-fg-muted">
         <div className="flex items-center justify-end gap-1"><Wind aria-hidden className="h-3.5 w-3.5" />{c.windSpeed} m/s {c.windDirection}</div>

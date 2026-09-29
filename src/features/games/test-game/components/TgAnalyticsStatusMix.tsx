@@ -7,6 +7,7 @@ import { useAnalyticsHandoff } from './tgAnalyticsHandoff'
 import { gamesWithStatus } from './tgAnalyticsLists'
 import { TgStatusIcon } from './TgStatusIcon'
 import { TgAnalyticsCard } from './TgAnalyticsCard'
+import { Truncate } from '../../../../shared/ui/Truncate'
 
 const ROW = `-mx-2 grid w-[calc(100%+1rem)] grid-cols-[15px_minmax(0,1fr)_auto_2.5rem_14px] items-center gap-x-3 rounded-[10px] px-2 text-left transition-colors ${TGA_ROW_H}`
 
@@ -44,9 +45,9 @@ export function TgAnalyticsStatusMix({ mix, total }: {
           const body = (
             <>
               <TgStatusIcon status={m.status} size={15} />
-              <span className={`min-w-0 truncate text-[13px] ${m.count ? 'text-[var(--tg-text-2)]' : 'text-[var(--tg-muted)]'}`}>
+              <Truncate className={`text-[13px] ${m.count ? 'text-[var(--tg-text-2)]' : 'text-[var(--tg-muted)]'}`}>
                 {STATUS_TEXT[m.status]}
-              </span>
+              </Truncate>
               <span className="text-[13px] font-semibold tabular-nums text-[var(--tg-text)]">{fmtInt(m.count)}</span>
               <span className="text-right text-[12px] tabular-nums text-[var(--tg-muted)]">{fmtPct(m.count, total)}</span>
               <span className="grid place-items-center text-[var(--tg-faint)]">

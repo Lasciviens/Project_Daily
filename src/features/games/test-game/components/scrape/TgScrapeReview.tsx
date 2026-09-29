@@ -18,6 +18,7 @@ import { TgScrapeRecord } from './TgScrapeRecord'
 import { TgScrapeApplied } from './TgScrapeApplied'
 import { TgScrapeStorageBanner, TgScrapeStorageLine } from './TgScrapeStorageLine'
 import { mediaInfo } from '../../../scraper/ssMediaCatalog'
+import { Truncate } from '../../../../../shared/ui/Truncate'
 
 const MEDIA_FIELD: Record<string, SsField> = Object.fromEntries(Object.entries(FIELD_MEDIA).map(([f, t]) => [t, f as SsField]))
 
@@ -161,9 +162,10 @@ export function TgScrapeReview({ game, candidate, prefs, searchForm, wide, onBac
       )}
       <TgScrapeStorageLine now={storageNow} change={storageDelta} />
     <div className="flex items-center gap-3">
-      <p className="line-clamp-2 min-w-0 flex-1 text-[12px] leading-snug tabular-nums text-[var(--tg-text-2)]">
-        {summaryText(summary, copyBlock)}{snapshot ? ' · raw answer kept' : ''}
-      </p>
+      {/* The save bar stays one size: a cut summary opens a bubble. */}
+      <Truncate as="p" lines={2} reveal="popover" className="flex-1 text-[12px] leading-snug tabular-nums text-[var(--tg-text-2)]">
+        {`${summaryText(summary, copyBlock)}${snapshot ? ' · raw answer kept' : ''}`}
+      </Truncate>
       <button type="button" onClick={save} disabled={apply.isPending || nothing} className="tg-btn tg-btn-primary shrink-0 !px-5">
         <Wand2 aria-hidden className={`h-4 w-4 ${apply.isPending ? 'animate-pulse' : ''}`} strokeWidth={2.2} />
         {apply.isPending ? 'Saving…' : 'Save'}
@@ -187,7 +189,7 @@ export function TgScrapeReview({ game, candidate, prefs, searchForm, wide, onBac
           <p className="text-[12.5px] tg-muted">{[candidateLine(candidate), candidate.values.publisher].filter(Boolean).join(' · ') || '—'}</p>
           <div className="flex flex-wrap gap-1"><TgBasisBadges basis={candidate.matched_by} /><TgFlagChips flags={candidate.flags} /></div>
           {candidate.rom?.filename && (
-            <p className="line-clamp-2 break-all font-mono text-[11px] leading-snug tg-muted">Dump: {candidate.rom.filename}</p>
+            <Truncate as="p" lines={2} className="break-all font-mono text-[11px] leading-snug tg-muted">{`Dump: ${candidate.rom.filename}`}</Truncate>
           )}
           <a href={ssGamePage(candidate.jeu_id)} target="_blank" rel="noreferrer" className="mt-auto inline-flex min-h-[44px] items-center gap-1 self-start text-[12.5px] font-semibold text-[var(--tg-accent)]">
             ScreenScraper #{candidate.jeu_id} <ExternalLink className="h-3.5 w-3.5" aria-hidden />

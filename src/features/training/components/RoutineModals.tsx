@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Dumbbell, Plus, SlidersHorizontal, X } from 'lucide-react'
 import { ModalShell } from '../../../shared/modals'
-import { Button, EmptyState } from '../../../shared/ui'
+import { Button, EmptyState, Truncate } from '../../../shared/ui'
 import { useHevyExerciseTemplates } from '../hooks/useHevyExerciseTemplates'
 import { useHevyRoutineFolders, useCreateHevyRoutine, useUpdateHevyRoutine } from '../hooks/useHevyRoutines'
 import {
@@ -189,7 +189,7 @@ function RoutineFormContent({ title, onClose, initial }: RoutineFormProps) {
                     <div className="flex items-center justify-between gap-2 border-b border-line bg-surface-2 py-1 pl-3 pr-1">
                       <div className="flex items-center gap-2 min-w-0">
                         <span className="shrink-0 text-meta font-bold tabular-nums text-fg-faint">{exIdx + 1}</span>
-                        <span className="truncate text-body font-semibold text-fg">{ex.title}</span>
+                        <Truncate className="text-body font-semibold text-fg">{ex.title}</Truncate>
                       </div>
                       <div className="flex items-center gap-1 shrink-0">
                         <button

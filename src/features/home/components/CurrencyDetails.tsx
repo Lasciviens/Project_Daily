@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { ArrowUpDown } from 'lucide-react'
-import { SegmentedControl, cx } from '../../../shared/ui'
+import { SegmentedControl, Truncate, cx } from '../../../shared/ui'
 import type { CurrencyData } from '../api/currencyApi'
 import { fmtDateEnGB } from '../../../shared/utils/enGBDate'
 
@@ -70,7 +70,7 @@ function Converter({ rawRates }: { rawRates: Record<string, number> }) {
         </button>
       </div>
       <div className="flex items-center gap-3 px-3 py-3">
-        <output className="min-w-0 flex-1 truncate text-kpi font-semibold tabular-nums text-fg">{formatted}</output>
+        <output className="block min-w-0 flex-1"><Truncate className="text-kpi font-semibold tabular-nums text-fg">{formatted}</Truncate></output>
         {picker(to, setTo, 'To currency')}
       </div>
       {result !== null && parsed !== 0 && (

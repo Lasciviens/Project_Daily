@@ -6,7 +6,7 @@ import { useNearbyStops } from '../../hooks/useTransitQueries'
 import { useTravelProfile, type WalkPace } from '../../hooks/useTravelProfile'
 import type { StopResult } from '../../api/ruterApi'
 import { useEntityModal } from '../../../../shared/modals'
-import { IconButton, SectionLabel, cx } from '../../../../shared/ui'
+import { IconButton, SectionLabel, Truncate, cx } from '../../../../shared/ui'
 import { StopSearchInput } from './StopSearchInput'
 import { QuaySavePanel } from './QuaySavePanel'
 
@@ -133,11 +133,11 @@ export function SettingsTab({ active = true, onSelectRoute }: { active?: boolean
                 className="row row-interactive min-w-0 flex-1 text-left"
                 title={s.is_default ? 'Default stop' : 'Set as default'}
               >
-                <span className="min-w-0 flex-1 truncate">
+                <Truncate className="flex-1" fullText={[s.label ?? s.stop_name, s.label && s.stop_name, s.stop_locality].filter(Boolean).join(' · ')}>
                   <span className="text-body text-fg">{s.label ?? s.stop_name}</span>
                   {s.label && <span className="ml-1.5 text-meta text-fg-muted">{s.stop_name}</span>}
                   {s.stop_locality && <span className="ml-1.5 text-meta text-fg-muted">{s.stop_locality}</span>}
-                </span>
+                </Truncate>
                 {s.is_default && (
                   <span className="flex shrink-0 items-center gap-1 text-micro font-semibold text-accent-600">
                     <Star aria-hidden className="h-3 w-3 fill-current" />Default
@@ -159,8 +159,8 @@ export function SettingsTab({ active = true, onSelectRoute }: { active?: boolean
             <li key={r.id} className="flex items-center gap-1">
               <button type="button" onClick={() => onSelectRoute?.(r.id)} className="row row-interactive min-w-0 flex-1 text-left" title="Open in Routes">
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-body text-fg">{r.label}</span>
-                  <span className="block truncate text-meta text-fg-muted">{r.from_stop_name} → {r.to_stop_name}</span>
+                  <Truncate className="text-body text-fg">{r.label}</Truncate>
+                  <Truncate className="text-meta text-fg-muted">{`${r.from_stop_name} → ${r.to_stop_name}`}</Truncate>
                 </span>
               </button>
               <IconButton label={`Remove ${r.label}`} onClick={() => handleRemoveRoute(r.id, r.label)}>

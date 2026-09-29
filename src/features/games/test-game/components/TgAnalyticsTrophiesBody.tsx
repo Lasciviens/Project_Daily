@@ -4,6 +4,7 @@ import type { PsnTrophyTitle } from '../../api/psnApi'
 import { fmtInt, plural, TGA_TINT } from './tgAnalyticsFormat'
 import { TGA_TROPHY_GRADES, titlePlatform, titleProgress, trophyStats } from './tgAnalyticsTrophies'
 import { TgAnalyticsEmpty } from './TgAnalyticsCard'
+import { Truncate } from '../../../../shared/ui/Truncate'
 
 const TRACK = `relative block overflow-hidden rounded-full ${TGA_TINT}`
 const FILL = 'absolute inset-y-0 left-0 rounded-full bg-[var(--tg-accent)]'
@@ -78,10 +79,10 @@ export function TgAnalyticsTrophiesBody({ titles }: { titles: PsnTrophyTitle[] }
               return (
                 <li key={t.npCommunicationId ?? t.trophyTitleName} className="min-w-0">
                   <div className="flex items-baseline justify-between gap-3">
-                    <span className="min-w-0 truncate text-[13px] font-medium text-[var(--tg-text)]" title={t.trophyTitleName}>{t.trophyTitleName}</span>
+                    <Truncate className="text-[13px] font-medium text-[var(--tg-text)]">{t.trophyTitleName}</Truncate>
                     <span className="shrink-0 text-[13px] font-semibold tabular-nums text-[var(--tg-text)]">{pct(p)}</span>
                   </div>
-                  <span className="mt-0.5 block truncate text-[11.5px] text-[var(--tg-muted)]">{titlePlatform(t) || 'PlayStation'}</span>
+                  <Truncate className="mt-0.5 text-[11.5px] text-[var(--tg-muted)]">{titlePlatform(t) || 'PlayStation'}</Truncate>
                   <span aria-hidden className={`${TRACK} mt-1.5 h-[5px]`}><span className={FILL} style={{ width: `${p}%` }} /></span>
                 </li>
               )

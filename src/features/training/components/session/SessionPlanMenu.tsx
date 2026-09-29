@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
 import { CalendarCog, MoreHorizontal, Trash2 } from 'lucide-react'
-import { IconButton } from '../../../../shared/ui'
+import { IconButton, Truncate } from '../../../../shared/ui'
 import { useEntityModal } from '../../../../shared/modals'
 import { useDeleteScheduleBlock, useDeleteTimeBlock } from '../../../daily/hooks/useSchedule'
 import type { SessionPlanRef } from '../../sessionRef'
@@ -69,7 +69,7 @@ export function SessionPlanMenu({ plans, extra = [], onDeleted, label = 'Plan ac
           <MenuItem key={`edit-${p.ref.id}`}>
             <button type="button" onClick={() => edit(p)} className="menu-item">
               <CalendarCog aria-hidden className="h-4 w-4 shrink-0" />
-              <span className="truncate">{p.ref.kind === 'recurring' ? 'Change repeating plan…' : 'Change plan…'}{suffix(p)}</span>
+              <Truncate>{`${p.ref.kind === 'recurring' ? 'Change repeating plan…' : 'Change plan…'}${suffix(p)}`}</Truncate>
             </button>
           </MenuItem>
         ))}
@@ -77,7 +77,7 @@ export function SessionPlanMenu({ plans, extra = [], onDeleted, label = 'Plan ac
           <MenuItem key={a.label}>
             <button type="button" onClick={a.onSelect} className="menu-item">
               <span aria-hidden className="shrink-0 [&_svg]:h-4 [&_svg]:w-4">{a.icon}</span>
-              <span className="truncate">{a.label}</span>
+              <Truncate>{a.label}</Truncate>
             </button>
           </MenuItem>
         ))}
@@ -86,7 +86,7 @@ export function SessionPlanMenu({ plans, extra = [], onDeleted, label = 'Plan ac
           <MenuItem key={`delete-${p.ref.id}`}>
             <button type="button" onClick={() => void remove(p)} className="menu-item is-danger">
               <Trash2 aria-hidden className="h-4 w-4 shrink-0" />
-              <span className="truncate">{p.ref.kind === 'recurring' ? 'Delete repeating plan' : 'Delete plan'}{suffix(p)}</span>
+              <Truncate>{`${p.ref.kind === 'recurring' ? 'Delete repeating plan' : 'Delete plan'}${suffix(p)}`}</Truncate>
             </button>
           </MenuItem>
         ))}

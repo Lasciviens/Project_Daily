@@ -9,7 +9,7 @@ import { useHevyRoutines } from '../../../training/hooks/useHevyRoutines'
 import { NEXT_SESSION_LOOKAHEAD_DAYS } from '../../../training/hooks/useTrainingSessions'
 import { pickNextTrainingSession } from '../../../training/trainingPlanModel'
 import { openPlanRoutine } from '../../../training/planTraining'
-import { ToneDot, TonePill } from '../../../../shared/ui'
+import { ToneDot, TonePill, Truncate } from '../../../../shared/ui'
 import { useEntityModal } from '../../../../shared/modals'
 import { shiftDateStr, todayStr } from '../../../../shared/utils/dateUtils'
 
@@ -72,7 +72,7 @@ export function TrainingCard({ date }: { date: string }) {
             <li key={w.id}>
               <button type="button" className={ROW} onClick={() => modal.open({ kind: 'training-session', workoutId: w.id })}>
                 <ToneDot tone="success" />
-                <span className="flex-1 truncate text-body text-fg">{w.title || 'Workout'}</span>
+                <Truncate className="flex-1 text-body text-fg">{w.title || 'Workout'}</Truncate>
                 <TonePill tone="success">Done</TonePill>
                 <ChevronRight aria-hidden className="h-4 w-4 shrink-0 text-fg-faint" />
               </button>
@@ -84,7 +84,7 @@ export function TrainingCard({ date }: { date: string }) {
           {planned.map(b => (
             <button key={b.id} type="button" className={ROW} onClick={() => modal.open({ kind: 'training-session', plan: b.ref })}>
               <ToneDot tone="accent" />
-              <span className="flex-1 truncate text-body text-fg">{b.recurring && '⟳ '}{b.title}</span>
+              <Truncate className="flex-1 text-body text-fg">{`${b.recurring ? '⟳ ' : ''}${b.title}`}</Truncate>
               {b.time && <span className="shrink-0 text-meta tabular-nums text-fg-muted">{b.time}</span>}
               <ChevronRight aria-hidden className="h-4 w-4 shrink-0 text-fg-faint" />
             </button>
@@ -118,7 +118,7 @@ export function TrainingCard({ date }: { date: string }) {
                     onClick={() => openPlanRoutine(r, { date, onSaved: () => setShowPicker(false) })}
                     className="row row-interactive w-full border border-line text-left"
                   >
-                    <span className="flex-1 truncate text-body font-medium text-fg">{r.title}</span>
+                    <Truncate className="flex-1 text-body font-medium text-fg">{r.title}</Truncate>
                     <span className="shrink-0 text-meta tabular-nums text-fg-muted">{r.exercises?.length ?? 0} ex</span>
                   </button>
                 </li>

@@ -63,3 +63,15 @@ export function truncateClass(lines: number, expanded: boolean): string {
   if (lines <= 1) return 'truncate'
   return lines === 2 ? 'line-clamp-2 break-words' : 'line-clamp-3 break-words'
 }
+
+/**
+ * The bubble's z-index when its text sits inside a layer at or above the
+ * popover layer (the floating request composer is z-float): one above that
+ * layer, so the bubble never opens underneath it. `undefined` keeps the
+ * bubble's own z-popover. `layerZ` is the z-index of the text's outermost
+ * positioned ancestor that has one — where the text sits in the page's
+ * stacking order.
+ */
+export function bubbleZIndex(layerZ: number | undefined, popoverZ: number): number | undefined {
+  return layerZ != null && Number.isFinite(layerZ) && layerZ >= popoverZ ? layerZ + 1 : undefined
+}

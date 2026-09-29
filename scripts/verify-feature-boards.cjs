@@ -41,6 +41,7 @@ for (const [name, layout, known] of [
   ['Work board, rail hidden', Wk.WORK_BOARD_RAIL_HIDDEN, Wk.WORK_SECTIONS],
   ['Work list', Wk.WORK_LIST, Wk.WORK_SECTIONS],
   ['Project detail', P.PROJECT_BOARD, P.PROJECT_SECTIONS],
+  ['Project detail, Board view', P.PROJECT_KANBAN_BOARD, P.PROJECT_SECTIONS],
   ['Developer list + detail', D.LIST_DETAIL_BOARD, D.LIST_DETAIL_SECTIONS],
   ['Connections', D.CONNECTIONS_BOARD, D.CONNECTION_SECTIONS],
 ]) {
@@ -131,6 +132,17 @@ check('notes and activity keep the last track from the laptop up', [2, 3, 4].eve
     eq(P.dealByIndex(['a'], 3), [['a'], [], []]) && eq(P.dealByIndex(['a', 'b'], 0), [['a', 'b']]) && eq(P.dealByIndex(['a'], NaN), [['a']]))
 }
 
+{
+  // Board view: three status columns of at most 28rem (+ 0.75rem gaps) must fill the work's span.
+  const kanbanMax = 3 * 28 + 1.5
+  const span = (layout, px, s) => { const l = B.resolveBoardLayout(layout, s); return B.columnWidthPx(px, l, 0, l.columns[0].span) / 16 }
+  check('Board view at 2450: the work spans two tracks, so the three 28rem status columns fill it (three tracks left a 20rem hole)',
+    span(P.PROJECT_KANBAN_BOARD, W.monitor, 4) <= kanbanMax && span(P.PROJECT_BOARD, W.monitor, 4) > kanbanMax, `${span(P.PROJECT_KANBAN_BOARD, W.monitor, 4)}rem`)
+  check('Board view at 2450: notes and activity get a track each', eq(B.resolveBoardLayout(P.PROJECT_KANBAN_BOARD, 4).columns.slice(1).map(c => c.stack), [['notes'], ['activity']]))
+  check('Board view below 2450 is the Phases layout', [1, 2, 3].every(s => P.PROJECT_KANBAN_BOARD[s] === P.PROJECT_BOARD[s]))
+  check('projectLayout picks by view', P.projectLayout('phases') === P.PROJECT_BOARD && P.projectLayout('board') === P.PROJECT_KANBAN_BOARD)
+}
+
 console.log('Project list header')
 check('four cards at 2450: the header stops over the fourth card (91rem)', P.projectsHeaderCapRem(4, 2154 / 16) === 91)
 check('ten cards at 2450: over the fifth (the row holds five)', P.projectsHeaderCapRem(10, 2154 / 16) === 114)
@@ -184,7 +196,7 @@ check('header caps: 106rem over the list + detail tabs at 2450, 117rem over Conn
   B.boardWidthRem(D.LIST_DETAIL_BOARD, 4) === 106 && B.boardWidthRem(D.CONNECTIONS_BOARD, 4) === 117 && B.boardWidthRem(D.LIST_DETAIL_BOARD, 1) === null)
 
 console.log('the default views fill the width (W6)')
-for (const [name, layout] of [['Media', M.MEDIA_BOARD], ['Work', Wk.WORK_BOARD], ['Project detail', P.PROJECT_BOARD], ['Connections', D.CONNECTIONS_BOARD]]) {
+for (const [name, layout] of [['Media', M.MEDIA_BOARD], ['Work', Wk.WORK_BOARD], ['Project detail', P.PROJECT_BOARD], ['Project detail, Board view', P.PROJECT_KANBAN_BOARD], ['Connections', D.CONNECTIONS_BOARD]]) {
   check(`${name}: nothing empty at 1469, at most one track at 2450`, emptyAt(layout, W.laptop) === 0 && emptyAt(layout, W.monitor) <= ONE_TRACK,
     `${emptyAt(layout, W.laptop)} / ${emptyAt(layout, W.monitor)}px`)
 }

@@ -6,7 +6,10 @@
 //   2  1280 / 1469 laptop — the work in main, notes + activity beside it.
 //   3  1920 — the work spans main + one side track.
 //   4  2450 — the work spans three tracks (phases three across); notes and
-//      activity keep the last one.
+//      activity keep the last one. The Board view's three status columns
+//      stop at 28rem each (87.5rem), so there the work spans two tracks and
+//      notes and activity get one each — three tracks left a 20rem hole
+//      between Done and the notes.
 // The phases are dealt into column stacks by index (phase i → column i mod
 // N, PhaseColumns), never a row grid: a short phase beside a long one left a
 // hole under it and "Add phase" floated mid-row. N follows the stack area's
@@ -26,6 +29,14 @@ export const PROJECT_BOARD: BoardLayouts<ProjectSection> = {
   2: { top: ['back'], columns: [WORK, SIDE] },
   3: { top: ['back'], columns: [{ stack: WORK, span: 2 }, SIDE] },
   4: { top: ['back'], columns: [{ stack: WORK, span: 3 }, SIDE] },
+}
+export const PROJECT_KANBAN_BOARD: BoardLayouts<ProjectSection> = {
+  ...PROJECT_BOARD,
+  4: { top: ['back'], columns: [{ stack: WORK, span: 2 }, ['notes'], ['activity']] },
+}
+
+export function projectLayout(view: 'phases' | 'board'): BoardLayouts<ProjectSection> {
+  return view === 'board' ? PROJECT_KANBAN_BOARD : PROJECT_BOARD
 }
 
 /** Stack-area widths (rem) from which the phases get two and three columns. */

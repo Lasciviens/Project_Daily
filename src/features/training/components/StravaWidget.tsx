@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { RefreshCw, Unplug } from 'lucide-react'
 import { useStravaStatus, useSyncStrava, useDisconnectStrava, useConnectStrava } from '../hooks/useTrainingSessions'
 import { buildStravaOAuthUrl } from '../api/stravaApi'
-import { Button, IconButton } from '../../../shared/ui'
+import { Button, IconButton, Truncate } from '../../../shared/ui'
 import { toast } from '../../../app/store'
 import { STRAVA_CALLBACK_KEYS, STRAVA_ORANGE, parseStravaCallback } from '../stravaMeta'
 import { StravaLogo } from './StravaIcons'
@@ -72,7 +72,7 @@ export function StravaWidget() {
         <img src={status.athlete_avatar} alt={status.athlete_name ?? ''} className="h-7 w-7 shrink-0 rounded-full object-cover" />
       )}
       <div className="min-w-0">
-        <p className="truncate text-body font-semibold text-fg">{status.athlete_name}</p>
+        <Truncate as="p" className="text-body font-semibold text-fg">{status.athlete_name}</Truncate>
         <p className="flex items-center gap-1 text-micro font-medium" style={{ color: STRAVA_ORANGE }}>
           <StravaLogo size={10} /> Strava connected
         </p>

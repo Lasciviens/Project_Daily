@@ -3,6 +3,7 @@ import { Check } from 'lucide-react'
 import { ALL_PLATFORMS, platformLabels, type PlatformGroup } from '../testGameModel'
 import { PlatformIcon } from './platformArt'
 import { TgMobileSheet } from './TgMobileSheet'
+import { Truncate } from '../../../../shared/ui/Truncate'
 
 const ROW = 'flex w-full min-h-[48px] items-center gap-3 rounded-xl px-3 text-left text-[15px] font-medium transition-colors'
 // Press state, not hover: on touch :hover sticks to the row under the finger.
@@ -13,7 +14,7 @@ function Row({ label, count, active, icon, onPick }: { label: string; count: num
   return (
     <button type="button" onClick={onPick} aria-pressed={active} className={`${ROW} ${active ? ACTIVE : IDLE}`}>
       {icon}
-      <span className="min-w-0 flex-1 truncate">{label}</span>
+      <Truncate className="flex-1">{label}</Truncate>
       <span className={`text-[13px] font-medium tabular-nums ${active ? '' : 'text-[var(--tg-muted)]'}`}>{count.toLocaleString('en-GB')}</span>
       <Check aria-hidden size={17} strokeWidth={2.2} className={`shrink-0 ${active ? '' : 'invisible'}`} />
     </button>

@@ -7,6 +7,7 @@ import { PlayStationTab } from '../../components/PlayStationTab'
 import { useTestGameStore, type AdvancedTab } from '../testGameStore'
 import { needsReviewList, type TgGame } from '../testGameModel'
 import { TgErrorState } from './TgStates'
+import { Truncate } from '../../../../shared/ui/Truncate'
 
 // The previous Games page's tools the new design has no place for yet,
 // mounted verbatim — same components, same hooks, same data. The header
@@ -72,7 +73,7 @@ export function TgAdvancedView({ onOpenDetail, games = [], loading = false, erro
           <Icon size={20} strokeWidth={2} aria-hidden />
         </span>
         <div className="min-w-0">
-          <h2 id="tg-adv-title" className="truncate text-[15px] font-semibold text-[var(--tg-text)]">{title}</h2>
+          <h2 id="tg-adv-title" className="min-w-0 text-[15px] font-semibold text-[var(--tg-text)]"><Truncate>{title}</Truncate></h2>
           <p className="text-[12.5px] leading-snug tg-muted">{intro}</p>
         </div>
       </header>

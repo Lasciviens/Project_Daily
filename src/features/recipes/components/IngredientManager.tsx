@@ -7,7 +7,7 @@ import { lookupBarcode, type BarcodeProduct } from '../api/openFoodFactsApi'
 import { BarcodeScanner } from './BarcodeScanner'
 import { OnlineFoodSearch } from './OnlineFoodSearch'
 import { entityModal } from '../../../shared/modals/useEntityModal'
-import { Button, Card, EmptyState, IconButton, PageBoard, SkeletonText, cx } from '../../../shared/ui'
+import { Button, Card, EmptyState, IconButton, PageBoard, SkeletonText, Truncate, cx } from '../../../shared/ui'
 import { INGREDIENT_BOARD } from '../foodBoards'
 import { MacroWarningBadge } from './MacroWarningBadge'
 import { checkMacroConsistency } from '../macroSanity'
@@ -159,7 +159,7 @@ export function IngredientManager() {
               visible either way and open the form once a product is picked. */}
           <button type="button" onClick={() => setFormOpen(o => !o)} aria-expanded={formOpen}
             className="flex min-h-[44px] min-w-0 flex-1 items-center gap-1.5 text-left sm:hidden">
-            <span className="section-label truncate">{formTitle}</span>
+            <Truncate className="section-label">{formTitle}</Truncate>
             <ChevronDown aria-hidden className={cx('h-4 w-4 shrink-0 text-fg-faint transition-transform', formOpen && 'rotate-180')} />
           </button>
           <div className="hidden min-w-0 flex-1 sm:block">
@@ -249,7 +249,7 @@ export function IngredientManager() {
                 return (
                   <li key={ing.id} className="flex min-h-[48px] break-inside-avoid items-center gap-2 border-b border-line py-1 pl-4 pr-2 text-body">
                     <div className="min-w-0 flex-1">
-                      <span className="block truncate font-medium text-fg">{ing.name}</span>
+                      <Truncate className="font-medium text-fg">{ing.name}</Truncate>
                       {(ing.food_group || ing.serving_label) && (
                         <span className="mt-0.5 flex flex-wrap items-center gap-1">
                           {ing.food_group && <span className="chip">{ing.food_group}</span>}

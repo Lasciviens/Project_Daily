@@ -4,6 +4,7 @@ import { REVIEW_EMPTY_HINT, reviewHeadline, reviewOverlap } from './tgAnalyticsH
 import { openNeedsReview } from './tgAnalyticsNav'
 import { TgAnalyticsCard, TgAnalyticsEmpty } from './TgAnalyticsCard'
 import { TgAnalyticsHealthMeter } from './TgAnalyticsHealthMeter'
+import { Truncate } from '../../../../shared/ui/Truncate'
 
 /**
  * The retro games Needs review would list, and why: each reason with how
@@ -33,7 +34,7 @@ export function TgAnalyticsReview({ review, className = '' }: {
       <ul aria-label="Reasons" className="mt-4 flex flex-col gap-0.5">
         {reasons.map(r => (
           <li key={r.reason} className="grid min-h-[32px] grid-cols-[minmax(0,1fr)_minmax(3rem,32%)_2.75rem] items-center gap-x-3">
-            <span className="truncate text-[13px] text-[var(--tg-text-2)]" title={r.reason}>{r.reason}</span>
+            <Truncate className="text-[13px] text-[var(--tg-text-2)]">{r.reason}</Truncate>
             <TgAnalyticsHealthMeter value={r.count} max={games} />
             <span className="text-right text-[13px] font-semibold tabular-nums text-[var(--tg-text)]">{fmtInt(r.count)}</span>
           </li>

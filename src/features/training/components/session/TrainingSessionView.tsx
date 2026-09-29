@@ -1,7 +1,7 @@
 import { useEffect, useMemo, type ReactNode } from 'react'
 import { CalendarPlus } from 'lucide-react'
 import { ModalShell } from '../../../../shared/modals'
-import { Button, SkeletonText, TonePill } from '../../../../shared/ui'
+import { Button, SkeletonText, TonePill, Truncate } from '../../../../shared/ui'
 import { useHevyWorkoutDetail } from '../../hooks/useHevyWorkouts'
 import { useHevyRoutines } from '../../hooks/useHevyRoutines'
 import { useCurrentProgramRoutines } from '../../hooks/useAthleteProfile'
@@ -92,7 +92,7 @@ export function TrainingSessionView({ request, onClose }: { request: SessionRequ
           <StatusLine pill={<TonePill tone={WORKOUT_TONE}>{SESSION_STATUS_LABEL.done}</TonePill>}>
             {plans.length > 0 && <span className="min-w-0">{coveredPlanNote(plans, workout)}</span>}
           </StatusLine>
-          {workout.description && <p className="line-clamp-2 whitespace-pre-line text-meta text-fg-muted">{workout.description}</p>}
+          {workout.description && <Truncate as="p" lines={2} className="whitespace-pre-line text-meta text-fg-muted">{workout.description}</Truncate>}
           <WorkoutSessionBody workout={workout} />
         </div>
       )

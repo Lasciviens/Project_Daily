@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { Card, CardHeader, Skeleton, ToneDot } from '../../../../shared/ui'
+import { Card, CardHeader, Skeleton, ToneDot, Truncate } from '../../../../shared/ui'
 import { InfoBubble } from '../../../../shared/components/InfoBubble'
 import { fmtDateEnGB } from '../../../../shared/utils/enGBDate'
 import { useTrainingHistory } from '../../hooks/useTrainingProgress'
@@ -31,7 +31,9 @@ export function MuscleRecencyList() {
 
   return (
     <Card className="@container max-w-3xl">
+      {/* Wraps: on one line a narrow column clipped the ⓘ off the end. */}
       <CardHeader
+        wrap
         title={<span className="inline-flex items-center gap-1.5">Days since each muscle was trained
           <InfoBubble>
             A muscle counts as trained on a day it got at least {MIN_CREDIT} sets in one workout — 1 per set as the main muscle,
@@ -50,7 +52,7 @@ export function MuscleRecencyList() {
         {rows.map(({ slug, info }) => (
           <li key={slug} className="flex items-baseline gap-2 border-b border-line py-1.5 text-body">
             <ToneDot tone={RECENCY_TONE[recencyBucket(info?.daysSince)]} className="shrink-0 self-center" />
-            <span className="min-w-0 flex-1 truncate text-fg">{labelForSlug(slug)}</span>
+            <Truncate className="flex-1 text-fg">{labelForSlug(slug)}</Truncate>
             <span className="tabular-nums text-fg-muted">{agoText(info?.daysSince ?? null)}</span>
             {info && info.daysSince > 1 && <span className="hidden text-meta tabular-nums text-fg-faint sm:inline">{fmtDateEnGB(new Date(`${info.lastDate}T12:00:00`), { day: 'numeric', month: 'short' })}</span>}
           </li>

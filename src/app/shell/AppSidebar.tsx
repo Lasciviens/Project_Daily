@@ -3,7 +3,7 @@ import { PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import { NAV_GROUPS, SIDEBAR_ENTRIES, isActive, type NavEntry } from '../navigation'
 import { useSidebarStore } from '../store'
 import { useNavClick } from './useNavClick'
-import { cx } from '../../shared/ui'
+import { Truncate, cx } from '../../shared/ui'
 
 /**
  * Tablet/desktop navigation (THEME.md §6.1): a 232px sidebar with group labels
@@ -79,7 +79,7 @@ function CollapseToggle({ rail, onToggle }: { rail: boolean; onToggle: () => voi
       )}
     >
       <Icon className="h-5 w-5 shrink-0" strokeWidth={2} aria-hidden />
-      {!rail && <span className="truncate">{label}</span>}
+      {!rail && <Truncate>{label}</Truncate>}
     </button>
   )
 }
@@ -105,7 +105,7 @@ function SidebarItem({ entry, rail, active }: { entry: NavEntry; rail: boolean; 
       )}
     >
       <Icon className="h-5 w-5 shrink-0" strokeWidth={2} aria-hidden />
-      {!rail && <span className="truncate">{entry.label}</span>}
+      {!rail && <Truncate>{entry.label}</Truncate>}
     </Link>
   )
 }

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Flame, UtensilsCrossed, Users } from 'lucide-react'
-import { Card } from '../../../shared/ui'
+import { Card, Truncate } from '../../../shared/ui'
 import type { RecipeWithIngredients } from '../types'
 
 export function RecipeCard({ recipe, onClick }: { recipe: RecipeWithIngredients; onClick: () => void }) {
@@ -25,7 +25,7 @@ export function RecipeCard({ recipe, onClick }: { recipe: RecipeWithIngredients;
 
       {/* Dense body; the description lives in the detail view. */}
       <div className="flex flex-1 flex-col gap-1.5 p-2.5">
-        <p className="line-clamp-2 text-body font-semibold leading-snug text-fg">{recipe.title}</p>
+        <Truncate as="p" lines={2} className="text-body font-semibold leading-snug text-fg">{recipe.title}</Truncate>
         <div className="mt-auto flex flex-wrap items-center gap-1">
           {recipe.category && <span className="chip capitalize">{recipe.category}</span>}
           {recipe.calories != null && <span className="chip tabular-nums">{Math.round(recipe.calories)} kcal</span>}
