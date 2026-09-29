@@ -2,6 +2,7 @@ import { Suspense, type ComponentType } from 'react'
 import { useModalStore } from './modalStore'
 import { MODAL_REGISTRY } from './registry'
 import { ModalDepthContext } from './ModalLayer'
+import { EntityRequestContext } from './popupTrail'
 import { ErrorBoundary } from '../components/ErrorBoundary'
 import { logError } from '../utils/logError'
 import type { EntityModalProps, ModalKind } from './types'
@@ -26,7 +27,9 @@ export function ModalHost() {
           <ModalDepthContext.Provider key={key} value={depth}>
             <ErrorBoundary label="This popup" action={`modal_${request.kind}`}>
               <Suspense fallback={null}>
-                <C request={request as never} onClose={() => close(key)} />
+                <EntityRequestContext.Provider value={request}>
+                  <C request={request as never} onClose={() => close(key)} />
+                </EntityRequestContext.Provider>
               </Suspense>
             </ErrorBoundary>
           </ModalDepthContext.Provider>

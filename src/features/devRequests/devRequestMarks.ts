@@ -15,7 +15,7 @@
 
 import {
   BLOCK_HEADER_RE, cleanText, formatCapture, formatPageContext, summarizeSources, whereParts,
-  type Capture, type PageContext, type PickedElement,
+  type Capture, type CapturedPopup, type PageContext, type PickedElement,
 } from './devRequestContext'
 import { checkpointLine, parseCheckpointLine, type Checkpoint } from './checkpoints'
 
@@ -105,8 +105,16 @@ function decodeMark(line: string): PickMark | PageMark | null {
       page,
       element: asElement(v.element),
       quote: typeof v.quote === 'string' ? v.quote : null,
+      ...(Array.isArray(v.popups) ? { popups: v.popups.flatMap(asPopup) } : {}),
     },
   }
+}
+
+function asPopup(v: unknown): CapturedPopup[] {
+  if (!isObj(v)) return []
+  const request = isObj(v.request) && typeof v.request.kind === 'string' ? v.request as CapturedPopup['request'] : null
+  const opener = asElement(v.opener)
+  return request || opener ? [{ request, opener }] : []
 }
 
 function legacyMark(raw: string): LegacyMark {

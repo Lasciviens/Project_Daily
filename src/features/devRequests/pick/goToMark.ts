@@ -1,21 +1,25 @@
 import { useCallback } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { cleanText } from '../devRequestContext'
+import { cleanText, type CapturedPopup, type PickedElement } from '../devRequestContext'
 import { markLabel, markRoute, type Mark } from '../devRequestMarks'
 import { useDevRequestDrafts } from '../devRequestDraftStore'
 import { accessibleName, DEV_REQUEST_UI_ATTR, isRequestUi } from './pickDom'
 import { SOURCE_ATTR } from './componentSourceTransform'
 import { toast, useUIStore } from '../../../app/store'
 import { useBreakpoint } from '../../../shared/hooks/useBreakpoint'
+import { openPopups } from '../../../shared/modals/popupTrail'
+import { useModalStore } from '../../../shared/modals/modalStore'
+import type { EntityModalRequest } from '../../../shared/modals/types'
 
-// "Go there" on a picked spot: open its page (route + query) and, once the
-// page has rendered, find the element again — by the component stamps
-// (data-src) it was rendered inside and its label or text — scroll it into
-// view and outline it with a blinking border for a few seconds. A popup it was in cannot be reopened;
-// then the page opens and a toast says which popup to open.
+// "Go there" on a picked spot: open its page (route + query), reopen the
+// popups it was inside (an entity popup from its saved request, a local one
+// by clicking what opened it), then find the element again — by the
+// component stamps (data-src) it was rendered inside and its label or text —
+// scroll it into view and give it a blinking red border. A popup that can't
+// be reopened is named in a toast; nothing behind it is outlined.
 
 const LOOK_FOR_MS = 3000
-const OUTLINE_MS = 3600
+const OUTLINE_MS = 2400
 
 const visible = (el: Element) => el.getClientRects().length > 0 && !isRequestUi(el)
 
@@ -26,15 +30,18 @@ function nameMatches(el: Element, needle: string): boolean {
   return cleanText(el.textContent, 400).toLowerCase().includes(n)
 }
 
-/** Finds the picked element on the current page, or null. */
-function locate(mark: Mark): Element | null {
-  if (mark.type !== 'pick') return null
-  const c = mark.capture
-  const el = c.element
-  const needle = cleanText(c.kind === 'selection' ? c.quote : el?.name || el?.text, 60).replace(/…$/, '')
+const CONTROLS = 'button, a, [role], h1, h2, h3, h4, label, input, select, textarea'
+
+/**
+ * Finds a picked element again inside `scope` (the top popup, or the page
+ * with popups left out), by the component stamps it was rendered in and its
+ * label or text. Null when it isn't there.
+ */
+function find(el: PickedElement | null | undefined, quote: string | null, scope: Element, inPopup: boolean): Element | null {
+  const needle = cleanText(quote ?? el?.name ?? el?.text, 60).replace(/…$/, '')
   const stamps = el?.sources ?? []
-  const nodesFor = (stamp: string) =>
-    [...document.querySelectorAll(`[${SOURCE_ATTR}="${CSS.escape(stamp)}"]`)].filter(visible)
+  const here = (n: Element) => visible(n) && (inPopup || !n.closest('[role="dialog"]'))
+  const nodesFor = (stamp: string) => [...scope.querySelectorAll(`[${SOURCE_ATTR}="${CSS.escape(stamp)}"]`)].filter(here)
 
   // Innermost stamp first: the smallest element that carries the label.
   if (needle) {
@@ -42,9 +49,8 @@ function locate(mark: Mark): Element | null {
       const hit = nodesFor(s).find(n => nameMatches(n, needle))
       if (hit) return narrowTo(hit, needle)
     }
-    const scope = document.querySelector('main, [data-app-scroller]') ?? document.body
-    const exact = [...scope.querySelectorAll('button, a, [role], h1, h2, h3, h4, label, input, select, textarea')]
-      .find(n => visible(n) && accessibleName(n).toLowerCase() === needle.toLowerCase())
+    const exact = [...scope.querySelectorAll(CONTROLS)]
+      .find(n => here(n) && accessibleName(n).toLowerCase() === needle.toLowerCase())
     if (exact) return exact
   }
   for (const s of stamps) {
@@ -56,11 +62,10 @@ function locate(mark: Mark): Element | null {
 
 /** The innermost descendant of `el` that still carries the label (a card → its button). */
 function narrowTo(el: Element, needle: string): Element {
-  let best = el
   for (const child of el.querySelectorAll('button, a, [role], h1, h2, h3, h4, label, p, span, td, li')) {
-    if (visible(child) && accessibleName(child).toLowerCase() === needle.toLowerCase()) { best = child; break }
+    if (visible(child) && accessibleName(child).toLowerCase() === needle.toLowerCase()) return child
   }
-  return best
+  return el
 }
 
 function outline(el: Element) {
@@ -69,7 +74,9 @@ function outline(el: Element) {
   const box = document.createElement('div')
   box.setAttribute(DEV_REQUEST_UI_ATTR, '')
   box.setAttribute('aria-hidden', 'true')
-  box.className = 'goto-blink pointer-events-none fixed z-float rounded-control border-[3px] border-accent-500 bg-accent-500/10 transition-opacity duration-300'
+  // Above every popup layer, so a spot inside a popup is outlined over it.
+  box.className = 'goto-blink pointer-events-none fixed rounded-control transition-opacity duration-300'
+  box.style.zIndex = '2147483000'
   document.body.appendChild(box)
   const until = performance.now() + OUTLINE_MS
   const follow = () => {
@@ -85,20 +92,68 @@ function outline(el: Element) {
   follow()
 }
 
-function lookFor(mark: Mark) {
-  const started = performance.now()
-  const tick = () => {
-    const el = locate(mark)
-    if (el) { outline(el); return }
-    if (performance.now() - started < LOOK_FOR_MS) { setTimeout(tick, 150); return }
-    if (mark.type !== 'pick') return
-    const popup = mark.capture.element?.area?.startsWith('popup') ? /^popup "(.*)"$/.exec(mark.capture.element.area)?.[1] ?? 'a popup' : null
-    toast.info(popup
-      ? `It was inside the "${popup}" popup — open it to see the spot`
-      : "Opened the page — couldn't find that exact spot any more")
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
+
+/** Polls until `get` returns something, or gives up after `ms`. */
+async function waitFor<T>(get: () => T | null, ms = LOOK_FOR_MS): Promise<T | null> {
+  const until = performance.now() + ms
+  for (;;) {
+    const v = get()
+    if (v) return v
+    if (performance.now() > until) return null
+    await sleep(120)
   }
-  // Two frames: the route change renders first.
-  requestAnimationFrame(() => requestAnimationFrame(tick))
+}
+
+const topPanel = () => { const s = openPopups(); return s.length ? s[s.length - 1].panel() : null }
+const pageScope = () => document.querySelector('main, [data-app-scroller]') ?? document.body
+
+/**
+ * Reopens the popups a pick sat in, outer → inner: an entity popup from its
+ * saved request, a local one by clicking what opened it. True once the
+ * innermost is open.
+ */
+async function reopen(popups: readonly CapturedPopup[]): Promise<boolean> {
+  for (const p of popups) {
+    const before = openPopups().length
+    if (p.request) {
+      useModalStore.getState().open(p.request as unknown as EntityModalRequest)
+    } else {
+      const scope = topPanel() ?? pageScope()
+      const opener = await waitFor(() => find(p.opener, null, scope, before > 0))
+      if (!(opener instanceof HTMLElement)) return false
+      opener.scrollIntoView({ block: 'center' })
+      opener.click()
+    }
+    const opened = await waitFor(() => (openPopups().length > before ? topPanel() : null))
+    if (!opened) return false
+  }
+  return true
+}
+
+async function lookFor(mark: Mark) {
+  // The route change renders first.
+  await sleep(60)
+  if (mark.type !== 'pick') return
+  const c = mark.capture
+  const popups = c.popups ?? []
+  const wasInPopup = c.element?.area?.startsWith('popup') ?? false
+  const popupName = wasInPopup ? /^popup "(.*)"$/.exec(c.element!.area!)?.[1] ?? 'a popup' : null
+  // Start from a clean stack, so the same popups aren't opened twice.
+  if (popups.length && useModalStore.getState().stack.length) { useModalStore.getState().closeAll(); await sleep(250) }
+  if (popups.length && !(await reopen(popups))) {
+    toast.info(`It was inside the "${popupName ?? 'popup'}" popup — couldn't open it by itself; open it to see the spot`)
+    return
+  }
+  if (wasInPopup && !popups.length) {
+    // Picked before popups were remembered: never outline a look-alike behind it.
+    toast.info(`It was inside the "${popupName}" popup — open it to see the spot`)
+    return
+  }
+  const scope = popups.length ? topPanel() ?? document.body : pageScope()
+  const el = await waitFor(() => find(c.element, c.kind === 'selection' ? c.quote ?? null : null, scope, popups.length > 0))
+  if (el) outline(el)
+  else toast.info("Opened the page — couldn't find that exact spot any more")
 }
 
 /** Returns Go there for a mark: navigate to its page, then outline the spot. */
@@ -114,7 +169,7 @@ export function useGoToMark() {
     const s = useDevRequestDrafts.getState()
     if (phone && s.composer.open && !s.composer.minimized) s.setMinimized(true)
     if (route !== `${pathname}${search}`) navigate(route)
-    if (mark.type === 'pick') lookFor(mark)
+    if (mark.type === 'pick') void lookFor(mark)
     else if (route === `${pathname}${search}`) toast.info(`Already on ${markLabel(mark).crumbs[0] ?? 'this page'}`)
   }, [navigate, pathname, search, phone])
 }
