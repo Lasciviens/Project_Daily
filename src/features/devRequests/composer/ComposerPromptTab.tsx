@@ -70,7 +70,7 @@ export function ComposerPromptTab({ textareaRef }: { textareaRef?: Ref<HTMLTextA
             {rows.map(r => (
               <li key={r.id} className="rounded-row border border-line bg-surface-2 px-2.5 py-1.5">
                 <Truncate className="text-body font-medium text-fg">{r.title}</Truncate>
-                {descriptionPreview(r.description) && <Truncate lines={2} className="block text-meta text-fg-muted">{descriptionPreview(r.description)}</Truncate>}
+                {descriptionPreview(r.description) && <Truncate lines={2} className="text-meta text-fg-muted">{descriptionPreview(r.description)}</Truncate>}
               </li>
             ))}
           </ul>

@@ -189,7 +189,7 @@ export function DevRequestsDrawer() {
           </span>
           <span className="min-w-0 flex-1">
             <span className="block text-body font-medium text-fg">{request.title}</span>
-            {preview && <Truncate lines={2} className="mt-0.5 block text-meta text-fg-2">{preview}</Truncate>}
+            {preview && <Truncate lines={2} className="mt-0.5 text-meta text-fg-2">{preview}</Truncate>}
             <span className="mt-0.5 block text-meta text-fg-muted">{request.category} · {request.priority}{request.page && request.page !== 'other' ? ` · ${request.page}` : ''}</span>
           </span>
         </button>

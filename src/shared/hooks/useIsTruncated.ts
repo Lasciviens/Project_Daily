@@ -15,8 +15,22 @@ function measure(el: Element, w: Watch) {
   w.set(isTextCut({ scrollWidth: h.scrollWidth, clientWidth: h.clientWidth, scrollHeight: h.scrollHeight, clientHeight: h.clientHeight }, w.lines))
 }
 
+/**
+ * Asks for a fresh measurement without reading layout now: a new observation
+ * reports as soon as the box is laid out — at once when it is on screen, and
+ * only once it scrolls into view inside a `content-visibility: auto` section.
+ * Reading scrollWidth there instead forces a layout of each skipped section:
+ * ~1ms per element, seconds for the Games bookcase's ~3,300 labels whenever a
+ * web font arrived.
+ */
+function remeasure(el: Element, w: Watch) {
+  if (!observer) { measure(el, w); return }
+  observer.unobserve(el)
+  observer.observe(el)
+}
+
 function measureAll() {
-  for (const [el, w] of watched) measure(el, w)
+  for (const [el, w] of watched) remeasure(el, w)
 }
 
 function getObserver(): ResizeObserver | null {
@@ -67,11 +81,10 @@ export function useTruncatedElement(ref: RefObject<HTMLElement | null>, lines: n
   useEffect(() => {
     if (!mounted.current) { mounted.current = true; return }
     const el = ref.current
-    if (!el) return
-    const id = requestAnimationFrame(() => {
-      const w = watched.get(el)
-      if (w) measure(el, w)
-    })
+    const w = el ? watched.get(el) : undefined
+    if (!el || !w) return
+    if (observer) { remeasure(el, w); return }
+    const id = requestAnimationFrame(() => measure(el, w))
     return () => cancelAnimationFrame(id)
   }, [ref, textKey])
 
