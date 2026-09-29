@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { addDays, format, startOfMonth, endOfMonth, isToday, isYesterday, isTomorrow, isSameDay, differenceInCalendarDays } from 'date-fns'
 import { DayView } from '../components/DayView'
@@ -11,9 +11,10 @@ import { TodaySummary } from '../components/TodaySummary'
 import { TasksPanel } from '../components/TasksPanel'
 import { CalendarDays } from 'lucide-react'
 import { DateNav } from '../../../shared/components/DateNav'
-import { Button, Card, CardHeader, PageContainer, PageHeader, SegmentedControl, TonePill, type SegmentedOption, Truncate } from '../../../shared/ui'
+import { Button, Card, CardHeader, PageBoard, PageContainer, PageHeader, SegmentedControl, TonePill, type SegmentedOption, Truncate, useBoardStep } from '../../../shared/ui'
 import { useTasksByMonth } from '../../todo/hooks/useTodos'
 import { formatLocalDate } from '../../../shared/utils/dateUtils'
+import { DAY_BOARD, MONTH_BOARD, WEEK_BOARD, type DaySection, type PickerSection } from '../dailyBoards'
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  DailyPage — one header: ‹ date › + context on the left, the period switcher
@@ -114,8 +115,8 @@ export function DailyPage() {
       />
 
       {mode === 'day' && <DaySection date={viewDate} onDayClick={handleDayClick} onOpenTasks={() => setMode('tasks')} />}
-      {mode === 'week' && <WeekWidget onDayClick={handleDayClick} highlightDate={viewDate} />}
-      {mode === 'month' && <MonthSection onDayClick={handleDayClick} selectedDate={viewDate} />}
+      {mode === 'week' && <PickerSection kind="week" onDayClick={handleDayClick} selectedDate={viewDate} />}
+      {mode === 'month' && <PickerSection kind="month" onDayClick={handleDayClick} selectedDate={viewDate} />}
       {mode === 'tasks' && <TasksPanel />}
     </PageContainer>
   )
@@ -132,57 +133,84 @@ function useGreeting() {
   return { greeting, timeStr: format(now, 'HH:mm') }
 }
 
-// One unified day view. TWO stacked bands; boxes never change position:
-//   ROW 1 — the schedule hero (week strip + Schedule + Tasks in one card). On
-//     xl+ a companion rail fills the band beside it instead of stretching the
-//     timeline; below 2xl the hero is full width and the rail is hidden.
-//   ROW 2 — the glance board (TodaySummary), explicit column steps.
+// One unified day view: the schedule hero (week strip + Schedule + Tasks in
+// one card), the quick rail and the glance board (TodaySummary), placed per
+// width by Daily's PageBoard (dailyBoards.ts → DAY_BOARD). Boxes never change
+// position with the day's content.
 function DaySection({ date, onDayClick, onOpenTasks }: { date: Date; onDayClick: (d: Date) => void; onOpenTasks?: () => void }) {
+  const sections: Record<DaySection, ReactNode> = {
+    hero: <DayHero date={date} onDayClick={onDayClick} />,
+    rail: <DayQuickRail date={date} onOpenTasks={onOpenTasks} />,
+    glance: <TodaySummary date={date} />,
+  }
+  return <PageBoard sections={sections} layout={DAY_BOARD} stackGap="gap-5 sm:gap-6" />
+}
+
+// Schedule and Tasks side by side once the card itself is 48rem wide (the
+// Tasks pane keeps at least 20rem); stacked below that.
+function DayHero({ date, onDayClick }: { date: Date; onDayClick: (d: Date) => void }) {
   return (
-    <div className="flex flex-col gap-5 sm:gap-6">
-      <div className="2xl:grid 2xl:grid-cols-[minmax(0,60rem)_minmax(16rem,22rem)] 2xl:items-start 2xl:gap-5">
-        <Card padded={false} className="w-full overflow-hidden">
-          <WeekStrip viewDate={date} onDayClick={onDayClick} />
-          <div className="divide-y divide-line lg:grid lg:grid-cols-[minmax(0,34rem)_minmax(0,1fr)] lg:divide-x lg:divide-y-0">
-            <DayAgenda date={date} bare />
-            <DayView date={date} />
-          </div>
-        </Card>
-
-        <DayQuickRail date={date} onOpenTasks={onOpenTasks} />
+    <Card padded={false} className="@container w-full overflow-hidden">
+      <WeekStrip viewDate={date} onDayClick={onDayClick} />
+      <div className="divide-y divide-line @[48rem]:grid @[48rem]:grid-cols-[minmax(0,34rem)_minmax(20rem,1fr)] @[48rem]:divide-x @[48rem]:divide-y-0">
+        <DayAgenda date={date} bare />
+        <DayView date={date} />
       </div>
-
-      <TodaySummary date={date} />
-    </div>
+    </Card>
   )
 }
 
-// Month view — a bigger calendar and, beside it, the picked day's editable
-// schedule IN PLACE (picking a day does not navigate away). With no day
-// picked, the right pane lists upcoming activities.
-function MonthSection({ onDayClick, selectedDate }: { onDayClick: (d: Date) => void; selectedDate: Date }) {
-  const [picked, setPicked] = useState<Date | null>(isToday(selectedDate) ? null : selectedDate)
+// Week and Month — a picker plus the picked day's editable schedule IN PLACE
+// (picking a day does not navigate away; "Open day" does). With no day
+// picked, the pane lists upcoming activities; on a wide page both show at
+// once and the picked day defaults to today (month) or the viewed day (week).
+// On a narrow page the week strip keeps its old job: a tap opens the day.
+function PickerSection({ kind, onDayClick, selectedDate }: { kind: 'week' | 'month'; onDayClick: (d: Date) => void; selectedDate: Date }) {
+  const [picked, setPicked] = useState<Date | null>(kind === 'month' && !isToday(selectedDate) ? selectedDate : null)
+  const focus = picked ?? (kind === 'week' ? selectedDate : new Date())
 
-  return (
-    <div className="grid grid-cols-1 justify-start gap-4 sm:gap-5 lg:grid-cols-[minmax(0,28rem)_minmax(0,32rem)]">
-      <MonthWidget big onDayClick={setPicked} highlightDate={picked ?? undefined} />
-      <div className="min-w-0">
-        {picked ? (
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center justify-between gap-2">
-              <h2 className="truncate text-lead font-semibold text-fg">{format(picked, 'EEEE d MMMM')}</h2>
-              <div className="flex shrink-0 items-center gap-1">
-                <Button variant="ghost" size="sm" onClick={() => onDayClick(picked)}>Open day</Button>
-                <Button variant="ghost" size="sm" onClick={() => setPicked(null)}>Upcoming</Button>
-              </div>
-            </div>
-            <DayAgenda date={picked} />
-          </div>
-        ) : (
-          <UpcomingActivities onPick={setPicked} />
-        )}
+  const picker = kind === 'week'
+    ? <WeekPicker highlightDate={picked ?? selectedDate} onPick={setPicked} onOpenDay={onDayClick} />
+    : <MonthWidget big onDayClick={setPicked} highlightDate={picked ?? undefined} />
+  const pickedOrUpcoming = picked
+    ? <PickedDay date={picked} onOpenDay={() => onDayClick(picked)} onShowUpcoming={() => setPicked(null)} />
+    : <UpcomingActivities onPick={setPicked} />
+
+  const sections: Record<PickerSection, ReactNode> = {
+    // Month on a narrow page: calendar and pane side by side once the page is 56rem wide.
+    pair: (
+      <div className="grid grid-cols-1 justify-start gap-4 sm:gap-5 @[56rem]/page:grid-cols-[minmax(0,28rem)_minmax(0,32rem)]">
+        {picker}
+        <div className="min-w-0">{pickedOrUpcoming}</div>
       </div>
-    </div>
+    ),
+    picker,
+    pickedOrUpcoming,
+    picked: <PickedDay date={focus} onOpenDay={() => onDayClick(focus)} />,
+    dayTasks: <Card padded={false} className="overflow-hidden"><DayView date={focus} /></Card>,
+    upcoming: <UpcomingActivities onPick={setPicked} />,
+  }
+  return <PageBoard sections={sections} layout={kind === 'week' ? WEEK_BOARD : MONTH_BOARD} />
+}
+
+function WeekPicker({ highlightDate, onPick, onOpenDay }: { highlightDate: Date; onPick: (d: Date) => void; onOpenDay: (d: Date) => void }) {
+  const inPlace = useBoardStep() >= 2
+  return <WeekWidget className={inPlace ? '' : undefined} highlightDate={highlightDate} onDayClick={inPlace ? onPick : onOpenDay} />
+}
+
+// The picked day's schedule in one card (its top lines up with the cards beside it).
+function PickedDay({ date, onOpenDay, onShowUpcoming }: { date: Date; onOpenDay: () => void; onShowUpcoming?: () => void }) {
+  return (
+    <Card padded={false} className="min-w-0 overflow-hidden">
+      <div className="flex items-center justify-between gap-2 border-b border-line py-1.5 pl-4 pr-2 sm:pl-5">
+        <Truncate as="h2" className="min-w-0 flex-1 text-lead font-semibold text-fg">{format(date, 'EEEE d MMMM')}</Truncate>
+        <div className="flex shrink-0 items-center gap-1">
+          <Button variant="ghost" size="sm" onClick={onOpenDay}>Open day</Button>
+          {onShowUpcoming && <Button variant="ghost" size="sm" onClick={onShowUpcoming}>Upcoming</Button>}
+        </div>
+      </div>
+      <DayAgenda date={date} bare />
+    </Card>
   )
 }
 

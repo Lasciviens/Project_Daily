@@ -3,13 +3,20 @@ import { cx } from './cx'
 
 /**
  * Page wrapper: side gutter + vertical rhythm, left-aligned (never centered).
- * `width` caps the content column; 'full' is for data-dense dashboards only.
+ * `wide` (default) caps at the widest PageBoard — main + three side tracks,
+ * 131rem of content plus the 2rem gutters — so a board is never clipped and
+ * nothing runs on past it on an ultrawide screen. `narrow` is for forms;
+ * `full` removes the cap (a page with its own full-width layout).
+ *
+ * The container is `@container/page`: a component can adapt to the PAGE's
+ * width (`@[61rem]/page:grid-cols-2`) — which the sidebar, a collapsed
+ * sidebar and a drawer all change — instead of to the viewport's.
  */
 export function PageContainer({
   children, width = 'wide', className,
 }: { children: ReactNode; width?: 'narrow' | 'wide' | 'full'; className?: string }) {
-  const cap = width === 'narrow' ? 'max-w-3xl' : width === 'wide' ? 'max-w-[88rem]' : ''
-  return <div className={cx('w-full px-4 py-4 sm:px-6 sm:py-6 lg:px-8', cap, className)}>{children}</div>
+  const cap = width === 'narrow' ? 'max-w-3xl' : width === 'wide' ? 'max-w-[135rem]' : ''
+  return <div className={cx('@container/page w-full px-4 py-4 sm:px-6 sm:py-6 lg:px-8', cap, className)}>{children}</div>
 }
 
 interface PageHeaderProps {

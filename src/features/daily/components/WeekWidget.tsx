@@ -11,9 +11,11 @@ import type { Task } from '../../todo/types'
 interface Props {
   onDayClick?: (date: Date) => void
   highlightDate?: Date
+  /** Replaces the default `max-w-3xl` cap (a PageBoard track sizes it instead). */
+  className?: string
 }
 
-export function WeekWidget({ onDayClick, highlightDate }: Props) {
+export function WeekWidget({ onDayClick, highlightDate, className = 'max-w-3xl' }: Props) {
   const [weekOffset, setWeekOffset] = useState(0)
   const [showCalFilter, setShowCalFilter] = useState(false)
 
@@ -75,7 +77,7 @@ export function WeekWidget({ onDayClick, highlightDate }: Props) {
   const donePercent = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0
 
   return (
-    <Card className="max-w-3xl">
+    <Card className={className}>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-1">
         <DateNav
           label={`Week ${weekNumber}`}

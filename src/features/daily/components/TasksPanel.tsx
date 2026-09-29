@@ -1,17 +1,39 @@
-import { useMemo } from 'react'
+import { useMemo, type ReactNode } from 'react'
 import { useAllTasks } from '../../todo/hooks/useTodos'
 import { ToDoItem } from '../../todo/components/ToDoItem'
 import { useNewIds } from '../../../shared/hooks/useNewIds'
 import { completedWithinLast24h } from '../../todo/taskRules'
 import { formatLocalDate } from '../../../shared/utils/dateUtils'
 import { CheckCircle2 } from 'lucide-react'
-import { Card, EmptyState, Skeleton, ToneDot, type Tone } from '../../../shared/ui'
+import { Card, EmptyState, PageBoard, Skeleton, ToneDot, type Tone } from '../../../shared/ui'
 import type { Task } from '../../todo/types'
+import { TASKS_BOARD, TASK_SECTION_GROUPS, TASK_SECTIONS, type TaskGroup, type TaskSection } from '../dailyBoards'
 
 // Aggregated "all my tasks" view for the Daily page (dev request "Tasks":
 // tasklarımı göremiyorum artık — geçmiş/açık/ilerideki tasklarımı güzel bir UI
 // ile göster). Groups every active task by due date; ToDoItem already carries
-// the complete checkbox + Cancel (≠ delete) actions.
+// the complete checkbox + Cancel (≠ delete) actions. One card on phones and
+// narrow pages; on a wide page the groups become columns (dailyBoards.ts).
+
+const GROUP_META: Record<TaskGroup, { title: string; tone: Tone }> = {
+  overdue:  { title: 'Overdue', tone: 'danger' },
+  openNow:  { title: 'Open now', tone: 'info' },
+  today:    { title: 'Today', tone: 'accent' },
+  upcoming: { title: 'Upcoming', tone: 'neutral' },
+  noDate:   { title: 'No date', tone: 'neutral' },
+  done:     { title: 'Recently done', tone: 'success' },
+}
+
+/** What a column card says when all of its groups are empty. */
+const EMPTY_TEXT: Record<TaskSection, string> = {
+  all: '',
+  now: 'Nothing overdue or due today.',
+  upcoming: 'Nothing upcoming.',
+  noDate: 'No undated tasks.',
+  done: 'Nothing finished in the last 24 hours.',
+  later: 'Nothing upcoming, undated or recently done.',
+  noDateDone: 'No undated or recently finished tasks.',
+}
 
 function Section({ title, tasks, tone, fresh }: { title: string; tasks: Task[]; tone: Tone; fresh: ReadonlySet<string> }) {
   if (tasks.length === 0) return null
@@ -72,14 +94,24 @@ export function TasksPanel() {
     return <EmptyState bordered className="max-w-2xl" icon={<CheckCircle2 />} title="No tasks" description="You're all caught up — new tasks show up here across every day." />
   }
 
-  return (
-    <Card className="flex max-w-2xl flex-col gap-3 stagger-in">
-      <Section title="Overdue"       tasks={g.overdue}  tone="danger" fresh={fresh} />
-      <Section title="Open now"      tasks={g.openNow}  tone="info" fresh={fresh} />
-      <Section title="Today"         tasks={g.today}    tone="accent" fresh={fresh} />
-      <Section title="Upcoming"      tasks={g.upcoming} tone="neutral" fresh={fresh} />
-      <Section title="No date"       tasks={g.noDate}   tone="neutral" fresh={fresh} />
-      <Section title="Recently done" tasks={g.done}     tone="success" fresh={fresh} />
-    </Card>
-  )
+  const card = (key: TaskSection, className?: string) => {
+    const groups = TASK_SECTION_GROUPS[key]
+    const empty = groups.every(id => g[id].length === 0)
+    return (
+      <Card className={className ?? 'flex flex-col gap-3'}>
+        {groups.map(id => <Section key={id} title={GROUP_META[id].title} tasks={g[id]} tone={GROUP_META[id].tone} fresh={fresh} />)}
+        {empty && groups.length === 1 && (
+          <h3 className="flex items-center gap-2 px-1">
+            <ToneDot tone={GROUP_META[groups[0]].tone} />
+            <span className="section-label">{GROUP_META[groups[0]].title}</span>
+          </h3>
+        )}
+        {empty && <p className="-mt-1.5 px-1 text-body text-fg-muted">{EMPTY_TEXT[key]}</p>}
+      </Card>
+    )
+  }
+  const sections = Object.fromEntries(TASK_SECTIONS.map(k => [k, card(k)])) as Record<TaskSection, ReactNode>
+  sections.all = card('all', 'flex max-w-2xl flex-col gap-3 stagger-in')
+
+  return <PageBoard sections={sections} layout={TASKS_BOARD} />
 }

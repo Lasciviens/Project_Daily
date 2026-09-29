@@ -23,8 +23,8 @@ interface Props { date: Date }
 // Why HERE and nowhere else (verified in DailyPage.tsx's DaySection): the day
 // band stacks WeekStrip → DayAgenda → DayView, so at 393px this pane is about
 // one screenful down, while the glance board (TodaySummary) sits below the whole
-// band and DayQuickRail is `hidden xl:flex` — neither is a phone surface. Do not
-// "tidy" this into either of them.
+// band and DayQuickRail only exists on wide pages (DAY_BOARD steps 3–4) —
+// neither is a phone surface. Do not "tidy" this into either of them.
 //
 // Deliberately quieter than the "N open" pill beside the Tasks heading: a wish
 // is a nudge, the day's tasks are the work.

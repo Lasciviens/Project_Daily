@@ -1,6 +1,6 @@
 import { Clapperboard, Film, Tv } from 'lucide-react'
 import { useEntityModal } from '../../../shared/modals'
-import { Skeleton, EmptyState } from '../../../shared/ui'
+import { Skeleton, EmptyState, Truncate } from '../../../shared/ui'
 import { posterUrl } from '../../../integrations/tmdb/client'
 import { useRecentlyWatched, type RecentlyWatchedItem } from '../../media/hooks/useRecentlyWatched'
 import { useWidgetState } from '../hooks/useWidgetState'
@@ -40,7 +40,7 @@ export function RecentMediaWidget() {
                   {item.type === 'movie' ? <Film aria-label="Film" className="h-3 w-3" /> : <Tv aria-label="Series" className="h-3 w-3" />}
                 </span>
               </span>
-              <span className="mt-1 truncate text-meta text-fg-2">{item.title}</span>
+              <Truncate className="mt-1 text-meta text-fg-2">{item.title}</Truncate>
             </button>
           ))}
         </div>

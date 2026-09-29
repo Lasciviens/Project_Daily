@@ -60,7 +60,7 @@ function Ring({ consumed, target, size, stroke, color, label, sizeClass, ready }
   return (
     <ProgressRing value={target > 0 ? consumed / target : 0} size={size} stroke={stroke} ready={ready}
       color={over ? 'rgb(var(--danger))' : color} className={sizeClass}>
-      <AnimatedNumber value={remaining} ready={ready} className={cx('font-bold leading-none text-fg', size > 100 ? 'text-title sm:text-kpi' : 'text-ui sm:text-lead')} />
+      <AnimatedNumber value={remaining} ready={ready} align="center" className={cx('font-bold leading-none text-fg', size > 100 ? 'text-title sm:text-kpi' : 'text-ui sm:text-lead')} />
       <span className={cx('mt-0.5 text-micro leading-none', over ? 'text-danger' : 'text-fg-muted')}>{over ? 'over' : label}</span>
     </ProgressRing>
   )

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState, type RefObject } from 'react'
 import { isTextCut } from '../ui/truncateRules'
 
 // ONE ResizeObserver for the whole page, not one per element: the Games grid
@@ -38,32 +38,47 @@ function getObserver(): ResizeObserver | null {
 }
 
 /**
- * Whether `el`'s text is really cut by its `truncate` / `line-clamp-N`.
- * Re-checks when the box resizes, when fonts load and when `textKey` changes
- * (new text in a box that kept its size).
+ * The element behind `ref` while its text is really cut by its `truncate` /
+ * `line-clamp-N`, else null. Re-checks when the box resizes (the observer's
+ * first report measures it on mount), when fonts load and when `textKey`
+ * changes (new text in a box that kept its size). `nodeKey` changes when the
+ * ref moves to a new element (another tag). Text that fits costs one render.
  */
-export function useIsTruncated(el: HTMLElement | null, lines: number, textKey?: string): boolean {
-  const [cut, setCut] = useState(false)
+export function useTruncatedElement(ref: RefObject<HTMLElement | null>, lines: number, textKey?: string, nodeKey?: unknown): HTMLElement | null {
+  const [cutEl, setCutEl] = useState<HTMLElement | null>(null)
 
   useEffect(() => {
+    const el = ref.current
     if (!el) return
+    const w: Watch = { lines, set: cut => setCutEl(cut ? el : null) }
+    watched.set(el, w)
     const obs = getObserver()
-    watched.set(el, { lines, set: setCut })
-    obs?.observe(el)
-    return () => {
-      watched.delete(el)
-      obs?.unobserve(el)
+    if (obs) {
+      obs.observe(el)
+      return () => { watched.delete(el); obs.unobserve(el) }
     }
-  }, [el, lines])
+    // No ResizeObserver: measure once after layout.
+    const id = requestAnimationFrame(() => measure(el, w))
+    return () => { watched.delete(el); cancelAnimationFrame(id) }
+  }, [ref, lines, nodeKey])
 
+  // New text in the same box. Skipped on mount: the observer already measures.
+  const mounted = useRef(false)
   useEffect(() => {
+    if (!mounted.current) { mounted.current = true; return }
+    const el = ref.current
     if (!el) return
     const id = requestAnimationFrame(() => {
       const w = watched.get(el)
       if (w) measure(el, w)
     })
     return () => cancelAnimationFrame(id)
-  }, [el, lines, textKey])
+  }, [ref, textKey])
 
-  return cut
+  return cutEl
+}
+
+/** Whether the text behind `ref` is really cut (see useTruncatedElement). */
+export function useIsTruncated(ref: RefObject<HTMLElement | null>, lines: number, textKey?: string, nodeKey?: unknown): boolean {
+  return useTruncatedElement(ref, lines, textKey, nodeKey) != null
 }

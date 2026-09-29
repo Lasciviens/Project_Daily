@@ -27,6 +27,26 @@ export function formatTweenNumber(value: number, decimals = 0): string {
 }
 
 /**
+ * The longer of two renderings of a number — the room a count-up keeps so the
+ * text after it doesn't move while the digit count changes (tabular digits
+ * give every digit the same width, but not the same number of digits). Ties
+ * keep the first.
+ */
+export function widerText(a: string, b: string): string {
+  return b.length > a.length ? b : a
+}
+
+/**
+ * The share a ring draws: nothing before its first sweep (it fills from empty),
+ * then the last REAL value while a new one loads — a placeholder would drain
+ * it and refill it — and otherwise the value itself.
+ */
+export function ringShare(opts: { armed: boolean; ready: boolean; value: number; lastReal: number }): number {
+  if (!opts.armed) return 0
+  return opts.ready ? opts.value : opts.lastReal
+}
+
+/**
  * Should the number animate from what it shows now to `next`? Only a real
  * change of a finite number: a refetch that brings the same value back, a
  * NaN/Infinity or a disabled setting never animates.
@@ -47,6 +67,13 @@ export interface NewIdsState {
 }
 
 const NONE: ReadonlySet<string> = new Set()
+
+/**
+ * How long a row counts as new: longer than the 260ms `motion-row-in`
+ * animation, so the class only goes once the row has settled (removing a
+ * finished `both`-filled animation changes nothing on screen).
+ */
+export const FRESH_ROW_MS = 400
 
 /**
  * Which rows are NEW since the list was last seen. The first load (and the

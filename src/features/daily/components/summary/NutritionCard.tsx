@@ -46,7 +46,7 @@ function CalorieRing({ consumed, target, ready }: { consumed: number; target: nu
   return (
     <ProgressRing value={target > 0 ? consumed / target : 0} size={72} stroke={7} ready={ready}
       color={over ? 'rgb(var(--danger))' : MACRO_COLOR.calories} className="h-[80px] w-[80px]">
-      <AnimatedNumber value={remaining} ready={ready} className="text-lead font-bold leading-none text-fg" />
+      <AnimatedNumber value={remaining} ready={ready} align="center" className="text-lead font-bold leading-none text-fg" />
       <span className="mt-0.5 text-micro text-fg-muted">{over ? 'over' : 'left'}</span>
     </ProgressRing>
   )

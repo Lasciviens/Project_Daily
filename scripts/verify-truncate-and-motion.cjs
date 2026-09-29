@@ -63,6 +63,21 @@ check('keeps fixed decimals while counting (width stays)', M.formatTweenNumber(1
 check('no float noise', M.roundTo(0.1 + 0.2, 1) === 0.3)
 check('negative decimals treated as 0', M.formatTweenNumber(7.6, -2) === '8')
 
+console.log('widerText (room a count keeps)')
+check('the longer rendering wins', M.widerText('710', '1166') === '1166' && M.widerText('2300', '0') === '2300')
+check('a tie keeps the first', M.widerText('1234', '9999') === '1234')
+check('decimals and separators count as characters', M.widerText('9.500', '10.250') === '10.250')
+
+console.log('ringShare')
+check('not armed yet → empty (it sweeps in)', M.ringShare({ armed: false, ready: true, value: 0.6, lastReal: 0.6 }) === 0)
+check('ready → the value', M.ringShare({ armed: true, ready: true, value: 0.3, lastReal: 0.6 }) === 0.3)
+check('loading → holds the last real share (no drain to the placeholder)', M.ringShare({ armed: true, ready: false, value: 0, lastReal: 0.49 }) === 0.49)
+check('first load not armed stays empty even while loading', M.ringShare({ armed: false, ready: false, value: 0, lastReal: 0 }) === 0)
+
+console.log('row "new" window')
+check('a row stays new longer than its 260ms rise-in', M.FRESH_ROW_MS > 260)
+check('…but not long enough to replay on a quick remount', M.FRESH_ROW_MS <= 600)
+
 console.log('shouldTween')
 check('first appearance (from 0) animates', M.shouldTween(0, 1166, true))
 check('a real change animates', M.shouldTween(1166, 900, true))

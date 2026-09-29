@@ -10,6 +10,7 @@
 // Runs against the mocked app harness (the real app on a mock Supabase):
 //   node scripts/audit-text-overflow.mjs --harness <dir with mock-server.cjs> \
 //        [--base http://127.0.0.1:5371] [--routes home,daily] [--widths 393,1469,2450] [--json]
+//   node scripts/audit-text-overflow.mjs --static [--src src]   (source scan only, no browser)
 // The harness is NOT part of the repo; nothing here talks to a real backend.
 import { createRequire } from 'node:module'
 import fs from 'node:fs'
@@ -18,6 +19,33 @@ import path from 'node:path'
 const require = createRequire(import.meta.url)
 const args = process.argv.slice(2)
 const opt = (name, dflt) => { const i = args.indexOf(`--${name}`); return i >= 0 ? args[i + 1] : dflt }
+
+// --static: no browser. Lists source lines where a `truncate` / `line-clamp-N`
+// element has an {expression} child and no `title` — cut text the mock data
+// may never cut, so the rendered pass can't see it. A heuristic (one line per
+// opening tag); <Truncate> sites never match.
+if (args.includes('--static')) {
+  const hits = []
+  const walk = (d) => {
+    for (const f of fs.readdirSync(d)) {
+      const p = path.join(d, f)
+      if (fs.statSync(p).isDirectory()) walk(p)
+      else if (p.endsWith('.tsx')) {
+        fs.readFileSync(p, 'utf8').split('\n').forEach((ln, i) => {
+          const re = /<([a-z][a-z0-9]*)\b([^<>]*?\bclassName=(?:"[^"]*"|\{[^}]*\})[^<>]*)>\s*\{/g
+          for (let m; (m = re.exec(ln));) {
+            if (/\b(truncate|line-clamp-[1-6])\b/.test(m[2]) && !/\btitle=/.test(m[2])) hits.push(`${p}:${i + 1}  <${m[1]}>`)
+          }
+        })
+      }
+    }
+  }
+  walk(opt('src', 'src'))
+  console.log(hits.join('\n'))
+  console.log(`\n${hits.length} bare cut sites in ${new Set(hits.map(h => h.split(':')[0])).size} files`)
+  process.exit(0)
+}
+
 const harness = opt('harness', process.env.APP_HARNESS)
 if (!harness || !fs.existsSync(path.join(harness, 'mock-server.cjs'))) {
   console.error('usage: audit-text-overflow.mjs --harness <dir containing mock-server.cjs> [--base url] [--routes a,b] [--widths 393,1469]')

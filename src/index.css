@@ -63,7 +63,7 @@
        series never reads as "selected". Read via useChartColors(). */
     --chart-1: 13 148 136;   /* teal   */
     --chart-2: 124 58 237;   /* violet */
-    --chart-3: 210 60 200;   /* magenta — no status tone uses this hue (it was amber = --warn) */
+    --chart-3: 114 18 132;   /* plum — darker than violet so the two part in every colour-vision type (ΔE ≥ 39 vs 1/2/4/5); no status tone uses it */
     --chart-4: 225 29 72;    /* rose   */
     --chart-5: 101 163 13;   /* lime   */
     --chart-6: 100 116 139;  /* slate  */
@@ -125,7 +125,7 @@
 
     --chart-1: 45 212 191;
     --chart-2: 167 139 250;
-    --chart-3: 240 164 240;  /* magenta (was amber = --star) */
+    --chart-3: 138 81 141;   /* dusty plum — darker than the lavender (ΔE ≥ 34 vs 1/2/4/5 in every vision type) */
     --chart-4: 251 113 133;
     --chart-5: 163 230 53;
     --chart-6: 148 163 184;
@@ -602,13 +602,16 @@ select:focus-visible,
 .tone-dot  { display: inline-block; width: 8px; height: 8px; border-radius: 999px; background: rgb(var(--tone, var(--neutral))); flex-shrink: 0; }
 .tone-text { color: rgb(var(--tone-fg, var(--neutral-fg))); }
 .tone-pill {
-  display: inline-flex; align-items: center; gap: 4px;
+  align-items: center; gap: 4px;
   padding: 1px 8px; border-radius: 999px;
   font-size: 11.5px; font-weight: 600; line-height: 18px; white-space: nowrap;
-  max-width: 100%; min-width: 0; overflow: hidden; /* never runs out of its box (see .chip) */
   background: rgb(var(--tone-soft, var(--neutral-soft)));
   color: rgb(var(--tone-fg, var(--neutral-fg)));
 }
+/* Zero specificity: this rule sits after the utilities, so a plain class here
+   would beat `hidden sm:inline-flex` or `max-w-[10rem]` on a pill. The box
+   limits keep a long label inside its box (see .chip). */
+:where(.tone-pill) { display: inline-flex; max-width: 100%; min-width: 0; overflow: hidden; }
 .tone-soft { background: rgb(var(--tone-soft, var(--neutral-soft))); }
 
 @keyframes skeleton-shimmer {
