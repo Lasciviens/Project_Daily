@@ -2,11 +2,12 @@ import { useMemo } from 'react'
 import { Check, GripVertical, ListChecks, Sparkles, X } from 'lucide-react'
 import type { DevRequest } from '../types'
 import { checkpointProgress } from '../checkpoints'
-import { parseDescription, pickMarks } from '../devRequestMarks'
+import { bodySegments, parseDescription, plainText, unlinkedPicks } from '../devRequestMarks'
+import { useGoToMark } from '../pick/goToMark'
 import { useTickCheckpoint } from '../hooks/useTickCheckpoint'
 import { CheckpointList } from './CheckpointList'
 import { MarkList } from './MarkList'
-import { IconButton, ToneDot, TonePill, cx } from '../../../shared/ui'
+import { IconButton, ToneDot, TonePill, Truncate, cx } from '../../../shared/ui'
 import { awaitingCheck, cardTimeline } from '../devRequestRules'
 import { CATEGORY_TONE, PRIORITY_TONE, STATUS_LABEL, STATUS_TONE } from './devRequestMeta'
 
@@ -25,8 +26,9 @@ interface Props {
 }
 
 /**
- * One request in the drawer. Its checkpoints can be ticked right here, and
- * each spot it points at has Go there (check a fix where it was reported).
+ * One request in the drawer. Its text shows with its links (a click opens
+ * the spot — check a fix where it was reported), and its checkpoints can be
+ * ticked right here.
  * The circle ticks it for the action bar (Mark
  * done, Delete, Build prompt); the rest of the card opens it in the composer,
  * where it is edited and its status changed. A request a prompt was built for
@@ -39,10 +41,13 @@ export function DevRequestCard({ request, hasDraft, selected, dragging, onDragSt
   const parsed = useMemo(() => parseDescription(request.description), [request.description])
   const checkpoints = parsed.checkpoints.filter(c => c.text.trim())
   const progress = checkpointProgress(checkpoints)
-  // What it points at; the page it was written on only when nothing was picked.
-  const picks = pickMarks(parsed.marks)
-  const marks = picks.length ? picks : parsed.marks.slice(0, 1)
+  // Older picks (not linked from the text) as rows; the page it was written
+  // on stays out of sight.
+  const marks = unlinkedPicks(parsed.marks)
+  const body = parsed.body.trim()
+  const segments = useMemo(() => bodySegments(body, parsed.marks), [body, parsed.marks])
   const tick = useTickCheckpoint()
+  const goTo = useGoToMark()
 
   return (
     <div
@@ -112,6 +117,22 @@ export function DevRequestCard({ request, hasDraft, selected, dragging, onDragSt
           </span>
           {timeline && <span className="text-meta tabular-nums text-fg-muted">{timeline}</span>}
         </button>
+        {body && (
+          <Truncate lines={3} fullText={plainText(body, parsed.marks)} className="whitespace-pre-line pb-1.5 pr-1 text-meta text-fg-2">
+            {segments.map((seg, i) => seg.type === 'text' ? seg.text : (
+              <button
+                key={i}
+                type="button"
+                disabled={!seg.mark}
+                onClick={() => seg.mark && goTo(seg.mark)}
+                title="Open the page and show this spot"
+                className="inline font-medium text-accent-600 underline decoration-accent-500/60 underline-offset-2 hover:decoration-accent-600 disabled:text-fg-faint disabled:no-underline"
+              >
+                {seg.label}
+              </button>
+            ))}
+          </Truncate>
+        )}
         {(checkpoints.length > 0 || marks.length > 0) && (
           <div className="flex flex-col gap-1 pb-1.5 pr-1">
             <CheckpointList items={checkpoints} onToggle={(i, done) => tick(request, checkpoints, i, done)} />

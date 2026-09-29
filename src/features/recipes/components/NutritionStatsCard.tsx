@@ -20,12 +20,15 @@ const PERIODS = [{ value: '7' as const, label: '7 days' }, { value: '28' as cons
  *  goal report's 28-day window (weight + paired days). */
 export function NutritionStatsCard({ date }: { date: string }) {
   const [period, setPeriod] = useState<'7' | '28'>('7')
-  const { data: rows = [], isLoading } = useFoodLogRange(shiftDateStr(date, -27), date)
+  // The viewed day is left out: it is usually still being logged, and a half
+  // day drags every average down. The window is the 7/28 days before it.
+  const end = shiftDateStr(date, -1)
+  const { data: rows = [], isLoading } = useFoodLogRange(shiftDateStr(end, -27), end)
   const { targets } = useDayTargets()
   const { report } = useGoalReport(28)
   const e = report?.energy
   const s = buildNutritionStats({
-    rows, endDate: date, period: Number(period) as 7 | 28, targetKcal: targets.calories,
+    rows, endDate: end, period: Number(period) as 7 | 28, targetKcal: targets.calories,
     weightKg: e ? (e.weight.currentTrendKg ?? e.weight.meanKg) : null,
     balance: e ? { days: e.paired.days, meanIntake: e.paired.meanIntake, meanBurn: e.paired.meanBurn, scaleBurn: e.observedTdee } : null,
   })
@@ -36,7 +39,7 @@ export function NutritionStatsCard({ date }: { date: string }) {
       {isLoading ? (
         <p className="text-meta text-fg-muted">Loading…</p>
       ) : !s.rows.length ? (
-        <p className="text-body text-fg-muted">Nothing logged in the last {period} days yet.</p>
+        <p className="text-body text-fg-muted">Nothing logged in the {period} days before this one yet.</p>
       ) : (
         <ul className="flex flex-col divide-y divide-line">
           {s.rows.map(r => (

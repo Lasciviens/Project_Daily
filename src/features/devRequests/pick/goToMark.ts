@@ -11,11 +11,11 @@ import { useBreakpoint } from '../../../shared/hooks/useBreakpoint'
 // "Go there" on a picked spot: open its page (route + query) and, once the
 // page has rendered, find the element again — by the component stamps
 // (data-src) it was rendered inside and its label or text — scroll it into
-// view and outline it for a moment. A popup it was in cannot be reopened;
+// view and outline it with a blinking border for a few seconds. A popup it was in cannot be reopened;
 // then the page opens and a toast says which popup to open.
 
 const LOOK_FOR_MS = 3000
-const OUTLINE_MS = 2400
+const OUTLINE_MS = 3600
 
 const visible = (el: Element) => el.getClientRects().length > 0 && !isRequestUi(el)
 
@@ -69,7 +69,7 @@ function outline(el: Element) {
   const box = document.createElement('div')
   box.setAttribute(DEV_REQUEST_UI_ATTR, '')
   box.setAttribute('aria-hidden', 'true')
-  box.className = 'pointer-events-none fixed z-float rounded-control border-2 border-accent-500 bg-accent-500/10 transition-opacity duration-300'
+  box.className = 'goto-blink pointer-events-none fixed z-float rounded-control border-[3px] border-accent-500 bg-accent-500/10 transition-opacity duration-300'
   document.body.appendChild(box)
   const until = performance.now() + OUTLINE_MS
   const follow = () => {
