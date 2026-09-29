@@ -5,8 +5,10 @@ import { Button, SkeletonText, TonePill, Truncate } from '../../../../shared/ui'
 import { useHevyWorkoutDetail } from '../../hooks/useHevyWorkouts'
 import { useHevyRoutines } from '../../hooks/useHevyRoutines'
 import { useCurrentProgramRoutines } from '../../hooks/useAthleteProfile'
+import { useTrainingSkips } from '../../hooks/useTrainingSkips'
 import { useSessionAnchor, useSessionDay, type SessionRequest } from '../../hooks/useTrainingSessionDetail'
 import { matchRoutineToPlan } from '../../plan/nextSession'
+import { skipCovering, skippedText } from '../../plan/skippedRoutines'
 import { openPlanRoutine } from '../../planTraining'
 import { rememberShownWorkout } from '../../sessionLinks'
 import { PLAN_TONE, WORKOUT_TONE, type CalendarPlanItem } from '../calendar/calendarModel'
@@ -44,6 +46,7 @@ export function TrainingSessionView({ request, onClose }: { request: SessionRequ
   const workoutQ = useHevyWorkoutDetail(resolved?.kind === 'workout' ? resolved.workoutId : null)
   const routinesQ = useHevyRoutines()
   const { data: program } = useCurrentProgramRoutines()
+  const { data: skips } = useTrainingSkips()
   const date = anchor.date
 
   // So a popup opened from here (the Apple workout) can recognise this one as
@@ -105,12 +108,17 @@ export function TrainingSessionView({ request, onClose }: { request: SessionRequ
       ? [{ label: 'Plan it again…', icon: <CalendarPlus />, onSelect: () => openPlanRoutine(routine) }]
       : []
     actions = <SessionPlanMenu plans={menuPlans([planItem], date)} extra={extra} onDeleted={onClose} />
+    // A missed session the athlete skipped with a reason says so (Next's
+    // "Skip" writes training_skips); otherwise nothing was logged.
+    const skip = status === 'missed' ? skipCovering(skips ?? [], routine?.id, date) : null
     const repeats = planItem.kind === 'recurring' && planItem.scheduleBlock ? `Repeats ${weekdaysLabel(planItem.scheduleBlock.days_of_week)}` : null
     body = (
       <div className="flex flex-col gap-4">
         <StatusLine pill={<TonePill tone={PLAN_TONE[status]}>{SESSION_STATUS_LABEL[status]}</TonePill>}>
           {repeats && <span>⟳ {repeats}</span>}
-          {status === 'missed' && <span>Nothing was logged that day.</span>}
+          {status === 'missed' && (skip
+            ? <span className="min-w-0 break-words text-fg-2">{skippedText(skip)}</span>
+            : <span>Nothing was logged that day.</span>)}
           {status === 'done' && <span>A Strava activity covered that day.</span>}
           {offSchedule && <span>This plan no longer falls on this day.</span>}
         </StatusLine>
