@@ -1,6 +1,7 @@
 import { TonePill, cx } from '../../../shared/ui'
 import { CUT_LIMIT, GAIN_LIMIT, PHASE_TARGET, type Phase, type RateVerdict } from './bodyGoal'
-import { RATE_COPY, signed } from './goalCopy'
+import { signed } from './goalCopy'
+import { paceLabel } from './cutDecision'
 import { GoalBlock, Cites } from './GoalBlock'
 
 // The gauge's axis (signed %BW/week, + = gaining) and its coloured zones per
@@ -77,7 +78,7 @@ export function PaceSection({ phase, rate, meanKg }: { phase: Phase; rate: RateV
           <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <strong className="text-lead tabular-nums text-fg">{signed(rate.kgPerWeek, 2, ' kg')}/week</strong>
             <span className="text-meta tabular-nums text-fg-muted">({signed(rate.pctPerWeek, 2, ' %')} of bodyweight)</span>
-            <TonePill tone={RATE_COPY[rate.status].tone}>{RATE_COPY[rate.status].label}</TonePill>
+            <TonePill tone={paceLabel(phase, rate.pctPerWeek).tone}>{paceLabel(phase, rate.pctPerWeek).label}</TonePill>
           </p>
           <PaceGauge phase={phase} pct={rate.pctPerWeek} />
         </>

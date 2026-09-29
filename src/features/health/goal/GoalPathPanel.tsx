@@ -8,7 +8,7 @@ const STEP_ICON: Record<StepKey, LucideIcon> = {
 
 /** The headline: where the pace, fat vs muscle and protein add up to, and
  *  what to do next. */
-export function GoalPathPanel({ path }: { path: GoalPath }) {
+export function GoalPathPanel({ path, note }: { path: GoalPath; note?: string }) {
   return (
     <div className="rounded-row border border-line bg-surface-2 p-3" aria-live="polite">
       <p className="flex items-start gap-2 text-lead font-semibold text-fg">
@@ -18,6 +18,7 @@ export function GoalPathPanel({ path }: { path: GoalPath }) {
       {path.summary.length > 0 && (
         <p className="mt-1 text-body text-fg-2">{path.summary.join(' ')}</p>
       )}
+      {note && <p className="mt-1 text-meta text-fg-muted">{note}</p>}
       {path.steps.length > 0 && (
         <>
           <p className="section-label mt-3">Your path</p>
