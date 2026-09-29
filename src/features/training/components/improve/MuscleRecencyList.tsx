@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { Card, CardHeader, Skeleton, ToneDot, Truncate } from '../../../../shared/ui'
 import { InfoBubble } from '../../../../shared/components/InfoBubble'
-import { fmtDateEnGB } from '../../../../shared/utils/enGBDate'
+import { formatDate } from '../../../../shared/utils/dateFormat'
 import { useTrainingHistory } from '../../hooks/useTrainingProgress'
 import { useTodayStr } from '../../hooks/useTrainingSessions'
 import { MAJOR_MUSCLES, labelForSlug } from '../../muscleMap'
@@ -54,7 +54,7 @@ export function MuscleRecencyList() {
             <ToneDot tone={RECENCY_TONE[recencyBucket(info?.daysSince)]} className="shrink-0 self-center" />
             <Truncate className="flex-1 text-fg">{labelForSlug(slug)}</Truncate>
             <span className="tabular-nums text-fg-muted">{agoText(info?.daysSince ?? null)}</span>
-            {info && info.daysSince > 1 && <span className="hidden text-meta tabular-nums text-fg-faint sm:inline">{fmtDateEnGB(new Date(`${info.lastDate}T12:00:00`), { day: 'numeric', month: 'short' })}</span>}
+            {info && info.daysSince > 1 && <span className="hidden text-meta tabular-nums text-fg-faint sm:inline">{formatDate(info.lastDate)}</span>}
           </li>
         ))}
       </ul>

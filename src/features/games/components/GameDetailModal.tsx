@@ -35,7 +35,7 @@ function Section({ title, children, defaultOpen = true }: { title: string; child
   )
 }
 
-// en-GB built by hand ("15 Sep 2026"): toLocaleDateString's CLDR data prints "Sept".
+// DD.MM.YYYY via the shared formatter.
 const fmtDate = (iso: string | null | undefined): string => formatDay(iso)
 
 

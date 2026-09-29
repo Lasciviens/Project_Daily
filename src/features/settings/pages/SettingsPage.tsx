@@ -5,18 +5,20 @@ import { ConnectionsTab } from '../../developer/components/ConnectionsTab'
 import { CONNECTIONS_BOARD } from '../../developer/developerBoards'
 import { PlacesTab } from '../components/PlacesTab'
 import { AppearanceTab } from '../components/AppearanceTab'
-import { APPEARANCE_BOARD, PLACES_BOARD } from '../settingsBoards'
+import { ApisTab } from '../components/ApisTab'
+import { APIS_BOARD, APPEARANCE_BOARD, PLACES_BOARD } from '../settingsBoards'
 
-type Tab = 'places' | 'appearance' | 'integrations'
+type Tab = 'places' | 'appearance' | 'integrations' | 'apis'
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'places', label: 'Places' },
   { id: 'appearance', label: 'Appearance' },
   { id: 'integrations', label: 'Integrations' },
+  { id: 'apis', label: 'APIs' },
 ]
-const BOARD = { places: PLACES_BOARD, appearance: APPEARANCE_BOARD, integrations: CONNECTIONS_BOARD } as const
+const BOARD = { places: PLACES_BOARD, appearance: APPEARANCE_BOARD, integrations: CONNECTIONS_BOARD, apis: APIS_BOARD } as const
 
-/** /settings — Places · Appearance · Integrations, the tab kept in ?tab=. */
+/** /settings — Places · Appearance · Integrations · APIs, the tab kept in ?tab=. */
 export function SettingsPage() {
   const [params, setParams] = useSearchParams()
   const raw = params.get('tab')
@@ -49,6 +51,7 @@ export function SettingsPage() {
       {tab === 'places' && <PlacesTab />}
       {tab === 'appearance' && <AppearanceTab />}
       {tab === 'integrations' && <ConnectionsTab />}
+      {tab === 'apis' && <ApisTab />}
     </PageContainer>
   )
 }

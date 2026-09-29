@@ -3,6 +3,7 @@ import { useSetPlayStatus, useUpdateGame } from '../hooks/useGames'
 import { STATUS_LABEL, STATUSES } from '../gamesMeta'
 import { formatPlaytimeFromSeconds, playStatsOf } from '../gameStats'
 import type { Game, PlayStatus } from '../types'
+import { formatDate } from '../../../shared/utils/dateFormat'
 
 // The personal side of a game — status, rating, flags, notes — for the
 // Steam and PlayStation modals.
@@ -99,8 +100,8 @@ export function LibraryControls({ entry, notImportedHint }: {
           }`}>{hidden ? '🙈 Hidden' : '🙈 Hide game'}</button>
         {(entry.started_at || entry.finished_at) && (
           <span className="min-h-[36px] px-2.5 text-[11px] text-ink-400 flex items-center">
-            {entry.started_at && `▶ started ${new Date(entry.started_at).toLocaleDateString('en-GB')}`}
-            {entry.finished_at && ` · 🏁 finished ${new Date(entry.finished_at).toLocaleDateString('en-GB')}`}
+            {entry.started_at && `▶ started ${formatDate(entry.started_at)}`}
+            {entry.finished_at && ` · 🏁 finished ${formatDate(entry.finished_at)}`}
           </span>
         )}
       </div>

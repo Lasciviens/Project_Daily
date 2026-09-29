@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useSteamAchievements } from '../hooks/useSteam'
 import type { SteamAchievement } from '../api/steamApi'
 import { Truncate } from '../../../shared/ui/Truncate'
+import { formatDate } from '../../../shared/utils/dateFormat'
 
 // Achievement list for ONE game, shown inside the Steam detail modal.
 // Three Steam endpoints feed this (unlock state + schema for icons/names +
@@ -45,7 +46,7 @@ function AchievementRow({ a }: { a: SteamAchievement }) {
           {rarity && <span className={`text-[10px] font-medium ${rarity.cls}`}>{rarity.text}</span>}
           {a.achieved && a.unlocktime && (
             <span className="text-[10px] text-ink-400">
-              {new Date(a.unlocktime * 1000).toLocaleDateString('en-GB')}
+              {formatDate(a.unlocktime * 1000)}
             </span>
           )}
         </div>

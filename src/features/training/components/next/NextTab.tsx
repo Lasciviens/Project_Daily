@@ -2,7 +2,7 @@ import { CalendarClock, CalendarPlus, Dumbbell, Moon } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Button, Card, EmptyState, PageBoard, Skeleton, ToneDot, useBoardStep } from '../../../../shared/ui'
 import { InfoBubble } from '../../../../shared/components/InfoBubble'
-import { fmtDateEnGB } from '../../../../shared/utils/enGBDate'
+import { formatWeekdayDate } from '../../../../shared/utils/dateFormat'
 import { openPlanRoutine } from '../../planTraining'
 import { daysBetween } from '../../plan/nextSession'
 import type { TrainingTabId } from '../../pages/trainingTabs'
@@ -16,7 +16,7 @@ import { NEXT_BOARD } from '../../trainingBoards'
 
 function whenText(date: string, startTime: string | null, today: string): string {
   const d = daysBetween(today, date)
-  const day = d === 0 ? 'Today' : d === 1 ? 'Tomorrow' : fmtDateEnGB(new Date(`${date}T12:00:00`), { weekday: 'long', day: 'numeric', month: 'short' })
+  const day = d === 0 ? 'Today' : d === 1 ? 'Tomorrow' : formatWeekdayDate(date, 'long')
   return startTime ? `${day} · ${startTime}` : day
 }
 

@@ -1,5 +1,5 @@
 import { cx } from '../../../../shared/ui'
-import { fmtDateEnGB } from '../../../../shared/utils/enGBDate'
+import { formatWeekdayDate } from '../../../../shared/utils/dateFormat'
 import type { DayData } from './calendarModel'
 import { DayMarkGlyph, StravaBar } from './DayMarkGlyph'
 import { DAY_MARK_LABEL, dayMarkOf, weekSessionCount, type MonthWeek } from './monthGrid'
@@ -60,7 +60,7 @@ export function MonthGrid({ weeks, dayByDate, todayStr, currentWeek, selected, o
               const strava = (day?.activities.length ?? 0) > 0
               const isToday = cell.date === todayStr
               const isSelected = cell.date === selected
-              const name = fmtDateEnGB(new Date(`${cell.date}T12:00:00`), { weekday: 'long', day: 'numeric', month: 'long' })
+              const name = formatWeekdayDate(cell.date, 'long')
               return (
                 <button
                   key={cell.date}

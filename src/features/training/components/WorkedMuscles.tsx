@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react'
-import { subDays, formatDistanceToNow, format, differenceInCalendarDays } from 'date-fns'
+import { subDays, formatDistanceToNow, differenceInCalendarDays } from 'date-fns'
+import { formatDateRange, formatTime, formatWeekdayDate } from '../../../shared/utils/dateFormat'
 import type { ExtendedBodyPart, Slug } from 'react-muscle-highlighter'
 import { Dumbbell } from 'lucide-react'
 import { useHevyExerciseTemplates } from '../hooks/useHevyExerciseTemplates'
@@ -156,7 +157,7 @@ export function WorkedMuscles() {
   const hasData = Object.keys(ctx.perSlug).length > 0
   // A custom range is a past window, not "the last N days".
   const windowLabel = period === 'custom' && customValid
-    ? `${format(new Date(`${customFrom}T00:00:00`), 'd MMM')} – ${format(new Date(`${customTo}T00:00:00`), 'd MMM')}`
+    ? formatDateRange(customFrom, customTo)
     : `in the last ${windowDays} days`
 
   return (
@@ -176,7 +177,7 @@ export function WorkedMuscles() {
           <div className="flex items-baseline gap-2 rounded-row bg-surface-2 px-3.5 py-2.5">
             <span className="flex items-center gap-1 self-center text-meta text-fg-muted"><Dumbbell className="h-3.5 w-3.5" aria-hidden /> Last workout</span>
             <span className="text-body font-semibold text-fg">{formatDistanceToNow(new Date(lastAt), { addSuffix: true })}</span>
-            <span className="ml-auto text-meta tabular-nums text-fg-muted">{format(new Date(lastAt), 'EEE d MMM, HH:mm')}</span>
+            <span className="ml-auto text-meta tabular-nums text-fg-muted">{`${formatWeekdayDate(lastAt)} ${formatTime(lastAt)}`}</span>
           </div>
         )}
 

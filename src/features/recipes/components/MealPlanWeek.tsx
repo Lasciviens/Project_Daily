@@ -1,5 +1,6 @@
 import { useState, Fragment } from 'react'
 import { format, addDays, addWeeks, startOfWeek, endOfWeek, isToday, getISOWeek } from 'date-fns'
+import { formatDateRange, formatWeekdayDate } from '../../../shared/utils/dateFormat'
 import { Check, ClipboardList, Plus } from 'lucide-react'
 import { useMealPlan, useEatPlannedEntry } from '../hooks/useMealPlan'
 import { useFoodLogRange } from '../hooks/useFoodLog'
@@ -75,7 +76,7 @@ export function MealPlanWeek() {
             onToday={() => setWeekOffset(0)}
             isToday={weekOffset === 0}
           />
-          <span className="text-meta tabular-nums text-fg-muted">{format(weekStart, 'd MMM')} – {format(weekEnd, 'd MMM')}</span>
+          <span className="text-meta tabular-nums text-fg-muted">{formatDateRange(weekStart, weekEnd)}</span>
         </div>
         {/* Plan vs what was actually eaten (the Today diary), shown together. */}
         <p className="flex items-center gap-3 text-meta text-fg-muted">
@@ -179,7 +180,7 @@ export function MealPlanWeek() {
                     <div key={`${slot}-${dateStr}`}
                       className={cx('flex min-h-[64px] flex-col overflow-hidden rounded-row border bg-surface', filled ? 'border-line' : 'border-dashed border-line')}>
                       {!filled ? (
-                        <button type="button" onClick={() => openAdd(dateStr, slot)} aria-label={`Plan ${SLOT_LABEL[slot]} on ${format(day, 'EEE d MMM')}`}
+                        <button type="button" onClick={() => openAdd(dateStr, slot)} aria-label={`Plan ${SLOT_LABEL[slot]} on ${formatWeekdayDate(day)}`}
                           className="flex min-h-[64px] w-full flex-1 items-center justify-center text-fg-faint transition-colors hover:bg-accent-50 hover:text-accent-600">
                           <Plus aria-hidden className="h-5 w-5" />
                         </button>

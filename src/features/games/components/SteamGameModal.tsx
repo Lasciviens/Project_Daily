@@ -6,6 +6,7 @@ import { useLibraryEntry } from '../hooks/useGames'
 import { steamGameHeaderUrl, type SteamGame } from '../api/steamApi'
 import { formatPlaytime } from '../api/playtimeFormat'
 import { ModalShell } from '../../../shared/modals'
+import { formatDate } from '../../../shared/utils/dateFormat'
 
 // Detail popup for one owned Steam game — the anchor piece of the Steam tab
 // (the user asked for a popup showing a game's details). Pulls together
@@ -14,7 +15,7 @@ import { ModalShell } from '../../../shared/modals'
 // 092), and — on an explicit tap only — the live concurrent-player count.
 
 const fmtDate = (unix?: number) =>
-  unix ? new Date(unix * 1000).toLocaleDateString('en-GB') : '—'
+  unix ? formatDate(unix * 1000) : '—'
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (

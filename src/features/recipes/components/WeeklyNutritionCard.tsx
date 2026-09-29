@@ -1,4 +1,5 @@
 import { format, parseISO } from 'date-fns'
+import { formatWeekdayDate } from '../../../shared/utils/dateFormat'
 import { CalendarRange } from 'lucide-react'
 import { Card, CardHeader, cx } from '../../../shared/ui'
 import { useFoodLogRange } from '../hooks/useFoodLog'
@@ -56,7 +57,7 @@ export function WeeklyNutritionCard({ date }: { date: string }) {
             {s.days.map(d => {
               const over = targets.calories > 0 && d.kcal > targets.calories * 1.1
               return (
-                <div key={d.date} className="flex h-full flex-1 flex-col justify-end" title={`${format(parseISO(d.date), 'EEE d MMM')} · ${d.logged ? `${d.kcal} kcal · ${d.protein}g protein` : 'not logged'}`}>
+                <div key={d.date} className="flex h-full flex-1 flex-col justify-end" title={`${formatWeekdayDate(d.date)} · ${d.logged ? `${d.kcal} kcal · ${d.protein}g protein` : 'not logged'}`}>
                   <div
                     className={cx('w-full rounded-t-sm', !d.logged && 'bg-surface-2', over && 'bg-danger/70')}
                     style={{ height: d.logged ? `${Math.max((d.kcal / scaleMax) * 100, 3)}%` : '3%', backgroundColor: d.logged && !over ? MACRO_COLOR.calories : undefined }}

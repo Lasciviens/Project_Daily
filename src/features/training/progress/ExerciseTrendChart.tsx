@@ -3,7 +3,7 @@ import { ComposedChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Cartes
 import { SegmentedControl, useChartColors } from '../../../shared/ui'
 import { TOOLTIP_BOX } from '../../../shared/components/charts/chartKit'
 import { compactAxisTick } from '../../../shared/components/charts/axisFormat'
-import { fmtDateEnGB } from '../../../shared/utils/enGBDate'
+import { formatDate, formatDayMonth } from '../../../shared/utils/dateFormat'
 import { buildExerciseChartRows, type ExerciseChartRow } from '../progress-engine/chartSeries'
 import { fmtDuration } from '../progress-engine/format'
 import { isWeightBasedMetric } from '../progress-engine/metricStrategy'
@@ -44,7 +44,7 @@ function renderDot({ cx, cy, payload }: DotProps, markChanges: boolean, stroke: 
   return <circle key={payload.key} cx={cx} cy={cy} r={changed ? 5 : 3.5} fill={changed ? stroke : surface} stroke={stroke} strokeWidth={2} />
 }
 
-const fmtDay = (ts: number) => fmtDateEnGB(new Date(ts), { day: 'numeric', month: 'short' })
+const fmtDay = (ts: number) => formatDayMonth(ts)
 
 function makeTooltip(view: View, metricKind: ProgressMetricKind) {
   const { primaryLabel, unit, totalLabel } = unitOf(metricKind)
@@ -55,7 +55,7 @@ function makeTooltip(view: View, metricKind: ProgressMetricKind) {
     if (!row) return null
     return (
       <div className={TOOLTIP_BOX}>
-        <p className="font-medium text-fg-muted">{fmtDateEnGB(new Date(row.date + 'T00:00:00'), { day: 'numeric', month: 'short', year: 'numeric' })}{row.workoutTitle ? ` · ${row.workoutTitle}` : ''}</p>
+        <p className="font-medium text-fg-muted">{formatDate(row.date)}{row.workoutTitle ? ` · ${row.workoutTitle}` : ''}</p>
         <p className="font-semibold tabular-nums text-fg">{row.setsLabel}</p>
         {view === 'primary' && row.primary != null && <p className="tabular-nums text-fg-2">{primaryLabel}: {fmtValue(row.primary, unit)}{row.loadChanged ? ' (changed)' : ''}</p>}
         {view === 'primary' && row.e1rm != null && <p className="tabular-nums text-fg-muted">Est. 1RM: {row.e1rm} kg</p>}

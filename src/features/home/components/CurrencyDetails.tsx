@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { ArrowUpDown } from 'lucide-react'
 import { SegmentedControl, Truncate, cx } from '../../../shared/ui'
 import type { CurrencyData } from '../api/currencyApi'
-import { fmtDateEnGB } from '../../../shared/utils/enGBDate'
+import { formatDate } from '../../../shared/utils/dateFormat'
 
 type Mode = 'rates' | 'convert' | 'change'
 
@@ -139,7 +139,7 @@ export function CurrencyDetails({ data }: { data: CurrencyData }) {
           onChange={setMode}
           options={[{ value: 'rates', label: 'Rates' }, { value: 'convert', label: 'Convert' }, { value: 'change', label: 'Change' }]}
         />
-        <span className="text-micro tabular-nums text-fg-muted">Updated {/^\d{4}-\d{2}-\d{2}$/.test(data.date) ? fmtDateEnGB(data.date + 'T00:00:00', { day: 'numeric', month: 'short', year: 'numeric' }) : data.date}</span>
+        <span className="text-micro tabular-nums text-fg-muted">Updated {/^\d{4}-\d{2}-\d{2}$/.test(data.date) ? formatDate(data.date) : data.date}</span>
       </div>
       {mode === 'rates' && <Rates data={data} />}
       {mode === 'convert' && <Converter rawRates={data.rawRates} />}

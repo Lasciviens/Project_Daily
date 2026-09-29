@@ -23,3 +23,16 @@ export const APPEARANCE_BOARD: BoardLayouts<AppearanceSection> = {
   1: ['look', 'notifications'],
   2: { main: '42rem', columns: [['look'], ['notifications']] },
 }
+
+// ── APIs ─────────────────────────────────────────────────────────────────
+// One collection (every external API, apiRegistry.ts) under a filter bar.
+// The list spans every track and flows its 19–22rem cards into as many
+// columns as fit (THEME W2); at most part of one card's width stays empty
+// at the right.
+export type ApisSection = 'toolbar' | 'list'
+export const APIS_BOARD: BoardLayouts<ApisSection> = {
+  1: ['toolbar', 'list'],
+  2: { top: ['toolbar'], columns: [{ stack: ['list'], span: 2 }] },
+  3: { top: ['toolbar'], columns: [{ stack: ['list'], span: 3 }] },
+  4: { top: ['toolbar'], columns: [{ stack: ['list'], span: 4 }] },
+}

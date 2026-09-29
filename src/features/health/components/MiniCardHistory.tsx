@@ -3,7 +3,7 @@ import { shiftDateStr } from '../../../shared/utils/dateUtils'
 import { useHealthDaily } from '../hooks/useHealthExport'
 import { fillDays, type DayValue } from '../healthWindowStats'
 import { HealthTrendChart } from './HealthTrendChart'
-import { fmtAxisDay, fmtDayMonth } from './healthFormat'
+import { fmtAxisDate, fmtAxisDay } from './healthFormat'
 import type { MiniMetricWindow } from './miniMetrics'
 
 // A mini card's expanded history. Window metrics chart the page's own window
@@ -28,7 +28,7 @@ export function MiniCardHistory({ metric, title, unit, decimals, window, daily, 
   const fmt = (v: number) => v.toFixed(decimals)
 
   const data = isLatest
-    ? (year.data ?? []).map(d => ({ label: fmtDayMonth(d.date), date: d.date, value: d.value }))
+    ? (year.data ?? []).map(d => ({ label: fmtAxisDate(d.date), date: d.date, value: d.value }))
     : fillDays(daily, window.from, window.to).map(d => ({ label: fmtAxisDay(d.date), date: d.date, value: d.value }))
 
   if (isLatest && year.isLoading) return <p className="py-3 text-center text-meta text-fg-muted">Loading…</p>

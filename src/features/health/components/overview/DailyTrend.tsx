@@ -1,7 +1,7 @@
 import { useChartColors } from '../../../../shared/ui'
 import { fillDays, rollingMean, type DayValue } from '../../healthWindowStats'
 import { HealthTrendChart } from '../HealthTrendChart'
-import { fmtAxisDay, fmtDayMonth } from '../healthFormat'
+import { fmtAxisDate, fmtAxisDay } from '../healthFormat'
 
 // A daily series over [from, to] as bars (or dots) plus its 7-day average, with
 // optional reference band / lines. Days without a reading are gaps.
@@ -36,7 +36,7 @@ export function DailyTrend({
   const mean7 = rolling ? rollingMean(dense, 7, kind === 'bar' ? 3 : 1) : null
   const long = dense.length > 45
   const data = dense.map((d, i) => ({
-    label: long ? fmtDayMonth(d.date) : fmtAxisDay(d.date), date: d.date, value: d.value, mean7: mean7?.[i].value ?? null,
+    label: long ? fmtAxisDate(d.date) : fmtAxisDay(d.date), date: d.date, value: d.value, mean7: mean7?.[i].value ?? null,
   }))
   if (!data.some(d => d.value != null)) return null
   return (

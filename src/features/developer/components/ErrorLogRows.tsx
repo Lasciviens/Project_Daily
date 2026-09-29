@@ -3,7 +3,7 @@ import { ChevronDown, Copy } from 'lucide-react'
 import { toast } from '../../../app/store'
 import { Button, Card, IconButton, ToneDot, cx, useBoardStep } from '../../../shared/ui'
 import type { ErrorLog } from '../hooks/useLogs'
-import { fmtDateTimeEnGB } from '../../../shared/utils/enGBDate'
+import { formatDateTime } from '../../../shared/utils/dateFormat'
 import { agoLabel } from './activityLogMeta'
 import { DETAIL_PANE_FROM } from '../developerBoards'
 
@@ -12,7 +12,7 @@ import { DETAIL_PANE_FROM } from '../developerBoards'
 // beside the list on wider pages.
 
 function fmtDate(iso: string): string {
-  return fmtDateTimeEnGB(new Date(iso), { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
+  return formatDateTime(iso)
 }
 
 function copyText(text: string) {

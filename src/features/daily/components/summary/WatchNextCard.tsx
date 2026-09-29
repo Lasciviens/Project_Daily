@@ -9,7 +9,7 @@ import { useMarkEpisodeWatched } from '../../../media/hooks/useWatchedEpisodes'
 import { useEntityModal } from '../../../../shared/modals'
 import { Button, TonePill, Truncate } from '../../../../shared/ui'
 import { posterUrl } from '../../../../integrations/tmdb/client'
-import { fmtDateEnGB } from '../../../../shared/utils/enGBDate'
+import { formatDate } from '../../../../shared/utils/dateFormat'
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Watch next v2 — driven by ACTUAL watched-episode rows (useNextEpisode),
@@ -129,7 +129,7 @@ export function WatchNextCard({ date }: { date: string }) {
                 </p>
                 {n.airDate && !n.released && (
                   <TonePill tone="warn" className="mt-1">
-                    Airs {fmtDateEnGB(new Date(n.airDate), { day: 'numeric', month: 'short' })}
+                    Airs {formatDate(n.airDate)}
                   </TonePill>
                 )}
                 <div className="mt-2 flex flex-wrap gap-1.5">

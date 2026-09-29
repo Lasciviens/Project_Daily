@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { SlidersHorizontal } from 'lucide-react'
 import { addDays, addWeeks, format, startOfWeek, endOfWeek, isToday, isSameDay, getISOWeek, differenceInCalendarWeeks } from 'date-fns'
+import { formatDateRange, formatWeekdayDate } from '../../../shared/utils/dateFormat'
 import { useTasksByWeek } from '../../todo/hooks/useTodos'
 import { useCalendarEventDatesForRange, useCalendarList } from '../../calendar/hooks/useCalendar'
 import { useCalendarStore } from '../../../app/store'
@@ -121,7 +122,7 @@ export function WeekWidget({ onDayClick, highlightDate, className = 'max-w-3xl' 
       <div className="mb-3 flex items-center justify-between">
         {/* en-GB (day-first); this card owns the range label. */}
         <p className="text-meta tabular-nums text-fg-muted">
-          {format(weekStart, 'd MMM')} – {format(weekEnd, 'd MMM yyyy')}
+          {formatDateRange(weekStart, weekEnd)}
         </p>
         {totalTasks > 0 && (
           <div className="flex items-center gap-1.5">
@@ -148,7 +149,7 @@ export function WeekWidget({ onDayClick, highlightDate, className = 'max-w-3xl' 
               onClick={() => onDayClick?.(day)}
               disabled={!clickable}
               aria-pressed={selected}
-              aria-label={format(day, 'EEEE d MMMM')}
+              aria-label={formatWeekdayDate(day, 'long')}
               className={cx(
                 'flex min-h-[72px] flex-col items-center rounded-row px-1 py-2 text-center transition-colors duration-150',
                 current ? 'bg-accent-500 text-on-accent'

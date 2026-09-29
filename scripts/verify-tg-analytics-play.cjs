@@ -71,7 +71,7 @@ const game = over => ({
   play_seconds: null, play_count: null, last_played_at: null, esde_playcount: null, esde_last_played: null, esde_playtime_seconds: null, ...over,
 })
 const g = game({ play_seconds: 14 * 38 * 60, play_count: 14 })
-ok(P.playedSubline(g, '2026-09-15T10:00:00Z', fmt, 'time'), 'SNES · 14 launches · ~38m a session · last played 15 Sep 2026', 'time mode sub-line')
+ok(P.playedSubline(g, '2026-09-15T10:00:00Z', fmt, 'time'), 'SNES · 14 launches · ~38m a session · last played 15.09.2026', 'time mode sub-line')
 ok(P.playedSubline(g, null, fmt, 'launches'), 'SNES · 8h 52m played · ~38m a session', 'launches mode names play time instead of repeating launches')
 ok(P.playedSubline(game({ play_seconds: 7200 }), null, fmt, 'time'), 'SNES', 'no launches: no count and no per-session average')
 

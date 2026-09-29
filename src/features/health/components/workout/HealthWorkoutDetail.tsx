@@ -4,7 +4,7 @@ import { ModalShell, type EntityModalRequest } from '../../../../shared/modals'
 import { useChartColors } from '../../../../shared/ui'
 import { ErrorBoundary } from '../../../../shared/components/ErrorBoundary'
 import { BarLineChart } from '../../../../shared/components/charts/BarLineChart'
-import { fmtDateEnGB } from '../../../../shared/utils/enGBDate'
+import { formatWeekdayDate } from '../../../../shared/utils/dateFormat'
 import { todayStr } from '../../../../shared/utils/dateUtils'
 import { useHealthProfile } from '../../../training/hooks/useAthleteProfile'
 import { ageOn, estimatedMaxHr } from '../../benchmarks/healthBenchmarks'
@@ -103,7 +103,7 @@ export function HealthWorkoutDetail({ workout, request, onClose }: { workout: He
       size="lg"
       title={workout.name}
       subtitle={<>
-        {workout.start_time && fmtDateEnGB(new Date(workout.start_time), { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}
+        {workout.start_time && formatWeekdayDate(workout.start_time)}
         {' · '}{hhmm(workout.start_time)}–{hhmm(workout.end_time)}
         {location && ` · ${location}`}
       </>}

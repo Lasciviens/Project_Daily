@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react'
 import { Play, X } from 'lucide-react'
 import { SectionLabel } from '../../../shared/ui'
 import type { TMDBMovieFull, TMDBTVFull, TMDBCastMember, TMDBWatchProvider, TMDBVideo } from '../types'
-import { fmtDateEnGB } from '../../../shared/utils/enGBDate'
+import { formatDate } from '../../../shared/utils/dateFormat'
 
 function formatRuntime(mins: number): string {
   const h = Math.floor(mins / 60)
@@ -12,8 +12,8 @@ function formatRuntime(mins: number): string {
 
 const formatMoney = (amount: number) => `$${(amount / 1_000_000).toFixed(1)}M`
 const formatDay = (iso: string) =>
-  fmtDateEnGB(new Date(iso + 'T00:00:00'), { day: 'numeric', month: 'short', year: 'numeric' })
-const formatAirDate = (iso: string) => fmtDateEnGB(new Date(iso), { month: 'short', day: 'numeric' })
+  formatDate(iso)
+const formatAirDate = (iso: string) => formatDate(iso)
 
 const findTrailer = (videos: TMDBVideo[]) => videos.find(v => v.site === 'YouTube' && v.type === 'Trailer')
 

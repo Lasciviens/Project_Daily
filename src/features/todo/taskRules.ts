@@ -4,7 +4,7 @@
 
 import { todayStr, tomorrowStr } from '../../shared/utils/dateUtils'
 import type { Task } from './types'
-import { fmtDateEnGB } from '../../shared/utils/enGBDate'
+import { formatDate } from '../../shared/utils/dateFormat'
 
 /** A "Done" task only stays visible for 24h after completion. */
 export function completedWithinLast24h(updatedAt: string): boolean {
@@ -29,7 +29,7 @@ export function dueLabel(task: Task): { text: string; urgent: boolean } | null {
   if (task.due_date === today) return { text: 'Today', urgent: true }
   if (task.due_date === tomorrowStr()) return { text: 'Tomorrow', urgent: false }
   return {
-    text: fmtDateEnGB(new Date(task.due_date + 'T00:00:00'), { day: 'numeric', month: 'short' }),
+    text: formatDate(task.due_date),
     urgent: false,
   }
 }

@@ -10,7 +10,7 @@ import { daysAgoStr, todayStr } from '../../../shared/utils/dateUtils'
 import { Skeleton, useChartColors } from '../../../shared/ui'
 import { useTooltipStyle } from '../../../shared/components/charts/chartKit'
 import { ChartCard, ChartEmpty, ChartNote } from './ChartCard'
-import { fmtDateEnGB } from '../../../shared/utils/enGBDate'
+import { formatDayMonth } from '../../../shared/utils/dateFormat'
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Recovery vs Load — a follow-up sports-scientist review (2026-08-31) of the
@@ -26,10 +26,10 @@ import { fmtDateEnGB } from '../../../shared/utils/enGBDate'
 const WINDOW_DAYS = 182
 
 function fmtWeek(dateStr: string): string {
-  return fmtDateEnGB(new Date(dateStr + 'T00:00:00'), { day: 'numeric', month: 'short' })
+  return formatDayMonth(dateStr)
 }
 
-// A single date ("3 Aug") is ambiguous for a WEEKLY value — real user
+// A single date ("03.08") is ambiguous for a WEEKLY value — real user
 // confusion (2026-09-01) asked for the week's own Mon-Sun range instead.
 // Shared across all three lanes' Tooltips below.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- recharts labelFormatter's props type is awkward to import cleanly.

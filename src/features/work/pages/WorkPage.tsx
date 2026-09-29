@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState, type ReactNode } from 'react'
-import { format } from 'date-fns'
+import { formatWeekdayDate } from '../../../shared/utils/dateFormat'
 import { AlertTriangle, Check, PanelRightClose, PanelRightOpen, Plus, Zap } from 'lucide-react'
 import { useWorkTasks, useUpdateTask, useDeleteTask, useToggleTask, useCreateTask } from '../../todo/hooks/useTodos'
 import { useEntityModal } from '../../../shared/modals'
@@ -140,7 +140,7 @@ export function WorkPage() {
           <PageHeader
             className="mb-0 sm:mb-0"
             title="Work"
-            subtitle={<span className="hidden sm:inline">{format(new Date(), 'EEEE d MMMM')}</span>}
+            subtitle={<span className="hidden sm:inline">{formatWeekdayDate(new Date(), 'long')}</span>}
             actions={
               <>
                 <span className="flex items-center gap-1.5" aria-label="Today at a glance">

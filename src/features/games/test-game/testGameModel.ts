@@ -9,6 +9,7 @@
 import type { Game, PlayStatus } from '../types'
 import { isRealSession, playStatsOf } from '../gameStats'
 import { psnKind } from '../providerEntries'
+import { formatDate } from '../../../shared/utils/dateFormat'
 
 // ─── Page state vocabulary ───────────────────────────────────────────────────
 
@@ -910,20 +911,9 @@ export function sceneImages(g: TgGame, extra: unknown[] = []): string[] {
 
 // ─── Text ────────────────────────────────────────────────────────────────────
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-
-/**
- * en-GB day-first order, the app's date format: "15 Sep 2026".
- *
- * Built by hand rather than with `toLocaleDateString('en-GB', {month:'short'})`,
- * which current CLDR data renders as "Sept" — so the same date read "Sep" in
- * one browser and "Sept" in another, and never matched the design.
- */
+/** The app's date format, "15.09.2026" ('—' for no date). */
 export function formatDay(iso: string | null | undefined): string {
-  const t = iso ? Date.parse(iso) : NaN
-  if (!Number.isFinite(t)) return '—'
-  const d = new Date(t)
-  return `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`
+  return formatDate(iso) || '—'
 }
 
 /** "PlayStation 2 · Action · 2005" — only the parts that exist. */

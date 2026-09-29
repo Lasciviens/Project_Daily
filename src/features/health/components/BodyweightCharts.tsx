@@ -3,7 +3,7 @@ import { InfoBubble } from '../../../shared/components/InfoBubble'
 import { currentDeviceSeries, scaleChartDomain, type ScaleDay } from '../bodyweight'
 import { daysBetweenIso, fillDays, linearTrendPerDay, rollingMean } from '../healthWindowStats'
 import { HealthTrendChart, type TrendPoint, type TrendSeries } from './HealthTrendChart'
-import { fmtDayMonth } from './healthFormat'
+import { fmtAxisDate, fmtDayMonth } from './healthFormat'
 
 // The smart scale's weight, body fat and lean mass as plain lines (owner:
 // "only show the scale… don't need dots"). Hand-typed Hevy weights are left
@@ -47,7 +47,7 @@ export function BodyweightCharts({ days, latest, from, to, onViewDay }: Props) {
   const weight = dense(days, 'kg', from, to)
   const weightMean = rollingMean(weight.filled, 7, 2)
   const weightData: TrendPoint[] = weight.filled.map((d, i) => ({
-    label: fmtDayMonth(d.date), date: d.date, kg: d.value, mean7: weightMean[i].value,
+    label: fmtAxisDate(d.date), date: d.date, kg: d.value, mean7: weightMean[i].value,
   }))
 
   // Trend over the last four weeks of readings, in kg/week — never
@@ -132,7 +132,7 @@ function ScaleMetricChart({ series, field, from, to, onViewDay, title, unit, col
   if (!readings.length) return null
   const filled = fillDays(readings, from, to)
   const last = readings[readings.length - 1]
-  const data: TrendPoint[] = filled.map(d => ({ label: fmtDayMonth(d.date), date: d.date, value: d.value }))
+  const data: TrendPoint[] = filled.map(d => ({ label: fmtAxisDate(d.date), date: d.date, value: d.value }))
   return (
     <div className="flex min-w-0 flex-col gap-1">
       <div className="flex flex-wrap items-baseline justify-between gap-x-2">

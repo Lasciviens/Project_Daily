@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { format } from 'date-fns'
+import { formatWeekdayDate } from '../../../shared/utils/dateFormat'
 import { ChevronRight } from 'lucide-react'
 import { Card, SectionLabel, Skeleton, ToneDot, cx } from '../../../shared/ui'
 import { useBreakpoint } from '../../../shared/hooks/useBreakpoint'
@@ -57,7 +57,7 @@ export function DailyBrief() {
         <>
           <header className="mb-3">
             <h1 id="daily-brief-title" className="text-title font-bold tracking-tight text-fg sm:text-head">{brief.greeting}</h1>
-            <p className="text-meta tabular-nums text-fg-muted">{format(new Date(), 'EEEE d MMMM yyyy')}</p>
+            <p className="text-meta tabular-nums text-fg-muted">{formatWeekdayDate(new Date(), 'long')}</p>
           </header>
 
           <div className="mb-4 flex items-start gap-2 rounded-row bg-surface-2 px-3 py-2.5">

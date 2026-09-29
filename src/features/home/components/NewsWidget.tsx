@@ -5,7 +5,7 @@ import { NEWS_FEEDS, FEED_CATEGORIES, type FeedCategory, type NewsItem } from '.
 import { useNews } from '../hooks/useNews'
 import { useWidgetState } from '../hooks/useWidgetState'
 import { WidgetShell } from './WidgetShell'
-import { fmtDateEnGB } from '../../../shared/utils/enGBDate'
+import { formatDateTime } from '../../../shared/utils/dateFormat'
 
 const VISIBLE = 8
 
@@ -33,7 +33,7 @@ function NewsRow({ item, source }: { item: NewsItem; source: string }) {
           <Truncate as="p" lines={2} className="text-body font-semibold text-fg transition-colors duration-150 group-hover:text-accent-600">{item.title}</Truncate>
           {item.excerpt && <Truncate as="p" className="mt-0.5 text-meta text-fg-muted">{item.excerpt}</Truncate>}
           <p className="mt-0.5 text-micro tabular-nums text-fg-muted">
-            {fmtDateEnGB(new Date(item.pubDate), { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+            {formatDateTime(item.pubDate)}
           </p>
         </div>
       </a>

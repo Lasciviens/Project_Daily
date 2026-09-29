@@ -25,7 +25,7 @@ import { useDayNutrition } from '../../daily/hooks/useDayNutrition'
 import { useDayTargets } from '../../daily/hooks/useDayTargets'
 import { toast } from '../../../app/store'
 import type { IngredientLibraryItem, FoodLogEntryInput, MealSlot, RecipeWithIngredients } from '../types'
-import { fmtDateEnGB } from '../../../shared/utils/enGBDate'
+import { formatWeekdayDate } from '../../../shared/utils/dateFormat'
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  LOG FOOD — full-screen, calm, visual (2026-07-21 redesign, user brief:
@@ -290,7 +290,7 @@ export function FoodLogModal({ open = true, onClose, date, defaultSlot, defaultQ
     } catch { return }
   }
 
-  const dateLabel = fmtDateEnGB(new Date(date + 'T00:00:00'), { weekday: 'short', day: 'numeric', month: 'short' })
+  const dateLabel = formatWeekdayDate(date)
   const protLeft = Math.round(targets.protein - (nut?.protein_g ?? 0) - totals.prot)
   const kcalLeft = Math.round(targets.calories - (nut?.calories ?? 0) - totals.kcal)
   const addingIngredient = createIngredient.isPending || upsertExternal.isPending

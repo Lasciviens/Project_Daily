@@ -1,6 +1,6 @@
 import { Card, CardHeader, SkeletonText, ToneDot, type Tone } from '../../../shared/ui'
 import { useProjectActivity, type AuditLog } from '../../developer/hooks/useLogs'
-import { fmtDateTimeEnGB } from '../../../shared/utils/enGBDate'
+import { formatDateTime } from '../../../shared/utils/dateFormat'
 
 // Recent activity for one project: the audit_logs rows (written by DB
 // triggers) for the project itself, its phases and its items.
@@ -15,7 +15,7 @@ function rowLabel(log: AuditLog): string {
 }
 
 const fmtWhen = (iso: string) =>
-  fmtDateTimeEnGB(new Date(iso), { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
+  formatDateTime(iso)
 
 export function ProjectActivityFeed({ projectId, itemIds, phaseIds }: { projectId: string; itemIds: string[]; phaseIds: string[] }) {
   const { data: logs = [], isLoading, isError, refetch } = useProjectActivity(projectId, itemIds, phaseIds)

@@ -416,9 +416,9 @@ async function verifyProfileApi() {
   check('§11.9 body targets: out of range is an error naming the range', p.errors, { goalMuscleMassKg: 'Between 10 and 150 kg' })
   check('§11.10 body target text', [GS.bodyTargetText(78), GS.bodyTargetText(null)], ['78', ''])
   const t = { goal: 'cut', phaseStartDate: '2026-09-01', calories: 1950, protein: 180, goalWeightKg: 78, goalBodyFatPct: 14, goalMuscleMassKg: null }
-  check('§11.11 summary line', GSUM.goalSummaryParts(t, '2026-09-28'), ['Cut since 1 Sep', '1,950 kcal', '180 g protein', '→ 78 kg · 14 % body fat'])
+  check('§11.11 summary line', GSUM.goalSummaryParts(t, '2026-09-28'), ['Cut since 01.09.2026', '1,950 kcal', '180 g protein', '→ 78 kg · 14 % body fat'])
   check('§11.12 summary without start date or body targets', GSUM.goalSummaryParts({ ...t, phaseStartDate: null, goalWeightKg: null, goalBodyFatPct: null }, '2026-09-28'), ['Cut', '1,950 kcal', '180 g protein'])
-  check('§11.13 summary: a start in another year carries the year', GSUM.sinceLabel('2025-12-30', '2026-01-05'), '30 Dec 2025')
+  check('§11.13 summary: a start in another year carries the year', GSUM.sinceLabel('2025-12-30', '2026-01-05'), '30.12.2025')
 }
 
 // ── §12 dayTargetsApi: one row, with the pre-113 fallbacks ─────────────────

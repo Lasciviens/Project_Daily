@@ -359,7 +359,7 @@ ok(M.coverCandidates(M.deriveGames([game({ id: 'ps3', library: 'playstation', pr
 ok(M.coverCandidates(art)[0], 'https://x/cover.jpg', 'other hosts are never rewritten')
 
 // ── Text ────────────────────────────────────────────────────────────────────
-ok(M.formatDay('2026-09-15T10:00:00Z'), '15 Sep 2026', 'en-GB date')
+ok(M.formatDay('2026-09-15T10:00:00Z'), '15.09.2026', 'DD.MM.YYYY date')
 ok(M.formatDay(null), '—', 'no date')
 ok(M.subtitleParts(lib.find(g => g.id === 'b')), ['PlayStation 2', 'Adventure', '2005'], 'platform · genre · year')
 ok(M.subtitleParts(lib.find(g => g.id === 'g'), 'Puzzle'), ['Steam', 'Puzzle'], 'a genre fallback fills a missing genre')

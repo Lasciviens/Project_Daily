@@ -21,19 +21,19 @@ function check(label, actual, expected) {
 const TODAY = '2026-09-27' // a Sunday
 
 // ── Day label ────────────────────────────────────────────────────────────────
-check('day: today is the date, not "Today"', L.dayNavLabel(TODAY, TODAY), 'Sun 27 Sep')
-check('day: weekday computed per date', L.dayNavLabel('2026-09-21', TODAY), 'Mon 21 Sep')
-check('day: another year carries the year', L.dayNavLabel('2025-09-30', TODAY), 'Tue 30 Sep 2025')
-check('day: leap day', L.dayNavLabel('2028-02-29', '2028-03-01'), 'Tue 29 Feb')
+check('day: today is the date, not "Today"', L.dayNavLabel(TODAY, TODAY), 'Sun 27.09.2026')
+check('day: weekday computed per date', L.dayNavLabel('2026-09-21', TODAY), 'Mon 21.09.2026')
+check('day: another year carries the year', L.dayNavLabel('2025-09-30', TODAY), 'Tue 30.09.2025')
+check('day: leap day', L.dayNavLabel('2028-02-29', '2028-03-01'), 'Tue 29.02.2028')
 
 // ── Window span ──────────────────────────────────────────────────────────────
-check('span: same month', L.spanLabel('2026-09-21', TODAY, TODAY), '21–27 Sep')
-check('span: across months', L.spanLabel('2026-08-29', TODAY, TODAY), '29 Aug – 27 Sep')
-check('span: past year, same month', L.spanLabel('2025-09-21', '2025-09-27', TODAY), '21–27 Sep 2025')
-check('span: past year, across months', L.spanLabel('2025-06-30', '2025-09-27', TODAY), '30 Jun – 27 Sep 2025')
-check('span: across years always names both', L.spanLabel('2025-09-28', TODAY, TODAY), '28 Sep 2025 – 27 Sep 2026')
-check('span: one day falls back to the day label', L.spanLabel(TODAY, TODAY, TODAY), 'Sun 27 Sep')
-check('span: never "Sept"', L.spanLabel('2026-09-01', '2026-09-07', TODAY).includes('Sept'), false)
+check('span: same month', L.spanLabel('2026-09-21', TODAY, TODAY), '21.09.2026 – 27.09.2026')
+check('span: across months', L.spanLabel('2026-08-29', TODAY, TODAY), '29.08.2026 – 27.09.2026')
+check('span: past year, same month', L.spanLabel('2025-09-21', '2025-09-27', TODAY), '21.09.2025 – 27.09.2025')
+check('span: past year, across months', L.spanLabel('2025-06-30', '2025-09-27', TODAY), '30.06.2025 – 27.09.2025')
+check('span: across years always names both', L.spanLabel('2025-09-28', TODAY, TODAY), '28.09.2025 – 27.09.2026')
+check('span: one day falls back to the day label', L.spanLabel(TODAY, TODAY, TODAY), 'Sun 27.09.2026')
+check('span: no month names', /[A-Za-z]/.test(L.spanLabel('2026-09-01', '2026-09-07', TODAY)), false)
 
 // ── The date bar: numeric day.month, the owner's format ─────────────────────
 check('numeric: same month', L.numericSpanLabel('2026-09-21', TODAY, TODAY), '21.09 – 27.09')
@@ -64,14 +64,14 @@ const longest = Math.max(...['day', 'week', 'month', 'quarter', 'year']
 check('nav: no label longer than the fixed box was sized for', longest <= L.NUMERIC_SPAN_MAX_CHARS, true)
 
 // ── Weekly bars ──────────────────────────────────────────────────────────────
-check('week: same month', L.weekRangeLabel('2026-07-07'), '7–13 Jul')
-check('week: across months', L.weekRangeLabel('2026-06-29'), '29 Jun–5 Jul')
-check('week: across years (tick, no year)', L.weekRangeLabel('2025-12-29'), '29 Dec–4 Jan')
-check('week: this year, tooltip form stays short', L.weekRangeLabel('2026-07-07', TODAY), '7–13 Jul')
-check('week: past year, tooltip form adds the year', L.weekRangeLabel('2025-07-07', TODAY), '7–13 Jul 2025')
-check('week: past year across months', L.weekRangeLabel('2025-06-30', TODAY), '30 Jun–6 Jul 2025')
-check('week: across years, tooltip names both years', L.weekRangeLabel('2025-12-29', TODAY), '29 Dec 2025–4 Jan 2026')
-check('week: leap-year February', L.weekRangeLabel('2028-02-28', '2028-03-10'), '28 Feb–5 Mar')
+check('week: same month', L.weekRangeLabel('2026-07-07'), '07.07–13.07')
+check('week: across months', L.weekRangeLabel('2026-06-29'), '29.06–05.07')
+check('week: across years (tick, no year)', L.weekRangeLabel('2025-12-29'), '29.12–04.01')
+check('week: tooltip form is the full range', L.weekRangeLabel('2026-07-07', TODAY), '07.07.2026 – 13.07.2026')
+check('week: past year, tooltip form adds the year', L.weekRangeLabel('2025-07-07', TODAY), '07.07.2025 – 13.07.2025')
+check('week: past year across months', L.weekRangeLabel('2025-06-30', TODAY), '30.06.2025 – 06.07.2025')
+check('week: across years, tooltip names both years', L.weekRangeLabel('2025-12-29', TODAY), '29.12.2025 – 04.01.2026')
+check('week: leap-year February', L.weekRangeLabel('2028-02-28', '2028-03-10'), '28.02.2028 – 05.03.2028')
 
 // ── Last night ───────────────────────────────────────────────────────────────
 const nights = [

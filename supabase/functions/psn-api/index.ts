@@ -82,21 +82,20 @@ const json = (body: unknown, status = 200) =>
 // manual step too many on the action they have to repeat every couple of
 // months -- and it threw away `expires_in`, the one date they can actually
 // act on. Accept either form: paste the whole response, or just the token.
+// Mirrors parseNpssoPaste in src/features/games/api/psnTokenLifetime.ts
+// (Deno can't import it) — change both together. Accepts Sony's raw JSON,
+// the pretty/"key: value" copy a browser JSON viewer produces, and a bare
+// token (the one form that carries no expiry).
 function parseNpssoInput(raw: string): { npsso: string; expiresIn: number | null } {
   const text = String(raw ?? '').trim()
   if (!text) return { npsso: '', expiresIn: null }
-  if (text.startsWith('{')) {
-    try {
-      const o = JSON.parse(text) as AnyRec
-      const npsso = typeof o?.npsso === 'string' ? o.npsso.trim() : ''
-      const secs = Number(o?.expires_in)
-      return { npsso, expiresIn: Number.isFinite(secs) && secs > 0 ? secs : null }
-    } catch {
-      // Malformed JSON: fall through and treat it as a bare token rather than
-      // rejecting outright -- a stray brace shouldn't block a reconnect.
-    }
+  const key = /["']?npsso["']?\s*[:=\t ]\s*["']?([A-Za-z0-9_-]+)/i.exec(text)
+  if (key) {
+    const exp = /["']?expires_in["']?\s*[:=\t ]\s*["']?(\d+)/i.exec(text)
+    const secs = exp ? Number(exp[1]) : NaN
+    return { npsso: key[1], expiresIn: Number.isFinite(secs) && secs > 0 ? secs : null }
   }
-  return { npsso: text, expiresIn: null }
+  return { npsso: text.replace(/^["']+|["']+$/g, ''), expiresIn: null }
 }
 
 function sonyError(v: unknown): { code?: number; message?: string } | null {
@@ -161,9 +160,17 @@ Deno.serve(async (req: Request) => {
       const accessCode = await exchangeNpssoForAccessCode(parsed.npsso)
       const authorization = await exchangeAccessCodeForAuthTokens(accessCode)
       const expiresAt = new Date(Date.now() + (authorization.expiresIn ?? 3600) * 1000).toISOString()
-      const npssoExpiresAt = parsed.expiresIn
+      let npssoExpiresAt = parsed.expiresIn
         ? new Date(Date.now() + parsed.expiresIn * 1000).toISOString()
         : null
+      // Re-pasting the SAME cookie bare (e.g. from the renew form) must not
+      // wipe the expiry an earlier full paste recorded — it is still that
+      // cookie's deadline. A different cookie with no expiry stays unknown.
+      if (!npssoExpiresAt) {
+        const { data: prev } = await supabase.from('psn_tokens').select('*').eq('user_id', userId).maybeSingle()
+        const p = prev as AnyRec | null
+        if (p?.npsso === parsed.npsso && p?.npsso_expires_at) npssoExpiresAt = p.npsso_expires_at as string
+      }
 
       const row: AnyRec = {
         user_id: userId,

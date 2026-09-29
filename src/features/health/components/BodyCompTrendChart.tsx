@@ -6,7 +6,7 @@ import { fillDays } from '../healthWindowStats'
 import { useChartColors } from '../../../shared/ui'
 import { localDayOf } from '../../../shared/utils/dateUtils'
 import { HealthTrendChart, type TrendPoint } from './HealthTrendChart'
-import { fmtDayMonth } from './healthFormat'
+import { fmtAxisDate } from './healthFormat'
 
 const TREND_ARROW: Record<'up' | 'down' | 'flat', string> = { up: '↗', down: '↘', flat: '→' }
 const dayOf = (iso: string) => localDayOf(iso) ?? iso.slice(0, 10)
@@ -31,7 +31,7 @@ export function BodyCompTrendChart({ reportsInWindow, fields = BODY_COMP_FIELDS 
   const round = (v: number) => Math.round(v * 10 ** meta.decimals) / 10 ** meta.decimals
   const chartData: TrendPoint[] = points.length
     ? fillDays(points, points[0].date, points[points.length - 1].date)
-        .map(d => ({ label: fmtDayMonth(d.date), date: d.date, value: d.value == null ? null : round(d.value) }))
+        .map(d => ({ label: fmtAxisDate(d.date), date: d.date, value: d.value == null ? null : round(d.value) }))
     : []
   const avg = average(reportsInWindow, meta.key)
   const trend = computeTrend(reportsInWindow, meta.key)

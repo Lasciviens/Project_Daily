@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { Card } from '../../../../shared/ui'
 import { DateNav } from '../../../../shared/components/DateNav'
 import { InfoBubble } from '../../../../shared/components/InfoBubble'
-import { fmtDateEnGB } from '../../../../shared/utils/enGBDate'
+import { formatMonthYear } from '../../../../shared/utils/dateFormat'
 import { useHevyWorkoutsRange } from '../../hooks/useHevyWorkouts'
 import { useStravaActivities } from '../../hooks/useStravaActivities'
 import { useTodayStr } from '../../hooks/useTrainingSessions'
@@ -59,7 +59,7 @@ export function TrainingMonthCalendar() {
 
   const todayMonth = monthOf(todayStr)
   const onTodayMonth = todayMonth.year === view.year && todayMonth.month === view.month
-  const label = fmtDateEnGB(new Date(view.year, view.month, 1, 12), { month: 'long', year: 'numeric' })
+  const label = formatMonthYear(new Date(view.year, view.month, 1, 12))
   const selectedDay = selected ? dayByDate.get(selected) ?? null : null
 
   return (

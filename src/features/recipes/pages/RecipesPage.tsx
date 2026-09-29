@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { format } from 'date-fns'
+import { formatWeekdayDate } from '../../../shared/utils/dateFormat'
 import { ChefHat, Plus, Search, UtensilsCrossed } from 'lucide-react'
 import { useRecipes } from '../hooks/useRecipes'
 import { useEntityModal } from '../../../shared/modals/useEntityModal'
@@ -71,7 +71,7 @@ export function RecipesPage() {
           {tab === 'today' && (
             <DateNav
               size="md"
-              label={foodIsToday ? 'Today' : format(new Date(foodDate + 'T00:00:00'), 'EEE d MMM')}
+              label={foodIsToday ? 'Today' : formatWeekdayDate(foodDate)}
               labelClassName="min-w-[104px] text-center text-ui font-semibold text-fg"
               onPrev={() => setFoodDate(s => shiftDateStr(s, -1))}
               onNext={() => setFoodDate(s => shiftDateStr(s, 1))}

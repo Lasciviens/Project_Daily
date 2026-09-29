@@ -9,6 +9,7 @@ import type { TimeBlockCategory } from '../../../features/daily/types'
 import type { TaskSection, TaskSourceType } from '../../../features/todo/types'
 import type { TimeBlockCalendarStatus } from '../../../features/daily/api/scheduleSyncRules'
 import { todayStr, tomorrowStr } from '../../utils/dateUtils'
+import { formatWeekdayDate } from '../../utils/dateFormat'
 import type {
   PlanModalConfig, ScheduleField, TaskField, RecurrenceMode,
 } from './planModal.types'
@@ -69,13 +70,9 @@ export const EVERY_DAY  = [0, 1, 2, 3, 4, 5, 6]
 export const LOCAL_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone
 
 
-/** "26.06.2026 Fri" — the app-wide compact date format for this modal. */
+/** "Fri 26.06.2026" — the app-wide date format, weekday first. */
 export function displayDate(iso: string): string {
-  try {
-    return format(parseISO(iso), 'dd.MM.yyyy EEE')
-  } catch {
-    return iso
-  }
+  return formatWeekdayDate(iso) || iso
 }
 
 export function stepDate(iso: string, dir: 1 | -1): string {

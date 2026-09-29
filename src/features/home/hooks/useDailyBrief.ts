@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { differenceInCalendarDays, format, parseISO } from 'date-fns'
+import { formatDate } from '../../../shared/utils/dateFormat'
 import { buildDailyBrief, type BriefInput, type DailyBrief } from '../briefRules'
 import { weatherLabel, type WeatherData } from '../api/weatherApi'
 import { useTodayOverview, type NextUpItem } from './useTodayOverview'
@@ -87,7 +88,7 @@ function dayLabel(date: string): string {
   if (days <= 0) return 'today'
   if (days === 1) return 'tomorrow'
   if (days < 7) return format(parseISO(date), 'EEEE')
-  return format(parseISO(date), 'd MMM')
+  return formatDate(date)
 }
 
 /**

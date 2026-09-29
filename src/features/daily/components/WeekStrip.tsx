@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { cx } from '../../../shared/ui'
 import { addDays, addWeeks, format, startOfWeek, isToday, isSameDay, getISOWeek } from 'date-fns'
+import { formatWeekdayDate } from '../../../shared/utils/dateFormat'
 import { useTasksByWeek } from '../../todo/hooks/useTodos'
 import { useCalendarEventDatesForRange } from '../../calendar/hooks/useCalendar'
 
@@ -57,7 +58,7 @@ export function WeekStrip({ viewDate, onDayClick }: Props) {
               type="button"
               onClick={() => onDayClick(d)}
               aria-pressed={viewed}
-              aria-label={format(d, 'EEEE d MMMM')}
+              aria-label={formatWeekdayDate(d, 'long')}
               className={cx(
                 'flex min-h-[48px] flex-col items-center justify-center rounded-control px-1 py-1 transition-colors duration-150',
                 viewed ? 'bg-accent-500 text-on-accent'

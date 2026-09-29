@@ -4,6 +4,7 @@ import {
   startOfWeek, endOfWeek, addDays,
   addMonths, subMonths, isSameMonth, isToday, isSameDay,
 } from 'date-fns'
+import { formatMonthYear, formatWeekdayDate } from '../../../shared/utils/dateFormat'
 import { useTasksByMonth } from '../../todo/hooks/useTodos'
 import { useCalendarEventDatesForRange } from '../../calendar/hooks/useCalendar'
 import { DateNav } from '../../../shared/components/DateNav'
@@ -56,7 +57,7 @@ export function MonthWidget({ onDayClick, highlightDate, big }: Props) {
     <Card>
       <div className="mb-3 flex items-center justify-between gap-2">
         <DateNav
-          label={format(viewDate, 'MMMM yyyy')}
+          label={formatMonthYear(viewDate)}
           onPrev={() => setViewDate(p => subMonths(p, 1))}
           onNext={() => setViewDate(p => addMonths(p, 1))}
           onToday={() => setViewDate(new Date())}
@@ -88,7 +89,7 @@ export function MonthWidget({ onDayClick, highlightDate, big }: Props) {
               onClick={() => clickable && onDayClick?.(day)}
               disabled={!clickable}
               aria-pressed={selected}
-              aria-label={format(day, 'EEEE d MMMM')}
+              aria-label={formatWeekdayDate(day, 'long')}
               className={cx(
                 'relative flex aspect-square min-h-[40px] flex-col items-center justify-center rounded-control font-medium tabular-nums transition-colors duration-150',
                 big ? 'text-ui' : 'text-body',

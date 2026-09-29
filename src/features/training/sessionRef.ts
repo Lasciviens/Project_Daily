@@ -12,7 +12,7 @@
 
 import { matchDaySessions, planStartHHMM, planWorkoutScore } from './components/calendar/calendarSessions'
 import { planStatus, type PlanStatus } from './trainingPlanModel'
-import { fmtDateEnGB } from '../../shared/utils/enGBDate'
+import { formatWeekdayDate } from '../../shared/utils/dateFormat'
 import { formatDurationMinutes } from '../../shared/utils/formatDuration'
 import type { CalendarPlanItem } from './components/calendar/calendarModel'
 import type { HevyWorkout } from './types.hevy'
@@ -93,12 +93,9 @@ export function resolveTrainingSession(input: {
 
 // ─── Labels ─────────────────────────────────────────────────────────────────
 
-/** "Mon 29 Sep · 16:30 · 51m" — the year only when it isn't this year's. */
-export function sessionWhenLabel(date: string, startHHMM: string | null, minutes: number | null, todayStr: string): string {
-  const d = new Date(`${date}T12:00:00`)
-  // Built from parts: with a year, en-GB inserts a comma after the weekday.
-  const year = date.slice(0, 4) === todayStr.slice(0, 4) ? '' : ` ${date.slice(0, 4)}`
-  const day = `${fmtDateEnGB(d, { weekday: 'short' })} ${fmtDateEnGB(d, { day: 'numeric', month: 'short' })}${year}`
+/** "Mon 29.09.2026 · 16:30 · 51m". */
+export function sessionWhenLabel(date: string, startHHMM: string | null, minutes: number | null, _todayStr?: string): string {
+  const day = formatWeekdayDate(date)
   return [day, startHHMM, minutes != null && minutes > 0 ? formatDurationMinutes(minutes) : null].filter(Boolean).join(' · ')
 }
 

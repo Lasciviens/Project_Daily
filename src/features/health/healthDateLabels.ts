@@ -4,10 +4,9 @@
 //
 // Dates are local calendar days as 'yyyy-MM-dd' strings. The weekday is
 // computed on a UTC midnight purely as a day counter, so no timezone or DST
-// shift can move a date. Month names follow THEME.md §3 (three letters, en-GB
-// day-first: "27 Sep", never "Sept" or "Sep 27").
+// shift can move a date. Visible dates are DD.MM.YYYY (owner rule, see
+// shared/utils/dateFormat.ts); only chart ticks drop the year.
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
 interface Parts { y: number; m: number; d: number }
@@ -28,33 +27,21 @@ function weekday(date: string): string {
   return WEEKDAYS[new Date(Date.UTC(y, m - 1, d)).getUTCDay()]
 }
 
-/** "27 Sep", or "27 Sep 2025" with the year. */
-function dayMonth(date: string, withYear: boolean): string {
-  const { y, m, d } = parts(date)
-  return `${d} ${MONTHS[m - 1]}${withYear ? ` ${y}` : ''}`
-}
-
 // ── The period navigator ─────────────────────────────────────────────────────
 
-/** One day in the navigator: "Sun 27 Sep" ("Wed 30 Sep 2025" in another year). */
-export function dayNavLabel(date: string, today: string): string {
-  return `${weekday(date)} ${dayMonth(date, parts(date).y !== parts(today).y)}`
+/** One day in the navigator: "Sun 27.09.2026". */
+export function dayNavLabel(date: string, _today?: string): string {
+  return `${weekday(date)} ${numericDay(date, true)}`
 }
 
 /**
  * A window [from, to] as dates only — no "Last 7 days" prefix, the period
- * control already says that. The year appears only when it isn't this year:
- *   same month   "21–27 Sep"            ("21–27 Sep 2025")
- *   same year    "29 Aug – 27 Sep"      ("29 Aug – 27 Sep 2025")
- *   two years    "30 Dec 2025 – 29 Mar 2026"
+ * control already says that: "21.09.2026 – 27.09.2026"; one day falls back to
+ * the day label.
  */
 export function spanLabel(from: string, to: string, today: string): string {
   if (from === to) return dayNavLabel(to, today)
-  const f = parts(from), t = parts(to)
-  if (f.y !== t.y) return `${dayMonth(from, true)} – ${dayMonth(to, true)}`
-  const yr = t.y !== parts(today).y ? ` ${t.y}` : ''
-  if (f.m === t.m) return `${f.d}–${t.d} ${MONTHS[t.m - 1]}${yr}`
-  return `${dayMonth(from, false)} – ${dayMonth(to, false)}${yr}`
+  return `${numericDay(from, true)} – ${numericDay(to, true)}`
 }
 
 // ── The page's date bar (numeric) ───────────────────────────────────────────
@@ -87,23 +74,15 @@ export const NUMERIC_SPAN_MAX_CHARS = 23
 // ── Weekly bars ──────────────────────────────────────────────────────────────
 
 /**
- * A Monday–Sunday week as a short range for chart ticks and tooltips —
- * "7–13 Jul", "29 Jun–5 Jul", "29 Dec–4 Jan" — so a weekly bar says which
- * seven days it counts instead of reading like a single date. Pass `today`
- * to add the year when the week isn't in this year (tooltips; ticks stay short).
+ * A Monday–Sunday week, so a weekly bar says which seven days it counts
+ * instead of reading like a single date. Without `today` it is the short
+ * chart-tick form "07.07–13.07"; with `today` (tooltips) the full range
+ * "07.07.2026 – 13.07.2026".
  */
 export function weekRangeLabel(weekStart: string, today?: string): string {
   const end = addDays(weekStart, 6)
-  const f = parts(weekStart), t = parts(end)
-  const thisYear = today ? parts(today).y : t.y
-  if (f.y !== t.y) {
-    return today && (f.y !== thisYear || t.y !== thisYear)
-      ? `${dayMonth(weekStart, true)}–${dayMonth(end, true)}`
-      : `${dayMonth(weekStart, false)}–${dayMonth(end, false)}`
-  }
-  const yr = t.y !== thisYear ? ` ${t.y}` : ''
-  if (f.m === t.m) return `${f.d}–${t.d} ${MONTHS[t.m - 1]}${yr}`
-  return `${dayMonth(weekStart, false)}–${dayMonth(end, false)}${yr}`
+  if (today) return `${numericDay(weekStart, true)} – ${numericDay(end, true)}`
+  return `${numericDay(weekStart, false)}–${numericDay(end, false)}`
 }
 
 // ── Last night ───────────────────────────────────────────────────────────────

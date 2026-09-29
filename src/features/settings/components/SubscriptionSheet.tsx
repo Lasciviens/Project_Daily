@@ -3,7 +3,7 @@ import { ModalShell, useEntityModal } from '../../../shared/modals'
 import { Button } from '../../../shared/ui'
 import { useDeleteSubscription, useSaveSubscription } from '../hooks/useSubscriptions'
 import {
-  BILLING_CYCLES, KNOWN_SERVICES, serviceKey,
+  BILLING_CYCLES, KNOWN_SERVICES, normalizeCurrency, serviceKey, SUBSCRIPTION_CURRENCIES,
   type BillingCycle, type Requirement, type ServiceSubscription, type SubscriptionInput,
 } from '../subscriptionRules'
 
@@ -13,7 +13,8 @@ const CYCLE_LABEL: Record<BillingCycle, string> = { monthly: 'Monthly', yearly: 
 function initialInput(sub: ServiceSubscription | null, service?: string): SubscriptionInput {
   if (sub) {
     const { service: s, name, account, plan, price, currency, billing_cycle, renews_on, requirement, notes, active } = sub
-    return { service: s, name, account, plan, price, currency, billing_cycle, renews_on, requirement, notes, active }
+    // Folded (try → TRY, TL → TRY) so an existing row lands on its dropdown option.
+    return { service: s, name, account, plan, price, currency: normalizeCurrency(currency), billing_cycle, renews_on, requirement, notes, active }
   }
   return {
     service: service ?? '', name: null, account: null, plan: null, price: null, currency: 'NOK',
@@ -34,6 +35,10 @@ export function SubscriptionSheet({ open, sub, service, onClose }: {
   const [priceText, setPriceText] = useState(sub?.price != null ? String(sub.price) : '')
   const set = <K extends keyof SubscriptionInput>(k: K, v: SubscriptionInput[K]) => setForm(f => ({ ...f, [k]: v }))
   const valid = form.service.trim() !== ''
+  // A row saved earlier in another currency keeps its own option, so opening
+  // and saving it never changes the currency behind the user's back.
+  const currencyOptions: string[] = (SUBSCRIPTION_CURRENCIES as readonly string[]).includes(form.currency)
+    ? [...SUBSCRIPTION_CURRENCIES] : [...SUBSCRIPTION_CURRENCIES, form.currency]
   const busy = save.isPending || remove.isPending
 
   async function submit() {
@@ -43,7 +48,7 @@ export function SubscriptionSheet({ open, sub, service, onClose }: {
       ...form,
       service: serviceKey(form.service),
       price: price != null && Number.isFinite(price) && price >= 0 ? price : null,
-      currency: (form.currency.trim() || 'NOK').toUpperCase(),
+      currency: normalizeCurrency(form.currency),
       name: blank(form.name ?? ''), account: blank(form.account ?? ''), plan: blank(form.plan ?? ''), notes: blank(form.notes ?? ''),
       renews_on: form.renews_on || null,
     }
@@ -91,14 +96,16 @@ export function SubscriptionSheet({ open, sub, service, onClose }: {
             <input value={form.account ?? ''} onChange={e => set('account', e.target.value)} className="input w-full" placeholder="username or email" />
           </label>
         </div>
-        <div className="grid grid-cols-[minmax(0,1fr)_6rem] gap-3">
+        <div className="grid grid-cols-[minmax(0,1fr)_7rem] gap-3">
           <label className="flex flex-col gap-1">
             <span className="field-label">Price</span>
             <input inputMode="decimal" value={priceText} onChange={e => setPriceText(e.target.value.replace(/[^0-9.,]/g, ''))} className="input w-full" placeholder="0" />
           </label>
           <label className="flex flex-col gap-1">
             <span className="field-label">Currency</span>
-            <input value={form.currency} onChange={e => set('currency', e.target.value.slice(0, 3))} className="input w-full uppercase" />
+            <select value={form.currency} onChange={e => set('currency', e.target.value)} className="select w-full min-h-[44px]">
+              {currencyOptions.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
           </label>
         </div>
         <div>

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { format } from 'date-fns'
+import { formatWeekdayDate } from '../../../../shared/utils/dateFormat'
 import { todayStr } from '../../../../shared/utils/dateUtils'
 import { InfoBubble } from '../../../../shared/components/InfoBubble'
 import { ExerciseThumb } from '../../exerciseMedia'
@@ -45,7 +45,7 @@ export function MuscleExerciseList({ exercises }: { exercises: [string, Exercise
                   <div className="text-meta text-fg-muted">
                     <p className="font-medium text-fg-2">{name}</p>
                     <p>Last trained {daysAgoText(hit.lastDate, todayStr())}</p>
-                    <p className="tabular-nums">{format(new Date(`${hit.lastDate}T00:00:00`), 'EEE d MMM')}</p>
+                    <p className="tabular-nums">{formatWeekdayDate(hit.lastDate)}</p>
                   </div>
                 </div>
               )}

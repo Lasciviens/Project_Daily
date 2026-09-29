@@ -9,7 +9,7 @@
  */
 require('sucrase/register')
 const {
-  npssoLifetime, npssoLifetimeLabel, NPSSO_RENEW_WINDOW_DAYS,
+  npssoLifetime, npssoLifetimeLabel, NPSSO_RENEW_WINDOW_DAYS, parseNpssoPaste,
 } = require('../src/features/games/api/psnTokenLifetime.ts')
 
 let passed = 0
@@ -60,6 +60,18 @@ check('label minutes', npssoLifetimeLabel(npssoLifetime(inMinutes(41), NOW)), '4
 // The reported shape, in full. A bare day count would render this as "64 days
 // left" at 64d 5h and again at 64d 0h 1m -- the last day would be invisible.
 check('label d h m  ', npssoLifetimeLabel(npssoLifetime(inMinutes(64 * 1440 + 5 * 60 + 41), NOW)), '64d 5h 41m')
+
+// The paste forms reaching the form: raw JSON, Firefox's JSON-viewer copy
+// (colon or tab lines), and a bare token (the one form with no expiry).
+const TOK = 'AbC123xyz_-9'
+check('paste raw JSON      ', parseNpssoPaste(`{"npsso":"${TOK}","expires_in":5183980}`), { npsso: TOK, expiresIn: 5183980 })
+check('paste pretty JSON   ', parseNpssoPaste(`{\n  "npsso": "${TOK}",\n  "expires_in": 5183980\n}`), { npsso: TOK, expiresIn: 5183980 })
+check('paste viewer lines  ', parseNpssoPaste(`npsso: "${TOK}"\nexpires_in: 5183980`), { npsso: TOK, expiresIn: 5183980 })
+check('paste viewer tabs   ', parseNpssoPaste(`npsso\t"${TOK}"\nexpires_in\t5183980`), { npsso: TOK, expiresIn: 5183980 })
+check('paste JSON no expiry', parseNpssoPaste(`{"npsso":"${TOK}"}`), { npsso: TOK, expiresIn: null })
+check('paste bare token    ', parseNpssoPaste(`  ${TOK} `), { npsso: TOK, expiresIn: null })
+check('paste quoted token  ', parseNpssoPaste(`"${TOK}"`), { npsso: TOK, expiresIn: null })
+check('paste empty         ', parseNpssoPaste('   '), { npsso: '', expiresIn: null })
 
 console.log(`\n${passed} passed, ${failures.length} failed`)
 if (failures.length) {

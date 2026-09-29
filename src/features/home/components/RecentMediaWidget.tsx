@@ -9,7 +9,7 @@ import { WidgetShell } from './WidgetShell'
 import { GlanceTile } from './GlanceTile'
 import { TileDetail } from './TileDetail'
 import { useTilePopup } from '../hooks/useTilePopup'
-import { fmtDateEnGB } from '../../../shared/utils/enGBDate'
+import { formatDate } from '../../../shared/utils/dateFormat'
 
 function openMedia(modal: ReturnType<typeof useEntityModal>, item: RecentlyWatchedItem) {
   if (item.tmdbId != null) modal.open({ kind: 'media', tmdbId: item.tmdbId, mediaType: item.type })
@@ -81,7 +81,7 @@ export function RecentMediaTile() {
         icon={<Clapperboard />}
         loading={isLoading}
         value={latest ? latest.title : 'Nothing yet'}
-        hint={latest ? fmtDateEnGB(new Date(latest.watched_at), { day: 'numeric', month: 'short' }) : 'Open Media'}
+        hint={latest ? formatDate(latest.watched_at) : 'Open Media'}
         {...action}
       />
       {popup && (

@@ -80,7 +80,7 @@ const t7 = S.buildTimeline('7d', today), t30 = S.buildTimeline('30d', today), t9
 ok([t7.columns.length, t7.unit, t30.columns.length], [7, 'day', 30], '7 and 30 days plot one column a day')
 ok([t90.unit, t90.first], ['week', A.windowStart('90d', today)], '90 days plots weeks from the window start')
 ok(t90.columns.length, 14, '90 days back from a Friday spans 14 Monday weeks')
-ok(t90.columns[0].full, 'Week of 28 Jun 2026', 'the first week is clipped to the window start')
+ok(t90.columns[0].full, 'Week of 28.06.2026', 'the first week is clipped to the window start')
 ok(t90.keyOf(new Date(2026, 8, 24).getTime()), t90.columns[t90.columns.length - 1].key, 'a Thursday falls in its Monday week')
 
 // ── Activity: every played game once, at its latest session ──

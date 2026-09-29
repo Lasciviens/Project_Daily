@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { format, parseISO } from 'date-fns'
+import { formatWeekdayDate } from '../../../../shared/utils/dateFormat'
 import { ChevronRight, Dumbbell, Plus } from 'lucide-react'
 import { Cell, CellHeader, CellLink } from './cellKit'
 import { useTrainingBlocks, useScheduleBlocks } from '../../hooks/useSchedule'
@@ -97,7 +97,7 @@ export function TrainingCard({ date }: { date: string }) {
         <div className="flex flex-col gap-1.5">
           <p className="text-body text-fg-muted">
             Rest day — nothing planned.
-            {next && <> Next: <span className="text-fg-2">{next.title}</span> · {format(parseISO(next.date), 'EEE d MMM')}{next.startTime ? ` ${next.startTime}` : ''}</>}
+            {next && <> Next: <span className="text-fg-2">{next.title}</span> · {formatWeekdayDate(next.date)}{next.startTime ? ` ${next.startTime}` : ''}</>}
           </p>
           {!showPicker ? (
             <button

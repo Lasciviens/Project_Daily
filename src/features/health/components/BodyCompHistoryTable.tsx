@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { BodyCompositionReport } from '../api/bodyCompositionApi'
 import { BODY_COMP_FIELDS } from '../bodyCompositionAggregate'
-import { fmtDateTimeEnGB } from '../../../shared/utils/enGBDate'
+import { formatDateTime } from '../../../shared/utils/dateFormat'
 import { ChevronDown } from 'lucide-react'
 
 // Every scan, every field — collapsed by default (Width Standard's "detail on
@@ -44,7 +44,7 @@ export function BodyCompHistoryTable({ reports }: { reports: BodyCompositionRepo
             <tbody>
               {sorted.map(r => (
                 <tr key={r.id} className="border-b border-line last:border-0">
-                  <td className="sticky left-0 whitespace-nowrap bg-surface px-2 py-1.5 tabular-nums text-fg-2">{fmtDateTimeEnGB(r.measured_at, { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
+                  <td className="sticky left-0 whitespace-nowrap bg-surface px-2 py-1.5 tabular-nums text-fg-2">{formatDateTime(r.measured_at)}</td>
                   {BODY_COMP_FIELDS.map(f => (
                     <td key={f.key} className="whitespace-nowrap px-2 py-1.5 text-right tabular-nums text-fg-2">
                       {Number.isFinite(r[f.key]) ? Number(r[f.key]).toFixed(f.decimals) : '—'}
