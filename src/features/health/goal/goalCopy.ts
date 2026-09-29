@@ -1,6 +1,6 @@
 import type { Tone } from '../../../shared/ui'
 import type { Confidence, PairedBalance, Phase, ProteinBand, Reason, Verdict } from './energyBalance'
-import type { CompositionVerdict, GoalKind, RateStatus } from './bodyGoal'
+import type { CompositionVerdict, GoalKind } from './bodyGoal'
 import type { MuscleWatchLevel } from './muscleWatch'
 
 // Plain-language copy for the goal report. Never a diagnosis: each line says
@@ -41,17 +41,6 @@ export const CONFIDENCE_COPY: Record<Confidence, { label: string; tone: Tone }> 
   high: { label: 'High confidence', tone: 'success' },
   medium: { label: 'Medium confidence', tone: 'neutral' },
   low: { label: 'Low confidence', tone: 'warn' },
-}
-
-export const RATE_COPY: Record<RateStatus, { label: string; tone: Tone }> = {
-  on_track: { label: 'On track', tone: 'success' },
-  stable: { label: 'Steady', tone: 'success' },
-  too_slow: { label: 'Too slow', tone: 'info' },
-  too_fast: { label: 'Too fast', tone: 'warn' },
-  way_too_fast: { label: 'Much too fast', tone: 'danger' },
-  wrong_way: { label: 'Wrong direction', tone: 'warn' },
-  drifting_down: { label: 'Drifting down', tone: 'info' },
-  drifting_up: { label: 'Drifting up', tone: 'info' },
 }
 
 /** Tone of a fat/muscle verdict, read through the phase. */
