@@ -700,11 +700,17 @@ select:focus-visible,
   .card-interactive:active { transform: none; }
 }
 
-/* Go there (Dev Requests): the found spot's border blinks. Outside @layer —
-   the class is only added at runtime, so Tailwind would purge it there. */
-@keyframes goto-blink {
-  0%, 100% { opacity: 1; box-shadow: 0 0 0 4px rgb(var(--accent-500) / 0.35); }
-  50% { opacity: 0.25; box-shadow: 0 0 0 0 rgb(var(--accent-500) / 0); }
+/* Go there (Dev Requests): the found spot gets a red border with a soft
+   glow that pulses twice, slowly. Outside @layer — the class is only added
+   at runtime, so Tailwind would purge it there. */
+.goto-blink {
+  border: 3px solid rgb(var(--danger));
+  background: rgb(var(--danger) / 0.08);
+  box-shadow: 0 0 14px 4px rgb(var(--danger) / 0.55), inset 0 0 10px rgb(var(--danger) / 0.35);
+  animation: goto-blink 1.2s ease-in-out 2;
 }
-.goto-blink { animation: goto-blink 0.6s ease-in-out 6; }
+@keyframes goto-blink {
+  0%, 100% { opacity: 1; box-shadow: 0 0 18px 6px rgb(var(--danger) / 0.6), inset 0 0 12px rgb(var(--danger) / 0.4); }
+  50% { opacity: 0.35; box-shadow: 0 0 4px 0 rgb(var(--danger) / 0.2), inset 0 0 0 rgb(var(--danger) / 0); }
+}
 @media (prefers-reduced-motion: reduce) { .goto-blink { animation: none; } }

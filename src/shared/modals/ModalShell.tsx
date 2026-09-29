@@ -1,9 +1,10 @@
-import type { CSSProperties, ReactNode } from 'react'
+import { useCallback, useRef, type CSSProperties, type ReactNode } from 'react'
 import { Dialog, DialogBackdrop, DialogPanel, DialogTitle } from '@headlessui/react'
 import { X } from 'lucide-react'
 import { useHistoryDismiss } from '../hooks/useHistoryDismiss'
 import { useSheetDrag } from '../hooks/useSheetDrag'
 import { useModalDepth } from './ModalLayer'
+import { usePopupTrail } from './popupTrail'
 import { cx } from '../ui/cx'
 import { Truncate } from '../ui/Truncate'
 
@@ -59,6 +60,9 @@ export function ModalShell({
   const close = () => { if (dismissible) onClose() }
   useHistoryDismiss(open, close)
   const { setPanelEl, setBodyEl, backdropRef, handleProps } = useSheetDrag(open && mobile === 'sheet' && dismissible, close)
+  const panelEl = useRef<HTMLElement | null>(null)
+  usePopupTrail(open, panelEl)
+  const setPanel = useCallback((el: HTMLElement | null) => { panelEl.current = el; setPanelEl(el) }, [setPanelEl])
   const z: CSSProperties = { zIndex: layer === 'confirm' ? 'var(--z-confirm)' as unknown as number : `calc(var(--z-modal) + ${depth * 10})` as unknown as number }
   const full = mobile === 'fullscreen'
 
@@ -77,7 +81,7 @@ export function ModalShell({
       />
       <div className={cx('fixed inset-0 flex justify-center', full ? 'items-stretch sm:items-center sm:p-4' : 'items-end sm:items-center sm:p-4')}>
         <DialogPanel
-          ref={setPanelEl}
+          ref={setPanel}
           transition
           className={cx(
             'relative flex w-full flex-col overflow-hidden border border-line bg-surface shadow-menu',

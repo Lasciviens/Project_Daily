@@ -5,7 +5,7 @@ import { draftFromRow, isDraftEmpty, type ComposerTarget } from '../devRequestRu
 import { useDevRequests } from '../hooks/useDevRequests'
 import { usePageContextReader } from '../pick/usePageContext'
 import { usePickMode, type PickModeKind } from '../pick/usePickMode'
-import { labelFor, readElement } from '../pick/pickDom'
+import { labelFor, readElement, readPopupTrail } from '../pick/pickDom'
 import { PickHighlight } from '../pick/PickHighlight'
 import { insertPickLink } from '../devRequestMarks'
 import { caretOffsetIn, focusAtOffset } from '../components/linkedTextDom'
@@ -81,8 +81,8 @@ export function DevRequestComposer() {
     if (!canWrite) return
     const page = readPage()
     const capture: Capture | null = quote
-      ? { kind: 'selection', page, quote, element: el ? readElement(el) : null }
-      : el ? { kind: 'element', page, element: readElement(el) } : null
+      ? { kind: 'selection', page, quote, element: el ? readElement(el) : null, popups: el ? readPopupTrail(el) : [] }
+      : el ? { kind: 'element', page, element: readElement(el), popups: readPopupTrail(el) } : null
     if (!capture) return
     const at = caretOffsetIn(descRef.current) ?? caretAtPick.current
     caretAtPick.current = null

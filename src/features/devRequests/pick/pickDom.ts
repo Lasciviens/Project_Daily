@@ -1,5 +1,6 @@
-import { cleanText, elementLabel, summarizeSources, type PageContext, type PickedElement } from '../devRequestContext'
+import { cleanText, elementLabel, summarizeSources, type CapturedPopup, type PageContext, type PickedElement } from '../devRequestContext'
 import { SOURCE_ATTR } from './componentSourceTransform'
+import { openPopups } from '../../../shared/modals/popupTrail'
 
 // Reads what the request composer needs from the live page: the element the
 // user pointed at (the component and file that rendered it — the build-time
@@ -295,4 +296,22 @@ export function readSelection(): { text: string; element: Element } | null {
   const element = node instanceof Element ? node : node.parentElement
   if (!element || isRequestUi(element)) return null
   return { text, element }
+}
+
+/**
+ * The popups `el` sits in, outer → inner, as Go there needs them to reopen
+ * them: an entity popup's request (functions dropped — ids and prefill
+ * only), else what opened it. Empty when `el` is on the page itself.
+ */
+export function readPopupTrail(el: Element): CapturedPopup[] {
+  const steps = openPopups()
+  const inner = steps.findLastIndex(s => s.panel()?.contains(el))
+  if (inner < 0) return []
+  return steps.slice(0, inner + 1).flatMap((s): CapturedPopup[] => {
+    if (s.request) {
+      if (s.request.kind === 'confirm') return []
+      try { return [{ request: JSON.parse(JSON.stringify(s.request)) }] } catch { return [] }
+    }
+    return s.opener && s.opener !== document.body ? [{ opener: readElement(s.opener) }] : []
+  })
 }

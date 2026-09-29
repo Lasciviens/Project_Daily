@@ -54,10 +54,19 @@ export interface PickedElement {
   sources?: string[]
 }
 
+/** One popup the pick sat in (outer → inner), so Go there can reopen it: an
+ *  entity popup by its request, a local one by clicking what opened it. */
+export interface CapturedPopup {
+  request?: { kind: string; [key: string]: unknown } | null
+  opener?: PickedElement | null
+}
+
 export interface Capture {
   kind: 'element' | 'selection'
   page: PageContext
   element?: PickedElement | null
+  /** The popups it was inside, outer → inner. */
+  popups?: CapturedPopup[]
   /** The quoted selection (kind 'selection'). */
   quote?: string | null
 }
