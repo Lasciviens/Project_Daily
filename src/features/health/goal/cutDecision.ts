@@ -357,3 +357,13 @@ export function buildGoalDecision(i: DecisionInputs): GoalDecision {
   return done('adjust', 'info', `${lbl} (${signedPct(pct)} %/wk) — eat about ${n0(Math.abs(delta))} kcal/day ${delta > 0 ? 'more' : 'less'} to ${target}.`,
     [`Aim for ${range}.`], delta)
 }
+
+/** One line for a collapsed coach header. */
+export function coachShort(d: GoalDecision): string {
+  if (d.gate === 'no_data') return 'Needs more data'
+  if (d.gate === 'on_track') return 'On track'
+  if (d.gate === 'near_floor') return 'Check logging first'
+  if (d.gate === 'hold') return `Hold ${d.cooldownDaysLeft} more day${d.cooldownDaysLeft === 1 ? '' : 's'}`
+  if (d.calorieDelta != null) return `${d.calorieDelta > 0 ? '+' : '−'}${Math.abs(d.calorieDelta)} kcal/day`
+  return d.gate === 'eat_more' ? 'Eat more' : 'See coach'
+}

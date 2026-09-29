@@ -2,19 +2,8 @@ import { Check } from 'lucide-react'
 import { ToneDot } from '../../../shared/ui'
 import { InfoBubble } from '../../../shared/components/InfoBubble'
 import { Cites } from '../../health/goal/GoalBlock'
-import type { GoalDecision } from '../../health/goal/cutDecision'
 import type { NutritionCoach } from '../hooks/useNutritionCoach'
 import { Suggestion } from './goalEditorParts'
-
-/** One line for a collapsed coach header. */
-export function coachShort(d: GoalDecision): string {
-  if (d.gate === 'no_data') return 'Needs more data'
-  if (d.gate === 'on_track') return 'On track'
-  if (d.gate === 'near_floor') return 'Check logging first'
-  if (d.gate === 'hold') return `Hold ${d.cooldownDaysLeft} more day${d.cooldownDaysLeft === 1 ? '' : 's'}`
-  if (d.calorieDelta != null) return `${d.calorieDelta > 0 ? '+' : '−'}${Math.abs(d.calorieDelta)} kcal/day`
-  return d.gate === 'eat_more' ? 'Eat more' : 'See coach'
-}
 
 /** THE coach's answer (cutDecision.ts) — the same headline, lines and
  *  suggestions in the goal editor and on Food · Today. "Apply" hands the new
