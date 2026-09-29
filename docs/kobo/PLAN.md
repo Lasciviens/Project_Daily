@@ -1134,7 +1134,132 @@ just the corrected text.
 
 ---
 
-## 7. Sources
+## 9. Fun features — a menu to pick from, not a commitment
+
+Researched 2026-09-29. Each item says what it is, what it depends on, a rough effort
+(S = hours, M = days, L = weeks) and the catch. **None is scheduled**: roadmap Phase 6 (§11)
+is "pick two or three from this list once the tracker works". Items marked "needs Phase 4"
+use the reading data the tracker brings in.
+
+### 9.1 Around the reading data (needs Phase 4)
+
+| Idea | What | Effort | Catch |
+|---|---|---|---|
+| **Now reading on Home** | Cover, % read, "≈ 2 h 10 min left" (KOReader's own average-time-per-page idea, computed server-side from page events), last read | S | "Time left" is a floor, like every minutes figure (§2.2) |
+| **Streak heatmap and year in books** | GitHub-style 365-day heatmap, books finished per month, a year-end "Wrapped" page. Community precedent: HabitReads (streak freeze, badges), Reading Insights, KoShelf | M | Streaks follow §5's retroactive rule; never a stored counter |
+| **Reading sessions in the Daily agenda** | Reconstructed sessions (§4.3) show as done rows in `DayAgenda`, next to planned blocks | S–M | Additive only (`NEVER_HIDES`); never written into `time_blocks` |
+| **Reading vs sleep** | Health → Sleep shows "nights you read after 22:00" beside sleep onset, as two lanes on one axis, never a correlation score | M | Must follow the Health page's no-derived-metric rule and say "side by side, not cause and effect" (the `RecoveryLoadPanel` precedent) |
+| **Ask the AI about your reading** | `books`/`book_highlights` in `DB_CATALOG` (already settled, §4.2) plus `EMBED_SOURCES` for highlights, so "what did I highlight about habits?" works through `semantic_search` | S | Needs the `ai-proxy` redeploy that §4.2 already lists |
+
+### 9.2 The Kobo as a calm display
+
+- **A "Today" card as the sleep screen.** An edge function renders a 1072×1448 greyscale
+  PNG: today's first tasks, MET weather, the next Ruter departures from Home, one highlight
+  and one Norwegian word. Our plugin downloads it whenever the radio is already up (the
+  same `NetworkConnected` window as the outbox, §3.0) and points KOReader's sleep screen at
+  it. Put the reader down and it shows "Bus 25 in 6 min · 12° · 3 tasks". Effort M.
+  - Rendering: Supabase documents an OG-image example with satori + resvg
+    ([example](https://supabase.com/docs/guides/functions/examples/og-image)). CLAUDE.md
+    notes that WASM bundles need a **CLI deploy**, not a Dashboard paste. A cheaper first
+    version skips the PNG and sets KOReader's sleep-screen *message* text instead.
+  - The image is only as fresh as the last wake with Wi-Fi. A scheduled refresh would need
+    RTC wakeups, which are unproven on MT8113 (§3.0). So it is "fresh when you last put it
+    down", which is the honest label.
+  - Precedents: WeatherLockscreen (KOReader plugin, timed "active sleep" refresh),
+    koreader-live-sleepscreen (fetch before sleep, about 10 s awake), customisablesleepscreen
+    (progress, daily goal, a random highlight) —
+    [WeatherLockscreen](https://github.com/loeffner/WeatherLockscreen) ·
+    [live-sleepscreen](https://github.com/file99/koreader-live-sleepscreen) ·
+    [customisablesleepscreen](https://github.com/pxlflux/customisablesleepscreen.koplugin).
+- **A mini dashboard on KOReader's home screen.** The Bookshelf plugin (v5.2.3,
+  28.09.2026, needs KOReader ≥ 2026.03) supports custom Lua "micromodules". One that reads a
+  small JSON endpoint (next departure, first task, temperature) shows the dashboard every
+  time a book is picked. Effort M.
+  [bookshelf.koplugin](https://github.com/AndyHazz/bookshelf.koplugin)
+- **Not recommended here: a full wall display** (TRMNL client, FBInk loops). It needs
+  NickelMenu (4.x only), keeps the device awake and drains the battery. It would stop being
+  a reader. [trmnl-kobo](https://github.com/usetrmnl/trmnl-kobo)
+- **Supabase gotcha for anything the Kobo browser opens:** on the default domain a GET that
+  returns `text/html` is rewritten to `text/plain`
+  ([limits](https://supabase.com/docs/guides/functions/limits)). XML (OPDS), JSON and PNG
+  are unaffected; any HTML page for the device belongs on GitHub Pages.
+
+### 9.3 Learning Norwegian while reading
+
+- **Dictionaries on the device** (StarDict, in `.adds/koreader/data/dict/`), effort S:
+  - **Ordbøkene for lesebrett**: Bokmålsordboka + Nynorskordboka (CC BY 4.0, Språkrådet /
+    UiB), 93,492 headwords and 337,328 inflected forms, so tapping "drakk" finds "drikke"
+    ([repo](https://github.com/sinic/ordboekene-for-lesebrett)).
+  - Wiktionary Bokmål→English (28,432 entries) and Turkish→English (27,511)
+    ([downloads](https://xxyzz.github.io/wiktionary_stardict/)).
+  - TDK Güncel Türkçe Sözlük converter for Turkish books (AGPL, build it yourself)
+    ([repo](https://github.com/anezih/guncel-turkce-sozluk-kindle-kobo-stardict)).
+  - **No offline Norwegian↔Turkish dictionary exists.** LEXIN has Bokmål–Turkish online
+    only, with no download or API found.
+- **Words of the day.** KOReader's Vocabulary Builder already keeps every looked-up word
+  with about 15 words of context and a spaced-repetition schedule
+  (`settings/vocabulary_builder.sqlite3`: `vocabulary(word, title_id, create_time,
+  review_time, due_time, review_count, prev_context, next_context, streak_count,
+  highlight)`, `title(id, name, filter)`; [db.lua](https://github.com/koreader/koreader/blob/7fedb854cc145427a827431555208b82237161fb/plugins/vocabbuilder.koplugin/db.lua#L7-L33)).
+  Our plugin sends new rows alongside page events. The app shows "3 words today" with the
+  Ordbok API definition ([ordbokapi.org](https://ordbokapi.org/), CC BY 4.0, open CORS) plus
+  a Gemini Turkish meaning and example sentence. Effort M.
+- **A morning paper in easy Norwegian.** KOReader's built-in News downloader turns
+  [Klar Tale's RSS](https://www.klartale.no/rss) (Norway's easy-read news) into a daily
+  EPUB. Zero code, effort S.
+  [News downloader](https://github.com/koreader/koreader/wiki/News-downloader)
+- **Parallel books.** `bilingual_book_maker --api_format gemini` on a DRM-free Norwegian
+  EPUB produces original and Turkish paragraph by paragraph. It runs on the Mac and is sent
+  like any book (§8). Effort S, plus Gemini tokens per book.
+  [bilingual_book_maker](https://github.com/yihong0618/bilingual_book_maker)
+
+### 9.4 An AI reading companion on the device
+
+`assistant.koplugin` speaks the Gemini protocol natively: spoiler-free X-Ray and
+"previously on" recaps, explain a Norwegian sentence in Turkish, an AI dictionary. Last
+commit 28.09.2026. Effort S.
+[assistant.koplugin](https://github.com/omer-faruq/assistant.koplugin)
+**Catch:** it needs an API key **stored on the device**. That must be a separate,
+restricted Gemini key with a spending cap, never the `GEMINI_API_KEY` from Vault. Whether it
+accepts a custom base URL (which would let it go through `ai-proxy` with the device secret)
+is unconfirmed.
+
+### 9.5 Library, wishlist and shelves
+
+- **"Can I borrow it at Deichman?"** A book wish shows Deichman's Libby copies, holds and
+  "available now". Borrowing then happens natively on the Clara BW through OverDrive. The
+  source is OverDrive's unofficial "thunder" API
+  (`…/v2/libraries/deichman/media?query=…`, open CORS, verified by the researcher). Effort
+  S. **Catch:** it is unofficial and can change without notice. This is an availability
+  lookup, not tracking: loans stay out of the tracker (§2.3).
+  [libbrary](https://github.com/cloin/libbrary)
+- **Norwegian metadata that is actually right.** Open Library returns poor data for
+  Norwegian ISBNs (the researcher's test: *Snømannen* came back as "Snomannen [Imported]",
+  no cover). The **Nasjonalbiblioteket** catalogue API returns the correct title,
+  publisher, pages, series, language and cover thumbnails
+  (`api.nb.no/catalog/v1/items?q=isbn:…`, no auth). Its licence is **unconfirmed**. So
+  §4.5's source order becomes: NB for Norwegian ISBNs, then Open Library, then Hardcover.
+  [example](https://api.nb.no/catalog/v1/items?q=isbn:9788203193538)
+- **Hardcover as the social shelf** (optional). The Hardcover KOReader plugin syncs
+  status, progress, rating and manual quotes over Hardcover's GraphQL API. Free plan: 5,000
+  requests/day, 60/min.
+  [hardcoverapp.koplugin](https://github.com/Billiam/hardcoverapp.koplugin)
+
+### 9.6 Small delights, zero code
+
+- Chess against Stockfish, Wordle and Connections as KOReader plugins
+  ([casualkochess](https://github.com/MJCopper/casualkochess.koplugin) ·
+  [wordle](https://github.com/t2ym5u/wordle.koplugin)).
+- AutoWarmth: the warm light follows Oslo's actual sunset
+  ([PR #8129](https://github.com/koreader/koreader/pull/8129)).
+- A page-turner remote: the official Kobo Remote supports the Clara BW natively. KOReader
+  Bluetooth on MediaTek is experimental, and returning to Nickel after using it can crash
+  and reboot the device ([kobo.koplugin Bluetooth notes](https://ogkevin.github.io/kobo.koplugin/features/bluetooth.html)).
+- A plugin "app store" on the device: [appstore.koplugin](https://github.com/omer-faruq/appstore.koplugin).
+
+---
+
+## 13. Sources
 
 Device internals and SSH: `leo3418.github.io/2025/12/26/kobo-clara-bw-ssh.html`.
 Schema: `karlicoss/kobuddy` (MIT, actively maintained — the best written specification of
