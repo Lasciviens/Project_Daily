@@ -105,37 +105,30 @@ export function WorkPage() {
   const canHideRail = toggleFrom != null && (step ?? 1) >= toggleFrom
   const headerCap = step == null ? null : workHeaderCapRem(view, railOpen, step)
 
-  const skeleton = (
-    <div className="grid gap-3 lg:grid-cols-4">
-      {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} rounded="rounded-card" className="h-64" />)}
-    </div>
-  )
-  // The strips and the toolbar; one stack with the board/list on narrow
-  // pages, a band over the list and the rail in a wide List view.
-  const head = (
-    <div className="flex min-w-0 flex-col gap-4">
-      <FocusStrip tasks={focusedTasks} onMarkDone={handleMarkDone} onClearFocus={clearFocus} onEdit={openEdit} />
-      <OverdueStrip tasks={overdueTasks} {...cardActions} />
-      <WorkToolbar
-        view={view}
-        onViewChange={setView}
-        search={search}
-        onSearchChange={setSearch}
-        prio={prioFilter}
-        onPrioChange={setPrioFilter}
-        onQuickAdd={handleQuickAdd}
-        quickAddBusy={createTask.isPending}
-      />
-    </div>
-  )
-  const body = view === 'board'
-    ? <WorkBoard tasks={filtered} focusedTaskIds={focusedIds} onAddTask={openNew} {...cardActions} />
-    : <WorkListView tasks={filtered} focusedTaskIds={focusedIds} {...cardActions} />
-
   const sections: Record<WorkSection, ReactNode> = {
-    work: isLoading ? skeleton : <div className="flex min-w-0 flex-col gap-4">{head}{body}</div>,
-    head: isLoading ? null : head,
-    list: isLoading ? skeleton : body,
+    work: isLoading ? (
+      <div className="grid gap-3 lg:grid-cols-4">
+        {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} rounded="rounded-card" className="h-64" />)}
+      </div>
+    ) : (
+      <div className="flex min-w-0 flex-col gap-4">
+        <FocusStrip tasks={focusedTasks} onMarkDone={handleMarkDone} onClearFocus={clearFocus} onEdit={openEdit} />
+        <OverdueStrip tasks={overdueTasks} {...cardActions} />
+        <WorkToolbar
+          view={view}
+          onViewChange={setView}
+          search={search}
+          onSearchChange={setSearch}
+          prio={prioFilter}
+          onPrioChange={setPrioFilter}
+          onQuickAdd={handleQuickAdd}
+          quickAddBusy={createTask.isPending}
+        />
+        {view === 'board'
+          ? <WorkBoard tasks={filtered} focusedTaskIds={focusedIds} onAddTask={openNew} {...cardActions} />
+          : <WorkListView tasks={filtered} focusedTaskIds={focusedIds} {...cardActions} />}
+      </div>
+    ),
     rail: isLoading ? null : <aside aria-label="Work side panel" className="min-w-0"><WorkSidebar tasks={tasks} /></aside>,
   }
 

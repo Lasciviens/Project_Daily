@@ -67,30 +67,16 @@ check('the tools open by default only where they get columns of their own', M.ME
 check('laptop and 1920: the tools column is sticky', [2, 3].every(s => B.resolveBoardLayout(M.MEDIA_BOARD, s).columns.at(-1).sticky))
 
 console.log('Work')
-/** The work is on the page exactly once: as `work`, or as `head` + `list` — never both shapes. */
-const workShape = (layout, s) => {
-  const k = keys(layout, s)
-  if (k.includes('work')) return !k.includes('head') && !k.includes('list') ? 'work' : 'both'
-  return k.includes('head') && k.includes('list') ? 'split' : 'none'
+for (const [name, layout] of [['board', Wk.WORK_BOARD], ['list', Wk.WORK_LIST]]) {
+  check(`${name}: work and rail at every step`, STEPS.every(s => keys(layout, s).includes('work') && keys(layout, s).includes('rail')))
 }
-for (const [name, layout] of [['board', Wk.WORK_BOARD], ['board, rail hidden', Wk.WORK_BOARD_RAIL_HIDDEN], ['list', Wk.WORK_LIST]]) {
-  check(`${name}: the work is on the page once at every step`, STEPS.every(s => ['work', 'split'].includes(workShape(layout, s))), STEPS.map(s => workShape(layout, s)).join(','))
-}
-check('board: the work is one stack (strips, toolbar, board) at every step', STEPS.every(s => workShape(Wk.WORK_BOARD, s) === 'work' && workShape(Wk.WORK_BOARD_RAIL_HIDDEN, s) === 'work'))
-check('list: rail at every step', STEPS.every(s => keys(Wk.WORK_LIST, s).includes('rail')))
-check('phones and tablets keep one stack (work, then rail) in both views', eq(Wk.WORK_BOARD[1], ['work', 'rail']) && eq(Wk.WORK_LIST[1], ['work', 'rail']))
-{
-  const rows = (layout, s) => columnOf(layout, s, keys(layout, s).includes('list') ? 'list' : 'work')
-  check('board: the rail sits beside the work exactly from step 3', STEPS.every(s => (columnOf(Wk.WORK_BOARD, s, 'rail') !== columnOf(Wk.WORK_BOARD, s, 'work')) === (s >= 3)))
-  check('list: the rail sits beside the rows exactly from step 2', STEPS.every(s => (columnOf(Wk.WORK_LIST, s, 'rail') !== rows(Wk.WORK_LIST, s)) === (s >= 2)))
-  check('list: from the laptop up the strips and the toolbar span the whole board above rows and rail (one toolbar line at 1280)',
-    [2, 3, 4].every(s => columnOf(Wk.WORK_LIST, s, 'head') === 'band' && eq(B.resolveBoardLayout(Wk.WORK_LIST, s).top, ['head'])))
-  const toolbar = 170 + 224 + 224 + 140 + 3 * 8   // view switch, quick add (min), search, priority, gaps
-  check('1280: the head band is wide enough for the toolbar on one line', B.columnWidthPx(W.laptop1280, B.resolveBoardLayout(Wk.WORK_LIST, 2), 0, 2) >= toolbar)
-}
+check('board: the rail sits beside the work exactly from step 3', STEPS.every(s => (columnOf(Wk.WORK_BOARD, s, 'rail') !== columnOf(Wk.WORK_BOARD, s, 'work')) === (s >= 3)))
+check('list: the rail sits beside the list exactly from step 2', STEPS.every(s => (columnOf(Wk.WORK_LIST, s, 'rail') !== columnOf(Wk.WORK_LIST, s, 'work')) === (s >= 2)))
 check('"Hide side panel": Board view from step 3, never in List view', Wk.railToggleFrom('board') === 3 && Wk.railToggleFrom('list') === null)
 check('board: hiding the rail only hides it where it sits beside the work', STEPS.every(s => keys(Wk.WORK_BOARD_RAIL_HIDDEN, s).includes('rail') === (s < 3)))
-check('workLayout: board follows the toggle, list ignores it', Wk.workLayout('board', true) === Wk.WORK_BOARD && Wk.workLayout('board', false) === Wk.WORK_BOARD_RAIL_HIDDEN
+check('board: the work is on the page at every step with the rail hidden', STEPS.every(s => keys(Wk.WORK_BOARD_RAIL_HIDDEN, s).includes('work')))
+check('workLayout: board follows the toggle, list ignores it (a hidden rail left 1130px empty beside the rows at 2450)',
+  Wk.workLayout('board', true) === Wk.WORK_BOARD && Wk.workLayout('board', false) === Wk.WORK_BOARD_RAIL_HIDDEN
   && Wk.workLayout('list', true) === Wk.WORK_LIST && Wk.workLayout('list', false) === Wk.WORK_LIST)
 {
   // The kanban has four columns of at most 28rem (+ 0.75rem gaps): it must fill its span, never leave a gap before the rail.
@@ -106,10 +92,14 @@ check('workLayout: board follows the toggle, list ignores it', Wk.workLayout('bo
     && (B.columnWidthPx(W.laptop1280, l2, 0, 2) - 36) / 4 >= 14 * 16)
   check('list view: rows never wider than the 56rem main track', STEPS.every(s => {
     const l = B.resolveBoardLayout(Wk.WORK_LIST, s)
-    const c = l.columns.find(col => col.stack.includes('list') || col.stack.includes('work'))
-    return l.tracks === 1 || (c && c.span === 1)
+    const c = l.columns.find(col => col.stack.includes('work'))
+    return !c || c.span === 1 || l.tracks === 1
   }))
   check('list view stops at three tracks', B.resolveBoardLayout(Wk.WORK_LIST, 4).tracks === 3)
+  // WorkToolbar: view switch ~170px, quick add ≥ 12rem, search 14rem + priority ~140px as one group, 0.5rem gaps.
+  const toolbar = 170 + 192 + (224 + 8 + 140) + 2 * 8
+  check('1469 list view: the toolbar fits the main track on one line', B.columnWidthPx(W.laptop, B.resolveBoardLayout(Wk.WORK_LIST, 2), 0, 1) >= toolbar,
+    `${B.columnWidthPx(W.laptop, B.resolveBoardLayout(Wk.WORK_LIST, 2), 0, 1)} vs ${toolbar}px`)
 }
 check('header cap: none on one track, 106rem for the list at 2450 (it stops at three tracks), 131rem for the board',
   Wk.workHeaderCapRem('list', true, 1) === null && Wk.workHeaderCapRem('list', true, 4) === 106 && Wk.workHeaderCapRem('list', false, 4) === 106
