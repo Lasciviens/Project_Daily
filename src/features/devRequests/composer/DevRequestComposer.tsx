@@ -7,6 +7,8 @@ import { usePageContextReader } from '../pick/usePageContext'
 import { usePickMode, type PickModeKind } from '../pick/usePickMode'
 import { labelFor, readElement } from '../pick/pickDom'
 import { PickHighlight } from '../pick/PickHighlight'
+import { insertPickLink } from '../devRequestMarks'
+import { caretOffsetIn, focusAtOffset } from '../components/linkedTextDom'
 import { ComposerRequestTab } from './ComposerRequestTab'
 import { ComposerPromptTab } from './ComposerPromptTab'
 import { ABOVE_TABBAR, COMPOSER_ROOT, ComposerHeader, ComposerPill, ComposerTabs, PickBar, PickingBanner } from './ComposerFrame'
@@ -30,8 +32,9 @@ const sameTarget = (a: ComposerTarget, b: ComposerTarget) => a.kind === b.kind &
  * app, plus the prompt for Claude. Draggable on tablet/desktop, docked above
  * the tab bar on phones, minimisable to a pill. While it is open you can
  * point at things on the page (Pick on page, or Alt-click with a mouse): each
- * pick is kept as a mark (shown as a plain-language row with Go there; the
- * full technical detail goes into the prompt for Claude).
+ * pick becomes a link in the text where the caret was ("Water card"; a click
+ * opens the spot), and its full technical detail waits, out of sight, for the
+ * prompt for Claude.
  */
 export function DevRequestComposer() {
   const composer = useDevRequestDrafts(s => s.composer)
@@ -64,7 +67,10 @@ export function DevRequestComposer() {
   const [flash, setFlash] = useState(false)
   const rootRef = useRef<HTMLDivElement | null>(null)
   const titleRef = useRef<HTMLInputElement>(null)
-  const descRef = useRef<HTMLTextAreaElement>(null)
+  const descRef = useRef<HTMLDivElement>(null)
+  // Where the caret was in the text when picking started (the phone swaps
+  // the composer for the pick bar, so the text box is gone meanwhile).
+  const caretAtPick = useRef<number | null>(null)
   const promptRef = useRef<HTMLTextAreaElement>(null)
   const pillRef = useRef<HTMLButtonElement>(null)
   const boxRef = useRef<HTMLDivElement>(null)
@@ -78,9 +84,14 @@ export function DevRequestComposer() {
       ? { kind: 'selection', page, quote, element: el ? readElement(el) : null }
       : el ? { kind: 'element', page, element: readElement(el) } : null
     if (!capture) return
-    store().appendToDescription(target, { type: 'pick', capture }, seed)
+    const at = caretOffsetIn(descRef.current) ?? caretAtPick.current
+    caretAtPick.current = null
+    let caret = 0
+    store().editDescription(target, d => { const r = insertPickLink(d, capture, at); caret = r.caret; return r.text }, seed)
     store().setComposerTab('request')
     setFlash(true)
+    // Carry on typing right after the link (once the text box is back).
+    setTimeout(() => focusAtOffset(descRef.current, caret), 60)
   }, [canWrite, readPage, store, target, seed])
   useEffect(() => { if (!flash) return; const t = setTimeout(() => setFlash(false), 700); return () => clearTimeout(t) }, [flash])
 
@@ -93,7 +104,7 @@ export function DevRequestComposer() {
     onCancel: stopPicking,
     boxRef, labelRef,
   })
-  const startPicking = () => { store().setComposerTab('request'); setCandidate(null); setPicking(true) }
+  const startPicking = () => { caretAtPick.current = caretOffsetIn(descRef.current); store().setComposerTab('request'); setCandidate(null); setPicking(true) }
 
   const { setWindowEl, handleProps, resetPosition } = useFloatingWindow({
     enabled: !phone && !composer.minimized && !tucked,

@@ -428,5 +428,50 @@ console.log('\n18 · Card dates and the Prompted flag')
   check('done or never prompted does not', !rules.awaitingCheck({ status: 'done', prompted_at: 'x' }) && !rules.awaitingCheck({ status: 'open', prompted_at: null }) && !rules.awaitingCheck({ status: 'open' }))
 }
 
+
+console.log('\n19 · Pick links in the text')
+{
+  const water = { kind: 'element', page, element: { tag: 'h3', name: 'Water', text: 'Water', trail: ['"Water" card'], sources: ['src/features/recipes/components/WaterTracker.tsx#WaterTracker'] } }
+  const btn = { kind: 'element', page, element: { tag: 'button', name: 'Log food', text: 'Log food', trail: ['"Nutrition" card'] } }
+  check('label: a card\'s own heading names the card', marks.linkLabel(water) === 'Water card', marks.linkLabel(water))
+  check('label: a control inside a card keeps its own name', marks.linkLabel(btn) === 'Log food', marks.linkLabel(btn))
+  check('label: nothing but a component → the component', marks.linkLabel({ kind: 'element', page, element: { tag: 'div', sources: ['src/a/WaterTracker.tsx#WaterTracker'] } }) === 'Water tracker')
+  check('label: a quote → the quote', marks.linkLabel({ kind: 'selection', page, quote: 'kcal left' }) === 'kcal left')
+
+  const r1 = marks.insertPickLink('I want', water, null)
+  const p1 = marks.parseDescription(r1.text)
+  check('link goes at the end with a space before', p1.body === `I want [[@${r1.id}]] `, JSON.stringify(p1.body))
+  check('caret lands after the link and its space', r1.caret === p1.body.length)
+  check('the pick keeps its id and label', p1.marks.length === 1 && p1.marks[0].id === r1.id && p1.marks[0].label === 'Water card')
+  const typed = r1.text.replace(`[[@${r1.id}]] `, `[[@${r1.id}]] to be red.`)
+  const saved = marks.descriptionForSave(typed)
+  const back = marks.parseDescription(saved)
+  check('round trip keeps body, id and label', back.body === `I want [[@${r1.id}]] to be red.` && back.marks[0].id === r1.id && back.marks[0].label === 'Water card')
+  check('plain text reads the link as its name', marks.plainText(back.body, back.marks) === 'I want Water card to be red.')
+  check('preview reads the link as its name', marks.descriptionPreview(saved) === 'I want Water card to be red.')
+  const segs = marks.bodySegments(back.body, back.marks)
+  check('segments: text, link, text', segs.length === 3 && segs[1].type === 'ref' && segs[1].label === 'Water card' && segs[1].mark === back.marks[0])
+  check('a linked pick is not a row', marks.unlinkedPicks(back.marks).length === 0)
+
+  const mid = marks.insertPickLink('make red', btn, 5)
+  check('inserted mid-text with spaces around', marks.parseDescription(mid.text).body === `make [[@${mid.id}]] red`, marks.parseDescription(mid.text).body)
+  const two = marks.insertPickLink(saved, btn, null)
+  check('a second pick gets another id', two.id !== r1.id && marks.parseDescription(two.text).marks.length === 2)
+
+  const removed = marks.descriptionForSave(saved.replace(`[[@${r1.id}]]`, 'it'))
+  check('deleting the link drops its pick on save', marks.parseDescription(removed).marks.length === 0, removed)
+  const old = marks.descriptionForSave(`x\n\n${marks.encodePick(btn)}`)
+  check('an older pick (no id) stays, as a row', marks.parseDescription(old).marks.length === 1 && marks.unlinkedPicks(marks.parseDescription(old).marks).length === 1)
+  check('a missing link reads "missing link"', marks.bodySegments('a [[@zz9]] b', [])[1].label === 'missing link')
+
+  const withPage = marks.appendMark(saved, { type: 'page', start: page, savedOn: null })
+  check('the page mark is never a row', marks.unlinkedPicks(marks.parseDescription(withPage).marks).length === 0)
+  const prompt = buildClaudePrompt([{ title: 'Water colour', description: withPage, page: 'food', category: 'improvement', priority: 'medium' }])
+  check('prompt: the link reads “name” [1]', prompt.includes('I want “Water card” [1] to be red.'), prompt)
+  check('prompt: footnote [1] carries the component and file', /\[1\] \[Picked on Food[^\n]*\n(.*\n)*.*WaterTracker/.test(prompt), prompt)
+  check('prompt: explains the [n] links', prompt.includes('footnote [n]'))
+  check('prompt: no raw token leaks', !prompt.includes('[[@'))
+}
+
 console.log(`\n${passed} passed, ${failed} failed`)
 process.exit(failed ? 1 : 0)

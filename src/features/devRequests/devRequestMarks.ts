@@ -19,7 +19,12 @@ import {
 } from './devRequestContext'
 import { checkpointLine, parseCheckpointLine, type Checkpoint } from './checkpoints'
 
-export interface PickMark { type: 'pick'; capture: Capture }
+/**
+ * A picked spot. A pick with an `id` is linked from the text: the body holds
+ * `[[@id]]` where the user sees a link named `label` ("Water card"); older
+ * picks have no id and show as a row under the text.
+ */
+export interface PickMark { type: 'pick'; capture: Capture; id?: string; label?: string }
 export interface PageMark { type: 'page'; start: PageContext; savedOn: PageContext | null }
 /** A plain-text block from before marks; `raw` is kept exactly. */
 export interface LegacyMark { type: 'legacy'; raw: string; kind: 'pick' | 'page'; pageTitle: string; route: string | null; what: string | null }
@@ -32,10 +37,15 @@ export interface ParsedDescription {
 }
 
 const MARK_RE = /^\[\[(pick|page) (\{.*\})\]\]$/
+const REF_ID_RE = /^[a-z0-9]{2,12}$/
+/** A link in the text to a pick mark: `[[@id]]`. */
+export const REF_RE = /\[\[@([a-z0-9]{2,12})\]\]/g
+export const refToken = (id: string) => `[[@${id}]]`
 
 // ── Encoding ─────────────────────────────────────────────────────────────────
 
-export const encodePick = (capture: Capture): string => `[[pick ${JSON.stringify(capture)}]]`
+export const encodePick = (capture: Capture, id?: string, label?: string): string =>
+  `[[pick ${JSON.stringify(id ? { id, label, ...capture } : capture)}]]`
 
 export const encodePage = (start: PageContext, savedOn?: PageContext | null): string =>
   `[[page ${JSON.stringify(savedOn && savedOn.route !== start.route ? { start, savedOn } : { start })}]]`
@@ -86,8 +96,10 @@ function decodeMark(line: string): PickMark | PageMark | null {
   }
   const page = asPage(v.page)
   if (!page) return null
+  const id = typeof v.id === 'string' && REF_ID_RE.test(v.id) ? v.id : undefined
   return {
     type: 'pick',
+    ...(id ? { id, label: typeof v.label === 'string' && v.label.trim() ? v.label : undefined } : {}),
     capture: {
       kind: v.kind === 'selection' ? 'selection' : 'element',
       page,
@@ -157,7 +169,7 @@ export function parseDescription(text: string | null | undefined): ParsedDescrip
 }
 
 export function encodeMark(m: Mark): string {
-  if (m.type === 'pick') return encodePick(m.capture)
+  if (m.type === 'pick') return encodePick(m.capture, m.id, m.label)
   if (m.type === 'page') return encodePage(m.start, m.savedOn)
   return m.raw
 }
@@ -173,13 +185,82 @@ export function composeDescription(p: ParsedDescription): string {
   return p.body.trim() ? `${p.body}\n\n${rest}` : rest
 }
 
-/** The description as saved: empty checkpoints dropped, edges trimmed. */
+/** Ids the text links to (body and checkpoints). */
+export function referencedIds(p: Pick<ParsedDescription, 'body' | 'checkpoints'>): Set<string> {
+  const ids = new Set<string>()
+  for (const t of [p.body, ...p.checkpoints.map(c => c.text)]) for (const m of t.matchAll(REF_RE)) ids.add(m[1])
+  return ids
+}
+
+/**
+ * The description as saved: empty checkpoints dropped, edges trimmed, and a
+ * linked pick whose link was deleted from the text dropped with it.
+ */
 export function descriptionForSave(text: string): string {
   const p = parseDescription(text)
   const has = p.checkpoints.length || p.marks.length
   if (!has) return text.trim()
-  return composeDescription({ ...p, body: p.body.trim(), checkpoints: p.checkpoints.filter(c => c.text.trim()) }).trim()
+  const refs = referencedIds(p)
+  const marks = p.marks.filter(m => m.type !== 'pick' || !m.id || refs.has(m.id))
+  return composeDescription({ ...p, marks, body: p.body.trim(), checkpoints: p.checkpoints.filter(c => c.text.trim()) }).trim()
 }
+
+function newRefId(taken: Set<string>): string {
+  for (;;) {
+    const id = Math.random().toString(36).slice(2, 7)
+    if (id.length >= 2 && !taken.has(id)) return id
+  }
+}
+
+/**
+ * Puts a link to a new pick into the text at `offset` (a position in the
+ * body; null = the end), with a space on either side where needed. Returns
+ * the new description and the body position just after the link.
+ */
+export function insertPickLink(text: string, capture: Capture, offset: number | null): { text: string; caret: number; id: string } {
+  const p = parseDescription(text)
+  const taken = new Set(p.marks.flatMap(m => (m.type === 'pick' && m.id ? [m.id] : [])))
+  const id = newRefId(taken)
+  const at = offset == null ? p.body.length : Math.max(0, Math.min(offset, p.body.length))
+  const before = p.body.slice(0, at)
+  const after = p.body.slice(at)
+  const lead = before && !/\s$/.test(before) ? ' ' : ''
+  const trail = /^\s/.test(after) ? '' : ' '
+  const body = `${before}${lead}${refToken(id)}${trail}${after}`
+  const mark: PickMark = { type: 'pick', id, label: linkLabel(capture), capture }
+  return {
+    text: composeDescription({ ...p, body, marks: [...p.marks, mark] }),
+    caret: before.length + lead.length + refToken(id).length + trail.length,
+    id,
+  }
+}
+
+export type BodySegment = { type: 'text'; text: string } | { type: 'ref'; id: string; label: string; mark: PickMark | null }
+
+/** The text cut into plain runs and links. */
+export function bodySegments(body: string, marks: readonly Mark[]): BodySegment[] {
+  const byId = new Map(marks.flatMap(m => (m.type === 'pick' && m.id ? [[m.id, m] as const] : [])))
+  const out: BodySegment[] = []
+  let last = 0
+  for (const m of body.matchAll(REF_RE)) {
+    const i = m.index ?? 0
+    if (i > last) out.push({ type: 'text', text: body.slice(last, i) })
+    const mark = byId.get(m[1]) ?? null
+    out.push({ type: 'ref', id: m[1], label: mark ? pickLabel(mark) : 'missing link', mark })
+    last = i + m[0].length
+  }
+  if (last < body.length) out.push({ type: 'text', text: body.slice(last) })
+  return out
+}
+
+/** The text as the user reads it: every link replaced by its name. */
+export const plainText = (body: string, marks: readonly Mark[]): string =>
+  bodySegments(body, marks).map(s => (s.type === 'text' ? s.text : s.label)).join('')
+
+/** The marks shown as rows: older picks, never linked from the text. The
+ *  page a request was written on stays out of sight (the prompt has it). */
+export const unlinkedPicks = (marks: readonly Mark[]) =>
+  marks.filter(m => (m.type === 'pick' && !m.id) || (m.type === 'legacy' && m.kind === 'pick'))
 
 /** Adds a mark after everything else. */
 export function appendMark(text: string, mark: Mark): string {
@@ -261,6 +342,27 @@ export function markLabel(m: Mark): MarkLabel {
   return { crumbs: c.list, what, kind: cap.kind === 'selection' ? 'quote' : 'pick' }
 }
 
+/**
+ * The short name a link shows: the card or section it sits in when the
+ * pointed-at label is that card's own name ("Water" in the Water card →
+ * "Water card"), else the label itself ("Log food"), else the component
+ * ("Water tracker"), else the page.
+ */
+export function linkLabel(c: Capture): string {
+  if (c.kind === 'selection' && c.quote) return cleanText(c.quote, 40)
+  const el = c.element ?? null
+  const trail = (el?.trail ?? []).filter(t => !/navigation$|sidebar$/.test(t))
+  const place = trail.length ? trailWords(trail[trail.length - 1]) : null
+  const what = cleanText(el?.name || el?.text || el?.value, 40) || null
+  const src = summarizeSources(el?.sources)
+  if (place && (!what || place.toLowerCase().startsWith(what.toLowerCase()))) return cleanText(place, 40)
+  if (what) return what
+  if (src) return humanizeComponent(src.name)
+  return cleanText(c.page.pageTitle || c.page.route, 40) || 'this spot'
+}
+
+export const pickLabel = (m: PickMark): string => m.label?.trim() || linkLabel(m.capture)
+
 /** One line: `Training › Program tab › Current program card — “Missed sessions”`. */
 export function markText(m: Mark): string {
   const l = markLabel(m)
@@ -284,7 +386,7 @@ export const pickMarks = (marks: readonly Mark[]) => marks.filter(m => m.type ==
  */
 export function descriptionPreview(text: string | null | undefined, max = 160): string {
   const p = parseDescription(text)
-  if (p.body.trim()) return cleanText(p.body, max)
+  if (p.body.trim()) return cleanText(plainText(p.body, p.marks), max)
   const first = p.checkpoints.find(c => c.text.trim())
   if (first) return cleanText(first.text, max)
   const pick = pickMarks(p.marks)[0]

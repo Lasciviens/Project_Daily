@@ -22,7 +22,7 @@ interface Props {
   altHint: boolean
   flash: boolean
   titleRef: Ref<HTMLInputElement>
-  descriptionRef: RefObject<HTMLTextAreaElement | null>
+  descriptionRef: RefObject<HTMLDivElement | null>
   /** A save went through (for the request it was made for). */
   onDone: (saved: ComposerTarget) => void
 }

@@ -3,10 +3,12 @@ import { ListChecks } from 'lucide-react'
 import { PAGE_CHOICES, PAGE_OPTIONS } from './devRequestMeta'
 import { CATEGORIES, EFFORTS, PRIORITIES, type DraftFields } from '../devRequestRules'
 import type { DevRequestCategory, DevRequestEffort, DevRequestPriority } from '../types'
-import { composeDescription, parseDescription } from '../devRequestMarks'
+import { composeDescription, parseDescription, pickLabel, unlinkedPicks, type PickMark } from '../devRequestMarks'
 import { insertAfter, removeAt, setDone, setText, type Checkpoint } from '../checkpoints'
 import { CheckpointList } from './CheckpointList'
 import { MarkList } from './MarkList'
+import { LinkedTextEditor } from './LinkedTextEditor'
+import { useGoToMark } from '../pick/goToMark'
 import { Button, cx } from '../../../shared/ui'
 
 interface Props {
@@ -19,7 +21,7 @@ interface Props {
   onToggleCheckpoint?: (index: number, done: boolean, items: readonly Checkpoint[]) => void
   autoFocusTitle?: boolean
   titleRef?: Ref<HTMLInputElement>
-  descriptionRef?: RefObject<HTMLTextAreaElement | null>
+  descriptionRef?: RefObject<HTMLDivElement | null>
   /** Tailwind classes for the description box (height). */
   descriptionClassName?: string
   /** Controls shown right under the description (pick on page, quote). */
@@ -28,12 +30,18 @@ interface Props {
 
 /**
  * The request's fields, as the floating composer edits them. The text box
- * holds only the user's own words; checkpoints show as checkboxes and the
- * picked spots as plain-language rows under it (all three are stored in
+ * holds the user's own words with links to picked spots in them ("I want
+ * Water card to be red" — a click opens the spot); checkpoints show as
+ * checkboxes, and picks from before links as rows under it (all stored in
  * `description`, see devRequestMarks.ts).
  */
 export function RequestFields({ fields, onChange, onToggleCheckpoint, autoFocusTitle, titleRef, descriptionRef, descriptionClassName, descriptionTools }: Props) {
   const parsed = useMemo(() => parseDescription(fields.description), [fields.description])
+  const goTo = useGoToMark()
+  const linked = useMemo(() => new Map(parsed.marks.flatMap(m => (m.type === 'pick' && m.id ? [[m.id, m] as const] : []))), [parsed.marks])
+  const labelOf = useCallback((id: string) => { const m = linked.get(id); return m ? pickLabel(m) : 'missing link' }, [linked])
+  const openLink = (id: string) => { const m: PickMark | undefined = linked.get(id); if (m) goTo(m) }
+  const rows = unlinkedPicks(parsed.marks)
   const [focusIndex, setFocusIndex] = useState<number | null>(null)
   const onFocused = useCallback(() => setFocusIndex(null), [])
   const write = (patch: Partial<typeof parsed>) => onChange({ description: composeDescription({ ...parsed, ...patch }) })
@@ -62,14 +70,15 @@ export function RequestFields({ fields, onChange, onToggleCheckpoint, autoFocusT
         aria-label="Title"
         className="input"
       />
-      <textarea
-        ref={descriptionRef}
+      <LinkedTextEditor
+        editorRef={descriptionRef}
         value={parsed.body}
-        onChange={e => write({ body: e.target.value })}
-        placeholder="Details (optional) — the more context, the less back-and-forth later"
-        aria-label="Details"
-        rows={4}
-        className={cx('input resize-y', descriptionClassName ?? 'min-h-[90px] md:min-h-[160px]')}
+        onChange={body => write({ body })}
+        labelOf={labelOf}
+        onOpenLink={openLink}
+        placeholder="Details (optional) — Pick on page puts a link to that spot where you're typing"
+        ariaLabel="Details"
+        className={cx('max-h-[50vh]', descriptionClassName ?? 'min-h-[90px] md:min-h-[160px]')}
       />
       <CheckpointList
         items={parsed.checkpoints}
@@ -94,7 +103,7 @@ export function RequestFields({ fields, onChange, onToggleCheckpoint, autoFocusT
         </Button>
         {descriptionTools}
       </div>
-      <MarkList marks={parsed.marks} onRemove={i => write({ marks: parsed.marks.filter((_, j) => j !== i) })} />
+      <MarkList marks={rows} onRemove={i => write({ marks: parsed.marks.filter(m => m !== rows[i]) })} />
       <div className="grid grid-cols-2 gap-2">
         <select value={fields.category} onChange={e => onChange({ category: e.target.value as DevRequestCategory })} aria-label="Category" className="select">
           {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}

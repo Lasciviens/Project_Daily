@@ -699,3 +699,12 @@ select:focus-visible,
   .card-interactive:hover,
   .card-interactive:active { transform: none; }
 }
+
+/* Go there (Dev Requests): the found spot's border blinks. Outside @layer —
+   the class is only added at runtime, so Tailwind would purge it there. */
+@keyframes goto-blink {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 4px rgb(var(--accent-500) / 0.35); }
+  50% { opacity: 0.25; box-shadow: 0 0 0 0 rgb(var(--accent-500) / 0); }
+}
+.goto-blink { animation: goto-blink 0.6s ease-in-out 6; }
+@media (prefers-reduced-motion: reduce) { .goto-blink { animation: none; } }
