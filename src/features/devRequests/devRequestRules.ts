@@ -314,16 +314,16 @@ export function topSortOrder(all: readonly { sort_order: number }[]): number {
 
 
 /** `29.09.2026 14:05` in local time; '' for a missing/bad value. */
-export function cardStamp(iso: string | null | undefined, _now?: Date): string {
+export function cardStamp(iso: string | null | undefined): string {
   return formatDateTime(iso)
 }
 
 /** `Added 29.09.2026 14:05 · Done 30.09.2026 09:12` (Done only for a done request that has its stamp). */
-export function cardTimeline(row: Pick<DevRequest, 'created_at' | 'status' | 'completed_at'>, now: Date = new Date()): string {
+export function cardTimeline(row: Pick<DevRequest, 'created_at' | 'status' | 'completed_at'>): string {
   const parts: string[] = []
-  const added = cardStamp(row.created_at, now)
+  const added = cardStamp(row.created_at)
   if (added) parts.push(`Added ${added}`)
-  const done = row.status === 'done' ? cardStamp(row.completed_at, now) : ''
+  const done = row.status === 'done' ? cardStamp(row.completed_at) : ''
   if (done) parts.push(`Done ${done}`)
   return parts.join(' · ')
 }

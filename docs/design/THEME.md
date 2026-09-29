@@ -155,7 +155,15 @@ const c = useChartColors()
 
 **Inter Variable** (bundled with `@fontsource-variable/inter`, works offline), `cv11` + `ss01`
 features, antialiased. **Tabular numbers** (`tabular-nums`) on every count, KPI, date, time and
-duration. Dates are always `en-GB` (`15 Sep 2026`, `15/09/2026`).
+duration. **The ONLY visible date format is `DD.MM.YYYY`** (`15.09.2026`, owner rule): times are
+`HH:MM` (24h), a weekday may lead (`Tue 15.09.2026`), ranges read `21.09.2026 – 27.09.2026`, and
+relative words (today, yesterday, 5 days ago) stay where they are used. Always go through
+`src/shared/utils/dateFormat.ts` (`formatDate`, `formatDateTime`, `formatDateRange`,
+`formatWeekdayDate`, `formatWeekRange`) — never `toLocaleDateString`, `Intl.DateTimeFormat` or a
+date-fns pattern with month names. Two exceptions: chart axis ticks may drop the year
+(`formatDayMonth` → `15.09`), and Health's range bar (`healthDateLabels.numericSpanLabel`,
+`21.09 – 27.09`). A calendar's month heading (`September 2026`, `formatMonthYear`) names a month,
+not a date. Typed dates use `DateInput` (DD.MM.YYYY), not a native `<input type="date">`.
 
 | Class | Size / line | Weight | Role |
 |---|---|---|---|
@@ -301,7 +309,7 @@ its own left navigation panel; it uses the shell's `ModalHost` and `Toaster`. Se
 
 ```tsx
 <PageContainer>
-  <PageHeader title="Food" subtitle="Tuesday 15 Sep" actions={<Button variant="primary">Log food</Button>}>
+  <PageHeader title="Food" subtitle="Tuesday 15.09.2026" actions={<Button variant="primary">Log food</Button>}>
     <SegmentedControl … />            {/* optional view switcher */}
   </PageHeader>
   <PageBoard sections={…} layout={…} />

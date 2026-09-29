@@ -94,7 +94,7 @@ export function resolveTrainingSession(input: {
 // ─── Labels ─────────────────────────────────────────────────────────────────
 
 /** "Mon 29.09.2026 · 16:30 · 51m". */
-export function sessionWhenLabel(date: string, startHHMM: string | null, minutes: number | null, _todayStr?: string): string {
+export function sessionWhenLabel(date: string, startHHMM: string | null, minutes: number | null): string {
   const day = formatWeekdayDate(date)
   return [day, startHHMM, minutes != null && minutes > 0 ? formatDurationMinutes(minutes) : null].filter(Boolean).join(' · ')
 }

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { ChevronDown, Search } from 'lucide-react'
 import { formatSleepHours as fmtHrs } from '../healthAggregate'
 import type { HealthMetric } from '../api/healthApi'
+import { formatDate } from '../../../shared/utils/dateFormat'
 
 // The raw health_metrics rows behind the visible nights, so what the webhook
 // received can be checked against iPhone Health directly.
@@ -23,7 +24,7 @@ export function SleepRawRows({ points }: { points: HealthMetric[] }) {
               const isSession = typeof v.totalSleep === 'number'
               return (
                 <div key={p.id} className="flex flex-wrap gap-x-2 gap-y-0.5 rounded bg-surface-2 px-2 py-1 font-mono text-micro font-normal">
-                  <span className="text-fg-muted">{p.date}</span>
+                  <span className="text-fg-muted">{formatDate(p.date)}</span>
                   <span className={p.source === 'manual' ? 'font-semibold text-fg' : 'text-fg-faint'}>{p.source || '—'}</span>
                   {isSession ? (
                     <>

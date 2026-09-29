@@ -30,7 +30,7 @@ function weekday(date: string): string {
 // ── The period navigator ─────────────────────────────────────────────────────
 
 /** One day in the navigator: "Sun 27.09.2026". */
-export function dayNavLabel(date: string, _today?: string): string {
+export function dayNavLabel(date: string): string {
   return `${weekday(date)} ${numericDay(date, true)}`
 }
 
@@ -39,8 +39,8 @@ export function dayNavLabel(date: string, _today?: string): string {
  * control already says that: "21.09.2026 – 27.09.2026"; one day falls back to
  * the day label.
  */
-export function spanLabel(from: string, to: string, today: string): string {
-  if (from === to) return dayNavLabel(to, today)
+export function spanLabel(from: string, to: string): string {
+  if (from === to) return dayNavLabel(to)
   return `${numericDay(from, true)} – ${numericDay(to, true)}`
 }
 

@@ -14,6 +14,7 @@ import { MacroBar } from './MacroBar'
 import { CookMode } from './CookMode'
 import type { RecipeWithIngredients, MealSlot } from '../types'
 import { sanitizeDecimal } from './foodLogUtils'
+import { DateInput } from '../../../shared/components/DateInput'
 
 function slotForNow(): MealSlot {
   const h = new Date().getHours()
@@ -209,8 +210,8 @@ export function RecipeDetail({ recipe, onClose, onEdit }: Props) {
             time-of-day slot, both editable so a past meal can be backfilled. */}
         <div className="-mt-1 flex flex-wrap items-center gap-2">
           <span className="section-label">Log to</span>
-          <input type="date" value={logDate} max={formatLocalDate(new Date())} onChange={e => setLogDate(e.target.value)}
-            aria-label="Log date" className="input w-auto" />
+          <DateInput value={logDate} max={formatLocalDate(new Date())} onChange={v => { if (v) setLogDate(v) }}
+            aria-label="Log date" className="input w-[9.5rem] tabular-nums" />
           <select value={logSlot} onChange={e => setLogSlot(e.target.value as MealSlot)} aria-label="Meal slot" className="select w-auto">
             {LOG_SLOTS.map(s => <option key={s.slot} value={s.slot}>{s.label}</option>)}
           </select>

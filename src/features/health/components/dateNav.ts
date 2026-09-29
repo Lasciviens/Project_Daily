@@ -57,7 +57,7 @@ export function labelForAnchor(period: Period, anchor: string, today = todayStr(
 /** Short noun for the headline eyebrow: "last 7 days", "21–27 Sep", "today". */
 export function windowNoun(period: Period, anchor: string): string {
   const today = todayStr()
-  if (period === 'day') return anchor === today ? 'today' : dayNavLabel(anchor, today)
+  if (period === 'day') return anchor === today ? 'today' : dayNavLabel(anchor)
   const { from, to } = rangeForAnchor(period, anchor)
-  return anchor === today ? (period === 'year' ? 'last 12 months' : `last ${SPAN_DAYS[period]} days`) : spanLabel(from, to, today)
+  return anchor === today ? (period === 'year' ? 'last 12 months' : `last ${SPAN_DAYS[period]} days`) : spanLabel(from, to)
 }

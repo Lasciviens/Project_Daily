@@ -1,6 +1,5 @@
 import type { ReactNode } from 'react'
 import { TonePill } from '../../../shared/ui'
-import { todayStr } from '../../../shared/utils/dateUtils'
 import { spanLabel } from '../healthDateLabels'
 import { ENERGY_DENSITY_KCAL_PER_KG, type EnergyReport, type Phase } from './energyBalance'
 import { CONFIDENCE_COPY, OTHER_SCREENS_NOTE, balanceWord, kcal, leftOutLine, reasonCopy, signed, verdictCopy } from './goalCopy'
@@ -14,7 +13,7 @@ function HowItsWorkedOut({ r, from, to }: { r: EnergyReport; from: string; to: s
   const p = r.paired
   // Running text keeps the en-GB day-month style ("31 Aug – 27 Sep"); the
   // numeric dd.mm form is only the owner's format for the date bar itself.
-  const window = `${spanLabel(from, to, todayStr())} (${r.days} days, today left out)`
+  const window = `${spanLabel(from, to)} (${r.days} days, today left out)`
   if (!p.days || p.deficit == null) {
     return <p className="text-body text-fg-2">{window}: no day has both a full food diary and a complete Apple day yet, so there is nothing to compare.</p>
   }
