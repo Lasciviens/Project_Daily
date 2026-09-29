@@ -1,7 +1,15 @@
 import { useEffect, useLayoutEffect, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
+import { whenHistorySettled } from '../../../shared/hooks/useHistoryDismiss'
 import { useTestGameStore } from './testGameStore'
 import { STATUS_SECTIONS, tgStateFromUrl, tgUrlFromState } from './testGameModel'
+
+/** The query of the address as it is right now (HashRouter: after the `?` in the hash). */
+function liveQuery(): URLSearchParams {
+  const hash = window.location.hash
+  const at = hash.indexOf('?')
+  return new URLSearchParams(at === -1 ? '' : hash.slice(at + 1))
+}
 
 /**
  * Keeps the open section and platform in the address (`?section=&platform=`,
@@ -15,6 +23,13 @@ import { STATUS_SECTIONS, tgStateFromUrl, tgUrlFromState } from './testGameModel
  *   history entry, like Training's tabs). Read from getState(), not the
  *   render: on the first commit the address step above has already moved the
  *   store, and the render's stale values would overwrite the link.
+ * - The write waits until the history is back on the page's own entry
+ *   (whenHistorySettled). A pick that also closes a popup (the phone's
+ *   platform sheet, an Analytics drill, Scrape from a detail) used to replace
+ *   the popup's throwaway entry; the popup's own Back then landed on the old
+ *   address, which stayed stale — or, when the Back was slow, was applied and
+ *   undid the pick. The address is read live when the write runs, not from
+ *   the render it was queued in.
  */
 export function useTgUrlSync(): void {
   const [params, setParams] = useSearchParams()
@@ -22,6 +37,7 @@ export function useTgUrlSync(): void {
   const platform = useTestGameStore(s => s.platform)
   const scopePlatform = useTestGameStore(s => s.scopePlatform)
   const applied = useRef<string | null>(null)
+  const pending = useRef<(() => void) | null>(null)
 
   const query = params.toString()
   useLayoutEffect(() => {
@@ -39,14 +55,20 @@ export function useTgUrlSync(): void {
   }, [query]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    const s = useTestGameStore.getState()
-    const want = tgUrlFromState(s.section, s.platform, s.scopePlatform)
-    if (params.get('section') === want.section && params.get('platform') === want.platform) return
-    setParams(p => {
-      const n = new URLSearchParams(p)
-      if (want.section) n.set('section', want.section); else n.delete('section')
-      if (want.platform) n.set('platform', want.platform); else n.delete('platform')
-      return n
-    }, { replace: true })
+    pending.current?.()
+    pending.current = whenHistorySettled(() => {
+      pending.current = null
+      if (!/^#\/games(\?|$)/.test(window.location.hash)) return
+      const s = useTestGameStore.getState()
+      const want = tgUrlFromState(s.section, s.platform, s.scopePlatform)
+      const next = liveQuery()
+      if (next.get('section') === want.section && next.get('platform') === want.platform) return
+      if (want.section) next.set('section', want.section); else next.delete('section')
+      if (want.platform) next.set('platform', want.platform); else next.delete('platform')
+      setParams(next, { replace: true })
+    })
   }, [section, platform, scopePlatform, params, setParams])
+
+  // Leaving the page drops a write still waiting for a popup's Back.
+  useEffect(() => () => pending.current?.(), [])
 }

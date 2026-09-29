@@ -9,8 +9,25 @@ import type { DevRequest, CreateDevRequestInput } from '../types'
 
 const QK = qk.devRequests.all
 
+// When the last full read of the list STARTED. An edit draft touched before
+// then whose request is missing from that read belongs to a deleted request;
+// one touched later may be for a request created since (setQueryData — the
+// optimistic reorder — refreshes dataUpdatedAt without reading anything, so
+// that can't be used for this).
+let listReadFrom = 0
+export const devRequestsReadFrom = () => listReadFrom
+
 export function useDevRequests() {
-  return useQuery({ queryKey: QK, queryFn: fetchDevRequests, staleTime: STALE.short })
+  return useQuery({
+    queryKey: QK,
+    queryFn: async () => {
+      const started = Date.now()
+      const rows = await fetchDevRequests()
+      listReadFrom = started
+      return rows
+    },
+    staleTime: STALE.short,
+  })
 }
 
 export function useCreateDevRequest() {

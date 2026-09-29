@@ -41,8 +41,6 @@ export type EntityModalRequest =
   /** One training session: a logged Hevy workout (`workoutId`) or a planned
    *  one (`plan` — a recurring occurrence has no row, so it carries its day). */
   | { kind: 'training-session'; workoutId?: string; plan?: { kind: 'block' | 'recurring'; id: string; date: string } }
-  /** @deprecated Old name of `training-session` with a workout id; renders the same popup. */
-  | { kind: 'hevy-workout'; id: string }
   /** One Apple Health workout (Health → Workouts), with its matching Hevy session. */
   | { kind: 'health-workout'; id: string }
   /** Log or edit a Hevy body measurement; `date` opens that day's row (default today). */

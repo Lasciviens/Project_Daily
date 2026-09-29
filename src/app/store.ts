@@ -168,12 +168,21 @@ export const useCalendarStore = create<CalendarState>()(
 // ─── Theme ────────────────────────────────────────────────────────────────────
 
 export type ThemePreference = 'light' | 'dark' | 'system'
+/** Settings → Appearance → Animations: 'extra' = "More" (the test set), 'standard' = the base motion. */
+export type MotionPreference = 'extra' | 'standard'
 
 interface ThemeState {
   theme:     ThemePreference
   accent:    AccentName
+  motion:    MotionPreference
   setTheme:  (theme: ThemePreference) => void
   setAccent: (accent: AccentName) => void
+  setMotion: (motion: MotionPreference) => void
+}
+
+/** Stamps data-motion on <html>; the "More" CSS lives under html[data-motion='extra'] (index.css). */
+function applyMotion(motion: MotionPreference) {
+  document.documentElement.dataset.motion = motion
 }
 
 function applyTheme(theme: ThemePreference, accent: AccentName) {
@@ -195,8 +204,11 @@ export const useThemeStore = create<ThemeState>()(
     (set, get) => ({
       theme:  'system',
       accent: DEFAULT_ACCENT,
+      // On by default (owner's call); a saved state without the field keeps it.
+      motion: 'extra',
       setTheme:  (theme)  => { applyTheme(theme, get().accent); set({ theme }) },
       setAccent: (accent) => { applyAccent(accent); set({ accent }) },
+      setMotion: (motion) => { applyMotion(motion); set({ motion }) },
     }),
     {
       name: 'theme-preference',
@@ -204,10 +216,13 @@ export const useThemeStore = create<ThemeState>()(
       migrate: (persisted) => {
         const old = (persisted ?? {}) as Partial<ThemeState>
         try { localStorage.removeItem('accent-theme') } catch { /* private mode */ }
-        return { theme: old.theme ?? 'system', accent: DEFAULT_ACCENT } as ThemeState
+        return { theme: old.theme ?? 'system', accent: DEFAULT_ACCENT, motion: 'extra' } as ThemeState
       },
       onRehydrateStorage: () => (state) => {
-        if (state) state.accent = resolveAccent(state.accent)
+        if (state) {
+          state.accent = resolveAccent(state.accent)
+          if (state.motion !== 'standard') state.motion = 'extra'
+        }
       },
     }
   )
@@ -215,8 +230,9 @@ export const useThemeStore = create<ThemeState>()(
 
 /** Applies the persisted theme + accent once on boot (the inline script only stamps .dark). */
 export function applyStoredTheme() {
-  const { theme, accent } = useThemeStore.getState()
+  const { theme, accent, motion } = useThemeStore.getState()
   applyTheme(theme, accent)
+  applyMotion(motion)
 }
 
 // The inline script only fires once, on load — this keeps the DOM in sync

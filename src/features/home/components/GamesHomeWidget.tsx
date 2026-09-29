@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Gamepad2 } from 'lucide-react'
-import { Skeleton, ToneDot, Button, type Tone } from '../../../shared/ui'
+import { Skeleton, ToneDot, Button, type Tone, AnimatedNumber } from '../../../shared/ui'
 import { useGameStats, usePlayQueue } from '../../games/hooks/useGames'
 import { computeGameStats } from '../../games/gameStats'
 import type { Game, PlayStatus } from '../../games/types'
@@ -90,7 +90,7 @@ export function GamesTile() {
       icon={<Gamepad2 />}
       to="/games"
       loading={isLoading}
-      value={<>{stats?.playing ?? 0}<span className="ml-1 text-meta font-medium text-fg-muted">playing</span></>}
+      value={<><AnimatedNumber value={stats?.playing ?? 0} /><span className="ml-1 text-meta font-medium text-fg-muted">playing</span></>}
       hint={stats ? `${stats.completed} of ${stats.total} done` : undefined}
     />
   )

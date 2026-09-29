@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { ChevronRight } from 'lucide-react'
-import { Skeleton, cx } from '../../../shared/ui'
+import { Skeleton, Truncate, cx } from '../../../shared/ui'
 
 interface GlanceTileProps {
   label: string
@@ -22,7 +22,7 @@ export function GlanceTile({ label, icon, value, hint, to, onClick, loading, cla
     <>
       <span className="flex items-center gap-1.5">
         <span aria-hidden className="text-accent-600 [&_svg]:h-3.5 [&_svg]:w-3.5">{icon}</span>
-        <span className="section-label flex-1 truncate">{label}</span>
+        <Truncate className="section-label flex-1">{label}</Truncate>
         <ChevronRight aria-hidden className="h-3.5 w-3.5 shrink-0 text-fg-faint" />
       </span>
       {loading ? (
@@ -32,8 +32,8 @@ export function GlanceTile({ label, icon, value, hint, to, onClick, loading, cla
         </>
       ) : (
         <>
-          <span className="mt-1.5 block truncate text-title font-bold tabular-nums text-fg">{value}</span>
-          {hint != null && <span className="mt-0.5 block truncate text-meta text-fg-muted">{hint}</span>}
+          <Truncate className="mt-1.5 text-title font-bold tabular-nums text-fg">{value}</Truncate>
+          {hint != null && <Truncate className="mt-0.5 text-meta text-fg-muted">{hint}</Truncate>}
         </>
       )}
     </>

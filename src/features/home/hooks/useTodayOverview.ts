@@ -31,6 +31,12 @@ export interface NextUpItem {
   /** 'HH:mm' of the start on the viewed day. */
   startLabel: string
   taskId?: string | null
+  /** The block's / template's own category ('training' opens the session
+   *  popup, like Daily's agenda). */
+  category?: string | null
+  /** The day this occurrence starts on (the day before for the tail of one
+   *  that crossed midnight) — a recurring occurrence's identity. */
+  planDate?: string
 }
 
 /** The ONE next-training definition (trainingPlanModel.pickNextTrainingSession),
@@ -86,13 +92,16 @@ export function useTodayOverview(date: string = todayStr()): TodayOverview {
       [...blocks, ...(prevBlocksQ.data ?? [])].map(b => b.google_calendar_event_id).filter(Boolean) as string[],
     )
 
+    const blockById = new Map([...(prevBlocksQ.data ?? []), ...blocks].map(b => [b.id, b]))
+    const templateById = new Map(templates.map(t => [t.id, t]))
     const items: NextUpItem[] = []
     for (const p of projectOneOffBlocksForDay(blocks, prevBlocksQ.data ?? [])) {
       if (p.startHour < 0) continue // unscheduled — no place in a timeline
-      items.push({ kind: 'block', id: p.canonicalId, title: p.title, startHour: p.startHour, endHour: p.endHour, inProgress: false, startLabel: hourLabel(p.startHour), taskId: p.taskId })
+      const b = blockById.get(p.canonicalId)
+      items.push({ kind: 'block', id: p.canonicalId, title: p.title, startHour: p.startHour, endHour: p.endHour, inProgress: false, startLabel: hourLabel(p.startHour), taskId: p.taskId, category: b?.category ?? null, planDate: b?.date ?? date })
     }
     for (const p of projectRecurringBlocksForDay(date, dayOfWeekOf(date), templates)) {
-      items.push({ kind: 'recurring', id: p.canonicalId, title: p.title, startHour: p.startHour, endHour: p.endHour, inProgress: false, startLabel: hourLabel(p.startHour) })
+      items.push({ kind: 'recurring', id: p.canonicalId, title: p.title, startHour: p.startHour, endHour: p.endHour, inProgress: false, startLabel: hourLabel(p.startHour), category: templateById.get(p.canonicalId)?.category ?? null, planDate: p.spillover ? prevDay : date })
     }
     for (const e of calendarQ.data ?? []) {
       if (linkedEventIds.has(e.id)) continue // already shown as its block
@@ -124,5 +133,5 @@ export function useTodayOverview(date: string = todayStr()): TodayOverview {
       nextTraining,
       isLoading: tasksQ.isLoading || blocksQ.isLoading || templatesQ.isLoading,
     }
-  }, [date, tasksQ.data, tasksQ.isLoading, blocksQ.data, blocksQ.isLoading, prevBlocksQ.data, templatesQ.data, templatesQ.isLoading, calendarQ.data, trainingQ.data])
+  }, [date, prevDay, tasksQ.data, tasksQ.isLoading, blocksQ.data, blocksQ.isLoading, prevBlocksQ.data, templatesQ.data, templatesQ.isLoading, calendarQ.data, trainingQ.data])
 }

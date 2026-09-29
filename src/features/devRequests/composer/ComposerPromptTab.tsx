@@ -1,26 +1,29 @@
-import { useState } from 'react'
+import { useState, type Ref } from 'react'
 import { ChevronRight, Copy, RotateCcw, Sparkles } from 'lucide-react'
 import { useDevRequestDrafts } from '../devRequestDraftStore'
 import { descriptionPreview } from '../devRequestContext'
 import { buildClaudePrompt } from '../devRequestPrompt'
 import { useDevRequests } from '../hooks/useDevRequests'
 import { toast, useUIStore } from '../../../app/store'
-import { Button, EmptyState, cx } from '../../../shared/ui'
+import { Button, EmptyState, Skeleton, cx } from '../../../shared/ui'
 
 /**
  * The prompt for Claude, built from the requests picked in the drawer — and
  * editable here: your wording stays (it is saved with the drafts) until you
  * reset it to the generated one.
  */
-export function ComposerPromptTab() {
+export function ComposerPromptTab({ textareaRef }: { textareaRef?: Ref<HTMLTextAreaElement> }) {
   const prompt = useDevRequestDrafts(s => s.prompt)
-  const { data: requests = [] } = useDevRequests()
+  const { data: requests = [], isLoading } = useDevRequests()
   const [showList, setShowList] = useState(false)
   const rows = prompt.ids.map(id => requests.find(r => r.id === id)).filter(r => r != null)
-  const missing = prompt.ids.length - rows.length
+  // Until the list has loaded, every picked request would read as deleted.
+  const count = isLoading ? prompt.ids.length : rows.length
+  const missing = isLoading ? 0 : prompt.ids.length - rows.length
 
   function changeSelection() {
-    useDevRequestDrafts.getState().setDrawer({ selecting: true, picked: rows.map(r => r.id) })
+    const picked = isLoading ? prompt.ids : rows.map(r => r.id)
+    useDevRequestDrafts.getState().setDrawer({ selecting: true, picked })
     if (!useUIStore.getState().isDevRequestsOpen) useUIStore.getState().toggleDevRequests()
   }
 
@@ -58,12 +61,13 @@ export function ComposerPromptTab() {
           >
             <ChevronRight className={cx('h-4 w-4 shrink-0 transition-transform', showList && 'rotate-90')} aria-hidden />
             <span className="truncate">
-              {rows.length} request{rows.length === 1 ? '' : 's'}{missing > 0 ? ` · ${missing} deleted` : ''}{prompt.edited ? ' · edited' : ''}
+              {count} request{count === 1 ? '' : 's'}{missing > 0 ? ` · ${missing} deleted` : ''}{prompt.edited ? ' · edited' : ''}
             </span>
           </button>
           <Button size="sm" variant="ghost" onClick={changeSelection}>Change</Button>
         </div>
-        {showList && (
+        {showList && isLoading && <Skeleton className="h-10 rounded-row" />}
+        {showList && !isLoading && (
           <ul className="flex max-h-40 flex-col gap-1 overflow-y-auto">
             {rows.map(r => (
               <li key={r.id} className="rounded-row border border-line bg-surface-2 px-2.5 py-1.5">
@@ -74,6 +78,7 @@ export function ComposerPromptTab() {
           </ul>
         )}
         <textarea
+          ref={textareaRef}
           value={prompt.text}
           onChange={e => useDevRequestDrafts.getState().editPrompt(e.target.value)}
           aria-label="Prompt for Claude"

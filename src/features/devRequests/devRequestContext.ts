@@ -113,9 +113,8 @@ export function formatCapture(c: Capture): string {
     if (el) lines.push(`Element: ${elementLabel(el)}`)
   }
   if (el) {
-    const trail = (el.trail ?? []).map(t => cleanText(t, 60)).filter(Boolean)
-    const area = cleanText(el.area, 60)
-    if (trail.length || area) lines.push(`Where: ${[area, ...trail].filter(Boolean).join(' › ')}`)
+    const where = whereParts(cleanText(el.area, 60), (el.trail ?? []).map(t => cleanText(t, 60)).filter(Boolean))
+    if (where.length) lines.push(`Where: ${where.join(' › ')}`)
     const name = cleanText(el.name, 160)
     const text = cleanText(el.text, 160)
     if (c.kind === 'element' && text && text !== name) lines.push(`Text: ${quoted(text)}`)
@@ -134,6 +133,20 @@ export function formatCapture(c: Capture): string {
     lines.push(`Screen: ${screenLabel(c.page)}`)
   }
   return lines.join('\n')
+}
+
+/**
+ * The area and the containers around the element, without saying the same
+ * thing twice: an unnamed <aside> is already "sidebar", and "Main navigation"
+ * already says it is the navigation ("sidebar › sidebar › Main navigation",
+ * "navigation › Main navigation" before).
+ */
+export function whereParts(area: string, trail: readonly string[]): string[] {
+  const parts: string[] = []
+  for (const t of trail) if (t && t !== area && !parts.includes(t)) parts.push(t)
+  const first = parts[0]
+  const named = !!area && !!first && (first === area || first.toLowerCase().endsWith(` ${area.toLowerCase()}`))
+  return area && !named ? [area, ...parts] : parts
 }
 
 /**

@@ -7,6 +7,7 @@ import { useUIStore } from '../../../app/store'
 import { useTgHeaderConfig } from './useTgHeaderConfig'
 import { useTgLibraryView } from './useTgLibraryView'
 import { useTgUrlSync } from './useTgUrlSync'
+import { TG_SHORT_SCREEN, useTgMatch } from './useTgMatch'
 import type { TgGame } from './testGameModel'
 import type { TgActions } from './tgTypes'
 import { pickRandomId } from './components/tgRandom'
@@ -51,6 +52,12 @@ export function TestGamePage() {
   const bp = useBreakpoint()
   const phone = bp === 'phone'
   const reportScroll = useUIStore(s => s.reportScroll)
+  // A phone held sideways: the page's header row slides away with the app's
+  // header while the list scrolls down (back on any upward scroll), or the
+  // covers are left ~140px.
+  const shortScreen = useTgMatch(TG_SHORT_SCREEN)
+  const chromeHidden = useUIStore(s => s.chromeHidden)
+  const rowsHidden = phone && shortScreen && chromeHidden
   const section = useTestGameStore(s => s.section)
   const pickedGenres = useTestGameStore(s => s.genres)
   const pickedStudios = useTestGameStore(s => s.studios)
@@ -224,10 +231,14 @@ export function TestGamePage() {
     <TgGamesContext.Provider value={lib.games}>
       {phone ? (
         <div key="phone" className="tg-root flex h-full flex-col overflow-hidden">
-          <TgMobileHeader
-            groups={groups} counts={navCounts} genres={genres} studios={studios} statusCounts={sCounts} header={header}
-            onRandom={onRandom} resultCount={visible.length} libraryGames={lib.games}
-          />
+          <div className={`grid shrink-0 transition-[grid-template-rows] duration-200 ease-out motion-reduce:transition-none ${rowsHidden ? 'grid-rows-[0fr]' : 'grid-rows-[1fr]'}`}>
+            <div className="min-h-0 overflow-hidden">
+              <TgMobileHeader
+                groups={groups} counts={navCounts} genres={genres} studios={studios} statusCounts={sCounts} header={header}
+                onRandom={onRandom} resultCount={visible.length} libraryGames={lib.games}
+              />
+            </div>
+          </div>
           <div
             ref={phoneScroll}
             // The app header hides while this list scrolls down, as it does over <main>.

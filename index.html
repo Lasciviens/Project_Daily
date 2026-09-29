@@ -8,12 +8,17 @@
       // otherwise the page would flash the light theme for a frame (or
       // vice versa) on every load, since the store's own effect can't run
       // until after the initial render.
+      // data-motion (Settings → Animations) too, so the first paint already
+      // has the right motion set; "More" ('extra') is the default.
       (function () {
+        document.documentElement.setAttribute('data-motion', 'extra')
         try {
           var raw = localStorage.getItem('theme-preference')
-          var theme = raw ? JSON.parse(raw).state.theme : 'system'
+          var state = raw ? JSON.parse(raw).state : {}
+          var theme = state.theme || 'system'
           var dark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)
           if (dark) document.documentElement.classList.add('dark')
+          if (state.motion === 'standard') document.documentElement.setAttribute('data-motion', 'standard')
         } catch (e) {}
       })()
     </script>

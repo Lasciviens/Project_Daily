@@ -12,8 +12,10 @@ import { TgMobilePlatformSheet } from './TgMobilePlatformSheet'
 /**
  * Left side of the phone's scope row: what the grid below is scoped to.
  * Library → the design's "PS2 ▾" platform pill, which opens every platform
- * grouped by maker. Wishlist/Completed/Backlog → the section name plus its
- * platform scope. Queue/Analytics/Advanced → the section title, nothing to pick.
+ * grouped by maker. Wishlist/Completed/Backlog → their platform scope (the
+ * active section pill above names the section; a title here squeezed both to
+ * "Wis…"/"S…"). Queue/Analytics/Advanced → the section title, nothing to pick.
+ * A platform label never shrinks below ~4.5rem.
  */
 export function TgMobileScope({ groups, header }: { groups: PlatformGroup[]; header: TgHeaderConfig }) {
   const section = useTestGameStore(s => s.section)
@@ -39,7 +41,7 @@ export function TgMobileScope({ groups, header }: { groups: PlatformGroup[]; hea
           aria-haspopup="dialog"
           aria-label={`Platform: ${current === ALL_PLATFORMS ? 'All platforms' : label}`}
           // The design's platform pill reads larger and bolder than the filter pills.
-          className="tg-select min-w-0 !text-[15px] !font-semibold"
+          className="tg-select min-w-[4.5rem] !text-[15px] !font-semibold"
         >
           <span className="min-w-0 truncate">{label}</span>
           <ChevronDown aria-hidden className="tg-chev ml-auto shrink-0" strokeWidth={2} />
@@ -52,20 +54,17 @@ export function TgMobileScope({ groups, header }: { groups: PlatformGroup[]; hea
   if (STATUS_SECTIONS[section]) {
     const value = header.activeTab ?? ALL_PLATFORMS
     const active = header.tabs.find(t => t.key === value)
+    if (header.tabs.length === 0) return null
     return (
-      <div className="flex min-w-0 items-center gap-2.5">
-        <h2 className="truncate text-[16px] font-bold">{header.title}</h2>
-        {header.tabs.length > 0 && (
-          <TgDropdown
-            value={value}
-            options={header.tabs.map(t => ({ value: t.key, label: t.label, count: t.count }))}
-            onChange={(k: string) => header.onTab?.(k)}
-            buttonLabel={active?.label ?? 'All'}
-            ariaLabel={`${header.title} platform`}
-            align="start"
-          />
-        )}
-      </div>
+      <TgDropdown
+        value={value}
+        options={header.tabs.map(t => ({ value: t.key, label: t.label, count: t.count }))}
+        onChange={(k: string) => header.onTab?.(k)}
+        buttonLabel={active?.label ?? 'All'}
+        ariaLabel={`${header.title} platform`}
+        align="start"
+        className="!min-w-[4.5rem]"
+      />
     )
   }
 

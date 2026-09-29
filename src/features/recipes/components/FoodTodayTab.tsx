@@ -13,11 +13,12 @@ import { WeeklyNutritionCard } from './WeeklyNutritionCard'
 import { useEatPlannedEntry } from '../hooks/useMealPlan'
 import { MacroBar } from './MacroBar'
 import { WaterTracker } from '../../daily/components/summary/WaterTracker'
-import { Card, CardHeader, IconButton, TonePill, cx } from '../../../shared/ui'
+import { AnimatedNumber, Card, CardHeader, IconButton, ProgressRing, TonePill, Truncate, cx } from '../../../shared/ui'
 import { formatLocalDate } from '../../../shared/utils/dateUtils'
 import { MACRO_COLOR } from '../macroColors'
 import type { MealSlot } from '../types'
 import { groupDayMeals, type DayMeal, type MealGroupRow } from '../../daily/api/dayNutritionApi'
+import { useNewIds } from '../../../shared/hooks/useNewIds'
 
 // The wide meal-row grid: name · amount · kcal · protein · carbs · fat · fiber · ✓ · ✕.
 // Shared by the rows and their column-heading row so the two always line up.
@@ -51,28 +52,17 @@ const SLOTS: { slot: MealSlot; label: string; icon: string }[] = [
 
 // `size` is the SVG geometry basis; `sizeClass` sets the displayed box so the
 // ring can shrink on a phone (the viewBox scales the stroke with it).
-function Ring({ consumed, target, size, stroke, color, label, sizeClass }: {
-  consumed: number; target: number; size: number; stroke: number; color: string; label: string; sizeClass: string
+function Ring({ consumed, target, size, stroke, color, label, sizeClass, ready }: {
+  consumed: number; target: number; size: number; stroke: number; color: string; label: string; sizeClass: string; ready: boolean
 }) {
-  const R = (size - stroke) / 2 - 1
-  const C = 2 * Math.PI * R
-  const pct = target > 0 ? Math.min(consumed / target, 1) : 0
   const over = consumed > target
   const remaining = Math.abs(Math.round(target - consumed))
-  const c = size / 2
   return (
-    <div className={cx('relative shrink-0', sizeClass)}>
-      <svg viewBox={`0 0 ${size} ${size}`} className="h-full w-full -rotate-90" aria-hidden>
-        <circle cx={c} cy={c} r={R} fill="none" strokeWidth={stroke} style={{ stroke: 'rgb(var(--cream-100))' }} />
-        <circle cx={c} cy={c} r={R} fill="none" strokeWidth={stroke} strokeLinecap="round"
-          strokeDasharray={C} strokeDashoffset={C * (1 - pct)}
-          style={{ stroke: over ? 'rgb(var(--danger))' : color }} />
-      </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className={cx('font-bold leading-none tabular-nums text-fg', size > 100 ? 'text-title sm:text-kpi' : 'text-ui sm:text-lead')}>{remaining}</span>
-        <span className={cx('mt-0.5 text-micro leading-none', over ? 'text-danger' : 'text-fg-muted')}>{over ? 'over' : label}</span>
-      </div>
-    </div>
+    <ProgressRing value={target > 0 ? consumed / target : 0} size={size} stroke={stroke} ready={ready}
+      color={over ? 'rgb(var(--danger))' : color} className={sizeClass}>
+      <AnimatedNumber value={remaining} ready={ready} className={cx('font-bold leading-none text-fg', size > 100 ? 'text-title sm:text-kpi' : 'text-ui sm:text-lead')} />
+      <span className={cx('mt-0.5 text-micro leading-none', over ? 'text-danger' : 'text-fg-muted')}>{over ? 'over' : label}</span>
+    </ProgressRing>
   )
 }
 
@@ -100,6 +90,8 @@ export function FoodTodayTab({ date }: { date: string }) {
   const [coachOpen, setCoachOpen] = useState(false)   // phone-only collapse
   // "As meal" groups expanded to their individual items (collapsed by default).
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
+  // A food logged while the day is open rises in (the "More" animations).
+  const fresh = useNewIds((nut?.meals ?? []).map(m => m.id), date, nut != null)
 
   // The goal lives in the shared `day-targets` popup (draft → Save), shown
   // by GoalSummary. The Coach's "Apply" buttons stay one deliberate tap that
@@ -152,7 +144,7 @@ export function FoodTodayTab({ date }: { date: string }) {
     ].filter(Boolean).join(' · ')
     const nameBtn = (
       <button type="button" onClick={onOpen} className="flex min-h-[44px] min-w-0 flex-1 items-center gap-1.5 text-left transition-colors hover:text-accent-600">
-        <span className={cx('truncate', planned ? 'italic text-fg-muted' : 'text-fg')}>{name}</span>
+        <Truncate className={planned ? 'italic text-fg-muted' : 'text-fg'}>{name}</Truncate>
         {planned && PLANNED_PILL}
       </button>
     )
@@ -165,7 +157,7 @@ export function FoodTodayTab({ date }: { date: string }) {
     )
     const num = 'text-meta tabular-nums text-right text-fg-muted'
     return (
-      <li key={meal.id} className={indent ? 'bg-surface-2/60' : undefined}>
+      <li key={meal.id} className={cx(indent && 'bg-surface-2/60', fresh.has(meal.id) && 'motion-row-in')}>
         {/* Narrow card: name + actions, macro line underneath */}
         <div className="@[40rem]:hidden">
           <div className={cx('flex items-center gap-1 text-body', indent ? 'pl-9 pr-2' : 'pl-4 pr-2')}>
@@ -201,12 +193,12 @@ export function FoodTodayTab({ date }: { date: string }) {
       group.fiber_g > 0 && `${group.fiber_g}g fiber`,
     ].filter(Boolean).join(' · ')
     return (
-      <li key={group.groupId}>
+      <li key={group.groupId} className={group.items.some(m => fresh.has(m.id)) ? 'motion-row-in' : undefined}>
         <div className="flex items-center pr-2 transition-colors hover:bg-surface-hover">
         <button type="button" onClick={() => toggleGroup(group.groupId)} aria-expanded={expanded}
           className="flex min-h-[44px] min-w-0 flex-1 items-center gap-2 py-1 pl-4 text-left text-body">
           <ChevronRight aria-hidden className={cx('h-4 w-4 shrink-0 text-fg-faint transition-transform', expanded && 'rotate-90')} />
-          <span className="min-w-0 flex-1 truncate text-fg">{group.title}</span>
+          <Truncate className="flex-1 text-fg">{group.title}</Truncate>
           <span className="count-badge shrink-0">{group.items.length} items</span>
           <span className="hidden shrink-0 text-meta tabular-nums text-fg-muted @[40rem]:inline">{totals}</span>
           <span className="shrink-0 text-meta tabular-nums text-fg-muted @[40rem]:hidden">{group.calories} kcal</span>
@@ -235,12 +227,12 @@ export function FoodTodayTab({ date }: { date: string }) {
           <GoalSummary date={date} className="-mt-2 mb-2" />
           <div className="flex flex-wrap items-center gap-4 sm:gap-5">
             <Ring consumed={consumed} target={targets.calories} size={134} stroke={11} color={MACRO_COLOR.calories}
-              label="kcal left" sizeClass="h-[104px] w-[104px] sm:h-[128px] sm:w-[128px]" />
+              label="kcal left" sizeClass="h-[104px] w-[104px] sm:h-[128px] sm:w-[128px]" ready={nut != null} />
             <Ring consumed={protein} target={targets.protein} size={92} stroke={9} color={MACRO_COLOR.protein}
-              label="g left" sizeClass="h-[88px] w-[88px]" />
+              label="g left" sizeClass="h-[88px] w-[88px]" ready={nut != null} />
             <div className="min-w-[10rem] flex-1">
               <p className="text-body text-fg-muted tabular-nums">
-                <strong className="text-title font-bold text-fg">{consumed}</strong> / {targets.calories} kcal
+                <AnimatedNumber value={consumed} ready={nut != null} className="text-title font-bold text-fg" /> / {targets.calories} kcal
               </p>
               <p className="mt-0.5 text-meta tabular-nums">
                 {proteinHit
@@ -276,7 +268,7 @@ export function FoodTodayTab({ date }: { date: string }) {
             className="-my-2 flex min-h-[44px] w-full items-center gap-2.5 text-left sm:hidden">
             <span aria-hidden className="grid h-7 w-7 shrink-0 place-items-center rounded-control bg-accent-50 text-accent-600"><Brain className="h-4 w-4" /></span>
             <span className="section-label flex-1">Coach</span>
-            <span className="truncate text-meta tabular-nums text-fg-muted">{coachSummary}</span>
+            <Truncate className="text-meta tabular-nums text-fg-muted">{coachSummary}</Truncate>
             <ChevronRight aria-hidden className={cx('h-4 w-4 shrink-0 text-fg-faint transition-transform', coachOpen && 'rotate-90')} />
           </button>
           <CardHeader title="Coach" variant="label" icon={<Brain />} className="hidden sm:flex" />

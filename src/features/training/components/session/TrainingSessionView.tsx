@@ -1,4 +1,4 @@
-import { useMemo, type ReactNode } from 'react'
+import { useEffect, useMemo, type ReactNode } from 'react'
 import { CalendarPlus } from 'lucide-react'
 import { ModalShell } from '../../../../shared/modals'
 import { Button, SkeletonText, TonePill } from '../../../../shared/ui'
@@ -8,6 +8,7 @@ import { useCurrentProgramRoutines } from '../../hooks/useAthleteProfile'
 import { useSessionAnchor, useSessionDay, type SessionRequest } from '../../hooks/useTrainingSessionDetail'
 import { matchRoutineToPlan } from '../../plan/nextSession'
 import { openPlanRoutine } from '../../planTraining'
+import { rememberShownWorkout } from '../../sessionLinks'
 import { PLAN_TONE, WORKOUT_TONE, type CalendarPlanItem } from '../calendar/calendarModel'
 import { planRoutineId, planStartHHMM, workoutStartHHMM } from '../calendar/calendarSessions'
 import {
@@ -44,6 +45,11 @@ export function TrainingSessionView({ request, onClose }: { request: SessionRequ
   const routinesQ = useHevyRoutines()
   const { data: program } = useCurrentProgramRoutines()
   const date = anchor.date
+
+  // So a popup opened from here (the Apple workout) can recognise this one as
+  // the same session even when it was opened from a plan (sessionLinks.ts).
+  const shownWorkoutId = resolved?.kind === 'workout' ? resolved.workoutId : null
+  useEffect(() => { rememberShownWorkout(request, shownWorkoutId) }, [request, shownWorkoutId])
 
   const planItem = resolved?.kind === 'plan' ? resolved.plan : null
   const workout = resolved?.kind === 'workout' ? workoutQ.data ?? null : null

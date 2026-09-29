@@ -23,11 +23,15 @@ export interface NewDraft extends DraftFields {
   start: PageContext | null
   /** Append the automatic page context on save. */
   attachContext: boolean
+  /** Date.now() of the last change the user made (0 = never). Decides which tab's copy wins. */
+  touchedAt: number
 }
 
 export interface EditDraft extends DraftFields {
   /** The row's updated_at when editing began (the draft was made against it). */
   baseUpdatedAt: string
+  /** Date.now() of the last change (0 for a seed built from the saved row). */
+  touchedAt: number
 }
 
 export type ComposerTarget = { kind: 'new' } | { kind: 'edit'; id: string }
@@ -59,11 +63,14 @@ export interface PromptState {
   ids: string[]
   text: string
   edited: boolean
+  touchedAt: number
 }
 
 export interface PersistedDraftState {
   newDraft: NewDraft
   editDrafts: Record<string, EditDraft>
+  /** When an edit draft was saved, discarded or pruned (id → Date.now()), so another tab's older copy can't bring it back. */
+  clearedEdits: Record<string, number>
   composer: ComposerState
   drawer: DrawerPrefs
   prompt: PromptState
@@ -72,12 +79,17 @@ export interface PersistedDraftState {
 export const EMPTY_FIELDS: DraftFields = { title: '', description: '', page: 'other', category: 'feature', priority: 'medium', effort: '' }
 
 export const DEFAULT_STATE: PersistedDraftState = {
-  newDraft: { ...EMPTY_FIELDS, start: null, attachContext: true },
+  newDraft: { ...EMPTY_FIELDS, start: null, attachContext: true, touchedAt: 0 },
   editDrafts: {},
+  clearedEdits: {},
   composer: { open: false, minimized: false, tab: 'request', target: { kind: 'new' }, pos: null },
   drawer: { categories: [], sortMode: 'manual', showDone: false, newFormOpen: false, editingId: null, selecting: false, picked: [] },
-  prompt: { ids: [], text: '', edited: false },
+  prompt: { ids: [], text: '', edited: false, touchedAt: 0 },
 }
+
+/** How many unsaved edits are kept (the most recently touched win). */
+export const MAX_EDIT_DRAFTS = 50
+const MAX_CLEARED = 200
 
 /** The saved row as an edit draft's starting point. */
 export function draftFromRow(row: Pick<DevRequest, 'title' | 'description' | 'page' | 'category' | 'priority' | 'effort' | 'updated_at'>): EditDraft {
@@ -89,6 +101,7 @@ export function draftFromRow(row: Pick<DevRequest, 'title' | 'description' | 'pa
     priority: row.priority,
     effort: row.effort ?? '',
     baseUpdatedAt: row.updated_at,
+    touchedAt: 0,
   }
 }
 
@@ -154,10 +167,17 @@ export function sanitizeDraftState(raw: unknown): PersistedDraftState {
   const nd = isObj(raw.newDraft) ? raw.newDraft : {}
   const edits: Record<string, EditDraft> = {}
   if (isObj(raw.editDrafts)) {
-    for (const [id, v] of Object.entries(raw.editDrafts).slice(0, 50)) {
-      if (!isObj(v) || !id) continue
-      edits[id] = { ...fields(v), baseUpdatedAt: str(v.baseUpdatedAt, '', 60) }
-    }
+    // The most recently touched ones when there are too many (entry order is
+    // the order they were first created, not how fresh they are).
+    const valid = Object.entries(raw.editDrafts)
+      .filter((e): e is [string, Record<string, unknown>] => !!e[0] && isObj(e[1]))
+      .map(([id, v]) => [id, { ...fields(v), baseUpdatedAt: str(v.baseUpdatedAt, '', 60), touchedAt: stamp(v.touchedAt) }] as const)
+    for (const [id, d] of newest(valid, MAX_EDIT_DRAFTS, ([, d]) => d.touchedAt)) edits[id] = d
+  }
+  const cleared: Record<string, number> = {}
+  if (isObj(raw.clearedEdits)) {
+    const valid = Object.entries(raw.clearedEdits).filter((e): e is [string, number] => !!e[0] && e[0].length < 100 && finite(e[1]) && e[1] > 0)
+    for (const [id, t] of newest(valid, MAX_CLEARED, ([, t]) => t)) cleared[id] = t
   }
   const c = isObj(raw.composer) ? raw.composer : {}
   const target = isObj(c.target) && c.target.kind === 'edit' && typeof c.target.id === 'string' && c.target.id
@@ -168,8 +188,9 @@ export function sanitizeDraftState(raw: unknown): PersistedDraftState {
   const p = isObj(raw.prompt) ? raw.prompt : {}
   const categories = Array.isArray(dr.categories) ? [...new Set(dr.categories.filter((x): x is DevRequestCategory => CATEGORIES.includes(x as DevRequestCategory)))] : []
   return {
-    newDraft: { ...fields(nd), start: pageContext(nd.start), attachContext: bool(nd.attachContext, true) },
+    newDraft: { ...fields(nd), start: pageContext(nd.start), attachContext: bool(nd.attachContext, true), touchedAt: stamp(nd.touchedAt) },
     editDrafts: edits,
+    clearedEdits: cleared,
     composer: {
       open: bool(c.open, false),
       minimized: bool(c.minimized, false),
@@ -186,8 +207,72 @@ export function sanitizeDraftState(raw: unknown): PersistedDraftState {
       selecting: bool(dr.selecting, false),
       picked: ids(dr.picked),
     },
-    prompt: { ids: ids(p.ids), text: str(p.text, '', 100000), edited: bool(p.edited, false) },
+    prompt: { ids: ids(p.ids), text: str(p.text, '', 100000), edited: bool(p.edited, false), touchedAt: stamp(p.touchedAt) },
   }
+}
+
+const stamp = (v: unknown) => (finite(v) && v > 0 ? v : 0)
+
+/** The `max` entries with the largest `key`, in their original order. */
+function newest<T>(list: readonly T[], max: number, key: (x: T) => number): T[] {
+  if (list.length <= max) return [...list]
+  const keep = new Set([...list].sort((a, b) => key(b) - key(a)).slice(0, max))
+  return list.filter(x => keep.has(x))
+}
+
+// ── Two tabs, one draft ───────────────────────────────────────────────────────
+
+/** The parts of the state that hold what the user typed (the rest is per-tab UI). */
+export type DraftContent = Pick<PersistedDraftState, 'newDraft' | 'editDrafts' | 'clearedEdits' | 'prompt'>
+
+/**
+ * Combines this tab's drafts with what another tab just wrote. Per draft the
+ * later change wins — typing, a reset after a save, or a clear — so a tab that
+ * was loaded earlier can never write its older copy over newer text. Ties keep
+ * `local`. Returns `local` itself (same reference) when nothing changes.
+ */
+export function mergeDraftContent(local: DraftContent, incoming: DraftContent): DraftContent {
+  const newDraft = incoming.newDraft.touchedAt > local.newDraft.touchedAt ? incoming.newDraft : local.newDraft
+  const prompt = incoming.prompt.touchedAt > local.prompt.touchedAt ? incoming.prompt : local.prompt
+  const editDrafts: Record<string, EditDraft> = {}
+  const clearedEdits: Record<string, number> = {}
+  const allIds = new Set([
+    ...Object.keys(local.editDrafts), ...Object.keys(incoming.editDrafts),
+    ...Object.keys(local.clearedEdits), ...Object.keys(incoming.clearedEdits),
+  ])
+  for (const id of allIds) {
+    const a = local.editDrafts[id]
+    const b = incoming.editDrafts[id]
+    const draft = a && b ? (b.touchedAt > a.touchedAt ? b : a) : a ?? b
+    const cleared = Math.max(local.clearedEdits[id] ?? 0, incoming.clearedEdits[id] ?? 0)
+    // A draft from before the change stamps (touchedAt 0) survives unless cleared.
+    if (draft && (cleared === 0 || draft.touchedAt > cleared)) editDrafts[id] = draft
+    else if (cleared > 0) clearedEdits[id] = cleared
+  }
+  const merged = { newDraft, prompt, editDrafts, clearedEdits }
+  return sameDraftContent(merged, local) ? local : merged
+}
+
+/** True when two states hold the same drafts (compared by their change stamps). */
+export function sameDraftContent(a: DraftContent, b: DraftContent): boolean {
+  const sameMap = <T>(x: Record<string, T>, y: Record<string, T>, v: (t: T) => unknown) => {
+    const kx = Object.keys(x)
+    return kx.length === Object.keys(y).length && kx.every(k => k in y && v(x[k]) === v(y[k]))
+  }
+  return a.newDraft.touchedAt === b.newDraft.touchedAt
+    && a.prompt.touchedAt === b.prompt.touchedAt
+    && sameMap(a.editDrafts, b.editDrafts, d => d.touchedAt)
+    && sameMap(a.clearedEdits, b.clearedEdits, t => t)
+}
+
+/**
+ * Edit drafts whose request is gone (deleted here or on another device).
+ * Only drafts last touched before the list was fetched count: a newer draft
+ * may belong to a request created after that fetch.
+ */
+export function orphanEditDrafts(editDrafts: Record<string, EditDraft>, existingIds: readonly string[], listFetchedAt: number): string[] {
+  const exists = new Set(existingIds)
+  return Object.entries(editDrafts).filter(([id, d]) => !exists.has(id) && d.touchedAt < listFetchedAt).map(([id]) => id)
 }
 
 function structuredCopy(s: PersistedDraftState): PersistedDraftState {

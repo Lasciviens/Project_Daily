@@ -3,6 +3,7 @@ import { CollapsibleCard } from './CollapsibleCard'
 import { posterUrl } from '../../../integrations/tmdb/client'
 import type { MediaType, UserMovieEntry, UserTVEntry } from '../types'
 import { fmtDateEnGB } from '../../../shared/utils/enGBDate'
+import { Truncate } from '../../../shared/ui'
 
 interface Props {
   movieEntries: UserMovieEntry[]
@@ -94,7 +95,7 @@ export function ReleaseCalendar({ movieEntries, tvEntries, onOpenDetail }: Props
               >
                 <img src={posterUrl(item.poster, 'w92')} alt="" className="h-14 w-9 shrink-0 rounded-md bg-surface-2 object-cover" />
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-body font-medium text-fg">{item.title}</span>
+                  <Truncate className="text-body font-medium text-fg">{item.title}</Truncate>
                   <span className="flex items-center gap-1 text-meta text-fg-muted tabular-nums">
                     {item.type === 'movie' ? <Film aria-hidden className="h-3 w-3" /> : <Tv aria-hidden className="h-3 w-3" />}
                     {item.dateLabel}

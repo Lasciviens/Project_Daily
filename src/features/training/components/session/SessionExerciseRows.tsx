@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { formatSet } from '../../setFormat'
+import { formatSet, rpeSuffix } from '../../setFormat'
 import type { TopSet } from '../../workoutSessionStats'
 import type { HevyWorkoutExercise } from '../../types.hevy'
 import { ExerciseRow } from './ExerciseRow'
@@ -8,7 +8,7 @@ import { SetTable } from './SetTable'
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
 
 /** A logged workout's exercises, one collapsed line each ("3 sets · top
- *  87.5 kg × 8"); a tap shows that exercise's notes and every set. */
+ *  87.5 kg × 8 @ RPE 8.5"); a tap shows that exercise's notes and every set. */
 export function SessionExerciseRows({ exercises, topSets }: { exercises: readonly HevyWorkoutExercise[]; topSets: readonly TopSet[] }) {
   const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set())
   const toggle = (id: string) => setOpen(prev => {
@@ -29,7 +29,7 @@ export function SessionExerciseRows({ exercises, topSets }: { exercises: readonl
         const meta = [
           plural(working, 'set'),
           warmups > 0 ? `+${warmups} warm-up` : null,
-          top ? `top ${formatSet(top.set, top.type)}` : null,
+          top ? `top ${formatSet(top.set, top.type)}${rpeSuffix(top.set.rpe)}` : null,
         ].filter(Boolean).join(' · ')
         return (
           <ExerciseRow key={ex.id} title={ex.title} templateId={ex.exercise_template_id} meta={meta} open={open.has(ex.id)} onToggle={() => toggle(ex.id)}>

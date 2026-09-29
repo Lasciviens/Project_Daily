@@ -63,7 +63,7 @@
        series never reads as "selected". Read via useChartColors(). */
     --chart-1: 13 148 136;   /* teal   */
     --chart-2: 124 58 237;   /* violet */
-    --chart-3: 217 119 6;    /* amber  */
+    --chart-3: 210 60 200;   /* magenta — no status tone uses this hue (it was amber = --warn) */
     --chart-4: 225 29 72;    /* rose   */
     --chart-5: 101 163 13;   /* lime   */
     --chart-6: 100 116 139;  /* slate  */
@@ -125,7 +125,7 @@
 
     --chart-1: 45 212 191;
     --chart-2: 167 139 250;
-    --chart-3: 251 191 36;
+    --chart-3: 240 164 240;  /* magenta (was amber = --star) */
     --chart-4: 251 113 133;
     --chart-5: 163 230 53;
     --chart-6: 148 163 184;
@@ -301,9 +301,11 @@
   .section-label { @apply text-micro font-semibold uppercase tracking-[0.09em] text-fg-muted; }
 
   /* Chips, badges and pill tabs. */
+  /* max-w-full + overflow-hidden: a long label stops at its box instead of
+     running out of it; put the label in <Truncate> for the ellipsis + reveal. */
   .chip {
     @apply inline-flex items-center gap-1 rounded-full border border-line bg-surface-2 px-2 py-px
-           text-[11.5px] font-medium text-fg-2 whitespace-nowrap;
+           text-[11.5px] font-medium text-fg-2 whitespace-nowrap max-w-full min-w-0 overflow-hidden;
   }
   .count-badge {
     @apply inline-flex items-center justify-center min-w-[22px] h-[22px] px-[7px] rounded-full
@@ -328,7 +330,7 @@
   }
   .seg-btn {
     @apply min-h-[36px] rounded-[9px] px-3 text-body font-semibold text-fg-muted transition-colors duration-100
-           [@media(pointer:coarse)]:min-h-[40px];
+           [@media(pointer:coarse)]:min-h-[44px];
   }
   .seg-btn.is-active, .seg-btn[aria-selected='true'], .seg-btn[aria-pressed='true'], .seg-btn[aria-checked='true'] {
     @apply bg-surface text-fg;
@@ -468,6 +470,22 @@ html[data-vt-dir='back'] ::view-transition-new(root) {
   }
 }
 
+/* The request composer (window, phone dock, pill or pick bar — one at a
+   time) stays put like the chrome while the page slides under it. */
+.vt-pin-composer { view-transition-name: dev-request-composer; }
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(dev-request-composer),
+  ::view-transition-new(dev-request-composer) { animation: none !important; }
+}
+
+/* While the composer's minimised pill sits above the phone tab bar
+   (ComposerPill sets the attribute on phones only), <main> keeps that strip
+   free, so a page's last row — or Shop's docked assistant bar — never ends
+   up under it: the usual tab-bar space + the pill (44px) and its gaps. */
+html[data-dev-request-pill] main[data-app-scroller] {
+  padding-bottom: calc(var(--app-tabbar-h) + env(safe-area-inset-bottom) + 16px + 60px);
+}
+
 /* ── Entrance animations (all engines) ─────────────────────────────────────
    The View Transitions slides above only exist on Chromium + Safari 18+.
    On anything older (incl. iOS 17 Safari/PWA) route changes were INSTANT —
@@ -587,6 +605,7 @@ select:focus-visible,
   display: inline-flex; align-items: center; gap: 4px;
   padding: 1px 8px; border-radius: 999px;
   font-size: 11.5px; font-weight: 600; line-height: 18px; white-space: nowrap;
+  max-width: 100%; min-width: 0; overflow: hidden; /* never runs out of its box (see .chip) */
   background: rgb(var(--tone-soft, var(--neutral-soft)));
   color: rgb(var(--tone-fg, var(--neutral-fg)));
 }
@@ -605,4 +624,77 @@ select:focus-visible,
 /* Hover styles stick on touch screens; everything above uses @media (hover). */
 @media (prefers-reduced-motion: reduce) {
   .skeleton { animation: none; }
+}
+
+/* ── Motion test set — Settings → Appearance → Animations: More ────────────
+   (THEME.md §7). Everything here only runs under html[data-motion='extra']
+   (stamped by index.html + the theme store) and never under reduced motion.
+   Outside @layer: html[data-motion] and the classes some of these target are
+   set at runtime, which Tailwind would tree-shake from a layer. JS-driven
+   motion (AnimatedNumber, ProgressRing) checks useMotion() instead. */
+@media (hover: hover) {
+  html[data-motion='extra'] .card-interactive {
+    transition: box-shadow 180ms ease, transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  html[data-motion='extra'] .card-interactive:hover { transform: translateY(-2px); }
+  html[data-motion='extra'] .card-interactive:active { transform: translateY(-1px) scale(0.99); }
+}
+
+/* A row that was just added (useNewIds) rises in; the rest of the list stays still. */
+@keyframes motion-row-in {
+  from { opacity: 0; transform: translateY(6px); }
+}
+html[data-motion='extra'] .motion-row-in { animation: motion-row-in 260ms cubic-bezier(0.22, 0.9, 0.3, 1) both; }
+
+/* Task completion: the circle pops, the check draws itself, the strike fades in. */
+@keyframes motion-check-pop {
+  0%   { transform: scale(1); }
+  45%  { transform: scale(1.18); }
+  100% { transform: scale(1); }
+}
+@keyframes motion-check-draw {
+  from { stroke-dashoffset: 24; }
+  to   { stroke-dashoffset: 0; }
+}
+@keyframes motion-strike-in {
+  from { text-decoration-color: transparent; }
+}
+html[data-motion='extra'] .motion-check-pop { animation: motion-check-pop 340ms cubic-bezier(0.34, 1.56, 0.64, 1); }
+html[data-motion='extra'] .motion-check-pop svg path {
+  stroke-dasharray: 24;
+  animation: motion-check-draw 260ms 70ms ease-out both;
+}
+html[data-motion='extra'] .motion-strike-in { animation: motion-strike-in 320ms ease-out both; }
+
+/* A toast leaving fades instead of vanishing (Toaster keeps it 150ms). */
+@keyframes motion-toast-out {
+  to { opacity: 0; transform: translateY(4px) scale(0.98); }
+}
+html[data-motion='extra'] .motion-toast-out { animation: motion-toast-out 150ms ease-in both; pointer-events: none; }
+
+/* The <Truncate> bubble fades in (opacity only — floating-ui positions it with transform). */
+@keyframes motion-fade-in {
+  from { opacity: 0; }
+}
+html[data-motion='extra'] .motion-pop-in { animation: motion-fade-in 120ms ease-out; }
+
+/* ── Reduced motion, everywhere ────────────────────────────────────────────
+   The OS setting always wins: it switches off the test set above AND the base
+   motion that used to run anyway — popup/drawer slides (Tailwind transition
+   classes), the tab-bar pop, the toast entrance, press scales. Durations go
+   to ~0 rather than none so transitionend-driven code (Headless UI) still
+   finishes. The loading spinner keeps turning: it is status, not decoration. */
+@media (prefers-reduced-motion: reduce) {
+  *:not(.animate-spin),
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    animation-delay: 0ms !important;
+    transition-duration: 0.01ms !important;
+    transition-delay: 0ms !important;
+    scroll-behavior: auto !important;
+  }
+  html[data-motion='extra'] .card-interactive:hover,
+  html[data-motion='extra'] .card-interactive:active { transform: none; }
 }

@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { CalendarPlus, Gamepad2 } from 'lucide-react'
 import { Cell, CellHeader, CellLink } from './cellKit'
+import { Truncate } from '../../../../shared/ui'
 import { usePlayQueue } from '../../../games/hooks/useGames'
 import { useEntityModal } from '../../../../shared/modals'
 import type { QueueGame } from '../../../games/types'
@@ -38,10 +39,10 @@ export function GamesCard({ date }: { date: string }) {
                 </div>
               )}
               <div className="min-w-0 flex-1">
-                <p className="truncate text-body font-semibold text-fg">
+                <Truncate as="p" fullText={`${i + 1}. ${g.title}`} className="text-body font-semibold text-fg">
                   <span className="mr-1 font-normal tabular-nums text-fg-muted">{i + 1}.</span>{g.title}
-                </p>
-                {g.series_name && <p className="truncate text-meta text-fg-muted">{g.series_name}</p>}
+                </Truncate>
+                {g.series_name && <Truncate as="p" className="text-meta text-fg-muted">{g.series_name}</Truncate>}
               </div>
               <button
                 type="button"

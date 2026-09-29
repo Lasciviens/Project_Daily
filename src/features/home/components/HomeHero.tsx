@@ -22,13 +22,21 @@ function relativeDay(dateStr: string): string {
   return format(parseISO(dateStr), 'd MMM')
 }
 
-/** Opens a schedule item's editor: one-off blocks route to their task when linked. */
+/** Opens a schedule item the way Daily's agenda does: a training block opens
+ *  as the session (its exercises and targets — changing the plan is behind
+ *  that popup's ⋯); anything else opens its editor, and a one-off block
+ *  routes to its task when linked. */
 function useOpenScheduleItem() {
   const modal = useEntityModal()
-  return (item: { kind: NextUpItem['kind']; id: string }) => {
+  return (item: Pick<NextUpItem, 'kind' | 'id' | 'category' | 'planDate'>) => {
+    if (item.kind === 'calendar') return
+    if (item.category === 'training' && item.planDate) {
+      modal.open({ kind: 'training-session', plan: { kind: item.kind, id: item.id, date: item.planDate } })
+      return
+    }
     // Same headings as Daily's agenda, so one block reads the same everywhere.
     if (item.kind === 'block') modal.open({ kind: 'time-block', id: item.id, config: { heading: 'Edit block' } })
-    else if (item.kind === 'recurring') modal.open({ kind: 'schedule-block', id: item.id, config: { heading: 'Edit recurring block' } })
+    else modal.open({ kind: 'schedule-block', id: item.id, config: { heading: 'Edit recurring block' } })
   }
 }
 

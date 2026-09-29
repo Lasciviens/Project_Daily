@@ -8,6 +8,7 @@ interface Props {
   fields: DraftFields
   onChange: (patch: Partial<DraftFields>) => void
   autoFocusTitle?: boolean
+  titleRef?: Ref<HTMLInputElement>
   descriptionRef?: Ref<HTMLTextAreaElement>
   /** Tailwind classes for the description box (height). */
   descriptionClassName?: string
@@ -16,13 +17,14 @@ interface Props {
 }
 
 /** The request's fields — one editor for the drawer's inline form and the floating composer. */
-export function RequestFields({ fields, onChange, autoFocusTitle, descriptionRef, descriptionClassName, descriptionTools }: Props) {
+export function RequestFields({ fields, onChange, autoFocusTitle, titleRef, descriptionRef, descriptionClassName, descriptionTools }: Props) {
   // A page value from before the dropdown (free text) stays selectable, so
   // saving an old request never silently rewrites it to "other".
   const legacyPage = fields.page && fields.page !== 'other' && !PAGE_OPTIONS.includes(fields.page) ? fields.page : null
   return (
     <div className="flex flex-col gap-2">
       <input
+        ref={titleRef}
         autoFocus={autoFocusTitle}
         value={fields.title}
         onChange={e => onChange({ title: e.target.value })}

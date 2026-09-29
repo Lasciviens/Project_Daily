@@ -1,5 +1,5 @@
 import { ChevronDown, Link2 } from 'lucide-react'
-import { cx } from '../../../shared/ui'
+import { cx, Truncate } from '../../../shared/ui'
 import { relativeTime } from '../../../shared/utils/relativeTime'
 import type { AuditLog } from '../hooks/useLogs'
 import { OP_META, friendlyTable } from './activityLogMeta'
@@ -98,12 +98,12 @@ export function LogRow({ log, expanded, onToggle, nested }: { log: AuditLog; exp
         className="flex min-h-[44px] w-full items-center gap-2.5 px-3 py-2 text-left transition-colors [@media(hover:hover)]:hover:bg-surface-hover"
       >
         <span data-tone={op.tone} className="tone-dot" aria-hidden />
-        <span className="min-w-0 flex-1 truncate text-body text-fg-2">
+        <Truncate className="flex-1 text-body text-fg-2">
           <span className="font-medium text-fg-muted">{log.actor === 'web' ? 'You' : 'AI / sync'}</span>{' '}
           <span data-tone={op.tone} className="tone-text font-medium">{op.verb}</span>{' '}
           {friendlyTable(log.table_name)}{' '}
           <span className="font-semibold text-fg">«{rowLabel(log)}»</span>
-        </span>
+        </Truncate>
         <span className="hidden shrink-0 text-meta tabular-nums text-fg-muted sm:block">{fmtDate(log.created_at)}</span>
         <ChevronDown aria-hidden className={cx('h-4 w-4 shrink-0 text-fg-faint transition-transform', expanded && 'rotate-180')} />
       </button>

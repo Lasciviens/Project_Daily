@@ -21,27 +21,40 @@ const ICON = 'h-4 w-4'
 // sidebar and the page's navigation panel (each can be folded), not the viewport.
 const PILL = '!bg-[var(--tg-panel)]'
 const PILL_COMPACT = '!gap-1.5 !px-2'
+// Tight: a 44px square with the icon alone (the dot still marks a live filter).
+const PILL_TIGHT = '!w-11 !justify-center !px-0 [&_.tg-chev]:hidden'
 const PILL_FULL = 'min-w-[104px]'
 /** Below this the labels no longer fit beside the search field (≈ the full row's natural width). */
 const COMPACT_BELOW = 1100
+/**
+ * Below this even the icon-only row (with the view switch) overflows — an
+ * upright tablet with the page's navigation panel open leaves ≈ 470px. The
+ * view switch then moves into the ⋯ menu and the pills become squares, so
+ * the ⋯ menu always stays in the row.
+ */
+const TIGHT_BELOW = 700
 
-function useCompact(ref: RefObject<HTMLElement | null>): boolean {
-  const [compact, setCompact] = useState(true)
+type Tier = 'full' | 'compact' | 'tight'
+const tierFor = (w: number): Tier => (w < TIGHT_BELOW ? 'tight' : w < COMPACT_BELOW ? 'compact' : 'full')
+
+function useTier(ref: RefObject<HTMLElement | null>): Tier {
+  const [tier, setTier] = useState<Tier>('compact')
   // Measured before paint, so a wide screen never flashes the icon-only pills.
   useLayoutEffect(() => {
     const el = ref.current
     if (!el) return
-    setCompact(el.clientWidth < COMPACT_BELOW)
-    const ro = new ResizeObserver(() => setCompact(el.clientWidth < COMPACT_BELOW))
+    setTier(tierFor(el.clientWidth))
+    const ro = new ResizeObserver(() => setTier(tierFor(el.clientWidth)))
     ro.observe(el)
     return () => ro.disconnect()
   }, [ref])
-  return compact
+  return tier
 }
 
 /**
  * The page's toolbar under the app's top bar, in the game sections: search,
- * random, filters, sort, view switch and the library's ⋯ menu. The page hides
+ * random, filters, sort, view switch (inside the ⋯ menu when the row is
+ * tight) and the library's ⋯ menu. The page hides
  * whatever does nothing in the current section (Sort and the view switch on
  * the queue, which is always a list in play order; Status outside the Library).
  */
@@ -71,9 +84,13 @@ export function TgToolbar({
   const sort = useTestGameStore(s => s.sort)
   const setSort = useTestGameStore(s => s.setSort)
   const barRef = useRef<HTMLDivElement>(null)
-  const compact = useCompact(barRef)
-  const pill = `${PILL} ${compact ? PILL_COMPACT : PILL_FULL}`
+  const tier = useTier(barRef)
+  const compact = tier !== 'full'
+  const tight = tier === 'tight'
+  const pill = `${PILL} ${tight ? PILL_TIGHT : compact ? PILL_COMPACT : PILL_FULL}`
   const gap = compact ? 'gap-1.5' : 'gap-2.5'
+  // The view switch sits in the row unless the row is tight; then the ⋯ menu offers it.
+  const viewsInRow = showViews && !tight
 
   const statusOptions: TgOption<PlayStatus>[] = STATUS_FILTERS.filter(s => s !== 'all').map(s => ({
     value: s as PlayStatus, label: STATUS_TEXT[s], count: statusCounts[s], status: s,
@@ -88,7 +105,7 @@ export function TgToolbar({
   return (
     // The app's top bar above already clears the status bar; the right inset
     // keeps a notch off the ⋯ menu.
-    <div ref={barRef} className={`relative z-10 flex h-14 shrink-0 items-center ${gap} pl-5 pr-[max(1.25rem,env(safe-area-inset-right))] xl:pl-6 xl:pr-[max(1.5rem,env(safe-area-inset-right))]`}>
+    <div ref={barRef} className={`relative z-10 flex h-14 shrink-0 items-center ${gap} ${tight ? 'pl-4 pr-[max(1rem,env(safe-area-inset-right))]' : 'pl-5 pr-[max(1.25rem,env(safe-area-inset-right))]'} xl:pl-6 xl:pr-[max(1.5rem,env(safe-area-inset-right))]`}>
       {showSearch && <TgTopBarSearch className="min-w-[96px] max-w-md flex-1" />}
       {showSearch && <TgRandomButton onPick={onRandom} count={randomCount} className={compact ? '-ml-0.5' : ''} />}
 
@@ -121,7 +138,8 @@ export function TgToolbar({
             icon={<Tags className={ICON} strokeWidth={2} />}
           />
         )}
-        {showGenre && studioOpts.length > 0 && !compact && (
+        {/* Icon-only on a narrow toolbar, like Status and Genre (it used to vanish there). */}
+        {showGenre && studioOpts.length > 0 && (
           <TgMultiDropdown
             values={pickedStudios}
             options={studioOpts}
@@ -130,7 +148,8 @@ export function TgToolbar({
             buttonLabel={multiLabel(pickedStudios, 'All Studios', 'studios')}
             ariaLabel="Filter by developer or publisher"
             align="end"
-            className={`${pill} max-w-[180px]`}
+            className={`${pill} ${compact ? '' : 'max-w-[180px]'}`}
+            compact={compact}
             icon={<Building2 className={ICON} strokeWidth={2} />}
           />
         )}
@@ -150,8 +169,8 @@ export function TgToolbar({
         )}
       </div>
 
-      {showViews && <TgTopBarViews compact={compact} className={`shrink-0 ${compact ? 'ml-1.5' : 'ml-4'}`} />}
-      <TgLibraryMenu className={`-mr-1 ${showSearch || showViews ? (compact ? 'ml-1' : 'ml-2.5') : 'ml-auto'}`} />
+      {viewsInRow && <TgTopBarViews compact={compact} className={`shrink-0 ${compact ? 'ml-1.5' : 'ml-4'}`} />}
+      <TgLibraryMenu views={showViews && tight} className={`-mr-1 ${showSearch || showViews ? (compact ? 'ml-1' : 'ml-2.5') : 'ml-auto'}`} />
     </div>
   )
 }

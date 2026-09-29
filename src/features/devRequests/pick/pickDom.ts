@@ -151,12 +151,13 @@ function areaOf(el: Element): string {
   return ''
 }
 
-// Tabs selected in the same card (or popup, or page), plus toggles pressed
-// among its own siblings (filter chips) — not every pressed toggle on the page.
+// Tabs selected in the same card (or popup, page, navigation bar), plus
+// toggles pressed among its own siblings (filter chips) — never the whole
+// document's: a tab-bar pick used to report Daily's own "Today" tab.
 function selectedNear(el: Element): string[] {
-  const scope = el.closest('section, article, [role="dialog"], main') ?? document.body
+  const scope = el.closest('section, article, [role="dialog"], main, nav, aside, header')
   const found = [
-    ...scope.querySelectorAll('[role="tab"][aria-selected="true"]'),
+    ...(scope?.querySelectorAll('[role="tab"][aria-selected="true"]') ?? []),
     ...(el.parentElement?.querySelectorAll(':scope > [aria-pressed="true"]') ?? []),
   ]
   const out: string[] = []

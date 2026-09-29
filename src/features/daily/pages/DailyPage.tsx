@@ -11,7 +11,7 @@ import { TodaySummary } from '../components/TodaySummary'
 import { TasksPanel } from '../components/TasksPanel'
 import { CalendarDays } from 'lucide-react'
 import { DateNav } from '../../../shared/components/DateNav'
-import { Button, Card, CardHeader, PageContainer, PageHeader, SegmentedControl, TonePill, type SegmentedOption } from '../../../shared/ui'
+import { Button, Card, CardHeader, PageContainer, PageHeader, SegmentedControl, TonePill, type SegmentedOption, Truncate } from '../../../shared/ui'
 import { useTasksByMonth } from '../../todo/hooks/useTodos'
 import { formatLocalDate } from '../../../shared/utils/dateUtils'
 
@@ -228,7 +228,7 @@ function UpcomingActivities({ onPick }: { onPick: (d: Date) => void }) {
                     <li key={t.id} className="flex items-center gap-2 py-0.5 pl-2 text-body text-fg-2">
                       {/* The time column is always reserved so the list keeps one left edge. */}
                       <span className="w-10 shrink-0 text-meta tabular-nums text-fg-muted">{t.due_time?.slice(0, 5) ?? ''}</span>
-                      <span className="truncate">{t.title}</span>
+                      <Truncate>{t.title}</Truncate>
                     </li>
                   ))}
                 </ul>

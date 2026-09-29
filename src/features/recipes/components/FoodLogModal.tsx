@@ -2,7 +2,7 @@ import { useMemo, useState, type ReactNode } from 'react'
 import { Camera, ChevronRight, Globe, Minus, Pencil, Plus, Save, Search, Star, X } from 'lucide-react'
 import { ModalShell } from '../../../shared/modals/ModalShell'
 import { entityModal } from '../../../shared/modals/useEntityModal'
-import { Button, IconButton } from '../../../shared/ui'
+import { Button, IconButton, Truncate } from '../../../shared/ui'
 import { cx } from '../../../shared/ui/cx'
 import { useIngredientLibrary, useCreateIngredientLibraryItem, useUpsertExternalFood } from '../hooks/useIngredientLibrary'
 import {
@@ -340,7 +340,7 @@ export function FoodLogModal({ open = true, onClose, date, defaultSlot, defaultQ
                 return (
                   <div key={`${it.ingredient.id}-${i}`} className="flex min-h-[48px] items-center gap-2">
                     <FoodThumb name={it.ingredient.name} group={it.ingredient.food_group} imageUrl={it.ingredient.image_url} size={32} />
-                    <span className="min-w-0 flex-1 truncate text-body text-fg">{it.ingredient.name}</span>
+                    <Truncate className="flex-1 text-body text-fg">{it.ingredient.name}</Truncate>
                     {it.ingredient.serving_label && sg != null && (
                       <div className="flex shrink-0 items-center">
                         <IconButton label="One less" className="h-9 w-9" onClick={() => setGrams(i, String(Math.max(1, count - 1) * sg))}><Minus /></IconButton>
@@ -486,7 +486,7 @@ export function FoodLogModal({ open = true, onClose, date, defaultSlot, defaultQ
             <button key={r.id} type="button" onClick={() => setPortionRecipe(r)} className="row row-interactive min-h-[56px] px-1 text-left">
               <FoodThumb name={r.title} imageUrl={r.image_url} size={40} />
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-body font-medium text-fg">{r.title}</span>
+                <Truncate className="text-body font-medium text-fg">{r.title}</Truncate>
                 <span className="block text-meta text-fg-muted">Saved meal{r.calories != null && ` · ${Math.round(r.calories)} kcal / portion`}</span>
               </span>
               <span className="shrink-0 text-meta font-semibold text-accent-600">Portion</span>
@@ -496,7 +496,7 @@ export function FoodLogModal({ open = true, onClose, date, defaultSlot, defaultQ
             <button key={r.key} type="button" onClick={() => addRecent(r)} className="row row-interactive min-h-[56px] px-1 text-left">
               <FoodThumb name={r.title} size={40} />
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-body font-medium text-fg">{r.title}</span>
+                <Truncate className="text-body font-medium text-fg">{r.title}</Truncate>
                 <span className="block text-meta text-fg-muted">
                   Logged before{r.calories != null && ` · ${Math.round(r.calories)} kcal`}{r.protein_g != null && ` · ${Math.round(r.protein_g)}g protein`}
                 </span>
@@ -513,7 +513,7 @@ export function FoodLogModal({ open = true, onClose, date, defaultSlot, defaultQ
                 <button type="button" onClick={() => addToBasket(ing)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
                   <FoodThumb name={ing.name} group={ing.food_group} imageUrl={ing.image_url} size={40} />
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-body font-medium text-fg">{ing.name}</span>
+                    <Truncate className="text-body font-medium text-fg">{ing.name}</Truncate>
                     <span className="block text-meta text-fg-muted">
                       {ing.calories != null && `${Math.round(ing.calories)} kcal · 100g`}
                       {ing.serving_label && ` · ${ing.serving_label}`}
@@ -585,7 +585,7 @@ export function FoodLogModal({ open = true, onClose, date, defaultSlot, defaultQ
                           portionRecipe?.id === r.id ? 'border-accent-500 bg-accent-50' : 'border-line bg-surface-2 hover:border-line-strong',
                         )}>
                         <FoodThumb name={r.title} imageUrl={r.image_url} size={36} />
-                        <span className="line-clamp-2 pr-5 text-meta font-medium leading-tight text-fg">{r.title}</span>
+                        <Truncate lines={2} className="pr-5 text-meta font-medium leading-tight text-fg">{r.title}</Truncate>
                         <span className="text-micro normal-case tracking-normal text-fg-muted tabular-nums">
                           {r.calories != null && `${Math.round(r.calories)} kcal`}{r.servings > 1 && ` · ${r.servings} portions`}
                         </span>

@@ -4,10 +4,10 @@ import { useEntityModal } from '../../../../shared/modals'
 import { fmtDateEnGB } from '../../../../shared/utils/enGBDate'
 import { formatDistance } from '../../setFormat'
 import { openPlanSession } from '../../planTraining'
-import { SESSION_STATUS_LABEL, planRefOf } from '../../sessionRef'
+import { SESSION_STATUS_LABEL, coveredPlanNote, planRefOf } from '../../sessionRef'
 import { StravaTypeIcon } from '../StravaIcons'
 import { DayMarkGlyph, StravaBar } from './DayMarkGlyph'
-import { planStartHHMM, sessionPlanNote, workoutStartHHMM, type DaySession, type OpenPlan } from './calendarSessions'
+import { planStartHHMM, workoutStartHHMM, type DaySession, type OpenPlan } from './calendarSessions'
 import { getWorkoutDuration, isDayEmpty, type DayData } from './calendarModel'
 
 type Entry =
@@ -40,14 +40,15 @@ export function DayDetailPanel({ day, dateStr, todayStr }: { day: DayData | null
     <div className="flex flex-col gap-1 border-t border-line pt-3">
       <div className="flex min-h-[36px] flex-wrap items-center justify-between gap-2">
         <p className="text-body font-semibold text-fg">{heading}{dateStr === todayStr && <span className="font-normal text-fg-muted"> · Today</span>}</p>
-        {canPlan && <Button size="sm" variant="ghost" icon={<CalendarPlus />} onClick={() => openPlanSession(dateStr)}>Plan a session</Button>}
+        {canPlan && <Button size="sm" variant="ghost" className="ml-auto" icon={<CalendarPlus />} onClick={() => openPlanSession(dateStr)}>Plan a session</Button>}
       </div>
 
       {entries.map(e => {
         if (e.kind === 'session') {
           const w = e.session.workout
           const dur = getWorkoutDuration(w)
-          const note = sessionPlanNote(e.session)
+          // The same words as the popup this row opens (sessionRef.coveredPlanNote).
+          const note = coveredPlanNote(e.session.plans, w)
           return (
             <ListRow
               key={w.id}

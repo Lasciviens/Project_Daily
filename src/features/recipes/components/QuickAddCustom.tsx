@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Zap } from 'lucide-react'
-import { Button } from '../../../shared/ui'
+import { Button, Truncate } from '../../../shared/ui'
 import { sanitizeDecimal } from './foodLogUtils'
 import { parseQuickAdd } from '../foodSearch'
 
@@ -46,7 +46,7 @@ export function QuickAddCustom({ query, busy, onLog }: Props) {
       <button type="button" onClick={() => setOpen(true)} className="row row-interactive min-h-[52px] px-1 text-left">
         <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-accent-50 text-accent-600"><Zap className="h-4 w-4" aria-hidden /></span>
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-body font-medium text-accent-700">Quick add “{parsed.title}”</span>
+          <Truncate className="text-body font-medium text-accent-700">{`Quick add “${parsed.title}”`}</Truncate>
           <span className="block text-meta text-fg-muted">A one-off line with just calories — no ingredient saved</span>
         </span>
       </button>

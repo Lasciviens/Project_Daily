@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { useAllTasks } from '../../todo/hooks/useTodos'
 import { ToDoItem } from '../../todo/components/ToDoItem'
+import { useNewIds } from '../../../shared/hooks/useNewIds'
 import { completedWithinLast24h } from '../../todo/taskRules'
 import { formatLocalDate } from '../../../shared/utils/dateUtils'
 import { CheckCircle2 } from 'lucide-react'
@@ -12,7 +13,7 @@ import type { Task } from '../../todo/types'
 // ile göster). Groups every active task by due date; ToDoItem already carries
 // the complete checkbox + Cancel (≠ delete) actions.
 
-function Section({ title, tasks, tone }: { title: string; tasks: Task[]; tone: Tone }) {
+function Section({ title, tasks, tone, fresh }: { title: string; tasks: Task[]; tone: Tone; fresh: ReadonlySet<string> }) {
   if (tasks.length === 0) return null
   return (
     <section className="border-t border-line pt-3 first:border-t-0 first:pt-0">
@@ -22,7 +23,7 @@ function Section({ title, tasks, tone }: { title: string; tasks: Task[]; tone: T
         <span className="count-badge">{tasks.length}</span>
       </h3>
       <div className="flex flex-col gap-1">
-        {tasks.map(t => <ToDoItem key={t.id} task={t} />)}
+        {tasks.map(t => <ToDoItem key={t.id} task={t} isNew={fresh.has(t.id)} />)}
       </div>
     </section>
   )
@@ -30,6 +31,7 @@ function Section({ title, tasks, tone }: { title: string; tasks: Task[]; tone: T
 
 export function TasksPanel() {
   const { data: tasks = [], isLoading } = useAllTasks()
+  const fresh = useNewIds(tasks.map(t => t.id), 'all', !isLoading)
   const today = formatLocalDate(new Date())
 
   const g = useMemo(() => {
@@ -72,12 +74,12 @@ export function TasksPanel() {
 
   return (
     <Card className="flex max-w-2xl flex-col gap-3 stagger-in">
-      <Section title="Overdue"       tasks={g.overdue}  tone="danger" />
-      <Section title="Open now"      tasks={g.openNow}  tone="info" />
-      <Section title="Today"         tasks={g.today}    tone="accent" />
-      <Section title="Upcoming"      tasks={g.upcoming} tone="neutral" />
-      <Section title="No date"       tasks={g.noDate}   tone="neutral" />
-      <Section title="Recently done" tasks={g.done}     tone="success" />
+      <Section title="Overdue"       tasks={g.overdue}  tone="danger" fresh={fresh} />
+      <Section title="Open now"      tasks={g.openNow}  tone="info" fresh={fresh} />
+      <Section title="Today"         tasks={g.today}    tone="accent" fresh={fresh} />
+      <Section title="Upcoming"      tasks={g.upcoming} tone="neutral" fresh={fresh} />
+      <Section title="No date"       tasks={g.noDate}   tone="neutral" fresh={fresh} />
+      <Section title="Recently done" tasks={g.done}     tone="success" fresh={fresh} />
     </Card>
   )
 }

@@ -1,4 +1,5 @@
 import { useMemo, type Ref } from 'react'
+import { useLocation } from 'react-router-dom'
 import { Crosshair, Quote } from 'lucide-react'
 import { useDevRequestDrafts } from '../devRequestDraftStore'
 import { countBlocks } from '../devRequestContext'
@@ -7,6 +8,7 @@ import { useDevRequests } from '../hooks/useDevRequests'
 import { discardEditDraft, discardNewDraft, useSaveDevRequestDraft } from '../hooks/useDevRequestDraft'
 import { RequestFields } from '../components/RequestFields'
 import { PageContextToggle } from '../components/PageContextToggle'
+import { pageOptionFor } from '../components/devRequestMeta'
 import type { PageContext } from '../devRequestContext'
 import { Button, Skeleton, cx } from '../../../shared/ui'
 
@@ -15,15 +17,18 @@ interface Props {
   readPage: () => PageContext
   onPick: () => void
   onQuote: (() => void) | null
-  /** Desktop: an Alt-click picks too. */
+  /** With a mouse: an Alt-click picks too. */
   altHint: boolean
   flash: boolean
+  titleRef: Ref<HTMLInputElement>
   descriptionRef: Ref<HTMLTextAreaElement>
-  onDone: () => void
+  /** A save went through (for the request it was made for). */
+  onDone: (saved: ComposerTarget) => void
 }
 
 /** The composer's Request tab: the request's fields, pick tools and save. */
-export function ComposerRequestTab({ target, readPage, onPick, onQuote, altHint, flash, descriptionRef, onDone }: Props) {
+export function ComposerRequestTab({ target, readPage, onPick, onQuote, altHint, flash, titleRef, descriptionRef, onDone }: Props) {
+  const { pathname } = useLocation()
   const { data: requests, isLoading } = useDevRequests()
   const row = target.kind === 'edit' ? requests?.find(r => r.id === target.id) ?? null : null
   const seed = useMemo(() => (row ? draftFromRow(row) : null), [row])
@@ -39,6 +44,7 @@ export function ComposerRequestTab({ target, readPage, onPick, onQuote, altHint,
         <Button size="sm" onClick={() => {
           const s = useDevRequestDrafts.getState()
           s.clearEditDraft(target.id)
+          s.beginNewDraft(readPage(), pageOptionFor(pathname))
           s.openComposer({ kind: 'new' })
         }}>Write a new request</Button>
       </div>
@@ -53,10 +59,13 @@ export function ComposerRequestTab({ target, readPage, onPick, onQuote, altHint,
   }
   const picks = countBlocks(fields.description)
 
+  const done = () => onDone(target)
   function save() {
-    if (target.kind === 'new') saveNew(readPage(), onDone)
-    else saveEdit(target.id, fields, undefined, onDone)
+    if (target.kind === 'new') void saveNew(readPage(), done)
+    else void saveEdit(target.id, fields, undefined, done)
   }
+  // The emptied draft still belongs to the page it is written on.
+  const discardNew = () => discardNewDraft({ start: readPage(), page: pageOptionFor(pathname) })
 
   const tools = (
     <div className="flex flex-wrap items-center gap-1.5">
@@ -77,7 +86,7 @@ export function ComposerRequestTab({ target, readPage, onPick, onQuote, altHint,
         <RequestFields
           fields={fields}
           onChange={onChange}
-          autoFocusTitle={isDraftEmpty(fields)}
+          titleRef={titleRef}
           descriptionRef={descriptionRef}
           descriptionClassName={cx('min-h-[140px] transition-shadow', flash && 'ring-2 ring-accent-500/40')}
           descriptionTools={tools}
@@ -90,10 +99,10 @@ export function ComposerRequestTab({ target, readPage, onPick, onQuote, altHint,
       </div>
       <footer className="flex shrink-0 items-center gap-2 border-t border-line px-3 py-2.5">
         {target.kind === 'new'
-          ? !isDraftEmpty(newDraft) && <Button variant="ghost" size="sm" onClick={discardNewDraft}>Discard</Button>
+          ? !isDraftEmpty(newDraft) && <Button variant="ghost" size="sm" onClick={discardNew}>Discard</Button>
           : editDraft && row && <Button variant="ghost" size="sm" onClick={() => discardEditDraft(row)}>Discard changes</Button>}
         {target.kind === 'edit' && row && (
-          <Button size="sm" disabled={pending} onClick={() => saveEdit(row.id, fields, row.status === 'done' ? 'open' : 'done', onDone)}>
+          <Button size="sm" disabled={pending} onClick={() => void saveEdit(row.id, fields, row.status === 'done' ? 'open' : 'done', done)}>
             {row.status === 'done' ? 'Reopen' : 'Mark done'}
           </Button>
         )}

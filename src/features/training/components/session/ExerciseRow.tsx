@@ -3,14 +3,15 @@ import { ChevronDown, Dumbbell } from 'lucide-react'
 import { cx } from '../../../../shared/ui'
 import { ExerciseThumb } from '../../exerciseMedia'
 
-/** A 32px GIF slot that keeps every row aligned: a quiet placeholder under
+/** A 44px GIF slot that keeps every row aligned: a quiet placeholder under
  *  the thumbnail (which renders nothing when no GIF matches). The GIF is its
- *  own button (tap to enlarge), never nested inside the row's toggle. */
+ *  own button (tap to enlarge), never nested inside the row's toggle — so it
+ *  gets the full 44px tap target. */
 function ThumbSlot({ title, templateId }: { title: string; templateId: string }) {
   return (
-    <span className="relative grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-surface-2 text-fg-faint">
+    <span className="relative grid h-11 w-11 shrink-0 place-items-center rounded-lg bg-surface-2 text-fg-faint">
       <Dumbbell aria-hidden className="h-4 w-4" />
-      <span className="absolute inset-0"><ExerciseThumb title={title} templateId={templateId} size={32} /></span>
+      <span className="absolute inset-0"><ExerciseThumb title={title} templateId={templateId} size={44} /></span>
     </span>
   )
 }
@@ -48,7 +49,7 @@ export function ExerciseRow({ title, templateId, meta, trailing, open, onToggle,
           <ChevronDown aria-hidden className={cx('h-4 w-4 shrink-0 text-fg-faint transition-transform duration-150', open && 'rotate-180')} />
         </button>
       </div>
-      {open && <div className="pb-3 pl-[42px]">{children}</div>}
+      {open && <div className="pb-3 pl-[54px]">{children}</div>}
     </li>
   )
 }

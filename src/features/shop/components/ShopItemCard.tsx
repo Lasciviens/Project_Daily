@@ -1,6 +1,6 @@
 import { ExternalLink, RotateCcw, Check, Sparkles, X } from 'lucide-react'
 import { entityModal } from '../../../shared/modals/useEntityModal'
-import { Card, IconButton, ToneDot, cx } from '../../../shared/ui'
+import { Card, IconButton, ToneDot, Truncate, cx } from '../../../shared/ui'
 import { useUpdateShopItem, useDeleteShopItem } from '../hooks/useShop'
 import { REGION_FLAG, SHOP_PRIORITY_TONE } from '../shopMeta'
 import type { ShopItem } from '../types'
@@ -42,7 +42,7 @@ export function ShopItemCard({ item }: { item: ShopItem }) {
             {item.title}
             {item.source_type === 'ai' && <Sparkles aria-label="Added via AI" className="ml-1.5 inline h-3.5 w-3.5 align-[-2px] text-fg-faint" />}
           </p>
-          {item.notes && <p className="mt-0.5 line-clamp-2 text-meta text-fg-muted">{item.notes}</p>}
+          {item.notes && <Truncate as="p" lines={2} className="mt-0.5 text-meta text-fg-muted">{item.notes}</Truncate>}
         </div>
         {item.region && <span className="shrink-0 text-base leading-none" title={item.region}>{REGION_FLAG[item.region]}</span>}
       </div>

@@ -5,6 +5,7 @@ import { useHistoryDismiss } from '../hooks/useHistoryDismiss'
 import { useSheetDrag } from '../hooks/useSheetDrag'
 import { useBreakpoint } from '../hooks/useBreakpoint'
 import { cx } from '../ui/cx'
+import { Truncate } from '../ui/Truncate'
 
 export interface SideDrawerProps {
   open: boolean
@@ -67,7 +68,7 @@ export function SideDrawer({
         {title != null && (
           <header {...(phone ? handleProps : {})} className="shrink-0 border-b border-line">
             <div className="flex min-h-[56px] items-center gap-2 pl-4 pr-2 sm:pl-5">
-              <DialogTitle className="min-w-0 flex-1 truncate text-title font-semibold text-fg">{title}</DialogTitle>
+              <DialogTitle className="min-w-0 flex-1 text-title font-semibold text-fg"><Truncate>{title}</Truncate></DialogTitle>
               {headerActions}
               <button type="button" onClick={onClose} aria-label="Close" className="icon-btn shrink-0">
                 <X className="h-[18px] w-[18px]" aria-hidden />

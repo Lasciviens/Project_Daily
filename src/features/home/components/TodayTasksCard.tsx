@@ -5,6 +5,7 @@ import { Card, CardHeader, EmptyState, IconButton, Skeleton } from '../../../sha
 import { useTasksForDay, useCreateTask } from '../../todo/hooks/useTodos'
 import { completedWithinLast24h, isOverdue } from '../../todo/taskRules'
 import { ToDoItem } from '../../todo/components/ToDoItem'
+import { useNewIds } from '../../../shared/hooks/useNewIds'
 
 const SHOWN = 5
 
@@ -25,6 +26,7 @@ export function TodayTasksCard() {
     .filter(t => t.status !== 'done')
     .sort((a, b) => Number(isOverdue(b)) - Number(isOverdue(a)))
   const progress = countable.length ? (done / countable.length) * 100 : 0
+  const fresh = useNewIds(data.map(t => t.id), 'today', !isLoading)
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -60,7 +62,7 @@ export function TodayTasksCard() {
         />
       ) : (
         <div className="-mx-3 space-y-0.5">
-          {open.slice(0, SHOWN).map(t => <ToDoItem key={t.id} task={t} />)}
+          {open.slice(0, SHOWN).map(t => <ToDoItem key={t.id} task={t} isNew={fresh.has(t.id)} />)}
         </div>
       )}
       {open.length > SHOWN && (

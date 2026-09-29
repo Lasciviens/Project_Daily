@@ -26,7 +26,6 @@ export const MODAL_REGISTRY: { [K in ModalKind]: Entry<K> } = {
   'day-targets':    L('day-targets', () => import('../../features/daily/modals/DayTargetsEntityModal').then(m => m.DayTargetsEntityModal)),
   'media':          L('media', () => import('../../features/media/modals/MediaEntityModal').then(m => m.MediaEntityModal)),
   'training-session': L('training-session', () => import('../../features/training/modals/TrainingSessionEntityModal').then(m => m.TrainingSessionEntityModal)),
-  'hevy-workout':   L('hevy-workout', () => import('../../features/training/modals/TrainingSessionEntityModal').then(m => m.HevyWorkoutEntityModal)),
   'health-workout': L('health-workout', () => import('../../features/health/modals/HealthWorkoutEntityModal').then(m => m.HealthWorkoutEntityModal)),
   'body-measurement': L('body-measurement', () => import('../../features/health/modals/BodyMeasurementEntityModal').then(m => m.BodyMeasurementEntityModal)),
   'wish':           L('wish', () => import('../../features/wishes/modals/WishEntityModal').then(m => m.WishEntityModal)),

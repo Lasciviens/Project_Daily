@@ -1,14 +1,14 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { Plus, ChevronRight, Trash2, ArrowUpDown, Zap, Sparkles, Check, PenLine } from 'lucide-react'
 import { useUIStore } from '../../../app/store'
 import {
-  useDevRequests, useUpdateDevRequest, useDeleteDevRequest, useBulkDeleteDevRequests, useReorderDevRequests,
+  devRequestsReadFrom, useDevRequests, useUpdateDevRequest, useDeleteDevRequest, useBulkDeleteDevRequests, useReorderDevRequests,
 } from '../hooks/useDevRequests'
 import { discardNewDraft } from '../hooks/useDevRequestDraft'
 import { DEV_REQUEST_STATUS_CYCLE } from '../api/devRequestsApi'
 import { useDevRequestDrafts } from '../devRequestDraftStore'
-import { CATEGORIES, isDraftEmpty, planReorder } from '../devRequestRules'
+import { CATEGORIES, isDraftEmpty, orphanEditDrafts, planReorder } from '../devRequestRules'
 import { descriptionPreview } from '../devRequestContext'
 import { buildClaudePrompt } from '../devRequestPrompt'
 import { DEV_REQUEST_UI_ATTR } from '../pick/pickDom'
@@ -42,7 +42,7 @@ export function DevRequestsDrawer() {
   const phone = useBreakpoint() === 'phone'
   const modal = useEntityModal()
   const readPage = usePageContextReader()
-  const { data: requests = [], isLoading } = useDevRequests()
+  const { data: requests = [], isLoading, isSuccess } = useDevRequests()
   const updateRequest = useUpdateDevRequest()
   const deleteRequest = useDeleteDevRequest()
   const bulkDelete = useBulkDeleteDevRequests()
@@ -56,6 +56,14 @@ export function DevRequestsDrawer() {
   const prompt = useDevRequestDrafts(s => s.prompt)
   const openComposer = useDevRequestDrafts(s => s.openComposer)
   const [draggingId, setDraggingId] = useState<string | null>(null)
+
+  // Unsaved edits of requests deleted elsewhere (another device, the AI)
+  // would otherwise sit in storage for ever.
+  useEffect(() => {
+    if (!isSuccess) return
+    const gone = orphanEditDrafts(editDrafts, requests.map(r => r.id), devRequestsReadFrom())
+    if (gone.length) useDevRequestDrafts.getState().pruneEditDrafts(gone)
+  }, [isSuccess, requests, editDrafts])
 
   const { categories, sortMode, showDone, newFormOpen, editingId, selecting } = prefs
   const picked = new Set(prefs.picked)
@@ -109,13 +117,17 @@ export function DevRequestsDrawer() {
       confirmLabel: 'Delete',
       destructive: true,
     })
-    if (ok) bulkDelete.mutate(closedIds)
+    if (!ok) return
+    const ids = [...closedIds]
+    // Drafts go only once the rows are gone: a failed delete keeps unsaved edits.
+    try { await bulkDelete.mutateAsync(ids) } catch { return }
+    useDevRequestDrafts.getState().pruneEditDrafts(ids)
   }
 
   async function handleDelete(request: DevRequest) {
     const ok = await modal.confirm({ title: `Delete "${request.title}"?`, confirmLabel: 'Delete', destructive: true })
     if (!ok) return
-    deleteRequest.mutate(request.id)
+    try { await deleteRequest.mutateAsync(request.id) } catch { return }
     useDevRequestDrafts.getState().clearEditDraft(request.id)
   }
 
@@ -184,7 +196,9 @@ export function DevRequestsDrawer() {
       )
     }
     if (editingId === request.id) {
-      return <DevRequestEditForm request={request} onClose={() => setDrawer({ editingId: null })} onPopOut={() => popOutEdit(request.id)} />
+      // A save can land after the form moved on to another request: close only this one.
+      const closeEdit = () => { if (useDevRequestDrafts.getState().drawer.editingId === request.id) setDrawer({ editingId: null }) }
+      return <DevRequestEditForm request={request} onClose={closeEdit} onPopOut={() => popOutEdit(request.id)} />
     }
     return (
       <DevRequestCard
@@ -285,7 +299,7 @@ export function DevRequestsDrawer() {
               <span className="block text-meta text-fg-muted">{composerHasNew ? 'In the composer' : 'Unsaved draft'}</span>
               <span className="block truncate text-body font-medium text-fg">{newDraft.title.trim() || descriptionPreview(newDraft.description, 60) || 'Untitled'}</span>
             </span>
-            <Button size="sm" variant="ghost" onClick={discardNewDraft}>Discard</Button>
+            <Button size="sm" variant="ghost" onClick={() => discardNewDraft()}>Discard</Button>
             <Button size="sm" onClick={() => (phone ? setDrawer({ newFormOpen: true }) : popOutNew())}>Continue</Button>
           </div>
         )}

@@ -4,7 +4,7 @@ import { useTimeBlocks } from '../hooks/useSchedule'
 import { useDayData } from '../hooks/useDayData'
 import { useUIStore } from '../../../app/store'
 import { useEntityModal } from '../../../shared/modals'
-import { Button, SectionLabel } from '../../../shared/ui'
+import { Button, SectionLabel, Truncate } from '../../../shared/ui'
 import { formatLocalDate } from '../../../shared/utils/dateUtils'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -62,7 +62,7 @@ export function DayQuickRail({ date, onOpenTasks }: { date: Date; onOpenTasks?: 
         {nextBlock ? (
           <div className="flex items-center gap-3 rounded-row border border-line bg-surface px-3 py-2.5">
             <span className="shrink-0 text-ui font-bold tabular-nums text-accent-600">{nextBlock.start_time?.slice(0, 5)}</span>
-            <span className="truncate text-body text-fg-2">{nextBlock.title}</span>
+            <Truncate className="text-body text-fg-2">{nextBlock.title}</Truncate>
           </div>
         ) : (
           <p className="px-1 text-body text-fg-muted">{today ? 'Nothing more scheduled today.' : 'Nothing scheduled.'}</p>

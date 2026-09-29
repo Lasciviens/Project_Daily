@@ -5,7 +5,7 @@ import { useTasksByWeek } from '../../todo/hooks/useTodos'
 import { useCalendarEventDatesForRange, useCalendarList } from '../../calendar/hooks/useCalendar'
 import { useCalendarStore } from '../../../app/store'
 import { DateNav } from '../../../shared/components/DateNav'
-import { Card, IconButton, ToneDot, TonePill, cx } from '../../../shared/ui'
+import { Card, IconButton, ToneDot, TonePill, cx, Truncate } from '../../../shared/ui'
 import type { Task } from '../../todo/types'
 
 interface Props {
@@ -179,7 +179,7 @@ export function WeekWidget({ onDayClick, highlightDate }: Props) {
             {floatingTasks.slice(0, 5).map(task => (
               <li key={task.id} className="flex items-center gap-2 py-1">
                 <ToneDot tone="accent" className="!h-1.5 !w-1.5" />
-                <span className="truncate text-body text-fg-2">{task.title}</span>
+                <Truncate className="text-body text-fg-2">{task.title}</Truncate>
               </li>
             ))}
           </ul>

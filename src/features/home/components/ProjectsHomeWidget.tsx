@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import { FolderKanban } from 'lucide-react'
-import { Skeleton, EmptyState } from '../../../shared/ui'
+import { Skeleton, EmptyState, Truncate, AnimatedNumber } from '../../../shared/ui'
 import { useProjects, useProjectStats } from '../../projects/hooks/useProjects'
 import type { Project } from '../../projects/types'
 import { PROJECT_COLOR } from '../../projects/projectTones'
@@ -40,7 +40,7 @@ export function ProjectsHomeWidget() {
                 <Link to="/projects" className="-mx-2 block rounded-row px-2 py-1.5 transition-colors duration-100 hover:bg-surface-hover">
                   <span className="mb-1 flex items-center gap-2">
                     <span aria-hidden className="h-2 w-2 shrink-0 rounded-full" style={{ background: PROJECT_COLOR[p.color] }} />
-                    <span className="min-w-0 flex-1 truncate text-body text-fg-2">{p.name}</span>
+                    <Truncate className="flex-1 text-body text-fg-2">{p.name}</Truncate>
                     <span className="shrink-0 text-micro tabular-nums text-fg-muted">{pct == null ? '—' : `${pct}%`}</span>
                   </span>
                   <span className="block h-1 overflow-hidden rounded-full bg-surface-2">
@@ -66,7 +66,7 @@ export function ProjectsTile() {
       icon={<FolderKanban />}
       to="/projects"
       loading={isLoading}
-      value={<>{active.length}<span className="ml-1 text-meta font-medium text-fg-muted">active</span></>}
+      value={<><AnimatedNumber value={active.length} /><span className="ml-1 text-meta font-medium text-fg-muted">active</span></>}
       hint={top ? `${top.name}${pct != null ? ` · ${pct}%` : ''}` : 'None active'}
     />
   )

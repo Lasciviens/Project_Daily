@@ -31,8 +31,10 @@ export function DevRequestNewForm({ onClose, onPopOut }: { onClose: () => void; 
 
   function submit(e: React.FormEvent) {
     e.preventDefault()
-    saveNew(readPage(), onClose)
+    void saveNew(readPage(), onClose)
   }
+  // The form stays open: the emptied draft still belongs to this page.
+  const discard = () => discardNewDraft({ start: readPage(), page: pageOptionFor(pathname) })
 
   return (
     <form onSubmit={submit} className="flex flex-col gap-2 border-b border-line p-3 sm:px-4">
@@ -43,7 +45,7 @@ export function DevRequestNewForm({ onClose, onPopOut }: { onClose: () => void; 
           Add request
         </Button>
         <IconButton label="Pop out — keep writing while you browse" onClick={onPopOut}><PictureInPicture2 /></IconButton>
-        {!isDraftEmpty(draft) && <Button variant="ghost" size="sm" onClick={discardNewDraft}>Discard</Button>}
+        {!isDraftEmpty(draft) && <Button variant="ghost" size="sm" onClick={discard}>Discard</Button>}
         <Button variant="ghost" size="sm" onClick={onClose}>Close</Button>
       </div>
     </form>
@@ -64,7 +66,7 @@ export function DevRequestEditForm({ request, onClose, onPopOut }: { request: De
 
   function submit(e: React.FormEvent) {
     e.preventDefault()
-    saveEdit(request.id, fields, undefined, onClose)
+    void saveEdit(request.id, fields, undefined, onClose)
   }
 
   return (
@@ -78,7 +80,7 @@ export function DevRequestEditForm({ request, onClose, onPopOut }: { request: De
       )}
       <div className="flex flex-wrap items-center gap-2">
         <Button type="submit" variant="primary" size="sm" loading={pending} disabled={!fields.title.trim()}>Save</Button>
-        <Button size="sm" disabled={pending} onClick={() => saveEdit(request.id, fields, isDone ? 'open' : 'done', onClose)}>
+        <Button size="sm" disabled={pending} onClick={() => void saveEdit(request.id, fields, isDone ? 'open' : 'done', onClose)}>
           {isDone ? 'Reopen' : 'Mark done'}
         </Button>
         <IconButton label="Pop out — keep editing while you browse" onClick={onPopOut}><PictureInPicture2 /></IconButton>

@@ -58,7 +58,7 @@ export function HevyWorkoutsList({ onLogWorkout }: { onLogWorkout: () => void })
 
   return (
     <>
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 sm:max-w-[44.5rem]">
+      <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-2">
         <div className="flex flex-wrap gap-3 text-meta text-fg-muted">
           <span><strong className="tabular-nums text-fg">{weekCount}</strong> this week</span>
           <span className="text-fg-faint" aria-hidden>·</span>

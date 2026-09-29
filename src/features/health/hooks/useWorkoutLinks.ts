@@ -3,6 +3,7 @@ import { formatLocalDate, localDayOf } from '../../../shared/utils/dateUtils'
 import { useModalStore, type EntityModalRequest } from '../../../shared/modals'
 import { useHevyWorkoutDetail, useHevyWorkoutsRange } from '../../training/hooks/useHevyWorkouts'
 import { matchHealthWorkout, type TimedWorkout } from '../../training/workoutHealthMatch'
+import { shownWorkoutIdOf } from '../../training/sessionLinks'
 import type { HevyWorkout } from '../../training/types.hevy'
 
 // Health ↔ Training: the Hevy session recorded at the same time as an Apple
@@ -53,9 +54,10 @@ export function trainingSessionRequest(hevyWorkoutId: string): EntityModalReques
   return { kind: 'training-session', workoutId: hevyWorkoutId }
 }
 
-/** Also matches the deprecated `hevy-workout` name for the same popup. */
+/** True when `r` is the Training session popup showing this Hevy workout —
+ *  asked for by id, or opened from a plan that this workout covered. */
 export function isTrainingSessionRequest(r: EntityModalRequest, hevyWorkoutId: string): boolean {
-  return (r.kind === 'training-session' && r.workoutId === hevyWorkoutId) || (r.kind === 'hevy-workout' && r.id === hevyWorkoutId)
+  return r.kind === 'training-session' && shownWorkoutIdOf(r) === hevyWorkoutId
 }
 
 /**

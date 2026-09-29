@@ -1,6 +1,6 @@
 import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
 import { ArrowRight, CalendarPlus, Check, ExternalLink, MapPin, MoreHorizontal, Pencil, Trash2, Undo2, Ban } from 'lucide-react'
-import { ToneDot, TonePill } from '../../../shared/ui'
+import { ToneDot, TonePill, Truncate } from '../../../shared/ui'
 import { resolveWishWindow, wishPeriodLabel } from '../wishRules'
 import { SCHEDULED_TONE, WINDOW_TONE, WISH_PRIORITY_TONE } from '../wishTones'
 import type { WishItem, WishStatus } from '../types'
@@ -30,7 +30,7 @@ export function WishCard({ wish, today, onEdit, onPlan, onStatus, onDelete }: Pr
             {wish.kind === 'place' && <MapPin aria-label="Place" className="mr-1 inline h-3.5 w-3.5 -translate-y-px text-fg-muted" />}
             {wish.title}
           </p>
-          {wish.notes && <p className="mt-0.5 line-clamp-2 text-meta text-fg-muted">{wish.notes}</p>}
+          {wish.notes && <Truncate as="p" lines={2} className="mt-0.5 text-meta text-fg-muted">{wish.notes}</Truncate>}
         </div>
 
         {/* One menu at every width, so phones reach the same actions. */}

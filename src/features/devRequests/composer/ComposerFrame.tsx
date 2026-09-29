@@ -1,11 +1,18 @@
-import type { CSSProperties, HTMLAttributes, ReactNode } from 'react'
+import { useEffect, type CSSProperties, type HTMLAttributes, type Ref } from 'react'
 import { ChevronDown, GripVertical, Minus, PenLine, Sparkles, X } from 'lucide-react'
 import { Button, IconButton, SegmentedControl, cx } from '../../../shared/ui'
 import type { ComposerTab } from '../devRequestRules'
 
 // The composer's chrome: the title bar, the Request | Prompt switch, the
-// minimised pill and the phone's pick bar. Every root carries
-// data-dev-request-ui so picking never captures the composer itself.
+// minimised pill and the touch pick bar. Every root carries
+// data-dev-request-ui so picking never captures the composer itself, and
+// vt-pin-composer (one of them at a time) so a page's view transition slides
+// the page under it while it stays put, like the rest of the chrome.
+// Landmarks (role="region"), not dialogs: nothing about them is modal, and
+// pages treat an open [role=dialog] as owning the keyboard.
+
+/** The classes every composer root carries. */
+export const COMPOSER_ROOT = 'vt-pin-composer'
 
 /** Above the phone tab bar (the installed-iOS short-viewport gap included). */
 export const ABOVE_TABBAR = 'calc(var(--app-tabbar-h) + env(safe-area-inset-bottom) - var(--ios-viewport-gap, 0px))'
@@ -53,23 +60,37 @@ export function ComposerTabs({ tab, onChange }: { tab: ComposerTab; onChange: (t
   )
 }
 
+// While the pill sits above the phone tab bar, <main> keeps that strip free
+// (index.css), so the last row of a page — or Shop's docked assistant bar —
+// never ends up under it.
+const PILL_ATTR = 'data-dev-request-pill'
+
 /** The minimised composer: one tap brings it back. */
-export function ComposerPill({ label, prompt, dirty, phone, onOpen }: {
+export function ComposerPill({ label, prompt, dirty, phone, onOpen, pillRef }: {
   label: string
   prompt: boolean
   dirty: boolean
   phone: boolean
   onOpen: () => void
+  pillRef?: Ref<HTMLButtonElement>
 }) {
+  useEffect(() => {
+    if (!phone) return
+    const root = document.documentElement
+    root.setAttribute(PILL_ATTR, '')
+    return () => root.removeAttribute(PILL_ATTR)
+  }, [phone])
   const style: CSSProperties | undefined = phone ? { bottom: `calc(${ABOVE_TABBAR} + 12px)` } : undefined
   return (
     <button
+      ref={pillRef}
       type="button"
       data-dev-request-ui=""
       onClick={onOpen}
       style={style}
       aria-label={`Open the request composer: ${label}${dirty ? ' (unsaved)' : ''}`}
       className={cx(
+        COMPOSER_ROOT,
         'press-feedback fixed flex min-h-[44px] max-w-[min(18rem,calc(100vw-32px))] items-center gap-2 rounded-full border border-line-strong bg-surface py-2 pl-3.5 pr-4 text-ui font-semibold text-fg shadow-menu',
         phone ? 'right-4 z-chrome' : 'bottom-6 right-6 z-float',
       )}
@@ -81,23 +102,29 @@ export function ComposerPill({ label, prompt, dirty, phone, onOpen }: {
   )
 }
 
-/** Phones pick in two steps: tap to select, then Wider / Use this. */
-export function PhonePickBar({ label, onWider, onUse, onCancel }: {
+/**
+ * Touch screens pick in two steps: tap to select, then Wider / Use this.
+ * Phones show it docked above the tab bar (in place of the composer), touch
+ * tablets inside the composer window.
+ */
+export function PickBar({ label, onWider, onUse, onCancel, docked }: {
   label: string | null
   onWider: () => void
   onUse: () => void
   onCancel: () => void
+  docked: boolean
 }) {
   return (
     <div
       data-dev-request-ui=""
-      role="dialog"
-      aria-modal="false"
-      aria-label="Pick on page"
-      style={{ bottom: `calc(${ABOVE_TABBAR} + 8px)` }}
-      className="fixed inset-x-3 z-float flex flex-col gap-2 rounded-card border border-line-strong bg-surface p-3 shadow-menu"
+      role={docked ? 'region' : undefined}
+      aria-label={docked ? 'Pick on page' : undefined}
+      style={docked ? { bottom: `calc(${ABOVE_TABBAR} + 8px)` } : undefined}
+      className={docked
+        ? cx(COMPOSER_ROOT, 'fixed inset-x-3 z-float flex flex-col gap-2 rounded-card border border-line-strong bg-surface p-3 shadow-menu')
+        : 'flex shrink-0 flex-col gap-2 border-b border-line bg-accent-50 px-3 py-2.5'}
     >
-      <div className="min-w-0">
+      <div className="min-w-0" aria-live="polite">
         <p className="text-meta text-fg-muted">{label ? 'Selected' : 'Tap anything on the page — scrolling still works'}</p>
         {label && <p className="truncate text-body font-semibold text-fg">{label}</p>}
       </div>
@@ -118,8 +145,4 @@ export function PickingBanner({ onStop }: { onStop: () => void }) {
       <Button size="sm" variant="ghost" onClick={onStop}>Stop</Button>
     </div>
   )
-}
-
-export function ComposerBody({ children }: { children: ReactNode }) {
-  return <div className="flex min-h-0 flex-1 flex-col">{children}</div>
 }

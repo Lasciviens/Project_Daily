@@ -20,20 +20,20 @@ export function SetTable({ sets, exerciseType }: { sets: readonly HevySet[]; exe
     <table className="w-full text-meta">
       <thead>
         <tr className="section-label">
-          <th className="w-7 py-1 text-left font-semibold">#</th>
-          <th className="w-9 py-1 text-left font-semibold">Type</th>
-          <th className="py-1 text-left font-semibold">Set</th>
-          {rated && <th className="w-12 py-1 text-right font-semibold">RPE</th>}
+          <th className="w-8 py-1 pr-2 text-left font-semibold">#</th>
+          <th className="w-12 py-1 pr-2 text-left font-semibold">Type</th>
+          <th className="py-1 pr-2 text-left font-semibold">Set</th>
+          {rated && <th className="w-12 py-1 pl-2 text-right font-semibold">RPE</th>}
         </tr>
       </thead>
       <tbody>
         {[...sets].sort((a, b) => a.index - b.index).map(set => (
           <tr key={set.id} className="border-t border-line tabular-nums">
-            <td className="py-1.5 text-fg-muted">{set.index + 1}</td>
-            <td className="py-1.5"><SetTypeBadge type={set.type} /></td>
+            <td className="py-1.5 pr-2 text-fg-muted">{set.index + 1}</td>
+            <td className="py-1.5 pr-2"><SetTypeBadge type={set.type} /></td>
             {/* Per exercise type: kg × reps, seconds, metres, assistance. */}
-            <td className="py-1.5 font-medium text-fg-2">{formatSet(set, exerciseType)}</td>
-            {rated && <td className="py-1.5 text-right text-fg-2">{set.rpe != null && set.rpe > 0 ? formatRpe(set.rpe) : '—'}</td>}
+            <td className="py-1.5 pr-2 font-medium text-fg-2">{formatSet(set, exerciseType)}</td>
+            {rated && <td className="py-1.5 pl-2 text-right text-fg-2">{set.rpe != null && set.rpe > 0 ? formatRpe(set.rpe) : '—'}</td>}
           </tr>
         ))}
       </tbody>

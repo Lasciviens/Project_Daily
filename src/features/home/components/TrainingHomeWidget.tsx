@@ -1,6 +1,6 @@
 import { Dumbbell, ChevronRight } from 'lucide-react'
 import { useEntityModal } from '../../../shared/modals'
-import { Skeleton, EmptyState } from '../../../shared/ui'
+import { Skeleton, EmptyState, Truncate, AnimatedNumber } from '../../../shared/ui'
 import { formatDurationSeconds } from '../../../shared/utils/formatDuration'
 import { useWeekTrainingStats } from '../hooks/useWeekTrainingStats'
 import { useWidgetState } from '../hooks/useWidgetState'
@@ -47,7 +47,7 @@ export function TrainingHomeWidget() {
               className="row row-interactive -mx-3 w-[calc(100%+1.5rem)] border-t border-line text-left"
             >
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-body font-medium text-fg">{w.title}</span>
+                <Truncate className="text-body font-medium text-fg">{w.title}</Truncate>
                 <span className="block text-meta tabular-nums text-fg-muted">
                   Last workout · {stats.lastWorkoutAt ? dayLabel(stats.lastWorkoutAt) : ''}
                   {workoutSeconds ? ` · ${formatDurationSeconds(workoutSeconds)}` : ''}
@@ -70,7 +70,7 @@ export function TrainingTile() {
       icon={<Dumbbell />}
       to="/training"
       loading={stats.isLoading}
-      value={<>{stats.sessions}<span className="ml-1 text-meta font-medium text-fg-muted">this week</span></>}
+      value={<><AnimatedNumber value={stats.sessions} /><span className="ml-1 text-meta font-medium text-fg-muted">this week</span></>}
       hint={stats.lastWorkout ? stats.lastWorkout.title : stats.hasData ? undefined : 'Nothing synced yet'}
     />
   )

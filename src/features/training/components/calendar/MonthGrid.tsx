@@ -9,14 +9,20 @@ const WEEKDAYS = ['M', 'T', 'W', 'T', 'F', 'S', 'S']
 // on a phone the seven days get the width.
 const COLS = 'grid grid-cols-7 @[22rem]:grid-cols-[repeat(7,minmax(0,1fr))_2.75rem]'
 
+/** The week's count: shown from 22rem, while screen readers always get the
+ *  sentence (a name on a plain span is ignored, so it's visually hidden text;
+ *  absolutely positioned, it takes no grid cell). */
 function WeekTotal({ count, target, current }: { count: number; target: number | null; current: boolean }) {
   const met = target != null && target > 0 && count >= target
   return (
-    <span aria-label={current && target ? `${count} of ${target} workouts this week` : `${count} ${count === 1 ? 'workout' : 'workouts'} that week`} className="hidden items-center justify-center text-meta tabular-nums @[22rem]:flex">
-      <span data-tone={met ? 'success' : undefined} className={cx(met ? 'tone-text font-semibold' : count > 0 ? 'font-medium text-fg-2' : 'text-fg-faint')}>
-        {count}{current && target ? <span className="font-normal text-fg-muted">/{target}</span> : null}
+    <>
+      <span className="sr-only">{current && target ? `${count} of ${target} workouts this week` : `${count} ${count === 1 ? 'workout' : 'workouts'} that week`}</span>
+      <span aria-hidden className="hidden items-center justify-center text-meta tabular-nums @[22rem]:flex">
+        <span data-tone={met ? 'success' : undefined} className={cx(met ? 'tone-text font-semibold' : count > 0 ? 'font-medium text-fg-2' : 'text-fg-faint')}>
+          {count}{current && target ? <span className="font-normal text-fg-muted">/{target}</span> : null}
+        </span>
       </span>
-    </span>
+    </>
   )
 }
 
@@ -36,7 +42,7 @@ export function MonthGrid({ weeks, dayByDate, todayStr, currentWeek, selected, o
   weeklyTarget: number | null
 }) {
   return (
-    <div aria-label="Training calendar" className="flex flex-col gap-0.5">
+    <div role="group" aria-label="Training calendar" className="flex flex-col gap-0.5">
       <div aria-hidden className={COLS}>
         {WEEKDAYS.map((d, i) => (
           <span key={i} className="py-1 text-center text-micro font-semibold uppercase text-fg-muted">{d}</span>

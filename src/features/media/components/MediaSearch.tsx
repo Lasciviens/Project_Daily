@@ -3,6 +3,7 @@ import { Loader2, Search } from 'lucide-react'
 import { useSearchMovies, useSearchTV } from '../hooks/useTMDB'
 import { posterUrl } from '../../../integrations/tmdb/client'
 import type { MediaType } from '../types'
+import { Truncate } from '../../../shared/ui'
 
 function useDebounce(value: string, ms: number) {
   const [debounced, setDebounced] = useState(value)
@@ -75,7 +76,7 @@ export function MediaSearch({ mediaType, onSelectResult }: Props) {
             <button key={r.id} type="button" onClick={() => select(r.id)} className="menu-item py-1.5">
               <img src={posterUrl(r.poster, 'w92')} alt="" className="h-12 w-8 shrink-0 rounded-md bg-surface-2 object-cover" />
               <span className="min-w-0">
-                <span className="block truncate text-body font-medium text-fg">{r.title}</span>
+                <Truncate className="text-body font-medium text-fg">{r.title}</Truncate>
                 <span className="block text-meta text-fg-muted tabular-nums">
                   {r.year && `${r.year} · `}★ {r.rating.toFixed(1)}
                 </span>

@@ -202,5 +202,68 @@ console.log('\n10 · Floating window stays on screen')
   check('other keys do nothing', win.nudgeFor('a', false) === null)
 }
 
+console.log('\n11 · Where line says each part once')
+check('unnamed sidebar not repeated', JSON.stringify(ctx.whereParts('sidebar', ['sidebar', 'Main navigation'])) === '["sidebar","Main navigation"]')
+check('"Main navigation" already names the area', JSON.stringify(ctx.whereParts('navigation', ['Main navigation'])) === '["Main navigation"]')
+check('ordinary trail keeps the area', JSON.stringify(ctx.whereParts('page', ['"Nutrition" card'])) === '["page","\\"Nutrition\\" card"]')
+check('no area, no trail → nothing', ctx.whereParts('', []).length === 0)
+check('duplicates in the trail dropped', ctx.whereParts('page', ['"A"', '"A"']).length === 2)
+{
+  const block = ctx.formatCapture({ kind: 'element', page, element: { tag: 'a', role: 'link', name: 'Training', area: 'sidebar', trail: ['sidebar', 'Main navigation'] } })
+  check('sidebar pick reads cleanly', block.includes('Where: sidebar › Main navigation') && !block.includes('sidebar › sidebar'), block)
+}
+
+console.log('\n12 · Two tabs, one draft (newer change wins)')
+{
+  const base = rules.sanitizeDraftState(null)
+  const withNew = (text, t) => ({ ...base, newDraft: { ...base.newDraft, title: text, touchedAt: t } })
+  const typedA = withNew('Typed in tab A', 2000)
+  const staleB = { ...withNew('', 0), drawer: { ...base.drawer, sortMode: 'priority' } }
+  const m1 = rules.mergeDraftContent(typedA, staleB)
+  check('an older copy from another tab never replaces typed text', m1 === typedA && m1.newDraft.title === 'Typed in tab A')
+  check('…and the tab knows the stored copy is behind', !rules.sameDraftContent(typedA, staleB))
+  const m2 = rules.mergeDraftContent(staleB, typedA)
+  check('the stale tab takes the newer text', m2 !== staleB && m2.newDraft.title === 'Typed in tab A')
+  const reset = withNew('', 3000)
+  check('a reset after a save wins over the older text', rules.mergeDraftContent(typedA, reset).newDraft.title === '')
+  check('nothing new → same object (no write loop)', rules.mergeDraftContent(typedA, typedA) === typedA)
+  const edit = (title, t) => ({ title, description: '', page: 'other', category: 'bug', priority: 'low', effort: '', baseUpdatedAt: 'x', touchedAt: t })
+  const a = { ...base, editDrafts: { r1: edit('A edit', 1000) } }
+  const cleared = { ...base, clearedEdits: { r1: 1500 } }
+  check('a clear after the edit removes it in the other tab', !('r1' in rules.mergeDraftContent(a, cleared).editDrafts) && rules.mergeDraftContent(a, cleared).clearedEdits.r1 === 1500)
+  const later = { ...base, editDrafts: { r1: edit('Edited again', 2000) } }
+  check('an edit after the clear survives it', rules.mergeDraftContent(cleared, later).editDrafts.r1.title === 'Edited again')
+  const legacy = { ...base, editDrafts: { r2: edit('From before stamps', 0) } }
+  check('an unstamped (older-version) draft is kept', rules.mergeDraftContent(legacy, base).editDrafts.r2.title === 'From before stamps')
+  const both = rules.mergeDraftContent({ ...base, editDrafts: { r1: edit('old', 100) } }, { ...base, editDrafts: { r1: edit('new', 200), r3: edit('other', 50) } })
+  check('per request the later edit wins, the rest are joined', both.editDrafts.r1.title === 'new' && both.editDrafts.r3.title === 'other')
+  const p1 = { ...base, prompt: { ids: ['a'], text: 'mine', edited: true, touchedAt: 900 } }
+  check('the edited prompt follows the same rule', rules.mergeDraftContent(base, p1).prompt.text === 'mine' && rules.mergeDraftContent(p1, base).prompt.text === 'mine')
+}
+
+console.log('\n13 · Stored drafts: stamps, tombstones, newest kept')
+{
+  const many = {}
+  for (let i = 0; i < 60; i++) many[`r${i}`] = { title: `t${i}`, touchedAt: i + 1 }
+  const s = rules.sanitizeDraftState({ editDrafts: many, clearedEdits: { gone: 123, bad: 'x', zero: 0 } })
+  const keys = Object.keys(s.editDrafts)
+  check('keeps the 50 most recently touched edits', keys.length === rules.MAX_EDIT_DRAFTS && !('r0' in s.editDrafts) && !('r9' in s.editDrafts) && 'r10' in s.editDrafts && 'r59' in s.editDrafts, keys.slice(0, 3).join())
+  check('stamps read back', s.editDrafts.r59.touchedAt === 60)
+  check('tombstones read back, junk dropped', s.clearedEdits.gone === 123 && !('bad' in s.clearedEdits) && !('zero' in s.clearedEdits))
+  const d = rules.sanitizeDraftState({ newDraft: { title: 'x', touchedAt: 'soon' }, prompt: { text: 'p', touchedAt: 7 } })
+  check('a bad stamp reads as 0, a good one is kept', d.newDraft.touchedAt === 0 && d.prompt.touchedAt === 7)
+  check('a seed from the saved row carries no stamp', rules.draftFromRow({ title: 'A', description: null, page: null, category: 'bug', priority: 'low', effort: null, updated_at: 'u' }).touchedAt === 0)
+}
+
+console.log('\n14 · Edit drafts of deleted requests')
+{
+  const e = (t) => ({ title: 'x', description: '', page: 'other', category: 'bug', priority: 'low', effort: '', baseUpdatedAt: '', touchedAt: t })
+  const drafts = { kept: e(10), gone: e(10), newer: e(5000) }
+  const orphans = rules.orphanEditDrafts(drafts, ['kept'], 1000)
+  check('a draft for a missing request is an orphan', orphans.includes('gone'))
+  check('a draft for an existing request is not', !orphans.includes('kept'))
+  check('a draft touched after the list was read may be for a new request — kept', !orphans.includes('newer'))
+}
+
 console.log(`\n${passed} passed, ${failed} failed`)
 process.exit(failed ? 1 : 0)

@@ -1,12 +1,5 @@
-import { LayoutGrid, LayoutPanelLeft, List, type LucideIcon } from 'lucide-react'
 import { useTestGameStore } from '../testGameStore'
-import type { TgView } from '../testGameModel'
-
-const VIEWS: { key: TgView; label: string; icon: LucideIcon }[] = [
-  { key: 'shelf', label: 'Shelf view', icon: LayoutGrid },
-  { key: 'grid', label: 'Cover grid view', icon: LayoutPanelLeft },
-  { key: 'list', label: 'List view', icon: List },
-]
+import { TG_VIEWS } from './tgViews'
 
 const ACTIVE = 'border-transparent !bg-[var(--tg-seg-active-bg,var(--tg-nav-active-count-bg))] !text-[var(--tg-nav-active-text)]'
 const NARROW = '[@media(pointer:fine)]:!w-9'
@@ -25,7 +18,7 @@ export function TgTopBarViews({ className = '', compact = false }: { className?:
 
   return (
     <div role="group" aria-label="Library view" className={`tg-seg ${className}`}>
-      {VIEWS.map(v => {
+      {TG_VIEWS.map(v => {
         const active = v.key === view
         return (
           <button

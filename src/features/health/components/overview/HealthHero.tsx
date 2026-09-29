@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Activity, Dumbbell, Footprints, HeartPulse, Moon, Scale } from 'lucide-react'
 import { ModalShell } from '../../../../shared/modals'
-import { Button } from '../../../../shared/ui'
+import { Button, AnimatedNumber } from '../../../../shared/ui'
 import { HEALTH_SECTIONS, type HealthSectionId } from '../sectionTypes'
 import { fmtClock } from '../../healthTrendStats'
 import type { HealthHero as Hero } from './useHealthHero'
@@ -12,6 +12,11 @@ import { RhrDetail, VitalsDetail, WeightDetail } from './HeroDetailsBody'
 import { fmtDayMonth } from '../healthFormat'
 import { nightMissingText, nightNoun } from '../../healthDateLabels'
 import { BENCHMARKS, BETTER_LABEL, TILE_PLAIN, betterFor } from '../../benchmarks/healthBenchmarks'
+
+/** A tile's big number: counts up with the "More" animations; "—" when there is none. */
+function counted(v: number | null | undefined, format: (v: number) => string = x => num(x)) {
+  return v == null || !Number.isFinite(v) ? '—' : <AnimatedNumber value={v} format={format} />
+}
 
 // "How you're doing": the six tier-1 tiles from the metric ranking
 // (docs/training-health/research/research-rank.json), in its order. No
@@ -66,7 +71,7 @@ export function HealthHero({ hero, onViewDay, onOpenSection }: {
             missing night says so; it is never replaced by an older one. */}
         <HeroTile icon={<Moon />} label="Sleep" onOpen={() => setOpen('sleep')} isLoading={sleep.isLoading}
           empty={sleep.avg7 == null && sleep.lastNight == null ? `${nightMissingText(hero.anchor, hero.today)}, and too few nights this week for an average.` : null}
-          value={sleep.lastNight != null ? hm(sleep.lastNight) : '—'}
+          value={counted(sleep.lastNight, hm)}
           unit={nightNoun(hero.anchor, hero.today)}
           sub={<>
             {sleep.lastNight == null && <>{nightMissingText(hero.anchor, hero.today)}. </>}
@@ -79,7 +84,7 @@ export function HealthHero({ hero, onViewDay, onOpenSection }: {
 
         <HeroTile icon={<Footprints />} label="Steps" onOpen={() => setOpen('steps')} isLoading={steps.isLoading}
           empty={steps.avg7 == null ? 'Too few days with steps in the last week.' : null}
-          value={num(steps.avg7)} unit="/day, 7-day average"
+          value={counted(steps.avg7)} unit="/day, 7-day average"
           sub={hero.isToday ? <>Today so far {num(steps.todaySoFar)}</> : null}
           change={stepsDelta != null ? { text: `${signed(stepsDelta)} vs previous 7`, tone: changeTone(stepsDelta, 'up', 500) } : null}
           band={band(steps.cls)} better={BETTER_LABEL[betterFor(BENCHMARKS.step_count.higherIsBetter)]} aim={hero.aims.steps}
@@ -87,7 +92,7 @@ export function HealthHero({ hero, onViewDay, onOpenSection }: {
 
         <HeroTile icon={<Dumbbell />} label="Exercise this week" onOpen={() => setOpen('exercise')} isLoading={exercise.isLoading}
           empty={exercise.minutes7 == null && exercise.strengthDays7 === 0 ? 'No exercise minutes or workouts in the last 7 days.' : null}
-          value={num(exercise.minutes7 ?? 0)} unit="of 150 min"
+          value={counted(exercise.minutes7 ?? 0)} unit="of 150 min"
           sub={<>Strength days {exercise.strengthDays7} of 2 (Hevy)</>}
           change={exDelta != null ? { text: `${signed(exDelta)} min vs previous 7`, tone: changeTone(exDelta, 'up', 20) } : null}
           band={band(exercise.cls)} better={BETTER_LABEL.higher} aim={hero.aims.exercise}
@@ -95,7 +100,7 @@ export function HealthHero({ hero, onViewDay, onOpenSection }: {
 
         <HeroTile icon={<HeartPulse />} label="Resting heart rate" onOpen={() => setOpen('rhr')} isLoading={rhr.isLoading}
           empty={rhr.avg7 == null ? 'Too few resting heart-rate readings this week.' : null}
-          value={num(rhr.avg7)} unit="bpm, 7-day average"
+          value={counted(rhr.avg7)} unit="bpm, 7-day average"
           sub={rhr.baseline ? <>Your 60-day baseline {num(rhr.baseline.median)} bpm</> : 'Baseline needs 14 days of readings'}
           change={rhr.delta != null ? { text: `${signed(rhr.delta)} bpm vs baseline`, tone: rhr.delta >= 5 ? 'warn' : rhr.delta <= -3 ? 'success' : 'neutral' } : null}
           band={band(rhr.cls)} better={BETTER_LABEL.lower} aim={hero.aims.rhr}
@@ -103,7 +108,7 @@ export function HealthHero({ hero, onViewDay, onOpenSection }: {
 
         <HeroTile icon={<Scale />} label="Weight" onOpen={() => setOpen('weight')} isLoading={weight.isLoading}
           empty={weight.lastKg == null ? 'No weigh-ins yet.' : null}
-          value={num(weight.ma7 ?? weight.lastKg, 1)} unit={weightStale ? 'kg, last weigh-in' : 'kg, 7-day average'}
+          value={counted(weight.ma7 ?? weight.lastKg, v => num(v, 1))} unit={weightStale ? 'kg, last weigh-in' : 'kg, 7-day average'}
           sub={<>
             {weight.lastDate && <>Last weigh-in {fmtDayMonth(weight.lastDate)}</>}
             {bodyExtras && <> · {bodyExtras}</>}
@@ -114,7 +119,7 @@ export function HealthHero({ hero, onViewDay, onOpenSection }: {
 
         <HeroTile icon={<Activity />} label="Overnight vitals" onOpen={() => setOpen('vitals')} isLoading={vitals.isLoading}
           empty={vitals.hrv7 == null && vitals.summary.checked === 0 ? 'Not enough overnight readings yet.' : null}
-          value={num(vitals.hrv7)} unit="ms HRV, 7-day average"
+          value={counted(vitals.hrv7)} unit="ms HRV, 7-day average"
           sub={vitals.hrvRange ? <>Your usual {num(vitals.hrvRange.low)}–{num(vitals.hrvRange.high)} ms</> : 'Usual range needs 14 days of HRV'}
           change={hrvDelta != null ? { text: `${signed(hrvDelta)} ms vs your average`, tone: 'neutral' } : null}
           band={vitals.summary.tone ? { label: vitals.summary.text, tone: vitals.summary.tone } : null}

@@ -5,8 +5,9 @@ import { format, startOfWeek, endOfWeek } from 'date-fns'
 import { useDayData } from '../hooks/useDayData'
 import { useTasksByWeek } from '../../todo/hooks/useTodos'
 import { ToDoItem } from '../../todo/components/ToDoItem'
+import { useNewIds } from '../../../shared/hooks/useNewIds'
 import { useEntityModal } from '../../../shared/modals'
-import { Skeleton, ToneDot, TonePill, cx } from '../../../shared/ui'
+import { Skeleton, ToneDot, TonePill, cx, Truncate } from '../../../shared/ui'
 import { completedWithinLast24h } from '../../todo/taskRules'
 import { useOpenWishes } from '../../wishes/hooks/useWishes'
 import { wishPeriodLabel } from '../../wishes/wishRules'
@@ -43,7 +44,7 @@ function OpenWishesRow({ wishes }: { wishes: WishItem[] }) {
       className="mb-3 flex min-h-[44px] items-center gap-2 rounded-row border border-line bg-surface-2 px-3 text-body text-fg-2 transition-colors duration-150 hover:bg-surface-hover"
     >
       <ToneDot tone="highlight" />
-      <span className="truncate">{lead}</span>
+      <Truncate>{lead}</Truncate>
       <span className="text-fg-faint" aria-hidden>·</span>
       <span className="shrink-0 tabular-nums text-fg-muted">
         {wishes.length} {wishes.length === 1 ? 'thing' : 'things'}
@@ -73,6 +74,8 @@ export function DayView({ date }: Props) {
   // A cancelled task stays visible (same 24h window as Done) so it doesn't
   // look identical to a silent delete; counts elsewhere still exclude it.
   const cancelledTasks = tasks.filter(t => t.status === 'cancelled' && completedWithinLast24h(t.updated_at))
+  // A task added while the day is on screen rises in; the day's own rows don't.
+  const fresh = useNewIds(tasks.map(t => t.id), format(date, 'yyyy-MM-dd'), !isLoading)
 
   const addTask = () => {
     const day = format(date, 'yyyy-MM-dd')
@@ -106,7 +109,7 @@ export function DayView({ date }: Props) {
             </p>
           )}
 
-          {openTasks.map(task => <ToDoItem key={task.id} task={task} />)}
+          {openTasks.map(task => <ToDoItem key={task.id} task={task} isNew={fresh.has(task.id)} />)}
 
           <button
             type="button"

@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { ChevronRight } from 'lucide-react'
-import { Skeleton, TonePill, cx, type Tone } from '../../../../shared/ui'
+import { Skeleton, TonePill, cx, type Tone, Truncate } from '../../../../shared/ui'
 import type { Aim } from '../../benchmarks/healthBenchmarks'
 import { AimLine } from './AimLine'
 
@@ -35,7 +35,7 @@ export function HeroTile({ icon, label, value, unit, sub, change, band, better, 
       className="card-interactive flex min-h-[44px] min-w-0 flex-col gap-2 p-4 text-left">
       <span className="flex items-center gap-2">
         <span aria-hidden className="grid h-7 w-7 shrink-0 place-items-center rounded-control bg-accent-50 text-accent-600 [&_svg]:h-4 [&_svg]:w-4">{icon}</span>
-        <span className="section-label min-w-0 flex-1 truncate">{label}</span>
+        <Truncate className="section-label flex-1">{label}</Truncate>
         <ChevronRight aria-hidden className="h-4 w-4 shrink-0 text-fg-faint" />
       </span>
       {isLoading ? (

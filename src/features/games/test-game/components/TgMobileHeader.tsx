@@ -1,7 +1,8 @@
 import { useCallback, useState } from 'react'
 import { Search, Settings2, X } from 'lucide-react'
 import { useTestGameStore } from '../testGameStore'
-import type { PlatformGroup, StatusCounts, TgGame } from '../testGameModel'
+import { STATUS_SECTIONS, type PlatformGroup, type StatusCounts, type TgGame } from '../testGameModel'
+import { TG_WIDE_PHONE, useTgMatch } from '../useTgMatch'
 import type { TgHeaderConfig } from '../tgTypes'
 import { TgMobileScope } from './TgMobileScope'
 import { TgMobileListTools } from './TgMobileListTools'
@@ -17,8 +18,10 @@ const GUTTER = 'pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-a
 const SCROLL_GUTTER = 'scroll-pl-[max(1rem,env(safe-area-inset-left))] scroll-pr-[max(1rem,env(safe-area-inset-right))]'
 
 /**
- * The page's own rows under the app's phone header: the sections (with search
- * and the ⋯ menu), then what the list is scoped to and its tools.
+ * The page's own rows under the app's phone header: the sections (with
+ * search, random and the ⋯ menu), then what the list is scoped to and its
+ * tools. On a wide phone layout (a phone held sideways) the scope and tools of
+ * a game list join the section row, so the covers keep the height.
  */
 export function TgMobileHeader({ groups, counts, genres, studios, statusCounts, header, onRandom, resultCount, libraryGames }: {
   groups: PlatformGroup[]
@@ -56,6 +59,38 @@ export function TgMobileHeader({ groups, counts, genres, studios, statusCounts, 
 
   const showStatus = section === 'library'
   const showSort = section !== 'queue' // the queue is always in play order
+  const wide = useTgMatch(TG_WIDE_PHONE)
+  // Only a game list's scope is one control; the queue's and the tools
+  // sections' titles and notes keep a row of their own.
+  const merged = wide && (section === 'library' || !!STATUS_SECTIONS[section])
+
+  // What the list is scoped to (left) and its tools (right). Sync is an icon
+  // here: with its words the platform pill shrank to nothing on the Steam and
+  // PlayStation shelves.
+  const scopeRow = (
+    <>
+      <div className="flex min-w-0 flex-1 items-center gap-2">
+        <TgMobileScope groups={groups} header={header} />
+        {section === 'library' && (header.platformKey === 'steam' || header.platformKey === 'playstation') && (
+          <TgProviderSync library={header.platformKey} games={libraryGames ?? []} iconOnly />
+        )}
+      </div>
+      <div className="flex shrink-0 items-center gap-1.5">
+        {/* Held sideways there is room for it here, beside the queue's title. */}
+        {wide && section === 'queue' && header.inlineAction && (
+          <div className="flex items-center pr-1 text-[12.5px]">{header.inlineAction}</div>
+        )}
+        {section === 'scrape' && (
+          <button type="button" onClick={() => setScrapeSettingsOpen(true)} aria-label="What to save" className="tg-icon-btn">
+            <Settings2 size={20} strokeWidth={1.9} />
+          </button>
+        )}
+        {hasFilters && (
+          <TgMobileListTools genres={genres} studios={studios} statusCounts={statusCounts} showStatus={showStatus} showSort={showSort} resultCount={resultCount} />
+        )}
+      </div>
+    </>
+  )
 
   // Keeps the active Advanced chip on screen when it sits past the row's edge.
   const revealChip = useCallback((el: HTMLButtonElement | null) => {
@@ -71,6 +106,7 @@ export function TgMobileHeader({ groups, counts, genres, studios, statusCounts, 
         counts={counts}
         actions={(
           <>
+            {merged && <div className="flex shrink-0 items-center gap-2 pl-1 pr-1">{scopeRow}</div>}
             {hasFilters && (
               <button
                 type="button"
@@ -82,6 +118,7 @@ export function TgMobileHeader({ groups, counts, genres, studios, statusCounts, 
                 <Search size={20} strokeWidth={1.9} />
               </button>
             )}
+            {hasFilters && <TgRandomButton onPick={onRandom} count={resultCount} />}
             <TgLibraryMenu withAddGame />
           </>
         )}
@@ -115,25 +152,9 @@ export function TgMobileHeader({ groups, counts, genres, studios, statusCounts, 
         </div>
       )}
 
-      <div className={`flex min-h-[52px] items-center justify-between gap-2 pb-2 pt-1 ${GUTTER}`}>
-        <TgMobileScope groups={groups} header={header} />
-        {section === 'library' && (header.platformKey === 'steam' || header.platformKey === 'playstation') && (
-          <TgProviderSync library={header.platformKey} games={libraryGames ?? []} compact />
-        )}
-        <div className="flex shrink-0 items-center gap-1.5">
-          {section === 'scrape' && (
-            <button type="button" onClick={() => setScrapeSettingsOpen(true)} aria-label="What to save" className="tg-icon-btn">
-              <Settings2 size={20} strokeWidth={1.9} />
-            </button>
-          )}
-          {hasFilters && (
-            <TgMobileListTools genres={genres} studios={studios} statusCounts={statusCounts} showStatus={showStatus} showSort={showSort} resultCount={resultCount} />
-          )}
-          {hasFilters && <TgRandomButton onPick={onRandom} count={resultCount} className="-mr-1.5" />}
-        </div>
-      </div>
+      {!merged && <div className={`flex min-h-[52px] items-center gap-2 pb-2 pt-1 ${GUTTER}`}>{scopeRow}</div>}
       {/* Its own line: beside the title it pushed Filters off the screen. */}
-      {section === 'queue' && header.inlineAction && (
+      {!wide && section === 'queue' && header.inlineAction && (
         <div className={`-mt-1 flex items-center pb-1 text-[12.5px] ${GUTTER}`}>{header.inlineAction}</div>
       )}
       {/* Filtered: how many games are left, and one tap back to all of them. */}

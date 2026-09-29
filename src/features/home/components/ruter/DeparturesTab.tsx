@@ -4,7 +4,7 @@ import type { Departure, StopResult } from '../../api/ruterApi'
 import { useTransitStops, DuplicateStopError } from '../../hooks/useTransitStops'
 import { useDepartures, useNearbyStops } from '../../hooks/useTransitQueries'
 import { useEntityModal } from '../../../../shared/modals'
-import { IconButton, SectionLabel, Skeleton, cx } from '../../../../shared/ui'
+import { IconButton, SectionLabel, Skeleton, Truncate, cx } from '../../../../shared/ui'
 import { StopSearchInput } from './StopSearchInput'
 import { QuaySavePanel } from './QuaySavePanel'
 import { minsUntil, fmtTime, fmtLastUpdated, lineStyle, modeFallbackStyle, buildLineGroups, situationTone, type LineGroup } from './transitUtils'
@@ -37,19 +37,19 @@ export function DepartureRow({ group, now }: { group: LineGroup; now: number }) 
       </span>
 
       <div className="flex-1 min-w-0">
-        <div className="text-body font-medium text-fg truncate leading-snug">{group.destination}</div>
+        <Truncate as="div" className="text-body font-medium text-fg leading-snug">{group.destination}</Truncate>
         {nextTimes.length > 0 && (
-          <div className="text-micro text-fg-muted truncate leading-tight mt-0.5">
+          <Truncate as="div" fullText={`Next: ${nextTimes.join(', ')}`} className="text-micro text-fg-muted leading-tight mt-0.5">
             Next: {nextTimes.join(', ')}
-          </div>
+          </Truncate>
         )}
         {/* Live disruption/alert for this line, e.g. "Cancelled today" —
             straight from EnTur's own situations feed, not just the
             aimed-vs-expected delay indicator on the right. */}
         {group.situations.length > 0 && (
-          <div data-tone={situationTone(group.situations[0].severity)} className="tone-soft tone-text mt-1 flex items-center gap-1 truncate rounded px-1.5 py-0.5 text-micro">
+          <div data-tone={situationTone(group.situations[0].severity)} className="tone-soft tone-text mt-1 flex min-w-0 items-center gap-1 rounded px-1.5 py-0.5 text-micro">
             <AlertTriangle aria-hidden className="h-3 w-3 shrink-0" />
-            <span className="truncate">{group.situations[0].summary}</span>
+            <Truncate>{group.situations[0].summary}</Truncate>
           </div>
         )}
       </div>
@@ -266,9 +266,9 @@ export function DeparturesTab({ active, now }: DeparturesTabProps) {
       {queryStop && (
         <div className="flex items-center justify-between mb-2 gap-2">
           <div className="flex items-center gap-2 min-w-0 flex-wrap">
-            <span className="flex min-w-0 items-center gap-1 truncate text-meta font-medium text-fg-2">
+            <span className="flex min-w-0 items-center gap-1 text-meta font-medium text-fg-2">
               <MapPin aria-hidden className="h-3.5 w-3.5 shrink-0 text-fg-faint" />
-              <span className="truncate">{data?.stopName ?? queryStop.name}</span>
+              <Truncate>{data?.stopName ?? queryStop.name}</Truncate>
             </span>
             {adHocStop && !alreadySaved && !showSavePanel && (
               <button
@@ -360,12 +360,12 @@ export function DeparturesTab({ active, now }: DeparturesTabProps) {
                   : 'Direction unknown'
                 return (
                   <div className="mb-1 pb-1.5 border-b border-line">
-                    <p className="truncate text-meta font-semibold text-fg-2">
+                    <Truncate as="p" className="text-meta font-semibold text-fg-2">
                       {group.code ? `Platform ${group.code}` : towards}
-                    </p>
-                    <p className="text-micro text-fg-muted truncate leading-tight">
+                    </Truncate>
+                    <Truncate as="p" className="text-micro text-fg-muted leading-tight">
                       {group.code ? (group.description ?? towards) : (group.description ?? ' ')}
-                    </p>
+                    </Truncate>
                   </div>
                 )
               })()}

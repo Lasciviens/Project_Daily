@@ -10,6 +10,7 @@
  *   workoutHealthMatch.ts                   — which Apple Health workout is this session
  *   health/workoutRaw.ts                    — the HAE raw-field readers
  *   sessionRef.ts                           — what the training-session popup opens
+ *   sessionLinks.ts                         — which workout a session popup shows (Health back-links)
  *   components/calendar/calendarPlans.ts    — plans per day (blocks + projected templates)
  *   components/calendar/monthGrid.ts        — month weeks, one mark per day, week totals
  *   pages/trainingTabs.ts                   — ?view= for Log / Library, the moved Body view
@@ -27,6 +28,7 @@ const sr = require('../src/features/training/sessionRef')
 const { buildPlansByDate } = require('../src/features/training/components/calendar/calendarPlans')
 const mg = require('../src/features/training/components/calendar/monthGrid')
 const tabs = require('../src/features/training/pages/trainingTabs')
+const links = require('../src/features/training/sessionLinks')
 
 let passed = 0
 let failed = 0
@@ -48,7 +50,7 @@ console.log('\n== calendarSessions: the reported duplicate ==')
   const r = day('2026-09-22', [recurring('sb1__2026-09-22', 'Lower A (Quadriceps & Kalf)')], [workout('w1', 'Lower A (Quadriceps & Kalf)')])
   check('a recurring slot and its same-titled workout are ONE session', r.sessions.length === 1 && r.openPlans.length === 0)
   check('the session carries the plan it covered', r.sessions[0].plans.length === 1 && r.sessions[0].plans[0].id === 'sb1__2026-09-22')
-  check('its note reads "Planned · done"', cs.sessionPlanNote(r.sessions[0]) === 'Planned · done')
+  check('its note reads "Planned weekly for 16:30" (the popup\'s words)', sr.coveredPlanNote(r.sessions[0].plans, r.sessions[0].workout) === 'Planned weekly for 16:30')
 }
 
 console.log('\n== calendarSessions: matching evidence ==')
@@ -91,7 +93,7 @@ console.log('\n== calendarSessions: several plans or workouts on one day ==')
 
   const swap = day('2026-09-22', [recurring('sb1__2026-09-22', 'Upper A (Chest & Arm)')], [workout('w1', 'Random', '2026-09-22T10:00:00Z')])
   check('a different workout on a planned day covers that plan', swap.sessions[0].plans.length === 1 && swap.openPlans.length === 0)
-  check('…and says what it replaced', cs.sessionPlanNote(swap.sessions[0]) === 'Planned: Upper A (Chest & Arm)')
+  check('…and says what it replaced', sr.coveredPlanNote(swap.sessions[0].plans, swap.sessions[0].workout) === 'In place of ⟳ Upper A (Chest & Arm) · 16:30')
 
   const split = day('2026-09-22',
     [recurring('m__d', 'Run', '07:00:00'), recurring('e__d', 'Upper A', '16:30:00')],
@@ -107,7 +109,7 @@ console.log('\n== calendarSessions: several plans or workouts on one day ==')
 
   const order = day('2026-09-22', [], [workout('late', 'B', '2026-09-22T18:00:00Z'), workout('early', 'A', '2026-09-22T06:00:00Z')])
   check('sessions are in start-time order', order.sessions.map(s => s.workout.id).join() === 'early,late')
-  check('an unplanned workout has no note', cs.sessionPlanNote(order.sessions[0]) === null)
+  check('an unplanned workout has no note', sr.coveredPlanNote(order.sessions[0].plans, order.sessions[0].workout) === null)
 
   const opens = day('2026-09-29', [recurring('x__d', 'Late', '18:00:00'), recurring('y__d', 'Early', '06:00:00')], [])
   check('open plans are in start-time order', opens.openPlans.map(o => o.plan.id).join() === 'y__d,x__d')
@@ -260,6 +262,21 @@ console.log('\n== sessionRef ==')
   check('coveredPlanNote: no plans → null', sr.coveredPlanNote([], workout('w', 'X')) === null)
   check('weekdaysLabel: Monday first', sr.weekdaysLabel([5, 1, 3]) === 'Mon, Wed, Fri' && sr.weekdaysLabel([0, 6]) === 'Sat, Sun')
   check('weekdaysLabel: all seven → every day', sr.weekdaysLabel([0, 1, 2, 3, 4, 5, 6]) === 'every day')
+}
+
+// ─── sessionLinks ───────────────────────────────────────────────────────────
+console.log('\n== sessionLinks: which workout a session popup shows ==')
+{
+  const byId = { kind: 'training-session', workoutId: 'w1' }
+  const fromPlan = { kind: 'training-session', plan: { kind: 'recurring', id: 'sb1', date: '2026-09-22' } }
+  const other = { kind: 'training-session', plan: { kind: 'recurring', id: 'sb1', date: '2026-09-22' } }
+  check('a request by workout id shows that workout', links.shownWorkoutIdOf(byId) === 'w1')
+  check('a plan request shows nothing known before it resolves', links.shownWorkoutIdOf(fromPlan) === null)
+  links.rememberShownWorkout(fromPlan, 'w9')
+  check('…and the covering workout once it has', links.shownWorkoutIdOf(fromPlan) === 'w9')
+  check('…keyed by the request object, not its contents', links.shownWorkoutIdOf(other) === null)
+  links.rememberShownWorkout(fromPlan, null)
+  check('…cleared again when it no longer shows a workout', links.shownWorkoutIdOf(fromPlan) === null)
 }
 
 // ─── calendarPlans ──────────────────────────────────────────────────────────
