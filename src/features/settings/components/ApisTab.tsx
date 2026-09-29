@@ -6,8 +6,8 @@ import { API_REGISTRY, categoryCounts, filterApis, type ApiCategory } from '../a
 import { APIS_BOARD, type ApisSection } from '../settingsBoards'
 import { ApiCard } from './ApiCard'
 
-// Settings → APIs: every external API or service the app talks to (the static
-// registry in apiRegistry.ts). Connection status stays on Integrations; cards
+// Settings → Integrations and APIs: every external API or service the app talks to (the static
+// registry in apiRegistry.ts). Connection status stays on Subscriptions; cards
 // that have one link there.
 
 const COUNTS = categoryCounts(API_REGISTRY)

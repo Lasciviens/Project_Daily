@@ -29,7 +29,7 @@ interface Props {
   canMoveDown?: boolean
   onMoveUp?:    () => void
   onMoveDown?:  () => void
-  /** Just added to its list (useNewIds): the row rises in with the "More" animations. */
+  /** Just added to its list (useNewIds): the row rises in with the motion set. */
   isNew?:       boolean
 }
 
@@ -40,7 +40,7 @@ export function ToDoItem({ task, canMoveUp, canMoveDown, onMoveUp, onMoveDown, i
   const [pickingList, setPickingList] = useState(false)
   const [subtasksOpen, setSubtasksOpen] = useState(false)
   // Set by the user's own tick (never on load), so only a completion they just
-  // made pops — the CSS only runs with the "More" animations.
+  // made pops — the CSS only runs with the motion set.
   const [justDone, setJustDone] = useState(() => JUST_DONE.has(task.id))
   const toggle = useToggleTask()
   const remove = useDeleteTask()

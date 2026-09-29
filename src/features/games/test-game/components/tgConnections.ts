@@ -2,7 +2,7 @@
 // Steam. Pure: the hooks' results go in, one line of status comes out, so the
 // menu and the renew dialog can never describe the same state differently.
 //
-// The rules mirror Settings → Integrations (ConnectionsTab.tsx): a stored
+// The rules mirror Settings → Subscriptions (ConnectionsTab.tsx): a stored
 // psn_tokens row is not proof of a working session — only the first real
 // Sony call (the profile) can say "expired" — and a missing npsso expiry is
 // "unknown", never "expired".
@@ -19,7 +19,7 @@ export interface TgConnLine {
   detail?: string
   /** A stored session exists, so pasting a fresh token replaces it. */
   canRenew?: boolean
-  /** Nothing stored: first-time connect lives in Settings → Integrations. */
+  /** Nothing stored: first-time connect lives in Settings → Subscriptions. */
   needsSetup?: boolean
 }
 

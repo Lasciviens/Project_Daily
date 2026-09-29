@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { Card, CardHeader, PageBoard } from '../../../shared/ui'
-import { AccentSwatches, DisplaySizeSwitch, MotionSwitch, NotificationsControl, ThemeSwitch } from '../../../shared/components/SettingsMenu'
+import { AccentSwatches, DisplaySizeSwitch, NotificationsControl, ThemeSwitch } from '../../../shared/components/SettingsMenu'
 import { APPEARANCE_BOARD, type AppearanceSection } from '../settingsBoards'
 
 function Row({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
@@ -20,7 +20,6 @@ export function AppearanceTab() {
         <CardHeader title="Look" />
         <Row label="Theme"><ThemeSwitch /></Row>
         <Row label="Accent"><AccentSwatches /></Row>
-        <Row label="Animations" hint="Your device's reduce-motion setting always wins."><MotionSwitch /></Row>
         <Row label="Display size" hint="Scales the whole app. Smaller fits more on screen — on a monitor 90 % shows the next wider layout. Saved on this device.">
           <DisplaySizeSwitch />
         </Row>

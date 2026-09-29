@@ -8,7 +8,7 @@ import { psnFacts, steamFacts } from './tgConnectionFacts'
 
 // PlayStation + Steam status under the profile (owner request 2026-09-25).
 // Status and renewing only: first-time connect and disconnect stay in
-// Settings → Integrations, the one home for integrations (CLAUDE.md).
+// Settings → Subscriptions, the one home for integrations (CLAUDE.md).
 // Mount it only while its menu or sheet is open — these hooks fetch on mount,
 // and the page itself never needs them.
 
@@ -43,7 +43,7 @@ export function TgConnections({ inMenu = false, onRenewPsn }: { inMenu?: boolean
 
   const wrap = (key: string, node: ReactNode) => (inMenu ? <MenuItem key={key}>{node}</MenuItem> : <Fragment key={key}>{node}</Fragment>)
   const setup = (key: string) => wrap(key, (
-    <button type="button" className="tg-conn-btn" onClick={() => navigate('/settings?tab=integrations')}>
+    <button type="button" className="tg-conn-btn" onClick={() => navigate('/settings?tab=subscriptions')}>
       Open Connections
     </button>
   ))

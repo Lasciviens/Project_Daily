@@ -1,5 +1,5 @@
 // Settings' PageBoard layouts (THEME.md §6.3). Pure and import-free.
-// Integrations reuses CONNECTIONS_BOARD (developerBoards.ts).
+// Subscriptions reuses CONNECTIONS_BOARD (developerBoards.ts).
 import type { BoardLayouts } from '../../shared/ui/pageBoardRules'
 
 // ── Places ───────────────────────────────────────────────────────────────

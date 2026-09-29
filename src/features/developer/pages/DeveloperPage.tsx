@@ -51,11 +51,11 @@ export function DeveloperPage() {
     }
   }
 
-  // Connections moved to Settings → Integrations. An old link (or a Strava
+  // Connections moved to Settings → Subscriptions. An old link (or a Strava
   // redirect still in flight) keeps every other query param on the way.
   if (params.get('tab') === 'connections') {
     const next = new URLSearchParams(params)
-    next.set('tab', 'integrations')
+    next.set('tab', 'subscriptions')
     return <Navigate to={`/settings?${next.toString()}`} replace />
   }
 

@@ -3,8 +3,7 @@ import { FRESH_ROW_MS, nextNewIds, type NewIdsState } from '../ui/motionRules'
 
 /**
  * The ids that appeared in a list since it was last rendered — the rows that
- * get the "arrive" animation (`motion-row-in`, only with the "More"
- * animations). The first load, and the first load in a new `scope` (another
+ * get the "arrive" animation (`motion-row-in`). The first load, and the first load in a new `scope` (another
  * day), marks nothing. Pass `ready = false` while the list is still loading.
  * A row stops being new once its animation has played, so a later remount
  * (it moves to another section, a collapsed card opens again) never replays it.

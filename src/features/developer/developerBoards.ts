@@ -48,7 +48,7 @@ export function paneSelection(ids: readonly string[], picked: string | null): st
 //      gave a card before the board; a card is a line of text and a button),
 //      the server-side cards two across over the other two tracks.
 //   4  2450 — the same, the server-side cards three across in one row.
-// Since Settings → Integrations (2026-09-29) this board lives there; 'intro'
+// Since Settings → Subscriptions (2026-09-29) this board lives there; 'intro'
 // carries the subscription summary strip and 'otherSubs' (subscriptions for
 // services without a card) ends the server-side column at every width.
 export const CONNECTION_SECTIONS = [

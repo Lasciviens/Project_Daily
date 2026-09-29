@@ -1,9 +1,9 @@
-// Pure: turns what the request composer captured on the page (an element the
-// user picked, a quoted selection, the page itself) into plain text blocks
-// appended to a request's description. Plain text on purpose: it stays
-// editable, needs no schema change, and the Claude prompt already carries
-// the description verbatim. The strings quoted here (button labels, card
-// headings) are literals in the source, so Claude can grep for them.
+// Pure: what the request composer captures on the page (an element the user
+// picked, a quoted selection, the page itself) and the text blocks the prompt
+// for Claude shows for it. The capture is stored as a mark in the description
+// (devRequestMarks.ts); these blocks are the technical detail Claude reads.
+// The strings quoted here (button labels, card headings) are literals in the
+// source, so Claude can grep for them.
 // Pure (its only import is the import-free date formatter) so
 // scripts/verify-dev-request-context.cjs can require it.
 
@@ -223,50 +223,4 @@ export function formatPageContext(start: PageContext, savedOn?: PageContext | nu
   const stamp = formatStamp(start.at)
   if (stamp) lines.push(`Started: ${stamp}`)
   return lines.join('\n')
-}
-
-/** Appends a block after a blank line (none when the description is empty). */
-export function appendBlock(description: string, block: string): string {
-  const body = description.replace(/\s+$/, '')
-  const add = block.trim()
-  if (!add) return description
-  return body ? `${body}\n\n${add}` : add
-}
-
-/** Splits a description into the prose the user wrote and the context blocks after it. */
-export function splitDescription(text: string | null | undefined): { body: string; blocks: string[] } {
-  const lines = (text ?? '').split('\n')
-  const first = lines.findIndex(l => BLOCK_HEADER_RE.test(l.trim()))
-  if (first === -1) return { body: (text ?? '').trim(), blocks: [] }
-  const body = lines.slice(0, first).join('\n').trim()
-  const blocks: string[] = []
-  let current: string[] = []
-  for (const line of lines.slice(first)) {
-    if (BLOCK_HEADER_RE.test(line.trim()) && current.length) {
-      blocks.push(current.join('\n').trim())
-      current = []
-    }
-    current.push(line)
-  }
-  if (current.length) blocks.push(current.join('\n').trim())
-  return { body, blocks: blocks.filter(Boolean) }
-}
-
-/**
- * A short preview for lists: the user's own words, else a summary of what was
- * picked ("Picked: button "Log food""), else ''.
- */
-export function descriptionPreview(text: string | null | undefined, max = 160): string {
-  const { body, blocks } = splitDescription(text)
-  if (body) return cleanText(body, max)
-  for (const b of blocks) {
-    const el = b.split('\n').find(l => l.startsWith('Element: ') || l.startsWith('Quote: '))
-    if (el) return cleanText(`Picked: ${el.replace(/^(Element|Quote): /, '')}`, max)
-  }
-  return ''
-}
-
-/** How many context blocks a description carries (for the composer's summary line). */
-export function countBlocks(text: string | null | undefined): number {
-  return splitDescription(text).blocks.length
 }

@@ -1,5 +1,6 @@
 import { useDevRequestDrafts } from '../devRequestDraftStore'
-import { appendBlock, formatPageContext, type PageContext } from '../devRequestContext'
+import type { PageContext } from '../devRequestContext'
+import { appendMark, descriptionForSave } from '../devRequestMarks'
 import { draftFromRow, isDraftEmpty, sameFields, topSortOrder, type DraftFields } from '../devRequestRules'
 import { useCreateDevRequest, useDevRequests, useUpdateDevRequest } from './useDevRequests'
 import type { DevRequest, DevRequestStatus } from '../types'
@@ -7,7 +8,7 @@ import { toast } from '../../../app/store'
 
 const toRow = (f: DraftFields) => ({
   title: f.title.trim(),
-  description: f.description.trim() || null,
+  description: descriptionForSave(f.description) || null,
   page: f.page,
   category: f.category,
   priority: f.priority,
@@ -37,7 +38,7 @@ export function useSaveDevRequestDraft() {
     if (!draft.title.trim()) return
     const row = toRow(draft)
     if (draft.attachContext) {
-      row.description = appendBlock(row.description ?? '', formatPageContext(draft.start ?? now, now))
+      row.description = appendMark(row.description ?? '', { type: 'page', start: draft.start ?? now, savedOn: now })
     }
     try {
       await create.mutateAsync({ ...row, sort_order: topSortOrder(requests) })

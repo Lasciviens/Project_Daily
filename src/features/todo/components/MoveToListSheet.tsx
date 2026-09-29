@@ -30,7 +30,7 @@ export function MoveToListSheet({ open, onClose, task }: Props) {
       <div className="flex flex-col gap-1.5 p-4">
         {lists.length === 0 && (
           <p className="text-body text-fg-muted">
-            No lists synced yet — tap Import in Settings to pull your Google Task lists.
+            No lists synced yet — tap Import in Settings → Subscriptions to pull your Google Task lists.
           </p>
         )}
         {lists.map(l => (

@@ -5,6 +5,9 @@ import { useDayTargets } from '../../daily/hooks/useDayTargets'
 import { GoalSummary } from '../../daily/components/GoalSummary'
 import { useEntityModal } from '../../../shared/modals/useEntityModal'
 import { useNutritionCoach } from '../../daily/hooks/useNutritionCoach'
+import { CoachDecisionView } from '../../daily/components/CoachDecision'
+import { coachShort } from '../../health/goal/cutDecision'
+import { NutritionStatsCard } from './NutritionStatsCard'
 import { useRemoveFoodLogEntries, useRecentFoods, useAddFoodLogEntries } from '../hooks/useFoodLog'
 import { recentToEntry } from '../api/foodLogApi'
 import { usualForSlot } from '../foodSearch'
@@ -83,7 +86,7 @@ export function FoodTodayTab({ date }: { date: string }) {
   const { data: nut } = useDayNutrition(date)
   const { targets, update } = useDayTargets()
   const modal = useEntityModal()
-  const coach = useNutritionCoach(date, targets)
+  const coach = useNutritionCoach(targets)
   const remove  = useRemoveFoodLogEntries()
   const copyYesterday = useCopyYesterdayMeals()
   const { data: recent = [] } = useRecentFoods()
@@ -92,7 +95,7 @@ export function FoodTodayTab({ date }: { date: string }) {
   const [coachOpen, setCoachOpen] = useState(false)   // phone-only collapse
   // "As meal" groups expanded to their individual items (collapsed by default).
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
-  // A food logged while the day is open rises in (the "More" animations).
+  // A food logged while the day is open rises in (the motion set).
   const fresh = useNewIds((nut?.meals ?? []).map(m => m.id), date, nut != null)
 
   // The goal lives in the shared `day-targets` popup (draft → Save), shown
@@ -111,11 +114,7 @@ export function FoodTodayTab({ date }: { date: string }) {
   const proteinHit  = targets.protein > 0 && proteinLeft <= 0
 
   // One-line status in the collapsed (phone) Coach header.
-  const coachSummary =
-    coach.weightKg == null ? 'Set up'
-    : coach.calorieAdvice ? `${coach.calorieAdvice.delta > 0 ? '+' : ''}${coach.calorieAdvice.delta} kcal suggested`
-    : coach.proteinForGoal != null && coach.proteinForGoal !== targets.protein ? `Suggest ${coach.proteinForGoal}g protein`
-    : 'On track'
+  const coachSummary = coach.weightKg == null ? (coach.isLoading ? '…' : 'Set up') : coachShort(coach.decision)
 
   const bySlot = new Map<string, DayMeal[]>()
   for (const m of nut?.meals ?? []) {
@@ -218,7 +217,6 @@ export function FoodTodayTab({ date }: { date: string }) {
     )
   }
 
-  const coachAction = 'flex min-h-[44px] items-center justify-between gap-2 rounded-row border border-line bg-surface px-3 py-1.5 text-left transition-colors hover:bg-surface-hover'
 
   return (
     // Placed by PageBoard (foodBoards.ts): the totals rail on the left, the meal slots in main.
@@ -264,6 +262,8 @@ export function FoodTodayTab({ date }: { date: string }) {
 
       week: <WeeklyNutritionCard date={date} />,
 
+      stats: <NutritionStatsCard date={date} />,
+
       // Coach — collapsible on phones so the meal slots stay reachable.
       coach: (<Card>
           <button type="button" onClick={() => setCoachOpen(o => !o)} aria-expanded={coachOpen}
@@ -274,41 +274,10 @@ export function FoodTodayTab({ date }: { date: string }) {
             <ChevronRight aria-hidden className={cx('h-4 w-4 shrink-0 text-fg-faint transition-transform', coachOpen && 'rotate-90')} />
           </button>
           <CardHeader title="Coach" variant="label" icon={<Brain />} className="hidden sm:flex" />
-          <div className={cx(coachOpen ? 'mt-3 flex' : 'hidden', 'flex-col gap-2 text-body sm:mt-0 sm:flex')}>
-            {coach.weightKg == null ? (
-              <p className="text-fg-muted">Add a bodyweight in <strong className="font-semibold text-fg-2">Health → Body</strong> (or weigh in on your scale) to unlock protein and calorie coaching from your real weight trend.</p>
-            ) : (
-              <>
-                {coach.calorieAdvice ? (
-                  <button type="button" className={coachAction}
-                    onClick={() => applyCalories(Math.max(coach.calorieFloor, targets.calories + coach.calorieAdvice!.delta), formatLocalDate(new Date()))}>
-                    <span className="text-fg-2"><strong className="font-semibold text-fg tabular-nums">{coach.calorieAdvice.delta > 0 ? '+' : ''}{coach.calorieAdvice.delta} kcal</strong><span className="text-fg-muted"> · {coach.calorieAdvice.reason}</span></span>
-                    <span className="shrink-0 font-semibold text-accent-600">Apply</span>
-                  </button>
-                ) : coach.onTrack ? (
-                  <p className="flex items-center gap-1.5 text-success"><Check aria-hidden className="h-4 w-4 shrink-0" />{coach.onTrack}</p>
-                ) : coach.atFloor ? (
-                  <p className="text-fg-muted">At your calorie floor (~{coach.calorieFloor}) — don&apos;t cut lower; take a diet break instead.</p>
-                ) : !coach.consistent ? (
-                  <p className="text-fg-muted">Logged {coach.loggedDays7}/7 days — log {Math.max(1, 4 - coach.loggedDays7)} more to unlock the calorie nudge.</p>
-                ) : !coach.weighInsOk ? (
-                  <p className="text-fg-muted">Weigh in more often ({coach.weighIns} readings) — a couple of weeks lets me read your trend.</p>
-                ) : coach.inCooldown ? (
-                  <p className="text-fg-muted">Calorie adjusted recently — hold {coach.cooldownDaysLeft} more day{coach.cooldownDaysLeft === 1 ? '' : 's'} so the trend can catch up.</p>
-                ) : null}
-                {coach.proteinForGoal != null && coach.proteinForGoal !== targets.protein ? (
-                  <button type="button" className={coachAction} onClick={() => applyProtein(coach.proteinForGoal!)}>
-                    <span className="text-fg-2">Suggested <strong className="font-semibold text-fg tabular-nums">{coach.proteinForGoal}g</strong> protein <span className="text-fg-muted">· {(coach.proteinForGoal / coach.weightKg).toFixed(1)} g/kg × {Math.round(coach.weightKg)}kg</span></span>
-                    <span className="shrink-0 font-semibold text-accent-600">Apply</span>
-                  </button>
-                ) : coach.proteinForGoal != null ? (
-                  <p className="flex items-center gap-1.5 text-success"><Check aria-hidden className="h-4 w-4 shrink-0" />Protein target on point ({(coach.proteinForGoal / coach.weightKg).toFixed(1)} g/kg)</p>
-                ) : null}
-                {coach.proteinPerMealG != null && (
-                  <p className="text-meta text-fg-muted">About {coach.proteinPerMealG}g protein per meal spreads it best{coach.fatFloorG != null ? ` · keep fat ≥ ~${coach.fatFloorG}g/day on a cut` : ''}</p>
-                )}
-              </>
-            )}
+          <div className={cx(coachOpen ? 'mt-3 block' : 'hidden', 'text-body sm:mt-0 sm:block')}>
+            <CoachDecisionView coach={coach} currentProtein={targets.protein}
+              onApplyCalories={kcal => applyCalories(kcal, formatLocalDate(new Date()))}
+              onApplyProtein={applyProtein} />
           </div>
         </Card>),
 

@@ -68,7 +68,7 @@ export function TransitCard() {
       </WidgetShell>
 
       <ModalShell open={open} onClose={() => setOpen(false)} title="Transit" size="xl" mobile="fullscreen">
-        <TransitPanel active={open} initialTab={stop ? 'departures' : 'settings'} />
+        <TransitPanel active={open} initialTab={stop ? 'routes' : 'settings'} />
       </ModalShell>
     </>
   )

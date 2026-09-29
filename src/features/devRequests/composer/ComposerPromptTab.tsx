@@ -1,7 +1,7 @@
 import { useState, type Ref } from 'react'
 import { ChevronRight, Copy, RotateCcw, Sparkles } from 'lucide-react'
 import { useDevRequestDrafts } from '../devRequestDraftStore'
-import { descriptionPreview } from '../devRequestContext'
+import { descriptionPreview } from '../devRequestMarks'
 import { buildClaudePrompt } from '../devRequestPrompt'
 import { useDevRequests, useMarkDevRequestsPrompted } from '../hooks/useDevRequests'
 import { toast, useUIStore } from '../../../app/store'

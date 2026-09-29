@@ -13,7 +13,7 @@ import { fmtDayMonth } from '../healthFormat'
 import { nightMissingText, nightNoun } from '../../healthDateLabels'
 import { BENCHMARKS, BETTER_LABEL, TILE_PLAIN, betterFor } from '../../benchmarks/healthBenchmarks'
 
-/** A tile's big number: counts up with the "More" animations; "—" when there is none. */
+/** A tile's big number: counts up with the motion set; "—" when there is none. */
 function counted(v: number | null | undefined, format: (v: number) => string = x => num(x)) {
   return v == null || !Number.isFinite(v) ? '—' : <AnimatedNumber value={v} format={format} />
 }

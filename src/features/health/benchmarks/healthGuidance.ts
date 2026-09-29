@@ -41,6 +41,13 @@ export interface HealthInsightInput {
   /** Weekly minutes of strength training (e.g. from Hevy workout durations). */
   strengthMinPerWeek?: number | null
   cardioSessionsPerWeek?: number | null
+  /** Health → Goal progress's Muscle watch (goal/muscleWatch.ts), when it has something to say. */
+  muscleWatch?: {
+    level: 'ok' | 'watch' | 'likely_loss' | 'not_enough_data'
+    headline: string
+    actions: string[]
+    sources: Source[]
+  } | null
 }
 
 export interface Insight {
@@ -54,6 +61,8 @@ export interface Insight {
   /** One concrete next step, or null when there's nothing to change. */
   action: string | null
   sources: Source[]
+  /** An in-app link to the full reading, e.g. '/health?section=goal'. */
+  href?: string
 }
 
 /** Display order: needs attention → your own readings → general tips → reassurance. Stable within a tone. */
@@ -296,6 +305,21 @@ export function buildHealthInsights(input: HealthInsightInput): Insight[] {
         }
       : fromClassification('bmi', `BMI: ${fmt(bmi, 1)}`, c, `${c.label}. ${c.referenceText}`,
           c.nextStep && whtr == null ? 'If you lift, measure your waist too — waist-to-height is the better check for muscular people.' : null))
+  }
+
+  // ── Muscle watch (only when it warns) ──────────────────────────────────
+  const mw = input.muscleWatch
+  if (mw && (mw.level === 'watch' || mw.level === 'likely_loss')) {
+    out.push({
+      id: 'muscle-watch',
+      tone: mw.level === 'likely_loss' ? 'danger' : 'warn',
+      title: mw.level === 'likely_loss' ? 'You may be losing muscle' : 'Muscle: worth watching',
+      text: mw.headline,
+      why: 'Read from the smart scale\'s muscle and lean mass since the phase started, the pace of weight loss, logged protein and whether your lifts are holding. The scale alone swings ±0.5 kg; falling strength with it is the clearer sign.',
+      action: mw.actions[0] ?? null,
+      sources: mw.sources,
+      href: '/health?section=goal',
+    })
   }
 
   return out

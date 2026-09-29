@@ -629,25 +629,23 @@ select:focus-visible,
   .skeleton { animation: none; }
 }
 
-/* ── Motion test set — Settings → Appearance → Animations: More ────────────
-   (THEME.md §7). Everything here only runs under html[data-motion='extra']
-   (stamped by index.html + the theme store) and never under reduced motion.
-   Outside @layer: html[data-motion] and the classes some of these target are
-   set at runtime, which Tailwind would tree-shake from a layer. JS-driven
-   motion (AnimatedNumber, ProgressRing) checks useMotion() instead. */
+/* ── Motion set (THEME.md §7) — always on, never under reduced motion ───────
+   Outside @layer: some of the classes these target are set at runtime, which
+   Tailwind would tree-shake from a layer. JS-driven motion (AnimatedNumber,
+   ProgressRing) checks useMotion() instead. */
 @media (hover: hover) {
-  html[data-motion='extra'] .card-interactive {
+  .card-interactive {
     transition: box-shadow 180ms ease, transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
   }
-  html[data-motion='extra'] .card-interactive:hover { transform: translateY(-2px); }
-  html[data-motion='extra'] .card-interactive:active { transform: translateY(-1px) scale(0.99); }
+  .card-interactive:hover { transform: translateY(-2px); }
+  .card-interactive:active { transform: translateY(-1px) scale(0.99); }
 }
 
 /* A row that was just added (useNewIds) rises in; the rest of the list stays still. */
 @keyframes motion-row-in {
   from { opacity: 0; transform: translateY(6px); }
 }
-html[data-motion='extra'] .motion-row-in { animation: motion-row-in 260ms cubic-bezier(0.22, 0.9, 0.3, 1) both; }
+.motion-row-in { animation: motion-row-in 260ms cubic-bezier(0.22, 0.9, 0.3, 1) both; }
 
 /* Task completion: the circle pops, the check draws itself, the strike fades in. */
 @keyframes motion-check-pop {
@@ -662,24 +660,24 @@ html[data-motion='extra'] .motion-row-in { animation: motion-row-in 260ms cubic-
 @keyframes motion-strike-in {
   from { text-decoration-color: transparent; }
 }
-html[data-motion='extra'] .motion-check-pop { animation: motion-check-pop 340ms cubic-bezier(0.34, 1.56, 0.64, 1); }
-html[data-motion='extra'] .motion-check-pop svg path {
+.motion-check-pop { animation: motion-check-pop 340ms cubic-bezier(0.34, 1.56, 0.64, 1); }
+.motion-check-pop svg path {
   stroke-dasharray: 24;
   animation: motion-check-draw 260ms 70ms ease-out both;
 }
-html[data-motion='extra'] .motion-strike-in { animation: motion-strike-in 320ms ease-out both; }
+.motion-strike-in { animation: motion-strike-in 320ms ease-out both; }
 
 /* A toast leaving fades instead of vanishing (Toaster keeps it 150ms). */
 @keyframes motion-toast-out {
   to { opacity: 0; transform: translateY(4px) scale(0.98); }
 }
-html[data-motion='extra'] .motion-toast-out { animation: motion-toast-out 150ms ease-in both; pointer-events: none; }
+.motion-toast-out { animation: motion-toast-out 150ms ease-in both; pointer-events: none; }
 
 /* The <Truncate> bubble fades in (opacity only — floating-ui positions it with transform). */
 @keyframes motion-fade-in {
   from { opacity: 0; }
 }
-html[data-motion='extra'] .motion-pop-in { animation: motion-fade-in 120ms ease-out; }
+.motion-pop-in { animation: motion-fade-in 120ms ease-out; }
 
 /* ── Reduced motion, everywhere ────────────────────────────────────────────
    The OS setting always wins: it switches off the test set above AND the base
@@ -698,6 +696,6 @@ html[data-motion='extra'] .motion-pop-in { animation: motion-fade-in 120ms ease-
     transition-delay: 0ms !important;
     scroll-behavior: auto !important;
   }
-  html[data-motion='extra'] .card-interactive:hover,
-  html[data-motion='extra'] .card-interactive:active { transform: none; }
+  .card-interactive:hover,
+  .card-interactive:active { transform: none; }
 }

@@ -4,7 +4,7 @@ import { ChevronRight, Plug, LogOut, Settings } from 'lucide-react'
 import { MORE_ENTRIES, isActive } from '../navigation'
 import { useNavClick } from './useNavClick'
 import { ModalShell } from '../../shared/modals'
-import { ThemeSwitch, AccentSwatches, MotionSwitch, NotificationsControl, DisplaySizeSwitch } from '../../shared/components/SettingsMenu'
+import { ThemeSwitch, AccentSwatches, NotificationsControl, DisplaySizeSwitch } from '../../shared/components/SettingsMenu'
 import { signOut } from '../../security/supabaseClient'
 import { cx } from '../../shared/ui'
 
@@ -47,14 +47,13 @@ export function MoreSheet({ open, onClose }: { open: boolean; onClose: () => voi
       <p className="section-label mb-2 px-3">Settings</p>
 
       <Setting label="Appearance"><ThemeSwitch /></Setting>
-      <Setting label="Animations"><MotionSwitch /></Setting>
       <Setting label="Accent"><AccentSwatches /></Setting>
       <Setting label="Display size"><DisplaySizeSwitch /></Setting>
       <div className="flex flex-col">
         <NotificationsControl className={cx(ROW, ROW_IDLE)} />
       </div>
       <SheetLink to="/settings" icon={Settings} label="All settings" navigate={navigate} onClose={onClose} />
-      <SheetLink to="/settings?tab=integrations" icon={Plug} label="Integrations" navigate={navigate} onClose={onClose} />
+      <SheetLink to="/settings?tab=subscriptions" icon={Plug} label="Subscriptions" navigate={navigate} onClose={onClose} />
       <button type="button" onClick={() => signOut()} className={cx(ROW, ROW_IDLE)}>
         <LogOut className="h-[19px] w-[19px] shrink-0" strokeWidth={1.8} aria-hidden />
         <span className="flex-1 text-left">Sign out</span>

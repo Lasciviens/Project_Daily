@@ -53,7 +53,7 @@ const LEAVE_MS = 160
 interface Row { toast: Toast; leaving: boolean }
 
 /**
- * The toasts on screen: the store's, plus — with the "More" animations — the
+ * The toasts on screen: the store's, plus — with the motion set — the
  * ones just dismissed, kept for their 150ms fade-out (`motion-toast-out`).
  * The store itself removes a toast at once either way.
  */

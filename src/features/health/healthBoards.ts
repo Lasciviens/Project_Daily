@@ -37,13 +37,15 @@ export const SLEEP_BOARD: BoardLayouts<typeof SLEEP_SECTIONS[number]> = {
 // Steps and energy (the two charts) in main; rings, the steps trend and the
 // week's exercise beside them. The three mini-metric groups hide when they
 // have no data, so each sits UNDER a card that is always there — a track
-// never ends up empty because a watch doesn't record mobility.
-export const ACTIVITY_SECTIONS = ['rings', 'steps', 'stepsTrend', 'exercise', 'energy', 'note', 'more', 'mobility', 'habits'] as const
+// never ends up empty because a watch doesn't record mobility. The collapsed
+// "Other workouts" card (non-strength Apple workouts; hidden when there are
+// none) ends the main column.
+export const ACTIVITY_SECTIONS = ['rings', 'steps', 'stepsTrend', 'exercise', 'energy', 'note', 'workouts', 'more', 'mobility', 'habits'] as const
 export const ACTIVITY_BOARD: BoardLayouts<typeof ACTIVITY_SECTIONS[number]> = {
-  1: ['rings', 'steps', 'stepsTrend', 'exercise', 'energy', 'note', 'more', 'mobility', 'habits'],
-  2: { columns: [['steps', 'energy', 'note', 'more', 'mobility', 'habits'], ['rings', 'stepsTrend', 'exercise']] },
-  3: { columns: [['steps', 'energy', 'note'], ['rings', 'stepsTrend', 'more'], ['exercise', 'mobility', 'habits']] },
-  4: { columns: [['steps', 'energy', 'note'], ['rings', 'more'], ['stepsTrend', 'mobility'], ['exercise', 'habits']] },
+  1: ['rings', 'steps', 'stepsTrend', 'exercise', 'energy', 'note', 'workouts', 'more', 'mobility', 'habits'],
+  2: { columns: [['steps', 'energy', 'note', 'workouts', 'more', 'mobility', 'habits'], ['rings', 'stepsTrend', 'exercise']] },
+  3: { columns: [['steps', 'energy', 'note', 'workouts'], ['rings', 'stepsTrend', 'more'], ['exercise', 'mobility', 'habits']] },
+  4: { columns: [['steps', 'energy', 'note', 'workouts'], ['rings', 'more'], ['stepsTrend', 'mobility'], ['exercise', 'habits']] },
 }
 
 // ── Heart & vitals ──────────────────────────────────────────────────────────
@@ -70,16 +72,19 @@ export const BODY_BOARD: BoardLayouts<typeof BODY_SECTIONS[number]> = {
 
 // ── Goal progress ───────────────────────────────────────────────────────────
 // The report (verdict, pace, fat vs muscle, weight trend) in main; the goals,
-// protein and calories-vs-scale cards beside it. On a phone the three are
-// blocks INSIDE the report card (one card — the card checks `keysAt`), so
-// step 1 places only the report. Protein and the (collapsed) calories card
-// are short, so they share a track at 2450 and the last track stays empty.
-export const GOAL_SECTIONS = ['report', 'goals', 'protein', 'energy'] as const
+// Muscle watch, protein and calories-vs-scale cards beside it. On a phone the
+// goals, protein and calories blocks sit INSIDE the report card (one card —
+// the card checks `keysAt`), so step 1 places the report and, as its own card
+// right under it (next to the goals block), Muscle watch. Muscle watch always
+// renders (it says when data is missing), so it sits under the goals.
+// Protein and the (collapsed) calories card are short, so they share a track
+// at 2450 and the last track stays empty.
+export const GOAL_SECTIONS = ['report', 'goals', 'muscle', 'protein', 'energy'] as const
 export const GOAL_BOARD: BoardLayouts<typeof GOAL_SECTIONS[number]> = {
-  1: ['report'],
-  2: { columns: [['report'], ['goals', 'protein', 'energy']] },
-  3: { columns: [['report'], ['goals'], ['protein', 'energy']] },
-  4: { columns: [['report'], ['goals'], ['protein', 'energy'], []] },
+  1: ['report', 'muscle'],
+  2: { columns: [['report'], ['goals', 'muscle', 'protein', 'energy']] },
+  3: { columns: [['report'], ['goals', 'muscle'], ['protein', 'energy']] },
+  4: { columns: [['report'], ['goals', 'muscle'], ['protein', 'energy'], []] },
 }
 
 // ── Cardio fitness ──────────────────────────────────────────────────────────
@@ -95,20 +100,6 @@ export const CARDIO_BOARD: BoardLayouts<typeof CARDIO_SECTIONS[number]> = {
   4: { columns: [['vo2'], ['recovery'], [], []] },
 }
 
-// ── Workouts ────────────────────────────────────────────────────────────────
-// One list; its rows form columns by the card's own width. It spans the whole
-// board at 1280/1469 (three row columns) and main + one side track from 1920
-// (still three): a week holds a handful of workouts, so a wider card would
-// only add empty row columns and push its collapse toggle far from the rows.
-export const WORKOUT_SECTIONS = ['list'] as const
-// (A band only spans the tracks its step declares, so every step names it.)
-export const WORKOUT_BOARD: BoardLayouts<typeof WORKOUT_SECTIONS[number]> = {
-  1: ['list'],
-  2: { top: ['list'] },
-  3: { columns: [{ stack: ['list'], span: 2 }, []] },
-  4: { columns: [{ stack: ['list'], span: 2 }, [], []] },
-}
-
 /** Every window's board, for the verify script. */
 export const HEALTH_BOARDS: Record<HealthSectionId, { board: BoardLayouts<string>; sections: readonly string[] }> = {
   overview: { board: OVERVIEW_BOARD, sections: OVERVIEW_SECTIONS },
@@ -118,5 +109,4 @@ export const HEALTH_BOARDS: Record<HealthSectionId, { board: BoardLayouts<string
   body:     { board: BODY_BOARD, sections: BODY_SECTIONS },
   goal:     { board: GOAL_BOARD, sections: GOAL_SECTIONS },
   cardio:   { board: CARDIO_BOARD, sections: CARDIO_SECTIONS },
-  workouts: { board: WORKOUT_BOARD, sections: WORKOUT_SECTIONS },
 }

@@ -5,6 +5,7 @@
 
 import { kcalForPace, PHASE_TARGET, type CompositionResult, type CompositionVerdict, type Phase, type RateVerdict, type Tone } from './bodyGoal'
 import type { EnergyReport } from './energyBalance'
+import type { GoalDecision } from './cutDecision'
 
 export type StepKey = 'calories' | 'protein' | 'training' | 'data' | 'early' | 'keep'
 export interface PathStep { key: StepKey; text: string }
@@ -57,7 +58,7 @@ function headline(phase: Phase, rate: RateVerdict | null, v: CompositionVerdict)
     if (v === 'mostly_fat_gain' || v === 'lean_gain_some_fat') return { title: 'Fat is going up, not down', tone: 'warn' }
     if (v === 'recomp') return { title: 'Recomposition: fat down, muscle up', tone: 'success' }
     if (r === 'on_track') return v === 'fat_loss_lean_kept' ? { title: 'On track: losing fat, keeping muscle', tone: 'success' } : { title: 'Right pace for a cut', tone: 'success' }
-    if (r === 'too_slow') return v === 'fat_loss_lean_kept' ? { title: 'Losing fat, keeping muscle — you can speed up', tone: 'info' } : { title: 'Slow — you can speed up', tone: 'info' }
+    if (r === 'too_slow') return v === 'fat_loss_lean_kept' ? { title: 'Losing fat slowly, keeping muscle', tone: 'neutral' } : { title: 'Losing slowly', tone: 'neutral' }
   } else if (phase === 'gain') {
     if (v === 'fat_gain_lean_loss') return { title: 'Gaining fat and losing muscle', tone: 'danger' }
     if (v === 'mostly_fat_gain') return { title: 'Gaining mostly fat', tone: 'warn' }
@@ -119,6 +120,8 @@ function calorieStep(phase: Phase, rate: RateVerdict): PathStep | null {
   return { key: 'calories', text: `${lead}: eat about ${n0(Math.abs(a.kcal))} kcal a day ${dirWord(a.kcal)}${intake}${aim}${mid}.` }
 }
 
+const PACE_DATA_STEP = 'Weigh in at least 4 times over a week to see your pace.'
+
 export function buildPath({ phase, rate, comp, energy, weightKg }: PathInputs): GoalPath {
   const { title, tone } = headline(phase, rate, comp.verdict)
   const summary: string[] = []
@@ -162,7 +165,7 @@ export function buildPath({ phase, rate, comp, energy, weightKg }: PathInputs): 
       ? 'This window includes the start of your gain: part of the rise is glycogen and water, so the pace looks faster than the tissue you are adding.'
       : 'This window includes the start of your cut: part of the drop is glycogen and water, so the pace looks faster than the fat you are losing.' })
   }
-  if (!rate) steps.push({ key: 'data', text: 'Weigh in at least 4 times over a week to see your pace.' })
+  if (!rate) steps.push({ key: 'data', text: PACE_DATA_STEP })
   if (comp.verdict === 'not_enough_data') {
     steps.push({ key: 'data', text: `${comp.missing ?? ''} Weigh in on the smart scale most mornings — same time, after the toilet, before food or drink — so it can separate fat from muscle.`.trim() })
   }
@@ -171,4 +174,21 @@ export function buildPath({ phase, rate, comp, energy, weightKg }: PathInputs): 
     steps.unshift({ key: 'keep', text: `Keep doing what you are doing — this is the pace${both ? ' and the change' : ''} to aim for.` })
   }
   return { title, tone, summary, steps }
+}
+
+/** The path with THE coach decision (cutDecision.ts) as its headline and
+ *  calorie/protein steps, so Goal progress says exactly what the goal editor
+ *  and Food's coach say. The path keeps its facts (pace sentence, fat vs
+ *  muscle) and its training / data / early-phase steps. */
+export function applyDecision(path: GoalPath, d: GoalDecision, meanProteinG: number | null): GoalPath {
+  const hadProtein = path.steps.some(s => s.key === 'protein')
+  const kept = path.steps.filter(s => s.key !== 'calories' && s.key !== 'protein' && (s.key !== 'keep' || d.gate === 'on_track'))
+  const lead: PathStep[] = d.lines.map(text => ({ key: d.gate === 'no_data' ? 'data' as const : 'calories' as const, text }))
+  const p = d.protein
+  const protein: PathStep[] = p && (hadProtein || !p.inRange)
+    ? [{ key: 'protein', text: `Aim for ~${p.targetG} g protein a day (${p.lowG}–${p.highG} g)${meanProteinG != null ? `; you average ${n0(meanProteinG)} g` : ''}.` }]
+    : []
+  // The decision's own headline already says what the pace needs.
+  const rest = kept.filter(s => s.text !== PACE_DATA_STEP)
+  return { ...path, title: d.headline, tone: d.tone, steps: [...lead, ...protein, ...rest] }
 }

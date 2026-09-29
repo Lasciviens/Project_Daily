@@ -6,7 +6,7 @@ import { psnLine } from './tgConnections'
 import { useHistoryDismiss } from '../../../../shared/hooks/useHistoryDismiss'
 
 // Re-authenticating PlayStation at the point you notice it — the one sanctioned
-// exception to "connections live in Settings → Integrations" (CLAUDE.md).
+// exception to "connections live in Settings → Subscriptions" (CLAUDE.md).
 // The form is the ONE shared PsnNpssoForm, so this can never drift from the
 // Connections card or the PlayStation tab's banner.
 

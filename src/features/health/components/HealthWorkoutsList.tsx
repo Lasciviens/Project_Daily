@@ -1,12 +1,13 @@
-import { useState } from 'react'
-import { ChevronDown, ChevronRight, Dumbbell, Smartphone } from 'lucide-react'
-import { Card, EmptyState, Skeleton, Truncate } from '../../../shared/ui'
+import { useMemo, useState } from 'react'
+import { ChevronDown, ChevronRight, Dumbbell } from 'lucide-react'
+import { Card, Skeleton, Truncate } from '../../../shared/ui'
 import { useEntityModal } from '../../../shared/modals'
 import { formatWeekdayDate } from '../../../shared/utils/dateFormat'
 import { useHealthWorkoutSummaries } from '../hooks/useHealthExport'
 import { useHevyMatches } from '../hooks/useWorkoutLinks'
 import type { HealthWorkoutSummary } from '../api/healthApi'
 import type { HealthWindow } from '../healthWindowStats'
+import { isStrengthWorkout } from '../workoutKinds'
 import { fmtDuration } from './healthFormat'
 
 function fmtStart(iso: string | null): string {
@@ -45,22 +46,26 @@ function HealthWorkoutRow({ workout, hevyTitle, onOpen }: { workout: HealthWorko
   )
 }
 
-// Workouts that started inside the selected window. The list reads summary
+// Health → Activity: the non-strength Apple workouts (walks, rides, runs…)
+// that started inside the selected window, collapsed by default. Strength
+// sessions live under Training (workoutKinds.ts). The list reads summary
 // columns only; a workout's HR curve and route load when it's opened (the
 // `health-workout` popup). One Hevy range read marks the rows that have a
-// Hevy session logged at the same time.
+// Hevy session logged at the same time. Hidden when the window has none.
 export function HealthWorkoutsList({ win }: { win: HealthWindow }) {
   const modal = useEntityModal()
-  const [expanded, setExpanded] = useState(true)
-  const { data: workouts = [], isLoading } = useHealthWorkoutSummaries(win.from, win.to)
+  const [expanded, setExpanded] = useState(false)
+  const { data: all = [], isLoading } = useHealthWorkoutSummaries(win.from, win.to)
+  const workouts = useMemo(() => all.filter(w => !isStrengthWorkout(w.name)), [all])
   const hevy = useHevyMatches(win.from, win.to, workouts)
   const linked = hevy.size
+  if (!isLoading && workouts.length === 0) return null
   return (
     <Card padded={false} className="@container overflow-hidden">
       <button type="button" aria-expanded={expanded} onClick={() => setExpanded(e => !e)}
         className="flex min-h-[44px] w-full items-center justify-between gap-2 px-4 py-2 text-left">
         <p className="section-label">
-          Workouts (Apple Health){!isLoading && ` · ${workouts.length}`}
+          Other workouts{!isLoading && ` (${workouts.length})`}
           {linked > 0 && <span className="normal-case tracking-normal text-fg-faint"> · {linked} with a Hevy session</span>}
         </p>
         <ChevronDown aria-hidden className={`h-4 w-4 shrink-0 text-fg-faint transition-transform ${expanded ? 'rotate-180' : ''}`} />
@@ -71,10 +76,8 @@ export function HealthWorkoutsList({ win }: { win: HealthWindow }) {
             <div className="space-y-1.5">
               {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} rounded="rounded-row" className="h-[60px]" />)}
             </div>
-          ) : workouts.length === 0 ? (
-            <EmptyState bordered icon={<Smartphone />} title="No workouts in this window" className="py-10" />
           ) : (
-            // Rows form columns by the card's own width (it spans the board on a wide page).
+            // Rows form columns by the card's own width.
             // grid-cols-1 = minmax(0,1fr): an implicit auto track grows to a long title's min-content.
             <div className="grid grid-cols-1 gap-1.5 @[46rem]:grid-cols-2 @[72rem]:grid-cols-3 @[98rem]:grid-cols-4 @[124rem]:grid-cols-5">
               {workouts.map(w => (

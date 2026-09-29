@@ -2,10 +2,10 @@ import { useMemo, type Ref, type RefObject } from 'react'
 import { useLocation } from 'react-router-dom'
 import { Crosshair, Quote } from 'lucide-react'
 import { useDevRequestDrafts } from '../devRequestDraftStore'
-import { countBlocks } from '../devRequestContext'
 import { awaitingCheck, cardTimeline, draftFromRow, isDraftEmpty, type ComposerTarget, type DraftFields } from '../devRequestRules'
 import { useDevRequests, useUpdateDevRequest } from '../hooks/useDevRequests'
 import { discardEditDraft, discardNewDraft, useSaveDevRequestDraft } from '../hooks/useDevRequestDraft'
+import { useTickCheckpoint } from '../hooks/useTickCheckpoint'
 import { RequestFields } from '../components/RequestFields'
 import { PageContextToggle } from '../components/PageContextToggle'
 import { STATUSES, STATUS_LABEL, pageOptionFor } from '../components/devRequestMeta'
@@ -37,6 +37,7 @@ export function ComposerRequestTab({ target, readPage, onPick, onQuote, altHint,
   const editDraft = useDevRequestDrafts(s => (target.kind === 'edit' ? s.editDrafts[target.id] : undefined))
   const { saveNew, saveEdit, pending } = useSaveDevRequestDraft()
   const updateStatus = useUpdateDevRequest()
+  const tick = useTickCheckpoint()
 
   if (target.kind === 'edit' && !row) {
     if (isLoading) return <div className="flex flex-col gap-2 p-3"><Skeleton className="h-10" /><Skeleton className="h-32" /></div>
@@ -59,7 +60,6 @@ export function ComposerRequestTab({ target, readPage, onPick, onQuote, altHint,
     if (target.kind === 'new') s.patchNewDraft(p)
     else s.patchEditDraft(target.id, p, seed!)
   }
-  const picks = countBlocks(fields.description)
 
   const done = () => onDone(target)
   function save() {
@@ -76,9 +76,7 @@ export function ComposerRequestTab({ target, readPage, onPick, onQuote, altHint,
         // mousedown would clear the page selection before the click reads it.
         <Button size="sm" variant="ghost" icon={<Quote />} onMouseDown={e => e.preventDefault()} onClick={onQuote}>Quote selection</Button>
       )}
-      <span className="min-w-0 flex-1 text-meta text-fg-muted">
-        {picks > 0 ? `${picks} context block${picks === 1 ? '' : 's'} added` : altHint ? 'or Alt-click anything' : ''}
-      </span>
+      {altHint && <span className="min-w-0 flex-1 text-meta text-fg-muted">or Alt-click anything</span>}
     </>
   )
 
@@ -94,6 +92,8 @@ export function ComposerRequestTab({ target, readPage, onPick, onQuote, altHint,
         <RequestFields
           fields={fields}
           onChange={onChange}
+          // A saved request's checkpoint is ticked for real (like its status).
+          onToggleCheckpoint={row ? (i, done, items) => tick(row, items, i, done) : undefined}
           titleRef={titleRef}
           descriptionRef={descriptionRef}
           descriptionClassName={cx('min-h-[140px] transition-shadow', flash && 'ring-2 ring-accent-500/40')}

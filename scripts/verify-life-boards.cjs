@@ -85,7 +85,8 @@ check('Food Today: the totals rail leads (left) from 1280 up', [2, 3, 4].every(s
   && B.resolveBoardLayout(F.FOOD_TODAY_BOARD, s).columns[0].stack[0] === 'nutrition'))
 check('Food Today: the meal slots lead the main track from 1280 up', [2, 3, 4].every(s => B.resolveBoardLayout(F.FOOD_TODAY_BOARD, s).columns[1].stack[0] === 'meals'))
 check('Food Today at 1280/1469: the coach sits under the slots, so the totals rail is not the only tall column', eq(B.resolveBoardLayout(F.FOOD_TODAY_BOARD, 2).columns[1].stack, ['meals', 'coach']))
-check('Food Today: phone order unchanged (nutrition → water → week → coach → slots)', eq(F.FOOD_TODAY_BOARD[1], ['nutrition', 'water', 'week', 'coach', 'meals']))
+check('Food Today: phone order (nutrition → water → week → stats → coach → slots)', eq(F.FOOD_TODAY_BOARD[1], ['nutrition', 'water', 'week', 'stats', 'coach', 'meals']))
+check('Food Today: the nutrition stats sit right after the last 7 days at every step', [1, 2, 3, 4].every(s => { const cols = s === 1 ? [F.FOOD_TODAY_BOARD[1]] : B.resolveBoardLayout(F.FOOD_TODAY_BOARD, s).columns.map(c => c.stack); return cols.some(st => st.indexOf('stats') === st.indexOf('week') + 1 && st.includes('week')) }))
 check('Ingredients + Log + Wishes: their rail is sticky and first', [F.INGREDIENT_BOARD, T.LOG_BOARD, Wi.WISH_BOARD].every(b =>
   [2, 3, 4].every(s => { const l = B.resolveBoardLayout(b, s); return l.lead === 1 && l.columns[0].sticky })))
 check('Ingredients + Log + Wishes: the collection spans every other track', [F.INGREDIENT_BOARD, T.LOG_BOARD, Wi.WISH_BOARD].every(b =>
@@ -138,9 +139,15 @@ check('Training Coach: main stops at 42rem (the coach card is capped there)', [2
 check('Health Sleep: breathing (data-dependent) takes the last track at 2450', eq(B.resolveBoardLayout(H.SLEEP_BOARD, 4).columns[3].stack, ['breathing']))
 check('Health Cardio: the recovery grid (data-dependent) comes after VO₂ max', [2, 3, 4].every(s => eq(B.resolveBoardLayout(H.CARDIO_BOARD, s).columns[1].stack, ['recovery'])))
 check('Health Cardio: the recovery grid (≤ 2 metrics) never spans a second track', [2, 3, 4].every(s => B.resolveBoardLayout(H.CARDIO_BOARD, s).columns[1].span === 1))
-check('Health Workouts: the list spans at most two tracks from 1920 (a week holds a handful of workouts)', [3, 4].every(s => {
-  const cols = B.resolveBoardLayout(H.WORKOUT_BOARD, s).columns
-  return eq(cols[0].stack, ['list']) && cols[0].span === 2 && cols.slice(1).every(c => c.stack.length === 0)
+check('Health Activity: the collapsed Other workouts card ends the main column (it hides when empty)', [2, 3, 4].every(s => {
+  const main = B.resolveBoardLayout(H.ACTIVITY_BOARD, s).columns[0].stack
+  return main.includes('workouts') && main.indexOf('workouts') > main.indexOf('note')
+}))
+check('Health: the Workouts window is gone (strength lives under Training)', !('workouts' in H.HEALTH_BOARDS))
+check('Health Goal: Muscle watch is its own card under the report on a phone', eq(H.GOAL_BOARD[1], ['report', 'muscle']))
+check('Health Goal: Muscle watch sits right under the goals from 1280', [2, 3, 4].every(s => {
+  const col = B.resolveBoardLayout(H.GOAL_BOARD, s).columns[1].stack
+  return col[0] === 'goals' && col[1] === 'muscle'
 }))
 check('Health Goal at 2450: protein and the collapsed calories card share a track', eq(B.resolveBoardLayout(H.GOAL_BOARD, 4).columns[2].stack, ['protein', 'energy']))
 check('Health Heart at 1280/1469: the resting-HR trend goes under the heart card (columns end level)', eq(B.resolveBoardLayout(H.HEART_BOARD, 2).columns[0].stack, ['heart', 'rhrTrend']))

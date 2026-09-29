@@ -1,6 +1,7 @@
 import type { Tone } from '../../../shared/ui'
 import type { Confidence, PairedBalance, Phase, ProteinBand, Reason, Verdict } from './energyBalance'
-import type { CompositionVerdict, GoalKind, RateStatus } from './bodyGoal'
+import type { CompositionVerdict, GoalKind } from './bodyGoal'
+import type { MuscleWatchLevel } from './muscleWatch'
 
 // Plain-language copy for the goal report. Never a diagnosis: each line says
 // what the numbers show and the most common explanation.
@@ -40,17 +41,6 @@ export const CONFIDENCE_COPY: Record<Confidence, { label: string; tone: Tone }> 
   high: { label: 'High confidence', tone: 'success' },
   medium: { label: 'Medium confidence', tone: 'neutral' },
   low: { label: 'Low confidence', tone: 'warn' },
-}
-
-export const RATE_COPY: Record<RateStatus, { label: string; tone: Tone }> = {
-  on_track: { label: 'On track', tone: 'success' },
-  stable: { label: 'Steady', tone: 'success' },
-  too_slow: { label: 'Too slow', tone: 'info' },
-  too_fast: { label: 'Too fast', tone: 'warn' },
-  way_too_fast: { label: 'Much too fast', tone: 'danger' },
-  wrong_way: { label: 'Wrong direction', tone: 'warn' },
-  drifting_down: { label: 'Drifting down', tone: 'info' },
-  drifting_up: { label: 'Drifting up', tone: 'info' },
 }
 
 /** Tone of a fat/muscle verdict, read through the phase. */
@@ -125,3 +115,11 @@ export const OTHER_SCREENS_NOTE =
   'Other screens count different days: Activity shows only Apple\'s burn, for the period picked there (7 days by default), '
   + 'and Food\'s “Last 7 days” averages every logged day up to today — including today\'s unfinished diary. '
   + 'This comparison uses the same finished days on both sides.'
+
+/** Muscle watch's level pill (muscleWatch.ts). */
+export const MUSCLE_WATCH_LEVEL: Record<MuscleWatchLevel, { label: string; tone: Tone }> = {
+  ok: { label: 'Muscle protected', tone: 'success' },
+  watch: { label: 'Watch', tone: 'warn' },
+  likely_loss: { label: 'Likely losing muscle', tone: 'danger' },
+  not_enough_data: { label: 'Not enough data', tone: 'neutral' },
+}

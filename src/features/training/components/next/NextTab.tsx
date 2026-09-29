@@ -13,6 +13,7 @@ import { SourceNote } from '../program/SourceNote'
 import { MissedSessionsCard } from '../program/MissedSessions'
 import { SessionPlanMenu } from '../session/SessionPlanMenu'
 import { NEXT_BOARD } from '../../trainingBoards'
+import { MuscleWatchLine } from '../../../health/goal/MuscleWatchCard'
 
 function whenText(date: string, startTime: string | null, today: string): string {
   const d = daysBetween(today, date)
@@ -161,7 +162,7 @@ export function NextTab({ onGoTo }: { onGoTo: (tab: TrainingTabId) => void }) {
       session: <div className="max-w-2xl"><SessionHeader plan={plan} /></div>,
       missed: <MissedSessionsCard />,
       recovery: <RecoveryLine />,
-      alerts: <Alerts plan={plan} />,
+      alerts: <><MuscleWatchLine /><Alerts plan={plan} /></>,
       exercises: plan.rows.length > 0 && (
         <ExerciseGrid>
           {plan.rows.map((r, i) => <NextExerciseCard key={`${r.templateId}-${r.order}`} row={r} explainRpe={i === firstRatedRow} />)}

@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 import { Menu, MenuButton, MenuItems, MenuItem } from '@headlessui/react'
 import { Sun, Moon, Monitor, Check, Bell, BellOff, Plug, Code2, LogOut, UserRound, Settings } from 'lucide-react'
-import { useThemeStore, DISPLAY_SCALES, type MotionPreference, type ThemePreference } from '../../app/store'
+import { useThemeStore, DISPLAY_SCALES, type ThemePreference } from '../../app/store'
 import { ACCENTS, type AccentName } from '../theme/accent'
 import { signOut } from '../../security/supabaseClient'
 import { usePushNotifications } from '../hooks/usePushNotifications'
@@ -11,7 +11,7 @@ import { cx } from '../ui/cx'
 // The quick settings live in two places with the same parts: this avatar menu
 // (top bar, phone header) and the phone More sheet; the full set is the
 // Settings page (/settings). Connect/disconnect lives in Settings →
-// Integrations; both only link there.
+// Subscriptions; both only link there.
 
 const THEME_OPTIONS: { value: ThemePreference; label: string; icon: typeof Sun }[] = [
   { value: 'light', label: 'Light', icon: Sun },
@@ -46,47 +46,6 @@ export function ThemeSwitch({ block }: { block?: boolean }) {
             )}
           >
             <Icon className="h-4 w-4" strokeWidth={1.9} aria-hidden />
-          </button>
-        )
-      })}
-    </div>
-  )
-}
-
-const MOTION_OPTIONS: { value: MotionPreference; label: string }[] = [
-  { value: 'extra', label: 'More' },
-  { value: 'standard', label: 'Standard' },
-]
-
-/**
- * Animations: More (the motion test set — card lift, count-ups, ring sweeps,
- * the task check pop, rows arriving, toasts fading) / Standard. The OS
- * "reduce motion" setting always wins over both.
- */
-export function MotionSwitch({ block }: { block?: boolean }) {
-  const motion = useThemeStore(s => s.motion)
-  const setMotion = useThemeStore(s => s.setMotion)
-  return (
-    <div
-      role="radiogroup"
-      aria-label="Animations"
-      className={cx('grid grid-cols-2 gap-1 rounded-row border border-line bg-surface-2 p-[3px]', block ? 'w-full' : 'inline-grid')}
-    >
-      {MOTION_OPTIONS.map(({ value, label }) => {
-        const on = motion === value
-        return (
-          <button
-            key={value}
-            type="button"
-            role="radio"
-            aria-checked={on}
-            onClick={() => setMotion(value)}
-            className={cx(
-              'h-9 min-w-[4.5rem] rounded-[9px] px-2.5 text-body font-semibold transition-colors duration-100 [@media(pointer:coarse)]:h-11',
-              on ? 'bg-accent-50 text-accent-700 shadow-[inset_0_0_0_1px_rgb(var(--accent-500)/0.35)]' : 'text-fg-muted hover:text-fg',
-            )}
-          >
-            {label}
           </button>
         )
       })}
@@ -236,9 +195,6 @@ export function SettingsMenu() {
         <p className="menu-label">Appearance</p>
         <div className="px-2.5 pb-2"><ThemeSwitch block /></div>
 
-        <p className="menu-label">Animations</p>
-        <div className="px-2.5 pb-2"><MotionSwitch block /></div>
-
         <p className="menu-label">Accent</p>
         <div className="px-1.5 pb-1.5"><AccentSwatches /></div>
 
@@ -252,8 +208,8 @@ export function SettingsMenu() {
           </Link>
         </MenuItem>
         <MenuItem>
-          <Link to="/settings?tab=integrations" className="menu-item">
-            <Plug className="h-4 w-4 shrink-0" strokeWidth={1.9} aria-hidden />Integrations
+          <Link to="/settings?tab=subscriptions" className="menu-item">
+            <Plug className="h-4 w-4 shrink-0" strokeWidth={1.9} aria-hidden />Subscriptions
           </Link>
         </MenuItem>
         <MenuItem>

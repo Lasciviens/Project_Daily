@@ -12,6 +12,9 @@ import { usePhase } from './useBodyGoals'
 import { PHASE_QUESTION, verdictCopy } from './goalCopy'
 import { PhaseBar } from './PhaseBar'
 import { GoalPathPanel } from './GoalPathPanel'
+import { applyDecision } from './goalPath'
+import { useDayTargets } from '../../daily/hooks/useDayTargets'
+import { useNutritionCoach } from '../../daily/hooks/useNutritionCoach'
 import { PaceSection } from './PaceSection'
 import { CompositionSection } from './CompositionSection'
 import { GoalsSection } from './GoalsSection'
@@ -19,6 +22,7 @@ import { ProteinBlock } from './ProteinBlock'
 import { WeightTrendChart } from './WeightTrendChart'
 import { EnergyVerdict } from './EnergyVerdict'
 import { EnergyGrid } from './EnergyGrid'
+import { MuscleWatchCard } from './MuscleWatchCard'
 
 type GoalData = ReturnType<typeof useGoalReport>
 
@@ -36,6 +40,7 @@ export function GoalReportCard() {
     <PageBoard layout={GOAL_BOARD} sections={{
       report: <GoalReportMain win={win} onWin={setWin} d={d} />,
       goals: <GoalPart d={d} part="goals" />,
+      muscle: <ErrorBoundary label="Muscle watch"><MuscleWatchCard /></ErrorBoundary>,
       protein: <GoalPart d={d} part="protein" />,
       energy: <GoalPart d={d} part="energy" />,
     }} />
@@ -68,6 +73,9 @@ function GoalReportMain({ win, onWin, d }: { win: `${GoalWindow}`; onWin: (w: `$
 }
 
 function GoalReportBody({ d, withBlocks }: { d: GoalData; withBlocks: boolean }) {
+  // THE decision (cutDecision.ts) — the same answer the goal editor and Food's coach give.
+  const { targets } = useDayTargets()
+  const coach = useNutritionCoach(targets)
   if (d.isLoading && !d.report) return <SkeletonText lines={6} />
   if (d.isError && !d.report) return <p className="text-body text-fg-muted">Couldn&apos;t load the diary, energy or weight data. Pull to refresh or try again later.</p>
   const r = d.report
@@ -76,7 +84,8 @@ function GoalReportBody({ d, withBlocks }: { d: GoalData; withBlocks: boolean })
   const e = r.energy
   return (
     <div className="flex flex-col gap-3">
-      <GoalPathPanel path={r.path} />
+      <GoalPathPanel path={applyDecision(r.path, coach.decision, e.intake.meanProteinG)}
+        note={e.days !== 28 ? 'The advice reads the last 28 days, whatever window is picked.' : undefined} />
       <div className="grid gap-3 @2xl:grid-cols-2">
         <PaceSection phase={phase} rate={r.rate} meanKg={e.weight.meanKg} />
         <CompositionSection phase={phase} comp={r.comp} extended={r.compFrom < d.from} />

@@ -93,7 +93,7 @@ export function GoogleTaskListsSheet({ open, onClose }: Props) {
         {isLoading && <p className="text-body text-fg-muted">Loading…</p>}
         {!isLoading && lists.length === 0 && (
           <p className="text-body text-fg-muted">
-            No lists synced yet — tap Import in Settings to pull your Google Task lists.
+            No lists synced yet — tap Import in Settings → Subscriptions to pull your Google Task lists.
           </p>
         )}
         {lists.map(l => <ListRow key={l.id} list={l} />)}

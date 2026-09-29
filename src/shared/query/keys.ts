@@ -184,7 +184,7 @@ export const qk = {
     routes: () => ['transit', 'routes'] as const,
     recentSearches: () => ['transit', 'recent-searches'] as const,
   },
-  // Settings → Integrations (service_subscriptions, migration 115).
+  // Settings → Subscriptions (service_subscriptions, migration 115).
   subscriptions: {
     all: ['subscriptions'] as const,
     list: () => ['subscriptions', 'list'] as const,

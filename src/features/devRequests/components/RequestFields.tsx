@@ -1,14 +1,22 @@
-import { useRef, type KeyboardEvent, type ReactNode, type Ref, type RefObject } from 'react'
-import { ListOrdered } from 'lucide-react'
+import { useCallback, useMemo, useState, type ReactNode, type Ref, type RefObject } from 'react'
+import { ListChecks } from 'lucide-react'
 import { PAGE_CHOICES, PAGE_OPTIONS } from './devRequestMeta'
 import { CATEGORIES, EFFORTS, PRIORITIES, type DraftFields } from '../devRequestRules'
 import type { DevRequestCategory, DevRequestEffort, DevRequestPriority } from '../types'
-import { continueNumberedList, insertNumberedItem, type TextEdit } from '../numberedList'
+import { composeDescription, parseDescription } from '../devRequestMarks'
+import { insertAfter, removeAt, setDone, setText, type Checkpoint } from '../checkpoints'
+import { CheckpointList } from './CheckpointList'
+import { MarkList } from './MarkList'
 import { Button, cx } from '../../../shared/ui'
 
 interface Props {
   fields: DraftFields
   onChange: (patch: Partial<DraftFields>) => void
+  /**
+   * A tick on a checkpoint, when the caller writes it somewhere itself (an
+   * existing request: saved at once). Without it a tick is a draft change.
+   */
+  onToggleCheckpoint?: (index: number, done: boolean, items: readonly Checkpoint[]) => void
   autoFocusTitle?: boolean
   titleRef?: Ref<HTMLInputElement>
   descriptionRef?: RefObject<HTMLTextAreaElement | null>
@@ -18,33 +26,26 @@ interface Props {
   descriptionTools?: ReactNode
 }
 
-/** The request's fields, as the floating composer edits them. */
-export function RequestFields({ fields, onChange, autoFocusTitle, titleRef, descriptionRef, descriptionClassName, descriptionTools }: Props) {
-  const ownRef = useRef<HTMLTextAreaElement | null>(null)
-  const areaRef = descriptionRef ?? ownRef
-
-  // Writes an edit and puts the caret where it belongs once React re-rendered.
-  function applyEdit(edit: TextEdit) {
-    onChange({ description: edit.text })
-    requestAnimationFrame(() => {
-      const el = areaRef.current
-      if (!el) return
-      el.focus({ preventScroll: true })
-      el.setSelectionRange(edit.caret, edit.caret)
-    })
+/**
+ * The request's fields, as the floating composer edits them. The text box
+ * holds only the user's own words; checkpoints show as checkboxes and the
+ * picked spots as plain-language rows under it (all three are stored in
+ * `description`, see devRequestMarks.ts).
+ */
+export function RequestFields({ fields, onChange, onToggleCheckpoint, autoFocusTitle, titleRef, descriptionRef, descriptionClassName, descriptionTools }: Props) {
+  const parsed = useMemo(() => parseDescription(fields.description), [fields.description])
+  const [focusIndex, setFocusIndex] = useState<number | null>(null)
+  const onFocused = useCallback(() => setFocusIndex(null), [])
+  const write = (patch: Partial<typeof parsed>) => onChange({ description: composeDescription({ ...parsed, ...patch }) })
+  const setCheckpoints = (checkpoints: Checkpoint[]) => write({ checkpoints })
+  const addAfter = (index: number) => {
+    const next = insertAfter(parsed.checkpoints, index)
+    setCheckpoints(next.items)
+    setFocusIndex(next.at)
   }
-  function onDescriptionKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key !== 'Enter' || e.shiftKey || e.altKey || e.metaKey || e.ctrlKey || e.nativeEvent.isComposing) return
-    const el = e.currentTarget
-    if (el.selectionStart !== el.selectionEnd) return
-    const edit = continueNumberedList(el.value, el.selectionStart)
-    if (!edit) return
-    e.preventDefault()
-    applyEdit(edit)
-  }
-  const addNumbered = () => {
-    const el = areaRef.current
-    applyEdit(insertNumberedItem(fields.description, el ? el.selectionStart : fields.description.length))
+  const toggle = (i: number, done: boolean) => {
+    if (onToggleCheckpoint) onToggleCheckpoint(i, done, parsed.checkpoints)
+    else setCheckpoints(setDone(parsed.checkpoints, i, done))
   }
 
   // A page value from before the dropdown (free text) stays selectable, so
@@ -62,29 +63,38 @@ export function RequestFields({ fields, onChange, autoFocusTitle, titleRef, desc
         className="input"
       />
       <textarea
-        ref={areaRef}
-        value={fields.description}
-        onChange={e => onChange({ description: e.target.value })}
-        onKeyDown={onDescriptionKeyDown}
+        ref={descriptionRef}
+        value={parsed.body}
+        onChange={e => write({ body: e.target.value })}
         placeholder="Details (optional) — the more context, the less back-and-forth later"
         aria-label="Details"
         rows={4}
         className={cx('input resize-y', descriptionClassName ?? 'min-h-[90px] md:min-h-[160px]')}
       />
+      <CheckpointList
+        items={parsed.checkpoints}
+        onToggle={toggle}
+        edit={{
+          onText: (i, text) => setCheckpoints(setText(parsed.checkpoints, i, text)),
+          onRemove: i => setCheckpoints(removeAt(parsed.checkpoints, i)),
+          onAddAfter: addAfter,
+          focusIndex,
+          onFocused,
+        }}
+      />
       <div className="flex flex-wrap items-center gap-1.5">
         <Button
           size="sm"
           variant="ghost"
-          icon={<ListOrdered />}
-          // Keep the caret where it is: mousedown would move focus off the text box.
-          onMouseDown={e => e.preventDefault()}
-          onClick={addNumbered}
-          title="Start a numbered point (1- …). Enter continues the list, Enter on an empty point ends it."
+          icon={<ListChecks />}
+          onClick={() => addAfter(parsed.checkpoints.length - 1)}
+          title="Add a point you can tick off once it is done. Enter in a checkpoint adds the next one."
         >
-          Numbered list
+          Add checkpoint
         </Button>
         {descriptionTools}
       </div>
+      <MarkList marks={parsed.marks} onRemove={i => write({ marks: parsed.marks.filter((_, j) => j !== i) })} />
       <div className="grid grid-cols-2 gap-2">
         <select value={fields.category} onChange={e => onChange({ category: e.target.value as DevRequestCategory })} aria-label="Category" className="select">
           {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}

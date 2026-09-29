@@ -21,7 +21,7 @@ import { MetricMiniGrid } from '../components/MetricMiniGrid'
 import { ACTIVITY_EXTRA_METRICS, CARDIO_EXTRA_METRICS, HABIT_METRICS, MOBILITY_METRICS, SLEEP_EXTRA_METRICS } from '../components/miniMetrics'
 import { HEALTH_SECTIONS, type HealthRange } from '../components/sectionTypes'
 import {
-  ACTIVITY_BOARD, BODY_BOARD, CARDIO_BOARD, HEART_BOARD, OVERVIEW_BOARD, SLEEP_BOARD, WORKOUT_BOARD,
+  ACTIVITY_BOARD, BODY_BOARD, CARDIO_BOARD, HEART_BOARD, OVERVIEW_BOARD, SLEEP_BOARD,
 } from '../healthBoards'
 import { HealthProfileCard } from '../components/profile/HealthProfileCard'
 import { useHealthPageRange } from '../components/overview/useHealthPageRange'
@@ -113,6 +113,8 @@ export function HealthPage() {
                   <button type="button" className="font-medium text-accent-600 underline underline-offset-2" onClick={() => setSection('goal')}>Goal progress</button> compares it with this burn.
                 </p>
               ),
+              // Non-strength Apple workouts; strength sessions live under Training.
+              workouts: <Guard name="Other workouts"><HealthWorkoutsList win={win} /></Guard>,
               more: <MetricMiniGrid title="More activity" metrics={ACTIVITY_EXTRA_METRICS} window={miniWindow} onViewDay={viewDay} hideWhenEmpty standalone="h3" />,
               mobility: <MetricMiniGrid title="Mobility" metrics={MOBILITY_METRICS} window={miniWindow} onViewDay={viewDay} hideWhenEmpty standalone="h3" />,
               // Moved from Body, which shows the smart scale only (owner).
@@ -153,11 +155,6 @@ export function HealthPage() {
               vo2: <Guard name="Cardio fitness"><CardioCard range={range} /></Guard>,
               recovery: <MetricMiniGrid title="Recovery and effort" metrics={CARDIO_EXTRA_METRICS} window={miniWindow} onViewDay={viewDay} hideWhenEmpty standalone="h3" />,
             }} />
-          )}
-
-          {section === 'workouts' && (
-            <SectionPanel id="workouts" note="Apple Watch workouts; tap one for its heart-rate zones, route and the Hevy session logged with it."
-              layout={WORKOUT_BOARD} sections={{ list: <Guard name="Workouts"><HealthWorkoutsList win={win} /></Guard> }} />
           )}
         </Guard>
       </div>

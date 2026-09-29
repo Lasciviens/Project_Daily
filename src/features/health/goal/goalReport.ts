@@ -30,6 +30,8 @@ export interface GoalReport {
   comp: CompositionResult
   path: GoalPath
   goals: { weight: GoalProgress | null; bodyFat: GoalProgress | null; muscle: GoalProgress | null }
+  /** The scale readings the report read (every source) — Muscle watch re-reads them from the phase start. */
+  readings: CompositionReading[]
   /** Latest scale lean mass, muscle mass and body fat, for labels. */
   latest: { leanKg: number | null; muscleKg: number | null; fatPct: number | null }
 }
@@ -92,7 +94,7 @@ export function buildGoalReport(inp: GoalReportInputs): GoalReport {
 
   const path = buildPath({ phase: inp.phase, rate, comp, energy, weightKg: w.currentTrendKg ?? w.meanKg })
   return {
-    phase: inp.phase, compFrom, energy, rate, comp, path, goals,
+    phase: inp.phase, compFrom, energy, rate, comp, path, goals, readings: inp.readings,
     latest: {
       leanKg: leanReading?.leanMassKg ?? null,
       muscleKg: muscleReading?.muscleMassKg ?? null,

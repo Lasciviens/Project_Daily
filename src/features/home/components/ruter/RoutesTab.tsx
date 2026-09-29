@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react'
-import { ArrowUpDown, LocateFixed, MapPin, RefreshCw, Save, X } from 'lucide-react'
+import { ArrowUpDown, LocateFixed, MapPin, Plus, RefreshCw, Save, X } from 'lucide-react'
 import { quayLabel, type StopResult, type TransitPlace } from '../../api/ruterApi'
 import { useTransitRoutes, type UserTransitRoute } from '../../hooks/useTransitRoutes'
 import { useTransitStops, type UserTransitStop } from '../../hooks/useTransitStops'
@@ -13,20 +13,18 @@ import { fmtLastUpdated, fmtMinsAgo, fmtTime } from './transitUtils'
 import { toast } from '../../../../app/store'
 import { DateInput } from '../../../../shared/components/DateInput'
 import { todayStr as todayString } from '../../../../shared/utils/dateUtils'
-import { findPlace, type PlaceKind } from '../../transitPlaces'
+import { findPlace } from '../../transitPlaces'
+import { PlaceButtons } from './PlaceButtons'
 
 interface RoutesTabProps {
   /** False while the surrounding widget/sheet is closed: no fetching then. */
   active: boolean
   now: number
-  // Lets Settings' "Favorite Routes" list select a route here: RuterWidget
+  // Lets Settings' "Favourite routes" list select a route here: TransitPanel
   // sets pendingRouteId + switches to this tab; this effect applies it once,
-  // then reports back so RuterWidget clears it.
+  // then reports back so TransitPanel clears it.
   pendingRouteId?:   string | null
   onRouteConsumed?:  () => void
-  /** "To home" / "To work" (TransitPanel): plan from here to that saved place once. */
-  pendingPlace?:     PlaceKind | null
-  onPlaceConsumed?:  () => void
 }
 
 // Inline "name this route" form — appears both under the draft planner and
@@ -67,6 +65,8 @@ type TripMode      = 'departAt' | 'arriveBy'
 interface SearchParams {
   from:           TransitPlace
   to:             TransitPlace
+  /** Optional stop the trip must pass through (EnTur's `via` argument). */
+  via?:           TransitPlace | null
   dateTime?:      string
   arriveBy:       boolean
   label:          string
@@ -131,8 +131,9 @@ function suggestLabel(from: TransitPlace, to: TransitPlace): string {
 // Stop card with quay direction hints.
 // Uses fetchStopDirections (lightweight: 20 departures, one per line+destination)
 // to get "Toward Oslo S" / "Toward Snarøya" labels from real departure context.
-function PlaceDisplay({ place, label, onClear }: { place: TransitPlace; label: string; onClear: () => void }) {
-  const isFrom = label.toLowerCase() === 'from'
+const PLACE_DOT: Record<'From' | 'Via' | 'To', string> = { From: 'bg-danger', Via: 'bg-warn', To: 'bg-success' }
+
+function PlaceDisplay({ place, label, onClear }: { place: TransitPlace; label: 'From' | 'Via' | 'To'; onClear: () => void }) {
 
   const { data: hints = [] } = useStopDirections(place.kind === 'stop' ? place.id : null)
 
@@ -140,14 +141,14 @@ function PlaceDisplay({ place, label, onClear }: { place: TransitPlace; label: s
 
   return (
     <div className="flex items-center gap-2 px-2.5 py-2 bg-surface-2 border border-line rounded-row min-h-[44px]">
-      <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${isFrom ? 'bg-danger' : 'bg-success'}`} />
+      <span aria-hidden className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${PLACE_DOT[label]}`} />
       <div className="flex-1 min-w-0">
         <Truncate as="p" className="text-body font-medium text-fg leading-snug">{place.name}</Truncate>
         {directions.length > 0 && (
           <Truncate as="p" className="text-micro text-fg-muted leading-tight">{directions.join(' · ')}</Truncate>
         )}
       </div>
-      <IconButton label={`Clear ${label} stop`} onClick={onClear}><X /></IconButton>
+      <IconButton label={`Clear ${label.toLowerCase()} stop`} onClick={onClear}><X /></IconButton>
     </div>
   )
 }
@@ -186,14 +187,16 @@ function SavedRouteChip({ route, active, onSelect, onDelete }: {
   )
 }
 
-export function RoutesTab({ active, now, pendingRouteId, onRouteConsumed, pendingPlace, onPlaceConsumed }: RoutesTabProps) {
+export function RoutesTab({ active, now, pendingRouteId, onRouteConsumed }: RoutesTabProps) {
   const { routes, addRoute, removeRoute } = useTransitRoutes()
-  const { stops: savedStops } = useTransitStops()
+  const { stops: savedStops, isLoading: stopsLoading } = useTransitStops()
   const { recent: recentSearches, recordSearch } = useTransitRecentSearches()
   const { data: geo, dataUpdatedAt: geoUpdatedAt, refetch: refetchGeo, isFetching: geoRefreshing } = useGeolocation()
 
   const [draftFrom,      setDraftFrom]      = useState<TransitPlace | null>(null)
   const [draftTo,        setDraftTo]        = useState<TransitPlace | null>(null)
+  const [draftVia,       setDraftVia]       = useState<TransitPlace | null>(null)
+  const [showVia,        setShowVia]        = useState(false)
   const [fromLocState,   setFromLocState]   = useState<LocationState>('idle')
   const [toLocState,     setToLocState]     = useState<LocationState>('idle')
   const [draftWhen,      setDraftWhen]      = useState<WhenPreset>('now')
@@ -229,15 +232,13 @@ export function RoutesTab({ active, now, pendingRouteId, onRouteConsumed, pendin
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingRouteId, routes])
 
-  // "To home" / "To work": plan from the current location, or from the
-  // default stop when there is no location fix.
-  useEffect(() => {
-    if (!pendingPlace) return
-    const target = findPlace(savedStops, pendingPlace)
-    onPlaceConsumed?.()
-    if (target) void planGpsToStop(target, { fallbackToDefault: true })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingPlace])
+  // Saved stops that are not Home/Work — those two have their own buttons.
+  const otherStops = useMemo(() => {
+    const placeIds = new Set([findPlace(savedStops, 'home')?.id, findPlace(savedStops, 'work')?.id])
+    return savedStops.filter(s => !placeIds.has(s.id))
+  }, [savedStops])
+
+  function clearVia() { setDraftVia(null); setShowVia(false) }
 
   const favoriteStops = useMemo(() => {
     const seen = new Set<string>()
@@ -252,7 +253,7 @@ export function RoutesTab({ active, now, pendingRouteId, onRouteConsumed, pendin
   function applyPreset(r: UserTransitRoute) {
     const from: TransitPlace = { kind: 'stop', id: r.from_stop_id, name: r.from_stop_name }
     const to:   TransitPlace = { kind: 'stop', id: r.to_stop_id,   name: r.to_stop_name   }
-    setDraftFrom(from); setDraftTo(to); setDraftWhen('now'); setShowSaveForm(false)
+    setDraftFrom(from); setDraftTo(to); clearVia(); setDraftWhen('now'); setShowSaveForm(false)
     setSearch({ from, to, dateTime: undefined, arriveBy: false, label: 'Leave now',
       preferredLine: draftLine.trim() || undefined, version: (search?.version ?? 0) + 1 })
     setFormCollapsed(true)
@@ -296,7 +297,7 @@ export function RoutesTab({ active, now, pendingRouteId, onRouteConsumed, pendin
       const toPlace: TransitPlace = isAddress && stop.lat != null && stop.lon != null
         ? { kind: 'coords', lat: stop.lat, lon: stop.lon, name: stop.label ?? stop.stop_name }
         : { kind: 'stop', id: stop.stop_id, name: stop.label ?? stop.stop_name }
-      setDraftFrom(gpsPlace); setDraftTo(toPlace); setFromLocState('granted')
+      setDraftFrom(gpsPlace); setDraftTo(toPlace); clearVia(); setFromLocState('granted')
       setSearch({
         from: gpsPlace, to: toPlace, dateTime: undefined, arriveBy: false,
         label: 'Leave now', preferredLine: undefined,
@@ -339,7 +340,7 @@ export function RoutesTab({ active, now, pendingRouteId, onRouteConsumed, pendin
     else if (draftWhen === 'arriveBy') dateTime = new Date(`${todayString()}T${draftTime}`).toISOString()
     else if (draftWhen === 'custom')   dateTime = new Date(`${draftDate}T${draftTime}`).toISOString()
     setSearch({
-      from: draftFrom, to: draftTo, dateTime,
+      from: draftFrom, to: draftTo, via: draftVia, dateTime,
       arriveBy: draftWhen === 'arriveBy' || (draftWhen === 'custom' && draftMode === 'arriveBy'),
       label: planningLabel(draftWhen, draftMode, dateTime),
       preferredLine: draftLine.trim() || undefined,
@@ -347,8 +348,9 @@ export function RoutesTab({ active, now, pendingRouteId, onRouteConsumed, pendin
     })
     setShowSaveForm(false); setFormCollapsed(true)
     // Only stop→stop searches can be recorded (the recent-searches table has
-    // no coordinate columns, so an address/GPS endpoint can't be represented).
-    if (draftFrom.kind === 'stop' && draftTo.kind === 'stop') {
+    // no coordinate columns, so an address/GPS endpoint can't be represented;
+    // nor a via column, so a via trip isn't recorded either).
+    if (!draftVia && draftFrom.kind === 'stop' && draftTo.kind === 'stop') {
       recordSearch({ id: draftFrom.id, name: draftFrom.name }, { id: draftTo.id, name: draftTo.name })
     }
   }
@@ -356,7 +358,7 @@ export function RoutesTab({ active, now, pendingRouteId, onRouteConsumed, pendin
   function planFromRecent(r: RecentSearch) {
     const from: TransitPlace = { kind: 'stop', id: r.from_stop_id, name: r.from_stop_name }
     const to:   TransitPlace = { kind: 'stop', id: r.to_stop_id,   name: r.to_stop_name   }
-    setDraftFrom(from); setDraftTo(to); setDraftWhen('now'); setShowSaveForm(false)
+    setDraftFrom(from); setDraftTo(to); clearVia(); setDraftWhen('now'); setShowSaveForm(false)
     setSearch({ from, to, dateTime: undefined, arriveBy: false, label: 'Leave now',
       preferredLine: undefined, version: (search?.version ?? 0) + 1 })
     setFormCollapsed(true)
@@ -381,12 +383,13 @@ export function RoutesTab({ active, now, pendingRouteId, onRouteConsumed, pendin
     return { filteredData: matched.length > 0 ? matched : data, lineFilterActive: true, lineMatchCount: matched.length }
   }, [data, search?.preferredLine])
 
-  const canSave = !!(search?.from.kind === 'stop' && search.to.kind === 'stop')
+  // Saved routes are plain stop→stop pairs (no via column).
+  const canSave = !!(search && !search.via && search.from.kind === 'stop' && search.to.kind === 'stop')
   const alreadySaved = canSave && routes.some(
     r => r.from_stop_id === (search!.from as { id: string }).id && r.to_stop_id === (search!.to as { id: string }).id
   )
   // Can save directly from draft (before planning) when both stops are NSR stops
-  const draftCanSave = !formCollapsed && !!(draftFrom?.kind === 'stop' && draftTo?.kind === 'stop')
+  const draftCanSave = !formCollapsed && !draftVia && !!(draftFrom?.kind === 'stop' && draftTo?.kind === 'stop')
   const draftAlreadySaved = draftCanSave && routes.some(
     r => r.from_stop_id === (draftFrom as { id: string }).id && r.to_stop_id === (draftTo as { id: string }).id
   )
@@ -408,93 +411,94 @@ export function RoutesTab({ active, now, pendingRouteId, onRouteConsumed, pendin
 
   return (
     <div className="space-y-4">
+      {/* One-tap trips from where you are */}
+      {!stopsLoading && (
+        <PlaceButtons stops={savedStops} disabled={fromLocState === 'loading'}
+          onPick={stop => void planGpsToStop(stop, { fallbackToDefault: true })} />
+      )}
 
-      {/* Saved routes */}
-      {routes.length > 0 && (
-        <div>
-          <SectionLabel className="mb-2">Saved routes</SectionLabel>
-          <div className="flex flex-wrap gap-2">
-            {routes.map(r => {
-              const active = draftFrom?.kind === 'stop' && draftFrom.id === r.from_stop_id &&
-                             draftTo?.kind   === 'stop' && draftTo.id   === r.to_stop_id
-              return (
-                <SavedRouteChip key={r.id} route={r} active={active}
-                  onSelect={() => applyPreset(r)}
-                  onDelete={() => removeRoute(r.id).catch(() => { /* toasted by the hook */ })} />
-              )
-            })}
-          </div>
+      {/* Shortcuts — saved routes, other saved stops from here, recent searches */}
+      {(routes.length > 0 || otherStops.length > 0 || (recentSearches.length > 0 && !formCollapsed)) && (
+        <div className="space-y-3">
+          {routes.length > 0 && (
+            <div>
+              <SectionLabel className="mb-1.5">Saved routes</SectionLabel>
+              <div className="flex flex-wrap gap-2">
+                {routes.map(r => {
+                  const active = draftFrom?.kind === 'stop' && draftFrom.id === r.from_stop_id &&
+                                 draftTo?.kind   === 'stop' && draftTo.id   === r.to_stop_id
+                  return (
+                    <SavedRouteChip key={r.id} route={r} active={active}
+                      onSelect={() => applyPreset(r)}
+                      onDelete={() => removeRoute(r.id).catch(() => { /* toasted by the hook */ })} />
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {otherStops.length > 0 && (
+            <div>
+              <SectionLabel className="mb-1.5">From here to</SectionLabel>
+              <div className="flex flex-wrap gap-2">
+                {otherStops.map(s => (
+                  <button
+                    key={s.id}
+                    type="button"
+                    onClick={() => planGpsToStop(s)}
+                    className="flex min-h-[44px] max-w-full items-center gap-1.5 rounded-row border border-line px-3 py-1.5 text-left text-meta text-fg-2 transition-colors duration-150 hover:bg-surface-hover"
+                  >
+                    <LocateFixed aria-hidden className="h-3.5 w-3.5 shrink-0 text-fg-faint" />
+                    <span className="flex min-w-0 flex-col leading-tight">
+                      <Truncate>{s.label ?? s.stop_name.split(',')[0]}</Truncate>
+                      {/* Which platform/direction this favourite was saved for. */}
+                      {s.quay_description && <Truncate className="text-micro text-fg-muted">{s.quay_description}</Truncate>}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {recentSearches.length > 0 && !formCollapsed && (
+            <div>
+              <SectionLabel className="mb-1.5">Recent</SectionLabel>
+              <div className="flex flex-wrap gap-2">
+                {recentSearches.map(r => (
+                  <button
+                    key={r.id}
+                    type="button"
+                    onClick={() => planFromRecent(r)}
+                    className="flex min-h-[44px] max-w-full items-center gap-1.5 rounded-row border border-line px-3 py-1.5 text-meta text-fg-2 transition-colors duration-150 hover:bg-surface-hover"
+                  >
+                    <Truncate className="max-w-[100px]">{r.from_stop_name.split(',')[0]}</Truncate>
+                    <span aria-hidden className="text-fg-faint">→</span>
+                    <Truncate className="max-w-[100px]">{r.to_stop_name.split(',')[0]}</Truncate>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
-      {/* Recent searches — repeat a stop→stop trip without re-typing it */}
-      {recentSearches.length > 0 && (
-        <div>
-          <SectionLabel className="mb-2">Recent searches</SectionLabel>
-          <div className="flex flex-wrap gap-2">
-            {recentSearches.map(r => (
-              <button
-                key={r.id}
-                onClick={() => planFromRecent(r)}
-                className="flex items-center gap-1.5 text-meta px-3 py-2 rounded-row border border-line text-fg-2 hover:border-accent-500/40 transition-colors duration-150 min-h-[44px]"
-              >
-                <Truncate className="max-w-[100px]">{r.from_stop_name.split(',')[0]}</Truncate>
-                <span className="text-fg-faint">→</span>
-                <Truncate className="max-w-[100px]">{r.to_stop_name.split(',')[0]}</Truncate>
-              </button>
-            ))}
-          </div>
-        </div>
+      {/* Current-location freshness — the cached fix is reused (see
+          resolveGpsPlace), so say how old it is and offer a refresh. */}
+      {geo?.source === 'gps' && (
+        <p className="-mt-2 flex flex-wrap items-center gap-x-1.5 text-micro text-fg-muted">
+          <MapPin aria-hidden className="h-3 w-3" /> Using location from {fmtMinsAgo(geoUpdatedAt, now)}
+          <button
+            type="button"
+            onClick={refreshCurrentLocation}
+            disabled={geoRefreshing}
+            className="min-h-[44px] font-semibold text-accent-600 disabled:opacity-50"
+          >
+            {geoRefreshing ? 'Updating…' : 'Update'}
+          </button>
+        </p>
       )}
-
-      {/* GPS → saved stop quick chips */}
-      {savedStops.length > 0 && (
-        <div>
-          <SectionLabel className="mb-2">Quick route from here</SectionLabel>
-          <div className="flex flex-wrap gap-2">
-            {savedStops.map(s => (
-              <button
-                key={s.id}
-                onClick={() => planGpsToStop(s)}
-                className="flex items-center gap-1.5 text-meta px-3 py-2 rounded-row border border-line text-fg-2 hover:border-accent-500/40 transition-colors duration-150 min-h-[44px]"
-              >
-                <LocateFixed aria-hidden className="h-3.5 w-3.5 shrink-0 text-fg-faint" />
-                <span aria-hidden>→</span>
-                <span className="flex flex-col items-start leading-tight">
-                  <span>{s.label ?? s.stop_name.split(',')[0]}</span>
-                  {/* Which platform/direction this favorite was saved for — was
-                      only shown in Departures, not here, even though the same
-                      ambiguity applies (a stop can have several saved directions). */}
-                  {s.quay_description && (
-                    <span className="text-micro opacity-70">{s.quay_description}</span>
-                  )}
-                </span>
-              </button>
-            ))}
-          </div>
-          {/* Current-location freshness — reused from cache (see resolveGpsPlace)
-              rather than re-computed on every click, so it's worth showing how
-              old the cached fix is and offering an explicit refresh. */}
-          {geo?.source === 'gps' && (
-            <p className="text-micro text-fg-muted mt-1.5 flex items-center gap-1.5">
-              <MapPin aria-hidden className="h-3 w-3" /> Using location from {fmtMinsAgo(geoUpdatedAt, now)}
-              <button
-                type="button"
-                onClick={refreshCurrentLocation}
-                disabled={geoRefreshing}
-                className="min-h-[44px] font-semibold text-accent-600 disabled:opacity-50"
-              >
-                {geoRefreshing ? 'Updating…' : 'Update'}
-              </button>
-            </p>
-          )}
-          {fromLocState === 'denied' && (
-            <p className="text-micro text-danger mt-1">Location permission denied</p>
-          )}
-          {fromLocState === 'loading' && !geo && (
-            <p className="text-micro text-fg-muted mt-1">Getting location…</p>
-          )}
-        </div>
+      {fromLocState === 'loading' && !geo && (
+        <p className="text-micro text-fg-muted">Getting location…</p>
       )}
 
       {/* Planner form — collapses to a summary bar after planning */}
@@ -506,6 +510,12 @@ export function RoutesTab({ active, now, pendingRouteId, onRouteConsumed, pendin
               <span className="w-2 h-2 rounded-full bg-danger flex-shrink-0" />
               <Truncate as="p" className="text-meta font-medium text-fg-2">{search.from.name.split(',')[0]}</Truncate>
             </div>
+            {search.via && (
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span aria-hidden className="w-2 h-2 rounded-full bg-warn flex-shrink-0" />
+                <Truncate as="p" className="text-meta text-fg-muted">via {search.via.name.split(',')[0]}</Truncate>
+              </div>
+            )}
             <div className="flex items-center gap-1.5 min-w-0">
               <span className="w-2 h-2 rounded-full bg-success flex-shrink-0" />
               <Truncate as="p" className="text-meta font-medium text-fg-2">{search.to.name.split(',')[0]}</Truncate>
@@ -555,15 +565,36 @@ export function RoutesTab({ active, now, pendingRouteId, onRouteConsumed, pendin
               )}
             </div>
 
-            {/* Swap divider — only when both stops are set */}
-            {draftFrom && draftTo && (
-              <div className="flex items-center px-3 bg-surface-2">
-                <div className="flex-1 border-t border-line" />
-                <button onClick={swapStops}
-                  className="text-meta text-fg-muted hover:text-accent-600 transition-colors duration-150 flex items-center gap-1 min-h-[44px] px-3">
-                  <ArrowUpDown aria-hidden className="h-3.5 w-3.5" /> Swap
-                </button>
-                <div className="flex-1 border-t border-line" />
+            {/* Middle row: add a via stop · swap From/To */}
+            {((!draftVia && !showVia) || (draftFrom && draftTo)) && (
+              <div className="flex items-center justify-between gap-2 px-3">
+                {!draftVia && !showVia ? (
+                  <button type="button" onClick={() => setShowVia(true)}
+                    className="flex min-h-[44px] items-center gap-1.5 text-meta font-medium text-fg-muted transition-colors duration-150 hover:text-accent-600">
+                    <Plus aria-hidden className="h-3.5 w-3.5" /> Add a via stop
+                  </button>
+                ) : <span />}
+                {draftFrom && draftTo && (
+                  <button type="button" onClick={swapStops}
+                    className="flex min-h-[44px] items-center gap-1 px-1 text-meta text-fg-muted transition-colors duration-150 hover:text-accent-600">
+                    <ArrowUpDown aria-hidden className="h-3.5 w-3.5" /> Swap
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* VIA — optional; the trip must pass through this stop */}
+            {draftVia ? (
+              <div className="px-3 py-3">
+                <PlaceDisplay place={draftVia} label="Via" onClear={clearVia} />
+              </div>
+            ) : showVia && (
+              <div className="flex items-center gap-1.5 px-3 py-3">
+                <div className="min-w-0 flex-1">
+                  <StopSearchInput placeholder="Via — pass through this stop…" favorites={favoriteStops}
+                    onSelect={s => { const p = toTransitPlace(s); if (p) setDraftVia(p) }} />
+                </div>
+                <IconButton label="Remove via stop" onClick={clearVia}><X /></IconButton>
               </div>
             )}
 
@@ -725,7 +756,7 @@ export function RoutesTab({ active, now, pendingRouteId, onRouteConsumed, pendin
           )}
 
           {filteredData.length === 0
-            ? <p className="text-body text-fg-muted">No trips found</p>
+            ? <p className="text-body text-fg-muted">{search.via ? 'No trips found via that stop' : 'No trips found'}</p>
             : filteredData.slice(0, visibleCount).map((trip, i) => <TripCard key={i} trip={trip} now={now} isBest={i === 0} />)
           }
 

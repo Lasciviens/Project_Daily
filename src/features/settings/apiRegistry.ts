@@ -1,7 +1,7 @@
-// Settings → APIs: every external API or service the app talks to, as one
+// Settings → Integrations and APIs: every external API or service the app talks to, as one
 // static, typed list. Pure and import-free (verified by
 // scripts/verify-api-registry.cjs). Connection STATUS is not repeated here —
-// entries with a card on Settings → Integrations link there instead.
+// entries with a card on Settings → Subscriptions link there instead.
 //
 // `since` is the date the entry's key file (`sinceFrom`) first appears in git
 // (`git log --diff-filter=A --follow`). The repository's history starts on
@@ -111,11 +111,11 @@ export interface ApiEntry {
   since: string
   sinceFrom: string
   sinceIsHistoryStart?: boolean
-  /** Has a card (connect / status) on Settings → Integrations. */
+  /** Has a card (connect / status) on Settings → Subscriptions. */
   hasIntegrationCard?: boolean
 }
 
-export const INTEGRATIONS_PATH = '/settings?tab=integrations'
+export const INTEGRATIONS_PATH = '/settings?tab=subscriptions'
 const H0 = '22.07.2026'
 
 export const API_REGISTRY: readonly ApiEntry[] = [
@@ -177,7 +177,7 @@ export const API_REGISTRY: readonly ApiEntry[] = [
     edgeFunctions: ['calendar-oauth', 'calendar-token', 'calendar-disconnect'], endpoints: ['accounts.google.com', 'oauth2.googleapis.com/token'],
     auth: 'oauth', secrets: ['VITE_GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET'],
     direction: 'both', cadence: 'Once to connect; tokens refresh automatically',
-    usedIn: [{ label: 'Integrations', path: INTEGRATIONS_PATH }],
+    usedIn: [{ label: 'Subscriptions', path: INTEGRATIONS_PATH }],
     tables: ['user_calendar_tokens'],
     cost: 'free', caveats: ['The consent screen must be in Production — Testing gives a 7-day refresh token.', 'A scope change needs one reconnect.'],
     since: H0, sinceFrom: 'supabase/functions/calendar-oauth/index.ts', sinceIsHistoryStart: true, hasIntegrationCard: true,

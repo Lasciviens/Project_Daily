@@ -10,7 +10,7 @@ import {
   type ApiCategory, type ApiEntry,
 } from '../apiRegistry'
 
-// One API on Settings → APIs: what it is for and where it shows up, with the
+// One API on Settings → Integrations and APIs: what it is for and where it shows up, with the
 // wiring (functions, secrets by name, cadence, limits) behind "Details".
 
 const CATEGORY_ICON: Record<ApiCategory, LucideIcon> = {

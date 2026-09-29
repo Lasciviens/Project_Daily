@@ -247,18 +247,17 @@ export function DeparturesTab({ active, now }: DeparturesTabProps) {
         </div>
       )}
 
-      {/* ── Search stop — always visible ── */}
-      <div className="mb-3">
-        <SectionLabel className="mb-1.5">Search stop</SectionLabel>
+      {/* ── Search any stop ── */}
+      <div className="mb-3 sm:max-w-md">
         <StopSearchInput placeholder="Search any stop…" onSelect={handleSearchSelect} stopsOnly={!includeAddresses} />
-        <label className="mt-1 flex min-h-[44px] items-center gap-2 text-meta text-fg-muted">
+        <label className="flex min-h-[44px] items-center gap-2 text-meta text-fg-muted">
           <input
             type="checkbox"
             checked={includeAddresses}
             onChange={e => setIncludeAddresses(e.target.checked)}
             className="rounded border-line-strong"
           />
-          Include addresses (for trip planning — no live departures)
+          Include addresses (to save for trips)
         </label>
       </div>
 

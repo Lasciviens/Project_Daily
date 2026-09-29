@@ -9,7 +9,9 @@ import { GoalSummary } from '../GoalSummary'
 import { useDayNutrition } from '../../hooks/useDayNutrition'
 import { useDayTargets } from '../../hooks/useDayTargets'
 import { useEntityModal } from '../../../../shared/modals/useEntityModal'
-import { useNutritionCoach } from '../../hooks/useNutritionCoach'
+import { useBodyweightSeries } from '../../../health/hooks/useBodyweight'
+import { PROTEIN_PER_MEAL_PER_KG } from '../../../health/goal/cutDecision'
+import { shiftDateStr } from '../../../../shared/utils/dateUtils'
 import { useCopyYesterdayMeals } from '../../hooks/useQuickMeals'
 import { MacroBar } from '../../../recipes/components/MacroBar'
 import { MACRO_COLOR } from '../../../recipes/macroColors'
@@ -210,7 +212,10 @@ function SlotRow({ date, slot, label, icon, isNow, meals, fresh }: {
 export function NutritionCard({ date }: { date: string }) {
   const { data: nut } = useDayNutrition(date)
   const { targets } = useDayTargets()
-  const coach = useNutritionCoach(date, targets)
+  // Per-meal protein only needs the week's weight (the coach itself lives on Food and in the goal editor).
+  const { data: weights = [] } = useBodyweightSeries(shiftDateStr(date, -6), date)
+  const weekKg = weights.length ? weights.reduce((a, w) => a + w.kg, 0) / weights.length : null
+  const proteinPerMealG = weekKg ? Math.round((weekKg * PROTEIN_PER_MEAL_PER_KG) / 5) * 5 : null
   const copyYesterday = useCopyYesterdayMeals()
   const modal = useEntityModal()
   // The goal (phase, daily targets, body targets) is ONE row edited in the
@@ -268,8 +273,8 @@ export function NutritionCard({ date }: { date: string }) {
                 <div className="h-2 overflow-hidden rounded-full bg-surface-2">
                   <div className="h-full rounded-full transition-all" style={{ width: `${proteinPct}%`, backgroundColor: MACRO_COLOR.protein }} />
                 </div>
-                {coach.proteinPerMealG != null && (
-                  <p className="mt-1 text-meta text-fg-muted">≈{coach.proteinPerMealG}g protein per meal spreads it best</p>
+                {proteinPerMealG != null && (
+                  <p className="mt-1 text-meta text-fg-muted">≈{proteinPerMealG}g protein per meal spreads it best</p>
                 )}
               </div>
               {(nut && nut.calories > 0) && (

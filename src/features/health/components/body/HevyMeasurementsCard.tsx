@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Pencil, Plus, Ruler } from 'lucide-react'
+import { ChevronDown, Pencil, Plus, Ruler } from 'lucide-react'
 import { Button, EmptyState, IconButton, Skeleton } from '../../../../shared/ui'
 import { InfoBubble } from '../../../../shared/components/InfoBubble'
 import { useEntityModal } from '../../../../shared/modals'
@@ -25,6 +25,7 @@ export function HevyMeasurementsCard({ anchor }: { anchor: string }) {
   const modal = useEntityModal()
   const { data = [], isLoading, isError } = useHevyBodyMeasurements()
   const [all, setAll] = useState(false)
+  const [open, setOpen] = useState(false)
   const allRows = sortedEntries(data, ALL_FIELDS)
   const rows = allRows.filter(r => r.date <= anchor)
   const newer = allRows.length - rows.length
@@ -86,9 +87,14 @@ export function HevyMeasurementsCard({ anchor }: { anchor: string }) {
           </div>
           {rest.length > 0 && (
             <div>
-              <p className="section-label mb-1">Earlier entries</p>
-              <ul>{shown.map(r => <HevyMeasurementRow key={r.date} row={r} onEdit={() => edit(r.date)} />)}</ul>
-              {rest.length > SHOW && (
+              {/* Collapsed by default: the latest entry above is what matters most. */}
+              <button type="button" aria-expanded={open} onClick={() => setOpen(o => !o)}
+                className="flex min-h-[44px] w-full items-center gap-2 rounded-row text-left text-body font-semibold text-fg-2 hover:text-fg">
+                <ChevronDown aria-hidden className={`h-4 w-4 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+                {open ? 'Hide earlier entries' : `Show earlier entries (${rest.length})`}
+              </button>
+              {open && <ul>{shown.map(r => <HevyMeasurementRow key={r.date} row={r} onEdit={() => edit(r.date)} />)}</ul>}
+              {open && rest.length > SHOW && (
                 <Button size="sm" variant="ghost" className="mt-1" onClick={() => setAll(a => !a)}>
                   {all ? 'Show fewer' : `Show all ${rest.length}`}
                 </Button>
