@@ -132,34 +132,35 @@ console.log('\n== 5. resolveWishWindow: state, both boundaries, one-sided ==')
     resolveWishWindow(w, '2027-03-01') === 'passed')
 }
 
-console.log('\n== 6. Labels: en-GB day-first, the user’s own word wins ==')
+console.log('\n== 6. Labels: DD.MM.YYYY, the user’s own word wins ==')
 {
   // windowRangeLabel hides the year for windows in this year or the next, so
   // the fixtures are built from the real current year — the assertion then
   // holds whenever this script is run.
   const Y = new Date().getFullYear()
 
+  const f = (iso) => `${iso.slice(8, 10)}.${iso.slice(5, 7)}.${iso.slice(0, 4)}`
   check('null window → no label', windowRangeLabel(null, null) === null)
-  check('cross-year chip window → "1 Dec – 28 Feb"',
-    windowRangeLabel(`${Y}-12-01`, `${Y + 1}-02-28`) === '1 Dec – 28 Feb',
+  check('cross-year chip window → DD.MM.YYYY on both ends',
+    windowRangeLabel(`${Y}-12-01`, `${Y + 1}-02-28`) === `${f(`${Y}-12-01`)} – ${f(`${Y + 1}-02-28`)}`,
     String(windowRangeLabel(`${Y}-12-01`, `${Y + 1}-02-28`)))
-  check('same month collapses the month → "12 – 19 Aug"',
-    windowRangeLabel(`${Y}-08-12`, `${Y}-08-19`) === '12 – 19 Aug',
+  check('same month → full dates both ends',
+    windowRangeLabel(`${Y}-08-12`, `${Y}-08-19`) === `12.08.${Y} – 19.08.${Y}`,
     String(windowRangeLabel(`${Y}-08-12`, `${Y}-08-19`)))
-  check('start only → "From 12 Aug"', windowRangeLabel(`${Y}-08-12`, null) === 'From 12 Aug',
+  check('start only → "From 12.08.YYYY"', windowRangeLabel(`${Y}-08-12`, null) === `From 12.08.${Y}`,
     String(windowRangeLabel(`${Y}-08-12`, null)))
-  check('end only → "Until 19 Aug"', windowRangeLabel(null, `${Y}-08-19`) === 'Until 19 Aug',
+  check('end only → "Until 19.08.YYYY"', windowRangeLabel(null, `${Y}-08-19`) === `Until 19.08.${Y}`,
     String(windowRangeLabel(null, `${Y}-08-19`)))
   check('far-out window carries the year on BOTH ends',
-    windowRangeLabel(`${Y + 5}-12-01`, `${Y + 6}-02-28`) === `1 Dec ${Y + 5} – 28 Feb ${Y + 6}`,
+    windowRangeLabel(`${Y + 5}-12-01`, `${Y + 6}-02-28`) === `01.12.${Y + 5} – 28.02.${Y + 6}`,
     String(windowRangeLabel(`${Y + 5}-12-01`, `${Y + 6}-02-28`)))
-  check('never en-US month-first',
-    !/^(Dec|Aug|Feb)\s/.test(String(windowRangeLabel(`${Y}-12-01`, `${Y + 1}-02-28`))))
+  check('no month names',
+    !/[A-Za-z]/.test(String(windowRangeLabel(`${Y}-12-01`, `${Y + 1}-02-28`))))
 
   check('wishPeriodLabel prefers the user’s own word',
     wishPeriodLabel({ period_start: `${Y}-12-01`, period_end: `${Y + 1}-02-28`, period_label: 'Hytte season' }) === 'Hytte season')
   check('wishPeriodLabel falls back to the date range',
-    wishPeriodLabel({ period_start: `${Y}-12-01`, period_end: `${Y + 1}-02-28`, period_label: null }) === '1 Dec – 28 Feb')
+    wishPeriodLabel({ period_start: `${Y}-12-01`, period_end: `${Y + 1}-02-28`, period_label: null }) === `01.12.${Y} – 28.02.${Y + 1}`)
   check('wishPeriodLabel: nothing at all → null',
     wishPeriodLabel({ period_start: null, period_end: null, period_label: null }) === null)
 }

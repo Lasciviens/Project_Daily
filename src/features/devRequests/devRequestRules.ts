@@ -3,6 +3,7 @@
 // imports only) so scripts/verify-dev-request-context.cjs can require it.
 import type { PageContext } from './devRequestContext'
 import type { DevRequest, DevRequestCategory, DevRequestEffort, DevRequestPriority } from './types'
+import { formatDateTime } from '../../shared/utils/dateFormat'
 
 export const CATEGORIES: readonly DevRequestCategory[] = ['bug', 'feature', 'improvement', 'integration', 'longterm', 'question', 'other']
 export const PRIORITIES: readonly DevRequestPriority[] = ['low', 'medium', 'high', 'urgent']
@@ -311,23 +312,18 @@ export function topSortOrder(all: readonly { sort_order: number }[]): number {
 
 // ── Cards ─────────────────────────────────────────────────────────────────────
 
-const pad2 = (n: number) => String(n).padStart(2, '0')
 
-/** en-GB `29/09 14:05` in local time (`29/09/2025 14:05` outside `now`'s year); '' for a missing/bad value. */
-export function cardStamp(iso: string | null | undefined, now: Date = new Date()): string {
-  if (!iso) return ''
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return ''
-  const day = `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}${d.getFullYear() === now.getFullYear() ? '' : `/${d.getFullYear()}`}`
-  return `${day} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`
+/** `29.09.2026 14:05` in local time; '' for a missing/bad value. */
+export function cardStamp(iso: string | null | undefined): string {
+  return formatDateTime(iso)
 }
 
-/** `Added 29/09 14:05 · Done 30/09 09:12` (Done only for a done request that has its stamp). */
-export function cardTimeline(row: Pick<DevRequest, 'created_at' | 'status' | 'completed_at'>, now: Date = new Date()): string {
+/** `Added 29.09.2026 14:05 · Done 30.09.2026 09:12` (Done only for a done request that has its stamp). */
+export function cardTimeline(row: Pick<DevRequest, 'created_at' | 'status' | 'completed_at'>): string {
   const parts: string[] = []
-  const added = cardStamp(row.created_at, now)
+  const added = cardStamp(row.created_at)
   if (added) parts.push(`Added ${added}`)
-  const done = row.status === 'done' ? cardStamp(row.completed_at, now) : ''
+  const done = row.status === 'done' ? cardStamp(row.completed_at) : ''
   if (done) parts.push(`Done ${done}`)
   return parts.join(' · ')
 }

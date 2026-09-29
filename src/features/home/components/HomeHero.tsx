@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { format, startOfWeek, addDays, getISOWeek, differenceInCalendarDays, parseISO } from 'date-fns'
+import { formatDate, formatWeekdayDate } from '../../../shared/utils/dateFormat'
 import { CalendarClock, ChevronRight, Dumbbell } from 'lucide-react'
 import { useEntityModal } from '../../../shared/modals'
 import { Card, CardHeader, Skeleton, Truncate, cx } from '../../../shared/ui'
@@ -19,7 +20,7 @@ function relativeDay(dateStr: string): string {
   if (days === 0) return 'Today'
   if (days === 1) return 'Tomorrow'
   if (days < 7) return format(parseISO(dateStr), 'EEEE')
-  return format(parseISO(dateStr), 'd MMM')
+  return formatDate(dateStr)
 }
 
 /** Opens a schedule item the way Daily's agenda does: a training block opens
@@ -53,7 +54,7 @@ function WeekStrip() {
             key={date}
             to={`/daily?date=${date}`}
             aria-current={isToday ? 'date' : undefined}
-            aria-label={format(day, 'EEEE d MMMM')}
+            aria-label={formatWeekdayDate(day, 'long')}
             className={cx(
               'flex min-h-[48px] flex-col items-center justify-center rounded-control transition-colors duration-100',
               isToday ? 'bg-accent-500 text-on-accent' : date < today ? 'text-fg-faint hover:bg-surface-hover' : 'text-fg-2 hover:bg-surface-hover',

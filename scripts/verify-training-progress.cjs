@@ -191,8 +191,8 @@ console.log('\n== 7b. fmtWeekRange (dateFormat.ts) ==')
   // Real user confusion (2026-09-01): a weekly chart's tooltip showed a bare
   // single date, ambiguous about whether it's the week's start, end, or the
   // day something happened. Every weekly-chart tooltip now shows this range.
-  check('a Monday weekStart formats as its own Mon-Sun range', fmtWeekRange('2026-08-03') === '3 Aug – 9 Aug', fmtWeekRange('2026-08-03'))
-  check('a range spanning a month boundary names both months', fmtWeekRange('2026-07-28') === '28 Jul – 3 Aug', fmtWeekRange('2026-07-28'))
+  check('a Monday weekStart formats as its own Mon-Sun range', fmtWeekRange('2026-08-03') === '03.08.2026 – 09.08.2026', fmtWeekRange('2026-08-03'))
+  check('a range spanning a month boundary names both months', fmtWeekRange('2026-07-28') === '28.07.2026 – 03.08.2026', fmtWeekRange('2026-07-28'))
 }
 
 function addDays(dateStr, n) {

@@ -1,7 +1,7 @@
 import type { Tone } from '../../../shared/ui'
 import type { AuditLog } from '../hooks/useLogs'
 import { formatDistanceToNow } from 'date-fns'
-import { fmtDateTimeEnGB } from '../../../shared/utils/enGBDate'
+import { formatDateTime } from '../../../shared/utils/dateFormat'
 
 // Friendly, singular labels for the raw table names.
 const TABLE_LABEL: Record<string, string> = {
@@ -24,10 +24,7 @@ export const OP_META: Record<AuditLog['operation'], { verb: string; tone: Tone }
 }
 
 export function fmtLogDate(iso: string): string {
-  return fmtDateTimeEnGB(new Date(iso), {
-    day: '2-digit', month: 'short', year: 'numeric',
-    hour: '2-digit', minute: '2-digit', second: '2-digit',
-  })
+  return formatDateTime(iso)
 }
 
 // Best-effort human name for the affected row.

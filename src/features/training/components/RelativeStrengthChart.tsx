@@ -4,11 +4,10 @@ import { ComposedChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Cartes
 import { useTrainingHistory, useBodyweightHistory } from '../hooks/useTrainingProgress'
 import { metricKindForExerciseType, computeRelativeStrengthTrend, indexRelativeStrengthTrend } from '../progressAggregate'
 import { buildCanonicalSessions, sessionBestE1rm } from '../progress-engine'
-import { fmtTrainingDate as formatDate } from '../dateFormat'
 import { Skeleton, useChartColors } from '../../../shared/ui'
 import { TOOLTIP_BOX } from '../../../shared/components/charts/chartKit'
 import { ChartCard, ChartNote } from './ChartCard'
-import { fmtDateEnGB } from '../../../shared/utils/enGBDate'
+import { formatDate, formatDayMonth } from '../../../shared/utils/dateFormat'
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Relative Strength vs Bodyweight — a follow-up sports-scientist +
@@ -29,7 +28,7 @@ import { fmtDateEnGB } from '../../../shared/utils/enGBDate'
 // ─────────────────────────────────────────────────────────────────────────────
 
 function fmtDay(dateStr: string): string {
-  return fmtDateEnGB(new Date(dateStr + 'T00:00:00'), { day: 'numeric', month: 'short' })
+  return formatDayMonth(dateStr)
 }
 
 const MIN_POINTS = 3
@@ -56,7 +55,7 @@ function IndexedTooltip({ active, payload, label }: any) {
   const bwDelta = Math.round((p.bodyweightIndex - 100) * 10) / 10
   return (
     <div className={TOOLTIP_BOX}>
-      <p className="font-medium text-fg-muted">{label}</p>
+      <p className="font-medium text-fg-muted">{p.date ? formatDate(p.date) : label}</p>
       <p className="font-semibold text-fg">Strength {strengthDelta >= 0 ? '+' : ''}{strengthDelta}%</p>
       <p className="font-semibold text-fg-2">Bodyweight {bwDelta >= 0 ? '+' : ''}{bwDelta}%</p>
       <p className="tabular-nums text-fg-muted">Est. 1RM {p.est1rmValue} kg · bodyweight {p.bodyweightKg} kg{p.estimated ? ' (estimated)' : ''}</p>

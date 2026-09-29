@@ -2,9 +2,10 @@
    the window math it produces are one contract, consumed together by the wishes
    feature; splitting them would separate a value from the only thing that reads it. */
 import { useState } from 'react'
-import { endOfMonth, format, parseISO } from 'date-fns'
+import { endOfMonth, format } from 'date-fns'
 import { DateInput } from './DateInput'
 import { todayStr } from '../utils/dateUtils'
+import { formatDate } from '../utils/dateFormat'
 
 // One-tap capture of a *reminder period* (never a deadline) as CONCRETE dates.
 // This is the whole capture story on a phone: DateInput has no calendar popup,
@@ -56,26 +57,12 @@ export function seasonWindows(today: string): DateWindow[] {
     .sort((a, b) => a.start.localeCompare(b.start))
 }
 
-// en-GB, day-first. The year is omitted while both ends sit in this year or the
-// next — every chip window does, and "1 Dec – 28 Feb" reads better than the
-// full form. Anything further out shows the year on BOTH ends (never a mixed
-// "1 Dec 2029 – 28 Feb", which reads as a typo).
+// DD.MM.YYYY on both ends ("01.12.2026 – 28.02.2027"), the app-wide format.
 export function windowRangeLabel(start: string | null, end: string | null): string | null {
   if (!start && !end) return null
-  const curYear = Number(todayStr().slice(0, 4))
-  const isNear  = (iso: string) => {
-    const y = Number(iso.slice(0, 4))
-    return y === curYear || y === curYear + 1
-  }
-  const withYear = ![start, end].filter(Boolean).every(iso => isNear(iso as string))
-  const day = (iso: string) => format(parseISO(iso), withYear ? 'd MMM yyyy' : 'd MMM')
-
-  if (start && !end) return `From ${day(start)}`
-  if (!start && end) return `Until ${day(end)}`
-  const sameMonth = start!.slice(0, 7) === end!.slice(0, 7)
-  return sameMonth
-    ? `${Number(start!.slice(8, 10))} – ${day(end!)}`
-    : `${day(start!)} – ${day(end!)}`
+  if (start && !end) return `From ${formatDate(start)}`
+  if (!start && end) return `Until ${formatDate(end)}`
+  return `${formatDate(start)} – ${formatDate(end)}`
 }
 
 const CHIP_BASE = 'min-h-[44px] rounded-full border px-3.5 text-body font-medium transition-colors duration-150'

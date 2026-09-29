@@ -63,7 +63,7 @@ export function SleepSection({ range, extras = true }: { range: HealthRange; ext
   const sessions = isDay && dayNight && !replaced ? extractSleepSessions(sleep.points, anchor) : []
 
   const headline = isDay
-    ? (anchor === win.today ? 'Last night' : `Night of ${fmtDayMonth(shiftDateStr(anchor, -1))}–${fmtDayMonth(anchor)}`)
+    ? (anchor === win.today ? 'Last night' : `Night of ${fmtDayMonth(shiftDateStr(anchor, -1))} – ${fmtDayMonth(anchor)}`)
     : `Sleep · average per night, ${windowNoun(period, anchor)}`
 
   function manualHoursFor(date: string): number | null {
@@ -102,7 +102,7 @@ export function SleepSection({ range, extras = true }: { range: HealthRange; ext
         {!isDay && !sleep.isLoading && (
           <p className="mt-1 text-meta text-fg-2">
             {endNight
-              ? <>{anchor === win.today ? 'Last night' : `Night of ${fmtDayMonth(shiftDateStr(anchor, -1))}–${fmtDayMonth(anchor)}`}: <b className="font-semibold tabular-nums text-fg">{fmtHrs(endNight.total)}</b></>
+              ? <>{anchor === win.today ? 'Last night' : `Night of ${fmtDayMonth(shiftDateStr(anchor, -1))} – ${fmtDayMonth(anchor)}`}: <b className="font-semibold tabular-nums text-fg">{fmtHrs(endNight.total)}</b></>
               : `${nightMissingText(anchor, win.today)}.`}
           </p>
         )}

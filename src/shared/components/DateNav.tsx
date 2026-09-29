@@ -11,7 +11,7 @@ import { cx } from '../ui/cx'
 //
 //  Optional extras: `onToday` renders a small "Today" reset (only when not
 //  already on today — pass `isToday`), `pickerValue`/`onPick` render a
-//  DD/MM/YYYY jump-to-date input, `size` bumps touch targets for page-level
+//  DD.MM.YYYY jump-to-date input, `size` bumps touch targets for page-level
 //  headers vs compact widget headers.
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -59,7 +59,7 @@ export function DateNav({
           className="ml-1 min-h-[44px] rounded-control px-2.5 text-meta font-semibold text-accent-600 transition-colors duration-150 hover:bg-accent-50"
         >Today</button>
       )}
-      {/* A 76px box clipped DD/MM/YYYY on phones: the app-wide iOS anti-zoom
+      {/* A 76px box clipped DD.MM.YYYY on phones: the app-wide iOS anti-zoom
           rule forces text inputs to 16px on coarse pointers, which needs ~92px.
           Widen the box — never shrink the font, that re-arms the zoom bug. */}
       {pickerValue !== undefined && onPick && (

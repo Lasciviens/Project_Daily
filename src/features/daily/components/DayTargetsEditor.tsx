@@ -96,7 +96,7 @@ export function DayTargetsEditor({ date = todayStr(), onClose }: { date?: string
             <div className="flex items-center justify-between gap-2">
               <span className="text-fg-2">Since</span>
               <DateInput value={draft.phaseStartDate ?? ''} onChange={v => patch({ phaseStartDate: v || null })} max={today}
-                aria-label="Phase start date" placeholder="DD/MM/YYYY" className="input w-[9.5rem] tabular-nums" />
+                aria-label="Phase start date" placeholder="DD.MM.YYYY" className="input w-[9.5rem] tabular-nums" />
             </div>
           </EditorSection>
 

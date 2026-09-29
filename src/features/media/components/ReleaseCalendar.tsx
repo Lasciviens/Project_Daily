@@ -2,7 +2,7 @@ import { CalendarClock, Film, Tv } from 'lucide-react'
 import { CollapsibleCard } from './CollapsibleCard'
 import { posterUrl } from '../../../integrations/tmdb/client'
 import type { MediaType, UserMovieEntry, UserTVEntry } from '../types'
-import { fmtDateEnGB } from '../../../shared/utils/enGBDate'
+import { formatDate } from '../../../shared/utils/dateFormat'
 import { Truncate } from '../../../shared/ui'
 
 interface Props {
@@ -28,9 +28,6 @@ function daysUntil(date: Date): number {
   return Math.ceil((date.getTime() - Date.now()) / (1000 * 60 * 60 * 24))
 }
 
-function formatDate(date: Date): string {
-  return fmtDateEnGB(date, { day: 'numeric', month: 'short', year: 'numeric' })
-}
 
 export function ReleaseCalendar({ movieEntries, tvEntries, onOpenDetail, loading = false }: Props) {
   const today = new Date()

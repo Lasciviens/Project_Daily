@@ -2,14 +2,12 @@ import { Popover, PopoverButton, PopoverPanel } from '@headlessui/react'
 import { RefreshCw, Settings2 } from 'lucide-react'
 import { Button, IconButton } from '../../../shared/ui'
 import { useHevySyncState, useIncrementalHevySync, useInitialHevySync } from '../hooks/useHevySync'
-import { formatTrainingTime } from '../dateFormat'
+import { formatTrainingDate, formatTrainingTime } from '../dateFormat'
 
-// Deliberately numeric DD/MM/YYYY (not the "12 Aug 2024" style used
-// elsewhere in Training) — this is a compact "last synced" timestamp.
+// A compact "last synced" timestamp: "29.09.2026 at 14:05".
 function formatSyncTime(iso: string): string {
   const d = new Date(iso)
-  const date = d.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })
-  return `${date} at ${formatTrainingTime(d)}`
+  return `${formatTrainingDate(d)} at ${formatTrainingTime(d)}`
 }
 
 /** Hevy sync (incremental) + a settings popover with the full re-import. */

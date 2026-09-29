@@ -68,8 +68,35 @@ check('required and inactive → attention', S.needsAttention(sub({ requirement:
 check('required and past → attention', S.needsAttention(sub({ requirement: 'required', renews_on: '2026-09-01' }), '2026-09-29'))
 check('required and fine → no', !S.needsAttention(sub({ requirement: 'required', renews_on: '2026-12-01' }), '2026-09-29'))
 check('info never needs attention', !S.needsAttention(sub({ active: false }), '2026-09-29'))
-check('en-GB date', S.formatDayGB('2026-10-12') === '12/10/2026')
+check('DD.MM.YYYY date', S.formatDay('2026-10-12') === '12.10.2026')
 check('price labels', S.priceLabel(sub({ price: 99 })) === '99 NOK / month' && S.priceLabel(sub({ price: 12.5, billing_cycle: 'yearly', currency: 'eur' })) === '12.50 EUR / year' && S.priceLabel(sub({ billing_cycle: 'free' })) === 'Free' && S.priceLabel(sub({})) === null)
+
+console.log('\ncurrencies')
+{
+  // OXR shape: X per 1 USD.
+  const R = { USD: 1, NOK: 10, TRY: 40, EUR: 0.8 }
+  check('four currencies, NOK first', J(S.SUBSCRIPTION_CURRENCIES) === J(['NOK', 'TRY', 'USD', 'EUR']))
+  check('normalize folds case, TL, kr, blank', S.normalizeCurrency('try') === 'TRY' && S.normalizeCurrency('TL') === 'TRY' && S.normalizeCurrency('kr') === 'NOK' && S.normalizeCurrency('') === 'NOK' && S.normalizeCurrency(null) === 'NOK')
+  check('NOK → TRY through USD', S.convertAmount(100, 'NOK', 'TRY', R) === 400)
+  check('TRY → EUR', Math.abs(S.convertAmount(400, 'try', 'EUR', R) - 8) < 1e-9)
+  check('USD → NOK needs no USD rate', S.convertAmount(3, 'USD', 'NOK', { NOK: 10 }) === 30)
+  check('same currency is identity', S.convertAmount(7, 'EUR', 'eur', {}) === 7)
+  check('missing rate → null', S.convertAmount(1, 'GBP', 'NOK', R) === null && S.convertAmount(1, 'NOK', 'TRY', { NOK: 10 }) === null)
+  const eq = S.equivalents(100, 'NOK', R)
+  check('equivalents: the other three in list order', J(eq.map(e => e.currency)) === J(['TRY', 'USD', 'EUR']) && eq[0].amount === 400 && eq[1].amount === 10 && eq[2].amount === 8, J(eq))
+  check('equivalents skip a currency without a rate', J(S.equivalents(100, 'NOK', { NOK: 10 }).map(e => e.currency)) === J(['USD']))
+  check('approx line', S.approxLine([{ currency: 'TRY', amount: 1234.4 }, { currency: 'USD', amount: 32.2 }, { currency: 'EUR', amount: 0.853 }]) === '≈ 1 234 TRY · 32 USD · 0.85 EUR', S.approxLine([{ currency: 'TRY', amount: 1234.4 }, { currency: 'USD', amount: 32.2 }, { currency: 'EUR', amount: 0.853 }]))
+  check('approx line empty → null', S.approxLine([]) === null)
+  check('money groups thousands', S.formatMoney(12345.5, 'try') === '12 345.50 TRY' && S.formatMoney(999, 'NOK') === '999 NOK')
+  const total = S.monthlyTotalIn([
+    sub({ price: 100 }), sub({ price: 400, currency: 'TRY' }), sub({ price: 120, currency: 'USD', billing_cycle: 'yearly' }),
+    sub({ price: 5, currency: 'GBP' }), sub({ price: 999, currency: 'TRY', active: false }),
+  ], 'NOK', R)
+  check('total converts everything into NOK (100 + 100 + 100)', total.amount === 300, J(total))
+  check('a currency without a rate is kept aside, not dropped', J(total.unconverted) === J([{ currency: 'GBP', amount: 5 }]))
+  check('total in TRY', S.monthlyTotalIn([sub({ price: 100 }), sub({ price: 400, currency: 'TRY' })], 'TRY', R).amount === 800)
+  check('existing lower-case TRY rows total under TRY', J(S.monthlyTotals([sub({ price: 50, currency: 'try' }), sub({ price: 50, currency: 'TRY' })])) === J([{ currency: 'TRY', amount: 100 }]))
+}
 
 console.log(`\n${passed} passed, ${failed} failed`)
 process.exit(failed ? 1 : 0)

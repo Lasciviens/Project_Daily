@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { usePsnTitleTrophies, usePsnTrophyGroups } from '../hooks/usePlayStation'
 import type { PsnTrophy } from '../api/psnApi'
 import { Truncate } from '../../../shared/ui/Truncate'
+import { formatDate } from '../../../shared/utils/dateFormat'
 
 // Trophy list for ONE trophy set, shared by the played-game modal and the
 // trophy view. Two Sony endpoints are joined server-side on `trophyId` —
@@ -49,7 +50,7 @@ function TrophyRow({ t }: { t: PsnTrophy }) {
           )}
           {t.earned && t.earnedDateTime && (
             <span className="text-[10px] text-ink-400">
-              {new Date(t.earnedDateTime).toLocaleDateString('en-GB')}
+              {formatDate(t.earnedDateTime)}
             </span>
           )}
           {/* PS5 progress trophies report partial completion — real in the

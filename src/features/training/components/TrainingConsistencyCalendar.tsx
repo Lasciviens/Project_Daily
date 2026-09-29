@@ -8,7 +8,7 @@ import { fmtWeekRange } from '../dateFormat'
 import { Skeleton, useChartColors } from '../../../shared/ui'
 import { useTooltipStyle } from '../../../shared/components/charts/chartKit'
 import { ChartCard, ChartEmpty, ChartNote } from './ChartCard'
-import { fmtDateEnGB } from '../../../shared/utils/enGBDate'
+import { formatDayMonth } from '../../../shared/utils/dateFormat'
 
 // Sessions-per-week — a sports-scientist review's #2-priority chart, and
 // deliberately the cheapest/least speculative one: it's a direct count of a
@@ -29,7 +29,7 @@ import { fmtDateEnGB } from '../../../shared/utils/enGBDate'
 // lookup, where the old strip needed a fill-depth legend per cell.
 
 function fmtWeek(dateStr: string): string {
-  return fmtDateEnGB(new Date(dateStr + 'T00:00:00'), { day: 'numeric', month: 'short' })
+  return formatDayMonth(dateStr)
 }
 
 export function TrainingConsistencyCalendar() {

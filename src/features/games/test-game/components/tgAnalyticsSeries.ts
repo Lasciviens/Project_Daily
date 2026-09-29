@@ -1,6 +1,7 @@
 // Time and rating series for the Analytics screen's two column charts.
 // Pure: `today` (local midnight, ms) is passed in, never read from the clock.
 
+import { formatDate, formatDayMonth } from '../../../../shared/utils/dateFormat'
 import { isRealSession } from '../../gameStats'
 import { lastPlayedIso, playSeconds, starsFromRating, type TgGame } from '../testGameModel'
 import { isCompletion, type TgaWindow, windowEnd, windowStart } from './tgAnalyticsModel'
@@ -59,13 +60,13 @@ export interface TgaTimeline {
 export function buildTimeline(period: TgaWindow, today: number): TgaTimeline {
   const now = new Date(today)
   const columns: TgaColumn[] = []
-  const col = (key: string, tick: string, group: string, full: string) => columns.push({ key, tick, group, full, count: 0 })
+  const col = (key: string, tick: string, group: string | undefined, full: string) => columns.push({ key, tick, group, full, count: 0 })
 
   if (period === '7d' || period === '30d') {
     const days = period === '7d' ? 7 : 30
     for (let i = days - 1; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i)
-      col(dayKey(d), String(d.getDate()), MONTH[d.getMonth()], `${d.getDate()} ${MONTH[d.getMonth()]} ${d.getFullYear()}`)
+      col(dayKey(d), formatDayMonth(d), undefined, formatDate(d))
     }
     return { columns, unit: 'day', first: windowStart(period, today)!, keyOf: t => dayKey(new Date(t)) }
   }
@@ -74,7 +75,7 @@ export function buildTimeline(period: TgaWindow, today: number): TgaTimeline {
     const firstDay = new Date(first)
     for (let d = mondayOf(first); d.getTime() <= today; d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 7)) {
       const from = d.getTime() < first ? firstDay : d
-      col(dayKey(d), String(d.getDate()), MONTH[d.getMonth()], `Week of ${from.getDate()} ${MONTH[from.getMonth()]} ${from.getFullYear()}`)
+      col(dayKey(d), formatDayMonth(d), undefined, `Week of ${formatDate(from)}`)
     }
     return { columns, unit: 'week', first, keyOf: t => dayKey(mondayOf(t)) }
   }

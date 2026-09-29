@@ -19,7 +19,7 @@ import type {
 } from './progressAggregate'
 import type { Landmarks } from './muscleMap'
 import type { ExerciseProgressResult } from './progress-engine/types'
-import { fmtDateEnGB } from '../../shared/utils/enGBDate'
+import { formatDate } from '../../shared/utils/dateFormat'
 
 export { lastCompleteWeek }
 
@@ -336,5 +336,5 @@ function fmtKg(n: number): string {
   return `${Math.round(n).toLocaleString('en-GB')} kg`
 }
 function fmtWeekLabel(dateStr: string): string {
-  return fmtDateEnGB(new Date(dateStr + 'T00:00:00'), { day: 'numeric', month: 'short' })
+  return formatDate(dateStr)
 }

@@ -82,7 +82,7 @@ export function TrainingSessionView({ request, onClose }: { request: SessionRequ
   } else if (resolved?.kind === 'workout' && date) {
     const plans = resolved.plans
     title = workout?.title ?? (plans[0]?.title ?? 'Workout')
-    subtitle = sessionWhenLabel(date, workout ? workoutStartHHMM(workout) : null, null, todayStr)
+    subtitle = sessionWhenLabel(date, workout ? workoutStartHHMM(workout) : null, null)
     const extra: ExtraAction[] = routine
       ? [{ label: 'Plan this routine again…', icon: <CalendarPlus />, onSelect: () => openPlanRoutine(routine) }]
       : []
@@ -103,7 +103,7 @@ export function TrainingSessionView({ request, onClose }: { request: SessionRequ
   } else if (resolved?.kind === 'plan' && planItem && date) {
     const { status, offSchedule } = resolved
     title = planItem.title
-    subtitle = sessionWhenLabel(date, planStartHHMM(planItem), planMinutes(planItem), todayStr)
+    subtitle = sessionWhenLabel(date, planStartHHMM(planItem), planMinutes(planItem))
     const extra: ExtraAction[] = routine && (status === 'missed' || status === 'done')
       ? [{ label: 'Plan it again…', icon: <CalendarPlus />, onSelect: () => openPlanRoutine(routine) }]
       : []

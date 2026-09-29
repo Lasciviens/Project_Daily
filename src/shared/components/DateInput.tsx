@@ -13,7 +13,7 @@ interface Props {
 function isoToDisplay(iso: string): string {
   if (!iso || iso.length !== 10) return ''
   const [y, m, d] = iso.split('-')
-  return `${d}/${m}/${y}`
+  return `${d}.${m}.${y}`
 }
 
 function digitsToIso(digits: string): string {
@@ -26,12 +26,12 @@ function digitsToIso(digits: string): string {
   return `${y}-${m}-${d}`
 }
 
-// Auto-formats digits → DD/MM/YYYY as user types
+// Auto-formats digits → DD.MM.YYYY as user types
 function formatDisplay(raw: string): string {
   const digits = raw.replace(/\D/g, '').slice(0, 8)
   if (digits.length <= 2) return digits
-  if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`
-  return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`
+  if (digits.length <= 4) return `${digits.slice(0, 2)}.${digits.slice(2)}`
+  return `${digits.slice(0, 2)}.${digits.slice(2, 4)}.${digits.slice(4)}`
 }
 
 export function DateInput({ value, onChange, className, placeholder, min, max, 'aria-label': ariaLabel }: Props) {
@@ -80,7 +80,7 @@ export function DateInput({ value, onChange, className, placeholder, min, max, '
       value={display}
       onChange={handleChange}
       onBlur={handleBlur}
-      placeholder={placeholder ?? 'DD/MM/YYYY'}
+      placeholder={placeholder ?? 'DD.MM.YYYY'}
       aria-label={ariaLabel}
       className={className}
     />

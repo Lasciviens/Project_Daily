@@ -1,7 +1,7 @@
 import { useChartColors } from '../../../shared/ui'
 import { shiftDateStr } from '../../../shared/utils/dateUtils'
 import { HealthTrendChart, type TrendPoint } from '../components/HealthTrendChart'
-import { fmtDayMonth } from '../components/healthFormat'
+import { fmtAxisDate } from '../components/healthFormat'
 import { daysBetween, type EnergyReport } from './energyBalance'
 
 /** The weigh-ins as a plain line (no dot per reading) and the fitted trend
@@ -18,7 +18,7 @@ export function WeightTrendChart({ r, from, to, goalKg }: { r: EnergyReport; fro
     // The fitted line, anchored at the current trend weight on the last weigh-in.
     const fit = slope != null && r.weight.currentTrendKg != null && last
       ? Math.round((r.weight.currentTrendKg + slope * daysBetween(last.date, d)) * 100) / 100 : null
-    data.push({ label: fmtDayMonth(d), date: d, kg: p?.kg ?? null, trend: fit })
+    data.push({ label: fmtAxisDate(d), date: d, kg: p?.kg ?? null, trend: fit })
   }
   if (!r.weight.series.length) return <p className="py-6 text-center text-meta text-fg-muted">No weigh-ins in this window.</p>
   const values = r.weight.series.map(p => p.kg)

@@ -3,7 +3,10 @@ import { useGoogleLogin } from '@react-oauth/google'
 import { useCalendarStore } from '../../../app/store'
 import { CalendarDays, Bike, Gamepad2, Monitor, Dumbbell, HeartPulse, RefreshCw, Unplug } from 'lucide-react'
 import { exchangeGoogleCode, disconnectGoogle } from '../api/connectionsApi'
-import { Button, Card, PageBoard, ToneDot, type Tone } from '../../../shared/ui'
+import { Button, Card, PageBoard, ToneDot, TonePill, type Tone } from '../../../shared/ui'
+import { formatDate, formatDateTime } from '../../../shared/utils/dateFormat'
+import { useHevySyncState } from '../../training/hooks/useHevySync'
+import { useLatestHealthValue } from '../../health/hooks/useHealthExport'
 import { GoogleTasksSyncButtons } from '../../todo/components/GoogleTasksSyncButtons'
 import { StravaWidget } from '../../training/components/StravaWidget'
 import { useStravaStatus } from '../../training/hooks/useTrainingSessions'
@@ -36,52 +39,75 @@ import { CardSubscriptions, OtherSubscriptions, SubscriptionSummary } from '../.
 
 // 'expired' is its own state, distinct from both: a credential IS stored, so
 // "Not connected" would be wrong, but the provider no longer honours it, so
-// "Connected" is a lie. Only the integrations whose credential the provider
-// can revoke behind our back (PlayStation today) ever report it.
-type Status = 'connected' | 'disconnected' | 'expired' | 'unknown'
+// "Connected" is a lie. 'expiring' = still works, renew soon. Only the
+// integrations whose credential the provider can revoke behind our back
+// (PlayStation today) ever report either.
+type Status = 'connected' | 'expiring' | 'disconnected' | 'expired' | 'unknown'
 
 const STATUS_TONE: Record<Status, Tone> = {
   connected: 'success',
+  expiring: 'warn',
   disconnected: 'neutral',
-  expired: 'warn',
+  expired: 'danger',
   unknown: 'neutral',
 }
 const STATUS_TEXT: Record<Status, string> = {
   connected: 'Connected',
+  expiring: 'Expiring soon',
   disconnected: 'Not connected',
-  expired: 'Session expired',
+  expired: 'Expired',
   unknown: 'Checking…',
 }
 
-function ConnectionCard({ icon, name, scope, status, statusNote, children, footer, service, account }: {
+// How the app reaches the service, in plain words. `user` = you sign in (or
+// paste a token) here; `server` = a key set up once on the server, nothing
+// to sign in to.
+type Kind = 'user' | 'server'
+const KIND_TEXT: Record<Kind, string> = { user: 'Signed in by you', server: 'Set up on the server (API key)' }
+const KIND_HINT: Record<Kind, string> = {
+  user: 'You connect and disconnect this yourself, from this page.',
+  server: 'Uses a key stored on the server (Supabase Vault). There is nothing to sign in to or revoke here.',
+}
+
+function ConnectionCard({ icon, name, kind, description, status, statusNote, details, children, footer, service, account }: {
   icon: ReactNode
   /** service_subscriptions key whose subscriptions are listed on this card. */
   service: string
   /** Signed-in username/email, when the status call already returns it. */
   account?: string | null
   name: string
-  /** What this connection actually gives the app. */
-  scope: string
+  kind: Kind
+  /** One plain sentence: what this integration does for the user. */
+  description: string
   status: Status
   statusNote?: string
+  /** Short facts already known (last sync, since…), shown in one muted line. */
+  details?: (string | null | undefined | false)[]
   children?: ReactNode
   footer?: ReactNode
 }) {
+  const facts = [account ? `Account: ${account}` : null, ...(details ?? [])].filter(Boolean) as string[]
   return (
     <Card>
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="flex min-w-0 items-start gap-3">
-          <span aria-hidden className="grid h-9 w-9 shrink-0 place-items-center rounded-control bg-surface-2 text-fg-2 [&_svg]:h-[18px] [&_svg]:w-[18px]">{icon}</span>
-          <div className="min-w-0">
+      <div className="flex min-w-0 items-start gap-3">
+        <span aria-hidden className="grid h-9 w-9 shrink-0 place-items-center rounded-control bg-surface-2 text-fg-2 [&_svg]:h-[18px] [&_svg]:w-[18px]">{icon}</span>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <p className="text-lead font-semibold text-fg">{name}</p>
-            <p className="mt-0.5 text-meta text-fg-muted">{scope}</p>
-            {account && <p className="mt-0.5 break-all text-meta text-fg-2">Account: <strong>{account}</strong></p>}
+            <TonePill tone={STATUS_TONE[status]}>
+              <ToneDot tone={STATUS_TONE[status]} />
+              {statusNote ?? STATUS_TEXT[status]}
+            </TonePill>
           </div>
+          <p className="mt-1 text-meta text-fg-2">{description}</p>
+          <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-micro text-fg-muted">
+            <span title={KIND_HINT[kind]} data-tone={kind === 'user' ? 'info' : 'neutral'} className="inline-flex items-center gap-1">
+              <ToneDot tone={kind === 'user' ? 'info' : 'neutral'} />
+              {KIND_TEXT[kind]}
+            </span>
+            {facts.map(f => <span key={f} className="break-all">· {f}</span>)}
+          </p>
         </div>
-        <span data-tone={STATUS_TONE[status]} className="flex shrink-0 items-center gap-2">
-          <ToneDot tone={STATUS_TONE[status]} />
-          <span className="text-meta font-medium text-fg-2">{statusNote ?? STATUS_TEXT[status]}</span>
-        </span>
       </div>
       {children && <div className="mt-3">{children}</div>}
       {footer && <p className="mt-3 text-meta text-fg-muted">{footer}</p>}
@@ -130,7 +156,8 @@ function GoogleCard() {
   }
 
   return (
-    <ConnectionCard service="google" icon={<CalendarDays />} name="Google" scope="Calendar · Tasks — one consent, one refresh token"
+    <ConnectionCard service="google" kind="user" icon={<CalendarDays />} name="Google"
+      description="Shows your Google Calendar events in Daily and keeps your tasks in step with Google Tasks — one sign-in covers both."
       status={connected ? 'connected' : 'disconnected'}>
       <div className="flex items-center gap-2 flex-wrap">
         {connected ? (
@@ -148,7 +175,8 @@ function GoogleCard() {
 function StravaCard() {
   const { data: status, isLoading } = useStravaStatus()
   return (
-    <ConnectionCard service="strava" account={status?.athlete_name} icon={<Bike />} name="Strava" scope="Activities (runs, rides, walks)"
+    <ConnectionCard service="strava" kind="user" account={status?.athlete_name} icon={<Bike />} name="Strava"
+      description="Imports your runs, rides and walks into Training."
       status={isLoading ? 'unknown' : status?.connected ? 'connected' : 'disconnected'}>
       {/* The widget owns the OAuth redirect handling, sync and disconnect —
           reused whole rather than reimplemented, so there is still one
@@ -179,12 +207,38 @@ function PlayStationCard() {
   const [renewing, setRenewing] = useState(false)
   const showForm = !connected || renewing || life.state === 'soon'
 
+  const npssoExpired = connected && life.state === 'expired'
+  const psnStatus: Status = status.isLoading ? 'unknown'
+    : expired || npssoExpired ? 'expired'
+    : connected ? (life.state === 'soon' ? 'expiring' : 'connected')
+    : 'disconnected'
+  const expiryDate = status.data?.npssoExpiresAt ? formatDate(status.data.npssoExpiresAt) : null
+
   return (
-    <ConnectionCard service="playstation" account={profile.data?.profile?.onlineId} icon={<Gamepad2 />} name="PlayStation" scope="Playtime library · trophies · PS Plus provenance"
-      status={status.isLoading ? 'unknown' : connected ? 'connected' : expired ? 'expired' : 'disconnected'}
-      footer="Sony has no official API, so this uses the community npsso token flow. Sony's login now has a reCAPTCHA that blocks scripted refresh — expect to paste a fresh token every month or two.">
+    <ConnectionCard service="playstation" kind="user" account={profile.data?.profile?.onlineId} icon={<Gamepad2 />} name="PlayStation"
+      description="Imports your PlayStation playtime, trophies and PS Plus games into Games."
+      status={psnStatus}
+      details={[status.data?.connectedAt && `Connected since ${formatDate(status.data.connectedAt)}`]}
+      footer="Sony has no official API, so this uses a sign-in token (npsso) you paste from your browser. Sony's login blocks automatic renewal, so expect to paste a fresh one every month or two.">
       {connected ? (
         <div className="flex flex-col gap-2">
+          {/* The npsso's own deadline: renewing is a manual, desktop-browser
+              chore, so the date lets the user do it when they choose. */}
+          {expiryDate && lifeLabel ? (
+            <p className={`text-meta tabular-nums ${life.state === 'soon' || life.state === 'expired' ? 'font-semibold text-warn' : 'text-fg-2'}`}>
+              {life.state === 'expired'
+                ? `Token expired on ${expiryDate}`
+                : <>Token expires <strong>{expiryDate}</strong> · in {lifeLabel}</>}
+            </p>
+          ) : (
+            // A bare-token paste (or a row from before migration 101) has
+            // no expiry to show. Say so plainly rather than implying the
+            // token is fine, and say how to get the countdown back.
+            <p className="text-meta text-fg-muted">
+              Token expiry unknown — the current token was pasted without its expiry date. When you renew,
+              paste Sony's whole ssocookie response and the app will count down to it.
+            </p>
+          )}
           <div className="flex items-center gap-3 flex-wrap">
             <Button size="sm" icon={<Unplug />} onClick={() => disconnect.mutate()} loading={disconnect.isPending}>Disconnect</Button>
             {/* Renewing EARLY is the whole point of tracking the expiry — the
@@ -193,30 +247,12 @@ function PlayStationCard() {
             {!showForm && (
               <Button size="sm" icon={<RefreshCw />} onClick={() => setRenewing(true)}>Renew token</Button>
             )}
-            {status.data?.connectedAt && (
-              <span className="text-meta tabular-nums text-fg-muted">
-                since {new Date(status.data.connectedAt).toLocaleDateString('en-GB')}
-              </span>
-            )}
-            {lifeLabel && (
-              <span className={`text-meta font-semibold tabular-nums ${life.state === 'soon' ? 'text-warn' : 'text-fg-muted'}`}>
-                PSN token expires in {lifeLabel}
-              </span>
-            )}
-            {/* A row written before migration 101, or a bare-token paste,
-                has no expiry to show. Say so plainly rather than implying
-                the token is fine. */}
-            {!lifeLabel && (
-              <span className="text-meta text-fg-faint" title="Paste the full ssocookie response next time and the app can count down to the expiry.">
-                token expiry unknown
-              </span>
-            )}
           </div>
           {showForm && (
             <div className="rounded-row border border-line bg-surface-2 p-3">
               {life.state === 'soon' && (
                 <p className="mb-2 text-meta text-warn">
-                  PSN token expires in {lifeLabel}. Renew it now — the old one is replaced and nothing
+                  The token expires in {lifeLabel}. Renew it now — the old one is replaced and nothing
                   else changes.
                 </p>
               )}
@@ -227,7 +263,7 @@ function PlayStationCard() {
       ) : (
         <div>
           {expired && (
-            <p className="mb-2 rounded-row border border-warn/30 bg-warn-soft px-3 py-2 text-meta text-warn">
+            <p className="mb-2 rounded-row border border-danger/30 bg-danger-soft px-3 py-2 text-meta text-danger">
               Sony stopped accepting the stored session
               {profile.error instanceof Error && profile.error.message ? ` (“${profile.error.message}”)` : ''}.
               Paste a fresh token to restore it — the old one is replaced, nothing else changes.
@@ -249,50 +285,63 @@ function SteamCard() {
   const profile = useSteamProfile()
   const notConfigured = (profile.error as Error | null)?.message === 'not_configured'
   return (
-    <ConnectionCard service="steam" icon={<Monitor />} name="Steam" scope="Owned games · playtime · achievements"
+    <ConnectionCard service="steam" kind="server" icon={<Monitor />} name="Steam" account={profile.data?.personaname}
+      description="Imports your Steam library, playtime and achievements into Games."
       status={profile.isLoading ? 'unknown' : notConfigured ? 'disconnected' : profile.data ? 'connected' : 'unknown'}
-      statusNote={notConfigured ? 'Not configured' : undefined}
+      statusNote={notConfigured ? 'Not set up' : !profile.isLoading && !profile.data ? 'Not checked' : undefined}
       footer={notConfigured
-        ? 'Add STEAM_API_KEY and STEAM_ID64 to Supabase Vault, then deploy the steam-api function. No browser sign-in is involved.'
-        : 'Configured server-side in Supabase Vault — nothing to connect or revoke from here.'}>
-      {profile.data?.personaname && (
-        <p className="text-body text-fg-2">Signed in as <strong>{profile.data.personaname}</strong></p>
-      )}
-    </ConnectionCard>
+        ? 'Needs a Steam API key and your Steam ID on the server (STEAM_API_KEY and STEAM_ID64 in Supabase Vault), then the steam-api function deployed. No browser sign-in is involved.'
+        : undefined} />
   )
 }
 
-function ServerSideCard({ service, icon, name, scope, note }: { service: string; icon: ReactNode; name: string; scope: string; note: string }) {
-  return <ConnectionCard service={service} icon={icon} name={name} scope={scope} status="connected" statusNote="Server-side" footer={note} />
+function HevyCard() {
+  const sync = useHevySyncState()
+  const last = sync.data?.last_events_since ?? null
+  return (
+    <ConnectionCard service="hevy" kind="server" icon={<Dumbbell />} name="Hevy"
+      description="Imports your workouts, routines and body measurements from Hevy on every sync."
+      status={sync.isLoading ? 'unknown' : last ? 'connected' : 'disconnected'}
+      statusNote={!sync.isLoading && !last ? 'Never synced' : undefined}
+      details={[last && `Last sync ${formatDateTime(last)}`]}
+      footer="New workouts arrive by themselves through a webhook; press Sync on the Training page to fetch edits and routines." />
+  )
+}
+
+function AppleHealthCard() {
+  const latest = useLatestHealthValue('step_count')
+  const date = latest.data?.date ?? null
+  return (
+    <ConnectionCard service="apple_health" kind="server" icon={<HeartPulse />} name="Apple Health"
+      description="Receives your sleep, steps, heart and workout data from the Health Auto Export app on your phone."
+      status={latest.isLoading ? 'unknown' : date ? 'connected' : 'disconnected'}
+      statusNote={!latest.isLoading && !date ? 'No data yet' : undefined}
+      details={[date && `Latest data ${formatDate(date)}`]}
+      footer="Your phone sends the data — there is nothing to sign in to here. If data stops arriving, open Health Auto Export on the phone." />
+  )
 }
 
 /** service_subscriptions keys that have a card here; the rest go under "Other subscriptions". */
 const CARD_SERVICES = ['google', 'strava', 'playstation', 'steam', 'hevy', 'apple_health'] as const
 
-const ACCOUNTS_LABEL = 'Signed in from here'
-const SERVER_LABEL = 'Configured on the server'
+const ACCOUNTS_LABEL = 'Signed in by you'
+const SERVER_LABEL = 'Set up on the server'
 
 export function ConnectionsTab() {
   const google = <GoogleCard />
   const strava = <StravaCard />
   const psn = <PlayStationCard />
   const steam = <SteamCard />
-  const hevy = (
-    <ServerSideCard service="hevy" icon={<Dumbbell />} name="Hevy" scope="Workouts · routines · body measurements"
-      note="Authenticated by HEVY_API_KEY in Supabase Vault, plus a webhook for new workouts. Sync is triggered from the Training page." />
-  )
-  const health = (
-    <ServerSideCard service="apple_health" icon={<HeartPulse />} name="Apple Health" scope="Metrics · workouts, via Health Auto Export"
-      note="The phone pushes to the health-export-webhook function with a bearer secret. Nothing to connect here — check the Health Auto Export app on the phone if data stops arriving." />
-  )
+  const hevy = <HevyCard />
+  const health = <AppleHealthCard />
   // Each step mounts a card once: on its own, or (server-side, from 1920)
   // inside the serverCards grid.
   const sections: Record<ConnectionSection, ReactNode> = {
     intro: (
       <div className="flex flex-col gap-3">
         <p className="text-meta text-fg-muted">
-          Every external integration lives here. Feature pages show the data; they never carry
-          their own connect or disconnect control.
+          Every service the app talks to, in one place. “Signed in by you” ones you connect here;
+          “Set up on the server” ones use a key stored on the server and need nothing from you.
         </p>
         <SubscriptionSummary />
       </div>

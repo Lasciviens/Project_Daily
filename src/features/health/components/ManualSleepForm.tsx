@@ -40,7 +40,7 @@ export function ManualSleepForm({ initialDate, initialHours, onClose }: {
       </button>
       <div className="flex flex-col">
         <label className="field-label">Night ending</label>
-        {/* DateInput, not a raw <input type="date">, so the date reads DD/MM/YYYY whatever the browser locale. */}
+        {/* DateInput, not a raw <input type="date">, so the date reads DD.MM.YYYY whatever the browser locale. */}
         <DateInput value={date} max={today} onChange={setDate} className="input w-40" />
       </div>
       <div className="flex flex-col">

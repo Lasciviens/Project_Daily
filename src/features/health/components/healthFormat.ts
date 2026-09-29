@@ -1,36 +1,34 @@
-import { fmtDateEnGB } from '../../../shared/utils/enGBDate'
+import { formatDate, formatDayMonth, formatWeekday, formatWeekdayDate } from '../../../shared/utils/dateFormat'
 import type { WindowSummary } from '../healthWindowStats'
 
 // The Health feature's date and number formatters — these were copied into
-// six files with three different formats (H-21). en-GB throughout.
+// six files with three different formats (H-21). Dates are DD.MM.YYYY
+// (shared/utils/dateFormat.ts); chart ticks alone drop the year.
 
-const localDate = (date: string) => new Date(`${date}T00:00:00`)
-
-/** "Mon 21" — chart axis labels for daily points. */
+/** "Mon 21.09" — chart axis labels for daily points. */
 export function fmtAxisDay(date: string): string {
-  return localDate(date).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric' })
+  return `${formatWeekday(date)} ${formatDayMonth(date)}`
 }
 
-/** Axis label for a daily point: "Mon 21" in short windows, "21 Sep" once the
- *  window is long enough that a weekday name would repeat ambiguously. */
+/** "21.09" — chart axis label once weekday names would repeat. */
+export function fmtAxisDate(date: string): string {
+  return formatDayMonth(date)
+}
+
+/** Axis label for a daily point: "Mon 21.09" in short windows, "21.09" once
+ *  the window is long enough that a weekday name would repeat ambiguously. */
 export function fmtAxisFor(date: string, totalDays: number): string {
-  return totalDays > 45 ? fmtDayMonth(date) : fmtAxisDay(date)
+  return totalDays > 45 ? fmtAxisDate(date) : fmtAxisDay(date)
 }
 
-/** "21 Sep" (plus the year when it isn't this year). */
+/** "21.09.2026". */
 export function fmtDayMonth(date: string): string {
-  const d = localDate(date)
-  const sameYear = d.getFullYear() === new Date().getFullYear()
-  return fmtDateEnGB(d, sameYear ? { day: 'numeric', month: 'short' } : { day: 'numeric', month: 'short', year: 'numeric' })
+  return formatDate(date)
 }
 
-/** "Mon, 21 Sep" (plus the year when it isn't this year). */
+/** "Mon 21.09.2026". */
 export function fmtDayLong(date: string): string {
-  const d = localDate(date)
-  const sameYear = d.getFullYear() === new Date().getFullYear()
-  return fmtDateEnGB(d, sameYear
-    ? { weekday: 'short', day: 'numeric', month: 'short' }
-    : { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
+  return formatWeekdayDate(date)
 }
 
 /** "45m", "1h 05m", "—" for nothing. */

@@ -43,7 +43,7 @@ check('screen label', ctx.screenLabel(page) === '1469×680, desktop, light theme
 check('element label uses role and name', ctx.elementLabel({ tag: 'button', role: 'tab', name: 'Week' }) === 'tab "Week"')
 check('element label falls back to text', ctx.elementLabel({ tag: 'div', role: null, name: null, text: 'Hello' }) === 'div "Hello"')
 check('element label bare tag', ctx.elementLabel({ tag: 'svg' }) === 'svg')
-check('stamp is en-GB day-first', /^\d{2}\/09\/2026 \d{2}:05$/.test(ctx.formatStamp(page.at)), ctx.formatStamp(page.at))
+check('stamp is DD.MM.YYYY HH:MM', /^\d{2}\.09\.2026 \d{2}:05$/.test(ctx.formatStamp(page.at)), ctx.formatStamp(page.at))
 check('bad stamp → empty', ctx.formatStamp('nope') === '' && ctx.formatStamp(null) === '')
 
 console.log('\n2 · Picked element block')
@@ -364,13 +364,13 @@ console.log('\n18 · Card dates and the Prompted flag')
 {
   const now = new Date(2026, 8, 30, 12, 0)
   const at = (y, m, d, h, min) => new Date(y, m - 1, d, h, min).toISOString()
-  check('card stamp en-GB, no year this year', rules.cardStamp(at(2026, 9, 29, 14, 5), now) === '29/09 14:05')
-  check('year shown for another year', rules.cardStamp(at(2025, 1, 2, 3, 4), now) === '02/01/2025 03:04')
+  check('card stamp DD.MM.YYYY HH:MM', rules.cardStamp(at(2026, 9, 29, 14, 5), now) === '29.09.2026 14:05')
+  check('year shown for another year', rules.cardStamp(at(2025, 1, 2, 3, 4), now) === '02.01.2025 03:04')
   check('bad stamp → empty', rules.cardStamp('nope', now) === '' && rules.cardStamp(null, now) === '')
   const done = { created_at: at(2026, 9, 29, 14, 5), status: 'done', completed_at: at(2026, 9, 30, 9, 12) }
-  check('added + done', rules.cardTimeline(done, now) === 'Added 29/09 14:05 · Done 30/09 09:12')
-  check('open → added only', rules.cardTimeline({ ...done, status: 'open' }, now) === 'Added 29/09 14:05')
-  check('done before migration 114 → added only', rules.cardTimeline({ ...done, completed_at: undefined }, now) === 'Added 29/09 14:05')
+  check('added + done', rules.cardTimeline(done, now) === 'Added 29.09.2026 14:05 · Done 30.09.2026 09:12')
+  check('open → added only', rules.cardTimeline({ ...done, status: 'open' }, now) === 'Added 29.09.2026 14:05')
+  check('done before migration 114 → added only', rules.cardTimeline({ ...done, completed_at: undefined }, now) === 'Added 29.09.2026 14:05')
   check('prompted + open waits for a check', rules.awaitingCheck({ status: 'open', prompted_at: 'x' }) && rules.awaitingCheck({ status: 'in_progress', prompted_at: 'x' }))
   check('done or never prompted does not', !rules.awaitingCheck({ status: 'done', prompted_at: 'x' }) && !rules.awaitingCheck({ status: 'open', prompted_at: null }) && !rules.awaitingCheck({ status: 'open' }))
 }

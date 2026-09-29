@@ -1,7 +1,6 @@
 import { Target } from 'lucide-react'
 import { cx } from '../../../shared/ui'
 import { useEntityModal } from '../../../shared/modals/useEntityModal'
-import { todayStr } from '../../../shared/utils/dateUtils'
 import { useDayTargets } from '../hooks/useDayTargets'
 import { goalSummaryParts } from '../goalSummary'
 
@@ -11,7 +10,7 @@ import { goalSummaryParts } from '../goalSummary'
 export function GoalSummary({ date, className }: { date?: string; className?: string }) {
   const { targets, isLoaded } = useDayTargets()
   const modal = useEntityModal()
-  const parts = goalSummaryParts(targets, todayStr())
+  const parts = goalSummaryParts(targets)
   return (
     <div className={cx('flex items-center gap-2 text-meta', className)}>
       <Target className="h-3.5 w-3.5 shrink-0 text-accent-600" aria-hidden />

@@ -3,14 +3,11 @@ import { ChevronDown, Undo2 } from 'lucide-react'
 import { useRecentRuns, useUndoScrape } from '../../../scraper/useScrape'
 import type { RecentRun } from '../../../scraper/ssApi'
 import { TgConfirmDialog } from '../TgConfirmDialog'
-import { formatDay } from '../../testGameModel'
 import { Truncate } from '../../../../../shared/ui/Truncate'
+import { formatDateTime } from '../../../../../shared/utils/dateFormat'
 
-// "26 Sep 2026, 08:10" — the day via formatDay (CLDR would print "Sept").
-const when = (iso: string) => {
-  const d = new Date(iso)
-  return `${formatDay(iso)}, ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-}
+// "26.09.2026 08:10".
+const when = (iso: string) => formatDateTime(iso)
 
 /**
  * The last saves, one per run, each with Undo — read from the journal, so an

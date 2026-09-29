@@ -101,7 +101,7 @@ export function SleepTimeline({ timeline, wakeCenter, onsetCenter }: {
             <div key={t.date} className="flex h-5 cursor-default items-center gap-2"
               onPointerEnter={hover(i)} onPointerMove={hover(i)}
               onClick={() => setActive(cur => (cur === i ? null : i))}>
-              <span className={cx('w-12 shrink-0 text-right text-micro tabular-nums', on ? 'font-semibold text-fg' : 'font-normal text-fg-muted')}>{fmtAxisDay(t.date)}</span>
+              <span className={cx('w-16 shrink-0 text-right text-micro tabular-nums', on ? 'font-semibold text-fg' : 'font-normal text-fg-muted')}>{fmtAxisDay(t.date)}</span>
               <div className={cx('relative h-2.5 flex-1 rounded-full', on ? 'bg-surface-hover' : 'bg-surface-2')}>
                 <div className="absolute h-full rounded-full transition-opacity duration-100"
                   style={{ left: `${a}%`, width: `${Math.max(1, b - a)}%`, backgroundColor: SLEEP_COLOR, opacity: current == null || on ? 1 : 0.45 }} />

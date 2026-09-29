@@ -8,7 +8,7 @@ import { compactAxisTick } from '../../../shared/components/charts/axisFormat'
 import { Skeleton, useChartColors } from '../../../shared/ui'
 import { TOOLTIP_BOX } from '../../../shared/components/charts/chartKit'
 import { ChartCard, ChartEmpty, ChartNote } from './ChartCard'
-import { fmtDateEnGB } from '../../../shared/utils/enGBDate'
+import { formatDayMonth } from '../../../shared/utils/dateFormat'
 
 // Weekly total tonnage (Σ weight×reps, warm-ups excluded, weight-based
 // exercise types only) with a 4-week rolling average — a strength-coach +
@@ -21,7 +21,7 @@ import { fmtDateEnGB } from '../../../shared/utils/enGBDate'
 // BarLineChart's one-dataKey-shared-by-bar-and-line shape doesn't support.
 
 function fmtWeek(dateStr: string): string {
-  return fmtDateEnGB(new Date(dateStr + 'T00:00:00'), { day: 'numeric', month: 'short' })
+  return formatDayMonth(dateStr)
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- recharts' TooltipProps generic is awkward to import cleanly; only a few fields are read.

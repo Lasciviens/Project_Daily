@@ -22,6 +22,7 @@ import {
 } from '../gamesMeta'
 import type { Game, GamePatch, GamePlatform, GamePlatformInput, PlayStatus } from '../types'
 import { Truncate } from '../../../shared/ui/Truncate'
+import { DateInput } from '../../../shared/components/DateInput'
 
 function Section({ title, children, defaultOpen = true }: { title: string; children: React.ReactNode; defaultOpen?: boolean }) {
   const [open, setOpen] = useState(defaultOpen)
@@ -35,7 +36,7 @@ function Section({ title, children, defaultOpen = true }: { title: string; child
   )
 }
 
-// en-GB built by hand ("15 Sep 2026"): toLocaleDateString's CLDR data prints "Sept".
+// DD.MM.YYYY via the shared formatter.
 const fmtDate = (iso: string | null | undefined): string => formatDay(iso)
 
 
@@ -359,11 +360,11 @@ function EditPanel({ game, onSave, onCancel, saving }: { game: Game; onSave: (id
           )}
           <div>
             <label className={labelCls}>Started</label>
-            <input type="date" value={startedAt} onChange={e => setStartedAt(e.target.value)} className={fieldCls} />
+            <DateInput value={startedAt} onChange={setStartedAt} aria-label="Started" className={fieldCls} />
           </div>
           <div>
             <label className={labelCls}>Finished</label>
-            <input type="date" value={finishedAt} onChange={e => setFinishedAt(e.target.value)} className={fieldCls} />
+            <DateInput value={finishedAt} onChange={setFinishedAt} aria-label="Finished" className={fieldCls} />
           </div>
         </div>
       </div>

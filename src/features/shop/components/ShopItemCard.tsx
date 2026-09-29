@@ -4,7 +4,7 @@ import { Card, IconButton, ToneDot, Truncate, cx } from '../../../shared/ui'
 import { useUpdateShopItem, useDeleteShopItem } from '../hooks/useShop'
 import { REGION_FLAG, SHOP_PRIORITY_TONE } from '../shopMeta'
 import type { ShopItem } from '../types'
-import { fmtDateEnGB } from '../../../shared/utils/enGBDate'
+import { formatDate } from '../../../shared/utils/dateFormat'
 
 // Numbers carry units (THEME §11): the region decides the currency.
 const CURRENCY: Record<string, string> = { NO: 'kr', TR: '₺' }
@@ -54,7 +54,7 @@ export function ShopItemCard({ item }: { item: ShopItem }) {
             <span className="chip tabular-nums">{formatShopPrice(item.price, item.region)}{item.price_source === 'ai_estimate' ? ' (est.)' : ''}</span>
           )}
           {item.planned_date && (
-            <span className="chip tabular-nums">{fmtDateEnGB(new Date(item.planned_date + 'T00:00:00'), { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+            <span className="chip tabular-nums">{formatDate(item.planned_date)}</span>
           )}
           {item.url && (
             <a href={item.url} target="_blank" rel="noopener noreferrer"

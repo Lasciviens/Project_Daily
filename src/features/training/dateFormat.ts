@@ -1,16 +1,13 @@
-import { fmtDateEnGB } from '../../shared/utils/enGBDate'
-// Canonical en-GB date/time formatters for Training views. Was independently
-// forked across the workout card, the session detail and body measurements
-// — two slightly different day formats existed (`day:'numeric'` vs
-// `day:'2-digit'`); '2-digit' was already the majority and matches the
-// project's DD/MM/YYYY convention more closely, so it's canonical here.
+import { formatDate, formatTime, formatWeekRange } from '../../shared/utils/dateFormat'
+// Training's date/time formatters — thin names over the app-wide DD.MM.YYYY
+// / HH:MM formatter (shared/utils/dateFormat.ts).
 
 export function formatTrainingDate(d: Date): string {
-  return fmtDateEnGB(d, { day: '2-digit', month: 'short', year: 'numeric' })
+  return formatDate(d)
 }
 
 export function formatTrainingTime(d: Date): string {
-  return d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+  return formatTime(d)
 }
 
 export function fmtTrainingDate(iso: string | null): string {
@@ -25,19 +22,15 @@ export function fmtTrainingDateTime(iso: string | null): string {
   return iso ? `${formatTrainingDate(new Date(iso))} · ${formatTrainingTime(new Date(iso))}` : '—'
 }
 
-/** Monday→Sunday range for a week chart's tooltip — a single date (e.g.
- *  "3 Aug") is ambiguous about what it means for a WEEKLY value (start?
+/** Monday→Sunday range for a week chart's tooltip ("03.08.2026 –
+ *  09.08.2026") — a single date is ambiguous about what it means for a WEEKLY value (start?
  *  end? the day it was logged?), which real user confusion (2026-09-01)
  *  confirmed: several Progress-tab weekly charts showed a bare Monday date
  *  as the whole tooltip header. Every weekly chart's tooltip should use
  *  this instead of a single date; short single-date labels stay fine on
  *  the X-AXIS itself, where space is tight. */
 export function fmtWeekRange(weekStartIso: string): string {
-  const start = new Date(weekStartIso + 'T00:00:00')
-  const end = new Date(start)
-  end.setDate(end.getDate() + 6)
-  const fmt = (d: Date) => fmtDateEnGB(d, { day: 'numeric', month: 'short' })
-  return `${fmt(start)} – ${fmt(end)}`
+  return formatWeekRange(weekStartIso)
 }
 
 /** Current time in ms — the one clock read for render-time "last N days" windows. */

@@ -7,6 +7,7 @@ import { formatPlaytime } from '../api/playtimeFormat'
 import { LibraryControls } from './LibraryControls'
 import { useLibraryEntry } from '../hooks/useGames'
 import { ModalShell } from '../../../shared/modals'
+import { formatDate } from '../../../shared/utils/dateFormat'
 
 // Detail popup for one PSN game. Opens from either view:
 //   - the playtime library (a store SKU) → the trophy set has to be bridged
@@ -20,7 +21,7 @@ const CATEGORY_LABEL: Record<string, string> = {
   ps5_native_game: 'PS5', ps4_game: 'PS4', pspc_game: 'PC', unknown: '—',
 }
 
-const fmtDate = (iso?: string | null) => (iso ? new Date(iso).toLocaleDateString('en-GB') : '—')
+const fmtDate = (iso?: string | null) => (iso ? formatDate(iso) : '—')
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (

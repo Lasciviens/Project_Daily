@@ -56,3 +56,25 @@ export function npssoLifetimeLabel(life: NpssoLifetime): string | null {
   if (life.state === 'expired') return 'expired'
   return formatPlaytime(life.minutes)
 }
+
+/**
+ * Read an npsso paste. Sony's ssocookie answer is `{"npsso":"…","expires_in":…}`,
+ * but what reaches the textarea depends on the browser: Chrome shows the raw
+ * JSON, Firefox's JSON viewer copies `npsso: "…"` / `expires_in: 5183980`
+ * lines (or tab-separated ones), and some people copy just the token. Every
+ * form that carries the key yields the expiry; only a bare token costs it.
+ *
+ * Mirrored by hand in supabase/functions/psn-api/index.ts (Deno can't import
+ * this file) — change both together.
+ */
+export function parseNpssoPaste(raw: string): { npsso: string; expiresIn: number | null } {
+  const text = String(raw ?? '').trim()
+  if (!text) return { npsso: '', expiresIn: null }
+  const key = /["']?npsso["']?\s*[:=\t ]\s*["']?([A-Za-z0-9_-]+)/i.exec(text)
+  if (key) {
+    const exp = /["']?expires_in["']?\s*[:=\t ]\s*["']?(\d+)/i.exec(text)
+    const secs = exp ? Number(exp[1]) : NaN
+    return { npsso: key[1], expiresIn: Number.isFinite(secs) && secs > 0 ? secs : null }
+  }
+  return { npsso: text.replace(/^["']+|["']+$/g, ''), expiresIn: null }
+}

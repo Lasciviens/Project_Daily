@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { ChevronDown, ChevronRight, Dumbbell, Smartphone } from 'lucide-react'
 import { Card, EmptyState, Skeleton, Truncate } from '../../../shared/ui'
 import { useEntityModal } from '../../../shared/modals'
-import { fmtDateEnGB } from '../../../shared/utils/enGBDate'
+import { formatWeekdayDate } from '../../../shared/utils/dateFormat'
 import { useHealthWorkoutSummaries } from '../hooks/useHealthExport'
 import { useHevyMatches } from '../hooks/useWorkoutLinks'
 import type { HealthWorkoutSummary } from '../api/healthApi'
@@ -11,9 +11,7 @@ import { fmtDuration } from './healthFormat'
 
 function fmtStart(iso: string | null): string {
   if (!iso) return '—'
-  const d = new Date(iso)
-  const sameYear = d.getFullYear() === new Date().getFullYear()
-  return fmtDateEnGB(d, sameYear ? { weekday: 'short', day: 'numeric', month: 'short' } : { day: 'numeric', month: 'short', year: 'numeric' })
+  return formatWeekdayDate(iso)
 }
 
 function HealthWorkoutRow({ workout, hevyTitle, onOpen }: { workout: HealthWorkoutSummary; hevyTitle?: string; onOpen: () => void }) {

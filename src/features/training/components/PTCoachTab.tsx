@@ -6,7 +6,7 @@ import { Button, Card, PageBoard, SectionLabel, Truncate } from '../../../shared
 import { COACH_BOARD } from '../trainingBoards'
 import { todayStr } from '../../../shared/utils/dateUtils'
 import { ProfileSummaryCard } from './program/ProfileSummaryCard'
-import { fmtDateEnGB } from '../../../shared/utils/enGBDate'
+import { formatDate } from '../../../shared/utils/dateFormat'
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  AI PT — user-initiated daily assessment (NEVER auto-runs; each run costs
@@ -37,7 +37,7 @@ function renderBold(text: string) {
   )
 }
 
-const fmtDate = (d: string) => fmtDateEnGB(new Date(d + 'T00:00:00'), { day: 'numeric', month: 'short' })
+const fmtDate = (d: string) => formatDate(d)
 
 export function PTCoachTab() {
   const today = todayStr()

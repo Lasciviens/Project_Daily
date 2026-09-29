@@ -1,4 +1,4 @@
-import { format } from 'date-fns'
+import { formatDate } from '../../../../shared/utils/dateFormat'
 import { todayStr } from '../../../../shared/utils/dateUtils'
 import { Clock, Flag } from 'lucide-react'
 import { InfoBubble } from '../../../../shared/components/InfoBubble'
@@ -121,7 +121,7 @@ export function MuscleDetailCard({ read, windowDays, priorHasData, isExperienceA
           {dates.length > 0 && (
             <div className="flex flex-wrap gap-1">
               {dates.slice(0, 12).map((d, i) => (
-                <span key={i} className="chip tabular-nums">{format(new Date(`${d}T00:00:00`), 'd MMM')}</span>
+                <span key={i} className="chip tabular-nums">{formatDate(d)}</span>
               ))}
               {dates.length > 12 && <span className="px-1 py-0.5 text-meta text-fg-muted">+{dates.length - 12}</span>}
             </div>

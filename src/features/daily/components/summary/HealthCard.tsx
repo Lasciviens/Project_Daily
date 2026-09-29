@@ -9,7 +9,7 @@ import { BODYWEIGHT_SOURCE_LABEL } from '../../../health/bodyweight'
 import { nightEndingOn, nightMissingText, nightNoun } from '../../../health/healthDateLabels'
 import { todayStr } from '../../../../shared/utils/dateUtils'
 import { useDragScroll } from '../../../../shared/hooks/useDragScroll'
-import { fmtDateEnGB } from '../../../../shared/utils/enGBDate'
+import { formatDate } from '../../../../shared/utils/dateFormat'
 
 // A SCROLLABLE health glance: one horizontal snap-strip — Sleep, Steps,
 // Energy, Heart, Weight — for the day Daily is showing. Every number comes
@@ -80,7 +80,7 @@ export function HealthCard({ date }: { date: string }) {
           {w ? (
             <>
               <Big>{round(w.kg, 1)}</Big>
-              <Sub>kg · {fmtDateEnGB(new Date(w.date + 'T00:00:00'), { day: 'numeric', month: 'short' })}</Sub>
+              <Sub>kg · {formatDate(w.date)}</Sub>
               <p className="text-micro text-fg-faint">{BODYWEIGHT_SOURCE_LABEL[w.source]}</p>
             </>
           ) : <Empty loading={weight.isLoading} />}

@@ -4,7 +4,10 @@
 // editable, needs no schema change, and the Claude prompt already carries
 // the description verbatim. The strings quoted here (button labels, card
 // headings) are literals in the source, so Claude can grep for them.
-// Import-free so scripts/verify-dev-request-context.cjs can require it.
+// Pure (its only import is the import-free date formatter) so
+// scripts/verify-dev-request-context.cjs can require it.
+
+import { formatDateTime } from '../../shared/utils/dateFormat'
 
 export interface PageContext {
   /** Hash route with its query, e.g. `/recipes?tab=today`. */
@@ -87,14 +90,10 @@ export function elementLabel(el: Pick<PickedElement, 'tag' | 'role' | 'name' | '
   return name ? `${kind} ${quoted(name)}` : kind
 }
 
-const pad = (n: number) => String(n).padStart(2, '0')
 
-/** en-GB `28/09/2026 14:05` in local time; '' for a missing or bad timestamp. */
+/** `28.09.2026 14:05` in local time; '' for a missing or bad timestamp. */
 export function formatStamp(iso: string | null | undefined): string {
-  if (!iso) return ''
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return ''
-  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+  return formatDateTime(iso)
 }
 
 // ── Component sources ─────────────────────────────────────────────────────────

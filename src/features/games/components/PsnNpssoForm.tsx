@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import { useConnectPsn } from '../hooks/usePlayStation'
+import { parseNpssoPaste } from '../api/psnTokenLifetime'
+import { formatDate } from '../../../shared/utils/dateFormat'
 
 // The npsso paste flow, in ONE place so the first-time connect and the
 // re-authentication that follows an expired session can never drift apart.
@@ -12,7 +14,14 @@ import { useConnectPsn } from '../hooks/usePlayStation'
 // to go.
 export function PsnNpssoForm({ compact, onConnected }: { compact?: boolean; onConnected?: () => void }) {
   const [npsso, setNpsso] = useState('')
+  // When the text was pasted — expires_in counts from then (read in the
+  // change handler, never during render).
+  const [pastedAt, setPastedAt] = useState(0)
   const connect = useConnectPsn()
+  // Tell the user before connecting whether this paste carries the expiry —
+  // a bare token is the one form that loses the countdown.
+  const parsed = parseNpssoPaste(npsso)
+  const expiryPreview = parsed.expiresIn ? formatDate(new Date(pastedAt + parsed.expiresIn * 1000)) : null
 
   return (
     <div className={compact ? 'text-left' : 'text-left'}>
@@ -37,7 +46,7 @@ export function PsnNpssoForm({ compact, onConnected }: { compact?: boolean; onCo
       </ol>
       <textarea
         value={npsso}
-        onChange={e => setNpsso(e.target.value)}
+        onChange={e => { setNpsso(e.target.value); setPastedAt(Date.now()) }}
         rows={2}
         placeholder='{"npsso":"…","expires_in":…}  — or just the token'
         spellCheck={false}
@@ -45,6 +54,13 @@ export function PsnNpssoForm({ compact, onConnected }: { compact?: boolean; onCo
         autoCorrect="off"
         className="w-full px-3 py-2 text-xs font-mono rounded-lg border border-ink-200 bg-cream-50 focus:outline-none focus:ring-2 focus:ring-accent-400 resize-none"
       />
+      {parsed.npsso && (
+        <p className={`mt-1 text-meta ${expiryPreview ? 'text-success' : 'text-warn'}`}>
+          {expiryPreview
+            ? `Expiry found — this token lasts until ${expiryPreview}.`
+            : 'No expiry in this paste, so the app may not be able to count down to it. Paste the whole response to get the date.'}
+        </p>
+      )}
       <button
         type="button"
         onClick={() => connect.mutate(npsso.trim(), {

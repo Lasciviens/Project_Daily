@@ -1,7 +1,7 @@
 import { CalendarPlus, ChevronRight } from 'lucide-react'
 import { Button, ListRow } from '../../../../shared/ui'
 import { useEntityModal } from '../../../../shared/modals'
-import { fmtDateEnGB } from '../../../../shared/utils/enGBDate'
+import { formatWeekdayDate } from '../../../../shared/utils/dateFormat'
 import { formatDistance } from '../../setFormat'
 import { openPlanSession } from '../../planTraining'
 import { SESSION_STATUS_LABEL, coveredPlanNote, planRefOf } from '../../sessionRef'
@@ -34,7 +34,7 @@ export function DayDetailPanel({ day, dateStr, todayStr }: { day: DayData | null
     ...day.openPlans.map(open => ({ kind: 'plan' as const, at: planStartHHMM(open.plan), open })),
   ].sort((a, b) => (a.at ?? '99:99').localeCompare(b.at ?? '99:99'))
 
-  const heading = fmtDateEnGB(new Date(`${dateStr}T12:00:00`), { weekday: 'long', day: 'numeric', month: 'long' })
+  const heading = formatWeekdayDate(dateStr, 'long')
 
   return (
     <div className="flex flex-col gap-1 border-t border-line pt-3">

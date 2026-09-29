@@ -1,6 +1,7 @@
 import { useState, useEffect, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { addDays, format, startOfMonth, endOfMonth, isToday, isYesterday, isTomorrow, isSameDay, differenceInCalendarDays } from 'date-fns'
+import { formatWeekdayDate } from '../../../shared/utils/dateFormat'
 import { DayView } from '../components/DayView'
 import { DayAgenda } from '../components/DayAgenda'
 import { WeekStrip } from '../components/WeekStrip'
@@ -101,7 +102,7 @@ export function DailyPage() {
         title={
           <DateNav
             size="md"
-            label={format(viewDate, 'EEE d MMM')}
+            label={formatWeekdayDate(viewDate)}
             labelClassName="min-w-[120px] text-head font-bold tracking-tight text-fg sm:text-page"
             onPrev={() => { setViewDate(d => addDays(d, -1)); setMode('day') }}
             onNext={() => { setViewDate(d => addDays(d,  1)); setMode('day') }}
@@ -207,7 +208,7 @@ function PickerSection({ kind, onDayClick, selectedDate }: { kind: 'week' | 'mon
     picked: <PickedDay date={focus} onOpenDay={() => onDayClick(focus)} />,
     dayTasks: (
       <Card padded={false} className="min-w-0 overflow-hidden">
-        <DayCardHeader title={`Tasks · ${format(focus, 'EEE d MMM')}`} />
+        <DayCardHeader title={`Tasks · ${formatWeekdayDate(focus)}`} />
         <DayView date={focus} />
       </Card>
     ),
@@ -239,7 +240,7 @@ function DayCardHeader({ title, children }: { title: string; children?: ReactNod
 function PickedDay({ date, onOpenDay, onShowUpcoming }: { date: Date; onOpenDay: () => void; onShowUpcoming?: () => void }) {
   return (
     <Card padded={false} className="min-w-0 overflow-hidden">
-      <DayCardHeader title={format(date, onShowUpcoming ? 'EEE d MMM' : 'EEEE d MMMM')}>
+      <DayCardHeader title={formatWeekdayDate(date, onShowUpcoming ? 'short' : 'long')}>
         <Button variant="ghost" size="sm" onClick={onOpenDay}>Open day</Button>
         {onShowUpcoming && <Button variant="ghost" size="sm" onClick={onShowUpcoming}>Upcoming</Button>}
       </DayCardHeader>
@@ -282,7 +283,7 @@ function UpcomingActivities({ onPick }: { onPick: (d: Date) => void }) {
                   onClick={() => onPick(d)}
                   className="flex min-h-[44px] items-center gap-2 text-body font-semibold text-fg-2 hover:text-accent-600"
                 >
-                  {format(d, 'EEE d MMM')}
+                  {formatWeekdayDate(d)}
                   {isSameDay(d, today) && <TonePill tone="accent">Today</TonePill>}
                 </button>
                 <ul className="flex flex-col gap-1 border-l-2 border-line pl-1">
