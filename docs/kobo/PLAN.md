@@ -7,10 +7,10 @@
 >
 > Status: **research complete, nothing built.** Third pass done: the unattended-sync
 > question that blocked the phase ordering is **answered** (§3.0) — automatic sync is
-> achievable, it rides `NetworkConnected` plus an on-disk outbox, and it folds into Phase 1
+> achievable, it rides `NetworkConnected` plus an on-disk outbox, and it folds into Phase 4
 > rather than being a later phase. The second pass had folded in the owner's decisions
 > (§2.3 loans, §4.2 AI catalog, §4.4 glance board) and four self-critique findings (§6.1),
-> two of them resolved with source-level research (§4.2.1 book identity, §3 Phase 1
+> two of them resolved with source-level research (§4.2.1 book identity, §3 Phase 4
 > incremental sync).
 >
 > **Every KOReader claim in this document was verified by reading
@@ -172,11 +172,13 @@ fixed milestone **2025.08**). On firmware 4.45 with an older KOReader the device
 
 ---
 
-## 3. Delivery plan
+## 3. Reading-tracker build plan (roadmap Phases 3 and 4)
 
-**Two phases, plus a fallback that may never be needed.** The riskiest work is last — and
-the piece that used to *be* last, automatic unattended sync, turns out to be nearly free and
-now lives inside Phase 1.
+**Two roadmap phases (§11), plus a fallback that may never be needed.** (This section
+predates book delivery coming into scope; "delivery" here used to mean shipping the
+tracker. Getting books *onto* the device is §8.) The riskiest work is last — and the piece
+that used to *be* last, automatic unattended sync, turns out to be nearly free and now lives
+inside Phase 4.
 
 ### 3.0 Unattended sync — **RESOLVED**
 
@@ -189,7 +191,7 @@ tracker.
 **Answer: unattended sync is achievable — but not on book-close and not on suspend. The
 trigger is `NetworkConnected` plus a persistent on-disk outbox, which is exactly the
 architecture KOReader's own KOSync plugin already ships.** It needs no NickelMenu, no KFMon,
-no shell script and no second binary, so it folds into Phase 1 as a few dozen lines of Lua
+no shell script and no second binary, so it folds into Phase 4 as a few dozen lines of Lua
 plus two stock settings the owner switches on.
 
 #### Why suspend and close cannot carry a network request
@@ -434,7 +436,7 @@ If we take option A, licensing the plugin **AGPL-3.0-or-later** — matching KOR
 and `koreader/contrib` — sidesteps the derivative-work question rather than betting on an
 answer, at no cost to us.
 
-### Phase 0 — one-time library-inventory import (small, cheap, browser-only)
+### Phase 3 — one-time library-inventory import (small, cheap, browser-only)
 
 Plug the device in, copy `KoboReader.sqlite`, parse it **in the browser** with `sql.js`
 (SQLite compiled to WebAssembly — reads the file client-side, nothing uploaded), write rows
@@ -448,7 +450,7 @@ once you actually **open** it. So KOReader can never tell us about a book sittin
 device unopened, and Nickel's `content` table is the **only** complete inventory of what is
 on the device. That is what this phase is for — seeding the Library grid and the reading
 Queue with books that have not been started yet. Everything downstream of "has been opened"
-comes from Phase 1.
+comes from Phase 4.
 
 Its limit, and the reason statistics are excluded: `content.TimeSpentReading` is a
 **lifetime aggregate per book**, so it has no day resolution at all and cannot seed a daily
@@ -477,7 +479,7 @@ loans out of scope in §2.3 applies to Nickel's own numbers for our own books.
 - **Work on a copy, opened read-only.** Nickel is a live writer. Never delete
   `-journal`/`-wal` files to "unlock" anything.
 
-### Phase 1 — KOReader + our own plugin → `kobo-sync` edge function (the real feature)
+### Phase 4 — KOReader + our own plugin → `kobo-sync` edge function (the real feature)
 
 A KOReader plugin reads `statistics.sqlite3`, writes what it finds into an on-disk outbox,
 and drains that outbox to a Supabase edge function over HTTPS whenever KOReader sees the
@@ -632,12 +634,12 @@ itself is CPU-bound on that hardware.
 actual text lives in per-book sidecar files (`.sdr/metadata.epub.lua`). KoInsight's payload
 has an `annotations` key, so its plugin reads them from somewhere — find out where before
 promising highlights in this phase. If it turns out to be sidecar-walking, that is a
-separate, larger piece of work and highlights should move to Phase 3.
+separate, larger piece of work and highlights should move to Phase 5.
 
-### Phase 2 (fallback only) — an on-device trigger outside KOReader
+### The Nickel-side fallback (only if needed) — an on-device trigger outside KOReader
 
 **This is no longer the automation path, and it is no longer a planned phase.** §3.0 moved
-automatic sync into Phase 1, where it costs a few dozen lines of Lua and two stock settings
+automatic sync into Phase 4, where it costs a few dozen lines of Lua and two stock settings
 instead of a Nickel mod, a shell script and a second HTTPS binary. This section survives
 only as the answer to a scenario that may never arise: KOReader's own `NetworkConnected`
 window turning out to be too rare in this owner's actual routine (reads with Wi-Fi
@@ -665,7 +667,7 @@ working HTTPS client. Notes for then:
   firing whenever the Wi-Fi module is inserted. Notable corollary: it ships **its own ARM
   `curl` and its own CA bundle** — strong evidence that stock Kobo firmware has no
   TLS-capable HTTP client at all, which is exactly the cost this fallback carries and Phase
-  1 does not.
+  4 does not.
 - `NickelDBus` is **ruled out as a KOReader-side trigger** (§3.0 constraint 2): its signals
   only fire while Nickel is running, which is precisely when KOReader's process does not
   exist. It remains usable only *within* this Nickel-side fallback, where its documented
@@ -693,7 +695,7 @@ working HTTPS client. Notes for then:
 - **`crond`.** Frozen during suspend-to-RAM, no catch-up semantics for the minutes it missed,
   and not running on stock firmware in the first place. Dead end.
 - **KFMon as a scheduler.** It is a *launcher* — inotify on a file being opened. No timer, no
-  boot trigger, no network trigger. It can only appear in the Phase 2 fallback, and only as
+  boot trigger, no network trigger. It can only appear in the Nickel-side fallback, and only as
   the thing a human tap starts.
 - **Sync on suspend or on book-close.** Both are structurally impossible and one of them is
   dangerous; full evidence in §3.0, including the real device-hang incident it caused
@@ -744,7 +746,7 @@ back-dated and repeated data:
   say *"not heard from the device since ‹timestamp›"* instead of rendering a silent zero —
   see §5. It is the one piece of state the sync exists to carry that is not a page event.
 
-Phase 0's browser import writes through the normal authenticated client, not this function.
+Phase 3's browser import writes through the normal authenticated client, not this function.
 
 ### 4.2 Schema
 
@@ -757,9 +759,9 @@ store the page events and aggregate on read — do not store daily totals.
 books
   id, user_id
   koreader_md5        -- KOReader's partial-file md5 (§4.2.1) — computable from the file alone,
-                      --   so the Phase 0 inventory import computes it too
+                      --   so the Phase 3 inventory import computes it too
   kobo_content_id     -- nullable; the Nickel `content.ContentID`, i.e. the file:/// path.
-                      --   Justified by the Phase 0 inventory import (re-import matching,
+                      --   Justified by the Phase 3 inventory import (re-import matching,
                       --   and the path that the md5 is computed from). NOT for OverDrive —
                       --   loans are out of scope (§2.3).
   title, author, series, language
@@ -816,7 +818,7 @@ Notes on the choices:
 ### 4.2.1 Book identity: making the two ingest paths agree — **RESOLVED**
 
 The problem this fixes: `UNIQUE (user_id, koreader_md5) WHERE koreader_md5 IS NOT NULL`
-permits unlimited NULL rows, so a book landing first via the Phase 0 inventory (no md5) and
+permits unlimited NULL rows, so a book landing first via the Phase 3 inventory (no md5) and
 later via KOReader (md5) would create **two rows for the same book**, with no matching
 strategy at all.
 
@@ -852,7 +854,7 @@ reads that setting into `self.doc_md5` and writes it as `book.md5`.
 purely a function of file bytes; the residual risk is implementation error on our side, not
 uncertainty about the spec):
 
-1. **Compute `partialMD5` in the browser during the Phase 0 inventory import.** The device
+1. **Compute `partialMD5` in the browser during the Phase 3 inventory import.** The device
    is mounted as USB mass storage at that moment, so the EPUB files are reachable in the
    same session as `KoboReader.sqlite`; `content.ContentID` gives each book's
    `file:///mnt/onboard/...` path to match against the picked folder. Read only the twelve
@@ -920,17 +922,31 @@ the desktop row too or it is unreachable above `sm:`.
 
 Daily integration: **Books gets a cell on the `TodaySummary` glance board — settled.**
 
-The supporting fact, verified in the code rather than assumed
-(`src/features/daily/components/TodaySummary.tsx`, lines 38–44): the board is
-`grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4` with **six cards**, of which
-Nutrition takes `sm:col-span-2` — so **seven grid units today**, which leaves a ragged last
-row at every breakpoint above `sm`. A `BooksCard` makes **eight**, and eight divides
-exactly into all three column counts: 4 full rows at `sm:2`, a completed final row at
-`lg:3` (currently half empty), 2 full rows at `2xl:4`.
+The supporting fact, **re-verified 2026-09-29** against the current code
+(`src/features/daily/components/TodaySummary.tsx`, lines 38–44). The board changed after the
+first pass. It now sizes by its **own** width, not the viewport:
+`grid-cols-1 @[36rem]:grid-cols-2 @[55rem]:grid-cols-3 @[90rem]:grid-cols-4`, with **six
+cards**. Nutrition is `@[36rem]:col-span-2 @[55rem]:row-span-2 @[90rem]:row-span-3`. So
+today's grids are:
 
-So this does not strain the "explicit column counts, no auto-fill, a module never leaves
-its slot" rule — **it tidies the grid.** Nutrition keeps its double slot; no existing cell
-moves at any breakpoint.
+| Columns | Today (6 cards) | With a Books cell (7) | With Books + Nutrition `row-span-3` at 3 columns |
+|---|---|---|---|
+| 1 | 6 stacked | 7 stacked | same |
+| 2 | `N N / T W / H G / S ·` — one hole | `N N / T W / H G / S B` — **full** | same |
+| 3 | `N N T / N N W / H G S` — full | `… / B · ·` — **a lone Books cell on a 4th row** | `N N T / N N W / N N H / G S B` — **full** |
+| 4 | `N N T W / N N H G / N N S ·` — one hole | `N N T W / N N H G / N N S B` — **full** | same |
+
+(N Nutrition, T Training, W Watch next, H Health, G Games, S Shop, B Books.)
+
+So a Books cell **fills the existing holes at 2 and 4 columns**, and at 3 columns it needs
+Nutrition to span three rows (as it already does at 4 columns) to avoid a ragged row. That
+is one class change on an existing cell (`@[55rem]:row-span-3`), and at that one step it
+moves Health, Games and Shop once (H to row 3 column 3, G and S to row 4). It is a
+deliberate layout decision, declared per column step and not content-driven, so it stays
+inside the "explicit column counts, no auto-fill, a module never leaves its slot" rule. The
+glance-board E2E check (cell x/w identical between a full and an empty day) must be
+re-run after the change. The first pass's argument ("eight grid units divide exactly")
+described the old `sm:/lg:/2xl:` grid and no longer applies.
 
 The new cell takes on the same contract as every other one: it uses the shared
 `summary/cellKit.tsx` anatomy (Cell / CellHeader icon-chip / CellLink, link-outs in ink and
@@ -953,6 +969,39 @@ goes into any existing task, media or brief query.
   disappoints; Google Books third.
 - Cache in a shared catalog table with no `user_id`, `SELECT` for `authenticated`, written
   only by the edge function's service role — the `movies` / `steam_apps` shape.
+
+### 4.6 Storage budget — the Kobo is the library, Supabase is only the post office
+
+Added 2026-09-29, when book delivery (§8) came into scope. It is a hard constraint, not a
+preference:
+
+- The project is on the **Free plan: 1 GB of file storage in total, 50 MB per uploaded
+  file, 5 GB egress a month** ([Supabase storage limits](https://supabase.com/docs/guides/storage/uploads/file-limits)).
+  Over 1 GB the whole project goes read-only and then answers with 402 (CLAUDE.md, Scrape
+  page section).
+- The `game-media` bucket already holds ~537 MB of ES-DE originals plus ScreenScraper
+  copies, and the ScreenScraper budget defaults to 800 MB (hard cap 950 MB).
+- **Every existing guard measures `game-media` only.** `game_media_usage()` filters
+  `WHERE o.bucket_id = 'game-media'` (`supabase/migrations/104_screenscraper_v2.sql:151`),
+  and the three uploaders (`screenscraper-sync`, `esde-media-sync`, `esde-content-sync`)
+  compare against that figure. A new books bucket would be **invisible to them**, so both
+  could each stay "under budget" while the project as a whole crosses 1 GB.
+
+So:
+
+1. **Books never live in Supabase.** The device (and Calibre on the Mac) holds the library.
+   A file sits in Storage only between upload and the device downloading it. It is deleted
+   once the device confirms, or after 7 days undelivered, whichever comes first.
+2. **The inbox is capped**: ≤ 50 MB per file (the plan's own limit anyway) and ≤ 150 MB in
+   total. Anything larger (comics, big PDFs) goes over USB or Calibre wireless instead.
+3. **One project-wide usage figure, shipped in the same change as the bucket.** The
+   migration that adds the books bucket also adds a `storage_usage_total()` (all buckets).
+   Every uploader, including the three existing ones, then checks *project total + this
+   upload ≤ 950 MB*, not its own bucket alone. The per-bucket guards cannot simply be kept:
+   950 MB (the game-media ceiling) + 150 MB (the inbox cap) = 1.1 GB, which is past the
+   1 GB wall. If the project-wide check has to wait, the game-media ceiling must drop to
+   850 MB in the same release.
+4. Egress is not a concern: a few MB per book, a few books a week.
 
 ---
 
@@ -992,7 +1041,7 @@ source but not the lateness. Two rules follow, and neither is optional polish:
 ## 6. Open questions — answer before writing code
 
 0. **Write our own plugin, or reuse BookOrbit's? (§3.0.1)** The largest open decision in
-   this document, and the owner's to make. It changes what Phase 1 even is: option A is a
+   this document, and the owner's to make. It changes what Phase 4 even is: option A is a
    plugin we write and maintain, option B is implementing someone else's wire contract.
    Everything else below is detail by comparison.
 1. **N365 or P365?** Not blocking while nothing is flashed, but it must be on record.
@@ -1002,17 +1051,17 @@ source but not the lateness. Two rules follow, and neither is optional polish:
    the shipped Kobo tarball?** HTTPS works either way; this only decides whether the server
    certificate can be verified rather than trusted blindly. Check on device.
 4. **Where does KoInsight's plugin read highlight *text* from?** Decides whether highlights
-   land in Phase 1 or Phase 3. Partially narrowed while researching incremental sync:
+   land in Phase 4 or Phase 5. Partially narrowed while researching incremental sync:
    `upload.lua` gets them from a sibling `annotation_reader.lua`
    (`KoInsightAnnotationReader.getAnnotationsByBook()`), **not** from
    `statistics.sqlite3` — consistent with sidecar-walking. Read that file before promising
-   highlights in Phase 1.
+   highlights in Phase 4.
 5. **Are the EPUB files reachable in the same browser session as the sqlite copy?** Decides
-   whether the Phase 0 inventory can compute `partialMD5` itself (§4.2.1 step 1) or falls
+   whether the Phase 3 inventory can compute `partialMD5` itself (§4.2.1 step 1) or falls
    back to manual merging.
 6. **How often does `NetworkConnected` actually fire in this owner's routine?** Not
-   blocking, and not answerable in advance — it decides only whether Phase 2's fallback
-   ever needs to exist. Measure it in daily use.
+   blocking, and not answerable in advance — it decides only whether the Nickel-side
+   fallback ever needs to exist. Measure it in daily use.
 7. **Does RTC wakeup work on MediaTek MT8113?** (§3.0.) Only worth answering if (6) turns
    out badly. Prototype before designing around it.
 
@@ -1023,8 +1072,8 @@ out A/B/C with the evidence and stops there.
 **Answered and closed since the first draft:** whether to track Deichman/OverDrive loans
 (no — §2.3), whether `books`/`book_highlights` are AI-writable (yes, `rw` — §4.2), whether
 Books gets a glance-board cell (yes — §4.4), whether the device holds enough pre-KOReader
-history to justify Phase 0 (irrelevant — Phase 0 was rescoped, §3), **how automatic sync is
-triggered** (§3.0 — `NetworkConnected` plus an on-disk outbox, folded into Phase 1, which
+history to justify Phase 3 (irrelevant — Phase 3 was rescoped, §3), **how automatic sync is
+triggered** (§3.0 — `NetworkConnected` plus an on-disk outbox, folded into Phase 4, which
 also settles the phase ordering), and **whether TLS is a blocker** (it is not — §3.0).
 
 ---
@@ -1034,7 +1083,7 @@ also settles the phase ordering), and **whether TLS is a blocker** (it is not �
 Recorded rather than silently edited away, so a future session sees the reasoning and not
 just the corrected text.
 
-- **Phase 0's stated rationale was wrong.** The first draft justified the Nickel import
+- **Phase 3's stated rationale was wrong.** The first draft justified the Nickel import
   partly as "it gives a real sample of the owner's own data to design the schema against."
   That argument is void twice over: Nickel's data shape and KOReader's data shape are
   **different**, so it would have been sampling the wrong thing entirely and would have
@@ -1056,17 +1105,17 @@ just the corrected text.
   entire history on every sync. At this library's reading volume that reaches ~3 MB per tap
   within a year, to deliver ~8.5 KB of new data, from a 1 GHz single-core device. Designing
   the cursor in from the start costs almost nothing; retrofitting it after the plugin is in
-  daily use costs a migration of the device's own state. Designed in §3, Phase 1.
+  daily use costs a migration of the device's own state. Designed in §3, Phase 4.
 - **The headline feature's dependency on sync freshness went unexamined.** A daily minutes
-  goal and a streak both need today's data, and Phase 1 delivered data only when the user
+  goal and a streak both need today's data, and Phase 4 delivered data only when the user
   remembered to tap. An unsynced night reads as a zero, not as unknown — so the streak
   breaks on a night that was actually read. The first draft put the automatic trigger in
-  Phase 2 "only once the feature proves itself" without noticing that the feature cannot
+  a later phase "only once the feature proves itself" without noticing that the feature cannot
   prove itself while its headline number is wrong. **Now resolved (§3.0)**, and the
   resolution inverted the phase ordering rather than patching it: automatic sync is an
   outbox inside a plugin we were writing anyway plus two settings the owner switches on, so
-  it belongs in Phase 1 and Phase 2 stops being an automation phase at all. The remaining
-  honesty rules moved to §4.1 and §5.
+  it belongs in Phase 4 and the old second phase stopped being an automation phase at
+  all. The remaining honesty rules moved to §4.1 and §5.
 - **HTTPS was recorded as a possible hard blocker. It was not one — the claim was wrong,
   not merely cautious.** §3 used to carry a "⚠ the one thing that must be verified" warning
   built on KoInsight using plain `socket.http` and documenting an `http://server-ip:3000`
@@ -1101,7 +1150,7 @@ Book identity (§4.2.1), all read from `koreader/koreader` `master` source, not 
 `doc_md5`, writes it as `book.md5`; also the `book_title_authors_md5` unique index showing
 md5 is **not** KOReader's sole book key), and `koreader/koreader-base` `ffi/sha2.lua`
 (the `md5` used, lowercase-hex output).
-Incremental sync (§3, Phase 1): `plugins/statistics.koplugin/main.lua`
+Incremental sync (§3, Phase 4): `plugins/statistics.koplugin/main.lua`
 `STATISTICS_DB_PAGE_STAT_DATA_SCHEMA` / `…_INDEX` (the `page_stat_data(start_time)` index,
 the `UNIQUE (id_book, page, start_time)` constraint, the `INSERT OR IGNORE`, and the
 `DELETE`/DB-merge paths), and `Ko-Insight/KoInsight` `master`
