@@ -242,6 +242,15 @@ const TO = addDays(FROM, 28)
   check('§6.13 within tolerance counts as reached', BG.goalProgress('bodyFat', 20.3, { points: [{ date: FROM, value: 20 }], trend: null }, null).status, 'reached')
   const up = BG.goalProgress('muscle', 60, { points: [{ date: FROM, value: 55 }], trend: { slopePerDay: 0.02, current: 56, lastDate: addDays(FROM, 30), significant: true } }, FROM)
   check('§6.14 a muscle goal above the current value moves up', [up.status, up.eta.days], ['moving_toward', 200])
+  // Why a flat goal has no date (the owner's numbers: muscle 58.9 → 58.1 kg toward 67, body fat 24.7 → 24.6 % toward a lower goal).
+  const own = (kind, goal, start, current) => BG.noDateReason({ kind, goal, current, currentDate: '2026-09-28', start, startDate: '2026-08-13', remaining: goal - current, progress: null, perWeek: null, status: 'flat', eta: null })
+  const mus = own('muscle', 67, 58.9, 58.1)
+  check('§6.16 muscle: −0.8 kg, past the ±0.5 noise, moving away from a higher goal', [Math.round(mus.change * 10) / 10, mus.withinNoise, mus.direction, mus.startDate], [-0.8, false, 'away', '2026-08-13'])
+  const bf = own('bodyFat', 18, 24.7, 24.6)
+  check('§6.17 body fat: −0.1 % is inside the ±0.6 % noise, toward the goal', [bf.withinNoise, bf.noise, bf.direction], [true, 0.6, 'toward'])
+  check('§6.18 weight noise is 0.3 kg', own('weight', 80, 84.1, 83.9).withinNoise, true)
+  check('§6.19 no start → no reason', BG.noDateReason({ kind: 'muscle', goal: 67, current: 58, start: null, startDate: null }), null)
+  check('§6.20 no change → no direction', own('muscle', 67, 58, 58).direction, 'none')
   check('§6.15 no start before the phase start date', BG.startValue(pts, addDays(FROM, 40)), null)
 }
 

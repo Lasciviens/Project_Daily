@@ -2,12 +2,12 @@ import { useMemo } from 'react'
 import { shiftDateStr, todayStr } from '../../../shared/utils/dateUtils'
 import { useTrainingHistory } from '../../training/hooks/useTrainingProgress'
 import { useAthleteProfile, useCurrentProgramRoutines } from '../../training/hooks/useAthleteProfile'
-import { est1RM, metricKindForExerciseType } from '../../training/progressAggregate'
+import { computeLiftChanges, mainLifts } from '../../training/plan/improvement'
 import { filterToCurrentProgram } from '../../training/progress-engine'
 import { analyseComposition } from './bodyGoal'
 import { neededDays } from './energyBalance'
 import { useGoalReport } from './useGoalReport'
-import { buildMuscleWatch, type LiftHistory, type MuscleWatch, type TrainingSession } from './muscleWatch'
+import { buildMuscleWatch, type LiftTrend, type MuscleWatch, type TrainingSession } from './muscleWatch'
 
 /** Link target for every "Muscle watch" mention outside the Goal progress window. */
 export const MUSCLE_WATCH_HREF = '/health?section=goal'
@@ -29,7 +29,6 @@ export function useMuscleWatch(): { watch: MuscleWatch | null; isLoading: boolea
   const report = d.report
   const phaseStart = d.goals.settings.phaseStartDate
   const muscleGoal = d.goals.settings.goalMuscleMassKg
-  const targetProtein = d.phase.targetProtein
 
   const watch = useMemo(() => {
     if (!report || !history) return null
@@ -37,25 +36,13 @@ export function useMuscleWatch(): { watch: MuscleWatch | null; isLoading: boolea
     const from = phaseStart && phaseStart <= shiftDateStr(today, -7) && phaseStart >= shiftDateStr(today, -MAX_WINDOW_DAYS)
       ? phaseStart : report.compFrom
 
+    // The current program's main lifts over the last 4 weeks — the same
+    // per-lift change as Training → Progress's Improvement card.
     const programIds = new Set((program ?? []).map(p => p.routine_id))
-    const sets = filterToCurrentProgram(history.sets, programIds).filter(s => s.set_type !== 'warmup')
-    const kindById = new Map(history.templates.map(t => [t.id, metricKindForExerciseType(t.type ?? 'weight_reps')]))
-    const nameById = new Map(history.templates.map(t => [t.id, t.title]))
-
-    // Best est. 1RM per workout, per est-1RM lift (dropsets never count).
-    const best = new Map<string, Map<string, { date: string; e1rm: number }>>()
-    for (const s of sets) {
-      if (s.set_type === 'dropset' || kindById.get(s.exercise_template_id) !== 'est1rm' || s.weight_kg == null) continue
-      const e = est1RM(s.weight_kg, s.reps)
-      if (e == null || e <= 0) continue
-      const byWorkout = best.get(s.exercise_template_id) ?? new Map()
-      const cur = byWorkout.get(s.workout_id)
-      if (!cur || e > cur.e1rm) byWorkout.set(s.workout_id, { date: s.date, e1rm: e })
-      best.set(s.exercise_template_id, byWorkout)
-    }
-    const lifts: LiftHistory[] = [...best].map(([id, m]) => ({
-      id, name: nameById.get(id) ?? id, sessions: [...m.values()].sort((a, b) => a.date.localeCompare(b.date)),
-    }))
+    const programSets = filterToCurrentProgram(history.sets, programIds)
+    const templates = history.templates.map(t => ({ id: t.id, title: t.title, type: t.type ?? 'weight_reps' }))
+    const lifts: LiftTrend[] = mainLifts(computeLiftChanges(programSets, templates, today, 4), 5)
+      .flatMap(c => (c.changePct == null ? [] : [{ name: c.title, changePct: c.changePct }]))
 
     // Every workout (not only the current program): training frequency is about the person.
     const byWorkout = new Map<string, TrainingSession>()
@@ -72,13 +59,13 @@ export function useMuscleWatch(): { watch: MuscleWatch | null; isLoading: boolea
       comp: analyseComposition(report.readings, from, today),
       ratePctPerWeek: report.rate?.pctPerWeek ?? null,
       weightKg: e.weight.currentTrendKg ?? e.weight.meanKg,
-      protein: { meanG: e.intake.meanProteinG, loggedDays: e.intake.loggedDays, neededDays: neededDays(e.days), targetG: targetProtein || null },
+      protein: { meanG: e.intake.meanProteinG, loggedDays: e.intake.loggedDays, neededDays: neededDays(e.days) },
       lifts,
       sessions: [...byWorkout.values()],
       targetSessionsPerWeek: profile?.training_days_per_week ?? null,
       muscleGoalKg: muscleGoal,
     })
-  }, [report, history, program, profile, phaseStart, muscleGoal, targetProtein])
+  }, [report, history, program, profile, phaseStart, muscleGoal])
 
   return { watch, isLoading: !watch && (d.isLoading || loadingHistory) }
 }

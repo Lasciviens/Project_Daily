@@ -16,7 +16,7 @@
 // widen an already-granted consent.
 //
 // Lives in its own module so the consent list has exactly one definition:
-// the connect button now sits in Settings → Integrations, but nothing else
+// the connect button now sits in Settings → Subscriptions, but nothing else
 // should ever hard-code a second copy of this array.
 export const GOOGLE_SCOPES = [
   'https://www.googleapis.com/auth/calendar.events',

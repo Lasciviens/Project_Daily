@@ -127,8 +127,8 @@ export function StravaTab() {
           bordered
           icon={<Activity />}
           title={`No Strava activities · ${WINDOW_LABEL[period].toLowerCase()}`}
-          description={status?.connected ? 'Pick a longer window, or sync from Settings → Integrations.' : 'Connect Strava in Settings → Integrations.'}
-          action={<Link to="/settings?tab=integrations" className="text-meta font-semibold text-accent-600">Open Integrations</Link>}
+          description={status?.connected ? 'Pick a longer window, or sync from Settings → Subscriptions.' : 'Connect Strava in Settings → Subscriptions.'}
+          action={<Link to="/settings?tab=subscriptions" className="text-meta font-semibold text-accent-600">Open Subscriptions</Link>}
         />
       ) : (
         <div className="grid grid-cols-[repeat(auto-fill,minmax(19rem,24rem))] items-start justify-start gap-2">

@@ -32,6 +32,14 @@ export const GOAL_SRC = {
     citation: 'Helms ER et al. A systematic review of dietary protein during caloric restriction in resistance trained lean athletes: a case for higher intakes. Int J Sport Nutr Exerc Metab 2014',
     url: 'https://pubmed.ncbi.nlm.nih.gov/24092765/',
   },
+  jager2017: {
+    citation: 'Jäger R et al. International Society of Sports Nutrition Position Stand: protein and exercise. J Int Soc Sports Nutr 2017',
+    url: 'https://pubmed.ncbi.nlm.nih.gov/28642676/',
+  },
+  cunningham1980: {
+    citation: 'Cunningham JJ. A reanalysis of the factors influencing basal metabolic rate in normal adults. Am J Clin Nutr 1980',
+    url: 'https://pubmed.ncbi.nlm.nih.gov/7435418/',
+  },
 } satisfies Record<string, Source>
 
 export type GoalSourceKey = keyof typeof GOAL_SRC

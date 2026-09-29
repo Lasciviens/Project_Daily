@@ -106,3 +106,24 @@ export function useReorderDevRequests() {
     invalidates: [QK],
   })
 }
+
+// A checkpoint ticked on a card (or on a saved request in the composer):
+// written at once, and optimistic so the box flips on the tap.
+export function useSetDevRequestDescription() {
+  const qc = useQueryClient()
+  return useMutationWithFeedback({
+    action:     'tick_dev_request_checkpoint',
+    mutationFn: ({ id, description }: { id: string; description: string }) => updateDevRequest(id, { description }),
+    onMutate:   async ({ id, description }: { id: string; description: string }) => {
+      await qc.cancelQueries({ queryKey: QK })
+      const previous = qc.getQueryData<DevRequest[]>(QK)
+      if (previous) qc.setQueryData(QK, previous.map(r => (r.id === id ? { ...r, description } : r)))
+      return { previous }
+    },
+    onError: (_err, _vars, mutateResult) => {
+      const ctx = mutateResult as { previous?: DevRequest[] } | undefined
+      if (ctx?.previous) qc.setQueryData(QK, ctx.previous)
+    },
+    invalidates: [QK],
+  })
+}

@@ -4,20 +4,21 @@ import type { BoardLayouts } from '../../shared/ui/pageBoardRules'
 
 // ── Today ───────────────────────────────────────────────────────────────────
 // The day's totals lead on the left (a rail), the meal slots take the main
-// track, and the week and the coach fill the tracks to the right:
-//   1  phone, tablet — nutrition, water, last 7 days, coach, then the slots.
-//   2  1280 / 1469 — the totals rail (nutrition, water, last 7 days) beside
-//      the slots, the coach under the slots (the rail is the taller column).
-//   3  1920 — nutrition + water | slots | last 7 days + coach.
-//   4  2450 — nutrition + water | slots | last 7 days | coach.
-export const FOOD_TODAY_SECTIONS = ['nutrition', 'water', 'week', 'coach', 'meals'] as const
+// track, and the week, the nutrition stats and the coach fill the tracks to
+// the right:
+//   1  phone, tablet — nutrition, water, last 7 days, stats, coach, then the slots.
+//   2  1280 / 1469 — the totals rail (nutrition, water, last 7 days, stats)
+//      beside the slots, the coach under the slots.
+//   3  1920 — nutrition + water | slots | last 7 days + stats + coach.
+//   4  2450 — nutrition + water | slots | last 7 days + stats | coach.
+export const FOOD_TODAY_SECTIONS = ['nutrition', 'water', 'week', 'stats', 'coach', 'meals'] as const
 export type FoodTodaySection = typeof FOOD_TODAY_SECTIONS[number]
 
 export const FOOD_TODAY_BOARD: BoardLayouts<FoodTodaySection> = {
-  1: ['nutrition', 'water', 'week', 'coach', 'meals'],
-  2: { lead: 1, columns: [['nutrition', 'water', 'week'], ['meals', 'coach']] },
-  3: { lead: 1, columns: [['nutrition', 'water'], ['meals'], ['week', 'coach']] },
-  4: { lead: 1, columns: [['nutrition', 'water'], ['meals'], ['week'], ['coach']] },
+  1: ['nutrition', 'water', 'week', 'stats', 'coach', 'meals'],
+  2: { lead: 1, columns: [['nutrition', 'water', 'week', 'stats'], ['meals', 'coach']] },
+  3: { lead: 1, columns: [['nutrition', 'water'], ['meals'], ['week', 'stats', 'coach']] },
+  4: { lead: 1, columns: [['nutrition', 'water'], ['meals'], ['week', 'stats'], ['coach']] },
 }
 
 // ── Ingredients ─────────────────────────────────────────────────────────────

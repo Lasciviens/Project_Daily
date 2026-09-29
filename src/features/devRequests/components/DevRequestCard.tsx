@@ -1,5 +1,11 @@
-import { Check, GripVertical, Sparkles, X } from 'lucide-react'
+import { useMemo } from 'react'
+import { Check, GripVertical, ListChecks, Sparkles, X } from 'lucide-react'
 import type { DevRequest } from '../types'
+import { checkpointProgress } from '../checkpoints'
+import { parseDescription, pickMarks } from '../devRequestMarks'
+import { useTickCheckpoint } from '../hooks/useTickCheckpoint'
+import { CheckpointList } from './CheckpointList'
+import { MarkList } from './MarkList'
 import { IconButton, ToneDot, TonePill, cx } from '../../../shared/ui'
 import { awaitingCheck, cardTimeline } from '../devRequestRules'
 import { CATEGORY_TONE, PRIORITY_TONE, STATUS_LABEL, STATUS_TONE } from './devRequestMeta'
@@ -28,6 +34,13 @@ export function DevRequestCard({ request, hasDraft, selected, dragging, onDragSt
   const isDone = request.status === 'done'
   const prompted = awaitingCheck(request)
   const timeline = cardTimeline(request)
+  const parsed = useMemo(() => parseDescription(request.description), [request.description])
+  const checkpoints = parsed.checkpoints.filter(c => c.text.trim())
+  const progress = checkpointProgress(checkpoints)
+  // What it points at; the page it was written on only when nothing was picked.
+  const picks = pickMarks(parsed.marks)
+  const marks = picks.length ? picks : parsed.marks.slice(0, 1)
+  const tick = useTickCheckpoint()
 
   return (
     <div
@@ -64,6 +77,7 @@ export function DevRequestCard({ request, hasDraft, selected, dragging, onDragSt
         </span>
       </button>
 
+      <div className="flex min-w-0 flex-1 flex-col">
       <button
         type="button"
         onClick={onOpen}
@@ -85,12 +99,24 @@ export function DevRequestCard({ request, hasDraft, selected, dragging, onDragSt
             <ToneDot tone={PRIORITY_TONE[request.priority]} />{request.priority}
           </span>
           {request.effort && <span className="text-meta text-fg-faint">· {request.effort}</span>}
+          {progress && (
+            <span className="inline-flex items-center gap-1 text-meta tabular-nums text-fg-muted">
+              <ListChecks aria-hidden className="h-3.5 w-3.5 shrink-0" />{progress}
+            </span>
+          )}
           {hasDraft && (
             <span data-tone="warn" className="tone-pill" title="Unsaved changes are kept on this device — open the request to continue">Unsaved edits</span>
           )}
         </span>
         {timeline && <span className="text-meta tabular-nums text-fg-muted">{timeline}</span>}
       </button>
+      {(checkpoints.length > 0 || marks.length > 0) && (
+        <div className="flex flex-col gap-1 pb-1.5 pr-1">
+          <CheckpointList items={checkpoints} onToggle={(i, done) => tick(request, checkpoints, i, done)} />
+          <MarkList marks={marks} />
+        </div>
+      )}
+      </div>
 
       <IconButton label="Delete request" onClick={onDelete} className="shrink-0 hover:!text-danger"><X /></IconButton>
     </div>

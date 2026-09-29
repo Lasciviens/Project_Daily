@@ -44,7 +44,7 @@ function TrainingSummary() {
       {stats.isLoading ? (
         <div className="flex gap-2">{[0, 1, 2].map(i => <Skeleton key={i} className="h-14 flex-1" />)}</div>
       ) : !stats.hasData ? (
-        <EmptyState title="No training yet" description="Sync Hevy or connect Strava in Settings → Integrations." className="py-4" />
+        <EmptyState title="No training yet" description="Sync Hevy or connect Strava in Settings → Subscriptions." className="py-4" />
       ) : (
         <div className="space-y-3">
           <div className="flex gap-2">

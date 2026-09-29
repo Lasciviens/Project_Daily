@@ -11,7 +11,7 @@ import { cx } from '../ui/cx'
 // The quick settings live in two places with the same parts: this avatar menu
 // (top bar, phone header) and the phone More sheet; the full set is the
 // Settings page (/settings). Connect/disconnect lives in Settings →
-// Integrations; both only link there.
+// Subscriptions; both only link there.
 
 const THEME_OPTIONS: { value: ThemePreference; label: string; icon: typeof Sun }[] = [
   { value: 'light', label: 'Light', icon: Sun },
@@ -208,8 +208,8 @@ export function SettingsMenu() {
           </Link>
         </MenuItem>
         <MenuItem>
-          <Link to="/settings?tab=integrations" className="menu-item">
-            <Plug className="h-4 w-4 shrink-0" strokeWidth={1.9} aria-hidden />Integrations
+          <Link to="/settings?tab=subscriptions" className="menu-item">
+            <Plug className="h-4 w-4 shrink-0" strokeWidth={1.9} aria-hidden />Subscriptions
           </Link>
         </MenuItem>
         <MenuItem>

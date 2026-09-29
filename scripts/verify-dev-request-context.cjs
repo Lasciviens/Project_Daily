@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 /*
  * Verification — the requests backlog's pure logic:
- *   devRequestContext.ts  (picked-element / page-context blocks, description preview)
+ *   devRequestContext.ts  (picked-element / page-context blocks for the prompt)
+ *   devRequestMarks.ts    (description = body + checkpoints + marks; friendly labels)
+ *   checkpoints.ts        (the description's "- [ ]" checkpoints)
  *   devRequestRules.ts    (draft read-back from localStorage, drag-reorder plan)
  *   devRequestPrompt.ts   (the prompt for Claude)
  *   useFloatingWindow.ts  (keeping the composer window on screen)
- *   numberedList.ts       (the description's "1- " numbered points)
  *   pick/componentSourceTransform.ts (the build-time data-src stamps)
  * Against the REAL un-mocked modules via sucrase (no unit-test runner by convention).
  *
@@ -17,7 +18,8 @@ const ctx = require('../src/features/devRequests/devRequestContext')
 const rules = require('../src/features/devRequests/devRequestRules')
 const { buildClaudePrompt } = require('../src/features/devRequests/devRequestPrompt')
 const win = require('../src/shared/hooks/useFloatingWindow')
-const list = require('../src/features/devRequests/numberedList')
+const marks = require('../src/features/devRequests/devRequestMarks')
+const cps = require('../src/features/devRequests/checkpoints')
 const stamps = require('../src/features/devRequests/pick/componentSourceTransform')
 const ts = require('typescript')
 
@@ -101,23 +103,73 @@ console.log('\n4 · Page context block')
   check('no saved-on on the same route', !same.includes('Saved on'))
 }
 
-console.log('\n5 · Appending and splitting a description')
-check('append to empty = block only', ctx.appendBlock('', '[Page context]\nPage: x') === '[Page context]\nPage: x')
-check('append after a blank line', ctx.appendBlock('Broken chart\n\n', 'B') === 'Broken chart\n\nB')
-check('blank block is a no-op', ctx.appendBlock('A', '  ') === 'A')
+console.log('\n5 · Description = body + checkpoints + marks')
 {
-  const text = ctx.appendBlock(ctx.appendBlock('The chart gridlines\nare too bright', block), ctx.formatPageContext(page))
-  const s = ctx.splitDescription(text)
-  check('body is the user prose', s.body === 'The chart gridlines\nare too bright')
-  check('two blocks', s.blocks.length === 2, String(s.blocks.length))
-  check('blocks start with their header', s.blocks[0].startsWith('[Picked on') && s.blocks[1].startsWith('[Page context]'))
-  check('count blocks', ctx.countBlocks(text) === 2)
-  check('preview = prose, one line', ctx.descriptionPreview(text) === 'The chart gridlines are too bright')
-  check('preview from a pick when there is no prose', ctx.descriptionPreview(block) === 'Picked: button "Log food"')
-  check('preview empty for nothing', ctx.descriptionPreview(null) === '' && ctx.descriptionPreview('[Page context]\nPage: x') === '')
-  check('plain text has no blocks', ctx.splitDescription('Just words').blocks.length === 0)
-  check('a bracket mid-sentence is prose', ctx.splitDescription('See [Picked] later').blocks.length === 0)
-  check('preview truncates', ctx.descriptionPreview('x'.repeat(300), 20).length === 20)
+  const pick = { type: 'pick', capture: { kind: 'element', page, element } }
+  const pageMark = { type: 'page', start: page, savedOn: null }
+  const text = marks.appendMark(marks.appendMark('The chart gridlines\nare too bright', pick), pageMark)
+  const p = marks.parseDescription(text)
+  check('body is the user prose', p.body === 'The chart gridlines\nare too bright', JSON.stringify(p.body))
+  check('two marks, pick then page', p.marks.length === 2 && p.marks[0].type === 'pick' && p.marks[1].type === 'page')
+  check('a mark is one machine-readable line', text.split('\n').filter(l => l.startsWith('[[pick ')).length === 1)
+  check('the pick reads back whole', p.marks[0].capture.element.name === 'Log food' && p.marks[0].capture.page.route === '/recipes?tab=today')
+  check('compose(parse(x)) is stable', marks.composeDescription(p) === text)
+  for (const body of ['hello', 'hello ', 'hello\n', 'a\n\nb\n\n', '']) {
+    const t = marks.composeDescription({ body, checkpoints: [{ done: false, text: 'x' }], marks: [pick] })
+    check(`typing keeps every keystroke (${JSON.stringify(body)})`, marks.parseDescription(t).body === body, JSON.stringify(marks.parseDescription(t).body))
+  }
+  check('no sections → text unchanged', marks.composeDescription(marks.parseDescription('Just words\n')) === 'Just words\n')
+  check('a broken mark line is prose', marks.parseDescription('[[pick {nope]]').marks.length === 0 && marks.parseDescription('[[pick {nope]]').body === '[[pick {nope]]')
+  check('a bracket mid-sentence is prose', marks.parseDescription('See [Picked] later').marks.length === 0)
+  check('preview = prose, one line', marks.descriptionPreview(text) === 'The chart gridlines are too bright')
+  check('preview from a pick when there is no prose', marks.descriptionPreview(marks.appendMark('', pick)) === 'Picked: Food › Today tab › Lunch row — “Log food”', marks.descriptionPreview(marks.appendMark('', pick)))
+  check('preview empty for nothing', marks.descriptionPreview(null) === '' && marks.descriptionPreview(marks.appendMark('', pageMark)) === '')
+  check('preview truncates', marks.descriptionPreview('x'.repeat(300), 20).length === 20)
+  const saved = marks.descriptionForSave(marks.composeDescription({ body: '  Hi  ', checkpoints: [{ done: false, text: '' }, { done: true, text: 'Done one' }], marks: [] }))
+  check('save drops empty checkpoints and trims', saved === 'Hi\n\n- [x] Done one', JSON.stringify(saved))
+  check('save leaves plain text trimmed', marks.descriptionForSave('  words \n') === 'words')
+  const encoded = marks.encodePage(page, { ...page, route: '/training' })
+  check('page mark keeps saved-on only when it differs', encoded.includes('savedOn') && !marks.encodePage(page, page).includes('savedOn'))
+}
+
+console.log('\n5b · Older plain-text blocks still read')
+{
+  const legacy = 'Gridlines too bright\n\n' + ctx.formatCapture({ kind: 'element', page, element }) + '\n\n' + ctx.formatPageContext(page)
+  const p = marks.parseDescription(legacy)
+  check('prose kept as the body', p.body === 'Gridlines too bright')
+  check('two legacy marks', p.marks.length === 2 && p.marks.every(m => m.type === 'legacy'))
+  check('legacy pick: page, route and label', p.marks[0].kind === 'pick' && p.marks[0].pageTitle === 'Food' && p.marks[0].route === '/recipes?tab=today' && p.marks[0].what === 'Log food', JSON.stringify(p.marks[0]))
+  check('legacy page context: route', p.marks[1].kind === 'page' && marks.markRoute(p.marks[1]) === '/recipes?tab=today')
+  check('legacy text is kept verbatim', marks.composeDescription(p).includes(ctx.formatCapture({ kind: 'element', page, element })))
+  check('legacy friendly line', marks.markText(p.marks[0]) === 'Food — “Log food”', marks.markText(p.marks[0]))
+  check('prose after an old block stays prose', marks.parseDescription('[Page context]\nPage: A · /a\n\nmore words').body === 'more words')
+}
+
+console.log('\n5c · What the user sees for a pick')
+{
+  const sources = ['src/shared/ui/Button.tsx#Button', 'src/features/training/components/program/CurrentProgramCard.tsx#CurrentProgramCard']
+  const tpage = { ...page, route: '/training?tab=program', pageTitle: 'Training', tabs: ['Program'] }
+  const m = { type: 'pick', capture: { kind: 'element', page: tpage, element: { tag: 'button', name: 'Missed sessions', trail: [], sources, area: 'page' } } }
+  check('page › tab › component (humanized) — label', marks.markText(m) === 'Training › Program tab › Current program card — “Missed sessions”', marks.markText(m))
+  check('no code in the friendly line', !/src\/|\.tsx|\?tab=/.test(marks.markText(m)))
+  check('route with query for Go there', marks.markRoute(m) === '/training?tab=program')
+  const card = { ...m, capture: { ...m.capture, element: { ...m.capture.element, trail: ['"Current program" card'] } } }
+  check('a visible card heading wins over the component name', marks.markText(card) === 'Training › Program tab › Current program card — “Missed sessions”')
+  const pop = { ...m, capture: { ...m.capture, element: { ...m.capture.element, area: 'popup "Log food"' } } }
+  check('a popup is named', marks.markText(pop).includes('Log food popup'))
+  const q = { type: 'pick', capture: { kind: 'selection', page, quote: 'Remaining protein', element: null } }
+  check('a quote', marks.markLabel(q).kind === 'quote' && marks.markText(q).endsWith('— “Remaining protein”'))
+  check('page mark', marks.markText({ type: 'page', start: tpage, savedOn: null }) === 'Written on Training › Program tab')
+  check('humanize', marks.humanizeComponent('HTMLTodaySummary') === 'HTML today summary' && marks.humanizeComponent('WishQuickAdd') === 'Wish quick add')
+  check('only picks, not the page mark', marks.pickMarks([m, { type: 'page', start: page, savedOn: null }]).length === 1)
+  const full = marks.markPromptText(m)
+  check('prompt detail: component + file', full.includes('Component: CurrentProgramCard (src/features/training/components/program/CurrentProgramCard.tsx) · via Button'), full)
+  check('prompt detail: route with query', full.includes('[Picked on Training · /training?tab=program]'))
+  check('prompt detail: page tabs and screen', full.includes('Page tabs: Program') && full.includes('Screen: 1469×680, desktop, light theme'))
+  const withPop = marks.markPromptText({ type: 'pick', capture: { ...m.capture, page: { ...tpage, popups: ['Plan'] }, element: { ...m.capture.element, trail: ['"Schedule" card'] } } })
+  check('prompt detail: popup and where even with a component', withPop.includes('Open popup: Plan') && withPop.includes('Where: page › "Schedule" card'), withPop)
+  const junk = marks.parseDescription('[[pick {"page":{"route":"/x"},"element":{"tag":"b","tabs":[1,"A"]}}]]').marks[0]
+  check('a stored pick with missing fields is made safe', junk && junk.capture.page.viewport.w === 0 && junk.capture.element.tabs.length === 1 && !!marks.markPromptText(junk))
 }
 
 console.log('\n6 · Drafts read back from localStorage')
@@ -177,13 +229,14 @@ console.log('\n8 · Drag reorder keeps hidden rows (the optimistic-update bug)')
 
 console.log('\n9 · Prompt for Claude')
 {
-  const text = ctx.appendBlock('Gridlines too bright', block)
+  const text = marks.appendMark('Gridlines too bright', { type: 'pick', capture: { kind: 'element', page, element } })
   const p = buildClaudePrompt([
     { title: 'Low one', description: null, page: 'other', category: 'feature', priority: 'low' },
     { title: 'Urgent one', description: text, page: '/training', category: 'bug', priority: 'urgent', effort: 'small' },
   ])
   check('urgent first', p.indexOf('Urgent one') < p.indexOf('Low one'))
   check('picked context travels with the description', p.includes('[Picked on Food · /recipes?tab=today]'))
+  check('the raw mark line never reaches the prompt', !p.includes('[[pick'))
   check('meta line', p.includes('(bug · urgent priority · effort small · page /training)'))
   check('"other" page left out', !p.includes('page other'))
   check('empty list → empty prompt', buildClaudePrompt([]) === '')
@@ -331,32 +384,32 @@ console.log('\n16 · The build-time stamp transform')
   check('nothing to stamp → null', stamps.stampComponentSources(ts, 'export const a = 1', 'src/a.tsx') === null)
 }
 
-console.log('\n17 · Numbered points in the description')
+console.log('\n17 · Checkpoints')
 {
-  const a = list.insertNumberedItem('', 0)
-  check('button on an empty box → "1- "', a.text === '1- ' && a.caret === 3)
-  const b = list.insertNumberedItem('Intro\nFix the chart', 10)
-  check('button on a line of text numbers it', b.text === 'Intro\n1- Fix the chart' && b.caret === b.text.length, JSON.stringify(b))
-  const c = list.insertNumberedItem('1- one', 6)
-  check('button on an item starts the next one below', c.text === '1- one\n2- ' && c.caret === c.text.length)
-  const d = list.insertNumberedItem('1- one\n', 7)
-  check('button on the empty line after an item continues the count', d.text === '1- one\n2- ', JSON.stringify(d))
-  const e = list.continueNumberedList('1- one', 6)
-  check('Enter continues with the next number', e.text === '1- one\n2- ' && e.caret === 10)
-  const f = list.continueNumberedList('1- one\n2- ', 10)
-  check('Enter on an empty point ends the list', f.text === '1- one\n' && f.caret === 7, JSON.stringify(f))
-  check('Enter on plain text → default behaviour', list.continueNumberedList('hello', 5) === null)
-  check('Enter before the marker → default behaviour', list.continueNumberedList('1- one', 0) === null)
-  const g = list.continueNumberedList('1- one\n2- two\n3- three', 6)
-  check('Enter mid-list renumbers the rest', g.text === '1- one\n2- \n3- two\n4- three', JSON.stringify(g.text))
-  const h = list.continueNumberedList('1- split here', 8)
-  check('text after the caret moves into the new point', h.text === '1- split\n2-  here')
-  const i = list.continueNumberedList('  9- indented', 13)
-  check('indent and two digits kept', i.text === '  9- indented\n  10- ')
-  const p = buildClaudePrompt([{ title: 'Fix Daily', description: 'Several things:\n1- Chart too bright\n2- Button too small\n3- ', page: null, category: 'bug', priority: 'high' }])
-  check('points become separate numbered points under the request', p.includes('   1.1 Chart too bright\n   1.2 Button too small'), p)
-  check('an empty point is dropped from the prompt', !p.includes('1.3'))
-  check('the ask mentions numbered points', p.includes('per numbered point'))
+  check('parse unticked', JSON.stringify(cps.parseCheckpointLine('- [ ] Fix chart')) === '{"done":false,"text":"Fix chart"}')
+  check('parse ticked (x and X, * bullet)', cps.parseCheckpointLine('- [x] a').done && cps.parseCheckpointLine('* [X] a').done)
+  check('an empty one while typing', cps.parseCheckpointLine('- [ ]').text === '' && cps.parseCheckpointLine('- [ ] ').text === '')
+  check('not a checkpoint', cps.parseCheckpointLine('- plain') === null && cps.parseCheckpointLine('1- old') === null)
+  check('line round trip', cps.checkpointLine({ done: true, text: 'a' }) === '- [x] a' && cps.checkpointLine({ done: false, text: '' }) === '- [ ]')
+  const items = [{ done: true, text: 'A' }, { done: false, text: 'B' }, { done: false, text: '' }]
+  check('progress counts real ones', cps.checkpointProgress(items) === '1/2 checkpoints done', cps.checkpointProgress(items))
+  check('progress singular / none', cps.checkpointProgress([{ done: false, text: 'x' }]) === '0/1 checkpoint done' && cps.checkpointProgress([]) === '')
+  check('tick', cps.setDone(items, 1, true)[1].done && !items[1].done)
+  const ins = cps.insertAfter(items, 0)
+  check('insert after', ins.at === 1 && ins.items.length === 4 && ins.items[1].text === '')
+  check('insert at the end', cps.insertAfter(items, -1).at === 3)
+  check('remove', cps.removeAt(items, 0)[0].text === 'B')
+  const dup = [{ done: false, text: 'Same' }, { done: false, text: 'Other' }, { done: false, text: 'Same' }]
+  check('the same checkpoint is found by text and occurrence', cps.findCheckpoint(dup, 'Same', cps.occurrenceOf(dup, 2)) === 2 && cps.findCheckpoint(dup, 'Nope') === -1)
+  const d = marks.withCheckpoints('Intro\n- [ ] one\n- [ ] two', cps.setDone(marks.parseDescription('Intro\n- [ ] one\n- [ ] two').checkpoints, 1, true))
+  check('a tick writes - [x] back', d === 'Intro\n\n- [ ] one\n- [x] two', JSON.stringify(d))
+  check('old "1- " points stay text in the body', marks.parseDescription('1- old point').body === '1- old point')
+  const p = buildClaudePrompt([{ title: 'Fix Daily', description: 'Several things:\n\n- [ ] Chart too bright\n- [x] Button too small\n- [ ] ', page: null, category: 'bug', priority: 'high' }])
+  check('checkpoints become numbered sub-points', p.includes('   1.1 Chart too bright\n   1.2 [done] Button too small'), p)
+  check('an empty checkpoint is dropped from the prompt', !p.includes('1.3'))
+  check('the ask mentions numbered points and [done]', p.includes('per numbered point') && p.includes('marked [done]'))
+  const old = buildClaudePrompt([{ title: 'Old', description: 'x\n1- Chart\n2- Button\n\n- [ ] New one', page: null, category: 'bug', priority: 'high' }])
+  check('old numbered points still numbered, checkpoints continue after', old.includes('   1.1 Chart\n   1.2 Button') && old.includes('   1.3 New one'), old)
   check('no mention without points', !buildClaudePrompt([{ title: 'A', description: 'x', page: null, category: 'bug', priority: 'low' }]).includes('numbered point'))
 }
 

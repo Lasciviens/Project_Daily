@@ -20,7 +20,7 @@ import { CONNECTIONS_BOARD, type ConnectionSection } from '../developerBoards'
 import { CardSubscriptions, OtherSubscriptions, SubscriptionSummary } from '../../settings/components/SubscriptionBits'
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  CONNECTIONS (Settings → Integrations) — the ONE place every external integration is connected,
+//  CONNECTIONS (Settings → Subscriptions) — the ONE place every external integration is connected,
 //  disconnected and inspected. Before this, the same job was scattered across
 //  three unrelated surfaces (Google in the ⚙ Settings menu, Strava inside the
 //  Training tab, PlayStation inside the Games tab), so "is X connected?" had

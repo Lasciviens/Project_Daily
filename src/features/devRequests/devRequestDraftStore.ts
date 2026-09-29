@@ -4,7 +4,8 @@ import {
   DEFAULT_STATE, EMPTY_FIELDS, isDraftEmpty, mergeDraftContent, sameDraftContent, sameFields, sanitizeDraftState,
   type ComposerTab, type ComposerTarget, type DraftFields, type DrawerPrefs, type EditDraft, type PersistedDraftState,
 } from './devRequestRules'
-import { appendBlock, type PageContext } from './devRequestContext'
+import type { PageContext } from './devRequestContext'
+import { appendMark, type Mark } from './devRequestMarks'
 
 // Everything the requests backlog must not lose: the new request being
 // written, unsaved edits of existing ones, the floating composer (open,
@@ -74,7 +75,7 @@ interface Actions {
   /** Drops the edit drafts of requests that no longer exist. */
   pruneEditDrafts: (ids: readonly string[]) => void
   /** Adds text to the end of the description of whatever `target` names. */
-  appendToDescription: (target: ComposerTarget, block: string, seed?: EditDraft) => void
+  appendToDescription: (target: ComposerTarget, mark: Mark, seed?: EditDraft) => void
   // Composer
   openComposer: (target: ComposerTarget, tab?: ComposerTab) => void
   closeComposer: () => void
@@ -144,14 +145,14 @@ export const useDevRequestDrafts = create<DraftStore>()(
         if (gone.length === 0) return s
         return { editDrafts: withoutKeys(s.editDrafts, gone), clearedEdits: tombstones(s.clearedEdits, gone, Date.now()) }
       }),
-      appendToDescription: (target, block, seed) => {
+      appendToDescription: (target, mark, seed) => {
         if (target.kind === 'new') {
-          set(s => ({ newDraft: { ...s.newDraft, description: appendBlock(s.newDraft.description, block), touchedAt: Date.now() } }))
+          set(s => ({ newDraft: { ...s.newDraft, description: appendMark(s.newDraft.description, mark), touchedAt: Date.now() } }))
           return
         }
         const current = get().editDrafts[target.id] ?? seed
         if (!current) return
-        set(s => ({ editDrafts: { ...s.editDrafts, [target.id]: { ...current, description: appendBlock(current.description, block), touchedAt: Date.now() } } }))
+        set(s => ({ editDrafts: { ...s.editDrafts, [target.id]: { ...current, description: appendMark(current.description, mark), touchedAt: Date.now() } } }))
       },
 
       openComposer: (target, tab = 'request') => set(s => ({

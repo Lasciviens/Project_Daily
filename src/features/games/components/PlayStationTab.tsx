@@ -383,7 +383,7 @@ function ConnectedView() {
 }
 
 // CLAUDE.md's "connections live in ONE place" rule says a feature page may
-// LINK to Settings → Integrations but must never carry its own connect UI.
+// LINK to Settings → Subscriptions but must never carry its own connect UI.
 // This is a deliberate, narrow exception the user asked for (2026-09-25), and
 // it serves the rule's actual purpose rather than defeating it: the rule
 // exists so "is X connected?" has one answer and reconnecting isn't a hunt
@@ -412,14 +412,14 @@ function NotConnected({ expired, detail }: { expired?: boolean; detail?: string 
           </div>
           <p className="text-[11px] text-ink-400 mt-3 text-center">
             Also available in{' '}
-            <Link to="/settings?tab=integrations" className="text-accent-600 underline">Settings → Integrations</Link>,
+            <Link to="/settings?tab=subscriptions" className="text-accent-600 underline">Settings → Subscriptions</Link>,
             along with every other integration.
           </p>
         </>
       ) : (
         <p className="text-sm text-ink-500 text-center">
           Connect it in{' '}
-          <Link to="/settings?tab=integrations" className="text-accent-600 underline">Settings → Integrations</Link>,
+          <Link to="/settings?tab=subscriptions" className="text-accent-600 underline">Settings → Subscriptions</Link>,
           where every integration is managed.
         </p>
       )}

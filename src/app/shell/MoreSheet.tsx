@@ -53,7 +53,7 @@ export function MoreSheet({ open, onClose }: { open: boolean; onClose: () => voi
         <NotificationsControl className={cx(ROW, ROW_IDLE)} />
       </div>
       <SheetLink to="/settings" icon={Settings} label="All settings" navigate={navigate} onClose={onClose} />
-      <SheetLink to="/settings?tab=integrations" icon={Plug} label="Integrations" navigate={navigate} onClose={onClose} />
+      <SheetLink to="/settings?tab=subscriptions" icon={Plug} label="Subscriptions" navigate={navigate} onClose={onClose} />
       <button type="button" onClick={() => signOut()} className={cx(ROW, ROW_IDLE)}>
         <LogOut className="h-[19px] w-[19px] shrink-0" strokeWidth={1.8} aria-hidden />
         <span className="flex-1 text-left">Sign out</span>

@@ -37,7 +37,7 @@ const textOf = (t: DayTargets): Record<BodyTargetField, string> => ({
   goalWeightKg: bodyTargetText(t.goalWeightKg), goalBodyFatPct: bodyTargetText(t.goalBodyFatPct), goalMuscleMassKg: bodyTargetText(t.goalMuscleMassKg),
 })
 
-export function DayTargetsEditor({ date = todayStr(), onClose }: { date?: string; onClose: () => void }) {
+export function DayTargetsEditor({ onClose }: { date?: string; onClose: () => void }) {
   const { targets, update, isSaving, isLoaded, fromDevice } = useDayTargets()
   const profiles = useDayTargetProfiles()
   const [draft, setDraft] = useState<DayTargets>(targets)
@@ -52,7 +52,7 @@ export function DayTargetsEditor({ date = todayStr(), onClose }: { date?: string
     if (!touched) { setDraft(targets); setBodyText(textOf(targets)) }
   }
   // Suggestions follow the phase being edited, not the one currently saved.
-  const coach = useNutritionCoach(date, { ...targets, goal: draft.goal, calories: draft.calories })
+  const coach = useNutritionCoach({ ...targets, goal: draft.goal, calories: draft.calories, protein: draft.protein })
   const patch = (p: Partial<DayTargets>) => { setTouched(true); setDraft(d => ({ ...d, ...p })) }
   const today = todayStr()
 
@@ -105,8 +105,8 @@ export function DayTargetsEditor({ date = todayStr(), onClose }: { date?: string
               <GoalStepper label="Calorie target" value={draft.calories} step={50} suffix="kcal" onChange={v => patch({ calories: v })} />
             </StepperRow>
             {draft.calories < coach.calorieFloor && (
-              <p data-tone="danger" className="tone-text -mt-1 text-meta">
-                Below a safe floor (~{coach.calorieFloor} kcal). Don&apos;t cut lower — take a diet break instead.
+              <p data-tone="warn" className="tone-text -mt-1 text-meta">
+                Below your calorie floor (~{coach.calorieFloor.toLocaleString('en-GB')} kcal) — the coach won&apos;t suggest eating less than that.
               </p>
             )}
             <StepperRow label="Protein">

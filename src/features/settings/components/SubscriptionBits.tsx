@@ -21,7 +21,7 @@ function ApproxLine({ amount, currency, rates, className }: { amount: number | n
   return <span title={RATES_NOTE} className={`block text-micro font-normal tabular-nums text-fg-faint ${className ?? ''}`}>{line}</span>
 }
 
-// Subscriptions shown with the connection cards (Settings → Integrations):
+// Subscriptions shown with the connection cards (Settings → Subscriptions):
 // a summary strip, each card's own subscriptions, and the ones for services
 // without a card. The sheet is mounted only while open, so each open starts
 // from the row it edits.

@@ -8,27 +8,28 @@ import { AppearanceTab } from '../components/AppearanceTab'
 import { ApisTab } from '../components/ApisTab'
 import { APIS_BOARD, APPEARANCE_BOARD, PLACES_BOARD } from '../settingsBoards'
 
-type Tab = 'places' | 'appearance' | 'integrations' | 'apis'
+type Tab = 'places' | 'appearance' | 'subscriptions' | 'apis'
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'places', label: 'Places' },
   { id: 'appearance', label: 'Appearance' },
-  { id: 'integrations', label: 'Integrations' },
-  { id: 'apis', label: 'APIs' },
+  { id: 'subscriptions', label: 'Subscriptions' },
+  { id: 'apis', label: 'Integrations and APIs' },
 ]
-const BOARD = { places: PLACES_BOARD, appearance: APPEARANCE_BOARD, integrations: CONNECTIONS_BOARD, apis: APIS_BOARD } as const
+const BOARD = { places: PLACES_BOARD, appearance: APPEARANCE_BOARD, subscriptions: CONNECTIONS_BOARD, apis: APIS_BOARD } as const
 
-/** /settings — Places · Appearance · Integrations · APIs, the tab kept in ?tab=. */
+/** /settings — Places · Appearance · Subscriptions · Integrations and APIs, the tab kept in ?tab=.
+ *  The old `?tab=integrations` (the Subscriptions tab's earlier id) still opens Subscriptions. */
 export function SettingsPage() {
   const [params, setParams] = useSearchParams()
-  const raw = params.get('tab')
+  const raw = params.get('tab') === 'integrations' ? 'subscriptions' : params.get('tab')
   const tab: Tab = TABS.some(t => t.id === raw) ? raw as Tab : 'places'
   // The header stops where the tab's board does.
   const { ref: widthRef, step } = usePageStep<HTMLDivElement>()
   const headerCap = step == null ? null : boardWidthRem(BOARD[tab], step)
 
   function selectTab(next: Tab) {
-    // Keep other params (a Strava OAuth return lands on ?tab=integrations&code=…).
+    // Keep other params (a Strava OAuth return lands on ?tab=subscriptions&code=…).
     setParams(p => { p.set('tab', next); return p }, { replace: true })
   }
 
@@ -50,7 +51,7 @@ export function SettingsPage() {
 
       {tab === 'places' && <PlacesTab />}
       {tab === 'appearance' && <AppearanceTab />}
-      {tab === 'integrations' && <ConnectionsTab />}
+      {tab === 'subscriptions' && <ConnectionsTab />}
       {tab === 'apis' && <ApisTab />}
     </PageContainer>
   )

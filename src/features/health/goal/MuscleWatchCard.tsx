@@ -17,10 +17,12 @@ export function MuscleWatchCard({ card = true }: { card?: boolean }) {
     <GoalBlock title="Muscle watch" card={card}
       action={watch && <TonePill tone={LEVEL_COPY[watch.level].tone}>{LEVEL_COPY[watch.level].label}</TonePill>}
       info={<>
-        Five signals read together, because no one of them is reliable alone: the smart scale&apos;s muscle and lean mass since the
-        phase started (it swings ±0.5 kg day to day), how much of the weight lost was lean, how fast you are losing, logged protein,
-        and whether your current-program lifts (est. 1RM) and training are holding. A falling scale with falling strength is the clearest
-        sign of real muscle loss; holding strength says the drop is more likely water. An estimate, not a body scan.
+        Several signals read together, because none is reliable alone. <b>Strength</b>: your current program&apos;s main lifts
+        (est. 1RM, last 4 weeks) — down more than 5 % on two or more is the clearest sign. <b>Scale</b>: lean and muscle mass since
+        the phase started; home scales swing about ±1 kg, so only a drop over 1 kg across 4+ weeks counts, and early in a cut much of
+        it is water and glycogen. <b>Pace</b>: losing more than 1 % of bodyweight a week. <b>Protein</b>: under 1.6 g/kg; aim for
+        ~2.2 g/kg. Any one of these is worth watching; &quot;likely losing muscle&quot; needs falling strength plus one more. A scale drop
+        alone never counts as muscle loss. An estimate, not a body scan.
         <Cites keys={['looney2024', 'garthe2011', 'helms2014prep', 'morton2018']} />
       </>}>
       {isLoading && !watch && <SkeletonText lines={3} />}

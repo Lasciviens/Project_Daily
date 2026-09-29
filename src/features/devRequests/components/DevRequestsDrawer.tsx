@@ -9,7 +9,7 @@ import {
 import { discardNewDraft } from '../hooks/useDevRequestDraft'
 import { useDevRequestDrafts } from '../devRequestDraftStore'
 import { CATEGORIES, isDraftEmpty, orphanEditDrafts, planReorder } from '../devRequestRules'
-import { descriptionPreview } from '../devRequestContext'
+import { descriptionPreview } from '../devRequestMarks'
 import { buildClaudePrompt } from '../devRequestPrompt'
 import { DEV_REQUEST_UI_ATTR } from '../pick/pickDom'
 import { usePageContextReader } from '../pick/usePageContext'

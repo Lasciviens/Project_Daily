@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { useDevRequestDrafts } from '../devRequestDraftStore'
-import { cleanText, formatCapture } from '../devRequestContext'
+import { cleanText, type Capture } from '../devRequestContext'
 import { draftFromRow, isDraftEmpty, type ComposerTarget } from '../devRequestRules'
 import { useDevRequests } from '../hooks/useDevRequests'
 import { usePageContextReader } from '../pick/usePageContext'
@@ -30,8 +30,8 @@ const sameTarget = (a: ComposerTarget, b: ComposerTarget) => a.kind === b.kind &
  * app, plus the prompt for Claude. Draggable on tablet/desktop, docked above
  * the tab bar on phones, minimisable to a pill. While it is open you can
  * point at things on the page (Pick on page, or Alt-click with a mouse): each
- * pick appends a plain-text block to the description saying exactly what
- * and where it is.
+ * pick is kept as a mark (shown as a plain-language row with Go there; the
+ * full technical detail goes into the prompt for Claude).
  */
 export function DevRequestComposer() {
   const composer = useDevRequestDrafts(s => s.composer)
@@ -74,14 +74,13 @@ export function DevRequestComposer() {
   const capture = useCallback((el: Element | null, quote?: string) => {
     if (!canWrite) return
     const page = readPage()
-    const block = quote
-      ? formatCapture({ kind: 'selection', page, quote, element: el ? readElement(el) : null })
-      : el ? formatCapture({ kind: 'element', page, element: readElement(el) }) : ''
-    if (!block) return
-    store().appendToDescription(target, block, seed)
+    const capture: Capture | null = quote
+      ? { kind: 'selection', page, quote, element: el ? readElement(el) : null }
+      : el ? { kind: 'element', page, element: readElement(el) } : null
+    if (!capture) return
+    store().appendToDescription(target, { type: 'pick', capture }, seed)
     store().setComposerTab('request')
     setFlash(true)
-    requestAnimationFrame(() => { const d = descRef.current; if (d) d.scrollTop = d.scrollHeight })
   }, [canWrite, readPage, store, target, seed])
   useEffect(() => { if (!flash) return; const t = setTimeout(() => setFlash(false), 700); return () => clearTimeout(t) }, [flash])
 
