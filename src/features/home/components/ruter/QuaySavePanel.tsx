@@ -21,6 +21,8 @@ interface QuaySavePanelProps {
   stopName: string
   onSave:   (quayId: string | null, quayDescription: string | null, label: string) => Promise<void>
   onCancel: () => void
+  /** Prefilled label (Settings → Places passes "Home" / "Work"); default the stop's name. */
+  initialLabel?: string
 }
 
 const LABEL_PRESETS = [
@@ -33,12 +35,12 @@ const choiceClass = (selected: boolean) => cx(
   selected ? 'border-accent-500 bg-accent-50 text-accent-700' : 'border-line bg-surface text-fg-2 hover:bg-surface-hover',
 )
 
-export function QuaySavePanel({ stopId, stopName, onSave, onCancel }: QuaySavePanelProps) {
+export function QuaySavePanel({ stopId, stopName, onSave, onCancel, initialLabel }: QuaySavePanelProps) {
   const isAddress = !stopId.startsWith('NSR:')
 
   const { data: quays = [], isLoading: loading } = useStopDirections(isAddress ? null : stopId)
   const [selectedQuay, setSelected] = useState<QuayDirectionHint | 'all' | null>(isAddress ? 'all' : null)
-  const [label, setLabel]           = useState(stopName)
+  const [label, setLabel]           = useState(initialLabel ?? stopName)
   const [saving, setSaving]         = useState(false)
 
   async function handleSave() {

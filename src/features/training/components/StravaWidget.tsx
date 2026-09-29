@@ -19,7 +19,7 @@ export function StravaWidget() {
   const handledRef = useRef(false)
 
   // Finish the OAuth redirect. Strava sends the user back to
-  // #/developer?tab=connections (stravaApi's REDIRECT_URI — this widget only
+  // #/settings?tab=integrations (stravaApi's REDIRECT_URI — this widget only
   // renders on that tab, so the redirect and the exchange live together).
   useEffect(() => {
     if (handledRef.current) return

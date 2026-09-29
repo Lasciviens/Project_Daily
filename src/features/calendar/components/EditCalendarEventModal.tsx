@@ -121,7 +121,7 @@ export function EditCalendarEventModal({ event, onClose }: Props) {
         {needsReconnect && (
           <p data-tone="danger" className="tone-text text-meta">
             Google Calendar needs edit permission. Reconnect it in{' '}
-            <Link to="/developer?tab=connections" onClick={onClose} className="font-semibold underline">Connections</Link>.
+            <Link to="/settings?tab=integrations" onClick={onClose} className="font-semibold underline">Integrations</Link>.
           </p>
         )}
       </form>

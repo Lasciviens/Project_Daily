@@ -1,6 +1,6 @@
 import {
   Home, CalendarDays, UtensilsCrossed, ShoppingBag, Clapperboard, Dumbbell, HeartPulse, Star, Gamepad2,
-  Briefcase, FolderKanban, Code2, type LucideIcon,
+  Briefcase, FolderKanban, Code2, Settings, type LucideIcon,
 } from 'lucide-react'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -64,7 +64,9 @@ export const NAV: NavEntry[] = [
   { id: 'games', label: 'Games', path: '/games', icon: Gamepad2, group: 'play', more: true, fullHeight: true, collapseSidebar: true, keywords: ['library', 'steam', 'playstation', 'retro', 'queue', 'backlog', 'scrape'] },
   { id: 'work', label: 'Work', path: '/work', icon: Briefcase, group: 'work', more: true, keywords: ['board', 'kanban'] },
   { id: 'projects', label: 'Projects', path: '/projects', icon: FolderKanban, group: 'work', more: true, keywords: ['phases'] },
-  { id: 'developer', label: 'Developer', path: '/developer', icon: Code2, group: 'system', more: true, keywords: ['connections', 'activity', 'errors', 'memory'] },
+  // Reached from the avatar menu, the More sheet and the sidebar footer (not a nav group).
+  { id: 'settings', label: 'Settings', path: '/settings', icon: Settings, group: 'system', keywords: ['places', 'home', 'work', 'appearance', 'theme', 'display size', 'zoom', 'integrations', 'connections', 'subscriptions'] },
+  { id: 'developer', label: 'Developer', path: '/developer', icon: Code2, group: 'system', more: true, keywords: ['activity', 'errors', 'memory', 'audit'] },
 ]
 
 const matches = (e: NavEntry, pathname: string) => (e.match ?? [e.path]).includes(pathname)

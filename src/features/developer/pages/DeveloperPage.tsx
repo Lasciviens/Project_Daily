@@ -1,28 +1,25 @@
 import { useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Navigate, useSearchParams } from 'react-router-dom'
 import { RefreshCw } from 'lucide-react'
 import { ErrorLogTab } from '../components/ErrorLogTab'
 import { ActivityLogTab } from '../components/ActivityLogTab'
 import { MemoryTab } from '../components/MemoryTab'
-import { ConnectionsTab } from '../components/ConnectionsTab'
 import { reindexAiSearch } from '../../ai/api/aiApi'
 import { toast } from '../../../app/store'
 import { Button, PageContainer, PageHeader, usePageStep } from '../../../shared/ui'
 import { boardWidthRem } from '../../../shared/ui/pageBoardRules'
-import { CONNECTIONS_BOARD, LIST_DETAIL_BOARD } from '../developerBoards'
+import { LIST_DETAIL_BOARD } from '../developerBoards'
 
-type Tab = 'connections' | 'activity' | 'errors' | 'memory'
+type Tab = 'activity' | 'errors' | 'memory'
 
 const TABS: { id: Tab; label: string }[] = [
-  { id: 'connections', label: 'Connections' },
   { id: 'activity',    label: 'Activity' },
   { id: 'errors',      label: 'Errors' },
   { id: 'memory',      label: 'Memory' },
 ]
 
 export function DeveloperPage() {
-  // ?tab=connections lets the settings menu (and any future link) deep-link
-  // straight to one tab instead of always landing on Activity.
+  // ?tab= deep-links straight to one tab instead of always landing on Activity.
   const [params, setParams] = useSearchParams()
   const initial = TABS.some(t => t.id === params.get('tab')) ? params.get('tab') as Tab : 'activity'
   const [tab, setTab] = useState<Tab>(initial)
@@ -31,7 +28,7 @@ export function DeveloperPage() {
   // where that board does, so Reindex sits over the last card (the list +
   // detail boards stop at three tracks; it floated 29rem past the pane).
   const { ref: widthRef, step } = usePageStep<HTMLDivElement>()
-  const headerCap = step == null ? null : boardWidthRem(tab === 'connections' ? CONNECTIONS_BOARD : LIST_DETAIL_BOARD, step)
+  const headerCap = step == null ? null : boardWidthRem(LIST_DETAIL_BOARD, step)
 
   function selectTab(next: Tab) {
     setTab(next)
@@ -52,6 +49,14 @@ export function DeveloperPage() {
     } finally {
       setReindexing(false)
     }
+  }
+
+  // Connections moved to Settings → Integrations. An old link (or a Strava
+  // redirect still in flight) keeps every other query param on the way.
+  if (params.get('tab') === 'connections') {
+    const next = new URLSearchParams(params)
+    next.set('tab', 'integrations')
+    return <Navigate to={`/settings?${next.toString()}`} replace />
   }
 
   return (
@@ -77,7 +82,6 @@ export function DeveloperPage() {
         </div>
       </div>
 
-      {tab === 'connections' && <ConnectionsTab />}
       {tab === 'activity'    && <ActivityLogTab />}
       {tab === 'errors'      && <ErrorLogTab />}
       {tab === 'memory'      && <MemoryTab />}

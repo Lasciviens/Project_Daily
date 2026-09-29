@@ -3,13 +3,13 @@ import { supabase } from '../../../integrations/supabase/client'
 const EDGE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 const STRAVA_CLIENT_ID = import.meta.env.VITE_STRAVA_CLIENT_ID
 // Strava sends the user back HERE, and the ?code= exchange lives in
-// StravaWidget, which only renders on Developer → Connections — so the two
+// StravaWidget, which only renders on Settings → Integrations — so the two
 // must stay the same page (the redirect used to land on #/training, where
 // nothing read the code and every connect silently failed). The trailing
 // `from=strava` is sacrificial: if Strava glues its own "?state=…" onto the
 // end with a second '?', that junk lands on `from`, never on `tab`
 // (parseStravaCallback in stravaMeta.ts reads the code either way).
-const REDIRECT_URI = `${window.location.origin}${window.location.pathname}#/developer?tab=connections&from=strava`
+const REDIRECT_URI = `${window.location.origin}${window.location.pathname}#/settings?tab=integrations&from=strava`
 
 async function authHeader(): Promise<Record<string, string>> {
   const { data: { session } } = await supabase.auth.getSession()

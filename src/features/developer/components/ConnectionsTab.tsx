@@ -14,9 +14,10 @@ import { npssoLifetime, npssoLifetimeLabel } from '../../games/api/psnTokenLifet
 import { useSteamProfile } from '../../games/hooks/useSteam'
 import { GOOGLE_SCOPES } from '../../calendar/googleScopes'
 import { CONNECTIONS_BOARD, type ConnectionSection } from '../developerBoards'
+import { CardSubscriptions, OtherSubscriptions, SubscriptionSummary } from '../../settings/components/SubscriptionBits'
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  CONNECTIONS — the ONE place every external integration is connected,
+//  CONNECTIONS (Settings → Integrations) — the ONE place every external integration is connected,
 //  disconnected and inspected. Before this, the same job was scattered across
 //  three unrelated surfaces (Google in the ⚙ Settings menu, Strava inside the
 //  Training tab, PlayStation inside the Games tab), so "is X connected?" had
@@ -52,8 +53,12 @@ const STATUS_TEXT: Record<Status, string> = {
   unknown: 'Checking…',
 }
 
-function ConnectionCard({ icon, name, scope, status, statusNote, children, footer }: {
+function ConnectionCard({ icon, name, scope, status, statusNote, children, footer, service, account }: {
   icon: ReactNode
+  /** service_subscriptions key whose subscriptions are listed on this card. */
+  service: string
+  /** Signed-in username/email, when the status call already returns it. */
+  account?: string | null
   name: string
   /** What this connection actually gives the app. */
   scope: string
@@ -70,6 +75,7 @@ function ConnectionCard({ icon, name, scope, status, statusNote, children, foote
           <div className="min-w-0">
             <p className="text-lead font-semibold text-fg">{name}</p>
             <p className="mt-0.5 text-meta text-fg-muted">{scope}</p>
+            {account && <p className="mt-0.5 break-all text-meta text-fg-2">Account: <strong>{account}</strong></p>}
           </div>
         </div>
         <span data-tone={STATUS_TONE[status]} className="flex shrink-0 items-center gap-2">
@@ -79,6 +85,7 @@ function ConnectionCard({ icon, name, scope, status, statusNote, children, foote
       </div>
       {children && <div className="mt-3">{children}</div>}
       {footer && <p className="mt-3 text-meta text-fg-muted">{footer}</p>}
+      <CardSubscriptions service={service} />
     </Card>
   )
 }
@@ -123,7 +130,7 @@ function GoogleCard() {
   }
 
   return (
-    <ConnectionCard icon={<CalendarDays />} name="Google" scope="Calendar · Tasks — one consent, one refresh token"
+    <ConnectionCard service="google" icon={<CalendarDays />} name="Google" scope="Calendar · Tasks — one consent, one refresh token"
       status={connected ? 'connected' : 'disconnected'}>
       <div className="flex items-center gap-2 flex-wrap">
         {connected ? (
@@ -141,7 +148,7 @@ function GoogleCard() {
 function StravaCard() {
   const { data: status, isLoading } = useStravaStatus()
   return (
-    <ConnectionCard icon={<Bike />} name="Strava" scope="Activities (runs, rides, walks)"
+    <ConnectionCard service="strava" account={status?.athlete_name} icon={<Bike />} name="Strava" scope="Activities (runs, rides, walks)"
       status={isLoading ? 'unknown' : status?.connected ? 'connected' : 'disconnected'}>
       {/* The widget owns the OAuth redirect handling, sync and disconnect —
           reused whole rather than reimplemented, so there is still one
@@ -173,7 +180,7 @@ function PlayStationCard() {
   const showForm = !connected || renewing || life.state === 'soon'
 
   return (
-    <ConnectionCard icon={<Gamepad2 />} name="PlayStation" scope="Playtime library · trophies · PS Plus provenance"
+    <ConnectionCard service="playstation" account={profile.data?.profile?.onlineId} icon={<Gamepad2 />} name="PlayStation" scope="Playtime library · trophies · PS Plus provenance"
       status={status.isLoading ? 'unknown' : connected ? 'connected' : expired ? 'expired' : 'disconnected'}
       footer="Sony has no official API, so this uses the community npsso token flow. Sony's login now has a reCAPTCHA that blocks scripted refresh — expect to paste a fresh token every month or two.">
       {connected ? (
@@ -242,7 +249,7 @@ function SteamCard() {
   const profile = useSteamProfile()
   const notConfigured = (profile.error as Error | null)?.message === 'not_configured'
   return (
-    <ConnectionCard icon={<Monitor />} name="Steam" scope="Owned games · playtime · achievements"
+    <ConnectionCard service="steam" icon={<Monitor />} name="Steam" scope="Owned games · playtime · achievements"
       status={profile.isLoading ? 'unknown' : notConfigured ? 'disconnected' : profile.data ? 'connected' : 'unknown'}
       statusNote={notConfigured ? 'Not configured' : undefined}
       footer={notConfigured
@@ -255,9 +262,12 @@ function SteamCard() {
   )
 }
 
-function ServerSideCard({ icon, name, scope, note }: { icon: ReactNode; name: string; scope: string; note: string }) {
-  return <ConnectionCard icon={icon} name={name} scope={scope} status="connected" statusNote="Server-side" footer={note} />
+function ServerSideCard({ service, icon, name, scope, note }: { service: string; icon: ReactNode; name: string; scope: string; note: string }) {
+  return <ConnectionCard service={service} icon={icon} name={name} scope={scope} status="connected" statusNote="Server-side" footer={note} />
 }
+
+/** service_subscriptions keys that have a card here; the rest go under "Other subscriptions". */
+const CARD_SERVICES = ['google', 'strava', 'playstation', 'steam', 'hevy', 'apple_health'] as const
 
 const ACCOUNTS_LABEL = 'Signed in from here'
 const SERVER_LABEL = 'Configured on the server'
@@ -268,22 +278,26 @@ export function ConnectionsTab() {
   const psn = <PlayStationCard />
   const steam = <SteamCard />
   const hevy = (
-    <ServerSideCard icon={<Dumbbell />} name="Hevy" scope="Workouts · routines · body measurements"
+    <ServerSideCard service="hevy" icon={<Dumbbell />} name="Hevy" scope="Workouts · routines · body measurements"
       note="Authenticated by HEVY_API_KEY in Supabase Vault, plus a webhook for new workouts. Sync is triggered from the Training page." />
   )
   const health = (
-    <ServerSideCard icon={<HeartPulse />} name="Apple Health" scope="Metrics · workouts, via Health Auto Export"
+    <ServerSideCard service="apple_health" icon={<HeartPulse />} name="Apple Health" scope="Metrics · workouts, via Health Auto Export"
       note="The phone pushes to the health-export-webhook function with a bearer secret. Nothing to connect here — check the Health Auto Export app on the phone if data stops arriving." />
   )
   // Each step mounts a card once: on its own, or (server-side, from 1920)
   // inside the serverCards grid.
   const sections: Record<ConnectionSection, ReactNode> = {
     intro: (
-      <p className="text-meta text-fg-muted">
-        Every external integration lives here. Feature pages show the data; they never carry
-        their own connect or disconnect control.
-      </p>
+      <div className="flex flex-col gap-3">
+        <p className="text-meta text-fg-muted">
+          Every external integration lives here. Feature pages show the data; they never carry
+          their own connect or disconnect control.
+        </p>
+        <SubscriptionSummary />
+      </div>
     ),
+    otherSubs: <OtherSubscriptions cardKeys={CARD_SERVICES} />,
     google, strava, psn, steam, hevy, health,
     accountsLabel: <h2 className="section-label">{ACCOUNTS_LABEL}</h2>,
     serverLabel: <h2 className="section-label">{SERVER_LABEL}</h2>,
