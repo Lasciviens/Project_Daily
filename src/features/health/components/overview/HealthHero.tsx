@@ -62,11 +62,11 @@ export function HealthHero({ hero, onViewDay, onOpenSection }: {
   ].filter(Boolean).join(' · ')
 
   return (
-    <section aria-labelledby="health-hero-title" className="flex flex-col gap-3">
+    <section aria-labelledby="health-hero-title" className="@container flex flex-col gap-3">
       <h2 id="health-hero-title" className="text-lead font-semibold text-fg">
         How you’re doing <span className="text-meta font-normal text-fg-muted">· as of {hero.isToday ? 'today' : fmtDayMonth(hero.anchor)}</span>
       </h2>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 @[36rem]:grid-cols-2 @[64rem]:grid-cols-3">
         {/* Only the night that ended on this day counts as "last night" — a
             missing night says so; it is never replaced by an older one. */}
         <HeroTile icon={<Moon />} label="Sleep" onOpen={() => setOpen('sleep')} isLoading={sleep.isLoading}

@@ -1,6 +1,6 @@
 // Daily's PageBoard layouts, one declaration per mode and step (THEME.md
 // §6.3). Pure data so scripts/verify-page-board.cjs can check every step.
-import type { BoardLayouts } from '../../shared/ui/pageBoardRules'
+import { resolveBoardLayout, type BoardLayouts, type PageStep } from '../../shared/ui/pageBoardRules'
 
 // ── Day ─────────────────────────────────────────────────────────────────────
 //   1  phone, tablet — the schedule hero, then the glance board.
@@ -10,7 +10,9 @@ import type { BoardLayouts } from '../../shared/ui/pageBoardRules'
 //   4  2450 — the glance board moves BESIDE the schedule (three columns), the
 //      quick rail sits under the hero as one strip. About half the length.
 // The glance board's own column count follows its box (TodaySummary), so its
-// cells never move with the content of a day.
+// cells never move with the content of a day. Where it sits in a column
+// beside the hero (not a full-width band) its heading is visually hidden, so
+// its cards start level with the hero (glanceInColumn).
 export const DAY_SECTIONS = ['hero', 'rail', 'glance'] as const
 export type DaySection = typeof DAY_SECTIONS[number]
 
@@ -19,6 +21,12 @@ export const DAY_BOARD: BoardLayouts<DaySection> = {
   2: { top: ['hero'], bottom: ['glance'] },
   3: { columns: [{ stack: ['hero'], span: 2 }, ['rail']], bottom: ['glance'] },
   4: { columns: [['hero', 'rail'], { stack: ['glance'], span: 3 }] },
+}
+
+/** True when the glance board sits in a column beside the hero rather than in a band below it. */
+export function glanceInColumn(step: PageStep): boolean {
+  const l = resolveBoardLayout(DAY_BOARD, step)
+  return l.tracks > 1 && l.columns.some(c => c.stack.includes('glance'))
 }
 
 // ── Week and Month ──────────────────────────────────────────────────────────

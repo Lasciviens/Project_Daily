@@ -9,6 +9,8 @@ interface Props {
   movieEntries: UserMovieEntry[]
   tvEntries:    UserTVEntry[]
   onOpenDetail: (id: number, type: MediaType) => void
+  /** The library is still loading: placeholders, not "no upcoming releases". */
+  loading?:     boolean
 }
 
 interface UpcomingItem {
@@ -30,7 +32,7 @@ function formatDate(date: Date): string {
   return fmtDateEnGB(date, { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
-export function ReleaseCalendar({ movieEntries, tvEntries, onOpenDetail }: Props) {
+export function ReleaseCalendar({ movieEntries, tvEntries, onOpenDetail, loading = false }: Props) {
   const today = new Date()
 
   // Upcoming movies with future release dates. Status-filtered (real bug:
@@ -78,6 +80,7 @@ export function ReleaseCalendar({ movieEntries, tvEntries, onOpenDetail }: Props
     <CollapsibleCard
       title="Coming soon"
       icon={<CalendarClock />}
+      loading={loading}
       badge={items.length > 0 ? <span className="count-badge">{items.length}</span> : undefined}
     >
       {items.length === 0 ? (

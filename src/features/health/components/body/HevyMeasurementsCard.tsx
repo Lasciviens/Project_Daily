@@ -35,7 +35,7 @@ export function HevyMeasurementsCard({ anchor }: { anchor: string }) {
   const edit = (date: string) => modal.open({ kind: 'body-measurement', date })
 
   return (
-    <SectionCard>
+    <SectionCard className="@container">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="section-label flex items-center gap-1">
           Logged in Hevy{allRows.length > 0 && ` · ${allRows.length} ${allRows.length === 1 ? 'entry' : 'entries'}`}
@@ -71,7 +71,7 @@ export function HevyMeasurementsCard({ anchor }: { anchor: string }) {
               <p className="text-body font-semibold text-fg-2">Latest · {fmtMeasDate(latest.date)}</p>
               <IconButton label="Edit the latest entry" onClick={() => edit(latest.date)} className="-mr-2"><Pencil /></IconButton>
             </div>
-            <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+            <ul className="grid grid-cols-2 gap-2 @[30rem]:grid-cols-3 @[44rem]:grid-cols-4">
               {lines.map(l => (
                 <li key={l.key} className="rounded-row bg-surface-2 px-3 py-2">
                   <p className="section-label">{l.label}</p>

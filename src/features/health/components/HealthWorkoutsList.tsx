@@ -58,7 +58,7 @@ export function HealthWorkoutsList({ win }: { win: HealthWindow }) {
   const hevy = useHevyMatches(win.from, win.to, workouts)
   const linked = hevy.size
   return (
-    <Card padded={false} className="max-w-3xl overflow-hidden">
+    <Card padded={false} className="@container overflow-hidden">
       <button type="button" aria-expanded={expanded} onClick={() => setExpanded(e => !e)}
         className="flex min-h-[44px] w-full items-center justify-between gap-2 px-4 py-2 text-left">
         <p className="section-label">
@@ -76,7 +76,9 @@ export function HealthWorkoutsList({ win }: { win: HealthWindow }) {
           ) : workouts.length === 0 ? (
             <EmptyState bordered icon={<Smartphone />} title="No workouts in this window" className="py-10" />
           ) : (
-            <div className="flex flex-col gap-1.5">
+            // Rows form columns by the card's own width (it spans the board on a wide page).
+            // grid-cols-1 = minmax(0,1fr): an implicit auto track grows to a long title's min-content.
+            <div className="grid grid-cols-1 gap-1.5 @[46rem]:grid-cols-2 @[72rem]:grid-cols-3 @[98rem]:grid-cols-4 @[124rem]:grid-cols-5">
               {workouts.map(w => (
                 <HealthWorkoutRow key={w.id} workout={w} hevyTitle={hevy.get(w.id)?.title}
                   onOpen={() => modal.open({ kind: 'health-workout', id: w.id })} />

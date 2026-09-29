@@ -8,11 +8,14 @@ import { AthleteProfileSheet } from '../AthleteProfileSheet'
 
 const SEVERITY_TONE: Record<LimitationSeverity, Tone> = { avoid: 'danger', limit: 'warn', monitor: 'neutral' }
 
+// Sentence case ("Hypertrophy", "4 a week") — a `capitalize` class title-cased every word ("4 A Week").
+const sentence = (s: string | null | undefined) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : null)
+
 function Row({ label, value }: { label: string; value: string | null }) {
   return (
     <div className="flex items-baseline justify-between gap-3 py-1">
       <dt className="text-meta text-fg-muted">{label}</dt>
-      <dd className="text-body font-medium capitalize text-fg">{value ?? '—'}</dd>
+      <dd className="text-body font-medium text-fg">{sentence(value) ?? '—'}</dd>
     </div>
   )
 }
@@ -26,7 +29,7 @@ export function ProfileSummaryCard() {
   const { data: prefs = [] } = useMusclePreferences()
   const days = profile?.training_days_per_week
   return (
-    <Card className="w-full max-w-md xl:w-96 xl:shrink-0">
+    <Card className="w-full max-w-md">
       <CardHeader icon={<UserRound />} title="Your training profile" action={<Button size="sm" onClick={() => setOpen(true)}>Edit</Button>} />
       <dl className="divide-y divide-line">
         <Row label="Training focus" value={profile?.goal ?? null} />

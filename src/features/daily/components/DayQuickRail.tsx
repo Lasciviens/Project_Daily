@@ -17,6 +17,8 @@ import { formatLocalDate } from '../../../shared/utils/dateUtils'
 //  tablets or the 1469 laptop, where it would squeeze beside the hero.
 // ─────────────────────────────────────────────────────────────────────────────
 
+const NEXT_SHOWN = 3
+
 function RailStat({ value, label }: { value: number | string; label: string }) {
   return (
     <div className="flex flex-col items-center justify-center rounded-row border border-line bg-surface py-2">
@@ -39,9 +41,8 @@ export function DayQuickRail({ date, onOpenTasks }: { date: Date; onOpenTasks?: 
   // kept showing a block long after it had started.
   const timedBlocks = blocks.filter(b => b.start_time).sort((a, b) => (a.start_time! < b.start_time! ? -1 : 1))
   const nowHM = format(new Date(), 'HH:mm:ss')
-  const nextBlock = today
-    ? (timedBlocks.find(b => (b.start_time ?? '') >= nowHM) ?? null)
-    : (timedBlocks[0] ?? null)
+  // The next three, so the rail has something to say beside a tall hero.
+  const nextBlocks = (today ? timedBlocks.filter(b => (b.start_time ?? '') >= nowHM) : timedBlocks).slice(0, NEXT_SHOWN)
 
   const openTaskList = tasks.filter(t => t.status !== 'done' && t.status !== 'cancelled')
   const doneTasks = tasks.filter(t => t.status === 'done').length
@@ -61,11 +62,15 @@ export function DayQuickRail({ date, onOpenTasks }: { date: Date; onOpenTasks?: 
 
         <div>
           <SectionLabel className="mb-2">{today ? 'Next up' : 'First up'}</SectionLabel>
-          {nextBlock ? (
-            <div className="flex items-center gap-3 rounded-row border border-line bg-surface px-3 py-2.5">
-              <span className="shrink-0 text-ui font-bold tabular-nums text-accent-600">{nextBlock.start_time?.slice(0, 5)}</span>
-              <Truncate className="text-body text-fg-2">{nextBlock.title}</Truncate>
-            </div>
+          {nextBlocks.length > 0 ? (
+            <ul className="flex flex-col gap-1.5">
+              {nextBlocks.map(b => (
+                <li key={b.id} className="flex items-center gap-3 rounded-row border border-line bg-surface px-3 py-2.5">
+                  <span className="shrink-0 text-ui font-bold tabular-nums text-accent-600">{b.start_time?.slice(0, 5)}</span>
+                  <Truncate className="text-body text-fg-2">{b.title}</Truncate>
+                </li>
+              ))}
+            </ul>
           ) : (
             <p className="px-1 text-body text-fg-muted">{today ? 'Nothing more scheduled today.' : 'Nothing scheduled.'}</p>
           )}

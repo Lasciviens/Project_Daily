@@ -68,7 +68,7 @@ export function HevyWorkoutsList({ onLogWorkout }: { onLogWorkout: () => void })
       </div>
 
       {isLoading ? (
-        <div className="grid grid-cols-1 justify-start gap-2 sm:grid-cols-[repeat(auto-fill,minmax(19rem,22rem))]">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-[repeat(auto-fill,minmax(19rem,1fr))]">
           {Array.from({ length: 6 }).map((_, i) => (
             <Skeleton key={i} rounded="rounded-card" className="h-[88px]" />
           ))}
@@ -76,8 +76,9 @@ export function HevyWorkoutsList({ onLogWorkout }: { onLogWorkout: () => void })
       ) : workouts.length === 0 ? (
         <EmptyState bordered icon={<Dumbbell />} title="No workouts yet" description="Sync to import your Hevy data." />
       ) : (
-        // Content-sized columns (19–22rem); leftover width stays on the right.
-        <div className="grid grid-cols-1 items-start justify-start gap-2 sm:grid-cols-[repeat(auto-fill,minmax(19rem,22rem))]">
+        // As many ≥ 19rem columns as fit their tracks, sharing the width (a fixed
+        // maximum would make auto-fill count by it and leave a column's worth empty).
+        <div className="grid grid-cols-1 items-start gap-2 sm:grid-cols-[repeat(auto-fill,minmax(19rem,1fr))]">
           {workouts.map(workout => (
             <HevyWorkoutCard
               key={workout.id}

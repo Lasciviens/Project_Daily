@@ -4,10 +4,10 @@ import { PROTEIN_COPY } from './goalCopy'
 import { GoalBlock, Cites } from './GoalBlock'
 
 /** Protein per kg of bodyweight (Morton 2018) and per kg of lean mass on a cut (Helms 2014). */
-export function ProteinBlock({ r, phase, targetProtein }: { r: EnergyReport; phase: Phase; targetProtein: number }) {
+export function ProteinBlock({ r, phase, targetProtein, card }: { r: EnergyReport; phase: Phase; targetProtein: number; card?: boolean }) {
   const band = r.protein.band ? PROTEIN_COPY[r.protein.band] : null
   return (
-    <GoalBlock title="Protein" info={<>
+    <GoalBlock title="Protein" card={card} info={<>
       No further lean-mass gain above ~1.6 g per kg of bodyweight a day, with the estimate reaching ~2.2 — treat 1.6 as a floor (Morton 2018). Lean lifters in a deficit likely need 2.3–3.1 g per kg of fat-free mass (Helms 2014). Averaged over the days you logged.
       <Cites keys={['morton2018', 'helms2014protein']} />
     </>}>

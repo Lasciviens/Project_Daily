@@ -20,7 +20,8 @@ import {
 // calendar, or Strava) · Library (routines, exercises) · Coach. The tab lives
 // in `?tab=` and a tab's own view (Log: Hevy | Strava, Library: Routines |
 // Exercises) in `?view=`, switched at the right end of the same tab row, so
-// links and Back work. Every tab is content-sized and left-aligned.
+// links and Back work. Each tab lays its cards out with a PageBoard
+// (trainingBoards.ts): a wide screen adds columns instead of length.
 export function TrainingPage() {
   const [params, setParams] = useSearchParams()
   const tab = parseTrainingTab(params.get('tab'))
@@ -51,8 +52,8 @@ export function TrainingPage() {
       : null
 
   return (
-    <PageContainer width="full">
-      <PageHeader title="Training" className="2xl:max-w-[117rem]">
+    <PageContainer>
+      <PageHeader title="Training">
         <div className="flex flex-wrap items-center gap-2 lg:flex-nowrap">
           <div role="tablist" aria-label="Training sections" className="scroll-x -mx-4 flex min-w-0 basis-[calc(100%+2rem)] gap-1 px-4 sm:-mx-6 sm:basis-[calc(100%+3rem)] sm:px-6 lg:mx-0 lg:basis-auto lg:flex-1 lg:px-0">
             {TRAINING_TABS.map(t => (
@@ -78,7 +79,7 @@ export function TrainingPage() {
         </div>
       </PageHeader>
 
-      <div className="w-full min-w-0 2xl:max-w-[117rem]">
+      <div className="w-full min-w-0">
         <ErrorBoundary key={tab} label="Training">
           {(tab === 'next' || tab === 'progress') && (
             <TrainingProgressProvider>

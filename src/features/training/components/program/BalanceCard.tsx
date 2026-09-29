@@ -29,9 +29,9 @@ export function BalanceCard({ balance, comparison, doneWindowDays }: {
 }) {
   const doneLabel = `Done in the last ${doneWindowDays} days`
   return (
-    <Card className="max-w-2xl">
+    <Card className="@container max-w-2xl">
       <CardHeader icon={<Scale />} title="Balance" subtitle="Planned in your program · weekly sets" />
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 @[34rem]:grid-cols-2">
         <Ratio read={balance.pushPull} comparison={comparison?.pushPull ?? null} doneLabel={doneLabel} />
         <Ratio read={balance.quadHam} comparison={comparison?.quadHam ?? null} doneLabel={doneLabel} />
       </div>

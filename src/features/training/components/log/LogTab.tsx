@@ -4,9 +4,11 @@ import { StravaTab } from '../StravaTab'
 import { LogHevyWorkoutModal } from '../LogHevyWorkoutModal'
 import { TrainingMonthCalendar } from '../calendar/TrainingMonthCalendar'
 import type { LogView } from '../../pages/trainingTabs'
+import { PageBoard } from '../../../../shared/ui'
+import { LOG_BOARD } from '../../trainingBoards'
 
-/** Log: what you actually did. Hevy (default) is the month calendar — sticky
- *  on the left from `lg`, on top on a phone — beside the workout cards;
+/** Log: what you actually did. Hevy (default) is the month calendar — a
+ *  sticky rail on the left on a wide page, on top on a phone — beside the workout cards;
  *  Strava lists its activities (labelled by the service, not "cardio": it
  *  holds walks, rides and anything else Strava records). The view is picked
  *  in the page's tab row (`?view=`). Body measurements live in Health → Body. */
@@ -15,14 +17,12 @@ export function LogTab({ view }: { view: LogView }) {
   if (view === 'strava') return <StravaTab />
   return (
     <>
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
-        <aside className="w-full max-w-[28rem] lg:sticky lg:top-4 lg:w-[26rem] lg:shrink-0">
-          <TrainingMonthCalendar />
-        </aside>
-        <div className="min-w-0 lg:flex-1">
-          <HevyWorkoutsList onLogWorkout={() => setLogOpen(true)} />
-        </div>
-      </div>
+      {/* Placed by PageBoard (trainingBoards.ts → LOG_BOARD): the calendar a
+          sticky rail on the left, the workout cards across the other tracks. */}
+      <PageBoard layout={LOG_BOARD} stackGap="gap-4" sections={{
+        calendar: <aside className="w-full max-w-[28rem]"><TrainingMonthCalendar /></aside>,
+        workouts: <HevyWorkoutsList onLogWorkout={() => setLogOpen(true)} />,
+      }} />
       <LogHevyWorkoutModal isOpen={logOpen} onClose={() => setLogOpen(false)} />
     </>
   )

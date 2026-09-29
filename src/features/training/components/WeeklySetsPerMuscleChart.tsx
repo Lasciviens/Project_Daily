@@ -6,7 +6,7 @@ import { computeWeeklySetsPerMuscleTrend, lastCompleteWeek, mondayOf } from '../
 import { todayStr } from '../../../shared/utils/dateUtils'
 import { fmtWeekRange } from '../dateFormat'
 import { buildTemplateMuscleMap, labelForSlug, contribution, MAJOR_MUSCLES, MUSCLE_LANDMARKS, scaleLandmarksForExperience, bandForWeeklySets, BANDS_META } from '../muscleMap'
-import { Card, CardHeader, Skeleton, TonePill, useChartColors } from '../../../shared/ui'
+import { Card, CardHeader, Skeleton, TonePill, Truncate, useChartColors } from '../../../shared/ui'
 import { useTooltipStyle } from '../../../shared/components/charts/chartKit'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -51,7 +51,7 @@ function MuscleSparkline({ card, experienceLevel }: { card: MuscleCardData; expe
   return (
     <div className="flex flex-col gap-1.5 rounded-row border border-line bg-surface p-2.5">
       <div className="flex items-center justify-between gap-1">
-        <p className="truncate text-meta font-semibold text-fg">{label}</p>
+        <Truncate as="p" className="min-w-0 text-meta font-semibold text-fg">{label}</Truncate>
         {latest != null && (
           <span title="Last complete week" className="inline-flex shrink-0">
             <TonePill tone={BANDS_META[band].tone} className="tabular-nums">{latest}/wk</TonePill>
@@ -132,10 +132,12 @@ export function WeeklySetsPerMuscleChart() {
   if (isLoading) return <Skeleton rounded="rounded-card" className="h-40" />
 
   return (
-    <Card className="flex flex-col gap-3">
+    <Card className="@container flex flex-col gap-3">
       <CardHeader variant="label" title="Weekly sets per muscle" className="!mb-0" />
 
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+      {/* Tiles by the card's own width (it sits in a chart column, not the
+          viewport): five across only when a tile keeps room for its name. */}
+      <div className="grid grid-cols-2 gap-2 @[30rem]:grid-cols-3 @[54rem]:grid-cols-5">
         {cards.map(card => <MuscleSparkline key={card.slug} card={card} experienceLevel={profile?.experience_level} />)}
       </div>
 

@@ -38,11 +38,11 @@ export function HealthProfileCard({ className }: { className?: string }) {
       />
 
       {isLoading ? (
-        <div className="grid gap-3 sm:grid-cols-3" aria-busy="true">
+        <div className="@container"><div className="grid gap-3 @lg:grid-cols-3" aria-busy="true">
           <Skeleton className="h-11" />
           <Skeleton className="h-11" />
           <Skeleton className="h-11" />
-        </div>
+        </div></div>
       ) : isError ? (
         <div className="flex flex-wrap items-center gap-3">
           <p className="text-meta text-danger">Couldn’t load your profile.</p>

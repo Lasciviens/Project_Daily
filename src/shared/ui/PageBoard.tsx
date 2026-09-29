@@ -1,4 +1,4 @@
-import { Fragment, type CSSProperties, type ReactNode } from 'react'
+import { Fragment, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { cx } from './cx'
 import { boardTemplate, resolveBoardLayout, type BoardLayouts } from './pageBoardRules'
 import { PageStepContext, usePageStep } from './usePageStep'
@@ -13,7 +13,10 @@ import { PageStepContext, usePageStep } from './usePageStep'
 //
 //  Each step declares which section goes in which column. Columns are stacks
 //  (no masonry, no dense packing), so a section's place never depends on its
-//  content or on its neighbours' heights.
+//  content or on its neighbours' heights. `lead` puts side tracks BEFORE the
+//  main track — a rail on the left (a calendar, a day's totals, an add form)
+//  beside the collection it drives. A section that can be empty goes in the
+//  last track, so an empty track is never left between two cards.
 //
 //  Moving a section to another column at a step change remounts it (it loses
 //  local state such as an open row). Phones never cross a step; on desktop
@@ -45,6 +48,40 @@ function Stack<K extends string>({ keys, sections, className, style }: {
 }
 
 /**
+ * A sticky column pins only while it fits the scroll area (with the 1rem
+ * `top-4` offset above it and as much below). A pinned column taller than the
+ * viewport keeps its lower part out of view until the page itself ends — the
+ * Media tools with two cards open at 1469×680 — so a tall one scrolls with
+ * the page instead. Re-checked whenever the column or the scroller resizes.
+ */
+function StickyStack<K extends string>({ keys, sections, className, style }: {
+  keys: readonly K[]; sections: Record<K, ReactNode>; className?: string; style?: CSSProperties
+}) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [fits, setFits] = useState(true)
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const scroller = el.closest<HTMLElement>('[data-app-scroller]') ?? document.documentElement
+    const check = () => {
+      const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16
+      setFits(el.offsetHeight + 2 * rem <= scroller.clientHeight)
+    }
+    check()
+    if (typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(check)
+    ro.observe(el)
+    ro.observe(scroller)
+    return () => ro.disconnect()
+  }, [])
+  return (
+    <div ref={ref} data-sticky={fits ? 'on' : 'off'} className={cx(STACK, className, fits && 'sticky top-4 self-start')} style={style}>
+      {keys.map(k => <Fragment key={k}>{sections[k]}</Fragment>)}
+    </div>
+  )
+}
+
+/**
  * ```tsx
  * <PageBoard
  *   sections={{ brief: <DailyBrief />, tasks: <TodayTasksCard />, news: <NewsWidget /> }}
@@ -65,18 +102,21 @@ export function PageBoard<K extends string>({ sections, layout, stackClassName, 
     body = <Stack keys={resolved.columns[0].stack} sections={sections} className={cx(stackGap, stackClassName)} />
   } else if (resolved) {
     body = (
-      <div className="grid items-start gap-4" style={{ gridTemplateColumns: boardTemplate(resolved.tracks, resolved.main) }}>
+      <div className="grid items-start gap-4" style={{ gridTemplateColumns: boardTemplate(resolved.tracks, resolved.main, resolved.lead) }}>
         {resolved.top.length > 0 && <Stack keys={resolved.top} sections={sections} className="col-span-full gap-4" />}
-        {resolved.columns.map((c, i) => (
-          <Stack
-            key={i}
-            keys={c.stack}
-            sections={sections}
-            className={cx('gap-4', c.sticky && 'sticky top-4 self-start')}
-            // Inline so any span works without a safelist.
-            style={c.span > 1 ? { gridColumn: `span ${c.span} / span ${c.span}` } : undefined}
-          />
-        ))}
+        {resolved.columns.map((c, i) => {
+          const Column = c.sticky ? StickyStack : Stack
+          return (
+            <Column
+              key={i}
+              keys={c.stack}
+              sections={sections}
+              className="gap-4"
+              // Inline so any span works without a safelist.
+              style={c.span > 1 ? { gridColumn: `span ${c.span} / span ${c.span}` } : undefined}
+            />
+          )
+        })}
         {resolved.bottom.length > 0 && <Stack keys={resolved.bottom} sections={sections} className="col-span-full gap-4" />}
       </div>
     )

@@ -48,7 +48,7 @@ export interface BoardColumn<K extends string> {
   stack: readonly K[]
   /** Tracks this column covers (default 1). */
   span?: number
-  /** Stick to the top while the page scrolls. Only for a column shorter than the viewport. */
+  /** Stick to the top while the page scrolls — only while the column fits the viewport (PageBoard checks; a taller one scrolls with the page). */
   sticky?: boolean
 }
 
@@ -66,6 +66,13 @@ export interface BoardLayout<K extends string> {
   bottom?: readonly K[]
   /** Main track maximum for this step (CSS length), e.g. '40rem' for a calendar. */
   main?: string
+  /**
+   * Side tracks placed BEFORE the main track (default 0). A rail that drives
+   * or sums up the main column — a month calendar beside its workouts, a
+   * day's totals beside its meals, an add form beside its list — reads first,
+   * on the left. The columns still list tracks left to right.
+   */
+  lead?: number
 }
 
 /** Step 1 is always one stack; wider steps are optional (a missing step uses the nearest one below). */
@@ -79,6 +86,8 @@ export interface ResolvedLayout<K extends string> {
   columns: ResolvedColumn<K>[]
   bottom: readonly K[]
   main: string
+  /** Side tracks before the main track. */
+  lead: number
 }
 
 function isColumn<K extends string>(c: BoardColumnSpec<K>): c is BoardColumn<K> {
@@ -101,10 +110,11 @@ export function resolveBoardLayout<K extends string>(layouts: BoardLayouts<K>, s
         columns: (l.columns ?? []).map(normalizeColumn),
         bottom: l.bottom ?? [],
         main: l.main ?? `${BOARD.main}rem`,
+        lead: Math.min(s - 1, Math.max(0, Math.floor(l.lead ?? 0))),
       }
     }
   }
-  return { tracks: 1, top: [], columns: [{ stack: layouts[1], span: 1, sticky: false }], bottom: [], main: `${BOARD.main}rem` }
+  return { tracks: 1, top: [], columns: [{ stack: layouts[1], span: 1, sticky: false }], bottom: [], main: `${BOARD.main}rem`, lead: 0 }
 }
 
 /**
@@ -114,9 +124,12 @@ export function resolveBoardLayout<K extends string>(layouts: BoardLayouts<K>, s
  * tracks off an item that spans several of them: with `minmax(0,24rem)` sides
  * and a column spanning three, main stopped at an equal share (512px of 896).
  */
-export function boardTemplate(tracks: number, main = `${BOARD.main}rem`): string {
+export function boardTemplate(tracks: number, main = `${BOARD.main}rem`, lead = 0): string {
   if (tracks <= 1) return 'minmax(0,1fr)'
-  return `minmax(0,${main}) repeat(${tracks - 1},${BOARD.side}rem)`
+  const before = Math.min(tracks - 1, Math.max(0, Math.floor(lead)))
+  if (before === 0) return `minmax(0,${main}) repeat(${tracks - 1},${BOARD.side}rem)`
+  const after = tracks - 1 - before
+  return `repeat(${before},${BOARD.side}rem) minmax(0,${main})${after > 0 ? ` repeat(${after},${BOARD.side}rem)` : ''}`
 }
 
 /** Every section key a step places, in reading order. */
@@ -141,6 +154,7 @@ export function validateBoardLayouts<K extends string>(layouts: BoardLayouts<K>,
       const used = cols.reduce((a, c) => a + c.span, 0)
       if (cols.length > 0 && used !== s) problems.push(`step ${s}: columns cover ${used} tracks, expected ${s}`)
       if (cols.length === 0 && !(l.top?.length || l.bottom?.length)) problems.push(`step ${s}: nothing placed`)
+      if (l.lead != null && (!Number.isInteger(l.lead) || l.lead < 0 || l.lead > s - 1)) problems.push(`step ${s}: lead ${l.lead} must be 0–${s - 1}`)
     }
     const keys = keysAt(layouts, s)
     const seen = new Set<string>()
@@ -154,14 +168,32 @@ export function validateBoardLayouts<K extends string>(layouts: BoardLayouts<K>,
 }
 
 /** Width a column of `span` tracks gets at a page content width (px), for audits and tests. */
-export function columnWidthPx(pageWidth: number, layout: Pick<ResolvedLayout<string>, 'tracks' | 'main'>, index: number, span: number, remPx = 16): number {
+export function columnWidthPx(pageWidth: number, layout: Pick<ResolvedLayout<string>, 'tracks' | 'main'> & { lead?: number }, index: number, span: number, remPx = 16): number {
   const gap = BOARD.gap * remPx
   const side = BOARD.side * remPx
   const mainMax = /^([\d.]+)rem$/.exec(layout.main) ? parseFloat(layout.main) * remPx : BOARD.main * remPx
   if (layout.tracks <= 1) return pageWidth
   // Sides stay at 24rem (the steps guarantee room); main takes the rest up to its cap.
   const mainW = Math.min(mainMax, pageWidth - (layout.tracks - 1) * (side + gap))
-  const widths = [mainW, ...Array.from({ length: layout.tracks - 1 }, () => side)]
+  const sides = (n: number) => Array.from({ length: n }, () => side)
+  const lead = Math.min(layout.tracks - 1, Math.max(0, Math.floor(layout.lead ?? 0)))
+  const widths = [...sides(lead), mainW, ...sides(layout.tracks - 1 - lead)]
   const covered = widths.slice(index, index + span)
   return covered.reduce((a, w) => a + w, 0) + (covered.length - 1) * gap
+}
+
+/**
+ * The widest a board gets at a step, in rem: its main cap plus the side
+ * tracks and gaps. Null on a one-track step (the stack takes the page width)
+ * or when the main cap is not in rem. A page header above a board that stops
+ * short of the container (a 40rem picker track) caps itself to this, so its
+ * right-hand controls line up with the board's last card instead of floating
+ * past it.
+ */
+export function boardWidthRem<K extends string>(layouts: BoardLayouts<K>, step: PageStep): number | null {
+  const l = resolveBoardLayout(layouts, step)
+  if (l.tracks <= 1) return null
+  const m = /^([\d.]+)rem$/.exec(l.main)
+  if (!m) return null
+  return parseFloat(m[1]) + (l.tracks - 1) * (BOARD.side + BOARD.gap)
 }

@@ -25,7 +25,8 @@ import { SleepIncompleteNote } from './SleepIncompleteNote'
 
 // Nights are filed under the day you WOKE UP, so "today" in Day mode is last
 // night — a finished night that always counts (H-01).
-export function SleepSection({ range }: { range: HealthRange }) {
+/** `extras`: the breathing grid at the card's foot (off when the page gives it a card of its own). */
+export function SleepSection({ range, extras = true }: { range: HealthRange; extras?: boolean }) {
   const { anchor, setAnchor, period, setPeriod } = range
   const win = useRangeWindow(range)
   const isDay = win.isDay
@@ -147,7 +148,7 @@ export function SleepSection({ range }: { range: HealthRange }) {
         <p className="text-micro text-fg-faint">Each bar is the night that ended that morning. {fmtDayLong(win.from)} – {fmtDayLong(win.to)}.</p>
       )}
 
-      <MetricMiniGrid title="Breathing during sleep" metrics={SLEEP_EXTRA_METRICS} window={{ from: win.from, to: win.to, period }} onViewDay={viewDay} hideWhenEmpty />
+      {extras && <MetricMiniGrid title="Breathing during sleep" metrics={SLEEP_EXTRA_METRICS} window={{ from: win.from, to: win.to, period }} onViewDay={viewDay} hideWhenEmpty />}
       <SleepRawRows points={points} />
     </SectionCard>
   )

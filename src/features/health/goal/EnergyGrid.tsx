@@ -26,7 +26,7 @@ export function EnergyGrid({ r, targetKcal, phase }: { r: EnergyReport; targetKc
   const toShown = (deficit: number | null) => (deficit == null ? null : phase === 'cut' ? deficit : -deficit)
   const balance = toShown(r.loggedDeficit), planned = toShown(r.plannedDeficit)
   return (
-    <dl className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+    <dl className="grid grid-cols-2 gap-2 @[30rem]:grid-cols-3">
       <Fact label="Eaten" value={kcal(p.meanIntake)} unit="kcal/day"
         hint={<>average of the {p.days} of {r.days} days used</>}
         info={<>Only days with BOTH a full diary and a complete Apple day count, so the two sides cover the same days. A day with nothing logged is a gap, not a 0 kcal day; a day under {kcal(p.halfLoggedBelow)} kcal (60 % of your {kcal(targetKcal)} kcal target, rounded to the nearest 50 and never under 800) is half-logged and left out.</>} />

@@ -30,7 +30,7 @@ export function MuscleRecencyList() {
   if (isLoading) return <Skeleton rounded="rounded-card" className="h-48 max-w-3xl" />
 
   return (
-    <Card className="max-w-3xl">
+    <Card className="@container max-w-3xl">
       <CardHeader
         title={<span className="inline-flex items-center gap-1.5">Days since each muscle was trained
           <InfoBubble>
@@ -46,7 +46,7 @@ export function MuscleRecencyList() {
           <li key={l.tone} className="flex items-center gap-1.5 text-meta text-fg-muted"><ToneDot tone={l.tone} />{l.label}</li>
         ))}
       </ul>
-      <ul className="grid grid-cols-1 gap-x-6 border-t border-line sm:grid-cols-2">
+      <ul className="grid grid-cols-1 gap-x-6 border-t border-line @[30rem]:grid-cols-2">
         {rows.map(({ slug, info }) => (
           <li key={slug} className="flex items-baseline gap-2 border-b border-line py-1.5 text-body">
             <ToneDot tone={RECENCY_TONE[recencyBucket(info?.daysSince)]} className="shrink-0 self-center" />

@@ -229,8 +229,10 @@ export function ExerciseDecisionTable() {
 
   const filtersActive = query || evidenceFilter !== 'any' || dateWindow !== 'all' || muscleFilter !== 'any' || routineFilter !== 'any'
 
+  // Table or stacked cards by the card's OWN width (a side-by-side layout
+  // can make it narrow on a laptop), not the viewport's.
   return (
-    <Card>
+    <Card className="@container">
       <div role="tablist" aria-label="Decision view" className="scroll-x -mx-1 mb-1 flex gap-1 px-1 sm:flex-wrap">
         {TABS.map(t => (
           <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)} className="pill-tab shrink-0 px-3">
@@ -299,7 +301,7 @@ export function ExerciseDecisionTable() {
       ) : (
         <>
           {/* Desktop table */}
-          <div className="hidden sm:block overflow-x-auto">
+          <div className="hidden overflow-x-auto @[44rem]:block">
             <table className="w-full">
               <thead>
                 <tr className="section-label border-b border-line-strong text-left">
@@ -328,7 +330,7 @@ export function ExerciseDecisionTable() {
           </div>
 
           {/* Mobile stacked cards */}
-          <ul className="sm:hidden flex flex-col gap-2">
+          <ul className="flex flex-col gap-2 @[44rem]:hidden">
             {shown.map(d => (
               <DecisionCard
                 key={d.exerciseTemplateId} result={d}

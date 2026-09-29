@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { MediaBackdrop } from '../components/MediaBackdrop'
 import { MediaSearch } from '../components/MediaSearch'
 import { DiscoveryTabs } from '../components/DiscoveryTabs'
@@ -9,11 +9,16 @@ import { CompactLibraryStrip } from '../components/CompactLibraryStrip'
 import { useMovies } from '../hooks/useMovies'
 import { useTVSeries } from '../hooks/useTVSeries'
 import { useEntityModal } from '../../../shared/modals'
-import { PageContainer, PageHeader, SegmentedControl } from '../../../shared/ui'
+import { PageBoard, PageContainer, PageHeader, SegmentedControl } from '../../../shared/ui'
+import { MEDIA_BOARD, type MediaSection } from '../mediaBoard'
 import type { MediaType } from '../types'
 
 type Tab = 'movies' | 'tv'
 
+/**
+ * Media, laid out by PageBoard (mediaBoard.ts says which card goes where at
+ * each width). Only the sections a step places are mounted.
+ */
 export function MediaPage() {
   const [tab, setTab] = useState<Tab>('movies')
   const modal = useEntityModal()
@@ -23,22 +28,43 @@ export function MediaPage() {
 
   const openDetail = (tmdbId: number, mediaType: MediaType) => modal.open({ kind: 'media', tmdbId, mediaType })
   const hasLibrary = movieEntries.length > 0 || tvEntries.length > 0
+  const mediaType: MediaType = tab === 'movies' ? 'movie' : 'tv'
 
-  const sideWidgets = (
-    <>
-      <TonightPicker movieEntries={movieEntries} tvEntries={tvEntries} onOpenDetail={openDetail} />
-      <ReleaseCalendar movieEntries={movieEntries} tvEntries={tvEntries} onOpenDetail={openDetail} />
-      {hasLibrary && <MediaStats movieEntries={movieEntries} tvEntries={tvEntries} />}
-    </>
-  )
+  const libraryLoading = moviesLoading || tvLoading
+
+  const tonight = <TonightPicker movieEntries={movieEntries} tvEntries={tvEntries} onOpenDetail={openDetail} />
+  const calendar = <ReleaseCalendar movieEntries={movieEntries} tvEntries={tvEntries} onOpenDetail={openDetail} loading={libraryLoading} />
+  const stats = hasLibrary ? <MediaStats movieEntries={movieEntries} tvEntries={tvEntries} loading={libraryLoading} /> : null
+
+  const sections: Record<MediaSection, ReactNode> = {
+    // The rotating backdrop is scoped to the search + library card only.
+    library: (
+      <section className="card relative p-4 sm:p-5">
+        <MediaBackdrop />
+        <div className="relative z-10 flex flex-col gap-4">
+          <MediaSearch mediaType={mediaType} onSelectResult={openDetail} />
+          {!libraryLoading && hasLibrary && (
+            <CompactLibraryStrip tab={tab} movieEntries={movieEntries} tvEntries={tvEntries} onOpenDetail={openDetail} />
+          )}
+        </div>
+      </section>
+    ),
+    discovery: <DiscoveryTabs mediaType={mediaType} onOpenDetail={openDetail} />,
+    // Phones and tablets: the three tools under the main cards, one column
+    // on a phone and two once the grid itself is 36rem wide.
+    tools: (
+      <div className="@container">
+        <div className="grid grid-cols-1 items-start gap-4 @[36rem]:grid-cols-2">{tonight}{calendar}{stats}</div>
+      </div>
+    ),
+    tonight,
+    calendar,
+    stats,
+  }
 
   return (
-    <PageContainer width="full">
-      <PageHeader
-        // Ends where the column + rail end, not at the viewport edge.
-        className="max-w-[93.25rem]"
-        title="Media"
-      >
+    <PageContainer>
+      <PageHeader title="Media">
         <SegmentedControl<Tab>
           value={tab}
           onChange={setTab}
@@ -46,29 +72,7 @@ export function MediaPage() {
         />
       </PageHeader>
 
-      <div className="flex items-start gap-5">
-        {/* Capped so a monitor doesn't smear a two-poster library across
-            2,000px; the rail then sits right beside the column. */}
-        <div className="stagger-in flex min-w-0 max-w-[72rem] flex-1 flex-col gap-5">
-          {/* The rotating backdrop is scoped to the search + library card only. */}
-          <section className="card relative p-4 sm:p-5">
-            <MediaBackdrop />
-            <div className="relative z-10 flex flex-col gap-4">
-              <MediaSearch mediaType={tab === 'movies' ? 'movie' : 'tv'} onSelectResult={openDetail} />
-              {!moviesLoading && !tvLoading && hasLibrary && (
-                <CompactLibraryStrip tab={tab} movieEntries={movieEntries} tvEntries={tvEntries} onOpenDetail={openDetail} />
-              )}
-            </div>
-          </section>
-
-          <DiscoveryTabs mediaType={tab === 'movies' ? 'movie' : 'tv'} onOpenDetail={openDetail} />
-        </div>
-
-        <aside className="sticky top-4 hidden w-80 shrink-0 flex-col gap-4 lg:flex">{sideWidgets}</aside>
-      </div>
-
-      {/* Below the main column on narrower screens; two columns from sm. */}
-      <div className="mt-5 grid grid-cols-1 items-start gap-4 sm:grid-cols-2 lg:hidden">{sideWidgets}</div>
+      <PageBoard sections={sections} layout={MEDIA_BOARD} stackGap="gap-5" stackClassName="stagger-in" />
     </PageContainer>
   )
 }

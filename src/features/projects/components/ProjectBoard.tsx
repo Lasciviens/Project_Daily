@@ -46,8 +46,10 @@ export function ProjectBoard({ projectId, items, phases, onMove }: Props) {
 
   return (
     <div>
-      {/* Phones: horizontal snap (the next column peeks); sm+: three columns. */}
-      <div className="flex snap-x snap-mandatory items-start gap-3 overflow-x-auto pb-1 sm:grid sm:grid-cols-3 sm:overflow-visible">
+      {/* Phones: horizontal snap (the next column peeks); sm+: three columns
+          of at most 28rem (Work's kanban cap), so a board spanning three
+          page tracks leaves the rest empty instead of stretching them. */}
+      <div className="flex snap-x snap-mandatory items-start gap-3 overflow-x-auto pb-1 sm:grid sm:grid-cols-[repeat(3,minmax(0,28rem))] sm:overflow-visible">
         {COLUMNS.map((col, colIdx) => {
           const colItems = items.filter(i => i.status === col.key)
           const isDropTarget = dragOverCol === col.key

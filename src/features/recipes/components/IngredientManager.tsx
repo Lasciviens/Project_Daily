@@ -7,7 +7,8 @@ import { lookupBarcode, type BarcodeProduct } from '../api/openFoodFactsApi'
 import { BarcodeScanner } from './BarcodeScanner'
 import { OnlineFoodSearch } from './OnlineFoodSearch'
 import { entityModal } from '../../../shared/modals/useEntityModal'
-import { Button, Card, EmptyState, IconButton, SkeletonText, cx } from '../../../shared/ui'
+import { Button, Card, EmptyState, IconButton, PageBoard, SkeletonText, cx } from '../../../shared/ui'
+import { INGREDIENT_BOARD } from '../foodBoards'
 import { MacroWarningBadge } from './MacroWarningBadge'
 import { checkMacroConsistency } from '../macroSanity'
 import { FOOD_GROUPS, type IngredientLibraryItem } from '../types'
@@ -146,10 +147,13 @@ export function IngredientManager() {
   )
 
   return (
-    <div className="grid grid-cols-1 items-start gap-3 sm:gap-4 xl:grid-cols-[minmax(0,26rem)_minmax(0,46rem)]">
-      {/* Add / edit form — sticky beside the list on wide screens */}
-      <div ref={formRef} className="scroll-mt-4 xl:sticky xl:top-4">
-      <Card className={cx('flex flex-col gap-3', editingId && '!border-accent-500/50')}>
+    <>
+    {/* Placed by PageBoard (foodBoards.ts): the add / edit form is a sticky
+        rail beside the list on wide screens. */}
+    <PageBoard layout={INGREDIENT_BOARD} stackGap="gap-3 sm:gap-4" sections={{
+      form: (
+      <div ref={formRef} className="scroll-mt-4">
+      <Card className={cx('@container flex flex-col gap-3', editingId && '!border-accent-500/50')}>
         <div className="-my-1 flex items-center gap-2">
           {/* On phones the title is the disclosure toggle; scan and search stay
               visible either way and open the form once a product is picked. */}
@@ -179,7 +183,7 @@ export function IngredientManager() {
         )}
         <div className={cx(formOpen ? 'flex' : 'hidden', 'flex-col gap-2 sm:flex')}>
           <input value={f.name} onChange={e => set('name', e.target.value)} placeholder="Name (e.g. chicken breast)" aria-label="Name" className="input" />
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-2">
+          <div className="grid grid-cols-2 gap-2 @[30rem]:grid-cols-3">
             {macroField('kcal', 'Calories')}
             {macroField('prot', 'Protein g')}
             {macroField('carb', 'Carbs g')}
@@ -193,7 +197,7 @@ export function IngredientManager() {
               <span>Calories don't match protein, carbs and fat — {consistency.deltaPct}% off. Tap the badge for details.</span>
             </div>
           )}
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-2">
+          <div className="grid grid-cols-2 gap-2 @[36rem]:grid-cols-4">
             <input value={f.servLabel} onChange={e => set('servLabel', e.target.value)} placeholder="Portion (1 scoop)" aria-label="Portion name" className="input" />
             <input value={f.servGrams} onChange={e => set('servGrams', sanitizeDecimal(e.target.value))} inputMode="decimal" placeholder="= grams (30)" aria-label="Portion grams" className="input" />
             <input value={f.unit} onChange={e => set('unit', e.target.value)} placeholder="Unit (g)" aria-label="Unit" className="input" />
@@ -207,10 +211,9 @@ export function IngredientManager() {
           </Button>
         </div>
       </Card>
-      </div>
+      </div>),
 
-      <BarcodeScanner open={scanOpen} onClose={() => setScanOpen(false)} onDetected={handleBarcode} />
-
+      list: (
       <div className="flex min-w-0 flex-col gap-3">
         {(presentGroups.ordered.length > 0 || presentGroups.hasOther) && (
           <div role="tablist" aria-label="Food group" className="scroll-x -mx-1 flex gap-1.5 px-1">
@@ -222,7 +225,7 @@ export function IngredientManager() {
           </div>
         )}
 
-        <Card padded={false} className="overflow-hidden">
+        <Card padded={false} className="@container overflow-hidden">
           <header className="flex items-center gap-3 border-b border-line px-4 py-2.5">
             <p className="section-label flex-1">Your foods <span className="count-badge ml-1 normal-case tracking-normal">{filtered.length}{catFilter || q ? ` / ${library.length}` : ''}</span></p>
             <label className="relative w-36 sm:w-48">
@@ -237,12 +240,14 @@ export function IngredientManager() {
             <EmptyState title={q || catFilter ? 'No match' : 'No foods yet'}
               description={q || catFilter ? undefined : 'Add your basics (chicken, rice, oats, whey…) with the form.'} />
           ) : (
-            <ul className="divide-y divide-line">
+            // Rows split into columns once the card is wide (the list spans several
+            // tracks). CSS columns, not a grid: the A–Z order reads DOWN each column.
+            <ul className="-mb-px @[68rem]:columns-2 @[68rem]:gap-x-6 @[100rem]:columns-3">
               {filtered.slice(0, 300).map(ing => {
                 const macroCheck = checkMacroConsistency(ing.calories, ing.protein_g, ing.carbs_g, ing.fat_g)
                 const num = 'hidden w-12 shrink-0 text-right text-meta tabular-nums text-fg-muted sm:block'
                 return (
-                  <li key={ing.id} className="flex min-h-[48px] items-center gap-2 py-1 pl-4 pr-2 text-body">
+                  <li key={ing.id} className="flex min-h-[48px] break-inside-avoid items-center gap-2 border-b border-line py-1 pl-4 pr-2 text-body">
                     <div className="min-w-0 flex-1">
                       <span className="block truncate font-medium text-fg">{ing.name}</span>
                       {(ing.food_group || ing.serving_label) && (
@@ -268,8 +273,11 @@ export function IngredientManager() {
           )}
           {filtered.length > 300 && <p className="border-t border-line px-4 py-2 text-meta text-fg-muted">Showing the first 300 — search or filter to narrow.</p>}
         </Card>
-        <p className="max-w-2xl text-meta text-fg-muted">Per-100g is the source of truth; portion presets are one-tap conveniences. Logged meals snapshot their macros — editing a food later never rewrites your history. Nutrition data: Matvaretabellen (Mattilsynet), NLOD.</p>
-      </div>
-    </div>
+        <p className="max-w-2xl text-meta text-fg-muted">Per-100g is the source of truth; portion presets are one-tap conveniences. Logged meals follow their foods — editing a food updates every meal made from it, past days included. Nutrition data: Matvaretabellen (Mattilsynet), NLOD.</p>
+      </div>),
+    }} />
+
+    <BarcodeScanner open={scanOpen} onClose={() => setScanOpen(false)} onDetected={handleBarcode} />
+    </>
   )
 }

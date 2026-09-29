@@ -18,3 +18,21 @@ export const KIND_LABEL: Record<AiMemory['kind'], string> = {
 }
 
 export const KINDS: AiMemory['kind'][] = ['fact', 'preference', 'note', 'summary']
+
+export const SOURCE_LABEL: Record<AiMemory['source'], string> = {
+  user: 'You added this',
+  ai:   'AI saved this',
+  auto: 'Saved automatically',
+}
+
+/** An edit in progress (the sheet on phones, the detail pane on wider pages). */
+export interface MemoryDraft {
+  kind: AiMemory['kind']
+  title: string
+  content: string
+}
+
+export const draftOf = (m: Pick<AiMemory, 'kind' | 'title' | 'content'>): MemoryDraft => ({ kind: m.kind, title: m.title, content: m.content })
+export const draftValid = (d: MemoryDraft) => !!d.title.trim() && !!d.content.trim()
+export const draftChanged = (d: MemoryDraft, m: Pick<AiMemory, 'kind' | 'title' | 'content'>) =>
+  d.kind !== m.kind || d.title.trim() !== m.title || d.content.trim() !== m.content

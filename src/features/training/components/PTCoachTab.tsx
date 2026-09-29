@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { ChevronDown, Play, RefreshCw } from 'lucide-react'
 import type { PTAssessmentRow } from '../api/ptCoachApi'
 import { usePtAssessments, useGeneratePtAssessment } from '../hooks/usePtCoach'
-import { Button, Card, SectionLabel } from '../../../shared/ui'
+import { Button, Card, PageBoard, SectionLabel } from '../../../shared/ui'
+import { COACH_BOARD } from '../trainingBoards'
 import { todayStr } from '../../../shared/utils/dateUtils'
 import { ProfileSummaryCard } from './program/ProfileSummaryCard'
 import { fmtDateEnGB } from '../../../shared/utils/enGBDate'
@@ -62,10 +63,11 @@ export function PTCoachTab() {
   }
 
   return (
-    // The coach beside the profile it reads; stacked on a phone.
-    <div className="flex flex-col gap-4 xl:flex-row xl:items-start">
-      <div className="flex min-w-0 max-w-2xl flex-1 flex-col gap-4">
-        <Card className="flex flex-col gap-4">
+    // The coach beside the profile it reads and its history (trainingBoards.ts
+    // → COACH_BOARD); stacked on a phone.
+    <PageBoard layout={COACH_BOARD} stackGap="gap-4" sections={{
+      coach: (
+        <Card className="flex max-w-2xl flex-col gap-4">
           <div>
             <h3 className="text-lead font-semibold text-fg">AI coach — daily assessment</h3>
             <p className="mt-0.5 text-meta text-fg-muted">
@@ -121,9 +123,10 @@ export function PTCoachTab() {
             </div>
           )}
         </Card>
+      ),
 
-        {past.length > 0 && (
-          <Card>
+      history: past.length > 0 && (
+          <Card className="max-w-3xl">
             <SectionLabel className="mb-2">Past assessments</SectionLabel>
             <ul className="flex flex-col gap-1">
               {past.map(a => {
@@ -151,9 +154,8 @@ export function PTCoachTab() {
               })}
             </ul>
           </Card>
-        )}
-      </div>
-      <ProfileSummaryCard />
-    </div>
+      ),
+      profile: <ProfileSummaryCard />,
+    }} />
   )
 }

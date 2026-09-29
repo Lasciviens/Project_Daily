@@ -20,7 +20,8 @@ import { fmtDayMonth } from './healthFormat'
 // reads 4.5–6.3 ml/kg/min low in validation studies, and it arrives a few
 // times a month. So it always shows its date, the ± watch band and a year of
 // dots, never a daily number.
-export function CardioFitnessSection({ range }: { range: HealthRange }) {
+/** `extras`: the recovery grid at the card's foot (off when the page gives it a card of its own). */
+export function CardioFitnessSection({ range, extras = true }: { range: HealthRange; extras?: boolean }) {
   const { anchor, setAnchor, setPeriod, period } = range
   const c = useChartColors()
   const win = useRangeWindow(range)
@@ -89,7 +90,7 @@ export function CardioFitnessSection({ range }: { range: HealthRange }) {
           )}
         </>
       )}
-      <MetricMiniGrid title="Recovery and effort" metrics={CARDIO_EXTRA_METRICS} window={{ from: win.from, to: win.to, period }} onViewDay={viewDay} hideWhenEmpty />
+      {extras && <MetricMiniGrid title="Recovery and effort" metrics={CARDIO_EXTRA_METRICS} window={{ from: win.from, to: win.to, period }} onViewDay={viewDay} hideWhenEmpty />}
     </SectionCard>
   )
 }

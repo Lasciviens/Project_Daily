@@ -1,9 +1,11 @@
-import { useState } from 'react'
+import { useState, type CSSProperties } from 'react'
 import { FolderKanban, Plus } from 'lucide-react'
 import { Button, EmptyState, PageContainer, PageHeader, Skeleton } from '../../../shared/ui'
 import { useProjects, useProjectStats, useCreateProject } from '../hooks/useProjects'
 import { ProjectCard } from '../components/ProjectCard'
 import { ProjectDetail } from '../components/ProjectDetail'
+import { projectsHeaderCapRem } from '../projectBoard'
+import { useElementWidthRem } from '../../../shared/hooks/useElementWidth'
 
 const GRID = 'grid grid-cols-1 sm:grid-cols-[repeat(auto-fill,minmax(19rem,22rem))] justify-start items-start gap-3 sm:gap-4'
 
@@ -15,6 +17,10 @@ export function ProjectsPage() {
 
   const selected = projects.find(p => p.id === selectedId) ?? null
   const activeCount = projects.filter(p => p.status === 'active').length
+  // The header stops over the last card (New project floated ~44rem past
+  // four cards at 2450); from sm, where the cards stop filling the row.
+  const { ref: widthRef, width } = useElementWidthRem<HTMLDivElement>()
+  const headerCap = width == null ? null : projectsHeaderCapRem(isLoading ? 6 : projects.length, width)
 
   async function handleNew() {
     try {
@@ -42,12 +48,16 @@ export function ProjectsPage() {
 
   return (
     <PageContainer>
-      <PageHeader
-        title="Projects"
-        // A placeholder while loading keeps this row from popping in (and the grid from jumping).
-        subtitle={isLoading ? <Skeleton className="my-0.5 h-4 w-32" /> : projects.length > 0 ? `${activeCount} active · ${projects.length} total` : undefined}
-        actions={isLoading || projects.length > 0 ? newButton : undefined}
-      />
+      <div ref={widthRef}>
+        <div className="sm:max-w-[var(--header-cap)]" style={headerCap != null ? { '--header-cap': `${headerCap}rem` } as CSSProperties : undefined}>
+          <PageHeader
+            title="Projects"
+            // A placeholder while loading keeps this row from popping in (and the grid from jumping).
+            subtitle={isLoading ? <Skeleton className="my-0.5 h-4 w-32" /> : projects.length > 0 ? `${activeCount} active · ${projects.length} total` : undefined}
+            actions={isLoading || projects.length > 0 ? newButton : undefined}
+          />
+        </div>
+      </div>
 
       {isLoading ? (
         <div className={GRID}>

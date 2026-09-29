@@ -160,9 +160,10 @@ export default function WorkBoard({
       onDragEnd={handleDragEnd}
       onDragCancel={() => { setDraggingId(null); setDragOverCol(null) }}
     >
-      {/* Explicit 4-column kanban from lg, each column capped so cards keep a
-          readable width on a wide monitor; stacked sections below lg. */}
-      <div className="flex flex-col gap-2 lg:grid lg:grid-cols-[repeat(4,minmax(0,22rem))] lg:items-start lg:gap-3">
+      {/* Explicit 4-column kanban from lg, stacked sections below lg. The
+          page gives the board its width (workBoard.ts); a column grows to at
+          most 28rem so cards never stretch past a readable width. */}
+      <div className="flex flex-col gap-2 lg:grid lg:grid-cols-[repeat(4,minmax(0,28rem))] lg:items-start lg:gap-3">
         {BOARD_COLUMNS.map(col => (
           <BoardColumn
             key={col.id}

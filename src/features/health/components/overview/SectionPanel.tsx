@@ -1,4 +1,5 @@
 import { useEffect, useRef, type ReactNode } from 'react'
+import { PageBoard, type BoardLayouts } from '../../../../shared/ui'
 import { HEALTH_SECTIONS, type HealthSectionId } from '../sectionTypes'
 
 /** The window strip. It scrolls sideways on a phone, so the ACTIVE pill is
@@ -29,13 +30,20 @@ export function HealthSectionTabs({ value, onChange }: { value: HealthSectionId;
   )
 }
 
-/** One window's content: an optional one-line note, then its cards in a
- *  column capped at the chart width (W4). */
-export function SectionPanel({ id, note, children }: { id: HealthSectionId; note?: ReactNode; children: ReactNode }) {
+/** One window's content: an optional one-line note, then its cards laid out
+ *  by the window's PageBoard (healthBoards.ts): the main chart card in the
+ *  main track, trend and timing cards beside it, mini-metric grids after. */
+export function SectionPanel<K extends string>({ id, note, sections, layout, stackGap = 'gap-3' }: {
+  id: HealthSectionId
+  note?: ReactNode
+  sections: Record<K, ReactNode>
+  layout: BoardLayouts<K>
+  stackGap?: string
+}) {
   return (
     <section id={`health-panel-${id}`} role="tabpanel" aria-labelledby={`health-tab-${id}`} className="flex min-w-0 flex-col gap-3">
       {note && <p className="text-meta text-fg-muted">{note}</p>}
-      <div className="flex w-full max-w-4xl flex-col gap-3">{children}</div>
+      <PageBoard sections={sections} layout={layout} stackGap={stackGap} />
     </section>
   )
 }

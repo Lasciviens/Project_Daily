@@ -120,6 +120,10 @@ function RoutineCard({ routine, typeById, onEdit }: { routine: HevyRoutine; type
 
 // ─── RoutinesTab ──────────────────────────────────────────────────────────────
 
+// As many ≥ 24rem columns as fit, sharing the width: two on a laptop, five
+// on a big monitor — never two cards stretched across the whole page.
+const ROUTINE_GRID = 'grid grid-cols-1 items-start gap-3 sm:grid-cols-[repeat(auto-fill,minmax(24rem,1fr))]'
+
 export function RoutinesTab() {
   const { data: routines = [], isLoading } = useHevyRoutines()
   const { data: templates = [] } = useHevyExerciseTemplates()
@@ -129,7 +133,7 @@ export function RoutinesTab() {
 
   if (isLoading) {
     return (
-      <div className="grid grid-cols-1 items-start gap-3 xl:grid-cols-2">
+      <div className={ROUTINE_GRID}>
         {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} rounded="rounded-card" className="h-[72px]" />)}
       </div>
     )
@@ -150,7 +154,7 @@ export function RoutinesTab() {
       {routines.length === 0 ? (
         <EmptyState bordered icon={<ClipboardList />} title="No routines yet" description="Sync from Hevy or create one here." />
       ) : (
-        <div className="grid grid-cols-1 items-start gap-3 xl:grid-cols-2">
+        <div className={ROUTINE_GRID}>
           {routines.map(r => <RoutineCard key={r.id} routine={r} typeById={typeById} onEdit={setEditingRoutine} />)}
         </div>
       )}

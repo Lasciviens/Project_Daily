@@ -100,13 +100,20 @@ export function TasksPanel() {
     return (
       <Card className={className ?? 'flex flex-col gap-3'}>
         {groups.map(id => <Section key={id} title={GROUP_META[id].title} tasks={g[id]} tone={GROUP_META[id].tone} fresh={fresh} />)}
-        {empty && groups.length === 1 && (
-          <h3 className="flex items-center gap-2 px-1">
-            <ToneDot tone={GROUP_META[groups[0]].tone} />
-            <span className="section-label">{GROUP_META[groups[0]].title}</span>
-          </h3>
+        {/* An empty column keeps the same heading row (with a 0 badge) as its
+            neighbours, so the column tops line up. */}
+        {empty && (
+          <div>
+            {groups.length === 1 && (
+              <h3 className="mb-1.5 flex items-center gap-2 px-1">
+                <ToneDot tone={GROUP_META[groups[0]].tone} />
+                <span className="section-label">{GROUP_META[groups[0]].title}</span>
+                <span className="count-badge">0</span>
+              </h3>
+            )}
+            <p className="px-1 text-body text-fg-muted">{EMPTY_TEXT[key]}</p>
+          </div>
         )}
-        {empty && <p className="-mt-1.5 px-1 text-body text-fg-muted">{EMPTY_TEXT[key]}</p>}
       </Card>
     )
   }

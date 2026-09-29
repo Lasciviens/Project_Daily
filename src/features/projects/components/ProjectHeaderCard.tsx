@@ -31,8 +31,10 @@ export function ProjectHeaderCard({ project, items, onDeleted }: { project: Proj
     onDeleted()
   }
 
+  // Capped like a main-track card: a name, a progress bar and six colour
+  // dots only get emptier past 56rem when the work spans several tracks.
   return (
-    <Card className="flex flex-col gap-3">
+    <Card className="flex w-full max-w-[56rem] flex-col gap-3">
       <div className="flex items-center gap-2">
         <span aria-hidden className="h-3 w-3 shrink-0 rounded-full" style={{ background: PROJECT_COLOR[project.color] }} />
         <InlineText

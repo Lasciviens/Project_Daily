@@ -13,12 +13,13 @@ import { WeeklyNutritionCard } from './WeeklyNutritionCard'
 import { useEatPlannedEntry } from '../hooks/useMealPlan'
 import { MacroBar } from './MacroBar'
 import { WaterTracker } from '../../daily/components/summary/WaterTracker'
-import { AnimatedNumber, Card, CardHeader, IconButton, ProgressRing, TonePill, Truncate, cx } from '../../../shared/ui'
+import { AnimatedNumber, Card, CardHeader, IconButton, PageBoard, ProgressRing, TonePill, Truncate, cx } from '../../../shared/ui'
 import { formatLocalDate } from '../../../shared/utils/dateUtils'
 import { MACRO_COLOR } from '../macroColors'
 import type { MealSlot } from '../types'
 import { groupDayMeals, type DayMeal, type MealGroupRow } from '../../daily/api/dayNutritionApi'
 import { useNewIds } from '../../../shared/hooks/useNewIds'
+import { FOOD_TODAY_BOARD } from '../foodBoards'
 
 // The wide meal-row grid: name · amount · kcal · protein · carbs · fat · fiber · ✓ · ✕.
 // Shared by the rows and their column-heading row so the two always line up.
@@ -37,8 +38,9 @@ function splitTitleQty(title: string): { name: string; qty: string | null } {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Food · Today — the full nutrition surface. Summary + water + coach on the
-//  left, meal slots on the right (xl+). A check on a PLANNED row confirms it as
+//  Food · Today — the full nutrition surface. The day's totals, water, week
+//  and coach beside the meal slots, placed per width by FOOD_TODAY_BOARD
+//  (foodBoards.ts). A check on a PLANNED row confirms it as
 //  EATEN so it starts counting toward the day.
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -219,9 +221,9 @@ export function FoodTodayTab({ date }: { date: string }) {
   const coachAction = 'flex min-h-[44px] items-center justify-between gap-2 rounded-row border border-line bg-surface px-3 py-1.5 text-left transition-colors hover:bg-surface-hover'
 
   return (
-    <div className="grid grid-cols-1 items-start gap-3 sm:gap-4 justify-start xl:grid-cols-[minmax(0,30rem)_minmax(0,42rem)]">
-      {/* Left: summary, water, coach */}
-      <div className="flex min-w-0 flex-col gap-3 sm:gap-4">
+    // Placed by PageBoard (foodBoards.ts): the totals rail on the left, the meal slots in main.
+    <PageBoard layout={FOOD_TODAY_BOARD} stackGap="gap-3 sm:gap-4" sections={{
+      nutrition: (
         <Card>
           <CardHeader title="Nutrition" variant="label" />
           <GoalSummary date={date} className="-mt-2 mb-2" />
@@ -254,16 +256,16 @@ export function FoodTodayTab({ date }: { date: string }) {
               </div>
             </div>
           )}
-        </Card>
+        </Card>),
 
-        <Card className="!py-3">
+      water: (<Card className="!py-3">
           <WaterTracker date={date} />
-        </Card>
+        </Card>),
 
-        <WeeklyNutritionCard date={date} />
+      week: <WeeklyNutritionCard date={date} />,
 
-        {/* Coach — collapsible on phones so the meal slots stay reachable. */}
-        <Card>
+      // Coach — collapsible on phones so the meal slots stay reachable.
+      coach: (<Card>
           <button type="button" onClick={() => setCoachOpen(o => !o)} aria-expanded={coachOpen}
             className="-my-2 flex min-h-[44px] w-full items-center gap-2.5 text-left sm:hidden">
             <span aria-hidden className="grid h-7 w-7 shrink-0 place-items-center rounded-control bg-accent-50 text-accent-600"><Brain className="h-4 w-4" /></span>
@@ -308,10 +310,10 @@ export function FoodTodayTab({ date }: { date: string }) {
               </>
             )}
           </div>
-        </Card>
-      </div>
+        </Card>),
 
-      {/* Right: meal slots */}
+
+      meals: (
       <div className="grid min-w-0 grid-cols-1 content-start gap-3 stagger-in sm:gap-4">
         {SLOTS.map(({ slot, label, icon }) => {
           const meals = bySlot.get(slot) ?? []
@@ -366,7 +368,7 @@ export function FoodTodayTab({ date }: { date: string }) {
             </Card>
           )
         })}
-      </div>
-    </div>
+      </div>),
+    }} />
   )
 }

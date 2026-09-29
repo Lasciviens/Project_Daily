@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Clapperboard, Film, Tv } from 'lucide-react'
 import { useEntityModal } from '../../../shared/modals'
 import { Skeleton, EmptyState, Truncate } from '../../../shared/ui'
@@ -6,6 +7,8 @@ import { useRecentlyWatched, type RecentlyWatchedItem } from '../../media/hooks/
 import { useWidgetState } from '../hooks/useWidgetState'
 import { WidgetShell } from './WidgetShell'
 import { GlanceTile } from './GlanceTile'
+import { TileDetail } from './TileDetail'
+import { useTilePopup } from '../hooks/useTilePopup'
 import { fmtDateEnGB } from '../../../shared/utils/enGBDate'
 
 function openMedia(modal: ReturnType<typeof useEntityModal>, item: RecentlyWatchedItem) {
@@ -15,11 +18,20 @@ function openMedia(modal: ReturnType<typeof useEntityModal>, item: RecentlyWatch
 /** Last watched titles; each poster opens that title's popup. */
 export function RecentMediaWidget() {
   const ws = useWidgetState('recentMedia', { mobileCollapsed: true })
-  const { data = [], isLoading } = useRecentlyWatched({ enabled: !ws.collapsed })
+  return (
+    <WidgetShell title="Recently watched" icon={<Clapperboard />} ws={ws} to="/media">
+      <RecentMediaGrid enabled={!ws.collapsed} />
+    </WidgetShell>
+  )
+}
+
+/** The widget's body — also what the glance tile opens on a wide Home. */
+function RecentMediaGrid({ enabled }: { enabled: boolean }) {
+  const { data = [], isLoading } = useRecentlyWatched({ enabled })
   const modal = useEntityModal()
 
   return (
-    <WidgetShell title="Recently watched" icon={<Clapperboard />} ws={ws} to="/media">
+    <>
       {isLoading ? (
         <div className="grid grid-cols-3 gap-2">{Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="aspect-[2/3] w-full" rounded="rounded-md" />)}</div>
       ) : data.length === 0 ? (
@@ -45,22 +57,38 @@ export function RecentMediaWidget() {
           ))}
         </div>
       )}
-    </WidgetShell>
+    </>
   )
 }
 
+/**
+ * Phone: the latest title opens its own popup. Wide Home (where this tile
+ * stands in for the widget): the whole recently-watched grid opens.
+ */
 export function RecentMediaTile() {
   const { data = [], isLoading } = useRecentlyWatched()
   const modal = useEntityModal()
+  const popup = useTilePopup()
+  const [open, setOpen] = useState(false)
   const latest = data[0]
+  const action = popup
+    ? { onClick: () => setOpen(true) }
+    : latest?.tmdbId != null ? { onClick: () => openMedia(modal, latest) } : { to: '/media' }
   return (
-    <GlanceTile
-      label="Watched"
-      icon={<Clapperboard />}
-      loading={isLoading}
-      value={latest ? latest.title : 'Nothing yet'}
-      hint={latest ? fmtDateEnGB(new Date(latest.watched_at), { day: 'numeric', month: 'short' }) : 'Open Media'}
-      {...(latest?.tmdbId != null ? { onClick: () => openMedia(modal, latest) } : { to: '/media' })}
-    />
+    <>
+      <GlanceTile
+        label="Watched"
+        icon={<Clapperboard />}
+        loading={isLoading}
+        value={latest ? latest.title : 'Nothing yet'}
+        hint={latest ? fmtDateEnGB(new Date(latest.watched_at), { day: 'numeric', month: 'short' }) : 'Open Media'}
+        {...action}
+      />
+      {popup && (
+        <TileDetail open={open} onClose={() => setOpen(false)} title="Recently watched" to="/media" openLabel="Open Media">
+          <RecentMediaGrid enabled />
+        </TileDetail>
+      )}
+    </>
   )
 }

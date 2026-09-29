@@ -26,8 +26,11 @@ const TABS: { key: DiscoveryTab; label: string }[] = [
   { key: 'norway',   label: 'Norway' },
 ]
 
-// Column flow: the count follows the width, posters keep their size.
-const GRID = 'grid grid-cols-[repeat(auto-fill,minmax(6.5rem,9rem))] justify-start gap-3'
+// Column flow: the count follows the section's own width. From 36rem the
+// columns share the row, so a poster stays ~8–9.5rem and nothing is left
+// empty beside them (a 9rem MAXIMUM counts columns off the max: 3 posters and
+// a 110px strip at 584px). A phone keeps two 9rem posters.
+const GRID = 'grid grid-cols-[repeat(auto-fill,minmax(6.5rem,9rem))] justify-start gap-3 @[36rem]:grid-cols-[repeat(auto-fill,minmax(8rem,1fr))]'
 
 function SkeletonGrid({ count = 20 }: { count?: number }) {
   return (
@@ -117,7 +120,7 @@ export function DiscoveryTabs({ mediaType, onOpenDetail }: Props) {
     : null
 
   return (
-    <section>
+    <section className="@container">
       {/* Phones: the tabs take the whole row and the refresh action wraps
           under them, so no tab is cut off against the icon. */}
       <div className="mb-3 flex flex-wrap items-center gap-2 sm:flex-nowrap">

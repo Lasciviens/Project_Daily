@@ -5,11 +5,13 @@ import { GOAL_SRC, type GoalSourceKey } from './goalSources'
 
 /** One section of the goal report: an eyebrow title with an optional
  *  explanation bubble and action, then its body. */
-export function GoalBlock({ title, info, action, children, className }: {
+export function GoalBlock({ title, info, action, children, className, card = false }: {
   title: string; info?: ReactNode; action?: ReactNode; children: ReactNode; className?: string
+  /** A card of its own (a board section) instead of a bordered block inside the report card. */
+  card?: boolean
 }) {
   return (
-    <section className={cx('flex min-w-0 flex-col gap-2 rounded-row border border-line p-3', className)}>
+    <section className={cx('flex min-w-0 flex-col gap-2', card ? '@container card p-4 sm:p-5' : 'rounded-row border border-line p-3', className)}>
       <div className="flex min-h-[28px] items-center justify-between gap-2">
         <div className="flex items-center gap-1.5">
           <h4 className="section-label">{title}</h4>

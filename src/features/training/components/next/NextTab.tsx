@@ -1,5 +1,6 @@
 import { CalendarClock, CalendarPlus, Dumbbell, Moon } from 'lucide-react'
-import { Button, Card, EmptyState, Skeleton, ToneDot } from '../../../../shared/ui'
+import type { ReactNode } from 'react'
+import { Button, Card, EmptyState, PageBoard, Skeleton, ToneDot, useBoardStep } from '../../../../shared/ui'
 import { InfoBubble } from '../../../../shared/components/InfoBubble'
 import { fmtDateEnGB } from '../../../../shared/utils/enGBDate'
 import { openPlanRoutine } from '../../planTraining'
@@ -11,6 +12,7 @@ import { NextExerciseCard } from './NextExerciseCard'
 import { SourceNote } from '../program/SourceNote'
 import { MissedSessionsCard } from '../program/MissedSessions'
 import { SessionPlanMenu } from '../session/SessionPlanMenu'
+import { NEXT_BOARD } from '../../trainingBoards'
 
 function whenText(date: string, startTime: string | null, today: string): string {
   const d = daysBetween(today, date)
@@ -61,9 +63,12 @@ function SessionHeader({ plan }: { plan: NextPlan }) {
 
 function RecoveryLine() {
   const { notes, isLoading } = useRecoveryNotes()
+  // In the wide page's rail it fills the rail like the cards above it; in the
+  // phone stack it hugs its text.
+  const inRail = useBoardStep() > 1
   if (isLoading || notes.length === 0) return null
   return (
-    <div className="flex w-fit max-w-2xl flex-col gap-1 rounded-row border border-line bg-surface px-3 py-2">
+    <div className={`flex ${inRail ? 'w-full' : 'w-fit'} max-w-2xl flex-col gap-1 rounded-row border border-line bg-surface px-3 py-2`}>
       <p className="section-label flex items-center gap-1.5">
         <Moon aria-hidden className="h-3.5 w-3.5" /> Recovery context
         <InfoBubble>
@@ -104,6 +109,21 @@ function Alerts({ plan }: { plan: NextPlan }) {
   )
 }
 
+/** The exercise cards: one column on a phone or tablet; once the board gives
+ *  them a wide track, as many ≥ 22rem columns as fit, sharing the width (a
+ *  fixed maximum would make auto-fill count by the maximum and leave a
+ *  column's worth empty — two at 1469, four at 2450). */
+function ExerciseGrid({ children }: { children: ReactNode }) {
+  const wide = useBoardStep() > 1
+  return (
+    <div className={wide
+      ? 'grid grid-cols-[repeat(auto-fill,minmax(22rem,1fr))] items-start gap-3'
+      : 'grid max-w-2xl grid-cols-1 items-start gap-3'}>
+      {children}
+    </div>
+  )
+}
+
 /** The default Training tab: what to do next, set by set. */
 export function NextTab({ onGoTo }: { onGoTo: (tab: TrainingTabId) => void }) {
   const plan = useNextPlan()
@@ -134,24 +154,24 @@ export function NextTab({ onGoTo }: { onGoTo: (tab: TrainingTabId) => void }) {
 
   // The RPE explainer once, on the first card whose last session was rated.
   const firstRatedRow = plan.rows.findIndex(r => r.lastHasRpe)
+  // Placed by PageBoard (trainingBoards.ts → NEXT_BOARD): the session and its
+  // context (missed, recovery, heads-up) in a rail, the exercise cards beside it.
   return (
-    <div className="flex flex-col gap-3 sm:gap-4">
-      <div className="flex max-w-2xl flex-col gap-3">
-        <SessionHeader plan={plan} />
-        <MissedSessionsCard />
-        <RecoveryLine />
-        <Alerts plan={plan} />
-      </div>
-      {plan.rows.length > 0 && (
-        <div className="grid max-w-2xl grid-cols-1 items-start justify-start gap-3 xl:max-w-none xl:grid-cols-[repeat(auto-fill,minmax(24rem,28rem))]">
+    <PageBoard layout={NEXT_BOARD} stackGap="gap-3" sections={{
+      session: <div className="max-w-2xl"><SessionHeader plan={plan} /></div>,
+      missed: <MissedSessionsCard />,
+      recovery: <RecoveryLine />,
+      alerts: <Alerts plan={plan} />,
+      exercises: plan.rows.length > 0 && (
+        <ExerciseGrid>
           {plan.rows.map((r, i) => <NextExerciseCard key={`${r.templateId}-${r.order}`} row={r} explainRpe={i === firstRatedRow} />)}
-        </div>
-      )}
-      {plan.needsCurrentProgram && (
+        </ExerciseGrid>
+      ),
+      note: plan.needsCurrentProgram && (
         <p className="max-w-2xl text-meta text-fg-muted">
           Targets need a current program. <button type="button" className="font-semibold text-accent-600" onClick={() => onGoTo('program')}>Pick it on the Program tab</button>.
         </p>
-      )}
-    </div>
+      ),
+    }} />
   )
 }

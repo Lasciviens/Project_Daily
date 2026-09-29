@@ -56,13 +56,13 @@ function GoalRow({ g }: { g: GoalProgress }) {
 
 /** Progress toward each body target with a projected date. The targets are
  *  part of the one goal — "Edit goal" opens the shared goal editor. */
-export function GoalsSection({ report, settings, fromDevice }: {
-  report: GoalReport; settings: GoalSettings; fromDevice: boolean
+export function GoalsSection({ report, settings, fromDevice, card }: {
+  report: GoalReport; settings: GoalSettings; fromDevice: boolean; card?: boolean
 }) {
   const modal = useEntityModal()
   const rows = [report.goals.weight, report.goals.bodyFat, report.goals.muscle].filter((g): g is GoalProgress => g != null)
   return (
-    <GoalBlock title="Body targets" action={(
+    <GoalBlock title="Body targets" card={card} action={(
       <Button variant="ghost" size="sm" icon={<Pencil className="h-4 w-4" aria-hidden />} onClick={() => modal.open({ kind: 'day-targets' })}>
         {rows.length || settings.phaseStartDate ? 'Edit goal' : 'Set body targets'}
       </Button>
