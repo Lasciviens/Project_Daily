@@ -151,5 +151,19 @@ check('empty is not', !S.isValidSkipReason(''))
 check('over 500 characters is not', !S.isValidSkipReason('x'.repeat(501)))
 check('every quick chip is valid on its own', S.SKIP_REASON_CHIPS.every(c => S.isValidSkipReason(S.composeSkipReason(c, ''))))
 
+console.log('\nskip shown in the session popup')
+{
+  const skips = [
+    { id: 'k1', routine_id: 'upperB', week_start: '2026-09-21', reason: 'Busy — Got busy and tired.' },
+    { id: 'k2', routine_id: 'lowerA', week_start: '2026-09-21', reason: 'Travel' },
+  ]
+  check('a skip covers its routine on any day of its week (Thu)', S.skipCovering(skips, 'upperB', '2026-09-24')?.id === 'k1')
+  check('... and on the Sunday that ends it', S.skipCovering(skips, 'upperB', '2026-09-27')?.id === 'k1')
+  check('the next week is not covered', S.skipCovering(skips, 'upperB', '2026-09-28') === null)
+  check('another routine\'s skip never leaks', S.skipCovering(skips, 'upperA', '2026-09-24') === null)
+  check('no matched routine → no skip', S.skipCovering(skips, null, '2026-09-24') === null)
+  check('the reason exactly as written', S.skippedText(skips[0]) === 'Skipped: Busy — Got busy and tired.')
+}
+
 console.log(`\n${passed} passed, ${failed} failed`)
 process.exit(failed ? 1 : 0)

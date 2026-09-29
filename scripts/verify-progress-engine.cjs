@@ -1632,5 +1632,49 @@ console.log('\n== 21. RPE (Hevy) is carried for display only ==')
   check('21: the chart tooltip shows the session\'s RPE', buildExerciseChartRows(ratedSessions, 'est1rm')[2].setsLabel === '62.5 kg × 9/8/8 @ RPE 9.5/10/10')
 }
 
+// §22 — decision-table tabs (progress/decisionTabs.ts) and the progress
+// model's scope: every current-program exercise trained in the last 14 days
+// is on Recent changes, and All lists single-session exercises too.
+console.log('\n22 · Decision tabs — nothing trained lately is hidden')
+{
+  const { filterByTab, hasRecentChange, isUnchanged } = require('../src/features/training/progress/decisionTabs')
+  const { computeProgressModel } = require('../src/features/training/progressModel')
+  const today = '2026-09-29'
+  const expectation = { repMin: 8, repMax: 12, source: 'routine' }
+  const evalRows = (id, rows) => evaluateExerciseProgress({ exerciseTemplateId: id, metricKind: 'est1rm', sessions: buildCanonicalSessions(rows, id), expectation }, DEFAULT_POLICY)
+  const same = evalRows('same', [...uniformRows('s1', '2026-09-18', 'same', 12, [10, 10, 10]), ...uniformRows('s2', '2026-09-25', 'same', 12, [10, 10, 10])])
+  const moved = evalRows('moved', [...uniformRows('m1', '2026-09-18', 'moved', 40, [8, 8, 8]), ...uniformRows('m2', '2026-09-26', 'moved', 40, [10, 9, 9])])
+  const first = evalRows('first', uniformRows('f1', '2026-09-27', 'first', 10, [10, 10, 10]))
+  const old = evalRows('old', [...uniformRows('o1', '2026-08-01', 'old', 30, [8, 8, 8]), ...uniformRows('o2', '2026-09-01', 'old', 30, [9, 9, 9])])
+  const all = [same, moved, first, old]
+  const recent = filterByTab(all, 'recent', today).map(d => d.exerciseTemplateId).sort().join()
+  check('22: Recent lists every lift trained in 14 days — unchanged and single-session too', recent === 'first,moved,same', recent)
+  check('22: Recent leaves out a lift last trained 4 weeks ago', !filterByTab(all, 'recent', today).includes(old))
+  check('22: same load and reps → "No change"', !hasRecentChange(same) && isUnchanged(same))
+  check('22: more reps → a change, no "No change" pill', hasRecentChange(moved) && !isUnchanged(moved))
+  check('22: a first session never reads "No change"', first.currentAction === 'INSUFFICIENT_DATA' && !isUnchanged(first))
+  check('22: All lists every exercise, single-session included', filterByTab(all, 'all', today).length === 4)
+  check('22: decision tabs still skip single-session exercises', !filterByTab(all, 'building', today).includes(first) && !filterByTab(all, 'attention', today).includes(first))
+
+  // Model scope: an exercise logged under a current routine that the routine
+  // no longer lists is in scope only while trained in the last 14 days.
+  const r = (w, date, tpl, i) => ({ ...row(w, date, tpl, i, 12, 10, 'normal'), routine_id: 'upperA', workout_title: 'Upper A (Chest & Arm)' })
+  const history = {
+    sets: [
+      r('w1', '2026-09-26', 'bench', 1), r('w1', '2026-09-26', 'inclineCurl', 1), r('w1', '2026-09-26', 'inclineCurl', 2),
+      r('w0', '2026-08-01', 'oldFly', 1),
+      { ...r('w1', '2026-09-26', 'warmOnly', 1), set_type: 'warmup' },
+    ],
+    templates: ['bench', 'inclineCurl', 'oldFly', 'warmOnly'].map(id => ({ id, title: id, type: 'weight_reps', primary_muscle_group: 'chest', secondary_muscle_groups: [] })),
+  }
+  const routines = [{ id: 'upperA', title: 'Upper A (Chest & Arm)', exercises: [{ exercise_template_id: 'bench', title: 'Bench', index: 0, sets: [] }] }]
+  const model = computeProgressModel({ history, currentProgram: [{ routine_id: 'upperA' }], routines, targetOverrides: [], sleepPoints: [], bodyweight: [], targetDays: 3, today })
+  const ids = model.decisions.map(d => d.exerciseTemplateId).sort().join()
+  check('22: a recent lift the routine no longer lists is still in scope', ids === 'bench,inclineCurl', ids)
+  check('22: ...and carries its routine title for the Routine filter', (model.routineTitlesByTemplateId.get('inclineCurl') ?? []).join() === 'Upper A (Chest & Arm)')
+  check('22: an old swapped-out lift and a warm-up-only one stay out', !ids.includes('oldFly') && !ids.includes('warmOnly'))
+  check('22: the recent lift shows on Recent changes', filterByTab(model.decisions, 'recent', today).some(d => d.exerciseTemplateId === 'inclineCurl'))
+}
+
 console.log(`\n${failed === 0 ? '✅ ALL PASS' : '❌ FAILURES'} — ${passed} passed, ${failed} failed\n`)
 process.exit(failed === 0 ? 0 : 1)

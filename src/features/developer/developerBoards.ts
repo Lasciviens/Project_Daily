@@ -48,18 +48,21 @@ export function paneSelection(ids: readonly string[], picked: string | null): st
 //      gave a card before the board; a card is a line of text and a button),
 //      the server-side cards two across over the other two tracks.
 //   4  2450 — the same, the server-side cards three across in one row.
+// Since Settings → Integrations (2026-09-29) this board lives there; 'intro'
+// carries the subscription summary strip and 'otherSubs' (subscriptions for
+// services without a card) ends the server-side column at every width.
 export const CONNECTION_SECTIONS = [
   'intro', 'google', 'strava', 'psn', 'steam', 'hevy', 'health',
-  'accountsLabel', 'serverLabel', 'serverCards',
+  'accountsLabel', 'serverLabel', 'serverCards', 'otherSubs',
 ] as const
 export type ConnectionSection = typeof CONNECTION_SECTIONS[number]
 
 const ACCOUNTS = ['accountsLabel', 'google', 'strava', 'psn'] as const
-const SERVER = ['serverLabel', 'serverCards'] as const
+const SERVER = ['serverLabel', 'serverCards', 'otherSubs'] as const
 
 export const CONNECTIONS_BOARD: BoardLayouts<ConnectionSection> = {
-  1: ['intro', 'google', 'strava', 'psn', 'steam', 'hevy', 'health'],
-  2: { top: ['intro'], columns: [ACCOUNTS, ['serverLabel', 'steam', 'hevy', 'health']] },
+  1: ['intro', 'google', 'strava', 'psn', 'steam', 'hevy', 'health', 'otherSubs'],
+  2: { top: ['intro'], columns: [ACCOUNTS, ['serverLabel', 'steam', 'hevy', 'health', 'otherSubs']] },
   3: { top: ['intro'], main: '42rem', columns: [ACCOUNTS, { stack: SERVER, span: 2 }] },
   4: { top: ['intro'], main: '42rem', columns: [ACCOUNTS, { stack: SERVER, span: 3 }] },
 }

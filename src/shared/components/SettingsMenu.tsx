@@ -1,16 +1,17 @@
 import { Link } from 'react-router-dom'
 import { Menu, MenuButton, MenuItems, MenuItem } from '@headlessui/react'
-import { Sun, Moon, Monitor, Check, Bell, BellOff, Plug, Code2, LogOut, UserRound } from 'lucide-react'
-import { useThemeStore, type MotionPreference, type ThemePreference } from '../../app/store'
+import { Sun, Moon, Monitor, Check, Bell, BellOff, Plug, Code2, LogOut, UserRound, Settings } from 'lucide-react'
+import { useThemeStore, DISPLAY_SCALES, type MotionPreference, type ThemePreference } from '../../app/store'
 import { ACCENTS, type AccentName } from '../theme/accent'
 import { signOut } from '../../security/supabaseClient'
 import { usePushNotifications } from '../hooks/usePushNotifications'
 import { useAuth } from '../hooks/useAuth'
 import { cx } from '../ui/cx'
 
-// Settings live in two places with the same parts: this avatar menu (top bar,
-// phone header) and the phone More sheet. Connect/disconnect stays in
-// Developer → Connections; both only link there.
+// The quick settings live in two places with the same parts: this avatar menu
+// (top bar, phone header) and the phone More sheet; the full set is the
+// Settings page (/settings). Connect/disconnect lives in Settings →
+// Integrations; both only link there.
 
 const THEME_OPTIONS: { value: ThemePreference; label: string; icon: typeof Sun }[] = [
   { value: 'light', label: 'Light', icon: Sun },
@@ -86,6 +87,42 @@ export function MotionSwitch({ block }: { block?: boolean }) {
             )}
           >
             {label}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+/**
+ * Display size: the root font size (80–125 %). Everything is rem-based, so a
+ * smaller size fits more on screen and lets a page reach its next wider
+ * PageBoard layout (the steps are measured in rem).
+ */
+export function DisplaySizeSwitch({ block }: { block?: boolean }) {
+  const scale = useThemeStore(s => s.scale)
+  const setScale = useThemeStore(s => s.setScale)
+  return (
+    <div
+      role="radiogroup"
+      aria-label="Display size"
+      className={cx('grid grid-cols-5 gap-1 rounded-row border border-line bg-surface-2 p-[3px]', block ? 'w-full' : 'inline-grid')}
+    >
+      {DISPLAY_SCALES.map(value => {
+        const on = scale === value
+        return (
+          <button
+            key={value}
+            type="button"
+            role="radio"
+            aria-checked={on}
+            onClick={() => setScale(value)}
+            className={cx(
+              'h-9 min-w-11 rounded-[9px] px-1.5 text-body font-semibold tabular-nums transition-colors duration-100 [@media(pointer:coarse)]:h-11',
+              on ? 'bg-accent-50 text-accent-700 shadow-[inset_0_0_0_1px_rgb(var(--accent-500)/0.35)]' : 'text-fg-muted hover:text-fg',
+            )}
+          >
+            {value}%
           </button>
         )
       })}
@@ -210,8 +247,13 @@ export function SettingsMenu() {
         <div className="menu-sep" />
 
         <MenuItem>
-          <Link to="/developer?tab=connections" className="menu-item">
-            <Plug className="h-4 w-4 shrink-0" strokeWidth={1.9} aria-hidden />Connections
+          <Link to="/settings" className="menu-item">
+            <Settings className="h-4 w-4 shrink-0" strokeWidth={1.9} aria-hidden />Settings
+          </Link>
+        </MenuItem>
+        <MenuItem>
+          <Link to="/settings?tab=integrations" className="menu-item">
+            <Plug className="h-4 w-4 shrink-0" strokeWidth={1.9} aria-hidden />Integrations
           </Link>
         </MenuItem>
         <MenuItem>

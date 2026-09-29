@@ -1,11 +1,14 @@
 import { useCallback, useRef, useState, type ReactNode } from 'react'
-import { Settings } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { Briefcase, Home, Settings } from 'lucide-react'
 import { cx } from '../../../shared/ui'
 import { useNow } from '../hooks/useNow'
 import { DeparturesTab } from './ruter/DeparturesTab'
 import { RoutesTab } from './ruter/RoutesTab'
 import { ViaTab } from './ruter/ViaTab'
 import { SettingsTab } from './ruter/SettingsTab'
+import { useTransitStops } from '../hooks/useTransitStops'
+import { findPlace, PLACE_LABEL, type PlaceKind } from '../transitPlaces'
 
 type Tab = 'departures' | 'routes' | 'via' | 'settings'
 type LayoutMode = 'compact' | 'wide'
@@ -35,6 +38,42 @@ function Panel({ children }: { children: ReactNode }) {
   return <div className="min-w-0 overflow-hidden rounded-row border border-line p-3">{children}</div>
 }
 
+const PLACE_ICON: Record<PlaceKind, typeof Home> = { home: Home, work: Briefcase }
+
+/** Two one-tap trips to the saved Home / Work places (Settings → Places). */
+function PlaceButtons({ onPick }: { onPick: (kind: PlaceKind) => void }) {
+  const { stops, isLoading } = useTransitStops()
+  if (isLoading) return null
+  const missing = (['home', 'work'] as PlaceKind[]).filter(k => !findPlace(stops, k))
+  return (
+    <div className="mb-4">
+      <div className="grid grid-cols-2 gap-2 sm:max-w-md">
+        {(['home', 'work'] as PlaceKind[]).map(kind => {
+          const Icon = PLACE_ICON[kind]
+          const set = !missing.includes(kind)
+          return (
+            <button
+              key={kind}
+              type="button"
+              disabled={!set}
+              onClick={() => onPick(kind)}
+              className="flex min-h-[52px] items-center justify-center gap-2 rounded-control border border-line bg-surface-2 px-3 text-lead font-semibold text-fg transition-colors duration-150 hover:bg-surface-hover disabled:opacity-50"
+            >
+              <Icon aria-hidden className="h-5 w-5 text-accent-600" />To {PLACE_LABEL[kind].toLowerCase()}
+            </button>
+          )
+        })}
+      </div>
+      {missing.length > 0 && (
+        <p className="mt-1.5 text-meta text-fg-muted">
+          {missing.map(k => PLACE_LABEL[k]).join(' and ')} not set.{' '}
+          <Link to="/settings?tab=places" className="font-semibold text-accent-600">Set in Settings → Places</Link>
+        </p>
+      )}
+    </div>
+  )
+}
+
 const TABS: { id: Tab; label: string }[] = [
   { id: 'departures', label: 'Departures' },
   { id: 'routes', label: 'Routes' },
@@ -51,12 +90,17 @@ export function TransitPanel({ active, initialTab = 'departures' }: { active: bo
   const now = useNow(active)
   // A favourite route picked in Settings jumps to Routes with it applied once.
   const [pendingRouteId, setPendingRouteId] = useState<string | null>(null)
+  const [pendingPlace, setPendingPlace] = useState<PlaceKind | null>(null)
 
   const { ref: bodyRef, width } = useElementWidth()
   const layout: LayoutMode = width >= 760 ? 'wide' : 'compact'
   const sideBySide = layout === 'wide' && (tab === 'departures' || tab === 'routes')
 
-  const routes = <RoutesTab active={active} now={now} pendingRouteId={pendingRouteId} onRouteConsumed={() => setPendingRouteId(null)} />
+  const routes = (
+    <RoutesTab active={active} now={now}
+      pendingRouteId={pendingRouteId} onRouteConsumed={() => setPendingRouteId(null)}
+      pendingPlace={pendingPlace} onPlaceConsumed={() => setPendingPlace(null)} />
+  )
 
   return (
     <div ref={bodyRef} className="min-w-0">
@@ -89,6 +133,10 @@ export function TransitPanel({ active, initialTab = 'departures' }: { active: bo
           <span className="hidden sm:inline">Settings</span>
         </button>
       </div>
+
+      {(tab === 'departures' || tab === 'routes') && (
+        <PlaceButtons onPick={kind => { setPendingPlace(kind); setTab('routes') }} />
+      )}
 
       {tab === 'settings' && (
         <div className="max-w-2xl">

@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react'
 import { ChevronDown } from 'lucide-react'
 import { useProgressDataContext } from './progressDataContext'
-import { actionLabel, improvementScore, visibleEvents } from '../progress-engine/copy'
+import { actionLabel, improvementScore } from '../progress-engine/copy'
 import type { ExerciseProgressResult, CanonicalExerciseSession, CurrentAction, EvidenceLevel, ProgressMetricKind } from '../progress-engine/types'
 import { InfoBubble } from '../../../shared/components/InfoBubble'
 import { Card, EmptyState, TonePill, type Tone } from '../../../shared/ui'
 import { DecisionDetail, DisclosureButton, EvidencePill, ExposureLine } from './decisionParts'
+import { RECENT_DAYS, daysAgo, filterByTab, isUnchanged, type DecisionTab } from './decisionTabs'
 
 // Desktop: a dense decision table. Mobile (<640px): the same rows stack as
 // cards. Each row expands its own drill-down in place, by mouse, touch or
@@ -13,16 +14,14 @@ import { DecisionDetail, DisclosureButton, EvidencePill, ExposureLine } from './
 // algorithm (progress-engine/, settled rules in docs/training/progress-engine/);
 // it only renders and filters it.
 
-type Tab = 'recent' | 'increase' | 'building' | 'attention' | 'all'
+type Tab = DecisionTab
 const TABS: { id: Tab; label: string; hint: string }[] = [
-  { id: 'recent', label: 'Recent changes', hint: 'Trained in the last 14 days and something moved: the load, the reps, or a new best.' },
+  { id: 'recent', label: 'Recent changes', hint: 'Every exercise you trained in the last 14 days, most recent first. “No change” means the load and reps matched last time.' },
   { id: 'increase', label: 'Ready to increase', hint: 'Every prescribed set reached the top of the range — try the next load.' },
   { id: 'building', label: 'Building', hint: 'Keep the load and add reps toward the top of the range.' },
   { id: 'attention', label: 'Needs attention', hint: 'Below the minimum, a load reduction to check, or a plateau/decline at this load.' },
-  { id: 'all', label: 'All exercises', hint: 'Every current-program exercise with at least two sessions.' },
+  { id: 'all', label: 'All exercises', hint: 'Every current-program exercise you have logged, including ones with only one session so far.' },
 ]
-
-const RECENT_DAYS = 14
 
 type SortMode = 'recent' | 'action_priority' | 'largest_improvement' | 'closest_to_progression' | 'lowest_confidence'
 const SORTS: { id: SortMode; label: string }[] = [
@@ -86,12 +85,6 @@ function sortDecisions(list: ExerciseProgressResult[], sort: SortMode): Exercise
   }
 }
 
-function daysAgo(today: string, days: number): string {
-  const d = new Date(today + 'T00:00:00')
-  d.setDate(d.getDate() - days)
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
-
 function withinDateWindow(result: ExerciseProgressResult, window: DateWindow, today: string): boolean {
   if (window === 'all') return true
   const latestDate = result.currentState.latest?.date
@@ -100,15 +93,11 @@ function withinDateWindow(result: ExerciseProgressResult, window: DateWindow, to
   return latestDate >= daysAgo(today, weeks * 7)
 }
 
-/** Something actually moved in the latest pair: the load, the reps, or a
- *  completed target / progression streak (records are not shown anywhere). */
-function hasRecentChange(d: ExerciseProgressResult): boolean {
-  return d.observedTransition === 'LOAD_INCREASED' || d.observedTransition === 'LOAD_DECREASED'
-    || d.repDelta === 'REP_INCREASE' || d.repDelta === 'REP_DECLINE'
-    || visibleEvents(d.events).some(e => e.emphasis === 'primary')
-}
+type RowProps = { result: ExerciseProgressResult; sessions: CanonicalExerciseSession[]; metricKind: ProgressMetricKind; title: string; noChange?: boolean }
 
-type RowProps = { result: ExerciseProgressResult; sessions: CanonicalExerciseSession[]; metricKind: ProgressMetricKind; title: string }
+function NoChangePill() {
+  return <TonePill tone="neutral">No change</TonePill>
+}
 
 function ToggleName({ open, onToggle, title }: { open: boolean; onToggle: () => void; title: string }) {
   return (
@@ -122,14 +111,14 @@ function ToggleName({ open, onToggle, title }: { open: boolean; onToggle: () => 
   )
 }
 
-function DecisionRow({ result, sessions, metricKind, title }: RowProps) {
+function DecisionRow({ result, sessions, metricKind, title, noChange }: RowProps) {
   const [open, setOpen] = useState(false)
   return (
     <>
       {/* The name button is the keyboard/AT control; a click anywhere on the row is a mouse convenience. */}
       <tr className="cursor-pointer border-b border-line hover:bg-surface-hover" onClick={() => setOpen(v => !v)}>
         <td className="px-3 py-1"><ToggleName open={open} onToggle={() => setOpen(v => !v)} title={title} /></td>
-        <td className="px-3 py-2.5"><ExposureLine result={result} /></td>
+        <td className="px-3 py-2.5"><ExposureLine result={result} />{noChange && <> <NoChangePill /></>}</td>
         <td className="px-3 py-2.5"><TonePill tone={ACTION_TONE[result.currentAction]}>{actionLabel(result.currentAction)}</TonePill></td>
         <td className="px-3 py-2.5"><EvidencePill level={result.evidence.progress} label="Trend evidence" /></td>
         <td className="px-3 py-2.5">{result.evidence.recommendation ? <EvidencePill level={result.evidence.recommendation} label="Decision evidence" /> : <span className="text-meta text-fg-faint">—</span>}</td>
@@ -143,7 +132,7 @@ function DecisionRow({ result, sessions, metricKind, title }: RowProps) {
   )
 }
 
-function DecisionCard({ result, sessions, metricKind, title }: RowProps) {
+function DecisionCard({ result, sessions, metricKind, title, noChange }: RowProps) {
   const [open, setOpen] = useState(false)
   return (
     <li className="rounded-row border border-line px-3 pb-3 pt-1">
@@ -151,7 +140,7 @@ function DecisionCard({ result, sessions, metricKind, title }: RowProps) {
         <ToggleName open={open} onToggle={() => setOpen(v => !v)} title={title} />
         <TonePill tone={ACTION_TONE[result.currentAction]} className="shrink-0">{actionLabel(result.currentAction)}</TonePill>
       </div>
-      <div className="mt-0.5"><ExposureLine result={result} /></div>
+      <div className="mt-0.5"><ExposureLine result={result} />{noChange && <> <NoChangePill /></>}</div>
       <div className="mt-1.5 flex items-center gap-2">
         <EvidencePill level={result.evidence.progress} label="Trend evidence" />
         {result.evidence.recommendation && <EvidencePill level={result.evidence.recommendation} label="Decision evidence" />}
@@ -159,26 +148,6 @@ function DecisionCard({ result, sessions, metricKind, title }: RowProps) {
       {open && <DecisionDetail result={result} sessions={sessions} metricKind={metricKind} title={title} />}
     </li>
   )
-}
-
-function filterByTab(decisions: ExerciseProgressResult[], tab: Tab, today: string): ExerciseProgressResult[] {
-  const withDecision = decisions.filter(d => d.currentAction !== 'INSUFFICIENT_DATA')
-  const below = (d: ExerciseProgressResult) => d.rangeCompliance === 'BELOW_MINIMUM'
-  switch (tab) {
-    case 'increase':
-      return withDecision.filter(d => d.currentAction === 'READY_TO_INCREASE')
-    case 'building':
-      return withDecision.filter(d => !below(d) && (d.currentAction === 'BUILD_AT_CURRENT_LOAD' || d.currentAction === 'CONFIRM_AT_CURRENT_LOAD' || d.currentAction === 'HOLD_STEADY'))
-    case 'attention':
-      return withDecision.filter(d => below(d) || d.currentAction === 'WATCH_FOR_PLATEAU' || d.currentAction === 'WATCH_FOR_REGRESSION' || d.currentAction === 'REVIEW_LOAD_REDUCTION')
-    case 'recent': {
-      const cutoff = daysAgo(today, RECENT_DAYS)
-      return withDecision.filter(d => (d.currentState.latest?.date ?? '') >= cutoff && hasRecentChange(d))
-    }
-    case 'all':
-    default:
-      return withDecision
-  }
 }
 
 export function ExerciseDecisionTable() {
@@ -218,7 +187,12 @@ export function ExerciseDecisionTable() {
     return list
   }, [filtered, query, titleById, evidenceFilter, dateWindow, muscleFilter, routineFilter, muscleGroupByTemplateId, routineTitlesByTemplateId, today])
   const shown = useMemo(() => sortDecisions(searched, sort), [searched, sort])
-  const insufficient = useMemo(() => decisions.filter(d => d.currentAction === 'INSUFFICIENT_DATA'), [decisions])
+  // Recent and All list single-session exercises themselves; the fold only
+  // collects the ones the open view doesn't show.
+  const insufficient = useMemo(() => {
+    const listed = new Set(filtered.map(d => d.exerciseTemplateId))
+    return decisions.filter(d => d.currentAction === 'INSUFFICIENT_DATA' && !listed.has(d.exerciseTemplateId))
+  }, [decisions, filtered])
 
   if (isLoading || needsCurrentProgram) return null
   if (decisions.length === 0) {
@@ -296,7 +270,7 @@ export function ExerciseDecisionTable() {
 
       {shown.length === 0 ? (
         <p className="py-4 text-center text-body text-fg-muted">
-          {tab === 'recent' && !filtersActive ? `Nothing changed in the last ${RECENT_DAYS} days — see All exercises for every lift.` : 'No exercises in this view.'}
+          {tab === 'recent' && !filtersActive ? `Nothing trained in the last ${RECENT_DAYS} days — see All exercises for every lift.` : 'No exercises in this view.'}
         </p>
       ) : (
         <>
@@ -323,6 +297,7 @@ export function ExerciseDecisionTable() {
                     sessions={sessionsByTemplateId.get(d.exerciseTemplateId) ?? []}
                     metricKind={metricKindByTemplateId.get(d.exerciseTemplateId) ?? 'est1rm'}
                     title={titleById.get(d.exerciseTemplateId) ?? 'Unknown exercise'}
+                    noChange={tab === 'recent' && isUnchanged(d)}
                   />
                 ))}
               </tbody>
@@ -337,6 +312,7 @@ export function ExerciseDecisionTable() {
                 sessions={sessionsByTemplateId.get(d.exerciseTemplateId) ?? []}
                 metricKind={metricKindByTemplateId.get(d.exerciseTemplateId) ?? 'est1rm'}
                 title={titleById.get(d.exerciseTemplateId) ?? 'Unknown exercise'}
+                noChange={tab === 'recent' && isUnchanged(d)}
               />
             ))}
           </ul>

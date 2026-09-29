@@ -3,12 +3,12 @@ import { ChevronRight, Copy, RotateCcw, Sparkles } from 'lucide-react'
 import { useDevRequestDrafts } from '../devRequestDraftStore'
 import { descriptionPreview } from '../devRequestContext'
 import { buildClaudePrompt } from '../devRequestPrompt'
-import { useDevRequests } from '../hooks/useDevRequests'
+import { useDevRequests, useMarkDevRequestsPrompted } from '../hooks/useDevRequests'
 import { toast, useUIStore } from '../../../app/store'
 import { Button, EmptyState, Skeleton, Truncate, cx } from '../../../shared/ui'
 
 /**
- * The prompt for Claude, built from the requests picked in the drawer — and
+ * The prompt for Claude, built from the requests ticked in the drawer — and
  * editable here: your wording stays (it is saved with the drafts) until you
  * reset it to the generated one.
  */
@@ -16,6 +16,7 @@ export function ComposerPromptTab({ textareaRef }: { textareaRef?: Ref<HTMLTextA
   const prompt = useDevRequestDrafts(s => s.prompt)
   const { data: requests = [], isLoading } = useDevRequests()
   const [showList, setShowList] = useState(false)
+  const markPrompted = useMarkDevRequestsPrompted()
   const rows = prompt.ids.map(id => requests.find(r => r.id === id)).filter(r => r != null)
   // Until the list has loaded, every picked request would read as deleted.
   const count = isLoading ? prompt.ids.length : rows.length
@@ -23,7 +24,7 @@ export function ComposerPromptTab({ textareaRef }: { textareaRef?: Ref<HTMLTextA
 
   function changeSelection() {
     const picked = isLoading ? prompt.ids : rows.map(r => r.id)
-    useDevRequestDrafts.getState().setDrawer({ selecting: true, picked })
+    useDevRequestDrafts.getState().setDrawer({ picked })
     if (!useUIStore.getState().isDevRequestsOpen) useUIStore.getState().toggleDevRequests()
   }
 
@@ -31,6 +32,8 @@ export function ComposerPromptTab({ textareaRef }: { textareaRef?: Ref<HTMLTextA
     try {
       await navigator.clipboard.writeText(prompt.text)
       toast.success('Prompt copied')
+      // The requests now wait for a check ("Prompted" on their cards).
+      if (rows.length) markPrompted.mutate(rows.map(r => r.id))
     } catch {
       toast.error("Couldn't copy — select the text and copy it by hand")
     }
@@ -42,7 +45,7 @@ export function ComposerPromptTab({ textareaRef }: { textareaRef?: Ref<HTMLTextA
         <EmptyState
           icon={<Sparkles />}
           title="No prompt yet"
-          description="Pick requests in the Requests drawer, then Build prompt. You can edit the result here."
+          description="Tick requests in the Requests drawer (their circles), then Build prompt. You can edit the result here."
           action={<Button size="sm" onClick={changeSelection}>Pick requests</Button>}
         />
       </div>

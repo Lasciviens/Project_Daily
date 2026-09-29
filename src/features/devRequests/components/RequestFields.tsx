@@ -1,23 +1,52 @@
-import type { ReactNode, Ref } from 'react'
+import { useRef, type KeyboardEvent, type ReactNode, type Ref, type RefObject } from 'react'
+import { ListOrdered } from 'lucide-react'
 import { PAGE_CHOICES, PAGE_OPTIONS } from './devRequestMeta'
 import { CATEGORIES, EFFORTS, PRIORITIES, type DraftFields } from '../devRequestRules'
 import type { DevRequestCategory, DevRequestEffort, DevRequestPriority } from '../types'
-import { cx } from '../../../shared/ui'
+import { continueNumberedList, insertNumberedItem, type TextEdit } from '../numberedList'
+import { Button, cx } from '../../../shared/ui'
 
 interface Props {
   fields: DraftFields
   onChange: (patch: Partial<DraftFields>) => void
   autoFocusTitle?: boolean
   titleRef?: Ref<HTMLInputElement>
-  descriptionRef?: Ref<HTMLTextAreaElement>
+  descriptionRef?: RefObject<HTMLTextAreaElement | null>
   /** Tailwind classes for the description box (height). */
   descriptionClassName?: string
   /** Controls shown right under the description (pick on page, quote). */
   descriptionTools?: ReactNode
 }
 
-/** The request's fields — one editor for the drawer's inline form and the floating composer. */
+/** The request's fields, as the floating composer edits them. */
 export function RequestFields({ fields, onChange, autoFocusTitle, titleRef, descriptionRef, descriptionClassName, descriptionTools }: Props) {
+  const ownRef = useRef<HTMLTextAreaElement | null>(null)
+  const areaRef = descriptionRef ?? ownRef
+
+  // Writes an edit and puts the caret where it belongs once React re-rendered.
+  function applyEdit(edit: TextEdit) {
+    onChange({ description: edit.text })
+    requestAnimationFrame(() => {
+      const el = areaRef.current
+      if (!el) return
+      el.focus({ preventScroll: true })
+      el.setSelectionRange(edit.caret, edit.caret)
+    })
+  }
+  function onDescriptionKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key !== 'Enter' || e.shiftKey || e.altKey || e.metaKey || e.ctrlKey || e.nativeEvent.isComposing) return
+    const el = e.currentTarget
+    if (el.selectionStart !== el.selectionEnd) return
+    const edit = continueNumberedList(el.value, el.selectionStart)
+    if (!edit) return
+    e.preventDefault()
+    applyEdit(edit)
+  }
+  const addNumbered = () => {
+    const el = areaRef.current
+    applyEdit(insertNumberedItem(fields.description, el ? el.selectionStart : fields.description.length))
+  }
+
   // A page value from before the dropdown (free text) stays selectable, so
   // saving an old request never silently rewrites it to "other".
   const legacyPage = fields.page && fields.page !== 'other' && !PAGE_OPTIONS.includes(fields.page) ? fields.page : null
@@ -33,15 +62,29 @@ export function RequestFields({ fields, onChange, autoFocusTitle, titleRef, desc
         className="input"
       />
       <textarea
-        ref={descriptionRef}
+        ref={areaRef}
         value={fields.description}
         onChange={e => onChange({ description: e.target.value })}
+        onKeyDown={onDescriptionKeyDown}
         placeholder="Details (optional) — the more context, the less back-and-forth later"
         aria-label="Details"
         rows={4}
         className={cx('input resize-y', descriptionClassName ?? 'min-h-[90px] md:min-h-[160px]')}
       />
-      {descriptionTools}
+      <div className="flex flex-wrap items-center gap-1.5">
+        <Button
+          size="sm"
+          variant="ghost"
+          icon={<ListOrdered />}
+          // Keep the caret where it is: mousedown would move focus off the text box.
+          onMouseDown={e => e.preventDefault()}
+          onClick={addNumbered}
+          title="Start a numbered point (1- …). Enter continues the list, Enter on an empty point ends it."
+        >
+          Numbered list
+        </Button>
+        {descriptionTools}
+      </div>
       <div className="grid grid-cols-2 gap-2">
         <select value={fields.category} onChange={e => onChange({ category: e.target.value as DevRequestCategory })} aria-label="Category" className="select">
           {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}

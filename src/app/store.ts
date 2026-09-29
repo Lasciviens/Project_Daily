@@ -170,14 +170,27 @@ export const useCalendarStore = create<CalendarState>()(
 export type ThemePreference = 'light' | 'dark' | 'system'
 /** Settings → Appearance → Animations: 'extra' = "More" (the test set), 'standard' = the base motion. */
 export type MotionPreference = 'extra' | 'standard'
+/** Settings → Appearance → Display size: the root font size in %. The app is
+ *  rem-based and PageBoard steps are measured in rem, so 90 % on a monitor
+ *  shows the next wider layout (like 90 % browser zoom). */
+export type DisplayScale = 80 | 90 | 100 | 110 | 125
+export const DISPLAY_SCALES: DisplayScale[] = [80, 90, 100, 110, 125]
+const resolveScale = (v: unknown): DisplayScale => (DISPLAY_SCALES.includes(v as DisplayScale) ? v as DisplayScale : 100)
 
 interface ThemeState {
   theme:     ThemePreference
   accent:    AccentName
   motion:    MotionPreference
+  scale:     DisplayScale
   setTheme:  (theme: ThemePreference) => void
   setAccent: (accent: AccentName) => void
   setMotion: (motion: MotionPreference) => void
+  setScale:  (scale: DisplayScale) => void
+}
+
+/** Root font size; index.html's inline script sets the same value before first paint. */
+function applyScale(scale: DisplayScale) {
+  document.documentElement.style.fontSize = scale === 100 ? '' : `${scale}%`
 }
 
 /** Stamps data-motion on <html>; the "More" CSS lives under html[data-motion='extra'] (index.css). */
@@ -206,22 +219,28 @@ export const useThemeStore = create<ThemeState>()(
       accent: DEFAULT_ACCENT,
       // On by default (owner's call); a saved state without the field keeps it.
       motion: 'extra',
+      scale:  100,
       setTheme:  (theme)  => { applyTheme(theme, get().accent); set({ theme }) },
       setAccent: (accent) => { applyAccent(accent); set({ accent }) },
       setMotion: (motion) => { applyMotion(motion); set({ motion }) },
+      setScale:  (scale)  => { applyScale(scale); set({ scale }) },
     }),
     {
       name: 'theme-preference',
-      version: 1,
-      migrate: (persisted) => {
+      // version 2 (2026-09-29): Display size added; a version-1 state keeps
+      // its theme, accent and motion and starts at 100 %.
+      version: 2,
+      migrate: (persisted, version) => {
         const old = (persisted ?? {}) as Partial<ThemeState>
+        if (version >= 1) return { ...old, scale: resolveScale(old.scale) } as ThemeState
         try { localStorage.removeItem('accent-theme') } catch { /* private mode */ }
-        return { theme: old.theme ?? 'system', accent: DEFAULT_ACCENT, motion: 'extra' } as ThemeState
+        return { theme: old.theme ?? 'system', accent: DEFAULT_ACCENT, motion: 'extra', scale: 100 } as ThemeState
       },
       onRehydrateStorage: () => (state) => {
         if (state) {
           state.accent = resolveAccent(state.accent)
           if (state.motion !== 'standard') state.motion = 'extra'
+          state.scale = resolveScale(state.scale)
         }
       },
     }
@@ -230,9 +249,10 @@ export const useThemeStore = create<ThemeState>()(
 
 /** Applies the persisted theme + accent once on boot (the inline script only stamps .dark). */
 export function applyStoredTheme() {
-  const { theme, accent, motion } = useThemeStore.getState()
+  const { theme, accent, motion, scale } = useThemeStore.getState()
   applyTheme(theme, accent)
   applyMotion(motion)
+  applyScale(scale)
 }
 
 // The inline script only fires once, on load — this keeps the DOM in sync

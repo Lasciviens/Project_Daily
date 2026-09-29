@@ -202,3 +202,16 @@ export function missedText(a: Pick<AttentionBase, 'daysSince'>): string {
   if (a.daysSince == null) return 'no session in the last 6 months'
   return `not done in ${a.daysSince} ${a.daysSince === 1 ? 'day' : 'days'}`
 }
+
+/** The skip that covers `routineId` on `date` (a skip covers the week its
+ *  missed session was due in), for the session popup of a missed plan. */
+export function skipCovering(skips: readonly SkipRecord[], routineId: string | null | undefined, date: string): SkipRecord | null {
+  if (!routineId) return null
+  const week = weekStartOf(date)
+  return skips.find(s => s.routine_id === routineId && s.week_start === week) ?? null
+}
+
+/** "Skipped: Busy — Got busy and tired." — the reason exactly as written. */
+export function skippedText(skip: Pick<SkipRecord, 'reason'>): string {
+  return `Skipped: ${skip.reason.trim()}`
+}

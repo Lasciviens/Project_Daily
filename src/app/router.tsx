@@ -16,6 +16,7 @@ import { HealthPage } from '../features/health/pages/HealthPage'
 import { ProjectsPage } from '../features/projects/pages/ProjectsPage'
 import { WishesPage } from '../features/wishes/pages/WishesPage'
 import { DeveloperPage } from '../features/developer/pages/DeveloperPage'
+import { SettingsPage } from '../features/settings/pages/SettingsPage'
 import { DevRequestComposerHost } from '../features/devRequests/composer/DevRequestComposerHost'
 import { lazyWithReload } from '../shared/utils/lazyWithReload'
 
@@ -74,6 +75,7 @@ export function Router() {
             }
           />
           <Route path="/developer" element={<DeveloperPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />

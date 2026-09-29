@@ -1,9 +1,34 @@
-import { defineConfig } from 'vite'
+import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
+import ts from 'typescript'
+import path from 'node:path'
+import { stampComponentSources } from './src/features/devRequests/pick/componentSourceTransform'
+
+// Stamps each React component's root element with data-src="src/…/File.tsx#Name"
+// (Dev Requests → Pick on page names the component and file it picked from).
+// All builds; +~1% bundle. DEV_SRC_STAMP=0 turns it off (e.g. to measure).
+// Insertions stay on their own line, so line numbers in sourcemaps hold.
+function componentSourceStamp(): Plugin {
+  const root = process.cwd()
+  return {
+    name: 'lasci:component-source-stamp',
+    enforce: 'pre',
+    apply: () => process.env.DEV_SRC_STAMP !== '0',
+    transform(code, id) {
+      const file = id.split('?')[0]
+      if (!file.endsWith('.tsx') || file.includes('/node_modules/')) return null
+      const rel = path.relative(root, file).split(path.sep).join('/')
+      if (!rel.startsWith('src/')) return null
+      const out = stampComponentSources(ts, code, rel)
+      return out == null ? null : { code: out, map: null }
+    },
+  }
+}
 
 export default defineConfig({
   plugins: [
+    componentSourceStamp(),
     react(),
     VitePWA({
       registerType: 'autoUpdate',

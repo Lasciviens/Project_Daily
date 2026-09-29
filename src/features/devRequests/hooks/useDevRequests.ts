@@ -2,10 +2,11 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { qk, STALE } from '../../../shared/query'
 import {
   fetchDevRequests, createDevRequest, updateDevRequest, deleteDevRequest, deleteDevRequests, reorderDevRequests,
+  setDevRequestsStatus, markDevRequestsPrompted,
 } from '../api/devRequestsApi'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
 import { applyReorder } from '../devRequestRules'
-import type { DevRequest, CreateDevRequestInput } from '../types'
+import type { DevRequest, CreateDevRequestInput, DevRequestStatus } from '../types'
 
 const QK = qk.devRequests.all
 
@@ -62,6 +63,24 @@ export function useBulkDeleteDevRequests() {
     successMessage: 'Deleted',
     mutationFn:     (ids: string[]) => deleteDevRequests(ids),
     invalidates:    [QK],
+  })
+}
+
+export function useSetDevRequestsStatus() {
+  return useMutationWithFeedback({
+    action:      'set_dev_requests_status',
+    mutationFn:  ({ ids, status }: { ids: string[]; status: DevRequestStatus }) => setDevRequestsStatus(ids, status),
+    invalidates: [QK],
+  })
+}
+
+// Silent: a failure is still toasted and logged, but copying the prompt the
+// user asked for never waits on or depends on this bookkeeping write.
+export function useMarkDevRequestsPrompted() {
+  return useMutationWithFeedback({
+    action:      'mark_dev_requests_prompted',
+    mutationFn:  (ids: string[]) => markDevRequestsPrompted(ids),
+    invalidates: [QK],
   })
 }
 

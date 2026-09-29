@@ -1,8 +1,10 @@
-import { cleanText, elementLabel, type PageContext, type PickedElement } from '../devRequestContext'
+import { cleanText, elementLabel, summarizeSources, type PageContext, type PickedElement } from '../devRequestContext'
+import { SOURCE_ATTR } from './componentSourceTransform'
 
 // Reads what the request composer needs from the live page: the element the
-// user pointed at (its name, visible text, the card and popup it sits in,
-// selected tabs, data-* attributes, its box) and the page as a whole. The
+// user pointed at (the component and file that rendered it — the build-time
+// data-src stamps — its name, visible text, selected tabs; the card, data-*
+// attributes and box only as a fallback) and the page as a whole. The
 // visible strings are the reliable pointer back to the source — they are
 // literals there; class names are not (Tailwind), so none are recorded.
 
@@ -18,7 +20,7 @@ const INTERACTIVE = 'button, a[href], input, select, textarea, summary, label, [
 const CONTAINER = 'section, article, form, fieldset, li, aside, nav, [role="dialog"], [role="region"], [role="tabpanel"], [role="group"], [role="listitem"], [role="row"], [role="tablist"]'
 const HEADING = 'h1, h2, h3, h4, h5, [role="heading"], legend'
 // Transient state or plumbing, not meaning.
-const DATA_SKIP = /^data-(headlessui|focus|hover|active|open|closed|enter|leave|transition|selected|checked|disabled|autofocus|app-scroller|vt|dev-request)/
+const DATA_SKIP = /^data-(headlessui|focus|hover|active|open|closed|enter|leave|transition|selected|checked|disabled|autofocus|app-scroller|vt|dev-request|src)/
 
 /**
  * What a click on `raw` should capture: the control it belongs to (an icon
@@ -188,30 +190,21 @@ function dataAttrs(el: Element): [string, string][] {
   return out
 }
 
-// Plumbing, not a screen part: contexts, providers, the router, boundaries.
-const WRAPPER_COMPONENT = /(Context|Provider|Consumer)$|^(Route|Routes|Outlet|ErrorBoundary|Suspense|Fragment|StrictMode|Portal|ForwardRef|Memo)$/
-
-// Development builds only (owner decision: no component names in production
-// captures — production minifies them anyway). React keeps the fiber on the
-// DOM node under a random-suffixed key; walk it up to the nearest components.
-function componentNames(el: Element): string[] {
-  if (!import.meta.env.DEV) return []
-  const key = Object.keys(el).find(k => k.startsWith('__reactFiber$'))
-  if (!key) return []
-  type Fiber = { type?: unknown; return?: Fiber | null }
+/** The build-time `data-src` stamps on `el` and its ancestors, inner → outer. */
+function sourceStamps(el: Element): string[] {
   const out: string[] = []
-  let f: Fiber | null | undefined = (el as unknown as Record<string, Fiber>)[key]
-  for (; f && out.length < 4; f = f.return) {
-    const t = f.type as { displayName?: string; name?: string } | string | null | undefined
-    const name = t && typeof t !== 'string' ? t.displayName || t.name : ''
-    if (name && /^[A-Z]/.test(name) && !WRAPPER_COMPONENT.test(name) && !out.includes(name)) out.push(name)
+  for (let e = el.closest(`[${SOURCE_ATTR}]`); e && out.length < 8; e = e.parentElement?.closest(`[${SOURCE_ATTR}]`) ?? null) {
+    const v = e.getAttribute(SOURCE_ATTR)
+    if (v && !out.includes(v)) out.push(v)
   }
   return out
 }
 
 /** The short label shown while hovering: `button "Log food"`. */
 export function labelFor(el: Element): string {
-  return elementLabel({ tag: el.tagName.toLowerCase(), role: implicitRole(el), name: accessibleName(el) })
+  const label = elementLabel({ tag: el.tagName.toLowerCase(), role: implicitRole(el), name: accessibleName(el) })
+  const src = summarizeSources(sourceStamps(el))
+  return src ? `${label} · ${src.name}` : label
 }
 
 /** Everything worth writing down about one element. */
@@ -252,7 +245,7 @@ export function readElement(el: Element): PickedElement {
     tabs: selectedNear(el),
     data: dataAttrs(el),
     rect: { x: r.left, y: r.top, w: r.width, h: r.height },
-    components: componentNames(el),
+    sources: sourceStamps(el),
   }
 }
 

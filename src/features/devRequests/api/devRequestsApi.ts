@@ -55,4 +55,31 @@ export async function reorderDevRequests(changes: { id: string; sort_order: numb
   if (failed?.error) throw failed.error
 }
 
-export const DEV_REQUEST_STATUS_CYCLE: DevRequestStatus[] = ['open', 'in_progress', 'done']
+/** Sets one status on several requests at once (the drawer's "Mark done"). */
+export async function setDevRequestsStatus(ids: string[], status: DevRequestStatus): Promise<void> {
+  if (ids.length === 0) return
+  const { error } = await supabase
+    .from('dev_requests')
+    .update({ status, updated_at: new Date().toISOString() })
+    .in('id', ids)
+  if (error) throw error
+}
+
+const missingColumn = (e: { code?: string; message?: string } | null) =>
+  !!e && (e.code === '42703' || e.code === 'PGRST204' || /prompted_at/.test(e.message ?? ''))
+
+/**
+ * Records that a prompt was built for these requests. Before migration 114
+ * the column does not exist: the write is skipped (returns false) rather than
+ * failing the prompt the user is trying to copy.
+ */
+export async function markDevRequestsPrompted(ids: string[]): Promise<boolean> {
+  if (ids.length === 0) return true
+  const { error } = await supabase
+    .from('dev_requests')
+    .update({ prompted_at: new Date().toISOString() })
+    .in('id', ids)
+  if (missingColumn(error)) return false
+  if (error) throw error
+  return true
+}

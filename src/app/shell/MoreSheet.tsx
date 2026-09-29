@@ -1,10 +1,10 @@
 import type { ReactNode } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { ChevronRight, Plug, LogOut } from 'lucide-react'
+import { ChevronRight, Plug, LogOut, Settings } from 'lucide-react'
 import { MORE_ENTRIES, isActive } from '../navigation'
 import { useNavClick } from './useNavClick'
 import { ModalShell } from '../../shared/modals'
-import { ThemeSwitch, AccentSwatches, MotionSwitch, NotificationsControl } from '../../shared/components/SettingsMenu'
+import { ThemeSwitch, AccentSwatches, MotionSwitch, NotificationsControl, DisplaySizeSwitch } from '../../shared/components/SettingsMenu'
 import { signOut } from '../../security/supabaseClient'
 import { cx } from '../../shared/ui'
 
@@ -49,30 +49,39 @@ export function MoreSheet({ open, onClose }: { open: boolean; onClose: () => voi
       <Setting label="Appearance"><ThemeSwitch /></Setting>
       <Setting label="Animations"><MotionSwitch /></Setting>
       <Setting label="Accent"><AccentSwatches /></Setting>
+      <Setting label="Display size"><DisplaySizeSwitch /></Setting>
       <div className="flex flex-col">
         <NotificationsControl className={cx(ROW, ROW_IDLE)} />
       </div>
-      <Link
-        to="/developer?tab=connections"
-        // Plain replace-then-close: on /developer itself only the query
-        // changes, which would leave the sheet open.
-        onClick={e => {
-          if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
-          e.preventDefault()
-          navigate('/developer?tab=connections', { replace: true })
-          onClose()
-        }}
-        className={cx(ROW, ROW_IDLE)}
-      >
-        <Plug className="h-[19px] w-[19px] shrink-0" strokeWidth={1.8} aria-hidden />
-        <span className="flex-1">Connections</span>
-        <ChevronRight className="h-4 w-4 text-fg-faint" aria-hidden />
-      </Link>
+      <SheetLink to="/settings" icon={Settings} label="All settings" navigate={navigate} onClose={onClose} />
+      <SheetLink to="/settings?tab=integrations" icon={Plug} label="Integrations" navigate={navigate} onClose={onClose} />
       <button type="button" onClick={() => signOut()} className={cx(ROW, ROW_IDLE)}>
         <LogOut className="h-[19px] w-[19px] shrink-0" strokeWidth={1.8} aria-hidden />
         <span className="flex-1 text-left">Sign out</span>
       </button>
     </ModalShell>
+  )
+}
+
+/** Plain replace-then-close: on /settings itself only the query changes, which would leave the sheet open. */
+function SheetLink({ to, icon: Icon, label, navigate, onClose }: {
+  to: string; icon: typeof Plug; label: string; navigate: ReturnType<typeof useNavigate>; onClose: () => void
+}) {
+  return (
+    <Link
+      to={to}
+      onClick={e => {
+        if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
+        e.preventDefault()
+        navigate(to, { replace: true })
+        onClose()
+      }}
+      className={cx(ROW, ROW_IDLE)}
+    >
+      <Icon className="h-[19px] w-[19px] shrink-0" strokeWidth={1.8} aria-hidden />
+      <span className="flex-1">{label}</span>
+      <ChevronRight className="h-4 w-4 text-fg-faint" aria-hidden />
+    </Link>
   )
 }
 

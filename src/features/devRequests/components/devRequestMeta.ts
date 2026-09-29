@@ -1,6 +1,6 @@
 import type { Tone } from '../../../shared/ui'
 import { NAV } from '../../../app/navigation'
-import type { DevRequestCategory, DevRequestPriority } from '../types'
+import type { DevRequestCategory, DevRequestPriority, DevRequestStatus } from '../types'
 
 // Split out from DevRequestCard.tsx — a component file can only export
 // components for Fast Refresh to work, not also share constants.
@@ -20,6 +20,22 @@ export const PRIORITY_TONE: Record<DevRequestPriority, Tone> = {
   high:   'warn',
   urgent: 'danger',
 }
+
+export const STATUS_TONE: Record<DevRequestStatus, Tone> = {
+  open:        'neutral',
+  in_progress: 'info',
+  done:        'success',
+  dismissed:   'neutral',
+}
+
+export const STATUS_LABEL: Record<DevRequestStatus, string> = {
+  open:        'Open',
+  in_progress: 'In progress',
+  done:        'Done',
+  dismissed:   'Dismissed',
+}
+
+export const STATUSES: readonly DevRequestStatus[] = ['open', 'in_progress', 'done', 'dismissed']
 
 // The app's own routes, straight from the nav registry, so a new page shows
 // up here without a second list to maintain. A dropdown of these beats a

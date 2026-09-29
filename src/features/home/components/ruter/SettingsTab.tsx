@@ -3,12 +3,12 @@ import { MapPin, Star, X } from 'lucide-react'
 import { useTransitStops, DuplicateStopError } from '../../hooks/useTransitStops'
 import { useTransitRoutes } from '../../hooks/useTransitRoutes'
 import { useNearbyStops } from '../../hooks/useTransitQueries'
-import { useTravelProfile, type WalkPace } from '../../hooks/useTravelProfile'
 import type { StopResult } from '../../api/ruterApi'
 import { useEntityModal } from '../../../../shared/modals'
-import { IconButton, SectionLabel, Truncate, cx } from '../../../../shared/ui'
+import { IconButton, SectionLabel, Truncate } from '../../../../shared/ui'
 import { StopSearchInput } from './StopSearchInput'
 import { QuaySavePanel } from './QuaySavePanel'
+import { TravelProfileFields } from './TravelProfileFields'
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -19,26 +19,9 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
   )
 }
 
-function Choice({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={cx(
-        'min-h-[44px] flex-1 rounded-control border px-2 text-body capitalize transition-colors duration-150',
-        active ? 'border-accent-500 bg-accent-500 text-on-accent' : 'border-line text-fg-2 hover:bg-surface-hover',
-      )}
-    >
-      {children}
-    </button>
-  )
-}
-
 export function SettingsTab({ active = true, onSelectRoute }: { active?: boolean; onSelectRoute?: (routeId: string) => void }) {
   const { stops, addStop, updateStop, removeStop, setDefault } = useTransitStops()
   const { routes, removeRoute } = useTransitRoutes()
-  const { profile, update: updateProfile } = useTravelProfile()
   const modal = useEntityModal()
 
   const [newStop, setNewStop] = useState<StopResult | null>(null)
@@ -173,35 +156,7 @@ export function SettingsTab({ active = true, onSelectRoute }: { active?: boolean
 
       {/* Applied to every route search, so these never need re-entering. */}
       <Section title="Travel profile">
-        <div className="space-y-3">
-          <div>
-            <p className="field-label">Walking pace</p>
-            <div className="flex gap-1.5">
-              {(['slow', 'normal', 'fast'] as WalkPace[]).map(pace => (
-                <Choice key={pace} active={profile.walkPace === pace} onClick={() => updateProfile({ walkPace: pace })}>{pace}</Choice>
-              ))}
-            </div>
-          </div>
-          <div>
-            <p className="field-label">Maximum transfers</p>
-            <div className="flex gap-1.5">
-              {[null, 0, 1, 2].map(n => (
-                <Choice key={n ?? 'any'} active={profile.maximumTransfers === n} onClick={() => updateProfile({ maximumTransfers: n })}>
-                  {n === null ? 'No limit' : n}
-                </Choice>
-              ))}
-            </div>
-          </div>
-          <label className="flex min-h-[44px] items-center gap-2 text-body text-fg-2">
-            <input
-              type="checkbox"
-              checked={profile.wheelchairAccessible}
-              onChange={e => updateProfile({ wheelchairAccessible: e.target.checked })}
-              className="rounded border-line-strong"
-            />
-            Wheelchair-accessible routes only
-          </label>
-        </div>
+        <TravelProfileFields />
       </Section>
     </div>
   )

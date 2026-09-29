@@ -195,15 +195,15 @@ console.log('\n== exerciseGifResolver without the manifest ==')
 // ─── stravaMeta.parseStravaCallback ─────────────────────────────────────────
 console.log('\n== parseStravaCallback ==')
 {
-  const a = parseStravaCallback('', '#/developer?tab=connections&from=strava&state=&code=abc&scope=read,activity:read_all')
+  const a = parseStravaCallback('', '#/settings?tab=integrations&from=strava&state=&code=abc&scope=read,activity:read_all')
   check('appended with "&"', a && a.code === 'abc' && a.scope === 'read,activity:read_all')
-  const b = parseStravaCallback('', '#/developer?tab=connections&from=strava?state=&code=abc&scope=read')
+  const b = parseStravaCallback('', '#/settings?tab=integrations&from=strava?state=&code=abc&scope=read')
   check('appended with a second "?" (junk lands on the sacrificial param)', b && b.code === 'abc' && b.scope === 'read')
-  const c = parseStravaCallback('?state=&code=xyz&scope=read', '#/developer?tab=connections&from=strava')
+  const c = parseStravaCallback('?state=&code=xyz&scope=read', '#/settings?tab=integrations&from=strava')
   check('put in the real query before the hash', c && c.code === 'xyz')
-  const d = parseStravaCallback('', '#/developer?tab=connections&from=strava&error=access_denied')
+  const d = parseStravaCallback('', '#/settings?tab=integrations&from=strava&error=access_denied')
   check('a denied consent is reported, not exchanged', d && d.error === 'access_denied' && d.code === null)
-  check('a plain Connections visit is no callback', parseStravaCallback('', '#/developer?tab=connections') === null)
+  check('a plain Connections visit is no callback', parseStravaCallback('', '#/settings?tab=integrations') === null)
 }
 
 console.log(`\n${passed} passed, ${failed} failed`)

@@ -9,6 +9,7 @@ import {
   type ExerciseProgressResult, type RoutineTargetLookup, type UserOverrideLookup, type CanonicalExerciseSession,
   type ProgressMetricKind, type ProgramDecision,
 } from './progress-engine'
+import { RECENT_DAYS, daysAgo } from './progress/decisionTabs'
 import { computeSleepSummary } from '../health/healthAggregate'
 import { computeWeeklySleepTrend } from '../health/recoveryAggregate'
 import type { HevyRoutine } from './types.hevy'
@@ -132,7 +133,22 @@ export function computeProgressModel(input: ProgressModelInput): ProgressData {
       routineTitlesByTemplateId.set(ex.exercise_template_id, bucket)
     }
   }
-  const templateIds = [...new Set(filteredSets.map(s => s.exercise_template_id))].filter(id => currentExerciseIds.has(id))
+  // ...but anything trained in a current-program routine in the last
+  // RECENT_DAYS still counts, even if the routine no longer lists it (swapped
+  // mid-workout, or the routine was edited since): the Recent changes tab
+  // must show every lift actually trained lately, and it used to hide these.
+  const recentCutoff = daysAgo(today, RECENT_DAYS)
+  const titleOfRoutine = new Map(activeRoutines.map(r => [r.id, r.title]))
+  for (const s of filteredSets) {
+    if (s.date < recentCutoff || !s.routine_id || s.set_type === 'warmup' || currentExerciseIds.has(s.exercise_template_id)) continue
+    const routineTitle = titleOfRoutine.get(s.routine_id)
+    if (!routineTitle) continue
+    const bucket = routineTitlesByTemplateId.get(s.exercise_template_id) ?? []
+    if (!bucket.includes(routineTitle)) bucket.push(routineTitle)
+    routineTitlesByTemplateId.set(s.exercise_template_id, bucket)
+  }
+  const inScope = (id: string) => currentExerciseIds.has(id) || routineTitlesByTemplateId.has(id)
+  const templateIds = [...new Set(filteredSets.map(s => s.exercise_template_id))].filter(inScope)
   const titleById = new Map(history.templates.map(t => [t.id, t.title]))
   const typeById = new Map(history.templates.map(t => [t.id, t.type]))
   const muscleGroupByTemplateId = new Map(history.templates.map(t => [t.id, t.primary_muscle_group]))

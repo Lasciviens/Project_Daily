@@ -48,7 +48,7 @@ function NotConfigured() {
       <p className="text-4xl mb-3">🖥️</p>
       <h2 className="text-base font-bold text-ink-900 mb-1">Steam — not configured yet</h2>
       <p className="text-sm text-ink-500">
-        Steam is configured server-side. See <Link to="/developer?tab=connections" className="text-accent-600 underline">Developer → Connections</Link> for its status and setup steps.
+        Steam is configured server-side. See <Link to="/settings?tab=integrations" className="text-accent-600 underline">Settings → Integrations</Link> for its status and setup steps.
       </p>
     </div>
   )

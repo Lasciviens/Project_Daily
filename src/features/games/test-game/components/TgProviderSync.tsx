@@ -33,7 +33,7 @@ export function TgProviderSync({ library, games, compact = false, iconOnly = fal
       const rows = library === 'steam'
         ? steamImportRows((await qc.fetchQuery({ queryKey: ['steam', 'owned-games'], queryFn: fetchSteamOwnedGames, staleTime: 0 })).games)
         : psnImportRows(await qc.fetchQuery({ queryKey: ['psn', 'played-games'], queryFn: fetchPsnPlayedGames, staleTime: 0 }))
-      if (!rows.length) throw new Error(`${NAME[library]} returned no games — check Developer → Connections.`)
+      if (!rows.length) throw new Error(`${NAME[library]} returned no games — check Settings → Integrations.`)
       const { imported, updated, promoted } = await importProviderGames(library, library === 'steam' ? 'steam' : 'psn', rows)
       toast.dismiss(tid)
       const bits = [imported ? `${imported} added` : null, updated ? `${updated} refreshed` : null, promoted ? `${promoted} now playing` : null].filter(Boolean)

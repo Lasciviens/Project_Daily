@@ -19,6 +19,8 @@
           var dark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)
           if (dark) document.documentElement.classList.add('dark')
           if (state.motion === 'standard') document.documentElement.setAttribute('data-motion', 'standard')
+          // Settings → Appearance → Display size (root font size, the app is rem-based).
+          if ([80, 90, 110, 125].indexOf(state.scale) !== -1) document.documentElement.style.fontSize = state.scale + '%'
         } catch (e) {}
       })()
     </script>

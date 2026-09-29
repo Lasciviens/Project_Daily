@@ -5,8 +5,6 @@ import { InfoBubble } from '../../../../shared/components/InfoBubble'
 import { CurrentProgramPicker } from '../CurrentProgramPicker'
 import { daysBetween } from '../../plan/nextSession'
 import type { HevyRoutine } from '../../types.hevy'
-import { useMissedSessions } from '../../hooks/useTrainingSkips'
-import { MissedSessionsList } from './MissedSessions'
 
 function lastDone(last: string | undefined, today: string): string {
   if (!last) return 'not trained in 6 months'
@@ -14,16 +12,15 @@ function lastDone(last: string | undefined, today: string): string {
   return d === 0 ? 'today' : d === 1 ? 'yesterday' : `${d} days ago`
 }
 
-/** Which routines are the current program, and when each was last done —
- *  with a warning row for a routine missed for over a week (plan it or skip
- *  it with a reason). The picker opens by itself while nothing is chosen. */
+/** Which routines are the current program, and when each was last done.
+ *  Missed sessions (plan it / skip it) live on the Next tab only (owner's
+ *  call). The picker opens by itself while nothing is chosen. */
 export function CurrentProgramCard({ routines, lastTrained, today }: {
   routines: HevyRoutine[]
   lastTrained: ReadonlyMap<string, string>
   today: string
 }) {
   const [editing, setEditing] = useState(false)
-  const missed = useMissedSessions()
   const showPicker = editing || routines.length === 0
   return (
     <Card className="max-w-2xl">
@@ -34,7 +31,6 @@ export function CurrentProgramCard({ routines, lastTrained, today }: {
         subtitle={routines.length > 0 ? `${routines.length} ${routines.length === 1 ? 'routine' : 'routines'}` : 'Not chosen yet'}
         action={routines.length > 0 && <Button size="sm" variant="ghost" onClick={() => setEditing(v => !v)}>{editing ? 'Done' : 'Change'}</Button>}
       />
-      {!showPicker && <MissedSessionsList items={missed.items} today={missed.today} className="mb-4" />}
       {showPicker ? (
         <CurrentProgramPicker onSaved={() => setEditing(false)} />
       ) : (

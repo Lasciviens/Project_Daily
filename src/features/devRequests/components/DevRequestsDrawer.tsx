@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react'
 import { useLocation } from 'react-router-dom'
-import { Plus, ChevronRight, Trash2, ArrowUpDown, Zap, Sparkles, Check, PenLine } from 'lucide-react'
+import { Plus, ChevronRight, Trash2, ArrowUpDown, Zap, Sparkles, Check, PenLine, X } from 'lucide-react'
 import { useUIStore } from '../../../app/store'
 import {
-  devRequestsReadFrom, useDevRequests, useUpdateDevRequest, useDeleteDevRequest, useBulkDeleteDevRequests, useReorderDevRequests,
+  devRequestsReadFrom, useDevRequests, useDeleteDevRequest, useBulkDeleteDevRequests, useReorderDevRequests,
+  useSetDevRequestsStatus, useMarkDevRequestsPrompted,
 } from '../hooks/useDevRequests'
 import { discardNewDraft } from '../hooks/useDevRequestDraft'
-import { DEV_REQUEST_STATUS_CYCLE } from '../api/devRequestsApi'
 import { useDevRequestDrafts } from '../devRequestDraftStore'
 import { CATEGORIES, isDraftEmpty, orphanEditDrafts, planReorder } from '../devRequestRules'
 import { descriptionPreview } from '../devRequestContext'
@@ -14,12 +14,10 @@ import { buildClaudePrompt } from '../devRequestPrompt'
 import { DEV_REQUEST_UI_ATTR } from '../pick/pickDom'
 import { usePageContextReader } from '../pick/usePageContext'
 import { DevRequestCard } from './DevRequestCard'
-import { DevRequestEditForm, DevRequestNewForm } from './DevRequestForm'
 import { pageOptionFor } from './devRequestMeta'
 import { SideDrawer } from '../../../shared/modals/SideDrawer'
 import { useEntityModal } from '../../../shared/modals'
-import { useBreakpoint } from '../../../shared/hooks/useBreakpoint'
-import { Button, Skeleton, Truncate, cx } from '../../../shared/ui'
+import { Button, IconButton, Skeleton, Truncate, cx } from '../../../shared/ui'
 import type { DevRequest, DevRequestCategory, DevRequestPriority } from '../types'
 
 const PRIORITY_RANK: Record<DevRequestPriority, number> = { urgent: 0, high: 1, medium: 2, low: 3 }
@@ -30,20 +28,22 @@ const CHIP_ON = 'border-accent-500/30 bg-accent-50 text-accent-700'
 
 /**
  * The in-app backlog (dev_requests): jot bugs, features and ideas about the
- * app itself. Filters, sort, the open form and every unsaved word live in the
- * draft store (localStorage), so closing the drawer — which unmounts its
- * content — or reloading loses nothing. On tablet/desktop "New" opens the
- * floating composer, which stays on screen while you browse.
+ * app itself. The floating composer is the only editor: "New" and a tap on a
+ * card open it (docked above the tab bar on phones, a window elsewhere) and
+ * close the drawer. The status circle ticks a request; with one or more
+ * ticked, an action bar offers Mark done, Delete and Build prompt. Filters,
+ * sort, the ticks and every unsaved word live in the draft store
+ * (localStorage), so closing the drawer or reloading loses nothing.
  */
 export function DevRequestsDrawer() {
   const isOpen = useUIStore(s => s.isDevRequestsOpen)
   const close = useUIStore(s => s.closeDevRequests)
   const { pathname } = useLocation()
-  const phone = useBreakpoint() === 'phone'
   const modal = useEntityModal()
   const readPage = usePageContextReader()
   const { data: requests = [], isLoading, isSuccess } = useDevRequests()
-  const updateRequest = useUpdateDevRequest()
+  const setStatus = useSetDevRequestsStatus()
+  const markPrompted = useMarkDevRequestsPrompted()
   const deleteRequest = useDeleteDevRequest()
   const bulkDelete = useBulkDeleteDevRequests()
   const reorder = useReorderDevRequests()
@@ -65,34 +65,28 @@ export function DevRequestsDrawer() {
     if (gone.length) useDevRequestDrafts.getState().pruneEditDrafts(gone)
   }, [isSuccess, requests, editDrafts])
 
-  const { categories, sortMode, showDone, newFormOpen, editingId, selecting } = prefs
-  const picked = new Set(prefs.picked)
+  const { categories, sortMode, showDone } = prefs
   const categoryFilters = new Set(categories)
+  // Ticks of requests that are gone (deleted elsewhere) don't count.
+  const pickedIds = isSuccess ? prefs.picked.filter(id => requests.some(r => r.id === id)) : prefs.picked
+  const picked = new Set(pickedIds)
 
   function togglePicked(id: string) {
-    setDrawer({ picked: picked.has(id) ? prefs.picked.filter(x => x !== id) : [...prefs.picked, id] })
+    setDrawer({ picked: picked.has(id) ? pickedIds.filter(x => x !== id) : [...pickedIds, id] })
   }
-  function startSelecting() { setDrawer({ selecting: true, picked: prompt.ids.filter(id => requests.some(r => r.id === id)) }) }
-  function stopSelecting() { setDrawer({ selecting: false, picked: [] }) }
+  const clearPicked = () => setDrawer({ picked: [] })
 
   function toggleCategoryFilter(c: DevRequestCategory) {
     setDrawer({ categories: categoryFilters.has(c) ? categories.filter(x => x !== c) : [...categories, c] })
   }
 
-  // Tablet/desktop write in the floating composer; phones in the inline form.
+  // Every write happens in the composer; the drawer only opens it.
   function openNew() {
-    if (phone) { setDrawer({ newFormOpen: !newFormOpen }); return }
     useDevRequestDrafts.getState().beginNewDraft(readPage(), pageOptionFor(pathname))
     openComposer({ kind: 'new' })
     close()
   }
-  function popOutNew() {
-    setDrawer({ newFormOpen: false })
-    openComposer({ kind: 'new' })
-    close()
-  }
-  function popOutEdit(id: string) {
-    setDrawer({ editingId: null })
+  function openRequest(id: string) {
     openComposer({ kind: 'edit', id })
     close()
   }
@@ -131,10 +125,27 @@ export function DevRequestsDrawer() {
     useDevRequestDrafts.getState().clearEditDraft(request.id)
   }
 
-  function handleCycleStatus(request: DevRequest) {
-    const idx = DEV_REQUEST_STATUS_CYCLE.indexOf(request.status as typeof DEV_REQUEST_STATUS_CYCLE[number])
-    const next = DEV_REQUEST_STATUS_CYCLE[(idx + 1) % DEV_REQUEST_STATUS_CYCLE.length]
-    updateRequest.mutate({ id: request.id, patch: { status: next } })
+  async function handleDeletePicked() {
+    const ids = [...pickedIds]
+    if (ids.length === 0) return
+    const ok = await modal.confirm({
+      title: `Delete ${ids.length} request${ids.length === 1 ? '' : 's'}?`,
+      message: "The selected requests are removed. This can't be undone.",
+      confirmLabel: 'Delete',
+      destructive: true,
+    })
+    if (!ok) return
+    try { await bulkDelete.mutateAsync(ids) } catch { return }
+    const s = useDevRequestDrafts.getState()
+    s.pruneEditDrafts(ids)
+    s.setDrawer({ picked: s.drawer.picked.filter(id => !ids.includes(id)) })
+  }
+
+  async function handleMarkPickedDone() {
+    const ids = pickedIds.filter(id => requests.find(r => r.id === id)?.status !== 'done')
+    if (ids.length === 0) { clearPicked(); return }
+    try { await setStatus.mutateAsync({ ids, status: 'done' }) } catch { return }
+    clearPicked()
   }
 
   function handleDrop(targetId: string) {
@@ -162,57 +173,25 @@ export function DevRequestsDrawer() {
     }
     const s = useDevRequestDrafts.getState()
     if (!(same && prompt.edited)) s.setPrompt(rows.map(r => r.id), buildClaudePrompt(rows))
-    setDrawer({ selecting: false })
+    markPrompted.mutate(rows.map(r => r.id))
+    clearPicked()
     openComposer(composer.target, 'prompt')
     close()
   }
 
-  const renderRow = (request: DevRequest, draggable: boolean) => {
-    if (selecting) {
-      const on = picked.has(request.id)
-      const preview = descriptionPreview(request.description)
-      return (
-        <button
-          type="button"
-          onClick={() => togglePicked(request.id)}
-          aria-pressed={on}
-          className={cx(
-            'flex min-h-[44px] w-full items-start gap-2.5 rounded-row border px-3 py-2.5 text-left transition-colors',
-            on ? 'border-accent-500/40 bg-accent-50' : 'border-line bg-surface [@media(hover:hover)]:hover:border-line-strong',
-          )}
-        >
-          <span className={cx(
-            'mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border',
-            on ? 'border-accent-500 bg-accent-500 text-on-accent' : 'border-line-strong bg-surface',
-          )}>
-            {on && <Check className="h-3.5 w-3.5" aria-hidden />}
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-body font-medium text-fg">{request.title}</span>
-            {preview && <Truncate lines={2} className="mt-0.5 text-meta text-fg-2">{preview}</Truncate>}
-            <span className="mt-0.5 block text-meta text-fg-muted">{request.category} · {request.priority}{request.page && request.page !== 'other' ? ` · ${request.page}` : ''}</span>
-          </span>
-        </button>
-      )
-    }
-    if (editingId === request.id) {
-      // A save can land after the form moved on to another request: close only this one.
-      const closeEdit = () => { if (useDevRequestDrafts.getState().drawer.editingId === request.id) setDrawer({ editingId: null }) }
-      return <DevRequestEditForm request={request} onClose={closeEdit} onPopOut={() => popOutEdit(request.id)} />
-    }
-    return (
-      <DevRequestCard
-        request={request}
-        hasDraft={request.id in editDrafts}
-        dragging={draggable && draggingId === request.id}
-        onDragStart={() => { if (draggable) setDraggingId(request.id) }}
-        onDragEnd={() => setDraggingId(null)}
-        onCycleStatus={() => handleCycleStatus(request)}
-        onDelete={() => void handleDelete(request)}
-        onEdit={() => setDrawer({ editingId: request.id })}
-      />
-    )
-  }
+  const renderRow = (request: DevRequest, draggable: boolean) => (
+    <DevRequestCard
+      request={request}
+      hasDraft={request.id in editDrafts}
+      selected={picked.has(request.id)}
+      dragging={draggable && draggingId === request.id}
+      onDragStart={() => { if (draggable) setDraggingId(request.id) }}
+      onDragEnd={() => setDraggingId(null)}
+      onToggleSelect={() => togglePicked(request.id)}
+      onDelete={() => void handleDelete(request)}
+      onOpen={() => openRequest(request.id)}
+    />
+  )
 
   const filters = (
     <div className="flex flex-col gap-1.5 px-4 pb-2.5 sm:px-5">
@@ -254,12 +233,11 @@ export function DevRequestsDrawer() {
     </div>
   )
 
-  // A draft that is neither in the composer nor in the open form: say so, so
-  // it is never forgotten.
-  // (On tablet/desktop the composer is tucked away while this drawer is
-  // open, so its draft is announced here too; Continue brings it back.)
+  // An unsaved new draft is announced here so it is never forgotten (on
+  // tablet/desktop the composer is tucked away while this drawer is open).
   const composerHasNew = composer.open && composer.target.kind === 'new'
-  const showDraftBanner = !selecting && !isDraftEmpty(newDraft) && (phone ? !newFormOpen && !composerHasNew : true)
+  const showDraftBanner = !isDraftEmpty(newDraft)
+  const busy = setStatus.isPending || bulkDelete.isPending
 
   return (
     <SideDrawer
@@ -267,31 +245,15 @@ export function DevRequestsDrawer() {
       onClose={close}
       title="Requests & ideas"
       headerActions={
-        <>
-          <Button
-            variant="ghost"
-            size="sm"
-            icon={<Sparkles />}
-            onClick={() => (selecting ? stopSelecting() : startSelecting())}
-            aria-pressed={selecting}
-            title="Pick requests and build a prompt for Claude"
-          >
-            {selecting ? 'Cancel' : 'Prompt'}
-          </Button>
-          {!selecting && (
-            <Button variant="ghost" size="sm" icon={<Plus />} onClick={openNew} aria-expanded={phone ? newFormOpen : undefined} className="text-accent-600">
-              New
-            </Button>
-          )}
-        </>
+        <Button variant="ghost" size="sm" icon={<Plus />} onClick={openNew} className="text-accent-600">
+          New
+        </Button>
       }
       headerExtra={filters}
       widthClassName="w-[28rem]"
       phoneHeight="80dvh"
     >
       <div {...{ [DEV_REQUEST_UI_ATTR]: '' }} className="scroll-y min-h-0 flex-1 overflow-y-auto pb-[env(safe-area-inset-bottom)]">
-        {phone && newFormOpen && !selecting && <DevRequestNewForm onClose={() => setDrawer({ newFormOpen: false })} onPopOut={popOutNew} />}
-
         {showDraftBanner && (
           <div className="mx-3 mt-3 flex items-center gap-2 rounded-row border border-line bg-surface-2 py-1.5 pl-3 pr-1.5 sm:mx-4">
             <PenLine className="h-4 w-4 shrink-0 text-fg-muted" aria-hidden />
@@ -300,7 +262,7 @@ export function DevRequestsDrawer() {
               <Truncate className="text-body font-medium text-fg">{newDraft.title.trim() || descriptionPreview(newDraft.description, 60) || 'Untitled'}</Truncate>
             </span>
             <Button size="sm" variant="ghost" onClick={() => discardNewDraft()}>Discard</Button>
-            <Button size="sm" onClick={() => (phone ? setDrawer({ newFormOpen: true }) : popOutNew())}>Continue</Button>
+            <Button size="sm" onClick={() => { openComposer({ kind: 'new' }); close() }}>Continue</Button>
           </div>
         )}
 
@@ -354,19 +316,16 @@ export function DevRequestsDrawer() {
           )}
         </div>
       </div>
-      {selecting && (
-        <div className="flex items-center justify-between gap-2 border-t border-line bg-surface px-4 py-2.5 pb-[calc(0.625rem+env(safe-area-inset-bottom))] sm:px-5">
-          <span className="text-meta text-fg-muted">
-            {picked.size === 0 ? 'Tap requests to pick them' : `${picked.size} picked`}
-          </span>
-          <div className="flex gap-1.5">
-            {sorted.length > 0 && (
-              <Button variant="ghost" size="sm" onClick={() => setDrawer({ picked: sorted.map(r => r.id) })}>All open</Button>
-            )}
-            <Button size="sm" icon={<Sparkles />} disabled={picked.size === 0} onClick={() => void handleBuildPrompt()}>
-              Build prompt
-            </Button>
-          </div>
+      {picked.size > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5 border-t border-line bg-surface px-3 py-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] sm:px-4">
+          <IconButton label="Clear selection" onClick={clearPicked}><X /></IconButton>
+          <span className="mr-auto text-meta font-semibold text-fg-2">{picked.size} selected</span>
+          {sorted.some(r => !picked.has(r.id)) && (
+            <Button variant="ghost" size="sm" onClick={() => setDrawer({ picked: [...new Set([...pickedIds, ...sorted.map(r => r.id)])] })}>All open</Button>
+          )}
+          <Button variant="ghost" size="sm" icon={<Check />} disabled={busy} onClick={() => void handleMarkPickedDone()}>Mark done</Button>
+          <Button variant="ghost" size="sm" icon={<Trash2 />} disabled={busy} onClick={() => void handleDeletePicked()} className="hover:!text-danger">Delete</Button>
+          <Button size="sm" icon={<Sparkles />} onClick={() => void handleBuildPrompt()}>Build prompt</Button>
         </div>
       )}
     </SideDrawer>
