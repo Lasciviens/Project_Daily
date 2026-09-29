@@ -409,3 +409,31 @@ export function goalProgress(kind: GoalKind, goal: number | null, s: GoalSeries,
   const days = Math.ceil(Math.round((Math.abs(remaining) / Math.abs(s.trend.slopePerDay)) * 1e6) / 1e6)
   return { ...out, status: 'moving_toward', eta: days > MAX_ETA_DAYS ? 'too_far' : { days, date: addDays(s.trend.lastDate, days) } }
 }
+
+/** A goal's measurement noise: a change since the start smaller than this is
+ *  inside it — day-to-day weight swings (0.3 kg), bioimpedance body fat
+ *  (±0.6 %) and muscle/lean mass (±0.5 kg, Looney 2024). */
+export const GOAL_NOISE: Record<GoalKind, number> = { weight: 0.3, bodyFat: MIN_FAT_PCT_CHANGE, muscle: MIN_MASS_CHANGE_KG }
+
+export interface NoDateReason {
+  /** current − start (signed). */
+  change: number
+  startDate: string
+  noise: number
+  /** |change| is smaller than the measurement's noise. */
+  withinNoise: boolean
+  /** Which way the change points against the goal (seen from the start). */
+  direction: 'toward' | 'away' | 'none'
+}
+
+/** Why a goal with no clear trend has no projected date: the real change since
+ *  the start, whether it's inside the noise, and whether it points at the goal.
+ *  null without a start or a current value. */
+export function noDateReason(g: GoalProgress): NoDateReason | null {
+  if (g.start == null || g.startDate == null || g.current == null) return null
+  const change = g.current - g.start
+  const noise = GOAL_NOISE[g.kind]
+  const toGoal = Math.sign(g.goal - g.start)
+  const direction = Math.abs(change) < 1e-9 || toGoal === 0 ? 'none' : Math.sign(change) === toGoal ? 'toward' : 'away'
+  return { change, startDate: g.startDate, noise, withinNoise: Math.abs(change) < noise, direction }
+}

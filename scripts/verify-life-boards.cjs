@@ -142,6 +142,11 @@ check('Health Workouts: the list spans at most two tracks from 1920 (a week hold
   const cols = B.resolveBoardLayout(H.WORKOUT_BOARD, s).columns
   return eq(cols[0].stack, ['list']) && cols[0].span === 2 && cols.slice(1).every(c => c.stack.length === 0)
 }))
+check('Health Goal: Muscle watch is its own card under the report on a phone', eq(H.GOAL_BOARD[1], ['report', 'muscle']))
+check('Health Goal: Muscle watch sits right under the goals from 1280', [2, 3, 4].every(s => {
+  const col = B.resolveBoardLayout(H.GOAL_BOARD, s).columns[1].stack
+  return col[0] === 'goals' && col[1] === 'muscle'
+}))
 check('Health Goal at 2450: protein and the collapsed calories card share a track', eq(B.resolveBoardLayout(H.GOAL_BOARD, 4).columns[2].stack, ['protein', 'energy']))
 check('Health Heart at 1280/1469: the resting-HR trend goes under the heart card (columns end level)', eq(B.resolveBoardLayout(H.HEART_BOARD, 2).columns[0].stack, ['heart', 'rhrTrend']))
 check('Training Program: balance (only with a current program) takes the last track', [3, 4].every(s => {

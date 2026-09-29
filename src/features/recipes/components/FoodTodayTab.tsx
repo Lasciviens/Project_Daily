@@ -92,7 +92,7 @@ export function FoodTodayTab({ date }: { date: string }) {
   const [coachOpen, setCoachOpen] = useState(false)   // phone-only collapse
   // "As meal" groups expanded to their individual items (collapsed by default).
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
-  // A food logged while the day is open rises in (the "More" animations).
+  // A food logged while the day is open rises in (the motion set).
   const fresh = useNewIds((nut?.meals ?? []).map(m => m.id), date, nut != null)
 
   // The goal lives in the shared `day-targets` popup (draft → Save), shown

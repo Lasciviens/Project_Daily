@@ -70,16 +70,19 @@ export const BODY_BOARD: BoardLayouts<typeof BODY_SECTIONS[number]> = {
 
 // ── Goal progress ───────────────────────────────────────────────────────────
 // The report (verdict, pace, fat vs muscle, weight trend) in main; the goals,
-// protein and calories-vs-scale cards beside it. On a phone the three are
-// blocks INSIDE the report card (one card — the card checks `keysAt`), so
-// step 1 places only the report. Protein and the (collapsed) calories card
-// are short, so they share a track at 2450 and the last track stays empty.
-export const GOAL_SECTIONS = ['report', 'goals', 'protein', 'energy'] as const
+// Muscle watch, protein and calories-vs-scale cards beside it. On a phone the
+// goals, protein and calories blocks sit INSIDE the report card (one card —
+// the card checks `keysAt`), so step 1 places the report and, as its own card
+// right under it (next to the goals block), Muscle watch. Muscle watch always
+// renders (it says when data is missing), so it sits under the goals.
+// Protein and the (collapsed) calories card are short, so they share a track
+// at 2450 and the last track stays empty.
+export const GOAL_SECTIONS = ['report', 'goals', 'muscle', 'protein', 'energy'] as const
 export const GOAL_BOARD: BoardLayouts<typeof GOAL_SECTIONS[number]> = {
-  1: ['report'],
-  2: { columns: [['report'], ['goals', 'protein', 'energy']] },
-  3: { columns: [['report'], ['goals'], ['protein', 'energy']] },
-  4: { columns: [['report'], ['goals'], ['protein', 'energy'], []] },
+  1: ['report', 'muscle'],
+  2: { columns: [['report'], ['goals', 'muscle', 'protein', 'energy']] },
+  3: { columns: [['report'], ['goals', 'muscle'], ['protein', 'energy']] },
+  4: { columns: [['report'], ['goals', 'muscle'], ['protein', 'energy'], []] },
 }
 
 // ── Cardio fitness ──────────────────────────────────────────────────────────

@@ -24,7 +24,7 @@ const SWEEP = 'stroke-dashoffset 600ms cubic-bezier(0.22, 1, 0.36, 1)'
 const clamp01 = (v: number) => (Number.isFinite(v) ? Math.min(Math.max(v, 0), 1) : 0)
 
 /**
- * The one progress ring (calories, protein). With the "More" animations it
+ * The one progress ring (calories, protein). With the motion set it
  * sweeps from empty when it appears and eases to a new value — and while a
  * new day loads it holds the last real value instead of draining to the
  * placeholder; otherwise it draws its value at once.

@@ -1,10 +1,13 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { Lightbulb } from 'lucide-react'
 import { Button, Card, CardHeader, ToneDot } from '../../../../shared/ui'
 import { buildHealthInsights, type Insight } from '../../benchmarks/healthGuidance'
 import { insightInput } from './insightInput'
 import type { HealthHero } from './useHealthHero'
 import { SourceList } from './MetricExplainer'
+import { useMuscleWatch } from '../../goal/useMuscleWatch'
+import { GOAL_SRC } from '../../goal/goalSources'
 
 // Plain-language insights from the hero's numbers (healthGuidance.ts —
 // deterministic, association-not-diagnosis wording). Needs-attention first.
@@ -20,6 +23,9 @@ function InsightRow({ insight }: { insight: Insight }) {
         <p className="text-body font-semibold text-fg">{insight.title}</p>
         <p className="text-meta text-fg-2">{insight.text}</p>
         {insight.action && <p className="text-meta text-fg"><span className="font-semibold">Try:</span> {insight.action}</p>}
+        {insight.href && (
+          <Link to={insight.href} className="btn-ghost btn-sm -ml-2 self-start px-2 text-meta font-semibold text-accent-600">Open Goal progress</Link>
+        )}
         <button type="button" aria-expanded={open} onClick={() => setOpen(o => !o)} className="btn-ghost btn-sm -ml-2 self-start px-2 text-meta">
           {open ? 'Hide why' : 'Why?'}
         </button>
@@ -36,7 +42,11 @@ function InsightRow({ insight }: { insight: Insight }) {
 
 export function HealthInsightsCard({ hero }: { hero: HealthHero }) {
   const [all, setAll] = useState(false)
-  const insights = buildHealthInsights(insightInput(hero))
+  const { watch } = useMuscleWatch()
+  const insights = buildHealthInsights({
+    ...insightInput(hero),
+    muscleWatch: watch && { level: watch.level, headline: watch.headline, actions: watch.actions, sources: [GOAL_SRC.looney2024, GOAL_SRC.garthe2011, GOAL_SRC.morton2018] },
+  })
   if (!insights.length) return null
   const shown = all ? insights : insights.slice(0, SHOW)
   return (

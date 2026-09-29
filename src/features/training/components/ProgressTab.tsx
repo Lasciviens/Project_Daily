@@ -17,6 +17,7 @@ import { ExerciseDecisionTable } from '../progress/ExerciseDecisionTable'
 import { useProgressDataContext } from '../progress/progressDataContext'
 import { ImprovementCard } from './improve/ImprovementCard'
 import { MuscleRecencyList } from './improve/MuscleRecencyList'
+import { MuscleWatchLine } from '../../health/goal/MuscleWatchCard'
 
 // The Progress tab, top to bottom: the window's improvement summary (lifts
 // improved, main-lift e1RM change, bodyweight) → the
@@ -51,7 +52,7 @@ export function ProgressTab() {
   // the body map in main, the summaries in a rail, the charts underneath.
   return (
     <PageBoard layout={PROGRESS_BOARD} stackGap="gap-3 sm:gap-4" sections={{
-      improvement: <ImprovementCard preferIds={preferIds} />,
+      improvement: <><MuscleWatchLine /><ImprovementCard preferIds={preferIds} /></>,
       overview: <ProgressOverview />,
       decisions: <ExerciseDecisionTable />,
       muscles: <WorkedMuscles />,

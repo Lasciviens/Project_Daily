@@ -19,6 +19,7 @@ import { ProteinBlock } from './ProteinBlock'
 import { WeightTrendChart } from './WeightTrendChart'
 import { EnergyVerdict } from './EnergyVerdict'
 import { EnergyGrid } from './EnergyGrid'
+import { MuscleWatchCard } from './MuscleWatchCard'
 
 type GoalData = ReturnType<typeof useGoalReport>
 
@@ -36,6 +37,7 @@ export function GoalReportCard() {
     <PageBoard layout={GOAL_BOARD} sections={{
       report: <GoalReportMain win={win} onWin={setWin} d={d} />,
       goals: <GoalPart d={d} part="goals" />,
+      muscle: <ErrorBoundary label="Muscle watch"><MuscleWatchCard /></ErrorBoundary>,
       protein: <GoalPart d={d} part="protein" />,
       energy: <GoalPart d={d} part="energy" />,
     }} />

@@ -1,6 +1,7 @@
 import type { Tone } from '../../../shared/ui'
 import type { Confidence, PairedBalance, Phase, ProteinBand, Reason, Verdict } from './energyBalance'
 import type { CompositionVerdict, GoalKind, RateStatus } from './bodyGoal'
+import type { MuscleWatchLevel } from './muscleWatch'
 
 // Plain-language copy for the goal report. Never a diagnosis: each line says
 // what the numbers show and the most common explanation.
@@ -125,3 +126,11 @@ export const OTHER_SCREENS_NOTE =
   'Other screens count different days: Activity shows only Apple\'s burn, for the period picked there (7 days by default), '
   + 'and Food\'s “Last 7 days” averages every logged day up to today — including today\'s unfinished diary. '
   + 'This comparison uses the same finished days on both sides.'
+
+/** Muscle watch's level pill (muscleWatch.ts). */
+export const MUSCLE_WATCH_LEVEL: Record<MuscleWatchLevel, { label: string; tone: Tone }> = {
+  ok: { label: 'Muscle protected', tone: 'success' },
+  watch: { label: 'Watch', tone: 'warn' },
+  likely_loss: { label: 'Likely losing muscle', tone: 'danger' },
+  not_enough_data: { label: 'Not enough data', tone: 'neutral' },
+}

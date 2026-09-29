@@ -384,12 +384,11 @@ text, `center` in a ring), so neighbouring text doesn't move. `ProgressRing` swe
 then keeps the last real share while loading. `useNewIds` marks a row new for `FRESH_ROW_MS` (400ms)
 only, so a remount never replays the rise-in.
 
-**Animations: More / Standard** (Settings → Appearance; `useThemeStore.motion`, default `'extra'`,
-stamped as `data-motion` on `<html>`). With More: card hover lift of 2px (mouse only);
+**The motion set is always on** (the Animations setting was removed 2026-09-29): card hover lift of 2px (mouse only);
 `AnimatedNumber` count-up (500ms ease-out); `ProgressRing` sweep (600ms); task check pop + strike
 fade-in; newly added rows rise in (`useNewIds` → `.motion-row-in`, the first load in a scope marks
-nothing); toasts fade out (150ms); the Truncate bubble fades in. CSS lives under
-`html[data-motion='extra']` outside `@layer`; JavaScript motion checks `useMotion()`.
+nothing); toasts fade out (150ms); the Truncate bubble fades in. CSS lives outside `@layer`;
+JavaScript motion checks `useMotion()` (false only under reduced motion).
 **`prefers-reduced-motion` always wins**: a global rule takes every animation and transition to ~0 (the
 loading spinner excepted), including popup slides, `tabPop` and the toast entrance. No decorative
 looping animation. View-transition and runtime-only selectors live **outside** `@layer` in `index.css`
@@ -579,5 +578,5 @@ chrome. English in the product; the only exception is on-phone shortcut/widget s
       with `invalidates`; no caller-side mutation toasts.
 - [ ] New nav entry added to `navigation.ts` only.
 - [ ] Motion respects reduced-motion; runtime-only CSS lives outside `@layer`.
-- [ ] Cut text uses `<Truncate>`; motion is gated by `data-motion` / `useMotion()`.
+- [ ] Cut text uses `<Truncate>`; JS motion is gated by `useMotion()`.
 - [ ] Page laid out with `PageBoard`; at 1469/2450 at most one side track empty.

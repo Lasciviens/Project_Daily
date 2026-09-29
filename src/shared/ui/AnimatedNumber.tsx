@@ -19,9 +19,8 @@ interface AnimatedNumberProps {
 
 /**
  * A number that counts up when it first appears and eases to a new value when
- * it really changes (a refetch of the same value does nothing). Only with the
- * "More" animations on and reduced motion off; otherwise it just shows the
- * value. The painted number is the source of truth: it holds while a new value
+ * it really changes (a refetch of the same value does nothing). Under reduced
+ * motion it just shows the value. The painted number is the source of truth: it holds while a new value
  * loads and every count starts from what is on screen, so nothing flickers.
  * The box keeps the width of the wider end of the count, so text next to it
  * doesn't move while the digit count changes.

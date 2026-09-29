@@ -4,7 +4,7 @@ import { ChevronRight, Plug, LogOut, Settings } from 'lucide-react'
 import { MORE_ENTRIES, isActive } from '../navigation'
 import { useNavClick } from './useNavClick'
 import { ModalShell } from '../../shared/modals'
-import { ThemeSwitch, AccentSwatches, MotionSwitch, NotificationsControl, DisplaySizeSwitch } from '../../shared/components/SettingsMenu'
+import { ThemeSwitch, AccentSwatches, NotificationsControl, DisplaySizeSwitch } from '../../shared/components/SettingsMenu'
 import { signOut } from '../../security/supabaseClient'
 import { cx } from '../../shared/ui'
 
@@ -47,7 +47,6 @@ export function MoreSheet({ open, onClose }: { open: boolean; onClose: () => voi
       <p className="section-label mb-2 px-3">Settings</p>
 
       <Setting label="Appearance"><ThemeSwitch /></Setting>
-      <Setting label="Animations"><MotionSwitch /></Setting>
       <Setting label="Accent"><AccentSwatches /></Setting>
       <Setting label="Display size"><DisplaySizeSwitch /></Setting>
       <div className="flex flex-col">
