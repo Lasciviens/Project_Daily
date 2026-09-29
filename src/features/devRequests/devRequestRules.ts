@@ -51,11 +51,7 @@ export interface DrawerPrefs {
   categories: DevRequestCategory[]
   sortMode: SortMode
   showDone: boolean
-  /** Phones: the inline new-request form is open. */
-  newFormOpen: boolean
-  editingId: string | null
-  /** Picking requests for a prompt. */
-  selecting: boolean
+  /** Requests ticked in the list (their status circles): the action bar acts on them. */
   picked: string[]
 }
 
@@ -83,7 +79,7 @@ export const DEFAULT_STATE: PersistedDraftState = {
   editDrafts: {},
   clearedEdits: {},
   composer: { open: false, minimized: false, tab: 'request', target: { kind: 'new' }, pos: null },
-  drawer: { categories: [], sortMode: 'manual', showDone: false, newFormOpen: false, editingId: null, selecting: false, picked: [] },
+  drawer: { categories: [], sortMode: 'manual', showDone: false, picked: [] },
   prompt: { ids: [], text: '', edited: false, touchedAt: 0 },
 }
 
@@ -202,9 +198,6 @@ export function sanitizeDraftState(raw: unknown): PersistedDraftState {
       categories,
       sortMode: oneOf(dr.sortMode, ['manual', 'priority'] as const, 'manual'),
       showDone: bool(dr.showDone, false),
-      newFormOpen: bool(dr.newFormOpen, false),
-      editingId: typeof dr.editingId === 'string' && dr.editingId ? dr.editingId : null,
-      selecting: bool(dr.selecting, false),
       picked: ids(dr.picked),
     },
     prompt: { ids: ids(p.ids), text: str(p.text, '', 100000), edited: bool(p.edited, false), touchedAt: stamp(p.touchedAt) },
@@ -314,4 +307,32 @@ export function applyReorder<T extends { id: string; sort_order: number }>(all: 
 /** A new request goes on top: one below the smallest sort_order in use. */
 export function topSortOrder(all: readonly { sort_order: number }[]): number {
   return all.length ? Math.min(...all.map(r => r.sort_order)) - 1 : 0
+}
+
+// ── Cards ─────────────────────────────────────────────────────────────────────
+
+const pad2 = (n: number) => String(n).padStart(2, '0')
+
+/** en-GB `29/09 14:05` in local time (`29/09/2025 14:05` outside `now`'s year); '' for a missing/bad value. */
+export function cardStamp(iso: string | null | undefined, now: Date = new Date()): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  const day = `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}${d.getFullYear() === now.getFullYear() ? '' : `/${d.getFullYear()}`}`
+  return `${day} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`
+}
+
+/** `Added 29/09 14:05 · Done 30/09 09:12` (Done only for a done request that has its stamp). */
+export function cardTimeline(row: Pick<DevRequest, 'created_at' | 'status' | 'completed_at'>, now: Date = new Date()): string {
+  const parts: string[] = []
+  const added = cardStamp(row.created_at, now)
+  if (added) parts.push(`Added ${added}`)
+  const done = row.status === 'done' ? cardStamp(row.completed_at, now) : ''
+  if (done) parts.push(`Done ${done}`)
+  return parts.join(' · ')
+}
+
+/** A prompt was built for it and it is still open: check the work and close it. */
+export function awaitingCheck(row: Pick<DevRequest, 'status' | 'prompted_at'>): boolean {
+  return !!row.prompted_at && (row.status === 'open' || row.status === 'in_progress')
 }

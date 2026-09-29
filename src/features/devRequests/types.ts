@@ -16,6 +16,10 @@ export interface DevRequest {
   sort_order:  number
   created_at:  string
   updated_at:  string
+  /** Set by the database when status becomes 'done' (migration 114; absent before it). */
+  completed_at?: string | null
+  /** When a prompt for Claude was last built for this request (migration 114). */
+  prompted_at?:  string | null
 }
 
 export interface CreateDevRequestInput {

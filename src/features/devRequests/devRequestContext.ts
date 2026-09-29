@@ -44,8 +44,11 @@ export interface PickedElement {
   /** data-* attributes on it and its close ancestors. */
   data?: [string, string][]
   rect?: { x: number; y: number; w: number; h: number }
-  /** Development builds only: the components rendering it, inner → outer. */
-  components?: string[]
+  /**
+   * `data-src` stamps (`src/…/File.tsx#Name`, added at build time) on it and
+   * its ancestors, inner → outer: the components it was rendered by.
+   */
+  sources?: string[]
 }
 
 export interface Capture {
@@ -94,6 +97,55 @@ export function formatStamp(iso: string | null | undefined): string {
   return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
+// ── Component sources ─────────────────────────────────────────────────────────
+
+/** Shared primitives say little on their own ("Button"); the feature component around them says where. */
+const PRIMITIVE_DIR = 'src/shared/ui/'
+
+export interface SourceSummary {
+  /** The component to name: the innermost one outside the shared primitives. */
+  name: string
+  file: string
+  /** The primitive it was picked inside, when that was skipped (`Button`). */
+  via: string | null
+  /** The next component out (the one using it), if any. */
+  inside: string[]
+}
+
+const splitStamp = (v: string) => {
+  const i = v.lastIndexOf('#')
+  return i > 0 && i < v.length - 1 ? { file: v.slice(0, i), name: v.slice(i + 1) } : null
+}
+
+/** Reads the stamp chain of a pick (inner → outer) into what the block says. */
+export function summarizeSources(stamps: readonly string[] | null | undefined): SourceSummary | null {
+  const list: { file: string; name: string }[] = []
+  for (const s of stamps ?? []) {
+    const p = splitStamp(s)
+    if (p && !list.some(x => x.name === p.name && x.file === p.file)) list.push(p)
+  }
+  if (list.length === 0) return null
+  let i = list.findIndex(x => !x.file.startsWith(PRIMITIVE_DIR))
+  if (i === -1) i = 0
+  const main = list[i]
+  const via = i > 0 ? list[i - 1].name : null
+  const inside: string[] = []
+  for (const x of list.slice(i + 1)) {
+    if (x.file.startsWith(PRIMITIVE_DIR) || x.name === main.name || inside.includes(x.name)) continue
+    inside.push(x.name)
+    if (inside.length >= 1) break
+  }
+  return { name: main.name, file: main.file, via, inside }
+}
+
+/** `NutritionCard (src/…/NutritionCard.tsx) · via Button · inside TodaySummary` */
+export function sourceLine(s: SourceSummary): string {
+  const parts = [`${s.name} (${s.file})`]
+  if (s.via) parts.push(`via ${s.via}`)
+  if (s.inside.length) parts.push(`inside ${s.inside.join(' › ')}`)
+  return parts.join(' · ')
+}
+
 // ── Blocks ────────────────────────────────────────────────────────────────────
 
 /** A context block's first line. Everything from the first one on is context, not prose. */
@@ -113,22 +165,26 @@ export function formatCapture(c: Capture): string {
     if (el) lines.push(`Element: ${elementLabel(el)}`)
   }
   if (el) {
-    const where = whereParts(cleanText(el.area, 60), (el.trail ?? []).map(t => cleanText(t, 60)).filter(Boolean))
-    if (where.length) lines.push(`Where: ${where.join(' › ')}`)
+    const src = summarizeSources(el.sources)
+    if (src) lines.splice(1, 0, `Component: ${sourceLine(src)}`)
     const name = cleanText(el.name, 160)
-    const text = cleanText(el.text, 160)
+    const text = cleanText(el.text, 80)
     if (c.kind === 'element' && text && text !== name) lines.push(`Text: ${quoted(text)}`)
     const value = cleanText(el.value, 120)
     if (value) lines.push(`Value: ${quoted(value)}`)
     const tabs = (el.tabs ?? []).map(t => cleanText(t, 40)).filter(Boolean)
     if (tabs.length) lines.push(`Selected: ${tabs.join(', ')}`)
-    const data = (el.data ?? []).filter(([k, v]) => k && v)
-    if (data.length) lines.push(`Data: ${data.map(([k, v]) => `${k}=${cleanText(v, 40)}`).join(', ')}`)
-    if (el.rect) {
-      const r = el.rect
-      lines.push(`Box: x ${Math.round(r.x)}, y ${Math.round(r.y)}, ${Math.round(r.w)}×${Math.round(r.h)} px on ${screenLabel(c.page)}`)
+    // Without a component name, the surroundings are the next best pointer.
+    if (!src) {
+      const where = whereParts(cleanText(el.area, 60), (el.trail ?? []).map(t => cleanText(t, 60)).filter(Boolean))
+      if (where.length) lines.push(`Where: ${where.join(' › ')}`)
+      const data = (el.data ?? []).filter(([k, v]) => k && v)
+      if (data.length) lines.push(`Data: ${data.map(([k, v]) => `${k}=${cleanText(v, 40)}`).join(', ')}`)
+      if (el.rect) {
+        const r = el.rect
+        lines.push(`Box: x ${Math.round(r.x)}, y ${Math.round(r.y)}, ${Math.round(r.w)}×${Math.round(r.h)} px on ${screenLabel(c.page)}`)
+      }
     }
-    if (el.components && el.components.length) lines.push(`Components (dev build): ${el.components.join(' ‹ ')}`)
   } else {
     lines.push(`Screen: ${screenLabel(c.page)}`)
   }

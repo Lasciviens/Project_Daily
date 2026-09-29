@@ -1,15 +1,16 @@
-import { useMemo, type Ref } from 'react'
+import { useMemo, type Ref, type RefObject } from 'react'
 import { useLocation } from 'react-router-dom'
 import { Crosshair, Quote } from 'lucide-react'
 import { useDevRequestDrafts } from '../devRequestDraftStore'
 import { countBlocks } from '../devRequestContext'
-import { draftFromRow, isDraftEmpty, type ComposerTarget, type DraftFields } from '../devRequestRules'
-import { useDevRequests } from '../hooks/useDevRequests'
+import { awaitingCheck, cardTimeline, draftFromRow, isDraftEmpty, type ComposerTarget, type DraftFields } from '../devRequestRules'
+import { useDevRequests, useUpdateDevRequest } from '../hooks/useDevRequests'
 import { discardEditDraft, discardNewDraft, useSaveDevRequestDraft } from '../hooks/useDevRequestDraft'
 import { RequestFields } from '../components/RequestFields'
 import { PageContextToggle } from '../components/PageContextToggle'
-import { pageOptionFor } from '../components/devRequestMeta'
+import { STATUSES, STATUS_LABEL, pageOptionFor } from '../components/devRequestMeta'
 import type { PageContext } from '../devRequestContext'
+import type { DevRequestStatus } from '../types'
 import { Button, Skeleton, cx } from '../../../shared/ui'
 
 interface Props {
@@ -21,7 +22,7 @@ interface Props {
   altHint: boolean
   flash: boolean
   titleRef: Ref<HTMLInputElement>
-  descriptionRef: Ref<HTMLTextAreaElement>
+  descriptionRef: RefObject<HTMLTextAreaElement | null>
   /** A save went through (for the request it was made for). */
   onDone: (saved: ComposerTarget) => void
 }
@@ -35,6 +36,7 @@ export function ComposerRequestTab({ target, readPage, onPick, onQuote, altHint,
   const newDraft = useDevRequestDrafts(s => s.newDraft)
   const editDraft = useDevRequestDrafts(s => (target.kind === 'edit' ? s.editDrafts[target.id] : undefined))
   const { saveNew, saveEdit, pending } = useSaveDevRequestDraft()
+  const updateStatus = useUpdateDevRequest()
 
   if (target.kind === 'edit' && !row) {
     if (isLoading) return <div className="flex flex-col gap-2 p-3"><Skeleton className="h-10" /><Skeleton className="h-32" /></div>
@@ -68,7 +70,7 @@ export function ComposerRequestTab({ target, readPage, onPick, onQuote, altHint,
   const discardNew = () => discardNewDraft({ start: readPage(), page: pageOptionFor(pathname) })
 
   const tools = (
-    <div className="flex flex-wrap items-center gap-1.5">
+    <>
       <Button size="sm" icon={<Crosshair />} onClick={onPick} title="Point at something on the page to add where it is">Pick on page</Button>
       {onQuote && (
         // mousedown would clear the page selection before the click reads it.
@@ -77,12 +79,18 @@ export function ComposerRequestTab({ target, readPage, onPick, onQuote, altHint,
       <span className="min-w-0 flex-1 text-meta text-fg-muted">
         {picks > 0 ? `${picks} context block${picks === 1 ? '' : 's'} added` : altHint ? 'or Alt-click anything' : ''}
       </span>
-    </div>
+    </>
   )
 
   return (
     <>
       <div className="scroll-y min-h-0 flex-1 overflow-y-auto p-3">
+        {row && (
+          <div className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-meta tabular-nums text-fg-muted">
+            {cardTimeline(row) && <span>{cardTimeline(row)}</span>}
+            {awaitingCheck(row) && <span data-tone="warn" className="tone-pill">Prompted — check it, then close it</span>}
+          </div>
+        )}
         <RequestFields
           fields={fields}
           onChange={onChange}
@@ -102,9 +110,16 @@ export function ComposerRequestTab({ target, readPage, onPick, onQuote, altHint,
           ? !isDraftEmpty(newDraft) && <Button variant="ghost" size="sm" onClick={discardNew}>Discard</Button>
           : editDraft && row && <Button variant="ghost" size="sm" onClick={() => discardEditDraft(row)}>Discard changes</Button>}
         {target.kind === 'edit' && row && (
-          <Button size="sm" disabled={pending} onClick={() => void saveEdit(row.id, fields, row.status === 'done' ? 'open' : 'done', done)}>
-            {row.status === 'done' ? 'Reopen' : 'Mark done'}
-          </Button>
+          // Applies at once (not part of the draft): a status is a decision, not typing.
+          <select
+            value={row.status}
+            onChange={e => updateStatus.mutate({ id: row.id, patch: { status: e.target.value as DevRequestStatus } })}
+            disabled={updateStatus.isPending}
+            aria-label="Status"
+            className="select w-auto"
+          >
+            {STATUSES.map(st => <option key={st} value={st}>{STATUS_LABEL[st]}</option>)}
+          </select>
         )}
         <Button variant="primary" size="sm" loading={pending} disabled={!fields.title.trim()} onClick={save} className="ml-auto">
           {target.kind === 'new' ? 'Add request' : 'Save'}

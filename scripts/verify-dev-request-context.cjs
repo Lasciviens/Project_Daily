@@ -5,6 +5,8 @@
  *   devRequestRules.ts    (draft read-back from localStorage, drag-reorder plan)
  *   devRequestPrompt.ts   (the prompt for Claude)
  *   useFloatingWindow.ts  (keeping the composer window on screen)
+ *   numberedList.ts       (the description's "1- " numbered points)
+ *   pick/componentSourceTransform.ts (the build-time data-src stamps)
  * Against the REAL un-mocked modules via sucrase (no unit-test runner by convention).
  *
  * Run: node scripts/verify-dev-request-context.cjs
@@ -15,6 +17,9 @@ const ctx = require('../src/features/devRequests/devRequestContext')
 const rules = require('../src/features/devRequests/devRequestRules')
 const { buildClaudePrompt } = require('../src/features/devRequests/devRequestPrompt')
 const win = require('../src/shared/hooks/useFloatingWindow')
+const list = require('../src/features/devRequests/numberedList')
+const stamps = require('../src/features/devRequests/pick/componentSourceTransform')
+const ts = require('typescript')
 
 let passed = 0
 let failed = 0
@@ -61,8 +66,8 @@ check('no components line when empty', !block.includes('Components'))
 {
   const same = ctx.formatCapture({ kind: 'element', page, element: { tag: 'button', name: 'Save', text: 'Save' } })
   check('no Text line when it repeats the name', !same.includes('Text:'))
-  const dev = ctx.formatCapture({ kind: 'element', page, element: { tag: 'div', components: ['NutritionCard', 'TodaySummary'] } })
-  check('dev components listed inner → outer', dev.includes('Components (dev build): NutritionCard ‹ TodaySummary'))
+  const dev = ctx.formatCapture({ kind: 'element', page, element: { tag: 'div' } })
+  check('no dev-only components line any more', !dev.includes('Components'))
   const val = ctx.formatCapture({ kind: 'element', page, element: { tag: 'select', role: 'dropdown', name: 'Priority', value: 'high' } })
   check('form control value', val.includes('Value: "high"'))
 }
@@ -137,7 +142,7 @@ console.log('\n6 · Drafts read back from localStorage')
   check('composer target + tab', s.composer.target.kind === 'edit' && s.composer.target.id === 'r1' && s.composer.tab === 'prompt')
   check('NaN position → default corner', s.composer.pos === null)
   check('categories deduped and validated', s.drawer.categories.length === 1 && s.drawer.categories[0] === 'bug')
-  check('empty editing id → null', s.drawer.editingId === null)
+  check('retired drawer fields are not read back', !('editingId' in s.drawer) && !('selecting' in s.drawer) && !('newFormOpen' in s.drawer))
   check('picked deduped, non-strings dropped', JSON.stringify(s.drawer.picked) === '["a","b"]')
   check('edited prompt kept', s.prompt.edited && s.prompt.text === 'Please…')
 }
@@ -263,6 +268,111 @@ console.log('\n14 · Edit drafts of deleted requests')
   check('a draft for a missing request is an orphan', orphans.includes('gone'))
   check('a draft for an existing request is not', !orphans.includes('kept'))
   check('a draft touched after the list was read may be for a new request — kept', !orphans.includes('newer'))
+}
+
+console.log('\n15 · Picks name the component (data-src stamps)')
+{
+  const chain = [
+    'src/shared/ui/Button.tsx#Button',
+    'src/features/daily/components/summary/NutritionCard.tsx#NutritionCard',
+    'src/shared/ui/Card.tsx#Card',
+    'src/features/daily/components/summary/TodaySummary.tsx#TodaySummary',
+    'src/features/daily/pages/DailyPage.tsx#DailyPage',
+    'src/app/shell/AppShell.tsx#AppShell',
+  ]
+  const sum = ctx.summarizeSources(chain)
+  check('skips the shared primitive for the name', sum.name === 'NutritionCard' && sum.file === 'src/features/daily/components/summary/NutritionCard.tsx')
+  check('says which primitive it was inside', sum.via === 'Button')
+  check('the next component out, primitives skipped', JSON.stringify(sum.inside) === '["TodaySummary"]')
+  check('only primitives → the innermost one', ctx.summarizeSources(['src/shared/ui/Card.tsx#Card']).name === 'Card')
+  check('no stamps → null', ctx.summarizeSources([]) === null && ctx.summarizeSources(undefined) === null && ctx.summarizeSources(['junk']) === null)
+  const pick = ctx.formatCapture({ kind: 'element', page, element: { ...element, sources: chain } })
+  const pl = pick.split('\n')
+  check('component line leads, right after the header', pl[1] === 'Component: NutritionCard (src/features/daily/components/summary/NutritionCard.tsx) · via Button · inside TodaySummary', pl[1])
+  check('element label and short text kept', pl.includes('Element: button "Log food"') && pl.includes('Text: "Log food 420 kcal"'))
+  check('box, data and where dropped when the component is known', !pick.includes('Box:') && !pick.includes('Data:') && !pick.includes('Where:'))
+  check('shorter than the fallback block', pick.length < block.length, `${pick.length} vs ${block.length}`)
+  const long = ctx.formatCapture({ kind: 'element', page, element: { tag: 'p', text: 'x'.repeat(200), sources: chain } })
+  check('text cut short', /Text: "x{79}…"/.test(long))
+  const q = ctx.formatCapture({ kind: 'selection', page, quote: 'Hi', element: { tag: 'p', sources: chain } })
+  check('a quote names the component too', q.split('\n')[1].startsWith('Component: NutritionCard'))
+}
+
+console.log('\n16 · The build-time stamp transform')
+{
+  const src = [
+    "import { Card } from '../ui/Card'",
+    "import { Dialog } from '@headlessui/react'",
+    "export function Alpha({ x }: { x: boolean }) {",
+    "  const inner = () => <span>not a root</span>",
+    "  if (x) return <Card title=\"a\">hi</Card>",
+    "  return x ? <div className=\"a\"><b /></div> : <section />",
+    "}",
+    "const Beta = memo(() => <Dialog open />)",
+    "export const Gamma = forwardRef(function Gamma(p, ref) { return (<ul ref={ref}><li /></ul>) })",
+    "function helper() { return <div /> }",
+    "const Delta = () => <><p /></>",
+    "export default function Epsilon() { return <Ctx.Provider value={1}><i /></Ctx.Provider> }",
+    "function Zeta() { return <div data-src=\"keep\" /> }",
+    "function Eta() { return <Card<Period> value={p} /> }",
+  ].join('\n')
+  const out = stamps.stampComponentSources(ts, src, 'src/x/F.tsx')
+  const has = (s) => out.includes(s)
+  check('a local component root is stamped', has('<Card data-src="src/x/F.tsx#Alpha" title="a">'))
+  check('both branches of a conditional', has('<div data-src="src/x/F.tsx#Alpha" className="a">') && has('<section data-src="src/x/F.tsx#Alpha" />'))
+  check('children are left alone', has('<b />') && has('<li />'))
+  check('a nested lowercase helper is not a component', has('<span>not a root</span>') && has('function helper() { return <div /> }'))
+  check('library components are skipped', has('<Dialog open />'))
+  check('forwardRef(function Name) is stamped', has('<ul data-src="src/x/F.tsx#Gamma" ref={ref}>'))
+  check('fragments and member tags are skipped', has('<><p /></>') && has('<Ctx.Provider value={1}>'))
+  check('an existing data-src is kept', has('<div data-src="keep" />') && !has('#Zeta'))
+  check('after type arguments on a generic tag', has('<Card<Period> data-src="src/x/F.tsx#Eta" value={p} />'))
+  check('line count unchanged (sourcemap lines hold)', out.split('\n').length === src.split('\n').length)
+  check('nothing to stamp → null', stamps.stampComponentSources(ts, 'export const a = 1', 'src/a.tsx') === null)
+}
+
+console.log('\n17 · Numbered points in the description')
+{
+  const a = list.insertNumberedItem('', 0)
+  check('button on an empty box → "1- "', a.text === '1- ' && a.caret === 3)
+  const b = list.insertNumberedItem('Intro\nFix the chart', 10)
+  check('button on a line of text numbers it', b.text === 'Intro\n1- Fix the chart' && b.caret === b.text.length, JSON.stringify(b))
+  const c = list.insertNumberedItem('1- one', 6)
+  check('button on an item starts the next one below', c.text === '1- one\n2- ' && c.caret === c.text.length)
+  const d = list.insertNumberedItem('1- one\n', 7)
+  check('button on the empty line after an item continues the count', d.text === '1- one\n2- ', JSON.stringify(d))
+  const e = list.continueNumberedList('1- one', 6)
+  check('Enter continues with the next number', e.text === '1- one\n2- ' && e.caret === 10)
+  const f = list.continueNumberedList('1- one\n2- ', 10)
+  check('Enter on an empty point ends the list', f.text === '1- one\n' && f.caret === 7, JSON.stringify(f))
+  check('Enter on plain text → default behaviour', list.continueNumberedList('hello', 5) === null)
+  check('Enter before the marker → default behaviour', list.continueNumberedList('1- one', 0) === null)
+  const g = list.continueNumberedList('1- one\n2- two\n3- three', 6)
+  check('Enter mid-list renumbers the rest', g.text === '1- one\n2- \n3- two\n4- three', JSON.stringify(g.text))
+  const h = list.continueNumberedList('1- split here', 8)
+  check('text after the caret moves into the new point', h.text === '1- split\n2-  here')
+  const i = list.continueNumberedList('  9- indented', 13)
+  check('indent and two digits kept', i.text === '  9- indented\n  10- ')
+  const p = buildClaudePrompt([{ title: 'Fix Daily', description: 'Several things:\n1- Chart too bright\n2- Button too small\n3- ', page: null, category: 'bug', priority: 'high' }])
+  check('points become separate numbered points under the request', p.includes('   1.1 Chart too bright\n   1.2 Button too small'), p)
+  check('an empty point is dropped from the prompt', !p.includes('1.3'))
+  check('the ask mentions numbered points', p.includes('per numbered point'))
+  check('no mention without points', !buildClaudePrompt([{ title: 'A', description: 'x', page: null, category: 'bug', priority: 'low' }]).includes('numbered point'))
+}
+
+console.log('\n18 · Card dates and the Prompted flag')
+{
+  const now = new Date(2026, 8, 30, 12, 0)
+  const at = (y, m, d, h, min) => new Date(y, m - 1, d, h, min).toISOString()
+  check('card stamp en-GB, no year this year', rules.cardStamp(at(2026, 9, 29, 14, 5), now) === '29/09 14:05')
+  check('year shown for another year', rules.cardStamp(at(2025, 1, 2, 3, 4), now) === '02/01/2025 03:04')
+  check('bad stamp → empty', rules.cardStamp('nope', now) === '' && rules.cardStamp(null, now) === '')
+  const done = { created_at: at(2026, 9, 29, 14, 5), status: 'done', completed_at: at(2026, 9, 30, 9, 12) }
+  check('added + done', rules.cardTimeline(done, now) === 'Added 29/09 14:05 · Done 30/09 09:12')
+  check('open → added only', rules.cardTimeline({ ...done, status: 'open' }, now) === 'Added 29/09 14:05')
+  check('done before migration 114 → added only', rules.cardTimeline({ ...done, completed_at: undefined }, now) === 'Added 29/09 14:05')
+  check('prompted + open waits for a check', rules.awaitingCheck({ status: 'open', prompted_at: 'x' }) && rules.awaitingCheck({ status: 'in_progress', prompted_at: 'x' }))
+  check('done or never prompted does not', !rules.awaitingCheck({ status: 'done', prompted_at: 'x' }) && !rules.awaitingCheck({ status: 'open', prompted_at: null }) && !rules.awaitingCheck({ status: 'open' }))
 }
 
 console.log(`\n${passed} passed, ${failed} failed`)
