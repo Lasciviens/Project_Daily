@@ -16,13 +16,13 @@ interface Props {
 
 /**
  * The shared ConfirmDialog in this page's tokens. It portals to <body>, so it
- * carries `tg-portal` (else every --tg-* token is undefined there). z-50: over
- * the phone sheet and the overlay (both z-40).
+ * carries `tg-portal` (else every --tg-* token is undefined there). The confirm
+ * layer: over the phone sheet, the overlay and any classic dialog.
  */
 export function TgConfirmDialog({ open, title, message, confirmLabel, danger, onConfirm, onClose, secondary }: Props) {
   useHistoryDismiss(open, onClose)
   return (
-    <Dialog open={open} onClose={onClose} className="tg-portal relative z-50">
+    <Dialog open={open} onClose={onClose} className="tg-portal relative z-confirm">
       <DialogBackdrop transition className="fixed inset-0 bg-black/50 backdrop-blur-[2px] transition duration-200 data-[closed]:opacity-0" />
       <div className="fixed inset-0 flex items-end justify-center p-0 sm:items-center sm:p-4">
         <DialogPanel

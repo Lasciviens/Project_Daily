@@ -1,6 +1,6 @@
 import { ShoppingCart, X } from 'lucide-react'
 import { Cell, CellHeader, CellLink } from './cellKit'
-import { Button, IconButton, SectionLabel } from '../../../../shared/ui'
+import { Button, IconButton, SectionLabel, Truncate } from '../../../../shared/ui'
 import { useShopItems, useUpdateShopItem } from '../../../shop/hooks/useShop'
 import type { ShopItem } from '../../../shop/types'
 import { REGION_FLAG } from '../../../shop/shopMeta'
@@ -36,9 +36,9 @@ export function ShopCard({ date }: { date: string }) {
                 <span className="h-4 w-4 rounded-[5px] border-2 border-line-strong transition-colors group-hover:border-success" />
               </button>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-body font-medium leading-snug text-fg">
+                <Truncate as="p" fullText={i.title} className="text-body font-medium leading-snug text-fg">
                   {i.region && <span className="mr-1">{REGION_FLAG[i.region]}</span>}{i.title}
-                </p>
+                </Truncate>
                 {i.price != null && <p className="text-meta tabular-nums text-fg-muted">{i.price}</p>}
               </div>
               <IconButton label="Remove from this day" onClick={() => update.mutate({ id: i.id, patch: { planned_date: null } })} className="shrink-0 hover:text-danger">
@@ -57,9 +57,9 @@ export function ShopCard({ date }: { date: string }) {
           <ul className="flex flex-col gap-1">
             {unplanned.map((i: ShopItem) => (
               <li key={i.id} className="flex items-center gap-2">
-                <p className="flex-1 truncate text-body text-fg-2">
+                <Truncate as="p" fullText={i.title} className="flex-1 text-body text-fg-2">
                   {i.region && <span className="mr-1">{REGION_FLAG[i.region]}</span>}{i.title}
-                </p>
+                </Truncate>
                 <Button size="sm" variant="ghost" onClick={() => update.mutate({ id: i.id, patch: { planned_date: date } })} className="shrink-0">
                   Plan this day
                 </Button>

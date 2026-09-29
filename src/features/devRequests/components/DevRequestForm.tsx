@@ -1,101 +1,93 @@
-import { useState } from 'react'
-import { useCreateDevRequest, useUpdateDevRequest } from '../hooks/useDevRequests'
-import { PAGE_CHOICES, pageOptionFor } from './devRequestMeta'
-import type { DevRequest, DevRequestCategory, DevRequestPriority, DevRequestEffort } from '../types'
-import { Button, cx } from '../../../shared/ui'
-
-const CATEGORIES: DevRequestCategory[] = ['bug', 'feature', 'improvement', 'integration', 'longterm', 'question', 'other']
-const PRIORITIES: DevRequestPriority[] = ['low', 'medium', 'high', 'urgent']
-const EFFORTS: DevRequestEffort[] = ['small', 'medium', 'large']
+import { useEffect, useMemo } from 'react'
+import { useLocation } from 'react-router-dom'
+import { PictureInPicture2 } from 'lucide-react'
+import { useDevRequestDrafts } from '../devRequestDraftStore'
+import { draftFromRow, isDraftEmpty, type DraftFields } from '../devRequestRules'
+import { discardEditDraft, discardNewDraft, useSaveDevRequestDraft } from '../hooks/useDevRequestDraft'
+import { usePageContextReader } from '../pick/usePageContext'
+import { RequestFields } from './RequestFields'
+import { PageContextToggle } from './PageContextToggle'
+import { pageOptionFor } from './devRequestMeta'
+import type { DevRequest } from '../types'
+import { Button, IconButton } from '../../../shared/ui'
 
 /**
- * New / edit form for one request. With `request` it edits (Save, Done /
- * Reopen, Close); without, it creates with the current page preselected.
+ * The drawer's inline new-request form (phones; tablet/desktop write in the
+ * floating composer). Its text lives in the draft store, so closing the
+ * drawer, leaving the page or reloading keeps it.
  */
-export function DevRequestForm({ request, currentPage = '', onDone }: {
-  request?: DevRequest
-  currentPage?: string
-  onDone: () => void
-}) {
-  const create = useCreateDevRequest()
-  const update = useUpdateDevRequest()
-  const [title, setTitle] = useState(request?.title ?? '')
-  const [description, setDescription] = useState(request?.description ?? '')
-  const [page, setPage] = useState(pageOptionFor(request ? request.page ?? '' : currentPage))
-  const [category, setCategory] = useState<DevRequestCategory>(request?.category ?? 'feature')
-  const [priority, setPriority] = useState<DevRequestPriority>(request?.priority ?? 'medium')
-  const [effort, setEffort] = useState<DevRequestEffort | ''>(request?.effort ?? '')
-  const pending = create.isPending || update.isPending
+export function DevRequestNewForm({ onClose, onPopOut }: { onClose: () => void; onPopOut: () => void }) {
+  const draft = useDevRequestDrafts(s => s.newDraft)
+  const patch = useDevRequestDrafts(s => s.patchNewDraft)
+  const readPage = usePageContextReader()
+  const { pathname } = useLocation()
+  const { saveNew, pending } = useSaveDevRequestDraft()
 
-  const fields = () => ({
-    title: title.trim() || request?.title || '',
-    description: description.trim() || null,
-    page, category, priority, effort: effort || null,
-  })
+  // An empty draft belongs to the page it is opened on.
+  useEffect(() => {
+    useDevRequestDrafts.getState().beginNewDraft(readPage(), pageOptionFor(pathname))
+    // Once per opening, not on every route change while open.
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  function handleSubmit(e: React.FormEvent) {
+  function submit(e: React.FormEvent) {
     e.preventDefault()
-    if (!title.trim()) return
-    if (request) update.mutate({ id: request.id, patch: fields() }, { onSuccess: onDone })
-    else create.mutate(fields(), { onSuccess: onDone })
+    void saveNew(readPage(), onClose)
   }
+  // The form stays open: the emptied draft still belongs to this page.
+  const discard = () => discardNewDraft({ start: readPage(), page: pageOptionFor(pathname) })
 
-  // Mark done straight from the edit form (saves any field edits too).
-  const isDone = request?.status === 'done'
-  function handleToggleDone() {
-    if (!request) return
-    update.mutate({ id: request.id, patch: { ...fields(), status: isDone ? 'open' : 'done' } }, { onSuccess: onDone })
+  return (
+    <form onSubmit={submit} className="flex flex-col gap-2 border-b border-line p-3 sm:px-4">
+      <RequestFields fields={draft} onChange={patch} autoFocusTitle={isDraftEmpty(draft)} />
+      <PageContextToggle start={draft.start} checked={draft.attachContext} onChange={v => patch({ attachContext: v })} />
+      <div className="flex items-center gap-2">
+        <Button type="submit" variant="primary" size="sm" loading={pending} disabled={!draft.title.trim()} className="flex-1">
+          Add request
+        </Button>
+        <IconButton label="Pop out — keep writing while you browse" onClick={onPopOut}><PictureInPicture2 /></IconButton>
+        {!isDraftEmpty(draft) && <Button variant="ghost" size="sm" onClick={discard}>Discard</Button>}
+        <Button variant="ghost" size="sm" onClick={onClose}>Close</Button>
+      </div>
+    </form>
+  )
+}
+
+/**
+ * Edit one request in place. Unsaved changes are a draft too: Close keeps
+ * them (the card says so), Discard drops them.
+ */
+export function DevRequestEditForm({ request, onClose, onPopOut }: { request: DevRequest; onClose: () => void; onPopOut: () => void }) {
+  const seed = useMemo(() => draftFromRow(request), [request])
+  const draft = useDevRequestDrafts(s => s.editDrafts[request.id])
+  const patchEdit = useDevRequestDrafts(s => s.patchEditDraft)
+  const fields: DraftFields = draft ?? seed
+  const { saveEdit, pending } = useSaveDevRequestDraft()
+  const isDone = request.status === 'done'
+
+  function submit(e: React.FormEvent) {
+    e.preventDefault()
+    void saveEdit(request.id, fields, undefined, onClose)
   }
 
   return (
-    <form
-      onSubmit={handleSubmit}
-      className={cx('flex flex-col gap-2', request ? 'rounded-row border border-accent-500/30 bg-accent-50/40 p-2.5' : 'border-b border-line p-3 sm:px-4')}
-    >
-      <input
-        autoFocus={!request}
-        value={title}
-        onChange={e => setTitle(e.target.value)}
-        placeholder="What's the request, bug or idea?"
-        aria-label="Title"
-        className="input"
-      />
-      <textarea
-        value={description}
-        onChange={e => setDescription(e.target.value)}
-        placeholder="Details (optional) — the more context, the less back-and-forth later"
-        aria-label="Details"
-        rows={4}
-        className="input min-h-[90px] resize-y md:min-h-[160px]"
-      />
-      <div className="grid grid-cols-2 gap-2">
-        <select value={category} onChange={e => setCategory(e.target.value as DevRequestCategory)} aria-label="Category" className="select">
-          {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-        </select>
-        <select value={priority} onChange={e => setPriority(e.target.value as DevRequestPriority)} aria-label="Priority" className="select">
-          {PRIORITIES.map(p => <option key={p} value={p}>{p}</option>)}
-        </select>
-        <select value={page} onChange={e => setPage(e.target.value)} aria-label="Page" className="select">
-          {PAGE_CHOICES.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
-          <option value="other">other</option>
-        </select>
-        <select value={effort} onChange={e => setEffort(e.target.value as DevRequestEffort | '')} aria-label="Effort" className="select">
-          <option value="">effort?</option>
-          {EFFORTS.map(f => <option key={f} value={f}>{f}</option>)}
-        </select>
-      </div>
-      <div className="flex items-center gap-2">
-        <Button type="submit" variant="primary" size="sm" loading={pending} disabled={!title.trim()} className={request ? undefined : 'flex-1'}>
-          {request ? 'Save' : 'Add request'}
+    <form onSubmit={submit} className="flex flex-col gap-2 rounded-row border border-accent-500/30 bg-accent-50/40 p-2.5">
+      <RequestFields fields={fields} onChange={p => patchEdit(request.id, p, seed)} />
+      {draft && (
+        <p className="flex items-center gap-2 px-1 text-meta text-fg-muted">
+          <span data-tone="warn" className="tone-dot" aria-hidden />
+          Unsaved changes, kept on this device
+        </p>
+      )}
+      <div className="flex flex-wrap items-center gap-2">
+        <Button type="submit" variant="primary" size="sm" loading={pending} disabled={!fields.title.trim()}>Save</Button>
+        <Button size="sm" disabled={pending} onClick={() => void saveEdit(request.id, fields, isDone ? 'open' : 'done', onClose)}>
+          {isDone ? 'Reopen' : 'Mark done'}
         </Button>
-        {request && (
-          <Button size="sm" onClick={handleToggleDone} disabled={pending}>
-            {isDone ? 'Reopen' : 'Mark done'}
-          </Button>
-        )}
-        <Button variant="ghost" size="sm" onClick={onDone} className="ml-auto">
-          {request ? 'Close' : 'Cancel'}
-        </Button>
+        <IconButton label="Pop out — keep editing while you browse" onClick={onPopOut}><PictureInPicture2 /></IconButton>
+        <span className="ml-auto flex items-center gap-1">
+          {draft && <Button variant="ghost" size="sm" onClick={() => discardEditDraft(request)}>Discard</Button>}
+          <Button variant="ghost" size="sm" onClick={onClose}>Close</Button>
+        </span>
       </div>
     </form>
   )

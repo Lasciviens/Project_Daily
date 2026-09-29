@@ -7,7 +7,7 @@ import { useTVSeries } from '../../../media/hooks/useTVSeries'
 import { useNextEpisode } from '../../../media/hooks/useNextEpisode'
 import { useMarkEpisodeWatched } from '../../../media/hooks/useWatchedEpisodes'
 import { useEntityModal } from '../../../../shared/modals'
-import { Button, TonePill } from '../../../../shared/ui'
+import { Button, TonePill, Truncate } from '../../../../shared/ui'
 import { posterUrl } from '../../../../integrations/tmdb/client'
 import { fmtDateEnGB } from '../../../../shared/utils/enGBDate'
 
@@ -112,7 +112,7 @@ export function WatchNextCard({ date }: { date: string }) {
             <div className={posterEmpty}><Tv className="h-5 w-5" aria-hidden /></div>
           )}
           <div className="min-w-0 flex-1">
-            <p className="truncate text-ui font-semibold text-fg">{series.title}</p>
+            <Truncate as="p" className="text-ui font-semibold text-fg">{series.title}</Truncate>
             {next.isLoading ? (
               <p className="mt-0.5 text-meta text-fg-muted">Finding next episode…</p>
             ) : n?.caughtUp ? (
@@ -153,9 +153,9 @@ export function WatchNextCard({ date }: { date: string }) {
           )}
           <div className="min-w-0">
             <p className="section-label">Movie</p>
-            <p className="line-clamp-2 text-ui font-semibold text-fg transition-colors group-hover:text-accent-600">
+            <Truncate as="p" lines={2} className="text-ui font-semibold text-fg transition-colors group-hover:text-accent-600">
               {movieFallback.title}
-            </p>
+            </Truncate>
           </div>
         </Link>
       ) : (

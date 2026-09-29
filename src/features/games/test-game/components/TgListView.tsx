@@ -13,6 +13,7 @@ import { cardStatus } from './TgStatusMeta'
 import { useScrollReset } from './useScrollReset'
 import { useRevealCard } from './useShelfLayout'
 import { gridStep, stepOrigin } from './tgGridNav'
+import { Truncate } from '../../../../shared/ui/Truncate'
 
 interface Props {
   games: TgGame[]
@@ -31,6 +32,8 @@ const Row = memo(function Row({ game, selected, focusable, onSelect }: { game: T
   const stars = starsFromRating(game.rating)
   const launches = playCount(game)
   const st = cardStatus(game)
+  const systems = game.platforms.map(p => p.system).join(', ')
+  const genres = game.genres ?? []
   return (
     // Off-screen rows skip layout and paint; the 2px padding holds the focus
     // ring (offset 0) inside the paint containment that comes with it.
@@ -48,13 +51,14 @@ const Row = memo(function Row({ game, selected, focusable, onSelect }: { game: T
         <span className="block h-[54px] w-10 overflow-hidden rounded-md shadow-[shadow:var(--tg-cover-shadow)]">
           <TgCover game={game} mode="contain" />
         </span>
+        {/* The row is the button: cut text gets the hover tooltip only. */}
         <span className="min-w-0">
-          <span className="block truncate text-[13px] font-semibold text-[var(--tg-text)]">{game.title}</span>
-          <span className="block truncate text-[12px] text-[var(--tg-muted)]">{subtitleParts(game).join(' · ')}</span>
+          <Truncate className="text-[13px] font-semibold text-[var(--tg-text)]">{game.title}</Truncate>
+          <Truncate className="text-[12px] text-[var(--tg-muted)]">{subtitleParts(game).join(' · ')}</Truncate>
         </span>
         <span data-status={st.status} className="flex min-w-0 items-center gap-2 text-[12.5px]">
           <TgStatusIcon status={st.status} />
-          <span className="tg-status-text truncate font-medium">{st.label}</span>
+          <Truncate className="tg-status-text font-medium">{st.label}</Truncate>
         </span>
         {/* Unrated rows get a dash: five empty stars per row were most of the list's DOM. */}
         {stars == null
@@ -64,11 +68,15 @@ const Row = memo(function Row({ game, selected, focusable, onSelect }: { game: T
           {seconds == null ? '—' : formatPlaytime(seconds / 60)}
         </span>
         <span className="hidden text-[12.5px] tabular-nums text-[var(--tg-text-2)] lg:block">{formatDay(lastPlayedIso(game))}</span>
-        <span className="hidden truncate text-[12.5px] text-[var(--tg-text-2)] xl:block" title={game.platforms.map(p => p.system).join(', ') || undefined}>
-          {platformInfo(game.platformKey).short}{extraVariants(game) > 0 ? ` +${extraVariants(game)}` : ''}
+        {/* These two cells abbreviate (a short platform name, two genres), so
+            the full list stays in a title even when nothing is cut. */}
+        <span className="hidden min-w-0 text-[12.5px] text-[var(--tg-text-2)] xl:block" title={systems || undefined}>
+          <Truncate fullText={systems || undefined}>
+            {platformInfo(game.platformKey).short}{extraVariants(game) > 0 ? ` +${extraVariants(game)}` : ''}
+          </Truncate>
         </span>
-        <span className="hidden truncate text-[12px] text-[var(--tg-muted)] xl:block" title={(game.genres ?? []).join(', ') || undefined}>
-          {(game.genres ?? []).slice(0, 2).join(', ') || '—'}
+        <span className="hidden min-w-0 text-[12px] text-[var(--tg-muted)] xl:block" title={genres.length > 2 ? genres.join(', ') : undefined}>
+          <Truncate fullText={genres.join(', ') || undefined}>{genres.slice(0, 2).join(', ') || '—'}</Truncate>
         </span>
         <span className="hidden text-right text-[12.5px] tabular-nums text-[var(--tg-text-2)] xl:block">{launches != null && launches > 0 ? launches.toLocaleString('en-GB') : '—'}</span>
       </button>

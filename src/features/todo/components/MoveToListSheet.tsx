@@ -1,6 +1,6 @@
 import { Check } from 'lucide-react'
 import { Sheet } from '../../../shared/components/Sheet'
-import { cx } from '../../../shared/ui'
+import { Truncate, cx } from '../../../shared/ui'
 import { useGoogleTaskLists } from '../hooks/useGoogleTaskLists'
 import { useUpdateTask } from '../hooks/useTodos'
 import type { Task } from '../types'
@@ -47,7 +47,7 @@ export function MoveToListSheet({ open, onClose, task }: Props) {
                 : 'border-line bg-surface text-fg-2',
             )}
           >
-            <span className="truncate">{l.title}</span>
+            <Truncate>{l.title}</Truncate>
             {task.google_tasklist_id === l.id && <Check className="h-4 w-4 shrink-0" aria-hidden />}
           </button>
         ))}

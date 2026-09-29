@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Bus, MapPin } from 'lucide-react'
 import { ModalShell } from '../../../shared/modals'
-import { Button, Skeleton } from '../../../shared/ui'
+import { Button, Skeleton, Truncate } from '../../../shared/ui'
 import { useTransitStops } from '../hooks/useTransitStops'
 import { useDepartures } from '../hooks/useTransitQueries'
 import { useWidgetState } from '../hooks/useWidgetState'
@@ -45,7 +45,7 @@ export function TransitCard() {
           <>
             <p className="mb-1 flex min-w-0 items-center gap-1 text-meta text-fg-muted">
               <MapPin aria-hidden className="h-3.5 w-3.5 shrink-0" />
-              <span className="truncate">{stop.label ?? stop.stop_name}{stop.quay_description ? ` · ${stop.quay_description}` : ''}</span>
+              <Truncate>{`${stop.label ?? stop.stop_name}${stop.quay_description ? ` · ${stop.quay_description}` : ''}`}</Truncate>
             </p>
             {isAddress ? (
               <p className="py-2 text-body text-fg-muted">This favourite is an address, so it has no departures board.</p>

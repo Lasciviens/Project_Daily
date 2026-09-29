@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { cx } from './cx'
 import type { Tone } from './Tone'
+import { Truncate } from './Truncate'
 
 interface StatTileProps {
   label: ReactNode
@@ -26,7 +27,7 @@ export function StatTile({ label, value, unit, hint, icon, tone, onClick, classN
         <span data-tone={tone} className={cx('text-kpi font-bold tabular-nums tracking-tight', tone ? 'tone-text' : 'text-fg')}>{value}</span>
         {unit != null && <span className="text-meta font-medium text-fg-muted">{unit}</span>}
       </span>
-      {hint != null && <span className="mt-0.5 block truncate text-meta text-fg-muted">{hint}</span>}
+      {hint != null && <Truncate className="mt-0.5 text-meta text-fg-muted">{hint}</Truncate>}
     </>
   )
   const base = cx('flex min-w-0 flex-col p-4', className)

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { X } from 'lucide-react'
 import { Sheet } from '../../../shared/components/Sheet'
 import { useEntityModal } from '../../../shared/modals'
-import { Button, IconButton, TonePill } from '../../../shared/ui'
+import { Button, IconButton, TonePill, Truncate } from '../../../shared/ui'
 import {
   useGoogleTaskLists, useCreateGoogleTaskList, useRenameGoogleTaskList, useDeleteGoogleTaskList,
   type GoogleTaskListRow,
@@ -54,10 +54,10 @@ function ListRow({ list }: { list: GoogleTaskListRow }) {
         <button
           type="button"
           onClick={() => setEditing(true)}
-          className="min-h-[44px] flex-1 truncate text-left text-body text-fg press-feedback"
+          className="min-h-[44px] min-w-0 flex-1 text-left text-body text-fg press-feedback"
           title="Tap to rename"
         >
-          {list.title}
+          <Truncate>{list.title}</Truncate>
         </button>
       )}
       {list.is_default && <TonePill tone="accent" className="shrink-0">Default</TonePill>}

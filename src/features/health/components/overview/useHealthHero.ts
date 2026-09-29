@@ -10,9 +10,12 @@ import {
   type UsualRange, type VitalState, type VitalsSummary,
 } from '../../healthTrendStats'
 import {
-  classify, computeBmi, computeWaistToHeight, contextFor, normalizeSpo2,
-  type BenchmarkContext, type Classification, type HealthProfile,
+  classify, computeBmi, computeWaistToHeight, contextFor, exerciseAim, hrvAim, normalizeSpo2, restingHrAim, sleepAim, stepsAim,
+  vitalsAim, weightAim,
+  type Aim, type BenchmarkContext, type Classification, type HealthProfile,
 } from '../../benchmarks/healthBenchmarks'
+import { useDayTargets } from '../../../daily/hooks/useDayTargets'
+import { useBodyGoals } from '../../goal/useBodyGoals'
 import type { BodyweightSource } from '../../bodyweight'
 import { useMetricWindow, useSleepWindow } from '../../hooks/useHealthWindow'
 import { useBodyweightSeries } from '../../hooks/useBodyweight'
@@ -37,6 +40,8 @@ export interface VitalItem {
   date: string | null
   range: UsualRange | null
   state: VitalState
+  /** The direction that is a good sign (HRV above your usual), never a warning. */
+  good?: 'above' | 'below' | null
   /** How the usual range is defined, for the detail sheet. */
   rangeRule: string
 }
@@ -129,6 +134,12 @@ export interface HealthHero {
     isLoading: boolean
   }
   vo2: { value: number; date: string } | null
+  /** What to aim for on each tile (benchmarks/aimGuidance.ts), shared with its detail sheet. */
+  aims: Record<'sleep' | 'steps' | 'exercise' | 'rhr' | 'weight' | 'vitals', Aim>
+  /** The goal weight from Goal progress, when one is set. */
+  goalWeightKg: number | null
+  /** False while the goal row is still loading (the defaults are showing). */
+  goalLoaded: boolean
 }
 
 const valuesIn = (s: readonly DayValue[], from: string, to: string) => s.filter(d => d.date >= from && d.date <= to).map(d => d.value)
@@ -165,6 +176,11 @@ export function useHealthHero(win: HealthWindow): HealthHero {
   const hevyQ = useHevyWorkoutsRange(addDaysIso(A, -89), A)
   const measQ = useHevyBodyMeasurements()
   const vo2Q = useLatestHealthValue('vo2_max', A)
+  const { settings: goals } = useBodyGoals()
+  const { targets, isLoaded: goalLoaded } = useDayTargets()
+  // Until the goal row has loaded, the placeholder says "no goal" — never show that as fact.
+  const goalWeightKg = goalLoaded ? goals.goalWeightKg ?? null : null
+  const phase = targets.goal
 
   const sleep = useMemo<HealthHero['sleep']>(() => {
     const nights = sleepQ.nights.map(n => ({ date: n.date, value: n.total }))
@@ -299,7 +315,7 @@ export function useHealthHero(win: HealthWindow): HealthHero {
     const items: VitalItem[] = [
       {
         key: 'hrv', label: 'HRV', unit: 'ms', decimals: 0, value: hrv7, date: hrv7 != null ? A : null, range: hrvRange,
-        state: vitalState(hrv7, hrvRange), rangeRule: '7-day average against your 60-day mean ± 1 SD (Plews 2013)',
+        state: vitalState(hrv7, hrvRange), good: 'above', rangeRule: '7-day average against your 60-day mean ± 1 SD (Plews 2013)',
       },
       // 60 prior nights, like the chart band and the Heart & vitals reading (vitalsReading.ts).
       item('resp', 'Respiratory rate', 'br/min', 1, respQ.daily, { mode: 'median', halfWidth: 1.5 }, 60,
@@ -316,5 +332,15 @@ export function useHealthHero(win: HealthWindow): HealthHero {
     }
   }, [hrvQ.daily, respQ.daily, spo2Q.daily, tempQ.daily, hrvQ.isLoading, respQ.isLoading, spo2Q.isLoading, tempQ.isLoading, A, ctx])
 
-  return { anchor: A, today, isToday, ctx, profile, sleep, steps, exercise, rhr, weight, vitals, vo2: vo2Q.data ?? null }
+  const aims = useMemo<HealthHero['aims']>(() => ({
+    sleep: sleepAim({ avg7: sleep.avg7, wakeSd: sleep.wake?.sd ?? null }),
+    steps: stepsAim({ avg7: steps.avg7, age: ctx.age }),
+    exercise: exerciseAim({ minutes7: exercise.minutes7, strengthDays7: exercise.strengthDays7 }),
+    rhr: restingHrAim({ value: rhr.avg7, baselineMedian: rhr.baseline?.median ?? null, delta: rhr.delta }),
+    weight: weightAim({ kg: weight.ma7 ?? weight.lastKg, heightCm: ctx.heightCm, goalWeightKg, phase, whtr: weight.whtr, goalLoaded }),
+    vitals: vitalsAim({ ...vitals.summary, hrv: hrvAim({ value: vitals.hrv7, range: vitals.hrvRange }) }),
+  }), [sleep.avg7, sleep.wake, steps.avg7, exercise.minutes7, exercise.strengthDays7, rhr.avg7, rhr.baseline, rhr.delta,
+    weight.ma7, weight.lastKg, weight.whtr, vitals.summary, vitals.hrv7, vitals.hrvRange, ctx.age, ctx.heightCm, goalWeightKg, phase, goalLoaded])
+
+  return { anchor: A, today, isToday, ctx, profile, sleep, steps, exercise, rhr, weight, vitals, vo2: vo2Q.data ?? null, aims, goalWeightKg, goalLoaded }
 }

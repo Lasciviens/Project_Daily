@@ -6,6 +6,7 @@ import { openGameFromAnalytics } from './tgAnalyticsOpen'
 import { useAnalyticsHandoff } from './tgAnalyticsHandoff'
 import { TgCover } from './TgCover'
 import { TgAnalyticsCard } from './TgAnalyticsCard'
+import { Truncate } from '../../../../shared/ui/Truncate'
 
 const SHOWN = 6
 
@@ -48,11 +49,10 @@ export function TgAnalyticsIdle({ breakdown, windowed, className = '' }: {
                 <TgCover game={game} mode="contain" />
               </span>
               <span className="min-w-0">
-                <span className="block truncate text-[13px] font-medium text-[var(--tg-text)]">{game.title}</span>
-                <span className="mt-0.5 block truncate text-[11.5px] text-[var(--tg-muted)]">
-                  {platformInfo(game.platformKey).short}
-                  {last ? <> · last played {formatDay(last)}</> : <> · no session recorded</>}
-                </span>
+                <Truncate className="text-[13px] font-medium text-[var(--tg-text)]">{game.title}</Truncate>
+                <Truncate className="mt-0.5 text-[11.5px] text-[var(--tg-muted)]">
+                  {`${platformInfo(game.platformKey).short} · ${last ? `last played ${formatDay(last)}` : 'no session recorded'}`}
+                </Truncate>
               </span>
               <span className="whitespace-nowrap text-right text-[12.5px] font-semibold tabular-nums text-[var(--tg-text-2)]">
                 {idleDays == null ? '—' : idleLabel(idleDays)}

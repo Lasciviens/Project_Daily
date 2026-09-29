@@ -5,6 +5,7 @@ import { fmtHours } from './tgAnalyticsData'
 import { TGA_ROW_H } from './tgAnalyticsFormat'
 import { TGA_LIB_META, TGA_LIB_TABLE, libraryCells } from './tgAnalyticsPlay'
 import { TgAnalyticsCard } from './TgAnalyticsCard'
+import { Truncate } from '../../../../shared/ui/Truncate'
 
 const ROW = [
   'grid w-full grid-cols-2 gap-x-3 gap-y-2.5 rounded-[12px] bg-[var(--tg-panel-2)] px-3 py-3 text-left transition-colors',
@@ -22,13 +23,13 @@ function Row({ row }: { row: TgaLibraryRow }) {
       <button type="button" onClick={() => useTestGameStore.getState().setAnalyticsLibrary(row.library)} className={ROW}>
         <span className="col-span-full flex min-w-0 items-center gap-2 @[40rem]:col-span-1">
           <span aria-hidden className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: meta.color }} />
-          <span className="truncate text-[13.5px] font-semibold text-[var(--tg-text)]">{meta.label}</span>
+          <Truncate className="text-[13.5px] font-semibold text-[var(--tg-text)]">{meta.label}</Truncate>
           <ChevronRight size={14} strokeWidth={2.2} aria-hidden className="ml-auto shrink-0 text-[var(--tg-faint)] @[40rem]:hidden" />
         </span>
         {libraryCells(row, fmtHours).map(c => (
           <span key={c.key} className="flex min-w-0 flex-col @[40rem]:block @[40rem]:text-right" title={c.title}>
             <span className="text-[11px] leading-snug text-[var(--tg-muted)] @[40rem]:sr-only">{c.label}</span>
-            <span className="block truncate text-[13px] font-semibold tabular-nums text-[var(--tg-text)] @[40rem]:font-medium">{c.value}</span>
+            <Truncate fullText={c.title ? `${c.value} (${c.title})` : undefined} className="text-[13px] font-semibold tabular-nums text-[var(--tg-text)] @[40rem]:font-medium">{c.value}</Truncate>
             {c.key === 'launches' && c.title && <span className="sr-only"> ({c.title})</span>}
           </span>
         ))}

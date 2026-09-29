@@ -6,6 +6,7 @@ import { TgStars } from './TgStars'
 import { TgStatusMenu } from './TgStatusMenu'
 import { useDetailState } from './TgDetailState'
 import { useStableValue } from './useStableValue'
+import { Truncate } from '../../../../shared/ui/Truncate'
 
 type Variant = 'panel' | 'sheet'
 
@@ -27,7 +28,7 @@ const RETRY_MS = 1200
 // filled instead of leaving a blank band over the footer. The sheet scrolls,
 // so it keeps the design's proportion instead.
 const HERO_SIZE: Record<Variant, string> = {
-  panel: 'h-[clamp(208px,calc(100dvh-500px),440px)] [@media(min-height:1000px)]:h-[clamp(400px,calc(100dvh-600px),640px)]',
+  panel: 'h-[clamp(208px,calc(100dvh-552px),440px)] [@media(min-height:1000px)]:h-[clamp(400px,calc(100dvh-652px),640px)]',
   sheet: 'aspect-[5/3]',
 }
 
@@ -122,10 +123,11 @@ export function TgDetailHero({ game, variant, steamGenre }: Props) {
         </div>
 
         <div className="-mb-2 min-w-0 flex-1">
-          <h2 className="line-clamp-2 break-words text-[20px] font-bold leading-[1.25] text-[var(--tg-text)] 2xl:text-[22px]">
+          {/* The hero's height is fixed: a cut title opens a bubble instead of growing in place. */}
+          <Truncate as="h2" lines={2} reveal="popover" className="text-[20px] font-bold leading-[1.25] text-[var(--tg-text)] 2xl:text-[22px]">
             {game.title}
-          </h2>
-          {subtitle && <p className="mt-1 truncate text-[12px] text-[var(--tg-muted)] 2xl:text-[13px]">{subtitle}</p>}
+          </Truncate>
+          {subtitle && <Truncate as="p" className="mt-1 text-[12px] text-[var(--tg-muted)] 2xl:text-[13px]">{subtitle}</Truncate>}
           {/* Fixed-height line: an interactive TgStars keeps its 44px hit area
               (overflowing evenly) without spreading the block apart. Touch
               stars are wider, so the label drops its suffix there. */}

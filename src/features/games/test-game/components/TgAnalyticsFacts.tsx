@@ -3,6 +3,7 @@ import { CalendarClock, ChevronRight, Monitor, Rocket, Sparkles, Tags, Timer } f
 import type { TgaFact } from './tgAnalyticsMore'
 import { TgAnalyticsCard } from './TgAnalyticsCard'
 import { openGameFromAnalytics } from './tgAnalyticsOpen'
+import { Truncate } from '../../../../shared/ui/Truncate'
 
 const ICONS: Record<string, LucideIcon> = { oldest: CalendarClock, launched: Rocket, session: Timer, platform: Monitor, genre: Tags }
 
@@ -19,8 +20,8 @@ function Body({ fact }: { fact: TgaFact }) {
         <Icon size={14} strokeWidth={2} aria-hidden />
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-[11px] text-[var(--tg-muted)]">{fact.label}</span>
-        <span className="mt-0.5 block truncate text-[13px] font-semibold text-[var(--tg-text)]" title={fact.value}>{fact.value}</span>
+        <Truncate className="text-[11px] text-[var(--tg-muted)]">{fact.label}</Truncate>
+        <Truncate className="mt-0.5 text-[13px] font-semibold text-[var(--tg-text)]">{fact.value}</Truncate>
       </span>
     </>
   )

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Search } from 'lucide-react'
-import { Button } from '../../../shared/ui'
+import { Button, Truncate } from '../../../shared/ui'
 import { toast } from '../../../app/store'
 import { searchFoodsByName, type BarcodeProduct } from '../api/openFoodFactsApi'
 import { searchBrandedFoods, isKassalappEnabled } from '../api/kassalappApi'
@@ -76,7 +76,7 @@ export function OnlineFoodSearch({ initialQuery = '', onPick }: {
               <button type="button" onClick={() => onPick(p)} className="flex min-w-0 flex-1 items-center gap-2 text-left">
                 {p.image_url && <img src={p.image_url} alt="" className="h-8 w-8 shrink-0 rounded-md object-cover" onError={e => { e.currentTarget.style.display = 'none' }} />}
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-body text-fg">{p.name}</span>
+                  <Truncate className="text-body text-fg">{p.name}</Truncate>
                   <span className="text-meta text-fg-muted tabular-nums">
                     {p.brand ? `${p.brand} · ` : ''}{p.calories != null ? `${Math.round(p.calories)} kcal/100g` : 'no macros'}{p.protein_g != null ? ` · ${Math.round(p.protein_g)}g protein` : ''}
                   </span>

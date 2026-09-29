@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { Listbox, ListboxButton, ListboxLabel, ListboxOption, ListboxOptions } from '@headlessui/react'
 import { Check, ChevronDown } from 'lucide-react'
+import { Truncate } from '../../../../shared/ui/Truncate'
 
 export interface TgOption<T extends string> { value: T; label: string; count?: number; status?: string }
 
@@ -9,15 +10,15 @@ export interface TgOption<T extends string> { value: T; label: string; count?: n
  *
  * `className` lands on the button itself: Listbox renders no wrapper and the
  * options are portaled, so the button IS the element that sits in the
- * caller's flex row. `icon` (optional) replaces the label below `lg`, where
- * the tablet top bar has no room for three text pills; the label stays
- * readable to screen readers there. `active` (value differs from the
- * default) then tints the icon pill and adds the phone filter button's dot,
- * because an icon alone can't show that a filter is narrowing the shelf.
+ * caller's flex row. With `compact` and an `icon`, the icon replaces the
+ * label (the toolbar decides this from its own width); the label stays
+ * readable to screen readers. `active` (value differs from the default) then
+ * tints the icon pill and adds a dot, because an icon alone can't show that a
+ * filter is narrowing the shelf.
  */
 export function TgDropdown<T extends string>({
   value, options, onChange, buttonLabel, ariaLabel, align = 'start', className = '', fullWidth = false, icon,
-  active = false,
+  active = false, compact = false,
 }: {
   value: T
   options: TgOption<T>[]
@@ -29,29 +30,31 @@ export function TgDropdown<T extends string>({
   fullWidth?: boolean
   icon?: ReactNode
   active?: boolean
+  compact?: boolean
 }) {
   // Rows without a status keep the dot's slot so every label lines up.
   const hasDots = options.some(o => o.status)
-  const iconActive = !!icon && active
+  const iconOnly = !!icon && compact
+  const iconActive = iconOnly && active
   return (
     <Listbox value={value} onChange={onChange}>
       <ListboxLabel className="sr-only">{ariaLabel}</ListboxLabel>
       <ListboxButton
-        title={icon ? buttonLabel : undefined}
+        title={iconOnly ? buttonLabel : undefined}
         className={`tg-select relative min-w-0 ${fullWidth ? 'w-full justify-between' : ''} ${
-          iconActive ? 'max-lg:!border-[var(--tg-accent)]' : ''
+          iconActive ? '!border-[var(--tg-accent)]' : ''
         } ${className}`}
       >
-        {icon && (
-          <span aria-hidden className={`inline-flex lg:hidden ${iconActive ? 'text-[var(--tg-accent)]' : ''}`}>{icon}</span>
+        {iconOnly && (
+          <span aria-hidden className={`inline-flex ${iconActive ? 'text-[var(--tg-accent)]' : ''}`}>{icon}</span>
         )}
         {iconActive && (
           <span
             aria-hidden
-            className="absolute right-1 top-1 h-2 w-2 rounded-full bg-[var(--tg-accent)] ring-2 ring-[var(--tg-panel)] lg:hidden"
+            className="absolute right-1 top-1 h-2 w-2 rounded-full bg-[var(--tg-accent)] ring-2 ring-[var(--tg-panel)]"
           />
         )}
-        <span className={icon ? 'sr-only lg:not-sr-only lg:min-w-0 lg:truncate' : 'min-w-0 truncate'}>{buttonLabel}</span>
+        {iconOnly ? <span className="sr-only">{buttonLabel}</span> : <Truncate>{buttonLabel}</Truncate>}
         <ChevronDown aria-hidden className="tg-chev ml-auto shrink-0" strokeWidth={2} />
       </ListboxButton>
       <ListboxOptions
@@ -64,7 +67,7 @@ export function TgDropdown<T extends string>({
             {({ selected }) => (
               <>
                 {hasDots && <span aria-hidden data-status={o.status} className={`tg-dot ${o.status ? '' : 'invisible'}`} />}
-                <span className="min-w-0 flex-1 truncate">{o.label}</span>
+                <Truncate className="flex-1">{o.label}</Truncate>
                 {o.count != null && (
                   <span className="pl-3 text-[12px] font-medium tabular-nums text-[var(--tg-muted)]">{o.count}</span>
                 )}

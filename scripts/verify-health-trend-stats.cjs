@@ -139,11 +139,18 @@ check('§8.5 too few readings → null', T.usualRange([1, 2, 3], { mode: 'sd', k
 check('§8.6 states', [T.vitalState(60, rSd), T.vitalState(30, rSd), T.vitalState(45, rSd), T.vitalState(null, rSd), T.vitalState(45, null)],
   ['above', 'below', 'inside', 'unknown', 'unknown'])
 check('§8.7 all inside', T.summarizeVitals([{ label: 'HRV', state: 'inside' }, { label: 'SpO₂', state: 'inside' }, { label: 'Temp', state: 'unknown' }]),
-  { checked: 2, outside: [], tone: 'success', text: 'All 2 in your usual range' })
+  { checked: 2, outside: [], better: [], tone: 'success', text: 'All 2 in your usual range' })
 check('§8.8 one outside → neutral', T.summarizeVitals([{ label: 'HRV', state: 'below' }, { label: 'SpO₂', state: 'inside' }]).tone, 'neutral')
 check('§8.9 two outside → warn and named', T.summarizeVitals([{ label: 'HRV', state: 'below' }, { label: 'Resp', state: 'above' }, { label: 'SpO₂', state: 'inside' }]),
-  { checked: 3, outside: ['HRV', 'Resp'], tone: 'warn', text: '2 of 3 outside your usual range' })
+  { checked: 3, outside: ['HRV', 'Resp'], better: [], tone: 'warn', text: '2 of 3 outside your usual range' })
 check('§8.10 nothing known', T.summarizeVitals([{ label: 'HRV', state: 'unknown' }]).tone, null)
+check('§8.11 HRV above its range (good direction) is not a warning sign',
+  T.summarizeVitals([{ label: 'HRV', state: 'above', good: 'above' }, { label: 'SpO₂', state: 'inside' }]),
+  { checked: 2, outside: [], better: ['HRV'], tone: 'success', text: 'All 2 in your usual range or better' })
+check('§8.12 HRV above + one other off → one outside, neutral (never "two off together")',
+  T.summarizeVitals([{ label: 'HRV', state: 'above', good: 'above' }, { label: 'Wrist temperature', state: 'above' }, { label: 'SpO₂', state: 'inside' }]),
+  { checked: 3, outside: ['Wrist temperature'], better: ['HRV'], tone: 'neutral', text: '1 of 3 outside your usual range' })
+check('§8.13 HRV BELOW its range still counts', T.summarizeVitals([{ label: 'HRV', state: 'below', good: 'above' }]).outside, ['HRV'])
 
 // ─── §9 referenceLadder agrees with classify ─────────────────────────────────
 const ctx = { age: 35, sex: 'male', heightCm: 182 }

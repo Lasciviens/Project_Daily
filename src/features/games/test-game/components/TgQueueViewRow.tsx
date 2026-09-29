@@ -7,6 +7,7 @@ import {
 } from '../testGameModel'
 import { TgCover } from './TgCover'
 import { TgStatusIcon } from './TgStatusIcon'
+import { Truncate } from '../../../../shared/ui/Truncate'
 
 interface Props {
   game: TgGame
@@ -96,8 +97,8 @@ export const TgQueueViewRow = memo(function TgQueueViewRow({
         </span>
 
         <span className="flex-1 min-w-0">
-          <span className="block truncate text-[14px] font-semibold text-[var(--tg-text)]">{game.title}</span>
-          <span className="block truncate text-[12px] tg-muted">{subtitleParts(game).join(' · ')}</span>
+          <Truncate className="text-[14px] font-semibold text-[var(--tg-text)]">{game.title}</Truncate>
+          <Truncate className="text-[12px] tg-muted">{subtitleParts(game).join(' · ')}</Truncate>
           <span data-status={status} className="mt-1 flex items-center gap-1.5 text-[12px] font-medium">
             <TgStatusIcon status={status} size={13} />
             <span className="tg-status-text">{statusText}</span>

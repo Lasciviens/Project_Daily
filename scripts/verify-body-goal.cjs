@@ -1,10 +1,14 @@
 #!/usr/bin/env node
 /*
  * Verification — the goal report (Health → Goal progress): phase-aware pace
- * (bodyGoal.ts), fat vs muscle from the smart scale, goal progress and
+ * (bodyGoal.ts) and the coach's reading of it (coachPace — the goal editor's
+ * and Food's coach must agree with the report), fat vs muscle from the smart scale, goal progress and
  * projected dates, the path copy (goalPath.ts), the assembler (goalReport.ts),
  * the device-local → account goal settings (goalSettings.ts) and
- * athleteProfileApi's migration-111 fallback. Real modules through sucrase,
+ * athleteProfileApi's migration-111 fallback, the one goal on day_targets
+ * (migration 113: dayTargetsApi's read/write with its pre-113 fallbacks, the
+ * editor's body-target parser, the phase start rule and the shared goal
+ * summary line) and the training focus. Real modules through sucrase,
  * synthetic data only, no test framework.
  *
  * Run: node scripts/verify-body-goal.cjs
@@ -15,6 +19,7 @@ const BG = require('../src/features/health/goal/bodyGoal.ts')
 const GP = require('../src/features/health/goal/goalPath.ts')
 const GR = require('../src/features/health/goal/goalReport.ts')
 const GS = require('../src/features/health/goal/goalSettings.ts')
+const GSUM = require('../src/features/daily/goalSummary.ts')
 const { addDays } = require('../src/features/health/goal/energyBalance.ts')
 
 let passed = 0
@@ -53,9 +58,10 @@ check('§1.16 maintain: ±0.25 stable', [C('maintain', -0.25), C('maintain', 0),
 check('§1.17 maintain: drifting', [C('maintain', -0.4), C('maintain', 0.4)], ['drifting_down', 'drifting_up'])
 
 // A minimal EnergyReport for the rate verdict.
-function energyStub({ kgPerWeek, meanKg = 90, meanKcal = 2400, loggedDays = 28, days = 28, protein = null, band = null, earlyPhase = false }) {
+function energyStub({ kgPerWeek, meanKg = 90, meanKcal = 2400, loggedDays = 28, pairedDays = loggedDays, pairedIntake = meanKcal, days = 28, protein = null, band = null, earlyPhase = false }) {
   return {
     days, intake: { loggedDays, partialDays: 0, completeness: loggedDays / days, meanKcal, meanProteinG: protein },
+    paired: { days: pairedDays, meanBurn: 2600, meanActive: 700, meanBasal: 1900, meanIntake: pairedDays ? pairedIntake : null, deficit: pairedDays ? 2600 - pairedIntake : null, halfLoggedBelow: 800, excluded: { noFood: 0, halfLogged: 0, appleGap: 0 } },
     apple: { days, meanActive: 700, meanBasal: 1900, meanTdee: 2600 }, loggedDeficit: 200,
     weight: { weighIns: 20, spanDays: days, series: [], slopeKgPerDay: kgPerWeek / 7, slopeSe: 0.001, kgPerWeek, pctPerWeek: (-kgPerWeek / meanKg) * 100, meanKg, currentTrendKg: meanKg, changeKg: kgPerWeek * 4 },
     expectedChangeKg: null, observedTdee: null, tdeeGap: null, verdict: null, reasons: [], confidence: null, confidenceNotes: [], missing: [],
@@ -90,6 +96,33 @@ function energyStub({ kgPerWeek, meanKg = 90, meanKcal = 2400, loggedDays = 28, 
   const none = energyStub({ kgPerWeek: -0.5 }); none.hasTrend = false
   check('§2.13 no trend → no verdict', BG.buildRateVerdict('cut', none, { intakeReliable: true }), null)
   check('§2.14 kcalForPace: 1 % of 70 kg a week ≈ 770 → 750; a tiny step is 50', [BG.kcalForPace(0, -1, 70), BG.kcalForPace(0, 0.01, 70)], [-750, 50])
+  // The suggested logged intake starts from the SAME intake the Energy card
+  // shows (the paired days), not every full diary day.
+  const paired = BG.buildRateVerdict('cut', energyStub({ kgPerWeek: -0.27, meanKcal: 2400, pairedIntake: 2300 }), { intakeReliable: true })
+  check('§2.15 suggested intake uses the paired days (2,300 − 200)', paired.suggestedIntake, 2100)
+  const unpaired = BG.buildRateVerdict('cut', energyStub({ kgPerWeek: -0.27, meanKcal: 2400, pairedDays: 0 }), { intakeReliable: true })
+  check('§2.16 …every full diary day only when no day pairs (2,400 − 200)', unpaired.suggestedIntake, 2200)
+}
+
+// ── §2b The coach reads the report's pace rule ────────────────────────────
+{
+  // Live case: −0.284 kg/wk at 82.7 kg = −0.34 %/wk. The old coach counted a
+  // cut on track from −0.2 %/wk; the report's range starts at −0.5.
+  const live = BG.coachPace('cut', -0.284, 82.7)
+  check('§2b.1 −0.34 %/wk on a cut is too slow, not on track', [live.status, live.pct], ['too_slow', -0.34])
+  ok('§2b.2 …so the coach offers a calorie cut', live.adjust && live.adjust.kcal < 0, live.adjust)
+  const report = BG.buildRateVerdict('cut', energyStub({ kgPerWeek: -0.284, meanKg: 82.7 }), { intakeReliable: true })
+  check('§2b.3 …the same status and kcal as the report over the same weigh-ins', [live.status, live.adjust.kcal], [report.status, report.adjust.kcal])
+  const cases = [['cut', -0.15, 90], ['cut', -0.45, 80], ['cut', -0.6, 80], ['cut', -1.2, 80], ['cut', 0.2, 80],
+    ['maintain', 0.28, 80], ['maintain', -0.16, 80], ['gain', 0.16, 80], ['gain', 0.3, 80], ['gain', 0.62, 80], ['gain', -0.2, 80]]
+  const agree = cases.every(([ph, kgw, kg]) => {
+    const c = BG.coachPace(ph, kgw, kg)
+    const r = BG.buildRateVerdict(ph, energyStub({ kgPerWeek: kgw, meanKg: kg }), { intakeReliable: true })
+    return c.status === r.status && (c.adjust?.kcal ?? null) === (r.adjust?.kcal ?? null)
+  })
+  check('§2b.4 coach and report agree across every phase and band', agree, true)
+  check('§2b.5 in range → no nudge', [BG.coachPace('cut', -0.6, 80).adjust, BG.coachPace('maintain', 0.1, 80).status, BG.coachPace('gain', 0.3, 80).status], [null, 'stable', 'on_track'])
+  check('§2b.6 maintain ±0.25 %/wk, gain 0.25–0.5 (not the old ±0.3 / 0.1–0.5)', [BG.coachPace('maintain', 0.22, 80).status, BG.coachPace('gain', 0.12, 80).status], ['drifting_up', 'too_slow'])
 }
 
 // ── §3 Scale readings: one per source and day, never mixed ─────────────────
@@ -368,7 +401,138 @@ async function verifyProfileApi() {
   check('§10.9 …notes still saved on the third call', calls.length === 3 && calls[2].row.notes === 'x' && !('goal_weight_kg' in calls[2].row), true)
 }
 
-verifyProfileApi().then(() => {
+// ── §11 The one goal: pure helpers ─────────────────────────────────────────
+{
+  const row113 = { user_id: 'u', calories: 1950, protein_g: 180, water_ml: 2500, goal: 'cut', last_calorie_adjust: null, phase_start_date: '2026-09-01T00:00:00', goal_weight_kg: '78.0', goal_body_fat_pct: 14, goal_muscle_mass_kg: null }
+  check('§11.1 a 113 row carries the goal columns', GS.rowHasGoalColumns(row113), true)
+  check('§11.2 a pre-113 row does not', GS.rowHasGoalColumns({ user_id: 'u', calories: 2000 }), false)
+  check('§11.3 no row → no columns', GS.rowHasGoalColumns(null), false)
+  check('§11.4 goal fields are cleaned', GS.goalFieldsOf(row113), { goal_weight_kg: 78, goal_body_fat_pct: 14, goal_muscle_mass_kg: null, phase_start_date: '2026-09-01' })
+  check('§11.5 phase start: same phase keeps the saved date', GS.phaseStartFor('cut', 'cut', '2026-09-01', '2026-09-28'), '2026-09-01')
+  check('§11.6 phase start: a new phase starts today', GS.phaseStartFor('maintain', 'cut', '2026-09-01', '2026-09-28'), '2026-09-28')
+  check('§11.7 phase start: back to the saved phase restores its date', GS.phaseStartFor('cut', 'cut', null, '2026-09-28'), null)
+  const p = GS.parseBodyTargets({ goalWeightKg: '78,5', goalBodyFatPct: '', goalMuscleMassKg: '200' })
+  check('§11.8 body targets: comma decimals, empty clears', [p.values.goalWeightKg, p.values.goalBodyFatPct], [78.5, null])
+  check('§11.9 body targets: out of range is an error naming the range', p.errors, { goalMuscleMassKg: 'Between 10 and 150 kg' })
+  check('§11.10 body target text', [GS.bodyTargetText(78), GS.bodyTargetText(null)], ['78', ''])
+  const t = { goal: 'cut', phaseStartDate: '2026-09-01', calories: 1950, protein: 180, goalWeightKg: 78, goalBodyFatPct: 14, goalMuscleMassKg: null }
+  check('§11.11 summary line', GSUM.goalSummaryParts(t, '2026-09-28'), ['Cut since 1 Sep', '1,950 kcal', '180 g protein', '→ 78 kg · 14 % body fat'])
+  check('§11.12 summary without start date or body targets', GSUM.goalSummaryParts({ ...t, phaseStartDate: null, goalWeightKg: null, goalBodyFatPct: null }, '2026-09-28'), ['Cut', '1,950 kcal', '180 g protein'])
+  check('§11.13 summary: a start in another year carries the year', GSUM.sinceLabel('2025-12-30', '2026-01-05'), '30 Dec 2025')
+}
+
+// ── §12 dayTargetsApi: one row, with the pre-113 fallbacks ─────────────────
+async function verifyDayTargetsApi() {
+  const origResolve = Module._resolveFilename
+  let calls = []
+  let tables = {}
+  const warnings = []
+  const builder = table => {
+    const state = { table, op: null, row: null }
+    const done = () => { calls.push({ ...state }); return Promise.resolve(tables[table](state)) }
+    const b = {
+      upsert(row) { state.op = 'upsert'; state.row = { ...row }; return b },
+      select() { if (!state.op) state.op = 'select'; return b },
+      single: done,
+      maybeSingle: done,
+      then(res, rej) { return done().then(res, rej) },
+    }
+    return b
+  }
+  Module._resolveFilename = function (request, parent, ...rest) {
+    if (/integrations\/supabase\/client$/.test(request)) return 'stub:supabase'
+    if (/shared\/utils\/requireUser$/.test(request)) return 'stub:requireUser'
+    if (/app\/store$/.test(request)) return 'stub:store'
+    return origResolve.call(this, request, parent, ...rest)
+  }
+  // §10 already loaded athleteProfileApi against its own stub: mutate the
+  // shared stub exports in place so every loaded module sees this builder.
+  const stub = (id, exportsObj) => {
+    if (require.cache[id]) Object.assign(require.cache[id].exports, exportsObj)
+    else require.cache[id] = { id, filename: id, loaded: true, exports: exportsObj }
+  }
+  stub('stub:supabase', { supabase: { from: builder } })
+  stub('stub:requireUser', { requireUser: async () => ({ id: 'u' }) })
+  stub('stub:store', { toast: { warning: m => warnings.push(m) } })
+  const DT = require('../src/features/daily/api/dayTargetsApi')
+  const AP = require('../src/features/training/api/athleteProfileApi')
+  Module._resolveFilename = origResolve
+
+  const GOAL = ['phase_start_date', 'goal_weight_kg', 'goal_body_fat_pct', 'goal_muscle_mass_kg']
+  const daily = { user_id: 'u', calories: 1950, protein_g: 180, water_ml: 2500, goal: 'cut', last_calorie_adjust: null, updated_at: 'now' }
+  const ok200 = data => ({ data, error: null })
+  const legacyProfile = { user_id: 'u', goal: 'fat_loss', goal_weight_kg: 80, goal_body_fat_pct: null, goal_muscle_mass_kg: null, phase_start_date: '2026-08-01' }
+
+  // Post-113: the row is the goal; athlete_profile is never read.
+  tables = {
+    day_targets: st => ok200({ ...daily, phase_start_date: '2026-09-01', goal_weight_kg: 78, goal_body_fat_pct: null, goal_muscle_mass_kg: null, ...(st.row ?? {}) }),
+    athlete_profile: () => ok200(legacyProfile),
+    day_target_profiles: () => ok200(null),
+  }
+  calls = []
+  const post = await DT.fetchDayTargets()
+  check('§12.1 post-113 read: body goals from day_targets', [post.targets.goalWeightKg, post.targets.phaseStartDate, post.targets.calories, post.fromDevice], [78, '2026-09-01', 1950, false])
+  check('§12.2 …athlete_profile is not read', calls.some(c => c.table === 'athlete_profile'), false)
+
+  // Pre-113: the row lacks the columns → athlete_profile's goals.
+  tables.day_targets = st => (st.op === 'upsert' && GOAL.some(k => k in st.row)
+    ? { data: null, error: { code: 'PGRST204', message: "Could not find the 'goal_weight_kg' column of 'day_targets' in the schema cache" } }
+    : ok200({ ...daily, ...(st.row ?? {}) }))
+  calls = []
+  const pre = await DT.fetchDayTargets()
+  check('§12.3 pre-113 read: body goals from athlete_profile', [pre.targets.goalWeightKg, pre.targets.phaseStartDate, pre.targets.goal], [80, '2026-08-01', 'cut'])
+
+  // Pre-113 write: daily targets on day_targets, body goals to athlete_profile.
+  tables.athlete_profile = st => ok200({ ...legacyProfile, ...(st.row ?? {}) })
+  calls = []
+  const saved = await DT.upsertDayTargets({ ...pre.targets, calories: 1900, goalWeightKg: 77 })
+  const dtCalls = calls.filter(c => c.table === 'day_targets')
+  check('§12.4 pre-113 write: retried without the goal columns', dtCalls.length === 2 && !GOAL.some(k => k in dtCalls[1].row) && dtCalls[1].row.calories === 1900, true)
+  check('§12.5 …body goals went to athlete_profile', [saved.bodyGoalsSavedTo, calls.find(c => c.table === 'athlete_profile' && c.op === 'upsert')?.row.goal_weight_kg], ['profile', 77])
+  check('§12.6 …the returned goal keeps what was typed', [saved.state.targets.goalWeightKg, saved.state.targets.calories], [77, 1900])
+
+  // Pre-113 write that leaves the body goals alone (a Coach "Apply"): the
+  // daily targets save, athlete_profile is not written, nothing to warn about.
+  calls = []
+  const coachApply = await DT.upsertDayTargets({ ...pre.targets, protein: 190 }, pre)
+  check('§12.6b pre-113 unchanged body goals: athlete_profile not written', calls.some(c => c.table === 'athlete_profile' && c.op === 'upsert'), false)
+  check('§12.6c …reported as unchanged, the goal kept', [coachApply.bodyGoalsSavedTo, coachApply.state.targets.protein, coachApply.state.targets.goalWeightKg], ['unchanged', 190, 80])
+  calls = []
+  await DT.upsertDayTargets({ ...pre.targets, protein: 190 }, { ...pre, fromDevice: true })
+  check('§12.6f …but a device-only copy still moves on any save', calls.some(c => c.table === 'athlete_profile' && c.op === 'upsert'), true)
+  calls = []
+  const phaseChange = await DT.upsertDayTargets({ ...pre.targets, phaseStartDate: '2026-09-28' }, pre)
+  check('§12.6d …a new phase start still goes to athlete_profile', [phaseChange.bodyGoalsSavedTo, calls.find(c => c.table === 'athlete_profile' && c.op === 'upsert')?.row.phase_start_date], ['profile', '2026-09-28'])
+
+  // Pre-113 read whose athlete_profile read fails: the daily targets still load.
+  tables.athlete_profile = () => ({ data: null, error: { code: '500', message: 'network down' } })
+  const soft = await DT.fetchDayTargets()
+  check('§12.6e a failed legacy read only blanks the body targets', [soft.targets.calories, soft.targets.goal, soft.targets.goalWeightKg], [1950, 'cut', null])
+  tables.athlete_profile = st => ok200({ ...legacyProfile, ...(st.row ?? {}) })
+
+  // Post-113 write: one upsert carrying every goal column.
+  tables.day_targets = st => ok200({ ...daily, phase_start_date: null, goal_weight_kg: null, goal_body_fat_pct: null, goal_muscle_mass_kg: null, ...(st.row ?? {}) })
+  calls = []
+  const one = await DT.upsertDayTargets({ ...pre.targets, goalWeightKg: 76.5, goalBodyFatPct: 13 })
+  const up = calls.filter(c => c.table === 'day_targets')
+  check('§12.7 post-113 write: one upsert with the whole goal', up.length === 1 && GOAL.every(k => k in up[0].row) && up[0].row.goal_weight_kg === 76.5, true)
+  check('§12.8 …nothing written to athlete_profile', calls.some(c => c.table === 'athlete_profile'), false)
+  check('§12.9 …saved to day_targets', [one.bodyGoalsSavedTo, one.state.targets.goalBodyFatPct], ['day_targets', 13])
+
+  // Missing table (086): read degrades, write names the migration.
+  tables.day_targets = () => ({ data: null, error: { code: '42P01', message: 'relation "day_targets" does not exist' } })
+  const none = await DT.fetchDayTargets()
+  check('§12.10 pre-086 read: defaults', none.targets.calories, 2200)
+  ok('§12.11 pre-086 write: named migration-086 error', await (async () => { try { await DT.upsertDayTargets(none.targets); return false } catch (e) { return /migration 086/.test(e.message) } })())
+
+  // Training focus: the retired fat_loss reads as general.
+  check('§12.12 training focus', [AP.trainingFocusOf('fat_loss'), AP.trainingFocusOf('strength'), AP.trainingFocusOf('hypertrophy'), AP.trainingFocusOf('general'), AP.trainingFocusOf('x'), AP.trainingFocusOf(null)],
+    ['general', 'strength', 'hypertrophy', 'general', null, null])
+  tables.athlete_profile = () => ok200(legacyProfile)
+  check('§12.13 a stored fat_loss profile reads as general', (await AP.fetchAthleteProfile()).goal, 'general')
+}
+
+verifyProfileApi().then(verifyDayTargetsApi).then(() => {
   if (failures.length) {
     console.error(`✗ ${failures.length} failed, ${passed} passed\n\n` + failures.join('\n\n'))
     process.exit(1)

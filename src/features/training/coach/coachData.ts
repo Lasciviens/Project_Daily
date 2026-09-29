@@ -6,6 +6,7 @@ import { fetchHealthMetricSeries, type HealthMetric } from '../../health/api/hea
 import { fetchBodyweightSeries } from '../../health/api/bodyweightApi'
 import { fetchScheduleBlocks, fetchTrainingBlocksRange } from '../../daily/api/scheduleApi'
 import { fetchTrainingSkips } from '../api/trainingSkipsApi'
+import { fetchDayTargets, type NutritionGoal } from '../../daily/api/dayTargetsApi'
 import { lastTrainedByRoutine } from '../progress-engine'
 import { missedSessionsFrom, skipsFromWeek } from '../plan/skippedRoutines'
 import { computeDailySeries, computeSleepSummary } from '../../health/healthAggregate'
@@ -40,6 +41,9 @@ export async function gatherCoachData(): Promise<CoachData> {
   // Balance inputs (the Program tab's): every template and the recurring
   // training days — fetched alongside the reads below.
   const balanceInputs = Promise.all([soft(fetchHevyExerciseTemplates(), []), soft(fetchScheduleBlocks(), [])])
+  // The goal's phase (cut / maintain / gain) — the training focus no longer
+  // says "fat loss", so the coach reads the phase itself.
+  const goalState = soft<NutritionGoal | null>(fetchDayTargets().then(s => s.targets.goal), null)
 
   const [history, routines, profile, limitations, currentProgram, overrides, sleepPts, stepPts, energyPts, bodyweight, blocks, skips] = await Promise.all([
     fetchTrainingHistory(historyFrom, new Date().toISOString()),
@@ -63,6 +67,7 @@ export async function gatherCoachData(): Promise<CoachData> {
     targetDays: profile?.training_days_per_week ?? null, today,
   })
   const [templates, scheduleBlocks] = await balanceInputs
+  const phase = await goalState
   const balance = coachBalance({
     history, templates, routines, programRoutineIds: currentProgram.map(p => p.routine_id),
     trainingDaysPerWeek: profile?.training_days_per_week ?? null,
@@ -80,6 +85,7 @@ export async function gatherCoachData(): Promise<CoachData> {
     activeKcal: computeDailySeries('active_energy', energyPts),
     bodyweight: bodyweight.map(p => ({ date: p.date, kg: p.kg, fatPct: p.fatPct })),
     balance,
+    phase,
     missedSessions: progress.needsCurrentProgram ? [] : missedSessionsFrom({
       routines, program: currentProgram, lastTrained: lastTrainedByRoutine(history.sets), blocks, skips, today,
     }),

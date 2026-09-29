@@ -11,8 +11,8 @@ import { Toaster } from '../../shared/components/Toaster'
 import { OfflineBanner } from '../../shared/components/OfflineBanner'
 import { ModalHost, useModalStore } from '../../shared/modals'
 import { cx } from '../../shared/ui'
-import { useUIStore } from '../store'
-import { isFullHeightRoute } from '../navigation'
+import { selectSidebarCollapsed, useSidebarStore, useUIStore } from '../store'
+import { collapsesSidebar, isFullHeightRoute } from '../navigation'
 import { useAppBootstrap } from './useAppBootstrap'
 import { AppSidebar } from './AppSidebar'
 import { AppTopBar } from './AppTopBar'
@@ -24,7 +24,8 @@ import { PullToRefreshIndicator } from './PullToRefreshIndicator'
 // returning to a list lands where you left it; forward navs start at top.
 const scrollPositions = new Map<string, number>()
 
-// Toasts clear the tab bar on phones; bottom-left of the content elsewhere.
+// Toasts clear the tab bar on phones; bottom-left of the content elsewhere
+// (right of the 68px rail, or of the full sidebar).
 const TOAST_POSITION = {
   phone: 'left-4 right-4 bottom-[calc(var(--app-tabbar-h)+env(safe-area-inset-bottom)+8px)]',
   tablet: 'bottom-6 left-[calc(68px+env(safe-area-inset-left)+16px)]',
@@ -52,6 +53,9 @@ export function AppShell() {
 
   const reportScroll = useUIStore(s => s.reportScroll)
   const resetChrome = useUIStore(s => s.resetChrome)
+  // Desktop only: the tablet sidebar is always the rail.
+  const sidebarCollapsed = useSidebarStore(selectSidebarCollapsed)
+  const rail = bp === 'tablet' || sidebarCollapsed
 
   // <main> scrolls, not the document, so react-router's scroll handling never
   // applies: without this a new page kept the previous page's offset.
@@ -67,6 +71,8 @@ export function AppShell() {
     else el?.scrollTo({ top: 0 })
     resetChrome()
     useModalStore.getState().closeAll()
+    // Before paint, so a page that folds the sidebar (Games) never flashes it open.
+    useSidebarStore.getState().enterRoute(collapsesSidebar(pathname))
   }, [pathname]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Without View Transitions (pre-18 iOS Safari, the primary device) route
@@ -106,7 +112,7 @@ export function AppShell() {
   // page inside it survive a rotation or a window resize.
   return (
     <div className="flex h-full overflow-hidden bg-canvas">
-      {!phone && <AppSidebar rail={bp === 'tablet'} />}
+      {!phone && <AppSidebar rail={rail} collapsible={bp === 'desktop'} />}
       <div className="flex min-w-0 flex-1 flex-col">
         {phone ? <MobileHeader /> : <AppTopBar />}
         {main}
@@ -116,7 +122,7 @@ export function AppShell() {
       <AIPanel />
       <CommandBar />
       <ModalHost />
-      <Toaster positionClassName={TOAST_POSITION[bp]} />
+      <Toaster positionClassName={TOAST_POSITION[phone ? 'phone' : rail ? 'tablet' : 'desktop']} />
       <OfflineBanner />
     </div>
   )

@@ -44,11 +44,15 @@ export async function deleteDevRequests(ids: string[]): Promise<void> {
   if (error) throw error
 }
 
-// Persists a new drag-and-drop order in one round trip.
-export async function reorderDevRequests(ids: string[]): Promise<void> {
-  await Promise.all(ids.map((id, i) =>
-    supabase.from('dev_requests').update({ sort_order: i }).eq('id', id)
+// Persists a new drag-and-drop order: only the rows whose number changed
+// (planReorder in devRequestRules.ts), in parallel. The old version ignored
+// each update's error, so a failed write never reached the user.
+export async function reorderDevRequests(changes: { id: string; sort_order: number }[]): Promise<void> {
+  const results = await Promise.all(changes.map(c =>
+    supabase.from('dev_requests').update({ sort_order: c.sort_order }).eq('id', c.id)
   ))
+  const failed = results.find(r => r.error)
+  if (failed?.error) throw failed.error
 }
 
 export const DEV_REQUEST_STATUS_CYCLE: DevRequestStatus[] = ['open', 'in_progress', 'done']

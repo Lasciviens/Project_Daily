@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Pencil } from 'lucide-react'
-import { Card, CardHeader, TonePill } from '../../../../shared/ui'
+import { Card, CardHeader, TonePill, Truncate } from '../../../../shared/ui'
 import { ExerciseThumb } from '../../exerciseMedia'
 import { routineTargetFromSets, repRangeLabel } from '../../progress-engine'
 import { openPlanRoutine } from '../../planTraining'
@@ -38,7 +38,7 @@ export function RoutineProgramCard({ routine, overrides, lastDoneText }: {
               <div className="flex items-center gap-3">
                 <ExerciseThumb title={ex.title} templateId={ex.exercise_template_id} size={40} />
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-body font-medium text-fg">{ex.title}</p>
+                  <Truncate as="p" className="text-body font-medium text-fg">{ex.title}</Truncate>
                   <p className="flex flex-wrap items-center gap-x-1.5 text-meta tabular-nums text-fg-muted">
                     {rt || override
                       ? <span>{rt?.targetSets ?? sets.filter(s => s.type !== 'warmup').length} × {repRangeLabel(override?.rep_range_start ?? rt?.repMin ?? 0, override?.rep_range_end ?? rt?.repMax ?? 0)}</span>

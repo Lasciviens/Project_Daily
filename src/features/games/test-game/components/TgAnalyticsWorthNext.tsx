@@ -4,6 +4,7 @@ import { fmtScore, worthNextSubline } from './tgAnalyticsCollection'
 import { openGameFromAnalytics } from './tgAnalyticsOpen'
 import { TgCover } from './TgCover'
 import { TgAnalyticsCard, TgAnalyticsEmpty } from './TgAnalyticsCard'
+import { Truncate } from '../../../../shared/ui/Truncate'
 
 const PRESS = 'rounded-[10px] text-left transition-colors [@media(hover:hover)]:hover:bg-[var(--tg-hover)] [@media(hover:none)]:active:bg-[var(--tg-hover)]'
 const FRAME = 'relative overflow-hidden bg-[var(--tg-panel-2)] ring-1 ring-[var(--tg-border)] shadow-[shadow:var(--tg-cover-shadow)]'
@@ -36,8 +37,8 @@ export function TgAnalyticsWorthNext({ items, windowed = false, className = '' }
                     <TgCover game={game} mode="contain" />
                   </span>
                   <span className="min-w-0">
-                    <span className="block truncate text-[13px] font-medium text-[var(--tg-text)]">{game.title}</span>
-                    <span className="mt-0.5 block truncate text-[11.5px] text-[var(--tg-muted)]">{worthNextSubline(game)}</span>
+                    <Truncate className="text-[13px] font-medium text-[var(--tg-text)]">{game.title}</Truncate>
+                    <Truncate className="mt-0.5 text-[11.5px] text-[var(--tg-muted)]">{worthNextSubline(game)}</Truncate>
                   </span>
                   <span
                     title="Community score, out of 100"

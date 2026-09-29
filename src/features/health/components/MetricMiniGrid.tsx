@@ -48,18 +48,19 @@ export function MetricMiniGrid({ title, metrics, window, onViewDay, hideWhenEmpt
   )
 
   return (
-    <div id={id} className={standalone ? 'card flex w-full max-w-4xl scroll-mt-4 flex-col gap-2 p-4 sm:p-5' : 'flex flex-col gap-2 border-t border-line pt-3'}>
+    // Columns follow the grid's OWN width (a side track, main, or a card spanning several tracks).
+    <div id={id} className={standalone ? '@container card flex w-full scroll-mt-4 flex-col gap-2 p-4 sm:p-5' : '@container flex flex-col gap-2 border-t border-line pt-3'}>
       {standalone === 'h2' ? <h2 className="text-lead font-semibold text-fg">{title}</h2>
         : standalone === 'h3' ? <h3 className="text-body font-semibold text-fg">{title}</h3>
         : <p className="section-label">{title}</p>}
       {loading ? (
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-2 @[36rem]:grid-cols-4">
           {Array.from({ length: Math.min(4, metrics.length) }).map((_, i) => <Skeleton key={i} rounded="rounded-row" className="h-24" />)}
         </div>
       ) : (
         <>
           {withData.length > 0
-            ? <div className="grid grid-cols-2 items-start gap-2 sm:grid-cols-4">{withData.map(render)}</div>
+            ? <div className="grid grid-cols-2 items-start gap-2 @[36rem]:grid-cols-4">{withData.map(render)}</div>
             : <p className="text-meta text-fg-muted">Nothing recorded in this window.</p>}
           {empty.length > 0 && (
             <>
@@ -68,7 +69,7 @@ export function MetricMiniGrid({ title, metrics, window, onViewDay, hideWhenEmpt
                 <ChevronDown aria-hidden className={`h-3.5 w-3.5 transition-transform ${showEmpty ? 'rotate-180' : ''}`} />
                 Not recorded in this window ({empty.length})
               </button>
-              {showEmpty && <div className="grid grid-cols-2 items-start gap-2 sm:grid-cols-4">{empty.map(render)}</div>}
+              {showEmpty && <div className="grid grid-cols-2 items-start gap-2 @[36rem]:grid-cols-4">{empty.map(render)}</div>}
             </>
           )}
         </>

@@ -4,13 +4,14 @@ import { HIDDEN_AUTO_NOTE, HIDDEN_EMPTY_HINT } from './tgAnalyticsHealthCopy'
 import { useAnalyticsHandoff } from './tgAnalyticsHandoff'
 import { hiddenGames } from './tgAnalyticsLists'
 import { TgAnalyticsCard, TgAnalyticsEmpty } from './TgAnalyticsCard'
+import { Truncate } from '../../../../shared/ui/Truncate'
 
 function Tile({ label, value, sub }: { label: string; value: number; sub: string }) {
   return (
     <div className="min-w-0 rounded-[12px] bg-[var(--tg-panel-2)] px-3 py-2.5">
-      <dt className="truncate text-[12px] font-medium text-[var(--tg-text-2)]">{label}</dt>
+      <dt className="min-w-0 text-[12px] font-medium text-[var(--tg-text-2)]"><Truncate>{label}</Truncate></dt>
       <dd className="mt-1.5 text-[22px] font-semibold leading-none tabular-nums text-[var(--tg-text)]">{fmtInt(value)}</dd>
-      <dd className="mt-1 truncate text-[11.5px] text-[var(--tg-muted)]">{sub}</dd>
+      <dd className="mt-1 min-w-0 text-[11.5px] text-[var(--tg-muted)]"><Truncate>{sub}</Truncate></dd>
     </div>
   )
 }

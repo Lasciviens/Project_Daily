@@ -6,7 +6,7 @@ import { useTransitStops, type UserTransitStop } from '../../hooks/useTransitSto
 import { useTransitRecentSearches, type RecentSearch } from '../../hooks/useTransitRecentSearches'
 import { useGeolocation } from '../../hooks/useGeolocation'
 import { useStopDirections, useTrips } from '../../hooks/useTransitQueries'
-import { Button, IconButton, SectionLabel, Skeleton, cx } from '../../../../shared/ui'
+import { Button, IconButton, SectionLabel, Skeleton, Truncate, cx } from '../../../../shared/ui'
 import { StopSearchInput } from './StopSearchInput'
 import { TripCard } from './TripCard'
 import { fmtLastUpdated, fmtMinsAgo, fmtTime } from './transitUtils'
@@ -138,9 +138,9 @@ function PlaceDisplay({ place, label, onClear }: { place: TransitPlace; label: s
     <div className="flex items-center gap-2 px-2.5 py-2 bg-surface-2 border border-line rounded-row min-h-[44px]">
       <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${isFrom ? 'bg-danger' : 'bg-success'}`} />
       <div className="flex-1 min-w-0">
-        <p className="text-body font-medium text-fg truncate leading-snug">{place.name}</p>
+        <Truncate as="p" className="text-body font-medium text-fg leading-snug">{place.name}</Truncate>
         {directions.length > 0 && (
-          <p className="text-micro text-fg-muted truncate leading-tight">{directions.join(' · ')}</p>
+          <Truncate as="p" className="text-micro text-fg-muted leading-tight">{directions.join(' · ')}</Truncate>
         )}
       </div>
       <IconButton label={`Clear ${label} stop`} onClick={onClear}><X /></IconButton>
@@ -163,9 +163,9 @@ function SavedRouteChip({ route, active, onSelect, onDelete }: {
         )}
       >
         <span className="text-meta font-semibold leading-tight">{route.label}</span>
-        <span className={`text-micro leading-tight mt-0.5 max-w-[130px] truncate ${active ? 'text-on-accent/70' : 'text-fg-muted'}`}>
+        <Truncate fullText={`${route.from_stop_name.split(',')[0]} → ${route.to_stop_name.split(',')[0]}`} className={`text-micro leading-tight mt-0.5 max-w-[130px] ${active ? 'text-on-accent/70' : 'text-fg-muted'}`}>
           {route.from_stop_name.split(',')[0]} → {route.to_stop_name.split(',')[0]}
-        </span>
+        </Truncate>
       </button>
       {/* Always visible on touch; hover-revealed only where hover exists. */}
       <button
@@ -419,9 +419,9 @@ export function RoutesTab({ active, now, pendingRouteId, onRouteConsumed }: Rout
                 onClick={() => planFromRecent(r)}
                 className="flex items-center gap-1.5 text-meta px-3 py-2 rounded-row border border-line text-fg-2 hover:border-accent-500/40 transition-colors duration-150 min-h-[44px]"
               >
-                <span className="truncate max-w-[100px]">{r.from_stop_name.split(',')[0]}</span>
+                <Truncate className="max-w-[100px]">{r.from_stop_name.split(',')[0]}</Truncate>
                 <span className="text-fg-faint">→</span>
-                <span className="truncate max-w-[100px]">{r.to_stop_name.split(',')[0]}</span>
+                <Truncate className="max-w-[100px]">{r.to_stop_name.split(',')[0]}</Truncate>
               </button>
             ))}
           </div>
@@ -485,11 +485,11 @@ export function RoutesTab({ active, now, pendingRouteId, onRouteConsumed }: Rout
           <div className="flex-1 min-w-0 space-y-0.5">
             <div className="flex items-center gap-1.5 min-w-0">
               <span className="w-2 h-2 rounded-full bg-danger flex-shrink-0" />
-              <p className="text-meta font-medium text-fg-2 truncate">{search.from.name.split(',')[0]}</p>
+              <Truncate as="p" className="text-meta font-medium text-fg-2">{search.from.name.split(',')[0]}</Truncate>
             </div>
             <div className="flex items-center gap-1.5 min-w-0">
               <span className="w-2 h-2 rounded-full bg-success flex-shrink-0" />
-              <p className="text-meta font-medium text-fg-2 truncate">{search.to.name.split(',')[0]}</p>
+              <Truncate as="p" className="text-meta font-medium text-fg-2">{search.to.name.split(',')[0]}</Truncate>
             </div>
             <p className="text-micro text-accent-600 pl-3.5">{search.label}</p>
           </div>

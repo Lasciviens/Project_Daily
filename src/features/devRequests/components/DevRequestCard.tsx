@@ -5,6 +5,8 @@ import { CATEGORY_TONE, PRIORITY_TONE } from './devRequestMeta'
 
 interface Props {
   request:    DevRequest
+  /** Unsaved edits of this request are kept on this device. */
+  hasDraft?:  boolean
   dragging:   boolean
   onDragStart: () => void
   onDragEnd:   () => void
@@ -13,7 +15,7 @@ interface Props {
   onEdit:        () => void
 }
 
-export function DevRequestCard({ request, dragging, onDragStart, onDragEnd, onCycleStatus, onDelete, onEdit }: Props) {
+export function DevRequestCard({ request, hasDraft, dragging, onDragStart, onDragEnd, onCycleStatus, onDelete, onEdit }: Props) {
   const isDone = request.status === 'done'
   const inProgress = request.status === 'in_progress'
 
@@ -67,6 +69,9 @@ export function DevRequestCard({ request, dragging, onDragStart, onDragEnd, onCy
             <ToneDot tone={PRIORITY_TONE[request.priority]} />{request.priority}
           </span>
           {request.effort && <span className="text-meta text-fg-faint">· {request.effort}</span>}
+          {hasDraft && (
+            <span data-tone="warn" className="tone-pill" title="Unsaved changes are kept on this device — tap the title to continue">Unsaved edits</span>
+          )}
         </div>
       </div>
 

@@ -4,6 +4,7 @@ import { useRecentRuns, useUndoScrape } from '../../../scraper/useScrape'
 import type { RecentRun } from '../../../scraper/ssApi'
 import { TgConfirmDialog } from '../TgConfirmDialog'
 import { formatDay } from '../../testGameModel'
+import { Truncate } from '../../../../../shared/ui/Truncate'
 
 // "26 Sep 2026, 08:10" — the day via formatDay (CLDR would print "Sept").
 const when = (iso: string) => {
@@ -34,9 +35,9 @@ export function TgScrapeRecent() {
           {list.map(r => (
             <li key={r.run_id} className="flex items-center gap-3 px-4 py-2">
               <div className="min-w-0 flex-1">
-                <p className="truncate text-[13px] font-medium">
+                <Truncate as="p" className="text-[13px] font-medium">
                   {r.games.length === 1 ? (r.games[0].title ?? 'One game') : `${r.games.length} games`}
-                </p>
+                </Truncate>
                 <p className="text-[11.5px] tg-muted">
                   {when(r.created_at)}
                   {r.undone ? ' · undone' : r.undoable === 0 ? ' · a newer scrape replaced it' : r.undoable < r.games.length ? ` · ${r.undoable} can still be undone` : ''}

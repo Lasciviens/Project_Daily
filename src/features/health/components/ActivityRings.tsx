@@ -60,8 +60,11 @@ export function ActivityRings({ win, date, goals }: { win: HealthWindow; date: s
   const gap = 3
 
   return (
-    <div className="card flex w-fit max-w-full flex-wrap items-center gap-4 p-4 sm:gap-5 sm:p-5">
-      <div className="relative h-[132px] w-[132px] shrink-0 sm:h-[176px] sm:w-[176px]">
+    // Sized by the column it sits in (a 24rem side track on a wide page), not
+    // the viewport: the wrapper is the container, since a w-fit card can't be one.
+    <div className="@container">
+    <div className="card flex w-fit max-w-full flex-wrap items-center gap-4 p-4 @[27rem]:gap-5 @[27rem]:p-5">
+      <div className="relative h-[132px] w-[132px] shrink-0 @[27rem]:h-[176px] @[27rem]:w-[176px]">
         {loading && <div className="skeleton absolute inset-0 !rounded-full" />}
         <svg viewBox={`0 0 ${size} ${size}`} className="h-full w-full" role="img"
           aria-label={RINGS.map((r, i) => `${r.label} ${values[i] == null ? 'no data' : Math.round(values[i] as number)} of ${g[r.goal]} ${r.unit}`).join(', ')}>
@@ -96,6 +99,7 @@ export function ActivityRings({ win, date, goals }: { win: HealthWindow; date: s
           )}
         </div>
       </div>
+    </div>
     </div>
   )
 }

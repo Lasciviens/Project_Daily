@@ -6,6 +6,7 @@ import { TGA_CARD, fmtInt, kpiPlaytime, plural } from './tgAnalyticsFormat'
 import { backlogSub, completedShare, completedSub, playedSub, playingSub } from './tgAnalyticsDrillCopy'
 import { TgStatusIcon } from './TgStatusIcon'
 import { TgStars } from './TgStars'
+import { Truncate } from '../../../../shared/ui/Truncate'
 
 const CHIP = 'grid h-8 w-8 shrink-0 place-items-center rounded-[10px]'
 
@@ -26,11 +27,14 @@ function Tile({ icon, label, value, exact, adornment, sub, onOpen }: {
       >
         <span className="flex w-full min-w-0 items-center gap-2.5">
           {icon}
-          <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-[var(--tg-text-2)]">{label}</span>
+          <Truncate className="flex-1 text-[12px] font-medium text-[var(--tg-text-2)]">{label}</Truncate>
           <ChevronRight size={14} strokeWidth={2.2} aria-hidden className="hidden shrink-0 text-[var(--tg-faint)] transition-transform @md:block [@media(hover:hover)]:group-hover:translate-x-0.5" />
         </span>
         <span className="mt-3.5 flex min-h-[30px] w-full items-center justify-between gap-2">
-          <span title={exact} className="truncate text-[22px] font-semibold leading-none tracking-[-0.02em] text-[var(--tg-text)] @md:text-[26px]">{value}</span>
+          {/* The exact figure stays on hover even when the rounded one fits. */}
+          <span title={exact} className="min-w-0 text-[22px] font-semibold leading-none tracking-[-0.02em] text-[var(--tg-text)] @md:text-[26px]">
+            <Truncate fullText={exact}>{value}</Truncate>
+          </span>
           {adornment}
         </span>
         <span className="mt-2 text-[12px] leading-snug text-[var(--tg-muted)]">{sub}</span>

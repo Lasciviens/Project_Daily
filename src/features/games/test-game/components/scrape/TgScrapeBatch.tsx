@@ -10,6 +10,7 @@ import { TgDropdown } from '../TgDropdown'
 import { TgCover } from '../TgCover'
 import { TgBasisBadges, TgCandidateCover, TgChip, TgFlagChips, TgScrapeCard } from './TgScrapeParts'
 import { isScraped, primaryVariant } from './tgScrapeModel'
+import { Truncate } from '../../../../../shared/ui/Truncate'
 
 type Filter = ScrapeBatchState['filter']
 const FILTERS: { key: Filter; label: string }[] = [
@@ -221,19 +222,19 @@ export function TgScrapeBatch({ games, loading, onOpenGame }: {
                 </span>
                 <span className="relative h-[52px] w-[38px] shrink-0"><TgCover game={g} mode="natural" align="center" /></span>
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[13px] font-semibold">{g.title}</span>
-                  {!f && <span className="block truncate text-[11.5px] tg-muted">{platformInfo(g.platformKey).name} · not looked up</span>}
+                  <Truncate className="text-[13px] font-semibold">{g.title}</Truncate>
+                  {!f && <Truncate className="text-[11.5px] tg-muted">{`${platformInfo(g.platformKey).name} · not looked up`}</Truncate>}
                   {f && f.outcome !== 'match' && (
-                    <span className={`block truncate text-[11.5px] ${f.outcome === 'error' ? 'text-[var(--tg-red)]' : 'tg-muted'}`}>
+                    <Truncate className={`text-[11.5px] ${f.outcome === 'error' ? 'text-[var(--tg-red)]' : 'tg-muted'}`}>
                       {f.outcome === 'no_match' ? 'No match' : f.outcome === 'unmatchable' ? (f.reason ?? 'Nothing to search with') : `${f.reason ?? 'Error'} — will retry`}
-                    </span>
+                    </Truncate>
                   )}
                   {c && (
                     <span className="mt-0.5 flex min-w-0 items-start gap-2">
                       <TgCandidateCover candidate={c} regions={prefs.regions} width={120} className="mt-0.5 h-[34px] w-[25px] shrink-0 overflow-hidden rounded" />
                       <span className="min-w-0">
                         {/* The whole match, readable on a phone: title on its own lines, then console and year. */}
-                        <span className="line-clamp-2 text-[12px] leading-snug">→ {String(c.values.title ?? '')}</span>
+                        <Truncate lines={2} className="text-[12px] leading-snug">{`→ ${String(c.values.title ?? '')}`}</Truncate>
                         <span className="mt-0.5 flex flex-wrap gap-1">
                           {c.system.name && <TgChip tone={f?.system?.id != null && c.system.id === f.system.id ? 'good' : 'neutral'}>{c.system.name}</TgChip>}
                           {c.values.release_year ? <TgChip>{String(c.values.release_year)}</TgChip> : null}

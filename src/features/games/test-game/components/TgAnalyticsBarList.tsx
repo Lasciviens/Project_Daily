@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { ChevronRight } from 'lucide-react'
 import type { TgaBarRow } from './tgAnalyticsModel'
 import { TGA_ROW_H, TGA_TINT, fmtInt } from './tgAnalyticsFormat'
+import { Truncate } from '../../../../shared/ui/Truncate'
 
 /**
  * Horizontal bars, one series: every bar in the accent, length = count,
@@ -34,10 +35,10 @@ export function TgAnalyticsBarList({ rows, icon, onOpen, openLabel }: {
         const body = (
           <>
             {icon && <span className="grid place-items-center text-[var(--tg-text-2)]">{icon(row)}</span>}
-            <span className={`truncate text-[13px] ${row.target ? 'font-medium text-[var(--tg-text)]' : 'text-[var(--tg-muted)]'}`}>
+            <Truncate fullText={row.label} className={`text-[13px] ${row.target ? 'font-medium text-[var(--tg-text)]' : 'text-[var(--tg-muted)]'}`}>
               {row.label}
               {row.title && <span className="sr-only">: {row.title}</span>}
-            </span>
+            </Truncate>
             <span className="flex h-full items-center">
               {row.key === FOLD ? null : row.part != null ? (
                 <span className={`relative h-2.5 overflow-hidden rounded-r-[4px] ${TGA_TINT}`} style={{ width: width(row) }}>

@@ -1,6 +1,6 @@
 import { Hourglass } from 'lucide-react'
 import type { Task } from '../../todo/types'
-import { TonePill, cx } from '../../../shared/ui'
+import { TonePill, Truncate, cx } from '../../../shared/ui'
 import { PRIORITY_ICON, PRIORITY_LABEL, PRIORITY_TONE, dueLabel } from './workMeta'
 import { dueTone } from '../../todo/taskTones'
 import { todayStr, tomorrowStr } from '../../../shared/utils/dateUtils'
@@ -33,7 +33,7 @@ export function WaitingChip({ text, className }: { text: string; className?: str
   return (
     <TonePill tone="warn" className={cx('max-w-[10rem] shrink-0', className)}>
       <Hourglass aria-hidden className="h-3 w-3 shrink-0" />
-      <span className="truncate">{text}</span>
+      <Truncate>{text}</Truncate>
     </TonePill>
   )
 }

@@ -3,7 +3,7 @@ import { Search, Sparkles, ClipboardList } from 'lucide-react'
 import { useUIStore } from '../store'
 import { routeTitle } from '../navigation'
 import { SettingsMenu } from '../../shared/components/SettingsMenu'
-import { IconButton, cx } from '../../shared/ui'
+import { IconButton, Truncate, cx } from '../../shared/ui'
 
 /**
  * Phone header (< 768px, or a landscape phone). Glass over the status bar
@@ -32,7 +32,7 @@ export function MobileHeader() {
     >
       <div className="flex h-header items-center gap-1 pl-4 pr-1.5">
         <img src={`${import.meta.env.BASE_URL}logo.svg`} alt="" className="h-7 w-7 shrink-0" />
-        <p className="ml-1.5 min-w-0 flex-1 truncate text-head font-bold tracking-tight text-fg">{routeTitle(pathname)}</p>
+        <Truncate as="p" className="ml-1.5 flex-1 text-head font-bold tracking-tight text-fg">{routeTitle(pathname)}</Truncate>
         <IconButton label="Search" onClick={openCommandBar}><Search strokeWidth={1.9} aria-hidden /></IconButton>
         <IconButton label="Ask AI" aria-pressed={isAIOpen} onClick={toggleAI} className={isAIOpen ? 'bg-accent-50 !text-accent-700' : undefined}>
           <Sparkles strokeWidth={1.9} aria-hidden />

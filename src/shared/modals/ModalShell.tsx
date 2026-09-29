@@ -5,6 +5,7 @@ import { useHistoryDismiss } from '../hooks/useHistoryDismiss'
 import { useSheetDrag } from '../hooks/useSheetDrag'
 import { useModalDepth } from './ModalLayer'
 import { cx } from '../ui/cx'
+import { Truncate } from '../ui/Truncate'
 
 export type ModalSize = 'xs' | 'sm' | 'md' | 'lg' | 'xl'
 
@@ -103,8 +104,9 @@ export function ModalShell({
               className={cx('flex shrink-0 items-center gap-3 border-b border-line px-4 py-2.5 sm:px-5', full && 'pt-[calc(0.625rem+env(safe-area-inset-top))] sm:pt-2.5')}
             >
               <div className="min-w-0 flex-1">
-                <DialogTitle className="truncate text-title font-semibold text-fg">{title}</DialogTitle>
-                {subtitle != null && <p className="truncate text-meta text-fg-muted">{subtitle}</p>}
+                {/* User data (a recipe, a game): cut at the box, the rest on tap / hover. */}
+                <DialogTitle className="min-w-0 text-title font-semibold text-fg"><Truncate>{title}</Truncate></DialogTitle>
+                {subtitle != null && <Truncate as="p" className="text-meta text-fg-muted">{subtitle}</Truncate>}
               </div>
               {headerActions}
               {closeBtn}

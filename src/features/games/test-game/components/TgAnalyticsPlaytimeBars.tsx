@@ -1,6 +1,7 @@
 import type { TgaPlaytimeBucket } from './tgAnalyticsMore'
 import { fmtInt, plural } from './tgAnalyticsFormat'
 import { TGA_LIB_META, bucketText, type TgaLib } from './tgAnalyticsPlay'
+import { Truncate } from '../../../../shared/ui/Truncate'
 
 /**
  * Games per play-time bucket as horizontal bars, each split by library in the
@@ -16,9 +17,9 @@ export function TgAnalyticsPlaytimeBars({ buckets, libs, total }: { buckets: Tga
       <ul className="mt-2 flex flex-col gap-0.5">
         {buckets.map(b => (
           <li key={b.key} title={bucketText(b, libs)} className="grid min-h-[30px] grid-cols-[4.5rem_minmax(0,1fr)_2.75rem] items-center gap-x-3">
-            <span className="truncate text-[12.5px] text-[var(--tg-text-2)]">
+            <Truncate fullText={b.label} className="text-[12.5px] text-[var(--tg-text-2)]">
               {b.label}<span className="sr-only">: {bucketText(b, libs)}</span>
-            </span>
+            </Truncate>
             <span aria-hidden className="flex h-2.5 items-center">
               {b.count > 0 && (
                 <span className="flex h-full gap-[2px] overflow-hidden rounded-r-[4px]" style={{ width: `max(4px, ${(b.count / max) * 100}%)` }}>

@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { format } from 'date-fns'
 import { Dumbbell, Plus, X } from 'lucide-react'
 import { ModalShell } from '../../../shared/modals'
-import { Button, EmptyState } from '../../../shared/ui'
+import { Button, EmptyState, Truncate } from '../../../shared/ui'
 import { toast } from '../../../app/store'
 import { useLogHevyWorkout } from '../hooks/useHevyWorkouts'
 import { useHevyRoutines } from '../hooks/useHevyRoutines'
@@ -166,7 +166,7 @@ function LogHevyWorkoutForm({ onClose }: { onClose: () => void }) {
                     <div className="flex items-center justify-between gap-2 border-b border-line bg-surface-2 py-1 pl-3 pr-1">
                       <div className="flex min-w-0 items-center gap-2">
                         <span className="shrink-0 text-meta font-bold tabular-nums text-fg-faint">{exIdx + 1}</span>
-                        <span className="truncate text-body font-semibold text-fg">{ex.title}</span>
+                        <Truncate className="text-body font-semibold text-fg">{ex.title}</Truncate>
                       </div>
                       <button type="button" onClick={() => removeExercise(ex._key)} className="icon-btn shrink-0 text-fg-faint hover:!text-danger" aria-label={`Remove ${ex.title}`}>
                         <X className="h-4 w-4" aria-hidden />

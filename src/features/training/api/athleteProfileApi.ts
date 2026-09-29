@@ -2,6 +2,7 @@ import { supabase } from '../../../integrations/supabase/client'
 import { requireUser } from '../../../shared/utils/requireUser'
 import type {
   AthleteProfile,
+  TrainingGoal,
   UpsertAthleteProfileInput,
   AthleteLimitation,
   CreateLimitationInput,
@@ -56,10 +57,18 @@ function finiteOrNull(v: unknown): number | null {
   return Number.isFinite(n) ? n : null
 }
 
+/** The training focus of a stored row: the retired 'fat_loss' (a Cut phase
+ *  covers it now) reads as 'general'; anything unknown reads as not set. */
+export function trainingFocusOf(v: unknown): TrainingGoal | null {
+  if (v === 'fat_loss') return 'general'
+  return v === 'strength' || v === 'hypertrophy' || v === 'general' ? v : null
+}
+
 function normalizeProfile(row: Record<string, unknown>): AthleteProfile {
   const sex = row.sex === 'male' || row.sex === 'female' ? row.sex : null
   return {
     ...(row as unknown as AthleteProfile),
+    goal: trainingFocusOf(row.goal),
     birth_year: finiteOrNull(row.birth_year),
     sex,
     // numeric(5,1) — PostgREST may hand it back as a string.

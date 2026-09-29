@@ -10,7 +10,9 @@ import { Button, EmptyState, IconButton, PageContainer, PageHeader, SectionLabel
 import { haptic } from '../../../shared/utils/haptics'
 import type { ShopItem } from '../types'
 
-const ITEM_GRID = 'grid grid-cols-1 justify-start gap-3 sm:grid-cols-[repeat(auto-fill,minmax(17rem,21rem))]'
+// As many ≥ 17rem columns as fit, sharing the width: auto-fill with a fixed
+// maximum counts by the maximum and leaves up to a column's worth empty.
+const ITEM_GRID = 'grid grid-cols-1 gap-3 sm:grid-cols-[repeat(auto-fill,minmax(17rem,1fr))]'
 
 // A full-height route (`fullHeight` in src/app/navigation.ts): the page fills
 // <main> exactly and each pane scrolls on its own, so the assistant's input

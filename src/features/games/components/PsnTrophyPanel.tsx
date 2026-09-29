@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { usePsnTitleTrophies, usePsnTrophyGroups } from '../hooks/usePlayStation'
 import type { PsnTrophy } from '../api/psnApi'
+import { Truncate } from '../../../shared/ui/Truncate'
 
 // Trophy list for ONE trophy set, shared by the played-game modal and the
 // trophy view. Two Sony endpoints are joined server-side on `trophyId` —
@@ -36,7 +37,7 @@ function TrophyRow({ t }: { t: PsnTrophy }) {
           <span className="mr-1">{TYPE_ICON[t.trophyType] ?? ''}</span>{t.trophyName}
         </p>
         {t.trophyDetail
-          ? <p className="text-[11px] text-ink-400 leading-snug line-clamp-2">{t.trophyDetail}</p>
+          ? <Truncate as="p" lines={2} className="text-[11px] text-ink-400 leading-snug">{t.trophyDetail}</Truncate>
           : t.trophyHidden && !t.earned
             ? <p className="text-[11px] text-ink-300 italic">Hidden trophy</p>
             : null}

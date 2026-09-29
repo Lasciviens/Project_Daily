@@ -8,6 +8,7 @@ import { TgCover } from './TgCover'
 import { TgStatusIcon } from './TgStatusIcon'
 import { cardsForDepth, recalledDepth } from './tgScrollMemory'
 import { cardStatus, gameCardLabel } from './TgStatusMeta'
+import { Truncate } from '../../../../shared/ui/Truncate'
 
 const MobileCard = memo(function MobileCard({ game, onSelect, meta }: { game: TgGame; onSelect: (id: string) => void; meta: string }) {
   const stars = starsFromRating(game.rating)
@@ -27,14 +28,13 @@ const MobileCard = memo(function MobileCard({ game, onSelect, meta }: { game: Tg
       <div className="relative aspect-[0.72] w-full transition-transform duration-150 group-active:scale-[0.98]">
         <TgCover game={game} mode="natural" align="center" />
       </div>
-      <div className="mt-2 truncate text-[13px] font-semibold leading-[1.35] text-[var(--tg-text)]">
-        {game.title}
-      </div>
+      {/* Inside the card's button: a tap opens the sheet, which shows the whole title. */}
+      <Truncate as="div" className="mt-2 text-[13px] font-semibold leading-[1.35] text-[var(--tg-text)]">{game.title}</Truncate>
       <CardMetaLine game={game} meta={meta} />
       <div className="mt-1 flex items-center justify-between gap-2 text-[11px] leading-[1.3]">
         <span data-status={st.status} className="flex min-w-0 items-center gap-1.5">
           <TgStatusIcon status={st.status} size={12} />
-          <span className="tg-status-text truncate font-medium">{st.label}</span>
+          <Truncate className="tg-status-text font-medium">{st.label}</Truncate>
         </span>
         {stars != null && (
           <span className="flex shrink-0 items-center gap-1 font-medium tabular-nums text-[var(--tg-text-2)]">
@@ -48,9 +48,9 @@ const MobileCard = memo(function MobileCard({ game, onSelect, meta }: { game: Tg
 })
 
 /**
- * The phone's two-column cover grid; tapping a card opens the detail sheet.
- * The design's gutters are ~20px with a ~24px column gap; the 20px comes from
- * the phone scroller in TestGamePage, shared by every section and the header.
+ * The phone's cover grid (two columns upright); tapping a card opens the
+ * detail sheet. A ~24px column gap as the design draws it; the 16px gutter
+ * comes from the phone scroller in TestGamePage, shared by every section.
  */
 const FIRST = 48
 const STEP = 96
@@ -83,7 +83,9 @@ export function TgMobileGrid({ games, onSelect, listKey }: { games: TgGame[]; on
 
   return (
     <>
-      <div className="grid grid-cols-2 gap-x-6 gap-y-6 pb-4">
+      {/* Two columns on a phone held upright; a phone on its side (the same
+          layout, ~820px wide) gets four instead of two giant covers. */}
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(9.5rem,1fr))] gap-x-6 gap-y-6 pb-4">
         {(more ? games.slice(0, limit) : games).map(g => <MobileCard key={g.id} game={g} onSelect={onSelect} meta={cardMeta(g, sort, formatPlaytime)} />)}
       </div>
       {more && <div ref={sentinel} aria-hidden className="h-px" />}

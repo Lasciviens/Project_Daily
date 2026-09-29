@@ -1,5 +1,7 @@
 import type { Tone } from '../../../shared/ui'
 import type { AuditLog } from '../hooks/useLogs'
+import { formatDistanceToNow } from 'date-fns'
+import { fmtDateTimeEnGB } from '../../../shared/utils/enGBDate'
 
 // Friendly, singular labels for the raw table names.
 const TABLE_LABEL: Record<string, string> = {
@@ -19,4 +21,27 @@ export const OP_META: Record<AuditLog['operation'], { verb: string; tone: Tone }
   INSERT: { verb: 'created', tone: 'success' },
   UPDATE: { verb: 'updated', tone: 'info' },
   DELETE: { verb: 'deleted', tone: 'danger' },
+}
+
+export function fmtLogDate(iso: string): string {
+  return fmtDateTimeEnGB(new Date(iso), {
+    day: '2-digit', month: 'short', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+  })
+}
+
+// Best-effort human name for the affected row.
+export function rowLabel(log: AuditLog): string {
+  const d = log.new_data ?? log.old_data ?? {}
+  for (const key of ['title', 'name', 'label', 'message', 'content']) {
+    const v = d[key]
+    if (typeof v === 'string' && v.trim()) return v.length > 60 ? v.slice(0, 60) + '…' : v
+  }
+  return log.row_id ? `#${log.row_id.slice(0, 8)}` : '—'
+}
+
+/** "3 hours ago" beside an exact timestamp in a detail pane (relativeTime would repeat the clock time for today). */
+export function agoLabel(iso: string): string {
+  const d = new Date(iso)
+  return Number.isNaN(d.getTime()) ? '' : formatDistanceToNow(d, { addSuffix: true })
 }

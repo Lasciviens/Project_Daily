@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Banknote } from 'lucide-react'
 import { ModalShell } from '../../../shared/modals'
-import { Button, Skeleton } from '../../../shared/ui'
+import { Button, Skeleton, AnimatedNumber } from '../../../shared/ui'
 import { useCurrencyRates } from '../hooks/useCurrencyRates'
 import { useWidgetState } from '../hooks/useWidgetState'
 import { WidgetShell } from './WidgetShell'
@@ -44,7 +44,7 @@ export function CurrencyTile() {
         label="NOK → TRY"
         icon={<Banknote />}
         loading={isLoading}
-        value={data ? data.primary.rate.toFixed(3) : '—'}
+        value={data ? <AnimatedNumber value={data.primary.rate} decimals={3} /> : '—'}
         hint={data ? <ChangeBadge pct={data.primary.changePct} /> : error ? 'Unavailable' : undefined}
         onClick={() => setOpen(true)}
       />

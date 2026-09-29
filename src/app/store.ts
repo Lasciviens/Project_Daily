@@ -56,6 +56,37 @@ export const useUIStore = create<UIState>((set) => ({
   resetChrome: () => { lastChromeY = 0; set({ chromeHidden: false, chromeScrolled: false }) },
 }))
 
+// ─── Sidebar ──────────────────────────────────────────────────────────────────
+
+interface SidebarState {
+  /** The desktop sidebar is folded to its icon rail (the persisted preference). */
+  collapsed: boolean
+  /**
+   * A page that starts with the sidebar folded (`collapseSidebar` in the nav
+   * registry, e.g. Games) holds its own state here while it is open, so the
+   * toggle there never changes the preference other pages use. null = none.
+   */
+  pageCollapsed: boolean | null
+  toggle: () => void
+  /** Called on every route change: whether the new page folds the sidebar by default. */
+  enterRoute: (collapsesByDefault: boolean) => void
+}
+
+export const useSidebarStore = create<SidebarState>()(
+  persist(
+    (set) => ({
+      collapsed: false,
+      pageCollapsed: null,
+      toggle: () => set(s => (s.pageCollapsed != null ? { pageCollapsed: !s.pageCollapsed } : { collapsed: !s.collapsed })),
+      enterRoute: (collapsesByDefault) => set({ pageCollapsed: collapsesByDefault ? true : null }),
+    }),
+    { name: 'app-sidebar', partialize: (s) => ({ collapsed: s.collapsed }) },
+  ),
+)
+
+/** Whether the desktop sidebar is folded right now (the page's own state wins). */
+export const selectSidebarCollapsed = (s: SidebarState) => s.pageCollapsed ?? s.collapsed
+
 // ─── Toast ────────────────────────────────────────────────────────────────────
 
 export type ToastType = 'success' | 'error' | 'loading' | 'info' | 'warning'
@@ -137,12 +168,21 @@ export const useCalendarStore = create<CalendarState>()(
 // ─── Theme ────────────────────────────────────────────────────────────────────
 
 export type ThemePreference = 'light' | 'dark' | 'system'
+/** Settings → Appearance → Animations: 'extra' = "More" (the test set), 'standard' = the base motion. */
+export type MotionPreference = 'extra' | 'standard'
 
 interface ThemeState {
   theme:     ThemePreference
   accent:    AccentName
+  motion:    MotionPreference
   setTheme:  (theme: ThemePreference) => void
   setAccent: (accent: AccentName) => void
+  setMotion: (motion: MotionPreference) => void
+}
+
+/** Stamps data-motion on <html>; the "More" CSS lives under html[data-motion='extra'] (index.css). */
+function applyMotion(motion: MotionPreference) {
+  document.documentElement.dataset.motion = motion
 }
 
 function applyTheme(theme: ThemePreference, accent: AccentName) {
@@ -164,8 +204,11 @@ export const useThemeStore = create<ThemeState>()(
     (set, get) => ({
       theme:  'system',
       accent: DEFAULT_ACCENT,
+      // On by default (owner's call); a saved state without the field keeps it.
+      motion: 'extra',
       setTheme:  (theme)  => { applyTheme(theme, get().accent); set({ theme }) },
       setAccent: (accent) => { applyAccent(accent); set({ accent }) },
+      setMotion: (motion) => { applyMotion(motion); set({ motion }) },
     }),
     {
       name: 'theme-preference',
@@ -173,10 +216,13 @@ export const useThemeStore = create<ThemeState>()(
       migrate: (persisted) => {
         const old = (persisted ?? {}) as Partial<ThemeState>
         try { localStorage.removeItem('accent-theme') } catch { /* private mode */ }
-        return { theme: old.theme ?? 'system', accent: DEFAULT_ACCENT } as ThemeState
+        return { theme: old.theme ?? 'system', accent: DEFAULT_ACCENT, motion: 'extra' } as ThemeState
       },
       onRehydrateStorage: () => (state) => {
-        if (state) state.accent = resolveAccent(state.accent)
+        if (state) {
+          state.accent = resolveAccent(state.accent)
+          if (state.motion !== 'standard') state.motion = 'extra'
+        }
       },
     }
   )
@@ -184,8 +230,9 @@ export const useThemeStore = create<ThemeState>()(
 
 /** Applies the persisted theme + accent once on boot (the inline script only stamps .dark). */
 export function applyStoredTheme() {
-  const { theme, accent } = useThemeStore.getState()
+  const { theme, accent, motion } = useThemeStore.getState()
   applyTheme(theme, accent)
+  applyMotion(motion)
 }
 
 // The inline script only fires once, on load — this keeps the DOM in sync

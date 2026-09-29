@@ -1,5 +1,7 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import { ChevronDown } from 'lucide-react'
+import { PageBoard } from '../../../shared/ui'
+import { PROGRESS_BOARD } from '../trainingBoards'
 import { ExerciseProgressChart } from './ExerciseProgressChart'
 import { WeeklyVolumeChart } from './WeeklyVolumeChart'
 import { TrainingConsistencyCalendar } from './TrainingConsistencyCalendar'
@@ -45,28 +47,35 @@ function Disclosure({ label, openLabel, children }: { label: string; openLabel: 
 export function ProgressTab() {
   const { routineTitlesByTemplateId } = useProgressDataContext()
   const preferIds = useMemo(() => new Set(routineTitlesByTemplateId.keys()), [routineTitlesByTemplateId])
+  // Placed by PageBoard (trainingBoards.ts → PROGRESS_BOARD): decisions and
+  // the body map in main, the summaries in a rail, the charts underneath.
   return (
-    <div className="flex flex-col gap-3 sm:gap-4">
-      <ImprovementCard preferIds={preferIds} />
-      <ProgressOverview />
-      <ExerciseDecisionTable />
-      <WorkedMuscles />
-      <MuscleRecencyList />
-
-      <Disclosure label="Show supporting charts & analysis" openLabel="Hide supporting charts">
-        {/* One column up to 2xl; two chart columns on a wide monitor. */}
-        <div className="grid items-start gap-3 sm:gap-4 2xl:grid-cols-2">
-          <div className="2xl:col-span-2"><TrainingInsightsPanel /></div>
-          <ExerciseProgressChart />
-          <RelativeStrengthChart />
-          <WeeklyVolumeChart />
-          <WeeklySetsPerMuscleChart />
-          <RepRangeDistributionChart />
-          <TrainingConsistencyCalendar />
-          <WeeklyChangesPanel />
-          <RecoveryLoadPanel />
+    <PageBoard layout={PROGRESS_BOARD} stackGap="gap-3 sm:gap-4" sections={{
+      improvement: <ImprovementCard preferIds={preferIds} />,
+      overview: <ProgressOverview />,
+      decisions: <ExerciseDecisionTable />,
+      muscles: <WorkedMuscles />,
+      recency: <MuscleRecencyList />,
+      charts: (
+        <div className="flex flex-col gap-3 sm:gap-4">
+          <Disclosure label="Show supporting charts & analysis" openLabel="Hide supporting charts">
+            {/* Columns by the band's own width: one on a phone, two on a laptop, three on a monitor. */}
+            <div className="@container">
+              <div className="grid items-start gap-3 sm:gap-4 @[60rem]:grid-cols-2 @[110rem]:grid-cols-3">
+                <div className="col-span-full"><TrainingInsightsPanel /></div>
+                <ExerciseProgressChart />
+                <RelativeStrengthChart />
+                <WeeklyVolumeChart />
+                <WeeklySetsPerMuscleChart />
+                <RepRangeDistributionChart />
+                <TrainingConsistencyCalendar />
+                <WeeklyChangesPanel />
+                <RecoveryLoadPanel />
+              </div>
+            </div>
+          </Disclosure>
         </div>
-      </Disclosure>
-    </div>
+      ),
+    }} />
   )
 }

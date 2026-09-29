@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { Truncate } from '../../../../shared/ui'
 
 /** A compact number tile for the session detail (a StatTile is a whole card —
  *  too big four-up inside a popup). */
@@ -10,7 +11,7 @@ export function SessionStat({ label, value, unit, sub }: { label: ReactNode; val
         <span className="text-lead font-bold leading-tight tabular-nums text-fg">{value}</span>
         {unit && <span className="text-meta text-fg-muted">{unit}</span>}
       </span>
-      {sub != null && <span className="truncate text-meta tabular-nums text-fg-muted">{sub}</span>}
+      {sub != null && <Truncate className="text-meta tabular-nums text-fg-muted">{sub}</Truncate>}
     </div>
   )
 }

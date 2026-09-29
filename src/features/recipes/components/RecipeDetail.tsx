@@ -3,7 +3,7 @@ import { Check, ChefHat, Flame, Minus, Plus, ShoppingBag, UtensilsCrossed, Exter
 import { toast } from '../../../app/store'
 import { ModalShell } from '../../../shared/modals/ModalShell'
 import { entityModal } from '../../../shared/modals/useEntityModal'
-import { Button, IconButton } from '../../../shared/ui'
+import { Button, IconButton, Truncate } from '../../../shared/ui'
 import { cx } from '../../../shared/ui/cx'
 import { useDeleteRecipe, useIncrementTimesCooked } from '../hooks/useRecipes'
 import { useAddMissingIngredientsToShop } from '../hooks/useShopIntegration'
@@ -152,7 +152,8 @@ export function RecipeDetail({ recipe, onClose, onEdit }: Props) {
               </span>
             )}
             <h2 className="text-title font-semibold text-white">{recipe.title}</h2>
-            {recipe.description && <p className="line-clamp-2 text-meta text-white/80">{recipe.description}</p>}
+            {/* A bubble, not an in-place "More": the accent link wouldn't read on the photo. */}
+            {recipe.description && <Truncate as="p" lines={2} reveal="popover" className="text-meta text-white/80">{recipe.description}</Truncate>}
           </div>
         </div>
       ) : undefined}

@@ -5,15 +5,17 @@ import { useTasksByWeek } from '../../todo/hooks/useTodos'
 import { useCalendarEventDatesForRange, useCalendarList } from '../../calendar/hooks/useCalendar'
 import { useCalendarStore } from '../../../app/store'
 import { DateNav } from '../../../shared/components/DateNav'
-import { Card, IconButton, ToneDot, TonePill, cx } from '../../../shared/ui'
+import { Card, IconButton, ToneDot, TonePill, cx, Truncate } from '../../../shared/ui'
 import type { Task } from '../../todo/types'
 
 interface Props {
   onDayClick?: (date: Date) => void
   highlightDate?: Date
+  /** Replaces the default `max-w-3xl` cap (a PageBoard track sizes it instead). */
+  className?: string
 }
 
-export function WeekWidget({ onDayClick, highlightDate }: Props) {
+export function WeekWidget({ onDayClick, highlightDate, className = 'max-w-3xl' }: Props) {
   const [weekOffset, setWeekOffset] = useState(0)
   const [showCalFilter, setShowCalFilter] = useState(false)
 
@@ -75,7 +77,7 @@ export function WeekWidget({ onDayClick, highlightDate }: Props) {
   const donePercent = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0
 
   return (
-    <Card className="max-w-3xl">
+    <Card className={className}>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-1">
         <DateNav
           label={`Week ${weekNumber}`}
@@ -179,7 +181,7 @@ export function WeekWidget({ onDayClick, highlightDate }: Props) {
             {floatingTasks.slice(0, 5).map(task => (
               <li key={task.id} className="flex items-center gap-2 py-1">
                 <ToneDot tone="accent" className="!h-1.5 !w-1.5" />
-                <span className="truncate text-body text-fg-2">{task.title}</span>
+                <Truncate className="text-body text-fg-2">{task.title}</Truncate>
               </li>
             ))}
           </ul>

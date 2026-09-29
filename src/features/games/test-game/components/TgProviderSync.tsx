@@ -17,8 +17,10 @@ const NAME: Record<Provider, string> = { steam: 'Steam', playstation: 'PlayStati
  * "Sync Steam" / "Sync PlayStation" on that shelf: reads the provider's list
  * and imports it (new games added, playtime refreshed, only empty metadata
  * filled). An explicit tap only — never on load (the lazy-loading rule).
+ * `iconOnly` (the phone's crowded scope row): a 44px icon button, the words
+ * in its label and tooltip.
  */
-export function TgProviderSync({ library, games, compact = false }: { library: Provider; games: readonly TgGame[]; compact?: boolean }) {
+export function TgProviderSync({ library, games, compact = false, iconOnly = false }: { library: Provider; games: readonly TgGame[]; compact?: boolean; iconOnly?: boolean }) {
   const qc = useQueryClient()
   const [busy, setBusy] = useState(false)
   const last = lastSynced(games, library)
@@ -47,10 +49,22 @@ export function TgProviderSync({ library, games, compact = false }: { library: P
     }
   }
 
+  const title = `Adds new ${NAME[library]} games and refreshes playtime; your status, rating and notes are never touched.${last ? ` Last synced ${formatDay(last)}.` : ''}`
+  if (iconOnly) {
+    return (
+      <button
+        type="button" onClick={run} disabled={busy} title={title}
+        aria-label={busy ? `Syncing ${NAME[library]}…` : `Sync ${NAME[library]}${last ? ` (last ${formatDay(last)})` : ''}`}
+        className="tg-icon-btn is-bordered shrink-0"
+      >
+        <RefreshCw aria-hidden className={`h-[18px] w-[18px] ${busy ? 'animate-spin' : ''}`} strokeWidth={1.9} />
+      </button>
+    )
+  }
   return (
     <button
       type="button" onClick={run} disabled={busy}
-      title={`Adds new ${NAME[library]} games and refreshes playtime; your status, rating and notes are never touched.${last ? ` Last synced ${formatDay(last)}.` : ''}`}
+      title={title}
       className={`tg-btn tg-btn-secondary shrink-0 ${compact ? '!px-3 !text-[12.5px]' : '!px-3.5 !text-[13px]'}`}
     >
       <RefreshCw aria-hidden className={`h-4 w-4 ${busy ? 'animate-spin' : ''}`} strokeWidth={2} />

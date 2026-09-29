@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { Truncate } from '../ui/Truncate'
 
 interface ListRowProps {
   leading?: ReactNode
@@ -25,10 +26,8 @@ export function ListRow({
     <>
       {leading != null && <span className="shrink-0">{leading}</span>}
       <span className="flex-1 min-w-0">
-        <span className="block truncate text-body font-medium text-fg">{title}</span>
-        {subtitle != null && (
-          <span className="block truncate text-meta text-fg-muted">{subtitle}</span>
-        )}
+        <Truncate className="text-body font-medium text-fg">{title}</Truncate>
+        {subtitle != null && <Truncate className="text-meta text-fg-muted">{subtitle}</Truncate>}
       </span>
       {meta != null && <span className="shrink-0 text-meta tabular-nums text-fg-muted">{meta}</span>}
       {trailing != null && <span className="shrink-0">{trailing}</span>}

@@ -65,13 +65,9 @@ export function CompactLibraryStrip({ tab, movieEntries, tvEntries, onOpenDetail
   const type: MediaType = tab === 'movies' ? 'movie' : 'tv'
   const total = filledGroups.reduce((n, g) => n + g.entries.length, 0)
 
-  // Split groups into two columns: left = even indices, right = odd indices
-  const leftGroups  = filledGroups.filter((_, i) => i % 2 === 0)
-  const rightGroups = filledGroups.filter((_, i) => i % 2 === 1)
-
   function renderGroup(group: Group) {
     return (
-      <div key={group.label} className="min-w-0">
+      <div key={group.label} className="min-w-0 max-w-full">
         <div className="mb-1.5 flex items-center gap-1.5">
           <span className="section-label">{group.label}</span>
           <span className="text-micro text-fg-faint tabular-nums">{group.entries.length}</span>
@@ -113,17 +109,17 @@ export function CompactLibraryStrip({ tab, movieEntries, tvEntries, onOpenDetail
         <ChevronDown aria-hidden className={`h-4 w-4 text-fg-faint transition-transform ${collapsed ? '-rotate-90' : ''}`} />
       </button>
 
+      {/* Groups in status order, reading across then down. One column on a
+          phone; from 30rem of the strip's OWN width each group is as wide as
+          its posters and they wrap side by side, so two small groups share a
+          line and a big one takes the room it needs (equal grid columns left
+          a tall hole beside a long wishlist). */}
       {!collapsed && (
-        <>
-          {/* Phones: one column in status order (an even/odd split stacked
-              column-then-column and scrambled the reading order). */}
-          <div className="space-y-4 px-3 pb-3 sm:hidden">{filledGroups.map(renderGroup)}</div>
-          {/* sm+: two balanced columns, reading down then across. */}
-          <div className="hidden grid-cols-2 gap-4 px-3 pb-3 sm:grid">
-            <div className="space-y-4">{leftGroups.map(renderGroup)}</div>
-            <div className="space-y-4">{rightGroups.map(renderGroup)}</div>
+        <div className="@container">
+          <div className="flex flex-col gap-4 px-3 pb-3 @[30rem]:flex-row @[30rem]:flex-wrap @[30rem]:items-start @[30rem]:gap-x-6">
+            {filledGroups.map(renderGroup)}
           </div>
-        </>
+        </div>
       )}
     </div>
   )

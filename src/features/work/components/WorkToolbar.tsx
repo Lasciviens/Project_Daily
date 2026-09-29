@@ -24,7 +24,10 @@ const PRIO_OPTIONS: { value: PrioFilter; label: string }[] = [
 ]
 
 // View switch + quick add + filters. Search and priority sit inline from sm:
-// and collapse into one filter sheet on phones.
+// and collapse into one filter sheet on phones. They wrap as ONE group, and
+// quick add gives way down to 12rem first, so in List view's 48rem track
+// (1469) everything fits on one line, and at 1280 the two filters move to
+// the next line together instead of leaving priority alone on it.
 export default function WorkToolbar({
   view, onViewChange, search, onSearchChange, prio, onPrioChange, onQuickAdd, quickAddBusy,
 }: Props) {
@@ -56,30 +59,32 @@ export default function WorkToolbar({
         placeholder="Quick add a task… (Enter)"
         aria-label="Quick add a work task"
         disabled={quickAddBusy}
-        className="input order-last w-full disabled:opacity-50 sm:order-none sm:w-auto sm:min-w-[14rem] sm:max-w-md sm:flex-1"
+        className="input order-last w-full disabled:opacity-50 sm:order-none sm:w-auto sm:min-w-[12rem] sm:max-w-md sm:flex-1"
       />
 
-      <label className="relative hidden w-56 sm:block">
-        <Search aria-hidden className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-fg-faint" />
-        <input
-          value={search}
-          onChange={e => onSearchChange(e.target.value)}
-          placeholder="Search tasks"
-          aria-label="Search tasks"
-          className="input pl-9"
-        />
-      </label>
-      <select
-        value={prio}
-        onChange={e => onPrioChange(e.target.value as PrioFilter)}
-        aria-label="Priority filter"
-        className="select hidden w-auto sm:block"
-      >
-        <option value="all">All priorities</option>
-        <option value="high">High</option>
-        <option value="medium">Medium</option>
-        <option value="low">Low</option>
-      </select>
+      <div className="hidden items-center gap-2 sm:flex">
+        <label className="relative w-56">
+          <Search aria-hidden className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-fg-faint" />
+          <input
+            value={search}
+            onChange={e => onSearchChange(e.target.value)}
+            placeholder="Search tasks"
+            aria-label="Search tasks"
+            className="input pl-9"
+          />
+        </label>
+        <select
+          value={prio}
+          onChange={e => onPrioChange(e.target.value as PrioFilter)}
+          aria-label="Priority filter"
+          className="select w-auto"
+        >
+          <option value="all">All priorities</option>
+          <option value="high">High</option>
+          <option value="medium">Medium</option>
+          <option value="low">Low</option>
+        </select>
+      </div>
 
       <IconButton label="Filter tasks" bordered onClick={() => setFilterOpen(true)} className="relative ml-auto sm:hidden">
         <SlidersHorizontal />

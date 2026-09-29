@@ -154,11 +154,3 @@ export function matchDaySessions(input: {
 
   return { sessions, openPlans }
 }
-
-/** "planned · done" when the workout is the plan by name or routine, else
- *  "Planned: <plan title>" so a swapped session says what it replaced. */
-export function sessionPlanNote(s: DaySession): string | null {
-  if (s.plans.length === 0) return null
-  const other = s.plans.find(p => planWorkoutScore(p, s.workout) === 0)
-  return other ? `Planned: ${other.title}` : 'Planned · done'
-}

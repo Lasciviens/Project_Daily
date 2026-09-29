@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import { isToday } from 'date-fns'
-import { Check, ChevronDown, Copy, MoreHorizontal, Pencil, Plus, Target, UtensilsCrossed, X } from 'lucide-react'
-import { Button, cx } from '../../../../shared/ui'
+import { Check, ChevronDown, Copy, MoreHorizontal, Pencil, Plus, UtensilsCrossed, X } from 'lucide-react'
+import { AnimatedNumber, Button, ProgressRing, Truncate, cx } from '../../../../shared/ui'
 import { useEatPlannedEntry } from '../../../recipes/hooks/useMealPlan'
 import { Cell, CellHeader } from './cellKit'
 import { WaterTracker } from './WaterTracker'
+import { GoalSummary } from '../GoalSummary'
 import { useDayNutrition } from '../../hooks/useDayNutrition'
 import { useDayTargets } from '../../hooks/useDayTargets'
 import { useEntityModal } from '../../../../shared/modals/useEntityModal'
@@ -18,6 +19,7 @@ import { useIngredientLibrary } from '../../../recipes/hooks/useIngredientLibrar
 import { ingredientSnapshot, recentToEntry, type RecentFood } from '../../../recipes/api/foodLogApi'
 import type { MealSlot } from '../../../recipes/types'
 import type { DayMeal } from '../../api/dayNutritionApi'
+import { useNewIds } from '../../../../shared/hooks/useNewIds'
 
 // Slot icons + "now" highlighting folded in from the old separate Meals card —
 // this card now presents nutrition AND the meal timeline as one widget.
@@ -38,24 +40,15 @@ function currentSlot(): MealSlot {
   return 'snack'
 }
 
-function CalorieRing({ consumed, target }: { consumed: number; target: number }) {
-  const pct = target > 0 ? Math.min(consumed / target, 1) : 0
-  const R = 30, C = 2 * Math.PI * R
+function CalorieRing({ consumed, target, ready }: { consumed: number; target: number; ready: boolean }) {
   const over = consumed > target
   const remaining = Math.abs(target - consumed)
   return (
-    <div className="relative h-[80px] w-[80px] shrink-0">
-      <svg viewBox="0 0 72 72" className="h-full w-full -rotate-90" aria-hidden>
-        <circle cx="36" cy="36" r={R} fill="none" className="stroke-surface-2" strokeWidth="7" />
-        <circle cx="36" cy="36" r={R} fill="none" className={over ? 'stroke-danger' : undefined}
-          style={over ? undefined : { stroke: MACRO_COLOR.calories }}
-          strokeWidth="7" strokeLinecap="round" strokeDasharray={C} strokeDashoffset={C * (1 - pct)} />
-      </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className="text-lead font-bold leading-none tabular-nums text-fg">{remaining}</span>
-        <span className="mt-0.5 text-micro text-fg-muted">{over ? 'over' : 'left'}</span>
-      </div>
-    </div>
+    <ProgressRing value={target > 0 ? consumed / target : 0} size={72} stroke={7} ready={ready}
+      color={over ? 'rgb(var(--danger))' : MACRO_COLOR.calories} className="h-[80px] w-[80px]">
+      <AnimatedNumber value={remaining} ready={ready} align="center" className="text-lead font-bold leading-none text-fg" />
+      <span className="mt-0.5 text-micro text-fg-muted">{over ? 'over' : 'left'}</span>
+    </ProgressRing>
   )
 }
 
@@ -64,9 +57,11 @@ function CalorieRing({ consumed, target }: { consumed: number; target: number })
 // (food_log_entries), not a macro-less plan title — a recent chip re-logs its
 // own snapshot; free text that matches your library logs that ingredient;
 // anything else opens the full logger prefilled (so it still gets macros).
-function SlotRow({ date, slot, label, icon, isNow, meals }: {
+function SlotRow({ date, slot, label, icon, isNow, meals, fresh }: {
   date: string; slot: MealSlot; label: string; icon: string; isNow: boolean
   meals: DayMeal[]
+  /** Rows logged while the card is on screen (they rise in). */
+  fresh: ReadonlySet<string>
 }) {
   const modal = useEntityModal()
   const [adding, setAdding] = useState(false)
@@ -128,9 +123,9 @@ function SlotRow({ date, slot, label, icon, isNow, meals }: {
       {meals.length > 0 ? (
         <div className="flex flex-col">
           {meals.map((meal, i) => (
-            <div key={meal.id} className="flex min-h-[44px] items-center gap-2">
+            <div key={meal.id} className={cx('flex min-h-[44px] items-center gap-2', fresh.has(meal.id) && 'motion-row-in')}>
               {i === 0 ? slotLabel : <span className="w-[5.75rem] shrink-0" />}
-              <span className={cx('flex-1 truncate', meal.source === 'plan' ? 'italic text-fg-muted' : 'text-fg-2')}>{meal.title}</span>
+              <Truncate className={cx('flex-1', meal.source === 'plan' ? 'italic text-fg-muted' : 'text-fg-2')}>{meal.title}</Truncate>
               {meal.calories > 0 && <span className="shrink-0 pr-1 text-meta tabular-nums text-fg-muted">{meal.calories} kcal</span>}
               {meal.source === 'plan' && meal.planEntry && (
                 <button type="button" onClick={() => eatPlan.mutate(meal.planEntry!)} disabled={eatPlan.isPending}
@@ -192,7 +187,7 @@ function SlotRow({ date, slot, label, icon, isNow, meals }: {
               {slotRecent.slice(0, 5).map(r => (
                 <button key={r.key} type="button" onMouseDown={e => e.preventDefault()} onClick={() => reLog(r)}
                   className="chip min-h-[44px] px-2.5 hover:bg-surface-hover">
-                  {r.title}{r.protein_g != null && r.protein_g > 0 && <span className="text-fg-muted"> · {Math.round(r.protein_g)}p</span>}
+                  <Truncate>{r.title}</Truncate>{r.protein_g != null && r.protein_g > 0 && <span className="shrink-0 text-fg-muted">· {Math.round(r.protein_g)}p</span>}
                 </button>
               ))}
             </div>
@@ -218,9 +213,8 @@ export function NutritionCard({ date }: { date: string }) {
   const coach = useNutritionCoach(date, targets)
   const copyYesterday = useCopyYesterdayMeals()
   const modal = useEntityModal()
-  // The goals editor (draft → Save, per-goal profiles, coach suggestions) is
-  // the shared `day-targets` popup — one copy instead of one per card.
-  const openGoals = () => modal.open({ kind: 'day-targets', date })
+  // The goal (phase, daily targets, body targets) is ONE row edited in the
+  // shared `day-targets` popup — GoalSummary shows it and opens it.
 
   // Empty day → compact one-liner IN PLACE (the cell never moves or grows
   // unless the user expands it or logs something).
@@ -236,6 +230,7 @@ export function NutritionCard({ date }: { date: string }) {
     mealsBySlot.set(m.meal_slot, arr)
   }
   const filledSlots = new Set(mealsBySlot.keys())
+  const fresh = useNewIds((nut?.meals ?? []).map(m => m.id), date, nut != null)
 
   const hasMeals = (nut?.meals?.length ?? 0) > 0
   // Highlight the current time-of-day slot on today only (folded in from the
@@ -259,10 +254,10 @@ export function NutritionCard({ date }: { date: string }) {
       {hasMeals || expanded ? (
         <>
           <div className="flex items-center gap-3">
-            <CalorieRing consumed={consumed} target={targets.calories} />
+            <CalorieRing consumed={consumed} target={targets.calories} ready={nut != null} />
             <div className="min-w-0 flex-1">
               <p className="text-body tabular-nums text-fg-2">
-                <strong className="text-lead text-fg">{consumed}</strong>
+                <AnimatedNumber value={consumed} ready={nut != null} className="text-lead font-bold text-fg" />
                 <span className="text-fg-muted"> / {targets.calories} kcal</span>
               </p>
               <div className="mt-1.5">
@@ -290,11 +285,12 @@ export function NutritionCard({ date }: { date: string }) {
 
           <ul className="flex flex-col border-t border-line pt-1">
             {SLOTS.map(({ slot, label, icon }) => (
-              <SlotRow key={slot} date={date} slot={slot} label={label} icon={icon} isNow={slot === now} meals={mealsBySlot.get(slot) ?? []} />
+              <SlotRow key={slot} date={date} slot={slot} label={label} icon={icon} isNow={slot === now} meals={mealsBySlot.get(slot) ?? []} fresh={fresh} />
             ))}
           </ul>
 
-          <div className="-mb-1 flex items-center justify-end gap-1 border-t border-line pt-1.5">
+          <div className="-mb-1 flex flex-wrap items-center justify-end gap-x-2 border-t border-line pt-1.5">
+            <GoalSummary date={date} className="min-w-0 basis-full sm:basis-0 sm:flex-1" />
             {filledSlots.size < SLOTS.length && (
               <button
                 type="button"
@@ -304,14 +300,12 @@ export function NutritionCard({ date }: { date: string }) {
                 title="Copy yesterday's meals into empty slots"
               ><Copy className="h-3.5 w-3.5" aria-hidden /> Yesterday</button>
             )}
-            <button type="button" onClick={openGoals} className={cx(footBtn, 'flex items-center gap-1')}>
-              <Target className="h-3.5 w-3.5" aria-hidden /> Goals
-            </button>
           </div>
         </>
       ) : (
         <div className="flex flex-col gap-1">
-          <p className="text-body tabular-nums text-fg-muted">Nothing logged yet · goal {targets.calories} kcal / {targets.protein}g protein</p>
+          <p className="text-body text-fg-muted">Nothing logged yet</p>
+          <GoalSummary date={date} />
           <div className="flex items-center gap-1">
             <button type="button" onClick={() => setExpanded(true)} className={cx(footBtn, '-ml-2.5 flex items-center gap-1')} aria-expanded={false}>
               Meal slots <ChevronDown className="h-3.5 w-3.5" aria-hidden />
@@ -323,9 +317,6 @@ export function NutritionCard({ date }: { date: string }) {
               className={cx(footBtn, 'flex items-center gap-1')}
               title="Log the same meals as yesterday"
             ><Copy className="h-3.5 w-3.5" aria-hidden /> Same as yesterday</button>
-            <button type="button" onClick={openGoals} className={cx(footBtn, 'flex items-center gap-1')}>
-              <Target className="h-3.5 w-3.5" aria-hidden /> Goals
-            </button>
           </div>
         </div>
       )}

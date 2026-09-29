@@ -3,6 +3,7 @@ import { qk, STALE } from '../../../shared/query'
 import { useBodyweightSeries } from '../../health/hooks/useBodyweight'
 import { fetchLoggedDates } from '../../recipes/api/foodLogApi'
 import { shiftDateStr } from '../../../shared/utils/dateUtils'
+import { coachPace, type RateStatus } from '../../health/goal/bodyGoal'
 import type { DayTargets, NutritionGoal } from './useDayTargets'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -14,7 +15,11 @@ import type { DayTargets, NutritionGoal } from './useDayTargets'
 //   • a calorie nudge is offered only when BOTH intake logging AND the weight
 //     signal are trustworthy, never below a safety floor, and never stacked
 //     before the trend can catch up (a cooldown);
-//   • rate targets: cut ~0.5–1.0 %/wk loss, lean-gain ~0.25–0.5 %/wk.
+//   • rate targets: the SAME rule as Health → Goal progress (bodyGoal.ts
+//     paceAdvice — cut 0.5–1 %/wk, maintain ±0.25, gain 0.25–0.5), read over
+//     the same 28 days of weigh-ins, so the editor's coach and the report
+//     behind it never give opposite answers; the nudge is the report's own
+//     "smallest change that reaches the range".
 // ─────────────────────────────────────────────────────────────────────────────
 
 // Protein grams per kg BODYWEIGHT by goal (panel-approved). NOTE: g/kg of total
@@ -80,6 +85,18 @@ export interface NutritionCoach {
   atFloor:         boolean          // a cut is warranted but we're at the floor
 }
 
+const RANGE_TEXT: Record<NutritionGoal, string> = {
+  cut: 'a cut should lose 0.5–1 %/wk', maintain: 'maintaining stays within ±0.25 %/wk', gain: 'a lean gain is 0.25–0.5 %/wk',
+}
+const ON_TRACK: Record<Exclude<NutritionGoal, 'maintain'>, string> = {
+  cut: 'right where a cut should be', gain: 'a clean lean-gain pace',
+}
+const PACE_REASON: Record<RateStatus, string> = {
+  wrong_way: 'moving the wrong way', too_slow: 'slower than the range', on_track: 'on track',
+  too_fast: 'faster than the range — protect muscle', way_too_fast: 'much faster than the range — protect muscle',
+  stable: 'holding steady', drifting_down: 'drifting down', drifting_up: 'drifting up',
+}
+
 // `targets` is passed in (NOT read via useDayTargets) so goal/calories/cooldown
 // always reflect the single source of truth in NutritionCard — useDayTargets is
 // per-instance local state, so a second instance here would go stale.
@@ -124,29 +141,20 @@ export function useNutritionCoach(date: string, targets: DayTargets): NutritionC
   const inCooldown = cooldownDaysLeft > 0
 
   // Lead with the tangible kg/week; keep %/wk as the coach-secondary (panel UX).
-  const rateText = (t: number, pct: number) => `${t >= 0 ? '+' : ''}${t.toFixed(2)} kg/wk (${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%/wk)`
+  const rateText = (t: number, pct: number) => `${t >= 0 ? '+' : ''}${t.toFixed(2)} kg/wk (${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%/wk)`
 
   let calorieAdvice: CalorieAdvice | null = null
   let onTrack: string | null = null
   let atFloor = false
 
   // Every gate must pass: trustworthy intake AND weight signal AND not cooling down.
-  if (consistent && weighInsOk && !inCooldown && weightKg && trend != null) {
-    const pct = (trend / weightKg) * 100
-    let delta = 0, reason = ''
-    if (goal === 'cut') {
-      if (pct > -0.2)      { delta = -200; reason = `barely losing — ${rateText(trend, pct)}; a cut should drop ~0.5–1%/wk` }
-      else if (pct < -1.0) { delta = +150; reason = `dropping fast — ${rateText(trend, pct)}; protect muscle` }
-      else                  onTrack = `On track — ${rateText(trend, pct)}, right where a cut should be`
-    } else if (goal === 'gain') {
-      if (pct < 0.1)       { delta = +200; reason = `not gaining — ${rateText(trend, pct)}; a lean bulk wants ~0.25–0.5%/wk` }
-      else if (pct > 0.5)  { delta = -150; reason = `gaining fast — ${rateText(trend, pct)}; likely extra fat` }
-      else                  onTrack = `On track — ${rateText(trend, pct)}, a clean lean-gain pace`
-    } else {
-      if (pct > 0.3)       { delta = -150; reason = `drifting up — ${rateText(trend, pct)}; likely creeping fat gain` }
-      else if (pct < -0.3) { delta = +150; reason = `drifting down — ${rateText(trend, pct)}` }
-      else                  onTrack = `Holding steady — ${rateText(trend, pct)}`
-    }
+  const meanKg = wSeries.length ? wSeries.reduce((a, d) => a + d.value, 0) / wSeries.length : null
+  if (consistent && weighInsOk && !inCooldown && meanKg && trend != null) {
+    const pace = coachPace(goal, trend, meanKg)
+    const rate = rateText(trend, pace.pct)
+    let delta = pace.adjust?.kcal ?? 0
+    if (!pace.adjust) onTrack = goal === 'maintain' ? `Holding steady — ${rate}, inside ±0.25 %/wk` : `On track — ${rate}, ${ON_TRACK[goal]}`
+    const reason = pace.adjust ? `${PACE_REASON[pace.status]} — ${rate}; ${RANGE_TEXT[goal]}` : ''
     // Never recommend below the floor; surface an honest "take a diet break".
     if (delta < 0 && targets.calories + delta < calorieFloor) { atFloor = true; delta = 0 }
     if (delta !== 0) calorieAdvice = { delta, reason }

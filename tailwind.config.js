@@ -83,6 +83,7 @@ export default {
         sheet:   'var(--z-sheet)',
         popover: 'var(--z-popover)',
         modal:   'var(--z-modal)',
+        float:   'var(--z-float)',
         confirm: 'var(--z-confirm)',
         toast:   'var(--z-toast)',
       },

@@ -1,7 +1,7 @@
 import { useState, type InputHTMLAttributes } from 'react'
 import { Listbox, ListboxButton, ListboxOptions, ListboxOption } from '@headlessui/react'
 import { ChevronDown, Star, X } from 'lucide-react'
-import { cx } from '../../../shared/ui'
+import { Truncate, cx } from '../../../shared/ui'
 import { SLOT_OPTIONS, foodEmoji, sanitizeDecimal } from './foodLogUtils'
 import type { MealSlot } from '../types'
 
@@ -91,7 +91,7 @@ export function FoodTile({ title, imageUrl, group, calories, isFavorite, onAdd, 
       <button type="button" onClick={onAdd}
         className="press-feedback flex min-h-[96px] w-full flex-col items-center gap-1.5 p-2">
         <FoodThumb name={title} group={group} imageUrl={imageUrl} sizeClass={sizeClass} />
-        <span className="line-clamp-2 w-full text-center text-meta font-medium leading-tight text-fg-2">{title}</span>
+        <Truncate lines={2} className="w-full text-center text-meta font-medium leading-tight text-fg-2">{title}</Truncate>
         {calories != null && calories > 0 && (
           <span className="text-micro tabular-nums text-fg-muted">{Math.round(calories)} kcal</span>
         )}

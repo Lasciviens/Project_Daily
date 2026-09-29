@@ -101,7 +101,7 @@ export function TgDetailOverlay({ game, collapsed, actions, onCollapse, onExpand
           data-tg-detail
           aria-label={label}
           onKeyDown={onKeyDown}
-          className={`${FRAME} ${MOTION} bottom-[max(1.25rem,env(safe-area-inset-bottom))] flex w-[calc(var(--tg-ov,380px)+env(safe-area-inset-right))] max-w-[calc(100%-2.5rem)] overflow-hidden rounded-l-[18px] focus-visible:!rounded-l-[18px] focus-visible:!rounded-r-none focus-visible:!outline-none`}
+          className={`${FRAME} ${MOTION} bottom-[max(1rem,env(safe-area-inset-bottom))] flex w-[calc(var(--tg-ov,380px)+env(safe-area-inset-right))] max-w-[calc(100%-2.5rem)] overflow-hidden rounded-l-[18px] focus-visible:!rounded-l-[18px] focus-visible:!rounded-r-none focus-visible:!outline-none`}
         >
           {/* Controls first: Tab from the region reaches Collapse / Close
               before the whole card. */}

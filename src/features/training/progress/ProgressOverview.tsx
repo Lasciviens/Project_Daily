@@ -93,10 +93,10 @@ export function ProgressOverview() {
   const bw = bodyweightText(summary.bodyweight)
 
   return (
-    <Card className="flex flex-col gap-4">
+    <Card className="@container flex flex-col gap-4">
       <CardHeader variant="label" title="Progress" className="!mb-0" action={<ProgramSettingsButton label="Program" />} />
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 @[34rem]:grid-cols-2">
         <div>
           <p className="section-label flex items-center gap-1.5">
             Progress result
@@ -132,7 +132,7 @@ export function ProgressOverview() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 border-t border-line pt-3 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 border-t border-line pt-3 @[40rem]:grid-cols-4">
         <SummaryCard
           label="Sessions" value={adherenceText} note={adherence.target ? 'planned, this week so far' : 'this week so far'}
           info={<><b>Sessions this week</b> Current-program workouts logged since Monday, against your weekly training-days target (set it under Program). It&apos;s a running count for the week in progress, not a verdict — the week isn&apos;t over yet.</>}

@@ -16,12 +16,13 @@ import { HealthPage } from '../features/health/pages/HealthPage'
 import { ProjectsPage } from '../features/projects/pages/ProjectsPage'
 import { WishesPage } from '../features/wishes/pages/WishesPage'
 import { DeveloperPage } from '../features/developer/pages/DeveloperPage'
+import { DevRequestComposerHost } from '../features/devRequests/composer/DevRequestComposerHost'
 import { lazyWithReload } from '../shared/utils/lazyWithReload'
 
 // ── Games, loaded on demand ─────────────────────────────────────────────────
-// A full-screen page outside the app shell, so its JS and its stylesheet stay
-// out of every other route's first download. lazyWithReload survives a chunk
-// that disappeared in a deploy (see src/shared/utils/lazyWithReload.ts).
+// Its JS and its own stylesheet stay out of every other route's first
+// download. lazyWithReload survives a chunk that disappeared in a deploy (see
+// src/shared/utils/lazyWithReload.ts).
 
 const TestGamePage = lazyWithReload('games-page', () =>
   import('../features/games/test-game/TestGamePage').then(m => m.TestGamePage))
@@ -33,24 +34,8 @@ export function Router() {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
 
-        {/* Games: the "Game Library" design. Outside <AppShell> on purpose — it
-            draws its own sidebar, top bar and phone tab bar — but behind the
-            same guard. The old page's addresses (/games-legacy, the two demo
-            pages, /test-game from its time under test) redirect here. */}
-        <Route
-          path="/games"
-          element={
-            <SessionGuard>
-              {/* The page renders free-form provider and scraped records; a
-                  render-time throw shows a Try-again card, not a blank screen. */}
-              <ErrorBoundary label="Games" action="games_page">
-                <Suspense fallback={<div aria-busy="true" className="min-h-[100dvh] bg-canvas" />}>
-                  <TestGamePage />
-                </Suspense>
-              </ErrorBoundary>
-            </SessionGuard>
-          }
-        />
+        {/* The old Games addresses (/games-legacy, the two demo pages,
+            /test-game from its time under test) redirect to /games. */}
         <Route path="/test-game" element={<Navigate to="/games" replace />} />
         <Route path="/games-legacy" element={<Navigate to="/games" replace />} />
         <Route path="/games-demo" element={<Navigate to="/games" replace />} />
@@ -76,11 +61,25 @@ export function Router() {
           <Route path="/health"    element={<HealthPage />} />
           <Route path="/projects"  element={<ProjectsPage />} />
           <Route path="/wishes"    element={<WishesPage />} />
+          {/* Games renders free-form provider and scraped records: a
+              render-time throw shows a Try-again card, not a blank page. */}
+          <Route
+            path="/games"
+            element={
+              <ErrorBoundary label="Games" action="games_page">
+                <Suspense fallback={<div aria-busy="true" className="h-full" />}>
+                  <TestGamePage />
+                </Suspense>
+              </ErrorBoundary>
+            }
+          />
           <Route path="/developer" element={<DeveloperPage />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      {/* The request composer lives beside the routes so it survives every navigation. */}
+      <DevRequestComposerHost />
     </HashRouter>
   )
 }

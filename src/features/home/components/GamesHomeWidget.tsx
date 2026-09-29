@@ -1,12 +1,14 @@
 import { useMemo, useState } from 'react'
 import { Gamepad2 } from 'lucide-react'
-import { Skeleton, ToneDot, Button, type Tone } from '../../../shared/ui'
+import { Skeleton, ToneDot, Button, type Tone, AnimatedNumber } from '../../../shared/ui'
 import { useGameStats, usePlayQueue } from '../../games/hooks/useGames'
 import { computeGameStats } from '../../games/gameStats'
 import type { Game, PlayStatus } from '../../games/types'
 import { useWidgetState } from '../hooks/useWidgetState'
 import { WidgetShell } from './WidgetShell'
 import { GlanceTile } from './GlanceTile'
+import { TileDetail } from './TileDetail'
+import { useTilePopup } from '../hooks/useTilePopup'
 
 // Local until the games feature exports its own status → tone map.
 const PLAY_STATUS_TONE: Record<PlayStatus, Tone> = {
@@ -48,12 +50,21 @@ function Stat({ value, label, tone }: { value: number; label: string; tone?: Ton
 
 export function GamesHomeWidget() {
   const ws = useWidgetState('games', { mobileCollapsed: true })
-  const { stats, isLoading, error, refetch } = useVisibleGameStats(!ws.collapsed)
-  const { data: queue = [] } = usePlayQueue(!ws.collapsed)
+  return (
+    <WidgetShell title="Games" icon={<Gamepad2 />} ws={ws} to="/games">
+      <GamesSummary enabled={!ws.collapsed} />
+    </WidgetShell>
+  )
+}
+
+/** The widget's body — also what the glance tile opens on a wide Home. */
+function GamesSummary({ enabled }: { enabled: boolean }) {
+  const { stats, isLoading, error, refetch } = useVisibleGameStats(enabled)
+  const { data: queue = [] } = usePlayQueue(enabled)
   const playing = queue.filter(g => g.play_status === 'playing')
 
   return (
-    <WidgetShell title="Games" icon={<Gamepad2 />} ws={ws} to="/games">
+    <>
       {isLoading && <div className="flex gap-2">{[0, 1, 2].map(i => <Skeleton key={i} className="h-14 flex-1" />)}</div>}
       {error && !stats && (
         <div className="flex flex-wrap items-center gap-2 text-body text-fg-muted">
@@ -78,20 +89,29 @@ export function GamesHomeWidget() {
           )}
         </div>
       )}
-    </WidgetShell>
+    </>
   )
 }
 
 export function GamesTile() {
   const { stats, isLoading } = useVisibleGameStats(true)
+  const popup = useTilePopup()
+  const [open, setOpen] = useState(false)
   return (
-    <GlanceTile
-      label="Games"
-      icon={<Gamepad2 />}
-      to="/games"
-      loading={isLoading}
-      value={<>{stats?.playing ?? 0}<span className="ml-1 text-meta font-medium text-fg-muted">playing</span></>}
-      hint={stats ? `${stats.completed} of ${stats.total} done` : undefined}
-    />
+    <>
+      <GlanceTile
+        label="Games"
+        icon={<Gamepad2 />}
+        {...(popup ? { onClick: () => setOpen(true) } : { to: '/games' })}
+        loading={isLoading}
+        value={<><AnimatedNumber value={stats?.playing ?? 0} /><span className="ml-1 text-meta font-medium text-fg-muted">playing</span></>}
+        hint={stats ? `${stats.completed} of ${stats.total} done` : undefined}
+      />
+      {popup && (
+        <TileDetail open={open} onClose={() => setOpen(false)} title="Games" to="/games" openLabel="Open Games">
+          <GamesSummary enabled />
+        </TileDetail>
+      )}
+    </>
   )
 }

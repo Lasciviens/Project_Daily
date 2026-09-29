@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { Dialog, DialogBackdrop, DialogPanel, DialogTitle } from '@headlessui/react'
 import { X } from 'lucide-react'
-import { useTgBreakpoint } from '../../useTgBreakpoint'
+import { useBreakpoint } from '../../../../../shared/hooks/useBreakpoint'
 import { TgMobileSheet } from '../TgMobileSheet'
 import { useHistoryDismiss } from '../../../../../shared/hooks/useHistoryDismiss'
 
@@ -18,12 +18,12 @@ export function TgScrapeDialog({ open, onClose, title, footer, children, wide = 
   /** A roomier panel (settings) on wide screens. */
   wide?: boolean
 }) {
-  const bp = useTgBreakpoint()
+  const bp = useBreakpoint()
   // The phone sheet handles Back itself.
-  useHistoryDismiss(open && bp !== 'mobile', onClose)
-  if (bp === 'mobile') return <TgMobileSheet open={open} onClose={onClose} title={title} footer={footer}>{children}</TgMobileSheet>
+  useHistoryDismiss(open && bp !== 'phone', onClose)
+  if (bp === 'phone') return <TgMobileSheet open={open} onClose={onClose} title={title} footer={footer}>{children}</TgMobileSheet>
   return (
-    <Dialog open={open} onClose={onClose} className="tg-portal relative z-[60]">
+    <Dialog open={open} onClose={onClose} className="tg-portal relative z-sheet">
       <DialogBackdrop transition className="fixed inset-0 bg-black/50 backdrop-blur-[2px] transition duration-200 data-[closed]:opacity-0" />
       <div className="fixed inset-0 flex items-center justify-center p-6">
         <DialogPanel

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Briefcase, Home } from 'lucide-react'
 import { quayLabel, type QuayDirectionHint } from '../../api/ruterApi'
 import { useStopDirections } from '../../hooks/useTransitQueries'
-import { Button, SectionLabel, cx } from '../../../../shared/ui'
+import { Button, SectionLabel, Truncate, cx } from '../../../../shared/ui'
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Shared "save this stop" panel — used from the Departures tab's ad-hoc search
@@ -93,7 +93,7 @@ export function QuaySavePanel({ stopId, stopName, onSave, onCancel }: QuaySavePa
                     <span className="font-semibold truncate">
                       {q.publicCode ? `Platform ${q.publicCode}` : 'Platform'}
                     </span>
-                    <span className="text-micro opacity-70 truncate">{quayLabel(q)}</span>
+                    <Truncate className="text-micro opacity-70">{quayLabel(q)}</Truncate>
                   </button>
                 )
               })}

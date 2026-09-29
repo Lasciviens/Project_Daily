@@ -2,6 +2,7 @@ import type { seriesRows } from './tgAnalyticsMore'
 import { fmtInt, plural, TGA_TINT } from './tgAnalyticsFormat'
 import { seriesLine, seriesShareNote } from './tgAnalyticsCollection'
 import { TgAnalyticsCard } from './TgAnalyticsCard'
+import { Truncate } from '../../../../shared/ui/Truncate'
 
 /**
  * The biggest series in view and how far through each you are: a slim bar
@@ -17,10 +18,10 @@ export function TgAnalyticsSeriesCard({ series, className = '' }: { series: Retu
         {series.rows.map(row => (
           <li key={row.key} className="min-w-0">
             <p className="flex items-baseline justify-between gap-3">
-              <span className="truncate text-[13px] font-medium text-[var(--tg-text)]" title={row.label}>{row.label}</span>
+              <Truncate className="text-[13px] font-medium text-[var(--tg-text)]">{row.label}</Truncate>
               <span className="shrink-0 text-[12px] tabular-nums text-[var(--tg-muted)]">{plural(row.games, 'game')}</span>
             </p>
-            <p className="mt-0.5 truncate text-[11.5px] text-[var(--tg-muted)]">{seriesLine(row)}</p>
+            <Truncate as="p" className="mt-0.5 text-[11.5px] text-[var(--tg-muted)]">{seriesLine(row)}</Truncate>
             <span
               aria-hidden title={`${fmtInt(row.completed)} of ${fmtInt(row.games)} completed`}
               className={`mt-1.5 block h-1.5 overflow-hidden rounded-full ${TGA_TINT}`}

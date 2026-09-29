@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Newspaper } from 'lucide-react'
-import { Button, SegmentedControl, Skeleton } from '../../../shared/ui'
+import { Button, SegmentedControl, Skeleton, Truncate } from '../../../shared/ui'
 import { NEWS_FEEDS, FEED_CATEGORIES, type FeedCategory, type NewsItem } from '../api/newsApi'
 import { useNews } from '../hooks/useNews'
 import { useWidgetState } from '../hooks/useWidgetState'
@@ -30,8 +30,8 @@ function NewsRow({ item, source }: { item: NewsItem; source: string }) {
           )}
         </div>
         <div className="min-w-0 flex-1">
-          <p className="line-clamp-2 text-body font-semibold text-fg transition-colors duration-150 group-hover:text-accent-600">{item.title}</p>
-          {item.excerpt && <p className="mt-0.5 line-clamp-1 text-meta text-fg-muted">{item.excerpt}</p>}
+          <Truncate as="p" lines={2} className="text-body font-semibold text-fg transition-colors duration-150 group-hover:text-accent-600">{item.title}</Truncate>
+          {item.excerpt && <Truncate as="p" className="mt-0.5 text-meta text-fg-muted">{item.excerpt}</Truncate>}
           <p className="mt-0.5 text-micro tabular-nums text-fg-muted">
             {fmtDateEnGB(new Date(item.pubDate), { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
           </p>
@@ -41,7 +41,8 @@ function NewsRow({ item, source }: { item: NewsItem; source: string }) {
   )
 }
 
-export function NewsWidget() {
+/** `visible`: how many headlines to list (Home lists more when news has a column of its own). */
+export function NewsWidget({ visible = VISIBLE }: { visible?: number }) {
   const [category, setCategory] = useState<FeedCategory>('no')
   const ws = useWidgetState('news', { mobileCollapsed: true })
   const feed = NEWS_FEEDS.find(f => f.category === category) ?? NEWS_FEEDS[0]
@@ -76,7 +77,7 @@ export function NewsWidget() {
       {data && data.length === 0 && <p className="text-body text-fg-muted">No headlines in this feed right now.</p>}
       {data && data.length > 0 && (
         <ul className="space-y-1">
-          {data.slice(0, VISIBLE).map(item => <NewsRow key={item.link} item={item} source={feed.label} />)}
+          {data.slice(0, visible).map(item => <NewsRow key={item.link} item={item} source={feed.label} />)}
         </ul>
       )}
     </WidgetShell>

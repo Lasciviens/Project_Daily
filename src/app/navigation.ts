@@ -31,6 +31,14 @@ export interface NavEntry {
    * with its own scrolling panes). Everything else flows and scrolls in <main>.
    */
   fullHeight?: boolean
+  /**
+   * The desktop sidebar folds to its icon rail whenever this page opens (it
+   * has a navigation panel of its own); the toggle there is the page's own
+   * and leaves the saved preference for every other page alone.
+   */
+  collapseSidebar?: boolean
+  /** Leads the phone More sheet (the rest follow in registry order). */
+  moreFirst?: boolean
   /** Extra command-bar search terms. */
   keywords?: string[]
 }
@@ -51,9 +59,9 @@ export const NAV: NavEntry[] = [
   { id: 'health', label: 'Health', path: '/health', icon: HeartPulse, group: 'life', more: true, keywords: ['apple health', 'sleep', 'steps', 'heart', 'vo2', 'weight'] },
   // Wishes leads the More sheet on purpose: a wish list that has to be hunted
   // for is dead in three weeks, and the 5 primary slots are taken.
-  { id: 'wishes', label: 'Wishes', path: '/wishes', icon: Star, group: 'life', more: true, keywords: ['places', 'ideas', 'season'] },
+  { id: 'wishes', label: 'Wishes', path: '/wishes', icon: Star, group: 'life', more: true, moreFirst: true, keywords: ['places', 'ideas', 'season'] },
   { id: 'media', label: 'Media', path: '/media', icon: Clapperboard, group: 'play', tab: 3, keywords: ['movies', 'tv', 'series', 'watch'] },
-  { id: 'games', label: 'Games', path: '/games', icon: Gamepad2, group: 'play', more: true, keywords: ['library', 'steam', 'playstation', 'retro'] },
+  { id: 'games', label: 'Games', path: '/games', icon: Gamepad2, group: 'play', more: true, fullHeight: true, collapseSidebar: true, keywords: ['library', 'steam', 'playstation', 'retro', 'queue', 'backlog', 'scrape'] },
   { id: 'work', label: 'Work', path: '/work', icon: Briefcase, group: 'work', more: true, keywords: ['board', 'kanban'] },
   { id: 'projects', label: 'Projects', path: '/projects', icon: FolderKanban, group: 'work', more: true, keywords: ['phases'] },
   { id: 'developer', label: 'Developer', path: '/developer', icon: Code2, group: 'system', more: true, keywords: ['connections', 'activity', 'errors', 'memory'] },
@@ -64,7 +72,7 @@ const matches = (e: NavEntry, pathname: string) => (e.match ?? [e.path]).include
 /** Entries that get a row of their own in the sidebar (sub-pages excluded). */
 export const SIDEBAR_ENTRIES = NAV.filter(e => !e.parent)
 export const TAB_ENTRIES = NAV.filter(e => e.tab != null).sort((a, b) => a.tab! - b.tab!)
-export const MORE_ENTRIES = NAV.filter(e => e.more)
+export const MORE_ENTRIES = [...NAV.filter(e => e.more && e.moreFirst), ...NAV.filter(e => e.more && !e.moreFirst)]
 
 /** The entry whose row is active on this path (a sub-page lights its parent). */
 export function activeEntry(pathname: string): NavEntry | undefined {
@@ -80,3 +88,6 @@ export function routeTitle(pathname: string): string {
 
 export const isFullHeightRoute = (pathname: string) =>
   NAV.some(e => e.fullHeight && e.path === pathname)
+
+export const collapsesSidebar = (pathname: string) =>
+  NAV.some(e => e.collapseSidebar && e.path === pathname)

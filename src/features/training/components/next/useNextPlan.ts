@@ -6,10 +6,10 @@ import { useHevyRoutines } from '../../hooks/useHevyRoutines'
 import { useCurrentProgramRoutines } from '../../hooks/useAthleteProfile'
 import { useTrainingHistory } from '../../hooks/useTrainingProgress'
 import { useProgressDataContext } from '../../progress/progressDataContext'
-import { buildCanonicalSessions, lastTrainedByRoutine, type CanonicalExerciseSession, type ProgressMetricKind } from '../../progress-engine'
-import { metricKindForExerciseType } from '../../progressAggregate'
+import { lastTrainedByRoutine } from '../../progress-engine'
 import { resolveNextRoutine, buildTrainingAlerts, type NextRoutinePick, type PlannedRef, type TrainingAlert } from '../../plan/nextSession'
-import { buildSessionPlan, type PlanRow } from '../../plan/sessionPlan'
+import type { PlanRow } from '../../plan/sessionPlan'
+import { routinePlanRows } from '../../hooks/useRoutineSessionPlan'
 import type { HevyRoutine } from '../../types.hevy'
 import type { NextTrainingSession } from '../../trainingPlanModel'
 
@@ -54,15 +54,7 @@ export function useNextPlan(): NextPlan {
     })
     const routine = pick?.routineId ? routines.find(r => r.id === pick.routineId) ?? null : null
 
-    const decisionById = new Map(progress.decisions.map(d => [d.exerciseTemplateId, d]))
-    const metricKindById = new Map<string, ProgressMetricKind>(history.templates.map(t => [t.id, metricKindForExerciseType(t.type)]))
-    const sessionsById = new Map<string, readonly CanonicalExerciseSession[]>(progress.sessionsByTemplateId)
-    for (const ex of routine?.exercises ?? []) {
-      // An exercise outside the engine's scope (a planned routine that isn't
-      // in the current program) still shows its last session.
-      if (!sessionsById.has(ex.exercise_template_id)) sessionsById.set(ex.exercise_template_id, buildCanonicalSessions(history.sets, ex.exercise_template_id))
-    }
-    const rows = routine ? buildSessionPlan(routine.exercises ?? [], { decisionById, sessionsById, metricKindById }) : []
+    const rows = routine ? routinePlanRows(routine, progress, history) : []
     const alerts = buildTrainingAlerts(
       progress.decisions,
       id => progress.titleById.get(id) ?? 'Exercise',

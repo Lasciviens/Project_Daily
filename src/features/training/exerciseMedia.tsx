@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Pencil } from 'lucide-react'
 import { ModalShell } from '../../shared/modals'
-import { Button } from '../../shared/ui'
+import { Button, Truncate } from '../../shared/ui'
 import { useExerciseGifOverrides, useUpsertExerciseGifOverride, useDeleteExerciseGifOverride } from './hooks/useExerciseGifOverrides'
 import { resolveExerciseGif } from './exerciseGifResolver'
 import { useExerciseImageDb } from './hooks/useExerciseImageDb'
@@ -137,7 +137,7 @@ export function ExerciseGifPicker({ templateId, title }: { templateId: string; t
               <img src={existing.gif_url} alt="" className="h-14 w-14 rounded-md border border-line object-cover" />
               <div className="min-w-0 flex-1">
                 <p className="text-meta font-semibold text-fg-2">Currently manually set</p>
-                <p className="truncate text-micro font-normal text-fg-muted">{existing.gif_url}</p>
+                <Truncate as="p" className="text-micro font-normal text-fg-muted">{existing.gif_url}</Truncate>
               </div>
               <Button size="sm" variant="ghost" className="shrink-0 !text-danger" loading={remove.isPending} onClick={() => remove.mutate(templateId)}>
                 Revert
@@ -165,7 +165,7 @@ export function ExerciseGifPicker({ templateId, title }: { templateId: string; t
                     className="flex min-h-[44px] items-center gap-2.5 p-2 text-left hover:bg-surface-hover"
                   >
                     <img src={r.gifUrl} alt="" loading="lazy" className="h-10 w-10 shrink-0 rounded border border-line object-cover" />
-                    <span className="min-w-0 flex-1 truncate text-body text-fg-2">{r.name}</span>
+                    <Truncate className="flex-1 text-body text-fg-2">{r.name}</Truncate>
                   </button>
                 ))}
               </div>

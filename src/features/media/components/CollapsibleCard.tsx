@@ -1,15 +1,24 @@
 import { useState, type ReactNode } from 'react'
 import { ChevronDown } from 'lucide-react'
-import { Card } from '../../../shared/ui'
+import { Card, SkeletonText, useBoardStep } from '../../../shared/ui'
+import { MEDIA_TOOLS_OPEN_FROM } from '../mediaBoard'
 
-/** A side-rail card whose body opens on demand (closed by default). */
-export function CollapsibleCard({ title, icon, badge, children }: {
+/**
+ * A side-rail card whose body opens on demand. Closed by default; on a
+ * PageBoard wide enough to give it a column of its own (MEDIA_TOOLS_OPEN_FROM)
+ * it starts open, so the column shows content rather than a closed bar.
+ * `loading` (the library is still arriving) shows placeholder lines instead
+ * of the body, so an open card never claims "nothing here" before it knows.
+ */
+export function CollapsibleCard({ title, icon, badge, loading = false, children }: {
   title: string
   icon: ReactNode
   badge?: ReactNode
+  loading?: boolean
   children: ReactNode
 }) {
-  const [open, setOpen] = useState(false)
+  const step = useBoardStep()
+  const [open, setOpen] = useState(() => step >= MEDIA_TOOLS_OPEN_FROM)
   return (
     <Card padded={false}>
       <button
@@ -22,10 +31,10 @@ export function CollapsibleCard({ title, icon, badge, children }: {
           {icon}
         </span>
         <span className="flex-1 text-lead font-semibold text-fg">{title}</span>
-        {badge}
+        {!loading && badge}
         <ChevronDown aria-hidden className={`h-4 w-4 text-fg-faint transition-transform ${open ? '' : '-rotate-90'}`} />
       </button>
-      {open && <div className="px-4 pb-4 sm:px-5 sm:pb-5">{children}</div>}
+      {open && <div className="px-4 pb-4 sm:px-5 sm:pb-5">{loading ? <SkeletonText lines={3} /> : children}</div>}
     </Card>
   )
 }

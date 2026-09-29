@@ -4,7 +4,7 @@ import type { Task } from '../types'
 import { useToggleTask, useDeleteTask, useUpdateTask, useTaskById, useSubtasks } from '../hooks/useTodos'
 import { useEntityModal } from '../../../shared/modals'
 import { withProgress } from '../../../shared/hooks/useMutationWithFeedback'
-import { ToneDot, TonePill, cx } from '../../../shared/ui'
+import { ToneDot, TonePill, Truncate, cx } from '../../../shared/ui'
 import { DOMAIN_LABEL } from '../domainColors'
 import { DOMAIN_TONE, PRIORITY_LABEL, PRIORITY_TONE, dueTone } from '../taskTones'
 import { isOverdue, dueLabel } from '../taskRules'
@@ -15,20 +15,33 @@ import { SetParentTaskSheet } from './SetParentTaskSheet'
 import { MoveToListSheet } from './MoveToListSheet'
 import { ToDoItemHoverActions, ToDoItemMenu } from './ToDoItemActions'
 
+// A tick often moves the row to another list (Done), which mounts a NEW
+// ToDoItem there — remember the tick for a moment so that one still pops.
+const JUST_DONE = new Set<string>()
+function markJustDone(id: string) {
+  JUST_DONE.add(id)
+  window.setTimeout(() => JUST_DONE.delete(id), 1500)
+}
+
 interface Props {
   task:         Task
   canMoveUp?:   boolean
   canMoveDown?: boolean
   onMoveUp?:    () => void
   onMoveDown?:  () => void
+  /** Just added to its list (useNewIds): the row rises in with the "More" animations. */
+  isNew?:       boolean
 }
 
-export function ToDoItem({ task, canMoveUp, canMoveDown, onMoveUp, onMoveDown }: Props) {
+export function ToDoItem({ task, canMoveUp, canMoveDown, onMoveUp, onMoveDown, isNew }: Props) {
   const modal = useEntityModal()
   const [hovered, setHovered] = useState(false)
   const [pickingParent, setPickingParent] = useState(false)
   const [pickingList, setPickingList] = useState(false)
   const [subtasksOpen, setSubtasksOpen] = useState(false)
+  // Set by the user's own tick (never on load), so only a completion they just
+  // made pops — the CSS only runs with the "More" animations.
+  const [justDone, setJustDone] = useState(() => JUST_DONE.has(task.id))
   const toggle = useToggleTask()
   const remove = useDeleteTask()
   const update = useUpdateTask()
@@ -47,7 +60,11 @@ export function ToDoItem({ task, canMoveUp, canMoveDown, onMoveUp, onMoveDown }:
   // The hooks own error toasts + logging; only Delete gets per-call copy.
   const openEditor   = () => modal.open({ kind: 'task', id: task.id, config: { heading: 'Edit task' } })
   const handleDelete = () => withProgress(() => remove.mutateAsync(task.id), { loading: 'Deleting…', success: 'Deleted' })
-  const handleToggle = () => toggle.mutate({ id: task.id, isDone: !isDone })
+  const handleToggle = () => {
+    if (!isDone) markJustDone(task.id)
+    setJustDone(!isDone)
+    toggle.mutate({ id: task.id, isDone: !isDone })
+  }
   const handleCancel = () => update.mutate({ id: task.id, patch: { status: 'cancelled' } })
   const handleReopen = () => update.mutate({ id: task.id, patch: { status: 'open' } })
 
@@ -76,7 +93,7 @@ export function ToDoItem({ task, canMoveUp, canMoveDown, onMoveUp, onMoveDown }:
 
   return (
     <>
-      <div className="relative overflow-hidden rounded-row">
+      <div className={cx('relative overflow-hidden rounded-row', isNew && 'motion-row-in')}>
         {/* Delete panel revealed behind the row on swipe-left (mobile only).
             Hidden (not unmounted) at rest: the row's overflow-hidden clip and
             this button's own corner radius are coincident, so a resting row
@@ -119,10 +136,14 @@ export function ToDoItem({ task, canMoveUp, canMoveDown, onMoveUp, onMoveDown }:
             aria-pressed={isDone}
             className="-ml-3 flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center lg:ml-0 lg:mt-0.5 lg:h-auto lg:min-h-0 lg:w-auto lg:min-w-0"
           >
-            <span className={cx(
-              'flex h-5 w-5 items-center justify-center rounded-full border-2 transition-colors duration-150',
-              isDone ? 'border-accent-500 bg-accent-500 text-on-accent' : 'border-line-strong hover:border-accent-500',
-            )}>
+            <span
+              onAnimationEnd={e => { if (e.target === e.currentTarget) { setJustDone(false); JUST_DONE.delete(task.id) } }}
+              className={cx(
+                'flex h-5 w-5 items-center justify-center rounded-full border-2 transition-colors duration-150',
+                isDone ? 'border-accent-500 bg-accent-500 text-on-accent' : 'border-line-strong hover:border-accent-500',
+                isDone && justDone && 'motion-check-pop',
+              )}
+            >
               {isDone && <Check className="h-3 w-3" strokeWidth={3} aria-hidden />}
             </span>
           </button>
@@ -133,7 +154,7 @@ export function ToDoItem({ task, canMoveUp, canMoveDown, onMoveUp, onMoveDown }:
               <span className="mt-[6px] flex" title={`${PRIORITY_LABEL[task.priority]} priority`}>
                 <ToneDot tone={PRIORITY_TONE[task.priority]} />
               </span>
-              <span className={cx('text-body leading-snug', isDone || isCancelled ? 'text-fg-faint line-through' : 'text-fg')}>
+              <span className={cx('text-body leading-snug', isDone || isCancelled ? 'text-fg-faint line-through' : 'text-fg', isDone && justDone && 'motion-strike-in')}>
                 {task.title}
               </span>
             </div>
@@ -150,12 +171,12 @@ export function ToDoItem({ task, canMoveUp, canMoveDown, onMoveUp, onMoveDown }:
             {/* Description gets its OWN line — sharing the chip row squeezed it
                 to a 1px-wide slot that rendered nothing on a phone. */}
             {task.description && (
-              <p className="ml-4 mt-0.5 line-clamp-1 w-full text-meta text-fg-muted">{task.description}</p>
+              <Truncate as="p" className="ml-4 mt-0.5 text-meta text-fg-muted">{task.description}</Truncate>
             )}
             {parentTask && (
-              <p className="ml-4 mt-0.5 flex items-center gap-1 truncate text-meta text-fg-faint">
+              <p className="ml-4 mt-0.5 flex min-w-0 items-center gap-1 text-meta text-fg-faint">
                 <CornerDownRight className="h-3 w-3 shrink-0" aria-hidden />
-                Subtask of <span className="truncate text-fg-muted">{parentTask.title}</span>
+                <span className="shrink-0">Subtask of</span> <Truncate className="text-fg-muted">{parentTask.title}</Truncate>
               </p>
             )}
             {subtasks.length > 0 && (

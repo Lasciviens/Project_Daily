@@ -134,11 +134,61 @@ ok(M.deriveGames([game({ id: 'u', library: 'steam', external_ref: '5', play_stat
 const counts = M.platformCounts(lib)
 ok(counts.map(c => [c.key, c.count]), [['ps2', 3], ['gc', 1], ['steam', 1]],
   'visible games per platform, biggest first, ties by display name (Nintendo GameCube before Steam)')
-ok(M.splitPlatforms(counts, 8).others, [], 'a short list folds nothing')
-const many = Array.from({ length: 12 }, (_, i) => ({ key: 'k' + i, count: 12 - i, info: M.platformInfo('k' + i) }))
-ok(M.splitPlatforms(many, 8).shown.length, 8, 'the top eight are shown')
-ok(M.splitPlatforms(many, 8).others.length, 4, 'the rest fold into Others')
-ok(M.splitPlatforms(many.slice(0, 9), 8).others, [], 'an "Others" of exactly one platform is shown by name instead')
+ok(M.splitPlatforms, undefined, 'the "Others" fold is gone: every platform is listed')
+
+// ── Platforms grouped by maker (no fold) ────────────────────────────────────
+const cnt = (key, count) => ({ key, count, info: M.platformInfo(key) })
+const makerRows = [cnt('snes', 300), cnt('genesis', 180), cnt('steam', 58), cnt('psp', 39), cnt('playstation', 33),
+  cnt('gc', 25), cnt('gba', 22), cnt('ps2', 22), cnt('fbneo', 11), cnt('nds', 8), cnt('psx', 7), cnt('xbox360', 2),
+  cnt('pc', 1), cnt('wiiu', 1), cnt('weird_sys', 4), cnt('unknown', 3), cnt('sys-steam', 2), cnt('androidgames', 1)]
+const groups = M.platformGroups(makerRows)
+ok(groups.map(g => g.label), ['Nintendo', 'Sega', 'Sony', 'PC', 'Arcade', 'Microsoft', 'Android', 'Other'],
+  'groups run biggest first, "Other" always last')
+ok(groups.reduce((n, g) => n + g.platforms.length, 0), makerRows.length, 'every platform is listed, none folded away')
+ok(groups.find(g => g.maker === 'nintendo').platforms.map(p => p.key), ['snes', 'gc', 'gba', 'nds', 'wiiu'], 'a group keeps the biggest-first order')
+ok(groups.find(g => g.maker === 'sony').platforms.map(p => p.key), ['psp', 'playstation', 'ps2', 'psx'], 'the PlayStation library files under Sony')
+ok(groups.find(g => g.maker === 'pc').platforms.map(p => p.key), ['steam', 'sys-steam', 'pc'], 'Steam, the ES-DE Steam folder and PC share the PC group')
+ok(groups.find(g => g.maker === 'nintendo').total, 356, 'a group total adds its platforms')
+ok(groups.find(g => g.maker === 'other').platforms.map(p => p.key), ['weird_sys', 'unknown'], 'unknown systems and orphans sit under Other')
+ok(M.platformInfo('pc').short, 'PC', 'a PC folder reads "PC"')
+ok(M.platformInfo('emulators').name, 'Emulators (ES-DE)', "ES-DE's launcher folder is named, not shouted")
+ok(M.platformInfo('sys-steam').family, 'steam', 'a reserved retro copy keeps its namesake icon family')
+ok(M.platformGroups([]), [], 'no platforms, no groups')
+
+// ── Section and platform in the address ─────────────────────────────────────
+ok(M.parseTgSection('queue'), 'queue', 'a section name parses')
+ok(M.parseTgSection(' Analytics '), 'analytics', 'case and spaces are forgiven')
+ok(M.parseTgSection('others'), null, 'an unknown section is not a section')
+ok(M.tgUrlFromState('library', 'all', 'all'), { section: null, platform: null }, 'the whole Library leaves the address clean')
+ok(M.tgUrlFromState('library', 'ps2', 'steam'), { section: null, platform: 'ps2' }, 'a Library shelf names its platform')
+ok(M.tgUrlFromState('completed', 'ps2', 'steam'), { section: 'completed', platform: 'steam' }, 'a status view names its own platform scope')
+ok(M.tgUrlFromState('queue', 'ps2', 'steam'), { section: 'queue', platform: null }, 'the queue has no platform')
+ok(M.tgStateFromUrl(null, null), null, 'a plain /games keeps the last place')
+ok(M.tgStateFromUrl('queue', null), { section: 'queue', platform: 'all' }, 'a section alone means All platforms')
+ok(M.tgStateFromUrl(null, 'PS2'), { section: 'library', platform: 'ps2' }, 'a platform alone opens its Library shelf')
+ok(M.tgStateFromUrl('bogus', 'gc'), { section: 'library', platform: 'gc' }, 'an unknown section falls back to the Library')
+ok(M.tgStateFromUrl('backlog', ''), { section: 'backlog', platform: 'all' }, 'an empty platform is All')
+for (const [sec, pl, sp] of [['library', 'gc', 'all'], ['wishlist', 'all', 'steam'], ['analytics', 'all', 'all']]) {
+  const u = M.tgUrlFromState(sec, pl, sp)
+  const back = M.tgStateFromUrl(u.section, u.platform)
+  const want = sec === 'library' ? pl : M.STATUS_SECTIONS[sec] ? sp : 'all'
+  ok(back == null ? { section: 'library', platform: 'all' } : back, { section: sec, platform: want }, `the address round-trips (${sec})`)
+}
+
+// ── Saved page state upgrades ───────────────────────────────────────────────
+{
+  const S = require('../src/features/games/test-game/tgStoreMigrate.ts')
+  ok(S.TG_STORE_VERSION, 4, 'the store is on version 4')
+  ok(S.migrateTgPersisted({ platform: 'others', section: 'library' }, 3).platform, 'all', 'a saved Others shelf opens All Games')
+  ok(S.migrateTgPersisted({ platform: 'ps2' }, 3).platform, 'ps2', 'any other saved shelf stays')
+  ok(S.migrateTgPersisted({ sort: 'title' }, 0).sort, 'recent', 'v1: the old Title default moves to Last played')
+  ok(S.migrateTgPersisted({ sort: 'rating' }, 0).sort, 'rating', 'v1: a real sort choice stays')
+  ok(S.migrateTgPersisted({ advancedTab: 'scraper', section: 'advanced' }, 2), { advancedTab: 'review', section: 'scrape' },
+    'v3: a saved ScreenScraper tab opens the Scrape page')
+  ok(S.migrateTgPersisted({ advancedTab: 'tiers' }, 1).advancedTab, 'review', 'v2: a removed Advanced tab lands on Needs review')
+  ok(S.migrateTgPersisted({ advancedTab: 'steam', platform: 'others' }, 4), { advancedTab: 'steam', platform: 'others' }, 'a current state is left alone')
+  ok(S.migrateTgPersisted(undefined, 0), { sort: 'recent', advancedTab: 'review' }, 'nothing saved migrates cleanly')
+}
 
 // ── Platform labels ─────────────────────────────────────────────────────────
 const pc = key => ({ key, count: 1, info: M.platformInfo(key) })
@@ -159,12 +209,12 @@ ok(M.genreOptions(lib).map(g => [g.genre, g.count]), [['Action', 2], ['Adventure
   'genres counted once per game, whitespace-trimmed')
 
 // ── Scoping / filtering ─────────────────────────────────────────────────────
-const base = { section: 'library', platform: 'ps2', otherKeys: [], scopePlatform: 'all', genres: [], search: '' }
+const base = { section: 'library', platform: 'ps2', scopePlatform: 'all', genres: [], search: '' }
 ok(M.scopeGames(lib, base).map(g => g.id).sort(), ['a', 'b', 'c', 'f'], 'a platform scope keeps its hidden row for the Hidden status')
 ok(M.applyStatus(M.scopeGames(lib, base), 'all').map(g => g.id).sort(), ['a', 'b', 'c'], '"All" never shows hidden rows')
 ok(M.applyStatus(M.scopeGames(lib, base), 'hidden').map(g => g.id), ['f'], 'only "Hidden" shows them')
 ok(M.scopeGames(lib, { ...base, platform: 'all' }).length, 7, 'All platforms')
-ok(M.scopeGames(lib, { ...base, platform: 'others', otherKeys: ['gc'] }).map(g => g.id), ['d'], 'Others = the folded platforms')
+ok(M.scopeGames(lib, { ...base, platform: 'gc' }).map(g => g.id), ['d'], 'a small platform has its own shelf')
 ok(M.scopeGames(lib, { ...base, section: 'completed' }).map(g => g.id).sort(), ['b', 'g'],
   'a status section spans every platform regardless of the sidebar platform')
 ok(M.scopeGames(lib, { ...base, section: 'completed', scopePlatform: 'steam' }).map(g => g.id), ['g'], 'and narrows by its own chip')
@@ -427,5 +477,10 @@ ok(CF.psnFacts({ profile: { isPlus: true }, summary: { trophyLevel: 312, progres
 ok(CF.psnFacts({ profile: null, summary: { trophyLevel: '', progress: 0, tier: 1, earnedTrophies: { bronze: 0, silver: 0, gold: 0, platinum: 0 } } }), [], 'PSN: nothing earned, nothing shown')
 ok(CF.steamFacts({ steamid: '1', personaname: 'x', avatarfull: '', personastate: 1, communityvisibilitystate: 3, timecreated: 1_350_000_000 }), ['Online', 'Member since 2012'], 'Steam: presence and account age')
 ok(CF.steamFacts({ steamid: '1', personaname: 'x', avatarfull: '', personastate: 1, communityvisibilitystate: 3, gameextrainfo: 'Hades' }), ['Playing Hades now'], 'Steam: the current game wins over presence')
+
+// ── A cut header note reveals its explanation too (TgHeader / TgMobileScope) ──
+const TT = require('../src/features/games/test-game/tgTypes.ts')
+ok(TT.headerNoteText('Roughly 12 hours to play through', 'Queued games still to play × the median'), 'Roughly 12 hours to play through. Queued games still to play × the median', 'note + its basis')
+ok(TT.headerNoteText('Under an hour to play through'), 'Under an hour to play through', 'a note without a basis stays as is')
 
 console.log(`verify-test-game-model: ${n} assertions passed`)

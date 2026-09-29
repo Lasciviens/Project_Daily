@@ -7,7 +7,9 @@ import { MemoryTab } from '../components/MemoryTab'
 import { ConnectionsTab } from '../components/ConnectionsTab'
 import { reindexAiSearch } from '../../ai/api/aiApi'
 import { toast } from '../../../app/store'
-import { Button, PageContainer, PageHeader } from '../../../shared/ui'
+import { Button, PageContainer, PageHeader, usePageStep } from '../../../shared/ui'
+import { boardWidthRem } from '../../../shared/ui/pageBoardRules'
+import { CONNECTIONS_BOARD, LIST_DETAIL_BOARD } from '../developerBoards'
 
 type Tab = 'connections' | 'activity' | 'errors' | 'memory'
 
@@ -25,6 +27,11 @@ export function DeveloperPage() {
   const initial = TABS.some(t => t.id === params.get('tab')) ? params.get('tab') as Tab : 'activity'
   const [tab, setTab] = useState<Tab>(initial)
   const [reindexing, setReindexing] = useState(false)
+  // The header measures the same width as the tab's board below it and stops
+  // where that board does, so Reindex sits over the last card (the list +
+  // detail boards stop at three tracks; it floated 29rem past the pane).
+  const { ref: widthRef, step } = usePageStep<HTMLDivElement>()
+  const headerCap = step == null ? null : boardWidthRem(tab === 'connections' ? CONNECTIONS_BOARD : LIST_DETAIL_BOARD, step)
 
   function selectTab(next: Tab) {
     setTab(next)
@@ -49,22 +56,26 @@ export function DeveloperPage() {
 
   return (
     <PageContainer>
-      <PageHeader
-        title="Developer"
-        actions={
-          <Button size="sm" icon={<RefreshCw />} onClick={() => { void handleReindex() }} loading={reindexing} title="Rebuild the AI semantic-search index">
-            Reindex AI search
-          </Button>
-        }
-      >
-        <div role="tablist" aria-label="Developer sections" className="scroll-x -mx-4 flex gap-1 px-4 sm:mx-0 sm:px-0">
-          {TABS.map(t => (
-            <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} onClick={() => selectTab(t.id)} className="pill-tab">
-              {t.label}
-            </button>
-          ))}
+      <div ref={widthRef}>
+        <div style={headerCap != null ? { maxWidth: `${headerCap}rem` } : undefined}>
+          <PageHeader
+            title="Developer"
+            actions={
+              <Button size="sm" icon={<RefreshCw />} onClick={() => { void handleReindex() }} loading={reindexing} title="Rebuild the AI semantic-search index">
+                Reindex AI search
+              </Button>
+            }
+          >
+            <div role="tablist" aria-label="Developer sections" className="scroll-x -mx-4 flex gap-1 px-4 sm:mx-0 sm:px-0">
+              {TABS.map(t => (
+                <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} onClick={() => selectTab(t.id)} className="pill-tab">
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          </PageHeader>
         </div>
-      </PageHeader>
+      </div>
 
       {tab === 'connections' && <ConnectionsTab />}
       {tab === 'activity'    && <ActivityLogTab />}

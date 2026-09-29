@@ -5,7 +5,7 @@ import { useMealPlan, useEatPlannedEntry } from '../hooks/useMealPlan'
 import { useFoodLogRange } from '../hooks/useFoodLog'
 import { useEntityModal } from '../../../shared/modals/useEntityModal'
 import { DateNav } from '../../../shared/components/DateNav'
-import { Card, IconButton, cx } from '../../../shared/ui'
+import { Card, IconButton, Truncate, cx } from '../../../shared/ui'
 import type { MealSlot, MealPlanEntry } from '../types'
 import type { LoggedFood } from '../api/foodLogApi'
 
@@ -125,7 +125,7 @@ export function MealPlanWeek() {
                       <li key={entry.id} className="flex items-center gap-1 pl-4 pr-2 text-body">
                         <button type="button" onClick={() => openPlan(dateStr, slot, entry)} className="flex min-h-[44px] min-w-0 flex-1 items-center gap-2 text-left">
                           <ClipboardList aria-hidden className="h-4 w-4 shrink-0 text-fg-faint" />
-                          <span className="min-w-0 flex-1 truncate italic text-fg-muted">{planLabel}</span>
+                          <Truncate className="flex-1 italic text-fg-muted">{planLabel}</Truncate>
                         </button>
                         <IconButton label="Mark eaten" onClick={() => eat.mutate(entry)} disabled={eat.isPending} className="text-success disabled:opacity-50"><Check /></IconButton>
                       </li>
@@ -134,7 +134,7 @@ export function MealPlanWeek() {
                       <li key={l.id}>
                         <button type="button" onClick={() => openEaten(l)} className="flex min-h-[44px] w-full items-center gap-2 px-4 text-left text-body transition-colors hover:bg-surface-hover">
                           <Check aria-hidden className="h-4 w-4 shrink-0 text-success" />
-                          <span className="min-w-0 flex-1 truncate text-fg">{l.title}</span>
+                          <Truncate className="flex-1 text-fg">{l.title}</Truncate>
                           {l.calories ? <span className="shrink-0 text-meta tabular-nums text-fg-muted">{Math.round(l.calories)} kcal</span> : null}
                         </button>
                       </li>
@@ -189,7 +189,7 @@ export function MealPlanWeek() {
                             {planned.map(({ entry, label: planLabel }) => (
                               <div key={entry.id} className="flex items-start gap-0.5 rounded-md transition-colors hover:bg-surface-hover">
                                 <button type="button" onClick={() => openPlan(dateStr, slot, entry)} className="min-w-0 flex-1 px-1 py-0.5 text-left">
-                                  <span className="line-clamp-2 text-meta font-medium leading-tight text-fg-2">{planLabel}</span>
+                                  <Truncate lines={2} className="text-meta font-medium leading-tight text-fg-2">{planLabel}</Truncate>
                                 </button>
                                 <button type="button" onClick={() => eat.mutate(entry)} disabled={eat.isPending}
                                   aria-label="Mark eaten" title="Mark eaten"
@@ -202,7 +202,7 @@ export function MealPlanWeek() {
                               <button key={l.id} type="button" onClick={() => openEaten(l)}
                                 className="flex items-center gap-1 rounded-md px-1 py-0.5 text-left transition-colors hover:bg-success-soft">
                                 <Check aria-hidden className="h-3 w-3 shrink-0 text-success" />
-                                <span className="line-clamp-1 text-micro leading-tight text-fg-2">{l.title}{l.calories ? ` · ${Math.round(l.calories)}` : ''}</span>
+                                <Truncate className="text-micro leading-tight text-fg-2">{`${l.title}${l.calories ? ` · ${Math.round(l.calories)}` : ''}`}</Truncate>
                               </button>
                             ))}
                           </div>

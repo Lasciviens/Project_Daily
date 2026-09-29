@@ -2,6 +2,7 @@ import { Building2, CalendarCheck, CalendarDays, Clock3, UserRound, type LucideI
 import { formatPlaytime } from '../../api/playtimeFormat'
 import { formatDay, lastPlayedIso, playSeconds, type TgGame } from '../testGameModel'
 import type { SteamExtras } from './useSteamExtras'
+import { Truncate } from '../../../../shared/ui/Truncate'
 
 interface Row { icon: LucideIcon; label: string; value: string }
 
@@ -34,7 +35,7 @@ export function TgDetailInfo({ game, extras }: { game: TgGame; extras: SteamExtr
         // Tailwind: the design lines the values up at the panel's midpoint.
         <div key={label} className="tg-info-row !grid-cols-[20px_minmax(0,1fr)_minmax(0,1fr)] leading-[1.5] 2xl:!text-[14px]">
           <Icon aria-hidden className="mt-[2px] h-4 w-4 text-[var(--tg-text-2)]" strokeWidth={1.75} />
-          <dt className="tg-info-label truncate">{label}</dt>
+          <dt className="tg-info-label min-w-0"><Truncate>{label}</Truncate></dt>
           <dd className="tg-info-value break-words">{value}</dd>
         </div>
       ))}

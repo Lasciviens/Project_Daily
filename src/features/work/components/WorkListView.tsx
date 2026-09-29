@@ -1,6 +1,6 @@
 import { Check, RotateCcw, Trash2, Zap } from 'lucide-react'
 import type { Task, TaskStatus } from '../../todo/types'
-import { EmptyState, TonePill, cx } from '../../../shared/ui'
+import { EmptyState, TonePill, cx, Truncate } from '../../../shared/ui'
 import { STATUS_CYCLE, isCompletedToday, isOverdue, taskStatusMeta } from './workMeta'
 import { DueChip, PriorityMark, WaitingChip } from './WorkTaskBits'
 
@@ -76,10 +76,10 @@ export default function WorkListView({
 
             <PriorityMark task={task} />
 
-            <span className={cx('min-w-0 flex-1 truncate text-body', isDone ? 'text-fg-faint line-through' : 'text-fg')}>
+            <Truncate fullText={task.title} className={cx('flex-1 text-body', isDone ? 'text-fg-faint line-through' : 'text-fg')}>
               {focused && <Zap aria-label="Focused" className="-mt-0.5 mr-1 inline h-3.5 w-3.5 fill-current text-accent-600" />}
               {task.title}
-            </span>
+            </Truncate>
 
             {task.status === 'waiting' && task.waiting_for && (
               <WaitingChip text={task.waiting_for} className="hidden sm:inline-flex" />

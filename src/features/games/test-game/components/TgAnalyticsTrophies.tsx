@@ -10,7 +10,7 @@ import { TgAnalyticsTrophiesBody, TgAnalyticsTrophiesSkeleton } from './TgAnalyt
 
 function Failed({ error, onRetry }: { error: unknown; onRetry: () => void }) {
   const text = isPsnReauthRequired(error)
-    ? 'Sony stopped accepting the stored PlayStation session. Renew it from your profile menu, then try again.'
+    ? 'Sony stopped accepting the stored PlayStation session. Renew it from the library’s ⋯ menu, then try again.'
     : 'Couldn’t load your trophies from PlayStation just now.'
   return (
     <div role="alert" className="flex flex-1 flex-col items-start justify-center gap-3 py-4">

@@ -268,7 +268,10 @@ export function vitalState(value: number | null | undefined, range: UsualRange |
 
 export interface VitalsSummary {
   checked: number
+  /** Readings off in their concerning direction. */
   outside: string[]
+  /** Readings off in their good direction (HRV above your usual) — not counted as outside. */
+  better: string[]
   tone: 'success' | 'neutral' | 'warn' | null
   text: string
 }
@@ -276,16 +279,23 @@ export interface VitalsSummary {
 /**
  * Apple-Vitals-style status: a COUNT of readings outside your own range,
  * never a weighted score. One outlier is common (a late meal, alcohol, a hard
- * session); two or more at once is the pattern worth a look.
+ * session); two or more at once is the pattern worth a look. A reading off in
+ * its `good` direction (HRV above your usual = well recovered, as the Heart &
+ * vitals reading says) is never counted as a warning sign.
  */
-export function summarizeVitals(items: readonly { label: string; state: VitalState }[]): VitalsSummary {
+export function summarizeVitals(items: readonly { label: string; state: VitalState; good?: 'above' | 'below' | null }[]): VitalsSummary {
   const known = items.filter(i => i.state !== 'unknown')
-  const outside = known.filter(i => i.state !== 'inside').map(i => i.label)
-  if (!known.length) return { checked: 0, outside: [], tone: null, text: 'Not enough overnight readings yet' }
-  if (!outside.length) return { checked: known.length, outside, tone: 'success', text: `All ${known.length} in your usual range` }
+  const off = known.filter(i => i.state !== 'inside')
+  const better = off.filter(i => i.good != null && i.state === i.good).map(i => i.label)
+  const outside = off.filter(i => !(i.good != null && i.state === i.good)).map(i => i.label)
+  if (!known.length) return { checked: 0, outside: [], better: [], tone: null, text: 'Not enough overnight readings yet' }
+  if (!outside.length) {
+    return { checked: known.length, outside, better, tone: 'success', text: `All ${known.length} in your usual range${better.length ? ' or better' : ''}` }
+  }
   return {
     checked: known.length,
     outside,
+    better,
     tone: outside.length >= 2 ? 'warn' : 'neutral',
     text: `${outside.length} of ${known.length} outside your usual range`,
   }

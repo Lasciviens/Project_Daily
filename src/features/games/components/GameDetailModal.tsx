@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { Dialog, DialogPanel, DialogBackdrop } from '@headlessui/react'
 import {
   useGameDetail, useUpdateGame, useDeleteGame, useAddToQueue, useRemoveFromQueue,
   useAddPlatform, useUpdatePlatform, useDeletePlatform, useSetPrimaryVariant, useSetPlayStatus,
@@ -8,8 +7,11 @@ import {
 import { UnifiedPlanModal } from '../../../shared/components/plan-modal'
 import { ConfirmDialog } from '../../../shared/components/ConfirmDialog'
 import { InfoBubble } from '../../../shared/components/InfoBubble'
-import { useHistoryDismiss } from '../../../shared/hooks/useHistoryDismiss'
+import { ModalShell } from '../../../shared/modals'
+import { Button } from '../../../shared/ui'
 import { useTestGameStore } from '../test-game/testGameStore'
+import { TgLightbox } from '../test-game/components/TgLightbox'
+import { formatDay } from '../test-game/testGameModel'
 import { CoverImg, CoverBackdrop, RatingBadge, SystemChip } from './gameCardKit'
 import { systemMeta } from '../systemMeta'
 import { formatPlaytimeFromSeconds, playStatsOf } from '../gameStats'
@@ -19,6 +21,7 @@ import {
   PERFORMANCE_COLOR, ROM_STATUS_COLOR, EXTERNAL_SOURCE_LABEL,
 } from '../gamesMeta'
 import type { Game, GamePatch, GamePlatform, GamePlatformInput, PlayStatus } from '../types'
+import { Truncate } from '../../../shared/ui/Truncate'
 
 function Section({ title, children, defaultOpen = true }: { title: string; children: React.ReactNode; defaultOpen?: boolean }) {
   const [open, setOpen] = useState(defaultOpen)
@@ -32,10 +35,8 @@ function Section({ title, children, defaultOpen = true }: { title: string; child
   )
 }
 
-function fmtDate(iso: string | null | undefined): string {
-  if (!iso) return '—'
-  return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
-}
+// en-GB built by hand ("15 Sep 2026"): toLocaleDateString's CLDR data prints "Sept".
+const fmtDate = (iso: string | null | undefined): string => formatDay(iso)
 
 
 // ─── Quick status switch — a one-tap change, no "enter edit mode" detour ────
@@ -80,9 +81,9 @@ function PlatformDetails({ platform }: { platform: GamePlatform }) {
       {bits.length > 0 && <div className="flex flex-wrap gap-x-3 gap-y-0.5">{bits}</div>}
       {platform.performance_notes && <p className="italic">{platform.performance_notes}</p>}
       {platform.esde_path && (
-        <p className="text-[10px] text-ink-400 truncate" title={platform.esde_path}>
+        <Truncate as="p" fullText={`ROM file: ${platform.esde_path}`} className="text-[10px] text-ink-400">
           ROM file: <span className="font-mono">{platform.esde_path}</span>
-        </p>
+        </Truncate>
       )}
     </div>
   )
@@ -138,7 +139,7 @@ function PlatformRow({ platform, gameId }: { platform: GamePlatform; gameId: str
                 title="Make primary" className="min-h-[36px] px-2 text-[11px] text-accent-600 hover:bg-accent-100 rounded-lg">★ Primary</button>
             )}
             <button onClick={() => setEditing(true)} title="Edit" className="min-w-[36px] min-h-[36px] flex items-center justify-center text-ink-500 hover:text-accent-600 rounded-lg">✎</button>
-            <button onClick={() => setConfirmDelete(true)} title="Delete" className="min-w-[36px] min-h-[36px] flex items-center justify-center text-ink-500 hover:text-red-500 rounded-lg">×</button>
+            <button onClick={() => setConfirmDelete(true)} title="Delete" className="min-w-[36px] min-h-[36px] flex items-center justify-center text-ink-500 hover:text-danger rounded-lg">×</button>
           </div>
         </div>
       )}
@@ -346,7 +347,7 @@ function EditPanel({ game, onSave, onCancel, saving }: { game: Game; onSave: (id
               <span className="text-sm text-ink-700">⭐ Iconic</span>
             </label>
             <label className="flex items-center gap-2 cursor-pointer min-h-[32px]">
-              <input type="checkbox" checked={coop} onChange={e => setCoop(e.target.checked)} className="rounded accent-cyan-500" />
+              <input type="checkbox" checked={coop} onChange={e => setCoop(e.target.checked)} className="rounded accent-info" />
               <span className="text-sm text-ink-700">2P Co-op</span>
             </label>
           </div>
@@ -377,7 +378,7 @@ function EditPanel({ game, onSave, onCancel, saving }: { game: Game; onSave: (id
       </div>
 
       <label className="flex items-center gap-2 cursor-pointer min-h-[32px]">
-        <input type="checkbox" checked={needsReview} onChange={e => setNeedsReview(e.target.checked)} className="rounded accent-orange-500" />
+        <input type="checkbox" checked={needsReview} onChange={e => setNeedsReview(e.target.checked)} className="rounded accent-warn" />
         <span className="text-sm text-ink-700">Flag for review</span>
         <InfoBubble label="What does this do?">
           Marks this game so it shows up in the "Needs Review" tab — use it for anything you want to come back to later (a wrong match, a missing detail).
@@ -401,13 +402,11 @@ interface Props {
   onClose: () => void
   /** Open straight into the edit form (the Test-Game page's "Edit" button). */
   initialEditing?: boolean
-  /** Extra classes on the dialog root — the Games page passes its own theme scope. */
+  /** Extra classes on the panel — the Games page passes its own theme scope. */
   className?: string
 }
 
 export function GameDetailModal({ gameId, onClose, initialEditing = false, className = '' }: Props) {
-  // Back (Android, the iOS edge swipe, the browser) closes this rather than leaving the page.
-  useHistoryDismiss(true, onClose)
   // Opened straight into the form, it waits for a fresh read: a cached detail
   // can predate a status/rating/scrape write made on the page since.
   const { data: game, isLoading, isFetchedAfterMount } = useGameDetail(gameId, initialEditing ? { refetchOnMount: 'always' } : undefined)
@@ -435,8 +434,6 @@ export function GameDetailModal({ gameId, onClose, initialEditing = false, class
     ...(game?.platforms ?? []).flatMap(p => [p.box_url, p.wheel_url, p.cover_url]),
   ].filter((u): u is string => !!u))]
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null)
-  function prevScreenshot() { if (lightboxIdx !== null) setLightboxIdx((lightboxIdx - 1 + screenshots.length) % screenshots.length) }
-  function nextScreenshot() { if (lightboxIdx !== null) setLightboxIdx((lightboxIdx + 1) % screenshots.length) }
 
   // Opened straight into the form (the Test-Game page's "Edit"), Save and
   // Cancel return to the page; opened as the full record, they only close the
@@ -456,169 +453,155 @@ export function GameDetailModal({ gameId, onClose, initialEditing = false, class
 
   return (
     <>
-    <Dialog open onClose={onClose} className={`relative z-40 ${className}`}>
-      <DialogBackdrop transition className="fixed inset-0 bg-ink-950/30 backdrop-blur-sm transition duration-200 data-[closed]:opacity-0" />
-      <div className="fixed inset-0 flex items-end sm:items-center justify-center p-0 sm:p-4">
-      <DialogPanel transition className="w-full sm:max-w-2xl max-h-[calc(100dvh-2rem)] overflow-y-auto bg-cream-50 rounded-t-2xl sm:rounded-2xl border border-ink-200 shadow-2xl transition duration-200 data-[closed]:opacity-0 data-[closed]:translate-y-4 sm:data-[closed]:translate-y-0 sm:data-[closed]:scale-95">
-        <div className="absolute top-3 right-3 z-10 flex gap-2">
-          {game && !editing && (
-            <button onClick={() => setEditing(true)} className="min-h-[44px] px-3 flex items-center justify-center bg-ink-100 hover:bg-ink-200 rounded-full text-ink-500 text-xs font-medium transition-colors">✏️ Edit</button>
-          )}
-          <button onClick={onClose} className="min-w-[44px] min-h-[44px] flex items-center justify-center bg-ink-100 hover:bg-ink-200 rounded-full text-ink-500 transition-colors">✕</button>
-        </div>
-
-        {isLoading && (
-          <div className="p-4 space-y-3">
-            <div className="h-40 rounded-xl bg-cream-200 animate-pulse" />
-            <div className="h-4 w-2/3 rounded bg-cream-200 animate-pulse" />
-            <div className="h-4 w-1/2 rounded bg-cream-200 animate-pulse" />
-          </div>
-        )}
-
-        {game && (
-          <div>
-            <div className="relative flex flex-col sm:flex-row gap-4 p-5 pb-4 border-b border-ink-100 pt-14 sm:pt-5 overflow-hidden">
-              {/* The artwork's own colours behind the header, same device the
-                  library cards use — a modal that opens on flat cream loses the
-                  game's identity the moment it is enlarged. */}
-              <CoverBackdrop url={game.primary_cover_url} />
-              <div className="relative flex-shrink-0 w-24 sm:w-28 rounded-xl overflow-hidden border border-ink-200 bg-ink-100 self-start shadow-md" style={{ aspectRatio: '3/4' }}>
-                <CoverImg url={game.primary_cover_url} title={game.title} />
-                <span className="absolute top-1 right-1"><RatingBadge rating={game.rating} size="sm" /></span>
-                <span className="absolute inset-x-1 bottom-1 flex"><SystemChip game={game} size="sm" /></span>
-              </div>
-              <div className="relative flex-1 min-w-0 sm:pt-1">
-                <h2 className="text-lg font-bold text-ink-900 leading-snug mb-0.5 pr-0 sm:pr-8">{game.title}</h2>
-                {game.series_name && <p className="text-xs text-ink-400 mb-1.5">⛓ {game.series_name}</p>}
-
-                {/* Quick status switch — the one-tap fix for "I can't easily mark a game playing/finished" */}
-                <div className="mb-2">
-                  <StatusQuickBar game={game} />
-                </div>
-
-                <div className="flex flex-wrap gap-1.5 mb-2">
-                  {game.is_iconic && <span className="text-sm">⭐</span>}
-                  {game.is_coop && <span className="text-xs font-bold bg-cyan-500 text-white px-2 py-0.5 rounded-full">2P</span>}
-                  {game.needs_review && <span className="text-xs font-bold bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full">Needs review</span>}
-                </div>
-                <div className="space-y-0.5 text-xs text-ink-500">
-                  {game.release_year && <p>📅 {game.release_year}</p>}
-                  {game.publisher && <p>🏢 {game.publisher}</p>}
-                  {game.developer && game.developer !== game.publisher && <p>🛠 {game.developer}</p>}
-                  {game.age_rating && <p>🔞 {game.age_rating}</p>}
-                  {(game.started_at || game.finished_at) && (
-                    <p>▶ Started {fmtDate(game.started_at)}{game.finished_at && <> · 🏁 Finished {fmtDate(game.finished_at)}</>}</p>
-                  )}
-                  {game.external_source && (
-                    <p className="flex items-center gap-1 flex-wrap">
-                      🔗 {EXTERNAL_SOURCE_LABEL[game.external_source] ?? game.external_source}
-                      {game.external_ref && <span className="font-mono text-[10px] text-ink-400">#{game.external_ref}</span>}
-                      {game.synced_at && <span className="text-ink-400">· synced {fmtDate(game.synced_at)}</span>}
-                      <InfoBubble label="What is this?">
-                        Where this game's metadata came from, the id it was matched to on that
-                        provider, and when it last came in. A wrong id here is what a re-scrape fixes.
-                      </InfoBubble>
-                    </p>
-                  )}
-                  <p className="text-ink-400">➕ Added {fmtDate(game.created_at)}</p>
-                </div>
-                {game.rating != null && (
-                  <p className="text-base font-bold text-accent-600 mt-2">★ {game.rating} <span className="text-[10px] text-ink-400 font-normal">my rating</span></p>
-                )}
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <button onClick={handleQueueToggle}
-                    className={`text-xs font-semibold px-3 py-1.5 min-h-[44px] rounded-lg transition-colors ${game.play_order != null ? 'bg-red-100 hover:bg-red-200 text-red-600' : 'bg-orange-100 hover:bg-orange-200 text-orange-700'}`}>
-                    {game.play_order != null ? `✕ Remove from Queue (#${game.play_order})` : '🎮 Add to Queue'}
-                  </button>
-                  <button onClick={() => setPlanOpen(true)} className="text-xs font-semibold px-3 py-1.5 min-h-[44px] rounded-lg bg-accent-100 hover:bg-accent-200 text-accent-700 transition-colors">📅 Plan session</button>
-                  <button onClick={() => { onClose(); openScrape(game.id); if (location.pathname !== '/games') navigate('/games') }} className="text-xs font-semibold px-3 py-1.5 min-h-[44px] rounded-lg bg-ink-100 hover:bg-ink-200 text-ink-700 transition-colors">✨ Scrape</button>
-                  <button onClick={() => setConfirmDelete(true)} className="text-xs font-semibold px-3 py-1.5 min-h-[44px] rounded-lg bg-ink-100 hover:bg-red-100 text-ink-500 hover:text-red-600 transition-colors">🗑 Delete</button>
-                </div>
-              </div>
-            </div>
-
-            {editing && (initialEditing && !freshForEdit ? (
-              <div className="p-5 border-t border-ink-100"><div className="h-24 rounded-xl bg-cream-200 animate-pulse" aria-label="Loading the latest version" /></div>
-            ) : (
-              // Keyed: a form for another game never inherits this one's state.
-              <EditPanel key={game.id} game={game} onSave={handleSave} onCancel={finishEditing} saving={update.isPending} />
-            ))}
-
-            <div className="p-5 space-y-5">
-              <Section title="Platforms">
-                <div className="space-y-2">
-                  {game.platforms.map(p => <PlatformRow key={p.id} platform={p} gameId={game.id} />)}
-                  {addingPlatform
-                    ? <AddPlatformInline gameId={game.id} onDone={() => setAddingPlatform(false)} />
-                    : <button onClick={() => setAddingPlatform(true)} className="min-h-[44px] w-full text-xs font-medium text-accent-600 border border-dashed border-accent-300 rounded-xl hover:bg-accent-50 transition-colors">+ Add platform</button>}
-                </div>
-              </Section>
-
-              {game.description && (
-                <Section title="About"><p className="text-sm text-ink-700 leading-relaxed">{game.description}</p></Section>
-              )}
-              {game.storyline && (
-                <Section title="Storyline" defaultOpen={false}><p className="text-sm text-ink-600 leading-relaxed italic">{game.storyline}</p></Section>
-              )}
-              {screenshots.length > 0 && (
-                <Section title="Screenshots">
-                  <div className="flex gap-2 overflow-x-auto pb-1">
-                    {screenshots.map((url, i) => (
-                      <button key={i} onClick={() => setLightboxIdx(i)} className="flex-shrink-0 rounded-lg overflow-hidden border border-ink-200 hover:border-accent-400 transition-colors" style={{ height: 80, width: 140 }}>
-                        <img src={url} alt="" className="w-full h-full object-cover" />
-                      </button>
-                    ))}
-                  </div>
-                </Section>
-              )}
-              {((game.genres?.length ?? 0) > 0 || game.players || (game.modes?.length ?? 0) > 0) && (
-                <Section title="Tags">
-                  <div className="flex flex-wrap gap-1.5">
-                    {game.genres?.map((g, i) => <span key={i} className="text-xs bg-purple-50 text-purple-700 border border-purple-200 px-2 py-0.5 rounded-full">{g}</span>)}
-                    {game.modes?.map((m, i) => <span key={i} className="text-xs bg-orange-50 text-orange-700 border border-orange-200 px-2 py-0.5 rounded-full">{m}</span>)}
-                    {game.players && <span className="text-xs bg-ink-50 text-ink-500 border border-ink-200 px-2 py-0.5 rounded-full">{game.players} player(s)</span>}
-                  </div>
-                </Section>
-              )}
-              {game.play_notes && (
-                <Section title="My Notes"><p className="text-sm text-ink-700 bg-cream-50 rounded-lg p-3 leading-relaxed whitespace-pre-line">{game.play_notes}</p></Section>
-              )}
-              {game.game_log && (
-                <Section title="Play Log" defaultOpen={false}><p className="text-sm text-ink-700 bg-cream-50 rounded-lg p-3 leading-relaxed whitespace-pre-line">{game.game_log}</p></Section>
-              )}
-              {game.coop_notes && (
-                <Section title="Co-op Notes"><p className="text-sm text-ink-700 bg-cyan-50 rounded-lg p-3 leading-relaxed">{game.coop_notes}</p></Section>
-              )}
-              {(playStatsOf(game).count != null || playStatsOf(game).last || playStatsOf(game).seconds != null) && (
-                <Section title={`Play Stats (${game.library === 'steam' ? 'Steam' : game.library === 'playstation' ? 'PlayStation' : 'ES-DE'})`}>
-                  <div className="flex flex-wrap gap-3 text-xs text-ink-600">
-                    {playStatsOf(game).count != null && <span className="font-semibold">▶ Launched {playStatsOf(game).count}×</span>}
-                    {/* formatPlaytimeFromSeconds, not seconds/3600 — a 40-minute session used
-                        to print "0h", which reads as "never played". */}
-                    {formatPlaytimeFromSeconds(playStatsOf(game).seconds) && <span className="font-semibold">⏱ Played {formatPlaytimeFromSeconds(playStatsOf(game).seconds)} in total</span>}
-                    {playStatsOf(game).last && <span>🕐 Last played {fmtDate(playStatsOf(game).last)}</span>}
-                    {game.platforms.length > 1 && (
-                      <InfoBubble label="Across variants?">Summed across every variant of this game. Each platform row below carries its own figures.</InfoBubble>
-                    )}
-                  </div>
-                </Section>
-              )}
-            </div>
-          </div>
-        )}
-      </DialogPanel>
-      </div>
-
-      {lightboxIdx !== null && screenshots[lightboxIdx] && (
-        <div className="fixed inset-0 bg-black/90 z-[60] flex items-center justify-center" onClick={() => setLightboxIdx(null)}>
-          <button onClick={e => { e.stopPropagation(); prevScreenshot() }} className="absolute left-4 text-white text-2xl bg-black/40 hover:bg-black/60 w-11 h-11 rounded-full flex items-center justify-center">‹</button>
-          <img src={screenshots[lightboxIdx]} alt="" className="max-w-full max-h-full object-contain rounded-lg" onClick={e => e.stopPropagation()} />
-          <button onClick={e => { e.stopPropagation(); nextScreenshot() }} className="absolute right-4 text-white text-2xl bg-black/40 hover:bg-black/60 w-11 h-11 rounded-full flex items-center justify-center">›</button>
-          <button onClick={() => setLightboxIdx(null)} className="absolute top-4 right-4 text-white text-xl bg-black/40 hover:bg-black/60 w-11 h-11 rounded-full flex items-center justify-center">✕</button>
-          <span className="absolute bottom-4 text-white/60 text-xs">{lightboxIdx + 1} / {screenshots.length}</span>
+    {/* ModalShell brings Back handling, the phone sheet and stacking. */}
+    <ModalShell
+      open
+      onClose={onClose}
+      size="lg"
+      panelClassName={className}
+      bodyClassName="p-0"
+      title={game?.title ?? 'Game'}
+      subtitle={game?.series_name ? `⛓ ${game.series_name}` : undefined}
+      headerActions={game && !editing ? <Button size="sm" onClick={() => setEditing(true)}>Edit</Button> : undefined}
+    >
+      {isLoading && (
+        <div className="p-4 space-y-3">
+          <div className="h-40 rounded-xl bg-cream-200 animate-pulse" />
+          <div className="h-4 w-2/3 rounded bg-cream-200 animate-pulse" />
+          <div className="h-4 w-1/2 rounded bg-cream-200 animate-pulse" />
         </div>
       )}
-    </Dialog>
+
+      {game && (
+        <div>
+          <div className="relative flex flex-col sm:flex-row gap-4 p-5 pb-4 border-b border-ink-100 overflow-hidden">
+            {/* The artwork's own colours behind the header, same device the
+                library cards use — a modal that opens on flat cream loses the
+                game's identity the moment it is enlarged. */}
+            <CoverBackdrop url={game.primary_cover_url} />
+            <div className="relative flex-shrink-0 w-24 sm:w-28 rounded-xl overflow-hidden border border-ink-200 bg-ink-100 self-start shadow-md" style={{ aspectRatio: '3/4' }}>
+              <CoverImg url={game.primary_cover_url} title={game.title} />
+              <span className="absolute top-1 right-1"><RatingBadge rating={game.rating} size="sm" /></span>
+              <span className="absolute inset-x-1 bottom-1 flex"><SystemChip game={game} size="sm" /></span>
+            </div>
+            <div className="relative flex-1 min-w-0 sm:pt-1">
+              {/* Quick status switch — the one-tap fix for "I can't easily mark a game playing/finished" */}
+              <div className="mb-2">
+                <StatusQuickBar game={game} />
+              </div>
+
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {game.is_iconic && <span className="text-sm">⭐</span>}
+                {game.is_coop && <span className="text-xs font-bold bg-info-soft text-info px-2 py-0.5 rounded-full">2P</span>}
+                {game.needs_review && <span className="text-xs font-bold bg-warn-soft text-warn px-2 py-0.5 rounded-full">Needs review</span>}
+              </div>
+              <div className="space-y-0.5 text-xs text-ink-500">
+                {game.release_year && <p>📅 {game.release_year}</p>}
+                {game.publisher && <p>🏢 {game.publisher}</p>}
+                {game.developer && game.developer !== game.publisher && <p>🛠 {game.developer}</p>}
+                {game.age_rating && <p>🔞 {game.age_rating}</p>}
+                {(game.started_at || game.finished_at) && (
+                  <p>▶ Started {fmtDate(game.started_at)}{game.finished_at && <> · 🏁 Finished {fmtDate(game.finished_at)}</>}</p>
+                )}
+                {game.external_source && (
+                  <p className="flex items-center gap-1 flex-wrap">
+                    🔗 {EXTERNAL_SOURCE_LABEL[game.external_source] ?? game.external_source}
+                    {game.external_ref && <span className="font-mono text-[10px] text-ink-400">#{game.external_ref}</span>}
+                    {game.synced_at && <span className="text-ink-400">· synced {fmtDate(game.synced_at)}</span>}
+                    <InfoBubble label="What is this?">
+                      Where this game's metadata came from, the id it was matched to on that
+                      provider, and when it last came in. A wrong id here is what a re-scrape fixes.
+                    </InfoBubble>
+                  </p>
+                )}
+                <p className="text-ink-400">➕ Added {fmtDate(game.created_at)}</p>
+              </div>
+              {game.rating != null && (
+                <p className="text-base font-bold text-accent-600 mt-2">★ {game.rating} <span className="text-[10px] text-ink-400 font-normal">my rating</span></p>
+              )}
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button onClick={handleQueueToggle}
+                  className={`text-xs font-semibold px-3 py-1.5 min-h-[44px] rounded-lg transition-colors ${game.play_order != null ? 'bg-danger-soft text-danger hover:brightness-95' : 'bg-accent-50 text-accent-700 hover:bg-accent-100'}`}>
+                  {game.play_order != null ? `✕ Remove from Queue (#${game.play_order})` : '🎮 Add to Queue'}
+                </button>
+                <button onClick={() => setPlanOpen(true)} className="text-xs font-semibold px-3 py-1.5 min-h-[44px] rounded-lg bg-accent-100 hover:bg-accent-200 text-accent-700 transition-colors">📅 Plan session</button>
+                <button onClick={() => { onClose(); openScrape(game.id); if (location.pathname !== '/games') navigate('/games') }} className="text-xs font-semibold px-3 py-1.5 min-h-[44px] rounded-lg bg-ink-100 hover:bg-ink-200 text-ink-700 transition-colors">✨ Scrape</button>
+                <button onClick={() => setConfirmDelete(true)} className="text-xs font-semibold px-3 py-1.5 min-h-[44px] rounded-lg bg-ink-100 hover:bg-danger-soft text-ink-500 hover:text-danger transition-colors">🗑 Delete</button>
+              </div>
+            </div>
+          </div>
+
+          {editing && (initialEditing && !freshForEdit ? (
+            <div className="p-5 border-t border-ink-100"><div className="h-24 rounded-xl bg-cream-200 animate-pulse" aria-label="Loading the latest version" /></div>
+          ) : (
+            // Keyed: a form for another game never inherits this one's state.
+            <EditPanel key={game.id} game={game} onSave={handleSave} onCancel={finishEditing} saving={update.isPending} />
+          ))}
+
+          <div className="p-5 space-y-5">
+            <Section title="Platforms">
+              <div className="space-y-2">
+                {game.platforms.map(p => <PlatformRow key={p.id} platform={p} gameId={game.id} />)}
+                {addingPlatform
+                  ? <AddPlatformInline gameId={game.id} onDone={() => setAddingPlatform(false)} />
+                  : <button onClick={() => setAddingPlatform(true)} className="min-h-[44px] w-full text-xs font-medium text-accent-600 border border-dashed border-accent-300 rounded-xl hover:bg-accent-50 transition-colors">+ Add platform</button>}
+              </div>
+            </Section>
+
+            {game.description && (
+              <Section title="About"><p className="text-sm text-ink-700 leading-relaxed">{game.description}</p></Section>
+            )}
+            {game.storyline && (
+              <Section title="Storyline" defaultOpen={false}><p className="text-sm text-ink-600 leading-relaxed italic">{game.storyline}</p></Section>
+            )}
+            {screenshots.length > 0 && (
+              <Section title="Screenshots">
+                <div className="flex gap-2 overflow-x-auto pb-1">
+                  {screenshots.map((url, i) => (
+                    <button key={i} onClick={() => setLightboxIdx(i)} className="flex-shrink-0 rounded-lg overflow-hidden border border-ink-200 hover:border-accent-400 transition-colors" style={{ height: 80, width: 140 }}>
+                      <img src={url} alt="" className="w-full h-full object-cover" />
+                    </button>
+                  ))}
+                </div>
+              </Section>
+            )}
+            {((game.genres?.length ?? 0) > 0 || game.players || (game.modes?.length ?? 0) > 0) && (
+              <Section title="Tags">
+                <div className="flex flex-wrap gap-1.5">
+                  {game.genres?.map((g, i) => <span key={i} className="text-xs bg-highlight-soft text-highlight border border-highlight/30 px-2 py-0.5 rounded-full">{g}</span>)}
+                  {game.modes?.map((m, i) => <span key={i} className="text-xs bg-warn-soft text-warn border border-warn/30 px-2 py-0.5 rounded-full">{m}</span>)}
+                  {game.players && <span className="text-xs bg-ink-50 text-ink-500 border border-ink-200 px-2 py-0.5 rounded-full">{game.players} player(s)</span>}
+                </div>
+              </Section>
+            )}
+            {game.play_notes && (
+              <Section title="My Notes"><p className="text-sm text-ink-700 bg-cream-50 rounded-lg p-3 leading-relaxed whitespace-pre-line">{game.play_notes}</p></Section>
+            )}
+            {game.game_log && (
+              <Section title="Play Log" defaultOpen={false}><p className="text-sm text-ink-700 bg-cream-50 rounded-lg p-3 leading-relaxed whitespace-pre-line">{game.game_log}</p></Section>
+            )}
+            {game.coop_notes && (
+              <Section title="Co-op Notes"><p className="text-sm text-ink-700 bg-info-soft rounded-lg p-3 leading-relaxed">{game.coop_notes}</p></Section>
+            )}
+            {(playStatsOf(game).count != null || playStatsOf(game).last || playStatsOf(game).seconds != null) && (
+              <Section title={`Play Stats (${game.library === 'steam' ? 'Steam' : game.library === 'playstation' ? 'PlayStation' : 'ES-DE'})`}>
+                <div className="flex flex-wrap gap-3 text-xs text-ink-600">
+                  {playStatsOf(game).count != null && <span className="font-semibold">▶ Launched {playStatsOf(game).count}×</span>}
+                  {/* formatPlaytimeFromSeconds, not seconds/3600 — a 40-minute session used
+                      to print "0h", which reads as "never played". */}
+                  {formatPlaytimeFromSeconds(playStatsOf(game).seconds) && <span className="font-semibold">⏱ Played {formatPlaytimeFromSeconds(playStatsOf(game).seconds)} in total</span>}
+                  {playStatsOf(game).last && <span>🕐 Last played {fmtDate(playStatsOf(game).last)}</span>}
+                  {game.platforms.length > 1 && (
+                    <InfoBubble label="Across variants?">Summed across every variant of this game. Each platform row below carries its own figures.</InfoBubble>
+                  )}
+                </div>
+              </Section>
+            )}
+          </div>
+        </div>
+      )}
+      <TgLightbox images={screenshots} index={lightboxIdx} onClose={() => setLightboxIdx(null)} onIndex={setLightboxIdx} />
+    </ModalShell>
 
     {game && (
       <UnifiedPlanModal open={planOpen} onClose={() => setPlanOpen(false)} mode="schedule" config={{ heading: 'Plan session' }} defaults={{ title: game.title, category: 'games', color: 'blue' }} />

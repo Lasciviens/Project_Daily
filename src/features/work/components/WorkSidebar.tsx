@@ -53,11 +53,13 @@ function RailSection({ id, title, icon, defaultCollapsed, children }: {
   )
 }
 
-// Explicit steps so cards never jump: one column on phones, a 2/4-up row
-// under the board on tablets and laptops, one column in the 2xl side rail.
+// Explicit steps by the rail's OWN width, so cards never jump: one column on
+// a phone and in a side track, two once it is 36rem wide (tablets), four as
+// the band under the board (60rem+, laptops).
 export default function WorkSidebar({ tasks }: { tasks: Task[] }) {
   return (
-    <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-1">
+    <div className="@container">
+    <div className="grid grid-cols-1 items-start gap-3 @[36rem]:grid-cols-2 @[60rem]:grid-cols-4">
       <RailSection id="summary" title="Today" icon={<BarChart3 />}>
         <EODSummaryWidget tasks={tasks} />
       </RailSection>
@@ -70,6 +72,7 @@ export default function WorkSidebar({ tasks }: { tasks: Task[] }) {
       <RailSection id="links" title="Pinned links" icon={<Link2 />} defaultCollapsed>
         <PinnedLinksWidget />
       </RailSection>
+    </div>
     </div>
   )
 }

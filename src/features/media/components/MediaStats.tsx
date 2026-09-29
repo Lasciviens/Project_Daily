@@ -7,15 +7,17 @@ import type { UserMovieEntry, UserTVEntry } from '../types'
 interface Props {
   movieEntries: UserMovieEntry[]
   tvEntries:    UserTVEntry[]
+  /** Part of the library is still loading: placeholders, not a count of 0. */
+  loading?:     boolean
 }
 
-export function MediaStats({ movieEntries, tvEntries }: Props) {
+export function MediaStats({ movieEntries, tvEntries, loading = false }: Props) {
   // Pure computation over the already-loaded library — no extra request.
   const s = computeMediaStats(movieEntries, tvEntries)
   const hasData = s.moviesWatched > 0 || s.tvSeriesTracked > 0
 
   return (
-    <CollapsibleCard title="Your stats" icon={<BarChart3 />}>
+    <CollapsibleCard title="Your stats" icon={<BarChart3 />} loading={loading}>
       {!hasData ? (
         <p className="text-body text-fg-muted">Add some movies or series to your library to see stats.</p>
       ) : (

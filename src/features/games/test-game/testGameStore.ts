@@ -7,20 +7,21 @@ import type { PlayStatus } from '../types'
 import type { TgaLibrary, TgaTab, TgaWindow } from './components/tgAnalyticsModel'
 import type { ApplyResult, FindResult, SearchResponse } from '../scraper/ssApi'
 import type { SearchForm } from './components/scrape/tgScrapeModel'
+import { TG_STORE_VERSION, migrateTgPersisted } from './tgStoreMigrate'
 
-// UI state for the Test-Game page. Its own store (not the app's useUIStore)
-// because the page is a self-contained experiment: nothing else in the app
-// reads any of this, and removing the page must remove the state with it.
+// UI state for the Games page. Its own store (not the app's useUIStore):
+// nothing else in the app reads any of this.
 //
-// Persisted: where you were (section, platform, view, sort, advanced tab) and
-// whether the detail overlay is tucked into its tab, so a reload lands back on
-// the same shelf. NOT persisted: the search text, the selection and whether
-// the details are open — a reload starts with nothing picked and nothing
-// covering the games (a stale search restored on reload reads as missing games).
+// Persisted: where you were (section, platform, view, sort, advanced tab),
+// whether the detail overlay is tucked into its tab and whether the page's
+// navigation panel is collapsed, so a reload lands back on the same shelf.
+// The section and platform are also in the address (useTgUrlSync), which wins
+// when it names them. NOT persisted: the search text, the selection and
+// whether the details are open — a reload starts with nothing picked and
+// nothing covering the games (a stale search restored on reload reads as
+// missing games).
 
 export type AdvancedTab = 'review' | 'steam' | 'playstation'
-
-const ADVANCED_KEYS: readonly AdvancedTab[] = ['review', 'steam', 'playstation']
 
 /** The Scrape page's two modes: one game at a time, or many. */
 export type ScrapeMode = 'search' | 'batch'
@@ -74,6 +75,8 @@ interface TgState {
   detailOpen: boolean
   /** The overlay is tucked into its slim tab at the right edge (tablet/desktop). */
   detailCollapsed: boolean
+  /** The page's own navigation (sections + platforms) is folded to an icon rail (tablet/desktop). */
+  navCollapsed: boolean
   advancedTab: AdvancedTab
   /** Analytics filters: kept here (not persisted) so a tablet↔phone switch,
    *  which remounts the view, doesn't reset them. */
@@ -119,6 +122,7 @@ interface TgState {
   activateGame: (id: string) => TgActivation
   closeDetail: () => void
   setDetailCollapsed: (collapsed: boolean) => void
+  setNavCollapsed: (collapsed: boolean) => void
   setAdvancedTab: (t: AdvancedTab) => void
   setAnalyticsPeriod: (p: TgaWindow) => void
   setAnalyticsLibrary: (l: TgaLibrary) => void
@@ -153,6 +157,7 @@ export const useTestGameStore = create<TgState>()(
       selectedId: null,
       detailOpen: false,
       detailCollapsed: false,
+      navCollapsed: false,
       advancedTab: 'review',
       analyticsPeriod: 'all',
       analyticsLibrary: 'all',
@@ -208,6 +213,7 @@ export const useTestGameStore = create<TgState>()(
       },
       closeDetail: () => set({ detailOpen: false }),
       setDetailCollapsed: (detailCollapsed) => set({ detailCollapsed }),
+      setNavCollapsed: (navCollapsed) => set({ navCollapsed }),
       setAnalyticsPeriod: (analyticsPeriod) => set({ analyticsPeriod }),
       setAnalyticsLibrary: (analyticsLibrary) => set({ analyticsLibrary }),
       setAnalyticsTab: (analyticsTab) => set({ analyticsTab }),
@@ -227,25 +233,13 @@ export const useTestGameStore = create<TgState>()(
     }),
     {
       name: 'test-game-ui-v1',
-      // v1: Last played became the default sort. A saved "Title" was only
-      // ever the old default, so it moves over once; any other choice stays.
-      // v2: Classic library, Tiers, Queue editor and Add & random left
-      // Advanced; a saved one of those lands on Needs review.
-      // v3: ScreenScraper left Advanced for its own Scrape page.
-      version: 3,
-      migrate: (persisted, version) => {
-        const p = (persisted ?? {}) as Partial<TgState>
-        if (version < 1 && (p.sort == null || p.sort === 'title')) p.sort = 'recent'
-        if (version < 3 && !ADVANCED_KEYS.includes(p.advancedTab as AdvancedTab)) {
-          // A saved ScreenScraper tab opens the page that replaced it.
-          if ((p.advancedTab as string) === 'scraper' && p.section === 'advanced') p.section = 'scrape'
-          p.advancedTab = 'review'
-        }
-        return p as TgState
-      },
+      // The upgrades (and why each exists) live in tgStoreMigrate.ts.
+      version: TG_STORE_VERSION,
+      migrate: (persisted, version) => migrateTgPersisted(persisted, version) as unknown as TgState,
       partialize: (s) => ({
         section: s.section, platform: s.platform, sort: s.sort, view: s.view,
         advancedTab: s.advancedTab, detailCollapsed: s.detailCollapsed, analyticsTab: s.analyticsTab,
+        navCollapsed: s.navCollapsed,
       }),
       // Earlier versions persisted the selection; a reload must not bring it
       // (or open details) back.

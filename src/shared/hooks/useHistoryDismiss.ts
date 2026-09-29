@@ -19,14 +19,67 @@ function flushDeferred() {
   while (deferred.length && ownPops === 0) deferred.shift()!()
 }
 
+// Address writes waiting for the history to be back on a page's own entry
+// (see whenHistorySettled).
+const settled: (() => void)[] = []
+
+/** The current history entry is a page's own — not an open overlay's throwaway one, no own pop pending. */
+function onPageEntry(): boolean {
+  if (ownPops > 0) return false
+  const at = (window.history.state as { __overlay?: number } | null)?.__overlay
+  return at == null || !stack.includes(at)
+}
+
+function flushSettled() {
+  while (settled.length && onPageEntry()) settled.shift()!()
+}
+
 // Registered once, before any overlay's listener, so it runs first in every
-// popstate dispatch and tells the overlays whether this pop was ours.
+// popstate dispatch and tells the overlays whether this pop was ours. It is
+// also registered before the router's own listener (this module loads with
+// the app, the router listens once mounted), which is what lets
+// whenHistorySettled fix the address before the router reads it.
 if (typeof window !== 'undefined') {
   window.addEventListener('popstate', () => {
     suppressed = ownPops > 0
     if (suppressed) ownPops--
-    if (ownPops === 0) flushDeferred()
+    if (ownPops === 0) {
+      // Address writes first, so an overlay pushed now carries the new address.
+      flushSettled()
+      flushDeferred()
+    }
   })
+}
+
+/**
+ * Runs `fn` once the history is on a page's own entry: straight away when it
+ * already is, otherwise inside the popstate that gets back there, before the
+ * router reads the address. For a page that mirrors its state into the
+ * address (Games' `?section=&platform=`): replacing the address while an
+ * overlay's entry is current rewrote that throwaway entry, and the overlay's
+ * own Back then landed on the page entry's old address — the address fell out
+ * of step with the page, and the page then followed the stale address back.
+ * Returns a cancel function (call it on unmount, or before queueing a newer write).
+ */
+export function whenHistorySettled(fn: () => void): () => void {
+  if (typeof window === 'undefined' || onPageEntry()) {
+    fn()
+    return () => {}
+  }
+  settled.push(fn)
+  // A pending pop that never arrives: run anyway once no open overlay's entry
+  // is current. Long enough that a slow Back still lands first.
+  const fallback = window.setTimeout(() => {
+    const at = (window.history.state as { __overlay?: number } | null)?.__overlay
+    if (at != null && stack.includes(at)) return
+    const i = settled.indexOf(fn)
+    if (i !== -1) { settled.splice(i, 1); fn() }
+  }, 1000)
+  return () => {
+    window.clearTimeout(fallback)
+    const i = settled.indexOf(fn)
+    if (i !== -1) settled.splice(i, 1)
+  }
 }
 
 /**

@@ -1,5 +1,6 @@
 import type { ElementType, ReactNode, ComponentPropsWithoutRef } from 'react'
 import { cx } from './cx'
+import { Truncate } from './Truncate'
 
 type CardProps<T extends ElementType> = {
   as?: T
@@ -42,7 +43,6 @@ interface CardHeaderProps {
 }
 
 export function CardHeader({ title, icon, subtitle, action, variant = 'title', wrap = false, className }: CardHeaderProps) {
-  const fit = wrap ? 'break-words' : 'truncate'
   return (
     <header className={cx('mb-3 flex min-h-[28px] items-center gap-2.5', wrap && 'flex-wrap', className)}>
       {icon != null && (
@@ -51,10 +51,17 @@ export function CardHeader({ title, icon, subtitle, action, variant = 'title', w
         </span>
       )}
       <div className={cx('flex-1', wrap ? 'min-w-[12rem]' : 'min-w-0')}>
-        {variant === 'label'
-          ? <h3 className={cx('section-label', fit)}>{title}</h3>
-          : <h3 className={cx('text-lead font-semibold text-fg', fit)}>{title}</h3>}
-        {subtitle != null && <p className={cx('text-meta text-fg-muted', fit)}>{subtitle}</p>}
+        {wrap ? (
+          <>
+            <h3 className={cx(variant === 'label' ? 'section-label' : 'text-lead font-semibold text-fg', 'break-words')}>{title}</h3>
+            {subtitle != null && <p className="break-words text-meta text-fg-muted">{subtitle}</p>}
+          </>
+        ) : (
+          <>
+            <Truncate as="h3" className={variant === 'label' ? 'section-label' : 'text-lead font-semibold text-fg'}>{title}</Truncate>
+            {subtitle != null && <Truncate as="p" className="text-meta text-fg-muted">{subtitle}</Truncate>}
+          </>
+        )}
       </div>
       {action != null && <div className="flex shrink-0 items-center gap-1">{action}</div>}
     </header>

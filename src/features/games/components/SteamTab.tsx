@@ -11,6 +11,7 @@ import { steamImportRows } from '../api/providerImportRows'
 import type { ProviderGameInput } from '../api/gamesApi'
 import { formatPlaytime } from '../api/playtimeFormat'
 import { useLibraryGames } from '../hooks/useGames'
+import { Truncate } from '../../../shared/ui/Truncate'
 
 // Steam integration — read-only proxy through the `steam-api` edge function
 // (personal Web API key + SteamID64 in Vault). Everything about the user is a
@@ -71,7 +72,7 @@ function GameCard({ game, onOpen }: { game: SteamGame; onOpen: () => void }) {
         )}
       </div>
       <div className="p-2 flex-1">
-        <p className="text-xs font-semibold text-ink-800 leading-snug line-clamp-2">{game.name}</p>
+        <Truncate as="p" lines={2} className="text-xs font-semibold text-ink-800 leading-snug">{game.name}</Truncate>
         <p className="text-[10px] text-ink-400 mt-1">
           {formatPlaytime(game.playtime_forever)}
           {game.playtime_2weeks ? ` · ${formatPlaytime(game.playtime_2weeks)} last 2 weeks` : last ? ` · ${last}` : ''}
@@ -94,7 +95,7 @@ function RecentStrip({ games, onOpen }: { games: SteamGame[]; onOpen: (g: SteamG
               <img src={steamGameHeaderUrl(g.appid)} alt={g.name} loading="lazy" className="w-full h-full object-cover" />
             </div>
             <div className="p-2">
-              <p className="text-[11px] font-semibold text-ink-800 truncate">{g.name}</p>
+              <Truncate as="p" className="text-[11px] font-semibold text-ink-800">{g.name}</Truncate>
               <p className="text-[10px] text-accent-600 font-medium">{formatPlaytime(g.playtime_2weeks ?? 0)} this period</p>
             </div>
           </button>

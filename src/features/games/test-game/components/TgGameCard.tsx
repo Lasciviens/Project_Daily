@@ -4,6 +4,7 @@ import { TgCover } from './TgCover'
 import { TgStarIcon } from './TgStars'
 import { TgStatusIcon } from './TgStatusIcon'
 import { cardStatus, gameCardLabel } from './TgStatusMeta'
+import { Truncate } from '../../../../shared/ui/Truncate'
 
 interface Props {
   game: TgGame
@@ -58,14 +59,13 @@ export const TgGameCard = memo(function TgGameCard({ game, selected, onSelect, w
         <TgCover game={game} mode="natural" align={coverAlign} />
       </span>
       <span className="tg-card-text">
-        <span title={game.title} className="mt-2 block truncate text-[12px] font-medium leading-[18px] text-[var(--tg-text)]">
-          {game.title}
-        </span>
+        {/* Inside the card's button: a cut title gets the hover tooltip only. */}
+        <Truncate className="mt-2 text-[12px] font-medium leading-[18px] text-[var(--tg-text)]">{game.title}</Truncate>
         {meta != null && <CardMetaLine game={game} meta={meta} />}
         <span className="mt-1 flex items-center justify-between gap-1.5 text-[12px] leading-4">
           <span data-status={st.status} className="flex min-w-0 items-center gap-1.5">
             <TgStatusIcon status={st.status} />
-            <span className="tg-status-text truncate font-medium">{st.label}</span>
+            <Truncate className="tg-status-text font-medium">{st.label}</Truncate>
           </span>
           {stars != null && (
             <span className="flex shrink-0 items-center gap-1 font-medium tabular-nums text-[var(--tg-text-2)]">
@@ -84,7 +84,7 @@ export function CardMetaLine({ game, meta }: { game: TgGame; meta: string }) {
   const more = extraVariants(game)
   return (
     <span className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[11px] leading-4 tabular-nums text-[var(--tg-muted)]">
-      <span className="truncate">{meta}</span>
+      <Truncate>{meta}</Truncate>
       {more > 0 && <span className="shrink-0 rounded bg-[var(--tg-panel-2)] px-1 text-[10px] font-semibold" title={`${more} more cop${more === 1 ? 'y' : 'ies'}: ${game.platforms.map(p => p.system).join(', ')}`}>+{more}</span>}
       {game.needs_review && <span aria-label="Flagged for review" title="Flagged for review" className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--tg-amber,#f59e0b)]" />}
     </span>

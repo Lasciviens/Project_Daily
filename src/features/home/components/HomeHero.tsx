@@ -3,9 +3,9 @@ import { Link } from 'react-router-dom'
 import { format, startOfWeek, addDays, getISOWeek, differenceInCalendarDays, parseISO } from 'date-fns'
 import { CalendarClock, ChevronRight, Dumbbell } from 'lucide-react'
 import { useEntityModal } from '../../../shared/modals'
-import { Card, CardHeader, Skeleton, cx } from '../../../shared/ui'
+import { Card, CardHeader, Skeleton, Truncate, cx } from '../../../shared/ui'
 import { todayStr } from '../../../shared/utils/dateUtils'
-import { useTodayOverview, type NextUpItem, type NextTrainingItem } from '../hooks/useTodayOverview'
+import { useTodayOverview, type NextUpItem } from '../hooks/useTodayOverview'
 
 const LATER_ROWS = 3
 
@@ -22,13 +22,21 @@ function relativeDay(dateStr: string): string {
   return format(parseISO(dateStr), 'd MMM')
 }
 
-/** Opens a schedule item's editor: one-off blocks route to their task when linked. */
+/** Opens a schedule item the way Daily's agenda does: a training block opens
+ *  as the session (its exercises and targets — changing the plan is behind
+ *  that popup's ⋯); anything else opens its editor, and a one-off block
+ *  routes to its task when linked. */
 function useOpenScheduleItem() {
   const modal = useEntityModal()
-  return (item: { kind: NextUpItem['kind'] | NextTrainingItem['kind']; id: string }) => {
+  return (item: Pick<NextUpItem, 'kind' | 'id' | 'category' | 'planDate'>) => {
+    if (item.kind === 'calendar') return
+    if (item.category === 'training' && item.planDate) {
+      modal.open({ kind: 'training-session', plan: { kind: item.kind, id: item.id, date: item.planDate } })
+      return
+    }
     // Same headings as Daily's agenda, so one block reads the same everywhere.
     if (item.kind === 'block') modal.open({ kind: 'time-block', id: item.id, config: { heading: 'Edit block' } })
-    else if (item.kind === 'recurring') modal.open({ kind: 'schedule-block', id: item.id, config: { heading: 'Edit recurring block' } })
+    else modal.open({ kind: 'schedule-block', id: item.id, config: { heading: 'Edit recurring block' } })
   }
 }
 
@@ -76,13 +84,13 @@ function NowTile({ label, icon, title, meta, tone, emptyText, onOpen, to }: NowT
     <>
       <span className="flex items-center gap-1.5">
         <span aria-hidden className="text-accent-600 [&_svg]:h-3.5 [&_svg]:w-3.5">{icon}</span>
-        <span className="section-label flex-1 truncate">{label}</span>
+        <Truncate className="section-label flex-1">{label}</Truncate>
         <ChevronRight aria-hidden className="h-3.5 w-3.5 shrink-0 text-fg-faint" />
       </span>
       {title ? (
         <>
-          <span className="mt-1 block truncate text-ui font-semibold text-fg">{title}</span>
-          {meta && <span data-tone={tone} className={cx('block truncate text-meta tabular-nums', tone ? 'tone-text font-medium' : 'text-fg-muted')}>{meta}</span>}
+          <Truncate className="mt-1 text-ui font-semibold text-fg">{title}</Truncate>
+          {meta && <span data-tone={tone} className="block min-w-0"><Truncate className={cx('text-meta tabular-nums', tone ? 'tone-text font-medium' : 'text-fg-muted')}>{meta}</Truncate></span>}
         </>
       ) : (
         <span className="mt-1 block text-body text-fg-muted">{emptyText}</span>
@@ -103,6 +111,9 @@ function NowTile({ label, icon, title, meta, tone, emptyText, onOpen, to }: NowT
 export function HomeHero() {
   const overview = useTodayOverview()
   const openItem = useOpenScheduleItem()
+  // A training session opens as the session (its exercises and targets);
+  // changing the plan is behind the popup's ⋯.
+  const modal = useEntityModal()
   const { nextUp, nextTraining, upcoming } = overview
   const later = upcoming.slice(1, 1 + LATER_ROWS)
 
@@ -139,7 +150,7 @@ export function HomeHero() {
               title={nextTraining?.title}
               meta={nextTraining ? `${relativeDay(nextTraining.date)}${nextTraining.startTime ? ` · ${nextTraining.startTime}` : ''}` : undefined}
               emptyText="None planned"
-              onOpen={nextTraining ? () => openItem(nextTraining) : undefined}
+              onOpen={nextTraining ? () => modal.open({ kind: 'training-session', plan: { kind: nextTraining.kind, id: nextTraining.id, date: nextTraining.date } }) : undefined}
               to="/training"
             />
           </>
@@ -157,7 +168,7 @@ export function HomeHero() {
                 className="row row-interactive -mx-3 w-[calc(100%+1.5rem)] text-left disabled:cursor-default"
               >
                 <span className="w-11 shrink-0 text-meta tabular-nums text-fg-muted">{item.startLabel}</span>
-                <span className="min-w-0 flex-1 truncate text-body text-fg-2">{item.title}</span>
+                <Truncate className="flex-1 text-body text-fg-2">{item.title}</Truncate>
               </button>
             </li>
           ))}

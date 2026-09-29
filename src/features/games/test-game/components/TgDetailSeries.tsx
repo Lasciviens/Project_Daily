@@ -3,6 +3,7 @@ import { seriesSiblings, type TgGame } from '../testGameModel'
 import { useTestGameStore } from '../testGameStore'
 import { TgGamesContext } from './tgRanks'
 import { TgStatusIcon } from './TgStatusIcon'
+import { Truncate } from '../../../../shared/ui/Truncate'
 
 /**
  * "More in this series": the rest of the game's series in release order, and
@@ -28,7 +29,7 @@ export function TgDetailSeries({ game }: { game: TgGame }) {
               className={`flex min-h-[44px] w-full items-center gap-2.5 rounded-lg px-1.5 text-left text-[13px] ${g.id === game.id ? 'font-semibold' : '[@media(hover:hover)]:hover:bg-[var(--tg-hover)]'}`}
             >
               <span className="w-10 shrink-0 tabular-nums tg-muted">{g.release_year ?? '—'}</span>
-              <span className="min-w-0 flex-1 truncate">{g.title}</span>
+              <Truncate className="flex-1">{g.title}</Truncate>
               <span data-status={g.play_status}><TgStatusIcon status={g.play_status} size={13} /></span>
             </button>
           </li>

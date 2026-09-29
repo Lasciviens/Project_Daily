@@ -4,6 +4,7 @@ import { todayStr } from '../../../../shared/utils/dateUtils'
 import { InfoBubble } from '../../../../shared/components/InfoBubble'
 import { ExerciseThumb } from '../../exerciseMedia'
 import { ROLE_BADGE, ROLE_LABEL, daysAgoText, type ExerciseHit } from './muscleVolumeModel'
+import { Truncate } from '../../../../shared/ui'
 
 /** "Which exercises trained it", with a GIF peek per row. */
 export function MuscleExerciseList({ exercises }: { exercises: [string, ExerciseHit][] }) {
@@ -30,7 +31,8 @@ export function MuscleExerciseList({ exercises }: { exercises: [string, Exercise
               <div className="flex min-h-[44px] items-center justify-between gap-2 px-1 py-1 text-body">
                 <span className="flex min-w-0 items-center gap-1.5">
                   <span className={`shrink-0 rounded px-1.5 py-0.5 text-micro font-bold uppercase ${ROLE_BADGE[hit.role]}`}>{ROLE_LABEL[hit.role]}</span>
-                  <span className="truncate text-fg-2">{name}</span>
+                  {/* The row opens a peek that shows the whole name. */}
+                  <Truncate reveal="none" className="text-fg-2">{name}</Truncate>
                 </span>
                 <span className="flex shrink-0 items-center gap-1.5 text-meta tabular-nums text-fg-muted">
                   {hit.sets} set{hit.sets !== 1 ? 's' : ''}

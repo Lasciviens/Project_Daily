@@ -35,20 +35,33 @@ check('span: across years always names both', L.spanLabel('2025-09-28', TODAY, T
 check('span: one day falls back to the day label', L.spanLabel(TODAY, TODAY, TODAY), 'Sun 27 Sep')
 check('span: never "Sept"', L.spanLabel('2026-09-01', '2026-09-07', TODAY).includes('Sept'), false)
 
+// ── The date bar: numeric day.month, the owner's format ─────────────────────
+check('numeric: same month', L.numericSpanLabel('2026-09-21', TODAY, TODAY), '21.09 – 27.09')
+check('numeric: across months, zero-padded', L.numericSpanLabel('2026-08-29', '2026-09-04', TODAY), '29.08 – 04.09')
+check('numeric: one day', L.numericSpanLabel(TODAY, TODAY, TODAY), '27.09')
+check('numeric: one day in another year', L.numericSpanLabel('2025-09-27', '2025-09-27', TODAY), '27.09.2025')
+check('numeric: past year names the year on both ends', L.numericSpanLabel('2025-09-21', '2025-09-27', TODAY), '21.09.2025 – 27.09.2025')
+check('numeric: across years names both years', L.numericSpanLabel('2025-12-30', '2026-01-05', '2026-01-05'), '30.12.2025 – 05.01.2026')
+check('numeric: a window reaching into last year shows both years', L.numericSpanLabel('2025-09-28', TODAY, TODAY), '28.09.2025 – 27.09.2026')
+check('numeric: never a week number', /wk|week/i.test(L.numericSpanLabel('2026-09-21', TODAY, TODAY)), false)
+check('numeric: day helper', [L.numericDay('2026-01-05', false), L.numericDay('2026-01-05', true)], ['05.01', '05.01.2026'])
+check('numeric: max length constant', L.numericSpanLabel('2025-12-30', '2026-01-05', '2026-01-05').length, L.NUMERIC_SPAN_MAX_CHARS)
+
 // ── The navigator: dates only, no "Last N days" prefix ───────────────────────
-check('nav: day', N.labelForAnchor('day', TODAY, TODAY), 'Sun 27 Sep')
-check('nav: 7 days', N.labelForAnchor('week', TODAY, TODAY), '21–27 Sep')
-check('nav: 30 days', N.labelForAnchor('month', TODAY, TODAY), '29 Aug – 27 Sep')
-check('nav: 90 days', N.labelForAnchor('quarter', TODAY, TODAY), '30 Jun – 27 Sep')
-check('nav: 1 year', N.labelForAnchor('year', TODAY, TODAY), '28 Sep 2025 – 27 Sep 2026')
-check('nav: a past 7-day window', N.labelForAnchor('week', '2026-09-20', TODAY), '14–20 Sep')
+check('nav: day', N.labelForAnchor('day', TODAY, TODAY), '27.09')
+check('nav: 7 days (rolling, not a calendar week)', N.labelForAnchor('week', TODAY, TODAY), '21.09 – 27.09')
+check('nav: 30 days', N.labelForAnchor('month', TODAY, TODAY), '29.08 – 27.09')
+check('nav: 90 days', N.labelForAnchor('quarter', TODAY, TODAY), '30.06 – 27.09')
+check('nav: 1 year', N.labelForAnchor('year', TODAY, TODAY), '28.09.2025 – 27.09.2026')
+check('nav: a past 7-day window', N.labelForAnchor('week', '2026-09-20', TODAY), '14.09 – 20.09')
+check('nav: a Wednesday anchor still ends on that day', N.labelForAnchor('week', '2026-09-23', TODAY), '17.09 – 23.09')
 for (const p of ['day', 'week', 'month', 'quarter', 'year']) {
   check(`nav: ${p} has no "Last" prefix`, /last/i.test(N.labelForAnchor(p, TODAY, TODAY)), false)
 }
-// The longest label the fixed-width box has to fit (DateNav.tsx: w-[11rem]).
+// The longest label the fixed-width box has to fit (HealthRangeBar).
 const longest = Math.max(...['day', 'week', 'month', 'quarter', 'year']
-  .flatMap(p => ['2026-09-27', '2026-03-29', '2026-01-31', '2025-12-31'].map(a => N.labelForAnchor(p, a, TODAY).length)))
-check('nav: no label longer than the fixed box was sized for (25 chars)', longest <= 25, true)
+  .flatMap(p => ['2026-09-27', '2026-03-29', '2026-01-03', '2025-12-31'].map(a => N.labelForAnchor(p, a, TODAY).length)))
+check('nav: no label longer than the fixed box was sized for', longest <= L.NUMERIC_SPAN_MAX_CHARS, true)
 
 // ── Weekly bars ──────────────────────────────────────────────────────────────
 check('week: same month', L.weekRangeLabel('2026-07-07'), '7–13 Jul')

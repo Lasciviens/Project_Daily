@@ -1,42 +1,26 @@
 import { SegmentedControl } from '../../../shared/ui'
-import { useEntityModal } from '../../../shared/modals/useEntityModal'
-import type { NutritionGoal } from '../../daily/hooks/useDayTargets'
+import { GoalSummary } from '../../daily/components/GoalSummary'
 import type { GoalWindow } from './useGoalReport'
-import { PHASE_LABEL, kcal } from './goalCopy'
-import type { usePhase } from './useBodyGoals'
 
-const PHASES: { value: NutritionGoal; label: string }[] = (['cut', 'maintain', 'gain'] as const).map(p => ({ value: p, label: PHASE_LABEL[p] }))
 const WINDOWS: { value: `${GoalWindow}`; label: string }[] = [
   { value: '14', label: '14 days' },
   { value: '28', label: '28 days' },
   { value: '56', label: '56 days' },
 ]
 
-/** The phase (your nutrition goal — the same setting as Food → Goals) and the
- *  window the report reads. */
-export function PhaseBar({ phase, win, onWin }: {
-  phase: ReturnType<typeof usePhase>; win: `${GoalWindow}`; onWin: (w: `${GoalWindow}`) => void
+/** The goal this report judges against — read-only here; "Edit goal" opens
+ *  the one goal editor shared with Food and Daily — and the report's own
+ *  window, with its dates. */
+export function PhaseBar({ win, onWin, windowLabel }: {
+  win: `${GoalWindow}`; onWin: (w: `${GoalWindow}`) => void; windowLabel: string
 }) {
-  const modal = useEntityModal()
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex flex-wrap items-end gap-x-4 gap-y-3">
-        <div role="group" aria-label="Phase">
-          <p className="field-label mb-1">Phase</p>
-          <SegmentedControl options={PHASES} value={phase.phase} onChange={phase.setPhase} size="sm" />
-        </div>
-        <div role="group" aria-label="Window">
-          <p className="field-label mb-1">Window</p>
-          <SegmentedControl options={WINDOWS} value={win} onChange={onWin} size="sm" />
-        </div>
+      <GoalSummary className="rounded-row border border-line bg-surface-2 px-3" />
+      <div role="group" aria-label="Window" className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <SegmentedControl options={WINDOWS} value={win} onChange={onWin} size="sm" />
+        <span className="text-meta tabular-nums text-fg-muted">{windowLabel} · today left out</span>
       </div>
-      <p className="text-meta text-fg-muted">
-        The phase is your nutrition goal — changing it here changes it in Food too. Target{' '}
-        <span className="tabular-nums text-fg-2">{kcal(phase.targetKcal)} kcal</span> ·{' '}
-        <span className="tabular-nums text-fg-2">{phase.targetProtein} g protein</span>{' '}
-        <button type="button" onClick={() => modal.open({ kind: 'day-targets' })}
-          className="inline-flex min-h-[44px] items-center font-semibold text-accent-600 sm:min-h-0">Adjust targets</button>
-      </p>
     </div>
   )
 }

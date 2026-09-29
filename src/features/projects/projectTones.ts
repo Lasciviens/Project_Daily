@@ -54,7 +54,9 @@ export const PROJECT_COLOR: Record<ProjectColor, string> = {
   blue:    'rgb(var(--info))',
   violet:  'rgb(var(--chart-2))',
   emerald: 'rgb(var(--chart-1))',
-  amber:   'rgb(var(--chart-3))',
+  // Series 3 is magenta now (no chart colour may share a status hue); the
+  // project colour the user picked as "amber" stays amber.
+  amber:   'rgb(var(--warn))',
   rose:    'rgb(var(--chart-4))',
 }
 

@@ -1,5 +1,5 @@
 import type { Tone } from '../../../shared/ui'
-import type { Confidence, Phase, ProteinBand, Reason, Verdict } from './energyBalance'
+import type { Confidence, PairedBalance, Phase, ProteinBand, Reason, Verdict } from './energyBalance'
 import type { CompositionVerdict, GoalKind, RateStatus } from './bodyGoal'
 
 // Plain-language copy for the goal report. Never a diagnosis: each line says
@@ -103,3 +103,25 @@ export function kcal(v: number | null): string {
 export function sourceLabel(s: string | null): string {
   return s == null ? 'the scale' : s === 'report' ? 'the scale reports' : s
 }
+
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
+
+/** "deficit" for burn above intake, "surplus" below. */
+export function balanceWord(deficit: number): 'deficit' | 'surplus' {
+  return deficit >= 0 ? 'deficit' : 'surplus'
+}
+
+/** Which days the calorie comparison left out, and why — or that none were. */
+export function leftOutLine(p: PairedBalance): string {
+  const parts: string[] = []
+  if (p.excluded.noFood) parts.push(`${plural(p.excluded.noFood, 'day')} with no food logged`)
+  if (p.excluded.halfLogged) parts.push(`${plural(p.excluded.halfLogged, 'half-logged day')} (under ${kcal(p.halfLoggedBelow)} kcal logged)`)
+  if (p.excluded.appleGap) parts.push(`${plural(p.excluded.appleGap, 'day')} with incomplete Apple energy (watch off or not synced)`)
+  return parts.length ? `Left out: ${parts.join(' · ')}.` : 'No day was left out — every day has a full diary and a complete Apple day.'
+}
+
+/** Why Activity and Food's "Last 7 days" can show a different number. */
+export const OTHER_SCREENS_NOTE =
+  'Other screens count different days: Activity shows only Apple\'s burn, for the period picked there (7 days by default), '
+  + 'and Food\'s “Last 7 days” averages every logged day up to today — including today\'s unfinished diary. '
+  + 'This comparison uses the same finished days on both sides.'

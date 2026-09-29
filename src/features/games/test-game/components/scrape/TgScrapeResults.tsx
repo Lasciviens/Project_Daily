@@ -4,6 +4,7 @@ import type { SearchResponse } from '../../../scraper/ssApi'
 import { useScrapePrefs } from '../../../scraper/useScrape'
 import { BASIS_LABEL, mediaCount, playersText } from './tgScrapeModel'
 import { TgBasisBadges, TgCandidateCover, TgChip, TgFlagChips } from './TgScrapeParts'
+import { Truncate } from '../../../../../shared/ui/Truncate'
 
 function outcomeText(o: SsQueryOutcome): string {
   const what = BASIS_LABEL[o.kind]
@@ -33,7 +34,7 @@ function ResultRow({ c, active, onPick, regions, yourSystem }: { c: SsCandidate;
         <TgCandidateCover candidate={c} regions={regions} width={120} className="h-[78px] w-[56px] shrink-0 overflow-hidden rounded-md" />
         <span className="min-w-0 flex-1">
           <span className="flex items-start justify-between gap-2">
-            <span className="line-clamp-2 text-[14px] font-semibold leading-snug">{String(c.values.title ?? `#${c.jeu_id}`)}</span>
+            <Truncate lines={2} className="text-[14px] font-semibold leading-snug">{String(c.values.title ?? `#${c.jeu_id}`)}</Truncate>
             {c.note20 != null && (
               <span className="flex shrink-0 items-center gap-1 text-[11.5px] font-semibold tabular-nums text-[var(--tg-text-2)]" title="ScreenScraper's community score, out of 20">
                 <Star className="h-3 w-3 fill-[var(--tg-star)]" strokeWidth={0} aria-hidden />{c.note20}/20
@@ -46,7 +47,7 @@ function ResultRow({ c, active, onPick, regions, yourSystem }: { c: SsCandidate;
             <TgBasisBadges basis={c.matched_by} />
             <TgFlagChips flags={c.flags} />
           </span>
-          <span className="mt-1 block truncate text-[11.5px] tg-muted">{[c.values.publisher, extras].filter(Boolean).join(' · ')}</span>
+          <Truncate className="mt-1 text-[11.5px] tg-muted">{[c.values.publisher, extras].filter(Boolean).join(' · ')}</Truncate>
         </span>
         <ChevronRight className="h-4 w-4 shrink-0 tg-muted" aria-hidden />
       </button>

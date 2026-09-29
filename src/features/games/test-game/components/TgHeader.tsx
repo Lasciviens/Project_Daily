@@ -1,5 +1,6 @@
-import type { TgHeaderConfig } from '../tgTypes'
+import { headerNoteText, type TgHeaderConfig } from '../tgTypes'
 import { PlatformWordmark, SectionGlyph } from './platformArt'
+import { Truncate } from '../../../../shared/ui/Truncate'
 
 // Idle status tabs: faint pills in dark mode, plain text in light (the
 // design's two variants) — `--tg-tab-idle-bg` from testGame.css when defined.
@@ -22,15 +23,22 @@ export function TgHeader({ config }: { config: TgHeaderConfig }) {
           <SectionGlyph logo={logo} />
         )}
         <div className="min-w-[min(100%,13rem)] flex-1">
-          <h1 data-tg-heading tabIndex={-1} className="truncate text-[24px] font-semibold leading-7 tracking-[-0.01em] text-[var(--tg-text)] focus:outline-none">{title}</h1>
+          <h1 data-tg-heading tabIndex={-1} className="min-w-0 text-[24px] font-semibold leading-7 tracking-[-0.01em] text-[var(--tg-text)] focus:outline-none">
+            <Truncate>{title}</Truncate>
+          </h1>
           <p className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-2 text-[11px] leading-4 text-[var(--tg-muted)]">
-            <span className="truncate tabular-nums" title={note ? subtitle : subtitleTitle ?? subtitle}>{subtitle}</span>
+            <Truncate className="tabular-nums">{subtitle}</Truncate>
             {inlineAction}
             {onClear && (
               <button type="button" onClick={onClear} className="shrink-0 font-semibold text-[var(--tg-accent)] [@media(pointer:coarse)]:min-h-[44px]">Clear filters</button>
             )}
           </p>
-          {note && <p className="truncate text-[11px] leading-4 text-[var(--tg-muted)]" title={subtitleTitle}>{note}</p>}
+          {/* The forecast's basis stays on hover even when the note fits. */}
+          {note && (
+            <p className="min-w-0 text-[11px] leading-4 text-[var(--tg-muted)]" title={subtitleTitle}>
+              <Truncate fullText={headerNoteText(note, subtitleTitle)}>{note}</Truncate>
+            </p>
+          )}
         </div>
         {action}
       </div>

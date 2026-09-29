@@ -1,6 +1,6 @@
 import { fmtDateEnGB } from '../../shared/utils/enGBDate'
 // Canonical en-GB date/time formatters for Training views. Was independently
-// forked across HevyWorkoutCard/HevyWorkoutDetail/BodyMeasurementsTab
+// forked across the workout card, the session detail and body measurements
 // — two slightly different day formats existed (`day:'numeric'` vs
 // `day:'2-digit'`); '2-digit' was already the majority and matches the
 // project's DD/MM/YYYY convention more closely, so it's canonical here.

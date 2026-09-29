@@ -3,7 +3,7 @@ import { useGoogleLogin } from '@react-oauth/google'
 import { useCalendarStore } from '../../../app/store'
 import { CalendarDays, Bike, Gamepad2, Monitor, Dumbbell, HeartPulse, RefreshCw, Unplug } from 'lucide-react'
 import { exchangeGoogleCode, disconnectGoogle } from '../api/connectionsApi'
-import { Button, Card, ToneDot, type Tone } from '../../../shared/ui'
+import { Button, Card, PageBoard, ToneDot, type Tone } from '../../../shared/ui'
 import { GoogleTasksSyncButtons } from '../../todo/components/GoogleTasksSyncButtons'
 import { StravaWidget } from '../../training/components/StravaWidget'
 import { useStravaStatus } from '../../training/hooks/useTrainingSessions'
@@ -13,6 +13,7 @@ import { isPsnReauthRequired } from '../../games/api/psnApi'
 import { npssoLifetime, npssoLifetimeLabel } from '../../games/api/psnTokenLifetime'
 import { useSteamProfile } from '../../games/hooks/useSteam'
 import { GOOGLE_SCOPES } from '../../calendar/googleScopes'
+import { CONNECTIONS_BOARD, type ConnectionSection } from '../developerBoards'
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  CONNECTIONS — the ONE place every external integration is connected,
@@ -258,23 +259,43 @@ function ServerSideCard({ icon, name, scope, note }: { icon: ReactNode; name: st
   return <ConnectionCard icon={icon} name={name} scope={scope} status="connected" statusNote="Server-side" footer={note} />
 }
 
+const ACCOUNTS_LABEL = 'Signed in from here'
+const SERVER_LABEL = 'Configured on the server'
+
 export function ConnectionsTab() {
-  return (
-    <div className="flex max-w-2xl flex-col gap-3">
+  const google = <GoogleCard />
+  const strava = <StravaCard />
+  const psn = <PlayStationCard />
+  const steam = <SteamCard />
+  const hevy = (
+    <ServerSideCard icon={<Dumbbell />} name="Hevy" scope="Workouts · routines · body measurements"
+      note="Authenticated by HEVY_API_KEY in Supabase Vault, plus a webhook for new workouts. Sync is triggered from the Training page." />
+  )
+  const health = (
+    <ServerSideCard icon={<HeartPulse />} name="Apple Health" scope="Metrics · workouts, via Health Auto Export"
+      note="The phone pushes to the health-export-webhook function with a bearer secret. Nothing to connect here — check the Health Auto Export app on the phone if data stops arriving." />
+  )
+  // Each step mounts a card once: on its own, or (server-side, from 1920)
+  // inside the serverCards grid.
+  const sections: Record<ConnectionSection, ReactNode> = {
+    intro: (
       <p className="text-meta text-fg-muted">
         Every external integration lives here. Feature pages show the data; they never carry
         their own connect or disconnect control.
       </p>
-
-      <GoogleCard />
-      <StravaCard />
-      <PlayStationCard />
-      <SteamCard />
-
-      <ServerSideCard icon={<Dumbbell />} name="Hevy" scope="Workouts · routines · body measurements"
-        note="Authenticated by HEVY_API_KEY in Supabase Vault, plus a webhook for new workouts. Sync is triggered from the Training page." />
-      <ServerSideCard icon={<HeartPulse />} name="Apple Health" scope="Metrics · workouts, via Health Auto Export"
-        note="The phone pushes to the health-export-webhook function with a bearer secret. Nothing to connect here — check the Health Auto Export app on the phone if data stops arriving." />
-    </div>
-  )
+    ),
+    google, strava, psn, steam, hevy, health,
+    accountsLabel: <h2 className="section-label">{ACCOUNTS_LABEL}</h2>,
+    serverLabel: <h2 className="section-label">{SERVER_LABEL}</h2>,
+    // Three short read-only cards of about the same height, so a row grid
+    // is safe here (W2 card columns, 19–22rem).
+    serverCards: (
+      <section aria-label={SERVER_LABEL} className="grid grid-cols-[repeat(auto-fill,minmax(19rem,22rem))] items-start gap-4">
+        {steam}{hevy}{health}
+      </section>
+    ),
+  }
+  // Which card goes where at each width: developerBoards.ts. The one-column
+  // list keeps its 42rem cap on tablets.
+  return <PageBoard sections={sections} layout={CONNECTIONS_BOARD} stackGap="gap-3" stackClassName="max-w-2xl" />
 }

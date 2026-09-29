@@ -19,6 +19,7 @@ import { PsnNpssoForm } from './PsnNpssoForm'
 import { npssoLifetime, npssoLifetimeLabel } from '../api/psnTokenLifetime'
 import { formatPlaytime } from '../api/playtimeFormat'
 import type { ProviderGameInput } from '../api/gamesApi'
+import { Truncate } from '../../../shared/ui/Truncate'
 
 // PlayStation integration — the community npsso-cookie flow (Sony has no
 // official API; see CLAUDE.md's Games Feature Detail research note).
@@ -77,7 +78,7 @@ function GameCard({ game, ownership, onOpen }: {
         )}
       </div>
       <div className="p-2 flex-1">
-        <p className="text-xs font-semibold text-ink-800 leading-snug line-clamp-2">{game.name}</p>
+        <Truncate as="p" lines={2} className="text-xs font-semibold text-ink-800 leading-snug">{game.name}</Truncate>
         <p className="text-[10px] text-ink-400 mt-1">
           {minutes > 0 ? formatPlaytime(minutes) : '—'}{last ? ` · ${last}` : ''}
         </p>
@@ -101,7 +102,7 @@ function TrophyCard({ title, onOpen }: { title: PsnTrophyTitle; onOpen: () => vo
           : <div className="w-full h-full flex items-center justify-center text-2xl">🏆</div>}
       </div>
       <div className="p-2 flex-1">
-        <p className="text-xs font-semibold text-ink-800 leading-snug line-clamp-2">{title.trophyTitleName}</p>
+        <Truncate as="p" lines={2} className="text-xs font-semibold text-ink-800 leading-snug">{title.trophyTitleName}</Truncate>
         <div className="flex items-center gap-1.5 mt-1 text-[10px] text-ink-500">
           {t.platinum > 0 && <span title="Platinum">🏆{t.platinum}</span>}
           <span>🥇{t.gold}</span><span>🥈{t.silver}</span><span>🥉{t.bronze}</span>
@@ -300,7 +301,7 @@ function ConnectedView() {
                             : <div className="w-full h-full flex items-center justify-center text-2xl">🎮</div>}
                         </div>
                         <div className="p-2">
-                          <p className="text-[11px] font-semibold text-ink-800 truncate">{g.localizedName || g.name}</p>
+                          <Truncate as="p" className="text-[11px] font-semibold text-ink-800">{g.localizedName || g.name}</Truncate>
                           <p className="text-[10px] text-accent-600 font-medium">{relativeDay(g.lastPlayedDateTime) ?? '—'}</p>
                         </div>
                       </button>

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { Settings2 } from 'lucide-react'
 import type { TgGame } from '../../testGameModel'
 import { useTestGameStore } from '../../testGameStore'
-import { useTgBreakpoint } from '../../useTgBreakpoint'
+import { useBreakpoint } from '../../../../../shared/hooks/useBreakpoint'
 import type { SsCandidate } from '../../../scraper/ssTypes'
 import { useMutationWithFeedback } from '../../../../../shared/hooks/useMutationWithFeedback'
 import { useHistoryDismiss } from '../../../../../shared/hooks/useHistoryDismiss'
@@ -30,8 +30,8 @@ import { TgScrapeEmpty } from './TgScrapeParts'
  * page never throws away lookups that cost ScreenScraper requests.
  * Phone: steps (search → review; Back returns). Tablet and wider: side by side.
  */
-export function TgScrapeView({ games, loading, layout }: { games: TgGame[]; loading: boolean; layout: 'desktop' | 'mobile' }) {
-  const bp = useTgBreakpoint()
+export function TgScrapeView({ games, loading, layout }: { games: TgGame[]; loading: boolean; layout: 'desktop' | 'phone' }) {
+  const bp = useBreakpoint()
   // Results and review side by side only with real width for both; a tablet
   // (even landscape, beside the sidebar) gets the step flow — a 130–390px
   // review pane was unusable.
@@ -167,7 +167,7 @@ export function TgScrapeView({ games, loading, layout }: { games: TgGame[]; load
       searchForm={searchForm}
       wide={wide}
       onBack={wide ? undefined : () => setReview(null)}
-      backInline={!wide && bp !== 'mobile'}
+      backInline={!wide && bp !== 'phone'}
     />
   ) : null
 

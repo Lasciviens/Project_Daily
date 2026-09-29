@@ -1,145 +1,94 @@
-import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
-import { CalendarPlus, ChevronRight, MoreHorizontal, Pencil } from 'lucide-react'
-import { Button, IconButton, ToneDot } from '../../../../shared/ui'
-import { PLAN_STATUS_LABEL } from '../../trainingPlanModel'
+import { CalendarPlus, ChevronRight } from 'lucide-react'
+import { Button, ListRow } from '../../../../shared/ui'
+import { useEntityModal } from '../../../../shared/modals'
+import { fmtDateEnGB } from '../../../../shared/utils/enGBDate'
 import { formatDistance } from '../../setFormat'
 import { openPlanSession } from '../../planTraining'
+import { SESSION_STATUS_LABEL, coveredPlanNote, planRefOf } from '../../sessionRef'
 import { StravaTypeIcon } from '../StravaIcons'
-import { StravaDot } from './CalendarBits'
-import { planStartHHMM, sessionPlanNote, workoutStartHHMM, type DaySession, type OpenPlan } from './calendarSessions'
-import { PLAN_TONE, WORKOUT_TONE, getWorkoutDuration, isDayEmpty, ymd, type CalendarPlanItem, type DayData } from './calendarModel'
+import { DayMarkGlyph, StravaBar } from './DayMarkGlyph'
+import { planStartHHMM, workoutStartHHMM, type DaySession, type OpenPlan } from './calendarSessions'
+import { getWorkoutDuration, isDayEmpty, type DayData } from './calendarModel'
 
 type Entry =
   | { kind: 'session'; at: string | null; session: DaySession }
   | { kind: 'plan'; at: string | null; open: OpenPlan }
 
-// Editing, moving or deleting a plan sits behind this menu — two deliberate
-// taps, never the row's own tap (that opens the workout, or nothing).
-function PlanMenu({ plans, onEditPlan }: { plans: CalendarPlanItem[]; onEditPlan: (p: CalendarPlanItem) => void }) {
-  if (plans.length === 0) return null
-  return (
-    <Menu as="div" className="shrink-0">
-      <MenuButton as={IconButton} label="Plan actions"><MoreHorizontal /></MenuButton>
-      <MenuItems anchor="bottom end" transition className="menu w-56 [--anchor-gap:4px] transition duration-150 data-[closed]:scale-95 data-[closed]:opacity-0">
-        {plans.map(p => (
-          <MenuItem key={p.id}>
-            <button type="button" onClick={() => onEditPlan(p)} className="menu-item">
-              <Pencil aria-hidden className="h-4 w-4 shrink-0" />
-              <span className="truncate">
-                {p.kind === 'recurring' ? 'Edit repeating plan' : 'Edit plan'}
-                {plans.length > 1 && ` · ${p.title}`}
-              </span>
-            </button>
-          </MenuItem>
-        ))}
-      </MenuItems>
-    </Menu>
-  )
-}
+const chevron = <ChevronRight aria-hidden className="h-4 w-4 text-fg-faint" />
+const glyphSlot = 'grid w-4 place-items-center'
 
-function SessionRow({ session, onOpenWorkout, onEditPlan }: { session: DaySession; onOpenWorkout: (id: string) => void; onEditPlan: (p: CalendarPlanItem) => void }) {
-  const w = session.workout
-  const dur = getWorkoutDuration(w)
-  const note = sessionPlanNote(session)
-  const meta = [workoutStartHHMM(w), dur != null ? `${dur} min` : null].filter(Boolean).join(' · ')
-  return (
-    <div className="flex items-center gap-1 rounded-row border border-line pr-1">
-      <button type="button" onClick={() => onOpenWorkout(w.id)} className="row row-interactive min-w-0 flex-1 py-1.5 text-left">
-        <ToneDot tone={WORKOUT_TONE} />
-        <span className="flex min-w-0 flex-1 flex-col">
-          <span className="truncate text-body font-medium text-fg">{w.title}</span>
-          <span className="flex flex-wrap gap-x-1.5 text-meta tabular-nums text-fg-muted">
-            {meta && <span>{meta}</span>}
-            {note && <span data-tone="success" className="tone-text">{meta && '· '}{note}</span>}
-          </span>
-        </span>
-        <ChevronRight aria-hidden className="h-4 w-4 shrink-0 text-fg-faint" />
-      </button>
-      <PlanMenu plans={session.plans} onEditPlan={onEditPlan} />
-    </div>
-  )
-}
-
-function OpenPlanRow({ open, onEditPlan }: { open: OpenPlan; onEditPlan: (p: CalendarPlanItem) => void }) {
-  const { plan: p, status } = open
-  const at = planStartHHMM(p)
-  return (
-    <div className="flex min-h-[44px] items-center gap-2.5 rounded-row border border-line py-1.5 pl-3 pr-1">
-      <ToneDot tone={PLAN_TONE[status]} />
-      <span className="flex min-w-0 flex-1 flex-col">
-        <span className="truncate text-body font-medium text-fg-2">{p.kind === 'recurring' && '⟳ '}{p.title}</span>
-        {/* The status sits under the title (a pill beside it cut long routine names to a few letters). */}
-        <span className="flex flex-wrap gap-x-1.5 text-meta tabular-nums text-fg-muted">
-          {at && <span>{at}</span>}
-          <span data-tone={PLAN_TONE[status]} className="tone-text font-medium">{at && '· '}{PLAN_STATUS_LABEL[status]}</span>
-        </span>
-      </span>
-      <PlanMenu plans={[p]} onEditPlan={onEditPlan} />
-    </div>
-  )
-}
-
-// Shared by WeekView and MonthView: one row per real session — a workout
-// (tap → its full detail) carrying the plan it covered, or a plan nothing
-// covered (missed / today / upcoming).
-export function DayDetailPanel({
-  day, todayStr, onOpenWorkout, onEditPlan,
-}: {
-  day:           DayData | null | undefined
-  todayStr:      string
-  onOpenWorkout: (id: string) => void
-  onEditPlan:    (p: CalendarPlanItem) => void
-}) {
+/**
+ * The selected day under the month grid: one row per real session. A row
+ * opens the session popup — the workout (what was lifted), or the plan (its
+ * exercises and targets); changing a plan is behind that popup's ⋯. A plan a
+ * workout covered is part of that workout's row, never a second row.
+ */
+export function DayDetailPanel({ day, dateStr, todayStr }: { day: DayData | null; dateStr: string; todayStr: string }) {
+  const modal = useEntityModal()
   if (!day) return null
-  const dateKey = ymd(day.date)
+  const canPlan = dateStr >= todayStr
   const empty = isDayEmpty(day)
-  const canPlan = dateKey >= todayStr
-  if (empty && !canPlan) return null
 
   const entries: Entry[] = [
     ...day.sessions.map(session => ({ kind: 'session' as const, at: workoutStartHHMM(session.workout), session })),
     ...day.openPlans.map(open => ({ kind: 'plan' as const, at: planStartHHMM(open.plan), open })),
   ].sort((a, b) => (a.at ?? '99:99').localeCompare(b.at ?? '99:99'))
 
+  const heading = fmtDateEnGB(new Date(`${dateStr}T12:00:00`), { weekday: 'long', day: 'numeric', month: 'long' })
+
   return (
-    <div className="flex flex-col gap-3 border-t border-line pt-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-body font-semibold text-fg">
-          {day.date.toLocaleDateString('en-GB', { weekday: 'long', day: '2-digit', month: 'long' })}
-        </p>
-        {canPlan && (
-          <Button size="sm" icon={<CalendarPlus />} onClick={() => openPlanSession(dateKey)}>Plan a session</Button>
-        )}
+    <div className="flex flex-col gap-1 border-t border-line pt-3">
+      <div className="flex min-h-[36px] flex-wrap items-center justify-between gap-2">
+        <p className="text-body font-semibold text-fg">{heading}{dateStr === todayStr && <span className="font-normal text-fg-muted"> · Today</span>}</p>
+        {canPlan && <Button size="sm" variant="ghost" className="ml-auto" icon={<CalendarPlus />} onClick={() => openPlanSession(dateStr)}>Plan a session</Button>}
       </div>
 
-      {entries.length > 0 && (
-        <div>
-          <p className="section-label mb-1.5">Training</p>
-          <div className="flex flex-col gap-1">
-            {entries.map(e => e.kind === 'session'
-              ? <SessionRow key={e.session.workout.id} session={e.session} onOpenWorkout={onOpenWorkout} onEditPlan={onEditPlan} />
-              : <OpenPlanRow key={e.open.plan.id} open={e.open} onEditPlan={onEditPlan} />)}
-          </div>
-        </div>
-      )}
+      {entries.map(e => {
+        if (e.kind === 'session') {
+          const w = e.session.workout
+          const dur = getWorkoutDuration(w)
+          // The same words as the popup this row opens (sessionRef.coveredPlanNote).
+          const note = coveredPlanNote(e.session.plans, w)
+          return (
+            <ListRow
+              key={w.id}
+              className="-mx-3"
+              leading={<span className={glyphSlot}><DayMarkGlyph mark="done" /></span>}
+              title={w.title}
+              subtitle={[e.at, dur != null ? `${dur} min` : null, note].filter(Boolean).join(' · ')}
+              trailing={chevron}
+              onClick={() => modal.open({ kind: 'training-session', workoutId: w.id })}
+            />
+          )
+        }
+        const { plan, status } = e.open
+        const ref = planRefOf(plan, dateStr)
+        const mark = status === 'done' ? 'done' : status
+        return (
+          <ListRow
+            key={plan.id}
+            className="-mx-3"
+            leading={<span className={glyphSlot}><DayMarkGlyph mark={mark} /></span>}
+            title={`${plan.kind === 'recurring' ? '⟳ ' : ''}${plan.title}`}
+            subtitle={[e.at, status === 'done' ? 'Done on Strava' : SESSION_STATUS_LABEL[status]].filter(Boolean).join(' · ')}
+            trailing={ref ? chevron : undefined}
+            onClick={ref ? () => modal.open({ kind: 'training-session', plan: ref }) : undefined}
+          />
+        )
+      })}
 
-      {day.activities.length > 0 && (
-        <div>
-          <p className="section-label mb-1.5">Strava</p>
-          <div className="flex flex-col gap-1">
-            {day.activities.map(a => (
-              <div key={a.id} className="row border border-line">
-                <StravaDot />
-                <StravaTypeIcon type={a.type} className="h-4 w-4 shrink-0 text-fg-muted" />
-                <span className="flex-1 text-body font-medium text-fg">{a.title}</span>
-                {a.distance_meters ? <span className="shrink-0 text-meta tabular-nums text-fg-muted">{formatDistance(a.distance_meters)}</span> : null}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      {day.activities.map(a => (
+        <ListRow
+          key={a.id}
+          className="-mx-3"
+          leading={<span className="flex w-4 flex-col items-center gap-0.5"><StravaTypeIcon type={a.type} className="h-4 w-4 text-fg-muted" /><StravaBar /></span>}
+          title={a.title}
+          subtitle="Strava"
+          meta={a.distance_meters ? formatDistance(a.distance_meters) : undefined}
+        />
+      ))}
 
-      {empty && <p className="text-meta text-fg-muted">Nothing planned or logged.</p>}
+      {empty && <p className="py-1 text-meta text-fg-muted">{canPlan ? 'Nothing planned yet.' : 'Nothing planned or logged.'}</p>}
     </div>
   )
 }

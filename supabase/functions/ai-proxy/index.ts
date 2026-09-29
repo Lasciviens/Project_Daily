@@ -410,7 +410,7 @@ const TOOLS = [
       },
       {
         name: 'get_athlete_profile',
-        description: 'One compact call returning the user\'s durable training profile (goal, experience level, training days/week, equipment) AND their active movement-pattern limitations. Prefer this over two separate db_query calls before giving any training/programming advice — cheaper and the standard first step for training questions.',
+        description: 'One compact call returning the user\'s durable training profile (training focus, experience level, training days/week, equipment) AND their active movement-pattern limitations. Their goal (phase, targets, goal weight) is day_targets, not this. Prefer this over two separate db_query calls before giving any training/programming advice — cheaper and the standard first step for training questions.',
         parameters: { type: 'OBJECT', properties: {}, required: [] },
       },
       // ─── Semantic recall over the user's own text ─────────────────────────
@@ -2249,13 +2249,28 @@ const DB_CATALOG: Record<string, CatalogEntry> = {
   athlete_profile: {
     access: 'rw',
     purpose: "The user's durable training profile/settings — a SINGLETON: at most ONE row per user, keyed by user_id (there is no id column, unlike every other table here). Not a list. Consult before giving any training/programming advice so recommendations match their real goal/experience/equipment; prefer the get_athlete_profile tool to read it (returns limitations too in the same call).",
-    columns: 'user_id(uuid, PRIMARY KEY — not "id"), goal(strength|hypertrophy|fat_loss|general), experience_level(novice|intermediate|advanced), training_age_years(numeric, nullable), training_days_per_week(int, nullable), equipment_access(home|gym|both), notes(text, nullable), birth_year(smallint, nullable), sex(male|female, nullable), height_cm(numeric, nullable), goal_weight_kg(numeric, nullable), goal_body_fat_pct(numeric — body fat % as the smart scale reports it, nullable), goal_muscle_mass_kg(numeric — the scale report muscle % × weight, not lean mass, nullable), phase_start_date(date — first day of the current cut/maintain/gain phase, nullable), updated_at',
+    columns: 'user_id(uuid, PRIMARY KEY — not "id"), goal(the TRAINING FOCUS: strength|hypertrophy|general; a legacy fat_loss value means general — never write fat_loss), experience_level(novice|intermediate|advanced), training_age_years(numeric, nullable), training_days_per_week(int, nullable), equipment_access(home|gym|both), notes(text, nullable), birth_year(smallint, nullable), sex(male|female, nullable), height_cm(numeric, nullable), goal_weight_kg/goal_body_fat_pct/goal_muscle_mass_kg/phase_start_date (SUPERSEDED since migration 113 — the app no longer reads them; read and write these on day_targets instead), updated_at',
     rules: [
       'There is at most one row for this user — never insert a second one once a row exists.',
       'To write: first db_query this table with filters={} to check whether a row already exists (or call get_athlete_profile). If none exists, db_insert one. If one exists, db_update it — but db_update refuses an empty filters object, so pass filters={"user_id":"<the user_id value from the row you just queried>"} to satisfy that check; every row already carries its own user_id in the query result, and it is always the correct value since every read/write here is scoped to you anyway.',
       'This table has no id column, so a db_insert response\'s id/ids fields will read null for it — check success/rows instead to confirm the write went through.',
       'Only change goal/experience_level/equipment_access when the user actually states a change; do not infer a new goal from one offhand remark.',
-      'The cut/maintain/gain PHASE is not stored here — it is day_targets.goal; goal_weight_kg/goal_body_fat_pct/goal_muscle_mass_kg/phase_start_date are the body goals the Health page\'s Goal progress report measures against.',
+      'The user\'s GOAL is not here: the cut/maintain/gain phase, its start date, the daily calorie/protein/water targets and the body targets (goal weight, body fat %, muscle mass) all live on day_targets — one row, one goal. A request to lose fat or gain weight is a phase change on day_targets, not a training-focus change here.',
+    ].join(' '),
+  },
+  // day_targets is THE goal (migrations 086 + 113): one row per user holding the
+  // phase, its start date, the daily targets and the body targets — the same row
+  // the app's one "Your goal" editor saves (Food, Daily and Health all show it).
+  day_targets: {
+    access: 'rw',
+    purpose: "The user's goal — a SINGLETON: at most ONE row per user, keyed by user_id (no id column). Holds the phase (goal: cut|maintain|gain) and the day it started, the daily calorie/protein/water targets, and the body targets (goal weight, body fat %, muscle mass — one set for every phase). Read it for any question about their goal, targets, deficit plan or progress toward a goal weight.",
+    columns: 'user_id(uuid, PRIMARY KEY — not "id"), calories(int kcal/day), protein_g(int g/day), water_ml(int ml/day), goal(the PHASE: cut|maintain|gain), last_calorie_adjust(date, nullable — last adaptive-calorie nudge, gates a 14-day cooldown), phase_start_date(date, nullable — first day of the current phase), goal_weight_kg(numeric 25–300, nullable), goal_body_fat_pct(numeric 3–60 — as the smart scale reports it, nullable), goal_muscle_mass_kg(numeric 10–150 — the scale report muscle % × weight, not lean mass, nullable), updated_at',
+    rules: [
+      'There is at most one row for this user — never insert a second one once a row exists.',
+      'To write: first db_query this table with filters={} to check whether a row exists. If none exists, db_insert one. If one exists, db_update it with filters={"user_id":"<the user_id value from the row you just queried>"} (db_update refuses an empty filters object).',
+      'This table has no id column, so a db_insert response\'s id/ids fields read null for it — check success/rows instead.',
+      'Always say which values you will change and get an explicit yes before writing. When the phase changes, also set phase_start_date to the day the user says the new phase started (today if they don\'t say).',
+      'A calorie target is a plan, never a verdict on what they ate; never lower calories below max(1500, 24 × bodyweight kg).',
     ].join(' '),
   },
   // athlete_limitations is rw for the same reason — a normal list table, not a
@@ -2662,7 +2677,16 @@ async function getAthleteProfile(supabase: AnyRecord, userId: string): Promise<A
       supabase.from('athlete_profile').select('*').eq('user_id', userId).maybeSingle(),
       supabase.from('athlete_limitations').select('movement_pattern,severity,note').eq('user_id', userId).eq('active', true),
     ])
-    const profile = profileR.status === 'fulfilled' ? (profileR.value.data ?? null) : null
+    const raw = profileR.status === 'fulfilled' ? (profileR.value.data ?? null) : null
+    // Read the row the way the app does: goal is the TRAINING focus (a retired
+    // 'fat_loss' reads as general — the Cut phase on day_targets covers it) and
+    // the four body-goal columns migration 113 superseded are left out (the
+    // goal lives on day_targets now), so this call can't contradict the app.
+    const profile: AnyRecord | null = raw ? { ...raw } : null
+    if (profile) {
+      for (const k of ['goal_weight_kg', 'goal_body_fat_pct', 'goal_muscle_mass_kg', 'phase_start_date']) delete profile[k]
+      if (profile.goal === 'fat_loss') profile.goal = 'general'
+    }
     const limitations = limitationsR.status === 'fulfilled' ? (limitationsR.value.data ?? []) : []
     return { success: true, profile, limitations }
   } catch (e) { return { success: false, error: (e as Error).message } }

@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
-import { Skeleton } from '../../../../shared/ui'
+import { PageBoard, Skeleton } from '../../../../shared/ui'
+import { PROGRAM_BOARD } from '../../trainingBoards'
 import {
   useAthleteProfile, useAthleteLimitations, useExerciseTargetOverrides, useMusclePreferences,
 } from '../../hooks/useAthleteProfile'
@@ -57,19 +58,25 @@ export function ProgramTab() {
     return <div className="flex max-w-2xl flex-col gap-3"><Skeleton rounded="rounded-card" className="h-28" /><Skeleton rounded="rounded-card" className="h-48" /></div>
   }
 
+  // Placed by PageBoard (trainingBoards.ts → PROGRAM_BOARD): the plan in
+  // columns across the top, each routine's prescription as a row of cards below.
   return (
-    <div className="flex flex-col gap-3 sm:gap-4">
-      <CurrentProgramCard routines={view.current} lastTrained={view.lastTrained} today={today} />
-      <WeeklyScheduleCard templates={view.trainingTemplates} targetDays={view.targetDays} routineCount={view.current.length} passes={view.passes} />
-      {view.current.length > 0 && (
-        <div className="grid max-w-2xl grid-cols-1 items-start justify-start gap-3 lg:max-w-none lg:grid-cols-[repeat(auto-fill,minmax(24rem,28rem))]">
-          {view.current.map(r => (
-            <RoutineProgramCard key={r.id} routine={r} overrides={view.overrides} lastDoneText={lastDone(view.lastTrained.get(r.id), today)} />
-          ))}
+    <PageBoard layout={PROGRAM_BOARD} stackGap="gap-3 sm:gap-4" sections={{
+      current: <CurrentProgramCard routines={view.current} lastTrained={view.lastTrained} today={today} />,
+      schedule: <WeeklyScheduleCard templates={view.trainingTemplates} targetDays={view.targetDays} routineCount={view.current.length} passes={view.passes} />,
+      routines: view.current.length > 0 && (
+        // Columns by the routines' OWN width: two on a wide tablet (the phone
+        // stack), one stacked column in the 42rem main track of a wide page.
+        <div className="@container">
+          <div className="grid max-w-2xl grid-cols-1 items-start gap-3 @[50rem]:max-w-none @[50rem]:grid-cols-[repeat(auto-fill,minmax(24rem,1fr))]">
+            {view.current.map(r => (
+              <RoutineProgramCard key={r.id} routine={r} overrides={view.overrides} lastDoneText={lastDone(view.lastTrained.get(r.id), today)} />
+            ))}
+          </div>
         </div>
-      )}
-      <PlannedVolumeCard muscles={view.muscles} passes={view.passes} />
-      {view.current.length > 0 && <BalanceCard balance={view.balance} comparison={comparison} doneWindowDays={done.windowDays} />}
-    </div>
+      ),
+      planned: <PlannedVolumeCard muscles={view.muscles} passes={view.passes} />,
+      balance: view.current.length > 0 && <BalanceCard balance={view.balance} comparison={comparison} doneWindowDays={done.windowDays} />,
+    }} />
   )
 }

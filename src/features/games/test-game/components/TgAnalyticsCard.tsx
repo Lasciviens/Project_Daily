@@ -1,6 +1,7 @@
 import { useId, type ReactNode } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import { TGA_CARD } from './tgAnalyticsFormat'
+import { Truncate } from '../../../../shared/ui/Truncate'
 
 /**
  * One Analytics card: the 11px uppercase label, an optional muted summary on
@@ -18,7 +19,7 @@ export function TgAnalyticsCard({ label, meta, className = '', children }: {
     <section aria-labelledby={id} className={`${TGA_CARD} @container flex flex-col p-5 ${className}`}>
       <header className="flex min-h-5 items-baseline justify-between gap-3">
         <h2 id={id} className="tg-section-label shrink-0">{label}</h2>
-        {meta != null && <p className="min-w-0 truncate text-right text-[12px] text-[var(--tg-muted)]">{meta}</p>}
+        {meta != null && <Truncate as="p" className="text-right text-[12px] text-[var(--tg-muted)]">{meta}</Truncate>}
       </header>
       <div className="mt-4 flex min-h-0 flex-1 flex-col">{children}</div>
     </section>

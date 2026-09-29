@@ -3,6 +3,7 @@ import { Check, ChevronLeft, ChevronRight, ListChecks } from 'lucide-react'
 import { ModalShell } from '../../../shared/modals/ModalShell'
 import { cx } from '../../../shared/ui/cx'
 import type { RecipeWithIngredients } from '../types'
+import { Truncate } from '../../../shared/ui'
 
 interface Props {
   recipe: RecipeWithIngredients
@@ -45,7 +46,7 @@ export function CookMode({ recipe, steps, onClose }: Props) {
         <div className="flex items-center gap-3 px-4 pb-3 pr-16 pt-[calc(0.75rem+env(safe-area-inset-top))] sm:px-8 sm:pt-4">
           <div className="min-w-0 flex-1">
             <p className="text-micro font-semibold uppercase tracking-[0.09em] text-white/50">Cook mode</p>
-            <p className="truncate text-ui font-semibold">{recipe.title}</p>
+            <Truncate as="p" className="text-ui font-semibold">{recipe.title}</Truncate>
           </div>
           <button
             type="button"

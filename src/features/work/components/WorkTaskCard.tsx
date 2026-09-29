@@ -5,7 +5,7 @@ import { Menu, MenuButton, MenuItems, MenuItem } from '@headlessui/react'
 import { AlignLeft, Ban, Check, Hourglass, MoreHorizontal, Pencil, RotateCcw, Trash2, Zap } from 'lucide-react'
 import type { Task, TaskStatus } from '../../todo/types'
 import type { Tone } from '../../../shared/ui'
-import { cx } from '../../../shared/ui'
+import { Truncate, cx } from '../../../shared/ui'
 import { haptic } from '../../../shared/utils/haptics'
 import { DueChip, PriorityMark } from './WorkTaskBits'
 
@@ -73,9 +73,9 @@ export default function WorkTaskCard({
         <Zap aria-label="Focused" className="absolute right-2.5 top-3 h-3.5 w-3.5 fill-current text-accent-600" />
       )}
 
-      <p className={cx('line-clamp-2 pr-5 text-body font-medium', isDone ? 'text-fg-faint line-through' : 'text-fg')}>
+      <Truncate as="p" lines={2} className={cx('pr-5 text-body font-medium', isDone ? 'text-fg-faint line-through' : 'text-fg')}>
         {task.title}
-      </p>
+      </Truncate>
 
       <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
         <PriorityMark task={task} />
@@ -90,7 +90,7 @@ export default function WorkTaskCard({
             className="tone-pill max-w-[10rem] [@media(hover:hover)]:hover:brightness-95"
           >
             <Hourglass aria-hidden className="h-3 w-3 shrink-0" />
-            <span className="truncate">{task.waiting_for || <span className="italic opacity-70">add…</span>}</span>
+            {task.waiting_for ? <Truncate>{task.waiting_for}</Truncate> : <span className="italic opacity-70">add…</span>}
           </button>
         )}
         {editingWaiting && (

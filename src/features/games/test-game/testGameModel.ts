@@ -20,8 +20,37 @@ export type TgSort = 'title' | 'title-desc' | 'recent' | 'playtime' | 'rating' |
 export type TgStatusFilter = 'all' | PlayStatus
 
 export const ALL_PLATFORMS = 'all'
-/** The sidebar's "Others" row: every platform past the top few, as one filter. */
-export const OTHER_PLATFORMS = 'others'
+
+/** Every section, in navigation order. */
+export const TG_SECTIONS: readonly TgSection[] = ['library', 'queue', 'wishlist', 'completed', 'backlog', 'analytics', 'scrape', 'advanced']
+
+export function parseTgSection(v: string | null | undefined): TgSection | null {
+  const k = (v ?? '').trim().toLowerCase()
+  return (TG_SECTIONS as readonly string[]).includes(k) ? k as TgSection : null
+}
+
+/**
+ * Where the page is, as the address carries it: `?section=` (left out for the
+ * Library) and `?platform=` — the Library's platform shelf, or a
+ * Wishlist/Completed/Backlog view's platform scope (left out for All).
+ */
+export function tgUrlFromState(section: TgSection, platform: string, scopePlatform: string): { section: string | null; platform: string | null } {
+  const p = section === 'library' ? platform : STATUS_SECTIONS[section] ? scopePlatform : ALL_PLATFORMS
+  return { section: section === 'library' ? null : section, platform: p && p !== ALL_PLATFORMS ? p : null }
+}
+
+/**
+ * The state an address asks for, or null when it names neither (a plain
+ * /games link: the page stays where it was last). Once the address names
+ * either one it is the whole state — a missing section is the Library, a
+ * missing platform is All. An unknown section falls back to the Library; an
+ * unknown platform is kept (the page falls back to All once the library has
+ * loaded and shows it has no such shelf).
+ */
+export function tgStateFromUrl(section: string | null, platform: string | null): { section: TgSection; platform: string } | null {
+  if (section == null && platform == null) return null
+  return { section: parseTgSection(section) ?? 'library', platform: (platform ?? '').trim().toLowerCase() || ALL_PLATFORMS }
+}
 
 /** The sort a fresh page starts on; a different one is a choice, not a filter. */
 export const DEFAULT_SORT: TgSort = 'recent'
@@ -62,6 +91,21 @@ export type PlatformFamily =
   | 'playstation' | 'psp' | 'gamecube' | 'switch' | 'wii' | 'ds' | 'xbox'
   | 'steam' | 'nintendo' | 'gameboy' | 'sega' | 'arcade' | 'android' | 'other'
 
+/** Who makes the hardware (or, for Steam and PC, where the games run) —
+ *  the navigation groups every platform under one of these. */
+export type PlatformMaker = 'nintendo' | 'sony' | 'sega' | 'microsoft' | 'pc' | 'arcade' | 'android' | 'other'
+
+export const MAKER_LABEL: Record<PlatformMaker, string> = {
+  nintendo: 'Nintendo', sony: 'Sony', sega: 'Sega', microsoft: 'Microsoft',
+  pc: 'PC', arcade: 'Arcade', android: 'Android', other: 'Other',
+}
+
+const MAKER_OF_FAMILY: Record<PlatformFamily, PlatformMaker> = {
+  playstation: 'sony', psp: 'sony',
+  gamecube: 'nintendo', switch: 'nintendo', wii: 'nintendo', ds: 'nintendo', nintendo: 'nintendo', gameboy: 'nintendo',
+  sega: 'sega', xbox: 'microsoft', steam: 'pc', arcade: 'arcade', android: 'android', other: 'other',
+}
+
 export interface PlatformInfo {
   key: string
   /** Sidebar / chip label — "PS2". */
@@ -69,11 +113,13 @@ export interface PlatformInfo {
   /** Header title — "PlayStation 2". */
   name: string
   family: PlatformFamily
+  /** The navigation group it is listed under. */
+  maker: PlatformMaker
   /** Brand accent used by the placeholder case and the wordmark. */
   brand: string
 }
 
-type PlatformSpec = Omit<PlatformInfo, 'key'>
+type PlatformSpec = Omit<PlatformInfo, 'key' | 'maker'> & { maker?: PlatformMaker }
 
 // ES-DE folder names (the `game_platforms.system` values) plus the two
 // provider libraries. Unknown keys are expected — `platformInfo` falls back.
@@ -109,28 +155,39 @@ const PLATFORMS: Record<string, PlatformSpec> = {
   mame:         { short: 'Arcade',      name: 'Arcade (MAME)',            family: 'arcade',      brand: '#d97706' },
   androidapps:  { short: 'Android',     name: 'Android apps',             family: 'android',     brand: '#16a34a' },
   androidgames: { short: 'Android',     name: 'Android games',            family: 'android',     brand: '#16a34a' },
+  pc:           { short: 'PC',          name: 'PC',                       family: 'other',       brand: '#475569', maker: 'pc' },
+  // ES-DE's own folder of emulator launchers, not a console.
+  emulators:    { short: 'Emulators',   name: 'Emulators (ES-DE)',        family: 'other',       brand: '#64748b' },
 }
+
+const specInfo = (key: string, spec: PlatformSpec): PlatformInfo =>
+  ({ key, short: spec.short, name: spec.name, family: spec.family, brand: spec.brand, maker: spec.maker ?? MAKER_OF_FAMILY[spec.family] })
+
 
 /** The key a game with no platform variant at all is filed under. */
 export const NO_PLATFORM = 'unknown'
 
 export function platformInfo(key: string | null | undefined): PlatformInfo {
   const k = (key ?? '').trim().toLowerCase()
-  if (k === ALL_PLATFORMS) return { key: k, short: 'All', name: 'All Games', family: 'other', brand: '#2f6bff' }
-  if (k === OTHER_PLATFORMS) return { key: k, short: 'Others', name: 'Other Platforms', family: 'other', brand: '#64748b' }
+  if (k === ALL_PLATFORMS) return { key: k, short: 'All', name: 'All Games', family: 'other', maker: 'other', brand: '#2f6bff' }
   // A game with no variant is still a game — "UNKNOWN" read like a console.
-  if (!k || k === NO_PLATFORM) return { key: NO_PLATFORM, short: 'No platform', name: 'No platform', family: 'other', brand: '#64748b' }
+  if (!k || k === NO_PLATFORM) return { key: NO_PLATFORM, short: 'No platform', name: 'No platform', family: 'other', maker: 'other', brand: '#64748b' }
   const spec = PLATFORMS[k]
-  if (spec) return { key: k, ...spec }
+  if (spec) return specInfo(k, spec)
   if (k.startsWith(RESERVED_PREFIX)) {
     // A retro copy filed under a reserved spelling: "Steam (ES-DE)", "ALL".
+    // It keeps the family (icon) and maker of the platform it is named after.
     const base = k.slice(RESERVED_PREFIX.length)
     const known = PLATFORMS[base]
-    const label = known ? `${known.short} (ES-DE)` : base.toUpperCase()
-    return { key: k, short: label, name: known ? `${known.name} (ES-DE)` : label, family: 'other', brand: '#64748b' }
+    if (known) {
+      const info = specInfo(k, known)
+      return { ...info, short: `${known.short} (ES-DE)`, name: `${known.name} (ES-DE)`, brand: '#64748b' }
+    }
+    const label = base.toUpperCase()
+    return { key: k, short: label, name: label, family: 'other', maker: 'other', brand: '#64748b' }
   }
   const label = k.toUpperCase()
-  return { key: k, short: label, name: label, family: 'other', brand: '#64748b' }
+  return { key: k, short: label, name: label, family: 'other', maker: 'other', brand: '#64748b' }
 }
 
 /**
@@ -158,8 +215,10 @@ export function platformLabels(counts: PlatformCount[]): Map<string, string> {
 /** Lower-case, letters and digits only: "Wii U" → "wiiu", "PS-1" → "ps1". */
 const normSystem = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '')
 
-/** Keys a retro system string may never resolve to (see resolveSystemKey). */
-const RESERVED_KEYS: ReadonlySet<string> = new Set([ALL_PLATFORMS, OTHER_PLATFORMS, NO_PLATFORM, 'steam', 'playstation'])
+/** Keys a retro system string may never resolve to (see resolveSystemKey).
+ *  'others' is the retired "Others" row's key: a system called "Others"
+ *  must not land on a shelf an old saved state or link may still name. */
+const RESERVED_KEYS: ReadonlySet<string> = new Set([ALL_PLATFORMS, 'others', NO_PLATFORM, 'steam', 'playstation'])
 export const RESERVED_PREFIX = 'sys-'
 
 // Spellings no key, short label or full name covers. Genesis and Mega Drive
@@ -327,14 +386,32 @@ export function platformCounts(games: TgGame[]): PlatformCount[] {
     .sort((a, b) => b.count - a.count || a.info.name.localeCompare(b.info.name))
 }
 
+export interface PlatformGroup {
+  maker: PlatformMaker
+  label: string
+  /** Visible games across the group's platforms. */
+  total: number
+  /** Biggest first (the order platformCounts gives them). */
+  platforms: PlatformCount[]
+}
+
 /**
- * The sidebar list: the biggest `max` platforms by name, and the rest folded
- * into one "Others" row. A single leftover platform is shown by name instead —
- * an "Others" that holds exactly one platform only hides its name.
+ * Every platform, grouped by maker — nothing is folded away. Groups run
+ * biggest first (by their games), "Other" always last; inside a group the
+ * platforms run biggest first, ties by name (platformCounts' order).
  */
-export function splitPlatforms(counts: PlatformCount[], max = 8): { shown: PlatformCount[]; others: PlatformCount[] } {
-  if (counts.length <= max + 1) return { shown: counts, others: [] }
-  return { shown: counts.slice(0, max), others: counts.slice(max) }
+export function platformGroups(counts: readonly PlatformCount[]): PlatformGroup[] {
+  const byMaker = new Map<PlatformMaker, PlatformGroup>()
+  for (const c of counts) {
+    const maker = c.info.maker ?? 'other'
+    const g = byMaker.get(maker) ?? { maker, label: MAKER_LABEL[maker], total: 0, platforms: [] }
+    g.total += c.count
+    g.platforms.push(c)
+    byMaker.set(maker, g)
+  }
+  for (const g of byMaker.values()) g.platforms.sort((a, b) => b.count - a.count || a.info.name.localeCompare(b.info.name))
+  return [...byMaker.values()].sort((a, b) =>
+    Number(a.maker === 'other') - Number(b.maker === 'other') || b.total - a.total || a.label.localeCompare(b.label))
 }
 
 export type StatusCounts = Record<TgStatusFilter, number>
@@ -425,10 +502,8 @@ export function matchesSearch(g: TgGame, query: string): boolean {
 
 export interface FilterOptions {
   section: TgSection
-  /** Library section only: a platform key, ALL_PLATFORMS or OTHER_PLATFORMS. */
+  /** Library section only: a platform key, or ALL_PLATFORMS. */
   platform: string
-  /** Platform keys folded into "Others" (only read when platform = OTHER_PLATFORMS). */
-  otherKeys?: string[]
   /** Status sections only: narrow to one platform, or ALL_PLATFORMS. */
   scopePlatform?: string
   /** Status filter: empty = every visible game (see applyStatus). */
@@ -451,9 +526,6 @@ export function scopeGames(games: TgGame[], o: Omit<FilterOptions, 'statuses'>):
   } else if (fixed) {
     gs = gs.filter(g => !g.hidden && effectiveStatus(g) === fixed)
     if (o.scopePlatform && o.scopePlatform !== ALL_PLATFORMS) gs = gs.filter(g => g.platformKey === o.scopePlatform)
-  } else if (o.platform === OTHER_PLATFORMS) {
-    const keys = new Set(o.otherKeys ?? [])
-    gs = gs.filter(g => keys.has(g.platformKey))
   } else if (o.platform && o.platform !== ALL_PLATFORMS) {
     gs = gs.filter(g => g.platformKey === o.platform)
   }

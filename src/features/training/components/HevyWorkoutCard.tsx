@@ -3,7 +3,7 @@ import { fmtTrainingDate as fmtDate, fmtTrainingTime as fmtTime } from '../dateF
 import { useToggleTask } from '../../todo/hooks/useTodos'
 import { withProgress } from '../../../shared/hooks/useMutationWithFeedback'
 import { useEntityModal } from '../../../shared/modals'
-import { Button } from '../../../shared/ui'
+import { Button, Truncate } from '../../../shared/ui'
 import type { HevyWorkoutListItem } from '../api/hevyApi'
 import type { Task } from '../../todo/types'
 
@@ -46,7 +46,7 @@ export function HevyWorkoutCard({ workout, onClick, matchedTask }: Props) {
         className="flex min-h-[60px] w-full flex-col gap-1 px-4 py-3 text-left transition-colors hover:bg-surface-hover"
       >
         <div className="flex w-full items-start justify-between gap-3">
-          <span className="line-clamp-2 break-words text-body font-semibold text-fg">{workout.title}</span>
+          <Truncate lines={2} className="text-body font-semibold text-fg">{workout.title}</Truncate>
           <span className="shrink-0 whitespace-nowrap text-body font-semibold tabular-nums text-fg-2">{duration}</span>
         </div>
 
@@ -66,9 +66,9 @@ export function HevyWorkoutCard({ workout, onClick, matchedTask }: Props) {
 
       {matchedTask && (
         <div className="flex items-center gap-2 border-t border-line bg-surface-2 py-1.5 pl-4 pr-2">
-          <span className="flex-1 truncate text-meta text-fg-2">
+          <Truncate className="flex-1 text-meta text-fg-2" fullText={`Planned: ${matchedTask.title}`}>
             Planned: <strong className="text-fg">{matchedTask.title}</strong>
-          </span>
+          </Truncate>
           <Button size="sm" loading={toggleTask.isPending} onClick={() => void closeOut(matchedTask)} className="shrink-0">
             Mark done
           </Button>

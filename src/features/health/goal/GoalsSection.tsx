@@ -1,13 +1,12 @@
-import { useState } from 'react'
 import { Pencil } from 'lucide-react'
 import { Button, cx, type Tone } from '../../../shared/ui'
+import { useEntityModal } from '../../../shared/modals/useEntityModal'
 import { fmtDayMonth } from '../components/healthFormat'
 import type { GoalProgress } from './bodyGoal'
 import type { GoalReport } from './goalReport'
 import type { GoalSettings } from './goalSettings'
 import { GOAL_META, signed } from './goalCopy'
 import { GoalBlock } from './GoalBlock'
-import { GoalSettingsForm } from './GoalSettingsForm'
 
 const STATUS_TONE: Record<GoalProgress['status'], Tone> = {
   reached: 'success', moving_toward: 'success', moving_away: 'warn', flat: 'neutral', no_trend: 'neutral', no_data: 'neutral',
@@ -55,34 +54,28 @@ function GoalRow({ g }: { g: GoalProgress }) {
   )
 }
 
-/** Progress toward each set goal with a projected date, and the form that sets them. */
-export function GoalsSection({ report, settings, fromDevice, saving, onSave }: {
-  report: GoalReport; settings: GoalSettings; fromDevice: boolean; saving: boolean; onSave: (s: GoalSettings) => Promise<unknown>
+/** Progress toward each body target with a projected date. The targets are
+ *  part of the one goal — "Edit goal" opens the shared goal editor. */
+export function GoalsSection({ report, settings, fromDevice, card }: {
+  report: GoalReport; settings: GoalSettings; fromDevice: boolean; card?: boolean
 }) {
-  const [editing, setEditing] = useState(false)
+  const modal = useEntityModal()
   const rows = [report.goals.weight, report.goals.bodyFat, report.goals.muscle].filter((g): g is GoalProgress => g != null)
-  const w = report.energy.weight
   return (
-    <GoalBlock title="Goals" action={!editing && (
-      <Button variant="ghost" size="sm" icon={<Pencil className="h-4 w-4" aria-hidden />} onClick={() => setEditing(true)}>
-        {rows.length || settings.phaseStartDate ? 'Edit goals' : 'Set goals'}
+    <GoalBlock title="Body targets" card={card} action={(
+      <Button variant="ghost" size="sm" icon={<Pencil className="h-4 w-4" aria-hidden />} onClick={() => modal.open({ kind: 'day-targets' })}>
+        {rows.length || settings.phaseStartDate ? 'Edit goal' : 'Set body targets'}
       </Button>
     )}>
-      {editing && (
-        <GoalSettingsForm settings={settings} saving={saving}
-          now={{ goalWeightKg: w.currentTrendKg ?? w.meanKg, goalBodyFatPct: report.latest.fatPct, goalMuscleMassKg: report.latest.muscleKg }}
-          onSave={async s => { try { await onSave(s); setEditing(false) } catch { /* the hook toasted it; keep the draft */ } }}
-          onCancel={() => setEditing(false)} />
-      )}
-      {!editing && rows.length === 0 && (
-        <p className="text-body text-fg-muted">Set a goal weight, body fat % or muscle mass to see your progress and a projected date.</p>
+      {rows.length === 0 && (
+        <p className="text-body text-fg-muted">Add a goal weight, body fat % or muscle mass to your goal to see progress and a projected date.</p>
       )}
       {rows.length > 0 && <div className="grid gap-2 @xl:grid-cols-3">{rows.map(g => <GoalRow key={g.kind} g={g} />)}</div>}
       <p className="text-meta text-fg-muted">
         {settings.phaseStartDate
           ? `Phase started ${fmtDayMonth(settings.phaseStartDate)} — progress is measured from there.`
-          : 'Add the day this phase started to see progress from your starting point.'}
-        {fromDevice && ' Stored on this device for now — saving moves them to your account (needs migration 111).'}
+          : 'Add the day this phase started to your goal to see progress from your starting point.'}
+        {fromDevice && ' Some targets are stored on this device for now — saving your goal moves them to your account.'}
       </p>
     </GoalBlock>
   )
