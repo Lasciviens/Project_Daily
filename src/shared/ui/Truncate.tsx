@@ -20,6 +20,8 @@ interface TruncateProps {
 
 const HOVER_OPEN_MS = 400
 const HOVER_CLOSE_MS = 80
+/** How long "Less" keeps its button while the clamped box is measured again. */
+const HOLD_MS = 250
 const HEADINGS = new Set<TruncateTag>(['h2', 'h3', 'h4'])
 
 type OpenedBy = '' | 'hover' | 'click'
@@ -76,7 +78,19 @@ export function Truncate({ children, lines = 1, as = 'span', className, reveal =
   // this component, so their text is re-read when a pointer or focus arrives.
   const [, reread] = useReducer((n: number) => n + 1, 0)
   const place = useMemo(() => (cutEl ? readPlace(cutEl) : null), [cutEl])
-  const mode: RevealMode = revealModeFor({ lines, reveal, insideTappable: place?.tappable ?? true })
+  // Expanded text is not cut, and right after "Less" the last measurement
+  // (taken while expanded) still says it fits until the observer reports the
+  // clamped box again: the More / Less button stays put through both, instead
+  // of vanishing while expanded and flickering out for a frame on collapse.
+  const [held, setHeld] = useState(false)
+  if (held && cut) setHeld(false)
+  useEffect(() => {
+    if (!held) return
+    // The box may really fit now (it grew while expanded): then the button goes.
+    const id = window.setTimeout(() => setHeld(false), HOLD_MS)
+    return () => window.clearTimeout(id)
+  }, [held])
+  const mode: RevealMode = expanded || held ? 'more' : revealModeFor({ lines, reveal, insideTappable: place?.tappable ?? true })
 
   // Open state + who opened it + hover timers, shared with the DOM listeners.
   // One stable controller: no per-render callbacks or effects.
@@ -170,10 +184,10 @@ export function Truncate({ children, lines = 1, as = 'span', className, reveal =
       >
         {innerTrigger ? <span {...triggerProps}>{children}</span> : children}
       </Tag>
-      {mode === 'more' && (cut || expanded) && (
+      {mode === 'more' && (cut || expanded || held) && (
         <button
           type="button"
-          onClick={() => setExpanded(v => !v)}
+          onClick={() => { if (expanded) setHeld(true); setExpanded(v => !v) }}
           aria-expanded={expanded}
           // A hook for pages with their own palette (/games colours it).
           data-truncate-more=""
