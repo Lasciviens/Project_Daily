@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import { entityModal } from '../../../shared/modals'
 import { ModalShell } from '../../../shared/modals/ModalShell'
 import { Button, Skeleton, ToneDot, type Tone } from '../../../shared/ui'
@@ -92,8 +91,7 @@ function Body({ p }: { p: TraktPreview }) {
 
 export function TraktPreviewSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const q = useTraktPreview(open)
-  const [step, setStep] = useState<string | null>(null)
-  const imp = useRunTraktImport(setStep)
+  const imp = useRunTraktImport()
   const runImport = async () => {
     const ok = await entityModal.confirm({
       title: 'Import from Trakt now?',
@@ -101,7 +99,7 @@ export function TraktPreviewSheet({ open, onClose }: { open: boolean; onClose: (
       confirmLabel: 'Import',
     })
     if (!ok) return
-    try { await imp.mutateAsync() } catch { /* toasted by the hook */ } finally { setStep(null) }
+    try { await imp.mutateAsync() } catch { /* toasted by the hook */ }
     q.refetch()
   }
   const copy = async () => {
@@ -128,7 +126,7 @@ export function TraktPreviewSheet({ open, onClose }: { open: boolean; onClose: (
         </div>
       }
     >
-      {step && <p className="mb-3 w-fit rounded-control bg-surface-2 px-3 py-2 text-meta text-fg" data-tone="info" role="status">{step}</p>}
+      {imp.isPending && <p className="mb-3 w-fit rounded-control bg-surface-2 px-3 py-2 text-meta text-fg" data-tone="info" role="status">Importing on the server — this can take a minute.</p>}
       {q.isLoading && <div className="flex flex-col gap-2">{[0, 1, 2, 3].map(i => <Skeleton key={i} className="h-11" />)}</div>}
       {q.error && <p className="text-meta text-fg" data-tone="danger">Could not read Trakt: {(q.error as Error).message}</p>}
       {q.data && <Body p={q.data.preview} />}

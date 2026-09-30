@@ -1,6 +1,7 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
 import { qk, STALE } from '../../../shared/query'
+import { scheduleTraktSync } from '../trakt/traktAutoSync'
 import {
   fetchUserTVEntries,
   upsertTVSeries,
@@ -31,6 +32,7 @@ export function useTVEntryByTmdb(tmdbId: number | null | undefined, enabled = tr
 
 // Callers pass their own success copy (withProgress) — see useMovies.ts.
 export function useAddTV() {
+  const qc = useQueryClient()
   return useMutationWithFeedback({
     action: 'add_tv',
     mutationFn: async ({
@@ -46,22 +48,27 @@ export function useAddTV() {
       return addTVEntry(series.id, status, priority)
     },
     invalidates: ['media'],
+    onSuccess: () => scheduleTraktSync(qc),
   })
 }
 
 export function useUpdateTV() {
+  const qc = useQueryClient()
   return useMutationWithFeedback({
     action: 'update_tv',
     mutationFn: ({ id, patch }: { id: string; patch: Parameters<typeof updateTVEntry>[1] }) =>
       updateTVEntry(id, patch),
     invalidates: ['media'],
+    onSuccess: () => scheduleTraktSync(qc),
   })
 }
 
 export function useDeleteTV() {
+  const qc = useQueryClient()
   return useMutationWithFeedback({
     action: 'delete_tv',
     mutationFn: (id: string) => deleteTVEntry(id),
     invalidates: ['media'],
+    onSuccess: () => scheduleTraktSync(qc),
   })
 }

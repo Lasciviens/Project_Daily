@@ -38,11 +38,17 @@ export interface TraktStatus {
   username: string | null
   connectedAt: string | null
   lastSyncAt: string | null
+  lastError?: string | null
+  /** The last sync/import result (trakt_sync_state.last_result). */
+  lastResult?: { kind: 'import' | 'sync'; at: string; heldBack?: number; drained?: { left: number; notFound: number } } | null
+  /** Changes made here, waiting to be sent to Trakt. */
+  pending: number
+  syncing?: boolean
   notConfigured?: boolean
 }
 
 // ── The app's side, reduced to what matching needs ──────────────────────────
-export interface LocalMovie { tmdbId: number; title: string; year: number | null; status: string; repeatCount: number; rating: number | null; watchedAt?: string | null }
-export interface LocalShow { tmdbId: number; title: string; year: number | null; status: string; rating: number | null }
+export interface LocalMovie { tmdbId: number; title: string; year: number | null; status: string; repeatCount: number; rating: number | null; watchedAt?: string | null; watchlistRank?: number | null; note?: string | null }
+export interface LocalShow { tmdbId: number; title: string; year: number | null; status: string; rating: number | null; watchlistRank?: number | null; note?: string | null }
 export interface LocalEpisode { tmdbId: number; season: number; episode: number; repeatCount: number; watchedAt?: string | null }
 export interface LocalLibrary { movies: LocalMovie[]; shows: LocalShow[]; episodes: LocalEpisode[] }

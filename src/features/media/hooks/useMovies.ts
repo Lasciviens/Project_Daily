@@ -1,6 +1,7 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
 import { qk, STALE } from '../../../shared/query'
+import { scheduleTraktSync } from '../trakt/traktAutoSync'
 import {
   fetchUserMovieEntries,
   upsertMovie,
@@ -32,6 +33,7 @@ export function useMovieEntryByTmdb(tmdbId: number | null | undefined, enabled =
 // Callers pass their own success copy (withProgress) — the same hook adds,
 // rates, notes and completes, so one fixed message would be wrong for most.
 export function useAddMovie() {
+  const qc = useQueryClient()
   return useMutationWithFeedback({
     action: 'add_movie',
     mutationFn: async ({
@@ -47,22 +49,27 @@ export function useAddMovie() {
       return addMovieEntry(movie.id, status, priority)
     },
     invalidates: ['media'],
+    onSuccess: () => scheduleTraktSync(qc),
   })
 }
 
 export function useUpdateMovie() {
+  const qc = useQueryClient()
   return useMutationWithFeedback({
     action: 'update_movie',
     mutationFn: ({ id, patch }: { id: string; patch: Parameters<typeof updateMovieEntry>[1] }) =>
       updateMovieEntry(id, patch),
     invalidates: ['media'],
+    onSuccess: () => scheduleTraktSync(qc),
   })
 }
 
 export function useDeleteMovie() {
+  const qc = useQueryClient()
   return useMutationWithFeedback({
     action: 'delete_movie',
     mutationFn: (id: string) => deleteMovieEntry(id),
     invalidates: ['media'],
+    onSuccess: () => scheduleTraktSync(qc),
   })
 }

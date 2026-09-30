@@ -12,6 +12,7 @@ import { useAddTV, useDeleteTV, useUpdateTV } from '../hooks/useTVSeries'
 import { useNextEpisode } from '../hooks/useNextEpisode'
 import { PlanThisButton } from './PlanThisButton'
 import { StarRating } from './StarRating'
+import { MovieWatchedControls } from './MovieWatchedControls'
 import type { TMDBMovieFull, TMDBTVFull, UserMovieEntry, UserTVEntry, MediaStatus } from '../types'
 
 // No manual "Upcoming" status: "coming soon" is derived from the release date
@@ -56,7 +57,7 @@ function StatusPills({ statuses, value, disabled, onPick }: {
   )
 }
 
-type EntryPatch = Partial<Pick<UserMovieEntry, 'watched_at' | 'rating' | 'personal_note'> & Pick<UserTVEntry, 'started_at' | 'finished_at'>> & { status?: MediaStatus }
+type EntryPatch = Partial<Pick<UserMovieEntry, 'watched_at' | 'rating' | 'personal_note' | 'repeat_count'> & Pick<UserTVEntry, 'started_at' | 'finished_at'>> & { status?: MediaStatus }
 
 interface Props {
   detail: TMDBMovieFull | TMDBTVFull
@@ -121,7 +122,11 @@ export function MediaLibraryControls({ detail, isMovie, userEntry, onAdded }: Pr
   async function handleRemove() {
     if (!entryId) return
     const title = isMovie ? movie!.title : tv!.name
-    if (!(await modal.confirm({ title: `Remove "${title}" from your library?`, confirmLabel: 'Remove', destructive: true }))) return
+    if (!(await modal.confirm({
+      title: `Remove "${title}" from your library?`,
+      message: 'With Trakt connected, its watch history, rating and watchlist entry are removed there too.',
+      confirmLabel: 'Remove', destructive: true,
+    }))) return
     const ok = await withProgress(async () => {
       if (isMovie) await removeMovie.mutateAsync(entryId)
       else await removeTV.mutateAsync(entryId)
@@ -204,6 +209,9 @@ export function MediaLibraryControls({ detail, isMovie, userEntry, onAdded }: Pr
         <StatusPills statuses={statuses} value={userEntry.status} disabled={updating} onPick={handleStatusChange} />
         {tvEntry && (
           <p className="text-meta text-fg-muted tabular-nums">Progress: S{tvEntry.current_season} E{tvEntry.current_episode}</p>
+        )}
+        {movieEntry?.status === 'completed' && (
+          <MovieWatchedControls entry={movieEntry} disabled={updating} onPatch={patchEntry} />
         )}
       </div>
 

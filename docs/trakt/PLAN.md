@@ -93,7 +93,7 @@ Episodes match on show + season + episode — the existing unique key of
    episode) is compared with local counts and mirrored exactly (Trakt's `reset_at`
    marks a show restarted). A weekly full reconcile catches anything else.
 4. Each item: match (§3) → upsert.
-5. Then the outbox drains (app → Trakt).
+5. The outbox drains FIRST (app → Trakt), so the mirror in steps 2–4 never undoes a change made here; items still waiting (or just sent) are skipped by the mirror.
 
 Watched endpoints (since 03.07.2026): paginated, seasons only with `extended=progress` (100 per page).
 Limits: reads 1,000 per 5 minutes, writes **1 per second** — the outbox paces itself.
@@ -123,7 +123,7 @@ for titles in your library, refreshed at most weekly. Needs a free MDBList API k
 | Piece | What |
 |---|---|
 | `116_trakt.sql` | everything in §4 ✅ |
-| `trakt-api` | ✅ `authorize_url`, `connect`, `status`, `disconnect`, `snapshot` (normalised read of everything Trakt holds); later: import, sync, outbox drain (+ cron secret) |
+| `trakt-api` | ✅ `authorize_url`, `connect`, `status`, `disconnect`, `snapshot`, `import`, `sync` (outbox drain → mirror), cron secret |
 | Ratings step | MDBList by TMDB id, inside `trakt-api` |
 | Pure module + verify script | ✅ `traktPreview.ts` — `scripts/verify-trakt-preview.cjs`; later the mapping/reconcile diff |
 | UI | Settings → Subscriptions card; Media: import preview, sync status, unmatched list, Continue watching, favorites, RT chips |
@@ -134,8 +134,8 @@ for titles in your library, refreshed at most weekly. Needs a free MDBList API k
 |---|---|---|
 | 1 ✅ | Connect Trakt + **dry-run preview** | the counts look right to you |
 | 2 ✅ | First import (+ push of app-only watches), id backfill | no duplicate titles; paused/priority untouched |
-| 3 | Incremental sync + reconcile (cron + Sync button) | a play scrobbled elsewhere appears within 30 min; a play removed on Trakt disappears here |
-| 4 | Two-way through the outbox | a rating, watch or note made here shows on trakt.tv |
+| 3 ✅ | Incremental sync + reconcile (cron + Sync button) | a play scrobbled elsewhere appears within 30 min; a play removed on Trakt disappears here |
+| 4 ✅ | Two-way through the outbox (watched, plays, ratings, watchlist, dropped; notes come with phase 5) | a rating, watch or note made here shows on trakt.tv |
 | 5 | Favorites, notes, Continue watching, my calendar | each visible on the Media page |
 | 6 | Rotten Tomatoes / Metacritic | scores on posters and in details |
 
@@ -144,6 +144,7 @@ for titles in your library, refreshed at most weekly. Needs a free MDBList API k
 - Done: Trakt app created; `TRAKT_CLIENT_ID` / `TRAKT_CLIENT_SECRET` / `MDBLIST_API_KEY` in secrets.
 - Phase 1: apply `116_trakt.sql`, deploy `trakt-api` (JWT verification **ON**).
 - Phase 2: redeploy `trakt-api`, then Preview import → Import now. Watched/watching beats wishlist on both sides (owner, 30.09.2026).
+- Phases 3–4: apply `117_trakt_sync.sql`; redeploy `trakt-api` with JWT verification **OFF**; `TRAKT_SYNC_SECRET` in Edge secrets + Vault; `TMDB_API_KEY` in Edge secrets.
 - Redirect URIs on the Trakt app: `https://lasciviens.github.io/Project_Daily/` (and
   `http://localhost:5173/Project_Daily/` for local testing).
 - Per phase: apply the named migration and deploy the named function.
