@@ -99,3 +99,34 @@ export const discoverShort = (type: 'movie' | 'tv', maxMin: number, sort: 'popul
     'vote_count.gte': '50',
     sort_by: sort,
   })
+
+// ── Smart lists: a franchise, studio, keyword or person, pulled from TMDB ──
+
+export interface TMDBNamed { id: number; name: string; logo_path?: string | null; profile_path?: string | null; poster_path?: string | null; known_for_department?: string; origin_country?: string }
+
+/** Search a smart-list source by name. */
+export const searchSource = (kind: 'collection' | 'company' | 'keyword' | 'person', query: string) =>
+  tmdbFetch<PagedResponse<TMDBNamed>>(`/search/${kind}`, { query })
+
+/**
+ * One page of a studio's / keyword's films, newest first (so a cap keeps the
+ * recent ones). `hideExtras` leaves out documentaries and TV movies — the
+ * featurettes and specials a studio or universe keyword drags in.
+ */
+export const discoverBySource = (kind: 'company' | 'keyword', id: number, page: number, hideExtras: boolean) =>
+  tmdbFetch<PagedResponse<TMDBSearchMovie & { genre_ids?: number[] }>>('/discover/movie', {
+    [kind === 'company' ? 'with_companies' : 'with_keywords']: String(id),
+    sort_by: 'primary_release_date.desc',
+    ...(hideExtras ? { without_genres: '99|10770' } : {}),
+    page: String(page),
+  })
+
+export const getPersonMovieCredits = (id: number) =>
+  tmdbFetch<{ cast: (TMDBSearchMovie & { character?: string; genre_ids?: number[] })[]; crew: (TMDBSearchMovie & { job?: string; genre_ids?: number[] })[] }>(`/person/${id}/movie_credits`)
+
+/** One page of a Discover list (discoverModel.ts builds the request). */
+export const fetchDiscoverPage = (path: string, params: Record<string, string>) =>
+  tmdbFetch<PagedResponse<(TMDBSearchMovie & TMDBSearchTV) & { genre_ids?: number[] }>>(path, params)
+
+export const getGenres = (type: 'movie' | 'tv') =>
+  tmdbFetch<{ genres: { id: number; name: string }[] }>(`/genre/${type}/list`)

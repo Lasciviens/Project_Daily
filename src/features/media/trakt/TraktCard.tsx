@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Clapperboard } from 'lucide-react'
+import { ErrorNotice } from '../../../shared/components/ErrorNotice'
 import { Button } from '../../../shared/ui'
 import { formatDate, formatDateTime } from '../../../shared/utils/dateFormat'
 import { toast } from '../../../app/store'
@@ -58,7 +59,7 @@ export function TraktCard() {
         footer={s?.connected ? 'Syncs by itself every 30 minutes and a few seconds after you change something here.' : undefined}
       >
         {s?.connected && s.lastError && (
-          <p className="w-fit rounded-control bg-surface-2 px-3 py-2 text-meta text-fg" data-tone="danger" role="status">Last sync: {s.lastError}</p>
+          <ErrorNotice where="Settings → Trakt → last sync" title="The last sync failed." error={new Error(s.lastError)} />
         )}
         {s?.connected && heldBack > 0 && (
           <div className="flex w-fit flex-col gap-2 rounded-control bg-surface-2 px-3 py-2 text-meta text-fg" data-tone="warn">

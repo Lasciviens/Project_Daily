@@ -21,6 +21,8 @@ export interface TraktItem {
 export type TraktEpisodeTuple = [number, number, number, string | null]
 
 export interface TraktSnapshot {
+  /** Optional reads that failed (favorites, Continue watching); the rest is complete. */
+  warnings?: string[]
   fetchedAt: string
   username: string | null
   lastActivities: unknown

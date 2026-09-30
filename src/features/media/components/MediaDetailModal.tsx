@@ -1,3 +1,5 @@
+import { useEffect, useRef } from 'react'
+import { ChevronLeft } from 'lucide-react'
 import { useMovieFull, useTVFull } from '../hooks/useTMDB'
 import { MediaDetailBody } from './MediaDetailBody'
 import { ModalShell } from '../../../shared/modals/ModalShell'
@@ -12,6 +14,8 @@ interface Props {
   onClose: () => void
   onAdded?: () => void
   onOpenDetail?: (id: number, type: MediaType) => void
+  /** Shown when titles were opened inside this popup: back to the previous one. */
+  onBack?: () => void
 }
 
 function Skeleton() {
@@ -28,7 +32,10 @@ function Skeleton() {
   )
 }
 
-export function MediaDetailModal({ tmdbId, mediaType, userEntry, onClose, onAdded, onOpenDetail }: Props) {
+export function MediaDetailModal({ tmdbId, mediaType, userEntry, onClose, onAdded, onOpenDetail, onBack }: Props) {
+  // A new title in the same popup starts at its top.
+  const top = useRef<HTMLDivElement>(null)
+  useEffect(() => { top.current?.parentElement?.scrollTo({ top: 0 }) }, [tmdbId, mediaType])
   const movieQ = useMovieFull(mediaType === 'movie' ? tmdbId : null)
   const tvQ    = useTVFull(mediaType === 'tv' ? tmdbId : null)
   const query = mediaType === 'movie' ? movieQ : tvQ
@@ -52,6 +59,11 @@ export function MediaDetailModal({ tmdbId, mediaType, userEntry, onClose, onAdde
         <div className="relative h-24 shrink-0 bg-surface-2 sm:h-36">
           {backdrop && <img src={backdrop} alt="" className="h-full w-full object-cover" />}
           <div className="absolute inset-0 bg-gradient-to-t from-scrim/80 via-scrim/20 to-transparent" />
+          {onBack && (
+            <button type="button" onClick={onBack} className="absolute left-3 top-2 flex min-h-[44px] items-center gap-1 rounded-control bg-surface/90 px-2 text-meta font-semibold text-fg hover:bg-surface">
+              <ChevronLeft aria-hidden className="h-4 w-4" /> Back
+            </button>
+          )}
           <div className="absolute bottom-0 left-0 p-4">
             <div className="flex items-end gap-3">
               {detail && <img src={posterUrl(detail.poster_path, 'w92')} alt="" className="w-10 shrink-0 rounded-md" />}
@@ -67,6 +79,7 @@ export function MediaDetailModal({ tmdbId, mediaType, userEntry, onClose, onAdde
         </div>
       }
     >
+      <div ref={top} />
       {query.isError ? (
         <div className="flex flex-col items-start gap-3 p-5">
           <p className="text-body text-fg-2">Couldn't load this title from TMDB.</p>
@@ -77,6 +90,7 @@ export function MediaDetailModal({ tmdbId, mediaType, userEntry, onClose, onAdde
         <Skeleton />
       ) : (
         <MediaDetailBody
+          key={`${mediaType}-${tmdbId}`}
           detail={detail}
           mediaType={mediaType}
           userEntry={userEntry}

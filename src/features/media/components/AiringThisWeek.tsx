@@ -1,10 +1,8 @@
 import { useEntityModal } from '../../../shared/modals'
 import { SectionLabel, Truncate } from '../../../shared/ui'
 import { posterUrl } from '../../../integrations/tmdb/client'
-import { formatDate } from '../../../shared/utils/dateFormat'
+import { formatDate, formatWeekday } from '../../../shared/utils/dateFormat'
 import { useAiringThisWeek } from '../hooks/useAiringThisWeek'
-
-const weekday = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { weekday: 'short' })
 
 /** "Airing this week" — new episodes of your shows; a row opens the show. Hidden when none. */
 export function AiringThisWeek({ limit = 4, enabled = true }: { limit?: number; enabled?: boolean }) {
@@ -23,7 +21,7 @@ export function AiringThisWeek({ limit = 4, enabled = true }: { limit?: number; 
                 <Truncate className="text-meta font-medium text-fg">{i.title}</Truncate>
                 <span className="block text-micro text-fg-muted tabular-nums">S{i.season} · E{i.episode}{i.episodeTitle ? ` · ${i.episodeTitle}` : ''}</span>
               </span>
-              <span className="shrink-0 text-micro font-semibold text-fg-2 tabular-nums">{weekday(i.airDate)} {formatDate(i.airDate).slice(0, 5)}</span>
+              <span className="shrink-0 text-micro font-semibold text-fg-2 tabular-nums">{formatWeekday(i.airDate)} {formatDate(i.airDate)}</span>
             </button>
           </li>
         ))}

@@ -23,6 +23,8 @@ export interface LibraryItem {
   /** Rotten Tomatoes Tomatometer (MDBList), when known. */
   rt?: number | null
   favorite?: boolean
+  /** Watched at a cinema at least once (movie_cinema_visits, migration 120). */
+  cinema?: boolean
 }
 
 export const BUCKET_LABEL: Record<LibraryBucket, string> = {
@@ -32,6 +34,16 @@ export const BUCKET_LABEL: Record<LibraryBucket, string> = {
   paused: 'Paused',
   completed: 'Completed',
   dropped: 'Dropped',
+}
+
+/** The poster ribbon's tone per status (a tone, never the accent). */
+export const BUCKET_TONE: Record<LibraryBucket, 'success' | 'info' | 'neutral' | 'warn' | 'highlight' | 'danger'> = {
+  completed: 'success',
+  watching: 'info',
+  paused: 'neutral',
+  coming: 'warn',
+  wishlist: 'highlight',
+  dropped: 'danger',
 }
 
 /** Reading order: what you're in the middle of first, then what's next, then the rest. */
@@ -45,12 +57,12 @@ function bucketFor(status: string, date: string | null, today: string): LibraryB
   return null
 }
 
-export function libraryItems(tab: 'movies' | 'tv', movies: UserMovieEntry[], tv: UserTVEntry[], today: string): LibraryItem[] {
+export function libraryItems(tab: 'movies' | 'tv', movies: UserMovieEntry[], tv: UserTVEntry[], today: string, cinemaMovieIds?: ReadonlySet<string>): LibraryItem[] {
   const out: LibraryItem[] = []
   if (tab === 'movies') {
     for (const e of movies) {
       const bucket = bucketFor(e.status, e.movie.release_date, today)
-      if (bucket) out.push({ tmdbId: e.movie.tmdb_id, title: e.movie.title, year: yearOf(e.movie.release_date), posterPath: e.movie.poster_path, bucket, rating: e.rating, addedAt: e.created_at, rt: e.movie.rt_critics ?? null, favorite: !!e.is_favorite })
+      if (bucket) out.push({ tmdbId: e.movie.tmdb_id, title: e.movie.title, year: yearOf(e.movie.release_date), posterPath: e.movie.poster_path, bucket, rating: e.rating, addedAt: e.created_at, rt: e.movie.rt_critics ?? null, favorite: !!e.is_favorite, cinema: !!cinemaMovieIds?.has(e.movie_id) })
     }
   } else {
     for (const e of tv) {
@@ -90,3 +102,4 @@ export function summaryPosters(items: LibraryItem[], max = 10): LibraryItem[] {
   const pick = (b: LibraryBucket) => items.filter(i => i.bucket === b).sort((x, y) => y.addedAt.localeCompare(x.addedAt))
   return [...pick('watching'), ...pick('paused'), ...pick('coming'), ...pick('wishlist')].slice(0, max)
 }
+

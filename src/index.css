@@ -613,6 +613,16 @@ select:focus-visible,
    limits keep a long label inside its box (see .chip). */
 :where(.tone-pill) { display: inline-flex; max-width: 100%; min-width: 0; overflow: hidden; }
 .tone-soft { background: rgb(var(--tone-soft, var(--neutral-soft))); }
+/* A solid tone band (progress fills). */
+.tone-solid { background: rgb(var(--tone, var(--neutral))); color: #fff; }
+/* The poster status belt sits on artwork in both themes, so its colours are
+   fixed and dark enough for white 11px text (≥ 4.5:1), not the theme tones. */
+.poster-belt { color: #fff; background: #475569; }
+.poster-belt[data-tone='success'] { background: #15803d; }
+.poster-belt[data-tone='info'] { background: #1d4ed8; }
+.poster-belt[data-tone='warn'] { background: #b45309; }
+.poster-belt[data-tone='highlight'] { background: #7e22ce; }
+.poster-belt[data-tone='danger'] { background: #b91c1c; }
 
 @keyframes skeleton-shimmer {
   0%   { background-position: 100% 0; }

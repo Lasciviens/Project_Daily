@@ -151,6 +151,8 @@ const c = useChartColors()
 
 ---
 
+> **DATE FORMAT (owner rule, absolute): `DD.MM.YYYY` for every visible date — `29.09.2026`.** No month names, no slashes, no ISO strings, no locale output, no time on a date-only field or picker. Details below.
+
 ## 3. Typography
 
 **Inter Variable** (bundled with `@fontsource-variable/inter`, works offline), `cv11` + `ss01`
@@ -163,7 +165,9 @@ relative words (today, yesterday, 5 days ago) stay where they are used. Always g
 date-fns pattern with month names. Two exceptions: chart axis ticks may drop the year
 (`formatDayMonth` → `15.09`), and Health's range bar (`healthDateLabels.numericSpanLabel`,
 `21.09 – 27.09`). A calendar's month heading (`September 2026`, `formatMonthYear`) names a month,
-not a date. Typed dates use `DateInput` (DD.MM.YYYY), not a native `<input type="date">`.
+not a date. Typed dates use `DateInput` (DD.MM.YYYY), not a native `<input type="date">` or `datetime-local` (a "when did you watch it" style picker asks for a day, never a time).
+
+**Poster covers** (Media): one `PosterTile`. Status is a belt across the top-left corner using `.poster-belt` + `data-tone` — fixed dark colours, not theme tones, because it sits on artwork in both themes and must keep white text ≥ 4.5:1; its size is in `cqw` of the cover. A score banner runs along the bottom. The user's own rating is never drawn on a cover.
 
 | Class | Size / line | Weight | Role |
 |---|---|---|---|

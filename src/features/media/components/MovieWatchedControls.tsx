@@ -1,4 +1,4 @@
-import { RotateCcw, Undo2 } from 'lucide-react'
+import { CalendarDays, RotateCcw, Undo2 } from 'lucide-react'
 import { withProgress } from '../../../shared/hooks/useMutationWithFeedback'
 import { useEntityModal } from '../../../shared/modals'
 import { Button } from '../../../shared/ui'
@@ -38,6 +38,19 @@ export function MovieWatchedControls({ entry, releaseDate, disabled, onPatch }: 
     )
   }
 
+  // Change when it was watched (the latest play); Trakt gets the new date too (migration 120).
+  async function changeDate() {
+    if (plays > 1 && !(await modal.confirm({
+      title: `Watched ${plays} times`,
+      message: 'The app keeps one watched date per title, so every play gets the new date — here and on Trakt.',
+      confirmLabel: 'Change anyway',
+    }))) return
+    const when = await ask({ title: entry.movie.title, subtitle: 'Change when you watched it', releaseLabel: releaseDate ? formatDate(releaseDate) : null })
+    if (!when) return
+    const at = resolveWatchedAt(when, releaseDate, 'movie', new Date().toISOString())
+    await withProgress(() => onPatch({ watched_at: at }), { loading: 'Changing the date…', success: 'Watched date changed' })
+  }
+
   async function unwatch() {
     const ok = await modal.confirm({
       title: 'Mark as not watched?',
@@ -55,6 +68,7 @@ export function MovieWatchedControls({ entry, releaseDate, disabled, onPatch }: 
       <p className="text-meta text-fg-muted tabular-nums">
         Watched {when}{plays > 1 && ` · ${plays} plays`}
       </p>
+      <Button size="sm" variant="ghost" icon={<CalendarDays />} disabled={disabled} onClick={() => { void changeDate() }}>Change date</Button>
       <Button size="sm" icon={<RotateCcw />} disabled={disabled} onClick={() => { void watchAgain() }}>Watched again</Button>
       <Button size="sm" variant="ghost" icon={<Undo2 />} disabled={disabled} onClick={() => { void unwatch() }}>Not watched</Button>
     </div>

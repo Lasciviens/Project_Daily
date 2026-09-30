@@ -6,7 +6,7 @@ import type { TMDBMovieFull, TMDBTVFull } from '../types'
 
 interface Option { kind: FollowKind; tmdbId: number; name: string; label: string }
 
-const KIND_LABEL: Record<FollowKind, string> = { collection: 'Franchise', company: 'Studio', director: 'Director', actor: 'Actor' }
+const KIND_LABEL: Record<FollowKind, string> = { collection: 'Franchise', company: 'Studio', director: 'Director', actor: 'Actor', keyword: 'Keyword' }
 
 /** What you can follow from this title: its franchise, director, studio and lead actors (movies). */
 function optionsFor(detail: TMDBMovieFull | TMDBTVFull, isMovie: boolean): Option[] {

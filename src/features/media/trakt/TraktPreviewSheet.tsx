@@ -1,4 +1,5 @@
 import { entityModal } from '../../../shared/modals'
+import { ErrorNotice } from '../../../shared/components/ErrorNotice'
 import { ModalShell } from '../../../shared/modals/ModalShell'
 import { Button, Skeleton, ToneDot, type Tone } from '../../../shared/ui'
 import { Truncate } from '../../../shared/ui/Truncate'
@@ -117,7 +118,7 @@ export function TraktPreviewSheet({ open, onClose }: { open: boolean; onClose: (
       onClose={onClose}
       size="lg"
       title="Trakt import preview"
-      subtitle={q.data ? `Read ${formatDateTime(q.data.snapshot.fetchedAt)} · nothing is saved until you press Import now` : 'Reading Trakt and your library…'}
+      subtitle={q.data ? `Read ${formatDateTime(q.data.snapshot.fetchedAt)} · nothing is saved until you press Import now` : q.error ? 'Nothing was read — see below' : 'Reading Trakt and your library…'}
       footer={
         <div className="flex flex-wrap justify-end gap-2">
           <Button onClick={copy} disabled={!q.data || imp.isPending}>Copy report</Button>
@@ -128,7 +129,8 @@ export function TraktPreviewSheet({ open, onClose }: { open: boolean; onClose: (
     >
       {imp.isPending && <p className="mb-3 w-fit rounded-control bg-surface-2 px-3 py-2 text-meta text-fg" data-tone="info" role="status">Importing on the server — this can take a minute.</p>}
       {q.isLoading && <div className="flex flex-col gap-2">{[0, 1, 2, 3].map(i => <Skeleton key={i} className="h-11" />)}</div>}
-      {q.error && <p className="text-meta text-fg" data-tone="danger">Could not read Trakt: {(q.error as Error).message}</p>}
+      {q.error && <ErrorNotice where="Settings → Trakt → Import preview" title="Could not read Trakt." error={q.error} onRetry={() => { void q.refetch() }} />}
+      {(q.data?.snapshot.warnings ?? []).map(w => <p key={w} className="mb-2 w-fit rounded-control bg-surface-2 px-3 py-2 text-meta text-fg" data-tone="warn" role="status">{w} The rest of the preview is complete.</p>)}
       {q.data && <Body p={q.data.preview} />}
     </ModalShell>
   )

@@ -1,22 +1,14 @@
-import { BellRing, Play, RefreshCw, X } from 'lucide-react'
+import { BellRing, Play, RefreshCw } from 'lucide-react'
 import { posterUrl } from '../../../integrations/tmdb/client'
 import { useEntityModal } from '../../../shared/modals'
 import { Button, SectionLabel, Truncate } from '../../../shared/ui'
 import { formatDate } from '../../../shared/utils/dateFormat'
-import { useCheckFollows, useFollowEvents, useFollows, useLinkFollowList, useMarkFollowEventsSeen, useToggleFollow } from '../hooks/useFollows'
-import { useTraktLists } from '../trakt/useTraktExtras'
-import { useTraktStatus } from '../trakt/useTrakt'
+import { useCheckFollows, useFollowEvents, useFollows, useMarkFollowEventsSeen } from '../hooks/useFollows'
 
-const KIND: Record<string, string> = { collection: 'Franchise', company: 'Studio', director: 'Director', actor: 'Actor' }
-
-/** What you follow, and what's new there: new titles and new trailers (checked daily). */
+/** What's new in what you follow (smart lists and Follows): new titles and new trailers, checked daily. */
 export function FollowingPanel() {
   const { data: follows = [] } = useFollows()
   const { data: events = [] } = useFollowEvents()
-  const { data: trakt } = useTraktStatus()
-  const lists = useTraktLists(follows.length > 0)
-  const toggle = useToggleFollow()
-  const link = useLinkFollowList()
   const check = useCheckFollows()
   const seen = useMarkFollowEventsSeen()
   const modal = useEntityModal()
@@ -26,8 +18,8 @@ export function FollowingPanel() {
   if (follows.length === 0) {
     return (
       <section className="card p-3">
-        <SectionLabel className="mb-1">Following</SectionLabel>
-        <p className="text-meta text-fg-muted">Follow a franchise, director, studio or actor from a movie’s page (Follow). New titles and trailers show up here.</p>
+        <SectionLabel className="mb-1">What’s new</SectionLabel>
+        <p className="text-meta text-fg-muted">Make a smart list (or Follow a franchise, director, studio or actor on a movie’s page): new titles and trailers show up here.</p>
       </section>
     )
   }
@@ -35,37 +27,13 @@ export function FollowingPanel() {
   return (
     <section className="card flex flex-col gap-3 p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <SectionLabel>Following · {follows.length}</SectionLabel>
+        <SectionLabel>What’s new · {unseen.length} unseen</SectionLabel>
         <div className="flex gap-1">
           {unseen.length > 0 && <Button size="sm" variant="ghost" onClick={() => seen.mutate(unseen.map(e => e.id))}>Mark {unseen.length} seen</Button>}
           <Button size="sm" variant="ghost" icon={<RefreshCw />} loading={check.isPending} onClick={() => check.mutate()}>Check now</Button>
         </div>
       </div>
 
-      <ul className="flex flex-col gap-1">
-        {follows.map(f => (
-          <li key={f.id} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-meta">
-            <span className="min-w-[12rem] flex-1">
-              <Truncate className="font-semibold text-fg">{f.name}</Truncate>
-              <span className="block text-micro text-fg-muted">{KIND[f.kind]}{f.last_checked_at ? ` · checked ${formatDate(f.last_checked_at)}` : ''}</span>
-            </span>
-            {trakt?.connected && (
-              <select
-                aria-label={`Trakt list for ${f.name}`}
-                className="input h-9 w-auto max-w-[14rem] py-0 text-meta"
-                value={f.trakt_list_id ?? ''}
-                onChange={e => link.mutate({ id: f.id, listId: e.target.value ? Number(e.target.value) : null })}
-              >
-                <option value="">No list</option>
-                {(lists.data ?? []).map(l => <option key={l.id} value={l.id}>Add to “{l.name}”</option>)}
-              </select>
-            )}
-            <button type="button" aria-label={`Stop following ${f.name}`} onClick={() => toggle.mutate({ followId: f.id, kind: f.kind, tmdbId: f.tmdb_id, name: f.name })} className="icon-btn">
-              <X aria-hidden className="h-4 w-4" />
-            </button>
-          </li>
-        ))}
-      </ul>
 
       {events.length > 0 && (
         <ul className="grid grid-cols-1 gap-1 @[40rem]:grid-cols-2">

@@ -1,5 +1,7 @@
 import { ListPlus } from 'lucide-react'
-import { posterUrl } from '../../../integrations/tmdb/client'
+import { useLibraryIndex } from '../hooks/useLibraryIndex'
+import { libraryKey } from '../listModel'
+import { PosterTile } from './PosterTile'
 import { Button, SectionLabel } from '../../../shared/ui'
 import { useCollection } from '../hooks/useTMDB'
 import { useTraktStatus } from '../trakt/useTrakt'
@@ -15,6 +17,7 @@ export function CollectionListButton({ movie, onOpenDetail }: { movie: TMDBMovie
   const { data } = useCollection(col?.id ?? null)
   const { data: trakt } = useTraktStatus()
   const create = useCreateTraktList()
+  const index = useLibraryIndex()
   if (!col || !data) return null
   const parts = [...data.parts].sort((a, b) => (a.release_date || '9999').localeCompare(b.release_date || '9999'))
   if (parts.length < 2) return null
@@ -32,21 +35,24 @@ export function CollectionListButton({ movie, onOpenDetail }: { movie: TMDBMovie
           </Button>
         )}
       </div>
-      <div className="scroll-x flex gap-2 pb-1">
-        {parts.map((p, i) => (
-          <button
-            key={p.id}
-            type="button"
-            onClick={() => onOpenDetail?.(p.id, 'movie')}
-            aria-current={p.id === movie.id ? 'true' : undefined}
-            className="group flex w-14 shrink-0 flex-col self-start text-left"
-          >
-            <span className={`mb-1 block aspect-[2/3] overflow-hidden rounded-md bg-surface-2 ${p.id === movie.id ? 'ring-2 ring-accent-500' : ''}`}>
-              <img src={posterUrl(p.poster_path, 'w92')} alt="" loading="lazy" className="h-full w-full object-cover group-hover:brightness-90" />
-            </span>
-            <span className="text-micro tabular-nums text-fg-muted">{i + 1} · {p.release_date?.slice(0, 4) ?? 'TBA'}</span>
-          </button>
-        ))}
+      <div className="scroll-x flex gap-2.5 pb-1 pt-1">
+        {parts.map((p, i) => {
+          const lib = index.get(libraryKey('movie', p.id))
+          return (
+            <div key={p.id} className={`w-24 shrink-0 self-start rounded-md ${p.id === movie.id ? 'ring-2 ring-accent-500 ring-offset-2 ring-offset-surface' : ''}`} aria-current={p.id === movie.id ? 'true' : undefined}>
+              <PosterTile
+                compact
+                posterPath={p.poster_path}
+                title={p.title}
+                meta={`${i + 1} · ${p.release_date?.slice(0, 4) ?? 'TBA'}`}
+                bucket={lib?.bucket}
+                cinema={lib?.cinema}
+                favorite={lib?.favorite}
+                onOpen={() => onOpenDetail?.(p.id, 'movie')}
+              />
+            </div>
+          )
+        })}
       </div>
     </div>
   )

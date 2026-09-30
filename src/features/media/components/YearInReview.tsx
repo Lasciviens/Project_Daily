@@ -1,3 +1,4 @@
+import { formatDateRange } from '../../../shared/utils/dateFormat'
 import { useMemo, useState } from 'react'
 import { Clapperboard, Clock, Repeat, Tv } from 'lucide-react'
 import { EmptyState, Skeleton, StatTile } from '../../../shared/ui'
@@ -8,7 +9,9 @@ import { YearDrillList, type DrillRow } from './YearDrillList'
 
 type Drill = { kind: 'all' } | { kind: 'movies' } | { kind: 'episodes' } | { kind: 'rewatches' } | { kind: 'month'; month: number } | { kind: 'genre'; name: string } | { kind: 'show'; id: number }
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+// Axis letters only; any named date reads DD.MM.YYYY (owner rule).
+const AXIS = ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D']
+const monthRange = (year: number, m: number) => formatDateRange(new Date(year, m - 1, 1), new Date(year, m, 0))
 const hours = (min: number) => `${Math.round(min / 60)}h`
 const ep = (s: number, e: number) => `S${s} · E${e}`
 
@@ -25,7 +28,7 @@ function drillRows(r: YearReview, d: Drill): { heading: string; rows: DrillRow[]
     case 'rewatches': return { heading: 'Watched more than once', rows: r.rewatches.map((x, i) => ({ key: `r${i}`, tmdbId: x.tmdbId, type: x.type === 'movie' ? 'movie' : 'tv', title: x.title, poster: null, detail: `${x.label} · ${x.plays} plays`, date: null })) }
     case 'month': {
       const m = r.months[d.month - 1]
-      return { heading: `${MONTHS[d.month - 1]} ${r.year}`, rows: [
+      return { heading: monthRange(r.year, d.month), rows: [
         ...m.movies.map(movie),
         ...m.episodes.map(e => ({ key: `e${e.showId}${e.season}x${e.episode}`, tmdbId: e.show.tmdbId, type: 'tv' as const, title: e.show.title, poster: e.show.poster, detail: ep(e.season, e.episode), date: e.watchedAt })),
       ].sort((a, b) => (a.date ?? '').localeCompare(b.date ?? '')) }
@@ -72,11 +75,11 @@ export function YearInReview({ onOpenDetail }: { onOpenDetail: (id: number, type
         <div className="flex h-28 items-end gap-1">
           {r.months.map(m => (
             <button key={m.month} type="button" onClick={() => setDrill({ kind: 'month', month: m.month })}
-              title={`${MONTHS[m.month - 1]}: ${hours(m.minutes)}`}
+              title={`${monthRange(r.year, m.month)}: ${hours(m.minutes)}`}
               aria-pressed={drill.kind === 'month' && drill.month === m.month}
               className="group flex h-full min-w-0 flex-1 flex-col items-center justify-end gap-1">
               <span className="w-full rounded-t bg-accent-500/70 group-hover:bg-accent-500 group-aria-pressed:bg-accent-600" style={{ height: `${Math.max(2, (m.minutes / maxMonth) * 100)}%` }} />
-              <span className="text-micro text-fg-muted">{MONTHS[m.month - 1][0]}</span>
+              <span className="text-micro text-fg-muted">{AXIS[m.month - 1]}</span>
             </button>
           ))}
         </div>
