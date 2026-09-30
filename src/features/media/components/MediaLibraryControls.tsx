@@ -15,7 +15,7 @@ import { StarRating } from './StarRating'
 import type { TMDBMovieFull, TMDBTVFull, UserMovieEntry, UserTVEntry, MediaStatus } from '../types'
 
 // No manual "Upcoming" status: "coming soon" is derived from the release date
-// (see CompactLibraryStrip), so a future-dated Wishlist item shows there by itself.
+// (see libraryModel.ts), so a future-dated Wishlist item shows there by itself.
 const MOVIE_STATUSES: { value: MediaStatus; label: string }[] = [
   { value: 'wishlist',  label: 'Wishlist' },
   { value: 'watching',  label: 'Watching' },

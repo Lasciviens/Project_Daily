@@ -1,4 +1,7 @@
+import { useQuery } from '@tanstack/react-query'
 import { BarChart3 } from 'lucide-react'
+import { qk, STALE } from '../../../shared/query'
+import { fetchEpisodeTally } from '../api/watchedEpisodesApi'
 import { computeMediaStats } from '../hooks/useMediaStats'
 import { SectionLabel } from '../../../shared/ui'
 import { CollapsibleCard } from './CollapsibleCard'
@@ -12,21 +15,21 @@ interface Props {
 }
 
 export function MediaStats({ movieEntries, tvEntries, loading = false }: Props) {
-  // Pure computation over the already-loaded library — no extra request.
-  const s = computeMediaStats(movieEntries, tvEntries)
+  const tally = useQuery({ queryKey: qk.media.episodeTally(), queryFn: fetchEpisodeTally, staleTime: STALE.default })
+  const s = computeMediaStats(movieEntries, tvEntries, tally.data)
   const hasData = s.moviesWatched > 0 || s.tvSeriesTracked > 0
 
   return (
-    <CollapsibleCard title="Your stats" icon={<BarChart3 />} loading={loading}>
+    <CollapsibleCard title="Your stats" icon={<BarChart3 />} loading={loading || tally.isLoading}>
       {!hasData ? (
         <p className="text-body text-fg-muted">Add some movies or series to your library to see stats.</p>
       ) : (
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-2">
-            <StatBox label="Films watched" value={s.moviesWatched} />
+            <StatBox label="Films watched" value={s.moviesWatched} sub={plays(s.moviePlays, s.moviesWatched)} />
             <StatBox label="Watch hours" value={`${s.hoursWatched + s.tvHoursWatched}h`} />
             <StatBox label="TV series" value={s.tvSeriesTracked} />
-            <StatBox label="Episodes" value={s.tvEpisodesWatched} />
+            <StatBox label="Episodes" value={s.tvEpisodesWatched} sub={plays(s.tvEpisodePlays, s.tvEpisodesWatched)} />
           </div>
 
           {s.avgMyRating !== null && (
@@ -71,11 +74,14 @@ export function MediaStats({ movieEntries, tvEntries, loading = false }: Props) 
   )
 }
 
-function StatBox({ label, value }: { label: string; value: string | number }) {
+/** "62 plays" when rewatches make plays differ from the distinct count. */
+const plays = (count: number, distinct: number) => (count > distinct ? `${count.toLocaleString('en-GB')} plays` : undefined)
+
+function StatBox({ label, value, sub }: { label: string; value: string | number; sub?: string }) {
   return (
     <div className="rounded-row bg-surface-2 px-3 py-2">
-      <div className="text-lead font-bold text-fg tabular-nums">{value}</div>
-      <div className="text-meta text-fg-muted">{label}</div>
+      <div className="text-lead font-bold text-fg tabular-nums">{typeof value === 'number' ? value.toLocaleString('en-GB') : value}</div>
+      <div className="text-meta text-fg-muted">{label}{sub && <span className="text-fg-faint"> · {sub}</span>}</div>
     </div>
   )
 }

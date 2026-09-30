@@ -39,6 +39,8 @@ export interface PushPlan {
   ratings: { movies: { tmdb: number; rating: number }[]; shows: { tmdb: number; rating: number }[] }
   watchlistAdd: { movies: { tmdb: number }[]; shows: { tmdb: number }[] }
   watchlistRemove: { movies: { tmdb: number }[]; shows: { tmdb: number }[] }
+  /** Shows dropped here but not on Trakt → Trakt's hidden "dropped" section. */
+  droppedAdd: { shows: { tmdb: number }[] }
 }
 
 export interface ImportPlan {
@@ -48,8 +50,6 @@ export interface ImportPlan {
   push: PushPlan
   /** Every Trakt item with a TMDB id, for filling the catalogue's trakt/imdb/tvdb ids. */
   ids: TraktItem[]
-  /** Dropped here but not on Trakt — Trakt's dropped list is not written yet. */
-  droppedOnlyHere: number
 }
 
 /** One history entry per play, a minute apart, so Trakt counts every play. */
@@ -78,6 +78,7 @@ export function buildImportPlan(snap: TraktSnapshot, local: LocalLibrary, info: 
     ratings: { movies: [], shows: [] },
     watchlistAdd: { movies: [], shows: [] },
     watchlistRemove: { movies: [], shows: [] },
+    droppedAdd: { shows: [] },
   }
   const ids = new Map<string, TraktItem>()
   const note = (i: TraktItem) => { if (i.ids.tmdb) ids.set(`${i.type}:${i.ids.tmdb}`, i) }
@@ -138,7 +139,6 @@ export function buildImportPlan(snap: TraktSnapshot, local: LocalLibrary, info: 
 
   const shows: ShowWrite[] = []
   const episodes: EpisodeWrite[] = []
-  let droppedOnlyHere = 0
   for (const id of showKeys) {
     const t = tShows.get(id)
     const l = lShows.get(id)
@@ -163,7 +163,7 @@ export function buildImportPlan(snap: TraktSnapshot, local: LocalLibrary, info: 
     }
 
     const isDropped = dropped.has(id) || l?.status === 'dropped'
-    if (l?.status === 'dropped' && !dropped.has(id)) droppedOnlyHere++
+    if (l?.status === 'dropped' && !dropped.has(id)) push.droppedAdd.shows.push({ tmdb: id })
     const regular = [...union].filter(k => !k.startsWith('0x')).length
     const aired = info.get(id)?.aired ?? 0
     let status: string
@@ -187,7 +187,7 @@ export function buildImportPlan(snap: TraktSnapshot, local: LocalLibrary, info: 
     if (wl && status !== 'wishlist') push.watchlistRemove.shows.push({ tmdb: id })
   }
 
-  return { movies, shows, episodes, push, ids: [...ids.values()], droppedOnlyHere }
+  return { movies, shows, episodes, push, ids: [...ids.values()] }
 }
 
 /** Aired regular episodes from TMDB's show details (specials excluded). */
@@ -209,4 +209,5 @@ export function airedEpisodes(details: {
 export function pushCount(p: PushPlan): number {
   return p.history.movies.length + p.history.episodes.length + p.ratings.movies.length + p.ratings.shows.length
     + p.watchlistAdd.movies.length + p.watchlistAdd.shows.length + p.watchlistRemove.movies.length + p.watchlistRemove.shows.length
+    + p.droppedAdd.shows.length
 }
