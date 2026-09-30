@@ -97,7 +97,7 @@ function SortHead({ label, sorts, className = '' }: { label: string; sorts: TgSo
       className={`inline-flex min-h-[32px] items-center gap-1 text-left uppercase [@media(pointer:coarse)]:min-h-[44px] tracking-[inherit] ${active ? 'text-[var(--tg-text)]' : ''} ${className}`}
     >
       {label}
-      {active && (sort === 'title-desc' ? <ArrowUp aria-hidden className="h-3 w-3" /> : <ArrowDown aria-hidden className="h-3 w-3" />)}
+      {active && (sorts.indexOf(sort) > 0 ? <ArrowUp aria-hidden className="h-3 w-3" /> : <ArrowDown aria-hidden className="h-3 w-3" />)}
     </button>
   )
 }
@@ -129,9 +129,9 @@ export function TgListView({ games, selectedId, onSelect, resetKey }: Props) {
         <span aria-hidden />
         <SortHead label="Title" sorts={['title', 'title-desc']} />
         <span>Status</span>
-        <SortHead label="Rating" sorts={['rating']} />
-        <SortHead label="Playtime" sorts={['playtime']} className="hidden lg:flex" />
-        <SortHead label="Last played" sorts={['recent']} className="hidden lg:flex" />
+        <SortHead label="Rating" sorts={['rating', 'rating-asc']} />
+        <SortHead label="Playtime" sorts={['playtime', 'playtime-asc']} className="hidden lg:flex" />
+        <SortHead label="Last played" sorts={['recent', 'recent-asc']} className="hidden lg:flex" />
         <span className="hidden xl:block">Platform</span>
         <span className="hidden xl:block">Genres</span>
         <span className="hidden text-right xl:block">Launches</span>

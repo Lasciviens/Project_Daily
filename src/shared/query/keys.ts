@@ -79,6 +79,11 @@ export const qk = {
     /** A TMDB read: ['tmdb', 'trending', 'movie', 'day'] etc. */
     tmdbQuery: (...parts: readonly unknown[]) => ['tmdb', ...parts] as const,
   },
+  trakt: {
+    all: ['trakt'] as const,
+    status: () => ['trakt', 'status'] as const,
+    preview: () => ['trakt', 'preview'] as const,
+  },
   wishes: { all: ['wish-items'] as const },
   devRequests: { all: ['dev-requests'] as const },
   projects: {

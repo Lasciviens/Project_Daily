@@ -1,0 +1,232 @@
+{
+  "ps2": {
+    "file": "ps2.webp",
+    "title": "File:PS2-Fat-Console-Set.png",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:PS2-Fat-Console-Set.png",
+    "author": "Evan-Amos",
+    "license": "Public domain",
+    "width": 492,
+    "height": 600,
+    "bytes": 21568
+  },
+  "psx": {
+    "file": "psx.webp",
+    "title": "File:PSX-Console-wController.png",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:PSX-Console-wController.png",
+    "author": "Evan-Amos",
+    "license": "Public domain",
+    "width": 900,
+    "height": 403,
+    "bytes": 31182
+  },
+  "ps3": {
+    "file": "ps3.webp",
+    "title": "File:Sony-PlayStation-3-CECHA01-wController-L.jpg",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Sony-PlayStation-3-CECHA01-wController-L.jpg",
+    "author": "Evan-Amos",
+    "license": "Public domain",
+    "width": 884,
+    "height": 358,
+    "bytes": 22350
+  },
+  "psp": {
+    "file": "psp.webp",
+    "title": "File:Sony-PSP-1000-Body.png",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Sony-PSP-1000-Body.png",
+    "author": "Evan-Amos",
+    "license": "Public domain",
+    "width": 900,
+    "height": 500,
+    "bytes": 36830
+  },
+  "psvita": {
+    "file": "psvita.webp",
+    "title": "File:PlayStation-Vita-1101-FL.jpg",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:PlayStation-Vita-1101-FL.jpg",
+    "author": "Evan-Amos",
+    "license": "Public domain",
+    "width": 900,
+    "height": 524,
+    "bytes": 21492
+  },
+  "gc": {
+    "file": "gc.webp",
+    "title": "File:GameCube-Console-Set.png",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:GameCube-Console-Set.png",
+    "author": "Evan-Amos",
+    "license": "Public domain",
+    "width": 900,
+    "height": 498,
+    "bytes": 42532
+  },
+  "wii": {
+    "file": "wii.webp",
+    "title": "File:Wii-Console.png",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Wii-Console.png",
+    "author": "Evan-Amos",
+    "license": "Public domain",
+    "width": 546,
+    "height": 600,
+    "bytes": 26030
+  },
+  "wiiu": {
+    "file": "wiiu.webp",
+    "title": "File:Nintendo-Wii-U-Console-FL.jpg",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Nintendo-Wii-U-Console-FL.jpg",
+    "author": "Evan-Amos",
+    "license": "Public domain",
+    "width": 851,
+    "height": 544,
+    "bytes": 19342
+  },
+  "switch": {
+    "file": "switch.webp",
+    "title": "File:Nintendo-Switch-Console-Docked-wJoyConRB.jpg",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Nintendo-Switch-Console-Docked-wJoyConRB.jpg",
+    "author": "Evan-Amos",
+    "license": "Public domain",
+    "width": 869,
+    "height": 425,
+    "bytes": 19610
+  },
+  "n3ds": {
+    "file": "n3ds.webp",
+    "title": "File:Nintendo-3DS-AquaOpen.png",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Nintendo-3DS-AquaOpen.png",
+    "author": "Evan-Amos",
+    "license": "Public domain",
+    "width": 663,
+    "height": 600,
+    "bytes": 25108
+  },
+  "nds": {
+    "file": "nds.webp",
+    "title": "File:Nintendo-DS-Fat-Blue.jpg",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Nintendo-DS-Fat-Blue.jpg",
+    "author": "Evan-Amos",
+    "license": "Public domain",
+    "width": 660,
+    "height": 600,
+    "bytes": 31352
+  },
+  "n64": {
+    "file": "n64.webp",
+    "title": "File:N64-Console-Set.png",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:N64-Console-Set.png",
+    "author": "Evan-Amos",
+    "license": "Public domain",
+    "width": 900,
+    "height": 481,
+    "bytes": 36800
+  },
+  "snes": {
+    "file": "snes.webp",
+    "title": "File:Nintendo-Super-Famicom-Set-FL.png",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Nintendo-Super-Famicom-Set-FL.png",
+    "author": "Evan-Amos",
+    "license": "Public domain",
+    "width": 862,
+    "height": 387,
+    "bytes": 20580
+  },
+  "nes": {
+    "file": "nes.webp",
+    "title": "File:NES-Console-Set.png",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:NES-Console-Set.png",
+    "author": "Evan-Amos",
+    "license": "Public domain",
+    "width": 900,
+    "height": 468,
+    "bytes": 14718
+  },
+  "gba": {
+    "file": "gba.webp",
+    "title": "File:Nintendo-Game-Boy-Advance-Purple-FL.png",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Nintendo-Game-Boy-Advance-Purple-FL.png",
+    "author": "Evan-Amos",
+    "license": "Public domain",
+    "width": 852,
+    "height": 558,
+    "bytes": 27098
+  },
+  "gbc": {
+    "file": "gbc.webp",
+    "title": "File:Nintendo-Game-Boy-Color-FL.jpg",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Nintendo-Game-Boy-Color-FL.jpg",
+    "author": "Evan-Amos",
+    "license": "Public domain",
+    "width": 436,
+    "height": 600,
+    "bytes": 21176
+  },
+  "gb": {
+    "file": "gb.webp",
+    "title": "File:Game-Boy-FL.jpg",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Game-Boy-FL.jpg",
+    "author": "Evan-Amos",
+    "license": "Public domain",
+    "width": 495,
+    "height": 600,
+    "bytes": 13892
+  },
+  "genesis": {
+    "file": "genesis.webp",
+    "title": "File:Sega-Genesis-Mod1-Set.jpg",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Sega-Genesis-Mod1-Set.jpg",
+    "author": "Evan-Amos",
+    "license": "Public domain",
+    "width": 900,
+    "height": 367,
+    "bytes": 23936
+  },
+  "segacd": {
+    "file": "segacd.webp",
+    "title": "File:Sega-CD-Model2-Set.jpg",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Sega-CD-Model2-Set.jpg",
+    "author": "Evan-Amos",
+    "license": "Public domain",
+    "width": 900,
+    "height": 512,
+    "bytes": 32714
+  },
+  "saturn": {
+    "file": "saturn.webp",
+    "title": "File:Sega-Saturn-Console-Set-Mk1.jpg",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Sega-Saturn-Console-Set-Mk1.jpg",
+    "author": "Evan-Amos",
+    "license": "Public domain",
+    "width": 900,
+    "height": 488,
+    "bytes": 25596
+  },
+  "dreamcast": {
+    "file": "dreamcast.webp",
+    "title": "File:Sega-Dreamcast-Console-FL.jpg",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Sega-Dreamcast-Console-FL.jpg",
+    "author": "Evan-Amos",
+    "license": "Public domain",
+    "width": 842,
+    "height": 591,
+    "bytes": 12280
+  },
+  "xbox": {
+    "file": "xbox.webp",
+    "title": "File:Xbox-console.jpg",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Xbox-console.jpg",
+    "author": "Evan-Amos",
+    "license": "Public domain",
+    "width": 900,
+    "height": 401,
+    "bytes": 23178
+  },
+  "xbox360": {
+    "file": "xbox360.webp",
+    "title": "File:Xbox-360-Pro-wController.jpg",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Xbox-360-Pro-wController.jpg",
+    "author": "Evan-Amos",
+    "license": "Public domain",
+    "width": 397,
+    "height": 600,
+    "bytes": 16144
+  }
+}

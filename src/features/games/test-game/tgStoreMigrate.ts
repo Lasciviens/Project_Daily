@@ -2,7 +2,7 @@
 // imports only) so scripts/verify-test-game-model.cjs can run them through
 // sucrase without zustand or a browser.
 
-export const TG_STORE_VERSION = 4
+export const TG_STORE_VERSION = 5
 
 const ADVANCED_KEYS = ['review', 'steam', 'playstation']
 
@@ -23,6 +23,8 @@ export interface TgPersisted {
  * v3: ScreenScraper left Advanced for its own Scrape page.
  * v4: the "Others" platform row is gone (every platform is listed), so a saved
  * Others shelf opens All Games.
+ * v5: the Backlog section left the navigation (the Backlog status filter
+ * covers it), so a saved Backlog view opens the Library.
  */
 export function migrateTgPersisted(persisted: unknown, version: number): TgPersisted {
   const p = { ...((persisted ?? {}) as TgPersisted) }
@@ -33,5 +35,6 @@ export function migrateTgPersisted(persisted: unknown, version: number): TgPersi
     p.advancedTab = 'review'
   }
   if (version < 4 && p.platform === 'others') p.platform = 'all'
+  if (version < 5 && p.section === 'backlog') p.section = 'library'
   return p
 }

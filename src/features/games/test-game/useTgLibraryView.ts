@@ -32,7 +32,7 @@ export interface TgLibraryView {
   visible: TgGame[]
   /** ONE queue numbering for the badges, the queue rows and the ⋯ menu. */
   ranks: Map<string, number>
-  navCounts: { queue: number; wishlist: number; completed: number; backlog: number; review: number }
+  navCounts: { queue: number; wishlist: number; completed: number; review: number }
 }
 
 export function useTgLibraryView(lib: TestGameLibrary): TgLibraryView {
@@ -109,7 +109,7 @@ export function useTgLibraryView(lib: TestGameLibrary): TgLibraryView {
     const all = statusCounts(lib.games)
     // Needs review, from the rows the page holds (the same rule the tab lists).
     const review = lib.games.reduce((n, g) => n + (needsReviewReasons(g).length > 0 ? 1 : 0), 0)
-    return { queue: ranks.size, wishlist: all.wishlist, completed: all.completed, backlog: all.backlog, review }
+    return { queue: ranks.size, wishlist: all.wishlist, completed: all.completed, review }
   }, [lib.games, ranks])
 
   return {

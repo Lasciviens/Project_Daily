@@ -1,0 +1,111 @@
+import { ModalShell } from '../../../shared/modals/ModalShell'
+import { Button, Skeleton, ToneDot, type Tone } from '../../../shared/ui'
+import { Truncate } from '../../../shared/ui/Truncate'
+import { formatDateTime } from '../../../shared/utils/dateFormat'
+import type { PreviewChange, PreviewTitle, TraktPreview } from './traktPreview'
+import { useTraktPreview } from './useTrakt'
+
+// The first import's dry run: every count the import would act on, with the
+// titles behind it. Reads Trakt and the library; writes nothing.
+
+const titleLine = (t: PreviewTitle) => `${t.title}${t.year ? ` (${t.year})` : ''}`
+
+function Row({ tone, label, count, items }: { tone: Tone; label: string; count: number; items?: (PreviewTitle | PreviewChange)[] }) {
+  const shown = (items ?? []).slice(0, 30)
+  return (
+    <details className="group rounded-control border border-line px-3 py-2 open:bg-surface-2" open={false}>
+      <summary className="flex min-h-[44px] cursor-pointer list-none items-center gap-2 text-meta">
+        <ToneDot tone={count ? tone : 'neutral'} />
+        <span className="min-w-0 flex-1 text-fg">{label}</span>
+        <span className="tabular-nums font-semibold text-fg">{count.toLocaleString('en-GB')}</span>
+      </summary>
+      {shown.length > 0 && (
+        <ul className="mt-1 space-y-0.5 pb-1 text-micro text-fg-2">
+          {shown.map((t, i) => (
+            <li key={`${t.kind}-${t.tmdbId ?? t.title}-${i}`} className="flex min-w-0 gap-2">
+              <Truncate className="min-w-0 flex-1">{titleLine(t)}</Truncate>
+              {'detail' in t && <span className="shrink-0 text-fg-muted">{t.detail}</span>}
+            </li>
+          ))}
+          {(items?.length ?? 0) > shown.length && <li className="text-fg-muted">…and {(items!.length - shown.length).toLocaleString('en-GB')} more</li>}
+        </ul>
+      )}
+    </details>
+  )
+}
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="flex flex-col gap-1.5">
+      <h3 className="section-label">{title}</h3>
+      {children}
+    </section>
+  )
+}
+
+function Body({ p }: { p: TraktPreview }) {
+  return (
+    <div className="flex flex-col gap-4">
+      {p.duplicateLocal > 0 && (
+        <p className="w-fit rounded-control bg-surface-2 px-3 py-2 text-meta text-fg" data-tone="danger">
+          {p.duplicateLocal} library title{p.duplicateLocal === 1 ? '' : 's'} appear twice — these are merged before any import.
+        </p>
+      )}
+      <Section title="Movies">
+        <Row tone="success" label="New from Trakt (added as Completed)" count={p.movies.add.length} items={p.movies.add} />
+        <Row tone="info" label="Changed to match Trakt" count={p.movies.update.length} items={p.movies.update} />
+        <Row tone="neutral" label="Already the same" count={p.movies.same} />
+        <Row tone="warn" label="Watched here, not on Trakt (sent to Trakt)" count={p.movies.push.length} items={p.movies.push} />
+      </Section>
+      <Section title="Shows">
+        <Row tone="success" label="New from Trakt" count={p.shows.add.length} items={p.shows.add} />
+        <Row tone="info" label="Episodes to add to existing shows" count={p.shows.update.length} items={p.shows.update} />
+        <Row tone="neutral" label="Already the same" count={p.shows.same} />
+        <Row tone="warn" label="Watched here, not on Trakt (sent to Trakt)" count={p.shows.push.length} items={p.shows.push} />
+      </Section>
+      <Section title="Episodes">
+        <Row tone="success" label="Watched episodes to add" count={p.episodes.add} />
+        <Row tone="info" label="Play counts to update" count={p.episodes.playsChanged} />
+        <Row tone="neutral" label="Already the same" count={p.episodes.same} />
+        <Row tone="warn" label="Watched here, not on Trakt (sent to Trakt)" count={p.episodes.push} />
+      </Section>
+      <Section title="Watchlist · ratings · dropped">
+        <Row tone="success" label="Watchlist titles to add (as Wishlist)" count={p.watchlist.add.length} items={p.watchlist.add} />
+        <Row tone="warn" label="Wishlist here, not on the Trakt watchlist (sent)" count={p.watchlist.push.length} items={p.watchlist.push} />
+        <Row tone="neutral" label="On the watchlist but already watched here (left alone)" count={p.watchlist.skippedWatched} />
+        <Row tone="info" label="Ratings to take from Trakt" count={p.ratings.update.length} items={p.ratings.update} />
+        <Row tone="warn" label="Rated here, not on Trakt (sent)" count={p.ratings.push.length} items={p.ratings.push} />
+        <Row tone="info" label="Shows to mark Dropped" count={p.dropped.add.length} items={p.dropped.add} />
+        <Row tone="warn" label="Dropped here, not on Trakt (sent)" count={p.dropped.push.length} items={p.dropped.push} />
+      </Section>
+      <Section title="Also coming over">
+        <Row tone="success" label="Favorites" count={p.favorites.matched} />
+        <Row tone="success" label="Half-watched (Continue watching)" count={p.playback} />
+        <Row tone="danger" label="No TMDB match — picked by hand later" count={p.unmatched.length} items={p.unmatched} />
+      </Section>
+    </div>
+  )
+}
+
+export function TraktPreviewSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const q = useTraktPreview(open)
+  return (
+    <ModalShell
+      open={open}
+      onClose={onClose}
+      size="lg"
+      title="Trakt import preview"
+      subtitle={q.data ? `Read ${formatDateTime(q.data.snapshot.fetchedAt)} · nothing has been saved` : 'Reading Trakt and your library…'}
+      footer={
+        <div className="flex flex-wrap justify-end gap-2">
+          <Button onClick={() => q.refetch()} disabled={q.isFetching}>Read again</Button>
+          <Button variant="primary" onClick={onClose}>Close</Button>
+        </div>
+      }
+    >
+      {q.isLoading && <div className="flex flex-col gap-2">{[0, 1, 2, 3].map(i => <Skeleton key={i} className="h-11" />)}</div>}
+      {q.error && <p className="text-meta text-fg" data-tone="danger">Could not read Trakt: {(q.error as Error).message}</p>}
+      {q.data && <Body p={q.data.preview} />}
+    </ModalShell>
+  )
+}
