@@ -2,37 +2,60 @@ import type { UserMovieEntry, UserTVEntry } from '../types'
 
 export interface MediaStats {
   moviesWatched:    number
+  /** Every play, rewatches included (1 + repeat_count per film). */
+  moviePlays:       number
   moviesWishlist:   number
   hoursWatched:     number
   tvSeriesTracked:  number
   tvEpisodesWatched: number
+  /** Every episode play, rewatches included; equals episodes when the tally is unknown. */
+  tvEpisodePlays:   number
   tvHoursWatched:   number
   avgMyRating:      number | null
   avgTMDBRating:    number | null
   topGenres:        { name: string; count: number }[]
 }
 
-export function computeMediaStats(movies: UserMovieEntry[], tv: UserTVEntry[]): MediaStats {
+/** Per tv_series id: distinct watched episodes and plays, from user_tv_episodes. */
+export type EpisodeTallyMap = Record<string, { episodes: number; plays: number }>
+
+// Counts come from the real rows when the episode tally is loaded — the same
+// rows the Trakt import writes, so Films watched / Episodes here match Trakt's
+// watched counts, and plays match its plays. Without the tally (still loading)
+// the old estimate from the series' position stands in.
+export function computeMediaStats(movies: UserMovieEntry[], tv: UserTVEntry[], tally?: EpisodeTallyMap | null): MediaStats {
   const completed  = movies.filter(e => e.status === 'completed')
+  const moviePlays = completed.reduce((s, e) => s + 1 + Math.max(0, e.repeat_count ?? 0), 0)
 
-  // Movie hours: runtime × (1 + repeat_count) for each completed film
-  const movieMins  = completed.reduce((s, e) => s + (e.movie.runtime ?? 90) * (1 + e.repeat_count), 0)
+  // Movie hours: runtime × plays for each completed film
+  const movieMins  = completed.reduce((s, e) => s + (e.movie.runtime ?? 90) * (1 + Math.max(0, e.repeat_count ?? 0)), 0)
 
-  // TV episodes: rough estimate per series using season/episode position
   let tvEpisodes = 0
+  let tvPlays    = 0
   let tvMins     = 0
-  for (const e of tv) {
-    if (e.status === 'completed') {
-      tvEpisodes += e.tv_series.number_of_episodes ?? 0
-      tvMins     += (e.tv_series.number_of_episodes ?? 0) * (e.tv_series.episode_run_time ?? 30)
-    } else if (e.status === 'watching' || e.status === 'paused') {
-      const totalEps      = e.tv_series.number_of_episodes ?? 0
-      const seasons       = e.tv_series.number_of_seasons  ?? 1
-      const avgEpsPerSzn  = seasons > 0 ? Math.ceil(totalEps / seasons) : totalEps
-      const estimatedWatched = (e.current_season - 1) * avgEpsPerSzn + e.current_episode
-      tvEpisodes += estimatedWatched
-      tvMins     += estimatedWatched * (e.tv_series.episode_run_time ?? 30)
+  if (tally) {
+    for (const e of tv) {
+      const t = tally[e.tv_series_id]
+      if (!t) continue
+      tvEpisodes += t.episodes
+      tvPlays    += t.plays
+      tvMins     += t.plays * (e.tv_series.episode_run_time ?? 30)
     }
+  } else {
+    for (const e of tv) {
+      if (e.status === 'completed') {
+        tvEpisodes += e.tv_series.number_of_episodes ?? 0
+        tvMins     += (e.tv_series.number_of_episodes ?? 0) * (e.tv_series.episode_run_time ?? 30)
+      } else if (e.status === 'watching' || e.status === 'paused') {
+        const totalEps      = e.tv_series.number_of_episodes ?? 0
+        const seasons       = e.tv_series.number_of_seasons  ?? 1
+        const avgEpsPerSzn  = seasons > 0 ? Math.ceil(totalEps / seasons) : totalEps
+        const estimatedWatched = (e.current_season - 1) * avgEpsPerSzn + e.current_episode
+        tvEpisodes += estimatedWatched
+        tvMins     += estimatedWatched * (e.tv_series.episode_run_time ?? 30)
+      }
+    }
+    tvPlays = tvEpisodes
   }
 
   // Ratings across BOTH movies and TV (previously movie-only, so a TV-only
@@ -63,10 +86,12 @@ export function computeMediaStats(movies: UserMovieEntry[], tv: UserTVEntry[]): 
 
   return {
     moviesWatched:     completed.length,
+    moviePlays,
     moviesWishlist:    movies.filter(e => e.status === 'wishlist').length,
     hoursWatched:      Math.round(movieMins / 60),
     tvSeriesTracked:   tv.length,
     tvEpisodesWatched: tvEpisodes,
+    tvEpisodePlays:    tvPlays,
     tvHoursWatched:    Math.round(tvMins / 60),
     avgMyRating:       avgMyRating   !== null ? Math.round(avgMyRating   * 10) / 10 : null,
     avgTMDBRating:     avgTMDBRating !== null ? Math.round(avgTMDBRating * 10) / 10 : null,

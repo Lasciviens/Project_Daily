@@ -72,6 +72,7 @@ export const qk = {
     userTv: () => ['tv', 'user'] as const,
     watched: (tvEntryId: string) => ['watched-episodes', tvEntryId] as const,
     watchedAll: ['watched-episodes'] as const,
+    episodeTally: () => ['watched-episodes', 'tally'] as const,
     nextEpisode: (tvEntryId: string) => ['next-episode', tvEntryId] as const,
     nextEpisodeAll: ['next-episode'] as const,
     recent: () => ['recent-media'] as const,

@@ -78,6 +78,13 @@ const find = (xs, id) => xs.find(x => x.tmdbId === id)
   ok(showsNeedingInfo(s, local).sort((a, b) => a - b), [10, 11, 12, 13], 'shows with any watched episode need TMDB details')
 }
 
+// Dropped here, not on Trakt → Trakt's dropped list; already dropped there → nothing
+{
+  const p = buildImportPlan(snap({ dropped: [{ item: show(31) }] }), lib({ shows: [ls(30, 'dropped'), ls(31, 'dropped')] }), new Map())
+  ok(p.push.droppedAdd.shows, [{ tmdb: 30 }], 'a show dropped only here is sent to Trakt\'s dropped list')
+  ok(find(p.shows, 30).status, 'dropped', 'it stays dropped here')
+}
+
 // No TMDB details: never guessed Completed
 {
   const p = buildImportPlan(snap({ watchedShows: [{ item: show(20), plays: 1, lastWatchedAt: null, resetAt: null, episodes: [[1, 1, 1, null]] }] }), lib(), new Map())

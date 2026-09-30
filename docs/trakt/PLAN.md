@@ -147,3 +147,16 @@ for titles in your library, refreshed at most weekly. Needs a free MDBList API k
 - Redirect URIs on the Trakt app: `https://lasciviens.github.io/Project_Daily/` (and
   `http://localhost:5173/Project_Daily/` for local testing).
 - Per phase: apply the named migration and deploy the named function.
+
+## 11. Proposed next — franchise lists and alerts (owner request 30.09.2026, not built)
+
+- **Lists, synced with Trakt personal lists** (verified in the API blueprint: `/users/{id}/lists`,
+  `…/lists/{list_id}/items` add / remove / reorder). A list here is one Trakt list; its items stay
+  one row per title (TMDB id), so a film in "Marvel" and in the library is still one film.
+- **Auto-match new titles:** a list can follow a source — a **TMDB collection** (e.g. Harry Potter;
+  a film's `belongs_to_collection`) or a **TMDB company/keyword** (e.g. Marvel Studios, whose films
+  span many collections). A daily job checks the source; a new title is added to the list (and to
+  the Trakt list).
+- **Alerts:** a new title or a new **trailer** (TMDB `/movie/{id}/videos`, type Trailer, by
+  `published_at`) for a followed list sends a Web Push. Web Push delivery is still unverified on
+  the phone (see CLAUDE.md), so that is checked first.

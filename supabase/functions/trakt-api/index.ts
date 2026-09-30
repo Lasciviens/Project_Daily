@@ -2,7 +2,7 @@
 //
 // Connect (OAuth code exchange), status, disconnect (revoke), a read-only
 // `snapshot` of everything Trakt holds, and `push` — the app → Trakt writes
-// of an import (history, ratings, watchlist add/remove), paced at Trakt's
+// of an import (history, ratings, watchlist add/remove, dropped shows), paced at Trakt's
 // one write per second. The media tables are written by the browser
 // (src/features/media/trakt/traktImport.ts, planned by the pure
 // traktImportPlan.ts); this function only ever writes trakt_tokens and
@@ -104,6 +104,7 @@ interface PushBody {
   ratings?: { movies?: PushTitle[]; shows?: PushTitle[] }
   watchlistAdd?: { movies?: PushTitle[]; shows?: PushTitle[] }
   watchlistRemove?: { movies?: PushTitle[]; shows?: PushTitle[] }
+  droppedAdd?: { shows?: PushTitle[] }
 }
 
 const chunk = <T,>(xs: T[], n: number): T[][] => {
@@ -161,6 +162,12 @@ async function push(token: string, b: PushBody) {
       count(res, key === 'watchlistAdd' ? 'added' : 'deleted', label)
       count(res, 'not_found', label)
     }
+  }
+  // Trakt's hidden "dropped" section takes shows only (API blueprint, Add Hidden Items).
+  for (const part of chunk(b.droppedAdd?.shows ?? [], 100)) {
+    const res = await post('/users/hidden/dropped', token, { shows: part.map(t => tmdbIds(t.tmdb)) })
+    count(res, 'added', 'dropped')
+    count(res, 'not_found', 'dropped')
   }
   return tally
 }

@@ -20,7 +20,6 @@ export interface ImportResult {
   episodes: number
   sent: number
   tally: Record<string, number>
-  droppedOnlyHere: number
 }
 
 type Progress = (step: string) => void
@@ -129,5 +128,5 @@ export async function runTraktImport(progress: Progress): Promise<ImportResult> 
   progress(sent ? `Sending ${sent} changes to Trakt (one per second)…` : 'Recording the sync…')
   const { tally } = await pushToTrakt(plan.push, true)
 
-  return { movies: plan.movies.length, shows: plan.shows.length, episodes: plan.episodes.length, sent, tally, droppedOnlyHere: plan.droppedOnlyHere }
+  return { movies: plan.movies.length, shows: plan.shows.length, episodes: plan.episodes.length, sent, tally }
 }

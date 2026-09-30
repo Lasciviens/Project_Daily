@@ -92,3 +92,26 @@ export async function unmarkEpisodeWatched(
   if (error) throw error
   await syncEntryProgress(tvEntryId)
 }
+
+/** Per series: distinct watched episodes and plays (1 + repeat_count each), from the real rows. */
+export interface EpisodeTally { episodes: number; plays: number }
+
+export async function fetchEpisodeTally(): Promise<Record<string, EpisodeTally>> {
+  const out: Record<string, EpisodeTally> = {}
+  let withRepeat = true
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await supabase.from('user_tv_episodes')
+      .select(withRepeat ? 'tv_series_id, repeat_count' : 'tv_series_id')
+      .not('watched_at', 'is', null).order('id').range(from, from + 999)
+    // Before migration 116 there is no repeat_count on episodes.
+    if (error && withRepeat && (error.code === '42703' || error.code === 'PGRST204')) { withRepeat = false; from -= 1000; continue }
+    if (error) throw error
+    for (const r of (data ?? []) as unknown as { tv_series_id: string; repeat_count?: number }[]) {
+      const t = out[r.tv_series_id] ?? { episodes: 0, plays: 0 }
+      t.episodes += 1
+      t.plays += 1 + Math.max(0, r.repeat_count ?? 0)
+      out[r.tv_series_id] = t
+    }
+    if (!data || data.length < 1000) return out
+  }
+}
