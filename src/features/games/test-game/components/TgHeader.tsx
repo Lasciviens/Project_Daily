@@ -1,5 +1,6 @@
 import { headerNoteText, type TgHeaderConfig } from '../tgTypes'
 import { PlatformWordmark, SectionGlyph } from './platformArt'
+import { TgConsolePhoto } from './TgConsolePhoto'
 import { Truncate } from '../../../../shared/ui/Truncate'
 
 // Idle status tabs: faint pills in dark mode, plain text in light (the
@@ -40,6 +41,7 @@ export function TgHeader({ config }: { config: TgHeaderConfig }) {
             </p>
           )}
         </div>
+        {isPlatform && <TgConsolePhoto platformKey={platformKey} name={title} />}
         {action}
       </div>
 
