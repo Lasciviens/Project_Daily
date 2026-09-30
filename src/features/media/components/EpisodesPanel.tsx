@@ -3,7 +3,7 @@ import { format } from 'date-fns'
 import { withProgress } from '../../../shared/hooks/useMutationWithFeedback'
 import { useSeasonDetails } from '../hooks/useTMDB'
 import { useWatchedEpisodes, useMarkEpisodeWatched } from '../hooks/useWatchedEpisodes'
-import { CalendarPlus, Check } from 'lucide-react'
+import { CalendarPlus, Check, RotateCcw, Undo2 } from 'lucide-react'
 import { useEntityModal } from '../../../shared/modals'
 import { Button, SectionLabel, Skeleton } from '../../../shared/ui'
 import { ceilToQuarter } from '../../../shared/components/plan-modal/planModal.config'
@@ -29,7 +29,7 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
   const modal                           = useEntityModal()
 
   const watchedSet = new Set(watched.filter(w => w.season_number === season).map(w => w.episode_number))
-  const watchedMap = new Map(watched.filter(w => w.season_number === season).map(w => [w.episode_number, w.watched_at]))
+  const watchedMap = new Map(watched.filter(w => w.season_number === season).map(w => [w.episode_number, w]))
 
   // Watched count per season — drives the Netflix-style progress on the
   // season tabs (n/total + a green fill bar), so where you are in a series
@@ -48,19 +48,43 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
     })
   }
 
-  // Mark every selected episode as watched (today), then clear the selection.
-  // useMarkEpisodeWatched refreshes progress + the schedule (the DB trigger
-  // deletes a watched episode's planned block, migration 043) and toasts errors.
-  async function handleMarkSelectedWatched() {
-    if (selected.size === 0) return
+  // The selection split by what it holds: an episode already watched (here or
+  // from Trakt) can't be "marked watched" again — that used to overwrite its
+  // real date with today. It can be watched again (one more play) or unmarked.
+  const selectedWatched   = [...selected].filter(n => watchedSet.has(n))
+  const selectedUnwatched = [...selected].filter(n => !watchedSet.has(n))
+
+  async function runMark(nums: number[], mode: 'watched' | 'again' | 'unwatched', loading: string, success: string) {
+    if (nums.length === 0) return
     setMarking(true)
-    const episodes = [...selected].map(episode => ({ season, episode }))
+    const episodes = nums.map(episode => ({ season, episode }))
     const ok = await withProgress(
-      () => markWatched.mutateAsync({ tvEntryId, episodes, watchedOn: TODAY }).then(() => true),
-      { loading: `Marking ${episodes.length} episode${episodes.length > 1 ? 's' : ''} as watched…`, success: 'Marked as watched' },
+      () => markWatched.mutateAsync({
+        tvEntryId, episodes, watchedOn: TODAY,
+        watched: mode !== 'unwatched', again: mode === 'again',
+      }).then(() => true),
+      { loading, success },
     )
     if (ok) setSelected(new Set())
     setMarking(false)
+  }
+
+  const plural = (n: number) => `${n} episode${n > 1 ? 's' : ''}`
+
+  // useMarkEpisodeWatched refreshes progress + the schedule (the DB trigger
+  // deletes a watched episode's planned block, migration 043) and toasts errors.
+  const markSelectedWatched = () => runMark(selectedUnwatched, 'watched',
+    `Marking ${plural(selectedUnwatched.length)} as watched…`, 'Marked as watched')
+  const watchSelectedAgain = () => runMark(selectedWatched, 'again',
+    `Counting another play of ${plural(selectedWatched.length)}…`, 'Play counted')
+  async function unmarkSelected() {
+    const ok = await modal.confirm({
+      title: `Mark ${plural(selectedWatched.length)} as not watched?`,
+      message: 'Removes the watched date and every play counted for them.',
+      confirmLabel: 'Mark not watched',
+      destructive: true,
+    })
+    if (ok) await runMark(selectedWatched, 'unwatched', 'Removing watched…', 'Marked as not watched')
   }
 
   // Plan pre-fills from the selected episodes.
@@ -147,7 +171,17 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
           <span className="min-w-0 flex-1 text-body font-medium text-accent-700 tabular-nums">
             {selected.size} episode{selected.size > 1 ? 's' : ''} selected
           </span>
-          <Button size="sm" onClick={handleMarkSelectedWatched} loading={marking} icon={<Check />}>Mark watched</Button>
+          {selectedUnwatched.length > 0 && (
+            <Button size="sm" onClick={markSelectedWatched} loading={marking} icon={<Check />}>
+              {selectedWatched.length > 0 ? `Mark ${selectedUnwatched.length} watched` : 'Mark watched'}
+            </Button>
+          )}
+          {selectedWatched.length > 0 && (
+            <>
+              <Button size="sm" onClick={watchSelectedAgain} disabled={marking} icon={<RotateCcw />}>Watched again</Button>
+              <Button size="sm" variant="ghost" onClick={unmarkSelected} disabled={marking} icon={<Undo2 />}>Not watched</Button>
+            </>
+          )}
           <Button size="sm" variant="primary" onClick={openPlan} icon={<CalendarPlus />}>Plan</Button>
           <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>Clear</Button>
         </div>
@@ -162,7 +196,9 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
           {(seasonData?.episodes ?? []).map(ep => {
             const isWatched  = watchedSet.has(ep.episode_number)
             const isSelected = selected.has(ep.episode_number)
-            const watchedOn  = watchedMap.get(ep.episode_number)
+            const watchedRow = watchedMap.get(ep.episode_number)
+            const watchedOn  = watchedRow?.watched_at
+            const plays      = 1 + Math.max(0, watchedRow?.repeat_count ?? 0)
             const runtime    = ep.runtime ?? tv.episode_run_time?.[0] ?? null
 
             return (
@@ -203,7 +239,7 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
                     )}
                     {isWatched && watchedOn && (
                       <span className="font-medium text-success">
-                        Watched {formatDate(watchedOn)}
+                        Watched {formatDate(watchedOn)}{plays > 1 && ` · ${plays} plays`}
                       </span>
                     )}
                   </span>
