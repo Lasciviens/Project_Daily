@@ -1,7 +1,10 @@
 import { useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { withProgress } from '../../../shared/hooks/useMutationWithFeedback'
-import { useSeasonDetails } from '../hooks/useTMDB'
+import { episodeAirDates, useSeasonDetails } from '../hooks/useTMDB'
+import { useWatchedWhenPrompt } from '../hooks/useWatchedWhenPrompt'
+import { resolveWatchedAt } from '../watchedWhen'
 import { useWatchedEpisodes, useMarkEpisodeWatched } from '../hooks/useWatchedEpisodes'
 import { CalendarPlus, Check, ListChecks, RotateCcw, Undo2 } from 'lucide-react'
 import { useEntityModal } from '../../../shared/modals'
@@ -28,6 +31,8 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
   const { data: watched = [] }          = useWatchedEpisodes(tvEntryId)
   const markWatched                     = useMarkEpisodeWatched()
   const modal                           = useEntityModal()
+  const qc                              = useQueryClient()
+  const { ask, dialog }                 = useWatchedWhenPrompt()
 
   const watchedSet = new Set(watched.filter(w => w.season_number === season).map(w => w.episode_number))
   const watchedMap = new Map(watched.filter(w => w.season_number === season).map(w => [w.episode_number, w]))
@@ -88,25 +93,41 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
     const todo = refs.filter(r => !watchedAll.has(`${r.season}x${r.episode}`))
     if (todo.length === 0) return
     const label = `S${String(season).padStart(2, '0')}E${String(epNum).padStart(2, '0')}`
-    if (todo.length > 1) {
-      const ok = await modal.confirm({
-        title: `Mark ${todo.length} episodes watched?`,
-        message: `Every episode up to ${label} that isn't marked yet, dated today. Episodes you already watched keep their date.`,
-        confirmLabel: 'Mark watched',
-      })
-      if (!ok) return
-    }
-    await runMarkRefs(todo, 'watched', `Marking up to ${label}…`, `Watched up to ${label}`)
+    const timed = await withWhen(todo, `Up to ${label} · watched ones keep their date`)
+    if (!timed) return
+    await runMarkRefs(timed, 'watched', `Marking up to ${label}…`, `Watched up to ${label}`)
+  }
+
+  const epLabel = (r: { season: number; episode: number }) => `S${r.season} · E${r.episode}`
+
+  // Trakt's "when did you watch it?": each episode gets its own time — with
+  // Release date, its own air date. Null = cancelled.
+  async function withWhen(refs: { season: number; episode: number }[], verb: string) {
+    const one = refs.length === 1 ? refs[0] : null
+    const air = one && one.season === season ? (seasonData?.episodes ?? []).find(e => e.episode_number === one.episode)?.air_date : null
+    const when = await ask({
+      title: one ? `${tv.name} · ${epLabel(one)}` : `${tv.name} · ${refs.length} episodes`,
+      subtitle: verb,
+      releaseLabel: one ? (air ? formatDate(air) : null) : 'each air date',
+    })
+    if (!when) return null
+    const now = new Date().toISOString()
+    const dates = when.kind === 'release' ? await episodeAirDates(qc, tv.id, refs) : new Map<string, string | null>()
+    return refs.map(r => ({ ...r, at: resolveWatchedAt(when, dates.get(`${r.season}x${r.episode}`), 'episode', now)! }))
   }
 
   const plural = (n: number) => `${n} episode${n > 1 ? 's' : ''}`
 
   // useMarkEpisodeWatched refreshes progress + the schedule (the DB trigger
   // deletes a watched episode's planned block, migration 043) and toasts errors.
-  const markSelectedWatched = () => runMark(selectedUnwatched, 'watched',
-    `Marking ${plural(selectedUnwatched.length)} as watched…`, 'Marked as watched')
-  const watchSelectedAgain = () => runMark(selectedWatched, 'again',
-    `Counting another play of ${plural(selectedWatched.length)}…`, 'Play counted')
+  async function markSelectedWatched() {
+    const refs = await withWhen(selectedUnwatched.map(episode => ({ season, episode })), 'When did you watch it?')
+    if (refs) await runMarkRefs(refs, 'watched', `Marking ${plural(refs.length)} as watched…`, 'Marked as watched')
+  }
+  async function watchSelectedAgain() {
+    const refs = await withWhen(selectedWatched.map(episode => ({ season, episode })), 'When did you watch it again?')
+    if (refs) await runMarkRefs(refs, 'again', `Counting another play of ${plural(refs.length)}…`, 'Play counted')
+  }
   async function unmarkSelected() {
     const ok = await modal.confirm({
       title: `Mark ${plural(selectedWatched.length)} as not watched?`,
@@ -150,6 +171,7 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
 
   return (
     <div>
+      {dialog}
       <SectionLabel className="mb-2">Episodes</SectionLabel>
 
       <div className="mb-3 flex items-center gap-1">
@@ -197,26 +219,32 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
       </div>
 
       {selected.size > 0 && (
-        <div className="mb-2 flex flex-wrap items-center gap-2 rounded-row border border-accent-500/30 bg-accent-50 px-3 py-1.5">
-          <span className="min-w-0 flex-1 text-body font-medium text-accent-700 tabular-nums">
-            {selected.size} episode{selected.size > 1 ? 's' : ''} selected
-          </span>
-          {selectedUnwatched.length > 0 && (
-            <Button size="sm" onClick={markSelectedWatched} loading={marking} icon={<Check />}>
-              {selectedWatched.length > 0 ? `Mark ${selectedUnwatched.length} watched` : 'Mark watched'}
-            </Button>
-          )}
-          {selectedWatched.length > 0 && (
-            <>
-              <Button size="sm" onClick={watchSelectedAgain} disabled={marking} icon={<RotateCcw />}>Watched again</Button>
-              <Button size="sm" variant="ghost" onClick={unmarkSelected} disabled={marking} icon={<Undo2 />}>Not watched</Button>
-            </>
-          )}
-          {selected.size === 1 && (
-            <Button size="sm" onClick={() => { void watchUpTo(Math.max(...selected)) }} disabled={marking} icon={<ListChecks />}>Up to here</Button>
-          )}
-          <Button size="sm" variant="primary" onClick={openPlan} icon={<CalendarPlus />}>Plan</Button>
-          <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>Clear</Button>
+        // Two rows: what is selected (and Clear), then the actions that wrap as
+        // needed — the count used to be squeezed to one letter per line.
+        <div className="mb-2 flex flex-col gap-1.5 rounded-row border border-accent-500/30 bg-accent-50 px-3 py-2">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-body font-medium text-accent-700 tabular-nums">
+              {selected.size} episode{selected.size > 1 ? 's' : ''} selected
+            </span>
+            <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>Clear</Button>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {selectedUnwatched.length > 0 && (
+              <Button size="sm" onClick={markSelectedWatched} loading={marking} icon={<Check />}>
+                {selectedWatched.length > 0 ? `Mark ${selectedUnwatched.length} watched` : 'Mark watched'}
+              </Button>
+            )}
+            {selectedWatched.length > 0 && (
+              <>
+                <Button size="sm" onClick={watchSelectedAgain} disabled={marking} icon={<RotateCcw />}>Watched again</Button>
+                <Button size="sm" variant="ghost" onClick={unmarkSelected} disabled={marking} icon={<Undo2 />}>Not watched</Button>
+              </>
+            )}
+            {selected.size === 1 && (
+              <Button size="sm" onClick={() => { void watchUpTo(Math.max(...selected)) }} disabled={marking} icon={<ListChecks />}>Up to here</Button>
+            )}
+            <Button size="sm" variant="primary" onClick={openPlan} icon={<CalendarPlus />}>Plan</Button>
+          </div>
         </div>
       )}
 

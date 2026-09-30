@@ -5,6 +5,8 @@ import { Button } from '../../../shared/ui'
 import { formatDate } from '../../../shared/utils/dateFormat'
 import { isUnknownWatchedAt } from '../trakt/traktDates'
 import type { UserMovieEntry } from '../types'
+import { useWatchedWhenPrompt } from '../hooks/useWatchedWhenPrompt'
+import { resolveWatchedAt } from '../watchedWhen'
 
 type Patch = Partial<Pick<UserMovieEntry, 'status' | 'watched_at' | 'repeat_count'>>
 
@@ -13,8 +15,9 @@ type Patch = Partial<Pick<UserMovieEntry, 'status' | 'watched_at' | 'repeat_coun
  * it — one more play (a rewatch) or not watched at all. Both reach Trakt
  * through the outbox (migration 117); "Not watched" removes every play there.
  */
-export function MovieWatchedControls({ entry, disabled, onPatch }: {
+export function MovieWatchedControls({ entry, releaseDate, disabled, onPatch }: {
   entry: UserMovieEntry
+  releaseDate: string | null
   disabled?: boolean
   onPatch: (patch: Patch) => Promise<unknown>
 }) {
@@ -22,10 +25,18 @@ export function MovieWatchedControls({ entry, disabled, onPatch }: {
   const plays = 1 + Math.max(0, entry.repeat_count ?? 0)
   const when = entry.watched_at && !isUnknownWatchedAt(entry.watched_at) ? formatDate(entry.watched_at) : 'date unknown'
 
-  const watchAgain = () => withProgress(
-    () => onPatch({ repeat_count: (entry.repeat_count ?? 0) + 1, watched_at: new Date().toISOString() }),
-    { loading: 'Counting another play…', success: 'Play counted' },
-  )
+  const { ask, dialog } = useWatchedWhenPrompt()
+
+  // One more play; its time asked like Trakt does (Unknown keeps the last date).
+  async function watchAgain() {
+    const when = await ask({ title: entry.movie.title, subtitle: 'When did you watch it again?', releaseLabel: releaseDate ? formatDate(releaseDate) : null })
+    if (!when) return
+    const at = resolveWatchedAt(when, releaseDate, 'movie', new Date().toISOString())
+    await withProgress(
+      () => onPatch({ repeat_count: (entry.repeat_count ?? 0) + 1, ...(at ? { watched_at: at } : {}) }),
+      { loading: 'Counting another play…', success: 'Play counted' },
+    )
+  }
 
   async function unwatch() {
     const ok = await modal.confirm({
@@ -40,6 +51,7 @@ export function MovieWatchedControls({ entry, disabled, onPatch }: {
 
   return (
     <div className="flex flex-wrap items-center gap-2">
+      {dialog}
       <p className="text-meta text-fg-muted tabular-nums">
         Watched {when}{plays > 1 && ` · ${plays} plays`}
       </p>

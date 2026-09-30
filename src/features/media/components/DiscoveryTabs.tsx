@@ -8,10 +8,12 @@ import {
   useUpcomingMovies, useUpcomingTV,
   useNorwegianMovies, useNorwegianTV,
   useNorwegianTopRatedMovies, useNorwegianTopRatedTV,
+  useOnMyServices, useWatchProviders,
 } from '../hooks/useTMDB'
+import { useMediaPrefs } from '../mediaPrefsStore'
 import type { MediaType, TMDBSearchMovie, TMDBSearchTV } from '../types'
 
-type DiscoveryTab = 'today' | 'week' | 'popular' | 'upcoming' | 'norway'
+type DiscoveryTab = 'today' | 'week' | 'popular' | 'upcoming' | 'norway' | 'services'
 
 interface Props {
   mediaType:    MediaType
@@ -24,6 +26,7 @@ const TABS: { key: DiscoveryTab; label: string }[] = [
   { key: 'popular',  label: 'Popular' },
   { key: 'upcoming', label: 'Upcoming' },
   { key: 'norway',   label: 'Norway' },
+  { key: 'services', label: 'My services' },
 ]
 
 // Column flow, compact: posters stay ~5.5–7rem (three or four across on a
@@ -55,6 +58,50 @@ function PosterGrid({ items, mediaType, onOpenDetail, limit }: {
       {items.slice(0, limit).map(item => (
         <TMDBCard key={item.id} item={item} type={mediaType} onOpenDetail={id => onOpenDetail(id, mediaType)} />
       ))}
+    </div>
+  )
+}
+
+// "On my services": what's included in the subscriptions you pick (Norway,
+// TMDB's JustWatch data). The picks are this device's (mediaPrefsStore).
+function ServicesSection({ mediaType, onOpenDetail }: Props) {
+  const { services, toggleService } = useMediaPrefs()
+  const [editing, setEditing] = useState(false)
+  const picking = editing || services.length === 0
+  const providers = useWatchProviders(mediaType, picking || services.length > 0)
+  const titles = useOnMyServices(mediaType, services, !picking)
+  const names = (providers.data ?? []).filter(p => services.includes(p.provider_id)).map(p => p.provider_name)
+
+  if (picking) {
+    return (
+      <div className="space-y-2">
+        <p className="text-meta text-fg-muted">Pick the services you pay for in Norway.</p>
+        {providers.isLoading ? <SkeletonGrid count={8} /> : (
+          <div className="flex flex-wrap gap-2">
+            {(providers.data ?? []).slice(0, 24).map(p => (
+              <button
+                key={p.provider_id}
+                type="button"
+                aria-pressed={services.includes(p.provider_id)}
+                onClick={() => toggleService(p.provider_id)}
+                className="press-feedback flex min-h-[44px] items-center gap-2 rounded-control border border-line px-2 aria-pressed:border-accent-500 aria-pressed:bg-accent-50"
+              >
+                <img src={`https://image.tmdb.org/t/p/w92${p.logo_path}`} alt="" className="h-7 w-7 rounded-md" />
+                <span className="text-meta font-medium text-fg">{p.provider_name}</span>
+              </button>
+            ))}
+          </div>
+        )}
+        {services.length > 0 && <button type="button" onClick={() => setEditing(false)} className="btn-primary btn-sm">Show titles</button>}
+      </div>
+    )
+  }
+  return (
+    <div className="space-y-2">
+      <p className="text-meta text-fg-muted">
+        Included with {names.join(', ') || `${services.length} services`} · <button type="button" onClick={() => setEditing(true)} className="font-semibold text-accent-600">Edit</button>
+      </p>
+      {titles.isLoading ? <SkeletonGrid /> : <PosterGrid items={titles.data ?? []} mediaType={mediaType} onOpenDetail={onOpenDetail} limit={30} />}
     </div>
   )
 }
@@ -105,7 +152,7 @@ export function DiscoveryTabs({ mediaType, onOpenDetail }: Props) {
   const tvPopular   = usePopularTV(on('popular', 'tv'))
   const tvUpcoming  = useUpcomingTV(on('upcoming', 'tv'))
 
-  const activeQuery = tab === 'norway' ? null
+  const activeQuery = tab === 'norway' || tab === 'services' ? null
     : mediaType === 'movie'
       ? { today: trendDay, week: trendWeek, popular, upcoming }[tab]
       : { today: tvTrendDay, week: tvTrendWeek, popular: tvPopular, upcoming: tvUpcoming }[tab]
@@ -137,7 +184,7 @@ export function DiscoveryTabs({ mediaType, onOpenDetail }: Props) {
             </button>
           ))}
         </div>
-        {tab !== 'norway' && (
+        {tab !== 'norway' && tab !== 'services' && (
           <div className="ml-auto flex shrink-0 items-center gap-1 sm:ml-0">
             {syncLabel && <span className="hidden text-meta text-fg-muted sm:block">{syncLabel}</span>}
             <IconButton label="Refresh now" onClick={handleManualSync}>
@@ -149,6 +196,8 @@ export function DiscoveryTabs({ mediaType, onOpenDetail }: Props) {
 
       {tab === 'norway' ? (
         <NorwaySection mediaType={mediaType} onOpenDetail={onOpenDetail} />
+      ) : tab === 'services' ? (
+        <ServicesSection mediaType={mediaType} onOpenDetail={onOpenDetail} />
       ) : activeQuery?.isLoading ? (
         <SkeletonGrid />
       ) : activeQuery?.isError ? (

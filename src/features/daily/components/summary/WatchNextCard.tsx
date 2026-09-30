@@ -10,6 +10,7 @@ import { useEntityModal } from '../../../../shared/modals'
 import { Button, TonePill, Truncate } from '../../../../shared/ui'
 import { posterUrl } from '../../../../integrations/tmdb/client'
 import { formatDate } from '../../../../shared/utils/dateFormat'
+import { AiringThisWeek } from '../../../media/components/AiringThisWeek'
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Watch next v2 — driven by ACTUAL watched-episode rows (useNextEpisode),
@@ -163,6 +164,7 @@ export function WatchNextCard({ date }: { date: string }) {
           Nothing in progress — find something
         </Link>
       )}
+      <AiringThisWeek limit={3} />
     </Cell>
   )
 }

@@ -155,14 +155,17 @@ for titles in your library, refreshed at most weekly. Needs a free MDBList API k
   (pick, see, remove, new, delete), "Add to list" on every title page, and **Save as list** on a
   film's franchise strip (TMDB `belongs_to_collection` → `/collection/{id}`, release order).
   Private by default. Free accounts have a small list/item allowance (Trakt 420).
-- Still proposed (not built):
-- **Auto-match new titles:** a list can follow a source — a **TMDB collection** (e.g. Harry Potter;
-  a film's `belongs_to_collection`) or a **TMDB company/keyword** (e.g. Marvel Studios, whose films
-  span many collections). A daily job checks the source; a new title is added to the list (and to
-  the Trakt list).
-- **Alerts:** a new title or a new **trailer** (TMDB `/movie/{id}/videos`, type Trailer, by
-  `published_at`) for a followed list sends a Web Push. Web Push delivery is still unverified on
-  the phone (see CLAUDE.md), so that is checked first.
+- ✅ **Follows (migration `119`, 30.09.2026):** follow a franchise (TMDB collection), studio
+  (company), director or actor from a movie's page (**Follow** menu). `media_follows` keeps each
+  follow's known movie ids and trailer keys; `trakt-api`'s `checkFollows` (inside the sync cron,
+  at most once per ~20 h per follow, ≤ 15 per run, or **Check now** / the `follows_check` action)
+  records new titles and new trailers (TMDB `/movie/{id}/videos`, Trailer on YouTube) as
+  `media_follow_events`. The first check only stores a baseline, so following something never
+  floods the feed. A follow can be linked to a Trakt list: its new titles are added there.
+  Shown under Media → Lists → Following (Mark seen, trailer link).
+- Still proposed (not built): a **Web Push** for a new title/trailer. Web Push delivery is still
+  unverified on the phone and `push-send` only knows the morning trigger, so events stay in the
+  app for now. Daily checks run only while Trakt is connected (they ride the Trakt cron).
 
 ## 12. API facts used by phases 5–6 (checked 30.09.2026)
 

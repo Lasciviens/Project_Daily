@@ -11,6 +11,7 @@ import { TileDetail } from './TileDetail'
 import { useTilePopup } from '../hooks/useTilePopup'
 import { formatDate } from '../../../shared/utils/dateFormat'
 import { isUnknownWatchedAt } from '../../media/trakt/traktDates'
+import { AiringThisWeek } from '../../media/components/AiringThisWeek'
 
 function openMedia(modal: ReturnType<typeof useEntityModal>, item: RecentlyWatchedItem) {
   if (item.tmdbId != null) modal.open({ kind: 'media', tmdbId: item.tmdbId, mediaType: item.type })
@@ -33,6 +34,7 @@ function RecentMediaGrid({ enabled }: { enabled: boolean }) {
 
   return (
     <>
+      <div className="mb-2"><AiringThisWeek enabled={enabled} /></div>
       {isLoading ? (
         <div className="grid grid-cols-3 gap-2">{Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="aspect-[2/3] w-full" rounded="rounded-md" />)}</div>
       ) : data.length === 0 ? (

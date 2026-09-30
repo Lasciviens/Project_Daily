@@ -1,6 +1,10 @@
 import { supabase } from '../../../integrations/supabase/client'
 import { requireUser } from '../../../shared/utils/requireUser'
 import type { WatchedEpisode } from '../types'
+import { middayIso } from '../watchedWhen'
+
+/** A yyyy-MM-dd day (midday local) or an exact ISO timestamp. */
+const toIso = (v: string) => (v.length === 10 ? middayIso(v) : v)
 
 // The table stores `tv_series_id` denormalized (NOT NULL) alongside
 // `tv_entry_id`, so every write needs it resolved from the entry first.
@@ -77,7 +81,7 @@ export async function markEpisodeWatched(
       tv_series_id:   tvSeriesId,
       season_number:  season,
       episode_number: episode,
-      watched_at:     new Date(watchedOn + 'T12:00:00').toISOString(),
+      watched_at:     toIso(watchedOn),
     }, { onConflict: 'user_id,tv_series_id,season_number,episode_number' })
     .select()
     .single()
@@ -92,7 +96,7 @@ export async function markEpisodeWatched(
  */
 export async function markEpisodesWatched(
   tvEntryId: string,
-  refs: { season: number; episode: number }[],
+  refs: { season: number; episode: number; at?: string }[],
   watchedOn: string,
 ): Promise<void> {
   if (refs.length === 0) return
@@ -104,12 +108,11 @@ export async function markEpisodesWatched(
     .not('watched_at', 'is', null)
   if (readErr) throw readErr
   const seen = new Set((have ?? []).map(r => `${r.season_number}x${r.episode_number}`))
-  const at = new Date(watchedOn + 'T12:00:00').toISOString()
   const rows = refs
     .filter(r => !seen.has(`${r.season}x${r.episode}`))
     .map(r => ({
       user_id: user.id, tv_entry_id: tvEntryId, tv_series_id: tvSeriesId,
-      season_number: r.season, episode_number: r.episode, watched_at: at,
+      season_number: r.season, episode_number: r.episode, watched_at: toIso(r.at ?? watchedOn),
     }))
   for (let i = 0; i < rows.length; i += 500) {
     const { error } = await supabase
@@ -138,7 +141,7 @@ export async function rewatchEpisode(
   if (!data?.watched_at) { await markEpisodeWatched(tvEntryId, season, episode, watchedOn); return }
   const { error: upErr } = await supabase
     .from('user_tv_episodes')
-    .update({ repeat_count: (data.repeat_count ?? 0) + 1, watched_at: new Date(watchedOn + 'T12:00:00').toISOString() })
+    .update({ repeat_count: (data.repeat_count ?? 0) + 1, watched_at: toIso(watchedOn) })
     .eq('id', data.id)
   if (upErr) throw upErr
 }
@@ -179,6 +182,21 @@ export async function fetchEpisodeTally(): Promise<Record<string, EpisodeTally>>
       t.plays += 1 + Math.max(0, r.repeat_count ?? 0)
       out[r.tv_series_id] = t
     }
+    if (!data || data.length < 1000) return out
+  }
+}
+
+export interface WatchedEpisodeRow { tv_series_id: string; season_number: number; episode_number: number; watched_at: string; repeat_count: number }
+
+/** Every watched episode row (for Year in review), paged past PostgREST's 1,000-row cap. */
+export async function fetchAllWatchedEpisodeRows(): Promise<WatchedEpisodeRow[]> {
+  const out: WatchedEpisodeRow[] = []
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await supabase.from('user_tv_episodes')
+      .select('tv_series_id, season_number, episode_number, watched_at, repeat_count')
+      .not('watched_at', 'is', null).order('id').range(from, from + 999)
+    if (error) throw error
+    out.push(...((data ?? []) as WatchedEpisodeRow[]))
     if (!data || data.length < 1000) return out
   }
 }
