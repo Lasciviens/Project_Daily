@@ -46,8 +46,30 @@ const CLIENT_SECRET = () => Deno.env.get('TRAKT_CLIENT_SECRET') ?? ''
 // The only places Trakt may send the user back to (the Trakt app's own list).
 const REDIRECTS = ['https://lasciviens.github.io/Project_Daily/', 'http://localhost:5173/Project_Daily/']
 
+/** What Trakt answered, kept for the error report the app can copy (never a token). */
+interface TraktDetail { path: string; status: number; body: string; at: string }
+
 class TraktError extends Error {
-  constructor(public status: number, message: string) { super(message) }
+  constructor(public status: number, message: string, public detail?: TraktDetail) { super(message) }
+}
+
+const WHAT: [RegExp, string][] = [
+  [/favorites/, 'your favorites'], [/watchlist/, 'your watchlist'], [/watched/, 'your watched history'],
+  [/ratings/, 'your ratings'], [/playback/, 'Continue watching'], [/hidden\/dropped/, 'your dropped shows'],
+  [/last_activities/, 'what changed on Trakt'], [/lists/, 'your lists'], [/calendars/, 'your calendar'],
+  [/history/, 'your watch history'], [/oauth/, 'the sign-in'],
+]
+
+/** A Trakt failure in plain words — what we asked for, what went wrong, what to do. */
+function traktFailure(path: string, status: number, body: string): TraktError {
+  const clean = path.split('?')[0]
+  const what = WHAT.find(([re]) => re.test(clean))?.[1] ?? 'Trakt'
+  const message = status >= 500
+    ? `Trakt's server failed while sending ${what} (HTTP ${status}). The problem is on Trakt's side and usually passes — try again in a few minutes.`
+    : status === 403 ? `Trakt refused to send ${what} (HTTP 403) — the app's access may have been revoked; reconnect Trakt in Settings.`
+    : status === 404 ? `Trakt could not find ${what} (HTTP 404).`
+    : `Trakt rejected the request for ${what} (HTTP ${status}).`
+  return new TraktError(status, message, { path: clean, status, body: body.replace(/\s+/g, ' ').slice(0, 300), at: new Date().toISOString() })
 }
 
 function headers(token?: string): Record<string, string> {
@@ -64,14 +86,16 @@ function headers(token?: string): Record<string, string> {
 async function oauth(path: string, body: AnyRec): Promise<AnyRec> {
   const res = await fetch(`${API}${path}`, { method: 'POST', headers: headers(), body: JSON.stringify(body) })
   const text = await res.text()
-  if (!res.ok) throw new TraktError(res.status, `Trakt ${path} ${res.status}`)
+  if (!res.ok) throw traktFailure(path, res.status, text)
   return text ? JSON.parse(text) : {}
 }
 
 async function get(path: string, token: string): Promise<{ data: unknown; pages: number }> {
-  const res = await fetch(`${API}${path}`, { headers: headers(token) })
+  let res = await fetch(`${API}${path}`, { headers: headers(token) })
+  // A Trakt 5xx is often a blip: one retry before giving up.
+  if (res.status >= 500) { await sleep(1500); res = await fetch(`${API}${path}`, { headers: headers(token) }) }
   if (res.status === 429) throw new TraktError(429, 'Trakt rate limit reached — try again in a few minutes')
-  if (!res.ok) throw new TraktError(res.status, `Trakt ${path.split('?')[0]} ${res.status}`)
+  if (!res.ok) throw traktFailure(path, res.status, await res.text().catch(() => ''))
   const pages = Number(res.headers.get('X-Pagination-Page-Count') ?? '1') || 1
   return { data: await res.json(), pages }
 }
@@ -99,7 +123,7 @@ async function post(path: string, token: string, body: AnyRec): Promise<AnyRec> 
       continue
     }
     if (res.status === 420) throw new TraktError(420, 'Trakt account limit reached (a free account has a small number of lists and items — see your Trakt settings)')
-    if (!res.ok) throw new TraktError(res.status, `Trakt ${path} ${res.status}`)
+    if (!res.ok) throw traktFailure(path, res.status, await res.text().catch(() => ''))
     const text = await res.text()
     await sleep(1100)
     return text ? JSON.parse(text) : {}
@@ -109,7 +133,7 @@ async function post(path: string, token: string, body: AnyRec): Promise<AnyRec> 
 /** One DELETE (also a write: one per second). */
 async function del(path: string, token: string): Promise<void> {
   const res = await fetch(`${API}${path}`, { method: 'DELETE', headers: headers(token) })
-  if (!res.ok && res.status !== 404) throw new TraktError(res.status, `Trakt ${path} ${res.status}`)
+  if (!res.ok && res.status !== 404) throw traktFailure(path, res.status, await res.text().catch(() => ''))
   await sleep(1100)
 }
 
@@ -210,6 +234,12 @@ function mediaOf(row: AnyRec) {
 }
 
 async function snapshot(token: string, username: string | null) {
+  // Reads that may fail without failing the whole snapshot; each failure is a warning.
+  const warnings: string[] = []
+  const optional = <T,>(label: string, p: Promise<T[]>): Promise<T[]> => p.catch(e => {
+    warnings.push(`${label} could not be read: ${e instanceof Error ? e.message : String(e)}`)
+    return [] as T[]
+  })
   const [
     lastActivities, watchedMovies, watchedShows, wlMovies, wlShows,
     rMovies, rShows, favMovies, favShows, dropped, pbMovies, pbEpisodes,
@@ -224,16 +254,20 @@ async function snapshot(token: string, username: string | null) {
     getAll('/sync/watchlist/shows/rank/asc', token),
     getAll('/sync/ratings/movies', token),
     getAll('/sync/ratings/shows', token),
-    getAll('/sync/favorites/movies/rank/asc', token),
-    getAll('/sync/favorites/shows/rank/asc', token),
+    // Favorites and Continue watching are extras: a failure there must not
+    // sink the whole read (Trakt answered 500 on /sync/favorites/movies/rank/asc).
+    // The plain path is the one the sync already uses.
+    optional('favorites', getAll('/sync/favorites/movies', token)),
+    optional('favorites', getAll('/sync/favorites/shows', token)),
     getAll('/users/hidden/dropped?type=show', token, 100),
-    get('/sync/playback/movies', token).then(r => r.data as AnyRec[]),
-    get('/sync/playback/episodes', token).then(r => r.data as AnyRec[]),
+    optional('Continue watching', get('/sync/playback/movies', token).then(r => r.data as AnyRec[])),
+    optional('Continue watching', get('/sync/playback/episodes', token).then(r => r.data as AnyRec[])),
   ])
 
   return {
     fetchedAt: new Date().toISOString(),
     username,
+    warnings: [...new Set(warnings)],
     lastActivities,
     watchedMovies: (watchedMovies ?? []).map(r => ({
       item: item('movie', r.movie as AnyRec),
@@ -1675,6 +1709,9 @@ Deno.serve(async (req: Request) => {
     // A revoked/expired grant: the user must reconnect.
     if (status === 401) return json({ error: 'reauth_required' }, 200)
     const message = err instanceof Error ? err.message : String(err)
-    return json({ error: message }, status >= 400 && status < 600 ? status : 500)
+    // `detail` is what the app's "Copy details" puts in the report: the Trakt
+    // path, its status and the first 300 characters it answered (never a token).
+    const detail = err instanceof TraktError ? err.detail ?? null : { stack: err instanceof Error ? String(err.stack ?? '').split('\n').slice(0, 4).join(' | ') : null }
+    return json({ error: message, action, detail }, status >= 400 && status < 600 ? status : 500)
   }
 })
