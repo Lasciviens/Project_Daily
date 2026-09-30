@@ -10,6 +10,7 @@ export async function tmdbFetch<T>(path: string, params: Record<string, string> 
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v)
 
   const res = await fetch(url.toString())
+  if (res.status === 401) throw new Error('TMDB rejected the app\'s API key (VITE_TMDB_API_KEY). Put a valid TMDB v3 API key in the GitHub secret and redeploy.')
   if (!res.ok) throw new Error(`TMDB ${res.status}: ${path}`)
   return res.json() as Promise<T>
 }

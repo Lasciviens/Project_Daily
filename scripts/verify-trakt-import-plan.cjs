@@ -89,6 +89,9 @@ const find = (xs, id) => xs.find(x => x.tmdbId === id)
 {
   const p = buildImportPlan(snap({ watchedShows: [{ item: show(20), plays: 1, lastWatchedAt: null, resetAt: null, episodes: [[1, 1, 1, null]] }] }), lib(), new Map())
   ok(find(p.shows, 20).status, 'watching', 'unknown aired count → Watching')
+  const done = buildImportPlan(snap({ watchedShows: [{ item: show(21), plays: 1, lastWatchedAt: null, resetAt: null, episodes: [[1, 1, 1, null]] }] }),
+    lib({ shows: [ls(21, 'completed')], episodes: [le(21, 1, 1)] }), new Map())
+  ok(find(done.shows, 21)?.status ?? 'completed', 'completed', 'unknown aired count never demotes a Completed show to Watching')
 }
 
 // A second run after the import plans nothing new

@@ -1,4 +1,5 @@
 import { supabase } from '../../../integrations/supabase/client'
+import { parseFunctionErrorBody } from '../../../shared/utils/functionError'
 import type { LocalEpisode, LocalLibrary, LocalMovie, LocalShow, TraktSnapshot, TraktStatus } from './traktTypes'
 
 // Browser side of the trakt-api edge function. The Client Secret and the
@@ -9,8 +10,15 @@ export class TraktReauthRequired extends Error {
 }
 
 async function invoke<T>(action: string, extra?: Record<string, unknown>): Promise<T> {
-  const { data, error } = await supabase.functions.invoke('trakt-api', { body: { action, ...extra } })
-  if (error) throw error
+  const res = await supabase.functions.invoke('trakt-api', { body: { action, ...extra } })
+  let data = res.data
+  if (res.error) {
+    // A non-2xx answer: show the function's own message, not supabase-js's
+    // generic "Edge Function returned a non-2xx status code".
+    const body = await parseFunctionErrorBody(res.error)
+    if (!body?.error) throw res.error
+    data = body
+  }
   if (data?.error === 'reauth_required') throw new TraktReauthRequired()
   if (data?.error === 'not_configured') throw new Error('Trakt is not set up on the server yet (TRAKT_CLIENT_ID / TRAKT_CLIENT_SECRET)')
   if (data?.error) throw new Error(data.error)
