@@ -1,10 +1,12 @@
 // trakt-api — the app's door to Trakt (docs/trakt/PLAN.md).
 //
-// Phase 1: connect (OAuth code exchange), status, disconnect (revoke) and a
-// read-only `snapshot` of everything the first-import preview needs. Nothing
-// here writes to the media tables yet — the preview is computed in the
-// browser (src/features/media/trakt/traktPreview.ts, a pure module) against
-// the library the app already loads.
+// Connect (OAuth code exchange), status, disconnect (revoke), a read-only
+// `snapshot` of everything Trakt holds, and `push` — the app → Trakt writes
+// of an import (history, ratings, watchlist add/remove), paced at Trakt's
+// one write per second. The media tables are written by the browser
+// (src/features/media/trakt/traktImport.ts, planned by the pure
+// traktImportPlan.ts); this function only ever writes trakt_tokens and
+// trakt_sync_state.
 //
 // `verify_jwt` stays ON: every action resolves the caller with
 // `supabase.auth.getUser` (the psn-api / calendar-oauth pattern) and the
@@ -27,7 +29,7 @@ const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...CORS, 'Content-Type': 'application/json' } })
 
 type AnyRec = Record<string, unknown>
-type Action = 'authorize_url' | 'connect' | 'status' | 'disconnect' | 'snapshot'
+type Action = 'authorize_url' | 'connect' | 'status' | 'disconnect' | 'snapshot' | 'push'
 
 const API = 'https://api.trakt.tv'
 const AUTHORIZE = 'https://trakt.tv/oauth/authorize'
@@ -76,6 +78,91 @@ async function getAll(path: string, token: string, limit = 250): Promise<AnyRec[
     out.push(...(next.data as AnyRec[] ?? []))
   }
   return out
+}
+
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
+
+/** One write. Trakt allows 1 POST per second; a 429 waits Retry-After once. */
+async function post(path: string, token: string, body: AnyRec): Promise<AnyRec> {
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetch(`${API}${path}`, { method: 'POST', headers: headers(token), body: JSON.stringify(body) })
+    if (res.status === 429 && attempt === 0) {
+      await sleep((Number(res.headers.get('Retry-After')) || 2) * 1000)
+      continue
+    }
+    if (!res.ok) throw new TraktError(res.status, `Trakt ${path} ${res.status}`)
+    const text = await res.text()
+    await sleep(1100)
+    return text ? JSON.parse(text) : {}
+  }
+}
+
+interface PushTitle { tmdb: number; watchedAt?: string | null; rating?: number }
+interface PushEpisode { tmdb: number; season: number; episode: number; watchedAt: string | null }
+interface PushBody {
+  history?: { movies?: PushTitle[]; episodes?: PushEpisode[] }
+  ratings?: { movies?: PushTitle[]; shows?: PushTitle[] }
+  watchlistAdd?: { movies?: PushTitle[]; shows?: PushTitle[] }
+  watchlistRemove?: { movies?: PushTitle[]; shows?: PushTitle[] }
+}
+
+const chunk = <T,>(xs: T[], n: number): T[][] => {
+  const out: T[][] = []
+  for (let i = 0; i < xs.length; i += n) out.push(xs.slice(i, i + n))
+  return out
+}
+const tmdbIds = (tmdb: number) => ({ ids: { tmdb } })
+
+function showsWithEpisodes(eps: PushEpisode[]): AnyRec[] {
+  const byShow = new Map<number, Map<number, AnyRec[]>>()
+  for (const e of eps) {
+    const seasons = byShow.get(e.tmdb) ?? new Map<number, AnyRec[]>()
+    const list = seasons.get(e.season) ?? []
+    list.push({ number: e.episode, ...(e.watchedAt ? { watched_at: e.watchedAt } : {}) })
+    seasons.set(e.season, list)
+    byShow.set(e.tmdb, seasons)
+  }
+  return [...byShow].map(([tmdb, seasons]) => ({
+    ...tmdbIds(tmdb),
+    seasons: [...seasons].map(([number, episodes]) => ({ number, episodes })),
+  }))
+}
+
+/** Sends one import's app → Trakt changes; returns what Trakt added and could not find. */
+async function push(token: string, b: PushBody) {
+  const tally: Record<string, number> = {}
+  const count = (res: AnyRec, key: 'added' | 'deleted' | 'not_found', label: string) => {
+    const part = (res[key] ?? {}) as AnyRec
+    for (const [k, v] of Object.entries(part)) {
+      const n = Array.isArray(v) ? v.length : Number(v) || 0
+      if (n) { const t = `${label}.${key}.${k}`; tally[t] = (tally[t] ?? 0) + n }
+    }
+  }
+  const movies = b.history?.movies ?? []
+  for (const part of chunk(movies, 100)) {
+    count(await post('/sync/history', token, { movies: part.map(m => ({ ...tmdbIds(m.tmdb), ...(m.watchedAt ? { watched_at: m.watchedAt } : {}) })) }), 'added', 'history')
+  }
+  for (const part of chunk(showsWithEpisodes(b.history?.episodes ?? []), 20)) {
+    count(await post('/sync/history', token, { shows: part }), 'added', 'history')
+  }
+  const rated = [...(b.ratings?.movies ?? []).map(m => ['movies', m] as const), ...(b.ratings?.shows ?? []).map(m => ['shows', m] as const)]
+  for (const part of chunk(rated, 100)) {
+    const body: AnyRec = { movies: [], shows: [] }
+    for (const [k, t] of part) (body[k] as AnyRec[]).push({ ...tmdbIds(t.tmdb), rating: t.rating })
+    count(await post('/sync/ratings', token, body), 'added', 'ratings')
+  }
+  for (const [key, path, label] of [['watchlistAdd', '/sync/watchlist', 'watchlist'], ['watchlistRemove', '/sync/watchlist/remove', 'unwatchlist']] as const) {
+    const w = b[key]
+    const all = [...(w?.movies ?? []).map(t => ['movies', t] as const), ...(w?.shows ?? []).map(t => ['shows', t] as const)]
+    for (const part of chunk(all, 100)) {
+      const body: AnyRec = { movies: [], shows: [] }
+      for (const [k, t] of part) (body[k] as AnyRec[]).push(tmdbIds(t.tmdb))
+      const res = await post(path, token, body)
+      count(res, key === 'watchlistAdd' ? 'added' : 'deleted', label)
+      count(res, 'not_found', label)
+    }
+  }
+  return tally
 }
 
 // ── Normalising Trakt's objects into the compact snapshot shape ─────────────
@@ -171,7 +258,7 @@ Deno.serve(async (req: Request) => {
   if (authError || !user) return json({ error: 'Invalid token' }, 401)
   const userId = user.id
 
-  let body: { action?: Action; code?: string; redirectUri?: string; state?: string } = {}
+  let body: { action?: Action; code?: string; redirectUri?: string; state?: string; changes?: PushBody; full?: boolean } = {}
   try { body = await req.json() } catch { /* empty */ }
   const { action } = body
 
@@ -255,6 +342,22 @@ Deno.serve(async (req: Request) => {
 
     if (action === 'snapshot') {
       return json(await snapshot(accessToken, (tok.username as string) ?? null))
+    }
+
+    if (action === 'push') {
+      let tally: Record<string, number> = {}
+      let pushError: string | null = null
+      try { tally = await push(accessToken, body.changes ?? {}) } catch (e) { pushError = e instanceof Error ? e.message : String(e) }
+      // Stamp the run either way, so the next sync knows where it stands.
+      const now = new Date().toISOString()
+      const lastActivities = await get('/sync/last_activities', accessToken).then(r => r.data).catch(() => null)
+      const { error } = await supabase.from('trakt_sync_state').upsert({
+        user_id: userId, last_sync_at: now, ...(body.full ? { last_full_at: now } : {}),
+        ...(lastActivities ? { last_activities: lastActivities } : {}), last_error: pushError, updated_at: now,
+      })
+      if (error) throw error
+      if (pushError) return json({ error: `Saved here, but sending to Trakt failed: ${pushError}`, tally })
+      return json({ tally })
     }
 
     return json({ error: `Unknown action: ${action}` }, 400)

@@ -7,6 +7,7 @@ import {
 } from './traktApi'
 import { newTraktState } from './traktCallback'
 import { buildTraktPreview } from './traktPreview'
+import { runTraktImport } from './traktImport'
 
 export function useTraktStatus() {
   return useQuery({ queryKey: qk.trakt.status(), queryFn: fetchTraktStatus, staleTime: STALE.short, retry: false })
@@ -54,5 +55,15 @@ export function useTraktPreview(enabled: boolean) {
     enabled,
     staleTime: STALE.long,
     retry: false,
+  })
+}
+
+/** The first real import: library first, then the app-only facts to Trakt. */
+export function useRunTraktImport(onProgress: (step: string) => void) {
+  return useMutationWithFeedback({
+    action: 'trakt_import',
+    successMessage: r => `Imported: ${r.movies} movies, ${r.shows} shows, ${r.episodes} episodes · ${r.sent} changes sent to Trakt`,
+    mutationFn: () => runTraktImport(onProgress),
+    invalidates: ['media', qk.trakt.all],
   })
 }

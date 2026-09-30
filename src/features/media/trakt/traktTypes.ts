@@ -42,7 +42,7 @@ export interface TraktStatus {
 }
 
 // ── The app's side, reduced to what matching needs ──────────────────────────
-export interface LocalMovie { tmdbId: number; title: string; year: number | null; status: string; repeatCount: number; rating: number | null }
+export interface LocalMovie { tmdbId: number; title: string; year: number | null; status: string; repeatCount: number; rating: number | null; watchedAt?: string | null }
 export interface LocalShow { tmdbId: number; title: string; year: number | null; status: string; rating: number | null }
-export interface LocalEpisode { tmdbId: number; season: number; episode: number; repeatCount: number }
+export interface LocalEpisode { tmdbId: number; season: number; episode: number; repeatCount: number; watchedAt?: string | null }
 export interface LocalLibrary { movies: LocalMovie[]; shows: LocalShow[]; episodes: LocalEpisode[] }
