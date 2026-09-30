@@ -1,0 +1,98 @@
+#!/usr/bin/env node
+/*
+ * Verification — the Trakt first-import preview (docs/trakt/PLAN.md), against
+ * the real traktPreview.ts via sucrase. Covers: matching by TMDB id only,
+ * plays = 1 + repeat_count, Trakt-wins changes, app-only facts listed as
+ * "send to Trakt", watchlist vs already-watched, no-TMDB items unmatched,
+ * and local duplicate detection.
+ */
+require('sucrase/register')
+const assert = require('node:assert/strict')
+const { buildTraktPreview } = require('../src/features/media/trakt/traktPreview')
+
+let n = 0
+const ok = (actual, expected, msg) => { assert.deepStrictEqual(actual, expected, msg); n++ }
+
+const ids = (tmdb, trakt = tmdb + 1000) => ({ trakt, slug: null, tmdb, imdb: null, tvdb: null })
+const movie = (tmdb, t = `M${tmdb}`) => ({ type: 'movie', ids: ids(tmdb), title: t, year: 2020 })
+const show = (tmdb, t = `S${tmdb}`) => ({ type: 'show', ids: ids(tmdb), title: t, year: 2019 })
+const snap = (o = {}) => ({
+  fetchedAt: '2026-09-30T10:00:00Z', username: 'u', lastActivities: {},
+  watchedMovies: [], watchedShows: [], watchlist: [], ratings: [], favorites: [], dropped: [], playback: [], ...o,
+})
+const lib = (o = {}) => ({ movies: [], shows: [], episodes: [], ...o })
+const lm = (tmdbId, status = 'completed', repeatCount = 0, rating = null) => ({ tmdbId, title: `M${tmdbId}`, year: 2020, status, repeatCount, rating })
+const ls = (tmdbId, status = 'watching', rating = null) => ({ tmdbId, title: `S${tmdbId}`, year: 2019, status, rating })
+
+// Movies
+{
+  const p = buildTraktPreview(snap({ watchedMovies: [
+    { item: movie(1), plays: 1, lastWatchedAt: null },
+    { item: movie(2), plays: 3, lastWatchedAt: null },
+    { item: movie(3), plays: 1, lastWatchedAt: null },
+  ] }), lib({ movies: [lm(1), lm(2, 'completed', 0), lm(3, 'wishlist'), lm(4)] }))
+  ok(p.movies.same, 1, 'same TMDB id, completed, 1 play = same')
+  ok(p.movies.update.map(u => u.detail), ['plays 1 → 3', 'wishlist → completed'], 'Trakt wins for plays and status')
+  ok(p.movies.add.length, 0, 'nothing new when every Trakt movie is already here')
+  ok(p.movies.push.map(t => t.tmdbId), [4], 'completed here, not on Trakt → sent to Trakt')
+  ok(buildTraktPreview(snap({ watchedMovies: [{ item: movie(9), plays: 2, lastWatchedAt: null }] }), lib()).movies.add.length, 1, 'unknown title → added')
+  ok(buildTraktPreview(snap({ watchedMovies: [{ item: movie(1), plays: 2, lastWatchedAt: null }] }), lib({ movies: [lm(1, 'completed', 1)] })).movies.same, 1, 'repeat_count 1 = 2 plays')
+}
+
+// Shows + episodes
+{
+  const p = buildTraktPreview(snap({ watchedShows: [
+    { item: show(10), plays: 3, lastWatchedAt: null, resetAt: null, episodes: [[1, 1, 1, null], [1, 2, 2, null], [1, 3, 1, null]] },
+    { item: show(11), plays: 1, lastWatchedAt: null, resetAt: null, episodes: [[1, 1, 1, null]] },
+  ] }), lib({
+    shows: [ls(10), ls(12)],
+    episodes: [
+      { tmdbId: 10, season: 1, episode: 1, repeatCount: 0 },
+      { tmdbId: 10, season: 1, episode: 2, repeatCount: 0 },
+      { tmdbId: 10, season: 2, episode: 1, repeatCount: 0 },
+      { tmdbId: 12, season: 1, episode: 1, repeatCount: 0 },
+    ],
+  }))
+  ok(p.episodes.same, 1, 'S1E1 same')
+  ok(p.episodes.playsChanged, 1, 'S1E2 plays 1 → 2')
+  ok(p.episodes.add, 2, 'S1E3 of show 10 and S1E1 of the new show 11')
+  ok(p.episodes.push, 2, 'S2E1 only here, plus show 12 not on Trakt')
+  ok(p.shows.add.map(t => t.tmdbId), [11], 'show 11 is new')
+  ok(p.shows.update.map(t => t.detail), ['1 episode to add'], 'show 10 gains one episode')
+  ok(p.shows.push.map(t => t.tmdbId), [12], 'show 12 watched here only')
+}
+
+// Watchlist, ratings, dropped
+{
+  const p = buildTraktPreview(snap({
+    watchlist: [{ item: movie(1), rank: 1, listedAt: null }, { item: movie(2), rank: 2, listedAt: null }, { item: show(20), rank: 3, listedAt: null }],
+    ratings: [{ item: movie(1), rating: 8, ratedAt: null }, { item: show(20), rating: 7, ratedAt: null }],
+    dropped: [{ item: show(21) }, { item: show(22) }],
+  }), lib({
+    movies: [lm(1, 'wishlist', 0, 6), lm(2, 'completed'), lm(3, 'wishlist', 0, 9)],
+    shows: [ls(21, 'dropped'), ls(23, 'dropped'), ls(20, 'wishlist', 7)],
+  }))
+  ok(p.watchlist.same, 2, 'already wishlist here (movie 1, show 20)')
+  ok(p.watchlist.skippedWatched, 1, 'on the watchlist but watched here: left alone')
+  ok(p.watchlist.push.map(t => t.tmdbId), [3], 'wishlist here only → sent')
+  ok(p.ratings.update.map(t => t.detail), ['6 → 8'], 'Trakt rating wins')
+  ok(p.ratings.same, 1, 'same rating')
+  ok(p.ratings.push.map(t => t.tmdbId), [3], 'rated here only → sent')
+  ok(p.dropped.same, 1, 'dropped on both')
+  ok(p.dropped.add.map(t => t.tmdbId), [22], 'dropped on Trakt only → marked dropped')
+  ok(p.dropped.push.map(t => t.tmdbId), [23], 'dropped here only → sent')
+}
+
+// Identity guards
+{
+  const noTmdb = { type: 'movie', ids: { trakt: 5, slug: null, tmdb: null, imdb: 'tt1', tvdb: null }, title: 'Odd', year: null }
+  const p = buildTraktPreview(snap({
+    watchedMovies: [{ item: noTmdb, plays: 1, lastWatchedAt: null }],
+    watchlist: [{ item: noTmdb, rank: 1, listedAt: null }],
+  }), lib({ movies: [lm(1), lm(1)] }))
+  ok(p.unmatched.length, 1, 'no TMDB id → one unmatched entry, not a guessed row')
+  ok(p.movies.add.length, 0, 'an unmatched item is never added')
+  ok(p.duplicateLocal, 1, 'two local rows with one TMDB id are reported')
+}
+
+console.log(`verify-trakt-preview: ${n} assertions passed`)
