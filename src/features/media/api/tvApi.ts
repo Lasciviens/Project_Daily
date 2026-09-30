@@ -44,13 +44,14 @@ export async function upsertTVSeries(tmdb: TMDBTVSeries): Promise<TVSeries> {
 export async function addTVEntry(
   tvSeriesId: string,
   status: UserTVEntry['status'],
-  priority: UserTVEntry['priority'] = 'medium'
+  priority: UserTVEntry['priority'] = 'medium',
+  extra: Partial<Pick<UserTVEntry, 'started_at' | 'finished_at'>> = {},
 ): Promise<UserTVEntry> {
   const user = await requireUser()
 
   const { data, error } = await supabase
     .from('user_tv_entries')
-    .insert({ user_id: user.id, tv_series_id: tvSeriesId, status, priority })
+    .insert({ user_id: user.id, tv_series_id: tvSeriesId, status, priority, ...extra })
     .select('*, tv_series:tv_series(*)')
     .single()
   if (error) throw error

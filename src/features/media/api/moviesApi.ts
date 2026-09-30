@@ -41,13 +41,15 @@ export async function upsertMovie(tmdb: TMDBMovie): Promise<Movie> {
 export async function addMovieEntry(
   movieId: string,
   status: UserMovieEntry['status'],
-  priority: UserMovieEntry['priority'] = 'medium'
+  priority: UserMovieEntry['priority'] = 'medium',
+  extra: Partial<Pick<UserMovieEntry, 'watched_at'>> = {},
 ): Promise<UserMovieEntry> {
   const user = await requireUser()
 
+  // The watch date goes in with the row, so the Trakt outbox trigger sends it on insert.
   const { data, error } = await supabase
     .from('user_movie_entries')
-    .insert({ user_id: user.id, movie_id: movieId, status, priority })
+    .insert({ user_id: user.id, movie_id: movieId, status, priority, ...extra })
     .select('*, movie:movies(*)')
     .single()
   if (error) throw error

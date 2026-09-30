@@ -11,17 +11,17 @@ interface Props {
   detail: TMDBMovieFull | TMDBTVFull
   mediaType: MediaType
   userEntry?: UserMovieEntry | UserTVEntry | null
-  onAdded?: () => void
+  onRemoved?: () => void
   onOpenDetail?: (id: number, type: MediaType) => void
 }
 
-export function MediaDetailBody({ detail, mediaType, userEntry, onAdded, onOpenDetail }: Props) {
+export function MediaDetailBody({ detail, mediaType, userEntry, onRemoved, onOpenDetail }: Props) {
   const isMovie = mediaType === 'movie'
   const tv = !isMovie ? (detail as TMDBTVFull) : null
   const tvEntryId = !isMovie && userEntry ? userEntry.id : null
   const stored = userEntry ? ('movie' in userEntry ? userEntry.movie : (userEntry as UserTVEntry).tv_series) : null
 
-  const controls = <MediaLibraryControls detail={detail} isMovie={isMovie} userEntry={userEntry} onAdded={onAdded} />
+  const controls = <MediaLibraryControls detail={detail} isMovie={isMovie} userEntry={userEntry} onRemoved={onRemoved} />
 
   // Phones: one column — facts, your controls, episodes, similar.
   // md+: your poster and controls in a narrow left rail (what you act on sits
