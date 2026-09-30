@@ -432,7 +432,7 @@ server-side rules — the real design consequence of this whole finding. They ar
 **§4.1** (back-dated records, idempotency, `last_seen`) and **§5** (retroactive streaks,
 "0 minutes" ≠ "no data") and are not optional polish.
 
-### 3.0.1 Write our own plugin, or reuse BookOrbit's? — **OPEN, the owner decides**
+### 3.0.1 Write our own plugin, or reuse BookOrbit's? — **DECIDED 30.09.2026: A, our own (§12.4)**
 
 A prior draft assumed we would write our own plugin. That assumption went unexamined, and
 it is the largest remaining decision in this document, so it is recorded as open rather
@@ -1546,6 +1546,9 @@ use the reading data the tracker brings in.
     ([downloads](https://xxyzz.github.io/wiktionary_stardict/)).
   - TDK Güncel Türkçe Sözlük converter for Turkish books (AGPL, build it yourself)
     ([repo](https://github.com/anezih/guncel-turkce-sozluk-kindle-kobo-stardict)).
+  - English ↔ Turkish, both directions, from the same author
+    ([fono-sozluk-stardict](https://github.com/anezih/fono-sozluk-stardict); licence
+    unconfirmed).
   - **No offline Norwegian↔Turkish dictionary exists.** LEXIN has Bokmål–Turkish online
     only, with no download or API found.
 - **Words of the day.** KOReader's Vocabulary Builder already keeps every looked-up word
@@ -1578,7 +1581,7 @@ is unconfirmed.
 
 ### 9.5 Library, wishlist and shelves
 
-- **"Can I borrow it at Deichman?"** A book wish shows Deichman's Libby copies, holds and
+- **Dropped by the owner (30.09.2026).** **"Can I borrow it at Deichman?"** A book wish shows Deichman's Libby copies, holds and
   "available now". Borrowing then happens natively on the Clara BW through OverDrive. The
   source is OverDrive's unofficial "thunder" API
   (`…/v2/libraries/deichman/media?query=…`, open CORS, verified by the researcher). Effort
@@ -1775,9 +1778,9 @@ and function deploys are manual; CLAUDE.md → Pending manual steps).
 - The laptop push: calibre → *Start wireless device connection*; KOReader → *Calibre →
   Connect*. Set KOReader's calibre inbox folder.
 - Articles: link Instapaper in Nickel (More → My Articles).
-- Dictionaries into `.adds/koreader/data/dict/`: Ordbøkene for lesebrett, Wiktionary
-  Bokmål→English and Turkish→English (§9.3).
-- Klar Tale RSS in KOReader's News downloader.
+- Dictionaries into `.adds/koreader/data/dict/`: Ordbøkene for lesebrett, TDK Güncel Türkçe
+  Sözlük, English ↔ Turkish (fono-sozluk), and Wiktionary Bokmål→English (§9.3, §12.4).
+- Norwegian (Klar Tale, NRK) and Turkish news feeds in KOReader's News downloader.
 
 **Gate:**
 - a book sent from the Mac opens in KOReader;
@@ -1804,8 +1807,8 @@ and function deploys are manual; CLAUDE.md → Pending manual steps).
 - set the token;
 - add the catalogue in KOReader with *Sync catalog* ticked.
 
-**Later, optional:** the iPhone share-sheet Shortcut, as a new C task on
-`docs/codex-shortcuts.md`.
+**After the gate passes (the owner said yes, 30.09.2026):** the iPhone share-sheet
+Shortcut, as a new C task on `docs/codex-shortcuts.md`.
 
 **Gate:**
 - iPhone upload → *Sync all catalogs* → the book opens;
@@ -1834,7 +1837,7 @@ and function deploys are manual; CLAUDE.md → Pending manual steps).
 
 ### Phase 4 — Reading tracker (Claude writes; the Mac session installs and tests; large)
 
-**Before it starts:** the owner picks A/B/C/D (§3.0.1; the recommendation is A).
+**Plugin:** A, our own (the owner's choice, 30.09.2026; §12.4).
 
 **Claude builds:**
 - Migration: `reading_page_events`.
@@ -1872,10 +1875,11 @@ and function deploys are manual; CLAUDE.md → Pending manual steps).
 
 ### Phase 6 — Fun (pick two or three from §9)
 
-Suggested first trio:
-- the sleep-screen "Today" message (text first, the PNG later);
-- Norwegian words of the day;
-- the reading heatmap / year in books.
+The owner's picks (30.09.2026):
+- the reading heatmap and year in books;
+- the on-device AI reading companion (§9.4, §12.4).
+
+Still on the menu: the sleep-screen "Today" message and Norwegian words of the day.
 
 ### Fallback — the Nickel-side trigger
 
@@ -1923,6 +1927,8 @@ Only if Phase 4's Wi-Fi window proves too rare in daily use (§3).
 
 ### 12.3 Decisions only you can make
 
+Answered on 30.09.2026. The answers are in §12.4.
+
 1. **The plugin path** (§3.0.1): A, our own plugin (**recommended**); B, BookOrbit's plugin
    with our server; or D, KoInsight's plugin as a stopgap.
 2. **Storage** (§4.6): stay on the free plan with a small, capped inbox (**recommended**),
@@ -1937,6 +1943,65 @@ Only if Phase 4's Wi-Fi window proves too rare in daily use (§3).
    words of the day, the reading heatmap.
 6. **An on-device AI** (`assistant.koplugin`, §9.4) needs its own capped Gemini key stored on
    the Kobo. OK or skip?
+
+### 12.4 The owner's answers (30.09.2026)
+
+**Device and setup**
+- **Firmware: 4.45.23792** (0af4c82936, 30.07.2026). That is the 4.x line, so KOReader and
+  NickelMenu work, and nothing in §1.1 changes. It is a newer 4.45 build than the
+  4.45.23697 that Kobo's update server was queried with; it is still offered 4.46.
+- Claude Code is installed on the Mac (§12.1 step 3 is partly done: cloning the repo and
+  plugging in the Kobo are still to do).
+- Still to send: `391` or `395`, the KOReader version, and the Wi-Fi reboot test results.
+
+**"Do I need to block firmware updates?" — no.**
+- Kobo can't be told to stop checking for updates while Nickel is on Wi-Fi, and that's
+  fine. The only update to refuse is the 5.x/6.x one, and it installs only if you accept
+  the "accessibility" or "optional update" prompt. A 4.46 update is harmless (reinstall
+  KFMon if it was used, §1.1).
+- Keeping Nickel off Wi-Fi is enough. KOReader's own Wi-Fi can't trigger a Kobo update,
+  because Nickel isn't running while KOReader is.
+- The harder blocks in §1.1 step 4 stay unused unless a 5.x update ever becomes automatic.
+
+**Decisions**
+1. **Plugin: A, our own.** Claude writes it; the Mac session installs and tests it (§10.5).
+   Settles §3.0.1.
+2. **Storage: stay on the Free plan.** A file stays in Supabase only until the Kobo has
+   downloaded it, then it is deleted, as §4.6 says. Most novels are 0.3–5 MB as EPUB (not
+   KB; the cover and fonts are most of it). Illustrated books and PDFs can reach tens of MB,
+   so the 50 MB per-file and 150 MB inbox caps stay. Freeing space in `game-media` is a
+   separate job.
+3. **Tracking: KOReader only.** Library loans and articles read in Nickel stay untracked
+   (§2.3 unchanged).
+4. **iPhone Shortcut for Send to Kobo: yes, after Phase 2 works.** It becomes a Codex task
+   on `docs/codex-shortcuts.md` then, not before.
+5. **On-device AI: keep it in the list** (§9.4), with its own capped key.
+
+**Fun list, picked**
+- **Dictionaries** (Phase 1):
+  - Turkish: TDK Güncel Türkçe Sözlük (§9.3).
+  - English ↔ Turkish: `anezih/fono-sozluk-stardict` (both directions, StarDict)
+    ([repo](https://github.com/anezih/fono-sozluk-stardict)). Licence and size are
+    unconfirmed; check before installing.
+  - Norwegian: Ordbøkene for lesebrett (§9.3).
+  - **Norwegian ↔ Turkish: no offline dictionary exists.** LEXIN has one online only, and
+    UiO's 2013 Turkish–Norwegian dictionary is print only. The workable route is the
+    on-device AI (select a word → Turkish meaning in context), or Wiktionary
+    Bokmål→English next to English→Turkish.
+- **News as a morning EPUB** (Phase 1, zero code): Klar Tale and NRK for Norwegian, and a
+  Turkish feed (for example BBC Türkçe) through KOReader's News downloader. Which Turkish
+  feeds have usable RSS is checked when setting it up.
+- **Reading heatmap and year in books** (Phase 6, §9.1).
+- **Dropped: "Can I borrow this at Deichman?"** (§9.5).
+
+**"An AI reading companion — to do what?"** Things a reader actually uses mid-book:
+- select a Norwegian sentence → the Turkish meaning and why it's phrased that way;
+- select a word → its meaning *in this sentence*, which a dictionary can't give;
+- "who is this character again?" without spoilers past the current page;
+- "previously on" after a week away: a recap of what you've read so far;
+- a short summary of the chapter you just finished.
+
+It runs through `assistant.koplugin` (§9.4) with a separate, capped Gemini key.
 
 ---
 
