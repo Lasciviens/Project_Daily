@@ -1062,27 +1062,45 @@ function outboxBody(op: string, rows: AnyRec[]): AnyRec {
 const notFoundCount = (res: AnyRec) => Object.values((res.not_found ?? {}) as AnyRec)
   .reduce((n: number, v) => n + (Array.isArray(v) ? v.length : 0), 0)
 
+/**
+ * The next request: the first row's op, plus every later row of that op
+ * (≤ 100) whose item has no earlier row still waiting — so "remove K1, add K1,
+ * remove K2, add K2" goes as one remove and one add, and each item's own rows
+ * still go in order.
+ */
+function pickBatch(rows: AnyRec[]): AnyRec[] {
+  const op = rows[0].op
+  const batch = [rows[0]]
+  const blocked = new Set<string>()
+  for (let k = 1; k < rows.length && batch.length < 100; k++) {
+    const r = rows[k]
+    const key = String(r.item_key)
+    if (r.op === op && !blocked.has(key)) batch.push(r)
+    else blocked.add(key)
+  }
+  return batch
+}
+
 async function drainOutbox(db: Db, userId: string, token: string, deadline: number) {
   const out = { sent: 0, notFound: 0, failed: 0, left: 0, error: null as string | null }
   const sentKeys: string[] = []
-  const { data, error } = await db.from('trakt_outbox').select('id, op, item_key, payload, attempts')
+  // seq (migration 120) is the true insert order; created_at ties inside one trigger call.
+  const base = () => db.from('trakt_outbox').select('id, op, item_key, payload, attempts')
     .eq('user_id', userId).lte('next_retry_at', new Date().toISOString())
-    .order('created_at').order('id').limit(500)
-  if (error) throw error
-  const rows = (data ?? []) as AnyRec[]
-  let i = 0
+  let res = await base().order('seq').limit(500)
+  if (res.error && missingColumn(res.error)) res = await base().order('created_at').order('id').limit(500)
+  if (res.error) throw res.error
+  let rows = (res.data ?? []) as AnyRec[]
   let calls = 0
-  while (i < rows.length && calls < 40 && Date.now() < deadline) {
-    const op = String(rows[i].op)
-    let j = i + 1
-    while (j < rows.length && rows[j].op === op && j - i < 100) j++
-    const batch = rows.slice(i, j)
+  while (rows.length && calls < 40 && Date.now() < deadline) {
+    const batch = pickBatch(rows)
+    const op = String(batch[0].op)
     const ids = batch.map(r => r.id)
     const path = OUTBOX_PATHS[op]
     try {
       if (path) {
-        const res = await post(path, token, outboxBody(op, batch))
-        out.notFound += notFoundCount(res)
+        const sent = await post(path, token, outboxBody(op, batch))
+        out.notFound += notFoundCount(sent)
         calls++
       }
       const { error: delError } = await db.from('trakt_outbox').delete().in('id', ids)
@@ -1101,7 +1119,8 @@ async function drainOutbox(db: Db, userId: string, token: string, deadline: numb
       out.error = message
       break // keep the order: nothing after a failed change goes first
     }
-    i = j
+    const taken = new Set(ids)
+    rows = rows.filter(r => !taken.has(r.id))
   }
   const { count } = await db.from('trakt_outbox').select('id', { count: 'exact', head: true }).eq('user_id', userId)
   out.left = count ?? 0
@@ -1341,13 +1360,16 @@ interface FollowTitle { id: number; title: string; poster: string | null; releas
 async function followTitles(kind: string, id: number): Promise<FollowTitle[]> {
   const map = (r: AnyRec): FollowTitle => ({ id: Number(r.id), title: String(r.title ?? r.name ?? ''), poster: (r.poster_path as string) ?? null, release: (r.release_date as string) || null })
   if (kind === 'collection') return (((await tmdbQ(`/collection/${id}`)).parts ?? []) as AnyRec[]).map(map)
-  if (kind === 'company') {
-    const [newest, soon] = await Promise.all([
-      tmdbQ('/discover/movie', { with_companies: String(id), sort_by: 'primary_release_date.desc', 'primary_release_date.lte': new Date(Date.now() + 730 * 864e5).toISOString().slice(0, 10) }),
-      tmdbQ('/discover/movie', { with_companies: String(id), sort_by: 'popularity.desc' }),
-    ])
+  if (kind === 'company' || kind === 'keyword') {
+    const by = kind === 'company' ? 'with_companies' : 'with_keywords'
+    // Newest first, five pages (100 films) — enough to catch every new title
+    // and trailer; the smart list itself reads the full list client-side.
+    const pages = await Promise.all([1, 2, 3, 4, 5].map(page => tmdbQ('/discover/movie', {
+      [by]: String(id), sort_by: 'primary_release_date.desc', page: String(page),
+      'primary_release_date.lte': new Date(Date.now() + 730 * 864e5).toISOString().slice(0, 10),
+    })))
     const seen = new Map<number, FollowTitle>()
-    for (const r of [...((newest.results ?? []) as AnyRec[]), ...((soon.results ?? []) as AnyRec[])]) seen.set(Number(r.id), map(r))
+    for (const r of pages.flatMap(p => (p.results ?? []) as AnyRec[])) seen.set(Number(r.id), map(r))
     return [...seen.values()]
   }
   const credits = await tmdbQ(`/person/${id}/movie_credits`)

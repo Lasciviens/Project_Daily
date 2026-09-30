@@ -19,15 +19,21 @@ async function resolveTvSeriesId(tvEntryId: string): Promise<string> {
 }
 
 export async function fetchWatchedEpisodes(tvEntryId: string): Promise<WatchedEpisode[]> {
-  const { data, error } = await supabase
-    .from('user_tv_episodes')
-    .select('*')
-    .eq('tv_entry_id', tvEntryId)
-    .not('watched_at', 'is', null)
-    .order('season_number', { ascending: true })
-    .order('episode_number', { ascending: true })
-  if (error) throw error
-  return data ?? []
+  // Paged past PostgREST's 1,000-row cap (a long-running show can pass it).
+  const out: WatchedEpisode[] = []
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await supabase
+      .from('user_tv_episodes')
+      .select('*')
+      .eq('tv_entry_id', tvEntryId)
+      .not('watched_at', 'is', null)
+      .order('season_number', { ascending: true })
+      .order('episode_number', { ascending: true })
+      .range(from, from + 999)
+    if (error) throw error
+    out.push(...(data ?? []))
+    if (!data || data.length < 1000) return out
+  }
 }
 
 // Recompute the entry's current_season/current_episode cache from the max
@@ -121,6 +127,28 @@ export async function markEpisodesWatched(
     if (error) throw error
   }
   await syncEntryProgress(tvEntryId)
+}
+
+/**
+ * Change when already-watched episodes were watched (e.g. every one to its own
+ * release date). Keeps plays; one upsert per 500 rows. The outbox trigger
+ * (migration 120) resends those plays to Trakt at the new date.
+ */
+export async function setEpisodesWatchedAt(tvEntryId: string, refs: { season: number; episode: number; at: string }[]): Promise<number> {
+  if (refs.length === 0) return 0
+  const rows = await fetchWatchedEpisodes(tvEntryId)
+  const byKey = new Map(rows.map(r => [`${r.season_number}x${r.episode_number}`, r]))
+  const out = refs.flatMap(r => {
+    const row = byKey.get(`${r.season}x${r.episode}`)
+    const at = toIso(r.at)
+    if (!row || (row.watched_at && Date.parse(row.watched_at) === Date.parse(at))) return []
+    return [{ id: row.id, user_id: row.user_id, tv_entry_id: row.tv_entry_id, tv_series_id: row.tv_series_id, season_number: row.season_number, episode_number: row.episode_number, watched_at: at }]
+  })
+  for (let i = 0; i < out.length; i += 500) {
+    const { error } = await supabase.from('user_tv_episodes').upsert(out.slice(i, i + 500), { onConflict: 'id' })
+    if (error) throw error
+  }
+  return out.length
 }
 
 /** One more play of an already-watched episode: repeat_count + 1, last watched = that day. */

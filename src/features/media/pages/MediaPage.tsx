@@ -15,6 +15,7 @@ import { BUCKET_ORDER, libraryItems, type LibraryBucket } from '../libraryModel'
 import { todayStr } from '../../../shared/utils/dateUtils'
 import { useMovies } from '../hooks/useMovies'
 import { useTVSeries } from '../hooks/useTVSeries'
+import { useCinemaMovieIds } from '../hooks/useLibraryIndex'
 import { useEntityModal } from '../../../shared/modals'
 import { PageBoard, PageContainer, PageHeader, SegmentedControl } from '../../../shared/ui'
 import { MEDIA_BOARD, type MediaSection } from '../mediaBoard'
@@ -65,7 +66,8 @@ export function MediaPage() {
   const mediaType: MediaType = tab === 'movies' ? 'movie' : 'tv'
 
   const libraryLoading = moviesLoading || tvLoading
-  const items = useMemo(() => libraryItems(tab, movieEntries, tvEntries, todayStr()), [tab, movieEntries, tvEntries])
+  const cinema = useCinemaMovieIds()
+  const items = useMemo(() => libraryItems(tab, movieEntries, tvEntries, todayStr(), cinema), [tab, movieEntries, tvEntries, cinema])
   // Library posters by type:tmdb, so Trakt-only tiles (Continue watching) skip a TMDB read when the title is known.
   const posters = useMemo(() => new Map<string, string | null>([
     ...movieEntries.map(e => [`movie:${e.movie.tmdb_id}`, e.movie.poster_path] as const),

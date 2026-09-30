@@ -1,9 +1,10 @@
 import { useState, type ReactNode } from 'react'
-import { format } from 'date-fns'
 import { CalendarDays, CheckCheck, HelpCircle, PencilLine } from 'lucide-react'
 import { ModalShell } from '../../../shared/modals/ModalShell'
 import { Button } from '../../../shared/ui'
-import type { WatchedWhen } from '../watchedWhen'
+import { DateInput } from '../../../shared/components/DateInput'
+import { todayStr } from '../../../shared/utils/dateUtils'
+import { middayIso, type WatchedWhen } from '../watchedWhen'
 
 function Option({ icon, label, hint, onClick }: { icon: ReactNode; label: string; hint?: string | null; onClick: () => void }) {
   return (
@@ -24,7 +25,8 @@ export interface WatchedWhenAsk { title: string; subtitle?: string; releaseLabel
 /** The Trakt app's "when did you watch it?" sheet: Just now · Release date · Other date · Unknown date. */
 export function WatchedWhenSheet({ ask, onDone }: { ask: WatchedWhenAsk; onDone: (w: WatchedWhen | null) => void }) {
   const [picking, setPicking] = useState(false)
-  const [value, setValue] = useState(() => format(new Date(), "yyyy-MM-dd'T'HH:mm"))
+  // A day, never a time (owner rule): stored as midday local so no zone moves it.
+  const [value, setValue] = useState(() => todayStr())
   return (
     <ModalShell onClose={() => onDone(null)} size="xs" layer="confirm" title={ask.title} subtitle={ask.subtitle ?? 'When did you watch it?'} bodyClassName="p-2">
       {!picking ? (
@@ -36,18 +38,11 @@ export function WatchedWhenSheet({ ask, onDone }: { ask: WatchedWhenAsk; onDone:
         </div>
       ) : (
         <div className="flex flex-col gap-3 p-2">
-          <label htmlFor="watched-when-at" className="field-label">Watched on</label>
-          <input
-            id="watched-when-at"
-            type="datetime-local"
-            value={value}
-            max={format(new Date(), "yyyy-MM-dd'T'HH:mm")}
-            onChange={e => setValue(e.target.value)}
-            className="input w-full"
-          />
+          <span className="field-label" id="watched-when-at">Watched on</span>
+          <DateInput value={value} onChange={setValue} max={todayStr()} aria-label="Watched on (DD.MM.YYYY)" className="input w-full" />
           <div className="flex justify-end gap-2">
             <Button variant="ghost" onClick={() => setPicking(false)}>Back</Button>
-            <Button variant="primary" disabled={!value} onClick={() => onDone({ kind: 'other', iso: new Date(value).toISOString() })}>Save</Button>
+            <Button variant="primary" disabled={!value} onClick={() => onDone({ kind: 'other', iso: middayIso(value) })}>Save</Button>
           </div>
         </div>
       )}

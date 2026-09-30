@@ -9,6 +9,7 @@ import {
   markEpisodeWatched,
   markEpisodesWatched,
   rewatchEpisode,
+  setEpisodesWatchedAt,
   unmarkEpisodeWatched,
 } from '../api/watchedEpisodesApi'
 
@@ -89,6 +90,18 @@ export function useMarkEpisodeWatched(opts?: { successMessage?: string }) {
     onError: (_err, _vars, ctx) => {
       if (ctx?.previous !== undefined) qc.setQueryData(ctx.key, ctx.previous)
     },
+    invalidates: ['episodeWatched'],
+    onSuccess: () => scheduleTraktSync(qc),
+  })
+}
+
+/** Change the watched date of episodes already watched (their plays stay). */
+export function useSetEpisodeDates() {
+  const qc = useQueryClient()
+  return useMutationWithFeedback({
+    action: 'set_episode_dates',
+    mutationFn: ({ tvEntryId, episodes }: { tvEntryId: string; episodes: { season: number; episode: number; at: string }[] }) =>
+      setEpisodesWatchedAt(tvEntryId, episodes),
     invalidates: ['episodeWatched'],
     onSuccess: () => scheduleTraktSync(qc),
   })

@@ -1,0 +1,131 @@
+// Discover's lists as TMDB requests, and the filters on top. Pure and
+// import-free (scripts/verify-media-lists.cjs).
+//
+// Why not TMDB's /movie/popular: its "popularity" is recent page views over
+// the whole catalogue, so old, foreign-market or straight-to-video titles with
+// a local spike sit near the top. Popular here is /discover limited to the
+// last three years with a vote floor, so what shows is a recent film people
+// actually watched; trending stays /trending (that IS the point of Today /
+// This week) with the filters applied to its results. Every list is still
+// unverified against a live TMDB sample — no API key in the authoring session.
+
+export type DiscoverTab = 'today' | 'week' | 'popular' | 'top' | 'cinemas' | 'airing' | 'upcoming' | 'norway' | 'services'
+export type DiscoverSort = 'popularity' | 'rating' | 'newest'
+
+export interface DiscoverFilters {
+  genre: number | null
+  /** Released in or after this year. */
+  fromYear: number | null
+  /** TMDB score floor (0–10). */
+  minRating: number | null
+  sort: DiscoverSort | null
+  hideLibrary: boolean
+}
+
+export const NO_FILTERS: DiscoverFilters = { genre: null, fromYear: null, minRating: null, sort: null, hideLibrary: false }
+
+export interface TabMeta { key: DiscoverTab; label: string; types: ('movie' | 'tv')[] }
+
+export const DISCOVER_TABS: TabMeta[] = [
+  { key: 'today', label: 'Trending', types: ['movie', 'tv'] },
+  { key: 'week', label: 'This week', types: ['movie', 'tv'] },
+  { key: 'popular', label: 'Popular', types: ['movie', 'tv'] },
+  { key: 'top', label: 'Top rated', types: ['movie', 'tv'] },
+  { key: 'cinemas', label: 'In cinemas', types: ['movie'] },
+  { key: 'airing', label: 'On the air', types: ['tv'] },
+  { key: 'upcoming', label: 'Upcoming', types: ['movie', 'tv'] },
+  { key: 'norway', label: 'Norway', types: ['movie', 'tv'] },
+  { key: 'services', label: 'My services', types: ['movie', 'tv'] },
+]
+
+export const isTrending = (t: DiscoverTab) => t === 'today' || t === 'week'
+
+const addDays = (day: string, n: number) => {
+  const d = new Date(`${day}T12:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + n)
+  return d.toISOString().slice(0, 10)
+}
+
+export interface DiscoverRequest { path: string; params: Record<string, string> }
+
+/**
+ * The TMDB request for one page of a list. `today` is yyyy-MM-dd; `providers`
+ * are the picked streaming services (My services).
+ */
+export function discoverRequest(tab: DiscoverTab, type: 'movie' | 'tv', f: DiscoverFilters, today: string, page: number, providers: number[] = []): DiscoverRequest {
+  if (isTrending(tab)) return { path: `/trending/${type}/${tab === 'today' ? 'day' : 'week'}`, params: { page: String(page) } }
+  const movie = type === 'movie'
+  const date = movie ? 'primary_release_date' : 'first_air_date'
+  const p: Record<string, string> = { page: String(page), include_adult: 'false' }
+  let floor = movie ? 100 : 50
+  let sort = 'popularity.desc'
+  // The vote floor a "Best rated" sort needs on this tab (a short window can't reach 300).
+  let ratedFloor = movie ? 1500 : 400
+  switch (tab) {
+    case 'popular':
+      p[`${date}.gte`] = addDays(today, -3 * 365)
+      p[`${date}.lte`] = today
+      break
+    case 'top': floor = movie ? 1500 : 400; sort = 'vote_average.desc'; break
+    case 'cinemas':
+      // Theatrical releases in Norway in the last six weeks.
+      Object.assign(p, { region: 'NO', with_release_type: '3', 'release_date.gte': addDays(today, -42), 'release_date.lte': today })
+      floor = 0; ratedFloor = 20; break
+    case 'airing':
+      Object.assign(p, { 'air_date.gte': today, 'air_date.lte': addDays(today, 7) })
+      floor = 20; ratedFloor = 100; break
+    case 'upcoming':
+      if (movie) Object.assign(p, { with_release_type: '2|3', 'release_date.gte': addDays(today, 1), 'release_date.lte': addDays(today, 180) })
+      else Object.assign(p, { 'first_air_date.gte': addDays(today, 1), 'first_air_date.lte': addDays(today, 180) })
+      floor = 0; break
+    case 'norway': p.with_origin_country = 'NO'; floor = 5; ratedFloor = 30; break
+    case 'services':
+      Object.assign(p, { watch_region: 'NO', with_watch_providers: [...providers].sort((a, b) => a - b).join('|'), with_watch_monetization_types: 'flatrate|free|ads' })
+      floor = movie ? 20 : 10; ratedFloor = movie ? 300 : 100; break
+  }
+  const upcoming = tab === 'upcoming'
+  // Nothing upcoming has a score: rating sort and a score floor would empty it.
+  if (f.sort === 'rating' && !upcoming) { sort = 'vote_average.desc'; floor = Math.max(floor, ratedFloor) }
+  else if (f.sort === 'newest') {
+    // Upcoming "newest" = soonest first; elsewhere the latest release up to today.
+    const key = upcoming ? (movie ? 'release_date' : 'first_air_date') : tab === 'cinemas' ? 'release_date' : date
+    sort = `${key}.${upcoming ? 'asc' : 'desc'}`
+    if (!upcoming && tab !== 'cinemas') p[`${date}.lte`] = p[`${date}.lte`] ?? today
+  } else if (f.sort === 'popularity') sort = 'popularity.desc'
+  p.sort_by = sort
+  if (floor > 0) p['vote_count.gte'] = String(floor)
+  if (f.genre != null) p.with_genres = String(f.genre)
+  // Upcoming is all in the future already: a year floor changes nothing there.
+  if (f.fromYear != null && !upcoming) p[`${date}.gte`] = maxDay(p[`${date}.gte`], `${f.fromYear}-01-01`)
+  if (f.minRating != null && !upcoming) p['vote_average.gte'] = String(f.minRating)
+  return { path: `/discover/${type}`, params: p }
+}
+
+const maxDay = (a: string | undefined, b: string) => (a && a > b ? a : b)
+
+export interface DiscoverTitle { id: number; genre_ids?: number[]; vote_average: number; release_date?: string; first_air_date?: string }
+
+/**
+ * Trending comes back unfiltered: apply genre, year and score here. The
+ * library filter applies to every list (`inLibrary` says whether a title is
+ * already yours).
+ */
+export function applyClientFilters<T extends DiscoverTitle>(tab: DiscoverTab, items: T[], f: DiscoverFilters, inLibrary: (id: number) => boolean): T[] {
+  const trending = isTrending(tab)
+  const seen = new Set<number>()
+  return items.filter(i => {
+    if (seen.has(i.id)) return false
+    seen.add(i.id)
+    if (f.hideLibrary && inLibrary(i.id)) return false
+    if (!trending) return true
+    if (f.genre != null && !(i.genre_ids ?? []).includes(f.genre)) return false
+    const y = Number((i.release_date ?? i.first_air_date ?? '').slice(0, 4)) || null
+    if (f.fromYear != null && (y == null || y < f.fromYear)) return false
+    if (f.minRating != null && i.vote_average < f.minRating) return false
+    return true
+  })
+}
+
+/** Filters that change this tab's list (a sort does nothing on trending). */
+export const activeFilterCount = (f: DiscoverFilters, tab?: DiscoverTab) =>
+  (f.genre != null ? 1 : 0) + (f.fromYear != null ? 1 : 0) + (f.minRating != null ? 1 : 0) + (f.sort && !(tab && isTrending(tab)) ? 1 : 0) + (f.hideLibrary ? 1 : 0)

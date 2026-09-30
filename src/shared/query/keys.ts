@@ -69,6 +69,8 @@ export const qk = {
     movies: ['movies'] as const,
     tv: ['tv'] as const,
     userMovies: () => ['movies', 'user'] as const,
+    cinemaVisits: () => ['movies', 'cinema'] as const,
+    smartList: (kind: string, id: number) => ['tmdb', 'smart-list', kind, id] as const,
     userTv: () => ['tv', 'user'] as const,
     watched: (tvEntryId: string) => ['watched-episodes', tvEntryId] as const,
     watchedAll: ['watched-episodes'] as const,

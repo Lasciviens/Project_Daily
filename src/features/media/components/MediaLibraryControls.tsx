@@ -18,6 +18,9 @@ import { useNextEpisode } from '../hooks/useNextEpisode'
 import { PlanThisButton } from './PlanThisButton'
 import { StarRating } from './StarRating'
 import { MovieWatchedControls } from './MovieWatchedControls'
+import { CinemaVisits } from './CinemaVisits'
+import { SeriesFinishedControls } from './SeriesFinishedControls'
+import { todayStr } from '../../../shared/utils/dateUtils'
 import { AddToListMenu } from './AddToListMenu'
 import { FollowMenu } from './FollowMenu'
 import type { TMDBMovieFull, TMDBTVFull, UserMovieEntry, UserTVEntry, MediaStatus } from '../types'
@@ -152,7 +155,7 @@ export function MediaLibraryControls({ detail, isMovie, userEntry, onAdded }: Pr
     const refs = (tv.seasons ?? []).filter(x => x.season_number > 0)
       .flatMap(x => Array.from({ length: x.episode_count }, (_, i) => ({ season: x.season_number, episode: i + 1 })))
     const dates = await episodeAirDates(qc, tv.id, refs)
-    const today = new Date().toISOString().slice(0, 10)
+    const today = todayStr()
     const have = new Set(watchedRows.map(w => `${w.season_number}x${w.episode_number}`))
     const now = new Date().toISOString()
     const todo = refs
@@ -232,6 +235,10 @@ export function MediaLibraryControls({ detail, isMovie, userEntry, onAdded }: Pr
         {movieEntry?.status === 'completed' && (
           <MovieWatchedControls entry={movieEntry} releaseDate={movie!.release_date ?? null} disabled={updating} onPatch={patchEntry} />
         )}
+        {tvEntry?.status === 'completed' && (
+          <SeriesFinishedControls entry={tvEntry} lastAirDate={tv!.last_air_date ?? null} disabled={updating} onPatch={patchEntry} />
+        )}
+        {movieEntry && <CinemaVisits entry={movieEntry} />}
       </div>
 
       <div>

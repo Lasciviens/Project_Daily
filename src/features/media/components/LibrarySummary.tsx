@@ -1,5 +1,5 @@
 import { ArrowRight } from 'lucide-react'
-import { posterUrl } from '../../../integrations/tmdb/client'
+import { PosterTile } from './PosterTile'
 import { Button } from '../../../shared/ui'
 import { BUCKET_LABEL, BUCKET_ORDER, bucketCounts, summaryPosters, type LibraryBucket, type LibraryItem } from '../libraryModel'
 import type { MediaType } from '../types'
@@ -33,12 +33,11 @@ export function LibrarySummary({ items, mediaType, onOpenDetail, onOpenLibrary }
       </div>
 
       {posters.length > 0 && (
-        <div className="flex gap-1.5 overflow-x-auto pb-1">
+        <div className="scroll-x flex gap-2.5 pb-1">
           {posters.map(p => (
-            <button key={p.tmdbId} type="button" onClick={() => onOpenDetail(p.tmdbId, mediaType)} title={p.title} aria-label={p.title}
-              className="press-feedback shrink-0 rounded-md focus-visible:outline-accent-500">
-              <img src={posterUrl(p.posterPath, 'w185')} alt="" loading="lazy" className="h-[96px] w-[64px] rounded-md bg-surface-2 object-cover" />
-            </button>
+            <div key={p.tmdbId} className="w-28 shrink-0">
+              <PosterTile posterPath={p.posterPath} title={p.title} bucket={p.bucket} rt={p.rt} favorite={p.favorite} cinema={p.cinema} onOpen={() => onOpenDetail(p.tmdbId, mediaType)} />
+            </div>
           ))}
         </div>
       )}

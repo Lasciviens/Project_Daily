@@ -1,17 +1,18 @@
 import { useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { format } from 'date-fns'
 import { withProgress } from '../../../shared/hooks/useMutationWithFeedback'
 import { episodeAirDates, useSeasonDetails } from '../hooks/useTMDB'
 import { useWatchedWhenPrompt } from '../hooks/useWatchedWhenPrompt'
 import { resolveWatchedAt } from '../watchedWhen'
-import { useWatchedEpisodes, useMarkEpisodeWatched } from '../hooks/useWatchedEpisodes'
-import { CalendarPlus, Check, ListChecks, RotateCcw, Undo2 } from 'lucide-react'
+import { useWatchedEpisodes, useMarkEpisodeWatched, useSetEpisodeDates } from '../hooks/useWatchedEpisodes'
+import { CalendarDays, CalendarPlus, Check, ListChecks, RotateCcw, Undo2 } from 'lucide-react'
 import { useEntityModal } from '../../../shared/modals'
-import { Button, SectionLabel, Skeleton } from '../../../shared/ui'
+import { Button, SectionLabel, Skeleton, Truncate } from '../../../shared/ui'
 import { ceilToQuarter } from '../../../shared/components/plan-modal/planModal.config'
 import type { TMDBTVFull } from '../types'
 import { formatDate } from '../../../shared/utils/dateFormat'
+import { todayStr } from '../../../shared/utils/dateUtils'
+import { toast } from '../../../app/store'
 import { isUnknownWatchedAt } from '../trakt/traktDates'
 
 interface Props {
@@ -19,9 +20,8 @@ interface Props {
   tvEntryId:  string
 }
 
-const TODAY = format(new Date(), 'yyyy-MM-dd')
-
 export function EpisodesPanel({ tv, tvEntryId }: Props) {
+  const TODAY = todayStr()
   const realSeasons = (tv.seasons ?? []).filter(s => s.season_number > 0)
   const [season,    setSeason]    = useState(realSeasons[0]?.season_number ?? 1)
   const [selected,  setSelected]  = useState<Set<number>>(new Set())
@@ -30,6 +30,7 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
   const { data: seasonData, isLoading } = useSeasonDetails(tv.id, season)
   const { data: watched = [] }          = useWatchedEpisodes(tvEntryId)
   const markWatched                     = useMarkEpisodeWatched()
+  const setDates                        = useSetEpisodeDates()
   const modal                           = useEntityModal()
   const qc                              = useQueryClient()
   const { ask, dialog }                 = useWatchedWhenPrompt()
@@ -102,7 +103,9 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
 
   // Trakt's "when did you watch it?": each episode gets its own time — with
   // Release date, its own air date. Null = cancelled.
-  async function withWhen(refs: { season: number; episode: number }[], verb: string) {
+  // `strict`: changing a date — an episode with no known air date is left as
+  // it is instead of getting today's date.
+  async function withWhen(refs: { season: number; episode: number }[], verb: string, strict = false) {
     const one = refs.length === 1 ? refs[0] : null
     const air = one && one.season === season ? (seasonData?.episodes ?? []).find(e => e.episode_number === one.episode)?.air_date : null
     const when = await ask({
@@ -113,7 +116,9 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
     if (!when) return null
     const now = new Date().toISOString()
     const dates = when.kind === 'release' ? await episodeAirDates(qc, tv.id, refs) : new Map<string, string | null>()
-    return refs.map(r => ({ ...r, at: resolveWatchedAt(when, dates.get(`${r.season}x${r.episode}`), 'episode', now)! }))
+    const known = strict && when.kind === 'release' ? refs.filter(r => !!dates.get(`${r.season}x${r.episode}`)) : refs
+    if (known.length < refs.length) toast.warning(`${refs.length - known.length} episode${refs.length - known.length === 1 ? '' : 's'} left as they were — TMDB has no air date`)
+    return known.map(r => ({ ...r, at: resolveWatchedAt(when, dates.get(`${r.season}x${r.episode}`), 'episode', now)! }))
   }
 
   const plural = (n: number) => `${n} episode${n > 1 ? 's' : ''}`
@@ -128,6 +133,28 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
     const refs = await withWhen(selectedWatched.map(episode => ({ season, episode })), 'When did you watch it again?')
     if (refs) await runMarkRefs(refs, 'again', `Counting another play of ${plural(refs.length)}…`, 'Play counted')
   }
+  // Change when episodes already watched were watched (Release date = each one's own air date).
+  async function changeDates(refs: { season: number; episode: number }[], verb: string) {
+    // Trakt keeps a date per play; the app keeps one per episode, so every play gets the new date.
+    const multi = watched.filter(w => (w.repeat_count ?? 0) > 0 && refs.some(r => r.season === w.season_number && r.episode === w.episode_number)).length
+    if (multi > 0 && !(await modal.confirm({
+      title: `${multi} of them ${multi === 1 ? 'was' : 'were'} watched more than once`,
+      message: 'The app keeps one date per episode, so every play of those episodes gets the new date — here and on Trakt.',
+      confirmLabel: 'Change anyway',
+    }))) return
+    const timed = await withWhen(refs, verb, true)
+    if (!timed || timed.length === 0) return
+    setMarking(true)
+    const ok = await withProgress(
+      () => setDates.mutateAsync({ tvEntryId, episodes: timed }).then(n => n),
+      { loading: 'Changing watched dates…', success: 'Watched dates changed' },
+    )
+    if (ok != null) setSelected(new Set())
+    setMarking(false)
+  }
+  const changeSelectedDates = () => changeDates(selectedWatched.map(episode => ({ season, episode })), 'Change when you watched them')
+  const changeAllDates = () => changeDates(watched.map(w => ({ season: w.season_number, episode: w.episode_number })), `Every watched episode (${watched.length})`)
+
   async function unmarkSelected() {
     const ok = await modal.confirm({
       title: `Mark ${plural(selectedWatched.length)} as not watched?`,
@@ -208,6 +235,11 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
             )
           })}
         </div>
+        {watched.length > 0 && (
+          <Button size="sm" variant="ghost" icon={<CalendarDays />} onClick={() => { void changeAllDates() }} disabled={marking} title="Change the watched date of every watched episode — e.g. each to its release date">
+            Dates
+          </Button>
+        )}
         <Button
           size="sm"
           variant="ghost"
@@ -236,6 +268,7 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
             )}
             {selectedWatched.length > 0 && (
               <>
+                <Button size="sm" variant="ghost" onClick={() => { void changeSelectedDates() }} disabled={marking} icon={<CalendarDays />}>Change date</Button>
                 <Button size="sm" onClick={watchSelectedAgain} disabled={marking} icon={<RotateCcw />}>Watched again</Button>
                 <Button size="sm" variant="ghost" onClick={unmarkSelected} disabled={marking} icon={<Undo2 />}>Not watched</Button>
               </>
@@ -292,7 +325,7 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
                     <span className={`shrink-0 text-micro font-bold tabular-nums ${isWatched ? 'text-success' : 'text-fg-faint'}`}>
                       E{String(ep.episode_number).padStart(2, '0')}
                     </span>
-                    <span className={`truncate text-body font-medium ${isWatched ? 'text-fg-muted' : 'text-fg'}`}>{ep.name}</span>
+                    <Truncate className={`min-w-0 text-body font-medium ${isWatched ? 'text-fg-muted' : 'text-fg'}`}>{ep.name}</Truncate>
                   </span>
                   <span className="mt-0.5 flex items-center gap-2 text-micro text-fg-muted tabular-nums">
                     {runtime && <span>{runtime}m</span>}

@@ -1,7 +1,7 @@
 import { supabase } from '../../../integrations/supabase/client'
 import { parseFunctionErrorBody } from '../../../shared/utils/functionError'
 
-export type FollowKind = 'collection' | 'company' | 'director' | 'actor'
+export type FollowKind = 'collection' | 'company' | 'director' | 'actor' | 'keyword'
 
 export interface MediaFollow { id: string; kind: FollowKind; tmdb_id: number; name: string; trakt_list_id: number | null; last_checked_at: string | null; created_at: string }
 export interface MediaFollowEvent { id: string; follow_id: string; kind: 'new_title' | 'trailer'; tmdb_id: number; title: string; poster_path: string | null; release_date: string | null; video_key: string | null; created_at: string; seen_at: string | null }
