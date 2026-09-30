@@ -81,11 +81,11 @@ export function TonightPicker({ movieEntries, tvEntries, onOpenDetail }: Props) 
   const [tvPick,     setTvPick]     = useState<Candidate | null>(null)
   const [shaking,    setShaking]    = useState<'movie' | 'tv' | null>(null)
 
-  // Always fetch TMDB pools (cached 1hr, cheap after first load)
-  const { data: trendMovies  = [] } = useTrendingMovies('week')
-  const { data: trendTV      = [] } = useTrendingTV('week')
-  const { data: popMovies    = [] } = usePopularMovies()
-  const { data: popTV        = [] } = usePopularTV()
+  // TMDB pools load only when that source is picked (My list needs none).
+  const { data: trendMovies  = [] } = useTrendingMovies('week', source === 'trending')
+  const { data: trendTV      = [] } = useTrendingTV('week', source === 'trending')
+  const { data: popMovies    = [] } = usePopularMovies(source === 'popular')
+  const { data: popTV        = [] } = usePopularTV(source === 'popular')
 
   function buildPool(type: 'movie' | 'tv'): Candidate[] {
     if (source === 'mylist') {

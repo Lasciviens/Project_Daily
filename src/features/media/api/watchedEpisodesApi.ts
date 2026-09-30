@@ -86,6 +86,40 @@ export async function markEpisodeWatched(
   return data
 }
 
+/**
+ * Many episodes at once ("watched up to here", a whole season): one read, one
+ * upsert, one progress sync. Episodes already watched keep their real date.
+ */
+export async function markEpisodesWatched(
+  tvEntryId: string,
+  refs: { season: number; episode: number }[],
+  watchedOn: string,
+): Promise<void> {
+  if (refs.length === 0) return
+  const user = await requireUser()
+  const tvSeriesId = await resolveTvSeriesId(tvEntryId)
+  const { data: have, error: readErr } = await supabase
+    .from('user_tv_episodes').select('season_number, episode_number')
+    .eq('user_id', user.id).eq('tv_series_id', tvSeriesId)
+    .not('watched_at', 'is', null)
+  if (readErr) throw readErr
+  const seen = new Set((have ?? []).map(r => `${r.season_number}x${r.episode_number}`))
+  const at = new Date(watchedOn + 'T12:00:00').toISOString()
+  const rows = refs
+    .filter(r => !seen.has(`${r.season}x${r.episode}`))
+    .map(r => ({
+      user_id: user.id, tv_entry_id: tvEntryId, tv_series_id: tvSeriesId,
+      season_number: r.season, episode_number: r.episode, watched_at: at,
+    }))
+  for (let i = 0; i < rows.length; i += 500) {
+    const { error } = await supabase
+      .from('user_tv_episodes')
+      .upsert(rows.slice(i, i + 500), { onConflict: 'user_id,tv_series_id,season_number,episode_number' })
+    if (error) throw error
+  }
+  await syncEntryProgress(tvEntryId)
+}
+
 /** One more play of an already-watched episode: repeat_count + 1, last watched = that day. */
 export async function rewatchEpisode(
   tvEntryId: string,

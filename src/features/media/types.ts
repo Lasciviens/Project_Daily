@@ -12,6 +12,14 @@ export interface Movie {
   genres: { id: number; name: string }[]
   tmdb_rating: number | null
   tmdb_vote_count: number | null
+  /** MDBList scores (migrations 116/118); null until fetched. */
+  rt_critics?: number | null
+  rt_audience?: number | null
+  metacritic?: number | null
+  imdb_rating?: number | null
+  letterboxd_rating?: number | null
+  rt_url?: string | null
+  ratings_fetched_at?: string | null
   created_at: string
 }
 
@@ -32,6 +40,14 @@ export interface TVSeries {
   genres: { id: number; name: string }[]
   tmdb_rating: number | null
   tmdb_vote_count: number | null
+  /** MDBList scores (migrations 116/118); null until fetched. */
+  rt_critics?: number | null
+  rt_audience?: number | null
+  metacritic?: number | null
+  imdb_rating?: number | null
+  letterboxd_rating?: number | null
+  rt_url?: string | null
+  ratings_fetched_at?: string | null
   created_at: string
 }
 
@@ -47,6 +63,7 @@ export interface UserMovieEntry {
   notify_before_days: number | null
   repeat_count: number
   watched_at: string | null
+  is_favorite?: boolean
   created_at: string
   updated_at: string
   movie: Movie
@@ -67,6 +84,7 @@ export interface UserTVEntry {
   repeat_count: number
   started_at: string | null
   finished_at: string | null
+  is_favorite?: boolean
   created_at: string
   updated_at: string
   tv_series: TVSeries
@@ -205,6 +223,7 @@ export interface TMDBWatchProviders {
 
 export interface TMDBMovieFull extends TMDBMovie {
   tagline: string | null
+  belongs_to_collection?: { id: number; name: string; poster_path: string | null } | null
   budget: number | null
   revenue: number | null
   credits: { cast: TMDBCastMember[]; crew: TMDBCrewMember[] }
@@ -222,3 +241,14 @@ export interface TMDBTVFull extends TMDBTVSeries {
   videos: { results: TMDBVideo[] }
   'watch/providers': { results: Record<string, TMDBWatchProviders> }
 }
+
+export interface TMDBCollection {
+  id: number
+  name: string
+  overview: string | null
+  poster_path: string | null
+  parts: { id: number; title: string; release_date?: string; poster_path: string | null }[]
+}
+
+/** The few fields a poster tile needs (TMDB /movie/{id} or /tv/{id}, no appends). */
+export interface TMDBBasic { id: number; title?: string; name?: string; poster_path: string | null; release_date?: string; first_air_date?: string }

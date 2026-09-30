@@ -56,7 +56,7 @@ export async function addMovieEntry(
 
 export async function updateMovieEntry(
   id: string,
-  patch: Partial<Pick<UserMovieEntry, 'status' | 'priority' | 'personal_note' | 'rating' | 'planned_date' | 'notify_before_days' | 'repeat_count' | 'watched_at'>>
+  patch: Partial<Pick<UserMovieEntry, 'status' | 'priority' | 'personal_note' | 'rating' | 'planned_date' | 'notify_before_days' | 'repeat_count' | 'watched_at' | 'is_favorite'>>
 ): Promise<UserMovieEntry> {
   const { data, error } = await supabase
     .from('user_movie_entries')

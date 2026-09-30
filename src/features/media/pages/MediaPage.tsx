@@ -1,6 +1,6 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { MediaBackdrop } from '../components/MediaBackdrop'
+import { MediaHeroArt } from '../components/MediaHeroArt'
 import { MediaSearch } from '../components/MediaSearch'
 import { DiscoveryTabs } from '../components/DiscoveryTabs'
 import { TonightPicker } from '../components/TonightPicker'
@@ -8,6 +8,8 @@ import { MediaStats } from '../components/MediaStats'
 import { ReleaseCalendar } from '../components/ReleaseCalendar'
 import { LibrarySummary } from '../components/LibrarySummary'
 import { LibraryView } from '../components/LibraryView'
+import { ListsView } from '../components/ListsView'
+import { ContinueWatching } from '../components/ContinueWatching'
 import { BUCKET_ORDER, libraryItems, type LibraryBucket } from '../libraryModel'
 import { todayStr } from '../../../shared/utils/dateUtils'
 import { useMovies } from '../hooks/useMovies'
@@ -18,7 +20,7 @@ import { MEDIA_BOARD, type MediaSection } from '../mediaBoard'
 import type { MediaType } from '../types'
 
 type Tab = 'movies' | 'tv'
-type View = 'overview' | 'library'
+type View = 'overview' | 'library' | 'lists'
 
 const isBucket = (v: string | null): v is LibraryBucket => !!v && (BUCKET_ORDER as string[]).includes(v)
 
@@ -29,7 +31,8 @@ const isBucket = (v: string | null): v is LibraryBucket => !!v && (BUCKET_ORDER 
 export function MediaPage() {
   const [tab, setTab] = useState<Tab>('movies')
   const [params, setParams] = useSearchParams()
-  const view: View = params.get('view') === 'library' ? 'library' : 'overview'
+  const viewParam = params.get('view')
+  const view: View = viewParam === 'library' || viewParam === 'lists' ? viewParam : 'overview'
   const statusParam = params.get('status')
   const bucket: LibraryBucket | 'all' = isBucket(statusParam) ? statusParam : 'all'
   const modal = useEntityModal()
@@ -43,7 +46,8 @@ export function MediaPage() {
   })
   const setView = (v: View) => (v === 'library' ? openLibrary() : setParams(p => {
     const next = new URLSearchParams(p)
-    next.delete('view'); next.delete('status')
+    next.delete('status')
+    if (v === 'lists') next.set('view', 'lists'); else next.delete('view')
     return next
   }))
   const setBucket = (b: LibraryBucket | 'all') => setParams(p => {
@@ -61,18 +65,24 @@ export function MediaPage() {
 
   const libraryLoading = moviesLoading || tvLoading
   const items = useMemo(() => libraryItems(tab, movieEntries, tvEntries, todayStr()), [tab, movieEntries, tvEntries])
+  // Library posters by type:tmdb, so Trakt-only tiles (Continue watching) skip a TMDB read when the title is known.
+  const posters = useMemo(() => new Map<string, string | null>([
+    ...movieEntries.map(e => [`movie:${e.movie.tmdb_id}`, e.movie.poster_path] as const),
+    ...tvEntries.map(e => [`tv:${e.tv_series.tmdb_id}`, e.tv_series.poster_path] as const),
+  ]), [movieEntries, tvEntries])
 
   const tonight = <TonightPicker movieEntries={movieEntries} tvEntries={tvEntries} onOpenDetail={openDetail} />
   const calendar = <ReleaseCalendar movieEntries={movieEntries} tvEntries={tvEntries} onOpenDetail={openDetail} loading={libraryLoading} />
   const stats = hasLibrary ? <MediaStats movieEntries={movieEntries} tvEntries={tvEntries} loading={libraryLoading} /> : null
 
   const sections: Record<MediaSection, ReactNode> = {
-    // The rotating backdrop is scoped to the search + library card only.
+    // A still film-strip motif sits behind the search + library card only.
     library: (
       <section className="card relative p-4 sm:p-5">
-        <MediaBackdrop />
+        <MediaHeroArt />
         <div className="relative z-10 flex flex-col gap-4">
           <MediaSearch mediaType={mediaType} onSelectResult={openDetail} />
+          <ContinueWatching posters={posters} onOpenDetail={openDetail} />
           {!libraryLoading && hasLibrary && (
             <LibrarySummary items={items} mediaType={mediaType} onOpenDetail={openDetail} onOpenLibrary={openLibrary} />
           )}
@@ -99,18 +109,20 @@ export function MediaPage() {
           <SegmentedControl<Tab>
             value={tab}
             onChange={setTab}
-            options={[{ value: 'movies', label: 'Movies' }, { value: 'tv', label: 'TV series' }]}
+            options={[{ value: 'movies', label: 'Movies' }, { value: 'tv', label: 'TV' }]}
           />
           <SegmentedControl<View>
             value={view}
             onChange={setView}
-            options={[{ value: 'overview', label: 'Overview' }, { value: 'library', label: 'Library' }]}
+            options={[{ value: 'overview', label: 'Overview' }, { value: 'library', label: 'Library' }, { value: 'lists', label: 'Lists' }]}
           />
         </div>
       </PageHeader>
 
       {view === 'library'
         ? <LibraryView items={items} mediaType={mediaType} bucket={bucket} onBucketChange={setBucket} onOpenDetail={openDetail} />
+        : view === 'lists'
+        ? <ListsView onOpenDetail={openDetail} />
         : <PageBoard sections={sections} layout={MEDIA_BOARD} stackGap="gap-5" stackClassName="stagger-in" />}
     </PageContainer>
   )

@@ -37,7 +37,7 @@ export function LibrarySummary({ items, mediaType, onOpenDetail, onOpenLibrary }
           {posters.map(p => (
             <button key={p.tmdbId} type="button" onClick={() => onOpenDetail(p.tmdbId, mediaType)} title={p.title} aria-label={p.title}
               className="press-feedback shrink-0 rounded-md focus-visible:outline-accent-500">
-              <img src={posterUrl(p.posterPath, 'w185')} alt="" loading="lazy" className="h-[120px] w-[80px] rounded-md bg-surface-2 object-cover" />
+              <img src={posterUrl(p.posterPath, 'w185')} alt="" loading="lazy" className="h-[96px] w-[64px] rounded-md bg-surface-2 object-cover" />
             </button>
           ))}
         </div>

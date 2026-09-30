@@ -10,6 +10,7 @@ import {
   getNorwegianMovies, getNorwegianTV,
   getNorwegianTopRatedMovies, getNorwegianTopRatedTV,
   getSeasonDetails,
+  getCollection, getBasic,
 } from '../api/tmdbApi'
 
 const key = qk.media.tmdbQuery
@@ -33,32 +34,36 @@ export function useSearchTV(query: string) {
 }
 
 // Discovery lists are cached for a day — refreshed only by an explicit tap.
-export function useTrendingMovies(window: 'day' | 'week') {
+export function useTrendingMovies(window: 'day' | 'week', enabled = true) {
   return useQuery({
+    enabled,
     queryKey: key('trending', 'movie', window),
     queryFn:  () => getTrendingMovies(window).then(r => r.results),
     staleTime: STALE.day,
   })
 }
 
-export function useTrendingTV(window: 'day' | 'week') {
+export function useTrendingTV(window: 'day' | 'week', enabled = true) {
   return useQuery({
+    enabled,
     queryKey: key('trending', 'tv', window),
     queryFn:  () => getTrendingTV(window).then(r => r.results),
     staleTime: STALE.day,
   })
 }
 
-export function usePopularMovies() {
+export function usePopularMovies(enabled = true) {
   return useQuery({
+    enabled,
     queryKey: key('popular', 'movie'),
     queryFn:  () => getPopularMovies().then(r => r.results),
     staleTime: STALE.day,
   })
 }
 
-export function usePopularTV() {
+export function usePopularTV(enabled = true) {
   return useQuery({
+    enabled,
     queryKey: key('popular', 'tv'),
     queryFn:  () => getPopularTV().then(r => r.results),
     staleTime: STALE.day,
@@ -83,16 +88,18 @@ export function useTVFull(tmdbId: number | null) {
   })
 }
 
-export function useUpcomingMovies() {
+export function useUpcomingMovies(enabled = true) {
   return useQuery({
+    enabled,
     queryKey: key('upcoming', 'movie'),
     queryFn:  () => getUpcomingMovies().then(r => r.results),
     staleTime: STALE.day,
   })
 }
 
-export function useUpcomingTV() {
+export function useUpcomingTV(enabled = true) {
   return useQuery({
+    enabled,
     queryKey: key('upcoming', 'tv'),
     queryFn:  () => getUpcomingTV().then(r => r.results),
     staleTime: STALE.day,
@@ -154,6 +161,25 @@ export function useSimilarTV(tmdbId: number | null) {
     queryKey: key('similar', 'tv', tmdbId),
     queryFn:  () => getSimilarTV(tmdbId!).then(r => r.results.slice(0, 12)),
     enabled:  tmdbId !== null,
+    staleTime: STALE.day,
+  })
+}
+
+export function useCollection(collectionId: number | null) {
+  return useQuery({
+    queryKey: key('collection', collectionId),
+    queryFn:  () => getCollection(collectionId!),
+    enabled:  collectionId !== null,
+    staleTime: STALE.day,
+  })
+}
+
+/** Poster + title for a tile when only the TMDB id is known (list items not in the library). */
+export function useTmdbBasic(type: 'movie' | 'tv', tmdbId: number | null, enabled = true) {
+  return useQuery({
+    queryKey: key('basic', type, tmdbId),
+    queryFn:  () => getBasic(type, tmdbId!),
+    enabled:  enabled && tmdbId !== null,
     staleTime: STALE.day,
   })
 }

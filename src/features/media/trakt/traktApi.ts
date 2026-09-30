@@ -125,3 +125,79 @@ export async function fetchLocalLibraryForTrakt(): Promise<LocalLibrary> {
   })
   return { movies, shows, episodes }
 }
+
+// ── Phase 5/6 reads and list writes ─────────────────────────────────────────
+
+export interface MediaScores {
+  rt_critics: number | null
+  rt_audience: number | null
+  metacritic: number | null
+  imdb_rating: number | null
+  letterboxd_rating: number | null
+  rt_url: string | null
+}
+
+/** Rotten Tomatoes / Metacritic / IMDb / Letterboxd for one title (MDBList, via trakt-api). */
+export async function fetchMediaScores(mediaType: 'movie' | 'tv', tmdbId: number): Promise<MediaScores | null> {
+  const { data, error } = await supabase.functions.invoke('trakt-api', { body: { action: 'ratings', mediaType, tmdbId } })
+  if (error) {
+    const body = await parseFunctionErrorBody(error)
+    throw new Error(body?.error ?? error.message)
+  }
+  if (data?.error === 'not_configured') return null
+  if (data?.error) throw new Error(data.error)
+  return (data?.scores ?? null) as MediaScores | null
+}
+
+export interface TraktPlaybackItem {
+  id: number
+  progress: number
+  pausedAt: string | null
+  type: 'movie' | 'episode'
+  tmdb: number | null
+  title: string
+  season: number | null
+  episode: number | null
+  episodeTitle: string | null
+}
+
+export interface TraktCalendarItem {
+  firstAired: string | null
+  season: number | null
+  episode: number | null
+  episodeTitle: string | null
+  showTitle: string
+  tmdb: number | null
+}
+
+export interface TraktList {
+  id: number
+  slug: string
+  name: string
+  description: string | null
+  privacy: string
+  itemCount: number
+  updatedAt: string | null
+}
+
+export interface TraktListItem {
+  listItemId: number
+  rank: number | null
+  type: 'movie' | 'show'
+  tmdb: number | null
+  title: string
+  year: number | null
+  listedAt: string | null
+  posterPath: string | null
+}
+
+export interface ListItemRef { type: 'movie' | 'show'; tmdb: number }
+
+export const fetchTraktPlayback = () => invoke<{ items: TraktPlaybackItem[] }>('playback').then(r => r.items)
+export const fetchTraktCalendar = () => invoke<{ items: TraktCalendarItem[] }>('calendar').then(r => r.items)
+export const fetchTraktLists = () => invoke<{ lists: TraktList[] }>('lists').then(r => r.lists)
+export const fetchTraktListItems = (listId: number) => invoke<{ items: TraktListItem[] }>('list_items', { listId }).then(r => r.items)
+export const createTraktList = (name: string, description?: string) => invoke<{ list: TraktList }>('list_create', { name, description }).then(r => r.list)
+export const deleteTraktList = (listId: number) => invoke<{ deleted: true }>('list_delete', { listId })
+export const addToTraktList = (listId: number, items: ListItemRef[]) => invoke<{ notFound: number }>('list_add', { listId, items })
+export const removeFromTraktList = (listId: number, items: ListItemRef[]) => invoke<{ notFound: number }>('list_remove', { listId, items })

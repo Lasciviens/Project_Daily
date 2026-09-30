@@ -46,10 +46,10 @@ export function MediaDetailModal({ tmdbId, mediaType, userEntry, onClose, onAdde
   return (
     <ModalShell
       onClose={onClose}
-      size="lg"
+      size="xl"
       bodyClassName=""
       hero={
-        <div className="relative h-28 shrink-0 bg-surface-2 sm:h-48">
+        <div className="relative h-24 shrink-0 bg-surface-2 sm:h-36">
           {backdrop && <img src={backdrop} alt="" className="h-full w-full object-cover" />}
           <div className="absolute inset-0 bg-gradient-to-t from-scrim/80 via-scrim/20 to-transparent" />
           <div className="absolute bottom-0 left-0 p-4">

@@ -59,7 +59,7 @@ export async function addTVEntry(
 
 export async function updateTVEntry(
   id: string,
-  patch: Partial<Pick<UserTVEntry, 'status' | 'priority' | 'personal_note' | 'rating' | 'current_season' | 'current_episode' | 'planned_date' | 'notify_before_days' | 'repeat_count' | 'started_at' | 'finished_at'>>
+  patch: Partial<Pick<UserTVEntry, 'status' | 'priority' | 'personal_note' | 'rating' | 'current_season' | 'current_episode' | 'planned_date' | 'notify_before_days' | 'repeat_count' | 'started_at' | 'finished_at' | 'is_favorite'>>
 ): Promise<UserTVEntry> {
   const { data, error } = await supabase
     .from('user_tv_entries')

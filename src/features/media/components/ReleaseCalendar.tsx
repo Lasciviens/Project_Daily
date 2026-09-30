@@ -4,6 +4,7 @@ import { posterUrl } from '../../../integrations/tmdb/client'
 import type { MediaType, UserMovieEntry, UserTVEntry } from '../types'
 import { formatDate } from '../../../shared/utils/dateFormat'
 import { Truncate } from '../../../shared/ui'
+import { useTraktCalendar } from '../trakt/useTraktExtras'
 
 interface Props {
   movieEntries: UserMovieEntry[]
@@ -71,7 +72,26 @@ export function ReleaseCalendar({ movieEntries, tvEntries, onOpenDetail, loading
       }
     })
 
-  const items = [...upcomingMovies, ...upcomingTV].sort((a, b) => a.daysAway - b.daysAway)
+  // New episodes of shows you follow, from Trakt's calendar (next 33 days).
+  const { data: traktCal = [] } = useTraktCalendar()
+  const tvPoster = new Map(tvEntries.map(e => [e.tv_series.tmdb_id, e.tv_series.poster_path]))
+  const episodes: UpcomingItem[] = traktCal
+    .filter(c => c.tmdb && c.firstAired)
+    .map(c => {
+      const d = new Date(c.firstAired!)
+      return {
+        id:        `ep:${c.tmdb}:${c.season}:${c.episode}`,
+        tmdbId:    c.tmdb!,
+        type:      'tv' as const,
+        title:     c.showTitle,
+        poster:    tvPoster.get(c.tmdb!) ?? null,
+        date:      d,
+        dateLabel: `S${c.season}E${c.episode} · ${formatDate(d)}`,
+        daysAway:  daysUntil(d),
+      }
+    })
+
+  const items = [...upcomingMovies, ...upcomingTV, ...episodes].sort((a, b) => a.daysAway - b.daysAway)
 
   return (
     <CollapsibleCard
