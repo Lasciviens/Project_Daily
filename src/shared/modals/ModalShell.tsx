@@ -77,7 +77,7 @@ export function ModalShell({
       <DialogBackdrop
         ref={backdropRef}
         transition
-        className="fixed inset-0 bg-scrim/45 backdrop-blur-[2px] transition duration-200 data-[closed]:opacity-0 dark:bg-scrim/70"
+        className="fixed inset-0 bg-scrim/55 transition duration-200 data-[closed]:opacity-0 dark:bg-scrim/75"
       />
       <div className={cx('fixed inset-0 flex justify-center', full ? 'items-stretch sm:items-center sm:p-4' : 'items-end sm:items-center sm:p-4')}>
         <DialogPanel
@@ -100,7 +100,7 @@ export function ModalShell({
           {hero != null ? (
             <div className="relative shrink-0">
               {hero}
-              <div className="absolute right-3 top-2 rounded-control bg-surface/80 backdrop-blur">{closeBtn}</div>
+              <div className="absolute right-3 top-2 rounded-control bg-surface/90">{closeBtn}</div>
             </div>
           ) : title != null && (
             <header

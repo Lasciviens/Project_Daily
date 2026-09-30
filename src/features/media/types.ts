@@ -224,6 +224,7 @@ export interface TMDBWatchProviders {
 export interface TMDBMovieFull extends TMDBMovie {
   tagline: string | null
   belongs_to_collection?: { id: number; name: string; poster_path: string | null } | null
+  production_companies?: { id: number; name: string; logo_path: string | null }[]
   budget: number | null
   revenue: number | null
   credits: { cast: TMDBCastMember[]; crew: TMDBCrewMember[] }
@@ -251,4 +252,8 @@ export interface TMDBCollection {
 }
 
 /** The few fields a poster tile needs (TMDB /movie/{id} or /tv/{id}, no appends). */
-export interface TMDBBasic { id: number; title?: string; name?: string; poster_path: string | null; release_date?: string; first_air_date?: string }
+export interface TMDBBasic {
+  id: number; title?: string; name?: string; poster_path: string | null; release_date?: string; first_air_date?: string
+  /** TV only. */
+  next_episode_to_air?: { air_date: string | null; season_number: number; episode_number: number; name: string } | null
+}

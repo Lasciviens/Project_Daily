@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { ExternalLink, SkipForward, Trash2, CheckCircle2, Heart } from 'lucide-react'
 import { toast } from '../../../app/store'
 import { withProgress } from '../../../shared/hooks/useMutationWithFeedback'
@@ -6,7 +7,11 @@ import { haptic } from '../../../shared/utils/haptics'
 import { tmdbMovieUrl, tmdbTVUrl } from '../../../integrations/tmdb/client'
 import { Button, SectionLabel } from '../../../shared/ui'
 import { useEntityModal } from '../../../shared/modals'
-import { useMarkEpisodeWatched } from '../hooks/useWatchedEpisodes'
+import { useMarkEpisodeWatched, useWatchedEpisodes } from '../hooks/useWatchedEpisodes'
+import { episodeAirDates } from '../hooks/useTMDB'
+import { useWatchedWhenPrompt } from '../hooks/useWatchedWhenPrompt'
+import { resolveWatchedAt } from '../watchedWhen'
+import { formatDate } from '../../../shared/utils/dateFormat'
 import { useAddMovie, useDeleteMovie, useUpdateMovie } from '../hooks/useMovies'
 import { useAddTV, useDeleteTV, useUpdateTV } from '../hooks/useTVSeries'
 import { useNextEpisode } from '../hooks/useNextEpisode'
@@ -14,6 +19,7 @@ import { PlanThisButton } from './PlanThisButton'
 import { StarRating } from './StarRating'
 import { MovieWatchedControls } from './MovieWatchedControls'
 import { AddToListMenu } from './AddToListMenu'
+import { FollowMenu } from './FollowMenu'
 import type { TMDBMovieFull, TMDBTVFull, UserMovieEntry, UserTVEntry, MediaStatus } from '../types'
 
 // No manual "Upcoming" status: "coming soon" is derived from the release date
@@ -93,6 +99,9 @@ export function MediaLibraryControls({ detail, isMovie, userEntry, onAdded }: Pr
   // The same source of truth as Daily's "Watch next" card (handles season
   // rollover from the real watched rows); the query is shared, so this is free.
   const nextEp = useNextEpisode(tvEntry?.id ?? null, tv?.id ?? null, tv?.number_of_episodes ?? null)
+  const { data: watchedRows = [] } = useWatchedEpisodes(tvEntry?.id ?? null)
+  const qc = useQueryClient()
+  const { ask, dialog } = useWatchedWhenPrompt()
 
   // Private note, saved on blur; re-seeded when a different entry is shown
   // (adjust-state-during-render, not an effect).
@@ -136,12 +145,38 @@ export function MediaLibraryControls({ detail, isMovie, userEntry, onAdded }: Pr
     if (ok) onAdded?.()
   }
 
-  function handleStatusChange(status: MediaStatus) {
+  // Completing a whole series marks every aired episode not marked yet (each
+  // with the chosen time — Release date = its own air date), like Trakt.
+  async function markAllAired(when: Parameters<typeof resolveWatchedAt>[0]) {
+    if (!tvEntry || !tv) return
+    const refs = (tv.seasons ?? []).filter(x => x.season_number > 0)
+      .flatMap(x => Array.from({ length: x.episode_count }, (_, i) => ({ season: x.season_number, episode: i + 1 })))
+    const dates = await episodeAirDates(qc, tv.id, refs)
+    const today = new Date().toISOString().slice(0, 10)
+    const have = new Set(watchedRows.map(w => `${w.season_number}x${w.episode_number}`))
+    const now = new Date().toISOString()
+    const todo = refs
+      .filter(r => { const d = dates.get(`${r.season}x${r.episode}`); return !!d && d <= today && !have.has(`${r.season}x${r.episode}`) })
+      .map(r => ({ ...r, at: resolveWatchedAt(when, dates.get(`${r.season}x${r.episode}`), 'episode', now)! }))
+    if (todo.length) await markWatched.mutateAsync({ tvEntryId: tvEntry.id, episodes: todo })
+  }
+
+  async function handleStatusChange(status: MediaStatus) {
     const now = new Date().toISOString()
     const patch: EntryPatch = { status }
-    // Completing stamps watched_at / finished_at, and the first Watching stamps
-    // started_at — otherwise watch-hours and "recently finished" undercount.
-    if (movieEntry && status === 'completed' && !movieEntry.watched_at) patch.watched_at = now
+    if (movieEntry && status === 'completed' && movieEntry.status !== 'completed') {
+      const when = await ask({ title: movie!.title, releaseLabel: movie!.release_date ? formatDate(movie!.release_date) : null })
+      if (!when) return
+      patch.watched_at = resolveWatchedAt(when, movie!.release_date, 'movie', now)
+    }
+    if (tvEntry && status === 'completed' && tvEntry.status !== 'completed') {
+      const when = await ask({ title: tv!.name, subtitle: 'Marks every aired episode you haven’t marked yet.', releaseLabel: 'each air date' })
+      if (!when) return
+      const ok = await withProgress(() => markAllAired(when).then(() => true), { loading: 'Marking every aired episode…' })
+      if (!ok) return
+    }
+    // Completing stamps finished_at, and the first Watching stamps started_at —
+    // otherwise watch-hours and "recently finished" undercount.
     if (tvEntry && status === 'completed' && !tvEntry.finished_at) patch.finished_at = now
     if (tvEntry && status === 'watching' && !tvEntry.started_at) patch.started_at = now
     void withProgress(() => patchEntry(patch), { loading: 'Updating status…', success: 'Status updated' })
@@ -162,8 +197,11 @@ export function MediaLibraryControls({ detail, isMovie, userEntry, onAdded }: Pr
       return
     }
     const { season, episode } = info
+    const when = await ask({ title: `${tv!.name} · S${season} · E${episode}`, releaseLabel: info.airDate ? formatDate(info.airDate) : null })
+    if (!when) return
+    const at = resolveWatchedAt(when, info.airDate, 'episode', new Date().toISOString())!
     await withProgress(
-      () => markWatched.mutateAsync({ tvEntryId: tvEntry.id, episodes: [{ season, episode }] }),
+      () => markWatched.mutateAsync({ tvEntryId: tvEntry.id, episodes: [{ season, episode, at }] }),
       { loading: 'Marking next episode watched…', success: `S${season} E${episode} watched` },
     )
   }
@@ -185,13 +223,14 @@ export function MediaLibraryControls({ detail, isMovie, userEntry, onAdded }: Pr
 
   return (
     <div className="space-y-4">
+      {dialog}
       <div className="space-y-2">
-        <StatusPills statuses={statuses} value={userEntry.status} disabled={updating} onPick={handleStatusChange} />
+        <StatusPills statuses={statuses} value={userEntry.status} disabled={updating} onPick={s => { void handleStatusChange(s) }} />
         {tvEntry && (
           <p className="text-meta text-fg-muted tabular-nums">Progress: S{tvEntry.current_season} E{tvEntry.current_episode}</p>
         )}
         {movieEntry?.status === 'completed' && (
-          <MovieWatchedControls entry={movieEntry} disabled={updating} onPatch={patchEntry} />
+          <MovieWatchedControls entry={movieEntry} releaseDate={movie!.release_date ?? null} disabled={updating} onPatch={patchEntry} />
         )}
       </div>
 
@@ -239,11 +278,12 @@ export function MediaLibraryControls({ detail, isMovie, userEntry, onAdded }: Pr
         )}
         {movieEntry?.status === 'watching' && (
           <Button size="sm" icon={<CheckCircle2 />} disabled={updating}
-            onClick={() => { void withProgress(() => patchEntry({ status: 'completed', watched_at: new Date().toISOString() }), { loading: 'Marking watched…', success: 'Marked as watched' }) }}>
+            onClick={() => { void handleStatusChange('completed') }}>
             Mark watched
           </Button>
         )}
         <AddToListMenu type={isMovie ? 'movie' : 'show'} tmdb={detail.id} title={isMovie ? movie!.title : tv!.name} />
+        <FollowMenu detail={detail} isMovie={isMovie} />
         <a href={tmdbHref} target="_blank" rel="noopener noreferrer" className="btn-ghost btn-sm">
           TMDB <ExternalLink aria-hidden className="h-3.5 w-3.5" />
         </a>

@@ -73,6 +73,7 @@ export const qk = {
     watched: (tvEntryId: string) => ['watched-episodes', tvEntryId] as const,
     watchedAll: ['watched-episodes'] as const,
     episodeTally: () => ['watched-episodes', 'tally'] as const,
+    episodeRows: () => ['watched-episodes', 'rows'] as const,
     nextEpisode: (tvEntryId: string) => ['next-episode', tvEntryId] as const,
     nextEpisodeAll: ['next-episode'] as const,
     recent: () => ['recent-media'] as const,
@@ -90,6 +91,7 @@ export const qk = {
     listItems: (id: string | number) => ['trakt', 'lists', 'items', String(id)] as const,
   },
   mediaScores: (type: string, tmdbId: number) => ['media-scores', type, tmdbId] as const,
+  mediaFollows: { all: ['media-follows'] as const, list: () => ['media-follows', 'list'] as const, events: () => ['media-follows', 'events'] as const },
   wishes: { all: ['wish-items'] as const },
   devRequests: { all: ['dev-requests'] as const },
   projects: {

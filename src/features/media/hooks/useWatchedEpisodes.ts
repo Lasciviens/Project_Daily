@@ -21,7 +21,8 @@ export function useWatchedEpisodes(tvEntryId: string | null) {
   })
 }
 
-export interface EpisodeRef { season: number; episode: number }
+/** `at`: this episode's own watched time (ISO or yyyy-MM-dd), e.g. its release date. */
+export interface EpisodeRef { season: number; episode: number; at?: string }
 
 export interface MarkEpisodesInput {
   tvEntryId: string
@@ -30,7 +31,7 @@ export interface MarkEpisodesInput {
   watched?: boolean
   /** Count one more play of episodes already watched (a rewatch). */
   again?: boolean
-  /** yyyy-MM-dd; defaults to today. */
+  /** yyyy-MM-dd or an ISO timestamp; defaults to today. */
   watchedOn?: string
 }
 
@@ -56,9 +57,9 @@ export function useMarkEpisodeWatched(opts?: { successMessage?: string }) {
         await markEpisodesWatched(tvEntryId, episodes, day)
         return
       }
-      for (const { season, episode } of episodes) {
-        if (again) await rewatchEpisode(tvEntryId, season, episode, day)
-        else if (watched) await markEpisodeWatched(tvEntryId, season, episode, day)
+      for (const { season, episode, at } of episodes) {
+        if (again) await rewatchEpisode(tvEntryId, season, episode, at ?? day)
+        else if (watched) await markEpisodeWatched(tvEntryId, season, episode, at ?? day)
         else await unmarkEpisodeWatched(tvEntryId, season, episode)
       }
     },

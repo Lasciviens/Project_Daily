@@ -77,3 +77,25 @@ export const getCollection = (collectionId: number) =>
 
 export const getBasic = (type: 'movie' | 'tv', tmdbId: number) =>
   tmdbFetch<TMDBBasic>(`/${type}/${tmdbId}`)
+
+/** Streaming services available in Norway (TMDB /watch/providers, JustWatch data). */
+export const getWatchProviders = (type: 'movie' | 'tv') =>
+  tmdbFetch<{ results: (import('../types').TMDBWatchProvider & { display_priority?: number })[] }>(`/watch/providers/${type}`, { watch_region: 'NO' })
+
+/** Popular titles included in a subscription on any of these services, in Norway. */
+export const discoverOnServices = (type: 'movie' | 'tv', providerIds: number[]) =>
+  tmdbFetch<PagedResponse<TMDBSearchMovie & TMDBSearchTV>>(`/discover/${type}`, {
+    watch_region: 'NO',
+    with_watch_providers: providerIds.join('|'),
+    with_watch_monetization_types: 'flatrate',
+    sort_by: 'popularity.desc',
+  })
+
+/** Popular (or trending-ish) titles no longer than `maxMin` minutes (movie runtime / episode runtime). */
+export const discoverShort = (type: 'movie' | 'tv', maxMin: number, sort: 'popularity.desc' | 'vote_count.desc') =>
+  tmdbFetch<PagedResponse<TMDBSearchMovie & TMDBSearchTV>>(`/discover/${type}`, {
+    'with_runtime.lte': String(maxMin),
+    'with_runtime.gte': '15',
+    'vote_count.gte': '50',
+    sort_by: sort,
+  })

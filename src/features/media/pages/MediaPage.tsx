@@ -9,6 +9,7 @@ import { ReleaseCalendar } from '../components/ReleaseCalendar'
 import { LibrarySummary } from '../components/LibrarySummary'
 import { LibraryView } from '../components/LibraryView'
 import { ListsView } from '../components/ListsView'
+import { YearInReview } from '../components/YearInReview'
 import { ContinueWatching } from '../components/ContinueWatching'
 import { BUCKET_ORDER, libraryItems, type LibraryBucket } from '../libraryModel'
 import { todayStr } from '../../../shared/utils/dateUtils'
@@ -20,7 +21,7 @@ import { MEDIA_BOARD, type MediaSection } from '../mediaBoard'
 import type { MediaType } from '../types'
 
 type Tab = 'movies' | 'tv'
-type View = 'overview' | 'library' | 'lists'
+type View = 'overview' | 'library' | 'lists' | 'year'
 
 const isBucket = (v: string | null): v is LibraryBucket => !!v && (BUCKET_ORDER as string[]).includes(v)
 
@@ -32,7 +33,7 @@ export function MediaPage() {
   const [tab, setTab] = useState<Tab>('movies')
   const [params, setParams] = useSearchParams()
   const viewParam = params.get('view')
-  const view: View = viewParam === 'library' || viewParam === 'lists' ? viewParam : 'overview'
+  const view: View = viewParam === 'library' || viewParam === 'lists' || viewParam === 'year' ? viewParam : 'overview'
   const statusParam = params.get('status')
   const bucket: LibraryBucket | 'all' = isBucket(statusParam) ? statusParam : 'all'
   const modal = useEntityModal()
@@ -47,7 +48,7 @@ export function MediaPage() {
   const setView = (v: View) => (v === 'library' ? openLibrary() : setParams(p => {
     const next = new URLSearchParams(p)
     next.delete('status')
-    if (v === 'lists') next.set('view', 'lists'); else next.delete('view')
+    if (v === 'lists' || v === 'year') next.set('view', v); else next.delete('view')
     return next
   }))
   const setBucket = (b: LibraryBucket | 'all') => setParams(p => {
@@ -114,7 +115,7 @@ export function MediaPage() {
           <SegmentedControl<View>
             value={view}
             onChange={setView}
-            options={[{ value: 'overview', label: 'Overview' }, { value: 'library', label: 'Library' }, { value: 'lists', label: 'Lists' }]}
+            options={[{ value: 'overview', label: 'Overview' }, { value: 'library', label: 'Library' }, { value: 'lists', label: 'Lists' }, { value: 'year', label: 'Year' }]}
           />
         </div>
       </PageHeader>
@@ -123,6 +124,8 @@ export function MediaPage() {
         ? <LibraryView items={items} mediaType={mediaType} bucket={bucket} onBucketChange={setBucket} onOpenDetail={openDetail} />
         : view === 'lists'
         ? <ListsView onOpenDetail={openDetail} />
+        : view === 'year'
+        ? <YearInReview onOpenDetail={openDetail} />
         : <PageBoard sections={sections} layout={MEDIA_BOARD} stackGap="gap-5" stackClassName="stagger-in" />}
     </PageContainer>
   )

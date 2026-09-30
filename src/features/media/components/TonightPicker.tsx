@@ -5,11 +5,18 @@ import { posterUrl } from '../../../integrations/tmdb/client'
 import { haptic } from '../../../shared/utils/haptics'
 import {
   useTrendingMovies, useTrendingTV,
-  usePopularMovies, usePopularTV,
+  usePopularMovies, usePopularTV, useShortTitles,
 } from '../hooks/useTMDB'
+import { useMediaPrefs } from '../mediaPrefsStore'
+import { useTraktListItems, useTraktLists } from '../trakt/useTraktExtras'
+import { useTraktStatus } from '../trakt/useTrakt'
 import type { MediaType, UserMovieEntry, UserTVEntry } from '../types'
 
-type Source = 'mylist' | 'trending' | 'popular'
+type Source = 'mylist' | 'trending' | 'popular' | 'list'
+
+const LENGTHS: { value: 0 | 90 | 120; label: string }[] = [
+  { value: 0, label: 'Any length' }, { value: 90, label: '≤ 90 min' }, { value: 120, label: '≤ 2 h' },
+]
 
 interface Candidate {
   id:          number
@@ -81,17 +88,41 @@ export function TonightPicker({ movieEntries, tvEntries, onOpenDetail }: Props) 
   const [tvPick,     setTvPick]     = useState<Candidate | null>(null)
   const [shaking,    setShaking]    = useState<'movie' | 'tv' | null>(null)
 
+  const { tonightMax: max, setTonightMax } = useMediaPrefs()
+  const { data: trakt } = useTraktStatus()
+  const lists = useTraktLists(source === 'list')
+  const [listId, setListId] = useState<number | null>(null)
+  const activeList = listId ?? lists.data?.[0]?.id ?? null
+  const listItems = useTraktListItems(source === 'list' ? activeList : null)
+
   // TMDB pools load only when that source is picked (My list needs none).
-  const { data: trendMovies  = [] } = useTrendingMovies('week', source === 'trending')
-  const { data: trendTV      = [] } = useTrendingTV('week', source === 'trending')
-  const { data: popMovies    = [] } = usePopularMovies(source === 'popular')
-  const { data: popTV        = [] } = usePopularTV(source === 'popular')
+  // With a length limit the TMDB sources become "popular / most voted titles
+  // no longer than N minutes" (TMDB discover with_runtime).
+  const pooled = source === 'trending' || source === 'popular'
+  const { data: trendMovies  = [] } = useTrendingMovies('week', source === 'trending' && !max)
+  const { data: trendTV      = [] } = useTrendingTV('week', source === 'trending' && !max)
+  const { data: popMovies    = [] } = usePopularMovies(source === 'popular' && !max)
+  const { data: popTV        = [] } = usePopularTV(source === 'popular' && !max)
+  const sort = source === 'trending' ? 'popularity.desc' : 'vote_count.desc'
+  const { data: shortMovies  = [] } = useShortTitles('movie', max, sort, pooled && max > 0)
+  const { data: shortTV      = [] } = useShortTitles('tv', max, sort, pooled && max > 0)
 
   function buildPool(type: 'movie' | 'tv'): Candidate[] {
+    const fits = (min: number | null | undefined) => !max || (!!min && min <= max)
+    if (source === 'list') {
+      const runtimes = new Map<string, number | null>([
+        ...movieEntries.map(e => [`movie:${e.movie.tmdb_id}`, e.movie.runtime] as const),
+        ...tvEntries.map(e => [`tv:${e.tv_series.tmdb_id}`, e.tv_series.episode_run_time] as const),
+      ])
+      return (listItems.data ?? [])
+        .filter(i => i.tmdb && (i.type === 'show' ? 'tv' : 'movie') === type)
+        .filter(i => { const r = runtimes.get(`${type}:${i.tmdb}`); return r === undefined || fits(r) })
+        .map(i => ({ id: i.tmdb!, title: i.title, poster_path: i.posterPath, kind: type }))
+    }
     if (source === 'mylist') {
       if (type === 'movie') {
         return movieEntries
-          .filter(e => e.status === 'wishlist' || e.status === 'watching')
+          .filter(e => (e.status === 'wishlist' || e.status === 'watching') && fits(e.movie.runtime))
           .map(e => ({
             id:          e.movie.tmdb_id,
             title:       e.movie.title,
@@ -101,7 +132,7 @@ export function TonightPicker({ movieEntries, tvEntries, onOpenDetail }: Props) 
           }))
       }
       return tvEntries
-        .filter(e => ['wishlist', 'watching', 'paused'].includes(e.status))
+        .filter(e => ['wishlist', 'watching', 'paused'].includes(e.status) && fits(e.tv_series.episode_run_time))
         .map(e => ({
           id:          e.tv_series.tmdb_id,
           title:       e.tv_series.title,
@@ -111,9 +142,11 @@ export function TonightPicker({ movieEntries, tvEntries, onOpenDetail }: Props) 
         }))
     }
 
-    const raw = source === 'trending'
-      ? (type === 'movie' ? trendMovies : trendTV)
-      : (type === 'movie' ? popMovies   : popTV)
+    const raw = max > 0
+      ? (type === 'movie' ? shortMovies : shortTV)
+      : source === 'trending'
+        ? (type === 'movie' ? trendMovies : trendTV)
+        : (type === 'movie' ? popMovies   : popTV)
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return (raw as any[]).map(m => ({
@@ -147,8 +180,29 @@ export function TonightPicker({ movieEntries, tvEntries, onOpenDetail }: Props) 
           { value: 'mylist', label: 'My list' },
           { value: 'trending', label: 'Trending' },
           { value: 'popular', label: 'Popular' },
+          ...(trakt?.connected ? [{ value: 'list' as const, label: 'A list' }] : []),
         ]}
       />
+      {source === 'list' && (
+        <select
+          aria-label="List to pick from"
+          className="input mt-2 w-full max-w-md"
+          value={activeList ?? ''}
+          onChange={e => { setListId(Number(e.target.value)); setMoviePick(null); setTvPick(null) }}
+        >
+          {(lists.data ?? []).map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+          {lists.data?.length === 0 && <option value="">No lists yet — make one (e.g. “Watch together”) in Lists</option>}
+        </select>
+      )}
+      <div className="mt-2 flex flex-wrap gap-1">
+        {LENGTHS.map(l => (
+          <button key={l.value} type="button" aria-pressed={max === l.value}
+            onClick={() => { setTonightMax(l.value); setMoviePick(null); setTvPick(null) }}
+            className="chip press-feedback aria-pressed:bg-accent-50 aria-pressed:text-accent-700">
+            {l.label}
+          </button>
+        ))}
+      </div>
       <div className="mt-3 space-y-2">
         <PickRow type="movie" pick={moviePick} shaking={shaking === 'movie'} onRoll={() => roll('movie')} onOpenDetail={onOpenDetail} />
         <PickRow type="tv" pick={tvPick} shaking={shaking === 'tv'} onRoll={() => roll('tv')} onOpenDetail={onOpenDetail} />

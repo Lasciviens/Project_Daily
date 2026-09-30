@@ -10,6 +10,7 @@ import { useChangeTraktList, useDeleteTraktList, useTraktListItems, useTraktList
 import type { TraktListItem } from '../trakt/traktApi'
 import type { MediaType } from '../types'
 import { NewListDialog } from './NewListDialog'
+import { FollowingPanel } from './FollowingPanel'
 
 function ListTile({ item, onOpen, onRemove }: { item: TraktListItem; onOpen: () => void; onRemove: () => void }) {
   const type = item.type === 'show' ? 'tv' : 'movie'
@@ -50,6 +51,8 @@ export function ListsView({ onOpenDetail }: { onOpenDetail: (id: number, type: M
   if (statusLoading) return <Skeleton className="h-40 w-full" />
   if (!trakt?.connected) {
     return (
+      <section className="@container flex flex-col gap-3">
+      <FollowingPanel />
       <EmptyState
         icon={<ListVideo />}
         title="Lists live on Trakt"
@@ -57,6 +60,7 @@ export function ListsView({ onOpenDetail }: { onOpenDetail: (id: number, type: M
         action={<Link to="/settings?tab=subscriptions" className="btn-primary btn-sm">Connect Trakt</Link>}
         bordered
       />
+      </section>
     )
   }
 
@@ -67,7 +71,8 @@ export function ListsView({ onOpenDetail }: { onOpenDetail: (id: number, type: M
   }
 
   return (
-    <section className="flex flex-col gap-3">
+    <section className="@container flex flex-col gap-3">
+      <FollowingPanel />
       {naming && <NewListDialog onClose={() => setNaming(false)} />}
       <div className="flex items-center gap-2">
         <div role="tablist" aria-label="Lists" className="scroll-x flex min-w-0 flex-1 gap-1 pb-1">

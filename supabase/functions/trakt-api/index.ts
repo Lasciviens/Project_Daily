@@ -37,7 +37,7 @@ const json = (body: unknown, status = 200) =>
 
 type AnyRec = Record<string, unknown>
 type Action = 'authorize_url' | 'connect' | 'status' | 'disconnect' | 'snapshot' | 'import' | 'sync'
-  | 'ratings' | 'playback' | 'calendar' | 'lists' | 'list_items' | 'list_create' | 'list_delete' | 'list_add' | 'list_remove'
+  | 'ratings' | 'follows_check' | 'playback' | 'calendar' | 'lists' | 'list_items' | 'list_create' | 'list_delete' | 'list_add' | 'list_remove'
 
 const API = 'https://api.trakt.tv'
 const AUTHORIZE = 'https://trakt.tv/oauth/authorize'
@@ -1041,6 +1041,9 @@ function outboxBody(op: string, rows: AnyRec[]): AnyRec {
     const p = (r.payload ?? {}) as AnyRec
     const extra: AnyRec = {}
     if (op === 'history_add' && p.watched_at) extra.watched_at = p.watched_at
+    // A movie marked watched with no date is Trakt's "unknown date", which
+    // Trakt itself stores and returns as the epoch.
+    if (op === 'history_add' && !p.watched_at && p.type === 'movie') extra.watched_at = '1970-01-01T00:00:00.000Z'
     if (op === 'rating_add') extra.rating = p.rating
     if (p.type === 'movie') movies.push({ ids: { tmdb: p.tmdb }, ...extra })
     else if (p.type === 'show') shows.push({ ids: { tmdb: p.tmdb }, ...extra })
@@ -1319,6 +1322,84 @@ async function readListItems(db: Db, token: string, id: unknown) {
   return items
 }
 
+
+// ── Follows: franchise / studio / director / actor (migration 119) ───────────
+// Once a day per follow (or on "Check now"): TMDB's titles for it; new ones
+// become 'new_title' events (and go onto the linked Trakt list), and a new
+// YouTube trailer on a recent or upcoming title becomes a 'trailer' event.
+// The first check only records the baseline.
+async function tmdbQ(path: string, params: Record<string, string> = {}): Promise<AnyRec> {
+  const q = new URLSearchParams({ api_key: TMDB_KEY(), language: 'en-US', ...params })
+  const res = await fetch(`${TMDB}${path}?${q}`)
+  if (res.status === 401) throw new TmdbKeyError()
+  if (!res.ok) throw new Error(`TMDB ${res.status}: ${path}`)
+  return await res.json()
+}
+
+interface FollowTitle { id: number; title: string; poster: string | null; release: string | null }
+
+async function followTitles(kind: string, id: number): Promise<FollowTitle[]> {
+  const map = (r: AnyRec): FollowTitle => ({ id: Number(r.id), title: String(r.title ?? r.name ?? ''), poster: (r.poster_path as string) ?? null, release: (r.release_date as string) || null })
+  if (kind === 'collection') return (((await tmdbQ(`/collection/${id}`)).parts ?? []) as AnyRec[]).map(map)
+  if (kind === 'company') {
+    const [newest, soon] = await Promise.all([
+      tmdbQ('/discover/movie', { with_companies: String(id), sort_by: 'primary_release_date.desc', 'primary_release_date.lte': new Date(Date.now() + 730 * 864e5).toISOString().slice(0, 10) }),
+      tmdbQ('/discover/movie', { with_companies: String(id), sort_by: 'popularity.desc' }),
+    ])
+    const seen = new Map<number, FollowTitle>()
+    for (const r of [...((newest.results ?? []) as AnyRec[]), ...((soon.results ?? []) as AnyRec[])]) seen.set(Number(r.id), map(r))
+    return [...seen.values()]
+  }
+  const credits = await tmdbQ(`/person/${id}/movie_credits`)
+  const rows = kind === 'director'
+    ? ((credits.crew ?? []) as AnyRec[]).filter(c => c.job === 'Director')
+    : ((credits.cast ?? []) as AnyRec[])
+  const seen = new Map<number, FollowTitle>()
+  for (const r of rows) seen.set(Number(r.id), map(r))
+  return [...seen.values()]
+}
+
+async function trailerKeys(movieId: number): Promise<string[]> {
+  const v = await tmdbQ(`/movie/${movieId}/videos`)
+  return ((v.results ?? []) as AnyRec[]).filter(x => x.site === 'YouTube' && x.type === 'Trailer').map(x => String(x.key))
+}
+
+async function checkFollows(db: Db, userId: string, token: string | null, force: boolean) {
+  if (!TMDB_KEY()) return { skipped: 'no_tmdb_key' }
+  const { data, error } = await db.from('media_follows').select('*').eq('user_id', userId)
+  if (error) { if (['42P01', 'PGRST205'].includes(String(error.code))) return { skipped: 'no_table' }; throw error }
+  const due = ((data ?? []) as AnyRec[]).filter(f => force || !f.last_checked_at || Date.now() - Date.parse(String(f.last_checked_at)) > 20 * 3600_000)
+  const out = { checked: 0, newTitles: 0, trailers: 0 }
+  const recent = new Date(Date.now() - 60 * 864e5).toISOString().slice(0, 10)
+  for (const f of due.slice(0, 15)) {
+    const titles = await followTitles(String(f.kind), Number(f.tmdb_id))
+    const known = new Set<number>((f.known_ids as number[]) ?? [])
+    const baseline = known.size === 0 && !f.last_checked_at
+    const fresh = baseline ? [] : titles.filter(t => !known.has(t.id))
+    const keysBefore = new Set<string>((f.trailer_keys as string[]) ?? [])
+    const watch = titles.filter(t => t.release && t.release >= recent).slice(0, 8)
+    const events: AnyRec[] = fresh.map(t => ({ user_id: userId, follow_id: f.id, kind: 'new_title', tmdb_id: t.id, title: t.title, poster_path: t.poster, release_date: t.release }))
+    const keys = new Set(keysBefore)
+    for (const t of watch) {
+      for (const k of await trailerKeys(t.id)) {
+        if (keys.has(k)) continue
+        keys.add(k)
+        if (!baseline && !keysBefore.has(k)) events.push({ user_id: userId, follow_id: f.id, kind: 'trailer', tmdb_id: t.id, title: t.title, poster_path: t.poster, release_date: t.release, video_key: k })
+      }
+    }
+    if (events.length) { const { error: e } = await db.from('media_follow_events').insert(events); if (e) throw e }
+    if (fresh.length && f.trakt_list_id && token) {
+      await post(`/users/me/lists/${Number(f.trakt_list_id)}/items`, token, { movies: fresh.map(t => ({ ids: { tmdb: t.id } })) }).catch(() => null)
+    }
+    const { error: ue } = await db.from('media_follows').update({
+      known_ids: [...new Set([...known, ...titles.map(t => t.id)])], trailer_keys: [...keys], last_checked_at: new Date().toISOString(),
+    }).eq('id', f.id)
+    if (ue) throw ue
+    out.checked++; out.newTitles += fresh.length; out.trailers += events.length - fresh.length
+  }
+  return out
+}
+
 // ── The two runs ─────────────────────────────────────────────────────────────
 const summary = ({ sentKeys: _k, ...rest }: Awaited<ReturnType<typeof drainOutbox>>) => rest
 
@@ -1331,8 +1412,9 @@ async function runSync(db: Db, userId: string, token: string, username: string |
   const before = prev?.all
   // Scores never fail a sync: MDBList being down or out of quota is only noted.
   const scores = await refreshLibraryScores(db, userId).catch(e => ({ error: e instanceof Error ? e.message : String(e) }))
+  const follows = await checkFollows(db, userId, token, false).catch(e => ({ error: e instanceof Error ? e.message : String(e) }))
   if (!opts.full && before && lastActivities?.all && before === lastActivities.all) {
-    return { pulled: false, drained: summary(drained), lastActivities, scores }
+    return { pulled: false, drained: summary(drained), lastActivities, scores, follows }
   }
 
   const snap = await snapshot(token, username) as unknown as TraktSnapshot
@@ -1353,7 +1435,7 @@ async function runSync(db: Db, userId: string, token: string, username: string |
   await backfillIds(db, plan.ids)
   const favChanged = opts.full || (prev?.favorites as AnyRec | undefined)?.updated_at !== (lastActivities?.favorites as AnyRec | undefined)?.updated_at
   const favorites = favChanged ? await mirrorFavorites(db, userId, token, pending) : null
-  return { pulled: true, drained: summary(drained), applied, favorites, heldBack, kept: plan.kept.length, lastActivities, scores }
+  return { pulled: true, drained: summary(drained), applied, favorites, heldBack, kept: plan.kept.length, lastActivities, scores, follows }
 }
 
 async function runImport(db: Db, userId: string, token: string, username: string | null) {
@@ -1413,6 +1495,18 @@ Deno.serve(async (req: Request) => {
       const scores = await mdblist(type, [tmdb])
       await storeScores(createClient(url, key, { global: { headers: { 'x-trakt-sync': '1' } } }), type, scores, [tmdb])
       return json({ scores: scores.get(tmdb) ?? null })
+    } catch (e) {
+      return json({ error: e instanceof Error ? e.message : String(e) }, 502)
+    }
+  }
+
+  // "Check now" for follows — needs TMDB, not Trakt (a linked list is only
+  // filled when a valid Trakt token is on file).
+  if (action === 'follows_check') {
+    try {
+      const { data: t } = await supabase.from('trakt_tokens').select('access_token, expires_at').eq('user_id', userId).maybeSingle()
+      const tokenOk = t && new Date(String((t as AnyRec).expires_at)).getTime() > Date.now() + 60_000 ? String((t as AnyRec).access_token) : null
+      return json({ result: await checkFollows(supabase, userId, tokenOk, true) })
     } catch (e) {
       return json({ error: e instanceof Error ? e.message : String(e) }, 502)
     }

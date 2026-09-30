@@ -11,6 +11,7 @@ import {
   getNorwegianTopRatedMovies, getNorwegianTopRatedTV,
   getSeasonDetails,
   getCollection, getBasic,
+  getWatchProviders, discoverOnServices, discoverShort,
 } from '../api/tmdbApi'
 
 const key = qk.media.tmdbQuery
@@ -180,6 +181,47 @@ export function useTmdbBasic(type: 'movie' | 'tv', tmdbId: number | null, enable
     queryKey: key('basic', type, tmdbId),
     queryFn:  () => getBasic(type, tmdbId!),
     enabled:  enabled && tmdbId !== null,
+    staleTime: STALE.day,
+  })
+}
+
+/** A season's episodes through the same cache as useSeasonDetails (for a one-off read). */
+export function fetchSeasonCached(qc: import('@tanstack/react-query').QueryClient, tvId: number, season: number) {
+  return qc.fetchQuery({ queryKey: key('season', tvId, season), queryFn: () => getSeasonDetails(tvId, season), staleTime: STALE.hour })
+}
+
+/** Air dates (yyyy-MM-dd) of the given episodes, keyed `SxE`; seasons are read once each. */
+export async function episodeAirDates(qc: import('@tanstack/react-query').QueryClient, tvId: number, refs: { season: number; episode: number }[]) {
+  const out = new Map<string, string | null>()
+  const seasons = [...new Set(refs.map(r => r.season))]
+  const details = await Promise.all(seasons.map(s => fetchSeasonCached(qc, tvId, s).catch(() => null)))
+  details.forEach(d => { for (const e of d?.episodes ?? []) out.set(`${d!.season_number}x${e.episode_number}`, e.air_date ?? null) })
+  return out
+}
+
+export function useWatchProviders(type: 'movie' | 'tv', enabled = true) {
+  return useQuery({
+    queryKey: key('providers', type, 'NO'),
+    queryFn:  () => getWatchProviders(type).then(r => [...r.results].sort((a, b) => (a.display_priority ?? 999) - (b.display_priority ?? 999))),
+    enabled,
+    staleTime: STALE.day,
+  })
+}
+
+export function useOnMyServices(type: 'movie' | 'tv', providerIds: number[], enabled = true) {
+  return useQuery({
+    queryKey: key('on-services', type, [...providerIds].sort((a, b) => a - b).join(',')),
+    queryFn:  () => discoverOnServices(type, providerIds).then(r => r.results),
+    enabled:  enabled && providerIds.length > 0,
+    staleTime: STALE.day,
+  })
+}
+
+export function useShortTitles(type: 'movie' | 'tv', maxMin: number, sort: 'popularity.desc' | 'vote_count.desc', enabled = true) {
+  return useQuery({
+    queryKey: key('short', type, maxMin, sort),
+    queryFn:  () => discoverShort(type, maxMin, sort).then(r => r.results),
+    enabled:  enabled && maxMin > 0,
     staleTime: STALE.day,
   })
 }
