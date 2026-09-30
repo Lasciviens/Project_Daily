@@ -151,6 +151,14 @@ eq([first.recordAfter, first.delta], [30 * 1024, 98 * 1024], 'first scrape: a ne
 eq(M.storageChange(null, 0, 3000, false).after, 1000, 'no storage figures yet: counts only what the save adds')
 eq([M.formatDelta(-520 * 1024), M.formatDelta(68 * 1024), M.formatDelta(200)], ['−520 KB', '+68 KB', 'no change'], 'the change reads as + / − / no change')
 
+// Copy size estimates follow the real copies once there are enough of them.
+eq(M.measuredCopyAverage([{ category: 'screenscraper', files: 4, bytes: 400000 }]), null, 'under 5 copies: no measured average')
+eq(M.measuredCopyAverage([{ category: 'screenscraper', files: 10, bytes: 300000 }]), 30000, 'measured average of stored copies')
+eq(M.estimateStored({ type: 'box-2D', size: null }, 1, 30000), 30000, 'box art estimated at the measured average')
+eq(M.estimateStored({ type: 'fanart', size: null }, 1, 30000), 60000, 'fan art stays twice the typical box (140k/70k)')
+eq(M.estimateStored({ type: 'box-2D', size: 12000 }, 1, 30000), 12000, 'never more than their original')
+eq(M.estimateStored({ type: 'box-2D', size: null }, 1), 70000, 'no copies yet: the typical size')
+
 if (failures.length) {
   console.error(`✗ ${failures.length} failed, ${passed} passed\n`)
   for (const x of failures) console.error('  ✗ ' + x)

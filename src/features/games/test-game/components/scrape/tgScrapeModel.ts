@@ -295,22 +295,31 @@ export function groupMediaRows(rows: MediaRow[]): { key: MediaGroup; label: stri
 /** A copy's likely size: their original, capped at what a resized copy of
  *  that type usually weighs (measured: box art 24-61 KB at 640 px). */
 const TYPICAL_STORED: Record<string, number> = { fanart: 140_000, 'box-texture': 180_000, 'wheel-hd': 20_000, wheel: 20_000 }
-export function estimateStored(entry: SsMediaEntry, scale: number): number {
-  const typical = (TYPICAL_STORED[entry.type] ?? 70_000) * (scale === 0 ? 4 : scale * scale)
+export function estimateStored(entry: SsMediaEntry, scale: number, measuredAvg: number | null = null): number {
+  // Once copies exist, their real average size beats the typical table (it
+  // already reflects the chosen image size); fan art/textures stay larger.
+  const base = measuredAvg != null ? measuredAvg * ((TYPICAL_STORED[entry.type] ?? 70_000) / 70_000) : null
+  const typical = base ?? (TYPICAL_STORED[entry.type] ?? 70_000) * (scale === 0 ? 4 : scale * scale)
   return entry.size ? Math.min(entry.size, typical) : typical
+}
+
+/** The average size of the ScreenScraper copies already stored, when there are enough to trust (≥ 5). */
+export function measuredCopyAverage(groups: { category: string; files: number; bytes: number }[] | null | undefined): number | null {
+  const g = groups?.find(x => x.category === 'screenscraper')
+  return g && g.files >= 5 && g.bytes > 0 ? Math.round(g.bytes / g.files) : null
 }
 
 export interface ApplySummary { fields: number; store: number; onDemand: number; skip: number; bytes: number }
 
 export function applySummary(
   rows: FieldRow[], choices: Partial<Record<SsField, FieldChoice>>,
-  media: { row: MediaRow; mode: MediaMode; entry: SsMediaEntry }[], scale: number,
+  media: { row: MediaRow; mode: MediaMode; entry: SsMediaEntry }[], scale: number, measuredAvg: number | null = null,
 ): ApplySummary {
   const modeOf = (type: string) => media.find(m => m.row.type === type)?.mode
   const fields = rows.filter(r => writes(r, choices[r.field] ?? 'keep', r.isImage ? modeOf(FIELD_MEDIA[r.field]!) : undefined)).length
   const s: ApplySummary = { fields, store: 0, onDemand: 0, skip: 0, bytes: 0 }
   for (const m of media) {
-    if (m.mode === 'store') { s.store++; s.bytes += estimateStored(m.entry, scale) }
+    if (m.mode === 'store') { s.store++; s.bytes += estimateStored(m.entry, scale, measuredAvg) }
     else if (m.mode === 'on_demand') s.onDemand++
     else s.skip++
   }

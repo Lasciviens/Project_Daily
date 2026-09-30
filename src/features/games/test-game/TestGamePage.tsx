@@ -260,12 +260,12 @@ export function TestGamePage() {
               <TgToolbar
                 genres={genres} studios={studios} statusCounts={sCounts} showStatus={section === 'library'}
                 showViews={section !== 'queue'} showSort={section !== 'queue'}
-                onRandom={onRandom} randomCount={visible.length}
+                onRandom={onRandom} randomCount={visible.length} hiddenCount={navCounts.hidden}
               />
             ) : <div aria-hidden className="h-3 shrink-0" />}
             <TgDetailOverlayHost
               game={detailGame} actions={actions} scroll={!isGameSection} pickRef={pickRef} panelRef={panelRef} reserve={section === 'queue'}
-              header={<><TgHeader config={isGameSection ? header : { ...header, action: <>{header.action}<TgLibraryMenu className="-mr-1" /></> }} />{providerError}</>}
+              header={<><TgHeader config={isGameSection ? header : { ...header, action: <>{header.action}<TgLibraryMenu className="-mr-1" hiddenCount={navCounts.hidden} /></> }} />{providerError}</>}
             >
               {renderSection('desktop')}
             </TgDetailOverlayHost>

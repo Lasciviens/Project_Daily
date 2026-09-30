@@ -119,7 +119,7 @@ export function TgMobileHeader({ groups, counts, genres, studios, statusCounts, 
               </button>
             )}
             {hasFilters && <TgRandomButton onPick={onRandom} count={resultCount} />}
-            <TgLibraryMenu withAddGame />
+            <TgLibraryMenu withAddGame hiddenCount={counts.hidden ?? 0} />
           </>
         )}
       />

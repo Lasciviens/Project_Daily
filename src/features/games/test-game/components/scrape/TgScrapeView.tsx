@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { Settings2 } from 'lucide-react'
+import { ArrowLeft, Settings2 } from 'lucide-react'
 import type { TgGame } from '../../testGameModel'
 import { useTestGameStore } from '../../testGameStore'
 import { useBreakpoint } from '../../../../../shared/hooks/useBreakpoint'
@@ -47,6 +47,10 @@ export function TgScrapeView({ games, loading, layout }: { games: TgGame[]; load
   const settingsOpen = useTestGameStore(s => s.scrapeSettingsOpen)
   const setSettingsOpen = useTestGameStore(s => s.setScrapeSettingsOpen)
   const { prefs } = useScrapePrefs()
+  // A review opened from Many games returns there (its button and Back),
+  // instead of dropping the batch and leaving the page.
+  const fromBatch = useTestGameStore(s => s.scrapeFromBatch)
+  const setFromBatch = useTestGameStore(s => s.setScrapeFromBatch)
 
   const retro = useMemo(() => games.filter(g => g.library === 'retro'), [games])
   const target = useMemo(() => retro.find(g => g.id === targetId) ?? null, [retro, targetId])
@@ -115,13 +119,18 @@ export function TgScrapeView({ games, loading, layout }: { games: TgGame[]; load
     if (wide) return
     scroller()?.scrollTo({ top: reviewId ? 0 : resultsTop.current })
   }, [reviewId, wide])
-  useHistoryDismiss(!wide && !!picked, () => setReview(null))
+  useHistoryDismiss(!wide && !!picked && !fromBatch, () => setReview(null))
+  // Opened from Many games: Back (browser, the button, the phone header) goes
+  // back there — setScrapeReview(null) switches the mode (testGameStore).
+  useHistoryDismiss(fromBatch && mode === 'search', () => setReview(null))
 
   const counts = modeCounts(prefs)
   const toolbar = (
     <div className="flex items-center justify-between gap-3">
-      <p className="min-w-0 text-[12px] leading-snug tg-muted">
-        Saves: {counts.store} copied · {counts.on_demand} online · {counts.skip} skipped{prefs.snapshot ? ' · raw answer kept' : ''}
+      {/* Your "What to save" defaults for the kinds of picture ScreenScraper has
+          (box front, screenshot, manual…) — each review starts from these. */}
+      <p className="min-w-0 text-[12px] leading-snug tg-muted" title="Each review starts from these defaults; change them per game there, or here under What to save.">
+        Default for ScreenScraper's {counts.store + counts.on_demand + counts.skip} picture kinds: {counts.store} copied to your storage · {counts.on_demand} shown online (no storage) · {counts.skip} ignored{prefs.snapshot ? ' · their raw answer kept' : ''}
       </p>
       <button type="button" onClick={() => setSettingsOpen(true)} className="tg-btn tg-btn-secondary shrink-0 !px-3 !text-[13px]">
         <Settings2 aria-hidden className="h-4 w-4" strokeWidth={2} />
@@ -143,7 +152,7 @@ export function TgScrapeView({ games, loading, layout }: { games: TgGame[]; load
     }
     setTarget(id)
     setMode('search')
-    if (found?.candidate) pick(found.candidate)
+    if (found?.candidate) { setFromBatch(true); pick(found.candidate) }
   }
 
   const settings = <TgScrapeSettings open={settingsOpen} onClose={() => setSettingsOpen(false)} />
@@ -158,6 +167,13 @@ export function TgScrapeView({ games, loading, layout }: { games: TgGame[]; load
     </div>
   )
 
+  const batchBack = fromBatch && mode === 'search' ? (
+    <button type="button" onClick={() => window.history.back()} className="tg-btn tg-btn-secondary self-start !px-3 !text-[13px]">
+      <ArrowLeft aria-hidden className="h-4 w-4" strokeWidth={2} />
+      Back to Many games
+    </button>
+  ) : null
+
   const reviewEl = picked ? (
     <TgScrapeReview
       key={`${target?.id ?? 'none'}:${picked.jeu_id}:${picked.matched_by.join(',')}:${picked.rom_id ?? ''}`}
@@ -166,8 +182,8 @@ export function TgScrapeView({ games, loading, layout }: { games: TgGame[]; load
       prefs={prefs}
       searchForm={searchForm}
       wide={wide}
-      onBack={wide ? undefined : () => setReview(null)}
-      backInline={!wide && bp !== 'phone'}
+      onBack={fromBatch ? () => window.history.back() : wide ? undefined : () => setReview(null)}
+      backInline={!fromBatch && !wide && bp !== 'phone'}
     />
   ) : null
 
@@ -197,6 +213,7 @@ export function TgScrapeView({ games, loading, layout }: { games: TgGame[]; load
     return (
       <div ref={topRef} className="flex h-full min-h-0 flex-col gap-4">
         {mode === 'search' && toolbar}
+        {batchBack}
         {batch}
         {mode === 'search' && (
           <div className="grid min-h-0 flex-1 grid-cols-[minmax(18rem,22rem)_minmax(0,1fr)] gap-5 xl:grid-cols-[minmax(22rem,27rem)_minmax(0,1fr)]">
@@ -213,6 +230,7 @@ export function TgScrapeView({ games, loading, layout }: { games: TgGame[]; load
 
   return (
     <div ref={topRef} className="flex flex-col gap-4 pb-6">
+      {batchBack}
       {batch}
       {mode === 'search' && (reviewEl ?? left)}
       {settings}

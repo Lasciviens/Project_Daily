@@ -1,9 +1,6 @@
-import { useState } from 'react'
 import { Menu, MenuButton, MenuHeading, MenuItem, MenuItems, MenuSection, MenuSeparator } from '@headlessui/react'
-import { Check, Ellipsis, Plus } from 'lucide-react'
+import { Check, Copy, Eye, Plus, Settings2 } from 'lucide-react'
 import { useTestGameStore } from '../testGameStore'
-import { TgConnections } from './TgConnections'
-import { TgPsnRenewDialog } from './TgPsnRenewDialog'
 import { TgRefreshIcon } from './TgRefreshLibrary'
 import { useRefreshLibraryAction } from './useRefreshLibraryAction'
 import { useTgAddGame } from './tgAddGame'
@@ -12,16 +9,21 @@ import { TG_VIEWS } from './tgViews'
 const ICON = 'h-4 w-4 shrink-0'
 
 /**
- * The library's ⋯ menu (the toolbar's end, and the phone's section row):
- * Refresh library, and PlayStation / Steam status with PSN renew (owner
- * request 2026-09-25 — first-time connect and disconnect stay in Developer →
- * Connections). Theme and account live in the app's own ⚙ menu. With `views`
- * (a toolbar too narrow for the view switch) it also offers Shelf / Cover
- * grid / List.
+ * The library's settings menu (the toolbar's end, and the phone's section
+ * row): Show hidden games, Find duplicates, Refresh library. PlayStation /
+ * Steam status is NOT here any more (owner, 30.09.2026: it already shows on
+ * the shelves' Sync buttons, Advanced and Settings → Subscriptions). Theme
+ * and account live in the app's own ⚙ menu. With `views` (a toolbar too
+ * narrow for the view switch) it also offers Shelf / Cover grid / List.
  */
-export function TgLibraryMenu({ className = '', withAddGame = false, views = false }: { className?: string; withAddGame?: boolean; views?: boolean }) {
-  // Outside the menu: picking "Renew token" closes the menu, the dialog stays.
-  const [renewOpen, setRenewOpen] = useState(false)
+export function TgLibraryMenu({ className = '', withAddGame = false, views = false, hiddenCount = 0 }: {
+  className?: string; withAddGame?: boolean; views?: boolean
+  /** Hidden games in the library — the Show hidden row appears only when there are some. */
+  hiddenCount?: number
+}) {
+  const showHidden = useTestGameStore(s => s.showHidden)
+  const setShowHidden = useTestGameStore(s => s.setShowHidden)
+  const setAdvancedTab = useTestGameStore(s => s.setAdvancedTab)
   const refresh = useRefreshLibraryAction()
   const openAddGame = useTgAddGame(s => s.setOpen)
   const view = useTestGameStore(s => s.view)
@@ -30,8 +32,8 @@ export function TgLibraryMenu({ className = '', withAddGame = false, views = fal
   return (
     <>
       <Menu>
-        <MenuButton aria-label="Library options" title="Library options" className={`tg-icon-btn shrink-0 ${className}`}>
-          <Ellipsis aria-hidden size={20} strokeWidth={1.9} />
+        <MenuButton aria-label="Library settings" title="Library settings" className={`tg-icon-btn shrink-0 ${className}`}>
+          <Settings2 aria-hidden size={20} strokeWidth={1.9} />
         </MenuButton>
         <MenuItems
           anchor={{ to: 'bottom end', gap: 6, padding: 12 }}
@@ -63,21 +65,29 @@ export function TgLibraryMenu({ className = '', withAddGame = false, views = fal
               </button>
             </MenuItem>
           )}
+          {hiddenCount > 0 && (
+            <MenuItem>
+              <button type="button" role="menuitemcheckbox" aria-checked={showHidden} onClick={() => setShowHidden(!showHidden)} className="tg-menu-item">
+                <Eye aria-hidden className={ICON} strokeWidth={1.9} />
+                <span className="min-w-0 flex-1 truncate">Show hidden games ({hiddenCount})</span>
+                <Check aria-hidden className={`${ICON} ${showHidden ? '' : 'invisible'}`} strokeWidth={2.2} />
+              </button>
+            </MenuItem>
+          )}
+          <MenuItem>
+            <button type="button" onClick={() => setAdvancedTab('duplicates')} className="tg-menu-item">
+              <Copy aria-hidden className={ICON} strokeWidth={1.9} />
+              Find duplicates
+            </button>
+          </MenuItem>
           <MenuItem>
             <button type="button" onClick={() => { void refresh.run() }} className="tg-menu-item">
               <TgRefreshIcon busy={refresh.busy} />
               Refresh library
             </button>
           </MenuItem>
-          <MenuSeparator className="tg-menu-sep" />
-          <MenuSection>
-            <MenuHeading className="tg-menu-label">Connections</MenuHeading>
-            {/* MenuItems only render while open, so these fetch on open only. */}
-            <div className="px-1 pb-1"><TgConnections inMenu onRenewPsn={() => setRenewOpen(true)} /></div>
-          </MenuSection>
         </MenuItems>
       </Menu>
-      <TgPsnRenewDialog open={renewOpen} onClose={() => setRenewOpen(false)} />
     </>
   )
 }

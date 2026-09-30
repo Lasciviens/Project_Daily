@@ -498,4 +498,25 @@ const TT = require('../src/features/games/test-game/tgTypes.ts')
 ok(TT.headerNoteText('Roughly 12 hours to play through', 'Queued games still to play × the median'), 'Roughly 12 hours to play through. Queued games still to play × the median', 'note + its basis')
 ok(TT.headerNoteText('Under an hour to play through'), 'Under an hour to play through', 'a note without a basis stays as is')
 
+// Duplicates (Advanced → Duplicates)
+const D = require('../src/features/games/test-game/tgDuplicates.ts')
+ok(D.normalizeTitle('The Legend of Zelda: Ocarina of Time (USA) [!]'), 'legend of zelda ocarina of time', 'title normalized: article, region tag, punctuation')
+ok(D.normalizeTitle('Pokémon Red & Blue'), 'pokemon red and blue', 'accents and & folded')
+{
+  const gs = [
+    { id: '1', title: 'Sonic the Hedgehog (USA)', platformKey: 'genesis', library: 'retro', primary_cover_url: 'a.png' },
+    { id: '2', title: 'Sonic The Hedgehog', platformKey: 'genesis', library: 'retro', primary_cover_url: 'b.png' },
+    { id: '3', title: 'Hades', platformKey: 'steam', library: 'steam', primary_cover_url: 'h.png' },
+    { id: '4', title: 'Hades', platformKey: 'playstation', library: 'playstation', primary_cover_url: 'x.png' },
+    { id: '5', title: 'Tetris', platformKey: 'gb', library: 'retro', primary_cover_url: 'same.png' },
+    { id: '6', title: 'Tetris DX', platformKey: 'gbc', library: 'retro', primary_cover_url: 'same.png' },
+    { id: '7', title: 'Alone', platformKey: 'gb', library: 'retro', primary_cover_url: null },
+  ]
+  const groups = D.findDuplicates(gs)
+  ok(groups.map(g => [g.reason, g.games.map(x => x.id)]), [['title', ['1', '2']], ['title', ['3', '4']], ['image', ['5', '6']]], 'same-platform title group first, then cross-platform, then picture')
+  ok(groups[0].samePlatform && !groups[1].samePlatform, true, 'same-platform flag')
+  const echo = D.findDuplicates([gs[0], { ...gs[1], primary_cover_url: 'a.png' }])
+  ok(echo.length, 1, 'a picture group repeating a title group is not listed twice')
+}
+
 console.log(`verify-test-game-model: ${n} assertions passed`)

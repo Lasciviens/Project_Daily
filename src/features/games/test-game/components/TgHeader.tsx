@@ -23,7 +23,8 @@ export function TgHeader({ config }: { config: TgHeaderConfig }) {
         ) : (
           <SectionGlyph logo={logo} />
         )}
-        <div className="min-w-[min(100%,13rem)] flex-1">
+        {/* Only as wide as the title needs, so the console photo sits right beside it. */}
+        <div className={isPlatform ? 'min-w-0 max-w-full flex-initial' : 'min-w-[min(100%,13rem)] flex-1'}>
           <h1 data-tg-heading tabIndex={-1} className="min-w-0 text-[24px] font-semibold leading-7 tracking-[-0.01em] text-[var(--tg-text)] focus:outline-none">
             <Truncate>{title}</Truncate>
           </h1>
@@ -42,7 +43,9 @@ export function TgHeader({ config }: { config: TgHeaderConfig }) {
           )}
         </div>
         {isPlatform && <TgConsolePhoto platformKey={platformKey} name={title} />}
-        {action}
+        {/* The platform page's actions stay at the right edge. */}
+        {isPlatform && action && <div className="ml-auto">{action}</div>}
+        {!isPlatform && action}
       </div>
 
       {tabs.length > 0 && (
