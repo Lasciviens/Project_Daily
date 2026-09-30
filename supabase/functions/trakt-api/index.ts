@@ -510,10 +510,13 @@ function buildImportPlan(snap: TraktSnapshot, local: LocalLibrary, info: Map<num
     const isDropped = dropped.has(id) || l?.status === 'dropped'
     if (l?.status === 'dropped' && !dropped.has(id)) push.droppedAdd.shows.push({ tmdb: id })
     const regular = [...union].filter(k => !k.startsWith('0x')).length
-    const aired = info.get(id)?.aired ?? 0
+    const aired = info.get(id)?.aired
     let status: string
     if (union.size) {
+      // Without TMDB's aired count nothing is known about "finished": keep the
+      // status the show has (a Completed show must never drop to Watching).
       status = isDropped ? 'dropped'
+        : aired === undefined ? (l && IN_PROGRESS_SHOW.has(l.status) ? l.status : 'watching')
         : aired > 0 && regular >= aired ? 'completed'
         : l?.status === 'paused' ? 'paused' : 'watching'
     } else if (isDropped) status = 'dropped'
@@ -791,8 +794,14 @@ type Db = any
 const TMDB = 'https://api.themoviedb.org/3'
 const TMDB_KEY = () => Deno.env.get('TMDB_API_KEY') ?? ''
 
+/** TMDB refused the key itself — every lookup would fail, so the run stops instead of guessing. */
+class TmdbKeyError extends Error {
+  constructor() { super('TMDB rejected TMDB_API_KEY on the trakt-api function (401) — put a valid TMDB v3 API key there') }
+}
+
 async function tmdb(path: string): Promise<AnyRec> {
   const res = await fetch(`${TMDB}${path}?api_key=${encodeURIComponent(TMDB_KEY())}&language=en-US`)
+  if (res.status === 401) throw new TmdbKeyError()
   if (!res.ok) throw new Error(`TMDB ${res.status}: ${path}`)
   return await res.json()
 }
@@ -867,7 +876,10 @@ async function showInfo(ids: number[]): Promise<{ info: Map<number, ShowInfo>; d
       const d = await tmdb(`/tv/${id}`)
       details.set(id, d)
       info.set(id, { aired: airedEpisodes(d as Parameters<typeof airedEpisodes>[0]) })
-    } catch { /* no TMDB details: the status is left as it is, never guessed */ }
+    } catch (e) {
+      if (e instanceof TmdbKeyError) throw e
+      /* no TMDB details for this one show: its status is left as it is, never guessed */
+    }
   })
   return { info, details }
 }
@@ -904,7 +916,10 @@ async function catalogIds(db: Db, table: 'movies' | 'tv_series', ids: number[], 
       const { data, error } = await db.from(table).upsert(table === 'movies' ? movieRow(d) : showRow(d), { onConflict: 'tmdb_id' }).select('id').single()
       if (error) throw error
       map.set(id, String(data.id))
-    } catch { /* counted as skipped by the caller */ }
+    } catch (e) {
+      if (e instanceof TmdbKeyError) throw e
+      /* counted as skipped by the caller */
+    }
   })
   return map
 }
@@ -1124,7 +1139,10 @@ async function runSync(db: Db, userId: string, token: string, username: string |
   // Items just sent count as pending for this run too: Trakt may not show a
   // write in the same second, and the mirror must never undo it.
   const pending = new Set<string>([...((waiting ?? []) as AnyRec[]).map(r => String(r.item_key)), ...drained.sentKeys])
-  const { info, details } = await showInfo(showsNeedingInfoForSync(snap, local.lib, pending))
+  // A full sync (Sync now) re-checks Completed vs Watching for every show with
+  // episodes; the timed one only for shows whose episodes changed.
+  const needInfo = opts.full ? showsNeedingInfo(snap, local.lib) : showsNeedingInfoForSync(snap, local.lib, pending)
+  const { info, details } = await showInfo(needInfo)
   let plan = buildSyncPlan(snap, local.lib, info, pending)
   let heldBack = 0
   if (!opts.force && removalsNeedConfirm(plan, local.lib)) { heldBack = removalCount(plan); plan = withoutRemovals(plan) }
@@ -1134,6 +1152,8 @@ async function runSync(db: Db, userId: string, token: string, username: string |
 }
 
 async function runImport(db: Db, userId: string, token: string, username: string | null) {
+  // Without TMDB the import can't add new titles or tell a finished show from one in progress.
+  if (!TMDB_KEY()) throw new Error('TMDB_API_KEY is not set on the trakt-api function (use the same TMDB key as the app)')
   const snap = await snapshot(token, username) as unknown as TraktSnapshot
   const local = await loadLocal(db, userId)
   const { info, details } = await showInfo(showsNeedingInfo(snap, local.lib))

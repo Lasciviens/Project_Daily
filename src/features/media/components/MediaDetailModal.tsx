@@ -70,6 +70,7 @@ export function MediaDetailModal({ tmdbId, mediaType, userEntry, onClose, onAdde
       {query.isError ? (
         <div className="flex flex-col items-start gap-3 p-5">
           <p className="text-body text-fg-2">Couldn't load this title from TMDB.</p>
+          {query.error instanceof Error && <p className="text-meta text-fg-muted">{query.error.message}</p>}
           <Button size="sm" onClick={() => { void query.refetch() }}>Try again</Button>
         </div>
       ) : !detail ? (

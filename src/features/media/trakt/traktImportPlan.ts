@@ -166,10 +166,13 @@ export function buildImportPlan(snap: TraktSnapshot, local: LocalLibrary, info: 
     const isDropped = dropped.has(id) || l?.status === 'dropped'
     if (l?.status === 'dropped' && !dropped.has(id)) push.droppedAdd.shows.push({ tmdb: id })
     const regular = [...union].filter(k => !k.startsWith('0x')).length
-    const aired = info.get(id)?.aired ?? 0
+    const aired = info.get(id)?.aired
     let status: string
     if (union.size) {
+      // Without TMDB's aired count nothing is known about "finished": keep the
+      // status the show has (a Completed show must never drop to Watching).
       status = isDropped ? 'dropped'
+        : aired === undefined ? (l && IN_PROGRESS_SHOW.has(l.status) ? l.status : 'watching')
         : aired > 0 && regular >= aired ? 'completed'
         : l?.status === 'paused' ? 'paused' : 'watching'
     } else if (isDropped) status = 'dropped'
