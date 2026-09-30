@@ -13,17 +13,19 @@ import { formatDate } from '../../../shared/utils/dateFormat'
 
 // ─── Page state vocabulary ───────────────────────────────────────────────────
 
-/** The sidebar's top section. `wishlist`/`completed`/`backlog` are status
+/** The sidebar's top section. `wishlist`/`completed` are status
  *  views across EVERY platform; `library` is scoped by the platform list. */
-export type TgSection = 'library' | 'queue' | 'wishlist' | 'completed' | 'backlog' | 'analytics' | 'scrape' | 'advanced'
+export type TgSection = 'library' | 'queue' | 'wishlist' | 'completed' | 'analytics' | 'scrape' | 'advanced'
 export type TgView = 'shelf' | 'grid' | 'list'
-export type TgSort = 'title' | 'title-desc' | 'recent' | 'playtime' | 'rating' | 'year-desc' | 'year-asc' | 'added' | 'series'
+export type TgSort =
+  | 'title' | 'title-desc' | 'recent' | 'recent-asc' | 'playtime' | 'playtime-asc'
+  | 'rating' | 'rating-asc' | 'year-desc' | 'year-asc' | 'added' | 'series'
 export type TgStatusFilter = 'all' | PlayStatus
 
 export const ALL_PLATFORMS = 'all'
 
 /** Every section, in navigation order. */
-export const TG_SECTIONS: readonly TgSection[] = ['library', 'queue', 'wishlist', 'completed', 'backlog', 'analytics', 'scrape', 'advanced']
+export const TG_SECTIONS: readonly TgSection[] = ['library', 'queue', 'wishlist', 'completed', 'analytics', 'scrape', 'advanced']
 
 export function parseTgSection(v: string | null | undefined): TgSection | null {
   const k = (v ?? '').trim().toLowerCase()
@@ -33,7 +35,7 @@ export function parseTgSection(v: string | null | undefined): TgSection | null {
 /**
  * Where the page is, as the address carries it: `?section=` (left out for the
  * Library) and `?platform=` — the Library's platform shelf, or a
- * Wishlist/Completed/Backlog view's platform scope (left out for All).
+ * Wishlist/Completed view's platform scope (left out for All).
  */
 export function tgUrlFromState(section: TgSection, platform: string, scopePlatform: string): { section: string | null; platform: string | null } {
   const p = section === 'library' ? platform : STATUS_SECTIONS[section] ? scopePlatform : ALL_PLATFORMS
@@ -60,8 +62,11 @@ export const SORT_LABEL: Record<TgSort, string> = {
   title: 'Title',
   'title-desc': 'Title (Z–A)',
   recent: 'Last played',
+  'recent-asc': 'Played longest ago',
   playtime: 'Most played',
+  'playtime-asc': 'Least played',
   rating: 'My rating',
+  'rating-asc': 'My rating (lowest)',
   'year-desc': 'Newest',
   'year-asc': 'Oldest',
   added: 'Recently added',
@@ -71,7 +76,6 @@ export const SORT_LABEL: Record<TgSort, string> = {
 export const STATUS_SECTIONS: Partial<Record<TgSection, PlayStatus>> = {
   wishlist: 'wishlist',
   completed: 'completed',
-  backlog: 'backlog',
 }
 
 /** The status tabs under the platform header, in the design's order. */
@@ -605,6 +609,11 @@ export function sortGames<T extends Game>(games: T[], sort: TgSort): T[] {
     case 'recent':     return sortByKey(gs, recentKey, -1, byTitle)
     case 'playtime':   return sortByKey(gs, g => playSeconds(g) ?? 0, -1, byTitle)
     case 'rating':     return gs.sort((a, b) => (b.rating ?? -1) - (a.rating ?? -1) || byTitle(a, b))
+    // The reverse sorts put games with no value last, not first — otherwise
+    // hundreds of never-played or unrated games bury the ones being compared.
+    case 'recent-asc':   return sortByKey(gs, g => { const k = recentKey(g); return k === -Infinity ? Infinity : k }, 1, byTitle)
+    case 'playtime-asc': return sortByKey(gs, g => playSeconds(g) || Infinity, 1, byTitle)
+    case 'rating-asc':   return gs.sort((a, b) => (a.rating ?? Infinity) - (b.rating ?? Infinity) || byTitle(a, b))
     case 'year-desc':  return gs.sort((a, b) => (b.release_year ?? -Infinity) - (a.release_year ?? -Infinity) || byTitle(a, b))
     case 'year-asc':   return gs.sort((a, b) => (a.release_year ?? Infinity) - (b.release_year ?? Infinity) || byTitle(a, b))
     case 'added':      return gs.sort((a, b) => time(b.created_at) - time(a.created_at) || byTitle(a, b))
@@ -946,8 +955,10 @@ export function playCount(g: Game): number | null { return playStatsOf(g).count 
 export function cardMeta(g: TgGame, sort: TgSort, playtime: (minutes: number) => string): string {
   const platform = platformInfo(g.platformKey).short
   switch (sort) {
-    case 'playtime': { const s = playSeconds(g); return s != null && s > 0 ? playtime(s / 60) : 'No recorded play' }
-    case 'recent': { const last = lastPlayedIso(g); return last ? formatDay(last) : 'No recorded play' }
+    case 'playtime':
+    case 'playtime-asc': { const s = playSeconds(g); return s != null && s > 0 ? playtime(s / 60) : 'No recorded play' }
+    case 'recent':
+    case 'recent-asc': { const last = lastPlayedIso(g); return last ? formatDay(last) : 'No recorded play' }
     case 'year-desc':
     case 'year-asc': return g.release_year ? String(g.release_year) : 'Year unknown'
     case 'added': return `Added ${formatDay(g.created_at)}`

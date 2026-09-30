@@ -59,7 +59,7 @@ export type TgActivation = 'opened' | 'swapped' | 'tab'
 interface TgState {
   section: TgSection
   platform: string
-  /** Wishlist/Completed/Backlog views: one platform, or all. */
+  /** Wishlist/Completed views: one platform, or all. */
   scopePlatform: string
   /** Multi-select status filter (Library only); empty = every visible game. */
   statuses: PlayStatus[]

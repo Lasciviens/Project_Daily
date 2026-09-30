@@ -35,7 +35,7 @@ function sectionHint(section: TgSection, statuses: PlayStatus[]): string {
   if (section === 'library' && statuses.length > 1) {
     return `No ${statuses.map(s => STATUS_TEXT[s].toLowerCase()).join(' or ')} games on this shelf yet.`
   }
-  if (section === 'wishlist' || section === 'completed' || section === 'backlog') {
+  if (section === 'wishlist' || section === 'completed') {
     return `Games you mark as ${STATUS_TEXT[section]} show up here.`
   }
   return 'Games show up here as soon as one fits this view.'

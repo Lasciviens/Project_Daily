@@ -16,7 +16,7 @@ import { ADVANCED_TABS } from './advancedTabs'
 
 const SECTION_TITLE: Record<TgSection, string> = {
   library: 'Library', queue: 'Play Queue', wishlist: 'Wishlist', completed: 'Completed',
-  backlog: 'Backlog', analytics: 'Analytics', scrape: 'Scrape', advanced: 'Advanced',
+  analytics: 'Analytics', scrape: 'Scrape', advanced: 'Advanced',
 }
 
 function plural(n: number, word: string) { return `${n.toLocaleString('en-GB')} ${word}${n === 1 ? '' : 's'}` }

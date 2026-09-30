@@ -45,7 +45,7 @@ export function TgMobileSections({ counts, actions }: { counts: TgNavCounts; act
   // Keeps the active pill on screen when it sits past the row's edge — again
   // once the counts arrive, since they widen the pills before it.
   const activeRef = useRef<HTMLButtonElement>(null)
-  const countsKey = `${counts.queue}|${counts.wishlist}|${counts.completed}|${counts.backlog}|${counts.review}`
+  const countsKey = `${counts.queue}|${counts.wishlist}|${counts.completed}|${counts.review}`
   useLayoutEffect(() => {
     activeRef.current?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
   }, [section, countsKey])

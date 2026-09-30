@@ -167,7 +167,8 @@ ok(M.tgStateFromUrl(null, null), null, 'a plain /games keeps the last place')
 ok(M.tgStateFromUrl('queue', null), { section: 'queue', platform: 'all' }, 'a section alone means All platforms')
 ok(M.tgStateFromUrl(null, 'PS2'), { section: 'library', platform: 'ps2' }, 'a platform alone opens its Library shelf')
 ok(M.tgStateFromUrl('bogus', 'gc'), { section: 'library', platform: 'gc' }, 'an unknown section falls back to the Library')
-ok(M.tgStateFromUrl('backlog', ''), { section: 'backlog', platform: 'all' }, 'an empty platform is All')
+ok(M.tgStateFromUrl('completed', ''), { section: 'completed', platform: 'all' }, 'an empty platform is All')
+ok(M.tgStateFromUrl('backlog', null), { section: 'library', platform: 'all' }, 'the removed Backlog section opens the Library')
 for (const [sec, pl, sp] of [['library', 'gc', 'all'], ['wishlist', 'all', 'steam'], ['analytics', 'all', 'all']]) {
   const u = M.tgUrlFromState(sec, pl, sp)
   const back = M.tgStateFromUrl(u.section, u.platform)
@@ -178,10 +179,12 @@ for (const [sec, pl, sp] of [['library', 'gc', 'all'], ['wishlist', 'all', 'stea
 // ── Saved page state upgrades ───────────────────────────────────────────────
 {
   const S = require('../src/features/games/test-game/tgStoreMigrate.ts')
-  ok(S.TG_STORE_VERSION, 4, 'the store is on version 4')
+  ok(S.TG_STORE_VERSION, 5, 'the store is on version 5')
   ok(S.migrateTgPersisted({ platform: 'others', section: 'library' }, 3).platform, 'all', 'a saved Others shelf opens All Games')
   ok(S.migrateTgPersisted({ platform: 'ps2' }, 3).platform, 'ps2', 'any other saved shelf stays')
   ok(S.migrateTgPersisted({ sort: 'title' }, 0).sort, 'recent', 'v1: the old Title default moves to Last played')
+  ok(S.migrateTgPersisted({ section: 'backlog' }, 4).section, 'library', 'v5: a saved Backlog section opens the Library')
+  ok(S.migrateTgPersisted({ section: 'completed' }, 4).section, 'completed', 'v5: other sections stay')
   ok(S.migrateTgPersisted({ sort: 'rating' }, 0).sort, 'rating', 'v1: a real sort choice stays')
   ok(S.migrateTgPersisted({ advancedTab: 'scraper', section: 'advanced' }, 2), { advancedTab: 'review', section: 'scrape' },
     'v3: a saved ScreenScraper tab opens the Scrape page')
@@ -468,7 +471,19 @@ ok(M.queueInsights(M.deriveGames([game({ id: 'x', play_order: 1 }), game({ play_
 const ns = M.deriveGames([game({ id: 'n0', play_status: null }), game({ id: 'n1', play_status: 'backlog' }), game({ id: 'n2', play_status: 'playing' })])
 ok(M.statusCounts(ns).backlog, 2, 'a game with no status counts as Backlog')
 ok(M.applyStatus(ns, 'backlog').map(g => g.id), ['n0', 'n1'], 'the Backlog tab lists it')
-ok(M.scopeGames(ns, { section: 'backlog', platform: M.ALL_PLATFORMS, search: '' }).map(g => g.id), ['n0', 'n1'], 'and so does the Backlog section')
+
+// ── Reverse sorts: least played / oldest session / lowest rating, empties last ──
+{
+  const rs = M.deriveGames([
+    game({ id: 'r0', title: 'A', play_seconds: 0, rating: null }),
+    game({ id: 'r1', title: 'B', play_seconds: 7200, rating: 9, last_played_at: '2026-09-01T10:00:00Z' }),
+    game({ id: 'r2', title: 'C', play_seconds: 3600, rating: 4, last_played_at: '2026-01-01T10:00:00Z' }),
+  ])
+  ok(M.sortGames(rs, 'playtime-asc').map(g => g.id), ['r2', 'r1', 'r0'], 'Least played: least first, no play last')
+  ok(M.sortGames(rs, 'rating-asc').map(g => g.id), ['r2', 'r1', 'r0'], 'Lowest rating first, unrated last')
+  ok(M.sortGames(rs, 'recent-asc').map(g => g.id), ['r2', 'r1', 'r0'], 'Played longest ago first, never played last')
+  ok(M.sortGames(rs, 'playtime').map(g => g.id), ['r1', 'r2', 'r0'], 'Most played unchanged')
+}
 
 // ── Profile facts under the connections (no extra request) ──
 const CF = require('../src/features/games/test-game/components/tgConnectionFacts.ts')

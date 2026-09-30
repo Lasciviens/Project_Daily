@@ -1,12 +1,12 @@
 import {
-  Archive, ChartColumn, CircleCheckBig, Heart, SlidersHorizontal, SquarePlay, Wand2,
+  ChartColumn, CircleCheckBig, Heart, SlidersHorizontal, SquarePlay, Wand2,
 } from 'lucide-react'
 import type { ComponentType } from 'react'
 import type { TgSection } from '../testGameModel'
 import { GameLibraryMark } from './platformArt'
 
 /** The badge counts the page's navigation prints. */
-export interface TgNavCounts { queue: number; wishlist: number; completed: number; backlog: number; review: number }
+export interface TgNavCounts { queue: number; wishlist: number; completed: number; review: number }
 
 export interface TgSectionEntry {
   key: TgSection
@@ -27,7 +27,6 @@ export const TG_SECTION_ENTRIES: readonly TgSectionEntry[] = [
   { key: 'queue', label: 'Play Queue', short: 'Queue', icon: SquarePlay, count: 'queue' },
   { key: 'wishlist', label: 'Wishlist', short: 'Wishlist', icon: Heart, count: 'wishlist' },
   { key: 'completed', label: 'Completed', short: 'Completed', icon: CircleCheckBig, count: 'completed' },
-  { key: 'backlog', label: 'Backlog', short: 'Backlog', icon: Archive, count: 'backlog' },
   { key: 'analytics', label: 'Analytics', short: 'Analytics', icon: ChartColumn },
   { key: 'scrape', label: 'Scrape', short: 'Scrape', icon: Wand2, tool: true },
   { key: 'advanced', label: 'Advanced', short: 'Advanced', icon: SlidersHorizontal, count: 'review', tool: true },

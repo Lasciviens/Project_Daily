@@ -13,7 +13,7 @@ import { Truncate } from '../../../../shared/ui/Truncate'
 /**
  * Left side of the phone's scope row: what the grid below is scoped to.
  * Library → the design's "PS2 ▾" platform pill, which opens every platform
- * grouped by maker. Wishlist/Completed/Backlog → their platform scope (the
+ * grouped by maker. Wishlist/Completed → their platform scope (the
  * active section pill above names the section; a title here squeezed both to
  * "Wis…"/"S…"). Queue/Analytics/Advanced → the section title, nothing to pick.
  * A platform label never shrinks below ~4.5rem.
