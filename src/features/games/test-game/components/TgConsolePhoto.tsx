@@ -22,7 +22,7 @@ export function TgConsolePhoto({ platformKey, name }: { platformKey: string; nam
       title="Photo: Evan-Amos, public domain (Wikimedia Commons)"
       loading="lazy"
       decoding="async"
-      className="hidden h-[72px] w-auto max-w-[180px] shrink-0 object-contain md:block"
+      className="tg-console-photo hidden h-[72px] w-auto max-w-[190px] shrink-0 object-contain md:block"
     />
   )
 }
