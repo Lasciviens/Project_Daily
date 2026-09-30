@@ -1,4 +1,5 @@
 import type { LocalLibrary, TraktItem, TraktSnapshot } from './traktTypes'
+import { movieWatchedAt } from './traktDates'
 
 // The import itself, as data (docs/trakt/PLAN.md phase 2): what each title
 // becomes here, and what goes to Trakt so both sides hold the same record.
@@ -61,8 +62,8 @@ function playEntries<B extends object>(base: B, at: string | null, count: number
 
 const playsOf = (repeatCount: number) => 1 + Math.max(0, repeatCount || 0)
 
-const KEEP_MOVIE = new Set(['watching', 'dropped', 'upcoming'])
-const IN_PROGRESS_SHOW = new Set(['watching', 'completed', 'paused'])
+export const KEEP_MOVIE = new Set(['watching', 'dropped', 'upcoming'])
+export const IN_PROGRESS_SHOW = new Set(['watching', 'completed', 'paused'])
 
 /** Shows whose TMDB details the plan needs to settle Completed vs Watching. */
 export function showsNeedingInfo(snap: TraktSnapshot, local: LocalLibrary): number[] {
@@ -115,7 +116,7 @@ export function buildImportPlan(snap: TraktSnapshot, local: LocalLibrary, info: 
     movies.push({
       tmdbId: id, item: t?.item ?? wl?.item ?? r?.item ?? null, status,
       repeatCount: watched ? Math.max(0, playCount - 1) : 0,
-      watchedAt: t?.lastWatchedAt ?? l?.watchedAt ?? null,
+      watchedAt: t ? movieWatchedAt(t.lastWatchedAt) : movieWatchedAt(l?.watchedAt),
       rating, watchlistRank: status === 'wishlist' ? wl?.rank ?? null : null,
     })
     if (l?.status === 'completed' && !t) push.history.movies.push(...playEntries({ tmdb: id }, l.watchedAt ?? null, playsOf(l.repeatCount), snap.fetchedAt))

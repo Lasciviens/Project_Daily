@@ -9,6 +9,7 @@ import { Button, SectionLabel, Skeleton } from '../../../shared/ui'
 import { ceilToQuarter } from '../../../shared/components/plan-modal/planModal.config'
 import type { TMDBTVFull } from '../types'
 import { formatDate } from '../../../shared/utils/dateFormat'
+import { isUnknownWatchedAt } from '../trakt/traktDates'
 
 interface Props {
   tv:         TMDBTVFull
@@ -239,7 +240,7 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
                     )}
                     {isWatched && watchedOn && (
                       <span className="font-medium text-success">
-                        Watched {formatDate(watchedOn)}{plays > 1 && ` · ${plays} plays`}
+                        Watched {isUnknownWatchedAt(watchedOn) ? '· date unknown' : formatDate(watchedOn)}{plays > 1 && ` · ${plays} plays`}
                       </span>
                     )}
                   </span>

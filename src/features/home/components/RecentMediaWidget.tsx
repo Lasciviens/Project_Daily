@@ -10,6 +10,7 @@ import { GlanceTile } from './GlanceTile'
 import { TileDetail } from './TileDetail'
 import { useTilePopup } from '../hooks/useTilePopup'
 import { formatDate } from '../../../shared/utils/dateFormat'
+import { isUnknownWatchedAt } from '../../media/trakt/traktDates'
 
 function openMedia(modal: ReturnType<typeof useEntityModal>, item: RecentlyWatchedItem) {
   if (item.tmdbId != null) modal.open({ kind: 'media', tmdbId: item.tmdbId, mediaType: item.type })
@@ -81,7 +82,7 @@ export function RecentMediaTile() {
         icon={<Clapperboard />}
         loading={isLoading}
         value={latest ? latest.title : 'Nothing yet'}
-        hint={latest ? formatDate(latest.watched_at) : 'Open Media'}
+        hint={latest ? (isUnknownWatchedAt(latest.watched_at) ? 'Date unknown' : formatDate(latest.watched_at)) : 'Open Media'}
         {...action}
       />
       {popup && (

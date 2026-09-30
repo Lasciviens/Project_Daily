@@ -3,6 +3,7 @@ import { format } from 'date-fns'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
 import { qk, STALE } from '../../../shared/query'
 import type { WatchedEpisode } from '../types'
+import { scheduleTraktSync } from '../trakt/traktAutoSync'
 import {
   fetchWatchedEpisodes,
   markEpisodeWatched,
@@ -83,5 +84,6 @@ export function useMarkEpisodeWatched(opts?: { successMessage?: string }) {
       if (ctx?.previous !== undefined) qc.setQueryData(ctx.key, ctx.previous)
     },
     invalidates: ['episodeWatched'],
+    onSuccess: () => scheduleTraktSync(qc),
   })
 }

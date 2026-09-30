@@ -3,11 +3,11 @@ import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFe
 import { qk } from '../../../shared/query/keys'
 import { STALE } from '../../../shared/query/stale'
 import {
-  connectTrakt, disconnectTrakt, fetchLocalLibraryForTrakt, fetchTraktSnapshot, fetchTraktStatus, traktAuthorizeUrl,
+  connectTrakt, disconnectTrakt, fetchLocalLibraryForTrakt, fetchTraktSnapshot, fetchTraktStatus, importTrakt, syncTrakt,
+  traktAuthorizeUrl, type TraktRunResult,
 } from './traktApi'
 import { newTraktState } from './traktCallback'
 import { buildTraktPreview } from './traktPreview'
-import { runTraktImport } from './traktImport'
 
 export function useTraktStatus() {
   return useQuery({ queryKey: qk.trakt.status(), queryFn: fetchTraktStatus, staleTime: STALE.short, retry: false })
@@ -58,12 +58,36 @@ export function useTraktPreview(enabled: boolean) {
   })
 }
 
-/** The first real import: library first, then the app-only facts to Trakt. */
-export function useRunTraktImport(onProgress: (step: string) => void) {
+/** The first real import (server side): library first, then the app-only facts to Trakt. */
+export function useRunTraktImport() {
   return useMutationWithFeedback({
     action: 'trakt_import',
-    successMessage: r => `Imported: ${r.movies} movies, ${r.shows} shows, ${r.episodes} episodes · ${r.sent} changes sent to Trakt`,
-    mutationFn: () => runTraktImport(onProgress),
+    loadingMessage: 'Importing from Trakt… this can take a minute',
+    successMessage: r => r.busy ? 'A sync is already running — try again in a minute'
+      : `Imported: ${r.applied?.movies ?? 0} movies, ${r.applied?.shows ?? 0} shows, ${r.applied?.episodes ?? 0} episodes · ${r.sent ?? 0} changes sent to Trakt`,
+    mutationFn: () => importTrakt(),
+    invalidates: ['media', qk.trakt.all],
+  })
+}
+
+function syncSummary(r: TraktRunResult): string {
+  if (r.busy) return 'A sync is already running'
+  const parts: string[] = []
+  if (r.drained?.sent) parts.push(`${r.drained.sent} sent to Trakt`)
+  const a = r.applied
+  if (a && (a.movies || a.shows || a.episodes)) parts.push(`${a.movies + a.shows + a.episodes} updated from Trakt`)
+  if (a?.removed) parts.push(`${a.removed} removed`)
+  if (r.heldBack) parts.push(`${r.heldBack} removals waiting for you`)
+  return parts.length ? `Synced · ${parts.join(' · ')}` : 'Synced · already the same'
+}
+
+/** Sync now (Settings card). `force` applies removals a sync held back. */
+export function useSyncTrakt() {
+  return useMutationWithFeedback({
+    action: 'trakt_sync',
+    loadingMessage: 'Syncing with Trakt…',
+    successMessage: syncSummary,
+    mutationFn: (opts: { full?: boolean; force?: boolean } = {}) => syncTrakt(opts),
     invalidates: ['media', qk.trakt.all],
   })
 }

@@ -25,7 +25,7 @@ export function traktRedirectUri(): string {
 export async function fetchTraktStatus(): Promise<TraktStatus> {
   const { data, error } = await supabase.functions.invoke('trakt-api', { body: { action: 'status' } })
   if (error) throw error
-  if (data?.error === 'not_configured') return { connected: false, username: null, connectedAt: null, lastSyncAt: null, notConfigured: true }
+  if (data?.error === 'not_configured') return { connected: false, username: null, connectedAt: null, lastSyncAt: null, pending: 0, notConfigured: true }
   if (data?.error) throw new Error(data.error)
   return data as TraktStatus
 }
@@ -46,9 +46,30 @@ export function fetchTraktSnapshot(): Promise<TraktSnapshot> {
   return invoke('snapshot')
 }
 
-/** Sends an import's app → Trakt changes and stamps the sync state. */
-export function pushToTrakt(changes: unknown, full: boolean): Promise<{ tally: Record<string, number> }> {
-  return invoke('push', { changes, full })
+export interface TraktRunResult {
+  kind: 'import' | 'sync'
+  at: string
+  busy?: boolean
+  pulled?: boolean
+  drained?: { sent: number; notFound: number; failed: number; left: number; error: string | null }
+  applied?: { movies: number; shows: number; episodes: number; removed: number; skippedNew: number } | null
+  heldBack?: number
+  kept?: number
+  sent?: number
+}
+
+/**
+ * One sync: the app's queued changes go to Trakt first, then Trakt is read
+ * back and mirrored (only when it changed). `full` reads Trakt even when
+ * nothing changed; `force` applies removals a big sync held back.
+ */
+export function syncTrakt(opts: { full?: boolean; force?: boolean } = {}): Promise<TraktRunResult> {
+  return invoke('sync', opts)
+}
+
+/** The first import, run on the server: Trakt → library, then the app-only facts → Trakt. */
+export function importTrakt(): Promise<TraktRunResult> {
+  return invoke('import')
 }
 
 // ── The library slice the preview compares with ─────────────────────────────
