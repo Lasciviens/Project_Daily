@@ -39,6 +39,12 @@ cross-AI task board → `codex-shortcuts.md`.
 | `iphone-web-integration.md` | Why the iPhone integration is shaped this way: the auth model, hard iOS platform limits, and the options evaluated and rejected. | 25/07/2026 |
 | `training/progress-engine/` | The Exercise Progress Engine (`src/features/training/progress-engine/`): algorithm, decision table + evidence-tier classification, data lineage/limitations, citations, changelog. Read before touching per-exercise progress-decision logic. | 03/09/2026 |
 
+## Working plans — temporary, deleted when the feature ships
+
+| File | Purpose | Last verified |
+|---|---|---|
+| [kobo/PLAN.md](kobo/PLAN.md) | **Temporary working plan** for the Kobo Clara BW integration: reading tracker (KOReader + our plugin → `kobo-sync`), Send to Kobo from phone/laptop, fun extras, working from the MacBook, the phased roadmap and the owner's checklist. Deleted once CLAUDE.md carries a Books Feature Detail section. | 29/09/2026 |
+
 ## Raw artifacts
 
 | File | Purpose | Last verified |
