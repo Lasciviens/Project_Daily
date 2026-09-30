@@ -46,6 +46,11 @@ export function fetchTraktSnapshot(): Promise<TraktSnapshot> {
   return invoke('snapshot')
 }
 
+/** Sends an import's app → Trakt changes and stamps the sync state. */
+export function pushToTrakt(changes: unknown, full: boolean): Promise<{ tally: Record<string, number> }> {
+  return invoke('push', { changes, full })
+}
+
 // ── The library slice the preview compares with ─────────────────────────────
 const yearOf = (d: string | null | undefined) => (d ? Number(d.slice(0, 4)) || null : null)
 const missingColumn = (e: { code?: string } | null) => !!e && (e.code === '42703' || e.code === 'PGRST204')
@@ -57,7 +62,7 @@ async function fetchWatchedEpisodes(): Promise<LocalEpisode[]> {
   const out: LocalEpisode[] = []
   let withRepeat = true
   for (let from = 0; ; from += 1000) {
-    const cols = `season_number, episode_number, ${withRepeat ? 'repeat_count, ' : ''}tv_series:tv_series(tmdb_id)`
+    const cols = `season_number, episode_number, watched_at, ${withRepeat ? 'repeat_count, ' : ''}tv_series:tv_series(tmdb_id)`
     const { data, error } = await supabase.from('user_tv_episodes').select(cols)
       .not('watched_at', 'is', null).order('id').range(from, from + 999)
     // Before migration 116 there is no repeat_count on episodes: read without it.
@@ -65,7 +70,7 @@ async function fetchWatchedEpisodes(): Promise<LocalEpisode[]> {
     if (error) throw error
     for (const r of (data ?? []) as unknown as Row[]) {
       const tmdb = Number(one(r.tv_series)?.tmdb_id)
-      if (tmdb) out.push({ tmdbId: tmdb, season: Number(r.season_number), episode: Number(r.episode_number), repeatCount: Number(r.repeat_count) || 0 })
+      if (tmdb) out.push({ tmdbId: tmdb, season: Number(r.season_number), episode: Number(r.episode_number), repeatCount: Number(r.repeat_count) || 0, watchedAt: (r.watched_at as string) ?? null })
     }
     if (!data || data.length < 1000) return out
   }
@@ -73,7 +78,7 @@ async function fetchWatchedEpisodes(): Promise<LocalEpisode[]> {
 
 export async function fetchLocalLibraryForTrakt(): Promise<LocalLibrary> {
   const [mv, tv, episodes] = await Promise.all([
-    supabase.from('user_movie_entries').select('status, repeat_count, rating, movie:movies(tmdb_id, title, release_date)'),
+    supabase.from('user_movie_entries').select('status, repeat_count, rating, watched_at, movie:movies(tmdb_id, title, release_date)'),
     supabase.from('user_tv_entries').select('status, rating, tv_series:tv_series(tmdb_id, title, first_air_date)'),
     fetchWatchedEpisodes(),
   ])
@@ -82,7 +87,7 @@ export async function fetchLocalLibraryForTrakt(): Promise<LocalLibrary> {
   const movies: LocalMovie[] = ((mv.data ?? []) as unknown as Row[]).flatMap(r => {
     const m = one(r.movie)
     const tmdbId = Number(m?.tmdb_id)
-    return tmdbId ? [{ tmdbId, title: String(m?.title ?? ''), year: yearOf(m?.release_date as string), status: String(r.status), repeatCount: Number(r.repeat_count) || 0, rating: (r.rating as number) ?? null }] : []
+    return tmdbId ? [{ tmdbId, title: String(m?.title ?? ''), year: yearOf(m?.release_date as string), status: String(r.status), repeatCount: Number(r.repeat_count) || 0, rating: (r.rating as number) ?? null, watchedAt: (r.watched_at as string) ?? null }] : []
   })
   const shows: LocalShow[] = ((tv.data ?? []) as unknown as Row[]).flatMap(r => {
     const s = one(r.tv_series)

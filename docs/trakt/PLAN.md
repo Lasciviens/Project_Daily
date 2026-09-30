@@ -133,7 +133,7 @@ for titles in your library, refreshed at most weekly. Needs a free MDBList API k
 | Phase | Result | Gate |
 |---|---|---|
 | 1 ✅ | Connect Trakt + **dry-run preview** | the counts look right to you |
-| 2 | First import (+ push of app-only watches), id backfill | no duplicate titles; paused/priority untouched |
+| 2 ✅ | First import (+ push of app-only watches), id backfill | no duplicate titles; paused/priority untouched |
 | 3 | Incremental sync + reconcile (cron + Sync button) | a play scrobbled elsewhere appears within 30 min; a play removed on Trakt disappears here |
 | 4 | Two-way through the outbox | a rating, watch or note made here shows on trakt.tv |
 | 5 | Favorites, notes, Continue watching, my calendar | each visible on the Media page |
@@ -143,6 +143,7 @@ for titles in your library, refreshed at most weekly. Needs a free MDBList API k
 
 - Done: Trakt app created; `TRAKT_CLIENT_ID` / `TRAKT_CLIENT_SECRET` / `MDBLIST_API_KEY` in secrets.
 - Phase 1: apply `116_trakt.sql`, deploy `trakt-api` (JWT verification **ON**).
+- Phase 2: redeploy `trakt-api`, then Preview import → Import now. Watched/watching beats wishlist on both sides (owner, 30.09.2026).
 - Redirect URIs on the Trakt app: `https://lasciviens.github.io/Project_Daily/` (and
   `http://localhost:5173/Project_Daily/` for local testing).
 - Per phase: apply the named migration and deploy the named function.

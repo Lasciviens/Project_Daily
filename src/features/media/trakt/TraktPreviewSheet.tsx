@@ -1,10 +1,12 @@
+import { useState } from 'react'
+import { entityModal } from '../../../shared/modals'
 import { ModalShell } from '../../../shared/modals/ModalShell'
 import { Button, Skeleton, ToneDot, type Tone } from '../../../shared/ui'
 import { Truncate } from '../../../shared/ui/Truncate'
 import { formatDateTime } from '../../../shared/utils/dateFormat'
 import { toast } from '../../../app/store'
 import { previewReport, type PreviewChange, type PreviewTitle, type TraktPreview } from './traktPreview'
-import { useTraktPreview } from './useTrakt'
+import { useRunTraktImport, useTraktPreview } from './useTrakt'
 
 // The first import's dry run: every count the import would act on, with the
 // titles behind it. Reads Trakt and the library; writes nothing.
@@ -73,7 +75,7 @@ function Body({ p }: { p: TraktPreview }) {
       <Section title="Watchlist · ratings · dropped">
         <Row tone="success" label="Watchlist titles to add (as Wishlist)" count={p.watchlist.add.length} items={p.watchlist.add} />
         <Row tone="warn" label="Wishlist here, not on the Trakt watchlist (sent)" count={p.watchlist.push.length} items={p.watchlist.push} />
-        <Row tone="neutral" label="On the watchlist but already watched here (left alone)" count={p.watchlist.skippedWatched} />
+        <Row tone="neutral" label="On the watchlist but already watched (leaves the watchlist)" count={p.watchlist.skippedWatched} />
         <Row tone="info" label="Ratings to take from Trakt" count={p.ratings.update.length} items={p.ratings.update} />
         <Row tone="warn" label="Rated here, not on Trakt (sent)" count={p.ratings.push.length} items={p.ratings.push} />
         <Row tone="info" label="Shows to mark Dropped" count={p.dropped.add.length} items={p.dropped.add} />
@@ -90,6 +92,18 @@ function Body({ p }: { p: TraktPreview }) {
 
 export function TraktPreviewSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const q = useTraktPreview(open)
+  const [step, setStep] = useState<string | null>(null)
+  const imp = useRunTraktImport(setStep)
+  const runImport = async () => {
+    const ok = await entityModal.confirm({
+      title: 'Import from Trakt now?',
+      message: 'Your library takes everything Trakt holds (Trakt wins where both have a value), and what only the app holds is sent to Trakt. Watched or watching titles leave the watchlist on both sides. Safe to run again.',
+      confirmLabel: 'Import',
+    })
+    if (!ok) return
+    try { await imp.mutateAsync() } catch { /* toasted by the hook */ } finally { setStep(null) }
+    q.refetch()
+  }
   const copy = async () => {
     if (!q.data) return
     try {
@@ -105,15 +119,16 @@ export function TraktPreviewSheet({ open, onClose }: { open: boolean; onClose: (
       onClose={onClose}
       size="lg"
       title="Trakt import preview"
-      subtitle={q.data ? `Read ${formatDateTime(q.data.snapshot.fetchedAt)} · nothing has been saved` : 'Reading Trakt and your library…'}
+      subtitle={q.data ? `Read ${formatDateTime(q.data.snapshot.fetchedAt)} · nothing is saved until you press Import now` : 'Reading Trakt and your library…'}
       footer={
         <div className="flex flex-wrap justify-end gap-2">
-          <Button onClick={copy} disabled={!q.data}>Copy report</Button>
-          <Button onClick={() => q.refetch()} disabled={q.isFetching}>Read again</Button>
-          <Button variant="primary" onClick={onClose}>Close</Button>
+          <Button onClick={copy} disabled={!q.data || imp.isPending}>Copy report</Button>
+          <Button onClick={() => q.refetch()} disabled={q.isFetching || imp.isPending}>Read again</Button>
+          <Button variant="primary" onClick={runImport} disabled={!q.data || imp.isPending}>{imp.isPending ? 'Importing…' : 'Import now'}</Button>
         </div>
       }
     >
+      {step && <p className="mb-3 w-fit rounded-control bg-surface-2 px-3 py-2 text-meta text-fg" data-tone="info" role="status">{step}</p>}
       {q.isLoading && <div className="flex flex-col gap-2">{[0, 1, 2, 3].map(i => <Skeleton key={i} className="h-11" />)}</div>}
       {q.error && <p className="text-meta text-fg" data-tone="danger">Could not read Trakt: {(q.error as Error).message}</p>}
       {q.data && <Body p={q.data.preview} />}

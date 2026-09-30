@@ -9,6 +9,7 @@ import type { LocalLibrary, LocalMovie, LocalShow, TraktItem, TraktSnapshot } fr
 //   · Trakt wins for anything it holds (watched, plays, rating, watchlist, dropped)
 //   · app-only facts are listed as "to send to Trakt", never dropped
 //   · plays = 1 + repeat_count
+//   · watched or watching beats wishlist on both sides
 
 export interface PreviewTitle { kind: 'movie' | 'show'; title: string; year: number | null; tmdbId: number | null }
 export interface PreviewChange extends PreviewTitle { detail: string }
@@ -116,13 +117,16 @@ export function buildTraktPreview(snap: TraktSnapshot, local: LocalLibrary): Tra
     const id = w.item.ids.tmdb!
     traktListed.add(`${w.item.type}:${id}`)
     const l = w.item.type === 'movie' ? movies.map.get(id) : shows.map.get(id)
-    if (!l) wl.add.push(title(w.item))
+    const watchedOnTrakt = w.item.type === 'movie' ? traktWatchedMovies.has(id) : traktWatchedShows.has(id)
+    // Watched or watching beats wishlist: it leaves the Trakt watchlist instead.
+    if (!l && watchedOnTrakt) wl.skippedWatched++
+    else if (!l) wl.add.push(title(w.item))
     else if (l.status === 'wishlist') wl.same++
-    // Already watched here: watched wins, the watchlist entry is left alone.
+    // Already watched here: watched wins, the entry leaves the Trakt watchlist.
     else wl.skippedWatched++
   }
   for (const l of movies.map.values()) if (l.status === 'wishlist' && !traktListed.has(`movie:${l.tmdbId}`)) wl.push.push(localTitle('movie', l))
-  for (const l of shows.map.values()) if (l.status === 'wishlist' && !traktListed.has(`show:${l.tmdbId}`)) wl.push.push(localTitle('show', l))
+  for (const l of shows.map.values()) if (l.status === 'wishlist' && !localEps.get(l.tmdbId)?.size && !traktListed.has(`show:${l.tmdbId}`)) wl.push.push(localTitle('show', l))
 
   // ── Ratings ────────────────────────────────────────────────────────────────
   const r: TraktPreview['ratings'] = { update: [], same: 0, push: [] }
@@ -199,7 +203,7 @@ export function previewReport(p: TraktPreview, readAt: string, perList = 15): st
   head('WATCHLIST · RATINGS · DROPPED')
   row('Watchlist titles to add', p.watchlist.add.length, p.watchlist.add)
   row('Wishlist here, not on Trakt watchlist', p.watchlist.push.length, p.watchlist.push)
-  row('On watchlist, already watched here', p.watchlist.skippedWatched)
+  row('On watchlist, already watched (leaves it)', p.watchlist.skippedWatched)
   row('Ratings to take from Trakt', p.ratings.update.length, p.ratings.update)
   row('Rated here, not on Trakt', p.ratings.push.length, p.ratings.push)
   row('Shows to mark Dropped', p.dropped.add.length, p.dropped.add)
