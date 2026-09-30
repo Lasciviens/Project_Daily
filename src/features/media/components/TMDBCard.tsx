@@ -23,7 +23,7 @@ export function TMDBCard({ item, type, onOpenDetail }: Props) {
       className="group flex min-w-0 flex-col text-left"
     >
       <span className={`press-feedback relative block aspect-[2/3] overflow-hidden rounded-row bg-surface-2 transition-[filter] duration-150 group-hover:brightness-90 ${upcoming ? 'grayscale' : ''}`}>
-        <img src={posterUrl(item.poster_path)} alt="" className="h-full w-full object-cover" loading="lazy" />
+        <img src={posterUrl(item.poster_path, 'w185')} alt="" className="h-full w-full object-cover" loading="lazy" decoding="async" />
         {upcoming && (
           <span className="absolute inset-x-0 bottom-0 flex justify-center pb-2">
             <span className="rounded-md bg-scrim/65 px-1.5 py-0.5 text-micro font-semibold uppercase tracking-[0.08em] text-white">
@@ -32,7 +32,7 @@ export function TMDBCard({ item, type, onOpenDetail }: Props) {
           </span>
         )}
       </span>
-      <span className="mt-1.5 truncate px-0.5 text-meta font-medium text-fg">{title}</span>
+      <span className="mt-1 truncate px-0.5 text-meta font-medium text-fg">{title}</span>
       <span className="px-0.5 text-micro text-fg-muted tabular-nums">
         ★ {item.vote_average.toFixed(1)}{date && ` · ${date.slice(0, 4)}`}
       </span>

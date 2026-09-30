@@ -19,6 +19,7 @@ const SORTS: { value: LibrarySort; label: string }[] = [
   { value: 'title', label: 'Title' },
   { value: 'year', label: 'Release year' },
   { value: 'rating', label: 'Your rating' },
+  { value: 'rt', label: 'Rotten Tomatoes' },
 ]
 
 /** The whole library: filter by status, search by title, sort, and a poster grid that adds columns as it widens. */
@@ -54,14 +55,17 @@ export function LibraryView({ items, mediaType, bucket, onBucketChange, onOpenDe
       {shown.length === 0 ? (
         <EmptyState title={query ? 'Nothing matches that search' : 'Nothing here yet'} />
       ) : (
-        <ul className="grid grid-cols-[repeat(auto-fill,minmax(6.5rem,1fr))] gap-3">
+        <ul className="grid grid-cols-[repeat(auto-fill,minmax(5.5rem,1fr))] gap-2.5">
           {shown.map(i => (
             <li key={i.tmdbId} className="min-w-0">
               <button type="button" onClick={() => onOpenDetail(i.tmdbId, mediaType)} className="press-feedback flex w-full flex-col gap-1 rounded-md text-left focus-visible:outline-accent-500">
-                <img src={posterUrl(i.posterPath, 'w185')} alt="" loading="lazy" className="aspect-[2/3] w-full rounded-md bg-surface-2 object-cover" />
+                <span className="relative block">
+                  <img src={posterUrl(i.posterPath, 'w185')} alt="" loading="lazy" decoding="async" className="aspect-[2/3] w-full rounded-md bg-surface-2 object-cover" />
+                  {i.favorite && <span aria-label="Favorite" className="absolute right-1 top-1 rounded-full bg-scrim/60 px-1 text-micro text-white">♥</span>}
+                </span>
                 <Truncate className="text-meta text-fg">{i.title}</Truncate>
                 <span className="text-micro text-fg-muted tabular-nums">
-                  {[i.year, i.rating != null ? `★ ${i.rating}` : null, bucket === 'all' ? BUCKET_LABEL[i.bucket] : null].filter(Boolean).join(' · ')}
+                  {[i.year, i.rating != null ? `★ ${i.rating}` : null, i.rt != null ? `🍅 ${i.rt}%` : null, bucket === 'all' ? BUCKET_LABEL[i.bucket] : null].filter(Boolean).join(' · ')}
                 </span>
               </button>
             </li>

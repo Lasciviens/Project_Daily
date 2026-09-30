@@ -136,8 +136,8 @@ for titles in your library, refreshed at most weekly. Needs a free MDBList API k
 | 2 ✅ | First import (+ push of app-only watches), id backfill | no duplicate titles; paused/priority untouched |
 | 3 ✅ | Incremental sync + reconcile (cron + Sync button) | a play scrobbled elsewhere appears within 30 min; a play removed on Trakt disappears here |
 | 4 ✅ | Two-way through the outbox (watched, plays, ratings, watchlist, dropped; notes come with phase 5) | a rating, watch or note made here shows on trakt.tv |
-| 5 | Favorites, notes, Continue watching, my calendar | each visible on the Media page |
-| 6 | Rotten Tomatoes / Metacritic | scores on posters and in details |
+| 5 ◐ | ✅ Favorites (two-way, migration 118), ✅ Continue watching (`/sync/playback`, live), ✅ my calendar (`/calendars/my/shows`, in Coming soon), ✅ personal lists (live, Media → Lists); **notes not yet** | each visible on the Media page |
+| 6 ✅ | Rotten Tomatoes (critics + audience), Metacritic, IMDb, Letterboxd via MDBList — title page chips, Library 🍅 + sort | scores on posters and in details |
 
 ## 10. Owner steps
 
@@ -149,11 +149,13 @@ for titles in your library, refreshed at most weekly. Needs a free MDBList API k
   `http://localhost:5173/Project_Daily/` for local testing).
 - Per phase: apply the named migration and deploy the named function.
 
-## 11. Proposed next — franchise lists and alerts (owner request 30.09.2026, not built)
+## 11. Lists (built 30.09.2026) and what is still proposed
 
-- **Lists, synced with Trakt personal lists** (verified in the API blueprint: `/users/{id}/lists`,
-  `…/lists/{list_id}/items` add / remove / reorder). A list here is one Trakt list; its items stay
-  one row per title (TMDB id), so a film in "Marvel" and in the library is still one film.
+- ✅ **Lists = Trakt personal lists, read live** (no local table: Trakt holds them): Media → Lists
+  (pick, see, remove, new, delete), "Add to list" on every title page, and **Save as list** on a
+  film's franchise strip (TMDB `belongs_to_collection` → `/collection/{id}`, release order).
+  Private by default. Free accounts have a small list/item allowance (Trakt 420).
+- Still proposed (not built):
 - **Auto-match new titles:** a list can follow a source — a **TMDB collection** (e.g. Harry Potter;
   a film's `belongs_to_collection`) or a **TMDB company/keyword** (e.g. Marvel Studios, whose films
   span many collections). A daily job checks the source; a new title is added to the list (and to
@@ -161,3 +163,16 @@ for titles in your library, refreshed at most weekly. Needs a free MDBList API k
 - **Alerts:** a new title or a new **trailer** (TMDB `/movie/{id}/videos`, type Trailer, by
   `published_at`) for a followed list sends a Web Push. Web Push delivery is still unverified on
   the phone (see CLAUDE.md), so that is checked first.
+
+## 12. API facts used by phases 5–6 (checked 30.09.2026)
+
+- MDBList: `POST https://api.mdblist.com/tmdb/{movie|show}?apikey=…` with `{"ids":["578",…]}` (≤ 200)
+  returns items with `ratings[] {source, value, score, votes, url}`; sources `tomatoes`, `metacritic`,
+  `imdb` (/10), `letterboxd` (/5); RT `url` is site-relative (`/m/jaws`). Audience score: `popcorn`
+  or `tomatoesaudience` (not in the blueprint — both read). Free daily limit unpublished; 429 when over.
+- Trakt: `/sync/favorites/{movies|shows}` (paginated, `rank`, `id`), `POST /sync/favorites[/remove]`
+  `{movies:[{ids}],shows:[{ids}]}`; `/sync/playback` (not paginated, `progress` 0–100, last 6 months);
+  `/calendars/my/shows/{date}/{days}` (≤ 33 days, UTC); `/users/me/lists` (+ `/items`, paginated;
+  `/items/remove`); `last_activities.favorites.updated_at` drives the favorites mirror.
+- Notes: `POST /notes`, `GET /users/me/notes/{type}` (paginated) — not VIP-only, but a free account
+  has a notes limit. Not synced yet (`personal_note` stays app-only for now).

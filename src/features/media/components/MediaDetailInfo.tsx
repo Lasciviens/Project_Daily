@@ -53,7 +53,7 @@ function Fact({ label, children }: { label: string; children: ReactNode }) {
 }
 
 /** Read-only TMDB facts: overview, genres, dates, cast, streaming, crew, trailer. */
-export function MediaDetailInfo({ detail, isMovie }: { detail: TMDBMovieFull | TMDBTVFull; isMovie: boolean }) {
+export function MediaDetailInfo({ detail, isMovie, afterMeta }: { detail: TMDBMovieFull | TMDBTVFull; isMovie: boolean; afterMeta?: ReactNode }) {
   const [showTrailer, setShowTrailer] = useState(false)
   const movie = isMovie ? (detail as TMDBMovieFull) : null
   const tv = !isMovie ? (detail as TMDBTVFull) : null
@@ -98,6 +98,8 @@ export function MediaDetailInfo({ detail, isMovie }: { detail: TMDBMovieFull | T
         )}
         {detail.vote_average > 0 && <span>★ {detail.vote_average.toFixed(1)}</span>}
       </div>
+
+      {afterMeta}
 
       {cast.length > 0 && (
         <div>

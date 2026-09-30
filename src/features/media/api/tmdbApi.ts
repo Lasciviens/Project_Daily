@@ -2,6 +2,7 @@ import { tmdbFetch } from '../../../integrations/tmdb/client'
 import type {
   TMDBSearchMovie, TMDBSearchTV,
   TMDBMovieFull, TMDBTVFull,
+  TMDBCollection, TMDBBasic,
 } from '../types'
 
 interface PagedResponse<T> { results: T[]; total_results: number; total_pages: number }
@@ -70,3 +71,9 @@ export const getNorwegianTopRatedTV = () =>
 
 export const getSeasonDetails = (tvId: number, season: number) =>
   tmdbFetch<import('../types').TMDBSeasonDetail>(`/tv/${tvId}/season/${season}`)
+
+export const getCollection = (collectionId: number) =>
+  tmdbFetch<TMDBCollection>(`/collection/${collectionId}`)
+
+export const getBasic = (type: 'movie' | 'tv', tmdbId: number) =>
+  tmdbFetch<TMDBBasic>(`/${type}/${tmdbId}`)

@@ -7,6 +7,7 @@ import { scheduleTraktSync } from '../trakt/traktAutoSync'
 import {
   fetchWatchedEpisodes,
   markEpisodeWatched,
+  markEpisodesWatched,
   rewatchEpisode,
   unmarkEpisodeWatched,
 } from '../api/watchedEpisodesApi'
@@ -51,6 +52,10 @@ export function useMarkEpisodeWatched(opts?: { successMessage?: string }) {
     successMessage: opts?.successMessage,
     mutationFn: async ({ tvEntryId, episodes, watched = true, again, watchedOn }) => {
       const day = watchedOn ?? format(new Date(), 'yyyy-MM-dd')
+      if (watched && !again && episodes.length > 1) {
+        await markEpisodesWatched(tvEntryId, episodes, day)
+        return
+      }
       for (const { season, episode } of episodes) {
         if (again) await rewatchEpisode(tvEntryId, season, episode, day)
         else if (watched) await markEpisodeWatched(tvEntryId, season, episode, day)

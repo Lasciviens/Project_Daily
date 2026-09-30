@@ -26,11 +26,9 @@ const TABS: { key: DiscoveryTab; label: string }[] = [
   { key: 'norway',   label: 'Norway' },
 ]
 
-// Column flow: the count follows the section's own width. From 36rem the
-// columns share the row, so a poster stays ~8–9.5rem and nothing is left
-// empty beside them (a 9rem MAXIMUM counts columns off the max: 3 posters and
-// a 110px strip at 584px). A phone keeps two 9rem posters.
-const GRID = 'grid grid-cols-[repeat(auto-fill,minmax(6.5rem,9rem))] justify-start gap-3 @[36rem]:grid-cols-[repeat(auto-fill,minmax(8rem,1fr))]'
+// Column flow, compact: posters stay ~5.5–7rem (three or four across on a
+// phone); from 36rem the columns share the row so no strip is left empty.
+const GRID = 'grid grid-cols-[repeat(auto-fill,minmax(5.5rem,1fr))] gap-2.5 @[36rem]:grid-cols-[repeat(auto-fill,minmax(6rem,7.5rem))] @[36rem]:justify-start'
 
 function SkeletonGrid({ count = 20 }: { count?: number }) {
   return (
@@ -95,15 +93,17 @@ export function DiscoveryTabs({ mediaType, onOpenDetail }: Props) {
   const [tab, setTab] = useState<DiscoveryTab>('today')
   const [lastSynced, setLastSynced] = useState<Date | null>(null)
 
-  const trendDay  = useTrendingMovies('day')
-  const trendWeek = useTrendingMovies('week')
-  const popular   = usePopularMovies()
-  const upcoming  = useUpcomingMovies()
+  // Only the list on screen is fetched (it used to load all eight at once).
+  const on = (t: DiscoveryTab, type: MediaType) => tab === t && mediaType === type
+  const trendDay  = useTrendingMovies('day', on('today', 'movie'))
+  const trendWeek = useTrendingMovies('week', on('week', 'movie'))
+  const popular   = usePopularMovies(on('popular', 'movie'))
+  const upcoming  = useUpcomingMovies(on('upcoming', 'movie'))
 
-  const tvTrendDay  = useTrendingTV('day')
-  const tvTrendWeek = useTrendingTV('week')
-  const tvPopular   = usePopularTV()
-  const tvUpcoming  = useUpcomingTV()
+  const tvTrendDay  = useTrendingTV('day', on('today', 'tv'))
+  const tvTrendWeek = useTrendingTV('week', on('week', 'tv'))
+  const tvPopular   = usePopularTV(on('popular', 'tv'))
+  const tvUpcoming  = useUpcomingTV(on('upcoming', 'tv'))
 
   const activeQuery = tab === 'norway' ? null
     : mediaType === 'movie'
@@ -121,10 +121,9 @@ export function DiscoveryTabs({ mediaType, onOpenDetail }: Props) {
 
   return (
     <section className="@container">
-      {/* Phones: the tabs take the whole row and the refresh action wraps
-          under them, so no tab is cut off against the icon. */}
-      <div className="mb-3 flex flex-wrap items-center gap-2 sm:flex-nowrap">
-        <div role="tablist" aria-label="Discover" className="scroll-x -mx-4 flex min-w-0 basis-[calc(100%+2rem)] gap-1 px-4 sm:mx-0 sm:basis-auto sm:flex-1 sm:px-0">
+      {/* The tab row scrolls sideways; the refresh icon stays at its end. */}
+      <div className="mb-3 flex items-center gap-2">
+        <div role="tablist" aria-label="Discover" className="scroll-x scroll-fade-x flex min-w-0 flex-1 gap-1">
           {TABS.map(t => (
             <button
               key={t.key}

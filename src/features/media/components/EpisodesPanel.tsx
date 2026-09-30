@@ -3,7 +3,7 @@ import { format } from 'date-fns'
 import { withProgress } from '../../../shared/hooks/useMutationWithFeedback'
 import { useSeasonDetails } from '../hooks/useTMDB'
 import { useWatchedEpisodes, useMarkEpisodeWatched } from '../hooks/useWatchedEpisodes'
-import { CalendarPlus, Check, RotateCcw, Undo2 } from 'lucide-react'
+import { CalendarPlus, Check, ListChecks, RotateCcw, Undo2 } from 'lucide-react'
 import { useEntityModal } from '../../../shared/modals'
 import { Button, SectionLabel, Skeleton } from '../../../shared/ui'
 import { ceilToQuarter } from '../../../shared/components/plan-modal/planModal.config'
@@ -56,9 +56,12 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
   const selectedUnwatched = [...selected].filter(n => !watchedSet.has(n))
 
   async function runMark(nums: number[], mode: 'watched' | 'again' | 'unwatched', loading: string, success: string) {
-    if (nums.length === 0) return
+    return runMarkRefs(nums.map(episode => ({ season, episode })), mode, loading, success)
+  }
+
+  async function runMarkRefs(episodes: { season: number; episode: number }[], mode: 'watched' | 'again' | 'unwatched', loading: string, success: string) {
+    if (episodes.length === 0) return
     setMarking(true)
-    const episodes = nums.map(episode => ({ season, episode }))
     const ok = await withProgress(
       () => markWatched.mutateAsync({
         tvEntryId, episodes, watchedOn: TODAY,
@@ -68,6 +71,32 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
     )
     if (ok) setSelected(new Set())
     setMarking(false)
+  }
+
+  const watchedAll = new Set(watched.map(w => `${w.season_number}x${w.episode_number}`))
+
+  // "Watched up to here": every episode before this one (earlier seasons by
+  // TMDB's episode count, this season by its list) that isn't marked yet, plus
+  // this one. Episodes already watched keep their date and plays.
+  async function watchUpTo(epNum: number) {
+    const refs: { season: number; episode: number }[] = []
+    for (const s of realSeasons) {
+      if (s.season_number >= season) continue
+      for (let e = 1; e <= s.episode_count; e++) refs.push({ season: s.season_number, episode: e })
+    }
+    for (const ep of seasonData?.episodes ?? []) if (ep.episode_number <= epNum) refs.push({ season, episode: ep.episode_number })
+    const todo = refs.filter(r => !watchedAll.has(`${r.season}x${r.episode}`))
+    if (todo.length === 0) return
+    const label = `S${String(season).padStart(2, '0')}E${String(epNum).padStart(2, '0')}`
+    if (todo.length > 1) {
+      const ok = await modal.confirm({
+        title: `Mark ${todo.length} episodes watched?`,
+        message: `Every episode up to ${label} that isn't marked yet, dated today. Episodes you already watched keep their date.`,
+        confirmLabel: 'Mark watched',
+      })
+      if (!ok) return
+    }
+    await runMarkRefs(todo, 'watched', `Marking up to ${label}…`, `Watched up to ${label}`)
   }
 
   const plural = (n: number) => `${n} episode${n > 1 ? 's' : ''}`
@@ -183,6 +212,9 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
               <Button size="sm" variant="ghost" onClick={unmarkSelected} disabled={marking} icon={<Undo2 />}>Not watched</Button>
             </>
           )}
+          {selected.size === 1 && (
+            <Button size="sm" onClick={() => { void watchUpTo(Math.max(...selected)) }} disabled={marking} icon={<ListChecks />}>Up to here</Button>
+          )}
           <Button size="sm" variant="primary" onClick={openPlan} icon={<CalendarPlus />}>Plan</Button>
           <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>Clear</Button>
         </div>
@@ -202,14 +234,15 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
             const plays      = 1 + Math.max(0, watchedRow?.repeat_count ?? 0)
             const runtime    = ep.runtime ?? tv.episode_run_time?.[0] ?? null
 
+            const aired = !!ep.air_date && ep.air_date <= TODAY
             return (
+              <div key={ep.episode_number} className="group flex items-center gap-1">
               <button
-                key={ep.episode_number}
                 type="button"
                 aria-pressed={isSelected}
                 onClick={() => toggleSelect(ep.episode_number)}
                 className={[
-                  'flex min-h-[44px] w-full items-center gap-2.5 rounded-row px-2 py-1 text-left transition-colors',
+                  'flex min-h-[44px] min-w-0 flex-1 items-center gap-2.5 rounded-row px-2 py-1 text-left transition-colors',
                   // Watched rows read as done at a glance: tinted, dimmed title, check badge.
                   isSelected ? 'bg-accent-50 ring-1 ring-inset ring-accent-500/30'
                     : isWatched ? 'bg-success-soft/60 hover:bg-success-soft'
@@ -252,6 +285,19 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
                   </span>
                 )}
               </button>
+              {!isWatched && aired && (
+                <button
+                  type="button"
+                  onClick={() => { void watchUpTo(ep.episode_number) }}
+                  disabled={marking}
+                  title="Watched up to here"
+                  aria-label={`Watched up to episode ${ep.episode_number}`}
+                  className="grid min-h-[44px] w-11 shrink-0 place-items-center rounded-row text-fg-faint transition-colors hover:bg-surface-hover hover:text-success disabled:opacity-40"
+                >
+                  <ListChecks className="h-4 w-4" />
+                </button>
+              )}
+              </div>
             )
           })}
         </div>

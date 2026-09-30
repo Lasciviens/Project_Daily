@@ -29,7 +29,7 @@ export function SimilarRow({ tmdbId, mediaType, onOpenDetail }: Props) {
                   key={item.id}
                   type="button"
                   onClick={() => onOpenDetail(item.id, mediaType)}
-                  className="group w-16 shrink-0 text-left"
+                  className="group flex w-16 shrink-0 flex-col self-start text-left"
                 >
                   <span className="mb-1 block aspect-[2/3] overflow-hidden rounded-md bg-surface-2">
                     <img

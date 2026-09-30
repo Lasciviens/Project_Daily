@@ -10,7 +10,7 @@ import type { UserMovieEntry, UserTVEntry } from './types'
 // pool and is split by date the same way.
 
 export type LibraryBucket = 'coming' | 'wishlist' | 'watching' | 'paused' | 'completed' | 'dropped'
-export type LibrarySort = 'added' | 'title' | 'year' | 'rating'
+export type LibrarySort = 'added' | 'title' | 'year' | 'rating' | 'rt'
 
 export interface LibraryItem {
   tmdbId: number
@@ -20,6 +20,9 @@ export interface LibraryItem {
   bucket: LibraryBucket
   rating: number | null
   addedAt: string
+  /** Rotten Tomatoes Tomatometer (MDBList), when known. */
+  rt?: number | null
+  favorite?: boolean
 }
 
 export const BUCKET_LABEL: Record<LibraryBucket, string> = {
@@ -47,12 +50,12 @@ export function libraryItems(tab: 'movies' | 'tv', movies: UserMovieEntry[], tv:
   if (tab === 'movies') {
     for (const e of movies) {
       const bucket = bucketFor(e.status, e.movie.release_date, today)
-      if (bucket) out.push({ tmdbId: e.movie.tmdb_id, title: e.movie.title, year: yearOf(e.movie.release_date), posterPath: e.movie.poster_path, bucket, rating: e.rating, addedAt: e.created_at })
+      if (bucket) out.push({ tmdbId: e.movie.tmdb_id, title: e.movie.title, year: yearOf(e.movie.release_date), posterPath: e.movie.poster_path, bucket, rating: e.rating, addedAt: e.created_at, rt: e.movie.rt_critics ?? null, favorite: !!e.is_favorite })
     }
   } else {
     for (const e of tv) {
       const bucket = bucketFor(e.status, e.tv_series.first_air_date, today)
-      if (bucket) out.push({ tmdbId: e.tv_series.tmdb_id, title: e.tv_series.title, year: yearOf(e.tv_series.first_air_date), posterPath: e.tv_series.poster_path, bucket, rating: e.rating, addedAt: e.created_at })
+      if (bucket) out.push({ tmdbId: e.tv_series.tmdb_id, title: e.tv_series.title, year: yearOf(e.tv_series.first_air_date), posterPath: e.tv_series.poster_path, bucket, rating: e.rating, addedAt: e.created_at, rt: e.tv_series.rt_critics ?? null, favorite: !!e.is_favorite })
     }
   }
   return out
@@ -75,8 +78,9 @@ export function filterLibrary(items: LibraryItem[], bucket: LibraryBucket | 'all
     added: (a, b) => b.addedAt.localeCompare(a.addedAt) || byTitle(a, b),
     title: byTitle,
     // No year / no rating sorts last, whichever way the list runs.
-    year: (a, b) => (b.year ?? -Infinity) - (a.year ?? -Infinity) || byTitle(a, b),
-    rating: (a, b) => (b.rating ?? -Infinity) - (a.rating ?? -Infinity) || byTitle(a, b),
+    year: (a, b) => (b.year ?? -1) - (a.year ?? -1) || byTitle(a, b),
+    rating: (a, b) => (b.rating ?? -1) - (a.rating ?? -1) || byTitle(a, b),
+    rt: (a, b) => (b.rt ?? -1) - (a.rt ?? -1) || byTitle(a, b),
   }
   return list.sort(cmp[sort])
 }

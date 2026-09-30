@@ -37,6 +37,7 @@ const json = (body: unknown, status = 200) =>
 
 type AnyRec = Record<string, unknown>
 type Action = 'authorize_url' | 'connect' | 'status' | 'disconnect' | 'snapshot' | 'import' | 'sync'
+  | 'ratings' | 'playback' | 'calendar' | 'lists' | 'list_items' | 'list_create' | 'list_delete' | 'list_add' | 'list_remove'
 
 const API = 'https://api.trakt.tv'
 const AUTHORIZE = 'https://trakt.tv/oauth/authorize'
@@ -97,11 +98,19 @@ async function post(path: string, token: string, body: AnyRec): Promise<AnyRec> 
       await sleep((Number(res.headers.get('Retry-After')) || 2) * 1000)
       continue
     }
+    if (res.status === 420) throw new TraktError(420, 'Trakt account limit reached (a free account has a small number of lists and items — see your Trakt settings)')
     if (!res.ok) throw new TraktError(res.status, `Trakt ${path} ${res.status}`)
     const text = await res.text()
     await sleep(1100)
     return text ? JSON.parse(text) : {}
   }
+}
+
+/** One DELETE (also a write: one per second). */
+async function del(path: string, token: string): Promise<void> {
+  const res = await fetch(`${API}${path}`, { method: 'DELETE', headers: headers(token) })
+  if (!res.ok && res.status !== 404) throw new TraktError(res.status, `Trakt ${path} ${res.status}`)
+  await sleep(1100)
 }
 
 interface PushTitle { tmdb: number; watchedAt?: string | null; rating?: number }
@@ -1020,6 +1029,7 @@ const OUTBOX_PATHS: Record<string, string> = {
   rating_add: '/sync/ratings', rating_remove: '/sync/ratings/remove',
   watchlist_add: '/sync/watchlist', watchlist_remove: '/sync/watchlist/remove',
   dropped_add: '/users/hidden/dropped', dropped_remove: '/users/hidden/dropped/remove',
+  favorite_add: '/sync/favorites', favorite_remove: '/sync/favorites/remove',
 }
 
 /** One Trakt request body for a run of same-op outbox rows. */
@@ -1119,6 +1129,196 @@ async function stamp(db: Db, userId: string, fields: AnyRec) {
   } else if (error) throw error
 }
 
+
+// ── Favorites mirror (phase 5) ───────────────────────────────────────────────
+// Trakt → app for is_favorite. Kept out of the pure plan: a favorite is one
+// flag, and its outbox key (`fav:movie:<tmdb>`) never blocks the rest of the
+// title's mirror. An empty answer while several are favorited here is treated
+// as an outage, not as "unfavorite everything".
+async function mirrorFavorites(db: Db, userId: string, token: string, pending: Set<string>) {
+  const [fm, fs] = await Promise.all([getAll('/sync/favorites/movies', token), getAll('/sync/favorites/shows', token)])
+  const want = {
+    movie: new Set(fm.map(r => Number(((r.movie as AnyRec)?.ids as AnyRec)?.tmdb)).filter(Boolean)),
+    show: new Set(fs.map(r => Number(((r.show as AnyRec)?.ids as AnyRec)?.tmdb)).filter(Boolean)),
+  }
+  const done = { added: 0, removed: 0 }
+  for (const type of ['movie', 'show'] as const) {
+    const table = type === 'movie' ? 'user_movie_entries' : 'user_tv_entries'
+    const join = type === 'movie' ? 'movie:movies(tmdb_id)' : 'tv_series:tv_series(tmdb_id)'
+    const { data, error } = await db.from(table).select(`id, is_favorite, ${join}`).eq('user_id', userId)
+    if (error) { if (missingColumn(error)) return done; throw error }
+    const rows = (data ?? []) as AnyRec[]
+    const tmdbOf = (r: AnyRec) => Number(((r.movie ?? r.tv_series) as AnyRec | null)?.tmdb_id)
+    const favHere = rows.filter(r => r.is_favorite).length
+    const skipRemovals = want[type].size === 0 && favHere > 5
+    const on: string[] = []
+    const off: string[] = []
+    for (const r of rows) {
+      const tmdb = tmdbOf(r)
+      if (!tmdb || pending.has(`fav:${type}:${tmdb}`)) continue
+      const should = want[type].has(tmdb)
+      if (should && !r.is_favorite) on.push(String(r.id))
+      if (!should && r.is_favorite && !skipRemovals) off.push(String(r.id))
+    }
+    if (on.length) { const { error: e } = await db.from(table).update({ is_favorite: true }).in('id', on); if (e) throw e }
+    if (off.length) { const { error: e } = await db.from(table).update({ is_favorite: false }).in('id', off); if (e) throw e }
+    done.added += on.length
+    done.removed += off.length
+  }
+  return done
+}
+
+// ── Rotten Tomatoes / Metacritic / IMDb / Letterboxd via MDBList (phase 6) ────
+// GET/POST https://api.mdblist.com/tmdb/{movie|show}[/{id}]?apikey=… (checked
+// against the MDBList API blueprint, 30.09.2026): `ratings[]` of
+// {source, value, score, votes, url}; `tomatoes` = Tomatometer, `metacritic` =
+// Metascore, `imdb` value /10, `letterboxd` value /5. The audience score's
+// source name is not in the blueprint — `popcorn` and `tomatoesaudience` are
+// both seen in client code, so either is read. The batch POST takes ≤ 200 ids.
+const MDBLIST_KEY = () => Deno.env.get('MDBLIST_API_KEY') ?? ''
+const RATINGS_TTL_MS = 7 * 24 * 3600_000
+
+interface Scores { rt_critics: number | null; rt_audience: number | null; metacritic: number | null; imdb_rating: number | null; letterboxd_rating: number | null; rt_url: string | null }
+
+function parseScores(item: AnyRec): Scores {
+  const list = (Array.isArray(item.ratings) ? item.ratings : []) as AnyRec[]
+  const find = (...names: string[]) => list.find(r => names.includes(String(r.source)))
+  const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null)
+  const tomatoes = find('tomatoes')
+  const url = typeof tomatoes?.url === 'string' && tomatoes.url.startsWith('/') ? `https://www.rottentomatoes.com${tomatoes.url}` : null
+  return {
+    rt_critics: num(tomatoes?.value),
+    rt_audience: num(find('popcorn', 'tomatoesaudience', 'audience')?.value),
+    metacritic: num(find('metacritic')?.value),
+    imdb_rating: num(find('imdb')?.value),
+    letterboxd_rating: num(find('letterboxd')?.value),
+    rt_url: url,
+  }
+}
+
+async function mdblist(type: 'movie' | 'show', ids: number[]): Promise<Map<number, Scores>> {
+  const out = new Map<number, Scores>()
+  if (!MDBLIST_KEY() || ids.length === 0) return out
+  for (const part of chunk(ids, 200)) {
+    const res = await fetch(`https://api.mdblist.com/tmdb/${type}?apikey=${encodeURIComponent(MDBLIST_KEY())}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: part.map(String) }),
+    })
+    if (res.status === 429) throw new Error('MDBList daily limit reached — scores refresh tomorrow')
+    if (res.status === 401 || res.status === 403) throw new Error('MDBList rejected MDBLIST_API_KEY')
+    if (!res.ok) throw new Error(`MDBList ${res.status}`)
+    const data = await res.json()
+    for (const item of (Array.isArray(data) ? data : [data]) as AnyRec[]) {
+      const tmdb = Number((item.ids as AnyRec)?.tmdb)
+      if (tmdb) out.set(tmdb, parseScores(item))
+    }
+  }
+  return out
+}
+
+/** Writes scores onto the catalogue row (movies / tv_series); newer columns fall back before migration 118. */
+async function storeScores(db: Db, type: 'movie' | 'show', scores: Map<number, Scores>, asked: number[]) {
+  const table = type === 'movie' ? 'movies' : 'tv_series'
+  const now = new Date().toISOString()
+  await pool(asked, 5, async tmdb => {
+    const s = scores.get(tmdb)
+    const patch: AnyRec = { ratings_fetched_at: now, ...(s ?? {}) }
+    let { error } = await db.from(table).update(patch).eq('tmdb_id', tmdb)
+    if (error && missingColumn(error)) {
+      const { imdb_rating: _i, letterboxd_rating: _l, rt_url: _u, ...rest } = patch
+      ;({ error } = await db.from(table).update(rest).eq('tmdb_id', tmdb))
+    }
+    if (error) throw error
+  })
+}
+
+/** Library titles whose scores are missing or older than a week; at most 200 of each per run. */
+async function refreshLibraryScores(db: Db, userId: string) {
+  if (!MDBLIST_KEY()) return { skipped: 'no_key' }
+  const cutoff = new Date(Date.now() - RATINGS_TTL_MS).toISOString()
+  const done: AnyRec = {}
+  for (const type of ['movie', 'show'] as const) {
+    const entries = type === 'movie' ? 'user_movie_entries' : 'user_tv_entries'
+    const join = type === 'movie' ? 'c:movies!inner(tmdb_id, ratings_fetched_at)' : 'c:tv_series!inner(tmdb_id, ratings_fetched_at)'
+    const { data, error } = await db.from(entries).select(join).eq('user_id', userId)
+    if (error) throw error
+    const ids = ((data ?? []) as AnyRec[]).map(r => r.c as AnyRec)
+      .filter(c => !c.ratings_fetched_at || String(c.ratings_fetched_at) < cutoff)
+      .map(c => Number(c.tmdb_id)).filter(Boolean).slice(0, 200)
+    const scores = await mdblist(type, ids)
+    await storeScores(db, type, scores, ids)
+    done[type] = ids.length
+  }
+  return done
+}
+
+// ── Live reads: Continue watching, my calendar, personal lists ────────────────
+const tmdbOfItem = (r: AnyRec, type: string) => Number(((r[type] as AnyRec)?.ids as AnyRec)?.tmdb) || null
+
+async function readPlayback(token: string) {
+  const rows = (await get('/sync/playback', token)).data as AnyRec[]
+  return (rows ?? []).map(r => {
+    const isMovie = r.type === 'movie'
+    const ep = (r.episode ?? {}) as AnyRec
+    const show = (r.show ?? {}) as AnyRec
+    return {
+      id: r.id, progress: Number(r.progress) || 0, pausedAt: r.paused_at ?? null,
+      type: isMovie ? 'movie' : 'episode',
+      tmdb: isMovie ? tmdbOfItem(r, 'movie') : Number((show.ids as AnyRec)?.tmdb) || null,
+      title: isMovie ? (r.movie as AnyRec)?.title ?? '' : show.title ?? '',
+      season: isMovie ? null : ep.season ?? null, episode: isMovie ? null : ep.number ?? null,
+      episodeTitle: isMovie ? null : ep.title ?? null,
+    }
+  })
+}
+
+async function readCalendar(token: string) {
+  const start = new Date().toISOString().slice(0, 10)
+  const rows = (await get(`/calendars/my/shows/${start}/33`, token)).data as AnyRec[]
+  return (rows ?? []).map(r => {
+    const ep = (r.episode ?? {}) as AnyRec
+    const show = (r.show ?? {}) as AnyRec
+    return {
+      firstAired: r.first_aired ?? null, season: ep.season ?? null, episode: ep.number ?? null,
+      episodeTitle: ep.title ?? null, showTitle: show.title ?? '', tmdb: Number((show.ids as AnyRec)?.tmdb) || null,
+    }
+  })
+}
+
+const LIST_ID = /^[a-z0-9-]{1,120}$/i
+const listPath = (id: unknown) => {
+  const v = String(id ?? '')
+  if (!LIST_ID.test(v)) throw new TraktError(400, 'Invalid list id')
+  return `/users/me/lists/${encodeURIComponent(v)}`
+}
+const mapList = (l: AnyRec) => ({
+  id: (l.ids as AnyRec)?.trakt ?? null, slug: (l.ids as AnyRec)?.slug ?? null, name: l.name ?? '',
+  description: l.description ?? null, privacy: l.privacy ?? 'private', itemCount: Number(l.item_count) || 0,
+  updatedAt: l.updated_at ?? null,
+})
+function listItemsBody(items: unknown): AnyRec {
+  const list = (Array.isArray(items) ? items : []) as AnyRec[]
+  const pick = (t: string) => list.filter(i => i.type === t && Number(i.tmdb) > 0).map(i => ({ ids: { tmdb: Number(i.tmdb) } }))
+  return { movies: pick('movie'), shows: pick('show') }
+}
+
+async function readListItems(db: Db, token: string, id: unknown) {
+  const rows = await getAll(`${listPath(id)}/items/movie,show`, token)
+  const items = rows.map(r => {
+    const type = r.type === 'show' ? 'show' : 'movie'
+    const media = (r[type] ?? {}) as AnyRec
+    return { listItemId: r.id, rank: r.rank ?? null, type, tmdb: tmdbOfItem(r, type), title: media.title ?? '', year: media.year ?? null, listedAt: r.listed_at ?? null, posterPath: null as string | null }
+  })
+  // Posters from the catalogue where the title is already known; the app fetches the rest from TMDB.
+  for (const type of ['movie', 'show'] as const) {
+    const ids = items.filter(i => i.type === type && i.tmdb).map(i => i.tmdb as number)
+    if (ids.length === 0) continue
+    const { data } = await db.from(type === 'movie' ? 'movies' : 'tv_series').select('tmdb_id, poster_path').in('tmdb_id', ids)
+    const byId = new Map(((data ?? []) as AnyRec[]).map(r => [Number(r.tmdb_id), (r.poster_path as string) ?? null]))
+    for (const i of items) if (i.type === type && i.tmdb) i.posterPath = byId.get(i.tmdb) ?? null
+  }
+  return items
+}
+
 // ── The two runs ─────────────────────────────────────────────────────────────
 const summary = ({ sentKeys: _k, ...rest }: Awaited<ReturnType<typeof drainOutbox>>) => rest
 
@@ -1127,9 +1327,12 @@ async function runSync(db: Db, userId: string, token: string, username: string |
   const drained = await drainOutbox(db, userId, token, deadline)
   const lastActivities = (await get('/sync/last_activities', token)).data as AnyRec
   const { data: state } = await db.from('trakt_sync_state').select('last_activities').eq('user_id', userId).maybeSingle()
-  const before = ((state as AnyRec | null)?.last_activities as AnyRec | null)?.all
+  const prev = ((state as AnyRec | null)?.last_activities ?? null) as AnyRec | null
+  const before = prev?.all
+  // Scores never fail a sync: MDBList being down or out of quota is only noted.
+  const scores = await refreshLibraryScores(db, userId).catch(e => ({ error: e instanceof Error ? e.message : String(e) }))
   if (!opts.full && before && lastActivities?.all && before === lastActivities.all) {
-    return { pulled: false, drained: summary(drained), lastActivities }
+    return { pulled: false, drained: summary(drained), lastActivities, scores }
   }
 
   const snap = await snapshot(token, username) as unknown as TraktSnapshot
@@ -1148,7 +1351,9 @@ async function runSync(db: Db, userId: string, token: string, username: string |
   if (!opts.force && removalsNeedConfirm(plan, local.lib)) { heldBack = removalCount(plan); plan = withoutRemovals(plan) }
   const applied = await applyWrites(db, userId, local, plan, details)
   await backfillIds(db, plan.ids)
-  return { pulled: true, drained: summary(drained), applied, heldBack, kept: plan.kept.length, lastActivities }
+  const favChanged = opts.full || (prev?.favorites as AnyRec | undefined)?.updated_at !== (lastActivities?.favorites as AnyRec | undefined)?.updated_at
+  const favorites = favChanged ? await mirrorFavorites(db, userId, token, pending) : null
+  return { pulled: true, drained: summary(drained), applied, favorites, heldBack, kept: plan.kept.length, lastActivities, scores }
 }
 
 async function runImport(db: Db, userId: string, token: string, username: string | null) {
@@ -1172,7 +1377,8 @@ Deno.serve(async (req: Request) => {
   const key = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
   const supabase = createClient(url, key)
 
-  let body: { action?: Action; code?: string; redirectUri?: string; state?: string; full?: boolean; force?: boolean } = {}
+  let body: { action?: Action; code?: string; redirectUri?: string; state?: string; full?: boolean; force?: boolean
+    mediaType?: string; tmdbId?: number; listId?: string | number; name?: string; description?: string; items?: unknown } = {}
   try { body = await req.json() } catch { /* empty */ }
 
   // Who is calling: the cron (secret → the single user, sync only) or a signed-in browser.
@@ -1195,6 +1401,22 @@ Deno.serve(async (req: Request) => {
     userId = user.id
   }
   const { action } = body
+
+  // Scores for one title (MDBList — needs no Trakt connection). Stored on the
+  // catalogue row when the title is in the library; returned either way.
+  if (action === 'ratings') {
+    try {
+      const type = body.mediaType === 'tv' || body.mediaType === 'show' ? 'show' : 'movie'
+      const tmdb = Number(body.tmdbId)
+      if (!Number.isInteger(tmdb) || tmdb <= 0) return json({ error: 'tmdbId required' }, 400)
+      if (!MDBLIST_KEY()) return json({ error: 'not_configured' }, 200)
+      const scores = await mdblist(type, [tmdb])
+      await storeScores(createClient(url, key, { global: { headers: { 'x-trakt-sync': '1' } } }), type, scores, [tmdb])
+      return json({ scores: scores.get(tmdb) ?? null })
+    } catch (e) {
+      return json({ error: e instanceof Error ? e.message : String(e) }, 502)
+    }
+  }
 
   if (!CLIENT_ID() || !CLIENT_SECRET()) return json({ error: 'not_configured' }, 200)
 
@@ -1285,6 +1507,24 @@ Deno.serve(async (req: Request) => {
 
     if (action === 'snapshot') {
       return json(await snapshot(accessToken, username))
+    }
+
+    if (action === 'playback') return json({ items: await readPlayback(accessToken) })
+    if (action === 'calendar') return json({ items: await readCalendar(accessToken) })
+    if (action === 'lists') return json({ lists: ((await get('/users/me/lists', accessToken)).data as AnyRec[] ?? []).map(mapList) })
+    if (action === 'list_items') return json({ items: await readListItems(supabase, accessToken, body.listId) })
+    if (action === 'list_create') {
+      const name = String(body.name ?? '').trim().slice(0, 100)
+      if (!name) return json({ error: 'name required' }, 400)
+      const l = await post('/users/me/lists', accessToken, {
+        name, description: String(body.description ?? '').slice(0, 500) || undefined, privacy: 'private', sort_by: 'rank', sort_how: 'asc',
+      })
+      return json({ list: mapList(l) })
+    }
+    if (action === 'list_delete') { await del(listPath(body.listId), accessToken); return json({ deleted: true }) }
+    if (action === 'list_add' || action === 'list_remove') {
+      const res = await post(`${listPath(body.listId)}/items${action === 'list_remove' ? '/remove' : ''}`, accessToken, listItemsBody(body.items))
+      return json({ result: res, notFound: notFoundCount(res) })
     }
 
     if (action === 'import' || action === 'sync') {

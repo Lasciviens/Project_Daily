@@ -84,7 +84,12 @@ export const qk = {
     all: ['trakt'] as const,
     status: () => ['trakt', 'status'] as const,
     preview: () => ['trakt', 'preview'] as const,
+    playback: () => ['trakt', 'playback'] as const,
+    calendar: () => ['trakt', 'calendar'] as const,
+    lists: () => ['trakt', 'lists'] as const,
+    listItems: (id: string | number) => ['trakt', 'lists', 'items', String(id)] as const,
   },
+  mediaScores: (type: string, tmdbId: number) => ['media-scores', type, tmdbId] as const,
   wishes: { all: ['wish-items'] as const },
   devRequests: { all: ['dev-requests'] as const },
   projects: {

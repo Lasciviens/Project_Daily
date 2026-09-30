@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ExternalLink, SkipForward, Trash2, CheckCircle2 } from 'lucide-react'
+import { ExternalLink, SkipForward, Trash2, CheckCircle2, Heart } from 'lucide-react'
 import { toast } from '../../../app/store'
 import { withProgress } from '../../../shared/hooks/useMutationWithFeedback'
 import { haptic } from '../../../shared/utils/haptics'
@@ -13,6 +13,7 @@ import { useNextEpisode } from '../hooks/useNextEpisode'
 import { PlanThisButton } from './PlanThisButton'
 import { StarRating } from './StarRating'
 import { MovieWatchedControls } from './MovieWatchedControls'
+import { AddToListMenu } from './AddToListMenu'
 import type { TMDBMovieFull, TMDBTVFull, UserMovieEntry, UserTVEntry, MediaStatus } from '../types'
 
 // No manual "Upcoming" status: "coming soon" is derived from the release date
@@ -38,9 +39,9 @@ function StatusPills({ statuses, value, disabled, onPick }: {
   disabled?: boolean
   onPick: (s: MediaStatus) => void
 }) {
-  // Stable 3-column grid on phones (4 and 5 statuses both wrap to 2 rows).
+  // Content-width pills that wrap (compact on phones too).
   return (
-    <div className="grid grid-cols-3 gap-1.5 sm:flex sm:flex-wrap">
+    <div className="flex flex-wrap gap-1.5">
       {statuses.map(s => (
         <button
           key={s.value}
@@ -57,7 +58,7 @@ function StatusPills({ statuses, value, disabled, onPick }: {
   )
 }
 
-type EntryPatch = Partial<Pick<UserMovieEntry, 'watched_at' | 'rating' | 'personal_note' | 'repeat_count'> & Pick<UserTVEntry, 'started_at' | 'finished_at'>> & { status?: MediaStatus }
+type EntryPatch = Partial<Pick<UserMovieEntry, 'watched_at' | 'rating' | 'personal_note' | 'repeat_count' | 'is_favorite'> & Pick<UserTVEntry, 'started_at' | 'finished_at'>> & { status?: MediaStatus }
 
 interface Props {
   detail: TMDBMovieFull | TMDBTVFull
@@ -173,6 +174,7 @@ export function MediaLibraryControls({ detail, isMovie, userEntry, onAdded }: Pr
         <StatusPills statuses={statuses} value={selectedStatus} onPick={setSelectedStatus} />
         <div className="flex flex-wrap items-center gap-2">
           <Button variant="primary" onClick={handleAdd} loading={addMovie.isPending || addTV.isPending}>Add to library</Button>
+          <AddToListMenu type={isMovie ? 'movie' : 'show'} tmdb={detail.id} title={isMovie ? movie!.title : tv!.name} />
           <a href={tmdbHref} target="_blank" rel="noopener noreferrer" className="btn-ghost btn-sm">
             TMDB <ExternalLink aria-hidden className="h-3.5 w-3.5" />
           </a>
@@ -183,8 +185,30 @@ export function MediaLibraryControls({ detail, isMovie, userEntry, onAdded }: Pr
 
   return (
     <div className="space-y-4">
+      <div className="space-y-2">
+        <StatusPills statuses={statuses} value={userEntry.status} disabled={updating} onPick={handleStatusChange} />
+        {tvEntry && (
+          <p className="text-meta text-fg-muted tabular-nums">Progress: S{tvEntry.current_season} E{tvEntry.current_episode}</p>
+        )}
+        {movieEntry?.status === 'completed' && (
+          <MovieWatchedControls entry={movieEntry} disabled={updating} onPatch={patchEntry} />
+        )}
+      </div>
+
       <div>
-        <SectionLabel className="mb-1.5">Your rating</SectionLabel>
+        <div className="mb-1 flex items-center justify-between gap-2">
+          <SectionLabel>Your rating</SectionLabel>
+          <button
+            type="button"
+            aria-pressed={!!userEntry.is_favorite}
+            disabled={updating}
+            title={userEntry.is_favorite ? 'Remove from favorites' : 'Add to favorites (synced with Trakt)'}
+            onClick={() => { haptic('light'); void withProgress(() => patchEntry({ is_favorite: !userEntry.is_favorite }), { loading: 'Saving…', success: userEntry.is_favorite ? 'Removed from favorites' : 'Added to favorites' }) }}
+            className="-my-2 grid min-h-[44px] min-w-[44px] place-items-center rounded-control text-fg-muted hover:text-danger aria-pressed:text-danger"
+          >
+            <Heart aria-hidden className={`h-5 w-5 ${userEntry.is_favorite ? 'fill-current' : ''}`} />
+          </button>
+        </div>
         <StarRating
           value={(movieEntry ?? tvEntry)?.rating}
           onChange={value => { void withProgress(() => patchEntry({ rating: value }), { loading: 'Saving rating…', success: 'Rating saved' }) }}
@@ -199,20 +223,10 @@ export function MediaLibraryControls({ detail, isMovie, userEntry, onAdded }: Pr
           value={note}
           onChange={e => setNote(e.target.value)}
           onBlur={saveNote}
-          placeholder="Private note — thoughts, where you left off, why you dropped it…"
+          placeholder="Private note…"
           rows={2}
-          className="input min-h-[64px] w-full resize-y py-2"
+          className="input min-h-[56px] w-full resize-y py-2"
         />
-      </div>
-
-      <div className="space-y-2">
-        <StatusPills statuses={statuses} value={userEntry.status} disabled={updating} onPick={handleStatusChange} />
-        {tvEntry && (
-          <p className="text-meta text-fg-muted tabular-nums">Progress: S{tvEntry.current_season} E{tvEntry.current_episode}</p>
-        )}
-        {movieEntry?.status === 'completed' && (
-          <MovieWatchedControls entry={movieEntry} disabled={updating} onPatch={patchEntry} />
-        )}
       </div>
 
       <div className="flex flex-wrap gap-2">
@@ -229,6 +243,7 @@ export function MediaLibraryControls({ detail, isMovie, userEntry, onAdded }: Pr
             Mark watched
           </Button>
         )}
+        <AddToListMenu type={isMovie ? 'movie' : 'show'} tmdb={detail.id} title={isMovie ? movie!.title : tv!.name} />
         <a href={tmdbHref} target="_blank" rel="noopener noreferrer" className="btn-ghost btn-sm">
           TMDB <ExternalLink aria-hidden className="h-3.5 w-3.5" />
         </a>
