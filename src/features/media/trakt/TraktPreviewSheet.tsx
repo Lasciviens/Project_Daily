@@ -2,7 +2,8 @@ import { ModalShell } from '../../../shared/modals/ModalShell'
 import { Button, Skeleton, ToneDot, type Tone } from '../../../shared/ui'
 import { Truncate } from '../../../shared/ui/Truncate'
 import { formatDateTime } from '../../../shared/utils/dateFormat'
-import type { PreviewChange, PreviewTitle, TraktPreview } from './traktPreview'
+import { toast } from '../../../app/store'
+import { previewReport, type PreviewChange, type PreviewTitle, type TraktPreview } from './traktPreview'
 import { useTraktPreview } from './useTrakt'
 
 // The first import's dry run: every count the import would act on, with the
@@ -89,6 +90,15 @@ function Body({ p }: { p: TraktPreview }) {
 
 export function TraktPreviewSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const q = useTraktPreview(open)
+  const copy = async () => {
+    if (!q.data) return
+    try {
+      await navigator.clipboard.writeText(previewReport(q.data.preview, formatDateTime(q.data.snapshot.fetchedAt)))
+      toast.success('Report copied — paste it into the chat')
+    } catch {
+      toast.error('Could not copy — your browser blocked the clipboard')
+    }
+  }
   return (
     <ModalShell
       open={open}
@@ -98,6 +108,7 @@ export function TraktPreviewSheet({ open, onClose }: { open: boolean; onClose: (
       subtitle={q.data ? `Read ${formatDateTime(q.data.snapshot.fetchedAt)} · nothing has been saved` : 'Reading Trakt and your library…'}
       footer={
         <div className="flex flex-wrap justify-end gap-2">
+          <Button onClick={copy} disabled={!q.data}>Copy report</Button>
           <Button onClick={() => q.refetch()} disabled={q.isFetching}>Read again</Button>
           <Button variant="primary" onClick={onClose}>Close</Button>
         </div>

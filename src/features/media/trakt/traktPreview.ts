@@ -164,3 +164,50 @@ export function buildTraktPreview(snap: TraktSnapshot, local: LocalLibrary): Tra
     duplicateLocal: movies.dupes + shows.dupes,
   }
 }
+
+/**
+ * The whole preview as plain text, for pasting into a chat or a note: every
+ * count, and up to `perList` titles behind each non-empty list.
+ */
+export function previewReport(p: TraktPreview, readAt: string, perList = 15): string {
+  const lines: string[] = [`Trakt import preview · read ${readAt} · nothing saved`]
+  const t = (x: PreviewTitle | PreviewChange) =>
+    `${x.title}${x.year ? ` (${x.year})` : ''}${'detail' in x ? ` — ${x.detail}` : ''}`
+  const row = (label: string, count: number, items?: (PreviewTitle | PreviewChange)[]) => {
+    lines.push(`  ${label}: ${count}`)
+    const list = (items ?? []).slice(0, perList)
+    for (const x of list) lines.push(`    - ${t(x)}`)
+    if ((items?.length ?? 0) > list.length) lines.push(`    …and ${items!.length - list.length} more`)
+  }
+  const head = (s: string) => lines.push('', s)
+  if (p.duplicateLocal) lines.push(`Duplicate library titles: ${p.duplicateLocal}`)
+  head('MOVIES')
+  row('New from Trakt', p.movies.add.length, p.movies.add)
+  row('Changed to match Trakt', p.movies.update.length, p.movies.update)
+  row('Already the same', p.movies.same)
+  row('Watched here, not on Trakt', p.movies.push.length, p.movies.push)
+  head('SHOWS')
+  row('New from Trakt', p.shows.add.length, p.shows.add)
+  row('Episodes to add to existing shows', p.shows.update.length, p.shows.update)
+  row('Already the same', p.shows.same)
+  row('Watched here, not on Trakt', p.shows.push.length, p.shows.push)
+  head('EPISODES')
+  row('Watched episodes to add', p.episodes.add)
+  row('Play counts to update', p.episodes.playsChanged)
+  row('Already the same', p.episodes.same)
+  row('Watched here, not on Trakt', p.episodes.push)
+  head('WATCHLIST · RATINGS · DROPPED')
+  row('Watchlist titles to add', p.watchlist.add.length, p.watchlist.add)
+  row('Wishlist here, not on Trakt watchlist', p.watchlist.push.length, p.watchlist.push)
+  row('On watchlist, already watched here', p.watchlist.skippedWatched)
+  row('Ratings to take from Trakt', p.ratings.update.length, p.ratings.update)
+  row('Rated here, not on Trakt', p.ratings.push.length, p.ratings.push)
+  row('Shows to mark Dropped', p.dropped.add.length, p.dropped.add)
+  row('Dropped here, not on Trakt', p.dropped.push.length, p.dropped.push)
+  head('ALSO')
+  row('Favorites (matched / total)', p.favorites.matched)
+  lines.push(`    of ${p.favorites.total} on Trakt`)
+  row('Half-watched', p.playback)
+  row('No TMDB match', p.unmatched.length, p.unmatched)
+  return lines.join('\n')
+}

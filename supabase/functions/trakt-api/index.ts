@@ -105,12 +105,15 @@ async function snapshot(token: string, username: string | null) {
     rMovies, rShows, favMovies, favShows, dropped, pbMovies, pbEpisodes,
   ] = await Promise.all([
     get('/sync/last_activities', token).then(r => r.data),
-    get('/sync/watched/movies', token).then(r => r.data as AnyRec[]),
-    get('/sync/watched/shows', token).then(r => r.data as AnyRec[]),
+    // Since 03.07.2026 the watched endpoints are paginated (100 items without
+    // a limit) and leave out seasons unless asked: extended=progress, which
+    // caps a page at 100 (trakt/trakt-api discussion #775).
+    getAll('/sync/watched/movies', token),
+    getAll('/sync/watched/shows?extended=progress', token, 100),
     getAll('/sync/watchlist/movies/rank/asc', token),
     getAll('/sync/watchlist/shows/rank/asc', token),
-    get('/sync/ratings/movies', token).then(r => r.data as AnyRec[]),
-    get('/sync/ratings/shows', token).then(r => r.data as AnyRec[]),
+    getAll('/sync/ratings/movies', token),
+    getAll('/sync/ratings/shows', token),
     getAll('/sync/favorites/movies/rank/asc', token),
     getAll('/sync/favorites/shows/rank/asc', token),
     getAll('/users/hidden/dropped?type=show', token, 100),

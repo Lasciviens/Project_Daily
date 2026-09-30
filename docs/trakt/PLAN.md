@@ -95,6 +95,7 @@ Episodes match on show + season + episode — the existing unique key of
 4. Each item: match (§3) → upsert.
 5. Then the outbox drains (app → Trakt).
 
+Watched endpoints (since 03.07.2026): paginated, seasons only with `extended=progress` (100 per page).
 Limits: reads 1,000 per 5 minutes, writes **1 per second** — the outbox paces itself.
 Runs on a cron (every 30 min), a manual Sync button, and after app edits.
 Tokens last 24 hours and refresh automatically.

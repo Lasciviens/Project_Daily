@@ -8,7 +8,7 @@
  */
 require('sucrase/register')
 const assert = require('node:assert/strict')
-const { buildTraktPreview } = require('../src/features/media/trakt/traktPreview')
+const { buildTraktPreview, previewReport } = require('../src/features/media/trakt/traktPreview')
 
 let n = 0
 const ok = (actual, expected, msg) => { assert.deepStrictEqual(actual, expected, msg); n++ }
@@ -93,6 +93,14 @@ const ls = (tmdbId, status = 'watching', rating = null) => ({ tmdbId, title: `S$
   ok(p.unmatched.length, 1, 'no TMDB id → one unmatched entry, not a guessed row')
   ok(p.movies.add.length, 0, 'an unmatched item is never added')
   ok(p.duplicateLocal, 1, 'two local rows with one TMDB id are reported')
+}
+
+{
+  const p = buildTraktPreview(snap({ watchedMovies: [{ item: movie(9), plays: 2, lastWatchedAt: null }] }), lib())
+  const r = previewReport(p, '30.09.2026 13:22')
+  ok(r.includes('New from Trakt: 1'), true, 'report carries the counts')
+  ok(r.includes('30.09.2026 13:22'), true, 'report carries the read time')
+  ok(r.split('\n').some(l => l.startsWith('    - ')), true, 'report lists the titles behind a count')
 }
 
 console.log(`verify-trakt-preview: ${n} assertions passed`)
