@@ -59,6 +59,16 @@ export async function markEpisodeWatched(
 ): Promise<WatchedEpisode> {
   const user = await requireUser()
   const tvSeriesId = await resolveTvSeriesId(tvEntryId)
+  // Already watched (here or on Trakt): keep its real date. Overwriting it
+  // with today would lose when it was actually seen; a rewatch is
+  // rewatchEpisode, which counts a play instead.
+  const { data: existing, error: readErr } = await supabase
+    .from('user_tv_episodes').select('*')
+    .eq('user_id', user.id).eq('tv_series_id', tvSeriesId)
+    .eq('season_number', season).eq('episode_number', episode)
+    .maybeSingle()
+  if (readErr) throw readErr
+  if (existing?.watched_at) return existing
   const { data, error } = await supabase
     .from('user_tv_episodes')
     .upsert({
@@ -74,6 +84,29 @@ export async function markEpisodeWatched(
   if (error) throw error
   await syncEntryProgress(tvEntryId)
   return data
+}
+
+/** One more play of an already-watched episode: repeat_count + 1, last watched = that day. */
+export async function rewatchEpisode(
+  tvEntryId: string,
+  season: number,
+  episode: number,
+  watchedOn: string,
+): Promise<void> {
+  const user = await requireUser()
+  const { data, error } = await supabase
+    .from('user_tv_episodes').select('id, repeat_count, watched_at')
+    .eq('user_id', user.id).eq('tv_entry_id', tvEntryId)
+    .eq('season_number', season).eq('episode_number', episode)
+    .maybeSingle()
+  if (error && (error.code === '42703' || error.code === 'PGRST204')) throw new Error('Rewatches need migration 116 (episode play counts)')
+  if (error) throw error
+  if (!data?.watched_at) { await markEpisodeWatched(tvEntryId, season, episode, watchedOn); return }
+  const { error: upErr } = await supabase
+    .from('user_tv_episodes')
+    .update({ repeat_count: (data.repeat_count ?? 0) + 1, watched_at: new Date(watchedOn + 'T12:00:00').toISOString() })
+    .eq('id', data.id)
+  if (upErr) throw upErr
 }
 
 export async function unmarkEpisodeWatched(

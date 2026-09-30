@@ -163,6 +163,8 @@ export interface WatchedEpisode {
   season_number:  number
   episode_number: number
   watched_at:     string | null   // null = planned/not yet watched
+  /** Plays − 1 (migration 116); absent before it. */
+  repeat_count?:  number
 }
 
 export interface TMDBCastMember {

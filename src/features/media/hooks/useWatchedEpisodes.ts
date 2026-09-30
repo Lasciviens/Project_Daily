@@ -6,6 +6,7 @@ import type { WatchedEpisode } from '../types'
 import {
   fetchWatchedEpisodes,
   markEpisodeWatched,
+  rewatchEpisode,
   unmarkEpisodeWatched,
 } from '../api/watchedEpisodesApi'
 
@@ -25,6 +26,8 @@ export interface MarkEpisodesInput {
   episodes: EpisodeRef[]
   /** false = unmark (remove the watched rows). Default true. */
   watched?: boolean
+  /** Count one more play of episodes already watched (a rewatch). */
+  again?: boolean
   /** yyyy-MM-dd; defaults to today. */
   watchedOn?: string
 }
@@ -45,20 +48,22 @@ export function useMarkEpisodeWatched(opts?: { successMessage?: string }) {
     // Opt-in per surface: a one-tap "watched next" confirms itself, a
     // checkbox list stays silent.
     successMessage: opts?.successMessage,
-    mutationFn: async ({ tvEntryId, episodes, watched = true, watchedOn }) => {
+    mutationFn: async ({ tvEntryId, episodes, watched = true, again, watchedOn }) => {
       const day = watchedOn ?? format(new Date(), 'yyyy-MM-dd')
       for (const { season, episode } of episodes) {
-        if (watched) await markEpisodeWatched(tvEntryId, season, episode, day)
+        if (again) await rewatchEpisode(tvEntryId, season, episode, day)
+        else if (watched) await markEpisodeWatched(tvEntryId, season, episode, day)
         else await unmarkEpisodeWatched(tvEntryId, season, episode)
       }
     },
-    onMutate: async ({ tvEntryId, episodes, watched = true }) => {
+    onMutate: async ({ tvEntryId, episodes, watched = true, again }) => {
       const key = qk.media.watched(tvEntryId)
       await qc.cancelQueries({ queryKey: key })
       const previous = qc.getQueryData<WatchedEpisode[]>(key)
       const same = (w: WatchedEpisode, e: EpisodeRef) => w.season_number === e.season && w.episode_number === e.episode
       qc.setQueryData<WatchedEpisode[]>(key, old => {
         if (!old) return old
+        if (again) return old.map(w => episodes.some(e => same(w, e)) ? { ...w, repeat_count: (w.repeat_count ?? 0) + 1 } : w)
         if (!watched) return old.filter(w => !episodes.some(e => same(w, e)))
         // A rapid double-tap must not add a duplicate optimistic row.
         const added = episodes.filter(e => !old.some(w => same(w, e))).map(e => ({
