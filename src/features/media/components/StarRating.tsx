@@ -36,11 +36,15 @@ export function StarRating({ value, onChange, disabled }: Props) {
             <span key={i} className="relative inline-block w-9 h-11 leading-none">
               {/* Base (empty) star */}
               <span className="absolute inset-0 flex items-center justify-center text-2xl text-line-strong select-none">★</span>
-              {/* Filled overlay clipped to pct */}
+              {/* Filled overlay clipped to pct. The star inside keeps the full
+                  cell width, so a half shows the left half of the same star
+                  (centring it in the narrower clip drew a second, shifted star). */}
               <span
-                className="absolute inset-0 flex items-center justify-center text-2xl text-star select-none overflow-hidden"
+                className="absolute inset-y-0 left-0 overflow-hidden select-none"
                 style={{ width: `${pct}%` }}
-              >★</span>
+              >
+                <span className="absolute inset-y-0 left-0 flex w-9 items-center justify-center text-2xl text-star">★</span>
+              </span>
               {/* Hover/click zones — left & right halves */}
               {!disabled && (
                 <>

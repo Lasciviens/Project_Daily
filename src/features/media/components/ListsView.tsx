@@ -9,7 +9,6 @@ import { useDeleteTraktList, useTraktLists } from '../trakt/useTraktExtras'
 import type { FollowKind } from '../api/followsApi'
 import type { MediaType } from '../types'
 import { NewListDialog } from './NewListDialog'
-import { SmartListDialog } from './SmartListDialog'
 import { FollowingPanel } from './FollowingPanel'
 import { SmartListPanel, TraktListPanel } from './ListPanels'
 
@@ -28,9 +27,10 @@ function RailButton({ active, label, meta, onClick }: { active: boolean; label: 
 }
 
 /**
- * Lists: your Trakt lists and smart lists (a franchise, studio, keyword or
- * person that collects its own films from TMDB) in a rail; the picked one on
- * the right with watched / not watched filters and every cover's status.
+ * Lists — one kind of thing: a list you fill yourself (Trakt) or one that fills
+ * itself from a franchise, studio, keyword or person on TMDB (✦). They share a
+ * rail and the same view on the right with watched / not watched filters and
+ * every cover's status.
  */
 export function ListsView({ onOpenDetail }: { onOpenDetail: (id: number, type: MediaType) => void }) {
   const { data: trakt, isLoading: statusLoading } = useTraktStatus()
@@ -38,7 +38,6 @@ export function ListsView({ onOpenDetail }: { onOpenDetail: (id: number, type: M
   const { data: follows = [], isLoading: followsLoading } = useFollows()
   const [picked, setPicked] = useState<Pick | null>(null)
   const [naming, setNaming] = useState(false)
-  const [smartOpen, setSmartOpen] = useState(false)
   const del = useDeleteTraktList()
   const unfollow = useToggleFollow()
   const link = useLinkFollowList()
@@ -57,67 +56,53 @@ export function ListsView({ onOpenDetail }: { onOpenDetail: (id: number, type: M
   }
   async function deleteSmart() {
     if (!smartCurrent) return
-    const ok = await modal.confirm({ title: `Remove the smart list “${smartCurrent.name}”?`, message: 'It stops collecting, and its What’s new events go too. Nothing in your library changes.', confirmLabel: 'Remove', destructive: true })
+    const ok = await modal.confirm({ title: `Delete “${smartCurrent.name}”?`, message: 'It stops filling itself, and its What’s new events go too. Nothing in your library changes.', confirmLabel: 'Delete list', destructive: true })
     if (ok) { unfollow.mutate({ followId: smartCurrent.id, kind: smartCurrent.kind, tmdbId: smartCurrent.tmdb_id, name: smartCurrent.name }); setPicked(null) }
   }
 
   return (
     <section className="@container flex flex-col gap-4">
-      {naming && <NewListDialog onClose={() => setNaming(false)} />}
-      {smartOpen && (
-        <SmartListDialog
-          onClose={() => setSmartOpen(false)}
-          onCreated={() => setPicked(null)}
-        />
-      )}
+      {naming && <NewListDialog auto traktConnected={!!trakt?.connected} onClose={() => setNaming(false)} onAutoCreated={() => setPicked(null)} />}
       <div className="grid grid-cols-1 items-start gap-4 @[56rem]:grid-cols-[17rem_minmax(0,1fr)]">
         {/* Phones and narrow pages: one picker instead of the whole rail above the covers. */}
         <div className="card flex flex-wrap items-center gap-2 p-3 @[56rem]:hidden">
           <select aria-label="List" className="input min-w-0 flex-1"
             value={current ? `${current.src}:${current.id}` : ''}
             onChange={e => { const [src, id] = e.target.value.split(/:(.*)/s); setPicked(src === 'trakt' ? { src: 'trakt', id: Number(id) } : { src: 'smart', id }) }}>
-            {traktLists.length > 0 && <optgroup label="My lists">{traktLists.map(l => <option key={l.id} value={`trakt:${l.id}`}>{l.name} ({l.itemCount})</option>)}</optgroup>}
-            {follows.length > 0 && <optgroup label="Smart lists">{follows.map(f => <option key={f.id} value={`smart:${f.id}`}>{f.name} · {KIND_LABEL[f.kind]}</option>)}</optgroup>}
+            {traktLists.map(l => <option key={l.id} value={`trakt:${l.id}`}>{l.name} ({l.itemCount})</option>)}
+            {follows.map(f => <option key={f.id} value={`smart:${f.id}`}>✦ {f.name} · {KIND_LABEL[f.kind]}</option>)}
           </select>
-          {trakt?.connected && <Button size="sm" variant="ghost" icon={<ListPlus />} onClick={() => setNaming(true)}>List</Button>}
-          <Button size="sm" variant="ghost" icon={<Sparkles />} onClick={() => setSmartOpen(true)}>Smart list</Button>
-          {!trakt?.connected && !statusLoading && <p className="w-full text-meta text-fg-muted">Your own lists live on Trakt. <Link to="/settings?tab=subscriptions" className="font-semibold text-accent-600">Connect Trakt</Link></p>}
+          <Button size="sm" variant="ghost" icon={<ListPlus />} onClick={() => setNaming(true)}>New list</Button>
+          {!trakt?.connected && !statusLoading && <p className="w-full text-meta text-fg-muted">Lists you fill yourself live on Trakt. <Link to="/settings?tab=subscriptions" className="font-semibold text-accent-600">Connect Trakt</Link></p>}
         </div>
-        <aside className="card hidden flex-col gap-3 p-3 @[56rem]:sticky @[56rem]:top-2 @[56rem]:flex">
-          <div>
-            <div className="mb-1 flex items-center justify-between gap-2 px-1">
-              <span className="section-label">My lists</span>
-              {trakt?.connected && <Button size="sm" variant="ghost" icon={<ListPlus />} onClick={() => setNaming(true)}>New</Button>}
-            </div>
-            {statusLoading || (trakt?.connected && lists.isLoading) ? <Skeleton className="h-10 w-full" />
-              : !trakt?.connected ? (
-                <p className="px-1 text-meta text-fg-muted">Lists live on Trakt. <Link to="/settings?tab=subscriptions" className="font-semibold text-accent-600">Connect Trakt</Link></p>
-              ) : traktLists.length === 0 ? (
-                <p className="px-1 text-meta text-fg-muted">No lists yet — make one, or use “Add to list” on a title.</p>
-              ) : traktLists.map(l => (
+        <aside className="card hidden flex-col gap-1 p-3 @[56rem]:sticky @[56rem]:top-2 @[56rem]:flex">
+          <div className="mb-1 flex items-center justify-between gap-2 px-1">
+            <span className="section-label">Lists</span>
+            <Button size="sm" variant="ghost" icon={<ListPlus />} onClick={() => setNaming(true)}>New</Button>
+          </div>
+          {statusLoading || followsLoading || (trakt?.connected && lists.isLoading) ? <Skeleton className="h-10 w-full" />
+            : traktLists.length === 0 && follows.length === 0 ? (
+              <p className="px-1 text-meta text-fg-muted">No lists yet — make one, or use “Add to list” on a title.</p>
+            ) : <>
+              {traktLists.map(l => (
                 <RailButton key={l.id} active={current?.src === 'trakt' && current.id === l.id} label={l.name} meta={String(l.itemCount)} onClick={() => setPicked({ src: 'trakt', id: l.id })} />
               ))}
-            {lists.error && <p className="px-1 text-meta text-danger">{(lists.error as Error).message}</p>}
-          </div>
-          <div className="border-t border-line pt-3">
-            <div className="mb-1 flex items-center justify-between gap-2 px-1">
-              <span className="section-label">Smart lists</span>
-              <Button size="sm" variant="ghost" icon={<Sparkles />} onClick={() => setSmartOpen(true)}>New</Button>
-            </div>
-            {followsLoading ? <Skeleton className="h-10 w-full" />
-              : follows.length === 0 ? (
-                <p className="px-1 text-meta text-fg-muted">A smart list collects itself — e.g. every Marvel Studios film, watched and not.</p>
-              ) : follows.map(f => (
-                <RailButton key={f.id} active={current?.src === 'smart' && current.id === f.id} label={f.name} meta={KIND_LABEL[f.kind]} onClick={() => setPicked({ src: 'smart', id: f.id })} />
+              {follows.map(f => (
+                <RailButton key={f.id} active={current?.src === 'smart' && current.id === f.id} label={`✦ ${f.name}`} meta={KIND_LABEL[f.kind]} onClick={() => setPicked({ src: 'smart', id: f.id })} />
               ))}
-          </div>
+            </>}
+          {lists.error && <p className="px-1 text-meta text-danger">{(lists.error as Error).message}</p>}
+          {!trakt?.connected && !statusLoading && (
+            <p className="px-1 pt-2 text-meta text-fg-muted">Lists you fill yourself live on Trakt. <Link to="/settings?tab=subscriptions" className="font-semibold text-accent-600">Connect Trakt</Link></p>
+          )}
+          <p className="px-1 pt-2 text-micro text-fg-muted">✦ fills itself from a franchise, studio, keyword or person.</p>
         </aside>
 
         <div className="card flex min-w-0 flex-col gap-3 p-4 sm:p-5">
           {!current ? (
             <EmptyState icon={<ListVideo />} title="No lists yet"
-              description="Make a smart list from a franchise, studio, keyword or person — every film comes with it."
-              action={<Button variant="primary" icon={<Sparkles />} onClick={() => setSmartOpen(true)}>New smart list</Button>} />
+              description="Add titles yourself, or let a list fill itself from a franchise, studio, keyword or person."
+              action={<Button variant="primary" icon={<ListPlus />} onClick={() => setNaming(true)}>New list</Button>} />
           ) : traktCurrent ? (
             <>
               <header className="flex flex-wrap items-start justify-between gap-2">
@@ -134,7 +119,7 @@ export function ListsView({ onOpenDetail }: { onOpenDetail: (id: number, type: M
               <header className="flex flex-wrap items-start justify-between gap-2">
                 <div className="min-w-0">
                   <h2 className="flex items-center gap-1.5 text-lead font-semibold text-fg"><Sparkles aria-hidden className="h-4 w-4 text-fg-muted" />{smartCurrent.name}</h2>
-                  <p className="text-meta text-fg-muted">Smart list · {KIND_LABEL[smartCurrent.kind]} on TMDB · new titles and trailers show under What’s new</p>
+                  <p className="text-meta text-fg-muted">Fills itself · {KIND_LABEL[smartCurrent.kind]} on TMDB · new titles and trailers show under What’s new</p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   {trakt?.connected && traktLists.length > 0 && (
@@ -145,7 +130,7 @@ export function ListsView({ onOpenDetail }: { onOpenDetail: (id: number, type: M
                       {traktLists.map(l => <option key={l.id} value={l.id}>New titles → “{l.name}”</option>)}
                     </select>
                   )}
-                  <Button size="sm" variant="ghost" icon={<Trash2 />} className="text-danger" onClick={() => { void deleteSmart() }}>Remove</Button>
+                  <Button size="sm" variant="ghost" icon={<Trash2 />} className="text-danger" onClick={() => { void deleteSmart() }}>Delete list</Button>
                 </div>
               </header>
               <SmartListPanel key={smartCurrent.id} follow={smartCurrent} onOpen={onOpenDetail} />

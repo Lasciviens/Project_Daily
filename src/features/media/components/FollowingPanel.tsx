@@ -5,7 +5,7 @@ import { Button, SectionLabel, Truncate } from '../../../shared/ui'
 import { formatDate } from '../../../shared/utils/dateFormat'
 import { useCheckFollows, useFollowEvents, useFollows, useMarkFollowEventsSeen } from '../hooks/useFollows'
 
-/** What's new in what you follow (smart lists and Follows): new titles and new trailers, checked daily. */
+/** What's new in what you follow (self-filling lists and Follows): new titles and new trailers, checked daily. */
 export function FollowingPanel() {
   const { data: follows = [] } = useFollows()
   const { data: events = [] } = useFollowEvents()
@@ -19,7 +19,7 @@ export function FollowingPanel() {
     return (
       <section className="card p-3">
         <SectionLabel className="mb-1">What’s new</SectionLabel>
-        <p className="text-meta text-fg-muted">Make a smart list (or Follow a franchise, director, studio or actor on a movie’s page): new titles and trailers show up here.</p>
+        <p className="text-meta text-fg-muted">Make a list that fills itself (or Follow a franchise, director, studio or actor on a movie’s page): new titles and trailers show up here.</p>
       </section>
     )
   }

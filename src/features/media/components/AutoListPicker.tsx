@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { Search } from 'lucide-react'
-import { ModalShell } from '../../../shared/modals/ModalShell'
 import { SegmentedControl, Skeleton, Truncate } from '../../../shared/ui'
 import type { FollowKind } from '../api/followsApi'
 import { useToggleFollow } from '../hooks/useFollows'
@@ -14,11 +13,11 @@ const KINDS: { value: SourceKind; label: string; hint: string; examples: string[
 ]
 
 /**
- * A smart list collects itself: pick a franchise, studio, keyword or person on
- * TMDB and every film comes along (and new ones later — it is also followed,
- * so new titles and trailers show under What's new).
+ * The "Fill automatically" half of New list: pick a franchise, studio, keyword
+ * or person on TMDB and every film comes along (and new ones later — it is
+ * also followed, so new titles and trailers show under What's new).
  */
-export function SmartListDialog({ onClose, onCreated }: { onClose: () => void; onCreated: (kind: FollowKind, tmdbId: number) => void }) {
+export function AutoListPicker({ onCreated }: { onCreated: (kind: FollowKind, tmdbId: number) => void }) {
   const [kind, setKind] = useState<SourceKind>('company')
   const [query, setQuery] = useState('')
   const results = useSourceSearch(kind, query)
@@ -30,12 +29,10 @@ export function SmartListDialog({ onClose, onCreated }: { onClose: () => void; o
     try {
       await add.mutateAsync({ kind: k, tmdbId: r.id, name: r.name })
       onCreated(k, r.id)
-      onClose()
     } catch { /* toasted */ }
   }
 
   return (
-    <ModalShell onClose={onClose} size="sm" title="New smart list" subtitle="Collects every film from one source on TMDB">
       <div className="flex flex-col gap-3">
         <SegmentedControl<SourceKind> value={kind} onChange={k => { setKind(k); setQuery('') }} options={KINDS.map(k => ({ value: k.value, label: k.label }))} />
         <p className="text-meta text-fg-muted">{meta.hint}.</p>
@@ -69,6 +66,5 @@ export function SmartListDialog({ onClose, onCreated }: { onClose: () => void; o
           </ul>
         )}
       </div>
-    </ModalShell>
   )
 }
