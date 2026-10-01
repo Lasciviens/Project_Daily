@@ -19,7 +19,7 @@ const SELF = /^(self|himself|herself|themselves)\b/i
 
 export interface SmartListResult { titles: ListTitle[]; total: number; capped: boolean }
 
-async function fetchSmart(kind: FollowKind, id: number, hideExtras: boolean): Promise<SmartListResult> {
+export async function fetchSmart(kind: FollowKind, id: number, hideExtras: boolean): Promise<SmartListResult> {
   if (kind === 'collection') {
     const c = await getCollection(id)
     const titles = c.parts.map(toTitle)

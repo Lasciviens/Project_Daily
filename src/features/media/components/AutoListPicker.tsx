@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Search } from 'lucide-react'
 import { SegmentedControl, Skeleton, Truncate } from '../../../shared/ui'
 import type { FollowKind } from '../api/followsApi'
-import { useToggleFollow } from '../hooks/useFollows'
+import { useCreateAutoList } from '../hooks/useAutoLists'
 import { useSourceSearch, type SourceKind } from '../hooks/useSmartLists'
 
 const KINDS: { value: SourceKind; label: string; hint: string; examples: string[] }[] = [
@@ -14,14 +14,14 @@ const KINDS: { value: SourceKind; label: string; hint: string; examples: string[
 
 /**
  * The "Fill automatically" half of New list: pick a franchise, studio, keyword
- * or person on TMDB and every film comes along (and new ones later — it is
- * also followed, so new titles and trailers show under What's new).
+ * or person on TMDB. It becomes a normal Trakt list holding every film, and new
+ * ones are added to it later (new titles and trailers also show under What's new).
  */
 export function AutoListPicker({ onCreated }: { onCreated: (kind: FollowKind, tmdbId: number) => void }) {
   const [kind, setKind] = useState<SourceKind>('company')
   const [query, setQuery] = useState('')
   const results = useSourceSearch(kind, query)
-  const add = useToggleFollow()
+  const add = useCreateAutoList()
   const meta = KINDS.find(k => k.value === kind)!
 
   async function pick(r: { id: number; name: string; known_for_department?: string }) {

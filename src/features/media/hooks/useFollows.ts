@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
 import { qk, STALE } from '../../../shared/query'
-import { addFollow, checkFollowsNow, fetchFollowEvents, fetchFollows, markEventsSeen, removeFollow, updateFollow, type FollowKind } from '../api/followsApi'
+import { addFollow, checkFollowsNow, fetchFollowEvents, fetchFollows, markEventsSeen, removeFollow, type FollowKind } from '../api/followsApi'
 
 export const useFollows = () => useQuery({ queryKey: qk.mediaFollows.list(), queryFn: fetchFollows, staleTime: STALE.default })
 export const useFollowEvents = () => useQuery({ queryKey: qk.mediaFollows.events(), queryFn: fetchFollowEvents, staleTime: STALE.default })
@@ -17,15 +17,6 @@ export function useToggleFollow() {
       return true
     },
     successMessage: (on, v) => (on ? `Following ${v.name}` : `Stopped following ${v.name}`),
-    invalidates: [qk.mediaFollows.all],
-  })
-}
-
-export function useLinkFollowList() {
-  return useMutationWithFeedback({
-    action: 'media_follow_link_list',
-    mutationFn: (v: { id: string; listId: number | null }) => updateFollow(v.id, { trakt_list_id: v.listId }),
-    successMessage: (_r, v) => (v.listId ? 'New titles will go onto that list' : 'List unlinked'),
     invalidates: [qk.mediaFollows.all],
   })
 }
