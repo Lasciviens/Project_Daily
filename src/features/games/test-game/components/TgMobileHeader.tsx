@@ -52,7 +52,7 @@ export function TgMobileHeader({ groups, counts, genres, studios, statusCounts, 
   }
 
   // Search, filters and sort only exist where there is a game list to narrow.
-  const hasFilters = section !== 'analytics' && section !== 'advanced' && section !== 'scrape'
+  const hasFilters = section !== 'analytics' && section !== 'advanced' && section !== 'scrape' && section !== 'igdb'
   // A live query keeps the field open, so the list is never filtered by text you can't see.
   const showSearch = hasFilters && (searchOpen || search !== '')
   const closeSearch = () => { setSearch(''); setSearchOpen(false) }

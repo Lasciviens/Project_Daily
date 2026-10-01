@@ -16,7 +16,7 @@ import { ADVANCED_TABS } from './advancedTabs'
 
 const SECTION_TITLE: Record<TgSection, string> = {
   library: 'Library', queue: 'Play Queue', wishlist: 'Wishlist', completed: 'Completed',
-  analytics: 'Analytics', scrape: 'Scrape', advanced: 'Advanced',
+  analytics: 'Analytics', scrape: 'Scrape', igdb: 'IGDB', advanced: 'Advanced',
 }
 
 function plural(n: number, word: string) { return `${n.toLocaleString('en-GB')} ${word}${n === 1 ? '' : 's'}` }
@@ -128,13 +128,22 @@ export function useTgHeaderConfig({ games, platform, statusCounts: sCounts, visi
           visibleCount !== queued.length ? `${n(visibleCount)} shown` : null,
         ].filter(Boolean).join(' · '),
         note,
-        subtitleTitle: note ? `Queued games still to play × the median play time of your ${q.basis} completed games — it knows nothing about these games' own length.` : undefined,
+        subtitleTitle: note
+          ? q.fromIgdb === 0
+            ? `Queued games still to play × the median play time of your ${q.basis} completed games — match them on IGDB to use each game's own length.`
+            : q.fromIgdb === q.toPlay
+              ? `Each game's IGDB length (story plus some extras) minus what you've already played.`
+              : `${q.fromIgdb} of ${q.toPlay} use their IGDB length minus what you've played; the rest use the median play time of your ${q.basis} completed games.`
+          : undefined,
         inlineAction: q.finished.length ? createElement(TgQueueCleanup, { games }) : undefined,
         logo: 'queue', tabs: [], activeTab: null,
       }
     }
     if (section === 'analytics') {
       return { title: 'Analytics', subtitle: 'Your library in numbers', logo: 'analytics', tabs: [], activeTab: null }
+    }
+    if (section === 'igdb') {
+      return { title: 'IGDB', subtitle: 'Game length, ratings and a link to each game on igdb.com', logo: 'igdb', tabs: [], activeTab: null }
     }
     if (section === 'scrape') {
       return {

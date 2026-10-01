@@ -1,5 +1,5 @@
 import {
-  ChartColumn, CircleCheckBig, Gamepad2, Heart, LibraryBig, SlidersHorizontal, SquarePlay, Wand2,
+  ChartColumn, CircleCheckBig, Gamepad2, Heart, LibraryBig, SlidersHorizontal, SquarePlay, Timer, Wand2,
   type LucideIcon,
 } from 'lucide-react'
 import { platformInfo, type PlatformFamily } from '../testGameModel'
@@ -87,6 +87,7 @@ const SECTION_ICONS: Record<TgHeaderLogo, LucideIcon> = {
   completed: CircleCheckBig,
   analytics: ChartColumn,
   scrape: Wand2,
+  igdb: Timer,
   advanced: SlidersHorizontal,
 }
 

@@ -9,6 +9,7 @@ import { TgDetailActions } from './TgDetailActions'
 import { TgDetailFields } from './TgDetailFields'
 import { TgDetailScreenScraper } from './TgDetailScreenScraper'
 import { TgDetailStorage } from './TgDetailStorage'
+import { TgDetailIgdb } from './TgDetailIgdb'
 import { TgDetailNotes } from './TgDetailNotes'
 import { TgDetailSeries } from './TgDetailSeries'
 import { TgScreenshotStrip } from './TgScreenshotStrip'
@@ -99,6 +100,7 @@ export function TgDetailPanel({ game, actions, variant, onClose }: Props) {
           {(variant !== 'sheet' || settledId === game.id) && (
             <ErrorBoundary key={`f-${game.id}`} label="Details" action="games_detail_fields"><TgDetailFields game={game} /></ErrorBoundary>
           )}
+          <ErrorBoundary key={`i-${game.id}`} label="IGDB" action="games_detail_igdb"><TgDetailIgdb game={game} settled={settledId === game.id} /></ErrorBoundary>
           <ErrorBoundary key={`s-${game.id}`} label="ScreenScraper" action="games_detail_screenscraper"><TgDetailScreenScraper game={game} settled={settledId === game.id} /></ErrorBoundary>
           <ErrorBoundary key={`st-${game.id}`} label="Storage" action="games_detail_storage"><TgDetailStorage game={game} settled={settledId === game.id} /></ErrorBoundary>
         </div>

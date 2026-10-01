@@ -109,6 +109,23 @@ export interface Game {
   provider_kind?: string | null
   /** Migration 105 — the provider's first-played timestamp (PlayStation). */
   first_played_at?: string | null
+  /** Migration 121 — IGDB match, ratings (0–100) and time to beat (seconds).
+   *  Absent before 121; `igdb_data` is read per game (fetchIgdbData), not in lists. */
+  igdb_id?: number | null
+  igdb_slug?: string | null
+  igdb_url?: string | null
+  igdb_match?: 'steam' | 'exact' | 'picked' | null
+  igdb_fetched_at?: string | null
+  igdb_rating?: number | null
+  igdb_rating_count?: number | null
+  igdb_critic_rating?: number | null
+  igdb_critic_count?: number | null
+  igdb_total_rating?: number | null
+  igdb_total_count?: number | null
+  ttb_main_seconds?: number | null
+  ttb_extra_seconds?: number | null
+  ttb_full_seconds?: number | null
+  ttb_count?: number | null
   esde_playcount:        number | null
   esde_last_played:      string | null
   esde_playtime_seconds: number | null

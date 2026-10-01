@@ -10,22 +10,23 @@ import type { Game, PlayStatus } from '../types'
 import { isRealSession, playStatsOf } from '../gameStats'
 import { psnKind } from '../providerEntries'
 import { formatDate } from '../../../shared/utils/dateFormat'
+import { formatLength } from '../igdb/igdbMatch'
 
 // ─── Page state vocabulary ───────────────────────────────────────────────────
 
 /** The sidebar's top section. `wishlist`/`completed` are status
  *  views across EVERY platform; `library` is scoped by the platform list. */
-export type TgSection = 'library' | 'queue' | 'wishlist' | 'completed' | 'analytics' | 'scrape' | 'advanced'
+export type TgSection = 'library' | 'queue' | 'wishlist' | 'completed' | 'analytics' | 'scrape' | 'igdb' | 'advanced'
 export type TgView = 'shelf' | 'grid' | 'list'
 export type TgSort =
   | 'title' | 'title-desc' | 'recent' | 'recent-asc' | 'playtime' | 'playtime-asc'
-  | 'rating' | 'rating-asc' | 'year-desc' | 'year-asc' | 'added' | 'series'
+  | 'rating' | 'rating-asc' | 'year-desc' | 'year-asc' | 'added' | 'series' | 'length' | 'igdb-rating'
 export type TgStatusFilter = 'all' | PlayStatus
 
 export const ALL_PLATFORMS = 'all'
 
 /** Every section, in navigation order. */
-export const TG_SECTIONS: readonly TgSection[] = ['library', 'queue', 'wishlist', 'completed', 'analytics', 'scrape', 'advanced']
+export const TG_SECTIONS: readonly TgSection[] = ['library', 'queue', 'wishlist', 'completed', 'analytics', 'scrape', 'igdb', 'advanced']
 
 export function parseTgSection(v: string | null | undefined): TgSection | null {
   const k = (v ?? '').trim().toLowerCase()
@@ -71,6 +72,8 @@ export const SORT_LABEL: Record<TgSort, string> = {
   'year-asc': 'Oldest',
   added: 'Recently added',
   series: 'Series',
+  length: 'Shortest first',
+  'igdb-rating': 'IGDB score',
 }
 
 export const STATUS_SECTIONS: Partial<Record<TgSection, PlayStatus>> = {
@@ -618,6 +621,9 @@ export function sortGames<T extends Game>(games: T[], sort: TgSort): T[] {
     case 'year-desc':  return gs.sort((a, b) => (b.release_year ?? -Infinity) - (a.release_year ?? -Infinity) || byTitle(a, b))
     case 'year-asc':   return gs.sort((a, b) => (a.release_year ?? Infinity) - (b.release_year ?? Infinity) || byTitle(a, b))
     case 'added':      return gs.sort((a, b) => time(b.created_at) - time(a.created_at) || byTitle(a, b))
+    // IGDB's time to beat (with some extras, else to the credits); unknown last.
+    case 'length':     return sortByKey(gs, g => gameLengthSeconds(g) ?? Infinity, 1, byTitle)
+    case 'igdb-rating': return sortByKey(gs, g => g.igdb_total_rating ?? -Infinity, -1, byTitle)
     // A series together in release order; games without one after, by title.
     case 'series':     return gs.sort((a, b) => {
       const sa = a.series_name?.trim() ?? '', sb = b.series_name?.trim() ?? ''
@@ -662,6 +668,8 @@ export interface QueueInsights {
   /** Rough play time for the rest of the queue: its length × the median play time of
    *  your completed games (null with fewer than 3 of those to go on). */
   forecastSeconds: number | null
+  /** How many of the still-to-play games use IGDB's own length (minus what you've played). */
+  fromIgdb: number
   /** How many completed games the median came from. */
   basis: number
 }
@@ -681,7 +689,18 @@ export function queueInsights(games: readonly TgGame[]): QueueInsights {
     .sort((a, b) => a - b)
   const mid = done.length >> 1
   const median = done.length ? (done.length % 2 ? done[mid] : (done[mid - 1] + done[mid]) / 2) : 0
-  return { finished, toPlay, forecastSeconds: done.length >= 3 && toPlay > 0 ? median * toPlay : null, basis: done.length }
+  // Each game still to play: IGDB's length (with extras, else to the credits)
+  // minus what you've already played; without one, your median.
+  const enough = done.length >= 3
+  let total = 0, fromIgdb = 0, unknown = 0
+  for (const g of queued) {
+    if (g.play_status === 'completed' || g.play_status === 'dropped') continue
+    const length = gameLengthSeconds(g)
+    if (length) { fromIgdb++; total += Math.max(0, length - (playSeconds(g) ?? 0)) } else if (enough) total += median
+    else unknown++
+  }
+  const forecastSeconds = toPlay > 0 && unknown === 0 && (enough || fromIgdb === toPlay) ? total : null
+  return { finished, toPlay, forecastSeconds, fromIgdb, basis: done.length }
 }
 
 // ─── Shelf layout ────────────────────────────────────────────────────────────
@@ -942,6 +961,11 @@ export function subtitleParts(g: TgGame, genreFallback?: string | null): string[
 // keeps writing only `esde_*` — so reading them first froze play time and
 // "last played" at the day 096 ran.
 
+/** How long a game takes per IGDB: with some extras, else to the credits. */
+export function gameLengthSeconds(g: Game): number | null {
+  return g.ttb_extra_seconds || g.ttb_main_seconds || null
+}
+
 export function lastPlayedIso(g: Game): string | null { return playStatsOf(g).last }
 export function playSeconds(g: Game): number | null { return playStatsOf(g).seconds }
 export function playCount(g: Game): number | null { return playStatsOf(g).count }
@@ -964,6 +988,8 @@ export function cardMeta(g: TgGame, sort: TgSort, playtime: (minutes: number) =>
     case 'year-asc': return g.release_year ? String(g.release_year) : 'Year unknown'
     case 'added': return `Added ${formatDay(g.created_at)}`
     case 'series': return g.series_name?.trim() || 'No series'
+    case 'length': { const l = formatLength(gameLengthSeconds(g)); return l ? `About ${l}` : 'Length unknown' }
+    case 'igdb-rating': return g.igdb_total_rating != null ? `IGDB ${Math.round(g.igdb_total_rating)}` : 'No IGDB score'
     default: return [platform, g.release_year].filter(Boolean).join(' · ')
   }
 }

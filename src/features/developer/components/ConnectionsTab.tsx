@@ -1,7 +1,7 @@
 import { useState, useEffect, type ReactNode } from 'react'
 import { useGoogleLogin } from '@react-oauth/google'
 import { useCalendarStore } from '../../../app/store'
-import { CalendarDays, Bike, Gamepad2, Monitor, Dumbbell, HeartPulse, RefreshCw, Unplug } from 'lucide-react'
+import { CalendarDays, Bike, Gamepad2, Monitor, Dumbbell, HeartPulse, RefreshCw, Timer, Unplug } from 'lucide-react'
 import { exchangeGoogleCode, disconnectGoogle } from '../api/connectionsApi'
 import { Button, PageBoard } from '../../../shared/ui'
 import { formatDate, formatDateTime } from '../../../shared/utils/dateFormat'
@@ -15,6 +15,7 @@ import { PsnNpssoForm } from '../../games/components/PsnNpssoForm'
 import { isPsnReauthRequired } from '../../games/api/psnApi'
 import { npssoLifetime, npssoLifetimeLabel } from '../../games/api/psnTokenLifetime'
 import { useSteamProfile } from '../../games/hooks/useSteam'
+import { useIgdbStatus } from '../../games/igdb/useIgdb'
 import { GOOGLE_SCOPES } from '../../calendar/googleScopes'
 import { CONNECTIONS_BOARD, type ConnectionSection } from '../developerBoards'
 import { OtherSubscriptions, SubscriptionSummary } from '../../settings/components/SubscriptionBits'
@@ -218,6 +219,20 @@ function SteamCard() {
   )
 }
 
+function IgdbCard() {
+  const status = useIgdbStatus()
+  const configured = status.data?.configured
+  return (
+    <ConnectionCard service="igdb" kind="server" icon={<Timer />} name="IGDB"
+      description="Adds how long each game takes, member and critic scores, and a link to its IGDB page."
+      status={status.isLoading ? 'unknown' : configured ? 'connected' : status.error ? 'unknown' : 'disconnected'}
+      statusNote={!status.isLoading && !configured ? (status.error ? 'Not checked' : 'Not set up') : undefined}
+      footer={configured
+        ? 'Match games on Games → IGDB.'
+        : 'Needs a free Twitch developer app: its Client ID and Client Secret go into Supabase Edge Function secrets (IGDB_CLIENT_ID, IGDB_CLIENT_SECRET), then the igdb-api function deployed. Steps on Games → IGDB.'} />
+  )
+}
+
 function HevyCard() {
   const sync = useHevySyncState()
   const last = sync.data?.last_events_since ?? null
@@ -245,7 +260,7 @@ function AppleHealthCard() {
 }
 
 /** service_subscriptions keys that have a card here; the rest go under "Other subscriptions". */
-const CARD_SERVICES = ['google', 'strava', 'playstation', 'trakt', 'steam', 'hevy', 'apple_health'] as const
+const CARD_SERVICES = ['google', 'strava', 'playstation', 'trakt', 'steam', 'igdb', 'hevy', 'apple_health'] as const
 
 const ACCOUNTS_LABEL = 'Signed in by you'
 const SERVER_LABEL = 'Set up on the server'
@@ -256,6 +271,7 @@ export function ConnectionsTab() {
   const psn = <PlayStationCard />
   const trakt = <TraktCard />
   const steam = <SteamCard />
+  const igdb = <IgdbCard />
   const hevy = <HevyCard />
   const health = <AppleHealthCard />
   // Each step mounts a card once: on its own, or (server-side, from 1920)
@@ -271,14 +287,14 @@ export function ConnectionsTab() {
       </div>
     ),
     otherSubs: <OtherSubscriptions cardKeys={CARD_SERVICES} />,
-    google, strava, psn, trakt, steam, hevy, health,
+    google, strava, psn, trakt, steam, igdb, hevy, health,
     accountsLabel: <h2 className="section-label">{ACCOUNTS_LABEL}</h2>,
     serverLabel: <h2 className="section-label">{SERVER_LABEL}</h2>,
-    // Three short read-only cards of about the same height, so a row grid
+    // Short read-only cards of about the same height, so a row grid
     // is safe here (W2 card columns, 19–22rem).
     serverCards: (
       <section aria-label={SERVER_LABEL} className="grid grid-cols-[repeat(auto-fill,minmax(19rem,22rem))] items-start gap-4">
-        {steam}{hevy}{health}
+        {steam}{igdb}{hevy}{health}
       </section>
     ),
   }

@@ -70,7 +70,7 @@ export function useTgLibraryView(lib: TestGameLibrary): TgLibraryView {
     if (!fixedStatus || scopePlatform === ALL_PLATFORMS || settling) return scopePlatform
     return lib.games.some(g => !g.hidden && effectiveStatus(g) === fixedStatus && g.platformKey === scopePlatform) ? scopePlatform : ALL_PLATFORMS
   }, [fixedStatus, scopePlatform, settling, lib.games])
-  const isGameSection = section !== 'analytics' && section !== 'advanced' && section !== 'scrape'
+  const isGameSection = section !== 'analytics' && section !== 'advanced' && section !== 'scrape' && section !== 'igdb'
   // Sorted once per library change or sort change; every filter below keeps
   // that order, so a keystroke filters a sorted list instead of re-sorting.
   const sorted = useMemo(() => sortGames(lib.games, sort), [lib.games, sort])

@@ -42,6 +42,7 @@ import { lazyWithReload } from '../../../shared/utils/lazyWithReload'
 // browse the shelves, and together they are the bulk of the page's code.
 const TgAnalyticsView = lazyWithReload('games-analytics', () => import('./components/TgAnalyticsView').then(m => m.TgAnalyticsView), TgChunkFailed)
 const TgScrapeView = lazyWithReload('games-scrape', () => import('./components/scrape/TgScrapeView').then(m => m.TgScrapeView), TgChunkFailed)
+const TgIgdbView = lazyWithReload('games-igdb', () => import('./components/igdb/TgIgdbView').then(m => m.TgIgdbView), TgChunkFailed)
 const TgAdvancedView = lazyWithReload('games-advanced', () => import('./components/TgAdvancedView').then(m => m.TgAdvancedView), TgChunkFailed)
 
 const SECTION_FALLBACK = <div aria-busy="true" className="h-full" />
@@ -208,6 +209,13 @@ export function TestGamePage() {
       return (
         <ErrorBoundary label="Analytics" action="games_analytics">
           <Suspense fallback={<div className="@container pb-4 pt-2"><TgAnalyticsSkeleton /></div>}><TgAnalyticsView lib={lib} /></Suspense>
+        </ErrorBoundary>
+      )
+    }
+    if (section === 'igdb') {
+      return (
+        <ErrorBoundary label="IGDB" action="games_igdb">
+          <Suspense fallback={SECTION_FALLBACK}><TgIgdbView games={lib.games} loading={lib.isLoading} /></Suspense>
         </ErrorBoundary>
       )
     }
