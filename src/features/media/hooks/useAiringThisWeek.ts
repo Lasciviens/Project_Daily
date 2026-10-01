@@ -12,14 +12,19 @@ const inWeek = (day: string, today: string, end: string) => day >= today && day 
 
 /**
  * New episodes of your shows in the next 7 days. With Trakt: its "my shows"
- * calendar (everything you watched or watchlisted). Without: TMDB's next
- * episode of each show you're Watching or Paused.
+ * calendar (everything you watched or watchlisted, finished shows too).
+ * Without: TMDB's next episode of each show you're Watching, Paused or have
+ * Completed — a finished show that gets a new season still shows up here.
  */
 export function useAiringThisWeek(enabled = true) {
   const { data: tv = [] } = useTVSeries()
   const { data: trakt } = useTraktStatus()
   const cal = useTraktCalendar()
-  const following = tv.filter(e => e.status === 'watching' || e.status === 'paused').slice(0, 15)
+  // In-progress shows first; TMDB only has a next episode for a show still running.
+  const following = [
+    ...tv.filter(e => e.status === 'watching' || e.status === 'paused'),
+    ...tv.filter(e => e.status === 'completed'),
+  ].slice(0, 30)
   const useTmdb = enabled && !trakt?.connected
   const [range] = useState(() => ({ today: new Date().toISOString().slice(0, 10), end: new Date(Date.now() + 6 * 864e5).toISOString().slice(0, 10) }))
   const basics = useQueries({

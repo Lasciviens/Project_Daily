@@ -73,11 +73,12 @@ interface Props {
   detail: TMDBMovieFull | TMDBTVFull
   isMovie: boolean
   userEntry?: UserMovieEntry | UserTVEntry | null
-  onAdded?: () => void
+  /** Called after the title is removed from the library (adding keeps the popup open). */
+  onRemoved?: () => void
 }
 
 /** Library state for one title: add, status, rating, note, progress, remove. */
-export function MediaLibraryControls({ detail, isMovie, userEntry, onAdded }: Props) {
+export function MediaLibraryControls({ detail, isMovie, userEntry, onRemoved }: Props) {
   const movie = isMovie ? (detail as TMDBMovieFull) : null
   const tv = !isMovie ? (detail as TMDBTVFull) : null
   const statuses = isMovie ? MOVIE_STATUSES : TV_STATUSES
@@ -123,13 +124,33 @@ export function MediaLibraryControls({ detail, isMovie, userEntry, onAdded }: Pr
         : Promise.resolve()
 
   // The media hooks toast + log failures; withProgress adds per-call copy.
+  // Adding as Completed asks when it was watched, exactly like switching to
+  // Completed later; the date goes in with the new row. Adding keeps the popup
+  // open on the title (now with its library controls).
   async function handleAdd() {
-    const ok = await withProgress(async () => {
-      if (isMovie) await addMovie.mutateAsync({ tmdb: movie!, status: selectedStatus as UserMovieEntry['status'] })
-      else await addTV.mutateAsync({ tmdb: tv!, status: selectedStatus as UserTVEntry['status'] })
+    const now = new Date().toISOString()
+    const completed = selectedStatus === 'completed'
+    let movieWatchedAt: string | null | undefined
+    let tvWhen: Parameters<typeof resolveWatchedAt>[0] | null = null
+    if (completed && isMovie) {
+      const when = await ask({ title: movie!.title, releaseLabel: movie!.release_date ? formatDate(movie!.release_date) : null })
+      if (!when) return
+      movieWatchedAt = resolveWatchedAt(when, movie!.release_date, 'movie', now)
+    }
+    if (completed && !isMovie) {
+      tvWhen = await ask({ title: tv!.name, subtitle: 'Marks every aired episode as watched.', releaseLabel: 'each air date' })
+      if (!tvWhen) return
+    }
+    await withProgress(async () => {
+      if (isMovie) {
+        await addMovie.mutateAsync({ tmdb: movie!, status: selectedStatus as UserMovieEntry['status'], watchedAt: movieWatchedAt })
+      } else {
+        const dates = completed ? { started_at: now, finished_at: now } : selectedStatus === 'watching' ? { started_at: now } : {}
+        const entry = await addTV.mutateAsync({ tmdb: tv!, status: selectedStatus as UserTVEntry['status'], dates })
+        if (tvWhen) await markAllAired(tvWhen, entry.id, [])
+      }
       return true
-    }, { loading: 'Adding to library…', success: 'Added to library' })
-    if (ok) onAdded?.()
+    }, { loading: completed && !isMovie ? 'Adding and marking every aired episode…' : 'Adding to library…', success: 'Added to library' })
   }
 
   async function handleRemove() {
@@ -145,23 +166,23 @@ export function MediaLibraryControls({ detail, isMovie, userEntry, onAdded }: Pr
       else await removeTV.mutateAsync(entryId)
       return true
     }, { loading: 'Removing…', success: 'Removed from library' })
-    if (ok) onAdded?.()
+    if (ok) onRemoved?.()
   }
 
   // Completing a whole series marks every aired episode not marked yet (each
   // with the chosen time — Release date = its own air date), like Trakt.
-  async function markAllAired(when: Parameters<typeof resolveWatchedAt>[0]) {
-    if (!tvEntry || !tv) return
+  async function markAllAired(when: Parameters<typeof resolveWatchedAt>[0], tvEntryId = tvEntry?.id, watched = watchedRows) {
+    if (!tvEntryId || !tv) return
     const refs = (tv.seasons ?? []).filter(x => x.season_number > 0)
       .flatMap(x => Array.from({ length: x.episode_count }, (_, i) => ({ season: x.season_number, episode: i + 1 })))
     const dates = await episodeAirDates(qc, tv.id, refs)
     const today = todayStr()
-    const have = new Set(watchedRows.map(w => `${w.season_number}x${w.episode_number}`))
+    const have = new Set(watched.map(w => `${w.season_number}x${w.episode_number}`))
     const now = new Date().toISOString()
     const todo = refs
       .filter(r => { const d = dates.get(`${r.season}x${r.episode}`); return !!d && d <= today && !have.has(`${r.season}x${r.episode}`) })
       .map(r => ({ ...r, at: resolveWatchedAt(when, dates.get(`${r.season}x${r.episode}`), 'episode', now)! }))
-    if (todo.length) await markWatched.mutateAsync({ tvEntryId: tvEntry.id, episodes: todo })
+    if (todo.length) await markWatched.mutateAsync({ tvEntryId, episodes: todo })
   }
 
   async function handleStatusChange(status: MediaStatus) {
@@ -212,6 +233,7 @@ export function MediaLibraryControls({ detail, isMovie, userEntry, onAdded }: Pr
   if (!userEntry || !entryId) {
     return (
       <div className="space-y-3">
+        {dialog}
         <StatusPills statuses={statuses} value={selectedStatus} onPick={setSelectedStatus} />
         <div className="flex flex-wrap items-center gap-2">
           <Button variant="primary" onClick={handleAdd} loading={addMovie.isPending || addTV.isPending}>Add to library</Button>

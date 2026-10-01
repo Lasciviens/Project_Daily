@@ -5,6 +5,7 @@ import type { AdvancedTab } from './testGameStore'
 // likely to be reached for.
 export const ADVANCED_TABS: { key: AdvancedTab; label: string }[] = [
   { key: 'review',      label: 'Needs review' },
+  { key: 'duplicates',  label: 'Duplicates' },
   { key: 'steam',       label: 'Steam' },
   { key: 'playstation', label: 'PlayStation' },
 ]

@@ -557,10 +557,11 @@ export function scopeGames(games: TgGame[], o: Omit<FilterOptions, 'statuses'>):
  * picked play status never matches a hidden row (a Steam non-game still
  * holding 'backlog' belongs to Hidden, not Backlog).
  */
-export function applyStatus(games: TgGame[], status: TgStatusFilter | readonly TgStatusFilter[]): TgGame[] {
+export function applyStatus(games: TgGame[], status: TgStatusFilter | readonly TgStatusFilter[], showHidden = false): TgGame[] {
   const picked = new Set<TgStatusFilter>(typeof status === 'string' ? [status] : status)
   picked.delete('all')
-  if (picked.size === 0) return games.filter(g => !g.hidden)
+  // "Show hidden games" (the ⋯ settings) puts hidden rows back among all.
+  if (picked.size === 0) return showHidden ? games : games.filter(g => !g.hidden)
   return games.filter(g => (g.hidden ? picked.has('hidden') : picked.has(effectiveStatus(g) as TgStatusFilter)))
 }
 

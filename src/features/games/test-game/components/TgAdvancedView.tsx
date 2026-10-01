@@ -1,5 +1,5 @@
 import { useMemo, type ReactNode } from 'react'
-import { Gamepad2, Monitor, ScanSearch, type LucideIcon } from 'lucide-react'
+import { Copy, Gamepad2, Monitor, ScanSearch, type LucideIcon } from 'lucide-react'
 import { ErrorBoundary } from '../../../../shared/components/ErrorBoundary'
 import { NeedsReviewTab } from '../../components/NeedsReviewTab'
 import { SteamTab } from '../../components/SteamTab'
@@ -7,6 +7,7 @@ import { PlayStationTab } from '../../components/PlayStationTab'
 import { useTestGameStore, type AdvancedTab } from '../testGameStore'
 import { needsReviewList, type TgGame } from '../testGameModel'
 import { TgErrorState } from './TgStates'
+import { TgDuplicatesTab } from './TgDuplicatesTab'
 import { Truncate } from '../../../../shared/ui/Truncate'
 
 // The previous Games page's tools the new design has no place for yet,
@@ -20,6 +21,10 @@ const TABS: Record<AdvancedTab, { title: string; intro: string; Icon: LucideIcon
   review: {
     title: 'Needs review', Icon: ScanSearch,
     intro: 'Games missing a cover, genres, a year or a platform.',
+  },
+  duplicates: {
+    title: 'Duplicates', Icon: Copy,
+    intro: 'Games that share a title or a cover — maybe the same game twice.',
   },
   steam: {
     title: 'Steam', Icon: Monitor,
@@ -55,6 +60,13 @@ export function TgAdvancedView({ onOpenDetail, games = [], loading = false, erro
       break
     case 'playstation':
       content = <ErrorBoundary label="PlayStation" action="test_game_psn_tab"><PlayStationTab /></ErrorBoundary>
+      break
+    case 'duplicates':
+      content = error != null && onRetry
+        ? <TgErrorState error={error} onRetry={onRetry} />
+        : loading
+          ? <p role="status" className="py-12 text-center text-[13px] tg-muted">Loading your library…</p>
+          : <TgDuplicatesTab games={games} onOpenDetail={onOpenDetail} />
       break
     default:
       content = error != null && onRetry

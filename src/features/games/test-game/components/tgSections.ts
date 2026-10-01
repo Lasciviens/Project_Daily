@@ -6,7 +6,7 @@ import type { TgSection } from '../testGameModel'
 import { GameLibraryMark } from './platformArt'
 
 /** The badge counts the page's navigation prints. */
-export interface TgNavCounts { queue: number; wishlist: number; completed: number; review: number }
+export interface TgNavCounts { queue: number; wishlist: number; completed: number; review: number; hidden?: number }
 
 export interface TgSectionEntry {
   key: TgSection

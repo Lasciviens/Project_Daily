@@ -14,7 +14,7 @@ function Lamp() {
 }
 
 interface Props {
-  /** Omit for an empty, lit slot (the rest of a last shelf, or a spare shelf). */
+  /** Omit for an empty slot (the rest of a last shelf, or a spare shelf) — its lamps stay off. */
   game?: TgGame
   selected?: boolean
   /** The one card the shelf's roving tabindex makes tabbable. */
@@ -28,11 +28,8 @@ interface Props {
  */
 export const TgShelfSlot = memo(function TgShelfSlot({ game, selected = false, focusable = false, onSelect }: Props) {
   if (!game || !onSelect) {
-    return (
-      <div aria-hidden className="tg-slot is-empty">
-        <Lamp />
-      </div>
-    )
+    // Nothing stands here, so nothing is lit: an empty slot is just the dark case.
+    return <div aria-hidden className="tg-slot is-empty" />
   }
   return (
     <div className={selected ? 'tg-slot is-selected' : 'tg-slot'}>

@@ -40,13 +40,16 @@ export function useAddMovie() {
       tmdb,
       status,
       priority,
+      watchedAt,
     }: {
       tmdb: TMDBMovie
       status: UserMovieEntry['status']
       priority?: UserMovieEntry['priority']
+      /** Completed: the answer from the when-watched sheet (null = unknown date). */
+      watchedAt?: string | null
     }) => {
       const movie = await upsertMovie(tmdb)
-      return addMovieEntry(movie.id, status, priority)
+      return addMovieEntry(movie.id, status, priority, watchedAt !== undefined ? { watched_at: watchedAt } : {})
     },
     invalidates: ['media'],
     onSuccess: () => scheduleTraktSync(qc),

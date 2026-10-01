@@ -12,7 +12,7 @@ interface Props {
   mediaType: MediaType
   userEntry?: UserMovieEntry | UserTVEntry | null
   onClose: () => void
-  onAdded?: () => void
+  onRemoved?: () => void
   onOpenDetail?: (id: number, type: MediaType) => void
   /** Shown when titles were opened inside this popup: back to the previous one. */
   onBack?: () => void
@@ -32,7 +32,7 @@ function Skeleton() {
   )
 }
 
-export function MediaDetailModal({ tmdbId, mediaType, userEntry, onClose, onAdded, onOpenDetail, onBack }: Props) {
+export function MediaDetailModal({ tmdbId, mediaType, userEntry, onClose, onRemoved, onOpenDetail, onBack }: Props) {
   // A new title in the same popup starts at its top.
   const top = useRef<HTMLDivElement>(null)
   useEffect(() => { top.current?.parentElement?.scrollTo({ top: 0 }) }, [tmdbId, mediaType])
@@ -94,7 +94,7 @@ export function MediaDetailModal({ tmdbId, mediaType, userEntry, onClose, onAdde
           detail={detail}
           mediaType={mediaType}
           userEntry={userEntry}
-          onAdded={onAdded}
+          onRemoved={onRemoved}
           onOpenDetail={onOpenDetail}
         />
       )}

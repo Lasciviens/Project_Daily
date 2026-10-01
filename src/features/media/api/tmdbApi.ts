@@ -126,7 +126,7 @@ export const getPersonMovieCredits = (id: number) =>
 
 /** One page of a Discover list (discoverModel.ts builds the request). */
 export const fetchDiscoverPage = (path: string, params: Record<string, string>) =>
-  tmdbFetch<PagedResponse<(TMDBSearchMovie & TMDBSearchTV) & { genre_ids?: number[] }>>(path, params)
+  tmdbFetch<PagedResponse<(TMDBSearchMovie & TMDBSearchTV) & { genre_ids?: number[]; original_language?: string }>>(path, params)
 
 export const getGenres = (type: 'movie' | 'tv') =>
   tmdbFetch<{ genres: { id: number; name: string }[] }>(`/genre/${type}/list`)

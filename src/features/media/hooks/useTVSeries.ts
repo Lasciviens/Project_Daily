@@ -39,13 +39,15 @@ export function useAddTV() {
       tmdb,
       status,
       priority,
+      dates,
     }: {
       tmdb: TMDBTVSeries
       status: UserTVEntry['status']
       priority?: UserTVEntry['priority']
+      dates?: Partial<Pick<UserTVEntry, 'started_at' | 'finished_at'>>
     }) => {
       const series = await upsertTVSeries(tmdb)
-      return addTVEntry(series.id, status, priority)
+      return addTVEntry(series.id, status, priority, dates)
     },
     invalidates: ['media'],
     onSuccess: () => scheduleTraktSync(qc),

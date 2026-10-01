@@ -23,10 +23,12 @@ const entryLabel = (e: SsMediaEntry) => [e.region?.toUpperCase(), e.support ? `d
  * disc), its size, and Copy / Online / Skip. Previews come through the signed
  * proxy, so looking costs no storage.
  */
-export function TgScrapeMediaGrid({ candidate, rows, modes, tokens, onMode, onToken, readOnly, imageScale = 1 }: {
+export function TgScrapeMediaGrid({ candidate, rows, modes, tokens, onMode, onToken, readOnly, imageScale = 1, measuredAvg = null }: {
   candidate: SsCandidate
   /** The saved image size (What to save), for the copy-size estimate. */
   imageScale?: number
+  /** The average size of copies already stored (see measuredCopyAverage). */
+  measuredAvg?: number | null
   rows: MediaRow[]
   modes: Record<string, MediaMode>
   tokens: Record<string, string>
@@ -110,7 +112,7 @@ export function TgScrapeMediaGrid({ candidate, rows, modes, tokens, onMode, onTo
                         {/* What THIS choice costs, so a tap shows its effect right here. */}
                         <Truncate className={`text-[11px] tabular-nums ${mode === 'store' && r.canStore ? 'font-semibold text-[var(--tg-text)]' : 'tg-muted'}`}>
                           {mode === 'store' && r.canStore
-                            ? `Uses ≈ ${formatBytes(estimateStored(entry, imageScale))} of storage`
+                            ? `Uses ≈ ${formatBytes(estimateStored(entry, imageScale, measuredAvg))} of storage`
                             : mode === 'on_demand' ? 'Online · uses no storage'
                             : 'Skipped · not saved'}
                           <span className="font-normal tg-faint">{entry.size ? ` · original ${formatBytes(entry.size)}` : ''}</span>

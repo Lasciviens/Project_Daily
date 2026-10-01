@@ -32,7 +32,7 @@ export interface TgLibraryView {
   visible: TgGame[]
   /** ONE queue numbering for the badges, the queue rows and the ⋯ menu. */
   ranks: Map<string, number>
-  navCounts: { queue: number; wishlist: number; completed: number; review: number }
+  navCounts: { queue: number; wishlist: number; completed: number; review: number; hidden: number }
 }
 
 export function useTgLibraryView(lib: TestGameLibrary): TgLibraryView {
@@ -42,6 +42,7 @@ export function useTgLibraryView(lib: TestGameLibrary): TgLibraryView {
   // Deferred: typing and chip taps stay instant while the (interruptible)
   // filter-sort-render of ~1,000 games catches up a frame later.
   const statuses = useDeferredValue(useTestGameStore(s => s.statuses))
+  const showHidden = useTestGameStore(s => s.showHidden)
   const genres = useDeferredValue(useTestGameStore(s => s.genres))
   const studios = useDeferredValue(useTestGameStore(s => s.studios))
   const sort = useTestGameStore(s => s.sort)
@@ -101,15 +102,15 @@ export function useTgLibraryView(lib: TestGameLibrary): TgLibraryView {
     if (section === 'queue') return queueOrder(applyStatus(scope, 'all'))
     // Advanced's Random pool: no status filter Advanced could not show.
     if (!isGameSection) return applyStatus(scope, 'all')
-    return applyStatus(scope, fixedStatus ? 'all' : statuses)
-  }, [scope, section, isGameSection, fixedStatus, statuses])
+    return applyStatus(scope, fixedStatus ? 'all' : statuses, section === 'library' && showHidden)
+  }, [scope, section, isGameSection, fixedStatus, statuses, showHidden])
 
   const ranks = useMemo(() => queueRanks(lib.games), [lib.games])
   const navCounts = useMemo(() => {
     const all = statusCounts(lib.games)
     // Needs review, from the rows the page holds (the same rule the tab lists).
     const review = lib.games.reduce((n, g) => n + (needsReviewReasons(g).length > 0 ? 1 : 0), 0)
-    return { queue: ranks.size, wishlist: all.wishlist, completed: all.completed, review }
+    return { queue: ranks.size, wishlist: all.wishlist, completed: all.completed, review, hidden: all.hidden }
   }, [lib.games, ranks])
 
   return {

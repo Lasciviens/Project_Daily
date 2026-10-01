@@ -70,7 +70,7 @@ const items = [
   { id: 1, genre_ids: [28], vote_average: 7.5, release_date: '2021-01-01' },
   { id: 2, genre_ids: [18], vote_average: 8.1, release_date: '2015-01-01' },
   { id: 1, genre_ids: [28], vote_average: 7.5, release_date: '2021-01-01' },
-  { id: 3, genre_ids: [28], vote_average: 5.0, release_date: '2023-01-01' },
+  { id: 3, genre_ids: [28], vote_average: 5.0, release_date: '2023-01-01', original_language: 'hi' },
 ]
 const c = (tab, f, lib = () => false) => D.applyClientFilters(tab, items, f, lib).map(i => i.id)
 ok(c('today', F), [1, 2, 3], 'duplicates across pages are dropped')
@@ -80,5 +80,9 @@ ok(c('popular', { ...F, genre: 18 }), [1, 2, 3], 'server lists are not filtered 
 ok(c('popular', { ...F, hideLibrary: true }, id => id === 2), [1, 3], 'hide titles in my library')
 ok(D.activeFilterCount({ ...F, genre: 1, hideLibrary: true }), 2, 'active filter count')
 ok(D.activeFilterCount({ ...F, sort: 'rating' }, 'today'), 0, 'a sort does not count on trending (it does nothing there)')
+ok(c('popular', { ...F, hideGenres: [18] }), [1, 3], 'hidden genres drop titles on every list')
+ok(c('popular', { ...F, hideLanguages: ['hi'] }), [1, 2], 'hidden languages drop titles on every list')
+ok(req('popular', 'movie', { ...F, hideGenres: [99, 16] }).params.without_genres, '16|99', 'hidden genres go to TMDB as without_genres')
+ok(D.activeFilterCount({ ...F, hideGenres: [1, 2], hideLanguages: ['hi'] }), 2, 'hidden genres and languages count once each')
 
 console.log(`verify-media-lists: ${n} assertions passed`)

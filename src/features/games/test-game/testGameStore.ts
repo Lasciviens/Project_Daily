@@ -21,7 +21,7 @@ import { TG_STORE_VERSION, migrateTgPersisted } from './tgStoreMigrate'
 // nothing covering the games (a stale search restored on reload reads as
 // missing games).
 
-export type AdvancedTab = 'review' | 'steam' | 'playstation'
+export type AdvancedTab = 'review' | 'duplicates' | 'steam' | 'playstation'
 
 /** The Scrape page's two modes: one game at a time, or many. */
 export type ScrapeMode = 'search' | 'batch'
@@ -63,6 +63,12 @@ interface TgState {
   scopePlatform: string
   /** Multi-select status filter (Library only); empty = every visible game. */
   statuses: PlayStatus[]
+  /** Library shows hidden games among the rest (persisted). */
+  showHidden: boolean
+  /** The open review came from Many games: leaving it goes back there (not persisted). */
+  scrapeFromBatch: boolean
+  setScrapeFromBatch: (v: boolean) => void
+  setShowHidden: (v: boolean) => void
   /** Multi-select genre filter; a game matches ANY of them; empty = all genres. */
   genres: string[]
   /** Multi-select studio filter (developer or publisher); empty = all. */
@@ -149,6 +155,8 @@ export const useTestGameStore = create<TgState>()(
       platform: ALL_PLATFORMS,
       scopePlatform: ALL_PLATFORMS,
       statuses: [],
+      showHidden: false,
+      setShowHidden: (showHidden) => set({ showHidden }),
       genres: [],
       studios: [],
       sort: 'recent',
@@ -222,11 +230,16 @@ export const useTestGameStore = create<TgState>()(
         scrapeTargetId, scrapeMode: 'search', section: 'scrape', scrapeReview: null,
         ...(s.section !== 'scrape' && LEAVE_SHELF),
       })),
-      setScrapeTarget: (scrapeTargetId) => set(s => (s.scrapeTargetId === scrapeTargetId ? {} : { scrapeTargetId, scrapeReview: null })),
+      setScrapeTarget: (scrapeTargetId) => set(s => (s.scrapeTargetId === scrapeTargetId ? {} : { scrapeTargetId, scrapeReview: null, scrapeFromBatch: false })),
       // Re-tapping the active mode tab is not a reason to drop the review.
-      setScrapeMode: (scrapeMode) => set(s => (s.scrapeMode === scrapeMode ? {} : { scrapeMode, scrapeReview: null })),
+      setScrapeMode: (scrapeMode) => set(s => (s.scrapeMode === scrapeMode ? {} : { scrapeMode, scrapeReview: null, scrapeFromBatch: false })),
       setScrapeSearch: (scrapeSearch) => set({ scrapeSearch }),
-      setScrapeReview: (scrapeReview) => set({ scrapeReview }),
+      // Leaving a review opened from Many games (any Back) returns to Many games.
+      setScrapeReview: (scrapeReview) => set(s => (scrapeReview === null && s.scrapeFromBatch && s.scrapeMode === 'search'
+        ? { scrapeReview: null, scrapeMode: 'batch', scrapeFromBatch: false }
+        : { scrapeReview })),
+      scrapeFromBatch: false,
+      setScrapeFromBatch: (scrapeFromBatch) => set({ scrapeFromBatch }),
       setScrapeSettingsOpen: (scrapeSettingsOpen) => set({ scrapeSettingsOpen }),
       updateScrapeBatch: (patch) => set(s => ({ scrapeBatch: { ...s.scrapeBatch, ...(typeof patch === 'function' ? patch(s.scrapeBatch) : patch) } })),
       setAdvancedTab: (advancedTab) => set(s => ({ advancedTab, section: 'advanced', ...(s.section !== 'advanced' && LEAVE_SHELF) })),
@@ -239,7 +252,7 @@ export const useTestGameStore = create<TgState>()(
       partialize: (s) => ({
         section: s.section, platform: s.platform, sort: s.sort, view: s.view,
         advancedTab: s.advancedTab, detailCollapsed: s.detailCollapsed, analyticsTab: s.analyticsTab,
-        navCollapsed: s.navCollapsed,
+        navCollapsed: s.navCollapsed, showHidden: s.showHidden,
       }),
       // Earlier versions persisted the selection; a reload must not bring it
       // (or open details) back.

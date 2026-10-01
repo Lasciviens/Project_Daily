@@ -1,9 +1,11 @@
+import { Popover, PopoverButton, PopoverPanel } from '@headlessui/react'
+import { ChevronDown, EyeOff } from 'lucide-react'
 import { Button, Skeleton } from '../../../shared/ui'
 import { posterUrl } from '../../../integrations/tmdb/client'
 import { useGenres } from '../hooks/useDiscover'
 import { useWatchProviders } from '../hooks/useTMDB'
 import { useMediaPrefs } from '../mediaPrefsStore'
-import { NO_FILTERS, activeFilterCount, type DiscoverFilters, type DiscoverSort } from '../discoverModel'
+import { DISCOVER_LANGUAGES, NO_FILTERS, activeFilterCount, type DiscoverFilters, type DiscoverSort } from '../discoverModel'
 import type { MediaType } from '../types'
 import { POSTER_GRID } from './PosterTile'
 
@@ -25,6 +27,38 @@ export function SkeletonGrid({ count = 12 }: { count?: number }) {
         </div>
       ))}
     </div>
+  )
+}
+
+/** A "never show these" checklist: several picks, saved on this device. */
+function HideChecklist<T extends string | number>({ label, options, picked, onChange }: {
+  label: string
+  options: { value: T; label: string }[]
+  picked: T[]
+  onChange: (next: T[]) => void
+}) {
+  const toggle = (v: T) => onChange(picked.includes(v) ? picked.filter(x => x !== v) : [...picked, v])
+  return (
+    <Popover className="relative">
+      <PopoverButton className={`btn-ghost btn-sm min-h-[44px] gap-1.5 sm:min-h-[36px] ${picked.length ? 'text-accent-700' : ''}`}>
+        <EyeOff aria-hidden className="h-3.5 w-3.5" />
+        {label}{picked.length ? ` · ${picked.length}` : ''}
+        <ChevronDown aria-hidden className="h-3.5 w-3.5" />
+      </PopoverButton>
+      <PopoverPanel anchor="bottom start" className="z-popover mt-1 max-h-80 w-60 overflow-y-auto rounded-row border border-line bg-surface p-1 shadow-lg">
+        {picked.length > 0 && (
+          <button type="button" onClick={() => onChange([])} className="mb-1 min-h-[40px] w-full rounded-control px-2 text-left text-meta font-semibold text-accent-600 hover:bg-surface-hover">
+            Show all again
+          </button>
+        )}
+        {options.map(o => (
+          <label key={o.value} className="flex min-h-[40px] cursor-pointer items-center gap-2 rounded-control px-2 text-body text-fg hover:bg-surface-hover">
+            <input type="checkbox" checked={picked.includes(o.value)} onChange={() => toggle(o.value)} />
+            {o.label}
+          </label>
+        ))}
+      </PopoverPanel>
+    </Popover>
   )
 }
 
@@ -55,6 +89,8 @@ export function FilterRow({ type, filters, onChange, trending }: { type: MediaTy
         <input type="checkbox" checked={filters.hideLibrary} onChange={e => onChange({ ...filters, hideLibrary: e.target.checked })} />
         Hide titles in my library
       </label>
+      <HideChecklist label="Hide genres" options={genres.map(g => ({ value: g.id, label: g.name }))} picked={filters.hideGenres} onChange={hideGenres => onChange({ ...filters, hideGenres })} />
+      <HideChecklist label="Hide languages" options={DISCOVER_LANGUAGES.map(l => ({ value: l.code, label: l.label }))} picked={filters.hideLanguages} onChange={hideLanguages => onChange({ ...filters, hideLanguages })} />
       {activeFilterCount(filters, trending ? 'today' : 'popular') > 0 && <Button size="sm" variant="ghost" onClick={() => onChange(NO_FILTERS)}>Clear</Button>}
     </div>
   )

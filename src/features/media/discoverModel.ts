@@ -20,9 +20,23 @@ export interface DiscoverFilters {
   minRating: number | null
   sort: DiscoverSort | null
   hideLibrary: boolean
+  /** Genres never to show (TMDB ids). */
+  hideGenres: number[]
+  /** Original languages never to show (ISO 639-1, e.g. "hi"). */
+  hideLanguages: string[]
 }
 
-export const NO_FILTERS: DiscoverFilters = { genre: null, fromYear: null, minRating: null, sort: null, hideLibrary: false }
+export const NO_FILTERS: DiscoverFilters = { genre: null, fromYear: null, minRating: null, sort: null, hideLibrary: false, hideGenres: [], hideLanguages: [] }
+
+/** Original languages offered under "Hide languages" (TMDB's ISO 639-1 codes). */
+export const DISCOVER_LANGUAGES: { code: string; label: string }[] = [
+  { code: 'en', label: 'English' }, { code: 'no', label: 'Norwegian' }, { code: 'sv', label: 'Swedish' }, { code: 'da', label: 'Danish' },
+  { code: 'tr', label: 'Turkish' }, { code: 'de', label: 'German' }, { code: 'fr', label: 'French' }, { code: 'es', label: 'Spanish' },
+  { code: 'it', label: 'Italian' }, { code: 'ja', label: 'Japanese' }, { code: 'ko', label: 'Korean' }, { code: 'zh', label: 'Chinese' },
+  { code: 'hi', label: 'Hindi' }, { code: 'te', label: 'Telugu' }, { code: 'ta', label: 'Tamil' }, { code: 'th', label: 'Thai' },
+  { code: 'id', label: 'Indonesian' }, { code: 'tl', label: 'Tagalog' }, { code: 'pt', label: 'Portuguese' }, { code: 'ru', label: 'Russian' },
+  { code: 'ar', label: 'Arabic' }, { code: 'pl', label: 'Polish' },
+]
 
 export interface TabMeta { key: DiscoverTab; label: string; types: ('movie' | 'tv')[] }
 
@@ -95,6 +109,8 @@ export function discoverRequest(tab: DiscoverTab, type: 'movie' | 'tv', f: Disco
   p.sort_by = sort
   if (floor > 0) p['vote_count.gte'] = String(floor)
   if (f.genre != null) p.with_genres = String(f.genre)
+  // TMDB has no language exclusion; genres it can drop server-side (a pipe = any of them).
+  if (f.hideGenres.length) p.without_genres = [...f.hideGenres].sort((a, b) => a - b).join('|')
   // Upcoming is all in the future already: a year floor changes nothing there.
   if (f.fromYear != null && !upcoming) p[`${date}.gte`] = maxDay(p[`${date}.gte`], `${f.fromYear}-01-01`)
   if (f.minRating != null && !upcoming) p['vote_average.gte'] = String(f.minRating)
@@ -103,12 +119,12 @@ export function discoverRequest(tab: DiscoverTab, type: 'movie' | 'tv', f: Disco
 
 const maxDay = (a: string | undefined, b: string) => (a && a > b ? a : b)
 
-export interface DiscoverTitle { id: number; genre_ids?: number[]; vote_average: number; release_date?: string; first_air_date?: string }
+export interface DiscoverTitle { id: number; genre_ids?: number[]; original_language?: string; vote_average: number; release_date?: string; first_air_date?: string }
 
 /**
  * Trending comes back unfiltered: apply genre, year and score here. The
- * library filter applies to every list (`inLibrary` says whether a title is
- * already yours).
+ * library, hidden-genre and hidden-language filters apply to every list
+ * (`inLibrary` says whether a title is already yours).
  */
 export function applyClientFilters<T extends DiscoverTitle>(tab: DiscoverTab, items: T[], f: DiscoverFilters, inLibrary: (id: number) => boolean): T[] {
   const trending = isTrending(tab)
@@ -117,6 +133,8 @@ export function applyClientFilters<T extends DiscoverTitle>(tab: DiscoverTab, it
     if (seen.has(i.id)) return false
     seen.add(i.id)
     if (f.hideLibrary && inLibrary(i.id)) return false
+    if (f.hideGenres.length && (i.genre_ids ?? []).some(g => f.hideGenres.includes(g))) return false
+    if (f.hideLanguages.length && i.original_language && f.hideLanguages.includes(i.original_language)) return false
     if (!trending) return true
     if (f.genre != null && !(i.genre_ids ?? []).includes(f.genre)) return false
     const y = Number((i.release_date ?? i.first_air_date ?? '').slice(0, 4)) || null
@@ -128,4 +146,4 @@ export function applyClientFilters<T extends DiscoverTitle>(tab: DiscoverTab, it
 
 /** Filters that change this tab's list (a sort does nothing on trending). */
 export const activeFilterCount = (f: DiscoverFilters, tab?: DiscoverTab) =>
-  (f.genre != null ? 1 : 0) + (f.fromYear != null ? 1 : 0) + (f.minRating != null ? 1 : 0) + (f.sort && !(tab && isTrending(tab)) ? 1 : 0) + (f.hideLibrary ? 1 : 0)
+  (f.genre != null ? 1 : 0) + (f.fromYear != null ? 1 : 0) + (f.minRating != null ? 1 : 0) + (f.sort && !(tab && isTrending(tab)) ? 1 : 0) + (f.hideLibrary ? 1 : 0) + (f.hideGenres.length ? 1 : 0) + (f.hideLanguages.length ? 1 : 0)

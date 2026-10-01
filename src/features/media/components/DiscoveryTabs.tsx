@@ -18,14 +18,18 @@ interface Props {
 /**
  * Discover: trending, popular, top rated, in cinemas / on the air, upcoming,
  * Norway and your streaming services — filtered by genre, year and score,
- * 20 more per "Show more", each cover with its library status.
+ * 40 more per "Show more", each cover with its library status.
  */
 export function DiscoveryTabs({ mediaType, onOpenDetail }: Props) {
   const [tab, setTab] = useState<DiscoverTab>('popular')
-  const [filters, setFilters] = useState<DiscoverFilters>(NO_FILTERS)
+  const [picked, setFilters] = useState<DiscoverFilters>(NO_FILTERS)
   const [showFilters, setShowFilters] = useState(false)
   const [editingServices, setEditingServices] = useState(false)
-  const { services } = useMediaPrefs()
+  const { services, hideGenres, hideLanguages, setHidden } = useMediaPrefs()
+  // Hidden genres and languages are kept on this device (per type for genres).
+  const typeHidden = hideGenres[mediaType]
+  const filters = useMemo<DiscoverFilters>(() => ({ ...picked, hideGenres: typeHidden, hideLanguages }), [picked, typeHidden, hideLanguages])
+  const changeFilters = (f: DiscoverFilters) => { setFilters(f); setHidden(mediaType, f.hideGenres, f.hideLanguages) }
   const index = useLibraryIndex()
   // Movie and TV genre ids differ: switching type drops the genre filter.
   const [filtersFor, setFiltersFor] = useState(mediaType)
@@ -68,7 +72,7 @@ export function DiscoveryTabs({ mediaType, onOpenDetail }: Props) {
           <SegmentedControl<DiscoverTab> value={current} onChange={setTab} options={[{ value: 'today', label: 'Today' }, { value: 'week', label: 'This week' }]} />
         </div>
       )}
-      {showFilters && <div className="mb-3"><FilterRow type={mediaType} filters={filters} onChange={setFilters} trending={isTrending(current)} /></div>}
+      {showFilters && <div className="mb-3"><FilterRow type={mediaType} filters={filters} onChange={changeFilters} trending={isTrending(current)} /></div>}
 
       {current === 'services' && !picking && (
         <p className="mb-2 text-meta text-fg-muted">

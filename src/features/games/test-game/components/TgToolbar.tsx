@@ -59,8 +59,10 @@ function useTier(ref: RefObject<HTMLElement | null>): Tier {
  * the queue, which is always a list in play order; Status outside the Library).
  */
 export function TgToolbar({
-  genres, studios = [], statusCounts, showStatus, showViews, showSearch = true, showGenre = true, showSort = true, onRandom, randomCount,
+  genres, studios = [], statusCounts, showStatus, showViews, showSearch = true, showGenre = true, showSort = true, onRandom, randomCount, hiddenCount = 0,
 }: {
+  /** Hidden games in the library (the settings menu's Show hidden row). */
+  hiddenCount?: number
   /** How many games Random picks from (the tooltip says it). */
   randomCount?: number
   /** Developer/publisher options (the Studio filter). */
@@ -170,7 +172,7 @@ export function TgToolbar({
       </div>
 
       {viewsInRow && <TgTopBarViews compact={compact} className={`shrink-0 ${compact ? 'ml-1.5' : 'ml-4'}`} />}
-      <TgLibraryMenu views={showViews && tight} className={`-mr-1 ${showSearch || showViews ? (compact ? 'ml-1' : 'ml-2.5') : 'ml-auto'}`} />
+      <TgLibraryMenu hiddenCount={hiddenCount} views={showViews && tight} className={`-mr-1 ${showSearch || showViews ? (compact ? 'ml-1' : 'ml-2.5') : 'ml-auto'}`} />
     </div>
   )
 }

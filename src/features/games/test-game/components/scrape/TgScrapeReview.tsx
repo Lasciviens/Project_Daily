@@ -8,7 +8,7 @@ import { withOverrides } from '../../../scraper/ssRules'
 import { FIELD_MEDIA, decideMediaModes } from '../../../scraper/ssPlan'
 import { useApplyScrape, useGameStorage, useStorageUsage } from '../../../scraper/useScrape'
 import {
-  applySummary, candidateLine, storageFor, choiceToPolicy, fieldRows, formToRom, handheldCategories, initialChoice, mediaRows, summaryText, writingChoice,
+  applySummary, measuredCopyAverage, candidateLine, storageFor, choiceToPolicy, fieldRows, formToRom, handheldCategories, initialChoice, mediaRows, summaryText, writingChoice,
   type FieldChoice, type FieldRow, type SearchForm,
 } from './tgScrapeModel'
 import { TgBasisBadges, TgCandidateCover, TgFlagChips, TgScrapeCard, TgSsAttribution, TgSwitch } from './TgScrapeParts'
@@ -82,6 +82,9 @@ export function TgScrapeReview({ game, candidate, prefs, searchForm, wide, onBac
     setChoices(s => ({ ...s, [field]: c }))
     const type = FIELD_MEDIA[field]
     if (type && c !== 'keep' && modeOf(type) !== 'store') setModes(s => ({ ...s, [type]: 'store' }))
+    // Keeping your own picture means its copy isn't needed: it goes online
+    // (free), so Keep ↔ Fill moves the storage figure both ways.
+    if (type && c === 'keep' && modeOf(type) === 'store') setModes(s => ({ ...s, [type]: 'on_demand' }))
   }
   const setMode = (type: string, m: MediaMode) => {
     setModes(s => ({ ...s, [type]: m }))
@@ -105,7 +108,7 @@ export function TgScrapeReview({ game, candidate, prefs, searchForm, wide, onBac
   }
 
   const mediaPlan = mRows.map(r => ({ row: r, mode: modeOf(r.type), entry: r.entries.find(e => e.token === tokens[r.type]) ?? r.chosen }))
-  const summary = applySummary(rows, choices, mediaPlan, prefs.imageScale)
+  const summary = applySummary(rows, choices, mediaPlan, prefs.imageScale, measuredCopyAverage(storage.data?.groups))
   const { now: storageNow, change: storageDelta } = storageFor(gameStorage.data, summary.store ? summary.bytes : 0, recordBytes, snapshot)
   const copyLabels = mediaPlan.filter(m => m.mode === 'store').map(m => mediaInfo(m.row.type).label.toLowerCase())
   const nothing = summary.fields === 0 && summary.store === 0 && summary.onDemand === 0 && !snapshot
@@ -213,7 +216,7 @@ export function TgScrapeReview({ game, candidate, prefs, searchForm, wide, onBac
         <TgScrapeMediaGrid
           candidate={candidate} rows={mRows} modes={modes} tokens={tokens}
           onMode={setMode} onToken={(t, k) => setTokens(s => ({ ...s, [t]: k }))}
-          readOnly={!game} imageScale={prefs.imageScale}
+          readOnly={!game} imageScale={prefs.imageScale} measuredAvg={measuredCopyAverage(storage.data?.groups)}
         />
       </TgScrapeCard>
 

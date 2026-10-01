@@ -65,9 +65,9 @@ export function MediaEntityModal({ request, onClose }: EntityModalProps<'media'>
         userEntry={userEntry ?? null}
         onClose={close}
         onBack={trail.length > 1 ? () => window.history.back() : undefined}
-        // Adding or removing finishes the task this popup was opened for; on a
-        // title reached inside it, the popup stays on that title instead.
-        onAdded={trail.length > 1 ? undefined : close}
+        // Adding keeps the popup on the title. Removing the title the popup was
+        // opened for closes it; on a title reached inside, it stays.
+        onRemoved={trail.length > 1 ? undefined : close}
         onOpenDetail={open}
       />
     </>
