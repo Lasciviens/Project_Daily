@@ -71,7 +71,7 @@ export function MediaDetailModal({ tmdbId, mediaType, userEntry, onClose, onRemo
                 {title && <h2 className="text-title font-semibold leading-tight text-white">{title}</h2>}
                 <div className="flex items-center gap-2 text-meta text-white/70 tabular-nums">
                   {year && <span>{year}</span>}
-                  {detail?.vote_average ? <span>★ {detail.vote_average.toFixed(1)}</span> : null}
+                  {detail?.vote_average ? <span title="Average rating from TMDB users, out of 10">TMDB ★ {detail.vote_average.toFixed(1)}/10</span> : null}
                 </div>
               </div>
             </div>

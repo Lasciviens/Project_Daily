@@ -376,6 +376,17 @@
     scrollbar-width: none;
   }
   .scroll-x::-webkit-scrollbar { display: none; }
+  /* With a mouse or trackpad, show a thin bar: a mouse without a sideways
+     wheel can't otherwise reach what's beyond the edge. Touch keeps swiping. */
+  @media (pointer: fine) {
+    .scroll-x {
+      scrollbar-width: thin;
+      scrollbar-color: rgb(var(--ink-300)) transparent;
+    }
+    .scroll-x::-webkit-scrollbar { display: block; height: 6px; }
+    .scroll-x::-webkit-scrollbar-thumb { background: rgb(var(--ink-300)); border-radius: 3px; }
+    .scroll-x::-webkit-scrollbar-track { background: transparent; }
+  }
 
   /* Translucent chrome over scrolling content (phone header, tab bar). */
   .glass-chrome {

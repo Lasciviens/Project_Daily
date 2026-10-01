@@ -1,5 +1,5 @@
 import {
-  ChartColumn, CircleCheckBig, Heart, SlidersHorizontal, SquarePlay, Wand2,
+  ChartColumn, CircleCheckBig, Heart, SlidersHorizontal, SquarePlay, Timer, Wand2,
 } from 'lucide-react'
 import type { ComponentType } from 'react'
 import type { TgSection } from '../testGameModel'
@@ -29,6 +29,7 @@ export const TG_SECTION_ENTRIES: readonly TgSectionEntry[] = [
   { key: 'completed', label: 'Completed', short: 'Completed', icon: CircleCheckBig, count: 'completed' },
   { key: 'analytics', label: 'Analytics', short: 'Analytics', icon: ChartColumn },
   { key: 'scrape', label: 'Scrape', short: 'Scrape', icon: Wand2, tool: true },
+  { key: 'igdb', label: 'IGDB', short: 'IGDB', icon: Timer, tool: true },
   { key: 'advanced', label: 'Advanced', short: 'Advanced', icon: SlidersHorizontal, count: 'review', tool: true },
 ]
 

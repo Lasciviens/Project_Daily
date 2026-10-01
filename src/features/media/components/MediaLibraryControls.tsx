@@ -27,14 +27,19 @@ import type { TMDBMovieFull, TMDBTVFull, UserMovieEntry, UserTVEntry, MediaStatu
 
 // No manual "Upcoming" status: "coming soon" is derived from the release date
 // (see libraryModel.ts), so a future-dated Wishlist item shows there by itself.
-const MOVIE_STATUSES: { value: MediaStatus; label: string }[] = [
+// "Unwatched" is not stored: it is the state of a title that is not in the
+// library. Picking any other status adds it; picking Unwatched removes it.
+type PillStatus = MediaStatus | 'unwatched'
+const MOVIE_STATUSES: { value: PillStatus; label: string }[] = [
+  { value: 'unwatched', label: 'Unwatched' },
   { value: 'wishlist',  label: 'Wishlist' },
   { value: 'watching',  label: 'Watching' },
   { value: 'completed', label: 'Completed' },
   { value: 'dropped',   label: 'Dropped' },
 ]
 
-const TV_STATUSES: { value: MediaStatus; label: string }[] = [
+const TV_STATUSES: { value: PillStatus; label: string }[] = [
+  { value: 'unwatched', label: 'Unwatched' },
   { value: 'wishlist',  label: 'Wishlist' },
   { value: 'watching',  label: 'Watching' },
   { value: 'paused',    label: 'Paused' },
@@ -44,9 +49,9 @@ const TV_STATUSES: { value: MediaStatus; label: string }[] = [
 
 function StatusPills({ statuses, value, disabled, onPick }: {
   statuses: typeof MOVIE_STATUSES
-  value: MediaStatus
+  value: PillStatus
   disabled?: boolean
-  onPick: (s: MediaStatus) => void
+  onPick: (s: PillStatus) => void
 }) {
   // Content-width pills that wrap (compact on phones too).
   return (
@@ -83,8 +88,6 @@ export function MediaLibraryControls({ detail, isMovie, userEntry, onRemoved }: 
   const tv = !isMovie ? (detail as TMDBTVFull) : null
   const statuses = isMovie ? MOVIE_STATUSES : TV_STATUSES
   const modal = useEntityModal()
-
-  const [selectedStatus, setSelectedStatus] = useState<MediaStatus>('wishlist')
 
   const addMovie    = useAddMovie()
   const addTV       = useAddTV()
@@ -124,10 +127,11 @@ export function MediaLibraryControls({ detail, isMovie, userEntry, onRemoved }: 
         : Promise.resolve()
 
   // The media hooks toast + log failures; withProgress adds per-call copy.
-  // Adding as Completed asks when it was watched, exactly like switching to
-  // Completed later; the date goes in with the new row. Adding keeps the popup
-  // open on the title (now with its library controls).
-  async function handleAdd() {
+  // A title outside the library reads Unwatched; picking another status adds
+  // it in that status. Completed asks when it was watched, exactly like
+  // switching to Completed later; the date goes in with the new row. The popup
+  // stays open on the title (now with its library controls).
+  async function handleAdd(selectedStatus: MediaStatus) {
     const now = new Date().toISOString()
     const completed = selectedStatus === 'completed'
     let movieWatchedAt: string | null | undefined
@@ -150,7 +154,10 @@ export function MediaLibraryControls({ detail, isMovie, userEntry, onRemoved }: 
         if (tvWhen) await markAllAired(tvWhen, entry.id, [])
       }
       return true
-    }, { loading: completed && !isMovie ? 'Adding and marking every aired episode…' : 'Adding to library…', success: 'Added to library' })
+    }, {
+      loading: completed && !isMovie ? 'Adding and marking every aired episode…' : 'Adding to library…',
+      success: `Added to library · ${statuses.find(s => s.value === selectedStatus)?.label ?? selectedStatus}`,
+    })
   }
 
   async function handleRemove() {
@@ -234,9 +241,9 @@ export function MediaLibraryControls({ detail, isMovie, userEntry, onRemoved }: 
     return (
       <div className="space-y-3">
         {dialog}
-        <StatusPills statuses={statuses} value={selectedStatus} onPick={setSelectedStatus} />
+        <StatusPills statuses={statuses} value="unwatched" disabled={addMovie.isPending || addTV.isPending}
+          onPick={s => { if (s !== 'unwatched') void handleAdd(s) }} />
         <div className="flex flex-wrap items-center gap-2">
-          <Button variant="primary" onClick={handleAdd} loading={addMovie.isPending || addTV.isPending}>Add to library</Button>
           <AddToListMenu type={isMovie ? 'movie' : 'show'} tmdb={detail.id} title={isMovie ? movie!.title : tv!.name} />
           <a href={tmdbHref} target="_blank" rel="noopener noreferrer" className="btn-ghost btn-sm">
             TMDB <ExternalLink aria-hidden className="h-3.5 w-3.5" />
@@ -250,7 +257,7 @@ export function MediaLibraryControls({ detail, isMovie, userEntry, onRemoved }: 
     <div className="space-y-4">
       {dialog}
       <div className="space-y-2">
-        <StatusPills statuses={statuses} value={userEntry.status} disabled={updating} onPick={s => { void handleStatusChange(s) }} />
+        <StatusPills statuses={statuses} value={userEntry.status} disabled={updating} onPick={s => { void (s === 'unwatched' ? handleRemove() : handleStatusChange(s)) }} />
         {tvEntry && (
           <p className="text-meta text-fg-muted tabular-nums">Progress: S{tvEntry.current_season} E{tvEntry.current_episode}</p>
         )}

@@ -5,18 +5,20 @@ import { PosterTile } from './PosterTile'
 import { Button, SectionLabel } from '../../../shared/ui'
 import { useCollection } from '../hooks/useTMDB'
 import { useTraktStatus } from '../trakt/useTrakt'
-import { useCreateTraktList } from '../trakt/useTraktExtras'
+import { useFollows } from '../hooks/useFollows'
+import { useCreateAutoList } from '../hooks/useAutoLists'
 import type { MediaType, TMDBMovieFull } from '../types'
 
 /**
  * A film's franchise (TMDB collection) in release order, with one tap to save
- * it as a Trakt list — the start of "lists" for Harry Potter, Dune and co.
+ * it as a Trakt list that fills itself (new parts are added later).
  */
 export function CollectionListButton({ movie, onOpenDetail }: { movie: TMDBMovieFull; onOpenDetail?: (id: number, type: MediaType) => void }) {
   const col = movie.belongs_to_collection ?? null
   const { data } = useCollection(col?.id ?? null)
   const { data: trakt } = useTraktStatus()
-  const create = useCreateTraktList()
+  const create = useCreateAutoList()
+  const { data: follows = [] } = useFollows()
   const index = useLibraryIndex()
   if (!col || !data) return null
   const parts = [...data.parts].sort((a, b) => (a.release_date || '9999').localeCompare(b.release_date || '9999'))
@@ -26,10 +28,10 @@ export function CollectionListButton({ movie, onOpenDetail }: { movie: TMDBMovie
     <div>
       <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
         <SectionLabel>{data.name} · {parts.length} films</SectionLabel>
-        {trakt?.connected && (
+        {trakt?.connected && !follows.some(f => f.kind === 'collection' && f.tmdb_id === col.id && f.trakt_list_id) && (
           <Button
             size="sm" variant="ghost" icon={<ListPlus />} loading={create.isPending}
-            onClick={() => create.mutate({ name: data.name, items: parts.map(p => ({ type: 'movie', tmdb: p.id })) })}
+            onClick={() => create.mutate({ kind: 'collection', tmdbId: col.id, name: data.name, follow: follows.find(f => f.kind === 'collection' && f.tmdb_id === col.id) ?? null })}
           >
             Save as list
           </Button>

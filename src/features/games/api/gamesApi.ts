@@ -100,6 +100,14 @@ async function fetchAllPages<T>(
 // rom_status, performance and more. Before a migration adds one of these
 // columns the named list 42703s, and `withListColumns` retries with `*`.
 // `fetchGameDetail` keeps `*`: one row, and the record modal may want it all.
+const IGDB_LIST_COLUMNS = [
+  'igdb_id', 'igdb_slug', 'igdb_url', 'igdb_match', 'igdb_fetched_at',
+  'igdb_rating', 'igdb_rating_count', 'igdb_critic_rating', 'igdb_critic_count', 'igdb_total_rating', 'igdb_total_count',
+  'ttb_main_seconds', 'ttb_extra_seconds', 'ttb_full_seconds', 'ttb_count',
+]
+/** Columns one migration added together: when one is missing, all are. */
+const COLUMN_GROUPS: readonly string[][] = [IGDB_LIST_COLUMNS]
+
 const GAME_LIST_COLUMNS = [
   'id', 'user_id', 'title', 'release_year', 'publisher', 'developer', 'description', 'storyline',
   'genres', 'series_name', 'play_status', 'tier', 'rating', 'play_order', 'is_coop', 'coop_notes',
@@ -112,6 +120,8 @@ const GAME_LIST_COLUMNS = [
   'ss_jeu_id', 'ss_scraped_at',
   // 105 — PlayStation facts
   'provider_kind', 'first_played_at',
+  // 121 — IGDB (its jsonb `igdb_data` is read per game by the detail, not here)
+  ...IGDB_LIST_COLUMNS,
 ].join(', ')
 
 const PLATFORM_LIST_COLUMNS = [
@@ -140,7 +150,8 @@ async function withListColumns<T>(columns: string, read: (columns: string) => Pr
         ?? /Could not find the '(\w+)' column/i.exec(msg)?.[1]
       const list = cols.split(', ')
       if (!missing || !list.includes(missing)) break
-      cols = list.filter(c => c !== missing).join(', ')
+      const group = COLUMN_GROUPS.find(g => g.includes(missing)) ?? [missing]
+      cols = list.filter(c => !group.includes(c)).join(', ')
     }
   }
   return read('*')

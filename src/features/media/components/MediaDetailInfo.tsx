@@ -88,15 +88,19 @@ export function MediaDetailInfo({ detail, isMovie, afterMeta }: { detail: TMDBMo
       <div className="flex flex-wrap gap-x-3 gap-y-1 text-meta text-fg-muted tabular-nums">
         {movie?.release_date && (
           <span className={unreleased ? 'font-medium text-accent-600' : ''}>
-            {unreleased ? 'Releases ' : ''}{formatDay(movie.release_date)}
+            {unreleased ? 'Releases ' : 'Released '}{formatDay(movie.release_date)}
           </span>
         )}
         {tv?.first_air_date && <span>First aired {formatDay(tv.first_air_date)}</span>}
-        {movie?.runtime && <span>{formatRuntime(movie.runtime)}</span>}
+        {movie?.runtime ? <span title="Running time">Runtime {formatRuntime(movie.runtime)}</span> : null}
         {tv?.number_of_seasons && (
           <span>{tv.number_of_seasons} season{tv.number_of_seasons !== 1 ? 's' : ''} · {tv.number_of_episodes} episodes</span>
         )}
-        {detail.vote_average > 0 && <span>★ {detail.vote_average.toFixed(1)}</span>}
+        {detail.vote_average > 0 && (
+          <span title={`Average rating from ${detail.vote_count?.toLocaleString('nb-NO') ?? 'TMDB'} TMDB users, out of 10`}>
+            TMDB users ★ {detail.vote_average.toFixed(1)}/10
+          </span>
+        )}
       </div>
 
       {afterMeta}
