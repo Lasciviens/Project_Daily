@@ -22,6 +22,7 @@ import { CinemaVisits } from './CinemaVisits'
 import { SeriesFinishedControls } from './SeriesFinishedControls'
 import { todayStr } from '../../../shared/utils/dateUtils'
 import { AddToListMenu } from './AddToListMenu'
+import { QueueButton } from './QueueButton'
 import { FollowMenu } from './FollowMenu'
 import type { TMDBMovieFull, TMDBTVFull, UserMovieEntry, UserTVEntry, MediaStatus } from '../types'
 
@@ -244,6 +245,7 @@ export function MediaLibraryControls({ detail, isMovie, userEntry, onRemoved }: 
         <StatusPills statuses={statuses} value="unwatched" disabled={addMovie.isPending || addTV.isPending}
           onPick={s => { if (s !== 'unwatched') void handleAdd(s) }} />
         <div className="flex flex-wrap items-center gap-2">
+          <QueueButton type={isMovie ? 'movie' : 'show'} tmdb={detail.id} title={isMovie ? movie!.title : tv!.name} />
           <AddToListMenu type={isMovie ? 'movie' : 'show'} tmdb={detail.id} title={isMovie ? movie!.title : tv!.name} />
           <a href={tmdbHref} target="_blank" rel="noopener noreferrer" className="btn-ghost btn-sm">
             TMDB <ExternalLink aria-hidden className="h-3.5 w-3.5" />
@@ -318,6 +320,7 @@ export function MediaLibraryControls({ detail, isMovie, userEntry, onRemoved }: 
             Mark watched
           </Button>
         )}
+        <QueueButton type={isMovie ? 'movie' : 'show'} tmdb={detail.id} title={isMovie ? movie!.title : tv!.name} />
         <AddToListMenu type={isMovie ? 'movie' : 'show'} tmdb={detail.id} title={isMovie ? movie!.title : tv!.name} />
         <FollowMenu detail={detail} isMovie={isMovie} />
         <a href={tmdbHref} target="_blank" rel="noopener noreferrer" className="btn-ghost btn-sm">

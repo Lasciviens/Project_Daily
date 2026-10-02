@@ -37,7 +37,7 @@ const json = (body: unknown, status = 200) =>
 
 type AnyRec = Record<string, unknown>
 type Action = 'authorize_url' | 'connect' | 'status' | 'disconnect' | 'snapshot' | 'import' | 'sync'
-  | 'ratings' | 'follows_check' | 'playback' | 'calendar' | 'lists' | 'list_items' | 'list_create' | 'list_delete' | 'list_add' | 'list_remove'
+  | 'ratings' | 'follows_check' | 'playback' | 'calendar' | 'lists' | 'list_items' | 'list_create' | 'list_delete' | 'list_add' | 'list_remove' | 'list_reorder'
 
 const API = 'https://api.trakt.tv'
 const AUTHORIZE = 'https://trakt.tv/oauth/authorize'
@@ -1672,6 +1672,14 @@ Deno.serve(async (req: Request) => {
       return json({ list: mapList(l) })
     }
     if (action === 'list_delete') { await del(listPath(body.listId), accessToken); return json({ deleted: true }) }
+    // POST /users/{id}/lists/{list_id}/items/reorder with every list item id in
+    // the new order (API blueprint, "Reorder List Items"). Used by the Queue.
+    if (action === 'list_reorder') {
+      const rank = (Array.isArray(body.rank) ? body.rank : []).map(Number).filter(n => Number.isInteger(n) && n > 0)
+      if (!rank.length) return json({ error: 'rank required' }, 400)
+      const res = await post(`${listPath(body.listId)}/items/reorder`, accessToken, { rank })
+      return json({ updated: (res as AnyRec)?.updated ?? null, skipped: (res as AnyRec)?.skipped_ids ?? [] })
+    }
     if (action === 'list_add' || action === 'list_remove') {
       const res = await post(`${listPath(body.listId)}/items${action === 'list_remove' ? '/remove' : ''}`, accessToken, listItemsBody(body.items))
       return json({ result: res, notFound: notFoundCount(res) })

@@ -9,11 +9,12 @@ import { useDeleteTraktList } from '../trakt/useTraktExtras'
 import type { TraktList } from '../trakt/traktApi'
 import type { MediaType } from '../types'
 import { SmartListPanel, TraktListPanel } from './ListPanels'
+import { QueuePanel } from './QueuePanel'
 
 type Open = (id: number, t: MediaType) => void
 
 /** A Trakt list — filled by you, or (✦) filled from TMDB by its rule. */
-export function TraktListDetail({ list, follow, onOpen, onGone }: { list: TraktList; follow: MediaFollow | null; onOpen: Open; onGone: () => void }) {
+export function TraktListDetail({ list, follow, onOpen, onGone, isQueue = false }: { list: TraktList; follow: MediaFollow | null; onOpen: Open; onGone: () => void; isQueue?: boolean }) {
   const modal = useEntityModal()
   const delList = useDeleteTraktList()
   const delAuto = useDeleteAutoList()
@@ -38,7 +39,7 @@ export function TraktListDetail({ list, follow, onOpen, onGone }: { list: TraktL
             {follow && <Sparkles aria-hidden className="h-4 w-4 text-fg-muted" />}{list.name}
           </h2>
           <p className="text-meta text-fg-muted">
-            {follow ? `On Trakt · fills itself from the ${KIND_LABEL[follow.kind].toLowerCase()} on TMDB` : list.description || 'Private list on Trakt'}
+            {isQueue ? 'What to watch next, in your order — a private list on Trakt' : follow ? `On Trakt · fills itself from the ${KIND_LABEL[follow.kind].toLowerCase()} on TMDB` : list.description || 'Private list on Trakt'}
             {' · '}{list.itemCount} title{list.itemCount === 1 ? '' : 's'}
           </p>
         </div>
@@ -50,7 +51,7 @@ export function TraktListDetail({ list, follow, onOpen, onGone }: { list: TraktL
           <Button size="sm" variant="ghost" icon={<Trash2 />} className="text-danger" onClick={() => { void remove() }}>Delete list</Button>
         </div>
       </header>
-      <TraktListPanel key={list.id} listId={list.id} onOpen={onOpen} />
+      {isQueue ? <QueuePanel onOpen={onOpen} /> : <TraktListPanel key={list.id} listId={list.id} onOpen={onOpen} />}
     </>
   )
 }
