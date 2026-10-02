@@ -65,6 +65,8 @@ export function LibraryView({ items, mediaType, bucket, onBucketChange, onOpenDe
                 rt={i.rt}
                 favorite={i.favorite}
                 cinema={i.cinema}
+                language={i.language}
+                releaseDate={i.releaseDate}
                 onOpen={() => onOpenDetail(i.tmdbId, mediaType)}
               />
             </li>

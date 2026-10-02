@@ -20,6 +20,8 @@ export interface Movie {
   letterboxd_rating?: number | null
   rt_url?: string | null
   ratings_fetched_at?: string | null
+  /** TMDB's whole answer as stored on upsert; only the original language is read. */
+  metadata_json?: { original_language?: string | null } | null
   created_at: string
 }
 
@@ -48,6 +50,8 @@ export interface TVSeries {
   letterboxd_rating?: number | null
   rt_url?: string | null
   ratings_fetched_at?: string | null
+  /** TMDB's whole answer as stored on upsert; only the original language is read. */
+  metadata_json?: { original_language?: string | null } | null
   created_at: string
 }
 

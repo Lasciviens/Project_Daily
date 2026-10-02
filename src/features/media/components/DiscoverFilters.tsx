@@ -11,6 +11,8 @@ import { POSTER_GRID } from './PosterTile'
 
 const YEARS = [2025, 2020, 2010, 2000, 1990, 1980]
 const RATINGS = [6, 7, 8]
+// IMDb's own advanced search offers a minimum number of votes; these are its steps.
+const VOTES = [100, 1000, 10000, 100000]
 const SORTS: { value: DiscoverSort; label: string }[] = [
   { value: 'popularity', label: 'Most popular' },
   { value: 'rating', label: 'Best rated' },
@@ -78,6 +80,10 @@ export function FilterRow({ type, filters, onChange, trending }: { type: MediaTy
       <select aria-label="TMDB score" className="input w-auto" value={filters.minRating ?? ''} onChange={e => onChange({ ...filters, minRating: num(e.target.value) })}>
         <option value="">Any score</option>
         {RATINGS.map(r => <option key={r} value={r}>TMDB {r}+</option>)}
+      </select>
+      <select aria-label="Minimum votes" title="Ignore titles only a few people rated" className="input w-auto" value={filters.minVotes ?? ''} onChange={e => onChange({ ...filters, minVotes: num(e.target.value) })}>
+        <option value="">Any number of votes</option>
+        {VOTES.map(v => <option key={v} value={v}>{v.toLocaleString('en-GB')}+ votes</option>)}
       </select>
       {!trending && (
         <select aria-label="Sort" className="input w-auto" value={filters.sort ?? ''} onChange={e => onChange({ ...filters, sort: (e.target.value || null) as DiscoverSort | null })}>

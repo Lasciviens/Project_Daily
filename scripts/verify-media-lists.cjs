@@ -85,4 +85,22 @@ ok(c('popular', { ...F, hideLanguages: ['hi'] }), [1, 2], 'hidden languages drop
 ok(req('popular', 'movie', { ...F, hideGenres: [99, 16] }).params.without_genres, '16|99', 'hidden genres go to TMDB as without_genres')
 ok(D.activeFilterCount({ ...F, hideGenres: [1, 2], hideLanguages: ['hi'] }), 2, 'hidden genres and languages count once each')
 
+// Upcoming: Norwegian dates, and nothing released before yesterday (owner report: "Runner" in both In cinemas and Upcoming)
+ok(req('upcoming').params.region, 'NO', 'upcoming movies use Norwegian release dates')
+const ups = [
+  { id: 10, vote_average: 0, release_date: TODAY },
+  { id: 11, vote_average: 0, release_date: '2026-09-29' },
+  { id: 12, vote_average: 0, release_date: '2026-09-28' },
+  { id: 13, vote_average: 0 },
+]
+ok(D.applyClientFilters('upcoming', ups, F, () => false, TODAY).map(i => i.id), [10, 11, 13], 'upcoming keeps yesterday onwards (and undated), drops older releases')
+ok(D.applyClientFilters('popular', ups, F, () => false, TODAY).length, 4, 'other lists are not date-filtered')
+// Minimum votes (IMDb's "Number of votes")
+ok(req('top', 'movie', { ...F, minVotes: 10000 }).params['vote_count.gte'], '10000', 'min votes raises the vote floor')
+ok(req('top', 'movie', { ...F, minVotes: 100 }).params['vote_count.gte'], '1500', 'min votes never lowers the tab floor')
+ok(req('upcoming', 'movie', { ...F, minVotes: 1000 }).params['vote_count.gte'], undefined, 'upcoming ignores min votes (nothing is rated yet)')
+const voted = [{ id: 1, vote_average: 9, vote_count: 2 }, { id: 2, vote_average: 8, vote_count: 5000 }]
+ok(D.applyClientFilters('today', voted, { ...F, minVotes: 1000 }, () => false).map(i => i.id), [2], 'trending: min votes applied on the client')
+ok(D.activeFilterCount({ ...F, minVotes: 1000 }), 1, 'min votes counts as a filter')
+
 console.log(`verify-media-lists: ${n} assertions passed`)

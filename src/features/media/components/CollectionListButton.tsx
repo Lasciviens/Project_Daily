@@ -49,6 +49,7 @@ export function CollectionListButton({ movie, onOpenDetail }: { movie: TMDBMovie
                 meta={`${i + 1} · ${p.release_date?.slice(0, 4) ?? 'TBA'}`}
                 bucket={lib?.bucket}
                 cinema={lib?.cinema}
+                    language={lib?.language}
                 favorite={lib?.favorite}
                 onOpen={() => onOpenDetail?.(p.id, 'movie')}
               />

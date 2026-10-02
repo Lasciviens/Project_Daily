@@ -25,6 +25,10 @@ export interface LibraryItem {
   favorite?: boolean
   /** Watched at a cinema at least once (movie_cinema_visits, migration 120). */
   cinema?: boolean
+  /** TMDB's original language (ISO 639-1, e.g. "ja"), from the stored record. */
+  language?: string | null
+  /** Release (movie) or first air date (TV), yyyy-MM-dd. */
+  releaseDate?: string | null
 }
 
 export const BUCKET_LABEL: Record<LibraryBucket, string> = {
@@ -62,12 +66,12 @@ export function libraryItems(tab: 'movies' | 'tv', movies: UserMovieEntry[], tv:
   if (tab === 'movies') {
     for (const e of movies) {
       const bucket = bucketFor(e.status, e.movie.release_date, today)
-      if (bucket) out.push({ tmdbId: e.movie.tmdb_id, title: e.movie.title, year: yearOf(e.movie.release_date), posterPath: e.movie.poster_path, bucket, rating: e.rating, addedAt: e.created_at, rt: e.movie.rt_critics ?? null, favorite: !!e.is_favorite, cinema: !!cinemaMovieIds?.has(e.movie_id) })
+      if (bucket) out.push({ tmdbId: e.movie.tmdb_id, title: e.movie.title, year: yearOf(e.movie.release_date), posterPath: e.movie.poster_path, bucket, rating: e.rating, addedAt: e.created_at, rt: e.movie.rt_critics ?? null, favorite: !!e.is_favorite, cinema: !!cinemaMovieIds?.has(e.movie_id), language: e.movie.metadata_json?.original_language ?? null, releaseDate: e.movie.release_date })
     }
   } else {
     for (const e of tv) {
       const bucket = bucketFor(e.status, e.tv_series.first_air_date, today)
-      if (bucket) out.push({ tmdbId: e.tv_series.tmdb_id, title: e.tv_series.title, year: yearOf(e.tv_series.first_air_date), posterPath: e.tv_series.poster_path, bucket, rating: e.rating, addedAt: e.created_at, rt: e.tv_series.rt_critics ?? null, favorite: !!e.is_favorite })
+      if (bucket) out.push({ tmdbId: e.tv_series.tmdb_id, title: e.tv_series.title, year: yearOf(e.tv_series.first_air_date), posterPath: e.tv_series.poster_path, bucket, rating: e.rating, addedAt: e.created_at, rt: e.tv_series.rt_critics ?? null, favorite: !!e.is_favorite, language: e.tv_series.metadata_json?.original_language ?? null, releaseDate: e.tv_series.first_air_date })
     }
   }
   return out

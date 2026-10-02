@@ -9,6 +9,11 @@ import { DISCOVER_TABS, NO_FILTERS, activeFilterCount, applyClientFilters, isTre
 import { FilterRow, ServicesPicker, SkeletonGrid } from './DiscoverFilters'
 import type { MediaType } from '../types'
 import { POSTER_GRID, PosterTile } from './PosterTile'
+import { formatDate } from '../../../shared/utils/dateFormat'
+import { todayStr } from '../../../shared/utils/dateUtils'
+
+/** 1.2k, 34k — how many people the TMDB score comes from. */
+const votes = (n?: number) => (!n ? '' : n >= 1000 ? ` (${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k)` : ` (${n})`)
 
 interface Props {
   mediaType: MediaType
@@ -41,7 +46,7 @@ export function DiscoveryTabs({ mediaType, onOpenDetail }: Props) {
   const picking = current === 'services' && (editingServices || services.length === 0)
   const list = useDiscoverList(current, mediaType, filters, services, !picking)
   const items = useMemo(
-    () => applyClientFilters(current, (list.data?.pages ?? []).flatMap(p => p.results), filters, id => index.has(libraryKey(mediaType, id))),
+    () => applyClientFilters(current, (list.data?.pages ?? []).flatMap(p => p.results), filters, id => index.has(libraryKey(mediaType, id)), todayStr()),
     [current, list.data, filters, index, mediaType],
   )
   const count = activeFilterCount(filters, current)
@@ -100,7 +105,8 @@ export function DiscoveryTabs({ mediaType, onOpenDetail }: Props) {
                   <PosterTile
                     posterPath={item.poster_path}
                     title={mediaType === 'movie' ? item.title : item.name}
-                    meta={[item.vote_average > 0 ? `TMDB ${item.vote_average.toFixed(1)}` : null, date?.slice(0, 4)].filter(Boolean).join(' · ') || undefined}
+                    meta={[item.vote_average > 0 ? `TMDB ${item.vote_average.toFixed(1)}${votes(item.vote_count)}` : null, current === 'upcoming' && date ? formatDate(date) : date?.slice(0, 4)].filter(Boolean).join(' · ') || undefined}
+                    language={item.original_language}
                     bucket={lib?.bucket}
                     rt={lib?.rt}
                     favorite={lib?.favorite}
