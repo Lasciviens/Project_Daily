@@ -57,6 +57,7 @@
     --neutral: 139 149 165;  --neutral-soft: 239 240 242;
     --neutral-fg: 71 85 105; /* neutral LABEL text: the dot colour is too faint for words */
     --highlight: 147 51 234; --highlight-soft: 240 226 252;
+    --upcoming: 79 70 229;   --upcoming-soft: 231 232 252; /* indigo: not out yet */
     --star:    245 179 1;    --star-soft:    254 244 219;
 
     /* Chart series — categorical, deliberately away from the accent hue so a
@@ -121,6 +122,7 @@
     --neutral: 138 148 166;  --neutral-soft: 33 39 50;
     --neutral-fg: 150 160 177;
     --highlight: 192 132 252; --highlight-soft: 42 36 64;
+    --upcoming: 129 140 248; --upcoming-soft: 32 34 70;
     --star:    251 191 36;   --star-soft:    51 46 29;
 
     --chart-1: 45 212 191;
@@ -322,6 +324,18 @@
   }
   @media (hover: hover) {
     .pill-tab:not(.is-active):not([aria-pressed='true']):not([aria-selected='true']):hover { @apply bg-surface-hover; }
+  }
+
+  /* One option of a status picker, coloured by its stage tone (data-tone). */
+  .stage-option {
+    @apply flex h-8 min-w-0 items-center gap-2 rounded-control border border-line bg-surface px-2.5 text-meta font-medium text-fg-2
+           transition-colors duration-100 disabled:opacity-60 [@media(pointer:coarse)]:h-[44px];
+  }
+  .stage-option[aria-pressed='true'] {
+    background: rgb(var(--tone-soft)); border-color: rgb(var(--tone) / 0.55); color: rgb(var(--tone-fg)); font-weight: 600;
+  }
+  @media (hover: hover) {
+    .stage-option:not([aria-pressed='true']):hover { @apply bg-surface-hover; }
   }
 
   /* Segmented control (text tabs in a recessed track). */
@@ -608,6 +622,7 @@ select:focus-visible,
 [data-tone='info']    { --tone: var(--info);    --tone-soft: var(--info-soft); --tone-fg: var(--info); }
 [data-tone='neutral'] { --tone: var(--neutral); --tone-soft: var(--neutral-soft); --tone-fg: var(--neutral-fg); }
 [data-tone='highlight'] { --tone: var(--highlight); --tone-soft: var(--highlight-soft); --tone-fg: var(--highlight); }
+[data-tone='upcoming'] { --tone: var(--upcoming); --tone-soft: var(--upcoming-soft); --tone-fg: var(--upcoming); }
 [data-tone='star']    { --tone: var(--star);    --tone-soft: var(--star-soft); --tone-fg: var(--star); }
 [data-tone='accent']  { --tone: var(--accent-500); --tone-soft: var(--accent-50); --tone-fg: var(--accent-500); }
 .tone-dot  { display: inline-block; width: 8px; height: 8px; border-radius: 999px; background: rgb(var(--tone, var(--neutral))); flex-shrink: 0; }
@@ -630,7 +645,8 @@ select:focus-visible,
    fixed and dark enough for white 11px text (≥ 4.5:1), not the theme tones. */
 .poster-belt { color: #fff; background: #475569; }
 .poster-belt[data-tone='success'] { background: #15803d; }
-.poster-belt[data-tone='info'] { background: #1d4ed8; }
+.poster-belt[data-tone='info'] { background: #0e7490; }
+.poster-belt[data-tone='upcoming'] { background: #4338ca; }
 .poster-belt[data-tone='warn'] { background: #b45309; }
 .poster-belt[data-tone='highlight'] { background: #7e22ce; }
 .poster-belt[data-tone='danger'] { background: #b91c1c; }

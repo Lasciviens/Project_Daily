@@ -15,10 +15,13 @@ const RATINGS = [6, 7, 8]
 // IMDb's own advanced search offers a minimum number of votes; these are its steps.
 const VOTES = [100, 1000, 10000, 100000]
 const SORTS: { value: DiscoverSort; label: string }[] = [
-  { value: 'popularity', label: 'Most popular' },
+  { value: 'popularity', label: 'Popular' },
   { value: 'rating', label: 'Best rated' },
   { value: 'newest', label: 'Newest' },
 ]
+// A compact select: the field's name is its first option, so no label takes room.
+const SELECT = 'input w-auto min-h-[36px] py-0 pl-2.5 pr-7 text-meta'
+const shortVotes = (v: number) => (v >= 1000 ? `${v / 1000}k+` : `${v}+`)
 
 export function SkeletonGrid({ count = 12 }: { count?: number }) {
   return (
@@ -43,7 +46,7 @@ function HideChecklist<T extends string | number>({ label, options, picked, onCh
   const toggle = (v: T) => onChange(picked.includes(v) ? picked.filter(x => x !== v) : [...picked, v])
   return (
     <Popover className="relative">
-      <PopoverButton className={`btn-ghost btn-sm min-h-[44px] gap-1.5 sm:min-h-[36px] ${picked.length ? 'text-accent-700' : ''}`}>
+      <PopoverButton title={`Hide ${label.toLowerCase()}`} aria-label={`Hide ${label.toLowerCase()}${picked.length ? ` (${picked.length})` : ''}`} className={`btn-ghost btn-sm min-h-[44px] gap-1.5 sm:min-h-[36px] ${picked.length ? 'text-accent-700' : ''}`}>
         <EyeOff aria-hidden className="h-3.5 w-3.5" />
         {label}{picked.length ? ` · ${picked.length}` : ''}
         <ChevronDown aria-hidden className="h-3.5 w-3.5" />
@@ -79,49 +82,47 @@ export function FilterRow({ type, filters, onApply, tab, trending }: { type: Med
   const ignored = ignoredFilters(tab, draft)
   return (
     <form
-      className="flex flex-col gap-2 rounded-row border border-line bg-surface-2/50 p-2"
+      className="flex flex-col gap-1.5 rounded-row border border-line bg-surface-2/50 p-2"
       onSubmit={e => { e.preventDefault(); onApply(draft) }}
     >
-      <div className="flex flex-wrap items-center gap-2">
-        <select aria-label="Genre" className="input w-auto" value={draft.genre ?? ''} onChange={e => set({ genre: num(e.target.value) })}>
-          <option value="">Any genre</option>
+      <div className="flex flex-wrap items-center gap-1.5">
+        <select aria-label="Genre" className={SELECT} value={draft.genre ?? ''} onChange={e => set({ genre: num(e.target.value) })}>
+          <option value="">Genre</option>
           {genres.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
         </select>
-        <select aria-label="Released from" className="input w-auto" value={draft.fromYear ?? ''} onChange={e => set({ fromYear: num(e.target.value) })}>
-          <option value="">Any year</option>
-          {YEARS.map(y => <option key={y} value={y}>{y} or later</option>)}
+        <select aria-label="Released from" className={SELECT} value={draft.fromYear ?? ''} onChange={e => set({ fromYear: num(e.target.value) })}>
+          <option value="">Year</option>
+          {YEARS.map(y => <option key={y} value={y}>{y}+</option>)}
         </select>
-        <select aria-label="TMDB score" className="input w-auto" value={draft.minRating ?? ''} onChange={e => set({ minRating: num(e.target.value) })}>
-          <option value="">Any score</option>
-          {RATINGS.map(r => <option key={r} value={r}>TMDB {r}+</option>)}
+        <select aria-label="TMDB score" className={SELECT} value={draft.minRating ?? ''} onChange={e => set({ minRating: num(e.target.value) })}>
+          <option value="">Score</option>
+          {RATINGS.map(r => <option key={r} value={r}>{r}+</option>)}
         </select>
-        <select aria-label="Minimum votes" title="Ignore titles only a few people rated" className="input w-auto" value={draft.minVotes ?? ''} onChange={e => set({ minVotes: num(e.target.value) })}>
-          <option value="">Any number of votes</option>
-          {VOTES.map(v => <option key={v} value={v}>{v.toLocaleString('en-GB')}+ votes</option>)}
+        <select aria-label="Minimum votes" title="Ignore titles only a few people rated" className={SELECT} value={draft.minVotes ?? ''} onChange={e => set({ minVotes: num(e.target.value) })}>
+          <option value="">Votes</option>
+          {VOTES.map(v => <option key={v} value={v}>{shortVotes(v)} votes</option>)}
         </select>
         {!trending && (
-          <select aria-label="Sort" className="input w-auto" value={draft.sort ?? ''} onChange={e => set({ sort: (e.target.value || null) as DiscoverSort | null })}>
-            <option value="">Default order</option>
+          <select aria-label="Sort" className={SELECT} value={draft.sort ?? ''} onChange={e => set({ sort: (e.target.value || null) as DiscoverSort | null })}>
+            <option value="">Order</option>
             {SORTS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
           </select>
         )}
-        <label className="flex min-h-[44px] items-center gap-2 px-1 text-meta text-fg-2 sm:min-h-[36px]">
+        <label title="Hide titles already in my library" className="flex min-h-[44px] items-center gap-1.5 px-1 text-meta text-fg-2 sm:min-h-[36px]">
           <input type="checkbox" checked={draft.hideLibrary} onChange={e => set({ hideLibrary: e.target.checked })} />
-          Hide titles in my library
+          Not in library
         </label>
-        <HideChecklist label="Hide genres" options={genres.map(g => ({ value: g.id, label: g.name }))} picked={draft.hideGenres} onChange={hideGenres => set({ hideGenres })} />
-        <HideChecklist label="Hide languages" options={DISCOVER_LANGUAGES.map(l => ({ value: l.code, label: l.label }))} picked={draft.hideLanguages} onChange={hideLanguages => set({ hideLanguages })} />
-      </div>
-      <div className="flex flex-wrap items-center gap-2">
+        <HideChecklist label="Genres" options={genres.map(g => ({ value: g.id, label: g.name }))} picked={draft.hideGenres} onChange={hideGenres => set({ hideGenres })} />
+        <HideChecklist label="Languages" options={DISCOVER_LANGUAGES.map(l => ({ value: l.code, label: l.label }))} picked={draft.hideLanguages} onChange={hideLanguages => set({ hideLanguages })} />
         <Button type="submit" size="sm" variant="primary" icon={<Search />} disabled={!dirty}>Search</Button>
-        {dirty && <Button type="button" size="sm" variant="ghost" onClick={() => setDraft(filters)}>Undo changes</Button>}
+        {dirty && <Button type="button" size="sm" variant="ghost" onClick={() => setDraft(filters)}>Undo</Button>}
         {(activeFilterCount(draft) > 0 || activeFilterCount(filters) > 0) && (
-          <Button type="button" size="sm" variant="ghost" onClick={() => { setDraft(NO_FILTERS); onApply(NO_FILTERS) }}>Clear all</Button>
+          <Button type="button" size="sm" variant="ghost" onClick={() => { setDraft(NO_FILTERS); onApply(NO_FILTERS) }}>Clear</Button>
         )}
-        <span className="text-meta text-fg-muted" aria-live="polite">
-          {dirty ? 'Changes apply when you press Search.' : ignored.length ? `This list ignores: ${ignored.join(', ')}.` : ''}
-        </span>
       </div>
+      <p className="text-micro text-fg-muted empty:hidden" aria-live="polite">
+        {dirty ? 'Changes apply when you press Search.' : ignored.length ? `This list ignores: ${ignored.join(', ')}.` : ''}
+      </p>
     </form>
   )
 }

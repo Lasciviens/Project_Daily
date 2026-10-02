@@ -1,13 +1,13 @@
 import { ArrowRight } from 'lucide-react'
 import { PosterTile } from './PosterTile'
-import { Button } from '../../../shared/ui'
-import { BUCKET_LABEL, BUCKET_ORDER, bucketCounts, summaryPosters, type LibraryBucket, type LibraryItem } from '../libraryModel'
-import type { MediaType } from '../types'
+import { Button, ToneDot } from '../../../shared/ui'
+import { BUCKET_LABEL, BUCKET_ORDER, BUCKET_TONE, bucketCounts, summaryPosters, type LibraryBucket, type LibraryItem } from '../libraryModel'
+import type { MediaType, OpenMediaDetail } from '../types'
 
 interface Props {
   items: LibraryItem[]
   mediaType: MediaType
-  onOpenDetail: (id: number, type: MediaType) => void
+  onOpenDetail: OpenMediaDetail
   onOpenLibrary: (bucket?: LibraryBucket) => void
 }
 
@@ -22,12 +22,12 @@ export function LibrarySummary({ items, mediaType, onOpenDetail, onOpenLibrary }
   const posters = summaryPosters(items)
 
   return (
-    <div className="flex flex-col gap-3 rounded-row border border-line bg-surface/70 p-3">
+    <section className="card flex min-w-0 flex-col gap-3 p-4">
       <div className="flex flex-wrap items-center gap-1.5">
         <span className="section-label mr-1">My library <span className="font-normal normal-case tracking-normal text-fg-faint tabular-nums">({items.length})</span></span>
         {BUCKET_ORDER.filter(b => counts[b] > 0).map(b => (
           <button key={b} type="button" onClick={() => onOpenLibrary(b)} className="chip min-h-[44px] press-feedback sm:min-h-[36px]">
-            {BUCKET_LABEL[b]} <span className="tabular-nums text-fg-muted">{counts[b]}</span>
+            <ToneDot tone={BUCKET_TONE[b]} />{BUCKET_LABEL[b]} <span className="tabular-nums text-fg-muted">{counts[b]}</span>
           </button>
         ))}
       </div>
@@ -36,7 +36,7 @@ export function LibrarySummary({ items, mediaType, onOpenDetail, onOpenLibrary }
         <div className="scroll-x flex gap-2.5 pb-1">
           {posters.map(p => (
             <div key={p.tmdbId} className="w-28 shrink-0">
-              <PosterTile posterPath={p.posterPath} title={p.title} bucket={p.bucket} rt={p.rt} favorite={p.favorite} cinema={p.cinema} language={p.language} releaseDate={p.releaseDate} onOpen={() => onOpenDetail(p.tmdbId, mediaType)} />
+              <PosterTile posterPath={p.posterPath} title={p.title} bucket={p.bucket} rt={p.rt} favorite={p.favorite} cinema={p.cinema} language={p.language} releaseDate={p.releaseDate} onOpen={() => onOpenDetail(p.tmdbId, mediaType, posters.map(x => ({ tmdbId: x.tmdbId, mediaType })))} />
             </div>
           ))}
         </div>
@@ -45,6 +45,6 @@ export function LibrarySummary({ items, mediaType, onOpenDetail, onOpenLibrary }
       <Button size="sm" className="w-fit" onClick={() => onOpenLibrary()}>
         Open library <ArrowRight aria-hidden className="h-4 w-4" />
       </Button>
-    </div>
+    </section>
   )
 }

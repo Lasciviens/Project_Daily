@@ -1,7 +1,7 @@
 import { CalendarClock, Film, Tv } from 'lucide-react'
 import { CollapsibleCard } from './CollapsibleCard'
 import { posterUrl } from '../../../integrations/tmdb/client'
-import type { MediaType, UserMovieEntry, UserTVEntry } from '../types'
+import type { UserMovieEntry, UserTVEntry, OpenMediaDetail } from '../types'
 import { formatDate } from '../../../shared/utils/dateFormat'
 import { Truncate } from '../../../shared/ui'
 import { useTraktCalendar } from '../trakt/useTraktExtras'
@@ -9,7 +9,7 @@ import { useTraktCalendar } from '../trakt/useTraktExtras'
 interface Props {
   movieEntries: UserMovieEntry[]
   tvEntries:    UserTVEntry[]
-  onOpenDetail: (id: number, type: MediaType) => void
+  onOpenDetail: OpenMediaDetail
   /** The library is still loading: placeholders, not "no upcoming releases". */
   loading?:     boolean
 }
@@ -110,7 +110,7 @@ export function ReleaseCalendar({ movieEntries, tvEntries, onOpenDetail, loading
             <li key={item.id}>
               <button
                 type="button"
-                onClick={() => onOpenDetail(item.tmdbId, item.type)}
+                onClick={() => onOpenDetail(item.tmdbId, item.type, items.map(x => ({ tmdbId: x.tmdbId, mediaType: x.type })))}
                 className="row row-interactive w-full py-1.5 text-left"
               >
                 <img src={posterUrl(item.poster, 'w92')} alt="" className="h-14 w-9 shrink-0 rounded-md bg-surface-2 object-cover" />

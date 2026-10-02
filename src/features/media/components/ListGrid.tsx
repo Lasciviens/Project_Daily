@@ -4,7 +4,7 @@ import { todayStr } from '../../../shared/utils/dateUtils'
 import { useTmdbBasic } from '../hooks/useTMDB'
 import { useLibraryIndex } from '../hooks/useLibraryIndex'
 import { LIST_FILTERS, LIST_FILTER_LABEL, filterList, listCounts, withLibrary, type ListFilter, type ListRow, type ListSort, type ListTitle } from '../listModel'
-import type { MediaType } from '../types'
+import type { OpenMediaDetail } from '../types'
 import { POSTER_GRID, PosterTile } from './PosterTile'
 
 const SORT_LABEL: Record<ListSort, string> = { order: 'List order', release: 'Release date', title: 'Title', rt: 'Rotten Tomatoes (library titles)' }
@@ -36,7 +36,7 @@ interface Props {
   titles: ListTitle[] | undefined
   loading?: boolean
   sorts: ListSort[]
-  onOpen: (tmdbId: number, type: MediaType) => void
+  onOpen: OpenMediaDetail
   /** A per-title corner action (remove from a Trakt list). */
   corner?: (row: ListRow) => ReactNode
   empty?: ReactNode
@@ -87,7 +87,7 @@ export function ListGrid({ titles, loading, sorts, onOpen, corner, empty }: Prop
         <ul className={POSTER_GRID}>
           {shown.map(r => (
             <li key={`${r.type}:${r.tmdbId}`} className="min-w-0">
-              <Tile row={r} onOpen={() => onOpen(r.tmdbId, r.type)} corner={corner?.(r)} />
+              <Tile row={r} onOpen={() => onOpen(r.tmdbId, r.type, shown.map(x => ({ tmdbId: x.tmdbId, mediaType: x.type })))} corner={corner?.(r)} />
             </li>
           ))}
         </ul>

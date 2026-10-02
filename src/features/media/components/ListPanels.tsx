@@ -7,7 +7,7 @@ import { useSmartListTitles } from '../hooks/useSmartLists'
 import { useChangeTraktList, useTraktListItems } from '../trakt/useTraktExtras'
 import type { MediaFollow } from '../api/followsApi'
 import { watchedProgress, withLibrary, type ListTitle } from '../listModel'
-import type { MediaType } from '../types'
+import type { OpenMediaDetail } from '../types'
 import { ListGrid } from './ListGrid'
 
 export function ListProgress({ titles }: { titles: ListTitle[] | undefined }) {
@@ -24,7 +24,7 @@ export function ListProgress({ titles }: { titles: ListTitle[] | undefined }) {
 }
 
 /** A Trakt list's titles (remove from the corner). */
-export function TraktListPanel({ listId, onOpen }: { listId: number; onOpen: (id: number, t: MediaType) => void }) {
+export function TraktListPanel({ listId, onOpen }: { listId: number; onOpen: OpenMediaDetail }) {
   const items = useTraktListItems(listId)
   const change = useChangeTraktList()
   const titles: ListTitle[] | undefined = useMemo(() => items.data?.filter(i => i.tmdb).map((i, n) => ({
@@ -56,7 +56,7 @@ export function TraktListPanel({ listId, onOpen }: { listId: number; onOpen: (id
   )
 }
 
-export function SmartListPanel({ follow, onOpen }: { follow: MediaFollow; onOpen: (id: number, t: MediaType) => void }) {
+export function SmartListPanel({ follow, onOpen }: { follow: MediaFollow; onOpen: OpenMediaDetail }) {
   // Studio and keyword lists drag in featurettes, specials and documentaries.
   const [hideExtras, setHideExtras] = useState(follow.kind !== 'collection')
   const q = useSmartListTitles(follow.kind, follow.tmdb_id, hideExtras)

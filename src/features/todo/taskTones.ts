@@ -1,4 +1,5 @@
 import type { Tone } from '../../shared/ui'
+import { stageTones, type Stage } from '../../shared/theme/stage'
 import type { TaskDomain, TaskPriority, TaskStatus } from './types'
 
 // The one enum → tone map for tasks (THEME.md §2.4). Every task surface
@@ -16,13 +17,15 @@ export const PRIORITY_LABEL: Record<TaskPriority, string> = {
   high:   'High',
 }
 
-export const STATUS_TONE: Record<TaskStatus, Tone> = {
-  open:        'neutral',
-  in_progress: 'info',
-  waiting:     'warn',
-  done:        'success',
-  cancelled:   'neutral',
+export const STATUS_STAGE: Record<TaskStatus, Stage> = {
+  open:        'idle',
+  in_progress: 'active',
+  waiting:     'paused',
+  done:        'done',
+  cancelled:   'dropped',
 }
+
+export const STATUS_TONE: Record<TaskStatus, Tone> = stageTones(STATUS_STAGE)
 
 export const STATUS_LABEL: Record<TaskStatus, string> = {
   open:        'Open',

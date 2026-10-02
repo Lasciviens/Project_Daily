@@ -37,6 +37,7 @@ export default {
         info:    tone('info'),
         neutral: tone('neutral'),
         highlight: tone('highlight'),
+        upcoming: tone('upcoming'),
         star:    tone('star'),
         scrim:   rgb('scrim'),
 

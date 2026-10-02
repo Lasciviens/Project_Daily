@@ -1,33 +1,36 @@
 import type { Tone } from '../../shared/ui'
+import { stageTones } from '../../shared/theme/stage'
 import type { ItemStatus, ItemType, PhaseStatus, ProjectColor, ProjectStatus } from './types'
 
 export { PRIORITY_TONE as ITEM_PRIORITY_TONE } from '../todo/taskTones'
 
 // The one enum → tone map per project enum (THEME.md §2.4).
 
-export const PROJECT_STATUS_TONE: Record<ProjectStatus, Tone> = {
-  active:    'success',
-  on_hold:   'warn',
-  completed: 'info',
-  archived:  'neutral',
-}
+// Statuses go through the shared stages (shared/theme/stage.ts): Active is
+// the same cyan as Watching, Completed the same green as Done.
+export const PROJECT_STATUS_TONE: Record<ProjectStatus, Tone> = stageTones({
+  active:    'active',
+  on_hold:   'paused',
+  completed: 'done',
+  archived:  'idle',
+})
 
 export const PROJECT_STATUS_LABEL: Record<ProjectStatus, string> = {
   active: 'Active', on_hold: 'On hold', completed: 'Completed', archived: 'Archived',
 }
 
-export const PHASE_STATUS_TONE: Record<PhaseStatus, Tone> = {
-  pending:     'neutral',
-  in_progress: 'info',
-  done:        'success',
-}
+export const PHASE_STATUS_TONE: Record<PhaseStatus, Tone> = stageTones({
+  pending:     'idle',
+  in_progress: 'active',
+  done:        'done',
+})
 
-export const ITEM_STATUS_TONE: Record<ItemStatus, Tone> = {
-  open:        'neutral',
-  in_progress: 'info',
-  done:        'success',
-  cancelled:   'neutral',
-}
+export const ITEM_STATUS_TONE: Record<ItemStatus, Tone> = stageTones({
+  open:        'idle',
+  in_progress: 'active',
+  done:        'done',
+  cancelled:   'dropped',
+})
 
 // Item type is a category, not a status; tones only keep the five apart.
 export const ITEM_TYPE_TONE: Record<ItemType, Tone> = {

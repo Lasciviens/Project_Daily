@@ -7,13 +7,13 @@ import { useCollection } from '../hooks/useTMDB'
 import { useTraktStatus } from '../trakt/useTrakt'
 import { useFollows } from '../hooks/useFollows'
 import { useCreateAutoList } from '../hooks/useAutoLists'
-import type { MediaType, TMDBMovieFull } from '../types'
+import type { TMDBMovieFull, OpenMediaDetail } from '../types'
 
 /**
  * A film's franchise (TMDB collection) in release order, with one tap to save
  * it as a Trakt list that fills itself (new parts are added later).
  */
-export function CollectionListButton({ movie, onOpenDetail }: { movie: TMDBMovieFull; onOpenDetail?: (id: number, type: MediaType) => void }) {
+export function CollectionListButton({ movie, onOpenDetail }: { movie: TMDBMovieFull; onOpenDetail?: OpenMediaDetail }) {
   const col = movie.belongs_to_collection ?? null
   const { data } = useCollection(col?.id ?? null)
   const { data: trakt } = useTraktStatus()

@@ -10,7 +10,7 @@ import {
 import { useMediaPrefs } from '../mediaPrefsStore'
 import { useTraktListItems, useTraktLists } from '../trakt/useTraktExtras'
 import { useTraktStatus } from '../trakt/useTrakt'
-import type { MediaType, UserMovieEntry, UserTVEntry } from '../types'
+import type { MediaType, UserMovieEntry, UserTVEntry, OpenMediaDetail } from '../types'
 
 type Source = 'mylist' | 'trending' | 'popular' | 'list'
 
@@ -29,7 +29,7 @@ interface Candidate {
 interface Props {
   movieEntries: UserMovieEntry[]
   tvEntries:    UserTVEntry[]
-  onOpenDetail: (id: number, type: MediaType) => void
+  onOpenDetail: OpenMediaDetail
 }
 
 // buildPool() creates fresh Candidate objects every call, so comparing by
@@ -45,7 +45,7 @@ function PickRow({ type, pick, shaking, onRoll, onOpenDetail }: {
   pick:         Candidate | null
   shaking:      boolean
   onRoll:       () => void
-  onOpenDetail: (id: number, type: MediaType) => void
+  onOpenDetail: OpenMediaDetail
 }) {
   if (pick) {
     return (

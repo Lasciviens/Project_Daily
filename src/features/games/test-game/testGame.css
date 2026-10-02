@@ -171,11 +171,13 @@
 
 /* Scoped like everything else: inside the page root, inside a portal, or on
    the portal element itself. */
-.tg-root [data-status], .tg-portal [data-status], .tg-portal[data-status] { --st: var(--tg-grey); --st-soft: var(--tg-grey-soft); }
-.tg-root [data-status='playing'], .tg-portal [data-status='playing'], .tg-portal[data-status='playing'] { --st: var(--tg-green); --st-soft: var(--tg-green-soft); }
-.tg-root [data-status='completed'], .tg-portal [data-status='completed'], .tg-portal[data-status='completed'] { --st: var(--tg-blue); --st-soft: var(--tg-blue-soft); }
-.tg-root [data-status='wishlist'], .tg-portal [data-status='wishlist'], .tg-portal[data-status='wishlist'] { --st: var(--tg-purple); --st-soft: var(--tg-purple-soft); }
-.tg-root [data-status='dropped'], .tg-portal [data-status='dropped'], .tg-portal[data-status='dropped'] { --st: var(--tg-red); --st-soft: var(--tg-red-soft); }
+.tg-root [data-status], .tg-portal [data-status], .tg-portal[data-status] { --st: rgb(var(--neutral)); --st-soft: rgb(var(--neutral-soft)); }
+/* The app's shared status stages (shared/theme/stage.ts): Playing = in progress
+   (cyan), Completed = done (green), Wishlist = planned (purple), Dropped = red. */
+.tg-root [data-status='playing'], .tg-portal [data-status='playing'], .tg-portal[data-status='playing'] { --st: rgb(var(--info)); --st-soft: rgb(var(--info-soft)); }
+.tg-root [data-status='completed'], .tg-portal [data-status='completed'], .tg-portal[data-status='completed'] { --st: rgb(var(--success)); --st-soft: rgb(var(--success-soft)); }
+.tg-root [data-status='wishlist'], .tg-portal [data-status='wishlist'], .tg-portal[data-status='wishlist'] { --st: rgb(var(--highlight)); --st-soft: rgb(var(--highlight-soft)); }
+.tg-root [data-status='dropped'], .tg-portal [data-status='dropped'], .tg-portal[data-status='dropped'] { --st: rgb(var(--danger)); --st-soft: rgb(var(--danger-soft)); }
 
 .tg-dot { width: 8px; height: 8px; border-radius: 999px; background: var(--st, var(--tg-grey)); flex-shrink: 0; }
 .tg-status-text { color: var(--st, var(--tg-grey)); }

@@ -5,14 +5,14 @@ import { MediaDetailInfo } from './MediaDetailInfo'
 import { MediaLibraryControls } from './MediaLibraryControls'
 import { MediaScoresRow } from './MediaScoresRow'
 import { CollectionListButton } from './CollectionListButton'
-import type { TMDBMovieFull, TMDBTVFull, UserMovieEntry, UserTVEntry, MediaType } from '../types'
+import type { TMDBMovieFull, TMDBTVFull, UserMovieEntry, UserTVEntry, MediaType, OpenMediaDetail } from '../types'
 
 interface Props {
   detail: TMDBMovieFull | TMDBTVFull
   mediaType: MediaType
   userEntry?: UserMovieEntry | UserTVEntry | null
   onRemoved?: () => void
-  onOpenDetail?: (id: number, type: MediaType) => void
+  onOpenDetail?: OpenMediaDetail
 }
 
 export function MediaDetailBody({ detail, mediaType, userEntry, onRemoved, onOpenDetail }: Props) {
@@ -28,7 +28,10 @@ export function MediaDetailBody({ detail, mediaType, userEntry, onRemoved, onOpe
   // high, never pushed under the episode list), the TMDB facts on the right.
   return (
     <div className="grid grid-cols-1 gap-5 p-4 sm:p-5 md:grid-cols-[15rem_minmax(0,1fr)]">
-      <aside className="order-2 flex min-w-0 flex-col gap-4 md:order-1 md:sticky md:top-0 md:self-start">
+      {/* md+: the rail stays put while the facts and episodes scroll. It is
+          as tall as the popup's scroll area at most (88dvh − the 14rem hero −
+          padding) and scrolls inside itself when the controls are longer. */}
+      <aside className="scroll-y order-2 flex min-w-0 flex-col gap-4 md:order-1 md:sticky md:top-5 md:max-h-[calc(88dvh-14rem-2.5rem)] md:self-start md:overflow-y-auto md:overscroll-contain md:pr-1">
         {/* The hero already shows the poster on phones. */}
         <img
           src={posterUrl(detail.poster_path, 'w342')}

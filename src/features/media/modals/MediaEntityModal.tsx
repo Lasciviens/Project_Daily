@@ -4,7 +4,7 @@ import { useHistoryDismiss } from '../../../shared/hooks/useHistoryDismiss'
 import { MediaDetailModal } from '../components/MediaDetailModal'
 import { useMovieEntryByTmdb } from '../hooks/useMovies'
 import { useTVEntryByTmdb } from '../hooks/useTVSeries'
-import type { MediaType } from '../types'
+import type { MediaRef, MediaType } from '../types'
 
 interface Step { tmdbId: number; mediaType: MediaType }
 
@@ -24,6 +24,17 @@ function BackStep({ onBack }: { onBack: () => void }) {
 export function MediaEntityModal({ request, onClose }: EntityModalProps<'media'>) {
   const [trail, setTrail] = useState<Step[]>([{ tmdbId: request.tmdbId, mediaType: request.mediaType }])
   const { tmdbId, mediaType } = trail[trail.length - 1]
+  // Previous / next walk the list the popup was opened from, in its on-screen
+  // order; only on that list's own title (not one reached from "More like this").
+  const sequence: MediaRef[] = request.sequence ?? []
+  const index = trail.length === 1 ? sequence.findIndex(s => s.tmdbId === tmdbId && s.mediaType === mediaType) : -1
+  const step = (dir: -1 | 1) => {
+    const next = index >= 0 ? sequence[index + dir] : undefined
+    if (next) setTrail([{ tmdbId: next.tmdbId, mediaType: next.mediaType }])
+  }
+  const nav = index >= 0 && sequence.length > 1
+    ? { position: index + 1, total: sequence.length, onPrev: index > 0 ? () => step(-1) : undefined, onNext: index < sequence.length - 1 ? () => step(1) : undefined }
+    : undefined
   const closingAll = useRef(false)
   const fallback = useRef(0)
   useEffect(() => () => window.clearTimeout(fallback.current), [])
@@ -69,6 +80,7 @@ export function MediaEntityModal({ request, onClose }: EntityModalProps<'media'>
         // opened for closes it; on a title reached inside, it stays.
         onRemoved={trail.length > 1 ? undefined : close}
         onOpenDetail={open}
+        nav={nav}
       />
     </>
   )

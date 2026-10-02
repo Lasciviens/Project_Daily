@@ -6,6 +6,7 @@ import { withProgress } from '../../../shared/hooks/useMutationWithFeedback'
 import { haptic } from '../../../shared/utils/haptics'
 import { tmdbMovieUrl, tmdbTVUrl } from '../../../integrations/tmdb/client'
 import { Button, SectionLabel } from '../../../shared/ui'
+import { STAGE_TONE, type Stage } from '../../../shared/theme/stage'
 import { useEntityModal } from '../../../shared/modals'
 import { useMarkEpisodeWatched, useWatchedEpisodes } from '../hooks/useWatchedEpisodes'
 import { episodeAirDates } from '../hooks/useTMDB'
@@ -49,25 +50,31 @@ const TV_STATUSES: { value: PillStatus; label: string }[] = [
   { value: 'dropped',   label: 'Dropped' },
 ]
 
+const PILL_STAGE: Record<PillStatus, Stage> = {
+  unwatched: 'idle', wishlist: 'planned', watching: 'active', paused: 'paused', completed: 'done', dropped: 'dropped', upcoming: 'upcoming',
+}
+
+/** Status picker: an aligned two-column grid, each status in its shared stage colour (shared/theme/stage.ts). */
 function StatusPills({ statuses, value, disabled, onPick }: {
   statuses: typeof MOVIE_STATUSES
   value: PillStatus
   disabled?: boolean
   onPick: (s: PillStatus) => void
 }) {
-  // Content-width pills that wrap (compact on phones too).
   return (
-    <div className="flex flex-wrap gap-1.5">
+    <div role="group" aria-label="Status" className="grid grid-cols-2 gap-1">
       {statuses.map(s => (
         <button
           key={s.value}
           type="button"
           aria-pressed={value === s.value}
           disabled={disabled}
+          data-tone={STAGE_TONE[PILL_STAGE[s.value]]}
           onClick={() => { haptic('light'); onPick(s.value) }}
-          className="pill-tab press-feedback justify-center border border-line aria-pressed:border-transparent"
+          className="stage-option press-feedback"
         >
-          {s.label}
+          <span aria-hidden className="tone-dot" />
+          <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{s.label}</span>
         </button>
       ))}
     </div>
@@ -247,7 +254,6 @@ export function MediaLibraryControls({ detail, isMovie, userEntry, onRemoved }: 
           onPick={s => { if (s !== 'unwatched') void handleAdd(s) }} />
         <div className="flex flex-wrap items-center gap-2">
           <QueueButton type={isMovie ? 'movie' : 'show'} tmdb={detail.id} title={isMovie ? movie!.title : tv!.name} />
-        <ReleaseReminderButton type={isMovie ? 'movie' : 'tv'} tmdbId={detail.id} title={isMovie ? movie!.title : tv!.name} posterPath={detail.poster_path ?? null} releaseDate={(isMovie ? movie!.release_date : tv!.first_air_date) || null} />
           <ReleaseReminderButton type={isMovie ? 'movie' : 'tv'} tmdbId={detail.id} title={isMovie ? movie!.title : tv!.name} posterPath={detail.poster_path ?? null} releaseDate={(isMovie ? movie!.release_date : tv!.first_air_date) || null} />
           <AddToListMenu type={isMovie ? 'movie' : 'show'} tmdb={detail.id} title={isMovie ? movie!.title : tv!.name} />
           <a href={tmdbHref} target="_blank" rel="noopener noreferrer" className="btn-ghost btn-sm">

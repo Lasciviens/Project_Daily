@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { Loader2, Search } from 'lucide-react'
 import { useSearchMovies, useSearchTV } from '../hooks/useTMDB'
 import { posterUrl } from '../../../integrations/tmdb/client'
-import type { MediaType } from '../types'
+import type { MediaType, OpenMediaDetail } from '../types'
 import { Truncate } from '../../../shared/ui'
 
 function useDebounce(value: string, ms: number) {
@@ -19,7 +19,7 @@ interface Result { id: number; title: string; poster: string | null; year?: stri
 interface Props {
   /** Follows the page's Movies / TV switch. */
   mediaType: MediaType
-  onSelectResult: (id: number, type: MediaType) => void
+  onSelectResult: OpenMediaDetail
 }
 
 export function MediaSearch({ mediaType, onSelectResult }: Props) {
@@ -51,7 +51,7 @@ export function MediaSearch({ mediaType, onSelectResult }: Props) {
   function select(id: number) {
     setFocused(false)
     setQuery('')
-    onSelectResult(id, mediaType)
+    onSelectResult(id, mediaType, results.slice(0, 8).map(r => ({ tmdbId: r.id, mediaType })))
   }
 
   return (

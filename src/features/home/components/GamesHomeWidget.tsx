@@ -3,17 +3,14 @@ import { Gamepad2 } from 'lucide-react'
 import { Skeleton, ToneDot, Button, type Tone, AnimatedNumber } from '../../../shared/ui'
 import { useGameStats, usePlayQueue } from '../../games/hooks/useGames'
 import { computeGameStats } from '../../games/gameStats'
-import type { Game, PlayStatus } from '../../games/types'
+import type { Game } from '../../games/types'
+import { PLAY_STATUS_TONE } from '../../games/playStatusTones'
 import { useWidgetState } from '../hooks/useWidgetState'
 import { WidgetShell } from './WidgetShell'
 import { GlanceTile } from './GlanceTile'
 import { TileDetail } from './TileDetail'
 import { useTilePopup } from '../hooks/useTilePopup'
 
-// Local until the games feature exports its own status → tone map.
-const PLAY_STATUS_TONE: Record<PlayStatus, Tone> = {
-  playing: 'info', completed: 'success', wishlist: 'highlight', backlog: 'neutral', dropped: 'danger', hidden: 'neutral',
-}
 
 function CoverThumb({ game }: { game: Game }) {
   const [failed, setFailed] = useState(false)

@@ -15,7 +15,7 @@
 
 import type { PlanDefaults, PlanModalConfig, PlanSource, PlanResult } from '../components/plan-modal'
 import type { MealSlot } from '../../features/recipes/types'
-import type { MediaType } from '../../features/media/types'
+import type { MediaRef, MediaType } from '../../features/media/types'
 
 export type EntityModalRequest =
   // Tasks and schedule — every former UnifiedPlanModal mount.
@@ -37,7 +37,8 @@ export type EntityModalRequest =
   /** Nutrition goals editor; `date` feeds the coach (default today). */
   | { kind: 'day-targets'; date?: string }
   // Other features.
-  | { kind: 'media'; tmdbId: number; mediaType: MediaType }
+  /** `sequence`: the list it was opened from, in on-screen order — the popup's previous / next. */
+  | { kind: 'media'; tmdbId: number; mediaType: MediaType; sequence?: MediaRef[] }
   /** One training session: a logged Hevy workout (`workoutId`) or a planned
    *  one (`plan` — a recurring occurrence has no row, so it carries its day). */
   | { kind: 'training-session'; workoutId?: string; plan?: { kind: 'block' | 'recurring'; id: string; date: string } }

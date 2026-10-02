@@ -89,7 +89,7 @@ the user can pick Orange, Red, Purple, Yellow or Slate in Settings. Every preset
 ### 2.4 Status tones
 
 Status (priority, sync state, health, due/overdue, done…) always goes through a **tone**, never a
-literal colour. Tones: `success · warn · danger · info · neutral · highlight · star · accent`, each with
+literal colour. Tones: `success · warn · danger · info · neutral · highlight · upcoming · star · accent`, each with
 a `-soft` background.
 
 ```tsx
@@ -120,7 +120,25 @@ and import that map everywhere. No per-component colour maps.
 | `neutral` | idle, unknown, cancelled, not started |
 | `highlight` | a special category the user flagged (wish, favourite) |
 | `star` | ratings, streaks |
-| `accent` | the *current* item (Today, "N open", the default list) and in-flight work (the loading toast) — never good/bad |
+| `accent` | the *current* item (Today, "N open", the default list) and in-flight work (the loading toast) — never good/bad || `upcoming` | not out yet (Coming soon) — indigo |
+
+**Status stages — one meaning, one colour, on every page** (`src/shared/theme/stage.ts`, owner
+02.10.2026). A feature's status enum maps onto a `Stage` first (`stageTones({...})`), never straight
+to a tone, so the same meaning reads the same everywhere — media covers and the title popup, Games
+(`[data-status]` in `testGame.css` reads the same tokens), Work, Projects, tasks, Dev Requests:
+
+| Stage | Tone | Statuses |
+|---|---|---|
+| `idle` | neutral (grey) | Unwatched, Backlog, To-do, Open, Pending, Archived |
+| `planned` | highlight (purple) | Wishlist, Planned |
+| `upcoming` | upcoming (indigo) | Coming soon |
+| `active` | info (cyan) | Watching, Playing, In progress, Active |
+| `paused` | warn (amber) | Paused, On hold, Waiting |
+| `done` | success (green) | Completed, Done |
+| `dropped` | danger (red) | Dropped, Cancelled, Dismissed |
+
+A status picker uses `.stage-option` (one button per status, `data-tone` from its stage; the
+picked one fills with its soft tone). Checked by `scripts/verify-status-stages.cjs`.
 
 ### 2.5 Charts
 

@@ -13,7 +13,7 @@ const SCALE_FLOOR = 30
 
 const BAR_FILL: Record<Tone, string> = {
   success: 'bg-success', warn: 'bg-warn', danger: 'bg-danger', info: 'bg-info', neutral: 'bg-neutral',
-  highlight: 'bg-highlight', star: 'bg-star', accent: 'bg-accent-500',
+  highlight: 'bg-highlight', upcoming: 'bg-upcoming', star: 'bg-star', accent: 'bg-accent-500',
 }
 
 function MuscleRow({ m, scale }: { m: MuscleRead; scale: number }) {

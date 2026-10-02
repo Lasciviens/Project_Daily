@@ -1,4 +1,5 @@
 import type { Tone } from '../../../shared/ui'
+import { stageTones } from '../../../shared/theme/stage'
 import { NAV } from '../../../app/navigation'
 import type { DevRequestCategory, DevRequestPriority, DevRequestStatus } from '../types'
 
@@ -21,12 +22,12 @@ export const PRIORITY_TONE: Record<DevRequestPriority, Tone> = {
   urgent: 'danger',
 }
 
-export const STATUS_TONE: Record<DevRequestStatus, Tone> = {
-  open:        'neutral',
-  in_progress: 'info',
-  done:        'success',
-  dismissed:   'neutral',
-}
+export const STATUS_TONE: Record<DevRequestStatus, Tone> = stageTones({
+  open:        'idle',
+  in_progress: 'active',
+  done:        'done',
+  dismissed:   'dropped',
+})
 
 export const STATUS_LABEL: Record<DevRequestStatus, string> = {
   open:        'Open',
