@@ -208,7 +208,7 @@ const quoted = (s: string) => `"${s.replace(/["\\]/g, ' ').replace(/\s+/g, ' ').
 
 // ─── Handler ────────────────────────────────────────────────────────────────
 
-interface MatchItem { game_id: string; query: string; steam_appid?: number | null }
+interface MatchItem { game_id: string; query: string; fallback?: string | null; steam_appid?: number | null }
 interface ApplyItem { game_id: string; igdb_id: number; match: 'steam' | 'exact' | 'picked' }
 
 const CLEAR = {
@@ -275,7 +275,15 @@ Deno.serve(async (req: Request) => {
         searches.push({ name, endpoint: 'games', body: `search ${quoted(q)}; ${CANDIDATE_FIELDS} where version_parent = null; limit 10;` })
       })
       const found = await multi(searches)
-      for (const [name, x] of searchFor) results.push({ game_id: x.game_id, steam: null, candidates: (found.get(name) ?? []).map(toCandidate) })
+      // A second, shorter search (the title before its subtitle) for those that found nothing.
+      const retry = [...searchFor].filter(([name, x]) => !(found.get(name) ?? []).length && String(x.fallback ?? '').trim().length >= 3)
+      const again = retry.length ? await multi(retry.map(([name, x]) => ({
+        name: `${name}b`, endpoint: 'games', body: `search ${quoted(String(x.fallback))}; ${CANDIDATE_FIELDS} where version_parent = null; limit 10;`,
+      }))) : new Map<string, AnyRec[]>()
+      for (const [name, x] of searchFor) {
+        const rows = (found.get(name) ?? []).length ? found.get(name)! : again.get(`${name}b`) ?? []
+        results.push({ game_id: x.game_id, steam: null, candidates: rows.map(toCandidate) })
+      }
       return json({ results })
     }
 

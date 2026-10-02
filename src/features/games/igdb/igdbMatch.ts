@@ -36,8 +36,13 @@ export interface ScoredCandidate extends IgdbCandidate {
   score: number
   confidence: MatchConfidence
   titleMatch: 'same' | 'subtitle' | 'close' | 'weak'
+  /** 0–1 title similarity, and which of IGDB's names it came from (the main one or an alternative). */
+  titleScore: number
+  matchedName: string
   platformMatch: boolean | null
   yearMatch: boolean | null
+  /** Years between your copy and IGDB's first release (null without both). */
+  yearDiff: number | null
 }
 
 // ─── Platforms ────────────────────────────────────────────────────────────────
@@ -113,65 +118,102 @@ export function baseTitle(raw: string): string {
   return normTitle(cut)
 }
 
-function dice(a: string, b: string): number {
-  const A = new Set(a.split(' ').filter(Boolean)), B = new Set(b.split(' ').filter(Boolean))
+// Words that carry no identity ("Legend OF Zelda" / "Legend Zelda").
+const STOP = new Set(['the', 'a', 'an', 'of', 'and', 'in', 'on', 'to', 'for', 'no', 'de', 'la', 'le', 'el', 'der', 'die', 'das'])
+const tokens = (n: string) => n.split(' ').filter(w => w && !STOP.has(w))
+const numbers = (n: string) => n.split(' ').filter(w => /^\d+$/.test(w)).sort().join(' ')
+
+function tokenDice(a: string, b: string): number {
+  const A = new Set(tokens(a)), B = new Set(tokens(b))
   if (!A.size || !B.size) return 0
   let both = 0
   for (const w of A) if (B.has(w)) both++
   return (2 * both) / (A.size + B.size)
 }
 
-export function compareTitles(ours: string, theirs: string): { kind: ScoredCandidate['titleMatch']; score: number } {
+/** Letter-pair overlap of the squeezed titles — catches "Megaman"/"Mega Man", "Pokemon"/"Pokémon", small typos. */
+function bigramDice(a: string, b: string): number {
+  const sa = a.replace(/ /g, ''), sb = b.replace(/ /g, '')
+  if (sa.length < 2 || sb.length < 2) return sa === sb ? 1 : 0
+  const pairs = (x: string) => { const m = new Map<string, number>(); for (let i = 0; i < x.length - 1; i++) { const k = x.slice(i, i + 2); m.set(k, (m.get(k) ?? 0) + 1) } return m }
+  const A = pairs(sa), B = pairs(sb)
+  let both = 0
+  for (const [k, n] of A) both += Math.min(n, B.get(k) ?? 0)
+  return (2 * both) / (sa.length - 1 + sb.length - 1)
+}
+
+export interface TitleComparison { kind: ScoredCandidate['titleMatch']; score: number }
+
+/**
+ * How alike two titles are, 0–1, after normalising (tags, accents, marks,
+ * punctuation, "The", roman numerals). Not exact strings: the best of word
+ * overlap and letter-pair overlap, so spacing, small spelling and word-order
+ * differences still match. Different numbers ("2" vs "3", "Mega Man X" vs
+ * "Mega Man 10") always keep two titles apart — a sequel is never the game.
+ */
+export function compareTitles(ours: string, theirs: string): TitleComparison {
   const a = normTitle(ours), b = normTitle(theirs)
-  if (a && a === b) return { kind: 'same', score: 1 }
-  // Same with spaces squeezed out ("Mega Man" / "MegaMan").
-  if (a && a.replace(/ /g, '') === b.replace(/ /g, '')) return { kind: 'same', score: 1 }
+  if (!a || !b) return { kind: 'weak', score: 0 }
+  if (a === b || a.replace(/ /g, '') === b.replace(/ /g, '')) return { kind: 'same', score: 1 }
+  const numbersDiffer = numbers(a) !== numbers(b)
+  const sim = Math.max(tokenDice(a, b), bigramDice(a, b))
+  if (!numbersDiffer && sim >= 0.92) return { kind: 'same', score: 0.95 }
+  // One title is the other plus a subtitle ("Castlevania" / "Castlevania: Bloodlines" is NOT this; "Zelda: A Link to the Past" / "A Link to the Past" is).
   const ba = baseTitle(ours), bb = baseTitle(theirs)
-  if (ba && (ba === b || a === bb || ba === bb)) return { kind: 'subtitle', score: 0.75 }
-  const d = dice(a, b)
-  return d >= 0.6 ? { kind: 'close', score: 0.4 + d * 0.3 } : { kind: 'weak', score: d * 0.4 }
+  if (!numbersDiffer && (ba === b || a === bb || (ba === bb && ba.split(' ').length > 1))) return { kind: 'subtitle', score: 0.78 }
+  const capped = numbersDiffer ? Math.min(sim, 0.55) : sim
+  return capped >= 0.7 ? { kind: 'close', score: capped * 0.85 } : { kind: 'weak', score: capped * 0.6 }
 }
 
 const SIDE_TYPES = /dlc|add-?on|bundle|pack|mod\b|update|season|episode/i
 
+/** ±1 year agrees, ±2 is close (regional releases), 3 says nothing, more disagrees. */
+function yearAgreement(ours: number | null, theirs: number | null): { match: boolean | null; diff: number | null } {
+  if (!ours || !theirs) return { match: null, diff: null }
+  const diff = Math.abs(ours - theirs)
+  return { match: diff <= 2 ? true : diff === 3 ? null : false, diff }
+}
+
 /** Scores one candidate for one library row. */
 export function scoreCandidate(t: MatchTarget, c: IgdbCandidate): ScoredCandidate {
   const names = [c.name, ...c.altNames]
-  let best = { kind: 'weak' as ScoredCandidate['titleMatch'], score: 0 }
+  let best: TitleComparison = { kind: 'weak', score: 0 }
+  let matchedName = c.name
   for (const n of names) {
     const r = compareTitles(t.title, n)
-    if (r.score > best.score) best = r
+    if (r.score > best.score) { best = r; matchedName = n }
   }
   const platformMatch = platformMatches(t, c)
-  const yearMatch = t.year && c.year ? Math.abs(t.year - c.year) <= 1 : null
+  const { match: yearMatch, diff: yearDiff } = yearAgreement(t.year, c.year)
+  const side = !!(c.type && SIDE_TYPES.test(c.type))
   let score = best.score
   if (platformMatch === true) score += 0.15
-  if (platformMatch === false) score -= 0.25
-  if (yearMatch === true) score += 0.1
-  if (yearMatch === false) score -= 0.1
-  if (c.type && SIDE_TYPES.test(c.type)) score -= 0.3
-  const exact = best.kind === 'same' && platformMatch !== false && yearMatch !== false
-    && !(c.type && SIDE_TYPES.test(c.type))
-    // A bare title with nothing else agreeing is not proof enough.
+  if (platformMatch === false) score -= 0.3
+  if (yearMatch === true) score += yearDiff! <= 1 ? 0.1 : 0.05
+  if (yearMatch === false) score -= 0.15
+  if (side) score -= 0.3
+  const exact = best.kind === 'same' && platformMatch !== false && yearMatch !== false && !side
+    // A title with nothing else agreeing is not proof enough.
     && (platformMatch === true || yearMatch === true)
-  const confidence: MatchConfidence = exact ? 'exact' : score >= 0.75 ? 'likely' : 'unsure'
-  return { ...c, score: Math.round(score * 1000) / 1000, confidence, titleMatch: best.kind, platformMatch, yearMatch }
+  const confidence: MatchConfidence = exact ? 'exact' : score >= 0.7 ? 'likely' : 'unsure'
+  return { ...c, score: Math.round(score * 1000) / 1000, confidence, titleMatch: best.kind, titleScore: Math.round(best.score * 100) / 100, matchedName, platformMatch, yearMatch, yearDiff }
 }
 
-/** Every candidate scored, best first. Two "exact" candidates that cannot be
- *  told apart (no year to settle it) are both demoted to "likely". */
+/**
+ * Every candidate scored, best first. When two candidates are both "exact",
+ * the one with the closer year (or the clearly better score) keeps it; if
+ * nothing tells them apart, both drop to "likely" — the best still leads.
+ */
 export function rankCandidates(t: MatchTarget, cands: IgdbCandidate[]): ScoredCandidate[] {
   const scored = cands.map(c => scoreCandidate(t, c))
-    .sort((a, b) => b.score - a.score || b.ratingCount - a.ratingCount || a.id - b.id)
+    .sort((a, b) => b.score - a.score || (a.yearDiff ?? 99) - (b.yearDiff ?? 99) || b.ratingCount - a.ratingCount || a.id - b.id)
   const exact = scored.filter(s => s.confidence === 'exact')
   if (exact.length > 1) {
-    const withYear = exact.filter(s => s.yearMatch === true)
-    const keep = withYear.length === 1 ? withYear[0].id : null
-    for (const s of exact) if (s.id !== keep) s.confidence = 'likely'
-    if (keep != null) {
-      // The settled one goes first.
-      scored.sort((a, b) => Number(b.id === keep) - Number(a.id === keep))
-    }
+    const [first, second] = exact
+    const separated = first.score - second.score >= 0.05
+      || (first.yearDiff != null && second.yearDiff != null && first.yearDiff < second.yearDiff)
+    for (const s of exact) if (!separated || s.id !== first.id) s.confidence = 'likely'
+    if (separated) first.confidence = 'exact'
   }
   return scored
 }
@@ -219,7 +261,20 @@ export function decideMatch(t: MatchTarget, steam: IgdbCandidate | null, cands: 
   return { status: 'review', kind: null, best, candidates: ranked }
 }
 
-/** What to type into IGDB's search for a library title. */
+/**
+ * What to type into IGDB's search for a library title. ES-DE names follow
+ * No-Intro ("Legend of Zelda, The - A Link to the Past (USA)"): tags go, a
+ * trailing ", The" moves back to the front, " - " becomes ": ".
+ */
 export function searchQuery(title: string): string {
-  return title.replace(/[™®©]/g, '').replace(/\s*[([][^)\]]*[)\]]/g, ' ').replace(/\s+/g, ' ').trim()
+  let s = title.replace(/[™®©]/g, '').replace(/\s*[([][^)\]]*[)\]]/g, ' ').replace(/\s+/g, ' ').trim()
+  s = s.replace(/^(.+?),\s*(The|A|An)\b(\s*(?:-|:|–).*)?$/i, (_m, head: string, art: string, rest = '') => `${art} ${head}${rest}`)
+  return s.replace(/\s+-\s+/g, ': ').replace(/\s+/g, ' ').trim()
+}
+
+/** A shorter second search when the first finds nothing: the part before the subtitle. */
+export function fallbackQuery(title: string): string | null {
+  const q = searchQuery(title)
+  const head = q.split(/\s*[:–—]\s*/)[0]?.trim() ?? ''
+  return head && head !== q && head.length >= 3 ? head : null
 }
