@@ -36,7 +36,7 @@ export function LibrarySummary({ items, mediaType, onOpenDetail, onOpenLibrary }
         <div className="scroll-x flex gap-2.5 pb-1">
           {posters.map(p => (
             <div key={p.tmdbId} className="w-28 shrink-0">
-              <PosterTile posterPath={p.posterPath} title={p.title} bucket={p.bucket} rt={p.rt} favorite={p.favorite} cinema={p.cinema} onOpen={() => onOpenDetail(p.tmdbId, mediaType)} />
+              <PosterTile posterPath={p.posterPath} title={p.title} bucket={p.bucket} rt={p.rt} favorite={p.favorite} cinema={p.cinema} language={p.language} releaseDate={p.releaseDate} onOpen={() => onOpenDetail(p.tmdbId, mediaType)} />
             </div>
           ))}
         </div>

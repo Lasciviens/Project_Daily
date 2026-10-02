@@ -94,6 +94,46 @@ async function buildMorning(userId: string): Promise<{ title: string; body: stri
   return { title: '🌅 Günaydın', body: `${tasksLine}${trLine}${wishLine}` }
 }
 
+// ── Release reminders (migration 122) ──────────────────────────────────────
+// Hand-mirrored from src/features/media/reminders/reminderRules.ts (Deno can't
+// import it; scripts/verify-media-reminders.cjs checks that file) — change both.
+const daysUntil = (today: string, release: string) =>
+  Math.round((Date.parse(`${release}T12:00:00Z`) - Date.parse(`${today}T12:00:00Z`)) / 86_400_000)
+function dueReminder(r: AnyRecord, today: string): { daysLeft: number; marks: number[] } | null {
+  const left = daysUntil(today, String(r.release_date))
+  if (left < 0) return null
+  const offsets = (r.offsets ?? []) as number[], sent = (r.sent_offsets ?? []) as number[]
+  const passed = offsets.filter(o => left <= o && !sent.includes(o))
+  return passed.length ? { daysLeft: left, marks: passed } : null
+}
+const ddmmyyyy = (d: string) => `${d.slice(8, 10)}.${d.slice(5, 7)}.${d.slice(0, 4)}`
+function reminderText(title: string, daysLeft: number, release: string): { title: string; body: string } {
+  if (daysLeft <= 0) return { title: `🎬 ${title} is out today`, body: `Released ${ddmmyyyy(release)}` }
+  const weeks = Math.round(daysLeft / 7)
+  const when = daysLeft === 1 ? 'tomorrow' : daysLeft >= 28 ? 'in about a month' : daysLeft >= 7 ? `in ${weeks} week${weeks === 1 ? '' : 's'}` : `in ${daysLeft} days`
+  return { title: `🎬 ${title} comes out ${when}`, body: `Release date ${ddmmyyyy(release)}` }
+}
+
+/** One push per title due today; marks what was sent so nothing repeats. Missing table → nothing. */
+async function sendReleaseReminders(userId: string): Promise<number> {
+  const today = todayUTC()
+  const { data } = await supabase.from('media_release_reminders')
+    .select('id, media_type, tmdb_id, title, release_date, offsets, sent_offsets')
+    .eq('user_id', userId).gte('release_date', today).lte('release_date', dateFromTodayUTC(31)).limit(200)
+  let n = 0
+  for (const r of (data ?? []) as AnyRecord[]) {
+    const due = dueReminder(r, today)
+    if (!due) continue
+    const msg = reminderText(String(r.title), due.daysLeft, String(r.release_date))
+    const res = await sendToAll(userId, { ...msg, url: '#/media' })
+    if (!res.sent) continue
+    n++
+    await supabase.from('media_release_reminders')
+      .update({ sent_offsets: [...new Set([...(r.sent_offsets ?? []), ...due.marks])] }).eq('id', r.id)
+  }
+  return n
+}
+
 async function sendToAll(userId: string, payload: AnyRecord): Promise<{ sent: number; pruned: number }> {
   const { data: subs } = await supabase.from('push_subscriptions')
     .select('id, endpoint, p256dh, auth').eq('user_id', userId)
@@ -142,7 +182,9 @@ Deno.serve(async (req) => {
 
   try {
     const res = await sendToAll(userId, payload)
-    return json({ ok: true, ...res })
+    // The morning run also delivers release reminders — each its own notification.
+    const reminders = body.trigger === 'morning' ? await sendReleaseReminders(userId).catch(() => 0) : 0
+    return json({ ok: true, ...res, reminders })
   } catch (e) {
     return json({ ok: false, error: (e as Error).message }, 500)
   }

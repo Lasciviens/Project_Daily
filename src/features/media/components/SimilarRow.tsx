@@ -36,6 +36,7 @@ export function SimilarRow({ tmdbId, mediaType, onOpenDetail }: Props) {
                     meta={item.vote_average > 0 ? `TMDB ${item.vote_average.toFixed(1)}` : undefined}
                     bucket={lib?.bucket}
                     cinema={lib?.cinema}
+                    language={lib?.language}
                     favorite={lib?.favorite}
                     onOpen={() => onOpenDetail(item.id, mediaType)}
                   />

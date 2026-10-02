@@ -11,6 +11,7 @@ import { NewListDialog } from './NewListDialog'
 import { FollowingPanel } from './FollowingPanel'
 import { PendingListDetail, TraktListDetail } from './ListDetail'
 import { FOLLOW_KIND_LABEL as KIND_LABEL } from '../api/followsApi'
+import { findQueueList } from '../queue/queueModel'
 
 type Pick = { src: 'trakt'; id: number } | { src: 'pending'; id: string }
 
@@ -41,7 +42,9 @@ export function ListsView({ onOpenDetail }: { onOpenDetail: (id: number, type: M
   const putAll = useCreateAutoList()
   const [putting, setPutting] = useState(false)
 
-  const traktLists = connected ? lists.data ?? [] : []
+  const queue = findQueueList(lists.data)
+  // The Queue leads the rail; the rest keep Trakt's order.
+  const traktLists = connected ? [...(queue ? [queue] : []), ...(lists.data ?? []).filter(l => l.id !== queue?.id)] : []
   const listsKnown = !connected || lists.isSuccess
   const ruleFor = (listId: number) => follows.find(f => f.trakt_list_id === listId) ?? null
   // Not on Trakt: no list yet, or its list was deleted on Trakt.
@@ -90,10 +93,10 @@ export function ListsView({ onOpenDetail }: { onOpenDetail: (id: number, type: M
           </div>
           {loading ? <Skeleton className="h-10 w-full" />
             : traktLists.length === 0 && pending.length === 0 ? (
-              <p className="px-1 text-meta text-fg-muted">No lists yet — make one, or use “Add to list” on a title.</p>
+              <p className="px-1 text-meta text-fg-muted">No lists yet — make one, or use “Add to Queue” / “Add to list” on a title.</p>
             ) : traktLists.map(l => {
               const rule = ruleFor(l.id)
-              return <RailButton key={l.id} active={current?.src === 'trakt' && current.id === l.id} label={railLabel(l.name, !!rule)} meta={String(l.itemCount)} onClick={() => setPicked({ src: 'trakt', id: l.id })} />
+              return <RailButton key={l.id} active={current?.src === 'trakt' && current.id === l.id} label={l.id === queue?.id ? '▶ Queue' : railLabel(l.name, !!rule)} meta={String(l.itemCount)} onClick={() => setPicked({ src: 'trakt', id: l.id })} />
             })}
           {pending.length > 0 && (
             <div className="mt-2 border-t border-line pt-2">
@@ -118,7 +121,7 @@ export function ListsView({ onOpenDetail }: { onOpenDetail: (id: number, type: M
                 action={<Button variant="primary" icon={<ListPlus />} onClick={() => setNaming(true)}>New list</Button>} />
             )
           ) : traktCurrent ? (
-            <TraktListDetail key={traktCurrent.id} list={traktCurrent} follow={ruleFor(traktCurrent.id)} onOpen={onOpenDetail} onGone={() => setPicked(null)} />
+            <TraktListDetail key={traktCurrent.id} list={traktCurrent} isQueue={traktCurrent.id === queue?.id} follow={ruleFor(traktCurrent.id)} onOpen={onOpenDetail} onGone={() => setPicked(null)} />
           ) : pendingCurrent ? (
             <PendingListDetail key={pendingCurrent.id} follow={pendingCurrent} connected={connected} onOpen={onOpenDetail} onGone={() => setPicked(null)} />
           ) : <Skeleton className="h-40 w-full" />}

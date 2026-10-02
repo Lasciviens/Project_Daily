@@ -204,3 +204,5 @@ export const createTraktList = (name: string, description?: string) => invoke<{ 
 export const deleteTraktList = (listId: number) => invoke<{ deleted: true }>('list_delete', { listId })
 export const addToTraktList = (listId: number, items: ListItemRef[]) => invoke<{ notFound: number }>('list_add', { listId, items })
 export const removeFromTraktList = (listId: number, items: ListItemRef[]) => invoke<{ notFound: number }>('list_remove', { listId, items })
+/** Every list item id of the list, in the new order. */
+export const reorderTraktList = (listId: number, rank: number[]) => invoke<{ updated: number | null; skipped: number[] }>('list_reorder', { listId, rank })

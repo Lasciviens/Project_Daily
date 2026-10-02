@@ -106,6 +106,36 @@ const qi = T.queueInsights(all)
 eq([qi.forecastSeconds, qi.fromIgdb], [8 * 3600, 2], 'every queued game has a length → IGDB lengths minus play, no median needed')
 eq(T.queueInsights([...all, q({ id: 'c' })]).forecastSeconds, null, 'one game without a length and no median → no forecast')
 
+// ── Round 2: fuzzier titles, search text, review vs not looked up, systems ──
+eq(M.searchQuery('Legend of Zelda, The - A Link to the Past (USA)'), 'The Legend of Zelda: A Link to the Past', 'No-Intro name → what IGDB knows')
+eq(M.searchQuery('Castlevania - Symphony of the Night'), 'Castlevania: Symphony of the Night', '" - " becomes ": "')
+eq(M.fallbackQuery('Castlevania - Symphony of the Night'), 'Castlevania', 'a shorter second search')
+eq(M.fallbackQuery('Tetris'), null, 'no subtitle, no second search')
+eq(M.compareTitles('Megaman 2', 'Mega Man 2').kind, 'same', 'spacing differences')
+eq(M.compareTitles('Pokemon Snap', 'Pokémon Snap').kind, 'same', 'accents')
+eq(M.compareTitles('Final Fantasy VI', 'Final Fantasy VII').kind !== 'same', true, 'a numbered sequel is never the same game')
+eq(M.compareTitles('Street Fighter II Turbo', 'Street Fighter II: Turbo').kind, 'same', 'punctuation in the name')
+eq(M.compareTitles('Kirbys Dream Land', "Kirby's Dream Land").kind, 'same', 'apostrophes')
+eq(M.compareTitles('Contra III The Alien Wars', 'Contra III: The Alien Wars').kind, 'same', 'colon vs no colon')
+eq(M.compareTitles('Super Mario World 2 Yoshis Island', "Super Mario World 2: Yoshi's Island").kind, 'same', 'long subtitle with apostrophe')
+const jp = M.scoreCandidate(target({ title: 'Chrono Trigger', year: 1995 }), cand({ year: 1993 }))
+eq([jp.yearMatch, jp.yearDiff, jp.confidence], [true, 2, 'exact'], 'a regional release two years apart still agrees')
+eq(M.scoreCandidate(target({ title: 'Chrono Trigger', year: 1995 }), cand({ year: 2008 })).yearMatch, false, 'far apart disagrees')
+const alt = M.scoreCandidate(target({ title: 'Rockman 2' }), cand({ name: 'Mega Man 2', altNames: ['Rockman 2'] }))
+eq([alt.titleMatch, alt.matchedName], ['same', 'Rockman 2'], 'the comparison names the alternative title it matched')
+const sep = M.rankCandidates(target({ title: 'Tetris', year: 1989, platformKey: 'gb' }), [
+  cand({ id: 20, name: 'Tetris', year: 1989, platformIds: [33], platformNames: ['Game Boy'] }),
+  cand({ id: 21, name: 'Tetris', year: 1990, platformIds: [33], platformNames: ['Game Boy'] }),
+])
+eq([sep[0].id, sep[0].confidence, sep[1].confidence], [20, 'exact', 'likely'], 'the closer year keeps exact')
+const rs = { decision: { status: 'review', candidates: [] } }, ns = { decision: { status: 'none', candidates: [] } }
+eq([L.igdbRowMatches(g(), 'todo', rs), L.igdbRowMatches(g(), 'review', rs)], [false, true], 'a looked-up game leaves Not looked up for To review')
+eq([L.igdbRowMatches(g(), 'todo', ns), L.igdbRowMatches(g(), 'none', ns)], [false, true], 'nothing found → No match, not Not looked up')
+const sysGames = [g({ id: '1', platformKey: 'snes' }), g({ id: '2', platformKey: 'snes' }), g({ id: '3', platformKey: 'gba' }), g({ id: '4', library: 'steam', platformKey: 'steam' })]
+eq(L.igdbScopes(sysGames).map(s => `${s.value}:${s.count}`), ['all:4', 'retro:3', 'steam:1', 'sys:snes:2', 'sys:gba:1'], 'every system separately, biggest first')
+eq(sysGames.filter(x => L.libraryMatches(x, 'sys:gba')).map(x => x.id), ['3'], 'one system')
+eq(L.igdbFilterCounts(sysGames, { 1: rs, 2: ns }), { todo: 2, review: 1, none: 1, matched: 0, no_length: 0, all: 4 }, 'tab counts')
+
 if (failures.length) {
   console.error(`verify-igdb-match: ${failures.length} failed, ${passed} passed\n  ${failures.join('\n  ')}`)
   process.exit(1)

@@ -3,6 +3,7 @@ import { Check, Heart, Ticket } from 'lucide-react'
 import { posterUrl } from '../../../integrations/tmdb/client'
 import { Truncate } from '../../../shared/ui/Truncate'
 import { BUCKET_LABEL, BUCKET_TONE, type LibraryBucket } from '../libraryModel'
+import { formatDate } from '../../../shared/utils/dateFormat'
 
 // Rotten Tomatoes' own identity colours (fresh tomato / rotten splat) — brand
 // literals like Strava orange, never theme tokens.
@@ -32,10 +33,16 @@ interface Props {
   dimmed?: boolean
   /** A small cover (a strip): a status dot instead of the belt, no RT banner. */
   compact?: boolean
+  /** TMDB original language (ISO 639-1) → a belt across the bottom-right corner, only when not English. */
+  language?: string | null
+  /** Release date (yyyy-MM-dd) — printed under "Soon" on a coming-soon belt. */
+  releaseDate?: string | null
 }
 
 /** One cover: status ribbon top-left, Rotten Tomatoes banner at the bottom, cinema and favourite marks. */
-export function PosterTile({ posterPath, title, meta, bucket, rt, favorite, cinema, onOpen, corner, dimmed, compact }: Props) {
+export function PosterTile({ posterPath, title, meta, bucket, rt, favorite, cinema, onOpen, corner, dimmed, compact, language, releaseDate }: Props) {
+  const lang = !compact && language && language !== 'en' ? language.toUpperCase() : null
+  const soonDate = bucket === 'coming' && releaseDate ? formatDate(releaseDate) : null
   return (
     <div className="relative min-w-0">
       <button type="button" onClick={onOpen} className="press-feedback group flex w-full min-w-0 flex-col gap-1 rounded-md text-left focus-visible:outline-accent-500">
@@ -57,6 +64,7 @@ export function PosterTile({ posterPath, title, meta, bucket, rt, favorite, cine
               className="poster-belt pointer-events-none absolute left-[25cqw] top-[25cqw] w-[110cqw] -translate-x-1/2 -translate-y-1/2 -rotate-45 py-[3px] text-center text-micro font-bold uppercase leading-none tracking-[0.04em] shadow"
             >
               {RIBBON[bucket]}
+              {soonDate && <span className="mt-0.5 block text-[0.85em] font-semibold normal-case tracking-normal tabular-nums">{soonDate}</span>}
             </span>
           )}
           {bucket && compact && (
@@ -66,11 +74,20 @@ export function PosterTile({ posterPath, title, meta, bucket, rt, favorite, cine
             </span>
           )}
           {rt != null && !compact && (
-            <span className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-1 bg-scrim/75 py-1 text-micro font-bold text-white tabular-nums">
+            <span className={`absolute inset-x-0 bottom-0 flex items-center gap-1 bg-scrim/75 py-1 text-micro font-bold text-white tabular-nums ${lang ? 'justify-start pl-2' : 'justify-center'}`}>
               <span aria-hidden className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: rt >= 60 ? RT_FRESH : RT_ROTTEN }} />
               <span aria-hidden className="opacity-80">RT</span> {rt}%<span className="sr-only"> on Rotten Tomatoes</span>
             </span>
           )}
+          {lang && (
+            // The original language as a belt across the bottom-right corner
+            // (the mirror of the status belt), drawn over the RT banner.
+            <span aria-hidden title={`Original language: ${lang}`}
+              className="poster-belt pointer-events-none absolute left-[75cqw] top-[125cqw] w-[110cqw] -translate-x-1/2 -translate-y-1/2 -rotate-45 py-[3px] text-center text-micro font-bold uppercase leading-none tracking-[0.06em] shadow">
+              {lang}
+            </span>
+          )}
+          {lang && <span className="sr-only">Original language {lang}</span>}
           {(cinema || favorite) && (
             <span className="absolute right-1 top-1 flex flex-col items-end gap-1">
               {favorite && <span title="Favorite" className="grid h-6 w-6 place-items-center rounded-full bg-scrim/65 text-white"><Heart aria-label="Favorite" className="h-3 w-3 fill-current" /></span>}

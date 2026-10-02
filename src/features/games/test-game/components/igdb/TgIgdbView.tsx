@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { CheckCheck, RefreshCw, Search, Square, Wand2 } from 'lucide-react'
-import type { TgGame } from '../../testGameModel'
+import { platformInfo, type TgGame } from '../../testGameModel'
 import { useIgdbBatch, type IgdbFilter, type IgdbLibraryFilter } from '../../../igdb/igdbBatchStore'
 import { useIgdbRunner } from '../../../igdb/useIgdbRunner'
 import { useIgdbStatus, useRefreshIgdb } from '../../../igdb/useIgdb'
@@ -8,15 +8,13 @@ import { TgDropdown } from '../TgDropdown'
 import { TgScrapeCard } from '../scrape/TgScrapeParts'
 import { TgIgdbRow } from './TgIgdbRow'
 import { TgIgdbSetup } from './TgIgdbSetup'
-import { igdbCandidates, igdbCoverage, igdbRowMatches, isIgdbMatched, libraryMatches, needsReview, toLookUp } from './tgIgdbModel'
+import { igdbCandidates, igdbCoverage, igdbFilterCounts, igdbRowMatches, igdbScopes, isIgdbMatched, libraryMatches, needsReview, toLookUp } from './tgIgdbModel'
 
 const FILTERS: { key: IgdbFilter; label: string }[] = [
-  { key: 'todo', label: 'Not matched' }, { key: 'review', label: 'To review' }, { key: 'matched', label: 'Matched' },
-  { key: 'no_length', label: 'No length' }, { key: 'all', label: 'All' },
+  { key: 'todo', label: 'Not looked up' }, { key: 'review', label: 'To review' }, { key: 'none', label: 'No match' },
+  { key: 'matched', label: 'Matched' }, { key: 'no_length', label: 'No length' }, { key: 'all', label: 'All' },
 ]
-const LIBRARIES: { value: IgdbLibraryFilter; label: string }[] = [
-  { value: 'all', label: 'All libraries' }, { value: 'retro', label: 'Retro' }, { value: 'steam', label: 'Steam' }, { value: 'playstation', label: 'PlayStation' },
-]
+const SCOPE_LABEL: Record<string, string> = { all: 'All games', retro: 'All retro', steam: 'Steam', playstation: 'PlayStation' }
 const PAGE = 100
 const pct = (n: number, d: number) => (d ? `${Math.round((n / d) * 100)} %` : '—')
 
@@ -36,7 +34,13 @@ export function TgIgdbView({ games, loading }: { games: TgGame[]; loading: boole
   const open = openId === null ? focusId : openId || null
   const [shown, setShown] = useState(PAGE)
 
-  const pool = useMemo(() => igdbCandidates(games).filter(g => libraryMatches(g, library)), [games, library])
+  const all = useMemo(() => igdbCandidates(games), [games])
+  const scopes = useMemo(() => igdbScopes(all).map(s => ({
+    value: s.value as IgdbLibraryFilter, count: s.count,
+    label: s.kind === 'system' ? platformInfo(s.key).name || s.key : SCOPE_LABEL[s.key] ?? s.key,
+  })), [all])
+  const pool = useMemo(() => all.filter(g => libraryMatches(g, library)), [all, library])
+  const counts = useMemo(() => igdbFilterCounts(pool, rows), [pool, rows])
   const cover = useMemo(() => igdbCoverage(pool), [pool])
   const list = useMemo(() => {
     const l = pool.filter(g => g.id === focusId || igdbRowMatches(g, filter, rows[g.id]))
@@ -46,7 +50,6 @@ export function TgIgdbView({ games, loading }: { games: TgGame[]; loading: boole
     return l
   }, [pool, filter, rows, focusId])
   const pending = useMemo(() => toLookUp(list, rows), [list, rows])
-  const reviewCount = pool.filter(g => needsReview(g, rows[g.id])).length
   const tickedGames = list.filter(g => ticked[g.id] && rows[g.id]?.pick && !rows[g.id]?.saved && !isIgdbMatched(g))
   const likely = list.filter(g => needsReview(g, rows[g.id]) && rows[g.id]?.pick?.confidence === 'likely' && !ticked[g.id])
 
@@ -67,14 +70,14 @@ export function TgIgdbView({ games, loading }: { games: TgGame[]; loading: boole
   return (
     <div className="flex max-w-4xl flex-col gap-4 pb-6">
       <TgScrapeCard title="Which games" aside={
-        <TgDropdown value={library} options={LIBRARIES} onChange={v => { set({ library: v }); setShown(PAGE) }}
-          buttonLabel={LIBRARIES.find(l => l.value === library)!.label} ariaLabel="Library" align="end" />
+        <TgDropdown value={library} options={scopes} onChange={v => { set({ library: v }); setShown(PAGE) }}
+          buttonLabel={scopes.find(l => l.value === library)?.label ?? 'All games'} ariaLabel="Library or system" align="end" />
       }>
         <div role="group" aria-label="Show" className="tg-scroll-x -mx-1 flex gap-1.5 px-1">
           {FILTERS.map(f => (
             <button key={f.key} type="button" aria-pressed={filter === f.key} onClick={() => { set({ filter: f.key, focusId: null }); setShown(PAGE) }}
               className={`tg-tab min-h-[44px] shrink-0 !px-3 !text-[12.5px] ${filter === f.key ? 'is-active' : 'bg-[var(--tg-panel-2)]'}`}>
-              {f.label}{f.key === 'review' && reviewCount ? <span className="tg-tab-count ml-1">{reviewCount}</span> : null}
+              {f.label}{counts[f.key] ? <span className="tg-tab-count ml-1">{counts[f.key].toLocaleString('en-GB')}</span> : null}
             </button>
           ))}
         </div>

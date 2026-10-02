@@ -18,6 +18,8 @@ export interface DiscoverFilters {
   fromYear: number | null
   /** TMDB score floor (0–10). */
   minRating: number | null
+  /** At least this many TMDB votes — a high score from a handful of votes means little (IMDb's "Number of votes" filter). */
+  minVotes: number | null
   sort: DiscoverSort | null
   hideLibrary: boolean
   /** Genres never to show (TMDB ids). */
@@ -26,7 +28,7 @@ export interface DiscoverFilters {
   hideLanguages: string[]
 }
 
-export const NO_FILTERS: DiscoverFilters = { genre: null, fromYear: null, minRating: null, sort: null, hideLibrary: false, hideGenres: [], hideLanguages: [] }
+export const NO_FILTERS: DiscoverFilters = { genre: null, fromYear: null, minRating: null, minVotes: null, sort: null, hideLibrary: false, hideGenres: [], hideLanguages: [] }
 
 /** Original languages offered under "Hide languages" (TMDB's ISO 639-1 codes). */
 export const DISCOVER_LANGUAGES: { code: string; label: string }[] = [
@@ -89,7 +91,10 @@ export function discoverRequest(tab: DiscoverTab, type: 'movie' | 'tv', f: Disco
       Object.assign(p, { 'air_date.gte': today, 'air_date.lte': addDays(today, 7) })
       floor = 20; ratedFloor = 100; break
     case 'upcoming':
-      if (movie) Object.assign(p, { with_release_type: '2|3', 'release_date.gte': addDays(today, 1), 'release_date.lte': addDays(today, 180) })
+      // `region` makes release_date mean the Norwegian date: without it TMDB
+      // matches a film whose release in ANY country is still ahead, so a film
+      // already in Norwegian cinemas also showed here (owner report, "Runner").
+      if (movie) Object.assign(p, { region: 'NO', with_release_type: '2|3', 'release_date.gte': addDays(today, 1), 'release_date.lte': addDays(today, 180) })
       else Object.assign(p, { 'first_air_date.gte': addDays(today, 1), 'first_air_date.lte': addDays(today, 180) })
       floor = 0; break
     case 'norway': p.with_origin_country = 'NO'; floor = 5; ratedFloor = 30; break
@@ -114,20 +119,25 @@ export function discoverRequest(tab: DiscoverTab, type: 'movie' | 'tv', f: Disco
   // Upcoming is all in the future already: a year floor changes nothing there.
   if (f.fromYear != null && !upcoming) p[`${date}.gte`] = maxDay(p[`${date}.gte`], `${f.fromYear}-01-01`)
   if (f.minRating != null && !upcoming) p['vote_average.gte'] = String(f.minRating)
+  if (f.minVotes != null && !upcoming) p['vote_count.gte'] = String(Math.max(floor, f.minVotes))
   return { path: `/discover/${type}`, params: p }
 }
 
 const maxDay = (a: string | undefined, b: string) => (a && a > b ? a : b)
 
-export interface DiscoverTitle { id: number; genre_ids?: number[]; original_language?: string; vote_average: number; release_date?: string; first_air_date?: string }
+export interface DiscoverTitle { id: number; genre_ids?: number[]; original_language?: string; vote_average: number; vote_count?: number; release_date?: string; first_air_date?: string }
 
 /**
- * Trending comes back unfiltered: apply genre, year and score here. The
+ * Trending comes back unfiltered: apply genre, year, score and votes here. The
  * library, hidden-genre and hidden-language filters apply to every list
- * (`inLibrary` says whether a title is already yours).
+ * (`inLibrary` says whether a title is already yours). Upcoming keeps only
+ * titles whose own release date is yesterday or later: TMDB's result date is
+ * the primary (often another country's) release, so a filter on Norwegian
+ * dates alone can still return a film that is already out.
  */
-export function applyClientFilters<T extends DiscoverTitle>(tab: DiscoverTab, items: T[], f: DiscoverFilters, inLibrary: (id: number) => boolean): T[] {
+export function applyClientFilters<T extends DiscoverTitle>(tab: DiscoverTab, items: T[], f: DiscoverFilters, inLibrary: (id: number) => boolean, today?: string): T[] {
   const trending = isTrending(tab)
+  const oldest = today ? addDays(today, -1) : null
   const seen = new Set<number>()
   return items.filter(i => {
     if (seen.has(i.id)) return false
@@ -135,15 +145,20 @@ export function applyClientFilters<T extends DiscoverTitle>(tab: DiscoverTab, it
     if (f.hideLibrary && inLibrary(i.id)) return false
     if (f.hideGenres.length && (i.genre_ids ?? []).some(g => f.hideGenres.includes(g))) return false
     if (f.hideLanguages.length && i.original_language && f.hideLanguages.includes(i.original_language)) return false
+    if (tab === 'upcoming' && oldest) {
+      const d = i.release_date || i.first_air_date
+      if (d && d < oldest) return false
+    }
     if (!trending) return true
     if (f.genre != null && !(i.genre_ids ?? []).includes(f.genre)) return false
     const y = Number((i.release_date ?? i.first_air_date ?? '').slice(0, 4)) || null
     if (f.fromYear != null && (y == null || y < f.fromYear)) return false
     if (f.minRating != null && i.vote_average < f.minRating) return false
+    if (f.minVotes != null && (i.vote_count ?? 0) < f.minVotes) return false
     return true
   })
 }
 
 /** Filters that change this tab's list (a sort does nothing on trending). */
 export const activeFilterCount = (f: DiscoverFilters, tab?: DiscoverTab) =>
-  (f.genre != null ? 1 : 0) + (f.fromYear != null ? 1 : 0) + (f.minRating != null ? 1 : 0) + (f.sort && !(tab && isTrending(tab)) ? 1 : 0) + (f.hideLibrary ? 1 : 0) + (f.hideGenres.length ? 1 : 0) + (f.hideLanguages.length ? 1 : 0)
+  (f.genre != null ? 1 : 0) + (f.fromYear != null ? 1 : 0) + (f.minRating != null ? 1 : 0) + (f.minVotes != null ? 1 : 0) + (f.sort && !(tab && isTrending(tab)) ? 1 : 0) + (f.hideLibrary ? 1 : 0) + (f.hideGenres.length ? 1 : 0) + (f.hideLanguages.length ? 1 : 0)

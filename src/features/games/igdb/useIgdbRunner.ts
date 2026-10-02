@@ -1,6 +1,6 @@
 import type { TgGame } from '../test-game/testGameModel'
 import { useIgdbBatch, type IgdbRowState } from './igdbBatchStore'
-import { decideMatch, searchQuery, type IgdbCandidate, type MatchTarget, type ScoredCandidate } from './igdbMatch'
+import { decideMatch, fallbackQuery, searchQuery, type IgdbCandidate, type MatchTarget, type ScoredCandidate } from './igdbMatch'
 import type { IgdbApplyItem } from './igdbApi'
 import { useAfterIgdbWrite, useApplyIgdb, useIgdbMatch } from './useIgdb'
 
@@ -56,7 +56,7 @@ export function useIgdbRunner() {
         useIgdbBatch.getState().set({ looking: Object.fromEntries(chunk.map(g => [g.id, true])) })
         let results
         try {
-          results = await match.mutateAsync(chunk.map(g => ({ game_id: g.id, query: searchQuery(g.title), steam_appid: g.steamAppId })))
+          results = await match.mutateAsync(chunk.map(g => ({ game_id: g.id, query: searchQuery(g.title), fallback: fallbackQuery(g.title), steam_appid: g.steamAppId })))
         } catch (e) {
           useIgdbBatch.getState().patchRows(Object.fromEntries(chunk.map(g => [g.id, { error: (e as Error).message }])))
           break

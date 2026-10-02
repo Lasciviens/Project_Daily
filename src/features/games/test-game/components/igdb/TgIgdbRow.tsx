@@ -6,9 +6,11 @@ import { formatLength, igdbPageUrl, rankCandidates, searchQuery, type ScoredCand
 import { useIgdbSearch } from '../../../igdb/useIgdb'
 import { matchTarget } from '../../../igdb/useIgdbRunner'
 import { TgCover } from '../TgCover'
-import { TgIgdbCandidate } from './TgIgdbCandidate'
+import { TgIgdbCandidate, type IgdbOurs } from './TgIgdbCandidate'
 import { isIgdbMatched } from './tgIgdbModel'
 import { Truncate } from '../../../../../shared/ui/Truncate'
+
+const ours = (g: TgGame): IgdbOurs => ({ title: g.title, platform: platformInfo(g.platformKey).name || g.platformKey, year: g.release_year })
 
 function lengthLine(g: TgGame): string | null {
   const parts = [
@@ -61,7 +63,7 @@ export function TgIgdbRow({ game: g, row, ticked, busy, open, onToggle, onLookUp
             <Truncate className="text-[11.5px] tg-muted">{[platformInfo(g.platformKey).name, g.release_year].filter(Boolean).join(' · ')}</Truncate>
             {status}
             {!matched && !row?.saved && row?.pick && d?.status !== 'none' && (
-              <span className="mt-1 block"><TgIgdbCandidate c={row.pick} /></span>
+              <span className="mt-1 block"><TgIgdbCandidate c={row.pick} ours={ours(g)} /></span>
             )}
             {row?.saveError && <span className="block text-[11.5px] text-[var(--tg-red)]">{row.saveError}</span>}
           </span>
@@ -117,7 +119,7 @@ function TgIgdbPicker({ game, row, onPick }: { game: TgGame; row: IgdbRowState |
       <ul className="flex flex-col gap-1">
         {list.slice(0, 8).map(c => (
           <li key={c.id} className="flex items-center gap-2 rounded-lg bg-[var(--tg-panel)] p-2">
-            <span className="min-w-0 flex-1"><TgIgdbCandidate c={c} /></span>
+            <span className="min-w-0 flex-1"><TgIgdbCandidate c={c} ours={ours(game)} /></span>
             <button type="button" onClick={() => onPick(c)} className="tg-btn tg-btn-primary shrink-0 !px-3 !text-[12.5px]">Use this</button>
           </li>
         ))}
