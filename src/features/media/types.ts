@@ -101,6 +101,8 @@ export interface TMDBMovie {
   original_title: string
   overview: string
   release_date: string
+  original_language?: string
+  spoken_languages?: { iso_639_1: string; english_name?: string; name?: string }[]
   runtime: number | null
   status: string
   poster_path: string | null
@@ -117,6 +119,8 @@ export interface TMDBTVSeries {
   overview: string
   first_air_date: string
   last_air_date: string
+  original_language?: string
+  spoken_languages?: { iso_639_1: string; english_name?: string; name?: string }[]
   status: string
   episode_run_time: number[]
   number_of_seasons: number

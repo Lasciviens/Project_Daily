@@ -1,11 +1,12 @@
 import { Popover, PopoverButton, PopoverPanel } from '@headlessui/react'
-import { ChevronDown, EyeOff } from 'lucide-react'
+import { useState } from 'react'
+import { ChevronDown, EyeOff, Search } from 'lucide-react'
 import { Button, Skeleton } from '../../../shared/ui'
 import { posterUrl } from '../../../integrations/tmdb/client'
 import { useGenres } from '../hooks/useDiscover'
 import { useWatchProviders } from '../hooks/useTMDB'
 import { useMediaPrefs } from '../mediaPrefsStore'
-import { DISCOVER_LANGUAGES, NO_FILTERS, activeFilterCount, type DiscoverFilters, type DiscoverSort } from '../discoverModel'
+import { DISCOVER_LANGUAGES, NO_FILTERS, activeFilterCount, ignoredFilters, sameFilters, type DiscoverFilters, type DiscoverSort, type DiscoverTab } from '../discoverModel'
 import type { MediaType } from '../types'
 import { POSTER_GRID } from './PosterTile'
 
@@ -64,41 +65,64 @@ function HideChecklist<T extends string | number>({ label, options, picked, onCh
   )
 }
 
-export function FilterRow({ type, filters, onChange, trending }: { type: MediaType; filters: DiscoverFilters; onChange: (f: DiscoverFilters) => void; trending: boolean }) {
+/**
+ * The filters as a draft: picking changes nothing until Search, so a run of
+ * changes sends one request with all of them (each pick used to refetch the
+ * list at once). Remount it (key) to start from the applied filters again.
+ */
+export function FilterRow({ type, filters, onApply, tab, trending }: { type: MediaType; filters: DiscoverFilters; onApply: (f: DiscoverFilters) => void; tab: DiscoverTab; trending: boolean }) {
   const { data: genres = [] } = useGenres(type)
+  const [draft, setDraft] = useState(filters)
+  const set = (patch: Partial<DiscoverFilters>) => setDraft(d => ({ ...d, ...patch }))
   const num = (v: string) => (v ? Number(v) : null)
+  const dirty = !sameFilters(draft, filters)
+  const ignored = ignoredFilters(tab, draft)
   return (
-    <div className="flex flex-wrap items-center gap-2 rounded-row border border-line bg-surface-2/50 p-2">
-      <select aria-label="Genre" className="input w-auto" value={filters.genre ?? ''} onChange={e => onChange({ ...filters, genre: num(e.target.value) })}>
-        <option value="">Any genre</option>
-        {genres.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
-      </select>
-      <select aria-label="Released from" className="input w-auto" value={filters.fromYear ?? ''} onChange={e => onChange({ ...filters, fromYear: num(e.target.value) })}>
-        <option value="">Any year</option>
-        {YEARS.map(y => <option key={y} value={y}>{y} or later</option>)}
-      </select>
-      <select aria-label="TMDB score" className="input w-auto" value={filters.minRating ?? ''} onChange={e => onChange({ ...filters, minRating: num(e.target.value) })}>
-        <option value="">Any score</option>
-        {RATINGS.map(r => <option key={r} value={r}>TMDB {r}+</option>)}
-      </select>
-      <select aria-label="Minimum votes" title="Ignore titles only a few people rated" className="input w-auto" value={filters.minVotes ?? ''} onChange={e => onChange({ ...filters, minVotes: num(e.target.value) })}>
-        <option value="">Any number of votes</option>
-        {VOTES.map(v => <option key={v} value={v}>{v.toLocaleString('en-GB')}+ votes</option>)}
-      </select>
-      {!trending && (
-        <select aria-label="Sort" className="input w-auto" value={filters.sort ?? ''} onChange={e => onChange({ ...filters, sort: (e.target.value || null) as DiscoverSort | null })}>
-          <option value="">Default order</option>
-          {SORTS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+    <form
+      className="flex flex-col gap-2 rounded-row border border-line bg-surface-2/50 p-2"
+      onSubmit={e => { e.preventDefault(); onApply(draft) }}
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <select aria-label="Genre" className="input w-auto" value={draft.genre ?? ''} onChange={e => set({ genre: num(e.target.value) })}>
+          <option value="">Any genre</option>
+          {genres.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
         </select>
-      )}
-      <label className="flex min-h-[44px] items-center gap-2 px-1 text-meta text-fg-2 sm:min-h-[36px]">
-        <input type="checkbox" checked={filters.hideLibrary} onChange={e => onChange({ ...filters, hideLibrary: e.target.checked })} />
-        Hide titles in my library
-      </label>
-      <HideChecklist label="Hide genres" options={genres.map(g => ({ value: g.id, label: g.name }))} picked={filters.hideGenres} onChange={hideGenres => onChange({ ...filters, hideGenres })} />
-      <HideChecklist label="Hide languages" options={DISCOVER_LANGUAGES.map(l => ({ value: l.code, label: l.label }))} picked={filters.hideLanguages} onChange={hideLanguages => onChange({ ...filters, hideLanguages })} />
-      {activeFilterCount(filters, trending ? 'today' : 'popular') > 0 && <Button size="sm" variant="ghost" onClick={() => onChange(NO_FILTERS)}>Clear</Button>}
-    </div>
+        <select aria-label="Released from" className="input w-auto" value={draft.fromYear ?? ''} onChange={e => set({ fromYear: num(e.target.value) })}>
+          <option value="">Any year</option>
+          {YEARS.map(y => <option key={y} value={y}>{y} or later</option>)}
+        </select>
+        <select aria-label="TMDB score" className="input w-auto" value={draft.minRating ?? ''} onChange={e => set({ minRating: num(e.target.value) })}>
+          <option value="">Any score</option>
+          {RATINGS.map(r => <option key={r} value={r}>TMDB {r}+</option>)}
+        </select>
+        <select aria-label="Minimum votes" title="Ignore titles only a few people rated" className="input w-auto" value={draft.minVotes ?? ''} onChange={e => set({ minVotes: num(e.target.value) })}>
+          <option value="">Any number of votes</option>
+          {VOTES.map(v => <option key={v} value={v}>{v.toLocaleString('en-GB')}+ votes</option>)}
+        </select>
+        {!trending && (
+          <select aria-label="Sort" className="input w-auto" value={draft.sort ?? ''} onChange={e => set({ sort: (e.target.value || null) as DiscoverSort | null })}>
+            <option value="">Default order</option>
+            {SORTS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+          </select>
+        )}
+        <label className="flex min-h-[44px] items-center gap-2 px-1 text-meta text-fg-2 sm:min-h-[36px]">
+          <input type="checkbox" checked={draft.hideLibrary} onChange={e => set({ hideLibrary: e.target.checked })} />
+          Hide titles in my library
+        </label>
+        <HideChecklist label="Hide genres" options={genres.map(g => ({ value: g.id, label: g.name }))} picked={draft.hideGenres} onChange={hideGenres => set({ hideGenres })} />
+        <HideChecklist label="Hide languages" options={DISCOVER_LANGUAGES.map(l => ({ value: l.code, label: l.label }))} picked={draft.hideLanguages} onChange={hideLanguages => set({ hideLanguages })} />
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button type="submit" size="sm" variant="primary" icon={<Search />} disabled={!dirty}>Search</Button>
+        {dirty && <Button type="button" size="sm" variant="ghost" onClick={() => setDraft(filters)}>Undo changes</Button>}
+        {(activeFilterCount(draft) > 0 || activeFilterCount(filters) > 0) && (
+          <Button type="button" size="sm" variant="ghost" onClick={() => { setDraft(NO_FILTERS); onApply(NO_FILTERS) }}>Clear all</Button>
+        )}
+        <span className="text-meta text-fg-muted" aria-live="polite">
+          {dirty ? 'Changes apply when you press Search.' : ignored.length ? `This list ignores: ${ignored.join(', ')}.` : ''}
+        </span>
+      </div>
+    </form>
   )
 }
 

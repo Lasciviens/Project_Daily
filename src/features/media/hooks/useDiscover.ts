@@ -2,7 +2,7 @@ import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { qk, STALE } from '../../../shared/query'
 import { todayStr } from '../../../shared/utils/dateUtils'
 import { fetchDiscoverPage, getGenres } from '../api/tmdbApi'
-import { discoverRequest, type DiscoverFilters, type DiscoverTab } from '../discoverModel'
+import { discoverKey, discoverRequest, type DiscoverFilters, type DiscoverTab } from '../discoverModel'
 
 // TMDB pages hold 20; one step here is two of them, so "Show more" adds 40.
 const TMDB_PAGES_PER_STEP = 2
@@ -11,14 +11,14 @@ const MAX_TMDB_PAGES = 26
 /** A Discover list, step by step ("Show more" loads the next 40). */
 export function useDiscoverList(tab: DiscoverTab, type: 'movie' | 'tv', filters: DiscoverFilters, providers: number[], enabled = true) {
   const today = todayStr()
-  // hideLibrary is applied on the client, so it doesn't refetch.
   const args = (page: number) => {
     const r = discoverRequest(tab, type, filters, today, page, providers)
     return [r.path, r.params] as const
   }
-  const server = { genre: filters.genre, fromYear: filters.fromYear, minRating: filters.minRating, sort: filters.sort }
+  // Keyed on the exact request: an earlier key left out the vote floor and
+  // hidden genres, so changing them showed the previous filters' list.
   return useInfiniteQuery({
-    queryKey: qk.media.tmdbQuery('discover', tab, type, server, [...providers].sort((a, b) => a - b), today),
+    queryKey: qk.media.tmdbQuery('discover', tab, type, discoverKey(tab, type, filters, today, providers), today),
     queryFn: async ({ pageParam }) => {
       const first = (pageParam - 1) * TMDB_PAGES_PER_STEP + 1
       const head = await fetchDiscoverPage(...args(first))

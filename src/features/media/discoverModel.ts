@@ -40,6 +40,29 @@ export const DISCOVER_LANGUAGES: { code: string; label: string }[] = [
   { code: 'ar', label: 'Arabic' }, { code: 'pl', label: 'Polish' },
 ]
 
+const EXTRA_LANGUAGES: Record<string, string> = { cn: 'Cantonese', tl: 'Tagalog', nb: 'Norwegian', nn: 'Norwegian' }
+let displayNames: Intl.DisplayNames | null | undefined
+
+/** "ja" → "Japanese". TMDB's own oddities first ("cn" = Cantonese, "xx" = no language → null). */
+export function languageName(code: string | null | undefined): string | null {
+  if (!code || code === 'xx') return null
+  const c = code.toLowerCase()
+  if (EXTRA_LANGUAGES[c]) return EXTRA_LANGUAGES[c]
+  const listed = DISCOVER_LANGUAGES.find(l => l.code === c)
+  if (listed) return listed.label
+  if (displayNames === undefined) {
+    try { displayNames = new Intl.DisplayNames(['en'], { type: 'language' }) } catch { displayNames = null }
+  }
+  try {
+    const name = displayNames?.of(c)
+    if (name && name.toLowerCase() !== c) return name
+  } catch { /* an invalid code */ }
+  return c.toUpperCase()
+}
+
+/** The cover shows a language only when it isn't English. */
+export const coverLanguage = (code: string | null | undefined) => (code && code.toLowerCase() !== 'en' ? languageName(code) : null)
+
 export interface TabMeta { key: DiscoverTab; label: string; types: ('movie' | 'tv')[] }
 
 export const DISCOVER_TABS: TabMeta[] = [
@@ -157,6 +180,37 @@ export function applyClientFilters<T extends DiscoverTitle>(tab: DiscoverTab, it
     if (f.minVotes != null && (i.vote_count ?? 0) < f.minVotes) return false
     return true
   })
+}
+
+/**
+ * What the server request depends on, for the query key: page 1's params
+ * minus the page. Every filter TMDB sees must be in the key, or changing it
+ * shows the list fetched for the previous filters.
+ */
+export function discoverKey(tab: DiscoverTab, type: 'movie' | 'tv', f: DiscoverFilters, today: string, providers: number[] = []) {
+  const r = discoverRequest(tab, type, f, today, 1, providers)
+  const params = Object.fromEntries(Object.entries(r.params).filter(([k]) => k !== 'page').sort(([a], [b]) => a.localeCompare(b)))
+  return { path: r.path, params }
+}
+
+/** Same filters? (hide lists compared as sets). */
+function sameSet<T>(x: T[], y: T[]) { return x.length === y.length && x.every(v => y.includes(v)) }
+
+export function sameFilters(a: DiscoverFilters, b: DiscoverFilters): boolean {
+  return a.genre === b.genre && a.fromYear === b.fromYear && a.minRating === b.minRating && a.minVotes === b.minVotes
+    && a.sort === b.sort && a.hideLibrary === b.hideLibrary && sameSet(a.hideGenres, b.hideGenres) && sameSet(a.hideLanguages, b.hideLanguages)
+}
+
+/** Filters a tab ignores, to say so instead of silently doing nothing. */
+export function ignoredFilters(tab: DiscoverTab, f: DiscoverFilters): string[] {
+  const out: string[] = []
+  if (tab === 'upcoming') {
+    if (f.fromYear != null) out.push('year')
+    if (f.minRating != null) out.push('score')
+    if (f.minVotes != null) out.push('votes')
+    if (f.sort === 'rating') out.push('Best rated')
+  }
+  return out
 }
 
 /** Filters that change this tab's list (a sort does nothing on trending). */

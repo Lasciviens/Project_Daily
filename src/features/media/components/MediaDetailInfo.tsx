@@ -3,6 +3,7 @@ import { Play, X } from 'lucide-react'
 import { SectionLabel } from '../../../shared/ui'
 import type { TMDBMovieFull, TMDBTVFull, TMDBCastMember, TMDBWatchProvider, TMDBVideo } from '../types'
 import { formatDate } from '../../../shared/utils/dateFormat'
+import { languageName } from '../discoverModel'
 
 function formatRuntime(mins: number): string {
   const h = Math.floor(mins / 60)
@@ -68,6 +69,12 @@ export function MediaDetailInfo({ detail, isMovie, afterMeta }: { detail: TMDBMo
   const trailer = findTrailer(detail.videos?.results ?? [])
   const hasBudget = (movie?.budget ?? 0) > 0
   const unreleased = !!movie?.release_date && new Date(movie.release_date) > new Date()
+  const language = languageName(detail.original_language)
+  // Other spoken languages, by their English name (the original one first, above).
+  const spoken = (detail.spoken_languages ?? [])
+    .filter(l => l.iso_639_1 !== detail.original_language)
+    .map(l => l.english_name || languageName(l.iso_639_1))
+    .filter(Boolean)
   const hasFacts = director || hasBudget || tv?.created_by?.length || tv?.networks?.length || tv?.next_episode_to_air || trailer
 
   return (
@@ -93,6 +100,11 @@ export function MediaDetailInfo({ detail, isMovie, afterMeta }: { detail: TMDBMo
         )}
         {tv?.first_air_date && <span>First aired {formatDay(tv.first_air_date)}</span>}
         {movie?.runtime ? <span title="Running time">Runtime {formatRuntime(movie.runtime)}</span> : null}
+        {language && (
+          <span>
+            Original language {language}{spoken.length ? ` · also ${spoken.slice(0, 3).join(', ')}${spoken.length > 3 ? ` +${spoken.length - 3}` : ''}` : ''}
+          </span>
+        )}
         {tv?.number_of_seasons && (
           <span>{tv.number_of_seasons} season{tv.number_of_seasons !== 1 ? 's' : ''} · {tv.number_of_episodes} episodes</span>
         )}

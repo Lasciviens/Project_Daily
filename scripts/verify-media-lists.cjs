@@ -103,4 +103,22 @@ const voted = [{ id: 1, vote_average: 9, vote_count: 2 }, { id: 2, vote_average:
 ok(D.applyClientFilters('today', voted, { ...F, minVotes: 1000 }, () => false).map(i => i.id), [2], 'trending: min votes applied on the client')
 ok(D.activeFilterCount({ ...F, minVotes: 1000 }), 1, 'min votes counts as a filter')
 
+// Query key: every filter TMDB sees changes it (votes and hidden genres used to be missing).
+const key = f => JSON.stringify(D.discoverKey('popular', 'movie', f, TODAY))
+ok(key({ ...F, minVotes: 10000 }) !== key(F), true, 'min votes changes the key')
+ok(key({ ...F, hideGenres: [27] }) !== key(F), true, 'hidden genres change the key')
+ok(key({ ...F, hideGenres: [27, 99] }) === key({ ...F, hideGenres: [99, 27] }), true, 'hidden genre order does not')
+ok(key({ ...F, hideLibrary: true, hideLanguages: ['hi'] }) === key(F), true, 'client-only filters do not refetch')
+ok(key({ ...F, genre: 18, minVotes: 1000 }) === key({ ...F, minVotes: 1000, genre: 18 }), true, 'same filters, same key')
+ok(D.discoverKey('popular', 'movie', F, TODAY).params.page, undefined, 'the page is not in the key')
+ok(JSON.stringify(D.discoverKey('today', 'movie', { ...F, genre: 18 }, TODAY)) === JSON.stringify(D.discoverKey('today', 'movie', F, TODAY)), true, 'trending filters on the client only')
+ok(D.sameFilters({ ...F, hideGenres: [1, 2] }, { ...F, hideGenres: [2, 1] }), true, 'same filters as sets')
+ok(D.sameFilters({ ...F, minVotes: 100 }, F), false, 'a changed filter is not the same')
+ok(D.ignoredFilters('upcoming', { ...F, minRating: 7, minVotes: 100 }), ['score', 'votes'], 'upcoming says what it ignores')
+ok(D.ignoredFilters('popular', { ...F, minRating: 7 }), [], 'popular uses the score')
+// Languages by full name; English never on a cover.
+ok([D.languageName('ja'), D.languageName('hi'), D.languageName('cn'), D.languageName('xx'), D.languageName(null)], ['Japanese', 'Hindi', 'Cantonese', null, null], 'full language names')
+ok(D.languageName('fa'), 'Persian', 'unlisted codes via Intl')
+ok([D.coverLanguage('en'), D.coverLanguage('ko')], [null, 'Korean'], 'cover shows non-English only')
+
 console.log(`verify-media-lists: ${n} assertions passed`)
