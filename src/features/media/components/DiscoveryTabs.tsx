@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { RefreshCw, SlidersHorizontal } from 'lucide-react'
 import { Button, IconButton, SegmentedControl } from '../../../shared/ui'
 import { useDiscoverList } from '../hooks/useDiscover'
@@ -11,6 +11,9 @@ import type { MediaType } from '../types'
 import { POSTER_GRID, PosterTile } from './PosterTile'
 import { formatDate } from '../../../shared/utils/dateFormat'
 import { todayStr } from '../../../shared/utils/dateUtils'
+
+// Up to 6 steps (240 titles) fetched by themselves while too few match.
+const AUTO_STEPS = 6
 
 /** 1.2k, 34k — how many people the TMDB score comes from. */
 const votes = (n?: number) => (!n ? '' : n >= 1000 ? ` (${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k)` : ` (${n})`)
@@ -50,6 +53,14 @@ export function DiscoveryTabs({ mediaType, onOpenDetail }: Props) {
     [current, list.data, filters, index, mediaType],
   )
   const count = activeFilterCount(filters, current)
+  // Filters applied here (hidden languages, trending's genre/score…) can empty
+  // a whole step; look a few steps further before saying nothing matches.
+  const pages = list.data?.pages.length ?? 0
+  const lookingFurther = !picking && !!list.hasNextPage && items.length < 12 && pages > 0 && pages < AUTO_STEPS
+  const { isFetching, fetchNextPage } = list
+  useEffect(() => {
+    if (lookingFurther && !isFetching) void fetchNextPage()
+  }, [lookingFurther, isFetching, fetchNextPage])
 
   return (
     <section className="@container">
@@ -77,7 +88,7 @@ export function DiscoveryTabs({ mediaType, onOpenDetail }: Props) {
           <SegmentedControl<DiscoverTab> value={current} onChange={setTab} options={[{ value: 'today', label: 'Today' }, { value: 'week', label: 'This week' }]} />
         </div>
       )}
-      {showFilters && <div className="mb-3"><FilterRow type={mediaType} filters={filters} onChange={changeFilters} trending={isTrending(current)} /></div>}
+      {showFilters && <div className="mb-3"><FilterRow key={mediaType} type={mediaType} filters={filters} onApply={changeFilters} tab={current} trending={isTrending(current)} /></div>}
 
       {current === 'services' && !picking && (
         <p className="mb-2 text-meta text-fg-muted">
@@ -94,7 +105,8 @@ export function DiscoveryTabs({ mediaType, onOpenDetail }: Props) {
       ) : (
         <>
           {items.length === 0 ? (
-            <p className="text-body text-fg-muted">{list.hasNextPage ? 'Nothing on this page matches — try Show more, or loosen the filters.' : 'Nothing matches — loosen the filters.'}</p>
+            lookingFurther || list.isFetchingNextPage ? <SkeletonGrid count={6} />
+              : <p className="text-body text-fg-muted">{list.hasNextPage ? `Nothing in the first ${list.data?.pages.flatMap(p => p.results).length ?? 0} titles matches — try Show more, or loosen the filters.` : 'Nothing matches — loosen the filters.'}</p>
           ) : (
           <ul className={POSTER_GRID}>
             {items.map(item => {
