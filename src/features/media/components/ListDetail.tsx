@@ -7,11 +7,11 @@ import { useToggleFollow } from '../hooks/useFollows'
 import { useCreateAutoList, useDeleteAutoList, useStopAutoFill } from '../hooks/useAutoLists'
 import { useDeleteTraktList } from '../trakt/useTraktExtras'
 import type { TraktList } from '../trakt/traktApi'
-import type { MediaType } from '../types'
+import type { OpenMediaDetail } from '../types'
 import { SmartListPanel, TraktListPanel } from './ListPanels'
 import { QueuePanel } from './QueuePanel'
 
-type Open = (id: number, t: MediaType) => void
+type Open = OpenMediaDetail
 
 /** A Trakt list — filled by you, or (✦) filled from TMDB by its rule. */
 export function TraktListDetail({ list, follow, onOpen, onGone, isQueue = false }: { list: TraktList; follow: MediaFollow | null; onOpen: Open; onGone: () => void; isQueue?: boolean }) {

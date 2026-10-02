@@ -155,6 +155,11 @@ export interface TMDBSearchTV {
 export type MediaStatus = 'watching' | 'wishlist' | 'completed' | 'dropped' | 'paused' | 'upcoming'
 export type MediaType = 'movie' | 'tv'
 
+/** One title, for the popup's previous/next: the list a title was opened from, in its on-screen order. */
+export interface MediaRef { tmdbId: number; mediaType: MediaType }
+/** Open a title; `sequence` is the visible list it was picked from (the popup steps through it). */
+export type OpenMediaDetail = (id: number, type: MediaType, sequence?: MediaRef[]) => void
+
 export interface TMDBEpisode {
   id:             number
   name:           string

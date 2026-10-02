@@ -57,13 +57,13 @@ export function TgActivityTip({ row, libraries }: { row?: TgaActivityRow; librar
 export function TgActivityMarker({ cx, cy, n, pill }: { cx?: number; cy?: number; n: number | null; pill: boolean }) {
   if (n == null || cx == null || cy == null || !Number.isFinite(cx) || !Number.isFinite(cy)) return <g />
   if (!pill) {
-    return <circle cx={cx} cy={cy - 7} r={4} fill="var(--tg-blue)" stroke="var(--tg-panel)" strokeWidth={1.5} />
+    return <circle cx={cx} cy={cy - 7} r={4} fill="rgb(var(--success))" stroke="var(--tg-panel)" strokeWidth={1.5} />
   }
   const text = fmtInt(n)
   const w = 17 + text.length * 6
   return (
     <g transform={`translate(${cx - w / 2},${cy - 20})`} aria-hidden>
-      <rect width={w} height={15} rx={7.5} fill="var(--tg-blue)" stroke="var(--tg-panel)" strokeWidth={1.5} />
+      <rect width={w} height={15} rx={7.5} fill="rgb(var(--success))" stroke="var(--tg-panel)" strokeWidth={1.5} />
       <path d="M4.5 7.8 6.9 10.2 11 5.4" fill="none" stroke="#fff" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />
       <text x={12.5} y={11} fontSize={10} fontWeight={700} fill="#fff">{text}</text>
     </g>

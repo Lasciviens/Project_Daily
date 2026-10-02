@@ -50,11 +50,11 @@ for (const [name, layout, known] of [
 }
 
 console.log('Media')
-check('step 1 keeps the phone order (library → Discover → tools)', eq(M.MEDIA_BOARD[1], ['library', 'discovery', 'tools']))
+check('step 1 keeps the phone order (search → library → Discover → tools)', eq(M.MEDIA_BOARD[1], ['library', 'summary', 'discovery', 'tools']))
 for (const s of STEPS) {
   const k = keys(M.MEDIA_BOARD, s)
-  const tools = k.includes('tools') || ['tonight', 'calendar', 'stats'].every(t => k.includes(t))
-  check(`step ${s}: library, Discover and all three tools are on the page`, k.includes('library') && k.includes('discovery') && tools)
+  const tools = k.includes('tools') || ['tonight', 'calendar'].every(t => k.includes(t))
+  check(`step ${s}: search, library, Discover and both tools are on the page`, k.includes('library') && k.includes('summary') && k.includes('discovery') && tools)
   check(`step ${s}: the combined tools grid and the single tools never both mount`, !(k.includes('tools') && k.includes('tonight')))
 }
 check('library sits above Discover in one column at every step', STEPS.every(s => {
@@ -66,6 +66,7 @@ check('from 1920 the main cards span two tracks (more poster columns, never wide
 check('the tools open by default only where they get columns of their own', M.MEDIA_TOOLS_OPEN_FROM === 4
   && B.resolveBoardLayout(M.MEDIA_BOARD, 4).columns.length === 3)
 check('laptop and 1920: the tools column is sticky', [2, 3].every(s => B.resolveBoardLayout(M.MEDIA_BOARD, s).columns.at(-1).sticky))
+check('from the laptop your library sits on the right, not under search', [2, 3, 4].every(s => columnOf(M.MEDIA_BOARD, s, 'summary') > columnOf(M.MEDIA_BOARD, s, 'library')))
 
 console.log('Work')
 for (const [name, layout] of [['board', Wk.WORK_BOARD], ['list', Wk.WORK_LIST]]) {

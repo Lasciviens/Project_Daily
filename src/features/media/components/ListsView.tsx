@@ -6,7 +6,7 @@ import { useFollows } from '../hooks/useFollows'
 import { useCreateAutoList } from '../hooks/useAutoLists'
 import { useTraktStatus } from '../trakt/useTrakt'
 import { useTraktLists } from '../trakt/useTraktExtras'
-import type { MediaType } from '../types'
+import type { OpenMediaDetail } from '../types'
 import { NewListDialog } from './NewListDialog'
 import { FollowingPanel } from './FollowingPanel'
 import { PendingListDetail, TraktListDetail } from './ListDetail'
@@ -32,7 +32,7 @@ function RailButton({ active, label, meta, onClick }: { active: boolean; label: 
  * A rule with no list on Trakt yet (older ones, or made without Trakt) is
  * listed as "not on Trakt yet" with Put on Trakt.
  */
-export function ListsView({ onOpenDetail }: { onOpenDetail: (id: number, type: MediaType) => void }) {
+export function ListsView({ onOpenDetail }: { onOpenDetail: OpenMediaDetail }) {
   const { data: trakt, isLoading: statusLoading } = useTraktStatus()
   const connected = !!trakt?.connected
   const lists = useTraktLists()

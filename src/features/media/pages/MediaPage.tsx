@@ -4,12 +4,11 @@ import { MediaHeroArt } from '../components/MediaHeroArt'
 import { MediaSearch } from '../components/MediaSearch'
 import { DiscoveryTabs } from '../components/DiscoveryTabs'
 import { TonightPicker } from '../components/TonightPicker'
-import { MediaStats } from '../components/MediaStats'
 import { ReleaseCalendar } from '../components/ReleaseCalendar'
 import { LibrarySummary } from '../components/LibrarySummary'
 import { LibraryView } from '../components/LibraryView'
 import { ListsView } from '../components/ListsView'
-import { YearInReview } from '../components/YearInReview'
+import { MediaStatsView } from '../components/stats/MediaStatsView'
 import { ContinueWatching } from '../components/ContinueWatching'
 import { BUCKET_ORDER, libraryItems, type LibraryBucket } from '../libraryModel'
 import { todayStr } from '../../../shared/utils/dateUtils'
@@ -19,10 +18,10 @@ import { useCinemaMovieIds } from '../hooks/useLibraryIndex'
 import { useEntityModal } from '../../../shared/modals'
 import { PageBoard, PageContainer, PageHeader, SegmentedControl } from '../../../shared/ui'
 import { MEDIA_BOARD, type MediaSection } from '../mediaBoard'
-import type { MediaType } from '../types'
+import type { MediaType, OpenMediaDetail } from '../types'
 
 type Tab = 'movies' | 'tv'
-type View = 'overview' | 'library' | 'lists' | 'year'
+type View = 'overview' | 'library' | 'lists' | 'stats'
 
 const isBucket = (v: string | null): v is LibraryBucket => !!v && (BUCKET_ORDER as string[]).includes(v)
 
@@ -34,7 +33,8 @@ export function MediaPage() {
   const [tab, setTab] = useState<Tab>('movies')
   const [params, setParams] = useSearchParams()
   const viewParam = params.get('view')
-  const view: View = viewParam === 'library' || viewParam === 'lists' || viewParam === 'year' ? viewParam : 'overview'
+  // ?view=year is the old address of Stats.
+  const view: View = viewParam === 'library' || viewParam === 'lists' ? viewParam : viewParam === 'stats' || viewParam === 'year' ? 'stats' : 'overview'
   const statusParam = params.get('status')
   const bucket: LibraryBucket | 'all' = isBucket(statusParam) ? statusParam : 'all'
   const modal = useEntityModal()
@@ -49,7 +49,7 @@ export function MediaPage() {
   const setView = (v: View) => (v === 'library' ? openLibrary() : setParams(p => {
     const next = new URLSearchParams(p)
     next.delete('status')
-    if (v === 'lists' || v === 'year') next.set('view', v); else next.delete('view')
+    if (v === 'lists' || v === 'stats') next.set('view', v); else next.delete('view')
     return next
   }))
   const setBucket = (b: LibraryBucket | 'all') => setParams(p => {
@@ -61,7 +61,7 @@ export function MediaPage() {
   const { data: movieEntries = [], isLoading: moviesLoading } = useMovies()
   const { data: tvEntries = [], isLoading: tvLoading } = useTVSeries()
 
-  const openDetail = (tmdbId: number, mediaType: MediaType) => modal.open({ kind: 'media', tmdbId, mediaType })
+  const openDetail: OpenMediaDetail = (tmdbId, mediaType, sequence) => modal.open({ kind: 'media', tmdbId, mediaType, sequence })
   const hasLibrary = movieEntries.length > 0 || tvEntries.length > 0
   const mediaType: MediaType = tab === 'movies' ? 'movie' : 'tv'
 
@@ -76,7 +76,6 @@ export function MediaPage() {
 
   const tonight = <TonightPicker movieEntries={movieEntries} tvEntries={tvEntries} onOpenDetail={openDetail} />
   const calendar = <ReleaseCalendar movieEntries={movieEntries} tvEntries={tvEntries} onOpenDetail={openDetail} loading={libraryLoading} />
-  const stats = hasLibrary ? <MediaStats movieEntries={movieEntries} tvEntries={tvEntries} loading={libraryLoading} /> : null
 
   const sections: Record<MediaSection, ReactNode> = {
     // A still film-strip motif sits behind the search + library card only.
@@ -86,23 +85,23 @@ export function MediaPage() {
         <div className="relative z-10 flex flex-col gap-4">
           <MediaSearch mediaType={mediaType} onSelectResult={openDetail} />
           <ContinueWatching posters={posters} onOpenDetail={openDetail} />
-          {!libraryLoading && hasLibrary && (
-            <LibrarySummary items={items} mediaType={mediaType} onOpenDetail={openDetail} onOpenLibrary={openLibrary} />
-          )}
         </div>
       </section>
     ),
+    // Your library: under search on a phone, in the right-hand column from the laptop.
+    summary: !libraryLoading && hasLibrary
+      ? <LibrarySummary items={items} mediaType={mediaType} onOpenDetail={openDetail} onOpenLibrary={openLibrary} />
+      : null,
     discovery: <DiscoveryTabs mediaType={mediaType} onOpenDetail={openDetail} />,
-    // Phones and tablets: the three tools under the main cards, one column
+    // Phones and tablets: the two tools under the main cards, one column
     // on a phone and two once the grid itself is 36rem wide.
     tools: (
       <div className="@container">
-        <div className="grid grid-cols-1 items-start gap-4 @[36rem]:grid-cols-2">{tonight}{calendar}{stats}</div>
+        <div className="grid grid-cols-1 items-start gap-4 @[36rem]:grid-cols-2">{tonight}{calendar}</div>
       </div>
     ),
     tonight,
     calendar,
-    stats,
   }
 
   return (
@@ -117,7 +116,7 @@ export function MediaPage() {
           <SegmentedControl<View>
             value={view}
             onChange={setView}
-            options={[{ value: 'overview', label: 'Overview' }, { value: 'library', label: 'Library' }, { value: 'lists', label: 'Lists' }, { value: 'year', label: 'Year' }]}
+            options={[{ value: 'overview', label: 'Overview' }, { value: 'library', label: 'Library' }, { value: 'lists', label: 'Lists' }, { value: 'stats', label: 'Stats' }]}
           />
         </div>
       </PageHeader>
@@ -126,8 +125,8 @@ export function MediaPage() {
         ? <LibraryView items={items} mediaType={mediaType} bucket={bucket} onBucketChange={setBucket} onOpenDetail={openDetail} />
         : view === 'lists'
         ? <ListsView onOpenDetail={openDetail} />
-        : view === 'year'
-        ? <YearInReview onOpenDetail={openDetail} />
+        : view === 'stats'
+        ? <MediaStatsView onOpenDetail={openDetail} />
         : <PageBoard sections={sections} layout={MEDIA_BOARD} stackGap="gap-5" stackClassName="stagger-in" />}
     </PageContainer>
   )

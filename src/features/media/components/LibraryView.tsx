@@ -1,16 +1,16 @@
 import { useMemo, useState } from 'react'
 import { Search } from 'lucide-react'
-import { EmptyState } from '../../../shared/ui'
+import { EmptyState, ToneDot } from '../../../shared/ui'
 import { POSTER_GRID, PosterTile } from './PosterTile'
-import { BUCKET_LABEL, BUCKET_ORDER, bucketCounts, filterLibrary, type LibraryBucket, type LibraryItem, type LibrarySort } from '../libraryModel'
-import type { MediaType } from '../types'
+import { BUCKET_LABEL, BUCKET_ORDER, BUCKET_TONE, bucketCounts, filterLibrary, type LibraryBucket, type LibraryItem, type LibrarySort } from '../libraryModel'
+import type { MediaType, OpenMediaDetail } from '../types'
 
 interface Props {
   items: LibraryItem[]
   mediaType: MediaType
   bucket: LibraryBucket | 'all'
   onBucketChange: (b: LibraryBucket | 'all') => void
-  onOpenDetail: (id: number, type: MediaType) => void
+  onOpenDetail: OpenMediaDetail
 }
 
 const SORTS: { value: LibrarySort; label: string }[] = [
@@ -27,13 +27,15 @@ export function LibraryView({ items, mediaType, bucket, onBucketChange, onOpenDe
   const [sort, setSort] = useState<LibrarySort>('added')
   const counts = bucketCounts(items)
   const shown = useMemo(() => filterLibrary(items, bucket, query, sort), [items, bucket, query, sort])
+  // The popup steps through exactly what is on screen, in this order.
+  const sequence = useMemo(() => shown.map(i => ({ tmdbId: i.tmdbId, mediaType })), [shown, mediaType])
 
   return (
     <section className="card @container flex flex-col gap-4 p-4 sm:p-5">
       <div className="flex flex-wrap gap-1.5" role="group" aria-label="Status">
         <FilterChip active={bucket === 'all'} onClick={() => onBucketChange('all')} label="All" count={items.length} />
         {BUCKET_ORDER.filter(b => counts[b] > 0).map(b => (
-          <FilterChip key={b} active={bucket === b} onClick={() => onBucketChange(b)} label={BUCKET_LABEL[b]} count={counts[b]} />
+          <FilterChip key={b} active={bucket === b} onClick={() => onBucketChange(b)} label={BUCKET_LABEL[b]} count={counts[b]} bucket={b} />
         ))}
       </div>
 
@@ -67,7 +69,7 @@ export function LibraryView({ items, mediaType, bucket, onBucketChange, onOpenDe
                 cinema={i.cinema}
                 language={i.language}
                 releaseDate={i.releaseDate}
-                onOpen={() => onOpenDetail(i.tmdbId, mediaType)}
+                onOpen={() => onOpenDetail(i.tmdbId, mediaType, sequence)}
               />
             </li>
           ))}
@@ -77,10 +79,11 @@ export function LibraryView({ items, mediaType, bucket, onBucketChange, onOpenDe
   )
 }
 
-function FilterChip({ active, onClick, label, count }: { active: boolean; onClick: () => void; label: string; count: number }) {
+function FilterChip({ active, onClick, label, count, bucket }: { active: boolean; onClick: () => void; label: string; count: number; bucket?: LibraryBucket }) {
   return (
     <button type="button" onClick={onClick} aria-pressed={active}
       className={`chip min-h-[44px] press-feedback sm:min-h-[36px] ${active ? 'bg-accent-500 text-on-accent' : ''}`}>
+      {bucket && <ToneDot tone={BUCKET_TONE[bucket]} />}
       {label} <span className={`tabular-nums ${active ? '' : 'text-fg-muted'}`}>{count}</span>
     </button>
   )

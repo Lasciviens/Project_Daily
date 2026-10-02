@@ -3,12 +3,12 @@ import { libraryKey } from '../listModel'
 import { PosterTile } from './PosterTile'
 import { useSimilarMovies, useSimilarTV } from '../hooks/useTMDB'
 import { SectionLabel, Skeleton } from '../../../shared/ui'
-import type { MediaType, TMDBSearchMovie, TMDBSearchTV } from '../types'
+import type { MediaType, TMDBSearchMovie, TMDBSearchTV, OpenMediaDetail } from '../types'
 
 interface Props {
   tmdbId:    number
   mediaType: MediaType
-  onOpenDetail: (id: number, type: MediaType) => void
+  onOpenDetail: OpenMediaDetail
 }
 
 export function SimilarRow({ tmdbId, mediaType, onOpenDetail }: Props) {

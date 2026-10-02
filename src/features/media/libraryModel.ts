@@ -1,4 +1,6 @@
 import type { UserMovieEntry, UserTVEntry } from './types'
+import type { Tone } from '../../shared/ui/Tone'
+import { stageTones, type Stage } from '../../shared/theme/stage'
 
 // The library as one flat list of posters, shared by the Media overview's
 // summary and the Library view. Pure and type-only
@@ -40,15 +42,18 @@ export const BUCKET_LABEL: Record<LibraryBucket, string> = {
   dropped: 'Dropped',
 }
 
-/** The poster ribbon's tone per status (a tone, never the accent). */
-export const BUCKET_TONE: Record<LibraryBucket, 'success' | 'info' | 'neutral' | 'warn' | 'highlight' | 'danger'> = {
-  completed: 'success',
-  watching: 'info',
-  paused: 'neutral',
-  coming: 'warn',
-  wishlist: 'highlight',
-  dropped: 'danger',
+/** Each status's shared stage (shared/theme/stage.ts) — the one colour rule for every page. */
+export const BUCKET_STAGE: Record<LibraryBucket, Stage> = {
+  completed: 'done',
+  watching: 'active',
+  paused: 'paused',
+  coming: 'upcoming',
+  wishlist: 'planned',
+  dropped: 'dropped',
 }
+
+/** The poster ribbon's tone per status (a tone, never the accent). */
+export const BUCKET_TONE: Record<LibraryBucket, Tone> = stageTones(BUCKET_STAGE)
 
 /** Reading order: what you're in the middle of first, then what's next, then the rest. */
 export const BUCKET_ORDER: LibraryBucket[] = ['watching', 'paused', 'coming', 'wishlist', 'completed', 'dropped']

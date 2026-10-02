@@ -3,7 +3,7 @@ import { SectionLabel, Truncate } from '../../../shared/ui'
 import { useTmdbBasic } from '../hooks/useTMDB'
 import { useTraktPlayback } from '../trakt/useTraktExtras'
 import type { TraktPlaybackItem } from '../trakt/traktApi'
-import type { MediaType } from '../types'
+import type { OpenMediaDetail } from '../types'
 
 function Tile({ item, posters, onOpen }: { item: TraktPlaybackItem; posters: Map<string, string | null>; onOpen: () => void }) {
   const type = item.type === 'movie' ? 'movie' : 'tv'
@@ -31,16 +31,17 @@ function Tile({ item, posters, onOpen }: { item: TraktPlaybackItem; posters: Map
  * Trakt's paused playbacks (a film or episode stopped part-way in Plex,
  * Infuse, a TV app…), newest first. Hidden when there is nothing to resume.
  */
-export function ContinueWatching({ posters, onOpenDetail }: { posters: Map<string, string | null>; onOpenDetail: (id: number, type: MediaType) => void }) {
+export function ContinueWatching({ posters, onOpenDetail }: { posters: Map<string, string | null>; onOpenDetail: OpenMediaDetail }) {
   const { data } = useTraktPlayback()
   const items = (data ?? []).filter(i => i.tmdb).slice(0, 12)
   if (items.length === 0) return null
+  const sequence = items.map(i => ({ tmdbId: i.tmdb!, mediaType: i.type === 'movie' ? 'movie' as const : 'tv' as const }))
   return (
     <div>
       <SectionLabel className="mb-1.5">Continue watching</SectionLabel>
       <div className="scroll-x flex gap-2.5 pb-1">
         {items.map(i => (
-          <Tile key={i.id} item={i} posters={posters} onOpen={() => onOpenDetail(i.tmdb!, i.type === 'movie' ? 'movie' : 'tv')} />
+          <Tile key={i.id} item={i} posters={posters} onOpen={() => onOpenDetail(i.tmdb!, i.type === 'movie' ? 'movie' : 'tv', sequence)} />
         ))}
       </div>
     </div>

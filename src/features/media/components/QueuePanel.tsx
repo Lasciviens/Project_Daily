@@ -10,13 +10,13 @@ import { moveItem } from '../queue/queueModel'
 import { useQueue, useReorderQueue } from '../queue/useQueue'
 import { useChangeTraktList } from '../trakt/useTraktExtras'
 import type { TraktListItem } from '../trakt/traktApi'
-import type { MediaType } from '../types'
+import type { MediaType, OpenMediaDetail } from '../types'
 
 /**
  * The Queue in order: move titles up and down (the order is saved on Trakt),
  * plan one, take finished ones out. Watched titles say so.
  */
-export function QueuePanel({ onOpen }: { onOpen: (id: number, t: MediaType) => void }) {
+export function QueuePanel({ onOpen }: { onOpen: OpenMediaDetail }) {
   const { list, items, loading } = useQueue()
   const reorder = useReorderQueue(list?.id ?? null)
   const change = useChangeTraktList()
@@ -54,7 +54,7 @@ export function QueuePanel({ onOpen }: { onOpen: (id: number, t: MediaType) => v
           return (
             <li key={i.listItemId} className="flex items-center gap-2 rounded-row border border-line bg-surface p-2">
               <span className="w-6 shrink-0 text-center text-meta font-semibold text-fg-muted tabular-nums">{n + 1}</span>
-              <button type="button" disabled={!i.tmdb} onClick={() => i.tmdb && onOpen(i.tmdb, typeOf(i))} className="press-feedback flex min-w-0 flex-1 items-center gap-3 text-left">
+              <button type="button" disabled={!i.tmdb} onClick={() => i.tmdb && onOpen(i.tmdb, typeOf(i), items.filter(x => x.tmdb).map(x => ({ tmdbId: x.tmdb!, mediaType: typeOf(x) })))} className="press-feedback flex min-w-0 flex-1 items-center gap-3 text-left">
                 <span className="h-[54px] w-9 shrink-0 overflow-hidden rounded bg-surface-2">
                   {(i.posterPath ?? lib?.posterPath) && <img src={posterUrl(i.posterPath ?? lib?.posterPath ?? null, 'w92')} alt="" loading="lazy" className="h-full w-full object-cover" />}
                 </span>

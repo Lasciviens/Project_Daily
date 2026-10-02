@@ -7,7 +7,7 @@ import { useMediaPrefs } from '../mediaPrefsStore'
 import { libraryKey } from '../listModel'
 import { DISCOVER_TABS, NO_FILTERS, activeFilterCount, applyClientFilters, isTrending, type DiscoverFilters, type DiscoverTab } from '../discoverModel'
 import { FilterRow, ServicesPicker, SkeletonGrid } from './DiscoverFilters'
-import type { MediaType } from '../types'
+import type { MediaType, OpenMediaDetail } from '../types'
 import { POSTER_GRID, PosterTile } from './PosterTile'
 import { formatDate } from '../../../shared/utils/dateFormat'
 import { todayStr } from '../../../shared/utils/dateUtils'
@@ -20,7 +20,7 @@ const votes = (n?: number) => (!n ? '' : n >= 1000 ? ` (${(n / 1000).toFixed(n >
 
 interface Props {
   mediaType: MediaType
-  onOpenDetail: (id: number, type: MediaType) => void
+  onOpenDetail: OpenMediaDetail
 }
 
 /**
@@ -123,7 +123,7 @@ export function DiscoveryTabs({ mediaType, onOpenDetail }: Props) {
                     rt={lib?.rt}
                     favorite={lib?.favorite}
                     cinema={lib?.cinema}
-                    onOpen={() => onOpenDetail(item.id, mediaType)}
+                    onOpen={() => onOpenDetail(item.id, mediaType, items.map(x => ({ tmdbId: x.id, mediaType })))}
                   />
                 </li>
               )
