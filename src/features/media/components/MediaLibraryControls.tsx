@@ -23,6 +23,7 @@ import { SeriesFinishedControls } from './SeriesFinishedControls'
 import { todayStr } from '../../../shared/utils/dateUtils'
 import { AddToListMenu } from './AddToListMenu'
 import { QueueButton } from './QueueButton'
+import { ReleaseReminderButton } from './ReleaseReminderButton'
 import { FollowMenu } from './FollowMenu'
 import type { TMDBMovieFull, TMDBTVFull, UserMovieEntry, UserTVEntry, MediaStatus } from '../types'
 
@@ -246,6 +247,8 @@ export function MediaLibraryControls({ detail, isMovie, userEntry, onRemoved }: 
           onPick={s => { if (s !== 'unwatched') void handleAdd(s) }} />
         <div className="flex flex-wrap items-center gap-2">
           <QueueButton type={isMovie ? 'movie' : 'show'} tmdb={detail.id} title={isMovie ? movie!.title : tv!.name} />
+        <ReleaseReminderButton type={isMovie ? 'movie' : 'tv'} tmdbId={detail.id} title={isMovie ? movie!.title : tv!.name} posterPath={detail.poster_path ?? null} releaseDate={(isMovie ? movie!.release_date : tv!.first_air_date) || null} />
+          <ReleaseReminderButton type={isMovie ? 'movie' : 'tv'} tmdbId={detail.id} title={isMovie ? movie!.title : tv!.name} posterPath={detail.poster_path ?? null} releaseDate={(isMovie ? movie!.release_date : tv!.first_air_date) || null} />
           <AddToListMenu type={isMovie ? 'movie' : 'show'} tmdb={detail.id} title={isMovie ? movie!.title : tv!.name} />
           <a href={tmdbHref} target="_blank" rel="noopener noreferrer" className="btn-ghost btn-sm">
             TMDB <ExternalLink aria-hidden className="h-3.5 w-3.5" />

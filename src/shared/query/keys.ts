@@ -93,6 +93,7 @@ export const qk = {
     listItems: (id: string | number) => ['trakt', 'lists', 'items', String(id)] as const,
   },
   mediaScores: (type: string, tmdbId: number) => ['media-scores', type, tmdbId] as const,
+  mediaReminder: (type: string, tmdbId: number) => ['media-reminder', type, tmdbId] as const,
   mediaFollows: { all: ['media-follows'] as const, list: () => ['media-follows', 'list'] as const, events: () => ['media-follows', 'events'] as const },
   wishes: { all: ['wish-items'] as const },
   devRequests: { all: ['dev-requests'] as const },
