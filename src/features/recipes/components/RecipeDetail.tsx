@@ -13,16 +13,8 @@ import { formatLocalDate } from '../../../shared/utils/dateUtils'
 import { MacroBar } from './MacroBar'
 import { CookMode } from './CookMode'
 import type { RecipeWithIngredients, MealSlot } from '../types'
-import { sanitizeDecimal } from './foodLogUtils'
+import { sanitizeDecimal, slotForNow } from './foodLogUtils'
 import { DateInput } from '../../../shared/components/DateInput'
-
-function slotForNow(): MealSlot {
-  const h = new Date().getHours()
-  if (h < 11) return 'breakfast'
-  if (h < 15) return 'lunch'
-  if (h < 21) return 'dinner'
-  return 'snack'
-}
 
 const LOG_SLOTS: { slot: MealSlot; label: string }[] = [
   { slot: 'breakfast',  label: 'Breakfast' },
@@ -111,7 +103,7 @@ export function RecipeDetail({ recipe, onClose, onEdit }: Props) {
     perServing == null ? null : Math.round(perServing * servings)
 
   async function handleDelete() {
-    const ok = await entityModal.confirm({ title: `Delete "${recipe.title}"?`, message: "This can't be undone.", confirmLabel: 'Delete recipe' })
+    const ok = await entityModal.confirm({ title: `Delete "${recipe.title}"?`, message: "Days you ate it keep their totals. This can't be undone.", confirmLabel: 'Delete recipe' })
     if (!ok) return
     remove.mutate(recipe.id, { onSuccess: onClose })
   }
@@ -229,6 +221,11 @@ export function RecipeDetail({ recipe, onClose, onEdit }: Props) {
         )}
 
         {/* Macros (scaled to selected servings) */}
+        {totals.length > 0 && (
+          <p className="-mb-2 text-meta text-fg-muted">
+            {servings === 1 ? 'For 1 serving' : <>Total for {servings} servings · <span className="tabular-nums">{Math.round(recipe.calories ?? 0)}</span> kcal and <span className="tabular-nums">{Math.round(recipe.protein_g ?? 0)}</span> g protein each</>}
+          </p>
+        )}
         {totals.length > 0 && (
           <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-6">
             {totals.map(t => (

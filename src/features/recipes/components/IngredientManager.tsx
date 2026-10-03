@@ -1,5 +1,5 @@
-import { useMemo, useRef, useState } from 'react'
-import { ChevronDown, Pencil, Plus, ScanBarcode, Search, X } from 'lucide-react'
+import { useRef, useState } from 'react'
+import { ChevronDown, Plus, ScanBarcode, Search } from 'lucide-react'
 import { useIngredientLibrary, useCreateIngredientLibraryItem, useUpdateIngredientLibraryItem, useDeleteIngredientLibraryItem } from '../hooks/useIngredientLibrary'
 import { toast } from '../../../app/store'
 import { withProgress } from '../../../shared/hooks/useMutationWithFeedback'
@@ -7,7 +7,9 @@ import { lookupBarcode, type BarcodeProduct } from '../api/openFoodFactsApi'
 import { BarcodeScanner } from './BarcodeScanner'
 import { OnlineFoodSearch } from './OnlineFoodSearch'
 import { entityModal } from '../../../shared/modals/useEntityModal'
-import { Button, Card, EmptyState, IconButton, PageBoard, SkeletonText, Truncate, cx } from '../../../shared/ui'
+import { Button, Card, IconButton, PageBoard, Truncate, cx } from '../../../shared/ui'
+import { IngredientList } from './IngredientList'
+import { sanitizeDecimal } from './foodLogUtils'
 import { INGREDIENT_BOARD } from '../foodBoards'
 import { MacroWarningBadge } from './MacroWarningBadge'
 import { checkMacroConsistency } from '../macroSanity'
@@ -23,12 +25,6 @@ import { FOOD_GROUPS, type IngredientLibraryItem } from '../types'
 //   • the food's serving preset (serving_label + grams) shown as a chip.
 // ─────────────────────────────────────────────────────────────────────────────
 
-function sanitizeDecimal(raw: string): string {
-  const cleaned = raw.replace(',', '.').replace(/[^0-9.]/g, '')
-  const firstDot = cleaned.indexOf('.')
-  return firstDot === -1 ? cleaned : cleaned.slice(0, firstDot + 1) + cleaned.slice(firstDot + 1).replace(/\./g, '')
-}
-
 const EMPTY = { name: '', unit: 'g', kcal: '', prot: '', carb: '', fat: '', fiber: '', sugar: '', servLabel: '', servGrams: '', group: '' }
 
 export function IngredientManager() {
@@ -37,8 +33,6 @@ export function IngredientManager() {
   const update = useUpdateIngredientLibraryItem()
   const remove = useDeleteIngredientLibraryItem()
 
-  const [query, setQuery] = useState('')
-  const [catFilter, setCatFilter] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [f, setF] = useState({ ...EMPTY })
   const [scanOpen, setScanOpen] = useState(false)
@@ -78,23 +72,6 @@ export function IngredientManager() {
     } catch { toast.dismiss(tid); toast.error('Barcode lookup failed') }
   }
 
-  // Which of the 16 groups actually appear (+ an "Other" bucket for null).
-  const presentGroups = useMemo(() => {
-    const s = new Set<string>()
-    let hasOther = false
-    for (const i of library) { if (i.food_group) s.add(i.food_group); else hasOther = true }
-    const ordered = FOOD_GROUPS.filter(g => s.has(g))
-    return { ordered, hasOther }
-  }, [library])
-
-  const q = query.trim().toLowerCase()
-  const filtered = useMemo(() => library.filter(i => {
-    if (q && !i.name.toLowerCase().includes(q)) return false
-    if (catFilter === '__other') return !i.food_group
-    if (catFilter) return i.food_group === catFilter
-    return true
-  }), [library, q, catFilter])
-
   function reset() { setF({ ...EMPTY }); setEditingId(null); setMeta(null); setOnlineOpen(false) }
 
   function startEdit(ing: IngredientLibraryItem) {
@@ -130,9 +107,13 @@ export function IngredientManager() {
     if (ok) reset()
   }
 
-  async function handleDelete(ing: IngredientLibraryItem) {
-    const confirmed = await entityModal.confirm({ title: `Delete "${ing.name}"?`, message: 'This removes it from your food library.', confirmLabel: 'Delete', destructive: true })
+  async function handleDelete(ing: IngredientLibraryItem, usedIn: number) {
+    const message = usedIn > 0
+      ? `It is in ${usedIn} recipe${usedIn === 1 ? '' : 's'}. ${usedIn === 1 ? 'That recipe keeps' : 'They keep'} the totals ${usedIn === 1 ? 'it has' : 'they have'} now (switched to typed macros), and days you ate it keep theirs.`
+      : 'Days you ate it keep their totals.'
+    const confirmed = await entityModal.confirm({ title: `Delete "${ing.name}"?`, message, confirmLabel: 'Delete', destructive: true })
     if (!confirmed) return
+    if (editingId === ing.id) reset()
     void withProgress(() => remove.mutateAsync(ing.id), { loading: 'Deleting…', success: 'Deleted' })
   }
 
@@ -164,7 +145,7 @@ export function IngredientManager() {
           </button>
           <div className="hidden min-w-0 flex-1 sm:block">
             <p className="section-label">{formTitle}</p>
-            <p className="text-meta text-fg-muted">Macros per 100g</p>
+            <p className="text-meta text-fg-muted">Macros per 100 {f.unit === 'ml' ? 'ml' : 'g'}</p>
           </div>
           {!editingId ? (
             <>
@@ -200,7 +181,12 @@ export function IngredientManager() {
           <div className="grid grid-cols-2 gap-2 @[36rem]:grid-cols-4">
             <input value={f.servLabel} onChange={e => set('servLabel', e.target.value)} placeholder="Portion (1 scoop)" aria-label="Portion name" className="input" />
             <input value={f.servGrams} onChange={e => set('servGrams', sanitizeDecimal(e.target.value))} inputMode="decimal" placeholder="= grams (30)" aria-label="Portion grams" className="input" />
-            <input value={f.unit} onChange={e => set('unit', e.target.value)} placeholder="Unit (g)" aria-label="Unit" className="input" />
+            {/* Macros are per 100 g or 100 ml: any other unit ("stk") could never be counted. */}
+            <select value={f.unit} onChange={e => set('unit', e.target.value)} aria-label="Macros per" className="select">
+              <option value="g">per 100 g</option>
+              <option value="ml">per 100 ml</option>
+              {f.unit !== 'g' && f.unit !== 'ml' && <option value={f.unit}>{f.unit} (old)</option>}
+            </select>
             <select value={f.group} onChange={e => set('group', e.target.value)} aria-label="Category" className="select">
               <option value="">Category…</option>
               {FOOD_GROUPS.map(g => <option key={g} value={g}>{g}</option>)}
@@ -213,68 +199,7 @@ export function IngredientManager() {
       </Card>
       </div>),
 
-      list: (
-      <div className="flex min-w-0 flex-col gap-3">
-        {(presentGroups.ordered.length > 0 || presentGroups.hasOther) && (
-          <div role="tablist" aria-label="Food group" className="scroll-x -mx-1 flex gap-1.5 px-1">
-            <button type="button" role="tab" aria-selected={catFilter === null} className="pill-tab shrink-0" onClick={() => setCatFilter(null)}>All</button>
-            {presentGroups.ordered.map(g => (
-              <button key={g} type="button" role="tab" aria-selected={catFilter === g} className="pill-tab shrink-0" onClick={() => setCatFilter(g)}>{g}</button>
-            ))}
-            {presentGroups.hasOther && <button type="button" role="tab" aria-selected={catFilter === '__other'} className="pill-tab shrink-0" onClick={() => setCatFilter('__other')}>Other</button>}
-          </div>
-        )}
-
-        <Card padded={false} className="@container overflow-hidden">
-          <header className="flex items-center gap-3 border-b border-line px-4 py-2.5">
-            <p className="section-label flex-1">Your foods <span className="count-badge ml-1 normal-case tracking-normal">{filtered.length}{catFilter || q ? ` / ${library.length}` : ''}</span></p>
-            <label className="relative w-36 sm:w-48">
-              <span className="sr-only">Search your foods</span>
-              <Search aria-hidden className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-fg-faint" />
-              <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search" className="input pl-8" />
-            </label>
-          </header>
-          {isLoading ? (
-            <div className="p-4"><SkeletonText lines={5} /></div>
-          ) : filtered.length === 0 ? (
-            <EmptyState title={q || catFilter ? 'No match' : 'No foods yet'}
-              description={q || catFilter ? undefined : 'Add your basics (chicken, rice, oats, whey…) with the form.'} />
-          ) : (
-            // Rows split into columns once the card is wide (the list spans several
-            // tracks). CSS columns, not a grid: the A–Z order reads DOWN each column.
-            <ul className="-mb-px @[68rem]:columns-2 @[68rem]:gap-x-6 @[100rem]:columns-3">
-              {filtered.slice(0, 300).map(ing => {
-                const macroCheck = checkMacroConsistency(ing.calories, ing.protein_g, ing.carbs_g, ing.fat_g)
-                const num = 'hidden w-12 shrink-0 text-right text-meta tabular-nums text-fg-muted sm:block'
-                return (
-                  <li key={ing.id} className="flex min-h-[48px] break-inside-avoid items-center gap-2 border-b border-line py-1 pl-4 pr-2 text-body">
-                    <div className="min-w-0 flex-1">
-                      <Truncate className="font-medium text-fg">{ing.name}</Truncate>
-                      {(ing.food_group || ing.serving_label) && (
-                        <span className="mt-0.5 flex flex-wrap items-center gap-1">
-                          {ing.food_group && <span className="chip">{ing.food_group}</span>}
-                          {ing.serving_label && ing.serving_grams != null && (
-                            <span className="chip tabular-nums">{ing.serving_label} {Math.round(ing.serving_grams)}g</span>
-                          )}
-                        </span>
-                      )}
-                    </div>
-                    <MacroWarningBadge result={macroCheck} />
-                    <span className="w-16 shrink-0 text-right text-meta font-medium tabular-nums text-fg-2">{ing.calories ?? '—'} kcal</span>
-                    <span className="w-12 shrink-0 text-right text-meta tabular-nums text-fg-muted">{ing.protein_g ?? '—'}g P</span>
-                    <span className={num}>{ing.carbs_g ?? '—'}g C</span>
-                    <span className={num}>{ing.fat_g ?? '—'}g F</span>
-                    <IconButton label={`Edit ${ing.name}`} onClick={() => startEdit(ing)}><Pencil /></IconButton>
-                    <IconButton label={`Delete ${ing.name}`} onClick={() => handleDelete(ing)} className="text-fg-faint hover:!text-danger"><X /></IconButton>
-                  </li>
-                )
-              })}
-            </ul>
-          )}
-          {filtered.length > 300 && <p className="border-t border-line px-4 py-2 text-meta text-fg-muted">Showing the first 300 — search or filter to narrow.</p>}
-        </Card>
-        <p className="max-w-2xl text-meta text-fg-muted">Per-100g is the source of truth; portion presets are one-tap conveniences. Logged meals follow their foods — editing a food updates every meal made from it, past days included. Nutrition data: Matvaretabellen (Mattilsynet), NLOD.</p>
-      </div>),
+      list: <IngredientList library={library} isLoading={isLoading} editingId={editingId} onEdit={startEdit} onDelete={handleDelete} />,
     }} />
 
     <BarcodeScanner open={scanOpen} onClose={() => setScanOpen(false)} onDetected={handleBarcode} />

@@ -37,14 +37,22 @@ export function rankMatches<T>(items: T[], query: string, nameOf: (t: T) => stri
 }
 
 /**
- * "kebab 700" → { title: 'kebab', kcal: 700 } — a trailing number (optionally
- * followed by "kcal"/"cal") is read as calories for a one-off entry.
+ * Splits a trailing amount off a food search:
+ *   "kebab 700 kcal" → kcal 700 · "chicken 150g" → grams 150 ·
+ *   "kebab 700" → amount 700 (unit unknown — could be kcal, grams or a count).
+ * Only an explicit "kcal"/"cal" is calories: a bare "Chicken 150" used to be
+ * logged as 150 kcal.
  */
-export function parseQuickAdd(raw: string): { title: string; kcal: number | null } {
+export function parseQuickAdd(raw: string): { title: string; kcal: number | null; grams: number | null; amount: number | null } {
   const s = raw.trim()
-  const m = s.match(/^(.*\S)\s+(\d{1,4}(?:[.,]\d+)?)\s*(?:kcal|cal)?$/i)
-  if (m && m[1].trim()) return { title: m[1].trim(), kcal: Math.round(Number(m[2].replace(',', '.'))) }
-  return { title: s, kcal: null }
+  const m = s.match(/^(.*\S)\s+(\d{1,4}(?:[.,]\d+)?)\s*(kcal|cal|g|gr|gram|grams|ml)?$/i)
+  if (!m || !m[1].trim()) return { title: s, kcal: null, grams: null, amount: null }
+  const n = Number(m[2].replace(',', '.'))
+  const unit = (m[3] ?? '').toLowerCase()
+  const title = m[1].trim()
+  if (unit === 'kcal' || unit === 'cal') return { title, kcal: Math.round(n), grams: null, amount: null }
+  if (unit) return { title, kcal: null, grams: n, amount: null }
+  return { title, kcal: null, grams: null, amount: n }
 }
 
 interface SlotAware { count: number; slotCounts?: Partial<Record<string, number>> }

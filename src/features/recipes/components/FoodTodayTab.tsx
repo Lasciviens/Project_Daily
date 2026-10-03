@@ -12,6 +12,7 @@ import { useRemoveFoodLogEntries, useRecentFoods, useAddFoodLogEntries } from '.
 import { recentToEntry } from '../api/foodLogApi'
 import { usualForSlot } from '../foodSearch'
 import { useCopyYesterdayMeals } from '../../daily/hooks/useQuickMeals'
+import { FitsLeftCard } from './FitsLeftCard'
 import { WeeklyNutritionCard } from './WeeklyNutritionCard'
 import { useEatPlannedEntry } from '../hooks/useMealPlan'
 import { MacroBar } from './MacroBar'
@@ -281,6 +282,8 @@ export function FoodTodayTab({ date }: { date: string }) {
           </div>
         </Card>),
 
+
+      fits: <FitsLeftCard date={date} kcalLeft={targets.calories - consumed} proteinLeft={targets.protein - protein} />,
 
       meals: (
       <div className="grid min-w-0 grid-cols-1 content-start gap-3 stagger-in sm:gap-4">

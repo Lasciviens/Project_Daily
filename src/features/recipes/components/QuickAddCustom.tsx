@@ -20,13 +20,14 @@ interface Props {
 
 // A one-off diary line (custom_title + typed macros) — the common case for a
 // meal eaten out ("Kebab ~700 kcal") that should never become a library
-// ingredient. Typing a number after the name ("kebab 700") pre-fills kcal, so
-// that case is a single tap on Log.
+// ingredient. "kebab 700 kcal" opens it filled in (one tap on Log); a bare
+// "kebab 700" pre-fills kcal too but waits for the user to open and check it.
 export function QuickAddCustom({ query, busy, onLog }: Props) {
   const parsed = parseQuickAdd(query)
   const [open, setOpen] = useState(parsed.kcal != null)
   const [title, setTitle] = useState(parsed.title)
-  const [kcal, setKcal] = useState(parsed.kcal != null ? String(parsed.kcal) : '')
+  const guess = parsed.kcal ?? parsed.amount
+  const [kcal, setKcal] = useState(guess != null ? String(guess) : '')
   const [prot, setProt] = useState('')
   const [carb, setCarb] = useState('')
   const [fat, setFat] = useState('')
@@ -36,7 +37,8 @@ export function QuickAddCustom({ query, busy, onLog }: Props) {
   if (query !== seenQuery) {
     setSeenQuery(query)
     setTitle(parsed.title)
-    if (parsed.kcal != null) { setKcal(String(parsed.kcal)); setOpen(true) }
+    if (guess != null) setKcal(String(guess))
+    if (parsed.kcal != null) setOpen(true)
   }
 
   const num = (s: string) => (s === '' ? null : Number(s))

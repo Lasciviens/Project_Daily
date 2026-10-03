@@ -1,5 +1,6 @@
 import { supabase } from '../../../integrations/supabase/client'
 import { requireUser } from '../../../shared/utils/requireUser'
+import { toGrams } from '../foodUnits'
 import type { RecipeWithIngredients, RecipeInput, RecipeIngredient, IngredientLibraryItem } from '../types'
 
 export const WEIGHT_UNITS = new Set(['g', 'gram', 'grams', 'ml', 'milliliter', 'milliliters', 'millilitre', 'millilitres'])
@@ -36,9 +37,9 @@ export function sumMacros(
   for (const ing of ingredients) {
     if (!ing.library_ingredient_id) continue
     const lib = libraryMap.get(ing.library_ingredient_id)
-    const unitOk = ing.unit && WEIGHT_UNITS.has(ing.unit.trim().toLowerCase())
-    if (!lib || !unitOk || ing.quantity == null) { skippedCount++; continue }
-    const factor = ing.quantity / 100
+    const grams = toGrams(ing.quantity, ing.unit)
+    if (!lib || grams == null) { skippedCount++; continue }
+    const factor = grams / 100
     totals.calories  += (lib.calories  ?? 0) * factor
     totals.protein_g += (lib.protein_g ?? 0) * factor
     totals.carbs_g   += (lib.carbs_g   ?? 0) * factor
@@ -62,7 +63,7 @@ export function canComputeFromIngredients(
 ): boolean {
   const named = ingredients.filter(i => (i.name ?? '').trim() || i.library_ingredient_id)
   return named.length > 0 && named.every(i =>
-    !!i.library_ingredient_id && i.quantity != null && !!i.unit && WEIGHT_UNITS.has(i.unit.trim().toLowerCase()))
+    !!i.library_ingredient_id && toGrams(i.quantity, i.unit) != null)
 }
 
 export async function computeMacrosFromIngredients(
@@ -108,7 +109,18 @@ export async function fetchRecipes(): Promise<RecipeWithIngredients[]> {
 }
 
 async function replaceIngredients(userId: string, recipeId: string, ingredients: RecipeInput['ingredients']) {
-  // A failed delete followed by the insert would duplicate every ingredient.
+  // One transaction (migration 123): a failed insert can no longer leave the
+  // recipe without ingredients.
+  const payload = ingredients.filter(i => i.name.trim()).map(i => ({
+    name: i.name.trim(), quantity: i.quantity, unit: i.unit?.trim() || null,
+    note: i.note?.trim() || null, library_ingredient_id: i.library_ingredient_id,
+  }))
+  const { error: rpcError } = await supabase.rpc('replace_recipe_ingredients', { p_recipe_id: recipeId, p_rows: payload })
+  if (!rpcError) return
+  const code = (rpcError as { code?: string }).code
+  if (code !== 'PGRST202' && code !== '42883') throw rpcError
+
+  // Before 123: delete, then insert. A failed delete followed by the insert would duplicate every ingredient.
   const { error: delError } = await supabase.from('recipe_ingredients').delete().eq('recipe_id', recipeId)
   if (delError) throw delError
   const rows = ingredients
@@ -243,8 +255,10 @@ export async function recomputeRecipesUsingIngredient(libraryId: string): Promis
 
   const updated: string[] = []
   for (const r of (recipes ?? []) as RecipeWithIngredients[]) {
+    // A typed (manual) Library recipe keeps its numbers; only a saved meal
+    // from the logger (temp) is switched to follow its ingredients.
     const computable = r.macro_mode === 'from_ingredients'
-      || (r.macro_mode === 'manual' && canComputeFromIngredients(r.ingredients))
+      || (r.macro_mode === 'manual' && r.is_temp && canComputeFromIngredients(r.ingredients))
     if (!computable) continue
     const m = await computeMacrosFromIngredients(r.ingredients, r.servings)
     const row: Record<string, unknown> = {

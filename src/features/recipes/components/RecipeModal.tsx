@@ -3,7 +3,8 @@ import { Plus, Sparkles, X } from 'lucide-react'
 import { toast } from '../../../app/store'
 import { ModalShell } from '../../../shared/modals/ModalShell'
 import { Button, IconButton, SegmentedControl } from '../../../shared/ui'
-import { useCreateRecipe, useUpdateRecipe } from '../hooks/useRecipes'
+import { useCreateRecipe, useDeleteRecipe, useUpdateRecipe } from '../hooks/useRecipes'
+import { entityModal } from '../../../shared/modals/useEntityModal'
 import { useIngredientLibrary, useCreateIngredientLibraryItem } from '../hooks/useIngredientLibrary'
 import { parseRecipeText, parseRecipeFromUrl, estimateRecipeMacros } from '../../ai/api/aiApi'
 import { canComputeFromIngredients, sumMacros } from '../api/recipesApi'
@@ -21,6 +22,9 @@ interface Props {
 
 const EMPTY_ROW: IngredientDraft = { name: '', quantity: null, unit: null, note: null, library_ingredient_id: null }
 const NEW_INGREDIENT = '__new__'
+
+/** recipes.servings is a whole number (an integer column — "2.5" failed to save). */
+const wholeServings = (v: string) => Math.max(1, Math.round(Number(v) || 1))
 
 function numOrNull(v: string): number | null {
   if (v.trim() === '') return null
@@ -43,6 +47,7 @@ export function RecipeModal({ open = true, onClose, recipe }: Props) {
   const editMode = !!recipe
   const create = useCreateRecipe()
   const update = useUpdateRecipe()
+  const remove = useDeleteRecipe()
   const { data: library = [] } = useIngredientLibrary()
   const createLibraryItem = useCreateIngredientLibraryItem()
 
@@ -68,6 +73,7 @@ export function RecipeModal({ open = true, onClose, recipe }: Props) {
   const [urlInput,     setUrlInput]     = useState('')
   const [parsing,      setParsing]      = useState(false)
   const [estimating,   setEstimating]   = useState(false)
+  const [isTemp,       setIsTemp]       = useState(false)
 
   // Prefill when the modal opens or the edited recipe changes. Adjusting state
   // during render on a prop change is React's recommended pattern over a
@@ -86,8 +92,11 @@ export function RecipeModal({ open = true, onClose, recipe }: Props) {
         setDescription(recipe.description ?? '')
         // A manual recipe whose ingredients are all library-linked by weight came
         // from the logger's old "Save meal"; it edits as 'from_ingredients', so changing an ingredient changes the total.
-        setMacroMode(recipe.macro_mode === 'manual' && canComputeFromIngredients(recipe.ingredients)
+        // Only a saved meal (temp) is switched — a Library recipe whose macros
+        // were typed by hand keeps them (offered as a one-tap switch below).
+        setMacroMode(recipe.macro_mode === 'manual' && recipe.is_temp && canComputeFromIngredients(recipe.ingredients)
           ? 'from_ingredients' : recipe.macro_mode)
+        setIsTemp(recipe.is_temp)
         setCategory(recipe.category ?? '')
         setCalories(recipe.calories?.toString() ?? '')
         setProtein(recipe.protein_g?.toString() ?? '')
@@ -116,10 +125,13 @@ export function RecipeModal({ open = true, onClose, recipe }: Props) {
   function handleLinkChange(idx: number, value: string) {
     if (value === NEW_INGREDIENT) { setNewIngredientRow(idx); return }
     const lib = library.find(l => l.id === value)
-    setRow(idx, { library_ingredient_id: value || null, unit: lib?.unit ?? ingredients[idx].unit, name: ingredients[idx].name || lib?.name || '' })
+    // Keep a unit the user typed ("2 pcs" must not silently become "2 g");
+    // only an empty unit takes the food's own.
+    const typed = ingredients[idx].unit?.trim()
+    setRow(idx, { library_ingredient_id: value || null, unit: typed || lib?.unit || null, name: ingredients[idx].name || lib?.name || '' })
   }
 
-  const preview = macroMode === 'from_ingredients' ? previewMacros(ingredients, Math.max(1, Number(servings) || 1), library) : null
+  const preview = macroMode === 'from_ingredients' ? previewMacros(ingredients, wholeServings(servings), library) : null
 
   function applyParsedRecipe(parsed: Awaited<ReturnType<typeof parseRecipeText>>) {
     setTitle(parsed.title)
@@ -176,7 +188,7 @@ export function RecipeModal({ open = true, onClose, recipe }: Props) {
     setEstimating(true)
     const tid = toast.loading('Estimating macros with AI…')
     try {
-      const est = await estimateRecipeMacros(named, Math.max(1, Number(servings) || 1))
+      const est = await estimateRecipeMacros(named, wholeServings(servings))
       setCalories(est.calories?.toString() ?? '')
       setProtein(est.protein_g?.toString() ?? '')
       setCarbs(est.carbs_g?.toString() ?? '')
@@ -193,7 +205,7 @@ export function RecipeModal({ open = true, onClose, recipe }: Props) {
   async function handleSave() {
     if (!title.trim()) { toast.error('Title is required'); return }
     const input = {
-      title, description: description.trim() || null, servings: Math.max(1, Number(servings) || 1),
+      title, description: description.trim() || null, servings: wholeServings(servings),
       instructions: instructions.trim() || null,
       macro_mode: macroMode,
       calories: numOrNull(calories), protein_g: numOrNull(protein), carbs_g: numOrNull(carbs),
@@ -202,12 +214,21 @@ export function RecipeModal({ open = true, onClose, recipe }: Props) {
       image_url: imageUrl.trim() || null,
       category: category || null,
       ingredients: ingredients.filter(i => i.name.trim()),
+      ...(editMode ? { is_temp: isTemp } : {}),
     }
     try {
       if (editMode && recipe) await update.mutateAsync({ id: recipe.id, input })
       else                    await create.mutateAsync(input)
       onClose()
     } catch { return }   // the hook already toasted + logged
+  }
+
+  async function handleDelete() {
+    if (!recipe) return
+    const what = recipe.is_temp ? 'saved meal' : 'recipe'
+    const ok = await entityModal.confirm({ title: `Delete "${recipe.title}"?`, message: `Days you ate this ${what} keep their totals. This can't be undone.`, confirmLabel: `Delete ${what}` })
+    if (!ok) return
+    try { await remove.mutateAsync(recipe.id); onClose() } catch { return }
   }
 
   const saving = create.isPending || update.isPending
@@ -231,11 +252,24 @@ export function RecipeModal({ open = true, onClose, recipe }: Props) {
         </Button>
       }
       footer={
-        <div className="flex gap-2">
+        <div className="flex flex-col gap-2">
+          {editMode && (
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <label className="flex min-h-[44px] items-center gap-2 text-meta text-fg-2">
+                <input type="checkbox" className="h-4 w-4" checked={!isTemp} onChange={e => setIsTemp(!e.target.checked)} />
+                Show in Library
+              </label>
+              <Button variant="ghost" size="sm" className="text-danger" onClick={handleDelete} loading={remove.isPending} disabled={saving}>
+                Delete
+              </Button>
+            </div>
+          )}
+          <div className="flex gap-2">
           <Button block onClick={onClose} disabled={saving}>Cancel</Button>
           <Button block variant="primary" onClick={handleSave} loading={saving} disabled={!title.trim()}>
             {editMode ? 'Save changes' : 'Add recipe'}
           </Button>
+          </div>
         </div>
       }
     >
@@ -283,7 +317,7 @@ export function RecipeModal({ open = true, onClose, recipe }: Props) {
 
         <div>
           <label htmlFor="rm-servings" className="field-label">Base servings</label>
-          <input id="rm-servings" type="number" min="1" value={servings} onChange={e => setServings(e.target.value)} className="input w-24 text-center tabular-nums" />
+          <input id="rm-servings" type="number" min="1" step="1" value={servings} onChange={e => setServings(e.target.value)} className="input w-24 text-center tabular-nums" />
         </div>
 
         <section>
@@ -318,7 +352,7 @@ export function RecipeModal({ open = true, onClose, recipe }: Props) {
                     onCancel={() => setNewIngredientRow(null)}
                     onCreate={async draft => {
                       const created = await createLibraryItem.mutateAsync(draft)
-                      setRow(i, { library_ingredient_id: created.id, unit: created.unit, name: row.name || created.name })
+                      setRow(i, { library_ingredient_id: created.id, unit: row.unit?.trim() || created.unit, name: row.name || created.name })
                       setNewIngredientRow(null)
                     }}
                   />
@@ -346,6 +380,12 @@ export function RecipeModal({ open = true, onClose, recipe }: Props) {
 
           {macroMode === 'manual' ? (
             <div>
+              {canComputeFromIngredients(ingredients) && (
+                <p className="mb-2 flex flex-wrap items-center gap-2 text-meta text-fg-muted">
+                  Every ingredient is linked by weight, so the macros can follow them.
+                  <Button size="sm" variant="ghost" onClick={() => setMacroMode('from_ingredients')}>Calculate from ingredients</Button>
+                </p>
+              )}
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                 {[
                   { v: calories, set: setCalories, label: 'Calories (kcal)' },
@@ -422,7 +462,7 @@ export function RecipeModal({ open = true, onClose, recipe }: Props) {
 function NewIngredientInline({ defaultName, onCancel, onCreate }: {
   defaultName: string
   onCancel: () => void
-  onCreate: (draft: { name: string; unit: string; calories: number | null; protein_g: number | null; carbs_g: number | null; fat_g: number | null; sugar_g: number | null }) => Promise<void>
+  onCreate: (draft: { name: string; unit: string; calories: number | null; protein_g: number | null; carbs_g: number | null; fat_g: number | null; fiber_g: number | null; sugar_g: number | null }) => Promise<void>
 }) {
   const [name,     setName]     = useState(defaultName)
   const [unit,     setUnit]     = useState('g')
@@ -430,6 +470,7 @@ function NewIngredientInline({ defaultName, onCancel, onCreate }: {
   const [protein,  setProtein]  = useState('')
   const [carbs,    setCarbs]    = useState('')
   const [fat,      setFat]      = useState('')
+  const [fiber,    setFiber]    = useState('')
   const [sugar,    setSugar]    = useState('')
   const [saving,   setSaving]   = useState(false)
 
@@ -440,7 +481,7 @@ function NewIngredientInline({ defaultName, onCancel, onCreate }: {
       await onCreate({
         name: name.trim(), unit: unit.trim() || 'g',
         calories: numOrNull(calories), protein_g: numOrNull(protein),
-        carbs_g: numOrNull(carbs), fat_g: numOrNull(fat), sugar_g: numOrNull(sugar),
+        carbs_g: numOrNull(carbs), fat_g: numOrNull(fat), fiber_g: numOrNull(fiber), sugar_g: numOrNull(sugar),
       })
     } catch {
       // The create hook (useMutationWithFeedback) already toasted + logged.
@@ -456,12 +497,13 @@ function NewIngredientInline({ defaultName, onCancel, onCreate }: {
         <input value={name} onChange={e => setName(e.target.value)} placeholder="Name" aria-label="Name" className="input flex-1 px-2" />
         <input value={unit} onChange={e => setUnit(e.target.value)} placeholder="Unit" aria-label="Unit" className="input w-14 px-2 text-center" />
       </div>
-      <div className="grid grid-cols-3 gap-1 sm:grid-cols-5">
+      <div className="grid grid-cols-3 gap-1 sm:grid-cols-6">
         {[
           { v: calories, set: setCalories, ph: 'kcal' },
           { v: protein,  set: setProtein,  ph: 'Protein' },
           { v: carbs,    set: setCarbs,    ph: 'Carbs' },
           { v: fat,      set: setFat,      ph: 'Fat' },
+          { v: fiber,    set: setFiber,    ph: 'Fiber' },
           { v: sugar,    set: setSugar,    ph: 'Sugar' },
         ].map(m => (
           <input key={m.ph} value={m.v} onChange={e => m.set(e.target.value)} placeholder={m.ph} aria-label={m.ph} inputMode="decimal"

@@ -20,8 +20,8 @@ const s = summarizeWeek(rows, '2026-09-26', T)
 check('7 days, oldest first', s.days.length === 7 && s.days[0].date === '2026-09-20' && s.days[6].date === '2026-09-26')
 check('same-day rows sum', s.days[6].kcal === 2100 && s.days[6].protein === 160, JSON.stringify(s.days[6]))
 check('outside window ignored', !s.days.some(d => d.date === '2026-09-19'))
-check('logged days counted (incl. unknown-macro day)', s.loggedDays === 4, String(s.loggedDays))
-check('average over logged days only', s.avgKcal === Math.round((2100 + 1500 + 1950 + 0) / 4), String(s.avgKcal))
+check('a day with no calories is not a logged day', s.loggedDays === 3, String(s.loggedDays))
+check('average over logged days only', s.avgKcal === Math.round((2100 + 1500 + 1950) / 3), String(s.avgKcal))
 check('protein hit days', s.proteinHitDays === 2, String(s.proteinHitDays))
 check('kcal within ±10%', s.kcalOnTargetDays === 2, String(s.kcalOnTargetDays))
 {
@@ -32,6 +32,11 @@ check('kcal within ±10%', s.kcalOnTargetDays === 2, String(s.kcalOnTargetDays))
 {
   const z = summarizeWeek(rows, '2026-09-26', { calories: 0, protein: 0 })
   check('zero targets → 0 hit days', z.proteinHitDays === 0 && z.kcalOnTargetDays === 0)
+}
+{
+  const rows = [{ date: '2026-09-20', calories: 2000, protein_g: 150 }, { date: '2026-09-21', calories: 600, protein_g: 40 }]
+  const p = summarizeWeek(rows, '2026-09-21', { calories: 2000, protein: 150 }, '2026-09-21')
+  check('today (partial) is drawn but left out of averages', p.loggedDays === 1 && p.avgKcal === 2000 && p.days[6].partial && p.days[6].logged, JSON.stringify(p.days[6]))
 }
 console.log(`\n${passed} passed, ${failed} failed`)
 process.exit(failed ? 1 : 0)

@@ -11,6 +11,15 @@ export const SLOT_OPTIONS: { id: MealSlot; icon: string; label: string }[] = [
   { id: 'supplement', icon: '💊', label: 'Supplement' },
 ]
 
+/** The meal slot that fits the time of day (breakfast before 11, lunch before 15, dinner before 21). */
+export function slotForNow(now = new Date()): MealSlot {
+  const h = now.getHours()
+  if (h < 11) return 'breakfast'
+  if (h < 15) return 'lunch'
+  if (h < 21) return 'dinner'
+  return 'snack'
+}
+
 export function sanitizeDecimal(raw: string): string {
   const cleaned = raw.replace(',', '.').replace(/[^0-9.]/g, '')
   const firstDot = cleaned.indexOf('.')

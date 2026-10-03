@@ -1,12 +1,12 @@
 import { useMemo, useState } from 'react'
-import { WEIGHT_UNITS } from '../api/recipesApi'
+import { toGrams } from '../foodUnits'
 import { Button, Truncate } from '../../../shared/ui'
 import { sanitizeDecimal } from './foodLogUtils'
 import type { RecipeWithIngredients } from '../types'
 
 // Portion picker for a saved meal — the "I made a 2-portion batch, I ate 50%"
 // flow. Free % of the WHOLE meal; when the recipe's total weight is computable
-// (all ingredients in g/ml) grams is offered too and kept in sync.
+// (every ingredient has a weight) raw grams are offered too and kept in sync.
 // servingsEaten = pct/100 × recipe.servings.
 export function MealPortionPicker({ recipe, busy, onLog, onCancel }: {
   recipe: RecipeWithIngredients
@@ -14,13 +14,18 @@ export function MealPortionPicker({ recipe, busy, onLog, onCancel }: {
   onLog:  (servingsEaten: number) => void
   onCancel: () => void
 }) {
-  const totalG = useMemo(
-    () => recipe.ingredients.reduce(
-      (a, i) => a + (i.unit && WEIGHT_UNITS.has(i.unit.trim().toLowerCase()) && i.quantity ? i.quantity : 0),
-      0,
-    ),
-    [recipe],
-  )
+  // Grams are offered only when every ingredient has a weight: a batch with
+  // "2 eggs" in it has no honest total. It is the RAW weight of the batch.
+  const totalG = useMemo(() => {
+    let sum = 0
+    for (const i of recipe.ingredients) {
+      if (i.quantity == null) continue
+      const g = toGrams(i.quantity, i.unit)
+      if (g == null) return 0
+      sum += g
+    }
+    return sum
+  }, [recipe])
   const [pct, setPct] = useState('100')
   // What the user typed into grams, kept as typed — deriving grams back from a
   // rounded % made big batches snap (2400 g: "35" became "36").
@@ -62,7 +67,7 @@ export function MealPortionPicker({ recipe, busy, onLog, onCancel }: {
               }}
               inputMode="decimal"
               className="input w-16 text-right tabular-nums" />
-            <span className="text-meta text-fg-muted">g</span>
+            <span className="text-meta text-fg-muted" title="Raw weight: the ingredients before cooking">g raw</span>
           </div>
         )}
         <span className="ml-auto text-meta text-fg-muted tabular-nums">
