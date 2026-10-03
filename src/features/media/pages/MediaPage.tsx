@@ -2,6 +2,8 @@ import { useMemo, useState, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { MediaHeroArt } from '../components/MediaHeroArt'
 import { MediaSearch } from '../components/MediaSearch'
+import { MediaSearchResults } from '../components/MediaSearchResults'
+import { useMediaSearchSession } from '../hooks/useMediaSearchSession'
 import { DiscoveryTabs } from '../components/DiscoveryTabs'
 import { TonightPicker } from '../components/TonightPicker'
 import { ReleaseCalendar } from '../components/ReleaseCalendar'
@@ -39,16 +41,22 @@ export function MediaPage() {
   const bucket: LibraryBucket | 'all' = isBucket(statusParam) ? statusParam : 'all'
   const modal = useEntityModal()
 
+  const search = useMediaSearchSession()
+  const searching = view === 'overview' && search.inSearch
+
   // The Library view lives in the address (?view=library&status=…) so Back returns to the overview.
   const openLibrary = (b?: LibraryBucket) => setParams(p => {
     const next = new URLSearchParams(p)
     next.set('view', 'library')
+    next.delete('q')
     if (b) next.set('status', b); else next.delete('status')
     return next
   })
-  const setView = (v: View) => (v === 'library' ? openLibrary() : setParams(p => {
+  // Overview while searching leaves the search (one Back), like ✕.
+  const setView = (v: View) => (v === 'overview' && search.inSearch ? search.leave() : v === 'library' ? openLibrary() : setParams(p => {
     const next = new URLSearchParams(p)
     next.delete('status')
+    next.delete('q')
     if (v === 'lists' || v === 'stats') next.set('view', v); else next.delete('view')
     return next
   }))
@@ -83,8 +91,8 @@ export function MediaPage() {
       <section className="card relative p-4 sm:p-5">
         <MediaHeroArt />
         <div className="relative z-10 flex flex-col gap-4">
-          <MediaSearch mediaType={mediaType} onSelectResult={openDetail} />
-          <ContinueWatching posters={posters} onOpenDetail={openDetail} />
+          <MediaSearch value={search.text} onChange={search.change} onClear={search.leave} active={searching} />
+          {!searching && <ContinueWatching posters={posters} onOpenDetail={openDetail} />}
         </div>
       </section>
     ),
@@ -103,6 +111,16 @@ export function MediaPage() {
     tonight,
     calendar,
   }
+  // While searching, the results take Discover's place (the search card stays
+  // mounted, so typing keeps focus). A phone drops the tools under them; wider
+  // pages keep their side columns.
+  const shown: Record<MediaSection, ReactNode> = searching
+    ? {
+        ...sections,
+        tools: null,
+        discovery: <MediaSearchResults query={search.settled} mediaType={mediaType} onMediaTypeChange={t => setTab(t === 'movie' ? 'movies' : 'tv')} onOpenDetail={openDetail} onClear={search.leave} />,
+      }
+    : sections
 
   return (
     <PageContainer>
@@ -127,7 +145,7 @@ export function MediaPage() {
         ? <ListsView onOpenDetail={openDetail} />
         : view === 'stats'
         ? <MediaStatsView onOpenDetail={openDetail} />
-        : <PageBoard sections={sections} layout={MEDIA_BOARD} stackGap="gap-5" stackClassName="stagger-in" />}
+        : <PageBoard sections={shown} layout={MEDIA_BOARD} stackGap="gap-5" stackClassName="stagger-in" />}
     </PageContainer>
   )
 }

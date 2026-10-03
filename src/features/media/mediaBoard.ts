@@ -2,8 +2,10 @@
 // data so scripts/verify-feature-boards.cjs can check that no step drops a
 // section.
 //
-//   1  phone, tablet — search, your library, Discover, then the two tools as
-//      one grid (one column on a phone, two once the grid is 36rem wide).
+//   1  phone, tablet — search, Discover, then the two tools as one grid (one
+//      column on a phone, two once the grid is 36rem wide). No library card
+//      here (owner, 03.10.2026): the Library tab above is the same thing, and
+//      the card pushed Discover a screen down.
 //   2  1280 / 1469 laptop — search and Discover in main; your library and the
 //      tools in a sticky column on the right (owner, 02.10.2026).
 //   3  1920 — search and Discover span main + one side track (more poster
@@ -20,7 +22,7 @@ const MAIN = ['library', 'discovery'] as const
 const TOOLS = ['tonight', 'calendar'] as const
 
 export const MEDIA_BOARD: BoardLayouts<MediaSection> = {
-  1: ['library', 'summary', 'discovery', 'tools'],
+  1: ['library', 'discovery', 'tools'],
   2: { columns: [MAIN, { stack: ['summary', ...TOOLS], sticky: true }] },
   3: { columns: [{ stack: MAIN, span: 2 }, { stack: ['summary', ...TOOLS], sticky: true }] },
   4: { columns: [{ stack: MAIN, span: 2 }, ['summary'], ['tonight', 'calendar']] },

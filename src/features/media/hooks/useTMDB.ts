@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { qk, STALE } from '../../../shared/query'
 import {
   searchMovies, searchTV,
@@ -14,22 +14,26 @@ import {
   getWatchProviders, discoverOnServices, discoverShort,
 } from '../api/tmdbApi'
 
+import type { TMDBSearchMovie, TMDBSearchTV } from '../types'
+
 const key = qk.media.tmdbQuery
 
-export function useSearchMovies(query: string) {
-  return useQuery({
-    queryKey: key('search', 'movie', query),
-    queryFn:  () => searchMovies(query).then(r => r.results),
-    enabled:  query.trim().length > 1,
-    staleTime: STALE.short,
-  })
-}
-
-export function useSearchTV(query: string) {
-  return useQuery({
-    queryKey: key('search', 'tv', query),
-    queryFn:  () => searchTV(query).then(r => r.results),
-    enabled:  query.trim().length > 1,
+/**
+ * TMDB search, 20 titles a page with Show more. Keeps the previous results on
+ * screen while a refined query loads, so typing never flashes a skeleton.
+ */
+export function useSearchTitles(type: 'movie' | 'tv', query: string) {
+  const q = query.trim()
+  return useInfiniteQuery({
+    queryKey: key('search', type, q),
+    queryFn: async ({ pageParam }) => {
+      const r = await (type === 'movie' ? searchMovies(q, pageParam) : searchTV(q, pageParam))
+      return { page: r.page ?? pageParam, totalPages: r.total_pages, total: r.total_results, results: r.results as (TMDBSearchMovie | TMDBSearchTV)[] }
+    },
+    initialPageParam: 1,
+    getNextPageParam: last => (last.page < Math.min(last.totalPages, 25) ? last.page + 1 : undefined),
+    enabled: q.length > 1,
+    placeholderData: keepPreviousData,
     staleTime: STALE.short,
   })
 }
