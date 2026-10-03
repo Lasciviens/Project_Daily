@@ -197,6 +197,8 @@ export interface TraktListItem {
 export interface ListItemRef { type: 'movie' | 'show'; tmdb: number }
 
 export const fetchTraktPlayback = () => invoke<{ items: TraktPlaybackItem[] }>('playback').then(r => r.items)
+/** Drops one paused playback from Trakt (Continue watching). */
+export const removeTraktPlayback = (id: number) => invoke<{ ok: true }>('playback_remove', { id })
 export const fetchTraktCalendar = () => invoke<{ items: TraktCalendarItem[] }>('calendar').then(r => r.items)
 export const fetchTraktLists = () => invoke<{ lists: TraktList[] }>('lists').then(r => r.lists)
 export const fetchTraktListItems = (listId: number) => invoke<{ items: TraktListItem[] }>('list_items', { listId }).then(r => r.items)

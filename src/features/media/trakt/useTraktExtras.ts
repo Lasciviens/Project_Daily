@@ -5,7 +5,7 @@ import { qk } from '../../../shared/query/keys'
 import { STALE } from '../../../shared/query/stale'
 import {
   addToTraktList, createTraktList, deleteTraktList, fetchMediaScores, fetchTraktCalendar, fetchTraktListItems,
-  fetchTraktLists, fetchTraktPlayback, removeFromTraktList, type ListItemRef, type MediaScores,
+  fetchTraktLists, fetchTraktPlayback, removeTraktPlayback, removeFromTraktList, type ListItemRef, type MediaScores, type TraktPlaybackItem,
 } from './traktApi'
 import { useTraktStatus } from './useTrakt'
 
@@ -45,6 +45,20 @@ function useTraktConnected() {
 export function useTraktPlayback() {
   const connected = useTraktConnected()
   return useQuery({ queryKey: qk.trakt.playback(), queryFn: fetchTraktPlayback, enabled: connected, staleTime: STALE.short, retry: false })
+}
+
+/** Removes a paused playback from Trakt; the strip drops it at once. */
+export function useRemoveTraktPlayback() {
+  const qc = useQueryClient()
+  return useMutationWithFeedback({
+    action: 'trakt_playback_remove',
+    mutationFn: (id: number) => removeTraktPlayback(id),
+    successMessage: 'Removed from Continue watching',
+    onMutate: (id: number) => {
+      qc.setQueryData<TraktPlaybackItem[]>(qk.trakt.playback(), old => old?.filter(i => i.id !== id))
+    },
+    invalidates: [qk.trakt.playback()],
+  })
 }
 
 export function useTraktCalendar() {
