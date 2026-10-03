@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
-import { RefreshCw, SlidersHorizontal } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useScrollEdges } from '../../../shared/hooks/useScrollEdges'
+import { ChevronRight, RefreshCw, SlidersHorizontal } from 'lucide-react'
 import { Button, IconButton, SegmentedControl } from '../../../shared/ui'
 import { useDiscoverList } from '../hooks/useDiscover'
 import { useLibraryIndex } from '../hooks/useLibraryIndex'
@@ -53,6 +54,9 @@ export function DiscoveryTabs({ mediaType, onOpenDetail }: Props) {
     [current, list.data, filters, index, mediaType],
   )
   const count = activeFilterCount(filters, current)
+  // The tab row scrolls sideways on a phone; a › button says more lists sit beyond the edge.
+  const tabsRef = useRef<HTMLDivElement>(null)
+  const edges = useScrollEdges(tabsRef)
   // Filters applied here (hidden languages, trending's genre/score…) can empty
   // a whole step; look a few steps further before saying nothing matches.
   const pages = list.data?.pages.length ?? 0
@@ -65,7 +69,7 @@ export function DiscoveryTabs({ mediaType, onOpenDetail }: Props) {
   return (
     <section className="@container">
       <div className="mb-3 flex items-center gap-2">
-        <div role="tablist" aria-label="Discover" className="scroll-x scroll-fade-x flex min-w-0 flex-1 gap-1">
+        <div ref={tabsRef} role="tablist" aria-label="Discover" className="scroll-x flex min-w-0 flex-1 gap-1">
           {tabs.map(t => {
             const on = t.key === 'today' ? isTrending(current) : current === t.key
             return (
@@ -75,8 +79,14 @@ export function DiscoveryTabs({ mediaType, onOpenDetail }: Props) {
             )
           })}
         </div>
-        <Button size="sm" variant={count ? 'primary' : 'ghost'} icon={<SlidersHorizontal />} aria-expanded={showFilters} onClick={() => setShowFilters(v => !v)}>
-          Filters{count ? ` · ${count}` : ''}
+        {edges.right && (
+          <IconButton label="More lists" onClick={() => tabsRef.current?.scrollBy({ left: tabsRef.current.clientWidth * 0.7, behavior: 'smooth' })}>
+            <ChevronRight />
+          </IconButton>
+        )}
+        {/* Icon (+ count) on a narrow board, so more tabs fit beside it. */}
+        <Button size="sm" variant={count ? 'primary' : 'ghost'} icon={<SlidersHorizontal />} aria-expanded={showFilters} aria-label={`Filters${count ? ` (${count} on)` : ''}`} onClick={() => setShowFilters(v => !v)}>
+          <span className="hidden @[36rem]:inline">Filters</span>{count ? <span className="tabular-nums"><span className="hidden @[36rem]:inline"> · </span>{count}</span> : null}
         </Button>
         <IconButton label="Refresh now" onClick={() => { void list.refetch() }}>
           <RefreshCw className={list.isFetching ? 'animate-spin' : ''} />
@@ -117,7 +127,7 @@ export function DiscoveryTabs({ mediaType, onOpenDetail }: Props) {
                   <PosterTile
                     posterPath={item.poster_path}
                     title={mediaType === 'movie' ? item.title : item.name}
-                    meta={[item.vote_average > 0 ? `TMDB ${item.vote_average.toFixed(1)}${votes(item.vote_count)}` : null, current === 'upcoming' && date ? formatDate(date) : date?.slice(0, 4)].filter(Boolean).join(' · ') || undefined}
+                    meta={[current === 'upcoming' && date ? formatDate(date) : date?.slice(0, 4), item.vote_average > 0 ? `TMDB ${item.vote_average.toFixed(1)}${votes(item.vote_count)}` : null].filter(Boolean).join(' · ') || undefined}
                     language={item.original_language}
                     bucket={lib?.bucket}
                     rt={lib?.rt}

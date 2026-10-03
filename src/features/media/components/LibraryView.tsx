@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { Search } from 'lucide-react'
 import { EmptyState, ToneDot } from '../../../shared/ui'
 import { POSTER_GRID, PosterTile } from './PosterTile'
@@ -8,6 +8,8 @@ import type { MediaType, OpenMediaDetail } from '../types'
 interface Props {
   items: LibraryItem[]
   mediaType: MediaType
+  /** The Movies | TV switch, shown with the library's own controls. */
+  typeSwitch?: ReactNode
   bucket: LibraryBucket | 'all'
   onBucketChange: (b: LibraryBucket | 'all') => void
   onOpenDetail: OpenMediaDetail
@@ -22,7 +24,7 @@ const SORTS: { value: LibrarySort; label: string }[] = [
 ]
 
 /** The whole library: filter by status, search by title, sort, and a poster grid that adds columns as it widens. */
-export function LibraryView({ items, mediaType, bucket, onBucketChange, onOpenDetail }: Props) {
+export function LibraryView({ items, mediaType, typeSwitch, bucket, onBucketChange, onOpenDetail }: Props) {
   const [query, setQuery] = useState('')
   const [sort, setSort] = useState<LibrarySort>('added')
   const counts = bucketCounts(items)
@@ -32,25 +34,27 @@ export function LibraryView({ items, mediaType, bucket, onBucketChange, onOpenDe
 
   return (
     <section className="card @container flex flex-col gap-4 p-4 sm:p-5">
+      {/* Type and sort on one row, the title search, then the status filter right above the covers. */}
+      <div className="flex flex-wrap items-center gap-2">
+        {typeSwitch}
+        <label className="ml-auto flex items-center gap-2 text-meta text-fg-muted">
+          <span className="sr-only sm:not-sr-only">Sort</span>
+          <select aria-label="Sort" className="input w-auto" value={sort} onChange={e => setSort(e.target.value as LibrarySort)}>
+            {SORTS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+          </select>
+        </label>
+        <label className="relative w-full max-w-md sm:order-first sm:w-auto sm:flex-1">
+          <span className="sr-only">Search the library</span>
+          <Search aria-hidden className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-fg-faint" />
+          <input className="input pl-9" value={query} onChange={e => setQuery(e.target.value)} placeholder="Search your library…" />
+        </label>
+      </div>
+
       <div className="flex flex-wrap gap-1.5" role="group" aria-label="Status">
         <FilterChip active={bucket === 'all'} onClick={() => onBucketChange('all')} label="All" count={items.length} />
         {BUCKET_ORDER.filter(b => counts[b] > 0).map(b => (
           <FilterChip key={b} active={bucket === b} onClick={() => onBucketChange(b)} label={BUCKET_LABEL[b]} count={counts[b]} bucket={b} />
         ))}
-      </div>
-
-      <div className="flex flex-wrap items-center gap-2">
-        <label className="relative w-full max-w-md">
-          <span className="sr-only">Search the library</span>
-          <Search aria-hidden className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-fg-faint" />
-          <input className="input pl-9" value={query} onChange={e => setQuery(e.target.value)} placeholder="Search your library…" />
-        </label>
-        <label className="flex items-center gap-2 text-meta text-fg-muted">
-          Sort
-          <select className="input w-auto" value={sort} onChange={e => setSort(e.target.value as LibrarySort)}>
-            {SORTS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
-          </select>
-        </label>
       </div>
 
       {shown.length === 0 ? (

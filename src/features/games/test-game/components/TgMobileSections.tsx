@@ -1,4 +1,5 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
+import { useLayoutEffect, useRef, type ReactNode } from 'react'
+import { useScrollEdges } from '../../../../shared/hooks/useScrollEdges'
 import { useTestGameStore } from '../testGameStore'
 import { TG_SECTION_ENTRIES, sectionCount, type TgNavCounts } from './tgSections'
 
@@ -8,26 +9,6 @@ import { TG_SECTION_ENTRIES, sectionCount, type TgNavCounts } from './tgSections
 const FADE_RIGHT = '[mask-image:linear-gradient(to_right,#000_calc(100%-36px),transparent)] [-webkit-mask-image:linear-gradient(to_right,#000_calc(100%-36px),transparent)]'
 const FADE_LEFT = '[mask-image:linear-gradient(to_right,transparent,#000_28px)] [-webkit-mask-image:linear-gradient(to_right,transparent,#000_28px)]'
 const FADE_BOTH = '[mask-image:linear-gradient(to_right,transparent,#000_28px,#000_calc(100%-36px),transparent)] [-webkit-mask-image:linear-gradient(to_right,transparent,#000_28px,#000_calc(100%-36px),transparent)]'
-
-function useScrollEdges(ref: RefObject<HTMLElement | null>): { left: boolean; right: boolean } {
-  const [edges, setEdges] = useState({ left: false, right: false })
-  useEffect(() => {
-    const el = ref.current
-    if (!el) return
-    const check = () => {
-      const left = el.scrollLeft > 2
-      const right = el.scrollWidth - el.scrollLeft - el.clientWidth > 2
-      setEdges(e => (e.left === left && e.right === right ? e : { left, right }))
-    }
-    // Observing reports once straight away; the pills widen as their counts load.
-    const ro = new ResizeObserver(check)
-    ro.observe(el)
-    for (const child of Array.from(el.children)) ro.observe(child)
-    el.addEventListener('scroll', check, { passive: true })
-    return () => { ro.disconnect(); el.removeEventListener('scroll', check) }
-  }, [ref])
-  return edges
-}
 
 /**
  * The phone's section row under the app header: every section as a pill

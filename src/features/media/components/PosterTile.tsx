@@ -14,8 +14,8 @@ const RT_ROTTEN = '#0AC855'
 // Short enough to fit the belt on the smallest cover.
 const RIBBON: Record<LibraryBucket, string> = { completed: 'Completed', watching: 'Watching', paused: 'Paused', coming: 'Soon', wishlist: 'Wishlist', dropped: 'Dropped' }
 
-/** Every poster grid's column rule: bigger covers, columns share the row. */
-export const POSTER_GRID = 'grid grid-cols-[repeat(auto-fill,minmax(7.5rem,1fr))] gap-3 @[40rem]:grid-cols-[repeat(auto-fill,minmax(9rem,1fr))]'
+/** Every poster grid's column rule: three covers across a phone, bigger covers (9rem+) from a 40rem grid; columns share the row. */
+export const POSTER_GRID = 'grid grid-cols-[repeat(auto-fill,minmax(6rem,1fr))] gap-x-2.5 gap-y-3 @[40rem]:grid-cols-[repeat(auto-fill,minmax(9rem,1fr))] @[40rem]:gap-3'
 
 interface Props {
   posterPath: string | null
@@ -100,7 +100,10 @@ export function PosterTile({ posterPath, title, meta, bucket, rt, favorite, cine
           {bucket && <span className="sr-only">{BUCKET_LABEL[bucket]}</span>}
         </span>
         <Truncate className="px-0.5 text-meta font-medium text-fg">{title}</Truncate>
-        {meta && <span className="px-0.5 text-micro text-fg-muted tabular-nums">{meta}</span>}
+        {/* One line, so every cover in a row lines its title up with the next. */}
+        {meta && (typeof meta === 'string'
+          ? <Truncate className="px-0.5 text-micro text-fg-muted tabular-nums">{meta}</Truncate>
+          : <span className="px-0.5 text-micro text-fg-muted tabular-nums">{meta}</span>)}
       </button>
       {corner && <div className={`absolute ${cinema || favorite ? 'right-8' : 'right-1'} top-1`}>{corner}</div>}
     </div>
