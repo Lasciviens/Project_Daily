@@ -50,11 +50,12 @@ for (const [name, layout, known] of [
 }
 
 console.log('Media')
-check('step 1 keeps the phone order (search → library → Discover → tools)', eq(M.MEDIA_BOARD[1], ['library', 'summary', 'discovery', 'tools']))
+check('step 1 keeps the phone order (search → Discover → tools), no library card on a phone', eq(M.MEDIA_BOARD[1], ['library', 'discovery', 'tools']))
 for (const s of STEPS) {
   const k = keys(M.MEDIA_BOARD, s)
   const tools = k.includes('tools') || ['tonight', 'calendar'].every(t => k.includes(t))
-  check(`step ${s}: search, library, Discover and both tools are on the page`, k.includes('library') && k.includes('summary') && k.includes('discovery') && tools)
+  // Your library card is left off a phone (the Library tab is the same list); from the laptop it has its own column.
+  check(`step ${s}: search, Discover and both tools are on the page${s > 1 ? ', and your library' : ''}`, k.includes('library') && (s === 1 || k.includes('summary')) && k.includes('discovery') && tools)
   check(`step ${s}: the combined tools grid and the single tools never both mount`, !(k.includes('tools') && k.includes('tonight')))
 }
 check('library sits above Discover in one column at every step', STEPS.every(s => {

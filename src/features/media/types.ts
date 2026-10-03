@@ -139,6 +139,8 @@ export interface TMDBSearchMovie {
   poster_path: string | null
   backdrop_path?: string | null
   vote_average: number
+  vote_count?: number
+  original_language?: string
   overview: string
 }
 
@@ -149,6 +151,8 @@ export interface TMDBSearchTV {
   poster_path: string | null
   backdrop_path?: string | null
   vote_average: number
+  vote_count?: number
+  original_language?: string
   overview: string
 }
 

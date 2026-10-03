@@ -5,13 +5,13 @@ import type {
   TMDBCollection, TMDBBasic,
 } from '../types'
 
-interface PagedResponse<T> { results: T[]; total_results: number; total_pages: number }
+interface PagedResponse<T> { page?: number; results: T[]; total_results: number; total_pages: number }
 
-export const searchMovies = (query: string) =>
-  tmdbFetch<PagedResponse<TMDBSearchMovie>>('/search/movie', { query })
+export const searchMovies = (query: string, page = 1) =>
+  tmdbFetch<PagedResponse<TMDBSearchMovie>>('/search/movie', { query, page: String(page) })
 
-export const searchTV = (query: string) =>
-  tmdbFetch<PagedResponse<TMDBSearchTV>>('/search/tv', { query })
+export const searchTV = (query: string, page = 1) =>
+  tmdbFetch<PagedResponse<TMDBSearchTV>>('/search/tv', { query, page: String(page) })
 
 export const getTrendingMovies = (window: 'day' | 'week') =>
   tmdbFetch<PagedResponse<TMDBSearchMovie>>(`/trending/movie/${window}`)
