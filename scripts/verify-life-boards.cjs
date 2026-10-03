@@ -44,6 +44,7 @@ check('a column starting at main spans main + sides (2450, lead 1, span 3 = 1696
 const BOARDS = [
   ['Food · Today', F.FOOD_TODAY_BOARD, F.FOOD_TODAY_SECTIONS, true],
   ['Food · Ingredients', F.INGREDIENT_BOARD, F.INGREDIENT_SECTIONS, false],
+  ['Food · Insights', F.INSIGHT_BOARD, F.INSIGHT_SECTIONS, false],
   ['Wishes', Wi.WISH_BOARD, Wi.WISH_SECTIONS, true],
   ...Object.entries(H.HEALTH_BOARDS).map(([id, b]) => [`Health · ${id}`, b.board, b.sections, id === 'overview']),
   ['Training · Next', T.NEXT_BOARD, T.NEXT_SECTIONS, true],
@@ -85,7 +86,7 @@ check('Food Today: the totals rail leads (left) from 1280 up', [2, 3, 4].every(s
   && B.resolveBoardLayout(F.FOOD_TODAY_BOARD, s).columns[0].stack[0] === 'nutrition'))
 check('Food Today: the meal slots lead the main track from 1280 up', [2, 3, 4].every(s => B.resolveBoardLayout(F.FOOD_TODAY_BOARD, s).columns[1].stack[0] === 'meals'))
 check('Food Today at 1280/1469: the coach sits under the slots, so the totals rail is not the only tall column', eq(B.resolveBoardLayout(F.FOOD_TODAY_BOARD, 2).columns[1].stack, ['meals', 'coach']))
-check('Food Today: phone order (nutrition → water → week → stats → coach → slots)', eq(F.FOOD_TODAY_BOARD[1], ['nutrition', 'water', 'week', 'stats', 'coach', 'meals']))
+check('Food Today: phone order (nutrition → water → fits → week → stats → coach → slots)', eq(F.FOOD_TODAY_BOARD[1], ['nutrition', 'water', 'fits', 'week', 'stats', 'coach', 'meals']))
 check('Food Today: the nutrition stats sit right after the last 7 days at every step', [1, 2, 3, 4].every(s => { const cols = s === 1 ? [F.FOOD_TODAY_BOARD[1]] : B.resolveBoardLayout(F.FOOD_TODAY_BOARD, s).columns.map(c => c.stack); return cols.some(st => st.indexOf('stats') === st.indexOf('week') + 1 && st.includes('week')) }))
 check('Ingredients + Log + Wishes: their rail is sticky and first', [F.INGREDIENT_BOARD, T.LOG_BOARD, Wi.WISH_BOARD].every(b =>
   [2, 3, 4].every(s => { const l = B.resolveBoardLayout(b, s); return l.lead === 1 && l.columns[0].sticky })))

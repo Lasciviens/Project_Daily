@@ -16,7 +16,7 @@ import { useCopyYesterdayMeals } from '../../hooks/useQuickMeals'
 import { MacroBar } from '../../../recipes/components/MacroBar'
 import { MACRO_COLOR } from '../../../recipes/macroColors'
 import { useRecentFoods, useAddFoodLogEntries, useRemoveFoodLogEntries } from '../../../recipes/hooks/useFoodLog'
-import { parseQuickAdd, sortForSlot, usualForSlot } from '../../../recipes/foodSearch'
+import { foldText, parseQuickAdd, sortForSlot, usualForSlot } from '../../../recipes/foodSearch'
 import { useIngredientLibrary } from '../../../recipes/hooks/useIngredientLibrary'
 import { ingredientSnapshot, recentToEntry, type RecentFood } from '../../../recipes/api/foodLogApi'
 import type { MealSlot } from '../../../recipes/types'
@@ -79,9 +79,10 @@ function SlotRow({ date, slot, label, icon, isNow, meals, fresh }: {
   const usual = usualForSlot(recent, slot)
   const openLogger = (query?: string) => modal.open({ kind: 'food-log', date, slot, query: query || undefined })
 
-  // Free text → "kebab 700" logs a one-off line with 700 kcal; a library
-  // match logs that ingredient (default portion); anything else opens the
-  // full logger prefilled.
+  // Free text: "kebab 700 kcal" logs a one-off line; an EXACT library name
+  // logs that food (its portion, or "150g" if typed); anything else — a loose
+  // match ("egg" ≠ "Eggplant") or a bare number ("Chicken 150": kcal or grams?)
+  // — opens the full logger prefilled, so nothing is guessed.
   function save(title: string) {
     const t = title.trim()
     if (!t) return
@@ -90,14 +91,12 @@ function SlotRow({ date, slot, label, icon, isNow, meals, fresh }: {
       addEntries.mutate([{ date, meal_slot: slot, custom_title: quick.title, calories: quick.kcal }], { onSuccess: reset })
       return
     }
-    const lc = t.toLowerCase()
-    // Auto-log ONLY on an exact or start-of-name match; a loose substring match
-    // silently logged the wrong food ("egg" → "eggplant").
-    const match = library.find(i => i.name.toLowerCase() === lc)
-             ?? library.find(i => i.name.toLowerCase().startsWith(lc))
+    const name = foldText(quick.title)
+    const match = quick.amount == null ? library.find(i => foldText(i.name) === name) : undefined
     if (match) {
-      const grams = match.serving_grams ?? 100
-      addEntries.mutate([{ date, meal_slot: slot, library_ingredient_id: match.id, quantity: grams, unit: 'g', ...ingredientSnapshot(match, grams) }], { onSuccess: reset })
+      const grams = quick.grams ?? match.serving_grams ?? 100
+      const unit = match.unit?.trim() || 'g'
+      addEntries.mutate([{ date, meal_slot: slot, library_ingredient_id: match.id, quantity: grams, unit, ...ingredientSnapshot(match, grams) }], { onSuccess: reset })
     } else {
       openLogger(t); reset()
     }

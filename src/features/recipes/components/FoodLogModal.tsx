@@ -16,7 +16,7 @@ import { BarcodeScanner } from './BarcodeScanner'
 import { OnlineFoodSearch } from './OnlineFoodSearch'
 import { MealPortionPicker } from './MealPortionPicker'
 import { SlotSelect, FoodThumb, FoodTile } from './foodLogKit'
-import { sanitizeDecimal } from './foodLogUtils'
+import { sanitizeDecimal, slotForNow } from './foodLogUtils'
 import { MacroWarningBadge } from './MacroWarningBadge'
 import { QuickAddCustom, type QuickAddValues } from './QuickAddCustom'
 import { parseQuickAdd, rankMatches, sortForSlot } from '../foodSearch'
@@ -44,13 +44,8 @@ import { formatWeekdayDate } from '../../../shared/utils/dateFormat'
 //  (title + calories) without creating an ingredient.
 // ─────────────────────────────────────────────────────────────────────────────
 
-function slotForNow(): MealSlot {
-  const h = new Date().getHours()
-  if (h < 11) return 'breakfast'
-  if (h < 15) return 'lunch'
-  if (h < 21) return 'dinner'
-  return 'snack'
-}
+/** A basket amount is grams, or ml for a drink stored per 100 ml. */
+const amountUnit = (u: string | null | undefined) => (u?.trim().toLowerCase() === 'ml' ? 'ml' : 'g')
 
 interface BasketItem { ingredient: IngredientLibraryItem; grams: number }
 
@@ -148,7 +143,9 @@ export function FoodLogModal({ open = true, onClose, date, defaultSlot, defaultQ
       const p = await lookupBarcode(code)
       toast.dismiss(tid)
       if (!p) { toast.error('Product not found in Open Food Facts'); return }
-      const existing = library.find(i => i.name.toLowerCase() === p.name.toLowerCase())
+      // The same product by barcode first (names differ between sources), then by name.
+      const existing = library.find(i => i.source_ref === code)
+        ?? library.find(i => i.name.trim().toLowerCase() === p.name.trim().toLowerCase())
       if (existing) { addToBasket(existing); toast.success(`${p.name} — already in your library`); return }
       prefillFromProduct(p)
       toast.success(`Found: ${p.name} — review & add`)
@@ -172,16 +169,20 @@ export function FoodLogModal({ open = true, onClose, date, defaultSlot, defaultQ
     )
   }
 
-  const q = query.trim().toLowerCase()
+  // A trailing amount ("chicken 150g") is not part of the name: search on the
+  // name, and a picked food takes the typed grams.
+  const quickParsed = useMemo(() => parseQuickAdd(query), [query])
+  const searchText = quickParsed.title
+  const q = searchText.trim().toLowerCase()
   // Ranked exact → starts with → word start → contains, accent-insensitive.
-  const matches = useMemo(() => rankMatches(library, query, i => i.name, 20), [library, query])
+  const matches = useMemo(() => rankMatches(library, searchText, i => i.name, 20), [library, searchText])
   // Past one-off lines found by title (library rows are in `matches`, saved
   // meals in `savedMeals`), so a custom "Kebab" is searchable too.
   const pastMatches = useMemo(() => {
     const seen = new Set<string>()
     const pool = [...favorites, ...recents].filter(r => !r.library_ingredient_id && !r.recipe_id && !seen.has(r.key) && seen.add(r.key))
-    return rankMatches(pool, query, r => r.title, 6)
-  }, [favorites, recents, query])
+    return rankMatches(pool, searchText, r => r.title, 6)
+  }, [favorites, recents, searchText])
   // Recents/Favourites enriched with their library row (photo / group / serving
   // preset) — Favourites don't store an image of their own, so this is how a
   // favourited library ingredient still gets a real photo instead of a
@@ -200,11 +201,10 @@ export function FoodLogModal({ open = true, onClose, date, defaultSlot, defaultQ
   )
   const favoriteKeys = useMemo(() => new Set(favorites.map(f => f.key)), [favorites])
   const savedMeals = useMemo(
-    () => (query.trim() ? rankMatches(recipes, query, r => r.title, 8) : recipes.slice(0, 8)),
-    [recipes, query],
+    () => (searchText.trim() ? rankMatches(recipes, searchText, r => r.title, 8) : recipes.slice(0, 8)),
+    [recipes, searchText],
   )
   const exactLibraryHit = matches.some(i => i.name.trim().toLowerCase() === q)
-  const quickParsed = parseQuickAdd(query)
   // Quick add leads when the user typed calories or nothing else matched;
   // otherwise it waits under the real matches.
   const quickFirst = quickParsed.kcal != null || (matches.length === 0 && savedMeals.length === 0 && pastMatches.length === 0)
@@ -265,7 +265,7 @@ export function FoodLogModal({ open = true, onClose, date, defaultSlot, defaultQ
     const groupId = asMeal && basket.length > 1 ? crypto.randomUUID() : null
     const entries: FoodLogEntryInput[] = basket.map(it => ({
       date, meal_slot: slot, library_ingredient_id: it.ingredient.id,
-      quantity: it.grams, unit: 'g', ...ingredientSnapshot(it.ingredient, it.grams),
+      quantity: it.grams, unit: amountUnit(it.ingredient.unit), ...ingredientSnapshot(it.ingredient, it.grams),
       meal_group_id: groupId,
     }))
     try {
@@ -277,14 +277,14 @@ export function FoodLogModal({ open = true, onClose, date, defaultSlot, defaultQ
 
   async function handleSaveMeal() {
     if (basket.length === 0 || !mealName.trim()) return
-    const servingsN = Math.max(1, Number(sanitizeDecimal(mealServings)) || 1)
+    const servingsN = Math.max(1, Math.round(Number(sanitizeDecimal(mealServings)) || 1))   // recipes.servings is an integer
     try {
       // 'from_ingredients': the save computes macros from the basket, and every
       // later ingredient edit recomputes them. 'manual' froze the total forever.
       await createRecipe.mutateAsync({
         title: mealName.trim(), servings: servingsN, macro_mode: 'from_ingredients',
         is_temp: !saveToLibrary,
-        ingredients: basket.map(it => ({ name: it.ingredient.name, quantity: it.grams, unit: 'g', note: null, library_ingredient_id: it.ingredient.id })),
+        ingredients: basket.map(it => ({ name: it.ingredient.name, quantity: it.grams, unit: amountUnit(it.ingredient.unit), note: null, library_ingredient_id: it.ingredient.id })),
       })
       setMealName(''); setMealServings('1'); setSaveMealOpen(false); setSaveToLibrary(false)
     } catch { return }
@@ -364,7 +364,7 @@ export function FoodLogModal({ open = true, onClose, date, defaultSlot, defaultQ
                 <div className="mt-1 flex flex-wrap items-center gap-1.5 border-t border-line pb-1 pt-2">
                   <input value={mealName} onChange={e => setMealName(e.target.value)} placeholder="Meal name…" aria-label="Meal name"
                     className="input min-w-0 flex-1" />
-                  <input value={mealServings} onChange={e => setMealServings(sanitizeDecimal(e.target.value))} inputMode="decimal"
+                  <input value={mealServings} onChange={e => setMealServings(sanitizeDecimal(e.target.value))} inputMode="numeric"
                     aria-label="Portions this batch makes" title="How many portions this batch makes"
                     className="input w-14 px-1 text-center tabular-nums" />
                   <span className="shrink-0 text-meta text-fg-muted">portions</span>
@@ -510,7 +510,7 @@ export function FoodLogModal({ open = true, onClose, date, defaultSlot, defaultQ
             // button, and a <button> can't nest another one.
             return (
               <div key={ing.id} className="row row-interactive min-h-[56px] px-1">
-                <button type="button" onClick={() => addToBasket(ing)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
+                <button type="button" onClick={() => addToBasket(ing, quickParsed.grams ?? undefined)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
                   <FoodThumb name={ing.name} group={ing.food_group} imageUrl={ing.image_url} size={40} />
                   <span className="min-w-0 flex-1">
                     <Truncate className="text-body font-medium text-fg">{ing.name}</Truncate>

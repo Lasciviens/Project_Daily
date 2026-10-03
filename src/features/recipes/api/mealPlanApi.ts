@@ -136,7 +136,9 @@ export async function eatPlannedEntry(entry: MealPlanEntry): Promise<void> {
   } else if (entry.library_ingredient_id) {
     const { data, error } = await supabase.from('recipe_ingredient_library').select('*').eq('id', entry.library_ingredient_id).maybeSingle()
     if (error) throw error
-    const grams = entry.ingredient_quantity ?? 0
+    // No amount on the plan → the food's own portion (100 g without one), never 0.
+    const lib = data as IngredientLibraryItem | null
+    const grams = entry.ingredient_quantity ?? lib?.serving_grams ?? 100
     const unitOk = WEIGHT_UNITS.has((entry.ingredient_unit ?? 'g').trim().toLowerCase())
     // REAL BUG, fixed: this used to snapshot `ingredientSnapshot(data, grams)`
     // unconditionally, treating ANY quantity as grams — a non-weight unit
@@ -148,7 +150,11 @@ export async function eatPlannedEntry(entry: MealPlanEntry): Promise<void> {
     // planned" and "just confirmed eaten" agree instead of silently
     // diverging the instant you tap ✓.
     if (data && unitOk) { snap = ingredientSnapshot(data as IngredientLibraryItem, grams); quantity = grams; unit = entry.ingredient_unit ?? 'g' }
-    else { quantity = grams; unit = entry.ingredient_unit ?? 'g' }
+    else if (lib?.serving_grams && entry.ingredient_quantity != null) {
+      // "2 pcs" of a food with a portion preset (1 egg = 50 g) → 100 g.
+      const g = entry.ingredient_quantity * lib.serving_grams
+      snap = ingredientSnapshot(lib, g); quantity = g; unit = 'g'
+    } else { quantity = grams; unit = entry.ingredient_unit ?? 'g' }
   }
   // Post-061: flip this row planned → eaten with the snapshot.
   const upd = await supabase.from('food_log_entries').update({ status: 'eaten', quantity, unit, ...snap }).eq('id', entry.id)

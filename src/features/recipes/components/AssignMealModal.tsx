@@ -60,6 +60,7 @@ export function AssignMealModal({ open, onClose, date, mealSlot, existing }: Pro
     if (mode === 'recipe' && !recipeId)           { toast.error('Pick a recipe'); return }
     if (mode === 'custom' && !customTitle.trim()) { toast.error('Type a title'); return }
     if (mode === 'ingredient' && !ingredientId)   { toast.error('Pick an ingredient'); return }
+    if (mode === 'ingredient' && !(Number(ingredientQty) > 0)) { toast.error('Type how much — in grams'); return }
     try {
       await setEntry.mutateAsync({
         id: existing?.id,   // edit-in-place when present (was a broken upsert → 42P10)
@@ -139,7 +140,12 @@ export function AssignMealModal({ open, onClose, date, mealSlot, existing }: Pro
             <select value={ingredientId} aria-label="Ingredient" onChange={e => {
               setIngredientId(e.target.value)
               const lib = library.find(l => l.id === e.target.value)
-              if (lib) setIngredientUnit(lib.unit)
+              // Start from the food's own portion, in g/ml (its macros are per 100 g/ml):
+              // a plan with no amount was confirmed as 0 kcal.
+              if (lib) {
+                setIngredientUnit(lib.unit?.trim().toLowerCase() === 'ml' ? 'ml' : 'g')
+                if (!ingredientQty) setIngredientQty(String(lib.serving_grams ?? 100))
+              }
             }} className="select">
               <option value="">Pick from ingredient library…</option>
               {library.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
