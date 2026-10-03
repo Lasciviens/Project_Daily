@@ -845,17 +845,21 @@ export function UnifiedPlanModal({
   const blocked = loading || !!loadError
   const heading = config?.heading ?? MODE_HEADING[effectiveMode][editMode || blocked ? 'edit' : 'create']
 
+  const deleteLabel = task ? 'Delete task' : scheduleBlock ? 'Delete repeating schedule' : 'Delete schedule'
   const footer = (
-    <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center">
+    // One row on every width: on a phone Delete is an icon (it used to take a
+    // second full row under Cancel / Save).
+    <div className="flex items-center gap-2">
       {editMode && !blocked && (
         <Button
           variant="ghost" icon={<Trash2 />} onClick={() => { void handleDelete() }} disabled={saving}
-          className="text-danger hover:text-danger sm:mr-auto"
+          aria-label={deleteLabel}
+          className="shrink-0 text-danger hover:text-danger max-sm:px-3 sm:mr-auto"
         >
-          {task ? 'Delete task' : scheduleBlock ? 'Delete repeating schedule' : 'Delete schedule'}
+          <span className="max-sm:sr-only">{deleteLabel}</span>
         </Button>
       )}
-      <div className="flex gap-2 sm:ml-auto">
+      <div className="flex min-w-0 flex-1 gap-2 sm:ml-auto sm:flex-none">
         <Button onClick={onClose} disabled={saving} className="flex-1 sm:flex-none">Cancel</Button>
         {!loadError && (
           <Button

@@ -10,15 +10,17 @@ import { MEDIA_TOOLS_OPEN_FROM } from '../mediaBoard'
  * `loading` (the library is still arriving) shows placeholder lines instead
  * of the body, so an open card never claims "nothing here" before it knows.
  */
-export function CollapsibleCard({ title, icon, badge, loading = false, children }: {
+export function CollapsibleCard({ title, icon, badge, loading = false, openFrom = MEDIA_TOOLS_OPEN_FROM, children }: {
   title: string
   icon: ReactNode
   badge?: ReactNode
   loading?: boolean
+  /** The board step from which the card starts open. */
+  openFrom?: number
   children: ReactNode
 }) {
   const step = useBoardStep()
-  const [open, setOpen] = useState(() => step >= MEDIA_TOOLS_OPEN_FROM)
+  const [open, setOpen] = useState(() => step >= openFrom)
   return (
     <Card padded={false}>
       <button

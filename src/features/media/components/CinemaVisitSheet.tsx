@@ -68,24 +68,25 @@ export function CinemaVisitSheet({ movieId, title, visit, defaultDate, onClose }
         </div>
       }
     >
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <label className="flex flex-col gap-1">
+      {/* Two columns even on a phone: every field is short (~10rem each at 393px). */}
+      <div className="grid grid-cols-2 gap-3">
+        <label className="flex min-w-0 flex-col gap-1">
           <span className="field-label">Date</span>
           <DateInput value={date} onChange={setDate} max={todayStr()} aria-label="Date of the visit" className="input" />
         </label>
-        <label className="flex flex-col gap-1">
+        <label className="flex min-w-0 flex-col gap-1">
           <span className="field-label">Cinema</span>
           <input className="input" value={cinema} onChange={e => setCinema(e.target.value)} placeholder="e.g. Colosseum Kino" />
         </label>
-        <label className="flex flex-col gap-1">
+        <label className="flex min-w-0 flex-col gap-1">
           <span className="field-label">Where</span>
           <input className="input" value={location} onChange={e => setLocation(e.target.value)} placeholder="City or area" />
         </label>
-        <label className="flex flex-col gap-1">
+        <label className="flex min-w-0 flex-col gap-1">
           <span className="field-label">With</span>
           <input className="input" value={companions} onChange={e => setCompanions(e.target.value)} placeholder="Who you went with" />
         </label>
-        <div className="flex flex-col gap-1 sm:col-span-2">
+        <div className="col-span-2 flex flex-col gap-1">
           <span className="field-label" id="cinema-cost">Cost</span>
           <div className="flex gap-2">
             <input
@@ -102,7 +103,7 @@ export function CinemaVisitSheet({ movieId, title, visit, defaultDate, onClose }
             </select>
           </div>
         </div>
-        <label className="flex flex-col gap-1 sm:col-span-2">
+        <label className="col-span-2 flex flex-col gap-1">
           <span className="field-label">Note</span>
           <textarea className="input min-h-[64px] resize-y py-2" rows={2} value={note} onChange={e => setNote(e.target.value)} placeholder="Seats, snacks, how it was…" />
         </label>

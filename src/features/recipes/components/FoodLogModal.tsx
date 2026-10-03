@@ -337,18 +337,21 @@ export function FoodLogModal({ open = true, onClose, date, defaultSlot, defaultQ
                 const snap = ingredientSnapshot(it.ingredient, it.grams)
                 const sg = it.ingredient.serving_grams
                 const count = sg ? Math.max(1, Math.round(it.grams / sg)) : 1
+                const hasStepper = !!it.ingredient.serving_label && sg != null
                 return (
-                  <div key={`${it.ingredient.id}-${i}`} className="flex min-h-[48px] items-center gap-2">
+                  // With a portion stepper the amount controls move to a second line on a
+                  // phone — on one line they left the name ~0px at 393px.
+                  <div key={`${it.ingredient.id}-${i}`} className={cx('flex min-h-[48px] items-center gap-2', hasStepper && 'max-sm:flex-wrap max-sm:gap-y-0 max-sm:py-1')}>
                     <FoodThumb name={it.ingredient.name} group={it.ingredient.food_group} imageUrl={it.ingredient.image_url} size={32} />
-                    <Truncate className="flex-1 text-body text-fg">{it.ingredient.name}</Truncate>
-                    {it.ingredient.serving_label && sg != null && (
-                      <div className="flex shrink-0 items-center">
+                    <Truncate className="min-w-0 flex-1 text-body text-fg">{it.ingredient.name}</Truncate>
+                    {hasStepper && (
+                      <div className="flex shrink-0 items-center max-sm:order-last max-sm:ml-10">
                         <IconButton label="One less" className="h-9 w-9" onClick={() => setGrams(i, String(Math.max(1, count - 1) * sg))}><Minus /></IconButton>
-                        <span className="w-12 text-center text-micro normal-case tracking-normal text-fg-muted tabular-nums">{count}×{it.ingredient.serving_label.replace(/^1\s*/, '')}</span>
+                        <span className="w-12 text-center text-micro normal-case tracking-normal text-fg-muted tabular-nums">{count}×{it.ingredient.serving_label!.replace(/^1\s*/, '')}</span>
                         <IconButton label="One more" className="h-9 w-9" onClick={() => setGrams(i, String((count + 1) * sg))}><Plus /></IconButton>
                       </div>
                     )}
-                    <div className="flex shrink-0 items-center gap-1">
+                    <div className={cx('flex shrink-0 items-center gap-1', hasStepper && 'max-sm:order-last')}>
                       <input value={it.grams || ''} onChange={e => setGrams(i, e.target.value)} inputMode="decimal" aria-label={`${it.ingredient.name} grams`}
                         aria-invalid={!(it.grams > 0)}
                         className={cx('input w-16 px-1.5 text-right tabular-nums', !(it.grams > 0) && 'border-danger')} />

@@ -37,6 +37,21 @@ export function resolveWatchedAt(when: WatchedWhen, release: string | null | und
   }
 }
 
+/**
+ * A completed series' start and finish, from the same answer: Release date
+ * = its first and last aired days (never today, the old bug), Other = that
+ * day, Unknown = no dates. `now` keeps an existing start untouched.
+ */
+export function seriesWatchedDates(
+  when: WatchedWhen, firstAir: string | null | undefined, lastAir: string | null | undefined, nowIso: string,
+): { started_at: string | null; finished_at: string | null } {
+  if (when.kind === 'unknown') return { started_at: null, finished_at: null }
+  return {
+    started_at: resolveWatchedAt(when, firstAir ?? lastAir, 'movie', nowIso),
+    finished_at: resolveWatchedAt(when, lastAir ?? firstAir, 'movie', nowIso),
+  }
+}
+
 /** One short line for a toast / label. */
 export function watchedWhenLabel(when: WatchedWhen): string {
   switch (when.kind) {

@@ -1,6 +1,6 @@
 import type { LocalLibrary, TraktItem, TraktSnapshot } from './traktTypes'
 import type { EpisodeWrite, MovieWrite, ShowInfo, ShowWrite } from './traktImportPlan'
-import { IN_PROGRESS_SHOW } from './traktImportPlan'
+import { IN_PROGRESS_SHOW, itemKey, playbackIds, sameTime } from './traktImportPlan'
 import { movieWatchedAt } from './traktDates'
 
 // The automatic sync, as data (docs/trakt/PLAN.md phase 3): Trakt → app.
@@ -12,10 +12,14 @@ import { movieWatchedAt } from './traktDates'
 // lost was removed on Trakt, and goes here too. Items with an outbox row
 // still waiting (a failed send) are left alone until it goes through.
 //
-// App-only facts are never touched: a Paused show, a Watching/Dropped movie,
-// a show marked Watching or Completed without episode rows, priority, plans.
-// An entry is only ever deleted when every fact it holds belongs to Trakt and
-// Trakt no longer has any of them — and never while it carries a note.
+// App-only facts are never touched: a Paused or Dropped show, a Dropped or
+// Upcoming movie, a Watching movie without plays, a show marked Watching or
+// Completed without episode rows, priority, plans. A movie with plays on
+// Trakt is Completed (Dropped stays). A title half-watched on Trakt (Continue
+// watching) with no entry here comes in as Watching. A watched show whose
+// seasons Trakt left out keeps its own episodes. An entry is only ever
+// deleted when every fact it holds belongs to Trakt and Trakt no longer has
+// any of them — and never while it carries a note.
 
 export interface EpisodeRef { tmdbId: number; season: number; episode: number }
 
@@ -31,16 +35,12 @@ export interface SyncPlan {
   ids: TraktItem[]
   /** Keys left alone: an unsent change is waiting, or a note keeps the entry. */
   kept: string[]
+  /**
+   * Show writes as they would be if this run's removals were held back: a
+   * show's status counted without the episodes Trakt dropped (null = no write).
+   */
+  showsWithoutRemovals: Record<number, ShowWrite | null>
 }
-
-export const itemKey = {
-  movie: (tmdb: number) => `movie:${tmdb}`,
-  show: (tmdb: number) => `show:${tmdb}`,
-  episode: (tmdb: number, season: number, episode: number) => `ep:${tmdb}:${season}:${episode}`,
-}
-
-const sameTime = (a: string | null | undefined, b: string | null | undefined) =>
-  (a ? Date.parse(a) : null) === (b ? Date.parse(b) : null)
 
 /** Shows whose episode set changes, so their Completed/Watching needs TMDB's aired count. */
 export function showsNeedingInfoForSync(snap: TraktSnapshot, local: LocalLibrary, pending: Set<string>): number[] {
@@ -58,6 +58,8 @@ export function showsNeedingInfoForSync(snap: TraktSnapshot, local: LocalLibrary
     seen.add(id)
     const have = mine.get(id) ?? new Set<string>()
     const theirs = new Set(w.episodes.map(([s, e]) => `${s}x${e}`))
+    // No seasons in Trakt's answer: its episodes are unknown, nothing to settle.
+    if (!theirs.size) continue
     const changed = theirs.size !== have.size || [...theirs].some(k => !have.has(k))
     if (changed && theirs.size) out.add(id)
   }
@@ -70,7 +72,8 @@ export function showsNeedingInfoForSync(snap: TraktSnapshot, local: LocalLibrary
 }
 
 export function buildSyncPlan(snap: TraktSnapshot, local: LocalLibrary, info: Map<number, ShowInfo>, pending: Set<string>): SyncPlan {
-  const plan: SyncPlan = { movies: [], shows: [], episodes: [], movieDeletes: [], showDeletes: [], episodeDeletes: [], ids: [], kept: [] }
+  const plan: SyncPlan = { movies: [], shows: [], episodes: [], movieDeletes: [], showDeletes: [], episodeDeletes: [], ids: [], kept: [], showsWithoutRemovals: {} }
+  const pb = playbackIds(snap)
   const newIds = new Map<string, TraktItem>()
   const noteNew = (i: TraktItem | null | undefined) => { if (i?.ids.tmdb) newIds.set(`${i.type}:${i.ids.tmdb}`, i) }
 
@@ -85,7 +88,7 @@ export function buildSyncPlan(snap: TraktSnapshot, local: LocalLibrary, info: Ma
   const tWatched = new Map<number, TraktSnapshot['watchedMovies'][number]>()
   for (const w of snap.watchedMovies) if (w.item.ids.tmdb) tWatched.set(w.item.ids.tmdb, w)
   const lMovies = new Map(local.movies.map(m => [m.tmdbId, m]))
-  const movieKeys = new Set<number>([...tWatched.keys(), ...lMovies.keys()])
+  const movieKeys = new Set<number>([...tWatched.keys(), ...lMovies.keys(), ...pb.movies.keys()])
   for (const [k, w] of watchlist) if (w.item.type === 'movie') movieKeys.add(Number(k.split(':')[1]))
 
   for (const id of movieKeys) {
@@ -98,14 +101,20 @@ export function buildSyncPlan(snap: TraktSnapshot, local: LocalLibrary, info: Ma
 
     let w: MovieWrite
     if (t) {
-      // Watching (a rewatch) and Dropped are app-only and stay; the plays follow Trakt.
-      const status = l && (l.status === 'watching' || l.status === 'dropped') ? l.status : 'completed'
+      // Plays on Trakt = watched = Completed; Dropped is app-only and stays. The plays follow Trakt.
+      const status = l?.status === 'dropped' ? 'dropped' : 'completed'
       w = { tmdbId: id, item: t.item, status, repeatCount: Math.max(0, t.plays - 1), watchedAt: movieWatchedAt(t.lastWatchedAt), rating, watchlistRank: null }
     } else if (l && (l.status === 'watching' || l.status === 'dropped')) {
-      // App-only states: only the rating follows Trakt.
+      // App-only states (a Watching movie may be half-watched on Trakt): only the rating follows Trakt.
       w = { tmdbId: id, item: null, status: l.status, repeatCount: l.repeatCount, watchedAt: l.watchedAt ?? null, rating, watchlistRank: null }
+    } else if (pb.movies.has(id)) {
+      // Half-watched on Trakt (Continue watching), no plays: Watching.
+      w = { tmdbId: id, item: pb.movies.get(id)!, status: 'watching', repeatCount: 0, watchedAt: null, rating, watchlistRank: null }
     } else if (wl) {
       w = { tmdbId: id, item: wl.item, status: l?.status === 'upcoming' ? 'upcoming' : 'wishlist', repeatCount: 0, watchedAt: null, rating, watchlistRank: wl.rank }
+    } else if (l?.status === 'upcoming') {
+      // Upcoming is the app's own state (Trakt may not know the title yet): kept.
+      w = { tmdbId: id, item: null, status: 'upcoming', repeatCount: 0, watchedAt: null, rating, watchlistRank: l.watchlistRank ?? null }
     } else if (l) {
       // Completed or wishlisted here, and Trakt holds none of it any more.
       if (l.note) plan.kept.push(key)
@@ -128,26 +137,31 @@ export function buildSyncPlan(snap: TraktSnapshot, local: LocalLibrary, info: Ma
   const tShows = new Map<number, TraktSnapshot['watchedShows'][number]>()
   for (const w of snap.watchedShows) if (w.item.ids.tmdb) tShows.set(w.item.ids.tmdb, w)
   const lShows = new Map(local.shows.map(s => [s.tmdbId, s]))
-  const lEps = new Map<number, Map<string, number>>()
+  const lEps = new Map<number, Map<string, { repeatCount: number; watchedAt: string | null }>>()
   for (const e of local.episodes) {
-    const m = lEps.get(e.tmdbId) ?? new Map<string, number>()
-    m.set(`${e.season}x${e.episode}`, e.repeatCount)
+    const m = lEps.get(e.tmdbId) ?? new Map<string, { repeatCount: number; watchedAt: string | null }>()
+    m.set(`${e.season}x${e.episode}`, { repeatCount: e.repeatCount, watchedAt: e.watchedAt ?? null })
     lEps.set(e.tmdbId, m)
   }
   const showKeys = new Set<number>([...tShows.keys(), ...lShows.keys(), ...lEps.keys(), ...dropped.keys()])
   for (const [k, w] of watchlist) if (w.item.type === 'show') showKeys.add(Number(k.split(':')[1]))
+  for (const id of pb.shows.keys()) if (!lShows.has(id)) showKeys.add(id)
 
   for (const id of showKeys) {
     const t = tShows.get(id)
     const l = lShows.get(id)
-    const mine = lEps.get(id) ?? new Map<string, number>()
+    const mine = lEps.get(id) ?? new Map<string, { repeatCount: number; watchedAt: string | null }>()
     const wl = watchlist.get(`show:${id}`)
     const rating = ratings.get(`show:${id}`)?.rating ?? null
     const showKey = itemKey.show(id)
     const showPending = pending.has(showKey)
+    // Watched on Trakt but no seasons in the answer: its episodes are unknown,
+    // so every local episode stays and the status is not recounted.
+    const epsUnknown = !!t && t.episodes.length === 0
 
     // Episodes: Trakt's set, except those with a change still waiting to go out.
     const finalEps = new Set<string>()
+    const removed = new Set<string>()
     const epWrites: EpisodeWrite[] = []
     const theirs = new Set<string>()
     for (const [season, episode, plays, at] of t?.episodes ?? []) {
@@ -157,16 +171,19 @@ export function buildSyncPlan(snap: TraktSnapshot, local: LocalLibrary, info: Ma
       if (pending.has(ek)) { plan.kept.push(ek); if (mine.has(k)) finalEps.add(k); continue }
       finalEps.add(k)
       const have = mine.get(k)
-      if (have === undefined || have !== Math.max(0, plays - 1)) {
-        epWrites.push({ tmdbId: id, season, episode, repeatCount: Math.max(0, plays - 1), watchedAt: at ?? t?.lastWatchedAt ?? snap.fetchedAt })
+      const repeatCount = Math.max(0, plays - 1)
+      if (!have || have.repeatCount !== repeatCount || (at && !sameTime(at, have.watchedAt))) {
+        epWrites.push({ tmdbId: id, season, episode, repeatCount, watchedAt: at ?? t?.lastWatchedAt ?? snap.fetchedAt })
       }
     }
     for (const k of mine.keys()) {
       if (theirs.has(k)) continue
+      if (epsUnknown) { finalEps.add(k); continue }
       const [season, episode] = k.split('x').map(Number)
       const ek = itemKey.episode(id, season, episode)
       if (pending.has(ek)) { plan.kept.push(ek); finalEps.add(k); continue }
       plan.episodeDeletes.push({ tmdbId: id, season, episode })
+      removed.add(k)
     }
 
     if (showPending) {
@@ -176,34 +193,47 @@ export function buildSyncPlan(snap: TraktSnapshot, local: LocalLibrary, info: Ma
       continue
     }
 
-    const isDropped = dropped.has(id)
-    const regular = [...finalEps].filter(k => !k.startsWith('0x')).length
-    let status: string | null
-    if (finalEps.size) {
-      const aired = info.get(id)?.aired
-      if (isDropped) status = 'dropped'
-      else if (aired !== undefined) status = aired > 0 && regular >= aired ? 'completed' : l?.status === 'paused' ? 'paused' : 'watching'
-      else status = l && IN_PROGRESS_SHOW.has(l.status) ? l.status : 'watching'
-    } else if (isDropped) status = 'dropped'
-    else if (l && IN_PROGRESS_SHOW.has(l.status)) status = l.status
-    else if (wl) status = 'wishlist'
-    else if (l) status = null
-    else continue
+    const isDropped = dropped.has(id) || l?.status === 'dropped'
+    const aired = epsUnknown ? undefined : info.get(id)?.aired
+    const statusFor = (eps: Set<string>): string | null => {
+      const regular = [...eps].filter(k => !k.startsWith('0x')).length
+      if (eps.size || epsUnknown) {
+        if (isDropped) return 'dropped'
+        if (aired !== undefined) return aired > 0 && regular >= aired ? 'completed' : l?.status === 'paused' ? 'paused' : 'watching'
+        return l && IN_PROGRESS_SHOW.has(l.status) ? l.status : 'watching'
+      }
+      if (isDropped) return 'dropped'
+      if (l && IN_PROGRESS_SHOW.has(l.status)) return l.status
+      if (!l && pb.shows.has(id)) return 'watching'
+      if (wl) return 'wishlist'
+      return null
+    }
+    const writeFor = (status: string): ShowWrite | null => {
+      const w: ShowWrite = {
+        tmdbId: id, item: t?.item ?? wl?.item ?? dropped.get(id) ?? pb.shows.get(id) ?? null, status, rating,
+        watchlistRank: status === 'wishlist' ? wl?.rank ?? null : null,
+      }
+      if (!l) return w
+      return w.status !== l.status || w.rating !== (l.rating ?? null)
+        || (l.watchlistRank !== undefined && w.watchlistRank !== (l.watchlistRank ?? null)) ? w : null
+    }
 
+    const status = statusFor(finalEps)
+    if (status === null && !l) continue
     if (status === null) {
-      // Wishlisted or dropped here, and Trakt holds none of it any more.
+      // Wishlisted here, and Trakt holds none of it any more.
       if (l!.note) plan.kept.push(showKey)
       else plan.showDeletes.push(id)
       continue
     }
 
-    const w: ShowWrite = {
-      tmdbId: id, item: t?.item ?? wl?.item ?? dropped.get(id) ?? null, status, rating,
-      watchlistRank: status === 'wishlist' ? wl?.rank ?? null : null,
+    const w = writeFor(status)
+    if (w) { plan.shows.push(w); if (!l) noteNew(w.item) }
+    if (removed.size && l) {
+      // If these removals wait for a confirm, the status must not move yet.
+      const held = statusFor(new Set([...finalEps, ...removed]))
+      plan.showsWithoutRemovals[id] = held ? writeFor(held) : null
     }
-    if (!l) { plan.shows.push(w); noteNew(w.item) }
-    else if (w.status !== l.status || w.rating !== (l.rating ?? null)
-      || (l.watchlistRank !== undefined && w.watchlistRank !== (l.watchlistRank ?? null))) plan.shows.push(w)
     plan.episodes.push(...epWrites)
   }
 
@@ -223,6 +253,37 @@ export function removalsNeedConfirm(p: SyncPlan, local: LocalLibrary): boolean {
   return removalCount(p) > Math.max(10, Math.floor(size * 0.1))
 }
 
+/**
+ * The plan with its removals held back. A show whose status was counted
+ * without the removed episodes gets the status it has with them (usually: no
+ * change at all), so a held-back removal never moves a show's status.
+ */
 export function withoutRemovals(p: SyncPlan): SyncPlan {
-  return { ...p, movieDeletes: [], showDeletes: [], episodeDeletes: [] }
+  const held = p.showsWithoutRemovals ?? {}
+  const shows = p.shows.filter(s => !(s.tmdbId in held))
+  for (const w of Object.values(held)) if (w) shows.push(w)
+  return { ...p, shows, movieDeletes: [], showDeletes: [], episodeDeletes: [] }
+}
+
+/**
+ * Whether Trakt changed since the last run (GET /sync/last_activities), and
+ * whether any of its `reset_at` stamps moved — a watched-progress reset on
+ * Trakt is read as needing a full mirror (every show's status re-checked).
+ */
+export function lastActivitiesChange(prev: unknown, next: unknown): { changed: boolean; reset: boolean } {
+  const resets = (o: unknown, path = '', out = new Map<string, string>()) => {
+    if (o && typeof o === 'object') {
+      for (const [k, v] of Object.entries(o as Record<string, unknown>)) {
+        if (k.endsWith('reset_at') && (typeof v === 'string' || v === null)) out.set(`${path}.${k}`, String(v))
+        else resets(v, `${path}.${k}`, out)
+      }
+    }
+    return out
+  }
+  const a = resets(prev)
+  const b = resets(next)
+  const reset = [...b].some(([k, v]) => v !== 'null' && a.get(k) !== v)
+  const all = (o: unknown) => (o && typeof o === 'object' ? (o as Record<string, unknown>).all : undefined)
+  const changed = reset || !all(prev) || !all(next) || all(prev) !== all(next)
+  return { changed, reset }
 }

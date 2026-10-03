@@ -50,7 +50,7 @@ for (const [name, layout, known] of [
 }
 
 console.log('Media')
-check('step 1 keeps the phone order (search → Discover → tools), no library card on a phone', eq(M.MEDIA_BOARD[1], ['library', 'discovery', 'tools']))
+check('step 1 keeps the phone order (search → tools, closed → Discover), no library card on a phone', eq(M.MEDIA_BOARD[1], ['library', 'tools', 'discovery']))
 for (const s of STEPS) {
   const k = keys(M.MEDIA_BOARD, s)
   const tools = k.includes('tools') || ['tonight', 'calendar'].every(t => k.includes(t))

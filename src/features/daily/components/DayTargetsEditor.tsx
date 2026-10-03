@@ -86,12 +86,12 @@ export function DayTargetsEditor({ onClose }: { date?: string; onClose: () => vo
   )
 
   return (
-    <ModalShell onClose={onClose} title="Your goal" subtitle="One goal for Food, Daily and Health — saved together" size="lg" footer={footer}>
+    <ModalShell onClose={onClose} title="Your goal" subtitle="Used by Food, Daily and Health" size="lg" footer={footer}>
       {/* Two columns from sm: (phase + daily targets | body targets + coach);
           stacked in that order on a phone. */}
       <div className="grid gap-4 text-body sm:grid-cols-2 sm:gap-6">
         <div className="flex min-w-0 flex-col gap-4">
-          <EditorSection title="Phase" hint="Progress on Health → Goal progress is measured from the day the phase started.">
+          <EditorSection title="Phase" hint="Health → Goal progress counts from this day.">
             <SegmentedControl options={PHASES} value={draft.goal} onChange={selectPhase} fullWidth />
             <div className="flex items-center justify-between gap-2">
               <span className="text-fg-2">Since</span>
@@ -100,7 +100,7 @@ export function DayTargetsEditor({ onClose }: { date?: string; onClose: () => vo
             </div>
           </EditorSection>
 
-          <EditorSection title="Daily targets" hint="Each phase keeps its own daily targets — switch phase to recall them. Fibre ≈ 14 g per 1,000 kcal.">
+          <EditorSection title="Daily targets" hint="Each phase remembers its own targets. Fibre ≈ 14 g per 1,000 kcal.">
             <StepperRow label="Calories">
               <GoalStepper label="Calorie target" value={draft.calories} step={50} suffix="kcal" onChange={v => patch({ calories: v })} />
             </StepperRow>
@@ -120,7 +120,7 @@ export function DayTargetsEditor({ onClose }: { date?: string; onClose: () => vo
 
         <div className="flex min-w-0 flex-col gap-4 border-t border-line pt-3 sm:border-t-0 sm:pt-0">
           <EditorSection title="Body targets"
-            hint={<>One set for every phase — leave a box empty for no target. Muscle is the scale report&apos;s muscle % × weight, not lean mass.{fromDevice && ' Some values are still stored on this device only; saving moves them to your account.'}</>}>
+            hint={<>Same for every phase; leave empty for no target. Muscle = the scale&apos;s muscle % × weight (not lean mass).{fromDevice && ' Some are still on this device only; saving moves them to your account.'}</>}>
             <BodyTargetFields text={bodyText} errors={errors} now={{ goalWeightKg: coach.weightKg }}
               onChange={(f, v) => { setTouched(true); setBodyText(t => ({ ...t, [f]: v })) }} />
           </EditorSection>

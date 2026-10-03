@@ -14,6 +14,13 @@ import { movieWatchedAt } from './traktDates'
 //   · plays = 1 + repeat_count
 //   · a show with watched episodes is Completed once every aired episode is
 //     watched, otherwise Watching (Paused and Dropped are kept)
+//   · a movie with plays on Trakt is Completed (a Dropped movie stays Dropped)
+//   · a movie half-watched on Trakt (Continue watching, no plays) comes in as
+//     Watching; so does a show with only a paused episode and no entry here
+//   · an item with a change still waiting in the outbox is left alone: the
+//     outbox sends it, so neither side is written here (no doubled plays)
+//   · a watched show whose seasons Trakt left out of the answer keeps its own
+//     episodes here (never deleted, never re-sent, status kept)
 
 export interface ShowInfo { aired: number }
 
@@ -42,6 +49,28 @@ export interface PushPlan {
   watchlistRemove: { movies: { tmdb: number }[]; shows: { tmdb: number }[] }
   /** Shows dropped here but not on Trakt → Trakt's hidden "dropped" section. */
   droppedAdd: { shows: { tmdb: number }[] }
+}
+
+export const itemKey = {
+  movie: (tmdb: number) => `movie:${tmdb}`,
+  show: (tmdb: number) => `show:${tmdb}`,
+  episode: (tmdb: number, season: number, episode: number) => `ep:${tmdb}:${season}:${episode}`,
+}
+
+export const sameTime = (a: string | null | undefined, b: string | null | undefined) =>
+  (a ? Date.parse(a) : null) === (b ? Date.parse(b) : null)
+
+/** Titles half-watched on Trakt (Continue watching), by TMDB id. */
+export function playbackIds(snap: TraktSnapshot): { movies: Map<number, TraktItem>; shows: Map<number, TraktItem> } {
+  const movies = new Map<number, TraktItem>()
+  const shows = new Map<number, TraktItem>()
+  for (const p of snap.playback ?? []) {
+    const id = p.item.ids.tmdb
+    if (!id || !(p.progress > 0)) continue
+    if (p.item.type === 'movie') movies.set(id, p.item)
+    else shows.set(id, p.item)
+  }
+  return { movies, shows }
 }
 
 export interface ImportPlan {
@@ -73,7 +102,7 @@ export function showsNeedingInfo(snap: TraktSnapshot, local: LocalLibrary): numb
   return [...ids]
 }
 
-export function buildImportPlan(snap: TraktSnapshot, local: LocalLibrary, info: Map<number, ShowInfo>): ImportPlan {
+export function buildImportPlan(snap: TraktSnapshot, local: LocalLibrary, info: Map<number, ShowInfo>, pending: Set<string> = new Set()): ImportPlan {
   const push: PushPlan = {
     history: { movies: [], episodes: [] },
     ratings: { movies: [], shows: [] },
@@ -92,37 +121,44 @@ export function buildImportPlan(snap: TraktSnapshot, local: LocalLibrary, info: 
   for (const d of snap.dropped) if (d.item.ids.tmdb) { dropped.add(d.item.ids.tmdb); note(d.item) }
 
   // ── Movies ─────────────────────────────────────────────────────────────────
+  const pb = playbackIds(snap)
+  for (const i of pb.movies.values()) note(i)
+  for (const i of pb.shows.values()) note(i)
   const tWatched = new Map<number, TraktSnapshot['watchedMovies'][number]>()
   for (const w of snap.watchedMovies) if (w.item.ids.tmdb) { tWatched.set(w.item.ids.tmdb, w); note(w.item) }
   const lMovies = new Map(local.movies.map(m => [m.tmdbId, m]))
-  const movieKeys = new Set<number>([...tWatched.keys(), ...lMovies.keys()])
+  const movieKeys = new Set<number>([...tWatched.keys(), ...lMovies.keys(), ...pb.movies.keys()])
   for (const [k, w] of watchlist) if (w.item.type === 'movie') movieKeys.add(Number(k.split(':')[1]))
 
   const movies: MovieWrite[] = []
   for (const id of movieKeys) {
+    if (pending.has(itemKey.movie(id))) continue
     const t = tWatched.get(id)
     const l = lMovies.get(id)
     const wl = watchlist.get(`movie:${id}`)
     const r = ratings.get(`movie:${id}`)
     const watched = !!t || l?.status === 'completed'
     let status: string
-    if (watched) status = 'completed'
+    if (t) status = l?.status === 'dropped' ? 'dropped' : 'completed'
+    else if (l?.status === 'completed') status = 'completed'
     else if (l && KEEP_MOVIE.has(l.status)) status = l.status
+    else if (pb.movies.has(id)) status = 'watching'
     else if (wl || l?.status === 'wishlist') status = 'wishlist'
     else if (l) status = l.status
     else continue
+    const listed = status === 'wishlist' || status === 'upcoming'
     const playCount = t ? t.plays : l ? playsOf(l.repeatCount) : 0
     const rating = r?.rating ?? l?.rating ?? null
     movies.push({
-      tmdbId: id, item: t?.item ?? wl?.item ?? r?.item ?? null, status,
+      tmdbId: id, item: t?.item ?? wl?.item ?? r?.item ?? pb.movies.get(id) ?? null, status,
       repeatCount: watched ? Math.max(0, playCount - 1) : 0,
       watchedAt: t ? movieWatchedAt(t.lastWatchedAt) : movieWatchedAt(l?.watchedAt),
-      rating, watchlistRank: status === 'wishlist' ? wl?.rank ?? null : null,
+      rating, watchlistRank: listed ? wl?.rank ?? null : null,
     })
     if (l?.status === 'completed' && !t) push.history.movies.push(...playEntries({ tmdb: id }, l.watchedAt ?? null, playsOf(l.repeatCount), snap.fetchedAt))
     if (l?.rating != null && !r) push.ratings.movies.push({ tmdb: id, rating: l.rating })
-    if (status === 'wishlist' && !wl) push.watchlistAdd.movies.push({ tmdb: id })
-    if (wl && status !== 'wishlist') push.watchlistRemove.movies.push({ tmdb: id })
+    if (listed && !wl) push.watchlistAdd.movies.push({ tmdb: id })
+    if (wl && !listed) push.watchlistRemove.movies.push({ tmdb: id })
   }
 
   // ── Shows + episodes ───────────────────────────────────────────────────────
@@ -137,6 +173,7 @@ export function buildImportPlan(snap: TraktSnapshot, local: LocalLibrary, info: 
   }
   const showKeys = new Set<number>([...tShows.keys(), ...lShows.keys(), ...lEps.keys(), ...dropped])
   for (const [k, w] of watchlist) if (w.item.type === 'show') showKeys.add(Number(k.split(':')[1]))
+  for (const id of pb.shows.keys()) if (!lShows.has(id)) showKeys.add(id)
 
   const shows: ShowWrite[] = []
   const episodes: EpisodeWrite[] = []
@@ -146,29 +183,36 @@ export function buildImportPlan(snap: TraktSnapshot, local: LocalLibrary, info: 
     const mine = lEps.get(id) ?? new Map()
     const wl = watchlist.get(`show:${id}`)
     const r = ratings.get(`show:${id}`)
+    // Watched on Trakt but no seasons in the answer: Trakt's episodes are unknown.
+    const epsUnknown = !!t && t.episodes.length === 0
 
     const union = new Set<string>(mine.keys())
     for (const [season, episode, plays, at] of t?.episodes ?? []) {
       const key = `${season}x${episode}`
       union.add(key)
+      if (pending.has(itemKey.episode(id, season, episode))) continue
       const have = mine.get(key)
-      if (!have || 1 + have.repeatCount !== plays) {
+      if (!have || 1 + have.repeatCount !== plays || (at && !sameTime(at, have.watchedAt))) {
         episodes.push({ tmdbId: id, season, episode, repeatCount: Math.max(0, plays - 1), watchedAt: at ?? t?.lastWatchedAt ?? snap.fetchedAt })
       }
     }
     const theirs = new Set((t?.episodes ?? []).map(([s, e]) => `${s}x${e}`))
-    for (const [key, v] of mine) {
-      if (theirs.has(key)) continue
-      const [season, episode] = key.split('x').map(Number)
-      push.history.episodes.push(...playEntries({ tmdb: id, season, episode }, v.watchedAt, playsOf(v.repeatCount), snap.fetchedAt))
+    if (!epsUnknown) {
+      for (const [key, v] of mine) {
+        if (theirs.has(key)) continue
+        const [season, episode] = key.split('x').map(Number)
+        if (pending.has(itemKey.episode(id, season, episode))) continue
+        push.history.episodes.push(...playEntries({ tmdb: id, season, episode }, v.watchedAt, playsOf(v.repeatCount), snap.fetchedAt))
+      }
     }
+    if (pending.has(itemKey.show(id))) continue
 
     const isDropped = dropped.has(id) || l?.status === 'dropped'
     if (l?.status === 'dropped' && !dropped.has(id)) push.droppedAdd.shows.push({ tmdb: id })
     const regular = [...union].filter(k => !k.startsWith('0x')).length
-    const aired = info.get(id)?.aired
+    const aired = epsUnknown ? undefined : info.get(id)?.aired
     let status: string
-    if (union.size) {
+    if (union.size || epsUnknown) {
       // Without TMDB's aired count nothing is known about "finished": keep the
       // status the show has (a Completed show must never drop to Watching).
       status = isDropped ? 'dropped'
@@ -177,12 +221,13 @@ export function buildImportPlan(snap: TraktSnapshot, local: LocalLibrary, info: 
         : l?.status === 'paused' ? 'paused' : 'watching'
     } else if (isDropped) status = 'dropped'
     else if (l && IN_PROGRESS_SHOW.has(l.status)) status = l.status
+    else if (!l && pb.shows.has(id)) status = 'watching'
     else if (wl || l?.status === 'wishlist') status = 'wishlist'
     else if (l) status = l.status
     else continue
 
     shows.push({
-      tmdbId: id, item: t?.item ?? wl?.item ?? r?.item ?? null, status,
+      tmdbId: id, item: t?.item ?? wl?.item ?? r?.item ?? pb.shows.get(id) ?? null, status,
       rating: r?.rating ?? l?.rating ?? null,
       watchlistRank: status === 'wishlist' ? wl?.rank ?? null : null,
     })
