@@ -86,15 +86,18 @@ export function MediaPage() {
   const calendar = <ReleaseCalendar movieEntries={movieEntries} tvEntries={tvEntries} onOpenDetail={openDetail} loading={libraryLoading} />
 
   const sections: Record<MediaSection, ReactNode> = {
-    // A still film-strip motif sits behind the search + library card only.
+    // The search box is its own card (a still film-strip motif behind it);
+    // Continue watching is a separate card under it, hidden while searching.
     library: (
-      <section className="card relative p-4 sm:p-5">
-        <MediaHeroArt />
-        <div className="relative z-10 flex flex-col gap-4">
-          <MediaSearch value={search.text} onChange={search.change} onClear={search.leave} active={searching} />
-          {!searching && <ContinueWatching posters={posters} onOpenDetail={openDetail} />}
-        </div>
-      </section>
+      <div className="flex flex-col gap-4">
+        <section className="card relative p-3 sm:p-4">
+          <MediaHeroArt />
+          <div className="relative z-10">
+            <MediaSearch value={search.text} onChange={search.change} onClear={search.leave} active={searching} />
+          </div>
+        </section>
+        {!searching && <ContinueWatching posters={posters} onOpenDetail={openDetail} />}
+      </div>
     ),
     // Your library: under search on a phone, in the right-hand column from the laptop.
     summary: !libraryLoading && hasLibrary
@@ -118,7 +121,7 @@ export function MediaPage() {
     ? {
         ...sections,
         tools: null,
-        discovery: <MediaSearchResults query={search.settled} mediaType={mediaType} onMediaTypeChange={t => setTab(t === 'movie' ? 'movies' : 'tv')} onOpenDetail={openDetail} onClear={search.leave} />,
+        discovery: <MediaSearchResults query={search.settled} pending={search.pending} mediaType={mediaType} onMediaTypeChange={t => setTab(t === 'movie' ? 'movies' : 'tv')} onOpenDetail={openDetail} onClear={search.leave} />,
       }
     : sections
 

@@ -32,7 +32,7 @@ export function useSearchTitles(type: 'movie' | 'tv', query: string) {
     },
     initialPageParam: 1,
     getNextPageParam: last => (last.page < Math.min(last.totalPages, 25) ? last.page + 1 : undefined),
-    enabled: q.length > 1,
+    enabled: q.length > 0,
     placeholderData: keepPreviousData,
     staleTime: STALE.short,
   })

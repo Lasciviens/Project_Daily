@@ -9,7 +9,7 @@
 // This week) with the filters applied to its results. Every list is still
 // unverified against a live TMDB sample — no API key in the authoring session.
 
-export type DiscoverTab = 'today' | 'week' | 'popular' | 'top' | 'cinemas' | 'airing' | 'upcoming' | 'norway' | 'services'
+export type DiscoverTab = 'today' | 'week' | 'popular' | 'top' | 'cinemas' | 'airing' | 'upcoming' | 'norway' | 'turkey' | 'services'
 export type DiscoverSort = 'popularity' | 'rating' | 'newest'
 
 export interface DiscoverFilters {
@@ -74,6 +74,7 @@ export const DISCOVER_TABS: TabMeta[] = [
   { key: 'airing', label: 'On the air', types: ['tv'] },
   { key: 'upcoming', label: 'Upcoming', types: ['movie', 'tv'] },
   { key: 'norway', label: 'Norway', types: ['movie', 'tv'] },
+  { key: 'turkey', label: 'Turkey', types: ['movie', 'tv'] },
   { key: 'services', label: 'My services', types: ['movie', 'tv'] },
 ]
 
@@ -121,6 +122,7 @@ export function discoverRequest(tab: DiscoverTab, type: 'movie' | 'tv', f: Disco
       else Object.assign(p, { 'first_air_date.gte': addDays(today, 1), 'first_air_date.lte': addDays(today, 180) })
       floor = 0; break
     case 'norway': p.with_origin_country = 'NO'; floor = 5; ratedFloor = 30; break
+    case 'turkey': p.with_origin_country = 'TR'; floor = 5; ratedFloor = 30; break
     case 'services':
       Object.assign(p, { watch_region: 'NO', with_watch_providers: [...providers].sort((a, b) => a - b).join('|'), with_watch_monetization_types: 'flatrate|free|ads' })
       floor = movie ? 20 : 10; ratedFloor = movie ? 300 : 100; break

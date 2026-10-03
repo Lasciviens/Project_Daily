@@ -13,8 +13,11 @@ export function QueueButton({ type, tmdb, title }: { type: 'movie' | 'show'; tmd
   return (
     <Button size="sm" variant={pos ? 'primary' : 'ghost'} icon={<ListOrdered />} loading={toggle.isPending}
       title={pos ? 'Tap to take it out of the Queue' : 'Put it at the end of your Queue (a list on Trakt)'}
+      aria-label={pos ? `In Queue, number ${pos}` : 'Add to Queue'}
       onClick={() => toggle.mutate({ item: { type, tmdb }, title, remove: !!pos })}>
-      {pos ? `In Queue · #${pos}` : 'Add to Queue'}
+      {/* Short on phones so the title page's action row fits one line. */}
+      <span className="sm:hidden">{pos ? `Queue #${pos}` : 'Queue'}</span>
+      <span className="hidden sm:inline">{pos ? `In Queue · #${pos}` : 'Add to Queue'}</span>
     </Button>
   )
 }

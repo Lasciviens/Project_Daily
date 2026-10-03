@@ -11,7 +11,7 @@ import { useEntityModal } from '../../../shared/modals'
 import { useMarkEpisodeWatched, useWatchedEpisodes } from '../hooks/useWatchedEpisodes'
 import { episodeAirDates } from '../hooks/useTMDB'
 import { useWatchedWhenPrompt } from '../hooks/useWatchedWhenPrompt'
-import { resolveWatchedAt } from '../watchedWhen'
+import { resolveWatchedAt, seriesWatchedDates } from '../watchedWhen'
 import { formatDate } from '../../../shared/utils/dateFormat'
 import { useAddMovie, useDeleteMovie, useUpdateMovie } from '../hooks/useMovies'
 import { useAddTV, useDeleteTV, useUpdateTV } from '../hooks/useTVSeries'
@@ -54,7 +54,7 @@ const PILL_STAGE: Record<PillStatus, Stage> = {
   unwatched: 'idle', wishlist: 'planned', watching: 'active', paused: 'paused', completed: 'done', dropped: 'dropped', upcoming: 'upcoming',
 }
 
-/** Status picker: an aligned two-column grid, each status in its shared stage colour (shared/theme/stage.ts). */
+/** Status picker: an aligned grid (three columns on a phone, two in the md+ rail), each status in its shared stage colour (shared/theme/stage.ts). */
 function StatusPills({ statuses, value, disabled, onPick }: {
   statuses: typeof MOVIE_STATUSES
   value: PillStatus
@@ -62,7 +62,7 @@ function StatusPills({ statuses, value, disabled, onPick }: {
   onPick: (s: PillStatus) => void
 }) {
   return (
-    <div role="group" aria-label="Status" className="grid grid-cols-2 gap-1">
+    <div role="group" aria-label="Status" className="grid grid-cols-3 gap-1 md:grid-cols-2">
       {statuses.map(s => (
         <button
           key={s.value}
@@ -118,6 +118,8 @@ export function MediaLibraryControls({ detail, isMovie, userEntry, onRemoved }: 
   const { data: watchedRows = [] } = useWatchedEpisodes(tvEntry?.id ?? null)
   const qc = useQueryClient()
   const { ask, dialog } = useWatchedWhenPrompt()
+  // The last aired day (TMDB's last_air_date is the latest aired episode).
+  const lastAired = tv?.last_air_date ?? null
 
   // Private note, saved on blur; re-seeded when a different entry is shown
   // (adjust-state-during-render, not an effect).
@@ -158,7 +160,8 @@ export function MediaLibraryControls({ detail, isMovie, userEntry, onRemoved }: 
       if (isMovie) {
         await addMovie.mutateAsync({ tmdb: movie!, status: selectedStatus as UserMovieEntry['status'], watchedAt: movieWatchedAt })
       } else {
-        const dates = completed ? { started_at: now, finished_at: now } : selectedStatus === 'watching' ? { started_at: now } : {}
+        // Completed: the dates follow the answer (Release date = first/last air day), not today.
+        const dates = completed && tvWhen ? seriesWatchedDates(tvWhen, tv!.first_air_date, lastAired, now) : selectedStatus === 'watching' ? { started_at: now } : {}
         const entry = await addTV.mutateAsync({ tmdb: tv!, status: selectedStatus as UserTVEntry['status'], dates })
         if (tvWhen) await markAllAired(tvWhen, entry.id, [])
       }
@@ -214,10 +217,12 @@ export function MediaLibraryControls({ detail, isMovie, userEntry, onRemoved }: 
       if (!when) return
       const ok = await withProgress(() => markAllAired(when).then(() => true), { loading: 'Marking every aired episode…' })
       if (!ok) return
+      const d = seriesWatchedDates(when, tv!.first_air_date, lastAired, now)
+      patch.finished_at = d.finished_at
+      if (!tvEntry.started_at) patch.started_at = d.started_at
     }
     // Completing stamps finished_at, and the first Watching stamps started_at —
     // otherwise watch-hours and "recently finished" undercount.
-    if (tvEntry && status === 'completed' && !tvEntry.finished_at) patch.finished_at = now
     if (tvEntry && status === 'watching' && !tvEntry.started_at) patch.started_at = now
     void withProgress(() => patchEntry(patch), { loading: 'Updating status…', success: 'Status updated' })
   }
@@ -315,7 +320,7 @@ export function MediaLibraryControls({ detail, isMovie, userEntry, onRemoved }: 
         />
       </div>
 
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-1 sm:gap-2">
         {isMovie && <PlanThisButton entryId={entryId} title={movie!.title} runtimeMinutes={movie!.runtime} />}
         {tvEntry?.status === 'watching' && (
           <Button size="sm" icon={<SkipForward />} onClick={handleNextEpisode} loading={markWatched.isPending}
@@ -332,12 +337,13 @@ export function MediaLibraryControls({ detail, isMovie, userEntry, onRemoved }: 
         <QueueButton type={isMovie ? 'movie' : 'show'} tmdb={detail.id} title={isMovie ? movie!.title : tv!.name} />
         <AddToListMenu type={isMovie ? 'movie' : 'show'} tmdb={detail.id} title={isMovie ? movie!.title : tv!.name} />
         <FollowMenu detail={detail} isMovie={isMovie} />
-        <a href={tmdbHref} target="_blank" rel="noopener noreferrer" className="btn-ghost btn-sm">
-          TMDB <ExternalLink aria-hidden className="h-3.5 w-3.5" />
+        <a href={tmdbHref} target="_blank" rel="noopener noreferrer" className="btn-ghost btn-sm" aria-label="Open on TMDB">
+          TMDB <ExternalLink aria-hidden className="hidden h-3.5 w-3.5 sm:block" />
         </a>
-        <Button size="sm" variant="ghost" icon={<Trash2 />} className="text-danger" onClick={handleRemove}
-          disabled={removeMovie.isPending || removeTV.isPending}>
-          Remove
+        {/* Icon-only on phones so the row fits one line at 393px. */}
+        <Button size="sm" variant="ghost" icon={<Trash2 />} className="text-danger max-sm:px-2.5" onClick={handleRemove}
+          aria-label="Remove from library" disabled={removeMovie.isPending || removeTV.isPending}>
+          <span className="max-sm:sr-only">Remove</span>
         </Button>
       </div>
     </div>

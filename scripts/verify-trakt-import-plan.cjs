@@ -7,7 +7,7 @@
  */
 require('sucrase/register')
 const assert = require('node:assert/strict')
-const { buildImportPlan, airedEpisodes, pushCount, showsNeedingInfo } = require('../src/features/media/trakt/traktImportPlan')
+const { buildImportPlan, airedEpisodes, pushCount, showsNeedingInfo, itemKey } = require('../src/features/media/trakt/traktImportPlan')
 
 let n = 0
 const ok = (actual, expected, msg) => { assert.deepStrictEqual(actual, expected, msg); n++ }
@@ -72,10 +72,75 @@ const find = (xs, id) => xs.find(x => x.tmdbId === id)
   ok(find(p.shows, 14).status, 'wishlist', 'unwatched wishlist stays')
   ok(p.push.watchlistAdd.shows, [{ tmdb: 14 }], 'unwatched wishlist is sent to the Trakt watchlist')
   ok(p.push.ratings.shows, [{ tmdb: 14, rating: 6 }], 'show rating only here → sent')
-  ok(p.episodes.filter(e => e.tmdbId === 10).map(e => `${e.season}x${e.episode}:${e.repeatCount}`), ['1x2:1'], 'only new or changed episodes are written')
+  ok(p.episodes.filter(e => e.tmdbId === 10).map(e => `${e.season}x${e.episode}:${e.repeatCount}`), ['1x1:0', '1x2:1'], 'only new or changed episodes are written (1x1: Trakt has another date)')
+  ok(find(p.episodes, 10).watchedAt, '2025-01-01T00:00:00.000Z', 'same plays, different date on Trakt → Trakt\'s date')
   ok(p.push.history.episodes.filter(e => e.tmdb === 10).length, 2, 'an episode watched twice only here → two plays sent')
   ok(p.push.history.episodes.some(e => e.tmdb === 12), true, 'episodes only here → sent')
   ok(showsNeedingInfo(s, local).sort((a, b) => a - b), [10, 11, 12, 13], 'shows with any watched episode need TMDB details')
+}
+
+// Movies with plays on Trakt are Completed; a Dropped one stays Dropped
+{
+  const p = buildImportPlan(snap({ watchedMovies: [
+    { item: movie(40), plays: 2, lastWatchedAt: '2025-05-05T00:00:00.000Z' },
+    { item: movie(41), plays: 1, lastWatchedAt: null },
+  ] }), lib({ movies: [lm(40, 'watching', 0, null, null), lm(41, 'dropped', 0, null, null)] }), new Map())
+  ok(find(p.movies, 40).status, 'completed', 'Watching here + plays on Trakt → Completed')
+  ok(find(p.movies, 40).repeatCount, 1, 'plays follow Trakt')
+  ok(find(p.movies, 41).status, 'dropped', 'Dropped here + plays on Trakt → stays Dropped')
+}
+
+// Half-watched on Trakt (Continue watching) → Watching
+{
+  const pb = (item, progress = 40, season = null, episode = null) => ({ item, season, episode, progress, pausedAt: null })
+  const p = buildImportPlan(snap({
+    playback: [pb(movie(50)), pb(movie(51)), pb(movie(52)), pb(show(53), 30, 1, 4), pb(show(54), 20, 2, 1), pb(movie(55), 0)],
+    watchedMovies: [{ item: movie(52), plays: 1, lastWatchedAt: null }],
+    watchlist: [{ item: movie(51), rank: 1, listedAt: null }],
+  }), lib({ movies: [lm(51, 'wishlist', 0, null, null)], shows: [ls(54, 'wishlist')] }), new Map())
+  ok(find(p.movies, 50).status, 'watching', 'a half-watched movie not in the library comes in as Watching')
+  ok(find(p.movies, 50).item.ids.tmdb, 50, 'with its Trakt item (for the catalogue row)')
+  ok(find(p.movies, 51).status, 'watching', 'half-watched beats wishlist')
+  ok(p.push.watchlistRemove.movies, [{ tmdb: 51 }], 'and it leaves the Trakt watchlist')
+  ok(find(p.movies, 52).status, 'completed', 'a half-watched rewatch of a watched movie stays Completed')
+  ok(find(p.shows, 53).status, 'watching', 'a show with only a paused episode and no entry → Watching')
+  ok(find(p.shows, 54).status, 'wishlist', 'a show already here keeps its status')
+  ok(find(p.movies, 55), undefined, 'progress 0 is not half-watched')
+}
+
+// Upcoming stays on the Trakt watchlist
+{
+  const p = buildImportPlan(snap({ watchlist: [{ item: movie(60), rank: 2, listedAt: null }] }), lib({ movies: [lm(60, 'upcoming', 0, null, null), lm(61, 'upcoming', 0, null, null)] }), new Map())
+  ok(find(p.movies, 60).status, 'upcoming', 'Upcoming is kept')
+  ok(p.push.watchlistRemove.movies, [], 'an Upcoming movie is never taken off the Trakt watchlist')
+  ok(p.push.watchlistAdd.movies, [{ tmdb: 61 }], 'an Upcoming movie only here is sent to the watchlist')
+}
+
+// Pending outbox rows: the item is left to the outbox, never doubled
+{
+  const pending = new Set([itemKey.movie(70), itemKey.episode(71, 1, 2), itemKey.show(72)])
+  const p = buildImportPlan(snap(), lib({
+    movies: [lm(70, 'completed', 0, 8)],
+    shows: [ls(71, 'watching'), ls(72, 'watching', 7)],
+    episodes: [le(71, 1, 1), le(71, 1, 2), le(72, 1, 1)],
+  }), new Map(), pending)
+  ok(p.push.history.movies.some(m => m.tmdb === 70), false, 'a watched movie waiting in the outbox is not pushed again')
+  ok(p.push.ratings.movies, [], 'nor its rating')
+  ok(find(p.movies, 70), undefined, 'and the import does not write it')
+  ok(p.push.history.episodes.filter(e => e.tmdb === 71).map(e => e.episode), [1], 'a pending episode is not pushed; the rest are')
+  ok(find(p.shows, 72), undefined, 'a pending show is not written')
+  ok(p.push.ratings.shows, [], 'nor its rating pushed')
+  ok(p.push.history.episodes.some(e => e.tmdb === 72), true, 'its episodes without a pending row still go')
+}
+
+// Watched show with no seasons in Trakt's answer: local episodes kept, not re-sent
+{
+  const p = buildImportPlan(snap({ watchedShows: [{ item: show(80), plays: 5, lastWatchedAt: null, resetAt: null, episodes: [] }] }),
+    lib({ shows: [ls(80, 'completed')], episodes: [le(80, 1, 1), le(80, 1, 2)] }), new Map([[80, { aired: 10 }]]))
+  ok(p.push.history.episodes.length, 0, 'episodes are not re-sent (Trakt may already have them)')
+  ok(find(p.shows, 80).status, 'completed', 'status is not recounted from an unknown set')
+  const fresh = buildImportPlan(snap({ watchedShows: [{ item: show(81), plays: 5, lastWatchedAt: null, resetAt: null, episodes: [] }] }), lib(), new Map())
+  ok(find(fresh.shows, 81).status, 'watching', 'a new watched show without seasons comes in as Watching')
 }
 
 // Dropped here, not on Trakt → Trakt's dropped list; already dropped there → nothing

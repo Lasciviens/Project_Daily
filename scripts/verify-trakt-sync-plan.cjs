@@ -10,10 +10,10 @@
 require('sucrase/register')
 const assert = require('node:assert/strict')
 const {
-  buildSyncPlan, itemKey, removalsNeedConfirm, showsNeedingInfoForSync, withoutRemovals, removalCount,
+  buildSyncPlan, removalsNeedConfirm, showsNeedingInfoForSync, withoutRemovals, removalCount, lastActivitiesChange,
 } = require('../src/features/media/trakt/traktSyncPlan')
 const { isUnknownWatchedAt, movieWatchedAt, UNKNOWN_WATCHED_AT } = require('../src/features/media/trakt/traktDates')
-const { buildImportPlan } = require('../src/features/media/trakt/traktImportPlan')
+const { buildImportPlan, itemKey } = require('../src/features/media/trakt/traktImportPlan')
 
 let n = 0
 const ok = (actual, expected, msg) => { assert.deepStrictEqual(actual, expected, msg); n++ }
@@ -89,7 +89,7 @@ ok(movieWatchedAt(AT), AT, 'movie: real date kept')
 
 {
   const p = buildSyncPlan(snap({ watchedMovies: [tm(1, 2)] }), lib({ movies: [lm(1, 'watching', { repeatCount: 0, watchedAt: AT })] }), new Map(), none)
-  ok([find(p.movies, 1).status, find(p.movies, 1).repeatCount], ['watching', 1], 'a rewatch in progress stays Watching; the plays follow Trakt')
+  ok([find(p.movies, 1).status, find(p.movies, 1).repeatCount], ['completed', 1], 'plays on Trakt → Completed; the plays follow Trakt')
 }
 
 // ── Removals on Trakt ────────────────────────────────────────────────────────
@@ -116,13 +116,13 @@ ok(movieWatchedAt(AT), AT, 'movie: real date kept')
 }
 {
   const p = buildSyncPlan(snap(), lib({ shows: [ls(10, 'dropped'), ls(11, 'wishlist'), ls(12, 'paused'), ls(13, 'watching')] }), new Map(), none)
-  ok(p.showDeletes.sort(), [10, 11], 'dropped/wishlist shows Trakt no longer has are removed')
-  ok(p.shows, [], 'paused and watching (app-only without episodes) are untouched')
+  ok(p.showDeletes.sort(), [11], 'a wishlist show Trakt no longer has is removed')
+  ok(p.shows, [], 'dropped, paused and watching (app-only) are untouched')
 }
 {
   const p = buildSyncPlan(snap({ watchedShows: [ts(10, [[1, 1, 1, AT]])] }),
     lib({ shows: [ls(10, 'dropped')], episodes: [le(10, 1, 1)] }), new Map([[10, { aired: 5 }]]), none)
-  ok(find(p.shows, 10).status, 'watching', 'undropped on Trakt → Watching again')
+  ok(p.shows, [], 'Dropped here but not on Trakt\'s dropped list (e.g. not_found) stays Dropped')
 }
 {
   const p = buildSyncPlan(snap({ watchedShows: [ts(10, [[1, 1, 1, AT]])], dropped: [{ item: show(10) }] }),
@@ -150,6 +150,64 @@ ok(movieWatchedAt(AT), AT, 'movie: real date kept')
   const s = snap({ watchedShows: [] })
   const l = lib({ shows: [ls(10, 'watching')], episodes: [le(10, 1, 1)] })
   ok(showsNeedingInfoForSync(s, l, new Set([itemKey.episode(10, 1, 1)])), [10], 'a show kept only by a pending episode still gets its aired count')
+}
+
+// ── Audit fixes ──────────────────────────────────────────────────────────────
+{
+  const p = buildSyncPlan(snap({ watchedMovies: [tm(1, 2)] }), lib({ movies: [lm(1, 'dropped', { watchedAt: null })] }), new Map(), none)
+  ok(find(p.movies, 1).status, 'dropped', 'a Dropped movie with plays on Trakt stays Dropped')
+}
+{
+  const p = buildSyncPlan(snap(), lib({ movies: [lm(1, 'upcoming', { watchedAt: null })] }), new Map(), none)
+  ok([p.movieDeletes, p.movies], [[], []], 'an Upcoming movie Trakt does not list (watchlist_add not_found) is not deleted')
+}
+{
+  const p = buildSyncPlan(snap({ watchedShows: [ts(10, [[1, 1, 1, '2025-03-03T10:00:00.000Z'], [1, 2, 1, null]])] }),
+    lib({ shows: [ls(10, 'watching')], episodes: [le(10, 1, 1), le(10, 1, 2)] }), new Map(), none)
+  ok(p.episodes, [{ tmdbId: 10, season: 1, episode: 1, repeatCount: 0, watchedAt: '2025-03-03T10:00:00.000Z' }], 'a date changed on Trakt (same plays) is updated; no date on Trakt changes nothing')
+}
+{
+  // Watched show, no seasons in Trakt's answer: nothing deleted, status kept.
+  const s = snap({ watchedShows: [{ item: show(10), plays: 4, lastWatchedAt: AT, resetAt: null, episodes: [] }] })
+  const l = lib({ shows: [ls(10, 'completed')], episodes: [le(10, 1, 1), le(10, 1, 2)] })
+  const p = buildSyncPlan(s, l, new Map([[10, { aired: 9 }]]), none)
+  ok(p.episodeDeletes, [], 'missing seasons are unknown, never "no episodes"')
+  ok(p.shows, [], 'and the show keeps its status')
+  ok(showsNeedingInfoForSync(s, l, none), [], 'and needs no aired count')
+}
+{
+  // Half-watched on Trakt (Continue watching)
+  const pb = (item, progress = 40) => ({ item, season: item.type === 'show' ? 1 : null, episode: item.type === 'show' ? 3 : null, progress, pausedAt: null })
+  const p = buildSyncPlan(snap({ playback: [pb(movie(1)), pb(movie(2)), pb(show(10)), pb(show(11))] }),
+    lib({ movies: [lm(2, 'wishlist', { watchedAt: null })], shows: [ls(11, 'wishlist')] }), new Map(), none)
+  ok(find(p.movies, 1).status, 'watching', 'a half-watched movie not here comes in as Watching')
+  ok(find(p.movies, 2).status, 'watching', 'a wishlisted movie half-watched on Trakt → Watching')
+  ok(find(p.shows, 10).status, 'watching', 'a show with only a paused episode and no entry → Watching')
+  ok(find(p.shows, 11), undefined, 'a show already here is not changed by a paused episode')
+  ok(p.ids.map(i => `${i.type}:${i.ids.tmdb}`).sort(), ['movie:1', 'show:10'], 'new half-watched titles get catalogue ids')
+  const later = buildSyncPlan(snap(), lib({ movies: [lm(1, 'watching', { watchedAt: null })] }), new Map(), none)
+  ok([later.movieDeletes, later.movies], [[], []], 'once Continue watching drops it, the Watching movie stays (never deleted)')
+  const done = buildSyncPlan(snap({ watchedMovies: [tm(1, 1)] }), lib({ movies: [lm(1, 'watching', { watchedAt: null })] }), new Map(), none)
+  ok(find(done.movies, 1).status, 'completed', 'a full play on Trakt later moves it to Completed')
+}
+{
+  // Held-back removals never move a show's status.
+  const l = lib({ shows: [ls(10, 'completed', { rating: 5 })], episodes: Array.from({ length: 30 }, (_, i) => le(10, 1, i + 1)) })
+  const s = snap({ watchedShows: [ts(10, [[1, 1, 1, AT]])], ratings: [{ item: show(10), rating: 9, ratedAt: null }] })
+  const p = buildSyncPlan(s, l, new Map([[10, { aired: 30 }]]), none)
+  ok(find(p.shows, 10).status, 'watching', 'with the removals the show would drop to Watching…')
+  ok(removalsNeedConfirm(p, l), true, '…but 29 removals wait for a confirm')
+  const held = withoutRemovals(p)
+  ok(find(held.shows, 10), { tmdbId: 10, item: show(10), status: 'completed', rating: 9, watchlistRank: null }, 'held back: status stays Completed, the rating still follows Trakt')
+  const l2 = lib({ shows: [ls(10, 'completed')], episodes: l.episodes })
+  ok(withoutRemovals(buildSyncPlan(snap({ watchedShows: [ts(10, [[1, 1, 1, AT]])] }), l2, new Map([[10, { aired: 30 }]]), none)).shows, [], 'held back with nothing else changed → no show write')
+}
+{
+  const prev = { all: '2026-09-01T00:00:00.000Z', shows: { reset_at: null } }
+  ok(lastActivitiesChange(prev, { ...prev }), { changed: false, reset: false }, 'same last_activities → nothing changed')
+  ok(lastActivitiesChange(prev, { ...prev, all: '2026-09-02T00:00:00.000Z' }), { changed: true, reset: false }, 'all moved → changed')
+  ok(lastActivitiesChange(prev, { ...prev, shows: { reset_at: '2026-09-02T00:00:00.000Z' } }), { changed: true, reset: true }, 'a reset_at moved → full mirror even when all did not')
+  ok(lastActivitiesChange(null, prev).changed, true, 'no previous state → changed')
 }
 
 // ── Big removals wait for a confirm ──────────────────────────────────────────

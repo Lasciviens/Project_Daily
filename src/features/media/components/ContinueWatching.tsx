@@ -61,7 +61,7 @@ export function ContinueWatching({ posters, onOpenDetail }: { posters: Map<strin
   if (items.length === 0) return null
   const sequence = items.map(i => ({ tmdbId: i.tmdb!, mediaType: i.type === 'movie' ? 'movie' as const : 'tv' as const }))
   return (
-    <div>
+    <section className="card p-3 sm:p-4">
       <SectionLabel className="mb-1.5">Continue watching</SectionLabel>
       <div className="scroll-x flex gap-2.5 pb-1">
         {items.map(i => (
@@ -70,6 +70,6 @@ export function ContinueWatching({ posters, onOpenDetail }: { posters: Map<strin
             onRemove={() => remove.mutate(i.id)} />
         ))}
       </div>
-    </div>
+    </section>
   )
 }

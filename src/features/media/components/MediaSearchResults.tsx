@@ -1,5 +1,8 @@
-import { Search, SearchX } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { SearchX } from 'lucide-react'
 import { Button, EmptyState } from '../../../shared/ui'
+import { useGenres } from '../hooks/useDiscover'
+import { NO_SEARCH_FILTERS, applySearchFilters, searchFilterCount, type SearchFilters, type SearchSort } from '../searchFilters'
 import { useSearchTitles } from '../hooks/useTMDB'
 import { useLibraryIndex } from '../hooks/useLibraryIndex'
 import { libraryKey } from '../listModel'
@@ -8,13 +11,19 @@ import { SkeletonGrid } from './DiscoverFilters'
 import type { MediaType, OpenMediaDetail, TMDBSearchMovie, TMDBSearchTV } from '../types'
 
 interface Props {
-  /** The settled (debounced) query; under 2 characters asks for more. */
+  /** The settled (debounced) query. */
   query: string
+  /** Typing has not settled yet (or the box is empty): show placeholders. */
+  pending?: boolean
   mediaType: MediaType
   onMediaTypeChange: (t: MediaType) => void
   onOpenDetail: OpenMediaDetail
   onClear: () => void
 }
+
+const SELECT = 'input w-auto min-h-[36px] shrink-0 py-0 pl-2.5 pr-7 text-meta'
+const YEARS = [2025, 2020, 2010, 2000, 1990, 1980]
+const num = (v: string) => (v === '' ? null : Number(v))
 
 const isMovie = (r: TMDBSearchMovie | TMDBSearchTV): r is TMDBSearchMovie => 'title' in r
 
@@ -24,41 +33,77 @@ const isMovie = (r: TMDBSearchMovie | TMDBSearchTV): r is TMDBSearchMovie => 'ti
  * it (or Back) lands right here at the same scroll position. Both types are
  * searched, so the other type's count is one tap away.
  */
-export function MediaSearchResults({ query, mediaType, onMediaTypeChange, onOpenDetail, onClear }: Props) {
+export function MediaSearchResults({ query, pending, mediaType, onMediaTypeChange, onOpenDetail, onClear }: Props) {
   const q = query.trim()
   const movies = useSearchTitles('movie', q)
   const tv = useSearchTitles('tv', q)
   const index = useLibraryIndex()
+  const { data: genres = [] } = useGenres(mediaType)
+  const [filters, setFilters] = useState<SearchFilters>(NO_SEARCH_FILTERS)
+  const set = (p: Partial<SearchFilters>) => setFilters(f => ({ ...f, ...p }))
   const active = mediaType === 'movie' ? movies : tv
   const other = mediaType === 'movie' ? tv : movies
-  const hits = (active.data?.pages ?? []).flatMap(p => p.results)
-  const seen = new Set<number>()
-  const unique = hits.filter(h => (seen.has(h.id) ? false : (seen.add(h.id), true)))
+  const hits = useMemo(() => {
+    const seen = new Set<number>()
+    return (active.data?.pages ?? []).flatMap(p => p.results)
+      .filter(h => (seen.has(h.id) ? false : (seen.add(h.id), true)))
+      .map(h => ({ ...h, date: (isMovie(h) ? h.release_date : h.first_air_date) || null, rating: h.vote_average, votes: h.vote_count ?? 0, genres: h.genre_ids ?? [] }))
+  }, [active.data])
+  const unique = applySearchFilters(hits, filters, id => index.has(libraryKey(mediaType, id)))
+  const narrowed = searchFilterCount(filters) > 0
   const sequence = unique.map(h => ({ tmdbId: h.id, mediaType }))
   const total = (r: typeof movies) => r.data?.pages[0]?.total
   const countLabel = (r: typeof movies) => (r.isError ? '!' : total(r) == null ? '…' : total(r)!.toLocaleString('en-GB'))
+  const left = (total(active) ?? 0) - hits.length
 
-  if (q.length < 2) {
-    return (
-      <section aria-label="Search results" className="card p-4 sm:p-5">
-        <EmptyState icon={<Search />} title="Keep typing" description="Type at least 2 letters to search movies and TV." />
-      </section>
-    )
+  // Filters run over loaded pages: when they leave too few, load a few more by themselves.
+  const loaded = active.data?.pages.length ?? 0
+  useEffect(() => {
+    if (narrowed && unique.length < 12 && active.hasNextPage && !active.isFetchingNextPage && loaded < 6) void active.fetchNextPage()
+  }, [narrowed, unique.length, active, loaded])
+
+  if (pending || !q) {
+    return <section aria-label="Search results" className="card p-3 sm:p-5"><SkeletonGrid count={9} /></section>
   }
 
   return (
-    <section aria-label="Search results" className="card @container p-4 sm:p-5">
-      <header className="mb-3 flex flex-wrap items-center gap-2">
-        <h2 className="mr-auto min-w-0 break-words text-lead font-semibold text-fg">Results for “{q}”</h2>
-        <div aria-label="Result type" className="flex gap-1.5">
+    <section aria-label="Search results" className="card @container p-3 sm:p-5">
+      <h2 className="sr-only">Results for {q}</h2>
+      <div className="scroll-x -mx-1 mb-3 flex items-center gap-1.5 px-1 pb-0.5">
+        <div aria-label="Result type" className="flex shrink-0 gap-1.5">
           {(['movie', 'tv'] as const).map(t => (
             <button key={t} type="button" aria-pressed={mediaType === t} onClick={() => onMediaTypeChange(t)}
-              className="pill-tab min-h-[44px] shrink-0 tabular-nums sm:min-h-0">
+              className="pill-tab min-h-[36px] shrink-0 tabular-nums">
               {t === 'movie' ? 'Movies' : 'TV'} {countLabel(t === 'movie' ? movies : tv)}
             </button>
           ))}
         </div>
-      </header>
+        <span aria-hidden className="mx-0.5 h-5 w-px shrink-0 bg-line" />
+        <select aria-label="Sort" className={SELECT} value={filters.sort} onChange={e => set({ sort: e.target.value as SearchSort })}>
+          <option value="relevance">Best match</option>
+          <option value="newest">Newest</option>
+          <option value="oldest">Oldest</option>
+          <option value="rating">Best rated</option>
+        </select>
+        <select aria-label="Genre" className={SELECT} value={filters.genre ?? ''} onChange={e => set({ genre: num(e.target.value) })}>
+          <option value="">Genre</option>
+          {genres.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+        </select>
+        <select aria-label="Released from" className={SELECT} value={filters.fromYear ?? ''} onChange={e => set({ fromYear: num(e.target.value) })}>
+          <option value="">Year</option>
+          {YEARS.map(y => <option key={y} value={y}>{y}+</option>)}
+        </select>
+        <select aria-label="TMDB score" className={SELECT} value={filters.minRating ?? ''} onChange={e => set({ minRating: num(e.target.value) })}>
+          <option value="">Score</option>
+          {[6, 7, 8].map(r => <option key={r} value={r}>{r}+</option>)}
+        </select>
+        <button type="button" aria-pressed={filters.notInLibrary} onClick={() => set({ notInLibrary: !filters.notInLibrary })}
+          className="pill-tab min-h-[36px] shrink-0">Not in library</button>
+        {narrowed && (
+          <button type="button" onClick={() => setFilters(f => ({ ...NO_SEARCH_FILTERS, sort: f.sort }))}
+            className="min-h-[36px] shrink-0 px-2 text-meta font-semibold text-accent-600">Clear</button>
+        )}
+      </div>
 
       {active.isLoading ? (
         <SkeletonGrid count={9} />
@@ -69,20 +114,19 @@ export function MediaSearchResults({ query, mediaType, onMediaTypeChange, onOpen
         </p>
       ) : unique.length === 0 ? (
         <EmptyState icon={<SearchX />} title={`No ${mediaType === 'movie' ? 'movies' : 'TV series'} found`}
-          description={(total(other) ?? 0) > 0 ? `${total(other)!.toLocaleString('en-GB')} found under ${mediaType === 'movie' ? 'TV' : 'Movies'} — tap it above.` : 'Try another spelling or fewer words.'}
+          description={narrowed ? 'Nothing matches these filters.' : (total(other) ?? 0) > 0 ? `${total(other)!.toLocaleString('en-GB')} found under ${mediaType === 'movie' ? 'TV' : 'Movies'} — tap it above.` : 'Try another spelling or fewer words.'}
           action={<Button onClick={onClear}>Clear search</Button>} />
       ) : (
         <>
           <ul className={`${POSTER_GRID} transition-opacity ${active.isPlaceholderData ? 'opacity-60' : ''}`}>
             {unique.map(h => {
               const lib = index.get(libraryKey(mediaType, h.id))
-              const date = isMovie(h) ? h.release_date : h.first_air_date
               return (
                 <li key={h.id} className="min-w-0">
                   <PosterTile
                     posterPath={h.poster_path}
                     title={isMovie(h) ? h.title : h.name}
-                    meta={[date?.slice(0, 4), h.vote_average > 0 ? `TMDB ${h.vote_average.toFixed(1)}` : null].filter(Boolean).join(' · ') || undefined}
+                    meta={[h.date?.slice(0, 4), h.vote_average > 0 ? `TMDB ${h.vote_average.toFixed(1)}` : null].filter(Boolean).join(' · ') || undefined}
                     language={h.original_language}
                     bucket={lib?.bucket}
                     rt={lib?.rt}
@@ -94,12 +138,11 @@ export function MediaSearchResults({ query, mediaType, onMediaTypeChange, onOpen
               )
             })}
           </ul>
-          <p className="mt-3 text-center text-meta tabular-nums text-fg-muted">
-            {unique.length.toLocaleString('en-GB')} of {(total(active) ?? unique.length).toLocaleString('en-GB')}
-          </p>
           {active.hasNextPage && (
-            <div className="mt-2 flex justify-center">
-              <Button onClick={() => { void active.fetchNextPage() }} loading={active.isFetchingNextPage}>Show more</Button>
+            <div className="mt-3 flex justify-center">
+              <Button onClick={() => { void active.fetchNextPage() }} loading={active.isFetchingNextPage}>
+                {left > 0 ? `Show more (${left.toLocaleString('en-GB')} left)` : 'Show more'}
+              </Button>
             </div>
           )}
         </>

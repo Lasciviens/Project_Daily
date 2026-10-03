@@ -245,8 +245,10 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
           variant="ghost"
           onClick={() => setSelected(new Set((seasonData?.episodes ?? []).map(e => e.episode_number)))}
           disabled={isLoading || !seasonData}
+          aria-label="Select all episodes"
         >
-          Select all
+          {/* "All" on phones leaves the season tabs room on the same row. */}
+          <span className="sm:hidden">All</span><span className="hidden sm:inline">Select all</span>
         </Button>
       </div>
 
