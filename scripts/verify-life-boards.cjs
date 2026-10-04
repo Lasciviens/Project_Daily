@@ -7,6 +7,7 @@ require('sucrase/register')
 const B = require('../src/shared/ui/pageBoardRules')
 const F = require('../src/features/recipes/foodBoards')
 const Wi = require('../src/features/wishes/wishesBoard')
+const Bk = require('../src/features/books/booksBoard')
 const H = require('../src/features/health/healthBoards')
 const T = require('../src/features/training/trainingBoards')
 let passed = 0, failed = 0
@@ -46,6 +47,7 @@ const BOARDS = [
   ['Food · Ingredients', F.INGREDIENT_BOARD, F.INGREDIENT_SECTIONS, false],
   ['Food · Insights', F.INSIGHT_BOARD, F.INSIGHT_SECTIONS, false],
   ['Wishes', Wi.WISH_BOARD, Wi.WISH_SECTIONS, true],
+  ['Books', Bk.BOOK_BOARD, Bk.BOOK_SECTIONS, false],
   ...Object.entries(H.HEALTH_BOARDS).map(([id, b]) => [`Health · ${id}`, b.board, b.sections, id === 'overview']),
   ['Training · Next', T.NEXT_BOARD, T.NEXT_SECTIONS, true],
   ['Training · Program', T.PROGRAM_BOARD, T.PROGRAM_SECTIONS, false],

@@ -1838,6 +1838,11 @@ and function deploys are manual; CLAUDE.md → Pending manual steps).
 
 ### Phase 2 — Send to Kobo v1 (Claude, cloud; small)
 
+**Built 04.10.2026** (`claude/charming-newton-yhk8i`): migration `125_kobo_inbox.sql`,
+`kobo-sync`, `/books` (Send to Kobo, inbox list with cancel, one-time setup card), the
+Settings card and registry entry, the 850 MB game-media ceiling. Remaining: the owner steps
+below, then the gate.
+
 **Claude builds:**
 - A migration:
   - `book_deliveries`;

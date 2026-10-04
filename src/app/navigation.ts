@@ -1,6 +1,6 @@
 import {
   Home, CalendarDays, UtensilsCrossed, ShoppingBag, Clapperboard, Dumbbell, HeartPulse, Star, Gamepad2,
-  Briefcase, FolderKanban, Code2, Settings, type LucideIcon,
+  Briefcase, FolderKanban, Code2, Settings, BookOpen, type LucideIcon,
 } from 'lucide-react'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -61,6 +61,7 @@ export const NAV: NavEntry[] = [
   // for is dead in three weeks, and the 5 primary slots are taken.
   { id: 'wishes', label: 'Wishes', path: '/wishes', icon: Star, group: 'life', more: true, moreFirst: true, keywords: ['places', 'ideas', 'season'] },
   { id: 'media', label: 'Media', path: '/media', icon: Clapperboard, group: 'play', tab: 3, keywords: ['movies', 'tv', 'series', 'watch'] },
+  { id: 'books', label: 'Books', path: '/books', icon: BookOpen, group: 'play', more: true, keywords: ['kobo', 'ebook', 'epub', 'send to kobo', 'reading', 'koreader'] },
   { id: 'games', label: 'Games', path: '/games', icon: Gamepad2, group: 'play', more: true, fullHeight: true, collapseSidebar: true, keywords: ['library', 'steam', 'playstation', 'retro', 'queue', 'backlog', 'scrape'] },
   { id: 'work', label: 'Work', path: '/work', icon: Briefcase, group: 'work', more: true, keywords: ['board', 'kanban'] },
   { id: 'projects', label: 'Projects', path: '/projects', icon: FolderKanban, group: 'work', more: true, keywords: ['phases'] },

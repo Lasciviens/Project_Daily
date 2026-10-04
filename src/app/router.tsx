@@ -15,6 +15,7 @@ import { TrainingPage } from '../features/training/pages/TrainingPage'
 import { HealthPage } from '../features/health/pages/HealthPage'
 import { ProjectsPage } from '../features/projects/pages/ProjectsPage'
 import { WishesPage } from '../features/wishes/pages/WishesPage'
+import { BooksPage } from '../features/books/pages/BooksPage'
 import { DeveloperPage } from '../features/developer/pages/DeveloperPage'
 import { SettingsPage } from '../features/settings/pages/SettingsPage'
 import { DevRequestComposerHost } from '../features/devRequests/composer/DevRequestComposerHost'
@@ -62,6 +63,7 @@ export function Router() {
           <Route path="/health"    element={<HealthPage />} />
           <Route path="/projects"  element={<ProjectsPage />} />
           <Route path="/wishes"    element={<WishesPage />} />
+          <Route path="/books"     element={<BooksPage />} />
           {/* Games renders free-form provider and scraped records: a
               render-time throw shows a Try-again card, not a blank page. */}
           <Route

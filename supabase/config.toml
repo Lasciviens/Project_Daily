@@ -69,3 +69,9 @@ verify_jwt = false
 # verification is off and auth is enforced in-code.
 [functions.trakt-api]
 verify_jwt = false
+
+# kobo-sync: KOReader's OPDS client sends no Supabase JWT; the token in the
+# path is checked in code (KOBO_OPDS_TOKEN), and the cron sweep sends it as
+# x-kobo-token.
+[functions.kobo-sync]
+verify_jwt = false

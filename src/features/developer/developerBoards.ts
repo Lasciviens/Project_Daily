@@ -52,7 +52,7 @@ export function paneSelection(ids: readonly string[], picked: string | null): st
 // carries the subscription summary strip and 'otherSubs' (subscriptions for
 // services without a card) ends the server-side column at every width.
 export const CONNECTION_SECTIONS = [
-  'intro', 'google', 'strava', 'psn', 'trakt', 'steam', 'igdb', 'hevy', 'health',
+  'intro', 'google', 'strava', 'psn', 'trakt', 'steam', 'igdb', 'hevy', 'health', 'kobo',
   'accountsLabel', 'serverLabel', 'serverCards', 'otherSubs',
 ] as const
 export type ConnectionSection = typeof CONNECTION_SECTIONS[number]
@@ -61,8 +61,8 @@ const ACCOUNTS = ['accountsLabel', 'google', 'strava', 'psn', 'trakt'] as const
 const SERVER = ['serverLabel', 'serverCards', 'otherSubs'] as const
 
 export const CONNECTIONS_BOARD: BoardLayouts<ConnectionSection> = {
-  1: ['intro', 'google', 'strava', 'psn', 'trakt', 'steam', 'igdb', 'hevy', 'health', 'otherSubs'],
-  2: { top: ['intro'], columns: [ACCOUNTS, ['serverLabel', 'steam', 'igdb', 'hevy', 'health', 'otherSubs']] },
+  1: ['intro', 'google', 'strava', 'psn', 'trakt', 'steam', 'igdb', 'hevy', 'health', 'kobo', 'otherSubs'],
+  2: { top: ['intro'], columns: [ACCOUNTS, ['serverLabel', 'steam', 'igdb', 'hevy', 'health', 'kobo', 'otherSubs']] },
   3: { top: ['intro'], main: '42rem', columns: [ACCOUNTS, { stack: SERVER, span: 2 }] },
   4: { top: ['intro'], main: '42rem', columns: [ACCOUNTS, { stack: SERVER, span: 3 }] },
 }
