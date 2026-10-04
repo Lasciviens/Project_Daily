@@ -1995,7 +1995,10 @@ Answered on 30.09.2026. The answers are in §12.4.
 - `statistics.sqlite3` is in WAL mode: a copied file opens with
   `sqlite3 'file:…?mode=ro&immutable=1'`, not `-readonly`. Copy it together with any
   `-wal`/`-shm` files when they exist.
-- Still to send: key-only confirmed, and the 10-minute read (203 s so far).
+- **Phase 0 gate passed (04.10.2026):** KOReader starts from NickelMenu; no reboot in the
+  Wi-Fi tests; SSH key-only (`dropbear … -s`, password refused); Statistics shows 1,316 s
+  over 2 books. Gotcha: plugging the cable in while KOReader runs with the SSH server on
+  shows "Filesystem is busy (dropbear)" — exit KOReader before a USB copy.
 
 **"Do I need to block firmware updates?" — no.**
 - Kobo can't be told to stop checking for updates while Nickel is on Wi-Fi, and that's
