@@ -1796,7 +1796,7 @@ and function deploys are manual; CLAUDE.md → Pending manual steps).
     Kobo's own Nickel format, not for KOReader; `dict-nn.zip` is Nynorsk.)
   - `nb-en.tar.zst` and `tr-en.tar.zst` from `xxyzz/wiktionary_stardict` release
     20260928 (Wiktionary snapshot 01.09.2026, CC BY-SA 4.0): 28,432 and 27,511 words,
-    SHA256 `0e4ec7c7…fa528d`/`cc759a49…fa528d` — see the Mac command for the full values.
+    SHA256 `0e4ec7c7…f59893`/`cc759a49…fa528d` — see the Mac command for the full values.
     Archives have a `./` root, so each is extracted into its own folder.
   - **Not available ready-made:** English→Turkish (no `en-tr` build; the fono converter
     needs Fono's CD-ROM data, so it is dropped) and TDK Güncel Türkçe Sözlük (a converter
