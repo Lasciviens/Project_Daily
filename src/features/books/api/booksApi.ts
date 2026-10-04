@@ -1,6 +1,6 @@
 import { supabase } from '../../../integrations/supabase/client'
 import { requireUser } from '../../../shared/utils/requireUser'
-import { safeFileName } from '../opdsFeed'
+import { safeFileName, storageFileName } from '../opdsFeed'
 import type { BookDelivery, KoboFeedState } from '../types'
 
 // book_deliveries / kobo_feed_state / the kobo-inbox bucket come with
@@ -52,7 +52,7 @@ export async function sendToKobo(file: File): Promise<BookDelivery> {
   const user = await requireUser()
   const id = crypto.randomUUID()
   const filename = safeFileName(file.name)
-  const storage_path = `${user.id}/${id}/${filename}`
+  const storage_path = `${user.id}/${id}/${storageFileName(filename)}`
   const mime = /\.pdf$/i.test(filename) ? 'application/pdf' : 'application/epub+zip'
   const { data, error } = await supabase
     .from('book_deliveries')
