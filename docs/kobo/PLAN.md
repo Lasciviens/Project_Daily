@@ -1787,6 +1787,26 @@ and function deploys are manual; CLAUDE.md → Pending manual steps).
 
 ### Phase 1 — Books today, zero code (owner, same day)
 
+**Prepared 04.10.2026 (files checked by downloading them):**
+- Dictionaries, all StarDict, copied **over SSH** (`scp`, so the Kobo's Linux writes the
+  names and the fsck rename from Phase 0 can't happen) into
+  `.adds/koreader/data/dict/<name>/`:
+  - `dict-nb.zip` from `sinic/ordboekene-for-lesebrett` v0.1 — Bokmålsordboka, 93,492
+    words + 337,328 inflections, SHA256 `e09606e0…25ed45` (6,655,747 B). (`dicthtml-*` is
+    Kobo's own Nickel format, not for KOReader; `dict-nn.zip` is Nynorsk.)
+  - `nb-en.tar.zst` and `tr-en.tar.zst` from `xxyzz/wiktionary_stardict` release
+    20260928 (Wiktionary snapshot 01.09.2026, CC BY-SA 4.0): 28,432 and 27,511 words,
+    SHA256 `0e4ec7c7…fa528d`/`cc759a49…fa528d` — see the Mac command for the full values.
+    Archives have a `./` root, so each is extracted into its own folder.
+  - **Not available ready-made:** English→Turkish (no `en-tr` build; the fono converter
+    needs Fono's CD-ROM data, so it is dropped) and TDK Güncel Türkçe Sözlük (a converter
+    only — `pip install Jinja2 pyglossary spylls`, `python gts.py -b 1` with
+    `gts.json.tar.gz` + `tr_TR.json.gz`; a later, optional build).
+- News: `.adds/koreader/news/feed_config.lua` (the News downloader's default download
+  dir) with Klar Tale `https://www.klartale.no/rss`, NRK `https://www.nrk.no/toppsaker.rss`
+  and BBC Türkçe `https://feeds.bbci.co.uk/turkce/rss.xml` — all three answered 200 with
+  RSS items on 04.10.2026.
+
 - The laptop push: calibre → *Start wireless device connection*; KOReader → *Calibre →
   Connect*. Set KOReader's calibre inbox folder.
 - Articles: link Instapaper in Nickel (More → My Articles).
