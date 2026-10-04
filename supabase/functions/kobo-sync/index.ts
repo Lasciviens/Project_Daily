@@ -79,6 +79,28 @@ function safeFileName(name: string): string {
   return cleaned.slice(-120) || 'book.epub'
 }
 
+/**
+ * The object name inside the bucket. Supabase Storage refuses keys with
+ * brackets or non-ASCII letters ("[Harry Potter _3] … Tutsağı.epub"), so the
+ * stored object is always book.<ext>; the real name lives in `filename`.
+ */
+function storageFileName(name: string): string {
+  const n = name.toLowerCase()
+  if (n.endsWith('.kepub.epub')) return 'book.kepub.epub'
+  if (n.endsWith('.pdf')) return 'book.pdf'
+  return 'book.epub'
+}
+
+/** A Content-Disposition header that is valid for any name (HTTP headers are Latin-1 only). */
+function contentDisposition(name: string): string {
+  const ascii = [...name.normalize('NFKD')].map(ch => {
+    const c = ch.charCodeAt(0)
+    if (c >= 0x300 && c <= 0x36f) return ''
+    return c >= 32 && c < 127 && ch !== '"' && ch !== '\\' ? ch : '_'
+  }).join('').replace(/_+/g, '_') || 'book'
+  return `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(name)}`
+}
+
 /** The MIME type KOReader needs on the acquisition link. */
 function acquisitionType(d: Pick<FeedDelivery, 'filename' | 'mime'>): string {
   if (/\.pdf$/i.test(d.filename)) return 'application/pdf'
@@ -251,7 +273,7 @@ Deno.serve(async req => {
       status: 302,
       headers: {
         Location: signed.signedUrl,
-        'Content-Disposition': `attachment; filename="${name.replace(/"/g, '')}"`,
+        'Content-Disposition': contentDisposition(name),
         'Cache-Control': 'no-store',
       },
     })

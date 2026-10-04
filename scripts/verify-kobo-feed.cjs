@@ -39,4 +39,12 @@ eq(f.parseRoute('/kobo-sync/opds/tok/'), { kind: 'feed', token: 'tok' }, 'feed r
 eq(f.parseRoute('/functions/v1/kobo-sync/opds/tok/books/id1/Book.epub'), { kind: 'book', token: 'tok', id: 'id1' }, 'book route')
 eq(f.parseRoute('/kobo-sync/sweep'), { kind: 'sweep' }, 'sweep route')
 eq(f.parseRoute('/kobo-sync/'), null, 'unknown route')
+const tr = '[Harry Potter _3] Rowling, J. K. - Harry Potter ve Azkaban Tutsağı 3.epub'
+eq(f.storageFileName(tr), 'book.epub', 'storage key is plain ASCII')
+eq(f.storageFileName('A.kepub.epub'), 'book.kepub.epub', 'storage key keeps kepub')
+eq(f.storageFileName('A.PDF'), 'book.pdf', 'storage key keeps pdf')
+const cd = f.contentDisposition('Tutsağı "ı".epub')
+ok([...cd].every(ch => ch.charCodeAt(0) < 256), 'content-disposition is Latin-1 only')
+ok(cd.includes('filename="Tutsag_ _.epub"') || cd.includes('filename="Tutsag'), 'ascii fallback name')
+ok(cd.includes("filename*=UTF-8''Tutsa%C4%9F%C4%B1"), 'utf-8 name kept')
 console.log(`verify-kobo-feed: ${n} assertions passed`)
