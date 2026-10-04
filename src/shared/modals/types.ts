@@ -49,6 +49,8 @@ export type EntityModalRequest =
   | { kind: 'wish'; id: string }
   | { kind: 'project-item'; projectId: string; id?: string; phaseId?: string }
   | { kind: 'memory'; id: string }
+  /** One book in the Books library (books, migration 126). */
+  | { kind: 'book'; id: string }
   // Generic.
   | { kind: 'confirm'; title: string; message?: string; confirmLabel?: string; cancelLabel?: string; destructive?: boolean; resolve: (ok: boolean) => void }
 

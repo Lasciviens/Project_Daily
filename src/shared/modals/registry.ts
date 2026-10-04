@@ -31,5 +31,6 @@ export const MODAL_REGISTRY: { [K in ModalKind]: Entry<K> } = {
   'wish':           L('wish', () => import('../../features/wishes/modals/WishEntityModal').then(m => m.WishEntityModal)),
   'project-item':   L('project-item', () => import('../../features/projects/modals/ProjectItemEntityModal').then(m => m.ProjectItemEntityModal)),
   'memory':         L('memory', () => import('../../features/ai/modals/MemoryEntityModal').then(m => m.MemoryEntityModal)),
+  'book':           L('book', () => import('../../features/books/modals/BookEntityModal').then(m => m.BookEntityModal)),
   'confirm':        L('confirm', () => import('./ConfirmModal').then(m => m.ConfirmModal)),
 }

@@ -1840,8 +1840,20 @@ and function deploys are manual; CLAUDE.md → Pending manual steps).
 
 **Built 04.10.2026** (`claude/charming-newton-yhk8i`): migration `125_kobo_inbox.sql`,
 `kobo-sync`, `/books` (Send to Kobo, inbox list with cancel, one-time setup card), the
-Settings card and registry entry, the 850 MB game-media ceiling. Remaining: the owner steps
-below, then the gate.
+Settings card and registry entry, the 850 MB game-media ceiling.
+
+**Gate passed 04.10.2026 on the device:** a book uploaded from the iPhone appeared under
+"Lasci's Board" in KOReader and downloaded. Three gotchas from the first run:
+- The catalogue is added over SSH, not typed: `scripts/kobo/add-opds-catalog.lua` runs on the
+  Kobo with KOReader's luajit, takes the token on stdin, edits `settings/opds.lua` (backup
+  first) and sets the sync folder `/mnt/onboard/Send to Kobo`. Run it in a fresh KOReader
+  session before opening OPDS — the plugin reads that file on first open and writes its own
+  copy back after any OPDS change. Nickel also shows that folder's books (harmless).
+- Supabase Storage refuses keys with brackets or non-ASCII letters, so the object is always
+  `book.<ext>`; the real name stays in `book_deliveries.filename`. HTTP headers are Latin-1
+  only, so the download's `Content-Disposition` carries an ASCII fallback plus `filename*`.
+- "Forbidden" = the path token differs from `KOBO_OPDS_TOKEN`; "Something went wrong" right
+  after deploy = migration 125 not applied yet.
 
 **Claude builds:**
 - A migration:
@@ -1871,6 +1883,15 @@ Shortcut, as a new C task on `docs/codex-shortcuts.md`.
 
 ### Phase 3 — Books page and library (Claude; medium)
 
+**Built 05.10.2026** together with Phase 4 (setup: `SETUP-PHASE-3-4.md`). Two deliberate
+changes from the text below, both because the plugin exists now:
+- **No browser `sql.js` import.** The plugin reads Nickel's `KoboReader.sqlite` read-only on
+  the device (Nickel is not running while KOReader is) and computes `util.partialMD5` itself,
+  so the inventory needs no USB session and no file picker, and stays current daily.
+- **No shared metadata table.** `book-meta` writes cover/pages/publisher/year straight onto
+  the owner's `books` row (fill-only); Hardcover is not wired (no token needed yet).
+Not built: Home "Now reading" (the Daily glance cell covers it).
+
 **Claude builds:**
 - Migration: `books` and `reading_settings`.
 - The browser inventory import (§3 Phase 3): `sql.js` over a copy of `KoboReader.sqlite`,
@@ -1890,6 +1911,14 @@ Shortcut, as a new C task on `docs/codex-shortcuts.md`.
 - Norwegian books have the right title and cover.
 
 ### Phase 4 — Reading tracker (Claude writes; the Mac session installs and tests; large)
+
+**Built 05.10.2026; not yet run on the device.** Changes from the text below:
+- **The outbox is `statistics.sqlite3` itself** plus the cursor (§3 "incremental sync"): a
+  separate on-disk queue would only copy rows KOReader already keeps durably. Close/suspend
+  capture is therefore unnecessary; on close the plugin sends only if already online.
+- **Inbox ack keeps the 24 h grace** instead of deleting at once, so the OPDS fallback and a
+  failed copy can still fetch the file.
+- Sync is throttled to one automatic run per 10 minutes; a manual *Sync now* always runs.
 
 - **Morning news, automatic (owner's ask, 04.10.2026):** KOReader's News downloader has no
   scheduler, no Dispatcher action and no Profiles auto-exec hook (checked in the 2026.07.1

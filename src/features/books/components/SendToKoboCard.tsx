@@ -34,7 +34,7 @@ export function SendToKoboCard({ waitingBytes }: { waitingBytes: number }) {
         <Button variant="primary" icon={<Upload />} loading={send.isPending} onClick={() => input.current?.click()}>Choose files</Button>
         <input ref={input} type="file" multiple accept={[...ACCEPTED, 'application/epub+zip', 'application/pdf'].join(',')} className="sr-only"
           onChange={e => { if (e.target.files?.length) void sendAll(e.target.files); e.target.value = '' }} />
-        <p className="text-micro text-fg-muted">On the Kobo: KOReader → 🔍 → OPDS catalog → <strong>Sync all catalogs</strong>.</p>
+        <p className="text-micro text-fg-muted">It downloads by itself the next time the Kobo’s Wi-Fi comes on.</p>
       </div>
     </Card>
   )

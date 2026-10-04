@@ -672,6 +672,7 @@ const EMBED_SOURCES: { table: string; cols: string; text: (r: AnyRecord) => stri
   { table: 'work_notes',     cols: 'id,content',                        text: r => r.content ?? '' },
   { table: 'ai_memory',      cols: 'id,title,content',                  text: r => [r.title, r.content].filter(Boolean).join('\n') },
   { table: 'wish_items',     cols: 'id,title,notes',                    text: r => [r.title, r.notes].filter(Boolean).join('\n') },
+  { table: 'books',          cols: 'id,title,author,review,notes',      text: r => [r.title, r.author, r.review, r.notes].filter(Boolean).join('\n') },
 ]
 
 async function semanticSearch(args: AnyRecord, authHeader?: string): Promise<AnyRecord> {
@@ -2210,6 +2211,27 @@ const DB_CATALOG: Record<string, CatalogEntry> = {
       'Set period_start/period_end to CONCRETE dates (yyyy-mm-dd) resolved from what the user said; the current date is in the context turn. Leave both null for an "anytime" wish. period_label is optional and holds the user\'s own word for the window.',
       'Write title/notes in the language the user used. Only set status="done" or "dropped" when the user says so, and never delete a wish without explicit confirmation.',
     ].join(' '),
+  },
+  books: {
+    access: 'rw',
+    purpose: 'The book library (Books page). Most rows come from the Kobo (KOReader plugin: Nickel\'s library + reading statistics); the user may add books by hand, rate them, and write reviews.',
+    columns: 'id, title, author, series, series_index, language, isbn, publisher, published_year, description, page_count, cover_url, read_status(want|reading|finished|paused|dropped), rating(1-10, 2 per star), review(the user\'s own words), notes, started_at, finished_at, queue_order(the reading queue among want), progress_pct(0-100, from the Kobo), last_read_at, read_seconds(KOReader lifetime reading time), read_pages, on_device(boolean), source(koreader|kobo|manual), koreader_md5, created_at, updated_at',
+    rules: [
+      'Reading TIME per day lives in reading_page_events (aggregate duration_seconds by day); read_seconds is a per-book lifetime total from the device.',
+      'Never change koreader_md5, progress_pct, read_seconds, read_pages, last_read_at or on_device — the Kobo sync owns them.',
+      'A review or note the user dictates goes into review/notes of the right book (find it by title with ilike first). Confirm before deleting a book: its reading history is deleted with it.',
+      'Something to READ later that is not in the library yet: insert with read_status="want", source="manual", on_device=false.',
+    ].join(' '),
+  },
+  reading_page_events: {
+    access: 'ro',
+    purpose: 'KOReader reading statistics from the Kobo: one row per page view (page, started_at, duration_seconds, book_id → books.id). Use db_aggregate (sum duration_seconds, group by day) for minutes read; rows arrive late (whenever the Kobo has Wi-Fi), so a recent day with no rows may simply not be synced yet.',
+    columns: 'id, book_id(uuid FK books), page, started_at(timestamptz), duration_seconds, total_pages, source, device_id, created_at',
+  },
+  reading_settings: {
+    access: 'rw',
+    purpose: 'Singleton (one row per user, key user_id): daily_minutes_goal and streak_min_minutes for reading. Confirm before changing.',
+    columns: 'user_id, daily_minutes_goal, streak_min_minutes, updated_at',
   },
   user_movie_entries: {
     access: 'rw',

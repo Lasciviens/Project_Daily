@@ -2,7 +2,8 @@ import { useQuery } from '@tanstack/react-query'
 import { qk } from '../../../shared/query/keys'
 import { STALE } from '../../../shared/query/stale'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
-import { cancelDelivery, deleteDeliveryRow, fetchDeliveries, fetchKoboFeedState, sendToKobo } from '../api/booksApi'
+import { cancelDelivery, deleteDeliveryRow, fetchDeliveries, sendToKobo } from '../api/booksApi'
+import { fetchKoboSyncState } from '../api/libraryApi'
 import type { BookDelivery } from '../types'
 
 export function useDeliveries() {
@@ -10,7 +11,7 @@ export function useDeliveries() {
 }
 
 export function useKoboFeedState(enabled = true) {
-  return useQuery({ queryKey: qk.books.koboState(), queryFn: fetchKoboFeedState, staleTime: STALE.short, enabled })
+  return useQuery({ queryKey: qk.books.koboState(), queryFn: fetchKoboSyncState, staleTime: STALE.short, enabled })
 }
 
 export function useSendToKobo() {
@@ -18,7 +19,7 @@ export function useSendToKobo() {
     action: 'kobo_send',
     mutationFn: (file: File) => sendToKobo(file),
     loadingMessage: 'Uploading…',
-    successMessage: d => `Sent “${d.filename}” — sync the catalogue on the Kobo`,
+    successMessage: d => `Sent “${d.filename}” — it lands on the Kobo at its next Wi-Fi sync`,
     invalidates: [qk.books.all],
   })
 }

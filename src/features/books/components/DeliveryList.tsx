@@ -12,7 +12,7 @@ export function DeliveryList({ rows, loading }: { rows: BookDelivery[]; loading:
   const remove = useDeleteDeliveryRow()
   return (
     <Card padded={false}>
-      <div className="px-4 pt-4"><CardHeader title="Inbox" variant="label" icon={<Inbox />} subtitle="A file stays here until the Kobo downloads it, then 24 hours more" /></div>
+      <div className="px-4 pt-4"><CardHeader title="Inbox" variant="label" icon={<Inbox />} subtitle="Kept until the Kobo has it, then 24 hours" /></div>
       {loading ? <div className="p-4"><SkeletonText lines={3} /></div> : rows.length === 0 ? (
         <EmptyState icon={<BookOpen />} title="Nothing sent yet" description="Books you send appear here until the Kobo has them." />
       ) : (
