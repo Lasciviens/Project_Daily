@@ -141,7 +141,7 @@ export function EditFoodLogModal({ meal, date, onClose }: Props) {
               <label htmlFor="efl-name" className="field-label">Name</label>
               <input id="efl-name" value={title} onChange={e => setTitle(e.target.value)} className="input" />
             </div>
-            <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+            <div className="grid grid-cols-3 gap-1.5">
               {[
                 { v: kcal, set: setKcal, ph: 'kcal' },
                 { v: prot, set: setProt, ph: 'Protein' },

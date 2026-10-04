@@ -66,6 +66,16 @@ interface Props {
   extra?: React.ReactNode
 }
 
+/** A chip-row field: label left of the chips on a phone, above them from sm. */
+function ChipRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-3 sm:block">
+      <span className="field-label mb-0 w-[4.5rem] shrink-0 sm:mb-1.5 sm:w-auto">{label}</span>
+      <div className="min-w-0 flex-1">{children}</div>
+    </div>
+  )
+}
+
 export function TaskTab({ form, patch, config, gcalAvailable, calendarLinked, extra }: Props) {
   const hidden = (f: Parameters<typeof isTaskFieldHidden>[0]) => isTaskFieldHidden(f, config)
   const locked = (f: Parameters<typeof isTaskFieldLocked>[0]) => isTaskFieldLocked(f, config)
@@ -90,27 +100,29 @@ export function TaskTab({ form, patch, config, gcalAvailable, calendarLinked, ex
         </div>
       )}
 
-      {(!hidden('section') || !hidden('priority')) && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {!hidden('section') && (
-            <div>
-              <FieldLabel>Section</FieldLabel>
-              <PillGroup options={sectionOptions} value={form.section} onChange={v => patch({ section: v })} locked={locked('section')} />
+      {/* Phones: the label sits left of its chips (one row each instead of two);
+          from sm: label above, Section and Priority side by side. */}
+      {(!hidden('section') || !hidden('priority') || !hidden('domain')) && (
+        <div className="flex flex-col gap-2 sm:gap-4">
+          {(!hidden('section') || !hidden('priority')) && (
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-4">
+              {!hidden('section') && (
+                <ChipRow label="Section">
+                  <PillGroup options={sectionOptions} value={form.section} onChange={v => patch({ section: v })} locked={locked('section')} />
+                </ChipRow>
+              )}
+              {!hidden('priority') && (
+                <ChipRow label="Priority">
+                  <PillGroup options={PRIORITIES} value={form.priority} onChange={v => patch({ priority: v })} locked={locked('priority')} />
+                </ChipRow>
+              )}
             </div>
           )}
-          {!hidden('priority') && (
-            <div>
-              <FieldLabel>Priority</FieldLabel>
-              <PillGroup options={PRIORITIES} value={form.priority} onChange={v => patch({ priority: v })} locked={locked('priority')} />
-            </div>
+          {!hidden('domain') && (
+            <ChipRow label="Domain">
+              <PillGroup options={DOMAINS} value={form.domain} onChange={v => patch({ domain: v })} locked={locked('domain')} />
+            </ChipRow>
           )}
-        </div>
-      )}
-
-      {!hidden('domain') && (
-        <div>
-          <FieldLabel>Domain</FieldLabel>
-          <PillGroup options={DOMAINS} value={form.domain} onChange={v => patch({ domain: v })} locked={locked('domain')} />
         </div>
       )}
 
@@ -127,7 +139,9 @@ export function TaskTab({ form, patch, config, gcalAvailable, calendarLinked, ex
       {(!hidden('dueDate') || !hidden('dueTime')) && (
         <>
           <SectionDivider>Deadline</SectionDivider>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {/* Date and "+ Set a time" share a row even on a phone; a set time (with
+              its ±30m buttons and clear) needs the full width there. */}
+          <div className={`grid gap-3 sm:grid-cols-2 sm:gap-4 ${form.dueTime ? 'grid-cols-1' : 'grid-cols-2'}`}>
             {!hidden('dueDate') && (
               <div>
                 <FieldLabel>Due date</FieldLabel>

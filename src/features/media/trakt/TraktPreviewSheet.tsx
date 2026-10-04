@@ -77,13 +77,15 @@ function Body({ p }: { p: TraktPreview }) {
         <Row tone="warn" label="Wishlist here, not on the Trakt watchlist (sent)" count={p.watchlist.push.length} items={p.watchlist.push} />
         <Row tone="neutral" label="On the watchlist but already watched (leaves the watchlist)" count={p.watchlist.skippedWatched} />
         <Row tone="info" label="Ratings to take from Trakt" count={p.ratings.update.length} items={p.ratings.update} />
+        <Row tone="neutral" label="Rated on Trakt only — title not in the library, rating not imported" count={p.ratings.skipped.length} items={p.ratings.skipped} />
         <Row tone="warn" label="Rated here, not on Trakt (sent)" count={p.ratings.push.length} items={p.ratings.push} />
         <Row tone="info" label="Shows to mark Dropped" count={p.dropped.add.length} items={p.dropped.add} />
         <Row tone="warn" label="Dropped here, not on Trakt (sent)" count={p.dropped.push.length} items={p.dropped.push} />
       </Section>
       <Section title="Also coming over">
-        <Row tone="success" label="Favorites" count={p.favorites.matched} />
-        <Row tone="success" label="Half-watched (Continue watching)" count={p.playback} />
+        <Row tone="success" label="Favorites (marked on titles in your library; yours sent to Trakt)" count={p.favorites.matched} />
+        <Row tone="success" label="Half-watched, not in your library (added as Watching)" count={p.playback.watching.length} items={p.playback.watching} />
+        <Row tone="neutral" label="Half-watched, nothing to add (shown live in Continue watching)" count={p.playback.live} />
         <Row tone="danger" label="No TMDB match — picked by hand later" count={p.unmatched.length} items={p.unmatched} />
       </Section>
     </div>
@@ -96,7 +98,7 @@ export function TraktPreviewSheet({ open, onClose }: { open: boolean; onClose: (
   const runImport = async () => {
     const ok = await entityModal.confirm({
       title: 'Import from Trakt now?',
-      message: 'Your library takes everything Trakt holds (Trakt wins where both have a value), and what only the app holds is sent to Trakt. Watched or watching titles leave the watchlist on both sides. Safe to run again.',
+      message: 'Your library takes everything Trakt holds (Trakt wins where both have a value), and what only the app holds is sent to Trakt. Watched or watching titles leave the watchlist on both sides. Changes waiting to go to Trakt are sent first. Automatic sync starts once this has finished. Safe to run again.',
       confirmLabel: 'Import',
     })
     if (!ok) return

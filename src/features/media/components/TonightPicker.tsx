@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Dices, Film, Shuffle, Tv } from 'lucide-react'
-import { Button, Card, CardHeader, IconButton, SegmentedControl } from '../../../shared/ui'
+import { Button, IconButton, SegmentedControl } from '../../../shared/ui'
+import { CollapsibleCard } from './CollapsibleCard'
 import { posterUrl } from '../../../integrations/tmdb/client'
 import { haptic } from '../../../shared/utils/haptics'
 import {
@@ -169,8 +170,8 @@ export function TonightPicker({ movieEntries, tvEntries, onOpenDetail }: Props) 
   }
 
   return (
-    <Card>
-      <CardHeader title="What to watch?" icon={<Dices />} />
+    // Closed on a phone or tablet (one tap away above Discover); open from the laptop, in its own column.
+    <CollapsibleCard title="What to watch?" icon={<Dices />} openFrom={2}>
       <SegmentedControl<Source>
         value={source}
         onChange={s => { haptic('light'); setSource(s); setMoviePick(null); setTvPick(null) }}
@@ -207,6 +208,6 @@ export function TonightPicker({ movieEntries, tvEntries, onOpenDetail }: Props) 
         <PickRow type="movie" pick={moviePick} shaking={shaking === 'movie'} onRoll={() => roll('movie')} onOpenDetail={onOpenDetail} />
         <PickRow type="tv" pick={tvPick} shaking={shaking === 'tv'} onRoll={() => roll('tv')} onOpenDetail={onOpenDetail} />
       </div>
-    </Card>
+    </CollapsibleCard>
   )
 }

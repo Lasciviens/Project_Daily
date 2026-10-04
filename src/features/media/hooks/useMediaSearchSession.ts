@@ -12,7 +12,7 @@ const SEARCH_STATE = { mediaSearch: true }
  * a reload and Back/forward.
  *  - The first letter pushes ONE history entry (tagged in its state); Back,
  *    ✕, Esc or the Overview tab pop exactly that entry — never a second one.
- *  - Deleting every letter keeps the session (no flip back to the overview).
+ *  - Deleting every letter ends the session: the overview comes back.
  *  - Leaving the session puts the overview back at the top.
  */
 export function useMediaSearchSession() {
@@ -31,7 +31,7 @@ export function useMediaSearchSession() {
     if (navType === 'POP' || !inSearch) setText(urlQuery)
   }
 
-  const settled = useDebouncedValue(text, 300)
+  const settled = useDebouncedValue(text, 200)
   useEffect(() => {
     if (!inSearch || settled === urlQuery) return
     setParams(p => { const next = new URLSearchParams(p); next.set('q', settled); return next }, { replace: true, state: location.state })
@@ -47,6 +47,7 @@ export function useMediaSearchSession() {
   }, [inSearch])
 
   const change = (v: string) => {
+    if (inSearch && !v.trim()) { leave(); return }
     setText(v)
     if (!inSearch && v.trim()) {
       setParams(p => { const next = new URLSearchParams(p); next.set('q', v); return next }, { state: SEARCH_STATE })
@@ -59,5 +60,5 @@ export function useMediaSearchSession() {
     else setParams(p => { const next = new URLSearchParams(p); next.delete('q'); return next }, { replace: true })
   }
 
-  return { text, settled: settled.trim(), inSearch, change, leave }
+  return { text, settled: settled.trim(), pending: settled.trim() !== text.trim(), inSearch, change, leave }
 }

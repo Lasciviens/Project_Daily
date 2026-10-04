@@ -19,8 +19,8 @@ export function AddToListMenu({ type, tmdb, title }: { type: 'movie' | 'show'; t
     <>
     {naming && <NewListDialog items={[item]} onClose={() => setNaming(false)} />}
     <Menu>
-      <MenuButton className="btn-ghost btn-sm" onClick={() => setOpen(true)}>
-        <ListPlus aria-hidden className="h-4 w-4" /> Add to list
+      <MenuButton className="btn-ghost btn-sm" aria-label="Add to list" onClick={() => setOpen(true)}>
+        <ListPlus aria-hidden className="h-4 w-4" /> <span className="sm:hidden">List</span><span className="hidden sm:inline">Add to list</span>
       </MenuButton>
       <MenuItems
         anchor={{ to: 'bottom start', gap: 6, padding: 12 }}

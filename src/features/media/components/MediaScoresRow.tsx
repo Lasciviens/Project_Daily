@@ -27,10 +27,10 @@ function Tile({ mark, value, sub, title, href }: {
     <>
       <span className="flex h-4 items-center">{mark}</span>
       <span className="text-title font-semibold text-fg tabular-nums">{value}</span>
-      <span className="text-micro text-fg-muted">{sub}</span>
+      <span className="whitespace-nowrap text-micro text-fg-muted">{sub}</span>
     </>
   )
-  const cls = 'flex min-h-[44px] flex-col items-center justify-center gap-0.5 rounded-row border border-line bg-surface-2 px-2 py-1.5 text-center'
+  const cls = 'flex min-h-[44px] min-w-0 flex-col items-center justify-center gap-0.5 rounded-row border border-line bg-surface-2 px-1 py-1.5 text-center'
   return href
     ? <a href={href} target="_blank" rel="noreferrer" title={title} className={`${cls} hover:border-line-strong`}>{body}</a>
     : <div title={title} className={cls}>{body}</div>
@@ -47,7 +47,9 @@ export function MediaScoresRow({ mediaType, tmdbId, stored }: {
   if (rt == null && aud == null && mc == null && imdb == null && lb == null) return null
 
   return (
-    <div className="grid max-w-xl grid-cols-[repeat(auto-fill,minmax(5.5rem,1fr))] gap-1.5">
+    // One row at every width (at most five tiles; ~4.3rem each at 393px) — the
+    // old 5.5rem auto-fill put five tiles on two rows on a phone.
+    <div className="grid max-w-xl auto-cols-fr grid-flow-col gap-1.5">
       {imdb != null && <Tile mark={<ImdbMark />} value={imdb.toFixed(1)} sub="out of 10" title="IMDb rating (out of 10)" />}
       {rt != null && (
         <Tile mark={<Emoji>{rt >= 60 ? '🍅' : '🤢'}</Emoji>} value={`${rt}%`} sub={rt >= 60 ? 'Fresh' : 'Rotten'}

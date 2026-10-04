@@ -83,6 +83,26 @@ const ls = (tmdbId, status = 'watching', rating = null) => ({ tmdbId, title: `S$
   ok(p.dropped.push.map(t => t.tmdbId), [23], 'dropped here only → sent')
 }
 
+// What the import really does: rating-only titles, half-watched titles, Dropped movies
+{
+  const pb = (item, progress = 40) => ({ item, season: item.type === 'show' ? 1 : null, episode: item.type === 'show' ? 2 : null, progress, pausedAt: null })
+  const p = buildTraktPreview(snap({
+    ratings: [{ item: movie(40), rating: 8, ratedAt: null }, { item: movie(41), rating: 6, ratedAt: null }, { item: show(42), rating: 7, ratedAt: null }],
+    playback: [pb(movie(41)), pb(movie(43)), pb(movie(44)), pb(show(45)), pb(show(46)), pb(show(46))],
+    watchedMovies: [{ item: movie(44), plays: 1, lastWatchedAt: null }, { item: movie(47), plays: 1, lastWatchedAt: null }],
+    watchlist: [{ item: movie(43), rank: 1, listedAt: null }],
+  }), lib({ shows: [ls(46)], movies: [lm(44), lm(47, 'dropped')] }))
+  ok(p.ratings.skipped.map(t => t.tmdbId), [40, 42], 'a rating on a title that comes in no other way is not imported')
+  ok(p.ratings.update.map(t => t.tmdbId), [41], 'a rating on a half-watched title comes with it')
+  ok(p.playback.watching.map(t => t.tmdbId).sort((a, b) => a - b), [41, 43, 45], 'half-watched titles not in the library come in as Watching')
+  ok(p.playback.live, 3, 'the rest (watched movie, show already here ×2) stays live in Continue watching')
+  ok(p.watchlist.skippedWatched, 1, 'a half-watched watchlist title leaves the watchlist (watching beats wishlist)')
+  ok(p.movies.update.some(u => u.tmdbId === 47), false, 'a Dropped movie with plays on Trakt stays Dropped (no change)')
+  const r = previewReport(p, '03.10.2026 10:00')
+  ok(r.includes('Rated on Trakt only, title not imported: 2'), true, 'report says which ratings are not imported')
+  ok(r.includes('Half-watched, added as Watching: 3'), true, 'report says what Continue watching adds')
+}
+
 // Identity guards
 {
   const noTmdb = { type: 'movie', ids: { trakt: 5, slug: null, tmdb: null, imdb: 'tt1', tvdb: null }, title: 'Odd', year: null }

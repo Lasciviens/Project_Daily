@@ -10,6 +10,10 @@ import type { LocalLibrary, LocalMovie, LocalShow, TraktItem, TraktSnapshot } fr
 //   · app-only facts are listed as "to send to Trakt", never dropped
 //   · plays = 1 + repeat_count
 //   · watched or watching beats wishlist on both sides
+//   · it counts only what the import really does: a rating on a title that
+//     comes in no other way is not imported, and only half-watched titles not
+//     in the library come in (as Watching) — the rest of Continue watching is
+//     read live, never stored
 
 export interface PreviewTitle { kind: 'movie' | 'show'; title: string; year: number | null; tmdbId: number | null }
 export interface PreviewChange extends PreviewTitle { detail: string }
@@ -19,10 +23,12 @@ export interface TraktPreview {
   shows: { add: PreviewTitle[]; update: PreviewChange[]; same: number; push: PreviewTitle[] }
   episodes: { add: number; push: number; playsChanged: number; same: number }
   watchlist: { add: PreviewTitle[]; same: number; push: PreviewTitle[]; skippedWatched: number }
-  ratings: { update: PreviewChange[]; same: number; push: PreviewTitle[] }
+  /** `skipped`: rated on Trakt, but the title isn't in the library and doesn't come in any other way. */
+  ratings: { update: PreviewChange[]; same: number; push: PreviewTitle[]; skipped: PreviewTitle[] }
   favorites: { total: number; matched: number }
   dropped: { add: PreviewTitle[]; same: number; push: PreviewTitle[] }
-  playback: number
+  /** Half-watched on Trakt: `watching` come in as Watching; `live` are only shown in Continue watching. */
+  playback: { watching: PreviewTitle[]; live: number }
   unmatched: PreviewTitle[]
   /** Local rows sharing one TMDB id — should always be 0 (the catalogue refuses them). */
   duplicateLocal: number
@@ -63,7 +69,8 @@ export function buildTraktPreview(snap: TraktSnapshot, local: LocalLibrary): Tra
     const l = movies.map.get(id)
     if (!l) { m.add.push(title(w.item)); continue }
     const changes: string[] = []
-    if (l.status !== 'completed') changes.push(`${l.status} → completed`)
+    // Plays on Trakt make it Completed; a Dropped movie stays Dropped.
+    if (l.status !== 'completed' && l.status !== 'dropped') changes.push(`${l.status} → completed`)
     if (plays(l.repeatCount) !== w.plays) changes.push(`plays ${plays(l.repeatCount)} → ${w.plays}`)
     if (changes.length) m.update.push({ ...title(w.item), detail: changes.join(', ') })
     else m.same++
@@ -109,6 +116,20 @@ export function buildTraktPreview(snap: TraktSnapshot, local: LocalLibrary): Tra
     }
   }
 
+  // ── Half-watched (Continue watching) ───────────────────────────────────────
+  const pbWatching = new Map<string, PreviewTitle>()
+  let pbLive = 0
+  for (const p of snap.playback) {
+    if (noTmdb(p.item)) { pbLive++; continue }
+    const id = p.item.ids.tmdb!
+    const key = `${p.item.type}:${id}`
+    const entersAsWatching = p.progress > 0 && (p.item.type === 'movie'
+      ? !traktWatchedMovies.has(id) && (!movies.map.has(id) || movies.map.get(id)!.status === 'wishlist')
+      : !traktWatchedShows.has(id) && !shows.map.has(id))
+    if (entersAsWatching) pbWatching.set(key, title(p.item))
+    else if (!pbWatching.has(key)) pbLive++
+  }
+
   // ── Watchlist ──────────────────────────────────────────────────────────────
   const wl: TraktPreview['watchlist'] = { add: [], same: 0, push: [], skippedWatched: 0 }
   const traktListed = new Set<string>()
@@ -119,7 +140,7 @@ export function buildTraktPreview(snap: TraktSnapshot, local: LocalLibrary): Tra
     const l = w.item.type === 'movie' ? movies.map.get(id) : shows.map.get(id)
     const watchedOnTrakt = w.item.type === 'movie' ? traktWatchedMovies.has(id) : traktWatchedShows.has(id)
     // Watched or watching beats wishlist: it leaves the Trakt watchlist instead.
-    if (!l && watchedOnTrakt) wl.skippedWatched++
+    if (!l && (watchedOnTrakt || pbWatching.has(`${w.item.type}:${id}`))) wl.skippedWatched++
     else if (!l) wl.add.push(title(w.item))
     else if (l.status === 'wishlist') wl.same++
     // Already watched here: watched wins, the entry leaves the Trakt watchlist.
@@ -129,12 +150,20 @@ export function buildTraktPreview(snap: TraktSnapshot, local: LocalLibrary): Tra
   for (const l of shows.map.values()) if (l.status === 'wishlist' && !localEps.get(l.tmdbId)?.size && !traktListed.has(`show:${l.tmdbId}`)) wl.push.push(localTitle('show', l))
 
   // ── Ratings ────────────────────────────────────────────────────────────────
-  const r: TraktPreview['ratings'] = { update: [], same: 0, push: [] }
+  // A title the import creates: watched or listed on Trakt, half-watched, or dropped (shows).
+  const comesIn = (i: TraktItem) => {
+    const id = i.ids.tmdb!
+    if (i.type === 'movie') return movies.map.has(id) || traktWatchedMovies.has(id) || traktListed.has(`movie:${id}`) || pbWatching.has(`movie:${id}`)
+    return shows.map.has(id) || traktWatchedShows.has(id) || traktListed.has(`show:${id}`) || pbWatching.has(`show:${id}`)
+      || snap.dropped.some(d => d.item.ids.tmdb === id)
+  }
+  const r: TraktPreview['ratings'] = { update: [], same: 0, push: [], skipped: [] }
   const traktRated = new Set<string>()
   for (const x of snap.ratings) {
     if (noTmdb(x.item)) continue
     const id = x.item.ids.tmdb!
     traktRated.add(`${x.item.type}:${id}`)
+    if (!comesIn(x.item)) { r.skipped.push(title(x.item)); continue }
     const l = x.item.type === 'movie' ? movies.map.get(id) : shows.map.get(id)
     const mine = l?.rating ?? null
     if (mine === x.rating) r.same++
@@ -155,15 +184,14 @@ export function buildTraktPreview(snap: TraktSnapshot, local: LocalLibrary): Tra
   }
   for (const l of shows.map.values()) if (l.status === 'dropped' && !traktDropped.has(l.tmdbId)) d.push.push(localTitle('show', l))
 
-  // ── Favorites + playback ───────────────────────────────────────────────────
+  // ── Favorites ──────────────────────────────────────────────────────────────
   const favMatched = snap.favorites.filter(f => !noTmdb(f.item)).length
-  for (const p of snap.playback) noTmdb(p.item)
 
   return {
     movies: m, shows: s, episodes: e, watchlist: wl, ratings: r,
     favorites: { total: snap.favorites.length, matched: favMatched },
     dropped: d,
-    playback: snap.playback.length,
+    playback: { watching: [...pbWatching.values()], live: pbLive },
     unmatched: [...unmatched.values()],
     duplicateLocal: movies.dupes + shows.dupes,
   }
@@ -205,13 +233,15 @@ export function previewReport(p: TraktPreview, readAt: string, perList = 15): st
   row('Wishlist here, not on Trakt watchlist', p.watchlist.push.length, p.watchlist.push)
   row('On watchlist, already watched (leaves it)', p.watchlist.skippedWatched)
   row('Ratings to take from Trakt', p.ratings.update.length, p.ratings.update)
+  row('Rated on Trakt only, title not imported', p.ratings.skipped.length, p.ratings.skipped)
   row('Rated here, not on Trakt', p.ratings.push.length, p.ratings.push)
   row('Shows to mark Dropped', p.dropped.add.length, p.dropped.add)
   row('Dropped here, not on Trakt', p.dropped.push.length, p.dropped.push)
   head('ALSO')
   row('Favorites (matched / total)', p.favorites.matched)
   lines.push(`    of ${p.favorites.total} on Trakt`)
-  row('Half-watched', p.playback)
+  row('Half-watched, added as Watching', p.playback.watching.length, p.playback.watching)
+  row('Half-watched, shown live in Continue watching only', p.playback.live)
   row('No TMDB match', p.unmatched.length, p.unmatched)
   return lines.join('\n')
 }

@@ -141,6 +141,7 @@ export interface TMDBSearchMovie {
   vote_average: number
   vote_count?: number
   original_language?: string
+  genre_ids?: number[]
   overview: string
 }
 
@@ -153,6 +154,7 @@ export interface TMDBSearchTV {
   vote_average: number
   vote_count?: number
   original_language?: string
+  genre_ids?: number[]
   overview: string
 }
 

@@ -75,7 +75,7 @@ export function CinemaVisits({ entry }: { entry: UserMovieEntry }) {
                   <span className="block text-meta text-fg-2 tabular-nums">{visitLine(v)}</span>
                   {v.note && <span className="block text-micro text-fg-muted">{v.note}</span>}
                 </span>
-                <span className="flex shrink-0 items-center gap-1 text-micro font-semibold text-accent-600"><PencilLine aria-hidden className="h-3.5 w-3.5" /> Details</span>
+                <span className="flex shrink-0 items-center gap-1 text-micro font-semibold text-accent-600"><PencilLine aria-hidden className="h-3.5 w-3.5" /> <span className="max-sm:sr-only">Details</span></span>
               </button>
             </li>
           ))}

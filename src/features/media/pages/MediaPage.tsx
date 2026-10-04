@@ -3,6 +3,8 @@ import { useSearchParams } from 'react-router-dom'
 import { MediaHeroArt } from '../components/MediaHeroArt'
 import { MediaSearch } from '../components/MediaSearch'
 import { MediaSearchResults } from '../components/MediaSearchResults'
+import { MediaTypePills } from '../components/MediaTypePills'
+import { useSearchTitles } from '../hooks/useTMDB'
 import { useMediaSearchSession } from '../hooks/useMediaSearchSession'
 import { DiscoveryTabs } from '../components/DiscoveryTabs'
 import { TonightPicker } from '../components/TonightPicker'
@@ -19,6 +21,7 @@ import { useTVSeries } from '../hooks/useTVSeries'
 import { useCinemaMovieIds } from '../hooks/useLibraryIndex'
 import { useEntityModal } from '../../../shared/modals'
 import { PageBoard, PageContainer, PageHeader, SegmentedControl } from '../../../shared/ui'
+import { useBreakpoint } from '../../../shared/hooks/useBreakpoint'
 import { MEDIA_BOARD, type MediaSection } from '../mediaBoard'
 import type { MediaType, OpenMediaDetail } from '../types'
 
@@ -43,6 +46,16 @@ export function MediaPage() {
 
   const search = useMediaSearchSession()
   const searching = view === 'overview' && search.inSearch
+  // Each type's result count rides on the type switch (the results read the same queries).
+  const searchedMovies = useSearchTitles('movie', searching && !search.pending ? search.settled : '')
+  const searchedTv = useSearchTitles('tv', searching && !search.pending ? search.settled : '')
+  const countOf = (r: typeof searchedMovies) => {
+    const n = r.data?.pages[0]?.total
+    return r.isError ? '!' : n == null ? '…' : n.toLocaleString('en-GB')
+  }
+  const searchCounts = searching && !search.pending && search.settled.trim()
+    ? { movie: countOf(searchedMovies), tv: countOf(searchedTv) }
+    : undefined
 
   // The Library view lives in the address (?view=library&status=…) so Back returns to the overview.
   const openLibrary = (b?: LibraryBucket) => setParams(p => {
@@ -72,6 +85,9 @@ export function MediaPage() {
   const openDetail: OpenMediaDetail = (tmdbId, mediaType, sequence) => modal.open({ kind: 'media', tmdbId, mediaType, sequence })
   const hasLibrary = movieEntries.length > 0 || tvEntries.length > 0
   const mediaType: MediaType = tab === 'movies' ? 'movie' : 'tv'
+  const setMediaType = (t: MediaType) => setTab(t === 'movie' ? 'movies' : 'tv')
+  const typePills = (counts?: Partial<Record<MediaType, string>>) => <MediaTypePills value={mediaType} onChange={setMediaType} counts={counts} />
+  const isPhone = useBreakpoint() === 'phone'
 
   const libraryLoading = moviesLoading || tvLoading
   const cinema = useCinemaMovieIds()
@@ -86,15 +102,20 @@ export function MediaPage() {
   const calendar = <ReleaseCalendar movieEntries={movieEntries} tvEntries={tvEntries} onOpenDetail={openDetail} loading={libraryLoading} />
 
   const sections: Record<MediaSection, ReactNode> = {
-    // A still film-strip motif sits behind the search + library card only.
+    // The search box is its own card (a still film-strip motif behind it);
+    // Continue watching is a separate card under it, hidden while searching.
     library: (
-      <section className="card relative p-4 sm:p-5">
-        <MediaHeroArt />
-        <div className="relative z-10 flex flex-col gap-4">
-          <MediaSearch value={search.text} onChange={search.change} onClear={search.leave} active={searching} />
-          {!searching && <ContinueWatching posters={posters} onOpenDetail={openDetail} />}
-        </div>
-      </section>
+      <div className="flex flex-col gap-4">
+        <section className="card relative p-3 sm:p-4">
+          <MediaHeroArt />
+          {/* One row from the tablet up; on a phone the type switch wraps under the box. */}
+          <div className="relative z-10 flex flex-wrap items-center gap-2">
+            <MediaSearch value={search.text} onChange={search.change} onClear={search.leave} active={searching} />
+            {typePills(searchCounts)}
+          </div>
+        </section>
+        {!searching && <ContinueWatching posters={posters} onOpenDetail={openDetail} />}
+      </div>
     ),
     // Your library: under search on a phone, in the right-hand column from the laptop.
     summary: !libraryLoading && hasLibrary
@@ -118,29 +139,25 @@ export function MediaPage() {
     ? {
         ...sections,
         tools: null,
-        discovery: <MediaSearchResults query={search.settled} mediaType={mediaType} onMediaTypeChange={t => setTab(t === 'movie' ? 'movies' : 'tv')} onOpenDetail={openDetail} onClear={search.leave} />,
+        discovery: <MediaSearchResults query={search.settled} pending={search.pending} mediaType={mediaType} onOpenDetail={openDetail} onClear={search.leave} />,
       }
     : sections
 
   return (
     <PageContainer>
+      {/* One control in the header; the Movies | TV switch sits with what it
+          scopes (the search card, the Library view). */}
       <PageHeader title="Media">
-        <div className="flex flex-wrap gap-2">
-          <SegmentedControl<Tab>
-            value={tab}
-            onChange={setTab}
-            options={[{ value: 'movies', label: 'Movies' }, { value: 'tv', label: 'TV' }]}
-          />
-          <SegmentedControl<View>
-            value={view}
-            onChange={setView}
-            options={[{ value: 'overview', label: 'Overview' }, { value: 'library', label: 'Library' }, { value: 'lists', label: 'Lists' }, { value: 'stats', label: 'Stats' }]}
-          />
-        </div>
+        <SegmentedControl<View>
+          value={view}
+          onChange={setView}
+          fullWidth={isPhone}
+          options={[{ value: 'overview', label: 'Overview' }, { value: 'library', label: 'Library' }, { value: 'lists', label: 'Lists' }, { value: 'stats', label: 'Stats' }]}
+        />
       </PageHeader>
 
       {view === 'library'
-        ? <LibraryView items={items} mediaType={mediaType} bucket={bucket} onBucketChange={setBucket} onOpenDetail={openDetail} />
+        ? <LibraryView items={items} mediaType={mediaType} typeSwitch={typePills()} bucket={bucket} onBucketChange={setBucket} onOpenDetail={openDetail} />
         : view === 'lists'
         ? <ListsView onOpenDetail={openDetail} />
         : view === 'stats'
