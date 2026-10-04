@@ -68,7 +68,10 @@ export function ReadingTab() {
       books: <BooksCard rows={byBook(windowEvents)} byId={byId} days={days} />,
       hours: empty ? null : <HoursCard grid={hourGrid(windowEvents)} days={days} />,
       // Seeded from the SAVED goal only (never the placeholder), so one tap cannot overwrite it.
-      goal: settings.isPlaceholderData ? <SkeletonCard /> : <GoalCard key={`${s.daily_minutes_goal}-${s.streak_min_minutes}`} settings={s} />,
+      goal: settings.isError
+        ? <Card><CardHeader title="Goal" variant="label" icon={<Target />} /><p className="text-meta text-fg-muted">Could not load your reading goal.</p>
+            <Button size="sm" className="mt-2" onClick={() => { void settings.refetch() }}>Try again</Button></Card>
+        : settings.isPlaceholderData ? <SkeletonCard /> : <GoalCard key={`${s.daily_minutes_goal}-${s.streak_min_minutes}`} settings={s} />,
     }} />
   )
 }

@@ -50,7 +50,10 @@ eq(s.bookPatch(base, { md5, title: 'Other' }).title, undefined, 'owner title kep
 eq(s.bookPatch({ ...base, author: null }, { md5, authors: 'Hamsun' }).author, 'Hamsun', 'empty author filled')
 eq(s.bookPatch(base, { md5, rating: 5 }).rating, 10, 'rating change applied')
 eq(s.bookPatch({ ...base, read_status: 'want', device_status: null }, { md5, percent: 0.3 }).read_status, 'reading', 'want with progress → reading')
-eq(s.bookPatch({ ...base, on_device: false }, { md5 }).on_device, true, 'seen again → on device')
+eq(s.bookPatch({ ...base, on_device: false }, { md5, on_device: true }).on_device, true, 'listed by the device again → on device')
+eq(s.bookPatch({ ...base, on_device: false }, { md5 }).on_device, undefined, 'a stats-only row does not say the book is on the device')
+eq(s.newBookRow({ md5 }).on_device, false, 'new from stats only → not on device')
+eq(s.newBookRow({ md5, on_device: true }).on_device, true, 'new from the library → on device')
 eq(s.bookPatch({ ...base, last_read_at: '2026-10-05T00:00:00.000Z' }, { md5, last_open: now - 86400 * 30 }).last_read_at, undefined, 'older last open ignored')
 
 ok(s.validateSync({ device_id: 'k', device_time: now, inventory_md5s: ['x'] }, now), 'bad inventory md5 refused')

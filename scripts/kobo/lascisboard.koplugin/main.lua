@@ -5,8 +5,8 @@ What it does, all by itself whenever Wi-Fi comes on (NetworkConnected):
   * sends new reading-statistics rows (KOReader's page_stat_data) and the
     books they belong to, from a cursor, in batches; the cursor only moves
     after the server answers 2xx, so statistics.sqlite3 itself is the outbox;
-  * once a day sends the whole library (Nickel's database + KOReader's
-    statistics + the history's sidecars) so unopened books appear too;
+  * once a day sends the whole library (Nickel's database, the history's
+    sidecars and a walk of the device) so unopened books appear too;
   * downloads the books waiting in the app's Send to Kobo inbox;
   * once a day (from 05:00) runs the News downloader's sync.
 
@@ -47,7 +47,8 @@ local AUTO_MIN_GAP = 600 -- seconds between two automatic runs
 -- Shared by every plugin instance (FileManager and Reader each make one).
 local state = {
     running = false,
-    last_auto = 0,
+    last_full = 0,   -- last file-browser run (library, downloads, news)
+    last_light = 0,  -- last reading-rows-only run (inside a book)
 }
 
 local settings_file = DataStorage:getSettingsDir() .. "/lascisboard.lua"
@@ -238,20 +239,22 @@ end
 
 --- Every book file under `dir` (depth-limited, hidden folders skipped).
 local function walk(dir, out, depth)
-    if depth > 5 then return end
+    if depth > 8 then return false end
     local ok, iter, dir_obj = pcall(lfs.dir, dir)
-    if not ok then return end
+    if not ok then return false end
+    local whole = true
     for name in iter, dir_obj do
         if name ~= "." and name ~= ".." and name:sub(1, 1) ~= "." then
             local path = dir .. "/" .. name
             local mode = lfs.attributes(path, "mode")
             if mode == "directory" then
-                walk(path, out, depth + 1)
+                if walk(path, out, depth + 1) == false then whole = false end
             elseif mode == "file" and core.isBookFile(name) then
                 out[#out + 1] = path
             end
         end
     end
+    return whole
 end
 
 --- The whole library, keyed by md5: Nickel's database (every sideloaded book,
@@ -332,7 +335,9 @@ function LascisBoard:collectLibrary(stats_books)
     if lfs.attributes("/mnt/onboard", "mode") ~= "directory" then
         complete, problem = false, "/mnt/onboard is not available"
     else
-        walk("/mnt/onboard", files, 0)
+        if walk("/mnt/onboard", files, 0) == false then
+            complete, problem = false, "Part of the Kobo's storage could not be read"
+        end
     end
     for _, path in ipairs(files) do
         if not by_path[path] then add(path, {}) end
@@ -392,7 +397,9 @@ function LascisBoard:sync(opts)
     if library then
         local list, md5s = {}, {}
         for md5, b in pairs(library) do
-            list[#list + 1] = core.cleanBook(b)
+            local row = core.cleanBook(b)
+            row.on_device = true -- only library rows say a book is on the device
+            list[#list + 1] = row
             md5s[#md5s + 1] = md5
         end
         while #list > 0 do
@@ -402,7 +409,7 @@ function LascisBoard:sync(opts)
             if not res then return fail(err) end
         end
         if complete then inventory_md5s = rapidjson.array(md5s) end
-        if problem then self:save("last_error", { at = now, message = problem .. " — books not seen were left as they are." }) end
+
     end
 
     -- 2. Reading rows from the cursor. The first batch re-reads a day before the
@@ -438,13 +445,15 @@ function LascisBoard:sync(opts)
         if batch_max then from = batch_max end
         conf = openSettings()
         conf:saveSetting("cursor", cursor)
-        if first and library then conf:saveSetting("last_inventory", now) end
+        -- An incomplete list is retried at the next run, not in 20 hours.
+        if first and library and complete then conf:saveSetting("last_inventory", now) end
         conf:flush()
         first = false
         if last then break end
     end
     if conn then conn:close() end
-    local summary = { at = now, sent = sent, new_events = new_events, requests = requests, library = library ~= nil }
+    local summary = { at = now, sent = sent, new_events = new_events, requests = requests,
+        library = library ~= nil and complete, problem = problem and (problem .. " — the library list was not applied.") or nil }
     self:save("last_sync", summary)
     return summary
 end
@@ -477,14 +486,16 @@ function LascisBoard:downloadInbox()
     if not self:secret() then return 0 end
     local dir = self:inboxDir()
     if lfs.attributes(dir, "mode") ~= "directory" then util.makePath(dir) end
-    local done = 0
+    local done, failed = 0, {}
     for _ = 1, 10 do
         local res, err = self:callJson("GET", "/inbox")
         if not res then return done > 0 and done or nil, err end
         local items = res.items or {}
         if #items == 0 then break end
-        local progressed = false
+        local progressed, fresh = false, 0
         for _, item in ipairs(items) do
+          if not failed[item.id] then
+            fresh = fresh + 1
             local target, already = inboxTarget(dir, item)
             if target and not already then
                 local part = target .. ".part"
@@ -495,18 +506,25 @@ function LascisBoard:downloadInbox()
                     already = true
                 else
                     os.remove(part)
+                    failed[item.id] = true
                     logger.warn("LascisBoard: download failed", item.id, code, size)
+                    self:save("last_error", { at = os.time(), message = T(_("Could not download “%1” (it stays in the inbox)."), item.title or item.filename or "?") })
                 end
+            elseif not target then
+                failed[item.id] = true
             end
             if already then
                 local ok = self:callJson("POST", "/deliveries/" .. item.id .. "/ack", {})
                 if ok then
                     done = done + 1
                     progressed = true
+                else
+                    failed[item.id] = true
                 end
             end
+          end
         end
-        if not progressed then break end
+        if fresh == 0 or not progressed then break end
     end
     if done > 0 and self.ui and self.ui.file_chooser then
         pcall(function() self.ui.file_chooser:refreshPath() end)
@@ -533,16 +551,21 @@ end
 function LascisBoard:runAuto(reason)
     if state.running or not self:secret() then return end
     local now = os.time()
-    if now - state.last_auto < AUTO_MIN_GAP then return end
-    state.last_auto = now
-    state.running = true
     local reading = self.ui.document ~= nil
+    -- Inside a book only reading rows go out; the file browser keeps its own
+    -- clock, so a light run never delays the library and downloads.
+    local key = reading and "last_light" or "last_full"
+    if now - state[key] < AUTO_MIN_GAP then return end
+    state[key] = now
+    state.running = true
     local ok, err = pcall(function()
         if self:isOn("auto_sync") then
             local summary, e = self:sync({ light = reading })
             if not summary then
                 logger.warn("LascisBoard: sync failed", reason, e)
                 self:save("last_error", { at = now, message = tostring(e) })
+            elseif summary.problem then
+                self:save("last_error", { at = now, message = summary.problem })
             end
         end
         -- Downloads never run behind an open book.
@@ -576,14 +599,20 @@ function LascisBoard:runManual(opts)
         local books
         if ok and summary then books = self:downloadInbox() end
         state.running = false
-        state.last_auto = os.time()
+        state.last_light = os.time()
+        if not self.ui.document then state.last_full = os.time() end
         UIManager:close(msg)
         if not ok then err = tostring(summary) summary = nil end
         if summary then
             local text = T(_("Synced.\n%1 new reading rows (%2 sent)."), summary.new_events, summary.sent)
             if summary.library then text = text .. "\n" .. _("Library sent.") end
+            if summary.problem then text = text .. "\n" .. summary.problem end
             if books and books > 0 then text = text .. "\n" .. T(_("%1 new book(s) downloaded."), books) end
-            self:save("last_error", nil)
+            if summary.problem then
+                self:save("last_error", { at = os.time(), message = summary.problem })
+            else
+                self:save("last_error", nil)
+            end
             UIManager:show(InfoMessage:new{ text = text, timeout = 5 })
         else
             self:save("last_error", { at = os.time(), message = tostring(err) })
@@ -608,7 +637,7 @@ function LascisBoard:onCloseDocument()
             state.running = true
             local ok, err = pcall(plugin.sync, plugin, { no_flush = true, light = true })
             state.running = false
-            state.last_auto = os.time()
+            state.last_light = os.time()
             if not ok then logger.warn("LascisBoard: close sync failed", err) end
         end)
     end

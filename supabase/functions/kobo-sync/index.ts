@@ -234,6 +234,8 @@ interface SyncBook {
   last_open?: number | null               // epoch seconds
   read_time?: number | null               // seconds, KOReader's book.total_read_time
   read_pages?: number | null
+  /** Set only on library rows (the device listing what is on it); rows sent with page events leave it out. */
+  on_device?: boolean
 }
 
 interface SyncBody {
@@ -395,7 +397,8 @@ function newBookRow(b: SyncBook): Omit<BookRowLike, never> & { title: string } {
     read_pages: int(b.read_pages, 0, 1e7),
     device_status: str(b.status, 20),
     device_rating: rating,
-    on_device: true,
+    // A book first seen through old reading statistics may be long gone from the Kobo.
+    on_device: b.on_device === true,
   }
 }
 
@@ -424,7 +427,7 @@ function bookPatch(existing: BookRowLike, b: SyncBook): Partial<BookRowLike> {
   if (next.last_read_at && (!existing.last_read_at || Date.parse(next.last_read_at) > Date.parse(existing.last_read_at))) patch.last_read_at = next.last_read_at
   if (next.read_seconds !== null && next.read_seconds !== numOrNull(existing.read_seconds)) patch.read_seconds = next.read_seconds
   if (next.read_pages !== null && next.read_pages !== numOrNull(existing.read_pages)) patch.read_pages = next.read_pages
-  if (!existing.on_device) patch.on_device = true
+  if (!existing.on_device && b.on_device === true) patch.on_device = true
 
   const incoming = str(b.status, 20)
   if (incoming && incoming !== existing.device_status) {
@@ -581,13 +584,18 @@ async function handleInbox(db: Db, userId: string) {
   await sweep(db, userId)
   const { data, error } = await db.from('book_deliveries')
     .select('id, storage_path, filename, mime, size_bytes, title, author, created_at')
-    .eq('user_id', userId).eq('status', 'queued').order('created_at', { ascending: true }).limit(5)
+    .eq('user_id', userId).eq('status', 'queued').order('created_at', { ascending: true }).limit(20)
   if (error) throw error
   const items = []
   for (const row of data ?? []) {
+    if (items.length >= 5) break
     const name = safeFileName(row.filename)
     const { data: signed, error: signError } = await db.storage.from(BUCKET).createSignedUrl(row.storage_path, 600, { download: name })
-    if (signError || !signed?.signedUrl) continue
+    if (signError || !signed?.signedUrl) {
+      // The file is gone (or never arrived): retire the row so it cannot block the queue.
+      await db.from('book_deliveries').update({ status: 'expired' }).eq('id', row.id)
+      continue
+    }
     items.push({ id: row.id, filename: name, title: displayTitle(row), author: row.author, size: row.size_bytes, mime: row.mime, url: signed.signedUrl })
   }
   return { items }
@@ -658,7 +666,7 @@ Deno.serve(async req => {
         .order('created_at', { ascending: false }).limit(200)
       if (error) throw error
       // A book the plugin already saved is not offered again (no second copy).
-      const rows = (data ?? []).filter((r: { status: string; device_id: string | null }) => !(r.status === 'downloaded' && r.device_id))
+      const rows = (data ?? []).filter((r: { status: string; device_id: string | null }) => !(r.status === 'downloaded' && r.device_id != null))
       const entries = feedEntries(rows, Date.now())
       const etag = feedEtag(entries)
       await touchState(db, userId, { last_feed_at: new Date().toISOString() })

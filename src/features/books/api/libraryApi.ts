@@ -72,8 +72,7 @@ export async function mergeBooks(survivor: Book, loser: Book): Promise<void> {
   for (const k of ['author', 'series', 'series_index', 'language', 'isbn', 'publisher', 'published_year', 'description', 'page_count', 'cover_url', 'review', 'notes', 'rating', 'started_at', 'finished_at'] as const) {
     if (survivor[k] == null && loser[k] != null) (fill as Record<string, unknown>)[k] = loser[k]
   }
-  // The device keys move to the survivor (after the loser is gone — the md5 is
-  // unique), so the Kobo's next sync updates the survivor instead of re-creating
+  // The device keys move to the survivor, so the Kobo's next sync updates the survivor instead of re-creating
   // the deleted row.
   const keys: Record<string, unknown> = {}
   if (!survivor.koreader_md5 && loser.koreader_md5) {
@@ -82,11 +81,15 @@ export async function mergeBooks(survivor: Book, loser: Book): Promise<void> {
     if (!survivor.file_path) keys.file_path = loser.file_path
   }
   if (Object.keys(fill).length) await updateBook(survivor.id, fill)
-  await deleteBook(loser.id)
+  // Order matters: free the md5 on the loser, give it to the survivor, then
+  // delete the loser — a failure part-way never leaves the Kobo's key unowned.
   if (Object.keys(keys).length) {
+    const { error: e3 } = await supabase.from('books').update({ koreader_md5: null }).eq('id', loser.id)
+    if (e3) fail(e3)
     const { error: e4 } = await supabase.from('books').update(keys).eq('id', survivor.id)
     if (e4) fail(e4)
   }
+  await deleteBook(loser.id)
 }
 
 /** Page events since `fromIso` (paged past PostgREST's 1,000-row cap). */

@@ -26,8 +26,6 @@ local b = core.mergeBook({ title = "A", status = "reading" }, { title = "B", aut
 eq(b.title, "A", "first title wins"); eq(b.authors, "X", "gap filled"); eq(b.status, "reading", "nickel status does not override")
 local c = core.mergeBook({ title = "A", status = "complete" }, { status = "reading", _sidecar = true })
 eq(c.status, "reading", "sidecar status wins")
-eq(core.opdsStyleName("Rowling", "HP: 3", "epub"), "Rowling - HP_ 3.epub", "opds name")
-eq(core.opdsStyleName(nil, "T", "pdf"), "T.pdf", "no author")
 eq(core.cleanBook({ md5 = "x", _sidecar = true }).md5, "x", "clean keeps"); eq(core.cleanBook({ _sidecar = true })._sidecar, nil, "clean drops")
 local t = os.time({ year = 2026, month = 10, day = 5, hour = 4, min = 59 })
 eq(core.newsDue("2026-10-04", t), false, "before 05:00")

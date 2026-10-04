@@ -77,14 +77,6 @@ function M.newsDue(last_day, now)
     return hour >= 5 and last_day ~= M.dayKey(now)
 end
 
---- A file name like the OPDS catalogue would use ("Author - Title.epub").
-function M.opdsStyleName(author, title, ext)
-    if not title or title == "" then return nil end
-    local base = (author and author ~= "") and (author .. " - " .. title) or title
-    base = base:gsub('[/\\:%*%?"<>|]', "_")
-    return base .. "." .. (ext or "epub")
-end
-
 --- Strips the "_lasci" bookkeeping keys before a book is sent.
 function M.cleanBook(b)
     local out = {}

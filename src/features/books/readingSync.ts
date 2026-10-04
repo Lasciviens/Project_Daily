@@ -35,6 +35,8 @@ export interface SyncBook {
   last_open?: number | null               // epoch seconds
   read_time?: number | null               // seconds, KOReader's book.total_read_time
   read_pages?: number | null
+  /** Set only on library rows (the device listing what is on it); rows sent with page events leave it out. */
+  on_device?: boolean
 }
 
 export interface SyncBody {
@@ -196,7 +198,8 @@ export function newBookRow(b: SyncBook): Omit<BookRowLike, never> & { title: str
     read_pages: int(b.read_pages, 0, 1e7),
     device_status: str(b.status, 20),
     device_rating: rating,
-    on_device: true,
+    // A book first seen through old reading statistics may be long gone from the Kobo.
+    on_device: b.on_device === true,
   }
 }
 
@@ -225,7 +228,7 @@ export function bookPatch(existing: BookRowLike, b: SyncBook): Partial<BookRowLi
   if (next.last_read_at && (!existing.last_read_at || Date.parse(next.last_read_at) > Date.parse(existing.last_read_at))) patch.last_read_at = next.last_read_at
   if (next.read_seconds !== null && next.read_seconds !== numOrNull(existing.read_seconds)) patch.read_seconds = next.read_seconds
   if (next.read_pages !== null && next.read_pages !== numOrNull(existing.read_pages)) patch.read_pages = next.read_pages
-  if (!existing.on_device) patch.on_device = true
+  if (!existing.on_device && b.on_device === true) patch.on_device = true
 
   const incoming = str(b.status, 20)
   if (incoming && incoming !== existing.device_status) {
