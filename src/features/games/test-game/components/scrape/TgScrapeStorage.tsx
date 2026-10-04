@@ -24,7 +24,7 @@ export function TgScrapeStorage({ budgetMb, enabled }: { budgetMb: number; enabl
   const cleanup = useCleanupStorage()
   const refreshSystems = useRefreshSystems()
   const [preview, setPreview] = useState<{ files: number; bytes: number } | null>(null)
-  const budget = Math.min(budgetMb, storage.data?.hard_cap_mb ?? 950) * 1024 * 1024
+  const budget = Math.min(budgetMb, storage.data?.hard_cap_mb ?? 850) * 1024 * 1024
 
   if (storage.isLoading) return <div className="tg-skeleton h-24 rounded-xl" aria-label="Loading storage" />
   if (storage.error || !storage.data) {

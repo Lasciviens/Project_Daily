@@ -42,7 +42,7 @@
 // The Free plan's 1 GB is a hard wall: over quota the project is eventually
 // locked (402 on every request — tasks, food, training, not only Games).
 // Nothing is copied without reading the bucket size first (game_media_usage,
-// migration 104) and staying under min(saved budget, 950 MB). The budget is
+// migration 104) and staying under min(saved budget, 850 MB). The budget is
 // always the SAVED one — a request cannot raise it. An image that would cross
 // it is kept online instead, and the result says so.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
@@ -59,7 +59,7 @@ const API = 'https://api.screenscraper.fr/api2'
 const SOFTNAME = 'lascisboard'
 const BUCKET = 'game-media'
 /** No copy is ever stored past this, whatever the saved budget says. */
-const HARD_CAP_MB = 950
+const HARD_CAP_MB = 850 // + the 150 MB Kobo inbox (migration 125) stays under the 1 GB wall
 /** Below this many requests (or failed-lookup allowance) left today, nothing
  *  starts: the handheld's own ES-DE scraping spends from the same account. */
 const QUOTA_FLOOR = 300

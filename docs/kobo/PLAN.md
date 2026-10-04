@@ -1600,6 +1600,23 @@ is unconfirmed.
   requests/day, 60/min.
   [hardcoverapp.koplugin](https://github.com/Billiam/hardcoverapp.koplugin)
 
+### 9.5.1 A simpler KOReader interface (owner, 04.10.2026: "the UI is confusing")
+
+Ready-made, installed like any plugin — **over SSH (`scp`), never by USB copy** (the fsck
+rename from Phase 0):
+- **Project: Title** ([joshuacant/ProjectTitle](https://github.com/joshuacant/ProjectTitle)) —
+  the most used: a commercial-reader-style library with cover grid/list, a short header and
+  footer. Releases are tied to an exact KOReader version (v3.8.3 for 2026.07.x). Disable
+  *Cover browser* first (🛠 → More tools → Plugin management), copy `projecttitle.koplugin`
+  into `.adds/koreader/plugins/`, enable it, restart. Undo: re-enable Cover browser.
+- **zen_ui.koplugin** ([AnthonyGress](https://github.com/AnthonyGress/zen_ui.koplugin)) and
+  **simpleui.koplugin** ([doctorhetfield-cmd](https://github.com/doctorhetfield-cmd/simpleui.koplugin)) —
+  minimal home screens with their own navigation bar.
+- **Koreader-Menu-customizer** ([JoeBumm](https://github.com/JoeBumm/Koreader-Menu-customizer)) —
+  hides menu items you never use; combines with any of the above.
+- Index of more: [awesome-koreader](https://github.com/jannick-holm/awesome-koreader).
+Our plugin only adds one menu entry, so it works with any of these.
+
 ### 9.6 Small delights, zero code
 
 - Chess against Stockfish, Wordle and Connections as KOReader plugins
@@ -1662,7 +1679,9 @@ is unconfirmed.
   - `.adds/` (KOReader, NickelMenu and, if used, KFMon);
   - `.kobo/KoboRoot.tgz` during an install;
   - one appended line in `.kobo/Kobo/Kobo eReader.conf` (`ExcludeSyncFolders`, §10.4);
-  - our plugin folder.
+  - our plugin folder;
+  - macOS's own housekeeping from §10.2 (`.fseventsd/no_log`, the Spotlight switch-off,
+    `dot_clean` of `._` files) — never book files or Kobo data.
 - **Reading data stays on the Mac.** `statistics.sqlite3`, sidecars and vocabulary may be
   inspected there, but never committed. Only structure notes and anonymised samples go
   into the repo.
@@ -1687,6 +1706,16 @@ is unconfirmed.
   4. Create `.adds/nm/koreader` containing
      `menu_item:main:KOReader:cmd_spawn:quiet:exec /mnt/onboard/.adds/koreader/koreader.sh`.
   5. Eject.
+- **Which files (checked 04.10.2026 against the GitHub release assets):**
+  - KOReader: **`koreader-kobo-v2026.07.1.zip`**, SHA256
+    `0f36a62ce73b12516f969e4ad7862cc06920afb03c7bd4db29a0d990bdd84b2f`. **Not** the
+    `koreader-kobov5-…` zip: that one is for Kobo's 5.x firmware line (PR #12401, "basic
+    support for the recent v5 line of Kobo firmwares", new userland and toolchain), and this
+    device runs 4.45.
+  - NickelMenu: `KoboRoot.tgz` from release v0.6.0, SHA256
+    `322ff9aa863860e8f5f7e0b55cae561c54bf95983b9bce1d19819d1225d064af`.
+  - If `[FeatureSettings]` already exists in `Kobo eReader.conf`, add the
+    `ExcludeSyncFolders` line under it instead of a second section.
 - **Evidence for 4.45 is mixed but workable:**
   - NickelMenu + KOReader were installed from macOS on a Libra Colour on 4.45.23697
     (04.09.2026).
@@ -1775,6 +1804,26 @@ and function deploys are manual; CLAUDE.md → Pending manual steps).
 
 ### Phase 1 — Books today, zero code (owner, same day)
 
+**Prepared 04.10.2026 (files checked by downloading them):**
+- Dictionaries, all StarDict, copied **over SSH** (`scp`, so the Kobo's Linux writes the
+  names and the fsck rename from Phase 0 can't happen) into
+  `.adds/koreader/data/dict/<name>/`:
+  - `dict-nb.zip` from `sinic/ordboekene-for-lesebrett` v0.1 — Bokmålsordboka, 93,492
+    words + 337,328 inflections, SHA256 `e09606e0…25ed45` (6,655,747 B). (`dicthtml-*` is
+    Kobo's own Nickel format, not for KOReader; `dict-nn.zip` is Nynorsk.)
+  - `nb-en.tar.zst` and `tr-en.tar.zst` from `xxyzz/wiktionary_stardict` release
+    20260928 (Wiktionary snapshot 01.09.2026, CC BY-SA 4.0): 28,432 and 27,511 words,
+    SHA256 `0e4ec7c7…f59893`/`cc759a49…fa528d` — see the Mac command for the full values.
+    Archives have a `./` root, so each is extracted into its own folder.
+  - **Not available ready-made:** English→Turkish (no `en-tr` build; the fono converter
+    needs Fono's CD-ROM data, so it is dropped) and TDK Güncel Türkçe Sözlük (a converter
+    only — `pip install Jinja2 pyglossary spylls`, `python gts.py -b 1` with
+    `gts.json.tar.gz` + `tr_TR.json.gz`; a later, optional build).
+- News: `.adds/koreader/news/feed_config.lua` (the News downloader's default download
+  dir) with Klar Tale `https://www.klartale.no/rss`, NRK `https://www.nrk.no/toppsaker.rss`
+  and BBC Türkçe `https://feeds.bbci.co.uk/turkce/rss.xml` — all three answered 200 with
+  RSS items on 04.10.2026.
+
 - The laptop push: calibre → *Start wireless device connection*; KOReader → *Calibre →
   Connect*. Set KOReader's calibre inbox folder.
 - Articles: link Instapaper in Nickel (More → My Articles).
@@ -1788,6 +1837,11 @@ and function deploys are manual; CLAUDE.md → Pending manual steps).
 - tapping *drakk* shows *drikke*.
 
 ### Phase 2 — Send to Kobo v1 (Claude, cloud; small)
+
+**Built 04.10.2026** (`claude/charming-newton-yhk8i`): migration `125_kobo_inbox.sql`,
+`kobo-sync`, `/books` (Send to Kobo, inbox list with cancel, one-time setup card), the
+Settings card and registry entry, the 850 MB game-media ceiling. Remaining: the owner steps
+below, then the gate.
 
 **Claude builds:**
 - A migration:
@@ -1836,6 +1890,12 @@ Shortcut, as a new C task on `docs/codex-shortcuts.md`.
 - Norwegian books have the right title and cover.
 
 ### Phase 4 — Reading tracker (Claude writes; the Mac session installs and tests; large)
+
+- **Morning news, automatic (owner's ask, 04.10.2026):** KOReader's News downloader has no
+  scheduler, no Dispatcher action and no Profiles auto-exec hook (checked in the 2026.07.1
+  source), so syncing is a manual tap today. Our plugin already runs on wake-up and on
+  `NetworkConnected`; it also calls the News downloader's sync once per day (first wake with
+  Wi-Fi after 05:00), so the morning EPUBs are there without a tap.
 
 **Plugin:** A, our own (the owner's choice, 30.09.2026; §12.4).
 
@@ -1952,7 +2012,41 @@ Answered on 30.09.2026. The answers are in §12.4.
   4.45.23697 that Kobo's update server was queried with; it is still offered 4.46.
 - Claude Code is installed on the Mac (§12.1 step 3 is partly done: cloning the repo and
   plugging in the Kobo are still to do).
-- Still to send: `391` or `395`, the KOReader version, and the Wi-Fi reboot test results.
+- **Model: P365 (product 395)** — device report, 04.10.2026. Per §1.1 a downgrade package
+  is never used on this model (the plan never downgrades anyway).
+- **Phase 0 progress (04.10.2026):** repo cloned on the Mac to `~/Project_Daily-fresh` (the
+  older `~/Project_Daily` holds unpushed September work and is left untouched); backup in
+  `~/KoboBackups/2026-10-04/` (195 files, 87 MB, `diff -rq` identical — rsync's exit 23 was
+  only the unreadable `.Spotlight-V100`); 9 epub + 2 kepub on the device, nothing installed.
+- **Installed (04.10.2026):** NickelMenu v0.6.0 (its entry showed after the reboot — the 4.45
+  risk in §10.4 did not happen here) and KOReader v2026.07.1 (`koreader-kobo`), the
+  `ExcludeSyncFolders` line (no `[FeatureSettings]` existed, so it was appended) and
+  `.adds/nm/koreader`. `ca-bundle.crt` is present (open question 3). Backups:
+  `2026-10-04`, `2026-10-04_18-52-43`, `2026-10-04_19-06-38`.
+- **Gotcha hit on the first launch (04.10.2026):** KOReader crashed ("module
+  'apps/filemanager/filemanagerbookinfo' not found"). The Kobo's own file-system check
+  (fsck, run on the reboot after the eject) had renamed 8 of the files macOS wrote to
+  `FSCK0000.000` — contents intact, names lost; all 8 sat in folders with many similarly
+  prefixed names, so the likely cause is the 8.3 short names macOS generates. Fix: copy the
+  8 back, delete the `FSCK0000.000` duplicates, let the Kobo run its check once more, then
+  verify (`find … -name 'FSCK*'` empty, `diff -rq` against the zip clean) before starting
+  KOReader. **If it ever recurs, install through a `KoboRoot.tgz` with
+  `mnt/onboard/.adds/koreader/…` paths** (built with `COPYFILE_DISABLE=1 tar --no-xattrs`),
+  so the Kobo writes the files itself. After any big copy from the Mac (plugin updates,
+  dictionaries), run the same `FSCK*` check.
+- **Wi-Fi tests passed** (10 toggles, restart with Wi-Fi on, sleep/wake: no reboot).
+- **SSH works (04.10.2026):** key `~/.ssh/kobo_ed25519` on the Mac, `Host kobo` in
+  `~/.ssh/config` (root, port 2222, 10.0.0.90), key in
+  `.adds/koreader/settings/SSH/authorized_keys`. KOReader's dropbear still accepts a root
+  password unless **SSH server → "Login with key only"** is ticked (it passes `-s`; can only
+  be changed while the server is stopped) — tick it.
+- `statistics.sqlite3` is in WAL mode: a copied file opens with
+  `sqlite3 'file:…?mode=ro&immutable=1'`, not `-readonly`. Copy it together with any
+  `-wal`/`-shm` files when they exist.
+- **Phase 0 gate passed (04.10.2026):** KOReader starts from NickelMenu; no reboot in the
+  Wi-Fi tests; SSH key-only (`dropbear … -s`, password refused); Statistics shows 1,316 s
+  over 2 books. Gotcha: plugging the cable in while KOReader runs with the SSH server on
+  shows "Filesystem is busy (dropbear)" — exit KOReader before a USB copy.
 
 **"Do I need to block firmware updates?" — no.**
 - Kobo can't be told to stop checking for updates while Nickel is on Wi-Fi, and that's

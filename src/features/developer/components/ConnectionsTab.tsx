@@ -1,7 +1,7 @@
 import { useState, useEffect, type ReactNode } from 'react'
 import { useGoogleLogin } from '@react-oauth/google'
 import { useCalendarStore } from '../../../app/store'
-import { CalendarDays, Bike, Gamepad2, Monitor, Dumbbell, HeartPulse, RefreshCw, Timer, Unplug } from 'lucide-react'
+import { BookOpen, CalendarDays, Bike, Gamepad2, Monitor, Dumbbell, HeartPulse, RefreshCw, Timer, Unplug } from 'lucide-react'
 import { exchangeGoogleCode, disconnectGoogle } from '../api/connectionsApi'
 import { Button, PageBoard } from '../../../shared/ui'
 import { formatDate, formatDateTime } from '../../../shared/utils/dateFormat'
@@ -21,6 +21,7 @@ import { CONNECTIONS_BOARD, type ConnectionSection } from '../developerBoards'
 import { OtherSubscriptions, SubscriptionSummary } from '../../settings/components/SubscriptionBits'
 import { ConnectionCard, type Status } from './ConnectionCard'
 import { TraktCard } from '../../media/trakt/TraktCard'
+import { useKoboFeedState } from '../../books/hooks/useBooks'
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  CONNECTIONS (Settings → Subscriptions) — the ONE place every external integration is connected,
@@ -259,8 +260,21 @@ function AppleHealthCard() {
   )
 }
 
+function KoboCard() {
+  const state = useKoboFeedState()
+  const last = state.data?.last_feed_at ?? null
+  return (
+    <ConnectionCard service="kobo" kind="server" icon={<BookOpen />} name="Kobo (Send to Kobo)"
+      description="Books you upload on the Books page wait here until KOReader downloads them from its OPDS catalogue."
+      status={state.isLoading ? 'unknown' : last ? 'connected' : 'disconnected'}
+      statusNote={!state.isLoading && !last ? 'Kobo has not checked in' : undefined}
+      details={[last && `Kobo last checked ${formatDateTime(last)}`, state.data?.last_download_at && `Last download ${formatDateTime(state.data.last_download_at)}`]}
+      footer="Needs KOBO_OPDS_TOKEN in Supabase Edge Function secrets and Vault, and the kobo-sync function deployed. The catalogue address is on the Books page." />
+  )
+}
+
 /** service_subscriptions keys that have a card here; the rest go under "Other subscriptions". */
-const CARD_SERVICES = ['google', 'strava', 'playstation', 'trakt', 'steam', 'igdb', 'hevy', 'apple_health'] as const
+const CARD_SERVICES = ['google', 'strava', 'playstation', 'trakt', 'steam', 'igdb', 'hevy', 'apple_health', 'kobo'] as const
 
 const ACCOUNTS_LABEL = 'Signed in by you'
 const SERVER_LABEL = 'Set up on the server'
@@ -274,6 +288,7 @@ export function ConnectionsTab() {
   const igdb = <IgdbCard />
   const hevy = <HevyCard />
   const health = <AppleHealthCard />
+  const kobo = <KoboCard />
   // Each step mounts a card once: on its own, or (server-side, from 1920)
   // inside the serverCards grid.
   const sections: Record<ConnectionSection, ReactNode> = {
@@ -287,14 +302,14 @@ export function ConnectionsTab() {
       </div>
     ),
     otherSubs: <OtherSubscriptions cardKeys={CARD_SERVICES} />,
-    google, strava, psn, trakt, steam, igdb, hevy, health,
+    google, strava, psn, trakt, steam, igdb, hevy, health, kobo,
     accountsLabel: <h2 className="section-label">{ACCOUNTS_LABEL}</h2>,
     serverLabel: <h2 className="section-label">{SERVER_LABEL}</h2>,
     // Short read-only cards of about the same height, so a row grid
     // is safe here (W2 card columns, 19–22rem).
     serverCards: (
       <section aria-label={SERVER_LABEL} className="grid grid-cols-[repeat(auto-fill,minmax(19rem,22rem))] items-start gap-4">
-        {steam}{igdb}{hevy}{health}
+        {steam}{igdb}{hevy}{health}{kobo}
       </section>
     ),
   }

@@ -36,7 +36,7 @@ const LANG_NAMES: Record<string, string> = {
   no: 'Norwegian', da: 'Danish', fi: 'Finnish', pl: 'Polish', ru: 'Russian', cz: 'Czech', sk: 'Slovak', hu: 'Hungarian',
   tr: 'Turkish', ja: 'Japanese', kr: 'Korean', zh: 'Chinese', tw: 'Chinese (Taiwan)',
 }
-const BUDGETS = [300, 400, 500, 600, 700, 800, 900, 950]
+const BUDGETS = [300, 400, 500, 600, 700, 800, 850]
 
 function Section({ title, note, children }: { title: string; note?: ReactNode; children: ReactNode }) {
   return (
@@ -123,7 +123,7 @@ export function TgScrapeSettings({ open, onClose }: { open: boolean; onClose: ()
 
   return (
     <TgScrapeDialog open={open} onClose={onClose} title="What to save" footer={footer} wide>
-      <Section title="Storage" note="Your Supabase plan has 1 GB for everything. Over it, the whole app is eventually locked — so nothing is copied past the budget below (never past 950 MB); those images are shown online instead.">
+      <Section title="Storage" note="Your Supabase plan has 1 GB for everything. Over it, the whole app is eventually locked — so nothing is copied past the budget below (never past 850 MB — the Kobo inbox keeps 150 MB); those images are shown online instead.">
         <TgScrapeStorage budgetMb={draft.budgetMb} enabled={open} />
         <div className="mt-3 flex items-center justify-between gap-3 text-[13px]">
           <span className="font-medium">Stop copying images at</span>
