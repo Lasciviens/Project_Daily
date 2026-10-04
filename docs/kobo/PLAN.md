@@ -1689,6 +1689,16 @@ is unconfirmed.
   4. Create `.adds/nm/koreader` containing
      `menu_item:main:KOReader:cmd_spawn:quiet:exec /mnt/onboard/.adds/koreader/koreader.sh`.
   5. Eject.
+- **Which files (checked 04.10.2026 against the GitHub release assets):**
+  - KOReader: **`koreader-kobo-v2026.07.1.zip`**, SHA256
+    `0f36a62ce73b12516f969e4ad7862cc06920afb03c7bd4db29a0d990bdd84b2f`. **Not** the
+    `koreader-kobov5-…` zip: that one is for Kobo's 5.x firmware line (PR #12401, "basic
+    support for the recent v5 line of Kobo firmwares", new userland and toolchain), and this
+    device runs 4.45.
+  - NickelMenu: `KoboRoot.tgz` from release v0.6.0, SHA256
+    `322ff9aa863860e8f5f7e0b55cae561c54bf95983b9bce1d19819d1225d064af`.
+  - If `[FeatureSettings]` already exists in `Kobo eReader.conf`, add the
+    `ExcludeSyncFolders` line under it instead of a second section.
 - **Evidence for 4.45 is mixed but workable:**
   - NickelMenu + KOReader were installed from macOS on a Libra Colour on 4.45.23697
     (04.09.2026).
