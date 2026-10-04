@@ -1,0 +1,37 @@
+-- Plain-Lua checks for lascisboard.koplugin/lbcore.lua:  lua5.1 scripts/kobo/test-lbcore.lua
+package.path = "scripts/kobo/lascisboard.koplugin/?.lua;" .. package.path
+local core = require("lbcore")
+local n = 0
+local function eq(a, b, msg)
+  n = n + 1
+  if a ~= b then error(("FAIL %s: expected %s, got %s"):format(msg, tostring(b), tostring(a))) end
+end
+eq(core.contentIdToPath("file:///mnt/onboard/Books/A%20B.epub"), "/mnt/onboard/Books/A B.epub", "decode path")
+eq(core.contentIdToPath("file:///mnt/onboard/Tutsağı.epub"), "/mnt/onboard/Tutsağı.epub", "utf8 path kept")
+eq(core.contentIdToPath("abc"), nil, "non-file id")
+eq(core.isBookFile("x.EPUB"), true, "epub upper")
+eq(core.isBookFile("x.kepub.epub"), true, "kepub")
+eq(core.isBookFile(".hidden.epub"), false, "hidden")
+eq(core.isBookFile("cover.jpg"), false, "jpg")
+eq(core.nickelStatus(2), "complete", "nickel finished")
+eq(core.nickelStatus("1"), "reading", "nickel reading")
+eq(core.nickelStatus(0), nil, "nickel unread")
+eq(core.nextCursor(100, 200, 1000), 200, "cursor advances")
+eq(core.nextCursor(300, 200, 1000), 300, "cursor never goes back")
+eq(core.nextCursor(100, 5000, 1000), 1300, "cursor capped at now+skew")
+eq(core.nextCursor(100, nil, 1000), 100, "empty batch")
+eq(core.readFrom(0), 0, "from zero")
+eq(core.readFrom(100000), 100000 - 86400, "lookback a day")
+local b = core.mergeBook({ title = "A", status = "reading" }, { title = "B", authors = "X", status = "complete" })
+eq(b.title, "A", "first title wins"); eq(b.authors, "X", "gap filled"); eq(b.status, "reading", "nickel status does not override")
+local c = core.mergeBook({ title = "A", status = "complete" }, { status = "reading", _sidecar = true })
+eq(c.status, "reading", "sidecar status wins")
+eq(core.opdsStyleName("Rowling", "HP: 3", "epub"), "Rowling - HP_ 3.epub", "opds name")
+eq(core.opdsStyleName(nil, "T", "pdf"), "T.pdf", "no author")
+eq(core.cleanBook({ md5 = "x", _sidecar = true }).md5, "x", "clean keeps"); eq(core.cleanBook({ _sidecar = true })._sidecar, nil, "clean drops")
+local t = os.time({ year = 2026, month = 10, day = 5, hour = 4, min = 59 })
+eq(core.newsDue("2026-10-04", t), false, "before 05:00")
+local t2 = os.time({ year = 2026, month = 10, day = 5, hour = 6 })
+eq(core.newsDue("2026-10-04", t2), true, "due after 05:00")
+eq(core.newsDue("2026-10-05", t2), false, "once a day")
+print(("test-lbcore: %d checks passed"):format(n))

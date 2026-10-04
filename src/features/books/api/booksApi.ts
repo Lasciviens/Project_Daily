@@ -1,7 +1,7 @@
 import { supabase } from '../../../integrations/supabase/client'
 import { requireUser } from '../../../shared/utils/requireUser'
 import { safeFileName, storageFileName } from '../opdsFeed'
-import type { BookDelivery, KoboFeedState } from '../types'
+import type { BookDelivery } from '../types'
 
 // book_deliveries / kobo_feed_state / the kobo-inbox bucket come with
 // migration 125. Reads degrade to empty before it is applied; a write names
@@ -34,15 +34,6 @@ export async function fetchDeliveries(): Promise<BookDelivery[]> {
     throw error
   }
   return data ?? []
-}
-
-export async function fetchKoboFeedState(): Promise<KoboFeedState | null> {
-  const { data, error } = await supabase.from('kobo_feed_state').select('last_feed_at, last_download_at').maybeSingle()
-  if (error) {
-    if (isMissingTable(error)) return null
-    throw error
-  }
-  return data
 }
 
 /** Writes the row first (the database refuses it past the 150 MB inbox cap), then uploads the file. */

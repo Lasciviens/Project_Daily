@@ -262,14 +262,24 @@ function AppleHealthCard() {
 
 function KoboCard() {
   const state = useKoboFeedState()
-  const last = state.data?.last_feed_at ?? null
+  const d = state.data
+  const lastSync = d?.last_sync_at ?? null
+  const lastFeed = d?.last_feed_at ?? null
+  const contact = lastSync ?? lastFeed
+  const r = d?.last_sync_result
   return (
-    <ConnectionCard service="kobo" kind="server" icon={<BookOpen />} name="Kobo (Send to Kobo)"
-      description="Books you upload on the Books page wait here until KOReader downloads them from its OPDS catalogue."
-      status={state.isLoading ? 'unknown' : last ? 'connected' : 'disconnected'}
-      statusNote={!state.isLoading && !last ? 'Kobo has not checked in' : undefined}
-      details={[last && `Kobo last checked ${formatDateTime(last)}`, state.data?.last_download_at && `Last download ${formatDateTime(state.data.last_download_at)}`]}
-      footer="Needs KOBO_OPDS_TOKEN in Supabase Edge Function secrets and Vault, and the kobo-sync function deployed. The catalogue address is on the Books page." />
+    <ConnectionCard service="kobo" kind="server" icon={<BookOpen />} name="Kobo (KOReader)"
+      description="The Lasci's Board plugin in KOReader sends reading time and the library, and downloads the books you send from the Books page."
+      status={state.isLoading ? 'unknown' : contact ? 'connected' : 'disconnected'}
+      statusNote={!state.isLoading && !contact ? 'Kobo has not checked in' : undefined}
+      details={[
+        lastSync && `Last sync ${formatDateTime(lastSync)}${r?.new_events != null ? ` · ${r.new_events} new reading rows` : ''}`,
+        d?.last_seen_at && `Complete up to ${formatDateTime(d.last_seen_at)}`,
+        d?.plugin_version && `Plugin ${d.plugin_version}`,
+        !lastSync && lastFeed && `Catalogue last read ${formatDateTime(lastFeed)}`,
+        d?.last_download_at && `Last book downloaded ${formatDateTime(d.last_download_at)}`,
+      ]}
+      footer="Needs KOBO_SYNC_SECRET (the plugin) and KOBO_OPDS_TOKEN (the OPDS fallback) in Supabase, and kobo-sync deployed with JWT verification off. The plugin syncs whenever the Kobo's Wi-Fi comes on." />
   )
 }
 

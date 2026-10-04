@@ -96,7 +96,15 @@ export const qk = {
   mediaReminder: (type: string, tmdbId: number) => ['media-reminder', type, tmdbId] as const,
   mediaFollows: { all: ['media-follows'] as const, list: () => ['media-follows', 'list'] as const, events: () => ['media-follows', 'events'] as const },
   wishes: { all: ['wish-items'] as const },
-  books: { all: ['books'] as const, deliveries: () => ['books', 'deliveries'] as const, koboState: () => ['books', 'kobo-state'] as const },
+  books: {
+    all: ['books'] as const,
+    deliveries: () => ['books', 'deliveries'] as const,
+    koboState: () => ['books', 'kobo-state'] as const,
+    library: () => ['books', 'library'] as const,
+    events: (fromIso: string) => ['books', 'events', fromIso] as const,
+    bookEvents: (bookId: string) => ['books', 'book-events', bookId] as const,
+    settings: () => ['books', 'reading-settings'] as const,
+  },
   devRequests: { all: ['dev-requests'] as const },
   projects: {
     all: ['projects'] as const,

@@ -128,10 +128,26 @@ ${items}
 `
 }
 
-/** Splits `/…/kobo-sync/opds/<token>/books/<id>/<name>` into its parts. */
-export function parseRoute(pathname: string): { kind: 'feed'; token: string } | { kind: 'book'; token: string; id: string } | { kind: 'sweep' } | null {
+export type Route =
+  | { kind: 'feed'; token: string }
+  | { kind: 'book'; token: string; id: string }
+  | { kind: 'sweep' }
+  | { kind: 'sync' }
+  | { kind: 'inbox' }
+  | { kind: 'ack'; id: string }
+
+/**
+ * Splits the function path into a route: the OPDS feed and its book links
+ * (`/opds/<token>/…`, path token), and the plugin's routes `/sync`, `/inbox`,
+ * `/deliveries/<id>/ack` (x-kobo-secret header) plus the cron's `/sweep`.
+ */
+export function parseRoute(pathname: string): Route | null {
   const parts = pathname.split('/').filter(Boolean)
-  if (parts[parts.length - 1] === 'sweep') return { kind: 'sweep' }
+  const last = parts[parts.length - 1]
+  if (last === 'sweep') return { kind: 'sweep' }
+  if (last === 'sync' && parts[parts.length - 2] === 'kobo-sync') return { kind: 'sync' }
+  if (last === 'inbox' && parts[parts.length - 2] === 'kobo-sync') return { kind: 'inbox' }
+  if (last === 'ack' && parts[parts.length - 3] === 'deliveries' && parts[parts.length - 2]) return { kind: 'ack', id: parts[parts.length - 2] }
   const i = parts.indexOf('opds')
   if (i < 0 || !parts[i + 1]) return null
   const token = decodeURIComponent(parts[i + 1])

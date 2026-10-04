@@ -39,6 +39,10 @@ eq(f.parseRoute('/kobo-sync/opds/tok/'), { kind: 'feed', token: 'tok' }, 'feed r
 eq(f.parseRoute('/functions/v1/kobo-sync/opds/tok/books/id1/Book.epub'), { kind: 'book', token: 'tok', id: 'id1' }, 'book route')
 eq(f.parseRoute('/kobo-sync/sweep'), { kind: 'sweep' }, 'sweep route')
 eq(f.parseRoute('/kobo-sync/'), null, 'unknown route')
+eq(f.parseRoute('/functions/v1/kobo-sync/sync'), { kind: 'sync' }, 'sync route')
+eq(f.parseRoute('/kobo-sync/inbox'), { kind: 'inbox' }, 'inbox route')
+eq(f.parseRoute('/kobo-sync/deliveries/abc/ack'), { kind: 'ack', id: 'abc' }, 'ack route')
+eq(f.parseRoute('/kobo-sync/opds/tok/sync'), null, 'sync under opds is not the plugin route')
 const tr = '[Harry Potter _3] Rowling, J. K. - Harry Potter ve Azkaban Tutsağı 3.epub'
 eq(f.storageFileName(tr), 'book.epub', 'storage key is plain ASCII')
 eq(f.storageFileName('A.kepub.epub'), 'book.kepub.epub', 'storage key keeps kepub')
