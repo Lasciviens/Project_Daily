@@ -1662,7 +1662,9 @@ is unconfirmed.
   - `.adds/` (KOReader, NickelMenu and, if used, KFMon);
   - `.kobo/KoboRoot.tgz` during an install;
   - one appended line in `.kobo/Kobo/Kobo eReader.conf` (`ExcludeSyncFolders`, §10.4);
-  - our plugin folder.
+  - our plugin folder;
+  - macOS's own housekeeping from §10.2 (`.fseventsd/no_log`, the Spotlight switch-off,
+    `dot_clean` of `._` files) — never book files or Kobo data.
 - **Reading data stays on the Mac.** `statistics.sqlite3`, sidecars and vocabulary may be
   inspected there, but never committed. Only structure notes and anonymised samples go
   into the repo.
@@ -1952,7 +1954,13 @@ Answered on 30.09.2026. The answers are in §12.4.
   4.45.23697 that Kobo's update server was queried with; it is still offered 4.46.
 - Claude Code is installed on the Mac (§12.1 step 3 is partly done: cloning the repo and
   plugging in the Kobo are still to do).
-- Still to send: `391` or `395`, the KOReader version, and the Wi-Fi reboot test results.
+- **Model: P365 (product 395)** — device report, 04.10.2026. Per §1.1 a downgrade package
+  is never used on this model (the plan never downgrades anyway).
+- **Phase 0 progress (04.10.2026):** repo cloned on the Mac to `~/Project_Daily-fresh` (the
+  older `~/Project_Daily` holds unpushed September work and is left untouched); backup in
+  `~/KoboBackups/2026-10-04/` (195 files, 87 MB, `diff -rq` identical — rsync's exit 23 was
+  only the unreadable `.Spotlight-V100`); 9 epub + 2 kepub on the device, nothing installed.
+- Still to send: the KOReader version and the Wi-Fi reboot test results.
 
 **"Do I need to block firmware updates?" — no.**
 - Kobo can't be told to stop checking for updates while Nickel is on Wi-Fi, and that's
