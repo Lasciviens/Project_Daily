@@ -1970,7 +1970,12 @@ Answered on 30.09.2026. The answers are in §12.4.
   older `~/Project_Daily` holds unpushed September work and is left untouched); backup in
   `~/KoboBackups/2026-10-04/` (195 files, 87 MB, `diff -rq` identical — rsync's exit 23 was
   only the unreadable `.Spotlight-V100`); 9 epub + 2 kepub on the device, nothing installed.
-- Still to send: the KOReader version and the Wi-Fi reboot test results.
+- **Installed (04.10.2026):** NickelMenu v0.6.0 (its entry showed after the reboot — the 4.45
+  risk in §10.4 did not happen here) and KOReader v2026.07.1 (`koreader-kobo`), the
+  `ExcludeSyncFolders` line (no `[FeatureSettings]` existed, so it was appended) and
+  `.adds/nm/koreader`. `ca-bundle.crt` is present (open question 3). Backups:
+  `2026-10-04`, `2026-10-04_18-52-43`, `2026-10-04_19-06-38`.
+- Still to send: the Wi-Fi reboot test results, SSH, and the 10-minute read.
 
 **"Do I need to block firmware updates?" — no.**
 - Kobo can't be told to stop checking for updates while Nickel is on Wi-Fi, and that's
