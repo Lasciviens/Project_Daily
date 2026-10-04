@@ -1600,6 +1600,23 @@ is unconfirmed.
   requests/day, 60/min.
   [hardcoverapp.koplugin](https://github.com/Billiam/hardcoverapp.koplugin)
 
+### 9.5.1 A simpler KOReader interface (owner, 04.10.2026: "the UI is confusing")
+
+Ready-made, installed like any plugin — **over SSH (`scp`), never by USB copy** (the fsck
+rename from Phase 0):
+- **Project: Title** ([joshuacant/ProjectTitle](https://github.com/joshuacant/ProjectTitle)) —
+  the most used: a commercial-reader-style library with cover grid/list, a short header and
+  footer. Releases are tied to an exact KOReader version (v3.8.3 for 2026.07.x). Disable
+  *Cover browser* first (🛠 → More tools → Plugin management), copy `projecttitle.koplugin`
+  into `.adds/koreader/plugins/`, enable it, restart. Undo: re-enable Cover browser.
+- **zen_ui.koplugin** ([AnthonyGress](https://github.com/AnthonyGress/zen_ui.koplugin)) and
+  **simpleui.koplugin** ([doctorhetfield-cmd](https://github.com/doctorhetfield-cmd/simpleui.koplugin)) —
+  minimal home screens with their own navigation bar.
+- **Koreader-Menu-customizer** ([JoeBumm](https://github.com/JoeBumm/Koreader-Menu-customizer)) —
+  hides menu items you never use; combines with any of the above.
+- Index of more: [awesome-koreader](https://github.com/jannick-holm/awesome-koreader).
+Our plugin only adds one menu entry, so it works with any of these.
+
 ### 9.6 Small delights, zero code
 
 - Chess against Stockfish, Wordle and Connections as KOReader plugins
@@ -1868,6 +1885,12 @@ Shortcut, as a new C task on `docs/codex-shortcuts.md`.
 - Norwegian books have the right title and cover.
 
 ### Phase 4 — Reading tracker (Claude writes; the Mac session installs and tests; large)
+
+- **Morning news, automatic (owner's ask, 04.10.2026):** KOReader's News downloader has no
+  scheduler, no Dispatcher action and no Profiles auto-exec hook (checked in the 2026.07.1
+  source), so syncing is a manual tap today. Our plugin already runs on wake-up and on
+  `NetworkConnected`; it also calls the News downloader's sync once per day (first wake with
+  Wi-Fi after 05:00), so the morning EPUBs are there without a tap.
 
 **Plugin:** A, our own (the owner's choice, 30.09.2026; §12.4).
 
