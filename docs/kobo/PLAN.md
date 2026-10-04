@@ -1986,7 +1986,16 @@ Answered on 30.09.2026. The answers are in §12.4.
   `mnt/onboard/.adds/koreader/…` paths** (built with `COPYFILE_DISABLE=1 tar --no-xattrs`),
   so the Kobo writes the files itself. After any big copy from the Mac (plugin updates,
   dictionaries), run the same `FSCK*` check.
-- Still to send: the Wi-Fi reboot test results, SSH, and the 10-minute read.
+- **Wi-Fi tests passed** (10 toggles, restart with Wi-Fi on, sleep/wake: no reboot).
+- **SSH works (04.10.2026):** key `~/.ssh/kobo_ed25519` on the Mac, `Host kobo` in
+  `~/.ssh/config` (root, port 2222, 10.0.0.90), key in
+  `.adds/koreader/settings/SSH/authorized_keys`. KOReader's dropbear still accepts a root
+  password unless **SSH server → "Login with key only"** is ticked (it passes `-s`; can only
+  be changed while the server is stopped) — tick it.
+- `statistics.sqlite3` is in WAL mode: a copied file opens with
+  `sqlite3 'file:…?mode=ro&immutable=1'`, not `-readonly`. Copy it together with any
+  `-wal`/`-shm` files when they exist.
+- Still to send: key-only confirmed, and the 10-minute read (203 s so far).
 
 **"Do I need to block firmware updates?" — no.**
 - Kobo can't be told to stop checking for updates while Nickel is on Wi-Fi, and that's
