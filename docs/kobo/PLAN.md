@@ -1975,6 +1975,17 @@ Answered on 30.09.2026. The answers are in §12.4.
   `ExcludeSyncFolders` line (no `[FeatureSettings]` existed, so it was appended) and
   `.adds/nm/koreader`. `ca-bundle.crt` is present (open question 3). Backups:
   `2026-10-04`, `2026-10-04_18-52-43`, `2026-10-04_19-06-38`.
+- **Gotcha hit on the first launch (04.10.2026):** KOReader crashed ("module
+  'apps/filemanager/filemanagerbookinfo' not found"). The Kobo's own file-system check
+  (fsck, run on the reboot after the eject) had renamed 8 of the files macOS wrote to
+  `FSCK0000.000` — contents intact, names lost; all 8 sat in folders with many similarly
+  prefixed names, so the likely cause is the 8.3 short names macOS generates. Fix: copy the
+  8 back, delete the `FSCK0000.000` duplicates, let the Kobo run its check once more, then
+  verify (`find … -name 'FSCK*'` empty, `diff -rq` against the zip clean) before starting
+  KOReader. **If it ever recurs, install through a `KoboRoot.tgz` with
+  `mnt/onboard/.adds/koreader/…` paths** (built with `COPYFILE_DISABLE=1 tar --no-xattrs`),
+  so the Kobo writes the files itself. After any big copy from the Mac (plugin updates,
+  dictionaries), run the same `FSCK*` check.
 - Still to send: the Wi-Fi reboot test results, SSH, and the 10-minute read.
 
 **"Do I need to block firmware updates?" — no.**
