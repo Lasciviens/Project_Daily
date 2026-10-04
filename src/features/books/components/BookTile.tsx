@@ -14,8 +14,8 @@ export function BookTile({ book, showStatus = true }: { book: Book; showStatus?:
       <div className="relative w-full">
         <BookCover book={book} className="w-full transition-shadow group-hover:shadow-md" />
         {book.read_status === 'reading' && pct > 0 && (
-          <div className="absolute inset-x-1.5 bottom-1.5 h-1 overflow-hidden rounded-full bg-black/25">
-            <div className="h-full rounded-full bg-white" style={{ width: `${Math.min(pct, 100)}%` }} />
+          <div className="absolute inset-x-1.5 bottom-1.5 h-1 overflow-hidden rounded-full bg-surface/80">
+            <div className="h-full rounded-full bg-accent-500" style={{ width: `${Math.min(pct, 100)}%` }} />
           </div>
         )}
       </div>

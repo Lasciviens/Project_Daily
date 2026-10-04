@@ -46,12 +46,13 @@ async function fromNb(isbn: string | null, title: string, author: string | null)
   const m = item.metadata ?? {}
   return {
     source: 'Nasjonalbiblioteket',
+    // 200 px tall: NB refuses larger sizes for in-copyright books (checked live: 300 px → 403).
     cover_url: item._links?.thumbnail_large?.href,
     page_count: typeof m.pageCount === 'number' ? m.pageCount : undefined,
     publisher: m.originInfo?.publisher,
     published_year: year(m.originInfo?.issued),
     isbn: m.identifiers?.isbn13?.[0],
-    series: Array.isArray(m.series) ? m.series[0] : undefined,
+    // NB's `series` is the publisher's imprint series ("Aschehoug krim"), not the book series: not used.
   }
 }
 

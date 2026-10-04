@@ -53,10 +53,19 @@ STOP and paste me the output.
 set -euo pipefail
 cd ~/Project_Daily-fresh && git fetch -q origin main && git switch -q --detach origin/main && git log --oneline -1
 SECRET=$(pbpaste | tr -d '[:space:]'); echo "secret length: ${#SECRET}"
-curl -s -o /dev/null -w "sync route: %{http_code}\n" -X POST "https://hsaedwwqpcjizeozjbch.supabase.co/functions/v1/kobo-sync/sync" \
-  -H "x-kobo-secret: $SECRET" -H 'Content-Type: application/json' -d "{\"device_id\":\"mac-check\",\"device_time\":$(date +%s)}"
+curl -s -o /dev/null -w "plugin route: %{http_code}\n" "https://hsaedwwqpcjizeozjbch.supabase.co/functions/v1/kobo-sync/inbox" -H "x-kobo-secret: $SECRET"
 ```
-The sync route must answer 200 (403 = the secret differs from Supabase, 503 = the secret is not set there). Otherwise STOP.
+The plugin route must answer 200 (403 = the secret differs from Supabase, 503 = the secret is not set there, 500 = migration 126 is missing). Otherwise STOP.
+
+```bash
+set -euo pipefail
+# Read-only check of the Kobo's own library database (counts only — no titles leave the device).
+T=$(mktemp -d); scp -q kobo:/mnt/onboard/.kobo/KoboReader.sqlite "$T/kr.sqlite"
+scp -q kobo:/mnt/onboard/.kobo/KoboReader.sqlite-wal "$T/kr.sqlite-wal" 2>/dev/null || true
+sqlite3 "file:$T/kr.sqlite?mode=ro" "SELECT 'books', COUNT(*) FROM content WHERE ContentType = '6' AND ContentID LIKE 'file:///%' AND (VolumeIndex = -1 OR VolumeIndex IS NULL); SELECT 'with author', COUNT(Attribution) FROM content WHERE ContentType = '6' AND ContentID LIKE 'file:///%'; SELECT 'percent range', MIN(___PercentRead), MAX(___PercentRead) FROM content WHERE ContentType = '6' AND ContentID LIKE 'file:///%'; SELECT 'read status', ReadStatus, COUNT(*) FROM content WHERE ContentType = '6' AND ContentID LIKE 'file:///%' GROUP BY ReadStatus;"
+rm -rf "$T"
+```
+Paste me these numbers (they let me confirm the plugin reads the Kobo's library correctly).
 
 ```bash
 set -euo pipefail

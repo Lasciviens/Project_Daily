@@ -10,6 +10,7 @@
 
 export const MAX_BOOKS = 300
 export const MAX_EVENTS = 5000
+export const MAX_INVENTORY = 20000
 const MD5 = /^[0-9a-f]{32}$/
 
 export type DeviceStatus = 'reading' | 'complete' | 'abandoned' | 'new'
@@ -42,7 +43,12 @@ export interface SyncBody {
   device_time: number
   plugin_version?: string
   final?: boolean          // this request finished a complete drain
-  inventory?: boolean      // `books` is the complete list of books on the device
+  /**
+   * Every md5 on the device, sent once the library's book rows have all been
+   * posted (in earlier requests), and only when the plugin read the whole
+   * library. Books the server holds that are missing here are marked off-device.
+   */
+  inventory_md5s?: string[]
   books?: SyncBook[]
   stats?: Record<string, unknown[]>
 }
@@ -94,6 +100,10 @@ export function validateSync(body: unknown, nowSec: number): string | null {
   if (b.books !== undefined && !Array.isArray(b.books)) return 'books must be an array.'
   if ((b.books?.length ?? 0) > MAX_BOOKS) return `At most ${MAX_BOOKS} books per request.`
   for (const book of b.books ?? []) if (!book || typeof book.md5 !== 'string' || !MD5.test(book.md5)) return 'Every book needs a lowercase 32-character md5.'
+  if (b.inventory_md5s !== undefined) {
+    if (!Array.isArray(b.inventory_md5s) || b.inventory_md5s.length > MAX_INVENTORY) return `inventory_md5s must be an array of at most ${MAX_INVENTORY} md5s.`
+    if (!b.inventory_md5s.every(m => typeof m === 'string' && MD5.test(m))) return 'inventory_md5s must hold lowercase 32-character md5s.'
+  }
   if (b.stats !== undefined && (typeof b.stats !== 'object' || Array.isArray(b.stats))) return 'stats must be an object keyed by md5.'
   let n = 0
   for (const [md5, rows] of Object.entries(b.stats ?? {})) {
@@ -127,12 +137,11 @@ export function mapDeviceStatus(s: unknown): ReadStatus | null {
   return null
 }
 
-/** 0–1 (KOReader) or 0–100 (Nickel) → a percentage, 2 decimals. */
+/** The plugin sends 0–1 (KOReader's percent_finished; Nickel's 0–100 is divided first) → a percentage, 2 decimals. */
 export function toPercent(v: unknown): number | null {
   const n = typeof v === 'number' ? v : NaN
-  if (!Number.isFinite(n) || n < 0) return null
-  const pct = n <= 1 ? n * 100 : n
-  return pct > 100 ? null : Math.round(pct * 100) / 100
+  if (!Number.isFinite(n) || n < 0 || n > 1) return null
+  return Math.round(n * 10000) / 100
 }
 
 /** "Rowling, J. K." stays; a list "A & B" stays — only trims and caps. */
@@ -148,6 +157,8 @@ export function titleFromPath(path: string | null | undefined): string | null {
   const base = name.replace(/\.kepub\.epub$/i, '').replace(/\.[a-z0-9]{2,5}$/i, '').replace(/_+/g, ' ').trim()
   return base || null
 }
+
+const numOrNull = (v: unknown): number | null => (v === null || v === undefined || v === '' ? null : Number(v))
 
 const epochIso = (sec: number | null | undefined): string | null =>
   typeof sec === 'number' && Number.isFinite(sec) && sec > 946684800 ? new Date(sec * 1000).toISOString() : null
@@ -207,10 +218,13 @@ export function bookPatch(existing: BookRowLike, b: SyncBook): Partial<BookRowLi
   if ((!existing.title || existing.title === 'Untitled') && next.title !== 'Untitled') patch.title = next.title
   if (next.file_path && next.file_path !== existing.file_path) patch.file_path = next.file_path
   if (next.kobo_content_id && next.kobo_content_id !== existing.kobo_content_id) patch.kobo_content_id = next.kobo_content_id
-  if (next.progress_pct !== null && next.progress_pct !== existing.progress_pct) patch.progress_pct = next.progress_pct
-  if (next.last_read_at && (!existing.last_read_at || next.last_read_at > existing.last_read_at)) patch.last_read_at = next.last_read_at
-  if (next.read_seconds !== null && next.read_seconds !== existing.read_seconds) patch.read_seconds = next.read_seconds
-  if (next.read_pages !== null && next.read_pages !== existing.read_pages) patch.read_pages = next.read_pages
+  // PostgREST returns numerics as numbers or strings and timestamps as
+  // "…+00:00": compare values, not text, or every sync rewrites every row
+  // (and fills the audit log).
+  if (next.progress_pct !== null && next.progress_pct !== numOrNull(existing.progress_pct)) patch.progress_pct = next.progress_pct
+  if (next.last_read_at && (!existing.last_read_at || Date.parse(next.last_read_at) > Date.parse(existing.last_read_at))) patch.last_read_at = next.last_read_at
+  if (next.read_seconds !== null && next.read_seconds !== numOrNull(existing.read_seconds)) patch.read_seconds = next.read_seconds
+  if (next.read_pages !== null && next.read_pages !== numOrNull(existing.read_pages)) patch.read_pages = next.read_pages
   if (!existing.on_device) patch.on_device = true
 
   const incoming = str(b.status, 20)

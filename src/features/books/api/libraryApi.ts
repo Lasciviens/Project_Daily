@@ -72,8 +72,21 @@ export async function mergeBooks(survivor: Book, loser: Book): Promise<void> {
   for (const k of ['author', 'series', 'series_index', 'language', 'isbn', 'publisher', 'published_year', 'description', 'page_count', 'cover_url', 'review', 'notes', 'rating', 'started_at', 'finished_at'] as const) {
     if (survivor[k] == null && loser[k] != null) (fill as Record<string, unknown>)[k] = loser[k]
   }
+  // The device keys move to the survivor (after the loser is gone — the md5 is
+  // unique), so the Kobo's next sync updates the survivor instead of re-creating
+  // the deleted row.
+  const keys: Record<string, unknown> = {}
+  if (!survivor.koreader_md5 && loser.koreader_md5) {
+    Object.assign(keys, { koreader_md5: loser.koreader_md5, source: loser.source, on_device: loser.on_device })
+    if (!survivor.kobo_content_id) keys.kobo_content_id = loser.kobo_content_id
+    if (!survivor.file_path) keys.file_path = loser.file_path
+  }
   if (Object.keys(fill).length) await updateBook(survivor.id, fill)
   await deleteBook(loser.id)
+  if (Object.keys(keys).length) {
+    const { error: e4 } = await supabase.from('books').update(keys).eq('id', survivor.id)
+    if (e4) fail(e4)
+  }
 }
 
 /** Page events since `fromIso` (paged past PostgREST's 1,000-row cap). */

@@ -12,6 +12,9 @@ import {
 import type { Book, ReadingSettings } from '../types'
 import { BookCover } from './BookCover'
 
+/** 6600 s → "1:50" (shown with the unit "h"; short enough for a phone tile). */
+const hoursMinutes = (sec: number) => { const m = Math.round(sec / 60); return `${Math.floor(m / 60)}:${String(m % 60).padStart(2, '0')}` }
+
 const WINDOWS = [
   { value: '7', label: '7 days' },
   { value: '30', label: '30 days' },
@@ -64,7 +67,8 @@ export function ReadingTab() {
       ),
       books: <BooksCard rows={byBook(windowEvents)} byId={byId} days={days} />,
       hours: empty ? null : <HoursCard grid={hourGrid(windowEvents)} days={days} />,
-      goal: <GoalCard settings={s} />,
+      // Seeded from the SAVED goal only (never the placeholder), so one tap cannot overwrite it.
+      goal: settings.isPlaceholderData ? <SkeletonCard /> : <GoalCard key={`${s.daily_minutes_goal}-${s.streak_min_minutes}`} settings={s} />,
     }} />
   )
 }
@@ -92,7 +96,7 @@ function TodayCard({ todaySeconds, goal, streak, weekSeconds, lastSeen, lastSeen
             tone={streak.current > 0 ? 'success' : undefined}
             hint={streak.atRisk ? 'Read today to keep it' : `Longest ${streak.longest}`} />
           <StatTile label="This week" icon={<Clock />} hint="Last 7 days"
-            value={weekSeconds >= 36000 ? (weekSeconds / 3600).toFixed(1) : Math.round(weekSeconds / 60)} unit={weekSeconds >= 36000 ? 'h' : 'min'} />
+            value={weekSeconds >= 3600 ? hoursMinutes(weekSeconds) : Math.round(weekSeconds / 60)} unit={weekSeconds >= 3600 ? 'h' : 'min'} />
         </div>
       </div>
       <p className="text-meta text-fg-muted">

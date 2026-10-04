@@ -184,6 +184,16 @@ function AddBook() {
 function Duplicates({ books }: { books: Book[] }) {
   const pairs = useMemo(() => duplicatePairs(books), [books])
   const merge = useMergeBooks()
+  const modal = useEntityModal()
+  const describe = (b: Book) => `${b.source === 'manual' ? 'added by hand' : 'from the Kobo'}${b.read_seconds ? `, ${formatDuration(b.read_seconds)} read` : ''}`
+  async function confirmMerge(keep: Book, drop: Book) {
+    const ok = await modal.confirm({
+      title: `Merge into one “${keep.title}”?`,
+      message: `Keeps the one ${describe(keep)} and moves the reading history, notes and rating of the one ${describe(drop)} into it. The other row is deleted.`,
+      confirmLabel: 'Merge',
+    })
+    if (ok) merge.mutate({ survivor: keep, loser: drop })
+  }
   const [open, setOpen] = useState(false)
   if (pairs.length === 0) return null
   return (
@@ -202,7 +212,7 @@ function Duplicates({ books }: { books: Book[] }) {
             return (
               <li key={`${a.id}-${b.id}`} className="flex flex-wrap items-center gap-2 text-meta">
                 <Truncate className="min-w-0 flex-1 text-fg">{keep.title}{keep.author ? ` — ${keep.author}` : ''}</Truncate>
-                <Button size="sm" loading={merge.isPending} onClick={() => merge.mutate({ survivor: keep, loser: drop })}>Merge</Button>
+                <Button size="sm" loading={merge.isPending} onClick={() => { void confirmMerge(keep, drop) }}>Merge</Button>
               </li>
             )
           })}

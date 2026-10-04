@@ -54,4 +54,5 @@ ok(a.matchesSearch(B({ id: '1', title: 'Snømannen', author: 'Jo Nesbø' }), 'ne
 ok(!a.matchesSearch(B({ id: '1', title: 'Sult' }), 'hunger'), 'search misses')
 eq(a.sortForLibrary([B({ id: 'a', lr: '2026-10-01' }), B({ id: 'b', lr: '2026-10-03' })], 'recent').map(b => b.id), ['b', 'a'], 'recent first')
 eq(a.duplicatePairs([B({ id: '1', title: 'Vegetarian, The', author: 'Han Kang' }), B({ id: '2', title: 'The Vegetarian', author: 'Han  Kang' }), B({ id: '3', title: 'Other' })]).map(p => p.map(b => b.id)), [['1', '2']], 'sort-form title duplicates')
+eq(a.duplicatePairs([{ ...B({ id: '1', title: 'Sult', author: 'Hamsun' }), koreader_md5: 'a'.repeat(32) }, { ...B({ id: '2', title: 'Sult', author: 'Hamsun' }), koreader_md5: 'b'.repeat(32) }]).length, 0, 'two real files (epub + kepub) are not offered for merge')
 console.log(`verify-reading-aggregate: ${n} assertions passed`)

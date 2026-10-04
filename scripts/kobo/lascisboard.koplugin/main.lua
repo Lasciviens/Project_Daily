@@ -65,8 +65,9 @@ function LascisBoard:init()
         category = "none", event = "LascisBoardSync", title = _("Lasci's Board: sync now"), general = true,
     })
     self.ui.menu:registerToMainMenu(self)
-    -- Already online when KOReader starts (or the reader opens): catch up.
-    if NetworkMgr:isOnline() then
+    -- Already online when KOReader starts: catch up. Only in the file browser —
+    -- opening a book must never start network work behind the page.
+    if not self.ui.document and NetworkMgr:isConnected() then
         UIManager:scheduleIn(8, function() self:runAuto("start") end)
     end
 end
@@ -88,7 +89,7 @@ end
 
 function LascisBoard:secret()
     local s = self:conf():readSetting("secret")
-    if type(s) == "string" and #s >= 16 then return s end
+    if type(s) == "string" and #s >= 32 then return s end
     return nil
 end
 
@@ -121,15 +122,16 @@ local function request(method, url, headers, body, sink_file)
         req.source = ltn12.source.string(body)
         req.headers["Content-Length"] = tostring(#body)
     end
-    local fh
+    -- socketutil's own sinks are the ones that honour the total timeout
+    -- (plain ltn12 sinks would let a slow download hang for minutes).
     if sink_file then
-        fh = io.open(sink_file, "wb")
+        local fh = io.open(sink_file, "wb")
         if not fh then return nil, "cannot write " .. sink_file end
-        req.sink = ltn12.sink.file(fh)
         socketutil:set_timeout(socketutil.FILE_BLOCK_TIMEOUT, 300)
+        req.sink = socketutil.file_sink(fh)
     else
-        req.sink = ltn12.sink.table(chunks)
         socketutil:set_timeout(socketutil.LARGE_BLOCK_TIMEOUT, socketutil.LARGE_TOTAL_TIMEOUT)
+        req.sink = socketutil.table_sink(chunks)
     end
     local code, resp_headers, status = socket.skip(1, http.request(req))
     socketutil:reset_timeout()
@@ -253,9 +255,13 @@ local function walk(dir, out, depth)
 end
 
 --- The whole library, keyed by md5: Nickel's database (every sideloaded book,
---- with its metadata), KOReader's statistics, history sidecars, and a walk of
---- the home folder for files Nickel has not imported yet.
+--- with its metadata), history sidecars, and a walk of the home folder for files
+--- Nickel has not imported yet; KOReader's statistics only enrich books found
+--- there (that table keeps books deleted long ago). Returns the books and
+--- whether the list is COMPLETE — only a complete list may tell the server that
+--- a missing book has left the device.
 function LascisBoard:collectLibrary(stats_books)
+    local complete, problem = true, nil
     local by_md5, by_path = {}, {}
     local function add(path, facts)
         local md5 = facts.md5
@@ -282,7 +288,9 @@ function LascisBoard:collectLibrary(stats_books)
 
     -- 2. Nickel's own database: read-only, never written.
     local conn = openDb(NICKEL_DB)
-    if conn then
+    if not conn then
+        complete, problem = false, "Kobo library database could not be opened"
+    else
         local ok, err = pcall(function()
             local cols = {}
             local info = conn:prepare("PRAGMA table_info(content)")
@@ -304,29 +312,37 @@ function LascisBoard:collectLibrary(stats_books)
                         content_id = r.ContentID, title = r.Title, authors = r.Attribution, isbn = r.ISBN,
                         publisher = r.Publisher, series = r.Series, series_index = r.SeriesNumber,
                         language = r.Language, description = r.Description,
-                        percent = num(r.___PercentRead), status = core.nickelStatus(r.ReadStatus),
+                        -- Nickel stores 0–100; the server expects KOReader's 0–1.
+                        percent = num(r.___PercentRead) and num(r.___PercentRead) / 100 or nil,
+                        status = core.nickelStatus(r.ReadStatus),
                     })
                 end
             end
             stmt:close()
         end)
         conn:close()
-        if not ok then logger.warn("LascisBoard: Nickel database read failed", err) end
+        if not ok then
+            logger.warn("LascisBoard: Nickel database read failed", err)
+            complete, problem = false, "Kobo library database could not be read"
+        end
     end
 
     -- 3. Files Nickel has not seen yet (e.g. books just downloaded in KOReader).
     local files = {}
-    walk(filemanagerutil.getHomeFolder(), files, 0)
-    if not filemanagerutil.getHomeFolder():match("^/mnt/onboard/?$") then walk("/mnt/onboard", files, 0) end
+    if lfs.attributes("/mnt/onboard", "mode") ~= "directory" then
+        complete, problem = false, "/mnt/onboard is not available"
+    else
+        walk("/mnt/onboard", files, 0)
+    end
     for _, path in ipairs(files) do
         if not by_path[path] then add(path, {}) end
     end
 
-    -- 4. KOReader's statistics: totals and last-open time for opened books.
+    -- 4. KOReader's statistics: totals and last-open time, for books found above only.
     for _, b in pairs(stats_books) do
-        by_md5[b.md5] = core.mergeBook(by_md5[b.md5] or { md5 = b.md5 }, b)
+        if by_md5[b.md5] then by_md5[b.md5] = core.mergeBook(by_md5[b.md5], b) end
     end
-    return by_md5
+    return by_md5, complete, problem
 end
 
 -- ── Sync ─────────────────────────────────────────────────────────────────────
@@ -339,72 +355,83 @@ function LascisBoard:flushCurrentBook()
 end
 
 --- Sends everything new. `opts.full` restarts from the beginning; `opts.inventory`
---- forces the whole library. Returns a summary table, or nil and an error.
+--- forces the whole library; `opts.light` (inside the reader) sends reading rows
+--- only — the library walk and downloads wait for the file browser.
+--- Returns a summary table, or nil and an error.
 function LascisBoard:sync(opts)
     opts = opts or {}
     if not self:secret() then return nil, _("The device secret is not set (Lasci's Board → Settings).") end
     if not opts.no_flush then self:flushCurrentBook() end
+    local rapidjson = require("rapidjson")
     local conf = openSettings()
     local conn = openDb(DataStorage:getSettingsDir() .. "/statistics.sqlite3")
     local now = os.time()
     local cursor = opts.full and 0 or (conf:readSetting("cursor") or 0)
     local stats_books = conn and statsBooks(conn) or {}
-    local inventory_due = opts.inventory or opts.full
-        or (now - (conf:readSetting("last_inventory") or 0)) > 20 * 3600
-    local library = inventory_due and self:collectLibrary(stats_books) or nil
-
-    local sent, new_events, requests = 0, 0, 0
+    local inventory_due = not opts.light and (opts.inventory or opts.full
+        or (now - (conf:readSetting("last_inventory") or 0)) > 20 * 3600)
+    local library, complete, problem
+    if inventory_due then library, complete, problem = self:collectLibrary(stats_books) end
     local device_id = G_reader_settings:readSetting("device_id") or "kobo"
+    local requests = 0
+    local function post(extra)
+        local payload = { v = 1, device_id = device_id, device_time = os.time(), plugin_version = VERSION }
+        for k, v in pairs(extra) do payload[k] = v end
+        local res, err = self:callJson("POST", "/sync", payload)
+        if res then requests = requests + 1 end
+        return res, err
+    end
+    local function fail(err)
+        if conn then conn:close() end
+        return nil, err
+    end
+
+    -- 1. The library, in chunks (the server must know every book before the
+    --    list of what is on the device is sent with the first stats batch).
+    local inventory_md5s
+    if library then
+        local list, md5s = {}, {}
+        for md5, b in pairs(library) do
+            list[#list + 1] = core.cleanBook(b)
+            md5s[#md5s + 1] = md5
+        end
+        while #list > 0 do
+            local chunk = {}
+            for i = 1, math.min(core.MAX_BOOKS, #list) do chunk[i] = table.remove(list) end
+            local res, err = post({ books = rapidjson.array(chunk), stats = rapidjson.object({}) })
+            if not res then return fail(err) end
+        end
+        if complete then inventory_md5s = rapidjson.array(md5s) end
+        if problem then self:save("last_error", { at = now, message = problem .. " — books not seen were left as they are." }) end
+    end
+
+    -- 2. Reading rows from the cursor. The first batch re-reads a day before the
+    --    cursor (late flushes); later batches continue strictly after the previous
+    --    one, so the loop always progresses.
+    local sent, new_events = 0, 0
     local first = true
-    -- The first batch re-reads a day before the cursor (late flushes); later
-    -- batches continue strictly after the previous one, so they always progress.
     local from = core.readFrom(cursor)
     while true do
         local rows = conn and statsRows(conn, from, core.BATCH) or {}
-        local stats, books_in_batch, batch_max = {}, {}, nil
+        local stats, books, seen, batch_max = rapidjson.object({}), {}, {}, nil
         for _, r in ipairs(rows) do
             local b = stats_books[r[1]]
             if b then
-                stats[b.md5] = stats[b.md5] or {}
+                if not stats[b.md5] then stats[b.md5] = rapidjson.array({}) end
                 table.insert(stats[b.md5], { r[2], r[3], r[4], r[5] })
-                books_in_batch[b.md5] = b
+                if not seen[b.md5] then
+                    seen[b.md5] = true
+                    books[#books + 1] = core.cleanBook(b)
+                end
             end
             if not batch_max or r[3] > batch_max then batch_max = r[3] end
         end
-        local books = {}
-        if first and library then
-            for _, b in pairs(library) do books[#books + 1] = core.cleanBook(b) end
-        end
-        for md5, b in pairs(books_in_batch) do
-            if not (first and library and library[md5]) then books[#books + 1] = core.cleanBook(b) end
-        end
         local last = #rows < core.BATCH
-        local rapidjson = require("rapidjson")
-        local stats_obj = rapidjson.object({})
-        for md5, list in pairs(stats) do stats_obj[md5] = rapidjson.array(list) end
-        -- Books are sent in chunks of MAX_BOOKS; only the final chunk carries the
-        -- inventory flag, and the server needs it complete, so send extra book-only
-        -- requests first when the library is large.
-        while #books > core.MAX_BOOKS do
-            local chunk = {}
-            for i = 1, core.MAX_BOOKS do chunk[i] = table.remove(books) end
-            local _, err = self:callJson("POST", "/sync", {
-                v = 1, device_id = device_id, device_time = os.time(), plugin_version = VERSION,
-                books = rapidjson.array(chunk), stats = rapidjson.object({}),
-            })
-            if err then if conn then conn:close() end return nil, err end
-            requests = requests + 1
-        end
-        local res, err = self:callJson("POST", "/sync", {
-            v = 1, device_id = device_id, device_time = os.time(), plugin_version = VERSION,
-            final = last, inventory = (first and library ~= nil) or nil,
-            books = rapidjson.array(books), stats = stats_obj,
+        local res, err = post({
+            final = last, books = rapidjson.array(books), stats = stats,
+            inventory_md5s = first and inventory_md5s or nil,
         })
-        if not res then
-            if conn then conn:close() end
-            return nil, err
-        end
-        requests = requests + 1
+        if not res then return fail(err) end
         new_events = new_events + (tonumber(res.new_events) or 0)
         sent = sent + #rows
         cursor = core.nextCursor(cursor, batch_max, now)
@@ -422,37 +449,64 @@ function LascisBoard:sync(opts)
     return summary
 end
 
---- Downloads every book waiting in the app's inbox, then confirms each one.
+--- Where a sent book is saved: the name the OPDS catalogue would give it
+--- ("Author - Title.epub", OPDSBrowser:getLocalDownloadPath), so the two never
+--- make two copies. Returns the path and whether that exact file is already there.
+local function inboxTarget(dir, item)
+    local name = item.filename or "book.epub"
+    local ext = (name:match("%.([%w]+)$") or "epub"):lower()
+    local title = (item.title and item.title ~= "") and item.title or name:gsub("%.[%w]+$", "")
+    local base = (item.author and item.author ~= "") and (item.author .. " - " .. title) or title
+    local fname = util.getSafeFilename(util.replaceAllInvalidChars(base) .. "." .. ext, dir)
+    local size = tonumber(item.size)
+    local stem = fname:gsub("%.[%w]+$", "")
+    for i = 1, 50 do
+        local candidate = i == 1 and fname or (stem .. " (" .. i .. ")." .. ext)
+        local path = dir .. "/" .. candidate
+        local have = lfs.attributes(path, "size")
+        if not have then return path, false end
+        if size and have == size then return path, true end
+        -- A different book with the same name: try the next free name.
+    end
+    return nil, false
+end
+
+--- Downloads the books waiting in the app's inbox (5 per round, each with a
+--- fresh 10-minute link), then confirms each one.
 function LascisBoard:downloadInbox()
     if not self:secret() then return 0 end
-    local res, err = self:callJson("GET", "/inbox")
-    if not res then return nil, err end
     local dir = self:inboxDir()
     if lfs.attributes(dir, "mode") ~= "directory" then util.makePath(dir) end
     local done = 0
-    for _, item in ipairs(res.items or {}) do
-        local name = item.filename or "book.epub"
-        local ext = name:match("%.([%w]+)$") or "epub"
-        local target = dir .. "/" .. name
-        local opds_name = core.opdsStyleName(item.author, item.title, ext)
-        local already = lfs.attributes(target, "mode") == "file"
-            or (opds_name and lfs.attributes(dir .. "/" .. opds_name, "mode") == "file")
-        if not already then
-            local part = target .. ".part"
-            local code = request("GET", item.url, {}, nil, part)
-            local size = lfs.attributes(part, "size")
-            if code == 200 and size and (not item.size or size == tonumber(item.size)) then
-                os.rename(part, target)
-                already = true
-            else
-                os.remove(part)
-                logger.warn("LascisBoard: download failed", name, code, size)
+    for _ = 1, 10 do
+        local res, err = self:callJson("GET", "/inbox")
+        if not res then return done > 0 and done or nil, err end
+        local items = res.items or {}
+        if #items == 0 then break end
+        local progressed = false
+        for _, item in ipairs(items) do
+            local target, already = inboxTarget(dir, item)
+            if target and not already then
+                local part = target .. ".part"
+                local code = request("GET", item.url, {}, nil, part)
+                local size = lfs.attributes(part, "size")
+                if code == 200 and size and (not item.size or size == tonumber(item.size)) then
+                    os.rename(part, target)
+                    already = true
+                else
+                    os.remove(part)
+                    logger.warn("LascisBoard: download failed", item.id, code, size)
+                end
+            end
+            if already then
+                local ok = self:callJson("POST", "/deliveries/" .. item.id .. "/ack", {})
+                if ok then
+                    done = done + 1
+                    progressed = true
+                end
             end
         end
-        if already then
-            local ok = self:callJson("POST", "/deliveries/" .. item.id .. "/ack", {})
-            if ok then done = done + 1 end
-        end
+        if not progressed then break end
     end
     if done > 0 and self.ui and self.ui.file_chooser then
         pcall(function() self.ui.file_chooser:refreshPath() end)
@@ -482,15 +536,17 @@ function LascisBoard:runAuto(reason)
     if now - state.last_auto < AUTO_MIN_GAP then return end
     state.last_auto = now
     state.running = true
+    local reading = self.ui.document ~= nil
     local ok, err = pcall(function()
         if self:isOn("auto_sync") then
-            local summary, e = self:sync()
+            local summary, e = self:sync({ light = reading })
             if not summary then
                 logger.warn("LascisBoard: sync failed", reason, e)
                 self:save("last_error", { at = now, message = tostring(e) })
             end
         end
-        if self:isOn("auto_inbox") then
+        -- Downloads never run behind an open book.
+        if not reading and self:isOn("auto_inbox") then
             local n = self:downloadInbox()
             if n and n > 0 then
                 Notification:notify(T(_("Lasci's Board: %1 new book(s) downloaded"), n))
@@ -545,13 +601,14 @@ end
 function LascisBoard:onCloseDocument()
     -- Send only when already online (never bring the radio up); the statistics
     -- plugin flushes the closing book first, hence the delay.
-    if NetworkMgr:isOnline() and self:isOn("auto_sync") and self:secret() then
+    if NetworkMgr:isConnected() and self:isOn("auto_sync") and self:secret() then
         local plugin = self
         UIManager:scheduleIn(2, function()
             if state.running then return end
             state.running = true
-            local ok, err = pcall(plugin.sync, plugin, { no_flush = true })
+            local ok, err = pcall(plugin.sync, plugin, { no_flush = true, light = true })
             state.running = false
+            state.last_auto = os.time()
             if not ok then logger.warn("LascisBoard: close sync failed", err) end
         end)
     end
@@ -597,7 +654,7 @@ function LascisBoard:editSecret()
             { text = _("Save"), is_enter_default = true, callback = function()
                 local v = (dialog:getInputText() or ""):gsub("%s", "")
                 UIManager:close(dialog)
-                if #v >= 16 then
+                if #v >= 32 then
                     self:save("secret", v)
                     UIManager:show(InfoMessage:new{ text = _("Saved."), timeout = 2 })
                 else

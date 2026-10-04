@@ -197,7 +197,12 @@ export function moveInQueue(queue: readonly Book[], id: string, delta: number): 
     .filter(r => queue.find(b => b.id === r.id)?.queue_order !== r.queue_order)
 }
 
-/** A likely duplicate pair (same normalised title + author), for the merge suggestion. */
+/**
+ * A likely duplicate pair (same normalised title + author), for the merge
+ * suggestion. Two rows that are two real files on the Kobo (two different
+ * md5s, e.g. an EPUB and a KEPUB) are not offered: the next sync would bring
+ * the deleted one back.
+ */
 export function duplicatePairs(books: readonly Book[]): [Book, Book][] {
   const key = (b: Book) => {
     const norm = (s: string | null) => fold(s)
@@ -209,6 +214,7 @@ export function duplicatePairs(books: readonly Book[]): [Book, Book][] {
   for (const b of books) {
     const k = key(b)
     const prev = seen.get(k)
+    if (prev && prev.koreader_md5 && b.koreader_md5 && prev.koreader_md5 !== b.koreader_md5) continue
     if (prev) out.push([prev, b])
     else seen.set(k, b)
   }
