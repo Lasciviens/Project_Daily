@@ -14,6 +14,8 @@ const inflate: Inflate = async data => {
 export interface OpenedFile {
   file: File
   bytes: Uint8Array
+  /** KOReader's id of the file as picked (before any details are written into it). */
+  md5: string
   isEpub: boolean
   meta: EpubMeta | null
   /** An object URL of the cover image (revoke it when done). */
@@ -30,7 +32,7 @@ const IMAGE_TYPE: Record<string, string> = { jpg: 'image/jpeg', jpeg: 'image/jpe
 export async function openBookFile(file: File): Promise<OpenedFile> {
   const bytes = new Uint8Array(await file.arrayBuffer())
   const isEpub = /\.epub$/i.test(file.name)
-  const base: OpenedFile = { file, bytes, isEpub, meta: null, coverUrl: null, epub: null, problem: null }
+  const base: OpenedFile = { file, bytes, md5: partialMd5(bytes), isEpub, meta: null, coverUrl: null, epub: null, problem: null }
   if (!isEpub) return { ...base, problem: 'A PDF keeps its own details; the ones you type here are saved in the app only.' }
   if (typeof DecompressionStream === 'undefined') return { ...base, problem: 'This browser cannot open EPUB files; the details you type are saved in the app only.' }
   try {
@@ -57,7 +59,7 @@ export async function openBookFile(file: File): Promise<OpenedFile> {
 /** The bytes to send: the EPUB with the edited details written in, or the file unchanged. */
 export function finalBytes(f: OpenedFile, edit: OpfEdit | null): Uint8Array {
   if (!edit || !f.epub) return f.bytes
-  const xml = writeOpf(f.epub.opfText, edit)
+  const xml = writeOpf(f.epub.opfText, edit, f.epub.opf)
   if (xml === f.epub.opfText) return f.bytes
   return replaceFile(f.bytes, f.epub.entries, f.epub.opf, new TextEncoder().encode(xml))
 }

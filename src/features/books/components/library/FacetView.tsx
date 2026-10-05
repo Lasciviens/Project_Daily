@@ -93,9 +93,9 @@ function FacetDetail({ facet, kind, books, onBack }: { facet: Facet; kind: Facet
           ))}
         </ol>
       ) : (
-        <ul className="grid grid-cols-[repeat(auto-fill,minmax(5.5rem,1fr))] gap-x-3 gap-y-4 sm:grid-cols-[repeat(auto-fill,minmax(7.5rem,1fr))]">
+        <div className="@container"><ul className="grid grid-cols-[repeat(auto-fill,minmax(5.5rem,1fr))] gap-x-3 gap-y-4 @[34rem]:grid-cols-[repeat(auto-fill,minmax(7.5rem,1fr))]">
           {books.map(b => <li key={b.id} className="min-w-0"><BookTile book={b} /></li>)}
-        </ul>
+        </ul></div>
       )}
     </Card>
   )

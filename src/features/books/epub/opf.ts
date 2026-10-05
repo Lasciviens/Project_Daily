@@ -63,6 +63,24 @@ export function resolvePath(opf: string, href: string): string {
   return parts.join('/')
 }
 
+/**
+ * The creators who are authors: no role, or role "aut" (EPUB 2 opf:role, or
+ * an EPUB 3 <meta refines="#id" property="role">). Illustrators, translators
+ * and editors are left out — they are not the book's authors.
+ */
+function authorElements(meta: string): { attrs: string; text: string }[] {
+  const roles = new Map<string, string>()
+  for (const m of elements(meta, 'meta')) {
+    if (attr(m.attrs, 'property') !== 'role') continue
+    const ref = attr(m.attrs, 'refines')
+    if (ref?.startsWith('#')) roles.set(ref.slice(1), clean(m.text).toLowerCase())
+  }
+  return elements(meta, 'creator').filter(e => {
+    const role = (attr(e.attrs, 'opf:role') ?? attr(e.attrs, 'role') ?? roles.get(attr(e.attrs, 'id') ?? '') ?? 'aut').toLowerCase()
+    return role === 'aut'
+  })
+}
+
 export function readOpf(xml: string, opf: string): EpubMeta {
   const meta = xml.match(/<(?:[\w-]+:)?metadata\b[\s\S]*?<\/(?:[\w-]+:)?metadata>/i)?.[0] ?? xml
   const first = (tag: string) => { const e = elements(meta, tag)[0]; const t = e ? clean(e.text) : ''; return t || null }
@@ -82,7 +100,7 @@ export function readOpf(xml: string, opf: string): EpubMeta {
   const description = first('description')
   return {
     title: first('title'),
-    authors: elements(meta, 'creator').map(e => clean(e.text)).filter(Boolean),
+    authors: authorElements(meta).map(e => clean(e.text)).filter(Boolean),
     language: first('language'),
     publisher: first('publisher'),
     year: year ? Number(year) : null,
@@ -104,34 +122,63 @@ export interface OpfEdit {
   subjects: string[]
 }
 
+const same = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((x, i) => x === b[i])
+
 /**
- * The OPF with the edited fields written in: title and creators replaced, the
- * language set, Calibre's series meta (what KOReader and the Kobo read)
- * replaced, subjects replaced. Everything else is left exactly as it was.
+ * The OPF with only the fields that CHANGED written in; everything else —
+ * other creators (illustrators…), ids, file-as sort names, subtitles — stays
+ * exactly as it was. Nothing changed → the same text back (the file is sent
+ * untouched).
+ *   title       the first <dc:title>'s text, in place
+ *   authors     the author creators replaced (other roles kept)
+ *   language    the first <dc:language>'s text, in place (or added)
+ *   subjects    every <dc:subject> replaced
+ *   series      Calibre's series metas (what KOReader and the Kobo read), EPUB 3's collection metas removed
  */
-export function writeOpf(xml: string, edit: OpfEdit): string {
-  const open = xml.match(/<(?:([\w-]+):)?metadata\b[^>]*>/i)
+export function writeOpf(xml: string, edit: OpfEdit, opf = 'content.opf'): string {
+  const open = xml.match(/<(?:[\w-]+:)?metadata\b[^>]*>/i)
   if (!open || open.index === undefined) return xml
   const start = open.index + open[0].length
   const close = xml.slice(start).search(/<\/(?:[\w-]+:)?metadata>/i)
   if (close < 0) return xml
+  const before = readOpf(xml, opf)
   let meta = xml.slice(start, start + close)
-  const drop = (tag: string) => { meta = meta.replace(new RegExp(`\\s*<(?:[\\w-]+:)?${tag}\\b[^>]*?(?:/>|>[\\s\\S]*?</(?:[\\w-]+:)?${tag}>)`, 'gi'), '') }
-  drop('title'); drop('creator'); drop('subject')
-  if (edit.language) drop('language')
-  meta = meta.replace(/\s*<(?:[\w-]+:)?meta\b[^>]*name\s*=\s*["']calibre:series(?:_index)?["'][^>]*?(?:\/>|>\s*<\/(?:[\w-]+:)?meta>)/gi, '')
-  // A new series replaces EPUB 3's collection metas too, so two series never disagree.
-  if (edit.series) meta = meta.replace(/\s*<(?:[\w-]+:)?meta\b[^>]*property\s*=\s*["'](?:belongs-to-collection|collection-type|group-position)["'][^>]*?(?:\/>|>[\s\S]*?<\/(?:[\w-]+:)?meta>)/gi, '')
-  const add: string[] = [`<dc:title>${encodeXml(edit.title)}</dc:title>`]
-  for (const a of edit.authors) add.push(`<dc:creator>${encodeXml(a)}</dc:creator>`)
-  if (edit.language) add.push(`<dc:language>${encodeXml(edit.language)}</dc:language>`)
-  for (const s of edit.subjects) add.push(`<dc:subject>${encodeXml(s)}</dc:subject>`)
-  if (edit.series) {
-    add.push(`<meta name="calibre:series" content="${encodeXml(edit.series)}"/>`)
-    if (edit.seriesIndex) add.push(`<meta name="calibre:series_index" content="${encodeXml(edit.seriesIndex)}"/>`)
+  const add: string[] = []
+  const textOf = (tag: string, value: string) => {
+    const re = new RegExp(`(<(?:[\\w-]+:)?${tag}\\b[^>]*>)[\\s\\S]*?(</(?:[\\w-]+:)?${tag}>)`, 'i')
+    if (re.test(meta)) meta = meta.replace(re, (_m, a: string, b: string) => `${a}${encodeXml(value)}${b}`)
+    else add.push(`<dc:${tag}>${encodeXml(value)}</dc:${tag}>`)
   }
+  const removeAll = (re: RegExp) => { meta = meta.replace(re, '') }
+  const elementRe = (tag: string) => new RegExp(`\\s*<(?:[\\w-]+:)?${tag}\\b[^>]*?(?:/>|>[\\s\\S]*?</(?:[\\w-]+:)?${tag}>)`, 'gi')
+
+  if (edit.title && edit.title !== before.title) textOf('title', edit.title)
+  if (edit.language && edit.language !== before.language) textOf('language', edit.language)
+  if (!same(edit.authors, before.authors)) {
+    const authors = authorElements(meta)
+    for (const a of authors) {
+      const re = new RegExp(`\\s*<(?:[\\w-]+:)?creator\\b${a.attrs.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}>${a.text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}</(?:[\\w-]+:)?creator>`, 'i')
+      meta = meta.replace(re, '')
+    }
+    for (const a of edit.authors) add.push(`<dc:creator>${encodeXml(a)}</dc:creator>`)
+  }
+  if (!same(edit.subjects, before.subjects)) {
+    removeAll(elementRe('subject'))
+    for (const t of edit.subjects) add.push(`<dc:subject>${encodeXml(t)}</dc:subject>`)
+  }
+  if ((edit.series ?? null) !== before.series || (edit.series && (edit.seriesIndex ?? null) !== before.seriesIndex)) {
+    removeAll(/\s*<(?:[\w-]+:)?meta\b[^>]*name\s*=\s*["']calibre:series(?:_index)?["'][^>]*?(?:\/>|>\s*<\/(?:[\w-]+:)?meta>)/gi)
+    // A new series replaces EPUB 3's collection metas too, so two series never disagree.
+    removeAll(/\s*<(?:[\w-]+:)?meta\b[^>]*property\s*=\s*["'](?:belongs-to-collection|collection-type|group-position)["'][^>]*?(?:\/>|>[\s\S]*?<\/(?:[\w-]+:)?meta>)/gi)
+    if (edit.series) {
+      add.push(`<meta name="calibre:series" content="${encodeXml(edit.series)}"/>`)
+      if (edit.seriesIndex) add.push(`<meta name="calibre:series_index" content="${encodeXml(edit.seriesIndex)}"/>`)
+    }
+  }
+  const changed = add.length > 0 || meta !== xml.slice(start, start + close)
+  if (!changed) return xml
   let head = xml.slice(0, start)
   // The dc: prefix must be declared for the new elements.
-  if (!/xmlns:dc\s*=/.test(xml)) head = head.replace(/<((?:[\w-]+:)?metadata)\b/i, '<$1 xmlns:dc="http://purl.org/dc/elements/1.1/"')
-  return `${head}\n    ${add.join('\n    ')}${meta}${xml.slice(start + close)}`
+  if (add.some(a => a.startsWith('<dc:')) && !/xmlns:dc\s*=/.test(xml)) head = head.replace(/<((?:[\w-]+:)?metadata)\b/i, '<$1 xmlns:dc="http://purl.org/dc/elements/1.1/"')
+  return `${head}${add.length ? `\n    ${add.join('\n    ')}` : ''}${meta}${xml.slice(start + close)}`
 }

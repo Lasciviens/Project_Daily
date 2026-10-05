@@ -128,9 +128,9 @@ export function LibraryTab() {
           ) : shown.length === 0 ? (
             <EmptyState icon={<Search />} title="No book matches" description="Try another word or filter." />
           ) : (
-            <ul className="grid grid-cols-[repeat(auto-fill,minmax(5.5rem,1fr))] gap-x-3 gap-y-4 sm:grid-cols-[repeat(auto-fill,minmax(7.5rem,1fr))]">
+            <div className="@container"><ul className="grid grid-cols-[repeat(auto-fill,minmax(5.5rem,1fr))] gap-x-3 gap-y-4 @[34rem]:grid-cols-[repeat(auto-fill,minmax(7.5rem,1fr))]">
               {shown.map(b => <li key={b.id} className="min-w-0"><BookTile book={b} /></li>)}
-            </ul>
+            </ul></div>
           )}
         </Card>
       ),

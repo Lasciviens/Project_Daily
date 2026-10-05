@@ -108,6 +108,44 @@ export function suggest(values: readonly string[], typed: string, limit = 6): st
   return scored.sort((a, b) => a.s - b.s || a.v.length - b.v.length || a.v.localeCompare(b.v)).slice(0, limit).map(x => x.v)
 }
 
+/** Edit distance: insert, delete, change or swap two neighbouring letters (each 1), stopping early past `max`. */
+export function editDistance(a: string, b: string, max = 3): number {
+  if (Math.abs(a.length - b.length) > max) return max + 1
+  let prev2: number[] = []
+  let prev = Array.from({ length: b.length + 1 }, (_, i) => i)
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [i]
+    let best = i
+    for (let j = 1; j <= b.length; j++) {
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1))
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) cur[j] = Math.min(cur[j], prev2[j - 2] + 1)
+      best = Math.min(best, cur[j])
+    }
+    if (best > max) return max + 1
+    prev2 = prev
+    prev = cur
+  }
+  return prev[b.length]
+}
+
+/**
+ * A library value one or two letters away from what was typed ("Tolkein" →
+ * "J. R. R. Tolkien" is too far, "Tolkein" → "Tolkien" is not): one letter for
+ * 5–8 letters, two from 9. Null when it already matches or nothing is close.
+ */
+export function nearMatch(values: readonly string[], typed: string): string | null {
+  const k = foldKey(typed)
+  if (k.length < 5 || values.some(v => foldKey(v) === k)) return null
+  const allowed = k.length >= 9 ? 2 : 1
+  let best: string | null = null
+  let bestD = allowed + 1
+  for (const v of values) {
+    const d = editDistance(k, foldKey(v), allowed)
+    if (d < bestD) { best = v; bestD = d }
+  }
+  return best
+}
+
 /** The library's own spelling when the typed value matches one ignoring case and accents, else the typed value trimmed. */
 export function canonical(values: readonly string[], typed: string): string {
   const t = typed.replace(/\s+/g, ' ').trim()

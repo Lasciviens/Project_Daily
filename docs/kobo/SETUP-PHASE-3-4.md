@@ -174,7 +174,7 @@ on the website fills in after this sync: its values, its menus, the battery.
 ## 8. Plugin 1.2 — storage, the full reading menu, sizes and subjects (round 3)
 
 **Supabase (owner):** merge the PR, run `supabase/migrations/128_books_browse.sql`, **then**
-redeploy **`kobo-sync`** (Enforce JWT Verification **OFF**). Order matters: the new
+redeploy **`kobo-sync`** (Enforce JWT Verification **OFF**) and **`ai-proxy`** (JWT **OFF**). Order matters: the new
 `kobo-sync` reads the columns 128 adds, so deploying it first makes every sync fail.
 
 **What 1.2 adds:** the Kobo's storage (total and free) with every sync; each book's file
@@ -201,8 +201,9 @@ ssh kobo 'cd /mnt/onboard/.adds/koreader/plugins/lascisboard.koplugin && grep -m
 Paste me all the output.
 ````
 
-**Then on the Kobo:** exit KOReader and open it again. Open any book, wait a moment,
-go back to the library, then 🛠 → **Lasci's Board** → **Sync now**.
+**Then on the Kobo:** exit KOReader and open it again. Open any book, then close it (the
+plugin takes the reading menu while the book is still open), go back to the library, then
+🛠 → **Lasci's Board** → **Sync now**.
 
 **Check:**
 - Books → Kobo → Overview: the Storage card shows free space and what fills it.

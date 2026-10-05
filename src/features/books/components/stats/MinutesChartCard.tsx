@@ -1,6 +1,7 @@
+import { useState } from 'react'
 import { CalendarDays } from 'lucide-react'
 import { Card, CardHeader, SegmentedControl } from '../../../../shared/ui'
-import { formatDayMonth } from '../../../../shared/utils/dateFormat'
+import { formatDate, formatDayMonth } from '../../../../shared/utils/dateFormat'
 import { addDays, dayRange, dayState, formatDuration, type DayState } from '../../readingAggregate'
 import type { ReadingSettings } from '../../types'
 import { NoReadingData } from './statsKit'
@@ -39,13 +40,24 @@ function DayBars({ days, perDay, goal, stateOf }: {
   const max = Math.max(goal, ...days.map(d => (perDay.get(d) ?? 0) / 60), 1)
   const total = days.reduce((t, d) => t + (perDay.get(d) ?? 0), 0)
   const readDays = days.filter(d => (perDay.get(d) ?? 0) > 0).length
+  // Tap or hover a bar to read its day (a title tooltip alone never shows on a phone).
+  const [picked, setPicked] = useState<string | null>(null)
+  const pickAt = (clientX: number, el: HTMLElement) => {
+    const r = el.getBoundingClientRect()
+    const i = Math.min(days.length - 1, Math.max(0, Math.floor(((clientX - r.left) / r.width) * days.length)))
+    setPicked(days[i])
+  }
+  const pickedLine = picked && days.includes(picked)
+    ? `${formatDate(new Date(`${picked}T12:00:00`))}: ${stateOf(picked) === 'unknown' ? 'not synced yet' : formatDuration(perDay.get(picked) ?? 0)}`
+    : 'Tap or point at a bar to see that day.'
   return (
     <div className="flex flex-col gap-2">
       <p className="text-meta text-fg-muted">
         <span className="font-semibold text-fg">{formatDuration(total)}</span> over {readDays} {readDays === 1 ? 'day' : 'days'}
         {readDays > 0 && ` · ${formatDuration(total / readDays)} on a reading day`}
       </p>
-      <div className="relative h-36" role="img" aria-label={`Minutes read per day, ${days.length} days`}>
+      <div className="relative h-36 cursor-pointer touch-pan-y" role="img" aria-label={`Minutes read per day, ${days.length} days`}
+        onPointerDown={e => pickAt(e.clientX, e.currentTarget)} onPointerMove={e => { if (e.pointerType === 'mouse') pickAt(e.clientX, e.currentTarget) }}>
         <div className="absolute inset-x-0 border-t border-dashed border-accent-300" style={{ bottom: `${(goal / max) * 100}%` }} aria-hidden />
         <div className={`absolute inset-0 flex items-end ${days.length <= 90 ? 'gap-px' : ''}`}>
           {days.map(d => {
@@ -53,8 +65,8 @@ function DayBars({ days, perDay, goal, stateOf }: {
             const st = stateOf(d)
             const h = st === 'unknown' ? 100 : Math.max((min / max) * 100, min > 0 ? 3 : 0)
             return (
-              <div key={d} className="flex h-full min-w-0 flex-1 items-end" title={`${formatDayMonth(d)}: ${st === 'unknown' ? 'not synced yet' : `${Math.round(min)} min`}`}>
-                <div className={`w-full ${days.length <= 90 ? 'rounded-t-[3px]' : ''} ${BAR_TONE[st]} ${st === 'unknown' ? 'opacity-60' : ''}`} style={{ height: `${h}%` }} />
+              <div key={d} className="flex h-full min-w-0 flex-1 items-end">
+                <div className={`w-full ${days.length <= 90 ? 'rounded-t-[3px]' : ''} ${BAR_TONE[st]} ${st === 'unknown' ? 'opacity-60' : ''} ${picked === d ? 'ring-2 ring-accent-600' : ''}`} style={{ height: `${h}%` }} />
               </div>
             )
           })}
@@ -65,6 +77,7 @@ function DayBars({ days, perDay, goal, stateOf }: {
         <span>Goal {goal} min</span>
         <span>{formatDayMonth(days[days.length - 1])}</span>
       </div>
+      <p className="text-meta tabular-nums text-fg-2" aria-live="polite">{pickedLine}</p>
     </div>
   )
 }

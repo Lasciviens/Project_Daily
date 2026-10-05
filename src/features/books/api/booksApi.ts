@@ -2,6 +2,7 @@ import { supabase } from '../../../integrations/supabase/client'
 import { requireUser } from '../../../shared/utils/requireUser'
 import { safeFileName, storageFileName } from '../opdsFeed'
 import type { BookDelivery } from '../types'
+import { FILE_FACTS, TYPED, empty, updateFor } from '../epub/sendDraft'
 
 // book_deliveries / kobo_feed_state / the kobo-inbox bucket come with
 // migration 125. Reads degrade to empty before it is applied; a write names
@@ -70,36 +71,59 @@ export interface PreparedBook {
   /** KOReader's partial md5 of exactly these bytes. */
   md5: string
   row: Record<string, unknown> & { title: string; author: string | null; read_status: string }
+  /** Send as this existing library book (one without a file yet) instead of making a new row. */
+  asBookId?: string | null
 }
 
 /**
- * Sends a reviewed file: the library row first (found by the Kobo's book id,
- * or made — the Kobo's next sync then matches it and only fills what is still
- * empty), then the file into the inbox. A row made here is removed again if
- * the upload fails. An existing book keeps its status; its details take what
- * was typed.
+ * Sends a reviewed file: the library row first, then the file into the inbox.
+ * The row is the one with this file's id (the same file sent again), or the
+ * book picked with "Send as this book", or a new one; the Kobo's next sync
+ * matches it by the id and only fills what is still empty. An existing book
+ * keeps its status; what was typed replaces its details, the file's own facts
+ * only fill gaps. A row made here is removed again if the upload fails.
  */
 export async function sendPrepared(p: PreparedBook): Promise<BookDelivery> {
   const user = await requireUser()
-  const { data: found, error: e1 } = await supabase.from('books').select('id').eq('koreader_md5', p.md5).maybeSingle()
-  if (e1) throw e1
+  const cols = `id, koreader_md5, ${[...TYPED, ...FILE_FACTS].join(', ')}`
+  // Before migration 128 there are no categories/subjects columns: work without them.
+  const before128 = (e: { message?: string } | null) => !!e && /categories|subjects/.test(e.message ?? '')
+  const fetchRow = async (col: 'koreader_md5' | 'id', v: string) => {
+    let { data, error } = await supabase.from('books').select(cols).eq(col, v).maybeSingle()
+    if (before128(error)) ({ data, error } = await supabase.from('books').select(cols.replace(', categories, subjects', '')).eq(col, v).maybeSingle())
+    if (error) throw error
+    return data as Record<string, unknown> | null
+  }
+  const save = async (id: string, patch: Record<string, unknown>) => {
+    if (!Object.keys(patch).length) return
+    let { error } = await supabase.from('books').update(patch).eq('id', id)
+    if (before128(error)) {
+      const { categories: _c, subjects: _s, ...rest } = patch
+      void _c; void _s
+      if (Object.keys(rest).length) ({ error } = await supabase.from('books').update(rest).eq('id', id))
+      else error = null
+    }
+    if (error) throw error
+  }
+
   let bookId: string
   let made = false
-  // Before migration 128 there are no categories/subjects columns: save the rest.
-  const before128 = (e: { message?: string } | null) => !!e && /categories|subjects/.test(e.message ?? '')
-  const { categories: _c, subjects: _s, ...older } = p.row
-  void _c; void _s
-  if (found) {
-    bookId = found.id
-    const { read_status: _status, ...details } = p.row
-    void _status
-    let { error } = await supabase.from('books').update(withoutEmpty(details)).eq('id', bookId)
-    if (before128(error)) ({ error } = await supabase.from('books').update(withoutEmpty({ ...details, categories: null, subjects: null })).eq('id', bookId))
-    if (error) throw error
+  const byFile = await fetchRow('koreader_md5', p.md5)
+  const target = byFile ?? (p.asBookId ? await fetchRow('id', p.asBookId) : null)
+  if (target) {
+    bookId = target.id as string
+    const patch = updateFor(target, p.row)
+    if (!byFile) patch.koreader_md5 = p.md5
+    await save(bookId, patch)
   } else {
-    const row = { user_id: user.id, koreader_md5: p.md5, source: 'manual', on_device: false }
-    let { data, error } = await supabase.from('books').insert({ ...p.row, ...row }).select('id').single()
-    if (before128(error)) ({ data, error } = await supabase.from('books').insert({ ...older, ...row }).select('id').single())
+    const base = { user_id: user.id, koreader_md5: p.md5, source: 'manual', on_device: false }
+    const row = Object.fromEntries(Object.entries(p.row).filter(([, v]) => !empty(v) || v === null))
+    let { data, error } = await supabase.from('books').insert({ ...row, ...base }).select('id').single()
+    if (before128(error)) {
+      const { categories: _c, subjects: _s, ...older } = row
+      void _c; void _s
+      ;({ data, error } = await supabase.from('books').insert({ ...older, ...base }).select('id').single())
+    }
     if (error || !data) throw error ?? new Error('Could not add the book to the library.')
     bookId = data.id
     made = true

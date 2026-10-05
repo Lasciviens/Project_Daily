@@ -1,7 +1,7 @@
 import { useId, useMemo, useState, type KeyboardEvent } from 'react'
 import { X } from 'lucide-react'
 import { cx } from '../../../shared/ui'
-import { canonical, foldKey, suggest } from '../libraryFacets'
+import { canonical, foldKey, nearMatch, suggest } from '../libraryFacets'
 
 /**
  * A text field that offers what the library already has while you type
@@ -23,7 +23,8 @@ export function SuggestInput({ value, onChange, values, label, placeholder, clas
   const [active, setActive] = useState(0)
   const hits = useMemo(() => suggest(values, value), [values, value])
   const exact = values.find(v => foldKey(v) === foldKey(value) && v !== value.trim())
-  const options = exact ? [exact, ...hits.filter(h => h !== exact)] : hits
+  const near = useMemo(() => (hits.length ? null : nearMatch(values, value)), [hits.length, values, value])
+  const options = exact ? [exact, ...hits.filter(h => h !== exact)] : near ? [near] : hits
   const show = open && options.length > 0
   const pick = (v: string) => { onChange(v); setOpen(false) }
   const onKey = (e: KeyboardEvent<HTMLInputElement>) => {
@@ -52,9 +53,17 @@ export function SuggestInput({ value, onChange, values, label, placeholder, clas
                 i === active ? 'bg-accent-50 text-fg' : 'text-fg-2')}>
               <span className="min-w-0 flex-1 break-words">{o}</span>
               {o === exact && <span className="text-micro text-fg-muted">In your library</span>}
+              {o === near && <span className="text-micro text-fg-muted">Did you mean this?</span>}
             </li>
           ))}
         </ul>
+      )}
+      {!open && near && (
+        <p className="mt-1 flex flex-wrap items-center gap-1 text-micro text-fg-muted">
+          Did you mean
+          <button type="button" className="min-h-[32px] font-semibold text-accent-600 underline-offset-2 hover:underline" onClick={() => onChange(near)}>{near}</button>
+          ? It is already in your library.
+        </p>
       )}
     </div>
   )

@@ -16,6 +16,27 @@ export interface SendDraft {
   status: Extract<ReadStatus, 'want' | 'reading'>
   /** EPUB only: write the edited details into the file too, so the Kobo shows them. */
   writeIntoFile: boolean
+  /** Send as this library book (one with no file yet) instead of adding a new one. */
+  asBookId: string | null
+}
+
+/** Book languages offered in the preview, as the codes KOReader reads (hyphenation follows them). */
+export const LANGUAGES: { code: string; name: string }[] = [
+  { code: 'en', name: 'English' }, { code: 'nb', name: 'Norwegian (Bokmål)' }, { code: 'nn', name: 'Norwegian (Nynorsk)' },
+  { code: 'tr', name: 'Turkish' }, { code: 'sv', name: 'Swedish' }, { code: 'da', name: 'Danish' }, { code: 'de', name: 'German' },
+  { code: 'fr', name: 'French' }, { code: 'es', name: 'Spanish' }, { code: 'it', name: 'Italian' }, { code: 'nl', name: 'Dutch' },
+  { code: 'fi', name: 'Finnish' }, { code: 'ja', name: 'Japanese' },
+]
+const LANGUAGE_NAMES: Record<string, string> = {
+  english: 'en', norsk: 'nb', norwegian: 'nb', bokmal: 'nb', 'bokmål': 'nb', no: 'nb', nynorsk: 'nn', turkish: 'tr', turkce: 'tr', 'türkçe': 'tr',
+  swedish: 'sv', svenska: 'sv', danish: 'da', dansk: 'da', german: 'de', deutsch: 'de', french: 'fr', francais: 'fr', 'français': 'fr',
+  spanish: 'es', espanol: 'es', 'español': 'es', italian: 'it', italiano: 'it', dutch: 'nl', finnish: 'fi', suomi: 'fi', japanese: 'ja',
+}
+
+/** "English" → "en", "en-GB" → "en-GB", "nob" stays: a language name becomes its code. */
+export function languageCode(v: string): string {
+  const t = v.trim()
+  return LANGUAGE_NAMES[t.toLowerCase()] ?? t
 }
 
 /** "Rowling, J K - Harry Potter 1.epub" → "Rowling, J K - Harry Potter 1". */
@@ -34,6 +55,23 @@ export function draftFromMeta(meta: EpubMeta | null, fileName: string, canWrite:
     subjects: meta?.subjects ?? [],
     status: 'want',
     writeIntoFile: canWrite,
+    asBookId: null,
+  }
+}
+
+/** The same file is already in the library: start from what the library has, so sending again loses nothing. */
+export function draftFromBook(b: Book, meta: EpubMeta | null, fileName: string, canWrite: boolean): SendDraft {
+  const fromFile = draftFromMeta(meta, fileName, canWrite)
+  return {
+    ...fromFile,
+    title: b.title || fromFile.title,
+    author: b.author ?? fromFile.author,
+    series: b.series ?? fromFile.series,
+    seriesIndex: b.series_index ?? fromFile.seriesIndex,
+    language: b.language ?? fromFile.language,
+    categories: b.categories ?? [],
+    subjects: b.subjects?.length ? b.subjects : fromFile.subjects,
+    status: b.read_status === 'reading' ? 'reading' : 'want',
   }
 }
 
@@ -67,7 +105,7 @@ export function normalizeDraft(d: SendDraft, known: Known): SendDraft {
     author: authors.join(' & '),
     series: canonical(known.collection, d.series),
     seriesIndex: d.seriesIndex.trim(),
-    language: d.language.trim(),
+    language: languageCode(d.language),
     categories: cleanTags(known.category, d.categories),
     subjects: cleanTags(known.subject, d.subjects),
   }
@@ -103,3 +141,18 @@ export function bookRowOf(d: SendDraft, meta: EpubMeta | null) {
     description: meta?.description ?? null,
   }
 }
+
+/** What the owner typed: it replaces the row's value. Empty lists never wipe one. */
+export const TYPED = ['title', 'author', 'series', 'series_index', 'language', 'categories', 'subjects'] as const
+/** What the file says: it only fills an empty field. */
+export const FILE_FACTS = ['publisher', 'published_year', 'isbn', 'description'] as const
+export const empty = (v: unknown) => v == null || v === '' || (Array.isArray(v) && v.length === 0)
+
+/** The update for an existing row: typed fields, file facts only where the row has none. */
+export function updateFor(existing: Record<string, unknown>, row: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  for (const k of TYPED) if (!empty(row[k]) && JSON.stringify(row[k]) !== JSON.stringify(existing[k])) out[k] = row[k]
+  for (const k of FILE_FACTS) if (!empty(row[k]) && empty(existing[k])) out[k] = row[k]
+  return out
+}
+

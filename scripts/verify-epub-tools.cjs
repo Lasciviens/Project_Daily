@@ -103,7 +103,16 @@ const bytes = new Uint8Array(fs.readFileSync(epubPath))
   eq([m3.series, m3.seriesIndex, m3.coverPath], ['Discworld', '4', 'c.png'], 'EPUB 3 collection and cover-image')
 
   // ── Rewrite ──
-  const edited = o.writeOpf(opfText, { title: 'Harry Potter and the Philosopher’s Stone', authors: ['J. K. Rowling', 'Mary GrandPré'], language: 'en', series: 'Harry Potter', seriesIndex: '1', subjects: ['Fantasy', 'Magic & Wizards'] })
+  // Only what changed is written; illustrators, sort names and ids stay.
+  const same = o.writeOpf(opfText, { title: meta.title, authors: meta.authors, language: meta.language, series: meta.series, seriesIndex: meta.seriesIndex, subjects: meta.subjects }, 'OEBPS/content.opf')
+  eq(same, opfText, 'nothing changed → the OPF is returned untouched (file sent as it is)')
+  const ill = `<package><metadata xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:opf="http://www.idpf.org/2007/opf"><dc:title id="t">Stone</dc:title><dc:creator opf:role="aut" opf:file-as="Rowling, J.K.">J.K. Rowling</dc:creator><dc:creator opf:role="ill">Jim Kay</dc:creator><dc:creator id="c3">Ann Translator</dc:creator><meta refines="#c3" property="role" scheme="marc:relators">trl</meta></metadata></package>`
+  eq(o.readOpf(ill, 'content.opf').authors, ['J.K. Rowling'], 'illustrator (opf:role) and translator (EPUB 3 refines) are not authors')
+  const t2 = o.writeOpf(ill, { title: 'Philosopher’s Stone', authors: ['J.K. Rowling'], language: null, series: null, seriesIndex: null, subjects: [] }, 'content.opf')
+  ok(t2.includes('<dc:title id="t">Philosopher’s Stone</dc:title>') && t2.includes('opf:file-as="Rowling, J.K."'), 'a title change keeps the element id and the author sort name')
+  const a2 = o.writeOpf(ill, { title: 'Stone', authors: ['J. K. Rowling'], language: null, series: null, seriesIndex: null, subjects: [] }, 'content.opf')
+  ok(a2.includes('Jim Kay') && a2.includes('Ann Translator') && a2.includes('<dc:creator>J. K. Rowling</dc:creator>') && !a2.includes('>J.K. Rowling<'), 'an author change keeps the illustrator and translator')
+  const edited = o.writeOpf(opfText, { title: 'Harry Potter and the Philosopher’s Stone', authors: ['J. K. Rowling', 'Mary GrandPré'], language: 'en', series: 'Harry Potter', seriesIndex: '1', subjects: ['Fantasy', 'Magic & Wizards'] }, 'OEBPS/content.opf')
   const back = o.readOpf(edited, 'OEBPS/content.opf')
   eq(back.title, 'Harry Potter and the Philosopher’s Stone', 'title written')
   eq(back.authors, ['J. K. Rowling', 'Mary GrandPré'], 'two authors written')
@@ -111,7 +120,7 @@ const bytes = new Uint8Array(fs.readFileSync(epubPath))
   eq([back.series, back.seriesIndex, back.publisher, back.isbn, back.coverPath], ['Harry Potter', '1', 'Bloomsbury', '9780747532699', 'OEBPS/images/cover.jpg'], 'untouched fields kept')
   ok((edited.match(/calibre:series"/g) || []).length === 1, 'one series meta, not two')
   ok(edited.includes('<manifest>') && edited.includes('<spine>'), 'manifest and spine untouched')
-  const e3 = o.writeOpf(opf3, { title: 'X', authors: [], language: null, series: 'Discworld', seriesIndex: '5', subjects: [] })
+  const e3 = o.writeOpf(opf3, { title: 'X', authors: ['Terry Pratchett'], language: null, series: 'Discworld', seriesIndex: '5', subjects: [] }, 'content.opf')
   ok(!/group-position/.test(e3) && /calibre:series_index" content="5"/.test(e3), 'a new series replaces EPUB 3 collection metas')
   ok(/xmlns:dc=/.test(e3), 'dc namespace declared when missing')
 

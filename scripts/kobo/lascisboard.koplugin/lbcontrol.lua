@@ -263,6 +263,8 @@ function M.settingsReport(keys)
 end
 
 --- The menu as KOReader builds it now: every list and every item's label.
+--- `complete` is true only when the whole menu was built (a reader menu needs
+--- its book still open: building it after the book closed fails half way).
 function M.menuReport(ui, side)
     local menu = ui and ui.menu
     if not menu then return nil end
@@ -294,7 +296,7 @@ function M.menuReport(ui, side)
             if type(text) == "string" then labels[id] = text:sub(1, 120) end
         end
     end
-    return { order = lists, labels = labels }
+    return { order = lists, labels = labels, complete = menu.tab_item_table ~= nil }
 end
 
 return M

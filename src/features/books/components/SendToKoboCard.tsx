@@ -4,7 +4,7 @@ import { Button, Card, CardHeader, cx } from '../../../shared/ui'
 import { toast } from '../../../app/store'
 import { ACCEPTED, INBOX_CAP_BYTES, MAX_FILE_BYTES, isAcceptedFile } from '../api/booksApi'
 import { finalBytes, openBookFile, partialMd5, type OpenedFile } from '../epub/epubFile'
-import { bookRowOf, draftFromMeta, normalizeDraft, opfEditOf, type Known, type SendDraft } from '../epub/sendDraft'
+import { bookRowOf, draftFromBook, draftFromMeta, normalizeDraft, opfEditOf, type Known, type SendDraft } from '../epub/sendDraft'
 import { useSendPrepared } from '../hooks/useBooks'
 import { useLibrary } from '../hooks/useLibrary'
 import { knownValues } from '../libraryFacets'
@@ -38,7 +38,10 @@ export function SendToKoboCard({ waitingBytes }: { waitingBytes: number }) {
         if (f.size > MAX_FILE_BYTES) { toast.error(`${f.name} is larger than 50 MB — send it over USB or Calibre instead.`); continue }
         const opened = await openBookFile(f)
         if (opened.coverUrl) urls.current.add(opened.coverUrl)
-        setItems(list => [...list, { key: `${f.name}-${f.size}-${f.lastModified}-${list.length}`, opened, draft: draftFromMeta(opened.meta, f.name, !!opened.epub) }])
+        // The same file sent before: start from the library's details (categories included).
+        const same = books.find(b => b.koreader_md5 === opened.md5)
+        const draft = same ? draftFromBook(same, opened.meta, f.name, !!opened.epub) : draftFromMeta(opened.meta, f.name, !!opened.epub)
+        setItems(list => [...list, { key: `${f.name}-${f.size}-${f.lastModified}-${list.length}`, opened, draft }])
       }
     } finally { setReading(false) }
   }
@@ -55,7 +58,7 @@ export function SendToKoboCard({ waitingBytes }: { waitingBytes: number }) {
       let bytes = it.opened.bytes
       try { bytes = finalBytes(it.opened, opfEditOf(d)) }
       catch { toast.warning(`Could not write the details into ${it.opened.file.name}; it is sent unchanged.`) }
-      await send.mutateAsync({ bytes, fileName: it.opened.file.name, md5: partialMd5(bytes), row: bookRowOf(d, it.opened.meta) })
+      await send.mutateAsync({ bytes, fileName: it.opened.file.name, md5: partialMd5(bytes), row: bookRowOf(d, it.opened.meta), asBookId: d.asBookId })
       drop(it.key)
     } catch { /* the hook toasts the error; the item stays for another try */ } finally { setBusy(null) }
   }

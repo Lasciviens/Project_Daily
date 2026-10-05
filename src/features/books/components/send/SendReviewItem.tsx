@@ -2,7 +2,7 @@ import { AlertTriangle, BookOpen, Send, Tablet, X } from 'lucide-react'
 import { Button, IconButton, TonePill, cx } from '../../../../shared/ui'
 import { HelpTip } from '../../../../shared/components/HelpTip'
 import { useEntityModal } from '../../../../shared/modals'
-import { findDuplicate, missingFields, type Known, type SendDraft } from '../../epub/sendDraft'
+import { LANGUAGES, findDuplicate, languageCode, missingFields, type Known, type SendDraft } from '../../epub/sendDraft'
 import type { OpenedFile } from '../../epub/epubFile'
 import type { Book } from '../../types'
 import { SuggestInput, TagInput } from '../SuggestInput'
@@ -23,7 +23,9 @@ export function SendReviewItem({ opened, draft, onChange, onSend, onRemove, know
 }) {
   const modal = useEntityModal()
   const missing = missingFields(draft)
-  const dup = findDuplicate(books, draft)
+  const sameFile = books.find(b => b.koreader_md5 === opened.md5) ?? null
+  const dup = sameFile ? null : findDuplicate(books, draft)
+  const lang = languageCode(draft.language)
   const field = (k: 'author' | 'language') => cx(missing.includes(k) && '[&_input]:border-warn')
   return (
     <li className="rounded-card border border-line bg-surface p-3 sm:p-4">
@@ -45,11 +47,29 @@ export function SendReviewItem({ opened, draft, onChange, onSend, onRemove, know
               Missing: {missing.map(m => <TonePill key={m} tone="warn">{MISSING_LABEL[m]}</TonePill>)}
             </p>
           )}
-          {dup && (
+          {sameFile && (
+            <p className="rounded-control bg-surface-2 px-2.5 py-1.5 text-meta text-fg-2">
+              This file is already in your library as{' '}
+              <button type="button" className="font-semibold text-accent-600 underline-offset-2 hover:underline" onClick={() => modal.open({ kind: 'book', id: sameFile.id })}>{sameFile.title}</button>.
+              {' '}Its details are filled in below; sending updates that book.
+            </p>
+          )}
+          {dup && !dup.koreader_md5 && (
+            <label className="flex min-h-[44px] items-start gap-2 rounded-control bg-surface-2 px-2.5 py-1.5 text-meta text-fg-2">
+              <input type="checkbox" className="mt-0.5 h-5 w-5 shrink-0 accent-[rgb(var(--accent-500))]" checked={draft.asBookId === dup.id}
+                onChange={e => onChange({ asBookId: e.target.checked ? dup.id : null })} />
+              <span>
+                “{dup.title}” is already in your library without a file. <span className="font-semibold text-fg">Send as that book</span>, so it stays one book with its status and notes.
+              </span>
+            </label>
+          )}
+          {dup && dup.koreader_md5 && (
             <p className="flex flex-wrap items-center gap-1.5 rounded-control bg-surface-2 px-2.5 py-1.5 text-meta text-fg-2">
-              Already in your library:
+              <AlertTriangle className="h-4 w-4 text-warn" aria-hidden />
+              You already have
               <button type="button" className="font-semibold text-accent-600 underline-offset-2 hover:underline" onClick={() => modal.open({ kind: 'book', id: dup.id })}>{dup.title}</button>
-              {dup.on_device && <span className="inline-flex items-center gap-0.5 text-micro"><Tablet className="h-3 w-3" aria-hidden />on the Kobo</span>}
+              {dup.on_device ? <span className="inline-flex items-center gap-0.5"><Tablet className="h-3 w-3" aria-hidden />on the Kobo</span> : null}
+              as another file. Sending adds a second copy.
             </p>
           )}
           <label className="flex flex-col gap-1"><span className="field-label">Title</span>
@@ -57,8 +77,12 @@ export function SendReviewItem({ opened, draft, onChange, onSend, onRemove, know
           <div className="grid gap-3 @container sm:grid-cols-2">
             <div className={cx('flex flex-col gap-1', field('author'))}><span className="field-label">Author</span>
               <SuggestInput label="Author" value={draft.author} values={known.author} placeholder="Start typing — your library suggests names" onChange={v => onChange({ author: v })} /></div>
-            <div className={cx('flex flex-col gap-1', field('language'))}><span className="field-label">Language</span>
-              <input className="input min-h-[44px]" value={draft.language} placeholder="e.g. en, tr, nb" onChange={e => onChange({ language: e.target.value })} /></div>
+            <label className={cx('flex flex-col gap-1', field('language'), missing.includes('language') && '[&_select]:border-warn')}><span className="field-label">Language</span>
+              <select className="input min-h-[44px]" value={lang} onChange={e => onChange({ language: e.target.value })}>
+                <option value="">Not set</option>
+                {lang && !LANGUAGES.some(l => l.code === lang) && <option value={lang}>{lang}</option>}
+                {LANGUAGES.map(l => <option key={l.code} value={l.code}>{l.name}</option>)}
+              </select></label>
             <div className="flex flex-col gap-1"><span className="field-label">Collection (series)</span>
               <SuggestInput label="Collection" value={draft.series} values={known.collection} placeholder="e.g. Harry Potter" onChange={v => onChange({ series: v })} /></div>
             <label className="flex flex-col gap-1"><span className="field-label">Number in collection</span>

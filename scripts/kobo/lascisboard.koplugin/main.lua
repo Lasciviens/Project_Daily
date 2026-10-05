@@ -543,21 +543,8 @@ function LascisBoard:afterSync(res, light)
         extras.resetFooterCache()
     end
     out.captured = self:sendCaptures()
-    if light then
-        -- The reader's menus only exist inside a book: report them once from here.
-        -- Once per plugin version: 1.1 sent an almost empty reader menu.
-        if self:conf():readSetting("reported_reader_menu") ~= VERSION then
-            local menu = control.menuReport(self.ui, "reader")
-            if menu then
-                local lists = {}
-                for id, list in pairs(menu.order) do lists[id] = rapidjson.array(list) end
-                local ok = self:callJson("POST", "/applied", { report = { menus = { reader = {
-                    order = rapidjson.object(lists), labels = rapidjson.object(menu.labels) } } } })
-                if ok then self:save("reported_reader_menu", VERSION) end
-            end
-        end
-        return out
-    end
+    self:sendReaderMenu()
+    if light then return out end
 
     local applied = {}
     if type(res.push) == "table" and #res.push > 0 then
@@ -827,12 +814,13 @@ end
 --- make two copies. Returns the path and whether that exact file is already there.
 local function inboxTarget(dir, item)
     local name = item.filename or "book.epub"
-    local ext = (name:match("%.([%w]+)$") or "epub"):lower()
-    local title = (item.title and item.title ~= "") and item.title or name:gsub("%.[%w]+$", "")
+    -- ".kepub.epub" is one extension: Nickel opens a KEPUB only by that full name.
+    local ext = core.bookExtension(name)
+    local title = (item.title and item.title ~= "") and item.title or core.stripExtension(name)
     local base = (item.author and item.author ~= "") and (item.author .. " - " .. title) or title
     local fname = util.getSafeFilename(util.replaceAllInvalidChars(base) .. "." .. ext, dir)
     local size = tonumber(item.size)
-    local stem = fname:gsub("%.[%w]+$", "")
+    local stem = core.stripExtension(fname)
     for i = 1, 50 do
         local candidate = i == 1 and fname or (stem .. " (" .. i .. ")." .. ext)
         local path = dir .. "/" .. candidate
@@ -991,7 +979,36 @@ function LascisBoard:onNetworkConnected()
     UIManager:scheduleIn(3, function() self:runAuto("network") end)
 end
 
+--- The reader's menu exists only while a book is open: capture it now (the
+--- book is still open while this event runs) and keep it until a sync sends it.
+--- Once per plugin version, and only a fully built menu (1.1 sent a near-empty one).
+function LascisBoard:captureReaderMenu()
+    if self:conf():readSetting("reported_reader_menu") == VERSION then return end
+    if not (self.ui and self.ui.document) then return end
+    local menu = control.menuReport(self.ui, "reader")
+    if menu and menu.complete then
+        self:save("pending_reader_menu", { order = menu.order, labels = menu.labels })
+    end
+end
+
+--- Sends the captured reader menu, if any; marks it sent only when the server took it.
+function LascisBoard:sendReaderMenu()
+    self:captureReaderMenu()
+    local menu = self:conf():readSetting("pending_reader_menu")
+    if type(menu) ~= "table" or type(menu.order) ~= "table" then return end
+    local rapidjson = require("rapidjson")
+    local lists = {}
+    for id, list in pairs(menu.order) do lists[id] = rapidjson.array(list) end
+    local ok = self:callJson("POST", "/applied", { report = { menus = { reader = {
+        order = rapidjson.object(lists), labels = rapidjson.object(menu.labels or {}) } } } })
+    if ok then
+        self:save("reported_reader_menu", VERSION)
+        self:save("pending_reader_menu", nil)
+    end
+end
+
 function LascisBoard:onCloseDocument()
+    pcall(self.captureReaderMenu, self)
     -- Send only when already online (never bring the radio up); the statistics
     -- plugin flushes the closing book first, hence the delay.
     if NetworkMgr:isConnected() and self:isOn("auto_sync") and self:secret() then

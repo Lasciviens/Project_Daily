@@ -35,7 +35,7 @@
     },
     "file_ask_to_open": {
       "label": "Ask before opening a book",
-      "help": "When on, tapping a book shows a small question first (open, or other actions) instead of opening it straight away.",
+      "help": "When on, tapping a book first asks \"Open this file?\" with Open and Cancel, instead of opening it straight away.",
       "example": "Useful if you often open books by accident while scrolling.",
       "level": "basic"
     },
