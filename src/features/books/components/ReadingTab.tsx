@@ -31,7 +31,8 @@ export function ReadingTab() {
   const events = useReadingEvents(HISTORY_DAYS)
   const settings = useReadingSettings()
   const sync = useKoboFeedState()
-  const { data: books = [] } = useLibrary()
+  // News issues stay in: their minutes are reading too, shown as news.
+  const { data: books = [] } = useLibrary(true, { includeNews: true })
   const s = settings.data ?? { daily_minutes_goal: 20, streak_min_minutes: 1 }
 
   const today = localDay(new Date())
@@ -174,7 +175,7 @@ function BooksCard({ rows, byId, days }: { rows: ReturnType<typeof byBook>; byId
                   className="flex min-h-[44px] w-full items-center gap-2.5 rounded-control p-1 text-left hover:bg-surface-hover">
                   {b && <BookCover book={b} size="sm" className="w-8 shrink-0" />}
                   <span className="min-w-0 flex-1">
-                    <Truncate as="span" className="block text-body font-medium text-fg">{b?.title ?? 'Unknown book'}</Truncate>
+                    <Truncate as="span" className="block text-body font-medium text-fg">{b?.kind === 'news' ? `News · ${b.title}` : b?.title ?? 'Unknown book'}</Truncate>
                     <span className="block text-micro tabular-nums text-fg-muted">
                       {r.pages} pages · {r.sessions} {r.sessions === 1 ? 'session' : 'sessions'}{r.pagesPerHour ? ` · ${r.pagesPerHour} pages/h` : ''}
                     </span>

@@ -62,4 +62,33 @@ const pg = { ...base, last_read_at: '2026-10-04T10:00:00+00:00', progress_pct: '
 eq(s.bookPatch(pg, { md5, last_open: Date.parse('2026-10-04T10:00:00Z') / 1000, percent: 0.425, read_time: 600 }), {}, 'PostgREST text forms compare as values: no rewrite')
 eq(s.lastSeenIso(now - 60, now), new Date((now - 60) * 1000).toISOString(), 'device clock used when close')
 eq(s.lastSeenIso(now - 3 * 86400, now), new Date(now * 1000).toISOString(), 'skewed clock → server time')
+
+// News Downloader issues are news, not books
+eq(s.isNewsPath('/mnt/onboard/.adds/koreader/news/Feed - 2026-10-05.epub'), true, 'news folder')
+eq(s.isNewsPath('/mnt/onboard/Books/News of the World.epub'), false, 'a book called news')
+eq(s.newBookRow({ md5, path: '/mnt/onboard/.adds/koreader/news/x.epub' }).kind, 'news', 'new row from the news folder → news')
+eq(s.newBookRow({ md5, kind: 'news' }).kind, 'news', 'plugin flag → news')
+eq(s.newBookRow({ md5 }).kind, 'book', 'default kind book')
+eq(s.bookPatch({ ...base, kind: 'book' }, { md5, kind: 'news' }).kind, 'news', 'existing row becomes news')
+eq(s.bookPatch({ ...base, kind: 'book' }, { md5 }).kind, undefined, 'no flag leaves kind alone')
+
+// App → Kobo pushes
+const row = { koreader_md5: md5, file_path: '/mnt/onboard/a.epub', on_device: true, kind: 'book', read_status: 'finished', rating: 8, device_status: 'reading', device_rating: 4 }
+eq(s.pushFor(row), { md5, path: '/mnt/onboard/a.epub', status: 'complete' }, 'finished in the app → complete on the Kobo')
+eq(s.pushFor({ ...row, device_status: 'complete' }), null, 'already in step')
+eq(s.pushFor({ ...row, read_status: 'paused', device_status: 'abandoned' }), null, 'paused ≈ on hold')
+eq(s.pushFor({ ...row, read_status: 'dropped', device_status: 'abandoned' }), null, 'dropped ≈ on hold')
+eq(s.pushFor({ ...row, read_status: 'want', device_status: null }), null, 'want ≈ no status')
+eq(s.pushFor({ ...row, read_status: 'want', device_status: 'reading', rating: null }), null, 'want is never pushed')
+eq(s.pushFor({ ...row, device_status: 'complete', rating: 10 }), { md5, path: '/mnt/onboard/a.epub', rating: 5 }, 'rating 10 → 5 stars')
+eq(s.pushFor({ ...row, device_status: 'complete', rating: null }), null, 'no rating in the app → leave the device rating')
+eq(s.pushFor({ ...row, on_device: false }), null, 'not on the Kobo')
+eq(s.pushFor({ ...row, kind: 'news' }), null, 'news never pushed')
+eq(s.pushFor({ ...row, file_path: null }), null, 'no path')
+eq(s.starsFor(1), 1, '1/10 → 1 star (never 0)'); eq(s.starsFor(5), 3, '5/10 → 3 stars (half up)'); eq(s.starsFor(7), 4, '7/10 → 4')
+eq(s.appliedPatch({ status: 'complete', rating: 5 }), { device_status: 'complete', device_rating: 5 }, 'applied → device values')
+eq(s.appliedPatch({ status: 'bogus', rating: 9 }), {}, 'junk ignored')
+// After the device confirms, the next sync reads the same values back: no flip.
+const synced = { ...base, read_status: 'paused', device_status: 'abandoned', device_rating: 3 }
+eq(s.bookPatch(synced, { md5, status: 'abandoned', rating: 3 }), {}, 'paused stays paused after the push round trip')
 console.log(`verify-reading-sync: ${n} assertions passed`)

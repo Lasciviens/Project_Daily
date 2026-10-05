@@ -116,7 +116,10 @@ Deno.serve(async req => {
     if (patch.cover_url && patch.page_count) break
   }
   const updated = Object.keys(patch)
-  const { error: upErr } = await db.from('books').update({ ...patch, meta_source: source, meta_checked_at: new Date().toISOString() }).eq('id', book.id)
+  const row = { ...patch, meta_source: source, meta_checked_at: new Date().toISOString() }
+  // cover_source arrives with migration 127; without it the update still goes through.
+  let { error: upErr } = await db.from('books').update(patch.cover_url ? { ...row, cover_source: 'lookup' } : row).eq('id', book.id)
+  if (upErr?.code === '42703' && patch.cover_url) ({ error: upErr } = await db.from('books').update(row).eq('id', book.id))
   if (upErr) return json({ error: 'server', message: 'Could not save what was found.' }, 500)
   return json({ updated: updated.map(k => k.replace('_url', '').replace('_', ' ')), source })
 })

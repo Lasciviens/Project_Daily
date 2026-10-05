@@ -8,7 +8,11 @@ What it does, all by itself whenever Wi-Fi comes on (NetworkConnected):
   * once a day sends the whole library (Nickel's database, the history's
     sidecars and a walk of the device) so unopened books appear too;
   * downloads the books waiting in the app's Send to Kobo inbox;
-  * once a day (from 05:00) runs the News downloader's sync.
+  * once a day (from 05:00) runs the News downloader's sync;
+  * applies what the app changed: statuses/ratings, KOReader settings, the
+    menu order and the sleep screen images (lbcontrol.lua), sends the books'
+    own covers, the notes captured on the Kobo, and shows today's goal and
+    streak in the status bar (lbextras.lua).
 
 It never turns Wi-Fi on by itself and never runs network code on suspend
 (PLAN §3.0). Turn on "Restore Wi-Fi connection on resume" and "Disable Wi-Fi
@@ -37,8 +41,10 @@ local _ = require("gettext")
 local T = require("ffi/util").template
 
 local core = require("lbcore")
+local control = require("lbcontrol")
+local extras = require("lbextras")
 
-local VERSION = "1.0.0"
+local VERSION = "1.1.0"
 local DEFAULT_SERVER = "https://hsaedwwqpcjizeozjbch.supabase.co/functions/v1/kobo-sync"
 local NICKEL_DB = "/mnt/onboard/.kobo/KoboReader.sqlite"
 local DEFAULT_INBOX = "/mnt/onboard/Send to Kobo"
@@ -65,7 +71,12 @@ function LascisBoard:init()
     Dispatcher:registerAction("lascisboard_sync", {
         category = "none", event = "LascisBoardSync", title = _("Lasci's Board: sync now"), general = true,
     })
+    Dispatcher:registerAction("lascisboard_capture", {
+        category = "none", event = "LascisBoardCapture", title = _("Lasci's Board: capture a note"), general = true,
+    })
+    control.placeMenuEntry(self.ui.document and "reader" or "filemanager")
     self.ui.menu:registerToMainMenu(self)
+    if self.ui.document then self:initReaderExtras() end
     -- Already online when KOReader starts: catch up. Only in the file browser —
     -- opening a book must never start network work behind the page.
     if not self.ui.document and NetworkMgr:isConnected() then
@@ -263,8 +274,17 @@ end
 --- there (that table keeps books deleted long ago). Returns the books and
 --- whether the list is COMPLETE — only a complete list may tell the server that
 --- a missing book has left the device.
+--- The News Downloader folder: its custom one if set, else KOReader's default.
+local function newsDir()
+    local ok, s = pcall(LuaSettings.open, LuaSettings, DataStorage:getSettingsDir() .. "/news_settings.lua")
+    local custom = ok and s and s:readSetting("custom_dl_dir")
+    if type(custom) == "string" and custom ~= "" then return custom end
+    return DataStorage:getFullDataDir() .. "/news"
+end
+
 function LascisBoard:collectLibrary(stats_books)
     local complete, problem = true, nil
+    local news_dir = newsDir()
     local by_md5, by_path = {}, {}
     local function add(path, facts)
         local md5 = facts.md5
@@ -276,6 +296,7 @@ function LascisBoard:collectLibrary(stats_books)
         if path then
             facts.path = facts.path or path
             by_path[path] = md5
+            if core.isNewsPath(path, news_dir) then facts.kind = "news" end
         end
         by_md5[md5] = core.mergeBook(by_md5[md5] or {}, facts)
     end
@@ -347,6 +368,11 @@ function LascisBoard:collectLibrary(stats_books)
     for _, b in pairs(stats_books) do
         if by_md5[b.md5] then by_md5[b.md5] = core.mergeBook(by_md5[b.md5], b) end
     end
+    local paths = {}
+    for md5, b in pairs(by_md5) do
+        if b.path then paths[md5] = b.path end
+    end
+    self:save("paths", paths)
     return by_md5, complete, problem
 end
 
@@ -380,7 +406,9 @@ function LascisBoard:sync(opts)
     local device_id = G_reader_settings:readSetting("device_id") or "kobo"
     local requests = 0
     local function post(extra)
-        local payload = { v = 1, device_id = device_id, device_time = os.time(), plugin_version = VERSION }
+        local payload = { v = 1, device_id = device_id, device_time = os.time(), plugin_version = VERSION,
+            config_rev = conf:readSetting("config_rev") }
+        for k, v in pairs(self:deviceFacts()) do payload[k] = v end
         for k, v in pairs(extra) do payload[k] = v end
         local res, err = self:callJson("POST", "/sync", payload)
         if res then requests = requests + 1 end
@@ -417,6 +445,7 @@ function LascisBoard:sync(opts)
     --    one, so the loop always progresses.
     local sent, new_events = 0, 0
     local first = true
+    local last_res
     local from = core.readFrom(cursor)
     while true do
         local rows = conn and statsRows(conn, from, core.BATCH) or {}
@@ -439,6 +468,7 @@ function LascisBoard:sync(opts)
             inventory_md5s = first and inventory_md5s or nil,
         })
         if not res then return fail(err) end
+        last_res = res
         new_events = new_events + (tonumber(res.new_events) or 0)
         sent = sent + #rows
         cursor = core.nextCursor(cursor, batch_max, now)
@@ -454,8 +484,289 @@ function LascisBoard:sync(opts)
     if conn then conn:close() end
     local summary = { at = now, sent = sent, new_events = new_events, requests = requests,
         library = library ~= nil and complete, problem = problem and (problem .. " — the library list was not applied.") or nil }
+    local ok_after, after = pcall(self.afterSync, self, last_res or {}, opts.light)
+    if ok_after then summary.after = after else logger.warn("LascisBoard: after-sync failed", after) end
     self:save("last_sync", summary)
     return summary
+end
+
+--- Battery, charging and KOReader's version, sent with every sync.
+function LascisBoard:deviceFacts()
+    local facts = {}
+    pcall(function()
+        local powerd = Device:getPowerDevice()
+        if powerd and Device:hasBattery() then
+            facts.battery = powerd:getCapacity()
+            facts.charging = powerd:isCharging() and true or false
+        end
+    end)
+    pcall(function() facts.koreader_version = require("version"):getCurrentRevision() end)
+    return facts
+end
+
+--- After the last sync request: everything the server sent back.
+--- In a light run (a book is open) only the goal and the captures; the rest
+--- waits for the file browser.
+function LascisBoard:afterSync(res, light)
+    local rapidjson = require("rapidjson")
+    local out = {}
+    if type(res.reading) == "table" then
+        self:save("goal", { goal_minutes = tonumber(res.reading.goal_minutes) or 20, min_minutes = tonumber(res.reading.min_minutes) or 1 })
+        extras.resetFooterCache()
+    end
+    out.captured = self:sendCaptures()
+    if light then return out end
+
+    local applied = {}
+    if type(res.push) == "table" and #res.push > 0 then
+        local open_file = self.ui.document and self.ui.document.file or nil
+        applied = control.applyPushes(res.push, open_file)
+        out.statuses = #applied
+    end
+
+    local config_rev, config_result
+    if type(res.config) == "table" and tonumber(res.config.rev) then
+        local c = res.config
+        local done, refused = control.applySettings(type(c.settings) == "table" and c.settings or {}, rapidjson.null)
+        local images = control.syncSleepImages(c.sleep, function(url, part)
+            if type(url) ~= "string" then return nil end
+            return request("GET", url, {}, nil, part)
+        end)
+        local menus = type(c.menu_order) == "table" and c.menu_order or {}
+        local fm_changed = control.writeMenuOrder("filemanager", menus.filemanager)
+        local rd_changed = control.writeMenuOrder("reader", menus.reader)
+        G_reader_settings:flush()
+        config_rev = tonumber(c.rev)
+        config_result = { applied = rapidjson.array(done), refused = rapidjson.object(refused), images = images,
+            menu_changed = fm_changed or rd_changed }
+        self:save("config_rev", config_rev)
+        out.config = true
+        if fm_changed or rd_changed then
+            UIManager:askForRestart(_("Lasci's Board changed the menu order. Restart KOReader to see it?"))
+        end
+    end
+
+    self:sendCovers(res.needs_cover)
+
+    local conf = self:conf()
+    local report_due = (os.time() - (conf:readSetting("last_report") or 0)) > 20 * 3600
+    if #applied > 0 or config_rev or report_due then
+        local keys = type(res.report_keys) == "table" and res.report_keys or {}
+        local side = self.ui.document and "reader" or "filemanager"
+        local menus = {}
+        local menu = control.menuReport(self.ui, side)
+        if menu then
+            local lists = {}
+            for id, list in pairs(menu.order) do lists[id] = rapidjson.array(list) end
+            menus[side] = { order = rapidjson.object(lists), labels = rapidjson.object(menu.labels) }
+        end
+        local ok = self:callJson("POST", "/applied", {
+            pushes = rapidjson.array(applied),
+            config_rev = config_rev,
+            config_result = config_result,
+            report = { settings = rapidjson.object(control.settingsReport(keys)), menus = rapidjson.object(menus),
+                plugin_version = VERSION, at = os.time() },
+        })
+        if ok then self:save("last_report", os.time()) end
+    end
+    return out
+end
+
+--- Sends the covers the app is missing (from inside each EPUB), a few per run.
+function LascisBoard:sendCovers(md5s)
+    if type(md5s) ~= "table" or #md5s == 0 then return 0 end
+    local paths = self:conf():readSetting("paths") or {}
+    local sent = 0
+    for i, md5 in ipairs(md5s) do
+        if i > 15 then break end
+        local path = paths[md5]
+        if path and lfs.attributes(path, "mode") == "file" then
+            local bytes, mime = extras.epubCover(path)
+            if bytes then
+                local code = request("POST", self:server() .. "/cover/" .. md5,
+                    { ["x-kobo-secret"] = self:secret(), ["Content-Type"] = mime }, bytes)
+                if code and code >= 200 and code < 300 then sent = sent + 1 end
+            else
+                request("POST", self:server() .. "/cover/" .. md5 .. "?none=1", { ["x-kobo-secret"] = self:secret() }, "")
+            end
+        end
+    end
+    return sent
+end
+
+--- Sends the notes waiting in the capture outbox; confirmed ones are dropped.
+function LascisBoard:sendCaptures()
+    local items = extras.outbox()
+    if #items == 0 then return 0 end
+    local rapidjson = require("rapidjson")
+    local res = self:callJson("POST", "/capture", { items = rapidjson.array(items) })
+    if res and type(res.done) == "table" then
+        extras.removeCaptures(res.done)
+        return #res.done
+    end
+    return 0
+end
+
+-- ── Reader extras: status bar, highlight buttons ─────────────────────────────
+
+function LascisBoard:initReaderExtras()
+    if self:isOn("footer_goal") and self.ui.view and self.ui.view.footer and self.ui.view.footer.addAdditionalFooterContent then
+        self.footer_func = function()
+            local goal = self:conf():readSetting("goal")
+            if type(goal) ~= "table" then return nil end
+            local ok, text = pcall(extras.footerText, goal)
+            return ok and text or nil
+        end
+        self.ui.view.footer:addAdditionalFooterContent(self.footer_func)
+    end
+    if self.ui.highlight and self.ui.highlight.addToHighlightDialog then
+        local plugin = self
+        self.ui.highlight:addToHighlightDialog("12_lascisboard_ask", function(this)
+            return {
+                text = _("Ask Lasci's AI"),
+                callback = function()
+                    local text = util.cleanupSelectedText(this.selected_text and this.selected_text.text or "")
+                    local before, after = this:getSelectedWordContext(20)
+                    this:onClose(true)
+                    plugin:askAbout(text, before, after)
+                end,
+            }
+        end)
+        self.ui.highlight:addToHighlightDialog("12_lascisboard_capture", function(this)
+            return {
+                text = _("To Lasci's Board"),
+                callback = function()
+                    local text = util.cleanupSelectedText(this.selected_text and this.selected_text.text or "")
+                    this:onClose(true)
+                    plugin:captureDialog(text)
+                end,
+            }
+        end)
+    end
+end
+
+function LascisBoard:bookFacts()
+    local props = self.ui.doc_settings and self.ui.doc_settings:readSetting("doc_props") or {}
+    local footer = self.ui.view and self.ui.view.footer
+    local percent
+    if footer and tonumber(footer.pageno) and tonumber(footer.pages) and footer.pages > 0 then
+        percent = footer.pageno / footer.pages * 100
+    end
+    return {
+        title = props.title, author = props.authors, language = props.language, percent = percent,
+        md5 = self.ui.doc_settings and self.ui.doc_settings:readSetting("partial_md5_checksum") or nil,
+    }
+end
+
+--- A note typed on the Kobo (optionally with the selected passage) → task, wish or book.
+function LascisBoard:captureDialog(passage)
+    local book = self.ui.document and self:bookFacts().title or nil
+    local dialog
+    local function save(kind)
+        local text = (dialog:getInputText() or ""):gsub("^%s+", ""):gsub("%s+$", "")
+        if text == "" then
+            if passage and passage ~= "" then text = passage:sub(1, 120) else return end
+        end
+        UIManager:close(dialog)
+        extras.addCapture(kind, text, passage, book)
+        local where = ({ task = _("Tasks · Inbox"), wish = _("Wishes"), book = _("Books · Want to read") })[kind]
+        if NetworkMgr:isConnected() and self:secret() then
+            local n = self:sendCaptures()
+            Notification:notify(n > 0 and T(_("Sent to %1"), where) or T(_("Saved — goes to %1 at the next sync"), where))
+        else
+            Notification:notify(T(_("Saved — goes to %1 at the next sync"), where))
+        end
+    end
+    dialog = InputDialog:new{
+        title = _("To Lasci's Board"),
+        input = "",
+        input_hint = passage and _("A note about the passage (optional)") or _("What to remember"),
+        description = passage and T(_("Passage: “%1”"), passage:sub(1, 200)) or nil,
+        buttons = {
+            {
+                { text = _("Task"), callback = function() save("task") end },
+                { text = _("Wish"), callback = function() save("wish") end },
+                { text = _("Book"), callback = function() save("book") end },
+            },
+            {
+                { text = _("Cancel"), id = "close", callback = function() UIManager:close(dialog) end },
+            },
+        },
+    }
+    UIManager:show(dialog)
+    dialog:onShowKeyboard()
+end
+
+--- A question about the selected passage, answered by the app's AI (Wi-Fi needed).
+function LascisBoard:askAbout(text, before, after)
+    if not text or text == "" then return end
+    if not self:secret() then
+        UIManager:show(InfoMessage:new{ text = _("Set the device secret first: Lasci's Board → Settings → Device secret.") })
+        return
+    end
+    local ButtonDialog = require("ui/widget/buttondialog")
+    local plugin = self
+    local chooser
+    local function ask(kind, question)
+        if chooser then UIManager:close(chooser) end
+        NetworkMgr:runWhenOnline(function()
+            local wait = InfoMessage:new{ text = _("Asking…") }
+            UIManager:show(wait)
+            UIManager:forceRePaint()
+            local facts = plugin:bookFacts()
+            local res, err = plugin:callJson("POST", "/ask", {
+                ask = kind, question = question, selection = text, before = before or "", after = after or "",
+                title = facts.title, author = facts.author, language = facts.language, percent = facts.percent, md5 = facts.md5,
+                answer_language = plugin:conf():readSetting("ai_language") or "Turkish",
+            })
+            UIManager:close(wait)
+            local TextViewer = require("ui/widget/textviewer")
+            UIManager:show(TextViewer:new{
+                title = res and _("Lasci's AI") or _("No answer"),
+                text = res and res.answer or tostring(err),
+                justified = false,
+            })
+        end)
+    end
+    chooser = ButtonDialog:new{
+        title = text:sub(1, 160),
+        buttons = {
+            { { text = _("Explain"), callback = function() ask("explain") end },
+              { text = _("Translate"), callback = function() ask("translate") end } },
+            { { text = _("This word here"), callback = function() ask("word") end },
+              { text = _("Who is this?"), callback = function() ask("character") end } },
+            { { text = _("Ask a question…"), callback = function()
+                UIManager:close(chooser)
+                chooser = nil
+                local qd
+                qd = InputDialog:new{
+                    title = _("Your question"),
+                    buttons = {{
+                        { text = _("Cancel"), id = "close", callback = function() UIManager:close(qd) end },
+                        { text = _("Ask"), is_enter_default = true, callback = function()
+                            local q = qd:getInputText()
+                            UIManager:close(qd)
+                            if q and q:match("%S") then ask("free", q) end
+                        end },
+                    }},
+                }
+                UIManager:show(qd)
+                qd:onShowKeyboard()
+            end } },
+        },
+    }
+    UIManager:show(chooser)
+end
+
+function LascisBoard:onLascisBoardCapture()
+    self:captureDialog(nil)
+end
+
+function LascisBoard:onCloseWidget()
+    if self.footer_func and self.ui.view and self.ui.view.footer and self.ui.view.footer.removeAdditionalFooterContent then
+        self.ui.view.footer:removeAdditionalFooterContent(self.footer_func)
+        self.footer_func = nil
+    end
 end
 
 --- Where a sent book is saved: the name the OPDS catalogue would give it
@@ -665,6 +976,9 @@ function LascisBoard:statusText()
     local lines = { T(_("Last sync: %1"), ago(s and s.at)) }
     if s then lines[#lines + 1] = T(_("Rows sent: %1 · new on the server: %2"), s.sent or 0, s.new_events or 0) end
     if e and (not s or (e.at or 0) > (s.at or 0)) then lines[#lines + 1] = T(_("Last error: %1"), e.message or "?") end
+    local waiting = #extras.outbox()
+    if waiting > 0 then lines[#lines + 1] = T(_("Notes waiting to be sent: %1"), waiting) end
+    lines[#lines + 1] = T(_("Settings from the app: revision %1"), conf:readSetting("config_rev") or _("none yet"))
     lines[#lines + 1] = T(_("Device secret: %1"), self:secret() and _("set") or _("missing"))
     lines[#lines + 1] = T(_("Restore Wi-Fi on resume: %1"), G_reader_settings:isTrue("auto_restore_wifi") and _("on") or _("off (turn it on for automatic syncs)"))
     lines[#lines + 1] = T(_("Plugin %1"), VERSION)
@@ -714,6 +1028,10 @@ function LascisBoard:addToMainMenu(menu_items)
                 callback = function() self:runManual({ inventory = true }) end,
             },
             {
+                text = _("Capture a note…"),
+                callback = function() self:captureDialog(nil) end,
+            },
+            {
                 text = _("Status"),
                 keep_menu_open = true,
                 callback = function() UIManager:show(InfoMessage:new{ text = self:statusText() }) end,
@@ -725,6 +1043,21 @@ function LascisBoard:addToMainMenu(menu_items)
                     toggle(self, "auto_sync", _("Send reading time automatically")),
                     toggle(self, "auto_inbox", _("Download sent books automatically")),
                     toggle(self, "auto_news", _("Sync the news every morning")),
+                    toggle(self, "footer_goal", _("Today's goal and streak in the status bar (reopen the book)")),
+                    {
+                        text_func = function() return T(_("AI answers in: %1"), self:conf():readSetting("ai_language") or "Turkish") end,
+                        sub_item_table = (function()
+                            local items = {}
+                            for _, lang in ipairs({ "Turkish", "English", "Norwegian" }) do
+                                items[#items + 1] = {
+                                    text = lang, radio = true,
+                                    checked_func = function() return (self:conf():readSetting("ai_language") or "Turkish") == lang end,
+                                    callback = function() self:save("ai_language", lang) end,
+                                }
+                            end
+                            return items
+                        end)(),
+                    },
                     {
                         text_func = function() return T(_("Download folder: %1"), self:inboxDir()) end,
                         keep_menu_open = true,

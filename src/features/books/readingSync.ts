@@ -15,6 +15,7 @@ const MD5 = /^[0-9a-f]{32}$/
 
 export type DeviceStatus = 'reading' | 'complete' | 'abandoned' | 'new'
 export type ReadStatus = 'want' | 'reading' | 'finished' | 'paused' | 'dropped'
+export type BookKind = 'book' | 'news'
 
 export interface SyncBook {
   md5: string
@@ -37,6 +38,8 @@ export interface SyncBook {
   read_pages?: number | null
   /** Set only on library rows (the device listing what is on it); rows sent with page events leave it out. */
   on_device?: boolean
+  /** 'news' for a News Downloader issue (the plugin knows its folder); books leave it out. */
+  kind?: 'book' | 'news' | string | null
 }
 
 export interface SyncBody {
@@ -45,6 +48,8 @@ export interface SyncBody {
   device_time: number
   plugin_version?: string
   final?: boolean          // this request finished a complete drain
+  /** The settings revision the device applied last (kobo_device_config.rev). */
+  config_rev?: number
   /**
    * Every md5 on the device, sent once the library's book rows have all been
    * posted (in earlier requests), and only when the plugin read the whole
@@ -80,6 +85,7 @@ export interface BookRowLike {
   device_status: string | null
   device_rating: number | null
   on_device: boolean
+  kind: BookKind
 }
 
 const str = (v: unknown, max = 500): string | null => {
@@ -200,6 +206,7 @@ export function newBookRow(b: SyncBook): Omit<BookRowLike, never> & { title: str
     device_rating: rating,
     // A book first seen through old reading statistics may be long gone from the Kobo.
     on_device: b.on_device === true,
+    kind: b.kind === 'news' || isNewsPath(b.path) ? 'news' : 'book',
   }
 }
 
@@ -229,6 +236,7 @@ export function bookPatch(existing: BookRowLike, b: SyncBook): Partial<BookRowLi
   if (next.read_seconds !== null && next.read_seconds !== numOrNull(existing.read_seconds)) patch.read_seconds = next.read_seconds
   if (next.read_pages !== null && next.read_pages !== numOrNull(existing.read_pages)) patch.read_pages = next.read_pages
   if (!existing.on_device && b.on_device === true) patch.on_device = true
+  if (next.kind === 'news' && existing.kind !== 'news') patch.kind = 'news'
 
   const incoming = str(b.status, 20)
   if (incoming && incoming !== existing.device_status) {
@@ -254,4 +262,72 @@ export function bookPatch(existing: BookRowLike, b: SyncBook): Partial<BookRowLi
 export function lastSeenIso(deviceTime: number, nowSec: number): string {
   const t = Math.abs(deviceTime - nowSec) <= 86400 ? Math.min(deviceTime, nowSec) : nowSec
   return new Date(t * 1000).toISOString()
+}
+
+/** A file in KOReader's News Downloader folder (its default: <data dir>/news/). */
+export function isNewsPath(path: string | null | undefined): boolean {
+  return typeof path === 'string' && /\/\.adds\/koreader\/news\//i.test(path)
+}
+
+// ── App → Kobo: statuses and ratings set in the app ─────────────────────────
+// KOReader keeps a book's status in its sidecar (summary.status: reading /
+// complete / abandoned; no status = new) and a 1–5 star rating. The server
+// lists what the app wants that the device has not reported yet; the plugin
+// writes it and confirms, and the server then stores what the device now has
+// (device_status / device_rating), so the next sync reads it back unchanged.
+// Want-to-read stays in the app. "On hold" (abandoned) holds both Paused and Dropped; a device that reports
+// abandoned for a Paused book is already in step.
+
+/** What the device should hold for an app status. Want-to-read is "new" (no status). */
+export function deviceStatusFor(s: ReadStatus): DeviceStatus {
+  if (s === 'reading') return 'reading'
+  if (s === 'finished') return 'complete'
+  if (s === 'paused' || s === 'dropped') return 'abandoned'
+  return 'new'
+}
+
+/** The device's status, with "no status" spelled "new". */
+export function normalDeviceStatus(s: string | null | undefined): DeviceStatus | string {
+  return !s || s === 'new' ? 'new' : s
+}
+
+/** 1–10 in the app → 1–5 stars on the device (half up). */
+export function starsFor(rating: number | null | undefined): number | null {
+  if (typeof rating !== 'number' || !Number.isFinite(rating) || rating < 1) return null
+  return Math.min(5, Math.max(1, Math.round(rating / 2)))
+}
+
+export interface PushSource {
+  koreader_md5: string | null
+  file_path: string | null
+  on_device: boolean
+  kind: BookKind
+  read_status: ReadStatus
+  rating: number | null
+  device_status: string | null
+  device_rating: number | null
+}
+
+export interface StatusPush { md5: string; path: string; status?: DeviceStatus; rating?: number }
+
+/** What the Kobo should change for one book, or null when it is already in step. */
+export function pushFor(b: PushSource): StatusPush | null {
+  if (!b.on_device || b.kind === 'news' || !b.koreader_md5 || !b.file_path) return null
+  const out: StatusPush = { md5: b.koreader_md5, path: b.file_path }
+  // Want-to-read is never pushed: KOReader has no such status, and clearing a
+  // status on the device would only make it report Nickel's again.
+  const want = deviceStatusFor(b.read_status)
+  if (b.read_status !== 'want' && normalDeviceStatus(b.device_status) !== want) out.status = want
+  const stars = starsFor(b.rating)
+  if (stars !== null && stars !== b.device_rating) out.rating = stars
+  return out.status || out.rating ? out : null
+}
+
+/** The device confirmed it wrote these: the row stores them as the device's own values. */
+export function appliedPatch(push: { status?: string; rating?: number }): { device_status?: string; device_rating?: number } {
+  const patch: { device_status?: string; device_rating?: number } = {}
+  if (typeof push.status === 'string' && ['reading', 'complete', 'abandoned', 'new'].includes(push.status)) patch.device_status = push.status
+  const r = int(push.rating, 1, 5)
+  if (r !== null) patch.device_rating = r
+  return patch
 }

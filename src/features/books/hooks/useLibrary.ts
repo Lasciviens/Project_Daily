@@ -11,8 +11,14 @@ import type { Book, BookPatch, ReadingSettings } from '../types'
 
 const libraryQuery = { queryKey: qk.books.library(), queryFn: fetchBooks, staleTime: STALE.default }
 
-export function useLibrary(enabled = true) {
-  return useQuery({ ...libraryQuery, enabled })
+const onlyBooks = (rows: Book[]) => rows.filter(b => b.kind !== 'news')
+
+/**
+ * The library. News Downloader issues are left out (they are not books);
+ * `includeNews` keeps them, for the reading statistics.
+ */
+export function useLibrary(enabled = true, { includeNews = false }: { includeNews?: boolean } = {}) {
+  return useQuery({ ...libraryQuery, enabled, select: includeNews ? undefined : onlyBooks })
 }
 
 /** One book, narrowed from the shared library query (one request for every surface). */

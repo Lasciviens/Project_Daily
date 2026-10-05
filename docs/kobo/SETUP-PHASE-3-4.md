@@ -133,6 +133,44 @@ Paste me all the output.
 - A night with Wi-Fi off shows as "not heard from the Kobo since …", never as a broken
   streak.
 
+## 7. Plugin 1.1 — control from the app (round 2)
+
+**Supabase (owner):** merge the PR, run `supabase/migrations/127_kobo_control.sql`, then
+redeploy **`kobo-sync`** (Enforce JWT Verification **OFF**) and **`book-meta`** (JWT ON).
+The secret does not change.
+
+**On the Kobo first:** Wi-Fi on, KOReader open in the file browser, SSH server on.
+
+**Mac block** (paste as-is):
+
+````
+Execute only. Do not research and do not change anything else. Run the steps in order;
+if any command fails, STOP and paste me the output.
+
+```bash
+set -euo pipefail
+cd ~/Project_Daily-fresh && git fetch -q origin main && git switch -q --detach origin/main && git log --oneline -1
+B=~/KoboBackups/$(date +%F_%H-%M-%S); mkdir -p "$B"
+scp -q -r kobo:/mnt/onboard/.adds/koreader/settings "$B/" && echo "settings backed up to $B"
+bash scripts/kobo/deploy-plugin.sh
+ssh kobo 'cd /mnt/onboard/.adds/koreader/plugins/lascisboard.koplugin && grep -m1 "VERSION =" main.lua && ls'
+```
+Paste me all the output.
+````
+
+**Then on the Kobo:** exit KOReader and open it again. Open any book once (this is what
+makes "Cover of the book you are reading" possible on the sleep screen), go back to the
+library, then 🛠 → **Lasci's Board** (now first in the list) → **Sync now**. The Kobo tab
+on the website fills in after this sync: its values, its menus, the battery.
+
+**Check:**
+- Books → Kobo shows the device, "Your changes: None yet", the settings with "On the Kobo: …".
+- Change the sleep screen on the website, Sync now on the Kobo, put it to sleep: the new one shows.
+- Mark a book Finished on the website, Sync now: the book shows finished in KOReader.
+- While reading, the bottom bar shows "x/20 min · n days".
+- Select a sentence → **Ask Lasci's AI** → Explain: an answer appears (Wi-Fi on).
+- 🛠 → Lasci's Board → **Capture a note…** → Task: it appears in Tasks · Inbox.
+
 ## Undo
 
 - Our plugin: delete `.adds/koreader/plugins/lascisboard.koplugin` (and
@@ -142,3 +180,6 @@ Paste me all the output.
 - Patches: delete the three files in `.adds/koreader/patches/` (pick another sleep screen first
   if Bookshelf is selected).
 - Settings: the block's backup is in `~/KoboBackups/<date>/settings`.
+- Menu order from the app: delete `settings/filemanager_menu_order.lua` and
+  `settings/reader_menu_order.lua` (or Reset on the website's Kobo tab), restart KOReader.
+- Sleep images from the app: the folder `.adds/koreader/lascisboard-sleep`.

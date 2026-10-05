@@ -1,26 +1,31 @@
 import { useMemo, useState } from 'react'
-import { BookOpen, Search, Trash2 } from 'lucide-react'
+import { BookOpen, Trash2 } from 'lucide-react'
 import { ModalShell } from '../../../shared/modals/ModalShell'
 import { useEntityModal } from '../../../shared/modals'
-import { Button, IconButton, Truncate } from '../../../shared/ui'
+import { Button, IconButton } from '../../../shared/ui'
 import { STAGE_TONE } from '../../../shared/theme/stage'
 import { DateInput } from '../../../shared/components/DateInput'
 import { formatDate, formatDateTime } from '../../../shared/utils/dateFormat'
 import { StarRating } from '../../media/components/StarRating'
 import { READ_STATUS_LABEL, READ_STATUSES } from '../bookTones'
-import { statusPatch, useBookEvents, useDeleteBook, useLookupBookMeta, useUpdateBook } from '../hooks/useLibrary'
+import { statusPatch, useBookEvents, useDeleteBook, useUpdateBook } from '../hooks/useLibrary'
+import { useAiNotes, useDeleteAiNote } from '../hooks/useKoboControl'
 import { formatDuration, sessions } from '../readingAggregate'
 import type { Book, BookPatch, ReadStatus } from '../types'
-import { BookCover } from './BookCover'
+import { BookCoverEditor } from './BookCoverEditor'
+import { BookDetailsFields } from './BookDetailsFields'
+import { detailsDraft, detailsPatch, type DetailsDraft } from './bookDetails'
+import { AskedList } from './kobo/AskedCard'
 
 const STATUS_STAGE = { want: 'planned', reading: 'active', finished: 'done', paused: 'paused', dropped: 'dropped' } as const
 
-interface Draft {
+interface Draft extends DetailsDraft {
   title: string; author: string; series: string; read_status: ReadStatus; rating: number | null
   review: string; notes: string; started: string; finished: string
 }
 const day = (iso: string | null) => (iso ? iso.slice(0, 10) : '')
 const draftOf = (b: Book): Draft => ({
+  ...detailsDraft(b),
   title: b.title, author: b.author ?? '', series: b.series ?? '', read_status: b.read_status, rating: b.rating,
   review: b.review ?? '', notes: b.notes ?? '', started: day(b.started_at), finished: day(b.finished_at),
 })
@@ -33,7 +38,8 @@ export function BookSheet({ book, onClose }: { book: Book; onClose: () => void }
   const [d, setD] = useState<Draft>(() => draftOf(book))
   const update = useUpdateBook()
   const remove = useDeleteBook()
-  const lookup = useLookupBookMeta()
+  const notes = useAiNotes(book.id)
+  const removeNote = useDeleteAiNote()
   const modal = useEntityModal()
   const events = useBookEvents(book.id)
   const recent = useMemo(() => sessions(events.data ?? []).slice(-8).reverse(), [events.data])
@@ -49,6 +55,7 @@ export function BookSheet({ book, onClose }: { book: Book; onClose: () => void }
     const title = d.title.trim()
     if (!title) return
     const patch: BookPatch = {
+      ...detailsPatch(d),
       title, author: d.author.trim() || null, series: d.series.trim() || null, read_status: d.read_status,
       rating: d.rating, review: d.review.trim() || null, notes: d.notes.trim() || null,
       started_at: d.started ? (d.started === day(book.started_at) ? book.started_at : noon(d.started)) : null,
@@ -66,7 +73,6 @@ export function BookSheet({ book, onClose }: { book: Book; onClose: () => void }
     if (ok) remove.mutate(book.id, { onSuccess: onClose })
   }
 
-  const missingMeta = !book.cover_url || !book.page_count
   return (
     <ModalShell onClose={onClose} title="Book" size="lg" dismissible={!update.isPending}
       footer={
@@ -78,12 +84,7 @@ export function BookSheet({ book, onClose }: { book: Book; onClose: () => void }
       }>
       <div className="grid gap-5 md:grid-cols-[11rem_minmax(0,1fr)]">
         <div className="flex flex-col gap-3">
-          <BookCover book={book} className="mx-auto w-32 md:w-full" />
-          {missingMeta && (
-            <Button size="sm" icon={<Search />} loading={lookup.isPending} onClick={() => lookup.mutate(book.id)}>
-              {book.meta_checked_at ? 'Look up again' : 'Find cover and details'}
-            </Button>
-          )}
+          <BookCoverEditor book={book} />
           <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-meta">
             <Fact label="Progress" value={book.progress_pct != null ? `${Math.round(book.progress_pct)}%` : null} />
             <Fact label="Time read" value={book.read_seconds ? formatDuration(book.read_seconds) : total ? formatDuration(total) : null} />
@@ -122,6 +123,7 @@ export function BookSheet({ book, onClose }: { book: Book; onClose: () => void }
             <label className="flex flex-col gap-1"><span className="field-label">Finished</span>
               <DateInput value={d.finished} onChange={v => set({ finished: v })} aria-label="Finished" /></label>
           </div>
+          <BookDetailsFields draft={d} onChange={set} />
           <div><span className="field-label">Your rating</span><StarRating value={d.rating} onChange={v => set({ rating: v })} /></div>
           <label className="flex flex-col gap-1"><span className="field-label">Review</span>
             <textarea className="input min-h-[88px]" value={d.review} onChange={e => set({ review: e.target.value })} placeholder="What you thought of it" /></label>
@@ -143,9 +145,9 @@ export function BookSheet({ book, onClose }: { book: Book; onClose: () => void }
               </ul>
             )}
           </section>
-          {book.description && (
-            <section><span className="field-label">About</span>
-              <Truncate as="p" lines={3} className="whitespace-pre-line text-body text-fg-2">{book.description.replace(/<[^>]+>/g, '')}</Truncate></section>
+          {(notes.data?.length ?? 0) > 0 && (
+            <section><span className="field-label">Asked on the Kobo</span>
+              <AskedList rows={notes.data ?? []} onDelete={id => removeNote.mutate(id)} showBook={false} /></section>
           )}
         </div>
       </div>

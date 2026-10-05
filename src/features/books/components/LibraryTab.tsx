@@ -6,6 +6,7 @@ import { formatDate } from '../../../shared/utils/dateFormat'
 import { LIBRARY_BOARD } from '../booksBoard'
 import { READ_STATUS_LABEL, READ_STATUSES } from '../bookTones'
 import { useCreateBook, useLibrary, useMergeBooks, useSaveQueueOrder } from '../hooks/useLibrary'
+import { useAutoCoverLookup } from '../hooks/useAutoCoverLookup'
 import { duplicatePairs, formatDuration, matchesSearch, moveInQueue, sortForLibrary, upNext, type LibrarySort } from '../readingAggregate'
 import type { Book, ReadStatus } from '../types'
 import { BookCover } from './BookCover'
@@ -26,6 +27,7 @@ export function LibraryTab() {
   const [query, setQuery] = useState('')
   const [sort, setSort] = useState<LibrarySort>('recent')
   const [onKobo, setOnKobo] = useState(false)
+  useAutoCoverLookup(books)
 
   const counts = useMemo(() => {
     const c: Record<string, number> = { all: books.length }
