@@ -33,32 +33,47 @@ export const LIBRARY_BOARD: BoardLayouts<LibrarySection> = {
   4: { columns: [{ stack: BOOKS, span: 3 }, ['queue']] },
 }
 
-// Reading (statistics)
-//   1    today, the 30-day chart, books, time of day, the goal.
-//   2    today + chart + time of day in main; books and the goal beside.
-//   3    time of day moves to its own track (it can be empty: the last one).
-//   4    the goal gets a track before it; the page stops there.
-export const READING_SECTIONS = ['today', 'chart', 'books', 'hours', 'goal'] as const
-export type ReadingSection = typeof READING_SECTIONS[number]
+// Library, any other view (want to read, authors, collections, categories,
+// subjects, news): the tools on top and the view across every track — its own
+// grid adds columns as the page widens.
+export const LIBRARY_BROWSE_SECTIONS = ['tools', 'grid'] as const
+export type LibraryBrowseSection = typeof LIBRARY_BROWSE_SECTIONS[number]
 
-export const READING_BOARD: BoardLayouts<ReadingSection> = {
-  1: ['today', 'chart', 'books', 'hours', 'goal'],
-  2: { columns: [['today', 'chart', 'hours'], ['books', 'goal']] },
-  3: { columns: [['today', 'chart'], ['books', 'goal'], ['hours']] },
-  4: { columns: [['today', 'chart'], ['books'], ['goal'], ['hours']] },
+export const LIBRARY_BROWSE_BOARD: BoardLayouts<LibraryBrowseSection> = {
+  1: ['tools', 'grid'],
+  2: { top: ['tools'], columns: [{ stack: ['grid'], span: 2 }] },
+  3: { top: ['tools'], columns: [{ stack: ['grid'], span: 3 }] },
+  4: { top: ['tools'], columns: [{ stack: ['grid'], span: 4 }] },
+}
+
+// Stats (what you read, how much, how far)
+//   1    the KPI tiles, books in hand, minutes per day, the reading log, the
+//        window's books, the year, finished books, time of day, the goal.
+//   2    tiles across the top; books in hand + chart + log in main; the
+//        window's books, the year, finished books, time of day and the goal beside.
+//   3    the window's books + finished books get their own track; the year,
+//        time of day and the goal (which can be short) sit in the last.
+//   4    the log moves out of main into its own track.
+export const STATS_SECTIONS = ['kpis', 'current', 'chart', 'log', 'window', 'year', 'finished', 'hours', 'goal'] as const
+export type StatsSection = typeof STATS_SECTIONS[number]
+
+export const STATS_BOARD: BoardLayouts<StatsSection> = {
+  1: ['kpis', 'current', 'chart', 'log', 'window', 'year', 'finished', 'hours', 'goal'],
+  2: { top: ['kpis'], columns: [['current', 'chart', 'log'], ['window', 'year', 'finished', 'hours', 'goal']] },
+  3: { top: ['kpis'], columns: [['current', 'chart', 'log'], ['window', 'finished'], ['year', 'hours', 'goal']] },
+  4: { top: ['kpis'], columns: [['current', 'chart'], ['log'], ['window', 'finished'], ['year', 'hours', 'goal']] },
 }
 
 // Kobo (control the device from the app)
-//   1    device status, sleep screen, settings, menu order, questions asked.
-//   2    sleep screen + settings + menu in main; the device and the questions beside.
-//   3    the menu gets its own track; questions (can be empty) stay last.
-//   4    device and questions split; the page stops there.
-export const KOBO_SECTIONS = ['device', 'sleep', 'settings', 'menu', 'asked'] as const
+//   1    the sections as a pill row, then the open section.
+//   2+   the sections as a sticky list on the left (it drives the page); the
+//        open section takes every other track.
+export const KOBO_SECTIONS = ['nav', 'content'] as const
 export type KoboSection = typeof KOBO_SECTIONS[number]
 
 export const KOBO_BOARD: BoardLayouts<KoboSection> = {
-  1: ['device', 'sleep', 'settings', 'menu', 'asked'],
-  2: { columns: [['sleep', 'settings', 'menu'], ['device', 'asked']] },
-  3: { columns: [['sleep', 'settings'], ['menu'], ['device', 'asked']] },
-  4: { columns: [['sleep', 'settings'], ['menu'], ['device'], ['asked']] },
+  1: ['nav', 'content'],
+  2: { lead: 1, columns: [{ stack: ['nav'], sticky: true }, ['content']] },
+  3: { lead: 1, columns: [{ stack: ['nav'], sticky: true }, { stack: ['content'], span: 2 }] },
+  4: { lead: 1, columns: [{ stack: ['nav'], sticky: true }, { stack: ['content'], span: 3 }] },
 }

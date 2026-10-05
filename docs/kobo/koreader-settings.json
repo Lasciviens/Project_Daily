@@ -3973,22 +3973,23 @@
      "label": "Auto-detect TXT files layout (★)",
      "path": "Reader → Typeset tab (document icon) → Style",
      "type": "enum",
-     "absent_means": "auto-detect",
+     "absent_means": "lines as written",
      "default": null,
      "options": [
       {
        "value": null,
-       "label": "auto-detect (absent)"
+       "label": "Lines as written (absent)"
       },
       {
        "value": 0,
-       "label": "disabled"
+       "label": "Auto-detect layout"
       }
      ],
      "effect": "next_book",
      "kobo_clara_bw": true,
      "risky": false,
-     "source": "frontend/apps/reader/modules/readertypeset.lua:343"
+     "source": "frontend/apps/reader/modules/readertypeset.lua:343",
+     "notes": "Absent: every line is kept as written. 0 turns auto-detection on (readertypeset.lua:80-86, 323-332)."
     }
    ],
    "notes": "Bottom-menu (config dialog) options; 'Set as default' (long-press an option name) writes copt_<name> into G_reader_settings (configdialog.lua:1418, 1356). Configurable:loadDefaults reads them when a document opens (configurable.lua:29-42) and the book's own sidecar values then OVERRIDE them (loadSettings) — so a remote change only affects books opened without saved values (new books, or after 'Reset document settings'). Effect = next_book for unread books only."

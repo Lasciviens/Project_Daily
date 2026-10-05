@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useCallback, useMemo } from 'react'
 import { useKoboConfig, useKoboDeviceState, useSaveKoboConfig, settingPatch } from '../../hooks/useKoboControl'
 import { settingIndex } from '../../koboSettings'
 import { settingView, type Value } from '../../kobo/settingsView'
@@ -11,6 +11,11 @@ export function useKoboSettings() {
   const index = useMemo(() => settingIndex(), [])
   const wanted = config.data?.settings
   const reported = device.data?.report?.settings
+  /** The owner set a value in the app (a reset is stored as null and does not count). */
+  const isChanged = useCallback((key: string) => {
+    const v = wanted?.[key]
+    return v !== undefined && v !== null
+  }, [wanted])
   return {
     loading: config.isLoading,
     view: (key: string) => {
@@ -19,6 +24,7 @@ export function useKoboSettings() {
     },
     def: (key: string) => index.get(key) ?? null,
     set: (key: string, value: Value) => save.mutate(settingPatch(config.data, key, value)),
+    isChanged,
     saving: save.isPending,
     hasReport: !!device.data?.report,
   }

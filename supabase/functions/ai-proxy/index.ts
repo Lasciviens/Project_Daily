@@ -2215,12 +2215,14 @@ const DB_CATALOG: Record<string, CatalogEntry> = {
   books: {
     access: 'rw',
     purpose: 'The book library (Books page). Most rows come from the Kobo (KOReader plugin: Nickel\'s library + reading statistics); the user may add books by hand, rate them, and write reviews.',
-    columns: 'id, title, author, series, series_index, language, isbn, publisher, published_year, description, page_count, cover_url, read_status(want|reading|finished|paused|dropped), rating(1-10, 2 per star), review(the user\'s own words), notes, started_at, finished_at, queue_order(the reading queue among want), progress_pct(0-100, from the Kobo), last_read_at, read_seconds(KOReader lifetime reading time), read_pages, on_device(boolean), source(koreader|kobo|manual), koreader_md5, created_at, updated_at',
+    columns: 'id, title, author, series, series_index, language, isbn, publisher, published_year, description, page_count, cover_url, kind(book|news — a News Downloader issue), read_status(want|reading|finished|paused|dropped; NULL for news), rating(1-10, 2 per star), categories(text[] — the user\'s own shelves, e.g. {Fantasy,Work}), subjects(text[] — topics from the file), file_size(bytes on the Kobo), review(the user\'s own words), notes, started_at, finished_at, queue_order(the reading queue among want), progress_pct(0-100, from the Kobo), last_read_at, read_seconds(KOReader lifetime reading time), read_pages, on_device(boolean), source(koreader|kobo|manual), koreader_md5, created_at, updated_at',
     rules: [
       'Reading TIME per day lives in reading_page_events (aggregate duration_seconds by day); read_seconds is a per-book lifetime total from the device.',
       'Never change koreader_md5, progress_pct, read_seconds, read_pages, last_read_at or on_device — the Kobo sync owns them.',
       'A review or note the user dictates goes into review/notes of the right book (find it by title with ilike first). Confirm before deleting a book: its reading history is deleted with it.',
       'Something to READ later that is not in the library yet: insert with read_status="want", source="manual", on_device=false.',
+      'News (kind="news") never has a status, rating, queue place or read dates — the database clears them; leave them alone and filter kind="book" when the user means books.',
+      'To put a book on a shelf, update categories with the WHOLE new array (read it first, then add); reuse the spelling already used in other books (db_query the categories first) so one shelf is never two.',
     ].join(' '),
   },
   reading_page_events: {

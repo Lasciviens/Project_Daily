@@ -54,16 +54,16 @@ export function formatSeconds(s: number): string {
 }
 
 export const EFFECT_LABEL: Record<SettingDef['effect'], string> = {
-  immediate: 'Right after the sync',
-  next_sleep: 'From the next sleep',
-  next_book: 'From the next book opened',
+  immediate: 'Right after the Kobo syncs',
+  next_sleep: 'The next time the Kobo goes to sleep',
+  next_book: 'The next time you open a book',
   restart: 'After KOReader restarts',
 }
 
-/** Case- and accent-insensitive search over label, path and key. */
+/** Case- and accent-insensitive search over the label, the plain help, the example, the path and the key. */
 export function matchesSetting(def: SettingDef, query: string): boolean {
   const fold = (x: string) => x.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase()
   const q = fold(query.trim())
   if (!q) return true
-  return fold(`${def.label} ${def.path} ${def.key} ${def.help ?? ''}`).includes(q)
+  return fold(`${def.label} ${def.help} ${def.example ?? ''} ${def.path} ${def.key}`).includes(q)
 }

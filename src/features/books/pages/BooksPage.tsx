@@ -4,24 +4,27 @@ import { DeliveryList } from '../components/DeliveryList'
 import { KoboSetupCard } from '../components/KoboSetupCard'
 import { KoboTab } from '../components/kobo/KoboTab'
 import { LibraryTab } from '../components/LibraryTab'
-import { ReadingTab } from '../components/ReadingTab'
+import { StatsTab } from '../components/StatsTab'
 import { SendToKoboCard } from '../components/SendToKoboCard'
 import { useDeliveries, useKoboFeedState } from '../hooks/useBooks'
 import { BOOK_BOARD } from '../booksBoard'
 
-type Tab = 'library' | 'reading' | 'send' | 'kobo'
+type Tab = 'library' | 'stats' | 'send' | 'kobo'
 const TABS: { id: Tab; label: string }[] = [
   { id: 'library', label: 'Library' },
-  { id: 'reading', label: 'Reading' },
+  { id: 'stats', label: 'Stats' },
   { id: 'send', label: 'Send to Kobo' },
   { id: 'kobo', label: 'Kobo' },
 ]
 
-/** Books — the library, reading time from the Kobo, Send to Kobo, and the Kobo's own settings (docs/kobo/PLAN.md). */
+/** Books — the library, reading statistics from the Kobo, Send to Kobo, and the Kobo itself (docs/kobo/PLAN.md). */
 export function BooksPage() {
   const [params, setParams] = useSearchParams()
-  const tab: Tab = TABS.some(t => t.id === params.get('tab')) ? params.get('tab') as Tab : 'library'
-  const select = (next: Tab) => setParams(p => { p.set('tab', next); return p }, { replace: true })
+  // ?tab=reading was the Stats tab's old name (Daily's Reading card and old links).
+  const asked = params.get('tab') === 'reading' ? 'stats' : params.get('tab')
+  const tab: Tab = TABS.some(t => t.id === asked) ? asked as Tab : 'library'
+  // A tab starts clean: the other tabs' own address parts (view, section, area…) are dropped.
+  const select = (next: Tab) => setParams(() => new URLSearchParams({ tab: next }), { replace: true })
   return (
     <PageContainer>
       <PageHeader title="Books">
@@ -34,7 +37,7 @@ export function BooksPage() {
         </div>
       </PageHeader>
       {tab === 'library' && <LibraryTab />}
-      {tab === 'reading' && <ReadingTab />}
+      {tab === 'stats' && <StatsTab />}
       {tab === 'send' && <SendTab />}
       {tab === 'kobo' && <KoboTab />}
     </PageContainer>

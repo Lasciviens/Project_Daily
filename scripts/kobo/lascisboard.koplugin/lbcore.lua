@@ -66,6 +66,20 @@ function M.mergeBook(into, from)
     return into
 end
 
+--- A book file's extension, "kepub.epub" kept whole; "epub" when there is none.
+function M.bookExtension(name)
+    local lower = tostring(name or ""):lower()
+    if lower:match("%.kepub%.epub$") then return "kepub.epub" end
+    return lower:match("%.([%w]+)$") or "epub"
+end
+
+--- The name without that extension.
+function M.stripExtension(name)
+    name = tostring(name or "")
+    if name:lower():match("%.kepub%.epub$") then return name:sub(1, -12) end
+    return (name:gsub("%.[%w]+$", ""))
+end
+
 --- The day key ("2026-10-04") for a local time, used for the once-a-day news.
 function M.dayKey(t)
     return os.date("%Y-%m-%d", t)

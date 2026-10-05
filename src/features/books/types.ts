@@ -14,6 +14,7 @@ export interface BookDelivery {
   status: DeliveryStatus
   created_at: string
   downloaded_at: string | null
+  book_id?: string | null
 }
 
 /** When the Kobo last read the feed / downloaded a book (kobo_feed_state). */
@@ -41,7 +42,8 @@ export interface Book {
   description: string | null
   page_count: number | null
   cover_url: string | null
-  read_status: ReadStatus
+  /** null for a news issue (kind 'news' never has a status — migration 128). */
+  read_status: ReadStatus | null
   rating: number | null
   review: string | null
   notes: string | null
@@ -60,6 +62,12 @@ export interface Book {
   kind?: 'book' | 'news'
   cover_source?: 'device' | 'upload' | 'lookup' | 'url' | null
   device_cover_at?: string | null
+  /** The owner's own shelves, e.g. 'Fantasy' (migration 128). */
+  categories?: string[]
+  /** Topics from the file (EPUB subjects, via the Kobo). */
+  subjects?: string[]
+  /** Bytes on the Kobo (plugin 1.2). */
+  file_size?: number | null
   created_at: string
   updated_at: string
 }
@@ -67,7 +75,7 @@ export interface Book {
 export type BookPatch = Partial<Pick<Book,
   'title' | 'author' | 'series' | 'series_index' | 'language' | 'isbn' | 'publisher' | 'published_year' | 'description' |
   'page_count' | 'cover_url' | 'read_status' | 'rating' | 'review' | 'notes' | 'started_at' | 'finished_at' | 'queue_order' |
-  'cover_source' | 'kind'>>
+  'cover_source' | 'kind' | 'categories' | 'subjects'>>
 
 /** One KOReader page-stat row (reading_page_events). */
 export interface ReadingEvent {
@@ -92,6 +100,10 @@ export interface KoboSyncState extends KoboFeedState {
   battery?: number | null
   charging?: boolean | null
   koreader_version?: string | null
+  /** The Kobo's user storage at its last sync, in bytes (plugin 1.2, migration 128). */
+  storage_total?: number | null
+  storage_free?: number | null
+  storage_at?: string | null
 }
 
 /** What the app wants on the Kobo (kobo_device_config, migration 127). */

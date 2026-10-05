@@ -1,3 +1,4 @@
+import { Tablet } from 'lucide-react'
 import { TonePill, Truncate } from '../../../shared/ui'
 import { useEntityModal } from '../../../shared/modals'
 import { READ_STATUS_LABEL, READ_STATUS_TONE } from '../bookTones'
@@ -22,8 +23,11 @@ export function BookTile({ book, showStatus = true }: { book: Book; showStatus?:
       <div className="min-w-0">
         <Truncate as="p" lines={2} className="text-meta font-semibold leading-snug text-fg">{book.title}</Truncate>
         {book.author && <Truncate as="p" className="text-micro text-fg-muted">{book.author}</Truncate>}
-        {showStatus && (
-          <span className="mt-1 inline-flex"><TonePill tone={READ_STATUS_TONE[book.read_status]}>{READ_STATUS_LABEL[book.read_status]}</TonePill></span>
+        {(showStatus || book.on_device) && (
+          <span className="mt-1 flex flex-wrap items-center gap-1">
+            {showStatus && book.read_status && <TonePill tone={READ_STATUS_TONE[book.read_status]}>{READ_STATUS_LABEL[book.read_status]}</TonePill>}
+            {book.on_device && <span className="inline-flex items-center gap-0.5 text-micro text-fg-muted" title="On the Kobo"><Tablet className="h-3 w-3" aria-hidden />Kobo</span>}
+          </span>
         )}
       </div>
     </button>

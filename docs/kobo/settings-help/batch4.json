@@ -1,0 +1,449 @@
+{
+  "groups": {
+    "status_bar": {
+      "title": "Bottom status bar",
+      "summary": "The thin line of information under the text of a book: page numbers, time, battery, reading progress and more.",
+      "affects": "The bar at the bottom of every page shows, hides or rearranges these details the next time you open a book."
+    },
+    "alt_status_bar": {
+      "title": "Top bar (EPUB books)",
+      "summary": "The optional line printed above the text of EPUB books, with the title, time, page and battery.",
+      "affects": "When the top bar is turned on, the line above the text shows or hides these details the next time you open a book."
+    }
+  },
+  "settings": {
+    "footer.disabled": {
+      "label": "Turn off the status bar completely",
+      "help": "Removes the bottom status bar entirely, so the text can use the whole screen. None of the other status bar settings matter while this is on.",
+      "level": "advanced"
+    },
+    "footer.all_at_once": {
+      "label": "Show all chosen items together",
+      "help": "When on, every item you switched on appears side by side in the status bar. When off, the bar shows one item at a time and tapping the bar steps to the next one.",
+      "example": "On: 41 / 312 | 14:05 | 78%. Off: just 41 / 312, then 14:05 after a tap.",
+      "level": "basic"
+    },
+    "footer.reclaim_height": {
+      "label": "Let the text use the bar's space",
+      "help": "When the status bar is hidden, the book text stretches into the space the bar used. Showing the bar again then draws it on top of the bottom line of text.",
+      "level": "advanced"
+    },
+    "footer.page_progress": {
+      "label": "Show page number",
+      "help": "Shows the page you are on and the total number of pages.",
+      "example": "41 / 312",
+      "level": "basic"
+    },
+    "footer.pages_left_book": {
+      "label": "Show pages left in book",
+      "help": "Shows how many pages remain until the end of the book, with an arrow in front.",
+      "example": "271 / 312",
+      "level": "basic"
+    },
+    "footer.time": {
+      "label": "Show the time",
+      "help": "Shows the current clock time in the status bar.",
+      "example": "14:05",
+      "level": "basic"
+    },
+    "footer.pages_left": {
+      "label": "Show pages left in chapter",
+      "help": "Shows how many pages remain until the end of the current chapter.",
+      "example": "12",
+      "level": "basic"
+    },
+    "footer.battery": {
+      "label": "Show battery level",
+      "help": "Shows how much battery is left, as a battery symbol with a percentage.",
+      "example": "78%",
+      "level": "basic"
+    },
+    "footer.percentage": {
+      "label": "Show percentage read",
+      "help": "Shows how far through the book you are, as a percentage.",
+      "example": "13%",
+      "level": "basic"
+    },
+    "footer.book_time_to_read": {
+      "label": "Show time left in book",
+      "help": "Estimates how long it will take you to finish the book, based on your own reading speed. It needs the reading statistics to be on, otherwise it shows N/A.",
+      "example": "5:42",
+      "level": "basic"
+    },
+    "footer.chapter_time_to_read": {
+      "label": "Show time left in chapter",
+      "help": "Estimates how long it will take you to finish the current chapter, based on your own reading speed.",
+      "example": "0:18",
+      "level": "basic"
+    },
+    "footer.frontlight": {
+      "label": "Show light brightness",
+      "help": "Shows how bright the front light is set, as a percentage, or Off when the light is off.",
+      "example": "35%",
+      "level": "basic"
+    },
+    "footer.frontlight_warmth": {
+      "label": "Show light warmth",
+      "help": "Shows how warm (orange) the front light is set, as a percentage, or Off when the light is off.",
+      "example": "60%",
+      "level": "basic"
+    },
+    "footer.mem_usage": {
+      "label": "Show memory used",
+      "help": "Shows how much of the Kobo's memory the reading app is using, in megabytes. Only useful for troubleshooting.",
+      "example": "M 112",
+      "level": "advanced"
+    },
+    "footer.wifi_status": {
+      "label": "Show Wi-Fi on or off",
+      "help": "Shows a small symbol telling you whether Wi-Fi is currently on or off.",
+      "level": "basic"
+    },
+    "footer.page_turning_inverted": {
+      "label": "Show page-turn direction",
+      "help": "Shows a small arrow symbol telling you whether page turning is reversed (tapping the left side goes forward). Rarely needed.",
+      "level": "advanced"
+    },
+    "footer.book_author": {
+      "label": "Show author",
+      "help": "Shows the book's author in the status bar, shortened if it is too long.",
+      "example": "Jo Nesbø",
+      "level": "basic"
+    },
+    "footer.book_title": {
+      "label": "Show book title",
+      "help": "Shows the book's title in the status bar, shortened if it is too long.",
+      "example": "The Snowman",
+      "level": "basic"
+    },
+    "footer.book_chapter": {
+      "label": "Show chapter title",
+      "help": "Shows the name of the chapter you are reading, shortened if it is too long.",
+      "example": "Chapter 4: The Visit",
+      "level": "basic"
+    },
+    "footer.bookmark_count": {
+      "label": "Show number of bookmarks",
+      "help": "Shows how many bookmarks, highlights and notes you have in this book.",
+      "example": "7",
+      "level": "advanced"
+    },
+    "footer.chapter_progress": {
+      "label": "Show page within chapter",
+      "help": "Shows which page of the current chapter you are on, out of the chapter's total.",
+      "example": "3 / 15",
+      "level": "basic"
+    },
+    "footer.custom_text": {
+      "label": "Show your own text",
+      "help": "Adds a piece of text of your choice to the status bar. What it says is set under Custom text below.",
+      "level": "advanced"
+    },
+    "footer.disable_progress_bar": {
+      "label": "Hide the progress bar",
+      "help": "When on, the thin line that fills up as you read the book is removed from the status bar. When off, the line is shown.",
+      "level": "basic"
+    },
+    "footer.chapter_progress_bar": {
+      "label": "Progress bar for chapter only",
+      "help": "Makes the progress line show how far you are in the current chapter instead of in the whole book.",
+      "level": "basic"
+    },
+    "footer.progress_bar_position": {
+      "label": "Where the progress bar sits",
+      "help": "Places the progress line above the other status bar items, next to them on the same line, or below them.",
+      "level": "advanced",
+      "options": {
+        "above": "Above the items",
+        "alongside": "On the same line as the items",
+        "below": "Below the items"
+      }
+    },
+    "footer.progress_style_thin": {
+      "label": "Thin progress bar",
+      "help": "Draws the progress line as a thin line instead of a thicker bar. A thin bar cannot show chapter markers.",
+      "level": "advanced"
+    },
+    "footer.progress_style_thin_height": {
+      "label": "Thin bar thickness",
+      "help": "How thick the progress line is when the thin style is used. Higher numbers draw a thicker line.",
+      "level": "advanced"
+    },
+    "footer.progress_style_thick_height": {
+      "label": "Thick bar thickness",
+      "help": "How thick the progress bar is when the normal (thick) style is used. Higher numbers draw a thicker bar.",
+      "level": "advanced"
+    },
+    "footer.progress_margin_width": {
+      "label": "Progress bar side margins",
+      "help": "How much empty space is left on the left and right of the progress bar. Higher numbers make the bar shorter.",
+      "level": "advanced"
+    },
+    "footer.progress_margin": {
+      "label": "Match the book's side margins",
+      "help": "Lines the ends of the progress bar up with the left and right margins of the book text, instead of using its own margin.",
+      "level": "advanced"
+    },
+    "footer.progress_bar_min_width_pct": {
+      "label": "Smallest progress bar width",
+      "help": "When the progress bar sits on the same line as the items, this keeps it at least this share of the screen width. Only used when all items are shown together.",
+      "level": "advanced"
+    },
+    "footer.initial_marker": {
+      "label": "Mark where you started",
+      "help": "Puts a small marker on the progress bar at the point where you were when you opened the book, so you can see how far you read in this sitting.",
+      "level": "advanced"
+    },
+    "footer.toc_markers": {
+      "label": "Show chapter ticks",
+      "help": "Draws small ticks on the progress bar where each chapter begins. Only works with the thick bar style.",
+      "level": "basic"
+    },
+    "footer.toc_markers_width": {
+      "label": "Chapter tick thickness",
+      "help": "How thick the chapter ticks on the progress bar are.",
+      "level": "advanced"
+    },
+    "footer.auto_refresh_time": {
+      "label": "Keep the clock up to date",
+      "help": "Updates items such as the time and battery every minute, even when you are not turning pages. When off, they only update when the page changes.",
+      "level": "basic"
+    },
+    "footer.hide_empty_generators": {
+      "label": "Hide items with nothing to show",
+      "help": "Leaves out items that have nothing useful to say right now, for example the light level when the light is off or the bookmark count when there are none. Only used when all items are shown together.",
+      "level": "advanced"
+    },
+    "footer.pages_left_includes_current_page": {
+      "label": "Count this page as left",
+      "help": "Adds the page you are on to the pages-left numbers, so the last page reads 1 instead of 0.",
+      "level": "advanced"
+    },
+    "footer.progress_pct_format": {
+      "label": "Decimals in percentage read",
+      "help": "How many decimal places the percentage read shows.",
+      "example": "0: 13%, 1: 13.4%, 2: 13.42%",
+      "level": "advanced",
+      "options": {
+        "0": "Whole number (13%)",
+        "1": "One decimal (13.4%)",
+        "2": "Two decimals (13.42%)"
+      }
+    },
+    "footer.text_font_size": {
+      "label": "Status bar text size",
+      "help": "How big the text in the status bar is. Higher numbers make it larger.",
+      "level": "basic"
+    },
+    "footer.text_font_face": {
+      "label": "Status bar font",
+      "help": "Which font the status bar text uses. Leave it empty to use the standard font.",
+      "level": "advanced"
+    },
+    "footer.text_font_bold": {
+      "label": "Bold status bar text",
+      "help": "Makes the text in the status bar bold, which can be easier to read.",
+      "level": "basic"
+    },
+    "footer.item_prefix": {
+      "label": "Labels in front of items",
+      "help": "Chooses what goes in front of each item: small symbols, short letters, or a compact style with as few symbols as possible.",
+      "example": "Letters: B:78% R:13%. Compact: 78% 13%.",
+      "level": "advanced",
+      "options": {
+        "icons": "Symbols",
+        "letters": "Short letters (B:, R:)",
+        "compact_items": "Compact (fewest symbols)"
+      }
+    },
+    "footer.items_separator": {
+      "label": "Separator between items",
+      "help": "The mark placed between items in the status bar.",
+      "example": "41 / 312 | 14:05 or 41 / 312 · 14:05",
+      "level": "advanced"
+    },
+    "footer.book_title_max_width_pct": {
+      "label": "Longest book title",
+      "help": "The largest share of the screen width the book title may take before it is shortened with dots.",
+      "level": "advanced"
+    },
+    "footer.book_author_max_width_pct": {
+      "label": "Longest author name",
+      "help": "The largest share of the screen width the author's name may take before it is shortened with dots.",
+      "level": "advanced"
+    },
+    "footer.book_chapter_max_width_pct": {
+      "label": "Longest chapter title",
+      "help": "The largest share of the screen width the chapter title may take before it is shortened with dots.",
+      "level": "advanced"
+    },
+    "footer.align": {
+      "label": "Item alignment",
+      "help": "Puts the status bar items on the left, in the middle or on the right. Items are always centred when the progress bar sits on the same line.",
+      "level": "advanced"
+    },
+    "footer.container_height": {
+      "label": "Status bar height",
+      "help": "How tall the status bar area is. Higher numbers give the bar more room and leave a little less for the text.",
+      "level": "advanced"
+    },
+    "footer.container_bottom_padding": {
+      "label": "Space under the status bar",
+      "help": "How much empty space is left between the status bar and the bottom edge of the screen.",
+      "level": "advanced"
+    },
+    "footer.battery_hide_threshold": {
+      "label": "Hide battery when above",
+      "help": "Hides the battery item while the battery is above this level, so it only appears when it is getting low. Set to 100% to always show it. Only used when all items are shown together.",
+      "example": "At 30%, the battery only appears once it drops to 30% or less.",
+      "level": "basic"
+    },
+    "footer.bottom_horizontal_separator": {
+      "label": "Line above the status bar",
+      "help": "Draws a thin line between the book text and the status bar.",
+      "level": "advanced"
+    },
+    "footer.lock_tap": {
+      "label": "Ignore taps on the status bar",
+      "help": "Stops a tap on the status bar from switching or hiding it, so an accidental tap leaves it as it is.",
+      "level": "basic"
+    },
+    "footer.skim_widget_on_hold": {
+      "label": "Hold the bar to jump around",
+      "help": "Pressing and holding the status bar opens a slider to skim quickly through the book.",
+      "level": "advanced"
+    },
+    "reader_footer_mode": {
+      "label": "Which item the bar shows",
+      "help": "When items are shown one at a time, this decides which one is on screen (0 hides the bar). It also changes whenever you tap the status bar.",
+      "example": "0 = hidden, 1 = page number, 2 = pages left in book, 3 = time, 4 = pages left in chapter, 5 = battery, 6 = percentage read.",
+      "level": "advanced"
+    },
+    "reader_footer_custom_text": {
+      "label": "Your own text",
+      "help": "The text shown by the Your own text item. You can include book details with codes such as %T for the title, %A for the author, %c for the page and %b for the battery level.",
+      "example": "Reading %T reads as: Reading The Snowman",
+      "level": "advanced"
+    },
+    "reader_footer_custom_text_repetitions": {
+      "label": "Repeat your own text",
+      "help": "How many times your own text is repeated side by side, for example to fill the bar with a pattern.",
+      "level": "advanced"
+    },
+    "duration_format": {
+      "label": "How times are written",
+      "help": "Chooses how lengths of time are written, for example the time left in a book or chapter.",
+      "level": "basic",
+      "options": {
+        "classic": "1:23:45",
+        "modern": "1h23'45\"",
+        "letters": "1h 23m 45s"
+      }
+    },
+    "twelve_hour_clock": {
+      "label": "12-hour clock",
+      "help": "Shows the time with AM and PM instead of the 24-hour clock.",
+      "example": "2:05 PM instead of 14:05",
+      "level": "basic"
+    },
+    "cre_header_title": {
+      "label": "Show book title",
+      "help": "Shows the book's title in the top bar.",
+      "level": "basic",
+      "options": {
+        "0": "Hide",
+        "1": "Show"
+      }
+    },
+    "cre_header_author": {
+      "label": "Show author",
+      "help": "Shows the author's name in the top bar.",
+      "level": "basic",
+      "options": {
+        "0": "Hide",
+        "1": "Show"
+      }
+    },
+    "cre_header_clock": {
+      "label": "Show the time",
+      "help": "Shows the current time in the top bar.",
+      "level": "basic",
+      "options": {
+        "0": "Hide",
+        "1": "Show"
+      }
+    },
+    "cre_header_auto_refresh": {
+      "label": "Keep the clock up to date",
+      "help": "Updates the time and battery in the top bar every minute, even when you are not turning pages.",
+      "level": "basic",
+      "options": {
+        "0": "Off",
+        "1": "On"
+      }
+    },
+    "cre_header_page_number": {
+      "label": "Show page number",
+      "help": "Shows the page you are on in the top bar.",
+      "example": "41",
+      "level": "basic",
+      "options": {
+        "0": "Hide",
+        "1": "Show"
+      }
+    },
+    "cre_header_page_count": {
+      "label": "Show total pages",
+      "help": "Shows the total number of pages next to the page number in the top bar.",
+      "example": "41 / 312",
+      "level": "basic",
+      "options": {
+        "0": "Hide",
+        "1": "Show"
+      }
+    },
+    "cre_header_reading_percent": {
+      "label": "Show percentage read",
+      "help": "Shows how far through the book you are, as a percentage, in the top bar.",
+      "example": "13%",
+      "level": "basic",
+      "options": {
+        "0": "Hide",
+        "1": "Show"
+      }
+    },
+    "cre_header_battery": {
+      "label": "Show battery symbol",
+      "help": "Shows a small battery symbol in the top bar.",
+      "level": "basic",
+      "options": {
+        "0": "Hide",
+        "1": "Show"
+      }
+    },
+    "cre_header_battery_percent": {
+      "label": "Show battery percentage",
+      "help": "Shows the battery level as a number in the top bar.",
+      "example": "78%",
+      "level": "basic",
+      "options": {
+        "0": "Hide",
+        "1": "Show"
+      }
+    },
+    "cre_header_chapter_marks": {
+      "label": "Show chapter ticks",
+      "help": "Draws small ticks on the top bar's progress line where each chapter begins.",
+      "level": "advanced",
+      "options": {
+        "0": "Hide",
+        "1": "Show"
+      }
+    },
+    "cre_header_status_font_size": {
+      "label": "Top bar text size",
+      "help": "How big the text in the top bar is. Higher numbers make it larger.",
+      "level": "basic"
+    }
+  }
+}

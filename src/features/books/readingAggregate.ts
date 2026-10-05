@@ -84,7 +84,8 @@ export function computeStreak(byDay: Map<string, number>, today: string, lastSee
   return { current, longest: Math.max(longest, current), atRisk }
 }
 
-export interface Session { bookId: string; start: number; end: number; seconds: number; pages: number }
+/** A reading session; start/end are epoch SECONDS; firstPage/lastPage = the lowest and highest page seen. */
+export interface Session { bookId: string; start: number; end: number; seconds: number; pages: number; firstPage: number; lastPage: number }
 
 /**
  * Reading sessions: a book's events grouped while the gap stays ≤ 30 min.
@@ -98,14 +99,18 @@ export function sessions(events: readonly ReadingEvent[]): Session[] {
   const close = () => {
     if (!cur) return
     const seconds = Math.min(cur.sum, Math.max(cur.end - cur.start, 0))
-    if (seconds >= MIN_SESSION_SECONDS) out.push({ bookId: cur.bookId, start: cur.start, end: cur.end, seconds, pages: cur.pageSet.size })
+    if (seconds >= MIN_SESSION_SECONDS) {
+      out.push({ bookId: cur.bookId, start: cur.start, end: cur.end, seconds, pages: cur.pageSet.size, firstPage: cur.firstPage, lastPage: cur.lastPage })
+    }
   }
   for (const e of sorted) {
     const t = Date.parse(e.started_at) / 1000
     if (!cur || cur.bookId !== e.book_id || t - cur.end > SESSION_GAP_SECONDS) {
       close()
-      cur = { bookId: e.book_id, start: t, end: t + e.duration_seconds, seconds: 0, pages: 0, sum: 0, pageSet: new Set() }
+      cur = { bookId: e.book_id, start: t, end: t + e.duration_seconds, seconds: 0, pages: 0, firstPage: e.page, lastPage: e.page, sum: 0, pageSet: new Set() }
     }
+    cur.firstPage = Math.min(cur.firstPage, e.page)
+    cur.lastPage = Math.max(cur.lastPage, e.page)
     cur.sum += e.duration_seconds
     cur.end = Math.max(cur.end, t + e.duration_seconds)
     cur.pageSet.add(e.page)
@@ -218,5 +223,198 @@ export function duplicatePairs(books: readonly Book[]): [Book, Book][] {
     if (prev) out.push([prev, b])
     else seen.set(k, b)
   }
+  return out
+}
+
+// ── Stats tab (the Reading tab rebuilt as statistics) ────────────────────────
+
+/** Σ seconds over the local days from…to, inclusive. */
+export function sumDays(perDay: ReadonlyMap<string, number>, from: string, to: string): number {
+  let t = 0
+  for (const [d, s] of perDay) if (d >= from && d <= to) t += s
+  return t
+}
+
+/** The Monday of the week a local day falls in. */
+export function weekStart(day: string): string {
+  const [y, m, d] = day.split('-').map(Number)
+  const wd = (new Date(y, m - 1, d, 12).getDay() + 6) % 7
+  return addDays(day, -wd)
+}
+
+/** Distinct pages per book, summed (a page re-read the same window counts once). */
+export function distinctPages(events: readonly ReadingEvent[]): number {
+  const seen = new Map<string, Set<number>>()
+  for (const e of events) {
+    const s = seen.get(e.book_id) ?? new Set<number>()
+    s.add(e.page)
+    seen.set(e.book_id, s)
+  }
+  let n = 0
+  for (const s of seen.values()) n += s.size
+  return n
+}
+
+/** Events whose local day is from…to, inclusive. */
+export function eventsBetween(events: readonly ReadingEvent[], from: string, to: string): ReadingEvent[] {
+  return events.filter(e => { const d = localDay(new Date(e.started_at)); return d >= from && d <= to })
+}
+
+/**
+ * About how long until the end: remaining % × (time spent ÷ % read). Null below
+ * 5 % read or 20 minutes spent (too little to extrapolate), and at 100 %.
+ */
+export function estimateFinishSeconds(progressPct: number | null | undefined, seconds: number): number | null {
+  if (progressPct == null || progressPct < 5 || progressPct >= 100 || seconds < 1200) return null
+  return Math.round(((100 - progressPct) * seconds) / progressPct)
+}
+
+/** Pages per hour, only with ≥ 10 minutes of data. */
+export function pagesPerHour(pages: number, seconds: number): number | null {
+  return seconds >= 600 && pages > 0 ? Math.round(pages / (seconds / 3600)) : null
+}
+
+type StatBook = Pick<Book, 'id' | 'kind' | 'read_status' | 'page_count' | 'progress_pct' | 'read_seconds' | 'read_pages' | 'last_read_at'>
+
+export interface CurrentBook {
+  bookId: string
+  /** Lifetime time: KOReader's total, or the synced events when that is larger/missing. */
+  seconds: number
+  sessions: number
+  /** Highest page reached in the synced events. */
+  page: number | null
+  /** The book's page count, only when it is not below `page` (layouts differ). */
+  pageTotal: number | null
+  progressPct: number | null
+  pagesPerHour: number | null
+  /** Epoch ms of the last read (events or the device's last_read_at). */
+  lastAt: number | null
+  etaSeconds: number | null
+}
+
+/**
+ * Books in hand: status Reading, plus any non-news book read in the last
+ * `recentDays` days that is not Finished or Dropped. Most recently read first.
+ */
+export function currentlyReading(books: readonly StatBook[], events: readonly ReadingEvent[], today: string, recentDays = 14): CurrentBook[] {
+  const per = new Map<string, { seconds: number; pages: Set<number>; max: number; lastAt: number; list: ReadingEvent[] }>()
+  for (const e of events) {
+    const m = per.get(e.book_id) ?? { seconds: 0, pages: new Set<number>(), max: 0, lastAt: 0, list: [] }
+    m.seconds += e.duration_seconds
+    m.pages.add(e.page)
+    m.max = Math.max(m.max, e.page)
+    m.lastAt = Math.max(m.lastAt, Date.parse(e.started_at))
+    m.list.push(e)
+    per.set(e.book_id, m)
+  }
+  const cutoff = addDays(today, -recentDays)
+  const out: CurrentBook[] = []
+  for (const b of books) {
+    if (b.kind === 'news') continue
+    const m = per.get(b.id)
+    const deviceAt = b.last_read_at ? Date.parse(b.last_read_at) : NaN
+    const lastAt = Math.max(m?.lastAt ?? 0, Number.isFinite(deviceAt) ? deviceAt : 0) || null
+    const recent = lastAt != null && localDay(new Date(lastAt)) >= cutoff
+    if (b.read_status !== 'reading' && !(recent && b.read_status !== 'finished' && b.read_status !== 'dropped')) continue
+    const seconds = Math.max(b.read_seconds ?? 0, m?.seconds ?? 0)
+    const speed = b.read_pages && b.read_seconds && b.read_seconds >= 600
+      ? pagesPerHour(b.read_pages, b.read_seconds)
+      : m ? pagesPerHour(m.pages.size, m.seconds) : null
+    const page = m ? m.max : null
+    out.push({
+      bookId: b.id, seconds, sessions: m ? sessions(m.list).length : 0, page,
+      pageTotal: b.page_count && (page == null || b.page_count >= page) ? b.page_count : null,
+      progressPct: b.progress_pct, pagesPerHour: speed, lastAt,
+      etaSeconds: estimateFinishSeconds(b.progress_pct, seconds),
+    })
+  }
+  return out.sort((a, b) => (b.lastAt ?? 0) - (a.lastAt ?? 0))
+}
+
+/** Whole days from `day` to `today` (0 = today). */
+export function daysBetween(day: string, today: string): number {
+  const p = (s: string) => { const [y, m, d] = s.split('-').map(Number); return Date.UTC(y, m - 1, d) }
+  return Math.round((p(today) - p(day)) / 86400000)
+}
+
+/** "today", "yesterday", "3 days ago". */
+export function relativeDay(day: string, today: string): string {
+  const n = daysBetween(day, today)
+  if (n <= 0) return 'today'
+  if (n === 1) return 'yesterday'
+  return `${n} days ago`
+}
+
+export interface LogDay { day: string; sessions: Session[] }
+
+/** The newest `limit` sessions, grouped by the local day they started, newest first. */
+export function sessionLog(list: readonly Session[], limit: number): LogDay[] {
+  const newest = [...list].sort((a, b) => b.start - a.start).slice(0, limit)
+  const out: LogDay[] = []
+  for (const s of newest) {
+    const day = localDay(new Date(s.start * 1000))
+    const last = out[out.length - 1]
+    if (last && last.day === day) last.sessions.push(s)
+    else out.push({ day, sessions: [s] })
+  }
+  return out
+}
+
+export interface WindowBook extends BookWindow { firstPage: number; lastPage: number }
+export interface WindowNews { issues: number; seconds: number; pages: number; sessions: number }
+
+/** Per book in a window (by time), with news issues summed into one row of their own. */
+export function windowBooks(events: readonly ReadingEvent[], isNews: (bookId: string) => boolean): { books: WindowBook[]; news: WindowNews | null } {
+  const range = new Map<string, [number, number]>()
+  for (const e of events) {
+    const r = range.get(e.book_id)
+    range.set(e.book_id, r ? [Math.min(r[0], e.page), Math.max(r[1], e.page)] : [e.page, e.page])
+  }
+  const books: WindowBook[] = []
+  let news: WindowNews | null = null
+  for (const row of byBook(events)) {
+    if (isNews(row.bookId)) {
+      news = news ?? { issues: 0, seconds: 0, pages: 0, sessions: 0 }
+      news.issues++; news.seconds += row.seconds; news.pages += row.pages; news.sessions += row.sessions
+    } else {
+      const [firstPage, lastPage] = range.get(row.bookId) ?? [0, 0]
+      books.push({ ...row, firstPage, lastPage })
+    }
+  }
+  return { books, news }
+}
+
+type FinishBook = Pick<Book, 'id' | 'kind' | 'finished_at' | 'started_at'>
+
+/** Books (never news) finished in a calendar year, newest first. */
+export function finishedInYear<T extends FinishBook>(books: readonly T[], year: number): T[] {
+  return books.filter(b => b.kind !== 'news' && b.finished_at && new Date(b.finished_at).getFullYear() === year)
+    .sort((a, b) => (b.finished_at ?? '').localeCompare(a.finished_at ?? ''))
+}
+
+/** Years with a finished book, plus `current`, newest first. */
+export function finishedYears(books: readonly FinishBook[], current: number): number[] {
+  const ys = new Set<number>([current])
+  for (const b of books) if (b.kind !== 'news' && b.finished_at) ys.add(new Date(b.finished_at).getFullYear())
+  return [...ys].sort((a, b) => b - a)
+}
+
+/** Calendar days from start to finish, both counted (same day = 1). Null without both or when reversed. */
+export function daysTaken(startedAt: string | null, finishedAt: string | null): number | null {
+  if (!startedAt || !finishedAt) return null
+  const n = daysBetween(localDay(new Date(startedAt)), localDay(new Date(finishedAt)))
+  return n < 0 ? null : n + 1
+}
+
+export interface MonthStat { month: number; seconds: number; finished: number }
+
+/** Per month of `year`: time read and books finished. */
+export function yearMonths(events: readonly ReadingEvent[], books: readonly FinishBook[], year: number): MonthStat[] {
+  const out = Array.from({ length: 12 }, (_, month) => ({ month, seconds: 0, finished: 0 }))
+  for (const e of events) {
+    const d = new Date(e.started_at)
+    if (d.getFullYear() === year) out[d.getMonth()].seconds += e.duration_seconds
+  }
+  for (const b of finishedInYear(books, year)) out[new Date(b.finished_at as string).getMonth()].finished++
   return out
 }

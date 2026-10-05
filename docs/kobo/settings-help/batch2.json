@@ -1,0 +1,536 @@
+{
+  "groups": {
+    "power": {
+      "title": "Sleep and battery",
+      "summary": "When the Kobo goes to sleep or switches itself off, and warnings about battery and memory.",
+      "affects": "The Kobo falls asleep or turns off sooner or later, and may show pop-up warnings about the battery."
+    },
+    "network": {
+      "title": "Wi-Fi",
+      "summary": "How the Kobo handles its Wi-Fi connection.",
+      "affects": "Wi-Fi turns itself off or back on at different times, and fewer or more Wi-Fi questions pop up."
+    },
+    "taps_gestures": {
+      "title": "Taps and page turns",
+      "summary": "How taps, swipes and long-presses on the screen are understood, including page turns, text selection and links.",
+      "affects": "Tapping, swiping and pressing on the screen does different things, or reacts faster or slower."
+    },
+    "navigation": {
+      "title": "Moving around a book",
+      "summary": "Going back, jumping around in a book, automatic page turning and what happens at the end of a book.",
+      "affects": "Going back, the end of a book and automatic page turning behave differently while you read."
+    },
+    "document": {
+      "title": "Reading history and notes",
+      "summary": "How the Kobo saves your place, your reading history and your highlights and notes.",
+      "affects": "Your history list, saved reading position and exported highlights are kept in a different way."
+    }
+  },
+  "settings": {
+    "auto_suspend_timeout_seconds": {
+      "label": "Go to sleep after",
+      "help": "How long the Kobo waits without being touched before it goes to sleep and shows the sleep screen. A shorter time saves battery; a longer time lets you pause reading without the Kobo dozing off.",
+      "example": "Set it to 600 seconds (10 minutes): if you put the Kobo down and forget it, it goes to sleep after 10 minutes.",
+      "level": "basic"
+    },
+    "autoshutdown_timeout_seconds": {
+      "label": "Switch off after sleeping for",
+      "help": "How long the Kobo stays asleep before it switches itself off completely. Switched off it uses almost no battery, but waking it then takes longer, like a fresh start.",
+      "example": "The default is 259200 seconds (3 days): if you don't pick up the Kobo for 3 days, it turns itself off.",
+      "level": "basic"
+    },
+    "auto_standby_timeout_seconds": {
+      "label": "Light power saving after",
+      "help": "Standby is a light power-saving state between page turns: the screen stays as it is and the Kobo wakes the moment you touch it. It saves some battery, but the first tap after a pause can feel a little slow, and it does not work while Wi-Fi is on. Off unless you set a time.",
+      "example": "Set it to 4 seconds: after 4 seconds without a touch the Kobo quietly saves power until your next tap.",
+      "level": "advanced"
+    },
+    "enable_charging_led": {
+      "label": "Charging light",
+      "help": "Turns the small power light on while the Kobo is charging. Switch it off if the light bothers you, for example when charging at night next to your bed.",
+      "level": "basic"
+    },
+    "ignore_power_sleepcover": {
+      "label": "Ignore the cover completely",
+      "help": "Only matters if you use a magnetic sleep cover. When on, closing or opening the cover does nothing: the Kobo will not sleep or wake with the cover. Takes effect after KOReader restarts.",
+      "level": "advanced"
+    },
+    "ignore_open_sleepcover": {
+      "label": "Don't wake when cover opens",
+      "help": "Only matters if you use a magnetic sleep cover. When on, closing the cover still puts the Kobo to sleep, but opening it does not wake it; you wake it with the power button instead. Useful if the cover sometimes opens in your bag. Takes effect after KOReader restarts.",
+      "level": "advanced"
+    },
+    "device_status_battery_alarm": {
+      "label": "Warn about battery level",
+      "help": "Shows a pop-up warning when the battery runs low (or reaches a high level while charging). The levels and how often it checks are set below.",
+      "level": "basic"
+    },
+    "device_status_battery_interval_minutes": {
+      "label": "Check battery every",
+      "help": "How often the Kobo checks the battery for the warning above. Only used when the battery warning is on.",
+      "example": "Set it to 10 minutes: the battery level is checked every 10 minutes.",
+      "level": "advanced"
+    },
+    "device_status_battery_threshold": {
+      "label": "Low battery warning at",
+      "help": "The battery level that counts as low: below it you get a warning (when the battery warning is on).",
+      "example": "Set it to 20%: when the battery drops under 20%, a message tells you to charge soon.",
+      "level": "basic"
+    },
+    "device_status_battery_threshold_high": {
+      "label": "Full battery warning at",
+      "help": "The battery level that counts as high: above it you get a message, which can remind you to unplug the charger. Must be the same as or higher than the low level. At 100% you are only told when it is fully charged.",
+      "example": "Set it to 90%: when charging passes 90%, a message tells you so.",
+      "level": "advanced"
+    },
+    "device_status_memory_alarm": {
+      "label": "Warn when memory runs high",
+      "help": "Shows a warning when KOReader is using a lot of the Kobo's memory, which can make it slow or unstable after very long use. Rarely needed.",
+      "level": "advanced"
+    },
+    "device_status_memory_interval_minutes": {
+      "label": "Check memory every",
+      "help": "How often memory use is checked for the memory warning. Only used when that warning is on.",
+      "example": "Set it to 5 minutes: memory use is checked every 5 minutes.",
+      "level": "advanced"
+    },
+    "device_status_memory_threshold": {
+      "label": "Memory warning above",
+      "help": "How much memory KOReader may use before you get a warning (or an automatic restart, if that is on).",
+      "example": "Set it to 100 MB: if KOReader uses more than 100 MB, you are warned.",
+      "level": "advanced"
+    },
+    "device_status_memory_auto_restart": {
+      "label": "Restart by itself on high memory",
+      "help": "When memory use goes over the limit, KOReader restarts on its own instead of asking you. Your place in the book is kept, but the screen briefly goes back to the start.",
+      "level": "advanced"
+    },
+    "auto_disable_wifi": {
+      "label": "Turn Wi-Fi off when idle",
+      "help": "Turns Wi-Fi off by itself after a long while with no internet activity, so you can keep reading without Wi-Fi draining the battery. Takes effect after KOReader restarts.",
+      "level": "basic"
+    },
+    "auto_restore_wifi": {
+      "label": "Reconnect Wi-Fi on wake",
+      "help": "When the Kobo wakes up or starts, it quietly reconnects to Wi-Fi, but only if Wi-Fi was on last time and you did not turn it off yourself. Handy because Lasci's Board syncs whenever Wi-Fi comes on, but it uses a little more battery.",
+      "level": "basic"
+    },
+    "wifi_disable_action": {
+      "label": "When a task is done with Wi-Fi",
+      "help": "What happens after something that needed Wi-Fi (for example downloading news) has finished: keep Wi-Fi on, turn it off, or ask you each time.",
+      "level": "basic",
+      "options": {
+        "leave_on": "Keep Wi-Fi on",
+        "turn_off": "Turn Wi-Fi off",
+        "prompt": "Ask me each time"
+      }
+    },
+    "auto_dismiss_wifi_scan": {
+      "label": "Close Wi-Fi list once connected",
+      "help": "When on, the list of Wi-Fi networks closes by itself as soon as the Kobo is connected. When off, it stays open until you close it.",
+      "level": "advanced"
+    },
+    "SSH_force_kill_clients": {
+      "label": "Cut remote connections when stopping SSH",
+      "help": "SSH is a way to reach the Kobo from a computer over Wi-Fi (used for setting up Lasci's Board). When on, stopping SSH also cuts any computer that is still connected. Leave this alone unless you use SSH.",
+      "level": "advanced"
+    },
+    "disable_double_tap": {
+      "label": "Turn off double tap",
+      "help": "When on (the usual setting), double tap does nothing and single taps react straight away. When off, you can give double taps their own actions, but every single tap waits a moment to see if a second tap follows, so page turns feel slower. Takes effect after KOReader restarts.",
+      "level": "advanced"
+    },
+    "ignore_hold_corners": {
+      "label": "Ignore long-press in corners",
+      "help": "When on, pressing and holding in a corner of the screen does nothing, even if a shortcut is assigned to it. Useful if you trigger corner shortcuts by accident while holding the Kobo.",
+      "level": "advanced"
+    },
+    "activate_menu": {
+      "label": "Open the menu by",
+      "help": "How you open the top menu while reading: by tapping the top of the screen, by swiping down from the top, or both.",
+      "example": "Choose swipe only if you keep opening the menu by accident when tapping near the top.",
+      "level": "basic",
+      "options": {
+        "swipe_tap": "Tap or swipe down",
+        "tap": "Tap only",
+        "swipe": "Swipe down only"
+      }
+    },
+    "show_bottom_menu": {
+      "label": "Show bottom menu with top menu",
+      "help": "When on, opening the top menu also opens the bottom menu (font, spacing and display settings) at the same time. When off, only the top menu appears and you open the bottom one separately.",
+      "level": "basic"
+    },
+    "multiswipes_enabled": {
+      "label": "Allow multi-direction swipes",
+      "help": "Lets you use special gestures made of several swipe directions without lifting your finger (for example down then right), each of which can be given its own action. Off by default; only useful if you set such gestures up.",
+      "level": "advanced"
+    },
+    "hold_pan_rate": {
+      "label": "Screen updates while selecting",
+      "help": "How many times per second the screen redraws while you drag your finger to select text. Higher feels smoother but uses more battery and can make e-ink flicker more.",
+      "example": "Set it to 5 Hz: the selection updates 5 times a second as you drag.",
+      "level": "advanced"
+    },
+    "ges_tap_interval_ms": {
+      "label": "Ignore repeat taps within",
+      "help": "Any extra tap made within this time after a tap is treated as accidental and ignored. 0 means every tap counts. Helps if the Kobo sometimes turns two pages when you meant one. Takes effect after KOReader restarts.",
+      "example": "Set it to 300 ms: a second tap less than a third of a second after the first is ignored.",
+      "level": "advanced"
+    },
+    "ges_tap_interval_on_keyboard_ms": {
+      "label": "Ignore repeat key taps within",
+      "help": "The same as above, but only for the on-screen keyboard: a second tap this soon after a key press is ignored, which stops accidental double letters. 0 means every tap counts.",
+      "example": "Set it to 150 ms if you often get doubled letters when typing.",
+      "level": "advanced"
+    },
+    "ges_double_tap_interval_ms": {
+      "label": "Double tap speed",
+      "help": "Only matters if double tap is turned on: how long the Kobo waits for a second tap. A single tap then takes at least this long to react. Takes effect after KOReader restarts.",
+      "example": "Set it to 300 ms: two taps within about a third of a second count as a double tap.",
+      "level": "advanced"
+    },
+    "ges_two_finger_tap_duration_ms": {
+      "label": "Two-finger tap length",
+      "help": "The longest time two fingers can stay on the screen and still count as a two-finger tap. Takes effect after KOReader restarts.",
+      "example": "Set it to 300 ms: two fingers touching and lifting within a third of a second count as a two-finger tap.",
+      "level": "advanced"
+    },
+    "ges_hold_interval_ms": {
+      "label": "Long-press time",
+      "help": "How long you must keep your finger down before it counts as a long-press (for example to select a word). Shorter makes selecting quicker; longer avoids selecting by accident. Takes effect after KOReader restarts.",
+      "example": "Set it to 500 ms: hold your finger for half a second to select a word.",
+      "level": "basic"
+    },
+    "ges_swipe_interval_ms": {
+      "label": "Swipe speed limit",
+      "help": "How quick a finger movement must be to count as a swipe; anything slower counts as dragging. Raise it if your slow swipes are not recognised. Takes effect after KOReader restarts.",
+      "example": "Set it to 900 ms: a movement finished within 0.9 seconds counts as a swipe.",
+      "level": "advanced"
+    },
+    "page_turns_swipe_always_active": {
+      "label": "Swipe always turns pages",
+      "help": "When on, swiping left or right always turns the page, even when another swipe action (such as following a link) would normally take over.",
+      "level": "advanced"
+    },
+    "page_turns_tap_zones": {
+      "label": "Where to tap to turn pages",
+      "help": "Which parts of the screen turn the page when tapped. The usual layout uses the right side for next and the left side for back; you can also use the top and bottom halves instead.",
+      "level": "basic",
+      "options": {
+        "default": "Usual (right = next, left = back)",
+        "left_right": "Left half back, right half next",
+        "top_bottom": "Top half back, bottom half next",
+        "bottom_top": "Bottom half back, top half next"
+      }
+    },
+    "page_turns_tap_zone_forward_size_ratio": {
+      "label": "Size of the next-page area",
+      "help": "How much of the screen width (as a share, 0 to 1) turns to the next page when tapped. A bigger area makes it easier to turn forward with one hand.",
+      "example": "Set it to 0.7: tapping anywhere in the right 70% of the screen turns to the next page.",
+      "level": "basic"
+    },
+    "page_turns_tap_zone_backward_size_ratio": {
+      "label": "Size of the previous-page area",
+      "help": "How much of the screen width (as a share, 0 to 1) goes back a page when tapped.",
+      "example": "Set it to 0.25: only the left quarter of the screen goes back a page.",
+      "level": "basic"
+    },
+    "inverse_reading_order": {
+      "label": "Reverse page turn direction",
+      "help": "Swaps the direction of page-turn taps and swipes, as for right-to-left books such as manga or Arabic. This is the starting choice for books you open for the first time; books already opened keep their own choice.",
+      "level": "advanced"
+    },
+    "invert_ui_layout": {
+      "label": "Mirror contents and page views",
+      "help": "Mirrors the table of contents, book map and page browser so they read right to left. Meant to go together with reversed page turns. Only for books opened for the first time; others keep their own choice.",
+      "level": "advanced"
+    },
+    "swipe_animations": {
+      "label": "Animated page turns",
+      "help": "Shows a sliding animation when you swipe to turn a page. On e-ink this is slow and can look jerky, so most people leave it off.",
+      "level": "advanced"
+    },
+    "scroll_method": {
+      "label": "How scrolling follows your finger",
+      "help": "Only used in continuous (scrolling) view, mostly for PDFs and comics. Normal follows your finger; turbo scrolls further for the same movement; on release moves the page only when you lift your finger, which is easier on e-ink.",
+      "level": "advanced",
+      "options": {
+        "classic": "Normal (follows your finger)",
+        "turbo": "Turbo (scrolls further, faster)",
+        "on_release": "Move only when you let go"
+      }
+    },
+    "inertial_scroll": {
+      "label": "Keep scrolling after a flick",
+      "help": "In continuous (scrolling) view, a quick flick keeps the page moving for a moment after you lift your finger. Only works with the normal scrolling method.",
+      "level": "advanced"
+    },
+    "scroll_activation_delay": {
+      "label": "Wait before scrolling starts",
+      "help": "In continuous (scrolling) view, a short wait before a finger movement starts scrolling, so swipe gestures are not mistaken for scrolling. 0 starts at once.",
+      "example": "Set it to 200 ms: the page only starts to scroll after your finger has moved for a fifth of a second.",
+      "level": "advanced"
+    },
+    "default_highlight_action": {
+      "label": "What a long-press on text does",
+      "help": "What happens after you press and hold to select text in a book: show a menu of choices, or go straight to one action such as highlighting or looking it up.",
+      "example": "Choose Highlight if you mostly mark passages: the selected text is highlighted at once without a menu.",
+      "level": "basic",
+      "options": {
+        "ask": "Show a menu of choices",
+        "nothing": "Do nothing",
+        "highlight": "Highlight it",
+        "select": "Select (adjust), then highlight",
+        "note": "Add a note",
+        "translate": "Translate",
+        "wikipedia": "Look up on Wikipedia",
+        "dictionary": "Look up in the dictionary",
+        "search": "Search the whole book"
+      }
+    },
+    "highlight_action_on_single_word": {
+      "label": "Single word: skip the dictionary",
+      "help": "Normally a long-press on one word opens the dictionary straight away, and the action above is used only for longer selections. Turn this on to use that action for single words too, instead of the dictionary.",
+      "level": "basic"
+    },
+    "highlight_dialog_position": {
+      "label": "Where the text menu appears",
+      "help": "Where the menu with highlight, note, dictionary and so on appears on the screen after you select text.",
+      "level": "advanced",
+      "options": {
+        "top": "Top of the screen",
+        "center": "Middle of the screen",
+        "bottom": "Bottom of the screen",
+        "gesture": "Next to the selected text"
+      }
+    },
+    "highlight_prompt": {
+      "label": "Ask for highlight style",
+      "help": "Whether the Kobo asks you to pick a highlight style (for example underline or marker) each time you highlight. Not set means it never asks and uses your usual style. Colour choices are pointless on this black-and-white screen.",
+      "level": "advanced",
+      "options": {
+        "style": "Ask for the style",
+        "color": "Ask for the colour",
+        "all": "Ask for style and colour"
+      }
+    },
+    "highlight_long_hold_threshold_s": {
+      "label": "Extra-long press time",
+      "help": "If you keep pressing longer than this, it counts as an extra-long press: instead of picking a single word, you can drag to select a longer passage. Must be longer than the normal long-press time.",
+      "example": "Set it to 3 seconds: hold for 3 seconds before dragging to select several lines.",
+      "level": "advanced"
+    },
+    "highlight_corner_scroll": {
+      "label": "Select across pages",
+      "help": "While selecting text, dragging into the bottom-right corner shows part of the next page (or the top-left corner, part of the previous page), so you can highlight a passage that runs over a page break.",
+      "level": "advanced"
+    },
+    "tap_to_follow_links": {
+      "label": "Tap links to follow them",
+      "help": "Tapping a link in a book (such as a footnote number or a chapter link) takes you there. Turn off if you keep hitting links when you just want to turn the page.",
+      "level": "basic"
+    },
+    "tap_ignore_external_links": {
+      "label": "Ignore web links on tap",
+      "help": "Tapping a link to a website does nothing; links inside the book still work. Makes page turning easier in books full of web links. You can still open them with a long-press.",
+      "level": "advanced"
+    },
+    "swipe_to_go_back": {
+      "label": "Swipe right to go back",
+      "help": "After following a link, swiping to the right brings you back to where you were. With nowhere to go back to, it goes to the previous page.",
+      "level": "basic"
+    },
+    "swipe_to_follow_nearest_link": {
+      "label": "Swipe left to follow a link",
+      "help": "Swiping to the left follows the link nearest to where your swipe started. Handy when links are too small to tap easily.",
+      "level": "advanced"
+    },
+    "swipe_ignore_external_links": {
+      "label": "Ignore web links on swipe",
+      "help": "Only used with swipe-to-follow-link: swipes skip links to websites and only follow links inside the book, such as footnotes.",
+      "level": "advanced"
+    },
+    "swipe_to_jump_to_latest_bookmark": {
+      "label": "Swipe left to latest bookmark",
+      "help": "Swiping to the left jumps to the page you bookmarked most recently. Useful for flipping back and forth to a map, a list of characters or notes. If a swipe-to-follow-link option is on, this only works on pages without links.",
+      "level": "advanced"
+    },
+    "larger_tap_area_to_follow_links": {
+      "label": "Easier-to-hit links",
+      "help": "Makes the tap area around links inside the book bigger, so tiny footnote numbers are easier to hit with a finger.",
+      "level": "advanced"
+    },
+    "footnote_link_in_popup": {
+      "label": "Show footnotes in a pop-up",
+      "help": "When you tap a footnote link, the footnote text appears in a small pop-up over the page instead of jumping to the end of the book. Depending on the book, this does not always find the footnote correctly.",
+      "level": "basic"
+    },
+    "link_prefer_footnote": {
+      "label": "Treat more links as footnotes",
+      "help": "Uses looser rules to decide what is a footnote, so more links open in the pop-up. Only used when footnote pop-ups are on.",
+      "level": "advanced"
+    },
+    "footnote_popup_use_book_font": {
+      "label": "Book font in footnote pop-ups",
+      "help": "Shows footnote pop-ups in the same font you chose for the book, instead of the Kobo's menu font.",
+      "level": "advanced"
+    },
+    "footnote_popup_relative_font_size": {
+      "label": "Footnote text size (vs book)",
+      "help": "How much smaller or larger footnote pop-up text is than the book text, in points. Setting this replaces a fixed footnote size.",
+      "example": "Set it to -2: footnotes appear 2 points smaller than the book text.",
+      "level": "advanced"
+    },
+    "footnote_popup_absolute_font_size": {
+      "label": "Footnote text size (fixed)",
+      "help": "A fixed text size for footnote pop-ups, whatever size the book text is. Setting this replaces the relative size above.",
+      "example": "Set it to 14: footnotes are always shown at size 14.",
+      "level": "advanced"
+    },
+    "footnote_popup_justify": {
+      "label": "Even edges in footnote pop-ups",
+      "help": "Lines up footnote text evenly on both the left and right edges (justified), like most book text. Off gives a ragged right edge.",
+      "level": "advanced"
+    },
+    "back_to_exit": {
+      "label": "Back button exits KOReader",
+      "help": "Only for devices with a physical Back button, which the Clara BW does not have, so this has no effect on your Kobo.",
+      "level": "advanced",
+      "options": {
+        "prompt": "Ask first",
+        "always": "Exit without asking",
+        "disable": "Never exit"
+      }
+    },
+    "back_in_filemanager": {
+      "label": "Back in the library",
+      "help": "What a Back action does in the file browser (on this Kobo only through a gesture, as there is no Back button): leave KOReader, or go up one folder.",
+      "level": "advanced",
+      "options": {
+        "default": "Exit",
+        "parent_folder": "Go up one folder"
+      }
+    },
+    "back_in_reader": {
+      "label": "Back while reading",
+      "help": "What a Back action does while reading (on this Kobo only through a gesture): go back to where you were before following a link, go to the previous page you read, return to the library, or leave KOReader.",
+      "level": "advanced",
+      "options": {
+        "default": "Exit",
+        "filebrowser": "Return to the library",
+        "previous_location": "Back to where you jumped from",
+        "previous_read_page": "Back to the previous page you read"
+      }
+    },
+    "opening_page_location_stack": {
+      "label": "Remember the opening page for Back",
+      "help": "Adds the page where you opened the book to the list of places Back can return to. Then, after jumping somewhere through the contents, Back can bring you to where you started reading.",
+      "level": "advanced"
+    },
+    "skim_dialog_position": {
+      "label": "Where the skim panel appears",
+      "help": "Where the panel for quickly skimming through a book shows up on the screen. Leave it unset for the middle.",
+      "level": "advanced",
+      "options": {
+        "top": "Top of the screen",
+        "bottom": "Bottom of the screen"
+      }
+    },
+    "end_document_auto_mark": {
+      "label": "Mark book finished at the end",
+      "help": "When you reach the last page, the book is marked as finished automatically. Lasci's Board then sees it as Finished on the next sync.",
+      "level": "basic"
+    },
+    "hide_nonlinear_flows": {
+      "label": "Skip side sections",
+      "help": "Some EPUB books contain side sections (like answers or extra notes) that are meant to be reached only through links. When on, these are left out of normal page turning but still open through links and the contents. Only for EPUBs, only for books opened for the first time, and only in single-page view.",
+      "level": "advanced"
+    },
+    "autoturn_enabled": {
+      "label": "Turn pages automatically",
+      "help": "Turns to the next page by itself after a set time, so you can read hands-free. The time is set below.",
+      "level": "basic"
+    },
+    "autoturn_timeout_seconds": {
+      "label": "Automatic page turn every",
+      "help": "How long each page stays on screen before it turns by itself, when automatic page turning is on.",
+      "example": "Set it to 60 seconds: the next page appears every minute.",
+      "level": "basic"
+    },
+    "autoturn_distance": {
+      "label": "Pages per automatic turn",
+      "help": "How far each automatic turn moves: 1 is one page forward, a negative number goes backward. In scrolling view a fraction scrolls part of a page.",
+      "example": "Set it to 0.5 in scrolling view: each automatic turn scrolls half a screen.",
+      "level": "advanced"
+    },
+    "auto_save_settings_interval_minutes": {
+      "label": "Save reading position",
+      "help": "How often your place in the book, highlights and book settings are saved while you read. They are always saved when you close the book or the Kobo goes to sleep; saving more often protects you if the Kobo crashes or the battery dies.",
+      "level": "advanced",
+      "options": {
+        "false": "Only when closing or sleeping",
+        "5": "Every 5 minutes",
+        "15": "Every 15 minutes",
+        "30": "Every 30 minutes",
+        "60": "Every hour"
+      }
+    },
+    "document_metadata_arc_folder": {
+      "label": "Archive folder",
+      "help": "The folder where saved copies of a book's reading data (position, highlights, notes) are kept, so they can be restored if you put the book back later. Changing it here does not move archives already made.",
+      "level": "advanced"
+    },
+    "document_metadata_arc_on_closing": {
+      "label": "Archive reading data on close",
+      "help": "Every time you close a book, a copy of its reading data (position, highlights, notes) is saved in the archive folder.",
+      "level": "advanced"
+    },
+    "document_metadata_arc_on_deletion": {
+      "label": "Archive reading data on delete",
+      "help": "When you delete a book on the Kobo, a copy of its reading data (position, highlights, notes) is kept in the archive folder first, so nothing is lost if you add the book again.",
+      "level": "advanced"
+    },
+    "history_datetime_short": {
+      "label": "Short dates in history",
+      "help": "Shows shorter dates and times next to books in the reading history list, leaving more room for titles.",
+      "level": "advanced"
+    },
+    "history_freeze_finished_books": {
+      "label": "Keep finished books in place",
+      "help": "Opening a book you have already finished does not move it to the top of the history list; its last-read date stays as it was and it is shown greyed out.",
+      "level": "advanced"
+    },
+    "autoremove_deleted_items_from_history": {
+      "label": "Remove deleted books from history",
+      "help": "When a book is deleted from the Kobo, it is also taken off the history list automatically, instead of staying there greyed out.",
+      "level": "advanced"
+    },
+    "open_last_menu_show_filename": {
+      "label": "File name in Open previous",
+      "help": "The menu item for opening the previous book shows the book's file name instead of its title.",
+      "level": "advanced"
+    },
+    "annotations_export_on_closing": {
+      "label": "Export highlights on close",
+      "help": "Every time you close a book, its highlights and notes are saved to a separate file, so they can be copied to another reader or kept as a backup.",
+      "level": "advanced"
+    },
+    "annotations_export_keep_all_on_import": {
+      "label": "Keep all highlights when importing",
+      "help": "When highlights are imported from another device's export, highlights here that are not in that export are kept. When off, older ones that were left out of the export are removed.",
+      "level": "advanced"
+    },
+    "annotations_export_folder": {
+      "label": "Highlights export folder",
+      "help": "The folder where exported highlights and notes are saved and looked for on import. Not set means next to each book's own reading data.",
+      "level": "advanced"
+    },
+    "notebook_file": {
+      "label": "Default notebook file",
+      "help": "The text file used as your notebook for books that don't have their own. Not set means each book gets its own notebook file next to the book.",
+      "example": "Set it to one file in your home folder to keep notes from all your books in a single notebook.",
+      "level": "advanced"
+    }
+  }
+}

@@ -119,10 +119,29 @@ export function cleanAnswer(text: unknown): string | null {
 
 // ── Device facts sent with a sync ───────────────────────────────────────────
 
-export function cleanDeviceFacts(raw: Record<string, unknown>): { battery?: number; charging?: boolean; koreader_version?: string } {
-  const out: { battery?: number; charging?: boolean; koreader_version?: string } = {}
+export interface DeviceFacts {
+  battery?: number
+  charging?: boolean
+  koreader_version?: string
+  storage_total?: number
+  storage_free?: number
+  storage_at?: string
+}
+
+/** Battery, KOReader version and the user storage the plugin sends with a sync (anything odd is dropped). */
+export function cleanDeviceFacts(raw: Record<string, unknown>, nowIso?: string): DeviceFacts {
+  const out: DeviceFacts = {}
   if (typeof raw.battery === 'number' && Number.isFinite(raw.battery) && raw.battery >= 0 && raw.battery <= 100) out.battery = Math.round(raw.battery)
   if (typeof raw.charging === 'boolean') out.charging = raw.charging
   if (typeof raw.koreader_version === 'string' && raw.koreader_version.trim()) out.koreader_version = raw.koreader_version.trim().slice(0, 40)
+  const total = raw.storage_total
+  const free = raw.storage_free
+  // Up to 4 TB; free never more than total.
+  if (typeof total === 'number' && typeof free === 'number' && Number.isFinite(total) && Number.isFinite(free)
+    && total > 0 && total <= 4 * 1024 ** 4 && free >= 0 && free <= total) {
+    out.storage_total = Math.round(total)
+    out.storage_free = Math.round(free)
+    if (nowIso) out.storage_at = nowIso
+  }
   return out
 }

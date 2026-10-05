@@ -28,6 +28,7 @@ export async function fetchBooks(): Promise<Book[]> {
 
 export async function updateBook(id: string, patch: BookPatch): Promise<void> {
   const { error } = await supabase.from('books').update(patch).eq('id', id)
+  if (error && /categories|subjects|file_size/.test(error.message ?? '')) throw new Error('Categories and subjects need migration 128 (books browse) — it has not been applied yet.')
   if (error) fail(error)
 }
 
@@ -121,10 +122,13 @@ export async function saveReadingSettings(s: ReadingSettings): Promise<void> {
 
 /** kobo_feed_state incl. the plugin's sync columns; before 126 only the feed columns exist. */
 export async function fetchKoboSyncState(): Promise<KoboSyncState | null> {
-  const { data, error } = await supabase.from('kobo_feed_state')
-    .select('last_feed_at, last_download_at, last_seen_at, last_sync_at, device_id, plugin_version, last_sync_result, battery, charging, koreader_version').maybeSingle()
+  const base = 'last_feed_at, last_download_at, last_seen_at, last_sync_at, device_id, plugin_version, last_sync_result, battery, charging, koreader_version'
+  const { data, error } = await supabase.from('kobo_feed_state').select(`${base}, storage_total, storage_free, storage_at`).maybeSingle()
   if (!error) return data
   if (error.code === '42703') {
+    // Before 128: no storage figures yet.
+    const { data: d0, error: e0 } = await supabase.from('kobo_feed_state').select(base).maybeSingle()
+    if (!e0) return d0
     // Before 127: no device facts yet.
     const { data: d1, error: e1 } = await supabase.from('kobo_feed_state')
       .select('last_feed_at, last_download_at, last_seen_at, last_sync_at, device_id, plugin_version, last_sync_result').maybeSingle()
