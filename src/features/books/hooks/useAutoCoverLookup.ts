@@ -17,7 +17,8 @@ export function needsOnlineCover(b: Book): boolean {
 
 /**
  * Finds covers online (Nasjonalbiblioteket → Open Library) for books the Kobo
- * could not give one, quietly: the covers just appear.
+ * could not give one, quietly: the covers just appear. Only the cover, and only
+ * on an exact title (+ author) match — details wait for the book popup's button.
  */
 export function useAutoCoverLookup(books: Book[]) {
   const qc = useQueryClient()
@@ -31,7 +32,7 @@ export function useAutoCoverLookup(books: Book[]) {
       for (const b of queue) {
         tried.add(b.id)
         try {
-          const r = await lookupBookMeta(b.id)
+          const r = await lookupBookMeta(b.id, 'cover')
           if (r.updated.length) found++
         } catch (e) {
           void logError(e instanceof Error ? e.message : String(e), { action: 'book_auto_cover', book_id: b.id })

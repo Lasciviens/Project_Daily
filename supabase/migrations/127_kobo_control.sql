@@ -17,18 +17,19 @@
 --                           function only: which rev the Kobo applied, what it
 --                           refused, and its report (current values + menus).
 --   kobo_sleep_images       images uploaded for the sleep screen (private
---                           `kobo-sleep` bucket, ≤ 3 MB each, ≤ 15 MB in all).
+--                           `kobo-sleep` bucket, ≤ 3 MB each, ≤ 10 MB in all).
 --   book-covers             public bucket for covers (device or upload),
---                           ≤ 400 KB a file; the function keeps it ≤ 25 MB.
+--                           ≤ 400 KB a file; the function and the app keep it ≤ 20 MB.
 --   kobo_captures           notes captured on the Kobo (task / wish / book),
 --                           keyed by the device's own id so a retried send
 --                           never makes two rows.
 --   book_ai_notes           questions asked about a passage on the Kobo and
 --                           the AI's answers (the key stays on the server).
 --   kobo_feed_state         + battery, charging and KOReader version.
---   storage                 the Kobo inbox cap drops from 150 to 110 MB so
---                           game-media (850) + inbox + covers + sleep images
---                           stay under the plan's 1 GB.
+--   storage                 the Kobo inbox cap drops from 150 to 100 MB, so
+--                           game-media (850) + inbox (100) + covers (20) +
+--                           sleep images (10) = 980 MiB, less than the 1000 MiB
+--                           the project allowed before this migration.
 --
 -- Updates existing rows once: books whose file sits in KOReader's news folder
 -- become kind = 'news'. Idempotent.
@@ -135,7 +136,7 @@ DROP TRIGGER IF EXISTS trg_audit ON public.kobo_sleep_images;
 CREATE TRIGGER trg_audit AFTER INSERT OR UPDATE OR DELETE ON public.kobo_sleep_images
   FOR EACH ROW EXECUTE FUNCTION public.log_audit();
 
--- ≤ 15 MB and ≤ 40 images, counted from the declared sizes (the row is written
+-- ≤ 10 MB and ≤ 40 images, counted from the declared sizes (the row is written
 -- before the upload, so an over-cap image never costs storage).
 CREATE OR REPLACE FUNCTION public.kobo_sleep_images_cap()
 RETURNS trigger LANGUAGE plpgsql AS $$
@@ -145,8 +146,8 @@ DECLARE
 BEGIN
   SELECT coalesce(sum(size_bytes), 0), count(*) INTO v_bytes, v_count
   FROM public.kobo_sleep_images WHERE user_id = NEW.user_id;
-  IF v_bytes + NEW.size_bytes > 15728640 OR v_count >= 40 THEN
-    RAISE EXCEPTION 'Sleep images are full (15 MB or 40 images). Delete one first.'
+  IF v_bytes + NEW.size_bytes > 10485760 OR v_count >= 40 THEN
+    RAISE EXCEPTION 'Sleep images are full (10 MB or 40 images). Delete one first.'
       USING ERRCODE = 'check_violation';
   END IF;
   RETURN NEW;
@@ -198,20 +199,24 @@ ON CONFLICT (id) DO UPDATE SET public = true, file_size_limit = 409600, allowed_
 DROP POLICY IF EXISTS book_covers_insert ON storage.objects;
 CREATE POLICY book_covers_insert ON storage.objects FOR INSERT TO authenticated
   WITH CHECK (bucket_id = 'book-covers' AND (storage.foldername(name))[1] = auth.uid()::text);
+-- Storage's remove() reads the row first, so the owner needs SELECT on their folder too.
+DROP POLICY IF EXISTS book_covers_select ON storage.objects;
+CREATE POLICY book_covers_select ON storage.objects FOR SELECT TO authenticated
+  USING (bucket_id = 'book-covers' AND (storage.foldername(name))[1] = auth.uid()::text);
 DROP POLICY IF EXISTS book_covers_delete ON storage.objects;
 CREATE POLICY book_covers_delete ON storage.objects FOR DELETE TO authenticated
   USING (bucket_id = 'book-covers' AND (storage.foldername(name))[1] = auth.uid()::text);
 
--- Bytes in a bucket, for the function's 25 MB cover budget.
+-- Bytes in a bucket (no names), for the 20 MB cover budget the function and the app both check.
 CREATE OR REPLACE FUNCTION public.kobo_bucket_usage(p_bucket text)
 RETURNS bigint LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $$
   SELECT coalesce(sum((o.metadata->>'size')::bigint), 0)::bigint
   FROM storage.objects o WHERE o.bucket_id = p_bucket AND p_bucket IN ('book-covers', 'kobo-sleep')
 $$;
-REVOKE ALL ON FUNCTION public.kobo_bucket_usage(text) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.kobo_bucket_usage(text) TO service_role;
+REVOKE ALL ON FUNCTION public.kobo_bucket_usage(text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.kobo_bucket_usage(text) TO authenticated, service_role;
 
--- ── The inbox gives back 40 MB ──────────────────────────────────────────────
+-- ── The inbox gives back 50 MB ──────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION public.book_deliveries_inbox_cap()
 RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE
@@ -220,8 +225,8 @@ BEGIN
   SELECT coalesce(sum(size_bytes), 0) INTO v_waiting
   FROM public.book_deliveries
   WHERE user_id = NEW.user_id AND status IN ('queued', 'downloaded');
-  IF v_waiting + NEW.size_bytes > 115343360 THEN
-    RAISE EXCEPTION 'Kobo inbox is full (110 MB waiting). Let the Kobo download what is there first.'
+  IF v_waiting + NEW.size_bytes > 104857600 THEN
+    RAISE EXCEPTION 'Kobo inbox is full (100 MB waiting). Let the Kobo download what is there first.'
       USING ERRCODE = 'check_violation';
   END IF;
   RETURN NEW;

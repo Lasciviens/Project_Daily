@@ -31,6 +31,9 @@ export function useSaveKoboConfig() {
   return useMutationWithFeedback({
     action: 'kobo_config_save',
     mutationKey: ['books', 'kobo-config-save'],
+    // One at a time: each save carries the whole settings object, so two quick
+    // changes landing out of order would lose the first.
+    scope: { id: 'kobo-config' },
     mutationFn: (patch: ConfigPatch) => saveKoboConfig(patch),
     onMutate: async (patch: ConfigPatch) => {
       await qc.cancelQueries({ queryKey: qk.books.koboConfig() })
@@ -48,12 +51,12 @@ export function useSaveKoboConfig() {
   })
 }
 
-/** One setting: a value, or null for "back to KOReader's default" (the key is then dropped). */
-export function settingPatch(config: KoboDeviceConfig | null | undefined, key: string, value: boolean | number | string | null | undefined): ConfigPatch {
-  const settings = { ...(config?.settings ?? {}) }
-  if (value === undefined) delete settings[key]
-  else settings[key] = value
-  return { settings }
+/**
+ * One setting: a value, or null for "back to KOReader's default". A reset is
+ * stored as null (never dropped), so the Kobo is told to delete its own value.
+ */
+export function settingPatch(config: KoboDeviceConfig | null | undefined, key: string, value: boolean | number | string | null): ConfigPatch {
+  return { settings: { ...(config?.settings ?? {}), [key]: value } }
 }
 
 export function useSleepImages() {

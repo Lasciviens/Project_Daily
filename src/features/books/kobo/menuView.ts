@@ -52,3 +52,15 @@ export function moveTargets(order: Record<string, string[]>, labels: Record<stri
     .map(id => ({ id, name: listName(id, labels) })).sort((a, b) => a.name.localeCompare(b.name))
   return [...tabs.map(id => ({ id, name: listName(id, labels) })), ...subs]
 }
+
+/** True when `target` is `item` itself or a submenu somewhere inside it (moving there would make a loop). */
+export function inside(order: Record<string, string[]>, item: string, target: string): boolean {
+  const seen = new Set<string>()
+  const walk = (id: string): boolean => {
+    if (id === target) return true
+    if (seen.has(id)) return false
+    seen.add(id)
+    return (order[id] ?? []).some(walk)
+  }
+  return walk(item)
+}

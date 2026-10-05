@@ -69,8 +69,9 @@ eq(s.isNewsPath('/mnt/onboard/Books/News of the World.epub'), false, 'a book cal
 eq(s.newBookRow({ md5, path: '/mnt/onboard/.adds/koreader/news/x.epub' }).kind, 'news', 'new row from the news folder → news')
 eq(s.newBookRow({ md5, kind: 'news' }).kind, 'news', 'plugin flag → news')
 eq(s.newBookRow({ md5 }).kind, 'book', 'default kind book')
-eq(s.bookPatch({ ...base, kind: 'book' }, { md5, kind: 'news' }).kind, 'news', 'existing row becomes news')
-eq(s.bookPatch({ ...base, kind: 'book' }, { md5 }).kind, undefined, 'no flag leaves kind alone')
+eq(s.bookPatch({ ...base, kind: 'book' }, { md5, kind: 'news', path: '/mnt/onboard/.adds/koreader/news/x.epub' }).kind, undefined, 'an existing row keeps its kind (the owner may have moved it out of News)')
+eq(s.bookPatch({ ...base, read_status: 'paused', device_status: 'reading' }, { md5, status: 'abandoned' }).read_status, undefined, 'on hold on the Kobo keeps Paused')
+eq(s.bookPatch({ ...base, read_status: 'reading', device_status: 'reading' }, { md5, status: 'abandoned' }).read_status, 'dropped', 'on hold on the Kobo drops a Reading book')
 
 // App → Kobo pushes
 const row = { koreader_md5: md5, file_path: '/mnt/onboard/a.epub', on_device: true, kind: 'book', read_status: 'finished', rating: 8, device_status: 'reading', device_rating: 4 }

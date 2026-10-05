@@ -14,7 +14,7 @@ import { formatDuration, sessions } from '../readingAggregate'
 import type { Book, BookPatch, ReadStatus } from '../types'
 import { BookCoverEditor } from './BookCoverEditor'
 import { BookDetailsFields } from './BookDetailsFields'
-import { detailsDraft, detailsPatch, type DetailsDraft } from './bookDetails'
+import { detailsDraft, detailsPatch, detailsProblem, type DetailsDraft } from './bookDetails'
 import { AskedList } from './kobo/AskedCard'
 
 const STATUS_STAGE = { want: 'planned', reading: 'active', finished: 'done', paused: 'paused', dropped: 'dropped' } as const
@@ -45,6 +45,7 @@ export function BookSheet({ book, onClose }: { book: Book; onClose: () => void }
   const recent = useMemo(() => sessions(events.data ?? []).slice(-8).reverse(), [events.data])
   const total = useMemo(() => (events.data ?? []).reduce((t, e) => t + e.duration_seconds, 0), [events.data])
   const set = (p: Partial<Draft>) => setD(x => ({ ...x, ...p }))
+  const problem = detailsProblem(d)
 
   function pickStatus(s: ReadStatus) {
     const stamps = statusPatch({ ...book, started_at: noon(d.started), finished_at: noon(d.finished) }, s)
@@ -53,9 +54,9 @@ export function BookSheet({ book, onClose }: { book: Book; onClose: () => void }
 
   function save() {
     const title = d.title.trim()
-    if (!title) return
+    if (!title || problem) return
     const patch: BookPatch = {
-      ...detailsPatch(d),
+      ...detailsPatch(d, detailsDraft(book)),
       title, author: d.author.trim() || null, series: d.series.trim() || null, read_status: d.read_status,
       rating: d.rating, review: d.review.trim() || null, notes: d.notes.trim() || null,
       started_at: d.started ? (d.started === day(book.started_at) ? book.started_at : noon(d.started)) : null,
@@ -79,7 +80,7 @@ export function BookSheet({ book, onClose }: { book: Book; onClose: () => void }
         <div className="flex items-center gap-2">
           <IconButton label="Delete book" onClick={() => { void del() }} className="text-danger"><Trash2 /></IconButton>
           <Button className="ml-auto" onClick={onClose}>Cancel</Button>
-          <Button variant="primary" onClick={save} loading={update.isPending} disabled={!d.title.trim()}>Save</Button>
+          <Button variant="primary" onClick={save} loading={update.isPending} disabled={!d.title.trim() || !!problem}>Save</Button>
         </div>
       }>
       <div className="grid gap-5 md:grid-cols-[11rem_minmax(0,1fr)]">
@@ -95,6 +96,11 @@ export function BookSheet({ book, onClose }: { book: Book; onClose: () => void }
             <Fact label="ISBN" value={book.isbn} />
             <Fact label="On the Kobo" value={book.on_device ? 'Yes' : 'No'} />
           </dl>
+          {/* News issues live under Library → News; a book filed there by mistake comes back with one tap. */}
+          <Button size="sm" disabled={update.isPending}
+            onClick={() => update.mutate({ id: book.id, patch: { kind: book.kind === 'news' ? 'book' : 'news' } })}>
+            {book.kind === 'news' ? 'This is a book, not news' : 'This is a news issue'}
+          </Button>
         </div>
         <div className="flex min-w-0 flex-col gap-4">
           <label className="flex flex-col gap-1"><span className="field-label">Title</span>
@@ -123,7 +129,7 @@ export function BookSheet({ book, onClose }: { book: Book; onClose: () => void }
             <label className="flex flex-col gap-1"><span className="field-label">Finished</span>
               <DateInput value={d.finished} onChange={v => set({ finished: v })} aria-label="Finished" /></label>
           </div>
-          <BookDetailsFields draft={d} onChange={set} />
+          <BookDetailsFields draft={d} onChange={set} problem={problem} />
           <div><span className="field-label">Your rating</span><StarRating value={d.rating} onChange={v => set({ rating: v })} /></div>
           <label className="flex flex-col gap-1"><span className="field-label">Review</span>
             <textarea className="input min-h-[88px]" value={d.review} onChange={e => set({ review: e.target.value })} placeholder="What you thought of it" /></label>

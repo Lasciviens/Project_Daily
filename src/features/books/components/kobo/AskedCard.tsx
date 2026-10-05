@@ -1,6 +1,7 @@
 import { MessageCircleQuestion, Trash2 } from 'lucide-react'
 import { Card, CardHeader, IconButton, Truncate } from '../../../../shared/ui'
 import { formatDate } from '../../../../shared/utils/dateFormat'
+import { useEntityModal } from '../../../../shared/modals'
 import { useAiNotes, useDeleteAiNote } from '../../hooks/useKoboControl'
 import type { BookAiNote } from '../../types'
 
@@ -31,6 +32,10 @@ export function AskedCard({ bookId, title = 'Asked on the Kobo' }: { bookId?: st
 }
 
 export function AskedList({ rows, onDelete, showBook }: { rows: BookAiNote[]; onDelete: (id: string) => void; showBook: boolean }) {
+  const modal = useEntityModal()
+  const ask = async (id: string) => {
+    if (await modal.confirm({ title: 'Delete this question and its answer?', confirmLabel: 'Delete', destructive: true })) onDelete(id)
+  }
   return (
     <ul className="flex flex-col divide-y divide-line">
       {rows.map(n => (
@@ -43,7 +48,7 @@ export function AskedList({ rows, onDelete, showBook }: { rows: BookAiNote[]; on
             {n.question && <p className="text-meta text-fg">{n.question}</p>}
             <p className="whitespace-pre-line text-body text-fg">{n.answer}</p>
           </div>
-          <IconButton label="Delete this question" onClick={() => onDelete(n.id)}><Trash2 /></IconButton>
+          <IconButton label="Delete this question" onClick={() => { void ask(n.id) }}><Trash2 /></IconButton>
         </li>
       ))}
     </ul>

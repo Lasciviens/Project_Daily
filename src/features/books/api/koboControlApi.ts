@@ -64,6 +64,14 @@ export async function uploadSleepImage(img: { blob: Blob; filename: string; widt
     await supabase.from('kobo_sleep_images').delete().eq('id', id)
     fail(upError)
   }
+  // The row raised the rev before the file existed; a sync in between would have
+  // applied that rev without this image. One more rev makes the Kobo fetch it.
+  await bumpConfigRev()
+}
+
+async function bumpConfigRev(): Promise<void> {
+  const { data } = await supabase.from('kobo_device_config').select('rev').maybeSingle()
+  if (data) await supabase.from('kobo_device_config').update({ rev: data.rev + 1 }).not('rev', 'is', null)
 }
 
 export async function deleteSleepImage(img: SleepImage): Promise<void> {
@@ -72,9 +80,13 @@ export async function deleteSleepImage(img: SleepImage): Promise<void> {
   await supabase.storage.from('kobo-sleep').remove([img.storage_path])
 }
 
-/** A cover chosen in the app: stored in book-covers, the old app cover removed. */
+const COVER_BUDGET = 20 * 1024 * 1024
+
+/** A cover chosen in the app: stored in book-covers (20 MB in all, shared with the Kobo's covers), the old stored cover removed. */
 export async function uploadBookCover(bookId: string, blob: Blob, previous: string | null): Promise<string> {
   const user = await requireUser()
+  const { data: used } = await supabase.rpc('kobo_bucket_usage', { p_bucket: 'book-covers' })
+  if (typeof used === 'number' && used + blob.size > COVER_BUDGET) throw new Error('Cover storage is full (20 MB). Use “Cover from a link” instead.')
   const path = `${user.id}/${bookId}-${crypto.randomUUID().slice(0, 8)}.jpg`
   const { error } = await supabase.storage.from('book-covers').upload(path, blob, { contentType: 'image/jpeg' })
   if (error) fail(error)

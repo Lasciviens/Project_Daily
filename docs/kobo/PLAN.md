@@ -2278,7 +2278,7 @@ CLAUDE.md → Books row and **Kobo plugin** hold the settled record):
 
 - **Kobo tab** on the Books page: device status (battery at the last sync, versions,
   whether the latest changes arrived), sleep screen (mode, own images, Bookshelf options),
-  466 KOReader settings (catalogue in `docs/kobo/koreader-settings.json`, every key cited
+  457 KOReader settings (catalogue in `docs/kobo/koreader-settings.json`, every key cited
   from the v2026.07.1 source; risky keys left out), menu order, questions asked.
 - **Statuses and ratings** set in the app are written into KOReader's sidecars. Nickel is
   never written, so a book read in Kobo's own reader keeps Nickel's status there.

@@ -6,7 +6,9 @@
 //   - risky keys (could lock the owner out, turn the plugin or statistics off,
 //     delete files, break the network or SSH);
 //   - keys this Kobo has no hardware for (rotation sensor, page-turn buttons, colour);
-//   - keys that hold Lua tables (lists/pairs) — no safe generic editor;
+//   - keys that hold Lua tables or arrays (lists/pairs) — no safe generic editor;
+//   - keys that would end refused, lock the owner out of typing or page turns, or turn Wi-Fi on by itself;
+//   - secrets (passwords, tokens) — they would be read back into the app;
 //   - frontlight/warmth levels: KOReader overwrites them with the live values on
 //     every suspend, so writing them does nothing.
 // Dotted keys (footer.x, statistics.x …) are one field inside one setting; the
@@ -23,7 +25,15 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '../..')
 const src = JSON.parse(readFileSync(join(root, 'docs/kobo/koreader-settings.json'), 'utf8'))
 const TARGET = join(root, 'src/features/books/koboSettingsCatalogue.ts')
 
-const SKIP_KEYS = new Set(['frontlight_intensity', 'frontlight_warmth', 'is_frontlight_on'])
+const SKIP_KEYS = new Set([
+  'frontlight_intensity', 'frontlight_warmth', 'is_frontlight_on',
+  // the plugin never writes these (lbcore deny list) — offering them would only end in "refused"
+  'home_dir', 'start_with',
+  // could leave the owner unable to type or turn pages, or make KOReader switch Wi-Fi on by itself
+  'virtual_keyboard_enabled', 'page_turns_disable_tap', 'page_turns_disable_swipe', 'wifi_enable_action',
+])
+/** Secrets never leave the device, not even as a read-back value. */
+const SECRET = /password|token|secret|api_?key/i
 const MANAGED = new Set(['screensaver_dir', 'screensaver_document_cover'])
 const GROUP_ID = { bookshelf_patch: 'bookshelf' }
 const GROUP_LABEL = {
@@ -53,11 +63,12 @@ const OVERRIDES = {
     ],
     help: 'The book cover needs a book opened in KOReader at least once; until then KOReader falls back to an image.',
   },
-  auto_restore_wifi: { help: 'Needed for automatic syncs: the plugin syncs whenever Wi-Fi comes on.' },
+  auto_restore_wifi: { help: 'Turns Wi-Fi back on after sleep only if it was on before. The plugin syncs whenever Wi-Fi comes on.' },
 }
 
 const scalar = v => v === null || ['boolean', 'number', 'string'].includes(typeof v)
-const isTableValue = s => s.type === 'string' && /lua table|\btable\b/i.test(`${s.notes ?? ''}`) && !s.key.includes('.')
+const isTableValue = s => (s.default !== null && typeof s.default === 'object') ||
+  (s.type === 'string' && /lua (table|array)|\btable\b|\barray\b/i.test(`${s.notes ?? ''}`))
 
 function clean(s, group) {
   const o = OVERRIDES[s.key] ?? {}
@@ -66,14 +77,17 @@ function clean(s, group) {
     label: o.label ?? s.label,
     path: (s.path ?? '').replace(/\s*\((?:⚙|🔧|☰|.) ?tab\)/gu, '').trim() || group.label,
     type: s.type,
-    absent: scalar(s.absent_means) ? s.absent_means : null,
+    // A string setting's "absent" is often a description ("book language, else English"),
+    // not a value: keep it as help, never as something the app could send back.
+    absent: s.type === 'string' ? null : scalar(s.absent_means) ? s.absent_means : null,
     effect: ['immediate', 'next_sleep', 'next_book', 'restart'].includes(s.effect) ? s.effect : 'restart',
     source: s.source,
   }
   if (o.options ?? s.options) def.options = (o.options ?? s.options).filter(x => x.value !== null && scalar(x.value)).map(x => ({ value: x.value, label: x.label }))
   for (const k of ['min', 'max', 'step', 'unit']) if (s[k] !== undefined && s[k] !== null) def[k] = s[k]
   if (def.type === 'string') def.maxLength = 500
-  const help = o.help ?? s.notes
+  const stringDefault = s.type === 'string' && typeof s.absent_means === 'string' ? `Default: ${s.absent_means}. ` : ''
+  const help = (o.help ?? s.notes) ? `${stringDefault}${o.help ?? s.notes}` : stringDefault.trim()
   if (help) def.help = help.length > 240 ? `${help.slice(0, 237).trimEnd()}…` : help
   if (MANAGED.has(s.key)) def.managed = true
   return def
@@ -83,7 +97,7 @@ const groups = []
 for (const g of src.groups) {
   if (SKIP_GROUPS.has(g.id)) continue
   const settings = g.settings
-    .filter(s => !s.risky && s.kobo_clara_bw !== false && !SKIP_KEYS.has(s.key) && !isTableValue(s))
+    .filter(s => !s.risky && s.kobo_clara_bw !== false && !SKIP_KEYS.has(s.key) && !SECRET.test(s.key) && !isTableValue(s))
     .filter(s => s.type !== 'enum' || (s.options ?? []).length > 0)
     .map(s => clean(s, g))
   const id = GROUP_ID[g.id] ?? g.id
@@ -150,9 +164,24 @@ ${g.settings.map(d => `      ${JSON.stringify(d)},`).join('\n')}
   },`).join('\n')}
 ]
 `
-let prev = ''
-try { prev = readFileSync(TARGET, 'utf8') } catch { /* first run */ }
-if (prev === body) { console.log('already up to date'); process.exit(0) }
-if (process.argv.includes('--check')) { console.error('koboSettingsCatalogue.ts is stale — run node scripts/kobo/gen-settings-catalogue.mjs'); process.exit(1) }
+// The plugin's own allow-list: the same keys with their Lua type, so the Kobo
+// refuses anything the catalogue does not list, whatever the server sends.
+const LUA_TYPE = { bool: 'boolean', int: 'number', number: 'number', enum: null, string: 'string' }
+const luaLines = groups.flatMap(g => g.settings.filter(d => !d.managed).map(d => {
+  const t = LUA_TYPE[d.type] ?? (typeof d.options?.[0]?.value === 'number' ? 'number' : typeof d.options?.[0]?.value === 'boolean' ? 'boolean' : 'string')
+  return `    [${JSON.stringify(d.key)}] = "${t}",`
+}))
+const lua = `-- GENERATED by scripts/kobo/gen-settings-catalogue.mjs — do not edit by hand.
+-- Every setting the app may change on this Kobo, with the Lua type it must have.
+-- SPDX-License-Identifier: AGPL-3.0-or-later
+return {
+${luaLines.join('\n')}
+}
+`
+const LUA_TARGET = join(root, 'scripts/kobo/lascisboard.koplugin/lbsettings.lua')
+const read = p => { try { return readFileSync(p, 'utf8') } catch { return '' } }
+if (read(TARGET) === body && read(LUA_TARGET) === lua) { console.log('already up to date'); process.exit(0) }
+if (process.argv.includes('--check')) { console.error('settings catalogue is stale — run node scripts/kobo/gen-settings-catalogue.mjs'); process.exit(1) }
 writeFileSync(TARGET, body)
-console.log(`koboSettingsCatalogue.ts: ${total} settings in ${groups.length} groups`)
+writeFileSync(LUA_TARGET, lua)
+console.log(`koboSettingsCatalogue.ts + lbsettings.lua: ${total} settings in ${groups.length} groups`)

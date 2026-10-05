@@ -21,8 +21,8 @@ export function Switch({ on, onChange, label, disabled }: { on: boolean; onChang
 export function SettingControl({ def, view, onChange, disabled }: {
   def: SettingDef
   view: SettingView
-  /** A value, or undefined to drop the owner's change (back to what KOReader does). */
-  onChange: (v: Value | undefined) => void
+  /** A value, or null for "back to KOReader's default" (the Kobo then deletes the key). */
+  onChange: (v: Value) => void
   disabled?: boolean
 }) {
   return (
@@ -34,7 +34,7 @@ export function SettingControl({ def, view, onChange, disabled }: {
         </div>
         {def.type === 'bool' && <Switch on={view.value === true} label={def.label} disabled={disabled} onChange={v => onChange(v)} />}
         {view.changed && (
-          <IconButton label={`Reset “${def.label}” to KOReader's default`} disabled={disabled} onClick={() => onChange(undefined)}><RotateCcw /></IconButton>
+          <IconButton label={`Reset “${def.label}” to KOReader's default`} disabled={disabled} onClick={() => onChange(null)}><RotateCcw /></IconButton>
         )}
       </div>
       {def.type !== 'bool' && <ValueInput def={def} value={view.value} disabled={disabled} onChange={onChange} />}

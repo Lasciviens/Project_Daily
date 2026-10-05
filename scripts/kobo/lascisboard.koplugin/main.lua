@@ -407,7 +407,7 @@ function LascisBoard:sync(opts)
     local requests = 0
     local function post(extra)
         local payload = { v = 1, device_id = device_id, device_time = os.time(), plugin_version = VERSION,
-            config_rev = conf:readSetting("config_rev") }
+            config_rev = conf:readSetting("config_rev"), apply = not opts.light }
         for k, v in pairs(self:deviceFacts()) do payload[k] = v end
         for k, v in pairs(extra) do payload[k] = v end
         local res, err = self:callJson("POST", "/sync", payload)
@@ -515,7 +515,20 @@ function LascisBoard:afterSync(res, light)
         extras.resetFooterCache()
     end
     out.captured = self:sendCaptures()
-    if light then return out end
+    if light then
+        -- The reader's menus only exist inside a book: report them once from here.
+        if not self:conf():readSetting("reported_reader_menu") then
+            local menu = control.menuReport(self.ui, "reader")
+            if menu then
+                local lists = {}
+                for id, list in pairs(menu.order) do lists[id] = rapidjson.array(list) end
+                local ok = self:callJson("POST", "/applied", { report = { menus = { reader = {
+                    order = rapidjson.object(lists), labels = rapidjson.object(menu.labels) } } } })
+                if ok then self:save("reported_reader_menu", true) end
+            end
+        end
+        return out
+    end
 
     local applied = {}
     if type(res.push) == "table" and #res.push > 0 then
@@ -535,11 +548,13 @@ function LascisBoard:afterSync(res, light)
         local menus = type(c.menu_order) == "table" and c.menu_order or {}
         local fm_changed = control.writeMenuOrder("filemanager", menus.filemanager)
         local rd_changed = control.writeMenuOrder("reader", menus.reader)
+        if rd_changed then self:save("reported_reader_menu", nil) end
         G_reader_settings:flush()
         config_rev = tonumber(c.rev)
         config_result = { applied = rapidjson.array(done), refused = rapidjson.object(refused), images = images,
             menu_changed = fm_changed or rd_changed }
-        self:save("config_rev", config_rev)
+        -- A failed image download keeps the old rev, so the next sync sends the config again.
+        if (images.failed or 0) == 0 then self:save("config_rev", config_rev) else config_rev = nil end
         out.config = true
         if fm_changed or rd_changed then
             UIManager:askForRestart(_("Lasci's Board changed the menu order. Restart KOReader to see it?"))
@@ -614,7 +629,7 @@ function LascisBoard:initReaderExtras()
         self.footer_func = function()
             local goal = self:conf():readSetting("goal")
             if type(goal) ~= "table" then return nil end
-            local ok, text = pcall(extras.footerText, goal)
+            local ok, text = pcall(extras.footerText, goal, self.ui.statistics)
             return ok and text or nil
         end
         self.ui.view.footer:addAdditionalFooterContent(self.footer_func)
@@ -665,7 +680,12 @@ function LascisBoard:captureDialog(passage)
     local function save(kind)
         local text = (dialog:getInputText() or ""):gsub("^%s+", ""):gsub("%s+$", "")
         if text == "" then
-            if passage and passage ~= "" then text = passage:sub(1, 120) else return end
+            if passage and passage ~= "" then
+                text = passage:sub(1, 120)
+            else
+                Notification:notify(_("Type something first."))
+                return
+            end
         end
         UIManager:close(dialog)
         extras.addCapture(kind, text, passage, book)
@@ -717,7 +737,7 @@ function LascisBoard:askAbout(text, before, after)
             local res, err = plugin:callJson("POST", "/ask", {
                 ask = kind, question = question, selection = text, before = before or "", after = after or "",
                 title = facts.title, author = facts.author, language = facts.language, percent = facts.percent, md5 = facts.md5,
-                answer_language = plugin:conf():readSetting("ai_language") or "Turkish",
+                answer_language = plugin:conf():readSetting("ai_language") or "English",
             })
             UIManager:close(wait)
             local TextViewer = require("ui/widget/textviewer")
@@ -1045,13 +1065,13 @@ function LascisBoard:addToMainMenu(menu_items)
                     toggle(self, "auto_news", _("Sync the news every morning")),
                     toggle(self, "footer_goal", _("Today's goal and streak in the status bar (reopen the book)")),
                     {
-                        text_func = function() return T(_("AI answers in: %1"), self:conf():readSetting("ai_language") or "Turkish") end,
+                        text_func = function() return T(_("AI answers in: %1"), self:conf():readSetting("ai_language") or "English") end,
                         sub_item_table = (function()
                             local items = {}
-                            for _, lang in ipairs({ "Turkish", "English", "Norwegian" }) do
+                            for _, lang in ipairs({ "English", "Turkish", "Norwegian" }) do
                                 items[#items + 1] = {
                                     text = lang, radio = true,
-                                    checked_func = function() return (self:conf():readSetting("ai_language") or "Turkish") == lang end,
+                                    checked_func = function() return (self:conf():readSetting("ai_language") or "English") == lang end,
                                     callback = function() self:save("ai_language", lang) end,
                                 }
                             end

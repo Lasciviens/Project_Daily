@@ -12,19 +12,22 @@ const FIELDS: { key: keyof Omit<DetailsDraft, 'description'>; label: string; num
   { key: 'isbn', label: 'ISBN' },
 ]
 
-/** The book's details, folded away until wanted (it opens by itself when something is missing). */
-export function BookDetailsFields({ draft, onChange }: { draft: DetailsDraft; onChange: (p: Partial<DetailsDraft>) => void }) {
+/** The book's details, folded away until wanted (the header counts what is missing). */
+export function BookDetailsFields({ draft, onChange, problem }: { draft: DetailsDraft; onChange: (p: Partial<DetailsDraft>) => void; problem: string | null }) {
   const missing = FIELDS.filter(f => !draft[f.key].trim()).length + (draft.description.trim() ? 0 : 1)
   const [open, setOpen] = useState(false)
+  const shown = open || !!problem
   return (
     <section>
-      <button type="button" aria-expanded={open} onClick={() => setOpen(o => !o)} className="flex min-h-[44px] w-full items-center gap-2 text-left">
+      <button type="button" aria-expanded={shown} onClick={() => setOpen(o => !o)} className="flex min-h-[44px] w-full items-center gap-2 text-left">
         <span className="field-label mb-0 flex-1">Book details</span>
         {missing > 0 && <span className="text-micro text-fg-muted">{missing} missing</span>}
-        <ChevronDown aria-hidden className={cx('h-4 w-4 text-fg-muted transition-transform', open && 'rotate-180')} />
+        <ChevronDown aria-hidden className={cx('h-4 w-4 text-fg-muted transition-transform', shown && 'rotate-180')} />
       </button>
-      {open && (
+      {shown && (
         <div className="flex flex-col gap-3">
+          <p className="text-micro text-fg-muted">Kept in the app; the book file on the Kobo is not changed. A field left empty here is filled again from the Kobo at its next sync.</p>
+          {problem && <p className="text-micro text-danger">{problem}</p>}
           <div className="grid gap-3 sm:grid-cols-2">
             {FIELDS.map(f => (
               <label key={f.key} className="flex flex-col gap-1"><span className="field-label">{f.label}</span>

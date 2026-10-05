@@ -45,6 +45,8 @@ eq(mv.stepItem(['a', 'b'], 0, -1, vis, 'a'), null, 'top edge')
 eq(mv.visibleItems(['a', 'ghost', '----------------------------'], { a: 'A' }, {}), ['a', '----------------------------'], 'items the Kobo does not have are hidden')
 eq(mv.effectiveOrder({ order: { tools: ['a'], main: ['m'] }, labels: {} }, { tools: ['b'] }), { tools: ['b'], main: ['m'] }, 'owner lists over the Kobo lists')
 eq(mv.listName('tools', {}), 'Tools (wrench)', 'tab name')
+eq(mv.inside({ more_tools: ['sub'], sub: ['x'] }, 'more_tools', 'sub'), true, 'a submenu cannot move into its own child')
+eq(mv.inside({ more_tools: ['sub'] }, 'more_tools', 'main'), false, 'another tab is fine')
 eq(mv.moveTargets({ ...order, more_tools: ['z'] }, { more_tools: 'More tools' }, ['setting', 'tools', 'main']).map(t => t.id), ['setting', 'tools', 'main', 'more_tools'], 'tabs then submenus')
 
 // ── settings view ──
@@ -55,6 +57,8 @@ eq(sv.settingView(def, {}, { auto_restore_wifi: false }).onKobo, 'Off', 'set on 
 eq(sv.settingView(def, { auto_restore_wifi: true }, { auto_restore_wifi: true }).pending, false, 'applied')
 eq(sv.settingView(def, {}, { auto_restore_wifi: true }).value, true, 'shows what the Kobo has')
 eq(sv.formatSeconds(900), '15 min', '15 min'); eq(sv.formatSeconds(259200), '3 days', '3 days'); eq(sv.formatSeconds(5400), '1 h 30 min', 'h + min')
+eq(sv.settingView(def, { auto_restore_wifi: null }, { auto_restore_wifi: true }), { value: false, changed: false, pending: true, onKobo: 'On' }, 'reset: waits until the Kobo drops its value')
+eq(sv.settingView(def, { auto_restore_wifi: null }, {}).pending, false, 'reset done once the Kobo reports no value')
 ok(sv.matchesSetting(def, 'WI-FI'), 'search is case-insensitive')
 
 // ── captures ──
@@ -70,9 +74,9 @@ ok(typeof dv.cleanAsk({ ask: 'explain', selection: '' }) === 'string', 'no selec
 ok(typeof dv.cleanAsk({ ask: 'free', selection: 'x' }) === 'string', 'free question needs a question')
 ok(typeof dv.cleanAsk({ ask: 'hack', selection: 'x' }) === 'string', 'unknown kind refused')
 const a = dv.cleanAsk({ ask: 'translate', selection: 'Han var sulten.', percent: 140, answer_language: 'Klingon', title: 'Sult' })
-eq([a.percent, a.answer_language], [100, 'Turkish'], 'percent capped, language falls back to Turkish')
+eq([a.percent, a.answer_language], [100, 'English'], 'percent capped, language falls back to English')
 const p = dv.buildAskPrompt({ ...a, percent: 42 })
-ok(p.system.includes('Turkish') && p.system.includes('Never reveal'), 'system: language + no spoilers')
+ok(p.system.includes('English') && p.system.includes('Never reveal'), 'system: language + no spoilers')
 ok(p.user.includes('42% through') && p.user.includes('«Han var sulten.»'), 'user turn: position + selection')
 eq(dv.cleanAnswer('**Hi**\n## x'), 'Hi\nx', 'markdown stripped')
 eq(dv.cleanDeviceFacts({ battery: 57.4, charging: false, koreader_version: 'v2026.07.1' }), { battery: 57, charging: false, koreader_version: 'v2026.07.1' }, 'device facts')

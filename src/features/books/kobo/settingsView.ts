@@ -10,7 +10,7 @@ export type Value = boolean | number | string | null
 export interface SettingView {
   /** The value the control shows. */
   value: Value
-  /** The owner changed it in the app (a Reset button makes sense). */
+  /** The owner set a value in the app (a Reset button makes sense; a reset is stored as null). */
   changed: boolean
   /** The app asked for something the Kobo has not reported yet. */
   pending: boolean
@@ -29,7 +29,7 @@ export function settingView(def: SettingDef, wanted: Record<string, Value> | und
   const value = hasWanted ? (want === null ? def.absent : want!) : deviceValue
   const pending = hasWanted && hasReport && !same(want === null ? def.absent : want, deviceValue)
   const onKobo = !hasReport ? null : rep === undefined ? `${formatValue(def, deviceValue)} (default)` : formatValue(def, deviceValue)
-  return { value, changed: hasWanted, pending, onKobo }
+  return { value, changed: hasWanted && want !== null, pending, onKobo }
 }
 
 /** A value in words: the option's label, "On"/"Off", a duration, or the text. */

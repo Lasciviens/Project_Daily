@@ -4,7 +4,7 @@ import { Button, Card, CardHeader, IconButton, SegmentedControl, Truncate, cx } 
 import { useEntityModal } from '../../../../shared/modals'
 import { useKoboConfig, useKoboDeviceState, useSaveKoboConfig } from '../../hooks/useKoboControl'
 import { MENU_SEPARATOR, menuTabs, moveMenuItem, type MenuSide } from '../../koboSettings'
-import { effectiveOrder, listName, moveTargets, stepItem, visibleItems } from '../../kobo/menuView'
+import { effectiveOrder, inside, listName, moveTargets, stepItem, visibleItems } from '../../kobo/menuView'
 
 const SIDES = [{ value: 'filemanager', label: 'Library' }, { value: 'reader', label: 'While reading' }] as const
 
@@ -46,7 +46,7 @@ export function MenuOrderCard() {
       {!report ? (
         <p className="mt-3 text-meta text-fg-muted">
           {side === 'reader'
-            ? 'The reader menu loads after the Kobo syncs once while a book is open (plugin 1.1).'
+            ? 'The reader menu loads the first time the Kobo syncs while a book is open (plugin 1.1).'
             : 'The menus load after the Kobo’s first sync with plugin 1.1.'}
         </p>
       ) : (
@@ -84,7 +84,7 @@ export function MenuOrderCard() {
                             className="input min-h-[44px] w-24 text-meta"
                             onChange={e => { if (e.target.value) write(moveMenuItem(order, id, e.target.value, 0)) }}>
                             <option value="">Move…</option>
-                            {targets.filter(t => t.id !== tab && t.id !== id).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                            {targets.filter(t => t.id !== tab && !inside(order, id, t.id)).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                           </select>
                         )}
                       </li>

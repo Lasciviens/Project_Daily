@@ -120,10 +120,18 @@ function M.applySettings(settings, null)
         elseif kind == "field" then
             local name, field = key:match("^([%w_]+)%.([%w_]+)$")
             local t = G_reader_settings:readSetting(name)
-            if type(t) ~= "table" then t = {} end
-            if v == core.NULL then t[field] = nil else t[field] = v end
-            G_reader_settings:saveSetting(name, t)
-            applied[#applied + 1] = key
+            -- A table that does not exist yet would be created without the
+            -- plugin's own defaults (e.g. statistics without is_enabled):
+            -- leave it until KOReader has made it.
+            if type(t) ~= "table" then
+                refused[key] = "not on the Kobo yet — open that part of KOReader once"
+            else
+                if v == core.NULL then t[field] = nil else t[field] = v end
+                G_reader_settings:saveSetting(name, t)
+                applied[#applied + 1] = key
+            end
+        elseif type(G_reader_settings:readSetting(key)) == "table" then
+            refused[key] = "this setting is a list on the Kobo"
         else
             if v == core.NULL then G_reader_settings:delSetting(key) else G_reader_settings:saveSetting(key, v) end
             applied[#applied + 1] = key

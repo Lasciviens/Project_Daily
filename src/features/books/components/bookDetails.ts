@@ -16,13 +16,24 @@ const whole = (v: string, min: number, max: number): number | null => {
   return v.trim() && Number.isInteger(n) && n >= min && n <= max ? n : null
 }
 
-/** The details as a patch (empty = cleared; an invalid number = left out of the patch). */
-export function detailsPatch(d: DetailsDraft): BookPatch {
+/** Why a typed year or page count cannot be saved, or null. */
+export function detailsProblem(d: DetailsDraft): string | null {
+  if (d.published_year.trim() && whole(d.published_year, 1000, 2100) === null) return 'Year must be a whole year, like 2019.'
+  if (d.page_count.trim() && whole(d.page_count, 1, 100000) === null) return 'Pages must be a whole number.'
+  return null
+}
+
+/**
+ * The details as a patch (empty = cleared). The description is sent only when
+ * it was edited, so opening and saving a book never rewrites it.
+ */
+export function detailsPatch(d: DetailsDraft, original: DetailsDraft): BookPatch {
   const t = (v: string) => v.trim() || null
   const patch: BookPatch = {
     series_index: t(d.series_index), language: t(d.language), isbn: t(d.isbn)?.replace(/[\s-]/g, '') ?? null,
-    publisher: t(d.publisher), description: t(d.description),
+    publisher: t(d.publisher),
   }
+  if (d.description !== original.description) patch.description = t(d.description)
   if (!d.published_year.trim()) patch.published_year = null
   else { const y = whole(d.published_year, 1000, 2100); if (y !== null) patch.published_year = y }
   if (!d.page_count.trim()) patch.page_count = null

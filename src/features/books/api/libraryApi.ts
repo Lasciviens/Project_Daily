@@ -139,8 +139,8 @@ export async function fetchKoboSyncState(): Promise<KoboSyncState | null> {
 }
 
 /** Looks up cover, pages and publisher (Nasjonalbiblioteket → Open Library) via the book-meta function. */
-export async function lookupBookMeta(id: string): Promise<{ updated: string[]; source: string | null }> {
-  const { data, error } = await supabase.functions.invoke('book-meta', { body: { book_id: id } })
+export async function lookupBookMeta(id: string, mode: 'full' | 'cover' = 'full'): Promise<{ updated: string[]; source: string | null }> {
+  const { data, error } = await supabase.functions.invoke('book-meta', { body: { book_id: id, mode } })
   if (error) throw new Error((data as { message?: string } | null)?.message ?? error.message ?? 'Lookup failed')
   return data as { updated: string[]; source: string | null }
 }

@@ -18,7 +18,7 @@ export function useKoboSettings() {
       return def ? settingView(def, wanted, reported) : null
     },
     def: (key: string) => index.get(key) ?? null,
-    set: (key: string, value: Value | undefined) => save.mutate(settingPatch(config.data, key, value)),
+    set: (key: string, value: Value) => save.mutate(settingPatch(config.data, key, value)),
     saving: save.isPending,
     hasReport: !!device.data?.report,
   }

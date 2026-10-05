@@ -67,7 +67,7 @@ export interface Book {
 export type BookPatch = Partial<Pick<Book,
   'title' | 'author' | 'series' | 'series_index' | 'language' | 'isbn' | 'publisher' | 'published_year' | 'description' |
   'page_count' | 'cover_url' | 'read_status' | 'rating' | 'review' | 'notes' | 'started_at' | 'finished_at' | 'queue_order' |
-  'cover_source'>>
+  'cover_source' | 'kind'>>
 
 /** One KOReader page-stat row (reading_page_events). */
 export interface ReadingEvent {

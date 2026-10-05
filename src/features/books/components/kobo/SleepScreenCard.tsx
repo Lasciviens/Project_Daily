@@ -94,7 +94,7 @@ function SleepImages({ purpose }: { purpose: 'pick' | 'random' | 'fallback' }) {
           {purpose === 'pick' ? 'Tap an image to show it every time.'
             : purpose === 'fallback' ? 'Shown when there is no cover to show.'
               : 'One of these at random each time (or in order — see below).'}
-          {' '}{rows.length} {rows.length === 1 ? 'image' : 'images'} · {(used / 1048576).toFixed(1)} of 15 MB
+          {' '}{rows.length} {rows.length === 1 ? 'image' : 'images'} · {(used / 1048576).toFixed(1)} of 10 MB
         </p>
         <input ref={input} type="file" accept="image/jpeg,image/png,image/webp" multiple className="sr-only"
           onChange={e => { const f = [...(e.target.files ?? [])]; e.target.value = ''; if (f.length) upload.mutate(f) }} />

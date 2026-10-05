@@ -50,6 +50,8 @@ export interface SyncBody {
   final?: boolean          // this request finished a complete drain
   /** The settings revision the device applied last (kobo_device_config.rev). */
   config_rev?: number
+  /** false from a run inside a book: send nothing to apply (statuses, covers, settings) — it waits for the library. */
+  apply?: boolean
   /**
    * Every md5 on the device, sent once the library's book rows have all been
    * posted (in earlier requests), and only when the plugin read the whole
@@ -236,13 +238,15 @@ export function bookPatch(existing: BookRowLike, b: SyncBook): Partial<BookRowLi
   if (next.read_seconds !== null && next.read_seconds !== numOrNull(existing.read_seconds)) patch.read_seconds = next.read_seconds
   if (next.read_pages !== null && next.read_pages !== numOrNull(existing.read_pages)) patch.read_pages = next.read_pages
   if (!existing.on_device && b.on_device === true) patch.on_device = true
-  if (next.kind === 'news' && existing.kind !== 'news') patch.kind = 'news'
+  // kind is set once, when the row is made: the owner may move a book out of News in the app.
 
   const incoming = str(b.status, 20)
   if (incoming && incoming !== existing.device_status) {
     patch.device_status = incoming
     const mapped = mapDeviceStatus(incoming)
-    if (mapped && mapped !== existing.read_status) patch.read_status = mapped
+    // KOReader's "on hold" holds both Paused and Dropped: a Paused book stays Paused.
+    const sameHold = mapped === 'dropped' && existing.read_status === 'paused'
+    if (mapped && mapped !== existing.read_status && !sameHold) patch.read_status = mapped
   }
   const rating = int(b.rating, 1, 5)
   if (rating && rating !== existing.device_rating) {

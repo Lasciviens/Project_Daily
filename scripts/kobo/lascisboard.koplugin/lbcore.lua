@@ -186,13 +186,21 @@ function M.keyKind(key)
     return nil
 end
 
---- True when the plugin may write this key with this value.
+-- Generated from the same catalogue as the app (key -> Lua type). Only these keys are ever written.
+local ok_allow, ALLOW = pcall(require, "lbsettings")
+M.ALLOW = ok_allow and type(ALLOW) == "table" and ALLOW or {}
+
+--- True when the plugin may write this key with this value: the key is in the
+--- generated allow-list, not on the deny list, and the value has its type
+--- (or is NULL = back to KOReader's default).
 function M.settingAllowed(key, value)
     if not M.keyKind(key) or M.SETTING_DENY[key] then return false end
-    local t = type(value)
-    if t == "boolean" or t == "number" then return true end
-    if t == "string" then return #value <= 500 end
-    return value == M.NULL
+    local want = M.ALLOW[key]
+    if not want then return false end
+    if value == M.NULL then return true end
+    if type(value) ~= want then return false end
+    if want == "string" then return #value <= 500 end
+    return true
 end
 
 -- rapidjson decodes JSON null to a sentinel the plugin passes in; tests use this.

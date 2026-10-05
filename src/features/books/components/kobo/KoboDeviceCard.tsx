@@ -3,6 +3,7 @@ import { Card, CardHeader, TonePill } from '../../../../shared/ui'
 import { formatDateTime } from '../../../../shared/utils/dateFormat'
 import { useKoboFeedState } from '../../hooks/useBooks'
 import { useKoboConfig, useKoboDeviceState } from '../../hooks/useKoboControl'
+import { settingIndex } from '../../koboSettings'
 
 /** The Kobo as the app last heard from it, and whether it has the latest changes. */
 export function KoboDeviceCard() {
@@ -12,7 +13,8 @@ export function KoboDeviceCard() {
   const s = state.data
   const rev = config.data?.rev ?? null
   const applied = device.data?.applied_rev ?? null
-  const refused = Object.keys(device.data?.apply_result?.refused ?? {})
+  const index = settingIndex()
+  const refused = Object.entries(device.data?.apply_result?.refused ?? {}).map(([k, why]) => `${index.get(k)?.label ?? k} (${why})`)
   const battery = s?.battery
   const BatteryIcon = s?.charging ? BatteryCharging : (battery ?? 100) <= 20 ? BatteryLow : BatteryMedium
   return (
@@ -39,7 +41,7 @@ export function KoboDeviceCard() {
         </dd>
       </dl>
       {refused.length > 0 && (
-        <p className="mt-2 text-micro text-danger">The Kobo refused: {refused.join(', ')}.</p>
+        <p className="mt-2 text-micro text-danger">The Kobo did not apply: {refused.join('; ')}.</p>
       )}
       <p className="mt-3 text-micro text-fg-muted">
         The Kobo picks up changes whenever its Wi-Fi comes on (or Lasci's Board → Sync now). Menu order needs a KOReader restart; the Kobo offers it.

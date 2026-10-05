@@ -47,39 +47,47 @@ end
 
 -- ── Status bar: goal and streak ─────────────────────────────────────────────
 
-local cache = { at = 0, text = nil }
+local cache = { at = 0, text = nil, streak_day = nil, past = nil }
 
---- Minutes per local day from KOReader's statistics (the last 400 days).
-local function minutesByDay(now)
+--- Minutes per local day since `from`, summed by SQLite (in the device's own time zone).
+local function minutesByDay(from)
     local path = DataStorage:getSettingsDir() .. "/statistics.sqlite3"
     if lfs.attributes(path, "mode") ~= "file" then return {} end
     local SQ3 = require("lua-ljsqlite3/init")
     local ok, conn = pcall(SQ3.open, path, "ro")
     if not ok then return {} end
-    local secs = {}
-    local okq = pcall(function()
-        local stmt = conn:prepare("SELECT start_time, duration FROM page_stat_data WHERE start_time >= ?")
-        stmt:bind(now - 400 * 86400)
+    local minutes = {}
+    pcall(function()
+        local stmt = conn:prepare("SELECT date(start_time, 'unixepoch', 'localtime'), sum(duration) FROM page_stat_data WHERE start_time >= ? GROUP BY 1")
+        stmt:bind(from)
         for row in stmt:rows() do
-            local day = os.date("%Y-%m-%d", tonumber(row[1]))
-            secs[day] = (secs[day] or 0) + (tonumber(row[2]) or 0)
+            minutes[row[1]] = math.floor((tonumber(row[2]) or 0) / 60)
         end
         stmt:close()
     end)
     conn:close()
-    if not okq then return {} end
-    local minutes = {}
-    for day, s in pairs(secs) do minutes[day] = math.floor(s / 60) end
     return minutes
 end
 
---- The status bar text, recomputed at most once a minute (it is asked on every page turn).
-function M.footerText(goal)
+--- The status bar text, recomputed at most once a minute (it is asked on every
+--- page turn). The days before today are read once a day; today adds the open
+--- book's time KOReader has not written to its database yet.
+function M.footerText(goal, statistics)
     local now = os.time()
     if cache.text and now - cache.at < 60 and cache.goal == goal.goal_minutes then return cache.text end
-    local minutes = minutesByDay(now)
-    local today = minutes[os.date("%Y-%m-%d", now)] or 0
-    cache.text = core.footerText(today, goal.goal_minutes or 20, core.streak(minutes, now, goal.min_minutes or 1))
+    local today_key = os.date("%Y-%m-%d", now)
+    local t = os.date("*t", now)
+    local midnight = os.time({ year = t.year, month = t.month, day = t.day, hour = 0 })
+    if cache.streak_day ~= today_key then
+        cache.past = minutesByDay(midnight - 400 * 86400)
+        cache.streak_day = today_key
+    end
+    local minutes = {}
+    for k, v in pairs(cache.past or {}) do minutes[k] = v end
+    minutes[today_key] = minutesByDay(midnight)[today_key] or 0
+    local pending = statistics and tonumber(statistics.mem_read_time) or 0
+    minutes[today_key] = minutes[today_key] + math.floor(pending / 60)
+    cache.text = core.footerText(minutes[today_key], goal.goal_minutes or 20, core.streak(minutes, now, goal.min_minutes or 1))
     cache.at, cache.goal = now, goal.goal_minutes
     return cache.text
 end

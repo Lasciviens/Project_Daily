@@ -59,7 +59,7 @@ export interface AskInput {
   answer_language: string
 }
 
-const LANGUAGES = ['Turkish', 'English', 'Norwegian']
+const LANGUAGES = ['English', 'Turkish', 'Norwegian']
 
 /** The question as the server accepts it, or an error message. */
 export function cleanAsk(raw: unknown): AskInput | string {
@@ -72,7 +72,7 @@ export function cleanAsk(raw: unknown): AskInput | string {
   const question = s(x.question, 500) || null
   if (ask === 'free' && !question) return 'Type a question.'
   const pct = typeof x.percent === 'number' && Number.isFinite(x.percent) ? Math.min(100, Math.max(0, x.percent)) : null
-  const lang = LANGUAGES.includes(x.answer_language as string) ? x.answer_language as string : 'Turkish'
+  const lang = LANGUAGES.includes(x.answer_language as string) ? x.answer_language as string : 'English'
   return {
     ask, selection, question,
     before: s(x.before, 600), after: s(x.after, 600),
