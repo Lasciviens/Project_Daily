@@ -55,4 +55,67 @@ ok(!a.matchesSearch(B({ id: '1', title: 'Sult' }), 'hunger'), 'search misses')
 eq(a.sortForLibrary([B({ id: 'a', lr: '2026-10-01' }), B({ id: 'b', lr: '2026-10-03' })], 'recent').map(b => b.id), ['b', 'a'], 'recent first')
 eq(a.duplicatePairs([B({ id: '1', title: 'Vegetarian, The', author: 'Han Kang' }), B({ id: '2', title: 'The Vegetarian', author: 'Han  Kang' }), B({ id: '3', title: 'Other' })]).map(p => p.map(b => b.id)), [['1', '2']], 'sort-form title duplicates')
 eq(a.duplicatePairs([{ ...B({ id: '1', title: 'Sult', author: 'Hamsun' }), koreader_md5: 'a'.repeat(32) }, { ...B({ id: '2', title: 'Sult', author: 'Hamsun' }), koreader_md5: 'b'.repeat(32) }]).length, 0, 'two real files (epub + kepub) are not offered for merge')
+
+// ── Stats tab ──
+eq(s.map(x => [x.firstPage, x.lastPage]), [[1, 3], [4, 4]], 'sessions carry the page range')
+const pr = a.sessions([ev('b', '2026-10-04T20:00:00Z', 60, 58), ev('b', '2026-10-04T20:01:00Z', 60, 41), ev('b', '2026-10-04T20:02:00Z', 60, 50)])
+eq([pr[0].firstPage, pr[0].lastPage], [41, 58], 'page range is min–max, not first–last seen')
+
+const pd = new Map([['2026-09-30', 60], ['2026-10-01', 120], ['2026-10-05', 30]])
+eq(a.sumDays(pd, '2026-10-01', '2026-10-05'), 150, 'sumDays inclusive')
+eq(a.weekStart('2026-10-05'), '2026-10-05', 'Monday is its own week start')
+eq(a.weekStart('2026-10-04'), '2026-09-28', 'Sunday belongs to the week before')
+eq(a.distinctPages([ev('b', '2026-10-04T20:00:00Z', 60, 1), ev('b', '2026-10-04T21:00:00Z', 60, 1), ev('c', '2026-10-04T21:00:00Z', 60, 1)]), 2, 'distinct pages per book, summed')
+eq(a.eventsBetween([ev('b', '2026-10-04T23:30:00+02:00', 1), ev('b', '2026-10-05T00:30:00+02:00', 1)], '2026-10-05', '2026-10-05').length, 1, 'eventsBetween uses local days')
+
+eq(a.estimateFinishSeconds(25, 3600), 10800, 'eta: 25 % in 1 h → 3 h left')
+eq(a.estimateFinishSeconds(4, 3600), null, 'eta needs ≥ 5 %')
+eq(a.estimateFinishSeconds(50, 1100), null, 'eta needs ≥ 20 min')
+eq(a.estimateFinishSeconds(100, 9000), null, 'no eta when done')
+eq(a.estimateFinishSeconds(null, 9000), null, 'no eta without progress')
+eq(a.pagesPerHour(30, 1800), 60, 'speed'); eq(a.pagesPerHour(5, 599), null, 'speed needs 10 min')
+
+const SB = (o) => ({ id: o.id, kind: o.kind ?? 'book', read_status: o.st ?? null, page_count: o.pc ?? null, progress_pct: o.p ?? null, read_seconds: o.rs ?? null, read_pages: o.rp ?? null, last_read_at: o.lr ?? null })
+const cr = a.currentlyReading([
+  SB({ id: 'r', st: 'reading', pc: 300, p: 40, rs: 7200, rp: 120 }),
+  SB({ id: 'w', st: 'want' }),
+  SB({ id: 'paused-recent', st: 'paused', lr: '2026-10-01T10:00:00Z' }),
+  SB({ id: 'paused-old', st: 'paused', lr: '2026-09-01T10:00:00Z' }),
+  SB({ id: 'fin', st: 'finished', lr: '2026-10-04T10:00:00Z' }),
+  SB({ id: 'news', kind: 'news', lr: '2026-10-05T10:00:00Z' }),
+  SB({ id: 'small', st: 'reading', pc: 50 }),
+], [ev('r', '2026-10-05T08:00:00Z', 600, 140), ev('r', '2026-10-05T08:10:00Z', 600, 141), ev('w', '2026-10-03T08:00:00Z', 60, 3), ev('small', '2026-10-02T08:00:00Z', 60, 80)], '2026-10-05')
+eq(cr.map(c => c.bookId), ['r', 'w', 'small', 'paused-recent'], 'in hand: reading + recently read, newest first; no news, finished or old')
+const r0 = cr[0]
+eq([r0.seconds, r0.sessions, r0.page, r0.pageTotal, r0.pagesPerHour, r0.etaSeconds], [7200, 1, 141, 300, 60, 10800], 'current book figures (KOReader lifetime wins when larger)')
+eq(cr.find(c => c.bookId === 'small').pageTotal, null, 'page count below the page reached is not shown (other layout)')
+eq(cr.find(c => c.bookId === 'w').seconds, 60, 'no KOReader total → the events')
+
+eq(a.daysBetween('2026-10-01', '2026-10-05'), 4, 'days between')
+eq(a.daysBetween('2026-03-28', '2026-03-30'), 2, 'days between across DST')
+eq([a.relativeDay('2026-10-05', '2026-10-05'), a.relativeDay('2026-10-04', '2026-10-05'), a.relativeDay('2026-10-01', '2026-10-05')], ['today', 'yesterday', '4 days ago'], 'relative day')
+
+const log = a.sessionLog(a.sessions([
+  ev('b', '2026-10-04T08:00:00Z', 60, 1), ev('c', '2026-10-05T08:00:00Z', 60, 1), ev('b', '2026-10-05T19:00:00Z', 60, 2),
+]), 2)
+eq(log.map(d => [d.day, d.sessions.map(x => x.bookId)]), [['2026-10-05', ['b', 'c']]], 'log: newest first, limited, grouped by day')
+
+const wb = a.windowBooks([
+  ev('b', '2026-10-04T20:00:00Z', 400, 12), ev('b', '2026-10-04T20:07:00Z', 400, 30),
+  ev('n1', '2026-10-04T07:00:00Z', 120, 1), ev('n2', '2026-10-05T07:00:00Z', 60, 1), ev('n2', '2026-10-05T07:01:00Z', 60, 2),
+], id => id.startsWith('n'))
+eq(wb.books.map(x => [x.bookId, x.firstPage, x.lastPage]), [['b', 12, 30]], 'window books carry the page range, news excluded')
+eq(wb.news, { issues: 2, seconds: 240, pages: 3, sessions: 2 }, 'news summed into one row')
+eq(a.windowBooks([ev('b', '2026-10-04T20:00:00Z', 60, 1)], () => false).news, null, 'no news row without news')
+
+const FB = (id, s, f, kind = 'book') => ({ id, kind, started_at: s, finished_at: f })
+const fin = [FB('a', '2026-01-02', '2026-01-10T12:00:00Z'), FB('b', null, '2026-03-01T12:00:00Z'), FB('c', null, '2025-12-31T12:00:00Z'), FB('n', null, '2026-02-01T12:00:00Z', 'news')]
+eq(a.finishedInYear(fin, 2026).map(b => b.id), ['b', 'a'], 'finished in a year, newest first, no news')
+eq(a.finishedYears(fin, 2026), [2026, 2025], 'finished years incl. the current one')
+eq(a.finishedYears([], 2026), [2026], 'current year alone')
+eq(a.daysTaken('2026-10-01T09:00:00Z', '2026-10-05T20:00:00Z'), 5, 'days taken counts both ends')
+eq(a.daysTaken('2026-10-05T09:00:00Z', '2026-10-05T20:00:00Z'), 1, 'same day = 1')
+eq(a.daysTaken(null, '2026-10-05'), null, 'no start → null'); eq(a.daysTaken('2026-10-06T09:00:00Z', '2026-10-05T09:00:00Z'), null, 'reversed → null')
+const ym = a.yearMonths([ev('b', '2026-01-15T10:00:00Z', 600), ev('b', '2026-03-01T10:00:00Z', 60), ev('b', '2025-03-01T10:00:00Z', 999)], fin, 2026)
+eq([ym[0].seconds, ym[0].finished, ym[2].seconds, ym[2].finished, ym[1].finished, ym.length], [600, 1, 60, 1, 0, 12], 'year months: time and finished per month')
 console.log(`verify-reading-aggregate: ${n} assertions passed`)

@@ -81,4 +81,52 @@ ok(p.user.includes('42% through') && p.user.includes('«Han var sulten.»'), 'us
 eq(dv.cleanAnswer('**Hi**\n## x'), 'Hi\nx', 'markdown stripped')
 eq(dv.cleanDeviceFacts({ battery: 57.4, charging: false, koreader_version: 'v2026.07.1' }), { battery: 57, charging: false, koreader_version: 'v2026.07.1' }, 'device facts')
 eq(dv.cleanDeviceFacts({ battery: 140 }), {}, 'battery out of range dropped')
+
+// ── round 3: plain help, areas, storage, menu report ──
+const ar = require('../src/features/books/kobo/settingsAreas.ts')
+const st = require('../src/features/books/kobo/storageView.ts')
+ok(all.every(s => typeof s.help === 'string' && s.help.length > 20 && !/\.lua\b|:\d+\b|G_reader_settings|crengine|sidecar/.test(s.help)), 'every setting has plain help (no file names, line numbers or jargon)')
+ok(all.every(s => s.level === 'basic' || s.level === 'advanced'), 'every setting has a level')
+ok(all.filter(s => s.level === 'basic').length >= 60, 'a useful number of common settings')
+ok(cat.SETTING_GROUPS.every(g => g.summary && g.affects), 'every section has a summary and what it affects')
+eq(ar.unplacedGroups(cat.SETTING_GROUPS), [], 'every group sits in one area or the sleep section')
+eq(new Set(ar.AREAS.flatMap(a => a.groups)).size, ar.AREAS.flatMap(a => a.groups).length, 'no group in two areas')
+const none = () => false
+const basic = ar.summarizeAreas(cat.SETTING_GROUPS, { query: '', level: 'basic', changedOnly: false }, none)
+const every = ar.summarizeAreas(cat.SETTING_GROUPS, { query: '', level: 'all', changedOnly: false }, none)
+ok(basic.every(a => a.shown <= a.total) && every.every(a => a.shown === a.total), 'Common shows a subset; All shows everything')
+eq(every.reduce((t, a) => t + a.total, 0) + cat.SETTING_GROUPS.filter(g => ar.SLEEP_GROUPS.includes(g.id)).flatMap(g => g.settings).filter(s => !s.managed).length,
+  all.filter(s => !s.managed).length, 'areas + sleep section cover every setting once')
+const adv = all.find(s => s.level === 'advanced' && !ar.SLEEP_GROUPS.some(id => cat.SETTING_GROUPS.find(g => g.id === id).settings.includes(s)))
+const withChanged = ar.summarizeAreas(cat.SETTING_GROUPS, { query: '', level: 'basic', changedOnly: false }, k => k === adv.key)
+ok(withChanged.some(a => a.groups.some(g => g.settings.some(d => d.key === adv.key))), 'a changed advanced setting stays visible under Common')
+const onlyChanged = ar.summarizeAreas(cat.SETTING_GROUPS, { query: '', level: 'all', changedOnly: true }, k => k === adv.key)
+eq(onlyChanged.reduce((t, a) => t + a.shown, 0), 1, 'Changed by me shows exactly the changed one')
+const search = ar.summarizeAreas(cat.SETTING_GROUPS, { query: 'battery', level: 'basic', changedOnly: false }, none)
+ok(search.reduce((t, a) => t + a.shown, 0) > 0, 'search finds "battery" (advanced included while searching)')
+ok(sv.matchesSetting(all.find(s => s.key === 'auto_restore_wifi'), 'reconnect'), 'search reads the plain label')
+eq(cat.SETTING_GROUPS.flatMap(g => g.settings).find(s => s.key === 'txt_preformatted').absent, 'lines as written', 'txt_preformatted default corrected from the source')
+ok(!all.some(s => ['custom_screen_dpi', 'kopt_detect_indent', 'notification_sources_to_show_mask', 'pt:show_progress_in_mosaic'].includes(s.key)), 'settings that do nothing are left out')
+
+const GB = 1024 ** 3
+const books = [
+  { kind: 'book', on_device: true, file_size: 2 * 1024 ** 2 }, { kind: 'book', on_device: true, file_size: null },
+  { kind: 'news', on_device: true, file_size: 1024 ** 2 }, { kind: 'book', on_device: false, file_size: 5 * 1024 ** 2 },
+]
+const sb = st.storageBreakdown({ storage_total: 16 * GB, storage_free: 12 * GB, storage_at: 'x' }, books)
+eq([sb.used, sb.books, sb.news, sb.unsized], [4 * GB, 2 * 1024 ** 2, 1024 ** 2, 1], 'storage: used, books and news on the Kobo only, unsized counted')
+eq(sb.other, 4 * GB - 3 * 1024 ** 2, 'other = used minus counted files')
+eq(st.storageBreakdown({ storage_total: 10, storage_free: 20 }, []), null, 'free above total → no card')
+eq(st.storageBreakdown(null, []), null, 'nothing reported → no card')
+eq([st.formatBytes(1.5 * GB), st.formatBytes(12.34 * GB), st.formatBytes(312 * 1024 ** 2), st.formatBytes(2.5 * 1024 ** 2)], ['1.50 GB', '12.3 GB', '312 MB', '2.5 MB'], 'byte format')
+eq(dv.cleanDeviceFacts({ storage_total: 16 * GB, storage_free: 3 * GB }, 'now'), { storage_total: 16 * GB, storage_free: 3 * GB, storage_at: 'now' }, 'storage facts kept')
+eq(dv.cleanDeviceFacts({ storage_total: 10, storage_free: 11 }), {}, 'free above total dropped')
+
+const SEP = ks.MENU_SEPARATOR
+const order3 = { navi: [SEP, 'toc', SEP, SEP, 'hidden', SEP, 'bookmarks', SEP], toc: [] }
+const labels3 = { toc: 'Table of contents', bookmarks: 'Bookmarks' }
+eq(mv.rowsToShow(order3.navi, labels3, order3).map(r => r.id), ['toc', SEP, 'bookmarks'], 'separators only between shown items')
+eq(mv.rowsToShow(order3.navi, labels3, order3).map(r => r.index), [1, 2, 6], 'rows keep their real index')
+ok(mv.labelCoverage(['navi'], { toc: 'Table of contents' }, order3) < mv.MIN_LABEL_COVERAGE, 'a report missing names reads as incomplete (1 of 3 named)')
+ok(mv.labelCoverage(['navi'], { ...labels3, hidden: 'Hidden' }, order3) >= mv.MIN_LABEL_COVERAGE, 'a full report reads as complete')
 console.log(`verify-kobo-settings: ${n} assertions passed`)

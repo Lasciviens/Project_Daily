@@ -29,7 +29,7 @@ export function ReadingCard({ date }: { date: string }) {
 
   return (
     <Cell>
-      <CellHeader icon={<BookOpen />} title="Reading" action={<CellLink to="/books?tab=reading">Books</CellLink>} />
+      <CellHeader icon={<BookOpen />} title="Reading" action={<CellLink to="/books?tab=stats">Books</CellLink>} />
       {books.length === 0 && !events.data?.length ? (
         <Link to="/books" className="flex min-h-[44px] items-center text-body text-fg-muted hover:text-accent-600">
           No books synced yet — set up the Kobo

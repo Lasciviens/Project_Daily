@@ -1,0 +1,644 @@
+{
+  "groups": {
+    "sleep_screen": {
+      "title": "Sleep screen",
+      "summary": "What the Kobo shows on its screen while it is asleep, and the optional message on top of it.",
+      "affects": "The next time the Kobo goes to sleep (cover closed or power button pressed), the picture and text on the sleeping screen change."
+    },
+    "bookshelf": {
+      "title": "Bookshelf sleep screen",
+      "summary": "Fine-tuning for the sleep screen that draws your recently read books as a stack of book spines.",
+      "affects": "Only matters when the sleep screen is set to Bookshelf; the stack of books you see while the Kobo sleeps looks different."
+    },
+    "project_title": {
+      "title": "Library look",
+      "summary": "How your library of books looks on the Kobo: covers or lists, how many per page, and what is written under each book.",
+      "affects": "The book list you see when no book is open changes; most of these need KOReader to restart before you see them."
+    },
+    "screen": {
+      "title": "Screen and flashing",
+      "summary": "Night mode and how often the e-ink screen does a full black flash to clean away leftover traces of earlier pages.",
+      "affects": "You will see more or fewer black flashes when you turn pages or tap buttons, and white text on black in night mode."
+    },
+    "rotation": {
+      "title": "Screen rotation",
+      "summary": "Which way up the library and pictures are shown, since the Kobo has no sensor to turn the screen by itself.",
+      "affects": "The library or the picture viewer opens turned sideways or upside down instead of upright."
+    },
+    "frontlight": {
+      "title": "Auto-dim light",
+      "summary": "Lets the front light dim by itself when you have not touched the Kobo for a while.",
+      "affects": "When you leave the Kobo untouched, the light slowly gets dimmer; any touch brings it back."
+    },
+    "autowarmth": {
+      "title": "Warm light by time",
+      "summary": "Makes the front light warmer (more orange) in the evening and cooler in the day, by sunrise and sunset or by fixed times.",
+      "affects": "The colour of the front light changes through the day on its own, and optionally night mode switches on at night."
+    }
+  },
+  "settings": {
+    "screensaver_type": {
+      "help": "Chooses the picture the Kobo shows while it sleeps. The book cover option only works for a book you have opened at least once; until then a fallback image is shown.",
+      "example": "Pick 'Cover of the book you are reading' and the cover of your current book stays on the screen while the Kobo sleeps.",
+      "level": "basic",
+      "options": {
+        "cover": "Cover of the current book",
+        "bookshelf": "Stack of recent books",
+        "random_image": "My images (random)",
+        "document_cover": "One fixed image",
+        "readingprogress": "Reading statistics page",
+        "bookstatus": "Book summary page",
+        "disable": "Keep the last page on screen"
+      }
+    },
+    "screensaver_exclude_on_hold_books": {
+      "label": "No cover for books on hold",
+      "help": "When on, a book you have marked as on hold does not get its cover on the sleep screen; one of your own images is shown instead.",
+      "level": "advanced"
+    },
+    "screensaver_exclude_finished_books": {
+      "label": "No cover for finished books",
+      "help": "When on, a book you have marked as finished does not get its cover on the sleep screen; one of your own images is shown instead.",
+      "example": "Finish a novel, and the next sleep screen shows one of your pictures instead of that novel's cover.",
+      "level": "advanced"
+    },
+    "screensaver_hide_cover_in_filemanager": {
+      "label": "No cover when sleeping from the library",
+      "help": "When on, putting the Kobo to sleep while you are in the library (not inside a book) does not show the last book's cover or message.",
+      "level": "advanced"
+    },
+    "screensaver_img_background": {
+      "label": "Colour around the sleep picture",
+      "help": "If the sleep picture does not fill the whole screen, this is the colour of the empty edges around it.",
+      "example": "Choose White fill and a wide image gets white bars above and below it instead of black.",
+      "level": "basic",
+      "options": {
+        "black": "Black",
+        "white": "White",
+        "none": "Leave as it was"
+      }
+    },
+    "screensaver_stretch_images": {
+      "label": "Stretch picture to fill the screen",
+      "help": "When on, the sleep picture is stretched to fill the whole screen, even if that squeezes it a little. When off, it keeps its shape and may have empty edges.",
+      "level": "basic"
+    },
+    "screensaver_stretch_limit_percentage": {
+      "label": "Maximum stretch",
+      "help": "Only used when stretching is on. The picture is stretched only if that distorts it by no more than this much; otherwise it keeps its shape. Leave it unset for unlimited stretching.",
+      "example": "Set it to 8%: a cover that is nearly the screen's shape fills the screen, but a very wide picture is not squashed.",
+      "level": "advanced"
+    },
+    "screensaver_rotate_auto_for_best_fit": {
+      "label": "Turn picture sideways to fit",
+      "help": "When on, a wide (landscape) sleep picture is turned sideways so it fills more of the tall screen.",
+      "level": "advanced"
+    },
+    "screensaver_delay": {
+      "label": "Keep sleep screen after waking",
+      "help": "After you wake the Kobo, the sleep picture can stay on screen for a moment, or until you tap, before your page comes back. 'Until gesture' needs a special gesture set up first, otherwise the Kobo can look stuck, so 'Until a tap' is the safer choice.",
+      "example": "Choose 3 seconds: you open the cover and still see the sleep picture for 3 seconds before your book appears.",
+      "level": "advanced",
+      "options": {
+        "disable": "No, show the page at once",
+        "1": "1 second",
+        "3": "3 seconds",
+        "5": "5 seconds",
+        "tap": "Until I tap the screen",
+        "gesture": "Until a set-up gesture (advanced)"
+      }
+    },
+    "screensaver_show_exit_message": {
+      "label": "Show 'how to leave' hint",
+      "help": "Shows a short hint on the sleep screen explaining how to get back to your book. Only matters when the sleep screen stays until a special gesture.",
+      "level": "advanced"
+    },
+    "screensaver_exit_message": {
+      "label": "Text of the 'how to leave' hint",
+      "help": "Your own wording for that hint. Leave empty to use the built-in text. Only shown when the sleep screen stays until a special gesture.",
+      "level": "advanced"
+    },
+    "screensaver_document_cover": {
+      "label": "The one fixed sleep image",
+      "help": "The single picture (or the cover of a chosen book) shown when the sleep screen is set to 'One fixed image'. Lasci's Board fills this in for you when you pick one of your images.",
+      "level": "advanced"
+    },
+    "screensaver_dir": {
+      "label": "Folder of sleep images",
+      "help": "The folder on the Kobo the random sleep images come from. Lasci's Board sets this to the images you upload, so you normally do not need to change it.",
+      "level": "advanced"
+    },
+    "screensaver_cycle_images_alphabetically": {
+      "label": "Show my images in order",
+      "help": "When on, your sleep images are shown one after another in name order instead of at random.",
+      "example": "With three images uploaded, each time the Kobo sleeps it shows the next one: first, second, third, then back to the first.",
+      "level": "basic"
+    },
+    "screensaver_show_message": {
+      "label": "Show a message on the sleep screen",
+      "help": "When on, a short text of your choice is written on top of the sleep screen.",
+      "example": "Turn it on and write 'If found, call 123 45 678' so anyone who finds your Kobo knows how to return it.",
+      "level": "basic"
+    },
+    "screensaver_message": {
+      "label": "Sleep screen message",
+      "help": "The text written on the sleep screen when the message is turned on. It can span several lines and can include book details such as the title or how far you have read.",
+      "example": "Write 'Sleeping - see you soon' to replace the default 'Sleeping'.",
+      "level": "basic"
+    },
+    "screensaver_message_container": {
+      "label": "Message style",
+      "help": "How the sleep screen message is framed: a small box around the text, or a band across the full width of the screen.",
+      "level": "advanced",
+      "options": {
+        "banner": "Band across the screen",
+        "box": "Small box"
+      }
+    },
+    "screensaver_message_vertical_position": {
+      "label": "Message height on screen",
+      "help": "Where the sleep message sits from bottom to top: 0 is the very bottom, 50 is the middle and 100 is the top.",
+      "example": "Set it to 10 to put the message near the bottom so it does not cover the book title on the cover.",
+      "level": "basic"
+    },
+    "screensaver_message_alpha": {
+      "label": "Message see-through",
+      "help": "How solid the message box is. 100% is fully solid; lower values let the picture behind show through.",
+      "example": "Set it to 70% so the cover is still faintly visible behind your message.",
+      "level": "advanced"
+    },
+    "screensaver_msg_background": {
+      "label": "Background behind the message",
+      "help": "Only used when the sleep screen keeps the last page and a message is shown: whether the page behind the message is wiped to black or white, or left as it was.",
+      "level": "advanced",
+      "options": {
+        "black": "Black screen",
+        "white": "White screen",
+        "none": "Keep the page behind it"
+      }
+    },
+    "screensaver_hide_fallback_msg": {
+      "label": "Hide restart and power-off message",
+      "help": "When on, the short message shown while the Kobo restarts or powers off is left out. It does not affect normal sleep.",
+      "level": "advanced"
+    },
+    "screensaver_extra_flash_count": {
+      "label": "Extra cleaning flashes on sleep",
+      "help": "After the sleep picture appears, the screen can flash black and redraw it a few more times to remove faint leftovers (ghosting) of the page you were reading. 0 turns this off; 2 is the usual choice.",
+      "example": "Set it to 2: when the Kobo sleeps the screen blinks twice and the cover looks crisp, with no traces of your last page.",
+      "level": "advanced"
+    },
+    "screensaver_extra_flash_delay": {
+      "label": "Pause between cleaning flashes",
+      "help": "How long the Kobo waits between those extra cleaning flashes, in milliseconds (1000 ms is one second). Only matters when the extra flashes are on.",
+      "example": "1000 ms means one flash per second.",
+      "level": "advanced"
+    },
+    "bookshelf_screensaver_background_type": {
+      "label": "Background behind the books",
+      "help": "What is drawn behind the stack of book spines.",
+      "level": "basic",
+      "options": {
+        "0": "Plain (nothing)",
+        "1": "Dotted pattern",
+        "2": "Cover of the latest book",
+        "3": "A custom image on the Kobo"
+      }
+    },
+    "bookshelf_screensaver_progression_type": {
+      "label": "How progress fills each spine",
+      "help": "Each spine is shaded to show how much of that book you have read. This chooses whether the shading grows from left to right like a bar, from the top down, or from the bottom up.",
+      "level": "advanced",
+      "options": {
+        "0": "Left to right, like a bar",
+        "1": "From the top down",
+        "2": "From the bottom up"
+      }
+    },
+    "bookshelf_screensaver_show_standing_book": {
+      "help": "When on, your most recent book is drawn standing upright on top of the stack instead of lying flat with the others.",
+      "level": "basic"
+    },
+    "bookshelf_screensaver_show_stack_decor": {
+      "label": "Show decoration beside the stack",
+      "help": "Adds a small decorative picture next to the stack. It only appears when the standing book is turned off and a decoration image has been put on the Kobo.",
+      "level": "advanced"
+    },
+    "bookshelf_screensaver_show_time_left": {
+      "label": "Show reading time left",
+      "help": "Writes an estimate of how long it will take to finish each unfinished book on its spine.",
+      "example": "A spine might read '3h 20m left' next to the author's name.",
+      "level": "basic"
+    },
+    "bookshelf_screensaver_show_percent": {
+      "label": "Show percent read",
+      "help": "Writes how far you are in each unfinished book on its spine.",
+      "example": "A spine might read '42%' next to the author's name.",
+      "level": "basic"
+    },
+    "bookshelf_screensaver_show_bands": {
+      "label": "Show quarter marks on spines",
+      "help": "Draws thin stripes on each spine, one for every quarter of the book you have read, so you can see your progress at a glance.",
+      "example": "A book you are halfway through gets two stripes; a book three quarters done gets three.",
+      "level": "advanced"
+    },
+    "bookshelf_screensaver_use_random_colors": {
+      "label": "Different shade per book",
+      "help": "Gives each spine its own random shade. On this black-and-white screen the colours show up as different greys.",
+      "level": "advanced"
+    },
+    "bookshelf_screensaver_use_misaligned_stack": {
+      "label": "Slightly uneven stack",
+      "help": "When on, the books are shifted a little left and right so the stack looks natural; when off, they line up neatly.",
+      "level": "advanced"
+    },
+    "bookshelf_screensaver_num_books": {
+      "label": "Number of books in the stack",
+      "help": "How many of your recently read books are drawn. If they do not all fit on the screen, the extra ones are left out.",
+      "example": "Set it to 3 to see only the three books you read most recently.",
+      "level": "basic"
+    },
+    "bookshelf_screensaver_finished_threshold": {
+      "label": "Counts as finished at",
+      "help": "Once you have read this much of a book, its spine is drawn as complete and no longer shows time left or percent.",
+      "example": "Set it to 95%: a book you stopped at 96% (because of the notes at the end) shows as finished.",
+      "level": "advanced"
+    },
+    "bookshelf_screensaver_minimum_pages": {
+      "label": "Leave out short books under",
+      "help": "Books with fewer pages than this are not shown in the stack. 0 shows every book.",
+      "example": "Set it to 50 pages so short articles and newspaper issues stay out of the stack.",
+      "level": "advanced"
+    },
+    "bookshelf_screensaver_font_size": {
+      "label": "Text size on spines",
+      "help": "How large the titles and details on the spines are written. Thicker books get slightly bigger text automatically.",
+      "example": "Raise it from 6 to 8 if the titles are hard to read.",
+      "level": "basic"
+    },
+    "pt:filemanager_display_mode": {
+      "label": "Library layout",
+      "help": "How your books are listed in the library: covers with details in a list, a grid of covers, a list with details but no covers, or plain file names.",
+      "example": "Choose Cover grid to see your books as a wall of covers, like a bookshop shelf.",
+      "level": "basic",
+      "options": {
+        "list_image_meta": "List with covers",
+        "mosaic_image": "Grid of covers",
+        "list_only_meta": "List without covers",
+        "list_no_meta": "File names only"
+      }
+    },
+    "pt:history_display_mode": {
+      "label": "History layout",
+      "help": "The same choice, but for the list of books you opened recently. Only used when 'Use this layout everywhere' is off.",
+      "level": "advanced",
+      "options": {
+        "list_image_meta": "List with covers",
+        "mosaic_image": "Grid of covers",
+        "list_only_meta": "List without covers",
+        "list_no_meta": "File names only"
+      }
+    },
+    "pt:collection_display_mode": {
+      "label": "Collections layout",
+      "help": "The same choice, but for your collections (such as Favorites). Only used when 'Use this layout everywhere' is off.",
+      "level": "advanced",
+      "options": {
+        "list_image_meta": "List with covers",
+        "mosaic_image": "Grid of covers",
+        "list_only_meta": "List without covers",
+        "list_no_meta": "File names only"
+      }
+    },
+    "pt:unified_display_mode": {
+      "label": "Use this layout everywhere",
+      "help": "When on, the history and collections lists use the same layout as the library. Turn it off to give them their own layout.",
+      "level": "advanced"
+    },
+    "pt:nb_cols_portrait": {
+      "label": "Covers per row",
+      "help": "How many covers sit side by side in the cover grid. Fewer means bigger covers.",
+      "example": "Set it to 2 for large, easy-to-see covers; 4 fits more books on each page.",
+      "level": "basic"
+    },
+    "pt:nb_rows_portrait": {
+      "label": "Rows of covers per page",
+      "help": "How many rows of covers fit on one page of the cover grid.",
+      "example": "3 columns and 3 rows show 9 books per page.",
+      "level": "basic"
+    },
+    "pt:nb_cols_landscape": {
+      "label": "Covers per row (sideways)",
+      "help": "Covers per row in the cover grid when the screen is turned sideways. You will rarely see this, as the Kobo is normally held upright.",
+      "level": "advanced"
+    },
+    "pt:nb_rows_landscape": {
+      "label": "Rows of covers (sideways)",
+      "help": "Rows of covers in the grid when the screen is turned sideways. You will rarely see this, as the Kobo is normally held upright.",
+      "level": "advanced"
+    },
+    "pt:files_per_page": {
+      "label": "Books per page in lists",
+      "help": "How many books fit on one page in the list layouts. Fewer means bigger rows and covers.",
+      "example": "Set it to 5 for large, easy-to-tap rows; 10 fits more books on each page.",
+      "level": "basic"
+    },
+    "pt:disable_auto_foldercovers": {
+      "label": "No automatic folder covers",
+      "help": "Normally a folder shows covers of the books inside it. When this is on, folders show a plain folder picture instead.",
+      "level": "advanced"
+    },
+    "pt:use_stacked_foldercovers": {
+      "label": "Folder covers as a stack",
+      "help": "When on, a folder shows several of its book covers stacked on top of each other instead of side by side.",
+      "level": "advanced"
+    },
+    "pt:show_name_grid_folders": {
+      "label": "Folder names in the cover grid",
+      "help": "When on, folder names and how many books they hold are written over the folder pictures in the cover grid.",
+      "level": "advanced"
+    },
+    "pt:use_custom_sorts": {
+      "label": "Extra sorting options",
+      "help": "When on, the library's sort menu gets extra ways of ordering books added by the library add-on.",
+      "level": "advanced"
+    },
+    "pt:hide_file_info": {
+      "label": "Show progress instead of file details",
+      "help": "When on, each book shows how far you have read. When off, it shows file details such as the file type and size instead.",
+      "level": "basic"
+    },
+    "pt:show_pages_read_as_progress": {
+      "label": "Show pages read",
+      "help": "Shows your progress as pages read out of total pages instead of a percentage. Only works when progress is shown (the setting above is on).",
+      "example": "A book shows '120 / 340' instead of '35%'.",
+      "level": "basic"
+    },
+    "pt:force_no_progressbars": {
+      "label": "Percent instead of progress bars",
+      "help": "Shows a plain number such as '35%' under each book instead of a small progress bar.",
+      "level": "basic"
+    },
+    "pt:force_max_progressbars": {
+      "label": "Same-length progress bars",
+      "help": "Normally a thicker book gets a longer progress bar. When on, every book's bar is full length so they are easy to compare.",
+      "level": "advanced"
+    },
+    "pt:show_tags": {
+      "label": "Show book tags",
+      "help": "Shows the tags or keywords stored inside the book file (for example genres added in calibre) under each book.",
+      "level": "advanced"
+    },
+    "pt:use_custom_bookstatus": {
+      "label": "Nicer book summary page",
+      "help": "When on, the page that shows a book's details, rating and progress uses the library add-on's own, cleaner design instead of KOReader's standard one.",
+      "level": "advanced"
+    },
+    "pt:replace_footer_text": {
+      "label": "Battery and time in library footer",
+      "help": "When on, the bottom line of the library shows device information such as the time and battery instead of the current folder's name.",
+      "level": "basic"
+    },
+    "pt:reverse_footer": {
+      "label": "Page arrows on the left",
+      "help": "Moves the library's next and previous page buttons to the bottom left corner instead of the right.",
+      "level": "advanced"
+    },
+    "pt:autoscan_on_eject": {
+      "label": "Look for new books at start-up",
+      "help": "When on, KOReader checks your book folder each time it starts and prepares covers and details for any new books, so they show up right away.",
+      "level": "advanced"
+    },
+    "pt:force_focus_indicator": {
+      "label": "Mark the last book you opened",
+      "help": "When on, the book you opened last is highlighted in the library so you can find your place quickly.",
+      "level": "advanced"
+    },
+    "pt:show_progress_in_mosaic": {
+      "label": "Progress in cover grid (old)",
+      "help": "An older setting kept for compatibility. In the current version it has no visible effect; use the progress settings above instead.",
+      "level": "advanced"
+    },
+    "pt:opened_at_top_of_library": {
+      "label": "Recently opened first (old)",
+      "help": "An older setting kept for compatibility. In the current version it has no visible effect.",
+      "level": "advanced"
+    },
+    "night_mode": {
+      "help": "Turns the screen into white text on a black background, which can be easier on the eyes in the dark. A change made from here shows the next time KOReader starts.",
+      "level": "basic"
+    },
+    "full_refresh_count": {
+      "label": "Full screen flash every",
+      "help": "E-ink screens keep faint traces of earlier pages (ghosting). A full refresh flashes the screen black for a moment to wipe them. Lower numbers mean a cleaner page but more flashing. A change shows the next time KOReader starts.",
+      "example": "6 pages means the screen flashes once every 6 page turns. 0 never flashes, 1 flashes on every page, -1 flashes only at each new chapter.",
+      "level": "basic"
+    },
+    "night_full_refresh_count": {
+      "label": "Full screen flash every (night mode)",
+      "help": "The same as above, but used while night mode is on. If unset it follows the normal setting.",
+      "example": "Set it to 1 if white text on black leaves more traces than normal pages.",
+      "level": "advanced"
+    },
+    "refresh_rate_1": {
+      "label": "Flash preset 1",
+      "help": "A saved choice for the full-flash interval that you can pick from KOReader's refresh menu. Changing it here does not change the current interval by itself.",
+      "level": "advanced"
+    },
+    "night_refresh_rate_1": {
+      "label": "Flash preset 1 (night mode)",
+      "help": "The night mode value of saved flash preset 1. Changing it here does not change the current interval by itself.",
+      "level": "advanced"
+    },
+    "refresh_rate_2": {
+      "label": "Flash preset 2",
+      "help": "A second saved choice for the full-flash interval that you can pick from KOReader's refresh menu. Changing it here does not change the current interval by itself.",
+      "level": "advanced"
+    },
+    "night_refresh_rate_2": {
+      "label": "Flash preset 2 (night mode)",
+      "help": "The night mode value of saved flash preset 2. Changing it here does not change the current interval by itself.",
+      "level": "advanced"
+    },
+    "refresh_rate_3": {
+      "label": "Flash preset 3",
+      "help": "A third saved choice for the full-flash interval that you can pick from KOReader's refresh menu. Changing it here does not change the current interval by itself.",
+      "level": "advanced"
+    },
+    "night_refresh_rate_3": {
+      "label": "Flash preset 3 (night mode)",
+      "help": "The night mode value of saved flash preset 3. Changing it here does not change the current interval by itself.",
+      "level": "advanced"
+    },
+    "refresh_on_chapter_boundaries": {
+      "label": "Flash at each new chapter",
+      "help": "When on, the screen always does a full cleaning flash when you turn to the first page of a new chapter, on top of the regular interval.",
+      "level": "advanced"
+    },
+    "no_refresh_on_second_chapter_page": {
+      "label": "Skip flash on a chapter's 2nd page",
+      "help": "Only matters when flashing at new chapters is on: it avoids a second flash on the page right after the chapter start.",
+      "level": "advanced"
+    },
+    "refresh_on_pages_with_images": {
+      "label": "Flash on pages with pictures",
+      "help": "When on, a page with a picture always gets a full cleaning flash so the image looks sharp and leaves no traces on the next page.",
+      "level": "advanced"
+    },
+    "flash_ui": {
+      "label": "Flash buttons when tapped",
+      "help": "When on, a button or menu item briefly turns black when you tap it, so you can see the tap was noticed. Turn it off for calmer, less flashy menus.",
+      "level": "basic"
+    },
+    "flash_keyboard": {
+      "label": "Flash keys when typing",
+      "help": "When on, each key on the on-screen keyboard briefly turns black when tapped. Turning it off makes typing look calmer and can feel a bit faster.",
+      "level": "basic"
+    },
+    "avoid_flashing_ui": {
+      "label": "Fewer black flashes in menus",
+      "help": "When on, menus and pop-ups open without the black flash the screen normally uses to draw them cleanly. Calmer, but faint traces may stay behind.",
+      "level": "advanced"
+    },
+    "low_pan_rate": {
+      "label": "Slower screen updates when dragging",
+      "help": "When on, the screen redraws less often while you drag a slider or scroll (for example the light slider), which saves battery and looks less jittery on e-ink. Takes effect after KOReader restarts.",
+      "level": "advanced"
+    },
+    "custom_screen_dpi": {
+      "label": "Saved custom screen sharpness value",
+      "help": "A stored number for how dense KOReader thinks the screen is, which decides the size of menus and text in the interface. This only saves the value; it does not apply it. The Kobo's automatic value is right in almost all cases.",
+      "level": "advanced"
+    },
+    "notification_sources_to_show_mask": {
+      "label": "Which small pop-up notes to show",
+      "help": "KOReader shows short notes at the top of the screen, for example when you change a setting with a gesture. This number decides which kinds appear: 0 shows none, 60 is the normal choice, 127 shows all of them.",
+      "example": "Set it to 0 if the little pop-up notes at the top of the screen annoy you.",
+      "level": "advanced"
+    },
+    "fm_rotation_mode": {
+      "label": "Library orientation",
+      "help": "Which way up the library is shown when it opens. The Kobo has no sensor to turn the screen by itself, so this decides it. Not used when 'Keep current rotation' is on.",
+      "level": "advanced",
+      "options": {
+        "0": "Upright (normal)",
+        "1": "Sideways, turned right",
+        "2": "Upside down",
+        "3": "Sideways, turned left"
+      }
+    },
+    "lock_rotation": {
+      "label": "Keep current rotation",
+      "help": "When on, the screen stays the way it is turned when you move between the library and a book, instead of each using its own default.",
+      "level": "advanced"
+    },
+    "imageviewer_rotation_portrait_invert": {
+      "label": "Flip picture viewer turn (upright)",
+      "help": "When a picture is turned sideways to fit while you hold the Kobo upright, this makes it turn the other way.",
+      "level": "advanced"
+    },
+    "imageviewer_rotation_landscape_invert": {
+      "label": "Flip picture viewer turn (sideways)",
+      "help": "Makes a picture that is turned to fit turn the other way when the screen is sideways. It also changes which way a turned sleep picture faces.",
+      "level": "advanced"
+    },
+    "imageviewer_rotate_auto_for_best_fit": {
+      "label": "Turn pictures to fit",
+      "help": "When on, opening a wide picture (for example from a book) turns it sideways automatically so it fills more of the screen.",
+      "level": "advanced"
+    },
+    "autodim_starttime_minutes": {
+      "label": "Dim the light after",
+      "help": "If you do not touch the Kobo for this many minutes, the front light starts to dim. -1 (or unset) turns auto-dimming off. Any touch brings the light back.",
+      "example": "Set it to 5 minutes: if you fall asleep while reading, the light dims after 5 minutes instead of staying bright.",
+      "level": "basic"
+    },
+    "autodim_duration_seconds": {
+      "label": "How slowly it dims",
+      "help": "How many seconds the light takes to fade down to its dimmed level. 0 dims at once.",
+      "example": "Set it to 10 seconds for a gentle fade you barely notice.",
+      "level": "advanced"
+    },
+    "autodim_fraction": {
+      "label": "Dim down to",
+      "help": "How bright the light stays once dimmed, as a share of your normal brightness. 0% turns it fully off.",
+      "example": "20% means a light normally at 50 dims to 10.",
+      "level": "basic"
+    },
+    "autowarmth_activate": {
+      "label": "Change light warmth by time",
+      "help": "Turns on automatic warmth and chooses what drives it: real sunrise and sunset for your location, fixed times you set, or a mix of the two.",
+      "example": "Choose 'By sunrise and sunset' and the light turns warmer by itself as the evening gets darker.",
+      "level": "basic",
+      "options": {
+        "0": "Off",
+        "1": "By sunrise and sunset",
+        "2": "By fixed times",
+        "3": "Mix: whichever is nearer midday",
+        "4": "Mix: whichever is nearer midnight"
+      }
+    },
+    "autowarmth_easy_mode": {
+      "label": "Simple mode",
+      "help": "When on, warmth changes at just a few simple points around sunrise and sunset. Turn it off (expert mode) to fine-tune every step of twilight and the daytime light-off offset.",
+      "level": "advanced"
+    },
+    "autowarmth_location": {
+      "label": "Place name",
+      "help": "Just a name for your location so you recognise it; the times come from the latitude and longitude below.",
+      "example": "Oslo",
+      "level": "basic"
+    },
+    "autowarmth_latitude": {
+      "label": "Latitude (north-south)",
+      "help": "How far north you are, used to work out sunrise and sunset. North is positive. The default is a place in Iceland, so set your own.",
+      "example": "Oslo is about 59.9.",
+      "level": "basic"
+    },
+    "autowarmth_longitude": {
+      "label": "Longitude (east-west)",
+      "help": "How far east you are, used to work out sunrise and sunset. East is positive, west is negative.",
+      "example": "Oslo is about 10.75.",
+      "level": "basic"
+    },
+    "autowarmth_altitude": {
+      "label": "Height above sea level",
+      "help": "Your height above the sea in metres. It changes the sunrise and sunset times only very slightly, so a rough guess is fine.",
+      "example": "Oslo city centre is about 20 m.",
+      "level": "advanced"
+    },
+    "autowarmth_timezone": {
+      "label": "Time zone (hours from UTC)",
+      "help": "How many hours your clock is ahead of UTC. The Kobo usually works this out and saves it itself.",
+      "example": "Norway is +1 in winter and +2 in summer.",
+      "level": "advanced"
+    },
+    "autowarmth_control_warmth": {
+      "label": "Change light colour",
+      "help": "When on, the automatic schedule makes the front light warmer at night and cooler during the day.",
+      "level": "basic"
+    },
+    "autowarmth_control_nightmode": {
+      "label": "Switch night mode automatically",
+      "help": "When on, the schedule also turns night mode (white text on black) on late at night and off again in the morning.",
+      "level": "basic"
+    },
+    "autowarmth_hide_nightmode_warning": {
+      "label": "Hide night mode warning",
+      "help": "When you switch night mode by hand while the schedule controls it, KOReader warns that the schedule may switch it back. Turn this on to stop that warning.",
+      "level": "advanced"
+    },
+    "autowarmth_fl_off_during_day": {
+      "label": "Light off in daytime",
+      "help": "When on, the front light switches off by itself between sunrise and sunset, when you usually do not need it, and comes back on in the evening.",
+      "example": "Read on the train in the morning with the light off automatically, saving battery.",
+      "level": "basic"
+    },
+    "autowarmth_fl_off_during_day_offset_s": {
+      "label": "Light-off time shift",
+      "help": "Moves the daytime light-off period a little: a positive value keeps the light on for longer after sunrise and switches it on earlier before sunset. Stored in seconds; only used in expert mode.",
+      "example": "1800 seconds (30 minutes) keeps the light on until half an hour after sunrise.",
+      "level": "advanced"
+    }
+  }
+}

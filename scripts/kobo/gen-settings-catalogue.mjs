@@ -17,13 +17,22 @@
 //   node scripts/kobo/gen-settings-catalogue.mjs           # rewrite
 //   node scripts/kobo/gen-settings-catalogue.mjs --check   # exit 1 if stale
 
-import { readFileSync, writeFileSync } from 'node:fs'
+import { readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '../..')
 const src = JSON.parse(readFileSync(join(root, 'docs/kobo/koreader-settings.json'), 'utf8'))
 const TARGET = join(root, 'src/features/books/koboSettingsCatalogue.ts')
+// Plain-language help for every setting and section (docs/kobo/settings-help/*.json),
+// written from the KOReader source for a reader, not a developer.
+const HELP_DIR = join(root, 'docs/kobo/settings-help')
+const HELP = { groups: {}, settings: {} }
+for (const f of readdirSync(HELP_DIR).filter(f => f.endsWith('.json')).sort()) {
+  const h = JSON.parse(readFileSync(join(HELP_DIR, f), 'utf8'))
+  Object.assign(HELP.groups, h.groups)
+  Object.assign(HELP.settings, h.settings)
+}
 
 const SKIP_KEYS = new Set([
   'frontlight_intensity', 'frontlight_warmth', 'is_frontlight_on',
@@ -31,6 +40,9 @@ const SKIP_KEYS = new Set([
   'home_dir', 'start_with',
   // could leave the owner unable to type or turn pages, or make KOReader switch Wi-Fi on by itself
   'virtual_keyboard_enabled', 'page_turns_disable_tap', 'page_turns_disable_swipe', 'wifi_enable_action',
+  // stored but read by nothing, or a sum of flags no one can type: offering them only confuses
+  'custom_screen_dpi', 'kopt_detect_indent', 'notification_sources_to_show_mask',
+  'pt:show_progress_in_mosaic', 'pt:opened_at_top_of_library',
 ])
 /** Secrets never leave the device, not even as a read-back value. */
 const SECRET = /password|token|secret|api_?key/i
@@ -86,10 +98,21 @@ function clean(s, group) {
   if (o.options ?? s.options) def.options = (o.options ?? s.options).filter(x => x.value !== null && scalar(x.value)).map(x => ({ value: x.value, label: x.label }))
   for (const k of ['min', 'max', 'step', 'unit']) if (s[k] !== undefined && s[k] !== null) def[k] = s[k]
   if (def.type === 'string') def.maxLength = 500
-  const stringDefault = s.type === 'string' && typeof s.absent_means === 'string' ? `Default: ${s.absent_means}. ` : ''
-  const help = (o.help ?? s.notes) ? `${stringDefault}${o.help ?? s.notes}` : stringDefault.trim()
-  if (help) def.help = help.length > 240 ? `${help.slice(0, 237).trimEnd()}…` : help
   if (MANAGED.has(s.key)) def.managed = true
+  return withHelp(def, o)
+}
+
+/** The plain-language label, help, example, level and option names; every setting must have help. */
+function withHelp(def, o = {}) {
+  const h = HELP.settings[def.key]
+  if (!h || !h.help) throw new Error(`no help for ${def.key} — add it to docs/kobo/settings-help/`)
+  if (h.label && !o.label) def.label = h.label
+  def.help = h.help
+  if (h.example) def.example = h.example
+  def.level = h.level === 'basic' ? 'basic' : 'advanced'
+  if (h.options && def.options && !o.options) {
+    def.options = def.options.map(x => ({ ...x, label: h.options[String(x.value)] ?? x.label }))
+  }
   return def
 }
 
@@ -101,7 +124,13 @@ for (const g of src.groups) {
     .filter(s => s.type !== 'enum' || (s.options ?? []).length > 0)
     .map(s => clean(s, g))
   const id = GROUP_ID[g.id] ?? g.id
-  if (settings.length) groups.push({ id, label: GROUP_LABEL[id] ?? g.label.replace(/\s*\(.*\)\s*$/, '').replace(/ — .*$/, ''), settings })
+  if (settings.length) groups.push(withGroupHelp({ id, label: GROUP_LABEL[id] ?? g.label.replace(/\s*\(.*\)\s*$/, '').replace(/ — .*$/, ''), settings }))
+}
+
+function withGroupHelp(g) {
+  const h = HELP.groups[g.id]
+  if (!h) throw new Error(`no help for group ${g.id}`)
+  return { ...g, label: h.title ?? g.label, summary: h.summary, affects: h.affects }
 }
 
 // Project: Title (its own SQLite config; takes effect after a restart).
@@ -110,7 +139,7 @@ const PT_MODES = [
   { value: 'list_only_meta', label: 'Details list' }, { value: 'list_no_meta', label: 'File names' },
 ]
 const pt = src.project_title.settings
-  .filter(s => s.key !== 'config_version' && s.key !== 'series_mode' && ['bool', 'int', 'enum'].includes(s.type))
+  .filter(s => s.key !== 'config_version' && s.key !== 'series_mode' && ['bool', 'int', 'enum'].includes(s.type) && !SKIP_KEYS.has(`pt:${s.key}`))
   .map(s => {
     const def = {
       key: `pt:${s.key}`, label: s.label, path: 'Project: Title → Settings', type: s.type,
@@ -120,9 +149,11 @@ const pt = src.project_title.settings
     if (s.type === 'enum') def.options = PT_MODES
     if (s.min !== undefined) def.min = s.min
     if (s.max !== undefined) def.max = s.max
-    return def
+    return withHelp(def)
   })
-groups.splice(2, 0, { id: 'project_title', label: 'Library (Project: Title)', settings: pt })
+groups.splice(2, 0, withGroupHelp({ id: 'project_title', label: 'Library (Project: Title)', settings: pt }))
+const unused = Object.keys(HELP.settings).filter(k => !groups.some(g => g.settings.some(d => d.key === k)) && !SKIP_KEYS.has(k))
+if (unused.length) console.warn(`help for settings not in the catalogue: ${unused.join(', ')}`)
 
 const total = groups.reduce((t, g) => t + g.settings.length, 0)
 const body = `// GENERATED by scripts/kobo/gen-settings-catalogue.mjs from docs/kobo/koreader-settings.json —
@@ -147,17 +178,32 @@ export interface SettingDef {
   maxLength?: number
   /** When the Kobo starts using a new value. */
   effect: 'immediate' | 'next_sleep' | 'next_book' | 'restart'
-  help?: string
+  /** What it does, in everyday words (docs/kobo/settings-help). */
+  help: string
+  /** A concrete everyday example, when one helps. */
+  example?: string
+  /** basic = an ordinary reader may want it; advanced = niche or technical. */
+  level: 'basic' | 'advanced'
   /** Set by the plugin itself (e.g. the sleep image folder), never from the app directly. */
   managed?: boolean
   source: string
 }
 
-export interface SettingGroup { id: string; label: string; settings: SettingDef[] }
+export interface SettingGroup {
+  id: string
+  label: string
+  /** What the section is about. */
+  summary: string
+  /** What you notice on the Kobo when you change something here. */
+  affects: string
+  settings: SettingDef[]
+}
 
 export const SETTING_GROUPS: SettingGroup[] = [
 ${groups.map(g => `  {
     id: ${JSON.stringify(g.id)}, label: ${JSON.stringify(g.label)},
+    summary: ${JSON.stringify(g.summary)},
+    affects: ${JSON.stringify(g.affects)},
     settings: [
 ${g.settings.map(d => `      ${JSON.stringify(d)},`).join('\n')}
     ],

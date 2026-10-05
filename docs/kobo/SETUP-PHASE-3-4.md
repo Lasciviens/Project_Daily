@@ -171,6 +171,44 @@ on the website fills in after this sync: its values, its menus, the battery.
 - Select a sentence → **Ask Lasci's AI** → Explain: an answer appears (Wi-Fi on).
 - 🛠 → Lasci's Board → **Capture a note…** → Task: it appears in Tasks · Inbox.
 
+## 8. Plugin 1.2 — storage, the full reading menu, sizes and subjects (round 3)
+
+**Supabase (owner):** merge the PR, run `supabase/migrations/128_books_browse.sql`, **then**
+redeploy **`kobo-sync`** (Enforce JWT Verification **OFF**). Order matters: the new
+`kobo-sync` reads the columns 128 adds, so deploying it first makes every sync fail.
+
+**What 1.2 adds:** the Kobo's storage (total and free) with every sync; each book's file
+size and its subjects (read from the cover browser's book-info cache, read-only); the
+whole "While reading" menu (1.1 sent it before KOReader had built it, so most items had
+no name), sent again once after the update.
+
+**On the Kobo first:** Wi-Fi on, KOReader open in the file browser, SSH server on.
+
+**Mac block** (paste as-is):
+
+````
+Execute only. Do not research and do not change anything else. Run the steps in order;
+if any command fails, STOP and paste me the output.
+
+```bash
+set -euo pipefail
+cd ~/Project_Daily-fresh && git fetch -q origin main && git switch -q --detach origin/main && git log --oneline -1
+B=~/KoboBackups/$(date +%F_%H-%M-%S); mkdir -p "$B"
+scp -q -r kobo:/mnt/onboard/.adds/koreader/settings "$B/" && echo "settings backed up to $B"
+bash scripts/kobo/deploy-plugin.sh
+ssh kobo 'cd /mnt/onboard/.adds/koreader/plugins/lascisboard.koplugin && grep -m1 "VERSION =" main.lua && ls'
+```
+Paste me all the output.
+````
+
+**Then on the Kobo:** exit KOReader and open it again. Open any book, wait a moment,
+go back to the library, then 🛠 → **Lasci's Board** → **Sync now**.
+
+**Check:**
+- Books → Kobo → Overview: the Storage card shows free space and what fills it.
+- Books → Kobo → Menu order → While reading: every item has a name, no warning.
+- Books → Library → Subjects: subjects from your EPUB files appear.
+
 ## Undo
 
 - Our plugin: delete `.adds/koreader/plugins/lascisboard.koplugin` (and

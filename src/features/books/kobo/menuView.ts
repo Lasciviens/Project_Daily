@@ -64,3 +64,37 @@ export function inside(order: Record<string, string[]>, item: string, target: st
   }
   return walk(item)
 }
+
+/**
+ * The rows to draw: visible items, with separators only BETWEEN visible
+ * items (a separator next to a hidden item, at an edge or doubled is left
+ * out). Keeps each row's index in the full list for moves.
+ */
+export function rowsToShow(list: string[], labels: Record<string, string>, order: Record<string, string[]>): { id: string; index: number }[] {
+  const visible = new Set(visibleItems(list, labels, order))
+  const rows: { id: string; index: number }[] = []
+  list.forEach((id, index) => {
+    if (!visible.has(id)) return
+    if (id === MENU_SEPARATOR) {
+      const last = rows[rows.length - 1]
+      if (!last || last.id === MENU_SEPARATOR) return
+    }
+    rows.push({ id, index })
+  })
+  while (rows.length && rows[rows.length - 1].id === MENU_SEPARATOR) rows.pop()
+  return rows
+}
+
+/**
+ * Share of a side's menu items (in its tabs, separators left out) the Kobo
+ * sent a name for. A low share means the report was taken before KOReader
+ * had built the menu (plugin 1.1 inside a book) — editing it would be
+ * guesswork, so the app waits for a full report.
+ */
+export function labelCoverage(tabs: string[], labels: Record<string, string>, order: Record<string, string[]>): number {
+  const ids = tabs.flatMap(t => order[t] ?? []).filter(id => id !== MENU_SEPARATOR)
+  if (ids.length === 0) return 0
+  return ids.filter(id => labels[id] !== undefined || (order[id]?.length ?? 0) > 0).length / ids.length
+}
+
+export const MIN_LABEL_COVERAGE = 0.6

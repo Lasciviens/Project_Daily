@@ -92,4 +92,21 @@ eq(s.appliedPatch({ status: 'bogus', rating: 9 }), {}, 'junk ignored')
 // After the device confirms, the next sync reads the same values back: no flip.
 const synced = { ...base, read_status: 'paused', device_status: 'abandoned', device_rating: 3 }
 eq(s.bookPatch(synced, { md5, status: 'abandoned', rating: 3 }), {}, 'paused stays paused after the push round trip')
+
+// ── round 3: news has no status; sizes and subjects ──
+const newsRow = s.newBookRow({ md5, kind: 'news', status: 'reading', rating: 5, percent: 0.5, last_open: now - 60 })
+eq([newsRow.read_status, newsRow.rating, newsRow.started_at, newsRow.finished_at], [null, null, null, null], 'a news row never gets a status, rating or read dates')
+const newsExisting = { ...newsRow, read_status: null, device_status: null }
+const np = s.bookPatch(newsExisting, { md5, kind: 'news', status: 'complete', rating: 4, percent: 1, last_open: now })
+ok(!('read_status' in np) && !('rating' in np) && !('finished_at' in np), 'a device status or rating never reaches a news row')
+eq(np.progress_pct, 100, 'news progress still follows the device')
+eq(s.splitKeywords('Fantasy\nMagic; fantasy, Wizards ,'), ['Fantasy', 'Magic', 'Wizards'], 'keywords split and deduplicated')
+eq(s.splitKeywords(null), [], 'no keywords')
+const sized = s.newBookRow({ md5, size: 1234567, keywords: 'History' })
+eq([sized.file_size, sized.subjects], [1234567, ['History']], 'size and subjects on a new row')
+const withSubjects = { ...sized, subjects: ['Mine'] }
+ok(!('subjects' in s.bookPatch(withSubjects, { md5, keywords: 'Other' })), 'subjects the owner has are kept')
+eq(s.bookPatch({ ...sized, subjects: [] }, { md5, keywords: 'Other' }).subjects, ['Other'], 'empty subjects are filled')
+eq(s.bookPatch(sized, { md5, size: 99 }).file_size, 99, 'size follows the device')
+ok(!('file_size' in s.bookPatch(sized, { md5, size: 1234567 })), 'same size, no write')
 console.log(`verify-reading-sync: ${n} assertions passed`)

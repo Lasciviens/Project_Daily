@@ -40,6 +40,10 @@ export interface SyncBook {
   on_device?: boolean
   /** 'news' for a News Downloader issue (the plugin knows its folder); books leave it out. */
   kind?: 'book' | 'news' | string | null
+  /** File size in bytes (plugin 1.2). */
+  size?: number | null
+  /** The file's subjects/keywords, newline- or comma-separated (plugin 1.2, from KOReader's book info). */
+  keywords?: string | null
 }
 
 export interface SyncBody {
@@ -76,7 +80,8 @@ export interface BookRowLike {
   page_count: number | null
   file_path: string | null
   kobo_content_id: string | null
-  read_status: ReadStatus
+  /** null for news (migration 128's trigger enforces it too). */
+  read_status: ReadStatus | null
   rating: number | null
   started_at: string | null
   finished_at: string | null
@@ -88,6 +93,8 @@ export interface BookRowLike {
   device_rating: number | null
   on_device: boolean
   kind: BookKind
+  file_size: number | null
+  subjects: string[]
 }
 
 const str = (v: unknown, max = 500): string | null => {
@@ -168,6 +175,22 @@ export function titleFromPath(path: string | null | undefined): string | null {
   return base || null
 }
 
+/** "Fantasy\nMagic; Fiction" → ["Fantasy", "Magic", "Fiction"]: trimmed, deduplicated, at most 12. */
+export function splitKeywords(v: unknown): string[] {
+  if (typeof v !== 'string') return []
+  const out: string[] = []
+  const seen = new Set<string>()
+  for (const raw of v.split(/[\n;,]+/)) {
+    const t = raw.replace(/\s+/g, ' ').trim().slice(0, 60)
+    const k = t.toLowerCase()
+    if (!t || seen.has(k)) continue
+    seen.add(k)
+    out.push(t)
+    if (out.length >= 12) break
+  }
+  return out
+}
+
 const numOrNull = (v: unknown): number | null => (v === null || v === undefined || v === '' ? null : Number(v))
 
 const epochIso = (sec: number | null | undefined): string | null =>
@@ -180,10 +203,12 @@ const epochIso = (sec: number | null | undefined): string | null =>
  */
 export function newBookRow(b: SyncBook): Omit<BookRowLike, never> & { title: string } {
   const pct = toPercent(b.percent)
+  const news = b.kind === 'news' || isNewsPath(b.path)
   const mapped = mapDeviceStatus(b.status)
-  const status: ReadStatus = mapped ?? (pct && pct > 0 ? 'reading' : 'want')
+  // News never has a status, rating or read dates — it is only news.
+  const status: ReadStatus | null = news ? null : mapped ?? (pct && pct > 0 ? 'reading' : 'want')
   const lastOpen = epochIso(b.last_open)
-  const rating = int(b.rating, 1, 5)
+  const rating = news ? null : int(b.rating, 1, 5)
   return {
     title: str(b.title) ?? titleFromPath(b.path ?? b.content_id) ?? 'Untitled',
     author: cleanAuthors(b.authors),
@@ -208,7 +233,9 @@ export function newBookRow(b: SyncBook): Omit<BookRowLike, never> & { title: str
     device_rating: rating,
     // A book first seen through old reading statistics may be long gone from the Kobo.
     on_device: b.on_device === true,
-    kind: b.kind === 'news' || isNewsPath(b.path) ? 'news' : 'book',
+    kind: news ? 'news' : 'book',
+    file_size: int(b.size, 0, 1e11),
+    subjects: splitKeywords(b.keywords),
   }
 }
 
@@ -238,7 +265,11 @@ export function bookPatch(existing: BookRowLike, b: SyncBook): Partial<BookRowLi
   if (next.read_seconds !== null && next.read_seconds !== numOrNull(existing.read_seconds)) patch.read_seconds = next.read_seconds
   if (next.read_pages !== null && next.read_pages !== numOrNull(existing.read_pages)) patch.read_pages = next.read_pages
   if (!existing.on_device && b.on_device === true) patch.on_device = true
+  if (next.file_size !== null && next.file_size !== numOrNull(existing.file_size)) patch.file_size = next.file_size
+  if ((!existing.subjects || existing.subjects.length === 0) && next.subjects.length > 0) patch.subjects = next.subjects
   // kind is set once, when the row is made: the owner may move a book out of News in the app.
+  // News never takes a status or rating from the device.
+  if (existing.kind === 'news') return patch
 
   const incoming = str(b.status, 20)
   if (incoming && incoming !== existing.device_status) {

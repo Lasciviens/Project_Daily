@@ -1,0 +1,728 @@
+{
+  "groups": {
+    "file_browser": {
+      "title": "Library screen",
+      "summary": "How the Kobo's list of books and folders looks and behaves, and where certain files are saved.",
+      "affects": "You will see the change on the Kobo's home screen with your books and folders, usually the next time the list refreshes."
+    },
+    "defaults_reflowable": {
+      "title": "Page layout for new books",
+      "summary": "Starting page layout (margins, text size, spacing, contrast) for normal ebooks such as EPUB.",
+      "affects": "Only books you open for the first time after the change start with these values; books you have already opened keep their own layout."
+    },
+    "fonts_typography": {
+      "title": "Fonts and word breaking",
+      "summary": "Which fonts new ebooks use and how words are split and lined up at the ends of lines.",
+      "affects": "Most of these only change books opened for the first time after the change; books you have already opened keep their own settings."
+    },
+    "defaults_fixed": {
+      "title": "PDFs and comics",
+      "summary": "Starting view for PDFs, scanned books and comics, whose pages have a fixed layout.",
+      "affects": "Only PDFs and comics opened for the first time after the change start this way; normal ebooks are not affected, and files you have already opened keep their own view."
+    }
+  },
+  "settings": {
+    "shorten_home_dir": {
+      "label": "Show home folder as \"Home\"",
+      "help": "When on, the top of the library screen shows your home folder simply as \"Home\" instead of its full storage path. Purely cosmetic.",
+      "example": "On: the title bar reads \"Home\" instead of \"/mnt/onboard\".",
+      "level": "advanced"
+    },
+    "lock_home_folder": {
+      "help": "When on, you cannot go up out of your home folder in the library screen, so you stay among your books and never wander into system folders.",
+      "example": "Turn it on if you keep ending up in strange system folders by tapping \"..\" by accident.",
+      "level": "basic"
+    },
+    "file_ask_to_open": {
+      "label": "Ask before opening a book",
+      "help": "When on, tapping a book shows a small question first (open, or other actions) instead of opening it straight away.",
+      "example": "Useful if you often open books by accident while scrolling.",
+      "level": "basic"
+    },
+    "show_parent_folder": {
+      "label": "Show \"go up\" entry in folders",
+      "help": "When on, each folder starts with a \"..\" entry you can tap to go back up one folder. When off, that entry is hidden and you go back another way.",
+      "level": "advanced"
+    },
+    "collection_show_mark": {
+      "label": "Mark books that are in a collection",
+      "help": "When on, books that you have added to a collection (such as Favorites) get a small mark in the library list.",
+      "level": "basic"
+    },
+    "show_flat_view": {
+      "label": "Show all books in one list",
+      "help": "When on, a folder shows every book from all its subfolders together in one long list, without the folders. May need a restart of the reader app to take effect.",
+      "example": "On: if your books are split into author folders, you see all of them at once on the home screen.",
+      "level": "basic"
+    },
+    "show_hidden": {
+      "help": "When on, the library also shows hidden files and folders (names starting with a dot), which are normally system files. Best left off. May need a restart to take effect.",
+      "level": "advanced"
+    },
+    "show_unsupported": {
+      "label": "Show files that cannot be opened",
+      "help": "When on, the library also lists files the Kobo cannot read (for example .txt notes from other apps or random downloads). When off, only readable books are shown. May need a restart to take effect.",
+      "level": "advanced"
+    },
+    "collate": {
+      "label": "Sort books by",
+      "help": "Chooses the order of books in the library list. The new order shows the next time the list refreshes.",
+      "example": "Choose \"Last read\" to keep the books you are reading now at the top.",
+      "level": "basic",
+      "options": {
+        "strcoll": "Name",
+        "natural": "Name (numbers in order, so 2 before 10)",
+        "access": "Last read",
+        "date": "Date the file changed",
+        "size": "File size",
+        "type": "File type",
+        "percent_unopened_first": "Progress, unread first",
+        "percent_unopened_last": "Progress, unread last",
+        "percent_natural": "Progress, unread and finished last",
+        "title": "Title",
+        "authors": "Author",
+        "series": "Series",
+        "keywords": "Keywords",
+        "rating": "Your rating"
+      }
+    },
+    "reverse_collate": {
+      "label": "Reverse sort order",
+      "help": "Flips the library order upside down, for example Z to A, or oldest read first.",
+      "level": "basic"
+    },
+    "collate_mixed": {
+      "label": "Mix folders in with books",
+      "help": "When off, folders are always listed first and books after them. When on, folders and books are sorted together in one list.",
+      "level": "advanced"
+    },
+    "items_per_page": {
+      "label": "Books per page (list view)",
+      "help": "How many lines the library list shows on one page when it is in the plain list view (without covers). More lines means smaller text per line. Does not change the cover view.",
+      "example": "Set it to 10: fewer, larger entries per page, easier to tap.",
+      "level": "basic"
+    },
+    "items_font_size": {
+      "label": "Text size in list view",
+      "help": "Text size of book names in the plain list view (without covers). If not set, the Kobo picks a size to fit the number of books per page.",
+      "level": "advanced"
+    },
+    "items_multilines_show_more_text": {
+      "label": "Shrink text to fit long names",
+      "help": "When on, long book names in the plain list view use a smaller text so more of the name fits, instead of being cut off.",
+      "level": "advanced"
+    },
+    "show_file_in_bold": {
+      "label": "Which books are shown in bold",
+      "help": "In the plain list view, chooses which books are highlighted in bold. If not set, books you have never opened are shown in bold, so new arrivals stand out.",
+      "level": "advanced",
+      "options": {
+        "opened": "Books you have opened",
+        "false": "No books in bold"
+      }
+    },
+    "keyvalues_per_page": {
+      "label": "Lines per page in info screens",
+      "help": "How many lines fit on one page in information screens such as book details and some settings lists, when the Kobo is held upright. Higher means smaller text. If not set, the Kobo picks a size for its screen.",
+      "level": "advanced"
+    },
+    "keyvalues_per_page_landscape": {
+      "label": "Lines per page in info screens (sideways)",
+      "help": "Same as the line above, but for when the screen is turned sideways. Your Kobo has no rotation sensor, so this only matters if you rotate the screen by hand.",
+      "level": "advanced"
+    },
+    "download_dir": {
+      "label": "Folder for downloaded books",
+      "help": "The folder where books downloaded from an online catalogue are saved. If not set, the Kobo uses the last folder you picked. Must be a folder path on the Kobo.",
+      "level": "advanced"
+    },
+    "inbox_dir": {
+      "label": "Folder for books from Calibre",
+      "help": "The folder where books sent wirelessly from the Calibre program on a computer are saved. Only matters if you use Calibre's wireless sending.",
+      "level": "advanced"
+    },
+    "screenshot_dir": {
+      "help": "The folder where screenshots you take on the Kobo are saved. If not set, they go into a screenshots folder inside the reader app's own folder.",
+      "level": "advanced"
+    },
+    "copt_rotation_mode": {
+      "label": "Screen rotation",
+      "help": "Which way new books are shown on the screen. Your Kobo has no rotation sensor, so this is the only way to read sideways or upside down.",
+      "example": "Choose 90 degrees to read a new book with the Kobo held sideways.",
+      "level": "advanced",
+      "options": {
+        "0": "Upright (normal)",
+        "1": "Sideways, turned right",
+        "2": "Upside down",
+        "3": "Sideways, turned left"
+      }
+    },
+    "copt_visible_pages": {
+      "label": "Two pages side by side",
+      "help": "When on, the text is shown as two pages next to each other, like an open book. Only works when the screen is turned sideways and in page mode.",
+      "level": "advanced",
+      "options": {
+        "1": "Off",
+        "2": "On"
+      }
+    },
+    "copt_sync_t_b_page_margins": {
+      "label": "Same top and bottom margin",
+      "help": "When on, the top and bottom margins are kept equal, so changing one changes the other and the text sits centred on the page.",
+      "level": "basic",
+      "options": {
+        "0": "Off (set separately)",
+        "1": "On (kept equal)"
+      }
+    },
+    "copt_t_page_margin": {
+      "help": "Empty space above the text on each page. Higher values give a wider white strip at the top and fewer lines per page.",
+      "example": "Set it to 30: a calmer page with more space at the top.",
+      "level": "basic"
+    },
+    "copt_b_page_margin": {
+      "help": "Empty space below the text on each page. Higher values give a wider white strip at the bottom and fewer lines per page.",
+      "level": "basic"
+    },
+    "copt_view_mode": {
+      "label": "Pages or scrolling",
+      "help": "Page splits the book into separate pages you turn one by one, like paper. Continuous lets you scroll the text up and down like a web page.",
+      "level": "basic",
+      "options": {
+        "0": "Pages",
+        "1": "Continuous scrolling"
+      }
+    },
+    "copt_block_rendering_mode": {
+      "label": "How closely to follow the book's design",
+      "help": "Controls how much of the publisher's page design is used. \"Book\" is a safe middle ground; \"Web\" follows the design most closely but can leave odd gaps or cut-off text; \"Flat\" and \"Legacy\" are simpler and plainer.",
+      "level": "advanced",
+      "options": {
+        "0": "Legacy (oldest, simplest)",
+        "1": "Flat (simple, tidy pages)",
+        "2": "Book (recommended)",
+        "3": "Web (closest to the design)"
+      }
+    },
+    "copt_render_dpi": {
+      "label": "Size of pictures and fixed sizes",
+      "help": "Scales pictures and anything the book sets to a fixed size (in centimetres or pixels). Higher values make pictures and such elements larger; \"off\" ignores fixed sizes. Normal text size is set separately.",
+      "example": "Set 167 if pictures in your books look tiny.",
+      "level": "advanced"
+    },
+    "copt_line_spacing": {
+      "help": "Space between lines of text, as a percentage. Above 100% spreads the lines apart; below 100% packs them closer together.",
+      "example": "Set line spacing to 120%: lines sit a little further apart, easier on tired eyes.",
+      "level": "basic"
+    },
+    "copt_font_size": {
+      "label": "Text size",
+      "help": "The starting text size for new books. Higher numbers mean bigger letters and fewer words per page.",
+      "example": "Set 26 instead of 22 for noticeably larger, easier-to-read text.",
+      "level": "basic"
+    },
+    "copt_word_expansion": {
+      "label": "Letter spacing to fill lines",
+      "help": "When a line is stretched to reach both edges and the gaps between words get too wide, this allows a little extra space between letters instead. 0 means never; higher values allow more.",
+      "example": "Set 5%: fewer big holes between words on narrow lines.",
+      "level": "advanced"
+    },
+    "copt_cjk_width_scaling": {
+      "label": "Width of Chinese/Japanese/Korean characters",
+      "help": "Makes Chinese, Japanese and Korean characters a bit wider, as a percentage. Has no effect on books in other languages.",
+      "level": "advanced"
+    },
+    "copt_font_gamma": {
+      "label": "Text darkness",
+      "help": "How dark and crisp the text looks. Higher values make letters darker and bolder-looking; lower values make them lighter and greyer.",
+      "example": "Choose 1.45 if text looks a bit faint in daylight.",
+      "level": "basic"
+    },
+    "copt_font_base_weight": {
+      "label": "Text thickness",
+      "help": "Makes all letters thinner or thicker. 0 is normal; positive values thicken the letters (up to bold), negative values make them thinner. Works best with fonts that come in several weights.",
+      "example": "Set +0.5: slightly heavier letters that are easier to read on e-ink.",
+      "level": "basic"
+    },
+    "copt_font_hinting": {
+      "label": "Letter sharpening",
+      "help": "Adjusts letter shapes slightly so they line up with the screen's dots and look sharper. \"Auto\" usually looks best; differences are small.",
+      "level": "advanced",
+      "options": {
+        "0": "Off",
+        "1": "Use the font's own sharpening",
+        "2": "Automatic (recommended)"
+      }
+    },
+    "copt_font_kerning": {
+      "label": "Spacing between letter pairs",
+      "help": "Kerning is fine-tuning the gap between certain letter pairs (like \"AV\") so words look even. \"Best\" looks nicest and joins letters like \"fi\" together; \"off\" is plainest.",
+      "level": "advanced",
+      "options": {
+        "0": "Off",
+        "1": "Fast",
+        "2": "Good",
+        "3": "Best (recommended)"
+      }
+    },
+    "copt_status_line": {
+      "label": "Extra status line at the top",
+      "help": "When on, a thin line with information such as page and time is shown at the top of the page. The normal status bar at the bottom is separate and not affected.",
+      "level": "advanced",
+      "options": {
+        "1": "Off",
+        "0": "On"
+      }
+    },
+    "copt_embedded_css": {
+      "label": "Use the publisher's styling",
+      "help": "When on, the book's own design (indents, headings, spacing chosen by the publisher) is used. When off, books get a plain, uniform look.",
+      "example": "Turn it off if a publisher's layout has tiny text or strange spacing you cannot fix otherwise.",
+      "level": "basic",
+      "options": {
+        "0": "Off (plain look)",
+        "1": "On (publisher's design)"
+      }
+    },
+    "copt_embedded_fonts": {
+      "label": "Use the book's own fonts",
+      "help": "When on, fonts that come inside the book are used. When off, your chosen font is used for everything.",
+      "example": "Turn it off if you want every book in the same font you like.",
+      "level": "basic",
+      "options": {
+        "0": "Off (always my font)",
+        "1": "On (book's fonts)"
+      }
+    },
+    "copt_smooth_scaling": {
+      "label": "Picture quality",
+      "help": "How pictures inside the book are resized. \"Best\" looks smoother but is a little slower; \"Fast\" is quicker but pictures can look rough.",
+      "level": "advanced",
+      "options": {
+        "0": "Fast",
+        "1": "Best"
+      }
+    },
+    "copt_nightmode_images": {
+      "label": "Invert pictures in night mode",
+      "help": "Only matters when night mode (white text on black) is on. When on, pictures are inverted too so they match the dark page; turn it off if pictures look wrong, such as photos or diagrams.",
+      "level": "advanced",
+      "options": {
+        "0": "Off (keep pictures as they are)",
+        "1": "On (invert pictures)"
+      }
+    },
+    "copt_overlap_lines": {
+      "label": "Lines repeated when scrolling",
+      "help": "Only in continuous scrolling with page overlap turned on: how many lines from the previous screen are repeated at the top of the next one, so you do not lose your place.",
+      "level": "advanced"
+    },
+    "copt_css": {
+      "label": "Default book style",
+      "help": "The basic style sheet (a set of layout rules) used for books that have no style of their own chosen yet. Leave it empty unless you know which style you want.",
+      "level": "advanced"
+    },
+    "copt_fb2_css": {
+      "label": "Default style for FB2 books",
+      "help": "Same as the default book style, but only for books in the FB2 format, which is common for Russian ebooks. Not relevant for EPUB books.",
+      "level": "advanced"
+    },
+    "txt_preformatted": {
+      "label": "Plain text files: auto-detect layout",
+      "help": "Only for plain .txt files. If not set, each line of the file is shown exactly as written. When auto-detect is on, the Kobo tries to find paragraphs and headings to make the text read like a book.",
+      "level": "advanced",
+      "options": {
+        "0": "Auto-detect layout on"
+      }
+    },
+    "cre_font": {
+      "label": "Default font",
+      "help": "The font new books start with. Enter the font name exactly as it appears in the Kobo's font menu. If empty, Noto Serif is used.",
+      "example": "Set it to \"Literata\" to read every new book in Literata.",
+      "level": "basic"
+    },
+    "fallback_font": {
+      "help": "The font used for characters your main font does not have, for example Chinese or rare symbols. Usually best left as it is.",
+      "level": "advanced"
+    },
+    "monospace_font": {
+      "label": "Font for computer code",
+      "help": "The fixed-width font (every letter the same width) used for computer code or typewriter-style text in books.",
+      "level": "advanced"
+    },
+    "cre_font_family_ignore_font_names": {
+      "label": "Prefer my fonts over publisher font names",
+      "help": "Some books ask for a specific named font before a general font type. When on, those names are ignored so the fonts you assigned to each font type are always used.",
+      "level": "advanced"
+    },
+    "font_menu_use_font_face": {
+      "label": "Show font names in their own font",
+      "help": "When on, each font in the font menu is written in that font, so you can preview how it looks. Changes the menu only, not the book.",
+      "level": "basic"
+    },
+    "font_menu_sort_by_recently_selected": {
+      "label": "Recently used fonts first",
+      "help": "When on, the font menu lists the fonts you picked most recently at the top instead of alphabetically.",
+      "level": "basic"
+    },
+    "additional_fallback_fonts": {
+      "label": "Use extra backup fonts",
+      "help": "When on, the Kobo also tries other installed fonts for characters missing from your main and fallback font, so fewer empty boxes appear in unusual text.",
+      "level": "advanced"
+    },
+    "cre_adjusted_fallback_font_sizes": {
+      "label": "Match size of backup fonts",
+      "help": "When on, characters drawn with a backup font are resized to match the main text, so they do not look too big or too small.",
+      "level": "advanced"
+    },
+    "cre_monospace_scaling": {
+      "label": "Size of computer-code text",
+      "help": "Makes fixed-width text (such as computer code) larger or smaller compared to the rest, as a percentage.",
+      "level": "advanced"
+    },
+    "hyphenation": {
+      "label": "Split long words at line ends",
+      "help": "Hyphenation means breaking a word with a hyphen at the end of a line. When on, lines are more even with fewer big gaps between words; when off, words are never split.",
+      "example": "On: \"reading\" may become \"read-\" / \"ing\" across two lines.",
+      "level": "basic"
+    },
+    "hyph_left_hyphen_min": {
+      "label": "Minimum letters before a break",
+      "help": "Only when splitting words is on: the fewest letters that must stay on the first line before the hyphen. Higher values mean fewer, longer splits. If not set, the book language's usual rule is used.",
+      "example": "Set 3: \"a-bout\" will never happen, only splits like \"abo-ut\" or later.",
+      "level": "advanced"
+    },
+    "hyph_right_hyphen_min": {
+      "label": "Minimum letters after a break",
+      "help": "Only when splitting words is on: the fewest letters that must move to the next line after the hyphen. Higher values avoid short leftovers. If not set, the book language's usual rule is used.",
+      "level": "advanced"
+    },
+    "hyph_trust_soft_hyphens": {
+      "label": "Use the book's own split points",
+      "help": "Some books mark exactly where words may be split. When on, those marks are used first, and the Kobo's own rules only for words without marks.",
+      "level": "advanced"
+    },
+    "hyph_force_algorithmic": {
+      "label": "Split words by general rules",
+      "help": "When on, words are split using simple general rules instead of the language's dictionary of split points. Useful only when no dictionary exists for the book's language.",
+      "level": "advanced"
+    },
+    "hyph_soft_hyphens_only": {
+      "label": "Only use the book's own split points",
+      "help": "When on, words are split only where the book itself marks it, never by the Kobo's rules. Books without such marks will then have no split words.",
+      "level": "advanced"
+    },
+    "hyph_user_dict": {
+      "label": "Use my own word-split list",
+      "help": "When on, your own list of how specific words should be split is used before the normal rules. Only useful if you have made such a list on the Kobo.",
+      "level": "advanced"
+    },
+    "floating_punctuation": {
+      "label": "Let punctuation hang in the margin",
+      "help": "When on, commas, full stops and quote marks at the edge of a line are pushed slightly into the margin, so the text edge looks straighter, as in fine printed books.",
+      "level": "advanced"
+    },
+    "text_lang_embedded_langs": {
+      "label": "Follow language marks inside the book",
+      "help": "When on, if a book marks some passages as another language (say, a French quote in an English novel), word splitting and other language rules follow that mark for those passages.",
+      "level": "advanced"
+    },
+    "text_lang_default": {
+      "label": "Always use this language for text rules",
+      "help": "Forces one language for word splitting and similar rules in every new book, ignoring the language the book says it is in. Use a short code such as en-US, nb or tr. If empty, the book's own language is used, else English.",
+      "example": "Set \"nb\" if you only read Norwegian books and some are wrongly marked as English.",
+      "level": "advanced"
+    },
+    "text_lang_fallback": {
+      "label": "Language when the book has none",
+      "help": "The language used for word splitting and similar rules only when a book does not say which language it is in. Use a short code such as en-US, nb or tr.",
+      "example": "Set \"tr\" so unlabelled Turkish books still get proper word splitting.",
+      "level": "advanced"
+    },
+    "cre_partial_rerendering": {
+      "label": "Faster re-layout after changes",
+      "help": "When on, after you change font or size the Kobo only re-lays out the part of the book you are reading first, so you can keep reading sooner. Turn it off only if you see layout glitches.",
+      "level": "advanced"
+    },
+    "page_overlap_enable": {
+      "label": "Repeat lines when scrolling",
+      "help": "Only in continuous scrolling: when on, a few lines from the previous screen stay visible at the top of the next, so you do not lose your place.",
+      "level": "advanced"
+    },
+    "page_overlap_style": {
+      "label": "How repeated lines are marked",
+      "help": "Only when repeating lines while scrolling is on: how the repeated lines from the previous screen are marked so you can tell where new text starts.",
+      "level": "advanced",
+      "options": {
+        "none": "No mark",
+        "dim": "Greyed out",
+        "arrow": "Arrow",
+        "line": "Solid line",
+        "dashed_line": "Dashed line"
+      }
+    },
+    "kopt_rotation_mode": {
+      "label": "Screen rotation (PDFs)",
+      "help": "Which way new PDFs and comics are shown. Your Kobo has no rotation sensor; sideways can help with wide pages.",
+      "level": "advanced",
+      "options": {
+        "0": "Upright (normal)",
+        "1": "Sideways, turned right",
+        "2": "Upside down",
+        "3": "Sideways, turned left"
+      }
+    },
+    "kopt_trim_page": {
+      "label": "Cut off empty page edges",
+      "help": "Only for PDFs and comics: removes blank white borders around the page so the content fills more of the screen. \"Auto\" finds the content by itself.",
+      "example": "Auto: a PDF with wide white margins shows bigger, easier-to-read text.",
+      "level": "basic",
+      "options": {
+        "3": "None (keep whole page)",
+        "1": "Automatic",
+        "2": "Automatic within an area you choose",
+        "0": "Manual"
+      }
+    },
+    "kopt_page_margin": {
+      "label": "Margin around PDF pages",
+      "help": "Only for PDFs and comics: white space added around the page after trimming and zooming. Higher values give more space at the edges.",
+      "level": "advanced"
+    },
+    "kopt_auto_straighten": {
+      "label": "Straighten tilted scans",
+      "help": "Only for scanned PDFs: tries to rotate pages that were scanned at a slant, by up to the chosen angle. 0 means off.",
+      "level": "advanced"
+    },
+    "kopt_zoom_overlap_h": {
+      "label": "Overlap when moving sideways",
+      "help": "Only for zoomed-in PDFs read piece by piece: how much of the previous piece is still visible when you move left or right, so you do not lose your place.",
+      "level": "advanced"
+    },
+    "kopt_zoom_overlap_v": {
+      "label": "Overlap when moving down",
+      "help": "Only for zoomed-in PDFs read piece by piece: how much of the previous piece is still visible when you move up or down, so you do not lose your place.",
+      "level": "advanced"
+    },
+    "kopt_zoom_mode_type": {
+      "label": "Fit page to screen",
+      "help": "Only for PDFs and comics: whether the page is sized to show it whole, to fill the screen width, or to fill the screen height.",
+      "example": "Width: text is bigger, and you scroll down within each page.",
+      "level": "basic",
+      "options": {
+        "2": "Whole page",
+        "1": "Screen width",
+        "0": "Screen height"
+      }
+    },
+    "kopt_zoom_factor": {
+      "label": "Manual zoom amount",
+      "help": "Only for PDFs and comics when \"Zoom to\" is set to manual: how much the page is enlarged. 1.5 means one and a half times bigger.",
+      "level": "advanced"
+    },
+    "kopt_zoom_mode_genus": {
+      "label": "Zoom to",
+      "help": "Only for PDFs and comics: what the Kobo zooms in on. \"Page\" shows the page; \"Content\" ignores blank edges; \"Columns\" or \"Rows\" splits the page into parts you read one at a time.",
+      "example": "Columns: a two-column scientific PDF is shown one column at a time, much larger.",
+      "level": "basic",
+      "options": {
+        "4": "Whole page",
+        "3": "Content (skip blank edges)",
+        "2": "Columns",
+        "1": "Rows",
+        "0": "Manual"
+      }
+    },
+    "kopt_zoom_direction": {
+      "label": "Reading order when zoomed",
+      "help": "Only for zoomed-in PDFs and comics read piece by piece: the order in which the pieces are shown. Normal books are left to right, top to bottom; manga is usually right to left.",
+      "example": "Choose \"Right to left, top to bottom\" for Japanese manga.",
+      "level": "advanced",
+      "options": {
+        "7": "Left to right, then top to bottom",
+        "6": "Top to bottom, then left to right",
+        "5": "Left to right, then bottom to top",
+        "4": "Bottom to top, then left to right",
+        "3": "Bottom to top, then right to left",
+        "2": "Right to left, then bottom to top",
+        "1": "Top to bottom, then right to left",
+        "0": "Right to left, then top to bottom"
+      }
+    },
+    "kopt_page_scroll": {
+      "label": "Pages or scrolling (PDFs)",
+      "help": "Only for PDFs and comics: \"Pages\" shows one page at a time; \"Continuous\" lets you scroll through pages like a web page.",
+      "level": "basic",
+      "options": {
+        "0": "One page at a time",
+        "1": "Continuous scrolling"
+      }
+    },
+    "kopt_page_gap_height": {
+      "label": "Gap between pages when scrolling",
+      "help": "Only for PDFs in continuous scrolling: the thickness of the gap between one page and the next.",
+      "level": "advanced"
+    },
+    "kopt_line_spacing": {
+      "label": "Line spacing (re-flowed PDFs)",
+      "help": "Only when re-flow is on for a PDF: space between lines of the re-arranged text.",
+      "level": "advanced",
+      "options": {
+        "1": "Small",
+        "1.2": "Medium",
+        "1.4": "Large"
+      }
+    },
+    "kopt_justification": {
+      "label": "Text alignment (re-flowed PDFs)",
+      "help": "Only when re-flow is on for a PDF: how lines are lined up. \"Justify\" makes both edges straight; \"Auto\" tries to copy the original document.",
+      "level": "advanced",
+      "options": {
+        "-1": "Auto (like the original)",
+        "0": "Left",
+        "1": "Centre",
+        "2": "Right",
+        "3": "Both edges straight"
+      }
+    },
+    "kopt_font_size": {
+      "label": "Text size (re-flowed PDFs)",
+      "help": "Only when re-flow is on for a PDF: enlarges or shrinks the text compared with the original. 1.0 is the original size, 1.3 is 30% bigger.",
+      "level": "advanced"
+    },
+    "kopt_word_spacing": {
+      "label": "Word gap (re-flowed PDFs)",
+      "help": "Only when re-flow is on for a PDF: how much space is left between words.",
+      "level": "advanced",
+      "options": {
+        "0.05": "Small",
+        "-0.2": "Automatic",
+        "0.375": "Large"
+      }
+    },
+    "kopt_text_wrap": {
+      "label": "Re-flow PDF text",
+      "help": "Re-flow means pulling the text out of a PDF and re-arranging it to fit the Kobo's screen, like a normal ebook. Makes small PDF text readable, but tables, pictures and formatting can come out messy.",
+      "example": "On: an A4 PDF becomes readable without zooming, but a page of formulas may look jumbled.",
+      "level": "basic",
+      "options": {
+        "0": "Off (original pages)",
+        "1": "On (re-arrange text)"
+      }
+    },
+    "kopt_contrast": {
+      "label": "Darkness (PDFs)",
+      "help": "Only for PDFs and comics: makes the page darker. 1 is unchanged; higher values make faint or grey text darker and easier to read.",
+      "example": "Set 1.5 for an old scan with pale grey text.",
+      "level": "basic"
+    },
+    "kopt_white_threshold": {
+      "label": "Turn light grey into white",
+      "help": "Only for PDFs and comics: anything lighter than this level is shown as pure white. 255 means off; lower values clean up grey backgrounds but can wash out light details.",
+      "level": "advanced"
+    },
+    "kopt_page_opt": {
+      "label": "Remove watermarks and grey backgrounds",
+      "help": "Only for PDFs and comics: tries to remove faint watermarks and grey backgrounds, making the page plain black and white with more contrast.",
+      "level": "advanced",
+      "options": {
+        "0": "Off",
+        "1": "On"
+      }
+    },
+    "kopt_background_cleanup": {
+      "label": "Black and white cleanup",
+      "help": "Only for PDFs: shows just the essentials in black and white and skips extra layers, for better contrast and faster page turns. Especially useful for scanned books from the Internet Archive.",
+      "level": "advanced",
+      "options": {
+        "0": "Off",
+        "1": "On"
+      }
+    },
+    "kopt_hw_dithering": {
+      "label": "Smoother greys (screen)",
+      "help": "Only for PDFs and comics: dithering means drawing shades of grey as fine dot patterns, so pictures look smoother on e-ink. This version uses the screen's own built-in method, if it has one.",
+      "level": "advanced",
+      "options": {
+        "0": "Off",
+        "1": "On"
+      }
+    },
+    "kopt_sw_dithering": {
+      "label": "Smoother greys (software)",
+      "help": "Only for PDFs and comics: draws shades of grey as fine dot patterns, calculated by the reader app, so photos and drawings show less banding. Can slow page turns slightly.",
+      "level": "advanced",
+      "options": {
+        "0": "Off",
+        "1": "On"
+      }
+    },
+    "kopt_quality": {
+      "label": "Quality (re-flowed PDFs)",
+      "help": "Only when re-flow is on for a PDF: how carefully text and pictures are extracted. Higher gives sharper results but pages take longer to prepare.",
+      "level": "advanced",
+      "options": {
+        "0.5": "Low (faster)",
+        "1": "Normal",
+        "1.5": "High (slower)"
+      }
+    },
+    "kopt_doc_language": {
+      "label": "Language for text recognition",
+      "help": "Only for scanned PDFs: the language the Kobo assumes when it reads text from page images (text recognition), for example when you select words. Uses a three-letter code such as eng, nor or tur. If empty, English is used.",
+      "level": "advanced"
+    },
+    "kopt_forced_ocr": {
+      "label": "Always read text from the image",
+      "help": "Only for PDFs: when on, selecting text always uses text recognition on the page image, even if the PDF already contains text. Turn on only if selecting text in a PDF gives garbled words.",
+      "level": "advanced",
+      "options": {
+        "0": "Off",
+        "1": "On"
+      }
+    },
+    "kopt_writing_direction": {
+      "label": "Writing direction (re-flowed PDFs)",
+      "help": "Only when re-flow is on for a PDF: the direction the original text is written in. Set to right-to-left for Arabic or Hebrew so the text is re-arranged correctly.",
+      "level": "advanced",
+      "options": {
+        "0": "Left to right",
+        "1": "Right to left",
+        "2": "Top to bottom, columns right to left"
+      }
+    },
+    "kopt_defect_size": {
+      "label": "Ignore specks (re-flowed PDFs)",
+      "help": "Only when re-flow is on for a scanned PDF: how big a dust spot or ink speck may be before it is treated as a real character. Larger ignores bigger specks but may drop small dots like full stops.",
+      "level": "advanced",
+      "options": {
+        "1": "Small",
+        "3": "Medium",
+        "5": "Large"
+      }
+    },
+    "kopt_detect_indent": {
+      "label": "Keep paragraph indents (re-flowed PDFs)",
+      "help": "Only when re-flow is on for a PDF: whether paragraph indents from the original are kept. The reader app hides this option because it does not currently work, so changing it likely has no effect.",
+      "level": "advanced",
+      "options": {
+        "0": "Off",
+        "1": "On"
+      }
+    },
+    "kopt_nightmode_document": {
+      "label": "Invert pages in night mode",
+      "help": "Only for PDFs and comics, and only when night mode (white on black) is on: whether the pages are inverted too. Off keeps pages as they are, which usually suits picture-heavy comics.",
+      "level": "advanced",
+      "options": {
+        "0": "Off (keep pages as they are)",
+        "1": "On (invert pages)"
+      }
+    },
+    "kopt_max_columns": {
+      "label": "Columns to look for (re-flowed PDFs)",
+      "help": "Only when re-flow is on for a PDF: the most text columns the Kobo looks for on a page. Set to 1 if normal full-width text gets wrongly split into columns.",
+      "level": "advanced"
+    }
+  }
+}

@@ -44,7 +44,7 @@ local core = require("lbcore")
 local control = require("lbcontrol")
 local extras = require("lbextras")
 
-local VERSION = "1.1.0"
+local VERSION = "1.2.0"
 local DEFAULT_SERVER = "https://hsaedwwqpcjizeozjbch.supabase.co/functions/v1/kobo-sync"
 local NICKEL_DB = "/mnt/onboard/.kobo/KoboReader.sqlite"
 local DEFAULT_INBOX = "/mnt/onboard/Send to Kobo"
@@ -234,7 +234,7 @@ local function sidecarFacts(path)
     return {
         md5 = type(md5) == "string" and md5:lower() or nil,
         title = props.title, authors = props.authors, series = props.series,
-        series_index = props.series_index, language = props.language,
+        series_index = props.series_index, language = props.language, keywords = props.keywords,
         status = summary.status, rating = num(summary.rating),
         percent = num(ds:readSetting("percent_finished")),
         pages = num(ds:readSetting("doc_pages")),
@@ -297,6 +297,7 @@ function LascisBoard:collectLibrary(stats_books)
             facts.path = facts.path or path
             by_path[path] = md5
             if core.isNewsPath(path, news_dir) then facts.kind = "news" end
+            if not facts.size then facts.size = lfs.attributes(path, "size") end
         end
         by_md5[md5] = core.mergeBook(by_md5[md5] or {}, facts)
     end
@@ -362,6 +363,25 @@ function LascisBoard:collectLibrary(stats_books)
     end
     for _, path in ipairs(files) do
         if not by_path[path] then add(path, {}) end
+    end
+
+    -- 3b. Subjects (keywords) from the cover browser's book-info cache, read-only:
+    --     KOReader/Project: Title read them from each file when it shows its cover.
+    for _, name in ipairs({ "PT_bookinfo_cache.sqlite3", "bookinfo_cache.sqlite3" }) do
+        local bi = openDb(DataStorage:getSettingsDir() .. "/" .. name)
+        if bi then
+            pcall(function()
+                local stmt = bi:prepare("SELECT directory, filename, keywords, pages FROM bookinfo WHERE keywords IS NOT NULL OR pages IS NOT NULL")
+                for row in stmt:rows() do
+                    local md5 = by_path[tostring(row[1] or "") .. tostring(row[2] or "")]
+                    if md5 then
+                        by_md5[md5] = core.mergeBook(by_md5[md5], { keywords = row[3], pages = num(row[4]) })
+                    end
+                end
+                stmt:close()
+            end)
+            bi:close()
+        end
     end
 
     -- 4. KOReader's statistics: totals and last-open time, for books found above only.
@@ -501,6 +521,14 @@ function LascisBoard:deviceFacts()
         end
     end)
     pcall(function() facts.koreader_version = require("version"):getCurrentRevision() end)
+    -- The user storage (/mnt/onboard): total and free bytes, for the app's storage card.
+    pcall(function()
+        local du = util.diskUsage("/mnt/onboard")
+        if du and du.total and du.available then
+            facts.storage_total = math.floor(du.total)
+            facts.storage_free = math.floor(du.available)
+        end
+    end)
     return facts
 end
 
@@ -517,14 +545,15 @@ function LascisBoard:afterSync(res, light)
     out.captured = self:sendCaptures()
     if light then
         -- The reader's menus only exist inside a book: report them once from here.
-        if not self:conf():readSetting("reported_reader_menu") then
+        -- Once per plugin version: 1.1 sent an almost empty reader menu.
+        if self:conf():readSetting("reported_reader_menu") ~= VERSION then
             local menu = control.menuReport(self.ui, "reader")
             if menu then
                 local lists = {}
                 for id, list in pairs(menu.order) do lists[id] = rapidjson.array(list) end
                 local ok = self:callJson("POST", "/applied", { report = { menus = { reader = {
                     order = rapidjson.object(lists), labels = rapidjson.object(menu.labels) } } } })
-                if ok then self:save("reported_reader_menu", true) end
+                if ok then self:save("reported_reader_menu", VERSION) end
             end
         end
         return out
@@ -565,6 +594,7 @@ function LascisBoard:afterSync(res, light)
 
     local conf = self:conf()
     local report_due = (os.time() - (conf:readSetting("last_report") or 0)) > 20 * 3600
+        or conf:readSetting("last_report_version") ~= VERSION
     if #applied > 0 or config_rev or report_due then
         local keys = type(res.report_keys) == "table" and res.report_keys or {}
         local side = self.ui.document and "reader" or "filemanager"
@@ -582,7 +612,10 @@ function LascisBoard:afterSync(res, light)
             report = { settings = rapidjson.object(control.settingsReport(keys)), menus = rapidjson.object(menus),
                 plugin_version = VERSION, at = os.time() },
         })
-        if ok then self:save("last_report", os.time()) end
+        if ok then
+            self:save("last_report", os.time())
+            self:save("last_report_version", VERSION)
+        end
     end
     return out
 end

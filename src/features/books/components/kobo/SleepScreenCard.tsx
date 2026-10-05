@@ -1,75 +1,84 @@
-import { useRef, useState } from 'react'
-import { Check, ChevronDown, ImagePlus, Moon, Trash2 } from 'lucide-react'
-import { Button, Card, CardHeader, IconButton, cx } from '../../../../shared/ui'
+import { useRef } from 'react'
+import { Check, ImagePlus, Moon, Trash2 } from 'lucide-react'
+import { Button, Card, CardHeader, IconButton, TonePill, cx } from '../../../../shared/ui'
+import { HelpTip } from '../../../../shared/components/HelpTip'
 import { useEntityModal } from '../../../../shared/modals'
 import { useDeleteSleepImage, useKoboConfig, useSaveKoboConfig, useSleepImages, useSleepImageUrls, useUploadSleepImages } from '../../hooks/useKoboControl'
 import { SETTING_GROUPS } from '../../koboSettingsCatalogue'
-import { SettingControl } from './SettingControl'
+import { SettingHelp } from './SettingControl'
+import { GroupCard } from './SettingsGroupCard'
 import { useKoboSettings } from './useKoboSetting'
 
 const MODE = 'screensaver_type'
-/** Sleep-screen settings shown under the mode picker (the rest sit in the settings card). */
-const sleepGroup = SETTING_GROUPS.find(g => g.id === 'sleep_screen')?.settings ?? []
-const bookshelfGroup = SETTING_GROUPS.find(g => g.id === 'bookshelf')?.settings ?? []
+const sleepGroup = SETTING_GROUPS.find(g => g.id === 'sleep_screen')
+const bookshelfGroup = SETTING_GROUPS.find(g => g.id === 'bookshelf')
 
-/** What the Kobo shows while it sleeps: the mode, your own images, and the details. */
+/** One plain line under each choice. */
+const MODE_HINT: Record<string, string> = {
+  cover: 'The cover of the book you are reading in KOReader.',
+  bookshelf: 'Your recent books drawn as spines on a shelf, with progress.',
+  random_image: 'One of your own pictures, a different one each time.',
+  document_cover: 'Always the same picture, the one you pick below.',
+  readingprogress: 'A page of reading statistics for the current book.',
+  bookstatus: 'The current book’s summary: title, progress and your rating.',
+  disable: 'Nothing new: the page you were reading stays on the screen.',
+}
+
+/** What the Kobo shows while it sleeps: the choice, your own images, and the details. */
 export function SleepScreenCard() {
   const s = useKoboSettings()
   const mode = s.view(MODE)
   const modeDef = s.def(MODE)
   const current = mode?.value
-  const extra = sleepGroup.filter(d => d.key !== MODE && !d.managed)
-  const [more, setMore] = useState(false)
+  const extraKeys = (sleepGroup?.settings ?? []).filter(d => d.key !== MODE && !d.managed).map(d => d.key)
   return (
-    <Card>
-      <CardHeader title="Sleep screen" icon={<Moon />} subtitle="KOReader's sleep screen. Kobo's own sleep screen (outside KOReader) is not touched." wrap />
-      {modeDef && mode && (
-        <div role="radiogroup" aria-label="What the sleep screen shows" className="grid gap-1 @container sm:grid-cols-2">
-          {modeDef.options?.map(o => (
-            <button key={String(o.value)} type="button" role="radio" aria-checked={current === o.value} disabled={s.loading}
-              onClick={() => s.set(MODE, o.value)}
-              className={cx('flex min-h-[44px] items-center gap-2 rounded-control border px-3 py-2 text-left text-body',
-                current === o.value ? 'border-accent-500 bg-accent-50 text-fg' : 'border-line text-fg-2 hover:bg-surface-hover')}>
-              <span aria-hidden className={cx('grid h-4 w-4 shrink-0 place-items-center rounded-full border', current === o.value ? 'border-accent-600 bg-accent-500 text-on-accent' : 'border-line')}>
-                {current === o.value && <Check className="h-3 w-3" />}
-              </span>
-              {o.label}
-            </button>
-          ))}
-        </div>
-      )}
-      {mode?.pending && <p className="mt-2 text-micro text-warn">Waiting for the Kobo's next sync.</p>}
-      {current === 'cover' && (
-        <p className="mt-2 text-meta text-fg-muted">
-          Shows the book open in KOReader, or the last one you read there. Until a book has been opened in KOReader, KOReader shows an image instead.
-        </p>
-      )}
+    <div className="flex flex-col gap-4">
+      <Card>
+        <CardHeader title="What the sleep screen shows" icon={<Moon />} wrap
+          subtitle="Shown when you close the cover or press the power button. Only KOReader’s sleep screen; Kobo’s own is not touched."
+          action={modeDef ? <HelpTip label="About the sleep screen"><SettingHelp def={modeDef} /></HelpTip> : undefined} />
+        {modeDef && mode && (
+          <div className="@container">
+            <div role="radiogroup" aria-label="What the sleep screen shows" className="grid gap-2 @[34rem]:grid-cols-2">
+              {modeDef.options?.map(o => {
+                const on = current === o.value
+                return (
+                  <button key={String(o.value)} type="button" role="radio" aria-checked={on} disabled={s.loading}
+                    onClick={() => s.set(MODE, o.value)}
+                    className={cx('flex min-h-[56px] items-start gap-3 rounded-row border px-3 py-2.5 text-left',
+                      on ? 'border-accent-500 bg-accent-50' : 'border-line hover:bg-surface-hover')}>
+                    <span aria-hidden className={cx('mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full border',
+                      on ? 'border-accent-600 bg-accent-500 text-on-accent' : 'border-line-strong')}>
+                      {on && <Check className="h-3 w-3" />}
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block text-body font-semibold text-fg">{o.label}</span>
+                      {MODE_HINT[String(o.value)] && <span className="block text-meta text-fg-muted">{MODE_HINT[String(o.value)]}</span>}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
+        {mode?.pending && <p className="mt-2"><TonePill tone="warn">Waiting for the Kobo’s next sync</TonePill></p>}
+        {current === 'cover' && (
+          <p className="mt-3 text-meta text-fg-muted">
+            Until a book has been opened in KOReader once, KOReader shows one of your images below instead.
+          </p>
+        )}
+      </Card>
       {(current === 'random_image' || current === 'document_cover' || current === 'cover') && (
-        <SleepImages purpose={current === 'document_cover' ? 'pick' : current === 'cover' ? 'fallback' : 'random'} />
+        <Card>
+          <CardHeader title={current === 'document_cover' ? 'Pick your image' : 'Your images'} icon={<ImagePlus />} />
+          <SleepImages purpose={current === 'document_cover' ? 'pick' : current === 'cover' ? 'fallback' : 'random'} />
+        </Card>
       )}
-      {current === 'bookshelf' && (
-        <div className="mt-3 divide-y divide-line border-t border-line">
-          {bookshelfGroup.map(d => {
-            const v = s.view(d.key)
-            return v && <SettingControl key={d.key} def={d} view={v} disabled={s.loading} onChange={x => s.set(d.key, x)} />
-          })}
-        </div>
+      {current === 'bookshelf' && bookshelfGroup && <GroupCard group={bookshelfGroup} s={s} color={2} />}
+      {sleepGroup && extraKeys.length > 0 && (
+        <GroupCard group={{ ...sleepGroup, label: 'Message and more' }} keys={extraKeys} s={s} color={2} />
       )}
-      <button type="button" aria-expanded={more} onClick={() => setMore(m => !m)}
-        className="mt-3 flex min-h-[44px] w-full items-center gap-2 border-t border-line text-left">
-        <span className="flex-1 text-body font-semibold text-fg">More sleep screen options</span>
-        <span className="text-micro tabular-nums text-fg-muted">{extra.length}</span>
-        <ChevronDown aria-hidden className={cx('h-4 w-4 text-fg-muted transition-transform', more && 'rotate-180')} />
-      </button>
-      {more && (
-        <div className="divide-y divide-line">
-          {extra.map(d => {
-            const v = s.view(d.key)
-            return v && <SettingControl key={d.key} def={d} view={v} disabled={s.loading} onChange={x => s.set(d.key, x)} />
-          })}
-        </div>
-      )}
-    </Card>
+    </div>
   )
 }
 
@@ -88,7 +97,7 @@ function SleepImages({ purpose }: { purpose: 'pick' | 'random' | 'fallback' }) {
   const used = rows.reduce((t, r) => t + r.size_bytes, 0)
   const selected = config.data?.sleep_image_id ?? null
   return (
-    <section className="mt-3 flex flex-col gap-2">
+    <section className="flex flex-col gap-2">
       <div className="flex flex-wrap items-center gap-2">
         <p className="flex-1 text-meta text-fg-muted">
           {purpose === 'pick' ? 'Tap an image to show it every time.'

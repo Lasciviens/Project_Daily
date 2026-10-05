@@ -266,7 +266,10 @@ end
 function M.menuReport(ui, side)
     local menu = ui and ui.menu
     if not menu then return nil end
-    if not menu.menu_items or next(menu.menu_items) == nil then
+    -- Build the menu the way opening it does (onShowMenu builds it once, lazily):
+    -- before that, menu_items holds only the few items the menu adds itself, so a
+    -- report taken then named almost nothing (plugin 1.1's reader report).
+    if not menu.tab_item_table then
         pcall(menu.setUpdateItemTable, menu)
     end
     local ok, order = pcall(require, side == "reader" and "ui/elements/reader_menu_order" or "ui/elements/filemanager_menu_order")

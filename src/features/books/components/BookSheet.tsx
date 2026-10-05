@@ -8,7 +8,9 @@ import { DateInput } from '../../../shared/components/DateInput'
 import { formatDate, formatDateTime } from '../../../shared/utils/dateFormat'
 import { StarRating } from '../../media/components/StarRating'
 import { READ_STATUS_LABEL, READ_STATUSES } from '../bookTones'
-import { statusPatch, useBookEvents, useDeleteBook, useUpdateBook } from '../hooks/useLibrary'
+import { statusPatch, useBookEvents, useDeleteBook, useLibrary, useUpdateBook } from '../hooks/useLibrary'
+import { canonical, cleanTags, knownValues } from '../libraryFacets'
+import { SuggestInput, TagInput } from './SuggestInput'
 import { useAiNotes, useDeleteAiNote } from '../hooks/useKoboControl'
 import { formatDuration, sessions } from '../readingAggregate'
 import type { Book, BookPatch, ReadStatus } from '../types'
@@ -20,14 +22,16 @@ import { AskedList } from './kobo/AskedCard'
 const STATUS_STAGE = { want: 'planned', reading: 'active', finished: 'done', paused: 'paused', dropped: 'dropped' } as const
 
 interface Draft extends DetailsDraft {
-  title: string; author: string; series: string; read_status: ReadStatus; rating: number | null
+  title: string; author: string; series: string; read_status: ReadStatus | null; rating: number | null
   review: string; notes: string; started: string; finished: string
+  categories: string[]; subjects: string[]
 }
 const day = (iso: string | null) => (iso ? iso.slice(0, 10) : '')
 const draftOf = (b: Book): Draft => ({
   ...detailsDraft(b),
   title: b.title, author: b.author ?? '', series: b.series ?? '', read_status: b.read_status, rating: b.rating,
   review: b.review ?? '', notes: b.notes ?? '', started: day(b.started_at), finished: day(b.finished_at),
+  categories: b.categories ?? [], subjects: b.subjects ?? [],
 })
 /** A date field stored at local noon, so no time zone moves it to another day. */
 const noon = (d: string) => (d ? new Date(`${d}T12:00:00`).toISOString() : null)
@@ -46,6 +50,12 @@ export function BookSheet({ book, onClose }: { book: Book; onClose: () => void }
   const total = useMemo(() => (events.data ?? []).reduce((t, e) => t + e.duration_seconds, 0), [events.data])
   const set = (p: Partial<Draft>) => setD(x => ({ ...x, ...p }))
   const problem = detailsProblem(d)
+  const news = book.kind === 'news'
+  const { data: library = [] } = useLibrary()
+  const known = useMemo(() => ({
+    author: knownValues(library, 'author'), collection: knownValues(library, 'collection'),
+    category: knownValues(library, 'category'), subject: knownValues(library, 'subject'),
+  }), [library])
 
   function pickStatus(s: ReadStatus) {
     const stamps = statusPatch({ ...book, started_at: noon(d.started), finished_at: noon(d.finished) }, s)
@@ -57,11 +67,21 @@ export function BookSheet({ book, onClose }: { book: Book; onClose: () => void }
     if (!title || problem) return
     const patch: BookPatch = {
       ...detailsPatch(d, detailsDraft(book)),
-      title, author: d.author.trim() || null, series: d.series.trim() || null, read_status: d.read_status,
-      rating: d.rating, review: d.review.trim() || null, notes: d.notes.trim() || null,
-      started_at: d.started ? (d.started === day(book.started_at) ? book.started_at : noon(d.started)) : null,
-      finished_at: d.finished ? (d.finished === day(book.finished_at) ? book.finished_at : noon(d.finished)) : null,
+      title, author: canonical(known.author, d.author) || null, series: canonical(known.collection, d.series) || null,
+      review: d.review.trim() || null, notes: d.notes.trim() || null,
     }
+    // News has no status, rating or read dates (the database clears them too).
+    if (!news) {
+      Object.assign(patch, {
+        read_status: d.read_status, rating: d.rating,
+        started_at: d.started ? (d.started === day(book.started_at) ? book.started_at : noon(d.started)) : null,
+        finished_at: d.finished ? (d.finished === day(book.finished_at) ? book.finished_at : noon(d.finished)) : null,
+      })
+    }
+    const cats = cleanTags(known.category, d.categories)
+    const subs = cleanTags(known.subject, d.subjects)
+    if (JSON.stringify(cats) !== JSON.stringify(book.categories ?? [])) patch.categories = cats
+    if (JSON.stringify(subs) !== JSON.stringify(book.subjects ?? [])) patch.subjects = subs
     update.mutate({ id: book.id, patch }, { onSuccess: onClose })
   }
 
@@ -75,7 +95,7 @@ export function BookSheet({ book, onClose }: { book: Book; onClose: () => void }
   }
 
   return (
-    <ModalShell onClose={onClose} title="Book" size="lg" dismissible={!update.isPending}
+    <ModalShell onClose={onClose} title={news ? 'News issue' : 'Book'} size="lg" dismissible={!update.isPending}
       footer={
         <div className="flex items-center gap-2">
           <IconButton label="Delete book" onClick={() => { void del() }} className="text-danger"><Trash2 /></IconButton>
@@ -105,12 +125,18 @@ export function BookSheet({ book, onClose }: { book: Book; onClose: () => void }
         <div className="flex min-w-0 flex-col gap-4">
           <label className="flex flex-col gap-1"><span className="field-label">Title</span>
             <input className="input min-h-[44px]" value={d.title} onChange={e => set({ title: e.target.value })} /></label>
+          {news && <p className="text-meta text-fg-muted">A news issue has no status, rating or place in Want to read. Its reading time still counts in Stats, as news.</p>}
+          {!news && (<>
           <div className="grid gap-3 sm:grid-cols-2">
-            <label className="flex flex-col gap-1"><span className="field-label">Author</span>
-              <input className="input min-h-[44px]" value={d.author} onChange={e => set({ author: e.target.value })} /></label>
-            <label className="flex flex-col gap-1"><span className="field-label">Series</span>
-              <input className="input min-h-[44px]" value={d.series} onChange={e => set({ series: e.target.value })} /></label>
+            <div className="flex flex-col gap-1"><span className="field-label">Author</span>
+              <SuggestInput label="Author" value={d.author} values={known.author} onChange={v => set({ author: v })} /></div>
+            <div className="flex flex-col gap-1"><span className="field-label">Collection (series)</span>
+              <SuggestInput label="Collection" value={d.series} values={known.collection} placeholder="e.g. Harry Potter" onChange={v => set({ series: v })} /></div>
           </div>
+          <div className="flex flex-col gap-1"><span className="field-label">Categories</span>
+            <TagInput label="Categories" value={d.categories} values={known.category} placeholder="e.g. Fantasy, Work, Turkish" onChange={v => set({ categories: v })} /></div>
+          <div className="flex flex-col gap-1"><span className="field-label">Subjects</span>
+            <TagInput label="Subjects" value={d.subjects} values={known.subject} placeholder="e.g. Magic, History" onChange={v => set({ subjects: v })} /></div>
           <div>
             <span className="field-label">Status</span>
             <div role="group" aria-label="Status" className="grid grid-cols-2 gap-1 sm:grid-cols-3">
@@ -129,10 +155,11 @@ export function BookSheet({ book, onClose }: { book: Book; onClose: () => void }
             <label className="flex flex-col gap-1"><span className="field-label">Finished</span>
               <DateInput value={d.finished} onChange={v => set({ finished: v })} aria-label="Finished" /></label>
           </div>
-          <BookDetailsFields draft={d} onChange={set} problem={problem} />
           <div><span className="field-label">Your rating</span><StarRating value={d.rating} onChange={v => set({ rating: v })} /></div>
+          <BookDetailsFields draft={d} onChange={set} problem={problem} />
           <label className="flex flex-col gap-1"><span className="field-label">Review</span>
             <textarea className="input min-h-[88px]" value={d.review} onChange={e => set({ review: e.target.value })} placeholder="What you thought of it" /></label>
+          </>)}
           <label className="flex flex-col gap-1"><span className="field-label">Notes</span>
             <textarea className="input min-h-[64px]" value={d.notes} onChange={e => set({ notes: e.target.value })} /></label>
           <section>

@@ -1,0 +1,610 @@
+{
+  "groups": {
+    "highlights_bookmarks": {
+      "title": "Highlights and bookmarks",
+      "summary": "How highlights look, and how your bookmarks, table of contents, page numbers and page overviews are listed.",
+      "affects": "Highlighted passages, the bookmarks list, the table of contents list and the book map screens look different."
+    },
+    "lookup": {
+      "title": "Dictionary and search",
+      "summary": "How word lookups, Wikipedia, translation and searching inside a book behave.",
+      "affects": "Dictionary pop-ups, Wikipedia and translation results, and in-book search results look or behave differently."
+    },
+    "language_ui": {
+      "title": "Keyboard and units",
+      "summary": "The on-screen keyboard, measurement units, and the USB connection prompt.",
+      "affects": "The keyboard looks or types differently, sizes show in other units, and plugging into a computer may skip a question."
+    },
+    "plugin_tables": {
+      "title": "Statistics, timer and tools",
+      "summary": "Settings for built-in add-ons: reading statistics, the read timer, the word list, Calibre and a few others.",
+      "affects": "Your reading statistics and calendar, the read timer alerts, saved words and Calibre features change."
+    },
+    "hidden_tunables": {
+      "title": "Hidden tweaks",
+      "summary": "Technical tweaks that KOReader has no menu for.",
+      "affects": "Mostly small behind-the-scenes changes; leave these alone unless you know why."
+    }
+  },
+  "settings": {
+    "highlight_drawing_style": {
+      "label": "Highlight style",
+      "help": "How a new highlight is drawn on the page.",
+      "example": "Underline: highlighted text gets a line under it instead of a grey background.",
+      "level": "basic",
+      "options": {
+        "lighten": "Grey background",
+        "underscore": "Underline",
+        "strikeout": "Strike through",
+        "invert": "White text on black"
+      }
+    },
+    "highlight_color": {
+      "label": "Highlight colour",
+      "help": "The colour used for new highlights. Your Kobo screen is black and white, so every colour shows as grey; leave it as gray.",
+      "level": "advanced"
+    },
+    "highlight_lighten_factor": {
+      "label": "Highlight darkness",
+      "help": "How dark the grey background of a highlight is, from 0 (invisible) to 1 (black). Only for the grey background style.",
+      "example": "0.4 makes highlights clearly darker than the default 0.2.",
+      "level": "basic"
+    },
+    "highlight_selection_invert_highlight_color": {
+      "label": "Invert highlights in night mode",
+      "help": "In night mode (white text on black), shows highlights inverted so they stay visible. Has no effect with the white-on-black highlight style.",
+      "level": "advanced"
+    },
+    "highlight_selection_use_highlight_color": {
+      "label": "Show selection like a highlight",
+      "help": "While you drag your finger to select text, the selection is shown in your highlight style instead of the usual grey.",
+      "level": "advanced"
+    },
+    "highlight_selection_lighten_factor": {
+      "label": "Selection darkness",
+      "help": "How dark the grey shading is while you are selecting text, from 0 (invisible) to 1 (black).",
+      "level": "advanced"
+    },
+    "highlight_height_pct": {
+      "label": "Highlight band height",
+      "help": "How tall the highlight band is compared with the text line. Only for the grey background and white-on-black styles.",
+      "example": "60%: the grey band covers only the middle of each line, so lines don't touch.",
+      "level": "advanced"
+    },
+    "highlight_note_marker": {
+      "label": "Mark highlights with notes",
+      "help": "How the page shows that a highlight has a note attached. Not set means no marker.",
+      "level": "basic",
+      "options": {
+        "underline": "Underline the text",
+        "sideline": "Line in the margin",
+        "sidemark": "Small mark in the margin"
+      }
+    },
+    "highlight_write_into_pdf_notify": {
+      "label": "Remind about saving highlights in PDFs",
+      "help": "When a PDF opens and highlights are being saved into the PDF file itself, shows a reminder. Only matters for PDFs.",
+      "level": "advanced"
+    },
+    "bookmarks_items_per_page": {
+      "help": "How many entries fit on one page of the bookmarks and highlights list.",
+      "example": "20 shows more entries at once with smaller text.",
+      "level": "basic"
+    },
+    "bookmarks_items_font_size": {
+      "help": "Text size in the bookmarks and highlights list. If not set, it follows the number of entries per page.",
+      "level": "basic"
+    },
+    "bookmarks_items_max_lines": {
+      "help": "Lets each entry in the bookmarks list grow up to this many lines so you can read more of the highlight. Not set means every entry is one fixed-height line.",
+      "example": "3: a long highlight shows its first three lines in the list.",
+      "level": "basic"
+    },
+    "bookmarks_items_multilines_show_more_text": {
+      "label": "Smaller text to fit more",
+      "help": "When entries can use several lines, makes the text a bit smaller so more of each highlight fits.",
+      "level": "advanced"
+    },
+    "bookmarks_items_text_type": {
+      "label": "What the list shows",
+      "help": "What each entry in the bookmarks list shows.",
+      "level": "basic",
+      "options": {
+        "text": "Highlighted text only",
+        "all": "Highlighted text and note",
+        "note": "Note if there is one, otherwise the text"
+      }
+    },
+    "bookmarks_items_show_separator": {
+      "label": "Lines between entries",
+      "help": "Draws a thin line between entries in the bookmarks list.",
+      "level": "basic"
+    },
+    "bookmarks_items_show_color": {
+      "label": "Show highlight colours",
+      "help": "Shows each highlight's colour in the bookmarks list. On your black and white screen this is just shades of grey.",
+      "level": "advanced"
+    },
+    "bookmarks_items_show_color_default": {
+      "label": "Also show default colour",
+      "help": "When highlight colours are shown in the list, also shows highlights that use the default colour. Only works with the setting above turned on.",
+      "level": "advanced"
+    },
+    "bookmarks_items_sorting": {
+      "label": "Sort bookmarks by",
+      "help": "Sorts the bookmarks list by when you made each one instead of by page. Not set means by page.",
+      "level": "basic",
+      "options": {
+        "date": "Date added"
+      }
+    },
+    "bookmarks_items_reverse_sorting": {
+      "help": "Turns the bookmarks list order around, so the last page (or newest) comes first.",
+      "level": "basic"
+    },
+    "bookmark_prompt": {
+      "label": "Ask for a note on new bookmarks",
+      "help": "When you bookmark a page by tapping the top corner, asks if you want to add a note to it.",
+      "level": "basic"
+    },
+    "toc_items_per_page": {
+      "label": "Chapters per page",
+      "help": "How many chapters fit on one page of the table of contents.",
+      "level": "basic"
+    },
+    "toc_items_font_size": {
+      "label": "Table of contents text size",
+      "help": "Text size in the table of contents. If not set, it follows the number of chapters per page.",
+      "level": "basic"
+    },
+    "toc_items_show_chapter_length": {
+      "help": "Shows how many pages each chapter has next to its name in the table of contents.",
+      "example": "On: 'Chapter 3 .... 45' also shows that the chapter is 12 pages long.",
+      "level": "basic"
+    },
+    "toc_items_with_dots": {
+      "label": "Dots before page numbers",
+      "help": "Draws a row of dots between a chapter name and its page number in the table of contents.",
+      "level": "basic"
+    },
+    "pagemap_chars_per_synthetic_page": {
+      "label": "Fixed page numbers: letters per page",
+      "help": "For new books, makes up page numbers that never change, counting this many letters as one page, so the page count stays the same whatever font size you use. Not set means turned off.",
+      "example": "1500: a page number is about one printed paperback page, and stays the same when you make the text bigger.",
+      "level": "advanced"
+    },
+    "pagemap_synthetic_overrides": {
+      "label": "Prefer made-up page numbers",
+      "help": "Uses the made-up fixed page numbers even when the book comes with the printed edition's page numbers. Only works when letters-per-page above is set.",
+      "level": "advanced"
+    },
+    "pagemap_notify_document_provided": {
+      "label": "Ask when printed page numbers exist",
+      "help": "When you open a new book that contains the printed edition's page numbers, asks whether to use them.",
+      "level": "advanced"
+    },
+    "pagemap_use_page_labels": {
+      "label": "Use printed page numbers",
+      "help": "For new books, shows the printed edition's page numbers (or the made-up fixed ones) instead of the Kobo's own screen pages.",
+      "example": "On: the status bar says page 112, matching the paperback, not screen page 287.",
+      "level": "basic"
+    },
+    "pagemap_show_page_labels": {
+      "label": "Printed page numbers in margin",
+      "help": "For new books, writes the printed page numbers in the page margin where each printed page starts.",
+      "level": "advanced"
+    },
+    "pagemap_label_font_size": {
+      "label": "Margin page number size",
+      "help": "Text size of the printed page numbers shown in the margin.",
+      "level": "advanced"
+    },
+    "book_map_alt_theme": {
+      "label": "Alternative look for book map",
+      "help": "Uses a different look for the book map and page browser (the screens that give an overview of the whole book).",
+      "level": "advanced"
+    },
+    "book_map_tap_to_page_browser": {
+      "label": "Book map tap shows page pictures",
+      "help": "On the book map, tapping a spot opens a grid of page pictures around it. Off: tapping jumps straight to that page.",
+      "level": "advanced"
+    },
+    "book_map_overview_tap_to_page_browser": {
+      "label": "Overview tap shows page pictures",
+      "help": "Same as above but for the compact overview version of the book map.",
+      "level": "advanced"
+    },
+    "book_map_ten_pages_markers": {
+      "label": "10-page markers on book map",
+      "help": "Adds small markers every 10 pages on the book map, from 0 (none) to 3 (most visible).",
+      "level": "advanced"
+    },
+    "page_browser_nb_rows": {
+      "help": "How many rows of page pictures the page browser shows. Not set means it decides by screen size.",
+      "level": "advanced"
+    },
+    "page_browser_nb_cols": {
+      "help": "How many columns of page pictures the page browser shows. Not set means it decides by screen size.",
+      "level": "advanced"
+    },
+    "page_browser_thumbnails_pagenums": {
+      "help": "Where page numbers appear in the page browser: 0 none, 1 only on the first picture of each row, 2 on every picture.",
+      "level": "advanced"
+    },
+    "page_browser_preload_thumbnails": {
+      "label": "Prepare page pictures in advance",
+      "help": "Prepares the next and previous screens of page pictures in advance, so paging through the page browser is quicker but uses a little more battery.",
+      "level": "advanced"
+    },
+    "disable_fuzzy_search": {
+      "label": "Turn off fuzzy dictionary matching",
+      "help": "Turns off approximate matching in the dictionary. On means only exact words are looked up; off means similar spellings are also tried. Needs a dictionary installed.",
+      "example": "On: looking up a misspelled word finds nothing instead of the closest word.",
+      "level": "advanced"
+    },
+    "disable_lookup_history": {
+      "label": "Don't keep word lookup history",
+      "help": "On means the Kobo stops keeping a list of words you have looked up in the dictionary.",
+      "level": "basic"
+    },
+    "dict_largewindow": {
+      "label": "Large dictionary window",
+      "help": "Opens dictionary results in a big, almost full-screen window instead of a small pop-up.",
+      "level": "basic"
+    },
+    "dict_justify": {
+      "label": "Justify dictionary text",
+      "help": "Lines up dictionary text evenly on both left and right edges, like a book page.",
+      "level": "advanced"
+    },
+    "dict_font_size": {
+      "label": "Dictionary text size",
+      "help": "Text size in the dictionary pop-up.",
+      "level": "basic"
+    },
+    "wikipedia_use_keyboard_language": {
+      "help": "When you type a word to look up on Wikipedia, searches the Wikipedia in your current keyboard's language. Needs Wi-Fi; does not affect looking up selected text.",
+      "level": "advanced"
+    },
+    "wikipedia_save_dir": {
+      "label": "Folder for saved Wikipedia articles",
+      "help": "The folder where Wikipedia articles you save as e-books are stored. If not set, a Wikipedia folder in your home folder is used.",
+      "level": "advanced"
+    },
+    "wikipedia_save_in_book_dir": {
+      "label": "Save articles next to the book",
+      "help": "Saves Wikipedia articles you save as e-books into the same folder as the book you are reading.",
+      "level": "advanced"
+    },
+    "wikipedia_epub_include_images": {
+      "label": "Pictures in saved articles",
+      "help": "Whether pictures are included when you save a Wikipedia article as an e-book. Not set means it asks each time.",
+      "level": "advanced",
+      "options": {
+        "true": "Include pictures",
+        "false": "No pictures"
+      }
+    },
+    "wikipedia_epub_highres_images": {
+      "label": "Picture quality in saved articles",
+      "help": "Picture quality when saving a Wikipedia article as an e-book. Higher quality means bigger files. Not set means it asks each time.",
+      "level": "advanced",
+      "options": {
+        "false": "Standard",
+        "true": "Higher (bigger file)"
+      }
+    },
+    "wikipedia_disable_history": {
+      "label": "Don't keep Wikipedia history",
+      "help": "On means the Kobo stops keeping a list of things you looked up on Wikipedia.",
+      "level": "basic"
+    },
+    "wikipedia_show_image": {
+      "help": "Shows a small picture next to Wikipedia results when there is one. Needs Wi-Fi.",
+      "level": "basic"
+    },
+    "wikipedia_show_more_images": {
+      "help": "Shows extra pictures when you open a full Wikipedia article. Needs Wi-Fi and takes a bit longer to load.",
+      "level": "advanced"
+    },
+    "translator_from_doc_lang": {
+      "help": "When you translate selected text, assumes it is in the book's own language. Needs Wi-Fi.",
+      "example": "Reading a Norwegian book: translations always treat the text as Norwegian.",
+      "level": "basic"
+    },
+    "translator_from_auto_detect": {
+      "help": "Lets the translator guess what language the selected text is in. Best for foreign words inside a book in your own language. Ignored when translating from the book's language is on.",
+      "level": "basic"
+    },
+    "translator_with_romanizations": {
+      "label": "Show pronunciation in Latin letters",
+      "help": "Also shows foreign scripts written in Latin letters, so you can see how they sound.",
+      "example": "Translating Japanese also shows 'konnichiwa' next to the original.",
+      "level": "advanced"
+    },
+    "translator_from_language": {
+      "help": "The language to translate from, as a short code such as en, no or tr. Only used when automatic detection is off.",
+      "level": "advanced"
+    },
+    "translator_to_language": {
+      "help": "The language translations are shown in, as a short code such as en, no or tr. If not set, KOReader's own menu language is used.",
+      "example": "tr: selected English text is translated into Turkish.",
+      "level": "basic"
+    },
+    "fulltext_search_find_all": {
+      "label": "List all search results",
+      "help": "When you search for selected text, shows a list of every place it appears instead of jumping through matches in the pages.",
+      "level": "basic"
+    },
+    "fulltext_search_nb_context_words": {
+      "label": "Words around each result",
+      "help": "How many words around each match are shown in the search results list.",
+      "level": "basic"
+    },
+    "fulltext_search_results_max_lines": {
+      "label": "Lines per search result",
+      "help": "Lets each search result grow up to this many lines. Not set means one fixed line per result.",
+      "level": "advanced"
+    },
+    "fulltext_search_results_per_page": {
+      "label": "Search results per page",
+      "help": "How many search results fit on one page of the results list.",
+      "level": "basic"
+    },
+    "fulltext_search_zoom_to_page": {
+      "label": "Show whole page for results (PDF)",
+      "help": "When jumping to a search result in a PDF or comic, shows the whole page instead of keeping your zoom. Only for PDFs and similar fixed-layout files.",
+      "level": "advanced"
+    },
+    "language_japanese_text_scan_length": {
+      "label": "Japanese word scan length",
+      "help": "For Japanese books only: how many characters the dictionary looks ahead when finding where a word ends. Not set uses the built-in value.",
+      "level": "advanced"
+    },
+    "dimension_units": {
+      "label": "Measurement units",
+      "help": "Units used when KOReader shows sizes such as margins.",
+      "level": "advanced",
+      "options": {
+        "mm": "Millimetres",
+        "in": "Inches",
+        "px": "Screen pixels"
+      }
+    },
+    "dimension_units_append_px": {
+      "label": "Also show pixels",
+      "help": "Also shows sizes in screen pixels next to millimetres or inches.",
+      "level": "advanced"
+    },
+    "keyboard_layout_default": {
+      "label": "Default keyboard language",
+      "help": "The keyboard language that is used by default, written as a language code such as en or tr.",
+      "example": "tr: the on-screen keyboard opens with Turkish letters.",
+      "level": "basic"
+    },
+    "keyboard_remember_layout": {
+      "label": "Remember last keyboard language",
+      "help": "The keyboard opens in the language you used last time, instead of the default one.",
+      "level": "basic"
+    },
+    "keyboard_swipes_enabled": {
+      "label": "Swipe keys for extra characters",
+      "help": "Swiping on a key types an extra character, such as an accented letter or symbol.",
+      "example": "Swipe up on 'e' to type 'é' without opening a pop-up.",
+      "level": "basic"
+    },
+    "keyboard_key_font_size": {
+      "label": "Keyboard letter size",
+      "help": "Size of the letters on the on-screen keyboard keys.",
+      "level": "basic"
+    },
+    "keyboard_key_bold": {
+      "label": "Bold keyboard letters",
+      "help": "Shows the keyboard letters in bold, so they are easier to see.",
+      "level": "basic"
+    },
+    "keyboard_key_border": {
+      "label": "Outlined keys",
+      "help": "Draws an outline around each keyboard key.",
+      "level": "basic"
+    },
+    "keyboard_key_compact": {
+      "label": "Compact keyboard",
+      "help": "Makes the keys smaller with less space between them.",
+      "level": "advanced"
+    },
+    "mass_storage_confirmation_disabled": {
+      "label": "Skip USB connection question",
+      "help": "When you plug the Kobo into a computer, it goes straight into file-transfer mode without asking first.",
+      "level": "advanced"
+    },
+    "statistics.min_sec": {
+      "label": "Shortest time counted per page",
+      "help": "A page you turn faster than this many seconds is not counted as read. This affects the reading minutes Lasci's Board shows.",
+      "example": "5: flicking past pages quickly does not add reading time.",
+      "level": "advanced"
+    },
+    "statistics.max_sec": {
+      "label": "Longest time counted per page",
+      "help": "The most time counted for one page, so leaving the Kobo open on a page does not inflate your reading time. This affects the reading minutes Lasci's Board shows.",
+      "example": "120: if you leave a page open for 20 minutes, only 2 minutes are counted.",
+      "level": "advanced"
+    },
+    "statistics.freeze_finished_books": {
+      "label": "Stop counting finished books",
+      "help": "Stops recording reading time for books marked finished, so re-reading parts of them does not change their statistics or your minutes on Lasci's Board.",
+      "level": "advanced"
+    },
+    "statistics.calendar_start_day_of_week": {
+      "label": "Week starts on",
+      "help": "The first day of the week in the reading statistics calendar.",
+      "level": "basic",
+      "options": {
+        "1": "Sunday",
+        "2": "Monday",
+        "6": "Friday",
+        "7": "Saturday"
+      }
+    },
+    "statistics.calendar_nb_book_spans": {
+      "help": "How many books can be shown for one day in the reading statistics calendar.",
+      "level": "advanced"
+    },
+    "statistics.calendar_show_histogram": {
+      "label": "Show reading-by-hour bars",
+      "help": "Shows a small bar chart in each calendar day of when during the day you read.",
+      "level": "advanced"
+    },
+    "statistics.calendar_browse_future_months": {
+      "label": "Allow browsing future months",
+      "help": "Lets you page forward to months that have not happened yet in the reading calendar.",
+      "level": "advanced"
+    },
+    "statistics.calendar_day_start_hour": {
+      "label": "Day starts at (hour)",
+      "help": "The hour when a new day starts in the daily reading timeline. Useful if you read past midnight.",
+      "example": "4: reading at 1 am counts with the previous evening.",
+      "level": "advanced"
+    },
+    "statistics.calendar_day_start_minute": {
+      "label": "Day starts at (minute)",
+      "help": "The minute part of the time a new day starts in the daily reading timeline.",
+      "level": "advanced"
+    },
+    "statistics.calendar_use_day_time_shift": {
+      "label": "Use later day start in calendar",
+      "help": "Also uses the later day start in the monthly calendar, not just the daily timeline.",
+      "level": "advanced"
+    },
+    "readtimer.show_on_expiry": {
+      "label": "When the timer ends",
+      "help": "What happens when the read timer runs out. Not set means a message you must tap away.",
+      "level": "basic",
+      "options": {
+        "notification": "Short notice that disappears",
+        "nothing": "Nothing"
+      }
+    },
+    "readtimer.snooze_minutes": {
+      "label": "Snooze length",
+      "help": "How many minutes Snooze adds when the timer goes off.",
+      "level": "basic"
+    },
+    "readtimer.auto_reschedule_interval": {
+      "label": "Repeat timer automatically",
+      "help": "For a repeating timer, starts it again by itself each time it ends.",
+      "example": "A 30-minute timer reminds you every 30 minutes until you stop it.",
+      "level": "basic"
+    },
+    "readtimer.show_value_in_header": {
+      "label": "Timer in top bar",
+      "help": "Shows the time left on the read timer in the top status bar.",
+      "level": "basic"
+    },
+    "readtimer.show_value_in_footer": {
+      "label": "Timer in bottom bar",
+      "help": "Shows the time left on the read timer in the bottom status bar.",
+      "level": "basic"
+    },
+    "readtimer.expiry_message_text": {
+      "label": "Timer message",
+      "help": "Your own text to show when the timer ends. If not set, it says 'Time is up'.",
+      "example": "'Lights out, sleep time'",
+      "level": "basic"
+    },
+    "vocabulary_builder.enabled": {
+      "label": "Save looked-up words",
+      "help": "Saves every word you look up in the dictionary to a word list you can review later like flashcards.",
+      "level": "basic"
+    },
+    "vocabulary_builder.with_context": {
+      "label": "Save the sentence too",
+      "help": "Also saves the sentence around each looked-up word, so you remember where you saw it.",
+      "level": "basic"
+    },
+    "cover_image_enabled": {
+      "label": "Save cover picture to a file",
+      "help": "Saves the current book's cover as a picture file for other programs. Kobo's own software does not use it, so this is of little use here.",
+      "level": "advanced"
+    },
+    "calibre_wireless": {
+      "label": "Calibre wireless transfer",
+      "help": "Lets the Calibre program on your computer send books to the Kobo over Wi-Fi. Takes effect after KOReader restarts.",
+      "level": "advanced"
+    },
+    "calibre_search_from_reader": {
+      "label": "Calibre search while reading",
+      "help": "Lets you search your Calibre library on the Kobo while reading a book, not only from the file browser. Takes effect after a restart.",
+      "level": "advanced"
+    },
+    "calibre_search_case_insensitive": {
+      "label": "Calibre search ignores capitals",
+      "help": "When on, searching your Calibre library ignores capital letters. When off, 'Dune' and 'dune' are different searches.",
+      "level": "advanced"
+    },
+    "calibre_search_find_by_title": {
+      "help": "Searching your Calibre library looks at book titles.",
+      "level": "advanced"
+    },
+    "calibre_search_find_by_authors": {
+      "help": "Searching your Calibre library looks at author names.",
+      "level": "advanced"
+    },
+    "calibre_search_find_by_series": {
+      "help": "Searching your Calibre library looks at series names.",
+      "level": "advanced"
+    },
+    "calibre_search_find_by_tag": {
+      "help": "Searching your Calibre library looks at Calibre tags.",
+      "level": "advanced"
+    },
+    "calibre_search_find_by_path": {
+      "help": "Searching your Calibre library looks at file and folder names.",
+      "level": "advanced"
+    },
+    "calibre_search_cache_metadata": {
+      "label": "Calibre: faster searches",
+      "help": "Keeps a copy of your Calibre library's book details in memory, so searches are faster.",
+      "level": "advanced"
+    },
+    "terminal_font_size": {
+      "help": "Text size in the terminal tool, a technical command window.",
+      "level": "advanced"
+    },
+    "terminal_buffer_size": {
+      "help": "How much past output the terminal tool keeps, in kilobytes.",
+      "level": "advanced"
+    },
+    "screensaver_max_files": {
+      "label": "Max pictures for random sleep screen",
+      "help": "When the sleep screen picks a random picture from a folder, it looks at no more than this many files.",
+      "level": "advanced"
+    },
+    "followed_link_marker": {
+      "label": "Link landing mark (seconds)",
+      "help": "After you tap a link inside a book, a mark briefly appears in the margin showing where you landed. The number is how many seconds it stays.",
+      "example": "3: the mark stays for three seconds instead of one.",
+      "level": "advanced"
+    },
+    "history_size": {
+      "label": "Books kept in history",
+      "help": "How many books are remembered in the reading history list. Takes effect after a restart.",
+      "level": "advanced"
+    },
+    "page_gap_color": {
+      "label": "Gap colour between PDF pages",
+      "help": "In PDFs shown as one continuous scroll, the shade of the gap between pages: 0 white, 8 grey, 15 black.",
+      "level": "advanced"
+    },
+    "legacy_image_scaling": {
+      "label": "Older picture resizing",
+      "help": "Uses an older, faster but rougher way to resize pictures. Leave off for better-looking images. Takes effect after a restart.",
+      "level": "advanced"
+    },
+    "cre_disk_cache_max_size": {
+      "label": "Book cache size",
+      "help": "How much storage, in megabytes, KOReader may use to remember laid-out books so they open faster. Not set means 64 MB. Takes effect after a restart.",
+      "level": "advanced"
+    }
+  }
+}
