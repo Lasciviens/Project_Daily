@@ -7,13 +7,17 @@ const PLACE_ICON: Record<PlaceKind, typeof Home> = { home: Home, work: Briefcase
 const KINDS: PlaceKind[] = ['home', 'work']
 
 /** Two one-tap trips to the saved Home / Work places (Settings → Places). */
-export function PlaceButtons({ stops, disabled, onPick }: {
+export function PlaceButtons({ stops, disabled, hideMissing = false, onPick }: {
   stops: readonly UserTransitStop[]
   disabled?: boolean
+  /** Home's card: only the places that are set, and no "not set" hint (the planner keeps it). */
+  hideMissing?: boolean
   onPick: (stop: UserTransitStop) => void
 }) {
-  const places = KINDS.map(kind => ({ kind, stop: findPlace(stops, kind) }))
-  const missing = places.filter(p => !p.stop).map(p => PLACE_LABEL[p.kind])
+  const all = KINDS.map(kind => ({ kind, stop: findPlace(stops, kind) }))
+  const places = hideMissing ? all.filter(p => p.stop) : all
+  const missing = hideMissing ? [] : all.filter(p => !p.stop).map(p => PLACE_LABEL[p.kind])
+  if (places.length === 0) return null
   return (
     <div>
       <div className="grid grid-cols-2 gap-2 sm:max-w-md">

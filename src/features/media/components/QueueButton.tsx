@@ -1,4 +1,3 @@
-import { ListOrdered } from 'lucide-react'
 import { Button } from '../../../shared/ui'
 import { useTraktStatus } from '../trakt/useTrakt'
 import { useQueue, useToggleQueue } from '../queue/useQueue'
@@ -11,7 +10,7 @@ export function QueueButton({ type, tmdb, title }: { type: 'movie' | 'show'; tmd
   if (!trakt?.connected) return null
   const pos = queue.position(type, tmdb)
   return (
-    <Button size="sm" variant={pos ? 'primary' : 'ghost'} icon={<ListOrdered />} loading={toggle.isPending}
+    <Button size="sm" variant={pos ? 'primary' : 'ghost'} loading={toggle.isPending}
       title={pos ? 'Tap to take it out of the Queue' : 'Put it at the end of your Queue (a list on Trakt)'}
       aria-label={pos ? `In Queue, number ${pos}` : 'Add to Queue'}
       onClick={() => toggle.mutate({ item: { type, tmdb }, title, remove: !!pos })}>

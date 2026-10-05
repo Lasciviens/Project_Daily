@@ -19,7 +19,7 @@ const SORTS: { value: LibrarySort; label: string }[] = [
   { value: 'added', label: 'Recently added' },
   { value: 'title', label: 'Title' },
   { value: 'year', label: 'Release year' },
-  { value: 'release', label: 'Release date (soonest)' },
+  { value: 'release', label: 'Release date' },
   { value: 'rating', label: 'Your rating' },
   { value: 'rt', label: 'Rotten Tomatoes' },
 ]

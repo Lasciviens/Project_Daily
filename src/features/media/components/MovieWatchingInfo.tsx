@@ -9,7 +9,8 @@ import type { UserMovieEntry } from '../types'
  * day it was added to the library.
  */
 export function MovieWatchingInfo({ entry }: { entry: UserMovieEntry }) {
-  const { data } = useTraktPlayback()
+  const { data, isLoading } = useTraktPlayback()
+  if (isLoading) return null
   const playback = data?.find(p => p.type === 'movie' && p.tmdb === entry.movie.tmdb_id)
   const text = playback
     ? `Paused at ${Math.round(playback.progress)}%${playback.pausedAt ? ` on ${formatDate(playback.pausedAt)}` : ''}`

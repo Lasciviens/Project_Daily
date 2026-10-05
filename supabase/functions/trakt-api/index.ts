@@ -1632,9 +1632,10 @@ async function tmdbQ(path: string, params: Record<string, string> = {}): Promise
 interface FollowTitle { id: number; title: string; poster: string | null; release: string | null }
 
 // The same rules the app's self-filling lists use (useSmartLists.ts): a
-// studio, keyword or person follow leaves out documentaries and TV movies
-// (making-ofs, "Encore" specials), cameos as oneself, and stubs with neither a
-// date nor a poster — before, those showed in What's new as "new titles".
+// studio or keyword follow leaves out documentaries and TV movies (making-ofs,
+// "Encore" specials), a person follow cameos as oneself, and every follow stubs
+// with neither a date nor a poster — before, those showed in What's new as
+// "new titles". checkFollows also clears earlier events these rules now drop.
 const EXTRAS = [99, 10770] // Documentary, TV Movie
 const SELF = /^(self|himself|herself|themselves)\b/i
 const isExtra = (r: AnyRec) => ((r.genre_ids ?? []) as number[]).some(g => EXTRAS.includes(g))
@@ -1660,7 +1661,7 @@ async function followTitles(kind: string, id: number): Promise<FollowTitle[]> {
     ? ((credits.crew ?? []) as AnyRec[]).filter(c => c.job === 'Director')
     : ((credits.cast ?? []) as AnyRec[]).filter(c => !SELF.test(String(c.character ?? '')))
   const seen = new Map<number, FollowTitle>()
-  for (const r of rows) if (!isStub(r) && !isExtra(r)) seen.set(Number(r.id), map(r))
+  for (const r of rows) if (!isStub(r)) seen.set(Number(r.id), map(r))
   return [...seen.values()]
 }
 
@@ -1693,6 +1694,15 @@ async function checkFollows(db: Db, userId: string, token: string | null, force:
       }
     }
     if (events.length) { const { error: e } = await db.from('media_follow_events').insert(events); if (e) throw e }
+    // "New title" events the current rules no longer list (a documentary, a
+    // cameo, a stub reported before the rules) leave What's new.
+    if (!baseline) {
+      const keep = titles.map(t => t.id)
+      let del = db.from('media_follow_events').delete().eq('user_id', userId).eq('follow_id', f.id).eq('kind', 'new_title')
+      if (keep.length) del = del.not('tmdb_id', 'in', `(${keep.join(',')})`)
+      const { error: de } = await del
+      if (de) throw de
+    }
     if (fresh.length && f.trakt_list_id && token) {
       await post(`/users/me/lists/${Number(f.trakt_list_id)}/items`, token, { movies: fresh.map(t => ({ ids: { tmdb: t.id } })) }).catch(() => null)
     }

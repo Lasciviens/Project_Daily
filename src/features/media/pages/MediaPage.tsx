@@ -100,8 +100,9 @@ export function MediaPage() {
     // The search box is its own card (a still film-strip motif behind it),
     // What to watch? an icon beside it; Continue watching and Coming soon
     // (collapsed) are cards under it, hidden while searching.
+    // Cards keep their own width (56rem, the main track); only Discover takes the whole page.
     library: (
-      <div className="flex flex-col gap-4">
+      <div className="flex max-w-[56rem] flex-col gap-4">
         <section className="card relative p-3 sm:p-4">
           <MediaHeroArt />
           {/* One row from the tablet up; on a phone the type switch wraps under the box. */}

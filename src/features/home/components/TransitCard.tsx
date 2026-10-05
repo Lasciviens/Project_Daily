@@ -15,10 +15,10 @@ import { buildLineGroups } from './ruter/transitUtils'
 const MINI_ROWS = 3
 
 /**
- * Home's transit glance: the next departures from the stop nearest to you
- * (your saved default stop when the location is off, or when the nearest
- * stop IS that saved stop — then its saved direction applies), one-tap trips
- * to Home and Work, and the full planner one tap away.
+ * Home's transit glance: the next departures from where you are — a saved stop
+ * near you (with its saved direction), else the nearest stop, else your saved
+ * default when the location is off — one-tap trips to Home and Work, and the
+ * full planner one tap away.
  */
 export function TransitCard() {
   const ws = useWidgetState('ruter', { collapsed: false })
@@ -28,12 +28,15 @@ export function TransitCard() {
   const { stops, isLoading: stopsLoading } = useTransitStops()
   const saved = stops.find(s => s.is_default) ?? stops[0] ?? null
   const nearby = useNearbyStops({ enabled: !ws.collapsed })
-  const nearest = nearby.data?.[0] ?? null
-  // The nearest real stop wins over the saved default, unless they are the same stop.
-  const near = nearest && nearest.id !== saved?.stop_id ? nearest : null
+  // Around you (EnTur's ≤ 6 stops within 1 km, nearest first): a SAVED stop
+  // among them wins, with its saved direction; otherwise the nearest stop;
+  // without a location, the saved default.
+  const savedNearby = nearby.data?.map(n => stops.find(s => s.stop_id === n.id)).find(Boolean) ?? null
+  const shown = savedNearby ?? saved
+  const near = !savedNearby && nearby.data?.[0] ? nearby.data[0] : null
   const useNearest = !!near
-  const stopId = near ? near.id : saved?.stop_id
-  const isAddress = !useNearest && !!saved && !saved.stop_id.startsWith('NSR:')
+  const stopId = near ? near.id : shown?.stop_id
+  const isAddress = !useNearest && !!shown && !shown.stop_id.startsWith('NSR:')
   // Paused while the planner sheet is open — the sheet runs its own board.
   const { data, isLoading, error } = useDepartures(stopId, { enabled: !ws.collapsed && !open && !isAddress })
 
@@ -41,21 +44,21 @@ export function TransitCard() {
 
   const groups = useMemo(() => {
     const all = data?.departures ?? []
-    const scoped = !useNearest && saved?.quay_id ? all.filter(d => d.quayId === saved.quay_id) : all
+    const scoped = !useNearest && shown?.quay_id ? all.filter(d => d.quayId === shown.quay_id) : all
     return buildLineGroups(scoped.length ? scoped : all).slice(0, MINI_ROWS)
-  }, [data, saved, useNearest])
+  }, [data, shown, useNearest])
 
   const label = near
     ? `${near.name} · ${near.distance} m away`
-    : saved ? `${saved.label ?? saved.stop_name}${saved.quay_description ? ` · ${saved.quay_description}` : ''}` : null
+    : shown ? `${shown.label ?? shown.stop_name}${shown.quay_description ? ` · ${shown.quay_description}` : ''}` : null
   const openPlanner = (stopIdToPlan: string | null) => { setPlanTo(stopIdToPlan); setOpen(true) }
 
   return (
     <>
       <WidgetShell title="Transit" icon={<Bus />} ws={ws}>
         {stops.length > 0 && (
-          <div className="mb-3">
-            <PlaceButtons stops={stops} onPick={s => openPlanner(s.id)} />
+          <div className="mb-3 empty:hidden">
+            <PlaceButtons stops={stops} hideMissing onPick={s => openPlanner(s.id)} />
           </div>
         )}
         {stopsLoading ? (

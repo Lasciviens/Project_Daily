@@ -77,18 +77,24 @@ export function useWeekTrainingStats(): WeekTrainingStats {
 export const STREAK_LOOKBACK_WEEKS = 26
 
 /**
- * Consecutive weeks with at least one Hevy workout, this week included once
- * it has one (a Tuesday hasn't broken the streak yet) — Progress's
+ * Consecutive weeks with at least one session — Hevy workouts and Strava
+ * activities, the same sessions "N this week" counts — this week included once
+ * it has one (a Tuesday hasn't broken the streak yet). Progress's
  * currentStreakWeeks over the last STREAK_LOOKBACK_WEEKS weeks.
  */
 export function useTrainingWeekStreak(enabled = true): { weeks: number; capped: boolean; isLoading: boolean } {
   const today = useTodayStr()
   const thisWeek = mondayOf(today)
   const from = shiftDateStr(thisWeek, -7 * (STREAK_LOOKBACK_WEEKS - 1))
+  const bounds = useMemo(() => localDayBoundsIso(from, today), [from, today])
   const q = useHevyWorkoutsRange(from, today, { enabled })
+  const strava = useStravaActivities({ from: bounds.fromISO, to: bounds.toISO, limit: 300 }, { enabled })
   return useMemo(() => {
-    const sessions: DatedSession[] = (q.data ?? []).map(w => ({ id: w.id, date: workoutLocalDay(w) }))
+    const sessions: DatedSession[] = [
+      ...(q.data ?? []).map(w => ({ id: `h:${w.id}`, date: workoutLocalDay(w) })),
+      ...(strava.data ?? []).map(a => ({ id: `s:${a.id}`, date: localDayOf(a.start_date) ?? '' })).filter(s => s.date),
+    ]
     const weeks = currentStreakWeeks(weeklySessionCounts(sessions, thisWeek), 1, thisWeek)
     return { weeks, capped: weeks >= STREAK_LOOKBACK_WEEKS, isLoading: q.isLoading }
-  }, [q.data, q.isLoading, thisWeek])
+  }, [q.data, strava.data, q.isLoading, thisWeek])
 }
