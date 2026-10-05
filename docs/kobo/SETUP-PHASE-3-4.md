@@ -40,6 +40,11 @@ Menu Customizer (no stated support for 2026.07), the "print edition" header patc
 manual tuning). Keep App Store away from Project: Title updates: every Project: Title
 release is tied to one KOReader version.
 
+**Updating KOReader later (🛠 → Update):** don't, until Project: Title has a release for the
+new KOReader version. Update both in the same sitting, Project: Title over SSH. If KOReader
+was updated by mistake and the library looks broken, re-tick Cover browser in Plugin
+management until the matching Project: Title is installed.
+
 ## 4. The Mac session block
 
 Paste this into the Mac Claude session as-is, with the secret on the clipboard.
