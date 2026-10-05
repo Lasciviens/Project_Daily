@@ -2,7 +2,7 @@ import { useMemo, useState, type ReactNode } from 'react'
 import { Search } from 'lucide-react'
 import { EmptyState, ToneDot } from '../../../shared/ui'
 import { POSTER_GRID, PosterTile } from './PosterTile'
-import { BUCKET_LABEL, BUCKET_ORDER, BUCKET_TONE, bucketCounts, filterLibrary, type LibraryBucket, type LibraryItem, type LibrarySort } from '../libraryModel'
+import { BUCKET_LABEL, BUCKET_ORDER, BUCKET_TONE, bucketCounts, defaultSortFor, filterLibrary, type LibraryBucket, type LibraryItem, type LibrarySort } from '../libraryModel'
 import type { MediaType, OpenMediaDetail } from '../types'
 
 interface Props {
@@ -19,6 +19,7 @@ const SORTS: { value: LibrarySort; label: string }[] = [
   { value: 'added', label: 'Recently added' },
   { value: 'title', label: 'Title' },
   { value: 'year', label: 'Release year' },
+  { value: 'release', label: 'Release date (soonest)' },
   { value: 'rating', label: 'Your rating' },
   { value: 'rt', label: 'Rotten Tomatoes' },
 ]
@@ -26,7 +27,10 @@ const SORTS: { value: LibrarySort; label: string }[] = [
 /** The whole library: filter by status, search by title, sort, and a poster grid that adds columns as it widens. */
 export function LibraryView({ items, mediaType, typeSwitch, bucket, onBucketChange, onOpenDetail }: Props) {
   const [query, setQuery] = useState('')
-  const [sort, setSort] = useState<LibrarySort>('added')
+  // A picked sort holds until the status changes; each status opens in its own default order.
+  const [picked, setPicked] = useState<{ bucket: LibraryBucket | 'all'; sort: LibrarySort } | null>(null)
+  const sort = picked?.bucket === bucket ? picked.sort : defaultSortFor(bucket)
+  const setSort = (s: LibrarySort) => setPicked({ bucket, sort: s })
   const counts = bucketCounts(items)
   const shown = useMemo(() => filterLibrary(items, bucket, query, sort), [items, bucket, query, sort])
   // The popup steps through exactly what is on screen, in this order.

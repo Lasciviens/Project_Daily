@@ -1,55 +1,20 @@
-import { useState } from 'react'
 import { RefreshCw } from 'lucide-react'
-import { useQueryClient } from '@tanstack/react-query'
-import { toast } from '../../../../app/store'
-import { logError } from '../../../../shared/utils/logError'
-import { fetchSteamOwnedGames } from '../../api/steamApi'
-import { fetchPsnPlayedGames } from '../../api/psnApi'
-import { importProviderGames } from '../../api/gamesApi'
-import { psnImportRows, steamImportRows } from '../../api/providerImportRows'
 import { formatDay, type TgGame } from '../testGameModel'
 import { lastSynced } from './tgProviderSync'
-
-type Provider = 'steam' | 'playstation'
-const NAME: Record<Provider, string> = { steam: 'Steam', playstation: 'PlayStation' }
+import { PROVIDER_NAME as NAME, useProviderSync, type SyncProvider as Provider } from '../useProviderSync'
 
 /**
  * "Sync Steam" / "Sync PlayStation" on that shelf: reads the provider's list
  * and imports it (new games added, playtime refreshed, only empty metadata
- * filled). An explicit tap only — never on load (the lazy-loading rule).
- * `iconOnly` (the phone's crowded scope row): a 44px icon button, the words
- * in its label and tooltip.
+ * filled). Opening Games also syncs by itself once a day (useProviderAutoSync);
+ * this is the on-demand one. `iconOnly` (the phone's crowded scope row): a
+ * 44px icon button, the words in its label and tooltip.
  */
 export function TgProviderSync({ library, games, compact = false, iconOnly = false }: { library: Provider; games: readonly TgGame[]; compact?: boolean; iconOnly?: boolean }) {
-  const qc = useQueryClient()
-  const [busy, setBusy] = useState(false)
+  const { run, busy } = useProviderSync(library)
   const last = lastSynced(games, library)
 
-  async function run() {
-    if (busy) return
-    setBusy(true)
-    const tid = toast.loading(`Reading your ${NAME[library]} library…`)
-    try {
-      const rows = library === 'steam'
-        ? steamImportRows((await qc.fetchQuery({ queryKey: ['steam', 'owned-games'], queryFn: fetchSteamOwnedGames, staleTime: 0 })).games)
-        : psnImportRows(await qc.fetchQuery({ queryKey: ['psn', 'played-games'], queryFn: fetchPsnPlayedGames, staleTime: 0 }))
-      if (!rows.length) throw new Error(`${NAME[library]} returned no games — check Settings → Subscriptions.`)
-      const { imported, updated, promoted } = await importProviderGames(library, library === 'steam' ? 'steam' : 'psn', rows)
-      toast.dismiss(tid)
-      const bits = [imported ? `${imported} added` : null, updated ? `${updated} refreshed` : null, promoted ? `${promoted} now playing` : null].filter(Boolean)
-      toast.success(bits.length ? `${NAME[library]}: ${bits.join(' · ')} ✓` : `${NAME[library]} is up to date ✓`)
-      qc.invalidateQueries({ queryKey: ['games'] })
-    } catch (e) {
-      toast.dismiss(tid)
-      const msg = (e as Error).message
-      logError(`games_provider_sync_${library}: ${msg}`)
-      toast.error(msg)
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const title = `Adds new ${NAME[library]} games and refreshes playtime; your status, rating and notes are never touched.${last ? ` Last synced ${formatDay(last)}.` : ''}`
+  const title = `Adds new ${NAME[library]} games and refreshes playtime (also once a day by itself when you open Games); your status, rating and notes are never touched.${last ? ` Last synced ${formatDay(last)}.` : ''}`
   if (iconOnly) {
     return (
       <button

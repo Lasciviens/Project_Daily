@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { X } from 'lucide-react'
 import { posterUrl } from '../../../integrations/tmdb/client'
 import { SectionLabel, Truncate } from '../../../shared/ui'
@@ -44,25 +45,42 @@ function Tile({ item, posters, inLibrary, onOpen, onRemove }: {
   )
 }
 
+/** A playback paused longer ago than this is old news; it stays one tap away. */
+const STALE_DAYS = 60
+const isStale = (i: TraktPlaybackItem, now: number) => !!i.pausedAt && now - Date.parse(i.pausedAt) > STALE_DAYS * 864e5
+
 /**
  * Trakt's paused playbacks (a film or episode stopped part-way in Plex,
  * Infuse, a TV app…), newest first. Titles you finished or dropped here are
- * left out; ✕ removes a playback on Trakt. Hidden when there is nothing to resume.
+ * left out, and so are ones paused over STALE_DAYS ago (behind "Show N older",
+ * and no card at all when only old ones are left);
+ * ✕ removes a playback on Trakt. Hidden when there is nothing to resume.
  */
 export function ContinueWatching({ posters, onOpenDetail }: { posters: Map<string, string | null>; onOpenDetail: OpenMediaDetail }) {
   const { data } = useTraktPlayback()
   const index = useLibraryIndex()
   const remove = useRemoveTraktPlayback()
+  const [showOld, setShowOld] = useState(false)
+  const [now] = useState(() => Date.now())
   const entry = (i: TraktPlaybackItem) => index.get(libraryKey(i.type === 'movie' ? 'movie' : 'tv', i.tmdb!))
-  const items = (data ?? [])
+  const relevant = (data ?? [])
     .filter(i => i.tmdb)
     .filter(i => { const b = entry(i)?.bucket; return b !== 'completed' && b !== 'dropped' })
-    .slice(0, 12)
+  const older = relevant.filter(i => isStale(i, now)).length
+  const items = relevant.filter(i => showOld || !isStale(i, now)).slice(0, 12)
+  // Only old playbacks: no card at all (the owner's call — they are clutter).
   if (items.length === 0) return null
   const sequence = items.map(i => ({ tmdbId: i.tmdb!, mediaType: i.type === 'movie' ? 'movie' as const : 'tv' as const }))
   return (
     <section className="card p-3 sm:p-4">
-      <SectionLabel className="mb-1.5">Continue watching</SectionLabel>
+      <div className="mb-1.5 flex items-center justify-between gap-2">
+        <SectionLabel>Continue watching</SectionLabel>
+        {older > 0 && (
+          <button type="button" onClick={() => setShowOld(v => !v)} className="-my-2 min-h-[44px] text-meta font-semibold text-accent-600">
+            {showOld ? 'Hide older' : `Show ${older} older`}
+          </button>
+        )}
+      </div>
       <div className="scroll-x flex gap-2.5 pb-1">
         {items.map(i => (
           <Tile key={i.id} item={i} posters={posters} inLibrary={!!entry(i)}

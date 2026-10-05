@@ -600,6 +600,3 @@
 }
 .tg-adv .tg-legacy { color: var(--tg-text); }
 
-/* Console photos (TgConsolePhoto) are shot on white, so they sit on a white
-   mat in both themes instead of showing as a white box on the dark panel. */
-.tg-console-photo { background: #fff; border-radius: 10px; padding: 4px 8px; box-shadow: 0 0 0 1px var(--tg-border); }

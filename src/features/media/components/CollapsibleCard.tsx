@@ -1,26 +1,20 @@
 import { useState, type ReactNode } from 'react'
 import { ChevronDown } from 'lucide-react'
-import { Card, SkeletonText, useBoardStep } from '../../../shared/ui'
-import { MEDIA_TOOLS_OPEN_FROM } from '../mediaBoard'
+import { Card, SkeletonText } from '../../../shared/ui'
 
 /**
- * A side-rail card whose body opens on demand. Closed by default; on a
- * PageBoard wide enough to give it a column of its own (MEDIA_TOOLS_OPEN_FROM)
- * it starts open, so the column shows content rather than a closed bar.
- * `loading` (the library is still arriving) shows placeholder lines instead
- * of the body, so an open card never claims "nothing here" before it knows.
+ * A card whose body opens on demand (closed by default). `loading` (the
+ * library is still arriving) shows placeholder lines instead of the body, so
+ * an open card never claims "nothing here" before it knows.
  */
-export function CollapsibleCard({ title, icon, badge, loading = false, openFrom = MEDIA_TOOLS_OPEN_FROM, children }: {
+export function CollapsibleCard({ title, icon, badge, loading = false, children }: {
   title: string
   icon: ReactNode
   badge?: ReactNode
   loading?: boolean
-  /** The board step from which the card starts open. */
-  openFrom?: number
   children: ReactNode
 }) {
-  const step = useBoardStep()
-  const [open, setOpen] = useState(() => step >= openFrom)
+  const [open, setOpen] = useState(false)
   return (
     <Card padded={false}>
       <button

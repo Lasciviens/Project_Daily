@@ -1,10 +1,9 @@
 import { useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { ExternalLink, SkipForward, Trash2, CheckCircle2, Heart } from 'lucide-react'
+import { SkipForward, Trash2, CheckCircle2, Heart } from 'lucide-react'
 import { toast } from '../../../app/store'
 import { withProgress } from '../../../shared/hooks/useMutationWithFeedback'
 import { haptic } from '../../../shared/utils/haptics'
-import { tmdbMovieUrl, tmdbTVUrl } from '../../../integrations/tmdb/client'
 import { Button, SectionLabel } from '../../../shared/ui'
 import { STAGE_TONE, type Stage } from '../../../shared/theme/stage'
 import { useEntityModal } from '../../../shared/modals'
@@ -20,12 +19,12 @@ import { PlanThisButton } from './PlanThisButton'
 import { StarRating } from './StarRating'
 import { MovieWatchedControls } from './MovieWatchedControls'
 import { CinemaVisits } from './CinemaVisits'
+import { MovieWatchingInfo } from './MovieWatchingInfo'
 import { SeriesFinishedControls } from './SeriesFinishedControls'
 import { todayStr } from '../../../shared/utils/dateUtils'
 import { AddToListMenu } from './AddToListMenu'
 import { QueueButton } from './QueueButton'
 import { ReleaseReminderButton } from './ReleaseReminderButton'
-import { FollowMenu } from './FollowMenu'
 import type { TMDBMovieFull, TMDBTVFull, UserMovieEntry, UserTVEntry, MediaStatus } from '../types'
 
 // No manual "Upcoming" status: "coming soon" is derived from the release date
@@ -110,7 +109,6 @@ export function MediaLibraryControls({ detail, isMovie, userEntry, onRemoved }: 
   const tvEntry    = !isMovie && userEntry ? (userEntry as UserTVEntry) : null
   const movieEntry = isMovie && userEntry ? (userEntry as UserMovieEntry) : null
   const updating   = updateMovie.isPending || updateTV.isPending
-  const tmdbHref   = isMovie ? tmdbMovieUrl(movie!.id) : tmdbTVUrl(tv!.id)
 
   // The same source of truth as Daily's "Watch next" card (handles season
   // rollover from the real watched rows); the query is shared, so this is free.
@@ -261,9 +259,6 @@ export function MediaLibraryControls({ detail, isMovie, userEntry, onRemoved }: 
           <QueueButton type={isMovie ? 'movie' : 'show'} tmdb={detail.id} title={isMovie ? movie!.title : tv!.name} />
           <ReleaseReminderButton type={isMovie ? 'movie' : 'tv'} tmdbId={detail.id} title={isMovie ? movie!.title : tv!.name} posterPath={detail.poster_path ?? null} releaseDate={(isMovie ? movie!.release_date : tv!.first_air_date) || null} />
           <AddToListMenu type={isMovie ? 'movie' : 'show'} tmdb={detail.id} title={isMovie ? movie!.title : tv!.name} />
-          <a href={tmdbHref} target="_blank" rel="noopener noreferrer" className="btn-ghost btn-sm">
-            TMDB <ExternalLink aria-hidden className="h-3.5 w-3.5" />
-          </a>
         </div>
       </div>
     )
@@ -277,6 +272,7 @@ export function MediaLibraryControls({ detail, isMovie, userEntry, onRemoved }: 
         {tvEntry && (
           <p className="text-meta text-fg-muted tabular-nums">Progress: S{tvEntry.current_season} E{tvEntry.current_episode}</p>
         )}
+        {movieEntry?.status === 'watching' && <MovieWatchingInfo entry={movieEntry} />}
         {movieEntry?.status === 'completed' && (
           <MovieWatchedControls entry={movieEntry} releaseDate={movie!.release_date ?? null} disabled={updating} onPatch={patchEntry} />
         )}
@@ -336,10 +332,6 @@ export function MediaLibraryControls({ detail, isMovie, userEntry, onRemoved }: 
         )}
         <QueueButton type={isMovie ? 'movie' : 'show'} tmdb={detail.id} title={isMovie ? movie!.title : tv!.name} />
         <AddToListMenu type={isMovie ? 'movie' : 'show'} tmdb={detail.id} title={isMovie ? movie!.title : tv!.name} />
-        <FollowMenu detail={detail} isMovie={isMovie} />
-        <a href={tmdbHref} target="_blank" rel="noopener noreferrer" className="btn-ghost btn-sm" aria-label="Open on TMDB">
-          TMDB <ExternalLink aria-hidden className="hidden h-3.5 w-3.5 sm:block" />
-        </a>
         {/* Icon-only on phones so the row fits one line at 393px. */}
         <Button size="sm" variant="ghost" icon={<Trash2 />} className="text-danger max-sm:px-2.5" onClick={handleRemove}
           aria-label="Remove from library" disabled={removeMovie.isPending || removeTV.isPending}>

@@ -7,9 +7,8 @@ import { MediaTypePills } from '../components/MediaTypePills'
 import { useSearchTitles } from '../hooks/useTMDB'
 import { useMediaSearchSession } from '../hooks/useMediaSearchSession'
 import { DiscoveryTabs } from '../components/DiscoveryTabs'
-import { TonightPicker } from '../components/TonightPicker'
+import { WhatToWatchButton } from '../components/TonightPicker'
 import { ReleaseCalendar } from '../components/ReleaseCalendar'
-import { LibrarySummary } from '../components/LibrarySummary'
 import { LibraryView } from '../components/LibraryView'
 import { ListsView } from '../components/ListsView'
 import { MediaStatsView } from '../components/stats/MediaStatsView'
@@ -83,7 +82,6 @@ export function MediaPage() {
   const { data: tvEntries = [], isLoading: tvLoading } = useTVSeries()
 
   const openDetail: OpenMediaDetail = (tmdbId, mediaType, sequence) => modal.open({ kind: 'media', tmdbId, mediaType, sequence })
-  const hasLibrary = movieEntries.length > 0 || tvEntries.length > 0
   const mediaType: MediaType = tab === 'movies' ? 'movie' : 'tv'
   const setMediaType = (t: MediaType) => setTab(t === 'movie' ? 'movies' : 'tv')
   const typePills = (counts?: Partial<Record<MediaType, string>>) => <MediaTypePills value={mediaType} onChange={setMediaType} counts={counts} />
@@ -98,12 +96,10 @@ export function MediaPage() {
     ...tvEntries.map(e => [`tv:${e.tv_series.tmdb_id}`, e.tv_series.poster_path] as const),
   ]), [movieEntries, tvEntries])
 
-  const tonight = <TonightPicker movieEntries={movieEntries} tvEntries={tvEntries} onOpenDetail={openDetail} />
-  const calendar = <ReleaseCalendar movieEntries={movieEntries} tvEntries={tvEntries} onOpenDetail={openDetail} loading={libraryLoading} />
-
   const sections: Record<MediaSection, ReactNode> = {
-    // The search box is its own card (a still film-strip motif behind it);
-    // Continue watching is a separate card under it, hidden while searching.
+    // The search box is its own card (a still film-strip motif behind it),
+    // What to watch? an icon beside it; Continue watching and Coming soon
+    // (collapsed) are cards under it, hidden while searching.
     library: (
       <div className="flex flex-col gap-4">
         <section className="card relative p-3 sm:p-4">
@@ -112,33 +108,20 @@ export function MediaPage() {
           <div className="relative z-10 flex flex-wrap items-center gap-2">
             <MediaSearch value={search.text} onChange={search.change} onClear={search.leave} active={searching} />
             {typePills(searchCounts)}
+            <WhatToWatchButton movieEntries={movieEntries} tvEntries={tvEntries} onOpenDetail={openDetail} />
           </div>
         </section>
         {!searching && <ContinueWatching posters={posters} onOpenDetail={openDetail} />}
+        {!searching && <ReleaseCalendar movieEntries={movieEntries} tvEntries={tvEntries} onOpenDetail={openDetail} loading={libraryLoading} />}
       </div>
     ),
-    // Your library: under search on a phone, in the right-hand column from the laptop.
-    summary: !libraryLoading && hasLibrary
-      ? <LibrarySummary items={items} mediaType={mediaType} onOpenDetail={openDetail} onOpenLibrary={openLibrary} />
-      : null,
     discovery: <DiscoveryTabs mediaType={mediaType} onOpenDetail={openDetail} />,
-    // Phones and tablets: the two tools under the main cards, one column
-    // on a phone and two once the grid itself is 36rem wide.
-    tools: (
-      <div className="@container">
-        <div className="grid grid-cols-1 items-start gap-4 @[36rem]:grid-cols-2">{tonight}{calendar}</div>
-      </div>
-    ),
-    tonight,
-    calendar,
   }
   // While searching, the results take Discover's place (the search card stays
-  // mounted, so typing keeps focus). A phone drops the tools under them; wider
-  // pages keep their side columns.
+  // mounted, so typing keeps focus).
   const shown: Record<MediaSection, ReactNode> = searching
     ? {
         ...sections,
-        tools: null,
         discovery: <MediaSearchResults query={search.settled} pending={search.pending} mediaType={mediaType} onOpenDetail={openDetail} onClear={search.leave} />,
       }
     : sections

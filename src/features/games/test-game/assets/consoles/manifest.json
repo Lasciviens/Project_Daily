@@ -5,9 +5,10 @@
     "sourceUrl": "https://commons.wikimedia.org/wiki/File:PS2-Fat-Console-Set.png",
     "author": "Evan-Amos",
     "license": "Public domain",
-    "width": 492,
-    "height": 600,
-    "bytes": 21568
+    "width": 197,
+    "height": 240,
+    "bytes": 7646,
+    "processing": "Background removed (rembg, isnet-general-use; own transparency kept where the source had it), trimmed, 240 px tall WebP with alpha \u2014 05.10.2026"
   },
   "psx": {
     "file": "psx.webp",
@@ -15,9 +16,10 @@
     "sourceUrl": "https://commons.wikimedia.org/wiki/File:PSX-Console-wController.png",
     "author": "Evan-Amos",
     "license": "Public domain",
-    "width": 900,
-    "height": 403,
-    "bytes": 31182
+    "width": 543,
+    "height": 240,
+    "bytes": 18054,
+    "processing": "Background removed (rembg, isnet-general-use; own transparency kept where the source had it), trimmed, 240 px tall WebP with alpha \u2014 05.10.2026"
   },
   "ps3": {
     "file": "ps3.webp",
@@ -25,9 +27,10 @@
     "sourceUrl": "https://commons.wikimedia.org/wiki/File:Sony-PlayStation-3-CECHA01-wController-L.jpg",
     "author": "Evan-Amos",
     "license": "Public domain",
-    "width": 884,
-    "height": 358,
-    "bytes": 22350
+    "width": 602,
+    "height": 240,
+    "bytes": 21478,
+    "processing": "Background removed (rembg, isnet-general-use; own transparency kept where the source had it), trimmed, 240 px tall WebP with alpha \u2014 05.10.2026"
   },
   "psp": {
     "file": "psp.webp",
@@ -35,9 +38,10 @@
     "sourceUrl": "https://commons.wikimedia.org/wiki/File:Sony-PSP-1000-Body.png",
     "author": "Evan-Amos",
     "license": "Public domain",
-    "width": 900,
-    "height": 500,
-    "bytes": 36830
+    "width": 434,
+    "height": 240,
+    "bytes": 16310,
+    "processing": "Background removed (rembg, isnet-general-use; own transparency kept where the source had it), trimmed, 240 px tall WebP with alpha \u2014 05.10.2026"
   },
   "psvita": {
     "file": "psvita.webp",
@@ -45,9 +49,10 @@
     "sourceUrl": "https://commons.wikimedia.org/wiki/File:PlayStation-Vita-1101-FL.jpg",
     "author": "Evan-Amos",
     "license": "Public domain",
-    "width": 900,
-    "height": 524,
-    "bytes": 21492
+    "width": 416,
+    "height": 240,
+    "bytes": 12914,
+    "processing": "Background removed (rembg, isnet-general-use; own transparency kept where the source had it), trimmed, 240 px tall WebP with alpha \u2014 05.10.2026"
   },
   "gc": {
     "file": "gc.webp",
@@ -55,9 +60,10 @@
     "sourceUrl": "https://commons.wikimedia.org/wiki/File:GameCube-Console-Set.png",
     "author": "Evan-Amos",
     "license": "Public domain",
-    "width": 900,
-    "height": 498,
-    "bytes": 42532
+    "width": 436,
+    "height": 240,
+    "bytes": 20190,
+    "processing": "Background removed (rembg, isnet-general-use; own transparency kept where the source had it), trimmed, 240 px tall WebP with alpha \u2014 05.10.2026"
   },
   "wii": {
     "file": "wii.webp",
@@ -65,9 +71,10 @@
     "sourceUrl": "https://commons.wikimedia.org/wiki/File:Wii-Console.png",
     "author": "Evan-Amos",
     "license": "Public domain",
-    "width": 546,
-    "height": 600,
-    "bytes": 26030
+    "width": 218,
+    "height": 240,
+    "bytes": 8978,
+    "processing": "Background removed (rembg, isnet-general-use; own transparency kept where the source had it), trimmed, 240 px tall WebP with alpha \u2014 05.10.2026"
   },
   "wiiu": {
     "file": "wiiu.webp",
@@ -75,9 +82,10 @@
     "sourceUrl": "https://commons.wikimedia.org/wiki/File:Nintendo-Wii-U-Console-FL.jpg",
     "author": "Evan-Amos",
     "license": "Public domain",
-    "width": 851,
-    "height": 544,
-    "bytes": 19342
+    "width": 378,
+    "height": 240,
+    "bytes": 10396,
+    "processing": "Background removed (rembg, isnet-general-use; own transparency kept where the source had it), trimmed, 240 px tall WebP with alpha \u2014 05.10.2026"
   },
   "switch": {
     "file": "switch.webp",
@@ -85,9 +93,10 @@
     "sourceUrl": "https://commons.wikimedia.org/wiki/File:Nintendo-Switch-Console-Docked-wJoyConRB.jpg",
     "author": "Evan-Amos",
     "license": "Public domain",
-    "width": 869,
-    "height": 425,
-    "bytes": 19610
+    "width": 498,
+    "height": 240,
+    "bytes": 16798,
+    "processing": "Background removed (rembg, isnet-general-use; own transparency kept where the source had it), trimmed, 240 px tall WebP with alpha \u2014 05.10.2026"
   },
   "n3ds": {
     "file": "n3ds.webp",
@@ -95,9 +104,10 @@
     "sourceUrl": "https://commons.wikimedia.org/wiki/File:Nintendo-3DS-AquaOpen.png",
     "author": "Evan-Amos",
     "license": "Public domain",
-    "width": 663,
-    "height": 600,
-    "bytes": 25108
+    "width": 265,
+    "height": 240,
+    "bytes": 17304,
+    "processing": "Background removed (rembg, isnet-general-use; own transparency kept where the source had it), trimmed, 240 px tall WebP with alpha \u2014 05.10.2026"
   },
   "nds": {
     "file": "nds.webp",
@@ -105,9 +115,10 @@
     "sourceUrl": "https://commons.wikimedia.org/wiki/File:Nintendo-DS-Fat-Blue.jpg",
     "author": "Evan-Amos",
     "license": "Public domain",
-    "width": 660,
-    "height": 600,
-    "bytes": 31352
+    "width": 264,
+    "height": 240,
+    "bytes": 13118,
+    "processing": "Background removed (rembg, isnet-general-use; own transparency kept where the source had it), trimmed, 240 px tall WebP with alpha \u2014 05.10.2026"
   },
   "n64": {
     "file": "n64.webp",
@@ -115,9 +126,10 @@
     "sourceUrl": "https://commons.wikimedia.org/wiki/File:N64-Console-Set.png",
     "author": "Evan-Amos",
     "license": "Public domain",
-    "width": 900,
-    "height": 481,
-    "bytes": 36800
+    "width": 453,
+    "height": 240,
+    "bytes": 17148,
+    "processing": "Background removed (rembg, isnet-general-use; own transparency kept where the source had it), trimmed, 240 px tall WebP with alpha \u2014 05.10.2026"
   },
   "snes": {
     "file": "snes.webp",
@@ -125,9 +137,10 @@
     "sourceUrl": "https://commons.wikimedia.org/wiki/File:Nintendo-Super-Famicom-Set-FL.png",
     "author": "Evan-Amos",
     "license": "Public domain",
-    "width": 862,
-    "height": 387,
-    "bytes": 20580
+    "width": 541,
+    "height": 240,
+    "bytes": 16884,
+    "processing": "Background removed (rembg, isnet-general-use; own transparency kept where the source had it), trimmed, 240 px tall WebP with alpha \u2014 05.10.2026"
   },
   "nes": {
     "file": "nes.webp",
@@ -135,9 +148,10 @@
     "sourceUrl": "https://commons.wikimedia.org/wiki/File:NES-Console-Set.png",
     "author": "Evan-Amos",
     "license": "Public domain",
-    "width": 900,
-    "height": 468,
-    "bytes": 14718
+    "width": 340,
+    "height": 240,
+    "bytes": 10394,
+    "processing": "Background removed (rembg, isnet-general-use; own transparency kept where the source had it), trimmed, 240 px tall WebP with alpha \u2014 05.10.2026"
   },
   "gba": {
     "file": "gba.webp",
@@ -145,9 +159,10 @@
     "sourceUrl": "https://commons.wikimedia.org/wiki/File:Nintendo-Game-Boy-Advance-Purple-FL.png",
     "author": "Evan-Amos",
     "license": "Public domain",
-    "width": 852,
-    "height": 558,
-    "bytes": 27098
+    "width": 368,
+    "height": 240,
+    "bytes": 12778,
+    "processing": "Background removed (rembg, isnet-general-use; own transparency kept where the source had it), trimmed, 240 px tall WebP with alpha \u2014 05.10.2026"
   },
   "gbc": {
     "file": "gbc.webp",
@@ -155,9 +170,10 @@
     "sourceUrl": "https://commons.wikimedia.org/wiki/File:Nintendo-Game-Boy-Color-FL.jpg",
     "author": "Evan-Amos",
     "license": "Public domain",
-    "width": 436,
-    "height": 600,
-    "bytes": 21176
+    "width": 173,
+    "height": 240,
+    "bytes": 11802,
+    "processing": "Background removed (rembg, isnet-general-use; own transparency kept where the source had it), trimmed, 240 px tall WebP with alpha \u2014 05.10.2026"
   },
   "gb": {
     "file": "gb.webp",
@@ -165,9 +181,10 @@
     "sourceUrl": "https://commons.wikimedia.org/wiki/File:Game-Boy-FL.jpg",
     "author": "Evan-Amos",
     "license": "Public domain",
-    "width": 495,
-    "height": 600,
-    "bytes": 13892
+    "width": 197,
+    "height": 240,
+    "bytes": 8216,
+    "processing": "Background removed (rembg, isnet-general-use; own transparency kept where the source had it), trimmed, 240 px tall WebP with alpha \u2014 05.10.2026"
   },
   "genesis": {
     "file": "genesis.webp",
@@ -175,9 +192,10 @@
     "sourceUrl": "https://commons.wikimedia.org/wiki/File:Sega-Genesis-Mod1-Set.jpg",
     "author": "Evan-Amos",
     "license": "Public domain",
-    "width": 900,
-    "height": 367,
-    "bytes": 23936
+    "width": 592,
+    "height": 240,
+    "bytes": 24392,
+    "processing": "Background removed (rembg, isnet-general-use; own transparency kept where the source had it), trimmed, 240 px tall WebP with alpha \u2014 05.10.2026"
   },
   "segacd": {
     "file": "segacd.webp",
@@ -185,9 +203,10 @@
     "sourceUrl": "https://commons.wikimedia.org/wiki/File:Sega-CD-Model2-Set.jpg",
     "author": "Evan-Amos",
     "license": "Public domain",
-    "width": 900,
-    "height": 512,
-    "bytes": 32714
+    "width": 424,
+    "height": 240,
+    "bytes": 16624,
+    "processing": "Background removed (rembg, isnet-general-use; own transparency kept where the source had it), trimmed, 240 px tall WebP with alpha \u2014 05.10.2026"
   },
   "saturn": {
     "file": "saturn.webp",
@@ -195,9 +214,10 @@
     "sourceUrl": "https://commons.wikimedia.org/wiki/File:Sega-Saturn-Console-Set-Mk1.jpg",
     "author": "Evan-Amos",
     "license": "Public domain",
-    "width": 900,
-    "height": 488,
-    "bytes": 25596
+    "width": 446,
+    "height": 240,
+    "bytes": 15858,
+    "processing": "Background removed (rembg, isnet-general-use; own transparency kept where the source had it), trimmed, 240 px tall WebP with alpha \u2014 05.10.2026"
   },
   "dreamcast": {
     "file": "dreamcast.webp",
@@ -205,9 +225,10 @@
     "sourceUrl": "https://commons.wikimedia.org/wiki/File:Sega-Dreamcast-Console-FL.jpg",
     "author": "Evan-Amos",
     "license": "Public domain",
-    "width": 842,
-    "height": 591,
-    "bytes": 12280
+    "width": 344,
+    "height": 240,
+    "bytes": 10728,
+    "processing": "Background removed (rembg, isnet-general-use; own transparency kept where the source had it), trimmed, 240 px tall WebP with alpha \u2014 05.10.2026"
   },
   "xbox": {
     "file": "xbox.webp",
@@ -215,9 +236,10 @@
     "sourceUrl": "https://commons.wikimedia.org/wiki/File:Xbox-console.jpg",
     "author": "Evan-Amos",
     "license": "Public domain",
-    "width": 900,
-    "height": 401,
-    "bytes": 23178
+    "width": 544,
+    "height": 240,
+    "bytes": 21036,
+    "processing": "Background removed (rembg, isnet-general-use; own transparency kept where the source had it), trimmed, 240 px tall WebP with alpha \u2014 05.10.2026"
   },
   "xbox360": {
     "file": "xbox360.webp",
@@ -225,8 +247,9 @@
     "sourceUrl": "https://commons.wikimedia.org/wiki/File:Xbox-360-Pro-wController.jpg",
     "author": "Evan-Amos",
     "license": "Public domain",
-    "width": 397,
-    "height": 600,
-    "bytes": 16144
+    "width": 157,
+    "height": 240,
+    "bytes": 7478,
+    "processing": "Background removed (rembg, isnet-general-use; own transparency kept where the source had it), trimmed, 240 px tall WebP with alpha \u2014 05.10.2026"
   }
 }

@@ -93,7 +93,7 @@ export function ListsView({ onOpenDetail }: { onOpenDetail: OpenMediaDetail }) {
           </div>
           {loading ? <Skeleton className="h-10 w-full" />
             : traktLists.length === 0 && pending.length === 0 ? (
-              <p className="px-1 text-meta text-fg-muted">No lists yet — make one, or use “Add to Queue” / “Add to list” on a title.</p>
+              <p className="px-1 text-meta text-fg-muted">No lists yet — make one, or use “+ Queue” / “Add to list” on a title.</p>
             ) : traktLists.map(l => {
               const rule = ruleFor(l.id)
               return <RailButton key={l.id} active={current?.src === 'trakt' && current.id === l.id} label={l.id === queue?.id ? '▶ Queue' : railLabel(l.name, !!rule)} meta={String(l.itemCount)} onClick={() => setPicked({ src: 'trakt', id: l.id })} />

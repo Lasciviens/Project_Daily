@@ -142,8 +142,8 @@ const makerRows = [cnt('snes', 300), cnt('genesis', 180), cnt('steam', 58), cnt(
   cnt('gc', 25), cnt('gba', 22), cnt('ps2', 22), cnt('fbneo', 11), cnt('nds', 8), cnt('psx', 7), cnt('xbox360', 2),
   cnt('pc', 1), cnt('wiiu', 1), cnt('weird_sys', 4), cnt('unknown', 3), cnt('sys-steam', 2), cnt('androidgames', 1)]
 const groups = M.platformGroups(makerRows)
-ok(groups.map(g => g.label), ['Nintendo', 'Sega', 'Sony', 'PC', 'Arcade', 'Microsoft', 'Android', 'Other'],
-  'groups run biggest first, "Other" always last')
+ok(groups.map(g => g.label), ['Sony', 'PC', 'Microsoft', 'Nintendo', 'Sega', 'Arcade', 'Android', 'Other'],
+  'groups run in the fixed maker order (Sony, PC, Microsoft, Nintendo, Sega…), "Other" last, whatever their size')
 ok(groups.reduce((n, g) => n + g.platforms.length, 0), makerRows.length, 'every platform is listed, none folded away')
 ok(groups.find(g => g.maker === 'nintendo').platforms.map(p => p.key), ['snes', 'gc', 'gba', 'nds', 'wiiu'], 'a group keeps the biggest-first order')
 ok(groups.find(g => g.maker === 'sony').platforms.map(p => p.key), ['psp', 'playstation', 'ps2', 'psx'], 'the PlayStation library files under Sony')
@@ -517,6 +517,17 @@ ok(D.normalizeTitle('Pokémon Red & Blue'), 'pokemon red and blue', 'accents and
   ok(groups[0].samePlatform && !groups[1].samePlatform, true, 'same-platform flag')
   const echo = D.findDuplicates([gs[0], { ...gs[1], primary_cover_url: 'a.png' }])
   ok(echo.length, 1, 'a picture group repeating a title group is not listed twice')
+}
+
+// ── Once-a-day provider sync on opening Games ───────────────────────────────
+{
+  const P = require('../src/features/games/test-game/components/tgProviderSync.ts')
+  const now = Date.parse('2026-10-05T12:00:00Z')
+  ok(P.autoSyncDue('2026-10-03T08:00:00Z', null, now), true, 'synced two days ago, never tried: due')
+  ok(P.autoSyncDue('2026-10-05T01:00:00Z', null, now), false, 'synced this morning: not due')
+  ok(P.autoSyncDue('2026-10-01T08:00:00Z', now - 3600_000, now), false, 'tried an hour ago (maybe failed): not again today')
+  ok(P.autoSyncDue('2026-10-01T08:00:00Z', now - 30 * 3600_000, now), true, 'last try over a day ago: due again')
+  ok(P.autoSyncDue(null, null, now), false, 'never imported: the first import stays a tap')
 }
 
 console.log(`verify-test-game-model: ${n} assertions passed`)

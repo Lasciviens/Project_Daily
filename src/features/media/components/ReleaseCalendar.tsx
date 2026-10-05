@@ -5,6 +5,7 @@ import type { UserMovieEntry, UserTVEntry, OpenMediaDetail } from '../types'
 import { formatDate } from '../../../shared/utils/dateFormat'
 import { Truncate } from '../../../shared/ui'
 import { useTraktCalendar } from '../trakt/useTraktExtras'
+import { showsEpisodes } from '../libraryModel'
 
 interface Props {
   movieEntries: UserMovieEntry[]
@@ -72,11 +73,13 @@ export function ReleaseCalendar({ movieEntries, tvEntries, onOpenDetail, loading
       }
     })
 
-  // New episodes of shows you follow, from Trakt's calendar (next 33 days).
+  // New episodes from Trakt's calendar (next 33 days) — only of shows you're
+  // Watching or have Completed; Trakt's "my shows" also holds the watchlist.
   const { data: traktCal = [] } = useTraktCalendar()
   const tvPoster = new Map(tvEntries.map(e => [e.tv_series.tmdb_id, e.tv_series.poster_path]))
+  const tvStatus = new Map(tvEntries.map(e => [e.tv_series.tmdb_id, e.status]))
   const episodes: UpcomingItem[] = traktCal
-    .filter(c => c.tmdb && c.firstAired)
+    .filter(c => c.tmdb && c.firstAired && showsEpisodes(tvStatus.get(c.tmdb)))
     .map(c => {
       const d = new Date(c.firstAired!)
       return {

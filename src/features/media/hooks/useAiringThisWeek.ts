@@ -5,16 +5,17 @@ import { getBasic } from '../api/tmdbApi'
 import { useTVSeries } from './useTVSeries'
 import { useTraktCalendar } from '../trakt/useTraktExtras'
 import { useTraktStatus } from '../trakt/useTrakt'
+import { showsEpisodes } from '../libraryModel'
 
 export interface AiringItem { key: string; tmdbId: number; title: string; poster: string | null; season: number; episode: number; episodeTitle: string | null; airDate: string }
 
 const inWeek = (day: string, today: string, end: string) => day >= today && day <= end
 
 /**
- * New episodes of your shows in the next 7 days. With Trakt: its "my shows"
- * calendar (everything you watched or watchlisted, finished shows too).
- * Without: TMDB's next episode of each show you're Watching, Paused or have
- * Completed — a finished show that gets a new season still shows up here.
+ * New episodes of your shows in the next 7 days — shows you're Watching or
+ * have Completed (a finished show's new season still shows up), never one
+ * that is only on the wishlist. With Trakt: its "my shows" calendar, filtered
+ * by the library status. Without: TMDB's next episode of each such show.
  */
 export function useAiringThisWeek(enabled = true) {
   const { data: tv = [] } = useTVSeries()
@@ -22,7 +23,7 @@ export function useAiringThisWeek(enabled = true) {
   const cal = useTraktCalendar()
   // In-progress shows first; TMDB only has a next episode for a show still running.
   const following = [
-    ...tv.filter(e => e.status === 'watching' || e.status === 'paused'),
+    ...tv.filter(e => e.status === 'watching'),
     ...tv.filter(e => e.status === 'completed'),
   ].slice(0, 30)
   const useTmdb = enabled && !trakt?.connected
@@ -39,10 +40,11 @@ export function useAiringThisWeek(enabled = true) {
   return useMemo(() => {
     const { today, end } = range
     const poster = new Map(tv.map(e => [e.tv_series.tmdb_id, e.tv_series.poster_path]))
+    const status = new Map(tv.map(e => [e.tv_series.tmdb_id, e.status]))
     let items: AiringItem[]
     if (trakt?.connected) {
       items = (cal.data ?? [])
-        .filter(c => c.tmdb && c.firstAired && c.season != null && c.episode != null && inWeek(new Date(c.firstAired).toLocaleDateString('sv-SE'), today, end))
+        .filter(c => c.tmdb && showsEpisodes(status.get(c.tmdb)) && c.firstAired && c.season != null && c.episode != null && inWeek(new Date(c.firstAired).toLocaleDateString('sv-SE'), today, end))
         .map(c => ({ key: `${c.tmdb}:${c.season}:${c.episode}`, tmdbId: c.tmdb!, title: c.showTitle, poster: poster.get(c.tmdb!) ?? null, season: c.season!, episode: c.episode!, episodeTitle: c.episodeTitle, airDate: c.firstAired! }))
     } else {
       items = basics.flatMap((q, i) => {

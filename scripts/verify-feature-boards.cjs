@@ -50,24 +50,16 @@ for (const [name, layout, known] of [
 }
 
 console.log('Media')
-check('step 1 keeps the phone order (search → tools, closed → Discover), no library card on a phone', eq(M.MEDIA_BOARD[1], ['library', 'tools', 'discovery']))
-for (const s of STEPS) {
-  const k = keys(M.MEDIA_BOARD, s)
-  const tools = k.includes('tools') || ['tonight', 'calendar'].every(t => k.includes(t))
-  // Your library card is left off a phone (the Library tab is the same list); from the laptop it has its own column.
-  check(`step ${s}: search, Discover and both tools are on the page${s > 1 ? ', and your library' : ''}`, k.includes('library') && (s === 1 || k.includes('summary')) && k.includes('discovery') && tools)
-  check(`step ${s}: the combined tools grid and the single tools never both mount`, !(k.includes('tools') && k.includes('tonight')))
-}
+check('step 1: search card (with What to watch?, Continue watching, Coming soon) above Discover', eq(M.MEDIA_BOARD[1], ['library', 'discovery']))
 check('library sits above Discover in one column at every step', STEPS.every(s => {
   const c = columnOf(M.MEDIA_BOARD, s, 'library')
   const st = B.resolveBoardLayout(M.MEDIA_BOARD, s).columns[c]?.stack ?? []
   return c === columnOf(M.MEDIA_BOARD, s, 'discovery') && st.indexOf('library') < st.indexOf('discovery')
 }))
-check('from 1920 the main cards span two tracks (more poster columns, never wider posters)', [3, 4].every(s => B.resolveBoardLayout(M.MEDIA_BOARD, s).columns[0].span === 2))
-check('the tools open by default only where they get columns of their own', M.MEDIA_TOOLS_OPEN_FROM === 4
-  && B.resolveBoardLayout(M.MEDIA_BOARD, 4).columns.length === 3)
-check('laptop and 1920: the tools column is sticky', [2, 3].every(s => B.resolveBoardLayout(M.MEDIA_BOARD, s).columns.at(-1).sticky))
-check('from the laptop your library sits on the right, not under search', [2, 3, 4].every(s => columnOf(M.MEDIA_BOARD, s, 'summary') > columnOf(M.MEDIA_BOARD, s, 'library')))
+check('from the laptop the one column spans every track (no right-hand column any more)', [2, 3, 4].every(s => {
+  const l = B.resolveBoardLayout(M.MEDIA_BOARD, s)
+  return l.columns.length === 1 && l.columns[0].span === l.tracks
+}))
 
 console.log('Work')
 for (const [name, layout] of [['board', Wk.WORK_BOARD], ['list', Wk.WORK_LIST]]) {
