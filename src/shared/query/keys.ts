@@ -104,6 +104,10 @@ export const qk = {
     events: (fromIso: string) => ['books', 'events', fromIso] as const,
     bookEvents: (bookId: string) => ['books', 'book-events', bookId] as const,
     settings: () => ['books', 'reading-settings'] as const,
+    koboConfig: () => ['books', 'kobo-config'] as const,
+    koboDevice: () => ['books', 'kobo-device'] as const,
+    sleepImages: () => ['books', 'sleep-images'] as const,
+    aiNotes: (bookId?: string) => ['books', 'ai-notes', bookId ?? 'all'] as const,
   },
   devRequests: { all: ['dev-requests'] as const },
   projects: {

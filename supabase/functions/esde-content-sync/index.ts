@@ -50,7 +50,7 @@ function imageType(bytes: Uint8Array): { mime: string; extension: string } | nul
 // already refuses to store past its budget; this upload shares the bucket, so
 // it refuses past the same hard cap. 413 is not retried by the device script,
 // so a full bucket stops the run cleanly instead of hammering it.
-const STORAGE_HARD_CAP = 850 * 1024 * 1024 // 850 + the 150 MB Kobo inbox (migration 125) stays under the 1 GB wall
+const STORAGE_HARD_CAP = 850 * 1024 * 1024 // 850 + the Kobo's 130 MB (inbox 100, covers 20, sleep images 10 — migrations 125/127) stays under the 1 GB wall
 async function storageRefusal(incoming: number): Promise<{ used: number } | null> {
   const { data, error } = await db.rpc('game_media_usage') as { data: unknown; error: unknown }
   // Before migration 104 the function does not exist: behave as before it.

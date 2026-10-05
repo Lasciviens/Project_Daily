@@ -50,6 +50,7 @@ const BOARDS = [
   ['Books · Send', Bk.BOOK_BOARD, Bk.BOOK_SECTIONS, false],
   ['Books · Library', Bk.LIBRARY_BOARD, Bk.LIBRARY_SECTIONS, false],
   ['Books · Reading', Bk.READING_BOARD, Bk.READING_SECTIONS, false],
+  ['Books · Kobo', Bk.KOBO_BOARD, Bk.KOBO_SECTIONS, false],
   ...Object.entries(H.HEALTH_BOARDS).map(([id, b]) => [`Health · ${id}`, b.board, b.sections, id === 'overview']),
   ['Training · Next', T.NEXT_BOARD, T.NEXT_SECTIONS, true],
   ['Training · Program', T.PROGRAM_BOARD, T.PROGRAM_SECTIONS, false],

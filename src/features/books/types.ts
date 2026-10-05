@@ -56,13 +56,18 @@ export interface Book {
   source: 'koreader' | 'kobo' | 'manual'
   meta_source: string | null
   meta_checked_at: string | null
+  /** 'news' for a News Downloader issue (migration 127); older rows read as books. */
+  kind?: 'book' | 'news'
+  cover_source?: 'device' | 'upload' | 'lookup' | 'url' | null
+  device_cover_at?: string | null
   created_at: string
   updated_at: string
 }
 
 export type BookPatch = Partial<Pick<Book,
   'title' | 'author' | 'series' | 'series_index' | 'language' | 'isbn' | 'publisher' | 'published_year' | 'description' |
-  'page_count' | 'cover_url' | 'read_status' | 'rating' | 'review' | 'notes' | 'started_at' | 'finished_at' | 'queue_order'>>
+  'page_count' | 'cover_url' | 'read_status' | 'rating' | 'review' | 'notes' | 'started_at' | 'finished_at' | 'queue_order' |
+  'cover_source' | 'kind'>>
 
 /** One KOReader page-stat row (reading_page_events). */
 export interface ReadingEvent {
@@ -84,4 +89,52 @@ export interface KoboSyncState extends KoboFeedState {
   device_id?: string | null
   plugin_version?: string | null
   last_sync_result?: { new_events?: number; books_created?: number; books_updated?: number; unmatched?: number; at?: string } | null
+  battery?: number | null
+  charging?: boolean | null
+  koreader_version?: string | null
+}
+
+/** What the app wants on the Kobo (kobo_device_config, migration 127). */
+export interface KoboDeviceConfig {
+  settings: Record<string, boolean | number | string | null>
+  menu_order: Partial<Record<'filemanager' | 'reader', Record<string, string[]>>>
+  sleep_image_id: string | null
+  rev: number
+  updated_at: string
+}
+
+/** What the Kobo applied and reported (kobo_device_state). */
+export interface KoboDeviceState {
+  applied_rev: number | null
+  applied_at: string | null
+  apply_result: { applied?: string[]; refused?: Record<string, string>; images?: { downloaded?: number; deleted?: number; failed?: number }; menu_changed?: boolean } | null
+  report: {
+    settings?: Record<string, boolean | number | string>
+    menus?: Partial<Record<'filemanager' | 'reader', { order: Record<string, string[]>; labels: Record<string, string> }>>
+    plugin_version?: string
+  } | null
+  reported_at: string | null
+}
+
+export interface SleepImage {
+  id: string
+  storage_path: string
+  filename: string
+  mime: 'image/jpeg' | 'image/png'
+  size_bytes: number
+  width: number | null
+  height: number | null
+  created_at: string
+}
+
+/** A question asked on the Kobo about a passage (book_ai_notes). */
+export interface BookAiNote {
+  id: string
+  book_id: string | null
+  book_title: string | null
+  ask: 'explain' | 'translate' | 'word' | 'character' | 'free'
+  question: string | null
+  selection: string
+  answer: string
+  created_at: string
 }

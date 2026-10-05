@@ -9,7 +9,7 @@ import type { BookDelivery } from '../types'
 
 const BUCKET = 'kobo-inbox'
 export const MAX_FILE_BYTES = 50 * 1024 * 1024
-export const INBOX_CAP_BYTES = 150 * 1024 * 1024
+export const INBOX_CAP_BYTES = 100 * 1024 * 1024
 export const ACCEPTED = ['.epub', '.kepub.epub', '.pdf']
 const NOT_MIGRATED = 'Send to Kobo is not available yet — migration 125 (Kobo inbox) has not been applied.'
 
@@ -36,7 +36,7 @@ export async function fetchDeliveries(): Promise<BookDelivery[]> {
   return data ?? []
 }
 
-/** Writes the row first (the database refuses it past the 150 MB inbox cap), then uploads the file. */
+/** Writes the row first (the database refuses it past the 100 MB inbox cap (migration 127)), then uploads the file. */
 export async function sendToKobo(file: File): Promise<BookDelivery> {
   if (!isAcceptedFile(file.name)) throw new Error(`${file.name}: only EPUB, KEPUB and PDF files can be sent.`)
   if (file.size > MAX_FILE_BYTES) throw new Error(`${file.name} is larger than 50 MB — send it over USB or Calibre instead.`)

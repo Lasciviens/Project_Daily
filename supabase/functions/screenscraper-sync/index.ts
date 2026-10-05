@@ -59,7 +59,7 @@ const API = 'https://api.screenscraper.fr/api2'
 const SOFTNAME = 'lascisboard'
 const BUCKET = 'game-media'
 /** No copy is ever stored past this, whatever the saved budget says. */
-const HARD_CAP_MB = 850 // + the 150 MB Kobo inbox (migration 125) stays under the 1 GB wall
+const HARD_CAP_MB = 850 // + the Kobo's 130 MB (inbox 100, covers 20, sleep images 10 — migrations 125/127) stays under the 1 GB wall
 /** Below this many requests (or failed-lookup allowance) left today, nothing
  *  starts: the handheld's own ES-DE scraping spends from the same account. */
 const QUOTA_FLOOR = 300

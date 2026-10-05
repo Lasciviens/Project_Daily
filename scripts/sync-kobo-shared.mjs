@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
-const SOURCES = ['opdsFeed.ts', 'readingSync.ts']
+const SOURCES = ['opdsFeed.ts', 'readingSync.ts', 'koboSettingsCatalogue.ts', 'koboSettings.ts', 'koboDevice.ts']
 const TARGET = 'supabase/functions/kobo-sync/index.ts'
 const OPEN = '// <kobo-shared>'
 const CLOSE = '// </kobo-shared>'

@@ -6,6 +6,7 @@ import { formatDate } from '../../../shared/utils/dateFormat'
 import { LIBRARY_BOARD } from '../booksBoard'
 import { READ_STATUS_LABEL, READ_STATUSES } from '../bookTones'
 import { useCreateBook, useLibrary, useMergeBooks, useSaveQueueOrder } from '../hooks/useLibrary'
+import { useAutoCoverLookup } from '../hooks/useAutoCoverLookup'
 import { duplicatePairs, formatDuration, matchesSearch, moveInQueue, sortForLibrary, upNext, type LibrarySort } from '../readingAggregate'
 import type { Book, ReadStatus } from '../types'
 import { BookCover } from './BookCover'
@@ -21,20 +22,24 @@ const SORTS: { id: LibrarySort; label: string }[] = [
 
 /** Library: what you are reading, what is next, and every book. */
 export function LibraryTab() {
-  const { data: books = [], isLoading } = useLibrary()
-  const [status, setStatus] = useState<ReadStatus | 'all'>('all')
+  // News issues are kept (their own chip), never mixed into books, Reading now or the queue.
+  const { data: all = [], isLoading } = useLibrary(true, { includeNews: true })
+  const books = useMemo(() => all.filter(b => b.kind !== 'news'), [all])
+  const news = useMemo(() => all.filter(b => b.kind === 'news'), [all])
+  const [status, setStatus] = useState<ReadStatus | 'all' | 'news'>('all')
   const [query, setQuery] = useState('')
   const [sort, setSort] = useState<LibrarySort>('recent')
   const [onKobo, setOnKobo] = useState(false)
+  useAutoCoverLookup(books)
 
   const counts = useMemo(() => {
     const c: Record<string, number> = { all: books.length }
     for (const b of books) c[b.read_status] = (c[b.read_status] ?? 0) + 1
     return c
   }, [books])
-  const shown = useMemo(() => sortForLibrary(books.filter(b =>
-    (status === 'all' || b.read_status === status) && (!onKobo || b.on_device) && matchesSearch(b, query)), sort),
-  [books, status, onKobo, query, sort])
+  const shown = useMemo(() => sortForLibrary((status === 'news' ? news : books).filter(b =>
+    (status === 'all' || status === 'news' || b.read_status === status) && (!onKobo || b.on_device) && matchesSearch(b, query)), sort),
+  [books, news, status, onKobo, query, sort])
   const reading = useMemo(() => sortForLibrary(books.filter(b => b.read_status === 'reading'), 'recent'), [books])
   const filtering = status !== 'all' || query.trim() !== '' || onKobo
 
@@ -64,6 +69,11 @@ export function LibraryTab() {
             <button type="button" aria-pressed={onKobo} onClick={() => setOnKobo(v => !v)} className="pill-tab shrink-0">
               On the Kobo
             </button>
+            {news.length > 0 && (
+              <button type="button" aria-pressed={status === 'news'} onClick={() => setStatus(s => (s === 'news' ? 'all' : 'news'))} className="pill-tab shrink-0">
+                News <span className="tabular-nums opacity-70">{news.length}</span>
+              </button>
+            )}
           </div>
           <Duplicates books={books} />
         </Card>
@@ -72,7 +82,7 @@ export function LibraryTab() {
       queue: <UpNext books={books} />,
       grid: (
         <Card>
-          <CardHeader title={filtering ? `${shown.length} of ${books.length} books` : 'All books'} variant="label" icon={<BookOpen />} />
+          <CardHeader title={status === 'news' ? `${shown.length} news ${shown.length === 1 ? 'issue' : 'issues'}` : filtering ? `${shown.length} of ${books.length} books` : 'All books'} variant="label" icon={<BookOpen />} />
           {isLoading ? <SkeletonCard /> : books.length === 0 ? (
             <EmptyState icon={<BookOpen />} title="No books yet"
               description="Books appear here after the Kobo's first sync (the Lasci's Board plugin sends the whole library), or add one by hand." />

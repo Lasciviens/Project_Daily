@@ -135,6 +135,10 @@ export type Route =
   | { kind: 'sync' }
   | { kind: 'inbox' }
   | { kind: 'ack'; id: string }
+  | { kind: 'applied' }
+  | { kind: 'capture' }
+  | { kind: 'ask' }
+  | { kind: 'cover'; md5: string }
 
 /**
  * Splits the function path into a route: the OPDS feed and its book links
@@ -148,6 +152,10 @@ export function parseRoute(pathname: string): Route | null {
   if (last === 'sync' && parts[parts.length - 2] === 'kobo-sync') return { kind: 'sync' }
   if (last === 'inbox' && parts[parts.length - 2] === 'kobo-sync') return { kind: 'inbox' }
   if (last === 'ack' && parts[parts.length - 3] === 'deliveries' && parts[parts.length - 2]) return { kind: 'ack', id: parts[parts.length - 2] }
+  if (last === 'applied' && parts[parts.length - 2] === 'kobo-sync') return { kind: 'applied' }
+  if (last === 'capture' && parts[parts.length - 2] === 'kobo-sync') return { kind: 'capture' }
+  if (last === 'ask' && parts[parts.length - 2] === 'kobo-sync') return { kind: 'ask' }
+  if (parts[parts.length - 2] === 'cover' && parts[parts.length - 3] === 'kobo-sync' && /^[0-9a-f]{32}$/.test(last ?? '')) return { kind: 'cover', md5: last }
   const i = parts.indexOf('opds')
   if (i < 0 || !parts[i + 1]) return null
   const token = decodeURIComponent(parts[i + 1])

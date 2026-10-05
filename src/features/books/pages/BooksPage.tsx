@@ -2,20 +2,22 @@ import { useSearchParams } from 'react-router-dom'
 import { PageBoard, PageContainer, PageHeader } from '../../../shared/ui'
 import { DeliveryList } from '../components/DeliveryList'
 import { KoboSetupCard } from '../components/KoboSetupCard'
+import { KoboTab } from '../components/kobo/KoboTab'
 import { LibraryTab } from '../components/LibraryTab'
 import { ReadingTab } from '../components/ReadingTab'
 import { SendToKoboCard } from '../components/SendToKoboCard'
 import { useDeliveries, useKoboFeedState } from '../hooks/useBooks'
 import { BOOK_BOARD } from '../booksBoard'
 
-type Tab = 'library' | 'reading' | 'send'
+type Tab = 'library' | 'reading' | 'send' | 'kobo'
 const TABS: { id: Tab; label: string }[] = [
   { id: 'library', label: 'Library' },
   { id: 'reading', label: 'Reading' },
   { id: 'send', label: 'Send to Kobo' },
+  { id: 'kobo', label: 'Kobo' },
 ]
 
-/** Books — the library, reading time from the Kobo, and Send to Kobo (docs/kobo/PLAN.md Phases 2–4). */
+/** Books — the library, reading time from the Kobo, Send to Kobo, and the Kobo's own settings (docs/kobo/PLAN.md). */
 export function BooksPage() {
   const [params, setParams] = useSearchParams()
   const tab: Tab = TABS.some(t => t.id === params.get('tab')) ? params.get('tab') as Tab : 'library'
@@ -34,6 +36,7 @@ export function BooksPage() {
       {tab === 'library' && <LibraryTab />}
       {tab === 'reading' && <ReadingTab />}
       {tab === 'send' && <SendTab />}
+      {tab === 'kobo' && <KoboTab />}
     </PageContainer>
   )
 }

@@ -47,3 +47,18 @@ export const READING_BOARD: BoardLayouts<ReadingSection> = {
   3: { columns: [['today', 'chart'], ['books', 'goal'], ['hours']] },
   4: { columns: [['today', 'chart'], ['books'], ['goal'], ['hours']] },
 }
+
+// Kobo (control the device from the app)
+//   1    device status, sleep screen, settings, menu order, questions asked.
+//   2    sleep screen + settings + menu in main; the device and the questions beside.
+//   3    the menu gets its own track; questions (can be empty) stay last.
+//   4    device and questions split; the page stops there.
+export const KOBO_SECTIONS = ['device', 'sleep', 'settings', 'menu', 'asked'] as const
+export type KoboSection = typeof KOBO_SECTIONS[number]
+
+export const KOBO_BOARD: BoardLayouts<KoboSection> = {
+  1: ['device', 'sleep', 'settings', 'menu', 'asked'],
+  2: { columns: [['sleep', 'settings', 'menu'], ['device', 'asked']] },
+  3: { columns: [['sleep', 'settings'], ['menu'], ['device', 'asked']] },
+  4: { columns: [['sleep', 'settings'], ['menu'], ['device'], ['asked']] },
+}

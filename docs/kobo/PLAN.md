@@ -2268,3 +2268,33 @@ link says otherwise.
   - cloin/libbrary (the OverDrive "thunder" API); `api.nb.no/catalog/v1/items`; the Open
     Library covers API; Hardcover's API getting-started doc.
   - The Supabase OG-image example (satori + resvg).
+
+---
+
+## 14. Round 2 — the app controls the Kobo (05.10.2026)
+
+Built from the owner's feedback after the first install (migration `127`, plugin 1.1;
+CLAUDE.md → Books row and **Kobo plugin** hold the settled record):
+
+- **Kobo tab** on the Books page: device status (battery at the last sync, versions,
+  whether the latest changes arrived), sleep screen (mode, own images, Bookshelf options),
+  457 KOReader settings (catalogue in `docs/kobo/koreader-settings.json`, every key cited
+  from the v2026.07.1 source; risky keys left out), menu order, questions asked.
+- **Statuses and ratings** set in the app are written into KOReader's sidecars. Nickel is
+  never written, so a book read in Kobo's own reader keeps Nickel's status there.
+- **News** issues are kept out of the library; **covers** come from the EPUB itself, else
+  an online lookup; the book popup edits every detail and takes an uploaded cover.
+- **Extras:** goal + streak in KOReader's status bar, capture a task/wish/book from the
+  Kobo, ask the app's AI about a selected passage (the key stays on the server).
+
+**Why "Show book cover" could not be picked:** KOReader enables that option only after a
+book has been opened in KOReader (`screensaver_menu.lua:51`, `hasLastFile`). The Bookshelf
+sleep screen also draws from KOReader's statistics. Books read in Kobo's own reader count
+for neither.
+
+**Ideas proposed and not built yet** (agent pass, ranked by value per effort; each was
+checked against the KOReader source): "where was I?" when a book is reopened after 7+ days
+(last highlights, chapter), a finish-by date that feeds the Daily brief, an evening
+streak-saver Web Push, "≈ N pages" on the commute card, two-way vocabulary review,
+lookups-per-100-pages ("how hard is this book"), Up next offered at the end of a book,
+a battery line in the Home brief.

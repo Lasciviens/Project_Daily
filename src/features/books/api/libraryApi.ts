@@ -122,8 +122,14 @@ export async function saveReadingSettings(s: ReadingSettings): Promise<void> {
 /** kobo_feed_state incl. the plugin's sync columns; before 126 only the feed columns exist. */
 export async function fetchKoboSyncState(): Promise<KoboSyncState | null> {
   const { data, error } = await supabase.from('kobo_feed_state')
-    .select('last_feed_at, last_download_at, last_seen_at, last_sync_at, device_id, plugin_version, last_sync_result').maybeSingle()
+    .select('last_feed_at, last_download_at, last_seen_at, last_sync_at, device_id, plugin_version, last_sync_result, battery, charging, koreader_version').maybeSingle()
   if (!error) return data
+  if (error.code === '42703') {
+    // Before 127: no device facts yet.
+    const { data: d1, error: e1 } = await supabase.from('kobo_feed_state')
+      .select('last_feed_at, last_download_at, last_seen_at, last_sync_at, device_id, plugin_version, last_sync_result').maybeSingle()
+    if (!e1) return d1
+  }
   if (isMissing(error)) {
     const { data: d2, error: e2 } = await supabase.from('kobo_feed_state').select('last_feed_at, last_download_at').maybeSingle()
     if (e2) return null
@@ -133,8 +139,8 @@ export async function fetchKoboSyncState(): Promise<KoboSyncState | null> {
 }
 
 /** Looks up cover, pages and publisher (Nasjonalbiblioteket → Open Library) via the book-meta function. */
-export async function lookupBookMeta(id: string): Promise<{ updated: string[]; source: string | null }> {
-  const { data, error } = await supabase.functions.invoke('book-meta', { body: { book_id: id } })
+export async function lookupBookMeta(id: string, mode: 'full' | 'cover' = 'full'): Promise<{ updated: string[]; source: string | null }> {
+  const { data, error } = await supabase.functions.invoke('book-meta', { body: { book_id: id, mode } })
   if (error) throw new Error((data as { message?: string } | null)?.message ?? error.message ?? 'Lookup failed')
   return data as { updated: string[]; source: string | null }
 }
