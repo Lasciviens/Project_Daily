@@ -25,6 +25,9 @@ interface RoutesTabProps {
   // then reports back so TransitPanel clears it.
   pendingRouteId?:   string | null
   onRouteConsumed?:  () => void
+  /** A saved stop to plan to from here, once (Home's To home / To work shortcuts). */
+  pendingStopId?:    string | null
+  onStopConsumed?:   () => void
 }
 
 // Inline "name this route" form — appears both under the draft planner and
@@ -187,7 +190,7 @@ function SavedRouteChip({ route, active, onSelect, onDelete }: {
   )
 }
 
-export function RoutesTab({ active, now, pendingRouteId, onRouteConsumed }: RoutesTabProps) {
+export function RoutesTab({ active, now, pendingRouteId, onRouteConsumed, pendingStopId, onStopConsumed }: RoutesTabProps) {
   const { routes, addRoute, removeRoute } = useTransitRoutes()
   const { stops: savedStops, isLoading: stopsLoading } = useTransitStops()
   const { recent: recentSearches, recordSearch } = useTransitRecentSearches()
@@ -231,6 +234,17 @@ export function RoutesTab({ active, now, pendingRouteId, onRouteConsumed }: Rout
     onRouteConsumed?.()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingRouteId, routes])
+
+  // Home's To home / To work: plan from here to that saved stop once the
+  // saved stops have arrived, exactly like tapping the same button here.
+  useEffect(() => {
+    if (!pendingStopId) return
+    const stop = savedStops.find(s => s.id === pendingStopId)
+    if (!stop) return
+    void planGpsToStop(stop, { fallbackToDefault: true })
+    onStopConsumed?.()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingStopId, savedStops])
 
   // Saved stops that are not Home/Work — those two have their own buttons.
   const otherStops = useMemo(() => {

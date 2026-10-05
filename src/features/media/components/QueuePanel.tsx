@@ -25,7 +25,7 @@ export function QueuePanel({ onOpen }: { onOpen: OpenMediaDetail }) {
 
   if (loading) return <Skeleton className="h-40 w-full" />
   if (!list || items.length === 0) {
-    return <p className="text-body text-fg-muted">The Queue is empty — use “Add to Queue” on a title page. New titles go to the end; move them here.</p>
+    return <p className="text-body text-fg-muted">The Queue is empty — use “+ Queue” on a title page. New titles go to the end; move them here.</p>
   }
   const typeOf = (i: TraktListItem): MediaType => (i.type === 'show' ? 'tv' : 'movie')
   const libOf = (i: TraktListItem) => (i.tmdb ? index.get(libraryKey(typeOf(i), i.tmdb)) : undefined)

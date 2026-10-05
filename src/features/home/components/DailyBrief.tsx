@@ -2,27 +2,36 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { formatWeekdayDate } from '../../../shared/utils/dateFormat'
 import { ChevronRight } from 'lucide-react'
-import { Card, SectionLabel, Skeleton, ToneDot, cx } from '../../../shared/ui'
+import { Card, SectionLabel, Skeleton, ToneDot, Truncate, cx } from '../../../shared/ui'
 import { useBreakpoint } from '../../../shared/hooks/useBreakpoint'
+import { useEntityModal } from '../../../shared/modals/useEntityModal'
 import { useDailyBrief } from '../hooks/useDailyBrief'
 import type { BriefLine } from '../briefRules'
 
-const PHONE_SECTIONS = 3
+/** Tasks · Schedule · Training · Weather on a phone; the rest behind Show all. */
+const PHONE_SECTIONS = 4
 
 function Line({ line, lead }: { line: BriefLine; lead?: boolean }) {
+  const modal = useEntityModal()
   const text = (
-    <span data-tone={line.tone} className={cx(line.tone && line.tone !== 'neutral' ? 'tone-text' : lead ? 'text-fg' : 'text-fg-2')}>
+    <Truncate lines={2} className={cx('min-w-0', line.tone && line.tone !== 'neutral' ? 'tone-text' : lead ? 'text-fg' : 'text-fg-2')}>
       {line.text}
-    </span>
+    </Truncate>
   )
+  const body = <span data-tone={line.tone} className="min-w-0">{text}</span>
   const cls = cx('flex min-w-0 items-start gap-1', lead ? 'text-ui font-semibold' : 'text-body')
-  if (!line.href) return <p className={cls}>{text}</p>
-  return (
-    <Link to={line.href} className={cx(cls, 'group -mx-1 rounded-control px-1 hover:bg-surface-hover [@media(pointer:coarse)]:min-h-[32px] [@media(pointer:coarse)]:items-center')}>
-      {text}
-      <ChevronRight aria-hidden className="mt-0.5 h-3.5 w-3.5 shrink-0 text-fg-faint group-hover:text-accent-600" />
-    </Link>
-  )
+  const linkCls = cx(cls, 'group -mx-1 rounded-control px-1 text-left hover:bg-surface-hover [@media(pointer:coarse)]:min-h-[44px] [@media(pointer:coarse)]:items-center')
+  const chevron = <ChevronRight aria-hidden className="mt-0.5 h-3.5 w-3.5 shrink-0 text-fg-faint group-hover:text-accent-600" />
+  const media = line.media
+  if (media) {
+    return (
+      <button type="button" onClick={() => modal.open({ kind: 'media', tmdbId: media.tmdbId, mediaType: media.mediaType })} className={cx(linkCls, 'w-full')}>
+        {body}{chevron}
+      </button>
+    )
+  }
+  if (!line.href) return <p className={cls}>{body}</p>
+  return <Link to={line.href} className={linkCls}>{body}{chevron}</Link>
 }
 
 function BriefSkeleton() {
@@ -42,7 +51,8 @@ function BriefSkeleton() {
 /**
  * The rule-based morning brief (no AI): greeting and date, the one headline
  * that matters most right now, then compact labelled sections. Phones show
- * the headline plus the first few sections behind a "Show all".
+ * the headline plus the first few sections, the rest behind a "Show all".
+ * A media line opens that title's popup; other lines link to their page.
  */
 export function DailyBrief() {
   const { brief, isLoading } = useDailyBrief()

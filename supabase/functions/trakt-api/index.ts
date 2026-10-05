@@ -1631,6 +1631,16 @@ async function tmdbQ(path: string, params: Record<string, string> = {}): Promise
 
 interface FollowTitle { id: number; title: string; poster: string | null; release: string | null }
 
+// The same rules the app's self-filling lists use (useSmartLists.ts): a
+// studio or keyword follow leaves out documentaries and TV movies (making-ofs,
+// "Encore" specials), a person follow cameos as oneself, and every follow stubs
+// with neither a date nor a poster — before, those showed in What's new as
+// "new titles". checkFollows also clears earlier events these rules now drop.
+const EXTRAS = [99, 10770] // Documentary, TV Movie
+const SELF = /^(self|himself|herself|themselves)\b/i
+const isExtra = (r: AnyRec) => ((r.genre_ids ?? []) as number[]).some(g => EXTRAS.includes(g))
+const isStub = (r: AnyRec) => !r.release_date && !r.poster_path
+
 async function followTitles(kind: string, id: number): Promise<FollowTitle[]> {
   const map = (r: AnyRec): FollowTitle => ({ id: Number(r.id), title: String(r.title ?? r.name ?? ''), poster: (r.poster_path as string) ?? null, release: (r.release_date as string) || null })
   if (kind === 'collection') return (((await tmdbQ(`/collection/${id}`)).parts ?? []) as AnyRec[]).map(map)
@@ -1639,19 +1649,19 @@ async function followTitles(kind: string, id: number): Promise<FollowTitle[]> {
     // Newest first, five pages (100 films) — enough to catch every new title
     // and trailer; the smart list itself reads the full list client-side.
     const pages = await Promise.all([1, 2, 3, 4, 5].map(page => tmdbQ('/discover/movie', {
-      [by]: String(id), sort_by: 'primary_release_date.desc', page: String(page),
+      [by]: String(id), sort_by: 'primary_release_date.desc', page: String(page), without_genres: EXTRAS.join(','),
       'primary_release_date.lte': new Date(Date.now() + 730 * 864e5).toISOString().slice(0, 10),
     })))
     const seen = new Map<number, FollowTitle>()
-    for (const r of pages.flatMap(p => (p.results ?? []) as AnyRec[])) seen.set(Number(r.id), map(r))
+    for (const r of pages.flatMap(p => (p.results ?? []) as AnyRec[])) if (!isStub(r) && !isExtra(r)) seen.set(Number(r.id), map(r))
     return [...seen.values()]
   }
   const credits = await tmdbQ(`/person/${id}/movie_credits`)
   const rows = kind === 'director'
     ? ((credits.crew ?? []) as AnyRec[]).filter(c => c.job === 'Director')
-    : ((credits.cast ?? []) as AnyRec[])
+    : ((credits.cast ?? []) as AnyRec[]).filter(c => !SELF.test(String(c.character ?? '')))
   const seen = new Map<number, FollowTitle>()
-  for (const r of rows) seen.set(Number(r.id), map(r))
+  for (const r of rows) if (!isStub(r)) seen.set(Number(r.id), map(r))
   return [...seen.values()]
 }
 
@@ -1684,6 +1694,15 @@ async function checkFollows(db: Db, userId: string, token: string | null, force:
       }
     }
     if (events.length) { const { error: e } = await db.from('media_follow_events').insert(events); if (e) throw e }
+    // "New title" events the current rules no longer list (a documentary, a
+    // cameo, a stub reported before the rules) leave What's new.
+    if (!baseline) {
+      const keep = titles.map(t => t.id)
+      let del = db.from('media_follow_events').delete().eq('user_id', userId).eq('follow_id', f.id).eq('kind', 'new_title')
+      if (keep.length) del = del.not('tmdb_id', 'in', `(${keep.join(',')})`)
+      const { error: de } = await del
+      if (de) throw de
+    }
     if (fresh.length && f.trakt_list_id && token) {
       await post(`/users/me/lists/${Number(f.trakt_list_id)}/items`, token, { movies: fresh.map(t => ({ ids: { tmdb: t.id } })) }).catch(() => null)
     }

@@ -9,7 +9,7 @@ import { libraryKey } from '../listModel'
 import { DISCOVER_TABS, NO_FILTERS, activeFilterCount, applyClientFilters, isTrending, type DiscoverFilters, type DiscoverTab } from '../discoverModel'
 import { FilterRow, ServicesPicker, SkeletonGrid } from './DiscoverFilters'
 import type { MediaType, OpenMediaDetail } from '../types'
-import { POSTER_GRID, PosterTile } from './PosterTile'
+import { DISCOVER_GRID, PosterTile } from './PosterTile'
 import { formatDate } from '../../../shared/utils/dateFormat'
 import { todayStr } from '../../../shared/utils/dateUtils'
 
@@ -118,7 +118,7 @@ export function DiscoveryTabs({ mediaType, onOpenDetail }: Props) {
             lookingFurther || list.isFetchingNextPage ? <SkeletonGrid count={6} />
               : <p className="text-body text-fg-muted">{list.hasNextPage ? `Nothing in the first ${list.data?.pages.flatMap(p => p.results).length ?? 0} titles matches — try Show more, or loosen the filters.` : 'Nothing matches — loosen the filters.'}</p>
           ) : (
-          <ul className={POSTER_GRID}>
+          <ul className={DISCOVER_GRID}>
             {items.map(item => {
               const lib = index.get(libraryKey(mediaType, item.id))
               const date = mediaType === 'movie' ? item.release_date : item.first_air_date

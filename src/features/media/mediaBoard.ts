@@ -2,32 +2,21 @@
 // data so scripts/verify-feature-boards.cjs can check that no step drops a
 // section.
 //
-//   1  phone, tablet — search, the two tools (closed, one tap each — under
-//      Discover nobody reached them), then Discover. One column on a phone,
-//      two once the grid is 36rem wide. No library card
-//      here (owner, 03.10.2026): the Library tab above is the same thing, and
-//      the card pushed Discover a screen down.
-//   2  1280 / 1469 laptop — search and Discover in main; your library and the
-//      tools in a sticky column on the right (owner, 02.10.2026).
-//   3  1920 — search and Discover span main + one side track (more poster
-//      columns, never wider posters); library and tools stay in the last one.
-//   4  2450 — the library gets a column of its own, the tools the last one,
-//      open by default.
-// The stats moved to the Stats view (owner, 02.10.2026) — no card here.
+// One column at every width (owner, 05.10.2026): the search card with
+// What to watch? beside the box, Continue watching, Coming soon (collapsed),
+// then Discover across the whole page — the right-hand library/tools column
+// is gone, so Discover gets that room for more and bigger posters. The cards
+// above it stay at the main track's 56rem (MediaPage caps them; W2/W3).
 import type { BoardLayouts } from '../../shared/ui/pageBoardRules'
 
-export const MEDIA_SECTIONS = ['library', 'summary', 'discovery', 'tools', 'tonight', 'calendar'] as const
+export const MEDIA_SECTIONS = ['library', 'discovery'] as const
 export type MediaSection = typeof MEDIA_SECTIONS[number]
 
 const MAIN = ['library', 'discovery'] as const
-const TOOLS = ['tonight', 'calendar'] as const
 
 export const MEDIA_BOARD: BoardLayouts<MediaSection> = {
-  1: ['library', 'tools', 'discovery'],
-  2: { columns: [MAIN, { stack: ['summary', ...TOOLS], sticky: true }] },
-  3: { columns: [{ stack: MAIN, span: 2 }, { stack: ['summary', ...TOOLS], sticky: true }] },
-  4: { columns: [{ stack: MAIN, span: 2 }, ['summary'], ['tonight', 'calendar']] },
+  1: [...MAIN],
+  2: { columns: [{ stack: MAIN, span: 2 }] },
+  3: { columns: [{ stack: MAIN, span: 3 }] },
+  4: { columns: [{ stack: MAIN, span: 4 }] },
 }
-
-/** The step from which the Coming soon card starts open (it has room of its own). */
-export const MEDIA_TOOLS_OPEN_FROM = 4

@@ -34,11 +34,17 @@ it does no research.
 | App Store | Update plugins from the Kobo itself | `v1.14.0` | SHA256 `52e802f2…40a548` |
 | `2-disable-fullyread-progressbars.lua` | Finished books show a trophy, not a full bar | commit `a5a77c83` | SHA256 `6067a66d…765ec537` |
 | `2-font-override.lua` | One modern font (Source Sans) across the whole KOReader UI | commit `a5a77c83` | SHA256 `123e23e7…dc591` |
+| `2-bookshelf-screensaver.lua` | Sleep screen: recent books as spines that fill like progress bars, the open book standing on top | commit `3e2b4f11` (ameyrk99) | SHA256 `b1a378c7…c847e7` |
 
 Not installed, on purpose: ZenOS and SimpleUI (both refuse to run next to Project: Title),
 Menu Customizer (no stated support for 2026.07), the "print edition" header patch (needs
 manual tuning). Keep App Store away from Project: Title updates: every Project: Title
 release is tied to one KOReader version.
+
+**Updating KOReader later (🛠 → Update):** don't, until Project: Title has a release for the
+new KOReader version. Update both in the same sitting, Project: Title over SSH. If KOReader
+was updated by mistake and the library looks broken, re-tick Cover browser in Plugin
+management until the matching Project: Title is installed.
 
 ## 4. The Mac session block
 
@@ -84,18 +90,20 @@ curl -fsSL -o appstore.zip https://github.com/omer-faruq/appstore.koplugin/relea
 P=https://raw.githubusercontent.com/joshuacant/KOReader.patches/a5a77c83ee8e214a5d867cdfa82198cfd6c4d030
 curl -fsSL -o 2-disable-fullyread-progressbars.lua "$P/2-disable-fullyread-progressbars.lua"
 curl -fsSL -o 2-font-override.lua "$P/2-font-override.lua"
+curl -fsSL -o 2-bookshelf-screensaver.lua https://raw.githubusercontent.com/ameyrk99/koreader-bookshelf-screensaver/3e2b4f11a2cfa1ffda79f338234485c9cf649a11/patches/2-bookshelf-screensaver.lua
 shasum -a 256 -c <<'SUMS'
 c407d3432190c982dda52c99d6e51f89f004203ed7d8935cd27bf8f51c0701d3  ProjectTitle.zip
 52e802f2d18d1efc576aa489ded1781e2592ea82fa614cd4244632ce3140a548  appstore.zip
 6067a66d626e16bb619cc8b003cee22ff28b497eb5f2025b4dfaeff3765ec537  2-disable-fullyread-progressbars.lua
 123e23e7fd321d1c203dfb752315da9f6ebdfd6c1cb8218700d00d73b20dc591  2-font-override.lua
+b1a378c7c521758e32b89004133cd873e39611a71fe067766c796fc249c847e7  2-bookshelf-screensaver.lua
 SUMS
 rm -rf pt as && mkdir pt as && unzip -q ProjectTitle.zip -d pt && unzip -q appstore.zip -d as
 PT=$(find pt -maxdepth 3 -type d -name 'projecttitle.koplugin' | head -1); AS=$(find as -maxdepth 3 -type d -name 'appstore.koplugin' | head -1)
 echo "found: $PT | $AS"; test -n "$PT" && test -f "$PT/main.lua" && test -n "$AS" && test -f "$AS/main.lua"
 ssh kobo 'mkdir -p /mnt/onboard/.adds/koreader/patches'
 COPYFILE_DISABLE=1 scp -q -r "$PT" "$AS" kobo:/mnt/onboard/.adds/koreader/plugins/
-COPYFILE_DISABLE=1 scp -q 2-disable-fullyread-progressbars.lua 2-font-override.lua kobo:/mnt/onboard/.adds/koreader/patches/
+COPYFILE_DISABLE=1 scp -q 2-disable-fullyread-progressbars.lua 2-font-override.lua 2-bookshelf-screensaver.lua kobo:/mnt/onboard/.adds/koreader/patches/
 ssh kobo 'cd /mnt/onboard/.adds/koreader && ls -d plugins/lascisboard.koplugin plugins/projecttitle.koplugin plugins/appstore.koplugin && ls patches'
 ```
 Paste me all the output.
@@ -107,7 +115,9 @@ Paste me all the output.
    The first time, let it **Extract and cache book information** (it offers this).
 2. 🛠 → Network: turn on **Restore Wi-Fi connection on resume** and **Disable Wi-Fi
    connection when inactive**. These two are what make syncing automatic.
-3. 🛠 → **Lasci's Board** → **Sync now**. It sends the whole library and every reading
+3. ⚙ → Screen → Sleep screen → Wallpaper → **Bookshelf**. (Its options are under
+   Wallpaper → Bookshelf Settings; the defaults are fine.)
+4. 🛠 → **Lasci's Board** → **Sync now**. It sends the whole library and every reading
    minute KOReader has recorded so far.
 
 ## 6. Check (the gates)
@@ -115,6 +125,7 @@ Paste me all the output.
 - Books → **Library** lists every book on the Kobo exactly once, unopened ones too.
   Duplicates show as "look like the same book" with a Merge button.
 - Books → **Reading** shows today's minutes and the last days.
+- Put the Kobo to sleep with a book open: the sleep screen shows the bookshelf with that book standing on top.
 - Send a book from the phone, turn the Kobo's screen on: the book lands in
   *Send to Kobo* by itself and the inbox row says downloaded.
 - The next morning (after 05:00, first Wi-Fi wake in the file browser) the news syncs by
@@ -128,5 +139,6 @@ Paste me all the output.
   `settings/lascisboard.lua`).
 - Project: Title: delete `plugins/projecttitle.koplugin`, then re-tick Cover browser in
   Plugin management.
-- Patches: delete the two files in `.adds/koreader/patches/`.
+- Patches: delete the three files in `.adds/koreader/patches/` (pick another sleep screen first
+  if Bookshelf is selected).
 - Settings: the block's backup is in `~/KoboBackups/<date>/settings`.

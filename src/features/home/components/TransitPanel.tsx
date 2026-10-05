@@ -18,11 +18,13 @@ const TABS: { id: Exclude<Tab, 'settings'>; label: string }[] = [
  * sheet; `active` is false while that sheet is closed so nothing fetches or
  * ticks in the background.
  */
-export function TransitPanel({ active, initialTab = 'routes' }: { active: boolean; initialTab?: Tab }) {
+export function TransitPanel({ active, initialTab = 'routes', planToStopId = null }: { active: boolean; initialTab?: Tab; planToStopId?: string | null }) {
   const [tab, setTab] = useState<Tab>(initialTab)
   const now = useNow(active)
   // A favourite route picked in Settings jumps to Routes with it applied once.
   const [pendingRouteId, setPendingRouteId] = useState<string | null>(null)
+  // A saved stop to plan to on open (Home's To home / To work), applied once.
+  const [pendingStopId, setPendingStopId] = useState<string | null>(planToStopId)
 
   return (
     <div className="min-w-0">
@@ -55,7 +57,8 @@ export function TransitPanel({ active, initialTab = 'routes' }: { active: boolea
       <div className="max-w-2xl">
         {tab === 'routes' && (
           <RoutesTab active={active} now={now}
-            pendingRouteId={pendingRouteId} onRouteConsumed={() => setPendingRouteId(null)} />
+            pendingRouteId={pendingRouteId} onRouteConsumed={() => setPendingRouteId(null)}
+            pendingStopId={pendingStopId} onStopConsumed={() => setPendingStopId(null)} />
         )}
         {tab === 'departures' && <DeparturesTab active={active} now={now} />}
         {tab === 'settings' && (

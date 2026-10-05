@@ -1,6 +1,7 @@
 import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import './testGame.css'
 import { useTestGameLibrary } from './useTestGameLibrary'
+import { useProviderAutoSync } from './useProviderSync'
 import { useTestGameStore } from './testGameStore'
 import { useBreakpoint } from '../../../shared/hooks/useBreakpoint'
 import { useUIStore } from '../../../app/store'
@@ -50,6 +51,7 @@ const SECTION_FALLBACK = <div aria-busy="true" className="h-full" />
 export function TestGamePage() {
   useTgUrlSync()
   const lib = useTestGameLibrary()
+  useProviderAutoSync(lib.games, !lib.isLoading && !lib.providersLoading)
   const bp = useBreakpoint()
   const phone = bp === 'phone'
   const reportScroll = useUIStore(s => s.reportScroll)

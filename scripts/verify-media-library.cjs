@@ -2,11 +2,11 @@
 /*
  * Verification — the Media library model (libraryModel.ts) via sucrase:
  * Coming soon vs Wishlist by date, bucket counts, filter/search/sort, and the
- * overview's poster row.
+ * default order per status.
  */
 require('sucrase/register')
 const assert = require('node:assert/strict')
-const { libraryItems, bucketCounts, filterLibrary, summaryPosters } = require('../src/features/media/libraryModel')
+const { libraryItems, bucketCounts, filterLibrary, defaultSortFor } = require('../src/features/media/libraryModel')
 
 let n = 0
 const ok = (a, e, m) => { assert.deepStrictEqual(a, e, m); n++ }
@@ -34,7 +34,11 @@ ok(filterLibrary(items, 'completed', '', 'rating').map(i => i.tmdbId), [4, 5], '
 ok(filterLibrary(items, 'all', 'angstrom', 'title').map(i => i.tmdbId), [5], 'search folds accents')
 ok(filterLibrary(items, 'all', '', 'year').at(-1).tmdbId, 5, 'no release year sorts last')
 ok(filterLibrary(items, 'all', '', 'added')[0].tmdbId, 6, 'recently added first')
-ok(summaryPosters(items).map(i => i.tmdbId), [6, 1, 3, 2], 'poster row: watching, then coming soon, then wishlist (newest first)')
+const soon = libraryItems('movies', [mv(11, 'wishlist', '2027-03-01'), mv(12, 'wishlist', '2026-10-10'), mv(13, 'upcoming', '2026-12-24')], [], TODAY)
+ok(filterLibrary(soon, 'coming', '', 'release').map(i => i.tmdbId), [12, 13, 11], 'release sort: nearest date first')
+ok(filterLibrary(items, 'all', '', 'release').at(-1).tmdbId, 5, 'no release date sorts last')
+ok(defaultSortFor('coming'), 'release', 'Coming soon opens sorted by release date')
+ok(defaultSortFor('watching'), 'added', 'other statuses open newest added first')
 ok(libraryItems('tv', [], [{ status: 'paused', rating: null, created_at: 'x', tv_series: { tmdb_id: 9, title: 'S', first_air_date: '2010-01-01', poster_path: null } }], TODAY)[0].bucket, 'paused', 'a paused show keeps its own bucket')
 
 console.log(`verify-media-library: ${n} assertions passed`)

@@ -3,7 +3,9 @@ import { Dumbbell, ChevronRight } from 'lucide-react'
 import { useEntityModal } from '../../../shared/modals'
 import { Skeleton, EmptyState, Truncate, AnimatedNumber } from '../../../shared/ui'
 import { formatDurationSeconds } from '../../../shared/utils/formatDuration'
-import { useWeekTrainingStats } from '../hooks/useWeekTrainingStats'
+import { useTrainingWeekStreak, useWeekTrainingStats } from '../hooks/useWeekTrainingStats'
+import { useNextTrainingSession, useTodayStr } from '../../training/hooks/useTrainingSessions'
+import { shiftDateStr } from '../../../shared/utils/dateUtils'
 import { useWidgetState } from '../hooks/useWidgetState'
 import { WidgetShell } from './WidgetShell'
 import { GlanceTile } from './GlanceTile'
@@ -74,8 +76,17 @@ function TrainingSummary() {
   )
 }
 
+/** "Today 16:00" / "Tomorrow" / "Wed 08.10.2026 18:00". */
+function nextWhen(date: string, time: string | null, today: string): string {
+  const day = date === today ? 'Today' : date === shiftDateStr(today, 1) ? 'Tomorrow' : formatWeekdayDate(date)
+  return time ? `${day} ${time}` : day
+}
+
 export function TrainingTile() {
   const stats = useWeekTrainingStats()
+  const streak = useTrainingWeekStreak()
+  const { data: next } = useNextTrainingSession()
+  const today = useTodayStr()
   const popup = useTilePopup()
   const [open, setOpen] = useState(false)
   return (
@@ -85,8 +96,10 @@ export function TrainingTile() {
         icon={<Dumbbell />}
         {...(popup ? { onClick: () => setOpen(true) } : { to: '/training' })}
         loading={stats.isLoading}
-        value={<><AnimatedNumber value={stats.sessions} /><span className="ml-1 text-meta font-medium text-fg-muted">this week</span></>}
-        hint={stats.lastWorkout ? stats.lastWorkout.title : stats.hasData ? undefined : 'Nothing synced yet'}
+        value={<><AnimatedNumber value={stats.sessions} /><span className="ml-1 text-meta font-medium text-fg-muted">this week{streak.weeks > 1 ? ` · ${streak.weeks}${streak.capped ? '+' : ''} wk streak` : ''}</span></>}
+        hint={next
+          ? <span className="font-medium text-fg">Next: {next.title} · {nextWhen(next.date, next.startTime, today)}</span>
+          : stats.hasData ? 'No session planned' : 'Nothing synced yet'}
       />
       {popup && (
         <TileDetail open={open} onClose={() => setOpen(false)} title="Training" to="/training" openLabel="Open Training">

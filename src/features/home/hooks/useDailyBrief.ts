@@ -3,7 +3,7 @@ import { differenceInCalendarDays, format, parseISO } from 'date-fns'
 import { formatDate } from '../../../shared/utils/dateFormat'
 import { buildDailyBrief, type BriefInput, type DailyBrief } from '../briefRules'
 import { weatherLabel, type WeatherData } from '../api/weatherApi'
-import { useTodayOverview, type NextUpItem } from './useTodayOverview'
+import { useTodayOverview } from './useTodayOverview'
 import { useWeather } from './useWeather'
 import { useCurrencyRates } from './useCurrencyRates'
 import { useWeekTrainingStats } from './useWeekTrainingStats'
@@ -13,12 +13,11 @@ import { useDayNutrition } from '../../daily/hooks/useDayNutrition'
 import { useDayTargets } from '../../daily/hooks/useDayTargets'
 import { useWaterDay } from '../../daily/hooks/useWater'
 import { useTVSeries } from '../../media/hooks/useTVSeries'
-import { useOpenWishes } from '../../wishes/hooks/useWishes'
-import { wishPeriodLabel } from '../../wishes/wishRules'
+import { useMovies } from '../../media/hooks/useMovies'
+import { useNextEpisode } from '../../media/hooks/useNextEpisode'
+import type { UserTVEntry } from '../../media/types'
 import { useAthleteProfile } from '../../training/hooks/useAthleteProfile'
 import { todayStr } from '../../../shared/utils/dateUtils'
-
-const DAY_END_HOUR = 22
 
 /** Local clock as fractional hours, re-read every minute and whenever the app comes back into view. */
 function useHourNow(): number {
@@ -61,26 +60,13 @@ function weatherInput(w: WeatherData | undefined): BriefInput['weather'] {
     label: weatherLabel(w.current.symbol),
     precipMm: w.current.precip1h,
     windMs: w.current.windSpeed,
+    windDir: w.current.windDirection,
     highC: temps.length > 1 ? Math.max(...temps) : undefined,
     lowC: temps.length > 1 ? Math.min(...temps) : undefined,
-    rainLaterMm: today.slice(1).reduce((sum, h) => sum + h.precip, 0),
+    hours: today.map(h => ({ time: h.time, temp: h.temp, precip: h.precip })),
+    // `daily` starts at tomorrow (weatherApi skips today).
+    tomorrow: w.daily[0] ? { label: weatherLabel(w.daily[0].symbol), minC: w.daily[0].min, maxC: w.daily[0].max, precipMm: w.daily[0].precip } : null,
   }
-}
-
-/** Unbooked hours between now and DAY_END_HOUR, merging overlapping items. */
-function freeHoursUntilEvening(upcoming: NextUpItem[], hour: number): number | null {
-  if (hour >= DAY_END_HOUR) return null
-  const spans = upcoming
-    .map(i => [Math.max(i.startHour, hour), Math.min(i.endHour, DAY_END_HOUR)] as const)
-    .filter(([a, b]) => b > a)
-    .sort((a, b) => a[0] - b[0])
-  let booked = 0
-  let cursor = hour
-  for (const [a, b] of spans) {
-    const start = Math.max(a, cursor)
-    if (b > start) { booked += b - start; cursor = b }
-  }
-  return DAY_END_HOUR - hour - booked
 }
 
 function dayLabel(date: string): string {
@@ -95,6 +81,8 @@ function dayLabel(date: string): string {
  * Assembles the rule-based daily brief (briefRules.ts) from data other screens
  * already load — no queries of its own beyond those shared hooks, so opening
  * Home costs nothing extra and the brief always agrees with the cards below it.
+ * The one TMDB read is the shared next-episode query (cached, the same one
+ * Daily's Watch next card uses), for one series only.
  */
 export function useDailyBrief(): { brief: DailyBrief; isLoading: boolean } {
   const hour = useHourNow()
@@ -110,7 +98,15 @@ export function useDailyBrief(): { brief: DailyBrief; isLoading: boolean } {
   const { targets } = useDayTargets()
   const { data: waterMl } = useWaterDay(date)
   const { data: tvEntries } = useTVSeries()
-  const { data: openWishes } = useOpenWishes()
+  const { data: movieEntries } = useMovies()
+
+  // The series you touched last — the same next-episode query Daily's Watch next card uses.
+  const current = useMemo(() => {
+    let best: UserTVEntry | null = null
+    for (const e of tvEntries ?? []) if (e.status === 'watching' && (!best || e.updated_at > best.updated_at)) best = e
+    return best
+  }, [tvEntries])
+  const { data: nextEp } = useNextEpisode(current?.id ?? null, current?.tv_series.tmdb_id ?? null, current?.tv_series.number_of_episodes ?? null)
 
   const brief = useMemo(() => {
     const tasks = (tasksQ.data ?? []).filter(t => t.status !== 'cancelled')
@@ -122,14 +118,9 @@ export function useDailyBrief(): { brief: DailyBrief; isLoading: boolean } {
     const trainingToday = nt && nt.date === date ? nt : null
     const lastAt = training.lastWorkoutAt
 
-    const wishGroups = new Map<string, number>()
-    for (const w of openWishes ?? []) {
-      const label = wishPeriodLabel(w) ?? 'Open now'
-      wishGroups.set(label, (wishGroups.get(label) ?? 0) + 1)
-    }
-
     const input: BriefInput = {
       hour,
+      today: date,
       weather: weatherInput(weather),
       tasks: tasksQ.data ? {
         open: open.map(t => ({ title: t.title, priority: t.priority, overdue: isOverdue(t), dueTime: t.due_time ?? null })),
@@ -138,7 +129,6 @@ export function useDailyBrief(): { brief: DailyBrief; isLoading: boolean } {
       schedule: overview.isLoading ? null : {
         next: next ? { title: next.title, startLabel: next.startLabel, startHour: next.startHour, inProgress: next.inProgress } : null,
         remainingCount: overview.upcoming.length,
-        freeHours: freeHoursUntilEvening(overview.upcoming, hour),
       },
       training: {
         today: trainingToday ? { title: trainingToday.title, startTime: trainingToday.startTime } : null,
@@ -155,22 +145,25 @@ export function useDailyBrief(): { brief: DailyBrief; isLoading: boolean } {
         waterMl: waterMl ?? undefined,
         waterTarget: targets.water,
       } : null,
-      // Episode position comes from the entry's cached counters (cheap, no TMDB call per series).
-      watch: (tvEntries ?? [])
-        .filter(e => e.status === 'watching')
-        .sort((a, b) => b.updated_at.localeCompare(a.updated_at))
-        .map(e => ({
-          title: e.tv_series.title,
-          episodeLabel: e.current_episode > 0 ? `last watched S${e.current_season}·E${e.current_episode}` : 'not started',
-        })),
-      wishes: [...wishGroups].map(([label, count]) => ({ label, count })),
-      currency: currency ? [
-        { pair: 'NOK/TRY', rate: currency.primary.rate, changePct: currency.primary.changePct },
-        { pair: 'EUR/USD', rate: currency.secondary.rate, changePct: currency.secondary.changePct },
-      ] : null,
+      watch: {
+        next: current && nextEp ? {
+          title: current.tv_series.title,
+          tmdbId: current.tv_series.tmdb_id,
+          season: nextEp.season,
+          episode: nextEp.episode,
+          episodeTitle: nextEp.episodeTitle,
+          airDate: nextEp.airDate,
+          caughtUp: nextEp.caughtUp,
+        } : null,
+        wishlist: [
+          ...(movieEntries ?? []).filter(e => e.status === 'wishlist').map(e => ({ title: e.movie.title, tmdbId: e.movie.tmdb_id, mediaType: 'movie' as const, releaseDate: e.movie.release_date })),
+          ...(tvEntries ?? []).filter(e => e.status === 'wishlist').map(e => ({ title: e.tv_series.title, tmdbId: e.tv_series.tmdb_id, mediaType: 'tv' as const, releaseDate: e.tv_series.first_air_date })),
+        ],
+      },
+      nokTry: currency ? { rate: currency.primary.rate, changePct: currency.primary.changePct } : null,
     }
     return buildDailyBrief(input)
-  }, [hour, date, tasksQ.data, overview, training, profile, weather, currency, nutrition, targets, waterMl, tvEntries, openWishes])
+  }, [hour, date, tasksQ.data, overview, training, profile, weather, currency, nutrition, targets, waterMl, tvEntries, movieEntries, current, nextEp])
 
   return { brief, isLoading: tasksQ.isLoading || overview.isLoading }
 }

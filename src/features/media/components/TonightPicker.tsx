@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Dices, Film, Shuffle, Tv } from 'lucide-react'
 import { Button, IconButton, SegmentedControl } from '../../../shared/ui'
-import { CollapsibleCard } from './CollapsibleCard'
+import { ModalShell } from '../../../shared/modals'
 import { posterUrl } from '../../../integrations/tmdb/client'
 import { haptic } from '../../../shared/utils/haptics'
 import {
@@ -83,7 +83,26 @@ function PickRow({ type, pick, shaking, onRoll, onOpenDetail }: {
   )
 }
 
-export function TonightPicker({ movieEntries, tvEntries, onOpenDetail }: Props) {
+/**
+ * "What to watch?" as one icon button (beside the search box); the picker opens
+ * in its own window. A title opened from it stacks above, so Back returns here.
+ */
+export function WhatToWatchButton(props: Props) {
+  const [open, setOpen] = useState(false)
+  return (
+    <>
+      <IconButton label="What to watch?" bordered onClick={() => { haptic('light'); setOpen(true) }}>
+        <Dices />
+      </IconButton>
+      <ModalShell open={open} onClose={() => setOpen(false)} title="What to watch?" size="sm">
+        {open && <TonightPicker {...props} />}
+      </ModalShell>
+    </>
+  )
+}
+
+/** The picker itself: a source (your list, trending, popular, a Trakt list), a length limit, one random movie and one series. */
+function TonightPicker({ movieEntries, tvEntries, onOpenDetail }: Props) {
   const [source,     setSource]     = useState<Source>('mylist')
   const [moviePick,  setMoviePick]  = useState<Candidate | null>(null)
   const [tvPick,     setTvPick]     = useState<Candidate | null>(null)
@@ -170,8 +189,7 @@ export function TonightPicker({ movieEntries, tvEntries, onOpenDetail }: Props) 
   }
 
   return (
-    // Closed on a phone or tablet (one tap away above Discover); open from the laptop, in its own column.
-    <CollapsibleCard title="What to watch?" icon={<Dices />} openFrom={2}>
+    <div>
       <SegmentedControl<Source>
         value={source}
         onChange={s => { haptic('light'); setSource(s); setMoviePick(null); setTvPick(null) }}
@@ -208,6 +226,6 @@ export function TonightPicker({ movieEntries, tvEntries, onOpenDetail }: Props) 
         <PickRow type="movie" pick={moviePick} shaking={shaking === 'movie'} onRoll={() => roll('movie')} onOpenDetail={onOpenDetail} />
         <PickRow type="tv" pick={tvPick} shaking={shaking === 'tv'} onRoll={() => roll('tv')} onOpenDetail={onOpenDetail} />
       </div>
-    </CollapsibleCard>
+    </div>
   )
 }

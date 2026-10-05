@@ -1,4 +1,6 @@
-import { posterUrl } from '../../../integrations/tmdb/client'
+import { ExternalLink } from 'lucide-react'
+import { posterUrl, tmdbMovieUrl, tmdbTVUrl } from '../../../integrations/tmdb/client'
+import { FollowMenu } from './FollowMenu'
 import { SimilarRow } from './SimilarRow'
 import { EpisodesPanel } from './EpisodesPanel'
 import { MediaDetailInfo } from './MediaDetailInfo'
@@ -32,12 +34,21 @@ export function MediaDetailBody({ detail, mediaType, userEntry, onRemoved, onOpe
           as tall as the popup's scroll area at most (88dvh − the 14rem hero −
           padding) and scrolls inside itself when the controls are longer. */}
       <aside className="scroll-y order-2 flex min-w-0 flex-col gap-4 md:order-1 md:sticky md:top-5 md:max-h-[calc(88dvh-14rem-2.5rem)] md:self-start md:overflow-y-auto md:overscroll-contain md:pr-1">
-        {/* The hero already shows the poster on phones. */}
-        <img
-          src={posterUrl(detail.poster_path, 'w342')}
-          alt=""
-          className="hidden aspect-[2/3] w-28 rounded-row bg-surface-2 object-cover md:block"
-        />
+        {/* The poster with the title's outward links beside it (the hero
+            already shows the poster on phones, so there only the links show). */}
+        <div className="flex items-end gap-3">
+          <img
+            src={posterUrl(detail.poster_path, 'w342')}
+            alt=""
+            className="hidden aspect-[2/3] w-28 shrink-0 rounded-row bg-surface-2 object-cover md:block"
+          />
+          <div className="flex flex-wrap gap-1 md:flex-col md:items-start">
+            <FollowMenu detail={detail} isMovie={isMovie} />
+            <a href={isMovie ? tmdbMovieUrl(detail.id) : tmdbTVUrl(detail.id)} target="_blank" rel="noopener noreferrer" className="btn-ghost btn-sm" aria-label="Open on TMDB">
+              TMDB <ExternalLink aria-hidden className="h-3.5 w-3.5" />
+            </a>
+          </div>
+        </div>
         <div className="border-t border-line pt-4 md:border-t-0 md:pt-0">{controls}</div>
       </aside>
 

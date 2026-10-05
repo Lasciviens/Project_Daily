@@ -16,6 +16,8 @@ const RIBBON: Record<LibraryBucket, string> = { completed: 'Completed', watching
 
 /** Every poster grid's column rule: three covers across a phone, bigger covers (9rem+) from a 40rem grid; columns share the row. */
 export const POSTER_GRID = 'grid grid-cols-[repeat(auto-fill,minmax(6rem,1fr))] gap-x-2.5 gap-y-3 @[40rem]:grid-cols-[repeat(auto-fill,minmax(9rem,1fr))] @[40rem]:gap-3'
+/** Discover, which spans the whole page: bigger posters once the grid is wide (fewer, larger tiles). */
+export const DISCOVER_GRID = `${POSTER_GRID} @[70rem]:grid-cols-[repeat(auto-fill,minmax(11rem,1fr))] @[70rem]:gap-4`
 
 interface Props {
   posterPath: string | null

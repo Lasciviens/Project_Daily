@@ -1617,6 +1617,13 @@ rename from Phase 0):
 - Index of more: [awesome-koreader](https://github.com/jannick-holm/awesome-koreader).
 Our plugin only adds one menu entry, so it works with any of these.
 
+**Chosen (owner, 05.10.2026):** Project: Title, App Store, the finished-book trophy and one-font
+patches, and the **Bookshelf sleep screen** patch
+([ameyrk99/koreader-bookshelf-screensaver](https://github.com/ameyrk99/koreader-bookshelf-screensaver),
+AGPL-3.0, commit `3e2b4f11`: recent books as spines that fill like progress bars, the open book
+standing on top). ZenOS, SimpleUI, Menu Customizer and the other extras are not installed; the
+owner will ask for changes if wanted. Install steps: `SETUP-PHASE-3-4.md`.
+
 ### 9.6 Small delights, zero code
 
 - Chess against Stockfish, Wordle and Connections as KOReader plugins
@@ -1833,8 +1840,9 @@ and function deploys are manual; CLAUDE.md → Pending manual steps).
 
 **Gate:**
 - a book sent from the Mac opens in KOReader;
-- an article saved on the iPhone shows in Nickel;
-- tapping *drakk* shows *drikke*.
+- an article saved on the iPhone shows in Nickel.
+
+(The dictionary lookup test was dropped on the owner's call, 05.10.2026; the dictionaries stay installed.)
 
 ### Phase 2 — Send to Kobo v1 (Claude, cloud; small)
 
@@ -1969,6 +1977,8 @@ The owner's picks (30.09.2026):
 - the on-device AI reading companion (§9.4, §12.4).
 
 Still on the menu: the sleep-screen "Today" message and Norwegian words of the day.
+
+**On-device AI (05.10.2026):** postponed, still open — nothing installed, no key on the Kobo.
 
 ### Fallback — the Nickel-side trigger
 

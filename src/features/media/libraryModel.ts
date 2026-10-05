@@ -3,7 +3,7 @@ import type { Tone } from '../../shared/ui/Tone'
 import { stageTones, type Stage } from '../../shared/theme/stage'
 
 // The library as one flat list of posters, shared by the Media overview's
-// summary and the Library view. Pure and type-only
+// Library view. Pure and type-only
 // (scripts/verify-media-library.cjs).
 //
 // "Coming soon" is a DATE fact (release/first air date in the future), not a
@@ -12,7 +12,7 @@ import { stageTones, type Stage } from '../../shared/theme/stage'
 // pool and is split by date the same way.
 
 export type LibraryBucket = 'coming' | 'wishlist' | 'watching' | 'paused' | 'completed' | 'dropped'
-export type LibrarySort = 'added' | 'title' | 'year' | 'rating' | 'rt'
+export type LibrarySort = 'added' | 'title' | 'year' | 'release' | 'rating' | 'rt'
 
 export interface LibraryItem {
   tmdbId: number
@@ -100,15 +100,21 @@ export function filterLibrary(items: LibraryItem[], bucket: LibraryBucket | 'all
     title: byTitle,
     // No year / no rating sorts last, whichever way the list runs.
     year: (a, b) => (b.year ?? -1) - (a.year ?? -1) || byTitle(a, b),
+    // Soonest first (Coming soon's own order); no date sorts last.
+    release: (a, b) => (a.releaseDate || '9999').localeCompare(b.releaseDate || '9999') || byTitle(a, b),
     rating: (a, b) => (b.rating ?? -1) - (a.rating ?? -1) || byTitle(a, b),
     rt: (a, b) => (b.rt ?? -1) - (a.rt ?? -1) || byTitle(a, b),
   }
   return list.sort(cmp[sort])
 }
 
-/** The overview's poster row: what you're watching, then what's coming, most recently added first. */
-export function summaryPosters(items: LibraryItem[], max = 10): LibraryItem[] {
-  const pick = (b: LibraryBucket) => items.filter(i => i.bucket === b).sort((x, y) => y.addedAt.localeCompare(x.addedAt))
-  return [...pick('watching'), ...pick('paused'), ...pick('coming'), ...pick('wishlist')].slice(0, max)
-}
+/**
+ * Whether a show's upcoming episodes belong in Coming soon / Airing this week:
+ * only shows you're Watching or have Completed (a new season). A wishlisted
+ * show's episodes are not yours yet (owner, 05.10.2026).
+ */
+export const showsEpisodes = (status: string | null | undefined) => status === 'watching' || status === 'completed'
+
+/** The order a status opens in: Coming soon by release date (nearest first), everything else newest added. */
+export const defaultSortFor = (bucket: LibraryBucket | 'all'): LibrarySort => (bucket === 'coming' ? 'release' : 'added')
 

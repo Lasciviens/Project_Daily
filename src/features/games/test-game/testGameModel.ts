@@ -103,6 +103,9 @@ export type PlatformFamily =
  *  the navigation groups every platform under one of these. */
 export type PlatformMaker = 'nintendo' | 'sony' | 'sega' | 'microsoft' | 'pc' | 'arcade' | 'android' | 'other'
 
+/** The navigation's maker order (owner, 05.10.2026) — fixed, not by library size. */
+export const MAKER_ORDER: readonly PlatformMaker[] = ['sony', 'pc', 'microsoft', 'nintendo', 'sega', 'arcade', 'android', 'other']
+
 export const MAKER_LABEL: Record<PlatformMaker, string> = {
   nintendo: 'Nintendo', sony: 'Sony', sega: 'Sega', microsoft: 'Microsoft',
   pc: 'PC', arcade: 'Arcade', android: 'Android', other: 'Other',
@@ -405,7 +408,8 @@ export interface PlatformGroup {
 
 /**
  * Every platform, grouped by maker — nothing is folded away. Groups run
- * biggest first (by their games), "Other" always last; inside a group the
+ * in the fixed MAKER_ORDER (Sony, PC, Microsoft, Nintendo, Sega, Arcade,
+ * Android, Other); inside a group the
  * platforms run biggest first, ties by name (platformCounts' order).
  */
 export function platformGroups(counts: readonly PlatformCount[]): PlatformGroup[] {
@@ -418,8 +422,7 @@ export function platformGroups(counts: readonly PlatformCount[]): PlatformGroup[
     byMaker.set(maker, g)
   }
   for (const g of byMaker.values()) g.platforms.sort((a, b) => b.count - a.count || a.info.name.localeCompare(b.info.name))
-  return [...byMaker.values()].sort((a, b) =>
-    Number(a.maker === 'other') - Number(b.maker === 'other') || b.total - a.total || a.label.localeCompare(b.label))
+  return [...byMaker.values()].sort((a, b) => MAKER_ORDER.indexOf(a.maker) - MAKER_ORDER.indexOf(b.maker))
 }
 
 export type StatusCounts = Record<TgStatusFilter, number>
