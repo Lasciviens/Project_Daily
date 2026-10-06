@@ -1,5 +1,5 @@
 import { useEffect, type CSSProperties, type HTMLAttributes, type Ref } from 'react'
-import { ArrowLeft, ChevronDown, GripVertical, Minus, PenLine, Sparkles, X } from 'lucide-react'
+import { ArrowLeft, ChevronDown, Minus, PenLine, Sparkles, X } from 'lucide-react'
 import { Button, IconButton, Truncate, cx } from '../../../shared/ui'
 
 // The composer's chrome: the title bar (with Back from the prompt), the
@@ -16,8 +16,9 @@ export const COMPOSER_ROOT = 'vt-pin-composer'
 /** Above the phone tab bar (the installed-iOS short-viewport gap included). */
 export const ABOVE_TABBAR = 'calc(var(--app-tabbar-h) + env(safe-area-inset-bottom) - var(--ios-viewport-gap, 0px))'
 
-export function ComposerHeader({ title, phone, onBack, onMinimize, onClose, dragProps }: {
+export function ComposerHeader({ title, prompt, phone, onBack, onMinimize, onClose, dragProps }: {
   title: string
+  prompt?: boolean
   /** The prompt view: back to the request. */
   onBack?: () => void
   phone: boolean
@@ -34,8 +35,13 @@ export function ComposerHeader({ title, phone, onBack, onMinimize, onClose, drag
     >
       {onBack
         ? <IconButton label="Back to the request" onClick={onBack} className="-ml-2"><ArrowLeft /></IconButton>
-        : !phone && <GripVertical className="h-4 w-4 shrink-0 text-fg-faint" aria-hidden />}
+        : null}
       {/* The header is the drag handle: a tap bubble would open after every drag. */}
+      {!onBack && (
+        <span aria-hidden className="mr-1 grid h-7 w-7 shrink-0 place-items-center rounded-control bg-accent-50 text-accent-600 [&_svg]:h-4 [&_svg]:w-4">
+          {prompt ? <Sparkles /> : <PenLine />}
+        </span>
+      )}
       <Truncate as="h2" reveal="none" className="flex-1 text-ui font-semibold text-fg">{title}</Truncate>
       <IconButton label="Minimise" onClick={onMinimize}>{phone ? <ChevronDown /> : <Minus />}</IconButton>
       <IconButton label="Close — the draft is kept" onClick={onClose}><X /></IconButton>

@@ -1,6 +1,6 @@
 import { useMemo, type Ref, type RefObject } from 'react'
 import { useLocation } from 'react-router-dom'
-import { ArrowUpRight, CheckCheck, CornerUpLeft, Crosshair, Quote, Send, Trash2 } from 'lucide-react'
+import { ArrowUpRight, CalendarClock, Check, CheckCheck, CornerUpLeft, Crosshair, ListChecks, Plus, Quote, Send, Trash2, Undo2 } from 'lucide-react'
 import { useDevRequestDrafts } from '../devRequestDraftStore'
 import { cardTimeline, draftFromRow, isDraftEmpty, type ComposerTarget, type DraftFields } from '../devRequestRules'
 import { useDeleteDevRequest, useDevRequests, useUpdateDevRequest } from '../hooks/useDevRequests'
@@ -112,18 +112,21 @@ export function ComposerRequestView({ target, readPage, onPick, onQuote, mouse, 
 
   const tools = (
     <>
-      <Button size="sm" variant="ghost" icon={<Crosshair />} onClick={onPick} title="Point at something on the page: a link to it goes where the caret is">Pick on page</Button>
+      <Button size="sm" variant="ghost" icon={<Crosshair />} onClick={onPick} title={`Point at something on the page: a link to it goes where the caret is${mouse ? ' (or Alt-click anything while this window is open)' : ''}`}>Pick on page</Button>
       {onQuote && (
         // mousedown would clear the page selection before the click reads it.
         <Button size="sm" variant="ghost" icon={<Quote />} onMouseDown={e => e.preventDefault()} onClick={onQuote}>Quote selection</Button>
       )}
-      {mouse && <span className="hidden text-meta text-fg-faint min-[26rem]:inline">or <span className="kbd">Alt</span>-click</span>}
     </>
   )
 
   return (
     <>
-      <div className="scroll-y min-h-0 flex-1 overflow-y-auto px-4 pb-4 pt-3">
+      <div
+        onKeyDown={e => {
+          if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && fields.title.trim() && (target.kind === 'new' || editDraft)) { e.preventDefault(); save() }
+        }}
+        className="scroll-y flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 pb-4 pt-3">
         {parsed.recheck && <RecheckHeader recheck={parsed.recheck} />}
         <RequestFields
           fields={fields}
@@ -137,7 +140,7 @@ export function ComposerRequestView({ target, readPage, onPick, onQuote, mouse, 
           showKeys={mouse}
           beforeEditor={
             <>
-              {timeline && <p className="-mt-1 text-meta tabular-nums text-fg-muted">{timeline}</p>}
+              {timeline && <p className="-mt-2 flex items-center gap-1.5 text-meta tabular-nums text-fg-muted"><CalendarClock aria-hidden className="h-3.5 w-3.5 shrink-0" />{timeline}</p>}
               {row && reviewable && points.length > 0 && (
                 <ReviewBar
                   points={points}
@@ -150,19 +153,21 @@ export function ComposerRequestView({ target, readPage, onPick, onQuote, mouse, 
           }
         />
         {target.kind === 'new' && (
-          <div className="mt-2">
-            <PageContextToggle start={newDraft.start} checked={newDraft.attachContext} onChange={v => useDevRequestDrafts.getState().patchNewDraft({ attachContext: v })} />
-          </div>
+          <PageContextToggle start={newDraft.start} checked={newDraft.attachContext} onChange={v => useDevRequestDrafts.getState().patchNewDraft({ attachContext: v })} />
         )}
       </div>
-      <footer className="flex shrink-0 items-center gap-2 border-t border-line bg-surface px-3 py-2.5">
-        {row && <IconButton label="Delete request" onClick={() => void remove()} className="text-fg-muted hover:!text-danger"><Trash2 /></IconButton>}
+      <footer className="flex shrink-0 items-center gap-1.5 border-t border-line bg-surface-2 px-3 py-2.5">
+        {row && <IconButton label="Delete request" onClick={() => void remove()} className="-ml-1 text-fg-muted hover:!text-danger"><Trash2 /></IconButton>}
         {target.kind === 'new'
-          ? dirty && <Button variant="ghost" size="sm" onClick={discardNew}>Discard</Button>
-          : editDraft && row && <Button variant="ghost" size="sm" onClick={() => discardEditDraft(row)}>Discard changes</Button>}
-        <span className="ml-auto flex min-w-0 items-center gap-2">
-          {dirty && <span className="flex shrink-0 items-center gap-1.5 text-meta text-fg-muted"><span data-tone="warn" className="tone-dot" aria-hidden />Unsaved</span>}
-          <Button variant="primary" size="sm" loading={pending} disabled={!fields.title.trim() || (target.kind === 'edit' && !editDraft)} onClick={save}>
+          ? dirty && <Button variant="ghost" size="sm" icon={<Undo2 />} onClick={discardNew}>Discard</Button>
+          : editDraft && row && <Button variant="ghost" size="sm" icon={<Undo2 />} onClick={() => discardEditDraft(row)}>Discard changes</Button>}
+        <span className="ml-auto flex min-w-0 items-center gap-2.5">
+          <span className="flex min-w-0 items-center gap-1.5 text-meta text-fg-muted" aria-live="polite">
+            {dirty
+              ? <><span data-tone="warn" className="tone-dot shrink-0" aria-hidden /><Truncate reveal="none">Unsaved · kept on this device</Truncate></>
+              : row ? <><CheckCheck aria-hidden className="h-3.5 w-3.5 shrink-0 text-success" />Saved</> : null}
+          </span>
+          <Button variant="primary" size="sm" icon={target.kind === 'new' ? <Plus /> : <Check />} loading={pending} disabled={!fields.title.trim() || (target.kind === 'edit' && !editDraft)} onClick={save} title={mouse ? `${target.kind === 'new' ? 'Add request' : 'Save'} (Ctrl/⌘+Enter)` : undefined}>
             {target.kind === 'new' ? 'Add request' : 'Save'}
           </Button>
         </span>
@@ -179,7 +184,7 @@ function RecheckHeader({ recheck }: { recheck: RecheckOf }) {
       onClick={() => open(recheck.of)}
       title="Open the request these points first came from"
       data-tone="info"
-      className="tone-soft mb-3 flex w-full min-w-0 items-start gap-2.5 rounded-row border border-[rgb(var(--tone)/0.35)] px-3 py-2.5 text-left transition-colors [@media(hover:hover)]:hover:border-[rgb(var(--tone)/0.6)]"
+      className="tone-soft flex w-full min-w-0 items-start gap-2.5 rounded-row border border-[rgb(var(--tone)/0.35)] px-3 py-2.5 text-left transition-colors [@media(hover:hover)]:hover:border-[rgb(var(--tone)/0.6)]"
     >
       <CornerUpLeft aria-hidden className="mt-0.5 h-4 w-4 shrink-0 tone-text" />
       <span className="min-w-0 flex-1">
@@ -206,13 +211,16 @@ function ReviewBar({ points, sending, onSend, onMarkDone }: {
   const resolved = allResolved(points)
   const reviewed = c.fixed + c.notFixed + c.moved
   return (
-    <section aria-label="Review" className="flex flex-col gap-2 rounded-row border border-line bg-surface-2 px-3 py-2.5">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <span className="section-label">Check the work</span>
-        <span className="text-meta tabular-nums text-fg-muted">
-          {reviewed === 0 ? `Mark each of the ${c.total} point${c.total === 1 ? '' : 's'} Fixed or Not fixed` : [
-            `${c.fixed} of ${c.total} fixed`, c.notFixed ? `${c.notFixed} not fixed` : '', c.moved ? `${c.moved} moved` : '',
-          ].filter(Boolean).join(' · ')}
+    <section aria-label="Review" className="flex flex-col gap-2.5 rounded-row border border-line bg-surface-2 px-3 py-2.5">
+      <div className="flex items-center gap-2.5">
+        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-control bg-surface text-fg-muted shadow-card"><ListChecks aria-hidden className="h-4 w-4" /></span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-body font-semibold text-fg">Check the work</span>
+          <span className="block text-meta tabular-nums text-fg-muted">
+            {reviewed === 0 ? `Mark each of the ${c.total} point${c.total === 1 ? '' : 's'} Fixed or Not fixed` : [
+              `${c.fixed} of ${c.total} fixed`, c.notFixed ? `${c.notFixed} not fixed` : '', c.moved ? `${c.moved} moved` : '',
+            ].filter(Boolean).join(' · ')}
+          </span>
         </span>
       </div>
       <ReviewMeter points={points} />

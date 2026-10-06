@@ -82,6 +82,8 @@ interface Actions {
   setMinimized: (minimized: boolean) => void
   setComposerTab: (tab: ComposerTab) => void
   setComposerPos: (pos: { x: number; y: number } | null) => void
+  /** The window's size for one view (null = back to its default). */
+  setComposerSize: (view: ComposerTab, size: { w: number; h: number } | null) => void
   // Drawer
   setDrawer: (patch: Partial<DrawerPrefs>) => void
   // Prompt
@@ -166,6 +168,7 @@ export const useDevRequestDrafts = create<DraftStore>()(
       })),
       setComposerTab: (tab) => set(s => ({ composer: { ...s.composer, tab } })),
       setComposerPos: (pos) => set(s => ({ composer: { ...s.composer, pos } })),
+      setComposerSize: (view, size) => set(s => ({ composer: { ...s.composer, size: { ...s.composer.size, [view]: size } } })),
 
       setDrawer: (patch) => set(s => ({ drawer: { ...s.drawer, ...patch } })),
 

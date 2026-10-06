@@ -15,6 +15,8 @@ import { ComposerPromptView } from './ComposerPromptView'
 import { ABOVE_TABBAR, COMPOSER_ROOT, ComposerHeader, ComposerPill, PickBar, PickingBanner } from './ComposerFrame'
 import { focusIntoComposer, useMediaQuery, useSelectionSnapshot } from './composerHooks'
 import { useFloatingWindow } from '../../../shared/hooks/useFloatingWindow'
+import { useWindowResize } from './useWindowResize'
+import type { ResizeEdge } from './windowSize'
 import { useBreakpoint } from '../../../shared/hooks/useBreakpoint'
 import { useKeyboardInset } from '../../../shared/hooks/useKeyboardInset'
 import { useUIStore } from '../../../app/store'
@@ -113,7 +115,17 @@ export function DevRequestComposer() {
     position: composer.pos,
     onCommit: useCallback((p: { x: number; y: number }) => store().setComposerPos(p), [store]),
   })
-  const setRoot = useCallback((el: HTMLDivElement | null) => { rootRef.current = el; setWindowEl(el) }, [setWindowEl])
+  // The request and the prompt each keep the size you gave them (tablet/desktop).
+  const view = composer.tab
+  const resize = useWindowResize({
+    enabled: !phone && !composer.minimized && !tucked,
+    el: useCallback(() => rootRef.current, []),
+    size: composer.size[view],
+    onStart: useCallback((r: DOMRect) => store().setComposerPos({ x: Math.round(r.left), y: Math.round(r.top) }), [store]),
+    onCommit: useCallback((s: { w: number; h: number }) => store().setComposerSize(store().composer.tab, s), [store]),
+  })
+  const attachSize = resize.attach
+  const setRoot = useCallback((el: HTMLDivElement | null) => { rootRef.current = el; attachSize(el); setWindowEl(el) }, [setWindowEl, attachSize])
 
   // Focus follows the actions that ask for it (store.focus): opening or
   // restoring puts it in the first empty field (title, else details; the
@@ -141,8 +153,16 @@ export function DevRequestComposer() {
     return () => { cancel(); release() }
   }, [focusReq, tucked, composer.minimized, store])
 
-  // Double-click the title bar: back to the corner.
-  const dragProps = { ...handleProps, onDoubleClick: () => { resetPosition(); store().setComposerPos(null) } }
+  // Double-click the title bar: back to the corner, at the default size.
+  const dragProps = {
+    ...handleProps,
+    onDoubleClick: () => {
+      store().setComposerSize(view, null)
+      store().setComposerPos(null)
+      // After the size is gone, so the corner is worked out for the default size.
+      requestAnimationFrame(() => resetPosition())
+    },
+  }
 
   const dirty = target.kind === 'new' ? !isDraftEmpty(newDraft) : target.id in editDrafts
   const title = composer.tab === 'prompt' ? 'Prompt for Claude' : target.kind === 'new' ? 'New request' : 'Edit request'
@@ -206,7 +226,7 @@ export function DevRequestComposer() {
         style={{ bottom: keyboard > 0 ? `${keyboard}px` : ABOVE_TABBAR, maxHeight, height: composer.tab === 'prompt' ? maxHeight : undefined }}
         className={cx(COMPOSER_ROOT, 'fixed inset-x-0 z-chrome flex flex-col overflow-hidden rounded-t-sheet border-x border-t border-line-strong bg-surface shadow-menu outline-none')}
       >
-        <ComposerHeader title={title} phone onBack={back} onMinimize={minimize} onClose={close} />
+        <ComposerHeader title={title} prompt={composer.tab === 'prompt'} phone onBack={back} onMinimize={minimize} onClose={close} />
         {body}
       </div>
     )
@@ -230,9 +250,10 @@ export function DevRequestComposer() {
           picking && 'ring-2 ring-accent-500/40',
         )}
       >
-        <ComposerHeader title={title} phone={false} onBack={back} onMinimize={minimize} onClose={close} dragProps={dragProps} />
+        <ComposerHeader title={title} prompt={composer.tab === 'prompt'} phone={false} onBack={back} onMinimize={minimize} onClose={close} dragProps={dragProps} />
         {picking && (twoStep ? pickBar(false) : <PickingBanner onStop={stopPicking} />)}
         {body}
+        <ResizeHandles handle={resize.handle} />
       </div>
     </>
   )
@@ -240,3 +261,21 @@ export function DevRequestComposer() {
 
 // Constant so React never re-applies it over the position useFloatingWindow writes.
 const WINDOW_STYLE = { left: 0, top: 0, visibility: 'hidden' } as const
+
+/** The window's right edge, bottom edge and bottom-right corner resize it. */
+function ResizeHandles({ handle }: { handle: (edge: ResizeEdge) => Record<string, unknown> }) {
+  return (
+    <>
+      <div aria-hidden {...handle('e')} className="absolute bottom-4 right-0 top-12 w-2 cursor-ew-resize touch-none" />
+      <div aria-hidden {...handle('s')} className="absolute bottom-0 left-4 right-4 h-2 cursor-ns-resize touch-none" />
+      <div
+        aria-hidden
+        {...handle('se')}
+        title="Drag to resize · double-click the title bar to reset"
+        className="group/rz absolute bottom-0 right-0 grid h-5 w-5 cursor-nwse-resize touch-none place-items-end p-[3px] [@media(pointer:coarse)]:h-8 [@media(pointer:coarse)]:w-8"
+      >
+        <span className="h-2.5 w-2.5 rounded-br-[5px] border-b-2 border-r-2 border-line-strong transition-colors [@media(hover:hover)]:group-hover/rz:border-accent-500" />
+      </div>
+    </>
+  )
+}

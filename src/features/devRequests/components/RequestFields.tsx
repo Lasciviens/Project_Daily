@@ -1,11 +1,12 @@
 import { useCallback, useMemo, useState, type ReactNode, type Ref } from 'react'
-import { ChevronDown, IndentDecrease, IndentIncrease } from 'lucide-react'
-import { PAGE_CHOICES, PAGE_OPTIONS, STATUSES, STATUS_LABEL } from './devRequestMeta'
+import { ChevronDown, CircleDot, FileText, Flag, Gauge, IndentDecrease, IndentIncrease, Tag } from 'lucide-react'
+import { CATEGORY_TONE, PAGE_CHOICES, PAGE_OPTIONS, PRIORITY_TONE, STATUSES, STATUS_LABEL, STATUS_TONE } from './devRequestMeta'
 import { CATEGORIES, EFFORTS, PRIORITIES, type DraftFields } from '../devRequestRules'
 import type { DevRequestCategory, DevRequestEffort, DevRequestPriority, DevRequestStatus } from '../types'
 import { composeDescription, foldCheckpoints, parseDescription, pickLabel, unlinkedPicks, type PickMark } from '../devRequestMarks'
 import { MarkList } from './MarkList'
 import { OutlineEditor, type OutlineHandle, type OutlineReview } from './OutlineEditor'
+import { PropertyPills, type Property } from './PropertyPills'
 import { useGoToMark } from '../pick/goToMark'
 import { IconButton, Truncate, cx } from '../../../shared/ui'
 
@@ -20,22 +21,23 @@ interface Props {
   outlineRef?: Ref<OutlineHandle>
   /** The editor glows briefly (a pick was just put in). */
   flash?: boolean
-  /** Shown between the details and the editor (the review bar). */
+  /** Shown between the title and the editor (dates, the review bar). */
   beforeEditor?: ReactNode
-  /** Pick on page / Quote selection, shown under the editor. */
+  /** Pick on page / Quote selection: the left end of the editor's toolbar. */
   tools?: ReactNode
   /** Keyboard hints (a mouse and keyboard). */
   showKeys?: boolean
 }
 
-const META = 'select !min-h-[32px] h-8 w-auto max-w-[13rem] rounded-full py-0 pl-3 text-meta [@media(pointer:coarse)]:!min-h-[44px] [@media(pointer:coarse)]:h-11'
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 
 /**
- * The request as the request window edits it: a title, the outline editor — the points, numbered as
- * you write them (outline.ts), with links to picked spots in them ("Water
- * card" — a click opens the spot), then its details as one row of compact
- * selects. Picks from before links show as rows.
- * Everything is stored in `description` (devRequestMarks.ts / points.ts).
+ * The request as the request window edits it: a title, the outline editor —
+ * the points, numbered as you write them (outline.ts), with links to picked
+ * spots in them ("Water card" — a click opens the spot) and its toolbar
+ * (Pick on page, indent) — then the details as pill buttons. On a phone the
+ * details fold into one line under the points. Picks from before links show
+ * as rows. Everything is stored in `description` (devRequestMarks.ts).
  */
 export function RequestFields({ fields, onChange, review, status, titleRef, outlineRef, flash, beforeEditor, tools, showKeys }: Props) {
   const parsed = useMemo(() => parseDescription(fields.description), [fields.description])
@@ -52,68 +54,83 @@ export function RequestFields({ fields, onChange, review, status, titleRef, outl
     [review, folded.reviews],
   )
 
-  // A page value from before the dropdown (free text) stays selectable, so
+  // A page value from before the list (free text) stays selectable, so
   // saving an old request never silently rewrites it to "other".
   const legacyPage = fields.page && fields.page !== 'other' && !PAGE_OPTIONS.includes(fields.page) ? fields.page : null
-  const pageLabel = PAGE_CHOICES.find(p => p.value === fields.page)?.value ?? (fields.page === 'other' ? 'other page' : fields.page)
-  const summary = [status ? STATUS_LABEL[status.value] : null, fields.category, `${fields.priority} priority`, pageLabel, fields.effort ? `${fields.effort} effort` : null].filter(Boolean).join(' · ')
+  const pages = [
+    ...PAGE_CHOICES.map(p => ({ value: p.value, label: p.label })),
+    ...(legacyPage ? [{ value: legacyPage, label: legacyPage }] : []),
+    { value: 'other', label: 'Other page' },
+  ]
+  const props: Property[] = [
+    ...(status ? [{
+      id: 'status', name: 'Status', icon: <CircleDot aria-hidden />, value: status.value, disabled: status.disabled,
+      options: STATUSES.map(s => ({ value: s, label: STATUS_LABEL[s], tone: STATUS_TONE[s] })),
+      onChange: (v: string) => status.onChange(v as DevRequestStatus),
+    }] : []),
+    {
+      id: 'category', name: 'Category', icon: <Tag aria-hidden />, value: fields.category,
+      options: CATEGORIES.map(c => ({ value: c, label: cap(c), tone: CATEGORY_TONE[c] })),
+      onChange: v => onChange({ category: v as DevRequestCategory }),
+    },
+    {
+      id: 'priority', name: 'Priority', icon: <Flag aria-hidden />, value: fields.priority,
+      options: PRIORITIES.map(p => ({ value: p, label: cap(p), tone: PRIORITY_TONE[p] })),
+      onChange: v => onChange({ priority: v as DevRequestPriority }),
+    },
+    {
+      id: 'page', name: 'Page', icon: <FileText aria-hidden />, value: fields.page, list: true,
+      options: pages,
+      onChange: v => onChange({ page: v }),
+    },
+    {
+      id: 'effort', name: 'Effort', icon: <Gauge aria-hidden />, value: fields.effort,
+      options: [{ value: '', label: 'Effort?' }, ...EFFORTS.map(f => ({ value: f, label: `${cap(f)} effort` }))],
+      onChange: v => onChange({ effort: v as DevRequestEffort | '' }),
+    },
+  ]
+  const summary = props.map(p => p.options.find(o => o.value === p.value)?.label ?? p.value).filter(l => l && l !== 'Effort?').join(' · ')
   const indent = (d: 1 | -1) => { const h = outlineRef && typeof outlineRef === 'object' ? outlineRef.current : null; h?.indent(d) }
+
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-1 flex-col gap-3">
       <input
         ref={titleRef}
         value={fields.title}
         onChange={e => onChange({ title: e.target.value })}
-        placeholder="Title — what's the request, bug or idea?"
+        placeholder="Give it a title"
         aria-label="Title"
-        className="-mx-1 min-h-[44px] rounded-control bg-transparent px-1 text-lead font-semibold text-fg outline-none placeholder:font-medium placeholder:text-fg-faint focus-visible:bg-surface-2"
+        className="-mx-2 min-h-[44px] rounded-control border border-transparent bg-transparent px-2 text-title font-semibold text-fg outline-none transition-colors placeholder:text-fg-faint [@media(hover:hover)]:hover:bg-surface-2 focus-visible:border-line focus-visible:bg-surface-2"
       />
       {beforeEditor}
-      <div className="flex flex-col gap-1.5">
-        <OutlineEditor
-          handleRef={outlineRef}
-          value={folded.body}
-          onChange={body => write({ body })}
-          labelOf={labelOf}
-          onOpenLink={openLink}
-          review={outlineReview}
-          flash={flash}
-          placeholder="Describe it. Enter starts the next point, Tab makes a sub-point."
-          ariaLabel="Points"
-          className="min-h-[9rem]"
-        />
-        <div className="flex flex-wrap items-center gap-1.5">
-          {tools}
-          <span className="ml-auto flex items-center gap-0.5">
-            {showKeys && <span className="mr-1 hidden text-meta text-fg-faint sm:inline"><span className="kbd">Tab</span> sub-point · <span className="kbd">⇧</span><span className="kbd">↵</span> new line</span>}
-            <IconButton label="Make it a point again (Shift+Tab)" onMouseDown={e => e.preventDefault()} onClick={() => indent(-1)} className={TOOL}><IndentDecrease /></IconButton>
-            <IconButton label="Make it a sub-point (Tab)" onMouseDown={e => e.preventDefault()} onClick={() => indent(1)} className={TOOL}><IndentIncrease /></IconButton>
-          </span>
-        </div>
-      </div>
+      <OutlineEditor
+        handleRef={outlineRef}
+        value={folded.body}
+        onChange={body => write({ body })}
+        labelOf={labelOf}
+        onOpenLink={openLink}
+        review={outlineReview}
+        flash={flash}
+        placeholder="What should change? Enter starts the next point, Tab makes a sub-point."
+        ariaLabel="Points"
+        className="flex-1"
+        footer={
+          <>
+            {tools}
+            <span className="ml-auto flex items-center gap-0.5">
+              {showKeys && (
+                <span className="mr-1.5 hidden items-center gap-1 text-meta text-fg-faint sm:flex">
+                  <span className="kbd">Tab</span>sub-point<span className="mx-0.5">·</span><span className="kbd">⇧↵</span>new line
+                </span>
+              )}
+              <IconButton label="Make it a point again (Shift+Tab)" onMouseDown={e => e.preventDefault()} onClick={() => indent(-1)} className={TOOL}><IndentDecrease /></IconButton>
+              <IconButton label="Make it a sub-point (Tab)" onMouseDown={e => e.preventDefault()} onClick={() => indent(1)} className={TOOL}><IndentIncrease /></IconButton>
+            </span>
+          </>
+        }
+      />
       <DetailsRow summary={summary}>
-        <div className="flex flex-wrap items-center gap-1.5">
-          {status && (
-            <select value={status.value} onChange={e => status.onChange(e.target.value as DevRequestStatus)} disabled={status.disabled} aria-label="Status" className={META}>
-              {STATUSES.map(st => <option key={st} value={st}>{STATUS_LABEL[st]}</option>)}
-            </select>
-          )}
-          <select value={fields.category} onChange={e => onChange({ category: e.target.value as DevRequestCategory })} aria-label="Category" className={META}>
-            {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-          </select>
-          <select value={fields.priority} onChange={e => onChange({ priority: e.target.value as DevRequestPriority })} aria-label="Priority" className={META}>
-            {PRIORITIES.map(p => <option key={p} value={p}>{p} priority</option>)}
-          </select>
-          <select value={fields.page} onChange={e => onChange({ page: e.target.value })} aria-label="Page" className={META}>
-            {PAGE_CHOICES.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
-            {legacyPage && <option value={legacyPage}>{legacyPage}</option>}
-            <option value="other">Other page</option>
-          </select>
-          <select value={fields.effort} onChange={e => onChange({ effort: e.target.value as DevRequestEffort | '' })} aria-label="Effort" className={META}>
-            <option value="">Effort?</option>
-            {EFFORTS.map(f => <option key={f} value={f}>{f} effort</option>)}
-          </select>
-        </div>
+        <PropertyPills items={props} />
       </DetailsRow>
       <MarkList marks={rows} onRemove={i => write({ marks: parsed.marks.filter(m => m !== rows[i]) })} />
     </div>
@@ -123,19 +140,18 @@ export function RequestFields({ fields, onChange, review, status, titleRef, outl
 const TOOL = cx('!h-9 !w-9 text-fg-muted [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11')
 
 /**
- * The request's details (status, category, priority, page, effort) as one
- * row of compact selects under the points. On a phone they fold into one
- * summary line, so the points stay the first thing on screen.
+ * The details. On a phone they fold into one summary line under the points,
+ * so the points stay the first thing on screen; a tap opens the pills.
  */
 function DetailsRow({ summary, children }: { summary: string; children: ReactNode }) {
   const [open, setOpen] = useState(false)
   return (
-    <section aria-label="Details" className="flex flex-col gap-1.5">
+    <section aria-label="Details" className="flex flex-col gap-2">
       <button
         type="button"
         onClick={() => setOpen(v => !v)}
         aria-expanded={open}
-        className="flex min-h-[44px] items-center gap-2 rounded-row border border-line bg-surface-2 px-3 text-left sm:hidden"
+        className="flex min-h-[44px] items-center gap-2 rounded-row border border-line bg-surface px-3 text-left sm:hidden"
       >
         <span className="section-label shrink-0">Details</span>
         <Truncate reveal="none" className="min-w-0 flex-1 text-meta text-fg-2">{summary}</Truncate>

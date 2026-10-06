@@ -1,4 +1,4 @@
-import { useCallback, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type Ref } from 'react'
+import { useCallback, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type Ref } from 'react'
 import type { PointReview } from '../devRequestMarks'
 import {
   isEmptyPoint, joinWithNext, joinWithPrevious, outlineLabels, parseOutline, pasteText, pointFullText, serializeOutline,
@@ -62,9 +62,11 @@ interface Props {
   className?: string
   /** The box glows briefly (a pick was just put in). */
   flash?: boolean
+  /** A toolbar inside the box, under the points. */
+  footer?: ReactNode
 }
 
-export function OutlineEditor({ value, onChange, labelOf, onOpenLink, review, handleRef, placeholder, ariaLabel, className, flash }: Props) {
+export function OutlineEditor({ value, onChange, labelOf, onOpenLink, review, handleRef, placeholder, ariaLabel, className, flash, footer }: Props) {
   const [rows, setRows] = useState<Row[]>(() => parseRows(value))
   const [synced, setSynced] = useState(value)
   if (value !== synced) {
@@ -193,18 +195,21 @@ export function OutlineEditor({ value, onChange, labelOf, onOpenLink, review, ha
 
   return (
     <div
+      className={cx(
+        'flex flex-col overflow-hidden rounded-card border border-line bg-surface transition-[border-color,box-shadow] duration-100',
+        'focus-within:border-accent-500 focus-within:shadow-[0_0_0_3px_rgb(var(--accent-500)/0.18)]',
+        flash && 'border-accent-500 shadow-[0_0_0_3px_rgb(var(--accent-500)/0.18)]',
+        className,
+      )}
+    >
+    <div
       role="group"
       aria-label={ariaLabel}
       onMouseDown={e => {
         // A click on the box's empty space below the points goes to the last one.
         if (e.target === e.currentTarget) { e.preventDefault(); const row = rows[rows.length - 1]; focusAtOffset(els.current.get(row.id) ?? null, row.text.length) }
       }}
-      className={cx(
-        'flex cursor-text flex-col gap-0.5 rounded-input border border-line bg-surface p-1.5 transition-[border-color,box-shadow] duration-100',
-        'focus-within:border-accent-500 focus-within:shadow-[0_0_0_3px_rgb(var(--accent-500)/0.18)]',
-        flash && 'border-accent-500 shadow-[0_0_0_3px_rgb(var(--accent-500)/0.18)]',
-        className,
-      )}
+      className="flex min-h-[8rem] flex-1 cursor-text flex-col gap-0.5 p-2"
     >
       {rows.map((r, i) => {
         const key = keys[i]
@@ -236,6 +241,8 @@ export function OutlineEditor({ value, onChange, labelOf, onOpenLink, review, ha
           />
         )
       })}
+    </div>
+    {footer && <div className="flex min-h-[44px] flex-wrap items-center gap-1 border-t border-line bg-surface-2 px-1.5 py-1">{footer}</div>}
     </div>
   )
 }

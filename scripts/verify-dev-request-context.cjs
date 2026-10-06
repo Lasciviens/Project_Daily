@@ -9,6 +9,7 @@
  *   devRequestRules.ts    (draft read-back from localStorage, drag-reorder plan)
  *   devRequestPrompt.ts   (the prompt for Claude)
  *   useFloatingWindow.ts  (keeping the composer window on screen)
+ *   composer/windowSize.ts (resizing the request window)
  *   pick/componentSourceTransform.ts (the build-time data-src stamps)
  * Against the REAL un-mocked modules via sucrase (no unit-test runner by convention).
  *
@@ -25,6 +26,7 @@ const cps = require('../src/features/devRequests/checkpoints')
 const pt = require('../src/features/devRequests/pointText')
 const pts = require('../src/features/devRequests/points')
 const ol = require('../src/features/devRequests/outline')
+const ws = require('../src/features/devRequests/composer/windowSize')
 const stamps = require('../src/features/devRequests/pick/componentSourceTransform')
 const ts = require('typescript')
 
@@ -683,6 +685,21 @@ console.log('\n27 · Prompt: sub-points and re-checks read clearly')
   check('several requests: report per request and point', two.includes('report per request and point (e.g. Request 2 · 1.2)'))
   check('no unused rules', !p.includes('RE-CHECK') && !p.includes('Footnote'))
   check('point a unchanged', a.label === '1')
+}
+
+console.log('\n28 · Resizing the request window')
+{
+  const vp = { w: 1469, h: 900 }
+  check('min 360×420', JSON.stringify(ws.clampWindowSize({ w: 100, h: 100 }, vp)) === '{"w":360,"h":420}')
+  check('max = screen minus margins', JSON.stringify(ws.clampWindowSize({ w: 5000, h: 5000 }, vp)) === '{"w":1453,"h":884}')
+  check('a screen smaller than the minimum wins', JSON.stringify(ws.clampWindowSize({ w: 500, h: 500 }, { w: 300, h: 400 })) === '{"w":284,"h":384}')
+  check('right edge changes only the width', JSON.stringify(ws.resizeBy({ w: 480, h: 600 }, 'e', 40, 90, vp)) === '{"w":520,"h":600}')
+  check('bottom edge changes only the height', JSON.stringify(ws.resizeBy({ w: 480, h: 600 }, 's', 40, 90, vp)) === '{"w":480,"h":690}')
+  check('corner changes both, clamped', JSON.stringify(ws.resizeBy({ w: 480, h: 600 }, 'se', -500, 900, vp)) === '{"w":360,"h":884}')
+  check('stored size read back', JSON.stringify(ws.readWindowSize({ w: 500.4, h: 600 })) === '{"w":500,"h":600}' && ws.readWindowSize({ w: 'x', h: 1 }) === null && ws.readWindowSize(null) === null && ws.readWindowSize({ w: -1, h: 5 }) === null)
+  const st = rules.sanitizeDraftState({ composer: { size: { request: { w: 520, h: 640 }, prompt: 'nope' } } })
+  check('draft store keeps a size per view, bad ones dropped', st.composer.size.request.w === 520 && st.composer.size.prompt === null)
+  check('no size stored → defaults', rules.sanitizeDraftState({}).composer.size.request === null)
 }
 
 console.log(`\n${passed} passed, ${failed} failed`)

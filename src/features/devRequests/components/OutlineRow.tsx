@@ -92,6 +92,8 @@ export const OutlineRow = memo(function OutlineRow(p: Props) {
     const [a, b] = sel()
     const text = serialize(el)
     const command = (cmd: RowCommand) => { e.preventDefault(); p.onCommand(p.id, cmd, [a, b]) }
+    // Ctrl/⌘+Enter belongs to the window (save).
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) return
     if (e.key === 'Enter' && !e.shiftKey) return command('enter')
     if (e.key === 'Enter') {
       e.preventDefault()
