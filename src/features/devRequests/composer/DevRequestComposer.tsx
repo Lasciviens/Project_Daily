@@ -7,13 +7,16 @@ import { usePageContextReader } from '../pick/usePageContext'
 import { usePickMode, type PickModeKind } from '../pick/usePickMode'
 import { labelFor, readElement, readPopupTrail } from '../pick/pickDom'
 import { PickHighlight } from '../pick/PickHighlight'
-import { insertPickLink } from '../devRequestMarks'
-import { caretOffsetIn, focusAtOffset } from '../components/linkedTextDom'
-import { ComposerRequestTab } from './ComposerRequestTab'
-import { ComposerPromptTab } from './ComposerPromptTab'
-import { ABOVE_TABBAR, COMPOSER_ROOT, ComposerHeader, ComposerPill, ComposerTabs, PickBar, PickingBanner } from './ComposerFrame'
+import { insertPickAt } from '../devRequestMarks'
+import type { Caret } from '../outline'
+import type { OutlineHandle } from '../components/OutlineEditor'
+import { ComposerRequestView } from './ComposerRequestView'
+import { ComposerPromptView } from './ComposerPromptView'
+import { ABOVE_TABBAR, COMPOSER_ROOT, ComposerHeader, ComposerPill, PickBar, PickingBanner } from './ComposerFrame'
 import { focusIntoComposer, useMediaQuery, useSelectionSnapshot } from './composerHooks'
 import { useFloatingWindow } from '../../../shared/hooks/useFloatingWindow'
+import { useWindowResize } from './useWindowResize'
+import type { ResizeEdge } from './windowSize'
 import { useBreakpoint } from '../../../shared/hooks/useBreakpoint'
 import { useKeyboardInset } from '../../../shared/hooks/useKeyboardInset'
 import { useUIStore } from '../../../app/store'
@@ -27,9 +30,10 @@ let handledFocus = 0
 const sameTarget = (a: ComposerTarget, b: ComposerTarget) => a.kind === b.kind && (a.kind === 'new' || (b.kind === 'edit' && a.id === b.id))
 
 /**
- * The floating request composer: one request (new, or an edit of an existing
+ * The floating request window: one request (new, or an edit of an existing
  * one) written in a window that stays on screen while you move around the
- * app, plus the prompt for Claude. Draggable on tablet/desktop, docked above
+ * app — or, as its own step, the prompt for Claude (mode 'prompt', opened by
+ * Build prompt in the Requests list, with Back to the request). Draggable on tablet/desktop, docked above
  * the tab bar on phones, minimisable to a pill. While it is open you can
  * point at things on the page (Pick on page, or Alt-click with a mouse): each
  * pick becomes a link in the text where the caret was ("Water card"; a click
@@ -67,10 +71,10 @@ export function DevRequestComposer() {
   const [flash, setFlash] = useState(false)
   const rootRef = useRef<HTMLDivElement | null>(null)
   const titleRef = useRef<HTMLInputElement>(null)
-  const descRef = useRef<HTMLDivElement>(null)
+  const outlineRef = useRef<OutlineHandle | null>(null)
   // Where the caret was in the text when picking started (the phone swaps
   // the composer for the pick bar, so the text box is gone meanwhile).
-  const caretAtPick = useRef<number | null>(null)
+  const caretAtPick = useRef<Caret | null>(null)
   const promptRef = useRef<HTMLTextAreaElement>(null)
   const pillRef = useRef<HTMLButtonElement>(null)
   const boxRef = useRef<HTMLDivElement>(null)
@@ -84,14 +88,14 @@ export function DevRequestComposer() {
       ? { kind: 'selection', page, quote, element: el ? readElement(el) : null, popups: el ? readPopupTrail(el) : [] }
       : el ? { kind: 'element', page, element: readElement(el), popups: readPopupTrail(el) } : null
     if (!capture) return
-    const at = caretOffsetIn(descRef.current) ?? caretAtPick.current
+    const at = outlineRef.current?.caret() ?? caretAtPick.current
     caretAtPick.current = null
-    let caret = 0
-    store().editDescription(target, d => { const r = insertPickLink(d, capture, at); caret = r.caret; return r.text }, seed)
+    let caret: Caret = { index: 0, offset: 0 }
+    store().editDescription(target, d => { const r = insertPickAt(d, capture, at); caret = r.caret; return r.text }, seed)
     store().setComposerTab('request')
     setFlash(true)
-    // Carry on typing right after the link (once the text box is back).
-    setTimeout(() => focusAtOffset(descRef.current, caret), 60)
+    // Carry on typing right after the link (once the editor is back).
+    setTimeout(() => outlineRef.current?.focusAt(caret), 60)
   }, [canWrite, readPage, store, target, seed])
   useEffect(() => { if (!flash) return; const t = setTimeout(() => setFlash(false), 700); return () => clearTimeout(t) }, [flash])
 
@@ -104,14 +108,24 @@ export function DevRequestComposer() {
     onCancel: stopPicking,
     boxRef, labelRef,
   })
-  const startPicking = () => { caretAtPick.current = caretOffsetIn(descRef.current); store().setComposerTab('request'); setCandidate(null); setPicking(true) }
+  const startPicking = () => { caretAtPick.current = outlineRef.current?.caret() ?? null; store().setComposerTab('request'); setCandidate(null); setPicking(true) }
 
   const { setWindowEl, handleProps, resetPosition } = useFloatingWindow({
     enabled: !phone && !composer.minimized && !tucked,
     position: composer.pos,
     onCommit: useCallback((p: { x: number; y: number }) => store().setComposerPos(p), [store]),
   })
-  const setRoot = useCallback((el: HTMLDivElement | null) => { rootRef.current = el; setWindowEl(el) }, [setWindowEl])
+  // The request and the prompt each keep the size you gave them (tablet/desktop).
+  const view = composer.tab
+  const resize = useWindowResize({
+    enabled: !phone && !composer.minimized && !tucked,
+    el: useCallback(() => rootRef.current, []),
+    size: composer.size[view],
+    onStart: useCallback((r: DOMRect) => store().setComposerPos({ x: Math.round(r.left), y: Math.round(r.top) }), [store]),
+    onCommit: useCallback((s: { w: number; h: number }) => store().setComposerSize(store().composer.tab, s), [store]),
+  })
+  const attachSize = resize.attach
+  const setRoot = useCallback((el: HTMLDivElement | null) => { rootRef.current = el; attachSize(el); setWindowEl(el) }, [setWindowEl, attachSize])
 
   // Focus follows the actions that ask for it (store.focus): opening or
   // restoring puts it in the first empty field (title, else details; the
@@ -133,17 +147,24 @@ export function DevRequestComposer() {
     const cancel = focusIntoComposer(
       () => rootRef.current,
       () => (store().composer.tab === 'prompt' ? promptRef.current
-        : titleRef.current && !titleRef.current.value.trim() ? titleRef.current : descRef.current ?? titleRef.current),
+        : titleRef.current && !titleRef.current.value.trim() ? titleRef.current : outlineRef.current?.focusTarget() ?? titleRef.current),
       () => { finished = true },
     )
     return () => { cancel(); release() }
   }, [focusReq, tucked, composer.minimized, store])
 
-  // Double-click the title bar: back to the corner.
-  const dragProps = { ...handleProps, onDoubleClick: () => { resetPosition(); store().setComposerPos(null) } }
+  // Double-click the title bar: back to the corner, at the default size.
+  const dragProps = {
+    ...handleProps,
+    onDoubleClick: () => {
+      store().setComposerSize(view, null)
+      store().setComposerPos(null)
+      // After the size is gone, so the corner is worked out for the default size.
+      requestAnimationFrame(() => resetPosition())
+    },
+  }
 
   const dirty = target.kind === 'new' ? !isDraftEmpty(newDraft) : target.id in editDrafts
-  const marker = composer.tab === 'prompt' ? (promptEdited ? 'Edited' : null) : dirty ? 'Unsaved' : null
   const title = composer.tab === 'prompt' ? 'Prompt for Claude' : target.kind === 'new' ? 'New request' : 'Edit request'
   const close = () => { stopPicking(); store().closeComposer() }
   // A save can finish after the composer moved on (minimised, or switched to
@@ -160,26 +181,24 @@ export function DevRequestComposer() {
     return <ComposerPill pillRef={pillRef} label={label} prompt={composer.tab === 'prompt'} dirty={dirty || promptEdited} phone={phone} onOpen={() => store().setMinimized(false)} />
   }
 
-  const body = (
-    <>
-      <ComposerTabs tab={composer.tab} onChange={t => { stopPicking(); store().setComposerTab(t) }} />
-      {composer.tab === 'request'
-        ? (
-          <ComposerRequestTab
-            target={target}
-            readPage={readPage}
-            onPick={startPicking}
-            onQuote={selection ? () => { capture(selection.element, selection.text); selection.clear() } : null}
-            altHint={!phone && mouse}
-            flash={flash}
-            titleRef={titleRef}
-            descriptionRef={descRef}
-            onDone={onSaved}
-          />
-        )
-        : <ComposerPromptTab textareaRef={promptRef} />}
-    </>
-  )
+  const body = composer.tab === 'request'
+    ? (
+      <ComposerRequestView
+        target={target}
+        readPage={readPage}
+        onPick={startPicking}
+        onQuote={selection ? () => { capture(selection.element, selection.text); selection.clear() } : null}
+        mouse={!phone && mouse}
+        flash={flash}
+        titleRef={titleRef}
+        outlineRef={outlineRef}
+        onDone={onSaved}
+        onDeleted={close}
+      />
+    )
+    : <ComposerPromptView textareaRef={promptRef} />
+  // Back from the prompt to the request being written (there is always one: new or an edit).
+  const back = composer.tab === 'prompt' ? () => store().setComposerTab('request') : undefined
   const highlight = <PickHighlight boxRef={boxRef} labelRef={labelRef} />
   const pickBar = (docked: boolean) => (
     <PickBar
@@ -204,10 +223,10 @@ export function DevRequestComposer() {
         aria-label={title}
         tabIndex={-1}
         onKeyDown={onKeyDown}
-        style={{ bottom: keyboard > 0 ? `${keyboard}px` : ABOVE_TABBAR, maxHeight }}
+        style={{ bottom: keyboard > 0 ? `${keyboard}px` : ABOVE_TABBAR, maxHeight, height: composer.tab === 'prompt' ? maxHeight : undefined }}
         className={cx(COMPOSER_ROOT, 'fixed inset-x-0 z-chrome flex flex-col overflow-hidden rounded-t-sheet border-x border-t border-line-strong bg-surface shadow-menu outline-none')}
       >
-        <ComposerHeader title={title} dirty={marker} phone onMinimize={minimize} onClose={close} />
+        <ComposerHeader title={title} prompt={composer.tab === 'prompt'} phone onBack={back} onMinimize={minimize} onClose={close} />
         {body}
       </div>
     )
@@ -226,14 +245,15 @@ export function DevRequestComposer() {
         style={WINDOW_STYLE}
         className={cx(
           COMPOSER_ROOT,
-          'fixed z-float flex w-[26rem] max-w-[calc(100vw-16px)] flex-col overflow-hidden rounded-card border border-line-strong bg-surface shadow-menu outline-none',
-          'max-h-[min(40rem,calc(100dvh-16px))]',
+          'fixed z-float flex max-w-[calc(100vw-16px)] flex-col overflow-hidden rounded-card border border-line-strong bg-surface shadow-menu outline-none',
+          composer.tab === 'prompt' ? 'h-[min(40rem,calc(100dvh-16px))] w-[34rem]' : 'max-h-[min(44rem,calc(100dvh-16px))] w-[30rem]',
           picking && 'ring-2 ring-accent-500/40',
         )}
       >
-        <ComposerHeader title={title} dirty={marker} phone={false} onMinimize={minimize} onClose={close} dragProps={dragProps} />
+        <ComposerHeader title={title} prompt={composer.tab === 'prompt'} phone={false} onBack={back} onMinimize={minimize} onClose={close} dragProps={dragProps} />
         {picking && (twoStep ? pickBar(false) : <PickingBanner onStop={stopPicking} />)}
         {body}
+        <ResizeHandles handle={resize.handle} />
       </div>
     </>
   )
@@ -241,3 +261,21 @@ export function DevRequestComposer() {
 
 // Constant so React never re-applies it over the position useFloatingWindow writes.
 const WINDOW_STYLE = { left: 0, top: 0, visibility: 'hidden' } as const
+
+/** The window's right edge, bottom edge and bottom-right corner resize it. */
+function ResizeHandles({ handle }: { handle: (edge: ResizeEdge) => Record<string, unknown> }) {
+  return (
+    <>
+      <div aria-hidden {...handle('e')} className="absolute bottom-4 right-0 top-12 w-2 cursor-ew-resize touch-none" />
+      <div aria-hidden {...handle('s')} className="absolute bottom-0 left-4 right-4 h-2 cursor-ns-resize touch-none" />
+      <div
+        aria-hidden
+        {...handle('se')}
+        title="Drag to resize · double-click the title bar to reset"
+        className="group/rz absolute bottom-0 right-0 grid h-5 w-5 cursor-nwse-resize touch-none place-items-end p-[3px] [@media(pointer:coarse)]:h-8 [@media(pointer:coarse)]:w-8"
+      >
+        <span className="h-2.5 w-2.5 rounded-br-[5px] border-b-2 border-r-2 border-line-strong transition-colors [@media(hover:hover)]:group-hover/rz:border-accent-500" />
+      </div>
+    </>
+  )
+}

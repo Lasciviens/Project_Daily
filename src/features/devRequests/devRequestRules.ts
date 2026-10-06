@@ -4,6 +4,7 @@
 import type { PageContext } from './devRequestContext'
 import type { DevRequest, DevRequestCategory, DevRequestEffort, DevRequestPriority } from './types'
 import { formatDateTime } from '../../shared/utils/dateFormat'
+import { readWindowSize, type WinSize } from './composer/windowSize'
 
 export const CATEGORIES: readonly DevRequestCategory[] = ['bug', 'feature', 'improvement', 'integration', 'longterm', 'question', 'other']
 export const PRIORITIES: readonly DevRequestPriority[] = ['low', 'medium', 'high', 'urgent']
@@ -46,6 +47,8 @@ export interface ComposerState {
   target: ComposerTarget
   /** Window position on tablet/desktop; null = the default corner. */
   pos: { x: number; y: number } | null
+  /** Window size per view on tablet/desktop (resized by the user); null = its default. */
+  size: { request: WinSize | null; prompt: WinSize | null }
 }
 
 export interface DrawerPrefs {
@@ -79,7 +82,7 @@ export const DEFAULT_STATE: PersistedDraftState = {
   newDraft: { ...EMPTY_FIELDS, start: null, attachContext: true, touchedAt: 0 },
   editDrafts: {},
   clearedEdits: {},
-  composer: { open: false, minimized: false, tab: 'request', target: { kind: 'new' }, pos: null },
+  composer: { open: false, minimized: false, tab: 'request', target: { kind: 'new' }, pos: null, size: { request: null, prompt: null } },
   drawer: { categories: [], sortMode: 'manual', showDone: false, picked: [] },
   prompt: { ids: [], text: '', edited: false, touchedAt: 0 },
 }
@@ -194,6 +197,10 @@ export function sanitizeDraftState(raw: unknown): PersistedDraftState {
       tab: oneOf(c.tab, ['request', 'prompt'] as const, 'request'),
       target,
       pos,
+      size: {
+        request: readWindowSize(isObj(c.size) ? c.size.request : null),
+        prompt: readWindowSize(isObj(c.size) ? c.size.prompt : null),
+      },
     },
     drawer: {
       categories,

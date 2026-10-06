@@ -77,6 +77,12 @@ function TrainingSummary() {
   )
 }
 
+/** One short line under the streak (it must fit beside the flame on a phone). */
+function streakLine(weeks: number, thisWeek: number): string {
+  if (weeks === 0) return 'Train to start one'
+  return thisWeek > 0 ? 'Keep it burning' : `Train to hit ${weeks + 1}`
+}
+
 /** "Today 16:00" / "Tomorrow" / "Wed 08.10.2026 18:00". */
 function nextWhen(date: string, time: string | null, today: string): string {
   const day = date === today ? 'Today' : date === shiftDateStr(today, 1) ? 'Tomorrow' : formatWeekdayDate(date)
@@ -97,17 +103,31 @@ export function TrainingTile() {
 
   const screens: GlanceScreen[] = [
     {
+      // The first screen is the streak alone — big and motivating (owner).
+      key: 'streak',
+      name: 'Streak',
+      body: (
+        <div className="flex min-w-0 items-center gap-2.5">
+          <Flame aria-hidden className={streak.weeks > 0 ? 'h-10 w-10 shrink-0 fill-warn/25 text-warn' : 'h-10 w-10 shrink-0 text-fg-faint'} strokeWidth={2.25} />
+          <div className="min-w-0">
+            <p className="flex items-baseline gap-1 leading-none">
+              <span className="text-kpi font-bold tabular-nums text-fg"><AnimatedNumber value={streak.weeks} />{streak.capped ? '+' : ''}</span>
+              <span className="text-meta font-semibold text-fg-2">{streak.weeks === 1 ? 'week' : 'weeks'}</span>
+            </p>
+            <Truncate className="mt-1 text-meta text-fg-muted">
+              {streakLine(streak.weeks, stats.sessions)}
+            </Truncate>
+          </div>
+        </div>
+      ),
+    },
+    {
       key: 'next',
-      name: 'Next',
+      name: 'Next session',
       body: (
         <div className="min-w-0 space-y-1">
-          <p className="flex items-center gap-1 text-ui font-semibold tabular-nums text-fg">
-            <Flame aria-hidden className="h-4 w-4 shrink-0 text-warn" />
-            {streak.weeks > 0 ? `${streak.weeks}${streak.capped ? '+' : ''}-week streak` : 'No streak yet'}
-          </p>
-          <Truncate className="text-meta text-fg-2">
-            {next ? `Next: ${next.title} · ${nextWhen(next.date, next.startTime, today)}` : stats.hasData ? 'No session planned' : 'Nothing synced yet'}
-          </Truncate>
+          <Truncate className="text-ui font-semibold text-fg">{next ? next.title : stats.hasData ? 'No session planned' : 'Nothing synced yet'}</Truncate>
+          {next && <Truncate className="text-meta tabular-nums text-fg-muted">{nextWhen(next.date, next.startTime, today)}</Truncate>}
         </div>
       ),
     },

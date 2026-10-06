@@ -1,6 +1,7 @@
 // Pure: a request's description as three parts —
-//   body         the user's own words (what the text box edits)
-//   checkpoints  "- [ ] …" lines, shown as checkboxes
+//   body         the user's own words: the numbered outline the request
+//                window edits (outline.ts — points, sub-points)
+//   checkpoints  older "- [ ] …" lines (folded into points on edit/save)
 //   marks        where on the app the request points: one line per pick
 //                (`[[pick {json}]]`) and one for the page it was written on
 //                (`[[page {json}]]`)
@@ -23,6 +24,7 @@ import {
 } from './devRequestContext'
 import { checkpointLine, parseCheckpointLine, type Checkpoint } from './checkpoints'
 import { pointKeys, splitPoints } from './pointText'
+import { insertIntoOutline, parseOutline, serializeOutline, type Caret } from './outline'
 
 /**
  * A picked spot. A pick with an `id` is linked from the text: the body holds
@@ -272,20 +274,23 @@ export function referencedIds(p: Pick<ParsedDescription, 'body' | 'checkpoints'>
 }
 
 /**
- * The description as saved: empty checkpoints dropped, edges trimmed, and a
- * linked pick whose link was deleted from the text dropped with it.
+ * The description as saved: the text written as a clean outline (empty
+ * points dropped, an old "1- " line or "- [ ]" checkpoint turned into a point
+ * of its own, a ticked one into a Fixed review), edges trimmed, and a linked
+ * pick whose link was deleted from the text dropped with it. Reviews keep
+ * their points: the keys hash the words, never the layout.
  */
 export function descriptionForSave(text: string): string {
-  const p = parseDescription(text)
-  const has = p.checkpoints.length || p.marks.length || p.reviews.length || p.recheck
-  if (!has) return text.trim()
-  const refs = referencedIds(p)
+  const p = foldCheckpoints(parseDescription(text))
+  const body = serializeOutline(parseOutline(p.body))
+  const has = p.marks.length || p.reviews.length || p.recheck
+  if (!has) return body.trim()
+  const refs = referencedIds({ body, checkpoints: [] })
   const marks = p.marks.filter(m => m.type !== 'pick' || !m.id || refs.has(m.id))
-  const checkpoints = p.checkpoints.filter(c => c.text.trim())
   // A review whose point was edited away (its text, hence its key, changed) goes too.
-  const keys = new Set(pointKeys(pointTexts({ body: p.body, checkpoints })))
+  const keys = new Set(pointKeys(pointTexts({ body, checkpoints: [] })))
   const reviews = p.reviews.filter(r => keys.has(r.key))
-  return composeDescription({ ...p, marks, reviews, body: p.body.trim(), checkpoints }).trim()
+  return composeDescription({ ...p, marks, reviews, body: body.trim(), checkpoints: [] }).trim()
 }
 
 /** Every point's text: the paragraphs of the body, then any older "- [ ]" checkpoints. */
@@ -341,6 +346,21 @@ export function insertPickLink(text: string, capture: Capture, offset: number | 
     caret: before.length + lead.length + refToken(id).length + trail.length,
     id,
   }
+}
+
+/**
+ * Puts a link to a new pick into point `at.index` at `at.offset` (null = the
+ * end of the last point) — the request window's editor works in points.
+ * The body comes back as a clean outline (empty points the editor holds are
+ * kept), with the caret just after the link.
+ */
+export function insertPickAt(text: string, capture: Capture, at: Caret | null): { text: string; caret: Caret; id: string } {
+  const p = foldCheckpoints(parseDescription(text))
+  const taken = new Set(p.marks.flatMap(m => (m.type === 'pick' && m.id ? [m.id] : [])))
+  const id = newRefId(taken)
+  const r = insertIntoOutline(parseOutline(p.body, { keepEmpty: true }), refToken(id), at)
+  const mark: PickMark = { type: 'pick', id, label: linkLabel(capture), capture }
+  return { text: composeDescription({ ...p, body: serializeOutline(r.points), marks: [...p.marks, mark] }), caret: r.caret, id }
 }
 
 export type BodySegment = { type: 'text'; text: string } | { type: 'ref'; id: string; label: string; mark: PickMark | null }
