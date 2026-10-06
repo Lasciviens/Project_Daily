@@ -50,6 +50,11 @@ management until the matching Project: Title is installed.
 
 Paste this into the Mac Claude session as-is, with the secret on the clipboard.
 
+**Writing these blocks:** one step per line. Under `set -e` a failure in the middle of an
+`a && b && c` chain does NOT stop the script (only the last command of a chain counts), so a
+failed `git fetch` or backup `scp` would let the deploy run anyway. Chains are fine only
+inside one `ssh kobo '…'` command, whose exit status is checked as a whole.
+
 ````
 Execute only. Do not research and do not change anything else. Never print the clipboard
 or any secret. Run the steps in order; if any command fails or a checksum does not match,
@@ -57,7 +62,10 @@ STOP and paste me the output.
 
 ```bash
 set -euo pipefail
-cd ~/Project_Daily-fresh && git fetch -q origin main && git switch -q --detach origin/main && git log --oneline -1
+cd ~/Project_Daily-fresh
+git fetch -q origin main
+git switch -q --detach origin/main
+git log --oneline -1
 SECRET=$(pbpaste | tr -d '[:space:]'); echo "secret length: ${#SECRET}"
 curl -s -o /dev/null -w "plugin route: %{http_code}\n" "https://hsaedwwqpcjizeozjbch.supabase.co/functions/v1/kobo-sync/inbox" -H "x-kobo-secret: $SECRET"
 ```
@@ -76,15 +84,18 @@ Paste me these numbers (they let me confirm the plugin reads the Kobo's library 
 ```bash
 set -euo pipefail
 B=~/KoboBackups/$(date +%F_%H-%M-%S); mkdir -p "$B"
-scp -q -r kobo:/mnt/onboard/.adds/koreader/settings "$B/" && echo "settings backed up to $B"
-cd ~/Project_Daily-fresh && bash scripts/kobo/deploy-plugin.sh
+scp -q -r kobo:/mnt/onboard/.adds/koreader/settings "$B/"
+echo "settings backed up to $B"
+cd ~/Project_Daily-fresh
+bash scripts/kobo/deploy-plugin.sh
 scp -q scripts/kobo/set-plugin-secret.lua kobo:/tmp/set-plugin-secret.lua
-SECRET=$(pbpaste | tr -d '[:space:]'); printf '%s' "$SECRET" | ssh kobo 'cd /mnt/onboard/.adds/koreader && ./luajit /tmp/set-plugin-secret.lua; rm -f /tmp/set-plugin-secret.lua'
+SECRET=$(pbpaste | tr -d '[:space:]'); printf '%s' "$SECRET" | ssh kobo 'cd /mnt/onboard/.adds/koreader && ./luajit /tmp/set-plugin-secret.lua; s=$?; rm -f /tmp/set-plugin-secret.lua; exit $s'
 ```
 
 ```bash
 set -euo pipefail
-W=~/KoboInstall/ui-$(date +%F); mkdir -p "$W" && cd "$W"
+W=~/KoboInstall/ui-$(date +%F); mkdir -p "$W"
+cd "$W"
 curl -fsSL -o ProjectTitle.zip https://github.com/joshuacant/ProjectTitle/releases/download/2026.07-v3.8.3/ProjectTitle-2026-07-01-v3-8-3.zip
 curl -fsSL -o appstore.zip https://github.com/omer-faruq/appstore.koplugin/releases/download/v1.14.0/appstore.koplugin.zip
 P=https://raw.githubusercontent.com/joshuacant/KOReader.patches/a5a77c83ee8e214a5d867cdfa82198cfd6c4d030
@@ -98,9 +109,15 @@ c407d3432190c982dda52c99d6e51f89f004203ed7d8935cd27bf8f51c0701d3  ProjectTitle.z
 123e23e7fd321d1c203dfb752315da9f6ebdfd6c1cb8218700d00d73b20dc591  2-font-override.lua
 b1a378c7c521758e32b89004133cd873e39611a71fe067766c796fc249c847e7  2-bookshelf-screensaver.lua
 SUMS
-rm -rf pt as && mkdir pt as && unzip -q ProjectTitle.zip -d pt && unzip -q appstore.zip -d as
+rm -rf pt as
+mkdir pt as
+unzip -q ProjectTitle.zip -d pt
+unzip -q appstore.zip -d as
 PT=$(find pt -maxdepth 3 -type d -name 'projecttitle.koplugin' | head -1); AS=$(find as -maxdepth 3 -type d -name 'appstore.koplugin' | head -1)
-echo "found: $PT | $AS"; test -n "$PT" && test -f "$PT/main.lua" && test -n "$AS" && test -f "$AS/main.lua"
+echo "found: $PT | $AS"; test -n "$PT"
+test -f "$PT/main.lua"
+test -n "$AS"
+test -f "$AS/main.lua"
 ssh kobo 'mkdir -p /mnt/onboard/.adds/koreader/patches'
 COPYFILE_DISABLE=1 scp -q -r "$PT" "$AS" kobo:/mnt/onboard/.adds/koreader/plugins/
 COPYFILE_DISABLE=1 scp -q 2-disable-fullyread-progressbars.lua 2-font-override.lua 2-bookshelf-screensaver.lua kobo:/mnt/onboard/.adds/koreader/patches/
@@ -149,9 +166,13 @@ if any command fails, STOP and paste me the output.
 
 ```bash
 set -euo pipefail
-cd ~/Project_Daily-fresh && git fetch -q origin main && git switch -q --detach origin/main && git log --oneline -1
+cd ~/Project_Daily-fresh
+git fetch -q origin main
+git switch -q --detach origin/main
+git log --oneline -1
 B=~/KoboBackups/$(date +%F_%H-%M-%S); mkdir -p "$B"
-scp -q -r kobo:/mnt/onboard/.adds/koreader/settings "$B/" && echo "settings backed up to $B"
+scp -q -r kobo:/mnt/onboard/.adds/koreader/settings "$B/"
+echo "settings backed up to $B"
 bash scripts/kobo/deploy-plugin.sh
 ssh kobo 'cd /mnt/onboard/.adds/koreader/plugins/lascisboard.koplugin && grep -m1 "VERSION =" main.lua && ls'
 ```
@@ -192,9 +213,13 @@ if any command fails, STOP and paste me the output.
 
 ```bash
 set -euo pipefail
-cd ~/Project_Daily-fresh && git fetch -q origin main && git switch -q --detach origin/main && git log --oneline -1
+cd ~/Project_Daily-fresh
+git fetch -q origin main
+git switch -q --detach origin/main
+git log --oneline -1
 B=~/KoboBackups/$(date +%F_%H-%M-%S); mkdir -p "$B"
-scp -q -r kobo:/mnt/onboard/.adds/koreader/settings "$B/" && echo "settings backed up to $B"
+scp -q -r kobo:/mnt/onboard/.adds/koreader/settings "$B/"
+echo "settings backed up to $B"
 bash scripts/kobo/deploy-plugin.sh
 ssh kobo 'cd /mnt/onboard/.adds/koreader/plugins/lascisboard.koplugin && grep -m1 "VERSION =" main.lua && ls'
 ```
@@ -239,10 +264,14 @@ if any command fails, STOP and paste me the output.
 
 ```bash
 set -euo pipefail
-cd ~/Project_Daily-fresh && git fetch -q origin main && git switch -q --detach origin/main && git log --oneline -1
+cd ~/Project_Daily-fresh
+git fetch -q origin main
+git switch -q --detach origin/main
+git log --oneline -1
 lua5.1 scripts/kobo/test-lbcore.lua 2>/dev/null || echo "(lua5.1 not on this Mac — skipped the local check)"
 B=~/KoboBackups/$(date +%F_%H-%M-%S); mkdir -p "$B"
-scp -q -r kobo:/mnt/onboard/.adds/koreader/settings "$B/" && echo "settings backed up to $B"
+scp -q -r kobo:/mnt/onboard/.adds/koreader/settings "$B/"
+echo "settings backed up to $B"
 bash scripts/kobo/deploy-plugin.sh
 ssh kobo 'cd /mnt/onboard/.adds/koreader/plugins/lascisboard.koplugin && grep -m1 "VERSION =" main.lua && ls'
 ```
