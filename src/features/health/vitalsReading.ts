@@ -178,9 +178,6 @@ export const VITAL_SPECS: Record<VitalKey, VitalSpec> = {
 /** Display order: the recovery signals first, then the fitness context. */
 export const VITAL_ORDER: readonly VitalKey[] = ['rhr', 'hrv', 'resp', 'spo2', 'temp', 'walking', 'hrr']
 
-/** Every health_metrics name the reading needs. */
-export const VITAL_METRICS: readonly string[] = VITAL_ORDER.map(k => VITAL_SPECS[k].metric)
-
 export interface VitalRun { direction: 'above' | 'below'; days: number; last: string }
 
 export interface VitalRow {

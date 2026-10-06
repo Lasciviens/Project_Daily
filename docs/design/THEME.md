@@ -160,7 +160,7 @@ const c = useChartColors()
 - Grid lines `c.grid`, axis ticks `c.axis`, tooltip surface `c.tooltipBg`.
 - Shared kit in `src/shared/components/charts/`: `BarLineChart` (the canonical translucent bar + dotted
   line, deduped tooltip, `rangeKey`, `yDomain`), `chartKit.ts` (`TOOLTIP_BOX` for custom tooltip
-  content, `useTooltipStyle()` for recharts' built-in one, `useAxisTick()` — 10px ticks), and
+  content, `useTooltipStyle()` for recharts' built-in one), and
   `compactAxisTick` (`axisFormat.ts`). Reuse them before styling a chart by hand.
 - **Identity colours stay literal**: third-party brand colours (a transit operator's line colour, a
   fitness service's brand orange) and physiological categories that users know by colour (sleep

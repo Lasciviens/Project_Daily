@@ -105,13 +105,6 @@ export async function updateIngredientLibraryItem(id: string, input: CreateIngre
   return data
 }
 
-/** How many recipes (incl. saved meals) use a library food — shown before deleting it. */
-export async function countRecipesUsingIngredient(id: string): Promise<number> {
-  const { data, error } = await supabase.from('recipe_ingredients').select('recipe_id').eq('library_ingredient_id', id)
-  if (error) throw error
-  return new Set((data ?? []).map(r => r.recipe_id as string)).size
-}
-
 export async function deleteIngredientLibraryItem(id: string): Promise<void> {
   // Recipes calculated from this food keep the totals they have (switch to
   // manual) — otherwise they, and every past day they were eaten, would drop

@@ -48,15 +48,16 @@ export function MealPortionPicker({ recipe, busy, onLog, onCancel }: {
           </button>
         ))}
       </div>
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="flex items-center gap-1">
+      {/* One row on a phone too: the amount boxes, then the result (it may wrap
+          inside its own box, never onto a line of its own). */}
+      <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-1">
           <input value={gramsDraft != null ? String(pLabel) : pct} onChange={e => pickPct(sanitizeDecimal(e.target.value))} inputMode="decimal" aria-label="Percent of the batch"
-            className="input w-16 text-right tabular-nums" />
+            className="input w-14 px-1.5 text-right tabular-nums" />
           <span className="text-meta text-fg-muted">%</span>
         </div>
         {grams != null && (
-          <div className="flex items-center gap-1">
-            <span className="text-meta text-fg-faint">·</span>
+          <div className="flex shrink-0 items-center gap-1">
             <input
               value={gramsDraft ?? grams}
               aria-label="Grams eaten"
@@ -66,12 +67,12 @@ export function MealPortionPicker({ recipe, busy, onLog, onCancel }: {
                 setPct(totalG > 0 ? String(((Number(raw) || 0) / totalG) * 100) : '0')
               }}
               inputMode="decimal"
-              className="input w-16 text-right tabular-nums" />
+              className="input w-[4.5rem] px-1.5 text-right tabular-nums" />
             <span className="text-meta text-fg-muted" title="Raw weight: the ingredients before cooking">g raw</span>
           </div>
         )}
-        <span className="ml-auto text-meta text-fg-muted tabular-nums">
-          {servingsEaten}× · <strong className="text-fg">{kcal}</strong> kcal · {prot}g protein
+        <span className="ml-auto min-w-0 text-right text-meta leading-tight text-fg-muted tabular-nums">
+          <span className="max-sm:hidden">{servingsEaten}× · </span><strong className="text-fg">{kcal}</strong> kcal · {prot}g protein
         </span>
       </div>
       <div className="flex gap-2">

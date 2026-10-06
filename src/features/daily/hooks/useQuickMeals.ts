@@ -1,5 +1,4 @@
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
-import { deleteMealPlanEntry } from '../../recipes/api/mealPlanApi'
 import { fetchFoodLog, addFoodLogEntries } from '../../recipes/api/foodLogApi'
 import type { FoodLogEntryInput } from '../../recipes/types'
 import { shiftDateStr } from '../../../shared/utils/dateUtils'
@@ -12,16 +11,6 @@ import { toast } from '../../../app/store'
 //  useFoodLog's useRecentFoods; this file keeps the plan-row delete (an existing
 //  planned entry can still be removed) and copy-yesterday.
 // ─────────────────────────────────────────────────────────────────────────────
-
-// Deletes an existing PLANNED entry (recipe_meal_plans) — diary rows are
-// deleted via useDeleteFoodLogEntry instead.
-export function useDeleteQuickMeal() {
-  return useMutationWithFeedback({
-    action:      'delete_meal_entry',
-    mutationFn:  (id: string) => deleteMealPlanEntry(id),
-    invalidates: ['nutrition'],
-  })
-}
 
 // Copies yesterday's DIARY into today, but only into slots that are still empty
 // today (a slot with anything logged is left alone — copy never overwrites).

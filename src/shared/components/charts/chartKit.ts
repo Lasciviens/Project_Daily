@@ -13,9 +13,3 @@ export function useTooltipStyle(): { contentStyle: CSSProperties; labelStyle: CS
     itemStyle: { padding: 0 },
   }), [c])
 }
-
-/** Axis tick props (font size + token colour). */
-export function useAxisTick(fontSize = 10) {
-  const c = useChartColors()
-  return useMemo(() => ({ fontSize, fill: c.axis }), [c, fontSize])
-}

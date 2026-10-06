@@ -6,7 +6,7 @@
 > **This is a reference, not a plan.** Read it before any `ai-proxy` / `aiApi.ts` cost or capability work.
 > **Deferred by decision:** explicit `cachedContent` (only if `ai_usage_log.cached_tokens` shows implicit misses
 > dominate) · embed-on-write freshness (reindex is manual — Developer → "Reindex AI search") · a dedicated Food
-> "add by photo" button (the chat vision path + `parseFoodPhoto` already cover it) · nightly `daily_rollups`.
+> "add by photo" button (the chat vision path already covers it) · nightly `daily_rollups`.
 
 ## 1. Cost model
 

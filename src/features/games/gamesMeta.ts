@@ -7,15 +7,6 @@ export const STATUS_LABEL: Record<string, string> = {
   backlog: 'Backlog', dropped: 'Dropped', hidden: 'Hidden',
 }
 
-export const STATUS_COLOR: Record<string, string> = {
-  playing:   'bg-orange-100 text-orange-700',
-  completed: 'bg-green-100 text-green-700',
-  wishlist:  'bg-purple-100 text-purple-700',
-  backlog:   'bg-ink-100 text-ink-500',
-  dropped:   'bg-red-100 text-red-600',
-  hidden:    'bg-ink-200 text-ink-500',
-}
-
 // The status PICKER. 'hidden' is deliberately absent: it is set by its own
 // checkbox (LibraryControls), because offering it as a sixth pill would read
 // as a kind of progress rather than "keep this out of the grid".

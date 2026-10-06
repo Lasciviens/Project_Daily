@@ -30,11 +30,3 @@ export function useKeyboardInset(): number {
 
   return inset
 }
-
-// Blur the focused text control so the keyboard retracts — e.g. tapping a
-// sheet backdrop should dismiss the keyboard, not (only) close the sheet.
-export function dismissKeyboard(): void {
-  if (typeof document === 'undefined') return
-  const el = document.activeElement
-  if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) el.blur()
-}

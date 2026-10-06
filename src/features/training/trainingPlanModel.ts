@@ -11,13 +11,6 @@ import { projectRecurringBlocksForDay, type RecurringBlockLike } from '../daily/
 
 export type PlanStatus = 'today' | 'upcoming' | 'done' | 'missed'
 
-export const PLAN_STATUS_LABEL: Record<PlanStatus, string> = {
-  today:    'Plan today',
-  upcoming: 'Plan upcoming',
-  done:     'Plan done',
-  missed:   'Plan missed',
-}
-
 export function planStatus(dateStr: string, todayStr: string, trainedThatDay: boolean): PlanStatus {
   if (trainedThatDay && dateStr <= todayStr) return 'done'
   if (dateStr === todayStr) return 'today'

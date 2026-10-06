@@ -134,8 +134,6 @@ export interface Game {
   platforms:             GamePlatform[]
 }
 
-export type GameDetail = Game
-
 export type QueueGame = Game & { play_order: number }
 
 // ─── Write inputs ────────────────────────────────────────────────────────────

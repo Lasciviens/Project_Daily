@@ -28,21 +28,6 @@ export function shiftDateStr(dateStr: string, days: number): string {
   return formatLocalDate(addDays(parseISO(dateStr), days))
 }
 
-// Every calendar date from `from` to `to` inclusive — used to left-join
-// sparse daily series so a chart still shows a gap for days with no data,
-// instead of silently compressing the x-axis around only the days that have
-// a value.
-export function datesBetweenStr(from: string, to: string): string[] {
-  const dates: string[] = []
-  let d = parseISO(from)
-  const end = parseISO(to)
-  while (d <= end) {
-    dates.push(formatLocalDate(d))
-    d = addDays(d, 1)
-  }
-  return dates
-}
-
 // The local calendar day an ISO timestamp falls on ("2026-09-26T23:30:00Z" is
 // the 27th in Oslo). Use this, never `iso.slice(0, 10)`, to file a workout,
 // activity or reading under a day: slicing takes the UTC date, which is

@@ -59,8 +59,8 @@ export interface CreateLimitationInput {
 
 export type UpdateLimitationInput = Partial<Pick<AthleteLimitation, 'movement_pattern' | 'severity' | 'note' | 'active'>>
 
-// Migration 084 — sibling tables for the Progress decision-engine redesign.
-// See docs/progress-redesign/PLAN.md for the full rationale (delete once shipped).
+// Migration 084 — sibling tables for the Progress decision engine
+// (CLAUDE.md → Training → Decision engine).
 
 /** Explicit membership: this routine_id is part of the athlete's current
  *  program. Never inferred from recency alone — see fetchCurrentProgramRoutines. */

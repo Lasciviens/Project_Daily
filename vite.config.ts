@@ -39,7 +39,7 @@ export default defineConfig({
       injectRegister: false,
       base: '/Project_Daily/',
       scope: '/Project_Daily/',
-      includeAssets: ['favicon.svg', 'icons.svg'],
+      includeAssets: ['favicon.svg'],
       manifest: {
         name: "Lasci's Board",
         short_name: 'Board',

@@ -51,6 +51,9 @@ export function WeeklyNutritionCard({ date }: { date: string }) {
               <dd className="tabular-nums text-fg-2">{s.kcalOnTargetDays} of {s.loggedDays} days</dd>
             </div>
           </dl>
+          <p className="mt-2 text-meta text-fg-muted tabular-nums">
+            Per day: <span className="text-fg-2">{s.avgCarbs}g carbs · {s.avgFat}g fat · {s.avgSugar}g sugar · {s.avgFiber}g fibre</span>
+          </p>
 
           {partial && <p className="mt-2 text-micro text-fg-muted">Averages leave out today — it's still being logged.</p>}
           <div className="relative mt-4 flex h-24 items-end gap-1.5" role="img"

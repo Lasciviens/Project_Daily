@@ -59,10 +59,6 @@ export const linkedTimeBlockQuery = (taskId: string) => queryOptions({
   staleTime: 0,
 })
 
-export function useLinkedTimeBlock(taskId: string | null | undefined) {
-  return useQuery({ ...linkedTimeBlockQuery(taskId ?? ''), enabled: !!taskId })
-}
-
 // Recurring templates live under qk.schedule, so the 'schedule' group covers
 // every template/day/range view at once.
 export function useCreateScheduleBlock() {

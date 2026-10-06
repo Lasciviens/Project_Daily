@@ -783,7 +783,7 @@ and seeing whose game it describes.
 
 | Piece | What it is |
 |---|---|
-| `screenscraperStudio.ts` | Pure logic: what a game is missing, candidate selection, request-cost projection, quota verdict, title-confidence, undo derivation. 36 assertions in `scripts/verify-screenscraper-studio.cjs`. |
+| `screenscraperStudio.ts` | Pure logic: what a game is missing, candidate selection, request-cost projection, quota verdict, title-confidence, undo derivation. (Deleted with the studio in the 2026-09-25 rewrite, §16.) |
 | `apply_reviewed` | Writes EXACTLY the reviewed entry. Carries the `jeu_id` that was shown; if the fetch answers with a different entry it returns `stale_proposal` and writes nothing. `fillOnlyMissing` still runs against the live row, so the client can only ever narrow a write, never widen it. |
 | `proposed` on a dry run | The actual values, truncated at 600 chars, so a field can be read before it is accepted. Per-field checkboxes, defaulted on. |
 | Candidate art | The cover is mirrored to `game-media/pending/<game_id>/<jeu_id>/cover.<ext>` at REVIEW time and promoted by a Storage **copy** on approval — no second image download. The browser still never receives a ScreenScraper URL. Note the bucket is world-readable by policy (094), so this prefix is separated from the database and the canonical paths, **not** from the internet. `sweep_pending` clears what nobody approved, and a "Clear unused art" button calls it. |

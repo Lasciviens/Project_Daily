@@ -28,4 +28,7 @@ ok(buildFoodInsights(rows.slice(1), 7, '2026-10-04').streak, 2, 'an empty today 
 ok(r.variety, 3, 'distinct foods')
 ok(r.split.protein + r.split.carbs + r.split.fat >= 99, true, 'split adds to ~100')
 ok(buildFoodInsights([], 7, '2026-10-03').avg.kcal, 0, 'no rows → zeros, no NaN')
+ok([r.avg.carbs, r.avg.fat, r.avg.fiber], [93.3, 32.7, 2.7], 'carbs / fat / fibre per logged day')
+ok(r.avg.sugar, 0, 'sugar missing on every row → 0, no NaN')
+ok(buildFoodInsights([row('2026-10-03', 'snack', 'Banana', { calories: 100, sugar_g: 12 }), row('2026-10-02', 'snack', 'Tea', { calories: 2, sugar_g: null })], 7, '2026-10-03').avg.sugar, 6, 'sugar per logged day')
 console.log(`verify-food-insights: ${n} assertions passed`)

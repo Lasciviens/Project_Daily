@@ -196,6 +196,11 @@
      this off <html>, Chrome/Android off <body>, so both are set. */
   html, body {
     overscroll-behavior-y: contain;
+    /* The document never scrolls sideways either: on an iPhone something
+       fixed or portalled past the right edge let the whole page pan right
+       "forever" (owner, 06.10.2026 — not reproducible in Chromium). */
+    overflow-x: hidden;
+    overscroll-behavior-x: none;
   }
 
   ::-webkit-scrollbar       { width: 5px; height: 5px; }

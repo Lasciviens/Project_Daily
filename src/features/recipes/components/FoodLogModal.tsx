@@ -47,7 +47,8 @@ import { formatWeekdayDate } from '../../../shared/utils/dateFormat'
 /** A basket amount is grams, or ml for a drink stored per 100 ml. */
 const amountUnit = (u: string | null | undefined) => (u?.trim().toLowerCase() === 'ml' ? 'ml' : 'g')
 
-interface BasketItem { ingredient: IngredientLibraryItem; grams: number }
+/** `typeGrams`: a portion item switched to a grams box (phones show one control per row). */
+interface BasketItem { ingredient: IngredientLibraryItem; grams: number; typeGrams?: boolean }
 
 interface Props {
   /** Controlled callers pass it; the `food-log` entity modal omits it. */
@@ -338,27 +339,34 @@ export function FoodLogModal({ open = true, onClose, date, defaultSlot, defaultQ
                 const sg = it.ingredient.serving_grams
                 const count = sg ? Math.max(1, Math.round(it.grams / sg)) : 1
                 const hasStepper = !!it.ingredient.serving_label && sg != null
+                // ONE row per item on every width (owner, 06.10.2026: no amount box
+                // on a line of its own). A phone shows one amount control: the
+                // portion stepper, or — after tapping its label — the grams box.
+                // From `sm` there is room for both.
+                const gramsOnPhone = !hasStepper || it.typeGrams
                 return (
-                  // With a portion stepper the amount controls move to a second line on a
-                  // phone — on one line they left the name ~0px at 393px.
-                  <div key={`${it.ingredient.id}-${i}`} className={cx('flex min-h-[48px] items-center gap-2', hasStepper && 'max-sm:flex-wrap max-sm:gap-y-0 max-sm:py-1')}>
-                    <FoodThumb name={it.ingredient.name} group={it.ingredient.food_group} imageUrl={it.ingredient.image_url} size={32} />
+                  <div key={`${it.ingredient.id}-${i}`} className="flex min-h-[48px] items-center gap-1.5 sm:gap-2">
+                    <FoodThumb name={it.ingredient.name} group={it.ingredient.food_group} imageUrl={it.ingredient.image_url} size={28} />
                     <Truncate className="min-w-0 flex-1 text-body text-fg">{it.ingredient.name}</Truncate>
                     {hasStepper && (
-                      <div className="flex shrink-0 items-center max-sm:order-last max-sm:ml-10">
-                        <IconButton label="One less" className="h-9 w-9" onClick={() => setGrams(i, String(Math.max(1, count - 1) * sg))}><Minus /></IconButton>
-                        <span className="w-12 text-center text-micro normal-case tracking-normal text-fg-muted tabular-nums">{count}×{it.ingredient.serving_label!.replace(/^1\s*/, '')}</span>
-                        <IconButton label="One more" className="h-9 w-9" onClick={() => setGrams(i, String((count + 1) * sg))}><Plus /></IconButton>
+                      <div className={cx('flex shrink-0 items-center', it.typeGrams && 'max-sm:hidden')}>
+                        <IconButton label="One less" className="h-9 w-8 sm:w-9" onClick={() => setGrams(i, String(Math.max(1, count - 1) * sg))}><Minus /></IconButton>
+                        <button type="button" onClick={() => setBasket(b => b.map((x, j) => (j === i ? { ...x, typeGrams: true } : x)))}
+                          title={`${Math.round(it.grams)} g — tap to type grams`} aria-label={`${count} × ${it.ingredient.serving_label} (${Math.round(it.grams)} g). Type grams instead`}
+                          className="min-h-[36px] w-12 text-center text-micro normal-case tracking-normal text-fg-muted tabular-nums sm:pointer-events-none">
+                          {count}×{it.ingredient.serving_label!.replace(/^1\s*/, '')}
+                        </button>
+                        <IconButton label="One more" className="h-9 w-8 sm:w-9" onClick={() => setGrams(i, String((count + 1) * sg))}><Plus /></IconButton>
                       </div>
                     )}
-                    <div className={cx('flex shrink-0 items-center gap-1', hasStepper && 'max-sm:order-last')}>
+                    <div className={cx('flex shrink-0 items-center gap-1', !gramsOnPhone && 'max-sm:hidden')}>
                       <input value={it.grams || ''} onChange={e => setGrams(i, e.target.value)} inputMode="decimal" aria-label={`${it.ingredient.name} grams`}
                         aria-invalid={!(it.grams > 0)}
-                        className={cx('input w-16 px-1.5 text-right tabular-nums', !(it.grams > 0) && 'border-danger')} />
-                      <span className="text-meta text-fg-muted">g</span>
+                        className={cx('input w-14 px-1.5 text-right tabular-nums sm:w-16', !(it.grams > 0) && 'border-danger')} />
+                      <span className="text-meta text-fg-muted">{amountUnit(it.ingredient.unit)}</span>
                     </div>
-                    <span className="w-14 shrink-0 text-right text-meta text-fg-muted tabular-nums">{Math.round(snap.calories ?? 0)} kcal</span>
-                    <IconButton label={`Remove ${it.ingredient.name}`} className="h-9 w-9 text-fg-faint hover:text-danger"
+                    <span className="w-[3.25rem] shrink-0 text-right text-meta text-fg-muted tabular-nums sm:w-14">{Math.round(snap.calories ?? 0)} kcal</span>
+                    <IconButton label={`Remove ${it.ingredient.name}`} className="h-9 w-8 shrink-0 text-fg-faint hover:text-danger sm:w-9"
                       onClick={() => setBasket(b => b.filter((_, j) => j !== i))}><X /></IconButton>
                   </div>
                 )

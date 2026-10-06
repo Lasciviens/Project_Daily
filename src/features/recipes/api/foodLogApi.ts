@@ -262,18 +262,6 @@ export async function removeFoodFavorite(foodKey: string): Promise<void> {
   if (error) throw isMissingTable(error) ? new Error(NOT_MIGRATED_087) : error
 }
 
-// Distinct dates (yyyy-MM-dd) with ≥1 diary row in [fromDate, toDate] — the
-// logging-consistency signal that gates the adaptive-calorie coaching (a
-// calorie recommendation off partial intake data would be misleading).
-export async function fetchLoggedDates(fromDate: string, toDate: string): Promise<string[]> {
-  // Consistency gate = days you actually ATE something (status='eaten').
-  const q = () => supabase.from('food_log_entries').select('date').gte('date', fromDate).lte('date', toDate)
-  let { data, error } = await q().eq('status', 'eaten')
-  if (error && isMissingStatus(error)) ({ data, error } = await q())
-  if (error) throw error
-  return [...new Set((data ?? []).map(r => (r as { date: string }).date))]
-}
-
 // Snapshot builders — per-100g × grams for ingredients, per-serving ×
 // servings for recipes. Grams path only for weight/volume amounts.
 const per = (v: number | null | undefined, grams: number) => (v == null ? null : Math.round(v * grams) / 100)

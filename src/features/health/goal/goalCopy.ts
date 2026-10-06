@@ -6,8 +6,6 @@ import type { MuscleWatchLevel } from './muscleWatch'
 // Plain-language copy for the goal report. Never a diagnosis: each line says
 // what the numbers show and the most common explanation.
 
-export const PHASE_LABEL: Record<Phase, string> = { cut: 'Cut', maintain: 'Maintain', gain: 'Gain' }
-
 export const PHASE_QUESTION: Record<Phase, string> = {
   cut: 'Are you losing fat at the right pace — and keeping your muscle?',
   maintain: 'Are you holding your weight — and what is it made of?',

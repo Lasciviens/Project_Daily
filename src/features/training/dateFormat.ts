@@ -18,10 +18,6 @@ export function fmtTrainingTime(iso: string | null): string {
   return iso ? formatTrainingTime(new Date(iso)) : ''
 }
 
-export function fmtTrainingDateTime(iso: string | null): string {
-  return iso ? `${formatTrainingDate(new Date(iso))} · ${formatTrainingTime(new Date(iso))}` : '—'
-}
-
 /** Monday→Sunday range for a week chart's tooltip ("03.08.2026 –
  *  09.08.2026") — a single date is ambiguous about what it means for a WEEKLY value (start?
  *  end? the day it was logged?), which real user confusion (2026-09-01)

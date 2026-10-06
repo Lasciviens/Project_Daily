@@ -15,7 +15,6 @@ import {
   updateTask,
   toggleTaskDone,
   deleteTask,
-  swapTaskOrder,
 } from '../api/tasksApi'
 import { drainGoogleTasksOutbox } from '../api/googleTasksOutbox'
 import { pullGoogleTasks } from '../api/googleTasksSync'
@@ -173,14 +172,6 @@ export function useToggleTask() {
       if (token) await drainBestEffort(token, { taskId: id })
       return task
     },
-    invalidates: [qk.tasks.all],
-  })
-}
-
-export function useSwapTaskOrder() {
-  return useMutationWithFeedback({
-    action:      'swap_task_order',
-    mutationFn:  ({ id1, id2 }: { id1: string; id2: string }) => swapTaskOrder(id1, id2),
     invalidates: [qk.tasks.all],
   })
 }

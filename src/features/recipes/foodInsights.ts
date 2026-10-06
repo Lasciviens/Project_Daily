@@ -14,6 +14,7 @@ export interface InsightRow {
   carbs_g: number | null
   fat_g: number | null
   fiber_g: number | null
+  sugar_g?: number | null
 }
 
 export interface FoodSource {
@@ -34,7 +35,7 @@ export interface FoodInsights {
   days: number
   daysLogged: number
   /** Per logged day. */
-  avg: { kcal: number; protein: number; carbs: number; fat: number; fiber: number }
+  avg: { kcal: number; protein: number; carbs: number; fat: number; fiber: number; sugar: number }
   /** Share of calories from protein / carbs / fat (4/4/9), 0–100. */
   split: { protein: number; carbs: number; fat: number }
   topKcal: FoodSource[]
@@ -61,11 +62,11 @@ function sourceKey(r: InsightRow): { key: string; kind: FoodSource['kind']; id: 
 export function buildFoodInsights(rows: readonly InsightRow[], days: number, today: string, top = 8): FoodInsights {
   const dates = new Set(rows.map(r => r.date))
   const daysLogged = dates.size
-  const sum = { kcal: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 }
+  const sum = { kcal: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, sugar: 0 }
   const sources = new Map<string, Omit<FoodSource, 'share'>>()
   const slots = new Map<MealSlot, { kcal: number; protein: number; days: Set<string> }>()
   for (const r of rows) {
-    sum.kcal += r.calories ?? 0; sum.protein += r.protein_g ?? 0; sum.carbs += r.carbs_g ?? 0; sum.fat += r.fat_g ?? 0; sum.fiber += r.fiber_g ?? 0
+    sum.kcal += r.calories ?? 0; sum.protein += r.protein_g ?? 0; sum.carbs += r.carbs_g ?? 0; sum.fat += r.fat_g ?? 0; sum.fiber += r.fiber_g ?? 0; sum.sugar += r.sugar_g ?? 0
     const { key, kind, id } = sourceKey(r)
     const s = sources.get(key) ?? { key, title: r.title, kind, id, count: 0, kcal: 0, protein: 0 }
     s.count++; s.kcal += r.calories ?? 0; s.protein += r.protein_g ?? 0
@@ -91,7 +92,7 @@ export function buildFoodInsights(rows: readonly InsightRow[], days: number, tod
   return {
     days,
     daysLogged,
-    avg: { kcal: Math.round(per(sum.kcal)), protein: per(sum.protein), carbs: per(sum.carbs), fat: per(sum.fat), fiber: per(sum.fiber) },
+    avg: { kcal: Math.round(per(sum.kcal)), protein: per(sum.protein), carbs: per(sum.carbs), fat: per(sum.fat), fiber: per(sum.fiber), sugar: per(sum.sugar) },
     split: { protein: pct(4 * sum.protein), carbs: pct(4 * sum.carbs), fat: pct(9 * sum.fat) },
     topKcal: ranked(s => s.kcal, sum.kcal),
     topProtein: ranked(s => s.protein, sum.protein),

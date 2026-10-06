@@ -143,24 +143,6 @@ export function useCalendarEventsForDay(dateStr: string) {
   })
 }
 
-export function useCalendarEventsForRange(timeMin: string, timeMax: string) {
-  const token = useValidToken()
-  const { setAccessToken } = useCalendarStore()
-  const calIds = useSelectedCalendarIds()
-
-  return useQuery({
-    queryKey: qk.calendar.range(timeMin, timeMax, calIds.join(',')),
-    queryFn:  async () => {
-      const activeToken = await ensureToken(token, setAccessToken)
-      const results = await Promise.all(calIds.map(id => fetchEventsForRange(activeToken, timeMin, timeMax, id)))
-      return sortEvents(results.flat())
-    },
-    enabled:   !!token,
-    staleTime: STALE.default,
-    retry:     false,
-  })
-}
-
 export function useCalendarList() {
   const token = useValidToken()
   return useQuery({
