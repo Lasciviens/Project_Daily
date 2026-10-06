@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { TonePill } from '../../../shared/ui'
+import { MetaLine, TonePill } from '../../../shared/ui'
 import { shiftDateStr, todayStr } from '../../../shared/utils/dateUtils'
 import {
   computeSleepSummary, extractSleepSessions, formatSleepHours as fmtHrs, manualNightKeys, sleepNightKey, sleepSourcesByNight,
@@ -93,9 +93,10 @@ export function SleepSection({ range, extras = true }: { range: HealthRange; ext
           <p className="mt-1 text-meta text-fg-muted">{nightMissingText(anchor, win.today)} — pick another day, or add it by hand below.</p>
         )}
         {!isDay && s.best && s.worst && (
-          <p className="mt-1 text-meta text-fg-muted">
-            Longest {fmtHrs(s.best.value)} ({fmtDayMonth(s.best.date)}) · shortest {fmtHrs(s.worst.value)} ({fmtDayMonth(s.worst.date)})
-          </p>
+          <MetaLine className="mt-1 text-meta text-fg-muted" items={[
+            `Longest ${fmtHrs(s.best.value)} (${fmtDayMonth(s.best.date)})`,
+            `shortest ${fmtHrs(s.worst.value)} (${fmtDayMonth(s.worst.date)})`,
+          ]} />
         )}
         {/* The window's last night is the one that ended on its last day —
             said so when it is missing, never swapped for an older night. */}

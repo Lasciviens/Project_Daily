@@ -305,7 +305,7 @@ export function DayAgenda({ date, bare = false }: { date: Date; bare?: boolean }
               {block.spillover && <CornerDownRight className="h-3.5 w-3.5 shrink-0 text-fg-faint" aria-label="Continued from yesterday" />}
               {/* The row (a div) opens the editor, which shows the whole title
                   and notes, so a tap never opens a bubble on top of it. */}
-              <Truncate reveal="none">{block.title}</Truncate>
+              <Truncate lines={2} reveal="none">{block.title}</Truncate>
               {isRecurring && <Repeat className="h-3 w-3 shrink-0 text-fg-muted" aria-label="Recurring" />}
               {isCal && <CalendarDays data-tone="success" className="tone-text h-3 w-3 shrink-0" aria-label="Google Calendar" />}
               {taskNotes && <StickyNote className="h-3 w-3 shrink-0 text-fg-faint" aria-label="Has notes" />}
@@ -373,7 +373,13 @@ export function DayAgenda({ date, bare = false }: { date: Date; bare?: boolean }
     <div className={bare ? 'p-4 sm:p-5' : 'card p-4 sm:p-5'}>
       <div className="mb-3 flex items-center justify-between gap-2">
         <div className="min-w-0">
-          <h2 className="section-label">Schedule</h2>
+          {/* The planned total sits with the label, so "Next: …" gets the row. */}
+          <div className="flex items-baseline gap-1.5">
+            <h2 className="section-label">Schedule</h2>
+            {totalBookedMin > 0 && (
+              <span className="whitespace-nowrap text-micro tabular-nums text-fg-muted">· {formatDurationMinutes(totalBookedMin)} planned</span>
+            )}
+          </div>
           {nextBlock && (
             <Truncate as="p" className="mt-0.5 text-meta text-fg-muted" fullText={`Next: ${nextBlock.title} at ${hourToTimeStr(nextBlock.startHour)}`}>
               Next: <span className="font-semibold text-fg-2">{nextBlock.title}</span> at {hourToTimeStr(nextBlock.startHour)}
@@ -381,9 +387,6 @@ export function DayAgenda({ date, bare = false }: { date: Date; bare?: boolean }
           )}
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
-          {totalBookedMin > 0 && (
-            <span className="text-meta tabular-nums text-fg-muted">{formatDurationMinutes(totalBookedMin)} planned</span>
-          )}
           {calToken && (
             <IconButton label="Sync Google Calendar" onClick={handleCalRefresh} disabled={calFetching}>
               <RefreshCw className={cx(calFetching && 'animate-spin')} />

@@ -12,7 +12,9 @@ const TIER: Record<StatTier, { label: string; tone: Tone }> = {
   evidence: { label: 'Evidence', tone: 'info' },
   heuristic: { label: 'Heuristic', tone: 'warn' },
 }
-const PERIODS = [{ value: '7' as const, label: '7 days' }, { value: '28' as const, label: '28 days' }]
+// "7 d" on a phone so the header label isn't cut off beside the switch.
+const span = (n: number) => <>{n}<span className="sm:hidden"> d</span><span className="hidden sm:inline"> days</span></>
+const PERIODS = [{ value: '7' as const, label: span(7) }, { value: '28' as const, label: span(28) }]
 
 /** Protein, calories, logged vs burned, protein per meal, fibre, fat and the
  *  weekend gap over the last 7 or 28 days — one row each, with how sure the

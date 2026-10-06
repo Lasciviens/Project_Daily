@@ -94,7 +94,8 @@ export function EditFoodLogModal({ meal, date, onClose }: Props) {
   return (
     <ModalShell
       onClose={onClose}
-      title={`Edit · ${meal.title}`}
+      title="Edit entry"
+      subtitle={meal.title}
       size="sm"
       dismissible={!saving}
       footer={
@@ -118,7 +119,7 @@ export function EditFoodLogModal({ meal, date, onClose }: Props) {
 
         {kind === 'library' && lib ? (
           <div>
-            <label htmlFor="efl-amount" className="field-label">Amount ({lib.name})</label>
+            <label htmlFor="efl-amount" className="field-label">Amount</label>
             <div className="flex items-center gap-2">
               <input id="efl-amount" value={amount} onChange={e => setAmount(sanitizeDecimal(e.target.value))} inputMode="decimal" className="input w-24 text-right tabular-nums" />
               <span className="text-meta text-fg-muted">{amountUnit(lib.unit)}</span>
@@ -129,7 +130,7 @@ export function EditFoodLogModal({ meal, date, onClose }: Props) {
           </div>
         ) : kind === 'recipe' && recipe ? (
           <div>
-            <label htmlFor="efl-servings" className="field-label">Servings ({recipe.title})</label>
+            <label htmlFor="efl-servings" className="field-label">Servings</label>
             <div className="flex items-center gap-2">
               <input id="efl-servings" value={amount} onChange={e => setAmount(sanitizeDecimal(e.target.value))} inputMode="decimal" className="input w-24 text-right tabular-nums" />
               {recipe.servings > 0 && <span className="text-meta text-fg-muted tabular-nums">{Math.round((amt / recipe.servings) * 100)}% of the batch</span>}

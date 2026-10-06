@@ -21,6 +21,8 @@ import { useIngredientLibrary } from '../../../recipes/hooks/useIngredientLibrar
 import { ingredientSnapshot, recentToEntry, type RecentFood } from '../../../recipes/api/foodLogApi'
 import type { MealSlot } from '../../../recipes/types'
 import type { DayMeal } from '../../api/dayNutritionApi'
+
+const SLOT_COL = 'w-8 @[26rem]:w-[5.75rem]'
 import { useNewIds } from '../../../../shared/hooks/useNewIds'
 
 // Slot icons + "now" highlighting folded in from the old separate Meals card —
@@ -112,8 +114,10 @@ function SlotRow({ date, slot, label, icon, isNow, meals, fresh }: {
   }
 
   const slotLabel = (
-    <span className={cx('flex w-[5.75rem] shrink-0 items-center gap-1.5', isNow ? 'font-semibold text-accent-600' : 'text-fg-muted')}>
-      <span className="leading-none">{icon}</span>{label}
+    // A narrow card (a phone) keeps only the slot's emoji, so the food name
+    // gets the width; the label stays for screen readers.
+    <span className={cx(SLOT_COL, 'flex shrink-0 items-center gap-1.5', isNow ? 'font-semibold text-accent-600' : 'text-fg-muted')}>
+      <span aria-hidden className="leading-none">{icon}</span><span className="sr-only @[26rem]:not-sr-only">{label}</span>
       {isNow && <span className="sr-only">(now)</span>}
     </span>
   )
@@ -125,7 +129,7 @@ function SlotRow({ date, slot, label, icon, isNow, meals, fresh }: {
         <div className="flex flex-col">
           {meals.map((meal, i) => (
             <div key={meal.id} className={cx('flex min-h-[44px] items-center gap-2', fresh.has(meal.id) && 'motion-row-in')}>
-              {i === 0 ? slotLabel : <span className="w-[5.75rem] shrink-0" />}
+              {i === 0 ? slotLabel : <span className={cx(SLOT_COL, 'shrink-0')} />}
               <Truncate className={cx('flex-1', meal.source === 'plan' ? 'italic text-fg-muted' : 'text-fg-2')}>{meal.title}</Truncate>
               {meal.calories > 0 && <span className="shrink-0 pr-1 text-meta tabular-nums text-fg-muted">{meal.calories} kcal</span>}
               {meal.source === 'plan' && meal.planEntry && (
@@ -152,7 +156,7 @@ function SlotRow({ date, slot, label, icon, isNow, meals, fresh }: {
       {(meals.length === 0 || adding) ? (
         <>
           <div className="flex min-h-[44px] items-center gap-2">
-            {meals.length === 0 ? slotLabel : <span className="w-[5.75rem] shrink-0" />}
+            {meals.length === 0 ? slotLabel : <span className={cx(SLOT_COL, 'shrink-0')} />}
             {adding ? (
               <input
                 autoFocus value={text} onChange={e => setText(e.target.value)}
@@ -184,7 +188,7 @@ function SlotRow({ date, slot, label, icon, isNow, meals, fresh }: {
             )}
           </div>
           {adding && slotRecent.length > 0 && (
-            <div className="mt-1 flex flex-wrap gap-1 pl-[6.25rem]">
+            <div className="mt-1 flex flex-wrap gap-1 pl-10 @[26rem]:pl-[6.25rem]">
               {slotRecent.slice(0, 5).map(r => (
                 <button key={r.key} type="button" onMouseDown={e => e.preventDefault()} onClick={() => reLog(r)}
                   className="chip min-h-[44px] px-2.5 hover:bg-surface-hover">
@@ -197,7 +201,7 @@ function SlotRow({ date, slot, label, icon, isNow, meals, fresh }: {
       ) : (
         // A filled slot can still take one more item without the full logger.
         <div className="flex min-h-[36px] items-center gap-2">
-          <span className="w-[5.75rem] shrink-0" />
+          <span className={cx(SLOT_COL, 'shrink-0')} />
           <button type="button" onClick={() => setAdding(true)} aria-label={`Add more to ${label}`}
             className="flex min-h-[36px] items-center gap-1 text-meta text-fg-faint transition-colors hover:text-accent-600">
             <Plus className="h-3 w-3" aria-hidden /> Add more
@@ -287,7 +291,7 @@ export function NutritionCard({ date }: { date: string }) {
             </div>
           </div>
 
-          <ul className="flex flex-col border-t border-line pt-1">
+          <ul className="@container flex flex-col border-t border-line pt-1">
             {SLOTS.map(({ slot, label, icon }) => (
               <SlotRow key={slot} date={date} slot={slot} label={label} icon={icon} isNow={slot === now} meals={mealsBySlot.get(slot) ?? []} fresh={fresh} />
             ))}

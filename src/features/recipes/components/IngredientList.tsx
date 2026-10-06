@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Pencil, Search, X } from 'lucide-react'
-import { Card, EmptyState, IconButton, SkeletonText, TonePill, Truncate, cx } from '../../../shared/ui'
+import { Card, EmptyState, IconButton, MetaLine, SkeletonText, TonePill, Truncate, cx } from '../../../shared/ui'
 import { formatDate } from '../../../shared/utils/dateFormat'
 import { useRecipes } from '../hooks/useRecipes'
 import { USAGE_DAYS, useFoodUsage } from '../hooks/useFoodUsage'
@@ -66,7 +66,7 @@ export function IngredientList({ library, isLoading, onEdit, onDelete, editingId
           {presentGroups.hasOther && <button type="button" role="tab" aria-selected={group === '__other'} className="pill-tab shrink-0" onClick={() => pickGroup('__other')}>Other</button>}
         </div>
       )}
-      <div className="flex flex-wrap gap-1.5" aria-label="Show only">
+      <div className="scroll-x -mx-1 flex gap-1.5 px-1" aria-label="Show only">
         {FOOD_FLAGS.map(f => (
           <button key={f.value} type="button" aria-pressed={flags.includes(f.value)} onClick={() => toggle(f.value)}
             className="pill-tab min-h-[44px] shrink-0 sm:min-h-0">{f.label}</button>
@@ -76,12 +76,13 @@ export function IngredientList({ library, isLoading, onEdit, onDelete, editingId
       <Card padded={false} className="@container overflow-hidden">
         <header className="flex flex-wrap items-center gap-2 border-b border-line px-4 py-2.5">
           <p className="section-label mr-auto">Your foods <span className="count-badge ml-1 normal-case tracking-normal">{shown.length}{narrowed ? ` / ${library.length}` : ''}</span></p>
-          <label className="relative w-40 sm:w-52">
+          {/* Narrow card: label + sort on one row, search under them at full width. */}
+          <label className="relative order-last w-full @[30rem]:order-none @[30rem]:w-52">
             <span className="sr-only">Search your foods</span>
             <Search aria-hidden className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-fg-faint" />
             <input value={query} onChange={e => { setLimit(PAGE); setQuery(e.target.value) }} placeholder="Search" className="input pl-8" />
           </label>
-          <select aria-label="Sort foods" className="input w-auto" value={sort} onChange={e => setSort(e.target.value as FoodSort)}>
+          <select aria-label="Sort foods" className="input w-auto max-w-[9.5rem] @[30rem]:max-w-none" value={sort} onChange={e => setSort(e.target.value as FoodSort)}>
             {FOOD_SORTS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
           </select>
         </header>
@@ -127,10 +128,6 @@ function FoodRow({ ing, eaten, usedIn, editing, onEdit, onDelete }: {
   const density = proteinDensity(ing.calories, ing.protein_g)
   const portion = portionMacros(ing)
   const per = ing.unit?.trim().toLowerCase() === 'ml' ? '100 ml' : '100 g'
-  const facts = [
-    eaten ? `Eaten ${eaten.count}× · last ${formatDate(eaten.lastDate)}` : null,
-    usedIn > 0 ? `in ${usedIn} recipe${usedIn === 1 ? '' : 's'}` : null,
-  ].filter(Boolean).join(' · ')
 
   return (
     <li className={cx('flex break-inside-avoid items-start gap-3 border-b border-line py-2 pl-3 pr-1.5 text-body', editing && 'bg-accent-50')}>
@@ -148,19 +145,24 @@ function FoodRow({ ing, eaten, usedIn, editing, onEdit, onDelete }: {
             : density != null && <span className="text-micro tabular-nums text-fg-faint" title="Grams of protein per 100 kcal">{density} g P / 100 kcal</span>}
         </div>
         {portion && (
-          <p className="text-micro tabular-nums text-fg-muted">
-            {ing.serving_label || 'Portion'} ({Math.round(portion.grams)} g): {portion.calories ?? '–'} kcal · {portion.protein_g ?? '–'} g protein
-          </p>
+          <MetaLine className="text-micro tabular-nums text-fg-muted" items={[
+            `${ing.serving_label || 'Portion'} (${Math.round(portion.grams)} g): ${portion.calories ?? '–'} kcal`,
+            `${portion.protein_g ?? '–'} g protein`,
+          ]} />
         )}
-        <p className="flex flex-wrap items-center gap-x-1.5 text-micro text-fg-muted">
-          {ing.food_group && <span>{ing.food_group}</span>}
-          {ing.food_group && <span aria-hidden>·</span>}
-          <span>{(ing.source && SOURCE_LABEL[ing.source]) || 'Your own'}</span>
-          {facts && <><span aria-hidden>·</span><span className="tabular-nums">{facts}</span></>}
-        </p>
+        <MetaLine className="text-micro tabular-nums text-fg-muted" items={[
+          ing.food_group,
+          (ing.source && SOURCE_LABEL[ing.source]) || 'Your own',
+          eaten && `Eaten ${eaten.count}×`,
+          eaten && `last ${formatDate(eaten.lastDate)}`,
+          usedIn > 0 && `in ${usedIn} recipe${usedIn === 1 ? '' : 's'}`,
+        ]} />
       </div>
-      <IconButton label={`Edit ${ing.name}`} onClick={onEdit}><Pencil /></IconButton>
-      <IconButton label={`Delete ${ing.name}`} onClick={onDelete} className="text-fg-faint hover:!text-danger"><X /></IconButton>
+      {/* Stacked on a phone so the text column keeps its width. */}
+      <div className="flex shrink-0 flex-col @[30rem]:flex-row">
+        <IconButton label={`Edit ${ing.name}`} onClick={onEdit}><Pencil /></IconButton>
+        <IconButton label={`Delete ${ing.name}`} onClick={onDelete} className="text-fg-faint hover:!text-danger"><X /></IconButton>
+      </div>
     </li>
   )
 }

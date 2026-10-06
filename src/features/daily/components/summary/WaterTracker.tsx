@@ -43,7 +43,7 @@ export function WaterTracker({ date }: { date: string }) {
   const chip = 'chip min-h-[44px] px-3 text-meta hover:bg-surface-hover disabled:opacity-40'
 
   return (
-    <div className="flex flex-col gap-1.5 py-1">
+    <div className="@container flex flex-col gap-1.5 py-1">
       <div className="flex items-center justify-between gap-2 text-body">
         <span className="flex items-center gap-1.5 text-fg-muted"><Droplet className="h-3.5 w-3.5" aria-hidden /> Water</span>
         <span className="flex items-center gap-1 tabular-nums">
@@ -69,7 +69,7 @@ export function WaterTracker({ date }: { date: string }) {
           <button type="button" onClick={() => setOtherOpen(true)} className={chip}>Other</button>
         )}
         <button type="button" onClick={() => undo.mutate()} disabled={undo.isPending || ml <= 0}
-          className={`${chip} ml-auto`} aria-label="Undo last water"><Undo2 className="h-3.5 w-3.5" aria-hidden /> Undo</button>
+          className={`${chip} ml-auto`} aria-label="Undo last water"><Undo2 className="h-3.5 w-3.5" aria-hidden /><span className="hidden @[20rem]:inline">Undo</span></button>
       </div>
       {behindBy >= 250 && (
         <p className="text-meta text-fg-muted tabular-nums">About {behindBy} ml behind pace for this time of day</p>

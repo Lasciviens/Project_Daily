@@ -41,7 +41,8 @@ export function RecipesPage() {
         title="Food"
         actions={<>
           <FoodTabs />
-          {tab === 'library' && <Button icon={<Plus />} onClick={addRecipe}>Add recipe</Button>}
+          {/* Icon-only on a phone so Food|Shop, Add and Log food keep one row. */}
+          {tab === 'library' && <Button icon={<Plus />} onClick={addRecipe} aria-label="Add recipe" title="Add recipe"><span className="max-sm:hidden">Add recipe</span></Button>}
           <Button variant="primary" icon={<UtensilsCrossed />} onClick={logFood}>Log food</Button>
         </>}
       >

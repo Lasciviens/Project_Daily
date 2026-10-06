@@ -85,9 +85,13 @@ export function ImprovementCard({ preferIds }: { preferIds: ReadonlySet<string> 
           <p className="section-label mb-1.5">Main lifts · estimated 1RM</p>
           <ul className="flex flex-col gap-1.5">
             {main.map(c => (
-              <li key={c.templateId} className="flex flex-wrap items-baseline gap-x-2 text-body">
-                <span className="min-w-0 flex-1 break-words font-medium text-fg">{c.title}</span>
-                <span className="tabular-nums text-fg-muted">{c.start} → {c.end} kg</span>
+              // Lift + change on one line, the 1RM figures under it: inline they
+              // squeezed the lift name onto three lines on a phone.
+              <li key={c.templateId} className="flex items-baseline gap-x-2 text-body">
+                <span className="min-w-0 flex-1">
+                  <span className="block break-words font-medium text-fg">{c.title}</span>
+                  <span className="block text-meta tabular-nums text-fg-muted">{c.start} → {c.end} kg</span>
+                </span>
                 <Change c={c} />
               </li>
             ))}

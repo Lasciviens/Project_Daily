@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Pencil } from 'lucide-react'
-import { Card, CardHeader, TonePill, Truncate } from '../../../../shared/ui'
+import { Card, CardHeader, MetaLine, TonePill, Truncate } from '../../../../shared/ui'
 import { ExerciseThumb } from '../../exerciseMedia'
 import { routineTargetFromSets, repRangeLabel } from '../../progress-engine'
 import { openPlanRoutine } from '../../planTraining'
@@ -23,7 +23,7 @@ export function RoutineProgramCard({ routine, overrides, lastDoneText }: {
       <CardHeader
         wrap
         title={routine.title}
-        subtitle={`${exercises.length} exercises · ${totalSets} working sets · last done ${lastDoneText}`}
+        subtitle={<MetaLine as="span" items={[`${exercises.length} exercises`, `${totalSets} working sets`, `last done ${lastDoneText}`]} />}
         action={<button type="button" className="min-h-[44px] text-meta font-semibold text-accent-600" onClick={() => openPlanRoutine(routine)}>Plan</button>}
       />
       <ul className="flex flex-col divide-y divide-line">

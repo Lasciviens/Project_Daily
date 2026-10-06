@@ -92,7 +92,7 @@ export function LibraryTab() {
               </button>
             ))}
           </div>
-          <div className="flex flex-wrap gap-1.5" role="group" aria-label="Filter by place">
+          <div className="scroll-x -mx-1 flex gap-1.5 px-1 sm:mx-0 sm:flex-wrap sm:px-0" role="group" aria-label="Filter by place">
             {([['all', 'Anywhere'], ['kobo', 'On the Kobo'], ['not', 'Not on the Kobo']] as const).map(([id, label]) => (
               <button key={id} type="button" aria-pressed={where === id} onClick={() => setWhere(id)} className="pill-tab shrink-0">{label}</button>
             ))}
