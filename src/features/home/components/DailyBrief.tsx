@@ -76,16 +76,20 @@ export function DailyBrief() {
           </div>
 
           {sections.length > 0 && (
-            <dl className="max-w-prose space-y-3">
+            // One column of sections; two side by side once the card is wide
+            // (a wide Home main track), so the right half isn't left empty.
+            <div className="@container">
+              <dl className="grid grid-cols-1 gap-x-8 gap-y-3 @[46rem]:grid-cols-2">
               {sections.map(section => (
-                <div key={section.id} className="grid grid-cols-1 gap-0.5 sm:grid-cols-[6.5rem_minmax(0,1fr)] sm:gap-3">
-                  <dt><SectionLabel className="sm:pt-0.5">{section.title}</SectionLabel></dt>
+                <div key={section.id} className="grid min-w-0 grid-cols-1 gap-0.5 @[24rem]:grid-cols-[6.5rem_minmax(0,1fr)] @[24rem]:gap-3">
+                  <dt><SectionLabel className="@[24rem]:pt-0.5">{section.title}</SectionLabel></dt>
                   <dd className="min-w-0 space-y-0.5">
                     {section.lines.map((line, i) => <Line key={i} line={line} />)}
                   </dd>
                 </div>
               ))}
-            </dl>
+              </dl>
+            </div>
           )}
 
           {isPhone && (hidden > 0 || expanded) && (

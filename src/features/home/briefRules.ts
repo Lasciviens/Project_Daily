@@ -55,6 +55,8 @@ export interface BriefWeather {
   lowC?: number
   /** Hourly points still inside today, starting with the current hour ('HH:00'). */
   hours?: BriefWeatherHour[]
+  /** The next ~12 hourly points from the current hour, across midnight (the temperature outlook). */
+  ahead?: BriefWeatherHour[]
   tomorrow?: { label: string; minC: number; maxC: number; precipMm: number } | null
 }
 
@@ -158,27 +160,58 @@ export function rainOutlook(w: BriefWeather): BriefLine | null {
   return null
 }
 
+const span = (a: number, b: number) => (round(a) === round(b) ? deg(a) : `${round(a) === 0 ? 0 : round(a)}–${deg(b)}`)
+
+/**
+ * How the temperature goes from here, in one plain sentence: the next few
+ * hours as a range, then where it is heading and by when ("13–14° for the
+ * next few hours, then cooling to 9° by 23:00."). Null with fewer than four
+ * points ahead.
+ */
+export function temperatureOutlook(w: BriefWeather): string | null {
+  const ahead = w.ahead ?? []
+  if (ahead.length < 4) return null
+  const near = ahead.slice(1, 4)
+  const later = ahead.slice(4)
+  const nMin = Math.min(...near.map(h => h.temp))
+  const nMax = Math.max(...near.map(h => h.temp))
+  const first = `${span(nMin, nMax)} for the next few hours`
+  if (later.length === 0) return `${first[0].toUpperCase()}${first.slice(1)}.`
+  const low = later.reduce((a, h) => (h.temp < a.temp ? h : a), later[0])
+  const high = later.reduce((a, h) => (h.temp > a.temp ? h : a), later[0])
+  const end = later[later.length - 1]
+  let rest: string
+  if (round(low.temp) <= round(nMin) - 2) rest = `then cooling to ${deg(low.temp)} by ${low.time}`
+  else if (round(high.temp) >= round(nMax) + 2) rest = `then warming to ${deg(high.temp)} by ${high.time}`
+  else rest = `then about the same until ${end.time}`
+  return `${first[0].toUpperCase()}${first.slice(1)}, ${rest}.`
+}
+
 function daySection(i: BriefInput): BriefSection | null {
   const w = i.weather
   if (!w) return null
   const lines: BriefLine[] = []
-  const parts = [`${deg(w.tempC)}, ${w.label.toLowerCase()}`]
+  const parts = [`${deg(w.tempC)} now, ${w.label.toLowerCase()}`]
   const fl = feelsLike(w.tempC, w.windMs)
   if (fl != null && round(w.tempC) - round(fl) >= 2) parts.push(`feels like ${deg(fl)}`)
   if (w.windMs >= 4) parts.push(`wind ${round(w.windMs)} m/s${w.windDir && w.windDir !== '—' ? ` ${w.windDir}` : ''}`)
   lines.push({ text: parts.join(' · ') })
-  if (w.highC != null && w.lowC != null && round(w.highC) !== round(w.lowC) && i.hour < 20) {
+  const rain = rainOutlook(w)
+  const wet = rain && rain.tone === 'info' ? rain : null
+  const outlook = temperatureOutlook(w)
+  if (outlook) lines.push({ text: wet ? outlook : `${outlook.slice(0, -1)}, and it stays dry.` })
+  else if (w.highC != null && w.lowC != null && round(w.highC) !== round(w.lowC) && i.hour < 20) {
     lines.push({ text: `Rest of today ${deg(w.lowC)} to ${deg(w.highC)}.` })
   }
-  const rain = rainOutlook(w)
-  if (rain) lines.push(rain)
+  if (wet) lines.push(wet)
+  else if (!outlook && rain) lines.push(rain)
   if (w.tempC <= 0) lines.push({ text: 'Below freezing — watch for ice.', tone: 'warn' })
   if (w.windMs >= 10) lines.push({ text: `Strong wind, ${round(w.windMs)} m/s.`, tone: 'warn' })
   if (i.hour >= 18 && w.tomorrow) {
     const t = w.tomorrow
     const amount = `about ${round(t.precipMm)} mm`
-    const wet = t.precipMm < 1 ? '' : /rain|shower|sleet|drizzle|snow/i.test(t.label) ? ` (${amount})` : `, rain (${amount})`
-    lines.push({ text: `Tomorrow ${deg(t.minC)} to ${deg(t.maxC)}, ${t.label.toLowerCase()}${wet}.` })
+    const wetT = t.precipMm < 1 ? '' : /rain|shower|sleet|drizzle|snow/i.test(t.label) ? ` (${amount})` : `, rain (${amount})`
+    lines.push({ text: `Tomorrow ${deg(t.minC)} to ${deg(t.maxC)}, ${t.label.toLowerCase()}${wetT}.` })
   }
   return { id: 'day', title: 'Weather', lines }
 }

@@ -95,4 +95,44 @@ eq(core.bookExtension("Book.pdf"), "pdf", "pdf")
 eq(core.bookExtension("noext"), "epub", "no extension -> epub")
 eq(core.stripExtension("Rowling - Stone.kepub.epub"), "Rowling - Stone", "strip kepub")
 eq(core.stripExtension("a.b.epub"), "a.b", "strip only the last")
+-- lists (plugin 1.3): AutoWarmth's times and warmth, the margins
+local N = core.NULL
+local times = { 0.0, 5.5, 6.0, 6.5, 7.0, 13.0, 21.5, 22.0, 22.5, 23.0, 24.0 }
+eq(core.settingAllowed("autowarmth_scheduler_times", times), true, "default times allowed")
+eq(core.settingAllowed("autowarmth_scheduler_times", { N, 5.5, 6, 6.5, 7, 13, 21.5, 22, 22.5, 23, N }), true, "times with holes allowed")
+eq(core.settingAllowed("autowarmth_scheduler_times", { 0, 5.5, 6, 6.5, 7, 13, 21.5, 22, 22.5, 23 }), false, "ten times refused")
+eq(core.settingAllowed("autowarmth_scheduler_times", { 0, 7, 6, 6.5, 7, 13, 21.5, 22, 22.5, 23, 24 }), false, "out of order refused")
+eq(core.settingAllowed("autowarmth_scheduler_times", { 0, 5.5, 6, 6.5, 7, 13, 21.5, 22, 22.5, 23, 30 }), false, "hour past 24:59 refused")
+eq(core.settingAllowed("autowarmth_scheduler_times", { N, N, N, N, N, N, N, N, N, N, N }), false, "no time at all refused")
+eq(core.settingAllowed("autowarmth_scheduler_times", "6:30"), false, "a string is not a list")
+eq(core.settingAllowed("autowarmth_scheduler_times", { 0, 5.5, 6, 6.5, 7, 13, 21.5, 22, 22.5, 23, 24, extra = 1 }), false, "extra keys refused")
+eq(core.settingAllowed("autowarmth_scheduler_times", N), true, "reset allowed")
+local warm = { 90, 90, 80, 60, 20, 20, 20, 60, 80, 90, 90 }
+eq(core.settingAllowed("autowarmth_warmth", warm), true, "default warmth allowed")
+eq(core.settingAllowed("autowarmth_warmth", { 1090, 90, 80, 60, 20, 20, 20, 60, 80, 90, 1090 }), true, "night mode +1000 allowed")
+eq(core.settingAllowed("autowarmth_warmth", { 500, 90, 80, 60, 20, 20, 20, 60, 80, 90, 500 }), false, "between 100 and 1000 refused")
+eq(core.settingAllowed("autowarmth_warmth", { 90, 90, 80, 60, 20, 20, 20, 60, 80, 90, 80 }), false, "not mirrored refused")
+eq(core.settingAllowed("autowarmth_warmth", { 90, 90, 80, 60, 20, N, 20, 60, 80, 90, 90 }), false, "warmth has no holes")
+eq(core.settingAllowed("autowarmth_warmth", { 90.5, 90, 80, 60, 20, 20, 20, 60, 80, 90, 90.5 }), false, "warmth is whole")
+eq(core.settingAllowed("copt_h_page_margins", { 15, 15 }), true, "margins")
+eq(core.settingAllowed("copt_h_page_margins", { 15, 150 }), false, "margin over 140 refused")
+eq(core.settingAllowed("copt_word_spacing", { 100, 90 }), true, "word spacing")
+eq(core.settingAllowed("copt_word_spacing", { 100, 20 }), false, "reduction under 25 refused (per position)")
+local stored = core.listValue({ N, 5.5, 6, 6.5, 7, 13, 21.5, 22, 22.5, 23, N }, core.listSpec("autowarmth_scheduler_times"))
+eq(stored[1], nil, "null becomes a hole"); eq(stored[2], 5.5, "value kept"); eq(stored[11], nil, "last hole")
+local rep = core.listReport(stored, core.listSpec("autowarmth_scheduler_times"), "NULL")
+eq(#rep, 11, "report has every item"); eq(rep[1], "NULL", "hole reported as null"); eq(rep[5], 7, "time reported")
+eq(core.listReport("x", core.listSpec("autowarmth_scheduler_times"), "NULL"), nil, "not a table: nothing reported")
+eq(core.listSpec("cre_font"), nil, "a plain key has no list spec")
+eq(core.settingAllowed("cre_font", "Noto Sans"), true, "font name allowed")
+-- fonts
+local fr = core.fontReport({ "Noto Serif", "FreeSans", "Noto Serif", "" }, {
+  ["./fonts/noto/NotoSans-Bold.ttf"] = { { name = "Noto Sans", bold = true } },
+  ["./fonts/noto/NotoSans-Regular.ttf"] = { { name = "Noto Sans" } },
+  ["/mnt/onboard/fonts/broken.ttf"] = {},
+})
+eq(#fr.faces, 2, "faces deduplicated, empty dropped"); eq(fr.faces[1], "FreeSans", "faces sorted")
+eq(#fr.files, 2, "files without info dropped"); eq(fr.files[1].file, "./fonts/noto/NotoSans-Bold.ttf", "files sorted by path")
+eq(fr.files[1].bold, true, "bold kept"); eq(fr.files[2].italic, false, "italic false")
+eq(#core.fontReport({ "a", "b", "c" }, {}, 2).faces, 2, "faces capped")
 print(("test-lbcore: %d checks passed"):format(n))

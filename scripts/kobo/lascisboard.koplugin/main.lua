@@ -44,7 +44,7 @@ local core = require("lbcore")
 local control = require("lbcontrol")
 local extras = require("lbextras")
 
-local VERSION = "1.2.0"
+local VERSION = "1.3.0"
 local DEFAULT_SERVER = "https://hsaedwwqpcjizeozjbch.supabase.co/functions/v1/kobo-sync"
 local NICKEL_DB = "/mnt/onboard/.kobo/KoboReader.sqlite"
 local DEFAULT_INBOX = "/mnt/onboard/Send to Kobo"
@@ -597,7 +597,7 @@ function LascisBoard:afterSync(res, light)
             config_rev = config_rev,
             config_result = config_result,
             report = { settings = rapidjson.object(control.settingsReport(keys)), menus = rapidjson.object(menus),
-                plugin_version = VERSION, at = os.time() },
+                fonts = control.fontsReport(), plugin_version = VERSION, at = os.time() },
         })
         if ok then
             self:save("last_report", os.time())

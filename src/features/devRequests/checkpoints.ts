@@ -1,7 +1,8 @@
-// Pure: checkpoints in a request's description — "- [ ] text" / "- [x] text"
-// lines the user adds at any time and ticks once that part is done. They are
-// plain text in `description` (no schema change); the composer and the card
-// show them as checkboxes, the prompt builder as numbered sub-points.
+// Pure: older checkpoints in a request's description — "- [ ] text" /
+// "- [x] text" lines from before points were automatic. They still read: each
+// is a point (points.ts) and a ticked one counts as Fixed; the composer shows
+// them as paragraphs of the text, and the first edit or review folds them in
+// (devRequestMarks.foldCheckpoints). Nothing writes new ones.
 // Import-free so scripts/verify-dev-request-context.cjs can require it.
 
 export interface Checkpoint {

@@ -385,5 +385,24 @@ console.log('\nmuscleVolumeModel')
   check('daysAgoText across the October DST change', V.daysAgoText('2026-10-24', '2026-10-26') === '2 days ago')
 }
 
+console.log('\nplanTwins')
+{
+  const T = require('../src/features/training/plan/planTwins')
+  // 06.10.2026 is a Tuesday (getDay 2).
+  const tmpl = [{ id: 't1', title: 'Lower A (Quadriceps & Kalf)', start_time: '16:45:00', end_time: '17:45:00', days_of_week: [2], effective_from: '2026-09-01' }]
+  const twin = T.findPlanTwin({ date: '2026-10-06', title: 'Lower A (Quadriceps & Kalf)', blocks: [], templates: tmpl })
+  check('a one-off on the weekly template day is its twin', twin && twin.kind === 'recurring' && twin.startTime === '16:45', JSON.stringify(twin))
+  check('the message names the weekly plan and time', T.planTwinMessage(twin) === '⟳ Lower A (Quadriceps & Kalf) is already on your weekly plan that day at 16:45.', T.planTwinMessage(twin))
+  check('another weekday is not a twin', T.findPlanTwin({ date: '2026-10-07', title: 'Lower A (Quadriceps & Kalf)', blocks: [], templates: tmpl }) === null)
+  check('before the template starts is not a twin', T.findPlanTwin({ date: '2026-08-25', title: 'Lower A (Quadriceps & Kalf)', blocks: [], templates: tmpl }) === null)
+  check('a different session the same day is not a twin', T.findPlanTwin({ date: '2026-10-06', title: 'Upper B', blocks: [], templates: tmpl }) === null)
+  const blocks = [{ id: 'b1', title: 'Leg day', date: '2026-10-06', start_time: '07:00:00', category: 'training', source_type: 'training_session', source_id: 'r1' }]
+  const byRoutine = T.findPlanTwin({ date: '2026-10-06', title: 'Lower A', routineId: 'r1', blocks, templates: [] })
+  check('the same routine planned once already is a twin, whatever its name', byRoutine && byRoutine.kind === 'block' && byRoutine.startTime === '07:00', JSON.stringify(byRoutine))
+  check('the block being edited is never its own twin', T.findPlanTwin({ date: '2026-10-06', title: 'Leg day', routineId: 'r1', excludeBlockId: 'b1', blocks, templates: [] }) === null)
+  check('a non-training block with the same name is not a twin', T.findPlanTwin({ date: '2026-10-06', title: 'Leg day', blocks: [{ ...blocks[0], category: 'work', source_type: null }], templates: [] }) === null)
+  check('names match ignoring case and punctuation', !!T.findPlanTwin({ date: '2026-10-06', title: 'lower a  quadriceps & kalf', blocks: [], templates: tmpl }))
+}
+
 console.log(`\n${passed} passed, ${failed} failed`)
 process.exit(failed ? 1 : 0)

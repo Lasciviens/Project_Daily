@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Dumbbell, ChevronRight } from 'lucide-react'
+import { Dumbbell, ChevronRight, Flame } from 'lucide-react'
 import { useEntityModal } from '../../../shared/modals'
 import { Skeleton, EmptyState, Truncate, AnimatedNumber } from '../../../shared/ui'
 import { formatDurationSeconds } from '../../../shared/utils/formatDuration'
@@ -8,7 +8,8 @@ import { useNextTrainingSession, useTodayStr } from '../../training/hooks/useTra
 import { shiftDateStr } from '../../../shared/utils/dateUtils'
 import { useWidgetState } from '../hooks/useWidgetState'
 import { WidgetShell } from './WidgetShell'
-import { GlanceTile } from './GlanceTile'
+import { GlanceCarousel, type GlanceScreen } from './GlanceCarousel'
+import { useAthleteProfile } from '../../training/hooks/useAthleteProfile'
 import { TileDetail } from './TileDetail'
 import { useTilePopup } from '../hooks/useTilePopup'
 import { formatWeekdayDate } from '../../../shared/utils/dateFormat'
@@ -86,20 +87,61 @@ export function TrainingTile() {
   const stats = useWeekTrainingStats()
   const streak = useTrainingWeekStreak()
   const { data: next } = useNextTrainingSession()
+  const { data: profile } = useAthleteProfile()
   const today = useTodayStr()
   const popup = useTilePopup()
   const [open, setOpen] = useState(false)
+  const target = profile?.training_days_per_week ?? null
+  const w = stats.lastWorkout
+  const workoutSeconds = w?.start_time && w.end_time ? (new Date(w.end_time).getTime() - new Date(w.start_time).getTime()) / 1000 : null
+
+  const screens: GlanceScreen[] = [
+    {
+      key: 'next',
+      name: 'Next',
+      body: (
+        <div className="min-w-0 space-y-1">
+          <p className="flex items-center gap-1 text-ui font-semibold tabular-nums text-fg">
+            <Flame aria-hidden className="h-4 w-4 shrink-0 text-warn" />
+            {streak.weeks > 0 ? `${streak.weeks}${streak.capped ? '+' : ''}-week streak` : 'No streak yet'}
+          </p>
+          <Truncate className="text-meta text-fg-2">
+            {next ? `Next: ${next.title} · ${nextWhen(next.date, next.startTime, today)}` : stats.hasData ? 'No session planned' : 'Nothing synced yet'}
+          </Truncate>
+        </div>
+      ),
+    },
+    {
+      key: 'week',
+      name: 'This week',
+      value: <span className="flex items-baseline gap-1"><AnimatedNumber value={stats.sessions} />{target ? <span className="text-meta font-medium text-fg-muted">of {target} sessions</span> : <span className="text-meta font-medium text-fg-muted">sessions</span>}</span>,
+      hint: stats.minutes > 0 ? `${stats.minutes} min${stats.km > 0 ? ` · ${stats.km.toFixed(1)} km` : ''}` : 'Nothing logged yet this week',
+    },
+  ]
+  if (w) {
+    screens.push({
+      key: 'last',
+      name: 'Last workout',
+      body: (
+        <div className="min-w-0 space-y-1">
+          <Truncate className="text-ui font-semibold text-fg">{w.title}</Truncate>
+          <Truncate className="text-meta tabular-nums text-fg-muted">
+            {stats.lastWorkoutAt ? dayLabel(stats.lastWorkoutAt) : ''}{workoutSeconds ? ` · ${formatDurationSeconds(workoutSeconds)}` : ''}
+          </Truncate>
+        </div>
+      ),
+    })
+  }
+
   return (
     <>
-      <GlanceTile
+      <GlanceCarousel
+        id="training"
         label="Training"
         icon={<Dumbbell />}
         {...(popup ? { onClick: () => setOpen(true) } : { to: '/training' })}
         loading={stats.isLoading}
-        value={<><AnimatedNumber value={stats.sessions} /><span className="ml-1 text-meta font-medium text-fg-muted">this week{streak.weeks > 1 ? ` · ${streak.weeks}${streak.capped ? '+' : ''} wk streak` : ''}</span></>}
-        hint={next
-          ? <span className="font-medium text-fg">Next: {next.title} · {nextWhen(next.date, next.startTime, today)}</span>
-          : stats.hasData ? 'No session planned' : 'Nothing synced yet'}
+        screens={screens}
       />
       {popup && (
         <TileDetail open={open} onClose={() => setOpen(false)} title="Training" to="/training" openLabel="Open Training">

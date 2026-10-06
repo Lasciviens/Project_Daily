@@ -55,7 +55,7 @@ export function useSaveKoboConfig() {
  * One setting: a value, or null for "back to KOReader's default". A reset is
  * stored as null (never dropped), so the Kobo is told to delete its own value.
  */
-export function settingPatch(config: KoboDeviceConfig | null | undefined, key: string, value: boolean | number | string | null): ConfigPatch {
+export function settingPatch(config: KoboDeviceConfig | null | undefined, key: string, value: KoboDeviceConfig['settings'][string]): ConfigPatch {
   return { settings: { ...(config?.settings ?? {}), [key]: value } }
 }
 

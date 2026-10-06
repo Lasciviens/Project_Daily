@@ -939,6 +939,99 @@ function lastActivitiesChange(prev: unknown, next: unknown): { changed: boolean;
   return { changed, reset }
 }
 
+// ── followRules.ts ──
+// What's new in a follow (media_follows → media_follow_events): the one rule
+// for what counts as a NEW FILM. Pure and import-free: trakt-api uses it when
+// it writes events (copied in by scripts/sync-trakt-shared.mjs) and the app
+// uses it when it shows them, so rows written under older rules stop showing
+// at once. Verified by scripts/verify-media-follows.cjs.
+//
+// Root cause it fixes: "new" used to mean "not seen in TMDB's list before".
+// TMDB lists change for old films all the time — a person gets a late credit
+// (an uncredited cameo in Avengers: Endgame), a keyword or studio is tagged
+// onto an old film, a studio's "newest 100" window shifts — so long-released
+// films were reported as new. Now a title is new only by its OWN date, and
+// only feature films count (no documentaries, TV movies, direct-to-video
+// compilations, shorts, adult titles, cameos as oneself or archive footage).
+
+/** TMDB movie genres that are not feature films for this feed: Documentary, TV Movie. */
+const FOLLOW_NON_FEATURE_GENRES = [99, 10770]
+/** A film released at most this many days before the check (or before the event was written) is still "new". */
+const FOLLOW_NEW_WINDOW_DAYS = 30
+/** TMDB runtimes below this are shorts. */
+const FOLLOW_SHORT_MINUTES = 40
+
+/** The fields TMDB returns on a movie in collection parts, /discover/movie and /person/{id}/movie_credits. */
+interface FollowCandidate {
+  id?: number
+  adult?: boolean | null
+  video?: boolean | null
+  media_type?: string | null
+  genre_ids?: number[] | null
+  release_date?: string | null
+  poster_path?: string | null
+  character?: string | null
+  job?: string | null
+}
+
+// A cast credit that isn't a role in the film: playing oneself, archive
+// footage, an uncredited cameo, or narrating.
+const FOLLOW_NOT_A_ROLE = [
+  /^\s*(self|himself|herself|themselves|themself)\b/i,
+  /\barchive(d)?\s+footage\b/i,
+  /\(uncredited\)/i,
+  /^\s*narrator\b/i,
+]
+
+/** Why a candidate is not a feature film for this follow kind, or null when it is one. */
+function followRejectReason(r: FollowCandidate, kind: string): string | null {
+  if (r.media_type && r.media_type !== 'movie') return 'not_movie'
+  if (r.adult) return 'adult'
+  if (r.video) return 'video'
+  if ((r.genre_ids ?? []).some(g => FOLLOW_NON_FEATURE_GENRES.includes(g))) return 'non_feature_genre'
+  if (!r.release_date && !r.poster_path) return 'stub'
+  if (kind === 'director' && r.job !== 'Director') return 'not_director'
+  if (kind === 'actor' && FOLLOW_NOT_A_ROLE.some(re => re.test(String(r.character ?? '')))) return 'not_a_role'
+  return null
+}
+
+const isFollowFeature = (r: FollowCandidate, kind: string) => followRejectReason(r, kind) === null
+
+const FOLLOW_DAY_MS = 864e5
+const followDayOf = (iso: string) => iso.slice(0, 10)
+function followMinusDays(isoDay: string, days: number): string {
+  return new Date(Date.parse(`${isoDay.slice(0, 10)}T00:00:00Z`) - days * FOLLOW_DAY_MS).toISOString().slice(0, 10)
+}
+
+/**
+ * True when a film with this release date is new as of `asOf` (an ISO date or
+ * timestamp): not out yet, out within the last FOLLOW_NEW_WINDOW_DAYS days, or
+ * announced without a date. A film released earlier is never new, however late
+ * TMDB lists it.
+ */
+function isNewByDate(release: string | null | undefined, asOf: string): boolean {
+  if (!release) return true
+  return release.slice(0, 10) >= followMinusDays(followDayOf(asOf), FOLLOW_NEW_WINDOW_DAYS)
+}
+
+/** Details (/movie/{id}) say it isn't a coming feature film: a short, or cancelled. Missing values never reject. */
+function followDetailsReject(d: { runtime?: number | null; status?: string | null } | null | undefined): string | null {
+  if (!d) return null
+  if (typeof d.runtime === 'number' && d.runtime > 0 && d.runtime < FOLLOW_SHORT_MINUTES) return 'short'
+  if (String(d.status ?? '').toLowerCase() === 'canceled') return 'canceled'
+  return null
+}
+
+/** Only real trailers: TMDB's 'Trailer' type on YouTube, not marked unofficial (teasers, clips, featurettes, bloopers… are left out). */
+function isFollowTrailer(v: { site?: string | null; type?: string | null; official?: boolean | null; key?: string | null }): boolean {
+  return v.site === 'YouTube' && v.type === 'Trailer' && v.official !== false && !!v.key
+}
+
+/** A stored event the app still shows: its title was new (or upcoming) on the day the event was written. */
+function isShowableFollowEvent(e: { release_date: string | null; created_at: string }): boolean {
+  return isNewByDate(e.release_date, e.created_at)
+}
+
 // </trakt-shared>
 
 // ── Library side (service role, one user, writes marked x-trakt-sync) ───────
@@ -1631,86 +1724,103 @@ async function tmdbQ(path: string, params: Record<string, string> = {}): Promise
 
 interface FollowTitle { id: number; title: string; poster: string | null; release: string | null }
 
-// The same rules the app's self-filling lists use (useSmartLists.ts): a
-// studio or keyword follow leaves out documentaries and TV movies (making-ofs,
-// "Encore" specials), a person follow cameos as oneself, and every follow stubs
-// with neither a date nor a poster — before, those showed in What's new as
-// "new titles". checkFollows also clears earlier events these rules now drop.
-const EXTRAS = [99, 10770] // Documentary, TV Movie
-const SELF = /^(self|himself|herself|themselves)\b/i
-const isExtra = (r: AnyRec) => ((r.genre_ids ?? []) as number[]).some(g => EXTRAS.includes(g))
-const isStub = (r: AnyRec) => !r.release_date && !r.poster_path
-
-async function followTitles(kind: string, id: number): Promise<FollowTitle[]> {
+// What counts as a new film is decided by followRules.ts (generated into the
+// <trakt-shared> region): feature films only, and new by their OWN release
+// date — never because TMDB listed an old film late (a late cameo credit, a
+// keyword tagged onto an old film, a studio window shifting). That was the
+// root cause of long-released films (Avengers: Endgame) showing as "new".
+async function followTitles(kind: string, id: number): Promise<{ titles: FollowTitle[]; rawIds: number[] }> {
   const map = (r: AnyRec): FollowTitle => ({ id: Number(r.id), title: String(r.title ?? r.name ?? ''), poster: (r.poster_path as string) ?? null, release: (r.release_date as string) || null })
-  if (kind === 'collection') return (((await tmdbQ(`/collection/${id}`)).parts ?? []) as AnyRec[]).map(map)
-  if (kind === 'company' || kind === 'keyword') {
+  let rows: AnyRec[]
+  if (kind === 'collection') rows = ((await tmdbQ(`/collection/${id}`)).parts ?? []) as AnyRec[]
+  else if (kind === 'company' || kind === 'keyword') {
     const by = kind === 'company' ? 'with_companies' : 'with_keywords'
     // Newest first, five pages (100 films) — enough to catch every new title
     // and trailer; the smart list itself reads the full list client-side.
     const pages = await Promise.all([1, 2, 3, 4, 5].map(page => tmdbQ('/discover/movie', {
-      [by]: String(id), sort_by: 'primary_release_date.desc', page: String(page), without_genres: EXTRAS.join(','),
+      [by]: String(id), sort_by: 'primary_release_date.desc', page: String(page),
+      without_genres: FOLLOW_NON_FEATURE_GENRES.join(','), include_adult: 'false', include_video: 'false',
       'primary_release_date.lte': new Date(Date.now() + 730 * 864e5).toISOString().slice(0, 10),
     })))
-    const seen = new Map<number, FollowTitle>()
-    for (const r of pages.flatMap(p => (p.results ?? []) as AnyRec[])) if (!isStub(r) && !isExtra(r)) seen.set(Number(r.id), map(r))
-    return [...seen.values()]
+    rows = pages.flatMap(p => (p.results ?? []) as AnyRec[])
+  } else {
+    const credits = await tmdbQ(`/person/${id}/movie_credits`)
+    rows = (kind === 'director' ? credits.crew ?? [] : credits.cast ?? []) as AnyRec[]
   }
-  const credits = await tmdbQ(`/person/${id}/movie_credits`)
-  const rows = kind === 'director'
-    ? ((credits.crew ?? []) as AnyRec[]).filter(c => c.job === 'Director')
-    : ((credits.cast ?? []) as AnyRec[]).filter(c => !SELF.test(String(c.character ?? '')))
   const seen = new Map<number, FollowTitle>()
-  for (const r of rows) if (!isStub(r)) seen.set(Number(r.id), map(r))
-  return [...seen.values()]
+  for (const r of rows) if (isFollowFeature(r as FollowCandidate, kind)) seen.set(Number(r.id), map(r))
+  return { titles: [...seen.values()], rawIds: [...new Set(rows.map(r => Number(r.id)).filter(Number.isFinite))] }
 }
 
 async function trailerKeys(movieId: number): Promise<string[]> {
   const v = await tmdbQ(`/movie/${movieId}/videos`)
-  return ((v.results ?? []) as AnyRec[]).filter(x => x.site === 'YouTube' && x.type === 'Trailer').map(x => String(x.key))
+  return ((v.results ?? []) as AnyRec[]).filter(x => isFollowTrailer(x as { site?: string; type?: string; official?: boolean; key?: string })).map(x => String(x.key))
 }
 
 async function checkFollows(db: Db, userId: string, token: string | null, force: boolean) {
   if (!TMDB_KEY()) return { skipped: 'no_tmdb_key' }
   const { data, error } = await db.from('media_follows').select('*').eq('user_id', userId)
   if (error) { if (['42P01', 'PGRST205'].includes(String(error.code))) return { skipped: 'no_table' }; throw error }
-  const due = ((data ?? []) as AnyRec[]).filter(f => force || !f.last_checked_at || Date.now() - Date.parse(String(f.last_checked_at)) > 20 * 3600_000)
-  const out = { checked: 0, newTitles: 0, trailers: 0 }
-  const recent = new Date(Date.now() - 60 * 864e5).toISOString().slice(0, 10)
+  const due = ((data ?? []) as AnyRec[])
+    .filter(f => force || !f.last_checked_at || Date.now() - Date.parse(String(f.last_checked_at)) > 20 * 3600_000)
+    // Never-checked follows first, so a new follow always gets its baseline.
+    .sort((x, y) => String(x.last_checked_at ?? '').localeCompare(String(y.last_checked_at ?? '')))
+  const out = { checked: 0, newTitles: 0, trailers: 0, cleared: 0 }
+  const today = new Date().toISOString().slice(0, 10)
   for (const f of due.slice(0, 15)) {
-    const titles = await followTitles(String(f.kind), Number(f.tmdb_id))
+    const { titles, rawIds } = await followTitles(String(f.kind), Number(f.tmdb_id))
     const known = new Set<number>((f.known_ids as number[]) ?? [])
     const baseline = known.size === 0 && !f.last_checked_at
+    // Films TMDB lists for the first time. They go onto the linked list
+    // (it holds the follow's whole filmography), but only the ones new by
+    // their own date — and not a short or a cancelled film — become events.
     const fresh = baseline ? [] : titles.filter(t => !known.has(t.id))
+    const events: AnyRec[] = []
+    for (const t of fresh.filter(t => isNewByDate(t.release, today)).slice(0, 20)) {
+      const d = await tmdbQ(`/movie/${t.id}`).catch(() => null)
+      if (followDetailsReject(d as { runtime?: number; status?: string } | null)) continue
+      events.push({ user_id: userId, follow_id: f.id, kind: 'new_title', tmdb_id: t.id, title: t.title, poster_path: t.poster, release_date: t.release })
+    }
+    const newTitleCount = events.length
     const keysBefore = new Set<string>((f.trailer_keys as string[]) ?? [])
-    const watch = titles.filter(t => t.release && t.release >= recent).slice(0, 8)
-    const events: AnyRec[] = fresh.map(t => ({ user_id: userId, follow_id: f.id, kind: 'new_title', tmdb_id: t.id, title: t.title, poster_path: t.poster, release_date: t.release }))
+    // Trailers only for films that are themselves new: coming, or out in the last 30 days.
+    const watch = titles.filter(t => isNewByDate(t.release, today))
+      .sort((x, y) => String(y.release ?? '9999').localeCompare(String(x.release ?? '9999'))).slice(0, 8)
     const keys = new Set(keysBefore)
     for (const t of watch) {
       for (const k of await trailerKeys(t.id)) {
         if (keys.has(k)) continue
         keys.add(k)
-        if (!baseline && !keysBefore.has(k)) events.push({ user_id: userId, follow_id: f.id, kind: 'trailer', tmdb_id: t.id, title: t.title, poster_path: t.poster, release_date: t.release, video_key: k })
+        if (!baseline) events.push({ user_id: userId, follow_id: f.id, kind: 'trailer', tmdb_id: t.id, title: t.title, poster_path: t.poster, release_date: t.release, video_key: k })
       }
     }
     if (events.length) { const { error: e } = await db.from('media_follow_events').insert(events); if (e) throw e }
-    // "New title" events the current rules no longer list (a documentary, a
-    // cameo, a stub reported before the rules) leave What's new.
-    if (!baseline) {
-      const keep = titles.map(t => t.id)
-      let del = db.from('media_follow_events').delete().eq('user_id', userId).eq('follow_id', f.id).eq('kind', 'new_title')
-      if (keep.length) del = del.not('tmdb_id', 'in', `(${keep.join(',')})`)
-      const { error: de } = await del
-      if (de) throw de
+    // Earlier events the rule now rejects leave What's new: a title no longer
+    // listed as a feature film (a documentary, a cameo, a stub), or one that
+    // was not new on the day it was reported. Skipped when TMDB listed nothing,
+    // so a bad answer never empties the feed.
+    if (!baseline && titles.length) {
+      const keep = new Set(titles.map(t => t.id))
+      const { data: old, error: oe } = await db.from('media_follow_events').select('id, tmdb_id, release_date, created_at').eq('user_id', userId).eq('follow_id', f.id)
+      if (oe) throw oe
+      const drop = ((old ?? []) as AnyRec[])
+        .filter(e => !keep.has(Number(e.tmdb_id)) || !isShowableFollowEvent({ release_date: (e.release_date as string) ?? null, created_at: String(e.created_at) }))
+        .map(e => String(e.id))
+      if (drop.length) {
+        const { error: de } = await db.from('media_follow_events').delete().in('id', drop)
+        if (de) throw de
+        out.cleared += drop.length
+      }
     }
     if (fresh.length && f.trakt_list_id && token) {
       await post(`/users/me/lists/${Number(f.trakt_list_id)}/items`, token, { movies: fresh.map(t => ({ ids: { tmdb: t.id } })) }).catch(() => null)
     }
     const { error: ue } = await db.from('media_follows').update({
-      known_ids: [...new Set([...known, ...titles.map(t => t.id)])], trailer_keys: [...keys], last_checked_at: new Date().toISOString(),
+      // Every id TMDB listed, kept or not, so a film reclassified later is never "new".
+      known_ids: [...new Set([...known, ...rawIds])], trailer_keys: [...keys], last_checked_at: new Date().toISOString(),
     }).eq('id', f.id)
     if (ue) throw ue
-    out.checked++; out.newTitles += fresh.length; out.trailers += events.length - fresh.length
+    out.checked++; out.newTitles += newTitleCount; out.trailers += events.length - newTitleCount
   }
   return out
 }

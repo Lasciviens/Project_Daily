@@ -3,20 +3,21 @@ import { RotateCcw } from 'lucide-react'
 import { IconButton, TonePill, cx } from '../../../../shared/ui'
 import { HelpTip } from '../../../../shared/components/HelpTip'
 import type { SettingDef } from '../../koboSettingsCatalogue'
+import { baseUnit } from '../../kobo/durations'
+import type { FontReport } from '../../kobo/fontChoices'
 import { EFFECT_LABEL, formatValue, type SettingView, type Value } from '../../kobo/settingsView'
+import { DurationInput } from './DurationInput'
+import { FontPicker } from './FontPicker'
+import { ListEditor } from './ListEditors'
+import { Switch } from './Switch'
 
-/** An on/off control (no shared switch exists yet). */
-export function Switch({ on, onChange, label, disabled }: { on: boolean; onChange: (v: boolean) => void; label: string; disabled?: boolean }) {
-  return (
-    <button type="button" role="switch" aria-checked={on} aria-label={label} disabled={disabled} onClick={() => onChange(!on)}
-      className="press-feedback flex min-h-[44px] shrink-0 items-center px-1 disabled:opacity-50">
-      <span className={cx('relative inline-block h-6 w-11 rounded-full border transition-colors',
-        on ? 'border-accent-600 bg-accent-500' : 'border-line-strong bg-surface-2')}>
-        <span className={cx('absolute top-0.5 h-[18px] w-[18px] rounded-full bg-surface shadow transition-[left]', on ? 'left-[22px]' : 'left-0.5')} />
-      </span>
-    </button>
-  )
+/** What a control needs to know about the other settings (sub-settings, the Kobo's fonts). */
+export interface SettingContext {
+  valueOf: (key: string) => Value | undefined
+  fonts: FontReport | null
 }
+
+export { Switch }
 
 /** What the "?" shows: the plain explanation, an example, where it lives on the Kobo and its default. */
 export function SettingHelp({ def }: { def: SettingDef }) {
@@ -39,33 +40,54 @@ export function SettingHelp({ def }: { def: SettingDef }) {
 }
 
 /** One KOReader setting: its name and "?", the control, and what the Kobo has now. */
-export function SettingControl({ def, view, onChange, disabled }: {
+export function SettingControl({ def, view, onChange, disabled, ctx, note }: {
   def: SettingDef
   view: SettingView
   /** A value, or null for "back to KOReader's default" (the Kobo then deletes the key). */
   onChange: (v: Value) => void
   disabled?: boolean
+  ctx: SettingContext
+  /** Why the setting does not apply right now (shown in search results). */
+  note?: string | null
 }) {
   const inline = def.type === 'bool'
+  const block = def.type === 'list' && def.list?.editor !== 'pair'
+  const reset = view.changed && (
+    <IconButton label={`Reset “${def.label}” to the default`} disabled={disabled} onClick={() => onChange(null)}><RotateCcw /></IconButton>
+  )
   return (
     <div className="flex flex-col gap-1.5 py-2.5 @container">
-      <div className={cx('flex gap-2', inline ? 'items-center' : 'flex-col @[30rem]:flex-row @[30rem]:items-center')}>
+      <div className={cx('flex gap-2', inline || block ? 'items-center' : 'flex-col @[30rem]:flex-row @[30rem]:items-center')}>
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <p className="min-w-0 text-body font-medium text-fg">{def.label}</p>
           <HelpTip label={`About “${def.label}”`}><SettingHelp def={def} /></HelpTip>
         </div>
         <div className="flex shrink-0 items-center gap-1">
-          {def.type === 'bool'
-            ? <Switch on={view.value === true} label={def.label} disabled={disabled} onChange={v => onChange(v)} />
-            : <ValueInput def={def} value={view.value} disabled={disabled} onChange={onChange} />}
-          {view.changed && (
-            <IconButton label={`Reset “${def.label}” to the default`} disabled={disabled} onClick={() => onChange(null)}><RotateCcw /></IconButton>
-          )}
+          {!block && <Control def={def} view={view} disabled={disabled} onChange={onChange} ctx={ctx} />}
+          {reset}
         </div>
       </div>
+      {block && <Control def={def} view={view} disabled={disabled} onChange={onChange} ctx={ctx} />}
+      {note && <p className="text-micro text-fg-muted">{note}</p>}
       <Status view={view} />
     </div>
   )
+}
+
+function Control({ def, view, onChange, disabled, ctx }: { def: SettingDef; view: SettingView; onChange: (v: Value) => void; disabled?: boolean; ctx: SettingContext }) {
+  const v = view.value
+  if (def.type === 'bool') return <Switch on={v === true} label={def.label} disabled={disabled} onChange={x => onChange(x)} />
+  if (def.type === 'list') {
+    const list = Array.isArray(v) ? v : Array.isArray(def.absent) ? def.absent : []
+    return <ListEditor def={def} value={list} valueOf={ctx.valueOf} disabled={disabled} onChange={onChange} />
+  }
+  if (def.font) {
+    // Not set anywhere = KOReader's own default: the picker shows "Default".
+    const current = typeof v === 'string' && (view.changed || v !== def.absent) ? v : null
+    return <FontPicker def={def} value={current} fonts={ctx.fonts} disabled={disabled} onChange={onChange} />
+  }
+  if (baseUnit(def)) return <DurationInput def={def} value={typeof v === 'number' ? v : null} disabled={disabled} onChange={onChange} />
+  return <ValueInput def={def} value={v} disabled={disabled} onChange={onChange} />
 }
 
 /** Only what adds something: your change, and the Kobo's value while it still differs. */
@@ -99,30 +121,27 @@ function ValueInput({ def, value, onChange, disabled }: { def: SettingDef; value
   return <TextInput def={def} value={typeof value === 'string' ? value : ''} disabled={disabled} onChange={onChange} />
 }
 
-/** Seconds are typed in minutes when the setting moves in whole minutes. */
+/** A plain number with its unit and range. */
 function NumberInput({ def, value, onChange, disabled }: { def: SettingDef; value: number | null; onChange: (v: number) => void; disabled?: boolean }) {
-  const minutes = def.unit === 'seconds' && (def.step ?? 1) % 60 === 0
-  const shown = value == null ? '' : String(minutes ? value / 60 : value)
   const [draft, setDraft] = useState<string | null>(null)
   const commit = () => {
     if (draft === null) return
     const n = Number(draft.replace(',', '.'))
     setDraft(null)
     if (!draft.trim() || !Number.isFinite(n)) return
-    let v = minutes ? Math.round(n * 60) : def.type === 'int' ? Math.round(n) : n
+    let v = def.type === 'int' ? Math.round(n) : n
     if (def.min !== undefined) v = Math.max(def.min, v)
     if (def.max !== undefined) v = Math.min(def.max, v)
     if (v !== value) onChange(v)
   }
-  const unit = minutes ? 'min' : def.unit === 'seconds' ? 's' : def.unit ?? ''
-  const range = def.min !== undefined && def.max !== undefined ? (minutes ? `${def.min / 60}–${def.max / 60}` : `${def.min}–${def.max}`) : null
+  const range = def.min !== undefined && def.max !== undefined ? `${def.min}–${def.max}` : null
   return (
     <label className="flex items-center gap-2">
-      <input inputMode="decimal" className="input min-h-[44px] w-24 text-right tabular-nums" value={draft ?? shown} disabled={disabled} aria-label={def.label}
-        placeholder={typeof def.absent === 'number' ? String(minutes ? def.absent / 60 : def.absent) : undefined}
+      <input inputMode="decimal" className="input min-h-[44px] w-24 text-right tabular-nums" value={draft ?? (value == null ? '' : String(value))} disabled={disabled} aria-label={def.label}
+        placeholder={typeof def.absent === 'number' ? String(def.absent) : undefined}
         onChange={e => setDraft(e.target.value)} onBlur={commit} onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }} />
       <span className="flex flex-col text-micro leading-tight text-fg-muted">
-        {unit && <span className="max-w-[10rem]">{unit}</span>}
+        {def.unit && <span className="max-w-[10rem]">{def.unit}</span>}
         {range && <span className="text-fg-faint">{range}</span>}
       </span>
     </label>

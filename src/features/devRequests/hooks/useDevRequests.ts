@@ -107,12 +107,12 @@ export function useReorderDevRequests() {
   })
 }
 
-// A checkpoint ticked on a card (or on a saved request in the composer):
-// written at once, and optimistic so the box flips on the tap.
+// A point reviewed on a card (or on a saved request in the composer):
+// written at once, and optimistic so the state flips on the tap.
 export function useSetDevRequestDescription() {
   const qc = useQueryClient()
   return useMutationWithFeedback({
-    action:     'tick_dev_request_checkpoint',
+    action:     'review_dev_request_point',
     mutationFn: ({ id, description }: { id: string; description: string }) => updateDevRequest(id, { description }),
     onMutate:   async ({ id, description }: { id: string; description: string }) => {
       await qc.cancelQueries({ queryKey: QK })

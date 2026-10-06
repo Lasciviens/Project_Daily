@@ -7,7 +7,7 @@
  */
 require('sucrase/register')
 
-const { buildDailyBrief, greetingFor, pickFocusTask, feelsLike, rainOutlook, dayOfYear, pickWishlistTitle, nokTryComment } = require('../src/features/home/briefRules')
+const { buildDailyBrief, greetingFor, pickFocusTask, feelsLike, rainOutlook, temperatureOutlook, dayOfYear, pickWishlistTitle, nokTryComment } = require('../src/features/home/briefRules')
 
 let passed = 0
 let failed = 0
@@ -103,7 +103,7 @@ console.log('\n8 · Weather')
     weather: { tempC: -2.4, label: 'Light snow', precipMm: 0.6, windMs: 12, windDir: 'NW', highC: 1, lowC: -4, hours: hrs([['08:00', 0.6], ['09:00', 0.4], ['10:00', 0], ['11:00', 0]]) },
   })
   const w = texts(sec(b, 'day'))
-  check('now + feels-like + wind on the first line', sec(b, 'day').lines[0].text === '-2°, light snow · feels like -11° · wind 12 m/s NW', sec(b, 'day').lines[0].text)
+  check('now + feels-like + wind on the first line', sec(b, 'day').lines[0].text === '-2° now, light snow · feels like -11° · wind 12 m/s NW', sec(b, 'day').lines[0].text)
   check('rest of today range', w.includes('Rest of today -4° to 1°.'), w)
   check('raining now, dry from', w.includes('Raining now, dry from 10:00.'), w)
   check('freezing and strong wind warnings', w.includes('Below freezing') && w.includes('Strong wind, 12 m/s'), w)
@@ -119,8 +119,24 @@ console.log('\n8 · Weather')
   const allDay = rainOutlook({ tempC: 9, label: 'Rain', precipMm: 1, windMs: 2, hours: hrs([['15:00', 1], ['16:00', 0.5]]) })
   check('raining all day', allDay.text.startsWith('Raining now and for the rest of the day'), allDay.text)
 
+  // Temperature outlook: the next few hours as a range, then the trend and when.
+  const pts = (arr) => arr.map(([time, temp, precip = 0]) => ({ time, temp, precip }))
+  const cooling = pts([['15:00', 15], ['16:00', 14], ['17:00', 13], ['18:00', 13], ['19:00', 12], ['20:00', 11], ['21:00', 10], ['22:00', 9], ['23:00', 9]])
+  check('outlook: near range then cooling', temperatureOutlook({ tempC: 15, label: 'Clear', precipMm: 0, windMs: 2, ahead: cooling }) === '13–14° for the next few hours, then cooling to 9° by 22:00.', temperatureOutlook({ tempC: 15, label: 'Clear', precipMm: 0, windMs: 2, ahead: cooling }))
+  const warming = pts([['07:00', 4], ['08:00', 5], ['09:00', 6], ['10:00', 7], ['11:00', 9], ['12:00', 11], ['13:00', 12], ['14:00', 12]])
+  check('outlook: warming by the hottest hour', temperatureOutlook({ tempC: 4, label: 'Fair', precipMm: 0, windMs: 1, ahead: warming }) === '5–7° for the next few hours, then warming to 12° by 13:00.', temperatureOutlook({ tempC: 4, label: 'Fair', precipMm: 0, windMs: 1, ahead: warming }))
+  const steady = pts([['12:00', 10], ['13:00', 10], ['14:00', 11], ['15:00', 11], ['16:00', 10], ['17:00', 10]])
+  check('outlook: steady says so', temperatureOutlook({ tempC: 10, label: 'Cloudy', precipMm: 0, windMs: 1, ahead: steady }) === '10–11° for the next few hours, then about the same until 17:00.', temperatureOutlook({ tempC: 10, label: 'Cloudy', precipMm: 0, windMs: 1, ahead: steady }))
+  check('outlook: too few points → none', temperatureOutlook({ tempC: 10, label: 'Cloudy', precipMm: 0, windMs: 1, ahead: steady.slice(0, 3) }) === null)
+  const dryDay = buildDailyBrief({ hour: 15, weather: { tempC: 15, label: 'Clear sky', precipMm: 0, windMs: 2, hours: cooling, ahead: cooling } })
+  const dt = texts(sec(dryDay, 'day'))
+  check('dry day: outlook carries "stays dry", no separate no-rain line', dt.includes('then cooling to 9° by 22:00, and it stays dry.') && !dt.includes('No rain expected'), dt)
+  const wetDay = buildDailyBrief({ hour: 15, weather: { tempC: 15, label: 'Cloudy', precipMm: 0, windMs: 2, hours: pts([['15:00', 15], ['16:00', 14, 0.6], ['17:00', 13, 0.5], ['18:00', 13]]), ahead: cooling } })
+  const wt = texts(sec(wetDay, 'day'))
+  check('wet day: outlook + its own rain line', wt.includes('then cooling to 9° by 22:00.') && wt.includes('Rain from 16:00'), wt)
+
   const mild = buildDailyBrief({ hour: 9, weather: { tempC: 18, label: 'Clear sky', precipMm: 0, windMs: 2 } })
-  check('mild calm day: one line, no feels-like or wind', texts(sec(mild, 'day')) === '18°, clear sky', texts(sec(mild, 'day')))
+  check('mild calm day: one line, no feels-like or wind', texts(sec(mild, 'day')) === '18° now, clear sky', texts(sec(mild, 'day')))
   const eve = buildDailyBrief({ hour: 19, weather: { tempC: 8, label: 'Cloudy', precipMm: 0, windMs: 1, highC: 9, lowC: 6, tomorrow: { label: 'Rain', minC: 4, maxC: 9, precipMm: 6.2 } } })
   const et = texts(sec(eve, 'day'))
   check('evening shows tomorrow, rain not repeated', et.includes('Tomorrow 4° to 9°, rain (about 6 mm).'), et)

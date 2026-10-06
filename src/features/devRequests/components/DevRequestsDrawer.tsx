@@ -190,6 +190,7 @@ export function DevRequestsDrawer() {
       onToggleSelect={() => togglePicked(request.id)}
       onDelete={() => void handleDelete(request)}
       onOpen={() => openRequest(request.id)}
+      onOpenRequest={openRequest}
     />
   )
 

@@ -210,6 +210,58 @@ plugin takes the reading menu while the book is still open), go back to the libr
 - Books → Kobo → Menu order → While reading: every item has a name, no warning.
 - Books → Library → Subjects: subjects from your EPUB files appear.
 
+## 9. Plugin 1.3 — warmth schedule, margins and the Kobo's fonts (round 4)
+
+**Supabase (owner):** merge the PR, then redeploy **`kobo-sync`** (Enforce JWT Verification
+**OFF**). No migration. Until it is redeployed, the server refuses the new list settings
+(fixed warmth times, warmth per time of day, left/right margins, word spacing) and the
+"Off" value of the sleep/dimmer timers: they stay "Waiting for the Kobo".
+
+**What 1.3 adds:**
+- Writes and reports the few KOReader settings that are lists: AutoWarmth's fixed times
+  (`autowarmth_scheduler_times`, 11 decimal hours, a time can be left out) and warmth per
+  time of day (`autowarmth_warmth`, 0–100 %, +1000 = night mode), the default left/right
+  margins (`copt_h_page_margins`) and word spacing (`copt_word_spacing`). Each list is
+  checked on the Kobo against the same shape as the app (`lbcore.listAllowed`: length,
+  ranges, order, mirrored warmth); anything else is refused.
+- Reports the fonts KOReader sees (the reader's font names and every font file), so the
+  website's font pickers offer exactly what the Kobo has. Put your own fonts in the
+  `fonts` folder at the top of the Kobo's storage (`/mnt/onboard/fonts`), restart KOReader
+  and Sync now: they appear on the website.
+
+**On the Kobo first:** Wi-Fi on, KOReader open in the file browser, SSH server on.
+
+**Mac block** (paste as-is):
+
+````
+Execute only. Do not research and do not change anything else. Run the steps in order;
+if any command fails, STOP and paste me the output.
+
+```bash
+set -euo pipefail
+cd ~/Project_Daily-fresh && git fetch -q origin main && git switch -q --detach origin/main && git log --oneline -1
+lua5.1 scripts/kobo/test-lbcore.lua 2>/dev/null || echo "(lua5.1 not on this Mac — skipped the local check)"
+B=~/KoboBackups/$(date +%F_%H-%M-%S); mkdir -p "$B"
+scp -q -r kobo:/mnt/onboard/.adds/koreader/settings "$B/" && echo "settings backed up to $B"
+bash scripts/kobo/deploy-plugin.sh
+ssh kobo 'cd /mnt/onboard/.adds/koreader/plugins/lascisboard.koplugin && grep -m1 "VERSION =" main.lua && ls'
+```
+Paste me all the output (the version line must read `1.3.0`).
+````
+
+**Then on the Kobo:** exit KOReader and open it again, then 🛠 → **Lasci's Board** →
+**Sync now** (the first sync after the update always sends the report).
+
+**Check:**
+- Books → Kobo → Settings → How books look → Fonts: "Default font" is a list, and its
+  note says "N fonts on the Kobo" (not "Fonts that come with KOReader").
+- Screen and light → Warm light by time: pick **By fixed times**: the **Fixed times** list
+  appears (Simple mode: civil dawn, sunrise, sunset, civil dusk). Set sunset to 21:30,
+  Save, Sync now on the Kobo, open a book: 🛠 → Screen → AutoWarmth → Fixed schedule shows
+  21:30.
+- Sleep and battery: "Go to sleep after" shows minutes; choose **Off** in the unit list,
+  Sync now: KOReader's Autosuspend timeout reads disabled.
+
 ## Undo
 
 - Our plugin: delete `.adds/koreader/plugins/lascisboard.koplugin` (and

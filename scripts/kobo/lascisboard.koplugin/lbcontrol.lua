@@ -15,6 +15,7 @@ local logger = require("logger")
 local util = require("util")
 
 local core = require("lbcore")
+local ok_rj, rapidjson = pcall(require, "rapidjson")
 
 local M = {}
 
@@ -113,8 +114,15 @@ function M.applySettings(settings, null)
     for key, value in pairs(settings or {}) do
         local v = (value == null) and core.NULL or value
         local kind = core.keyKind(key)
-        if not core.settingAllowed(key, v) then
+        local spec = core.listSpec(key)
+        if not core.settingAllowed(key, v, null) then
             refused[key] = "not allowed on the device"
+        elseif spec and kind == "plain" then
+            -- A list (AutoWarmth's times and warmth, the margins): written whole,
+            -- a JSON null inside becomes a hole, as KOReader's own menu leaves it.
+            if v == core.NULL then G_reader_settings:delSetting(key)
+            else G_reader_settings:saveSetting(key, core.listValue(v, spec, null)) end
+            applied[#applied + 1] = key
         elseif kind == "pt" then
             pt[#pt + 1] = { key:sub(4), v }
         elseif kind == "field" then
@@ -247,7 +255,11 @@ function M.settingsReport(keys)
     local out, pt = {}, {}
     for _, k in ipairs(keys or {}) do
         local kind = core.keyKind(k)
-        if kind == "plain" then
+        local spec = core.listSpec(k)
+        if spec and kind == "plain" and ok_rj then
+            local list = core.listReport(G_reader_settings:readSetting(k), spec, rapidjson.null)
+            if list then out[k] = rapidjson.array(list) end
+        elseif kind == "plain" then
             local v = G_reader_settings:readSetting(k)
             if scalar(v) then out[k] = v end
         elseif kind == "field" then
@@ -260,6 +272,28 @@ function M.settingsReport(keys)
     end
     for k, v in pairs(readProjectTitle(pt)) do out["pt:" .. k] = v end
     return out
+end
+
+--- The fonts KOReader sees (for the app's font pickers): crengine's face names
+--- (what the reader's font menu lists, frontend/apps/reader/modules/readerfont.lua:68-69)
+--- and every font file (FontList, frontend/fontlist.lua:165; the status bar's
+--- font chooser lists these, frontend/ui/widget/fontchooser.lua:62).
+function M.fontsReport()
+    local faces, info = {}, {}
+    pcall(function()
+        local FontList = require("fontlist")
+        FontList:getFontList()
+        info = FontList.fontinfo or {}
+    end)
+    pcall(function()
+        local cre = require("document/credocument"):engineInit()
+        faces = cre.getFontFaces() or {}
+    end)
+    local r = core.fontReport(faces, info)
+    if not ok_rj then return r end
+    local files = {}
+    for i, f in ipairs(r.files) do files[i] = rapidjson.object(f) end
+    return rapidjson.object({ faces = rapidjson.array(r.faces), files = rapidjson.array(files) })
 end
 
 --- The menu as KOReader builds it now: every list and every item's label.

@@ -3,7 +3,8 @@
  * Verification — the requests backlog's pure logic:
  *   devRequestContext.ts  (picked-element / page-context blocks for the prompt)
  *   devRequestMarks.ts    (description = body + checkpoints + marks; friendly labels)
- *   checkpoints.ts        (the description's "- [ ]" checkpoints)
+ *   checkpoints.ts        (older "- [ ]" checkpoint lines)
+ *   pointText.ts / points.ts (automatic points, reviews, re-check requests)
  *   devRequestRules.ts    (draft read-back from localStorage, drag-reorder plan)
  *   devRequestPrompt.ts   (the prompt for Claude)
  *   useFloatingWindow.ts  (keeping the composer window on screen)
@@ -20,6 +21,8 @@ const { buildClaudePrompt } = require('../src/features/devRequests/devRequestPro
 const win = require('../src/shared/hooks/useFloatingWindow')
 const marks = require('../src/features/devRequests/devRequestMarks')
 const cps = require('../src/features/devRequests/checkpoints')
+const pt = require('../src/features/devRequests/pointText')
+const pts = require('../src/features/devRequests/points')
 const stamps = require('../src/features/devRequests/pick/componentSourceTransform')
 const ts = require('typescript')
 
@@ -404,12 +407,13 @@ console.log('\n17 · Checkpoints')
   const d = marks.withCheckpoints('Intro\n- [ ] one\n- [ ] two', cps.setDone(marks.parseDescription('Intro\n- [ ] one\n- [ ] two').checkpoints, 1, true))
   check('a tick writes - [x] back', d === 'Intro\n\n- [ ] one\n- [x] two', JSON.stringify(d))
   check('old "1- " points stay text in the body', marks.parseDescription('1- old point').body === '1- old point')
+  // Points are automatic now (every paragraph); an older "- [ ]" line is a point too and a ticked one reads as Fixed.
   const p = buildClaudePrompt([{ title: 'Fix Daily', description: 'Several things:\n\n- [ ] Chart too bright\n- [x] Button too small\n- [ ] ', page: null, category: 'bug', priority: 'high' }])
-  check('checkpoints become numbered sub-points', p.includes('   1.1 Chart too bright\n   1.2 [done] Button too small'), p)
-  check('an empty checkpoint is dropped from the prompt', !p.includes('1.3'))
-  check('the ask mentions numbered points and [done]', p.includes('per numbered point') && p.includes('marked [done]'))
+  check('old checkpoints become numbered points after the text', p.includes('   1.1 Several things:\n   1.2 Chart too bright\n   1.3 [already fixed — leave as is] Button too small'), p)
+  check('an empty checkpoint is dropped from the prompt', !p.includes('1.4'))
+  check('the ask mentions numbered points and [already fixed]', p.includes('per numbered point') && p.includes('marked [already fixed]'))
   const old = buildClaudePrompt([{ title: 'Old', description: 'x\n1- Chart\n2- Button\n\n- [ ] New one', page: null, category: 'bug', priority: 'high' }])
-  check('old numbered points still numbered, checkpoints continue after', old.includes('   1.1 Chart\n   1.2 Button') && old.includes('   1.3 New one'), old)
+  check('old "1- " lines are points of their own, checkpoints continue after', old.includes('   1.2 Chart\n   1.3 Button') && old.includes('   1.4 New one'), old)
   check('no mention without points', !buildClaudePrompt([{ title: 'A', description: 'x', page: null, category: 'bug', priority: 'low' }]).includes('numbered point'))
 }
 
@@ -471,6 +475,126 @@ console.log('\n19 · Pick links in the text')
   check('prompt: footnote [1] carries the component and file', /\[1\] \[Picked on Food[^\n]*\n(.*\n)*.*WaterTracker/.test(prompt), prompt)
   check('prompt: explains the [n] links', prompt.includes('footnote [n]'))
   check('prompt: no raw token leaks', !prompt.includes('[[@'))
+}
+
+console.log('\n20 · Points are automatic (paragraphs)')
+{
+  check('a blank line starts a point, one Enter does not', JSON.stringify(pt.splitPoints('A one\nstill A\n\nB\n\n\n  \nC')) === '["A one\\nstill A","B","C"]', JSON.stringify(pt.splitPoints('A one\nstill A\n\nB\n\n\n  \nC')))
+  check('empty text → no points', pt.splitPoints('').length === 0 && pt.splitPoints('\n\n  \n').length === 0)
+  check('an old "3- " line starts its own point, prefix dropped', JSON.stringify(pt.splitPoints('Intro\n1- a\ncontinued\n2- b')) === '["Intro","a\\ncontinued","b"]')
+  const k = pt.pointKeys(['Fix it', 'fix   IT', 'Other'])
+  check('key ignores case and spacing; a duplicate gets ~1', k[1] === `${k[0]}~1` && k[2] !== k[0], JSON.stringify(k))
+  check('hash is stable', pt.hashText('abc') === pt.hashText('abc') && pt.hashText('abc') !== pt.hashText('abd'))
+  const text = 'Weather card is too tall\non phones\n\nTransit times are wrong\n\nNews should be bigger'
+  const list = pts.pointsOf(text)
+  check('three points numbered 1–3', list.length === 3 && list.map(p => p.n).join() === '1,2,3' && list[0].text === 'Weather card is too tall\non phones')
+  check('nothing reviewed yet', list.every(p => p.state === null) && pts.reviewProgress(list) === '')
+  check('one paragraph is one point', pts.pointsOf('Just one thing\nwith two lines').length === 1)
+}
+
+console.log('\n21 · Reviews (Fixed / Not fixed) survive edits of other points')
+{
+  let text = 'A first\n\nB second\n\nC third'
+  const [a, b, c] = pts.pointsOf(text)
+  text = pts.setReview(text, a.key, { state: 'fixed' })
+  text = pts.setReview(text, b.key, { state: 'not_fixed', note: 'still wrong on phones' })
+  let list = pts.pointsOf(text)
+  check('fixed + not fixed read back', list[0].state === 'fixed' && list[1].state === 'not_fixed' && list[1].review.note === 'still wrong on phones' && list[2].state === null)
+  check('progress line', pts.reviewProgress(list) === '1 of 3 fixed · 1 not fixed', pts.reviewProgress(list))
+  check('a review is one hidden line, not body text', marks.parseDescription(text).body === 'A first\n\nB second\n\nC third' && marks.descriptionPreview(text) === 'A first B second C third')
+  // Edit point C and add a point D: A and B keep their reviews.
+  const p0 = marks.parseDescription(text)
+  const edited = marks.composeDescription({ ...p0, body: 'A first\n\nB second\n\nC third, reworded\n\nD new' })
+  list = pts.pointsOf(edited)
+  check('editing another point keeps A and B', list[0].state === 'fixed' && list[1].state === 'not_fixed' && list[2].state === null && list[3].state === null)
+  const ownEdit = marks.composeDescription({ ...p0, body: 'A first, changed\n\nB second\n\nC third' })
+  check('editing a point itself resets its review', pts.pointsOf(ownEdit)[0].state === null && pts.pointsOf(ownEdit)[1].state === 'not_fixed')
+  check('save drops the orphaned review', marks.parseDescription(marks.descriptionForSave(ownEdit)).reviews.length === 1)
+  check('reorder keeps reviews (keyed by text)', pts.pointsOf(marks.composeDescription({ ...p0, body: 'C third\n\nB second\n\nA first' }))[2].state === 'fixed')
+  check('clearing a review', pts.pointsOf(pts.setReview(text, a.key, null))[0].state === null)
+  check('an unknown key changes nothing', pts.setReview(text, 'nope', { state: 'fixed' }) === text)
+  check('a later review line for the same key wins', marks.parseDescription(`x\n\n[[review {"k":"${a.key}","s":"fixed"}]]\n[[review {"k":"${a.key}","s":"not_fixed"}]]`).reviews.length === 1)
+  check('a broken review line is prose', marks.parseDescription('[[review {"k":"x","s":"maybe"}]]').reviews.length === 0)
+  check('compose(parse(x)) stable with reviews', marks.composeDescription(marks.parseDescription(text)) === text)
+  const done = pts.setReview(pts.setReview(text, b.key, { state: 'fixed' }), c.key, { state: 'moved', to: 'r9' })
+  check('all fixed or moved → resolved', pts.allResolved(pts.pointsOf(done)) && !pts.allResolved(pts.pointsOf(text)) && !pts.allResolved([]))
+  check('reviewable once prompted, in progress or done', pts.isReviewable({ status: 'open', prompted_at: 'x' }) && pts.isReviewable({ status: 'done' }) && !pts.isReviewable({ status: 'open', prompted_at: null }))
+}
+
+console.log('\n22 · Older checkpoints read as points, ticks kept')
+{
+  const legacy = 'Intro words\n\n- [x] Old done\n- [ ] Old open'
+  const list = pts.pointsOf(legacy)
+  check('body + checkpoints = 3 points', list.length === 3 && list[1].text === 'Old done')
+  check('a ticked checkpoint reads Fixed', list[1].state === 'fixed' && list[2].state === null)
+  const folded = marks.foldCheckpoints(marks.parseDescription(legacy))
+  check('fold: checkpoints become paragraphs, the tick a review', folded.body === 'Intro words\n\nOld done\n\nOld open' && folded.checkpoints.length === 0 && folded.reviews.length === 1)
+  check('fold keeps the keys', JSON.stringify(pts.requestPoints(folded).map(p => [p.key, p.state])) === JSON.stringify(list.map(p => [p.key, p.state])))
+  const cleared = pts.setReview(legacy, list[1].key, null)
+  check('clearing a ticked one really clears (folded first)', pts.pointsOf(cleared)[1].state === null && !cleared.includes('- [x]'))
+  const nf = pts.setReview(legacy, list[1].key, { state: 'not_fixed' })
+  check('Not fixed overrides an old tick', pts.pointsOf(nf)[1].state === 'not_fixed')
+  const pick = { kind: 'element', page, element: { tag: 'button', name: 'Log food', trail: ['"Nutrition" card'] } }
+  const ins = marks.insertPickLink(legacy, pick, 0)
+  check('a pick link inserted into folded text lands at the offset', marks.parseDescription(ins.text).body.startsWith(`[[@${ins.id}]] Intro words`) && marks.parseDescription(ins.text).checkpoints.length === 0, ins.text)
+}
+
+console.log('\n23 · Re-check requests')
+{
+  const water = { kind: 'element', page, element: { tag: 'h3', name: 'Water', trail: ['"Water" card'] } }
+  const r = marks.insertPickLink('', water, null)
+  let orig = marks.composeDescription({ ...marks.parseDescription(r.text), body: `[[@${r.id}]] should be red\n\nTransit is slow\n\nNews font` })
+  orig = marks.appendMark(orig, { type: 'page', start: page, savedOn: null })
+  const [p1, p2, p3] = pts.pointsOf(orig)
+  orig = pts.setReview(orig, p1.key, { state: 'not_fixed', note: 'still blue\non dark' })
+  orig = pts.setReview(orig, p2.key, { state: 'not_fixed' })
+  orig = pts.setReview(orig, p3.key, { state: 'fixed' })
+  const original = { id: 'orig1', title: 'Home tweaks', description: orig }
+  const keys = pts.notFixedKeys(pts.pointsOf(orig))
+  check('not fixed keys', keys.length === 2 && keys[0] === p1.key)
+  const first = pts.collectForRecheck(null, original, [p1.key])
+  const fp = marks.parseDescription(first.description)
+  const fpts = pts.pointsOf(first.description)
+  check('new re-check: one point with the original words + note', fpts.length === 1 && fpts[0].text === `[[@${r.id}]] should be red\nStill not fixed: still blue on dark`, JSON.stringify(fpts[0] && fpts[0].text))
+  check('its pick is copied (Go there + footnotes work)', fp.marks.some(m => m.type === 'pick' && m.id === r.id && m.label === 'Water card'))
+  check('the original page mark comes along', fp.marks.some(m => m.type === 'page'))
+  check('back-reference to the original', fp.recheck && fp.recheck.of === 'orig1' && fp.recheck.title === 'Home tweaks' && fp.recheck.keys[0] === p1.key)
+  const second = pts.collectForRecheck(first.description, original, [p1.key, p2.key])
+  check('later points append; one already collected is skipped', second.added.length === 1 && second.added[0] === p2.key && pts.pointsOf(second.description).length === 2)
+  check('no note → "Still not fixed."', pts.pointsOf(second.description)[1].text === 'Transit is slow\nStill not fixed.')
+  check('the pick is not copied twice', marks.parseDescription(second.description).marks.filter(m => m.type === 'pick').length === 1)
+  const clash = marks.composeDescription({ body: `mine [[@${r.id}]]`, checkpoints: [], marks: [{ type: 'pick', id: r.id, label: 'Other', capture: { kind: 'element', page, element: { tag: 'a', name: 'Other' } } }], recheck: { of: 'orig1', title: 'Home tweaks', keys: [] } })
+  const renamed = pts.collectForRecheck(clash, original, [p1.key])
+  const rp = marks.parseDescription(renamed.description)
+  check('an id clash gets a new id, both spots kept', rp.marks.filter(m => m.type === 'pick').length === 2 && !pts.pointsOf(renamed.description)[1].text.includes(`[[@${r.id}]]`))
+  const moved = pts.markMoved(orig, [p1.key, p2.key], 'fu1')
+  const ml = pts.pointsOf(moved)
+  check('original points read Moved with the follow-up id, note kept', ml[0].state === 'moved' && ml[0].review.to === 'fu1' && ml[0].review.note === 'still blue\non dark' && ml[1].state === 'moved')
+  check('fixed + moved → the original can be closed', pts.allResolved(ml))
+  check('progress counts moved', pts.reviewProgress(ml) === '1 of 3 fixed · 2 moved', pts.reviewProgress(ml))
+  const reqs = [
+    { id: 'a', status: 'done', description: first.description, created_at: '2026-10-01' },
+    { id: 'b', status: 'open', description: first.description, created_at: '2026-10-02' },
+    { id: 'c', status: 'open', description: 'x', created_at: '2026-10-03' },
+  ]
+  check('find the open re-check of an original', pts.findRecheck(reqs, 'orig1').id === 'b' && pts.findRecheck(reqs, 'zzz') === null)
+  check('a done re-check is not reused', pts.findRecheck([reqs[0]], 'orig1') === null)
+  check('title never stacks "Re-check: "', pts.recheckTitle('Re-check: Home tweaks') === 'Re-check: Home tweaks' && pts.recheckTitle('Home') === 'Re-check: Home')
+
+  console.log('\n24 · Prompt with reviews and re-checks')
+  const pr = buildClaudePrompt([{ title: 'Home tweaks', description: pts.setReview(orig, p2.key, null), page: 'home', category: 'bug', priority: 'high' }])
+  check('a fixed point is one line marked [already fixed]', pr.includes('   1.3 [already fixed — leave as is] News font'), pr)
+  check('a not fixed point carries the note', pr.includes('NOT FIXED after the last attempt: still blue'), pr)
+  check('numbers stay as on screen', pr.includes('   1.1 “Water card” [1] should be red') && pr.includes('   1.2 Transit is slow'))
+  const pm = buildClaudePrompt([{ title: 'Home tweaks', description: moved, page: 'home', category: 'bug', priority: 'high' }])
+  check('a moved point is skipped with a note', pm.includes('1.1 [moved to a separate re-check request — skip] “Water card” should be red') && !pm.includes('[1] [Picked'), pm)
+  const prc = buildClaudePrompt([{ title: 'Re-check: Home tweaks', description: second.description, page: 'home', category: 'bug', priority: 'high' }])
+  check('re-check prompt says it is a re-request, names the original', prc.includes('RE-REQUEST') && prc.includes('(in “Home tweaks”)') && prc.includes('did not work'), prc)
+  check('re-check quotes the original point and the note', prc.includes('1.1 Originally asked: “Water card” [1] should be red') && prc.includes('Still not fixed: still blue on dark'), prc)
+  check('re-check keeps the footnote', prc.includes('[1] [Picked on Food'))
+  check('re-check explained once at the end', prc.includes('An item marked RE-REQUEST'))
+  check('a single unreviewed paragraph stays prose (no 1.1)', !buildClaudePrompt([{ title: 'A', description: 'one thing', page: null, category: 'bug', priority: 'low' }]).includes('1.1'))
+  check('the raw review/recheck lines never reach the prompt', !prc.includes('[[recheck') && !pr.includes('[[review'))
 }
 
 console.log(`\n${passed} passed, ${failed} failed`)

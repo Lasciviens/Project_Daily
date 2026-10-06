@@ -27,7 +27,7 @@ export function WeatherHours({ data }: { data: WeatherData }) {
     <div>
       <SectionLabel className="mb-1.5">Next hours</SectionLabel>
       <div className="scroll-x -mx-1 flex gap-1 px-1 pb-1">
-        {data.hours.map(h => (
+        {data.hours.slice(0, 12).map(h => (
           <div key={h.time} className="flex min-w-[44px] flex-col items-center gap-0.5 rounded-control py-1">
             <span className="text-micro tabular-nums text-fg-muted">{h.time}</span>
             <span aria-hidden className="text-lg">{weatherIcon(h.symbol)}</span>

@@ -29,8 +29,14 @@ export interface WeatherDay {
 
 export interface WeatherData {
   current: WeatherCurrent
+  /** The next 24 hourly points from now (cards show the first 12). */
   hours:   WeatherHour[]
+  /** From tomorrow on — today is `current` + `today`. */
   daily:   WeatherDay[]
+  /** Low and high for what is left of today, now included (null after the last point of the day). */
+  today:   { min: number; max: number } | null
+  /** When MET's forecast was fetched (ISO), so a card can say how fresh it is. */
+  fetchedAt: string
 }
 
 type Timeseries = {
@@ -126,7 +132,7 @@ export async function fetchWeather(lat: number, lon: number): Promise<WeatherDat
     precip1h:      first.data.next_1_hours?.details.precipitation_amount ?? 0,
   }
 
-  const hours: WeatherHour[] = future.slice(0, 12).map(s => {
+  const hours: WeatherHour[] = future.slice(0, 24).map(s => {
     const dt = new Date(s.time)
     return {
       time:   `${String(dt.getHours()).padStart(2, '0')}:00`,
@@ -137,8 +143,18 @@ export async function fetchWeather(lat: number, lon: number): Promise<WeatherDat
   })
 
   const daily = computeDailyForecast(series)
+  const todayKey = localDateStr(new Date())
+  const todayTemps = future.filter(s => localDateStr(new Date(s.time)) === todayKey).map(s => s.data.instant.details.air_temperature)
+  const today = todayTemps.length ? { min: Math.round(Math.min(...todayTemps)), max: Math.round(Math.max(...todayTemps)) } : null
 
-  return { current, hours, daily }
+  return { current, hours, daily, today, fetchedAt: new Date().toISOString() }
+}
+
+/** The hourly points from the current hour on: the list was made when the
+ *  forecast was fetched, so the hours that have passed since are dropped. */
+export function hoursFromNow(w: WeatherData, now = Date.now()): WeatherHour[] {
+  const passed = Math.max(0, Math.floor((now - new Date(w.fetchedAt ?? now).getTime()) / 3_600_000))
+  return w.hours.slice(passed)
 }
 
 const ICON_MAP: Record<string, string> = {

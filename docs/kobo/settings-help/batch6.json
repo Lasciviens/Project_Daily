@@ -1,0 +1,29 @@
+{
+  "groups": {},
+  "settings": {
+    "autowarmth_scheduler_times": {
+      "label": "Fixed times",
+      "help": "The clock times the light follows when warmth changes by fixed times (or by a mix of fixed times and the sun). Each time marks one moment of the day, such as sunrise or sunset; between two moments the warmth moves step by step from one level to the next. Simple mode uses four moments (civil dawn, sunrise, sunset, civil dusk); turn Simple mode off to set every twilight step. A moment can be left out, and the times must go forward through the day.",
+      "example": "Sunrise 07:00 and sunset 21:30: the light is warm until 07:00, cool through the day and warm again from 21:30.",
+      "level": "basic"
+    },
+    "autowarmth_warmth": {
+      "label": "Warmth through the day",
+      "help": "How warm the light is at each moment of the day, from 0 % (cool, blue-white) to 100 % (warm, orange), and whether night mode (white text on black) is on then. Dawn and dusk share a value: setting the warmth for sunrise also sets it for sunset. Night mode can only be chosen while 'Switch night mode automatically' is on.",
+      "example": "Midday 20 %, sunrise and sunset 60 %, darkest twilight 90 % with night mode on.",
+      "level": "basic"
+    },
+    "copt_h_page_margins": {
+      "label": "Left and right margins",
+      "help": "Empty space on the left and right of the text, for books you open from now on. Bigger numbers give narrower lines of text. Each side can be set on its own (0 to 140).",
+      "example": "15 and 15: a little more white space than the standard 10 and 10.",
+      "level": "basic"
+    },
+    "copt_word_spacing": {
+      "label": "Word spacing",
+      "help": "Two numbers for the space between words, for books you open from now on. Scaling makes every space wider or narrower than normal (100 % = normal). Reduction is how far spaces may then shrink to fit more words on a line (100 % = never shrink).",
+      "example": "Small 75 / 50, medium 95 / 75 (the standard), large 100 / 90.",
+      "level": "advanced"
+    }
+  }
+}

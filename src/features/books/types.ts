@@ -108,7 +108,7 @@ export interface KoboSyncState extends KoboFeedState {
 
 /** What the app wants on the Kobo (kobo_device_config, migration 127). */
 export interface KoboDeviceConfig {
-  settings: Record<string, boolean | number | string | null>
+  settings: Record<string, boolean | number | string | (number | null)[] | null>
   menu_order: Partial<Record<'filemanager' | 'reader', Record<string, string[]>>>
   sleep_image_id: string | null
   rev: number
@@ -121,9 +121,11 @@ export interface KoboDeviceState {
   applied_at: string | null
   apply_result: { applied?: string[]; refused?: Record<string, string>; images?: { downloaded?: number; deleted?: number; failed?: number }; menu_changed?: boolean } | null
   report: {
-    settings?: Record<string, boolean | number | string>
+    settings?: Record<string, boolean | number | string | (number | null)[]>
     menus?: Partial<Record<'filemanager' | 'reader', { order: Record<string, string[]>; labels: Record<string, string> }>>
     plugin_version?: string
+    /** The fonts KOReader sees on the Kobo (plugin 1.3): crengine face names and font files. */
+    fonts?: { faces?: string[]; files?: { file: string; name: string; bold?: boolean; italic?: boolean }[] }
   } | null
   reported_at: string | null
 }

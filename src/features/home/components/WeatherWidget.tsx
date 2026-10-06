@@ -2,11 +2,11 @@ import { useState } from 'react'
 import { CloudSun } from 'lucide-react'
 import { ModalShell } from '../../../shared/modals'
 import { Button, Skeleton } from '../../../shared/ui'
-import { weatherIcon, weatherLabel } from '../api/weatherApi'
+import { hoursFromNow, weatherIcon, weatherLabel, type WeatherData, type WeatherHour } from '../api/weatherApi'
 import { useWeather } from '../hooks/useWeather'
 import { useWidgetState } from '../hooks/useWidgetState'
 import { WidgetShell } from './WidgetShell'
-import { GlanceTile } from './GlanceTile'
+import { GlanceCarousel, type GlanceScreen } from './GlanceCarousel'
 import { WeatherDetails } from './WeatherDetails'
 
 function WeatherSkeleton() {
@@ -43,21 +43,69 @@ export function WeatherWidget() {
   )
 }
 
-/** Phone glance tile; the full forecast opens in a sheet. */
+/** The tile's screens: now · the next hours · the next days · wind and rain. */
+function weatherScreens(data: WeatherData): GlanceScreen[] {
+  const ahead = hoursFromNow(data)
+  const strip = [1, 3, 5, 7].map(i => ahead[i]).filter((h): h is WeatherHour => !!h)
+  const rain12 = ahead.slice(0, 12).reduce((sum, h) => sum + h.precip, 0)
+  const c = data.current
+  const screens: GlanceScreen[] = [{
+    key: 'now',
+    name: 'Now',
+    value: <span className="flex items-center gap-1.5"><span aria-hidden>{weatherIcon(c.symbol)}</span>{c.temp}°</span>,
+    hint: `${weatherLabel(c.symbol)}${data.today ? ` · today ${data.today.min}–${data.today.max}°` : ''}`,
+  }]
+  if (strip.length >= 3) {
+    screens.push({
+      key: 'hours',
+      name: 'Next hours',
+      body: (
+        <div className="grid grid-cols-4 gap-1 text-center">
+          {strip.map(h => (
+            <div key={h.time} className="min-w-0">
+              <div className="text-micro tabular-nums text-fg-muted">{h.time}</div>
+              <div aria-hidden className="text-base leading-6">{weatherIcon(h.symbol)}</div>
+              <div className="text-meta font-semibold tabular-nums text-fg">{h.temp}°</div>
+            </div>
+          ))}
+        </div>
+      ),
+    })
+  }
+  if (data.daily.length > 0) {
+    screens.push({
+      key: 'days',
+      name: 'Next days',
+      body: (
+        <ul className="space-y-0.5">
+          {data.daily.slice(0, 3).map(d => (
+            <li key={d.date} className="flex items-center gap-1.5 text-meta tabular-nums">
+              <span className="w-8 shrink-0 text-fg-muted">{d.label}</span>
+              <span aria-hidden className="shrink-0">{weatherIcon(d.symbol)}</span>
+              <span className="min-w-0 flex-1 truncate text-right font-semibold text-fg">{d.min}–{d.max}°</span>
+            </li>
+          ))}
+        </ul>
+      ),
+    })
+  }
+  screens.push({
+    key: 'wind',
+    name: 'Wind & rain',
+    value: <span className="flex items-baseline gap-1">{c.windSpeed}<span className="text-meta font-medium text-fg-muted">m/s {c.windDirection !== '—' ? c.windDirection : ''}</span></span>,
+    hint: rain12 >= 0.1 ? `${rain12.toFixed(1)} mm rain in the next 12 h · humidity ${c.humidity}%` : `Dry for the next 12 h · humidity ${c.humidity}%`,
+  })
+  return screens
+}
+
+/** Glance tile with swipeable screens; the full forecast opens in a sheet. */
 export function WeatherTile() {
   const [open, setOpen] = useState(false)
   const { data, isLoading, error, refetch, geo } = useWeather()
-  const today = data?.daily[0]
+  const screens = data ? weatherScreens(data) : [{ key: 'none', name: 'Now', value: '—', hint: error ? 'Unavailable' : undefined }]
   return (
     <>
-      <GlanceTile
-        label="Weather"
-        icon={<CloudSun />}
-        loading={isLoading}
-        value={data ? <span className="flex items-center gap-1.5"><span aria-hidden>{weatherIcon(data.current.symbol)}</span>{data.current.temp}°</span> : '—'}
-        hint={data ? `${weatherLabel(data.current.symbol)}${today ? ` · ${today.min}°/${today.max}°` : ''}` : error ? 'Unavailable' : undefined}
-        onClick={() => setOpen(true)}
-      />
+      <GlanceCarousel id="weather" label="Weather" icon={<CloudSun />} loading={isLoading} screens={screens} onClick={() => setOpen(true)} />
       <ModalShell open={open} onClose={() => setOpen(false)} title="Weather" size="sm">
         {isLoading && <WeatherSkeleton />}
         {error && !data && <WeatherError message={(error as Error).message} onRetry={() => refetch()} />}

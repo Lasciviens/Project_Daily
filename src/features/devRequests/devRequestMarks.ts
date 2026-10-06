@@ -4,6 +4,10 @@
 //   marks        where on the app the request points: one line per pick
 //                (`[[pick {json}]]`) and one for the page it was written on
 //                (`[[page {json}]]`)
+//   reviews      after a prompt: Fixed / Not fixed / Moved per point
+//                (`[[review {json}]]`, keyed by the point's text — points.ts)
+//   recheck      on a re-check request: which request it re-asks
+//                (`[[recheck {json}]]`)
 // A mark is machine-readable (route + query, tabs, popup, the component and
 // file from the data-src stamps, the element's label and text), so the
 // prompt for Claude gets every detail while the user sees one friendly line
@@ -18,6 +22,7 @@ import {
   type Capture, type CapturedPopup, type PageContext, type PickedElement,
 } from './devRequestContext'
 import { checkpointLine, parseCheckpointLine, type Checkpoint } from './checkpoints'
+import { pointKeys, splitPoints } from './pointText'
 
 /**
  * A picked spot. A pick with an `id` is linked from the text: the body holds
@@ -30,13 +35,35 @@ export interface PageMark { type: 'page'; start: PageContext; savedOn: PageConte
 export interface LegacyMark { type: 'legacy'; raw: string; kind: 'pick' | 'page'; pageTitle: string; route: string | null; what: string | null }
 export type Mark = PickMark | PageMark | LegacyMark
 
+/** How a point fared after it was sent to Claude (points.ts owns the keys). */
+export type ReviewState = 'fixed' | 'not_fixed' | 'moved'
+export interface PointReview {
+  /** The point's key: a hash of its text (pointKey in points.ts). */
+  key: string
+  state: ReviewState
+  /** Not fixed: what is still wrong. */
+  note?: string
+  /** Moved: the re-check request it went to. */
+  to?: string
+  at?: string
+}
+/** A re-check request: the request it re-asks, and the points already collected from it. */
+export interface RecheckOf { of: string; title: string; keys: string[] }
+
 export interface ParsedDescription {
   body: string
+  /** Older "- [ ]" lines (before points were automatic). */
   checkpoints: Checkpoint[]
   marks: Mark[]
+  reviews: PointReview[]
+  recheck: RecheckOf | null
 }
+/** What compose takes: reviews and recheck may be left out. */
+export type DescriptionParts = Omit<ParsedDescription, 'reviews' | 'recheck'> & Partial<Pick<ParsedDescription, 'reviews' | 'recheck'>>
 
 const MARK_RE = /^\[\[(pick|page) (\{.*\})\]\]$/
+const META_RE = /^\[\[(review|recheck) (\{.*\})\]\]$/
+const REVIEW_STATES: readonly ReviewState[] = ['fixed', 'not_fixed', 'moved']
 const REF_ID_RE = /^[a-z0-9]{2,12}$/
 /** A link in the text to a pick mark: `[[@id]]`. */
 export const REF_RE = /\[\[@([a-z0-9]{2,12})\]\]/g
@@ -110,6 +137,33 @@ function decodeMark(line: string): PickMark | PageMark | null {
   }
 }
 
+type Meta = { type: 'review'; review: PointReview } | { type: 'recheck'; recheck: RecheckOf }
+
+function decodeMeta(line: string): Meta | null {
+  const m = META_RE.exec(line.trim())
+  if (!m) return null
+  let v: unknown
+  try { v = JSON.parse(m[2]) } catch { return null }
+  if (!isObj(v)) return null
+  const s = (x: unknown) => (typeof x === 'string' && x ? x : undefined)
+  if (m[1] === 'recheck') {
+    return typeof v.of === 'string' ? { type: 'recheck', recheck: { of: v.of, title: typeof v.title === 'string' ? v.title : '', keys: strs(v.keys) } } : null
+  }
+  const state = REVIEW_STATES.find(x => x === v.s)
+  if (typeof v.k !== 'string' || !v.k || !state) return null
+  const review: PointReview = { key: v.k, state }
+  const note = s(v.note), to = s(v.to), at = s(v.at)
+  if (note) review.note = note
+  if (to) review.to = to
+  if (at) review.at = at
+  return { type: 'review', review }
+}
+
+export const encodeReview = (r: PointReview): string =>
+  `[[review ${JSON.stringify({ k: r.key, s: r.state, ...(r.note ? { note: r.note } : {}), ...(r.to ? { to: r.to } : {}), ...(r.at ? { at: r.at } : {}) })}]]`
+
+export const encodeRecheck = (r: RecheckOf): string => `[[recheck ${JSON.stringify({ of: r.of, title: r.title, keys: r.keys })}]]`
+
 function asPopup(v: unknown): CapturedPopup[] {
   if (!isObj(v)) return []
   const request = isObj(v.request) && typeof v.request.kind === 'string' ? v.request as CapturedPopup['request'] : null
@@ -148,11 +202,26 @@ export function parseDescription(text: string | null | undefined): ParsedDescrip
   const tail: string[] = []
   const checkpoints: Checkpoint[] = []
   const marks: Mark[] = []
+  const reviews: PointReview[] = []
+  let recheck: RecheckOf | null = null
   let sectionsStarted = false
   let legacy: string[] | null = null
   const endLegacy = () => { if (legacy) { marks.push(legacyMark(legacy.join('\n').trim())); legacy = null } }
 
   for (const line of lines) {
+    const meta = decodeMeta(line)
+    if (meta) {
+      endLegacy()
+      sectionsStarted = true
+      if (meta.type === 'recheck') recheck = meta.recheck
+      else {
+        // One review per point: a later line for the same key wins.
+        const at = reviews.findIndex(r => r.key === meta.review.key)
+        if (at >= 0) reviews[at] = meta.review
+        else reviews.push(meta.review)
+      }
+      continue
+    }
     const mark = decodeMark(line)
     if (mark) { endLegacy(); marks.push(mark); sectionsStarted = true; continue }
     if (BLOCK_HEADER_RE.test(line.trim())) { endLegacy(); legacy = [line.trim()]; sectionsStarted = true; continue }
@@ -173,7 +242,7 @@ export function parseDescription(text: string | null | undefined): ParsedDescrip
   let body = head.join('\n')
   const rest = tail.join('\n').trim()
   if (rest) body = body.trim() ? `${body.replace(/\s+$/, '')}\n\n${rest}` : rest
-  return { body, checkpoints, marks }
+  return { body, checkpoints, marks, reviews, recheck }
 }
 
 export function encodeMark(m: Mark): string {
@@ -182,12 +251,14 @@ export function encodeMark(m: Mark): string {
   return m.raw
 }
 
-export function composeDescription(p: ParsedDescription): string {
+export function composeDescription(p: DescriptionParts): string {
   const parts: string[] = []
   const cps = p.checkpoints.map(checkpointLine).join('\n')
   if (cps) parts.push(cps)
   const marks = p.marks.map(encodeMark).join('\n\n')
   if (marks) parts.push(marks)
+  const meta = [...(p.recheck ? [encodeRecheck(p.recheck)] : []), ...(p.reviews ?? []).map(encodeReview)].join('\n')
+  if (meta) parts.push(meta)
   const rest = parts.join('\n\n')
   if (!rest) return p.body
   return p.body.trim() ? `${p.body}\n\n${rest}` : rest
@@ -206,11 +277,39 @@ export function referencedIds(p: Pick<ParsedDescription, 'body' | 'checkpoints'>
  */
 export function descriptionForSave(text: string): string {
   const p = parseDescription(text)
-  const has = p.checkpoints.length || p.marks.length
+  const has = p.checkpoints.length || p.marks.length || p.reviews.length || p.recheck
   if (!has) return text.trim()
   const refs = referencedIds(p)
   const marks = p.marks.filter(m => m.type !== 'pick' || !m.id || refs.has(m.id))
-  return composeDescription({ ...p, marks, body: p.body.trim(), checkpoints: p.checkpoints.filter(c => c.text.trim()) }).trim()
+  const checkpoints = p.checkpoints.filter(c => c.text.trim())
+  // A review whose point was edited away (its text, hence its key, changed) goes too.
+  const keys = new Set(pointKeys(pointTexts({ body: p.body, checkpoints })))
+  const reviews = p.reviews.filter(r => keys.has(r.key))
+  return composeDescription({ ...p, marks, reviews, body: p.body.trim(), checkpoints }).trim()
+}
+
+/** Every point's text: the paragraphs of the body, then any older "- [ ]" checkpoints. */
+export const pointTexts = (p: Pick<ParsedDescription, 'body' | 'checkpoints'>): string[] =>
+  [...splitPoints(p.body), ...p.checkpoints.map(c => c.text.trim()).filter(Boolean)]
+
+/**
+ * Older "- [ ]" checkpoints become paragraphs of the body (points are
+ * automatic now); a ticked one becomes a Fixed review, unless the point
+ * already has one. The keys stay the same: the points keep their order.
+ */
+export function foldCheckpoints<T extends DescriptionParts>(p: T): T & { reviews: PointReview[] } {
+  const cps = p.checkpoints.filter(c => c.text.trim())
+  const reviews = [...(p.reviews ?? [])]
+  if (cps.length === 0) return { ...p, checkpoints: [], reviews }
+  const keys = pointKeys(pointTexts(p))
+  const first = keys.length - cps.length
+  cps.forEach((c, i) => {
+    const key = keys[first + i]
+    if (c.done && !reviews.some(r => r.key === key)) reviews.push({ key, state: 'fixed' })
+  })
+  const head = p.body.replace(/\s+$/, '')
+  const body = [head, ...cps.map(c => c.text.trim())].filter(Boolean).join('\n\n')
+  return { ...p, body, checkpoints: [], reviews }
 }
 
 function newRefId(taken: Set<string>): string {
@@ -226,7 +325,8 @@ function newRefId(taken: Set<string>): string {
  * the new description and the body position just after the link.
  */
 export function insertPickLink(text: string, capture: Capture, offset: number | null): { text: string; caret: number; id: string } {
-  const p = parseDescription(text)
+  // The text box shows older checkpoints as paragraphs (foldCheckpoints), so the offset counts them.
+  const p = foldCheckpoints(parseDescription(text))
   const taken = new Set(p.marks.flatMap(m => (m.type === 'pick' && m.id ? [m.id] : [])))
   const id = newRefId(taken)
   const at = offset == null ? p.body.length : Math.max(0, Math.min(offset, p.body.length))
