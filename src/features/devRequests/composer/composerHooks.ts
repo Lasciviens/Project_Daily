@@ -46,6 +46,14 @@ export function focusIntoComposer(root: () => HTMLElement | null, target: () => 
     if (el instanceof HTMLTextAreaElement || el instanceof HTMLInputElement) {
       const end = el.value.length
       try { el.setSelectionRange(end, end) } catch { /* not a text type */ }
+    } else if (el.isContentEditable) {
+      // A point of the request editor: the caret after its last word.
+      const r = document.createRange()
+      r.selectNodeContents(el)
+      r.collapse(false)
+      const sel = window.getSelection()
+      sel?.removeAllRanges()
+      sel?.addRange(r)
     }
   }
   const onFocusIn = (e: FocusEvent) => {

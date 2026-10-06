@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useLocation } from 'react-router-dom'
-import { Plus, ChevronRight, Trash2, ArrowUpDown, Zap, Sparkles, Check, PenLine, X } from 'lucide-react'
+import { Plus, ChevronRight, Trash2, ArrowUpDown, Zap, Sparkles, Check, PenLine, X, Inbox } from 'lucide-react'
 import { useUIStore } from '../../../app/store'
 import {
   devRequestsReadFrom, useDevRequests, useDeleteDevRequest, useBulkDeleteDevRequests, useReorderDevRequests,
@@ -17,7 +17,7 @@ import { DevRequestCard } from './DevRequestCard'
 import { pageOptionFor } from './devRequestMeta'
 import { SideDrawer } from '../../../shared/modals/SideDrawer'
 import { useEntityModal } from '../../../shared/modals'
-import { Button, IconButton, Skeleton, Truncate, cx } from '../../../shared/ui'
+import { Button, EmptyState, IconButton, Skeleton, Truncate, cx } from '../../../shared/ui'
 import type { DevRequest, DevRequestCategory, DevRequestPriority } from '../types'
 
 const PRIORITY_RANK: Record<DevRequestPriority, number> = { urgent: 0, high: 1, medium: 2, low: 3 }
@@ -190,7 +190,6 @@ export function DevRequestsDrawer() {
       onToggleSelect={() => togglePicked(request.id)}
       onDelete={() => void handleDelete(request)}
       onOpen={() => openRequest(request.id)}
-      onOpenRequest={openRequest}
     />
   )
 
@@ -217,8 +216,8 @@ export function DevRequestsDrawer() {
         })}
       </div>
       <div className="flex items-center justify-between gap-2">
-        <span className="text-meta text-fg-muted">
-          {categoryFilters.size > 0 ? `${categoryFilters.size} categor${categoryFilters.size === 1 ? 'y' : 'ies'} selected` : 'All categories'}
+        <span className="text-meta tabular-nums text-fg-muted">
+          {`${openItems.length} open${doneItems.length ? ` · ${doneItems.length} done` : ''}`}
         </span>
         <button
           type="button"
@@ -269,13 +268,13 @@ export function DevRequestsDrawer() {
 
         {/* Open items only; done items collapse into their own section below
             so a long finished history never pushes open ones out of view. */}
-        <div className="flex flex-col gap-1.5 p-3 sm:px-4">
+        <div className="flex flex-col gap-2 p-3 sm:px-4">
           {isLoading ? (
             [1, 2, 3].map(i => <Skeleton key={i} className="h-14 rounded-row" />)
           ) : sorted.length === 0 ? (
-            <p className="py-8 text-center text-body text-fg-muted">
-              {categoryFilters.size > 0 ? 'Nothing in these categories.' : 'Nothing yet — tap New to jot something down.'}
-            </p>
+            categoryFilters.size > 0
+              ? <EmptyState icon={<Inbox />} title="Nothing in these categories" action={<Button size="sm" variant="ghost" onClick={() => setDrawer({ categories: [] })}>Show all</Button>} />
+              : <EmptyState icon={<Inbox />} title="No open requests" description="Jot down a bug, an idea or a wish for the app — write it as points, pick spots on the page." action={<Button size="sm" icon={<Plus />} onClick={openNew}>New request</Button>} />
           ) : (
             sorted.map(request => (
               <div key={request.id} onDragOver={e => sortMode === 'manual' && e.preventDefault()} onDrop={() => handleDrop(request.id)}>
@@ -285,7 +284,7 @@ export function DevRequestsDrawer() {
           )}
 
           {doneItems.length > 0 && (
-            <div className="mt-2 border-t border-line pt-2">
+            <div className="mt-1 border-t border-line pt-2">
               <div className="flex items-center gap-1.5">
                 <button
                   type="button"
@@ -309,7 +308,7 @@ export function DevRequestsDrawer() {
                 </Button>
               </div>
               {showDone && (
-                <div className="mt-1.5 flex flex-col gap-1.5">
+                <div className="mt-1.5 flex flex-col gap-2">
                   {doneItems.map(request => <div key={request.id}>{renderRow(request, false)}</div>)}
                 </div>
               )}

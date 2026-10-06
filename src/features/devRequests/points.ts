@@ -1,6 +1,7 @@
 // Pure: a request's points and how each fared after it was sent to Claude.
-//   points      every paragraph of the text (pointText.ts), plus older
-//               "- [ ]" checkpoints; a ticked old checkpoint reads as Fixed
+//   points      the outline of the text (outline.ts: points 1, 2 … and
+//               sub-points 1.1, 1.2 …), plus older "- [ ]" checkpoints as
+//               points; a ticked old checkpoint reads as Fixed
 //   reviews     Fixed / Not fixed (+ a note of what is still wrong) / Moved,
 //               stored as `[[review …]]` lines in the description
 //   re-check    Not fixed points are collected into ONE follow-up request per
@@ -10,30 +11,46 @@
 // Pure (imports only other pure modules) so the verify script can require it.
 
 import {
-  REF_RE, composeDescription, encodeMark, foldCheckpoints, parseDescription, pointTexts,
+  REF_RE, composeDescription, encodeMark, foldCheckpoints, parseDescription,
   type Mark, type ParsedDescription, type PickMark, type PointReview, type ReviewState,
 } from './devRequestMarks'
 import { pointKeys } from './pointText'
+import { STILL_RE, outlineLabels, parseOutline, pointFullText, type PointLevel } from './outline'
+
+export { STILL_RE }
 
 export interface Point {
   key: string
-  /** 1-based, as shown and as the prompt numbers it (1.2 = item 1, point 2). */
+  /** 1-based position in the list. */
   n: number
+  /** The number shown in the editor and the prompt: "2", "2.1" … */
+  label: string
+  level: PointLevel
+  /** Words + any "Still not fixed" tail (what the key is computed from). */
   text: string
+  /** The owner's words alone. */
+  words: string
+  /** A re-check request's "Still not fixed: …" line(s); null otherwise. */
+  tail: string | null
   review: PointReview | null
   /** Fixed / Not fixed / Moved; null = not reviewed yet. */
   state: ReviewState | null
 }
 
 export function requestPoints(p: Pick<ParsedDescription, 'body' | 'checkpoints' | 'reviews'>): Point[] {
-  const texts = pointTexts(p)
-  const keys = pointKeys(texts)
-  const firstCp = texts.length - p.checkpoints.filter(c => c.text.trim()).length
   const cps = p.checkpoints.filter(c => c.text.trim())
-  return texts.map((text, i) => {
+  const outline = [...parseOutline(p.body), ...cps.map(c => ({ level: 0 as const, text: c.text.trim(), tail: null }))]
+  const texts = outline.map(pointFullText)
+  const keys = pointKeys(texts)
+  const labels = outlineLabels(outline)
+  const firstCp = outline.length - cps.length
+  return outline.map((o, i) => {
     const review = p.reviews.find(r => r.key === keys[i]) ?? null
     const oldTick = i >= firstCp && cps[i - firstCp]?.done
-    return { key: keys[i], n: i + 1, text, review, state: review?.state ?? (oldTick ? 'fixed' : null) }
+    return {
+      key: keys[i], n: i + 1, label: labels[i], level: o.level, text: texts[i], words: o.text.trim(), tail: o.tail,
+      review, state: review?.state ?? (oldTick ? 'fixed' : null),
+    }
   })
 }
 
@@ -84,8 +101,6 @@ export function setReview(text: string, key: string, review: Omit<PointReview, '
 
 export const RECHECK_PREFIX = 'Re-check: '
 export const recheckTitle = (title: string) => `${RECHECK_PREFIX}${title.trim().replace(/^(Re-check: )+/, '')}`
-/** The line a collected point carries under the original's words. */
-export const STILL_RE = /^Still not fixed\b/
 
 /**
  * The open re-check request already collecting points of `originalId` (the
@@ -134,7 +149,12 @@ export function collectForRecheck(
   for (const key of keys) {
     const pt = points.find(p => p.key === key)
     if (!pt || recheck.keys.includes(key)) continue
-    const text = pt.text.replace(REF_RE, (whole, id: string) => {
+    // The words only (a point re-checked a second time carries the newest
+    // note); a sub-point keeps the point it belongs to in front, so it still
+    // reads on its own ("Water card should be red › also in dark mode").
+    const parent = pt.level === 1 ? points.slice(0, points.indexOf(pt)).reverse().find(x => x.level === 0) : undefined
+    const words = parent?.words ? `${parent.words.split('\n')[0]} › ${pt.words}` : pt.words
+    const text = words.replace(REF_RE, (whole, id: string) => {
       const pick = srcPicks.get(id)
       if (!pick) return whole
       const again = renamed.get(id)

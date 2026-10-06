@@ -1,9 +1,8 @@
 import { useEffect, type CSSProperties, type HTMLAttributes, type Ref } from 'react'
-import { ChevronDown, GripVertical, Minus, PenLine, Sparkles, X } from 'lucide-react'
-import { Button, IconButton, SegmentedControl, Truncate, cx } from '../../../shared/ui'
-import type { ComposerTab } from '../devRequestRules'
+import { ArrowLeft, ChevronDown, GripVertical, Minus, PenLine, Sparkles, X } from 'lucide-react'
+import { Button, IconButton, Truncate, cx } from '../../../shared/ui'
 
-// The composer's chrome: the title bar, the Request | Prompt switch, the
+// The composer's chrome: the title bar (with Back from the prompt), the
 // minimised pill and the touch pick bar. Every root carries
 // data-dev-request-ui so picking never captures the composer itself, and
 // vt-pin-composer (one of them at a time) so a page's view transition slides
@@ -17,10 +16,10 @@ export const COMPOSER_ROOT = 'vt-pin-composer'
 /** Above the phone tab bar (the installed-iOS short-viewport gap included). */
 export const ABOVE_TABBAR = 'calc(var(--app-tabbar-h) + env(safe-area-inset-bottom) - var(--ios-viewport-gap, 0px))'
 
-export function ComposerHeader({ title, dirty, phone, onMinimize, onClose, dragProps }: {
+export function ComposerHeader({ title, phone, onBack, onMinimize, onClose, dragProps }: {
   title: string
-  /** 'Unsaved' / 'Edited' marker, or null. */
-  dirty: string | null
+  /** The prompt view: back to the request. */
+  onBack?: () => void
   phone: boolean
   onMinimize: () => void
   onClose: () => void
@@ -33,31 +32,14 @@ export function ComposerHeader({ title, dirty, phone, onMinimize, onClose, dragP
       title={dragProps ? 'Drag to move · double-click to reset · Alt + arrow keys to nudge' : undefined}
       className="flex min-h-[48px] shrink-0 select-none items-center gap-1 border-b border-line pl-3 pr-1.5"
     >
-      {!phone && <GripVertical className="h-4 w-4 shrink-0 text-fg-faint" aria-hidden />}
+      {onBack
+        ? <IconButton label="Back to the request" onClick={onBack} className="-ml-2"><ArrowLeft /></IconButton>
+        : !phone && <GripVertical className="h-4 w-4 shrink-0 text-fg-faint" aria-hidden />}
       {/* The header is the drag handle: a tap bubble would open after every drag. */}
       <Truncate as="h2" reveal="none" className="flex-1 text-ui font-semibold text-fg">{title}</Truncate>
-      {dirty && (
-        <span className="flex shrink-0 items-center gap-1 pr-1 text-meta text-fg-muted">
-          <span data-tone="warn" className="tone-dot" aria-hidden />{dirty}
-        </span>
-      )}
       <IconButton label="Minimise" onClick={onMinimize}>{phone ? <ChevronDown /> : <Minus />}</IconButton>
       <IconButton label="Close — the draft is kept" onClick={onClose}><X /></IconButton>
     </header>
-  )
-}
-
-export function ComposerTabs({ tab, onChange }: { tab: ComposerTab; onChange: (t: ComposerTab) => void }) {
-  return (
-    <div className="shrink-0 px-3 pt-2.5">
-      <SegmentedControl
-        fullWidth
-        size="sm"
-        value={tab}
-        onChange={onChange}
-        options={[{ value: 'request', label: 'Request' }, { value: 'prompt', label: 'Prompt' }]}
-      />
-    </div>
   )
 }
 

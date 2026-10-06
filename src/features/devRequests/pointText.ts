@@ -1,27 +1,18 @@
-// Pure: a request's text as points. Every paragraph is a point — a single
-// Enter is a line break inside it, an empty line starts the next one. Older
-// requests also wrote "1- text" lines; each of those starts a point too.
-// A point is known by a key hashed from its own text, so a review stored for
-// it (devRequestMarks' `[[review …]]`) stays with it while other points are
-// edited, added or removed; editing the point itself gives it a new key.
-// Import-free apart from checkpoints.ts so the verify script can require it.
+// Pure: a request's points and the keys they are known by. The points come
+// from the outline (outline.ts: a blank line separates points, two spaces
+// mark a sub-point, older "1- text" lines start one too). A point is known by
+// a key hashed from its own text — not its number or its indent — so a
+// review stored for it (devRequestMarks' `[[review …]]`) stays with it while
+// other points are edited, added, moved or indented; editing the point itself
+// gives it a new key.
+// Import-free apart from other pure modules so the verify script can require it.
 
 import { LEGACY_POINT_RE } from './checkpoints'
+import { parseOutline, pointFullText } from './outline'
 
-/** The text of each point, in order (trimmed; empty paragraphs dropped). */
+/** The text of each point, in order (words + any "Still not fixed" tail; empty ones dropped). */
 export function splitPoints(body: string): string[] {
-  const out: string[] = []
-  for (const para of body.split(/\n[ \t]*\n/)) {
-    let current: string[] = []
-    const flush = () => { const t = current.join('\n').trim(); if (t) out.push(t); current = [] }
-    for (const line of para.split('\n')) {
-      const m = LEGACY_POINT_RE.exec(line)
-      if (m && m[3].trim()) { flush(); current.push(m[3].trim()); continue }
-      current.push(line)
-    }
-    flush()
-  }
-  return out
+  return parseOutline(body).map(pointFullText)
 }
 
 /** What a key is computed from: case, spacing and an old "3- " prefix don't count. */

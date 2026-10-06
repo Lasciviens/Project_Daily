@@ -1,8 +1,19 @@
-// Pure: turns picked backlog rows into one ready-to-paste prompt for Claude.
-// Pure (imports only other pure modules) so a verify script can require it
-// without a Supabase client.
+// Pure: turns picked backlog rows into one ready-to-paste prompt for Claude
+// Code. Shape (kept short on purpose — every line is something the agent
+// needs):
+//   ## Request 1 — <title>          (just "## <title>" for one request)
+//   bug · high priority · page /home
+//   RE-CHECK: … (a re-check request only)
+//   1. point                        numbered as in the editor
+//      1.1 sub-point
+//   2. [already fixed — leave as is] …
+//   [1] footnote: where a linked spot is (component, file, route, labels)
+//   ---
+//   How to work: … (only the rules that apply)
+// Pure (imports only other pure modules) so a verify script can require it.
 import { REF_RE, markPromptText, parseDescription, pickLabel, type Mark, type PickMark } from './devRequestMarks'
-import { STILL_RE, requestPoints } from './points'
+import { requestPoints, type Point } from './points'
+import { tailNote } from './outline'
 
 export interface PromptRequest {
   title: string
@@ -13,19 +24,9 @@ export interface PromptRequest {
   effort?: string | null
 }
 
-const indent = (text: string) => text.split('\n').map(l => (l.trim() ? `   ${l}` : '')).join('\n')
-
-// `   1.2 first line` with the lines after it lined up under the text.
-function numbered(label: string, text: string): string {
-  const pad = ' '.repeat(3 + label.length + 1)
-  return text.split('\n').map((l, i) => (i === 0 ? `   ${label} ${l}` : l.trim() ? `${pad}${l}` : '')).join('\n')
-}
-
-interface ItemText { text: string; points: boolean; marks: boolean; links: boolean; fixed: boolean; recheck: boolean }
-
 // A link in the text reads `“Water card” [1]`; its full detail (component,
 // file, route, labels) follows as footnote [1] under the request. `name`
-// only names it (for a point that is left out: no footnote needed).
+// only names it (for a point that is skipped: no footnote needed).
 function linker(marks: readonly Mark[]) {
   const byId = new Map(marks.flatMap(m => (m.type === 'pick' && m.id ? [[m.id, m] as const] : [])))
   const used: PickMark[] = []
@@ -40,57 +41,51 @@ function linker(marks: readonly Mark[]) {
   return { replace, name, used }
 }
 
-const short = (text: string, max = 90) => { const t = text.replace(/\s+/g, ' ').trim(); return t.length > max ? `${t.slice(0, max - 1)}…` : t }
+const short = (text: string, max = 80) => { const t = text.replace(/\s+/g, ' ').trim(); return t.length > max ? `${t.slice(0, max - 1)}…` : t }
 
-// A point collected into a re-check request: the original words, then the
-// "Still not fixed" line(s) — quoted apart so Claude sees what failed.
-function recheckPoint(text: string): string {
-  const lines = text.split('\n')
-  const cut = lines.findIndex(l => STILL_RE.test(l.trim()))
-  if (cut <= 0) return text
-  return [`Originally asked: ${lines[0]}`, ...lines.slice(1, cut).map(l => `  ${l}`), ...lines.slice(cut)].join('\n')
+// `1. first line` / `   1.1 first line`, the lines after it lined up under the text.
+function numbered(pt: Point, text: string): string {
+  const head = pt.level === 1 ? `   ${pt.label} ` : `${pt.label}. `
+  const pad = ' '.repeat(head.length)
+  return text.split('\n').map((l, i) => (i === 0 ? head + l : l.trim() ? pad + l.trim() : '')).filter((l, i) => i === 0 || l).join('\n')
 }
 
-/**
- * Points (paragraphs) are numbered 1.1, 1.2 … in the order the user sees them.
- * One that is already Fixed is left in as a one-line "[already fixed]" — the
- * numbers stay the ones on screen, and Claude knows not to touch working
- * code — and one moved to a re-check request is skipped the same way. A Not
- * fixed one carries the note of what is still wrong.
- */
-function itemText(r: PromptRequest, item: number): ItemText {
+const blockIndent = (text: string, by = '    ') => text.split('\n').map((l, i) => (i === 0 || !l.trim() ? l : by + l)).join('\n')
+
+interface ItemText { text: string; numbered: boolean; marks: boolean; fixed: boolean; moved: boolean; recheck: boolean }
+
+function itemText(r: PromptRequest): ItemText {
   const p = parseDescription(r.description)
-  const sections: string[] = []
   const links = linker(p.marks)
   const points = requestPoints(p)
   const reviewed = points.some(pt => pt.state)
-  const recheck = !!p.recheck
+  const recheck = p.recheck
+  const out: string[] = []
   let fixed = false
-  if (recheck) sections.push(indent(`RE-REQUEST — these points were sent to you before${p.recheck!.title.trim() ? ` (in “${p.recheck!.title.trim()}”)` : ''} and the fix did not work. Each quotes what I originally asked and what is still wrong. Don't repeat the first approach: find out why it didn't take, and look deeper.`))
-  if (points.length === 1 && !reviewed && !recheck) {
-    sections.push(indent(links.replace(points[0].text)))
-  } else if (points.length) {
-    sections.push(points.map(pt => {
-      const label = `${item}.${pt.n}`
-      if (pt.state === 'fixed') { fixed = true; return numbered(label, `[already fixed — leave as is] ${short(links.name(pt.text))}`) }
-      if (pt.state === 'moved') return numbered(label, `[moved to a separate re-check request — skip] ${short(links.name(pt.text))}`)
-      const words = links.replace(recheck ? recheckPoint(pt.text) : pt.text)
-      const note = pt.state === 'not_fixed' ? `\nNOT FIXED after the last attempt${pt.review?.note ? `: ${pt.review.note}` : '.'}` : ''
-      return numbered(label, words + note)
+  let moved = false
+  if (recheck) {
+    const from = recheck.title.trim() ? ` in “${recheck.title.trim()}”` : ''
+    out.push(`RE-CHECK: each point below was sent before${from} and the fix did not work. The line under it says what is still wrong.`)
+  }
+  const asProse = points.length === 1 && !reviewed && !recheck && points[0].level === 0
+  if (asProse) out.push(links.replace(points[0].text))
+  else if (points.length) {
+    out.push(points.map(pt => {
+      if (pt.state === 'fixed') { fixed = true; return numbered(pt, `[already fixed — leave as is] ${short(links.name(pt.words))}`) }
+      if (pt.state === 'moved') moved = true
+      if (pt.state === 'moved') return numbered(pt, `[moved to a separate re-check request — skip] ${short(links.name(pt.words))}`)
+      const lines = [links.replace(pt.words)]
+      if (pt.tail) lines.push(`Still not fixed after the first attempt${tailNote(pt.tail) ? `: ${tailNote(pt.tail)}` : '.'}`)
+      if (pt.state === 'not_fixed') lines.push(`NOT FIXED after the last attempt${pt.review?.note ? `: ${pt.review.note.replace(/\s*\n\s*/g, ' ')}` : '.'}`)
+      return numbered(pt, lines.join('\n'))
     }).join('\n'))
   }
-  links.used.forEach((m, i) => sections.push(indent(`[${i + 1}] ${markPromptText(m)}`)))
+  const notes: string[] = links.used.map((m, i) => blockIndent(`[${i + 1}] ${markPromptText(m)}`))
   // Older picks (not linked from the text) and the page it was written on.
   const rest = p.marks.filter(m => !(m.type === 'pick' && m.id))
-  for (const m of rest) sections.push(indent(markPromptText(m)))
-  return {
-    text: sections.join('\n\n'),
-    points: points.length > 1 || reviewed || recheck,
-    marks: rest.length > 0 || links.used.length > 0,
-    links: links.used.length > 0,
-    fixed,
-    recheck,
-  }
+  for (const m of rest) notes.push(markPromptText(m))
+  if (notes.length) out.push(notes.join('\n'))
+  return { text: out.join('\n\n'), numbered: !asProse && points.length > 0, marks: notes.length > 0, fixed, moved, recheck: !!recheck }
 }
 
 const PRIORITY_ORDER: Record<string, number> = { urgent: 0, high: 1, medium: 2, low: 3 }
@@ -98,32 +93,40 @@ const PRIORITY_ORDER: Record<string, number> = { urgent: 0, high: 1, medium: 2, 
 export function buildClaudePrompt(requests: readonly PromptRequest[]): string {
   if (requests.length === 0) return ''
   const sorted = [...requests].sort((a, b) => (PRIORITY_ORDER[a.priority] ?? 9) - (PRIORITY_ORDER[b.priority] ?? 9))
-  let points = false
-  let captured = false
-  let linked = false
-  let fixed = false
-  let recheck = false
+  const one = sorted.length === 1
+  let anyNumbered = false, anyMarks = false, anyFixed = false, anyMoved = false, anyRecheck = false
   const items = sorted.map((r, i) => {
     const meta = [r.category, `${r.priority} priority`, r.effort ? `effort ${r.effort}` : null, r.page && r.page !== 'other' ? `page ${r.page}` : null]
       .filter(Boolean).join(' · ')
-    const t = itemText(r, i + 1)
-    points ||= t.points
-    captured ||= t.marks
-    linked ||= t.links
-    fixed ||= t.fixed
-    recheck ||= t.recheck
-    return `${i + 1}. **${r.title.trim()}** (${meta})${t.text ? `\n${t.text}` : ''}`
+    const t = itemText(r)
+    anyNumbered ||= t.numbered
+    anyMarks ||= t.marks
+    anyFixed ||= t.fixed
+    anyMoved ||= t.moved
+    anyRecheck ||= t.recheck
+    const heading = one ? `## ${r.title.trim()}` : `## Request ${i + 1} — ${r.title.trim()}`
+    return [heading, meta, ...(t.text ? ['', t.text] : [])].join('\n')
   })
-  const n = requests.length
+  const example = one ? '1.2' : 'Request 2 · 1.2'
+  const rules = [
+    'Read CLAUDE.md and docs/design/THEME.md first.',
+    ...(anyMarks ? ['A quoted name with [n] (e.g. “Water card” [1]) is a spot I pointed at in the live app. Footnote [n], [Picked …] and [Page context] blocks give the route with its query, the component and file that rendered it, and the exact visible labels — search the code for those labels.'] : []),
+    ...(anyFixed ? ['Points marked [already fixed] work now: leave that code alone.'] : []),
+    ...(anyMoved ? ['Skip points marked [moved …]: another request covers them.'] : []),
+    ...(anyRecheck ? ['For a RE-CHECK, first find what the earlier attempt changed and why it didn\'t take; don\'t repeat it — look deeper.'] : []),
+    `For each ${one ? (anyNumbered ? 'point' : 'part') : `request${anyNumbered ? ' and point' : ''}`}: find the root cause, make the smallest correct change, and verify it (npx tsc -b, npm run build, the relevant scripts/verify-*.cjs${anyMarks ? ', and the spot I pointed at' : ''}).`,
+    'Then commit, push and open a draft PR.',
+    'If something is ambiguous or needs a decision from me, ask before building it.',
+    `When done, report per ${one ? (anyNumbered ? `point (e.g. ${example})` : 'part') : `request${anyNumbered ? ` and point (e.g. ${example})` : ''}`}: what changed, and anything I must do (migrations, edge-function deploys).`,
+  ]
   return [
-    `Please work on ${n === 1 ? 'this request' : `these ${n} requests`} from my Lasci's Board backlog (Dev Requests), in the order listed:`,
+    one ? 'Please work on this request from my Lasci\'s Board backlog (Dev Requests).'
+      : `Please work on these ${sorted.length} requests from my Lasci's Board backlog (Dev Requests), in this order.`,
     '',
     items.join('\n\n'),
     '',
-    ...(linked ? ['A quoted name followed by [n] (e.g. “Water card” [1]) is a spot I pointed at on the live app; footnote [n] under that request says exactly where it is.', ''] : []),
-    ...(captured ? ['Blocks starting [Picked …] and [Page context] were captured from the live page: the header is the page name and its hash route with the query; a Component line names the React component and the file that rendered it (build-time data-src stamps); the other lines quote the exact visible labels, so search the code for those strings to find the spot.', ''] : []),
-    ...(points ? [`Numbered sub-points (e.g. 1.2) are separate points — answer each one on its own.${fixed ? ' The ones marked [already fixed] work now: leave that code alone.' : ''}`, ''] : []),
-    ...(recheck ? ['An item marked RE-REQUEST repeats points whose earlier fix did not work: check what the first attempt changed, find why it fell short, and verify the result on the spot I pointed at.', ''] : []),
-    `Read CLAUDE.md and docs/design/THEME.md first. For each item: find the root cause in the code, make the smallest correct change, verify it (build, typecheck, the relevant scripts/verify-*.cjs), then commit, push and open a draft PR. If an item is ambiguous or needs a decision from me, ask before building it. When you are done, tell me per item${points ? ' (and per numbered point, e.g. 1.2)' : ''} what changed and anything I need to do (migrations, edge-function deploys).`,
+    '---',
+    'How to work:',
+    ...rules.map(r => `- ${r}`),
   ].join('\n')
 }

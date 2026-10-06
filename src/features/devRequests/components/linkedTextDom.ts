@@ -1,5 +1,6 @@
-// DOM helpers for LinkedTextEditor: the value <-> contenteditable mapping
-// (a link is `[[@id]]` in the value, one atomic <span data-ref> on screen).
+// DOM helpers for the request editor's points (OutlineRow): the text <->
+// contenteditable mapping (a link is `[[@id]]` in the text, one atomic
+// <span data-ref> on screen).
 import { REF_RE, refToken } from '../devRequestMarks'
 
 export const REF_ATTR = 'data-ref'
@@ -39,12 +40,6 @@ export function selectionOffsets(root: HTMLElement): [number, number] | null {
   const r = sel.getRangeAt(0)
   if (!root.contains(r.startContainer) || !root.contains(r.endContainer)) return null
   return [offsetOf(root, r.startContainer, r.startOffset), offsetOf(root, r.endContainer, r.endOffset)]
-}
-
-/** Where a new link goes: the caret, else where it last was, else the end. */
-export function caretOffsetIn(root: HTMLElement | null): number | null {
-  if (!root) return null
-  return selectionOffsets(root)?.[0] ?? lastCaret.get(root) ?? null
 }
 
 /** Puts the caret at a value offset and focuses the editor. */
@@ -89,7 +84,7 @@ export function render(root: HTMLElement, value: string, labelOf: (id: string) =
     link.setAttribute(REF_ATTR, m[1])
     link.contentEditable = 'false'
     link.title = 'Open the page and show this spot'
-    link.className = 'cursor-pointer rounded-sm font-medium text-accent-600 underline decoration-accent-500/60 underline-offset-2 hover:decoration-accent-600'
+    link.className = 'cursor-pointer rounded-[5px] bg-accent-50 px-1 py-px font-medium text-accent-700 underline decoration-accent-500/40 underline-offset-2 hover:decoration-accent-600'
     link.textContent = labelOf(m[1])
     root.appendChild(link)
     last = i + m[0].length
