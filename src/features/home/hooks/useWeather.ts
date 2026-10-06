@@ -15,8 +15,11 @@ export function useWeather({ enabled = true, refetchInterval = false }: { enable
     queryKey: qk.external.weather(geo?.lat ?? 0, geo?.lon ?? 0),
     queryFn:  () => fetchWeather(geo!.lat, geo!.lon),
     staleTime: STALE.long,
-    refetchOnWindowFocus: false,
-    refetchInterval,
+    // MET updates hourly; an open app (the installed PWA stays open for
+    // days) refreshes when it comes back to the front and every 30 min while
+    // visible, so the brief and the tiles never read a morning forecast at night.
+    refetchOnWindowFocus: true,
+    refetchInterval: refetchInterval || 30 * 60_000,
     enabled: enabled && !!geo,
   })
   return { ...query, geo }

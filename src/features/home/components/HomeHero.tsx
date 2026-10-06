@@ -115,7 +115,12 @@ export function HomeHero() {
   // A training session opens as the session (its exercises and targets);
   // changing the plan is behind the popup's ⋯.
   const modal = useEntityModal()
-  const { nextUp, nextTraining, upcoming } = overview
+  const { nextUp, upcoming } = overview
+  // When the next training IS "Next up", the second tile shows the session
+  // after it instead of the same one again.
+  const nextIsTraining = !!(nextUp && overview.nextTraining && nextUp.kind === overview.nextTraining.kind
+    && nextUp.id === overview.nextTraining.id && (nextUp.planDate ?? overview.nextTraining.date) === overview.nextTraining.date)
+  const nextTraining = nextIsTraining ? overview.trainingAfterNext : overview.nextTraining
   const later = upcoming.slice(1, 1 + LATER_ROWS)
 
   return (
@@ -146,7 +151,7 @@ export function HomeHero() {
               onOpen={nextUp && nextUp.kind !== 'calendar' ? () => openItem(nextUp) : undefined}
             />
             <NowTile
-              label="Training"
+              label={nextIsTraining ? 'Training after' : 'Training'}
               icon={<Dumbbell />}
               title={nextTraining?.title}
               meta={nextTraining ? `${relativeDay(nextTraining.date)}${nextTraining.startTime ? ` · ${nextTraining.startTime}` : ''}` : undefined}

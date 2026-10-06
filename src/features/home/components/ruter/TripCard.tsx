@@ -53,7 +53,7 @@ function WalkChip({ leg }: { leg: TripLeg }) {
 }
 
 // Compact horizontal journey summary: badges + walk chips
-function JourneySummaryStrip({ legs }: { legs: TripLeg[] }) {
+export function JourneySummaryStrip({ legs }: { legs: TripLeg[] }) {
   const items: { key: string; el: ReactNode }[] = []
   let i = 0
   for (const leg of legs) {

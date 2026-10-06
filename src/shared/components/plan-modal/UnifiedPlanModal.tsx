@@ -243,7 +243,9 @@ import {
   useCreateTimeBlock, useCreateScheduleBlock, useUpdateTimeBlock, useDeleteTimeBlock,
   useUpdateScheduleBlock, useDeleteScheduleBlock, linkedTimeBlockQuery,
 } from '../../../features/daily/hooks/useSchedule'
-import { updateTimeBlock, fetchTimeBlockCalendarEventId } from '../../../features/daily/api/scheduleApi'
+import { updateTimeBlock, fetchTimeBlockCalendarEventId, fetchTimeBlocks, fetchScheduleBlocks } from '../../../features/daily/api/scheduleApi'
+import { findPlanTwin, planTwinMessage } from '../../../features/training/plan/planTwins'
+import { qk } from '../../query'
 import { useCreateTask, useUpdateTask, useDeleteTask } from '../../../features/todo/hooks/useTodos'
 import { useGoogleTaskLists } from '../../../features/todo/hooks/useGoogleTaskLists'
 import { resolveOrCreateGoogleTaskListId } from '../../../features/todo/api/googleTasksSync'
@@ -791,6 +793,40 @@ export function UnifiedPlanModal({
   const recurrenceIncomplete = (effectiveMode === 'recurring' || effectiveMode === 'schedule')
     && !hasValidRecurrenceSelection(form.recurrence, form.weeklyDays)
 
+  // A training session planned on a day that already has it (the weekly ⟳
+  // template, or the same routine planned once already) asks first — the
+  // second copy used to save silently and every page then showed the session
+  // twice (planTwins.ts). Moving a plan within its own day never asks.
+  async function confirmNoTwin(): Promise<boolean> {
+    const oneOff = form.category === 'training' && !!form.date
+      && ((effectiveMode === 'task' && form.scheduled) || (effectiveMode === 'schedule' && (timeBlock || form.recurrence === 'none')))
+    if (!oneOff) return true
+    const existing = timeBlock ?? linkedBlock ?? null
+    if (existing && existing.date === form.date) return true
+    try {
+      const [blocks, templates] = await Promise.all([
+        qc.fetchQuery({ queryKey: qk.schedule.day(form.date), queryFn: () => fetchTimeBlocks(form.date), staleTime: 30_000 }),
+        qc.fetchQuery({ queryKey: qk.schedule.templates(), queryFn: fetchScheduleBlocks, staleTime: 30_000 }),
+      ])
+      const routineId = source?.sourceType === 'training_session' ? source.sourceId ?? null
+        : existing?.source_type === 'training_session' ? existing.source_id ?? null : null
+      const twin = findPlanTwin({
+        date: form.date, title: form.title.trim(), routineId, excludeBlockId: existing?.id ?? null,
+        blocks, templates: templates.filter(t => t.category === 'training'),
+      })
+      if (!twin) return true
+      return await entityModal.confirm({
+        title: 'Plan this session twice?',
+        message: `${planTwinMessage(twin)} Keep the one you have, or add a second session that day anyway.`,
+        confirmLabel: 'Add anyway',
+        cancelLabel: 'Keep one',
+      })
+    } catch {
+      // The check is a guard, not a gate: a failed read never blocks saving.
+      return true
+    }
+  }
+
   // Every write inside the save paths goes through a useMutationWithFeedback
   // hook, which already toasts + logs its own failure; a throw here only
   // means "stop the multi-step flow", never "toast again".
@@ -798,6 +834,7 @@ export function UnifiedPlanModal({
     if (!form.title.trim()) { toast.error('Title is required'); return }
     if (scheduleStillLoading) { toast.error('Still loading this task’s schedule — try again in a moment'); return }
     if (recurrenceIncomplete) { toast.error('Pick at least one day for the weekly repeat.'); return }
+    if (!(await confirmNoTwin())) return
     setSaving(true)
     const ok = await withProgress(async () => {
       if (effectiveMode === 'task')            await saveTask()

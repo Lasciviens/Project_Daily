@@ -134,7 +134,7 @@ function Results({ areas, s, empty }: { areas: AreaSummary[]; s: Settings; empty
   if (hits.length === 0) return <Card><EmptyState icon={<Search />} title="Nothing found" description={empty} /></Card>
   return (
     <div className="flex flex-col gap-4">
-      {hits.map(h => <GroupCard key={h.group.id} group={h.group} keys={h.settings.map(d => d.key)} s={s} color={h.area.color} areaTitle={h.area.title} />)}
+      {hits.map(h => <GroupCard key={h.group.id} group={h.group} keys={h.settings.map(d => d.key)} s={s} color={h.area.color} areaTitle={h.area.title} showInapplicable />)}
     </div>
   )
 }

@@ -5,7 +5,11 @@ import { useDevRequestDrafts } from '../devRequestDraftStore'
 import { awaitingCheck, cardTimeline, draftFromRow, isDraftEmpty, type ComposerTarget, type DraftFields } from '../devRequestRules'
 import { useDevRequests, useUpdateDevRequest } from '../hooks/useDevRequests'
 import { discardEditDraft, discardNewDraft, useSaveDevRequestDraft } from '../hooks/useDevRequestDraft'
-import { useTickCheckpoint } from '../hooks/useTickCheckpoint'
+import { useMarkRequestDone, useReviewPoint, useSendToRecheck } from '../hooks/usePointReview'
+import type { PointReviewActions } from '../components/PointList'
+import { isReviewable } from '../points'
+import { parseDescription } from '../devRequestMarks'
+import { RecheckOfLink } from '../components/RecheckOfLink'
 import { RequestFields } from '../components/RequestFields'
 import { PageContextToggle } from '../components/PageContextToggle'
 import { STATUSES, STATUS_LABEL, pageOptionFor } from '../components/devRequestMeta'
@@ -37,7 +41,9 @@ export function ComposerRequestTab({ target, readPage, onPick, onQuote, altHint,
   const editDraft = useDevRequestDrafts(s => (target.kind === 'edit' ? s.editDrafts[target.id] : undefined))
   const { saveNew, saveEdit, pending } = useSaveDevRequestDraft()
   const updateStatus = useUpdateDevRequest()
-  const tick = useTickCheckpoint()
+  const reviewPoint = useReviewPoint()
+  const sendToRecheck = useSendToRecheck()
+  const markDone = useMarkRequestDone()
 
   if (target.kind === 'edit' && !row) {
     if (isLoading) return <div className="flex flex-col gap-2 p-3"><Skeleton className="h-10" /><Skeleton className="h-32" /></div>
@@ -60,6 +66,15 @@ export function ComposerRequestTab({ target, readPage, onPick, onQuote, altHint,
     if (target.kind === 'new') s.patchNewDraft(p)
     else s.patchEditDraft(target.id, p, seed!)
   }
+
+  // Once the request went to Claude each point is reviewed here, written at once (like the status).
+  const review: PointReviewActions | undefined = row && isReviewable(row) ? {
+    onSet: (key, r) => reviewPoint(row, key, r),
+    onSendRecheck: keys => sendToRecheck.mutate({ original: row, keys }),
+    sending: sendToRecheck.isPending,
+    onOpenRequest: id => useDevRequestDrafts.getState().openComposer({ kind: 'edit', id }),
+    onMarkDone: row.status === 'done' ? undefined : () => markDone(row),
+  } : undefined
 
   const done = () => onDone(target)
   function save() {
@@ -86,14 +101,14 @@ export function ComposerRequestTab({ target, readPage, onPick, onQuote, altHint,
         {row && (
           <div className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-meta tabular-nums text-fg-muted">
             {cardTimeline(row) && <span>{cardTimeline(row)}</span>}
-            {awaitingCheck(row) && <span data-tone="warn" className="tone-pill">Prompted — check it, then close it</span>}
+            {awaitingCheck(row) && <span data-tone="warn" className="tone-pill">Prompted — check each point, then close it</span>}
+            <RecheckOfLink recheck={parseDescription(row.description).recheck} onOpen={id => useDevRequestDrafts.getState().openComposer({ kind: 'edit', id })} />
           </div>
         )}
         <RequestFields
           fields={fields}
           onChange={onChange}
-          // A saved request's checkpoint is ticked for real (like its status).
-          onToggleCheckpoint={row ? (i, done, items) => tick(row, items, i, done) : undefined}
+          review={review}
           titleRef={titleRef}
           descriptionRef={descriptionRef}
           descriptionClassName={cx('min-h-[140px] transition-shadow', flash && 'ring-2 ring-accent-500/40')}

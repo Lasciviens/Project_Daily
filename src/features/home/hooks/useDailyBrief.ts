@@ -2,13 +2,13 @@ import { useEffect, useMemo, useState } from 'react'
 import { differenceInCalendarDays, format, parseISO } from 'date-fns'
 import { formatDate } from '../../../shared/utils/dateFormat'
 import { buildDailyBrief, type BriefInput, type DailyBrief } from '../briefRules'
-import { weatherLabel, type WeatherData } from '../api/weatherApi'
+import { hoursFromNow, weatherLabel, type WeatherData } from '../api/weatherApi'
 import { useTodayOverview } from './useTodayOverview'
 import { useWeather } from './useWeather'
 import { useCurrencyRates } from './useCurrencyRates'
 import { useWeekTrainingStats } from './useWeekTrainingStats'
 import { useTasksForDay } from '../../todo/hooks/useTodos'
-import { completedWithinLast24h, isOverdue } from '../../todo/taskRules'
+import { closedOn, isOverdue } from '../../todo/taskRules'
 import { useDayNutrition } from '../../daily/hooks/useDayNutrition'
 import { useDayTargets } from '../../daily/hooks/useDayTargets'
 import { useWaterDay } from '../../daily/hooks/useWater'
@@ -39,10 +39,10 @@ function useHourNow(): number {
 }
 
 /** The hourly points still inside today (the list wraps past midnight). */
-function hoursLeftToday(w: WeatherData) {
+function hoursLeftToday(hours: WeatherData['hours']) {
   const out: WeatherData['hours'] = []
   let prev = -1
-  for (const h of w.hours) {
+  for (const h of hours) {
     const hr = Number(h.time.slice(0, 2))
     if (hr < prev) break
     out.push(h)
@@ -53,8 +53,10 @@ function hoursLeftToday(w: WeatherData) {
 
 function weatherInput(w: WeatherData | undefined): BriefInput['weather'] {
   if (!w) return null
-  const today = hoursLeftToday(w)
+  const fromNow = hoursFromNow(w)
+  const today = hoursLeftToday(fromNow)
   const temps = today.map(h => h.temp)
+  const point = (h: WeatherData['hours'][number]) => ({ time: h.time, temp: h.temp, precip: h.precip })
   return {
     tempC: w.current.temp,
     label: weatherLabel(w.current.symbol),
@@ -63,7 +65,8 @@ function weatherInput(w: WeatherData | undefined): BriefInput['weather'] {
     windDir: w.current.windDirection,
     highC: temps.length > 1 ? Math.max(...temps) : undefined,
     lowC: temps.length > 1 ? Math.min(...temps) : undefined,
-    hours: today.map(h => ({ time: h.time, temp: h.temp, precip: h.precip })),
+    hours: today.map(point),
+    ahead: fromNow.slice(0, 12).map(point),
     // `daily` starts at tomorrow (weatherApi skips today).
     tomorrow: w.daily[0] ? { label: weatherLabel(w.daily[0].symbol), minC: w.daily[0].min, maxC: w.daily[0].max, precipMm: w.daily[0].precip } : null,
   }
@@ -111,7 +114,7 @@ export function useDailyBrief(): { brief: DailyBrief; isLoading: boolean } {
   const brief = useMemo(() => {
     const tasks = (tasksQ.data ?? []).filter(t => t.status !== 'cancelled')
     const open = tasks.filter(t => t.status !== 'done')
-    const doneToday = tasks.filter(t => t.status === 'done' && completedWithinLast24h(t.updated_at)).length
+    const doneToday = tasks.filter(t => t.status === 'done' && closedOn(t, date)).length
 
     const next = overview.nextUp
     const nt = overview.nextTraining

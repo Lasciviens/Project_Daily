@@ -70,10 +70,10 @@ export function DayView({ date }: Props) {
   )
 
   const openTasks      = tasks.filter(t => t.status === 'open' || t.status === 'in_progress')
-  const doneTasks      = tasks.filter(t => t.status === 'done' && completedWithinLast24h(t.updated_at))
+  const doneTasks      = tasks.filter(t => t.status === 'done' && completedWithinLast24h(t))
   // A cancelled task stays visible (same 24h window as Done) so it doesn't
   // look identical to a silent delete; counts elsewhere still exclude it.
-  const cancelledTasks = tasks.filter(t => t.status === 'cancelled' && completedWithinLast24h(t.updated_at))
+  const cancelledTasks = tasks.filter(t => t.status === 'cancelled' && completedWithinLast24h(t))
   // A task added while the day is on screen rises in; the day's own rows don't.
   const fresh = useNewIds(tasks.map(t => t.id), format(date, 'yyyy-MM-dd'), !isLoading)
 

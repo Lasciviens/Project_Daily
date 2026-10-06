@@ -10,11 +10,11 @@ import { CurrencyWidget, CurrencyTile } from '../components/CurrencyWidget'
 import { NewsWidget } from '../components/NewsWidget'
 import { TrainingHomeWidget, TrainingTile } from '../components/TrainingHomeWidget'
 import { GamesHomeWidget, GamesTile } from '../components/GamesHomeWidget'
-import { ProjectsHomeWidget, ProjectsTile } from '../components/ProjectsHomeWidget'
+import { BooksHomeWidget, BooksTile } from '../components/BooksHomeWidget'
 import { RecentMediaWidget, RecentMediaTile } from '../components/RecentMediaWidget'
 import { HOME_BOARD, newsRows, type HomeSection } from './homeBoard'
 
-/** Glance tiles that open their detail: 2 across in a side column or on a phone, 3 on a wider stack. */
+/** Glance tiles with swipeable screens that open their detail: 2 across in a side column or on a phone, 3 on a wider stack. */
 function GlanceTiles() {
   return (
     <section aria-label="At a glance" className="@container">
@@ -23,7 +23,7 @@ function GlanceTiles() {
         <CurrencyTile />
         <TrainingTile />
         <RecentMediaTile />
-        <ProjectsTile />
+        <BooksTile />
         <GamesTile />
       </div>
     </section>
@@ -55,7 +55,7 @@ export function HomePage() {
     currency: <CurrencyWidget />,
     training: <TrainingHomeWidget />,
     media: <RecentMediaWidget />,
-    projects: <ProjectsHomeWidget />,
+    books: <BooksHomeWidget />,
     games: <GamesHomeWidget />,
   }
 

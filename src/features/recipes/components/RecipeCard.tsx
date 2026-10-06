@@ -70,9 +70,10 @@ export function RecipeCard({ recipe, usage, usageDays, onOpen, onLog, logLabel }
       </button>
 
       <div className="flex items-center gap-1 border-t border-line px-2.5 py-1">
-        <span className="min-w-0 flex-1 text-micro text-fg-muted">
+        {/* Two deliberate lines in a narrow card: the label, then date · count. */}
+        <span className="min-w-0 flex-1 text-micro leading-snug text-fg-muted">
           {usage
-            ? <>Last eaten <span className="tabular-nums">{formatDate(usage.lastDate)}</span>{usage.count > 1 && <> · <span className="tabular-nums">{usage.count}×</span></>}</>
+            ? <><span className="block">Last eaten</span><span className="whitespace-nowrap tabular-nums">{formatDate(usage.lastDate)}{usage.count > 1 && ` · ${usage.count}×`}</span></>
             : <>Not eaten in {usageDays} days</>}
         </span>
         <IconButton label={logLabel} onClick={onLog} className="min-h-[44px] min-w-[44px] text-accent-600">

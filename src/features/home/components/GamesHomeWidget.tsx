@@ -1,13 +1,13 @@
 import { useMemo, useState } from 'react'
 import { Gamepad2 } from 'lucide-react'
-import { Skeleton, ToneDot, Button, type Tone, AnimatedNumber } from '../../../shared/ui'
+import { Skeleton, ToneDot, Button, Truncate, type Tone, AnimatedNumber } from '../../../shared/ui'
 import { useGameStats, usePlayQueue } from '../../games/hooks/useGames'
 import { computeGameStats } from '../../games/gameStats'
 import type { Game } from '../../games/types'
 import { PLAY_STATUS_TONE } from '../../games/playStatusTones'
 import { useWidgetState } from '../hooks/useWidgetState'
 import { WidgetShell } from './WidgetShell'
-import { GlanceTile } from './GlanceTile'
+import { GlanceCarousel, type GlanceScreen } from './GlanceCarousel'
 import { TileDetail } from './TileDetail'
 import { useTilePopup } from '../hooks/useTilePopup'
 
@@ -90,19 +90,55 @@ function GamesSummary({ enabled }: { enabled: boolean }) {
   )
 }
 
+/** Glance tile with swipeable screens: playing · up next in the queue · the library. */
 export function GamesTile() {
   const { stats, isLoading } = useVisibleGameStats(true)
+  const { data: queue = [] } = usePlayQueue(true)
   const popup = useTilePopup()
   const [open, setOpen] = useState(false)
+  const playing = queue.filter(g => g.play_status === 'playing')
+  const upNext = queue.find(g => g.play_status !== 'playing' && g.play_status !== 'completed' && g.play_status !== 'dropped')
+  const screens: GlanceScreen[] = [
+    {
+      key: 'playing',
+      name: 'Playing',
+      body: (
+        <div className="min-w-0 space-y-1">
+          <p className="flex items-baseline gap-1 text-title font-bold tabular-nums text-fg"><AnimatedNumber value={stats?.playing ?? 0} /><span className="text-meta font-medium text-fg-muted">playing</span></p>
+          <Truncate className="text-meta text-fg-2">{playing.length ? playing.map(g => g.title).join(', ') : 'Nothing in progress'}</Truncate>
+        </div>
+      ),
+    },
+  ]
+  if (upNext) {
+    screens.push({
+      key: 'next',
+      name: 'Up next',
+      body: (
+        <div className="min-w-0 space-y-1">
+          <Truncate className="text-ui font-semibold text-fg">{upNext.title}</Truncate>
+          <Truncate className="text-meta text-fg-muted">{`Play queue · ${queue.length} game${queue.length === 1 ? '' : 's'}`}</Truncate>
+        </div>
+      ),
+    })
+  }
+  if (stats) {
+    screens.push({
+      key: 'library',
+      name: 'Library',
+      value: <span className="flex items-baseline gap-1">{stats.completed}<span className="text-meta font-medium text-fg-muted">of {stats.total} done</span></span>,
+      hint: `${stats.total ? Math.round((stats.completed / stats.total) * 100) : 0}% of your library finished`,
+    })
+  }
   return (
     <>
-      <GlanceTile
+      <GlanceCarousel
+        id="games"
         label="Games"
         icon={<Gamepad2 />}
         {...(popup ? { onClick: () => setOpen(true) } : { to: '/games' })}
         loading={isLoading}
-        value={<><AnimatedNumber value={stats?.playing ?? 0} /><span className="ml-1 text-meta font-medium text-fg-muted">playing</span></>}
-        hint={stats ? `${stats.completed} of ${stats.total} done` : undefined}
+        screens={screens}
       />
       {popup && (
         <TileDetail open={open} onClose={() => setOpen(false)} title="Games" to="/games" openLabel="Open Games">

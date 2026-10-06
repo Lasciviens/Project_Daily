@@ -1144,7 +1144,8 @@
      "kobo_clara_bw": true,
      "risky": false,
      "notes": "-1 = disabled (menu 'Disable'). Menu default when enabling: 5. Read in plugin init (main.lua:35).",
-     "source": "plugins/autodim.koplugin/main.lua:82"
+     "source": "plugins/autodim.koplugin/main.lua:82",
+     "off": -1
     },
     {
      "key": "autodim_duration_seconds",
@@ -1305,27 +1306,107 @@
      "key": "autowarmth_scheduler_times",
      "label": "Fixed schedule times",
      "path": "Settings (⚙ tab) → Screen → AutoWarmth and night mode → Fixed schedule settings",
-     "type": "string",
-     "absent_means": "plugin defaults",
+     "type": "list",
+     "absent_means": [
+      0.0,
+      5.5,
+      6.0,
+      6.5,
+      7.0,
+      13.0,
+      21.5,
+      22.0,
+      22.5,
+      23.0,
+      24.0
+     ],
      "default": null,
      "effect": "next_book",
      "kobo_clara_bw": true,
      "risky": false,
-     "notes": "Table (array) of decimal hours for the schedule points (midnight, dawn, sunrise, … sunset, dusk); type is a Lua table, not a string. Edit only by replacing the whole array.",
-     "source": "plugins/autowarmth.koplugin/main.lua:930"
+     "notes": "Lua table of 11 decimal hours (6.5 = 06:30), one per day phase in this order: Solar midnight (previous day), Astronomical dawn, Nautical dawn, Civil dawn, Sunrise, Solar noon, Sunset, Civil dusk, Nautical dusk, Astronomical dusk, Solar midnight. Default {0.0, 5.5, 6.0, 6.5, 7.0, 13.0, 21.5, 22.0, 22.5, 23.0, 24.0} (main.lua:85-86). Each time is set with a DateTimeWidget, hour -1…24, minutes 0…59 (main.lua:938-944); 'Invalidate' removes one entry, leaving a hole in the table (main.lua:992-994). Simple mode only uses Civil dawn, Sunrise, Sunset, Civil dusk (main.lua:375-383; menu main.lua:1003-1013). Out-of-order entries are raised to the previous one at init (main.lua:107-127). Used by modes 2, 3 and 4 (main.lua:348-372).",
+     "source": "plugins/autowarmth.koplugin/main.lua:85",
+     "list": {
+      "length": 11,
+      "nullable": true,
+      "integer": false,
+      "ranges": [
+       [
+        -1,
+        24.99
+       ]
+      ],
+      "ascending": true,
+      "editor": "schedule",
+      "labels": [
+       "Solar midnight (previous day)",
+       "Astronomical dawn",
+       "Nautical dawn",
+       "Civil dawn",
+       "Sunrise",
+       "Solar noon",
+       "Sunset",
+       "Civil dusk",
+       "Nautical dusk",
+       "Astronomical dusk",
+       "Solar midnight"
+      ]
+     }
     },
     {
      "key": "autowarmth_warmth",
      "label": "Warmth per period",
      "path": "Settings (⚙ tab) → Screen → AutoWarmth and night mode → Warmth and night mode settings",
-     "type": "string",
-     "absent_means": "plugin defaults",
+     "type": "list",
+     "absent_means": [
+      90,
+      90,
+      80,
+      60,
+      20,
+      20,
+      20,
+      60,
+      80,
+      90,
+      90
+     ],
      "default": null,
      "effect": "next_book",
      "kobo_clara_bw": true,
      "risky": false,
-     "notes": "Table (array) of warmth values 0-100 per day phase; +1000 means 'and night mode on'. Lua table, not a string.",
-     "source": "plugins/autowarmth.koplugin/main.lua:1092"
+     "notes": "Lua table of 11 warmth values, one per day phase (same order as autowarmth_scheduler_times); 0-100 %, +1000 = 'and night mode on'. Default {90, 90, 80, 60, 20, 20, 20, 60, 80, 90, 90} (main.lua:87-88). The menu edits six phases and mirrors each to its partner, warmth[#warmth - i + 1] (main.lua:1074, 1097, 1107), so the table must keep all 11 entries. Menu: Solar noon (6), Sunset and sunrise (5), darkest civil (4), nautical (3, expert), astronomical (2, expert) twilight, Solar midnight (1, expert) (main.lua:1187-1192); spinner 0-100 % (main.lua:1053-1060), night-mode check box only while autowarmth_control_nightmode (main.lua:1080-1087).",
+     "source": "plugins/autowarmth.koplugin/main.lua:87",
+     "list": {
+      "length": 11,
+      "nullable": false,
+      "integer": true,
+      "ranges": [
+       [
+        0,
+        100
+       ],
+       [
+        1000,
+        1100
+       ]
+      ],
+      "mirrored": true,
+      "editor": "warmth",
+      "labels": [
+       "Solar midnight (previous day)",
+       "Astronomical dawn",
+       "Nautical dawn",
+       "Civil dawn",
+       "Sunrise",
+       "Solar noon",
+       "Sunset",
+       "Civil dusk",
+       "Nautical dusk",
+       "Astronomical dusk",
+       "Solar midnight"
+      ]
+     }
     },
     {
      "key": "autowarmth_control_warmth",
@@ -1412,7 +1493,8 @@
      "kobo_clara_bw": true,
      "risky": false,
      "notes": "-1 = disabled ('Disable' button, main.lua:507). Menu range 1 min … 24 h. Read in plugin init; a menu change reschedules immediately.",
-     "source": "plugins/autosuspend.koplugin/main.lua:189"
+     "source": "plugins/autosuspend.koplugin/main.lua:189",
+     "off": -1
     },
     {
      "key": "autoshutdown_timeout_seconds",
@@ -1428,7 +1510,8 @@
      "kobo_clara_bw": true,
      "risky": false,
      "notes": "-1 = disabled. Default 3 days; range 5 min … 28 days.",
-     "source": "plugins/autosuspend.koplugin/main.lua:187"
+     "source": "plugins/autosuspend.koplugin/main.lua:187",
+     "off": -1
     },
     {
      "key": "auto_standby_timeout_seconds",
@@ -1444,7 +1527,8 @@
      "kobo_clara_bw": true,
      "risky": false,
      "notes": "Menu only when Device:canStandby() (detected at runtime via checkStandby). -1 = disabled. Recommended ≥4 s on Kobo.",
-     "source": "plugins/autosuspend.koplugin/main.lua:192"
+     "source": "plugins/autosuspend.koplugin/main.lua:192",
+     "off": -1
     },
     {
      "key": "enable_charging_led",
@@ -3451,7 +3535,7 @@
      "key": "copt_h_page_margins",
      "label": "L/R Margins",
      "path": "Reader → bottom menu (config dialog) → Margins tab",
-     "type": "string",
+     "type": "list",
      "absent_means": [
       10,
       10
@@ -3460,15 +3544,28 @@
       10,
       10
      ],
-     "min": 0,
-     "max": 140,
-     "step": 1,
-     "unit": "px at 160 dpi (scaled by screen DPI; shown in mm by default)",
+     "unit": "px at 160 dpi",
      "effect": "next_book",
      "kobo_clara_bw": true,
      "risky": false,
-     "notes": "Lua TABLE {left, right}, NOT a string — write e.g. {15,15}. Presets: {5,5},{10,10},{15,15},{20,20},{30,30},{50,50},{70,70},{100,100},{140,140} (defaults.lua:107-115).",
-     "source": "frontend/ui/data/creoptions.lua:134"
+     "notes": "Lua table {left, right} in px at 160 dpi. Presets {5,5},{10,10},{15,15},{20,20},{30,30},{50,50},{70,70},{100,100},{140,140} (defaults.lua:107-115); the config dialog's own editor allows 0-140 each, step 1 (creoptions.lua:164-175).",
+     "source": "frontend/ui/data/creoptions.lua:134",
+     "list": {
+      "length": 2,
+      "nullable": false,
+      "integer": true,
+      "ranges": [
+       [
+        0,
+        140
+       ]
+      ],
+      "editor": "pair",
+      "labels": [
+       "Left",
+       "Right"
+      ]
+     }
     },
     {
      "key": "copt_sync_t_b_page_margins",
@@ -3653,7 +3750,7 @@
      "key": "copt_word_spacing",
      "label": "Word Spacing",
      "path": "Reader → bottom menu (config dialog) → Font tab",
-     "type": "string",
+     "type": "list",
      "absent_means": [
       95,
       75
@@ -3662,12 +3759,32 @@
       95,
       75
      ],
-     "unit": "% {scaling 10-500, reduction 25-100}",
+     "unit": "%",
      "effect": "next_book",
      "kobo_clara_bw": true,
      "risky": false,
-     "notes": "Lua TABLE {scaling, reduction}. Presets small {75,50}, medium {95,75}, large {100,90}.",
-     "source": "frontend/ui/data/creoptions.lua:457"
+     "notes": "Lua table {scaling, reduction} in %. Presets small {75,50}, medium {95,75}, large {100,90}; the config dialog's own editor allows scaling 10-500 and reduction 25-100, step 1 (creoptions.lua:461-478).",
+     "source": "frontend/ui/data/creoptions.lua:457",
+     "list": {
+      "length": 2,
+      "nullable": false,
+      "integer": true,
+      "positions": [
+       [
+        10,
+        500
+       ],
+       [
+        25,
+        100
+       ]
+      ],
+      "editor": "pair",
+      "labels": [
+       "Scaling",
+       "Reduction"
+      ]
+     }
     },
     {
      "key": "copt_word_expansion",
@@ -4009,7 +4126,8 @@
      "kobo_clara_bw": true,
      "risky": false,
      "notes": "Font face NAME as listed in the font menu (e.g. 'Noto Serif', 'Literata').",
-     "source": "frontend/apps/reader/modules/readerfont.lua:329"
+     "source": "frontend/apps/reader/modules/readerfont.lua:329",
+     "font": "face"
     },
     {
      "key": "fallback_font",
@@ -4021,7 +4139,8 @@
      "effect": "next_book",
      "kobo_clara_bw": true,
      "risky": false,
-     "source": "frontend/apps/reader/modules/readerfont.lua:353"
+     "source": "frontend/apps/reader/modules/readerfont.lua:353",
+     "font": "face"
     },
     {
      "key": "monospace_font",
@@ -4033,7 +4152,8 @@
      "effect": "next_book",
      "kobo_clara_bw": true,
      "risky": false,
-     "source": "frontend/apps/reader/modules/readerfont.lua:334"
+     "source": "frontend/apps/reader/modules/readerfont.lua:334",
+     "font": "face"
     },
     {
      "key": "cre_font_family_fonts",
@@ -5669,7 +5789,8 @@
      "kobo_clara_bw": true,
      "risky": false,
      "notes": "Font FILE path; reset to default if not registered.",
-     "source": "frontend/apps/reader/modules/readerfooter.lua:1603"
+     "source": "frontend/apps/reader/modules/readerfooter.lua:1603",
+     "font": "file"
     },
     {
      "key": "footer.text_font_bold",

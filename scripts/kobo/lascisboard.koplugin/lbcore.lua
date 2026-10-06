@@ -204,21 +204,135 @@ end
 local ok_allow, ALLOW = pcall(require, "lbsettings")
 M.ALLOW = ok_allow and type(ALLOW) == "table" and ALLOW or {}
 
+-- rapidjson decodes JSON null to a sentinel the plugin passes in; tests use this.
+M.NULL = setmetatable({}, { __tostring = function() return "null" end })
+
+local function isNull(v, null)
+    return v == nil or v == M.NULL or (null ~= nil and v == null)
+end
+
+local function inRanges(x, ranges)
+    for _, r in ipairs(ranges or {}) do
+        if type(r) == "table" and x >= r[1] and x <= r[2] then return true end
+    end
+    return false
+end
+
+--- True when `value` (an array decoded from JSON, JSON null = `null`) fits a
+--- list spec from lbsettings: exactly `list` items, each a number in one of
+--- `ranges` (or pos[i]), whole when `int`, null only when `holes`; the set
+--- items never go down when `ascending`; item i equals item n+1-i when
+--- `mirrored`; at least one item set. A hole must be sent as null (a short
+--- array is refused).
+function M.listAllowed(value, spec, null)
+    if type(value) ~= "table" or type(spec) ~= "table" or type(spec.list) ~= "number" then return false end
+    local n = spec.list
+    for k in pairs(value) do
+        if type(k) ~= "number" or k < 1 or k > n or k % 1 ~= 0 then return false end
+    end
+    local prev, any = -math.huge, false
+    for i = 1, n do
+        local x = value[i]
+        -- A JSON array decodes every null to the null sentinel, so a nil here
+        -- means the array was too short.
+        if x == nil then return false end
+        if isNull(x, null) then
+            if not spec.holes then return false end
+        else
+            if type(x) ~= "number" or x ~= x or x == math.huge or x == -math.huge then return false end
+            if spec.int and x % 1 ~= 0 then return false end
+            local ranges = spec.pos and { spec.pos[i] } or spec.ranges
+            if not inRanges(x, ranges) then return false end
+            if spec.ascending then
+                if x < prev then return false end
+                prev = x
+            end
+            any = true
+        end
+    end
+    if not any then return false end
+    if spec.mirrored then
+        for i = 1, n do
+            local a, b = value[i], value[n + 1 - i]
+            if isNull(a, null) or isNull(b, null) or a ~= b then return false end
+        end
+    end
+    return true
+end
+
+--- The plain Lua table KOReader stores: numbers, a JSON null becomes a hole.
+function M.listValue(value, spec, null)
+    local out = {}
+    for i = 1, spec.list do
+        local x = value[i]
+        if not isNull(x, null) then out[i] = x end
+    end
+    return out
+end
+
+--- What the Kobo has, as an array of exactly `list` items (`null` where a hole
+--- is), for the report; nil when the stored value is not such a table.
+function M.listReport(stored, spec, null)
+    if type(stored) ~= "table" or type(spec) ~= "table" then return nil end
+    local out = {}
+    for i = 1, spec.list do
+        local x = stored[i]
+        if type(x) == "number" then out[i] = x else out[i] = null end
+    end
+    return out
+end
+
 --- True when the plugin may write this key with this value: the key is in the
 --- generated allow-list, not on the deny list, and the value has its type
---- (or is NULL = back to KOReader's default).
-function M.settingAllowed(key, value)
+--- (a list must fit its spec) or is NULL = back to KOReader's default.
+function M.settingAllowed(key, value, null)
     if not M.keyKind(key) or M.SETTING_DENY[key] then return false end
     local want = M.ALLOW[key]
     if not want then return false end
-    if value == M.NULL then return true end
+    if value == M.NULL or (null ~= nil and value == null) then return true end
+    if type(want) == "table" then return M.listAllowed(value, want, null) end
     if type(value) ~= want then return false end
     if want == "string" then return #value <= 500 end
     return true
 end
 
--- rapidjson decodes JSON null to a sentinel the plugin passes in; tests use this.
-M.NULL = setmetatable({}, { __tostring = function() return "null" end })
+--- The list spec for a key, or nil when the key holds a plain value.
+function M.listSpec(key)
+    local want = M.ALLOW[key]
+    if type(want) == "table" then return want end
+    return nil
+end
+
+--- The font list for the report: crengine's face names and the font files
+--- (path, family name, bold, italic), sorted and capped so a big fonts folder
+--- never makes a huge report.
+function M.fontReport(faces, fontinfo, max)
+    max = max or 400
+    local out_faces, seen = {}, {}
+    for _, f in ipairs(faces or {}) do
+        if type(f) == "string" and f ~= "" and #f <= 200 and not seen[f] then
+            seen[f] = true
+            out_faces[#out_faces + 1] = f
+        end
+    end
+    table.sort(out_faces)
+    local paths = {}
+    for path, info in pairs(fontinfo or {}) do
+        if type(path) == "string" and #path <= 300 and type(info) == "table" and type(info[1]) == "table" then
+            paths[#paths + 1] = path
+        end
+    end
+    table.sort(paths)
+    local files = {}
+    for _, path in ipairs(paths) do
+        if #files >= max then break end
+        local i = fontinfo[path][1]
+        files[#files + 1] = { file = path, name = type(i.name) == "string" and i.name or path:match("[^/]+$"),
+            bold = i.bold and true or false, italic = i.italic and true or false }
+    end
+    while #out_faces > max do table.remove(out_faces) end
+    return { faces = out_faces, files = files }
+end
 
 local MENU_ID = "^[%w_:%.%-]+$"
 

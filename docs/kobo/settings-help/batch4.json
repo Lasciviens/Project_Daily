@@ -237,7 +237,7 @@
     },
     "footer.text_font_face": {
       "label": "Status bar font",
-      "help": "Which font the status bar text uses. Leave it empty to use the standard font.",
+      "help": "Which font file the status bar text uses. The list comes from the Kobo after its next sync; until then it shows the fonts that come with KOReader. Default: Noto Sans.",
       "level": "advanced"
     },
     "footer.text_font_bold": {

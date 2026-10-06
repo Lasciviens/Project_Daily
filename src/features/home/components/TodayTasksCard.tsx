@@ -3,8 +3,9 @@ import { Link } from 'react-router-dom'
 import { ListTodo, Plus } from 'lucide-react'
 import { Card, CardHeader, EmptyState, IconButton, Skeleton } from '../../../shared/ui'
 import { useTasksForDay, useCreateTask } from '../../todo/hooks/useTodos'
-import { completedWithinLast24h, isOverdue } from '../../todo/taskRules'
+import { closedOn, isOverdue } from '../../todo/taskRules'
 import { ToDoItem } from '../../todo/components/ToDoItem'
+import { todayStr } from '../../../shared/utils/dateUtils'
 import { useNewIds } from '../../../shared/hooks/useNewIds'
 
 const SHOWN = 5
@@ -12,15 +13,15 @@ const SHOWN = 5
 /**
  * Today's open tasks with the full row behaviour (toggle, cancel, swipe to
  * delete; tapping opens the shared task popup) plus a quick-add. Uses the
- * same day query and counting rule as Daily (cancelled never counts, done only
- * while under 24h old).
+ * same day query as Daily; cancelled never counts, done only when it was closed
+ * today (completed_at — not updated_at, which any sync or reorder moves).
  */
 export function TodayTasksCard() {
   const { data = [], isLoading } = useTasksForDay(new Date(), 'today')
   const create = useCreateTask()
   const [title, setTitle] = useState('')
 
-  const countable = data.filter(t => t.status !== 'cancelled' && (t.status !== 'done' || completedWithinLast24h(t.updated_at)))
+  const countable = data.filter(t => t.status !== 'cancelled' && (t.status !== 'done' || closedOn(t, todayStr())))
   const done = countable.filter(t => t.status === 'done').length
   const open = countable
     .filter(t => t.status !== 'done')
@@ -61,8 +62,11 @@ export function TodayTasksCard() {
           className="py-5"
         />
       ) : (
-        <div className="-mx-3 space-y-0.5">
-          {open.slice(0, SHOWN).map(t => <ToDoItem key={t.id} task={t} isNew={fresh.has(t.id)} />)}
+        // Two columns once the card is wide (a wide Home main track).
+        <div className="@container">
+          <div className="-mx-3 grid grid-cols-1 gap-x-4 gap-y-0.5 @[44rem]:grid-cols-2">
+            {open.slice(0, SHOWN).map(t => <ToDoItem key={t.id} task={t} isNew={fresh.has(t.id)} />)}
+          </div>
         </div>
       )}
       {open.length > SHOWN && (

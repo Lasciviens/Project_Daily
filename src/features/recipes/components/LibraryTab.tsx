@@ -85,7 +85,7 @@ export function LibraryTab() {
             </button>
           ))}
         </div>
-        <div className="flex flex-wrap gap-1.5" aria-label="Show only">
+        <div className="scroll-x -mx-1 flex gap-1.5 px-1" aria-label="Show only">
           {RECIPE_FLAGS.map(f => {
             if (f.value === 'saved' && savedCount === 0) return null
             const label = f.value === 'saved' ? `${f.label} (${savedCount})` : f.label

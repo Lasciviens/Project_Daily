@@ -337,17 +337,17 @@
     },
     "cre_font": {
       "label": "Default font",
-      "help": "The font new books start with. Enter the font name exactly as it appears in the Kobo's font menu. If empty, Noto Serif is used.",
-      "example": "Set it to \"Literata\" to read every new book in Literata.",
+      "help": "The font new books start with. Pick one of the fonts the Kobo has: the list comes from the Kobo itself after its next sync (until then, the fonts that come with KOReader). Your own fonts go in the \"fonts\" folder on the Kobo. Default: Noto Serif.",
+      "example": "Pick \"Noto Sans\" to read every new book in a font without serifs.",
       "level": "basic"
     },
     "fallback_font": {
-      "help": "The font used for characters your main font does not have, for example Chinese or rare symbols. Usually best left as it is.",
+      "help": "The font used for characters your main font does not have, for example Chinese or rare symbols. Usually best left as it is. Default: Noto Sans CJK SC.",
       "level": "advanced"
     },
     "monospace_font": {
       "label": "Font for computer code",
-      "help": "The fixed-width font (every letter the same width) used for computer code or typewriter-style text in books.",
+      "help": "The fixed-width font (every letter the same width) used for computer code or typewriter-style text in books. Default: Droid Sans Mono.",
       "level": "advanced"
     },
     "cre_font_family_ignore_font_names": {

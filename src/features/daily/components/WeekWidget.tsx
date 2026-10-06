@@ -119,17 +119,17 @@ export function WeekWidget({ onDayClick, highlightDate, className = 'max-w-3xl' 
         </div>
       )}
 
-      <div className="mb-3 flex items-center justify-between">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
         {/* en-GB (day-first); this card owns the range label. */}
-        <p className="text-meta tabular-nums text-fg-muted">
+        <p className="whitespace-nowrap text-meta tabular-nums text-fg-muted">
           {formatDateRange(weekStart, weekEnd)}
         </p>
         {totalTasks > 0 && (
           <div className="flex items-center gap-1.5">
-            <div className="h-1.5 w-20 overflow-hidden rounded-full bg-surface-2">
+            <div className="h-1.5 w-16 overflow-hidden rounded-full bg-surface-2">
               <div className="h-full rounded-full bg-success transition-all duration-300" style={{ width: `${donePercent}%` }} />
             </div>
-            <span className="text-meta tabular-nums text-fg-muted">{donePercent}% done</span>
+            <span className="whitespace-nowrap text-meta tabular-nums text-fg-muted">{donePercent}% done</span>
           </div>
         )}
       </div>

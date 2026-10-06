@@ -2,14 +2,26 @@ import { Card } from '../../../../shared/ui'
 import { HelpTip } from '../../../../shared/components/HelpTip'
 import type { SettingGroup } from '../../koboSettingsCatalogue'
 import { tint } from '../../kobo/settingsAreas'
+import { ruleNote } from '../../kobo/settingRules'
 import { SettingControl } from './SettingControl'
 import type { useKoboSettings } from './useKoboSetting'
 
 type Settings = ReturnType<typeof useKoboSettings>
 
-/** One section of an area: its title, what it affects, and its settings in one or two columns. */
-export function GroupCard({ group, keys, s, color, areaTitle }: { group: SettingGroup; keys?: string[]; s: Settings; color: number; areaTitle?: string }) {
-  const defs = group.settings.filter(d => !d.managed && (!keys || keys.includes(d.key)))
+/**
+ * One section of an area: its title, what it affects, and its settings in one or
+ * two columns. A setting that does not apply with the current choices (fixed
+ * times while warmth follows the sun…) is hidden, or — in search results
+ * (`showInapplicable`) — shown with a line saying when it applies.
+ */
+export function GroupCard({ group, keys, s, color, areaTitle, showInapplicable }: {
+  group: SettingGroup; keys?: string[]; s: Settings; color: number; areaTitle?: string; showInapplicable?: boolean
+}) {
+  const listed = group.settings.filter(d => !d.managed && (!keys || keys.includes(d.key)))
+  const notes = new Map(listed.map(d => [d.key, ruleNote(d.key, s.valueOf)]))
+  const defs = showInapplicable ? listed : listed.filter(d => !notes.get(d.key))
+  const hidden = listed.length - defs.length
+  const ctx = { valueOf: s.valueOf, fonts: s.fonts }
   return (
     <Card>
       <div className="mb-1 flex items-start gap-2 border-b border-line pb-3">
@@ -33,11 +45,16 @@ export function GroupCard({ group, keys, s, color, areaTitle }: { group: Setting
           const view = s.view(d.key)
           return view && (
             <div key={d.key} className="border-b border-line last:border-b-0 @[52rem]:[&:nth-last-child(2):nth-child(odd)]:border-b-0">
-              <SettingControl def={d} view={view} disabled={s.loading} onChange={v => s.set(d.key, v)} />
+              <SettingControl def={d} view={view} disabled={s.loading} onChange={v => s.set(d.key, v)} ctx={ctx} note={notes.get(d.key)} />
             </div>
           )
         })}
       </div></div>
+      {hidden > 0 && (
+        <p className="mt-2 text-micro text-fg-muted">
+          {hidden === 1 ? '1 more setting appears' : `${hidden} more settings appear`} when a choice above needs them.
+        </p>
+      )}
     </Card>
   )
 }

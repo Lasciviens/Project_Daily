@@ -7,7 +7,7 @@
 //      and news beside them (the owner's call: compact tiles on the laptop;
 //      each tile opens its widget's content in a popup — TileDetail.tsx).
 //   3  1920 — full widgets: weather/transit/currency/games, then training,
-//      media, projects and news (games moved up so the two side columns end
+//      media, books and news (games moved up so the two side columns end
 //      level instead of one running ~350px past the other).
 //   4  2450 — news gets a column of its own and shows more headlines to fill
 //      it (newsRows), so the right edge doesn't end in a short stub.
@@ -15,23 +15,29 @@ import { resolveBoardLayout, type BoardLayouts, type PageStep } from '../../../s
 
 export const HOME_SECTIONS = [
   'brief', 'hero', 'tasks', 'transit', 'tiles', 'news',
-  'weather', 'currency', 'training', 'media', 'projects', 'games',
+  'weather', 'currency', 'training', 'media', 'books', 'games',
 ] as const
 export type HomeSection = typeof HOME_SECTIONS[number]
 
 const MAIN = ['brief', 'hero', 'tasks'] as const
+/**
+ * Home's main track may grow past the default 56rem: the brief, the week and
+ * the tasks lay themselves out in two columns once wide (container queries),
+ * so a 1795px laptop no longer ends in an empty strip right of the cards.
+ */
+const HOME_MAIN = '72rem'
 
 export const HOME_BOARD: BoardLayouts<HomeSection> = {
   1: [...MAIN, 'transit', 'tiles', 'news'],
-  2: { columns: [MAIN, ['transit', 'tiles', 'news']] },
-  3: { columns: [MAIN, ['weather', 'transit', 'currency', 'games'], ['training', 'media', 'projects', 'news']] },
-  4: { columns: [MAIN, ['weather', 'transit', 'currency'], ['training', 'media', 'projects', 'games'], ['news']] },
+  2: { columns: [MAIN, ['transit', 'tiles', 'news']], main: HOME_MAIN },
+  3: { columns: [MAIN, ['weather', 'transit', 'currency', 'games'], ['training', 'media', 'books', 'news']], main: HOME_MAIN },
+  4: { columns: [MAIN, ['weather', 'transit', 'currency'], ['training', 'media', 'books', 'games'], ['news']], main: HOME_MAIN },
 }
 
 /** What every step must show in some form: tiles stand in for the six glance widgets. */
 export const HOME_GLANCE: Record<string, HomeSection[]> = {
   weather: ['weather', 'tiles'], currency: ['currency', 'tiles'], training: ['training', 'tiles'],
-  media: ['media', 'tiles'], projects: ['projects', 'tiles'], games: ['games', 'tiles'],
+  media: ['media', 'tiles'], books: ['books', 'tiles'], games: ['games', 'tiles'],
 }
 
 /** Headlines the news card lists: more once it has a column to itself. */

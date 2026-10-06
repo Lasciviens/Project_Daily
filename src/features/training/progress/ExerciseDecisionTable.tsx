@@ -4,7 +4,7 @@ import { useProgressDataContext } from './progressDataContext'
 import { actionLabel, improvementScore } from '../progress-engine/copy'
 import type { ExerciseProgressResult, CanonicalExerciseSession, CurrentAction, EvidenceLevel, ProgressMetricKind } from '../progress-engine/types'
 import { InfoBubble } from '../../../shared/components/InfoBubble'
-import { Card, EmptyState, TonePill, type Tone } from '../../../shared/ui'
+import { Card, EmptyState, TonePill, cx, type Tone } from '../../../shared/ui'
 import { DecisionDetail, DisclosureButton, EvidencePill, ExposureLine } from './decisionParts'
 import { RECENT_DAYS, daysAgo, filterByTab, isUnchanged, type DecisionTab } from './decisionTabs'
 
@@ -46,6 +46,9 @@ const ACTION_PRIORITY_RANK: Record<CurrentAction, number> = {
   CONFIRM_AT_CURRENT_LOAD: 2, REVIEW_LOAD_REDUCTION: 2, LOG_COMPARABLE_SESSION: 2,
   HOLD_STEADY: 3, BUILD_AT_CURRENT_LOAD: 3, INSUFFICIENT_DATA: 4,
 }
+const FILTER_LABEL = 'flex min-w-0 flex-col gap-0.5 text-meta text-fg-muted @[40rem]:flex-row @[40rem]:items-center @[40rem]:gap-1.5'
+const FILTER_SELECT = 'select w-full min-w-0 py-0 text-meta @[40rem]:w-auto'
+
 const EVIDENCE_RANK: Record<EvidenceLevel, number> = { limited: 0, moderate: 1, strong: 2 }
 
 const ACTION_TONE: Record<CurrentAction, Tone> = {
@@ -216,20 +219,22 @@ export function ExerciseDecisionTable() {
       </div>
       <p className="mb-3 text-meta text-fg-muted">{TABS.find(t => t.id === tab)?.hint}</p>
 
-      <div className="mb-3 flex flex-wrap items-center gap-2">
+      {/* Narrow card: the filters form a 2-column grid with the label above
+          each select; inline label + select pairs wrapped raggedly. */}
+      <div className="mb-3 grid grid-cols-2 items-end gap-2 @[40rem]:flex @[40rem]:flex-wrap @[40rem]:items-center">
         <input
           type="text" value={query} onChange={e => setQuery(e.target.value)} placeholder="Search exercise…" aria-label="Search exercise"
-          className="input w-full sm:w-56"
+          className="input col-span-2 w-full @[40rem]:w-56"
         />
-        <label className="flex items-center gap-1.5 text-meta text-fg-muted">
+        <label className={cx(FILTER_LABEL, 'col-span-2')}>
           Sort:
-          <select value={sort} onChange={e => setSort(e.target.value as SortMode)} className="select py-0 text-meta">
+          <select value={sort} onChange={e => setSort(e.target.value as SortMode)} className={FILTER_SELECT}>
             {SORTS.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
           </select>
         </label>
-        <label className="flex items-center gap-1.5 text-meta text-fg-muted">
+        <label className={FILTER_LABEL}>
           Evidence:
-          <select value={evidenceFilter} onChange={e => setEvidenceFilter(e.target.value as 'any' | EvidenceLevel)} className="select py-0 text-meta">
+          <select value={evidenceFilter} onChange={e => setEvidenceFilter(e.target.value as 'any' | EvidenceLevel)} className={FILTER_SELECT}>
             <option value="any">Any</option>
             <option value="limited">Limited</option>
             <option value="moderate">Moderate</option>
@@ -237,35 +242,35 @@ export function ExerciseDecisionTable() {
           </select>
         </label>
         {muscleOptions.length > 0 && (
-          <label className="flex items-center gap-1.5 text-meta text-fg-muted">
+          <label className={FILTER_LABEL}>
             Muscle:
-            <select value={muscleFilter} onChange={e => setMuscleFilter(e.target.value)} className="select py-0 text-meta">
+            <select value={muscleFilter} onChange={e => setMuscleFilter(e.target.value)} className={FILTER_SELECT}>
               <option value="any">Any</option>
               {muscleOptions.map(m => <option key={m} value={m}>{m}</option>)}
             </select>
           </label>
         )}
         {routineOptions.length > 0 && (
-          <label className="flex items-center gap-1.5 text-meta text-fg-muted">
+          <label className={FILTER_LABEL}>
             Routine:
-            <select value={routineFilter} onChange={e => setRoutineFilter(e.target.value)} className="select py-0 text-meta">
+            <select value={routineFilter} onChange={e => setRoutineFilter(e.target.value)} className={FILTER_SELECT}>
               <option value="any">Any</option>
               {routineOptions.map(r => <option key={r} value={r}>{r}</option>)}
             </select>
           </label>
         )}
-        <label className="flex items-center gap-1.5 text-meta text-fg-muted">
+        <label className={cx(FILTER_LABEL, 'col-span-2')}>
           Window:
-          <select value={dateWindow} onChange={e => setDateWindow(e.target.value as DateWindow)} className="select py-0 text-meta">
+          <select value={dateWindow} onChange={e => setDateWindow(e.target.value as DateWindow)} className={FILTER_SELECT}>
             {DATE_WINDOWS.map(w => <option key={w.id} value={w.id}>{w.label}</option>)}
           </select>
         </label>
         {filtersActive && (
-          <button type="button" onClick={() => { setQuery(''); setEvidenceFilter('any'); setDateWindow('all'); setMuscleFilter('any'); setRoutineFilter('any') }} className="btn-ghost btn-sm text-meta !text-accent-600">
+          <button type="button" onClick={() => { setQuery(''); setEvidenceFilter('any'); setDateWindow('all'); setMuscleFilter('any'); setRoutineFilter('any') }} className="btn-ghost btn-sm col-span-2 justify-self-start text-meta !text-accent-600">
             Clear filters
           </button>
         )}
-        <span className="ml-auto text-meta tabular-nums text-fg-muted">{shown.length} of {filtered.length}</span>
+        <span className="col-span-2 ml-auto text-meta tabular-nums text-fg-muted">{shown.length} of {filtered.length}</span>
       </div>
 
       {shown.length === 0 ? (

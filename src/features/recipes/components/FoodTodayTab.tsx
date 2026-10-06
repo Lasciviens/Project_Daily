@@ -17,7 +17,7 @@ import { WeeklyNutritionCard } from './WeeklyNutritionCard'
 import { useEatPlannedEntry } from '../hooks/useMealPlan'
 import { MacroBar } from './MacroBar'
 import { WaterTracker } from '../../daily/components/summary/WaterTracker'
-import { AnimatedNumber, Card, CardHeader, IconButton, PageBoard, ProgressRing, TonePill, Truncate, cx } from '../../../shared/ui'
+import { AnimatedNumber, Card, CardHeader, IconButton, MetaLine, PageBoard, ProgressRing, TonePill, Truncate, cx } from '../../../shared/ui'
 import { formatLocalDate } from '../../../shared/utils/dateUtils'
 import { MACRO_COLOR } from '../macroColors'
 import type { MealSlot } from '../types'
@@ -143,7 +143,7 @@ export function FoodTodayTab({ date }: { date: string }) {
       meal.carbs_g > 0 && `${meal.carbs_g}g carbs`,
       meal.fat_g > 0 && `${meal.fat_g}g fat`,
       meal.fiber_g > 0 && `${meal.fiber_g}g fiber`,
-    ].filter(Boolean).join(' · ')
+    ]
     const nameBtn = (
       <button type="button" onClick={onOpen} className="flex min-h-[44px] min-w-0 flex-1 items-center gap-1.5 text-left transition-colors hover:text-accent-600">
         <Truncate className={planned ? 'italic text-fg-muted' : 'text-fg'}>{name}</Truncate>
@@ -165,7 +165,7 @@ export function FoodTodayTab({ date }: { date: string }) {
           <div className={cx('flex items-center gap-1 text-body', indent ? 'pl-9 pr-2' : 'pl-4 pr-2')}>
             {nameBtn}{eatBtn}{delBtn}
           </div>
-          {macroLine && <p className={cx('-mt-1.5 pb-2 text-meta tabular-nums text-fg-muted', indent ? 'pl-9 pr-4' : 'px-4')}>{macroLine}</p>}
+          <MetaLine items={macroLine} className={cx('-mt-1.5 pb-2 text-meta tabular-nums text-fg-muted', indent ? 'pl-9 pr-4' : 'px-4')} />
         </div>
 
         {/* Wide card: every macro in its own aligned column */}
@@ -193,7 +193,7 @@ export function FoodTodayTab({ date }: { date: string }) {
       group.carbs_g > 0 && `${group.carbs_g}g carbs`,
       group.fat_g > 0 && `${group.fat_g}g fat`,
       group.fiber_g > 0 && `${group.fiber_g}g fiber`,
-    ].filter(Boolean).join(' · ')
+    ]
     return (
       <li key={group.groupId} className={group.items.some(m => fresh.has(m.id)) ? 'motion-row-in' : undefined}>
         <div className="flex items-center pr-2 transition-colors hover:bg-surface-hover">
@@ -202,13 +202,14 @@ export function FoodTodayTab({ date }: { date: string }) {
           <ChevronRight aria-hidden className={cx('h-4 w-4 shrink-0 text-fg-faint transition-transform', expanded && 'rotate-90')} />
           <Truncate className="flex-1 text-fg">{group.title}</Truncate>
           <span className="count-badge shrink-0">{group.items.length} items</span>
-          <span className="hidden shrink-0 text-meta tabular-nums text-fg-muted @[40rem]:inline">{totals}</span>
-          <span className="shrink-0 text-meta tabular-nums text-fg-muted @[40rem]:hidden">{group.calories} kcal</span>
+          <MetaLine as="span" items={totals} className="hidden shrink-0 text-meta tabular-nums text-fg-muted @[40rem]:inline" />
+          {/* Collapsed, the totals line below already starts with the kcal. */}
+          {expanded && <span className="shrink-0 text-meta tabular-nums text-fg-muted @[40rem]:hidden">{group.calories} kcal</span>}
         </button>
         <IconButton label={`Remove the whole meal (${group.items.length} items)`} className="text-fg-faint hover:!text-danger"
           onClick={() => remove.mutate({ ids: group.items.map(m => m.id), label: `${group.items.length} items` })}><X /></IconButton>
         </div>
-        {!expanded && <p className="-mt-1 pb-2 pl-10 pr-4 text-meta tabular-nums text-fg-muted @[40rem]:hidden">{totals}</p>}
+        {!expanded && <MetaLine items={totals} className="-mt-1 pb-2 pl-10 pr-4 text-meta tabular-nums text-fg-muted @[40rem]:hidden" />}
         {expanded && (
           <ul className="divide-y divide-line border-t border-line">
             {group.items.map(m => mealLine(m, true))}
@@ -246,7 +247,7 @@ export function FoodTodayTab({ date }: { date: string }) {
             <div className="mt-4 border-t border-line pt-3">
               {/* The gram figures carry the colour key, so the bar's own % legend is off. */}
               <MacroBar protein={nut.protein_g} carbs={nut.carbs_g} fat={nut.fat_g} showLegend={false} />
-              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-meta tabular-nums text-fg-2">
+              <div className="mt-2 grid grid-cols-3 gap-x-3 gap-y-1 text-meta tabular-nums text-fg-2">
                 <MacroFigure color={MACRO_COLOR.protein}>{nut.protein_g}g protein</MacroFigure>
                 <MacroFigure color={MACRO_COLOR.carbs}>{nut.carbs_g}g carbs</MacroFigure>
                 <MacroFigure color={MACRO_COLOR.fat}>{nut.fat_g}g fat</MacroFigure>
@@ -319,21 +320,24 @@ export function FoodTodayTab({ date }: { date: string }) {
               ) : (
                 <div className="flex items-center pr-2">
                   <button type="button" onClick={() => openLog(slot)}
-                    className="flex min-h-[44px] flex-1 items-center px-4 text-left text-body text-fg-faint transition-colors hover:text-accent-600">
-                    Add something
+                    className="flex min-h-[44px] min-w-0 flex-1 items-center whitespace-nowrap px-4 text-left text-body text-fg-faint transition-colors hover:text-accent-600">
+                    {/* Short labels in a narrow card so the three actions keep one row. */}
+                    Add<span className="hidden @[26rem]:inline">&nbsp;something</span>
                   </button>
                   {usualForSlot(recent, slot).length > 0 && (
                     <button type="button" disabled={addEntries.isPending}
                       onClick={() => addEntries.mutate(usualForSlot(recent, slot).map(r => recentToEntry(r, date, slot)))}
                       title={usualForSlot(recent, slot).map(r => r.title).join(', ')}
-                      className="btn-ghost btn-sm !px-2.5 text-accent-600">
-                      Log usual ({usualForSlot(recent, slot).length})
+                      aria-label={`Log usual (${usualForSlot(recent, slot).length})`}
+                      className="btn-ghost btn-sm shrink-0 !px-2.5 text-accent-600">
+                      <span className="@[26rem]:hidden">Usual ({usualForSlot(recent, slot).length})</span><span className="hidden @[26rem]:inline">Log usual ({usualForSlot(recent, slot).length})</span>
                     </button>
                   )}
                   <button type="button" disabled={copyYesterday.isPending}
                     onClick={() => copyYesterday.mutate({ date, filledSlots: new Set(bySlot.keys()), slots: [slot] })}
-                    className="btn-ghost btn-sm gap-1 !px-2.5 text-fg-muted" title={`Log the same ${label.toLowerCase()} as the day before`}>
-                    <Copy aria-hidden className="h-3.5 w-3.5" />Same as yesterday
+                    className="btn-ghost btn-sm shrink-0 gap-1 !px-2.5 text-fg-muted" title={`Log the same ${label.toLowerCase()} as the day before`}
+                    aria-label={`Same ${label.toLowerCase()} as yesterday`}>
+                    <Copy aria-hidden className="h-3.5 w-3.5" /><span className="@[26rem]:hidden">Yesterday</span><span className="hidden @[26rem]:inline">Same as yesterday</span>
                   </button>
                 </div>
               )}

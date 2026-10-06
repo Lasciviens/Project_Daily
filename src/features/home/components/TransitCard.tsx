@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Bus, MapPin, Navigation } from 'lucide-react'
 import { ModalShell } from '../../../shared/modals'
-import { Button, Skeleton, Truncate } from '../../../shared/ui'
+import { Button, SegmentedControl, Skeleton, Truncate } from '../../../shared/ui'
 import { useTransitStops } from '../hooks/useTransitStops'
 import { useDepartures, useNearbyStops } from '../hooks/useTransitQueries'
 import { useWidgetState } from '../hooks/useWidgetState'
@@ -9,20 +9,43 @@ import { useNow } from '../hooks/useNow'
 import { WidgetShell } from './WidgetShell'
 import { TransitPanel } from './TransitPanel'
 import { DepartureRow } from './ruter/DeparturesTab'
-import { PlaceButtons } from './ruter/PlaceButtons'
+import { CardTrips } from './ruter/CardTrips'
+import { findPlace } from '../transitPlaces'
 import { buildLineGroups } from './ruter/transitUtils'
 
 const MINI_ROWS = 3
 
+type CardView = 'departures' | 'home' | 'work'
+const VIEWS: { value: CardView; label: string }[] = [
+  { value: 'departures', label: 'Departures' },
+  { value: 'home', label: 'To home' },
+  { value: 'work', label: 'To work' },
+]
+// The last view, on this device only (a convenience — it may come back empty).
+const VIEW_KEY = 'lasci.transitCard.view'
+function readView(): CardView {
+  try {
+    const v = localStorage.getItem(VIEW_KEY)
+    return v === 'home' || v === 'work' ? v : 'departures'
+  } catch { return 'departures' }
+}
+function writeView(v: CardView) {
+  try { localStorage.setItem(VIEW_KEY, v) } catch { /* storage blocked */ }
+}
+
 /**
  * Home's transit glance: the next departures from where you are — a saved stop
  * near you (with its saved direction), else the nearest stop, else your saved
- * default when the location is off — one-tap trips to Home and Work, and the
- * full planner one tap away.
+ * default when the location is off — or, one tap away in the same card, the
+ * next trips To home / To work (Settings → Places). The full planner opens in
+ * a popup from "Plan a trip" / "More options" or a tapped trip.
  */
 export function TransitCard() {
   const ws = useWidgetState('ruter', { collapsed: false })
   const [open, setOpen] = useState(false)
+  const [view, setViewState] = useState<CardView>(readView)
+  const setView = (v: CardView) => { setViewState(v); writeView(v) }
+  const showDepartures = view === 'departures'
   // A saved stop to plan to as the planner opens (To home / To work).
   const [planTo, setPlanTo] = useState<string | null>(null)
   const { stops, isLoading: stopsLoading } = useTransitStops()
@@ -38,7 +61,7 @@ export function TransitCard() {
   const stopId = near ? near.id : shown?.stop_id
   const isAddress = !useNearest && !!shown && !shown.stop_id.startsWith('NSR:')
   // Paused while the planner sheet is open — the sheet runs its own board.
-  const { data, isLoading, error } = useDepartures(stopId, { enabled: !ws.collapsed && !open && !isAddress })
+  const { data, isLoading, error } = useDepartures(stopId, { enabled: !ws.collapsed && !open && !isAddress && showDepartures })
 
   const now = useNow(!ws.collapsed && !open)
 
@@ -51,17 +74,20 @@ export function TransitCard() {
   const label = near
     ? `${near.name} · ${near.distance} m away`
     : shown ? `${shown.label ?? shown.stop_name}${shown.quay_description ? ` · ${shown.quay_description}` : ''}` : null
+  const tripPlace = showDepartures ? null : findPlace(stops, view)
   const openPlanner = (stopIdToPlan: string | null) => { setPlanTo(stopIdToPlan); setOpen(true) }
 
   return (
     <>
       <WidgetShell title="Transit" icon={<Bus />} ws={ws}>
-        {stops.length > 0 && (
-          <div className="mb-3 empty:hidden">
-            <PlaceButtons stops={stops} hideMissing onPick={s => openPlanner(s.id)} />
-          </div>
-        )}
-        {stopsLoading ? (
+        <div className="mb-3">
+          <SegmentedControl options={VIEWS} value={view} onChange={setView} fullWidth size="sm" />
+        </div>
+        {!showDepartures ? (
+          stopsLoading
+            ? <div className="space-y-2">{[0, 1, 2].map(i => <Skeleton key={i} className="h-12 w-full" />)}</div>
+            : <CardTrips kind={view} stops={stops} active={!ws.collapsed && !open} now={now} onMore={openPlanner} />
+        ) : stopsLoading ? (
           <div className="space-y-2">{[0, 1, 2].map(i => <Skeleton key={i} className="h-10 w-full" />)}</div>
         ) : !label ? (
           <p className="mb-3 text-body text-fg-muted">Allow your location, or save a stop, to see departures here.</p>
@@ -87,7 +113,9 @@ export function TransitCard() {
           </>
         )}
         <div className="mt-3 border-t border-line pt-3">
-          <Button size="sm" onClick={() => openPlanner(null)} block>{stops.length ? 'Plan a trip' : 'Add a stop'}</Button>
+          {showDepartures || !tripPlace
+            ? <Button size="sm" onClick={() => openPlanner(null)} block>{stops.length ? 'Plan a trip' : 'Add a stop'}</Button>
+            : <Button size="sm" onClick={() => openPlanner(tripPlace.id)} block>More options</Button>}
         </div>
       </WidgetShell>
 

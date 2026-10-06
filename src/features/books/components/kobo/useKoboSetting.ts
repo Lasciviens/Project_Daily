@@ -16,12 +16,20 @@ export function useKoboSettings() {
     const v = wanted?.[key]
     return v !== undefined && v !== null
   }, [wanted])
+  /** The value the Kobo uses, or will use once it syncs (for the "only applies when…" rules). */
+  const valueOf = useCallback((key: string): Value | undefined => {
+    const def = index.get(key)
+    return def ? settingView(def, wanted, reported).value : undefined
+  }, [index, wanted, reported])
   return {
     loading: config.isLoading,
     view: (key: string) => {
       const def = index.get(key)
       return def ? settingView(def, wanted, reported) : null
     },
+    valueOf,
+    /** The fonts the Kobo reported (plugin 1.3), or null before it has. */
+    fonts: device.data?.report?.fonts ?? null,
     def: (key: string) => index.get(key) ?? null,
     set: (key: string, value: Value) => save.mutate(settingPatch(config.data, key, value)),
     isChanged,

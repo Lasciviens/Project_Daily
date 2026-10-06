@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Clapperboard, Film, Tv } from 'lucide-react'
 import { useEntityModal } from '../../../shared/modals'
 import { Skeleton, EmptyState, Truncate } from '../../../shared/ui'
@@ -6,10 +6,15 @@ import { posterUrl } from '../../../integrations/tmdb/client'
 import { useRecentlyWatched, type RecentlyWatchedItem } from '../../media/hooks/useRecentlyWatched'
 import { useWidgetState } from '../hooks/useWidgetState'
 import { WidgetShell } from './WidgetShell'
-import { GlanceTile } from './GlanceTile'
+import { GlanceCarousel, type GlanceScreen } from './GlanceCarousel'
+import { readGlanceIndex } from './glanceIndex'
+import { useTVSeries } from '../../media/hooks/useTVSeries'
+import { useNextEpisode } from '../../media/hooks/useNextEpisode'
+import { useAiringThisWeek } from '../../media/hooks/useAiringThisWeek'
+import type { UserTVEntry } from '../../media/types'
 import { TileDetail } from './TileDetail'
 import { useTilePopup } from '../hooks/useTilePopup'
-import { formatDate } from '../../../shared/utils/dateFormat'
+import { formatDate, formatWeekdayDate } from '../../../shared/utils/dateFormat'
 import { isUnknownWatchedAt } from '../../media/trakt/traktDates'
 import { AiringThisWeek } from '../../media/components/AiringThisWeek'
 
@@ -64,29 +69,82 @@ function RecentMediaGrid({ enabled }: { enabled: boolean }) {
   )
 }
 
+/** The show you're watching that you touched last, and its next episode. */
+function useWatchNext() {
+  const { data: tv } = useTVSeries()
+  const current = useMemo(() => {
+    let best: UserTVEntry | null = null
+    for (const e of tv ?? []) if (e.status === 'watching' && (!best || e.updated_at > best.updated_at)) best = e
+    return best
+  }, [tv])
+  const { data: next } = useNextEpisode(current?.id ?? null, current?.tv_series.tmdb_id ?? null, current?.tv_series.number_of_episodes ?? null)
+  return { current, next }
+}
+
+const se = (s: number, e: number) => `S${String(s).padStart(2, '0')}E${String(e).padStart(2, '0')}`
+
 /**
- * Phone: the latest title opens its own popup. Wide Home (where this tile
- * stands in for the widget): the whole recently-watched grid opens.
+ * Glance tile with swipeable screens: last watched · watch next · airing
+ * this week. Phone: a tap opens the title on the screen you're on (else
+ * Media). Wide Home (the tile stands in for the widget): the whole
+ * recently-watched grid opens.
  */
 export function RecentMediaTile() {
   const { data = [], isLoading } = useRecentlyWatched()
+  const { current, next } = useWatchNext()
+  const airing = useAiringThisWeek()
   const modal = useEntityModal()
   const popup = useTilePopup()
   const [open, setOpen] = useState(false)
   const latest = data[0]
-  const action = popup
-    ? { onClick: () => setOpen(true) }
-    : latest?.tmdbId != null ? { onClick: () => openMedia(modal, latest) } : { to: '/media' }
+
+  const screens: GlanceScreen[] = [{
+    key: 'last',
+    name: 'Last watched',
+    body: (
+      <div className="min-w-0 space-y-1">
+        <Truncate className="text-ui font-semibold text-fg">{latest ? latest.title : 'Nothing yet'}</Truncate>
+        <Truncate className="text-meta tabular-nums text-fg-muted">{latest ? (isUnknownWatchedAt(latest.watched_at) ? 'Date unknown' : formatDate(latest.watched_at)) : 'Open Media'}</Truncate>
+      </div>
+    ),
+  }]
+  if (current) {
+    screens.push({
+      key: 'next',
+      name: 'Watch next',
+      body: (
+        <div className="min-w-0 space-y-1">
+          <Truncate className="text-ui font-semibold text-fg">{current.tv_series.title}</Truncate>
+          <Truncate className="text-meta tabular-nums text-fg-muted">
+            {!next ? 'Checking…' : next.caughtUp ? 'All caught up' : `${se(next.season ?? 0, next.episode ?? 0)}${next.episodeTitle ? ` · ${next.episodeTitle}` : ''}${!next.released && next.airDate ? ` · out ${formatDate(next.airDate)}` : ''}`}
+          </Truncate>
+        </div>
+      ),
+    })
+  }
+  screens.push({
+    key: 'airing',
+    name: 'This week',
+    body: (
+      <div className="min-w-0 space-y-1">
+        <p className="text-ui font-semibold tabular-nums text-fg">{airing.length === 0 ? 'No new episodes' : `${airing.length} new episode${airing.length === 1 ? '' : 's'}`}</p>
+        <Truncate className="text-meta tabular-nums text-fg-muted">
+          {airing[0] ? `${airing[0].title} ${se(airing[0].season, airing[0].episode)} · ${formatWeekdayDate(airing[0].airDate.slice(0, 10))}` : 'Of the shows you follow, next 7 days'}
+        </Truncate>
+      </div>
+    ),
+  })
+
+  const openOnPhone = () => {
+    const key = screens[Math.min(readGlanceIndex('media'), screens.length - 1)]?.key
+    if (key === 'next' && current) return modal.open({ kind: 'media', tmdbId: current.tv_series.tmdb_id, mediaType: 'tv' })
+    if (key === 'airing' && airing[0]) return modal.open({ kind: 'media', tmdbId: airing[0].tmdbId, mediaType: 'tv' })
+    if (latest?.tmdbId != null) return openMedia(modal, latest)
+  }
+  const action = popup ? { onClick: () => setOpen(true) } : latest || current ? { onClick: openOnPhone } : { to: '/media' }
   return (
     <>
-      <GlanceTile
-        label="Watched"
-        icon={<Clapperboard />}
-        loading={isLoading}
-        value={latest ? latest.title : 'Nothing yet'}
-        hint={latest ? (isUnknownWatchedAt(latest.watched_at) ? 'Date unknown' : formatDate(latest.watched_at)) : 'Open Media'}
-        {...action}
-      />
+      <GlanceCarousel id="media" label="Watched" icon={<Clapperboard />} loading={isLoading} screens={screens} {...action} />
       {popup && (
         <TileDetail open={open} onClose={() => setOpen(false)} title="Recently watched" to="/media" openLabel="Open Media">
           <RecentMediaGrid enabled />

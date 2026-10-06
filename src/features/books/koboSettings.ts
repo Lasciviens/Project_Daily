@@ -8,10 +8,10 @@
 // catalogue's type; the plugin checks the same again before it writes
 // G_reader_settings. So a typo or an old key can never reach the device.
 
-import { SETTING_GROUPS, type SettingDef } from './koboSettingsCatalogue'
+import { SETTING_GROUPS, type ListSpec, type SettingDef } from './koboSettingsCatalogue'
 
 
-export type SettingValue = boolean | number | string | null
+export type SettingValue = boolean | number | string | (number | null)[] | null
 
 /** Every catalogue entry by key. */
 export function settingIndex(): Map<string, SettingDef> {
@@ -25,8 +25,10 @@ export function cleanValue(def: SettingDef, v: unknown): SettingValue | undefine
   if (v === null) return null
   if (def.type === 'bool') return typeof v === 'boolean' ? v : undefined
   if (def.type === 'enum') return (def.options ?? []).some(o => o.value === v) ? v as string | number : undefined
+  if (def.type === 'list') return def.list ? cleanList(def.list, v) : undefined
   if (def.type === 'int' || def.type === 'number') {
     if (typeof v !== 'number' || !Number.isFinite(v)) return undefined
+    if (def.off !== undefined && v === def.off) return v
     if (def.type === 'int' && !Number.isInteger(v)) return undefined
     if (def.min !== undefined && v < def.min) return undefined
     if (def.max !== undefined && v > def.max) return undefined
@@ -37,6 +39,33 @@ export function cleanValue(def: SettingDef, v: unknown): SettingValue | undefine
     return v.length <= (def.maxLength ?? 500) ? v : undefined
   }
   return undefined
+}
+
+/**
+ * A fixed-length list (a Lua table on the Kobo): every item a number in its
+ * range (or null where holes are allowed), set items never going down when
+ * `ascending`, item i equal to item n-1-i when `mirrored`. The plugin checks
+ * the same (lbcore.listAllowed).
+ */
+export function cleanList(spec: ListSpec, v: unknown): (number | null)[] | undefined {
+  if (!Array.isArray(v) || v.length !== spec.length) return undefined
+  const out: (number | null)[] = []
+  for (let i = 0; i < v.length; i++) {
+    const x = v[i]
+    if (x === null) { if (!spec.nullable) return undefined; out.push(null); continue }
+    if (typeof x !== 'number' || !Number.isFinite(x)) return undefined
+    if (spec.integer && !Number.isInteger(x)) return undefined
+    const ranges = spec.positions ? [spec.positions[i]] : spec.ranges ?? []
+    if (!ranges.some(r => r && x >= r[0] && x <= r[1])) return undefined
+    out.push(x)
+  }
+  if (spec.ascending) {
+    let prev = -Infinity
+    for (const x of out) { if (x === null) continue; if (x < prev) return undefined; prev = x }
+  }
+  if (spec.mirrored && out.some((x, i) => x !== out[out.length - 1 - i])) return undefined
+  if (spec.nullable && out.every(x => x === null)) return undefined
+  return out
 }
 
 /** Keeps only catalogue keys with valid values; reports the rest. */

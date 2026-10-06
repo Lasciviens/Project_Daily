@@ -4,6 +4,7 @@ import { useEntityModal } from '../../../shared/modals'
 import { Button, SectionLabel, Truncate } from '../../../shared/ui'
 import { formatDate } from '../../../shared/utils/dateFormat'
 import { useCheckFollows, useFollowEvents, useFollows, useMarkFollowEventsSeen } from '../hooks/useFollows'
+import { isShowableFollowEvent } from '../trakt/followRules'
 
 /** What's new in what you follow (self-filling lists and Follows): new titles and new trailers, checked daily. */
 export function FollowingPanel() {
@@ -12,7 +13,12 @@ export function FollowingPanel() {
   const check = useCheckFollows()
   const seen = useMarkFollowEventsSeen()
   const modal = useEntityModal()
-  const unseen = events.filter(e => !e.seen_at)
+  // Rows written under older rules (a long-released film TMDB listed late)
+  // stay in the table until the next check clears them; they never show.
+  const visible = events.filter(isShowableFollowEvent)
+  const unseen = visible.filter(e => !e.seen_at)
+  // Every unseen event is listed, so "N unseen" and "Mark N seen" match what is on screen.
+  const shown = [...unseen, ...visible.filter(e => e.seen_at)].slice(0, Math.max(20, unseen.length))
   const name = new Map(follows.map(f => [f.id, f.name]))
 
   if (follows.length === 0) {
@@ -35,9 +41,9 @@ export function FollowingPanel() {
       </div>
 
 
-      {events.length > 0 && (
+      {shown.length > 0 && (
         <ul className="grid grid-cols-1 gap-1 @[40rem]:grid-cols-2">
-          {events.slice(0, 20).map(e => (
+          {shown.map(e => (
             <li key={e.id} className={`flex items-center gap-2 rounded-row px-1 py-1 ${e.seen_at ? 'opacity-70' : 'bg-accent-50'}`}>
               <button type="button" onClick={() => modal.open({ kind: 'media', tmdbId: e.tmdb_id, mediaType: 'movie' })} className="flex min-h-[44px] min-w-0 flex-1 items-center gap-2 text-left">
                 <img src={posterUrl(e.poster_path, 'w92')} alt="" loading="lazy" className="h-10 w-7 shrink-0 rounded bg-surface-2 object-cover" />

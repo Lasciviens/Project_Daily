@@ -21,13 +21,19 @@ function MuscleRow({ m, scale }: { m: MuscleRead; scale: number }) {
   const pct = (v: number) => `${Math.min(100, (v / scale) * 100)}%`
   return (
     <li className="flex flex-col gap-1 py-2">
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-        <span className="min-w-[7rem] text-body font-semibold text-fg">{m.label}</span>
-        <span className="text-body font-semibold tabular-nums text-fg">{m.weeklySets}</span>
-        <span className="text-meta text-fg-muted">sets/wk{m.directSets > 0 && m.directSets !== m.weeklySets ? ` (${m.directSets} direct)` : ''}</span>
-        {m.priority && <TonePill tone="star">Priority</TonePill>}
-        {m.restriction && <TonePill tone="highlight">{m.restriction === 'avoid' ? 'Avoid' : 'Limit'} limitation</TonePill>}
-        <TonePill tone={tone} className="ml-auto">{m.status === 'excluded' ? 'Excluded' : TIER_LABEL[m.tier]}</TonePill>
+      {/* Muscle + sets wrap inside their own block; the verdict pill keeps the
+          right edge, so a narrow card stacks deliberately instead of dropping it. */}
+      <div className="flex items-start gap-2">
+        <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2 gap-y-0.5">
+          <span className="min-w-[7rem] text-body font-semibold text-fg">{m.label}</span>
+          <span className="whitespace-nowrap">
+            <span className="text-body font-semibold tabular-nums text-fg">{m.weeklySets}</span>{' '}
+            <span className="text-meta text-fg-muted">sets/wk{m.directSets > 0 && m.directSets !== m.weeklySets ? ` (${m.directSets} direct)` : ''}</span>
+          </span>
+          {m.priority && <TonePill tone="star">Priority</TonePill>}
+          {m.restriction && <TonePill tone="highlight">{m.restriction === 'avoid' ? 'Avoid' : 'Limit'} limitation</TonePill>}
+        </div>
+        <TonePill tone={tone} className="shrink-0">{m.status === 'excluded' ? 'Excluded' : TIER_LABEL[m.tier]}</TonePill>
       </div>
       <div className="relative h-2 w-full rounded-full bg-surface-2" aria-hidden>
         {/* the 10–20 sets/week band most recreational lifters target */}

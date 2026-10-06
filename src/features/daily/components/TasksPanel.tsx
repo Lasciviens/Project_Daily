@@ -76,7 +76,7 @@ export function TasksPanel() {
       today:    active.filter(t => t.due_date === today),
       upcoming: active.filter(t => t.due_date && t.due_date > today && !openNow(t)),
       noDate:   active.filter(t => !t.due_date),
-      done:     tasks.filter(t => t.status === 'done' && completedWithinLast24h(t.updated_at)),
+      done:     tasks.filter(t => t.status === 'done' && completedWithinLast24h(t)),
     }
   }, [tasks, today])
 

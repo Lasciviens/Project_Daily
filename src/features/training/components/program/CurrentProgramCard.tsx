@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { ListChecks } from 'lucide-react'
-import { Button, Card, CardHeader } from '../../../../shared/ui'
+import { Button, Card, CardHeader, MetaLine } from '../../../../shared/ui'
 import { InfoBubble } from '../../../../shared/components/InfoBubble'
 import { CurrentProgramPicker } from '../CurrentProgramPicker'
 import { daysBetween } from '../../plan/nextSession'
@@ -40,7 +40,7 @@ export function CurrentProgramCard({ routines, lastTrained, today }: {
           {routines.map(r => (
             <li key={r.id} className="flex min-w-0 flex-col py-2 first:pt-0 last:pb-0 sm:flex-row sm:items-baseline sm:gap-2">
               <span className="min-w-0 break-words text-body font-semibold text-fg">{r.title}</span>
-              <span className="text-meta text-fg-muted">{r.exercises?.length ?? 0} {(r.exercises?.length ?? 0) === 1 ? 'exercise' : 'exercises'} · last done {lastDone(lastTrained.get(r.id), today)}</span>
+              <MetaLine as="span" className="text-meta text-fg-muted" items={[`${r.exercises?.length ?? 0} ${(r.exercises?.length ?? 0) === 1 ? 'exercise' : 'exercises'}`, `last done ${lastDone(lastTrained.get(r.id), today)}`]} />
             </li>
           ))}
         </ul>

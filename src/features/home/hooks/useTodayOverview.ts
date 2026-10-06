@@ -5,7 +5,7 @@ import { useCalendarEventsForDay } from '../../calendar/hooks/useCalendar'
 import {
   projectOneOffBlocksForDay, projectRecurringBlocksForDay, projectCalendarEventForDay,
 } from '../../daily/components/dayAgendaProjection'
-import { completedWithinLast24h, isOverdue } from '../../todo/taskRules'
+import { closedOn, isOverdue } from '../../todo/taskRules'
 import { shiftDateStr, todayStr } from '../../../shared/utils/dateUtils'
 import { pickNextTrainingSession, type NextTrainingSession } from '../../training/trainingPlanModel'
 import { NEXT_SESSION_LOOKAHEAD_DAYS } from '../../training/hooks/useTrainingSessions'
@@ -49,6 +49,10 @@ export interface TodayOverview {
   /** Everything left on the viewed day's schedule, in order (in-progress first). */
   upcoming: NextUpItem[]
   nextTraining: NextTrainingItem | null
+  /** The training session after `nextTraining` — what the Home hero shows when
+   *  the next training is already the "Next up" item, so one session is never
+   *  shown twice side by side. */
+  trainingAfterNext: NextTrainingItem | null
   isLoading: boolean
 }
 
@@ -56,6 +60,13 @@ const hourLabel = (h: number) => {
   const whole = Math.floor(h)
   const min = Math.round((h - whole) * 60)
   return `${String(whole + Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`
+}
+
+/** 'HH:MM' one minute later ('23:59' → '24:00', which sorts after every time that day). */
+function minuteAfter(hhmm: string): string {
+  const [h, m] = hhmm.split(':').map(Number)
+  const t = h * 60 + m + 1
+  return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`
 }
 
 const dayOfWeekOf = (dateStr: string) => new Date(`${dateStr}T00:00:00`).getDay()
@@ -76,9 +87,9 @@ export function useTodayOverview(date: string = todayStr()): TodayOverview {
     const now = new Date()
     const nowHour = now.getHours() + now.getMinutes() / 60
 
-    // Counts: the Daily/Home rule — done only while <24h old, cancelled never counts.
+    // Counts: done only when it was closed on this day (completed_at), cancelled never counts.
     const tasks = (tasksQ.data ?? []).filter(t =>
-      t.status !== 'cancelled' && (t.status !== 'done' || completedWithinLast24h(t.updated_at)))
+      t.status !== 'cancelled' && (t.status !== 'done' || closedOn(t, date)))
     const taskCounts = {
       open: tasks.filter(t => t.status !== 'done').length,
       done: tasks.filter(t => t.status === 'done').length,
@@ -118,19 +129,30 @@ export function useTodayOverview(date: string = todayStr()): TodayOverview {
     // Next training from the viewed day on: one-off training blocks plus
     // recurring training templates — the same pure rule the Training banner
     // uses (useNextTrainingSession). Only today filters out passed times.
+    const trainingTemplates = templates.filter(t => t.category === 'training')
     const nextTraining = pickNextTrainingSession({
       blocks:        trainingQ.data ?? [],
-      templates:     templates.filter(t => t.category === 'training'),
+      templates:     trainingTemplates,
       today:         date,
       nowHHMM:       isToday ? hourLabel(nowHour) : '00:00',
       lookaheadDays: NEXT_SESSION_LOOKAHEAD_DAYS,
     })
+    // From one minute after the next session starts (anything at the same
+    // time is the same slot), so this is a genuinely later session.
+    const trainingAfterNext = nextTraining ? pickNextTrainingSession({
+      blocks:        (trainingQ.data ?? []).filter(b => !(nextTraining.kind === 'block' && b.id === nextTraining.id)),
+      templates:     trainingTemplates,
+      today:         nextTraining.date,
+      nowHHMM:       nextTraining.startTime ? minuteAfter(nextTraining.startTime) : '99:99',
+      lookaheadDays: NEXT_SESSION_LOOKAHEAD_DAYS,
+    }) : null
 
     return {
       tasks: taskCounts,
       nextUp: upcoming[0] ?? null,
       upcoming,
       nextTraining,
+      trainingAfterNext,
       isLoading: tasksQ.isLoading || blocksQ.isLoading || templatesQ.isLoading,
     }
   }, [date, prevDay, tasksQ.data, tasksQ.isLoading, blocksQ.data, blocksQ.isLoading, prevBlocksQ.data, templatesQ.data, templatesQ.isLoading, calendarQ.data, trainingQ.data])
