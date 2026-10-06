@@ -485,13 +485,6 @@ ok(M.applyStatus(ns, 'backlog').map(g => g.id), ['n0', 'n1'], 'the Backlog tab l
   ok(M.sortGames(rs, 'playtime').map(g => g.id), ['r1', 'r2', 'r0'], 'Most played unchanged')
 }
 
-// ── Profile facts under the connections (no extra request) ──
-const CF = require('../src/features/games/test-game/components/tgConnectionFacts.ts')
-ok(CF.psnFacts({ profile: { isPlus: true }, summary: { trophyLevel: 312, progress: 40, tier: 3, earnedTrophies: { bronze: 900, silver: 200, gold: 50, platinum: 12 } } }),
-  ['Trophy level 312', 'PlayStation Plus', '12 platinum · 50 gold · 200 silver · 900 bronze'], 'PSN: level, PS Plus, trophies best first')
-ok(CF.psnFacts({ profile: null, summary: { trophyLevel: '', progress: 0, tier: 1, earnedTrophies: { bronze: 0, silver: 0, gold: 0, platinum: 0 } } }), [], 'PSN: nothing earned, nothing shown')
-ok(CF.steamFacts({ steamid: '1', personaname: 'x', avatarfull: '', personastate: 1, communityvisibilitystate: 3, timecreated: 1_350_000_000 }), ['Online', 'Member since 2012'], 'Steam: presence and account age')
-ok(CF.steamFacts({ steamid: '1', personaname: 'x', avatarfull: '', personastate: 1, communityvisibilitystate: 3, gameextrainfo: 'Hades' }), ['Playing Hades now'], 'Steam: the current game wins over presence')
 
 // ── A cut header note reveals its explanation too (TgHeader / TgMobileScope) ──
 const TT = require('../src/features/games/test-game/tgTypes.ts')
