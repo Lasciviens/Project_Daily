@@ -330,7 +330,7 @@ export function FoodTodayTab({ date }: { date: string }) {
                       title={usualForSlot(recent, slot).map(r => r.title).join(', ')}
                       aria-label={`Log usual (${usualForSlot(recent, slot).length})`}
                       className="btn-ghost btn-sm shrink-0 !px-2.5 text-accent-600">
-                      <span className="@[26rem]:hidden">Usual</span><span className="hidden @[26rem]:inline">Log usual</span> ({usualForSlot(recent, slot).length})
+                      <span className="@[26rem]:hidden">Usual ({usualForSlot(recent, slot).length})</span><span className="hidden @[26rem]:inline">Log usual ({usualForSlot(recent, slot).length})</span>
                     </button>
                   )}
                   <button type="button" disabled={copyYesterday.isPending}
