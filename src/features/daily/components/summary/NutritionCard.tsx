@@ -117,7 +117,7 @@ function SlotRow({ date, slot, label, icon, isNow, meals, fresh }: {
     // A narrow card (a phone) keeps only the slot's emoji, so the food name
     // gets the width; the label stays for screen readers.
     <span className={cx(SLOT_COL, 'flex shrink-0 items-center gap-1.5', isNow ? 'font-semibold text-accent-600' : 'text-fg-muted')}>
-      <span aria-hidden className="leading-none">{icon}</span><span className="sr-only @[26rem]:not-sr-only">{label}</span>
+      <span aria-hidden className={cx('leading-none', isNow && 'grid h-7 w-7 place-items-center rounded-full bg-accent-50 @[26rem]:contents')}>{icon}</span><span className="sr-only @[26rem]:not-sr-only">{label}</span>
       {isNow && <span className="sr-only">(now)</span>}
     </span>
   )

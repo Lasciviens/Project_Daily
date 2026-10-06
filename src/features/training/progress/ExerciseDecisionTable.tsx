@@ -4,7 +4,7 @@ import { useProgressDataContext } from './progressDataContext'
 import { actionLabel, improvementScore } from '../progress-engine/copy'
 import type { ExerciseProgressResult, CanonicalExerciseSession, CurrentAction, EvidenceLevel, ProgressMetricKind } from '../progress-engine/types'
 import { InfoBubble } from '../../../shared/components/InfoBubble'
-import { Card, EmptyState, TonePill, type Tone } from '../../../shared/ui'
+import { Card, EmptyState, TonePill, cx, type Tone } from '../../../shared/ui'
 import { DecisionDetail, DisclosureButton, EvidencePill, ExposureLine } from './decisionParts'
 import { RECENT_DAYS, daysAgo, filterByTab, isUnchanged, type DecisionTab } from './decisionTabs'
 
@@ -226,7 +226,7 @@ export function ExerciseDecisionTable() {
           type="text" value={query} onChange={e => setQuery(e.target.value)} placeholder="Search exercise…" aria-label="Search exercise"
           className="input col-span-2 w-full @[40rem]:w-56"
         />
-        <label className={FILTER_LABEL}>
+        <label className={cx(FILTER_LABEL, 'col-span-2')}>
           Sort:
           <select value={sort} onChange={e => setSort(e.target.value as SortMode)} className={FILTER_SELECT}>
             {SORTS.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
@@ -259,7 +259,7 @@ export function ExerciseDecisionTable() {
             </select>
           </label>
         )}
-        <label className={FILTER_LABEL}>
+        <label className={cx(FILTER_LABEL, 'col-span-2')}>
           Window:
           <select value={dateWindow} onChange={e => setDateWindow(e.target.value as DateWindow)} className={FILTER_SELECT}>
             {DATE_WINDOWS.map(w => <option key={w.id} value={w.id}>{w.label}</option>)}

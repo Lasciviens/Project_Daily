@@ -41,9 +41,9 @@ export function LibraryView({ items, mediaType, typeSwitch, bucket, onBucketChan
       {/* Type and sort on one row, the title search, then the status filter right above the covers. */}
       <div className="flex flex-wrap items-center gap-2">
         {typeSwitch}
-        <label className="ml-auto flex items-center gap-2 text-meta text-fg-muted">
+        <label className="ml-auto flex min-w-0 flex-1 items-center justify-end gap-2 text-meta text-fg-muted @[28rem]:flex-none">
           <span className="sr-only sm:not-sr-only">Sort</span>
-          <select aria-label="Sort" className="input w-auto max-w-[9.5rem] @[28rem]:max-w-none" value={sort} onChange={e => setSort(e.target.value as LibrarySort)}>
+          <select aria-label="Sort" className="input w-full min-w-0 max-w-[12rem] @[28rem]:w-auto @[28rem]:max-w-none" value={sort} onChange={e => setSort(e.target.value as LibrarySort)}>
             {SORTS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
           </select>
         </label>
