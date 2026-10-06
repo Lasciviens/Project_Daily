@@ -95,7 +95,8 @@ eq(L.igdbRowMatches(g({ igdb_id: 5 }), 'no_length', undefined), true, 'matched w
 eq(L.igdbRowMatches(g({ igdb_id: 5, ttb_main_seconds: 3600 }), 'no_length', undefined), false, 'matched with a length')
 eq(L.igdbCoverage([g({ igdb_id: 1, ttb_extra_seconds: 10, igdb_total_rating: 80 }), g({ igdb_id: 2 }), g()]), { total: 3, matched: 2, withLength: 1, rated: 1 }, 'coverage counts')
 eq(L.igdbCandidates([g(), g({ id: 'h', hidden: true })]).length, 1, 'hidden rows are left out')
-eq(L.toLookUp([g({ id: 'x' }), g({ id: 'y' }), g({ id: 'z', igdb_id: 3 })], { y: { decision: { status: 'none', candidates: [] } } }).map(x => x.id), ['x'], 'only games not looked up and not matched are run')
+eq(L.toLookUp([g({ id: 'x' }), g({ id: 'y' }), g({ id: 'z', igdb_id: 3 })], { y: { decision: { status: 'none', candidates: [] } } }).map(x => x.id), ['x', 'y'], 'not looked up, and "No match" again (IGDB may have it now); matched never')
+eq(L.toLookUp([g({ id: 'r' }), g({ id: 's' })], { r: { decision: { status: 'review', candidates: [] } }, s: { saved: { name: 'S', at: 1 } } }).map(x => x.id), [], 'a game waiting for a tick, or saved, is not looked up again')
 
 // ── Sorts and the queue estimate ──
 const q = (o = {}) => ({ id: o.id ?? 'q', title: o.title ?? 'Q', hidden: false, library: 'retro', platforms: [], play_order: 1, play_status: 'backlog', esde_playtime_seconds: null, play_seconds: null, ...o })

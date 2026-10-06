@@ -57,9 +57,14 @@ export function igdbCoverage(games: readonly TgGame[]) {
   return { total: games.length, matched, withLength, rated }
 }
 
-/** Not looked up this session and not matched: what "Match" runs over. */
+/**
+ * What "Match" runs over: not matched, not saved, and either never looked up
+ * or last answered "No match". A "No match" is remembered on this device, so
+ * without a retry a game IGDB added later (or one a newer matching rule finds)
+ * stayed "No match" for good.
+ */
 export const toLookUp = (games: readonly TgGame[], rows: Record<string, IgdbRowState>) =>
-  games.filter(g => !isIgdbMatched(g) && !rows[g.id]?.decision && !rows[g.id]?.saved)
+  games.filter(g => !isIgdbMatched(g) && !rows[g.id]?.saved && (!rows[g.id]?.decision || rows[g.id]?.decision?.status === 'none'))
 
 /** Counts per filter, for the tab badges. */
 export function igdbFilterCounts(games: readonly TgGame[], rows: Record<string, IgdbRowState>): Record<IgdbFilter, number> {

@@ -68,7 +68,9 @@ export function useIgdbRunner() {
         const exact: IgdbApplyItem[] = []
         for (const g of chunk) {
           const r = byId.get(g.id)
-          const d = decideMatch(matchTarget(g), r?.steam ?? null, r?.candidates ?? [])
+          // A failed lookup stays a failure (try again), never "No match".
+          if (!r || r.error) { patch[g.id] = { error: r?.error ?? 'No answer from IGDB', decision: undefined }; continue }
+          const d = decideMatch(matchTarget(g), r.steam ?? null, r.candidates ?? [])
           patch[g.id] = { decision: d, pick: d.best, error: undefined }
           if (d.status === 'exact' && d.best && d.kind) exact.push({ game_id: g.id, igdb_id: d.best.id, match: d.kind })
         }
