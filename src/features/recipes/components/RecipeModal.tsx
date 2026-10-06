@@ -370,7 +370,8 @@ export function RecipeModal({ open = true, onClose, recipe }: Props) {
         </div>
 
         <section>
-          <div className="mb-1.5 flex items-center justify-between gap-2">
+          {/* Label above the switch on a phone; side by side it cut the label off. */}
+          <div className="mb-1.5 flex flex-col items-start gap-1.5 sm:flex-row sm:items-center sm:justify-between sm:gap-2">
             <h3 className="field-label mb-0">Macros (per serving)</h3>
             <SegmentedControl<MacroMode>
               size="sm" value={macroMode} onChange={setMacroMode}

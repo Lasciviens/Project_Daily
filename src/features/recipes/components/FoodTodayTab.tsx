@@ -320,21 +320,24 @@ export function FoodTodayTab({ date }: { date: string }) {
               ) : (
                 <div className="flex items-center pr-2">
                   <button type="button" onClick={() => openLog(slot)}
-                    className="flex min-h-[44px] flex-1 items-center px-4 text-left text-body text-fg-faint transition-colors hover:text-accent-600">
-                    Add something
+                    className="flex min-h-[44px] min-w-0 flex-1 items-center whitespace-nowrap px-4 text-left text-body text-fg-faint transition-colors hover:text-accent-600">
+                    {/* Short labels in a narrow card so the three actions keep one row. */}
+                    Add<span className="hidden @[26rem]:inline">&nbsp;something</span>
                   </button>
                   {usualForSlot(recent, slot).length > 0 && (
                     <button type="button" disabled={addEntries.isPending}
                       onClick={() => addEntries.mutate(usualForSlot(recent, slot).map(r => recentToEntry(r, date, slot)))}
                       title={usualForSlot(recent, slot).map(r => r.title).join(', ')}
-                      className="btn-ghost btn-sm !px-2.5 text-accent-600">
-                      Log usual ({usualForSlot(recent, slot).length})
+                      aria-label={`Log usual (${usualForSlot(recent, slot).length})`}
+                      className="btn-ghost btn-sm shrink-0 !px-2.5 text-accent-600">
+                      <span className="@[26rem]:hidden">Usual</span><span className="hidden @[26rem]:inline">Log usual</span> ({usualForSlot(recent, slot).length})
                     </button>
                   )}
                   <button type="button" disabled={copyYesterday.isPending}
                     onClick={() => copyYesterday.mutate({ date, filledSlots: new Set(bySlot.keys()), slots: [slot] })}
-                    className="btn-ghost btn-sm gap-1 !px-2.5 text-fg-muted" title={`Log the same ${label.toLowerCase()} as the day before`}>
-                    <Copy aria-hidden className="h-3.5 w-3.5" />Same as yesterday
+                    className="btn-ghost btn-sm shrink-0 gap-1 !px-2.5 text-fg-muted" title={`Log the same ${label.toLowerCase()} as the day before`}
+                    aria-label={`Same ${label.toLowerCase()} as yesterday`}>
+                    <Copy aria-hidden className="h-3.5 w-3.5" /><span className="@[26rem]:hidden">Yesterday</span><span className="hidden @[26rem]:inline">Same as yesterday</span>
                   </button>
                 </div>
               )}
