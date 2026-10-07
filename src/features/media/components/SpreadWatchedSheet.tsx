@@ -31,6 +31,12 @@ interface Props {
   seasons: number[]
   defaultRuntime: number | null
   onClose: () => void
+  /**
+   * Completing the series: called after the episodes are marked, with the
+   * first and last planned times (the series' start and finish). The button
+   * then reads "Mark N & complete".
+   */
+  onSaved?: (range: { firstAt: string; lastAt: string }) => Promise<unknown>
 }
 
 const key = (s: number, e: number) => `${s}x${e}`
@@ -40,7 +46,7 @@ const label = (s: number, e: number) => `S${String(s).padStart(2, '0')}E${String
  * Mark a run of episodes watched across a period you remember roughly, with
  * breaks you didn't watch in. Every change replans at once (spreadWatched.ts).
  */
-export function SpreadWatchedSheet({ tvId, tvName, tvEntryId, seasons, defaultRuntime, onClose }: Props) {
+export function SpreadWatchedSheet({ tvId, tvName, tvEntryId, seasons, defaultRuntime, onClose, onSaved }: Props) {
   const TODAY = todayStr()
   const all = useAllSeasons(tvId, seasons)
   const { data: watched = [] } = useWatchedEpisodes(tvEntryId)
@@ -95,8 +101,12 @@ export function SpreadWatchedSheet({ tvId, tvName, tvEntryId, seasons, defaultRu
     const ok = await withProgress(async () => {
       if (fresh.length) await mark.mutateAsync({ tvEntryId, episodes: fresh.map(p => ({ season: p.season, episode: p.episode, at: p.at })), watchedOn: TODAY })
       if (redate.length) await setDates.mutateAsync({ tvEntryId, episodes: redate.map(p => ({ season: p.season, episode: p.episode, at: p.at })) })
+      if (onSaved) await onSaved({ firstAt: result.plan[0].at, lastAt: result.plan[result.plan.length - 1].at })
       return true
-    }, { loading: `Marking ${result.plan.length} episodes…`, success: `${result.plan.length} episodes marked watched` })
+    }, {
+      loading: `Marking ${result.plan.length} episodes…`,
+      success: onSaved ? `${result.plan.length} episodes marked · series completed` : `${result.plan.length} episodes marked watched`,
+    })
     setSaving(false)
     if (ok) onClose()
   }
@@ -113,7 +123,9 @@ export function SpreadWatchedSheet({ tvId, tvName, tvEntryId, seasons, defaultRu
         <div className="flex items-center justify-end gap-2">
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
           <Button variant="primary" loading={saving} disabled={!result.ok || saving} onClick={() => { void save() }}>
-            {result.ok ? `Mark ${result.plan.length} episode${result.plan.length === 1 ? '' : 's'}` : 'Mark watched'}
+            {result.ok
+              ? `Mark ${result.plan.length} episode${result.plan.length === 1 ? '' : 's'}${onSaved ? ' & complete' : ''}`
+              : onSaved ? 'Mark & complete' : 'Mark watched'}
           </Button>
         </div>
       }
