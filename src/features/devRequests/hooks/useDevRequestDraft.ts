@@ -2,7 +2,7 @@ import { useDevRequestDrafts } from '../devRequestDraftStore'
 import type { PageContext } from '../devRequestContext'
 import { appendMark, descriptionForSave } from '../devRequestMarks'
 import { draftFromRow, isDraftEmpty, sameFields, topSortOrder, type DraftFields } from '../devRequestRules'
-import { useCreateDevRequest, useDevRequests, useUpdateDevRequest } from './useDevRequests'
+import { useCreateDevRequest, useDevRequests, useMarkDevRequestsPrompted, useUpdateDevRequest } from './useDevRequests'
 import type { DevRequest, DevRequestStatus } from '../types'
 import { toast } from '../../../app/store'
 
@@ -31,6 +31,7 @@ const KEPT_NEWER = 'Saved — what you typed after pressing save is still in the
 export function useSaveDevRequestDraft() {
   const create = useCreateDevRequest()
   const update = useUpdateDevRequest()
+  const markPrompted = useMarkDevRequestsPrompted()
   const { data: requests = [] } = useDevRequests()
 
   async function saveNew(now: PageContext, onDone?: () => void) {
@@ -40,12 +41,20 @@ export function useSaveDevRequestDraft() {
     if (draft.attachContext) {
       row.description = appendMark(row.description ?? '', { type: 'page', start: draft.start ?? now, savedOn: now })
     }
+    let created: DevRequest
     try {
-      await create.mutateAsync({ ...row, sort_order: topSortOrder(requests) })
+      created = await create.mutateAsync({ ...row, sort_order: topSortOrder(requests) })
     } catch {
       return // toasted by the mutation; the draft stays
     }
     const s = useDevRequestDrafts.getState()
+    // A prompt was built for this request before it was added (the window's
+    // Prompt button): it is Prompted from the start, and the prompt now
+    // belongs to the saved row.
+    if (s.prompt.from?.kind === 'new') {
+      markPrompted.mutate([created.id])
+      s.setPromptSource([created.id], { kind: 'edit', id: created.id })
+    }
     if (!sameFields(s.newDraft, draft)) { toast.warning(KEPT_NEWER); return }
     s.resetNewDraft()
     onDone?.()
@@ -76,7 +85,14 @@ export function discardNewDraft(restart?: { start: PageContext; page: string }) 
   const s = useDevRequestDrafts.getState()
   const prev = s.newDraft
   s.resetNewDraft(restart)
-  if (!isDraftEmpty(prev)) toast.undo('Draft discarded', () => useDevRequestDrafts.getState().restoreNewDraft(prev))
+  // A prompt built from the thrown-away draft no longer belongs to the next one.
+  const prompted = s.prompt.from?.kind === 'new'
+  if (prompted) s.setPromptSource([], null)
+  if (!isDraftEmpty(prev)) toast.undo('Draft discarded', () => {
+    const now = useDevRequestDrafts.getState()
+    now.restoreNewDraft(prev)
+    if (prompted && !now.prompt.from) now.setPromptSource([], { kind: 'new' })
+  })
 }
 
 /** Throws an unsaved edit away with an Undo. */

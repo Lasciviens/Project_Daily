@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { ToneDot } from '../../../../shared/ui'
+import { useElementWidthRem } from '../../../../shared/hooks/useElementWidth'
 import { formatDate } from '../../../../shared/utils/dateFormat'
 import { BUCKET_LABEL, BUCKET_ORDER, BUCKET_TONE, type LibraryBucket } from '../../libraryModel'
 import type { RatingStats, YearReview } from '../../yearReview'
@@ -17,19 +18,33 @@ export function StatsCard({ title, note, children }: { title: string; note?: Rea
   )
 }
 
-export interface Bar { key: string; label: string; value: number; title: string; active?: boolean }
+/** `labels`: longer axis labels, longest first ("January", "Jan"); the
+ *  longest that fits the bar's own width wins, else `label`. */
+export interface Bar { key: string; label: string; labels?: string[]; value: number; title: string; active?: boolean }
+
+/** Rough width of an axis label in rem (text-micro, tabular). */
+const labelRem = (text: string) => text.length * 0.45 + 0.25
 
 /** Vertical bars (months, years, weekdays); a bar opens what it counts. */
 export function ColumnBars({ bars, onPick, height = 'h-32' }: { bars: Bar[]; onPick: (key: string) => void; height?: string }) {
   const max = Math.max(1, ...bars.map(b => b.value))
+  const { ref, width } = useElementWidthRem()
+  // Every bar uses the same length of label, measured on the chart's own width.
+  const perBar = width != null && bars.length > 0 ? (width - 0.25 * (bars.length - 1)) / bars.length : 0
+  const variants = bars[0]?.labels?.length ?? 0
+  let pick = variants
+  for (let i = 0; i < variants; i++) {
+    if (bars.every(b => labelRem(b.labels?.[i] ?? b.label) <= perBar)) { pick = i; break }
+  }
+  const labelOf = (b: Bar) => (pick < variants ? b.labels?.[pick] ?? b.label : b.label)
   return (
-    <div className={`flex ${height} items-end gap-1`}>
+    <div ref={ref} className={`flex ${height} items-end gap-1`}>
       {bars.map(b => (
         <button key={b.key} type="button" onClick={() => onPick(b.key)} title={b.title} aria-label={b.title} aria-pressed={!!b.active}
           className="group flex h-full min-w-0 flex-1 flex-col items-center justify-end gap-1">
           <span className="w-full max-w-[3rem] rounded-t bg-accent-500/60 transition-colors group-hover:bg-accent-500 group-aria-pressed:bg-accent-600"
             style={{ height: `${b.value > 0 ? Math.max(3, (b.value / max) * 100) : 0}%` }} />
-          <span className="text-micro text-fg-muted tabular-nums">{b.label}</span>
+          <span className="max-w-full overflow-hidden whitespace-nowrap text-micro text-fg-muted tabular-nums">{labelOf(b)}</span>
         </button>
       ))}
     </div>
@@ -89,8 +104,8 @@ function Fact({ label, value, sub }: { label: string; value: string; sub?: strin
   )
 }
 
-/** Your ratings: average against TMDB users, how you spread them, and where you disagree most. */
-export function RatingsCard({ ratings: s, onDisagreements }: { ratings: RatingStats; onDisagreements: () => void }) {
+/** Your ratings: average against TMDB users and how you spread them. */
+export function RatingsCard({ ratings: s }: { ratings: RatingStats }) {
   if (s.count === 0) return <StatsCard title="Your ratings"><p className="text-meta text-fg-muted">Rate titles in their popup (1–10) to see how you compare with TMDB users.</p></StatsCard>
   const max = Math.max(1, ...s.histogram)
   const diff = s.mine != null && s.tmdb != null ? Math.round((s.mine - s.tmdb) * 10) / 10 : null
@@ -109,11 +124,6 @@ export function RatingsCard({ ratings: s, onDisagreements }: { ratings: RatingSt
           </div>
         ))}
       </div>
-      {s.disagreements.length > 0 && (
-        <button type="button" onClick={onDisagreements} className="w-fit text-meta font-semibold text-accent-600">
-          {s.disagreements.length} title{s.disagreements.length === 1 ? '' : 's'} where you and TMDB differ by 1.5+ points →
-        </button>
-      )}
     </StatsCard>
   )
 }

@@ -89,12 +89,17 @@ for (const s of [1, 2, 3, 4]) {
 check('step 1 keeps the phone order (brief → hero → tasks → transit → tiles → news)', eq(HOME_BOARD[1], ['brief', 'hero', 'tasks', 'transit', 'tiles', 'news']))
 check('step 2 (laptop) uses compact tiles, the owner\'s call', B.keysAt(HOME_BOARD, 2).includes('tiles'))
 check('main column is brief → hero → tasks from step 2 up', [2, 3, 4].every(s => eq(B.resolveBoardLayout(HOME_BOARD, s).columns[0].stack, ['brief', 'hero', 'tasks'])))
-check('step 3: games closes the weather column, news the page-card column (the two end level)', (() => {
+check('step 3: weather column ends with games, the page-card column with books', (() => {
   const c = B.resolveBoardLayout(HOME_BOARD, 3).columns
-  return eq(c[1].stack, ['weather', 'transit', 'currency', 'games']) && c[2].stack[c[2].stack.length - 1] === 'news'
+  return eq(c[1].stack, ['weather', 'transit', 'currency', 'games']) && eq(c[2].stack, ['training', 'media', 'books'])
 })())
-check('news lists 8 headlines while it shares a column, 16 once it has one to itself (step 4)',
-  [1, 2, 3].every(s => H.newsRows(s) === H.NEWS_ROWS.shared) && H.newsRows(4) === H.NEWS_ROWS.own && H.NEWS_ROWS.own > H.NEWS_ROWS.shared)
+check('news is a full-width band under the columns from step 2 up (owner, 07.10.2026), never in a column',
+  [2, 3, 4].every(s => {
+    const l = B.resolveBoardLayout(HOME_BOARD, s)
+    return eq(l.bottom, ['news']) && l.columns.every(c => !c.stack.includes('news')) && H.newsIsBand(s)
+  }) && !H.newsIsBand(1))
+check('news is last on the phone (a list) and lists more headlines as the band widens',
+  HOME_BOARD[1][HOME_BOARD[1].length - 1] === 'news' && H.newsRows(1) === 8 && H.newsRows(2) < H.newsRows(3) && H.newsRows(3) < H.newsRows(4))
 
 console.log('Daily layouts')
 for (const [name, board, known] of [['Day', D.DAY_BOARD, D.DAY_SECTIONS], ['Week', D.WEEK_BOARD, D.PICKER_SECTIONS], ['Month', D.MONTH_BOARD, D.PICKER_SECTIONS], ['Tasks', D.TASKS_BOARD, D.TASK_SECTIONS]]) {

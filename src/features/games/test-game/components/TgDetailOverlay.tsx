@@ -5,6 +5,7 @@ import type { TgActions } from '../tgTypes'
 import { TgDetailPanel } from './TgDetailPanel'
 import { TgDetailOverlayControls } from './TgDetailOverlayControls'
 import { TgDetailOverlayTab } from './TgDetailOverlayTab'
+import { TgDetailLarge } from './TgDetailLarge'
 
 interface Props {
   /** The game whose details are open; null when they are closed. */
@@ -54,6 +55,10 @@ export function TgDetailOverlay({ game, collapsed, actions, onCollapse, onExpand
   const [last, setLast] = useState(game)
   if (game && game !== last) setLast(game)
   const shown = game ?? last
+
+  // The bigger popup follows the open game and goes when the overlay closes.
+  const [large, setLarge] = useState(false)
+  if (!game && large) setLarge(false)
 
   const [rail, setRail] = useState(false)
   if (game && collapsed && !rail) setRail(true)
@@ -107,7 +112,7 @@ export function TgDetailOverlay({ game, collapsed, actions, onCollapse, onExpand
               before the whole card. */}
           {shown && (
             <>
-              <TgDetailOverlayControls title={shown.title} onCollapse={collapse} onClose={close} />
+              <TgDetailOverlayControls title={shown.title} onCollapse={collapse} onClose={close} onEnlarge={() => setLarge(true)} />
               <TgDetailPanel game={shown} actions={actions} variant="overlay" />
             </>
           )}
@@ -123,6 +128,7 @@ export function TgDetailOverlay({ game, collapsed, actions, onCollapse, onExpand
           {shown && <TgDetailOverlayTab game={shown} onExpand={expand} onClose={close} expandRef={expandRef} />}
         </aside>
       </Transition>
+      <TgDetailLarge game={large ? game : null} actions={actions} onClose={() => setLarge(false)} />
     </>
   )
 }

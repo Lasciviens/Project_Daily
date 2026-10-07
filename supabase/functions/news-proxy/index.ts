@@ -7,6 +7,8 @@ const ALLOWED_FEED_DOMAINS = [
   'www.vg.no',
   'www.cnnturk.com',
   'feeds.bbci.co.uk',
+  'www.tek.no',              // https://www.tek.no/api/rss/rss2/medium/collections
+  'feeds.arstechnica.com',   // https://feeds.arstechnica.com/arstechnica/index
 ]
 
 const ALLOWED_IMAGE_DOMAINS = [
@@ -18,6 +20,8 @@ const ALLOWED_IMAGE_DOMAINS = [
   'images.tv2.no',
   'cdn.cnnturk.com',
   'c.bilder.no',
+  'shared.cdn.smp.schibsted.com',   // tek.no enclosures
+  'cdn.arstechnica.net',
 ]
 
 function corsHeaders(origin: string | null): Record<string, string> {

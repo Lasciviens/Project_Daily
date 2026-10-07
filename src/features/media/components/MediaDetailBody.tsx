@@ -1,5 +1,5 @@
 import { ExternalLink } from 'lucide-react'
-import { posterUrl, tmdbMovieUrl, tmdbTVUrl } from '../../../integrations/tmdb/client'
+import { tmdbMovieUrl, tmdbTVUrl } from '../../../integrations/tmdb/client'
 import { FollowMenu } from './FollowMenu'
 import { SimilarRow } from './SimilarRow'
 import { EpisodesPanel } from './EpisodesPanel'
@@ -26,7 +26,7 @@ export function MediaDetailBody({ detail, mediaType, userEntry, onRemoved, onOpe
   const controls = <MediaLibraryControls detail={detail} isMovie={isMovie} userEntry={userEntry} onRemoved={onRemoved} />
 
   // Phones: one column — facts, your controls, episodes, similar.
-  // md+: your poster and controls in a narrow left rail (what you act on sits
+  // md+: your controls in a narrow left rail (what you act on sits
   // high, never pushed under the episode list), the TMDB facts on the right.
   return (
     <div className="grid grid-cols-1 gap-5 p-4 sm:p-5 md:grid-cols-[15rem_minmax(0,1fr)]">
@@ -34,20 +34,12 @@ export function MediaDetailBody({ detail, mediaType, userEntry, onRemoved, onOpe
           as tall as the popup's scroll area at most (88dvh − the 14rem hero −
           padding) and scrolls inside itself when the controls are longer. */}
       <aside className="scroll-y order-2 flex min-w-0 flex-col gap-4 md:order-1 md:sticky md:top-5 md:max-h-[calc(88dvh-14rem-2.5rem)] md:self-start md:overflow-y-auto md:overscroll-contain md:pr-1">
-        {/* The poster with the title's outward links beside it (the hero
-            already shows the poster on phones, so there only the links show). */}
-        <div className="flex items-end gap-3">
-          <img
-            src={posterUrl(detail.poster_path, 'w342')}
-            alt=""
-            className="hidden aspect-[2/3] w-28 shrink-0 rounded-row bg-surface-2 object-cover md:block"
-          />
-          <div className="flex flex-wrap gap-1 md:flex-col md:items-start">
-            <FollowMenu detail={detail} isMovie={isMovie} />
-            <a href={isMovie ? tmdbMovieUrl(detail.id) : tmdbTVUrl(detail.id)} target="_blank" rel="noopener noreferrer" className="btn-ghost btn-sm" aria-label="Open on TMDB">
-              TMDB <ExternalLink aria-hidden className="h-3.5 w-3.5" />
-            </a>
-          </div>
+        {/* The title's outward links (the poster is in the header — tap it to see it big). */}
+        <div className="flex flex-wrap gap-1">
+          <FollowMenu detail={detail} isMovie={isMovie} />
+          <a href={isMovie ? tmdbMovieUrl(detail.id) : tmdbTVUrl(detail.id)} target="_blank" rel="noopener noreferrer" className="btn-ghost btn-sm" aria-label="Open on TMDB">
+            TMDB <ExternalLink aria-hidden className="h-3.5 w-3.5" />
+          </a>
         </div>
         <div className="border-t border-line pt-4 md:border-t-0 md:pt-0">{controls}</div>
       </aside>

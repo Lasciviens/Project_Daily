@@ -8,7 +8,7 @@ import { useDetailState } from './TgDetailState'
 import { useStableValue } from './useStableValue'
 import { Truncate } from '../../../../shared/ui/Truncate'
 
-type Variant = 'panel' | 'sheet'
+type Variant = 'panel' | 'sheet' | 'large'
 
 interface Props {
   game: TgGame
@@ -30,6 +30,8 @@ const RETRY_MS = 1200
 const HERO_SIZE: Record<Variant, string> = {
   panel: 'h-[clamp(208px,calc(100dvh-552px),440px)] [@media(min-height:1000px)]:h-[clamp(400px,calc(100dvh-652px),640px)]',
   sheet: 'aspect-[5/3]',
+  // The bigger popup: a banner, so the record starts on the first screen.
+  large: 'h-[clamp(180px,28dvh,300px)]',
 }
 
 /**

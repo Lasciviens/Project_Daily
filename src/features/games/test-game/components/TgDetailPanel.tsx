@@ -23,9 +23,10 @@ interface Props {
   /**
    * `panel` — a standalone card (its own border and radius); `overlay` — the
    * same card filling the tablet/desktop overlay, which owns the edge, radius
-   * and shadow; `sheet` — inside the phone's full-screen sheet.
+   * and shadow; `sheet` — inside the phone's full-screen sheet; `large` —
+   * inside the bigger popup (TgDetailLarge): every word, two columns once wide.
    */
-  variant: 'panel' | 'overlay' | 'sheet'
+  variant: 'panel' | 'overlay' | 'sheet' | 'large'
   onClose?: () => void
 }
 
@@ -33,6 +34,7 @@ const SHELL: Record<Props['variant'], string> = {
   panel: 'tg-panel h-full w-full',
   overlay: 'h-full w-full bg-[var(--tg-panel)]',
   sheet: 'h-full w-full bg-[var(--tg-panel)]',
+  large: 'h-full w-full bg-[var(--tg-panel)]',
 }
 
 const firstText = (...xs: (string | null | undefined)[]) => xs.map(x => x?.trim()).find(Boolean) ?? null
@@ -77,33 +79,57 @@ export function TgDetailPanel({ game, actions, variant, onClose }: Props) {
   const storyline = firstText(game.storyline)
   const showStory = storyline != null && storyline !== description
   // The sheet scrolls, so it shows every word; the viewport-tall overlay clamps.
-  const textMode = variant === 'sheet' ? 'full' : 'clamped'
+  const textMode = variant === 'sheet' || variant === 'large' ? 'full' : 'clamped'
+  const large = variant === 'large'
+  const settled = settledId === game.id
+
+  const story = (
+    <>
+      <TgDetailInfo game={game} extras={extras} />
+      {description && <TgDetailDescription key={`text-${game.id}`} text={description} mode={textMode} />}
+      <TgScreenshotStrip key={`shots-${game.id}`} images={images} title={game.title} fullSize={fullSize} defer={!settled} />
+      {showStory && <TgDetailDescription key={`story-${game.id}`} text={storyline} label="Storyline" mode={textMode} />}
+      <TgDetailNotes key={`notes-${game.id}`} game={game} />
+      <TgDetailSeries game={game} />
+    </>
+  )
+  // Each renders free-form stored records (variant rows, their scraped
+  // record); a bad field loses its own block, never the panel. The phone
+  // sheet builds the long record once its slide-in is done (the selection
+  // has rested), not during the animation.
+  const record = (
+    <>
+      {(variant !== 'sheet' || settled) && (
+        <ErrorBoundary key={`f-${game.id}`} label="Details" action="games_detail_fields"><TgDetailFields game={game} /></ErrorBoundary>
+      )}
+      <ErrorBoundary key={`i-${game.id}`} label="IGDB" action="games_detail_igdb"><TgDetailIgdb game={game} settled={settled} /></ErrorBoundary>
+      <ErrorBoundary key={`s-${game.id}`} label="ScreenScraper" action="games_detail_screenscraper"><TgDetailScreenScraper game={game} settled={settled} /></ErrorBoundary>
+      <ErrorBoundary key={`st-${game.id}`} label="Storage" action="games_detail_storage"><TgDetailStorage game={game} settled={settled} /></ErrorBoundary>
+    </>
+  )
 
   return (
     <div className={`${shell} relative flex flex-col overflow-hidden`}>
       <div ref={bodyRef} className="tg-scroll-y min-h-0 flex-1">
-        <TgDetailHero game={game} variant={layout} steamGenre={extras.genre} />
-        {/* Tall screens (a monitor) space the block out and let the text and
-            screenshots grow (TgDetailInfo/Description/ScreenshotStrip), so the
-            card fills the panel instead of leaving a blank band over the footer. */}
-        <div className="flex flex-col gap-3.5 px-5 pb-2 pt-4 [@media(min-height:1000px)]:gap-5 [@media(min-height:1000px)]:pt-5">
-          <TgDetailInfo game={game} extras={extras} />
-          {description && <TgDetailDescription key={`text-${game.id}`} text={description} mode={textMode} />}
-          <TgScreenshotStrip key={`shots-${game.id}`} images={images} title={game.title} fullSize={fullSize} defer={settledId !== game.id} />
-          {showStory && <TgDetailDescription key={`story-${game.id}`} text={storyline} label="Storyline" mode={textMode} />}
-          {/* Each renders free-form stored records (variant rows, their
-              scraped record); a bad field loses its own block, never the panel. */}
-          {/* The phone sheet builds the long record once its slide-in is done
-              (the selection has rested), not during the animation. */}
-          <TgDetailNotes key={`notes-${game.id}`} game={game} />
-          <TgDetailSeries game={game} />
-          {(variant !== 'sheet' || settledId === game.id) && (
-            <ErrorBoundary key={`f-${game.id}`} label="Details" action="games_detail_fields"><TgDetailFields game={game} /></ErrorBoundary>
-          )}
-          <ErrorBoundary key={`i-${game.id}`} label="IGDB" action="games_detail_igdb"><TgDetailIgdb game={game} settled={settledId === game.id} /></ErrorBoundary>
-          <ErrorBoundary key={`s-${game.id}`} label="ScreenScraper" action="games_detail_screenscraper"><TgDetailScreenScraper game={game} settled={settledId === game.id} /></ErrorBoundary>
-          <ErrorBoundary key={`st-${game.id}`} label="Storage" action="games_detail_storage"><TgDetailStorage game={game} settled={settledId === game.id} /></ErrorBoundary>
-        </div>
+        <TgDetailHero game={game} variant={large ? 'large' : layout} steamGenre={extras.genre} />
+        {large ? (
+          // The bigger popup: the story on the left, the record on the right
+          // once the popup is wide enough for two readable columns.
+          <div className="@container px-5 pb-2 pt-4">
+            <div className="grid grid-cols-1 gap-x-8 gap-y-3.5 @[52rem]:grid-cols-2">
+              <div className="flex min-w-0 flex-col gap-3.5">{story}</div>
+              <div className="flex min-w-0 flex-col gap-2.5">{record}</div>
+            </div>
+          </div>
+        ) : (
+          /* Tall screens (a monitor) space the block out and let the text and
+             screenshots grow (TgDetailInfo/Description/ScreenshotStrip), so the
+             card fills the panel instead of leaving a blank band over the footer. */
+          <div className="flex flex-col gap-3.5 px-5 pb-2 pt-4 [@media(min-height:1000px)]:gap-5 [@media(min-height:1000px)]:pt-5">
+            {story}
+            {record}
+          </div>
+        )}
         {/* Softens content scrolling under the pinned footer; over padding when nothing scrolls. */}
         <div aria-hidden className="pointer-events-none sticky bottom-0 -mt-2 h-2 bg-gradient-to-t from-[var(--tg-panel)] to-transparent" />
       </div>

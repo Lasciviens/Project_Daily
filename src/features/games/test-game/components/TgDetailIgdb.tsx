@@ -15,18 +15,20 @@ const n = (v: number) => v.toLocaleString('en-GB')
 
 function Tile({ label, value, sub, title }: { label: string; value: string; sub?: string; title?: string }) {
   return (
-    <div title={title} className="min-w-0 rounded-lg border border-[var(--tg-border)] bg-[var(--tg-panel-2)] px-2.5 py-2">
-      <div className="text-[11px] font-semibold uppercase tracking-wide tg-muted">{label}</div>
-      <div className="text-[16px] font-bold tabular-nums text-[var(--tg-text)]">{value}</div>
-      {sub && <Truncate className="text-[11px] tg-muted">{sub}</Truncate>}
+    <div title={title} className="min-w-0 rounded-lg border border-[var(--tg-border)] bg-[var(--tg-panel-2)] px-2 py-1.5">
+      <Truncate className="text-[10.5px] font-semibold uppercase tracking-wide tg-muted">{label}</Truncate>
+      <div className="flex min-w-0 items-baseline gap-1.5">
+        <span className="text-[14.5px] font-bold leading-tight tabular-nums text-[var(--tg-text)]">{value}</span>
+        {sub && <Truncate className="min-w-0 text-[11px] tg-muted">{sub}</Truncate>}
+      </div>
     </div>
   )
 }
 
 function Fact({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="grid grid-cols-[7.5rem_minmax(0,1fr)] gap-2 text-[12.5px]">
-      <dt className="tg-muted">{label}</dt><dd className="min-w-0">{children}</dd>
+    <div className="contents">
+      <dt className="tg-muted">{label}</dt><dd className="min-w-0 break-words text-[var(--tg-text)]">{children}</dd>
     </div>
   )
 }
@@ -55,10 +57,10 @@ export function TgDetailIgdb({ game, settled = true }: { game: TgGame; settled?:
 
   if (!matched) {
     return (
-      <section className="flex flex-col gap-1.5 border-t border-[var(--tg-border)] pt-3.5">
+      <section className="flex flex-col gap-1 border-t border-[var(--tg-border)] pt-2.5">
         <h3 className="tg-section-label">IGDB</h3>
         <p className="text-[12.5px] tg-muted">Not matched yet — IGDB adds how long it takes, member and critic scores, and a link to its page.</p>
-        <button type="button" onClick={() => openIgdbFor(game.id)} className="inline-flex min-h-[44px] items-center self-start text-[12.5px] font-semibold text-[var(--tg-accent)]">Find on IGDB</button>
+        <button type="button" onClick={() => openIgdbFor(game.id)} className="inline-flex min-h-[32px] [@media(pointer:coarse)]:min-h-[44px] items-center self-start text-[12.5px] font-semibold text-[var(--tg-accent)]">Find on IGDB</button>
       </section>
     )
   }
@@ -71,26 +73,26 @@ export function TgDetailIgdb({ game, settled = true }: { game: TgGame; settled?:
   const description = !game.description?.trim() && d?.summary ? d.summary : null
 
   return (
-    <section className="flex flex-col gap-3 border-t border-[var(--tg-border)] pt-3.5">
+    <section className="@container flex flex-col gap-2 border-t border-[var(--tg-border)] pt-2.5">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="tg-section-label">IGDB</h3>
         {page && (
-          <a href={page} target="_blank" rel="noreferrer" className="inline-flex min-h-[44px] items-center gap-1 text-[12.5px] font-semibold text-[var(--tg-accent)]">
+          <a href={page} target="_blank" rel="noreferrer" className="inline-flex min-h-[32px] [@media(pointer:coarse)]:min-h-[44px] items-center gap-1 text-[12.5px] font-semibold text-[var(--tg-accent)]">
             Open on IGDB <ExternalLink className="h-3.5 w-3.5" aria-hidden />
           </a>
         )}
       </div>
 
       <div>
-        <h4 className="mb-1.5 text-[12px] font-semibold">How long to beat</h4>
+        <h4 className="mb-1 text-[12px] font-semibold">How long to beat</h4>
         {main || extra || full ? (
           <>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-3 gap-1.5">
               <Tile label="Main story" value={main ?? '—'} title="To the credits, without spending much time on extras" />
               <Tile label="+ Extras" value={extra ?? '—'} title="Story plus some side content" />
               <Tile label="100 %" value={full ?? '—'} title="Everything the game has" />
             </div>
-            <p className="mt-1 text-[11.5px] tg-muted">
+            <p className="mt-0.5 text-[11.5px] tg-muted">
               {game.ttb_count ? `Averages from ${n(game.ttb_count)} IGDB member${game.ttb_count === 1 ? '' : 's'}.` : 'Averages from IGDB members.'}
               {played && target ? ` You've played ${formatLength(played)} of about ${formatLength(target)}.` : ''}
             </p>
@@ -100,8 +102,8 @@ export function TgDetailIgdb({ game, settled = true }: { game: TgGame; settled?:
 
       {(game.igdb_total_rating != null || game.igdb_rating != null || game.igdb_critic_rating != null) && (
         <div>
-          <h4 className="mb-1.5 text-[12px] font-semibold">Scores (out of 100)</h4>
-          <div className="grid grid-cols-3 gap-2">
+          <h4 className="mb-1 text-[12px] font-semibold">Scores (out of 100)</h4>
+          <div className="grid grid-cols-3 gap-1.5">
             <Tile label="Members" value={game.igdb_rating != null ? String(Math.round(game.igdb_rating)) : '—'}
               sub={game.igdb_rating_count ? `${n(game.igdb_rating_count)} ratings` : undefined} title="Average of IGDB members' ratings" />
             <Tile label="Critics" value={game.igdb_critic_rating != null ? String(Math.round(game.igdb_critic_rating)) : '—'}
@@ -113,7 +115,7 @@ export function TgDetailIgdb({ game, settled = true }: { game: TgGame; settled?:
       )}
 
       {d && (
-        <dl className="flex flex-col gap-1.5">
+        <dl className="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-3 gap-y-1 text-[12.5px] leading-[1.4] @[34rem]:grid-cols-[max-content_minmax(0,1fr)_max-content_minmax(0,1fr)]">
           {d.released && <Fact label="First released">{formatDate(d.released)}</Fact>}
           {d.type && !/main/i.test(d.type) && <Fact label="Type">{d.type}</Fact>}
           {d.themes.length > 0 && <Fact label="Themes">{d.themes.join(', ')}</Fact>}
@@ -132,12 +134,12 @@ export function TgDetailIgdb({ game, settled = true }: { game: TgGame; settled?:
 
       {d && d.similar.length > 0 && (
         <div>
-          <h4 className="mb-1 text-[12px] font-semibold">Similar games</h4>
+          <h4 className="mb-0.5 text-[12px] font-semibold">Similar games</h4>
           <ul className="flex flex-col">
             {d.similar.map(s => {
               const mine = owned.get(s.id)
               return (
-                <li key={s.id} className="flex min-h-[40px] items-center gap-2 text-[12.5px]">
+                <li key={s.id} className="flex min-h-[30px] items-center [@media(pointer:coarse)]:min-h-[44px] gap-2 text-[12.5px]">
                   <Truncate className="min-w-0 flex-1">{s.name}</Truncate>
                   {mine ? (
                     <button type="button" onClick={() => openDetail(mine.id)} className="shrink-0 font-semibold text-[var(--tg-green)]">In your library</button>
@@ -154,9 +156,9 @@ export function TgDetailIgdb({ game, settled = true }: { game: TgGame; settled?:
       )}
 
       <div className="flex flex-wrap gap-x-4 text-[12.5px]">
-        <button type="button" onClick={() => openIgdbFor(game.id)} className="inline-flex min-h-[44px] items-center font-semibold text-[var(--tg-accent)]">Change match</button>
-        <button type="button" onClick={() => setConfirm(true)} disabled={unlink.isPending} className="inline-flex min-h-[44px] items-center font-semibold text-[var(--tg-red)]">Remove match</button>
-        {game.igdb_fetched_at && <span className="inline-flex min-h-[44px] items-center tg-muted">Updated {formatDate(game.igdb_fetched_at)}</span>}
+        <button type="button" onClick={() => openIgdbFor(game.id)} className="inline-flex min-h-[32px] [@media(pointer:coarse)]:min-h-[44px] items-center font-semibold text-[var(--tg-accent)]">Change match</button>
+        <button type="button" onClick={() => setConfirm(true)} disabled={unlink.isPending} className="inline-flex min-h-[32px] [@media(pointer:coarse)]:min-h-[44px] items-center font-semibold text-[var(--tg-red)]">Remove match</button>
+        {game.igdb_fetched_at && <span className="inline-flex min-h-[32px] [@media(pointer:coarse)]:min-h-[44px] items-center tg-muted">Updated {formatDate(game.igdb_fetched_at)}</span>}
       </div>
       <TgConfirmDialog open={confirm} title="Remove the IGDB match?"
         message="Its length, scores and IGDB facts are cleared from this game. Nothing else changes."

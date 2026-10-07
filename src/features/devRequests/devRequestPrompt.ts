@@ -11,7 +11,7 @@
 //   ---
 //   How to work: … (only the rules that apply)
 // Pure (imports only other pure modules) so a verify script can require it.
-import { REF_RE, markPromptText, parseDescription, pickLabel, type Mark, type PickMark } from './devRequestMarks'
+import { REF_RE, appendMark, descriptionForSave, markPromptText, parseDescription, pickLabel, type Mark, type PageMark, type PickMark } from './devRequestMarks'
 import { requestPoints, type Point } from './points'
 import { tailNote } from './outline'
 
@@ -22,6 +22,27 @@ export interface PromptRequest {
   category: string
   priority: string
   effort?: string | null
+}
+
+/**
+ * A request as the prompt sees it, from what the request window holds right
+ * now (saved or not): the description cleaned exactly as a save would clean
+ * it, plus the page mark a new request gets when it is added. Needs no id.
+ */
+export function promptRequestFromDraft(
+  f: { title: string; description: string; page: string; category: string; priority: string; effort: string | null },
+  pageMark?: PageMark | null,
+): PromptRequest {
+  const clean = descriptionForSave(f.description)
+  const description = pageMark ? appendMark(clean, pageMark) : clean
+  return {
+    title: f.title.trim() || 'Untitled request',
+    description: description || null,
+    page: f.page || null,
+    category: f.category,
+    priority: f.priority,
+    effort: f.effort || null,
+  }
 }
 
 // A link in the text reads `“Water card” [1]`; its full detail (component,

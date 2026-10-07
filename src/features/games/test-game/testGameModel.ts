@@ -20,7 +20,7 @@ export type TgSection = 'library' | 'queue' | 'wishlist' | 'completed' | 'analyt
 export type TgView = 'shelf' | 'grid' | 'list'
 export type TgSort =
   | 'title' | 'title-desc' | 'recent' | 'recent-asc' | 'playtime' | 'playtime-asc'
-  | 'rating' | 'rating-asc' | 'year-desc' | 'year-asc' | 'added' | 'series' | 'length' | 'igdb-rating'
+  | 'rating' | 'rating-asc' | 'year-desc' | 'year-asc' | 'added' | 'series' | 'length' | 'length-desc' | 'igdb-rating'
 export type TgStatusFilter = 'all' | PlayStatus
 
 export const ALL_PLATFORMS = 'all'
@@ -73,6 +73,7 @@ export const SORT_LABEL: Record<TgSort, string> = {
   added: 'Recently added',
   series: 'Series',
   length: 'Shortest first',
+  'length-desc': 'Longest first',
   'igdb-rating': 'IGDB score',
 }
 
@@ -626,6 +627,7 @@ export function sortGames<T extends Game>(games: T[], sort: TgSort): T[] {
     case 'added':      return gs.sort((a, b) => time(b.created_at) - time(a.created_at) || byTitle(a, b))
     // IGDB's time to beat (with some extras, else to the credits); unknown last.
     case 'length':     return sortByKey(gs, g => gameLengthSeconds(g) ?? Infinity, 1, byTitle)
+    case 'length-desc': return sortByKey(gs, g => gameLengthSeconds(g) ?? -Infinity, -1, byTitle)
     case 'igdb-rating': return sortByKey(gs, g => g.igdb_total_rating ?? -Infinity, -1, byTitle)
     // A series together in release order; games without one after, by title.
     case 'series':     return gs.sort((a, b) => {
@@ -991,7 +993,8 @@ export function cardMeta(g: TgGame, sort: TgSort, playtime: (minutes: number) =>
     case 'year-asc': return g.release_year ? String(g.release_year) : 'Year unknown'
     case 'added': return `Added ${formatDay(g.created_at)}`
     case 'series': return g.series_name?.trim() || 'No series'
-    case 'length': { const l = formatLength(gameLengthSeconds(g)); return l ? `About ${l}` : 'Length unknown' }
+    case 'length':
+    case 'length-desc': { const l = formatLength(gameLengthSeconds(g)); return l ? `About ${l}` : 'Length unknown' }
     case 'igdb-rating': return g.igdb_total_rating != null ? `IGDB ${Math.round(g.igdb_total_rating)}` : 'No IGDB score'
     default: return [platform, g.release_year].filter(Boolean).join(' · ')
   }

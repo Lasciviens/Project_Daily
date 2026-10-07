@@ -6,7 +6,7 @@
 //                (`[[pick {json}]]`) and one for the page it was written on
 //                (`[[page {json}]]`)
 //   reviews      after a prompt: Fixed / Not fixed / Moved per point
-//                (`[[review {json}]]`, keyed by the point's text — points.ts)
+//                (`[[review {json}]]`, keyed by the point's words — points.ts)
 //   recheck      on a re-check request: which request it re-asks
 //                (`[[recheck {json}]]`)
 // A mark is machine-readable (route + query, tabs, popup, the component and
@@ -23,7 +23,7 @@ import {
   type Capture, type CapturedPopup, type PageContext, type PickedElement,
 } from './devRequestContext'
 import { checkpointLine, parseCheckpointLine, type Checkpoint } from './checkpoints'
-import { pointKeys, splitPoints } from './pointText'
+import { pointKeys, splitPoints, upgradeReviewKeys } from './pointText'
 import { insertIntoOutline, parseOutline, serializeOutline, type Caret } from './outline'
 
 /**
@@ -40,7 +40,7 @@ export type Mark = PickMark | PageMark | LegacyMark
 /** How a point fared after it was sent to Claude (points.ts owns the keys). */
 export type ReviewState = 'fixed' | 'not_fixed' | 'moved'
 export interface PointReview {
-  /** The point's key: a hash of its text (pointKey in points.ts). */
+  /** The point's key: a hash of its words (pointText.ts). */
   key: string
   state: ReviewState
   /** Not fixed: what is still wrong. */
@@ -244,7 +244,11 @@ export function parseDescription(text: string | null | undefined): ParsedDescrip
   let body = head.join('\n')
   const rest = tail.join('\n').trim()
   if (rest) body = body.trim() ? `${body.replace(/\s+$/, '')}\n\n${rest}` : rest
-  return { body, checkpoints, marks, reviews, recheck }
+  // Reviews keyed the older way (words + "Still not fixed" note) move to the words-only key.
+  const keyed = reviews.length
+    ? upgradeReviewKeys([...parseOutline(body), ...checkpoints.filter(c => c.text.trim()).map(c => ({ text: c.text.trim(), tail: null }))], reviews)
+    : reviews
+  return { body, checkpoints, marks, reviews: keyed, recheck }
 }
 
 export function encodeMark(m: Mark): string {

@@ -12,7 +12,7 @@ import { TrainingHomeWidget, TrainingTile } from '../components/TrainingHomeWidg
 import { GamesHomeWidget, GamesTile } from '../components/GamesHomeWidget'
 import { BooksHomeWidget, BooksTile } from '../components/BooksHomeWidget'
 import { RecentMediaWidget, RecentMediaTile } from '../components/RecentMediaWidget'
-import { HOME_BOARD, newsRows, type HomeSection } from './homeBoard'
+import { HOME_BOARD, newsIsBand, newsRows, type HomeSection } from './homeBoard'
 
 /** Glance tiles with swipeable screens that open their detail: 2 across in a side column or on a phone, 3 on a wider stack. */
 function GlanceTiles() {
@@ -30,8 +30,10 @@ function GlanceTiles() {
   )
 }
 
+/** A list on a phone; from the laptop up a band of cards across the bottom of the page. */
 function HomeNews() {
-  return <NewsWidget visible={newsRows(useBoardStep())} />
+  const step = useBoardStep()
+  return <NewsWidget visible={newsRows(step)} layout={newsIsBand(step) ? 'band' : 'list'} />
 }
 
 /**

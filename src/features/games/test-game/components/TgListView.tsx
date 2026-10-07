@@ -1,8 +1,9 @@
 import { memo, useState, type KeyboardEvent } from 'react'
 import { formatPlaytime } from '../../api/playtimeFormat'
+import { formatLength } from '../../igdb/igdbMatch'
 import { ArrowDown, ArrowUp } from 'lucide-react'
 import {
-  extraVariants, formatDay, lastPlayedIso, platformInfo, playCount, playSeconds, starsFromRating, subtitleParts,
+  extraVariants, formatDay, gameLengthSeconds, lastPlayedIso, platformInfo, playCount, playSeconds, starsFromRating, subtitleParts,
   type TgGame, type TgSort,
 } from '../testGameModel'
 import { useTestGameStore } from '../testGameStore'
@@ -23,14 +24,16 @@ interface Props {
   onSelect: (id: string) => void
 }
 
-// Playtime and last played are the low-priority columns: gone below lg;
-// platforms, genres and launches appear only where there is room (xl).
-const COLUMNS = 'grid-cols-[40px_minmax(0,1fr)_112px_76px] lg:grid-cols-[40px_minmax(0,1fr)_112px_76px_84px_96px] xl:grid-cols-[40px_minmax(0,1fr)_112px_76px_84px_96px_110px_150px_64px]'
+// Playtime, last played and length (IGDB's time to beat) are the
+// low-priority columns: gone below lg; platforms, genres and launches appear
+// only where there is room (xl).
+const COLUMNS = 'grid-cols-[40px_minmax(0,1fr)_112px_76px] lg:grid-cols-[40px_minmax(0,1fr)_112px_76px_84px_96px_72px] xl:grid-cols-[40px_minmax(0,1fr)_112px_76px_84px_96px_72px_110px_150px_64px]'
 
 const Row = memo(function Row({ game, selected, focusable, onSelect }: { game: TgGame; selected: boolean; focusable: boolean; onSelect: (id: string) => void }) {
   const seconds = playSeconds(game)
   const stars = starsFromRating(game.rating)
   const launches = playCount(game)
+  const length = formatLength(gameLengthSeconds(game))
   const st = cardStatus(game)
   const systems = game.platforms.map(p => p.system).join(', ')
   const genres = game.genres ?? []
@@ -68,6 +71,7 @@ const Row = memo(function Row({ game, selected, focusable, onSelect }: { game: T
           {seconds == null ? '—' : formatPlaytime(seconds / 60)}
         </span>
         <span className="hidden text-[12.5px] tabular-nums text-[var(--tg-text-2)] lg:block">{formatDay(lastPlayedIso(game))}</span>
+        <span className="hidden text-[12.5px] tabular-nums text-[var(--tg-text-2)] lg:block" title={length ? 'How long to beat (IGDB)' : undefined}>{length ?? '—'}</span>
         {/* These two cells abbreviate (a short platform name, two genres), so
             the full list stays in a title even when nothing is cut. */}
         <span className="hidden min-w-0 text-[12.5px] text-[var(--tg-text-2)] xl:block" title={systems || undefined}>
@@ -132,6 +136,7 @@ export function TgListView({ games, selectedId, onSelect, resetKey }: Props) {
         <SortHead label="Rating" sorts={['rating', 'rating-asc']} />
         <SortHead label="Playtime" sorts={['playtime', 'playtime-asc']} className="hidden lg:flex" />
         <SortHead label="Last played" sorts={['recent', 'recent-asc']} className="hidden lg:flex" />
+        <SortHead label="Length" sorts={['length', 'length-desc']} className="hidden lg:flex" />
         <span className="hidden xl:block">Platform</span>
         <span className="hidden xl:block">Genres</span>
         <span className="hidden text-right xl:block">Launches</span>

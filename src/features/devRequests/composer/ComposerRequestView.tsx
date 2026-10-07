@@ -1,11 +1,12 @@
 import { useMemo, type Ref, type RefObject } from 'react'
 import { useLocation } from 'react-router-dom'
-import { ArrowUpRight, CalendarClock, Check, CheckCheck, CornerUpLeft, Crosshair, ListChecks, Plus, Quote, Send, Trash2, Undo2 } from 'lucide-react'
+import { ArrowUpRight, CalendarClock, Check, CheckCheck, CornerUpLeft, Crosshair, ListChecks, Plus, Quote, Send, Sparkles, Trash2, Undo2 } from 'lucide-react'
 import { useDevRequestDrafts } from '../devRequestDraftStore'
 import { cardTimeline, draftFromRow, isDraftEmpty, type ComposerTarget, type DraftFields } from '../devRequestRules'
 import { useDeleteDevRequest, useDevRequests, useUpdateDevRequest } from '../hooks/useDevRequests'
 import { discardEditDraft, discardNewDraft, useSaveDevRequestDraft } from '../hooks/useDevRequestDraft'
-import { useMarkRequestDone, useReviewPoint, useSendToRecheck } from '../hooks/usePointReview'
+import { useEditTailNote, useMarkRequestDone, useReviewPoint, useSendToRecheck } from '../hooks/usePointReview'
+import { useComposerPrompt } from './useComposerPrompt'
 import { allResolved, isReviewable, notFixedKeys, reviewCounts, requestPoints } from '../points'
 import { parseDescription, type RecheckOf } from '../devRequestMarks'
 import { cleanText, type PageContext } from '../devRequestContext'
@@ -41,7 +42,8 @@ const open = (id: string) => useDevRequestDrafts.getState().openComposer({ kind:
  * points), saved with Save. Once the request went to Claude it is also where
  * the work is checked — each point Fixed or Not fixed (with what is still
  * wrong), Not fixed ones sent to a re-check request, and the request marked
- * done. The prompt for Claude is never part of it (ComposerPromptView).
+ * done. The prompt for Claude is its own step (ComposerPromptView): the
+ * footer's Prompt button opens it for this request as written now.
  */
 export function ComposerRequestView({ target, readPage, onPick, onQuote, mouse, flash, titleRef, outlineRef, onDone, onDeleted }: Props) {
   const { pathname } = useLocation()
@@ -57,6 +59,8 @@ export function ComposerRequestView({ target, readPage, onPick, onQuote, mouse, 
   const reviewPoint = useReviewPoint()
   const sendToRecheck = useSendToRecheck()
   const markDone = useMarkRequestDone()
+  const editTailNote = useEditTailNote()
+  const composerPrompt = useComposerPrompt()
 
   const fields: DraftFields | null = target.kind === 'new' ? newDraft : (editDraft ?? seed)
   const parsed = useMemo(() => parseDescription(fields?.description ?? ''), [fields?.description])
@@ -132,6 +136,7 @@ export function ComposerRequestView({ target, readPage, onPick, onQuote, mouse, 
           fields={fields}
           onChange={onChange}
           review={review}
+          onTailNote={row ? (key, note) => editTailNote(row, key, note) : undefined}
           status={row ? { value: row.status, onChange: st => updateStatus.mutate({ id: row.id, patch: { status: st } }), disabled: updateStatus.isPending } : undefined}
           titleRef={titleRef}
           outlineRef={outlineRef}
@@ -156,17 +161,28 @@ export function ComposerRequestView({ target, readPage, onPick, onQuote, mouse, 
           <PageContextToggle start={newDraft.start} checked={newDraft.attachContext} onChange={v => useDevRequestDrafts.getState().patchNewDraft({ attachContext: v })} />
         )}
       </div>
-      <footer className="flex shrink-0 items-center gap-1.5 border-t border-line bg-surface-2 px-3 py-2.5">
+      <footer className="@container flex shrink-0 items-center gap-1.5 border-t border-line bg-surface-2 px-3 py-2.5">
         {row && <IconButton label="Delete request" onClick={() => void remove()} className="-ml-1 text-fg-muted hover:!text-danger"><Trash2 /></IconButton>}
         {target.kind === 'new'
           ? dirty && <Button variant="ghost" size="sm" icon={<Undo2 />} onClick={discardNew}>Discard</Button>
-          : editDraft && row && <Button variant="ghost" size="sm" icon={<Undo2 />} onClick={() => discardEditDraft(row)}>Discard changes</Button>}
+          : editDraft && row && <Button variant="ghost" size="sm" icon={<Undo2 />} onClick={() => discardEditDraft(row)}><span className="@[26rem]:hidden">Discard</span><span className="hidden @[26rem]:inline">Discard changes</span></Button>}
         <span className="ml-auto flex min-w-0 items-center gap-2.5">
           <span className="flex min-w-0 items-center gap-1.5 text-meta text-fg-muted" aria-live="polite">
             {dirty
               ? <><span data-tone="warn" className="tone-dot shrink-0" aria-hidden /><Truncate reveal="none">Unsaved · kept on this device</Truncate></>
               : row ? <><CheckCheck aria-hidden className="h-3.5 w-3.5 shrink-0 text-success" />Saved</> : null}
           </span>
+          <Button
+            variant="ghost"
+            size="sm"
+            icon={<Sparkles />}
+            disabled={isDraftEmpty(fields)}
+            onClick={() => void composerPrompt.build(target)}
+            title={dirty ? 'Build the prompt for Claude from this request as written now (no save needed)' : 'Build the prompt for Claude for this request'}
+            className="shrink-0"
+          >
+            <span className="sr-only @[26rem]:not-sr-only">Prompt</span>
+          </Button>
           <Button variant="primary" size="sm" icon={target.kind === 'new' ? <Plus /> : <Check />} loading={pending} disabled={!fields.title.trim() || (target.kind === 'edit' && !editDraft)} onClick={save} title={mouse ? `${target.kind === 'new' ? 'Add request' : 'Save'} (Ctrl/⌘+Enter)` : undefined}>
             {target.kind === 'new' ? 'Add request' : 'Save'}
           </Button>
