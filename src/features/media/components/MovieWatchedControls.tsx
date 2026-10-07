@@ -1,7 +1,7 @@
-import { CalendarDays, RotateCcw, Undo2 } from 'lucide-react'
+import { CalendarDays, Repeat, RotateCcw, Undo2 } from 'lucide-react'
 import { withProgress } from '../../../shared/hooks/useMutationWithFeedback'
 import { useEntityModal } from '../../../shared/modals'
-import { Button } from '../../../shared/ui'
+import { Button, TonePill } from '../../../shared/ui'
 import { formatDate } from '../../../shared/utils/dateFormat'
 import { isUnknownWatchedAt } from '../trakt/traktDates'
 import type { UserMovieEntry } from '../types'
@@ -65,9 +65,14 @@ export function MovieWatchedControls({ entry, releaseDate, disabled, onPatch }: 
   return (
     <div className="flex flex-wrap items-center gap-2">
       {dialog}
-      <p className="text-meta text-fg-muted tabular-nums">
-        Watched {when}{plays > 1 && ` · ${plays} plays`}
-      </p>
+      {/* A rewatch reads clearly. Only the latest play's date is kept, so it says "last". */}
+      {plays > 1 ? (
+        <TonePill tone="info" className="tabular-nums">
+          <Repeat aria-hidden className="h-3.5 w-3.5" /> Watched {plays}× · last {when}
+        </TonePill>
+      ) : (
+        <p className="text-meta text-fg-muted tabular-nums">Watched {when}</p>
+      )}
       <Button size="sm" variant="ghost" icon={<CalendarDays />} disabled={disabled} onClick={() => { void changeDate() }}>Change date</Button>
       <Button size="sm" icon={<RotateCcw />} disabled={disabled} onClick={() => { void watchAgain() }}>Watched again</Button>
       <Button size="sm" variant="ghost" icon={<Undo2 />} disabled={disabled} onClick={() => { void unwatch() }}>Not watched</Button>

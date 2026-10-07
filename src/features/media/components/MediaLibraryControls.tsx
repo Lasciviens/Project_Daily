@@ -1,10 +1,10 @@
 import { useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { SkipForward, Trash2, CheckCircle2, Heart } from 'lucide-react'
+import { SkipForward, Trash2, CheckCircle2, Heart, Repeat } from 'lucide-react'
 import { toast } from '../../../app/store'
 import { withProgress } from '../../../shared/hooks/useMutationWithFeedback'
 import { haptic } from '../../../shared/utils/haptics'
-import { Button, SectionLabel } from '../../../shared/ui'
+import { Button, SectionLabel, TonePill } from '../../../shared/ui'
 import { STAGE_TONE, type Stage } from '../../../shared/theme/stage'
 import { useEntityModal } from '../../../shared/modals'
 import { useMarkEpisodeWatched, useWatchedEpisodes } from '../hooks/useWatchedEpisodes'
@@ -114,6 +114,10 @@ export function MediaLibraryControls({ detail, isMovie, userEntry, onRemoved }: 
   // rollover from the real watched rows); the query is shared, so this is free.
   const nextEp = useNextEpisode(tvEntry?.id ?? null, tv?.id ?? null, tv?.number_of_episodes ?? null)
   const { data: watchedRows = [] } = useWatchedEpisodes(tvEntry?.id ?? null)
+  const rewatched = watchedRows.reduce((n, w) => {
+    const extra = Math.max(0, w.repeat_count ?? 0)
+    return extra > 0 ? { episodes: n.episodes + 1, extraPlays: n.extraPlays + extra } : n
+  }, { episodes: 0, extraPlays: 0 })
   const qc = useQueryClient()
   const { ask, dialog } = useWatchedWhenPrompt()
   // The last aired day (TMDB's last_air_date is the latest aired episode).
@@ -271,6 +275,13 @@ export function MediaLibraryControls({ detail, isMovie, userEntry, onRemoved }: 
         <StatusPills statuses={statuses} value={userEntry.status} disabled={updating} onPick={s => { void (s === 'unwatched' ? handleRemove() : handleStatusChange(s)) }} />
         {tvEntry && (
           <p className="text-meta text-fg-muted tabular-nums">Progress: S{tvEntry.current_season} E{tvEntry.current_episode}</p>
+        )}
+        {tvEntry && rewatched.episodes > 0 && (
+          // Per-play dates aren't kept (one date + a play count per episode), so this counts, never dates.
+          <TonePill tone="info" className="tabular-nums">
+            <Repeat aria-hidden className="h-3.5 w-3.5" />
+            {rewatched.episodes} episode{rewatched.episodes === 1 ? '' : 's'} rewatched · {rewatched.extraPlays} extra play{rewatched.extraPlays === 1 ? '' : 's'}
+          </TonePill>
         )}
         {movieEntry?.status === 'watching' && <MovieWatchingInfo entry={movieEntry} />}
         {movieEntry?.status === 'completed' && (

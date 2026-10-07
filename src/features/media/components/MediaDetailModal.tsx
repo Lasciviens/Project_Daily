@@ -1,7 +1,8 @@
-import { useEffect, useRef, type TouchEvent } from 'react'
+import { useEffect, useRef, useState, type TouchEvent } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { useMovieFull, useTVFull } from '../hooks/useTMDB'
 import { MediaDetailBody } from './MediaDetailBody'
+import { PosterLightbox } from './PosterLightbox'
 import { ModalShell } from '../../../shared/modals/ModalShell'
 import { Button, Skeleton as Bone } from '../../../shared/ui'
 import { posterUrl } from '../../../integrations/tmdb/client'
@@ -44,10 +45,14 @@ export function MediaDetailModal({ tmdbId, mediaType, userEntry, onClose, onRemo
   // ← / → step through the list, except while typing (the note, a date).
   const navRef = useRef(nav)
   useEffect(() => { navRef.current = nav })
+  // The header poster opens big; while it is open the arrows don't step titles.
+  const [zoom, setZoom] = useState(false)
+  const zoomRef = useRef(zoom)
+  useEffect(() => { zoomRef.current = zoom })
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null
-      if (e.defaultPrevented || e.altKey || e.metaKey || e.ctrlKey || t?.closest('input, textarea, select, [contenteditable="true"]')) return
+      if (zoomRef.current || e.defaultPrevented || e.altKey || e.metaKey || e.ctrlKey || t?.closest('input, textarea, select, [contenteditable="true"]')) return
       if (e.key === 'ArrowLeft' && navRef.current?.onPrev) { e.preventDefault(); navRef.current.onPrev() }
       if (e.key === 'ArrowRight' && navRef.current?.onNext) { e.preventDefault(); navRef.current.onNext() }
     }
@@ -115,7 +120,17 @@ export function MediaDetailModal({ tmdbId, mediaType, userEntry, onClose, onRemo
           )}
           <div className={`absolute bottom-0 left-0 p-4 ${nav ? 'pr-28 sm:px-14' : ''}`}>
             <div className="flex items-end gap-3">
-              {detail && <img src={posterUrl(detail.poster_path, 'w92')} alt="" className="w-10 shrink-0 rounded-md" />}
+              {detail?.poster_path && (
+                <button
+                  type="button"
+                  onClick={() => setZoom(true)}
+                  aria-label={`Show the ${title} poster bigger`}
+                  title="Show the poster bigger"
+                  className="relative w-10 shrink-0 overflow-hidden rounded-md ring-1 ring-white/20 transition hover:ring-white/70 after:absolute after:-inset-1 after:content-['']"
+                >
+                  <img src={posterUrl(detail.poster_path, 'w92')} alt="" className="block w-full" />
+                </button>
+              )}
               <div>
                 {title && <h2 className="text-title font-semibold leading-tight text-white">{title}</h2>}
                 <div className="flex items-center gap-2 text-meta text-white/70 tabular-nums">
@@ -129,6 +144,7 @@ export function MediaDetailModal({ tmdbId, mediaType, userEntry, onClose, onRemo
       }
     >
       <div ref={top} />
+      {zoom && detail?.poster_path && <PosterLightbox path={detail.poster_path} title={title} onClose={() => setZoom(false)} />}
       {query.isError ? (
         <div className="flex flex-col items-start gap-3 p-5">
           <p className="text-body text-fg-2">Couldn't load this title from TMDB.</p>

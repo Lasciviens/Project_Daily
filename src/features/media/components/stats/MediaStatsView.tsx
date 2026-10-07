@@ -2,7 +2,6 @@ import { useMemo, useState } from 'react'
 import { CalendarClock, Clapperboard, Clock, Repeat, Tv } from 'lucide-react'
 import { EmptyState, Skeleton, StatTile } from '../../../../shared/ui'
 import { todayStr } from '../../../../shared/utils/dateUtils'
-import { formatDateRange } from '../../../../shared/utils/dateFormat'
 import { useYearReview } from '../../hooks/useYearReview'
 import { useMovies } from '../../hooks/useMovies'
 import { useTVSeries } from '../../hooks/useTVSeries'
@@ -13,9 +12,11 @@ import { drillRows, hours, type Drill } from './statsDrill'
 import { ColumnBars, HabitsCard, LibraryNowCard, RankBars, RatingsCard, StatsCard } from './StatsParts'
 
 type Period = number | 'all'
-// Axis letters only; any named date reads DD.MM.YYYY (owner rule).
-const AXIS = ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D']
-const monthRange = (year: number, m: number) => formatDateRange(new Date(year, m - 1, 1), new Date(year, m, 0))
+// Month names as chart labels only — the owner's exception to the date rule
+// (the year is already picked, so no year here). Longest first; the chart
+// shows the longest that fits its own width.
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+const monthLabels = (m: number) => [MONTHS[m - 1], MONTHS[m - 1].slice(0, 3)]
 const plural = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString('en-GB')} ${n === 1 ? one : many}`
 
 /**
@@ -69,7 +70,7 @@ export function MediaStatsView({ onOpenDetail }: { onOpenDetail: OpenMediaDetail
         note={allTime ? 'Tap a year to see that year.' : 'Tap a month to see what you watched.'}>
         {allTime
           ? <ColumnBars onPick={k => pick(Number(k))} bars={r.years.map(y => ({ key: String(y.year), label: String(y.year), value: y.minutes, title: `${y.year}: ${hours(y.minutes)} · ${plural(y.plays, 'play')}` }))} />
-          : <ColumnBars onPick={k => setDrill({ kind: 'month', month: Number(k) })} bars={r.months.map(m => ({ key: String(m.month), label: AXIS[m.month - 1], value: m.minutes, title: `${monthRange(r.year!, m.month)}: ${hours(m.minutes)}`, active: drill.kind === 'month' && drill.month === m.month }))} />}
+          : <ColumnBars onPick={k => setDrill({ kind: 'month', month: Number(k) })} bars={r.months.map(m => ({ key: String(m.month), label: MONTHS[m.month - 1][0], labels: monthLabels(m.month), value: m.minutes, title: `${MONTHS[m.month - 1]}: ${hours(m.minutes)}`, active: drill.kind === 'month' && drill.month === m.month }))} />}
       </StatsCard>
 
       {/* Cards of different heights: column stacks (CSS columns), never a row grid. */}
@@ -81,7 +82,7 @@ export function MediaStatsView({ onOpenDetail }: { onOpenDetail: OpenMediaDetail
           <RankBars rows={shows} empty="No episodes in this period." onPick={k => setDrill({ kind: 'show', id: Number(k) })} />
         </StatsCard>
         <HabitsCard r={r} onWeekday={day => setDrill({ kind: 'weekday', day })} />
-        <RatingsCard ratings={r.ratings} onDisagreements={() => setDrill({ kind: 'rated' })} />
+        <RatingsCard ratings={r.ratings} />
         {allTime && <LibraryNowCard rows={library} />}
       </div>
 

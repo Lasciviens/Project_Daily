@@ -8,7 +8,7 @@ import { formatDateRange } from '../../../../shared/utils/dateFormat'
 export type Drill =
   | { kind: 'all' } | { kind: 'movies' } | { kind: 'episodes' } | { kind: 'rewatches' } | { kind: 'undated' }
   | { kind: 'month'; month: number } | { kind: 'weekday'; day: number }
-  | { kind: 'genre'; name: string } | { kind: 'show'; id: number } | { kind: 'rated' }
+  | { kind: 'genre'; name: string } | { kind: 'show'; id: number }
 
 export const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 export const hours = (min: number) => `${Math.round(min / 60).toLocaleString('en-GB')}h`
@@ -31,7 +31,7 @@ export function drillRows(r: YearReview, d: Drill): { heading: string; rows: Dri
       const s = r.shows.find(x => x.show.tmdbId === d.id)
       return { heading: s ? `${s.show.title} · ${period}` : 'Episodes', rows: (s?.episodes ?? []).map(e => ({ key: `${e.season}x${e.episode}`, tmdbId: s!.show.tmdbId, type: 'tv', title: ep(e.season, e.episode), poster: s!.show.poster, detail: e.plays > 1 ? `${e.plays} plays` : s!.show.title, date: dateOf(e.watchedAt) })) }
     }
-    case 'rewatches': return { heading: `Watched more than once · ${period}`, rows: r.rewatches.map((x, i) => ({ key: `r${i}`, tmdbId: x.tmdbId, type: x.type === 'movie' ? 'movie' : 'tv', title: x.title, poster: null, detail: `${x.label} · ${x.plays} plays`, date: null })) }
+    case 'rewatches': return { heading: `Watched more than once · ${period}`, rows: r.rewatches.map((x, i) => ({ key: `r${i}`, tmdbId: x.tmdbId, type: x.type === 'movie' ? 'movie' : 'tv', title: x.title, poster: x.poster, detail: `${x.label} · ${x.plays} plays`, date: null })) }
     case 'undated': return { heading: 'Watched on an unknown date', rows: [...r.movies.filter(m => !isKnown(m.watchedAt)).map(movie), ...episodes.filter(x => !isKnown(x.e.watchedAt)).map(episodeRow)] }
     case 'month': {
       const m = r.months[d.month - 1]
@@ -51,6 +51,5 @@ export function drillRows(r: YearReview, d: Drill): { heading: string; rows: Dri
         ...(g?.shows ?? []).map(s => ({ key: `gs${s.tmdbId}`, tmdbId: s.tmdbId, type: 'tv' as const, title: s.title, poster: s.poster, detail: 'Series', date: null })),
       ] }
     }
-    case 'rated': return { heading: `You and TMDB disagree · ${period}`, rows: r.ratings.disagreements.map(x => ({ key: `d${x.type}${x.tmdbId}`, tmdbId: x.tmdbId, type: x.type, title: x.title, poster: null, detail: `You ${x.mine}/10 · TMDB ${x.tmdb}/10`, date: null })) }
   }
 }

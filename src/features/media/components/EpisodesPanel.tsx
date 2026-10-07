@@ -5,15 +5,17 @@ import { episodeAirDates, useSeasonDetails } from '../hooks/useTMDB'
 import { useWatchedWhenPrompt } from '../hooks/useWatchedWhenPrompt'
 import { resolveWatchedAt } from '../watchedWhen'
 import { useWatchedEpisodes, useMarkEpisodeWatched, useSetEpisodeDates } from '../hooks/useWatchedEpisodes'
-import { CalendarDays, CalendarPlus, Check, ListChecks, RotateCcw, Undo2 } from 'lucide-react'
+import { CalendarDays, CalendarPlus, Check, ListChecks, Repeat, RotateCcw, Undo2 } from 'lucide-react'
 import { useEntityModal } from '../../../shared/modals'
-import { Button, SectionLabel, Skeleton, Truncate } from '../../../shared/ui'
+import { Button, SectionLabel, Skeleton, TonePill, Truncate } from '../../../shared/ui'
 import { ceilToQuarter } from '../../../shared/components/plan-modal/planModal.config'
 import type { TMDBTVFull } from '../types'
 import { formatDate } from '../../../shared/utils/dateFormat'
 import { todayStr } from '../../../shared/utils/dateUtils'
 import { toast } from '../../../app/store'
 import { isUnknownWatchedAt } from '../trakt/traktDates'
+import { useTraktPlayback } from '../trakt/useTraktExtras'
+import { pausedEpisodes, seasonGaps } from '../episodeGaps'
 
 interface Props {
   tv:         TMDBTVFull
@@ -37,6 +39,12 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
 
   const watchedSet = new Set(watched.filter(w => w.season_number === season).map(w => w.episode_number))
   const watchedMap = new Map(watched.filter(w => w.season_number === season).map(w => [w.episode_number, w]))
+  // Trakt's paused playbacks (the same read as Continue watching, one query
+  // for every row): an unwatched episode stopped part-way says how far.
+  const { data: playback } = useTraktPlayback()
+  const pausedAt = pausedEpisodes(playback, tv.id, season)
+  // Unwatched aired episodes before the last watched one in this season.
+  const gaps = seasonGaps(seasonData?.episodes ?? [], watchedSet, TODAY)
 
   // Watched count per season — drives the Netflix-style progress on the
   // season tabs (n/total + a green fill bar), so where you are in a series
@@ -100,6 +108,13 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
   }
 
   const epLabel = (r: { season: number; episode: number }) => `S${r.season} · E${r.episode}`
+
+  // Marks exactly the skipped episodes, through the same when-watched prompt.
+  async function markGaps() {
+    const timed = await withWhen(gaps.map(episode => ({ season, episode })), 'Marks only these episodes')
+    if (!timed) return
+    await runMarkRefs(timed, 'watched', `Marking ${plural(timed.length)} as watched…`, 'Marked as watched')
+  }
 
   // Trakt's "when did you watch it?": each episode gets its own time — with
   // Release date, its own air date. Null = cancelled.
@@ -283,6 +298,18 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
         </div>
       )}
 
+      {!isLoading && gaps.length > 0 && (
+        <div className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-row border border-line bg-surface-2 px-3 py-1.5">
+          <p className="min-w-0 flex-1 text-meta text-fg-2">
+            {gaps.map(n => `E${n}`).join(', ')} {gaps.length === 1 ? "isn't" : "aren't"} marked watched
+            {playback && <span className="text-fg-muted"> (Trakt has {gaps.length === 1 ? 'it' : 'them'} {gaps.some(n => pausedAt.has(n)) ? 'paused or unmarked' : 'unmarked'})</span>}
+          </p>
+          <Button size="sm" variant="ghost" icon={<Check />} onClick={() => { void markGaps() }} disabled={marking}>
+            Mark {gaps.length === 1 ? 'it' : 'them'}
+          </Button>
+        </div>
+      )}
+
       {isLoading ? (
         <div className="space-y-1.5">
           {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} rounded="rounded-row" className="h-11 w-full" />)}
@@ -296,6 +323,7 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
             const watchedOn  = watchedRow?.watched_at
             const plays      = 1 + Math.max(0, watchedRow?.repeat_count ?? 0)
             const runtime    = ep.runtime ?? tv.episode_run_time?.[0] ?? null
+            const paused     = pausedAt.get(ep.episode_number) ?? null
 
             const aired = !!ep.air_date && ep.air_date <= TODAY
             return (
@@ -336,8 +364,14 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
                     )}
                     {isWatched && watchedOn && (
                       <span className="font-medium text-success">
-                        Watched {isUnknownWatchedAt(watchedOn) ? '· date unknown' : formatDate(watchedOn)}{plays > 1 && ` · ${plays} plays`}
+                        {plays > 1 ? 'Last watched' : 'Watched'} {isUnknownWatchedAt(watchedOn) ? '· date unknown' : formatDate(watchedOn)}
                       </span>
+                    )}
+                    {isWatched && plays > 1 && (
+                      <TonePill tone="info" className="shrink-0"><Repeat aria-hidden className="h-3 w-3" />{plays} plays</TonePill>
+                    )}
+                    {!isWatched && paused != null && (
+                      <TonePill tone="warn" className="shrink-0">Paused at {paused} %</TonePill>
                     )}
                   </span>
                 </span>

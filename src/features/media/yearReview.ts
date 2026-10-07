@@ -21,17 +21,14 @@ export interface ShowYear { show: ReviewShow; episodes: ReviewEpisode[]; plays: 
 export interface GenreYear { name: string; minutes: number; movies: ReviewMovie[]; shows: ReviewShow[] }
 export interface MonthYear { month: number; minutes: number; movies: ReviewMovie[]; episodes: (ReviewEpisode & { show: ReviewShow })[] }
 export interface YearBar { year: number; minutes: number; plays: number }
-export interface Rewatch { type: 'movie' | 'episode'; title: string; tmdbId: number; plays: number; label: string }
+export interface Rewatch { type: 'movie' | 'episode'; title: string; tmdbId: number; poster: string | null; plays: number; label: string }
 export interface WeekdayBar { day: number; plays: number; minutes: number }
-export interface Disagreement { type: 'movie' | 'tv'; tmdbId: number; title: string; mine: number; tmdb: number }
 export interface RatingStats {
   count: number
   mine: number | null
   tmdb: number | null
   /** Your ratings 1–10, index 0 = 1. */
   histogram: number[]
-  /** Where you and TMDB users differ most (≥ 1.5 points), biggest first. */
-  disagreements: Disagreement[]
 }
 
 export interface YearReview {
@@ -82,8 +79,8 @@ const avg = (xs: number[]) => (xs.length ? Math.round((xs.reduce((a, b) => a + b
 
 export function ratingStats(movies: ReviewMovie[], shows: ReviewShow[]): RatingStats {
   const rated = [
-    ...movies.filter(m => m.rating != null).map(m => ({ type: 'movie' as const, tmdbId: m.tmdbId, title: m.title, mine: m.rating!, tmdb: m.tmdbRating ?? null })),
-    ...shows.filter(s => s.rating != null).map(s => ({ type: 'tv' as const, tmdbId: s.tmdbId, title: s.title, mine: s.rating!, tmdb: s.tmdbRating ?? null })),
+    ...movies.filter(m => m.rating != null).map(m => ({ mine: m.rating!, tmdb: m.tmdbRating ?? null })),
+    ...shows.filter(s => s.rating != null).map(s => ({ mine: s.rating!, tmdb: s.tmdbRating ?? null })),
   ]
   const histogram = Array.from({ length: 10 }, () => 0)
   for (const r of rated) histogram[Math.min(10, Math.max(1, Math.round(r.mine))) - 1]++
@@ -93,11 +90,6 @@ export function ratingStats(movies: ReviewMovie[], shows: ReviewShow[]): RatingS
     mine: avg(rated.map(r => r.mine)),
     tmdb: avg(both.map(r => r.tmdb)),
     histogram,
-    disagreements: both
-      .filter(r => Math.abs(r.mine - r.tmdb) >= 1.5)
-      .sort((a, b) => Math.abs(b.mine - b.tmdb) - Math.abs(a.mine - a.tmdb) || a.title.localeCompare(b.title))
-      .slice(0, 5)
-      .map(r => ({ ...r, tmdb: Math.round(r.tmdb * 10) / 10 })),
   }
 }
 
@@ -165,10 +157,10 @@ export function buildYearReview(year: number | null, movies: ReviewMovie[], epis
   close()
 
   const rewatches: Rewatch[] = [
-    ...ms.filter(m => m.plays > 1).map(m => ({ type: 'movie' as const, title: m.title, tmdbId: m.tmdbId, plays: m.plays, label: 'Movie' })),
+    ...ms.filter(m => m.plays > 1).map(m => ({ type: 'movie' as const, title: m.title, tmdbId: m.tmdbId, poster: m.poster, plays: m.plays, label: 'Movie' })),
     ...es.filter(e => e.plays > 1).map(e => {
       const s = shows.get(e.showId)!
-      return { type: 'episode' as const, title: s.title, tmdbId: s.tmdbId, plays: e.plays, label: `S${e.season} · E${e.episode}` }
+      return { type: 'episode' as const, title: s.title, tmdbId: s.tmdbId, poster: s.poster, plays: e.plays, label: `S${e.season} · E${e.episode}` }
     }),
   ].sort((a, b) => b.plays - a.plays || a.title.localeCompare(b.title))
 
