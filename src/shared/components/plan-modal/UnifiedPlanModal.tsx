@@ -251,9 +251,10 @@ import { useGoogleTaskLists } from '../../../features/todo/hooks/useGoogleTaskLi
 import { resolveOrCreateGoogleTaskListId } from '../../../features/todo/api/googleTasksSync'
 import {
   createCalendarEvent, deleteCalendarEvent, getCalendarEvent,
-  isCalendarNotFound, isCalendarConflict,
+  isCalendarNotFound, isCalendarConflict, blockEventId,
 } from '../../../features/calendar/api/calendarApi'
 import { ensureValidCalendarToken } from '../../../features/calendar/api/calendarTokenSync'
+import type { CalendarEvent } from '../../../features/calendar/types'
 import { logError } from '../../utils/logError'
 import { withProgress } from '../../hooks/useMutationWithFeedback'
 import { invalidate } from '../../query'
@@ -411,21 +412,29 @@ export function UnifiedPlanModal({
       // (a network timeout — Calendar's events.insert offers no other way
       // to tell "did that already happen?"), retrying with the SAME id
       // 409s instead of silently minting a second event for this block.
-      const eventId = blockId.replace(/-/g, '')
-      let created
-      try {
-        created = await createCalendarEvent(token, 'primary', {
-          id: eventId,
-          summary: title,
-          start:   { dateTime: start.toISOString(), timeZone: LOCAL_TZ },
-          end:     { dateTime: end.toISOString(),   timeZone: LOCAL_TZ },
-        })
-      } catch (createErr) {
-        if (!isCalendarConflict(createErr)) throw createErr
-        // Already exists on Google under this id — a previous attempt's
-        // create landed after all. Adopt it instead of failing.
-        created = await getCalendarEvent(token, 'primary', eventId)
+      // A 409 whose event is 'cancelled' is this block's own event from
+      // before an unlink (Google keeps deleted events under their id) —
+      // adopting it would link the block to an event nobody sees, so the
+      // next id in the block's sequence is tried instead (blockEventId).
+      let created: CalendarEvent | null = null
+      for (let attempt = 0; attempt < 5 && !created; attempt++) {
+        const eventId = blockEventId(blockId, attempt)
+        try {
+          created = await createCalendarEvent(token, 'primary', {
+            id: eventId,
+            summary: title,
+            start:   { dateTime: start.toISOString(), timeZone: LOCAL_TZ },
+            end:     { dateTime: end.toISOString(),   timeZone: LOCAL_TZ },
+          })
+        } catch (createErr) {
+          if (!isCalendarConflict(createErr)) throw createErr
+          // Already exists on Google under this id — a previous attempt's
+          // create landed after all. Adopt it, unless it is a deleted one.
+          const existing = await getCalendarEvent(token, 'primary', eventId)
+          if (existing.status !== 'cancelled') created = existing
+        }
       }
+      if (!created) throw new Error('Google Calendar refused every new event id for this block')
 
       try {
         // Raw api call on purpose (not useUpdateTimeBlock): a failure here is
