@@ -6,13 +6,19 @@ import type { ExerciseProgressResult, CanonicalExerciseSession, CurrentAction, E
 import { InfoBubble } from '../../../shared/components/InfoBubble'
 import { Card, EmptyState, TonePill, cx, type Tone } from '../../../shared/ui'
 import { DecisionDetail, DisclosureButton, EvidencePill, ExposureLine } from './decisionParts'
-import { RECENT_DAYS, daysAgo, filterByTab, isUnchanged, type DecisionTab } from './decisionTabs'
+import { RECENT_DAYS, filterByTab, isUnchanged, type DecisionTab } from './decisionTabs'
+import {
+  NO_FILTERS, applyDecisionFilters, effectiveFilters, filtersActive, muscleOptions, muscleRoleFor, routineOptions,
+  type DecisionFilters, type MuscleRoleInExercise,
+} from './decisionFilters'
+import { DecisionFilterBar } from './DecisionFilterBar'
 
-// Desktop: a dense decision table. Mobile (<640px): the same rows stack as
-// cards. Each row expands its own drill-down in place, by mouse, touch or
-// keyboard (the exercise name is a real button). Nothing here re-derives the
-// algorithm (progress-engine/, settled rules in docs/training/progress-engine/);
-// it only renders and filters it.
+// Below 44rem of the card's own width the rows stack as cards; wider, a dense
+// decision table. Each row expands its own drill-down in place, by mouse,
+// touch or keyboard (the exercise name is a real button). Nothing here
+// re-derives the algorithm (progress-engine/, settled rules in
+// docs/training/progress-engine/); it only renders, filters
+// (decisionFilters.ts) and sorts it.
 
 type Tab = DecisionTab
 const TABS: { id: Tab; label: string; hint: string }[] = [
@@ -32,22 +38,11 @@ const SORTS: { id: SortMode; label: string }[] = [
   { id: 'lowest_confidence', label: 'Lowest confidence' },
 ]
 
-type DateWindow = 'all' | '4w' | '8w' | '12w'
-// 'all' is the whole loaded history — 6 months, never "all time".
-const DATE_WINDOWS: { id: DateWindow; label: string }[] = [
-  { id: 'all', label: 'Last 6 months' },
-  { id: '4w', label: 'Last 4 weeks' },
-  { id: '8w', label: 'Last 8 weeks' },
-  { id: '12w', label: 'Last 12 weeks' },
-]
-
 const ACTION_PRIORITY_RANK: Record<CurrentAction, number> = {
   READY_TO_INCREASE: 0, CONFIRM_BEFORE_INCREASING: 1, WATCH_FOR_REGRESSION: 1, WATCH_FOR_PLATEAU: 1,
   CONFIRM_AT_CURRENT_LOAD: 2, REVIEW_LOAD_REDUCTION: 2, LOG_COMPARABLE_SESSION: 2,
   HOLD_STEADY: 3, BUILD_AT_CURRENT_LOAD: 3, INSUFFICIENT_DATA: 4,
 }
-const FILTER_LABEL = 'flex min-w-0 flex-col gap-0.5 text-meta text-fg-muted @[40rem]:flex-row @[40rem]:items-center @[40rem]:gap-1.5'
-const FILTER_SELECT = 'select w-full min-w-0 py-0 text-meta @[40rem]:w-auto'
 
 const EVIDENCE_RANK: Record<EvidenceLevel, number> = { limited: 0, moderate: 1, strong: 2 }
 
@@ -88,18 +83,27 @@ function sortDecisions(list: ExerciseProgressResult[], sort: SortMode): Exercise
   }
 }
 
-function withinDateWindow(result: ExerciseProgressResult, window: DateWindow, today: string): boolean {
-  if (window === 'all') return true
-  const latestDate = result.currentState.latest?.date
-  if (!latestDate) return true
-  const weeks = window === '4w' ? 4 : window === '8w' ? 8 : 12
-  return latestDate >= daysAgo(today, weeks * 7)
-}
+/** Under a Muscle filter: how this exercise trains the picked muscle. */
+type MuscleRoleTag = { role: MuscleRoleInExercise; muscle: string }
 
-type RowProps = { result: ExerciseProgressResult; sessions: CanonicalExerciseSession[]; metricKind: ProgressMetricKind; title: string; noChange?: boolean }
+type RowProps = {
+  result: ExerciseProgressResult; sessions: CanonicalExerciseSession[]; metricKind: ProgressMetricKind; title: string
+  noChange?: boolean; muscleRole?: MuscleRoleTag | null
+}
 
 function NoChangePill() {
   return <TonePill tone="neutral">No change</TonePill>
+}
+
+// "Secondary muscle" on its own reads next to the evidence pills; the muscle
+// itself is the one picked in the filter (named for screen readers).
+function MuscleRoleChip({ role, muscle }: MuscleRoleTag) {
+  const meaning = role === 'primary' ? `${muscle} is this exercise's primary muscle` : `${muscle} is a secondary (helper) muscle in this exercise`
+  return (
+    <span title={meaning} className={cx('chip shrink-0', role === 'secondary' && 'text-fg-muted')}>
+      <span className="sr-only">{muscle}: </span>{role === 'primary' ? 'Primary muscle' : 'Secondary muscle'}
+    </span>
+  )
 }
 
 function ToggleName({ open, onToggle, title }: { open: boolean; onToggle: () => void; title: string }) {
@@ -114,13 +118,18 @@ function ToggleName({ open, onToggle, title }: { open: boolean; onToggle: () => 
   )
 }
 
-function DecisionRow({ result, sessions, metricKind, title, noChange }: RowProps) {
+function DecisionRow({ result, sessions, metricKind, title, noChange, muscleRole }: RowProps) {
   const [open, setOpen] = useState(false)
   return (
     <>
       {/* The name button is the keyboard/AT control; a click anywhere on the row is a mouse convenience. */}
       <tr className="cursor-pointer border-b border-line hover:bg-surface-hover" onClick={() => setOpen(v => !v)}>
-        <td className="px-3 py-1"><ToggleName open={open} onToggle={() => setOpen(v => !v)} title={title} /></td>
+        <td className="px-3 py-1">
+          <div className="flex flex-wrap items-center gap-x-2">
+            <ToggleName open={open} onToggle={() => setOpen(v => !v)} title={title} />
+            {muscleRole && <MuscleRoleChip {...muscleRole} />}
+          </div>
+        </td>
         <td className="px-3 py-2.5"><ExposureLine result={result} />{noChange && <> <NoChangePill /></>}</td>
         <td className="px-3 py-2.5"><TonePill tone={ACTION_TONE[result.currentAction]}>{actionLabel(result.currentAction)}</TonePill></td>
         <td className="px-3 py-2.5"><EvidencePill level={result.evidence.progress} label="Trend evidence" /></td>
@@ -135,7 +144,7 @@ function DecisionRow({ result, sessions, metricKind, title, noChange }: RowProps
   )
 }
 
-function DecisionCard({ result, sessions, metricKind, title, noChange }: RowProps) {
+function DecisionCard({ result, sessions, metricKind, title, noChange, muscleRole }: RowProps) {
   const [open, setOpen] = useState(false)
   return (
     <li className="rounded-row border border-line px-3 pb-3 pt-1">
@@ -144,9 +153,10 @@ function DecisionCard({ result, sessions, metricKind, title, noChange }: RowProp
         <TonePill tone={ACTION_TONE[result.currentAction]} className="shrink-0">{actionLabel(result.currentAction)}</TonePill>
       </div>
       <div className="mt-0.5"><ExposureLine result={result} />{noChange && <> <NoChangePill /></>}</div>
-      <div className="mt-1.5 flex items-center gap-2">
+      <div className="mt-1.5 flex flex-wrap items-center gap-2">
         <EvidencePill level={result.evidence.progress} label="Trend evidence" />
         {result.evidence.recommendation && <EvidencePill level={result.evidence.recommendation} label="Decision evidence" />}
+        {muscleRole && <MuscleRoleChip {...muscleRole} />}
       </div>
       {open && <DecisionDetail result={result} sessions={sessions} metricKind={metricKind} title={title} />}
     </li>
@@ -156,46 +166,29 @@ function DecisionCard({ result, sessions, metricKind, title, noChange }: RowProp
 export function ExerciseDecisionTable() {
   const {
     isLoading, needsCurrentProgram, decisions, titleById, sessionsByTemplateId, metricKindByTemplateId,
-    muscleGroupByTemplateId, routineTitlesByTemplateId, today,
+    musclesByTemplateId, routineIdsByTemplateId, activeRoutines, today,
   } = useProgressDataContext()
   const [tab, setTab] = useState<Tab>('recent')
   const [sort, setSort] = useState<SortMode>('recent')
-  const [query, setQuery] = useState('')
-  const [evidenceFilter, setEvidenceFilter] = useState<'any' | EvidenceLevel>('any')
-  const [dateWindow, setDateWindow] = useState<DateWindow>('all')
-  const [muscleFilter, setMuscleFilter] = useState<string>('any')
-  const [routineFilter, setRoutineFilter] = useState<string>('any')
+  const [picked, setPicked] = useState<DecisionFilters>(NO_FILTERS)
   const [showInsufficient, setShowInsufficient] = useState(false)
 
-  const muscleOptions = useMemo(() => {
-    const set = new Set<string>()
-    for (const d of decisions) { const m = muscleGroupByTemplateId.get(d.exerciseTemplateId); if (m) set.add(m) }
-    return [...set].sort()
-  }, [decisions, muscleGroupByTemplateId])
-  const routineOptions = useMemo(() => {
-    const set = new Set<string>()
-    for (const d of decisions) { for (const r of routineTitlesByTemplateId.get(d.exerciseTemplateId) ?? []) set.add(r) }
-    return [...set].sort()
-  }, [decisions, routineTitlesByTemplateId])
+  // Options come from every decision, not the open tab's, so a pick survives a tab change.
+  const muscles = useMemo(() => muscleOptions(decisions, musclesByTemplateId), [decisions, musclesByTemplateId])
+  const routines = useMemo(() => routineOptions(decisions, activeRoutines, routineIdsByTemplateId), [decisions, activeRoutines, routineIdsByTemplateId])
+  const filters = useMemo(() => effectiveFilters(picked, muscles, routines), [picked, muscles, routines])
+  const filterData = useMemo(() => ({ titleById, musclesByTemplateId, routineIdsByTemplateId, today }), [titleById, musclesByTemplateId, routineIdsByTemplateId, today])
 
   const filtered = useMemo(() => filterByTab(decisions, tab, today), [decisions, tab, today])
-  const searched = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    let list = filtered
-    if (q) list = list.filter(d => (titleById.get(d.exerciseTemplateId) ?? '').toLowerCase().includes(q))
-    if (evidenceFilter !== 'any') list = list.filter(d => d.evidence.progress === evidenceFilter)
-    if (muscleFilter !== 'any') list = list.filter(d => muscleGroupByTemplateId.get(d.exerciseTemplateId) === muscleFilter)
-    if (routineFilter !== 'any') list = list.filter(d => (routineTitlesByTemplateId.get(d.exerciseTemplateId) ?? []).includes(routineFilter))
-    list = list.filter(d => withinDateWindow(d, dateWindow, today))
-    return list
-  }, [filtered, query, titleById, evidenceFilter, dateWindow, muscleFilter, routineFilter, muscleGroupByTemplateId, routineTitlesByTemplateId, today])
+  const searched = useMemo(() => applyDecisionFilters(filtered, filters, filterData), [filtered, filters, filterData])
   const shown = useMemo(() => sortDecisions(searched, sort), [searched, sort])
   // Recent and All list single-session exercises themselves; the fold only
-  // collects the ones the open view doesn't show.
+  // collects the ones the open view doesn't show — narrowed by the same filters.
   const insufficient = useMemo(() => {
     const listed = new Set(filtered.map(d => d.exerciseTemplateId))
-    return decisions.filter(d => d.currentAction === 'INSUFFICIENT_DATA' && !listed.has(d.exerciseTemplateId))
-  }, [decisions, filtered])
+    const rest = decisions.filter(d => d.currentAction === 'INSUFFICIENT_DATA' && !listed.has(d.exerciseTemplateId))
+    return applyDecisionFilters(rest, filters, filterData)
+  }, [decisions, filtered, filters, filterData])
 
   if (isLoading || needsCurrentProgram) return null
   if (decisions.length === 0) {
@@ -204,7 +197,13 @@ export function ExerciseDecisionTable() {
     )
   }
 
-  const filtersActive = query || evidenceFilter !== 'any' || dateWindow !== 'all' || muscleFilter !== 'any' || routineFilter !== 'any'
+  const anyFilter = filtersActive(filters)
+  const muscleLabel = muscles.find(m => m.slug === filters.muscle)?.label ?? null
+  const roleOf = (templateId: string): MuscleRoleTag | null => {
+    if (!muscleLabel) return null
+    const role = muscleRoleFor(musclesByTemplateId.get(templateId), filters.muscle)
+    return role ? { role, muscle: muscleLabel } : null
+  }
 
   // Table or stacked cards by the card's OWN width (a side-by-side layout
   // can make it narrow on a laptop), not the viewport's.
@@ -219,63 +218,17 @@ export function ExerciseDecisionTable() {
       </div>
       <p className="mb-3 text-meta text-fg-muted">{TABS.find(t => t.id === tab)?.hint}</p>
 
-      {/* Narrow card: the filters form a 2-column grid with the label above
-          each select; inline label + select pairs wrapped raggedly. */}
-      <div className="mb-3 grid grid-cols-2 items-end gap-2 @[40rem]:flex @[40rem]:flex-wrap @[40rem]:items-center">
-        <input
-          type="text" value={query} onChange={e => setQuery(e.target.value)} placeholder="Search exercise…" aria-label="Search exercise"
-          className="input col-span-2 w-full @[40rem]:w-56"
-        />
-        <label className={cx(FILTER_LABEL, 'col-span-2')}>
-          Sort:
-          <select value={sort} onChange={e => setSort(e.target.value as SortMode)} className={FILTER_SELECT}>
-            {SORTS.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
-          </select>
-        </label>
-        <label className={FILTER_LABEL}>
-          Evidence:
-          <select value={evidenceFilter} onChange={e => setEvidenceFilter(e.target.value as 'any' | EvidenceLevel)} className={FILTER_SELECT}>
-            <option value="any">Any</option>
-            <option value="limited">Limited</option>
-            <option value="moderate">Moderate</option>
-            <option value="strong">Strong</option>
-          </select>
-        </label>
-        {muscleOptions.length > 0 && (
-          <label className={FILTER_LABEL}>
-            Muscle:
-            <select value={muscleFilter} onChange={e => setMuscleFilter(e.target.value)} className={FILTER_SELECT}>
-              <option value="any">Any</option>
-              {muscleOptions.map(m => <option key={m} value={m}>{m}</option>)}
-            </select>
-          </label>
-        )}
-        {routineOptions.length > 0 && (
-          <label className={FILTER_LABEL}>
-            Routine:
-            <select value={routineFilter} onChange={e => setRoutineFilter(e.target.value)} className={FILTER_SELECT}>
-              <option value="any">Any</option>
-              {routineOptions.map(r => <option key={r} value={r}>{r}</option>)}
-            </select>
-          </label>
-        )}
-        <label className={cx(FILTER_LABEL, 'col-span-2')}>
-          Window:
-          <select value={dateWindow} onChange={e => setDateWindow(e.target.value as DateWindow)} className={FILTER_SELECT}>
-            {DATE_WINDOWS.map(w => <option key={w.id} value={w.id}>{w.label}</option>)}
-          </select>
-        </label>
-        {filtersActive && (
-          <button type="button" onClick={() => { setQuery(''); setEvidenceFilter('any'); setDateWindow('all'); setMuscleFilter('any'); setRoutineFilter('any') }} className="btn-ghost btn-sm col-span-2 justify-self-start text-meta !text-accent-600">
-            Clear filters
-          </button>
-        )}
-        <span className="col-span-2 ml-auto text-meta tabular-nums text-fg-muted">{shown.length} of {filtered.length}</span>
-      </div>
+      <DecisionFilterBar
+        filters={filters} onChange={p => setPicked(f => ({ ...f, ...p }))} onClear={() => setPicked(NO_FILTERS)} active={anyFilter}
+        sort={sort} sortOptions={SORTS} onSortChange={id => setSort(id as SortMode)}
+        muscles={muscles} routines={routines} shown={shown.length} total={filtered.length}
+      />
 
       {shown.length === 0 ? (
         <p className="py-4 text-center text-body text-fg-muted">
-          {tab === 'recent' && !filtersActive ? `Nothing trained in the last ${RECENT_DAYS} days — see All exercises for every lift.` : 'No exercises in this view.'}
+          {anyFilter
+            ? 'No exercises in this view match these filters.'
+            : tab === 'recent' ? `Nothing trained in the last ${RECENT_DAYS} days — see All exercises for every lift.` : 'No exercises in this view.'}
         </p>
       ) : (
         <>
@@ -303,6 +256,7 @@ export function ExerciseDecisionTable() {
                     metricKind={metricKindByTemplateId.get(d.exerciseTemplateId) ?? 'est1rm'}
                     title={titleById.get(d.exerciseTemplateId) ?? 'Unknown exercise'}
                     noChange={tab === 'recent' && isUnchanged(d)}
+                    muscleRole={roleOf(d.exerciseTemplateId)}
                   />
                 ))}
               </tbody>
@@ -318,6 +272,7 @@ export function ExerciseDecisionTable() {
                 metricKind={metricKindByTemplateId.get(d.exerciseTemplateId) ?? 'est1rm'}
                 title={titleById.get(d.exerciseTemplateId) ?? 'Unknown exercise'}
                 noChange={tab === 'recent' && isUnchanged(d)}
+                muscleRole={roleOf(d.exerciseTemplateId)}
               />
             ))}
           </ul>
