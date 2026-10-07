@@ -6,8 +6,8 @@ import type { BoardLayouts } from '../../shared/ui/pageBoardRules'
 // The day's totals lead on the left (a rail), the meal slots take the main
 // track, and the week, the nutrition stats and the coach fill the tracks to
 // the right:
-//   1  phone, tablet — the slots FIRST (owner, 06.10.2026: meals before stats on a
-//      phone), then nutrition, water, what fits, last 7 days, stats, coach.
+//   1  phone, tablet — the day's nutrition on top, then the meal slots (owner,
+//      07.10.2026), then water, what fits, last 7 days, stats, coach.
 //   2  1280 / 1469 — the totals rail (nutrition, water, what fits, last 7 days, stats)
 //      beside the slots, the coach under the slots.
 //   3  1920 — nutrition + water + what fits | slots | last 7 days + stats + coach.
@@ -16,7 +16,7 @@ export const FOOD_TODAY_SECTIONS = ['nutrition', 'water', 'fits', 'week', 'stats
 export type FoodTodaySection = typeof FOOD_TODAY_SECTIONS[number]
 
 export const FOOD_TODAY_BOARD: BoardLayouts<FoodTodaySection> = {
-  1: ['meals', 'nutrition', 'water', 'fits', 'week', 'stats', 'coach'],
+  1: ['nutrition', 'meals', 'water', 'fits', 'week', 'stats', 'coach'],
   2: { lead: 1, columns: [['nutrition', 'water', 'fits', 'week', 'stats'], ['meals', 'coach']] },
   3: { lead: 1, columns: [['nutrition', 'water', 'fits'], ['meals'], ['week', 'stats', 'coach']] },
   4: { lead: 1, columns: [['nutrition', 'water', 'fits'], ['meals'], ['week', 'stats'], ['coach']] },
