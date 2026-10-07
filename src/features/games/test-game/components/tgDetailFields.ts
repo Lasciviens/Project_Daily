@@ -51,22 +51,21 @@ function variantRows(p: GamePlatform): DetailRow[] {
   const perf = [PERF_TEXT[p.performance ?? ''] ?? words(p.performance), clean(p.performance_notes)]
     .filter(Boolean).join(' — ')
   const source = [SOURCE_TEXT[p.external_source ?? ''] ?? clean(p.external_source), clean(p.external_ref)].filter(Boolean).join(' · ')
+  // Short facts that belong together share one line, so a variant card stays
+  // a few rows tall: what was played, where it came from.
+  const played = [count(p.esde_playcount, 'launch', 'launches'), hours(p.esde_playtime_seconds), day(p.esde_last_played) && `last ${day(p.esde_last_played)}`]
+    .filter(Boolean).join(' · ')
   return rows([
-    { label: 'Version', value: clean(p.version_title) },
+    { label: clean(p.version_title) ? 'Version' : 'Region', value: [clean(p.version_title), clean(p.region)].filter(Boolean).join(' · ') },
     { label: 'Emulator', value: emulator },
-    { label: 'Region', value: clean(p.region) },
-    { label: 'ROM', value: ROM_TEXT[p.rom_status ?? ''] ?? words(p.rom_status) },
+    { label: 'ROM', value: [ROM_TEXT[p.rom_status ?? ''] ?? words(p.rom_status), day(p.release_date) && `released ${day(p.release_date)}`].filter(Boolean).join(' · ') },
     { label: 'File', value: fileName(p.esde_path) || fileName(p.rom_url) },
     { label: 'Folder', value: clean(p.folder_path) },
     { label: 'Performance', value: perf },
-    { label: 'Release date', value: day(p.release_date) },
     // 0–100: ES-DE's 0–1 rating or ScreenScraper's /20 score, scaled.
     { label: 'Rating', value: p.rating != null ? `${p.rating}/100` : '' },
-    { label: 'Plays', value: count(p.esde_playcount, 'launch', 'launches') },
-    { label: 'Playtime', value: hours(p.esde_playtime_seconds) },
-    { label: 'Last played', value: day(p.esde_last_played) },
-    { label: 'Source', value: source },
-    { label: 'Synced', value: day(p.synced_at) },
+    { label: 'Played', value: played },
+    { label: 'Source', value: [source, day(p.synced_at) && `synced ${day(p.synced_at)}`].filter(Boolean).join(' · ') },
     p.needs_review && { label: 'Review', value: 'Flagged for review' },
   ])
 }
@@ -105,15 +104,15 @@ export function detailSections(game: TgGame): DetailSection[] {
     !finishedShown && { label: game.play_status === 'completed' ? 'Finished' : 'Previously finished', value: day(game.finished_at) },
     { label: 'Game log', value: clean(game.game_log), long: true },
   ])
+  const origin = [LIBRARY_TEXT[game.library] ?? '', SOURCE_TEXT[game.external_source ?? ''] ?? clean(game.external_source)]
+  const dates = [day(game.created_at), day(game.updated_at) && `updated ${day(game.updated_at)}`]
   const source = rows([
-    { label: 'Library', value: LIBRARY_TEXT[game.library] ?? '' },
-    { label: 'Source', value: SOURCE_TEXT[game.external_source ?? ''] ?? clean(game.external_source) },
+    { label: 'From', value: [...new Set(origin.filter(Boolean))].join(' · ') },
     { label: isSteam ? 'Steam app ID' : 'Reference', value: clean(game.external_ref) },
     { label: 'ScreenScraper', value: game.ss_jeu_id ? `#${game.ss_jeu_id}${game.ss_scraped_at ? ` · scraped ${formatDay(game.ss_scraped_at)}` : ''}` : '' },
     { label: 'Synced', value: day(game.synced_at) },
     game.needs_review && { label: 'Review', value: 'Flagged for review' },
-    { label: 'Added', value: day(game.created_at) },
-    { label: 'Updated', value: day(game.updated_at) },
+    { label: 'Added', value: dates.filter(Boolean).join(' · ') },
   ])
 
   return [
