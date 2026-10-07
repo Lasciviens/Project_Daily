@@ -1,13 +1,26 @@
 // A platform page's console-and-controller photo, beside the heading, with
 // the year the console first came out.
-// Photos: Evan-Amos (Vanamo Online Game Museum), public domain, via Wikimedia
-// Commons — sources in assets/consoles/manifest.json. Bundled as small
-// transparent WebP cut-outs (background removed, 05.10.2026) that load only
-// when their platform page is opened, so they sit on the page's own colour.
+// Photos from Wikimedia Commons — most by Evan-Amos (Vanamo Online Game
+// Museum, public domain); each file's source, author and licence are in
+// assets/consoles/manifest.json, and the credit line is read from there.
+// Bundled as small transparent WebP cut-outs (background removed) that load
+// only when their platform page is opened, so they sit on the page's own colour.
 const PHOTOS = import.meta.glob<string>('../assets/consoles/*.webp', { eager: true, query: '?url', import: 'default' })
 
-// Platform keys that show another key's photo (the same hardware).
-const SAME_AS: Record<string, string> = { snesna: 'snes', megadrive: 'genesis' }
+// `subject` names what the photo shows when it isn't the platform's own console.
+type PhotoCredit = { author: string; license: string; subject?: string }
+const MANIFEST = Object.values(
+  import.meta.glob<Record<string, PhotoCredit>>('../assets/consoles/manifest.json', { eager: true, import: 'default' }),
+)[0] ?? {}
+
+// Platform keys that show another key's photo (the same hardware, or the
+// closest picture for a library/arcade shelf with no console of its own).
+const SAME_AS: Record<string, string> = { snesna: 'snes', megadrive: 'genesis', mame: 'arcade', fbneo: 'arcade' }
+
+function creditOf(key: string): string {
+  const c = MANIFEST[key]
+  return c ? `Photo: ${c.author}, ${c.license} (Wikimedia Commons)` : 'Photo: Wikimedia Commons'
+}
 
 /** The first release anywhere (usually Japan) — a fixed fact per console. */
 const RELEASE_YEAR: Record<string, number> = {
@@ -16,6 +29,7 @@ const RELEASE_YEAR: Record<string, number> = {
   genesis: 1988, segacd: 1991, saturn: 1994, dreamcast: 1998,
   psx: 1994, ps2: 2000, ps3: 2006, psp: 2004, psvita: 2011,
   xbox: 2001, xbox360: 2005,
+  steam: 2003,
 }
 
 export function TgConsolePhoto({ platformKey, name }: { platformKey: string; name: string }) {
@@ -28,8 +42,8 @@ export function TgConsolePhoto({ platformKey, name }: { platformKey: string; nam
       {url && (
         <img
           src={url}
-          alt={`${name} console${year ? `, released ${year}` : ''}`}
-          title="Photo: Evan-Amos, public domain (Wikimedia Commons)"
+          alt={`${MANIFEST[key]?.subject ?? `${name} console`}${year ? `, released ${year}` : ''}`}
+          title={creditOf(key)}
           loading="lazy"
           decoding="async"
           className="h-[72px] w-auto max-w-[190px] object-contain"

@@ -71,21 +71,38 @@
     "sourceUrl": "https://commons.wikimedia.org/wiki/File:Wii-Console.png",
     "author": "Evan-Amos",
     "license": "Public domain",
-    "width": 218,
+    "subject": "Nintendo Wii with a Wii Remote and Nunchuk",
+    "sources": [
+      {
+        "title": "File:Wii-Console.png",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Wii-Console.png",
+        "author": "Evan-Amos",
+        "license": "Public domain"
+      },
+      {
+        "title": "File:Nintendo-Wii-Remote-wNunchuk.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Nintendo-Wii-Remote-wNunchuk.jpg",
+        "author": "Evan-Amos",
+        "license": "Public domain"
+      }
+    ],
+    "width": 396,
     "height": 240,
-    "bytes": 8978,
-    "processing": "Background removed (rembg, isnet-general-use; own transparency kept where the source had it), trimmed, 240 px tall WebP with alpha \u2014 05.10.2026"
+    "bytes": 15210,
+    "processing": "Two public-domain photos cut out separately (rembg, isnet-general-use mask, enclosed holes filled; the Wii console kept its own transparency), the controller scaled and placed beside the console, trimmed, 240 px tall WebP with alpha \u2014 07.10.2026"
   },
   "wiiu": {
     "file": "wiiu.webp",
-    "title": "File:Nintendo-Wii-U-Console-FL.jpg",
-    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Nintendo-Wii-U-Console-FL.jpg",
-    "author": "Evan-Amos",
-    "license": "Public domain",
-    "width": 378,
+    "title": "File:Wii U Console and Gamepad.png",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Wii_U_Console_and_Gamepad.png",
+    "author": "Takimata (edited by Tokyoship)",
+    "license": "CC BY-SA 3.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0",
+    "subject": "Nintendo Wii U console with its GamePad",
+    "width": 543,
     "height": 240,
-    "bytes": 10396,
-    "processing": "Background removed (rembg, isnet-general-use; own transparency kept where the source had it), trimmed, 240 px tall WebP with alpha \u2014 05.10.2026"
+    "bytes": 15268,
+    "processing": "Source already transparent; trimmed, 240 px tall WebP with alpha \u2014 07.10.2026. Replaces the console-only Evan-Amos photo (File:Nintendo-Wii-U-Console-FL.jpg) so the GamePad shows; no public-domain photo of the GamePad exists on Commons. This derivative is shared under the same licence (CC BY-SA 3.0)."
   },
   "switch": {
     "file": "switch.webp",
@@ -225,10 +242,25 @@
     "sourceUrl": "https://commons.wikimedia.org/wiki/File:Sega-Dreamcast-Console-FL.jpg",
     "author": "Evan-Amos",
     "license": "Public domain",
-    "width": 344,
+    "subject": "Sega Dreamcast with its controller",
+    "sources": [
+      {
+        "title": "File:Sega-Dreamcast-Console-FL.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Sega-Dreamcast-Console-FL.jpg",
+        "author": "Evan-Amos",
+        "license": "Public domain"
+      },
+      {
+        "title": "File:Sega-Dreamcast-Controller-FL.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Sega-Dreamcast-Controller-FL.jpg",
+        "author": "Evan-Amos",
+        "license": "Public domain"
+      }
+    ],
+    "width": 537,
     "height": 240,
-    "bytes": 10728,
-    "processing": "Background removed (rembg, isnet-general-use; own transparency kept where the source had it), trimmed, 240 px tall WebP with alpha \u2014 05.10.2026"
+    "bytes": 16472,
+    "processing": "Two public-domain photos cut out separately (rembg, isnet-general-use mask, enclosed holes filled; the Wii console kept its own transparency), the controller scaled and placed beside the console, trimmed, 240 px tall WebP with alpha \u2014 07.10.2026"
   },
   "xbox": {
     "file": "xbox.webp",
@@ -251,5 +283,54 @@
     "height": 240,
     "bytes": 7478,
     "processing": "Background removed (rembg, isnet-general-use; own transparency kept where the source had it), trimmed, 240 px tall WebP with alpha \u2014 05.10.2026"
+  },
+  "playstation": {
+    "file": "playstation.webp",
+    "title": "File:PS4-Console-wDS4.png",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:PS4-Console-wDS4.png",
+    "author": "Evan-Amos",
+    "license": "Public domain",
+    "subject": "PlayStation 4 with a DualShock 4 controller (PlayStation library shelf)",
+    "width": 498,
+    "height": 240,
+    "bytes": 11774,
+    "processing": "Background removed (rembg, isnet-general-use; own transparency kept where the source had it), trimmed, 240 px tall WebP with alpha \u2014 07.10.2026"
+  },
+  "steam": {
+    "file": "steam.webp",
+    "title": "File:Steam Deck (front).png",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Steam_Deck_(front).png",
+    "author": "Liam Dawe/GamingOnLinux, PNG version by VulcanSphere",
+    "license": "CC BY-SA 4.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+    "subject": "Steam Deck",
+    "width": 645,
+    "height": 240,
+    "bytes": 11944,
+    "processing": "Source already transparent; trimmed, 240 px tall WebP with alpha \u2014 07.10.2026. This derivative is shared under the same licence (CC BY-SA 4.0)."
+  },
+  "pc": {
+    "file": "pc.webp",
+    "title": "File:IBMPS1 (light background).jpg",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:IBMPS1_(light_background).jpg",
+    "author": "Kungfoocow369 at English Wikipedia",
+    "license": "Public domain",
+    "subject": "IBM PS/1 computer with keyboard and mouse",
+    "width": 280,
+    "height": 240,
+    "bytes": 12784,
+    "processing": "Background removed (rembg, isnet-general-use mask, enclosed holes filled so white parts stay opaque; original colours kept), trimmed, 240 px tall WebP with alpha \u2014 07.10.2026 (from Commons\u2019 960 px rendering)"
+  },
+  "arcade": {
+    "file": "arcade.webp",
+    "title": "File:Neo-Geo-AES-Controller-FL.jpg",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Neo-Geo-AES-Controller-FL.jpg",
+    "author": "Evan-Amos",
+    "license": "Public domain",
+    "subject": "Neo Geo arcade stick (shown on the FinalBurn Neo and MAME shelves)",
+    "width": 435,
+    "height": 240,
+    "bytes": 6956,
+    "processing": "Background removed (rembg, isnet-general-use; enclosed holes filled), trimmed, 240 px tall WebP with alpha \u2014 07.10.2026"
   }
 }
