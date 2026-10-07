@@ -262,6 +262,11 @@
     .card-interactive:hover { @apply shadow-card-hover; }
   }
   .card-interactive:active { transform: scale(0.99); }
+  /* A glance tile holds a sideways scroller: on iOS a transform applied to its
+     card at touch-start cancels the swipe, so on touch it presses by tint. */
+  @media (hover: none) {
+    .glance-card:active { @apply bg-surface-hover; transform: none; }
+  }
 
   /* Buttons: 44px tall, 10px radius, 14px/600. */
   .btn {

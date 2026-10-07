@@ -136,7 +136,7 @@ export function GlanceCarousel({ id, label, icon, screens, loading, to, onClick 
 
   return (
     <div
-      className="card-interactive flex min-h-[112px] min-w-0 cursor-pointer select-none flex-col p-3.5 text-left focus-within:ring-2 focus-within:ring-accent-500/40"
+      className="card-interactive glance-card flex min-h-[112px] min-w-0 cursor-pointer select-none flex-col p-3.5 text-left focus-within:ring-2 focus-within:ring-accent-500/40"
       onClick={e => { if (e.defaultPrevented) return; if (to) navigate(to); else onClick?.() }}
       onClickCapture={onClickCapture}
     >
