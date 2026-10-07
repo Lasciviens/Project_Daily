@@ -12,7 +12,8 @@
 // One level of nesting (points and sub-points). A sub-point before any main
 // point reads as a main point. A point collected into a re-check request
 // keeps the owner's "Still not fixed: …" line after its words; it is the
-// point's `tail` (shown as a callout, never edited as text). Older text keeps
+// point's `tail` (shown as a callout with its own edit field, never typed into
+// the words; the point's key leaves it out). Older text keeps
 // reading the same: every paragraph is a point and an old "3- text" line
 // starts one (its "3- " dropped, as before).
 // Import-free apart from checkpoints.ts so the verify script can require it.
@@ -94,7 +95,7 @@ export function serializeOutline(points: readonly Pick<OutlinePoint, 'level' | '
   }).join('\n\n')
 }
 
-/** The text a point is known by (its key, the prompt): words and tail. */
+/** A point's full text: words and tail (the key hashes the words alone — pointText.ts). */
 export const pointFullText = (p: Pick<OutlinePoint, 'text' | 'tail'>): string =>
   (p.tail ? `${p.text.trim()}\n${p.tail}` : p.text).trim()
 
@@ -119,6 +120,12 @@ export function outlineLabels(points: readonly Pick<OutlinePoint, 'level'>[]): s
 /** The "Still not fixed" note of a tail ('' when it has none). */
 export const tailNote = (tail: string | null): string =>
   (tail ?? '').split('\n').map(l => l.trim().replace(/^Still not fixed[:.]?\s*/, '')).filter(Boolean).join(' ')
+
+/** The tail stored for a note: "Still not fixed: <note>" on one line, or "Still not fixed." without one. */
+export const tailFor = (note: string): string => {
+  const n = note.replace(/\s+/g, ' ').trim()
+  return n ? `Still not fixed: ${n}` : 'Still not fixed.'
+}
 
 // ── Editing (pure; the editor applies the result) ─────────────────────────────
 

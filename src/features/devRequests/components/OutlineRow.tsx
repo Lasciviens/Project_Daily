@@ -1,5 +1,5 @@
 import { memo, useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent, type MouseEvent } from 'react'
-import { ArrowUpRight, Check, X } from 'lucide-react'
+import { ArrowUpRight, Check, Pencil, X } from 'lucide-react'
 import type { PointReview } from '../devRequestMarks'
 import { tailNote, type PointLevel } from '../outline'
 import { REF_ATTR, focusAtOffset, lastCaret, render, selectionOffsets, serialize } from './linkedTextDom'
@@ -36,6 +36,8 @@ interface Props {
   onText: (id: number, text: string, caret: number) => void
   onCommand: (id: number, cmd: RowCommand, sel: [number, number]) => void
   onPaste: (id: number, text: string, sel: [number, number]) => void
+  /** The "Still not fixed" note was edited (a re-check point). */
+  onTail: (id: number, note: string) => void
   onFocusRow: (id: number) => void
   onOpenLink: (refId: string) => void
   register: (id: number, el: HTMLDivElement | null) => void
@@ -180,12 +182,7 @@ export const OutlineRow = memo(function OutlineRow(p: Props) {
       {extras && (
         // Under the words, the full width of the row (lined up past the number).
         <div className={cx('flex flex-col gap-1.5', sub ? 'pl-[2.75rem]' : 'pl-9')}>
-          {p.tail && (
-            <div data-tone="danger" className="tone-soft rounded-r-control border-l-2 border-[rgb(var(--tone))] px-2.5 py-1.5">
-              <p className="text-micro font-semibold uppercase tracking-[0.08em] tone-text">Still not fixed</p>
-              <p className="text-meta text-fg-2">{note || 'No note was added.'}</p>
-            </div>
-          )}
+          {p.tail && <TailCallout key={note} note={note} label={p.label} onSave={n => p.onTail(p.id, n)} />}
           {p.review && state === 'moved' && (
             <button
               type="button"
@@ -209,6 +206,78 @@ export const OutlineRow = memo(function OutlineRow(p: Props) {
     </div>
   )
 })
+
+/**
+ * A re-check point's "Still not fixed" note: tap it (or the pencil) to edit
+ * it in place — Enter or leaving the field saves, Esc cancels.
+ */
+function TailCallout({ note, label, onSave }: { note: string; label: string; onSave: (note: string) => void }) {
+  const [editing, setEditing] = useState(false)
+  const [value, setValue] = useState(note)
+  const box = useRef<HTMLTextAreaElement | null>(null)
+  useLayoutEffect(() => {
+    const el = box.current
+    if (!editing || !el) return
+    el.style.height = 'auto'
+    el.style.height = `${el.scrollHeight}px`
+  }, [editing, value])
+  // One finish per edit: removing the focused field can still fire a blur after Esc.
+  const open = useRef(false)
+  const start = () => { setValue(note); open.current = true; setEditing(true) }
+  const done = (save: boolean) => {
+    if (!open.current) return
+    open.current = false
+    setEditing(false)
+    const next = value.replace(/\s+/g, ' ').trim()
+    if (save && next !== note) onSave(next)
+  }
+  const frame = 'tone-soft rounded-r-control border-l-2 border-[rgb(var(--tone))] px-2.5 py-1.5'
+  const heading = <p className="text-micro font-semibold uppercase tracking-[0.08em] tone-text">Still not fixed</p>
+  if (editing) {
+    return (
+      <div data-tone="danger" className={cx(frame, 'flex flex-col gap-1.5')}>
+        {heading}
+        <textarea
+          ref={el => { box.current = el; if (el && document.activeElement !== el) { el.focus({ preventScroll: true }); el.setSelectionRange(el.value.length, el.value.length) } }}
+          value={value}
+          rows={1}
+          onChange={e => setValue(e.target.value)}
+          onBlur={() => done(true)}
+          onKeyDown={e => {
+            if (e.nativeEvent.isComposing) return
+            // Esc cancels here; it must not also minimise the request window.
+            if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); done(false) }
+            else if (e.key === 'Enter' && !(e.metaKey || e.ctrlKey)) { e.preventDefault(); done(true) }
+          }}
+          placeholder="What is still wrong? (optional)"
+          aria-label={`What is still wrong with point ${label}`}
+          className="input !min-h-[34px] resize-none bg-surface text-meta leading-relaxed [@media(pointer:coarse)]:!min-h-[44px]"
+        />
+        <div className="flex items-center justify-end gap-1">
+          {/* mousedown would blur the field (which saves) before Cancel runs. */}
+          <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => done(false)} className="min-h-[32px] rounded-control px-2.5 text-meta font-medium text-fg-2 [@media(hover:hover)]:hover:bg-surface-hover [@media(pointer:coarse)]:min-h-[44px]">Cancel</button>
+          <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => done(true)} className="min-h-[32px] rounded-control px-2.5 text-meta font-semibold tone-text [@media(hover:hover)]:hover:bg-surface-hover [@media(pointer:coarse)]:min-h-[44px]">Save</button>
+        </div>
+      </div>
+    )
+  }
+  return (
+    <button
+      type="button"
+      data-tone="danger"
+      onClick={start}
+      title="Edit what is still wrong"
+      aria-label={`Still not fixed: ${note || 'no note'}. Edit the note of point ${label}`}
+      className={cx(frame, 'group/tail flex min-h-[44px] w-full items-start gap-2 text-left [@media(pointer:fine)]:min-h-0')}
+    >
+      <span className="min-w-0 flex-1">
+        {heading}
+        <span className={cx('block break-words text-meta', note ? 'text-fg-2' : 'italic text-fg-muted')}>{note || 'No note yet — add what is still wrong'}</span>
+      </span>
+      <Pencil aria-hidden className="mt-0.5 h-3.5 w-3.5 shrink-0 tone-text opacity-70 [@media(hover:hover)]:group-hover/tail:opacity-100" />
+    </button>
+  )
+}
 
 const TOGGLE = 'grid h-7 w-7 place-items-center rounded-[8px] transition-colors duration-100 [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:w-10 [&_svg]:h-4 [&_svg]:w-4'
 

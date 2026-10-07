@@ -87,7 +87,10 @@ interface Actions {
   // Drawer
   setDrawer: (patch: Partial<DrawerPrefs>) => void
   // Prompt
-  setPrompt: (ids: string[], text: string) => void
+  /** A freshly built prompt; `from` = the request window's draft it was built from. */
+  setPrompt: (ids: string[], text: string, from?: ComposerTarget | null) => void
+  /** The prompt now belongs to other rows (its text and edits stay): a draft it was built from was added, or discarded. */
+  setPromptSource: (ids: string[], from: ComposerTarget | null) => void
   editPrompt: (text: string) => void
 }
 
@@ -172,7 +175,8 @@ export const useDevRequestDrafts = create<DraftStore>()(
 
       setDrawer: (patch) => set(s => ({ drawer: { ...s.drawer, ...patch } })),
 
-      setPrompt: (ids, text) => set({ prompt: { ids, text, edited: false, touchedAt: Date.now() } }),
+      setPrompt: (ids, text, from = null) => set({ prompt: { ids, from, text, edited: false, touchedAt: Date.now() } }),
+      setPromptSource: (ids, from) => set(s => ({ prompt: { ...s.prompt, ids, from, touchedAt: Date.now() } })),
       editPrompt: (text) => set(s => ({ prompt: { ...s.prompt, text, edited: true, touchedAt: Date.now() } })),
     }),
     {

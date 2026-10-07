@@ -5,12 +5,14 @@ import { descriptionPreview } from '../devRequestMarks'
 import { buildClaudePrompt } from '../devRequestPrompt'
 import { useDevRequests, useMarkDevRequestsPrompted } from '../hooks/useDevRequests'
 import { toast, useUIStore } from '../../../app/store'
+import { useComposerPrompt } from './useComposerPrompt'
 import { Button, EmptyState, Skeleton, Truncate, cx } from '../../../shared/ui'
 
 /**
  * The prompt for Claude — its own step, never part of writing a request:
- * built from the requests ticked in the Requests list ("Build prompt"),
- * editable here (your wording is kept with the drafts until Reset), copied
+ * built from the requests ticked in the Requests list ("Build prompt") or,
+ * by the request window's Prompt button, from that one request as written
+ * now (saved or not — `prompt.from`), editable here (your wording is kept with the drafts until Reset), copied
  * with one button. Building and copying mark the requests Prompted, which is
  * what turns on their Fixed / Not fixed review.
  */
@@ -19,10 +21,21 @@ export function ComposerPromptView({ textareaRef }: { textareaRef?: Ref<HTMLText
   const { data: requests = [], isLoading } = useDevRequests()
   const [showList, setShowList] = useState(false)
   const markPrompted = useMarkDevRequestsPrompted()
+  const newDraftTitle = useDevRequestDrafts(s => s.newDraft.title)
+  const editDrafts = useDevRequestDrafts(s => s.editDrafts)
+  const composerPrompt = useComposerPrompt()
   const rows = prompt.ids.map(id => requests.find(r => r.id === id)).filter(r => r != null)
+  // Built in the request window from a request not added yet: no row to list.
+  const fromNew = prompt.from?.kind === 'new'
+  const fromDraft = prompt.from ? (prompt.from.kind === 'new' || prompt.from.id in editDrafts) : false
   // Until the list has loaded, every picked request would read as deleted.
-  const count = isLoading ? prompt.ids.length : rows.length
-  const missing = isLoading ? 0 : prompt.ids.length - rows.length
+  const count = fromNew ? 1 : isLoading ? prompt.ids.length : rows.length
+  const missing = fromNew || isLoading ? 0 : prompt.ids.length - rows.length
+  const canReset = prompt.edited && (!!prompt.from || rows.length > 0)
+  const reset = () => {
+    if (prompt.from) composerPrompt.rebuild(prompt.from)
+    else useDevRequestDrafts.getState().setPrompt(rows.map(r => r.id), buildClaudePrompt(rows))
+  }
 
   function changeSelection() {
     const picked = isLoading ? prompt.ids : rows.map(r => r.id)
@@ -57,7 +70,11 @@ export function ComposerPromptView({ textareaRef }: { textareaRef?: Ref<HTMLText
   return (
     <>
       <div className="flex min-h-0 flex-1 flex-col gap-2.5 px-4 pb-3 pt-3">
-        <p className="text-meta text-fg-muted">Paste it into a Claude Code session. The requests are marked Prompted, so you can check each point afterwards.</p>
+        <p className="text-meta text-fg-muted">
+          {fromNew
+            ? 'Paste it into a Claude Code session. This request isn\'t added yet: it is marked Prompted when you add it, so you can check each point afterwards.'
+            : 'Paste it into a Claude Code session. The requests are marked Prompted, so you can check each point afterwards.'}
+        </p>
         <div className="flex items-center gap-2 rounded-row border border-line bg-surface-2 py-1 pl-1 pr-1.5">
           <button
             type="button"
@@ -66,7 +83,7 @@ export function ComposerPromptView({ textareaRef }: { textareaRef?: Ref<HTMLText
             className="flex min-h-[36px] min-w-0 flex-1 items-center gap-1.5 rounded-control px-1.5 text-left text-body font-semibold text-fg-2 [@media(hover:hover)]:hover:text-fg [@media(pointer:coarse)]:min-h-[44px]"
           >
             <ChevronRight className={cx('h-4 w-4 shrink-0 text-fg-muted transition-transform', showList && 'rotate-90')} aria-hidden />
-            <Truncate>{`${count} request${count === 1 ? '' : 's'} included${missing > 0 ? ` · ${missing} deleted` : ''}`}</Truncate>
+            <Truncate>{`${count} request${count === 1 ? '' : 's'} included${missing > 0 ? ` · ${missing} deleted` : ''}${fromDraft ? ' · unsaved draft' : ''}`}</Truncate>
             {prompt.edited && <span data-tone="warn" className="tone-pill shrink-0">Edited</span>}
           </button>
           <Button size="sm" variant="ghost" onClick={changeSelection}>Change</Button>
@@ -74,6 +91,12 @@ export function ComposerPromptView({ textareaRef }: { textareaRef?: Ref<HTMLText
         {showList && isLoading && <Skeleton className="h-10 rounded-row" />}
         {showList && !isLoading && (
           <ul className="flex max-h-40 flex-col divide-y divide-line overflow-y-auto rounded-row border border-line">
+            {fromNew && (
+              <li className="px-3 py-2">
+                <Truncate className="text-body font-medium text-fg">{newDraftTitle.trim() || 'Untitled request'}</Truncate>
+                <span className="text-meta text-fg-muted">New request · not added yet</span>
+              </li>
+            )}
             {rows.map(r => (
               <li key={r.id} className="px-3 py-2">
                 <Truncate className="text-body font-medium text-fg">{r.title}</Truncate>
@@ -96,9 +119,9 @@ export function ComposerPromptView({ textareaRef }: { textareaRef?: Ref<HTMLText
           variant="ghost"
           size="sm"
           icon={<RotateCcw />}
-          disabled={!prompt.edited || rows.length === 0}
-          onClick={() => useDevRequestDrafts.getState().setPrompt(rows.map(r => r.id), buildClaudePrompt(rows))}
-          title="Throw your edits away and build the prompt again from the picked requests"
+          disabled={!canReset}
+          onClick={reset}
+          title={prompt.from ? 'Throw your edits away and build the prompt again from the request as written now' : 'Throw your edits away and build the prompt again from the picked requests'}
         >
           Reset to generated
         </Button>

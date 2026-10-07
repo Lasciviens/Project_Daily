@@ -15,6 +15,8 @@ interface Props {
   onChange: (patch: Partial<DraftFields>) => void
   /** Fixed / Not fixed per point: a saved request that went to Claude (written at once). */
   review?: Omit<OutlineReview, 'lookup'>
+  /** A saved request's re-check note was edited (written at once); without it the note is part of the draft. */
+  onTailNote?: (key: string, note: string) => void
   /** A saved request's status (applies at once, not part of the draft). */
   status?: { value: DevRequestStatus; onChange: (s: DevRequestStatus) => void; disabled?: boolean }
   titleRef?: Ref<HTMLInputElement>
@@ -39,7 +41,7 @@ const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
  * details fold into one line under the points. Picks from before links show
  * as rows. Everything is stored in `description` (devRequestMarks.ts).
  */
-export function RequestFields({ fields, onChange, review, status, titleRef, outlineRef, flash, beforeEditor, tools, showKeys }: Props) {
+export function RequestFields({ fields, onChange, review, onTailNote, status, titleRef, outlineRef, flash, beforeEditor, tools, showKeys }: Props) {
   const parsed = useMemo(() => parseDescription(fields.description), [fields.description])
   const goTo = useGoToMark()
   const linked = useMemo(() => new Map(parsed.marks.flatMap(m => (m.type === 'pick' && m.id ? [[m.id, m] as const] : []))), [parsed.marks])
@@ -110,6 +112,7 @@ export function RequestFields({ fields, onChange, review, status, titleRef, outl
         labelOf={labelOf}
         onOpenLink={openLink}
         review={outlineReview}
+        onTailNote={onTailNote}
         flash={flash}
         placeholder="What should change? Enter starts the next point, Tab makes a sub-point."
         ariaLabel="Points"

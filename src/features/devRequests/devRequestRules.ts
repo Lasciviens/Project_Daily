@@ -61,6 +61,12 @@ export interface DrawerPrefs {
 
 export interface PromptState {
   ids: string[]
+  /**
+   * Built in the request window from that request's CURRENT draft (Prompt
+   * button): Reset rebuilds from the draft. 'new' = a request not added yet
+   * (it is marked Prompted when it is added). Null: built from the list.
+   */
+  from: ComposerTarget | null
   text: string
   edited: boolean
   touchedAt: number
@@ -84,7 +90,7 @@ export const DEFAULT_STATE: PersistedDraftState = {
   clearedEdits: {},
   composer: { open: false, minimized: false, tab: 'request', target: { kind: 'new' }, pos: null, size: { request: null, prompt: null } },
   drawer: { categories: [], sortMode: 'manual', showDone: false, picked: [] },
-  prompt: { ids: [], text: '', edited: false, touchedAt: 0 },
+  prompt: { ids: [], from: null, text: '', edited: false, touchedAt: 0 },
 }
 
 /** How many unsaved edits are kept (the most recently touched win). */
@@ -180,9 +186,7 @@ export function sanitizeDraftState(raw: unknown): PersistedDraftState {
     for (const [id, t] of newest(valid, MAX_CLEARED, ([, t]) => t)) cleared[id] = t
   }
   const c = isObj(raw.composer) ? raw.composer : {}
-  const target = isObj(c.target) && c.target.kind === 'edit' && typeof c.target.id === 'string' && c.target.id
-    ? { kind: 'edit' as const, id: c.target.id }
-    : { kind: 'new' as const }
+  const target = readTarget(c.target) ?? { kind: 'new' as const }
   const pos = isObj(c.pos) && finite(c.pos.x) && finite(c.pos.y) ? { x: c.pos.x, y: c.pos.y } : null
   const dr = isObj(raw.drawer) ? raw.drawer : {}
   const p = isObj(raw.prompt) ? raw.prompt : {}
@@ -208,9 +212,19 @@ export function sanitizeDraftState(raw: unknown): PersistedDraftState {
       showDone: bool(dr.showDone, false),
       picked: ids(dr.picked),
     },
-    prompt: { ids: ids(p.ids), text: str(p.text, '', 100000), edited: bool(p.edited, false), touchedAt: stamp(p.touchedAt) },
+    prompt: { ids: ids(p.ids), from: readTarget(p.from), text: str(p.text, '', 100000), edited: bool(p.edited, false), touchedAt: stamp(p.touchedAt) },
   }
 }
+
+function readTarget(v: unknown): ComposerTarget | null {
+  if (!isObj(v)) return null
+  if (v.kind === 'edit' && typeof v.id === 'string' && v.id) return { kind: 'edit', id: v.id }
+  return v.kind === 'new' ? { kind: 'new' } : null
+}
+
+/** Two composer targets name the same request (null = neither). */
+export const sameTarget = (a: ComposerTarget | null, b: ComposerTarget | null): boolean =>
+  !!a && !!b && a.kind === b.kind && (a.kind === 'new' || (b.kind === 'edit' && a.id === b.id))
 
 const stamp = (v: unknown) => (finite(v) && v > 0 ? v : 0)
 

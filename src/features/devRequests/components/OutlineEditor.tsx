@@ -1,8 +1,8 @@
 import { useCallback, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type Ref } from 'react'
 import type { PointReview } from '../devRequestMarks'
 import {
-  isEmptyPoint, joinWithNext, joinWithPrevious, outlineLabels, parseOutline, pasteText, pointFullText, serializeOutline,
-  setLevel, splitPoint, type Caret, type OutlinePoint, type PointLevel,
+  isEmptyPoint, joinWithNext, joinWithPrevious, outlineLabels, parseOutline, pasteText, serializeOutline,
+  setLevel, splitPoint, tailFor, type Caret, type OutlinePoint, type PointLevel,
 } from '../outline'
 import { pointKeys } from '../pointText'
 import { REF_RE } from '../devRequestMarks'
@@ -64,9 +64,14 @@ interface Props {
   flash?: boolean
   /** A toolbar inside the box, under the points. */
   footer?: ReactNode
+  /**
+   * A re-check point's "Still not fixed" note was edited (a saved request:
+   * written at once). Without it the note is edited in the text like the words.
+   */
+  onTailNote?: (key: string, note: string) => void
 }
 
-export function OutlineEditor({ value, onChange, labelOf, onOpenLink, review, handleRef, placeholder, ariaLabel, className, flash, footer }: Props) {
+export function OutlineEditor({ value, onChange, labelOf, onOpenLink, review, handleRef, placeholder, ariaLabel, className, flash, footer, onTailNote }: Props) {
   const [rows, setRows] = useState<Row[]>(() => parseRows(value))
   const [synced, setSynced] = useState(value)
   if (value !== synced) {
@@ -79,7 +84,8 @@ export function OutlineEditor({ value, onChange, labelOf, onOpenLink, review, ha
   const pending = useRef<{ id: number; offset: number } | null>(null)
   const last = useRef<{ id: number; offset: number } | null>(null)
   const onChangeRef = useRef(onChange)
-  useLayoutEffect(() => { rowsRef.current = rows; onChangeRef.current = onChange })
+  const onTailRef = useRef(onTailNote)
+  useLayoutEffect(() => { rowsRef.current = rows; onChangeRef.current = onChange; onTailRef.current = onTailNote })
 
   const commit = useCallback((next: Row[], focus?: Caret) => {
     rowsRef.current = next
@@ -143,6 +149,17 @@ export function OutlineEditor({ value, onChange, labelOf, onOpenLink, review, ha
     }
   }, [commit, shift])
 
+  const keysRef = useRef<(string | null)[]>([])
+  const onTail = useCallback((id: number, note: string) => {
+    const cur = rowsRef.current
+    const i = cur.findIndex(r => r.id === id)
+    const key = keysRef.current[i]
+    if (i < 0 || !cur[i].tail) return
+    if (onTailRef.current && key) { onTailRef.current(key, note); return }
+    const tail = tailFor(note)
+    if (tail !== cur[i].tail) commit(cur.map(r => (r.id === id ? { ...r, tail } : r)))
+  }, [commit])
+
   const onPaste = useCallback((id: number, text: string, [a, b]: [number, number]) => {
     const cur = rowsRef.current
     const i = cur.findIndex(r => r.id === id)
@@ -182,14 +199,16 @@ export function OutlineEditor({ value, onChange, labelOf, onOpenLink, review, ha
   }), [shift])
 
   const labels = useMemo(() => outlineLabels(rows), [rows])
-  // A point is known by a hash of its words (pointText.ts), so the review
-  // found here is the one the saved request holds for the same words.
+  // A point is known by a hash of its words (pointText.ts) — never its
+  // "Still not fixed" note — so the review found here is the one the saved
+  // request holds for the same words, and editing the note keeps it.
   const keys = useMemo(() => {
     const filled = rows.filter(r => !isEmptyPoint(r))
-    const k = pointKeys(filled.map(pointFullText))
+    const k = pointKeys(filled.map(r => r.text))
     const byId = new Map(filled.map((r, i) => [r.id, k[i]] as const))
     return rows.map(r => byId.get(r.id) ?? null)
   }, [rows])
+  useLayoutEffect(() => { keysRef.current = keys })
   const labelKey = useMemo(() => Array.from(value.matchAll(REF_RE), m => `${m[1]}=${labelOf(m[1])}`).join('|'), [value, labelOf])
   const only = rows.length === 1 && isEmptyPoint(rows[0])
 
@@ -235,6 +254,7 @@ export function OutlineEditor({ value, onChange, labelOf, onOpenLink, review, ha
             onText={onText}
             onCommand={onCommand}
             onPaste={onPaste}
+            onTail={onTail}
             onFocusRow={onFocusRow}
             onOpenLink={onOpenLink}
             register={register}

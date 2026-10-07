@@ -14,8 +14,10 @@ import {
   REF_RE, composeDescription, encodeMark, foldCheckpoints, parseDescription,
   type Mark, type ParsedDescription, type PickMark, type PointReview, type ReviewState,
 } from './devRequestMarks'
-import { pointKeys } from './pointText'
-import { STILL_RE, outlineLabels, parseOutline, pointFullText, type PointLevel } from './outline'
+import { legacyPointKeys, pointKeys } from './pointText'
+import {
+  STILL_RE, isEmptyPoint, outlineLabels, parseOutline, pointFullText, serializeOutline, tailFor, type PointLevel,
+} from './outline'
 
 export { STILL_RE }
 
@@ -26,9 +28,9 @@ export interface Point {
   /** The number shown in the editor and the prompt: "2", "2.1" … */
   label: string
   level: PointLevel
-  /** Words + any "Still not fixed" tail (what the key is computed from). */
+  /** Words + any "Still not fixed" tail. */
   text: string
-  /** The owner's words alone. */
+  /** The owner's words alone (what the key is computed from). */
   words: string
   /** A re-check request's "Still not fixed: …" line(s); null otherwise. */
   tail: string | null
@@ -41,7 +43,7 @@ export function requestPoints(p: Pick<ParsedDescription, 'body' | 'checkpoints' 
   const cps = p.checkpoints.filter(c => c.text.trim())
   const outline = [...parseOutline(p.body), ...cps.map(c => ({ level: 0 as const, text: c.text.trim(), tail: null }))]
   const texts = outline.map(pointFullText)
-  const keys = pointKeys(texts)
+  const keys = pointKeys(outline.map(o => o.text))
   const labels = outlineLabels(outline)
   const firstCp = outline.length - cps.length
   return outline.map((o, i) => {
@@ -137,6 +139,8 @@ export function collectForRecheck(
 ): { description: string; added: string[] } {
   const src = parseDescription(original.description)
   const points = requestPoints(src)
+  // Keys this request's points had before keys left the note out (an older re-check's list).
+  const older = legacyPointKeys(points.map(p => ({ text: p.words, tail: p.tail })))
   const dst = existing != null ? parseDescription(existing) : null
   const recheck = dst?.recheck ?? { of: original.id, title: original.title, keys: [] }
   const body = dst ? foldCheckpoints(dst).body.replace(/\s+$/, '') : ''
@@ -147,8 +151,9 @@ export function collectForRecheck(
   const paras: string[] = []
   const added: string[] = []
   for (const key of keys) {
-    const pt = points.find(p => p.key === key)
-    if (!pt || recheck.keys.includes(key)) continue
+    const at = points.findIndex(p => p.key === key)
+    const pt = points[at]
+    if (!pt || recheck.keys.includes(key) || recheck.keys.includes(older[at])) continue
     // The words only (a point re-checked a second time carries the newest
     // note); a sub-point keeps the point it belongs to in front, so it still
     // reads on its own ("Water card should be red › also in dark mode").
@@ -169,7 +174,7 @@ export function collectForRecheck(
       return `[[@${nid}]]`
     })
     const note = pt.review?.note?.trim()
-    paras.push(`${text}\n${note ? `Still not fixed: ${note.replace(/\s*\n\s*/g, ' ')}` : 'Still not fixed.'}`)
+    paras.push(`${text}\n${tailFor(note ?? '')}`)
     added.push(key)
   }
   const description = composeDescription({
@@ -194,3 +199,21 @@ export function markMoved(text: string, keys: readonly string[], toId: string, a
 
 /** Not fixed points that are still here (not moved yet). */
 export const notFixedKeys = (points: readonly Point[]) => points.filter(p => p.state === 'not_fixed').map(p => p.key)
+
+/**
+ * Rewrites the "Still not fixed: …" note under the point `key` of a re-check
+ * request (an empty note leaves "Still not fixed."). Only the note changes:
+ * the key hashes the words, so the point keeps its review. A key the text no
+ * longer has, or a point without a note, changes nothing.
+ */
+export function setTailNote(text: string, key: string, note: string): string {
+  const p = foldCheckpoints(parseDescription(text))
+  const outline = parseOutline(p.body, { keepEmpty: true })
+  const filled = outline.filter(o => !isEmptyPoint(o))
+  const target = filled[pointKeys(filled.map(o => o.text)).indexOf(key)]
+  if (!target?.tail) return text
+  const tail = tailFor(note)
+  if (tail === target.tail) return text
+  const body = serializeOutline(outline.map(o => (o === target ? { ...o, tail } : o)))
+  return composeDescription({ ...p, body })
+}

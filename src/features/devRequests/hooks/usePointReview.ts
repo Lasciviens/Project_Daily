@@ -3,7 +3,7 @@ import { qk } from '../../../shared/query'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
 import { useDevRequestDrafts } from '../devRequestDraftStore'
 import type { PointReview } from '../devRequestMarks'
-import { collectForRecheck, findRecheck, markMoved, recheckTitle, setReview } from '../points'
+import { collectForRecheck, findRecheck, markMoved, recheckTitle, setReview, setTailNote } from '../points'
 import { draftFromRow, topSortOrder } from '../devRequestRules'
 import { createDevRequest, fetchDevRequests, updateDevRequest } from '../api/devRequestsApi'
 import { useSetDevRequestDescription, useUpdateDevRequest } from './useDevRequests'
@@ -35,6 +35,22 @@ export function useReviewPoint() {
     const next = setReview(before, key, r)
     if (next !== before) write.mutate({ id: row.id, description: next })
     mirrorIntoDraft(row, next, d => setReview(d, key, r))
+  }
+}
+
+/**
+ * Edits the "Still not fixed" note of a re-check request's point: written at
+ * once, like a review (the note is a record of the check, not part of what is
+ * being written), and mirrored into an unsaved edit. The point keeps its key
+ * — keys hash the words only — so its Fixed / Not fixed review stays.
+ */
+export function useEditTailNote() {
+  const write = useSetDevRequestDescription()
+  return (row: DevRequest, key: string, note: string) => {
+    const before = row.description ?? ''
+    const next = setTailNote(before, key, note)
+    if (next !== before) write.mutate({ id: row.id, description: next })
+    mirrorIntoDraft(row, next, d => setTailNote(d, key, note))
   }
 }
 

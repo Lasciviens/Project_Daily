@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { useDevRequestDrafts } from '../devRequestDraftStore'
 import { cleanText, type Capture } from '../devRequestContext'
-import { draftFromRow, isDraftEmpty, type ComposerTarget } from '../devRequestRules'
+import { draftFromRow, isDraftEmpty, sameTarget, type ComposerTarget } from '../devRequestRules'
 import { useDevRequests } from '../hooks/useDevRequests'
 import { usePageContextReader } from '../pick/usePageContext'
 import { usePickMode, type PickModeKind } from '../pick/usePickMode'
@@ -27,13 +27,12 @@ import { cx } from '../../../shared/ui'
 // shows, and a reload (store counter back at 0) never grabs focus.
 let handledFocus = 0
 
-const sameTarget = (a: ComposerTarget, b: ComposerTarget) => a.kind === b.kind && (a.kind === 'new' || (b.kind === 'edit' && a.id === b.id))
-
 /**
  * The floating request window: one request (new, or an edit of an existing
  * one) written in a window that stays on screen while you move around the
  * app — or, as its own step, the prompt for Claude (mode 'prompt', opened by
- * Build prompt in the Requests list, with Back to the request). Draggable on tablet/desktop, docked above
+ * Build prompt in the Requests list or by the window's own Prompt button, with
+ * Back to the request). Draggable on tablet/desktop, docked above
  * the tab bar on phones, minimisable to a pill. While it is open you can
  * point at things on the page (Pick on page, or Alt-click with a mouse): each
  * pick becomes a link in the text where the caret was ("Water card"; a click
