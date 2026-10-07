@@ -31,6 +31,8 @@ interface IgdbBatchState {
   looking: Record<string, boolean>
   stop: boolean
   progress: { done: number; total: number; saved: number } | null
+  /** What the last Match run did (shown once it ends; not saved). */
+  lastRun: { looked: number; saved: number; review: number; none: number; failed: number } | null
   /** A game opened from its detail ("Find on IGDB"): shown first, searched. */
   focusId: string | null
   set: (p: Partial<Omit<IgdbBatchState, 'set' | 'patchRows'>>) => void
@@ -58,6 +60,7 @@ export const useIgdbBatch = create<IgdbBatchState>()(persist(set => ({
   looking: {},
   stop: false,
   progress: null,
+  lastRun: null,
   focusId: null,
   set: p => set(p),
   patchRows: patch => set(s => ({ rows: { ...s.rows, ...Object.fromEntries(Object.entries(patch).map(([id, r]) => [id, { ...s.rows[id], ...r }])) } })),

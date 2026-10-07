@@ -29,7 +29,7 @@ export function TgIgdbRow({ game: g, row, ticked, busy, open, onToggle, onLookUp
   open: boolean
   onToggle: () => void
   onLookUp: () => void
-  onSavePick: (c: ScoredCandidate) => Promise<boolean>
+  onSavePick: (c: ScoredCandidate, match?: 'picked' | 'exact') => Promise<boolean>
 }) {
   const set = useIgdbBatch(s => s.set)
   const d = row?.decision
@@ -82,32 +82,32 @@ export function TgIgdbRow({ game: g, row, ticked, busy, open, onToggle, onLookUp
         </div>
       </div>
       {open && (
-        <TgIgdbPicker game={g} row={row} onPick={async c => {
+        <TgIgdbPicker game={g} row={row} onPick={async (c, match) => {
           // Picking a result saves it at once — from the lookup's results or a
           // hand search alike (a pick that only moved the tick read as "found
-          // it, but it doesn't match").
-          if (await onSavePick(c)) onToggle()
+          // it, but it doesn't match"). An exact hand-search result saves by
+          // itself, like an exact result of Match N games.
+          if (await onSavePick(c, match)) onToggle()
         }} />
       )}
     </li>
   )
 }
 
-function TgIgdbPicker({ game, row, onPick }: { game: TgGame; row: IgdbRowState | undefined; onPick: (c: ScoredCandidate) => void }) {
+function TgIgdbPicker({ game, row, onPick }: { game: TgGame; row: IgdbRowState | undefined; onPick: (c: ScoredCandidate, match?: 'picked' | 'exact') => void }) {
   const [text, setText] = useState(() => searchQuery(game.title))
   const [query, setQuery] = useState('')
   const search = useIgdbSearch(query)
   const found = search.data ? rankCandidates(matchTarget(game), search.data) : null
   // A hand search is a fresh lookup: the row stops saying "No match" and
-  // offers its best result to tick (an exact one ticked already).
+  // offers its best result (To review); an exact best result saves at once.
   const patchRows = useIgdbBatch(s => s.patchRows)
-  const setBatch = useIgdbBatch(s => s.set)
   useEffect(() => {
     if (!search.data || !query || row?.saved || isIgdbMatched(game)) return
     const d = decideMatch(matchTarget(game), null, search.data)
     if (!d.best) return
     patchRows({ [game.id]: { decision: d, pick: d.best, error: undefined } })
-    if (d.status === 'exact') setBatch({ ticked: { ...useIgdbBatch.getState().ticked, [game.id]: true } })
+    if (d.status === 'exact') onPick(d.best, 'exact')
     // Only when a new search answers.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search.data, query])

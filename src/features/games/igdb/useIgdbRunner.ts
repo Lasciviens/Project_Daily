@@ -47,8 +47,9 @@ export function useIgdbRunner() {
   async function run(games: TgGame[]) {
     const st = useIgdbBatch.getState()
     if (st.running || !games.length) return
-    st.set({ running: true, stop: false, progress: { done: 0, total: games.length, saved: 0 } })
+    st.set({ running: true, stop: false, lastRun: null, progress: { done: 0, total: games.length, saved: 0 } })
     let saved = 0
+    const tally = { looked: 0, review: 0, none: 0, failed: 0 }
     try {
       for (let i = 0; i < games.length; i += CHUNK) {
         if (useIgdbBatch.getState().stop) break
@@ -59,6 +60,7 @@ export function useIgdbRunner() {
           results = await match.mutateAsync(chunk.map(g => ({ game_id: g.id, query: searchQuery(g.title), fallback: fallbackQuery(g.title), steam_appid: g.steamAppId })))
         } catch (e) {
           useIgdbBatch.getState().patchRows(Object.fromEntries(chunk.map(g => [g.id, { error: (e as Error).message }])))
+          tally.failed += chunk.length
           break
         } finally {
           useIgdbBatch.getState().set({ looking: {} })
@@ -69,9 +71,12 @@ export function useIgdbRunner() {
         for (const g of chunk) {
           const r = byId.get(g.id)
           // A failed lookup stays a failure (try again), never "No match".
-          if (!r || r.error) { patch[g.id] = { error: r?.error ?? 'No answer from IGDB', decision: undefined }; continue }
+          if (!r || r.error) { patch[g.id] = { error: r?.error ?? 'No answer from IGDB', decision: undefined }; tally.failed++; continue }
           const d = decideMatch(matchTarget(g), r.steam ?? null, r.candidates ?? [])
           patch[g.id] = { decision: d, pick: d.best, error: undefined }
+          tally.looked++
+          if (d.status === 'review') tally.review++
+          else if (d.status === 'none') tally.none++
           if (d.status === 'exact' && d.best && d.kind) exact.push({ game_id: g.id, igdb_id: d.best.id, match: d.kind })
         }
         useIgdbBatch.getState().patchRows(patch)
@@ -79,7 +84,11 @@ export function useIgdbRunner() {
         useIgdbBatch.getState().set({ progress: { done: Math.min(games.length, i + CHUNK), total: games.length, saved } })
       }
     } finally {
-      useIgdbBatch.getState().set({ running: false, stop: false })
+      const st2 = useIgdbBatch.getState()
+      // Exact matches saved themselves; whatever is left to look at is under
+      // To review — open it there instead of leaving the run's results hidden.
+      const lastRun = { ...tally, saved, review: tally.review + Math.max(0, tally.looked - tally.review - tally.none - saved) }
+      st2.set({ running: false, stop: false, lastRun, ...(lastRun.review > 0 && games.length > 1 && st2.filter === 'todo' && !st2.focusId ? { filter: 'review' as const } : {}) })
       if (saved) void after()
     }
   }
@@ -106,9 +115,9 @@ export function useIgdbRunner() {
     } finally { set({ running: false }) }
   }
 
-  /** Saves one candidate for one game (picked from its results or a search). */
-  async function savePick(g: TgGame, c: IgdbCandidate | ScoredCandidate) {
-    const n = await save([{ game_id: g.id, igdb_id: c.id, match: 'picked' }])
+  /** Saves one candidate for one game (picked from its results, or an exact hand-search result). */
+  async function savePick(g: TgGame, c: IgdbCandidate | ScoredCandidate, match: 'picked' | 'exact' = 'picked') {
+    const n = await save([{ game_id: g.id, igdb_id: c.id, match }])
     if (n) void after()
     return n > 0
   }
