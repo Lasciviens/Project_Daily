@@ -11,16 +11,18 @@ export interface NewsItem {
   pubDate:   string
   thumbnail: string
   excerpt:   string   // plain-text first ~120 chars of <description>
+  /** Plain-text <description>, up to ~600 chars — the reader's fallback when the page can't be read. */
+  summary:   string
 }
 
 export interface NewsFeed {
   key:      string
   label:    string
-  category: 'no' | 'tr' | 'world'
+  category: FeedCategory
   url:      string
 }
 
-export type FeedCategory = 'no' | 'tr' | 'world'
+export type FeedCategory = 'no' | 'tr' | 'world' | 'tech'
 
 // ─── Feed registry ────────────────────────────────────────────────────────────
 
@@ -28,12 +30,16 @@ export const NEWS_FEEDS: NewsFeed[] = [
   { key: 'vg',      label: 'VG',       category: 'no',    url: 'https://www.vg.no/rss/feed/?categories=1' },
   { key: 'cnnturk', label: 'CNN Türk', category: 'tr',    url: 'https://www.cnnturk.com/feed/rss/all/news' },
   { key: 'bbc',     label: 'BBC',      category: 'world', url: 'https://feeds.bbci.co.uk/news/world/rss.xml' },
+  // Both checked live 07.10.2026: tek.no advertises this feed in its <head>; Ars is RSS 2.0 with media:thumbnail.
+  { key: 'tek',     label: 'Tek.no',   category: 'tech',  url: 'https://www.tek.no/api/rss/rss2/medium/collections' },
+  { key: 'ars',     label: 'Ars Technica', category: 'tech', url: 'https://feeds.arstechnica.com/arstechnica/index' },
 ]
 
 export const FEED_CATEGORIES = [
   { key: 'no'    as FeedCategory, label: '🇳🇴 NO' },
   { key: 'tr'    as FeedCategory, label: '🇹🇷 TR' },
   { key: 'world' as FeedCategory, label: 'World' },
+  { key: 'tech'  as FeedCategory, label: 'Tech' },
 ]
 
 // ─── RSS image helpers ────────────────────────────────────────────────────────
@@ -117,6 +123,7 @@ function parseRSS(xml: string, count: number): NewsItem[] {
     const rawDesc  = item.querySelector('description')?.textContent ?? ''
     const descText = rawDesc.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
     const excerpt  = descText.length > 120 ? descText.slice(0, 120).trimEnd() + '…' : descText
+    const summary  = descText.length > 600 ? descText.slice(0, 600).trimEnd() + '…' : descText
 
     return {
       title:   text('title'),
@@ -124,6 +131,7 @@ function parseRSS(xml: string, count: number): NewsItem[] {
       pubDate: text('pubDate'),
       thumbnail,
       excerpt,
+      summary,
     }
   })
 }

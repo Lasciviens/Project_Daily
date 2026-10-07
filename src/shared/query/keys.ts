@@ -197,6 +197,7 @@ export const qk = {
     weather: (lat: number, lon: number) => ['weather', lat.toFixed(2), lon.toFixed(2)] as const,
     currency: () => ['currency'] as const,
     news: (source: string) => ['news', source] as const,
+    newsArticle: (url: string) => ['news-article', url] as const,
     geolocation: () => ['geolocation'] as const,
     nearbyStops: (lat: number, lon: number) => ['nearby-stops', lat, lon] as const,
     departures: (stopId: string) => ['departures', stopId] as const,

@@ -103,7 +103,6 @@ const deg = (n: number) => `${round(n) === 0 ? 0 : round(n)}°`
 const pad2 = (n: number) => String(n).padStart(2, '0')
 /** yyyy-MM-dd → DD.MM.YYYY without a Date (no timezone drift). */
 const dmy = (iso: string) => { const [y, m, d] = iso.slice(0, 10).split('-'); return `${d}.${m}.${y}` }
-const grouped = (n: number) => String(round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
 
 export function greetingFor(hour: number): string {
   if (hour < 5) return 'Up late'
@@ -140,7 +139,37 @@ export function feelsLike(tempC: number, windMs: number): number | null {
 const RAIN_MM = 0.3
 const DRY_MM = 0.1
 
-/** One sentence about rain for the rest of today, from the hourly points. */
+const hourOf = (time: string) => Number(time.slice(0, 2))
+/** Rain that starts at or after this hour (and not within NEAR_HOURS) is evening rain: it says when, not "take a jacket". */
+const EVENING_HOUR = 19
+const NEAR_HOURS = 3
+/** Overnight rain worth a word: after midnight, up to this hour of tomorrow morning. */
+const MORNING_END = 9
+
+/**
+ * The first rain after midnight (up to 09:00), from the hourly points ahead —
+ * they run past midnight, today's `hours` stop at it.
+ */
+function overnightRain(w: BriefWeather): BriefWeatherHour | null {
+  const ahead = w.ahead ?? []
+  let prev = -1
+  let tomorrow = false
+  for (const h of ahead) {
+    const hr = hourOf(h.time)
+    if (hr < prev) tomorrow = true
+    prev = hr
+    if (tomorrow && hr <= MORNING_END && h.precip >= RAIN_MM) return h
+    if (tomorrow && hr > MORNING_END) break
+  }
+  return null
+}
+
+/**
+ * One sentence about rain, matched to WHEN it falls (hours[0] is the current
+ * hour): rain now → when it stops; rain within three hours or in the daytime →
+ * take a jacket; rain that only starts in the evening (19:00+) → it stays dry
+ * until then; no rain today but some overnight → a word about the morning.
+ */
 export function rainOutlook(w: BriefWeather): BriefLine | null {
   const hours = w.hours ?? []
   if (w.precipMm > 0.2) {
@@ -152,9 +181,21 @@ export function rainOutlook(w: BriefWeather): BriefLine | null {
     let mm = 0
     let end = start
     while (end < hours.length && hours[end].precip >= DRY_MM) { mm += hours[end].precip; end++ }
-    const until = end < hours.length ? ` until ${hours[end].time}` : ''
+    const from = hours[start].time
+    const to = end < hours.length ? hours[end].time : null
     const amount = mm >= 1 ? ` (about ${round(mm)} mm)` : ''
-    return { text: `Rain from ${hours[start].time}${until}${amount} — take a jacket.`, tone: 'info' }
+    if (start <= NEAR_HOURS) return { text: `Rain from ${from}${to ? ` until ${to}` : ''}${amount} — take a jacket.`, tone: 'info' }
+    if (hourOf(from) >= EVENING_HOUR) {
+      return { text: `${to ? `Rain ${from}–${to}` : `Rain from ${from}`}${amount} — dry until then.`, tone: 'info' }
+    }
+    return { text: `Rain from ${from}${to ? ` until ${to}` : ''}${amount} — take a jacket if you're out then.`, tone: 'info' }
+  }
+  const night = overnightRain(w)
+  if (night) {
+    const text = hourOf(night.time) >= 6
+      ? `Dry for the rest of today; rain tomorrow morning from ${night.time} — a jacket for the morning.`
+      : `Dry for the rest of today; rain overnight from ${night.time}, so expect wet streets in the morning.`
+    return { text, tone: 'info' }
   }
   if (hours.length >= 3) return { text: 'No rain expected for the rest of the day.' }
   return null
@@ -351,20 +392,25 @@ function watchSection(i: BriefInput): BriefSection | null {
 
 // ── Money ────────────────────────────────────────────────────────────────────
 
-/** A plain observation about the NOK→TRY move — never advice. */
-export function nokTryComment(changePct: number): BriefLine {
+/** A daily move under this (in %) is noise and is not mentioned. */
+export const NOK_TRY_NOTABLE_PCT = 1
+
+/** A plain observation about a notable NOK→TRY move — never advice; null for an ordinary day. */
+export function nokTryComment(changePct: number): BriefLine | null {
+  if (!Number.isFinite(changePct)) return null
   const a = Math.abs(changePct)
-  if (a < 0.1) return { text: 'About the same as yesterday.' }
+  if (a < NOK_TRY_NOTABLE_PCT) return null
   const pct = `${a.toFixed(1)}%`
-  if (changePct > 0) return { text: `NOK up ${pct} against TRY since yesterday — your krone buys ${a >= 1 ? 'noticeably' : 'a bit'} more lira.`, tone: a >= 1 ? 'success' : undefined }
-  return { text: `NOK down ${pct} against TRY since yesterday — your krone buys ${a >= 1 ? 'noticeably' : 'a bit'} less lira.`, tone: a >= 1 ? 'warn' : undefined }
+  if (changePct > 0) return { text: `NOK up ${pct} against TRY since yesterday — your krone buys noticeably more lira.`, tone: 'success' }
+  return { text: `NOK down ${pct} against TRY since yesterday — your krone buys noticeably less lira.`, tone: 'warn' }
 }
 
 function moneySection(i: BriefInput): BriefSection | null {
   const c = i.nokTry
   if (!c || !(c.rate > 0)) return null
-  const lines: BriefLine[] = [{ text: `1 NOK = ${c.rate.toFixed(2)} TRY · 1,000 NOK ≈ ${grouped(c.rate * 1000)} TRY` }]
-  if (Number.isFinite(c.changePct)) lines.push(nokTryComment(c.changePct))
+  const lines: BriefLine[] = [{ text: `1 NOK = ${c.rate.toFixed(2)} TRY` }]
+  const move = nokTryComment(c.changePct)
+  if (move) lines.push(move)
   return { id: 'money', title: 'NOK → TRY', lines }
 }
 

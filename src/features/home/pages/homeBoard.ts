@@ -3,14 +3,16 @@
 //
 //   1  phone, tablet — the actionable column (brief → now/next → tasks →
 //      transit), glance tiles that open their detail, then news.
-//   2  1280 / 1469 laptop — the same three cards in main; transit, the tiles
-//      and news beside them (the owner's call: compact tiles on the laptop;
+//   2  1280 / 1469 / 1795 laptop — the same three cards in main; transit and
+//      the tiles beside them (the owner's call: compact tiles on the laptop;
 //      each tile opens its widget's content in a popup — TileDetail.tsx).
 //   3  1920 — full widgets: weather/transit/currency/games, then training,
-//      media, books and news (games moved up so the two side columns end
-//      level instead of one running ~350px past the other).
-//   4  2450 — news gets a column of its own and shows more headlines to fill
-//      it (newsRows), so the right edge doesn't end in a short stub.
+//      media and books.
+//   4  2450 — weather/transit/currency, training/media, books/games.
+//   From step 2 up, news is a band across the bottom of the whole board
+//   (owner, 07.10.2026): headlines side by side as cards, never a narrow
+//   column. It is the last thing on the page and holds no actionable content,
+//   so starting below the tallest column is what it is for.
 import { resolveBoardLayout, type BoardLayouts, type PageStep } from '../../../shared/ui/pageBoardRules'
 
 export const HOME_SECTIONS = [
@@ -29,9 +31,9 @@ const HOME_MAIN = '72rem'
 
 export const HOME_BOARD: BoardLayouts<HomeSection> = {
   1: [...MAIN, 'transit', 'tiles', 'news'],
-  2: { columns: [MAIN, ['transit', 'tiles', 'news']], main: HOME_MAIN },
-  3: { columns: [MAIN, ['weather', 'transit', 'currency', 'games'], ['training', 'media', 'books', 'news']], main: HOME_MAIN },
-  4: { columns: [MAIN, ['weather', 'transit', 'currency'], ['training', 'media', 'books', 'games'], ['news']], main: HOME_MAIN },
+  2: { columns: [MAIN, ['transit', 'tiles']], bottom: ['news'], main: HOME_MAIN },
+  3: { columns: [MAIN, ['weather', 'transit', 'currency', 'games'], ['training', 'media', 'books']], bottom: ['news'], main: HOME_MAIN },
+  4: { columns: [MAIN, ['weather', 'transit', 'currency'], ['training', 'media'], ['books', 'games']], bottom: ['news'], main: HOME_MAIN },
 }
 
 /** What every step must show in some form: tiles stand in for the six glance widgets. */
@@ -40,10 +42,14 @@ export const HOME_GLANCE: Record<string, HomeSection[]> = {
   media: ['media', 'tiles'], books: ['books', 'tiles'], games: ['games', 'tiles'],
 }
 
-/** Headlines the news card lists: more once it has a column to itself. */
-export const NEWS_ROWS = { shared: 8, own: 16 } as const
+/** Headlines the news card lists: a list of 8 on a phone; about two rows of cards in the band. */
+export const NEWS_ROWS: Record<PageStep, number> = { 1: 8, 2: 12, 3: 14, 4: 16 }
+
+/** True where news is the full-width band under the columns (cards side by side). */
+export function newsIsBand(step: PageStep): boolean {
+  return resolveBoardLayout(HOME_BOARD, step).bottom.includes('news')
+}
 
 export function newsRows(step: PageStep): number {
-  const own = resolveBoardLayout(HOME_BOARD, step).columns.some(c => c.stack.length === 1 && c.stack[0] === 'news')
-  return own ? NEWS_ROWS.own : NEWS_ROWS.shared
+  return NEWS_ROWS[step]
 }

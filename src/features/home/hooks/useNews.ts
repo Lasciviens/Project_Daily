@@ -3,8 +3,8 @@ import { qk, STALE } from '../../../shared/query'
 import { fetchNews } from '../api/newsApi'
 
 /**
- * Enough headlines for the longest news card (NewsWidget lists 8, or 16 when
- * it has a column of its own), so a layout change never refetches.
+ * Enough headlines for the widest news band (homeBoard NEWS_ROWS: 8 on a
+ * phone up to 16 at 2450), so a layout change never refetches.
  */
 const NEWS_ITEMS = 16
 
