@@ -87,7 +87,7 @@ export function PlaysSheet({ ask, onDone }: { ask: PlaysAsk; onDone: (a: PlaysAn
 
         <div className="flex flex-col gap-1.5">
           <span className="text-body font-medium text-fg">{plays > 1 ? 'Last watched' : 'Watched on'}</span>
-          {!unknown && <DateInput value={day} max={todayStr()} onChange={setDay} aria-label="Watched on" className="max-w-[12rem]" />}
+          {!unknown && <DateInput value={day} max={todayStr()} onChange={setDay} aria-label="Watched on" className="input w-[10rem] tabular-nums" />}
           <label className="flex min-h-[44px] items-center gap-2 text-body text-fg-2">
             <input type="checkbox" checked={unknown} onChange={e => setUnknown(e.target.checked)} className="h-4 w-4 accent-accent-500" />
             Date unknown

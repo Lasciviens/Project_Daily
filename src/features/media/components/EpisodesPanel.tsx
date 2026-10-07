@@ -6,7 +6,7 @@ import { useWatchedWhenPrompt } from '../hooks/useWatchedWhenPrompt'
 import { resolveWatchedAt } from '../watchedWhen'
 import { useWatchedEpisodes, useMarkEpisodeWatched, useSetEpisodeDates, useSetEpisodePlays } from '../hooks/useWatchedEpisodes'
 import { usePlaysPrompt } from '../hooks/usePlaysPrompt'
-import { CalendarDays, CalendarPlus, Check, ListChecks, Repeat, RotateCcw, SlidersHorizontal, Undo2 } from 'lucide-react'
+import { CalendarDays, CalendarPlus, CalendarRange, Check, ListChecks, Repeat, RotateCcw, SlidersHorizontal, Undo2 } from 'lucide-react'
 import { useEntityModal } from '../../../shared/modals'
 import { Button, SectionLabel, Skeleton, TonePill, Truncate } from '../../../shared/ui'
 import { ceilToQuarter } from '../../../shared/components/plan-modal/planModal.config'
@@ -17,6 +17,7 @@ import { toast } from '../../../app/store'
 import { isUnknownWatchedAt } from '../trakt/traktDates'
 import { useTraktPlayback } from '../trakt/useTraktExtras'
 import { pausedEpisodes, seasonGaps } from '../episodeGaps'
+import { SpreadWatchedSheet } from './SpreadWatchedSheet'
 
 interface Props {
   tv:         TMDBTVFull
@@ -29,6 +30,7 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
   const [season,    setSeason]    = useState(realSeasons[0]?.season_number ?? 1)
   const [selected,  setSelected]  = useState<Set<number>>(new Set())
   const [marking,   setMarking]   = useState(false)
+  const [spreading, setSpreading] = useState(false)
 
   const { data: seasonData, isLoading } = useSeasonDetails(tv.id, season)
   const { data: watched = [] }          = useWatchedEpisodes(tvEntryId)
@@ -236,6 +238,16 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
     <div>
       {dialog}
       {plays$.dialog}
+      {spreading && (
+        <SpreadWatchedSheet
+          tvId={tv.id}
+          tvName={tv.name}
+          tvEntryId={tvEntryId}
+          seasons={realSeasons.map(s => s.season_number)}
+          defaultRuntime={tv.episode_run_time?.[0] ?? null}
+          onClose={() => setSpreading(false)}
+        />
+      )}
       <SectionLabel className="mb-2">Episodes</SectionLabel>
 
       <div className="mb-3 flex items-center gap-1">
@@ -272,6 +284,9 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
             )
           })}
         </div>
+        <Button size="sm" variant="ghost" icon={<CalendarRange />} onClick={() => setSpreading(true)} disabled={marking} title="Mark a run of episodes watched across a period you remember — with breaks">
+          <span className="hidden sm:inline">Spread</span><span className="sr-only sm:hidden">Spread watched dates</span>
+        </Button>
         {watched.length > 0 && (
           <Button size="sm" variant="ghost" icon={<CalendarDays />} onClick={() => { void changeAllDates() }} disabled={marking} title="Change the watched date of every watched episode — e.g. each to its release date">
             Dates
