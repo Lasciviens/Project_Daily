@@ -1,12 +1,13 @@
 #!/usr/bin/env node
-/* Verification — the PageBoard layouts of Food, Wishes, Health and Training
- * (src/features/{recipes,wishes,health,training}/*Boards.ts) and the `lead`
+/* Verification — the PageBoard layouts of Food, Wishes, Shop, Health and Training
+ * (src/features/{recipes,wishes,shop,health,training}/*Board(s).ts) and the `lead`
  * option they use (a rail placed before the main track, pageBoardRules.ts).
  * Run: node scripts/verify-life-boards.cjs */
 require('sucrase/register')
 const B = require('../src/shared/ui/pageBoardRules')
 const F = require('../src/features/recipes/foodBoards')
 const Wi = require('../src/features/wishes/wishesBoard')
+const Sh = require('../src/features/shop/shopBoard')
 const Bk = require('../src/features/books/booksBoard')
 const H = require('../src/features/health/healthBoards')
 const T = require('../src/features/training/trainingBoards')
@@ -47,6 +48,9 @@ const BOARDS = [
   ['Food · Ingredients', F.INGREDIENT_BOARD, F.INGREDIENT_SECTIONS, false],
   ['Food · Insights', F.INSIGHT_BOARD, F.INSIGHT_SECTIONS, false],
   ['Wishes', Wi.WISH_BOARD, Wi.WISH_SECTIONS, true],
+  ['Shop · Wishlist', Sh.WISHLIST_BOARD, Sh.WISHLIST_SECTIONS, true],
+  ['Shop · Quick list', Sh.QUICK_BOARD, Sh.QUICK_SECTIONS, false],
+  ['Shop · Bought', Sh.BOUGHT_BOARD, Sh.BOUGHT_SECTIONS, false],
   ['Books · Send', Bk.BOOK_BOARD, Bk.BOOK_SECTIONS, false],
   ['Books · Library', Bk.LIBRARY_BOARD, Bk.LIBRARY_SECTIONS, false],
   ['Books · Library browse', Bk.LIBRARY_BROWSE_BOARD, Bk.LIBRARY_BROWSE_SECTIONS, false],

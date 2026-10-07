@@ -30,7 +30,7 @@ const READY_AT = MAX_PULL * (1 - Math.exp(-THRESHOLD / MAX_PULL))
 //
 // This hook is mounted ONCE at the app shell (src/app/shell/AppShell.tsx)
 // and attached to <main>, which every page scrolls in. A page with its own
-// scrolling pane (Shop's wishlist column) is still handled: isAtTop() walks
+// scrolling pane (the Games page's lists) is still handled: isAtTop() walks
 // up from the touch target to the nearest scrollable ancestor and checks its
 // scrollTop; if none is found before reaching <main>, it checks <main>'s own.
 //

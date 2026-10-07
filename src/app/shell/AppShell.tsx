@@ -79,7 +79,7 @@ export function AppShell() {
   // changes would be instant; keying the wrapper by pathname replays the
   // .page-in rise instead. With VT the key stays constant (no double animation).
   const supportsVT = typeof document.startViewTransition === 'function'
-  // Only a page that sizes itself against <main> (Shop's two panes) gets a
+  // Only a page that sizes itself against <main> (Games' own panes) gets a
   // definite height. Everywhere else the wrapper must stay auto-height, or a
   // tall page overflows it and runs over <main>'s bottom padding — the last
   // card then sits under the phone tab bar.

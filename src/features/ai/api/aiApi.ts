@@ -310,7 +310,7 @@ async function throwFunctionError(error: { message: string }): Promise<never> {
 // the tools that surface can use (a smaller, cacheable prefix) and route a
 // simple surface to a cheaper model. Optional + additive, so existing callers
 // (briefing, PT assessment) are unaffected.
-export type AISurface = 'general' | 'coach' | 'shop'
+export type AISurface = 'general' | 'coach'
 
 export async function invokeAI(messages: Message[], systemPrompt: string, model?: AIModel, surface?: AISurface): Promise<AIResponse> {
   const { data, error } = await supabase.functions.invoke('ai-proxy', {
@@ -415,63 +415,6 @@ export async function sendCoachMessage(messages: Message[], model?: AIModel): Pr
   // Coach prompt stays constant (cacheable); the 30-day snapshot rides as the
   // leading context turn, same cache-alignment as sendMessage.
   return invokeAI(prependContext(messages, `SON 30 GÜN VERİSİ (JSON):\n${context}`), COACH_CHAT_PROMPT, model, 'coach')
-}
-
-// ─── Shop-scoped send function ───────────────────────────────────────────────
-//  Narrower system prompt than the general assistant — restricted to shopping
-//  conversation/categorization so it never drifts into unrelated tasks/media
-//  actions from the dedicated Shop-page chat panel.
-
-const SHOP_SYSTEM_PROMPT = `You are a shopping companion for Lasci's Board — think out loud with the user
-about what they're planning to buy, and organize confirmed purchases into their
-wishlist. You are NOT just a form-filling bot: chat naturally. If the user is
-musing ("düşünüyorum", "galiba alacağım") rather than giving a firm instruction,
-respond conversationally (thoughts, questions, options) — don't force a tool
-call. Only add something to the wishlist once it's clear they actually want it
-tracked.
-
-Tools: get_shop_categories, create_shop_category, create_shop_item,
-ask_clarifying_question.
-
-Categories are a STRICT 2-level tree: top category -> subcategory. Items
-always attach to a SUBCATEGORY, never to a top category directly.
-
-When the user DOES want item(s) added:
-1. Call get_shop_categories first, always.
-2. If an existing subcategory is a clear, confident match, call
-   create_shop_item with that subcategory's ID immediately — don't ask.
-3. If no subcategory is a clear match, DO NOT create one yourself. Call
-   ask_clarifying_question ALONE (no other function call in that turn) with
-   2-4 short tappable options — e.g. an existing top category + new
-   subcategory name as one option, a brand new top category as another, plus
-   whatever else looks plausible. Never make the user type a category name
-   from scratch when a tap will do.
-4. Once the user picks/replies, call create_shop_category (parent_id if it
-   belongs under an existing top category, omitted for a new top category
-   too), then create_shop_item.
-5. If the user pastes/describes MULTIPLE items in one message (a whole
-   basket/list), extract all of them. Add every item that has a confident
-   category match right away. For the ones that don't, batch them into ONE
-   ask_clarifying_question covering all of them, rather than one question per
-   item.
-6. Extract any details the user mentions (platform, URL, priority, region
-   TR/NO, planned date) into the item — don't ask about fields the user
-   didn't mention. Never set a price yourself — there is no price parameter
-   on create_shop_item; if the user mentions a price, just repeat it back in
-   your confirmation text so they remember to enter it manually in the app.
-7. After creating something, confirm concisely: what was added and where.
-   Every create_shop_item/create_shop_category call returns { success, item_id
-   or category_id } or { success: false, error }. Always base your confirmation
-   on that actual result — cite the ID on success, report the real error
-   message on failure. Never claim something was added without it.
-
-Respond in the same language the user writes in (Turkish or English).`
-
-export async function sendShopMessage(messages: Message[]): Promise<AIResponse> {
-  const nowLine = `Current date/time: ${format(new Date(), 'EEEE, MMMM d yyyy HH:mm')} (${Intl.DateTimeFormat().resolvedOptions().timeZone})`
-  // Shop prompt stays constant (cacheable); the shop surface also gets a
-  // trimmed tool set and a cheaper model server-side (see ai-proxy).
-  return invokeAI(prependContext(messages, nowLine), SHOP_SYSTEM_PROMPT, undefined, 'shop')
 }
 
 // ─── Structured extraction (recipes) ──────────────────────────────────────
