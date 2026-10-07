@@ -30,7 +30,13 @@ import { TgScrapeEmpty } from './TgScrapeParts'
  * page never throws away lookups that cost ScreenScraper requests.
  * Phone: steps (search → review; Back returns). Tablet and wider: side by side.
  */
-export function TgScrapeView({ games, loading, layout }: { games: TgGame[]; loading: boolean; layout: 'desktop' | 'phone' }) {
+export function TgScrapeView({ games, counted, loading, layout }: {
+  games: TgGame[]
+  /** `games` minus platforms left out in Settings: what the lists and batches offer. */
+  counted: TgGame[]
+  loading: boolean
+  layout: 'desktop' | 'phone'
+}) {
   const bp = useBreakpoint()
   // Results and review side by side only with real width for both; a tablet
   // (even landscape, beside the sidebar) gets the step flow — a 130–390px
@@ -53,6 +59,9 @@ export function TgScrapeView({ games, loading, layout }: { games: TgGame[]; load
   const setFromBatch = useTestGameStore(s => s.setScrapeFromBatch)
 
   const retro = useMemo(() => games.filter(g => g.library === 'retro'), [games])
+  // Lists and batches skip left-out platforms; a game opened by id (from its
+  // detail) still opens here.
+  const retroCounted = useMemo(() => counted.filter(g => g.library === 'retro'), [counted])
   const target = useMemo(() => retro.find(g => g.id === targetId) ?? null, [retro, targetId])
 
   // The form being edited — seeded from the target, or from the last search
@@ -162,7 +171,7 @@ export function TgScrapeView({ games, loading, layout }: { games: TgGame[]; load
     <div hidden={mode !== 'batch'} className={`${mode === 'batch' ? 'flex' : 'hidden'} min-h-0 flex-col gap-4 ${wide ? 'flex-1' : 'pb-6'}`}>
       {wide && toolbar}
       <div className={wide ? 'tg-scroll-y min-h-0 flex-1 pb-6 pr-1' : ''}>
-        <TgScrapeBatch games={retro} loading={loading} onOpenGame={openFromBatch} />
+        <TgScrapeBatch games={retroCounted} loading={loading} onOpenGame={openFromBatch} />
       </div>
     </div>
   )
@@ -193,7 +202,7 @@ export function TgScrapeView({ games, loading, layout }: { games: TgGame[]; load
   const left = (
     <div className="flex flex-col gap-4">
       <TgScrapeTarget
-        games={retro} target={target} loading={loading} onPick={(id) => setTarget(id)}
+        games={retroCounted} target={target} loading={loading} onPick={(id) => setTarget(id)}
         footer={target ? folded : null}
       />
       {/* Browsing without a game: the folded search (with Edit) sits on its own. */}

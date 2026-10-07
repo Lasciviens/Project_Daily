@@ -10,14 +10,14 @@ export function SpreadMonthStrip({ months }: { months: SpreadMonth[] }) {
   const lastYear = months[months.length - 1].month.slice(0, 4)
   return (
     <div className="mt-3">
-      <div className="flex h-8 items-end gap-px" role="img" aria-label="Episodes per month">
+      <div className={`flex h-8 items-end ${months.length > 60 ? '' : 'gap-px'}`} role="img" aria-label="Episodes per month">
         {months.map(m => {
           const name = `${MONTHS[Number(m.month.slice(5)) - 1]} ${m.month.slice(0, 4)}`
           return (
             <div
               key={m.month}
               title={m.activeDays === 0 ? `${name} · break` : `${name} · ${m.count} episode${m.count === 1 ? '' : 's'}`}
-              className="flex h-full min-w-px flex-1 items-end"
+              className="flex h-full min-w-0 flex-1 items-end"
             >
               {m.activeDays === 0
                 ? <span className="h-px w-full bg-line" />

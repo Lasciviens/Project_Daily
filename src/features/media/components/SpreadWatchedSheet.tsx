@@ -106,7 +106,7 @@ export function SpreadWatchedSheet({ tvId, tvName, tvEntryId, seasons, defaultRu
   return (
     <ModalShell
       onClose={onClose}
-      size="sm"
+      size="lg"
       title="Spread watched dates"
       subtitle={tvName}
       footer={
@@ -121,7 +121,10 @@ export function SpreadWatchedSheet({ tvId, tvName, tvEntryId, seasons, defaultRu
       {loading ? (
         <div className="space-y-2"><Skeleton className="h-10 w-full" /><Skeleton className="h-10 w-full" /><Skeleton className="h-24 w-full" /></div>
       ) : (
-        <div className="flex flex-col gap-4">
+        // Tablet and wider: fields left, the live result pinned right (a 680px
+        // laptop would otherwise scroll it out of sight while you edit).
+        <div className="flex flex-col gap-4 md:grid md:grid-cols-[minmax(0,1fr)_15rem] md:items-start md:gap-5">
+        <div className="flex min-w-0 flex-col gap-4">
           {all.failed && <p className="text-meta text-warn">Some seasons didn't load from TMDB — their episodes are left out.</p>}
 
           <Field label="Episodes">
@@ -221,16 +224,19 @@ export function SpreadWatchedSheet({ tvId, tvName, tvEntryId, seasons, defaultRu
             )}
           </div>
 
-          <div className="rounded-card border border-line bg-surface-2 p-3" aria-live="polite">
+        </div>
+          <div className="rounded-card border border-line bg-surface-2 p-3 md:sticky md:top-0" aria-live="polite">
             {result.ok ? (
               <>
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <p className="text-title font-semibold text-fg">{spreadHeadline(result.stats)}</p>
-                    <p className="mt-0.5 text-meta text-fg-muted tabular-nums">
-                      {formatDate(result.stats.firstDay)} → {formatDate(result.stats.lastDay)} · {result.stats.watchDays} watching day{result.stats.watchDays === 1 ? '' : 's'} of {result.stats.activeDays} · {fmt(Math.round(result.stats.perWatchDay * 10) / 10)} on a day you watched
-                      {result.stats.breakDays > 0 && <> · {result.stats.breakDays} days of breaks left out</>}
-                    </p>
+                    <ul className="mt-1 space-y-0.5 text-meta text-fg-muted tabular-nums">
+                      <li>{formatDate(result.stats.firstDay)} → {formatDate(result.stats.lastDay)}</li>
+                      <li>{result.stats.watchDays} watching day{result.stats.watchDays === 1 ? '' : 's'} of {result.stats.activeDays}</li>
+                      <li>{fmt(Math.round(result.stats.perWatchDay * 10) / 10)} on a day you watched</li>
+                      {result.stats.breakDays > 0 && <li>{result.stats.breakDays} days of breaks left out</li>}
+                    </ul>
                   </div>
                   <IconButton label="Shuffle the days" onClick={() => setSeed(s => s + 1)} className="shrink-0 text-fg-faint hover:text-fg-2"><Dices /></IconButton>
                 </div>

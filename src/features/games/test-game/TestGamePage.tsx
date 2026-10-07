@@ -6,6 +6,8 @@ import { useTestGameStore } from './testGameStore'
 import { useBreakpoint } from '../../../shared/hooks/useBreakpoint'
 import { useUIStore } from '../../../app/store'
 import { useTgHeaderConfig } from './useTgHeaderConfig'
+import { countedGames } from '../prefs/gamesPrefs'
+import { TgExcludedPlatformsDialog } from './components/TgExcludedPlatformsDialog'
 import { useTgLibraryView } from './useTgLibraryView'
 import { useTgUrlSync } from './useTgUrlSync'
 import { TG_SHORT_SCREEN, useTgMatch } from './useTgMatch'
@@ -86,7 +88,7 @@ export function TestGamePage() {
   const panelRef = useRef<HTMLElement>(null)
 
   const {
-    groups, effectivePlatform, effectiveScopePlatform, isGameSection, genres, studios, statusCounts: sCounts, shelfTotal, visible, ranks, navCounts,
+    groups, effectivePlatform, effectiveScopePlatform, isGameSection, genres, studios, statusCounts: sCounts, shelfTotal, uncounted, visible, ranks, navCounts,
   } = useTgLibraryView(lib)
 
   // Looked up in the whole library, not the current view: a status changed in
@@ -121,7 +123,11 @@ export function TestGamePage() {
     }
   }, [bp, detailOpen, collapsed])
 
-  const header = useTgHeaderConfig({ games: lib.games, platform: effectivePlatform, statusCounts: sCounts, visibleCount: visible.length, shelfTotal, scopePlatform: effectiveScopePlatform })
+  // Platforms left out in Settings stay listed, but counts and the random
+  // pick skip them — except on that platform's own shelf.
+  const countsSelf = lib.excludedPlatforms.includes(effectivePlatform)
+  const countedVisible = useMemo(() => (countsSelf ? visible : countedGames(visible, lib.excludedPlatforms)), [countsSelf, visible, lib.excludedPlatforms])
+  const header = useTgHeaderConfig({ games: lib.games, counted: lib.countedGames, platform: effectivePlatform, statusCounts: sCounts, visibleCount: countedVisible.length, shelfTotal, uncounted, scopePlatform: effectiveScopePlatform })
 
   // ── Actions ───────────────────────────────────────────────────────────────
   const actions: TgActions = useMemo(() => ({
@@ -158,11 +164,11 @@ export function TestGamePage() {
   // "Pick a random game" draws from exactly what the page shows (section,
   // platform, status, genre and search all applied) and opens it.
   const pickRandom = useCallback(() => {
-    const id = pickRandomId(visible, selectedId)
+    const id = pickRandomId(countedVisible.length ? countedVisible : visible, selectedId)
     if (!id) return
     // Always shown expanded: a pick that only moved the tucked tab showed nothing.
     openDetail(id)
-  }, [visible, selectedId, openDetail])
+  }, [countedVisible, visible, selectedId, openDetail])
   const onRandom = isGameSection && visible.length > 0 ? pickRandom : undefined
   const closeModal = useCallback((which: 'edit' | 'full' | 'provider') => {
     if (which === 'edit') setEditId(null)
@@ -217,15 +223,15 @@ export function TestGamePage() {
     if (section === 'igdb') {
       return (
         <ErrorBoundary label="IGDB" action="games_igdb">
-          <Suspense fallback={SECTION_FALLBACK}><TgIgdbView games={lib.games} loading={lib.isLoading} /></Suspense>
+          <Suspense fallback={SECTION_FALLBACK}><TgIgdbView games={lib.games} counted={lib.countedGames} loading={lib.isLoading} /></Suspense>
         </ErrorBoundary>
       )
     }
-    if (section === 'scrape') return <Suspense fallback={SECTION_FALLBACK}><TgScrapeView games={lib.games} loading={lib.isLoading} layout={layout} /></Suspense>
+    if (section === 'scrape') return <Suspense fallback={SECTION_FALLBACK}><TgScrapeView games={lib.games} counted={lib.countedGames} loading={lib.isLoading} layout={layout} /></Suspense>
     if (section === 'advanced') {
       return (
         <Suspense fallback={SECTION_FALLBACK}>
-          <TgAdvancedView onOpenDetail={actions.openFull} games={lib.games} loading={lib.isLoading} error={lib.isError ? lib.error : null} onRetry={lib.refetch} />
+          <TgAdvancedView onOpenDetail={actions.openFull} games={lib.countedGames} loading={lib.isLoading} error={lib.isError ? lib.error : null} onRetry={lib.refetch} />
         </Suspense>
       )
     }
@@ -282,6 +288,7 @@ export function TestGamePage() {
           </div>
         </div>
       )}
+      <TgExcludedPlatformsDialog groups={groups} />
       <TgModals
         bp={bp} actions={actions} sheetGame={collapsed ? null : detailGame} onCloseSheet={closeDetail}
         editId={editId} fullId={fullId} provider={provider} onClose={closeModal}

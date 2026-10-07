@@ -23,6 +23,10 @@ function plural(n: number, word: string) { return `${n.toLocaleString('en-GB')} 
 
 interface Input {
   games: TgGame[]
+  /** `games` minus the platforms left out in Settings — every number reads these. */
+  counted: TgGame[]
+  /** Games the Library shows but doesn't count (left-out platforms). */
+  uncounted?: number
   /** The Library's platform after the stale-platform fallback. */
   platform: string
   /** Status counts of the games in scope (the Library's status tabs). */
@@ -35,7 +39,7 @@ interface Input {
   scopePlatform?: string
 }
 
-export function useTgHeaderConfig({ games, platform, statusCounts: sCounts, visibleCount, shelfTotal, scopePlatform: effectiveScope }: Input): TgHeaderConfig {
+export function useTgHeaderConfig({ games, counted, uncounted = 0, platform, statusCounts: sCounts, visibleCount, shelfTotal, scopePlatform: effectiveScope }: Input): TgHeaderConfig {
   const section = useTestGameStore(s => s.section)
   const statuses = useTestGameStore(s => s.statuses)
   const storedScope = useTestGameStore(s => s.scopePlatform)
@@ -56,8 +60,8 @@ export function useTgHeaderConfig({ games, platform, statusCounts: sCounts, visi
   // The "Needs review" pill's count, from the rows the page already holds
   // (the same predicate the tab lists) — never a second library download.
   const reviewCount = useMemo(
-    () => (section === 'advanced' ? games.filter(g => needsReviewReasons(g).length > 0).length : 0),
-    [section, games],
+    () => (section === 'advanced' ? counted.filter(g => needsReviewReasons(g).length > 0).length : 0),
+    [section, counted],
   )
 
   const fixedStatus = STATUS_SECTIONS[section]
@@ -68,7 +72,7 @@ export function useTgHeaderConfig({ games, platform, statusCounts: sCounts, visi
     if (section === 'library') {
       return {
         title: platformInfo(platform).name,
-        subtitle: `${narrowed ? `${visibleCount.toLocaleString('en-GB')} of ${plural(shelfTotal ?? sCounts.all, 'game')}` : plural(sCounts.all, 'game')}${libraryScope ? ` · from Analytics: ${libraryScope.label}` : ''}`,
+        subtitle: `${narrowed ? `${visibleCount.toLocaleString('en-GB')} of ${plural(shelfTotal ?? sCounts.all, 'game')}` : plural(sCounts.all, 'game')}${uncounted > 0 ? ` · ${uncounted.toLocaleString('en-GB')} more on left-out platforms` : ''}${libraryScope ? ` · from Analytics: ${libraryScope.label}` : ''}`,
         onClear: clear,
         // A provider shelf syncs from its provider — an explicit tap, never on load.
         action: platform === 'steam' || platform === 'playstation' ? createElement(TgProviderSync, { library: platform, games }) : undefined,
@@ -90,15 +94,19 @@ export function useTgHeaderConfig({ games, platform, statusCounts: sCounts, visi
       // The genre and search filters apply to the counts too (the platform
       // scope does not — the tabs ARE the platform scope).
       const inStatus = scopeGames(games, { section, platform: ALL_PLATFORMS, scopePlatform: ALL_PLATFORMS, search, genres, studios })
+      // Every platform keeps its tab (its games still list); the totals leave
+      // out the platforms left out in Settings.
+      const countedIn = scopeGames(counted, { section, platform: ALL_PLATFORMS, scopePlatform: ALL_PLATFORMS, search, genres, studios })
       const byPlatform = platformCounts(inStatus)
+      const countedPlatforms = platformCounts(countedIn).length
       const labels = platformLabels(byPlatform)
       return {
         title: SECTION_TITLE[section],
-        subtitle: `${plural(inStatus.length, 'game')} across ${plural(byPlatform.length, 'platform')}`,
+        subtitle: `${plural(countedIn.length, 'game')} across ${plural(countedPlatforms, 'platform')}${inStatus.length > countedIn.length ? ` · ${(inStatus.length - countedIn.length).toLocaleString('en-GB')} more on left-out platforms` : ''}`,
         logo: section as TgHeaderConfig['logo'],
         onClear: clear,
         tabs: [
-          { key: ALL_PLATFORMS, label: 'All', count: inStatus.length },
+          { key: ALL_PLATFORMS, label: 'All', count: countedIn.length },
           ...byPlatform.map(p => ({ key: p.key, label: labels.get(p.key) ?? p.info.short, count: p.count })),
         ],
         activeTab: scopePlatform,
@@ -106,9 +114,9 @@ export function useTgHeaderConfig({ games, platform, statusCounts: sCounts, visi
       }
     }
     if (section === 'queue') {
-      const queued = games.filter(g => !g.hidden && g.play_order != null)
+      const queued = counted.filter(g => !g.hidden && g.play_order != null)
       const playing = queued.filter(g => g.play_status === 'playing').length
-      const q = queueInsights(games)
+      const q = queueInsights(counted)
       // Up next = still to play and not already being played; Completed and
       // Dropped games left in the queue are "finished", the same split as the
       // forecast and "Remove N finished".
@@ -162,6 +170,6 @@ export function useTgHeaderConfig({ games, platform, statusCounts: sCounts, visi
       activeTab: advancedTab,
       onTab: (k) => setAdvancedTab(k as AdvancedTab),
     }
-  }, [section, platform, sCounts, shelfTotal, statuses, fixedStatus, games, scopePlatform, visibleCount, libraryScope,
+  }, [section, platform, sCounts, shelfTotal, statuses, fixedStatus, games, counted, uncounted, scopePlatform, visibleCount, libraryScope,
       advancedTab, reviewCount, setStatus, setScopePlatform, setAdvancedTab, scrapeMode, setScrapeMode, search, genres, studios, clearFilters, setSearch])
 }

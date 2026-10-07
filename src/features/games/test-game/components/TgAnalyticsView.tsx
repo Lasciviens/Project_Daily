@@ -40,10 +40,11 @@ export function TgAnalyticsView({ lib }: { lib: TestGameLibrary }) {
 
   const [drill, setDrill] = useState<TgaTile | null>(null)
 
-  const counts = useLibraryCounts(lib.games)
+  // Platforms left out in Settings are not in any figure here.
+  const counts = useLibraryCounts(lib.countedGames)
   // A library that has since lost its last visible game falls back to All.
   const library: TgaLibrary = picked !== 'all' && counts[picked] === 0 ? 'all' : picked
-  const base = useTgAnalyticsBase(lib.games, period, library, today)
+  const base = useTgAnalyticsBase(lib.countedGames, period, library, today)
 
   if (lib.isError) return <TgErrorState error={lib.error} onRetry={lib.refetch} />
   if (lib.isLoading || (counts.all === 0 && lib.providersLoading)) {
@@ -52,11 +53,13 @@ export function TgAnalyticsView({ lib }: { lib: TestGameLibrary }) {
   if (counts.all === 0) return <div className="h-full pb-4 pt-2"><TgEmptyState kind="library" /></div>
 
   const windowed = base.start != null
-  const caption = tab === 'health'
+  const leftOut = lib.excludedPlatforms.length
+  const baseCaption = tab === 'health'
     ? 'Data health describes the whole library as it is today — the time window doesn’t apply here.'
     : windowed
       ? `Games you played, started or finished since ${formatDay(new Date(base.start!).toISOString())}. Play time is each game’s lifetime total — the providers report totals, not individual sessions.`
       : 'Your whole library. Play time is each game’s lifetime total, as ES-DE, Steam and PlayStation report it.'
+  const caption = leftOut ? `${baseCaption} ${leftOut === 1 ? 'One platform is' : `${leftOut} platforms are`} left out (Library settings).` : baseCaption
   // Data health reads the whole library, so an empty window doesn't blank it.
   const empty = tab === 'health' ? base.inLibrary.length === 0 : base.scoped.length === 0
 

@@ -1,9 +1,11 @@
 import { Menu, MenuButton, MenuHeading, MenuItem, MenuItems, MenuSection, MenuSeparator } from '@headlessui/react'
-import { Check, Copy, Eye, Plus, Settings2 } from 'lucide-react'
+import { Check, Copy, Eye, EyeOff, Plus, Settings2 } from 'lucide-react'
 import { useTestGameStore } from '../testGameStore'
 import { TgRefreshIcon } from './TgRefreshLibrary'
 import { useRefreshLibraryAction } from './useRefreshLibraryAction'
 import { useTgAddGame } from './tgAddGame'
+import { useTgPlatformPrefs } from './tgPlatformPrefs'
+import { useGamesPrefs } from '../../prefs/useGamesPrefs'
 import { TG_VIEWS } from './tgViews'
 
 const ICON = 'h-4 w-4 shrink-0'
@@ -26,6 +28,8 @@ export function TgLibraryMenu({ className = '', withAddGame = false, views = fal
   const setAdvancedTab = useTestGameStore(s => s.setAdvancedTab)
   const refresh = useRefreshLibraryAction()
   const openAddGame = useTgAddGame(s => s.setOpen)
+  const openPlatformPrefs = useTgPlatformPrefs(s => s.setOpen)
+  const leftOut = useGamesPrefs().prefs.excludedPlatforms.length
   const view = useTestGameStore(s => s.view)
   const setView = useTestGameStore(s => s.setView)
 
@@ -74,6 +78,12 @@ export function TgLibraryMenu({ className = '', withAddGame = false, views = fal
               </button>
             </MenuItem>
           )}
+          <MenuItem>
+            <button type="button" onClick={() => openPlatformPrefs(true)} className="tg-menu-item">
+              <EyeOff aria-hidden className={ICON} strokeWidth={1.9} />
+              <span className="min-w-0 flex-1 truncate">Platforms left out of stats{leftOut ? ` (${leftOut})` : ''}…</span>
+            </button>
+          </MenuItem>
           <MenuItem>
             <button type="button" onClick={() => setAdvancedTab('duplicates')} className="tg-menu-item">
               <Copy aria-hidden className={ICON} strokeWidth={1.9} />

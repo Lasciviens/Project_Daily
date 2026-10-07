@@ -1,4 +1,4 @@
-import { useDeferredValue, useMemo } from 'react'
+import { useCallback, useDeferredValue, useMemo } from 'react'
 import { useTestGameStore } from './testGameStore'
 import {
   ALL_PLATFORMS, STATUS_SECTIONS,
@@ -7,6 +7,7 @@ import {
   type PlatformCount, type PlatformGroup, type StatusCounts, type TgGame,
 } from './testGameModel'
 import type { TestGameLibrary } from './useTestGameLibrary'
+import { countedGames } from '../prefs/gamesPrefs'
 
 // What the page shows, derived from the library and the page state: which
 // platform shelf, which games in which order, and every count the navigation,
@@ -28,6 +29,8 @@ export interface TgLibraryView {
   statusCounts: StatusCounts
   /** Games on the shelf before search and filters narrow it. */
   shelfTotal: number
+  /** Games shown but not counted (platforms left out in Settings). */
+  uncounted: number
   /** The current section's games in display order (Advanced: the Random pool). */
   visible: TgGame[]
   /** ONE queue numbering for the badges, the queue rows and the ⋯ menu. */
@@ -90,12 +93,22 @@ export function useTgLibraryView(lib: TestGameLibrary): TgLibraryView {
       section === 'library' && statuses.includes('hidden')),
     [lib.games, section, effectivePlatform, effectiveScopePlatform, search, genres, statuses, ids],
   )
-  const sCounts = useMemo(() => statusCounts(scope), [scope])
+  // Platforms left out in Settings: their games still list, but no count
+  // includes them — except on that platform's own shelf, which counts itself.
+  const excluded = lib.excludedPlatforms
+  const countsSelf = excluded.includes(effectivePlatform)
+  const countable = useCallback((list: TgGame[]) => (countsSelf ? list : countedGames(list, excluded)), [countsSelf, excluded])
+  const sCounts = useMemo(() => statusCounts(countable(scope)), [scope, countable])
+  // Shown here but not counted (the All shelf): the header says how many.
+  const uncounted = useMemo(
+    () => (countsSelf || excluded.length === 0 ? 0 : statusCounts(scope).all - sCounts.all),
+    [countsSelf, excluded, scope, sCounts],
+  )
   // The shelf before any narrowing (search, genre, studio, an Analytics list):
   // the "of N" in "12 of 310 games" — the narrowed scope made it "12 of 12".
   const shelfTotal = useMemo(
-    () => statusCounts(scopeGames(lib.games, { section, platform: effectivePlatform, scopePlatform: effectiveScopePlatform, search: '' })).all,
-    [lib.games, section, effectivePlatform, effectiveScopePlatform],
+    () => statusCounts(countable(scopeGames(lib.games, { section, platform: effectivePlatform, scopePlatform: effectiveScopePlatform, search: '' }))).all,
+    [lib.games, section, effectivePlatform, effectiveScopePlatform, countable],
   )
 
   const visible = useMemo(() => {
@@ -107,14 +120,15 @@ export function useTgLibraryView(lib: TestGameLibrary): TgLibraryView {
 
   const ranks = useMemo(() => queueRanks(lib.games), [lib.games])
   const navCounts = useMemo(() => {
-    const all = statusCounts(lib.games)
+    const counted = lib.countedGames
+    const all = statusCounts(counted)
     // Needs review, from the rows the page holds (the same rule the tab lists).
-    const review = lib.games.reduce((n, g) => n + (needsReviewReasons(g).length > 0 ? 1 : 0), 0)
-    return { queue: ranks.size, wishlist: all.wishlist, completed: all.completed, review, hidden: all.hidden }
-  }, [lib.games, ranks])
+    const review = counted.reduce((n, g) => n + (needsReviewReasons(g).length > 0 ? 1 : 0), 0)
+    return { queue: queueRanks(counted).size, wishlist: all.wishlist, completed: all.completed, review, hidden: all.hidden }
+  }, [lib.countedGames])
 
   return {
     counts, groups, effectivePlatform, effectiveScopePlatform, isGameSection, genres: genreList, studios: studioList,
-    statusCounts: sCounts, shelfTotal, visible, ranks, navCounts,
+    statusCounts: sCounts, shelfTotal, uncounted, visible, ranks, navCounts,
   }
 }
