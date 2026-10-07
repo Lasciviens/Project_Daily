@@ -46,6 +46,12 @@ un-mocked modules (sucrase, no live DB), covering `classifyLoadStructure`,
 functions, event detection, five full worked examples, and
 `RULE_CATALOG` completeness. Run: `node scripts/verify-progress-engine.cjs`.
 
+`scripts/verify-progress-filters.cjs` covers the decision table's filters
+(`progress/decisionFilters.ts`: search, evidence, window, muscle, routine)
+and the per-exercise muscle/routine metadata `progressModel.ts` hands them —
+see `DATA_AND_LIMITATIONS.md`. The filters only choose which decisions are
+listed; they never change one.
+
 ## Change history
 
 See `CHANGELOG.md`. `ALGORITHM_VERSION` (in `policies.ts`) is stamped on

@@ -33,13 +33,32 @@ these are not conflated with a target-range change.
 additive cache), then compare the two sessions' own snapshots rather than
 inferring from set counts. Not started.
 
-## Muscle-group / routine / date-range filters — not yet built
+## Muscle-group / routine / date-range filters — built
 
-`ExerciseDecisionTable.tsx` ships search, 5 tabs, evidence-level filter,
-and a date-window filter. Muscle-group and specific-routine filters need
-per-exercise muscle/routine metadata this component doesn't currently
-receive from `useProgressData.ts`. Flagged as a real fast-follow, not
-silently dropped.
+`ExerciseDecisionTable.tsx` ships search, 5 tabs, an evidence-level filter,
+a date-window filter and (07.10.2026) Muscle and Routine filters. The
+per-exercise metadata comes from the progress model (`progressModel.ts`),
+next to the decisions, never from the engine:
+
+- `musclesByTemplateId` — each exercise's primary and secondary body slugs
+  from the exercise templates (`muscleMap.buildTemplateMuscleMap`; Hevy's
+  lats and upper back are one Back slug). **Muscle** keeps an exercise that
+  trains the picked muscle as its primary OR a secondary; each row then
+  shows a small "Primary muscle" / "Secondary muscle" chip.
+- `routineIdsByTemplateId` — the current-program routines an exercise
+  belongs to, by id: the routines that list it, plus one it was trained in
+  during the last 14 days (swapped in mid-workout — the same rule that keeps
+  such a lift in scope). **Routine** keeps the exercises that routine holds;
+  routines are picked by id (two routines may share a name, shown as
+  "Upper A", "Upper A (2)") and listed in the routine list's order (the
+  Program tab's). The filter shows only when the program has two or more
+  routines with logged exercises.
+
+Every filter combines with AND (search · evidence · window · muscle ·
+routine) in the pure `progress/decisionFilters.ts`, also narrows the
+"without enough data yet" fold, and "Clear filters" resets them all; a pick
+that is no longer offered (the program changed) filters nothing. Verified by
+`scripts/verify-progress-filters.cjs`. None of this changes a decision.
 
 ## `exercise_target_overrides` — read-only override, no editor UI yet
 
