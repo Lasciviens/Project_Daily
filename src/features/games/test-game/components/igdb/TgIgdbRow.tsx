@@ -1,8 +1,8 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Check, ExternalLink, Search } from 'lucide-react'
 import { platformInfo, type TgGame } from '../../testGameModel'
 import { useIgdbBatch, type IgdbRowState } from '../../../igdb/igdbBatchStore'
-import { formatLength, igdbPageUrl, rankCandidates, searchQuery, type ScoredCandidate } from '../../../igdb/igdbMatch'
+import { decideMatch, formatLength, igdbPageUrl, rankCandidates, searchQuery, type ScoredCandidate } from '../../../igdb/igdbMatch'
 import { useIgdbSearch } from '../../../igdb/useIgdb'
 import { matchTarget } from '../../../igdb/useIgdbRunner'
 import { TgCover } from '../TgCover'
@@ -32,7 +32,6 @@ export function TgIgdbRow({ game: g, row, ticked, busy, open, onToggle, onLookUp
   onSavePick: (c: ScoredCandidate) => Promise<boolean>
 }) {
   const set = useIgdbBatch(s => s.set)
-  const patchRows = useIgdbBatch(s => s.patchRows)
   const d = row?.decision
   const matched = isIgdbMatched(g)
   const tickable = !!row?.pick && !row.saved && !busy && !matched
@@ -45,7 +44,7 @@ export function TgIgdbRow({ game: g, row, ticked, busy, open, onToggle, onLookUp
   else if (row?.error) status = <Truncate className="text-[11.5px] text-[var(--tg-red)]">{`${row.error} — try again`}</Truncate>
   else if (busy) status = <span className="text-[11.5px] tg-muted">Looking up…</span>
   else if (!d) status = <span className="text-[11.5px] tg-muted">Not looked up</span>
-  else if (d.status === 'none') status = <span className="text-[11.5px] tg-muted">No match on IGDB — search by hand</span>
+  else if (d.status === 'none') status = <span className="text-[11.5px] tg-muted">No match on IGDB yet — Find again, or search by hand</span>
 
   return (
     <li className="tg-panel flex flex-col gap-2 p-2">
@@ -74,8 +73,8 @@ export function TgIgdbRow({ game: g, row, ticked, busy, open, onToggle, onLookUp
               IGDB <ExternalLink className="h-3.5 w-3.5" aria-hidden />
             </a>
           )}
-          {!d && !matched && !row?.saved && (
-            <button type="button" onClick={onLookUp} disabled={busy} className="tg-btn tg-btn-secondary !px-3 !text-[12.5px]">Find</button>
+          {(!d || d.status === 'none') && !matched && !row?.saved && (
+            <button type="button" onClick={onLookUp} disabled={busy} className="tg-btn tg-btn-secondary !px-3 !text-[12.5px]">{d ? 'Find again' : 'Find'}</button>
           )}
           <button type="button" onClick={onToggle} aria-expanded={open} className="tg-btn tg-btn-secondary !px-3 !text-[12.5px]">
             {open ? 'Close' : matched || row?.saved ? 'Change' : d && d.candidates.length > 1 ? `Results (${d.candidates.length})` : 'Search'}
@@ -84,14 +83,9 @@ export function TgIgdbRow({ game: g, row, ticked, busy, open, onToggle, onLookUp
       </div>
       {open && (
         <TgIgdbPicker game={g} row={row} onPick={async c => {
-          // From a lookup's own results a pick only replaces the tick target;
-          // a matched game or a hand search saves at once.
-          if (!matched && !row?.saved && d?.candidates.some(x => x.id === c.id)) {
-            patchRows({ [g.id]: { pick: c } })
-            set({ ticked: { ...useIgdbBatch.getState().ticked, [g.id]: true } })
-            onToggle()
-            return
-          }
+          // Picking a result saves it at once — from the lookup's results or a
+          // hand search alike (a pick that only moved the tick read as "found
+          // it, but it doesn't match").
           if (await onSavePick(c)) onToggle()
         }} />
       )}
@@ -104,6 +98,19 @@ function TgIgdbPicker({ game, row, onPick }: { game: TgGame; row: IgdbRowState |
   const [query, setQuery] = useState('')
   const search = useIgdbSearch(query)
   const found = search.data ? rankCandidates(matchTarget(game), search.data) : null
+  // A hand search is a fresh lookup: the row stops saying "No match" and
+  // offers its best result to tick (an exact one ticked already).
+  const patchRows = useIgdbBatch(s => s.patchRows)
+  const setBatch = useIgdbBatch(s => s.set)
+  useEffect(() => {
+    if (!search.data || !query || row?.saved || isIgdbMatched(game)) return
+    const d = decideMatch(matchTarget(game), null, search.data)
+    if (!d.best) return
+    patchRows({ [game.id]: { decision: d, pick: d.best, error: undefined } })
+    if (d.status === 'exact') setBatch({ ticked: { ...useIgdbBatch.getState().ticked, [game.id]: true } })
+    // Only when a new search answers.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search.data, query])
   const list = found ?? row?.decision?.candidates ?? []
   return (
     <div className="flex flex-col gap-2 rounded-lg bg-[var(--tg-panel-2)] p-2">
@@ -120,7 +127,7 @@ function TgIgdbPicker({ game, row, onPick }: { game: TgGame; row: IgdbRowState |
         {list.slice(0, 8).map(c => (
           <li key={c.id} className="flex items-center gap-2 rounded-lg bg-[var(--tg-panel)] p-2">
             <span className="min-w-0 flex-1"><TgIgdbCandidate c={c} ours={ours(game)} /></span>
-            <button type="button" onClick={() => onPick(c)} className="tg-btn tg-btn-primary shrink-0 !px-3 !text-[12.5px]">Use this</button>
+            <button type="button" onClick={() => onPick(c)} className="tg-btn tg-btn-primary shrink-0 !px-3 !text-[12.5px]">Save match</button>
           </li>
         ))}
       </ul>

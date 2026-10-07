@@ -9,7 +9,3 @@ export const ADVANCED_TABS: { key: AdvancedTab; label: string }[] = [
   { key: 'steam',       label: 'Steam' },
   { key: 'playstation', label: 'PlayStation' },
 ]
-
-/** Where a Random pick draws from: the Library's platform, still narrowed by
- *  a search or genre. */
-export interface TgRandomScope { platform: string; search: string; genres: readonly string[] }

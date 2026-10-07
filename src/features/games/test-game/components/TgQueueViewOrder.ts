@@ -51,26 +51,6 @@ export function displayRanks(
 }
 
 /**
- * The two writes that swap the games at `from` and `to`.
- *
- * A swap of the two stored values, never a renumbering: the list on screen can
- * be a subset of the real queue (a search, a genre filter, hidden rows), and
- * renumbering the subset 1…n would collide with the rows it does not show.
- * Two rows that share a value (a race between two "Add to Play Queue" taps)
- * cannot be swapped, so the displaced one is pushed one slot later instead.
- */
-export function swapUpdates(list: QueueItem[], from: number, to: number): QueueUpdate[] | null {
-  const a = list[from]
-  const b = list[to]
-  if (!a || !b || a.play_order == null || b.play_order == null) return null
-  if (a.play_order !== b.play_order) {
-    return [{ id: a.id, play_order: b.play_order }, { id: b.id, play_order: a.play_order }]
-  }
-  const [first, second] = from < to ? [b, a] : [a, b]
-  return [{ id: first.id, play_order: a.play_order }, { id: second.id, play_order: a.play_order + 1 }]
-}
-
-/**
  * The writes that move the game at `from` to `to` (drag and drop, or a Move
  * up / Move down press).
  *

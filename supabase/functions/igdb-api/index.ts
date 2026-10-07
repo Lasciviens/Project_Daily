@@ -90,7 +90,9 @@ async function multi(queries: { name: string; endpoint: string; body: string }[]
     const part = queries.slice(i, i + 10)
     const body = part.map(q => `query ${q.endpoint} "${q.name}" {\n${q.body}\n};`).join('\n')
     const res = await igdb('multiquery', body)
-    for (const x of res) out.set(String(x.name), Array.isArray(x.result) ? x.result : [])
+    // A query whose answer isn't a list (an error inside the batch) is left
+    // out, so the caller reports it as a failed lookup instead of "no match".
+    for (const x of res) if (Array.isArray(x?.result)) out.set(String(x.name), x.result)
   }
   return out
 }
@@ -276,12 +278,19 @@ Deno.serve(async (req: Request) => {
       })
       const found = await multi(searches)
       // A second, shorter search (the title before its subtitle) for those that found nothing.
-      const retry = [...searchFor].filter(([name, x]) => !(found.get(name) ?? []).length && String(x.fallback ?? '').trim().length >= 3)
+      const retry = [...searchFor].filter(([name, x]) => found.has(name) && !found.get(name)!.length && String(x.fallback ?? '').trim().length >= 3)
       const again = retry.length ? await multi(retry.map(([name, x]) => ({
         name: `${name}b`, endpoint: 'games', body: `search ${quoted(String(x.fallback))}; ${CANDIDATE_FIELDS} where version_parent = null; limit 10;`,
       }))) : new Map<string, AnyRec[]>()
       for (const [name, x] of searchFor) {
-        const rows = (found.get(name) ?? []).length ? found.get(name)! : again.get(`${name}b`) ?? []
+        const first = found.get(name)
+        const second = again.get(`${name}b`)
+        // No answer from IGDB for this game's search: a failed lookup, never "no match".
+        if (!first || (!first.length && retry.some(([n]) => n === name) && !second)) {
+          results.push({ game_id: x.game_id, steam: null, candidates: [], error: 'IGDB did not answer this search' })
+          continue
+        }
+        const rows = first.length ? first : second ?? []
         results.push({ game_id: x.game_id, steam: null, candidates: rows.map(toCandidate) })
       }
       return json({ results })

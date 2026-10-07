@@ -71,7 +71,7 @@ export function FoodInsightsTab() {
               <p className="mb-1.5 text-meta text-fg-muted">Where your calories come from</p>
               <MacroBar protein={ins.avg.protein} carbs={ins.avg.carbs} fat={ins.avg.fat} />
               <p className="mt-1.5 text-micro tabular-nums text-fg-muted">
-                Protein {Math.round(ins.avg.protein)} g · Carbs {Math.round(ins.avg.carbs)} g · Fat {Math.round(ins.avg.fat)} g a day
+                Protein {Math.round(ins.avg.protein)} g · Carbs {Math.round(ins.avg.carbs)} g · Fat {Math.round(ins.avg.fat)} g · Sugar {Math.round(ins.avg.sugar)} g · Fibre {Math.round(ins.avg.fiber)} g a day
               </p>
             </div>
           </Card>

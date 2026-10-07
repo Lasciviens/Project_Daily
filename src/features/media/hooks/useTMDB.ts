@@ -5,13 +5,10 @@ import {
   getTrendingMovies, getTrendingTV,
   getPopularMovies, getPopularTV,
   getMovieFull, getTVFull,
-  getUpcomingMovies, getUpcomingTV,
   getSimilarMovies, getSimilarTV,
-  getNorwegianMovies, getNorwegianTV,
-  getNorwegianTopRatedMovies, getNorwegianTopRatedTV,
   getSeasonDetails,
   getCollection, getBasic,
-  getWatchProviders, discoverOnServices, discoverShort,
+  getWatchProviders, discoverShort,
 } from '../api/tmdbApi'
 
 import type { TMDBSearchMovie, TMDBSearchTV } from '../types'
@@ -93,56 +90,6 @@ export function useTVFull(tmdbId: number | null) {
   })
 }
 
-export function useUpcomingMovies(enabled = true) {
-  return useQuery({
-    enabled,
-    queryKey: key('upcoming', 'movie'),
-    queryFn:  () => getUpcomingMovies().then(r => r.results),
-    staleTime: STALE.day,
-  })
-}
-
-export function useUpcomingTV(enabled = true) {
-  return useQuery({
-    enabled,
-    queryKey: key('upcoming', 'tv'),
-    queryFn:  () => getUpcomingTV().then(r => r.results),
-    staleTime: STALE.day,
-  })
-}
-
-export function useNorwegianMovies() {
-  return useQuery({
-    queryKey: key('norwegian', 'movie'),
-    queryFn:  () => getNorwegianMovies().then(r => r.results),
-    staleTime: STALE.day,
-  })
-}
-
-export function useNorwegianTV() {
-  return useQuery({
-    queryKey: key('norwegian', 'tv'),
-    queryFn:  () => getNorwegianTV().then(r => r.results),
-    staleTime: STALE.day,
-  })
-}
-
-export function useNorwegianTopRatedMovies() {
-  return useQuery({
-    queryKey: key('norwegian', 'movie', 'top-rated'),
-    queryFn:  () => getNorwegianTopRatedMovies().then(r => r.results),
-    staleTime: STALE.day,
-  })
-}
-
-export function useNorwegianTopRatedTV() {
-  return useQuery({
-    queryKey: key('norwegian', 'tv', 'top-rated'),
-    queryFn:  () => getNorwegianTopRatedTV().then(r => r.results),
-    staleTime: STALE.day,
-  })
-}
-
 export function useSeasonDetails(tvId: number | null, season: number | null) {
   return useQuery({
     queryKey: key('season', tvId, season),
@@ -208,15 +155,6 @@ export function useWatchProviders(type: 'movie' | 'tv', enabled = true) {
     queryKey: key('providers', type, 'NO'),
     queryFn:  () => getWatchProviders(type).then(r => [...r.results].sort((a, b) => (a.display_priority ?? 999) - (b.display_priority ?? 999))),
     enabled,
-    staleTime: STALE.day,
-  })
-}
-
-export function useOnMyServices(type: 'movie' | 'tv', providerIds: number[], enabled = true) {
-  return useQuery({
-    queryKey: key('on-services', type, [...providerIds].sort((a, b) => a - b).join(',')),
-    queryFn:  () => discoverOnServices(type, providerIds).then(r => r.results),
-    enabled:  enabled && providerIds.length > 0,
     staleTime: STALE.day,
   })
 }

@@ -151,7 +151,6 @@ export function formatMoney(amount: number, currency: string): string {
 // Home currency widget's query (useCurrencyRates → rawRates: X per 1 USD).
 
 export const SUBSCRIPTION_CURRENCIES = ['NOK', 'TRY', 'USD', 'EUR'] as const
-export type SubscriptionCurrency = typeof SUBSCRIPTION_CURRENCIES[number]
 
 const CURRENCY_ALIASES: Record<string, string> = {
   TL: 'TRY', '₺': 'TRY', YTL: 'TRY', KR: 'NOK', NKR: 'NOK', '$': 'USD', US$: 'USD', '€': 'EUR',

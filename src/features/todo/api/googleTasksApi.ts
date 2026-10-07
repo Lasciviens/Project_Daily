@@ -123,13 +123,6 @@ async function paginateTasks(token: string, googleListId: string, params: Record
   return out
 }
 
-// Normal UI-facing fetch: undone-or-done tasks Google would show by default,
-// but never hidden/deleted tombstones — those are sync-engine data, not
-// something a plain "what's in my Google Tasks" view needs to see.
-export async function fetchVisibleGoogleTasks(token: string, googleListId = '@default'): Promise<GoogleRemoteTask[]> {
-  return paginateTasks(token, googleListId, { showCompleted: 'true', showHidden: 'false', showDeleted: 'false' })
-}
-
 // First-time (or forced re-) full sync: every task including hidden/deleted
 // tombstones, real pagination — this is what lets local fully mirror Google's
 // state instead of only ever seeing the not-yet-hidden subset.
@@ -218,13 +211,6 @@ export async function moveGoogleTask(
   return request(token, `/lists/${googleListId}/tasks/${googleTaskId}/move${suffix}`, {
     method: 'POST',
   }) as Promise<GoogleRemoteTask>
-}
-
-// Marks every completed task in the list 'hidden' — distinct from delete.
-// No UI trigger yet (low priority per the phase plan); kept for full API
-// coverage so the capability exists once a "clear completed" button is wanted.
-export async function clearCompletedGoogleTasks(token: string, googleListId: string): Promise<void> {
-  await request(token, `/lists/${googleListId}/clear`, { method: 'POST' })
 }
 
 // due comes back as RFC 3339 midnight UTC — convert to local date string 'yyyy-MM-dd'

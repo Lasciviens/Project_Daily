@@ -48,7 +48,6 @@ export interface NutritionStats { loggedDays: number; period: number; reliable: 
 export const PROTEIN_FLOOR_G_PER_KG = 1.6
 export const PER_MEAL_G_PER_KG = 0.4
 export const FIBER_LOW = 25
-export const FIBER_HIGH = 30
 export const FAT_FLOOR_G_PER_KG = 0.6
 export const WEEKEND_GAP_KCAL = 500
 export const UNDERLOG_SHARE = 0.85

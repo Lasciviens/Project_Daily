@@ -23,11 +23,3 @@ export async function searchBrandedFoods(query: string): Promise<BarcodeProduct[
   if (error) throw error
   return (data?.products ?? []) as BarcodeProduct[]
 }
-
-export async function lookupBrandedBarcode(ean: string): Promise<BarcodeProduct | null> {
-  const clean = ean.replace(/\D/g, '')
-  if (!clean) return null
-  const { data, error } = await supabase.functions.invoke('food-search', { body: { ean: clean } })
-  if (error) throw error
-  return (data?.products?.[0] ?? null) as BarcodeProduct | null
-}

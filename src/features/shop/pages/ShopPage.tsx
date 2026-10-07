@@ -1,10 +1,9 @@
 import { useState } from 'react'
-import { ChevronRight, Plus, ShoppingBag, Sparkles } from 'lucide-react'
+import { Plus, ShoppingBag, Sparkles } from 'lucide-react'
 import { useShopCategories, useShopItems } from '../hooks/useShop'
 import { ShopAIBox } from '../components/ShopAIBox'
 import { ShopItemCard } from '../components/ShopItemCard'
 import { AddShopItemModal } from '../components/AddShopItemModal'
-import { FoodTabs } from '../../personal/components/PersonalLayout'
 import { Sheet } from '../../../shared/components/Sheet'
 import { Button, EmptyState, IconButton, PageContainer, PageHeader, SectionLabel, Skeleton } from '../../../shared/ui'
 import { haptic } from '../../../shared/utils/haptics'
@@ -12,7 +11,7 @@ import type { ShopItem } from '../types'
 
 // As many ≥ 17rem columns as fit, sharing the width: auto-fill with a fixed
 // maximum counts by the maximum and leaves up to a column's worth empty.
-const ITEM_GRID = 'grid grid-cols-1 gap-3 sm:grid-cols-[repeat(auto-fill,minmax(17rem,1fr))]'
+const ITEM_GRID = 'grid grid-cols-1 gap-2 sm:gap-3 sm:grid-cols-[repeat(auto-fill,minmax(17rem,1fr))]'
 
 // A full-height route (`fullHeight` in src/app/navigation.ts): the page fills
 // <main> exactly and each pane scrolls on its own, so the assistant's input
@@ -50,24 +49,26 @@ export function ShopPage() {
 
       <div className="scroll-y min-h-0 min-w-0 flex-1 overflow-y-auto">
         <PageContainer>
-          <PageHeader
-            title="Shop"
-            actions={<>
-              <FoodTabs />
-              <IconButton label="Ask the shopping assistant" bordered onClick={openAssistant} className="hidden md:inline-grid lg:hidden"><Sparkles /></IconButton>
-              <Button variant="primary" icon={<Plus />} onClick={() => setAddOpen(true)}>Add item</Button>
-            </>}
-          >
-            {tops.length > 0 && (
-              <div role="tablist" aria-label="Category" className="scroll-x -mx-1 flex gap-1.5 px-1">
-                <button type="button" role="tab" aria-selected={!activeTop} onClick={() => setActiveTop(null)} className="pill-tab shrink-0">All</button>
-                {tops.map(t => (
-                  <button key={t.id} type="button" role="tab" aria-selected={activeTop === t.id} onClick={() => setActiveTop(t.id)} className="pill-tab shrink-0">
-                    {t.name}
-                  </button>
-                ))}
+          {/* One row on every width: categories scroll, the actions stay on the
+              right (icon-only on a phone) — no separate action row, and the
+              assistant opens from here instead of a card above the tab bar. */}
+          <PageHeader title="Shop">
+            <div className="flex items-center gap-2">
+              <div role="tablist" aria-label="Category" className="scroll-x -mx-1 flex min-w-0 flex-1 gap-1.5 px-1">
+                {tops.length > 0 && <>
+                  <button type="button" role="tab" aria-selected={!activeTop} onClick={() => setActiveTop(null)} className="pill-tab shrink-0">All</button>
+                  {tops.map(t => (
+                    <button key={t.id} type="button" role="tab" aria-selected={activeTop === t.id} onClick={() => setActiveTop(t.id)} className="pill-tab shrink-0">
+                      {t.name}
+                    </button>
+                  ))}
+                </>}
               </div>
-            )}
+              <IconButton label="Ask the shopping assistant" bordered onClick={openAssistant} className="shrink-0 lg:hidden"><Sparkles /></IconButton>
+              <Button variant="primary" icon={<Plus />} onClick={() => setAddOpen(true)} aria-label="Add item" className="shrink-0">
+                <span className="max-sm:hidden">Add item</span>
+              </Button>
+            </div>
           </PageHeader>
 
           {isLoading ? (
@@ -81,12 +82,12 @@ export function ShopPage() {
           ) : visibleItems.length === 0 ? (
             <EmptyState title="Nothing here yet" description="Items you add to this category show up here." />
           ) : (
-            <div className="flex flex-col gap-6">
+            <div className="flex flex-col gap-5">
               {tops.filter(t => visibleTopIds.includes(t.id)).map(top => {
                 const topSubs = subs.filter(s => s.parent_id === top.id && (bySub.get(s.id) ?? []).length > 0)
                 if (topSubs.length === 0) return null
                 return (
-                  <section key={top.id} className="flex flex-col gap-3">
+                  <section key={top.id} className="flex flex-col gap-2 sm:gap-3">
                     <h2 className="text-lead font-semibold text-fg">{top.name}</h2>
                     {topSubs.map(sub => (
                       <div key={sub.id} className="flex flex-col gap-2">
@@ -103,15 +104,6 @@ export function ShopPage() {
           )}
         </PageContainer>
       </div>
-
-      {/* Phone: a card in the page gutter, above the tab bar, that opens the
-          assistant as a bottom sheet (not a full-bleed strip). */}
-      <button type="button" onClick={openAssistant}
-        className="press-feedback mx-4 mt-2 flex min-h-[52px] shrink-0 items-center gap-2.5 rounded-card border border-line bg-surface px-4 text-left shadow-card md:hidden">
-        <span aria-hidden className="grid h-7 w-7 place-items-center rounded-control bg-accent-50 text-accent-600"><Sparkles className="h-4 w-4" /></span>
-        <span className="text-ui font-semibold text-fg">Ask the assistant</span>
-        <ChevronRight aria-hidden className="ml-auto h-4 w-4 text-fg-faint" />
-      </button>
 
       {addOpen && <AddShopItemModal onClose={() => setAddOpen(false)} />}
 

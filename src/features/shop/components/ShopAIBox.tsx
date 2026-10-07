@@ -115,10 +115,10 @@ export function ShopAIBox({ onClose }: { onClose?: () => void } = {}) {
           placeholder="Write a message"
           aria-label="Message the shopping assistant"
           disabled={sending}
-          className="input flex-1 disabled:opacity-60"
+          className="input min-w-0 flex-1 disabled:opacity-60"
         />
-        <Button variant="primary" icon={<SendHorizontal />} onClick={() => send(input)} disabled={sending || !input.trim()} className="shrink-0">
-          Send
+        <Button variant="primary" icon={<SendHorizontal />} onClick={() => send(input)} disabled={sending || !input.trim()} className="shrink-0" aria-label="Send">
+          <span className="max-sm:hidden">Send</span>
         </Button>
       </div>
     </div>

@@ -36,7 +36,6 @@ export const qk = {
     day: (date: string, calIds: string) => ['calendar', 'day', date, calIds] as const,
     /** Prefix: every calendar selection's events for one day. */
     dayAll: (date: string) => ['calendar', 'day', date] as const,
-    range: (from: string, to: string, calIds: string) => ['calendar', 'range', from, to, calIds] as const,
     dates: (from: string, to: string, calIds: string) => ['calendar', 'dates', from, to, calIds] as const,
   },
   // Food: the diary (food_log_entries) is read under two roots today.

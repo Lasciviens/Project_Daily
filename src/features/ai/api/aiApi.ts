@@ -603,47 +603,6 @@ export async function estimateRecipeMacros(
   return invokeStructured<MacroEstimate>(prompt, MACRO_ESTIMATE_SCHEMA)
 }
 
-// ─── Vision: photo → food items ────────────────────────────────────────────
-//  Send a meal/nutrition-label photo, get back estimated items to REVIEW and
-//  edit before logging (never auto-saved — same contract as the barcode flow).
-
-export interface PhotoFoodItem {
-  name:      string
-  grams:     number | null
-  calories:  number | null
-  protein_g: number | null
-  carbs_g:   number | null
-  fat_g:     number | null
-}
-
-const FOOD_PHOTO_SCHEMA = {
-  type: 'OBJECT',
-  properties: {
-    items: {
-      type: 'ARRAY',
-      items: {
-        type: 'OBJECT',
-        properties: {
-          name:      { type: 'STRING' },
-          grams:     { type: 'NUMBER', description: 'Estimated portion in grams' },
-          calories:  { type: 'NUMBER' },
-          protein_g: { type: 'NUMBER' },
-          carbs_g:   { type: 'NUMBER' },
-          fat_g:     { type: 'NUMBER' },
-        },
-        required: ['name'],
-      },
-    },
-  },
-  required: ['items'],
-}
-
-export async function parseFoodPhoto(imageDataUrl: string): Promise<PhotoFoodItem[]> {
-  const prompt = `This is a photo of food — either a plated meal or a product's nutrition label. Identify each distinct food item and estimate, for the portion shown, its weight in grams and its macros (calories, protein_g, carbs_g, fat_g). If it's a nutrition label, read the declared values (state the basis in the name if per-100g). Output item names in TURKISH. Be realistic; never refuse — give your best estimate.`
-  const res = await invokeStructured<{ items: PhotoFoodItem[] }>(prompt, FOOD_PHOTO_SCHEMA, [imageDataUrl])
-  return res.items ?? []
-}
-
 // ─── Semantic search index ─────────────────────────────────────────────────
 //  One-tap rebuild of the embedding index over the user's own text (recipes,
 //  coach history, dev requests, work notes, saved memories). Idempotent; safe

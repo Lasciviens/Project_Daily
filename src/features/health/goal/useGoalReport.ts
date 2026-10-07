@@ -101,5 +101,3 @@ export function useGoalReport(windowDays: GoalWindow) {
     isError: diary.isError || active.isError || basal.isError || weights.isError,
   }
 }
-
-export type GoalReportData = ReturnType<typeof useGoalReport>

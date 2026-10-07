@@ -38,5 +38,21 @@ check('kcal within ±10%', s.kcalOnTargetDays === 2, String(s.kcalOnTargetDays))
   const p = summarizeWeek(rows, '2026-09-21', { calories: 2000, protein: 150 }, '2026-09-21')
   check('today (partial) is drawn but left out of averages', p.loggedDays === 1 && p.avgKcal === 2000 && p.days[6].partial && p.days[6].logged, JSON.stringify(p.days[6]))
 }
+{
+  const rows = [
+    { date: '2026-09-24', calories: 1800, protein_g: 140, carbs_g: 200, fat_g: 60, sugar_g: 40, fiber_g: 20 },
+    { date: '2026-09-25', calories: 1000, protein_g: 80, carbs_g: 100.4, fat_g: 30, sugar_g: null, fiber_g: 9 },
+    { date: '2026-09-25', calories: 1000, protein_g: 60, carbs_g: 100, fat_g: 31, sugar_g: 10, fiber_g: 2 },  // same day → 200.4 / 61 / 10 / 11
+    { date: '2026-09-23', calories: 0, protein_g: 0, carbs_g: 50, fat_g: 0, sugar_g: 0, fiber_g: 0 },       // 0 kcal → not a logged day
+    { date: '2026-09-26', calories: 900, protein_g: 70, carbs_g: 90, fat_g: 20, sugar_g: 5, fiber_g: 4 },   // today, partial
+  ]
+  const m = summarizeWeek(rows, '2026-09-26', T, '2026-09-26')
+  check('carbs average over complete logged days', m.avgCarbs === Math.round((200 + 200.4) / 2), String(m.avgCarbs))
+  check('fat average', m.avgFat === Math.round((60 + 61) / 2), String(m.avgFat))
+  check('sugar average (a null counts as 0 on a logged day)', m.avgSugar === Math.round((40 + 10) / 2), String(m.avgSugar))
+  check('fibre average', m.avgFiber === Math.round((20 + 11) / 2), String(m.avgFiber))
+  check('rows without the new fields still work', summarizeWeek([{ date: '2026-09-26', calories: 500, protein_g: 30 }], '2026-09-26', T).avgCarbs === 0)
+  check('no logged days → null macro averages', summarizeWeek([], '2026-09-26', T).avgFat === null)
+}
 console.log(`\n${passed} passed, ${failed} failed`)
 process.exit(failed ? 1 : 0)

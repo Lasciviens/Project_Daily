@@ -315,8 +315,8 @@ export function RecipeModal({ open = true, onClose, recipe }: Props) {
         <textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="Short description (optional)" rows={2}
           aria-label="Description" className="input resize-none" />
 
-        <div>
-          <label htmlFor="rm-servings" className="field-label">Base servings</label>
+        <div className="flex items-center gap-3">
+          <label htmlFor="rm-servings" className="field-label !mb-0">Base servings</label>
           <input id="rm-servings" type="number" min="1" step="1" value={servings} onChange={e => setServings(e.target.value)} className="input w-24 text-center tabular-nums" />
         </div>
 

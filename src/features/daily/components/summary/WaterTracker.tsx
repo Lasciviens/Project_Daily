@@ -61,15 +61,16 @@ export function WaterTracker({ date }: { date: string }) {
         {otherOpen ? (
           <form className="flex items-center gap-1" onSubmit={e => { e.preventDefault(); addOther() }}>
             <input autoFocus value={other} onChange={e => setOther(e.target.value.replace(/\D/g, ''))} inputMode="numeric"
-              placeholder="ml" aria-label="Water amount in ml" className="input w-16 px-2 text-right tabular-nums"
+              placeholder="ml" aria-label="Water amount in ml" className="input w-[4.5rem] px-2 text-right tabular-nums"
               onKeyDown={e => { if (e.key === 'Escape') setOtherOpen(false) }} />
             <button type="submit" disabled={add.isPending || !(Number(other) > 0)} className={chip}>Add</button>
           </form>
         ) : (
           <button type="button" onClick={() => setOtherOpen(true)} className={chip}>Other</button>
         )}
+        {/* Icon-only while the amount box is open, so the row never wraps on a phone. */}
         <button type="button" onClick={() => undo.mutate()} disabled={undo.isPending || ml <= 0}
-          className={`${chip} ml-auto`} aria-label="Undo last water"><Undo2 className="h-3.5 w-3.5" aria-hidden /><span className="hidden @[20rem]:inline">Undo</span></button>
+          className={`${chip} ml-auto`} aria-label="Undo last water"><Undo2 className="h-3.5 w-3.5" aria-hidden /><span className={otherOpen ? 'hidden @[30rem]:inline' : 'hidden @[20rem]:inline'}>Undo</span></button>
       </div>
       {behindBy >= 250 && (
         <p className="text-meta text-fg-muted tabular-nums">About {behindBy} ml behind pace for this time of day</p>

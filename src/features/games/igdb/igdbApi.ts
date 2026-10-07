@@ -32,7 +32,7 @@ export const fetchIgdbStatus = async (): Promise<{ configured: boolean }> => {
 }
 
 export interface IgdbMatchItem { game_id: string; query: string; fallback?: string | null; steam_appid?: number | null }
-export interface IgdbMatchResult { game_id: string; steam: IgdbCandidate | null; candidates: IgdbCandidate[] }
+export interface IgdbMatchResult { game_id: string; steam: IgdbCandidate | null; candidates: IgdbCandidate[]; error?: string }
 
 export const matchIgdb = (items: IgdbMatchItem[]) =>
   invoke<{ results: IgdbMatchResult[] }>({ action: 'match', items }).then(r => r.results ?? [])

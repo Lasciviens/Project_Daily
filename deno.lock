@@ -27,7 +27,6 @@
         "npm:@zxing/library@0.23",
         "npm:autoprefixer@^10.5.0",
         "npm:date-fns@^4.4.0",
-        "npm:eslint-config-prettier@^10.1.8",
         "npm:eslint-plugin-react-hooks@^7.1.1",
         "npm:eslint-plugin-react-refresh@~0.5.2",
         "npm:eslint@^10.3.0",

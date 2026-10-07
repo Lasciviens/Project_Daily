@@ -18,8 +18,5 @@ export async function tmdbFetch<T>(path: string, params: Record<string, string> 
 export const posterUrl = (path: string | null, size = 'w342'): string =>
   path ? `${IMAGE_BASE}/${size}${path}` : '/placeholder-poster.png'
 
-export const backdropUrl = (path: string | null, size = 'w780'): string =>
-  path ? `${IMAGE_BASE}/${size}${path}` : ''
-
 export const tmdbMovieUrl = (tmdbId: number) => `https://www.themoviedb.org/movie/${tmdbId}`
 export const tmdbTVUrl    = (tmdbId: number) => `https://www.themoviedb.org/tv/${tmdbId}`

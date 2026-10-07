@@ -7,10 +7,7 @@ interface UIState {
   isAIOpen:        boolean
   isCommandBarOpen:boolean
   // Global chrome scroll cues (mobile hide-on-scroll header + scroll-depth
-  // shadow). Lives in the store so BOTH the app's <main> scroller AND the
-  // Personal group's own inner scroll container (PersonalLayout) can drive the
-  // same header — on /daily,/shop,/recipes <main> never scrolls, so a header
-  // that only watched <main> stayed permanently pinned there.
+  // shadow), driven by <main>'s scroll.
   chromeHidden:    boolean
   chromeScrolled:  boolean
   toggleDevRequests: () => void

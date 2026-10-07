@@ -45,6 +45,13 @@ export function ShopItemCard({ item }: { item: ShopItem }) {
           {item.notes && <Truncate as="p" lines={2} className="mt-0.5 text-meta text-fg-muted">{item.notes}</Truncate>}
         </div>
         {item.region && <span className="shrink-0 text-base leading-none" title={item.region}>{REGION_FLAG[item.region]}</span>}
+        {/* Phone: the actions sit in this row instead of a footer row of their own. */}
+        <div className="-mr-2 -mt-2 flex shrink-0 sm:hidden">
+          <IconButton label={isBought ? 'Back to wishlist' : 'Mark bought'} onClick={toggleBought} disabled={update.isPending}>
+            {isBought ? <RotateCcw /> : <Check />}
+          </IconButton>
+          <IconButton label={`Delete ${item.title}`} onClick={handleDelete} className="text-fg-faint hover:!text-danger"><X /></IconButton>
+        </div>
       </div>
 
       {(item.platform || item.price != null || item.planned_date || item.url) && (
@@ -65,9 +72,9 @@ export function ShopItemCard({ item }: { item: ShopItem }) {
         </div>
       )}
 
-      <div aria-hidden className="h-2 shrink-0" />
+      <div aria-hidden className="h-3 shrink-0 sm:h-2" />
       {/* mt-auto pins the actions to the bottom when a row stretches the card. */}
-      <div className="mt-auto flex items-center gap-1 border-t border-line px-1.5 py-1">
+      <div className="mt-auto flex items-center max-sm:hidden gap-1 border-t border-line px-1.5 py-1">
         <button type="button" onClick={toggleBought} disabled={update.isPending}
           className="btn-ghost btn-sm flex-1 justify-start gap-1.5 disabled:opacity-50">
           {isBought ? <RotateCcw aria-hidden className="h-4 w-4" /> : <Check aria-hidden className="h-4 w-4" />}

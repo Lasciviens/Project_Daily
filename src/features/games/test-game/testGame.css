@@ -542,43 +542,7 @@
 .tg-queue.is-dragging, .tg-queue.is-dragging * { cursor: grabbing; user-select: none; -webkit-user-select: none; }
 .tg-queue-grip { cursor: grab; color: var(--tg-faint); }
 
-/* ═══ Connections, the npsso form and the classic-dialog token remap ═════════
-   (PSN/Steam status rows in the ⋯ menu, the npsso form, and the legacy-token
-   remap that lets reused components sit inside this page) */
-
-.tg-conn-row { display: flex; align-items: flex-start; gap: 10px; padding: 8px 10px; border-radius: 10px; }
-.tg-conn-row[data-tone='ok'] { --conn: var(--tg-green); }
-.tg-conn-row[data-tone='warn'] { --conn: var(--tg-star); }
-.tg-conn-row[data-tone='bad'] { --conn: var(--tg-red); }
-.tg-conn-row[data-tone='idle'] { --conn: var(--tg-grey); }
-.tg-conn-row[data-tone='warn'], .tg-conn-row[data-tone='bad'] { background: color-mix(in srgb, var(--conn) 9%, transparent); }
-.tg-conn-dot { width: 8px; height: 8px; margin-top: 6px; border-radius: 999px; flex-shrink: 0; background: var(--conn); }
-.tg-conn-text { color: var(--tg-text-2); }
-.tg-conn-row[data-tone='warn'] .tg-conn-text { color: color-mix(in srgb, var(--tg-star) 70%, var(--tg-text)); }
-.tg-conn-row[data-tone='bad'] .tg-conn-text { color: var(--tg-red); }
-.tg-conn-btn {
-  display: inline-flex; align-items: center; min-height: 32px; padding: 0 12px; border-radius: 8px;
-  font-size: 12.5px; font-weight: 600; color: var(--tg-text);
-  background: var(--tg-panel-2); border: 1px solid var(--tg-border);
-}
-.tg-conn-btn.is-primary { background: var(--tg-accent); border-color: transparent; color: var(--tg-on-accent); }
-.tg-conn-btn[data-focus] { border-color: var(--tg-accent); }
-@media (pointer: coarse) { .tg-conn-btn { min-height: 44px; padding: 0 14px; } }
-@media (hover: hover) {
-  .tg-conn-btn:not(.is-primary):hover { background: var(--tg-hover); }
-  .tg-conn-btn.is-primary:hover { background: var(--tg-accent-hover); }
-}
-.tg-portal .tg-conn-btn:focus-visible, .tg-root .tg-conn-btn:focus-visible { border-radius: 9px; }
-
-/* The shared PsnNpssoForm, drawn with the app's utilities, in this page's palette. */
-.tg-npsso ol { color: var(--tg-text-2); }
-.tg-npsso a { color: var(--tg-accent); }
-.tg-npsso code { background: var(--tg-panel-2); color: var(--tg-text); }
-.tg-npsso textarea { background: var(--tg-panel-2); border-color: var(--tg-border-strong); color: var(--tg-text); font-size: 16px; }
-.tg-npsso textarea::placeholder { color: var(--tg-faint); }
-.tg-npsso textarea:focus { border-color: var(--tg-accent); box-shadow: 0 0 0 3px var(--tg-accent-soft); --tw-ring-shadow: 0 0 #0000; }
-.tg-npsso button { background: var(--tg-accent); border-radius: 10px; }
-@media (hover: hover) { .tg-npsso button:hover:not(:disabled) { background: var(--tg-accent-hover); } }
+/* ═══ Classic-dialog token remap ══════════════════════════════════════════ */
 
 /* Reused legacy components (Advanced tabs, Add game, the classic edit form)
    are drawn with the app's cream/ink/accent tokens. Redefining those tokens
