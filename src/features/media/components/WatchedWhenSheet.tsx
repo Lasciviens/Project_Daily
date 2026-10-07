@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react'
-import { CalendarDays, CheckCheck, HelpCircle, PencilLine } from 'lucide-react'
+import { CalendarDays, CalendarRange, CheckCheck, HelpCircle, PencilLine } from 'lucide-react'
 import { ModalShell } from '../../../shared/modals/ModalShell'
 import { Button } from '../../../shared/ui'
 import { DateCalendar } from '../../../shared/components/DateCalendar'
@@ -21,10 +21,19 @@ function Option({ icon, label, hint, onClick }: { icon: ReactNode; label: string
   )
 }
 
-export interface WatchedWhenAsk { title: string; subtitle?: string; releaseLabel?: string | null }
+export interface WatchedWhenAsk {
+  title: string
+  subtitle?: string
+  releaseLabel?: string | null
+  /** Completing a series: also offer "Spread over dates…" (the Spread watched dates popup). */
+  allowSpread?: boolean
+}
 
-/** The Trakt app's "when did you watch it?" sheet: Just now · Release date · Other date · Unknown date. */
-export function WatchedWhenSheet({ ask, onDone }: { ask: WatchedWhenAsk; onDone: (w: WatchedWhen | null) => void }) {
+/** The sheet's answer: a time, or (series only) "spread the episodes over a period". */
+export type WatchedWhenAnswer = WatchedWhen | { kind: 'spread' }
+
+/** The Trakt app's "when did you watch it?" sheet: Just now · Release date · Other date · (Spread over dates) · Unknown date. */
+export function WatchedWhenSheet({ ask, onDone }: { ask: WatchedWhenAsk; onDone: (w: WatchedWhenAnswer | null) => void }) {
   const [picking, setPicking] = useState(false)
   // A day, never a time (owner rule): stored as midday local so no zone moves it.
   const [value, setValue] = useState(() => todayStr())
@@ -35,6 +44,7 @@ export function WatchedWhenSheet({ ask, onDone }: { ask: WatchedWhenAsk; onDone:
           <Option icon={<CheckCheck />} label="Just now" onClick={() => onDone({ kind: 'now' })} />
           <Option icon={<CalendarDays />} label="Release date" hint={ask.releaseLabel} onClick={() => onDone({ kind: 'release' })} />
           <Option icon={<PencilLine />} label="Other date" onClick={() => setPicking(true)} />
+          {ask.allowSpread && <Option icon={<CalendarRange />} label="Spread over dates…" hint="Between two days" onClick={() => onDone({ kind: 'spread' })} />}
           <Option icon={<HelpCircle />} label="Unknown date" onClick={() => onDone({ kind: 'unknown' })} />
         </div>
       ) : (

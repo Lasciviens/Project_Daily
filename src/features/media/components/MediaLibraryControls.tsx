@@ -21,6 +21,7 @@ import { MovieWatchedControls } from './MovieWatchedControls'
 import { CinemaVisits } from './CinemaVisits'
 import { MovieWatchingInfo } from './MovieWatchingInfo'
 import { SeriesFinishedControls } from './SeriesFinishedControls'
+import { SpreadWatchedSheet } from './SpreadWatchedSheet'
 import { todayStr } from '../../../shared/utils/dateUtils'
 import { AddToListMenu } from './AddToListMenu'
 import { QueueButton } from './QueueButton'
@@ -119,7 +120,11 @@ export function MediaLibraryControls({ detail, isMovie, userEntry, onRemoved }: 
     return extra > 0 ? { episodes: n.episodes + 1, extraPlays: n.extraPlays + extra } : n
   }, { episodes: 0, extraPlays: 0 })
   const qc = useQueryClient()
-  const { ask, dialog } = useWatchedWhenPrompt()
+  const { ask, askSeries, dialog } = useWatchedWhenPrompt()
+  // "Spread over dates…" while completing: the Spread popup for this entry;
+  // saving it marks the episodes, then completes the series with the plan's
+  // first and last days as its start and finish.
+  const [spreadFor, setSpreadFor] = useState<{ tvEntryId: string; startedAt: string | null } | null>(null)
   // The last aired day (TMDB's last_air_date is the latest aired episode).
   const lastAired = tv?.last_air_date ?? null
 
@@ -149,14 +154,27 @@ export function MediaLibraryControls({ detail, isMovie, userEntry, onRemoved }: 
     const completed = selectedStatus === 'completed'
     let movieWatchedAt: string | null | undefined
     let tvWhen: Parameters<typeof resolveWatchedAt>[0] | null = null
+    let spread = false
     if (completed && isMovie) {
       const when = await ask({ title: movie!.title, releaseLabel: movie!.release_date ? formatDate(movie!.release_date) : null })
       if (!when) return
       movieWatchedAt = resolveWatchedAt(when, movie!.release_date, 'movie', now)
     }
     if (completed && !isMovie) {
-      tvWhen = await ask({ title: tv!.name, subtitle: 'Marks every aired episode as watched.', releaseLabel: 'each air date' })
-      if (!tvWhen) return
+      const answer = await askSeries({ title: tv!.name, subtitle: 'Marks every aired episode as watched.', releaseLabel: 'each air date' })
+      if (!answer) return
+      if (answer.kind === 'spread') spread = true
+      else tvWhen = answer
+    }
+    if (spread) {
+      // Added as Watching; the Spread popup's save makes it Completed (closing
+      // it without saving leaves the series Watching, nothing marked).
+      const entry = await withProgress(
+        () => addTV.mutateAsync({ tmdb: tv!, status: 'watching', dates: {} }),
+        { loading: 'Adding to library…' },
+      )
+      if (entry) setSpreadFor({ tvEntryId: entry.id, startedAt: null })
+      return
     }
     await withProgress(async () => {
       if (isMovie) {
@@ -215,8 +233,12 @@ export function MediaLibraryControls({ detail, isMovie, userEntry, onRemoved }: 
       patch.watched_at = resolveWatchedAt(when, movie!.release_date, 'movie', now)
     }
     if (tvEntry && status === 'completed' && tvEntry.status !== 'completed') {
-      const when = await ask({ title: tv!.name, subtitle: 'Marks every aired episode you haven’t marked yet.', releaseLabel: 'each air date' })
+      const when = await askSeries({ title: tv!.name, subtitle: 'Marks every aired episode you haven’t marked yet.', releaseLabel: 'each air date' })
       if (!when) return
+      if (when.kind === 'spread') {
+        setSpreadFor({ tvEntryId: tvEntry.id, startedAt: tvEntry.started_at ?? null })
+        return
+      }
       const ok = await withProgress(() => markAllAired(when).then(() => true), { loading: 'Marking every aired episode…' })
       if (!ok) return
       const d = seriesWatchedDates(when, tv!.first_air_date, lastAired, now)
@@ -228,6 +250,21 @@ export function MediaLibraryControls({ detail, isMovie, userEntry, onRemoved }: 
     if (tvEntry && status === 'watching' && !tvEntry.started_at) patch.started_at = now
     void withProgress(() => patchEntry(patch), { loading: 'Updating status…', success: 'Status updated' })
   }
+
+  const spreadDialog = spreadFor && tv ? (
+    <SpreadWatchedSheet
+      tvId={tv.id}
+      tvName={tv.name}
+      tvEntryId={spreadFor.tvEntryId}
+      seasons={(tv.seasons ?? []).filter(x => x.season_number > 0).map(x => x.season_number)}
+      defaultRuntime={tv.episode_run_time?.[0] ?? null}
+      onClose={() => setSpreadFor(null)}
+      onSaved={({ firstAt, lastAt }) => updateTV.mutateAsync({
+        id: spreadFor.tvEntryId,
+        patch: { status: 'completed', finished_at: lastAt, started_at: spreadFor.startedAt ?? firstAt },
+      })}
+    />
+  ) : null
 
   function saveNote() {
     if (note.trim() === (userEntry?.personal_note ?? '')) return
@@ -257,6 +294,7 @@ export function MediaLibraryControls({ detail, isMovie, userEntry, onRemoved }: 
     return (
       <div className="space-y-3">
         {dialog}
+        {spreadDialog}
         <StatusPills statuses={statuses} value="unwatched" disabled={addMovie.isPending || addTV.isPending}
           onPick={s => { if (s !== 'unwatched') void handleAdd(s) }} />
         <div className="flex flex-wrap items-center gap-2">
@@ -271,6 +309,7 @@ export function MediaLibraryControls({ detail, isMovie, userEntry, onRemoved }: 
   return (
     <div className="space-y-4">
       {dialog}
+      {spreadDialog}
       <div className="space-y-2">
         <StatusPills statuses={statuses} value={userEntry.status} disabled={updating} onPick={s => { void (s === 'unwatched' ? handleRemove() : handleStatusChange(s)) }} />
         {tvEntry && (
