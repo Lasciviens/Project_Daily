@@ -3,7 +3,9 @@
 //
 //   1  phone, tablet — the actionable column (brief → now/next → tasks →
 //      transit), glance tiles that open their detail, then news.
-//   2  1280 / 1469 / 1795 laptop — the same three cards in main; transit and
+//   2  1280 / 1469 / 1795 laptop — the brief in main, then the week and the
+//      tasks side by side under it (`pair`, owner 07.10.2026: rows beside each
+//      other so main is no taller than transit and the tiles); transit and
 //      the tiles beside them (the owner's call: compact tiles on the laptop;
 //      each tile opens its widget's content in a popup — TileDetail.tsx).
 //   3  1920 — full widgets: weather/transit/currency/games, then training,
@@ -16,12 +18,14 @@
 import { resolveBoardLayout, type BoardLayouts, type PageStep } from '../../../shared/ui/pageBoardRules'
 
 export const HOME_SECTIONS = [
-  'brief', 'hero', 'tasks', 'transit', 'tiles', 'news',
+  'brief', 'hero', 'tasks', 'pair', 'transit', 'tiles', 'news',
   'weather', 'currency', 'training', 'media', 'books', 'games',
 ] as const
 export type HomeSection = typeof HOME_SECTIONS[number]
 
 const MAIN = ['brief', 'hero', 'tasks'] as const
+/** From the laptop up the week and the tasks share one row (`pair` renders both). */
+const WIDE_MAIN = ['brief', 'pair'] as const
 /**
  * Home's main track may grow past the default 56rem: the brief, the week and
  * the tasks lay themselves out in two columns once wide (container queries),
@@ -31,9 +35,9 @@ const HOME_MAIN = '72rem'
 
 export const HOME_BOARD: BoardLayouts<HomeSection> = {
   1: [...MAIN, 'transit', 'tiles', 'news'],
-  2: { columns: [MAIN, ['transit', 'tiles']], bottom: ['news'], main: HOME_MAIN },
-  3: { columns: [MAIN, ['weather', 'transit', 'currency', 'games'], ['training', 'media', 'books']], bottom: ['news'], main: HOME_MAIN },
-  4: { columns: [MAIN, ['weather', 'transit', 'currency'], ['training', 'media'], ['books', 'games']], bottom: ['news'], main: HOME_MAIN },
+  2: { columns: [WIDE_MAIN, ['transit', 'tiles']], bottom: ['news'], main: HOME_MAIN },
+  3: { columns: [WIDE_MAIN, ['weather', 'transit', 'currency', 'games'], ['training', 'media', 'books']], bottom: ['news'], main: HOME_MAIN },
+  4: { columns: [WIDE_MAIN, ['weather', 'transit', 'currency'], ['training', 'media'], ['books', 'games']], bottom: ['news'], main: HOME_MAIN },
 }
 
 /** What every step must show in some form: tiles stand in for the six glance widgets. */

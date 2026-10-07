@@ -20,6 +20,7 @@ export function TodayTasksCard() {
   const { data = [], isLoading } = useTasksForDay(new Date(), 'today')
   const create = useCreateTask()
   const [title, setTitle] = useState('')
+  const [showAll, setShowAll] = useState(false)
 
   const countable = data.filter(t => t.status !== 'cancelled' && (t.status !== 'done' || closedOn(t, todayStr())))
   const done = countable.filter(t => t.status === 'done').length
@@ -65,14 +66,15 @@ export function TodayTasksCard() {
         // Two columns once the card is wide (a wide Home main track).
         <div className="@container">
           <div className="-mx-3 grid grid-cols-1 gap-x-4 gap-y-0.5 @[44rem]:grid-cols-2">
-            {open.slice(0, SHOWN).map(t => <ToDoItem key={t.id} task={t} isNew={fresh.has(t.id)} />)}
+            {(showAll ? open : open.slice(0, SHOWN)).map(t => <ToDoItem key={t.id} task={t} isNew={fresh.has(t.id)} />)}
           </div>
         </div>
       )}
-      {open.length > SHOWN && (
-        <Link to="/daily" className="mt-1 inline-flex min-h-[44px] items-center text-meta font-semibold text-accent-600">
+      {!showAll && open.length > SHOWN && (
+        // Shows the rest here; Home never jumps to Daily on its own.
+        <button type="button" onClick={() => setShowAll(true)} className="mt-1 inline-flex min-h-[44px] items-center text-meta font-semibold text-accent-600">
           {open.length - SHOWN} more open
-        </Link>
+        </button>
       )}
 
       <form onSubmit={handleSubmit} className="mt-3 flex items-center gap-2 border-t border-line pt-3">

@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { Newspaper } from 'lucide-react'
 import { Button, SegmentedControl, Skeleton, Truncate, cx } from '../../../shared/ui'
-import { NEWS_FEEDS, FEED_CATEGORIES, type FeedCategory, type NewsItem } from '../api/newsApi'
+import { NEWS_FEEDS, FEED_CATEGORIES, proxied, type FeedCategory, type NewsItem } from '../api/newsApi'
+import { useNewsArticle } from '../hooks/useNewsArticle'
 import { useNews } from '../hooks/useNews'
 import { useWidgetState } from '../hooks/useWidgetState'
 import { WidgetShell } from './WidgetShell'
@@ -10,21 +11,34 @@ import { formatDateTime } from '../../../shared/utils/dateFormat'
 
 const VISIBLE = 8
 
-/** Source initials sit behind the image and show when it is absent or fails. */
+/**
+ * The headline's picture: the feed's image through the proxy, then the same
+ * image direct, then — when the feed has none or both fail — the article's
+ * own main picture (og:image, via the reader's query, so opening the
+ * article later costs nothing). Source initials show behind it until then.
+ */
 function Thumb({ item, source, className }: { item: NewsItem; source: string; className: string }) {
+  const [step, setStep] = useState(0)
+  const feedCandidates = [item.thumbnail, item.thumbnailDirect].filter(Boolean)
+  const needArticle = step >= feedCandidates.length
+  const article = useNewsArticle(needArticle ? item.link : null)
+  const og = article.data?.image ?? null
+  const candidates = [...feedCandidates, ...(og ? [proxied(og), og] : [])]
+  const src = candidates[step] ?? null
   return (
     <div className={cx('relative shrink-0 overflow-hidden bg-surface-2', className)}>
       <span aria-hidden className="absolute inset-0 flex select-none items-center justify-center text-micro font-semibold text-fg-faint">
         {source.slice(0, 3).toUpperCase()}
       </span>
-      {item.thumbnail && (
+      {src && (
         <img
-          src={item.thumbnail}
+          key={src}
+          src={src}
           alt=""
           loading="lazy"
           referrerPolicy="no-referrer"
           className="absolute inset-0 h-full w-full object-cover"
-          onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
+          onError={() => setStep(s => s + 1)}
         />
       )}
     </div>

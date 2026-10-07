@@ -1,6 +1,10 @@
 // POST /  → fetch RSS feed by URL, return raw XML
 // GET  /?url=<imgUrl> → proxy an image from a trusted feed CDN
 
+function imageAllowed(host: string): boolean {
+  return ALLOWED_IMAGE_DOMAINS.some(d => host === d || host.endsWith(`.${d}`))
+}
+
 const ALLOWED_ORIGINS = ['https://lasciviens.github.io', 'http://localhost:5173']
 
 const ALLOWED_FEED_DOMAINS = [
@@ -11,9 +15,13 @@ const ALLOWED_FEED_DOMAINS = [
   'feeds.arstechnica.com',   // https://feeds.arstechnica.com/arstechnica/index
 ]
 
+// A listed domain also covers its subdomains (imageAllowed): VG serves from
+// akamai.vgc.no, CNN Türk from image.cnnturk.com — exact matching refused both.
 const ALLOWED_IMAGE_DOMAINS = [
   'ichef.bbci.co.uk',
   'vg.no',
+  'vgc.no',                         // VG's image CDN (akamai.vgc.no)
+  'schibsted.media',                // VG video stills (images.stream.schibsted.media)
   'cnnturk.com',
   'bilder.tv2.no',
   'dbstatic.no',
@@ -63,7 +71,7 @@ Deno.serve(async (req: Request) => {
         headers: { ...corsHeaders(origin), 'Content-Type': 'application/json' },
       })
     }
-    if (!ALLOWED_IMAGE_DOMAINS.includes(parsedUrl.hostname)) {
+    if (!imageAllowed(parsedUrl.hostname)) {
       return new Response(JSON.stringify({ error: 'Domain not allowed' }), {
         status: 403,
         headers: { ...corsHeaders(origin), 'Content-Type': 'application/json' },
