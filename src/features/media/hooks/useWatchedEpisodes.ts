@@ -9,6 +9,7 @@ import {
   markEpisodeWatched,
   markEpisodesWatched,
   rewatchEpisode,
+  setEpisodePlays,
   setEpisodesWatchedAt,
   unmarkEpisodeWatched,
 } from '../api/watchedEpisodesApi'
@@ -102,6 +103,18 @@ export function useSetEpisodeDates() {
     action: 'set_episode_dates',
     mutationFn: ({ tvEntryId, episodes }: { tvEntryId: string; episodes: { season: number; episode: number; at: string }[] }) =>
       setEpisodesWatchedAt(tvEntryId, episodes),
+    invalidates: ['episodeWatched'],
+    onSuccess: () => scheduleTraktSync(qc),
+  })
+}
+
+/** Set an episode's play count and (optionally) its kept date — the "Plays and date" sheet. */
+export function useSetEpisodePlays() {
+  const qc = useQueryClient()
+  return useMutationWithFeedback({
+    action: 'set_episode_plays',
+    mutationFn: ({ tvEntryId, season, episode, plays, at }: { tvEntryId: string; season: number; episode: number; plays: number; at?: string }) =>
+      setEpisodePlays(tvEntryId, season, episode, plays, at),
     invalidates: ['episodeWatched'],
     onSuccess: () => scheduleTraktSync(qc),
   })

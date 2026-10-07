@@ -174,6 +174,32 @@ export async function rewatchEpisode(
   if (upErr) throw upErr
 }
 
+/**
+ * Set how many times an already-watched episode was watched (plays = 1 +
+ * repeat_count) and, when given, its kept date. Changing only the count keeps
+ * the date. The outbox trigger (migration 132) sends fewer plays to Trakt too.
+ */
+export async function setEpisodePlays(
+  tvEntryId: string,
+  season: number,
+  episode: number,
+  plays: number,
+  watchedAt?: string,
+): Promise<void> {
+  const user = await requireUser()
+  const patch: Record<string, unknown> = { repeat_count: Math.max(0, Math.round(plays) - 1) }
+  if (watchedAt) patch.watched_at = toIso(watchedAt)
+  const { data, error } = await supabase
+    .from('user_tv_episodes').update(patch)
+    .eq('user_id', user.id).eq('tv_entry_id', tvEntryId)
+    .eq('season_number', season).eq('episode_number', episode)
+    .not('watched_at', 'is', null)
+    .select('id')
+  if (error && (error.code === '42703' || error.code === 'PGRST204')) throw new Error('Play counts need migration 116 (episode play counts)')
+  if (error) throw error
+  if (!data?.length) throw new Error('That episode is not marked watched')
+}
+
 export async function unmarkEpisodeWatched(
   tvEntryId: string,
   season: number,
