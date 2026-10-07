@@ -180,7 +180,7 @@ async function buildContext(): Promise<string> {
   const todayTasks = Array.from(new Map(todayRaw.map((t: any) => [t.id, t])).values()) as any[]
 
   const lines: string[] = [
-    `DATE: ${format(new Date(), 'EEEE, MMMM d yyyy')}`,
+    `DATE: ${format(new Date(), 'EEEE dd.MM.yyyy')}`,
     `TIME: ${format(new Date(), 'HH:mm')} (local time, timezone: ${Intl.DateTimeFormat().resolvedOptions().timeZone})`,
   ]
 
@@ -375,7 +375,7 @@ function prependContext(messages: Message[], context: string): Message[] {
 
 function contextHeader(): string {
   return [
-    `DATE: ${format(new Date(), 'EEEE, MMMM d yyyy')}`,
+    `DATE: ${format(new Date(), 'EEEE dd.MM.yyyy')}`,
     `TIME: ${format(new Date(), 'HH:mm')} (local time, timezone: ${Intl.DateTimeFormat().resolvedOptions().timeZone})`,
   ].join('\n')
 }

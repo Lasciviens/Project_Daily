@@ -90,11 +90,13 @@ substrate for later promoting hot queries into the UI.
 
 ## 5. Tool slicing, model routing, batch
 
-- **Slicing is deliberate and narrow: ONLY the bounded shop surface is sliced (5 tools); coach and general keep the
-  FULL tool set.** Slicing an open training+nutrition+schedule conversation that creates tasks, plans time blocks and
-  logs food would weaken the assistant. Measure before slicing anything else.
+- **No chat surface is sliced: coach and general keep the FULL tool set**, and the `phone` surface gets no tools
+  (its context is pre-built server-side). Slicing an open training+nutrition+schedule conversation that creates
+  tasks, plans time blocks and logs food would weaken the assistant. The Shop page's own sliced chat (5 tools) was
+  retired on 07.10.2026; a client still sending `surface: 'shop'` gets the general behaviour. Measure before
+  slicing anything.
 - **Model routing changes only the *starting* model** of the existing fallback chain
-  (`SURFACE_MODEL.shop = gemini-2.5-flash`); a 503 still falls through the whole chain — no new plumbing.
+  (`SURFACE_MODEL.phone = gemini-3.1-flash-lite`); a 503 still falls through the whole chain — no new plumbing.
 - **Batch API: never interactive.** Reserved for the embeddings backfill (50% off) and future bulk enrichment; not
   worth it for one daily briefing.
 
