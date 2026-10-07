@@ -183,6 +183,9 @@ function pickSrcset(srcset: string): { u: string; w: number } | undefined {
   return fit ?? entries.sort((a, b) => a.w - b.w)[entries.length - 1]
 }
 
+/** An alt that is only "Bilde av / Foto av / Bild av / Picture of <name>" — a byline portrait. */
+const BYLINE_ALT = /^(bilde|foto|bild|picture|photo|image) (av|of) [^:|()]{1,60}$/i
+
 function imageFrom(tag: string, base: string): { src: string; alt: string } | null {
   const a = parseAttrs(tag)
   const set = pickSrcset(a['data-srcset'] ?? a.srcset ?? '')
@@ -192,8 +195,12 @@ function imageFrom(tag: string, base: string): { src: string; alt: string } | nu
   const w = set && set.w > 0 ? set.w : Number(a.width)
   if (Number.isFinite(w) && w > 0 && w < 300) return null
   if (/\.svg(\?|$)|logo|icon|avatar|sprite|pixel|placeholder|1x1|chart\.googleapis|qr-?code|doubleclick|adservice/i.test(raw)) return null
+  const alt = (a.alt ?? '').trim()
+  // Writer/byline portraits: VG labels them only "Bilde av <name>" (a real
+  // photo carries a caption with "Foto: …"), so a bare "Bilde av X" is skipped.
+  if (BYLINE_ALT.test(alt)) return null
   const src = absolutize(raw, base)
-  return src ? { src, alt: (a.alt ?? '').trim() } : null
+  return src ? { src, alt } : null
 }
 
 function blocksFrom(region: string, base: string): ArticleBlock[] {

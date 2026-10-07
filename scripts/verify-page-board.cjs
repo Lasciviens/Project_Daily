@@ -83,12 +83,14 @@ for (const s of [1, 2, 3, 4]) {
   const keys = B.keysAt(HOME_BOARD, s)
   const glanceOk = Object.values(HOME_GLANCE).every(alts => alts.some(k => keys.includes(k)))
   check(`step ${s}: brief, now/next, tasks, transit, news and all six glance widgets are reachable`,
-    ['brief', 'hero', 'tasks', 'transit', 'news'].every(k => keys.includes(k)) && glanceOk)
+    // `pair` renders the week (hero) and the tasks side by side.
+    ['brief', 'transit', 'news'].every(k => keys.includes(k))
+      && (keys.includes('pair') || ['hero', 'tasks'].every(k => keys.includes(k))) && glanceOk)
   check(`step ${s}: a widget never shows beside its own tile`, !(keys.includes('tiles') && keys.some(k => HOME_GLANCE[k])))
 }
 check('step 1 keeps the phone order (brief → hero → tasks → transit → tiles → news)', eq(HOME_BOARD[1], ['brief', 'hero', 'tasks', 'transit', 'tiles', 'news']))
 check('step 2 (laptop) uses compact tiles, the owner\'s call', B.keysAt(HOME_BOARD, 2).includes('tiles'))
-check('main column is brief → hero → tasks from step 2 up', [2, 3, 4].every(s => eq(B.resolveBoardLayout(HOME_BOARD, s).columns[0].stack, ['brief', 'hero', 'tasks'])))
+check('main column is brief → (week | tasks side by side) from step 2 up', [2, 3, 4].every(s => eq(B.resolveBoardLayout(HOME_BOARD, s).columns[0].stack, ['brief', 'pair'])))
 check('step 3: weather column ends with games, the page-card column with books', (() => {
   const c = B.resolveBoardLayout(HOME_BOARD, 3).columns
   return eq(c[1].stack, ['weather', 'transit', 'currency', 'games']) && eq(c[2].stack, ['training', 'media', 'books'])

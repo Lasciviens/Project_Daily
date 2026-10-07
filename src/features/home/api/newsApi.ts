@@ -10,6 +10,8 @@ export interface NewsItem {
   link:      string
   pubDate:   string
   thumbnail: string
+  /** The image's own URL; tried when the proxy refuses it. */
+  thumbnailDirect: string
   excerpt:   string   // plain-text first ~120 chars of <description>
   /** Plain-text <description>, up to ~600 chars — the reader's fallback when the page can't be read. */
   summary:   string
@@ -67,7 +69,7 @@ function firstImgSrc(html: string): string {
 }
 
 // Multi-strategy image extraction — tries namespace tags, enclosure, then inline HTML.
-// VG puts images in enclosure without a type attribute; CNN Türk uses content:encoded <img>.
+// VG puts images in an enclosure typed "img/jpg"; CNN Türk only in a plain <image> child.
 function extractImageUrl(item: Element): string {
   const MRSS    = 'http://search.yahoo.com/mrss/'
   const CONTENT = 'http://purl.org/rss/1.0/modules/content/'
@@ -92,11 +94,17 @@ function extractImageUrl(item: Element): string {
     if (looksLikeImageUrl(u)) return u
   }
 
-  // 5. <img src="…"> inside <description> CDATA
+  // 5. A plain <image>URL</image> child (CNN Türk, VG) or VG's own <vg:img>.
+  const plain = Array.from(item.children).find(el => el.localName === 'image' && !el.namespaceURI)?.textContent?.trim()
+  if (plain && /^https?:\/\//.test(plain)) return normalizeImageUrl(plain)
+  const vgImg = item.getElementsByTagNameNS('http://www.vg.no/namespace', 'img')[0]?.textContent?.trim()
+  if (vgImg) return normalizeImageUrl(vgImg)
+
+  // 6. <img src="…"> inside <description> CDATA
   const desc = item.querySelector('description')?.textContent ?? ''
   if (desc) { const src = firstImgSrc(desc); if (src) return src }
 
-  // 6. <img src="…"> inside <content:encoded> CDATA (CNN Türk)
+  // 7. <img src="…"> inside <content:encoded> CDATA
   const encoded = item.getElementsByTagNameNS(CONTENT, 'encoded')[0]?.textContent ?? ''
   if (encoded) { const src = firstImgSrc(encoded); if (src) return src }
 
@@ -130,10 +138,16 @@ function parseRSS(xml: string, count: number): NewsItem[] {
       link:    (text('link') || item.querySelector('guid')?.textContent?.trim()) ?? '',
       pubDate: text('pubDate'),
       thumbnail,
+      thumbnailDirect: thumbnail,
       excerpt,
       summary,
     }
   })
+}
+
+/** An image URL through the news proxy (its host must be on the proxy's list). */
+export function proxied(url: string): string {
+  return `${PROXY_URL}?url=${encodeURIComponent(url)}`
 }
 
 // ─── Exported function ────────────────────────────────────────────────────────
@@ -151,11 +165,10 @@ export async function fetchNews(feedKey: string, count = 8): Promise<NewsItem[]>
   const xml   = await res.text()
   const items = parseRSS(xml, count)
 
-  // Rewrite thumbnail URLs through the image proxy — CDNs block direct hotlinks from GitHub Pages
+  // Thumbnails go through the image proxy first — some CDNs block hotlinks
+  // from GitHub Pages; the direct URL stays as the card's fallback.
   return items.map(item => ({
     ...item,
-    thumbnail: item.thumbnail
-      ? `${PROXY_URL}?url=${encodeURIComponent(item.thumbnail)}`
-      : '',
+    thumbnail: item.thumbnail ? proxied(item.thumbnail) : '',
   }))
 }

@@ -59,6 +59,8 @@ const PAGE = `<!doctype html><html><head>
   <h2>En mellomtittel</h2>
   <p>Andre avsnitt fortsetter historien med flere detaljer om kafeen.</p>
   <img src="/img/avatar-author.jpg" width="48">
+  <img src="/img/writer.jpg" width="480" alt="Bilde av Håkon F. Høydal">
+  <img src="/img/writer2.jpg" width="1080" alt="Bilde av Mari Malm">
   <img srcset="/img/a.jpg 40w, /img/b.jpg 640w, /img/c.jpg 2000w" src="data:image/gif;base64,AAAA">
   <aside><p>Annonse: kjøp noe helt annet her i dag</p></aside>
   <p>Del artikkelen på Facebook og andre steder i dag</p>
@@ -81,7 +83,7 @@ console.log('\n3 · Metadata and body from a page')
   check('"Del artikkelen" boilerplate skipped', !a.paragraphs.some(p => p.startsWith('Del artikkelen')))
   check('mid-heading kept; a heading with nothing after it dropped', a.blocks.some(b => b.kind === 'h' && b.text === 'En mellomtittel') && !a.blocks.some(b => b.kind === 'h' && /uten avsnitt/.test(b.text)))
   const imgs = a.blocks.filter(b => b.kind === 'img').map(b => b.src)
-  check('inline image absolutized; avatar skipped; srcset picks ≤1280w', imgs.length === 2 && imgs[0] === 'https://www.example.no/img/inline.jpg' && imgs[1] === 'https://www.example.no/img/b.jpg', JSON.stringify(imgs))
+  check('inline image absolutized; avatar and "Bilde av <name>" byline portraits skipped; srcset picks ≤1280w', imgs.length === 2 && imgs[0] === 'https://www.example.no/img/inline.jpg' && imgs[1] === 'https://www.example.no/img/b.jpg', JSON.stringify(imgs))
   check('figcaption dropped', !a.paragraphs.some(p => p.startsWith('Foto:')))
   check('short article flagged as maybe truncated', a.likelyTruncated === true)
 }

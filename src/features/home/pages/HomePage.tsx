@@ -30,6 +30,21 @@ function GlanceTiles() {
   )
 }
 
+/**
+ * The week and today's tasks side by side under the brief (laptop and up),
+ * equal height, stacking again when the main track is narrow.
+ */
+function HeroAndTasks() {
+  return (
+    <div className="@container">
+      <div className="grid grid-cols-1 items-stretch gap-4 @[44rem]:grid-cols-2 [&>*]:h-full">
+        <HomeHero />
+        <TodayTasksCard />
+      </div>
+    </div>
+  )
+}
+
 /** A list on a phone; from the laptop up a band of cards across the bottom of the page. */
 function HomeNews() {
   const step = useBoardStep()
@@ -50,6 +65,7 @@ export function HomePage() {
     brief: <DailyBrief />,
     hero: <HomeHero />,
     tasks: <TodayTasksCard />,
+    pair: <HeroAndTasks />,
     transit: <TransitCard />,
     tiles: <GlanceTiles />,
     news: <HomeNews />,
