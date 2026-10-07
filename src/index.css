@@ -196,11 +196,15 @@
      this off <html>, Chrome/Android off <body>, so both are set. */
   html, body {
     overscroll-behavior-y: contain;
-    /* The document never scrolls sideways either: on an iPhone something
-       fixed or portalled past the right edge let the whole page pan right
-       "forever" (owner, 06.10.2026 — not reproducible in Chromium). */
-    overflow-x: hidden;
     overscroll-behavior-x: none;
+  }
+  /* Never `overflow-x: hidden` on html/body: it turns body into a scroll
+     container (the other axis computes to auto) and, in the installed iOS
+     app, left the tab bar and every bottom sheet floating a status bar above
+     the screen bottom (owner, 07.10.2026). <main> stops the sideways pan
+     (AppShell); `clip` on #root makes no scroll container. */
+  #root {
+    overflow-x: clip;
   }
 
   ::-webkit-scrollbar       { width: 5px; height: 5px; }

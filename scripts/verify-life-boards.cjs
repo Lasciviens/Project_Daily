@@ -92,7 +92,7 @@ check('Food Today: the totals rail leads (left) from 1280 up', [2, 3, 4].every(s
   && B.resolveBoardLayout(F.FOOD_TODAY_BOARD, s).columns[0].stack[0] === 'nutrition'))
 check('Food Today: the meal slots lead the main track from 1280 up', [2, 3, 4].every(s => B.resolveBoardLayout(F.FOOD_TODAY_BOARD, s).columns[1].stack[0] === 'meals'))
 check('Food Today at 1280/1469: the coach sits under the slots, so the totals rail is not the only tall column', eq(B.resolveBoardLayout(F.FOOD_TODAY_BOARD, 2).columns[1].stack, ['meals', 'coach']))
-check('Food Today: phone order — the slots first, then nutrition → water → fits → week → stats → coach', eq(F.FOOD_TODAY_BOARD[1], ['meals', 'nutrition', 'water', 'fits', 'week', 'stats', 'coach']))
+check('Food Today: phone order — nutrition on top, then the slots → water → fits → week → stats → coach', eq(F.FOOD_TODAY_BOARD[1], ['nutrition', 'meals', 'water', 'fits', 'week', 'stats', 'coach']))
 check('Food Today: the nutrition stats sit right after the last 7 days at every step', [1, 2, 3, 4].every(s => { const cols = s === 1 ? [F.FOOD_TODAY_BOARD[1]] : B.resolveBoardLayout(F.FOOD_TODAY_BOARD, s).columns.map(c => c.stack); return cols.some(st => st.indexOf('stats') === st.indexOf('week') + 1 && st.includes('week')) }))
 check('Ingredients + Log + Wishes: their rail is sticky and first', [F.INGREDIENT_BOARD, T.LOG_BOARD, Wi.WISH_BOARD].every(b =>
   [2, 3, 4].every(s => { const l = B.resolveBoardLayout(b, s); return l.lead === 1 && l.columns[0].sticky })))
