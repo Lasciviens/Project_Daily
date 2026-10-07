@@ -24,7 +24,7 @@ const pct = (n: number, d: number) => (d ? `${Math.round((n / d) * 100)} %` : 'â
  * match by app id and an exact title + platform match saves by itself, the
  * rest wait here with their best result until you tick (or pick another).
  */
-export function TgIgdbView({ games, loading }: { games: TgGame[]; loading: boolean }) {
+export function TgIgdbView({ games, counted, loading }: { games: TgGame[]; counted: TgGame[]; loading: boolean }) {
   const status = useIgdbStatus()
   const { filter, library, rows, ticked, running, looking, progress, lastRun, focusId, set } = useIgdbBatch()
   const runner = useIgdbRunner()
@@ -40,7 +40,8 @@ export function TgIgdbView({ games, loading }: { games: TgGame[]; loading: boole
   const keep = (id: string) => setStay(s => (s.has(id) ? s : new Set(s).add(id)))
   const resetStay = () => setStay(new Set())
 
-  const all = useMemo(() => igdbCandidates(games), [games])
+  // Platforms left out in Settings are never offered or batch-matched.
+  const all = useMemo(() => igdbCandidates(counted), [counted])
   const scopes = useMemo(() => igdbScopes(all).map(s => ({
     value: s.value as IgdbLibraryFilter, count: s.count,
     label: s.kind === 'system' ? platformInfo(s.key).name || s.key : SCOPE_LABEL[s.key] ?? s.key,

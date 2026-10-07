@@ -1,11 +1,12 @@
-import { CalendarDays, Repeat, RotateCcw, Undo2 } from 'lucide-react'
+import { CalendarDays, Repeat, RotateCcw, SlidersHorizontal, Undo2 } from 'lucide-react'
 import { withProgress } from '../../../shared/hooks/useMutationWithFeedback'
 import { useEntityModal } from '../../../shared/modals'
-import { Button, TonePill } from '../../../shared/ui'
+import { Button, IconButton, TonePill } from '../../../shared/ui'
 import { formatDate } from '../../../shared/utils/dateFormat'
 import { isUnknownWatchedAt } from '../trakt/traktDates'
 import type { UserMovieEntry } from '../types'
 import { useWatchedWhenPrompt } from '../hooks/useWatchedWhenPrompt'
+import { usePlaysPrompt } from '../hooks/usePlaysPrompt'
 import { resolveWatchedAt } from '../watchedWhen'
 
 type Patch = Partial<Pick<UserMovieEntry, 'status' | 'watched_at' | 'repeat_count'>>
@@ -26,6 +27,18 @@ export function MovieWatchedControls({ entry, releaseDate, disabled, onPatch }: 
   const when = entry.watched_at && !isUnknownWatchedAt(entry.watched_at) ? formatDate(entry.watched_at) : 'date unknown'
 
   const { ask, dialog } = useWatchedWhenPrompt()
+  const plays$ = usePlaysPrompt()
+
+  // Advanced: set how many times it was watched and the kept date directly —
+  // e.g. "watched 3 times" while keeping the date it was finished.
+  async function editPlays() {
+    const a = await plays$.ask({ title: entry.movie.title, plays, at: entry.watched_at, target: 'movie' })
+    if (!a) return
+    await withProgress(
+      () => onPatch({ repeat_count: a.plays - 1, ...(a.dateKept ? {} : { watched_at: a.at }) }),
+      { loading: 'Saving plays…', success: a.plays === 1 ? 'Watched once' : `Watched ${a.plays} times` },
+    )
+  }
 
   // One more play; its time asked like Trakt does (Unknown keeps the last date).
   async function watchAgain() {
@@ -65,6 +78,7 @@ export function MovieWatchedControls({ entry, releaseDate, disabled, onPatch }: 
   return (
     <div className="flex flex-wrap items-center gap-2">
       {dialog}
+      {plays$.dialog}
       {/* A rewatch reads clearly. Only the latest play's date is kept, so it says "last". */}
       {plays > 1 ? (
         <TonePill tone="info" className="tabular-nums">
@@ -73,6 +87,9 @@ export function MovieWatchedControls({ entry, releaseDate, disabled, onPatch }: 
       ) : (
         <p className="text-meta text-fg-muted tabular-nums">Watched {when}</p>
       )}
+      <IconButton label="Plays and date…" disabled={disabled} onClick={() => { void editPlays() }} className="text-fg-faint hover:text-fg-2">
+        <SlidersHorizontal />
+      </IconButton>
       <Button size="sm" variant="ghost" icon={<CalendarDays />} disabled={disabled} onClick={() => { void changeDate() }}>Change date</Button>
       <Button size="sm" icon={<RotateCcw />} disabled={disabled} onClick={() => { void watchAgain() }}>Watched again</Button>
       <Button size="sm" variant="ghost" icon={<Undo2 />} disabled={disabled} onClick={() => { void unwatch() }}>Not watched</Button>

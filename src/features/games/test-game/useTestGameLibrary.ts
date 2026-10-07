@@ -3,6 +3,8 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useAllGames, useLibraryGames } from '../hooks/useGames'
 import { fetchSteamAppTypes } from '../api/steamApi'
 import { deriveGames, type TgGame } from './testGameModel'
+import { useGamesPrefs } from '../prefs/useGamesPrefs'
+import { countedGames } from '../prefs/gamesPrefs'
 
 // Every game this user owns, from all three libraries, in ONE list.
 //
@@ -17,6 +19,10 @@ import { deriveGames, type TgGame } from './testGameModel'
 
 export interface TestGameLibrary {
   games: TgGame[]
+  /** `games` minus the platforms left out in Settings — what every count, stat and batch reads. */
+  countedGames: TgGame[]
+  /** Platform keys left out of stats (synced, migration 133). */
+  excludedPlatforms: string[]
   /** The retro library has not arrived yet (every view needs it). */
   isLoading: boolean
   isError: boolean
@@ -95,8 +101,16 @@ export function useTestGameLibrary(): TestGameLibrary {
   // library with nothing to show is an error worth surfacing.
   const failed = (lib: typeof steam) => (lib.isError && lib.games.length === 0 ? lib.error ?? new Error('Library failed to load') : null)
 
+  // Platforms left out in Settings (migration 133): their games stay in the
+  // Library (`games`), but every count, stat and batch reads `countedGames`.
+  const { prefs } = useGamesPrefs()
+  const excludedPlatforms = prefs.excludedPlatforms
+  const counted = useMemo(() => countedGames(games, excludedPlatforms), [games, excludedPlatforms])
+
   return {
     games,
+    countedGames: counted,
+    excludedPlatforms,
     // The retro library is the one every view needs; the two provider
     // libraries arrive into an already-painted page.
     isLoading: retro.isLoading,

@@ -1,4 +1,4 @@
-import { keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useInfiniteQuery, useQueries, useQuery } from '@tanstack/react-query'
 import { qk, STALE } from '../../../shared/query'
 import {
   searchMovies, searchTV,
@@ -133,6 +133,23 @@ export function useTmdbBasic(type: 'movie' | 'tv', tmdbId: number | null, enable
     queryFn:  () => getBasic(type, tmdbId!),
     enabled:  enabled && tmdbId !== null,
     staleTime: STALE.day,
+  })
+}
+
+/** Every listed season's details at once (same cache as useSeasonDetails). */
+export function useAllSeasons(tvId: number, seasons: number[], enabled = true) {
+  return useQueries({
+    queries: seasons.map(season => ({
+      queryKey: key('season', tvId, season),
+      queryFn: () => getSeasonDetails(tvId, season),
+      enabled,
+      staleTime: STALE.hour,
+    })),
+    combine: results => ({
+      seasons: results.flatMap(r => (r.data ? [r.data] : [])),
+      loading: results.some(r => r.isLoading),
+      failed: results.some(r => r.isError),
+    }),
   })
 }
 

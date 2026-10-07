@@ -236,7 +236,7 @@ export async function fetchGameDetail(id: string): Promise<Game> {
  * PlayStation together (migration 096). The widget totals them itself
  * (`gameStats.ts::computeGameStats`), so this deliberately aggregates nothing.
  */
-export async function fetchGameStats(): Promise<{ rows: StatsRow[]; platforms: { game_id: string; system: string }[] }> {
+export async function fetchGameStats(): Promise<{ rows: StatsRow[]; platforms: { game_id: string; system: string; is_primary_variant?: boolean }[] }> {
   // Paginated for the same reason as fetchAllGames: capped at one page, every
   // total would silently stop counting at 1000.
   const COLUMNS = 'id, title, play_status, is_iconic, is_coop, needs_review, rating, esde_playcount, esde_playtime_seconds, esde_last_played'
@@ -251,8 +251,9 @@ export async function fetchGameStats(): Promise<{ rows: StatsRow[]; platforms: {
     if (!isMissingColumn(e)) throw e
     rows = await fetchAllPages<StatsRow>((from, to) => supabase.from('games').select(COLUMNS).order('id', { ascending: true }).range(from, to))
   }
-  const platforms = await fetchAllPages<{ game_id: string; system: string }>((from, to) =>
-    supabase.from('game_platforms').select('game_id, system').order('id', { ascending: true }).range(from, to))
+  // is_primary_variant decides which platform a game counts under (left-out platforms, migration 133).
+  const platforms = await fetchAllPages<{ game_id: string; system: string; is_primary_variant?: boolean }>((from, to) =>
+    supabase.from('game_platforms').select('game_id, system, is_primary_variant').order('id', { ascending: true }).range(from, to))
   return { rows, platforms }
 }
 

@@ -3,6 +3,7 @@ import { ALL_PLATFORMS, platformLabels, type PlatformGroup } from '../testGameMo
 import { PlatformIcon } from './platformArt'
 import { TgSidebarItem } from './TgSidebarItem'
 import { Truncate } from '../../../../shared/ui/Truncate'
+import { useGamesPrefs } from '../../prefs/useGamesPrefs'
 
 // Bold glyphs as the design draws them: near-white in dark mode and
 // near-black in light, the accent when active.
@@ -16,6 +17,8 @@ export function TgNavPlatforms({ groups }: { groups: PlatformGroup[] }) {
   const section = useTestGameStore(s => s.section)
   const platform = useTestGameStore(s => s.platform)
   const setPlatform = useTestGameStore(s => s.setPlatform)
+  // Left out of stats (Library settings): the shelf stays, its icon fades.
+  const excluded = new Set(useGamesPrefs().prefs.excludedPlatforms)
 
   if (groups.length === 0) return null
 
@@ -50,15 +53,16 @@ export function TgNavPlatforms({ groups }: { groups: PlatformGroup[] }) {
           <div className="flex flex-col gap-px">
             {g.platforms.map(p => {
               const active = inLibrary && platform === p.key
+              const out = excluded.has(p.key)
               return (
                 <TgSidebarItem
                   key={p.key}
-                  icon={<PlatformIcon family={p.info.family} className={iconClass(active)} />}
+                  icon={<PlatformIcon family={p.info.family} className={`${iconClass(active)}${out ? ' opacity-40' : ''}`} />}
                   label={labels.get(p.key) ?? p.info.short}
                   count={p.count}
                   active={active}
                   pressed={active}
-                  title={`${p.info.name} · ${p.count} game${p.count === 1 ? '' : 's'}`}
+                  title={`${p.info.name} · ${p.count} game${p.count === 1 ? '' : 's'}${out ? ' · left out of stats' : ''}`}
                   onClick={() => toggle(p.key)}
                 />
               )

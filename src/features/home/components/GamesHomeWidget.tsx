@@ -3,6 +3,8 @@ import { Gamepad2 } from 'lucide-react'
 import { Skeleton, ToneDot, Button, Truncate, type Tone, AnimatedNumber } from '../../../shared/ui'
 import { useGameStats, usePlayQueue } from '../../games/hooks/useGames'
 import { computeGameStats } from '../../games/gameStats'
+import { useGamesPrefs } from '../../games/prefs/useGamesPrefs'
+import { derivePlatformKey } from '../../games/test-game/testGameModel'
 import type { Game } from '../../games/types'
 import { PLAY_STATUS_TONE } from '../../games/playStatusTones'
 import { useWidgetState } from '../hooks/useWidgetState'
@@ -26,13 +28,19 @@ function CoverThumb({ game }: { game: Game }) {
   )
 }
 
-/** Library totals without hidden rows (a Steam tool, something you hid). */
+/** Library totals without hidden rows (a Steam tool, something you hid) or left-out platforms. */
 function useVisibleGameStats(enabled: boolean) {
   const q = useGameStats(enabled)
+  const excluded = useGamesPrefs().prefs.excludedPlatforms
   const stats = useMemo(() => {
     if (!q.data) return null
-    return computeGameStats(q.data.rows.filter(r => r.play_status !== 'hidden'), q.data.platforms)
-  }, [q.data])
+    const out = new Set(excluded)
+    const byGame = new Map<string, Game['platforms']>()
+    for (const p of q.data.platforms) byGame.set(p.game_id, [...(byGame.get(p.game_id) ?? []), p as NonNullable<Game['platforms']>[number]])
+    const counted = q.data.rows.filter(r => r.play_status !== 'hidden'
+      && (out.size === 0 || !out.has(derivePlatformKey({ library: r.library, platforms: byGame.get(r.id) } as Game))))
+    return computeGameStats(counted, q.data.platforms)
+  }, [q.data, excluded])
   return { ...q, stats }
 }
 
