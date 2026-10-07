@@ -212,8 +212,7 @@ paths were kept stable through the nav restructure so existing deep links still
 work.
 
 Everything except `/#/login` and `/#/reset-password` is behind `SessionGuard`
-(`src/app/router.tsx`). Football has no route — deferred (see CLAUDE.md's
-Features table for why).
+(`src/app/router.tsx`).
 
 ---
 
