@@ -89,7 +89,7 @@ const g = (o = {}) => ({ id: 'a', title: 'A', hidden: false, library: 'retro', i
 eq(L.igdbRowMatches(g(), 'todo', undefined), true, 'unmatched is to do')
 eq(L.igdbRowMatches(g({ igdb_id: 5 }), 'todo', undefined), false, 'matched is not to do')
 eq(L.igdbRowMatches(g(), 'todo', { saved: { name: 'A', at: 1 } }), false, 'saved this session leaves to do')
-eq(L.igdbRowMatches(g(), 'review', { decision: { status: 'review', candidates: [] } }), true, 'a review decision is to review')
+eq(L.igdbRowMatches(g(), 'review', { decision: { status: 'review', best: { id: 1 }, candidates: [] } }), true, 'a review decision is to review')
 eq(L.igdbRowMatches(g(), 'review', { decision: { status: 'exact', candidates: [] } }), false, 'an exact one is not')
 eq(L.igdbRowMatches(g({ igdb_id: 5 }), 'no_length', undefined), true, 'matched without a length')
 eq(L.igdbRowMatches(g({ igdb_id: 5, ttb_main_seconds: 3600 }), 'no_length', undefined), false, 'matched with a length')
@@ -129,13 +129,18 @@ const sep = M.rankCandidates(target({ title: 'Tetris', year: 1989, platformKey: 
   cand({ id: 21, name: 'Tetris', year: 1990, platformIds: [33], platformNames: ['Game Boy'] }),
 ])
 eq([sep[0].id, sep[0].confidence, sep[1].confidence], [20, 'exact', 'likely'], 'the closer year keeps exact')
-const rs = { decision: { status: 'review', candidates: [] } }, ns = { decision: { status: 'none', candidates: [] } }
+const rs = { decision: { status: 'review', best: { id: 1 }, candidates: [] } }, ns = { decision: { status: 'none', candidates: [] } }
 eq([L.igdbRowMatches(g(), 'todo', rs), L.igdbRowMatches(g(), 'review', rs)], [false, true], 'a looked-up game leaves Not looked up for To review')
 eq([L.igdbRowMatches(g(), 'todo', ns), L.igdbRowMatches(g(), 'none', ns)], [false, true], 'nothing found → No match, not Not looked up')
 const sysGames = [g({ id: '1', platformKey: 'snes' }), g({ id: '2', platformKey: 'snes' }), g({ id: '3', platformKey: 'gba' }), g({ id: '4', library: 'steam', platformKey: 'steam' })]
 eq(L.igdbScopes(sysGames).map(s => `${s.value}:${s.count}`), ['all:4', 'retro:3', 'steam:1', 'sys:snes:2', 'sys:gba:1'], 'every system separately, biggest first')
 eq(sysGames.filter(x => L.libraryMatches(x, 'sys:gba')).map(x => x.id), ['3'], 'one system')
 eq(L.igdbFilterCounts(sysGames, { 1: rs, 2: ns }), { todo: 2, review: 1, none: 1, matched: 0, no_length: 0, all: 4 }, 'tab counts')
+// An exact result that isn't saved yet (a hand search, or a failed auto-save)
+// waits under To review — never only under All (owner, 07.10.2026).
+const ex = { decision: { status: 'exact', kind: 'exact', best: { id: 2 }, candidates: [] } }
+eq(['todo', 'review', 'none', 'matched'].map(f => L.igdbRowMatches(g(), f, ex)), [false, true, false, false], 'an unsaved exact result is under To review')
+eq(['todo', 'review', 'matched'].map(f => L.igdbRowMatches(g(), f, { ...ex, saved: { name: 'x', at: 1 } })), [false, false, true], 'a saved one is under Matched')
 
 if (failures.length) {
   console.error(`verify-igdb-match: ${failures.length} failed, ${passed} passed\n  ${failures.join('\n  ')}`)

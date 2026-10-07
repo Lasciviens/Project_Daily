@@ -4,13 +4,17 @@ import type { IgdbFilter, IgdbLibraryFilter, IgdbRowState } from '../../../igdb/
 
 export const isIgdbMatched = (g: Pick<TgGame, 'igdb_id'>) => g.igdb_id != null
 
-/** Waiting for a tick: looked up this session, not saved, and not already matched. */
+/**
+ * Waiting for a tick: looked up, a result found, not saved and not already
+ * matched. An exact result counts too — it lands here when its automatic save
+ * failed (or before it ran), so no looked-up game is left only under All.
+ */
 export const needsReview = (g: TgGame, r: IgdbRowState | undefined) =>
-  !!r?.decision && !r.saved && !isIgdbMatched(g) && r.decision.status === 'review'
+  !!r?.decision?.best && !r.saved && !isIgdbMatched(g) && r.decision.status !== 'none'
 
 export function igdbRowMatches(g: TgGame, filter: IgdbFilter, r: IgdbRowState | undefined): boolean {
   switch (filter) {
-    // Not looked up yet (a lookup moves a game to To review or No match).
+    // Not looked up yet (a lookup moves a game to Matched, To review or No match).
     case 'todo': return !isIgdbMatched(g) && !r?.saved && !r?.decision
     case 'none': return !isIgdbMatched(g) && !r?.saved && r?.decision?.status === 'none'
     case 'review': return needsReview(g, r)

@@ -262,36 +262,28 @@ Deno.serve(async (req: Request) => {
         const rows = await igdb('games', `${CANDIDATE_FIELDS} where id = (${[...new Set(bySteam.values())].join(',')}); limit 500;`)
         for (const g of rows) steamGames.set(Number(g.id), toCandidate(g))
       }
-      // 2 · Everything else (and Steam ids IGDB doesn't know) by title.
+      // 2 · Everything else (and Steam ids IGDB doesn't know) by title — one
+      // /games search per game. Not a /multiquery: IGDB answers a `search`
+      // inside a multiquery with nothing (checked live 07.10.2026 — every
+      // title came back unanswered while the same search alone found it).
       const results: AnyRec[] = []
-      const searches: { name: string; endpoint: string; body: string }[] = []
-      const searchFor = new Map<string, MatchItem>()
-      items.forEach((x, i) => {
+      const searchOne = async (q: string) => (await igdb('games', `search ${quoted(q)}; ${CANDIDATE_FIELDS} where version_parent = null; limit 10;`)).map(toCandidate)
+      for (const x of items) {
         const gid = x.steam_appid ? bySteam.get(String(x.steam_appid)) : undefined
         const steam = gid != null ? steamGames.get(gid) ?? null : null
-        if (steam) { results.push({ game_id: x.game_id, steam, candidates: [steam] }); return }
+        if (steam) { results.push({ game_id: x.game_id, steam, candidates: [steam] }); continue }
         const q = String(x.query ?? '').trim()
-        if (q.length < 2) { results.push({ game_id: x.game_id, steam: null, candidates: [] }); return }
-        const name = `q${i}`
-        searchFor.set(name, x)
-        searches.push({ name, endpoint: 'games', body: `search ${quoted(q)}; ${CANDIDATE_FIELDS} where version_parent = null; limit 10;` })
-      })
-      const found = await multi(searches)
-      // A second, shorter search (the title before its subtitle) for those that found nothing.
-      const retry = [...searchFor].filter(([name, x]) => found.has(name) && !found.get(name)!.length && String(x.fallback ?? '').trim().length >= 3)
-      const again = retry.length ? await multi(retry.map(([name, x]) => ({
-        name: `${name}b`, endpoint: 'games', body: `search ${quoted(String(x.fallback))}; ${CANDIDATE_FIELDS} where version_parent = null; limit 10;`,
-      }))) : new Map<string, AnyRec[]>()
-      for (const [name, x] of searchFor) {
-        const first = found.get(name)
-        const second = again.get(`${name}b`)
-        // No answer from IGDB for this game's search: a failed lookup, never "no match".
-        if (!first || (!first.length && retry.some(([n]) => n === name) && !second)) {
-          results.push({ game_id: x.game_id, steam: null, candidates: [], error: 'IGDB did not answer this search' })
-          continue
+        if (q.length < 2) { results.push({ game_id: x.game_id, steam: null, candidates: [] }); continue }
+        try {
+          let rows = await searchOne(q)
+          // A second, shorter search (the title before its subtitle) when the first finds nothing.
+          const fb = String(x.fallback ?? '').trim()
+          if (!rows.length && fb.length >= 3 && fb !== q) rows = await searchOne(fb)
+          results.push({ game_id: x.game_id, steam: null, candidates: rows })
+        } catch (e) {
+          // A failed lookup stays a failure (try again), never "no match".
+          results.push({ game_id: x.game_id, steam: null, candidates: [], error: `IGDB did not answer: ${(e as Error).message}`.slice(0, 200) })
         }
-        const rows = first.length ? first : second ?? []
-        results.push({ game_id: x.game_id, steam: null, candidates: rows.map(toCandidate) })
       }
       return json({ results })
     }

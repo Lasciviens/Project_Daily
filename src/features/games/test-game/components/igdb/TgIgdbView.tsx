@@ -26,13 +26,19 @@ const pct = (n: number, d: number) => (d ? `${Math.round((n / d) * 100)} %` : '�
  */
 export function TgIgdbView({ games, loading }: { games: TgGame[]; loading: boolean }) {
   const status = useIgdbStatus()
-  const { filter, library, rows, ticked, running, looking, progress, focusId, set } = useIgdbBatch()
+  const { filter, library, rows, ticked, running, looking, progress, lastRun, focusId, set } = useIgdbBatch()
   const runner = useIgdbRunner()
   const refresh = useRefreshIgdb()
   // null → follow the focused game; '' → nothing open.
   const [openId, setOpenId] = useState<string | null>(null)
   const open = openId === null ? focusId : openId || null
   const [shown, setShown] = useState(PAGE)
+  // Rows worked on by hand (Find, a search, a save) stay where they are until
+  // the filter changes, so their result is seen instead of the row vanishing
+  // into another tab.
+  const [stay, setStay] = useState<Set<string>>(() => new Set())
+  const keep = (id: string) => setStay(s => (s.has(id) ? s : new Set(s).add(id)))
+  const resetStay = () => setStay(new Set())
 
   const all = useMemo(() => igdbCandidates(games), [games])
   const scopes = useMemo(() => igdbScopes(all).map(s => ({
@@ -43,13 +49,13 @@ export function TgIgdbView({ games, loading }: { games: TgGame[]; loading: boole
   const counts = useMemo(() => igdbFilterCounts(pool, rows), [pool, rows])
   const cover = useMemo(() => igdbCoverage(pool), [pool])
   const list = useMemo(() => {
-    const l = pool.filter(g => g.id === focusId || igdbRowMatches(g, filter, rows[g.id]))
+    const l = pool.filter(g => g.id === focusId || stay.has(g.id) || igdbRowMatches(g, filter, rows[g.id]))
       .sort((a, b) => a.title.localeCompare(b.title))
     const f = focusId ? l.findIndex(g => g.id === focusId) : -1
     if (f > 0) l.unshift(...l.splice(f, 1))
     return l
-  }, [pool, filter, rows, focusId])
-  const pending = useMemo(() => toLookUp(list, rows), [list, rows])
+  }, [pool, filter, rows, focusId, stay])
+  const pending = useMemo(() => toLookUp(list.filter(g => !stay.has(g.id) || igdbRowMatches(g, filter, rows[g.id])), rows), [list, rows, stay, filter])
   const tickedGames = list.filter(g => ticked[g.id] && rows[g.id]?.pick && !rows[g.id]?.saved && !isIgdbMatched(g))
   const likely = list.filter(g => needsReview(g, rows[g.id]) && rows[g.id]?.pick?.confidence === 'likely' && !ticked[g.id])
 
@@ -70,12 +76,12 @@ export function TgIgdbView({ games, loading }: { games: TgGame[]; loading: boole
   return (
     <div className="flex max-w-4xl flex-col gap-4 pb-6">
       <TgScrapeCard title="Which games" aside={
-        <TgDropdown value={library} options={scopes} onChange={v => { set({ library: v }); setShown(PAGE) }}
+        <TgDropdown value={library} options={scopes} onChange={v => { set({ library: v }); setShown(PAGE); resetStay() }}
           buttonLabel={scopes.find(l => l.value === library)?.label ?? 'All games'} ariaLabel="Library or system" align="end" />
       }>
         <div role="group" aria-label="Show" className="tg-scroll-x -mx-1 flex gap-1.5 px-1">
           {FILTERS.map(f => (
-            <button key={f.key} type="button" aria-pressed={filter === f.key} onClick={() => { set({ filter: f.key, focusId: null }); setShown(PAGE) }}
+            <button key={f.key} type="button" aria-pressed={filter === f.key} onClick={() => { set({ filter: f.key, focusId: null }); setShown(PAGE); resetStay() }}
               className={`tg-tab min-h-[44px] shrink-0 !px-3 !text-[12.5px] ${filter === f.key ? 'is-active' : 'bg-[var(--tg-panel-2)]'}`}>
               {f.label}{counts[f.key] ? <span className="tg-tab-count ml-1">{counts[f.key].toLocaleString('en-GB')}</span> : null}
             </button>
@@ -89,6 +95,12 @@ export function TgIgdbView({ games, loading }: { games: TgGame[]; loading: boole
           Steam games match by their app id; others by title, platform and year. Exact matches save by themselves; nothing you set (title, cover, notes) is changed.
         </p>
 
+        {!running && lastRun && (
+          <p className="mt-3 text-[12.5px] tg-muted" aria-live="polite">
+            Last run: looked up {lastRun.looked} · <b className="font-semibold text-[var(--tg-green)]">{lastRun.saved} saved</b> (exact)
+            {' · '}{lastRun.review} to review · {lastRun.none} no match{lastRun.failed ? ` · ${lastRun.failed} failed — Match again` : ''}
+          </p>
+        )}
         {running && progress && (
           <div className="mt-3" aria-live="polite">
             <div className="h-2 overflow-hidden rounded-full bg-[var(--tg-panel-2)]">
@@ -134,8 +146,8 @@ export function TgIgdbView({ games, loading }: { games: TgGame[]; loading: boole
         <ul className="flex flex-col gap-2">
           {list.slice(0, shown).map(g => (
             <TgIgdbRow key={g.id} game={g} row={rows[g.id]} ticked={!!ticked[g.id]} busy={!!looking[g.id]}
-              open={open === g.id} onToggle={() => setOpenId(open === g.id ? '' : g.id)}
-              onLookUp={() => void runner.run([g])} onSavePick={c => runner.savePick(g, c)} />
+              open={open === g.id} onToggle={() => { keep(g.id); setOpenId(open === g.id ? '' : g.id) }}
+              onLookUp={() => { keep(g.id); void runner.run([g]) }} onSavePick={(c, m) => { keep(g.id); return runner.savePick(g, c, m) }} />
           ))}
           {list.length > shown && (
             <li className="py-2 text-center">
