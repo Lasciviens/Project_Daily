@@ -26,6 +26,7 @@ import { todayStr } from '../../../shared/utils/dateUtils'
 import { AddToListMenu } from './AddToListMenu'
 import { QueueButton } from './QueueButton'
 import { ReleaseReminderButton } from './ReleaseReminderButton'
+import { TRAKT_NOTE_MAX } from '../trakt/traktNotes'
 import type { TMDBMovieFull, TMDBTVFull, UserMovieEntry, UserTVEntry, MediaStatus } from '../types'
 
 // No manual "Upcoming" status: "coming soon" is derived from the release date
@@ -128,13 +129,18 @@ export function MediaLibraryControls({ detail, isMovie, userEntry, onRemoved }: 
   // The last aired day (TMDB's last_air_date is the latest aired episode).
   const lastAired = tv?.last_air_date ?? null
 
-  // Private note, saved on blur; re-seeded when a different entry is shown
-  // (adjust-state-during-render, not an effect).
-  const [note, setNote] = useState(userEntry?.personal_note ?? '')
+  // Private note (also the title's Trakt note), saved on blur; re-seeded when a
+  // different entry is shown, or when the stored note changed (a Trakt sync)
+  // while nothing new was typed here — so a stale field never saves an old
+  // note over one that just came in (adjust-state-during-render, not an effect).
+  const storedNote = userEntry?.personal_note ?? ''
+  const [note, setNote] = useState(storedNote)
+  const [noteSeen, setNoteSeen] = useState(storedNote)
   const [noteFor, setNoteFor] = useState(entryId)
-  if (entryId !== noteFor) {
+  if (entryId !== noteFor || (storedNote !== noteSeen && (note === noteSeen || note.trim() === storedNote.trim()))) {
     setNoteFor(entryId)
-    setNote(userEntry?.personal_note ?? '')
+    setNote(storedNote)
+    setNoteSeen(storedNote)
   }
 
   const patchEntry = (patch: EntryPatch): Promise<unknown> =>
@@ -364,6 +370,12 @@ export function MediaLibraryControls({ detail, isMovie, userEntry, onRemoved }: 
           rows={2}
           className="input min-h-[56px] w-full resize-y py-2"
         />
+        {/* The note is also the title's Trakt note; Trakt's limit is 500 characters (traktNotes.ts). */}
+        {note.trim().length > TRAKT_NOTE_MAX && (
+          <p className="mt-1 text-micro text-fg-muted">
+            Trakt keeps notes up to {TRAKT_NOTE_MAX} characters: it gets the first {TRAKT_NOTE_MAX - 1} and “…”, the whole note stays here.
+          </p>
+        )}
       </div>
 
       <div className="flex flex-wrap gap-1 sm:gap-2">

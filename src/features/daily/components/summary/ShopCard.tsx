@@ -1,22 +1,26 @@
 import { ShoppingCart, X } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { Cell, CellHeader, CellLink } from './cellKit'
 import { Button, IconButton, SectionLabel, Truncate } from '../../../../shared/ui'
 import { useShopItems, useUpdateShopItem } from '../../../shop/hooks/useShop'
+import { PRIORITY_RANK as RANK, listOf, priceLabel, quickOpen } from '../../../shop/shopModel'
 import type { ShopItem } from '../../../shop/types'
 import { REGION_FLAG } from '../../../shop/shopMeta'
 
-// Purchases planned for the viewed day (shop_items.planned_date) — mark
-// bought or push by a day right here; plus a hint of the top wishlist items
-// so an empty day still shows what could be planned.
+// Purchases planned for the viewed day (shop_items.planned_date, either list)
+// — mark bought or take off the day right here; how much is on the quick
+// list; and a hint of the top wishlist items so an empty day still shows what
+// could be planned.
 export function ShopCard({ date }: { date: string }) {
   const { data: items = [] } = useShopItems()
   const update = useUpdateShopItem()
 
-  const wishlist   = items.filter((i: ShopItem) => i.status === 'wishlist')
-  const planned    = wishlist.filter((i: ShopItem) => i.planned_date === date)
-  const unplanned  = wishlist
-    .filter((i: ShopItem) => !i.planned_date)
-    .sort((a: ShopItem, b: ShopItem) => (a.priority === 'high' ? 0 : a.priority === 'medium' ? 1 : 2) - (b.priority === 'high' ? 0 : b.priority === 'medium' ? 1 : 2))
+  const toBuy     = items.filter((i: ShopItem) => i.status === 'wishlist')
+  const planned   = toBuy.filter((i: ShopItem) => i.planned_date === date)
+  const quick     = quickOpen(items).filter(i => i.planned_date !== date)
+  const unplanned = toBuy
+    .filter((i: ShopItem) => listOf(i) === 'wishlist' && !i.planned_date)
+    .sort((a: ShopItem, b: ShopItem) => RANK[a.priority] - RANK[b.priority])
     .slice(0, 2)
 
   return (
@@ -25,30 +29,39 @@ export function ShopCard({ date }: { date: string }) {
 
       {planned.length > 0 ? (
         <ul className="flex flex-col gap-1">
-          {planned.map((i: ShopItem) => (
-            <li key={i.id} className="flex items-center gap-1">
-              <button
-                type="button"
-                onClick={() => update.mutate({ id: i.id, patch: { status: 'bought' } })}
-                aria-label={`Mark ${i.title} bought`}
-                className="group grid h-11 w-11 shrink-0 place-items-center rounded-control hover:bg-success-soft"
-              >
-                <span className="h-4 w-4 rounded-[5px] border-2 border-line-strong transition-colors group-hover:border-success" />
-              </button>
-              <div className="min-w-0 flex-1">
-                <Truncate as="p" fullText={i.title} className="text-body font-medium leading-snug text-fg">
-                  {i.region && <span className="mr-1">{REGION_FLAG[i.region]}</span>}{i.title}
-                </Truncate>
-                {i.price != null && <p className="text-meta tabular-nums text-fg-muted">{i.price}</p>}
-              </div>
-              <IconButton label="Remove from this day" onClick={() => update.mutate({ id: i.id, patch: { planned_date: null } })} className="shrink-0 hover:text-danger">
-                <X />
-              </IconButton>
-            </li>
-          ))}
+          {planned.map((i: ShopItem) => {
+            const price = priceLabel(i)
+            return (
+              <li key={i.id} className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => update.mutate({ id: i.id, patch: { status: 'bought' } })}
+                  aria-label={`Mark ${i.title} bought`}
+                  className="group grid h-11 w-11 shrink-0 place-items-center rounded-control hover:bg-success-soft"
+                >
+                  <span className="h-4 w-4 rounded-[5px] border-2 border-line-strong transition-colors group-hover:border-success" />
+                </button>
+                <div className="min-w-0 flex-1">
+                  <Truncate as="p" fullText={i.title} className="text-body font-medium leading-snug text-fg">
+                    {i.region && <span className="mr-1">{REGION_FLAG[i.region]}</span>}{i.title}
+                  </Truncate>
+                  {price && <p className="text-meta tabular-nums text-fg-muted">{price}</p>}
+                </div>
+                <IconButton label="Remove from this day" onClick={() => update.mutate({ id: i.id, patch: { planned_date: null } })} className="shrink-0 hover:text-danger">
+                  <X />
+                </IconButton>
+              </li>
+            )
+          })}
         </ul>
       ) : (
         <p className="text-body text-fg-muted">Nothing planned to buy this day.</p>
+      )}
+
+      {quick.length > 0 && (
+        <Link to="/shop?view=quick" className="flex min-h-[44px] items-center text-body font-medium text-accent-600 hover:underline">
+          Quick list · {quick.length} to pick up
+        </Link>
       )}
 
       {unplanned.length > 0 && (

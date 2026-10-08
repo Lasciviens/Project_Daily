@@ -46,8 +46,8 @@ function Disclosure({ label, openLabel, children }: { label: string; openLabel: 
 }
 
 export function ProgressTab() {
-  const { routineTitlesByTemplateId } = useProgressDataContext()
-  const preferIds = useMemo(() => new Set(routineTitlesByTemplateId.keys()), [routineTitlesByTemplateId])
+  const { routineIdsByTemplateId } = useProgressDataContext()
+  const preferIds = useMemo(() => new Set(routineIdsByTemplateId.keys()), [routineIdsByTemplateId])
   // Placed by PageBoard (trainingBoards.ts → PROGRESS_BOARD): decisions and
   // the body map in main, the summaries in a rail, the charts underneath.
   return (

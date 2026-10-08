@@ -14,43 +14,43 @@ cross-AI task board → `codex-shortcuts.md`.
 
 | File | Purpose | Last verified |
 |---|---|---|
-| [termux-widgets.md](termux-widgets.md) | RP6 Termux widget setup/update, extension examples, installed-file map, ES-DE sync coverage, troubleshooting and dated delivery/device evidence. | 16/09/2026 |
-| [games/esde-completeness-audit.md](games/esde-completeness-audit.md) | Measured ten-game SD-to-DB comparison, whole-card media inventory, missing XML/media fields and the required non-video coverage contract. | 16/09/2026 |
-| `iphone-examples.md` | `phone-gateway` one-time server steps, the `x-phone-secret` pattern, and the full 11-action API table — deterministic `log_supplement`/`log_food`/`log_water`/`nutrition_today`/`recent_foods`/`search_library`/`sleep_stats`/`tasks_today` plus AI `ask`/`brief`/`sleep`. This table is the contract Shortcuts and widgets must match. | 24/07/2026 |
-| `web-push-setup.md` | Lock-screen morning push: VAPID key generation, the four Vault secrets, the `VITE_VAPID_PUBLIC_KEY` build variable, migration `068`, deploying `push-send` with JWT verification OFF, then subscribing from the installed PWA. | 25/07/2026 |
-| `scriptable-food-logger.md` | Setup + full source of the `Yemek Logla` Scriptable mini app: log food from recents, your own ingredient library, Open Food Facts search, or a scanned barcode. | 25/07/2026 |
-| `scriptable-widgets.md` | Setup + full source of the 4 home-screen widgets (`Uyku Paneli`, `Komuta Merkezi`, `Hizli Log Paneli`, `Makro Halkalari`) and the `HizliLog` runner. **Script names are load-bearing** — W3's deep links resolve by name. | 24/07/2026 |
-| `health-auto-export/` | Importable Health Auto Export automation configs (`README.md` + `01`–`05`: recurring metrics, weekly reconciliation, recurring workouts, and the two one-time backfills). Required app settings are **Export Version 2, Summarize ON, Time Grouping: Hours**. | 25/07/2026 |
+| [termux-widgets.md](termux-widgets.md) | RP6 Termux widget setup/update, extension examples, installed-file map, ES-DE sync coverage, troubleshooting and dated delivery/device evidence. | 16.09.2026 |
+| [games/esde-completeness-audit.md](games/esde-completeness-audit.md) | Measured ten-game SD-to-DB comparison, whole-card media inventory, missing XML/media fields and the required non-video coverage contract. | 16.09.2026 |
+| `iphone-examples.md` | `phone-gateway` one-time server steps, the `x-phone-secret` pattern, and the full 11-action API table — deterministic `log_supplement`/`log_food`/`log_water`/`nutrition_today`/`recent_foods`/`search_library`/`sleep_stats`/`tasks_today` plus AI `ask`/`brief`/`sleep`. This table is the contract Shortcuts and widgets must match. | 24.07.2026 |
+| `web-push-setup.md` | Lock-screen morning push: VAPID key generation, the four Vault secrets, the `VITE_VAPID_PUBLIC_KEY` build variable, migration `068`, deploying `push-send` with JWT verification OFF, then subscribing from the installed PWA. | 25.07.2026 |
+| `scriptable-food-logger.md` | Setup + full source of the `Yemek Logla` Scriptable mini app: log food from recents, your own ingredient library, Open Food Facts search, or a scanned barcode. | 25.07.2026 |
+| `scriptable-widgets.md` | Setup + full source of the 4 home-screen widgets (`Uyku Paneli`, `Komuta Merkezi`, `Hizli Log Paneli`, `Makro Halkalari`) and the `HizliLog` runner. **Script names are load-bearing** — W3's deep links resolve by name. | 24.07.2026 |
+| `health-auto-export/` | Importable Health Auto Export automation configs (`README.md` + `01`–`05`: recurring metrics, weekly reconciliation, recurring workouts, and the two one-time backfills). Required app settings are **Export Version 2, Summarize ON, Time Grouping: Hours**. | 25.07.2026 |
 
 ## Live coordination — read fresh every session, never summarise from memory
 
 | File | Purpose | Last verified |
 |---|---|---|
-| `coord/README.md` | The two-channel append-only Codex ⇄ Claude protocol: message format, who writes where, and the loop. | 23/07/2026 |
-| `coord/to-codex.md` | Claude → Codex append-only log. Claude writes only; newest entry on top. | 25/07/2026 |
-| `coord/to-claude.md` | Codex → Claude append-only log. Codex writes only; never edit it. | 24/07/2026 |
-| `codex-shortcuts.md` | The stable spec + task board for Codex, who owns `scripts/iphone-shortcuts/`: the role split, the 6 rules, and the C-numbered tasks with statuses. | 25/07/2026 |
+| `coord/README.md` | The two-channel append-only Codex ⇄ Claude protocol: message format, who writes where, and the loop. | 23.07.2026 |
+| `coord/to-codex.md` | Claude → Codex append-only log. Claude writes only; newest entry on top. | 25.07.2026 |
+| `coord/to-claude.md` | Codex → Claude append-only log. Codex writes only; never edit it. | 24.07.2026 |
+| `codex-shortcuts.md` | The stable spec + task board for Codex, who owns `scripts/iphone-shortcuts/`: the role split, the 6 rules, and the C-numbered tasks with statuses. | 25.07.2026 |
 
 ## Reference — verified, durable
 
 | File | Purpose | Last verified |
 |---|---|---|
-| `ai-cost-capability-analysis.md` | AI layer cost + capability reference as shipped: the prompt-caching contract, `db_aggregate`/`semantic_search`/`run_read_query` design, tool slicing, model routing, security invariants, pricing snapshot. Read before any `ai-proxy`/`aiApi.ts` cost or capability work. | 25/07/2026 |
-| `iphone-web-integration.md` | Why the iPhone integration is shaped this way: the auth model, hard iOS platform limits, and the options evaluated and rejected. | 25/07/2026 |
-| `training/progress-engine/` | The Exercise Progress Engine (`src/features/training/progress-engine/`): algorithm, decision table + evidence-tier classification, data lineage/limitations, citations, changelog. Read before touching per-exercise progress-decision logic. | 03/09/2026 |
+| `ai-cost-capability-analysis.md` | AI layer cost + capability reference as shipped: the prompt-caching contract, `db_aggregate`/`semantic_search`/`run_read_query` design, tool slicing, model routing, security invariants, pricing snapshot. Read before any `ai-proxy`/`aiApi.ts` cost or capability work. | 25.07.2026 |
+| `iphone-web-integration.md` | Why the iPhone integration is shaped this way: the auth model, hard iOS platform limits, and the options evaluated and rejected. | 25.07.2026 |
+| `training/progress-engine/` | The Exercise Progress Engine (`src/features/training/progress-engine/`): algorithm, decision table + evidence-tier classification, data lineage/limitations, citations, changelog. Read before touching per-exercise progress-decision logic. | 03.09.2026 |
 
 ## Working plans — temporary, deleted when the feature ships
 
 | File | Purpose | Last verified |
 |---|---|---|
-| [kobo/PLAN.md](kobo/PLAN.md) | **Temporary working plan** for the Kobo Clara BW integration: reading tracker (KOReader + our plugin → `kobo-sync`), Send to Kobo from phone/laptop, fun extras, working from the MacBook, the phased roadmap and the owner's checklist. Deleted once CLAUDE.md carries a Books Feature Detail section. | 29/09/2026 |
-| [trakt/PLAN.md](trakt/PLAN.md) | **Temporary working plan** for the Trakt integration: TMDB id as the one identity, matching Trakt/IMDb ids onto the existing `movies`/`tv_series` rows (no duplicates), mapping watch history/ratings/watchlist, two-way sync, Rotten Tomatoes scores via MDBList, phases and the owner's decisions. Deleted once CLAUDE.md's Media section carries it. | 30.09.2026 |
+| [kobo/PLAN.md](kobo/PLAN.md) | **Temporary working plan** for the Kobo Clara BW integration: reading tracker (KOReader + our plugin → `kobo-sync`), Send to Kobo from phone/laptop, fun extras, working from the MacBook, the phased roadmap and the owner's checklist. Deleted once CLAUDE.md carries a Books Feature Detail section. | 29.09.2026 |
+| [trakt/PLAN.md](trakt/PLAN.md) | **Temporary working plan** for the Trakt integration: TMDB id as the one identity, matching Trakt/IMDb ids onto the existing `movies`/`tv_series` rows (no duplicates), mapping watch history/ratings/watchlist, two-way sync (notes too: §6, API facts in §12), Rotten Tomatoes scores via MDBList, phases and the owner's decisions. Deleted once CLAUDE.md's Media section carries it. | 07.10.2026 |
 
 ## Raw artifacts
 
 | File | Purpose | Last verified |
 |---|---|---|
-| `EnTur_API.postman_collection.json` | Hand-built EnTur JourneyPlanner v3 + geocoder collection, including the `sources=nsr` reproduction case and the introspection queries behind the "verify EnTur fields live before use" rule. The live-verified *usage* is documented in CLAUDE.md's Transit section. | 28/06/2026 |
+| `EnTur_API.postman_collection.json` | Hand-built EnTur JourneyPlanner v3 + geocoder collection, including the `sources=nsr` reproduction case and the introspection queries behind the "verify EnTur fields live before use" rule. The live-verified *usage* is documented in CLAUDE.md's Transit section. | 28.06.2026 |
 
 ---
 

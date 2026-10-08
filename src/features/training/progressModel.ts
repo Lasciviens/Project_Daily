@@ -10,6 +10,7 @@ import {
   type ProgressMetricKind, type ProgramDecision,
 } from './progress-engine'
 import { RECENT_DAYS, daysAgo } from './progress/decisionTabs'
+import { buildTemplateMuscleMap, type TemplateMuscleCredit } from './muscleMap'
 import { computeSleepSummary } from '../health/healthAggregate'
 import { computeWeeklySleepTrend } from '../health/recoveryAggregate'
 import type { HevyRoutine } from './types.hevy'
@@ -56,9 +57,15 @@ export interface ProgressData {
    *  the progress chart render straight from this. */
   sessionsByTemplateId: Map<string, CanonicalExerciseSession[]>
   metricKindByTemplateId: Map<string, ProgressMetricKind>
-  muscleGroupByTemplateId: Map<string, string | null>
-  /** Every CURRENT-program routine title an exercise appears in. */
-  routineTitlesByTemplateId: Map<string, string[]>
+  /** The body slugs each exercise trains — its primary and its secondaries
+   *  (muscleMap.buildTemplateMuscleMap, from the exercise templates). The
+   *  decision table's Muscle filter reads it. */
+  musclesByTemplateId: Map<string, TemplateMuscleCredit>
+  /** Every CURRENT-program routine an exercise belongs to, by id, in routine
+   *  order: the routines that list it — or, for an exercise no current
+   *  routine lists, the ones it was trained in during the last RECENT_DAYS
+   *  (swapped in mid-workout). The Routine filter reads it. */
+  routineIdsByTemplateId: Map<string, string[]>
   /** The current-program routines that still exist, in routine order. */
   activeRoutines: HevyRoutine[]
   /** Today (local) as the data was computed — consumers use it for "last 14
@@ -70,7 +77,7 @@ export function emptyProgressData(today: string, over: Partial<ProgressData> = {
   return {
     isLoading: true, needsCurrentProgram: false, staleProgram: false, suggestedRoutines: [], decisions: [], program: null,
     summary: null, titleById: new Map(), sessionsByTemplateId: new Map(), metricKindByTemplateId: new Map(),
-    muscleGroupByTemplateId: new Map(), routineTitlesByTemplateId: new Map(), activeRoutines: [], today, ...over,
+    musclesByTemplateId: new Map(), routineIdsByTemplateId: new Map(), activeRoutines: [], today, ...over,
   }
 }
 
@@ -124,13 +131,16 @@ export function computeProgressModel(input: ProgressModelInput): ProgressData {
   // exercise swapped out of a routine keeps its old routine_id on logged
   // sets, and used to stay in the table ("6 of 44" instead of "9 of 13").
   const currentExerciseIds = new Set<string>()
-  const routineTitlesByTemplateId = new Map<string, string[]>()
+  const routineIdsByTemplateId = new Map<string, string[]>()
+  const addRoutine = (templateId: string, routineId: string) => {
+    const bucket = routineIdsByTemplateId.get(templateId) ?? []
+    if (!bucket.includes(routineId)) bucket.push(routineId)
+    routineIdsByTemplateId.set(templateId, bucket)
+  }
   for (const r of activeRoutines) {
     for (const ex of r.exercises ?? []) {
       currentExerciseIds.add(ex.exercise_template_id)
-      const bucket = routineTitlesByTemplateId.get(ex.exercise_template_id) ?? []
-      if (!bucket.includes(r.title)) bucket.push(r.title)
-      routineTitlesByTemplateId.set(ex.exercise_template_id, bucket)
+      addRoutine(ex.exercise_template_id, r.id)
     }
   }
   // ...but anything trained in a current-program routine in the last
@@ -141,17 +151,15 @@ export function computeProgressModel(input: ProgressModelInput): ProgressData {
   const titleOfRoutine = new Map(activeRoutines.map(r => [r.id, r.title]))
   for (const s of filteredSets) {
     if (s.date < recentCutoff || !s.routine_id || s.set_type === 'warmup' || currentExerciseIds.has(s.exercise_template_id)) continue
-    const routineTitle = titleOfRoutine.get(s.routine_id)
-    if (!routineTitle) continue
-    const bucket = routineTitlesByTemplateId.get(s.exercise_template_id) ?? []
-    if (!bucket.includes(routineTitle)) bucket.push(routineTitle)
-    routineTitlesByTemplateId.set(s.exercise_template_id, bucket)
+    if (titleOfRoutine.has(s.routine_id)) addRoutine(s.exercise_template_id, s.routine_id)
   }
-  const inScope = (id: string) => currentExerciseIds.has(id) || routineTitlesByTemplateId.has(id)
+  // In scope = at least one current routine: one lists it, or it was trained
+  // in one lately.
+  const inScope = (id: string) => routineIdsByTemplateId.has(id)
   const templateIds = [...new Set(filteredSets.map(s => s.exercise_template_id))].filter(inScope)
   const titleById = new Map(history.templates.map(t => [t.id, t.title]))
   const typeById = new Map(history.templates.map(t => [t.id, t.type]))
-  const muscleGroupByTemplateId = new Map(history.templates.map(t => [t.id, t.primary_muscle_group]))
+  const musclesByTemplateId = buildTemplateMuscleMap(history.templates)
 
   const sessionsByTemplateId = new Map<string, CanonicalExerciseSession[]>()
   const metricKindByTemplateId = new Map<string, ProgressMetricKind>()
@@ -179,6 +187,7 @@ export function computeProgressModel(input: ProgressModelInput): ProgressData {
 
   return {
     isLoading: false, needsCurrentProgram: false, staleProgram: false, suggestedRoutines: [], decisions, program, summary, titleById,
-    sessionsByTemplateId, metricKindByTemplateId, muscleGroupByTemplateId, routineTitlesByTemplateId, activeRoutines, today,
+    sessionsByTemplateId, metricKindByTemplateId, musclesByTemplateId, routineIdsByTemplateId,
+    activeRoutines, today,
   }
 }

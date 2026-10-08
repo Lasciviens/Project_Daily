@@ -20,7 +20,8 @@ export function scheduleTraktSync(qc: QueryClient) {
     timer = null
     try {
       const r = await syncTrakt()
-      if (r.pulled) await invalidate(qc, 'media')
+      // Notes taken from Trakt can arrive in a run that read nothing else.
+      if (r.pulled || r.notes?.fromTrakt) await invalidate(qc, 'media')
     } catch { /* shown on the Trakt card */ }
     await qc.invalidateQueries({ queryKey: qk.trakt.all })
   }, DELAY_MS)

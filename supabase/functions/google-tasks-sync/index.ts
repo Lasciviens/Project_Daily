@@ -6,6 +6,11 @@
 // shipped real-time local→Google sync (the outbox, drained on every local
 // mutation) and a manual pull button, but nothing that runs unattended.
 //
+// It also drains the Google CALENDAR outbox (migration 135, last step of a
+// run): a time block deleted on the server queues its linked Calendar event
+// there, and this run deletes it with the same token — see the "Calendar
+// outbox" section below.
+//
 // Self-contained (no supabase/functions/_shared/ import) per this repo's
 // established Hevy-functions convention — Deno Dashboard deploys don't
 // bundle sibling files. This means the Google Tasks REST helpers below are
@@ -24,7 +29,9 @@
 // needed here — the Health API's mixed-scope rejection (403
 // DISALLOWED_OAUTH_SCOPES) is a Health-API-specific restriction; Calendar
 // and Tasks scopes coexist on one token fine (calendar-token already mints
-// full-scope tokens for Calendar without issue).
+// full-scope tokens for Calendar without issue). A refresh without a `scope`
+// parameter returns every scope the consent granted, calendar.events
+// included — which is what lets the Calendar outbox drain reuse it.
 //
 // Why the migration-071 RPCs needed a migration-072 change to be callable
 // from here: they scope writes via `user_id = (SELECT auth.uid())`, which
@@ -529,6 +536,253 @@ async function pullTasks(token: string, userId: string, sinceIso: string | null)
   return { imported, listErrors }
 }
 
+// ── Calendar outbox (Google Calendar, migration 135) ────────────────────────
+// A time block deleted on the server — ai-proxy's db_delete, the Hevy
+// functions closing a planned-session task, the tasks → time_blocks ON
+// DELETE CASCADE, migration 043's cleanup triggers — has no Google token at
+// hand, so its linked Calendar event used to stay on the calendar forever.
+// Migration 135's AFTER DELETE trigger queues each deleted block's event in
+// calendar_outbox; this step deletes them with the same access token the
+// Tasks steps use. The browser still removes an event itself before it
+// deletes the block, so most queued rows simply read 404/410 here and go.
+//
+// The block between the <calendar-outbox-rules> markers is a HAND MIRROR of
+// src/features/calendar/calendarOutboxRules.ts — edit it there, then copy the
+// block here; scripts/verify-calendar-outbox.cjs fails when they differ.
+
+// <calendar-outbox-rules>
+/** What the drain does with a queued row once Google answered its delete:
+ *  'deleted' — removed now; drop the row.
+ *  'gone'    — Google no longer has it (404, or 410 "Resource has been
+ *              deleted" for an event already in the calendar's bin); drop the
+ *              row. Most rows end here: a browser delete removes the event
+ *              before the block, and the trigger queues it anyway.
+ *  'stop'    — 401/403/429: the token, its scopes or the rate limit would
+ *              fail every other row the same way. Back this row off and end
+ *              the run; the rest wait for the next one.
+ *  'retry'   — anything else (5xx, other 4xx, no answer at all): back this
+ *              row off and carry on with the next. */
+export type CalendarOutboxOutcome = 'deleted' | 'gone' | 'stop' | 'retry'
+
+/** Google Calendar events.delete → outcome. `null` = no HTTP answer (a
+ *  network failure or a timeout). */
+export function calendarDeleteOutcome(status: number | null): CalendarOutboxOutcome {
+  if (status === null || !Number.isFinite(status)) return 'retry'
+  if (status >= 200 && status < 300) return 'deleted'
+  if (status === 404 || status === 410) return 'gone'
+  if (status === 401 || status === 403 || status === 429) return 'stop'
+  return 'retry'
+}
+
+/** After this many failures a row is parked: tried once a day, so a delete
+ *  that always fails (a 400, a 403 for that one event) neither retries hourly
+ *  forever nor stops every run ahead of the rows behind it. */
+export const CALENDAR_PARK_AFTER = 8
+
+/** Seconds a failed row waits before its next try — the Tasks outbox's own
+ *  curve (google-tasks-sync's drainOutbox): 60 s after the first failure,
+ *  doubling, never more than an hour; a day once parked. `attempts` counts
+ *  this failure too. */
+export function calendarRetryDelaySeconds(attempts: number): number {
+  const n = Number.isFinite(attempts) && attempts >= 1 ? Math.floor(attempts) : 1
+  if (n >= CALENDAR_PARK_AFTER) return 86_400
+  return Math.min(3600, 30 * 2 ** n)
+}
+
+/** PostgREST / Postgres saying the table isn't there — migration 135 not
+ *  applied yet. The drain then skips quietly instead of failing every run
+ *  (the same three signals as wishesApi.ts and the other pre-migration guards). */
+export function isMissingTableError(error: { code?: string | null; message?: string | null } | null | undefined): boolean {
+  if (!error) return false
+  return error.code === '42P01' || error.code === 'PGRST205' || /Could not find the table/i.test(error.message ?? '')
+}
+
+/** The events.delete path, encoded the way the browser's calendarApi.ts does. */
+export function calendarEventPath(calendarId: string, eventId: string): string {
+  return `/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`
+}
+
+export interface CalendarOutboxRow {
+  id: string
+  calendar_id: string
+  event_id: string
+  attempts: number
+}
+
+/** One run's tally — google-tasks-sync returns it as `calendar`. */
+export interface CalendarDrainSummary {
+  /** Removed from Google by this run. */
+  deleted: number
+  /** Google answered 404/410: it was gone already (usually the browser's own delete). */
+  already_gone: number
+  /** A live time block still points at the event (a block put back, a shared id) — it stays. */
+  kept: number
+  /** Backed off; tried again on a later run. */
+  failed: number
+  /** Not tried this run (after a stop, or out of time). */
+  left: number
+  /** Why the run stopped early (401/403/429), else null. */
+  stopped: string | null
+  /** Rows that reached CALENDAR_PARK_AFTER failures this run (now tried daily). */
+  parked: number
+}
+
+export function emptyCalendarDrainSummary(): CalendarDrainSummary {
+  return { deleted: 0, already_gone: 0, kept: 0, failed: 0, left: 0, stopped: null, parked: 0 }
+}
+
+/** The I/O a run needs — google-tasks-sync wires these to Google and Supabase. */
+export interface CalendarDrainDeps {
+  /** Event ids a live time block still points at: never deleted. */
+  stillLinked: ReadonlySet<string>
+  /** One events.delete. Resolves (never rejects) with the HTTP status, or null with no answer. */
+  deleteEvent(row: CalendarOutboxRow): Promise<{ status: number | null; message: string }>
+  removeRow(row: CalendarOutboxRow): Promise<void>
+  backOff(row: CalendarOutboxRow, attempts: number, delaySeconds: number, message: string): Promise<void>
+  /** False once the run should start no further deletes (its time budget). */
+  timeLeft?: () => boolean
+}
+
+/** Readable text for anything thrown — a supabase-js error is a plain object
+ *  with a `message`, not always an Error. */
+export function errorText(e: unknown): string {
+  if (e instanceof Error) return e.message || e.name
+  if (e && typeof e === 'object' && 'message' in e) return String((e as { message: unknown }).message)
+  return String(e)
+}
+
+/** One row: null when it is settled (its row removed), else why it failed. */
+async function settleCalendarRow(
+  row: CalendarOutboxRow,
+  deps: CalendarDrainDeps,
+  summary: CalendarDrainSummary,
+): Promise<string | null> {
+  if (deps.stillLinked.has(row.event_id)) {
+    await deps.removeRow(row)
+    summary.kept++
+    return null
+  }
+  const answer = await deps.deleteEvent(row)
+  const outcome = calendarDeleteOutcome(answer.status)
+  if (outcome === 'deleted' || outcome === 'gone') {
+    await deps.removeRow(row)
+    if (outcome === 'deleted') summary.deleted++
+    else summary.already_gone++
+    return null
+  }
+  const message = answer.message || `Calendar API ${answer.status ?? 'unreachable'}`
+  if (outcome === 'stop') summary.stopped = message
+  return message
+}
+
+/** Works through one batch in order. Never rejects: a row whose step fails is
+ *  backed off and counted, and the next row goes on (unless it was a stop). */
+export async function drainCalendarRows(
+  rows: readonly CalendarOutboxRow[],
+  deps: CalendarDrainDeps,
+): Promise<CalendarDrainSummary> {
+  const summary = emptyCalendarDrainSummary()
+  for (let i = 0; i < rows.length; i++) {
+    if (summary.stopped !== null || (deps.timeLeft && !deps.timeLeft())) {
+      summary.left = rows.length - i
+      break
+    }
+    const row = rows[i]
+    // A failed removeRow lands in the catch too, even after Google deleted
+    // the event — the next run then reads 410 and drops the row.
+    const failure = await settleCalendarRow(row, deps, summary).catch(errorText)
+    if (failure === null) continue
+    summary.failed++
+    const attempts = row.attempts + 1
+    if (attempts === CALENDAR_PARK_AFTER) summary.parked++
+    try {
+      await deps.backOff(row, attempts, calendarRetryDelaySeconds(attempts), failure)
+    } catch {
+      // The row keeps its old retry time and is simply tried again next run.
+    }
+  }
+  return summary
+}
+// </calendar-outbox-rules>
+
+const CALENDAR_BASE = 'https://www.googleapis.com/calendar/v3'
+// At most CALENDAR_BATCH rows a run, and no new delete once CALENDAR_BUDGET_MS
+// has passed: with the 20-minute cron that is up to 150 events an hour, and a
+// run that meets a hanging Google can't outlive the function's wall clock.
+const CALENDAR_BATCH = 50
+const CALENDAR_BUDGET_MS = 25_000
+const CALENDAR_REQUEST_TIMEOUT_MS = 10_000
+
+type CalendarStepResult = CalendarDrainSummary & { skipped?: 'not_migrated' }
+
+// The same request as the browser's calendarApi.ts deleteCalendarEvent
+// (DELETE, no query parameters), but answering with the status instead of
+// throwing, so the rules above decide what it means.
+async function deleteCalendarEventOnce(token: string, calendarId: string, eventId: string): Promise<{ status: number | null; message: string }> {
+  try {
+    const res = await fetch(`${CALENDAR_BASE}${calendarEventPath(calendarId, eventId)}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${token}` },
+      signal: AbortSignal.timeout(CALENDAR_REQUEST_TIMEOUT_MS),
+    })
+    const text = await res.text().catch(() => '')
+    if (res.ok) return { status: res.status, message: '' }
+    let detail = ''
+    try { detail = JSON.parse(text)?.error?.message ?? '' } catch { /* not JSON */ }
+    return { status: res.status, message: `Calendar API ${res.status}${detail ? `: ${detail}` : ''}` }
+  } catch (e) {
+    return { status: null, message: `Calendar API unreachable: ${errorText(e)}` }
+  }
+}
+
+async function drainCalendarOutbox(token: string, userId: string): Promise<CalendarStepResult> {
+  const { data, error } = await supabase.from('calendar_outbox')
+    .select('id, calendar_id, event_id, attempts')
+    .eq('user_id', userId)
+    // The only operation today (a CHECK in 135) — named anyway, so a later
+    // operation can never be read as "delete this event".
+    .eq('operation', 'delete')
+    .lte('next_retry_at', new Date().toISOString())
+    .order('created_at', { ascending: true })
+    .limit(CALENDAR_BATCH)
+  if (error) {
+    // Pre-migration-safe: before 135 there is nothing to drain — say so
+    // instead of failing every run.
+    if (isMissingTableError(error)) return { ...emptyCalendarDrainSummary(), skipped: 'not_migrated' }
+    throw error
+  }
+  const rows = (data ?? []) as CalendarOutboxRow[]
+  if (!rows.length) return emptyCalendarDrainSummary()
+
+  // Never delete an event a live block still points at: a block put back
+  // after its delete, or a second block holding the same id. Every linked
+  // event is in the primary calendar, so the event id alone decides.
+  const { data: linked, error: linkedError } = await supabase.from('time_blocks')
+    .select('google_calendar_event_id')
+    .eq('user_id', userId)
+    .in('google_calendar_event_id', [...new Set(rows.map((r) => r.event_id))])
+  if (linkedError) throw linkedError
+
+  const stopAt = Date.now() + CALENDAR_BUDGET_MS
+  return drainCalendarRows(rows, {
+    stillLinked: new Set((linked ?? []).map((b: AnyRecord) => b.google_calendar_event_id as string)),
+    deleteEvent: (row) => deleteCalendarEventOnce(token, row.calendar_id, row.event_id),
+    removeRow: async (row) => {
+      const { error: deleteError } = await supabase.from('calendar_outbox').delete().eq('id', row.id).eq('user_id', userId)
+      if (deleteError) throw deleteError
+    },
+    backOff: async (row, attempts, delaySeconds, message) => {
+      const { error: updateError } = await supabase.from('calendar_outbox').update({
+        attempts,
+        last_error: message.slice(0, 1000),
+        next_retry_at: new Date(Date.now() + delaySeconds * 1000).toISOString(),
+      }).eq('id', row.id).eq('user_id', userId)
+      if (updateError) throw updateError
+    },
+    timeLeft: () => Date.now() < stopAt,
+  })
+}
+
 // ── Handler ──────────────────────────────────────────────────────────────────
 Deno.serve(async (req) => {
   const cors = corsHeaders(req.headers.get('origin'))
@@ -596,23 +850,53 @@ Deno.serve(async (req) => {
     if (Object.keys(result.listErrors).length) errors.pull = result.listErrors
   } catch (e) { errors.pull = (e as Error).message }
 
+  // Calendar outbox (migration 135) — last, so it never delays the Tasks
+  // steps above. drainCalendarRows itself never rejects; a throw here is the
+  // step failing as a whole (its read of the queue or of time_blocks).
+  let calendar: CalendarStepResult = emptyCalendarDrainSummary()
+  let calendarError: string | null = null
+  try { calendar = await drainCalendarOutbox(access_token, userId) }
+  catch (e) { calendarError = errorText(e) }
+
   const errorKeys = Object.keys(errors)
-  // The watermark only advances when the run was clean end-to-end. A partial
-  // pull (one list failed) must NOT advance it — doing so would silently
-  // skip that list's missed window forever, since the next run's updatedMin
-  // starts from this run's timestamp regardless of what actually got
-  // processed. (This differs from google-health-sync's per-metric
+  // The watermark only advances when the TASKS steps ran clean end-to-end. A
+  // partial pull (one list failed) must NOT advance it — doing so would
+  // silently skip that list's missed window forever, since the next run's
+  // updatedMin starts from this run's timestamp regardless of what actually
+  // got processed. (This differs from google-health-sync's per-metric
   // last_success_at, which advances on any partial success — safe there
   // because each metric's OWN watermark is really just "now", not a
   // precondition for correctly bounding the next fetch.)
+  //
+  // Calendar trouble is reported next to it (partial_errors, last_error) but
+  // never holds the watermark back: the watermark bounds the next Tasks pull,
+  // which a Calendar failure has nothing to do with — a token without the
+  // calendar.events grant would otherwise freeze it for good.
+  const calendarProblem = calendarError ?? (calendar.stopped ? `stopped: ${calendar.stopped}` : null)
+  const reported: AnyRecord = calendarProblem ? { ...errors, calendar: calendarProblem } : errors
+  // Calendar trouble also reaches Developer → Errors (last_error has no
+  // screen): a stop or failed step once per new message — the cron runs every
+  // 20 min — and every row that has just been parked.
+  if (calendarProblem || calendar.parked) {
+    const { data: prevState } = await supabase.from('google_tasks_sync_state').select('last_error').eq('user_id', userId).maybeSingle()
+    const prev = String((prevState as AnyRecord | null)?.last_error ?? '')
+    const messages = [
+      calendarProblem && !prev.includes(calendarProblem) ? `Google Calendar deletions stopped: ${calendarProblem}` : null,
+      calendar.parked ? `${calendar.parked} Google Calendar deletion${calendar.parked === 1 ? '' : 's'} failed ${CALENDAR_PARK_AFTER} times — now tried once a day` : null,
+    ].filter((m): m is string => m !== null)
+    for (const message of messages) {
+      await supabase.from('app_error_logs').insert({ user_id: userId, message: `google-tasks-sync: ${message}`, context: { calendar } }).then(() => {}, () => {})
+    }
+  }
+  const reportedKeys = Object.keys(reported)
   await recordState({
     ...(errorKeys.length === 0 ? { last_success_at: syncedAt } : {}),
-    last_error: errorKeys.length ? JSON.stringify(errors) : null,
-    last_error_at: errorKeys.length ? syncedAt : null,
+    last_error: reportedKeys.length ? JSON.stringify(reported) : null,
+    last_error_at: reportedKeys.length ? syncedAt : null,
   })
 
   return new Response(JSON.stringify({
-    ok: errorKeys.length === 0, drained: drainResult.drained, drain_failed: drainResult.failed,
-    imported, ...(errorKeys.length ? { partial_errors: errors } : {}),
+    ok: reportedKeys.length === 0, drained: drainResult.drained, drain_failed: drainResult.failed,
+    imported, calendar, ...(reportedKeys.length ? { partial_errors: reported } : {}),
   }), { status: 200, headers: jsonHeaders })
 })

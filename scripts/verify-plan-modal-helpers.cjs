@@ -31,7 +31,7 @@ const {
 const { buildInitialForm } = require('../src/shared/components/plan-modal/planForm')
 const { shouldSkipPendingCreate } = require('../src/features/todo/api/googleTasksOutboxRules')
 const { classifyCalendarPushFailure } = require('../src/features/daily/api/scheduleSyncRules')
-const { CalendarApiError, isCalendarNotFound } = require('../src/features/calendar/api/calendarApi')
+const { CalendarApiError, isCalendarNotFound, blockEventId } = require('../src/features/calendar/api/calendarApi')
 const { GoogleTasksApiError, isGoogleTaskNotFound } = require('../src/features/todo/api/googleTasksApi')
 const { projectOneOffBlocksForDay, projectRecurringBlocksForDay, projectCalendarEventForDay } = require('../src/features/daily/components/dayAgendaProjection')
 
@@ -248,6 +248,19 @@ console.log('\n== 11. classifyCalendarPushFailure / isCalendarNotFound — real 
   check('status=404, message is JUST "Not Found" (no digits at all) -> still not_linked',
     classifyCalendarPushFailure(new CalendarApiError(404, 'Not Found')) === 'not_linked')
   check('isCalendarNotFound agrees', isCalendarNotFound(new CalendarApiError(404, 'Not Found')) === true)
+  // Google's errors guide: deleting an already-deleted event answers 410 Gone,
+  // "no further action needed" — an event deleted in Google Calendar first
+  // used to make the app refuse to delete its block until Google purged it.
+  check('status=410 (already deleted) -> gone too', isCalendarNotFound(new CalendarApiError(410, 'Resource has been deleted')) === true
+    && classifyCalendarPushFailure(new CalendarApiError(410, 'Gone')) === 'not_linked')
+  // A re-link after an unlink must not reuse the first id (Google keeps the
+  // cancelled event under it): attempt N gets its own base32hex id.
+  {
+    const ids = [0, 1, 2].map(n => blockEventId('3F2A9C1E-0B4D-4E5F-8A6B-7C8D9E0F1A2B', n))
+    check('block event ids: the uuid without dashes, then <hex>v1, <hex>v2 (all base32hex, 5-1024 chars)',
+      ids[0] === '3f2a9c1e0b4d4e5f8a6b7c8d9e0f1a2b' && ids[1] === ids[0] + 'v1' && ids[2] === ids[0] + 'v2'
+      && ids.every(id => /^[0-9a-v]{5,1024}$/.test(id)), JSON.stringify(ids))
+  }
   check('status=404 with a message that also happens to contain "404" -> not_linked either way',
     classifyCalendarPushFailure(new CalendarApiError(404, 'Error 404: gone')) === 'not_linked')
 

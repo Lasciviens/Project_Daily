@@ -22,11 +22,26 @@ export class CalendarApiError extends Error {
     this.body = body
   }
 }
-/** The ONE place that decides "is this a confirmed 404" — every caller
+/** The ONE place that decides "the event is confirmed gone" — every caller
  *  (scheduleApi.ts, scheduleSyncRules.ts) must go through this rather than
- *  re-deriving it from the error message. */
+ *  re-deriving it from the error message. 404, or 410: Google's errors guide
+ *  answers a delete of an already-deleted event with 410 "Gone" and says no
+ *  further action is needed (before, an event deleted in Google Calendar first
+ *  made the app refuse to delete its block until Google purged it). */
 export function isCalendarNotFound(error: unknown): boolean {
-  return error instanceof CalendarApiError && error.status === 404
+  return error instanceof CalendarApiError && (error.status === 404 || error.status === 410)
+}
+
+/**
+ * The client-supplied event id a block's link attempt uses: its uuid without
+ * dashes (hex — a valid subset of Calendar's base32hex ids), then `<hex>v1`,
+ * `<hex>v2`… ('v' is base32hex too). A re-link after an unlink can't reuse
+ * the first id: Google keeps the deleted event (status 'cancelled') under it
+ * and answers a new insert with 409.
+ */
+export function blockEventId(blockId: string, attempt: number): string {
+  const hex = blockId.replace(/-/g, '').toLowerCase()
+  return attempt <= 0 ? hex : `${hex}v${attempt}`
 }
 /** A create using a client-supplied deterministic id landed already (a prior
  *  attempt's POST reached Google but its response never reached us) — see

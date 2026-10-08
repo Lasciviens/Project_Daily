@@ -50,8 +50,7 @@ export function ComposerHeader({ title, prompt, phone, onBack, onMinimize, onClo
 }
 
 // While the pill sits above the phone tab bar, <main> keeps that strip free
-// (index.css), so the last row of a page — or Shop's docked assistant bar —
-// never ends up under it.
+// (index.css), so the last row of a page never ends up under it.
 const PILL_ATTR = 'data-dev-request-pill'
 
 /** The minimised composer: one tap brings it back. */

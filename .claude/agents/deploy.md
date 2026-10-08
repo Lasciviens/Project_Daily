@@ -58,7 +58,6 @@ supabase/functions/
   calendar-oauth/     ← Google OAuth code exchange
   calendar-token/     ← Token refresh
   calendar-disconnect/
-  football-api/       ← API-Football proxy (unused - free tier)
   news-proxy/         ← RSS feed proxy + CORS
   strava-auth/        ← Strava OAuth exchange
   strava-activities/  ← Fetch + sync to train_sessions

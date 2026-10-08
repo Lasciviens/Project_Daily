@@ -3,6 +3,7 @@ import { Outlet, useLocation, useNavigationType } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { qk } from '../../shared/query/keys'
 import { usePullToRefresh } from '../../shared/hooks/usePullToRefresh'
+import { noteRouterNavigation } from '../../shared/hooks/useHistoryDismiss'
 import { useBreakpoint } from '../../shared/hooks/useBreakpoint'
 import { DevRequestsDrawer } from '../../features/devRequests/components/DevRequestsDrawer'
 import { AIPanel } from '../../features/ai/components/AIPanel'
@@ -57,13 +58,22 @@ export function AppShell() {
   const sidebarCollapsed = useSidebarStore(selectSidebarCollapsed)
   const rail = bp === 'tablet' || sidebarCollapsed
 
+  const { pathname, key: locationKey } = useLocation()
+  const navType = useNavigationType()
+
+  // The router's own pushes and replaces fire no popstate: tell the overlay
+  // history tracking (useHistoryDismiss) where the router put us.
+  useLayoutEffect(() => {
+    if (navType !== 'POP') noteRouterNavigation()
+  }, [locationKey, navType])
+
   // <main> scrolls, not the document, so react-router's scroll handling never
   // applies: without this a new page kept the previous page's offset.
   // Layout effect (pre-paint) so a view transition's "new" snapshot is taken
   // already at the right offset. A route change also closes every entity
-  // popup — one opened on a page must never linger over another.
-  const { pathname } = useLocation()
-  const navType = useNavigationType()
+  // popup — one opened on a page must never linger over another. When a link
+  // inside a popup made the change, the popup's history entries stay behind
+  // the new page; useHistoryDismiss passes over them on Back and Forward.
   useLayoutEffect(() => {
     const el = pullToRefresh.containerProps.ref.current
     const saved = scrollPositions.get(pathname)
@@ -79,7 +89,7 @@ export function AppShell() {
   // changes would be instant; keying the wrapper by pathname replays the
   // .page-in rise instead. With VT the key stays constant (no double animation).
   const supportsVT = typeof document.startViewTransition === 'function'
-  // Only a page that sizes itself against <main> (Shop's two panes) gets a
+  // Only a page that sizes itself against <main> (Games' own panes) gets a
   // definite height. Everywhere else the wrapper must stay auto-height, or a
   // tall page overflows it and runs over <main>'s bottom padding — the last
   // card then sits under the phone tab bar.

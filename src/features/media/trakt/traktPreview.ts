@@ -1,4 +1,5 @@
 import type { LocalLibrary, LocalMovie, LocalShow, TraktItem, TraktSnapshot } from './traktTypes'
+import { buildNotePlan, type TraktNoteType } from './traktNotes'
 
 // The first import's dry run (docs/trakt/PLAN.md §1): what importing Trakt
 // would change here, and what the app holds that Trakt does not, without
@@ -14,6 +15,8 @@ import type { LocalLibrary, LocalMovie, LocalShow, TraktItem, TraktSnapshot } fr
 //     comes in no other way is not imported, and only half-watched titles not
 //     in the library come in (as Watching) — the rest of Continue watching is
 //     read live, never stored
+//   · notes follow the sync's own three-way plan (traktNotes.ts): a different
+//     note on each side keeps Trakt's; a note alone never adds a title
 
 export interface PreviewTitle { kind: 'movie' | 'show'; title: string; year: number | null; tmdbId: number | null }
 export interface PreviewChange extends PreviewTitle { detail: string }
@@ -29,6 +32,13 @@ export interface TraktPreview {
   dropped: { add: PreviewTitle[]; same: number; push: PreviewTitle[] }
   /** Half-watched on Trakt: `watching` come in as Watching; `live` are only shown in Continue watching. */
   playback: { watching: PreviewTitle[]; live: number }
+  /**
+   * Notes on movies and shows (traktNotes.ts; null = Trakt's notes could not
+   * be read). `differ`: a different note on each side — Trakt's is kept.
+   * `notInLibrary`: Trakt notes on titles not here (they come in only with
+   * their title).
+   */
+  notes: { fromTrakt: PreviewTitle[]; push: PreviewTitle[]; differ: PreviewTitle[]; same: number; notInLibrary: number } | null
   unmatched: PreviewTitle[]
   /** Local rows sharing one TMDB id — should always be 0 (the catalogue refuses them). */
   duplicateLocal: number
@@ -192,9 +202,27 @@ export function buildTraktPreview(snap: TraktSnapshot, local: LocalLibrary): Tra
     favorites: { total: snap.favorites.length, matched: favMatched },
     dropped: d,
     playback: { watching: [...pbWatching.values()], live: pbLive },
+    notes: previewNotes(snap, local, movies.map, shows.map),
     unmatched: [...unmatched.values()],
     duplicateLocal: movies.dupes + shows.dupes,
   }
+}
+
+/** What the import does with notes: the same three-way plan the server runs (nothing waits in the outbox here). */
+function previewNotes(snap: TraktSnapshot, local: LocalLibrary, movies: Map<number, LocalMovie>, shows: Map<number, LocalShow>): TraktPreview['notes'] {
+  if (!snap.notes) return null
+  const plan = buildNotePlan(snap.notes, local.notes ?? [], new Set())
+  const named = (type: TraktNoteType, tmdb: number): PreviewTitle => {
+    const l = type === 'movie' ? movies.get(tmdb) : shows.get(tmdb)
+    return l ? localTitle(type, l) : { kind: type, title: `TMDB ${tmdb}`, year: null, tmdbId: tmdb }
+  }
+  const out: NonNullable<TraktPreview['notes']> = { fromTrakt: [], push: [], differ: [], same: plan.same, notInLibrary: plan.notInLibrary }
+  for (const a of plan.actions) {
+    if (a.kind === 'link') out.same++
+    else if (a.kind === 'pull' && a.text !== null) (a.conflict ? out.differ : out.fromTrakt).push(named(a.type, a.tmdb))
+    else if (a.kind === 'push') out.push.push(named(a.type, a.tmdb))
+  }
+  return out
 }
 
 /**
@@ -243,5 +271,14 @@ export function previewReport(p: TraktPreview, readAt: string, perList = 15): st
   row('Half-watched, added as Watching', p.playback.watching.length, p.playback.watching)
   row('Half-watched, shown live in Continue watching only', p.playback.live)
   row('No TMDB match', p.unmatched.length, p.unmatched)
+  head('NOTES')
+  if (!p.notes) lines.push('  Trakt’s notes were not read')
+  else {
+    row('On Trakt, not here (written here)', p.notes.fromTrakt.length, p.notes.fromTrakt)
+    row('Here, not on Trakt (sent to Trakt)', p.notes.push.length, p.notes.push)
+    row('Different on both (Trakt’s kept)', p.notes.differ.length, p.notes.differ)
+    row('Already the same', p.notes.same)
+    row('On Trakt for titles not in the library', p.notes.notInLibrary)
+  }
   return lines.join('\n')
 }

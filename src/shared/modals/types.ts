@@ -47,6 +47,8 @@ export type EntityModalRequest =
   /** Log or edit a Hevy body measurement; `date` opens that day's row (default today). */
   | { kind: 'body-measurement'; date?: string }
   | { kind: 'wish'; id: string }
+  /** A Shop item: edit by `id`, or add one (`defaults` picks the list, a title, a category, a store). */
+  | { kind: 'shop-item'; id?: string; defaults?: { list?: 'wishlist' | 'quick'; title?: string; categoryId?: string; platform?: string } }
   | { kind: 'project-item'; projectId: string; id?: string; phaseId?: string }
   | { kind: 'memory'; id: string }
   /** One book in the Books library (books, migration 126). */

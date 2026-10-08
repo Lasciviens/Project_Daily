@@ -73,11 +73,14 @@ export function useRunTraktImport() {
 function syncSummary(r: TraktRunResult): string {
   if (r.busy) return 'A sync is already running'
   const parts: string[] = []
-  if (r.drained?.sent) parts.push(`${r.drained.sent} sent to Trakt`)
+  const sent = (r.drained?.sent ?? 0) + (r.notes?.sent ?? 0)
+  if (sent) parts.push(`${sent} sent to Trakt`)
   const a = r.applied
   if (a && (a.movies || a.shows || a.episodes)) parts.push(`${a.movies + a.shows + a.episodes} updated from Trakt`)
   if (a?.removed) parts.push(`${a.removed} removed`)
   if (r.heldBack) parts.push(`${r.heldBack} removals waiting for you`)
+  if (r.notes?.fromTrakt) parts.push(`${r.notes.fromTrakt} note${r.notes.fromTrakt === 1 ? '' : 's'} from Trakt`)
+  if (r.notes?.refused) parts.push(`${r.notes.refused} note${r.notes.refused === 1 ? '' : 's'} not taken by Trakt`)
   return parts.length ? `Synced · ${parts.join(' · ')}` : 'Synced · already the same'
 }
 

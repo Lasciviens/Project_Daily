@@ -4,16 +4,16 @@
 // shape. If the key isn't set it returns an empty list (the client falls back
 // to Open Food Facts), so it's safe to deploy before the secret exists.
 //
-// Response STRUCTURE verified from the kassalappy Python client's Pydantic
-// models (github.com/bendikrb/kassalappy): the search/ean endpoints return
-// { data: Product | Product[] } where
-//   Product = { name, brand, image, ean, current_price, nutrition: NutritionItem[] }
-//   NutritionItem = { code: str, display_name: str, amount: float, unit: str }
-// So `normalize()` reads nutrition[].{display_name/code, amount, unit} — that
-// part is CONFIRMED. What remains to verify against ONE live sample: the exact
-// display_name/code VALUES (assumed Norwegian: Energi/Protein/Karbohydrater/
-// Fett/Sukker(-arter)/Kostfiber) and that amounts are per 100g. Energy is
-// disambiguated by unit (kcal vs kJ) so a kJ row can't be mistaken for kcal.
+// Response shape and nutrition codes are confirmed against Kassalapp's own API
+// page (kassal.app/api, the /products/ean example, checked 07.10.2026):
+//   { data: Product | Product[] }, Product = { name, brand, image, ean,
+//   current_price, nutrition: { code, display_name, amount, unit }[] }
+// with codes energi_kcal ("Kalorier", kcal), energi_kj ("Energi", kj),
+// fett_totalt, mettet_fett, karbohydrater, sukkerarter, protein, salt,
+// kostfiber. The page doesn't state the basis, but its example values are the
+// products' per-100 g label values (Grandiosa 975 kJ / 233 kcal), so amounts
+// are read as per 100 g. Note "Energi" is the kJ row — energy is picked by
+// code/unit, never by that label.
 // Name-search results may omit nutrition (lighter projection) → macros null,
 // the user fills/scans; the ean endpoint carries full nutrition.
 

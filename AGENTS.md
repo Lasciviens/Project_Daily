@@ -327,11 +327,13 @@ which door the write came through.
   sync can each cause the other to fire. Guarded with `pg_trigger_depth() = 1`
   — a direct user edit propagates to the other side exactly once; that
   propagation does not bounce back and ping-pong.
-- **Google Calendar sync is deliberately NOT done in triggers** — a trigger
-  runs inside Postgres and has no access to the end user's OAuth token (it
-  lives in the browser). That stays best-effort at the API layer
-  (`src/features/daily/api/scheduleApi.ts`, `src/features/todo/api/tasksApi.ts`),
-  where one task maps to exactly one calendar event.
+- **Google Calendar calls never run in triggers** — a trigger runs inside
+  Postgres and has no access to the user's OAuth token. Moves and browser
+  deletes stay at the API layer (`src/features/daily/api/scheduleApi.ts`,
+  `src/features/todo/api/tasksApi.ts`; one task = one event). A block delete
+  from ANY door is only *queued* by `trg_enqueue_calendar_event_delete` into
+  `calendar_outbox` (migration 135); `google-tasks-sync`, which holds the
+  token, removes the event.
 - **When adding a new "plannable" entity** (something else that can get a
   `time_blocks` row via `UnifiedPlanModal`'s `source` prop): decide whether it
   needs a cleanup-on-source-change trigger the same way `user_tv_episodes`/
