@@ -14,7 +14,8 @@
 --   · bought_at: when the row became 'bought'. A trigger stamps it on the way
 --     into 'bought' (a date the writer sends is kept) and clears it on the way
 --     out, for every writer (web, AI). Filled once from updated_at for rows
---     already bought — the only date on record for them.
+--     already bought — the only date on record for them (read in the same
+--     statement as the currency fill, see below).
 --   · task_id: the task a purchase was planned as ("Plan it", like a wish's
 --     promoted_task_id); SET NULL when the task is deleted.
 
@@ -35,13 +36,21 @@ EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 ALTER TABLE public.shop_items ALTER COLUMN category_id DROP NOT NULL;
 
+-- ONE statement on purpose: every UPDATE on shop_items fires
+-- trg_shop_items_updated_at (029), which sets updated_at = now(). Run as two
+-- statements, the currency fill moved a priced purchase's updated_at to the
+-- migration's own time before bought_at copied it, so every priced purchase
+-- would read "bought today". Inside one statement the right-hand side sees the
+-- row as it was, so bought_at gets the real date.
 UPDATE public.shop_items
-   SET currency = CASE WHEN region = 'TR' THEN 'TRY' ELSE 'NOK' END
- WHERE currency IS NULL AND price IS NOT NULL;
-
-UPDATE public.shop_items
-   SET bought_at = updated_at
- WHERE status = 'bought' AND bought_at IS NULL;
+   SET currency  = CASE WHEN currency IS NULL AND price IS NOT NULL
+                        THEN CASE WHEN region = 'TR' THEN 'TRY' ELSE 'NOK' END
+                        ELSE currency END,
+       bought_at = CASE WHEN status = 'bought' AND bought_at IS NULL
+                        THEN updated_at
+                        ELSE bought_at END
+ WHERE (currency IS NULL AND price IS NOT NULL)
+    OR (status = 'bought' AND bought_at IS NULL);
 
 CREATE OR REPLACE FUNCTION public.shop_items_stamp_bought_at() RETURNS trigger
 LANGUAGE plpgsql AS $$
