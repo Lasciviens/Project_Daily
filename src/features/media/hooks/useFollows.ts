@@ -26,7 +26,7 @@ export function useCheckFollows() {
     action: 'media_follow_check',
     loadingMessage: 'Checking what you follow…',
     mutationFn: checkFollowsNow,
-    successMessage: r => (r.newTitles || r.trailers ? `${r.newTitles} new titles · ${r.trailers} new trailers` : 'Nothing new'),
+    successMessage: r => `${r.newTitles || r.trailers ? `${r.newTitles} new titles · ${r.trailers} new trailers` : 'Nothing new'}${r.listWaiting ? ` · ${r.listWaiting} film${r.listWaiting === 1 ? '' : 's'} still waiting for a Trakt list` : ''}`,
     invalidates: [qk.mediaFollows.all],
   })
 }

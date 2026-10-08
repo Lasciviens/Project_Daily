@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
-const SOURCES = ['traktTypes.ts', 'traktDates.ts', 'traktImportPlan.ts', 'traktSyncPlan.ts', 'followRules.ts']
+const SOURCES = ['traktTypes.ts', 'traktDates.ts', 'traktNotes.ts', 'traktImportPlan.ts', 'traktSyncPlan.ts', 'followRules.ts']
 const TARGET = 'supabase/functions/trakt-api/index.ts'
 const OPEN = '// <trakt-shared>'
 const CLOSE = '// </trakt-shared>'

@@ -1,8 +1,9 @@
 // What's new in a follow (media_follows → media_follow_events): the one rule
-// for what counts as a NEW FILM. Pure and import-free: trakt-api uses it when
-// it writes events (copied in by scripts/sync-trakt-shared.mjs) and the app
-// uses it when it shows them, so rows written under older rules stop showing
-// at once. Verified by scripts/verify-media-follows.cjs.
+// for what counts as a NEW FILM, and which films still wait for the follow's
+// Trakt list. Pure and import-free: trakt-api uses it when it writes events
+// (copied in by scripts/sync-trakt-shared.mjs) and the app uses it when it
+// shows them, so rows written under older rules stop showing at once.
+// Verified by scripts/verify-media-follows.cjs.
 //
 // Root cause it fixes: "new" used to mean "not seen in TMDB's list before".
 // TMDB lists change for old films all the time — a person gets a late credit
@@ -88,4 +89,42 @@ export function isFollowTrailer(v: { site?: string | null; type?: string | null;
 /** A stored event the app still shows: its title was new (or upcoming) on the day the event was written. */
 export function isShowableFollowEvent(e: { release_date: string | null; created_at: string }): boolean {
   return isNewByDate(e.release_date, e.created_at)
+}
+
+// ── The follow's linked Trakt list (media_follows.pending_list_ids, 136) ─────
+// The list holds the follow's whole filmography: every film TMDB lists for the
+// first time goes onto it. A film Trakt has not taken yet (its 420 account
+// limit, an error, no Trakt sign-in at hand) waits in pending_list_ids and is
+// sent again at the next check — it is never counted as done before Trakt
+// took it.
+
+/**
+ * The films to send at this check: the ones still waiting, then the ones
+ * TMDB lists for the first time. A waiting film TMDB no longer lists for the
+ * follow is dropped — unless TMDB listed nothing (`listed` null or empty: a
+ * bad answer never empties the queue).
+ */
+export function followListToSend(pending: number[], fresh: number[], listed: Set<number> | null): number[] {
+  const keep = listed && listed.size ? pending.filter(id => listed.has(id)) : pending
+  return [...new Set([...keep, ...fresh])].filter(id => Number.isSafeInteger(id) && id > 0)
+}
+
+/** One attempt at the list: the ids in send order, how many of them (from the start) Trakt took, and its not_found answer. */
+export interface FollowListAttempt {
+  ids: number[]
+  accepted: number
+  notFound: number[]
+}
+
+/**
+ * What still waits after the attempt: every film not taken (a failed request
+ * and everything after it), and a film Trakt said it doesn't know only while
+ * it is still new by its own date (`stillNew`) — Trakt may not have added a
+ * brand-new film yet. A film Trakt took is done.
+ */
+export function followListPending(a: FollowListAttempt, stillNew: Set<number>): number[] {
+  const taken = new Set(a.ids.slice(0, a.accepted))
+  const left = a.ids.slice(a.accepted)
+  for (const id of a.notFound) if (taken.has(id) && stillNew.has(id)) left.push(id)
+  return [...new Set(left)]
 }

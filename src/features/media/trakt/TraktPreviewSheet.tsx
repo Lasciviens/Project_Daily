@@ -88,6 +88,17 @@ function Body({ p }: { p: TraktPreview }) {
         <Row tone="neutral" label="Half-watched, nothing to add (shown live in Continue watching)" count={p.playback.live} />
         <Row tone="danger" label="No TMDB match — picked by hand later" count={p.unmatched.length} items={p.unmatched} />
       </Section>
+      <Section title="Notes">
+        {p.notes ? (
+          <>
+            <Row tone="success" label="On Trakt, not here (written into your library)" count={p.notes.fromTrakt.length} items={p.notes.fromTrakt} />
+            <Row tone="warn" label="Here, not on Trakt (sent to Trakt — over 500 characters, Trakt keeps the first 499 + …)" count={p.notes.push.length} items={p.notes.push} />
+            <Row tone="info" label="A different note on each side — Trakt’s is kept" count={p.notes.differ.length} items={p.notes.differ} />
+            <Row tone="neutral" label="Already the same" count={p.notes.same} />
+            <Row tone="neutral" label="On Trakt for titles not in your library (left on Trakt)" count={p.notes.notInLibrary} />
+          </>
+        ) : <p className="text-meta text-fg-muted">Trakt’s notes were not read this time, so they are not counted here.</p>}
+      </Section>
     </div>
   )
 }
