@@ -3,8 +3,8 @@ import { Truncate, cx } from '../../../../shared/ui'
 import { formatDate } from '../../../../shared/utils/dateFormat'
 import { currencyOf, priceNow, wishRange } from '../../shopModel'
 import { bestMatch } from '../../wishModel'
-import { add, boughtOn, complete, costOf, durationLabel, gotOf, minus, perMonth, valueNowOf, ZERO, type MoneyCtx } from '../../ownModel'
-import { finalCostOf, type Chain } from '../../chainModel'
+import { add, boughtOn, complete, costOf, durationLabel, gotOf, minus, perMonth, valueNowOf, ZERO, type Amount, type MoneyCtx } from '../../ownModel'
+import { finalCostOf, ifSoldNow, type Chain, type IfSold } from '../../chainModel'
 import { AmountText } from '../shopKit'
 import { money } from '../shopFormat'
 import { PaidText } from '../owned/PaidText'
@@ -18,6 +18,21 @@ function Cell({ label, children, hint, strong }: { label: string; children: Reac
       <p className={cx('mt-0.5 text-ui tabular-nums text-fg', strong && 'font-semibold')}>{children}</p>
       {hint != null && <Truncate as="p" className="text-micro text-fg-faint">{hint}</Truncate>}
     </div>
+  )
+}
+
+/** "If sold now": made / cost you, at "Could sell for" — the whole chain's when it is in one, with this thing's own beside it. */
+function IfSoldCell({ sold, resale, chained }: { sold: IfSold | null; resale: boolean; chained: boolean }) {
+  if (!sold) return <Cell label="If sold now" hint='needs "Could sell for"'>—</Cell>
+  const main = sold.route ?? sold.own
+  const signed = (a: Amount) => (!complete(a) ? null : `${a.nok >= 0 ? '+' : '−'}${money(Math.abs(a.nok))}`)
+  const made = complete(main) && main.nok > 0
+  return (
+    <Cell label="If sold now" strong hint={chained ? (signed(sold.own) ? `this one alone ${signed(sold.own)}` : 'with the chain') : 'at "Could sell for"'}>
+      {complete(main)
+        ? <span className={cx(made && resale && 'text-success')}>{main.nok >= 0 ? 'Made ' : 'Cost you '}{money(Math.abs(main.nok))}</span>
+        : <AmountText amount={main} />}
+    </Cell>
   )
 }
 
@@ -60,16 +75,17 @@ export function RecordStrip({ item, state, ctx, chain, watch, models, watches, a
     const together = item.sale_group ? accessories.filter(a => a.sale_group === item.sale_group) : []
     const from = boughtOn(item)
     const per = perMonth(item, ctx, today, accessories)
-    const final = chain ? finalCostOf(chain, item.id) : null
+    // An accessory's chain node is its item's: its own route cost is not one.
+    const final = chain && !item.accessory_of ? finalCostOf(chain, item.id) : null
     cells.push(<Cell key="p" label="Paid" strong><PaidText item={item} /></Cell>)
     if (state === 'mine') {
       const value = valueNowOf(item, ctx)
       cells.push(
-        <Cell key="o" label="Owned" hint={from ? `since ${item.approx_dates ? '≈ ' : ''}${formatDate(from)}` : undefined}>{from ? durationLabel(from, today) : '—'}</Cell>,
         <Cell key="v" label="Could sell for" hint={item.value_on ? formatDate(item.value_on) : 'not set'}>{value ? <AmountText amount={value} /> : '—'}</Cell>,
         final
-          ? <Cell key="f" label="Final cost" hint="with earlier things in its chain"><AmountText amount={final.total} /></Cell>
+          ? <Cell key="f" label="Final cost" hint={chain?.name ? `with earlier things in ${chain.name}` : 'with earlier things in its chain'}><AmountText amount={final.total} /></Cell>
           : <Cell key="m" label="Per month" hint={per ? 'paid − could sell for' : 'needs "Could sell for"'}>{per ? `≈ ${money(per.nok)}` : '—'}</Cell>,
+        <IfSoldCell key="s" sold={ifSoldNow(item, accessories, ctx, final)} resale={!!item.for_resale} chained={!!final} />,
       )
     } else {
       const got = add(gotOf(item) ?? ZERO, ...together.map(a => gotOf(a) ?? ZERO))

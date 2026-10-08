@@ -7,6 +7,7 @@ import { moneyEvents, periodMonths, type MoneyEvent } from '../../statsModel'
 import { moneyWord } from './statsFormat'
 import { dayOf, join, native, type Drill, type DrillContent, type DrillRow, type StatsData } from './drillTypes'
 import { categoryDrill, keptDrill, ownDrill, resaleDrill, storeDrill, costOfUseDrill } from './statsDrillOwned'
+import { nestAccessories } from './drillNest'
 
 function eventRow(e: MoneyEvent, d: StatsData): DrillRow | null {
   const i = d.byId.get(e.id)
@@ -37,7 +38,13 @@ function moneyDrill(title: string, events: MoneyEvent[], d: StatsData): DrillCon
   }
 }
 
+/** The things behind a number, each accessory listed under the thing it belongs to. */
 export function drillContent(drill: Drill, d: StatsData): DrillContent {
+  const c = drillRows(drill, d)
+  return { ...c, groups: c.groups.map(g => ({ ...g, rows: nestAccessories(g.rows, d.byId) })) }
+}
+
+function drillRows(drill: Drill, d: StatsData): DrillContent {
   switch (drill.kind) {
     case 'period': {
       const range = periodMonths(d.years, drill.year)
@@ -49,7 +56,7 @@ export function drillContent(drill: Drill, d: StatsData): DrillContent {
     case 'use': return costOfUseDrill(d)
     case 'kept': return keptDrill(d)
     case 'resale': return resaleDrill(d)
-    case 'category': return categoryDrill(d, drill.key)
+    case 'category': return categoryDrill(d, drill.key, drill.level)
     case 'store': return storeDrill(d, drill.key, drill.year)
   }
 }

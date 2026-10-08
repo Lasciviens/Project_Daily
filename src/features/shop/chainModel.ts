@@ -18,7 +18,7 @@
 
 import type { ShopItem, ShopItemLink } from './types'
 import {
-  add, boughtOn, complete, costOf, gotOf, isPossession, known, minus, MISSING, monthsBetween, nokNow, scale, ZERO,
+  add, boughtOn, complete, costOf, gotOf, isMine, isPossession, valueNowOf, known, minus, MISSING, monthsBetween, nokNow, scale, ZERO,
   type Amount, type MoneyCtx,
 } from './ownModel'
 import { nokPerUnit } from './fx'
@@ -127,6 +127,8 @@ export interface Chain {
   linear: boolean
   /** Some number is a projection or another price. */
   projected: boolean
+  /** The name you gave it (migration 138), or null. */
+  name: string | null
 }
 
 /** "Try other prices": per node, a different total paid and/or got back in NOK. Nothing is saved. */
@@ -364,7 +366,29 @@ function buildChain(ids: string[], resolved: Map<string, { unit: Unit | null; wi
   return {
     id: (real[0] ?? nodes[0]).id, nodes, edges, flags, paid, got, net: minus(paid, got), linear,
     projected: nodes.some(n => n.projected),
+    name: nameOf(nodes),
   }
+}
+
+/** The oldest thing's name wins when two named chains joined. */
+function nameOf(nodes: readonly ChainNode[]): string | null {
+  for (const n of nodes) { const t = n.item.chain_name?.trim(); if (t) return t }
+  return null
+}
+
+/** "RP4 Pro → RP5 → RP6 (to buy)": the things in order. */
+export function chainPath(chain: Chain): string {
+  return chain.nodes.map(n => (n.state === 'wish' ? `${n.item.title} (to buy)` : n.item.title)).join(' → ')
+}
+
+/** Its name when it has one, else its path. */
+export function chainTitle(chain: Chain): string {
+  return chain.name ?? chainPath(chain)
+}
+
+/** The row a name is written on: the one that already carries it, else the oldest thing. */
+export function chainNameHolder(chain: Chain): string {
+  return chain.nodes.find(n => n.item.chain_name?.trim())?.id ?? chain.id
 }
 
 /**
@@ -451,6 +475,31 @@ export function finalCostOf(chain: Chain, itemId: string): FinalCost | null {
   return {
     own: n.paid, carried: n.carried, total: n.basis, cashIn: n.cashIn, earlier: earlier.size,
     earlierMonths: chain.linear && first && n.bought && first < n.bought ? monthsBetween(first, n.bought) : null,
+  }
+}
+
+export interface IfSold {
+  /** What it would bring: its "Could sell for", plus its accessories' (one without a value goes along for nothing). */
+  got: Amount
+  /** got − what it (and those accessories) cost: + = made. */
+  own: Amount
+  /** In a chain: got − its route cost (earlier losses and profits included); null outside one. */
+  route: Amount | null
+}
+
+/**
+ * "If sold now", at "Could sell for" — the same rule a projected chain sells
+ * by. Null while the thing is not yours or has no "Could sell for".
+ */
+export function ifSoldNow(item: ShopItem, accessories: readonly ShopItem[], ctx: MoneyCtx, final: FinalCost | null): IfSold | null {
+  const value = valueNowOf(item, ctx)
+  if (!value) return null
+  const riding = accessories.filter(a => a.accessory_of === item.id && isMine(a))
+  const got = add(value, ...riding.map(a => valueNowOf(a, ctx) ?? ZERO))
+  return {
+    got,
+    own: minus(got, add(costOf(item, ctx), ...riding.map(a => costOf(a, ctx)))),
+    route: final ? minus(got, final.total) : null,
   }
 }
 

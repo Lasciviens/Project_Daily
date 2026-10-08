@@ -105,6 +105,8 @@ export interface ShopItem {
   sold_to?:         string | null
   /** Rows sold together share one id (each row holds its share of the price). */
   sale_group?:      string | null
+  /** Migration 138: the name of the money chain this thing carries (see chainModel.chainNameHolder). */
+  chain_name?:      string | null
 }
 
 /**
@@ -239,6 +241,7 @@ export interface UpdateShopItemInput extends Partial<CreateShopItemInput> {
   value_now?:       number | null
   value_currency?:  ShopCurrency | null
   value_on?:        string | null
+  chain_name?:      string | null
 }
 
 export interface CreateShopCostInput {

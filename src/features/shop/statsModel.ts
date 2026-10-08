@@ -7,12 +7,12 @@ import type { ShopCategory, ShopItem } from './types'
 import { categoryPath, fold } from './shopModel'
 import {
   add, boughtOn, costOf, daysBetween, gotOf, isMine, isPossession, minus, nokAt, paidOf, perMonth, valueNowOf, ZERO,
-  accessoriesByItem, type Amount, type MoneyCtx, type PerMonth,
+  accessoriesByItem, type Amount, type MoneyCtx, type OwnedShow, type PerMonth,
 } from './ownModel'
 import type { Chain } from './chainModel'
 
 /** Rows that count as spending: things bought on the wishlist side (kept or not). Quick-list errands are left out. */
-function spendRows(items: readonly ShopItem[]): ShopItem[] {
+export function spendRows(items: readonly ShopItem[]): ShopItem[] {
   return items.filter(i => (i.list ?? 'wishlist') === 'wishlist' && i.kind !== 'general' && i.status === 'bought')
 }
 
@@ -75,14 +75,33 @@ export function yearTotals(items: readonly ShopItem[], ctx: MoneyCtx, year: stri
 
 export interface CategoryRow { key: string; title: string; count: number; paid: Amount; worth: Amount; valued: number; ids: string[] }
 
-/** What you own now by top category: how many, what they cost, what the valued ones could sell for. */
-export function ownedByCategory(items: readonly ShopItem[], categories: readonly ShopCategory[], ctx: MoneyCtx): CategoryRow[] {
+/** The key of rows without a category (a scope pick, a category row). */
+export const NO_CATEGORY = '__none__'
+
+/** By top category, or by subcategory (a top category's own things — no subcategory — get a row of their own). */
+export type CategoryLevel = 'top' | 'sub'
+
+/**
+ * Where a row counts at a level: its top category; or its subcategory
+ * ("Electronics › Phones"), its top category's own row ("Electronics (no
+ * subcategory)" — just "Hobbies" when the top category has none), or No category.
+ */
+export function categoryBucket(categoryId: string | null | undefined, categories: readonly ShopCategory[], level: CategoryLevel): { key: string; title: string } {
+  const p = categoryPath(categoryId, categories)
+  if (!p.topId) return { key: NO_CATEGORY, title: p.topName }
+  if (level === 'top') return { key: p.topId, title: p.topName }
+  if (p.subName && categoryId) return { key: categoryId, title: `${p.topName} › ${p.subName}` }
+  const hasSubs = categories.some(c => c.parent_id === p.topId)
+  return { key: `${p.topId}/own`, title: hasSubs ? `${p.topName} (no subcategory)` : p.topName }
+}
+
+/** What you own now by top category (or subcategory): how many, what they cost, what the valued ones could sell for. */
+export function ownedByCategory(items: readonly ShopItem[], categories: readonly ShopCategory[], ctx: MoneyCtx, level: CategoryLevel = 'top'): CategoryRow[] {
   const out = new Map<string, CategoryRow>()
   for (const i of items) {
     if (!isPossession(i) || i.disposal) continue
-    const p = categoryPath(i.category_id, categories)
-    const key = p.topId ?? '__none__'
-    const row = out.get(key) ?? { key, title: p.topName, count: 0, paid: ZERO, worth: ZERO, valued: 0, ids: [] }
+    const { key, title } = categoryBucket(i.category_id, categories, level)
+    const row = out.get(key) ?? { key, title, count: 0, paid: ZERO, worth: ZERO, valued: 0, ids: [] }
     if (!i.accessory_of) row.count++
     row.paid = add(row.paid, costOf(i, ctx))
     const v = valueNowOf(i, ctx)
@@ -119,13 +138,24 @@ export function byStore(items: readonly ShopItem[], year?: string): StoreRow[] {
     .sort((a, b) => b.spent.nok - a.spent.nok || b.count - a.count)
 }
 
+export type StoreOrder = 'spent' | 'count'
+
+/** Stores by what you spent there (as byStore gives them), or by how many purchases. */
+export function orderStores(rows: readonly StoreRow[], by: StoreOrder): StoreRow[] {
+  if (by === 'spent') return [...rows].sort((a, b) => b.spent.nok - a.spent.nok || b.count - a.count)
+  return [...rows].sort((a, b) => b.count - a.count || b.spent.nok - a.spent.nok || a.title.localeCompare(b.title))
+}
+
 export interface TimelineRow { item: ShopItem; from: string; to: string | null; group: string; approx: boolean }
 
+/** Still yours (mine), sold or gone (gone), or either (all). */
+export const showsIn = (i: Pick<ShopItem, 'disposal'>, show: OwnedShow): boolean => show === 'all' || (show === 'mine' ? !i.disposal : !!i.disposal)
+
 /** One bar per thing (accessories ride with theirs), from bought to gone or today, grouped by top category. */
-export function timelineRows(items: readonly ShopItem[], categories: readonly ShopCategory[]): { rows: TimelineRow[]; start: string | null } {
+export function timelineRows(items: readonly ShopItem[], categories: readonly ShopCategory[], show: OwnedShow = 'all'): { rows: TimelineRow[]; start: string | null } {
   const rows: TimelineRow[] = []
   for (const i of items) {
-    if (!isPossession(i) || i.accessory_of || i.disposal === 'returned') continue
+    if (!isPossession(i) || i.accessory_of || i.disposal === 'returned' || !showsIn(i, show)) continue
     const from = boughtOn(i)
     if (!from) continue
     rows.push({ item: i, from, to: i.disposal ? (i.disposed_on ?? null) : null, group: categoryPath(i.category_id, categories).topName, approx: !!i.approx_dates })
@@ -333,6 +363,15 @@ export function chainsWithThings(chains: readonly Chain[], min = 2): Chain[] {
   return chains.filter(c => c.nodes.filter(n => n.state !== 'wish').length >= min)
 }
 
+export type ChainShow = 'all' | 'going' | 'ended'
+
+/** A chain has ended when every thing in it is sold or gone and no wish is left; else it is still going. */
+export const chainEnded = (chain: Chain): boolean => chain.nodes.length > 0 && chain.nodes.every(n => n.state === 'gone')
+
+export function filterChains(chains: readonly Chain[], show: ChainShow): Chain[] {
+  return show === 'all' ? [...chains] : chains.filter(c => chainEnded(c) === (show === 'ended'))
+}
+
 /** Every thing in the chain you have or had was bought to sell later — only then is its result a profit or a loss. */
 export function boughtToSell(chain: Chain): boolean {
   const things = chain.nodes.filter(n => n.state !== 'wish')
@@ -371,4 +410,81 @@ export function yearLabelEvery(axis: TimelineAxis, widthRem: number, minRem = 2.
   const perYear = (widthRem * 365.25) / axis.days
   for (const k of [1, 2, 5]) if (perYear * k >= minRem) return k
   return 10
+}
+
+// ── The scope: the Stats screen's top filter ─────────────────────────────────
+
+/**
+ * What the whole Stats screen is narrowed to. Inside a section any pick will
+ * do (OR); across sections every section must match (AND). An empty section
+ * does not narrow.
+ */
+export interface StatsScope {
+  /** Category ids: a top category takes everything under it, a subcategory only itself; NO_CATEGORY = rows without one. */
+  categories: string[]
+  /** Chain ids (Chain.id). */
+  chains: string[]
+  /** Thing ids: an item takes its accessories along; an accessory is only itself. */
+  things: string[]
+  /** Store keys — the folded name, as byStore keys a store. */
+  stores: string[]
+}
+
+export type ScopeSection = keyof StatsScope
+
+export const NO_SCOPE: StatsScope = { categories: [], chains: [], things: [], stores: [] }
+
+export const scopeCount = (s: StatsScope): number => s.categories.length + s.chains.length + s.things.length + s.stores.length
+export const scopeActive = (s: StatsScope): boolean => scopeCount(s) > 0
+
+/** A store's key from the name written on a row ("POWER" and "power " are one store). */
+export const storeKey = (name: string | null | undefined): string => fold(name ?? '')
+
+/** Pick or unpick one key in a section. */
+export function toggleScope(s: StatsScope, section: ScopeSection, key: string): StatsScope {
+  const list = s[section]
+  return { ...s, [section]: list.includes(key) ? list.filter(k => k !== key) : [...list, key] }
+}
+
+/**
+ * The rows the scope leaves (in their order). An accessory follows its item
+ * for categories, things and chains — it is in when its item is — but for
+ * stores it is its own purchase (its own store). A chain takes every thing in
+ * it with their accessories.
+ */
+export function scopeItems(items: readonly ShopItem[], scope: StatsScope, categories: readonly ShopCategory[], chains: readonly Chain[]): ShopItem[] {
+  if (!scopeActive(scope)) return [...items]
+  const byId = new Map(items.map(i => [i.id, i]))
+  const ownerOf = (i: ShopItem): ShopItem => (i.accessory_of ? byId.get(i.accessory_of) ?? i : i)
+  const cats = new Set(scope.categories)
+  const things = new Set(scope.things)
+  const stores = new Set(scope.stores)
+  const inChains = new Set<string>()
+  for (const c of chains) {
+    if (!scope.chains.includes(c.id)) continue
+    for (const nd of c.nodes) { inChains.add(nd.id); inChains.add(nd.item.id); for (const a of nd.accessories) inChains.add(a.id) }
+  }
+  const inCategory = (i: ShopItem) => {
+    const o = ownerOf(i)
+    const p = categoryPath(o.category_id, categories)
+    if (!p.topId) return cats.has(NO_CATEGORY)
+    return cats.has(p.topId) || (!!o.category_id && cats.has(o.category_id))
+  }
+  const follows = (set: Set<string>, i: ShopItem) => set.has(i.id) || (!!i.accessory_of && set.has(i.accessory_of))
+  return items.filter(i => (!cats.size || inCategory(i))
+    && (!things.size || follows(things, i))
+    && (!scope.chains.length || follows(inChains, i))
+    && (!stores.size || stores.has(storeKey(i.platform))))
+}
+
+/** The chains a scope touches: those with a thing (or one of its accessories) among the scoped rows — every chain when nothing is picked. */
+export function scopeChains(chains: readonly Chain[], scoped: readonly ShopItem[], scope: StatsScope): Chain[] {
+  if (!scopeActive(scope)) return [...chains]
+  const ids = new Set(scoped.map(i => i.id))
+  return chains.filter(c => c.nodes.some(nd => ids.has(nd.id) || nd.accessories.some(a => ids.has(a.id))))
+}
+
+/** Things you bought (kept or not) among the rows — what a scope leaves to count. Accessories ride with their item. */
+export function scopeThingCount(items: readonly ShopItem[]): number {
+  return spendRows(items).filter(i => !i.accessory_of).length
 }

@@ -5,7 +5,8 @@ import { useEntityModal } from '../../../../shared/modals'
 import { Button, TonePill, Truncate, cx } from '../../../../shared/ui'
 import { formatDate } from '../../../../shared/utils/dateFormat'
 import { DecimalInput } from '../../../recipes/components/foodLogKit'
-import { chainFor, type ChainOverrides } from '../../chainModel'
+import { chainFor, chainPath, type ChainOverrides } from '../../chainModel'
+import { ChainName } from './ChainName'
 import { complete, durationLabel, type MoneyCtx } from '../../ownModel'
 import { AmountText } from '../shopKit'
 import { money } from '../shopFormat'
@@ -36,7 +37,7 @@ export function ChainPopup({ id, items, links, ctx, onClose }: { id: string; ite
   const final = last && last.state === 'held' && chain.linear && things.length > 1 ? last : null
 
   return (
-    <ModalShell onClose={onClose} title={things.length > 1 ? 'Money chain' : 'Try other prices'} subtitle={things.map(n => n.item.title).join(' → ')} size="lg"
+    <ModalShell onClose={onClose} title={things.length > 1 ? real.name ?? 'Money chain' : 'Try other prices'} subtitle={chainPath(real)} size="lg"
       footer={
         <div className="flex items-center gap-2">
           {what && Object.keys(over).length > 0 && <Button variant="ghost" icon={<RotateCcw />} onClick={() => setOver({})}>Reset</Button>}
@@ -44,6 +45,7 @@ export function ChainPopup({ id, items, links, ctx, onClose }: { id: string; ite
         </div>
       }>
       <div className="flex flex-col gap-4">
+        {things.length > 1 && <ChainName chain={real} renameOnly />}
         <div className="flex flex-wrap items-end gap-x-4 gap-y-2">
           <div>
             <p className="section-label">{profit ? 'Profit' : 'Net cost'}</p>

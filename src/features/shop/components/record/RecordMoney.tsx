@@ -5,6 +5,7 @@ import { useEntityModal } from '../../../../shared/modals'
 import { formatDate } from '../../../../shared/utils/dateFormat'
 import { DecimalInput } from '../../../recipes/components/foodLogKit'
 import { useCreateShopLink, useDeleteShopLink } from '../../hooks/useShopMoney'
+import { ChainName } from '../owned/ChainName'
 import { cashNeeded, chainsOf, finalCostOf, wouldCycle, type Chain } from '../../chainModel'
 import { complete, DISPOSAL_LABEL, isPossession, type MoneyCtx } from '../../ownModel'
 import { listOf } from '../../shopModel'
@@ -48,6 +49,7 @@ export function RecordMoney({ item, items, links, ctx, chain }: { item: ShopItem
     <Card>
       <CardHeader title="Money" variant="label" className="mb-1"
         action={owned && <Button size="sm" variant="ghost" icon={<ArrowRightLeft />} onClick={() => modal.open({ kind: 'shop-chain', id: item.id })}>{chain && chain.nodes.length > 1 ? 'Open the chain' : 'Try other prices'}</Button>} />
+      {chain && chain.nodes.length > 1 && <div className="mb-1"><ChainName chain={chain} /></div>}
       {final && (
         <p className="mb-2 text-body text-fg-2">
           Final cost <AmountText amount={final.total} className="font-semibold text-fg" />

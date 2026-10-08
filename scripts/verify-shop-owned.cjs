@@ -3,7 +3,7 @@
  * Norges Bank's rates (src/features/shop/{fx,fxNorgesBank,ownModel,chainModel,
  * statsModel,groceryModel}.ts, migration 137) and the rate parser's hand
  * mirror in supabase/functions/shop-price/index.ts.
- * Run: node scripts/verify-shop-owned.cjs */
+ * Run: node scripts/verify-shop-owned.cjs (migration 138: chain names) */
 require('sucrase/register')
 const fs = require('fs')
 const path = require('path')
@@ -491,6 +491,146 @@ console.log('\n13 · Grocery prices by chain')
   check('…never a hit that only mentions the digits, and nothing without hits', G.scanMatch(hits, '7038010000737') === null && G.scanMatch(undefined, '123') === null && G.scanMatch(hits, '') === null)
   check('picking a product keeps a row\'s own picture', JSON.stringify(G.matchPatch({ image_url: 'mine' }, { ean: '1', image: 'theirs' })) === '{"ean":"1"}'
     && JSON.stringify(G.matchPatch({ image_url: null }, { ean: '1', image: 'theirs' })) === '{"ean":"1","image_url":"theirs"}' && JSON.stringify(G.matchPatch({}, { ean: '1', image: null })) === '{"ean":"1"}')
+}
+
+console.log('\n14 · Stats filters: the scope, card filters, subcategories, accessories in lists')
+{
+  const NEST = require('../src/features/shop/components/stats/drillNest')
+  const SD = require('../src/features/shop/components/stats/statsDrill')
+  const SO = require('../src/features/shop/components/stats/statsScopeOptions')
+  const cat = (id, name, parent_id = null) => ({ id, user_id: 'u', name, parent_id, created_at: '' })
+  const CATS = [cat('el', 'Electronics'), cat('cons', 'Game consoles', 'el'), cat('ph', 'Phones', 'el'), cat('toys', 'Hobbies')]
+  const withCat = (rows, c, platform) => rows.map(r => ({ ...r, category_id: c, platform: platform(r) }))
+  const items = [
+    ...withCat(RP, 'cons', r => (r.id === 'sd' ? 'Komplett' : r.accessory_of ? null : 'Retroid')),
+    item({ id: 'tv', title: 'TV', category_id: 'el', platform: 'POWER', price: 9990, bought_at: at('2026-02-10') }),
+    item({ id: 'phone', title: 'Phone', category_id: 'ph', platform: 'power ', price: 5000, bought_at: at('2025-06-01') }),
+    item({ id: 'lego', title: 'LEGO set', category_id: 'toys', platform: 'Lekekassen', price: 2499, bought_at: at('2025-01-05') }),
+    item({ id: 'lamp', title: 'Lamp', category_id: null, platform: 'Power', price: 400, bought_at: at('2025-03-01') }),
+    item({ id: 'shade', title: 'Lamp shade', category_id: 'toys', platform: 'IKEA', price: 99, bought_at: at('2025-03-02'), accessory_of: 'lamp' }),
+    item({ id: 'want', title: 'A wish', category_id: 'el', status: 'wishlist', price: 100 }),
+  ]
+  const chains = S.chainsWithThings(C.chainsOf(items, RP_LINKS, CTX))
+  const rpId = chains[0].id
+  const scoped = (p) => S.scopeItems(items, { ...S.NO_SCOPE, ...p }, CATS, chains).map(i => i.id).sort().join()
+  const ids = list => [...list].sort().join()
+
+  check('no picks: nothing is narrowed', !S.scopeActive(S.NO_SCOPE) && S.scopeItems(items, S.NO_SCOPE, CATS, chains).length === items.length && S.scopeCount({ categories: ['a'], chains: [], things: ['b', 'c'], stores: [] }) === 3)
+  check('a top category takes its subcategories along (and its own rows)', scoped({ categories: ['el'] }) === ids(['rp4', 'rp5', 'case', 'grip', 'rp6', 'sd', 'tv', 'phone', 'want']))
+  check('a subcategory is only itself (not its top\'s own rows, not its siblings)', scoped({ categories: ['cons'] }) === ids(['rp4', 'rp5', 'case', 'grip', 'rp6', 'sd']) && scoped({ categories: ['ph'] }) === 'phone')
+  check('an accessory follows its item\'s category, not its own', scoped({ categories: ['__none__'] }) === ids(['lamp', 'shade']) && scoped({ categories: ['toys'] }) === 'lego')
+  check('OR inside a section', scoped({ categories: ['ph', 'toys'] }) === ids(['phone', 'lego']))
+  check('a thing takes its accessories along; an accessory is only itself', scoped({ things: ['rp5'] }) === ids(['rp5', 'case', 'grip']) && scoped({ things: ['case'] }) === 'case')
+  check('a chain takes every thing in it with their accessories', scoped({ chains: [rpId] }) === ids(['rp4', 'rp5', 'case', 'grip', 'rp6', 'sd']))
+  check('stores by their folded name ("POWER", "power " and "Power" are one)', scoped({ stores: ['power'] }) === ids(['tv', 'phone', 'lamp']))
+  check('…an accessory counts at its own store, not its item\'s', scoped({ stores: ['komplett'] }) === 'sd' && scoped({ stores: ['ikea'] }) === 'shade')
+  check('AND across sections', scoped({ categories: ['el'], stores: ['power'] }) === ids(['tv', 'phone']) && scoped({ chains: [rpId], stores: ['komplett'] }) === 'sd' && scoped({ things: ['lego'], categories: ['el'] }) === '')
+  const t1 = S.toggleScope(S.NO_SCOPE, 'stores', 'power')
+  check('toggling a pick on and off', t1.stores.join() === 'power' && S.toggleScope(t1, 'stores', 'power').stores.length === 0 && S.NO_SCOPE.stores.length === 0)
+  const sc = (p) => { const s2 = { ...S.NO_SCOPE, ...p }; return S.scopeChains(chains, S.scopeItems(items, s2, CATS, chains), s2).length }
+  check('the chains card: chains with a thing (or an accessory) in scope; all without picks', sc({}) === 1 && sc({ stores: ['power'] }) === 0 && sc({ things: ['sd'] }) === 1)
+  check('things left to count (bought, gone too; accessories ride with their item; wishes are not things)', S.scopeThingCount(items) === 7 && S.scopeThingCount(S.scopeItems(items, { ...S.NO_SCOPE, things: ['rp5'] }, CATS, chains)) === 1)
+
+  // Card filters.
+  const sold = C.chainsOf([item({ id: 'a1', price: 100, bought_at: at('2024-01-01'), disposal: 'sold', disposed_on: '2024-06-01', sale_price: 80 }), item({ id: 'a2', price: 150, bought_at: at('2024-06-02'), disposal: 'sold', disposed_on: '2025-01-01', sale_price: 90 })], [link('a1', 'a2')], CTX)
+  check('a chain has ended when everything in it is sold or gone (no wish left)', S.chainEnded(sold[0]) && !S.chainEnded(chains[0]))
+  check('chains: going · ended · all', S.filterChains([...chains, ...sold], 'ended').length === 1 && S.filterChains([...chains, ...sold], 'going')[0].id === rpId && S.filterChains([...chains, ...sold], 'all').length === 2)
+  const st = S.byStore(items)
+  check('stores by spent (as byStore) or by purchases', S.orderStores(st, 'spent')[0].key === 'power' && S.orderStores(st, 'count').map(r => `${r.key}:${r.count}`).slice(0, 2).join() === 'power:3,retroid:3' && S.orderStores(st, 'count').length === st.length)
+  check('still yours, sold or gone, or all', S.showsIn({ disposal: null }, 'mine') && !S.showsIn({ disposal: 'sold' }, 'mine') && S.showsIn({ disposal: 'sold' }, 'gone') && S.showsIn({ disposal: null }, 'all'))
+  const tlMine = S.timelineRows(items, CATS, 'mine').rows.map(r => r.item.id)
+  const tlGone = S.timelineRows(items, CATS, 'gone').rows.map(r => r.item.id)
+  check('the timeline: mine and gone split all, nothing twice', ids(tlMine) === ids(['rp6', 'tv', 'phone', 'lego', 'lamp']) && ids(tlGone) === ids(['rp4', 'rp5']) && S.timelineRows(items, CATS).rows.length === tlMine.length + tlGone.length)
+
+  // Subcategories.
+  const subs = S.ownedByCategory(items, CATS, CTX, 'sub')
+  const sub = k => subs.find(r => r.key === k)
+  check('subcategory rows: "Top › Sub", the top\'s own things, a top without subs by its name, No category', sub('cons').title === 'Electronics › Game consoles' && sub('el/own').title === 'Electronics (no subcategory)' && sub('toys/own').title === 'Hobbies' && sub('__none__').title === 'No category' && sub('ph').title === 'Electronics › Phones')
+  check('…counts (accessories ride along) and what they cost', sub('cons').count === 1 && ids(sub('cons').ids) === ids(['rp6', 'sd']) && sub('cons').paid.nok === 4490 + 399 && sub('el/own').paid.nok === 9990)
+  const tops = S.ownedByCategory(items, CATS, CTX)
+  const sumNok = rows => rows.reduce((s2, r) => s2 + r.paid.nok, 0)
+  check('…every row once: the subcategory rows add up to the top rows', sumNok(subs) === sumNok(tops) && subs.reduce((n2, r) => n2 + r.ids.length, 0) === tops.reduce((n2, r) => n2 + r.ids.length, 0) && S.ownedByCategory(items, CATS, CTX, 'top').length === tops.length)
+  const data = { items, categories: CATS, ctx: CTX, today: TODAY, years: S.statsYears(items, CTX), byId: new Map(items.map(i => [i.id, i])) }
+  const drillSums = subs.every(r => {
+    const c = SD.drillContent({ kind: 'category', key: r.key, level: 'sub' }, data)
+    const rows = c.groups.flatMap(g => g.rows).filter(x => !x.header)
+    return rows.length === r.ids.length && Math.abs(rows.reduce((s2, x) => s2 + x.amount.nok, 0) - r.paid.nok) < 1e-9
+  })
+  check('a subcategory\'s drill-down lists exactly the rows behind its number', drillSums)
+
+  // Accessories under their item in lists.
+  const byId = new Map(items.map(i => [i.id, i]))
+  const R = (id, nok, extra = {}) => ({ key: `k:${id}:${nok}`, id, title: id, sub: '', amount: O.known(nok), ...extra })
+  const flat = [R('rp6', 4490), R('tv', 9990), R('case', 199), R('rp5', 2800), R('grip', 349), R('sd', 399), R('rp5', 50)]
+  const nested = NEST.nestAccessories(flat, byId)
+  check('an accessory sits right under its item\'s first row; the rest keep their order', nested.map(r => `${r.id}${r.depth ? '>' : ''}`).join() === 'rp6,sd>,tv,rp5,case>,grip>,rp5', nested.map(r => r.id).join())
+  const orphan = NEST.nestAccessories([R('tv', 9990), R('grip', 349), R('lego', 2499), R('case', 199)], byId)
+  const hdr = orphan.find(r => r.header)
+  check('no row of its own: a heading row for the item takes the first accessory\'s place', orphan.map(r => `${r.header ? 'H:' : ''}${r.id}${r.depth ? '>' : ''}`).join() === 'tv,H:rp5,grip>,case>,lego' && hdr.amount === undefined && hdr.text === undefined && hdr.title === 'RP5' && hdr.sub === 'Accessories below')
+  const total = rows => rows.filter(r => !r.header).reduce((s2, r) => s2 + r.amount.nok, 0)
+  const keys = rows => rows.filter(r => !r.header).map(r => r.key).sort().join()
+  check('…every row exactly once, the total unchanged (a heading adds nothing)', total(nested) === total(flat) && keys(nested) === keys(flat) && total(orphan) === 9990 + 349 + 2499 + 199 && new Set(orphan.map(r => r.key)).size === orphan.length)
+  check('nothing to nest: the same rows; an accessory of something unknown stays put', NEST.nestAccessories([R('tv', 1), R('lego', 2)], byId).map(r => r.id).join() === 'tv,lego'
+    && NEST.nestAccessories([R('x', 1)], new Map([['x', item({ id: 'x', accessory_of: 'gone-id' })]]))[0].depth === undefined)
+  const money24 = SD.drillContent({ kind: 'period', year: '2024' }, data)
+  const spent = money24.groups.find(g => g.key === 'spent')
+  const at24 = spent.rows.findIndex(r => r.header && r.id === 'rp6')
+  const rp5At = spent.rows.findIndex(r => r.id === 'rp5' && !r.header)
+  const spentSum = spent.rows.filter(r => !r.header).reduce((s2, r) => s2 + (r.negate ? -r.amount.nok : r.amount.nok), 0)
+  check('a money drill-down: the SD card (2024) under a heading for its RP6 (2026); case and grip under the RP5', at24 >= 0 && spent.rows[at24 + 1].id === 'sd' && spent.rows[at24 + 1].depth === 1
+    && ['case', 'grip'].every(k => { const ix = spent.rows.findIndex(r => r.id === k); return ix > rp5At && ix <= rp5At + 2 && spent.rows[ix].depth === 1 }))
+  check('…the group total still equals its rows', spentSum === spent.total.nok && spent.total.nok === 2800 + 199 + 399 + 349)
+
+  // The filter sheet's options and chips.
+  const named = items.map(i => (i.id === 'rp4' ? { ...i, chain_name: 'Handhelds' } : i))
+  const namedChains = S.chainsWithThings(C.chainsOf(named, RP_LINKS, CTX))
+  const opts = SO.scopeOptions(named, CATS, namedChains)
+  check('categories: top categories by name, their subcategories under them, No category last; counts are things bought (gone too)', opts.categories.map(o => `${o.depth}:${o.label}:${o.count}`).join() === '0:Electronics:5,1:Game consoles:3,1:Phones:1,0:Hobbies:1,0:No category:1', opts.categories.map(o => `${o.depth}:${o.label}:${o.count}`).join())
+  check('…a subcategory\'s chip names its top', opts.categories.find(o => o.key === 'ph').chip === 'Electronics › Phones' && opts.categories.find(o => o.key === 'ph').parent === 'el')
+  check('chains by name (the path under it), or by their path', opts.chains.length === 1 && opts.chains[0].label === 'Handhelds' && opts.chains[0].meta === 'RP4 Pro → RP5 → RP6' && SO.scopeOptions(items, CATS, chains).chains[0].label === 'RP4 Pro → RP5 → RP6')
+  const th = opts.things.map(o => `${o.depth ? '>' : ''}${o.key}`).join()
+  check('things newest first, each accessory under its item (oldest first), never a wish', th === 'rp6,>sd,tv,phone,lamp,>shade,lego,rp5,>case,>grip,rp4', th)
+  check('stores as byStore names them', opts.stores.map(o => `${o.key}:${o.count}`).sort().join() === S.byStore(named).map(r => `${r.key}:${r.count}`).sort().join())
+  const found = SO.filterThingOptions(opts.things, 'grip').map(o => o.key).join()
+  check('searching things: a hit keeps its item; an item\'s hit keeps its accessories', found === 'rp5,grip' && SO.filterThingOptions(opts.things, 'lamp').map(o => o.key).join() === 'lamp,shade' && SO.filterThingOptions(opts.things, '  ').length === opts.things.length)
+  const chips = SO.scopeChips({ categories: ['ph'], chains: [], things: ['case'], stores: ['power', 'nope'] }, opts)
+  check('chips name each pick by section, a store as last written (a pick no longer offered says so)', chips.map(c => `${c.word}:${c.label}`).join() === 'Category:Electronics › Phones,Thing:Case,Store:POWER,Store:Not found', chips.map(c => `${c.word}:${c.label}`).join())
+}
+
+console.log('\nR2 · chain names, "If sold now", Owned filters (migration 138)')
+{
+  const named = RP.map(x => (x.id === 'rp5' ? { ...x, chain_name: 'Handhelds' } : x))
+  const ch = C.chainsOf(named, RP_LINKS, CTX)[0]
+  check('a chain takes the name one of its things carries', ch.name === 'Handhelds' && C.chainTitle(ch) === 'Handhelds')
+  check('…and it stays on that thing when renamed', C.chainNameHolder(ch) === 'rp5')
+  const plain = C.chainsOf(RP, RP_LINKS, CTX)[0]
+  check('an unnamed chain reads as its path, and a name goes on its oldest thing', plain.name === null && C.chainTitle(plain) === 'RP4 Pro → RP5 → RP6' && C.chainNameHolder(plain) === 'rp4')
+  const two = C.chainsOf(named.map(x => (x.id === 'rp4' ? { ...x, chain_name: ' Old line ' } : x)), RP_LINKS, CTX)[0]
+  check('two names after a join: the oldest thing\'s wins (trimmed)', two.name === 'Old line')
+  check('a blank name is no name', C.chainsOf(RP.map(x => (x.id === 'rp4' ? { ...x, chain_name: '  ' } : x)), RP_LINKS, CTX)[0].name === null)
+
+  const rp6 = RP.find(x => x.id === 'rp6')
+  const acc = RP.filter(x => x.accessory_of === 'rp6')
+  const final = C.finalCostOf(plain, 'rp6')
+  const sold = C.ifSoldNow(rp6, acc, CTX, final)
+  check('If sold now: the SD card without a value goes along for nothing', sold && sold.got.nok === 4000)
+  check('…this one alone: 4 000 − (4 490 + 399) = −889', sold && sold.own.nok === -889)
+  check('…the chain: 4 000 − its route cost 6 027 = −2 027', sold && sold.route.nok === -2027)
+  const valuedSd = acc.map(a => ({ ...a, value_now: 150 }))
+  check('an accessory with "Could sell for" adds its value', C.ifSoldNow(rp6, valuedSd, CTX, null).got.nok === 4150 && C.ifSoldNow(rp6, valuedSd, CTX, null).route === null)
+  check('no "Could sell for" (or not yours) = no answer', C.ifSoldNow({ ...rp6, value_now: null }, acc, CTX, final) === null && C.ifSoldNow(RP[0], [], CTX, null) === null)
+
+  const cats = [
+    { id: 'el', user_id: 'u', name: 'Electronics', parent_id: null, created_at: '' },
+    { id: 'gc', user_id: 'u', name: 'Game Consoles', parent_id: 'el', created_at: '' },
+    { id: 'ph', user_id: 'u', name: 'Phones', parent_id: 'el', created_at: '' },
+  ]
+  const things = [...RP.map(x => ({ ...x, category_id: 'gc' })), item({ id: 'phone', title: 'Phone', price: 5000, bought_at: at('2025-01-01'), category_id: 'ph' })]
+  const all = { ...O.NO_OWNED_FILTERS, show: 'all' }
+  check('a subcategory keeps only its own things', O.ownedCards(things, cats, { ...all, category: 'ph' }).map(x => x.id).join() === 'phone')
+  check('a top category keeps everything under it', O.ownedCards(things, cats, { ...all, category: 'el' }).length === 4)
+  const inChain = new Set(plain.nodes.flatMap(nd => [nd.id, ...nd.accessories.map(a => a.id)]))
+  check('a money chain keeps its things only', O.ownedCards(things, cats, { ...all, chain: plain.id }, inChain).map(x => x.id).join() === 'rp4,rp5,rp6')
 }
 
 console.log(`\n${passed} passed, ${failed} failed`)

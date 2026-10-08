@@ -5,7 +5,7 @@ import type { ShopItem } from '../../types'
 import {
   boughtOn, complete, costOf, DISPOSAL_LABEL, durationLabel, gotOf, minus, ownedSummary, paidOf, valueNowOf, ZERO, type Amount,
 } from '../../ownModel'
-import { byStore, costOfUseGap, costOfUseNow, keptRows, monthsLabel, ownedByCategory, resaleSummary, type UseGap } from '../../statsModel'
+import { byStore, costOfUseGap, costOfUseNow, keptRows, monthsLabel, ownedByCategory, resaleSummary, type CategoryLevel, type UseGap } from '../../statsModel'
 import { money } from '../shopFormat'
 import { moneyWord, num, plural } from './statsFormat'
 import { dayOf, join, native, type DrillContent, type DrillGroup, type DrillRow, type StatsData } from './drillTypes'
@@ -16,13 +16,12 @@ const items = (ids: readonly string[], d: StatsData) => ids.map(id => d.byId.get
 const byCost = (d: StatsData) => (a: ShopItem, b: ShopItem) => costOf(b, d.ctx).nok - costOf(a, d.ctx).nok || a.title.localeCompare(b.title)
 const signedWord = (a: Amount) => (complete(a) ? `${a.nok > 0 ? '+' : ''}${money(a.nok)}` : 'unknown')
 
-/** A thing you own: what it cost (paid + extras), and what it could sell for. */
+/** A thing you own: what it cost (paid + extras), and what it could sell for (an accessory is listed under its item). */
 function ownedRow(i: ShopItem, d: StatsData): DrillRow {
   const v = valueNowOf(i, d.ctx)
-  const parent = i.accessory_of ? d.byId.get(i.accessory_of) : undefined
   return {
     key: i.id, id: i.id, title: i.title, amount: costOf(i, d.ctx),
-    sub: join([`Bought ${dayOf(i, boughtOn(i))}`, v && `could sell for ${moneyWord(v)}`, parent && `with ${parent.title}`]),
+    sub: join([`Bought ${dayOf(i, boughtOn(i))}`, v && `could sell for ${moneyWord(v)}`]),
   }
 }
 
@@ -40,8 +39,8 @@ export function ownDrill(d: StatsData): DrillContent {
   }
 }
 
-export function categoryDrill(d: StatsData, key: string): DrillContent {
-  const row = ownedByCategory(d.items, d.categories, d.ctx).find(r => r.key === key)
+export function categoryDrill(d: StatsData, key: string, level: CategoryLevel = 'top'): DrillContent {
+  const row = ownedByCategory(d.items, d.categories, d.ctx, level).find(r => r.key === key)
   if (!row) return { title: 'Category', subtitle: '', groups: [], empty: 'Nothing here any more.' }
   return {
     title: row.title,

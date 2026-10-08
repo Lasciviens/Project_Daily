@@ -21,6 +21,8 @@ export interface FactDef {
   /** Shown as a "+" chip while empty. */
   chip?: string
   hint?: ReactNode
+  /** A yes/no fact: always a checkbox line (never a chip). */
+  toggle?: { checked: boolean; onChange: (v: boolean) => void; text: string }
 }
 
 export interface FactCtx {
@@ -33,6 +35,8 @@ export interface FactCtx {
   watch: ShopPriceWatch | null
   today: string
   listId: string
+  /** The things it can be an accessory of; absent = it cannot become one (it has accessories or money links). */
+  parents?: readonly ShopItem[]
 }
 
 const faint = (t: string) => <span className="text-fg-faint">{t}</span>
@@ -116,9 +120,8 @@ export function buyFacts(c: FactCtx): FactDef[] {
     { id: 'target', label: 'Target price', filled: v.target_price != null, chip: 'Target price', value: v.target_price != null ? money(v.target_price, cur) : null,
       hint: 'The price watch says when the price is at or below it.',
       editor: <DecimalInput value={v.target_price ?? null} onValue={t => set({ target_price: t })} aria-label="Target price" className="input w-[10rem] tabular-nums" autoFocus /> },
-    { id: 'errand', label: 'Next errand', filled: !!v.errand, chip: 'Pick up on an errand', value: 'Pick it up on the next errand',
-      hint: v.errand ? 'Shown on the quick list too (it stays on the wishlist).' : undefined,
-      editor: <Toggle checked={!!v.errand} onChange={x => set({ errand: x })}>Show it on the quick list until it is bought</Toggle> },
+    { id: 'errand', label: 'Next errand', filled: !!v.errand, value: null,
+      toggle: { checked: !!v.errand, onChange: x => set({ errand: x }), text: 'Pick it up on the next errand' } },
   ]
 }
 
@@ -153,7 +156,16 @@ export function ownFacts(c: FactCtx, gone: boolean): FactDef[] {
   const paid = paidOf(v)
   const saved = savedOf(v)
   const years = complaintYears([categoryPath(v.category_id, c.categories).topName, categoryPath(v.category_id, c.categories).subName ?? ''], v.region)
+  const parent = v.accessory_of ? c.parents?.find(p => p.id === v.accessory_of) : undefined
   const facts: FactDef[] = [
+    ...(c.parents ? [{
+      id: 'parent', label: 'Accessory of', filled: !!v.accessory_of, chip: 'Accessory of…', value: parent?.title ?? 'Another thing',
+      hint: v.accessory_of ? 'It sits under that thing on Owned and in Stats, and goes with it in a chain.' : undefined,
+      editor: <select value={v.accessory_of ?? ''} onChange={e => set({ accessory_of: e.target.value || null })} aria-label="Accessory of" className="select max-w-sm" autoFocus>
+        <option value="">Not an accessory</option>
+        {c.parents.map(p => <option key={p.id} value={p.id}>{p.title}</option>)}
+      </select>,
+    }] : []),
     { id: 'bought', label: 'Bought on', filled: !!c.boughtDay, value: <>{v.approx_dates ? '≈ ' : ''}{formatDate(c.boughtDay)}{!gone && c.boughtDay ? faint(` · ${durationLabel(c.boughtDay, today)} ago`) : ''}</>,
       editor: <>
         <DateInput value={c.boughtDay} onChange={d => d && set({ bought_day: d })} max={today} aria-label="Bought on" className="input w-[10rem] tabular-nums" />
@@ -219,10 +231,10 @@ export function ownFacts(c: FactCtx, gone: boolean): FactDef[] {
     )
   }
   facts.push(
-    { id: 'resale', label: 'Bought to sell', filled: !!v.for_resale, chip: 'Bought to sell later', value: 'Yes — its result counts as a profit or a loss',
-      editor: <Toggle checked={!!v.for_resale} onChange={x => set({ for_resale: x })}>Bought to sell it on later</Toggle> },
-    { id: 'kept', label: 'Not mine to keep', filled: v.kept === false, chip: 'Not mine to keep', value: 'Bought for someone else, or used up — counts as spending only',
-      editor: <Toggle checked={v.kept === false} onChange={x => set({ kept: !x })}>Bought for someone else, or used up</Toggle> },
+    { id: 'resale', label: 'Bought to sell', filled: !!v.for_resale, value: null,
+      toggle: { checked: !!v.for_resale, onChange: x => set({ for_resale: x }), text: 'Bought to sell later' } },
+    { id: 'kept', label: 'Not mine to keep', filled: v.kept === false, value: null,
+      toggle: { checked: v.kept === false, onChange: x => set({ kept: !x }), text: 'Not mine to keep (bought for someone else, or used up)' } },
   )
   return facts
 }

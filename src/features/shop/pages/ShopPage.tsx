@@ -11,6 +11,7 @@ import { WishlistView } from '../components/WishlistView'
 import { QuickListView } from '../components/QuickListView'
 import { OwnedView } from '../components/owned/OwnedView'
 import { ShopStatsView } from '../components/stats/ShopStatsView'
+import { ShopHeroArt } from '../components/ShopHeroArt'
 
 type View = 'wishlist' | 'quick' | 'owned'
 type OwnedTab = 'things' | 'stats'
@@ -55,8 +56,9 @@ export function ShopPage() {
   return (
     <PageContainer>
       <PageHeader title="Shop">
-        <div className="flex flex-col gap-2">
-          <div className="flex items-center gap-2">
+        <div className="relative isolate flex flex-col justify-center gap-2 sm:min-h-[7rem] sm:overflow-hidden sm:rounded-card sm:border sm:border-line sm:bg-surface sm:p-3">
+          <ShopHeroArt />
+          <div className="relative z-10 flex items-center gap-2">
             <div className="min-w-0 flex-1 sm:flex-none">
               <SegmentedControl<View>
                 value={view}
@@ -78,8 +80,10 @@ export function ShopPage() {
             </Button>
           </div>
           {view === 'owned' && isPhone && (
-            <SegmentedControl<OwnedTab> size="sm" fullWidth value={ownedTab} onChange={t => set('owned', t)}
-              options={[{ value: 'things', label: 'Things' }, { value: 'stats', label: 'Stats' }]} />
+            <div className="relative z-10">
+              <SegmentedControl<OwnedTab> size="sm" fullWidth value={ownedTab} onChange={t => set('owned', t)}
+                options={[{ value: 'things', label: 'Things' }, { value: 'stats', label: 'Stats' }]} />
+            </div>
           )}
         </div>
       </PageHeader>

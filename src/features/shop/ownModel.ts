@@ -357,11 +357,15 @@ export function complaintYears(categoryNames: readonly string[], region: ShopIte
 // ── The Owned view ───────────────────────────────────────────────────────────
 
 export type OwnedShow = 'mine' | 'gone' | 'all'
-export interface OwnedFilters { q: string; category: string; show: OwnedShow; resaleOnly: boolean }
-export const NO_OWNED_FILTERS: OwnedFilters = { q: '', category: 'all', show: 'mine', resaleOnly: false }
+/** `category`: 'all', 'none', a top category (everything under it) or a subcategory. `chain`: 'all' or a chain's id. */
+export interface OwnedFilters { q: string; category: string; show: OwnedShow; resaleOnly: boolean; chain: string }
+export const NO_OWNED_FILTERS: OwnedFilters = { q: '', category: 'all', show: 'mine', resaleOnly: false, chain: 'all' }
 
-/** Things to show as cards: never an accessory on its own (it rides inside its item's card). */
-export function ownedCards(items: readonly ShopItem[], categories: readonly ShopCategory[], f: OwnedFilters): ShopItem[] {
+/**
+ * Things to show as cards: never an accessory on its own (it rides inside its
+ * item's card). `inChain`: the ids of the picked chain's things (with `chain` ≠ 'all').
+ */
+export function ownedCards(items: readonly ShopItem[], categories: readonly ShopCategory[], f: OwnedFilters, inChain?: ReadonlySet<string>): ShopItem[] {
   const words = fold(f.q).split(/\s+/).filter(Boolean)
   const byId = new Map(items.map(i => [i.id, i]))
   return items.filter(i => {
@@ -371,7 +375,8 @@ export function ownedCards(items: readonly ShopItem[], categories: readonly Shop
     if (f.show === 'gone' && !i.disposal) return false
     if (f.resaleOnly && !i.for_resale) return false
     const path = categoryPath(i.category_id, categories)
-    if (f.category === 'none' ? path.topId !== null : f.category !== 'all' && path.topId !== f.category) return false
+    if (f.category === 'none' ? path.topId !== null : f.category !== 'all' && path.topId !== f.category && i.category_id !== f.category) return false
+    if (f.chain !== 'all' && inChain && !inChain.has(i.id)) return false
     if (!words.length) return true
     const hay = fold([i.title, i.notes ?? '', i.platform ?? '', i.sold_to ?? '', i.serial ?? '', path.topName, path.subName ?? ''].join(' '))
     return words.every(w => hay.includes(w))

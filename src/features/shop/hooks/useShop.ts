@@ -86,6 +86,7 @@ export function useUpdateShopItem() {
         : patch.status === 'dropped' ? 'Moved to Not any more'
         : patch.list === 'quick' ? 'Moved to the quick list'
         : patch.list === 'wishlist' ? 'Moved to the wishlist'
+        : patch.chain_name !== undefined ? (patch.chain_name ? 'Chain named' : 'Name removed')
         : undefined,
     mutationFn:  ({ id, patch }: UpdateVars) => updateShopItem(id, patch),
     onMutate: async ({ id, patch }: UpdateVars) => {

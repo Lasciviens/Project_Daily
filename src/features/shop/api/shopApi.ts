@@ -49,6 +49,7 @@ const DEFAULTS_137: Row = { kind: 'item', wait_for_deal: false, errand: false, u
 
 const NEEDS_134 = 'This needs migration 134 (Shop lists) — apply supabase/migrations/134_shop_lists.sql first.'
 const NEEDS_137 = 'This needs migration 137 (Shop: what you own) — apply supabase/migrations/137_shop_owned.sql first.'
+const NEEDS_138 = 'Naming a chain needs migration 138 — apply supabase/migrations/138_shop_chain_names.sql first.'
 
 /** True for an "apply migration 134/137 first" refusal, so a caller can fall back. */
 export function needsShopMigration(err: unknown): boolean {
@@ -100,6 +101,7 @@ async function writeWithFallback<T>(row: Row, needs134: (row: Row) => boolean, w
     const { data, error } = await write(current)
     if (!error) return data
     if (!isMissingColumn(error)) throw error
+    if ('chain_name' in current) throw new Error(NEEDS_138)
     if (needs137(current)) throw new Error(NEEDS_137)
     if (missingGroup(error) === '137' && attempt === 0) { current = without(current, COLUMNS_137); continue }
     if (needs134(current)) throw new Error(NEEDS_134)

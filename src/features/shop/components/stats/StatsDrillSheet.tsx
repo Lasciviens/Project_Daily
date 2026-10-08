@@ -1,4 +1,4 @@
-import { ChevronRight } from 'lucide-react'
+import { ChevronRight, CornerDownRight } from 'lucide-react'
 import { ModalShell, useEntityModal } from '../../../../shared/modals'
 import { Truncate, cx } from '../../../../shared/ui'
 import { AmountText } from '../shopKit'
@@ -39,10 +39,14 @@ export function StatsDrillSheet({ open, content, onClose }: { open: boolean; con
   )
 }
 
-/** One thing in a list: its title, what happened and when, and its amount (or words); a tap opens it. */
+/**
+ * One thing in a list: its title, what happened and when, and its amount (or
+ * words); a tap opens it. An accessory sits indented under its item; a heading
+ * row (the item, when its own row is not in the list) carries no amount.
+ */
 export function DrillRowButton({ row, onOpen }: { row: DrillRow; onOpen: () => void }) {
   const a = row.amount
-  const value = row.text != null
+  const value = row.header ? null : row.text != null
     ? <span className={cx('text-body tabular-nums', row.muted ? 'font-medium text-fg-muted' : 'font-semibold text-fg')}>{row.text}</span>
     : a
       ? (
@@ -52,9 +56,11 @@ export function DrillRowButton({ row, onOpen }: { row: DrillRow; onOpen: () => v
       )
       : null
   return (
-    <button type="button" onClick={onOpen} className="row row-interactive w-full py-1.5 text-left">
+    <button type="button" onClick={onOpen} className={cx('row row-interactive w-full py-1.5 text-left', row.depth === 1 && 'pl-5')}>
+      {row.depth === 1 && <CornerDownRight aria-hidden className="-mr-1 h-3.5 w-3.5 shrink-0 self-start mt-1 text-fg-faint" />}
       <span className="min-w-0 flex-1">
-        <Truncate className="text-body font-medium text-fg">{row.title}</Truncate>
+        {row.depth === 1 && <span className="sr-only">Accessory: </span>}
+        <Truncate className={cx('text-body font-medium', row.header ? 'text-fg-muted' : 'text-fg')}>{row.title}</Truncate>
         <Truncate className="text-meta text-fg-muted">{row.sub}</Truncate>
       </span>
       <span className="shrink-0 text-right">{value}</span>

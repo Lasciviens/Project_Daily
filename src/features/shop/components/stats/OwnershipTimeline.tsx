@@ -1,10 +1,10 @@
-import { useMemo, type CSSProperties } from 'react'
+import { useMemo, useState, type CSSProperties } from 'react'
 import { Truncate, cx } from '../../../../shared/ui'
 import { useElementWidthRem } from '../../../../shared/hooks/useElementWidth'
 import type { ShopCategory, ShopItem } from '../../types'
-import { accessoriesByItem, DISPOSAL_LABEL, durationLabel } from '../../ownModel'
+import { accessoriesByItem, DISPOSAL_LABEL, durationLabel, type OwnedShow } from '../../ownModel'
 import { timelineAxis, timelineRows, timelineSpan, yearLabelEvery, type TimelineAxis, type TimelineRow } from '../../statsModel'
-import { StatsCard, Swatch } from './statsKit'
+import { CardFilter, StatsCard, Swatch } from './statsKit'
 import { dayOf, join } from './drillTypes'
 import { plural } from './statsFormat'
 
@@ -13,6 +13,7 @@ const WIDE_REM = 34
 /** The name column beside the bars when wide (rem) — the bars' width is measured from it. */
 const LABEL_REM = 12
 const LABEL_COLS = 'grid-cols-[12rem_minmax(0,1fr)]'
+const SHOWS = [{ value: 'mine' as const, label: 'Mine' }, { value: 'gone' as const, label: 'Sold or gone' }, { value: 'all' as const, label: 'All' }]
 
 /**
  * One bar per thing — bought → sold or gone, or today — grouped by top
@@ -21,7 +22,9 @@ const LABEL_COLS = 'grid-cols-[12rem_minmax(0,1fr)]'
  * A bar opens the thing.
  */
 export function OwnershipTimeline({ items, categories, today, onOpen }: { items: ShopItem[]; categories: ShopCategory[]; today: string; onOpen: (id: string) => void }) {
-  const { rows, start } = useMemo(() => timelineRows(items, categories), [items, categories])
+  const [show, setShow] = useState<OwnedShow>('all')
+  const any = useMemo(() => timelineRows(items, categories).rows.length > 0, [items, categories])
+  const { rows, start } = useMemo(() => timelineRows(items, categories, show), [items, categories, show])
   const acc = useMemo(() => accessoriesByItem(items), [items])
   const { ref, width } = useElementWidthRem()
   const groups = useMemo(() => {
@@ -33,7 +36,16 @@ export function OwnershipTimeline({ items, categories, today, onOpen }: { items:
     }
     return out
   }, [rows])
-  if (!start) return null
+  if (!any) return null
+  const filter = <CardFilter label="Show" options={SHOWS} value={show} onChange={setShow} />
+  if (!start) {
+    return (
+      <StatsCard title="Your things over the years" subtitle="Bought to sold or gone, or today">
+        {filter}
+        <p className="text-body text-fg-muted">{show === 'mine' ? 'Nothing is yours right now.' : 'Nothing sold or gone yet.'}</p>
+      </StatsCard>
+    )
+  }
 
   const axis = timelineAxis(start, today)
   const wide = (width ?? 0) >= WIDE_REM
@@ -45,6 +57,7 @@ export function OwnershipTimeline({ items, categories, today, onOpen }: { items:
 
   return (
     <StatsCard title="Your things over the years" subtitle={`${plural(rows.length, 'thing')} · bought to sold or gone, or today · ≈ a day from memory`} action={legend}>
+      {filter}
       <div ref={ref} className="flex flex-col gap-2">
         <div aria-hidden className={cx('px-3', wide && `grid gap-3 ${LABEL_COLS}`)}>
           {wide && <span />}
