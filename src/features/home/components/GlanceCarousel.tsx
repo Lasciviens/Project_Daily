@@ -150,11 +150,14 @@ export function GlanceCarousel({ id, label, icon, screens, loading, to, onClick 
           <Skeleton className="mt-1.5 h-3 w-24" />
         </div>
       ) : (
+        // `relative`: a screen's absolutely placed sr-only text (the Money
+        // tile's "unchanged since yesterday") would otherwise take the page as
+        // its containing block, escape this track's clip and widen <main>.
         <div
           ref={track}
           onScroll={onScroll}
           onPointerDown={onPointerDown}
-          className="scrollbar-none -mx-3.5 mt-1 flex flex-1 snap-x snap-mandatory overflow-x-auto overscroll-x-contain"
+          className="scrollbar-none relative -mx-3.5 mt-1 flex flex-1 snap-x snap-mandatory overflow-x-auto overscroll-x-contain"
         >
           {screens.map((s, i) => (
             <div
