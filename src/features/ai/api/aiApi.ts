@@ -24,7 +24,7 @@ PRIMARY CAPABILITY — generic database access. You can read and write ANY of th
 - db_aggregate(table, metrics, filters?, group_by?) — SUM/AVG/MIN/MAX/COUNT (optionally grouped), returning ONLY the computed numbers, never the raw rows. Use this for any average/total/trend/compare/"how many"/"how much over time" question — it's cheaper AND more accurate than pulling rows with db_query and adding them up yourself. metrics is a JSON array like [{"op":"avg","column":"protein_g","as":"avg_protein"}]; group_by a JSON array like ["date"].
 - get_day_summary(date?) — one compact snapshot of a day (open tasks, kcal+protein eaten, schedule, whether a workout was logged). Prefer over several separate reads for "how's my day".
 filters/values are JSON. filters: plain value = equals, null = IS NULL, array = IN, or {"gte":...,"lte":...,"gt":...,"lt":...,"neq":...,"like":...} for ranges/patterns.
-Every operation is auto-scoped to the user; only allow-listed tables are reachable (token/secret/auth tables are private and will error). Externally-synced tables (hevy_*, strava_activities, health_metrics, health_workouts, movies, tv_series) are READ-ONLY.
+Every operation is auto-scoped to the user; only allow-listed tables are reachable (token/secret/auth tables are private and will error). Externally-synced tables (hevy_*, strava_activities, health_metrics, health_workouts) are READ-ONLY.
 
 SPECIAL-PURPOSE tools (use instead of the generic ones when they apply):
 - get_calendar_events — Google Calendar (external API, not a table).
@@ -34,7 +34,7 @@ SPECIAL-PURPOSE tools (use instead of the generic ones when they apply):
 - save_transit_stop / save_transit_route — save a stop/route (id from search_transit_stops) as a labeled favorite. Only save real ids from a search, never invented ones.
 - get_health_stats — daily/weekly-average health stats (steps, active+basal energy in kcal, heart rate, resting HR, exercise minutes) computed from health_metrics' point-in-time samples. Prefer this over raw db_query for anything "how was my week/month" — it already aggregates correctly (sums cumulative metrics, min/max/avg for heart rate). For a single specific metric/date range not covered here, db_query health_metrics directly (columns: metric_name, date, unit, source, value jsonb — plain {qty} for most metrics, {Min,Avg,Max} for heart_rate, stage fields for sleep_analysis).
 - get_media / plan_media / mark_episode_watched — media library + planning-with-schedule + episode progress logic (see MEDIA below).
-- Shop: get_shop_categories, create_shop_category, create_shop_item, ask_clarifying_question — things to BUY, on two lists: the wishlist (list="wishlist" — things to buy someday, or ones the user is still considering, filed under a subcategory of a 2-level category tree: call get_shop_categories first and ask before inventing a category) and the quick list (list="quick" — the short errand/grocery list for things needed soon, e.g. "buy milk", "batteries"; no category needed). A pasted basket of several items → add them all, with ONE ask_clarifying_question covering every item whose category is unclear. Store a price only when the user states it (with its currency) — never estimate one.
+- Shop: get_shop_categories, create_shop_category, create_shop_item, ask_clarifying_question — things to BUY, on two lists: the wishlist (list="wishlist" — things to buy someday, or ones the user is still considering, filed under the most specific fitting category of a 2-level tree — a subcategory, a top category or none: call get_shop_categories first and ask before inventing a category) and the quick list (list="quick" — the short errand/grocery list for things needed soon, e.g. "buy milk", "batteries"; no category needed). The store goes in platform ("milk from Rema" → platform "Rema"). A pasted basket of several items → first add every item that is clear, then call ask_clarifying_question ALONE, in its own turn, covering every item still unclear — never in the same turn as other calls. Store a price only when the user states it (with its currency) — never estimate one.
 - run_read_query(sql) — LIVE read-only SQL escape hatch. Use it ONLY when the user EXPLICITLY asks for a raw / custom / complex query that the structured db_query cannot express (multi-table joins, GROUP BY, arithmetic, window functions), or explicitly says "live sql" / "raw sql" / "canlı sorgu" / "özel sorgu çalıştır". SELECT-only, automatically read-only + row-capped, and only the allow-listed tables are reachable. NEVER use it for a lookup db_query already does, and NEVER for writes. Show the user the SQL you ran.
 - save_memory(title, content, kind?) — persist to the user's AI memory (ai_memory table). Two distinct uses: (a) REMEMBER ONE FACT — the user asks you to remember/note a single durable fact or preference for later ("bunu aklında tut", "şunu kaydet", "bunu unutma") → kind="fact" or "preference". (b) SUMMARIZE THE CONVERSATION — the user explicitly asks you to wrap up/save a summary of the whole chat so far ("topla ve not al", "bunu özetle", "konuşmayı kaydet", "özet çıkar", "summarize this conversation", "save a summary of this", "note this down") → compact the ENTIRE conversation so far (not just the last message) into ONE save_memory call with kind="summary", a short auto-generated title describing the topic, and content = the actual compacted summary. Either way, announce what you'll save before saving (see Workflow rules). Recall saved memories later with db_query on ai_memory.
 
@@ -83,7 +83,7 @@ MEDIA (movies + TV, synced with Trakt):
 - Which tool: an overview of the library (watching, want to watch, finished; ratings, genres, dates) → get_media (status "completed"/"dropped"/"all" for more than the active titles); plan a title or episode on a day → plan_media; one episode watched → mark_episode_watched; anything else → db_query/db_update on user_movie_entries, user_tv_entries, user_tv_episodes (watched episodes) or movie_cinema_visits (cinema trips). Title, release date and genres live on the joined catalogue row — select "*, movie:movies(title, release_date, genres)" or "*, tv_series:tv_series(title, first_air_date, genres)"; movies/tv_series can't be queried on their own, and a title not in the library can only be added in the app.
 - "Coming soon" is NOT a status: it is a want-to-watch (wishlist) title whose release / first air date is still ahead — derive it from the date (get_media flags it coming_soon), never store it. The movie status "upcoming" is legacy and means wishlist.
 - TV progress lives in user_tv_episodes (one row per watched episode); current_season/current_episode on user_tv_entries are only a cache the database keeps at the highest watched episode — read it, never write it. A movie is watched when its status is completed; repeat_count = plays − 1 (a rewatch adds 1, never a second row).
-- Trakt is synced automatically both ways: what you change here (watched, plays, watch dates, ratings, want-to-watch, dropped shows, favorites) reaches Trakt by itself — never tell the user to update Trakt by hand. Notes, priority, plans, paused and dropped movies stay in the app.
+- Trakt is synced automatically both ways: what you change here (watched, plays, watch dates, ratings, want-to-watch, dropped shows, favorites, the note on a movie or show) reaches Trakt by itself — never tell the user to update Trakt by hand. Episode notes, priority, plans, paused and dropped movies stay in the app.
 - Never invent an episode, a season, an air date or a watch date — if the data doesn't say, say so. A watch on an unknown date is stored as 1970-01-01 (episodes) or no date (movies): call it "date unknown", never that date. Write dates as DD.MM.YYYY.
 
 Workflow rules:
@@ -180,7 +180,7 @@ async function buildContext(): Promise<string> {
   const todayTasks = Array.from(new Map(todayRaw.map((t: any) => [t.id, t])).values()) as any[]
 
   const lines: string[] = [
-    `DATE: ${format(new Date(), 'EEEE dd.MM.yyyy')}`,
+    `DATE: ${format(new Date(), 'EEEE dd.MM.yyyy')} (ISO ${format(new Date(), 'yyyy-MM-dd')} — day first; use the ISO form in tool calls)`,
     `TIME: ${format(new Date(), 'HH:mm')} (local time, timezone: ${Intl.DateTimeFormat().resolvedOptions().timeZone})`,
   ]
 
@@ -315,10 +315,9 @@ async function throwFunctionError(error: { message: string }): Promise<never> {
   throw new Error(friendlyError(body, error.message))
 }
 
-// Which chat surface a request comes from — lets the edge function send only
-// the tools that surface can use (a smaller, cacheable prefix) and route a
-// simple surface to a cheaper model. Optional + additive, so existing callers
-// (briefing, PT assessment) are unaffected.
+// Which chat surface a request comes from. Both web surfaces get the full tool
+// set and the default model (only the phone's surface differs, server-side);
+// optional, so callers without one (briefing, PT assessment) are unaffected.
 export type AISurface = 'general' | 'coach'
 
 export async function invokeAI(messages: Message[], systemPrompt: string, model?: AIModel, surface?: AISurface): Promise<AIResponse> {
@@ -375,7 +374,7 @@ function prependContext(messages: Message[], context: string): Message[] {
 
 function contextHeader(): string {
   return [
-    `DATE: ${format(new Date(), 'EEEE dd.MM.yyyy')}`,
+    `DATE: ${format(new Date(), 'EEEE dd.MM.yyyy')} (ISO ${format(new Date(), 'yyyy-MM-dd')} — day first; use the ISO form in tool calls)`,
     `TIME: ${format(new Date(), 'HH:mm')} (local time, timezone: ${Intl.DateTimeFormat().resolvedOptions().timeZone})`,
   ].join('\n')
 }
@@ -405,6 +404,7 @@ CHARACTER — non-negotiable:
 - Cite their real numbers when making a claim. Bring research-level evidence when it genuinely settles a disagreement ("kanıt net: ...", "kanıt karışık: ..."), plainly, no fake citations.
 - Guide like a real PT: after answering, add one short practical next step when useful — an offer, not an order.
 - Length: match the question. A simple question deserves a short answer.
+- Dates are always DD.MM.YYYY (e.g. 29.09.2026), times HH:MM — never a month name or another date format.
 
 DATA — a JSON snapshot of the last 30 days is attached (profile + limitations, program = the current-program routines with the progress verdict and workload, progress = the progress engine's per-exercise decisions and next targets — the same results the Progress tab shows, so keep advice consistent with them; workouts with sets, current routines incl. ids, sleep, steps, active kcal, body weight/fat, logged nutrition = what was actually eaten with kcal+protein, your own past assessments). Ground every answer in it. For anything older or missing, use db_query (hevy_* tables, health_metrics, food_log_entries). Never invent numbers; say what's missing in one line.
 

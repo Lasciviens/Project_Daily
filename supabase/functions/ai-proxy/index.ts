@@ -427,7 +427,7 @@ const TOOLS = [
       // ─── Media (kept — non-trivial multi-step logic) ──────────────────────
       {
         name: 'get_media',
-        description: 'The user\'s movie + TV library (kept in sync with Trakt), one compact line per title: entry_id, title, status, and when known rating (1-10, their own), genres, favorite, released / first_aired, watched (movies) or started / finished (TV), plays (when watched more than once), planned, a short note. Dates are yyyy-mm-dd; watched "unknown" = watched on an unknown date. coming_soon=true = a want-to-watch title not released yet. TV current_season/current_episode = the highest episode marked watched (episode 0 = none yet). Use entry_id with plan_media, mark_episode_watched or db_update.',
+        description: 'The user\'s movie + TV library (kept in sync with Trakt), one compact line per title: entry_id, title, status, and when known rating (1-10, their own), genres, favorite, released / first_aired, watched (movies) or started / finished (TV), plays (when watched more than once), planned, a short note. Dates are yyyy-mm-dd here — write them to the user as DD.MM.YYYY; watched "unknown" = watched on an unknown date (say "date unknown"). coming_soon=true = a want-to-watch title not released yet. TV current_season/current_episode = the highest episode marked watched (episode 0 = none yet). Use entry_id with plan_media, mark_episode_watched or db_update.',
         parameters: {
           type: 'OBJECT',
           properties: {
@@ -538,17 +538,17 @@ const TOOLS = [
       },
       {
         name: 'create_shop_item',
-        description: 'Add something to BUY to one of the two shopping lists. list="wishlist" (default) = things to buy someday: category_id is REQUIRED and MUST be a subcategory ID (one that itself has a parent) from get_shop_categories or a just-created create_shop_category result — never a top-category ID. list="quick" = the short errand/grocery list ("milk", "batteries", "pick up a charger"): category_id is optional and usually left out. A recipe is never a shop item. Never estimate, look up or invent a price: set price only when the user stated it, with its currency (when they name only a region, the currency follows it: TR → TRY, NO → NOK).',
+        description: 'Add something to BUY to one of the two shopping lists. list="wishlist" (default) = things to buy someday: category_id is REQUIRED — the most specific fitting category ID from get_shop_categories or a just-created create_shop_category result (a subcategory, or a top category when no subcategory fits). list="quick" = the short errand/grocery list ("milk", "batteries", "pick up a charger"): category_id is optional and usually left out. A recipe is never a shop item. Never estimate, look up or invent a price: set price only when the user stated it, with its currency (when they name only a region, the currency follows it: TR → TRY, NO → NOK).',
         parameters: {
           type: 'OBJECT',
           properties: {
             list:         { type: 'STRING', enum: ['wishlist', 'quick'], description: 'Which list (default wishlist)' },
-            category_id:  { type: 'STRING', description: 'Subcategory ID — required on the wishlist, optional on the quick list' },
+            category_id:  { type: 'STRING', description: 'Category ID (most specific fitting) — required on the wishlist, optional on the quick list' },
             title:        { type: 'STRING' },
             notes:        { type: 'STRING' },
             price:        { type: 'NUMBER', description: 'Only a price the user stated for this item (optional)' },
             currency:     { type: 'STRING', enum: ['NOK', 'TRY', 'EUR', 'USD'], description: 'The price\'s currency (optional — follows region when omitted)' },
-            platform:     { type: 'STRING', description: 'e.g. PS5, PC, iOS (optional)' },
+            platform:     { type: 'STRING', description: 'Where to buy it: the store ("Rema", "Kiwi" — the quick list groups by it) or a platform for games/apps ("PS5", "iOS") (optional)' },
             url:          { type: 'STRING' },
             priority:     { type: 'STRING', enum: ['low', 'medium', 'high'] },
             region:       { type: 'STRING', enum: ['TR', 'NO'], description: 'Which country this purchase relates to (optional)' },
@@ -951,6 +951,20 @@ async function callGemini(
     // come from the human as a real next turn, not a synthesized tool
     // response, so we return immediately instead of continuing the loop.
     const clarifyCall = fnCallParts.find((p: AnyRecord) => p.functionCall.name === 'ask_clarifying_question')
+    // Asked together with other calls: none of them runs (one may be the very
+    // delete the question asks about), and the model is told so — it then
+    // makes the other calls alone and asks in a turn of its own. Returning the
+    // question here would silently drop those calls.
+    if (clarifyCall && fnCallParts.length > 1) {
+      contents = [...contents, candidate.content, {
+        role: 'tool',
+        parts: fnCallParts.map((part: AnyRecord) => ({ functionResponse: { name: part.functionCall.name, response: {
+          success: false, not_run: true,
+          error: 'Not run: ask_clarifying_question must be the only call in its turn. Make the other calls on their own first (or drop them), then ask in a separate turn.',
+        } } })),
+      }]
+      continue
+    }
     if (clarifyCall) {
       const { question, options } = clarifyCall.functionCall.args
       return { text: question, quickReplies: Array.isArray(options) ? options : [], steps: steps.length ? steps : undefined, model: modelUsed }
@@ -991,9 +1005,13 @@ async function callGemini(
     if (finalText) return { text: finalText, steps: steps.length ? steps : undefined, model: finalModel }
   }
   // Deterministic fallback that still shows exactly what was done + offers to resume.
-  const doneList = steps.length ? '\n\nŞu ana kadar yaptıklarım:\n' + steps.map(s => '• ' + s).join('\n') : ''
+  // Turkish only on the phone (on-phone text may be Turkish); English on the web.
+  const tr = surface === 'phone'
+  const doneList = steps.length ? (tr ? '\n\nŞu ana kadar yaptıklarım:\n' : '\n\nDone so far:\n') + steps.map(s => '• ' + s).join('\n') : ''
   return {
-    text: `Bu turda çok fazla adım gerektiği için işlemi tek seferde bitiremedim.${doneList}\n\nKaldığım yerden devam etmemi ister misin? "devam et" yaz, sürdüreyim.`,
+    text: tr
+      ? `Bu turda çok fazla adım gerektiği için işlemi tek seferde bitiremedim.${doneList}\n\nKaldığım yerden devam etmemi ister misin? "devam et" yaz, sürdüreyim.`
+      : `This needed too many steps to finish in one go.${doneList}\n\nShould I carry on from here? Say "continue".`,
     steps: steps.length ? steps : undefined,
     model: finalModel,
   }
@@ -1711,6 +1729,11 @@ async function markEpisodeWatched(supabase: AnyRecord, userId: string, args: Any
 
   if (entryErr || !entry) return { success: false, error: 'TV entry not found' }
 
+  // The default episode (the one after the highest watched) only exists inside
+  // the season that episode is in — another season needs the episode named.
+  if (args.season != null && args.episode == null && Number(args.season) !== entry.current_season) {
+    return { success: false, error: `Which episode of season ${args.season}? Ask the user — the next episode is only known inside season ${entry.current_season}.` }
+  }
   const season  = args.season  ?? entry.current_season
   const episode = args.episode ?? (entry.current_episode + 1)
   const now     = new Date().toISOString()
@@ -1740,7 +1763,7 @@ async function markEpisodeWatched(supabase: AnyRecord, userId: string, args: Any
       if (error) return { success: false, error: error.message }
     }
     return {
-      success: true, season, episode, already_watched: true, watched_at: existing.watched_at,
+      success: true, season, episode, already_watched: true, watched: watchDay(existing.watched_at),
       message: `S${season}E${episode} was already marked watched — its date was kept.`,
     }
   }
@@ -1828,7 +1851,7 @@ async function createShopItemFn(supabase: AnyRecord, userId: string, args: AnyRe
   const title = typeof args.title === 'string' ? args.title.trim() : ''
   if (!title) return { success: false, error: 'title is required.' }
   const categoryId = typeof args.category_id === 'string' && args.category_id.trim() ? args.category_id.trim() : null
-  const needsCategory = 'A wishlist item needs category_id — a subcategory from get_shop_categories (ask before inventing one).'
+  const needsCategory = 'A wishlist item needs category_id — the most specific fitting category from get_shop_categories, a subcategory or a top category (ask before inventing one).'
   if (list === 'wishlist' && !categoryId) {
     return { success: false, error: `${needsCategory} An errand/grocery item goes on list="quick", where a category is optional.` }
   }
@@ -1839,9 +1862,11 @@ async function createShopItemFn(supabase: AnyRecord, userId: string, args: AnyRe
   if (args.currency != null && args.currency !== '') {
     currency = String(args.currency).toUpperCase()
     if (!SHOP_CURRENCIES.includes(currency)) return { success: false, error: `currency must be one of ${SHOP_CURRENCIES.join(', ')} (got "${args.currency}").` }
-  } else if (price != null && typeof args.region === 'string' && Object.hasOwn(REGION_CURRENCY, args.region)) {
-    currency = REGION_CURRENCY[args.region]
   }
+  // The currency the app would show for this row without one: the region's,
+  // else NOK — every writer stores it with a price (the app reads NULL as NOK).
+  const regionCurrency = typeof args.region === 'string' && Object.hasOwn(REGION_CURRENCY, args.region) ? REGION_CURRENCY[args.region] : 'NOK'
+  if (price != null && !currency) currency = regionCurrency
 
   const row: AnyRecord = {
     user_id:      userId,
@@ -1872,11 +1897,15 @@ async function createShopItemFn(supabase: AnyRecord, userId: string, args: AnyRe
     if (!categoryId) {
       return { success: false, error: `The quick list is not available yet (database migration 134 is not applied), so this item can only go on the wishlist. ${needsCategory}` }
     }
+    // Before 134 a price has no currency of its own: the app shows it in the
+    // region's currency, so a different one would be shown wrong (100 EUR as 100 kr).
+    if (currency && currency !== regionCurrency) {
+      return { success: false, error: `A price in ${currency} can't be stored yet (database migration 134 is not applied) — only in ${regionCurrency} for this region. Tell the user, or save it without the price.` }
+    }
     const legacy: AnyRecord = { ...row }
     for (const c of SHOP_134_COLUMNS) delete legacy[c]
     ;({ data, error } = await insert(legacy))
-    const lost = [list === 'quick' ? 'the quick list (it was saved on the wishlist)' : '', currency ? `the currency ${currency}` : ''].filter(Boolean)
-    if (!error && lost.length) warning = `Database migration 134 is not applied yet, so ${lost.join(' and ')} could not be stored — tell the user.`
+    if (!error && list === 'quick') warning = 'Database migration 134 is not applied yet, so the quick list could not be used — it was saved on the wishlist. Tell the user.'
   }
 
   if (error) return { success: false, error: error.message }
@@ -2369,7 +2398,7 @@ const DB_CATALOG: Record<string, CatalogEntry> = {
   water_log_entries: {
     access: 'rw',
     purpose: "The water diary — one row per amount the user drank. The day's total is the SUM of amount_ml for that date; the daily target is day_targets.water_ml.",
-    columns: "id, date(date — the user's own day; always set it, from the context turn's date), amount_ml(int > 0), logged_at(timestamptz — when it was logged, default now), created_at",
+    columns: "id, date(date — the user's own day, yyyy-mm-dd; set it from the context's ISO date — left out, today in Oslo is used), amount_ml(int > 0), logged_at(timestamptz — when it was logged, default now), created_at",
     rules: "One row per amount drunk: 'I drank 500 ml' → insert {date, amount_ml: 500}; never edit a row into a running total. A glass with no amount given = 250 ml (the app's default); for anything else ask the amount once. Water NEVER goes in food_log_entries and has no macros or calories. 'How much water today?' → db_aggregate sum amount_ml with filters {date}. To take back the last amount, delete that row (newest logged_at) after the user confirms.",
   },
   shop_categories: {
@@ -2380,11 +2409,11 @@ const DB_CATALOG: Record<string, CatalogEntry> = {
   },
   shop_items: {
     access: 'rw',
-    purpose: 'Things to BUY, on two lists: list="wishlist" = things to buy someday (filed under a subcategory); list="quick" = the short errand/grocery list (milk, batteries; a category is optional). A recipe is never a shop item, and neither is a thing to DO or a place to GO — "buy ski gear this winter" is a shop item, "go skiing this winter" is a wish_items row.',
-    columns: 'id, list(wishlist|quick — default wishlist), category_id(uuid FK shop_categories — a SUBCATEGORY; required on the wishlist, optional on the quick list), title, notes, price(numeric), currency(NOK|TRY|EUR|USD — the price\'s currency), price_source(manual|ai_estimate), platform, url, priority(low|medium|high), region(TR|NO), planned_date(date), status(wishlist = still to buy|bought|dropped), bought_at(timestamptz — stamped by the database when status becomes bought, cleared when it leaves bought), task_id(uuid FK tasks, nullable — the task the purchase was planned as), source_type(manual|ai), created_at, updated_at',
+    purpose: 'Things to BUY, on two lists: list="wishlist" = things to buy someday (filed under the most specific fitting category); list="quick" = the short errand/grocery list (milk, batteries; a category is optional). A recipe is never a shop item, and neither is a thing to DO or a place to GO — "buy ski gear this winter" is a shop item, "go skiing this winter" is a wish_items row.',
+    columns: 'id, list(wishlist|quick — default wishlist), category_id(uuid FK shop_categories — a subcategory, or a top category when none fits; required on the wishlist, optional on the quick list), title, notes, price(numeric), currency(NOK|TRY|EUR|USD — the price\'s currency), price_source(manual|ai_estimate), platform(where to buy it — the store, e.g. "Rema", which the quick list groups by; or a game/app platform), url, priority(low|medium|high), region(TR|NO), planned_date(date), status(wishlist = still to buy|bought|dropped), bought_at(timestamptz — stamped by the database when status becomes bought, cleared when it leaves bought), task_id(uuid FK tasks, nullable — the task the purchase was planned as), source_type(manual|ai), created_at, updated_at',
     rules: [
       'Add items with create_shop_item (it handles the list, the currency and the category rule).',
-      'Never estimate, look up or invent a price. Store only a price the user stated, with price_source="manual" and its currency — when they give only a region, TR → TRY, NO → NOK.',
+      'Never estimate, look up or invent a price. Store only a price the user stated, with price_source="manual" and its currency — when they give none, TR → TRY, otherwise NOK.',
       'To mark an item bought or dropped, update status; never write bought_at yourself.',
       'To plan a purchase as a task, create the tasks row first, then set this item\'s task_id to its id.',
       'list, currency, bought_at and task_id arrive with migration 134: if a write says one of them does not exist, retry without it and tell the user what could not be stored.',
@@ -2434,7 +2463,7 @@ const DB_CATALOG: Record<string, CatalogEntry> = {
     columns: 'user_id, daily_minutes_goal, streak_min_minutes, updated_at',
   },
   // The media library is synced with Trakt both ways: migrations 117/118/120/
-  // 132's outbox triggers queue every change to a Trakt-held fact from ANY
+  // 132/136's outbox triggers queue every change to a Trakt-held fact from ANY
   // writer (this function included — it sends no x-trakt-sync header), and
   // trakt-api sends it within ~30 min. The rules say which facts those are.
   // movies / tv_series (the shared TMDB catalogue) are not in this catalog:
@@ -2443,22 +2472,22 @@ const DB_CATALOG: Record<string, CatalogEntry> = {
   user_movie_entries: {
     access: 'rw',
     purpose: "The user's movie library — one row per film (wanted, watching, watched, dropped). Prefer get_media for an overview.",
-    columns: 'id, movie_id(uuid FK movies), status(wishlist = want to watch | watching | completed = watched | dropped | upcoming = LEGACY want-to-watch, read it as wishlist), priority(low|medium|high), rating(int 1-10 — the user\'s own; null = unrated), is_favorite(bool), personal_note(text — the user\'s own note on the film; app-only, not synced to Trakt yet), watched_at(timestamptz — when it was watched; NULL on a completed film = date unknown), repeat_count(int — extra plays: plays − 1), planned_date(date), watchlist_rank(int — Trakt watchlist order, set by the sync), created_at, updated_at. The film itself comes from the movies embed — select "*, movie:movies(title, release_date, genres, runtime, tmdb_rating, rt_critics, imdb_rating)": genres = jsonb array of {id, name}, runtime in minutes, tmdb_rating and imdb_rating /10, rt_critics/rt_audience = Rotten Tomatoes %, metacritic, letterboxd_rating /5.',
+    columns: 'id, movie_id(uuid FK movies), status(wishlist = want to watch | watching | completed = watched | dropped | upcoming = LEGACY want-to-watch, read it as wishlist), priority(low|medium|high), rating(int 1-10 — the user\'s own; null = unrated), is_favorite(bool), personal_note(text — the user\'s own note on the film; it IS the film\'s private note on Trakt, synced both ways — Trakt keeps the first 499 characters + …), watched_at(timestamptz — when it was watched; NULL on a completed film = date unknown), repeat_count(int — extra plays: plays − 1), planned_date(date), watchlist_rank(int — Trakt watchlist order, set by the sync), created_at, updated_at. The film itself comes from the movies embed — select "*, movie:movies(title, release_date, genres, runtime, tmdb_rating, rt_critics, imdb_rating)": genres = jsonb array of {id, name}, runtime in minutes, tmdb_rating and imdb_rating /10, rt_critics/rt_audience = Rotten Tomatoes %, metacritic, letterboxd_rating /5.',
     rules: [
       '"Coming soon" is never a status: it is a wishlist (or legacy upcoming) film whose release_date is still ahead — derive it from the date. Never write status="upcoming"; use wishlist.',
       'Watched = status "completed" plus watched_at: now when they just watched it, a day they name at midday (e.g. 2026-09-12T12:00:00Z), or NULL = date unknown — ask once when it is unclear, never guess a date. Watched again = repeat_count + 1 on the same row (one row per film, never a second one).',
-      'Changes to status, watched_at, repeat_count, rating and is_favorite reach Trakt by themselves — never tell the user to change Trakt by hand. Dropped, priority, planned_date and personal_note are app-only.',
+      'Changes to status, watched_at, repeat_count, rating, is_favorite and personal_note reach Trakt by themselves — never tell the user to change Trakt by hand. Dropped, priority and planned_date are app-only.',
       'A film that is not in the library yet can only be added in the app (Media → search, which fetches it from TMDB) — never invent a movie_id.',
     ].join(' '),
   },
   user_tv_entries: {
     access: 'rw',
     purpose: "The user's TV library — one row per show. Watched episodes are rows in user_tv_episodes. Prefer get_media for an overview.",
-    columns: 'id, tv_series_id(uuid FK tv_series), status(wishlist = want to watch | watching | paused | completed | dropped), priority(low|medium|high), rating(int 1-10 — the user\'s own rating of the show), is_favorite(bool), personal_note(text — app-only, not synced to Trakt yet), started_at(timestamptz — when they started the show), finished_at(timestamptz — when they finished it), current_season/current_episode(int — a CACHE of the highest watched episode in user_tv_episodes, kept by the database; season 1 episode 0 = nothing watched), planned_date(date), watchlist_rank(int — Trakt watchlist order, set by the sync), created_at, updated_at. The show itself comes from the tv_series embed — select "*, tv_series:tv_series(title, first_air_date, last_air_date, status, number_of_seasons, number_of_episodes, genres)": status is TMDB\'s (Returning Series, Ended…), genres = jsonb array of {id, name}.',
+    columns: 'id, tv_series_id(uuid FK tv_series), status(wishlist = want to watch | watching | paused | completed | dropped), priority(low|medium|high), rating(int 1-10 — the user\'s own rating of the show), is_favorite(bool), personal_note(text — the show\'s private note on Trakt, synced both ways), started_at(timestamptz — when they started the show), finished_at(timestamptz — when they finished it), current_season/current_episode(int — a CACHE of the highest watched episode in user_tv_episodes, kept by the database; season 1 episode 0 = nothing watched), planned_date(date), watchlist_rank(int — Trakt watchlist order, set by the sync), created_at, updated_at. The show itself comes from the tv_series embed — select "*, tv_series:tv_series(title, first_air_date, last_air_date, status, number_of_seasons, number_of_episodes, genres)": status is TMDB\'s (Returning Series, Ended…), genres = jsonb array of {id, name}.',
     rules: [
       'NEVER write current_season/current_episode — they follow user_tv_episodes automatically. Record progress by marking episodes (mark_episode_watched, or user_tv_episodes rows).',
       '"Coming soon" is never a status: a wishlist show whose first_air_date is still ahead.',
-      'Changes to status (wishlist, dropped), rating and is_favorite reach Trakt by themselves; paused, priority, planned_date, started_at, finished_at and personal_note are app-only.',
+      'Changes to status (wishlist, dropped), rating, is_favorite and personal_note reach Trakt by themselves; paused, priority, planned_date, started_at and finished_at are app-only.',
       'A show\'s completed/watching follows its watched episodes on the next Trakt sync (completed = every aired episode watched), so status="completed" alone may not stick: mark the episodes, or point the user to Completed on the show\'s page in the app, which marks every aired episode.',
       'A show that is not in the library yet can only be added in the app — never invent a tv_series_id.',
     ].join(' '),
@@ -2968,6 +2997,9 @@ async function dbInsert(supabase: AnyRecord, userId: string, args: AnyRecord): P
       delete row.user_id
       row.user_id = userId
       if (hasUpdatedAt) row.updated_at = now
+      // A water row without its day would take the column's UTC CURRENT_DATE —
+      // yesterday between 00:00 and 02:00 in Oslo (the phone sends no date).
+      if (args.table === 'water_log_entries' && !row.date) row.date = homeDay(Date.now())
       return row
     })
     const { data, error } = await supabase.from(args.table).insert(rows).select()

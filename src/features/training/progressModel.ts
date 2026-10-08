@@ -62,11 +62,10 @@ export interface ProgressData {
    *  decision table's Muscle filter reads it. */
   musclesByTemplateId: Map<string, TemplateMuscleCredit>
   /** Every CURRENT-program routine an exercise belongs to, by id, in routine
-   *  order: the routines that list it, plus any it was trained in during the
-   *  last RECENT_DAYS (swapped in mid-workout). The Routine filter reads it. */
+   *  order: the routines that list it — or, for an exercise no current
+   *  routine lists, the ones it was trained in during the last RECENT_DAYS
+   *  (swapped in mid-workout). The Routine filter reads it. */
   routineIdsByTemplateId: Map<string, string[]>
-  /** The same membership by routine title (two routines may share one). */
-  routineTitlesByTemplateId: Map<string, string[]>
   /** The current-program routines that still exist, in routine order. */
   activeRoutines: HevyRoutine[]
   /** Today (local) as the data was computed — consumers use it for "last 14
@@ -78,7 +77,7 @@ export function emptyProgressData(today: string, over: Partial<ProgressData> = {
   return {
     isLoading: true, needsCurrentProgram: false, staleProgram: false, suggestedRoutines: [], decisions: [], program: null,
     summary: null, titleById: new Map(), sessionsByTemplateId: new Map(), metricKindByTemplateId: new Map(),
-    musclesByTemplateId: new Map(), routineIdsByTemplateId: new Map(), routineTitlesByTemplateId: new Map(), activeRoutines: [], today, ...over,
+    musclesByTemplateId: new Map(), routineIdsByTemplateId: new Map(), activeRoutines: [], today, ...over,
   }
 }
 
@@ -154,10 +153,6 @@ export function computeProgressModel(input: ProgressModelInput): ProgressData {
     if (s.date < recentCutoff || !s.routine_id || s.set_type === 'warmup' || currentExerciseIds.has(s.exercise_template_id)) continue
     if (titleOfRoutine.has(s.routine_id)) addRoutine(s.exercise_template_id, s.routine_id)
   }
-  const routineTitlesByTemplateId = new Map<string, string[]>()
-  for (const [templateId, ids] of routineIdsByTemplateId) {
-    routineTitlesByTemplateId.set(templateId, [...new Set(ids.map(id => titleOfRoutine.get(id) ?? ''))])
-  }
   // In scope = at least one current routine: one lists it, or it was trained
   // in one lately.
   const inScope = (id: string) => routineIdsByTemplateId.has(id)
@@ -192,7 +187,7 @@ export function computeProgressModel(input: ProgressModelInput): ProgressData {
 
   return {
     isLoading: false, needsCurrentProgram: false, staleProgram: false, suggestedRoutines: [], decisions, program, summary, titleById,
-    sessionsByTemplateId, metricKindByTemplateId, musclesByTemplateId, routineIdsByTemplateId, routineTitlesByTemplateId,
+    sessionsByTemplateId, metricKindByTemplateId, musclesByTemplateId, routineIdsByTemplateId,
     activeRoutines, today,
   }
 }

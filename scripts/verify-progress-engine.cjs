@@ -1671,7 +1671,7 @@ console.log('\n22 · Decision tabs — nothing trained lately is hidden')
   const model = computeProgressModel({ history, currentProgram: [{ routine_id: 'upperA' }], routines, targetOverrides: [], sleepPoints: [], bodyweight: [], targetDays: 3, today })
   const ids = model.decisions.map(d => d.exerciseTemplateId).sort().join()
   check('22: a recent lift the routine no longer lists is still in scope', ids === 'bench,inclineCurl', ids)
-  check('22: ...and carries its routine title for the Routine filter', (model.routineTitlesByTemplateId.get('inclineCurl') ?? []).join() === 'Upper A (Chest & Arm)')
+  check('22: ...and belongs to that routine for the Routine filter', (model.routineIdsByTemplateId.get('inclineCurl') ?? []).join() === 'upperA')
   check('22: an old swapped-out lift and a warm-up-only one stay out', !ids.includes('oldFly') && !ids.includes('warmOnly'))
   check('22: the recent lift shows on Recent changes', filterByTab(model.decisions, 'recent', today).some(d => d.exerciseTemplateId === 'inclineCurl'))
 }

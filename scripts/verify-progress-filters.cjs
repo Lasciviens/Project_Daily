@@ -119,7 +119,6 @@ console.log('\n2 · The model carries the per-exercise metadata')
   check('2: routine membership is by id, in routine order — bench is in both "Upper A" routines', (model.routineIdsByTemplateId.get('bench') ?? []).join() === 'upperA,upperA2')
   check('2: a lift trained in Upper A lately (not listed there) belongs to Upper A', (model.routineIdsByTemplateId.get('inclineCurl') ?? []).join() === 'upperA')
   check('2: a routine outside the current program is never a membership', !model.routineIdsByTemplateId.has('legPress'))
-  check('2: titles stay deduplicated (two routines named "Upper A" → one title)', (model.routineTitlesByTemplateId.get('bench') ?? []).join() === 'Upper A')
   check('2: every listed exercise has at least one routine', all.every(d => (model.routineIdsByTemplateId.get(d.exerciseTemplateId) ?? []).length > 0))
 }
 
