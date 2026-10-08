@@ -2,6 +2,7 @@ import { supabase } from '../../../integrations/supabase/client'
 import { parseFunctionErrorBody } from '../../../shared/utils/functionError'
 import { DetailedError } from '../../../shared/utils/errorReport'
 import type { LocalEpisode, LocalLibrary, LocalMovie, LocalShow, TraktSnapshot, TraktStatus } from './traktTypes'
+import type { LocalNote } from './traktNotes'
 
 // Browser side of the trakt-api edge function. The Client Secret and the
 // tokens never reach the browser; this only ever sees status and the snapshot.
@@ -67,6 +68,8 @@ export interface TraktRunResult {
   heldBack?: number
   kept?: number
   sent?: number
+  /** Notes (migration 136): sent to Trakt, taken from Trakt, refused by Trakt (e.g. its note limit). */
+  notes?: { sent: number; fromTrakt: number; refused: number; left: number; warning: string | null; error: string | null } | null
 }
 
 /**
@@ -108,25 +111,39 @@ async function fetchWatchedEpisodes(): Promise<LocalEpisode[]> {
   }
 }
 
+/** The entries' columns the preview reads; the note link columns fall back before migration 136. */
+async function fetchEntries(table: 'user_movie_entries' | 'user_tv_entries', cols: string, join: string): Promise<Row[]> {
+  const withNotes = `${cols}, personal_note, trakt_note_id, trakt_note_text, ${join}`
+  let res = await supabase.from(table).select(withNotes)
+  if (missingColumn(res.error)) res = await supabase.from(table).select(`${cols}, personal_note, ${join}`)
+  if (res.error) throw res.error
+  return (res.data ?? []) as unknown as Row[]
+}
+
 export async function fetchLocalLibraryForTrakt(): Promise<LocalLibrary> {
   const [mv, tv, episodes] = await Promise.all([
-    supabase.from('user_movie_entries').select('status, repeat_count, rating, watched_at, movie:movies(tmdb_id, title, release_date)'),
-    supabase.from('user_tv_entries').select('status, rating, tv_series:tv_series(tmdb_id, title, first_air_date)'),
+    fetchEntries('user_movie_entries', 'status, repeat_count, rating, watched_at', 'movie:movies(tmdb_id, title, release_date)'),
+    fetchEntries('user_tv_entries', 'status, rating', 'tv_series:tv_series(tmdb_id, title, first_air_date)'),
     fetchWatchedEpisodes(),
   ])
-  if (mv.error) throw mv.error
-  if (tv.error) throw tv.error
-  const movies: LocalMovie[] = ((mv.data ?? []) as unknown as Row[]).flatMap(r => {
+  const notes: LocalNote[] = []
+  const noteOf = (type: 'movie' | 'show', tmdb: number, r: Row) => notes.push({
+    type, tmdb, note: (r.personal_note as string) ?? null,
+    noteId: r.trakt_note_id != null ? Number(r.trakt_note_id) : null, synced: (r.trakt_note_text as string) ?? null,
+  })
+  const movies: LocalMovie[] = mv.flatMap(r => {
     const m = one(r.movie)
     const tmdbId = Number(m?.tmdb_id)
+    if (tmdbId) noteOf('movie', tmdbId, r)
     return tmdbId ? [{ tmdbId, title: String(m?.title ?? ''), year: yearOf(m?.release_date as string), status: String(r.status), repeatCount: Number(r.repeat_count) || 0, rating: (r.rating as number) ?? null, watchedAt: (r.watched_at as string) ?? null }] : []
   })
-  const shows: LocalShow[] = ((tv.data ?? []) as unknown as Row[]).flatMap(r => {
+  const shows: LocalShow[] = tv.flatMap(r => {
     const s = one(r.tv_series)
     const tmdbId = Number(s?.tmdb_id)
+    if (tmdbId) noteOf('show', tmdbId, r)
     return tmdbId ? [{ tmdbId, title: String(s?.title ?? ''), year: yearOf(s?.first_air_date as string), status: String(r.status), rating: (r.rating as number) ?? null }] : []
   })
-  return { movies, shows, episodes }
+  return { movies, shows, episodes, notes }
 }
 
 // ── Phase 5/6 reads and list writes ─────────────────────────────────────────

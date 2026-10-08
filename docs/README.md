@@ -44,7 +44,7 @@ cross-AI task board → `codex-shortcuts.md`.
 | File | Purpose | Last verified |
 |---|---|---|
 | [kobo/PLAN.md](kobo/PLAN.md) | **Temporary working plan** for the Kobo Clara BW integration: reading tracker (KOReader + our plugin → `kobo-sync`), Send to Kobo from phone/laptop, fun extras, working from the MacBook, the phased roadmap and the owner's checklist. Deleted once CLAUDE.md carries a Books Feature Detail section. | 29/09/2026 |
-| [trakt/PLAN.md](trakt/PLAN.md) | **Temporary working plan** for the Trakt integration: TMDB id as the one identity, matching Trakt/IMDb ids onto the existing `movies`/`tv_series` rows (no duplicates), mapping watch history/ratings/watchlist, two-way sync, Rotten Tomatoes scores via MDBList, phases and the owner's decisions. Deleted once CLAUDE.md's Media section carries it. | 30.09.2026 |
+| [trakt/PLAN.md](trakt/PLAN.md) | **Temporary working plan** for the Trakt integration: TMDB id as the one identity, matching Trakt/IMDb ids onto the existing `movies`/`tv_series` rows (no duplicates), mapping watch history/ratings/watchlist, two-way sync (notes too: §6, API facts in §12), Rotten Tomatoes scores via MDBList, phases and the owner's decisions. Deleted once CLAUDE.md's Media section carries it. | 07.10.2026 |
 
 ## Raw artifacts
 

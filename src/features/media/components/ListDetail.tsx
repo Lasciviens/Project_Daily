@@ -10,6 +10,7 @@ import type { TraktList } from '../trakt/traktApi'
 import type { OpenMediaDetail } from '../types'
 import { SmartListPanel, TraktListPanel } from './ListPanels'
 import { QueuePanel } from './QueuePanel'
+import { FollowListNotice } from './FollowListNotice'
 
 type Open = OpenMediaDetail
 
@@ -51,6 +52,7 @@ export function TraktListDetail({ list, follow, onOpen, onGone, isQueue = false 
           <Button size="sm" variant="ghost" icon={<Trash2 />} className="text-danger" onClick={() => { void remove() }}>Delete list</Button>
         </div>
       </header>
+      {follow && <FollowListNotice follow={follow} />}
       {isQueue ? <QueuePanel onOpen={onOpen} /> : <TraktListPanel key={list.id} listId={list.id} onOpen={onOpen} />}
     </>
   )

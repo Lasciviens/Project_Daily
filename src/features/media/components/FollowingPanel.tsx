@@ -5,6 +5,7 @@ import { Button, SectionLabel, Truncate } from '../../../shared/ui'
 import { formatDate } from '../../../shared/utils/dateFormat'
 import { useCheckFollows, useFollowEvents, useFollows, useMarkFollowEventsSeen } from '../hooks/useFollows'
 import { isShowableFollowEvent } from '../trakt/followRules'
+import { FollowListNotice } from './FollowListNotice'
 
 /** What's new in what you follow (self-filling lists and Follows): new titles and new trailers, checked daily. */
 export function FollowingPanel() {
@@ -39,7 +40,7 @@ export function FollowingPanel() {
           <Button size="sm" variant="ghost" icon={<RefreshCw />} loading={check.isPending} onClick={() => check.mutate()}>Check now</Button>
         </div>
       </div>
-
+      {follows.map(f => <FollowListNotice key={f.id} follow={f} named />)}
 
       {shown.length > 0 && (
         <ul className="grid grid-cols-1 gap-1 @[40rem]:grid-cols-2">

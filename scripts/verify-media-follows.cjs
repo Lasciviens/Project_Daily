@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/** verify-media-follows.cjs — What's new rules (src/features/media/trakt/followRules.ts), shared with trakt-api. */
+/** verify-media-follows.cjs — What's new rules and the follow-list retry (src/features/media/trakt/followRules.ts), shared with trakt-api. */
 require('sucrase/register')
 const F = require('../src/features/media/trakt/followRules.ts')
 let n = 0
@@ -50,5 +50,17 @@ for (const t of ['Teaser', 'Clip', 'Featurette', 'Behind the Scenes', 'Bloopers'
   ok(F.isFollowTrailer({ site: 'YouTube', type: t, official: true, key: 'k' }), false, `${t} is not a trailer`)
 ok(F.isFollowTrailer({ site: 'YouTube', type: 'Trailer', official: false, key: 'k' }), false, 'an unofficial trailer is out')
 ok(F.isFollowTrailer({ site: 'Vimeo', type: 'Trailer', key: 'k' }), false, 'only YouTube (the app links YouTube)')
+
+// The linked Trakt list: a film is done only when Trakt took it (pending_list_ids, migration 136)
+ok(F.followListToSend([3, 4], [5, 3], new Set([3, 4, 5])), [3, 4, 5], 'waiting films first, then new ones, each once')
+ok(F.followListToSend([3, 4], [5], new Set([4, 5])), [4, 5], 'a waiting film TMDB no longer lists for the follow is dropped')
+ok(F.followListToSend([3, 4], [], null), [3, 4], 'TMDB listed nothing: the waiting films are all kept (a bad answer never empties the queue)')
+ok(F.followListToSend([3], [], new Set()), [3], 'an empty TMDB list counts as nothing listed')
+ok(F.followListToSend([0, -2, Number.NaN], [7], null), [7], 'invalid ids are never sent')
+ok(F.followListPending({ ids: [1, 2, 3], accepted: 3, notFound: [] }, new Set()), [], 'Trakt took every film: nothing waits')
+ok(F.followListPending({ ids: [1, 2, 3], accepted: 0, notFound: [] }, new Set()), [1, 2, 3], 'refused (420 account limit) or no Trakt sign-in: every film waits for the next check')
+ok(F.followListPending({ ids: [1, 2, 3, 4], accepted: 2, notFound: [] }, new Set()), [3, 4], 'a request failed half-way: the films not taken wait')
+ok(F.followListPending({ ids: [1, 2, 3], accepted: 3, notFound: [2, 3] }, new Set([2])), [2], 'Trakt doesn\'t know a new film yet: it waits; an older unknown film is dropped')
+ok(F.followListPending({ ids: [1, 2, 3], accepted: 1, notFound: [1, 3] }, new Set([1, 3])), [2, 3, 1], 'not-found films are judged only among those sent; the rest wait anyway')
 
 console.log(`verify-media-follows: ${n} assertions passed`)

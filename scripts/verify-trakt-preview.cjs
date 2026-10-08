@@ -4,7 +4,7 @@
  * the real traktPreview.ts via sucrase. Covers: matching by TMDB id only,
  * plays = 1 + repeat_count, Trakt-wins changes, app-only facts listed as
  * "send to Trakt", watchlist vs already-watched, no-TMDB items unmatched,
- * and local duplicate detection.
+ * local duplicate detection, and notes (the import's three-way note plan).
  */
 require('sucrase/register')
 const assert = require('node:assert/strict')
@@ -113,6 +113,23 @@ const ls = (tmdbId, status = 'watching', rating = null) => ({ tmdbId, title: `S$
   ok(p.unmatched.length, 1, 'no TMDB id → one unmatched entry, not a guessed row')
   ok(p.movies.add.length, 0, 'an unmatched item is never added')
   ok(p.duplicateLocal, 1, 'two local rows with one TMDB id are reported')
+}
+
+// Notes (traktNotes.ts): the import's own three-way plan
+{
+  const note = (tmdb, id, text, type = 'movie') => ({ type, tmdb, id, text, updatedAt: null })
+  const ln = (tmdb, text, type = 'movie') => ({ type, tmdb, note: text, noteId: null, synced: null })
+  const p = buildTraktPreview(snap({ notes: [note(1, 11, 'From Trakt'), note(2, 12, 'Same'), note(3, 13, 'Theirs'), note(99, 90, 'Not in library')] }),
+    lib({ movies: [lm(1), lm(2), lm(3), lm(4)], notes: [ln(1, null), ln(2, 'Same'), ln(3, 'Mine'), ln(4, 'Only here')] }))
+  ok(p.notes.fromTrakt.map(t => t.tmdbId), [1], 'a Trakt note on a library title is written here')
+  ok(p.notes.push.map(t => t.tmdbId), [4], 'a note only here is sent to Trakt')
+  ok(p.notes.differ.map(t => t.tmdbId), [3], 'a different note on each side is listed (Trakt\'s kept)')
+  ok(p.notes.same, 1, 'the same note on both sides')
+  ok(p.notes.notInLibrary, 1, 'a note on a title not in the library is left on Trakt')
+  ok(p.notes.push[0].title, 'M4', 'rows carry the library title')
+  ok(buildTraktPreview(snap(), lib()).notes, null, 'notes not read (older snapshot or a failed read): no notes section numbers')
+  const r = previewReport(p, '07.10.2026 10:00')
+  ok(r.includes('Here, not on Trakt (sent to Trakt): 1'), true, 'report carries the note counts')
 }
 
 {

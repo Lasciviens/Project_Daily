@@ -48,13 +48,16 @@ export function TraktCard() {
     <>
       <ConnectionCard
         service="trakt" kind="user" account={s?.username} icon={<Clapperboard />} name="Trakt"
-        description="Your watch history, ratings, watchlist and dropped shows — kept the same here and on Trakt, both ways."
+        description="Your watch history, ratings, watchlist, dropped shows and notes — kept the same here and on Trakt, both ways."
         status={state}
         statusNote={s?.notConfigured ? 'Not set up on the server' : undefined}
         details={[
           s?.connectedAt && `Since ${formatDate(s.connectedAt)}`,
           s?.lastSyncAt && `Last sync ${formatDateTime(s.lastSyncAt)}`,
           s?.connected && (s.pending ? `${s.pending} change${s.pending === 1 ? '' : 's'} waiting to send` : 'Nothing waiting to send'),
+          // Notes Trakt did not take (e.g. a free account's note limit) stay in the app only.
+          s?.connected && s.lastResult?.notes?.warning && `Notes: ${s.lastResult.notes.warning}`,
+          s?.connected && !!s.lastResult?.notes?.left && `Notes: ${s.lastResult.notes.left} still to send to Trakt — the next sync goes on`,
         ]}
         footer={s?.connected ? 'Syncs by itself every 30 minutes and a few seconds after you change something here.' : undefined}
       >
