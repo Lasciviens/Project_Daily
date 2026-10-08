@@ -436,7 +436,10 @@ looping animation. View-transition and runtime-only selectors live **outside** `
 - **Back closes only the top popup** (`useHistoryDismiss` is built in). Esc and backdrop close too;
   `dismissible={false}` while a save is in flight. A page that mirrors its state into the address
   writes it through `whenHistorySettled(fn)` (returns a cancel function); never replace the address
-  while an overlay is open or closing.
+  while an overlay is open or closing. A link inside a popup can simply navigate: the route change
+  closes the popup, and Back / Forward pass over the history entries it leaves behind (one Back
+  returns to the page the popup was on). `replace: true` from a single-entry overlay (the ⌘K
+  palette, the More sheet) stays the tidiest — it leaves no entry behind at all.
 - Stacking is automatic: a popup opened from a popup sits above it; confirms use `layer="confirm"`.
 
 Two ways to use it:
