@@ -116,7 +116,7 @@ export function OwnedCard({ item, accessories, chain, watch, ctx, today, onOpen,
         <div className="flex flex-wrap items-center gap-1.5">
           {linked > 1 && (
             <button type="button" onClick={onChain} className="chip min-h-[44px] gap-1 hover:bg-surface-hover" title="The things this money chain joins">
-              <Link2 aria-hidden className="h-3 w-3" /> Chain · {linked}
+              <Link2 aria-hidden className="h-3 w-3 shrink-0" /> <Truncate as="span" className="max-w-[12rem]">{chain?.name ?? 'Chain'}</Truncate> · {linked}
             </button>
           )}
           {accessories.length > 0 && (

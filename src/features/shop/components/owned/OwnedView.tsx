@@ -15,7 +15,7 @@ import {
   accessoriesByItem, comingUp, DISPOSAL_LABEL, isGone, NO_OWNED_FILTERS, ownedCards, ownedSummary, sortOwned,
   type OwnedFilters, type OwnedSort,
 } from '../../ownModel'
-import { chainIndex, chainsOf } from '../../chainModel'
+import { chainIndex, chainsOf, chainTitle } from '../../chainModel'
 import { OWNED_BOARD } from '../../shopBoard'
 import { OwnedCard } from './OwnedCard'
 import { OwnedSummaryCard, ComingUpCard } from './OwnedRail'
@@ -37,12 +37,19 @@ export function OwnedView({ items, categories, isLoading }: { items: ShopItem[];
   const [showGone, setShowGone] = useState(false)
 
   const acc = useMemo(() => accessoriesByItem(items), [items])
-  const chains = useMemo(() => chainIndex(chainsOf(items, links, ctx)), [items, links, ctx])
-  const shown = useMemo(() => sortOwned(ownedCards(items, categories, filters), sort, ctx, today, acc), [items, categories, filters, sort, ctx, today, acc])
+  const allChains = useMemo(() => chainsOf(items, links, ctx), [items, links, ctx])
+  const chains = useMemo(() => chainIndex(allChains), [allChains])
+  // Chains joining at least two things you have or had (a link to a wish alone is a plan).
+  const chainOptions = useMemo(() => allChains.filter(c => c.nodes.filter(n => n.state !== 'wish').length > 1).map(c => ({ id: c.id, title: chainTitle(c) })), [allChains])
+  const inChain = useMemo(() => {
+    const c = allChains.find(x => x.id === filters.chain)
+    return c ? new Set(c.nodes.flatMap(n => [n.id, ...n.accessories.map(a => a.id)])) : undefined
+  }, [allChains, filters.chain])
+  const shown = useMemo(() => sortOwned(ownedCards(items, categories, filters, inChain), sort, ctx, today, acc), [items, categories, filters, inChain, sort, ctx, today, acc])
   const groups = useMemo(() => groupByCategory(shown, categories), [shown, categories])
   const gone = useMemo(
-    () => (filters.show === 'mine' ? sortOwned(ownedCards(items, categories, { ...filters, show: 'gone' }), 'recent', ctx, today, acc) : []),
-    [items, categories, filters, ctx, today, acc],
+    () => (filters.show === 'mine' ? sortOwned(ownedCards(items, categories, { ...filters, show: 'gone' }, inChain), 'recent', ctx, today, acc) : []),
+    [items, categories, filters, inChain, ctx, today, acc],
   )
   const summary = useMemo(() => ownedSummary(items, ctx), [items, ctx])
   const deadlines = useMemo(() => comingUp(items, today), [items, today])
@@ -119,7 +126,7 @@ export function OwnedView({ items, categories, isLoading }: { items: ShopItem[];
         summary: <OwnedSummaryCard summary={summary} onAdd={() => modal.open({ kind: 'shop-own' })} onAddHad={() => modal.open({ kind: 'shop-own', had: true })} />,
         coming: deadlines.length > 0 && <ComingUpCard deadlines={deadlines} onOpen={id => modal.open({ kind: 'shop-item', id })} />,
         filters: anything && (
-          <OwnedFiltersCard filters={filters} onChange={setFilters} sort={sort} onSort={setSort} categories={categories} collapsible={isPhone} />
+          <OwnedFiltersCard filters={filters} onChange={setFilters} sort={sort} onSort={setSort} categories={categories} chains={chainOptions} collapsible={isPhone} />
         ),
         groups: list,
       }}
