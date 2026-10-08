@@ -430,11 +430,23 @@ export function UnifiedPlanModal({
           if (!isCalendarConflict(createErr)) throw createErr
           // Already exists on Google under this id — a previous attempt's
           // create landed after all. Adopt it, unless it is a deleted one.
-          const existing = await getCalendarEvent(token, 'primary', eventId)
-          if (existing.status !== 'cancelled') created = existing
+          try {
+            const existing = await getCalendarEvent(token, 'primary', eventId)
+            if (existing.status !== 'cancelled') created = existing
+          } catch (getErr) {
+            if (!isCalendarNotFound(getErr)) throw getErr
+          }
         }
       }
-      if (!created) throw new Error('Google Calendar refused every new event id for this block')
+      // Five unlinks of one block used every id in its sequence: let Google
+      // pick the id (only the lost-response retry safety is given up).
+      if (!created) {
+        created = await createCalendarEvent(token, 'primary', {
+          summary: title,
+          start:   { dateTime: start.toISOString(), timeZone: LOCAL_TZ },
+          end:     { dateTime: end.toISOString(),   timeZone: LOCAL_TZ },
+        })
+      }
 
       try {
         // Raw api call on purpose (not useUpdateTimeBlock): a failure here is

@@ -79,11 +79,12 @@ function retrySection() {
   check('google-tasks-sync\'s Tasks drain still uses min(3600, 30·2^attempts)',
     /Math\.min\(3600, 30 \* 2 \*\* attempts\)/.test(fnOutsideBlock))
   let same = true
-  for (let a = 1; a <= 12; a++) if (d(a) !== tasksCurve(a)) same = false
-  check('attempts 1..12 match the Tasks curve exactly', same)
+  for (let a = 1; a < R.CALENDAR_PARK_AFTER; a++) if (d(a) !== tasksCurve(a)) same = false
+  check('attempts 1..7 match the Tasks curve exactly', same && R.CALENDAR_PARK_AFTER === 8)
   check('first failure waits 60 s', d(1) === 60)
   check('then doubles: 120, 240, 480', d(2) === 120 && d(3) === 240 && d(4) === 480)
-  check('capped at an hour (attempt 7 would be 3840 s)', d(7) === 3600 && d(1000) === 3600)
+  check('capped at an hour (attempt 7 would be 3840 s)', d(7) === 3600)
+  check('parked from the 8th failure: once a day', d(8) === 86400 && d(1000) === 86400)
   check('0 / negative / NaN read as the first failure', d(0) === 60 && d(-3) === 60 && d(NaN) === 60)
   check('a fraction rounds down', d(2.9) === 120)
 }
@@ -181,6 +182,13 @@ async function drainSection() {
       check(`${status}: the summary says why`, s.stopped === `Calendar API ${status}: no` && s.failed === 1)
     })
   }
+
+  await scenario('a row failing for the 8th time is parked', async () => {
+    const { deps, log } = fakeDeps({ old: { status: 400, message: 'Calendar API 400: Bad Request' }, young: { status: 400, message: 'x' } })
+    const s = await R.drainCalendarRows([row('old', 7), row('young', 2)], deps)
+    check('the 8th failure parks it: counted once and set to wait a day', s.parked === 1 && log.backedOff[0].attempts === 8 && log.backedOff[0].delaySeconds === 86400)
+    check('a younger failing row is not counted as parked', log.backedOff[1].attempts === 3 && s.failed === 2)
+  })
 
   await scenario('a stop on the last row', async () => {
     const { deps } = fakeDeps({ z: { status: 403, message: 'm' } })

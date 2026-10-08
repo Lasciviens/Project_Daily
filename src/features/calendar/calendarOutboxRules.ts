@@ -48,11 +48,18 @@ export function calendarDeleteOutcome(status: number | null): CalendarOutboxOutc
   return 'retry'
 }
 
+/** After this many failures a row is parked: tried once a day, so a delete
+ *  that always fails (a 400, a 403 for that one event) neither retries hourly
+ *  forever nor stops every run ahead of the rows behind it. */
+export const CALENDAR_PARK_AFTER = 8
+
 /** Seconds a failed row waits before its next try — the Tasks outbox's own
  *  curve (google-tasks-sync's drainOutbox): 60 s after the first failure,
- *  doubling, never more than an hour. `attempts` counts this failure too. */
+ *  doubling, never more than an hour; a day once parked. `attempts` counts
+ *  this failure too. */
 export function calendarRetryDelaySeconds(attempts: number): number {
   const n = Number.isFinite(attempts) && attempts >= 1 ? Math.floor(attempts) : 1
+  if (n >= CALENDAR_PARK_AFTER) return 86_400
   return Math.min(3600, 30 * 2 ** n)
 }
 
@@ -90,10 +97,12 @@ export interface CalendarDrainSummary {
   left: number
   /** Why the run stopped early (401/403/429), else null. */
   stopped: string | null
+  /** Rows that reached CALENDAR_PARK_AFTER failures this run (now tried daily). */
+  parked: number
 }
 
 export function emptyCalendarDrainSummary(): CalendarDrainSummary {
-  return { deleted: 0, already_gone: 0, kept: 0, failed: 0, left: 0, stopped: null }
+  return { deleted: 0, already_gone: 0, kept: 0, failed: 0, left: 0, stopped: null, parked: 0 }
 }
 
 /** The I/O a run needs — google-tasks-sync wires these to Google and Supabase. */
@@ -159,6 +168,7 @@ export async function drainCalendarRows(
     if (failure === null) continue
     summary.failed++
     const attempts = row.attempts + 1
+    if (attempts === CALENDAR_PARK_AFTER) summary.parked++
     try {
       await deps.backOff(row, attempts, calendarRetryDelaySeconds(attempts), failure)
     } catch {

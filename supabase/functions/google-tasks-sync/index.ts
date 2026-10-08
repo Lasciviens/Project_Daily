@@ -574,11 +574,18 @@ export function calendarDeleteOutcome(status: number | null): CalendarOutboxOutc
   return 'retry'
 }
 
+/** After this many failures a row is parked: tried once a day, so a delete
+ *  that always fails (a 400, a 403 for that one event) neither retries hourly
+ *  forever nor stops every run ahead of the rows behind it. */
+export const CALENDAR_PARK_AFTER = 8
+
 /** Seconds a failed row waits before its next try — the Tasks outbox's own
  *  curve (google-tasks-sync's drainOutbox): 60 s after the first failure,
- *  doubling, never more than an hour. `attempts` counts this failure too. */
+ *  doubling, never more than an hour; a day once parked. `attempts` counts
+ *  this failure too. */
 export function calendarRetryDelaySeconds(attempts: number): number {
   const n = Number.isFinite(attempts) && attempts >= 1 ? Math.floor(attempts) : 1
+  if (n >= CALENDAR_PARK_AFTER) return 86_400
   return Math.min(3600, 30 * 2 ** n)
 }
 
@@ -616,10 +623,12 @@ export interface CalendarDrainSummary {
   left: number
   /** Why the run stopped early (401/403/429), else null. */
   stopped: string | null
+  /** Rows that reached CALENDAR_PARK_AFTER failures this run (now tried daily). */
+  parked: number
 }
 
 export function emptyCalendarDrainSummary(): CalendarDrainSummary {
-  return { deleted: 0, already_gone: 0, kept: 0, failed: 0, left: 0, stopped: null }
+  return { deleted: 0, already_gone: 0, kept: 0, failed: 0, left: 0, stopped: null, parked: 0 }
 }
 
 /** The I/O a run needs — google-tasks-sync wires these to Google and Supabase. */
@@ -685,6 +694,7 @@ export async function drainCalendarRows(
     if (failure === null) continue
     summary.failed++
     const attempts = row.attempts + 1
+    if (attempts === CALENDAR_PARK_AFTER) summary.parked++
     try {
       await deps.backOff(row, attempts, calendarRetryDelaySeconds(attempts), failure)
     } catch {
@@ -864,6 +874,20 @@ Deno.serve(async (req) => {
   // calendar.events grant would otherwise freeze it for good.
   const calendarProblem = calendarError ?? (calendar.stopped ? `stopped: ${calendar.stopped}` : null)
   const reported: AnyRecord = calendarProblem ? { ...errors, calendar: calendarProblem } : errors
+  // Calendar trouble also reaches Developer → Errors (last_error has no
+  // screen): a stop or failed step once per new message — the cron runs every
+  // 20 min — and every row that has just been parked.
+  if (calendarProblem || calendar.parked) {
+    const { data: prevState } = await supabase.from('google_tasks_sync_state').select('last_error').eq('user_id', userId).maybeSingle()
+    const prev = String((prevState as AnyRecord | null)?.last_error ?? '')
+    const messages = [
+      calendarProblem && !prev.includes(calendarProblem) ? `Google Calendar deletions stopped: ${calendarProblem}` : null,
+      calendar.parked ? `${calendar.parked} Google Calendar deletion${calendar.parked === 1 ? '' : 's'} failed ${CALENDAR_PARK_AFTER} times — now tried once a day` : null,
+    ].filter((m): m is string => m !== null)
+    for (const message of messages) {
+      await supabase.from('app_error_logs').insert({ user_id: userId, message: `google-tasks-sync: ${message}`, context: { calendar } }).then(() => {}, () => {})
+    }
+  }
   const reportedKeys = Object.keys(reported)
   await recordState({
     ...(errorKeys.length === 0 ? { last_success_at: syncedAt } : {}),
