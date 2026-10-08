@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { PageBoard, PageContainer, useBoardStep } from '../../../shared/ui'
+import { PageBoard, PageContainer, cx, useBoardStep } from '../../../shared/ui'
 import { useGeolocation } from '../hooks/useGeolocation'
 import { DailyBrief } from '../components/DailyBrief'
 import { HomeHero } from '../components/HomeHero'
@@ -12,19 +12,28 @@ import { TrainingHomeWidget, TrainingTile } from '../components/TrainingHomeWidg
 import { GamesHomeWidget, GamesTile } from '../components/GamesHomeWidget'
 import { BooksHomeWidget, BooksTile } from '../components/BooksHomeWidget'
 import { RecentMediaWidget, RecentMediaTile } from '../components/RecentMediaWidget'
-import { HOME_BOARD, newsIsBand, newsRows, type HomeSection } from './homeBoard'
+import { useElementWidthRem } from '../../../shared/hooks/useElementWidth'
+import { homeBoardFor, newsIsBand, newsRows, type HomeSection } from './homeBoard'
 
-/** Glance tiles with swipeable screens that open their detail: 2 across in a side column or on a phone, 3 on a wider stack. */
-function GlanceTiles() {
+/**
+ * Glance tiles with swipeable screens that open their detail. `all` = the six,
+ * 2 across in a side column or on a phone, 3 on a wider stack; the split
+ * laptop layout shows `outside` (weather, money — 2 across under transit) and
+ * `activity` (training, watched, books, games — one row of 4 under the week
+ * and the tasks).
+ */
+function GlanceTiles({ group }: { group: 'all' | 'outside' | 'activity' }) {
+  const outside = group !== 'activity'
+  const activity = group !== 'outside'
   return (
-    <section aria-label="At a glance" className="@container">
-      <div className="grid grid-cols-2 gap-3 @[36rem]:grid-cols-3">
-        <WeatherTile />
-        <CurrencyTile />
-        <TrainingTile />
-        <RecentMediaTile />
-        <BooksTile />
-        <GamesTile />
+    <section aria-label={group === 'outside' ? 'Weather and money' : group === 'activity' ? 'Training, watching, reading and games' : 'At a glance'} className="@container">
+      <div className={cx('grid grid-cols-2 gap-3', group === 'all' && '@[36rem]:grid-cols-3', group === 'activity' && '@[40rem]:grid-cols-4')}>
+        {outside && <WeatherTile />}
+        {outside && <CurrencyTile />}
+        {activity && <TrainingTile />}
+        {activity && <RecentMediaTile />}
+        {activity && <BooksTile />}
+        {activity && <GamesTile />}
       </div>
     </section>
   )
@@ -32,7 +41,8 @@ function GlanceTiles() {
 
 /**
  * The week and today's tasks side by side under the brief (laptop and up),
- * equal height, stacking again when the main track is narrow.
+ * equal height, stacking again when the main track is narrow. The 44rem here
+ * is homeBoard.ts' PAIR_SIDE_BY_SIDE_REM (the split layout starts there too).
  */
 function HeroAndTasks() {
   return (
@@ -60,6 +70,9 @@ export function HomePage() {
   // Asked for up front so the location prompt fires on load and every
   // location-aware card shares the one cached answer.
   useGeolocation()
+  // The same content width PageBoard measures: it picks the split laptop
+  // layout once the week and the tasks sit side by side (homeBoardFor).
+  const { ref, width } = useElementWidthRem()
 
   const sections: Record<HomeSection, ReactNode> = {
     brief: <DailyBrief />,
@@ -67,7 +80,9 @@ export function HomePage() {
     tasks: <TodayTasksCard />,
     pair: <HeroAndTasks />,
     transit: <TransitCard />,
-    tiles: <GlanceTiles />,
+    tiles: <GlanceTiles group="all" />,
+    outsideTiles: <GlanceTiles group="outside" />,
+    activityTiles: <GlanceTiles group="activity" />,
     news: <HomeNews />,
     weather: <WeatherWidget />,
     currency: <CurrencyWidget />,
@@ -79,7 +94,9 @@ export function HomePage() {
 
   return (
     <PageContainer>
-      <PageBoard sections={sections} layout={HOME_BOARD} stackClassName="max-w-[48rem] stagger-in" />
+      <div ref={ref}>
+        <PageBoard sections={sections} layout={homeBoardFor(width)} stackClassName="max-w-[48rem] stagger-in" />
+      </div>
     </PageContainer>
   )
 }

@@ -5,7 +5,7 @@
 require('sucrase/register')
 const B = require('../src/shared/ui/pageBoardRules')
 const H = require('../src/features/home/pages/homeBoard')
-const { HOME_BOARD, HOME_SECTIONS, HOME_GLANCE } = H
+const { HOME_BOARD, HOME_BOARD_SPLIT, HOME_SECTIONS, HOME_GLANCE, TILE_SECTIONS } = H
 const D = require('../src/features/daily/dailyBoards')
 let passed = 0, failed = 0
 function check(name, cond, detail) {
@@ -79,15 +79,35 @@ check('bands alone are a valid wide step', B.validateBoardLayouts({ 1: ['a', 'b'
 
 console.log('Home layout')
 check('Home layout is valid', B.validateBoardLayouts(HOME_BOARD, HOME_SECTIONS).length === 0, B.validateBoardLayouts(HOME_BOARD, HOME_SECTIONS).join('; '))
-for (const s of [1, 2, 3, 4]) {
-  const keys = B.keysAt(HOME_BOARD, s)
-  const glanceOk = Object.values(HOME_GLANCE).every(alts => alts.some(k => keys.includes(k)))
-  check(`step ${s}: brief, now/next, tasks, transit, news and all six glance widgets are reachable`,
-    // `pair` renders the week (hero) and the tasks side by side.
-    ['brief', 'transit', 'news'].every(k => keys.includes(k))
-      && (keys.includes('pair') || ['hero', 'tasks'].every(k => keys.includes(k))) && glanceOk)
-  check(`step ${s}: a widget never shows beside its own tile`, !(keys.includes('tiles') && keys.some(k => HOME_GLANCE[k])))
+check('Home split layout is valid', B.validateBoardLayouts(HOME_BOARD_SPLIT, HOME_SECTIONS).length === 0, B.validateBoardLayouts(HOME_BOARD_SPLIT, HOME_SECTIONS).join('; '))
+for (const [name, board] of [['', HOME_BOARD], ['split ', HOME_BOARD_SPLIT]]) {
+  for (const s of [1, 2, 3, 4]) {
+    const keys = B.keysAt(board, s)
+    const glanceOk = Object.values(HOME_GLANCE).every(alts => alts.some(k => keys.includes(k)))
+    check(`${name}step ${s}: brief, now/next, tasks, transit, news and all six glance widgets are reachable`,
+      // `pair` renders the week (hero) and the tasks side by side.
+      ['brief', 'transit', 'news'].every(k => keys.includes(k))
+        && (keys.includes('pair') || ['hero', 'tasks'].every(k => keys.includes(k))) && glanceOk)
+    check(`${name}step ${s}: a widget never shows beside its own tile, and no tile shows twice`,
+      !(keys.some(k => TILE_SECTIONS.includes(k)) && keys.some(k => HOME_GLANCE[k]))
+        && !(keys.includes('tiles') && (keys.includes('outsideTiles') || keys.includes('activityTiles'))))
+  }
 }
+console.log('Home split laptop layout (owner, 08.10.2026: no hole between the columns)')
+check('split step 2: main = brief → week | tasks → training/watched/books/games; side = transit → weather/money', (() => {
+  const c = B.resolveBoardLayout(HOME_BOARD_SPLIT, 2).columns
+  return c.length === 2 && eq(c[0].stack, ['brief', 'pair', 'activityTiles']) && eq(c[1].stack, ['transit', 'outsideTiles'])
+})())
+check('the split changes step 2 only', [1, 3, 4].every(s => JSON.stringify(B.resolveBoardLayout(HOME_BOARD_SPLIT, s)) === JSON.stringify(B.resolveBoardLayout(HOME_BOARD, s))))
+check('a 1280px laptop (61.5rem: main 36.5rem, week and tasks stacked) keeps all six tiles beside them', H.homeBoardFor(61.5) === HOME_BOARD)
+check('just below 69rem (main 43.9rem) still stacked → all six beside', H.homeBoardFor(68.9) === HOME_BOARD)
+check('from 69rem (main 44rem, week and tasks side by side) the tiles split', H.homeBoardFor(69) === HOME_BOARD_SPLIT)
+check('1469 / 1795 laptops and 1920 with the sidebar open (≈ 73.6 / 91.7 / 99.9rem) split', [73.6, 91.7, 99.9].every(w => H.homeBoardFor(w) === HOME_BOARD_SPLIT))
+check('phones, tablets and the 3- and 4-column steps use the board as before', [30, 59.9, 100, 128, 150].every(w => H.homeBoardFor(w) === HOME_BOARD) && H.homeBoardFor(null) === HOME_BOARD)
+check('the pair\'s container query in HomePage.tsx is the split\'s breakpoint', (() => {
+  const src = require('fs').readFileSync(require('path').join(__dirname, '../src/features/home/pages/HomePage.tsx'), 'utf8')
+  return src.includes(`@[${H.PAIR_SIDE_BY_SIDE_REM}rem]:grid-cols-2`)
+})())
 check('step 1 keeps the phone order (brief → hero → tasks → transit → tiles → news)', eq(HOME_BOARD[1], ['brief', 'hero', 'tasks', 'transit', 'tiles', 'news']))
 check('step 2 (laptop) uses compact tiles, the owner\'s call', B.keysAt(HOME_BOARD, 2).includes('tiles'))
 check('main column is brief → (week | tasks side by side) from step 2 up', [2, 3, 4].every(s => eq(B.resolveBoardLayout(HOME_BOARD, s).columns[0].stack, ['brief', 'pair'])))
