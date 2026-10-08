@@ -1,12 +1,13 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Truncate, useChartColors } from '../../../../shared/ui'
 import { complete } from '../../ownModel'
-import type { StoreRow } from '../../statsModel'
+import { orderStores, type StoreOrder, type StoreRow } from '../../statsModel'
 import { AmountText } from '../shopKit'
-import { HBar, StatsCard } from './statsKit'
+import { CardFilter, HBar, StatsCard } from './statsKit'
 import { plural, shortReason } from './statsFormat'
 
 const SHOWN = 6
+const ORDERS = [{ value: 'spent' as const, label: 'Spent' }, { value: 'count' as const, label: 'Purchases' }]
 
 /** "2 in NOK · 1 in TRY" when it was not all NOK, else null. */
 function currencyMix(currencies: Record<string, number>): string | null {
@@ -15,18 +16,24 @@ function currencyMix(currencies: Record<string, number>): string | null {
   return list.length === 1 ? `in ${list[0][0]}` : list.map(([cur, n]) => `${n} in ${cur}`).join(' · ')
 }
 
-/** Where you buy: stores by what you spent there in the period (in NOK at each day's rate). A store opens its purchases. */
-export function StoresCard({ rows, year, onPick }: { rows: StoreRow[]; year: string | null; onPick: (key: string) => void }) {
+/**
+ * Where you buy: stores by what you spent there in the period (in NOK at each
+ * day's rate), or by how many purchases. A store opens its purchases.
+ */
+export function StoresCard({ rows: given, year, onPick }: { rows: StoreRow[]; year: string | null; onPick: (key: string) => void }) {
   const c = useChartColors()
   const [all, setAll] = useState(false)
+  const [order, setOrder] = useState<StoreOrder>('spent')
+  const rows = useMemo(() => orderStores(given, order), [given, order])
   const max = Math.max(1, ...rows.map(r => r.spent.nok))
   const shown = all ? rows : rows.slice(0, SHOWN)
   return (
-    <StatsCard title="Where you buy" subtitle={`${year ?? 'All time'} · by what you spent`}>
+    <StatsCard title="Where you buy" subtitle={`${year ?? 'All time'} · ${order === 'spent' ? 'by what you spent' : 'by how many purchases'}`}>
       {rows.length === 0
         ? <p className="text-body text-fg-muted">No purchase in this period has a store written on it.</p>
         : (
           <>
+            {rows.length > 1 && <CardFilter label="Order by" options={ORDERS} value={order} onChange={setOrder} />}
             <ul className="-mx-3 flex flex-col">
               {shown.map(r => (
                 <li key={r.key}>

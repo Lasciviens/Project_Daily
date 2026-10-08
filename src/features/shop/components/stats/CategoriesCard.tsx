@@ -1,17 +1,23 @@
+import { useMemo, useState } from 'react'
 import { Truncate, useChartColors } from '../../../../shared/ui'
 import { complete, type Amount } from '../../ownModel'
-import type { CategoryRow } from '../../statsModel'
+import { ownedByCategory, type CategoryLevel } from '../../statsModel'
 import { AmountText } from '../shopKit'
-import { HBar, StatsCard, Swatch } from './statsKit'
+import { CardFilter, HBar, StatsCard, Swatch } from './statsKit'
 import { plural, shortReason } from './statsFormat'
+import type { StatsData } from './drillTypes'
+
+const LEVELS = [{ value: 'top' as const, label: 'Categories' }, { value: 'sub' as const, label: 'Subcategories' }]
 
 /**
- * What you own today by top category: how many things, what they cost and
- * what the valued ones could sell for, as a pair of bars on one scale. A
- * category opens its things.
+ * What you own today by top category or by subcategory: how many things,
+ * what they cost and what the valued ones could sell for, as a pair of bars
+ * on one scale. A row opens its things.
  */
-export function CategoriesCard({ rows, onPick }: { rows: CategoryRow[]; onPick: (key: string) => void }) {
+export function CategoriesCard({ data, onPick }: { data: StatsData; onPick: (key: string, level: CategoryLevel) => void }) {
   const c = useChartColors()
+  const [level, setLevel] = useState<CategoryLevel>('top')
+  const rows = useMemo(() => ownedByCategory(data.items, data.categories, data.ctx, level), [data, level])
   const max = Math.max(1, ...rows.flatMap(r => [r.paid.nok, r.worth.nok]))
   return (
     <StatsCard
@@ -22,22 +28,25 @@ export function CategoriesCard({ rows, onPick }: { rows: CategoryRow[]; onPick: 
       {rows.length === 0
         ? <p className="text-body text-fg-muted">Nothing is yours right now.</p>
         : (
-          <ul className="-mx-3 flex flex-col">
-            {rows.map(r => (
-              <li key={r.key}>
-                <button type="button" onClick={() => onPick(r.key)} className="row row-interactive w-full flex-col items-stretch gap-1 py-2 text-left">
-                  <span className="flex items-baseline gap-2">
-                    <Truncate className="min-w-0 flex-1 text-body font-medium text-fg">{r.title}</Truncate>
-                    <span className="shrink-0 text-meta tabular-nums text-fg-muted">{plural(r.count, 'thing')}</span>
-                  </span>
-                  <Pair amount={r.paid} max={max} color={c.series[0]} />
-                  {r.valued > 0
-                    ? <Pair amount={r.worth} max={max} color={c.series[1]} note={`${r.valued} valued`} />
-                    : <span className="text-micro text-fg-muted">No &quot;Could sell for&quot; yet</span>}
-                </button>
-              </li>
-            ))}
-          </ul>
+          <>
+            <CardFilter label="Group by" options={LEVELS} value={level} onChange={setLevel} />
+            <ul className="-mx-3 flex flex-col">
+              {rows.map(r => (
+                <li key={r.key}>
+                  <button type="button" onClick={() => onPick(r.key, level)} className="row row-interactive w-full flex-col items-stretch gap-1 py-2 text-left">
+                    <span className="flex items-baseline gap-2">
+                      <Truncate className="min-w-0 flex-1 text-body font-medium text-fg">{r.title}</Truncate>
+                      <span className="shrink-0 text-meta tabular-nums text-fg-muted">{plural(r.count, 'thing')}</span>
+                    </span>
+                    <Pair amount={r.paid} max={max} color={c.series[0]} />
+                    {r.valued > 0
+                      ? <Pair amount={r.worth} max={max} color={c.series[1]} note={`${r.valued} valued`} />
+                      : <span className="text-micro text-fg-muted">No &quot;Could sell for&quot; yet</span>}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </>
         )}
     </StatsCard>
   )

@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { Card, CardHeader, cx } from '../../../../shared/ui'
+import { Card, CardHeader, SegmentedControl, cx, type SegmentedOption } from '../../../../shared/ui'
 
 // The Stats screen's shared pieces: a card, legend swatches and thin bars.
 
@@ -30,5 +30,14 @@ export function HBar({ value, max, color, className }: { value: number; max: num
     <span className="block h-1.5 w-full overflow-hidden rounded-full bg-surface-2">
       {pct > 0 && <span className={cx('block h-full rounded-full', className)} style={{ width: `${pct}%`, ...(color ? { background: color } : {}) }} />}
     </span>
+  )
+}
+
+/** A card's own filter: a small segmented control under its header. */
+export function CardFilter<T extends string>({ label, options, value, onChange }: { label: string; options: SegmentedOption<T>[]; value: T; onChange: (v: T) => void }) {
+  return (
+    <div role="group" aria-label={label} className="mb-3">
+      <SegmentedControl size="sm" options={options} value={value} onChange={onChange} />
+    </div>
   )
 }

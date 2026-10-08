@@ -4,6 +4,7 @@ import type { Tone } from '../../../../shared/ui'
 import { formatDate } from '../../../../shared/utils/dateFormat'
 import type { ShopCategory, ShopItem } from '../../types'
 import type { Amount, MoneyCtx } from '../../ownModel'
+import type { CategoryLevel } from '../../statsModel'
 import { dayLabel, money } from '../shopFormat'
 
 export type Drill =
@@ -13,7 +14,7 @@ export type Drill =
   | { kind: 'use' }
   | { kind: 'kept' }
   | { kind: 'resale' }
-  | { kind: 'category'; key: string }
+  | { kind: 'category'; key: string; level?: CategoryLevel }
   | { kind: 'store'; key: string; year: string | null }
 
 export interface DrillRow {
@@ -31,6 +32,10 @@ export interface DrillRow {
   text?: string
   muted?: boolean
   tone?: Tone
+  /** 1 = an accessory, shown under the thing it belongs to (drillNest). */
+  depth?: 0 | 1
+  /** A heading row for the thing whose accessories follow (its own row is not in this list): no amount, adds nothing. */
+  header?: boolean
 }
 
 export interface DrillGroup { key: string; title: string | null; total?: Amount; rows: DrillRow[] }
@@ -38,12 +43,14 @@ export interface DrillContent { title: string; subtitle: string; groups: DrillGr
 
 /** Everything a drill-down needs, computed once per screen. */
 export interface StatsData {
+  /** The rows the screen counts (narrowed by the top filter). */
   items: ShopItem[]
   categories: ShopCategory[]
   ctx: MoneyCtx
   today: string
   /** Years with money moving, newest first. */
   years: string[]
+  /** Every row, filtered or not — so an accessory's item can head it. */
   byId: Map<string, ShopItem>
 }
 
