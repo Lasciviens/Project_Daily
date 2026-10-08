@@ -63,6 +63,14 @@ export const qk = {
     all: ['shop'] as const,
     categories: () => ['shop', 'categories'] as const,
     items: () => ['shop', 'items'] as const,
+    /** Money links, extra costs and the price watch (migration 137). */
+    links: () => ['shop', 'links'] as const,
+    costs: () => ['shop', 'costs'] as const,
+    watches: () => ['shop', 'watches'] as const,
+    points: (itemId: string) => ['shop', 'points', itemId] as const,
+    /** Kassalapp prices per chain for the quick list's matched products. */
+    grocery: (eans: string) => ['shop', 'grocery', eans] as const,
+    grocerySearch: (q: string) => ['shop', 'grocery-search', q] as const,
   },
   media: {
     movies: ['movies'] as const,

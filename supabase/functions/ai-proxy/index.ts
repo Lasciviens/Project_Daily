@@ -2409,15 +2409,46 @@ const DB_CATALOG: Record<string, CatalogEntry> = {
   },
   shop_items: {
     access: 'rw',
-    purpose: 'Things to BUY, on two lists: list="wishlist" = things to buy someday (filed under the most specific fitting category); list="quick" = the short errand/grocery list (milk, batteries; a category is optional). A recipe is never a shop item, and neither is a thing to DO or a place to GO — "buy ski gear this winter" is a shop item, "go skiing this winter" is a wish_items row.',
-    columns: 'id, list(wishlist|quick — default wishlist), category_id(uuid FK shop_categories — a subcategory, or a top category when none fits; required on the wishlist, optional on the quick list), title, notes, price(numeric), currency(NOK|TRY|EUR|USD — the price\'s currency), price_source(manual|ai_estimate), platform(where to buy it — the store, e.g. "Rema", which the quick list groups by; or a game/app platform), url, priority(low|medium|high), region(TR|NO), planned_date(date), status(wishlist = still to buy|bought|dropped), bought_at(timestamptz — stamped by the database when status becomes bought, cleared when it leaves bought), task_id(uuid FK tasks, nullable — the task the purchase was planned as), source_type(manual|ai), created_at, updated_at',
+    purpose: 'Things to BUY and the things the user owns or owned (migration 137). A row\'s life on the wishlist side: To buy (status=wishlist) → Mine (status=bought) → Sold or gone (status=bought + disposal facts). A POSSESSION is list=wishlist AND kind=item AND status=bought AND kept=true. list="quick" = the short errand/grocery list (a tick there is "picked up", never a possession). kind="general" = a general wish ("a tablet with a pen, 5 000–8 000 NOK") whose models are rows with option_for = its id; it becomes status=fulfilled by itself when a model is bought. accessory_of = an accessory of that item. A recipe is never a shop item, and neither is a thing to DO or a place to GO — "go skiing this winter" is a wish_items row.',
+    columns: 'id, list(wishlist|quick), kind(item|general), category_id(uuid FK shop_categories, nullable), title, notes, price(numeric — to buy: the expected price; bought: what was paid, 0 = came with it), currency(NOK|TRY|EUR|USD), price_source(manual|ai_estimate), price_min/price_max(a general wish\'s range), requirements(a general wish\'s must-haves, one per line), option_for(uuid — a model of that general wish), meets(jsonb — a model\'s true/false per requirement), accessory_of(uuid — an accessory of that item), reason(need|fun), platform(the store), url(a Prisjakt or shop link — its price is checked daily), image_url, ean, priority(low|medium|high — on the quick list low = "No rush"), region(TR|NO), planned_date(date — buy on, or a deal\'s "from" day), wait_for_deal(bool), target_price, deal_note, errand(bool — a wishlist row also shown on the quick list), status(wishlist|bought|dropped|fulfilled), bought_at(timestamptz — stamped by the database), fx_nok/fx_source(the NOK rate of the purchase day — filled by the database, never write them), market_price/market_currency(the normal price at the time — "saved"), used, got_as_gift, for_resale(bought to sell later), kept(false = bought for someone else or used up — spending only), approx_dates(the days are a guess), serial, return_by(date), warranty_until(date — "can complain until"), value_now/value_currency/value_on(the user\'s own "Could sell for" estimate and its day), disposal(sold|traded_in|returned|given|broken|lost|other), disposed_on(date), sale_price/sale_currency(money back), sale_fx_nok/sale_fx_source(database-filled), sold_to, sale_group(rows sold together), task_id(uuid FK tasks), source_type(manual|ai), created_at, updated_at',
     rules: [
-      'Add items with create_shop_item (it handles the list, the currency and the category rule).',
-      'Never estimate, look up or invent a price. Store only a price the user stated, with price_source="manual" and its currency — when they give none, TR → TRY, otherwise NOK.',
-      'To mark an item bought or dropped, update status; never write bought_at yourself.',
+      'Add things to buy with create_shop_item (it handles the list, the currency and the category rule).',
+      'Never estimate, look up or invent a price, a sale price or a "Could sell for": store only amounts the user stated, with their currency (none given: TR → TRY, otherwise NOK) and price_source="manual".',
+      'Marking bought: update status to bought — never write bought_at, fx_nok, fx_source, sale_fx_nok or sale_fx_source (the database fills them, at the rate of the day).',
+      'Selling or giving something away NEVER deletes the row: set disposal, disposed_on and, when there was money back, sale_price + sale_currency (and sold_to when known). If its accessories went with it, set the same facts on each accessory with its share of the money and one shared sale_group uuid. Confirm before writing.',
+      'Undoing a sale: set disposal to null (the rest is cleared by the database). A sold row cannot go back to status=wishlist until its sale is undone.',
+      'A general wish has no price of its own and is never bought itself — add its models as rows with option_for and buy a model.',
       'To plan a purchase as a task, create the tasks row first, then set this item\'s task_id to its id.',
-      'list, currency, bought_at and task_id arrive with migration 134: if a write says one of them does not exist, retry without it and tell the user what could not be stored.',
+      'Columns from migration 137 (kind, accessory_of, disposal, …) or 134 (list, currency, bought_at, task_id): if a write says one does not exist, retry without it and tell the user what could not be stored.',
     ].join(' '),
+  },
+  shop_item_links: {
+    access: 'rw',
+    purpose: 'Money chains: to_id was (or will be) paid with the money from selling from_id. from_id = one of the user\'s things (not an accessory); to_id = a thing, a thing to buy or a general wish. A link from a thing still owned, or to a wish, is a plan.',
+    columns: 'id, from_id(uuid FK shop_items), to_id(uuid FK shop_items), amount(numeric, nullable — how much of that sale went there, in the sale\'s currency; null = the rest, shared by the receivers\' prices), created_at',
+    rules: 'Add a link only when the user says the money from one thing went (or will go) to another. The database refuses a loop and a link from an accessory or an errand.',
+  },
+  shop_item_costs: {
+    access: 'rw',
+    purpose: 'Extra costs on a shop item the user has or had: repairs, shipping, fees, insurance — a rebate or cashback is a NEGATIVE amount.',
+    columns: 'id, item_id(uuid FK shop_items), label, amount(numeric ≠ 0), currency(NOK|TRY|EUR|USD), spent_on(date), fx_nok/fx_source(database-filled — never write them), created_at, updated_at',
+    rules: 'Only amounts the user stated. One row per cost.',
+  },
+  shop_price_watch: {
+    access: 'ro',
+    purpose: 'The last price read from each shop item\'s link (Prisjakt\'s lowest and how many shops, or the shop\'s own price), written by the daily price check.',
+    columns: 'item_id, url, checked_at, status(ok|no_price|blocked|error), error, source(prisjakt|store), name, low, high, offers, currency, in_stock, was(a struck-out "before" price), return_days, last_ok_at, prev_low, prev_at',
+    rules: 'Say where and when a price is from ("Prisjakt\'s lowest on 08.10.2026"). A blocked or failed check keeps the last price read — say it is from last_ok_at.',
+  },
+  shop_price_points: {
+    access: 'ro',
+    purpose: 'Every price read of a shop item\'s link — the history behind shop_price_watch.',
+    columns: 'id, item_id, checked_at, low, high, offers, currency, source',
+  },
+  fx_rates_nok: {
+    access: 'ro',
+    purpose: 'Norges Bank\'s daily exchange rates to NOK for TRY, EUR and USD (one row per calendar day; a weekend carries Friday\'s). Shop uses them to freeze a purchase\'s or a sale\'s NOK value on its own day.',
+    columns: 'day(date), currency(TRY|EUR|USD), nok_per_unit(NOK for 1 unit), rate_day(the business day the rate is from), fetched_at',
   },
   // wish_items is rw for the same reason dev_requests is: the user dictates
   // wishes in chat ("let's go to the hytte this winter") and on the phone via

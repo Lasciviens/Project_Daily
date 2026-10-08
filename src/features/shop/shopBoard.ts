@@ -18,30 +18,54 @@ export const WISHLIST_BOARD: BoardLayouts<WishlistSection> = {
   4: { lead: 1, columns: [WISH_RAIL, { stack: ['groups'], span: 3 }] },
 }
 
-//   1  the add box first (capture is the point), the list, then buy again.
-//   2+ add box + buy-again chips in a sticky rail; the stores' lists take the
-//      rest and flow into columns by their own width.
-export const QUICK_SECTIONS = ['add', 'again', 'list'] as const
+//   1  the add box first (capture is the point), the list, the grocery
+//      basket (it sums up the list above it), then buy again.
+//   2+ add box, basket and buy-again chips in a sticky rail (the basket — a
+//      few short lines — above the chips, which can run long); the stores'
+//      lists take the rest and flow into columns by their own width.
+export const QUICK_SECTIONS = ['add', 'basket', 'again', 'list'] as const
 export type QuickSection = typeof QUICK_SECTIONS[number]
 
-const QUICK_RAIL = { stack: ['add', 'again'], sticky: true } as const
+const QUICK_RAIL = { stack: ['add', 'basket', 'again'], sticky: true } as const
 
 export const QUICK_BOARD: BoardLayouts<QuickSection> = {
-  1: ['add', 'list', 'again'],
+  1: ['add', 'list', 'basket', 'again'],
   2: { lead: 1, columns: [QUICK_RAIL, ['list']] },
   3: { lead: 1, columns: [QUICK_RAIL, { stack: ['list'], span: 2 }] },
   4: { lead: 1, columns: [QUICK_RAIL, { stack: ['list'], span: 3 }] },
 }
 
-//   1  what was spent, then the purchases.
-//   2+ the spend summary as a sticky rail; the purchases (dense rows in
-//      20rem+ columns) take the rest.
-export const BOUGHT_SECTIONS = ['spent', 'bought'] as const
-export type BoughtSection = typeof BOUGHT_SECTIONS[number]
+//   Owned → Things (migration 137)
+//   1  phone, tablet — what you own, coming up, filters, then the things.
+//   2+ the summary, deadlines and filters in a sticky rail on the left (they
+//      sum up and drive the list); the category groups take every other track.
+export const OWNED_SECTIONS = ['summary', 'coming', 'filters', 'groups'] as const
+export type OwnedSection = typeof OWNED_SECTIONS[number]
 
-export const BOUGHT_BOARD: BoardLayouts<BoughtSection> = {
-  1: ['spent', 'bought'],
-  2: { lead: 1, columns: [{ stack: ['spent'], sticky: true }, ['bought']] },
-  3: { lead: 1, columns: [{ stack: ['spent'], sticky: true }, { stack: ['bought'], span: 2 }] },
-  4: { lead: 1, columns: [{ stack: ['spent'], sticky: true }, { stack: ['bought'], span: 3 }] },
+const OWNED_RAIL = { stack: ['summary', 'coming', 'filters'], sticky: true } as const
+
+export const OWNED_BOARD: BoardLayouts<OwnedSection> = {
+  1: ['summary', 'coming', 'filters', 'groups'],
+  2: { lead: 1, columns: [OWNED_RAIL, ['groups']] },
+  3: { lead: 1, columns: [OWNED_RAIL, { stack: ['groups'], span: 2 }] },
+  4: { lead: 1, columns: [OWNED_RAIL, { stack: ['groups'], span: 3 }] },
+}
+
+//   Owned → Stats
+//   1  the tiles, money in and out, the timeline, then the rest.
+//   2  the tiles across; money, timeline and chains in main; by category,
+//      stores, value and resale beside them.
+//   3  money and the timeline across main + one side (the timeline wants
+//      width); the lists in the last track.
+//   4  the same, with the lists in two tracks. Resale (only when things were
+//      bought to sell) sits last in the last track, so an empty one is only
+//      ever at the far right.
+export const STATS_SECTIONS = ['tiles', 'money', 'timeline', 'chains', 'categories', 'stores', 'value', 'resale'] as const
+export type StatsSection = typeof STATS_SECTIONS[number]
+
+export const STATS_BOARD: BoardLayouts<StatsSection> = {
+  1: ['tiles', 'money', 'timeline', 'categories', 'value', 'chains', 'stores', 'resale'],
+  2: { top: ['tiles'], columns: [['money', 'timeline', 'chains'], ['categories', 'stores', 'value', 'resale']] },
+  3: { top: ['tiles'], columns: [{ stack: ['money', 'timeline', 'chains'], span: 2 }, ['categories', 'stores', 'value', 'resale']] },
+  4: { top: ['tiles'], columns: [{ stack: ['money', 'timeline'], span: 2 }, ['categories', 'stores'], ['chains', 'value', 'resale']] },
 }

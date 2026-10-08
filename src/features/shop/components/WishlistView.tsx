@@ -1,28 +1,30 @@
 import { useMemo, useState } from 'react'
 import { ChevronDown, Plus, ShoppingBag, Undo2 } from 'lucide-react'
-import { Button, EmptyState, PageBoard, SectionLabel, Skeleton, cx } from '../../../shared/ui'
+import { Button, EmptyState, PageBoard, Skeleton, cx } from '../../../shared/ui'
 import { useEntityModal } from '../../../shared/modals'
 import { toast } from '../../../app/store'
 import { todayStr } from '../../../shared/utils/dateUtils'
 import { useBreakpoint } from '../../../shared/hooks/useBreakpoint'
-import { useElementWidthRem } from '../../../shared/hooks/useElementWidth'
-import { dealByIndex } from '../../projects/projectBoard'
 import { useTasksByIds } from '../../todo/hooks/useTodos'
-import { useDeleteShopItems, useUpdateShopItem } from '../hooks/useShop'
+import { useBuyNow, useDeleteShopItems, useUpdateShopItem } from '../hooks/useShop'
 import { useShopRates } from '../hooks/useShopRates'
+import { useShopLinks, useShopMoney } from '../hooks/useShopMoney'
+import { useWatchMap } from '../hooks/useShopPrices'
 import {
-  NO_FILTERS, droppedItems, filterWishlist, filtersActive, groupByCategory, groupColumnCount, listOf, planDefaults, sortItems, totalsIn, totalsLabel,
+  NO_FILTERS, droppedItems, filterWishlist, filtersActive, groupByCategory, listOf, modelsByWish, planDefaults, sortItems, totalsIn, totalsLabel,
   type ShopSort, type WishlistFilters,
 } from '../shopModel'
+import { cashNeeded, chainsOf } from '../chainModel'
+import type { Amount } from '../ownModel'
+import { GeneralWishCard } from './GeneralWishCard'
+import { CARD_GRID, CategorySection, FoldAll } from './CategorySection'
+import { useCollapsedGroups } from '../hooks/useCollapsedGroups'
 import { WISHLIST_BOARD } from '../shopBoard'
 import { ShopFilters } from './ShopFilters'
 import { ShopItemCard } from './ShopItemCard'
 import { ShopTotalsCard } from './ShopTotalsCard'
 import type { ShopCategory, ShopItem } from '../types'
 
-// Cards share the row from 17rem up (a fixed maximum would leave a column's
-// worth empty at some widths, THEME W2); one column below that.
-const GRID = 'grid grid-cols-[repeat(auto-fill,minmax(min(100%,17rem),1fr))] items-start gap-2 sm:gap-3'
 
 /** The wishlist: what to buy someday, by category, with prices and totals. */
 export function WishlistView({ items, categories, isLoading }: { items: ShopItem[]; categories: ShopCategory[]; isLoading: boolean }) {
@@ -35,17 +37,32 @@ export function WishlistView({ items, categories, isLoading }: { items: ShopItem
   const [sort, setSort] = useState<ShopSort>('priority')
   const [showDropped, setShowDropped] = useState(false)
 
-  const all = useMemo(() => items.filter(i => listOf(i) === 'wishlist' && i.status === 'wishlist'), [items])
-  const { rates, date: ratesDate, failed } = useShopRates(all.some(i => i.price != null))
+  const all = useMemo(() => items.filter(i => listOf(i) === 'wishlist' && i.status === 'wishlist' && !i.option_for), [items])
+  const { rates, date: ratesDate, failed } = useShopRates(true)
+  const watches = useWatchMap()
+  const models = useMemo(() => modelsByWish(items), [items])
+  const { ctx } = useShopMoney()
+  const { data: links = [] } = useShopLinks()
+  const buy = useBuyNow(id => modal.open({ kind: 'shop-item', id }))
+  // "After selling X": the plans towards each wish, projected at "Could sell for".
+  const afterSale = useMemo(() => {
+    const out = new Map<string, { needed: Amount; from: string }>()
+    if (!links.length) return out
+    for (const c of chainsOf(items, links, ctx, { project: true })) {
+      for (const n of c.nodes) {
+        if (!n.projected || n.item.status !== 'wishlist') continue
+        const need = cashNeeded(c, n.id)
+        const from = c.edges.filter(e => e.used && e.to === n.id).map(e => c.nodes.find(x => x.id === e.from)?.item.title).filter(Boolean)
+        if (need) out.set(n.id, { needed: need.needed, from: from.join(' and ') })
+      }
+    }
+    return out
+  }, [items, links, ctx])
   const shown = useMemo(() => sortItems(filterWishlist(items, categories, filters), sort, rates), [items, categories, filters, sort, rates])
   const groups = useMemo(() => groupByCategory(shown, categories), [shown, categories])
   const dropped = useMemo(() => droppedItems(items), [items])
-  const totals = totalsIn(shown, 'NOK', rates)
-  // Category groups are column stacks dealt by index (THEME W2): positions
-  // never depend on how many cards a group has, and a wide page gains columns.
-  const { ref: groupsRef, width: groupsWidth } = useElementWidthRem<HTMLDivElement>()
-  const columnCount = groupsWidth == null ? 1 : groupColumnCount(groupsWidth, groups.length)
-  const columns = dealByIndex(groups, columnCount)
+  const totals = totalsIn(shown, 'NOK', rates, models, watches)
+  const fold = useCollapsedGroups('wishlist')
 
   // From every open row, sorted — a new filter or sort must not refetch the tasks.
   const taskIds = useMemo(() => [...new Set(all.map(i => i.task_id).filter((id): id is string => !!id))].sort(), [all])
@@ -67,15 +84,28 @@ export function WishlistView({ items, categories, isLoading }: { items: ShopItem
     })
   }
 
-  const card = (item: ShopItem) => (
+  const card = (item: ShopItem) => item.kind === 'general' ? (
+    <GeneralWishCard
+      key={item.id}
+      wish={item}
+      models={models.get(item.id) ?? []}
+      watches={watches}
+      rates={rates}
+      onOpen={() => modal.open({ kind: 'shop-item', id: item.id })}
+      onOpenModel={id => modal.open({ kind: 'shop-item', id })}
+      onAddModel={() => modal.open({ kind: 'shop-model', wishId: item.id })}
+    />
+  ) : (
     <ShopItemCard
       key={item.id}
       item={item}
       task={item.task_id ? taskById.get(item.task_id) ?? null : null}
       rates={rates}
       today={today}
+      watch={watches.get(item.id) ?? null}
+      afterSale={afterSale.get(item.id) ?? null}
       onEdit={() => modal.open({ kind: 'shop-item', id: item.id })}
-      onBought={() => update.mutate({ id: item.id, patch: { status: 'bought' } })}
+      onBought={() => buy(item)}
       onPlan={() => plan(item)}
       onOpenTask={() => { if (item.task_id) modal.open({ kind: 'task', id: item.task_id }) }}
       onMoveToQuick={() => update.mutate({ id: item.id, patch: { list: 'quick' } })}
@@ -85,43 +115,27 @@ export function WishlistView({ items, categories, isLoading }: { items: ShopItem
   )
 
   const groupsSection = isLoading ? (
-    <div className={GRID}>{Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} rounded="rounded-card" className="h-32" />)}</div>
+    <div className={CARD_GRID}>{Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} rounded="rounded-card" className="h-32" />)}</div>
   ) : all.length === 0 && dropped.length === 0 ? (
     <EmptyState bordered className="max-w-md" icon={<ShoppingBag />} title="Nothing on the wishlist yet"
       description="Things you want to buy someday — with a price, where to buy them and when."
       action={<Button icon={<Plus />} onClick={() => modal.open({ kind: 'shop-item', defaults: { list: 'wishlist' } })}>Add item</Button>} />
   ) : (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-4">
       {shown.length === 0 && all.length > 0 && (
         <p className="text-body text-fg-muted">
           Nothing matches these filters.{' '}
           <button type="button" onClick={() => setFilters(NO_FILTERS)} className="inline-flex min-h-[44px] items-center font-semibold text-accent-600 hover:underline">Clear filters</button>
         </p>
       )}
-      <div ref={groupsRef} className="grid items-start gap-x-4 gap-y-6" style={{ gridTemplateColumns: `repeat(${columnCount},minmax(0,1fr))` }}>
-        {columns.map((column, ci) => (
-          <div key={ci} className="flex min-w-0 flex-col gap-6">
-            {column.map(group => {
-              const t = totalsIn(group.items, 'NOK', rates)
-              return (
-                <section key={group.key} className="flex flex-col gap-2">
-                  <div className="flex items-baseline gap-2">
-                    <h2 className={cx('text-lead font-semibold', group.topId ? 'text-fg' : 'text-fg-muted')}>{group.title}</h2>
-                    <span className="count-badge">{group.items.length}</span>
-                    {(t.amount > 0 || t.unconverted.length > 0) && <span className="ml-auto text-meta tabular-nums text-fg-muted">{totalsLabel(t)}</span>}
-                  </div>
-                  {group.subs.map(sub => (
-                    <div key={sub.key} className="flex flex-col gap-1.5">
-                      {sub.title && <SectionLabel>{sub.title}</SectionLabel>}
-                      <div className={GRID}>{sub.items.map(card)}</div>
-                    </div>
-                  ))}
-                </section>
-              )
-            })}
-          </div>
-        ))}
-      </div>
+      <FoldAll keys={groups.map(g => g.key)} collapsed={fold.collapsed} onSet={fold.setAll} />
+      {groups.map(group => {
+        const t = totalsIn(group.items, 'NOK', rates, models, watches)
+        return (
+          <CategorySection key={group.key} group={group} collapsed={fold.collapsed.has(group.key)} onToggle={() => fold.toggle(group.key)}
+            aside={(t.amount > 0 || t.unconverted.length > 0) ? totalsLabel(t) : undefined} card={card} />
+        )
+      })}
       {dropped.length > 0 && (
         <section>
           <button type="button" aria-expanded={showDropped} onClick={() => setShowDropped(s => !s)}

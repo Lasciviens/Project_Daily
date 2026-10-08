@@ -5,11 +5,12 @@ import { Button, Skeleton } from '../../../shared/ui'
 import { todayStr } from '../../../shared/utils/dateUtils'
 import { middayIso } from '../../media/watchedWhen'
 import { useCreateShopCategory, useCreateShopItem, useDeleteShopItems, useShopCategories, useShopItems, useUpdateShopItem } from '../hooks/useShop'
+import { useQuietCheck } from '../hooks/useShopPrices'
 import { currencyOf, listOf, localDay, storeNames } from '../shopModel'
 import { NEW_CATEGORY, ShopItemForm, type ShopDraft } from './ShopItemForm'
 import type { ShopCategory, ShopItem, ShopList } from '../types'
 
-export interface ShopItemDefaults { list?: ShopList; title?: string; categoryId?: string; platform?: string }
+export interface ShopItemDefaults { list?: ShopList; title?: string; categoryId?: string; platform?: string; general?: boolean }
 
 function draftOf(item: ShopItem | undefined, defaults: ShopItemDefaults, categories: readonly ShopCategory[]): ShopDraft {
   const cat = categories.find(c => c.id === (item ? item.category_id : defaults.categoryId))
@@ -29,6 +30,12 @@ function draftOf(item: ShopItem | undefined, defaults: ShopItemDefaults, categor
     plannedDate: item?.planned_date ?? '',
     status:      item?.status ?? 'wishlist',
     boughtDay:   item?.status === 'bought' ? localDay(item.bought_at ?? item.updated_at) : todayStr(),
+    general:     item ? item.kind === 'general' : !!defaults.general,
+    priceMin:    item?.price_min ?? null,
+    priceMax:    item?.price_max ?? null,
+    requirements: item?.requirements ?? '',
+    reason:      item?.reason ?? '',
+    image:       item?.image_url ?? null,
   }
 }
 
@@ -64,6 +71,7 @@ function ShopItemEditor({ item, defaults = {}, onClose, categories }: Props & { 
   const createItem = useCreateShopItem()
   const updateItem = useUpdateShopItem()
   const removeItems = useDeleteShopItems()
+  const check = useQuietCheck()
   const [seed] = useState<ShopDraft>(() => draftOf(item, defaults, categories))
   const [draft, setDraft] = useState<ShopDraft>(seed)
   const [saving, setSaving] = useState(false)
@@ -125,8 +133,17 @@ function ShopItemEditor({ item, defaults = {}, onClose, categories }: Props & { 
             ...(draft.status === 'bought' && (statusChanged || dayChanged) && draft.boughtDay ? { bought_at: middayIso(draft.boughtDay) } : {}),
           },
         })
+      } else if (draft.general && draft.list === 'wishlist') {
+        await createItem.mutateAsync({ input: {
+          ...fields, kind: 'general', price: null, currency: draft.currency, platform: null, url: null, planned_date: null,
+          price_min: draft.priceMin, price_max: draft.priceMax, requirements: draft.requirements.trim() || null, reason: draft.reason || null,
+        } })
       } else {
-        await createItem.mutateAsync({ input: { ...fields, currency: draft.price != null ? draft.currency : null } })
+        const row = await createItem.mutateAsync({ input: {
+          ...fields, currency: draft.price != null ? draft.currency : null,
+          ...(draft.list === 'wishlist' ? { reason: draft.reason || null, image_url: draft.image } : {}),
+        } })
+        if (row.url && row.list !== 'quick') check([row.id])
       }
       onClose()
     } catch {
@@ -148,7 +165,7 @@ function ShopItemEditor({ item, defaults = {}, onClose, categories }: Props & { 
   return (
     <ModalShell
       onClose={onClose}
-      title={editing ? 'Edit item' : draft.list === 'quick' ? 'Add to the quick list' : 'Add to the wishlist'}
+      title={editing ? 'Edit item' : draft.list === 'quick' ? 'Add to the quick list' : draft.general ? 'Add a wish' : 'Add to the wishlist'}
       size="md"
       dismissible={!saving}
       footer={
@@ -158,7 +175,7 @@ function ShopItemEditor({ item, defaults = {}, onClose, categories }: Props & { 
           )}
           <Button onClick={onClose} disabled={saving} className="ml-auto">Cancel</Button>
           <Button variant="primary" onClick={() => { void save() }} loading={saving} disabled={!draft.title.trim() || newTopMissing || newSubMissing}>
-            {editing ? 'Save' : 'Add item'}
+            {editing ? 'Save' : draft.general ? 'Add wish' : 'Add item'}
           </Button>
         </div>
       }

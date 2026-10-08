@@ -95,19 +95,21 @@ export interface Toast {
   type:    ToastType
   message: string
   action?: ToastAction   // e.g. an "Undo" button on a destructive-action snackbar
+  /** A second button left of `action` ("Add details" beside "Undo"). */
+  extra?:  ToastAction
 }
 
 interface ToastState {
   toasts: Toast[]
-  show:   (message: string, type?: ToastType, durationMs?: number, action?: ToastAction) => string
+  show:   (message: string, type?: ToastType, durationMs?: number, action?: ToastAction, extra?: ToastAction) => string
   dismiss:(id: string) => void
 }
 
 export const useToastStore = create<ToastState>((set, get) => ({
   toasts: [],
-  show: (message, type = 'info', durationMs, action) => {
+  show: (message, type = 'info', durationMs, action, extra) => {
     const id = Math.random().toString(36).slice(2)
-    set(s => ({ toasts: [...s.toasts, { id, type, message, action }] }))
+    set(s => ({ toasts: [...s.toasts, { id, type, message, action, extra }] }))
     // loading toasts stay until manually dismissed; action snackbars linger
     // longer (you need time to hit Undo); others auto-dismiss.
     const ms = durationMs ?? (type === 'loading' ? 0 : action ? 6000 : type === 'error' ? 5000 : 3000)
@@ -132,6 +134,14 @@ export const toast = {
       label: 'Undo',
       onClick: () => { onUndo(); useToastStore.getState().dismiss(id) },
     })
+    return id
+  },
+  /** A done-snackbar with Undo plus one more step ("Bought" · Add details · Undo). Both buttons close it. */
+  doneWith: (msg: string, extra: ToastAction, onUndo: () => void, durationMs = 7000) => {
+    const close = () => useToastStore.getState().dismiss(id)
+    const id = useToastStore.getState().show(msg, 'success', durationMs,
+      { label: 'Undo', onClick: () => { onUndo(); close() } },
+      { label: extra.label, onClick: () => { extra.onClick(); close() } })
     return id
   },
 }

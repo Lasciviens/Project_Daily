@@ -16,6 +16,19 @@
 // code/unit, never by that label.
 // Name-search results may omit nutrition (lighter projection) → macros null,
 // the user fills/scans; the ean endpoint carries full nutrition.
+//
+// The ean endpoint answers { data: { ean, products: [<one row per store>],
+// allergens, nutrition } } (docs example, 08.10.2026) — not a product — so the
+// product fields come from its first store row and the nutrition from `data`.
+//
+// Shop's quick list (08.10.2026) adds two modes, same key:
+//   { mode: 'grocery_search', search } → { products: [{ ean, name, brand, image,
+//     price, store }] } — one row per EAN (`unique`), EAN-less rows left out, so
+//     a pick can be priced at every chain.
+//   { mode: 'grocery_prices', eans: [≤100] } → { prices: [{ ean, name, stores:
+//     [{ code, name, price, checked }] }] } — POST /products/prices-bulk
+//     (`stores[].current_price` / `last_checked`, docs example). Kassalapp has
+//     no REMA 1000 prices (REMA publishes none online).
 
 const KASSAL = 'https://kassal.app/api/v1'
 
@@ -80,23 +93,89 @@ function normalize(item: Record<string, unknown>) {
   }
 }
 
+type Body = { search?: string; ean?: string; mode?: string; eans?: unknown }
+
+async function kassal(path: string, key: string, init?: RequestInit): Promise<Record<string, unknown>> {
+  const r = await fetch(`${KASSAL}${path}`, {
+    ...init,
+    headers: { Authorization: `Bearer ${key}`, Accept: 'application/json', ...(init?.body ? { 'Content-Type': 'application/json' } : {}) },
+  })
+  if (!r.ok) throw new Error(`kassalapp ${r.status}`)
+  return await r.json()
+}
+
+const num = (v: unknown): number | null => {
+  const n = typeof v === 'number' ? v : typeof v === 'string' ? Number(v.replace(',', '.')) : NaN
+  return Number.isFinite(n) ? n : null
+}
+
+/** One grocery search hit: the EAN, a picture and one store's price (the chain comparison comes from `grocery_prices`). */
+function groceryHit(item: Record<string, unknown>) {
+  const store = (item.store ?? {}) as Record<string, unknown>
+  const price = typeof item.current_price === 'object' && item.current_price !== null
+    ? num((item.current_price as Record<string, unknown>).price)
+    : num(item.current_price)
+  return {
+    ean: String(item.ean ?? '').replace(/\D/g, ''),
+    name: String(item.name ?? '').trim(),
+    brand: (item.brand as string) ?? null,
+    image: (item.image as string) ?? null,
+    price,
+    store: (store.name as string) ?? null,
+  }
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS })
   const key = Deno.env.get('KASSALAPP_API_KEY')
-  if (!key) return json({ products: [], note: 'KASSALAPP_API_KEY not set' })
-
-  let body: { search?: string; ean?: string } = {}
+  let body: Body = {}
   try { body = await req.json() } catch { /* empty */ }
 
-  const url = body.ean
-    ? `${KASSAL}/products/ean/${encodeURIComponent(String(body.ean).replace(/\D/g, ''))}`
-    : `${KASSAL}/products?search=${encodeURIComponent(body.search ?? '')}&size=20`
+  if (body.mode === 'grocery_search') {
+    if (!key) return json({ products: [], error: 'not_configured' })
+    const q = String(body.search ?? '').trim()
+    if (!q) return json({ products: [] })
+    try {
+      const j = await kassal(`/products?search=${encodeURIComponent(q)}&size=12&unique=true&exclude_without_ean=true`, key)
+      const rows = Array.isArray(j.data) ? j.data as Record<string, unknown>[] : []
+      return json({ products: rows.map(groceryHit).filter(p => p.name && p.ean) })
+    } catch (e) {
+      return json({ products: [], error: String((e as Error).message ?? e) })
+    }
+  }
 
+  if (body.mode === 'grocery_prices') {
+    if (!key) return json({ prices: [], error: 'not_configured' })
+    const eans = [...new Set((Array.isArray(body.eans) ? body.eans : []).map(e => String(e).replace(/\D/g, '')).filter(e => e.length >= 8))].slice(0, 100)
+    if (!eans.length) return json({ prices: [] })
+    try {
+      const j = await kassal('/products/prices-bulk', key, { method: 'POST', body: JSON.stringify({ eans, days: 1, aggregation: 'min' }) })
+      const rows = Array.isArray(j.data) ? j.data as Record<string, unknown>[] : []
+      const prices = rows.map(r => ({
+        ean: String(r.ean ?? ''),
+        name: String(r.name ?? '').trim(),
+        stores: (Array.isArray(r.stores) ? r.stores as Record<string, unknown>[] : [])
+          .map(s => ({ code: String(s.store ?? ''), name: String(s.name ?? s.store ?? ''), price: num(s.current_price), checked: (s.last_checked as string) ?? null }))
+          .filter(s => s.code && s.price != null),
+      }))
+      return json({ prices })
+    } catch (e) {
+      return json({ prices: [], error: String((e as Error).message ?? e) })
+    }
+  }
+
+  if (!key) return json({ products: [], note: 'KASSALAPP_API_KEY not set' })
   try {
-    const r = await fetch(url, { headers: { Authorization: `Bearer ${key}`, Accept: 'application/json' } })
-    if (!r.ok) return json({ products: [], error: `kassalapp ${r.status}` })
-    const j = await r.json()
-    const items = Array.isArray(j?.data) ? j.data : (j?.data ? [j.data] : [])
+    if (body.ean) {
+      const j = await kassal(`/products/ean/${encodeURIComponent(String(body.ean).replace(/\D/g, ''))}`, key)
+      const data = (j.data ?? {}) as Record<string, unknown>
+      const rows = Array.isArray(data.products) ? data.products as Record<string, unknown>[] : []
+      const first = rows[0] ?? data
+      const product = normalize({ ...first, ean: data.ean ?? first.ean, nutrition: data.nutrition ?? first.nutrition })
+      return json({ products: product.name ? [product] : [] })
+    }
+    const j = await kassal(`/products?search=${encodeURIComponent(body.search ?? '')}&size=20`, key)
+    const items = Array.isArray(j.data) ? j.data as Record<string, unknown>[] : (j.data ? [j.data as Record<string, unknown>] : [])
     const products = items.map(normalize).filter((p: { name: string }) => p.name)
     return json({ products })
   } catch (e) {

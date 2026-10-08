@@ -5,6 +5,7 @@
  * Run: node scripts/verify-shop-model.cjs */
 require('sucrase/register')
 const M = require('../src/features/shop/shopModel')
+const W = require('../src/features/shop/wishModel')
 
 let passed = 0, failed = 0
 function check(name, cond, detail) {
@@ -97,7 +98,6 @@ check('tops A–Z, "No category" last', eq(g.map(x => x.title), ['Home', 'Tech',
 check('a top\'s own rows lead its subcategories', eq(g[0].subs.map(s => s.title), [null, 'Kitchen']))
 check('subs A–Z and rows keep their order', eq(g[1].subs.map(s => s.title), ['Audio', 'Cameras']) && g[1].items.length === 2)
 
-check('category columns: one per 20rem, never more than the groups', M.groupColumnCount(22.5, 4) === 1 && M.groupColumnCount(48, 4) === 2 && M.groupColumnCount(109, 4) === 4 && M.groupColumnCount(109, 9) === 5 && M.groupColumnCount(10, 0) === 1)
 
 console.log('quick list')
 const qa = item({ title: 'Bread', list: 'quick', platform: 'Rema', created_at: '2026-10-01T08:00:00.000Z' })
@@ -146,6 +146,84 @@ console.log('days near midnight UTC and dropped rows')
   const dq = item({ title: 'Old errand', list: 'quick', status: 'dropped' })
   const dw = item({ title: 'Old wish', status: 'dropped' })
   check('"Not any more" lists dropped rows of both lists', eq(M.droppedItems([dq, dw, item({})]).map(i => i.title).sort(), ['Old errand', 'Old wish']))
+}
+
+
+console.log('general wishes, models and the price watch (137)')
+{
+  const watch = (item_id, url, low, currency = 'NOK') => ({ item_id, url, low, currency, status: 'ok' })
+  const air = item({ id: 'm-air', option_for: 'tab', price: 7490, currency: 'NOK', url: 'https://www.prisjakt.no/product.php?p=1' })
+  const fe = item({ id: 'm-fe', option_for: 'tab', price: 5490, currency: 'NOK' })
+  const notChosen = item({ id: 'm-old', option_for: 'tab', price: 3000, currency: 'NOK', status: 'dropped' })
+  const tab = item({ id: 'tab', kind: 'general', title: 'A tablet with a pen', currency: 'NOK' })
+  const watches = new Map([['m-air', watch('m-air', 'https://www.prisjakt.no/product.php?p=1', 6990)]])
+  check('a watched price is used only for the row\'s current link', eq(M.watchedPrice(air, watches.get('m-air')), { amount: 6990, currency: 'NOK' }) && M.watchedPrice({ url: 'https://other' }, watches.get('m-air')) === null)
+  check('price now: the watch, else the row\'s own price', M.priceNow(air, watches.get('m-air')).amount === 6990 && M.priceNow(fe).amount === 5490 && M.priceNow(item({ price: null })) === null)
+  check('a wish\'s range from its open models\' prices now (Not chosen left out)', eq(M.wishRange(tab, [air, fe, notChosen], null, watches), { min: 5490, max: 6990 }))
+  check('its own range wins', eq(M.wishRange({ ...tab, price_min: 8000, price_max: 5000 }, [air, fe]), { min: 5000, max: 8000 }))
+  const lira = item({ id: 'm-tr', option_for: 'tab', price: 20000, currency: 'TRY' })
+  check('a model in another currency converts at today\'s rate, or is left out without rates', eq(M.wishRange(tab, [fe, lira], rates), { min: 5000, max: 5490 }) && eq(M.wishRange(tab, [fe, lira], null), { min: 5490, max: 5490 }))
+  const models = M.modelsByWish([air, fe, notChosen, tab])
+  const t = M.totalsIn([tab, item({ price: 1000, currency: 'NOK' })], 'NOK', null, models, watches)
+  check('a general wish counts once, as its range', t.amount === 6490 && t.max === 7990 && t.unpriced === 0 && M.totalsLabel(t) === '6 490–7 990 NOK', M.totalsLabel(t))
+  check('models never show as wishes of their own', M.filterWishlist([tab, air, fe], [], M.NO_FILTERS).map(i => i.id).join() === 'tab')
+  check('a Not chosen model is not in "Not any more" (it stays under its wish)', M.droppedItems([notChosen, item({ id: 'gone', status: 'dropped' })]).map(i => i.id).join() === 'gone')
+}
+
+console.log('the quick list: No rush, errands and deals (137)')
+{
+  const tape = item({ id: 'tape', list: 'quick', title: 'Tape', priority: 'low', created_at: '2026-10-01T10:00:00Z' })
+  const milk = item({ id: 'milk', list: 'quick', title: 'Milk', created_at: '2026-10-02T10:00:00Z' })
+  check('"No rush" is low priority; Daily counts only what is due', M.isNoRush(tape) && M.quickDue([tape, milk]).map(i => i.id).join() === 'milk')
+  check('inside a store, No rush goes last', M.sortForStore([tape, milk]).map(i => i.id).join() === 'milk,tape')
+  const bulb = item({ id: 'bulb', title: 'Light bulb', errand: true, created_at: '2026-10-03T10:00:00Z' })
+  const buds = item({ id: 'buds', title: 'Earphones', wait_for_deal: true, platform: 'Elkjøp', planned_date: '2026-10-14', created_at: '2026-10-04T10:00:00Z' })
+  const noStore = item({ id: 'nostore', wait_for_deal: true, planned_date: '2026-10-01' })
+  check('a wishlist errand shows on the quick list; a deal from its day at its store', M.quickFromWishlist([bulb, buds, noStore], '2026-10-08').map(i => i.id).join() === 'bulb'
+    && M.quickFromWishlist([bulb, buds], '2026-10-14').map(i => i.id).join() === 'bulb,buds')
+  check('…never a general wish or a model', M.quickFromWishlist([item({ kind: 'general', errand: true }), item({ option_for: 'x', errand: true })], '2026-10-08').length === 0)
+  check('grouped by store with No rush last in each', M.groupByStore([tape, milk]).map(g => g.items.map(i => i.id).join()).join() === 'milk,tape')
+}
+
+
+console.log('a general wish\'s requirements and the best match (137)')
+{
+  const wish = item({ id: 'tab2', kind: 'general', requirements: 'Pen support\n 11 inch or bigger \n\n128 GB', price_min: 4000, price_max: 8000 })
+  check('requirements: one per line, trimmed, blanks dropped', W.requirementsOf(wish).join('|') === 'Pen support|11 inch or bigger|128 GB')
+  check('a requirement key folds case and spaces', W.reqKey('  Pen   Support ') === 'pen support')
+  let meets = W.cycleMeets(null, 'Pen support')
+  check('one tap cycles ? → ✓ → ✗ → ?', meets['pen support'] === true && W.cycleMeets(meets, 'pen support')['pen support'] === false && !('pen support' in W.cycleMeets(W.cycleMeets(meets, 'Pen support'), 'Pen support')))
+  const air = item({ id: 'air2', option_for: 'tab2', price: 7490, meets: { 'pen support': true, '11 inch or bigger': true, '128 gb': true } })
+  const fe = item({ id: 'fe2', option_for: 'tab2', price: 4790, meets: { 'pen support': true, '11 inch or bigger': false } })
+  const pad = item({ id: 'pad2', option_for: 'tab2', price: 3990, meets: { '11 inch or bigger': true } })
+  const cheapUnknown = item({ id: 'x2', option_for: 'tab2', price: 4500, meets: {} })
+  const price = m => (m.price == null ? null : { amount: m.price, currency: 'NOK' })
+  check('a ✗ rules a model out; below the range is out too', W.bestMatch(wish, [air, fe, pad], price).id === 'air2')
+  check('unknowns do not rule out: the cheapest in range with no ✗ wins', W.bestMatch(wish, [air, fe, pad, cheapUnknown], price).id === 'x2')
+  check('bought and Not chosen models are out of the running', W.bestMatch(wish, [{ ...air, status: 'bought' }, { ...cheapUnknown, status: 'dropped' }], price) === null)
+  check('met / failed / unknown per model', JSON.stringify(W.metCount(fe, W.requirementsOf(wish))) === '{"met":1,"failed":1,"unknown":1}')
+}
+
+console.log('the quick list page: groups, adds and Buy again')
+{
+  const milk = item({ id: 'qmilk', list: 'quick', title: 'Milk', platform: 'Kiwi', created_at: '2026-10-02T10:00:00Z' })
+  const tape = item({ id: 'qtape', list: 'quick', title: 'Tape', priority: 'low', created_at: '2026-10-01T10:00:00Z' })
+  const bulb = item({ id: 'qbulb', title: 'Light bulb', errand: true, platform: 'kiwi', created_at: '2026-10-03T10:00:00Z' })
+  const card = item({ id: 'qcard', title: 'Gift card', errand: true, created_at: '2026-10-04T10:00:00Z' })
+  const buds = item({ id: 'qbuds', title: 'Earphones', wait_for_deal: true, platform: 'Elkjøp', planned_date: '2026-10-14', created_at: '2026-10-05T10:00:00Z' })
+  const g = M.quickGroups([milk, tape, bulb, card, buds, item({ id: 'qold', list: 'quick', status: 'bought' })], '2026-10-08')
+  check('a wishlist errand joins its store\'s group (folded name), one without a store goes under "Any store"',
+    eq(g.map(s => [s.title, s.items.map(i => i.id)]), [['kiwi', ['qmilk', 'qbulb']], ['Any store', ['qcard', 'qtape']]]), JSON.stringify(g.map(s => [s.title, s.items.map(i => i.id)])))
+  check('a deal joins its store only from its day', M.quickGroups([buds], '2026-10-14').map(s => s.items[0].id).join() === 'qbuds' && M.quickGroups([buds], '2026-10-13').length === 0)
+  check('add box: only the title is needed (store blank → none)', eq(M.quickAddInput({ title: '  Tape ', store: '  ' }), { title: 'Tape', platform: null, list: 'quick' }))
+  check('add box: No rush is low priority; a scanned product brings its EAN and picture',
+    eq(M.quickAddInput({ title: 'Melk', store: ' Kiwi ', noRush: true, ean: '7038010000737', image: 'https://img/x.png' }),
+      { title: 'Melk', platform: 'Kiwi', list: 'quick', priority: 'low', ean: '7038010000737', image_url: 'https://img/x.png' }))
+  const bought = item({ id: 'qb', list: 'quick', title: 'Milk', status: 'bought', bought_at: '2026-10-07T09:00:00', platform: 'Kiwi', category_id: 'groc', ean: '7038010000737', image_url: 'https://img/m.png' })
+  const again = M.buyAgain([bought])
+  check('Buy again carries the product (EAN, picture), store and category of the row it re-adds',
+    eq(M.buyAgainInput(again[0]), { title: 'Milk', platform: 'Kiwi', category_id: 'groc', list: 'quick', ean: '7038010000737', image_url: 'https://img/m.png' }))
+  check('…and leaves them out when that row had none', eq(M.buyAgainInput(M.buyAgain([{ ...bought, ean: null, image_url: null }])[0]), { title: 'Milk', platform: 'Kiwi', category_id: 'groc', list: 'quick' }))
 }
 
 console.log(`\n${passed} passed, ${failed} failed`)

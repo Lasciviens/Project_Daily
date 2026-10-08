@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { Cell, CellHeader, CellLink } from './cellKit'
 import { Button, IconButton, SectionLabel, Truncate } from '../../../../shared/ui'
 import { useShopItems, useUpdateShopItem } from '../../../shop/hooks/useShop'
-import { PRIORITY_RANK as RANK, listOf, priceLabel, quickOpen } from '../../../shop/shopModel'
+import { PRIORITY_RANK as RANK, listOf, priceLabel, quickDue, quickFromWishlist } from '../../../shop/shopModel'
 import type { ShopItem } from '../../../shop/types'
 import { REGION_FLAG } from '../../../shop/shopMeta'
 
@@ -15,11 +15,12 @@ export function ShopCard({ date }: { date: string }) {
   const { data: items = [] } = useShopItems()
   const update = useUpdateShopItem()
 
-  const toBuy     = items.filter((i: ShopItem) => i.status === 'wishlist')
-  const planned   = toBuy.filter((i: ShopItem) => i.planned_date === date)
-  const quick     = quickOpen(items).filter(i => i.planned_date !== date)
-  const unplanned = toBuy
-    .filter((i: ShopItem) => listOf(i) === 'wishlist' && !i.planned_date)
+  // A general wish is never bought itself (its model is), and a deal's day is when to check, not to buy.
+  const toBuy     = items.filter((i: ShopItem) => i.status === 'wishlist' && i.kind !== 'general')
+  const planned   = toBuy.filter((i: ShopItem) => i.planned_date === date && !i.wait_for_deal)
+  const quick     = [...quickDue(items), ...quickFromWishlist(items, date)].filter(i => i.planned_date !== date || i.wait_for_deal)
+  const unplanned = items
+    .filter((i: ShopItem) => i.status === 'wishlist' && listOf(i) === 'wishlist' && !i.option_for && !i.planned_date)
     .sort((a: ShopItem, b: ShopItem) => RANK[a.priority] - RANK[b.priority])
     .slice(0, 2)
 
