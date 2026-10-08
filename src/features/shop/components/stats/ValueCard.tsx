@@ -13,7 +13,7 @@ import { DrillRowButton } from './StatsDrillSheet'
 export function ValueCard({ rows, today, onOpen }: { rows: ValueRow[]; today: string; onOpen: (id: string) => void }) {
   const { dearest, cheapest } = valueEnds(rows, 5)
   const row = ({ item: i, per }: ValueRow): DrillRow => ({
-    key: i.id, id: i.id, title: i.title, text: `≈ ${num(per.nok)} NOK/month`,
+    key: i.id, id: i.id, title: i.title, text: per.nok < 0 ? `made ≈ ${num(-per.nok)} NOK/month` : `≈ ${num(per.nok)} NOK/month`,
     sub: join([durationLabel(boughtOn(i) as string, i.disposed_on ?? today), i.disposal ? DISPOSAL_LABEL[i.disposal] : 'still yours']),
   })
   return (
