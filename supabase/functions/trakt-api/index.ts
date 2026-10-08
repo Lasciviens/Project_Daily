@@ -1772,6 +1772,18 @@ async function readNoteEntry(db: Db, userId: string, type: TraktNoteType, tmdb: 
   }
 }
 
+/** A note's text on Trakt now, or null when it is gone there (404). */
+async function readTraktNote(token: string, id: number): Promise<string | null> {
+  try {
+    const n = (await get(`/notes/${id}`, token)).data as AnyRec | null
+    const text = typeof n?.notes === 'string' ? n.notes.trim() : ''
+    return text || null
+  } catch (e) {
+    if (e instanceof TraktError && e.status === 404) return null
+    throw e
+  }
+}
+
 /** Stores (or clears) an entry's link to its Trakt note; false when the entry is gone. Never touches personal_note. */
 async function writeNoteLink(db: Db, type: TraktNoteType, entryId: string, id: number | null, text: string | null): Promise<boolean> {
   const { data, error } = await db.from(NOTE_TABLE[type]).update({ trakt_note_id: id, trakt_note_text: text }).eq('id', entryId).select('id')
@@ -1800,7 +1812,7 @@ async function sendNote(token: string, type: TraktNoteType, tmdb: number, id: nu
   return Number.isSafeInteger(added) && added > 0 ? added : null
 }
 
-interface NoteDrain { sent: number; refused: number; failed: number; warning: string | null; error: string | null }
+interface NoteDrain { sent: number; refused: number; failed: number; deferred: number; warning: string | null; error: string | null }
 
 /**
  * The outbox's note changes, one title at a time: whatever was queued, Trakt
@@ -1810,7 +1822,7 @@ interface NoteDrain { sent: number; refused: number; failed: number; warning: st
  * retried, without holding up other titles.
  */
 async function drainNotes(db: Db, userId: string, token: string, rows: AnyRec[], deadline: number): Promise<{ result: NoteDrain; keys: string[] }> {
-  const result: NoteDrain = { sent: 0, refused: 0, failed: 0, warning: null, error: null }
+  const result: NoteDrain = { sent: 0, refused: 0, failed: 0, deferred: 0, warning: null, error: null }
   const keys: string[] = []
   const groups = new Map<string, AnyRec[]>()
   for (const r of rows) groups.set(String(r.item_key), [...(groups.get(String(r.item_key)) ?? []), r])
@@ -1832,6 +1844,20 @@ async function drainNotes(db: Db, userId: string, token: string, rows: AnyRec[],
       const removedIds = group.filter(r => r.op === 'note_remove').map(r => Number(((r.payload ?? {}) as AnyRec).note_id))
       const entry = await readNoteEntry(db, userId, type, tmdb)
       const step = noteDrainStep(entry, removedIds)
+      // Trakt's copy first: a note edited (or deleted) on Trakt since the last
+      // sync must not be overwritten or deleted by this queued change. The
+      // full comparison decides instead (both changed → Trakt wins; an edit is
+      // never lost to a delete), so it is made due and the change dropped.
+      if (entry && validNoteId(entry.noteId) && (step.send || step.deletes.includes(entry.noteId))) {
+        const onTrakt = await readTraktNote(token, entry.noteId)
+        if ((onTrakt ?? null) !== noteForTrakt(entry.synced)) {
+          await drop(ids)
+          const { error } = await db.from('trakt_sync_state').update({ notes_synced_at: null }).eq('user_id', userId)
+          if (error) throw error
+          result.deferred++
+          continue
+        }
+      }
       // The limit is reached: adding another note now would only be refused again.
       if (step.send && step.send.id === null && limitReached) throw new TraktError(420, NOTE_LIMIT)
       for (const id of step.deletes) {
@@ -1951,9 +1977,13 @@ async function syncNotes(db: Db, userId: string, token: string, pending: Set<str
 }
 
 /** The note comparison inside a sync or an import: a failure is reported, never fails the run (a 401 does: reconnect). */
-async function runNotes(db: Db, userId: string, token: string, pending: Set<string>): Promise<NoteRun> {
+// The edge function is stopped at 150 s; the whole run (drain, library, notes)
+// stays under this, so the lock and the result are always written.
+const RUN_BUDGET_MS = 130_000
+
+async function runNotes(db: Db, userId: string, token: string, pending: Set<string>, runStart: number): Promise<NoteRun> {
   try {
-    return await syncNotes(db, userId, token, pending, Date.now() + 30_000)
+    return await syncNotes(db, userId, token, pending, Math.min(Date.now() + 30_000, runStart + RUN_BUDGET_MS))
   } catch (e) {
     if (e instanceof TraktError && e.status === 401) throw e
     return { error: noteFailureMessage(e), complete: false }
@@ -2446,7 +2476,8 @@ async function pendingKeys(db: Db, userId: string, sentKeys: string[]): Promise<
 }
 
 async function runSync(db: Db, userId: string, token: string, username: string | null, opts: { full?: boolean; force?: boolean }) {
-  const deadline = Date.now() + 90_000
+  const runStart = Date.now()
+  const deadline = runStart + 90_000
   const drained = await drainOutbox(db, userId, token, deadline)
   const lastActivities = (await get('/sync/last_activities', token)).data as AnyRec
   const { data: state } = await db.from('trakt_sync_state').select('last_activities').eq('user_id', userId).maybeSingle()
@@ -2459,7 +2490,7 @@ async function runSync(db: Db, userId: string, token: string, username: string |
   const ns = await notesState(db, userId)
   const notesDue = ns.ready && (!!opts.full || change.reset || !ns.syncedAt || notesActivity(prev) !== notesActivity(lastActivities))
   if (!opts.full && !change.changed) {
-    const notes = notesDue ? await runNotes(db, userId, token, await pendingKeys(db, userId, drained.sentKeys)) : null
+    const notes = notesDue ? await runNotes(db, userId, token, await pendingKeys(db, userId, drained.sentKeys), runStart) : null
     return { pulled: false, drained: summary(drained), lastActivities, scores, follows, notes }
   }
   // A watched-progress reset on Trakt re-checks every show, like Sync now.
@@ -2483,7 +2514,7 @@ async function runSync(db: Db, userId: string, token: string, username: string |
   const favorites = favChanged ? await mirrorFavorites(db, userId, token, pending) : null
   // A title that just came in from Trakt may already have a note there.
   const added = plan.movies.some(m => !local.movieEntry.has(m.tmdbId)) || plan.shows.some(s => !local.showEntry.has(s.tmdbId))
-  const notes = notesDue || (ns.ready && added) ? await runNotes(db, userId, token, pending) : null
+  const notes = notesDue || (ns.ready && added) ? await runNotes(db, userId, token, pending, runStart) : null
   return { pulled: true, drained: summary(drained), applied, favorites, heldBack, kept: plan.kept.length, unmatched, lastActivities, scores, follows, notes }
 }
 
@@ -2500,6 +2531,7 @@ async function runSync(db: Db, userId: string, token: string, username: string |
  * Only a run that got through 1–4 stamps imported_at (by the caller).
  */
 async function runImport(db: Db, userId: string, token: string, username: string | null) {
+  const runStart = Date.now()
   // Without TMDB the import can't add new titles or tell a finished show from one in progress.
   if (!TMDB_KEY()) throw new Error('TMDB_API_KEY is not set on the trakt-api function (use the same TMDB key as the app)')
   const drained = await drainOutbox(db, userId, token, Date.now() + 45_000)
@@ -2521,7 +2553,7 @@ async function runImport(db: Db, userId: string, token: string, username: string
   // Notes (136): the app's notes Trakt lacks go to Trakt, Trakt's come in —
   // after the library is written, so a note can land on a title just added.
   // A note refused (note limit) or not sent yet never fails the import.
-  const notes = (await notesState(db, userId)).ready ? await runNotes(db, userId, token, pending) : null
+  const notes = (await notesState(db, userId)).ready ? await runNotes(db, userId, token, pending, runStart) : null
   const lastActivities = (await get('/sync/last_activities', token)).data as AnyRec
   return {
     applied, sent, tally, unmatched, drained: summary(drained),
@@ -2752,7 +2784,8 @@ Deno.serve(async (req: Request) => {
           const problems = [r.favorites.warning && `Favorites not all sent: ${r.favorites.warning}`, notes?.error && `Notes: ${notes.error}`].filter(Boolean)
           await stamp(db, userId, {
             last_sync_at: now, last_full_at: now, imported_at: now, last_activities: r.lastActivities,
-            ...(r.notes?.complete ? { notes_synced_at: now } : {}),
+            // An unfinished comparison clears the stamp, so the next sync compares again.
+            ...(r.notes ? { notes_synced_at: r.notes.complete ? now : null } : {}),
             last_error: problems.length ? problems.join(' · ') : null, last_result: result,
           })
           return json(result)
@@ -2763,7 +2796,7 @@ Deno.serve(async (req: Request) => {
         const problems = [r.drained.error && `Sending to Trakt failed: ${r.drained.error}`, notes?.error && `Notes: ${notes.error}`].filter(Boolean)
         await stamp(db, userId, {
           last_sync_at: now, ...(body.full ? { last_full_at: now } : {}), last_activities: r.lastActivities,
-          ...(r.notes?.complete ? { notes_synced_at: now } : {}),
+          ...(r.notes ? { notes_synced_at: r.notes.complete ? now : null } : {}),
           last_error: problems.length ? problems.join(' · ') : null, last_result: result,
         })
         return json(result)

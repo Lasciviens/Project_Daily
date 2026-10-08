@@ -95,7 +95,7 @@ function Body({ p }: { p: TraktPreview }) {
             <Row tone="warn" label="Here, not on Trakt (sent to Trakt — over 500 characters, Trakt keeps the first 499 + …)" count={p.notes.push.length} items={p.notes.push} />
             <Row tone="info" label="A different note on each side — Trakt’s is kept" count={p.notes.differ.length} items={p.notes.differ} />
             <Row tone="neutral" label="Already the same" count={p.notes.same} />
-            <Row tone="neutral" label="On Trakt for titles not in your library (left on Trakt)" count={p.notes.notInLibrary} />
+            <Row tone="neutral" label="On Trakt for titles not in your library yet (they come in with the titles the import adds; a note alone adds no title)" count={p.notes.notInLibrary} />
           </>
         ) : <p className="text-meta text-fg-muted">Trakt’s notes were not read this time, so they are not counted here.</p>}
       </Section>
