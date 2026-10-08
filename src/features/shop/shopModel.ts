@@ -2,7 +2,7 @@
 // wishlist's filters / sort / category groups / totals, the quick list's
 // stores, picked-up and buy-again rows, and the bought history. Pure —
 // scripts/verify-shop-model.cjs runs it against fixtures.
-import type { ShopCategory, ShopCurrency, ShopItem, ShopList, ShopPriority, ShopRegion } from './types'
+import type { CreateShopItemInput, ShopCategory, ShopCurrency, ShopItem, ShopList, ShopPriceWatch, ShopPriority, ShopRegion } from './types'
 import { convertAmount, formatMoney, type UsdRates } from '../settings/subscriptionRules'
 
 export const SHOP_CURRENCIES: readonly ShopCurrency[] = ['NOK', 'TRY', 'EUR', 'USD']
@@ -97,10 +97,14 @@ export function filtersActive(f: WishlistFilters): boolean {
   return f.q.trim() !== '' || f.category !== 'all' || f.region !== 'all' || f.priority !== 'all'
 }
 
-/** Wishlist rows still to buy, narrowed by the filters. */
+/**
+ * Wishlist rows still to buy, narrowed by the filters. A general wish's
+ * models are never wishes of their own (they show under it, and count once
+ * through it — migration 137).
+ */
 export function filterWishlist(items: readonly ShopItem[], categories: readonly ShopCategory[], f: WishlistFilters): ShopItem[] {
   return items.filter(item => {
-    if (listOf(item) !== 'wishlist' || item.status !== 'wishlist') return false
+    if (listOf(item) !== 'wishlist' || item.status !== 'wishlist' || item.option_for) return false
     const path = categoryPath(item.category_id, categories)
     if (f.category === 'none' ? path.topId !== null : f.category !== 'all' && path.topId !== f.category) return false
     if (f.region === 'none' ? item.region != null : f.region !== 'all' && item.region !== f.region) return false
@@ -122,12 +126,13 @@ export const SORT_LABEL: Record<ShopSort, string> = {
 
 export const PRIORITY_RANK: Record<ShopPriority, number> = { high: 0, medium: 1, low: 2 }
 
-/** The price in NOK when rates allow, else the bare number (so one currency still sorts right). */
+/** The price in NOK when rates allow, else the bare number (so one currency still sorts right). A general wish sorts by the top of its range. */
 function comparablePrice(item: ShopItem, rates: UsdRates | null): number | null {
-  if (item.price == null) return null
+  const price = item.kind === 'general' ? (item.price_max ?? item.price_min ?? null) : item.price
+  if (price == null) return null
   const c = currencyOf(item)
-  if (!rates || c === 'NOK') return item.price
-  return convertAmount(item.price, c, 'NOK', rates) ?? item.price
+  if (!rates || c === 'NOK') return price
+  return convertAmount(price, c, 'NOK', rates) ?? price
 }
 
 const byNewest = (a: ShopItem, b: ShopItem) => (b.created_at ?? '').localeCompare(a.created_at ?? '')
@@ -165,39 +170,94 @@ export interface Totals {
   count: number
   /** Rows without a price — never silently counted as 0. */
   unpriced: number
-  /** The priced rows in `currency`. */
+  /** The priced rows in `currency` (a general wish: the bottom of its range). */
   amount: number
+  /** With general wishes at the top of their ranges; equal to `amount` without any. */
+  max: number
   currency: ShopCurrency
   /** Per-currency sums that had no exchange rate (shown beside, never dropped). */
   unconverted: Money[]
 }
 
-/** The rows' prices summed in `target`; without rates only `target`-priced rows convert. */
-export function totalsIn(items: readonly ShopItem[], target: ShopCurrency, rates: UsdRates | null): Totals {
+/** The last price read from a row's link — only while the watch is for the row's current link. */
+export function watchedPrice(item: Pick<ShopItem, 'url'>, watch: ShopPriceWatch | null | undefined): Money | null {
+  if (!watch || watch.low == null || !item.url || watch.url !== item.url) return null
+  const c = (watch.currency ?? '').toUpperCase()
+  return SHOP_CURRENCIES.includes(c as ShopCurrency) ? { amount: watch.low, currency: c as ShopCurrency } : null
+}
+
+/** What a row costs now: the last price read from its link, else its own price. */
+export function priceNow(item: ShopItem, watch?: ShopPriceWatch | null): Money | null {
+  return watchedPrice(item, watch) ?? (item.price == null ? null : { amount: item.price, currency: currencyOf(item) })
+}
+
+/**
+ * A general wish's price range in its own currency: its own, else its open
+ * models' cheapest to dearest now (a model in another currency converts at
+ * today's rate, or is left out without rates), else none.
+ */
+export function wishRange(wish: ShopItem, models: readonly ShopItem[] = [], rates: UsdRates | null = null, watches?: ReadonlyMap<string, ShopPriceWatch>): { min: number; max: number } | null {
+  if (wish.price_min != null || wish.price_max != null) {
+    const min = wish.price_min ?? wish.price_max as number
+    const max = wish.price_max ?? wish.price_min as number
+    return { min: Math.min(min, max), max: Math.max(min, max) }
+  }
+  const target = currencyOf(wish)
+  const prices = models
+    .filter(m => m.status === 'wishlist')
+    .map(m => priceNow(m, watches?.get(m.id)))
+    .map(p => (!p ? null : p.currency === target ? p.amount : rates ? convertAmount(p.amount, p.currency, target, rates) : null))
+    .filter((p): p is number => p != null)
+  return prices.length ? { min: Math.min(...prices), max: Math.max(...prices) } : null
+}
+
+/** A general wish's open models (Not chosen ones kept apart), by id of the wish. */
+export function modelsByWish(items: readonly ShopItem[]): Map<string, ShopItem[]> {
+  const out = new Map<string, ShopItem[]>()
+  for (const i of items) {
+    if (!i.option_for) continue
+    out.set(i.option_for, [...(out.get(i.option_for) ?? []), i])
+  }
+  return out
+}
+
+/**
+ * The rows' prices summed in `target`; without rates only `target`-priced
+ * rows convert. A general wish counts once, as its range (its models never
+ * count on their own — `filterWishlist` leaves them out).
+ */
+export function totalsIn(items: readonly ShopItem[], target: ShopCurrency, rates: UsdRates | null, models?: ReadonlyMap<string, ShopItem[]>, watches?: ReadonlyMap<string, ShopPriceWatch>): Totals {
   let amount = 0
+  let max = 0
   let unpriced = 0
   const rest = new Map<ShopCurrency, number>()
   for (const item of items) {
-    if (item.price == null) { unpriced++; continue }
+    const range = item.kind === 'general' ? wishRange(item, models?.get(item.id) ?? [], rates, watches) : item.price == null ? null : { min: item.price, max: item.price }
+    if (!range) { unpriced++; continue }
     const c = currencyOf(item)
-    const v = c === target ? item.price : rates ? convertAmount(item.price, c, target, rates) : null
-    if (v == null) rest.set(c, (rest.get(c) ?? 0) + item.price)
-    else amount += v
+    const lo = c === target ? range.min : rates ? convertAmount(range.min, c, target, rates) : null
+    const hi = c === target ? range.max : rates ? convertAmount(range.max, c, target, rates) : null
+    if (lo == null || hi == null) rest.set(c, (rest.get(c) ?? 0) + range.max)
+    else { amount += lo; max += hi }
   }
   // Whole units: a converted sum's öre/kuruş are noise, not information.
   return {
     count: items.length,
     unpriced,
     amount: Math.round(amount),
+    max: Math.round(max),
     currency: target,
     unconverted: [...rest].map(([currency, a]) => ({ currency, amount: Math.round(a) })),
   }
 }
 
-/** "12 340 NOK" (+ "+ 300 EUR" for sums without a rate; no "0 NOK +" in front of those). */
+/** "12 340 NOK" or "12 340–15 340 NOK" (+ "+ 300 EUR" for sums without a rate; no "0 NOK +" in front of those). */
 export function totalsLabel(t: Totals): string {
   const parts = t.unconverted.map(u => formatMoney(u.amount, u.currency))
-  return (t.amount !== 0 || !parts.length ? [formatMoney(t.amount, t.currency), ...parts] : parts).join(' + ')
+  const main = t.max > t.amount
+    ? `${formatMoney(t.amount, t.currency).replace(` ${t.currency}`, '')}–${formatMoney(t.max, t.currency)}`
+    : formatMoney(t.amount, t.currency)
+  return (t.amount !== 0 || t.max !== 0 || !parts.length ? [main, ...parts] : parts).join(' + ')
 }
 
 /** "≈ 45 100 TRY" — the total in the other currency, rounded, or null without rates. */
@@ -244,18 +304,12 @@ export function groupByCategory(items: readonly ShopItem[], categories: readonly
 }
 
 /**
- * How many category columns fit a width (rem): one per 20rem (a 17rem card
- * plus room), never more than there are groups — a group with the width to
- * itself lays its cards out side by side instead.
+ * Every "Not any more" row, either list (a quick row only gets here from the
+ * AI or SQL) — kept, never deleted by the app. A model that was not chosen
+ * stays under its general wish instead.
  */
-export function groupColumnCount(widthRem: number, groups: number): number {
-  return Math.max(1, Math.min(groups, Math.floor((widthRem + 1) / 20)))
-}
-
-/** Wishlist rows marked "Not any more" — kept, never deleted by the app. */
-/** Every "Not any more" row, either list (a quick row only gets here from the AI or SQL). */
 export function droppedItems(items: readonly ShopItem[]): ShopItem[] {
-  return items.filter(i => i.status === 'dropped').sort(byNewest)
+  return items.filter(i => i.status === 'dropped' && !i.option_for).sort(byNewest)
 }
 
 // ── Quick list ───────────────────────────────────────────────────────────────
@@ -267,6 +321,32 @@ export function quickOpen(items: readonly ShopItem[]): ShopItem[] {
   return items
     .filter(i => listOf(i) === 'quick' && i.status === 'wishlist')
     .sort((a, b) => (a.created_at ?? '').localeCompare(b.created_at ?? ''))
+}
+
+/** "No rush" on the quick list is its low priority: sorted last in its store, kept off Daily. */
+export const isNoRush = (i: Pick<ShopItem, 'priority'>): boolean => i.priority === 'low'
+
+/** Quick-list rows to pick up that are not "No rush" (what Daily counts). */
+export function quickDue(items: readonly ShopItem[]): ShopItem[] {
+  return quickOpen(items).filter(i => !isNoRush(i))
+}
+
+/**
+ * Wishlist rows that also show on the quick list (migration 137), never moved
+ * there: one to pick up on the next errand, or a deal to check at its store
+ * from its day on ("Check: earphones · deal from 14.10.2026"). Ticking one
+ * there buys it — it stays a wishlist row, so it becomes yours.
+ */
+export function quickFromWishlist(items: readonly ShopItem[], today: string): ShopItem[] {
+  return items
+    .filter(i => listOf(i) === 'wishlist' && i.status === 'wishlist' && !i.option_for && i.kind !== 'general'
+      && (i.errand || (i.wait_for_deal && !!i.platform?.trim() && !!i.planned_date && i.planned_date <= today)))
+    .sort((a, b) => (a.created_at ?? '').localeCompare(b.created_at ?? ''))
+}
+
+/** Inside a store: what is needed first, "No rush" last, each in the order added. */
+export function sortForStore(rows: readonly ShopItem[]): ShopItem[] {
+  return [...rows].sort((a, b) => Number(isNoRush(a)) - Number(isNoRush(b)) || (a.created_at ?? '').localeCompare(b.created_at ?? ''))
 }
 
 /**
@@ -285,10 +365,10 @@ export function groupByStore(items: readonly ShopItem[]): StoreGroup[] {
     if (name && (item.created_at ?? '') >= g.latest) { g.title = name; g.latest = item.created_at ?? '' }
   }
   const list = [...groups.values()]
-  if (list.length === 1 && list[0].key === '') return [{ key: '', title: null, items: list[0].items }]
+  if (list.length === 1 && list[0].key === '') return [{ key: '', title: null, items: sortForStore(list[0].items) }]
   return list
     .sort((a, b) => (a.key === '' ? 1 : b.key === '' ? -1 : (a.title ?? '').localeCompare(b.title ?? '', 'en', { sensitivity: 'base' })))
-    .map(({ key, title, items: rows }) => ({ key, title: key === '' ? 'Any store' : title, items: rows }))
+    .map(({ key, title, items: rows }) => ({ key, title: key === '' ? 'Any store' : title, items: sortForStore(rows) }))
 }
 
 /** Quick-list rows ticked off today, last ticked first. */
@@ -337,6 +417,44 @@ export function storeNames(items: readonly ShopItem[]): string[] {
     else counts.set(key, { name, n: 1 })
   }
   return [...counts.values()].sort((a, b) => b.n - a.n || a.name.localeCompare(b.name)).map(c => c.name)
+}
+
+/**
+ * What the quick list shows, by store: its open rows plus the wishlist rows
+ * that go on it too (an errand, a deal that is due) — a wishlist row joins
+ * its store's group, one without a store goes under "Any store".
+ */
+export function quickGroups(items: readonly ShopItem[], today: string): StoreGroup[] {
+  return groupByStore([...quickOpen(items), ...quickFromWishlist(items, today)])
+}
+
+/**
+ * A new quick-list row from the add box or a scanned product: the title,
+ * the store (blank → none), "No rush" as low priority, the product's EAN and
+ * picture when there is one. Nothing else — Tape needs no category.
+ */
+export function quickAddInput(p: { title: string; store?: string | null; noRush?: boolean; ean?: string | null; image?: string | null }): CreateShopItemInput {
+  return {
+    title: p.title.trim(),
+    platform: p.store?.trim() || null,
+    list: 'quick',
+    ...(p.noRush ? { priority: 'low' as const } : {}),
+    ...(p.ean ? { ean: p.ean } : {}),
+    ...(p.image ? { image_url: p.image } : {}),
+  }
+}
+
+/** A Buy-again chip's fresh row: the latest purchase's title, store, category and product (EAN, picture), so its price comes back with it. */
+export function buyAgainInput(entry: BuyAgain): CreateShopItemInput {
+  const r = entry.row
+  return {
+    title: entry.title,
+    platform: r.platform,
+    category_id: r.category_id,
+    list: 'quick',
+    ...(r.ean ? { ean: r.ean } : {}),
+    ...(r.image_url ? { image_url: r.image_url } : {}),
+  }
 }
 
 // ── Bought ───────────────────────────────────────────────────────────────────

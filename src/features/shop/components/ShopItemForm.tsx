@@ -4,7 +4,8 @@ import { SegmentedControl, cx } from '../../../shared/ui'
 import { DateInput } from '../../../shared/components/DateInput'
 import { DecimalInput } from '../../recipes/components/foodLogKit'
 import { SHOP_CURRENCIES, defaultCurrencyFor } from '../shopModel'
-import type { ShopCategory, ShopCurrency, ShopList, ShopPriority, ShopRegion, ShopStatus } from '../types'
+import type { ShopCategory, ShopCurrency, ShopList, ShopPriority, ShopReason, ShopRegion, ShopStatus } from '../types'
+import { LinkReader } from './LinkReader'
 
 export const NEW_CATEGORY = '__new__'
 
@@ -26,6 +27,13 @@ export interface ShopDraft {
   plannedDate: string
   status: ShopStatus
   boughtDay: string
+  /** A general wish ("any model") instead of one product — new wishlist rows only. */
+  general: boolean
+  priceMin: number | null
+  priceMax: number | null
+  requirements: string
+  reason: ShopReason | ''
+  image: string | null
 }
 
 const PRIORITIES: { value: ShopPriority; label: string }[] = [
@@ -143,6 +151,14 @@ export function ShopItemForm({ draft, onChange, categories, stores, editing }: {
     </div>
   )
 
+  const reason = !quick && (
+    <div>
+      <span className="field-label">Why</span>
+      <SegmentedControl<ShopReason | ''> size="sm" value={draft.reason} onChange={r => onChange({ reason: r })}
+        options={[{ value: 'need', label: 'Need it' }, { value: 'fun', label: 'Just for fun' }, { value: '', label: 'Not set' }]} />
+    </div>
+  )
+
   // The quick list has its own tick (bought) and ✕ (delete with Undo), so its
   // rows get no status here: a quick row set to "Not any more", or ticked with
   // an earlier day, would land in no view. Moving between lists is for open
@@ -166,7 +182,7 @@ export function ShopItemForm({ draft, onChange, categories, stores, editing }: {
       <div>
         <label htmlFor={`${id}-title`} className="field-label">Item</label>
         <input id={`${id}-title`} value={draft.title} onChange={e => onChange({ title: e.target.value })}
-          placeholder={quick ? 'Milk, batteries, a gift card…' : 'What do you want to buy?'} autoFocus={!editing} className="input" />
+          placeholder={quick ? 'Milk, batteries, a gift card…' : draft.general ? 'A tablet with a pen for notes' : 'What do you want to buy?'} autoFocus={!editing} className="input" />
       </div>
 
       {draft.status === 'wishlist' && <div>
@@ -175,7 +191,38 @@ export function ShopItemForm({ draft, onChange, categories, stores, editing }: {
           options={[{ value: 'wishlist', label: 'Wishlist' }, { value: 'quick', label: 'Quick list' }]} />
       </div>}
 
-      {quick ? <>{store}{notes}</> : <>{category}<div className="grid grid-cols-1 gap-3 sm:grid-cols-2">{price}{store}</div>{priority}{buyOn}{notes}</>}
+      {!quick && !editing && (
+        <SegmentedControl<'one' | 'any'> size="sm" value={draft.general ? 'any' : 'one'} onChange={v => onChange({ general: v === 'any' })}
+          options={[{ value: 'one', label: 'One product' }, { value: 'any', label: 'Any model that fits' }]} />
+      )}
+
+      {!quick && !editing && !draft.general && <LinkReader url={draft.url} onUrl={url => onChange({ url })} onRead={r => onChange({
+        ...(r.title && !draft.title.trim() ? { title: r.title } : {}),
+        ...(r.price != null ? { price: r.price } : {}),
+        ...(r.currency ? { currency: r.currency } : {}),
+        ...(r.image ? { image: r.image } : {}),
+      })} />}
+
+      {quick ? <>{store}{notes}</> : draft.general ? <>
+        {category}
+        <div>
+          <span className="field-label">Price range</span>
+          <div className="flex max-w-sm items-center gap-2">
+            <DecimalInput value={draft.priceMin} onValue={v => onChange({ priceMin: v })} placeholder="From" aria-label="From" className="input min-w-0 flex-1 tabular-nums" />
+            <span className="text-fg-faint">–</span>
+            <DecimalInput value={draft.priceMax} onValue={v => onChange({ priceMax: v })} placeholder="To" aria-label="To" className="input min-w-0 flex-1 tabular-nums" />
+            <select value={draft.currency} onChange={e => onChange({ currency: e.target.value as ShopCurrency })} aria-label="Currency" className="select w-[6rem] shrink-0">
+              {SHOP_CURRENCIES.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+        </div>
+        <div>
+          <label htmlFor={`${id}-req`} className="field-label">Must have <span className="font-normal text-fg-faint">(one per line)</span></label>
+          <textarea id={`${id}-req`} value={draft.requirements} onChange={e => onChange({ requirements: e.target.value })} rows={3}
+            placeholder={'Pen support\n11 inch or bigger'} className="input resize-none" />
+        </div>
+        {reason}{priority}{notes}
+      </> : <>{category}<div className="grid grid-cols-1 gap-3 sm:grid-cols-2">{price}{store}</div>{reason}{priority}{buyOn}{notes}</>}
 
       {status}
 
@@ -187,7 +234,7 @@ export function ShopItemForm({ draft, onChange, categories, stores, editing }: {
         {more && (
           <div className="mt-1 flex flex-col gap-3 rounded-row border border-line bg-surface-2 p-3">
             {quick ? <>{category}{price}{priority}{buyOn}</> : null}
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">{region}{link}</div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">{region}{(quick || editing || draft.general) && link}</div>
           </div>
         )}
       </div>

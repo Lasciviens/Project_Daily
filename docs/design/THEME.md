@@ -459,6 +459,14 @@ default via `widthClassName`, `headerExtra` for a filter row, Back/Esc aware) an
 draggable bottom sheet on phones (`phoneHeight` 88dvh, `phoneStyle` to lift it above the keyboard).
 It sits on `z-drawer`, below the modal layer, so a popup opened from a drawer stacks above it.
 
+**Records** (Shop's item record, `features/shop/components/record/`) are an `xl` popup, full screen on
+phones, for an object with a life and many optional facts: a state pill + ONE row of actions, a strip of
+four numbers that answers the object's question for its state, then two columns by the popup's own width
+(`@[46rem]`). Facts read as text and turn into their editor on tap (`Fact`, one at a time); empty facts wait
+as "+" chips (`FactChips`) instead of empty inputs; edits gather in a draft and the footer shows
+Discard / Save only when something changed (closing with changes asks first). Creating stays a small `md`
+sheet — a record is for a row that already exists.
+
 **Non-modal floating windows** (the request composer) are not Dialogs: render them with `createPortal`
 straight into `<body>` (outside `#root`), which Headless UI never marks inert and never treats as an
 outside click. Drag with `useFloatingWindow` (`src/shared/hooks/`). Mark such UI with

@@ -75,3 +75,10 @@ verify_jwt = false
 # x-kobo-token.
 [functions.kobo-sync]
 verify_jwt = false
+
+# shop-price: Shop's price watch and the Norges Bank rates. Dual-auth: a
+# browser user JWT (validated in-code by getUser) OR the pg_cron daily sweep
+# (x-cron-secret === SHOP_PRICE_CRON_SECRET → acts as the single user, sweep
+# only). The cron path is not a Supabase JWT, so platform verification is off.
+[functions.shop-price]
+verify_jwt = false

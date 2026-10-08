@@ -47,8 +47,18 @@ export type EntityModalRequest =
   /** Log or edit a Hevy body measurement; `date` opens that day's row (default today). */
   | { kind: 'body-measurement'; date?: string }
   | { kind: 'wish'; id: string }
-  /** A Shop item: edit by `id`, or add one (`defaults` picks the list, a title, a category, a store). */
-  | { kind: 'shop-item'; id?: string; defaults?: { list?: 'wishlist' | 'quick'; title?: string; categoryId?: string; platform?: string } }
+  /** A Shop item: open by `id` (a wishlist row as its record), or add one (`defaults` picks the list, a title, a category, a store, a general wish). */
+  | { kind: 'shop-item'; id?: string; defaults?: { list?: 'wishlist' | 'quick'; title?: string; categoryId?: string; platform?: string; general?: boolean } }
+  /** Sell or give away one of your things (with its accessories), and where the money goes. */
+  | { kind: 'shop-sell'; id: string }
+  /** A thing's money chain: what earlier sales passed on, and "Try other prices". */
+  | { kind: 'shop-chain'; id: string }
+  /** Quick-add accessories to one of your things (or to a wish). */
+  | { kind: 'shop-accessory'; itemId: string }
+  /** Add a model to a general wish ("a tablet with a pen" → iPad Air). */
+  | { kind: 'shop-model'; wishId: string }
+  /** Add something you own (or had) from before the app, with ≈ dates. */
+  | { kind: 'shop-own'; had?: boolean }
   | { kind: 'project-item'; projectId: string; id?: string; phaseId?: string }
   | { kind: 'memory'; id: string }
   /** One book in the Books library (books, migration 126). */

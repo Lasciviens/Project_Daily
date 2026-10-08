@@ -34,15 +34,16 @@ function ToastItem({ toast }: { toast: Toast }) {
         <Icon className={`tone-text h-4 w-4 ${toast.type === 'loading' ? 'animate-spin' : ''}`} strokeWidth={2.2} aria-hidden />
       </span>
       <span className="flex-1 leading-snug">{toast.message}</span>
-      {toast.action && (
+      {[toast.extra, toast.action].map((a, i) => a && (
         <button
+          key={i}
           type="button"
-          onClick={e => { e.stopPropagation(); toast.action!.onClick() }}
-          className="-my-1 ml-1 min-h-[40px] shrink-0 rounded-control px-3 font-semibold text-accent-600 [@media(hover:hover)]:hover:bg-surface-hover [@media(pointer:coarse)]:min-h-[44px]"
+          onClick={e => { e.stopPropagation(); a.onClick() }}
+          className={`-my-1 min-h-[40px] shrink-0 rounded-control px-3 font-semibold text-accent-600 [@media(hover:hover)]:hover:bg-surface-hover [@media(pointer:coarse)]:min-h-[44px] ${i === 0 || !toast.extra ? 'ml-1' : '-ml-1'}`}
         >
-          {toast.action.label}
+          {a.label}
         </button>
-      )}
+      ))}
     </div>
   )
 }

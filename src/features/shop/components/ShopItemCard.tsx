@@ -5,7 +5,10 @@ import { formatDate } from '../../../shared/utils/dateFormat'
 import type { UsdRates } from '../../settings/subscriptionRules'
 import { approxOther, currencyOf, priceLabel } from '../shopModel'
 import { REGION_FLAG, SHOP_PRIORITY_TONE } from '../shopMeta'
-import type { ShopItem } from '../types'
+import { complete, type Amount } from '../ownModel'
+import { ItemThumb } from './shopKit'
+import { imageOf, money } from './shopFormat'
+import type { ShopItem, ShopPriceWatch } from '../types'
 import type { Task } from '../../todo/types'
 
 interface Props {
@@ -14,6 +17,10 @@ interface Props {
   task?: Pick<Task, 'id' | 'due_date' | 'status'> | null
   rates: UsdRates | null
   today: string
+  /** The link's last price read (shop-price), when it is for the row's current link. */
+  watch?: ShopPriceWatch | null
+  /** A planned sale's money towards it: what would still be needed. */
+  afterSale?: { needed: Amount; from: string } | null
   onEdit: () => void
   onBought: () => void
   onPlan: () => void
@@ -24,16 +31,20 @@ interface Props {
 }
 
 /** One wishlist row: what, how much, where and when — and the two everyday actions. */
-export function ShopItemCard({ item, task, rates, today, onEdit, onBought, onPlan, onOpenTask, onMoveToQuick, onDrop, onDelete }: Props) {
+export function ShopItemCard({ item, task, rates, today, watch, afterSale, onEdit, onBought, onPlan, onOpenTask, onMoveToQuick, onDrop, onDelete }: Props) {
   const price = priceLabel(item)
   const approx = item.price != null ? approxOther(item.price, currencyOf(item), rates) : null
-  const late = item.planned_date != null && item.planned_date < today
+  const late = item.planned_date != null && item.planned_date < today && !item.wait_for_deal
   const taskDone = task?.status === 'done'
+  const now = watch && watch.url === item.url && watch.low != null ? watch : null
+  const nowCur = (now?.currency ?? currencyOf(item)).toUpperCase()
+  const atTarget = now && item.target_price != null && nowCur === currencyOf(item) && (now.low as number) <= item.target_price
+  const dealOpen = item.wait_for_deal && (!item.planned_date || item.planned_date <= today)
 
   return (
     <div className="card flex flex-col gap-2 p-3">
       <div className="flex items-start gap-2">
-        <ToneDot tone={SHOP_PRIORITY_TONE[item.priority]} className="mt-[7px]" />
+        {imageOf(item, watch) ? <ItemThumb src={imageOf(item, watch)} size="sm" /> : <ToneDot tone={SHOP_PRIORITY_TONE[item.priority]} className="mt-[7px]" />}
         <button type="button" onClick={onEdit} className="min-h-[44px] min-w-0 flex-1 self-stretch text-left">
           <span className="block text-ui font-semibold leading-snug text-fg">
             {item.title}
@@ -63,7 +74,31 @@ export function ShopItemCard({ item, task, rates, today, onEdit, onBought, onPla
         </Menu>
       </div>
 
-      {(price || item.platform || item.planned_date || item.task_id || item.url) && (
+      {(now || item.wait_for_deal || afterSale || item.reason) && (
+        <div className="flex flex-col gap-0.5 text-meta tabular-nums">
+          {now && (
+            <span className={cx(atTarget ? 'text-success' : 'text-fg-muted')}>
+              Now {money(now.low as number, nowCur)} {now.source === 'prisjakt' ? 'on Prisjakt' : 'at the shop'}
+              {now.prev_low != null && now.prev_low !== now.low && <> · {(now.low as number) < now.prev_low ? '↓' : '↑'} {money(Math.abs((now.low as number) - now.prev_low), nowCur)}</>}
+              {atTarget && ' · at your target'}
+              {now.status !== 'ok' && <span className="text-warn"> · couldn't check {formatDate(now.checked_at)}</span>}
+            </span>
+          )}
+          {item.wait_for_deal && (
+            <span className={cx(dealOpen ? 'text-warn' : 'text-fg-muted')}>
+              {dealOpen ? 'Deal on now' : `Deal from ${formatDate(item.planned_date)}`}{item.platform ? ` at ${item.platform}` : ''}
+              {item.target_price != null && ` · target ${money(item.target_price, currencyOf(item))}`}
+              {item.deal_note && ` · ${item.deal_note}`}
+            </span>
+          )}
+          {afterSale && complete(afterSale.needed) && (
+            <span className="text-fg-muted">After selling {afterSale.from}: {money(Math.max(0, afterSale.needed.nok))} more</span>
+          )}
+          {item.reason && <span className="text-fg-faint">{item.reason === 'need' ? 'Need it' : 'Just for fun'}</span>}
+        </div>
+      )}
+
+      {(price || item.platform || (item.planned_date && !item.wait_for_deal) || item.task_id || item.url) && (
         <div className="ml-4 flex flex-wrap items-center gap-1.5">
           {price && (
             <span className="chip tabular-nums" title={approx ?? undefined}>
@@ -72,7 +107,7 @@ export function ShopItemCard({ item, task, rates, today, onEdit, onBought, onPla
             </span>
           )}
           {item.platform && <span className="chip">{item.platform}</span>}
-          {item.planned_date && (
+          {item.planned_date && !item.wait_for_deal && (
             <TonePill tone={late ? 'warn' : 'neutral'} className="tabular-nums">Buy on {formatDate(item.planned_date)}</TonePill>
           )}
           {item.task_id && (

@@ -12,6 +12,7 @@ const L = <K extends ModalKind>(kind: K, load: () => Promise<ComponentType<Entit
   lazyWithReload(`modal-${kind}`, load, ModalChunkFailed)
 
 const plan = () => import('../components/plan-modal/PlanEntityModals')
+const shop = () => import('../../features/shop/modals/ShopEntityModals')
 
 export const MODAL_REGISTRY: { [K in ModalKind]: Entry<K> } = {
   'task':           L('task', () => plan().then(m => m.TaskEntityModal)),
@@ -30,6 +31,11 @@ export const MODAL_REGISTRY: { [K in ModalKind]: Entry<K> } = {
   'body-measurement': L('body-measurement', () => import('../../features/health/modals/BodyMeasurementEntityModal').then(m => m.BodyMeasurementEntityModal)),
   'wish':           L('wish', () => import('../../features/wishes/modals/WishEntityModal').then(m => m.WishEntityModal)),
   'shop-item':      L('shop-item', () => import('../../features/shop/modals/ShopItemEntityModal').then(m => m.ShopItemEntityModal)),
+  'shop-sell':      L('shop-sell', () => shop().then(m => m.ShopSellModal)),
+  'shop-chain':     L('shop-chain', () => shop().then(m => m.ShopChainModal)),
+  'shop-accessory': L('shop-accessory', () => shop().then(m => m.ShopAccessoryModal)),
+  'shop-model':     L('shop-model', () => shop().then(m => m.ShopModelModal)),
+  'shop-own':       L('shop-own', () => shop().then(m => m.ShopOwnModal)),
   'project-item':   L('project-item', () => import('../../features/projects/modals/ProjectItemEntityModal').then(m => m.ProjectItemEntityModal)),
   'memory':         L('memory', () => import('../../features/ai/modals/MemoryEntityModal').then(m => m.MemoryEntityModal)),
   'book':           L('book', () => import('../../features/books/modals/BookEntityModal').then(m => m.BookEntityModal)),
