@@ -64,7 +64,8 @@ function ShopItemEditor({ item, defaults = {}, onClose, categories }: Props & { 
   const createItem = useCreateShopItem()
   const updateItem = useUpdateShopItem()
   const removeItems = useDeleteShopItems()
-  const [draft, setDraft] = useState<ShopDraft>(() => draftOf(item, defaults, categories))
+  const [seed] = useState<ShopDraft>(() => draftOf(item, defaults, categories))
+  const [draft, setDraft] = useState<ShopDraft>(seed)
   const [saving, setSaving] = useState(false)
   const stores = useMemo(() => storeNames(items), [items])
   const editing = !!item
@@ -105,13 +106,19 @@ function ShopItemEditor({ item, defaults = {}, onClose, categories }: Props & { 
         planned_date: draft.plannedDate || null,
       }
       if (item) {
+        // The category is written only when its controls changed: a category
+        // made on another device and not loaded here yet seeds as "No
+        // category", and saving a typo fix must not clear it.
+        const categoryTouched = draft.topId !== seed.topId || draft.subId !== seed.subId
+        const rest: Partial<typeof fields> = { ...fields }
+        delete rest.category_id
         const statusChanged = draft.status !== item.status
         const dayChanged = draft.status === 'bought' && draft.boughtDay && draft.boughtDay !== localDay(item.bought_at ?? item.updated_at)
         await updateItem.mutateAsync({
           id: item.id,
           quiet: true,
           patch: {
-            ...fields,
+            ...(categoryTouched ? fields : rest),
             // A price edited by hand is the owner's own, never an AI estimate any more.
             ...(draft.price !== item.price ? { price_source: draft.price != null ? 'manual' : null } : {}),
             ...(statusChanged ? { status: draft.status } : {}),

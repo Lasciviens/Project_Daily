@@ -22,9 +22,9 @@ export function currencyOf(item: Pick<ShopItem, 'currency' | 'region'>): ShopCur
   return item.currency ?? defaultCurrencyFor(item.region)
 }
 
-/** The other of the owner's two currencies, for the "≈" beside a total. */
+/** The "≈" beside a price: NOK ↔ TRY, and NOK for EUR/USD (the totals' currency). */
 export function otherCurrency(c: ShopCurrency): ShopCurrency {
-  return c === 'TRY' ? 'NOK' : 'TRY'
+  return c === 'NOK' ? 'TRY' : 'NOK'
 }
 
 /** Local yyyy-MM-dd of a timestamp (a purchase at 00:30 Oslo is that day, not yesterday). */
@@ -120,7 +120,7 @@ export const SORT_LABEL: Record<ShopSort, string> = {
   title: 'A–Z',
 }
 
-const PRIORITY_RANK: Record<ShopPriority, number> = { high: 0, medium: 1, low: 2 }
+export const PRIORITY_RANK: Record<ShopPriority, number> = { high: 0, medium: 1, low: 2 }
 
 /** The price in NOK when rates allow, else the bare number (so one currency still sorts right). */
 function comparablePrice(item: ShopItem, rates: UsdRates | null): number | null {
@@ -253,8 +253,9 @@ export function groupColumnCount(widthRem: number, groups: number): number {
 }
 
 /** Wishlist rows marked "Not any more" — kept, never deleted by the app. */
+/** Every "Not any more" row, either list (a quick row only gets here from the AI or SQL). */
 export function droppedItems(items: readonly ShopItem[]): ShopItem[] {
-  return items.filter(i => listOf(i) === 'wishlist' && i.status === 'dropped').sort(byNewest)
+  return items.filter(i => i.status === 'dropped').sort(byNewest)
 }
 
 // ── Quick list ───────────────────────────────────────────────────────────────

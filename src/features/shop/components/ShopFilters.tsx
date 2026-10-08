@@ -19,11 +19,13 @@ export function ShopFilters({ filters, onChange, sort, onSort, categories, colla
   categories: readonly ShopCategory[]
   collapsible?: boolean
 }) {
-  const [open, setOpen] = useState(false)
+  // null until the Filters button is used: then it alone decides, so a tap
+  // folds the selects away even while a filter is set.
+  const [open, setOpen] = useState<boolean | null>(null)
   const tops = categories.filter(c => !c.parent_id)
   const set = (patch: Partial<WishlistFilters>) => onChange({ ...filters, ...patch })
   const picked = Number(filters.category !== 'all') + Number(filters.region !== 'all') + Number(filters.priority !== 'all')
-  const showSelects = !collapsible || open || picked > 0
+  const showSelects = !collapsible || (open ?? picked > 0)
 
   const sortSelect = (
     <select value={sort} onChange={e => onSort(e.target.value as ShopSort)} aria-label="Sort" className="select">
@@ -41,7 +43,7 @@ export function ShopFilters({ filters, onChange, sort, onSort, categories, colla
       <div className="grid grid-cols-2 gap-2">
         {sortSelect}
         {collapsible && (
-          <button type="button" aria-expanded={showSelects} onClick={() => setOpen(o => !o)}
+          <button type="button" aria-expanded={showSelects} onClick={() => setOpen(!showSelects)}
             className={cx('btn-secondary justify-center gap-1.5', picked > 0 && 'text-accent-600')}>
             <SlidersHorizontal aria-hidden className="h-4 w-4" /> Filters{picked > 0 ? ` · ${picked}` : ''}
           </button>

@@ -82,7 +82,7 @@ function QuickAdd({ stores }: { stores: readonly string[] }) {
     <Card>
       <form onSubmit={submit} className="@container flex flex-col gap-2">
         <label htmlFor={`${id}-title`} className="field-label">Add to the quick list</label>
-        <div className="flex gap-2">
+        <div className="flex max-w-md gap-2">
           <input ref={input} id={`${id}-title`} value={title} onChange={e => setTitle(e.target.value)}
             placeholder="Milk, batteries, a gift card…" className="input min-w-0 flex-1" enterKeyHint="done" />
           <Button type="submit" variant="primary" icon={<Plus />} loading={create.isPending} disabled={!title.trim()} aria-label="Add">
@@ -163,10 +163,10 @@ function BuyAgain({ rows }: { rows: ReturnType<typeof buyAgain> }) {
           <button key={r.row.id} type="button"
             onClick={() => create.mutate({ input: { title: r.title, platform: r.row.platform, category_id: r.row.category_id, list: 'quick' }, quiet: true })}
             title={`Put ${r.title} back on the quick list`}
-            className="chip min-h-[36px] gap-1 hover:bg-surface-hover">
-            <RotateCcw aria-hidden className="h-3 w-3 text-fg-faint" />
-            {r.title}
-            {r.count > 1 && <span className="text-fg-faint tabular-nums">×{r.count}</span>}
+            className="chip min-h-[44px] max-w-full gap-1 hover:bg-surface-hover">
+            <RotateCcw aria-hidden className="h-3 w-3 shrink-0 text-fg-faint" />
+            <Truncate as="span" className="min-w-0">{r.title}</Truncate>
+            {r.count > 1 && <span className="shrink-0 text-fg-faint tabular-nums">×{r.count}</span>}
           </button>
         ))}
       </div>

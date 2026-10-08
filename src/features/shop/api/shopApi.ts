@@ -1,5 +1,6 @@
 import { supabase } from '../../../integrations/supabase/client'
 import { requireUser } from '../../../shared/utils/requireUser'
+import { defaultCurrencyFor } from '../shopModel'
 import type {
   ShopCategory, ShopItem, CreateShopCategoryInput, CreateShopItemInput, UpdateShopItemInput,
 } from '../types'
@@ -28,13 +29,24 @@ export async function createShopCategory(input: CreateShopCategoryInput): Promis
 
 // ─── Items ────────────────────────────────────────────────────────────────────
 
+// PostgREST returns at most 1,000 rows per request, and the quick list keeps
+// every ticked errand as a row (Buy again counts them), so read every page —
+// a silent cut would drop the OLDEST rows first: long-standing wishlist items.
+const PAGE = 1000
+
 export async function fetchShopItems(): Promise<ShopItem[]> {
-  const { data, error } = await supabase
-    .from('shop_items')
-    .select('*')
-    .order('created_at', { ascending: false })
-  if (error) throw error
-  return data ?? []
+  const rows: ShopItem[] = []
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await supabase
+      .from('shop_items')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: true })
+      .range(from, from + PAGE - 1)
+    if (error) throw error
+    rows.push(...(data ?? []))
+    if (!data || data.length < PAGE) return rows
+  }
 }
 
 // Migration 134 added list / currency / bought_at / task_id and made
@@ -79,7 +91,7 @@ export async function createShopItem(input: CreateShopItemInput): Promise<ShopIt
     planned_date: input.planned_date ?? null,
     source_type:  input.source_type ?? 'manual',
     list:         input.list ?? 'wishlist',
-    ...(input.price != null ? { currency: input.currency ?? (input.region === 'TR' ? 'TRY' : 'NOK') } : {}),
+    ...(input.price != null ? { currency: input.currency ?? defaultCurrencyFor(input.region) } : {}),
   }
   const first = await supabase.from('shop_items').insert(row).select().single()
   if (!first.error) return first.data
@@ -100,6 +112,7 @@ export async function updateShopItem(id: string, patch: UpdateShopItemInput): Pr
   // currency the form always sends, and refuse the rest by name.
   const needs = patch.list === 'quick' || patch.bought_at != null || patch.task_id != null
     || patch.currency === 'EUR' || patch.currency === 'USD'
+    || ('category_id' in patch && patch.category_id == null)
   if (needs) throw new Error(NEEDS_134)
   const retry = await supabase.from('shop_items').update(withoutNewColumns(patch as Record<string, unknown>)).eq('id', id)
   if (retry.error) throw retry.error

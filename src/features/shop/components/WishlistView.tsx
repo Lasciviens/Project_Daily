@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { ChevronDown, Plus, ShoppingBag, Undo2 } from 'lucide-react'
 import { Button, EmptyState, PageBoard, SectionLabel, Skeleton, cx } from '../../../shared/ui'
 import { useEntityModal } from '../../../shared/modals'
+import { toast } from '../../../app/store'
 import { todayStr } from '../../../shared/utils/dateUtils'
 import { useBreakpoint } from '../../../shared/hooks/useBreakpoint'
 import { useElementWidthRem } from '../../../shared/hooks/useElementWidth'
@@ -46,11 +47,18 @@ export function WishlistView({ items, categories, isLoading }: { items: ShopItem
   const columnCount = groupsWidth == null ? 1 : groupColumnCount(groupsWidth, groups.length)
   const columns = dealByIndex(groups, columnCount)
 
-  const taskIds = useMemo(() => [...new Set(shown.map(i => i.task_id).filter((id): id is string => !!id))], [shown])
+  // From every open row, sorted — a new filter or sort must not refetch the tasks.
+  const taskIds = useMemo(() => [...new Set(all.map(i => i.task_id).filter((id): id is string => !!id))].sort(), [all])
   const { data: tasks = [] } = useTasksByIds(taskIds)
   const taskById = new Map(tasks.map(t => [t.id, t]))
 
   function plan(item: ShopItem) {
+    // Before migration 134 the row has no task_id column: the task would be
+    // made and the link then refused — and a second tap would make another.
+    if (!('list' in item)) {
+      toast.warning('Plan it needs migration 134 (Shop lists) — apply it first.')
+      return
+    }
     modal.open({
       kind: 'task',
       config: { heading: 'Plan this purchase' },
@@ -87,7 +95,7 @@ export function WishlistView({ items, categories, isLoading }: { items: ShopItem
       {shown.length === 0 && all.length > 0 && (
         <p className="text-body text-fg-muted">
           Nothing matches these filters.{' '}
-          <button type="button" onClick={() => setFilters(NO_FILTERS)} className="font-semibold text-accent-600 hover:underline">Clear filters</button>
+          <button type="button" onClick={() => setFilters(NO_FILTERS)} className="inline-flex min-h-[44px] items-center font-semibold text-accent-600 hover:underline">Clear filters</button>
         </p>
       )}
       <div ref={groupsRef} className="grid items-start gap-x-4 gap-y-6" style={{ gridTemplateColumns: `repeat(${columnCount},minmax(0,1fr))` }}>
@@ -127,6 +135,7 @@ export function WishlistView({ items, categories, isLoading }: { items: ShopItem
                 <li key={item.id} className="flex items-center gap-2 py-1 pl-3 pr-1">
                   <button type="button" onClick={() => modal.open({ kind: 'shop-item', id: item.id })} className="min-h-[44px] min-w-0 flex-1 text-left text-body text-fg-2">
                     {item.title}
+                    {listOf(item) === 'quick' && <span className="ml-1.5 text-meta text-fg-faint">· quick list</span>}
                   </button>
                   <Button size="sm" variant="ghost" icon={<Undo2 />} onClick={() => update.mutate({ id: item.id, patch: { status: 'wishlist' } })}>Put back</Button>
                 </li>
@@ -143,7 +152,9 @@ export function WishlistView({ items, categories, isLoading }: { items: ShopItem
       layout={WISHLIST_BOARD}
       stackGap="gap-4"
       sections={{
-        totals: (all.length > 0 || isLoading) && (
+        // Always shown, even at 0: the rail keeps its track, and an empty one
+        // would leave a blank column left of the list (THEME W7).
+        totals: (
           <ShopTotalsCard
             label={filtersActive(filters) ? 'Shown · to buy' : 'Wishlist · to buy'}
             totals={totals}

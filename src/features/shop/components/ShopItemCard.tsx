@@ -34,7 +34,7 @@ export function ShopItemCard({ item, task, rates, today, onEdit, onBought, onPla
     <div className="card flex flex-col gap-2 p-3">
       <div className="flex items-start gap-2">
         <ToneDot tone={SHOP_PRIORITY_TONE[item.priority]} className="mt-[7px]" />
-        <button type="button" onClick={onEdit} className="min-w-0 flex-1 text-left">
+        <button type="button" onClick={onEdit} className="min-h-[44px] min-w-0 flex-1 self-stretch text-left">
           <span className="block text-ui font-semibold leading-snug text-fg">
             {item.title}
             {item.source_type === 'ai' && <Sparkles aria-label="Added by the AI" className="ml-1.5 inline h-3.5 w-3.5 align-[-2px] text-fg-faint" />}
@@ -76,7 +76,7 @@ export function ShopItemCard({ item, task, rates, today, onEdit, onBought, onPla
             <TonePill tone={late ? 'warn' : 'neutral'} className="tabular-nums">Buy on {formatDate(item.planned_date)}</TonePill>
           )}
           {item.task_id && (
-            <button type="button" onClick={onOpenTask} title="Open the task this purchase was planned as" className="min-h-[28px]">
+            <button type="button" onClick={onOpenTask} title="Open the task this purchase was planned as" className="inline-flex min-h-[44px] items-center">
               <TonePill tone={taskDone ? 'success' : 'info'} className="tabular-nums">
                 {taskDone ? <><Check aria-hidden className="h-3 w-3" /> Task done</> : <><ArrowRight aria-hidden className="h-3 w-3" /> Task{task?.due_date ? ` · ${formatDate(task.due_date)}` : ''}</>}
               </TonePill>
@@ -84,7 +84,7 @@ export function ShopItemCard({ item, task, rates, today, onEdit, onBought, onPla
           )}
           {item.url && (
             <a href={item.url} target="_blank" rel="noopener noreferrer"
-              className="inline-flex min-h-[28px] items-center gap-1 text-meta font-semibold text-accent-600 hover:underline">
+              className="inline-flex min-h-[44px] items-center gap-1 px-1 text-meta font-semibold text-accent-600 hover:underline">
               Link <ExternalLink aria-hidden className="h-3 w-3" />
             </a>
           )}

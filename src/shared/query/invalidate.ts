@@ -6,7 +6,8 @@ import { qk } from './keys'
 // group lists roots, so every query under them matches by prefix.
 const groups = {
   /** A task, its schedule slot or its calendar event changed. */
-  taskGraph: [qk.tasks.all, qk.schedule.all, qk.calendar.all],
+  // shop items: a deleted task clears shop_items.task_id (ON DELETE SET NULL).
+  taskGraph: [qk.tasks.all, qk.schedule.all, qk.calendar.all, qk.shop.items()],
   schedule: [qk.schedule.all, qk.calendar.all],
   /** Anything in the food diary / plan / targets / water. */
   nutrition: [qk.foodLog.all, qk.mealPlan.all, qk.water.all, qk.dayTargets.all, qk.dayTargets.profiles, qk.health.cutDiaryAll],

@@ -3,11 +3,9 @@ import { Link } from 'react-router-dom'
 import { Cell, CellHeader, CellLink } from './cellKit'
 import { Button, IconButton, SectionLabel, Truncate } from '../../../../shared/ui'
 import { useShopItems, useUpdateShopItem } from '../../../shop/hooks/useShop'
-import { listOf, priceLabel, quickOpen } from '../../../shop/shopModel'
+import { PRIORITY_RANK as RANK, listOf, priceLabel, quickOpen } from '../../../shop/shopModel'
 import type { ShopItem } from '../../../shop/types'
 import { REGION_FLAG } from '../../../shop/shopMeta'
-
-const RANK = { high: 0, medium: 1, low: 2 } as const
 
 // Purchases planned for the viewed day (shop_items.planned_date, either list)
 // — mark bought or take off the day right here; how much is on the quick

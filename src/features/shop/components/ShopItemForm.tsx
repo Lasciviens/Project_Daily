@@ -3,7 +3,7 @@ import { ChevronDown } from 'lucide-react'
 import { SegmentedControl, cx } from '../../../shared/ui'
 import { DateInput } from '../../../shared/components/DateInput'
 import { DecimalInput } from '../../recipes/components/foodLogKit'
-import { SHOP_CURRENCIES } from '../shopModel'
+import { SHOP_CURRENCIES, defaultCurrencyFor } from '../shopModel'
 import type { ShopCategory, ShopCurrency, ShopList, ShopPriority, ShopRegion, ShopStatus } from '../types'
 
 export const NEW_CATEGORY = '__new__'
@@ -127,7 +127,7 @@ export function ShopItemForm({ draft, onChange, categories, stores, editing }: {
         onChange={e => {
           const r = e.target.value as ShopRegion | ''
           // A price typed before picking Turkey is most likely in lira, and back.
-          onChange({ region: r, ...(draft.price == null ? { currency: r === 'TR' ? 'TRY' : 'NOK' } : {}) })
+          onChange({ region: r, ...(draft.price == null ? { currency: defaultCurrencyFor(r || null) } : {}) })
         }} className="select">
         <option value="">Anywhere</option>
         <option value="NO">🇳🇴 Norway</option>
@@ -143,7 +143,11 @@ export function ShopItemForm({ draft, onChange, categories, stores, editing }: {
     </div>
   )
 
-  const status = editing && (
+  // The quick list has its own tick (bought) and ✕ (delete with Undo), so its
+  // rows get no status here: a quick row set to "Not any more", or ticked with
+  // an earlier day, would land in no view. Moving between lists is for open
+  // rows only — a bought or dropped row lives in its own list's history.
+  const status = editing && !quick && (
     <div>
       <span className="field-label">Status</span>
       <SegmentedControl<ShopStatus> size="sm" value={draft.status} onChange={s => onChange({ status: s })}
@@ -165,11 +169,11 @@ export function ShopItemForm({ draft, onChange, categories, stores, editing }: {
           placeholder={quick ? 'Milk, batteries, a gift card…' : 'What do you want to buy?'} autoFocus={!editing} className="input" />
       </div>
 
-      <div>
+      {draft.status === 'wishlist' && <div>
         <span className="field-label">List</span>
         <SegmentedControl<ShopList> size="sm" value={draft.list} onChange={l => onChange({ list: l })}
           options={[{ value: 'wishlist', label: 'Wishlist' }, { value: 'quick', label: 'Quick list' }]} />
-      </div>
+      </div>}
 
       {quick ? <>{store}{notes}</> : <>{category}<div className="grid grid-cols-1 gap-3 sm:grid-cols-2">{price}{store}</div>{priority}{buyOn}{notes}</>}
 

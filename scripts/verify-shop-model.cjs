@@ -36,7 +36,7 @@ console.log('lists and currencies')
 check('a row without `list` (before 134) is a wishlist row', M.listOf({}) === 'wishlist' && M.listOf({ list: 'quick' }) === 'quick')
 check('its own currency wins', M.currencyOf({ currency: 'EUR', region: 'TR' }) === 'EUR')
 check('no currency: Turkey → TRY, otherwise NOK', M.currencyOf({ currency: null, region: 'TR' }) === 'TRY' && M.currencyOf({ currency: null, region: null }) === 'NOK' && M.currencyOf({ region: 'NO' }) === 'NOK')
-check('the other currency beside NOK is TRY and back', M.otherCurrency('NOK') === 'TRY' && M.otherCurrency('TRY') === 'NOK' && M.otherCurrency('EUR') === 'TRY')
+check('the other currency beside NOK is TRY and back; EUR/USD show NOK', M.otherCurrency('NOK') === 'TRY' && M.otherCurrency('TRY') === 'NOK' && M.otherCurrency('EUR') === 'NOK' && M.otherCurrency('USD') === 'NOK')
 
 console.log('search')
 check('fold: accents and ø/æ/ı', M.fold('Kjøttdeig') === 'kjottdeig' && M.fold('Şeker') === 'seker' && M.fold('Iğdır') === 'igdir' && M.fold('Blåbær') === 'blabaer')
@@ -134,6 +134,19 @@ check('spent this month / year / all time', s.month.amount === 6000 && s.year.am
 console.log('planning')
 check('"Buy <title>", due on its buy-on day, with its notes', eq(M.planDefaults({ title: ' Lamp ', planned_date: '2026-10-01', notes: 'the brass one' }), { title: 'Buy Lamp', dueDate: '2026-10-01', notes: 'the brass one' }))
 check('no buy-on day → no due date', eq(M.planDefaults({ title: 'Lamp', planned_date: null, notes: null }), { title: 'Buy Lamp' }))
+
+console.log('days near midnight UTC and dropped rows')
+{
+  // 22:30 UTC on 06.10 is already 07.10 in Oslo and Tokyo, still 06.10 in Los Angeles.
+  const late = item({ title: 'Late buy', status: 'bought', bought_at: '2026-10-06T22:30:00.000Z' })
+  const d = new Date('2026-10-06T22:30:00.000Z')
+  const expected = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  check('a purchase at 22:30 UTC files under the local day', M.boughtDay(late) === expected, `${M.boughtDay(late)} vs ${expected}`)
+  check('picked up on that local day, not the UTC one', M.pickedUpOn([{ ...late, list: 'quick' }], expected).length === 1)
+  const dq = item({ title: 'Old errand', list: 'quick', status: 'dropped' })
+  const dw = item({ title: 'Old wish', status: 'dropped' })
+  check('"Not any more" lists dropped rows of both lists', eq(M.droppedItems([dq, dw, item({})]).map(i => i.title).sort(), ['Old errand', 'Old wish']))
+}
 
 console.log(`\n${passed} passed, ${failed} failed`)
 process.exit(failed ? 1 : 0)

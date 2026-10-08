@@ -34,7 +34,9 @@ export function BoughtView({ items, isLoading }: { items: ShopItem[]; isLoading:
       layout={BOUGHT_BOARD}
       stackGap="gap-4"
       sections={{
-        spent: bought.length > 0 && (
+        // Always shown, even at 0: the board keeps this rail's track, and an
+        // empty one would leave a blank column left of the list (THEME W7).
+        spent: (
           <ShopTotalsCard label="Spent this year" totals={spent.year} rates={rates} ratesDate={date} failed={failed}>
             <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 border-t border-line pt-2 text-meta">
               <SpentLine label="This month" totals={spent.month} />
