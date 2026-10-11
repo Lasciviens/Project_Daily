@@ -38,7 +38,12 @@ that number would collide with a deleted one in history.
 ### Migration Rules
 
 1. **File naming:** `NNN_short_description.sql` — zero-padded three digits, snake_case description. Check `ls supabase/migrations` for the current highest number before picking the next one.
-   **It runs automatically on merge, exactly once:** the whole file is sent as ONE query, so without its own `BEGIN`/`COMMIT` it is one transaction together with its `deploy.applied_migrations` row — a failure keeps nothing and the next merge tries it again. Never edit a migration after it ran (the workflow only warns and does not run it again): put the change in a new file. Nothing that cannot run inside a transaction (`CREATE INDEX CONCURRENTLY`, `VACUUM`) — the SQL editor has the same limit.
+   **It runs automatically on merge, exactly once** (`scripts/deploy/run-migrations.mjs`): the whole file is sent as ONE query together with its row in `deploy.applied_migrations`, so it is one transaction — a failure keeps nothing and the next merge tries it again. Therefore:
+   - **No `BEGIN`/`COMMIT`/`ROLLBACK`/`SAVEPOINT` at the top level** (the PR check refuses them; function bodies are fine). For repeatable read put `set transaction isolation level repeatable read;` on the first line.
+   - Nothing that cannot run inside a transaction (`CREATE INDEX CONCURRENTLY`, `VACUUM`).
+   - Never edit or rename a migration after it ran (the workflow only warns and does not run it again): put the change in a new file.
+   - The order on merge is always **migrations → edge functions → website**. When a function must be live BEFORE a migration (as 130 and 136 needed), ship two PRs: the function first, the migration in the next.
+   - Actions logs are public: no personal data in `raise notice`/`raise exception` texts.
 2. **Always idempotent.** `CREATE TABLE IF NOT EXISTS`, `CREATE INDEX IF NOT EXISTS`, `DROP TRIGGER IF EXISTS` before `CREATE TRIGGER`, and the `DO $$ ... pg_policies` guard for policies (rule 4). Never assume a clean slate — every migration must survive being re-run.
 3. **Always enable RLS** immediately after `CREATE TABLE`:
    ```sql
@@ -391,7 +396,7 @@ which door the write came through.
 - CORS: include `Access-Control-Allow-Origin`, list every custom header the
   function accepts in `Access-Control-Allow-Headers`, and handle the OPTIONS
   preflight.
-- Deploy: **manual** via Supabase Dashboard or `supabase functions deploy <name>`. GitHub Actions does not deploy functions. There is no CI job for them.
+- Deploy: **automatic on merge** — `.github/workflows/deploy.yml` deploys every function (`supabase functions deploy --use-api`), after the migrations and before the website (`docs/deploy-setup.md`). A hand deploy is replaced on the next merge.
 
 **Three auth models — pick one deliberately, and match `supabase/config.toml`:**
 
@@ -410,25 +415,19 @@ which door the write came through.
 
 Models 2 and 3 **require `verify_jwt = false`**: platform JWT verification
 rejects the call before our code runs, so the webhook or cron silently stops
-working (the long-standing Hevy/Health gotcha). Current set:
-
-| Function | `verify_jwt` | Authenticates by |
-|---|---|---|
-| `hevy-sync` | false | `Authorization: Bearer <HEVY_WEBHOOK_SECRET>` (Hevy's webhook) |
-| `health-export-webhook` | false | `Authorization: Bearer <HEALTH_EXPORT_WEBHOOK_SECRET>` |
-| `ai-proxy` | false | user JWT via `getUser` **or** `x-phone-secret` == `PHONE_GATEWAY_SECRET` |
-| `phone-gateway` | false | `x-phone-secret` only, then acts as `HEVY_USER_ID` via the service role |
-| `push-send` | false | user JWT **or** `x-cron-secret` == `PUSH_CRON_SECRET` (pg_cron) |
-
-Every other function keeps `verify_jwt` on (the default) and validates the
-browser JWT in code.
+working (the long-standing Hevy/Health gotcha). **`supabase/config.toml` is the
+one list** (14 functions on 11.10.2026); every deploy applies it, and a function
+missing from it gets JWT verification switched ON. A browser call without a
+JWT (`fetch` without `Authorization`, an `<img>`) needs the same entry, like
+`news-proxy`. `scripts/verify-deploy-migrations.mjs` fails when a call from
+`src/`, a cron job, a device script or a setup guide targets a function that is
+not listed.
 
 Rules for the secret-comparison paths:
 - **Fail closed.** A missing Vault value must reject the request (`if (!secret || given !== secret) return 401`), never fall through to an unauthenticated path.
 - Never log the secret, the header value, or a diff of the two.
-- A function listed above must have the same setting in `supabase/config.toml`
-  **and** "Enforce JWT Verification" toggled off in the Dashboard when deployed
-  by paste — the config file only applies on a CLI deploy.
+- A Dashboard paste does not read `supabase/config.toml`: in an emergency hand
+  deploy, set "Enforce JWT Verification" to match the file.
 - Adding a new secret-authenticated function means a Vault entry plus a
   `config.toml` block; list both in the PR's manual steps.
 

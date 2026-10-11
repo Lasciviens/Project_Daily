@@ -244,11 +244,12 @@ test dependency); one-off logic verification ships as a throwaway script under
 
 ```mermaid
 flowchart TD
-    PUSH([Push / merge to main]) --> GHA[GitHub Actions<br/>build-and-deploy]
+    PUSH([Push / merge to main]) --> GHA[GitHub Actions: Deploy<br/>main's newest commit only]
     DISPATCH([Manual workflow_dispatch]) --> GHA
-    GHA --> MIG[backend: new migrations<br/>scripts/deploy/run-migrations.mjs]
+    GHA --> TOK[backend: token check]
+    TOK --> MIG[backend: new migrations<br/>scripts/deploy/run-migrations.mjs]
     MIG --> FN[backend: supabase functions deploy<br/>JWT settings from config.toml]
-    FN --> VITE[npm run build<br/>needs every VITE_* repo secret]
+    FN --> VITE[build-and-deploy: npm run build<br/>needs every VITE_* repo secret]
     VITE --> ARTIFACT[Upload dist/ as a Pages artifact]
     ARTIFACT --> D1[deploy-pages attempt 1<br/>continue-on-error]
     D1 -- succeeded --> PAGES([GitHub Pages live])
@@ -262,17 +263,19 @@ Notes on the pipeline, all in `.github/workflows/deploy.yml`:
 
 - The `backend` job runs first: migrations numbered above 140 that have not run
   yet (each once, recorded in `deploy.applied_migrations`), then every edge
-  function. A failing migration stops the run, so the functions and the website
-  stay on the previous version. Without the secrets `SUPABASE_ACCESS_TOKEN` and
-  `SUPABASE_DB_URL` it only prints a notice. Setup and dry run:
-  `docs/deploy-setup.md`.
+  function. A failing step stops the run, so the functions and the website
+  stay on the previous version. The secrets `SUPABASE_ACCESS_TOKEN` and
+  `SUPABASE_DB_URL` live in the environment `production` (main only); without
+  them it only warns. Setup and dry run: `docs/deploy-setup.md`.
 - The website uses the official `actions/deploy-pages` mechanism (not a
   `gh-pages` branch).
 - The Pages deploy step is intermittently flaky, so attempt 1 runs with
   `continue-on-error` and only the retry gates the job. A red-then-green run is
   expected behaviour, not a broken build.
-- `concurrency: { group: pages, cancel-in-progress: false }` — deploys queue
-  instead of cancelling each other.
+- `concurrency: { group: pages, cancel-in-progress: false }` — one run at a
+  time; a third merge replaces a second one still waiting, and a run for an
+  older commit than main's newest deploys nothing (the newest run deploys
+  everything).
 - The build reads its `VITE_*` values from **GitHub Actions secrets**. A missing
   one produces a broken deploy rather than a failed build, because most of them
   only fail at call time.
