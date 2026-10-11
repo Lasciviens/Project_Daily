@@ -24,7 +24,7 @@ const { planStatus, pickNextTrainingSession } = require('../src/features/trainin
 const { buildMeasurementPayload, ALL_FIELDS } = require('../src/features/training/bodyMeasurementFields')
 const { workoutLocalDay, localDayBoundsIso, workoutWindowFilter } = require('../src/features/training/workoutDates')
 const { resolveExerciseGif } = require('../src/features/training/exerciseGifResolver')
-const { parseStravaCallback } = require('../src/features/training/stravaMeta')
+const { parseStravaCallback, takeStravaState } = require('../src/features/training/stravaMeta')
 
 let passed = 0
 let failed = 0
@@ -204,6 +204,12 @@ console.log('\n== parseStravaCallback ==')
   const d = parseStravaCallback('', '#/settings?tab=integrations&from=strava&error=access_denied')
   check('a denied consent is reported, not exchanged', d && d.error === 'access_denied' && d.code === null)
   check('a plain Connections visit is no callback', parseStravaCallback('', '#/settings?tab=integrations') === null)
+  const e = parseStravaCallback('', '#/settings?tab=subscriptions&from=strava?state=strava-ab12&code=abc&scope=read')
+  check('the state comes back with the code', e && e.state === 'strava-ab12')
+  check('state matches the one this tab sent', takeStravaState('strava-ab12', () => 'strava-ab12') === true)
+  check('a code with no state is refused', takeStravaState(null, () => 'strava-ab12') === false)
+  check('a code with another state is refused', takeStravaState('strava-zz', () => 'strava-ab12') === false)
+  check('a code when this tab never pressed Connect is refused', takeStravaState('strava-ab12', () => null) === false)
 }
 
 console.log(`\n${passed} passed, ${failed} failed`)

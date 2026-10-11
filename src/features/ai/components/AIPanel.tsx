@@ -5,7 +5,8 @@ import {
   Sparkles, ChevronDown, Dumbbell, Mic, Volume2, NotebookPen, Eraser, Camera, SendHorizontal, ArrowDown, X,
 } from 'lucide-react'
 import { useUIStore, toast } from '../../../app/store'
-import { sendMessage, sendCoachMessage, AI_MODEL_OPTIONS } from '../api/aiApi'
+import { sendMessage, sendCoachMessage, settleAIAction, AI_MODEL_OPTIONS } from '../api/aiApi'
+import { ConfirmCards, type ChatConfirm } from './ConfirmCards'
 import type { Message, AIModel } from '../api/aiApi'
 import { useVoiceChat } from '../hooks/useVoiceChat'
 import { useKeyboardInset, useStickToBottom } from '../hooks/useChatViewport'
@@ -45,7 +46,7 @@ function renderMarkdown(text: string): React.ReactNode {
 
 // Chat messages carry an optional activity trace (tool calls the AI ran),
 // shown behind a "Show detail" link. The extra field is ignored by the backend.
-interface ChatMessage extends Message { steps?: string[]; model?: string }
+interface ChatMessage extends Message { steps?: string[]; model?: string; confirms?: ChatConfirm[] }
 
 const SUGGESTIONS = [
   'What should I focus on today?',
@@ -76,8 +77,13 @@ export function AIPanel() {
   const phone = useBreakpoint() === 'phone'
   const qc = useQueryClient()
   const [messages, setMessages] = useState<ChatMessage[]>(() => {
-    try { const raw = localStorage.getItem(STORAGE_KEY); return raw ? JSON.parse(raw) as ChatMessage[] : [] }
-    catch { return [] }
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY)
+      const saved = raw ? JSON.parse(raw) as ChatMessage[] : []
+      // A card left mid-tap before a reload is tappable again (the server
+      // answers "expired" for one already used).
+      return saved.map(m => (m.confirms ? { ...m, confirms: m.confirms.map(c => (c.state === 'busy' ? { ...c, state: undefined } : c)) } : m))
+    } catch { return [] }
   })
   const [input,       setInput]       = useState('')
   const [loading,     setLoading]     = useState(false)
@@ -225,7 +231,7 @@ export function AIPanel() {
 
     try {
       const reply = await (coachMode ? sendCoachMessage(next, model) : sendMessage(next, model))
-      setMessages(m => [...m, { role: 'assistant', content: reply.text, steps: reply.steps, model: reply.model }])
+      setMessages(m => [...m, { role: 'assistant', content: reply.text, steps: reply.steps, model: reply.model, ...(reply.confirms?.length ? { confirms: reply.confirms } : {}) }])
       // The turn may have written to the DB — refresh every AI-writable view.
       void invalidate(qc, 'aiWrite')
       // Voice mode: read the answer out, then hand the mic back for the next
@@ -238,6 +244,23 @@ export function AIPanel() {
       setError(err instanceof Error ? err.message : 'Something went wrong')
     } finally {
       setLoading(false)
+    }
+  }
+
+  // Confirm / Cancel on a delete or routine change the assistant proposed.
+  async function decide(id: string, decision: 'confirm' | 'cancel') {
+    const mark = (state: ChatConfirm['state']) => setMessages(m => m.map(msg => msg.confirms?.some(c => c.id === id)
+      ? { ...msg, confirms: msg.confirms.map(c => (c.id === id ? { ...c, state } : c)) }
+      : msg))
+    mark('busy')
+    try {
+      const res = await settleAIAction(id, decision)
+      mark(decision === 'confirm' ? 'confirmed' : 'cancelled')
+      setMessages(m => [...m, { role: 'assistant', content: res.text, steps: res.steps }])
+      if (decision === 'confirm') void invalidate(qc, 'aiWrite')
+    } catch (err) {
+      mark(undefined)
+      toast.error(err instanceof Error ? err.message : 'Could not finish that')
     }
   }
 
@@ -403,6 +426,7 @@ export function AIPanel() {
                     {renderMarkdown(msg.content)}
                   </div>
                 )}
+                {msg.confirms && msg.confirms.length > 0 && <ConfirmCards confirms={msg.confirms} onDecide={decide} />}
                 {msg.role === 'assistant' && (msg.model || (msg.steps && msg.steps.length > 0)) && (
                   <div className="flex items-center gap-3 px-1">
                     {/* Which model ACTUALLY answered — the fallback chain can

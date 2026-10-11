@@ -44,7 +44,7 @@ local core = require("lbcore")
 local control = require("lbcontrol")
 local extras = require("lbextras")
 
-local VERSION = "1.3.0"
+local VERSION = "1.4.0"
 local DEFAULT_SERVER = "https://hsaedwwqpcjizeozjbch.supabase.co/functions/v1/kobo-sync"
 local NICKEL_DB = "/mnt/onboard/.kobo/KoboReader.sqlite"
 local DEFAULT_INBOX = "/mnt/onboard/Send to Kobo"
@@ -123,6 +123,42 @@ end
 
 -- ── HTTP ─────────────────────────────────────────────────────────────────────
 
+-- KOReader ships this bundle but never passes it to LuaSec, whose default is
+-- verify = "none" (docs/kobo/PLAN.md §3.0). The device secret travels on every
+-- call, so the plugin checks the chain against the bundle and the name itself.
+-- Settings → "Check the server's certificate" turns it off if a sync ever fails
+-- with a certificate error (security audit 10.10.2026).
+local CA_BUNDLE = "data/ca-bundle.crt"
+
+local function verifiedCreate(url_host)
+    local https = require("ssl.https")
+    local make = https.tcp({
+        verify = "peer", cafile = CA_BUNDLE, protocol = "any",
+        options = { "all", "no_sslv2", "no_sslv3", "no_tlsv1" },
+    })
+    return function()
+        local conn = make()
+        local connect = conn.connect
+        conn.connect = function(self, host, port)
+            local ok, err = connect(self, host, port)
+            if not ok then return nil, err end
+            local cert = self.sock and self.sock.getpeercertificate and self.sock:getpeercertificate()
+            local names = {}
+            if cert then
+                local okx, ext = pcall(cert.extensions, cert)
+                local oks, subj = pcall(cert.subject, cert)
+                names = core.certDnsNames(okx and ext or nil, oks and subj or nil)
+            end
+            if not core.hostMatches(url_host, names) then
+                pcall(function() self.sock:close() end)
+                return nil, "certificate check failed: not issued for " .. tostring(url_host)
+            end
+            return 1
+        end
+        return conn
+    end
+end
+
 local function request(method, url, headers, body, sink_file)
     local http = require("socket.http")
     local ltn12 = require("ltn12")
@@ -130,6 +166,10 @@ local function request(method, url, headers, body, sink_file)
     local socketutil = require("socketutil")
     local chunks = {}
     local req = { method = method, url = url, headers = headers or {} }
+    local host = url:match("^https://([^/:?#]+)")
+    if host and openSettings():nilOrTrue("verify_tls") and lfs.attributes(CA_BUNDLE, "mode") == "file" then
+        req.create = verifiedCreate(host)
+    end
     if body then
         req.source = ltn12.source.string(body)
         req.headers["Content-Length"] = tostring(#body)
@@ -1114,6 +1154,7 @@ function LascisBoard:addToMainMenu(menu_items)
                     toggle(self, "auto_inbox", _("Download sent books automatically")),
                     toggle(self, "auto_news", _("Sync the news every morning")),
                     toggle(self, "footer_goal", _("Today's goal and streak in the status bar (reopen the book)")),
+                    toggle(self, "verify_tls", _("Check the server's certificate (turn off only if syncing fails with a certificate error)")),
                     {
                         text_func = function() return T(_("AI answers in: %1"), self:conf():readSetting("ai_language") or "English") end,
                         sub_item_table = (function()

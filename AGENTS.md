@@ -103,6 +103,23 @@ that number would collide with a deleted one in history.
     migrations that name a since-dropped table stop being re-runnable (`037`
     names `recipe_meal_plans`, which `061` drops) — acceptable for applied
     history, never acceptable for the migration you are writing.
+12. **Owner lock (`139`).** The app serves one owner (plus an optional test
+    account listed in `public.app_allowed_users`). Every table in `public` and
+    `storage.objects` carries the restrictive policy `app_owner_lock`
+    (`public.is_app_user()`), so any other signed-in account sees and writes
+    nothing. **A migration that creates a table must end with**
+    `select public.owner_lock_apply('public.<table>');` —
+    `scripts/verify-owner-lock.cjs` fails otherwise. Undo in an emergency:
+    `select public.owner_lock_disable();` (drops every `app_owner_lock` policy).
+13. **Token tables are service-role only.** A table holding a provider token
+    or secret gets `REVOKE ALL ON … FROM anon, authenticated` in the migration
+    that creates it (044, 140), RLS on, no browser policy, and never enters
+    `ai-proxy`'s `DB_CATALOG`. The browser only ever sees derived status.
+14. **A trigger that inserts a row tied to a user** (audit, outbox, queue) must
+    skip a user that no longer exists (`IF NOT EXISTS (SELECT 1 FROM auth.users
+    WHERE id = …) THEN RETURN …`): deleting an account cascades into every
+    table, and an insert for the vanishing user aborts the whole deletion
+    (135, 140).
 
 ---
 
@@ -192,6 +209,17 @@ decision — externally synced tables (`hevy_*`, `health_*`, `strava_activities`
 `movies`, `tv_series`) are `'ro'`; token/secret tables are never listed at all.
 Changing the catalog means **redeploying `ai-proxy`**; say so in the PR's manual
 steps.
+
+Two lists beside it guard what the assistant may DO (security audit
+10.10.2026, `scripts/verify-ai-confirm.cjs`):
+- `NEEDS_CONFIRM` — tools that only become a Confirm card (today `db_delete`,
+  `update_hevy_routine`). A new tool that deletes, overwrites or writes to an
+  outside account goes here.
+- `AI_NO_WRITE` — columns the assistant may never set: anything that links a
+  row to an object in an outside account (a Google Calendar event or Task, a
+  Trakt note or list, an ES-DE or ScreenScraper entry, a login session),
+  because a background job then changes or deletes that object. A new such
+  column goes here.
 
 ---
 
@@ -364,8 +392,11 @@ which door the write came through.
 **Three auth models — pick one deliberately, and match `supabase/config.toml`:**
 
 1. **Browser** — validate the caller's JWT in code with
-   `supabase.auth.getUser(authHeader.replace('Bearer ', ''))`. Default; platform
-   `verify_jwt` may stay on.
+   `supabase.auth.getUser(authHeader.replace('Bearer ', ''))`, **then** check the
+   caller with the function's own `isAppUser(user.id)` copy (owner lock, `139`):
+   a valid JWT only proves "some account", and platform `verify_jwt` alone even
+   admits the public anon key. Copy the helper verbatim from another function
+   (`scripts/verify-owner-lock.cjs` checks every copy is identical).
 2. **Third-party webhook** — the sender presents its own
    `Authorization: Bearer <vault secret>`, which is *not* a Supabase JWT.
 3. **Device / cron** — a custom header secret (`x-phone-secret`,

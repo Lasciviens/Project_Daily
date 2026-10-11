@@ -1,4 +1,5 @@
 import { supabase } from '../../../integrations/supabase/client'
+import { newStravaState } from '../stravaMeta'
 
 const EDGE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 const STRAVA_CLIENT_ID = import.meta.env.VITE_STRAVA_CLIENT_ID
@@ -16,6 +17,7 @@ async function authHeader(): Promise<Record<string, string>> {
   return { Authorization: `Bearer ${session!.access_token}` }
 }
 
+/** Built when Connect is pressed: each call starts a new state for this tab. */
 export function buildStravaOAuthUrl(): string {
   const params = new URLSearchParams({
     client_id:     STRAVA_CLIENT_ID,
@@ -23,6 +25,7 @@ export function buildStravaOAuthUrl(): string {
     response_type: 'code',
     approval_prompt: 'auto',
     scope:         'read,activity:read_all,profile:read_all',
+    state:         newStravaState(),
   })
   return `https://www.strava.com/oauth/authorize?${params}`
 }

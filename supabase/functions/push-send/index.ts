@@ -5,8 +5,19 @@
 //   • a browser (user JWT) with an explicit { title, body } — ad-hoc send.
 // verify_jwt = false (config.toml): the cron path is a shared secret, not a JWT.
 // Expired/gone subscriptions (404/410) are pruned automatically.
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.107.0'
 import webpush from 'npm:web-push@3.6.7'
+
+// Owner lock (security audit 10.10.2026, migration 139): this function serves
+// only the owner (HEVY_USER_ID) and accounts listed in app_allowed_users (for
+// example a test account). The owner never needs the table, so the check also
+// works before migration 139 is applied.
+async function isAppUser(userId: string): Promise<boolean> {
+  if (userId === Deno.env.get('HEVY_USER_ID')) return true
+  const admin = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
+  const { data, error } = await admin.from('app_allowed_users').select('user_id').eq('user_id', userId).maybeSingle()
+  return !error && !!data
+}
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -134,11 +145,42 @@ async function sendReleaseReminders(userId: string): Promise<number> {
   return n
 }
 
-async function sendToAll(userId: string, payload: AnyRecord): Promise<{ sent: number; pruned: number }> {
-  const { data: subs } = await supabase.from('push_subscriptions')
+// Only devices still signed in get the brief (security audit 10.10.2026): a
+// row stamped with a login session needs that session to still exist; an
+// unstamped (older) row needs the app to have opened within 60 days.
+// push_live_subscriptions() is migration 140; before it exists, every row.
+async function liveSubscriptions(userId: string): Promise<AnyRecord[]> {
+  const live = await supabase.rpc('push_live_subscriptions', { p_user: userId })
+  if (!live.error) return (live.data ?? []) as AnyRecord[]
+  console.error('push_live_subscriptions failed, sending to every row:', live.error.message)
+  const { data } = await supabase.from('push_subscriptions')
     .select('id, endpoint, p256dh, auth').eq('user_id', userId)
+  return (data ?? []) as AnyRecord[]
+}
+
+// Only the browsers' own push services: a stored endpoint is otherwise any
+// address this function would POST to (security audit 10.10.2026).
+// Apple (iOS/macOS Safari), Google (Chrome, Edge on Android), Mozilla, Microsoft.
+function isPushService(endpoint: string): boolean {
+  try {
+    const u = new URL(endpoint)
+    if (u.protocol !== 'https:' || u.port) return false
+    const h = u.hostname.toLowerCase()
+    return h === 'web.push.apple.com' || h.endsWith('.push.apple.com')
+      || h === 'fcm.googleapis.com' || h === 'android.googleapis.com'
+      || h === 'updates.push.services.mozilla.com' || h.endsWith('.push.services.mozilla.com')
+      || h.endsWith('.notify.windows.com')
+  } catch { return false }
+}
+
+async function sendToAll(userId: string, payload: AnyRecord): Promise<{ sent: number; pruned: number }> {
+  const subs = (await liveSubscriptions(userId)).filter(s => {
+    const ok = isPushService(String(s.endpoint ?? ''))
+    if (!ok) console.error('push-send: skipped a subscription that is not a browser push service')
+    return ok
+  })
   let sent = 0, pruned = 0
-  for (const s of (subs ?? []) as AnyRecord[]) {
+  for (const s of subs) {
     try {
       await webpush.sendNotification(
         { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
@@ -169,6 +211,7 @@ Deno.serve(async (req) => {
     if (authHeader) {
       const { data } = await supabase.auth.getUser(authHeader.replace('Bearer ', ''))
       userId = data?.user?.id ?? null
+      if (userId && !(await isAppUser(userId))) return json({ ok: false, error: 'forbidden' }, 403)
     }
   }
   if (!userId) return json({ ok: false, error: 'Unauthorized' }, 401)

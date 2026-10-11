@@ -37,7 +37,18 @@
 // Fetch safety is news-article's: http/https only, private hosts refused on
 // every redirect hop (≤ 5), 8 s, 3 MB, text/html only.
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.107.0'
+
+// Owner lock (security audit 10.10.2026, migration 139): this function serves
+// only the owner (HEVY_USER_ID) and accounts listed in app_allowed_users (for
+// example a test account). The owner never needs the table, so the check also
+// works before migration 139 is applied.
+async function isAppUser(userId: string): Promise<boolean> {
+  if (userId === Deno.env.get('HEVY_USER_ID')) return true
+  const admin = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
+  const { data, error } = await admin.from('app_allowed_users').select('user_id').eq('user_id', userId).maybeSingle()
+  return !error && !!data
+}
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -62,6 +73,8 @@ function isPrivateIPv4(ip: string): boolean {
   if (a === 192 && b === 168) return true
   if (a === 172 && b >= 16 && b <= 31) return true
   if (a === 169 && b === 254) return true
+  if (a === 198 && (b === 18 || b === 19)) return true    // benchmarking
+  if (a >= 224) return true                                // multicast, reserved, broadcast
   if (a === 100 && b >= 64 && b <= 127) return true
   return false
 }
@@ -70,14 +83,10 @@ function isPrivateHost(hostname: string): boolean {
   let h = hostname.toLowerCase().trim()
   if (h.startsWith('[') && h.endsWith(']')) h = h.slice(1, -1)
   if (h === 'localhost' || h.endsWith('.localhost') || h.endsWith('.internal') || h.endsWith('.local')) return true
-  if (h.includes(':')) {
-    if (h === '::1' || h === '::') return true
-    const mapped = h.match(/^::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/)
-    if (mapped) return isPrivateIPv4(mapped[1])
-    if (/^f[cd]/.test(h)) return true
-    if (/^fe[89ab]/.test(h)) return true
-    return false
-  }
+  // IPv6 literal: refused outright. These fetchers read web pages by name, so an
+  // IPv6 literal is never a real target — and the URL parser rewrites embedded
+  // IPv4 ([::ffff:127.0.0.1] → [::ffff:7f00:1]), which a pattern check misses.
+  if (h.includes(':')) return true
   if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(h)) return isPrivateIPv4(h)
   if (/^(0x[0-9a-f]+|\d+)$/.test(h)) return true
   return false
@@ -726,6 +735,7 @@ Deno.serve(async (req: Request) => {
     if (!auth) return json({ error: 'Missing authorization header' }, 401)
     const { data: { user }, error } = await supabase.auth.getUser(auth.replace('Bearer ', ''))
     if (error || !user) return json({ error: 'Invalid token' }, 401)
+    if (!(await isAppUser(user.id))) return json({ error: 'forbidden' }, 403)
     userId = user.id
     if (body.action === 'sweep') return json({ error: 'The sweep runs from the cron only' }, 403)
   }

@@ -22,7 +22,7 @@
 // function cannot import from src/, hence two copies — the same arrangement
 // googleTasksOutboxRules.ts already uses for the Google Tasks outbox.
 // **Change one, change the other**, and re-run the verify script.
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.107.0'
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',

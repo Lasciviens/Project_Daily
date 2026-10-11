@@ -16,7 +16,7 @@
   "googleFolderName": "",
   "googleSubFolderID": "",
   "headers": [
-    { "Authorization": "Bearer HEALTH_WEBHOOK_SECRET_12345" }
+    { "Authorization": "Bearer PASTE-YOUR-HEALTH_EXPORT_WEBHOOK_SECRET-HERE" }
   ],
   "id": "680ae26f-3173-4ce4-a321-deea97c888dc",
   "includeCycleTracking": false,

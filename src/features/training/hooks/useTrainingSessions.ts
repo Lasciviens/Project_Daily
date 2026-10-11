@@ -46,6 +46,7 @@ export function useDisconnectStrava() {
 export function useConnectStrava() {
   return useMutationWithFeedback({
     action:         'connect_strava',
+    logPayload:     false,   // the input is an OAuth code
     loadingMessage: 'Connecting to Strava…',
     successMessage: (r: Awaited<ReturnType<typeof exchangeStravaCode>>) => `Connected as ${r.athlete_name ?? 'Strava athlete'}`,
     errorFallback:  'Strava connection failed',

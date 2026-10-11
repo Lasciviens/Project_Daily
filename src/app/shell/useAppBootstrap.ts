@@ -1,4 +1,6 @@
+import { useEffect } from 'react'
 import { useAutoRefreshCalendarToken } from '../../features/calendar/hooks/useCalendar'
+import { refreshThisDevicePush } from '../../security/accountState'
 
 /**
  * App-wide side effects that must run on every shell route, whatever is on
@@ -8,4 +10,6 @@ import { useAutoRefreshCalendarToken } from '../../features/calendar/hooks/useCa
  */
 export function useAppBootstrap() {
   useAutoRefreshCalendarToken()
+  // Keeps this device's morning brief tied to the current login (security audit).
+  useEffect(() => { void refreshThisDevicePush() }, [])
 }

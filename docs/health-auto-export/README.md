@@ -151,9 +151,12 @@ least 2 hours after your early-side bedtime and is shorter than usual.
    - **Time Grouping** shows **"Hours"** — the exact JSON token for that field
      (`exportAggregation`) was inferred from the UI label, so fix it in the app UI if
      it imported wrong. This one is mandatory (see above).
-   - **Authorization header** value matches whatever you actually put in the
-     Supabase Vault for `HEALTH_EXPORT_WEBHOOK_SECRET` (the file has a
-     placeholder value — if you rotated the secret since, update it here)
+   - **Authorization header**: replace `PASTE-YOUR-HEALTH_EXPORT_WEBHOOK_SECRET-HERE`
+     with the value of `HEALTH_EXPORT_WEBHOOK_SECRET` (Supabase → Edge Functions →
+     Secrets). Never commit the real value. Until 11.10.2026 these files carried a
+     concrete-looking example token; if the live secret was ever set to that value,
+     rotate it (a new long random value in Supabase, then the same value in every
+     automation here).
    - **Sync Cadence** looks right (the file guesses `hours` as the interval
      unit for all values, including the weekly job at `168` hours — if the
      app's UI shows a `days`/`weeks` option instead, feel free to switch to

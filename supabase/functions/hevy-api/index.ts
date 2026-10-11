@@ -1,5 +1,5 @@
 // deno-lint-ignore-file no-explicit-any
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.107.0'
 
 // ── Inlined from the former _shared/hevySync.ts ─────────────────────────────
 // Kept as a per-function copy because Supabase Dashboard deploys don't bundle

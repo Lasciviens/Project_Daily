@@ -291,6 +291,29 @@ Paste me all the output (the version line must read `1.3.0`).
 - Sleep and battery: "Go to sleep after" shows minutes; choose **Off** in the unit list,
   Sync now: KOReader's Autosuspend timeout reads disabled.
 
+## 10. Plugin 1.4 — the server's certificate is checked (security audit, 11.10.2026)
+
+**Why:** KOReader ships a CA bundle (`data/ca-bundle.crt`, present on this Kobo since
+04.10.2026) but never passes it to LuaSec, whose default is `verify = "none"`. So the
+plugin trusted any certificate: anyone on the same Wi-Fi could pose as the server and
+read the device secret, or send settings to the Kobo. 1.4 checks the chain against that
+bundle **and** that the certificate is issued for the server's name (LuaSec checks only
+the chain). Tested with LuaSec 1.3.2, the Kobo's version: `sh scripts/kobo/test-tls.sh`.
+
+**No Supabase step.** The new setting **Lasci's Board → Settings → "Check the server's
+certificate"** is on by default; if the bundle file is missing the plugin behaves as
+before.
+
+**Mac block:** the same as §9, except the version line must read `1.4.0`.
+
+**Then on the Kobo:** exit KOReader and open it again, then 🛠 → **Lasci's Board** →
+**Sync now**.
+
+**Check:** the sync finishes as before (Status shows the new time). If it fails with
+"certificate verify failed" or "certificate check failed", untick **Check the server's
+certificate** in the plugin's Settings (syncing works again at once) and tell Claude the
+exact message.
+
 ## Undo
 
 - Our plugin: delete `.adds/koreader/plugins/lascisboard.koplugin` (and

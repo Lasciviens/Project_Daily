@@ -28,7 +28,18 @@
 // external_games, external_game_sources); `category` and `collection` are
 // deprecated there and are not used.
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.107.0'
+
+// Owner lock (security audit 10.10.2026, migration 139): this function serves
+// only the owner (HEVY_USER_ID) and accounts listed in app_allowed_users (for
+// example a test account). The owner never needs the table, so the check also
+// works before migration 139 is applied.
+async function isAppUser(userId: string): Promise<boolean> {
+  if (userId === Deno.env.get('HEVY_USER_ID')) return true
+  const admin = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
+  const { data, error } = await admin.from('app_allowed_users').select('user_id').eq('user_id', userId).maybeSingle()
+  return !error && !!data
+}
 
 const API = 'https://api.igdb.com/v4'
 const CORS: Record<string, string> = {
@@ -46,11 +57,17 @@ type AnyRec = Record<string, any>
 
 let token: { value: string; expires: number } | null = null
 
+// A network failure's message quotes the request URL, and this URL carries a
+// key; the caller sees only which service failed (security audit 10.10.2026).
+async function fetchHidingUrl(url: string, init: RequestInit | undefined, what: string): Promise<Response> {
+  try { return await fetch(url, init) } catch { throw new Error(`${what} could not be reached (network error)`) }
+}
+
 async function appToken(force = false): Promise<string> {
   if (!force && token && token.expires > Date.now() + 60_000) return token.value
   const id = Deno.env.get('IGDB_CLIENT_ID')!, secret = Deno.env.get('IGDB_CLIENT_SECRET')!
   const q = new URLSearchParams({ client_id: id, client_secret: secret, grant_type: 'client_credentials' })
-  const r = await fetch(`https://id.twitch.tv/oauth2/token?${q}`, { method: 'POST' })
+  const r = await fetchHidingUrl(`https://id.twitch.tv/oauth2/token?${q}`, { method: 'POST' }, 'Twitch')
   if (!r.ok) throw new Error(r.status === 400 || r.status === 403 ? 'Twitch refused the IGDB Client ID / Secret — check the two secrets.' : `Twitch token ${r.status}`)
   const b = await r.json()
   token = { value: b.access_token, expires: Date.now() + (Number(b.expires_in) || 3600) * 1000 }
@@ -229,6 +246,7 @@ Deno.serve(async (req: Request) => {
   const db = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
   const { data: { user }, error: authError } = await db.auth.getUser(auth.replace('Bearer ', ''))
   if (authError || !user) return json({ error: 'Invalid token' }, 401)
+  if (!(await isAppUser(user.id))) return json({ error: 'forbidden' }, 403)
 
   let body: AnyRec = {}
   try { body = await req.json() } catch { /* empty */ }

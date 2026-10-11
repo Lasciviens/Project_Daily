@@ -16,6 +16,9 @@ import { invalidate, type InvalidationGroup } from '../query/invalidate'
 // - `invalidates`     groups / keys refreshed after the mutation settles,
 //                     success or failure (an optimistic write rolled back
 //                     still needs the server truth).
+// - `logPayload`      false: the input never reaches app_error_logs. Set it
+//                     when the input IS a secret (a pasted token, an OAuth
+//                     code) — the AI can read that table (security audit).
 // A caller's own onSuccess/onError/onSettled still runs after these.
 //
 // Callers must NOT wrap mutateAsync in their own toast.error — that
@@ -30,6 +33,7 @@ interface FeedbackMutationOptions<TData, TVariables, TContext>
   loadingMessage?: Resolve<string | undefined, [TVariables]>
   errorFallback?: string
   invalidates?: Resolve<readonly Target[], [TData | undefined, TVariables]>
+  logPayload?: boolean
 }
 
 const resolve = <T, A extends unknown[]>(v: Resolve<T, A> | undefined, ...args: A) =>
@@ -41,6 +45,7 @@ export function useMutationWithFeedback<TData, TVariables = void, TContext = unk
   loadingMessage,
   errorFallback,
   invalidates,
+  logPayload = true,
   mutationFn,
   onSuccess,
   onError,
@@ -67,7 +72,7 @@ export function useMutationWithFeedback<TData, TVariables = void, TContext = unk
     onError: (err, variables, onMutateResult, context) => {
       const msg = (err as Error)?.message || errorFallback || 'Something went wrong'
       toast.error(msg)
-      logError(`${action}: ${msg}`, { action, payload: variables })
+      logError(`${action}: ${msg}`, logPayload ? { action, payload: variables } : { action })
       return onError?.(err, variables, onMutateResult, context)
     },
     onSettled: async (data, error, variables, onMutateResult, context) => {

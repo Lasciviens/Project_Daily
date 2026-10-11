@@ -10,6 +10,7 @@ import { useBreakpoint } from '../../../shared/hooks/useBreakpoint'
 import { openPopups } from '../../../shared/modals/popupTrail'
 import { useModalStore } from '../../../shared/modals/modalStore'
 import type { EntityModalRequest } from '../../../shared/modals/types'
+import { MODAL_REGISTRY } from '../../../shared/modals/registry'
 
 // "Go there" on a picked spot: open its page (route + query), reopen the
 // popups it was inside (an entity popup from its saved request, a local one
@@ -108,6 +109,27 @@ async function waitFor<T>(get: () => T | null, ms = LOOK_FOR_MS): Promise<T | nu
 const topPanel = () => { const s = openPopups(); return s.length ? s[s.length - 1].panel() : null }
 const pageScope = () => document.querySelector('main, [data-app-scroller]') ?? document.body
 
+// A pick mark is stored text, so "Go there" treats it as untrusted (security
+// audit 10.10.2026): it reopens only known popup kinds (never a confirm
+// dialog) with plain data, and only clicks a control that opens a popup —
+// never one that deletes, signs out or saves. Anything else stops with the
+// usual "open it to see the spot" hint.
+const DESTRUCTIVE = /\b(delete|remove|clear|discard|drop|reset|sign ?out|log ?out|disconnect|revoke|unlink|cancel|confirm|save|send|submit|pay|buy|sell|mark|apply|merge|import|sync|undo|archive|empty)\b/i
+
+function safeRequest(r: unknown): EntityModalRequest | null {
+  if (!r || typeof r !== 'object' || Array.isArray(r)) return null
+  const kind = (r as { kind?: unknown }).kind
+  if (typeof kind !== 'string' || kind === 'confirm' || !Object.hasOwn(MODAL_REGISTRY, kind)) return null
+  // JSON only: no functions survive, nothing executable reaches the popup.
+  try { return JSON.parse(JSON.stringify(r)) as EntityModalRequest } catch { return null }
+}
+
+function safeOpener(el: HTMLElement): boolean {
+  if (el.closest('form') && (el.getAttribute('type') ?? 'submit') === 'submit' && el.tagName === 'BUTTON') return false
+  if (DESTRUCTIVE.test(accessibleName(el))) return false
+  return true
+}
+
 /**
  * Reopens the popups a pick sat in, outer → inner: an entity popup from its
  * saved request, a local one by clicking what opened it. True once the
@@ -117,11 +139,13 @@ async function reopen(popups: readonly CapturedPopup[]): Promise<boolean> {
   for (const p of popups) {
     const before = openPopups().length
     if (p.request) {
-      useModalStore.getState().open(p.request as unknown as EntityModalRequest)
+      const request = safeRequest(p.request)
+      if (!request) return false
+      useModalStore.getState().open(request)
     } else {
       const scope = topPanel() ?? pageScope()
       const opener = await waitFor(() => find(p.opener, null, scope, before > 0))
-      if (!(opener instanceof HTMLElement)) return false
+      if (!(opener instanceof HTMLElement) || !safeOpener(opener)) return false
       opener.scrollIntoView({ block: 'center' })
       opener.click()
     }

@@ -1,4 +1,15 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.107.0'
+
+// Owner lock (security audit 10.10.2026, migration 139): this function serves
+// only the owner (HEVY_USER_ID) and accounts listed in app_allowed_users (for
+// example a test account). The owner never needs the table, so the check also
+// works before migration 139 is applied.
+async function isAppUser(userId: string): Promise<boolean> {
+  if (userId === Deno.env.get('HEVY_USER_ID')) return true
+  const admin = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
+  const { data, error } = await admin.from('app_allowed_users').select('user_id').eq('user_id', userId).maybeSingle()
+  return !error && !!data
+}
 
 const ALLOWED_ORIGINS = ['https://lasciviens.github.io', 'http://localhost:5173']
 
@@ -46,6 +57,9 @@ function isPrivateIPv4(ip: string): boolean {
   if (a === 192 && b === 168) return true
   if (a === 172 && b >= 16 && b <= 31) return true
   if (a === 169 && b === 254) return true
+  if (a === 100 && b >= 64 && b <= 127) return true   // carrier-grade NAT
+  if (a === 198 && (b === 18 || b === 19)) return true // benchmarking
+  if (a >= 224) return true                            // multicast, reserved, broadcast
   return false
 }
 
@@ -53,7 +67,7 @@ function isPrivateIPv4(ip: string): boolean {
 // fetches whatever URL the user pastes, server-side. Beyond the obvious
 // dotted-quad ranges this also blocks the encodings that trivially bypass a
 // naive string check: numeric-encoded IPv4 (decimal 2130706433, 0x-hex, octal),
-// and IPv6 loopback/mapped/unique-local/link-local forms. (DNS rebinding — a
+// and every IPv6 literal. (DNS rebinding — a
 // public name that re-resolves to a private IP at connect time — can't be fully
 // closed here without a custom resolver; fetchPageText's manual redirect
 // re-validation closes the redirect-based variant, which is the practical one.)
@@ -63,15 +77,10 @@ function isPrivateHost(hostname: string): boolean {
 
   if (h === 'localhost' || h.endsWith('.localhost')) return true
 
-  // IPv6
-  if (h.includes(':')) {
-    if (h === '::1' || h === '::') return true
-    const mapped = h.match(/^::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/)  // IPv4-mapped
-    if (mapped) return isPrivateIPv4(mapped[1])
-    if (/^f[cd]/.test(h)) return true      // fc00::/7 unique-local
-    if (/^fe[89ab]/.test(h)) return true   // fe80::/10 link-local
-    return false
-  }
+  // IPv6 literal: refused outright. These fetchers read web pages by name, so an
+  // IPv6 literal is never a real target — and the URL parser rewrites embedded
+  // IPv4 ([::ffff:127.0.0.1] → [::ffff:7f00:1]), which a pattern check misses.
+  if (h.includes(':')) return true
 
   // Dotted-quad IPv4
   if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(h)) return isPrivateIPv4(h)
@@ -237,6 +246,17 @@ function jitter(ms: number): number {
 // failure after every model's capacity pool has genuinely been exhausted,
 // not after one pool's transient hiccup (this was a real ~80%-of-requests
 // pain point even before the multi-model chain existed).
+// Removes every server secret this function holds from a message before it
+// leaves (caller, model, app_error_logs, ai_query_log). Security audit.
+function hideSecrets(msg: string): string {
+  let out = String(msg ?? '')
+  for (const k of ['GEMINI_API_KEY', 'SUPABASE_SERVICE_ROLE_KEY', 'PHONE_GATEWAY_SECRET']) {
+    const v = Deno.env.get(k)
+    if (v && v.length >= 8) out = out.split(v).join('[hidden]')
+  }
+  return out.replace(/([?&](?:key|apikey|api_key)=)[^&\s)"']+/gi, '$1[hidden]')
+}
+
 async function fetchGeminiWithFallback(
   apiKey:          string,
   buildUrl:        (model: GeminiModel) => string,
@@ -253,9 +273,11 @@ async function fetchGeminiWithFallback(
     const model = chain[pos]
     const retries = RETRIES_BY_POSITION[pos] ?? 2
     for (let attempt = 0; attempt < retries; attempt++) {
+      // The key travels in a header, never the URL: a network error's message
+      // quotes the URL, and it reaches the caller and app_error_logs (audit).
       const res = await fetch(buildUrl(model), {
         method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
         body:    JSON.stringify(buildBody(model)),
       })
       if (res.ok) return { res, modelUsed: model }
@@ -344,7 +366,7 @@ const TOOLS = [
       },
       {
         name: 'db_delete',
-        description: 'Delete rows matching filters from a writable table. Automatically scoped to the current user. Filters are required and must be non-empty. Deleting a task automatically deletes its linked time_blocks row too (task_id is ON DELETE CASCADE) — no separate time_blocks delete needed.',
+        description: 'Delete rows matching filters from a writable table. Automatically scoped to the current user. Filters are required and must be non-empty. Nothing is deleted by this call: the app shows the user the rows with a Confirm button, and they are deleted only if the user taps it — so call it once the user asked for the delete, and never say something was deleted. Deleting a task automatically deletes its linked time_blocks row too (task_id is ON DELETE CASCADE) — no separate time_blocks delete needed.',
         parameters: {
           type: 'OBJECT',
           properties: {
@@ -493,7 +515,7 @@ const TOOLS = [
       },
       {
         name: 'update_hevy_routine',
-        description: 'Update an existing Hevy routine (title, the routine\'s own note, and/or full exercises list) — writes to the REAL Hevy account. RULES: (1) db_query hevy_routines + hevy_routine_exercises + hevy_routine_sets FIRST to get the routine id and its CURRENT full exercise/set structure. (2) Send the COMPLETE exercises array (every exercise you want kept, in order) — this REPLACES the whole list, omitted exercises are DELETED. (3) Set shape: {type:"normal"|"warmup"|"dropset"|"failure", weight_kg, reps} — use rep_range:{start,end} INSTEAD of reps only when a range is wanted, never both, never rep_range:null. Exercise shape: {exercise_template_id, superset_id, rest_seconds, notes, sets:[...]} — that per-exercise "notes" is a note on ONE exercise, not the routine. (4) The routine\'s OWN note/description (what shows under the routine title in Hevy) is the separate top-level "notes" param below — omit it to leave the routine\'s existing note untouched, or send the full replacement text (it REPLACES, it does not append). (5) ALWAYS summarize the exact change and get the user\'s explicit confirmation in a prior turn before calling this.',
+        description: 'Update an existing Hevy routine (title, the routine\'s own note, and/or full exercises list) — writes to the REAL Hevy account. RULES: (1) db_query hevy_routines + hevy_routine_exercises + hevy_routine_sets FIRST to get the routine id and its CURRENT full exercise/set structure. (2) Send the COMPLETE exercises array (every exercise you want kept, in order) — this REPLACES the whole list, omitted exercises are DELETED. (3) Set shape: {type:"normal"|"warmup"|"dropset"|"failure", weight_kg, reps} — use rep_range:{start,end} INSTEAD of reps only when a range is wanted, never both, never rep_range:null. Exercise shape: {exercise_template_id, superset_id, rest_seconds, notes, sets:[...]} — that per-exercise "notes" is a note on ONE exercise, not the routine. (4) The routine\'s OWN note/description (what shows under the routine title in Hevy) is the separate top-level "notes" param below — omit it to leave the routine\'s existing note untouched, or send the full replacement text (it REPLACES, it does not append). (5) Summarize the exact change in your reply. Nothing changes in Hevy from this call: the app shows the user a Confirm button and the routine is written only if they tap it.',
         parameters: {
           type: 'OBJECT',
           properties: {
@@ -656,9 +678,9 @@ const EMBED_MODEL = 'gemini-embedding-001'
 const EMBED_DIMS = 768
 const vecLiteral = (v: number[]) => `[${v.join(',')}]`
 async function embedTexts(apiKey: string, texts: string[], taskType: string): Promise<(number[] | null)[]> {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${EMBED_MODEL}:batchEmbedContents?key=${apiKey}`
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${EMBED_MODEL}:batchEmbedContents`
   const body = { requests: texts.map(t => ({ model: `models/${EMBED_MODEL}`, content: { parts: [{ text: t.slice(0, 8000) }] }, taskType, outputDimensionality: EMBED_DIMS })) }
-  const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+  const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey }, body: JSON.stringify(body) })
   if (!res.ok) throw new Error(`embed ${res.status}: ${(await res.text().catch(() => '')).slice(0, 200)}`)
   const j = await res.json()
   return (j.embeddings ?? []).map((e: AnyRecord) => Array.isArray(e?.values) ? e.values as number[] : null)
@@ -678,13 +700,42 @@ const EMBED_SOURCES: { table: string; cols: string; text: (r: AnyRecord) => stri
   { table: 'books',          cols: 'id,title,author,review,notes',      text: r => [r.title, r.author, r.review, r.notes].filter(Boolean).join('\n') },
 ]
 
-async function semanticSearch(args: AnyRecord, authHeader?: string): Promise<AnyRecord> {
+// Editing or deleting a searched row removes its copy (migration 140's
+// trigger); this adds copies for rows that have none, a few per search, so
+// edits come back by themselves without a "Reindex AI search" click.
+const EMBED_CATCH_UP = 32
+async function embedMissing(supabase: AnyRecord, userId: string, key: string): Promise<void> {
+  let budget = EMBED_CATCH_UP
+  for (const src of EMBED_SOURCES) {
+    if (budget <= 0) return
+    const { data: rows, error } = await supabase.from(src.table).select(src.cols).eq('user_id', userId).limit(500)
+    if (error || !rows?.length) continue
+    const { data: have } = await supabase.from('ai_embeddings').select('source_id').eq('user_id', userId).eq('source_table', src.table)
+    const known = new Set((have ?? []).map((h: AnyRecord) => String(h.source_id)))
+    const todo = (rows as AnyRecord[])
+      .map(r => ({ id: String(r.id), text: src.text(r).trim() }))
+      .filter(x => x.text && !known.has(x.id))
+      .slice(0, budget)
+    if (!todo.length) continue
+    budget -= todo.length
+    const vecs = await embedTexts(key, todo.map(t => t.text), 'RETRIEVAL_DOCUMENT')
+    const upserts = todo
+      .map((t, j) => vecs[j] ? { user_id: userId, source_table: src.table, source_id: t.id, content: t.text.slice(0, 4000), embedding: vecLiteral(vecs[j]!), updated_at: new Date().toISOString() } : null)
+      .filter(Boolean)
+    if (upserts.length) await supabase.from('ai_embeddings').upsert(upserts, { onConflict: 'user_id,source_table,source_id' })
+  }
+}
+
+async function semanticSearch(args: AnyRecord, authHeader?: string, supabase?: AnyRecord, userId?: string): Promise<AnyRecord> {
   try {
     if (!authHeader) return { success: false, error: 'No auth context for search.' }
     const query = typeof args.query === 'string' ? args.query.trim() : ''
     if (!query) return { success: false, error: 'query is required.' }
     const key = Deno.env.get('GEMINI_API_KEY')
     if (!key) return { success: false, error: 'AI not configured.' }
+    if (supabase && userId) {
+      try { await embedMissing(supabase, userId, key) } catch { /* best effort — search what is indexed */ }
+    }
     const vec = await embedOne(key, query, 'RETRIEVAL_QUERY')
     if (!vec) return { success: false, error: 'Could not embed the query.' }
     const limit = Math.min(Math.max(Number(args.limit) || 8, 1), 25)
@@ -695,7 +746,7 @@ async function semanticSearch(args: AnyRecord, authHeader?: string): Promise<Any
     const { data, error } = await userClient.rpc('ai_semantic_search', { query_embedding: vecLiteral(vec), match_count: limit })
     if (error) return { success: false, error: error.message }
     return { success: true, count: (data ?? []).length, matches: data ?? [] }
-  } catch (e) { return { success: false, error: (e as Error).message } }
+  } catch (e) { return { success: false, error: hideSecrets((e as Error).message) } }
 }
 
 Deno.serve(async (req) => {
@@ -718,12 +769,18 @@ Deno.serve(async (req) => {
   const phoneSecret  = Deno.env.get('PHONE_GATEWAY_SECRET')
   const givenSecret  = req.headers.get('x-phone-secret')
   let user: { id: string } | null = null
-  if (phoneSecret && givenSecret === phoneSecret) {
+  const viaPhone = !!phoneSecret && givenSecret === phoneSecret
+  if (viaPhone) {
     const uid = Deno.env.get('HEVY_USER_ID')          // single-user app, same id everywhere
     if (uid) user = { id: uid }
   } else if (authHeader) {
     const { data } = await supabase.auth.getUser(authHeader.replace('Bearer ', ''))
     user = data?.user ? { id: data.user.id } : null
+    if (user && !(await isAppUser(user.id))) {
+      return new Response(JSON.stringify({ error: 'forbidden' }), {
+        status: 403, headers: { ...headers, 'Content-Type': 'application/json' },
+      })
+    }
   }
   if (!user) {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), {
@@ -733,7 +790,20 @@ Deno.serve(async (req) => {
 
   try {
     const body = await req.json() as
-      { messages?: Message[]; systemPrompt?: string; responseSchema?: AnyRecord; fetchUrl?: string; model?: string; listModels?: boolean; surface?: string; reindexEmbeddings?: boolean }
+      { messages?: Message[]; systemPrompt?: string; responseSchema?: AnyRecord; fetchUrl?: string; model?: string; listModels?: boolean; surface?: string; reindexEmbeddings?: boolean; confirmAction?: { id?: string; decision?: string } }
+
+    // The person tapped Confirm / Cancel on a proposed delete or routine change.
+    if (body.confirmAction) {
+      if (viaPhone || !body.confirmAction.id) {
+        return new Response(JSON.stringify({ error: 'Confirm in the app.' }), {
+          status: 400, headers: { ...headers, 'Content-Type': 'application/json' },
+        })
+      }
+      const settled = await settleAction(supabase, user.id, String(body.confirmAction.id), String(body.confirmAction.decision ?? ''), authHeader ?? undefined)
+      return new Response(JSON.stringify(settled), {
+        status: 200, headers: { ...headers, 'Content-Type': 'application/json' },
+      })
+    }
 
     // Debug/maintenance: return the REAL list of models this API key can use
     // (name + generateContent support). Exists so the MODEL_CHAIN above is
@@ -745,7 +815,7 @@ Deno.serve(async (req) => {
           status: 503, headers: { ...headers, 'Content-Type': 'application/json' },
         })
       }
-      const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?pageSize=100&key=${key}`)
+      const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=100', { headers: { 'x-goog-api-key': key } })
       const j = await r.json()
       const models = (j.models ?? [])
         .filter((m: AnyRecord) => (m.supportedGenerationMethods ?? []).includes('generateContent'))
@@ -787,7 +857,7 @@ Deno.serve(async (req) => {
             if (upserts.length) { await supabase.from('ai_embeddings').upsert(upserts, { onConflict: 'user_id,source_table,source_id' }); n += upserts.length }
           }
           perTable[src.table] = n; indexed += n
-        } catch (e) { perTable[src.table] = `error: ${(e as Error).message}` }
+        } catch (e) { perTable[src.table] = `error: ${hideSecrets((e as Error).message)}` }
       }
       return new Response(JSON.stringify({ success: true, indexed, perTable }), { status: 200, headers: { ...headers, 'Content-Type': 'application/json' } })
     }
@@ -822,7 +892,7 @@ Deno.serve(async (req) => {
     // things like parsing pasted recipe text into a JSON shape.
     const result = responseSchema
       ? await callGeminiStructured(GEMINI_KEY, messages, systemPrompt, responseSchema, preferredModel)
-      : await callGemini(GEMINI_KEY, messages, systemPrompt, supabase, user.id, preferredModel, authHeader, surface)
+      : await callGemini(GEMINI_KEY, messages, systemPrompt, supabase, user.id, preferredModel, authHeader, surface, !viaPhone)
     return new Response(JSON.stringify(result), {
       status: 200, headers: { ...headers, 'Content-Type': 'application/json' },
     })
@@ -835,7 +905,7 @@ Deno.serve(async (req) => {
       }), { status: 429, headers: { ...headers, 'Content-Type': 'application/json' } })
     }
     console.error('[ai-proxy]', err)
-    return new Response(JSON.stringify({ error: err instanceof Error ? err.message : 'Internal error' }), {
+    return new Response(JSON.stringify({ error: hideSecrets(err instanceof Error ? err.message : 'Internal error') }), {
       status: 500, headers: { ...headers, 'Content-Type': 'application/json' },
     })
   }
@@ -880,9 +950,10 @@ async function callGemini(
   preferredModel?: GeminiModel,
   authHeader?: string,
   surface?: string,
-): Promise<{ text: string; quickReplies?: string[]; steps?: string[]; model?: string }> {
+  canConfirm = false,
+): Promise<{ text: string; quickReplies?: string[]; steps?: string[]; model?: string; confirms?: Confirm[] }> {
   const buildUrl = (model: GeminiModel) =>
-    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`
 
   // Sticks with whichever model actually served the last turn — a mid-
   // conversation model switch would be a strange (if harmless) inconsistency;
@@ -974,15 +1045,34 @@ async function callGemini(
     // and Gemini 3.x will reject the next turn with a 400.
     contents = [...contents, candidate.content]
 
-    // Dispatch all function calls in this turn (may be parallel), role must be 'tool'
+    // Dispatch all function calls in this turn (may be parallel), role must be 'tool'.
+    // Deletes and routine rewrites only become proposals (see NEEDS_CONFIRM).
+    const confirms: Confirm[] = []
     const toolResponseParts = await Promise.all(
       fnCallParts.map(async (part: AnyRecord) => {
         const { name, args } = part.functionCall
-        const result = await dispatch(name, args, supabase, userId, authHeader, surface)
+        let result: AnyRecord
+        if (NEEDS_CONFIRM.has(name)) {
+          if (!canConfirm) {
+            result = { success: false, error: 'Not done: deletes and routine changes need the Confirm button in the Lasci\'s Board app. Tell the user to do it there.' }
+          } else {
+            const proposal = await proposeAction(supabase, userId, name, args)
+            if (proposal.ok) { confirms.push(proposal.confirm); result = { success: true, waiting_for_user: true, summary: proposal.confirm.summary } }
+            else result = { success: false, error: proposal.error }
+          }
+        } else {
+          result = await dispatch(name, args, supabase, userId, authHeader, surface)
+        }
+        if (result && typeof result.error === 'string') result.error = hideSecrets(result.error)
         steps.push(describeStep(name, args, result))
         return { functionResponse: { name, response: result } }
       })
     )
+    if (confirms.length) {
+      // The person decides now; the tool loop stops here.
+      const said = parts.find((p: AnyRecord) => p.text)?.text?.trim()
+      return { text: said || 'Please confirm:', confirms, steps: steps.length ? steps : undefined, model: modelUsed }
+    }
     contents = [...contents, { role: 'tool', parts: toolResponseParts }]
   }
 
@@ -1024,6 +1114,7 @@ async function callGemini(
 function describeStep(name: string, args: AnyRecord, result: AnyRecord): string {
   const tbl = args?.table ? ` ${args.table}` : ''
   if (result?.success === false) return `✗ ${name}${tbl} — ${result.error ?? 'error'}`
+  if (result?.waiting_for_user) return `… ${name}${tbl} — waiting for your Confirm`
   let detail = ''
   if (result?.count !== undefined) detail = ` → ${result.count} rows`
   else if (result?.inserted_count !== undefined) detail = ` → ${result.inserted_count} inserted`
@@ -1044,7 +1135,7 @@ async function callGeminiStructured(
   preferredModel?: GeminiModel,
 ): Promise<{ data: AnyRecord }> {
   const buildUrl = (model: GeminiModel) =>
-    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`
 
   const contents: AnyRecord[] = messagesToContents(messages)
 
@@ -1071,6 +1162,109 @@ async function callGeminiStructured(
   const data      = await res.json()
   const text      = data.candidates?.[0]?.content?.parts?.find((p: AnyRecord) => p.text)?.text ?? '{}'
   return { data: JSON.parse(text) }
+}
+
+// ─── Confirm before acting (security audit 10.10.2026) ──────────────────────
+// A delete (db_delete) or a Hevy routine rewrite never runs from the tool
+// loop. The loop stores it in ai_pending_actions (migration 140) and returns a
+// Confirm card; it runs only when the person taps Confirm in the app — a
+// separate `confirmAction` request the model cannot send. Text in a calendar
+// invite, a title or a web page can therefore never delete anything. The phone
+// has no button, so there these tools are refused.
+const NEEDS_CONFIRM = new Set(['db_delete', 'update_hevy_routine'])
+const PENDING_TTL_MS = 15 * 60 * 1000
+type Confirm = { id: string; summary: string }
+
+// What the Confirm card calls a table, singular / plural (others: words of the name).
+const TABLE_WORDS: Record<string, [string, string]> = {
+  tasks: ['task', 'tasks'], time_blocks: ['schedule block', 'schedule blocks'],
+  schedule_blocks: ['repeating block', 'repeating blocks'], food_log_entries: ['food entry', 'food entries'],
+  water_log_entries: ['water entry', 'water entries'], ai_memory: ['memory', 'memories'],
+  recipes: ['recipe', 'recipes'], shop_items: ['shop item', 'shop items'], wish_items: ['wish', 'wishes'],
+  dev_requests: ['request', 'requests'], books: ['book', 'books'],
+  user_movie_entries: ['film in your library', 'films in your library'],
+  user_tv_entries: ['show in your library', 'shows in your library'], user_tv_episodes: ['watched episode', 'watched episodes'],
+}
+function tableWords(table: string, n: number): string {
+  const w = TABLE_WORDS[table]
+  if (w) return n === 1 ? w[0] : w[1]
+  const plain = table.replace(/_/g, ' ')
+  return n === 1 ? `row from ${plain}` : `rows from ${plain}`
+}
+// yyyy-MM-dd… → DD.MM.YYYY (the owner's only date format).
+const dayText = (v: unknown) => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(v ?? ''))
+  return m ? `${m[3]}.${m[2]}.${m[1]}` : ''
+}
+function rowLabel(r: AnyRecord): string {
+  const named = r.title ?? r.name ?? r.custom_title ?? r.label ?? r.content
+  const day = dayText(r.date ?? r.due_date ?? r.watched_at)
+  let text: string
+  if (named) text = String(named)
+  else if (r.amount_ml != null) text = `${r.amount_ml} ml`
+  else if (r.season_number != null && r.episode_number != null) text = `S${r.season_number} E${r.episode_number}`
+  else text = 'one entry'
+  if (day && !named) text += ` on ${day}`
+  return text.replace(/\s+/g, ' ').slice(0, 60)
+}
+
+async function proposeAction(
+  // deno-lint-ignore no-explicit-any
+  supabase: any, userId: string, name: string, args: AnyRecord,
+): Promise<{ ok: true; confirm: Confirm } | { ok: false; error: string }> {
+  try {
+    let summary = ''
+    let stored: AnyRecord = { ...args }
+    if (name === 'db_delete') {
+      assertAccess(args.table, true)
+      const filters = parseJsonArg(args.filters, 'filters')
+      if (!Object.keys(filters).length) return { ok: false, error: 'Refusing to delete without filters — provide at least one, e.g. {"id":"..."}.' }
+      let q = supabase.from(args.table).select('*').eq('user_id', userId)
+      q = applyFilters(q, filters).limit(51)
+      const { data, error } = await q
+      if (error) return { ok: false, error: error.message }
+      const rows: AnyRecord[] = data ?? []
+      if (!rows.length) return { ok: false, error: 'Nothing matches those filters, so there is nothing to delete.' }
+      if (rows.length > 50) return { ok: false, error: 'That would delete more than 50 rows — narrow the filters.' }
+      // Exactly the rows the person is shown, even if more match by the time they confirm.
+      const ids = rows.map(r => r.id).filter(Boolean)
+      if (ids.length === rows.length) stored = { table: args.table, filters: JSON.stringify({ ...filters, id: ids }) }
+      const shown = rows.slice(0, 5).map(r => `"${rowLabel(r)}"`).join(', ')
+      summary = `Delete ${rows.length} ${tableWords(args.table, rows.length)}: ${shown}${rows.length > 5 ? ` and ${rows.length - 5} more` : ''}`
+    } else if (name === 'update_hevy_routine') {
+      summary = `Change the Hevy routine "${String(args.title ?? args.routine_id ?? '').slice(0, 60)}" (its exercise list is replaced)`
+    } else {
+      return { ok: false, error: `${name} cannot wait for confirmation.` }
+    }
+    // Old proposals are only history; keep the table small.
+    await supabase.from('ai_pending_actions').delete().eq('user_id', userId)
+      .lt('expires_at', new Date(Date.now() - 24 * 3600 * 1000).toISOString())
+    const { data, error } = await supabase.from('ai_pending_actions').insert({
+      user_id: userId, tool: name, args: stored, summary,
+      expires_at: new Date(Date.now() + PENDING_TTL_MS).toISOString(),
+    }).select('id').single()
+    if (error) return { ok: false, error: 'This needs the Confirm step, which is not set up yet (migration 140). Nothing was changed.' }
+    return { ok: true, confirm: { id: data.id, summary } }
+  } catch (e) { return { ok: false, error: (e as Error).message } }
+}
+
+// The person tapped Confirm or Cancel. Runs the stored action once, only for
+// the account that proposed it, only within 15 minutes.
+async function settleAction(
+  // deno-lint-ignore no-explicit-any
+  supabase: any, userId: string, id: string, decision: string, authHeader?: string,
+): Promise<{ text: string; steps?: string[] }> {
+  const { data: row } = await supabase.from('ai_pending_actions')
+    .update({ done_at: new Date().toISOString(), decision: decision === 'confirm' ? 'confirm' : 'cancel' })
+    .eq('id', id).eq('user_id', userId).is('done_at', null).gt('expires_at', new Date().toISOString())
+    .select('tool, args, summary').maybeSingle()
+  if (!row) return { text: 'That confirmation has expired or was already used. Nothing was changed.' }
+  if (decision !== 'confirm') return { text: 'Cancelled. Nothing was changed.' }
+  const result = await dispatch(row.tool, row.args, supabase, userId, authHeader, 'general')
+  const step = describeStep(row.tool, row.args, result)
+  return result?.success === false
+    ? { text: `That did not work: ${result.error ?? 'unknown error'}`, steps: [step] }
+    : { text: `Done: ${row.summary}.`, steps: [step] }
 }
 
 async function dispatch(
@@ -1102,7 +1296,7 @@ async function dispatch(
     case 'get_day_summary':      return getDaySummary(supabase, userId, args)
     case 'get_athlete_profile':  return getAthleteProfile(supabase, userId)
     case 'semantic_search': {
-      const r = await semanticSearch(args, authHeader)
+      const r = await semanticSearch(args, authHeader, supabase, userId)
       void logQuery(supabase, userId, surface, 'semantic_search', null, args, r)
       return r
     }
@@ -2399,7 +2593,7 @@ const DB_CATALOG: Record<string, CatalogEntry> = {
     access: 'rw',
     purpose: "The water diary — one row per amount the user drank. The day's total is the SUM of amount_ml for that date; the daily target is day_targets.water_ml.",
     columns: "id, date(date — the user's own day, yyyy-mm-dd; set it from the context's ISO date — left out, today in Oslo is used), amount_ml(int > 0), logged_at(timestamptz — when it was logged, default now), created_at",
-    rules: "One row per amount drunk: 'I drank 500 ml' → insert {date, amount_ml: 500}; never edit a row into a running total. A glass with no amount given = 250 ml (the app's default); for anything else ask the amount once. Water NEVER goes in food_log_entries and has no macros or calories. 'How much water today?' → db_aggregate sum amount_ml with filters {date}. To take back the last amount, delete that row (newest logged_at) after the user confirms.",
+    rules: "One row per amount drunk: 'I drank 500 ml' → insert {date, amount_ml: 500}; never edit a row into a running total. A glass with no amount given = 250 ml (the app's default); for anything else ask the amount once. Water NEVER goes in food_log_entries and has no macros or calories. 'How much water today?' → db_aggregate sum amount_ml with filters {date}. To take back the last amount, delete that row (newest logged_at); the app asks the user to Confirm.",
   },
   shop_categories: {
     access: 'rw',
@@ -2468,7 +2662,7 @@ const DB_CATALOG: Record<string, CatalogEntry> = {
       'If it MUST be done by a date, it is a tasks row with a due_date, not a wish.',
       'Pick the right home for a note — there are four: dev_requests = a request about THIS APP (a bug, a feature, an idea for the app itself). ai_memory = a durable fact/preference about the user to recall later. shop_items = something to BUY. wish_items = something to DO or a place to GO, with an optional period.',
       'Set period_start/period_end to CONCRETE dates (yyyy-mm-dd) resolved from what the user said; the current date is in the context turn. Leave both null for an "anytime" wish. period_label is optional and holds the user\'s own word for the window.',
-      'Write title/notes in the language the user used. Only set status="done" or "dropped" when the user says so, and never delete a wish without explicit confirmation.',
+      'Write title/notes in the language the user used. Only set status="done" or "dropped" when the user says so, and a wish is deleted only through db_delete, which the user confirms in the app.',
     ].join(' '),
   },
   books: {
@@ -2710,7 +2904,7 @@ const DB_CATALOG: Record<string, CatalogEntry> = {
     access: 'rw',
     purpose: "The user's durable AI memory — notes/summaries/facts/preferences the AI was asked to remember across conversations. Prefer the save_memory tool to write; db_query here to recall (e.g. filter kind='preference', or search title/content).",
     columns: "id, kind(note|summary|fact|preference — default note), title, content, source(user|ai|auto — how it was captured), created_at, updated_at",
-    rules: 'Write in the user\'s language. Only save when the user asks you to remember something or to store a conversation summary. Never delete a memory without explicit confirmation. A memory is a FACT about the user, not a plan: something to do or a place to go belongs in wish_items, a request about this app in dev_requests, something to buy in shop_items.',
+    rules: 'Write in the user\'s language. Only save when the user asks you to remember something or to store a conversation summary. A memory is deleted only through db_delete, which the user confirms in the app. A memory is a FACT about the user, not a plan: something to do or a place to go belongs in wish_items, a request about this app in dev_requests, something to buy in shop_items.',
   },
 }
 
@@ -2769,9 +2963,38 @@ function applyFilters(query: AnyRecord, filters: AnyRecord): AnyRecord {
   return query
 }
 
+// db_query runs on the service role, so only its top-level .eq('user_id')
+// scopes it. An embed inside a shared catalogue table (no user_id) could reach
+// other accounts' rows — movies(user_movie_entries(*)) lists everyone's — so
+// nothing may be embedded inside one (security audit 10.10.2026).
+const SHARED_TABLES = new Set(['movies', 'tv_series', 'steam_apps', 'fx_rates_nok', 'screenscraper_systems', 'link_rules'])
+function selectProblem(select: unknown): string | null {
+  if (select == null || select === '') return null
+  if (typeof select !== 'string' || select.length > 2000) return 'select must be a short Postgrest select string.'
+  const stack: string[] = []
+  let token = ''
+  for (const ch of select) {
+    if (ch === '(') {
+      if (stack.length && SHARED_TABLES.has(stack[stack.length - 1])) {
+        return `Not allowed: nothing may be embedded inside ${stack[stack.length - 1]} (a shared table) — read your own rows from the root instead.`
+      }
+      const name = token.trim().split(':').pop()!.split('!')[0].trim()
+      stack.push(name)
+      token = ''
+    } else if (ch === ')') {
+      if (!stack.length) return 'select has an unmatched ")".'
+      stack.pop(); token = ''
+    } else if (ch === ',') token = ''
+    else token += ch
+  }
+  return stack.length ? 'select has an unmatched "(".' : null
+}
+
 async function dbQuery(supabase: AnyRecord, userId: string, args: AnyRecord): Promise<AnyRecord> {
   try {
     assertAccess(args.table, false)
+    const problem = selectProblem(args.select)
+    if (problem) return { success: false, error: problem }
     const filters = parseJsonArg(args.filters, 'filters')
     const limit = Math.min(args.limit ?? 50, 200)
     let query = supabase.from(args.table).select(args.select || '*').eq('user_id', userId)
@@ -2819,7 +3042,7 @@ async function logQuery(
       args:      tool === 'db_query' ? args : null,
       ok:        result?.success !== false,
       row_count: typeof result?.count === 'number' ? result.count : null,
-      error:     result?.success === false ? String(result.error ?? '').slice(0, 500) : null,
+      error:     result?.success === false ? hideSecrets(String(result.error ?? '')).slice(0, 500) : null,
     })
   } catch { /* pre-migration / never break the response */ }
 }
@@ -3016,6 +3239,25 @@ async function getAthleteProfile(supabase: AnyRecord, userId: string): Promise<A
   } catch (e) { return { success: false, error: (e as Error).message } }
 }
 
+// Columns the assistant may never write (security audit 10.10.2026). Each one
+// binds a row to an object in an outside account — a Google Calendar event, a
+// Google Task, a Trakt note or list, an ES-DE or ScreenScraper entry, a login —
+// and a background job then changes or deletes that object; the app sets them
+// itself. Play counts are capped at the app's own 1–99 plays, because each
+// extra play becomes a Trakt history write.
+const AI_NO_WRITE = /^(google_(calendar_event_id|task_id|tasklist_id|etag|position|web_view_link|links|updated_at)|trakt_(id|note_id|note_text|list_id)|session_id|external_ref|external_source|ss_jeu_id|igdb_id|esde_(system|path|source|source_hash|assets))$/
+
+function aiWriteProblem(table: string, row: AnyRecord): string | null {
+  for (const k of Object.keys(row)) {
+    if (AI_NO_WRITE.test(k)) return `Not done: the assistant may not set ${k} on ${table} — the app sets it itself.`
+  }
+  if ('repeat_count' in row) {
+    const n = Number(row.repeat_count)
+    if (!Number.isInteger(n) || n < 0 || n > 98) return 'Not done: repeat_count must be a whole number from 0 to 98 (1–99 plays).'
+  }
+  return null
+}
+
 async function dbInsert(supabase: AnyRecord, userId: string, args: AnyRecord): Promise<AnyRecord> {
   try {
     const entry = assertAccess(args.table, true)
@@ -3032,8 +3274,11 @@ async function dbInsert(supabase: AnyRecord, userId: string, args: AnyRecord): P
       // A water row without its day would take the column's UTC CURRENT_DATE —
       // yesterday between 00:00 and 02:00 in Oslo (the phone sends no date).
       if (args.table === 'water_log_entries' && !row.date) row.date = homeDay(Date.now())
+      // A memory the assistant writes is labelled as its own, never as the user's.
+      if (args.table === 'ai_memory') row.source = 'ai'
       return row
     })
+    for (const row of rows) { const problem = aiWriteProblem(args.table, row); if (problem) return { success: false, error: problem } }
     const { data, error } = await supabase.from(args.table).insert(rows).select()
     if (error) return { success: false, error: error.message }
     const ids = (data ?? []).map((d: AnyRecord) => d.id)
@@ -3049,6 +3294,9 @@ async function dbUpdate(supabase: AnyRecord, userId: string, args: AnyRecord): P
     if (!Object.keys(filters).length) return { success: false, error: 'Refusing to update without filters — provide at least one, e.g. {"id":"..."}.' }
     const values = parseJsonArg(args.values, 'values')
     delete values.user_id  // owner is immutable
+    const problem = aiWriteProblem(args.table, values)
+    if (problem) return { success: false, error: problem }
+    if (args.table === 'ai_memory') values.source = 'ai'   // an edited memory is no longer the user's own words
     if (entry.columns.includes('updated_at')) values.updated_at = new Date().toISOString()
     let query = supabase.from(args.table).update(values).eq('user_id', userId)
     query = applyFilters(query, filters)

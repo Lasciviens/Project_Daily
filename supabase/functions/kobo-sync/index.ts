@@ -29,7 +29,7 @@
 // are deleted through the Storage API (never by deleting storage.objects
 // rows, which leaves the file behind) and their rows set to `expired`.
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.107.0'
 
 const BUCKET = 'kobo-inbox'
 const COVER_BUCKET = 'book-covers'

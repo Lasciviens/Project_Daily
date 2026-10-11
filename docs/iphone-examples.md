@@ -156,7 +156,7 @@ bottle sticker → **Run Shortcut → Su İç** → turn **OFF "Ask Before Runni
 |---|---|---|---|
 | `log_supplement` | `{title?, calories?, date?}` | `{ok, logged}` | no |
 | `log_food` | `{title, meal_slot?, calories?, protein_g?, carbs_g?, fat_g?, date?}` | `{ok, logged}` | no |
-| `log_water` | `{amount_ml?, date?}` (default 250 ml) | `{ok, logged_ml}` | no |
+| `log_water` | `{amount_ml?, date?}` (default 250 ml; 1–5000 ml, else 400) | `{ok, logged_ml}` | no |
 | `nutrition_today` | `{date?}` | `{ok, kcal, protein_g, water_ml, entries}` | no |
 | `recent_foods` | `{slot?, from?}` | `{ok, foods[]}` (dedup, snapshot macros) | no |
 | `search_library` | `{q}` | `{ok, items[]}` (your library, per-100g) | no |
