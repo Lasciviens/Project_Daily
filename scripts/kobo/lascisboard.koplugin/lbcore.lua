@@ -418,6 +418,48 @@ function M.footerText(today_minutes, goal, streak)
 end
 
 --- A capture id that is unique enough on one device: time + random.
+-- ── Server certificate (security audit 10.10.2026) ──────────────────────────
+-- LuaSec checks the chain against KOReader's CA bundle when asked to, but
+-- never the name, so the plugin compares the host it connected to with the
+-- certificate's names itself.
+
+-- DNS names a certificate is issued for: subjectAltName dNSName entries
+-- (LuaSec x509:extensions(), OID 2.5.29.17), else the subject's commonName.
+function M.certDnsNames(extensions, subject)
+    local names = {}
+    local san = type(extensions) == "table" and extensions["2.5.29.17"] or nil
+    if type(san) == "table" and type(san.dNSName) == "table" then
+        for _, n in ipairs(san.dNSName) do if type(n) == "string" then names[#names + 1] = n end end
+    end
+    if #names == 0 and type(subject) == "table" then
+        for _, e in ipairs(subject) do
+            if type(e) == "table" and (e.name == "commonName" or e.name == "CN") and type(e.value) == "string" then
+                names[#names + 1] = e.value
+            end
+        end
+    end
+    return names
+end
+
+-- True when `host` is one of `names`. A wildcard stands for exactly one
+-- left-most label ("*.supabase.co" covers "abc.supabase.co", not
+-- "supabase.co" or "a.b.supabase.co"); never for an IP address.
+function M.hostMatches(host, names)
+    if type(host) ~= "string" or host == "" or type(names) ~= "table" then return false end
+    host = host:lower():gsub("%.$", "")
+    local is_ip = host:match("^%d+%.%d+%.%d+%.%d+$") or host:find(":", 1, true)
+    for _, n in ipairs(names) do
+        n = tostring(n):lower():gsub("%.$", "")
+        if n == host then return true end
+        if not is_ip and n:sub(1, 2) == "*." then
+            local rest = n:sub(3)
+            local first, tail = host:match("^([^%.]+)%.(.+)$")
+            if first and tail == rest and rest:find(".", 1, true) then return true end
+        end
+    end
+    return false
+end
+
 function M.newId(now, rand)
     return string.format("kobo-%x-%06x", now, rand)
 end

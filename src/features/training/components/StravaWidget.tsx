@@ -5,7 +5,7 @@ import { useStravaStatus, useSyncStrava, useDisconnectStrava, useConnectStrava }
 import { buildStravaOAuthUrl } from '../api/stravaApi'
 import { Button, IconButton, Truncate } from '../../../shared/ui'
 import { toast } from '../../../app/store'
-import { STRAVA_CALLBACK_KEYS, STRAVA_ORANGE, parseStravaCallback } from '../stravaMeta'
+import { STRAVA_CALLBACK_KEYS, STRAVA_ORANGE, parseStravaCallback, takeStravaState } from '../stravaMeta'
 import { StravaLogo } from './StravaIcons'
 
 export function StravaWidget() {
@@ -41,6 +41,10 @@ export function StravaWidget() {
       toast.warning(callback.error === 'access_denied' ? 'Strava connection cancelled' : `Strava connection failed: ${callback.error}`)
       return
     }
+    if (!takeStravaState(callback.state)) {
+      toast.error('The Strava sign-in could not be verified. Press Connect Strava again.')
+      return
+    }
     if (callback.code) connectWithCode(callback.code)
   }, [connectWithCode, setSearchParams])
 
@@ -56,7 +60,8 @@ export function StravaWidget() {
   if (!status?.connected) {
     return (
       <a
-        href={buildStravaOAuthUrl()}
+        href="https://www.strava.com/oauth/authorize"
+        onClick={e => { e.preventDefault(); window.location.assign(buildStravaOAuthUrl()) }}
         style={{ backgroundColor: STRAVA_ORANGE }}
         className="btn border border-transparent text-white hover:brightness-95"
       >

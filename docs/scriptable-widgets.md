@@ -291,6 +291,12 @@ gateway and fires a confirmation notification with today's new total.
 (suggested `Hizli Log Paneli`), but the runner MUST be named exactly `HizliLog`
 and your food logger `Yemek Logla` (they're addressed by URL).
 
+**Update both together (11.10.2026, security audit).** The widget now creates a
+per-device token in the Scriptable Keychain and puts it in its links; the runner
+ignores any `scriptable:///run/HizliLog` link without it (another app or a web
+page could open that link before), and logs only 250 / 500 / 1000 ml. With the
+new runner and the old widget, every tap shows "Yok sayıldı" — replace both.
+
 ```javascript
 // Lasci's Board — Hizli Log Paneli (Scriptable, MEDIUM widget; pair with the "HizliLog" runner)
 const GATEWAY = "https://hsaedwwqpcjizeozjbch.supabase.co/functions/v1/phone-gateway";
@@ -318,12 +324,18 @@ async function cached(name, fetcher) {
   catch (e) { if (fm.fileExists(p)) return { data: JSON.parse(fm.readString(p)), stale: true }; return { data: null, stale: true }; }
 }
 
+// A per-device token only this widget and the HizliLog runner know (Keychain),
+// so another app or web page opening scriptable:///run/HizliLog is ignored.
+const TOKEN_KEY = "lasci.hizlilog.token";
+if (!Keychain.contains(TOKEN_KEY)) Keychain.set(TOKEN_KEY, UUID.string());
+const T = encodeURIComponent(Keychain.get(TOKEN_KEY));
+
 const { data: n, stale } = await cached("nut", () => gw("nutrition_today"));
 const BTNS = [
-  { icon: "💧", label: "+250 ml", url: "scriptable:///run/HizliLog?do=water&ml=250" },
-  { icon: "💧", label: "+500 ml", url: "scriptable:///run/HizliLog?do=water&ml=500" },
-  { icon: "💧", label: "+1 L",    url: "scriptable:///run/HizliLog?do=water&ml=1000" },
-  { icon: "💊", label: "Kreatin", url: "scriptable:///run/HizliLog?do=creatine" },
+  { icon: "💧", label: "+250 ml", url: `scriptable:///run/HizliLog?do=water&ml=250&t=${T}` },
+  { icon: "💧", label: "+500 ml", url: `scriptable:///run/HizliLog?do=water&ml=500&t=${T}` },
+  { icon: "💧", label: "+1 L",    url: `scriptable:///run/HizliLog?do=water&ml=1000&t=${T}` },
+  { icon: "💊", label: "Kreatin", url: `scriptable:///run/HizliLog?do=creatine&t=${T}` },
   { icon: "🍽️", label: "Yemek",  url: "scriptable:///run/Yemek%20Logla" },
   { icon: "📷", label: "Barkod",  url: "shortcuts://run-shortcut?name=" + encodeURIComponent("Barkod Tara") },
 ];
@@ -378,9 +390,16 @@ async function notify(title, body) {
 }
 
 const p = args.queryParameters || {};
+// Only taps from the Hizli Log widget count: it puts this device's Keychain
+// token in its links (security audit 10.10.2026). Anything else is ignored.
+const TOKEN_KEY = "lasci.hizlilog.token";
+const fromWidget = Keychain.contains(TOKEN_KEY) && p.t === Keychain.get(TOKEN_KEY);
+const ML = { "250": 250, "500": 500, "1000": 1000 };
 try {
-  if (p.do === "water") {
-    const ml = Number(p.ml) || 250;
+  if (!fromWidget) {
+    await notify("⚠️ HizliLog", "Yok sayıldı: Hizli Log widget'ından gelmedi.");
+  } else if (p.do === "water" && ML[p.ml]) {
+    const ml = ML[p.ml];
     const res = await gw("log_water", { amount_ml: ml });
     if (!res.ok) throw new Error(res.error || "log_water failed");
     const today = await gw("nutrition_today").catch(() => null);

@@ -45,8 +45,31 @@
 > `docs/iphone-examples.md`. Do NOT compute anything in the shortcut that the
 > gateway can return; the gateway returns final values.
 
-**Board status:** C1–C5 complete; C6 is new. Open items are two device-side
-confirmations (re-import `Su İç`, camera-run `Barkod Tara`) plus C6.
+**Board status:** C1–C5 complete; C6 and C8 are open. Open items are two
+device-side confirmations (re-import `Su İç`, camera-run `Barkod Tara`) plus C6
+and C8.
+
+- **C8 · Security fixes from the 10.10.2026 audit — `todo`.** Two findings sit
+  in `scripts/iphone-shortcuts/generate.mjs` (Codex-owned, so Claude did not
+  touch them). Full detail: `docs/coord/to-codex.md`, entry of 2026-10-11.
+  1. **Escape runtime text in the HTML result cards.** Ten Shortcuts build a
+     card in a Text action and splice in task/schedule titles and AI answers
+     unescaped before "Make Rich Text from HTML" + Quick Look. Escape every
+     runtime value first (`&` → `&amp;` first, then `<`, `>`, `"`, `'`) with
+     Replace Text actions, or render those values as plain text. Generated
+     constants are already escaped.
+  2. **Never write secret-bearing files to a shared, predictable path.** The
+     generator writes the real `PHONE_GATEWAY_SECRET` into 10 plists under
+     `/private/tmp/lascis-board-shortcuts` (world-writable `/tmp`, fixed name,
+     `mkdirSync({recursive:true})` + `writeFileSync` follow symlinks and use the
+     default umask). Use a fresh private directory (`fs.mkdtempSync` under the
+     user's own `$TMPDIR`, mode `0700`), create each file with `flag: 'wx'` and
+     mode `0600`, refuse a path that is a symlink, and delete the unsigned and
+     signed files once imported. Keep `--out` working for a deliberate path.
+  3. Note only: `phone-gateway` now refuses `log_water` above 5,000 ml, and the
+     Scriptable `HizliLog` runner (docs) needs a per-device token; `Su İç` /
+     `Log Creatine` are still runnable by any app through
+     `shortcuts://run-shortcut` — mention it if you see a cheap guard.
 
 - **C6 · Wire the existing body-composition OCR Shortcut to the gateway —
   `todo`.** The Shortcut that OCRs a smart-scale "Body composition analysis

@@ -158,8 +158,27 @@ async function liveSubscriptions(userId: string): Promise<AnyRecord[]> {
   return (data ?? []) as AnyRecord[]
 }
 
+// Only the browsers' own push services: a stored endpoint is otherwise any
+// address this function would POST to (security audit 10.10.2026).
+// Apple (iOS/macOS Safari), Google (Chrome, Edge on Android), Mozilla, Microsoft.
+function isPushService(endpoint: string): boolean {
+  try {
+    const u = new URL(endpoint)
+    if (u.protocol !== 'https:' || u.port) return false
+    const h = u.hostname.toLowerCase()
+    return h === 'web.push.apple.com' || h.endsWith('.push.apple.com')
+      || h === 'fcm.googleapis.com' || h === 'android.googleapis.com'
+      || h === 'updates.push.services.mozilla.com' || h.endsWith('.push.services.mozilla.com')
+      || h.endsWith('.notify.windows.com')
+  } catch { return false }
+}
+
 async function sendToAll(userId: string, payload: AnyRecord): Promise<{ sent: number; pruned: number }> {
-  const subs = await liveSubscriptions(userId)
+  const subs = (await liveSubscriptions(userId)).filter(s => {
+    const ok = isPushService(String(s.endpoint ?? ''))
+    if (!ok) console.error('push-send: skipped a subscription that is not a browser push service')
+    return ok
+  })
   let sent = 0, pruned = 0
   for (const s of subs) {
     try {

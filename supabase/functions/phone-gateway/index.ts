@@ -473,7 +473,9 @@ Deno.serve(async (req) => {
       // ── Deterministic: log water (default 250 ml — e.g. an NFC bottle tap) ──
       case 'log_water': {
         const amount = num(body.amount_ml, 250)
-        if (amount <= 0) return json({ ok: false, error: 'amount_ml must be > 0' }, 400)
+        // A device secret is all a caller needs here, so no single log may be
+        // absurd (security audit 10.10.2026): at most 5 L at once.
+        if (amount <= 0 || amount > 5000) return json({ ok: false, error: 'amount_ml must be between 1 and 5000' }, 400)
         const { error } = await supabase.from('water_log_entries')
           .insert({ user_id: userId, date: body.date ?? todayLocal(), amount_ml: Math.round(amount) })
         return error ? json({ ok: false, error: error.message }, 400) : json({ ok: true, logged_ml: Math.round(amount) })

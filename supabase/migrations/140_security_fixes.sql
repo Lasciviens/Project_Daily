@@ -30,6 +30,16 @@
 --     otherwise leave on the pooled connection (app.google_sync_write,
 --     app.trakt_sync), so a read can never silently stop Google Tasks or Trakt
 --     syncing for a later request. Same signature and grants as 064.
+--  G. An account with data can be deleted again. Deleting a user cascades into
+--     every table, and the audit trigger, the Google Tasks queue and the Trakt
+--     queue each wrote a new row for that user mid-delete — their foreign key
+--     to the vanishing user aborted the whole deletion (a test account could
+--     never be removed). They now skip a user that is already gone, exactly as
+--     135's calendar queue does. Function bodies are the live ones plus that
+--     one guard.
+--  H. pg_net's request queue (which briefly holds the cron jobs' secret
+--     headers) is taken away from the browser roles, if they ever had it.
+--     Best effort: pg_net belongs to Supabase, so a refusal is only a notice.
 --
 -- Needs 139 (owner_lock_apply).
 
@@ -198,5 +208,229 @@ end;
 $$;
 revoke all     on function public.ai_run_read_query(text) from public, anon;
 grant  execute on function public.ai_run_read_query(text) to authenticated;
+
+-- G ───────────────────────────────────────────────────────────────────────────
+CREATE OR REPLACE FUNCTION public.log_audit()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  old_j    jsonb := CASE WHEN TG_OP = 'INSERT' THEN NULL ELSE to_jsonb(OLD) END;
+  new_j    jsonb := CASE WHEN TG_OP = 'DELETE' THEN NULL ELSE to_jsonb(NEW) END;
+  row_j    jsonb := COALESCE(new_j, old_j);
+  diff_old jsonb;
+  diff_new jsonb;
+  v_user   uuid;
+BEGIN
+  IF TG_OP = 'UPDATE' THEN
+    -- Only the keys that actually changed, ignoring bookkeeping columns.
+    SELECT COALESCE(jsonb_object_agg(o.key, o.value), '{}'::jsonb)
+      INTO diff_old
+      FROM jsonb_each(old_j) o
+     WHERE o.key NOT IN ('updated_at', 'synced_at')
+       AND new_j -> o.key IS DISTINCT FROM o.value;
+
+    SELECT COALESCE(jsonb_object_agg(n.key, n.value), '{}'::jsonb)
+      INTO diff_new
+      FROM jsonb_each(new_j) n
+     WHERE n.key NOT IN ('updated_at', 'synced_at')
+       AND old_j -> n.key IS DISTINCT FROM n.value;
+
+    -- Touch-only update (just updated_at/synced_at) — not worth a log row.
+    IF diff_new = '{}'::jsonb AND diff_old = '{}'::jsonb THEN
+      RETURN NULL;
+    END IF;
+  ELSE
+    diff_old := old_j;
+    diff_new := new_j;
+  END IF;
+
+  v_user := COALESCE((row_j ->> 'user_id')::uuid, auth.uid());
+
+  -- The account itself is being deleted (auth.users → this table cascade):
+  -- its audit trail goes with it, and inserting a row for it would break
+  -- audit_logs' foreign key and abort the deletion (same guard as 135).
+  IF NOT EXISTS (SELECT 1 FROM auth.users WHERE id = v_user) THEN
+    RETURN NULL;
+  END IF;
+
+  INSERT INTO public.audit_logs (user_id, table_name, operation, row_id, old_data, new_data, actor, tx_id)
+  VALUES (
+    v_user,
+    TG_TABLE_NAME,
+    TG_OP,
+    row_j ->> 'id',
+    diff_old,
+    diff_new,
+    CASE WHEN auth.uid() IS NOT NULL THEN 'web' ELSE 'service' END,
+    txid_current()
+  );
+
+  -- Retention: 30 days. Probabilistic sweep (~2% of writes) instead of a cron
+  -- job — at this app's volume that's a cleanup every few dozen writes.
+  IF random() < 0.02 THEN
+    DELETE FROM public.audit_logs WHERE created_at < now() - interval '30 days';
+  END IF;
+
+  RETURN NULL;  -- AFTER trigger; return value is ignored
+END;
+$function$;
+
+CREATE OR REPLACE FUNCTION public.enqueue_google_tasks_outbox()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+BEGIN
+  IF current_setting('app.google_sync_write', true) = 'true' THEN
+    RETURN NULL;
+  END IF;
+
+  IF TG_OP = 'DELETE' THEN
+    -- Account being deleted: nothing could ever drain the row (same guard as 135).
+    IF OLD.google_task_id IS NOT NULL AND OLD.google_sync_enabled IS TRUE
+       AND EXISTS (SELECT 1 FROM auth.users WHERE id = OLD.user_id) THEN
+      INSERT INTO public.google_tasks_outbox (user_id, task_id, operation, payload)
+      VALUES (OLD.user_id, OLD.id, 'delete', jsonb_build_object(
+        'google_task_id', OLD.google_task_id, 'google_tasklist_id', OLD.google_tasklist_id
+      ));
+    END IF;
+    RETURN OLD;
+  END IF;
+
+  IF TG_OP = 'INSERT' THEN
+    -- A fresh local task needs creating on the Google side only when the
+    -- app opted it in (google_sync_enabled — see its column comment). A row
+    -- that originates FROM Google already returned above via the session
+    -- flag guard, before ever reaching this branch.
+    IF NEW.google_sync_enabled IS TRUE THEN
+      INSERT INTO public.google_tasks_outbox (user_id, task_id, operation, payload)
+      VALUES (NEW.user_id, NEW.id, 'create', jsonb_build_object(
+        'title', NEW.title, 'notes', NEW.description, 'due_date', NEW.due_date,
+        'parent_task_id', NEW.parent_task_id, 'google_tasklist_id', NEW.google_tasklist_id
+      ));
+    END IF;
+    RETURN NEW;
+  END IF;
+
+  -- UPDATE, newly opted in (the "Push" catch-up action turning sync on for a
+  -- task created before Google was connected): needs a fresh create
+  -- regardless of google_local_edit_at — flipping google_sync_enabled isn't
+  -- itself a content edit, so the BEFORE trigger never bumped that clock.
+  --
+  -- Real race fixed (found reviewing this migration a second time): this
+  -- branch used to require NEW.google_task_id IS NULL. But a row that was
+  -- JUST opted out (the branch below this one enqueues a 'delete' for its
+  -- current google_task_id — WITHOUT clearing that column locally; only
+  -- the drain's own clear_google_task_id_if_matches does that, once the
+  -- delete actually runs) still HAS a non-null google_task_id until that
+  -- delete drains. Opting back in before it drains hit this branch's
+  -- `IS NULL` guard and enqueued NOTHING — the task ended up
+  -- google_sync_enabled=true with a google_task_id that's either about to
+  -- be cleared (delete lands) or already stale, and no create was ever
+  -- queued to replace it. Fixed: enqueue a create on EVERY opt-in
+  -- transition, not just when google_task_id happens to be NULL, stamping
+  -- `force_recreate: true` whenever a task_id is still present (migration
+  -- 079's per-task FIFO claim guarantees any earlier pending 'delete' for
+  -- this SAME task drains first — force_recreate is what then lets THIS
+  -- create proceed once that delete has cleared the id, or immediately if
+  -- it hadn't been set to begin with).
+  IF NEW.google_sync_enabled IS TRUE AND OLD.google_sync_enabled IS NOT TRUE THEN
+    INSERT INTO public.google_tasks_outbox (user_id, task_id, operation, payload)
+    VALUES (NEW.user_id, NEW.id, 'create', jsonb_build_object(
+      'title', NEW.title, 'notes', NEW.description, 'due_date', NEW.due_date,
+      'parent_task_id', NEW.parent_task_id, 'google_tasklist_id', NEW.google_tasklist_id,
+      'force_recreate', NEW.google_task_id IS NOT NULL
+    ));
+    RETURN NEW;
+  END IF;
+
+  -- UPDATE, newly opted OUT (e.g. a task that gains a linked Google Calendar
+  -- event and must drop its now-redundant Google Task copy — "one task = ONE
+  -- Google entry"): remove it from Google. Independent of google_local_edit_at
+  -- for the same reason as the opt-in branch above.
+  IF NEW.google_sync_enabled IS NOT TRUE AND OLD.google_sync_enabled IS TRUE AND OLD.google_task_id IS NOT NULL THEN
+    INSERT INTO public.google_tasks_outbox (user_id, task_id, operation, payload)
+    VALUES (NEW.user_id, NEW.id, 'delete', jsonb_build_object(
+      'google_task_id', OLD.google_task_id, 'google_tasklist_id', OLD.google_tasklist_id
+    ));
+    RETURN NEW;
+  END IF;
+
+  -- UPDATE: trg_stamp_google_local_edit already decided whether a
+  -- Google-visible field changed (bucket-aware for status) — reuse that
+  -- instead of re-checking the same condition here.
+  IF NEW.google_local_edit_at IS DISTINCT FROM OLD.google_local_edit_at
+     AND NEW.google_sync_enabled IS TRUE THEN
+
+    IF public.google_task_status_bucket(NEW.status) = 'none'
+       AND public.google_task_status_bucket(OLD.status) <> 'none'
+       AND NEW.google_task_id IS NOT NULL THEN
+      -- Cancelled: Google has no "cancelled" state, so the honest mapping is
+      -- to remove it there (mirrors 047's local soft-cancel philosophy —
+      -- the LOCAL row stays, reversible; only the Google-side copy goes).
+      INSERT INTO public.google_tasks_outbox (user_id, task_id, operation, payload)
+      VALUES (NEW.user_id, NEW.id, 'delete', jsonb_build_object(
+        'google_task_id', NEW.google_task_id, 'google_tasklist_id', NEW.google_tasklist_id
+      ));
+
+    ELSIF public.google_task_status_bucket(OLD.status) = 'none'
+          AND public.google_task_status_bucket(NEW.status) <> 'none' THEN
+      -- Un-cancelled: whatever Google task existed before is gone for good
+      -- (Tasks API has no undelete) — recreate fresh rather than try to
+      -- resurrect a dead id. force_recreate=true is what actually makes the
+      -- drain overwrite a stale google_task_id instead of skipping (see this
+      -- migration's header comment — this is the real fix, migration 071's
+      -- own comment claiming "drain must overwrite" was never implemented).
+      INSERT INTO public.google_tasks_outbox (user_id, task_id, operation, payload)
+      VALUES (NEW.user_id, NEW.id, 'create', jsonb_build_object(
+        'title', NEW.title, 'notes', NEW.description, 'due_date', NEW.due_date,
+        'parent_task_id', NEW.parent_task_id, 'google_tasklist_id', NEW.google_tasklist_id,
+        'force_recreate', true
+      ));
+
+    ELSIF NEW.google_task_id IS NOT NULL THEN
+      INSERT INTO public.google_tasks_outbox (user_id, task_id, operation, payload)
+      VALUES (NEW.user_id, NEW.id, 'update', jsonb_build_object(
+        'title', NEW.title, 'notes', NEW.description, 'due_date', NEW.due_date,
+        'status', NEW.status, 'parent_task_id', NEW.parent_task_id,
+        'google_tasklist_id', NEW.google_tasklist_id,
+        'prev_google_tasklist_id', OLD.google_tasklist_id,
+        'prev_parent_task_id', OLD.parent_task_id
+      ));
+    END IF;
+  END IF;
+
+  RETURN NEW;
+END;
+$function$;
+
+CREATE OR REPLACE FUNCTION public.trakt_enqueue(p_user uuid, p_op text, p_key text, p_payload jsonb)
+ RETURNS void
+ LANGUAGE sql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  -- Nothing is queued for an account that is being deleted (same guard as 135).
+  INSERT INTO public.trakt_outbox (user_id, op, item_key, payload)
+  SELECT p_user, p_op, p_key, p_payload
+  WHERE EXISTS (SELECT 1 FROM auth.users WHERE id = p_user)
+$function$;
+
+-- H ───────────────────────────────────────────────────────────────────────────
+do $$
+begin
+  if to_regclass('net.http_request_queue') is not null then
+    execute 'revoke all on table net.http_request_queue from anon, authenticated';
+  end if;
+  if to_regclass('net._http_response') is not null then
+    execute 'revoke all on table net._http_response from anon, authenticated';
+  end if;
+exception when others then
+  raise notice '140: pg_net grants left as they are (%).', sqlerrm;
+end $$;
 
 commit;

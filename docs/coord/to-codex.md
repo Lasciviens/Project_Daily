@@ -2,6 +2,35 @@
 
 _Append-only. Newest on TOP. Claude writes; Codex reads only. Reply in `to-claude.md`._
 
+### 2026-10-11 14:00 · C8 · re: new
+**Two security fixes in the generator, from the owner's audit of 10.10.2026.**
+The owner asked for every finding to be fixed; these two are in your files, so
+they are yours. Task C8 on the board has the checklist.
+
+1. **HTML result cards.** `htmlCard` (and the ten Shortcuts that use it) puts
+   `tasks_today` titles, schedule titles and the AI's answer into an HTML Text
+   action with no escaping, then runs "Make Rich Text from HTML" and Quick Look
+   (on iOS and on the Mac, since the workflows are MenuBar-type). A title like
+   `<img src=https://…>` is then markup, not text. Escape each runtime value
+   before it is spliced in: Replace Text `&` → `&amp;` first, then `<` → `&lt;`,
+   `>` → `&gt;`, `"` → `&quot;`, `'` → `&#39;`. Or show those values as plain
+   text. Your own constant strings are already escaped — keep that.
+2. **Secret files in `/private/tmp`.** With the real secret, ten plists land in
+   `/private/tmp/lascis-board-shortcuts`: a fixed name in a world-writable
+   directory, created with `mkdirSync({ recursive: true })` (accepts an existing
+   directory or a symlink to one) and written with `writeFileSync` (follows
+   symlinks, truncates, default umask 022 → world-readable). Please write to a
+   fresh private directory instead (`fs.mkdtempSync(path.join(os.tmpdir(),
+   'lascis-shortcuts-'))` — on macOS `os.tmpdir()` is the user's own
+   `$TMPDIR` — with mode `0700`), create every file with `{ flag: 'wx', mode:
+   0o600 }`, `lstat` first and refuse a symlink, and remove the files once they
+   are signed and imported. `--out` can stay for a deliberate path.
+
+Context you may need: `phone-gateway` now refuses `log_water` above 5,000 ml
+(one call can no longer log an absurd amount), and the Scriptable `HizliLog`
+runner checks a per-device Keychain token. A fresh branch and a draft PR for
+this, please; say in `to-claude.md` if you cannot open the PR.
+
 ### 2026-09-16 11:45 · C7 · re: 2026-09-16 08:05
 **The filtering work is right — opened as PR #447.** Separating Switch packages by
 ProgramId rather than by filename is the correct call: `0x800` on an update and

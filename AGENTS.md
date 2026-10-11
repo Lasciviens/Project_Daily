@@ -111,6 +111,15 @@ that number would collide with a deleted one in history.
     `select public.owner_lock_apply('public.<table>');` —
     `scripts/verify-owner-lock.cjs` fails otherwise. Undo in an emergency:
     `select public.owner_lock_disable();` (drops every `app_owner_lock` policy).
+13. **Token tables are service-role only.** A table holding a provider token
+    or secret gets `REVOKE ALL ON … FROM anon, authenticated` in the migration
+    that creates it (044, 140), RLS on, no browser policy, and never enters
+    `ai-proxy`'s `DB_CATALOG`. The browser only ever sees derived status.
+14. **A trigger that inserts a row tied to a user** (audit, outbox, queue) must
+    skip a user that no longer exists (`IF NOT EXISTS (SELECT 1 FROM auth.users
+    WHERE id = …) THEN RETURN …`): deleting an account cascades into every
+    table, and an insert for the vanishing user aborts the whole deletion
+    (135, 140).
 
 ---
 
@@ -200,6 +209,17 @@ decision — externally synced tables (`hevy_*`, `health_*`, `strava_activities`
 `movies`, `tv_series`) are `'ro'`; token/secret tables are never listed at all.
 Changing the catalog means **redeploying `ai-proxy`**; say so in the PR's manual
 steps.
+
+Two lists beside it guard what the assistant may DO (security audit
+10.10.2026, `scripts/verify-ai-confirm.cjs`):
+- `NEEDS_CONFIRM` — tools that only become a Confirm card (today `db_delete`,
+  `update_hevy_routine`). A new tool that deletes, overwrites or writes to an
+  outside account goes here.
+- `AI_NO_WRITE` — columns the assistant may never set: anything that links a
+  row to an object in an outside account (a Google Calendar event or Task, a
+  Trakt note or list, an ES-DE or ScreenScraper entry, a login session),
+  because a background job then changes or deletes that object. A new such
+  column goes here.
 
 ---
 
