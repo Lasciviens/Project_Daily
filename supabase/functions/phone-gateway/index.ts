@@ -9,7 +9,7 @@
 // Deploy with "Enforce JWT Verification" OFF (config.toml) — the secret is not a
 // Supabase JWT, same pattern as hevy-sync/health-export-webhook. The
 // service-role key NEVER leaves the server. Self-contained (no _shared imports).
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.107.0'
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',

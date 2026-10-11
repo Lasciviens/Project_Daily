@@ -32,7 +32,7 @@
 // ONE game lazily when its detail modal opens rather than mapping a whole
 // library up front.
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.107.0'
 import {
   exchangeNpssoForAccessCode,
   exchangeAccessCodeForAuthTokens,
@@ -48,7 +48,7 @@ import {
   getUserTrophiesEarnedForTitle,
   getTitleTrophyGroups,
   getUserTrophyGroupEarningsForTitle,
-} from 'npm:psn-api@^2'
+} from 'npm:psn-api@2.18.1'
 
 // Owner lock (security audit 10.10.2026, migration 139): this function serves
 // only the owner (HEVY_USER_ID) and accounts listed in app_allowed_users (for

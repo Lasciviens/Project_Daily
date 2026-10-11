@@ -36,7 +36,7 @@
 // refresh token; GET is limited to 1,000 calls / 5 min per user, POST to one
 // per second; paginated endpoints report X-Pagination-Page-Count.
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.107.0'
 
 // Owner lock (security audit 10.10.2026, migration 139): this function serves
 // only the owner (HEVY_USER_ID) and accounts listed in app_allowed_users (for
@@ -1323,8 +1323,14 @@ class TmdbKeyError extends Error {
   constructor() { super('TMDB rejected TMDB_API_KEY on the trakt-api function (401) — put a valid TMDB v3 API key there') }
 }
 
+// A network failure's message quotes the request URL, and this URL carries a
+// key; the caller sees only which service failed (security audit 10.10.2026).
+async function fetchHidingUrl(url: string, init: RequestInit | undefined, what: string): Promise<Response> {
+  try { return await fetch(url, init) } catch { throw new Error(`${what} could not be reached (network error)`) }
+}
+
 async function tmdb(path: string): Promise<AnyRec> {
-  const res = await fetch(`${TMDB}${path}?api_key=${encodeURIComponent(TMDB_KEY())}&language=en-US`)
+  const res = await fetchHidingUrl(`${TMDB}${path}?api_key=${encodeURIComponent(TMDB_KEY())}&language=en-US`, undefined, 'TMDB')
   if (res.status === 401) throw new TmdbKeyError()
   if (!res.ok) throw new Error(`TMDB ${res.status}: ${path}`)
   return await res.json()
@@ -2199,9 +2205,9 @@ async function mdblist(type: 'movie' | 'show', ids: number[]): Promise<Map<numbe
   const out = new Map<number, Scores>()
   if (!MDBLIST_KEY() || ids.length === 0) return out
   for (const part of chunk(ids, 200)) {
-    const res = await fetch(`https://api.mdblist.com/tmdb/${type}?apikey=${encodeURIComponent(MDBLIST_KEY())}`, {
+    const res = await fetchHidingUrl(`https://api.mdblist.com/tmdb/${type}?apikey=${encodeURIComponent(MDBLIST_KEY())}`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: part.map(String) }),
-    })
+    }, 'MDBList')
     if (res.status === 429) throw new Error('MDBList daily limit reached — scores refresh tomorrow')
     if (res.status === 401 || res.status === 403) throw new Error('MDBList rejected MDBLIST_API_KEY')
     if (!res.ok) throw new Error(`MDBList ${res.status}`)

@@ -24,7 +24,7 @@
 // library cannot be enriched live on every page load. The service-role
 // client below exists ONLY for that cache — no user data is ever written.
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.107.0'
 
 // Owner lock (security audit 10.10.2026, migration 139): this function serves
 // only the owner (HEVY_USER_ID) and accounts listed in app_allowed_users (for
@@ -63,8 +63,14 @@ type Action =
 // deno-lint-ignore no-explicit-any
 type AnyRec = Record<string, any>
 
+// A network failure's message quotes the request URL, and this URL carries a
+// key; the caller sees only which service failed (security audit 10.10.2026).
+async function fetchHidingUrl(url: string, init: RequestInit | undefined, what: string): Promise<Response> {
+  try { return await fetch(url, init) } catch { throw new Error(`${what} could not be reached (network error)`) }
+}
+
 async function steamGet(path: string, params: Record<string, string>) {
-  const r = await fetch(`${STEAM}${path}?${new URLSearchParams(params).toString()}`)
+  const r = await fetchHidingUrl(`${STEAM}${path}?${new URLSearchParams(params).toString()}`, undefined, 'Steam')
   if (!r.ok) throw new Error(`steam ${r.status}`)
   return r.json()
 }

@@ -30,7 +30,7 @@
 //     (`stores[].current_price` / `last_checked`, docs example). Kassalapp has
 //     no REMA 1000 prices (REMA publishes none online).
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.107.0'
 
 // Owner lock (security audit 10.10.2026, migration 139): this function serves
 // only the owner (HEVY_USER_ID) and accounts listed in app_allowed_users (for

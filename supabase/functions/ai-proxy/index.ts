@@ -1,4 +1,4 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.107.0'
 
 // Owner lock (security audit 10.10.2026, migration 139): this function serves
 // only the owner (HEVY_USER_ID) and accounts listed in app_allowed_users (for
@@ -246,6 +246,17 @@ function jitter(ms: number): number {
 // failure after every model's capacity pool has genuinely been exhausted,
 // not after one pool's transient hiccup (this was a real ~80%-of-requests
 // pain point even before the multi-model chain existed).
+// Removes every server secret this function holds from a message before it
+// leaves (caller, model, app_error_logs, ai_query_log). Security audit.
+function hideSecrets(msg: string): string {
+  let out = String(msg ?? '')
+  for (const k of ['GEMINI_API_KEY', 'SUPABASE_SERVICE_ROLE_KEY', 'PHONE_GATEWAY_SECRET']) {
+    const v = Deno.env.get(k)
+    if (v && v.length >= 8) out = out.split(v).join('[hidden]')
+  }
+  return out.replace(/([?&](?:key|apikey|api_key)=)[^&\s)"']+/gi, '$1[hidden]')
+}
+
 async function fetchGeminiWithFallback(
   apiKey:          string,
   buildUrl:        (model: GeminiModel) => string,
@@ -262,9 +273,11 @@ async function fetchGeminiWithFallback(
     const model = chain[pos]
     const retries = RETRIES_BY_POSITION[pos] ?? 2
     for (let attempt = 0; attempt < retries; attempt++) {
+      // The key travels in a header, never the URL: a network error's message
+      // quotes the URL, and it reaches the caller and app_error_logs (audit).
       const res = await fetch(buildUrl(model), {
         method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
         body:    JSON.stringify(buildBody(model)),
       })
       if (res.ok) return { res, modelUsed: model }
@@ -665,9 +678,9 @@ const EMBED_MODEL = 'gemini-embedding-001'
 const EMBED_DIMS = 768
 const vecLiteral = (v: number[]) => `[${v.join(',')}]`
 async function embedTexts(apiKey: string, texts: string[], taskType: string): Promise<(number[] | null)[]> {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${EMBED_MODEL}:batchEmbedContents?key=${apiKey}`
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${EMBED_MODEL}:batchEmbedContents`
   const body = { requests: texts.map(t => ({ model: `models/${EMBED_MODEL}`, content: { parts: [{ text: t.slice(0, 8000) }] }, taskType, outputDimensionality: EMBED_DIMS })) }
-  const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+  const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey }, body: JSON.stringify(body) })
   if (!res.ok) throw new Error(`embed ${res.status}: ${(await res.text().catch(() => '')).slice(0, 200)}`)
   const j = await res.json()
   return (j.embeddings ?? []).map((e: AnyRecord) => Array.isArray(e?.values) ? e.values as number[] : null)
@@ -704,7 +717,7 @@ async function semanticSearch(args: AnyRecord, authHeader?: string): Promise<Any
     const { data, error } = await userClient.rpc('ai_semantic_search', { query_embedding: vecLiteral(vec), match_count: limit })
     if (error) return { success: false, error: error.message }
     return { success: true, count: (data ?? []).length, matches: data ?? [] }
-  } catch (e) { return { success: false, error: (e as Error).message } }
+  } catch (e) { return { success: false, error: hideSecrets((e as Error).message) } }
 }
 
 Deno.serve(async (req) => {
@@ -773,7 +786,7 @@ Deno.serve(async (req) => {
           status: 503, headers: { ...headers, 'Content-Type': 'application/json' },
         })
       }
-      const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?pageSize=100&key=${key}`)
+      const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=100', { headers: { 'x-goog-api-key': key } })
       const j = await r.json()
       const models = (j.models ?? [])
         .filter((m: AnyRecord) => (m.supportedGenerationMethods ?? []).includes('generateContent'))
@@ -815,7 +828,7 @@ Deno.serve(async (req) => {
             if (upserts.length) { await supabase.from('ai_embeddings').upsert(upserts, { onConflict: 'user_id,source_table,source_id' }); n += upserts.length }
           }
           perTable[src.table] = n; indexed += n
-        } catch (e) { perTable[src.table] = `error: ${(e as Error).message}` }
+        } catch (e) { perTable[src.table] = `error: ${hideSecrets((e as Error).message)}` }
       }
       return new Response(JSON.stringify({ success: true, indexed, perTable }), { status: 200, headers: { ...headers, 'Content-Type': 'application/json' } })
     }
@@ -863,7 +876,7 @@ Deno.serve(async (req) => {
       }), { status: 429, headers: { ...headers, 'Content-Type': 'application/json' } })
     }
     console.error('[ai-proxy]', err)
-    return new Response(JSON.stringify({ error: err instanceof Error ? err.message : 'Internal error' }), {
+    return new Response(JSON.stringify({ error: hideSecrets(err instanceof Error ? err.message : 'Internal error') }), {
       status: 500, headers: { ...headers, 'Content-Type': 'application/json' },
     })
   }
@@ -911,7 +924,7 @@ async function callGemini(
   canConfirm = false,
 ): Promise<{ text: string; quickReplies?: string[]; steps?: string[]; model?: string; confirms?: Confirm[] }> {
   const buildUrl = (model: GeminiModel) =>
-    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`
 
   // Sticks with whichever model actually served the last turn — a mid-
   // conversation model switch would be a strange (if harmless) inconsistency;
@@ -1021,6 +1034,7 @@ async function callGemini(
         } else {
           result = await dispatch(name, args, supabase, userId, authHeader, surface)
         }
+        if (result && typeof result.error === 'string') result.error = hideSecrets(result.error)
         steps.push(describeStep(name, args, result))
         return { functionResponse: { name, response: result } }
       })
@@ -1092,7 +1106,7 @@ async function callGeminiStructured(
   preferredModel?: GeminiModel,
 ): Promise<{ data: AnyRecord }> {
   const buildUrl = (model: GeminiModel) =>
-    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`
 
   const contents: AnyRecord[] = messagesToContents(messages)
 
@@ -2971,7 +2985,7 @@ async function logQuery(
       args:      tool === 'db_query' ? args : null,
       ok:        result?.success !== false,
       row_count: typeof result?.count === 'number' ? result.count : null,
-      error:     result?.success === false ? String(result.error ?? '').slice(0, 500) : null,
+      error:     result?.success === false ? hideSecrets(String(result.error ?? '')).slice(0, 500) : null,
     })
   } catch { /* pre-migration / never break the response */ }
 }
