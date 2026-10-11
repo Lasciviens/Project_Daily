@@ -126,7 +126,7 @@ function safeRequest(r: unknown): EntityModalRequest | null {
 
 function safeOpener(el: HTMLElement): boolean {
   if (el.closest('form') && (el.getAttribute('type') ?? 'submit') === 'submit' && el.tagName === 'BUTTON') return false
-  if (DESTRUCTIVE.test(accessibleName(el)) || DESTRUCTIVE.test(el.textContent ?? '')) return false
+  if (DESTRUCTIVE.test(accessibleName(el))) return false
   return true
 }
 

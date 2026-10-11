@@ -700,13 +700,42 @@ const EMBED_SOURCES: { table: string; cols: string; text: (r: AnyRecord) => stri
   { table: 'books',          cols: 'id,title,author,review,notes',      text: r => [r.title, r.author, r.review, r.notes].filter(Boolean).join('\n') },
 ]
 
-async function semanticSearch(args: AnyRecord, authHeader?: string): Promise<AnyRecord> {
+// Editing or deleting a searched row removes its copy (migration 140's
+// trigger); this adds copies for rows that have none, a few per search, so
+// edits come back by themselves without a "Reindex AI search" click.
+const EMBED_CATCH_UP = 32
+async function embedMissing(supabase: AnyRecord, userId: string, key: string): Promise<void> {
+  let budget = EMBED_CATCH_UP
+  for (const src of EMBED_SOURCES) {
+    if (budget <= 0) return
+    const { data: rows, error } = await supabase.from(src.table).select(src.cols).eq('user_id', userId).limit(500)
+    if (error || !rows?.length) continue
+    const { data: have } = await supabase.from('ai_embeddings').select('source_id').eq('user_id', userId).eq('source_table', src.table)
+    const known = new Set((have ?? []).map((h: AnyRecord) => String(h.source_id)))
+    const todo = (rows as AnyRecord[])
+      .map(r => ({ id: String(r.id), text: src.text(r).trim() }))
+      .filter(x => x.text && !known.has(x.id))
+      .slice(0, budget)
+    if (!todo.length) continue
+    budget -= todo.length
+    const vecs = await embedTexts(key, todo.map(t => t.text), 'RETRIEVAL_DOCUMENT')
+    const upserts = todo
+      .map((t, j) => vecs[j] ? { user_id: userId, source_table: src.table, source_id: t.id, content: t.text.slice(0, 4000), embedding: vecLiteral(vecs[j]!), updated_at: new Date().toISOString() } : null)
+      .filter(Boolean)
+    if (upserts.length) await supabase.from('ai_embeddings').upsert(upserts, { onConflict: 'user_id,source_table,source_id' })
+  }
+}
+
+async function semanticSearch(args: AnyRecord, authHeader?: string, supabase?: AnyRecord, userId?: string): Promise<AnyRecord> {
   try {
     if (!authHeader) return { success: false, error: 'No auth context for search.' }
     const query = typeof args.query === 'string' ? args.query.trim() : ''
     if (!query) return { success: false, error: 'query is required.' }
     const key = Deno.env.get('GEMINI_API_KEY')
     if (!key) return { success: false, error: 'AI not configured.' }
+    if (supabase && userId) {
+      try { await embedMissing(supabase, userId, key) } catch { /* best effort — search what is indexed */ }
+    }
     const vec = await embedOne(key, query, 'RETRIEVAL_QUERY')
     if (!vec) return { success: false, error: 'Could not embed the query.' }
     const limit = Math.min(Math.max(Number(args.limit) || 8, 1), 25)
@@ -1146,9 +1175,37 @@ const NEEDS_CONFIRM = new Set(['db_delete', 'update_hevy_routine'])
 const PENDING_TTL_MS = 15 * 60 * 1000
 type Confirm = { id: string; summary: string }
 
+// What the Confirm card calls a table, singular / plural (others: words of the name).
+const TABLE_WORDS: Record<string, [string, string]> = {
+  tasks: ['task', 'tasks'], time_blocks: ['schedule block', 'schedule blocks'],
+  schedule_blocks: ['repeating block', 'repeating blocks'], food_log_entries: ['food entry', 'food entries'],
+  water_log_entries: ['water entry', 'water entries'], ai_memory: ['memory', 'memories'],
+  recipes: ['recipe', 'recipes'], shop_items: ['shop item', 'shop items'], wish_items: ['wish', 'wishes'],
+  dev_requests: ['request', 'requests'], books: ['book', 'books'],
+  user_movie_entries: ['film in your library', 'films in your library'],
+  user_tv_entries: ['show in your library', 'shows in your library'], user_tv_episodes: ['watched episode', 'watched episodes'],
+}
+function tableWords(table: string, n: number): string {
+  const w = TABLE_WORDS[table]
+  if (w) return n === 1 ? w[0] : w[1]
+  const plain = table.replace(/_/g, ' ')
+  return n === 1 ? `row from ${plain}` : `rows from ${plain}`
+}
+// yyyy-MM-dd… → DD.MM.YYYY (the owner's only date format).
+const dayText = (v: unknown) => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(v ?? ''))
+  return m ? `${m[3]}.${m[2]}.${m[1]}` : ''
+}
 function rowLabel(r: AnyRecord): string {
-  const v = r.title ?? r.name ?? r.custom_title ?? r.label ?? r.content ?? r.date ?? r.id
-  return String(v ?? '').replace(/\s+/g, ' ').slice(0, 60)
+  const named = r.title ?? r.name ?? r.custom_title ?? r.label ?? r.content
+  const day = dayText(r.date ?? r.due_date ?? r.watched_at)
+  let text: string
+  if (named) text = String(named)
+  else if (r.amount_ml != null) text = `${r.amount_ml} ml`
+  else if (r.season_number != null && r.episode_number != null) text = `S${r.season_number} E${r.episode_number}`
+  else text = 'one entry'
+  if (day && !named) text += ` on ${day}`
+  return text.replace(/\s+/g, ' ').slice(0, 60)
 }
 
 async function proposeAction(
@@ -1173,7 +1230,7 @@ async function proposeAction(
       const ids = rows.map(r => r.id).filter(Boolean)
       if (ids.length === rows.length) stored = { table: args.table, filters: JSON.stringify({ ...filters, id: ids }) }
       const shown = rows.slice(0, 5).map(r => `"${rowLabel(r)}"`).join(', ')
-      summary = `Delete ${rows.length} ${rows.length === 1 ? 'row' : 'rows'} from ${args.table}: ${shown}${rows.length > 5 ? ` and ${rows.length - 5} more` : ''}`
+      summary = `Delete ${rows.length} ${tableWords(args.table, rows.length)}: ${shown}${rows.length > 5 ? ` and ${rows.length - 5} more` : ''}`
     } else if (name === 'update_hevy_routine') {
       summary = `Change the Hevy routine "${String(args.title ?? args.routine_id ?? '').slice(0, 60)}" (its exercise list is replaced)`
     } else {
@@ -1239,7 +1296,7 @@ async function dispatch(
     case 'get_day_summary':      return getDaySummary(supabase, userId, args)
     case 'get_athlete_profile':  return getAthleteProfile(supabase, userId)
     case 'semantic_search': {
-      const r = await semanticSearch(args, authHeader)
+      const r = await semanticSearch(args, authHeader, supabase, userId)
       void logQuery(supabase, userId, surface, 'semantic_search', null, args, r)
       return r
     }
@@ -2536,7 +2593,7 @@ const DB_CATALOG: Record<string, CatalogEntry> = {
     access: 'rw',
     purpose: "The water diary — one row per amount the user drank. The day's total is the SUM of amount_ml for that date; the daily target is day_targets.water_ml.",
     columns: "id, date(date — the user's own day, yyyy-mm-dd; set it from the context's ISO date — left out, today in Oslo is used), amount_ml(int > 0), logged_at(timestamptz — when it was logged, default now), created_at",
-    rules: "One row per amount drunk: 'I drank 500 ml' → insert {date, amount_ml: 500}; never edit a row into a running total. A glass with no amount given = 250 ml (the app's default); for anything else ask the amount once. Water NEVER goes in food_log_entries and has no macros or calories. 'How much water today?' → db_aggregate sum amount_ml with filters {date}. To take back the last amount, delete that row (newest logged_at) after the user confirms.",
+    rules: "One row per amount drunk: 'I drank 500 ml' → insert {date, amount_ml: 500}; never edit a row into a running total. A glass with no amount given = 250 ml (the app's default); for anything else ask the amount once. Water NEVER goes in food_log_entries and has no macros or calories. 'How much water today?' → db_aggregate sum amount_ml with filters {date}. To take back the last amount, delete that row (newest logged_at); the app asks the user to Confirm.",
   },
   shop_categories: {
     access: 'rw',
@@ -2605,7 +2662,7 @@ const DB_CATALOG: Record<string, CatalogEntry> = {
       'If it MUST be done by a date, it is a tasks row with a due_date, not a wish.',
       'Pick the right home for a note — there are four: dev_requests = a request about THIS APP (a bug, a feature, an idea for the app itself). ai_memory = a durable fact/preference about the user to recall later. shop_items = something to BUY. wish_items = something to DO or a place to GO, with an optional period.',
       'Set period_start/period_end to CONCRETE dates (yyyy-mm-dd) resolved from what the user said; the current date is in the context turn. Leave both null for an "anytime" wish. period_label is optional and holds the user\'s own word for the window.',
-      'Write title/notes in the language the user used. Only set status="done" or "dropped" when the user says so, and never delete a wish without explicit confirmation.',
+      'Write title/notes in the language the user used. Only set status="done" or "dropped" when the user says so, and a wish is deleted only through db_delete, which the user confirms in the app.',
     ].join(' '),
   },
   books: {
@@ -2847,7 +2904,7 @@ const DB_CATALOG: Record<string, CatalogEntry> = {
     access: 'rw',
     purpose: "The user's durable AI memory — notes/summaries/facts/preferences the AI was asked to remember across conversations. Prefer the save_memory tool to write; db_query here to recall (e.g. filter kind='preference', or search title/content).",
     columns: "id, kind(note|summary|fact|preference — default note), title, content, source(user|ai|auto — how it was captured), created_at, updated_at",
-    rules: 'Write in the user\'s language. Only save when the user asks you to remember something or to store a conversation summary. Never delete a memory without explicit confirmation. A memory is a FACT about the user, not a plan: something to do or a place to go belongs in wish_items, a request about this app in dev_requests, something to buy in shop_items.',
+    rules: 'Write in the user\'s language. Only save when the user asks you to remember something or to store a conversation summary. A memory is deleted only through db_delete, which the user confirms in the app. A memory is a FACT about the user, not a plan: something to do or a place to go belongs in wish_items, a request about this app in dev_requests, something to buy in shop_items.',
   },
 }
 

@@ -77,8 +77,13 @@ export function AIPanel() {
   const phone = useBreakpoint() === 'phone'
   const qc = useQueryClient()
   const [messages, setMessages] = useState<ChatMessage[]>(() => {
-    try { const raw = localStorage.getItem(STORAGE_KEY); return raw ? JSON.parse(raw) as ChatMessage[] : [] }
-    catch { return [] }
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY)
+      const saved = raw ? JSON.parse(raw) as ChatMessage[] : []
+      // A card left mid-tap before a reload is tappable again (the server
+      // answers "expired" for one already used).
+      return saved.map(m => (m.confirms ? { ...m, confirms: m.confirms.map(c => (c.state === 'busy' ? { ...c, state: undefined } : c)) } : m))
+    } catch { return [] }
   })
   const [input,       setInput]       = useState('')
   const [loading,     setLoading]     = useState(false)

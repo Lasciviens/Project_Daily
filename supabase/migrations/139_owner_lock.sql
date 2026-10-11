@@ -28,9 +28,10 @@
 --
 -- SAFETY. The last step reads every table as the owner before and after the
 -- lock (role authenticated, the owner's id as the JWT subject, exactly what the
--- browser does) and as a made-up stranger. If the owner would see a single row
--- less anywhere, or the stranger would see anything, it raises and the whole
--- migration rolls back — nothing is half-applied.
+-- browser does) and as a made-up stranger, on one snapshot. If the owner would
+-- see a single row less anywhere, or the stranger would see anything, it
+-- raises and the whole migration rolls back — nothing is half-applied.
+-- Run it with the app closed (background syncs wait a few seconds).
 --
 -- UNDO (if anything ever looks wrong):   select public.owner_lock_disable();
 -- It drops every app_owner_lock policy; the allow-list stays for a re-run.
@@ -39,10 +40,12 @@
 --     select public.owner_lock_apply('public.<table>');
 -- (scripts/verify-owner-lock.cjs checks this.)
 
+-- One transaction on one snapshot (repeatable read), so the self-check's
+-- before/after counts cannot differ because a sync wrote something meanwhile.
+-- Run it with the app closed; background syncs wait a few seconds.
+begin isolation level repeatable read;
+
 -- 1 · Allow-list ─────────────────────────────────────────────────────────────
--- Created before the transaction on purpose: if the owner cannot be found
--- below, everything else rolls back but this (empty, browser-unreadable) table
--- stays, so you can insert your id into it and run the file again.
 create table if not exists public.app_allowed_users (
   user_id  uuid primary key references auth.users (id) on delete cascade,
   note     text,
@@ -50,8 +53,6 @@ create table if not exists public.app_allowed_users (
 );
 alter table public.app_allowed_users enable row level security;
 revoke all on table public.app_allowed_users from anon, authenticated;
-
-begin;
 
 -- Seed the owner, only when the list is empty (a re-run never adds anyone).
 -- The Hevy and Apple Health syncs write only for the owner, so exactly one
@@ -76,7 +77,7 @@ begin
     where exists (select 1 from auth.users u where u.id = t.user_id);
   end if;
   if coalesce(array_length(v_ids, 1), 0) <> 1 then
-    raise exception '139: could not tell which account is the owner (% accounts own synced data). Nothing was changed. Insert your user id first: insert into public.app_allowed_users (user_id, note) values (''<your id>'', ''owner''); then run this again.',
+    raise exception '139: could not tell which account is the owner (% accounts own synced data). Nothing was changed. Copy your User UID from Authentication -> Users, run these two lines, then run this file again: create table if not exists public.app_allowed_users (user_id uuid primary key references auth.users (id) on delete cascade, note text, added_at timestamptz not null default now()); insert into public.app_allowed_users (user_id, note) values (''<your User UID>'', ''owner'');',
       coalesce(array_length(v_ids, 1), 0);
   end if;
   insert into public.app_allowed_users (user_id, note) values (v_ids[1], 'owner (found by 139)');
@@ -104,7 +105,9 @@ language plpgsql
 set search_path = ''
 as $$
 begin
-  execute format('alter table %s enable row level security', p_table);
+  if not (select relrowsecurity from pg_class where oid = p_table) then
+    execute format('alter table %s enable row level security', p_table);
+  end if;
   execute format('drop policy if exists app_owner_lock on %s', p_table);
   execute format(
     'create policy app_owner_lock on %s as restrictive for all to public '

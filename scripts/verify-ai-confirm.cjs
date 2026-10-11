@@ -96,7 +96,7 @@ let ok = 0, bad = 0; const check = (n, c, d) => { if (c) { ok++; console.log('  
   script = [gemini([{ functionCall: { name: 'db_delete', args: { table: 'tasks', filters: '{"title":"Buy milk"}' } } }])]
   let r = await call({ messages: msg }, web)
   const c = r.body.confirms?.[0]
-  check('model delete → Confirm card, nothing deleted', r.status === 200 && c && /Delete 1 row from tasks: "Buy milk"/.test(c.summary) && tables.tasks.length === 2, JSON.stringify(r.body))
+  check('model delete → Confirm card, nothing deleted', r.status === 200 && c && /Delete 1 task: "Buy milk"/.test(c.summary) && tables.tasks.length === 2, JSON.stringify(r.body))
   // 2. cancel leaves it
   // 3. confirm deletes exactly that row
   r = await call({ confirmAction: { id: c.id, decision: 'confirm' } }, web)
@@ -136,6 +136,11 @@ let ok = 0, bad = 0; const check = (n, c, d) => { if (c) { ok++; console.log('  
   script = [gemini([{ functionCall: { name: 'db_update', args: { table: 'user_movie_entries', filters: '{"id":"m1"}', values: '{"repeat_count":10000}' } } }]), gemini([{ text: 'x' }])]
   r = await call({ messages: msg }, web)
   check('AI play count capped', r.body.steps?.some(s => s.includes('repeat_count must be')), JSON.stringify(r.body.steps))
+  // 8b. the card speaks plainly: table words and DD.MM.YYYY dates
+  tables.water_log_entries = [{ id: 'w1', user_id: OWNER, amount_ml: 250, date: '2026-10-11' }]
+  script = [gemini([{ functionCall: { name: 'db_delete', args: { table: 'water_log_entries', filters: '{"id":"w1"}' } } }])]
+  r = await call({ messages: msg }, web)
+  check('Confirm card: "Delete 1 water entry: "250 ml on 11.10.2026""', r.body.confirms?.[0]?.summary === 'Delete 1 water entry: "250 ml on 11.10.2026"', r.body.confirms?.[0]?.summary)
   // 9. no embed inside a shared catalogue table (it could list other accounts' rows)
   tables.user_movie_entries = [{ id: 'm1', user_id: OWNER, movie_id: 'mv1' }]
   script = [gemini([{ functionCall: { name: 'db_query', args: { table: 'user_movie_entries', select: '*, movie:movies(title, peers:user_movie_entries(*))' } } }]), gemini([{ text: 'x' }])]

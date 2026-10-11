@@ -94,7 +94,7 @@ function rest() {
   check('restrictive policy on every public table', /as restrictive for all to public/.test(m) && /owner_lock_apply\(r\.t\)/.test(m))
   check('restrictive policy on storage.objects', /create policy app_owner_lock on storage\.objects as restrictive/.test(m))
   check('self-check compares the owner before/after and a stranger', /owner_lock_counts\(v_owner\)/.test(m) && /owner_lock_counts\(gen_random_uuid\(\)\)/.test(m))
-  check('runs as one transaction after the allow-list exists', m.indexOf('create table if not exists public.app_allowed_users') < m.indexOf('\nbegin;') && /\ncommit;\s*$/.test(m))
+  check('runs as one repeatable-read transaction', /\nbegin isolation level repeatable read;/.test(m) && /\ncommit;\s*$/.test(m))
   check('undo function exists and is not callable from the browser', /function public\.owner_lock_disable\(\)/.test(m) && /revoke all on function public\.owner_lock_disable\(\) from public, anon, authenticated/.test(m))
   check('owner detection refuses anything but exactly one account', /array_length\(v_ids, 1\), 0\) <> 1/.test(m))
 

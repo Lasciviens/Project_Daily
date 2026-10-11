@@ -46,10 +46,14 @@
 begin;
 
 -- A ───────────────────────────────────────────────────────────────────────────
-revoke all on table public.psn_tokens   from anon, authenticated;
-revoke all on table public.trakt_tokens from anon, authenticated;
-revoke all on table public.strava_tokens        from anon;
-revoke all on table public.user_calendar_tokens from anon;
+-- Each table is optional (its own migration may not be applied yet).
+do $$
+begin
+  if to_regclass('public.psn_tokens')           is not null then execute 'revoke all on table public.psn_tokens from anon, authenticated'; end if;
+  if to_regclass('public.trakt_tokens')         is not null then execute 'revoke all on table public.trakt_tokens from anon, authenticated'; end if;
+  if to_regclass('public.strava_tokens')        is not null then execute 'revoke all on table public.strava_tokens from anon'; end if;
+  if to_regclass('public.user_calendar_tokens') is not null then execute 'revoke all on table public.user_calendar_tokens from anon'; end if;
+end $$;
 
 -- B ───────────────────────────────────────────────────────────────────────────
 -- One function for all seven sources; TG_ARGV[0] lists the searched columns
@@ -106,9 +110,16 @@ begin
 end $$;
 
 -- C ───────────────────────────────────────────────────────────────────────────
-alter table public.push_subscriptions add column if not exists session_id   uuid;
-alter table public.push_subscriptions add column if not exists last_seen_at timestamptz not null default now();
-
+-- Only when push_subscriptions (068) exists.
+do $c$
+begin
+  if to_regclass('public.push_subscriptions') is null then
+    raise notice '140: push_subscriptions not found (068 not applied) — section C skipped.';
+    return;
+  end if;
+  execute 'alter table public.push_subscriptions add column if not exists session_id uuid';
+  execute 'alter table public.push_subscriptions add column if not exists last_seen_at timestamptz not null default now()';
+  execute $f$
 create or replace function public.push_subscriptions_stamp()
 returns trigger
 language plpgsql
@@ -122,15 +133,13 @@ begin
   end if;
   return new;
 end;
-$$;
-drop trigger if exists trg_push_subscriptions_stamp on public.push_subscriptions;
-create trigger trg_push_subscriptions_stamp
-  before insert or update on public.push_subscriptions
-  for each row execute function public.push_subscriptions_stamp();
-
--- The rows push-send may use: the login still exists (and has not passed its
--- not_after), or — for rows saved before this migration — the app opened on
--- that device within 60 days. Service role only.
+$$ $f$;
+  execute 'drop trigger if exists trg_push_subscriptions_stamp on public.push_subscriptions';
+  execute 'create trigger trg_push_subscriptions_stamp before insert or update on public.push_subscriptions for each row execute function public.push_subscriptions_stamp()';
+  -- The rows push-send may use: the login still exists (and has not passed its
+  -- not_after), or — for rows saved before this migration — the app opened on
+  -- that device within 60 days. Service role only.
+  execute $f$
 create or replace function public.push_live_subscriptions(p_user uuid)
 returns table (id uuid, endpoint text, p256dh text, auth text)
 language sql
@@ -148,9 +157,10 @@ as $$
           and (a.not_after is null or a.not_after > now())))
       or (s.session_id is null and s.last_seen_at > now() - interval '60 days')
     );
-$$;
-revoke all on function public.push_live_subscriptions(uuid) from public, anon, authenticated;
-grant execute on function public.push_live_subscriptions(uuid) to service_role;
+$$ $f$;
+  execute 'revoke all on function public.push_live_subscriptions(uuid) from public, anon, authenticated';
+  execute 'grant execute on function public.push_live_subscriptions(uuid) to service_role';
+end $c$;
 
 -- D ───────────────────────────────────────────────────────────────────────────
 create table if not exists public.ai_pending_actions (
@@ -172,6 +182,9 @@ select public.owner_lock_apply('public.ai_pending_actions');
 -- E ───────────────────────────────────────────────────────────────────────────
 do $$
 begin
+  if to_regclass('public.user_tv_episodes') is null or to_regclass('public.user_movie_entries') is null then
+    return;
+  end if;
   if not exists (select 1 from pg_constraint where conname = 'user_movie_entries_repeat_count_range') then
     alter table public.user_movie_entries add constraint user_movie_entries_repeat_count_range
       check (repeat_count is null or repeat_count between 0 and 999) not valid;
@@ -192,7 +205,10 @@ as $$
 declare
   result jsonb;
 begin
-  if query_text ~* '(set_config|u&|\yset\s|\yreset\y|\ydiscard\y)' then
+  -- A set_config(...) call (also quoted or schema-qualified), a quoted
+  -- unicode-escaped name, or a statement that starts with SET / RESET /
+  -- DISCARD. Words inside text (ilike '%set%') are fine.
+  if query_text ~* '(set_config"?\s*\(|u&"|(^|;)\s*(set|reset|discard)\y)' then
     raise exception 'ai_run_read_query: settings cannot be changed from a read query';
   end if;
   perform set_config('transaction_read_only', 'on', true);
@@ -252,7 +268,7 @@ BEGIN
   -- The account itself is being deleted (auth.users → this table cascade):
   -- its audit trail goes with it, and inserting a row for it would break
   -- audit_logs' foreign key and abort the deletion (same guard as 135).
-  IF NOT EXISTS (SELECT 1 FROM auth.users WHERE id = v_user) THEN
+  IF v_user IS NOT NULL AND NOT EXISTS (SELECT 1 FROM auth.users WHERE id = v_user) THEN
     RETURN NULL;
   END IF;
 
@@ -408,6 +424,10 @@ BEGIN
 END;
 $function$;
 
+do $t$
+begin
+  if to_regclass('public.trakt_outbox') is null then return; end if;
+  execute $sql$
 CREATE OR REPLACE FUNCTION public.trakt_enqueue(p_user uuid, p_op text, p_key text, p_payload jsonb)
  RETURNS void
  LANGUAGE sql
@@ -418,7 +438,9 @@ AS $function$
   INSERT INTO public.trakt_outbox (user_id, op, item_key, payload)
   SELECT p_user, p_op, p_key, p_payload
   WHERE EXISTS (SELECT 1 FROM auth.users WHERE id = p_user)
-$function$;
+$function$
+$sql$;
+end $t$;
 
 -- H ───────────────────────────────────────────────────────────────────────────
 do $$
