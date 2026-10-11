@@ -353,7 +353,7 @@ const TOOLS = [
       },
       {
         name: 'db_delete',
-        description: 'Delete rows matching filters from a writable table. Automatically scoped to the current user. Filters are required and must be non-empty. Deleting a task automatically deletes its linked time_blocks row too (task_id is ON DELETE CASCADE) — no separate time_blocks delete needed.',
+        description: 'Delete rows matching filters from a writable table. Automatically scoped to the current user. Filters are required and must be non-empty. Nothing is deleted by this call: the app shows the user the rows with a Confirm button, and they are deleted only if the user taps it — so call it once the user asked for the delete, and never say something was deleted. Deleting a task automatically deletes its linked time_blocks row too (task_id is ON DELETE CASCADE) — no separate time_blocks delete needed.',
         parameters: {
           type: 'OBJECT',
           properties: {
@@ -502,7 +502,7 @@ const TOOLS = [
       },
       {
         name: 'update_hevy_routine',
-        description: 'Update an existing Hevy routine (title, the routine\'s own note, and/or full exercises list) — writes to the REAL Hevy account. RULES: (1) db_query hevy_routines + hevy_routine_exercises + hevy_routine_sets FIRST to get the routine id and its CURRENT full exercise/set structure. (2) Send the COMPLETE exercises array (every exercise you want kept, in order) — this REPLACES the whole list, omitted exercises are DELETED. (3) Set shape: {type:"normal"|"warmup"|"dropset"|"failure", weight_kg, reps} — use rep_range:{start,end} INSTEAD of reps only when a range is wanted, never both, never rep_range:null. Exercise shape: {exercise_template_id, superset_id, rest_seconds, notes, sets:[...]} — that per-exercise "notes" is a note on ONE exercise, not the routine. (4) The routine\'s OWN note/description (what shows under the routine title in Hevy) is the separate top-level "notes" param below — omit it to leave the routine\'s existing note untouched, or send the full replacement text (it REPLACES, it does not append). (5) ALWAYS summarize the exact change and get the user\'s explicit confirmation in a prior turn before calling this.',
+        description: 'Update an existing Hevy routine (title, the routine\'s own note, and/or full exercises list) — writes to the REAL Hevy account. RULES: (1) db_query hevy_routines + hevy_routine_exercises + hevy_routine_sets FIRST to get the routine id and its CURRENT full exercise/set structure. (2) Send the COMPLETE exercises array (every exercise you want kept, in order) — this REPLACES the whole list, omitted exercises are DELETED. (3) Set shape: {type:"normal"|"warmup"|"dropset"|"failure", weight_kg, reps} — use rep_range:{start,end} INSTEAD of reps only when a range is wanted, never both, never rep_range:null. Exercise shape: {exercise_template_id, superset_id, rest_seconds, notes, sets:[...]} — that per-exercise "notes" is a note on ONE exercise, not the routine. (4) The routine\'s OWN note/description (what shows under the routine title in Hevy) is the separate top-level "notes" param below — omit it to leave the routine\'s existing note untouched, or send the full replacement text (it REPLACES, it does not append). (5) Summarize the exact change in your reply. Nothing changes in Hevy from this call: the app shows the user a Confirm button and the routine is written only if they tap it.',
         parameters: {
           type: 'OBJECT',
           properties: {
@@ -727,7 +727,8 @@ Deno.serve(async (req) => {
   const phoneSecret  = Deno.env.get('PHONE_GATEWAY_SECRET')
   const givenSecret  = req.headers.get('x-phone-secret')
   let user: { id: string } | null = null
-  if (phoneSecret && givenSecret === phoneSecret) {
+  const viaPhone = !!phoneSecret && givenSecret === phoneSecret
+  if (viaPhone) {
     const uid = Deno.env.get('HEVY_USER_ID')          // single-user app, same id everywhere
     if (uid) user = { id: uid }
   } else if (authHeader) {
@@ -747,7 +748,20 @@ Deno.serve(async (req) => {
 
   try {
     const body = await req.json() as
-      { messages?: Message[]; systemPrompt?: string; responseSchema?: AnyRecord; fetchUrl?: string; model?: string; listModels?: boolean; surface?: string; reindexEmbeddings?: boolean }
+      { messages?: Message[]; systemPrompt?: string; responseSchema?: AnyRecord; fetchUrl?: string; model?: string; listModels?: boolean; surface?: string; reindexEmbeddings?: boolean; confirmAction?: { id?: string; decision?: string } }
+
+    // The person tapped Confirm / Cancel on a proposed delete or routine change.
+    if (body.confirmAction) {
+      if (viaPhone || !body.confirmAction.id) {
+        return new Response(JSON.stringify({ error: 'Confirm in the app.' }), {
+          status: 400, headers: { ...headers, 'Content-Type': 'application/json' },
+        })
+      }
+      const settled = await settleAction(supabase, user.id, String(body.confirmAction.id), String(body.confirmAction.decision ?? ''), authHeader ?? undefined)
+      return new Response(JSON.stringify(settled), {
+        status: 200, headers: { ...headers, 'Content-Type': 'application/json' },
+      })
+    }
 
     // Debug/maintenance: return the REAL list of models this API key can use
     // (name + generateContent support). Exists so the MODEL_CHAIN above is
@@ -836,7 +850,7 @@ Deno.serve(async (req) => {
     // things like parsing pasted recipe text into a JSON shape.
     const result = responseSchema
       ? await callGeminiStructured(GEMINI_KEY, messages, systemPrompt, responseSchema, preferredModel)
-      : await callGemini(GEMINI_KEY, messages, systemPrompt, supabase, user.id, preferredModel, authHeader, surface)
+      : await callGemini(GEMINI_KEY, messages, systemPrompt, supabase, user.id, preferredModel, authHeader, surface, !viaPhone)
     return new Response(JSON.stringify(result), {
       status: 200, headers: { ...headers, 'Content-Type': 'application/json' },
     })
@@ -894,7 +908,8 @@ async function callGemini(
   preferredModel?: GeminiModel,
   authHeader?: string,
   surface?: string,
-): Promise<{ text: string; quickReplies?: string[]; steps?: string[]; model?: string }> {
+  canConfirm = false,
+): Promise<{ text: string; quickReplies?: string[]; steps?: string[]; model?: string; confirms?: Confirm[] }> {
   const buildUrl = (model: GeminiModel) =>
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
 
@@ -988,15 +1003,33 @@ async function callGemini(
     // and Gemini 3.x will reject the next turn with a 400.
     contents = [...contents, candidate.content]
 
-    // Dispatch all function calls in this turn (may be parallel), role must be 'tool'
+    // Dispatch all function calls in this turn (may be parallel), role must be 'tool'.
+    // Deletes and routine rewrites only become proposals (see NEEDS_CONFIRM).
+    const confirms: Confirm[] = []
     const toolResponseParts = await Promise.all(
       fnCallParts.map(async (part: AnyRecord) => {
         const { name, args } = part.functionCall
-        const result = await dispatch(name, args, supabase, userId, authHeader, surface)
+        let result: AnyRecord
+        if (NEEDS_CONFIRM.has(name)) {
+          if (!canConfirm) {
+            result = { success: false, error: 'Not done: deletes and routine changes need the Confirm button in the Lasci\'s Board app. Tell the user to do it there.' }
+          } else {
+            const proposal = await proposeAction(supabase, userId, name, args)
+            if (proposal.ok) { confirms.push(proposal.confirm); result = { success: true, waiting_for_user: true, summary: proposal.confirm.summary } }
+            else result = { success: false, error: proposal.error }
+          }
+        } else {
+          result = await dispatch(name, args, supabase, userId, authHeader, surface)
+        }
         steps.push(describeStep(name, args, result))
         return { functionResponse: { name, response: result } }
       })
     )
+    if (confirms.length) {
+      // The person decides now; the tool loop stops here.
+      const said = parts.find((p: AnyRecord) => p.text)?.text?.trim()
+      return { text: said || 'Please confirm:', confirms, steps: steps.length ? steps : undefined, model: modelUsed }
+    }
     contents = [...contents, { role: 'tool', parts: toolResponseParts }]
   }
 
@@ -1038,6 +1071,7 @@ async function callGemini(
 function describeStep(name: string, args: AnyRecord, result: AnyRecord): string {
   const tbl = args?.table ? ` ${args.table}` : ''
   if (result?.success === false) return `✗ ${name}${tbl} — ${result.error ?? 'error'}`
+  if (result?.waiting_for_user) return `… ${name}${tbl} — waiting for your Confirm`
   let detail = ''
   if (result?.count !== undefined) detail = ` → ${result.count} rows`
   else if (result?.inserted_count !== undefined) detail = ` → ${result.inserted_count} inserted`
@@ -1085,6 +1119,81 @@ async function callGeminiStructured(
   const data      = await res.json()
   const text      = data.candidates?.[0]?.content?.parts?.find((p: AnyRecord) => p.text)?.text ?? '{}'
   return { data: JSON.parse(text) }
+}
+
+// ─── Confirm before acting (security audit 10.10.2026) ──────────────────────
+// A delete (db_delete) or a Hevy routine rewrite never runs from the tool
+// loop. The loop stores it in ai_pending_actions (migration 140) and returns a
+// Confirm card; it runs only when the person taps Confirm in the app — a
+// separate `confirmAction` request the model cannot send. Text in a calendar
+// invite, a title or a web page can therefore never delete anything. The phone
+// has no button, so there these tools are refused.
+const NEEDS_CONFIRM = new Set(['db_delete', 'update_hevy_routine'])
+const PENDING_TTL_MS = 15 * 60 * 1000
+type Confirm = { id: string; summary: string }
+
+function rowLabel(r: AnyRecord): string {
+  const v = r.title ?? r.name ?? r.custom_title ?? r.label ?? r.content ?? r.date ?? r.id
+  return String(v ?? '').replace(/\s+/g, ' ').slice(0, 60)
+}
+
+async function proposeAction(
+  // deno-lint-ignore no-explicit-any
+  supabase: any, userId: string, name: string, args: AnyRecord,
+): Promise<{ ok: true; confirm: Confirm } | { ok: false; error: string }> {
+  try {
+    let summary = ''
+    let stored: AnyRecord = { ...args }
+    if (name === 'db_delete') {
+      assertAccess(args.table, true)
+      const filters = parseJsonArg(args.filters, 'filters')
+      if (!Object.keys(filters).length) return { ok: false, error: 'Refusing to delete without filters — provide at least one, e.g. {"id":"..."}.' }
+      let q = supabase.from(args.table).select('*').eq('user_id', userId)
+      q = applyFilters(q, filters).limit(51)
+      const { data, error } = await q
+      if (error) return { ok: false, error: error.message }
+      const rows: AnyRecord[] = data ?? []
+      if (!rows.length) return { ok: false, error: 'Nothing matches those filters, so there is nothing to delete.' }
+      if (rows.length > 50) return { ok: false, error: 'That would delete more than 50 rows — narrow the filters.' }
+      // Exactly the rows the person is shown, even if more match by the time they confirm.
+      const ids = rows.map(r => r.id).filter(Boolean)
+      if (ids.length === rows.length) stored = { table: args.table, filters: JSON.stringify({ ...filters, id: ids }) }
+      const shown = rows.slice(0, 5).map(r => `"${rowLabel(r)}"`).join(', ')
+      summary = `Delete ${rows.length} ${rows.length === 1 ? 'row' : 'rows'} from ${args.table}: ${shown}${rows.length > 5 ? ` and ${rows.length - 5} more` : ''}`
+    } else if (name === 'update_hevy_routine') {
+      summary = `Change the Hevy routine "${String(args.title ?? args.routine_id ?? '').slice(0, 60)}" (its exercise list is replaced)`
+    } else {
+      return { ok: false, error: `${name} cannot wait for confirmation.` }
+    }
+    // Old proposals are only history; keep the table small.
+    await supabase.from('ai_pending_actions').delete().eq('user_id', userId)
+      .lt('expires_at', new Date(Date.now() - 24 * 3600 * 1000).toISOString())
+    const { data, error } = await supabase.from('ai_pending_actions').insert({
+      user_id: userId, tool: name, args: stored, summary,
+      expires_at: new Date(Date.now() + PENDING_TTL_MS).toISOString(),
+    }).select('id').single()
+    if (error) return { ok: false, error: 'This needs the Confirm step, which is not set up yet (migration 140). Nothing was changed.' }
+    return { ok: true, confirm: { id: data.id, summary } }
+  } catch (e) { return { ok: false, error: (e as Error).message } }
+}
+
+// The person tapped Confirm or Cancel. Runs the stored action once, only for
+// the account that proposed it, only within 15 minutes.
+async function settleAction(
+  // deno-lint-ignore no-explicit-any
+  supabase: any, userId: string, id: string, decision: string, authHeader?: string,
+): Promise<{ text: string; steps?: string[] }> {
+  const { data: row } = await supabase.from('ai_pending_actions')
+    .update({ done_at: new Date().toISOString(), decision: decision === 'confirm' ? 'confirm' : 'cancel' })
+    .eq('id', id).eq('user_id', userId).is('done_at', null).gt('expires_at', new Date().toISOString())
+    .select('tool, args, summary').maybeSingle()
+  if (!row) return { text: 'That confirmation has expired or was already used. Nothing was changed.' }
+  if (decision !== 'confirm') return { text: 'Cancelled. Nothing was changed.' }
+  const result = await dispatch(row.tool, row.args, supabase, userId, authHeader, 'general')
+  const step = describeStep(row.tool, row.args, result)
+  return result?.success === false
+    ? { text: `That did not work: ${result.error ?? 'unknown error'}`, steps: [step] }
+    : { text: `Done: ${row.summary}.`, steps: [step] }
 }
 
 async function dispatch(
@@ -2783,9 +2892,38 @@ function applyFilters(query: AnyRecord, filters: AnyRecord): AnyRecord {
   return query
 }
 
+// db_query runs on the service role, so only its top-level .eq('user_id')
+// scopes it. An embed inside a shared catalogue table (no user_id) could reach
+// other accounts' rows — movies(user_movie_entries(*)) lists everyone's — so
+// nothing may be embedded inside one (security audit 10.10.2026).
+const SHARED_TABLES = new Set(['movies', 'tv_series', 'steam_apps', 'fx_rates_nok', 'screenscraper_systems', 'link_rules'])
+function selectProblem(select: unknown): string | null {
+  if (select == null || select === '') return null
+  if (typeof select !== 'string' || select.length > 2000) return 'select must be a short Postgrest select string.'
+  const stack: string[] = []
+  let token = ''
+  for (const ch of select) {
+    if (ch === '(') {
+      if (stack.length && SHARED_TABLES.has(stack[stack.length - 1])) {
+        return `Not allowed: nothing may be embedded inside ${stack[stack.length - 1]} (a shared table) — read your own rows from the root instead.`
+      }
+      const name = token.trim().split(':').pop()!.split('!')[0].trim()
+      stack.push(name)
+      token = ''
+    } else if (ch === ')') {
+      if (!stack.length) return 'select has an unmatched ")".'
+      stack.pop(); token = ''
+    } else if (ch === ',') token = ''
+    else token += ch
+  }
+  return stack.length ? 'select has an unmatched "(".' : null
+}
+
 async function dbQuery(supabase: AnyRecord, userId: string, args: AnyRecord): Promise<AnyRecord> {
   try {
     assertAccess(args.table, false)
+    const problem = selectProblem(args.select)
+    if (problem) return { success: false, error: problem }
     const filters = parseJsonArg(args.filters, 'filters')
     const limit = Math.min(args.limit ?? 50, 200)
     let query = supabase.from(args.table).select(args.select || '*').eq('user_id', userId)
@@ -3030,6 +3168,25 @@ async function getAthleteProfile(supabase: AnyRecord, userId: string): Promise<A
   } catch (e) { return { success: false, error: (e as Error).message } }
 }
 
+// Columns the assistant may never write (security audit 10.10.2026). Each one
+// binds a row to an object in an outside account — a Google Calendar event, a
+// Google Task, a Trakt note or list, an ES-DE or ScreenScraper entry, a login —
+// and a background job then changes or deletes that object; the app sets them
+// itself. Play counts are capped at the app's own 1–99 plays, because each
+// extra play becomes a Trakt history write.
+const AI_NO_WRITE = /^(google_(calendar_event_id|task_id|tasklist_id|etag|position|web_view_link|links|updated_at)|trakt_(id|note_id|note_text|list_id)|session_id|external_ref|external_source|ss_jeu_id|igdb_id|esde_(system|path|source|source_hash|assets))$/
+
+function aiWriteProblem(table: string, row: AnyRecord): string | null {
+  for (const k of Object.keys(row)) {
+    if (AI_NO_WRITE.test(k)) return `Not done: the assistant may not set ${k} on ${table} — the app sets it itself.`
+  }
+  if ('repeat_count' in row) {
+    const n = Number(row.repeat_count)
+    if (!Number.isInteger(n) || n < 0 || n > 98) return 'Not done: repeat_count must be a whole number from 0 to 98 (1–99 plays).'
+  }
+  return null
+}
+
 async function dbInsert(supabase: AnyRecord, userId: string, args: AnyRecord): Promise<AnyRecord> {
   try {
     const entry = assertAccess(args.table, true)
@@ -3046,8 +3203,11 @@ async function dbInsert(supabase: AnyRecord, userId: string, args: AnyRecord): P
       // A water row without its day would take the column's UTC CURRENT_DATE —
       // yesterday between 00:00 and 02:00 in Oslo (the phone sends no date).
       if (args.table === 'water_log_entries' && !row.date) row.date = homeDay(Date.now())
+      // A memory the assistant writes is labelled as its own, never as the user's.
+      if (args.table === 'ai_memory') row.source = 'ai'
       return row
     })
+    for (const row of rows) { const problem = aiWriteProblem(args.table, row); if (problem) return { success: false, error: problem } }
     const { data, error } = await supabase.from(args.table).insert(rows).select()
     if (error) return { success: false, error: error.message }
     const ids = (data ?? []).map((d: AnyRecord) => d.id)
@@ -3063,6 +3223,9 @@ async function dbUpdate(supabase: AnyRecord, userId: string, args: AnyRecord): P
     if (!Object.keys(filters).length) return { success: false, error: 'Refusing to update without filters — provide at least one, e.g. {"id":"..."}.' }
     const values = parseJsonArg(args.values, 'values')
     delete values.user_id  // owner is immutable
+    const problem = aiWriteProblem(args.table, values)
+    if (problem) return { success: false, error: problem }
+    if (args.table === 'ai_memory') values.source = 'ai'   // an edited memory is no longer the user's own words
     if (entry.columns.includes('updated_at')) values.updated_at = new Date().toISOString()
     let query = supabase.from(args.table).update(values).eq('user_id', userId)
     query = applyFilters(query, filters)

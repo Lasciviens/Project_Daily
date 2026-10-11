@@ -19,6 +19,19 @@
 --     on that device; push-send now only sends to rows whose session still
 --     exists (or, for older unstamped rows, that were seen in the last 60
 --     days). Signing out also deletes this device's row (app side).
+--  D. ai_pending_actions: a delete or Hevy routine change the assistant
+--     proposes waits here until the person taps Confirm in the app (ai-proxy).
+--     Service role only, no audit trigger (short-lived, written by ai-proxy).
+--  E. Play counts are bounded (0–999 extra plays): each extra play becomes a
+--     Trakt history write, so one write with a huge count flooded the outbox.
+--     NOT VALID — existing rows are not checked, only new writes.
+--  F. ai_run_read_query (064) refuses set_config / SET / RESET / DISCARD and
+--     unicode-escaped names, and clears the two outbox-pause flags it could
+--     otherwise leave on the pooled connection (app.google_sync_write,
+--     app.trakt_sync), so a read can never silently stop Google Tasks or Trakt
+--     syncing for a later request. Same signature and grants as 064.
+--
+-- Needs 139 (owner_lock_apply).
 
 begin;
 
@@ -128,5 +141,62 @@ as $$
 $$;
 revoke all on function public.push_live_subscriptions(uuid) from public, anon, authenticated;
 grant execute on function public.push_live_subscriptions(uuid) to service_role;
+
+-- D ───────────────────────────────────────────────────────────────────────────
+create table if not exists public.ai_pending_actions (
+  id         uuid primary key default gen_random_uuid(),
+  user_id    uuid not null references auth.users (id) on delete cascade,
+  tool       text not null check (tool in ('db_delete', 'update_hevy_routine')),
+  args       jsonb not null,
+  summary    text not null,
+  created_at timestamptz not null default now(),
+  expires_at timestamptz not null,
+  done_at    timestamptz,
+  decision   text check (decision in ('confirm', 'cancel'))
+);
+alter table public.ai_pending_actions enable row level security;
+revoke all on table public.ai_pending_actions from anon, authenticated;
+create index if not exists ai_pending_actions_user_idx on public.ai_pending_actions (user_id, created_at desc);
+select public.owner_lock_apply('public.ai_pending_actions');
+
+-- E ───────────────────────────────────────────────────────────────────────────
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'user_movie_entries_repeat_count_range') then
+    alter table public.user_movie_entries add constraint user_movie_entries_repeat_count_range
+      check (repeat_count is null or repeat_count between 0 and 999) not valid;
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'user_tv_episodes_repeat_count_range') then
+    alter table public.user_tv_episodes add constraint user_tv_episodes_repeat_count_range
+      check (repeat_count is null or repeat_count between 0 and 999) not valid;
+  end if;
+end $$;
+
+-- F ───────────────────────────────────────────────────────────────────────────
+create or replace function public.ai_run_read_query(query_text text)
+returns jsonb
+language plpgsql
+security invoker
+set statement_timeout = '5000'
+as $$
+declare
+  result jsonb;
+begin
+  if query_text ~* '(set_config|u&|\yset\s|\yreset\y|\ydiscard\y)' then
+    raise exception 'ai_run_read_query: settings cannot be changed from a read query';
+  end if;
+  perform set_config('transaction_read_only', 'on', true);
+  execute format(
+    'select coalesce(jsonb_agg(x), ''[]''::jsonb) from (select * from (%s) _q limit 500) x',
+    query_text
+  ) into result;
+  -- The outbox triggers pause while these are on; a read never leaves them set.
+  perform set_config('app.google_sync_write', '', false);
+  perform set_config('app.trakt_sync', '', false);
+  return result;
+end;
+$$;
+revoke all     on function public.ai_run_read_query(text) from public, anon;
+grant  execute on function public.ai_run_read_query(text) to authenticated;
 
 commit;
