@@ -12,7 +12,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
-  BASELINE, BASELINE_NAMES_SHA256, checkDbUrl, lineOf, migrationQuery, planMigrations, publicError, readMigrationNames,
+  BASELINE, BASELINE_NAMES_SHA256, checkDbUrl, isTransient, lineOf, migrationQuery, planMigrations, publicError, readMigrationNames,
   topLevelStatements, transactionControl,
 } from './deploy/migrationPlan.mjs'
 
@@ -56,6 +56,8 @@ check('a file renamed after it ran is reported, not run', p.renamed.length === 1
 check('a new file runs', p.apply.map(f => f.file).join() === '143_d.sql')
 const p2 = planMigrations([{ file: '145_moved.sql', number: 145 }], () => 'same', new Map([['141_b.sql', 'same']]))
 check('a file renumbered after it ran (same contents) is reported, not run', p2.apply.length === 0 && p2.renamed[0]?.ranAs === '141_b.sql')
+const p3 = planMigrations([{ file: '141_b.sql', number: 141 }, { file: '147_again.sql', number: 147 }], () => 'same', new Map([['141_b.sql', 'same']]))
+check('a NEW file repeating a file that is still there runs', p3.apply.map(f => f.file).join() === '147_again.sql' && p3.renamed.length === 0)
 
 console.log('3. transaction control')
 const tx = (s) => transactionControl(s).map(x => `${x.head.split(' ')[0]}@${x.line}`).join(',')
@@ -93,7 +95,14 @@ check('a cast error (it quotes the value) is hidden',
   /\[22P02\].*column c/.test(publicError({ code: '22P02', message: 'x', table: 't', column: 'c' })))
 check('a RAISE text is hidden', !/owner/.test(publicError({ code: 'P0001', message: 'owner 1234 sees' })))
 check('object-only errors are shown', publicError({ code: '42703', message: 'column "x" does not exist' }) === '[42703] column "x" does not exist')
-check('an error without a code is hidden', !/boom/.test(publicError(new Error('boom'))))
+check('a socket error (no SQLSTATE) is shown', /Connection terminated/.test(publicError(new Error('Connection terminated unexpectedly'))))
+check('a RAISE is hidden even under a "safe" code (137 raises 23514 with a title)',
+  !/Secret title/.test(publicError({ code: '23514', message: 'Undo the sale first — "Secret title" is sold', routine: 'exec_stmt_raise' })) &&
+  !/Secret title/.test(publicError({ code: '23514', message: '"Secret title"', where: 'PL/pgSQL function f() line 3 at RAISE' })))
+check('a Postgres-made check violation is shown', /violates check constraint/.test(publicError({ code: '23514', message: 'new row for relation "t" violates check constraint "c"', routine: 'ExecConstraints' })))
+check('connection, deadlock and shutdown errors count as "run again"',
+  isTransient(new Error('x')) && isTransient({ code: '40P01' }) && isTransient({ code: '57P01' }) && isTransient({ code: '08006' }) &&
+  !isTransient({ code: '42703' }) && !isTransient({ code: '23505' }))
 
 console.log('5. database address')
 const ref = 'hsaedwwqpcjizeozjbch'
@@ -234,14 +243,27 @@ if (testUrl && !/^postgres(ql)?:\/\/[^@]*@(127\.0\.0\.1|localhost)(:\d+)?\//.tes
     psql("select message from deploy.migration_errors where file = '147_g.sql' order by at desc limit 1").includes('Furkan Secret 12345'), r.out)
   rmSync(join(work, '147_g.sql'))
 
+  writeFileSync(join(work, '148_h.sql'), [
+    'create table public.t148 (title text);',
+    "create function public.t148_rule() returns trigger language plpgsql as $$ begin raise exception using errcode = '23514', message = format('Undo the sale first — \"%s\" is sold', new.title); end $$;",
+    'create trigger t148_rule before insert on public.t148 for each row execute function public.t148_rule();',
+    "insert into public.t148 values ('Secret Gaming Laptop');",
+  ].join('\n'))
+  r = run()
+  check('a trigger RAISE with a row value under 23514: the value stays out of the log',
+    !r.ok && /\[23514\]/.test(r.out) && !/Secret Gaming Laptop/.test(r.out) && /Fix the file/.test(r.out), r.out)
+  rmSync(join(work, '148_h.sql'))
+  psql('drop function if exists public.t148_rule() cascade; drop table if exists public.t148')
+
   // A connection that dies mid-file: no crash, nothing kept, reported.
   writeFileSync(join(work, '146_f.sql'), 'select pg_sleep(4);\ncreate table public.t146 (x int);')
   const killer = spawn('sh', ['-c', `sleep 1.5; psql "${testUrl}" -X -q -c "select pg_terminate_backend(pid) from pg_stat_activity where application_name = 'github-deploy' and query like '%pg_sleep(4)%'"`], { stdio: 'ignore' })
   const killed = new Promise(res => killer.on('close', res))
   r = run()
   await killed
-  check('a connection killed mid-file: reported, no crash, nothing kept',
-    !r.ok && /146_f\.sql failed/.test(r.out) && !/Unhandled|node:events|at Socket/.test(r.out) && psql("select to_regclass('public.t146') is null") === 't', r.out)
+  check('a connection killed mid-file: reported as "run again", no crash, nothing kept',
+    !r.ok && /146_f\.sql failed/.test(r.out) && /run the deploy again/.test(r.out) && !/Unhandled|node:events|at Socket/.test(r.out) &&
+    psql("select to_regclass('public.t146') is null") === 't', r.out)
   rmSync(join(work, '146_f.sql'))
 
   check('the browser roles cannot use the ledger schema', psql("select count(*) from pg_namespace n where nspname = 'deploy' and has_schema_privilege('public', n.oid, 'usage')") === '0')

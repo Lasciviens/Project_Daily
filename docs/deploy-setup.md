@@ -29,9 +29,15 @@ has its own queue and never replaces a real deploy waiting in line.
 - Migrations 139 and 140 have been run in the SQL editor (CLAUDE.md → Pending
   manual steps, first rows). The deploy refuses to touch the database
   otherwise.
+- **Before merging,** delete leftovers of earlier deploy attempts (06.06.2026–
+  14.07.2026): GitHub → **Settings** → **Secrets and variables** → **Actions** →
+  under **Repository secrets**, delete `SUPABASE_ACCESS_TOKEN`,
+  `SUPABASE_DB_PASSWORD`, `SUPABASE_DB_URL` and `SUPABASE_PROJECT_REF` if any
+  is listed. Any workflow on any branch can read repository secrets, so every
+  deploy stops (the website too) while one of the first three exists there.
 - Merge the pull request that adds this. The **Dry run** button (step 4)
-  exists only once the workflow is on `main`. Until the secrets exist, a merge
-  deploys the website exactly as before.
+  exists only once the workflow is on `main`. Until the environment secrets
+  exist, a merge deploys the website exactly as before.
 
 ## 1. Supabase access token
 
@@ -84,7 +90,7 @@ read it.
 
 Put them in the environment, not under "Repository secrets": as repository
 secrets any branch's workflow could read them, so the first job of every
-deploy (`secrets-guard`) fails while they exist there.
+deploy ("Deploy secrets are environment-only") fails while they exist there.
 
 Recommended too: **Settings → Rules → Rulesets → New branch ruleset** for
 `main` with **Require a pull request before merging**, so nothing reaches
@@ -119,9 +125,10 @@ tell Claude.
   - **Edge functions:** the database is already migrated, the functions before
     the failing one are new, the website is still the previous one. Fix the
     function and merge again, or — if the cause was on Supabase's side —
-    **Run workflow** on `main` (or **Re-run jobs**; any run deploys `main`'s
-    newest commit).
-  - **Check the access token / Decide what to deploy / secrets-guard:** a
+    **Run workflow** on `main` (or **Re-run all jobs** on that run; every run
+    deploys `main`'s newest commit).
+  - **Check the access token / Decide what to deploy / Deploy secrets are
+    environment-only:** a
     setup problem; the message says which. Nothing was deployed.
 - The repository is public, so its Actions logs are too: the migration step
   prints file names, line numbers and error codes, and the error message only

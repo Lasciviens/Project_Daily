@@ -60,9 +60,14 @@ jobs:
         env:
           TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          OLD_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
         run: |
-          if [ -n "$TOKEN$DB_URL" ]; then
-            echo "::error::SUPABASE_ACCESS_TOKEN / SUPABASE_DB_URL exist as repository (or organisation) secrets, which a workflow on any branch can read. Delete them there; keep them only in Settings → Environments → production (docs/deploy-setup.md). Nothing was deployed."
+          found=""
+          [ -z "$TOKEN" ] || found="$found SUPABASE_ACCESS_TOKEN"
+          [ -z "$DB_URL" ] || found="$found SUPABASE_DB_URL"
+          [ -z "$OLD_DB_PASSWORD" ] || found="$found SUPABASE_DB_PASSWORD"
+          if [ -n "$found" ]; then
+            echo "::error::Repository (or organisation) secrets that a workflow on any branch can read:$found. Delete them in Settings → Secrets and variables → Actions; the deploy secrets belong only in Settings → Environments → production (docs/deploy-setup.md). Nothing was deployed, the website neither."
             exit 1
           fi
 
@@ -99,6 +104,15 @@ jobs:
           [ -n "$head" ] || { echo "::error::Could not read main's newest commit."; exit 1; }
           echo "sha=$head" >> "$GITHUB_OUTPUT"
           if [ "$head" != "$GITHUB_SHA" ]; then
+            # This run's steps come from its own (older) deploy.yml. If that
+            # file changed since, don't pair old steps with new code: the run
+            # for the newest commit (or Run workflow on main) deploys it.
+            changed=$(gh api "repos/$GITHUB_REPOSITORY/compare/$GITHUB_SHA...$head" --jq '[.files[].filename] | length as $n | if $n >= 300 then "many" else (map(select(. == ".github/workflows/deploy.yml")) | length | tostring) end')
+            if [ "$changed" != "0" ]; then
+              echo "backend=false" >> "$GITHUB_OUTPUT"; echo "web=false" >> "$GITHUB_OUTPUT"
+              echo "::notice::The deploy workflow changed after ${GITHUB_SHA:0:7}, so this run deploys nothing. The run for main's newest commit does it; or Actions → Deploy → Run workflow on main."
+              exit 0
+            fi
             echo "::notice::This run was started by ${GITHUB_SHA:0:7}; it deploys main's newest commit ${head:0:7}."
           fi
           if [ -z "$TOKEN" ] && [ -z "$DB_URL" ]; then
@@ -191,18 +205,38 @@ jobs:
       # coalesce: whichever deploy attempt succeeded provides the url
       url: ${{ steps.deploy1.outputs.page_url || steps.deployment.outputs.page_url }}
     steps:
-      # The same commit the backend job deployed (main's newest at start).
+      # A re-run of this job alone would reuse the backend's commit from the
+      # first attempt; if main moved on since, a newer run deploys the website,
+      # and this one must not put the older one back.
+      - name: Still main's newest commit?
+        id: fresh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ needs.backend.outputs.sha }}
+        run: |
+          head=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)
+          if [ "$head" = "$SHA" ]; then
+            echo "go=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "go=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::main has a newer commit (${head:0:7}) than this run's ${SHA:0:7}; its run deploys the website, so this one does nothing."
+          fi
+
+      # The same commit the backend job deployed.
       - uses: actions/checkout@v4
+        if: steps.fresh.outputs.go == 'true'
         with:
           ref: ${{ needs.backend.outputs.sha }}
 
       - uses: actions/setup-node@v4
+        if: steps.fresh.outputs.go == 'true'
         with:
           # Node 20 is end-of-life; vite 8 wants ^20.19.0 || >=22.12.0.
           node-version: 22
           cache: npm
 
       - name: Install dependencies
+        if: steps.fresh.outputs.go == 'true'
         run: npm ci
 
       # Every secret here is added by hand, and src/integrations/supabase/client.ts
@@ -210,6 +244,7 @@ jobs:
       # renamed secret produces a green deploy and a blank white page. Fail the
       # build with the exact name instead.
       - name: Verify build secrets
+        if: steps.fresh.outputs.go == 'true'
         env:
           VITE_SUPABASE_URL:          ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY:     ${{ secrets.VITE_SUPABASE_ANON_KEY }}
@@ -235,6 +270,7 @@ jobs:
       # Keep this list in sync with what the app actually reads:
       #   grep -rhoE 'VITE_[A-Z0-9_]+' src/ index.html vite.config.ts | sort -u
       - name: Build
+        if: steps.fresh.outputs.go == 'true'
         run: npm run build
         env:
           VITE_SUPABASE_URL:          ${{ secrets.VITE_SUPABASE_URL }}
@@ -250,9 +286,11 @@ jobs:
           VITE_VAPID_PUBLIC_KEY:      ${{ secrets.VITE_VAPID_PUBLIC_KEY || vars.VITE_VAPID_PUBLIC_KEY }}
 
       - name: Setup Pages
+        if: steps.fresh.outputs.go == 'true'
         uses: actions/configure-pages@v5
 
       - name: Upload artifact
+        if: steps.fresh.outputs.go == 'true'
         uses: actions/upload-pages-artifact@v3
         with:
           path: dist
@@ -263,14 +301,15 @@ jobs:
       # the job fails for real.
       - name: Deploy to GitHub Pages (attempt 1)
         id: deploy1
+        if: steps.fresh.outputs.go == 'true'
         uses: actions/deploy-pages@v4
         continue-on-error: true
 
       - name: Wait before retry
-        if: steps.deploy1.outcome == 'failure'
+        if: steps.fresh.outputs.go == 'true' && steps.deploy1.outcome == 'failure'
         run: sleep 20
 
       - name: Deploy to GitHub Pages (retry)
         id: deployment
-        if: steps.deploy1.outcome == 'failure'
+        if: steps.fresh.outputs.go == 'true' && steps.deploy1.outcome == 'failure'
         uses: actions/deploy-pages@v4

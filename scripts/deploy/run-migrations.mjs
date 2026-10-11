@@ -26,7 +26,7 @@ import { rootCertificates } from 'node:tls'
 import { fileURLToPath } from 'node:url'
 import pg from 'pg'
 import {
-  BASELINE, checkDbUrl, lineOf, migrationQuery, planMigrations, publicError, readMigrationNames, transactionControl,
+  BASELINE, checkDbUrl, isTransient, lineOf, migrationQuery, planMigrations, publicError, readMigrationNames, transactionControl,
 } from './migrationPlan.mjs'
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -207,8 +207,10 @@ for (const f of plan.apply) {
     fail([
       `${f.file} failed${inFile ? ` (line ${inFile})` : ''}: ${publicError(error)}`,
       kept ? 'The full error is in the database: SQL editor → select * from deploy.migration_errors order by at desc limit 1;' : null,
-      error.code === '55P03' ? 'The app kept a table it changes busy three times; run the deploy again later.' : null,
-      'Nothing from this file was kept, and the edge functions and the website were not deployed. Fix the file (it has not run) and merge again.',
+      error.code === '55P03' ? 'The app kept a table it changes busy three times; run the deploy again later (Actions → Deploy → Run workflow on main).' : null,
+      error.code !== '55P03' && isTransient(error)
+        ? 'Nothing from this file was kept, and the edge functions and the website were not deployed. This looks like a connection or server hiccup, not a mistake in the file: run the deploy again (Actions → Deploy → Run workflow on main).'
+        : 'Nothing from this file was kept, and the edge functions and the website were not deployed. Fix the file (it has not run) and merge again.',
     ].filter(Boolean).join('\n'))
   }
 }

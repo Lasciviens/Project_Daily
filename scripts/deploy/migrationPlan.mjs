@@ -54,16 +54,20 @@ export function readMigrationNames(names, baseline = BASELINE, baselineSha = BAS
  * files:  [{file, number}] from readMigrationNames
  * shaOf:  (file) => sha256 of its contents
  * ledger: Map(file -> sha256 recorded when it ran)
- * A ledger row with the same NUMBER or the same contents under another name
- * counts as run (a file renamed or renumbered after it ran must not run twice).
+ * A ledger row with the same NUMBER, or the same contents under a name that is
+ * no longer in the folder, counts as run (a file renamed or renumbered after it
+ * ran must not run twice).
  */
 export function planMigrations(files, shaOf, ledger, baseline = BASELINE) {
+  const present = new Set(files.map(f => f.file))
   const byNumber = new Map()
   const bySha = new Map()
   for (const [file, sha] of ledger) {
     const m = NAME_RE.exec(file)
     if (m) byNumber.set(Number(m[1]), file)
-    bySha.set(sha, file)
+    // Same contents counts as the same migration only when the file it ran
+    // as is gone; a new file that repeats an existing one is a new migration.
+    if (!present.has(file)) bySha.set(sha, file)
   }
   const apply = []
   const done = []
@@ -258,17 +262,33 @@ export function checkDbUrl(raw, { local = false, projectRef = '' } = {}) {
   }
 }
 
-// Error classes whose message names only SQL objects (tables, columns,
-// constraints, syntax), never a row's values. Other classes can quote data —
-// a failed cast prints the value ("invalid input syntax for type integer:
-// \"…\""), RAISE prints whatever it was given — so for them the public log
+// Error classes whose message Postgres itself builds from SQL object names
+// only (tables, columns, constraints, syntax), never a row's values. Other
+// classes can quote data — a failed cast prints the value ("invalid input
+// syntax for type integer: \"…\"") — and a RAISE in a function or trigger
+// prints whatever it was given, under ANY code (137's shop trigger raises
+// 23514 with an item's title). So: a RAISE is always hidden; the public log
 // gets the code and the object names only.
 const SAFE_CLASSES = new Set(['42', '23', '25', '0A', '2D', '55', '57'])
+// Codes that mean "the connection or the server", not the migration.
+const TRANSIENT = /^(08|40|53|57P0[1-4])/
+
+export function isRaise(e) {
+  return e?.routine === 'exec_stmt_raise' || /\bat RAISE\b/.test(e?.where ?? '')
+}
 
 /** What a public log may show of a Postgres error. */
 export function publicError(e) {
-  const code = typeof e?.code === 'string' ? e.code : ''
-  if (code && SAFE_CLASSES.has(code.slice(0, 2))) return `[${code}] ${e.message}`
+  const code = typeof e?.code === 'string' && /^[0-9A-Z]{5}$/.test(e.code) ? e.code : ''
+  // No SQLSTATE: a socket or driver error ("Connection terminated unexpectedly").
+  if (!code) return `[no code] ${String(e?.message ?? e).slice(0, 200)}`
+  if (SAFE_CLASSES.has(code.slice(0, 2)) && !isRaise(e)) return `[${code}] ${e.message}`
   const where = ['table', 'column', 'constraint'].filter(k => e?.[k]).map(k => `${k} ${e[k]}`).join(', ')
-  return `[${code || 'no code'}] the message may contain row data, so it is not shown here${where ? ` (${where})` : ''}`
+  return `[${code}] the message may contain row data, so it is not shown here${where ? ` (${where})` : ''}`
+}
+
+/** A failure the next run can get past without changing the file. */
+export function isTransient(e) {
+  const code = typeof e?.code === 'string' && /^[0-9A-Z]{5}$/.test(e.code) ? e.code : ''
+  return !code || TRANSIENT.test(code)
 }
