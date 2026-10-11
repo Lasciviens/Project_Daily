@@ -54,6 +54,14 @@ jobs:
       - name: Progress decisions regression suite
         run: node scripts/verify-progress-decisions.cjs
 
+      # deploy.yml runs every migration numbered above 140 on merge. A new file
+      # numbered 140 or lower, or two new files with one number, would never
+      # run or would collide — caught here, before the merge.
+      - name: Migration names and deploy rules
+        run: |
+          node scripts/deploy/run-migrations.mjs --check
+          node scripts/verify-deploy-migrations.mjs
+
       # `npm run lint` is deliberately NOT a gate yet: it is red today, and a
       # large share of the errors come from eslint linting supabase/functions
       # (Deno code checked with browser globals). Narrow the ESLint scope and

@@ -1,9 +1,26 @@
-name: Deploy to GitHub Pages
+# One merge to main deploys everything, in this order (11.10.2026):
+#   1. backend — new database migrations (scripts/deploy/run-migrations.mjs),
+#      then every edge function (supabase functions deploy)
+#   2. build-and-deploy — the website (GitHub Pages), only after 1 succeeded
+# A failing migration stops the run: nothing from that file is kept, and the
+# functions and the website stay on the previous version.
+#
+# ONE-TIME SETUP (owner): two repository secrets, steps in docs/deploy-setup.md
+#   SUPABASE_ACCESS_TOKEN  personal access token (starts with sbp_)
+#   SUPABASE_DB_URL        the "Session pooler" connection string
+# Until both exist the backend job only prints a notice and the website still
+# deploys (the old behaviour).
+name: Deploy
 
 on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run: list the migrations that would run; change nothing (no functions, no website)'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -16,10 +33,84 @@ concurrency:
   # job doesn't necessarily cancel the in-flight Pages-side deployment, which
   # can leave that environment in a stuck state for the *next* run and is a
   # plausible contributor to "Deployment failed, try again later" errors.
+  # It also means two merges never run migrations at the same time.
   cancel-in-progress: false
 
 jobs:
+  backend:
+    name: Database and edge functions
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    env:
+      SUPABASE_PROJECT_REF: hsaedwwqpcjizeozjbch
+    steps:
+      - name: Check the deploy secrets
+        id: gate
+        env:
+          TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          if [ -z "$TOKEN" ] && [ -z "$DB_URL" ]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::SUPABASE_ACCESS_TOKEN and SUPABASE_DB_URL are not set, so migrations and edge functions were NOT deployed. Setup: docs/deploy-setup.md"
+            exit 0
+          fi
+          [ -n "$TOKEN" ] || { echo "::error::SUPABASE_DB_URL is set but SUPABASE_ACCESS_TOKEN is missing (docs/deploy-setup.md)."; exit 1; }
+          [ -n "$DB_URL" ] || { echo "::error::SUPABASE_ACCESS_TOKEN is set but SUPABASE_DB_URL is missing (docs/deploy-setup.md)."; exit 1; }
+          case "$TOKEN" in
+            sbp_*) ;;
+            *) echo "::error::SUPABASE_ACCESS_TOKEN must be a personal access token that starts with sbp_ (Supabase → Account → Access Tokens), not an API key."; exit 1 ;;
+          esac
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        if: steps.gate.outputs.ready == 'true'
+
+      - uses: actions/setup-node@v4
+        if: steps.gate.outputs.ready == 'true'
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        if: steps.gate.outputs.ready == 'true'
+        run: npm ci
+
+      # Migrations numbered above 140 that have not run yet, in number order,
+      # each with its row in deploy.applied_migrations as one transaction.
+      - name: Database migrations
+        if: steps.gate.outputs.ready == 'true'
+        run: node scripts/deploy/run-migrations.mjs
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          DRY_RUN: ${{ inputs.dry_run && 'true' || 'false' }}
+
+      - uses: supabase/setup-cli@v1
+        if: steps.gate.outputs.ready == 'true'
+        with:
+          version: 2.118.0
+
+      # The dry run still proves the access token works (a read-only call).
+      - name: Check the access token (dry run)
+        if: steps.gate.outputs.ready == 'true' && inputs.dry_run
+        run: supabase functions list --project-ref "$SUPABASE_PROJECT_REF"
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+      # Every function under supabase/functions, bundled by Supabase (--use-api,
+      # no Docker). JWT verification per function comes from supabase/config.toml.
+      # Never --prune: a function that exists only on Supabase is left alone.
+      - name: Edge functions
+        if: steps.gate.outputs.ready == 'true' && !inputs.dry_run
+        run: supabase functions deploy --project-ref "$SUPABASE_PROJECT_REF" --use-api
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
   build-and-deploy:
+    needs: backend
+    if: ${{ !inputs.dry_run }}
     runs-on: ubuntu-latest
     # The retry step below can legitimately idle ~40s; 15 minutes is generous
     # for a ~1 minute job and stops a wedged npm ci / Pages call burning hours.

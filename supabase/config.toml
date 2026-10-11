@@ -1,6 +1,8 @@
-# Supabase project config — consumed by `supabase functions deploy` in CI
-# (.github/workflows/deploy-functions.yml) so per-function settings apply
-# automatically on every merge, instead of hand-deploying each function.
+# Supabase project config — read by `supabase functions deploy` (deploy.yml's
+# "backend" job, on every merge to main). verify_jwt below is THE list of
+# functions whose platform JWT check is off; a function not listed here gets it
+# ON at every deploy. Check before adding a function: does every caller send a
+# Supabase JWT (supabase.functions.invoke, or an Authorization header)?
 #
 # CRITICAL: the two webhook receivers authenticate with their OWN Bearer secret
 # (HEVY_WEBHOOK_SECRET / HEALTH_EXPORT_WEBHOOK_SECRET), NOT a Supabase JWT. If
@@ -81,4 +83,12 @@ verify_jwt = false
 # (x-cron-secret === SHOP_PRICE_CRON_SECRET → acts as the single user, sweep
 # only). The cron path is not a Supabase JWT, so platform verification is off.
 [functions.shop-price]
+verify_jwt = false
+
+# news-proxy: Home's news feeds and their pictures. The feed fetch sends no
+# Authorization header and the pictures load in <img> tags, which cannot send
+# one, so platform verification must be off (it was deployed with
+# --no-verify-jwt by hand until 11.10.2026). It only fetches allow-listed
+# public feeds and image hosts and reads no user data.
+[functions.news-proxy]
 verify_jwt = false

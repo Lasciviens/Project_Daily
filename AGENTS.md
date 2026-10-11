@@ -25,8 +25,8 @@ necessary. Feature history belongs in `CLAUDE.md`.
 | ORM | None — raw `supabase-js` client everywhere |
 | Client env vars | See `CLAUDE.md`'s Environment Variables table. Ground truth: `grep -rhoE 'VITE_[A-Z0-9_]+' src/ index.html vite.config.ts \| sort -u` |
 | Server secrets | Supabase Vault only, never in client code or function source. Ground truth: `grep -rhoE "Deno.env.get\(['\"][A-Z0-9_]+" supabase/functions/ \| sort -u`. `SUPABASE_URL` / `SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY` are **injected by the platform** — do not add those to Vault. |
-| Migration numbering | Sequential, zero-padded three digits (`NNN_description.sql`). Highest applied is **068**. Don't hardcode "the next number" — run `ls supabase/migrations \| sort \| tail -1` and increment. |
-| Deploy | **Manual, always.** Migrations: Dashboard › SQL Editor or `supabase db push`. Edge Functions: Dashboard or `supabase functions deploy <name>`. GitHub Actions builds and publishes the frontend only — it runs no migrations and deploys no functions. |
+| Migration numbering | Sequential, zero-padded three digits (`NNN_description.sql`). A new file is numbered **above 140** and unique — run `ls supabase/migrations \| sort \| tail -1` and increment. `scripts/deploy/run-migrations.mjs --check` (PR check) refuses anything else. |
+| Deploy | **Automatic on merge to main** (`.github/workflows/deploy.yml`, since 11.10.2026): new migrations (numbered above 140, each run once, recorded in `deploy.applied_migrations`), then every edge function (`supabase functions deploy`, JWT settings from `supabase/config.toml`), then the website. A failing migration stops the run. Needs the repository secrets `SUPABASE_ACCESS_TOKEN` + `SUPABASE_DB_URL` (`docs/deploy-setup.md`); without them only the website deploys. Never run a migration numbered above 140 by hand — the workflow would run it again. Migrations up to 140 were applied by hand and are never run by the workflow. |
 
 **Numbering gap:** `056` does not exist (the sequence runs `055 → 057`) and `058`
 is an intentional dead no-op — both are documented in `058`'s own header and in
@@ -38,6 +38,7 @@ that number would collide with a deleted one in history.
 ### Migration Rules
 
 1. **File naming:** `NNN_short_description.sql` — zero-padded three digits, snake_case description. Check `ls supabase/migrations` for the current highest number before picking the next one.
+   **It runs automatically on merge, exactly once:** the whole file is sent as ONE query, so without its own `BEGIN`/`COMMIT` it is one transaction together with its `deploy.applied_migrations` row — a failure keeps nothing and the next merge tries it again. Never edit a migration after it ran (the workflow only warns and does not run it again): put the change in a new file. Nothing that cannot run inside a transaction (`CREATE INDEX CONCURRENTLY`, `VACUUM`) — the SQL editor has the same limit.
 2. **Always idempotent.** `CREATE TABLE IF NOT EXISTS`, `CREATE INDEX IF NOT EXISTS`, `DROP TRIGGER IF EXISTS` before `CREATE TRIGGER`, and the `DO $$ ... pg_policies` guard for policies (rule 4). Never assume a clean slate — every migration must survive being re-run.
 3. **Always enable RLS** immediately after `CREATE TABLE`:
    ```sql
@@ -179,10 +180,13 @@ CREATE POLICY "owner_delete" ON public.my_table FOR DELETE USING ((select auth.u
 
 ---
 
-### Migrations land AFTER the frontend — client code must degrade, not throw
+### Client code must degrade, not throw, on an older schema
 
-The frontend auto-deploys on merge; migrations are applied by hand later. There
-is **always** a window where the shipped client runs against the old schema.
+On merge the workflow runs migrations BEFORE the website deploys, but the
+website can still meet an older schema: the deploy secrets may be missing (then
+only the website deploys), a migration can fail after a previous one ran, and
+a merge can be reverted. Keep every client read/write safe on the schema before
+your migration.
 
 - A read/write touching a column added by an unapplied migration must catch the
   column-missing error (`42703` from Postgres, `PGRST204` from PostgREST) and

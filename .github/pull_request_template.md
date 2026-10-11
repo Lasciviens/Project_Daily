@@ -2,17 +2,19 @@
 
 <!-- What and why, in a few lines. Link the dev_request / issue if there is one. -->
 
-## Manual steps after merge
+## Deploy and manual steps
 
-<!-- CI deploys the FRONTEND ONLY. Migrations, edge functions and Vault secrets
-     are hand-applied — if it is not listed here it will be forgotten. Delete
-     the lines that don't apply. -->
+<!-- A merge deploys, in order: new migrations (numbered above 140), every edge
+     function, then the website (.github/workflows/deploy.yml, once the deploy
+     secrets exist — docs/deploy-setup.md). List what it cannot do: secrets,
+     dashboard switches, devices. Delete the lines that don't apply. -->
 
-- [ ] Migration(s) to apply (Dashboard -> SQL Editor, or `supabase db push`): `supabase/migrations/NNN_*.sql`
-- [ ] Edge function(s) to deploy: `<name>` — check its `verify_jwt` setting in `supabase/config.toml`
-- [ ] Vault secret(s) to add or rotate: `<NAME>`
+- [ ] Migration(s) that run on merge: `supabase/migrations/NNN_*.sql` (numbered above 140)
+- [ ] Edge function(s) changed: `<name>` — a caller without a Supabase JWT needs `verify_jwt = false` in `supabase/config.toml`
+- [ ] Edge Function / Vault secret(s) to add or rotate: `<NAME>`
 - [ ] Actions secret / variable to add: `<NAME>`
-- [ ] None — frontend only, ships itself on merge
+- [ ] Dashboard or device step: …
+- [ ] None — ships itself on merge
 
 ## Verification
 
