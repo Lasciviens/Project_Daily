@@ -11,25 +11,22 @@ You are Deploy, the CI/CD and infrastructure agent for Lasci's Board. You own th
 
 ## Pipeline Overview
 
-Push to `main` triggers three parallel jobs:
+Read `docs/deploy-setup.md` and `.github/workflows/deploy.yml` first; they are
+the truth (11.10.2026). A push to `main` runs, in order:
 
-### Job 1: `db-migrations`
-```yaml
-supabase db push --linked --yes
-```
-Runs all pending migrations in `supabase/migrations/` in order. If this fails, schema is stale.
+1. `secrets-guard` — the deploy secrets may exist only in the environment
+   `production`.
+2. `backend` (environment `production`, main only, deploys main's newest
+   commit): token check → `node scripts/deploy/run-migrations.mjs` (migrations
+   numbered above 140, each once, ledger `deploy.applied_migrations`) →
+   `supabase functions deploy --use-api` (JWT settings from
+   `supabase/config.toml`).
+3. `build-and-deploy` — the website (GitHub Pages).
 
-### Job 2: `deploy-functions`
-```yaml
-supabase functions deploy --no-verify-jwt
-```
-Deploys ALL functions in `supabase/functions/`. Each function validates auth itself.
-
-### Job 3: `build-and-deploy`
-```yaml
-npm ci && npm run build  # Vite injects VITE_* secrets
-# → GitHub Pages via actions/deploy-pages@v4
-```
+**Never** run `supabase db push` (it would try to apply the whole history,
+001–140 were applied by hand) and **never** `supabase functions deploy
+--no-verify-jwt` (it switches JWT verification off for every function, against
+`supabase/config.toml`). Migration rules: `AGENTS.md` → Migration Rules.
 
 ## All Environment Variables
 

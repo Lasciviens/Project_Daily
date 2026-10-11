@@ -5,12 +5,13 @@
 # A failing migration stops the run: nothing from that file is kept, and the
 # functions and the website stay on the previous version.
 #
-# Runs only from main, and only for main's newest commit: a run for an older
-# commit (a re-run, or a merge queued behind a newer one) deploys nothing,
-# because the newest commit's run deploys everything.
+# Runs only from main, and always deploys main's NEWEST commit (looked up when
+# the run starts), whichever commit started it: a re-run or a queued older run
+# can never put older code back.
 #
 # ONE-TIME SETUP (owner), steps in docs/deploy-setup.md: a GitHub environment
-# "production" limited to main, holding two secrets
+# "production" limited to main, holding two ENVIRONMENT secrets (as repository
+# secrets every branch's workflows could read them; job secrets-guard refuses)
 #   SUPABASE_ACCESS_TOKEN  personal access token (starts with sbp_)
 #   SUPABASE_DB_URL        the "Session pooler" connection string
 # Without them the backend job deploys nothing and warns about migrations
@@ -33,7 +34,9 @@ permissions:
   id-token: write
 
 concurrency:
-  group: pages
+  # Real deploys share one queue; a dry run or a run started from another
+  # branch gets its own, so it can never replace a deploy waiting in the queue.
+  group: ${{ (github.ref == 'refs/heads/main' && !inputs.dry_run) && 'pages' || format('deploy-check-{0}', github.run_id) }}
   # false (not true) per GitHub's own Pages template — cancelling the Actions
   # job doesn't necessarily cancel the in-flight Pages-side deployment, which
   # can leave that environment in a stuck state for the *next* run and is a
@@ -44,7 +47,27 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # The deploy secrets must exist ONLY in the environment "production" (main
+  # only). A job without that environment sees repository and organisation
+  # secrets alone, so a value here means they are readable from any branch.
+  secrets-guard:
+    name: Deploy secrets are environment-only
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions: {}
+    steps:
+      - name: Refuse repository-level deploy secrets
+        env:
+          TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          if [ -n "$TOKEN$DB_URL" ]; then
+            echo "::error::SUPABASE_ACCESS_TOKEN / SUPABASE_DB_URL exist as repository (or organisation) secrets, which a workflow on any branch can read. Delete them there; keep them only in Settings → Environments → production (docs/deploy-setup.md). Nothing was deployed."
+            exit 1
+          fi
+
   backend:
+    needs: secrets-guard
     name: Database and edge functions
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -55,6 +78,7 @@ jobs:
       contents: read
     outputs:
       web: ${{ steps.gate.outputs.web }}
+      sha: ${{ steps.gate.outputs.sha }}
     env:
       SUPABASE_PROJECT_REF: hsaedwwqpcjizeozjbch
       DRY_RUN: ${{ inputs.dry_run && 'true' || 'false' }}
@@ -70,11 +94,12 @@ jobs:
             echo "::error::The deploy runs only from main (this run is on $GITHUB_REF). Actions → Deploy → Run workflow → Branch: main."
             exit 1
           fi
+          # Always deploy main's newest commit, whatever commit started this run.
           head=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)
+          [ -n "$head" ] || { echo "::error::Could not read main's newest commit."; exit 1; }
+          echo "sha=$head" >> "$GITHUB_OUTPUT"
           if [ "$head" != "$GITHUB_SHA" ]; then
-            echo "backend=false" >> "$GITHUB_OUTPUT"; echo "web=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::main has a newer commit (${head:0:7}); its own run deploys everything, so this run for ${GITHUB_SHA:0:7} deploys nothing."
-            exit 0
+            echo "::notice::This run was started by ${GITHUB_SHA:0:7}; it deploys main's newest commit ${head:0:7}."
           fi
           if [ -z "$TOKEN" ] && [ -z "$DB_URL" ]; then
             echo "backend=false" >> "$GITHUB_OUTPUT"
@@ -93,6 +118,8 @@ jobs:
 
       - uses: actions/checkout@v4
         if: steps.gate.outputs.web == 'true' || steps.gate.outputs.backend == 'true'
+        with:
+          ref: ${{ steps.gate.outputs.sha }}
 
       # Without the secrets nothing reaches the database, so say loudly if a
       # merged migration is waiting for them.
@@ -116,7 +143,9 @@ jobs:
         if: steps.gate.outputs.backend == 'true'
         run: npm ci --ignore-scripts
 
-      - uses: supabase/setup-cli@v1
+      # Pinned to a commit (v1.7.3, 24.09.2026): a third-party action in the
+      # job that holds the database password.
+      - uses: supabase/setup-cli@1dedf2c611547ede7232d26866dd3c56ab903bbb
         if: steps.gate.outputs.backend == 'true'
         with:
           version: 2.118.0
@@ -137,10 +166,13 @@ jobs:
         run: node scripts/deploy/run-migrations.mjs
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          DEPLOY_SHA: ${{ steps.gate.outputs.sha }}
 
       # Every function under supabase/functions, bundled by Supabase (--use-api,
       # no Docker). JWT verification per function comes from supabase/config.toml.
       # Never --prune: a function that exists only on Supabase is left alone.
+      # If THIS step fails, the database is already migrated and the functions
+      # before the failing one are new; the website stays old (see the docs).
       - name: Edge functions
         if: steps.gate.outputs.backend == 'true' && env.DRY_RUN != 'true'
         run: supabase functions deploy --project-ref "$SUPABASE_PROJECT_REF" --use-api
@@ -159,7 +191,10 @@ jobs:
       # coalesce: whichever deploy attempt succeeded provides the url
       url: ${{ steps.deploy1.outputs.page_url || steps.deployment.outputs.page_url }}
     steps:
+      # The same commit the backend job deployed (main's newest at start).
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.backend.outputs.sha }}
 
       - uses: actions/setup-node@v4
         with:

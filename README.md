@@ -62,7 +62,8 @@ flowchart TD
 > **Never push directly to `main`.** All changes go through a PR.
 > A merge deploys everything in order: new database migrations, every edge
 > function, then the website (`.github/workflows/deploy.yml`). One-time setup:
-> two repository secrets, see [`docs/deploy-setup.md`](docs/deploy-setup.md).
+> two secrets in the GitHub environment `production`, see
+> [`docs/deploy-setup.md`](docs/deploy-setup.md).
 
 ---
 
@@ -244,7 +245,7 @@ test dependency); one-off logic verification ships as a throwaway script under
 
 ```mermaid
 flowchart TD
-    PUSH([Push / merge to main]) --> GHA[GitHub Actions: Deploy<br/>main's newest commit only]
+    PUSH([Push / merge to main]) --> GHA[GitHub Actions: Deploy<br/>always main's newest commit]
     DISPATCH([Manual workflow_dispatch]) --> GHA
     GHA --> TOK[backend: token check]
     TOK --> MIG[backend: new migrations<br/>scripts/deploy/run-migrations.mjs]
@@ -263,8 +264,8 @@ Notes on the pipeline, all in `.github/workflows/deploy.yml`:
 
 - The `backend` job runs first: migrations numbered above 140 that have not run
   yet (each once, recorded in `deploy.applied_migrations`), then every edge
-  function. A failing step stops the run, so the functions and the website
-  stay on the previous version. The secrets `SUPABASE_ACCESS_TOKEN` and
+  function. A failing migration stops the run, so the functions and the
+  website stay on the previous version. The secrets `SUPABASE_ACCESS_TOKEN` and
   `SUPABASE_DB_URL` live in the environment `production` (main only); without
   them it only warns. Setup and dry run: `docs/deploy-setup.md`.
 - The website uses the official `actions/deploy-pages` mechanism (not a
@@ -272,10 +273,10 @@ Notes on the pipeline, all in `.github/workflows/deploy.yml`:
 - The Pages deploy step is intermittently flaky, so attempt 1 runs with
   `continue-on-error` and only the retry gates the job. A red-then-green run is
   expected behaviour, not a broken build.
-- `concurrency: { group: pages, cancel-in-progress: false }` — one run at a
-  time; a third merge replaces a second one still waiting, and a run for an
-  older commit than main's newest deploys nothing (the newest run deploys
-  everything).
+- Concurrency group `pages`, `cancel-in-progress: false` — one deploy at a
+  time; a third merge replaces a second one still waiting, which is harmless
+  because every run deploys main's newest commit. Dry runs have their own
+  group.
 - The build reads its `VITE_*` values from **GitHub Actions secrets**. A missing
   one produces a broken deploy rather than a failed build, because most of them
   only fail at call time.

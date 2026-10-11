@@ -22,7 +22,7 @@ export function readMigrationNames(names, baseline = BASELINE, baselineSha = BAS
   const errors = []
   const files = []
   for (const name of names) {
-    if (!name.endsWith('.sql')) continue
+    if (!/\.sql$/i.test(name)) continue
     const m = NAME_RE.exec(name)
     if (!m) {
       errors.push(`${name}: a migration is named <number>_<lowercase_words>.sql, for example 141_shop_notes.sql`)
@@ -54,14 +54,16 @@ export function readMigrationNames(names, baseline = BASELINE, baselineSha = BAS
  * files:  [{file, number}] from readMigrationNames
  * shaOf:  (file) => sha256 of its contents
  * ledger: Map(file -> sha256 recorded when it ran)
- * A ledger row with the same NUMBER under another name counts as run (a file
- * renamed after it ran must not run twice).
+ * A ledger row with the same NUMBER or the same contents under another name
+ * counts as run (a file renamed or renumbered after it ran must not run twice).
  */
 export function planMigrations(files, shaOf, ledger, baseline = BASELINE) {
   const byNumber = new Map()
-  for (const file of ledger.keys()) {
+  const bySha = new Map()
+  for (const [file, sha] of ledger) {
     const m = NAME_RE.exec(file)
     if (m) byNumber.set(Number(m[1]), file)
+    bySha.set(sha, file)
   }
   const apply = []
   const done = []
@@ -73,8 +75,8 @@ export function planMigrations(files, shaOf, ledger, baseline = BASELINE) {
     if (ledger.has(f.file)) {
       if (ledger.get(f.file) !== sha) changed.push(f.file)
       else done.push(f.file)
-    } else if (byNumber.has(f.number)) {
-      renamed.push({ file: f.file, ranAs: byNumber.get(f.number) })
+    } else if (byNumber.has(f.number) || bySha.has(sha)) {
+      renamed.push({ file: f.file, ranAs: byNumber.get(f.number) ?? bySha.get(sha) })
     } else {
       apply.push({ ...f, sha })
     }
@@ -183,7 +185,9 @@ export function transactionControl(sql) {
   const found = []
   let atomic = 0
   for (const s of topLevelStatements(sql)) {
-    if (/\bbegin\s+atomic\b/i.test(s.text)) atomic++
+    // A SQL-standard body (CREATE … BEGIN ATOMIC … END) holds ";" inside it;
+    // an empty one ("begin atomic end") closes in the same statement.
+    if (/^create\b/.test(s.head) && /\bbegin\s+atomic\b/i.test(s.text) && !/\bbegin\s+atomic\s+end\s*$/i.test(s.text)) atomic++
     if (atomic && s.head === 'end') { atomic--; continue }
     if (atomic) continue
     if (TX_CONTROL.test(s.head)) found.push(s)
@@ -252,4 +256,19 @@ export function checkDbUrl(raw, { local = false, projectRef = '' } = {}) {
       database: decodeURIComponent(u.pathname.replace(/^\//, '') || 'postgres'),
     },
   }
+}
+
+// Error classes whose message names only SQL objects (tables, columns,
+// constraints, syntax), never a row's values. Other classes can quote data —
+// a failed cast prints the value ("invalid input syntax for type integer:
+// \"…\""), RAISE prints whatever it was given — so for them the public log
+// gets the code and the object names only.
+const SAFE_CLASSES = new Set(['42', '23', '25', '0A', '2D', '55', '57'])
+
+/** What a public log may show of a Postgres error. */
+export function publicError(e) {
+  const code = typeof e?.code === 'string' ? e.code : ''
+  if (code && SAFE_CLASSES.has(code.slice(0, 2))) return `[${code}] ${e.message}`
+  const where = ['table', 'column', 'constraint'].filter(k => e?.[k]).map(k => `${k} ${e[k]}`).join(', ')
+  return `[${code || 'no code'}] the message may contain row data, so it is not shown here${where ? ` (${where})` : ''}`
 }

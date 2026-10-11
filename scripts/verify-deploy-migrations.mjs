@@ -12,7 +12,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
-  BASELINE, BASELINE_NAMES_SHA256, checkDbUrl, lineOf, migrationQuery, planMigrations, readMigrationNames,
+  BASELINE, BASELINE_NAMES_SHA256, checkDbUrl, lineOf, migrationQuery, planMigrations, publicError, readMigrationNames,
   topLevelStatements, transactionControl,
 } from './deploy/migrationPlan.mjs'
 
@@ -39,7 +39,7 @@ check('a renamed or deleted old file is refused',
   readMigrationNames([...old.slice(1), '001_y.sql'], BASELINE, oldSha).errors.length === 1 &&
   readMigrationNames(old.slice(1), BASELINE, oldSha).errors.length === 1)
 check('two new files with one number are refused', names(['141_a.sql', '141_b.sql']).length === 1)
-check('a bad name is refused', names(['141-Shop.sql']).length === 1)
+check('a bad name is refused, upper-case .SQL too', names(['141-Shop.sql']).length === 1 && names(['141_a.SQL']).length === 1)
 check('other files are ignored', names(['README.md']).length === 0)
 const sorted = readMigrationNames([...old, '1000_z.sql', '141_a.sql', '999_y.sql'], BASELINE, oldSha).files.slice(-3).map(f => f.file)
 check('sorted by number, not by text', sorted.join() === '141_a.sql,999_y.sql,1000_z.sql', sorted.join())
@@ -54,6 +54,8 @@ check('a recorded file is skipped', p.done.join() === '141_b.sql')
 check('a file changed after it ran is reported, not run', p.changed.join() === '142_c.sql')
 check('a file renamed after it ran is reported, not run', p.renamed.length === 1 && p.renamed[0].ranAs === '144_old_name.sql')
 check('a new file runs', p.apply.map(f => f.file).join() === '143_d.sql')
+const p2 = planMigrations([{ file: '145_moved.sql', number: 145 }], () => 'same', new Map([['141_b.sql', 'same']]))
+check('a file renumbered after it ran (same contents) is reported, not run', p2.apply.length === 0 && p2.renamed[0]?.ranAs === '141_b.sql')
 
 console.log('3. transaction control')
 const tx = (s) => transactionControl(s).map(x => `${x.head.split(' ')[0]}@${x.line}`).join(',')
@@ -66,6 +68,8 @@ check('words in comments and strings are ignored',
   tx("-- begin;\n/* commit; /* nested */ rollback; */\nselect 'commit;';\nselect E'it\\'s; commit';\nselect \"begin\" from t;") === '')
 check('a SQL-standard function body (BEGIN ATOMIC … END) is not top level',
   tx('create function g() returns int language sql\nbegin atomic\n  select 1;\nend;\nselect 2;') === '')
+check('an empty BEGIN ATOMIC END does not hide a later COMMIT',
+  tx('create procedure p() language sql begin atomic end;\ncommit;') === 'commit@2')
 check('SET TRANSACTION ISOLATION is allowed', tx('set transaction isolation level repeatable read;\nselect 1;') === '')
 check('statement lines survive multi-line strings and comments',
   topLevelStatements("select 'a\nb';\n/* x\ny */\ncommit;").map(s => s.line).join() === '1,5')
@@ -82,6 +86,14 @@ check('the ledger row follows the file in the same query', /no semicolon\n;\nins
 check('a bad file name is refused', (() => { try { migrationQuery("141_x'.sql", shaHex); return false } catch { return true } })())
 check('a bad commit becomes null', /, null\);/.test(migrationQuery('141_b.sql', shaHex, 'x;drop').build('')))
 check('lineOf counts lines', lineOf('a\nb\nc', 5) === 3 && lineOf('a', undefined) === null)
+
+console.log('4b. what the public log shows')
+check('a cast error (it quotes the value) is hidden',
+  !/Secret/.test(publicError({ code: '22P02', message: 'invalid input syntax for type integer: "Secret 123"', table: 't', column: 'c' })) &&
+  /\[22P02\].*column c/.test(publicError({ code: '22P02', message: 'x', table: 't', column: 'c' })))
+check('a RAISE text is hidden', !/owner/.test(publicError({ code: 'P0001', message: 'owner 1234 sees' })))
+check('object-only errors are shown', publicError({ code: '42703', message: 'column "x" does not exist' }) === '[42703] column "x" does not exist')
+check('an error without a code is hidden', !/boom/.test(publicError(new Error('boom'))))
 
 console.log('5. database address')
 const ref = 'hsaedwwqpcjizeozjbch'
@@ -132,7 +144,10 @@ check('functions cron jobs, devices and guides call have verify_jwt = false', mi
 check('news-proxy is listed (its fetch and <img> send no JWT)', browser.some(r => r.fn === 'news-proxy') && jwtOff.has('news-proxy'))
 
 const testUrl = process.env.DEPLOY_TEST_DB_URL
-if (testUrl) {
+if (testUrl && !/^postgres(ql)?:\/\/[^@]*@(127\.0\.0\.1|localhost)(:\d+)?\//.test(testUrl)) {
+  console.log('7. REFUSED — DEPLOY_TEST_DB_URL must be a local throwaway database (127.0.0.1 or localhost): this section drops the schema "deploy"')
+  failed++
+} else if (testUrl) {
   console.log('7. against a throwaway database')
   const work = mkdtempSync(join(tmpdir(), 'mig-'))
   const runner = join(root, 'scripts/deploy/run-migrations.mjs')
@@ -146,7 +161,7 @@ if (testUrl) {
   const psql = (sql) => execFileSync('psql', [testUrl, '-X', '-At', '-q', '-c', sql], { encoding: 'utf8' }).trim()
   const reset = () => psql('drop schema if exists deploy cascade; drop table if exists public.t141, public.t142, public.t143, public.t144, public.t145, public.t146, public.t147 cascade')
   reset()
-
+  try {
   let r = run({ DRY_RUN: 'true' })
   check('dry run with nothing new: ok, no ledger made', r.ok && psql("select to_regclass('deploy.applied_migrations') is null") === 't', r.out)
   r = run()
@@ -211,9 +226,29 @@ if (testUrl) {
   check('a busy table: waits, retries, then runs', r.ok && /lock timeout/.test(r.out) && /attempt 2/.test(r.out) &&
     psql("select count(*) from information_schema.columns where table_name = 't141' and column_name = 'y'") === '1' && Date.now() - started < 30000, r.out)
 
+  rmSync(join(work, '145_e.sql'))
+  writeFileSync(join(work, '147_g.sql'), "create table public.t147 (x text);\ninsert into public.t147 values ('Furkan Secret 12345');\nalter table public.t147 alter column x type int using x::int;")
+  r = run()
+  check('a failing cast: the value stays out of the log, the full error is kept in the database',
+    !r.ok && /\[22P02\]/.test(r.out) && !/Secret/.test(r.out) && /deploy\.migration_errors/.test(r.out) &&
+    psql("select message from deploy.migration_errors where file = '147_g.sql' order by at desc limit 1").includes('Furkan Secret 12345'), r.out)
+  rmSync(join(work, '147_g.sql'))
+
+  // A connection that dies mid-file: no crash, nothing kept, reported.
+  writeFileSync(join(work, '146_f.sql'), 'select pg_sleep(4);\ncreate table public.t146 (x int);')
+  const killer = spawn('sh', ['-c', `sleep 1.5; psql "${testUrl}" -X -q -c "select pg_terminate_backend(pid) from pg_stat_activity where application_name = 'github-deploy' and query like '%pg_sleep(4)%'"`], { stdio: 'ignore' })
+  const killed = new Promise(res => killer.on('close', res))
+  r = run()
+  await killed
+  check('a connection killed mid-file: reported, no crash, nothing kept',
+    !r.ok && /146_f\.sql failed/.test(r.out) && !/Unhandled|node:events|at Socket/.test(r.out) && psql("select to_regclass('public.t146') is null") === 't', r.out)
+  rmSync(join(work, '146_f.sql'))
+
   check('the browser roles cannot use the ledger schema', psql("select count(*) from pg_namespace n where nspname = 'deploy' and has_schema_privilege('public', n.oid, 'usage')") === '0')
-  reset()
-  rmSync(work, { recursive: true, force: true })
+  } finally {
+    reset()
+    rmSync(work, { recursive: true, force: true })
+  }
 } else {
   console.log('7. (skipped — set DEPLOY_TEST_DB_URL to a throwaway database to run the runner itself)')
 }

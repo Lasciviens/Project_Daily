@@ -16,16 +16,22 @@ Once set up, a merge to `main` deploys everything, in this order
 4. **The website** — GitHub Pages, only after 1–3 succeeded.
 
 Migrations `001`–`140` were applied by hand before this and are never run by
-the workflow.
+the workflow. The runner checks that 139 and 140 really ran (the owner lock
+and `ai_pending_actions` exist) and stops, changing nothing, if not.
 
-The deploy only runs from `main`, and only for the newest commit on `main`: a
-run for an older commit (a re-run, or a merge queued behind a newer one)
-deploys nothing, because the newest commit's run deploys everything.
+The deploy runs only from `main`, and always deploys `main`'s **newest**
+commit, whichever commit started the run: a re-run or a queued older run can
+never put older code back. A dry run, or a run started from another branch,
+has its own queue and never replaces a real deploy waiting in line.
 
-## 0. Merge the pull request that adds this
+## 0. Before you start
 
-The **Dry run** button (step 4) exists only once the workflow is on `main`.
-Until the secrets exist, a merge deploys the website exactly as before.
+- Migrations 139 and 140 have been run in the SQL editor (CLAUDE.md → Pending
+  manual steps, first rows). The deploy refuses to touch the database
+  otherwise.
+- Merge the pull request that adds this. The **Dry run** button (step 4)
+  exists only once the workflow is on `main`. Until the secrets exist, a merge
+  deploys the website exactly as before.
 
 ## 1. Supabase access token
 
@@ -76,7 +82,13 @@ read it.
 | `SUPABASE_ACCESS_TOKEN` | the `sbp_…` token |
 | `SUPABASE_DB_URL` | the Session pooler address with the password |
 
-Put them in the environment, not under "Repository secrets".
+Put them in the environment, not under "Repository secrets": as repository
+secrets any branch's workflow could read them, so the first job of every
+deploy (`secrets-guard`) fails while they exist there.
+
+Recommended too: **Settings → Rules → Rulesets → New branch ruleset** for
+`main` with **Require a pull request before merging**, so nothing reaches
+`main` (and with it the database password) without your merge.
 
 ## 4. Test with a dry run (changes nothing)
 
@@ -98,21 +110,31 @@ tell Claude.
   next merge, and a hand-deployed function is replaced by the repository's
   version on every merge.
 - A failed run sends GitHub's failure e-mail. Actions → the red run → the red
-  step says which file failed, on which line, and why. Nothing from that file
-  was kept, and the functions and the website stayed on the previous version.
-  Fixing the file and merging again retries it. After fixing something in
-  Supabase instead, use **Re-run jobs** on the newest run only (an older run
-  deploys nothing), or **Run workflow** on `main`.
+  step says what failed:
+  - **Database migrations:** which file, on which line, the error code. Nothing
+    from that file was kept, and the functions and the website stayed on the
+    previous version. The full error message is in the database (SQL editor:
+    `select * from deploy.migration_errors order by at desc limit 1;`). Fix the
+    file and merge again.
+  - **Edge functions:** the database is already migrated, the functions before
+    the failing one are new, the website is still the previous one. Fix the
+    function and merge again, or — if the cause was on Supabase's side —
+    **Run workflow** on `main` (or **Re-run jobs**; any run deploys `main`'s
+    newest commit).
+  - **Check the access token / Decide what to deploy / secrets-guard:** a
+    setup problem; the message says which. Nothing was deployed.
 - The repository is public, so its Actions logs are too: the migration step
-  prints file names, error codes and messages, never row values or the
-  database's NOTICE texts.
+  prints file names, line numbers and error codes, and the error message only
+  when it cannot contain row data (a failed conversion quotes the value, so
+  its message stays in `deploy.migration_errors`). Database NOTICE texts are
+  never printed.
 - To turn the automation off: delete the two secrets (back to manual deploys).
 
 ## Notes
 
-- The database certificate is checked against Supabase's root CA, kept in
-  `scripts/deploy/supabase-root-2021.crt` (valid until 26.04.2031). The dry
-  run is the first real check of it.
+- The database certificate and name are checked (Supabase's root CA, kept in
+  `scripts/deploy/supabase-root-2021.crt` and valid until 26.04.2031, plus the
+  usual public roots). The dry run is the first real check of it.
 - `deploy.applied_migrations` is in its own schema `deploy`, which the website
   and the Data API cannot see.
 - Rules for writing migrations: `AGENTS.md` → Migration Rules (number above

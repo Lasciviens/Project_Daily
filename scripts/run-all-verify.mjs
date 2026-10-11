@@ -14,8 +14,16 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const arg = process.argv.indexOf('--jobs')
 const jobs = arg > 0 ? Number(process.argv[arg + 1]) : Math.max(2, availableParallelism())
 const TIMEOUT_MS = 180_000
+if (!Number.isInteger(jobs) || jobs < 1) {
+  console.log('--jobs needs a whole number of 1 or more')
+  process.exit(1)
+}
 
 const scripts = readdirSync(join(root, 'scripts')).filter(f => /^verify-.*\.(cjs|mjs)$/.test(f)).sort()
+if (!scripts.length) {
+  console.log('No scripts/verify-*.cjs|mjs found')
+  process.exit(1)
+}
 
 function runOne(file) {
   return new Promise(resolve => {
