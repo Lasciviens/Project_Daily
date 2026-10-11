@@ -91,18 +91,24 @@ check('lineOf counts lines', lineOf('a\nb\nc', 5) === 3 && lineOf('a', undefined
 
 console.log('4b. what the public log shows')
 check('a cast error (it quotes the value) is hidden',
-  !/Secret/.test(publicError({ code: '22P02', message: 'invalid input syntax for type integer: "Secret 123"', table: 't', column: 'c' })) &&
-  /\[22P02\].*column c/.test(publicError({ code: '22P02', message: 'x', table: 't', column: 'c' })))
-check('a RAISE text is hidden', !/owner/.test(publicError({ code: 'P0001', message: 'owner 1234 sees' })))
-check('object-only errors are shown', publicError({ code: '42703', message: 'column "x" does not exist' }) === '[42703] column "x" does not exist')
+  !/Secret/.test(publicError({ severity: 'ERROR', code: '22P02', message: 'invalid input syntax for type integer: "Secret 123"', table: 't', column: 'c' })) &&
+  /\[22P02\].*column c/.test(publicError({ severity: 'ERROR', code: '22P02', message: 'x', table: 't', column: 'c' })))
+check('a RAISE text is hidden', !/owner/.test(publicError({ severity: 'ERROR', code: 'P0001', message: 'owner 1234 sees' })))
+check('object-only errors are shown', publicError({ severity: 'ERROR', code: '42703', message: 'column "x" does not exist' }) === '[42703] column "x" does not exist')
 check('a socket error (no SQLSTATE) is shown', /Connection terminated/.test(publicError(new Error('Connection terminated unexpectedly'))))
 check('a RAISE is hidden even under a "safe" code (137 raises 23514 with a title)',
-  !/Secret title/.test(publicError({ code: '23514', message: 'Undo the sale first — "Secret title" is sold', routine: 'exec_stmt_raise' })) &&
-  !/Secret title/.test(publicError({ code: '23514', message: '"Secret title"', where: 'PL/pgSQL function f() line 3 at RAISE' })))
-check('a Postgres-made check violation is shown', /violates check constraint/.test(publicError({ code: '23514', message: 'new row for relation "t" violates check constraint "c"', routine: 'ExecConstraints' })))
+  !/Secret title/.test(publicError({ severity: 'ERROR', code: '23514', message: 'Undo the sale first — "Secret title" is sold', routine: 'exec_stmt_raise' })) &&
+  !/Secret title/.test(publicError({ severity: 'ERROR', code: '23514', message: '"Secret title"', where: 'PL/pgSQL function f() line 3 at RAISE' })))
+check('a Postgres-made check violation is shown', /violates check constraint/.test(publicError({ severity: 'ERROR', code: '23514', message: 'new row for relation "t" violates check constraint "c"', routine: 'ExecConstraints' })))
+check('a socket error code (EPIPE, no severity) is not taken for a SQLSTATE',
+  /\[no code\] write EPIPE/.test(publicError(Object.assign(new Error('write EPIPE'), { code: 'EPIPE' }))) && isTransient({ code: 'EPIPE' }))
+check('SQL built from row values (EXECUTE, ::regclass) is hidden even in class 42',
+  !/Secret/.test(publicError({ severity: 'ERROR', code: '42703', message: 'column "Secret" does not exist', where: 'PL/pgSQL function inline_code_block line 3 at EXECUTE' })) &&
+  !/Secret/.test(publicError({ severity: 'ERROR', code: '42P01', message: 'relation "Secret" does not exist', where: 'SQL function "f"' })))
+check('a busy table counts as "run again"', isTransient({ severity: 'ERROR', code: '55P03' }))
 check('connection, deadlock and shutdown errors count as "run again"',
-  isTransient(new Error('x')) && isTransient({ code: '40P01' }) && isTransient({ code: '57P01' }) && isTransient({ code: '08006' }) &&
-  !isTransient({ code: '42703' }) && !isTransient({ code: '23505' }))
+  isTransient(new Error('x')) && isTransient({ severity: 'ERROR', code: '40P01' }) && isTransient({ severity: 'ERROR', code: '57P01' }) && isTransient({ severity: 'ERROR', code: '08006' }) &&
+  !isTransient({ severity: 'ERROR', code: '42703' }) && !isTransient({ severity: 'ERROR', code: '23505' }))
 
 console.log('5. database address')
 const ref = 'hsaedwwqpcjizeozjbch'

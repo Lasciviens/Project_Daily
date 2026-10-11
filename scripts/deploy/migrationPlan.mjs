@@ -277,18 +277,31 @@ export function isRaise(e) {
   return e?.routine === 'exec_stmt_raise' || /\bat RAISE\b/.test(e?.where ?? '')
 }
 
+// SQL built from row values (EXECUTE '…' || r.title, r.name::regclass) can put
+// a value into an otherwise object-only message.
+const NAME_CODES = new Set(['42601', '42703', '42P01', '42704', '42883'])
+function builtFromData(e) {
+  const where = e?.where ?? ''
+  return /\bat EXECUTE\b/.test(where) || (NAME_CODES.has(e?.code) && where !== '')
+}
+
+/** The SQLSTATE of an error the SERVER sent (pg's DatabaseError has a severity); '' for socket errors like EPIPE. */
+function sqlState(e) {
+  return e?.severity && typeof e.code === 'string' && /^[0-9A-Z]{5}$/.test(e.code) ? e.code : ''
+}
+
 /** What a public log may show of a Postgres error. */
 export function publicError(e) {
-  const code = typeof e?.code === 'string' && /^[0-9A-Z]{5}$/.test(e.code) ? e.code : ''
-  // No SQLSTATE: a socket or driver error ("Connection terminated unexpectedly").
+  const code = sqlState(e)
+  // No SQLSTATE: a socket or driver error ("Connection terminated unexpectedly", EPIPE).
   if (!code) return `[no code] ${String(e?.message ?? e).slice(0, 200)}`
-  if (SAFE_CLASSES.has(code.slice(0, 2)) && !isRaise(e)) return `[${code}] ${e.message}`
+  if (SAFE_CLASSES.has(code.slice(0, 2)) && !isRaise(e) && !builtFromData(e)) return `[${code}] ${e.message}`
   const where = ['table', 'column', 'constraint'].filter(k => e?.[k]).map(k => `${k} ${e[k]}`).join(', ')
   return `[${code}] the message may contain row data, so it is not shown here${where ? ` (${where})` : ''}`
 }
 
 /** A failure the next run can get past without changing the file. */
 export function isTransient(e) {
-  const code = typeof e?.code === 'string' && /^[0-9A-Z]{5}$/.test(e.code) ? e.code : ''
-  return !code || TRANSIENT.test(code)
+  const code = sqlState(e)
+  return !code || code === '55P03' || TRANSIENT.test(code)
 }

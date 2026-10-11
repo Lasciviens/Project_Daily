@@ -20,8 +20,9 @@ the workflow. The runner checks that 139 and 140 really ran (the owner lock
 and `ai_pending_actions` exist) and stops, changing nothing, if not.
 
 The deploy runs only from `main`, and always deploys `main`'s **newest**
-commit, whichever commit started the run: a re-run or a queued older run can
-never put older code back. A dry run, or a run started from another branch,
+commit, whichever commit started the run — or, when the deploy workflow itself
+changed since that commit, nothing (and says so): a re-run or a queued older
+run can never put older code back. A dry run, or a run started from another branch,
 has its own queue and never replaces a real deploy waiting in line.
 
 ## 0. Before you start
@@ -120,16 +121,19 @@ tell Claude.
   - **Database migrations:** which file, on which line, the error code. Nothing
     from that file was kept, and the functions and the website stayed on the
     previous version. The full error message is in the database (SQL editor:
-    `select * from deploy.migration_errors order by at desc limit 1;`). Fix the
-    file and merge again.
+    `select * from deploy.migration_errors order by at desc limit 1;`). The
+    last line says what to do: **fix the file and merge again**, or — when the
+    connection broke or a table stayed busy — **run the deploy again**
+    (Actions → Deploy → Run workflow on `main`).
   - **Edge functions:** the database is already migrated, the functions before
     the failing one are new, the website is still the previous one. Fix the
     function and merge again, or — if the cause was on Supabase's side —
-    **Run workflow** on `main` (or **Re-run all jobs** on that run; every run
-    deploys `main`'s newest commit).
+    **Run workflow** on `main`.
   - **Check the access token / Decide what to deploy / Deploy secrets are
-    environment-only:** a
-    setup problem; the message says which. Nothing was deployed.
+    environment-only:** a setup problem; the message says which. Nothing was
+    deployed.
+- To deploy again without a new merge, always use **Actions → Deploy → Run
+  workflow** on `main` (not "Re-run" on an old run).
 - The repository is public, so its Actions logs are too: the migration step
   prints file names, line numbers and error codes, and the error message only
   when it cannot contain row data (a failed conversion quotes the value, so

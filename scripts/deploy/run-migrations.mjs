@@ -73,6 +73,8 @@ if (url.error) fail(url.error)
 const ssl = local ? false : { ca: [readFileSync(join(here, 'supabase-root-2021.crt'), 'utf8'), ...rootCertificates], rejectUnauthorized: true }
 
 let notices = 0
+let connectedOnce = false
+let current = null
 async function connect() {
   const client = new pg.Client({ ...url.config, ssl, application_name: 'github-deploy', connectionTimeoutMillis: 20000 })
   client.on('notice', () => { notices++ })
@@ -82,9 +84,15 @@ async function connect() {
   try {
     await client.connect()
   } catch (e) {
+    if (connectedOnce) {
+      fail(`The connection to the database broke and could not be reopened (${e.message}). This is not your secret. ` +
+        'Run the deploy again (Actions → Deploy → Run workflow on main)' +
+        (current ? `; if ${current} finished, the next run finds it in the ledger and does not run it twice.` : '.'))
+    }
     fail(`Could not connect to the database: ${e.message}. Check SUPABASE_DB_URL (the Session pooler address and the database password); ` +
       'a certificate error (self-signed, altnames) means Claude has to look at scripts/deploy/supabase-root-2021.crt.')
   }
+  connectedOnce = true
   return client
 }
 
@@ -175,6 +183,7 @@ for (const f of plan.apply) {
   const sql = text.get(f.file)
   const q = migrationQuery(f.file, f.sha, process.env.DEPLOY_SHA || process.env.GITHUB_SHA)
   const query = q.build(sql)
+  current = f.file
   for (let attempt = 1; ; attempt++) {
     console.log(`Running ${f.file}${attempt > 1 ? ` (attempt ${attempt})` : ''} …`)
     const c = await connect()
@@ -207,9 +216,9 @@ for (const f of plan.apply) {
     fail([
       `${f.file} failed${inFile ? ` (line ${inFile})` : ''}: ${publicError(error)}`,
       kept ? 'The full error is in the database: SQL editor → select * from deploy.migration_errors order by at desc limit 1;' : null,
-      error.code === '55P03' ? 'The app kept a table it changes busy three times; run the deploy again later (Actions → Deploy → Run workflow on main).' : null,
-      error.code !== '55P03' && isTransient(error)
-        ? 'Nothing from this file was kept, and the edge functions and the website were not deployed. This looks like a connection or server hiccup, not a mistake in the file: run the deploy again (Actions → Deploy → Run workflow on main).'
+      error.code === '55P03' ? 'The app kept a table it changes busy, three times in a row.' : null,
+      isTransient(error)
+        ? 'Nothing from this file was kept, and the edge functions and the website were not deployed. This is not a mistake in the file: run the deploy again later (Actions → Deploy → Run workflow on main).'
         : 'Nothing from this file was kept, and the edge functions and the website were not deployed. Fix the file (it has not run) and merge again.',
     ].filter(Boolean).join('\n'))
   }
