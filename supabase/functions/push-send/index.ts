@@ -8,6 +8,17 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import webpush from 'npm:web-push@3.6.7'
 
+// Owner lock (security audit 10.10.2026, migration 139): this function serves
+// only the owner (HEVY_USER_ID) and accounts listed in app_allowed_users (for
+// example a test account). The owner never needs the table, so the check also
+// works before migration 139 is applied.
+async function isAppUser(userId: string): Promise<boolean> {
+  if (userId === Deno.env.get('HEVY_USER_ID')) return true
+  const admin = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
+  const { data, error } = await admin.from('app_allowed_users').select('user_id').eq('user_id', userId).maybeSingle()
+  return !error && !!data
+}
+
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, content-type, x-cron-secret',
@@ -169,6 +180,7 @@ Deno.serve(async (req) => {
     if (authHeader) {
       const { data } = await supabase.auth.getUser(authHeader.replace('Bearer ', ''))
       userId = data?.user?.id ?? null
+      if (userId && !(await isAppUser(userId))) return json({ ok: false, error: 'forbidden' }, 403)
     }
   }
   if (!userId) return json({ ok: false, error: 'Unauthorized' }, 401)

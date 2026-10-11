@@ -1,8 +1,9 @@
 // steam-api — proxies the Steam Web API so the personal API key stays
 // server-side (STEAM_API_KEY + STEAM_ID64 in Vault, never in the client).
 // Single-user app (same pattern as HEVY_USER_ID) — no per-caller scoping
-// needed for the Steam calls themselves, `verify_jwt` stays ON (the
-// platform validates the browser JWT before this function runs).
+// needed for the Steam calls themselves. `verify_jwt` stays ON, and the
+// caller must also be the owner (isAppUser) — the platform check alone admits
+// any project JWT.
 //
 // api.steampowered.com sends no CORS headers — confirmed via community
 // reports (github.com/xDimGG/node-steamapi#27) — so this proxy is mandatory,
@@ -24,6 +25,17 @@
 // client below exists ONLY for that cache — no user data is ever written.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+
+// Owner lock (security audit 10.10.2026, migration 139): this function serves
+// only the owner (HEVY_USER_ID) and accounts listed in app_allowed_users (for
+// example a test account). The owner never needs the table, so the check also
+// works before migration 139 is applied.
+async function isAppUser(userId: string): Promise<boolean> {
+  if (userId === Deno.env.get('HEVY_USER_ID')) return true
+  const admin = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
+  const { data, error } = await admin.from('app_allowed_users').select('user_id').eq('user_id', userId).maybeSingle()
+  return !error && !!data
+}
 
 const STEAM = 'https://api.steampowered.com'
 const STORE = 'https://store.steampowered.com'
@@ -100,6 +112,13 @@ function detailsRow(appid: number, data: AnyRec | null) {
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS })
+
+  // Owner lock: platform JWT verification only proves "some project JWT"
+  // (even the public anon key), so the caller is checked here too.
+  const authHeader = req.headers.get('authorization') ?? ''
+  const { data: { user } } = await db().auth.getUser(authHeader.replace('Bearer ', ''))
+  if (!user) return json({ error: 'Unauthorized' }, 401)
+  if (!(await isAppUser(user.id))) return json({ error: 'forbidden' }, 403)
 
   const apiKey = Deno.env.get('STEAM_API_KEY')
   const steamId = Deno.env.get('STEAM_ID64')
