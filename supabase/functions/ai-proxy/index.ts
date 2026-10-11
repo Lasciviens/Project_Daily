@@ -57,6 +57,9 @@ function isPrivateIPv4(ip: string): boolean {
   if (a === 192 && b === 168) return true
   if (a === 172 && b >= 16 && b <= 31) return true
   if (a === 169 && b === 254) return true
+  if (a === 100 && b >= 64 && b <= 127) return true   // carrier-grade NAT
+  if (a === 198 && (b === 18 || b === 19)) return true // benchmarking
+  if (a >= 224) return true                            // multicast, reserved, broadcast
   return false
 }
 
@@ -64,7 +67,7 @@ function isPrivateIPv4(ip: string): boolean {
 // fetches whatever URL the user pastes, server-side. Beyond the obvious
 // dotted-quad ranges this also blocks the encodings that trivially bypass a
 // naive string check: numeric-encoded IPv4 (decimal 2130706433, 0x-hex, octal),
-// and IPv6 loopback/mapped/unique-local/link-local forms. (DNS rebinding — a
+// and every IPv6 literal. (DNS rebinding — a
 // public name that re-resolves to a private IP at connect time — can't be fully
 // closed here without a custom resolver; fetchPageText's manual redirect
 // re-validation closes the redirect-based variant, which is the practical one.)
@@ -74,15 +77,10 @@ function isPrivateHost(hostname: string): boolean {
 
   if (h === 'localhost' || h.endsWith('.localhost')) return true
 
-  // IPv6
-  if (h.includes(':')) {
-    if (h === '::1' || h === '::') return true
-    const mapped = h.match(/^::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/)  // IPv4-mapped
-    if (mapped) return isPrivateIPv4(mapped[1])
-    if (/^f[cd]/.test(h)) return true      // fc00::/7 unique-local
-    if (/^fe[89ab]/.test(h)) return true   // fe80::/10 link-local
-    return false
-  }
+  // IPv6 literal: refused outright. These fetchers read web pages by name, so an
+  // IPv6 literal is never a real target — and the URL parser rewrites embedded
+  // IPv4 ([::ffff:127.0.0.1] → [::ffff:7f00:1]), which a pattern check misses.
+  if (h.includes(':')) return true
 
   // Dotted-quad IPv4
   if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(h)) return isPrivateIPv4(h)

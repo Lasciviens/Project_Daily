@@ -214,11 +214,14 @@ export function readElement(el: Element): PickedElement {
   const name = accessibleName(el)
   const full = textOf(el, 160)
   const text = full && full !== name && !name.startsWith(full) ? full : ''
+  // Only choices are recorded, never typed text: a textarea or text box can
+  // hold a pasted token (the PSN npsso box did), and a pick mark travels on to
+  // the request, the assistant, search and the Claude prompt (security audit).
   let value = ''
   if (el instanceof HTMLSelectElement) value = el.selectedOptions[0]?.text ?? ''
-  else if (el instanceof HTMLTextAreaElement) value = el.value
-  else if (el instanceof HTMLInputElement && el.type !== 'password') {
-    value = el.type === 'checkbox' || el.type === 'radio' ? (el.checked ? 'checked' : 'not checked') : el.value
+  else if (el instanceof HTMLInputElement) {
+    if (el.type === 'checkbox' || el.type === 'radio') value = el.checked ? 'checked' : 'not checked'
+    else if (el.type === 'range') value = el.value
   }
   const trail: string[] = []
   const inner = el.parentElement?.closest(CONTAINER) ?? null

@@ -28,6 +28,7 @@ export function useStartTraktConnect() {
 export function useFinishTraktConnect() {
   return useMutationWithFeedback({
     action: 'trakt_connect',
+    logPayload: false,   // the input is an OAuth code
     loadingMessage: 'Connecting Trakt…',
     successMessage: r => (r.username ? `Trakt connected as ${r.username}` : 'Trakt connected'),
     mutationFn: (code: string) => connectTrakt(code),

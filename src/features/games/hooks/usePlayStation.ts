@@ -87,6 +87,7 @@ export function useConnectPsn() {
   const qc = useQueryClient()
   return useMutationWithFeedback<{ connected: true; expiresAt: string; npssoExpiresAt: string | null }, string>({
     action: 'connect_psn',
+    logPayload: false,   // the input is the pasted npsso
     successMessage: 'PlayStation connected ✓',
     mutationFn: connectPsn,
     onSuccess: () => qc.invalidateQueries({ queryKey: ['psn'] }),

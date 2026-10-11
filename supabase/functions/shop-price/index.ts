@@ -73,6 +73,8 @@ function isPrivateIPv4(ip: string): boolean {
   if (a === 192 && b === 168) return true
   if (a === 172 && b >= 16 && b <= 31) return true
   if (a === 169 && b === 254) return true
+  if (a === 198 && (b === 18 || b === 19)) return true    // benchmarking
+  if (a >= 224) return true                                // multicast, reserved, broadcast
   if (a === 100 && b >= 64 && b <= 127) return true
   return false
 }
@@ -81,14 +83,10 @@ function isPrivateHost(hostname: string): boolean {
   let h = hostname.toLowerCase().trim()
   if (h.startsWith('[') && h.endsWith(']')) h = h.slice(1, -1)
   if (h === 'localhost' || h.endsWith('.localhost') || h.endsWith('.internal') || h.endsWith('.local')) return true
-  if (h.includes(':')) {
-    if (h === '::1' || h === '::') return true
-    const mapped = h.match(/^::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/)
-    if (mapped) return isPrivateIPv4(mapped[1])
-    if (/^f[cd]/.test(h)) return true
-    if (/^fe[89ab]/.test(h)) return true
-    return false
-  }
+  // IPv6 literal: refused outright. These fetchers read web pages by name, so an
+  // IPv6 literal is never a real target — and the URL parser rewrites embedded
+  // IPv4 ([::ffff:127.0.0.1] → [::ffff:7f00:1]), which a pattern check misses.
+  if (h.includes(':')) return true
   if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(h)) return isPrivateIPv4(h)
   if (/^(0x[0-9a-f]+|\d+)$/.test(h)) return true
   return false

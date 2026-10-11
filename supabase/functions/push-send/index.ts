@@ -145,11 +145,23 @@ async function sendReleaseReminders(userId: string): Promise<number> {
   return n
 }
 
-async function sendToAll(userId: string, payload: AnyRecord): Promise<{ sent: number; pruned: number }> {
-  const { data: subs } = await supabase.from('push_subscriptions')
+// Only devices still signed in get the brief (security audit 10.10.2026): a
+// row stamped with a login session needs that session to still exist; an
+// unstamped (older) row needs the app to have opened within 60 days.
+// push_live_subscriptions() is migration 140; before it exists, every row.
+async function liveSubscriptions(userId: string): Promise<AnyRecord[]> {
+  const live = await supabase.rpc('push_live_subscriptions', { p_user: userId })
+  if (!live.error) return (live.data ?? []) as AnyRecord[]
+  console.error('push_live_subscriptions failed, sending to every row:', live.error.message)
+  const { data } = await supabase.from('push_subscriptions')
     .select('id, endpoint, p256dh, auth').eq('user_id', userId)
+  return (data ?? []) as AnyRecord[]
+}
+
+async function sendToAll(userId: string, payload: AnyRecord): Promise<{ sent: number; pruned: number }> {
+  const subs = await liveSubscriptions(userId)
   let sent = 0, pruned = 0
-  for (const s of (subs ?? []) as AnyRecord[]) {
+  for (const s of subs) {
     try {
       await webpush.sendNotification(
         { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
