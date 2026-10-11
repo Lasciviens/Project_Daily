@@ -66,3 +66,29 @@ jobs:
       # large share of the errors come from eslint linting supabase/functions
       # (Deno code checked with browser globals). Narrow the ESLint scope and
       # clear the real src/ findings first, then promote it to a step here.
+
+  # TRIAL (11.10.2026, the owner decides before it stays): every
+  # scripts/verify-*.cjs|mjs, four at a time, as its own job beside the build
+  # above, so it adds no waiting time unless it is slower than the build.
+  # The step summary lists each script's result and time.
+  all-verify:
+    name: All verify scripts (trial)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # verify-api-registry compares dates with the git history.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run every verify script
+        run: node scripts/run-all-verify.mjs
+
