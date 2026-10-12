@@ -52,3 +52,8 @@ export function dueLabel(task: Task): { text: string; urgent: boolean } | null {
     urgent: false,
   }
 }
+
+/** A planned training session: linked to a Hevy routine (migration 141) or planned from one. */
+export function isTrainingTask(task: Pick<Task, 'source_type' | 'hevy_routine_id'>): boolean {
+  return !!task.hevy_routine_id || task.source_type === 'training_session'
+}

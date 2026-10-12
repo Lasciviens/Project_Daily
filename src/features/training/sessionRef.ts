@@ -39,6 +39,20 @@ export function planRefOf(item: CalendarPlanItem, date: string): SessionPlanRef 
   return item.timeBlock ? { kind: 'block', id: item.timeBlock.id, date: item.timeBlock.date } : null
 }
 
+/**
+ * What a planned-training task opens as (migration 141): its workout once
+ * one is linked, else its block on the calendar, else nothing to anchor to
+ * (null — the popup shows the task's routine and offers to set a time).
+ */
+export function sessionForTask(
+  task: { hevy_workout_id?: string | null },
+  block: { id: string; date: string } | null,
+): { workoutId: string } | { plan: SessionPlanRef } | null {
+  if (task.hevy_workout_id) return { workoutId: task.hevy_workout_id }
+  if (block) return { plan: { kind: 'block', id: block.id, date: block.date } }
+  return null
+}
+
 export const SESSION_STATUS_LABEL: Record<PlanStatus, string> = {
   done:     'Done',
   today:    'Today',

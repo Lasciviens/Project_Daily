@@ -1,18 +1,23 @@
 import { useMemo } from 'react'
-import type { UseQueryResult } from '@tanstack/react-query'
-import { useScheduleBlock, useTimeBlock } from '../../daily/hooks/useSchedule'
+import { useQuery, type UseQueryResult } from '@tanstack/react-query'
+import { linkedTimeBlockQuery, useScheduleBlock, useTimeBlock } from '../../daily/hooks/useSchedule'
+import { useTaskById } from '../../todo/hooks/useTodos'
+import type { Task } from '../../todo/types'
 import { localDayOf } from '../../../shared/utils/dateUtils'
 import { useHevyWorkoutDetail, useHevyWorkoutsRange } from './useHevyWorkouts'
 import { useStravaActivities } from './useStravaActivities'
 import { useTodayStr } from './useTrainingSessions'
 import { useTrainingPlansByDate } from './useTrainingPlans'
 import { localDayBoundsIso, workoutLocalDay } from '../workoutDates'
-import { resolveTrainingSession, type ResolvedSession, type SessionPlanRef } from '../sessionRef'
+import { resolveTrainingSession, sessionForTask, type ResolvedSession, type SessionPlanRef } from '../sessionRef'
 import type { CalendarPlanItem } from '../components/calendar/calendarModel'
 
 export interface SessionRequest {
   workoutId?: string
   plan?: SessionPlanRef
+  /** A planned-training task (Home's and Daily's task lists): opens as its
+   *  workout once trained, else as its planned block (migration 141). */
+  taskId?: string
 }
 
 export interface SessionAnchor {
@@ -22,6 +27,10 @@ export interface SessionAnchor {
   planRow: CalendarPlanItem | null
   /** The read that decides the anchor — for the popup's loading / error states. */
   query: UseQueryResult<unknown>
+  /** What is shown: the request, with a task resolved to its workout or plan. */
+  request: SessionRequest
+  /** A training task with neither a workout nor a block on the calendar. */
+  orphanTask: Task | null
 }
 
 /**
@@ -31,7 +40,19 @@ export interface SessionAnchor {
  * popup's own ⋯ → Change plan); a recurring occurrence's day is the one
  * requested (it has no row of its own).
  */
-export function useSessionAnchor(req: SessionRequest): SessionAnchor {
+export function useSessionAnchor(asked: SessionRequest): SessionAnchor {
+  const taskQ = useTaskById(asked.taskId ?? null)
+  const taskBlockQ = useQuery({ ...linkedTimeBlockQuery(asked.taskId ?? ''), enabled: !!asked.taskId })
+  const task = taskQ.data ?? null
+  const taskBlock = taskBlockQ.data ?? null
+  const taskReady = !!task && taskBlockQ.isSuccess
+  const req = useMemo<SessionRequest>(() => {
+    if (!asked.taskId) return asked
+    if (!taskReady || !task) return {}
+    return sessionForTask(task, taskBlock) ?? {}
+  }, [asked, taskReady, task, taskBlock])
+  const orphanTask = asked.taskId && taskReady && !req.workoutId && !req.plan ? task : null
+
   const workoutQ = useHevyWorkoutDetail(req.workoutId ?? null)
   const blockQ = useTimeBlock(req.plan?.kind === 'block' ? req.plan.id : null)
   const templateQ = useScheduleBlock(req.plan?.kind === 'recurring' ? req.plan.id : null)
@@ -45,13 +66,15 @@ export function useSessionAnchor(req: SessionRequest): SessionAnchor {
     return null
   }, [block, template, recurringDate])
 
+  const base = { request: req, orphanTask }
   if (req.workoutId) {
     const w = workoutQ.data
-    return { date: w ? workoutLocalDay(w) || null : null, planRow: null, query: workoutQ }
+    return { ...base, date: w ? workoutLocalDay(w) || null : null, planRow: null, query: workoutQ }
   }
-  if (req.plan?.kind === 'block') return { date: block ? block.date : null, planRow, query: blockQ }
-  if (req.plan?.kind === 'recurring') return { date: template ? recurringDate : null, planRow, query: templateQ as UseQueryResult<unknown> }
-  return { date: null, planRow: null, query: workoutQ }
+  if (req.plan?.kind === 'block') return { ...base, date: block ? block.date : null, planRow, query: blockQ }
+  if (req.plan?.kind === 'recurring') return { ...base, date: template ? recurringDate : null, planRow, query: templateQ as UseQueryResult<unknown> }
+  if (asked.taskId) return { ...base, date: null, planRow: null, query: (taskBlockQ.isError ? taskBlockQ : taskQ) as UseQueryResult<unknown> }
+  return { ...base, date: null, planRow: null, query: workoutQ }
 }
 
 export interface SessionDay {
