@@ -9,6 +9,7 @@ import { MealPlanWeek } from '../components/MealPlanWeek'
 import { IngredientManager } from '../components/IngredientManager'
 import { FoodTodayTab } from '../components/FoodTodayTab'
 import { FoodDateNav } from '../components/FoodDateNav'
+import { FoodHeroArt } from '../components/FoodHeroArt'
 
 type Tab = 'today' | 'library' | 'ingredients' | 'plan' | 'insights'
 
@@ -37,7 +38,7 @@ export function RecipesPage() {
   // `sm` they share one row. Shop is its own page now (no Food | Shop switch).
   return (
     <PageContainer>
-      <PageHeader title="Food">
+      <PageHeader title="Food" art={<FoodHeroArt />}>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
           <div className="w-full sm:w-auto [&_.seg-btn]:px-1.5 [&_.seg]:w-full sm:[&_.seg-btn]:px-3 sm:[&_.seg]:w-auto">
             <SegmentedControl options={TABS} value={tab} onChange={setTab} />

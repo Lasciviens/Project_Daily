@@ -1,30 +1,34 @@
-// A still, drawn film-strip motif behind the search + library card. It
-// replaced the rotating TMDB backdrops (owner, 30.09.2026: "a general media
-// image that is steady"): no network, no timers, the same in both themes.
-const HOLES = Array.from({ length: 9 }, (_, i) => i)
+import { HERO } from '../../../shared/ui'
+
+// Media's header art (THEME.md §6.5): a film strip with a play mark in its
+// lit frame, a clapperboard on the faded left. It replaced the rotating TMDB
+// backdrops (owner, 30.09.2026: "a general media image that is steady").
+
+const A = HERO.accent
+const M = HERO.muted
+const H = HERO.hole
+const FRAMES = [246, 336, 426, 516]
 
 export function MediaHeroArt() {
   return (
-    <div aria-hidden className="pointer-events-none absolute inset-0 z-0 overflow-hidden rounded-[inherit] text-accent-500">
-      <svg
-        viewBox="0 0 360 200"
-        className="absolute -right-10 -top-6 h-48 w-auto rotate-[-8deg] opacity-[0.07] dark:opacity-[0.10] sm:h-48"
-        fill="none"
-      >
-        {/* Film strip */}
-        <rect x="10" y="40" width="340" height="110" rx="8" fill="currentColor" />
-        {HOLES.map(i => (
-          <g key={i}>
-            <rect x={22 + i * 37} y="48" width="18" height="12" rx="2" className="fill-surface" />
-            <rect x={22 + i * 37} y="130" width="18" height="12" rx="2" className="fill-surface" />
-          </g>
+    <>
+      {/* Clapperboard */}
+      <rect x="96" y="66" width="104" height="60" rx="4" className={M} />
+      <path d="M108 84 h80 M108 98 h56 M108 112 h68" className={HERO.holeLine} strokeWidth="4" opacity="0.5" />
+      <g transform="rotate(-14 96 62)">
+        <rect x="96" y="48" width="104" height="16" rx="2" className={A} />
+        <path d="M114 48 l-10 16 M138 48 l-10 16 M162 48 l-10 16 M186 48 l-10 16" className={HERO.holeLine} strokeWidth="6" opacity="0.6" />
+      </g>
+
+      {/* Film strip */}
+      <g transform="rotate(-6 440 70)">
+        <rect x="230" y="26" width="424" height="88" rx="8" className={M} />
+        <path d="M240 36 H650 M240 104 H650" className={HERO.holeLine} strokeWidth="9" strokeDasharray="14 16" opacity="0.7" />
+        {FRAMES.map(x => (
+          <rect key={x} x={x} y="48" width="80" height="44" rx="4" className={x === 426 ? A : H} opacity={x === 426 ? 1 : 0.55} />
         ))}
-        {[0, 1, 2].map(i => (
-          <rect key={i} x={24 + i * 111} y="68" width="98" height="54" rx="4" className="fill-surface" opacity="0.55" />
-        ))}
-        {/* Play mark in the middle frame */}
-        <path d="M170 80 L196 95 L170 110 Z" fill="currentColor" />
-      </svg>
-    </div>
+        <path d="M456 58 L482 70 L456 82 Z" className={H} />
+      </g>
+    </>
   )
 }

@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { cx } from './cx'
+import { PageHeroBand } from './PageHeroArt'
 
 /**
  * Page wrapper: side gutter + vertical rhythm, left-aligned (never centered).
@@ -35,6 +36,12 @@ interface PageHeaderProps {
    * than the route name — e.g. Daily's date nav.
    */
   showTitle?: boolean
+  /**
+   * The page's header art (THEME.md §6.5): a motif drawn on the shared
+   * 640 × 140 canvas. Given, the visible header sits in one card band with
+   * the art behind it — an empty band still shows the art.
+   */
+  art?: ReactNode
 }
 
 /**
@@ -47,46 +54,55 @@ interface PageHeaderProps {
  *   they wrap when the row is too narrow, and on phones the actions get
  *   their own row above the children;
  * - nothing visible at all → only the hidden H1, no margin.
+ * With `art`, whatever is visible sits in one band (PageHeroBand) with the
+ * page's drawing behind it; with nothing visible the band shows the art alone.
  */
 /** `cond && <X/>` hands over `false` when the condition fails; treat it like nothing. */
 const shown = (node: ReactNode) => node != null && node !== false && node !== ''
 
-export function PageHeader({ title, subtitle, actions, children, className, showTitle = false }: PageHeaderProps) {
+export function PageHeader({ title, subtitle, actions, children, className, showTitle = false, art }: PageHeaderProps) {
   const [hasSubtitle, hasActions, hasChildren] = [shown(subtitle), shown(actions), shown(children)]
   const heading = (
     <h1 className={showTitle ? 'text-head font-bold tracking-tight text-fg sm:text-page' : 'sr-only'}>{title}</h1>
   )
+  const band = (content: ReactNode) => (art ? <PageHeroBand art={art}>{content}</PageHeroBand> : content)
   if (!showTitle && !hasSubtitle) {
-    if (!hasChildren && !hasActions) return <header>{heading}</header>
+    if (!hasChildren && !hasActions) return art ? <header className={cx('mb-4 sm:mb-6', className)}>{heading}{band(null)}</header> : <header>{heading}</header>
     return (
       <header className={cx('mb-4 sm:mb-6', className)}>
         {heading}
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
-          {hasChildren && <div className="min-w-0 flex-[1_1_auto]">{children}</div>}
-          {hasActions && (
-            <div className={cx(
-              'ml-auto flex flex-wrap items-center gap-2',
-              // Phones keep the actions on their own right-aligned row above the tabs.
-              hasChildren && 'max-md:order-first max-md:basis-full max-md:justify-end',
-            )}>
-              {actions}
-            </div>
-          )}
-        </div>
+        {band(
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
+            {hasChildren && <div className="min-w-0 flex-[1_1_auto]">{children}</div>}
+            {hasActions && (
+              <div className={cx(
+                'ml-auto flex flex-wrap items-center gap-2',
+                // Phones keep the actions on their own right-aligned row above the tabs.
+                hasChildren && 'max-md:order-first max-md:basis-full max-md:justify-end',
+              )}>
+                {actions}
+              </div>
+            )}
+          </div>,
+        )}
       </header>
     )
   }
 
   return (
     <header className={cx('mb-4 sm:mb-6', className)}>
-      <div className={cx('flex flex-wrap justify-between gap-x-4 gap-y-3', showTitle ? 'items-end' : 'items-center')}>
-        <div className="min-w-0">
-          {heading}
-          {hasSubtitle && <p className={cx('text-body text-fg-muted', showTitle && 'mt-0.5')}>{subtitle}</p>}
-        </div>
-        {hasActions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
-      </div>
-      {hasChildren && <div className="mt-4">{children}</div>}
+      {band(
+        <>
+          <div className={cx('flex flex-wrap justify-between gap-x-4 gap-y-3', showTitle ? 'items-end' : 'items-center')}>
+            <div className="min-w-0">
+              {heading}
+              {hasSubtitle && <p className={cx('text-body text-fg-muted', showTitle && 'mt-0.5')}>{subtitle}</p>}
+            </div>
+            {hasActions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
+          </div>
+          {hasChildren && <div className={art ? 'mt-3' : 'mt-4'}>{children}</div>}
+        </>,
+      )}
     </header>
   )
 }

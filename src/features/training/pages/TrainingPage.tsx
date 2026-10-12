@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { Navigate, useSearchParams } from 'react-router-dom'
 import { PageContainer, PageHeader, SegmentedControl, cx } from '../../../shared/ui'
+import { TrainingHeroArt } from '../components/TrainingHeroArt'
 import { ErrorBoundary } from '../../../shared/components/ErrorBoundary'
 import { HevySyncButton } from '../components/HevySyncButton'
 import { NextTab } from '../components/next/NextTab'
@@ -53,9 +54,9 @@ export function TrainingPage() {
 
   return (
     <PageContainer>
-      <PageHeader title="Training">
+      <PageHeader title="Training" art={<TrainingHeroArt />}>
         <div className="flex flex-wrap items-center gap-2 lg:flex-nowrap">
-          <div role="tablist" aria-label="Training sections" className="scroll-x -mx-4 flex min-w-0 basis-[calc(100%+2rem)] gap-1 px-4 sm:-mx-6 sm:basis-[calc(100%+3rem)] sm:px-6 lg:mx-0 lg:basis-auto lg:flex-1 lg:px-0">
+          <div role="tablist" aria-label="Training sections" className="scroll-x -mx-3 flex min-w-0 basis-[calc(100%+1.5rem)] gap-1 px-3 lg:mx-0 lg:basis-auto lg:flex-1 lg:px-0">
             {TRAINING_TABS.map(t => (
               <button
                 key={t.id}

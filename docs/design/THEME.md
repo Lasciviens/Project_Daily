@@ -84,7 +84,7 @@ the user can pick Orange, Red, Purple, Yellow or Slate in Settings. Every preset
 - `bg-accent-50 text-accent-600` (or `-700`) — selected rows, active nav item, icon chips, soft badges.
 - `text-accent-600` — text links and "Clear filters"-style actions.
 - `ring/border-accent-500` — focus halo, dragged-over targets.
-- **Never** use the accent for a data series, a status, or decoration. If everything is blue, nothing is.
+- **Never** use the accent for a data series, a status, or decoration (the one exception: the dimmed header art, §6.5). If everything is blue, nothing is.
 
 ### 2.4 Status tones
 
@@ -252,6 +252,7 @@ Use the React primitive when one exists; the CSS class is for places a component
 | KPI tile | `<StatTile label value unit hint icon tone onClick />` |
 | Page frame | `<PageContainer width="narrow|wide|full">` (caps `max-w-3xl` · `max-w-[135rem]`, the default = the widest board · none; `@container/page`) + `<PageHeader title subtitle actions showTitle>{tabs}</PageHeader>` |
 | Page layout | `<PageBoard sections layout />` (§6.3) |
+| Page header art | `<PageHeader art={<XHeroArt />}>` — the page's drawing behind its header band; Home: `<PageHeroArt>` in its first card (§6.5) |
 | Status | `<ToneDot>` / `<TonePill>` / `data-tone` |
 | Empty state | `<EmptyState icon title description action bordered />` |
 | Loading | `<Skeleton>` / `<SkeletonText>` / `<SkeletonCard>` copying the real geometry |
@@ -385,6 +386,36 @@ Single-line content ≤ 640px · text inputs ≤ `max-w-md` · auto-fill columns
 by role (`max-w-2xl` small trend, `max-w-4xl` primary) and aspect-locked · no horizontal page
 overflow at 393 / 1469 / 2450px, and at 1469/2450 at most one side track (24rem) left empty in the
 default view (`scripts/audit-page-width.mjs`). Verify at those widths (CLAUDE.md → W6).
+
+### 6.5 Header art
+
+Every page except Games has a **still, drawn picture of its subject** behind its top (owner,
+12.10.2026: "a background image on the top for every page — a related image"): soft art in the
+app's own colours, never a photo. One shared way, so every page behaves the same:
+
+- **Where.** `<PageHeader art={<XHeroArt />}>` puts the header's visible content in one card band
+  (`PageHeroBand`, `src/shared/ui/PageHeroArt.tsx`) with the art behind it — at every width, phones
+  included; with nothing visible the band shows the art alone. A page with no header controls puts
+  `<PageHeroArt>` in its first card instead (`relative isolate` card, content `relative z-10`,
+  placed with `useHeroArt`) — only Home's brief, measured against its greeting.
+- **Placement** (`useHeroArt` measures, `heroArtPlace` in `heroArtRules.ts` decides —
+  `scripts/verify-hero-art.cjs`). The art is as tall as its host (at most 6.5rem), anchored right,
+  in the free stretch nearest the right edge (≥ 12rem wide, 12px of air from controls and text), so
+  a switcher, a button or a line of text never sits on it; what reaches past the stretch's left
+  fades out over 3rem. With no such stretch (a phone, a narrow header) it sits behind the controls.
+- **Dimming.** Opacity 0.22 light / 0.26 dark in free space, plus a fade over its own left 40 %.
+  Behind controls and text it drops to 0.04 light / 0.14 dark: the most the faintest body text
+  (`fg-muted`) allows while keeping 4.5:1 with every accent preset (`verify-hero-art` works it out
+  from the tokens; also measured on real pixels at 393 and 1469px in both themes).
+  No animation, no timers, no network; `aria-hidden`, `pointer-events-none`.
+- **Colours.** Only `HERO.accent` / `HERO.muted` (fills) and `HERO.hole` (the card surface, for cut-
+  outs), plus their `…Line` strokes — tokens, so both themes and every accent work. This is the one
+  place the accent is decoration.
+- **A new page's art:** one `src/features/<feature>/components/<Feature>HeroArt.tsx` returning SVG
+  content drawn on the 640 × 140 canvas (`HERO_ART_VIEWBOX`): a few dozen simple shapes, the subject
+  in the right half (the left 40 % fades), something quieter on the left; pass it as `art`. A
+  sideways-scrolling tab strip in the band bleeds to its edges with `HERO_BAND_BLEED`. Add the page
+  to `scripts/verify-hero-art.cjs`.
 
 ---
 
@@ -614,3 +645,4 @@ chrome. English in the product; the only exception is on-phone shortcut/widget s
 - [ ] Motion respects reduced-motion; runtime-only CSS lives outside `@layer`.
 - [ ] Cut text uses `<Truncate>`; JS motion is gated by `useMotion()`.
 - [ ] Page laid out with `PageBoard`; at 1469/2450 at most one side track empty.
+- [ ] A new page passes its header art (§6.5).

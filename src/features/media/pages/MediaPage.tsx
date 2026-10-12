@@ -97,16 +97,15 @@ export function MediaPage() {
   ]), [movieEntries, tvEntries])
 
   const sections: Record<MediaSection, ReactNode> = {
-    // The search box is its own card (a still film-strip motif behind it),
-    // What to watch? an icon beside it; Continue watching and Coming soon
+    // The search box is its own card, What to watch? an icon beside it;
+    // Continue watching and Coming soon
     // (collapsed) are cards under it, hidden while searching.
     // Cards keep their own width (56rem, the main track); only Discover takes the whole page.
     library: (
       <div className="flex max-w-[56rem] flex-col gap-4">
-        <section className="card relative p-3 sm:p-4">
-          <MediaHeroArt />
+        <section className="card p-3 sm:p-4">
           {/* One row from the tablet up; on a phone the type switch wraps under the box. */}
-          <div className="relative z-10 flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <MediaSearch value={search.text} onChange={search.change} onClear={search.leave} active={searching} />
             {typePills(searchCounts)}
             <WhatToWatchButton movieEntries={movieEntries} tvEntries={tvEntries} onOpenDetail={openDetail} />
@@ -129,9 +128,10 @@ export function MediaPage() {
 
   return (
     <PageContainer>
-      {/* One control in the header; the Movies | TV switch sits with what it
-          scopes (the search card, the Library view). */}
-      <PageHeader title="Media">
+      {/* One control in the header (with the film strip behind it, the page's
+          header art); the Movies | TV switch sits with what it scopes (the
+          search card, the Library view). */}
+      <PageHeader title="Media" art={<MediaHeroArt />}>
         <SegmentedControl<View>
           value={view}
           onChange={setView}

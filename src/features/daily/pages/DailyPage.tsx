@@ -10,6 +10,7 @@ import { WeekWidget } from '../components/WeekWidget'
 import { MonthWidget } from '../components/MonthWidget'
 import { TodaySummary } from '../components/TodaySummary'
 import { TasksPanel } from '../components/TasksPanel'
+import { DailyHeroArt } from '../components/DailyHeroArt'
 import { CalendarDays } from 'lucide-react'
 import { DateNav } from '../../../shared/components/DateNav'
 import { Button, Card, CardHeader, PageBoard, PageContainer, PageHeader, SegmentedControl, TonePill, type SegmentedOption, Truncate, useBoardStep, usePageStep } from '../../../shared/ui'
@@ -99,6 +100,7 @@ export function DailyPage() {
       <PageHeader
         showTitle
         className="!mb-4"
+        art={<DailyHeroArt />}
         title={
           <DateNav
             size="md"
