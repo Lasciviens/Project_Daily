@@ -1,5 +1,6 @@
 import { supabase } from '../../../integrations/supabase/client'
 import type { PriceRead } from '../priceRead'
+import { rateKey, type RatePair } from '../chainDraft'
 
 // The `shop-price` edge function (migration 137): reads the price on a
 // product link (a Prisjakt product page or a shop's own page) and fills the
@@ -44,4 +45,33 @@ export async function fillRates(): Promise<RatesOutcome> {
   if (error) throw new Error(notDeployed(error) ? NOT_DEPLOYED : 'Could not fetch the exchange rates — they are filled in tonight.')
   if (data?.error) throw new Error(String(data.error))
   return data.rates as RatesOutcome
+}
+
+/**
+ * Norges Bank's NOK rates of given days (a chain being built: nothing waits
+ * for them in the database yet), by rateKey(currency, day). The cached ones
+ * are read straight from fx_rates_nok; the rest are asked from the function,
+ * which fetches and caches them. A day without a published rate — or a
+ * function not deployed yet — is simply missing: that amount reads "rate
+ * pending", never today's rate.
+ */
+export async function fetchDayRates(pairs: readonly RatePair[]): Promise<Record<string, number>> {
+  const out: Record<string, number> = {}
+  if (!pairs.length) return out
+  const { data, error } = await supabase.from('fx_rates_nok').select('day, currency, nok_per_unit')
+    .in('day', [...new Set(pairs.map(p => p.day))]).in('currency', [...new Set(pairs.map(p => p.currency))])
+  if (error && !/fx_rates_nok|does not exist|could not find the table/i.test(error.message ?? '')) throw error
+  const wanted = new Set(pairs.map(p => rateKey(p.currency, p.day)))
+  for (const r of (data ?? []) as { day: string; currency: string; nok_per_unit: number | string }[]) {
+    const key = rateKey(r.currency, r.day)
+    if (wanted.has(key)) out[key] = Number(r.nok_per_unit)
+  }
+  const missing = pairs.filter(p => !(rateKey(p.currency, p.day) in out))
+  if (!missing.length || error) return out
+  const fn = await supabase.functions.invoke('shop-price', { body: { action: 'day_rates', pairs: missing } })
+  for (const r of (fn.data?.rates ?? []) as { day: string; currency: string; nok_per_unit: number | string }[]) {
+    const key = rateKey(r.currency, r.day)
+    if (wanted.has(key) && Number(r.nok_per_unit) > 0) out[key] = Number(r.nok_per_unit)
+  }
+  return out
 }

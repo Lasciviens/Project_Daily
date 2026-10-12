@@ -36,6 +36,7 @@ export const MODAL_REGISTRY: { [K in ModalKind]: Entry<K> } = {
   'shop-accessory': L('shop-accessory', () => shop().then(m => m.ShopAccessoryModal)),
   'shop-model':     L('shop-model', () => shop().then(m => m.ShopModelModal)),
   'shop-own':       L('shop-own', () => shop().then(m => m.ShopOwnModal)),
+  'shop-chain-builder': L('shop-chain-builder', () => import('../../features/shop/modals/ShopChainBuilderModal').then(m => m.ShopChainBuilderModal)),
   'project-item':   L('project-item', () => import('../../features/projects/modals/ProjectItemEntityModal').then(m => m.ProjectItemEntityModal)),
   'memory':         L('memory', () => import('../../features/ai/modals/MemoryEntityModal').then(m => m.MemoryEntityModal)),
   'book':           L('book', () => import('../../features/books/modals/BookEntityModal').then(m => m.BookEntityModal)),

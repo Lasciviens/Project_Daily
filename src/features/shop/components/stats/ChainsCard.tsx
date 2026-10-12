@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { Truncate, cx, useChartColors } from '../../../../shared/ui'
+import { Plus } from 'lucide-react'
+import { Button, Truncate, cx, useChartColors } from '../../../../shared/ui'
 import { chainPath, type Chain } from '../../chainModel'
 import { complete } from '../../ownModel'
 import { boughtToSell, filterChains, type ChainShow } from '../../statsModel'
@@ -18,7 +19,7 @@ const SHOWS = [{ value: 'all' as const, label: 'All' }, { value: 'going' as cons
  * green. Going or ended (everything in it sold or gone, no wish left). A
  * chain opens its own popup.
  */
-export function ChainsCard({ chains, onOpen }: { chains: Chain[]; onOpen: (id: string) => void }) {
+export function ChainsCard({ chains, onOpen, onNew }: { chains: Chain[]; onOpen: (id: string) => void; onNew: () => void }) {
   const c = useChartColors()
   const [picked, setPicked] = useState<ChainShow>('all')
   if (!chains.length) return null
@@ -38,6 +39,9 @@ export function ChainsCard({ chains, onOpen }: { chains: Chain[]; onOpen: (id: s
             {shown.map(ch => <li key={ch.id}><ChainRow chain={ch} colors={[c.series[0], c.series[1]]} onOpen={() => onOpen(ch.id)} /></li>)}
           </ul>
         )}
+      <div className="border-t border-line pt-2">
+        <Button size="sm" variant="ghost" icon={<Plus />} onClick={onNew}>New money chain</Button>
+      </div>
     </StatsCard>
   )
 }
