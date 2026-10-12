@@ -1,4 +1,4 @@
-import { useLayoutEffect } from 'react'
+import { Suspense, useEffect, useLayoutEffect } from 'react'
 import { Outlet, useLocation, useNavigationType } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { qk } from '../../shared/query/keys'
@@ -15,6 +15,7 @@ import { cx } from '../../shared/ui'
 import { selectSidebarCollapsed, useSidebarStore, useUIStore } from '../store'
 import { collapsesSidebar, isFullHeightRoute } from '../navigation'
 import { useAppBootstrap } from './useAppBootstrap'
+import { preloadPages } from '../pages'
 import { AppSidebar } from './AppSidebar'
 import { AppTopBar } from './AppTopBar'
 import { MobileHeader } from './MobileHeader'
@@ -51,6 +52,17 @@ export function AppShell() {
   const pullToRefresh = usePullToRefresh(() => qc.invalidateQueries({
     predicate: query => query.queryKey[0] !== qk.external.geolocation()[0],
   }))
+
+  // The other pages' code, once the first page is up (see app/pages.ts).
+  useEffect(() => {
+    const start = () => { void preloadPages() }
+    if ('requestIdleCallback' in window) {
+      const id = window.requestIdleCallback(start, { timeout: 4000 })
+      return () => window.cancelIdleCallback(id)
+    }
+    const id = setTimeout(start, 1500)
+    return () => clearTimeout(id)
+  }, [])
 
   const reportScroll = useUIStore(s => s.reportScroll)
   const resetChrome = useUIStore(s => s.resetChrome)
@@ -115,7 +127,10 @@ export function AppShell() {
         />
       )}
       <div key={supportsVT ? 'static' : pathname} className={cx(fullHeight && 'h-full', !supportsVT && 'page-in') || undefined}>
-        <Outlet />
+        {/* A page whose code is still loading (only in the first moments after start). */}
+        <Suspense fallback={<div aria-busy="true" className="min-h-full" />}>
+          <Outlet />
+        </Suspense>
       </div>
     </main>
   )
