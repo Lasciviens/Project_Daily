@@ -5,7 +5,7 @@
 //
 // `since` is the date the entry's key file (`sinceFrom`) first appears in git
 // (`git log --diff-filter=A --follow`). The repository's history starts on
-// 22.07.2026, so that date means "on or before" (`sinceIsHistoryStart`).
+// 04.06.2026, so that date means "on or before" (`sinceIsHistoryStart`).
 // Secrets are listed by NAME only — values live in Supabase Vault / Edge
 // Function secrets and never reach the client.
 
@@ -116,7 +116,7 @@ export interface ApiEntry {
 }
 
 export const INTEGRATIONS_PATH = '/settings?tab=subscriptions'
-const H0 = '22.07.2026'
+const H0 = '04.06.2026'
 
 export const API_REGISTRY: readonly ApiEntry[] = [
   // ── Platform ───────────────────────────────────────────────────────────
@@ -212,7 +212,7 @@ export const API_REGISTRY: readonly ApiEntry[] = [
     tables: ['google_tasks_outbox', 'google_tasks_sync_state'], migrations: ['071', '072', '073', '078', '079'],
     cost: 'free',
     caveats: ['A task with a calendar event is kept off Google Tasks so it appears in Google only once.', 'Only the default list; no subtasks or manual order.'],
-    since: H0, sinceFrom: 'src/features/todo/api/googleTasksApi.ts', sinceIsHistoryStart: true, hasIntegrationCard: true,
+    since: '19.06.2026', sinceFrom: 'src/features/todo/api/googleTasksApi.ts', hasIntegrationCard: true,
   },
 
   // ── Health ─────────────────────────────────────────────────────────────
@@ -231,7 +231,7 @@ export const API_REGISTRY: readonly ApiEntry[] = [
     tables: ['health_metrics', 'health_workouts'], migrations: ['041'],
     cost: 'paid', limits: 'HealthKit is unreadable while the phone is locked; delivery is best-effort.',
     caveats: ['Needs Export Version 2, Summarize ON, Time Grouping Hours.', 'Re-exports repeat hours; totals collapse them per hour.'],
-    since: H0, sinceFrom: 'supabase/functions/health-export-webhook/index.ts', sinceIsHistoryStart: true, hasIntegrationCard: true,
+    since: '04.07.2026', sinceFrom: 'supabase/functions/health-export-webhook/index.ts', hasIntegrationCard: true,
   },
 
   // ── Training ───────────────────────────────────────────────────────────
@@ -248,7 +248,7 @@ export const API_REGISTRY: readonly ApiEntry[] = [
     tables: ['hevy_workouts', 'hevy_routines', 'hevy_sets', 'hevy_body_measurements'],
     cost: 'paid', limits: 'Needs Hevy Pro for API access.',
     caveats: ['Strict payloads: no null fields, no folder_id on update.', 'The upsert logic is copied into all four functions — change them together.'],
-    since: H0, sinceFrom: 'supabase/functions/hevy-sync/index.ts', sinceIsHistoryStart: true, hasIntegrationCard: true,
+    since: '28.06.2026', sinceFrom: 'supabase/functions/hevy-sync/index.ts', hasIntegrationCard: true,
   },
   {
     id: 'strava', name: 'Strava API', provider: 'Strava', category: 'Training', official: true,
@@ -276,7 +276,7 @@ export const API_REGISTRY: readonly ApiEntry[] = [
     usedIn: [{ label: 'Exercises', path: '/training?tab=library&view=exercises' }, { label: 'Next session', path: '/training?tab=next' }],
     tables: ['exercise_gif_overrides'], migrations: ['082'],
     cost: 'free', caveats: ['Fuzzy name matching can pick the wrong GIF — fix it with ✎ Fix GIF.'],
-    since: H0, sinceFrom: 'src/features/training/exerciseMedia.tsx', sinceIsHistoryStart: true,
+    since: '14.07.2026', sinceFrom: 'src/features/training/exerciseMedia.tsx',
   },
 
   // ── Food ───────────────────────────────────────────────────────────────
@@ -291,7 +291,7 @@ export const API_REGISTRY: readonly ApiEntry[] = [
     usedIn: [{ label: 'Log food', path: '/recipes' }, { label: 'Ingredients', path: '/recipes' }],
     tables: ['recipe_ingredient_library'],
     cost: 'free', caveats: ['Search can return 503 when busy — the app says so and retries.'],
-    since: H0, sinceFrom: 'src/features/recipes/api/openFoodFactsApi.ts', sinceIsHistoryStart: true,
+    since: '19.07.2026', sinceFrom: 'src/features/recipes/api/openFoodFactsApi.ts',
   },
   {
     id: 'kassalapp', name: 'Kassalapp', provider: 'kassal.app', category: 'Food', official: true,
@@ -306,7 +306,7 @@ export const API_REGISTRY: readonly ApiEntry[] = [
     cost: 'personal-key',
     limits: '60 calls a minute on the free plan; the quick list prices every matched item in one bulk call (≤ 100 EANs).',
     caveats: ['REMA 1000 publishes no prices online, so it never appears in the chain comparison.'],
-    since: H0, sinceFrom: 'supabase/functions/food-search/index.ts', sinceIsHistoryStart: true,
+    since: '19.07.2026', sinceFrom: 'supabase/functions/food-search/index.ts',
   },
   {
     id: 'prisjakt', name: 'Prisjakt (public pages)', provider: 'Prisjakt Norge AS', category: 'Home', official: false,
@@ -347,7 +347,7 @@ export const API_REGISTRY: readonly ApiEntry[] = [
     auth: 'none', direction: 'read', cadence: 'When you scan',
     usedIn: [{ label: 'Log food — scan', path: '/recipes' }],
     cost: 'free', caveats: ['Camera permission is asked per site; manual entry always works.'],
-    since: H0, sinceFrom: 'src/features/recipes/components/BarcodeScanner.tsx', sinceIsHistoryStart: true,
+    since: '19.07.2026', sinceFrom: 'src/features/recipes/components/BarcodeScanner.tsx',
   },
 
   // ── Media ──────────────────────────────────────────────────────────────
@@ -522,7 +522,7 @@ export const API_REGISTRY: readonly ApiEntry[] = [
     usedIn: [{ label: 'Home — transit', path: '/home' }, { label: 'Places', path: '/settings?tab=places' }],
     tables: ['user_transit_stops', 'transit_recent_searches'], migrations: ['049'],
     cost: 'free', caveats: ['New GraphQL fields are verified live by introspection before use.', 'Norway only.'],
-    since: H0, sinceFrom: 'src/features/home/api/ruterApi.ts', sinceIsHistoryStart: true,
+    since: '05.06.2026', sinceFrom: 'src/features/home/api/ruterApi.ts',
   },
 
   // ── Home ───────────────────────────────────────────────────────────────
@@ -536,7 +536,7 @@ export const API_REGISTRY: readonly ApiEntry[] = [
     auth: 'none', direction: 'read', cadence: 'On open (cached)',
     usedIn: [{ label: 'Home — weather', path: '/home' }, { label: 'Daily brief', path: '/home' }],
     cost: 'free', caveats: ['MET\'s terms ask for an identifying User-Agent and caching.'],
-    since: H0, sinceFrom: 'src/features/home/api/weatherApi.ts', sinceIsHistoryStart: true,
+    since: '05.06.2026', sinceFrom: 'src/features/home/api/weatherApi.ts',
   },
   {
     id: 'oxr', name: 'Open Exchange Rates', provider: 'Open Exchange Rates', category: 'Home', official: true,
@@ -549,7 +549,7 @@ export const API_REGISTRY: readonly ApiEntry[] = [
     direction: 'read', cadence: 'On open, at most hourly',
     usedIn: [{ label: 'Home — currency', path: '/home' }],
     cost: 'free-tier', limits: 'Monthly request quota depends on the plan.',
-    since: H0, sinceFrom: 'src/features/home/api/currencyApi.ts', sinceIsHistoryStart: true,
+    since: '05.06.2026', sinceFrom: 'src/features/home/api/currencyApi.ts',
   },
   {
     id: 'news-rss', name: 'News RSS feeds', provider: 'BBC · VG · CNN Türk', category: 'Home', official: true,
@@ -561,7 +561,7 @@ export const API_REGISTRY: readonly ApiEntry[] = [
     auth: 'none', direction: 'read', cadence: 'On open',
     usedIn: [{ label: 'Home — news', path: '/home' }],
     cost: 'free',
-    since: H0, sinceFrom: 'supabase/functions/news-proxy/index.ts', sinceIsHistoryStart: true,
+    since: '06.06.2026', sinceFrom: 'supabase/functions/news-proxy/index.ts',
   },
 
   // ── Device ─────────────────────────────────────────────────────────────
@@ -579,7 +579,7 @@ export const API_REGISTRY: readonly ApiEntry[] = [
     tables: ['food_log_entries', 'water_log_entries', 'body_composition_reports'], migrations: ['085'],
     cost: 'free', limits: 'Shortcuts time out at about 25 s, so AI answers are single-shot.',
     caveats: ['Widgets refresh about 40–70 times a day, as iOS decides.'],
-    since: H0, sinceFrom: 'supabase/functions/phone-gateway/index.ts', sinceIsHistoryStart: true,
+    since: '22.07.2026', sinceFrom: 'supabase/functions/phone-gateway/index.ts',
   },
   {
     id: 'web-push', name: 'Web Push (VAPID)', provider: 'Browser push services', category: 'Device', official: true,
@@ -606,7 +606,7 @@ export const API_REGISTRY: readonly ApiEntry[] = [
     auth: 'none', direction: 'read', cadence: 'Once per session',
     usedIn: [{ label: 'Home', path: '/home' }],
     cost: 'free', caveats: ['The Oslo fallback is not a real fix — nearby stops only use a real one.'],
-    since: H0, sinceFrom: 'src/features/home/hooks/useGeolocation.ts', sinceIsHistoryStart: true,
+    since: '17.07.2026', sinceFrom: 'src/features/home/hooks/useGeolocation.ts',
   },
   {
     id: 'web-speech', name: 'Web Speech API', provider: 'Browser', category: 'Device', official: true,
