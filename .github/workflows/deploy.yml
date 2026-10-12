@@ -130,7 +130,7 @@ jobs:
           echo "backend=true" >> "$GITHUB_OUTPUT"
           if [ "$DRY_RUN" = "true" ]; then echo "web=false" >> "$GITHUB_OUTPUT"; else echo "web=true" >> "$GITHUB_OUTPUT"; fi
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         if: steps.gate.outputs.web == 'true' || steps.gate.outputs.backend == 'true'
         with:
           ref: ${{ steps.gate.outputs.sha }}
@@ -145,7 +145,7 @@ jobs:
             echo "::warning::These migrations only run through the deploy secrets and are NOT applied: $waiting— set up docs/deploy-setup.md."
           fi
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         if: steps.gate.outputs.backend == 'true'
         with:
           node-version: 22
@@ -158,7 +158,9 @@ jobs:
         run: npm ci --ignore-scripts
 
       # Pinned to a commit (v1.7.3, 24.09.2026): a third-party action in the
-      # job that holds the database password.
+      # job that holds the database password. Still a Node 20 action (GitHub
+      # runs it on Node 24 and warns); v3 installs the CLI a new way (bun +
+      # npm), so it moves only after the first automatic deploys have run.
       - uses: supabase/setup-cli@1dedf2c611547ede7232d26866dd3c56ab903bbb
         if: steps.gate.outputs.backend == 'true'
         with:
@@ -223,12 +225,12 @@ jobs:
           fi
 
       # The same commit the backend job deployed.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         if: steps.fresh.outputs.go == 'true'
         with:
           ref: ${{ needs.backend.outputs.sha }}
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         if: steps.fresh.outputs.go == 'true'
         with:
           # Node 20 is end-of-life; vite 8 wants ^20.19.0 || >=22.12.0.
@@ -287,11 +289,11 @@ jobs:
 
       - name: Setup Pages
         if: steps.fresh.outputs.go == 'true'
-        uses: actions/configure-pages@v5
+        uses: actions/configure-pages@v6
 
       - name: Upload artifact
         if: steps.fresh.outputs.go == 'true'
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
           path: dist
 
@@ -302,7 +304,7 @@ jobs:
       - name: Deploy to GitHub Pages (attempt 1)
         id: deploy1
         if: steps.fresh.outputs.go == 'true'
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
         continue-on-error: true
 
       - name: Wait before retry
@@ -312,4 +314,4 @@ jobs:
       - name: Deploy to GitHub Pages (retry)
         id: deployment
         if: steps.fresh.outputs.go == 'true' && steps.deploy1.outcome == 'failure'
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
