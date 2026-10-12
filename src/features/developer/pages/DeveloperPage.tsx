@@ -4,9 +4,10 @@ import { RefreshCw } from 'lucide-react'
 import { ErrorLogTab } from '../components/ErrorLogTab'
 import { ActivityLogTab } from '../components/ActivityLogTab'
 import { MemoryTab } from '../components/MemoryTab'
+import { DeveloperHeroArt } from '../components/DeveloperHeroArt'
 import { reindexAiSearch } from '../../ai/api/aiApi'
 import { toast } from '../../../app/store'
-import { Button, PageContainer, PageHeader, usePageStep } from '../../../shared/ui'
+import { Button, HERO_BAND_BLEED, PageContainer, PageHeader, cx, usePageStep } from '../../../shared/ui'
 import { boardWidthRem } from '../../../shared/ui/pageBoardRules'
 import { LIST_DETAIL_BOARD } from '../developerBoards'
 
@@ -65,13 +66,14 @@ export function DeveloperPage() {
         <div style={headerCap != null ? { maxWidth: `${headerCap}rem` } : undefined}>
           <PageHeader
             title="Developer"
+            art={<DeveloperHeroArt />}
             actions={
               <Button size="sm" icon={<RefreshCw />} onClick={() => { void handleReindex() }} loading={reindexing} title="Rebuild the AI semantic-search index">
                 Reindex AI search
               </Button>
             }
           >
-            <div role="tablist" aria-label="Developer sections" className="scroll-x -mx-4 flex gap-1 px-4 sm:mx-0 sm:px-0">
+            <div role="tablist" aria-label="Developer sections" className={cx('scroll-x flex gap-1', HERO_BAND_BLEED)}>
               {TABS.map(t => (
                 <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} onClick={() => selectTab(t.id)} className="pill-tab">
                   {t.label}

@@ -70,6 +70,8 @@ export const qk = {
     costs: () => ['shop', 'costs'] as const,
     watches: () => ['shop', 'watches'] as const,
     points: (itemId: string) => ['shop', 'points', itemId] as const,
+    /** Norges Bank's rates of given days, for a chain being built (pairs joined, sorted). */
+    dayRates: (pairs: string) => ['shop', 'day-rates', pairs] as const,
     /** Kassalapp prices per chain for the quick list's matched products. */
     grocery: (eans: string) => ['shop', 'grocery', eans] as const,
     grocerySearch: (q: string) => ['shop', 'grocery-search', q] as const,

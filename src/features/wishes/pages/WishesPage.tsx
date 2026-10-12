@@ -10,6 +10,7 @@ import { WishQuickAdd } from '../components/WishQuickAdd'
 import { WishFilters, type KindFilter, type StatusFilter } from '../components/WishFilters'
 import type { WishItem } from '../types'
 import { WISH_BOARD } from '../wishesBoard'
+import { WishesHeroArt } from '../components/WishesHeroArt'
 
 // Filters only narrow what is DISPLAYED; "Everything" always brings the whole
 // list back, and no filter ever touches a stored row.
@@ -123,23 +124,24 @@ export function WishesPage() {
 
   return (
     <PageContainer>
+      {/* The count line and the intro sit in the header band, the art behind them. */}
       <PageHeader
         title="Wishes"
+        art={<WishesHeroArt />}
         // A placeholder while loading keeps the count line from popping in.
         subtitle={isLoading ? <Skeleton className="my-0.5 h-4 w-40" /> : wishes.length > 0 ? `${openCount} open now · ${wishes.length} total` : undefined}
-      />
+      >
+        {/* Hugs the count line when there is one. */}
+        <p className={`${isLoading || wishes.length > 0 ? '-mt-2 ' : ''}max-w-md text-body text-fg-muted`}>
+          Things you want to do, not things you must. A season only decides when they come back to you — never when they are late.
+        </p>
+      </PageHeader>
       {/* Placed by PageBoard (wishesBoard.ts): on wide screens quick add and
           the filters are a sticky rail and the groups gain columns. */}
       <PageBoard
         layout={WISH_BOARD}
         stackGap="gap-5"
         sections={{
-          // Hugs the count line when there is one; with no wishes the header renders nothing visible.
-          intro: (
-            <p className={`${isLoading || wishes.length > 0 ? '-mt-2 ' : ''}max-w-md text-body text-fg-muted`}>
-              Things you want to do, not things you must. A season only decides when they come back to you — never when they are late.
-            </p>
-          ),
           add: <WishQuickAdd />,
           filters: wishes.length > 0 && <WishFilters kind={kind} status={status} onKind={setKind} onStatus={setStatus} />,
           groups: groupsSection,

@@ -3,11 +3,12 @@ import { Link } from 'react-router-dom'
 import { getISOWeek } from 'date-fns'
 import { formatWeekdayDate } from '../../../shared/utils/dateFormat'
 import { ChevronRight } from 'lucide-react'
-import { Card, SectionLabel, Skeleton, ToneDot, Truncate, cx } from '../../../shared/ui'
+import { Card, PageHeroArt, SectionLabel, Skeleton, ToneDot, Truncate, cx, useHeroArt } from '../../../shared/ui'
 import { useBreakpoint } from '../../../shared/hooks/useBreakpoint'
 import { useEntityModal } from '../../../shared/modals/useEntityModal'
 import { useDailyBrief } from '../hooks/useDailyBrief'
 import type { BriefLine } from '../briefRules'
+import { HomeHeroArt } from './HomeHeroArt'
 
 /** Tasks · Schedule · Training · Weather on a phone; the rest behind Show all. */
 const PHONE_SECTIONS = 4
@@ -54,6 +55,8 @@ function BriefSkeleton() {
  * that matters most right now, then compact labelled sections. Phones show
  * the headline plus the first few sections, the rest behind a "Show all".
  * A media line opens that title's popup; other lines link to their page.
+ * Home has no header controls, so its header art (THEME.md §6.5) sits
+ * behind the top of this card, the page's first, placed beside the greeting.
  */
 export function DailyBrief() {
   const { brief, isLoading } = useDailyBrief()
@@ -61,50 +64,54 @@ export function DailyBrief() {
   const [expanded, setExpanded] = useState(false)
   const sections = isPhone && !expanded ? brief.sections.slice(0, PHONE_SECTIONS) : brief.sections
   const hidden = brief.sections.length - sections.length
+  const { layerRef: artLayerRef, contentRef: artContentRef, place: artPlace, behind: artBehind } = useHeroArt<HTMLElement>()
 
   return (
-    <Card>
-      {isLoading ? <BriefSkeleton /> : (
-        <>
-          <header className="mb-3">
-            <h1 id="daily-brief-title" className="text-title font-bold tracking-tight text-fg sm:text-head">{brief.greeting}</h1>
-            <p className="text-meta tabular-nums text-fg-muted">{formatWeekdayDate(new Date(), 'long')} · Week {getISOWeek(new Date())}</p>
-          </header>
+    <Card className="relative isolate">
+      <PageHeroArt layerRef={artLayerRef} place={artPlace} behind={artBehind}><HomeHeroArt /></PageHeroArt>
+      <div className="relative z-10">
+        {isLoading ? <BriefSkeleton /> : (
+          <>
+            <header ref={artContentRef} className="mb-3">
+              <h1 id="daily-brief-title" className="text-title font-bold tracking-tight text-fg sm:text-head">{brief.greeting}</h1>
+              <p className="text-meta tabular-nums text-fg-muted">{formatWeekdayDate(new Date(), 'long')} · Week {getISOWeek(new Date())}</p>
+            </header>
 
-          <div className="mb-4 flex items-start gap-2 rounded-row bg-surface-2 px-3 py-2.5">
-            <ToneDot tone={brief.headline.tone ?? 'accent'} className="mt-1.5 shrink-0" />
-            <div className="min-w-0 flex-1"><Line line={brief.headline} lead /></div>
-          </div>
-
-          {sections.length > 0 && (
-            // One column of sections; two side by side once the card is wide
-            // (a wide Home main track), so the right half isn't left empty.
-            <div className="@container">
-              <dl className="grid grid-cols-1 gap-x-8 gap-y-3 @[46rem]:grid-cols-2">
-              {sections.map(section => (
-                <div key={section.id} className="grid min-w-0 grid-cols-1 gap-0.5 @[24rem]:grid-cols-[6.5rem_minmax(0,1fr)] @[24rem]:gap-3">
-                  <dt><SectionLabel className="@[24rem]:pt-0.5">{section.title}</SectionLabel></dt>
-                  <dd className="min-w-0 space-y-0.5">
-                    {section.lines.map((line, i) => <Line key={i} line={line} />)}
-                  </dd>
-                </div>
-              ))}
-              </dl>
+            <div className="mb-4 flex items-start gap-2 rounded-row bg-surface-2 px-3 py-2.5">
+              <ToneDot tone={brief.headline.tone ?? 'accent'} className="mt-1.5 shrink-0" />
+              <div className="min-w-0 flex-1"><Line line={brief.headline} lead /></div>
             </div>
-          )}
 
-          {isPhone && (hidden > 0 || expanded) && (
-            <button
-              type="button"
-              onClick={() => setExpanded(v => !v)}
-              aria-expanded={expanded}
-              className="mt-2 inline-flex min-h-[44px] items-center text-meta font-semibold text-accent-600"
-            >
-              {expanded ? 'Show less' : `Show all (${hidden} more)`}
-            </button>
-          )}
-        </>
-      )}
+            {sections.length > 0 && (
+              // One column of sections; two side by side once the card is wide
+              // (a wide Home main track), so the right half isn't left empty.
+              <div className="@container">
+                <dl className="grid grid-cols-1 gap-x-8 gap-y-3 @[46rem]:grid-cols-2">
+                {sections.map(section => (
+                  <div key={section.id} className="grid min-w-0 grid-cols-1 gap-0.5 @[24rem]:grid-cols-[6.5rem_minmax(0,1fr)] @[24rem]:gap-3">
+                    <dt><SectionLabel className="@[24rem]:pt-0.5">{section.title}</SectionLabel></dt>
+                    <dd className="min-w-0 space-y-0.5">
+                      {section.lines.map((line, i) => <Line key={i} line={line} />)}
+                    </dd>
+                  </div>
+                ))}
+                </dl>
+              </div>
+            )}
+
+            {isPhone && (hidden > 0 || expanded) && (
+              <button
+                type="button"
+                onClick={() => setExpanded(v => !v)}
+                aria-expanded={expanded}
+                className="mt-2 inline-flex min-h-[44px] items-center text-meta font-semibold text-accent-600"
+              >
+                {expanded ? 'Show less' : `Show all (${hidden} more)`}
+              </button>
+            )}
+          </>
+        )}
+      </div>
     </Card>
   )
 }

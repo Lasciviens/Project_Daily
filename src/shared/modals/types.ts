@@ -65,6 +65,8 @@ export type EntityModalRequest =
   | { kind: 'shop-model'; wishId: string }
   /** Add something you own (or had) from before the app, with ≈ dates. */
   | { kind: 'shop-own'; had?: boolean }
+  /** Build a money chain in one go (bought → sold → bought…); `fromId`: go on from that saved thing that left. */
+  | { kind: 'shop-chain-builder'; fromId?: string }
   | { kind: 'project-item'; projectId: string; id?: string; phaseId?: string }
   | { kind: 'memory'; id: string }
   /** One book in the Books library (books, migration 126). */

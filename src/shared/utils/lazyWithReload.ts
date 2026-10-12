@@ -2,9 +2,10 @@ import { lazy, type ComponentType } from 'react'
 import { ChunkLoadFailed } from '../components/ChunkLoadFailed'
 import { logError } from './logError'
 
-// A lazy chunk can fail to load after a deploy: skipWaiting + clientsClaim
-// (vite.config.ts) swap the service worker under an open tab, whose old entry
-// bundle still asks for a chunk hash the server no longer has. The first
+// A lazy chunk can fail to load after a deploy: when a new service worker
+// takes over a tab that is still open (another tab applied the update, see
+// app/serviceWorkerUpdate.ts), the old entry bundle may ask for a chunk hash
+// the server no longer has. The first
 // failure reloads the page once (fresh index.html, fresh hashes); a
 // sessionStorage flag stops that from ever looping, and a second failure shows
 // `Failed` (a plain reload prompt by default) instead of a blank page.

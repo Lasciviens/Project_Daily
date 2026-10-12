@@ -36,6 +36,7 @@ import { ExerciseWeekCard } from '../components/overview/ExerciseWeekCard'
 import { TrendCard } from '../components/overview/TrendCard'
 import { buildTrendStats } from '../healthTrendStats'
 import { hm, num, signed, signedHm } from '../components/overview/heroFormat'
+import { HealthHeroArt } from '../components/HealthHeroArt'
 
 // Health's own page, in windows (tabs) laid out by the metric ranking
 // (docs/training-health/research/research-rank.json): Overview holds the six
@@ -70,7 +71,7 @@ export function HealthPage() {
           (hidden on Goal progress, which reads its own 14/28/56-day window and
           shows those dates itself). Each window below is a PageBoard
           (healthBoards.ts), so a wide screen adds columns instead of length. */}
-      <PageHeader title="Health" actions={<ProfileChip today={today} />} className="!mb-3">
+      <PageHeader title="Health" actions={<ProfileChip today={today} />} className="!mb-3" art={<HealthHeroArt />}>
         <HealthSectionTabs value={section} onChange={setSection} />
       </PageHeader>
 

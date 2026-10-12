@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { RotateCcw } from 'lucide-react'
+import { Plus, RotateCcw } from 'lucide-react'
 import { ModalShell } from '../../../../shared/modals/ModalShell'
 import { useEntityModal } from '../../../../shared/modals'
 import { Button, TonePill, Truncate, cx } from '../../../../shared/ui'
@@ -35,12 +35,20 @@ export function ChainPopup({ id, items, links, ctx, onClose }: { id: string; ite
   const profit = complete(chain.net) && chain.net.nok < 0
   const last = things[things.length - 1]
   const final = last && last.state === 'held' && chain.linear && things.length > 1 ? last : null
+  // The chain can go on from its last thing once that has left and its money went nowhere yet.
+  const tail = real.nodes.filter(n => n.state !== 'wish').pop()
+  const goOn = tail && tail.state === 'gone' && !real.edges.some(e => e.from === tail.id) ? tail : null
 
   return (
     <ModalShell onClose={onClose} title={things.length > 1 ? real.name ?? 'Money chain' : 'Try other prices'} subtitle={chainPath(real)} size="lg"
       footer={
         <div className="flex items-center gap-2">
           {what && Object.keys(over).length > 0 && <Button variant="ghost" icon={<RotateCcw />} onClick={() => setOver({})}>Reset</Button>}
+          {!what && goOn && (
+            <Button variant="ghost" icon={<Plus />} onClick={() => { onClose(); modal.open({ kind: 'shop-chain-builder', fromId: goOn.id }) }}>
+              Add what its money bought
+            </Button>
+          )}
           <Button onClick={onClose} className="ml-auto">Close</Button>
         </div>
       }>

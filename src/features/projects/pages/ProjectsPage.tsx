@@ -4,6 +4,7 @@ import { Button, EmptyState, PageContainer, PageHeader, Skeleton } from '../../.
 import { useProjects, useProjectStats, useCreateProject } from '../hooks/useProjects'
 import { ProjectCard } from '../components/ProjectCard'
 import { ProjectDetail } from '../components/ProjectDetail'
+import { ProjectsHeroArt } from '../components/ProjectsHeroArt'
 import { projectsHeaderCapRem } from '../projectBoard'
 import { useElementWidthRem } from '../../../shared/hooks/useElementWidth'
 
@@ -52,6 +53,7 @@ export function ProjectsPage() {
         <div className="sm:max-w-[var(--header-cap)]" style={headerCap != null ? { '--header-cap': `${headerCap}rem` } as CSSProperties : undefined}>
           <PageHeader
             title="Projects"
+            art={<ProjectsHeroArt />}
             // A placeholder while loading keeps this row from popping in (and the grid from jumping).
             subtitle={isLoading ? <Skeleton className="my-0.5 h-4 w-32" /> : projects.length > 0 ? `${activeCount} active · ${projects.length} total` : undefined}
             actions={isLoading || projects.length > 0 ? newButton : undefined}

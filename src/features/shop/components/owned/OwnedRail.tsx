@@ -1,4 +1,4 @@
-import { History, PackagePlus } from 'lucide-react'
+import { History, Link2, PackagePlus } from 'lucide-react'
 import { Button, Card, CardHeader, TonePill, Truncate } from '../../../../shared/ui'
 import { InfoBubble } from '../../../../shared/components/InfoBubble'
 import { formatDate } from '../../../../shared/utils/dateFormat'
@@ -8,7 +8,7 @@ import { amountReason } from '../shopFormat'
 import { complete } from '../../ownModel'
 
 /** "What I own": how many things, what they cost, what the valued ones could sell for. */
-export function OwnedSummaryCard({ summary, onAdd, onAddHad }: { summary: OwnedSummary; onAdd: () => void; onAddHad: () => void }) {
+export function OwnedSummaryCard({ summary, onAdd, onAddHad, onNewChain }: { summary: OwnedSummary; onAdd: () => void; onAddHad: () => void; onNewChain: () => void }) {
   return (
     <Card className="flex flex-col gap-2">
       <div className="flex items-center gap-2">
@@ -37,6 +37,7 @@ export function OwnedSummaryCard({ summary, onAdd, onAddHad }: { summary: OwnedS
       <div className="flex flex-wrap gap-1.5">
         <Button size="sm" icon={<PackagePlus />} onClick={onAdd}>Add something I own</Button>
         <Button size="sm" variant="ghost" icon={<History />} onClick={onAddHad}>Something I had</Button>
+        <Button size="sm" variant="ghost" icon={<Link2 />} onClick={onNewChain}>New money chain</Button>
       </div>
     </Card>
   )

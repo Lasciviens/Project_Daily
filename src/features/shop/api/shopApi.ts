@@ -1,6 +1,7 @@
 import { supabase } from '../../../integrations/supabase/client'
 import { requireUser } from '../../../shared/utils/requireUser'
 import { defaultCurrencyFor } from '../shopModel'
+import { draftRows, type ChainDraft, type Copied } from '../chainDraft'
 import type {
   ShopCategory, ShopItem, ShopItemCost, ShopItemLink, ShopPricePoint, ShopPriceWatch,
   CreateShopCategoryInput, CreateShopCostInput, CreateShopItemInput, ShopCurrency, ShopDisposal, UpdateShopItemInput,
@@ -194,6 +195,37 @@ export async function restoreShopItems(snapshot: ShopSnapshot): Promise<void> {
   for (const r of snapshot.items) {
     await writeWithFallback(r as unknown as Row, () => false, row => supabase.from('shop_items').insert(row))
   }
+}
+
+// ─── A whole chain at once ────────────────────────────────────────────────────
+
+function newUuid(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID()
+  const b = crypto.getRandomValues(new Uint8Array(16))
+  b[6] = (b[6] & 0x0f) | 0x40
+  b[8] = (b[8] & 0x3f) | 0x80
+  const h = [...b].map(x => x.toString(16).padStart(2, '0')).join('')
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`
+}
+
+/** A new id for a draft row (it becomes the row's id on save). */
+export const newShopId = newUuid
+
+/**
+ * Saves a chain built in the app — every thing with its accessories and sale
+ * facts, and the "Paid with money from" links — in ONE call: migration 137's
+ * shop_restore_items inserts the rows (parents first) and then the links in a
+ * single transaction under the caller's own row-level security. The
+ * before-trigger fills each day's rate and checks the days, the link trigger
+ * checks the links; if anything is refused, nothing is left behind. (The
+ * function was written for Delete's Undo; a chain is the same shape: rows
+ * with known ids plus their links.)
+ */
+export async function saveShopChain(draft: ChainDraft, base: Copied | null, today: string): Promise<void> {
+  const user = await requireUser()
+  const rows = draftRows(draft, base, { mode: 'save', userId: user.id, nowIso: new Date().toISOString(), today, newId: newUuid })
+  const { error } = await supabase.rpc('shop_restore_items', { p_snapshot: { items: rows.items, links: rows.links, costs: [], children: [] } })
+  if (error) throw isMissingFunction(error) ? new Error(NEEDS_137) : error
 }
 
 // ─── Selling ──────────────────────────────────────────────────────────────────

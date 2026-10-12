@@ -55,10 +55,9 @@ export function ShopPage() {
 
   return (
     <PageContainer>
-      <PageHeader title="Shop">
-        <div className="relative isolate flex flex-col justify-center gap-2 sm:min-h-[7rem] sm:overflow-hidden sm:rounded-card sm:border sm:border-line sm:bg-surface sm:p-3">
-          <ShopHeroArt />
-          <div className="relative z-10 flex items-center gap-2">
+      <PageHeader title="Shop" art={<ShopHeroArt />}>
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center gap-2">
             <div className="min-w-0 flex-1 sm:flex-none">
               <SegmentedControl<View>
                 value={view}
@@ -80,10 +79,8 @@ export function ShopPage() {
             </Button>
           </div>
           {view === 'owned' && isPhone && (
-            <div className="relative z-10">
-              <SegmentedControl<OwnedTab> size="sm" fullWidth value={ownedTab} onChange={t => set('owned', t)}
-                options={[{ value: 'things', label: 'Things' }, { value: 'stats', label: 'Stats' }]} />
-            </div>
+            <SegmentedControl<OwnedTab> size="sm" fullWidth value={ownedTab} onChange={t => set('owned', t)}
+              options={[{ value: 'things', label: 'Things' }, { value: 'stats', label: 'Stats' }]} />
           )}
         </div>
       </PageHeader>

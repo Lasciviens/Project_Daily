@@ -5,19 +5,10 @@ import { ErrorBoundary } from '../shared/components/ErrorBoundary'
 import { AppShell } from './shell/AppShell'
 import { LoginPage } from '../features/auth/pages/LoginPage'
 import { ResetPasswordPage } from '../features/auth/pages/ResetPasswordPage'
-import { HomePage } from '../features/home/pages/HomePage'
-import { DailyPage } from '../features/daily/pages/DailyPage'
-import { ShopPage } from '../features/shop/pages/ShopPage'
-import { RecipesPage } from '../features/recipes/pages/RecipesPage'
-import { MediaPage } from '../features/media/pages/MediaPage'
-import { WorkPage } from '../features/work/pages/WorkPage'
-import { TrainingPage } from '../features/training/pages/TrainingPage'
-import { HealthPage } from '../features/health/pages/HealthPage'
-import { ProjectsPage } from '../features/projects/pages/ProjectsPage'
-import { WishesPage } from '../features/wishes/pages/WishesPage'
-import { BooksPage } from '../features/books/pages/BooksPage'
-import { DeveloperPage } from '../features/developer/pages/DeveloperPage'
-import { SettingsPage } from '../features/settings/pages/SettingsPage'
+import {
+  HomePage, DailyPage, ShopPage, RecipesPage, MediaPage, WorkPage, TrainingPage, HealthPage,
+  ProjectsPage, WishesPage, BooksPage, DeveloperPage, SettingsPage,
+} from './pages'
 import { DevRequestComposerHost } from '../features/devRequests/composer/DevRequestComposerHost'
 import { lazyWithReload } from '../shared/utils/lazyWithReload'
 
