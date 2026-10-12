@@ -4,6 +4,9 @@ import { parseFunctionErrorBody } from '../../../shared/utils/functionError'
 import { resolveWishWindow, wishPeriodLabel } from '../../wishes/wishRules'
 import type { WishItem } from '../../wishes/types'
 import { workoutLocalDay } from '../../training/workoutDates'
+import { fetchTasksForDay } from '../../todo/api/tasksApi'
+import { dayTasks, isOverdueOn } from '../../todo/taskRules'
+import type { Task } from '../../todo/types'
 
 export interface Message {
   role:    'user' | 'assistant'
@@ -121,8 +124,9 @@ async function buildContext(): Promise<string> {
   const today = format(new Date(), 'yyyy-MM-dd')
 
   const results = await Promise.allSettled([
-    supabase.from('tasks').select('id, title, status, priority, domain, section, description')
-      .or(`section.eq.today,due_date.eq.${today}`).neq('status', 'cancelled'),
+    // Today's list is Daily's and Home's own (taskRules.dayTasks over the one
+    // day read): open overdue ones from any section too, done = closed today.
+    fetchTasksForDay(today, today).then(rows => ({ data: rows })),
     supabase.from('tasks').select('id, title, priority, domain')
       .eq('section', 'this_week').neq('status', 'cancelled').neq('status', 'done').limit(8),
     supabase.from('tasks').select('id, title, priority')
@@ -158,8 +162,7 @@ async function buildContext(): Promise<string> {
     return r.status === 'fulfilled' ? ((r.value as { data: T[] | null }).data ?? []) : []
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const todayRaw  = get<any>(0)
+  const todayRaw  = get<Task>(0)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const weekTasks = get<any>(1)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -177,8 +180,8 @@ async function buildContext(): Promise<string> {
   const wishes    = get<WishContextRow>(8)
   const memories  = get<MemoryContextRow>(9)
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const todayTasks = Array.from(new Map(todayRaw.map((t: any) => [t.id, t])).values()) as any[]
+  const todayList = dayTasks(todayRaw as Task[], today, today)
+  const todayTasks = [...todayList.open, ...todayList.done]
 
   const lines: string[] = [
     `DATE: ${format(new Date(), 'EEEE dd.MM.yyyy')} (ISO ${format(new Date(), 'yyyy-MM-dd')} — day first; use the ISO form in tool calls)`,
@@ -193,7 +196,9 @@ async function buildContext(): Promise<string> {
   if (todayTasks.length) {
     lines.push(`\nTODAY'S TASKS (${todayTasks.length}):`)
     for (const t of todayTasks) {
-      const mark = t.status === 'done' ? '[done]' : '[open]'
+      const mark = t.status === 'done' ? '[done]'
+        : isOverdueOn(t, today) ? `[open, overdue since ${t.due_date}]`
+        : t.status === 'waiting' ? '[waiting]' : t.status === 'in_progress' ? '[in progress]' : '[open]'
       lines.push(`  ${mark} [id:${t.id}] ${t.title} — ${t.priority} priority, ${t.domain}${t.description ? ` | notes: ${t.description}` : ''}`)
     }
   } else {

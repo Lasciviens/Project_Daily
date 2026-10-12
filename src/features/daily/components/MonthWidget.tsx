@@ -5,8 +5,9 @@ import {
   addMonths, subMonths, isSameMonth, isToday, isSameDay,
 } from 'date-fns'
 import { formatMonthYear, formatWeekdayDate } from '../../../shared/utils/dateFormat'
-import { useTasksByMonth } from '../../todo/hooks/useTodos'
-import { isOpenTask } from '../../todo/taskRules'
+import { useDayTasks, useTasksByMonth } from '../../todo/hooks/useTodos'
+import { closedOn, isOpenTask, onDay } from '../../todo/taskRules'
+import { todayStr } from '../../../shared/utils/dateUtils'
 import { useCalendarEventDatesForRange } from '../../calendar/hooks/useCalendar'
 import { DateNav } from '../../../shared/components/DateNav'
 import { Card, TonePill, cx } from '../../../shared/ui'
@@ -47,9 +48,14 @@ export function MonthWidget({ onDayClick, highlightDate, big }: Props) {
     d = addDays(d, 1)
   }
 
+  // A dot when the day pane would list something (taskRules): open on that
+  // day, or finished on it — today's from the day list.
+  const today = todayStr()
+  const todayList = useDayTasks(today)
   function hasTasksOnDay(date: Date): boolean {
     const dateStr = format(date, 'yyyy-MM-dd')
-    return tasks.some(t => t.due_date === dateStr && t.status !== 'cancelled')
+    if (dateStr === today) return todayList.open.length + todayList.done.length > 0
+    return tasks.some(t => onDay(t, dateStr, today) && (isOpenTask(t) || closedOn(t, dateStr)))
   }
 
   const openCount = tasks.filter(isOpenTask).length

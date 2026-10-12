@@ -53,10 +53,14 @@ export function useTaskActions() {
     return quietly(toggle.mutateAsync({ id: task.id, isDone: done }))
   }
 
-  /** Cancel keeps a record (unlike Delete); a training session is skipped with a reason. */
+  /** Cancel keeps a record (unlike Delete) — a done task too; a training
+   *  session is skipped with a reason (only while still to do). */
   function cancel(task: Task): Promise<void> {
-    if (!isOpenTask(task)) return Promise.resolve()
-    if (isTrainingTask(task)) { session.openSkip(planRefForTask(task)); return Promise.resolve() }
+    if (task.status === 'cancelled') return Promise.resolve()
+    if (isTrainingTask(task)) {
+      if (isOpenTask(task)) session.openSkip(planRefForTask(task))
+      return Promise.resolve()
+    }
     return quietly(update.mutateAsync({ id: task.id, patch: { status: 'cancelled' } }))
   }
 
@@ -72,6 +76,7 @@ export function useTaskActions() {
   function setStatus(task: Task, status: TaskStatus, opts?: { waitingFor?: string }): Promise<void> {
     if (status === 'done') return setDone(task, true)
     if (status === 'cancelled') return cancel(task)
+    if (doneByWorkout(task)) return Promise.resolve()
     if (!isOpenTask(task)) return reopen(task).then(() => status === 'open' ? undefined : setStatus({ ...task, status: 'open' }, status, opts))
     if (status === task.status && opts?.waitingFor === undefined) return Promise.resolve()
     return quietly(update.mutateAsync({ id: task.id, patch: {

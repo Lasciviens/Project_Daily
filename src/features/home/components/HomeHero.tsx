@@ -179,7 +179,7 @@ export function HomeHero() {
               label={isToday ? (nextUp?.inProgress ? 'Now' : 'Next up') : `First on ${dayName}`}
               icon={<CalendarClock />}
               title={nextUp?.title}
-              meta={nextUp ? (nextUp.inProgress ? `Until ${hourLabel(nextUp.endHour)}` : nextUp.startLabel) : undefined}
+              meta={nextUp ? (nextUp.inProgress ? (nextUp.endHour >= 24 ? 'Until midnight' : `Until ${hourLabel(nextUp.endHour)}`) : nextUp.startLabel) : undefined}
               tone={nextUp?.inProgress ? 'info' : undefined}
               emptyText={isToday ? 'Nothing left today' : 'Nothing planned'}
               onOpen={nextUp && nextUp.kind !== 'calendar' ? () => openItem(nextUp) : undefined}
@@ -199,7 +199,7 @@ export function HomeHero() {
       {later.length > 0 && (
         <ul className="mt-3 border-t border-line pt-2" aria-label={isToday ? 'Later today' : `Later on ${dayName}`}>
           {later.map(item => (
-            <li key={`${item.kind}-${item.id}`}>
+            <li key={item.key}>
               <button
                 type="button"
                 onClick={() => openItem(item)}

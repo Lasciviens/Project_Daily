@@ -68,7 +68,7 @@ export function useDayTasks(day: string) {
     staleTime: STALE.live,
   })
   const split = useMemo(() => dayTasks(query.data ?? [], day, today), [query.data, day, today])
-  return { ...split, section: sectionForDay(day, today), isLoading: query.isLoading, ready: query.data !== undefined }
+  return { ...split, section: sectionForDay(day, today), isLoading: query.isLoading, ready: query.data !== undefined, isError: query.isError && query.data === undefined, refetch: query.refetch }
 }
 
 /**
@@ -87,8 +87,8 @@ export function useWeekCounts(weekTasks: readonly Task[], from: string, to: stri
   const today = todayStr()
   const todayList = useDayTasks(today)
   return useMemo(() => weekCounts({
-    weekTasks, todayTasks: [...todayList.open, ...todayList.done], from, to, today,
-  }), [weekTasks, todayList.open, todayList.done, from, to, today])
+    weekTasks, todayTasks: todayList.open, from, to, today,
+  }), [weekTasks, todayList.open, from, to, today])
 }
 
 export function useTasksByWeek(weekStart: Date, weekEnd: Date) {

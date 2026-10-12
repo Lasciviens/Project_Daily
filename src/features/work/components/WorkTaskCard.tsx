@@ -8,6 +8,7 @@ import type { Tone } from '../../../shared/ui'
 import { Truncate, cx } from '../../../shared/ui'
 import { haptic } from '../../../shared/utils/haptics'
 import { DueChip, PriorityMark } from './WorkTaskBits'
+import { isOpenTask } from '../../todo/taskRules'
 
 interface Props {
   task: Task
@@ -127,7 +128,8 @@ export default function WorkTaskCard({
         >
           {isDone ? <RotateCcw /> : <Check />}
         </button>
-        <button
+        {/* Focus is for work still to do (taskRules.isFocusedOpen). */}
+        {isOpenTask(task) && <button
           type="button"
           onClick={() => { haptic('light'); onFocus(task) }}
           aria-label={isFocused ? 'Remove focus' : 'Focus this task'}
@@ -136,7 +138,7 @@ export default function WorkTaskCard({
           className={cx(ACTION, isFocused ? 'bg-accent-50 text-accent-600' : 'text-fg-faint [@media(hover:hover)]:hover:bg-surface-hover [@media(hover:hover)]:hover:text-fg-2')}
         >
           <Zap />
-        </button>
+        </button>}
 
         {/* onPointerDown stopPropagation so a press-hold opens the menu
             instead of arming the card's drag sensor. */}

@@ -55,7 +55,7 @@ export function DayQuickRail({ date, onOpenTasks }: { date: Date; onOpenTasks?: 
           {nextItems.length > 0 ? (
             <ul className="flex flex-col gap-1.5">
               {nextItems.map(i => (
-                <li key={`${i.kind}-${i.id}`} className="flex items-center gap-3 rounded-row border border-line bg-surface px-3 py-2.5">
+                <li key={i.key} className="flex items-center gap-3 rounded-row border border-line bg-surface px-3 py-2.5">
                   <span className="shrink-0 text-ui font-bold tabular-nums text-accent-600">{i.inProgress ? 'Now' : i.startLabel}</span>
                   <Truncate className="text-body text-fg-2">{i.title}</Truncate>
                 </li>

@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { ListTodo, Plus } from 'lucide-react'
-import { Card, CardHeader, EmptyState, IconButton, Skeleton } from '../../../shared/ui'
+import { Button, Card, CardHeader, EmptyState, IconButton, Skeleton } from '../../../shared/ui'
 import { useDayTasks, useCreateTask } from '../../todo/hooks/useTodos'
 import { ToDoItem } from '../../todo/components/ToDoItem'
 import { todayStr } from '../../../shared/utils/dateUtils'
@@ -16,7 +16,7 @@ const SHOWN = 5
  * cancelled never counts.
  */
 export function TodayTasksCard() {
-  const { open, counts, isLoading } = useDayTasks(todayStr())
+  const { open, counts, isLoading, isError, refetch } = useDayTasks(todayStr())
   const create = useCreateTask()
   const [title, setTitle] = useState('')
   const [showAll, setShowAll] = useState(false)
@@ -52,6 +52,12 @@ export function TodayTasksCard() {
 
       {isLoading ? (
         <div className="space-y-2">{[0, 1, 2].map(i => <Skeleton key={i} className="h-11 w-full" rounded="rounded-row" />)}</div>
+      ) : isError ? (
+        // A failed read must never look like "Nothing on the list".
+        <p className="flex flex-wrap items-center gap-2 py-3 text-body text-fg-muted">
+          Couldn't load today's tasks.
+          <Button variant="ghost" size="sm" onClick={() => void refetch()}>Try again</Button>
+        </p>
       ) : open.length === 0 ? (
         <EmptyState
           title={done ? 'All done for today' : 'Nothing on the list'}

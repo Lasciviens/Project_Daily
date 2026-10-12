@@ -2,7 +2,7 @@ import { Check, RotateCcw, Trash2, Zap } from 'lucide-react'
 import type { Task, TaskStatus } from '../../todo/types'
 import { EmptyState, TonePill, cx, Truncate } from '../../../shared/ui'
 import { STATUS_CYCLE, isOverdue, taskStatusMeta } from './workMeta'
-import { closedOn } from '../../todo/taskRules'
+import { closedOn, isOpenTask } from '../../todo/taskRules'
 import { todayStr } from '../../../shared/utils/dateUtils'
 import { DueChip, PriorityMark, WaitingChip } from './WorkTaskBits'
 
@@ -107,7 +107,7 @@ export default function WorkListView({
               >
                 {isDone ? <RotateCcw /> : <Check />}
               </button>
-              <button
+              {isOpenTask(task) && <button
                 type="button"
                 onClick={() => onFocus(task)}
                 aria-label={focused ? 'Remove focus' : 'Focus'}
@@ -116,7 +116,7 @@ export default function WorkListView({
                 className={cx(ACTION, focused ? 'bg-accent-50 text-accent-600' : 'text-fg-faint [@media(hover:hover)]:hover:bg-surface-hover')}
               >
                 <Zap />
-              </button>
+              </button>}
               <button
                 type="button"
                 onClick={() => onDelete(task.id)}

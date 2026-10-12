@@ -76,6 +76,19 @@ eq(R.onDay(task({ status: 'done', due_date: TODAY, completed_at: at('2026-10-11'
   eq(y.open.length, 0, 'undated Today rows are not yesterday\'s')
 }
 
+// ── Order: overdue first, then their own order (sort_order, newest first) ──
+{
+  const list = [
+    task({ id: 'late', section: 'today', sort_order: 1 }),
+    task({ id: 'b', section: 'today', sort_order: 5 }),
+    task({ id: 'a', due_date: TODAY, sort_order: 2 }),
+    task({ id: 'x', due_date: '2026-10-01', sort_order: 9 }),
+    task({ id: 'n1', section: 'today', sort_order: null, created_at: '2026-10-01T10:00:00Z' }),
+    task({ id: 'n2', section: 'today', sort_order: null, created_at: '2026-10-02T10:00:00Z' }),
+  ]
+  eq(R.dayTasks(list, TODAY, TODAY).open.map(t => t.id), ['x', 'late', 'a', 'b', 'n2', 'n1'], 'an undated Today row is not pushed below every due-today row')
+}
+
 // ── Counts over any list (Work) ──
 {
   const list = [
@@ -148,6 +161,11 @@ eq(R.sectionForDay('2026-03-30', '2026-03-29'), 'tomorrow', 'across the spring D
 // ── Focus ──
 eq(R.isFocusedOpen(task({ is_focused: true, status: 'done' })), false, 'a finished task leaves the focus strip')
 eq(R.isFocusedOpen(task({ is_focused: true, status: 'waiting' })), true, 'a waiting one stays')
+{
+  const S2 = require('../src/features/training/plan/sessionState.ts')
+  const pending = S2.sessionStatus({ date: '2026-10-11', taskStatus: 'waiting', taskRoutineId: 'r', today: TODAY })
+  eq(pending.state, 'pending', 'a waiting training task is still open to the session status (shared OPEN_STATUSES)')
+}
 
 // ── The day schedule ──
 {
@@ -193,10 +211,13 @@ eq(R.isFocusedOpen(task({ is_focused: true, status: 'waiting' })), true, 'a wait
     [/updated_at\??\.slice\(0,\s*10\)/, 'a "done today" off updated_at — use closedOn'],
     [/completedWithinLast24h|isCompletedToday/, 'the old 24-hour / updated_at done rules'],
     [/useTasksForDay|useDayData/, 'the old day reads — use useDayTasks'],
+    [/status\s*===\s*'open'\s*\|\|\s*\w+\.status\s*===\s*'in_progress'/, 'an open check that forgets waiting — use isOpenTask'],
+    [/\[\s*'open',\s*'in_progress',\s*'waiting'\s*\]/, 'its own list of open statuses — use OPEN_STATUSES'],
   ]
   const hits = []
   for (const f of files) {
-    if (OWN.has(f)) continue
+    // Dev requests have statuses of their own (open / in progress / done), not a task's.
+    if (OWN.has(f) || f.includes(`${path.sep}devRequests${path.sep}`)) continue
     const src = fs.readFileSync(f, 'utf8')
     for (const [re, why] of rules) if (re.test(src)) hits.push(`${path.relative(root, f)}: ${why}`)
   }

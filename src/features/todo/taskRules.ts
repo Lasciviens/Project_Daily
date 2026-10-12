@@ -52,6 +52,7 @@ export function isOverdue(task: Pick<Task, 'status' | 'due_date'>): boolean {
 }
 
 type DayFields = Pick<Task, 'status' | 'completed_at' | 'due_date' | 'section'>
+type OrderFields = Partial<Pick<Task, 'sort_order' | 'created_at'>>
 
 /**
  * Is this task part of `day`'s list (Daily's day pane, Home's tasks card and
@@ -104,19 +105,23 @@ export function countTasks(tasks: readonly DayFields[], day: string, today: stri
 }
 
 export interface DayTasks<T extends DayFields = Task> {
-  /** Still to do, overdue first (otherwise in the order given). */
+  /** Still to do, overdue first, then in their own order. */
   open:      T[]
   done:      T[]
   cancelled: T[]
   counts:    TaskCounts
 }
 
-/** One day's list, split the one way every surface shows it. */
-export function dayTasks<T extends DayFields>(tasks: readonly T[], day: string, today: string): DayTasks<T> {
+/** One day's list, split the one way every surface shows it. Open ones:
+ *  overdue first, then by their own order (sort_order, newest first). */
+export function dayTasks<T extends DayFields & OrderFields>(tasks: readonly T[], day: string, today: string): DayTasks<T> {
   const mine = tasks.filter(t => onDay(t, day, today))
   const open = mine.filter(isOpenTask)
     .map((t, i) => ({ t, i, late: isOverdueOn(t, today) ? 0 : 1 }))
-    .sort((a, b) => a.late - b.late || a.i - b.i)
+    .sort((a, b) => a.late - b.late
+      || (a.t.sort_order ?? Number.MAX_SAFE_INTEGER) - (b.t.sort_order ?? Number.MAX_SAFE_INTEGER)
+      || (b.t.created_at ?? '').localeCompare(a.t.created_at ?? '')
+      || a.i - b.i)
     .map(x => x.t)
   return {
     open,
@@ -178,8 +183,9 @@ export function openOnDay(tasks: readonly DayFields[], day: string, today: strin
  * A week's numbers (Daily's week card), counted the day lists' way: open =
  * every open task on one of its days (today's list brings the overdue and
  * undated Today ones), plus — in the current week — the undated This-week
- * ones; done = closed during the week. `todayTasks` is today's day list (only
- * read when today is in the week); `weekTasks` the week read.
+ * ones; done = the week's own tasks (due in it, or undated This-week ones)
+ * closed during it, so the % never drops at midnight. `todayTasks` is today's
+ * day list (only read when today is in the week); `weekTasks` the week read.
  */
 export function weekCounts(input: {
   weekTasks:  readonly (DayFields & Pick<Task, 'id'>)[]
@@ -203,7 +209,6 @@ export function weekCounts(input: {
   if (current) {
     for (const t of todayTasks) {
       if (isOpenTask(t) && onDay(t, today, today)) open.add(t.id)
-      else if (t.status === 'done' && closedDay(t) === today) done.add(t.id)
     }
   }
   const total = open.size + done.size

@@ -6,7 +6,7 @@ import { useDayTasks, useTasksByWeek } from '../../todo/hooks/useTodos'
 import { ToDoItem } from '../../todo/components/ToDoItem'
 import { useNewIds } from '../../../shared/hooks/useNewIds'
 import { useEntityModal } from '../../../shared/modals'
-import { Skeleton, ToneDot, TonePill, cx, Truncate } from '../../../shared/ui'
+import { Button, Skeleton, ToneDot, TonePill, cx, Truncate } from '../../../shared/ui'
 import { isOpenTask } from '../../todo/taskRules'
 import { useOpenWishes } from '../../wishes/hooks/useWishes'
 import { wishPeriodLabel } from '../../wishes/wishRules'
@@ -61,7 +61,7 @@ export function DayView({ date }: Props) {
   // The one day list (taskRules.dayTasks): open — waiting too — overdue
   // first; done and cancelled = closed on this day (what you finished
   // yesterday is under yesterday).
-  const { open: openTasks, done: doneTasks, cancelled: cancelledTasks, isLoading, section } = useDayTasks(day)
+  const { open: openTasks, done: doneTasks, cancelled: cancelledTasks, isLoading, isError, refetch, section } = useDayTasks(day)
   const { data: openWishes = [] } = useOpenWishes()
   const modal = useEntityModal()
   const [showWeek, setShowWeek] = useState(false)
@@ -95,9 +95,15 @@ export function DayView({ date }: Props) {
         <div className="space-y-2">
           {[1, 2, 3].map(i => <Skeleton key={i} className="h-10" rounded="rounded-row" />)}
         </div>
+      ) : isError ? (
+        // A failed read must never look like an empty day.
+        <p className="flex flex-wrap items-center gap-2 py-3 text-body text-fg-muted">
+          Couldn't load the tasks.
+          <Button variant="ghost" size="sm" onClick={() => void refetch()}>Try again</Button>
+        </p>
       ) : (
         <div>
-          {openTasks.length === 0 && doneTasks.length === 0 && (
+          {openTasks.length === 0 && doneTasks.length === 0 && cancelledTasks.length === 0 && (
             <p className="py-3 text-body text-fg-muted">No tasks for this day.</p>
           )}
           {openTasks.length === 0 && doneTasks.length > 0 && (

@@ -5,6 +5,7 @@ import { useCalendarEventsForDay } from '../../calendar/hooks/useCalendar'
 import { aheadOnDay, buildDaySchedule, plannedMinutes } from '../../daily/daySchedule'
 import type { TaskCounts } from '../../todo/taskRules'
 import { shiftDateStr, todayStr } from '../../../shared/utils/dateUtils'
+import { useNow } from './useNow'
 import { pickNextTrainingSession, type NextTrainingSession } from '../../training/trainingPlanModel'
 import { NEXT_SESSION_LOOKAHEAD_DAYS } from '../../training/hooks/useTrainingSessions'
 import type { ScheduleBlock } from '../../daily/types'
@@ -17,6 +18,8 @@ import type { ScheduleBlock } from '../../daily/types'
 // ─────────────────────────────────────────────────────────────────────────────
 
 export interface NextUpItem {
+  /** Unique on the day (a weekly plan can show twice: yesterday's tail and today's). */
+  key: string
   kind: 'block' | 'recurring' | 'calendar'
   /** Real time_blocks / schedule_blocks id or Google event id (edit routing). */
   id: string
@@ -78,10 +81,12 @@ export function useTodayOverview(date: string = todayStr()): TodayOverview {
   const templatesQ = useScheduleBlocks()
   const calendarQ = useCalendarEventsForDay(date)
   const trainingQ = useTrainingBlocks(date, trainingTo)
+  // The clock ticks on today, so "Now" / "Next up" move on without a refetch.
+  const nowMs = useNow(date === todayStr(), 60_000)
 
   return useMemo(() => {
     const isToday = date === todayStr()
-    const now = new Date()
+    const now = new Date(nowMs)
     const nowHour = now.getHours() + now.getMinutes() / 60
 
     const templates: ScheduleBlock[] = templatesQ.data ?? []
@@ -89,7 +94,7 @@ export function useTodayOverview(date: string = todayStr()): TodayOverview {
       date, blocks: blocksQ.data ?? [], prevBlocks: prevBlocksQ.data ?? [], templates, events: calendarQ.data ?? [],
     })
     const upcoming: NextUpItem[] = aheadOnDay(items, isToday, nowHour).map(i => ({
-      kind: i.kind, id: i.canonicalId, title: i.title, startHour: i.startHour, endHour: i.endHour,
+      key: i.id, kind: i.kind, id: i.canonicalId, title: i.title, startHour: i.startHour, endHour: i.endHour,
       inProgress: i.inProgress, startLabel: hourLabel(i.startHour), taskId: i.taskId,
       category: i.block?.category ?? i.template?.category ?? null, planDate: i.planDate,
     }))
@@ -124,5 +129,5 @@ export function useTodayOverview(date: string = todayStr()): TodayOverview {
       trainingAfterNext,
       isLoading: dayTasks.isLoading || blocksQ.isLoading || templatesQ.isLoading,
     }
-  }, [date, dayTasks.counts, dayTasks.isLoading, blocksQ.data, blocksQ.isLoading, prevBlocksQ.data, templatesQ.data, templatesQ.isLoading, calendarQ.data, trainingQ.data])
+  }, [date, nowMs, dayTasks.counts, dayTasks.isLoading, blocksQ.data, blocksQ.isLoading, prevBlocksQ.data, templatesQ.data, templatesQ.isLoading, calendarQ.data, trainingQ.data])
 }

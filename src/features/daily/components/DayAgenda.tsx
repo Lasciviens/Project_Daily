@@ -72,6 +72,9 @@ function hourToTimeStr(h: number): string {
   return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`
 }
 
+/** A block running past midnight ends at "midnight" on this day's agenda, never "24:00". */
+const untilLabel = (h: number) => (h >= 24 ? 'midnight' : hourToTimeStr(h))
+
 interface AgendaBlock {
   id:             string  // unique within this day's render — may be a synthetic spillover id
   canonicalId:    string  // the REAL row id — every mutation routes through this
@@ -390,8 +393,8 @@ export function DayAgenda({ date, bare = false }: { date: Date; bare?: boolean }
             )}
           </div>
           {nextBlock && (nextBlock.inProgress ? (
-            <Truncate as="p" className="mt-0.5 text-meta text-fg-muted" fullText={`Now: ${nextBlock.title} until ${hourToTimeStr(nextBlock.endHour)}`}>
-              Now: <span className="font-semibold text-fg-2">{nextBlock.title}</span> until {hourToTimeStr(nextBlock.endHour)}
+            <Truncate as="p" className="mt-0.5 text-meta text-fg-muted" fullText={`Now: ${nextBlock.title} until ${untilLabel(nextBlock.endHour)}`}>
+              Now: <span className="font-semibold text-fg-2">{nextBlock.title}</span> until {untilLabel(nextBlock.endHour)}
             </Truncate>
           ) : (
             <Truncate as="p" className="mt-0.5 text-meta text-fg-muted" fullText={`Next: ${nextBlock.title} at ${hourToTimeStr(nextBlock.startHour)}`}>
