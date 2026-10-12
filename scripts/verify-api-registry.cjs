@@ -46,7 +46,7 @@ check('edge functions exist in supabase/functions', !bad(e => (e.edgeFunctions ?
   bad(e => (e.edgeFunctions ?? []).some(f => !fs.existsSync(path.join(__dirname, '..', 'supabase/functions', f)))))
 check('secrets are names, never values', !bad(e => (e.secrets ?? []).some(s => !/^[A-Z][A-Z0-9_]+( \(.+\))?$/.test(s))), bad(e => (e.secrets ?? []).some(s => !/^[A-Z][A-Z0-9_]+( \(.+\))?$/.test(s))))
 check('migration numbers are three digits', !bad(e => (e.migrations ?? []).some(m => !/^\d{3}$/.test(m))))
-check('history-start entries carry the history-start date', !bad(e => e.sinceIsHistoryStart && e.since !== '22.07.2026'))
+check('history-start entries carry the history-start date', !bad(e => e.sinceIsHistoryStart && e.since !== '04.06.2026'))
 
 console.log('\nsearch + filter')
 check('empty query matches all', R.filterApis(list, [], '').length === list.length)
@@ -58,7 +58,7 @@ check('search is word-AND and case-insensitive', R.filterApis(list, [], 'GOOGLE 
 check('search folds accents', R.matchesQuery({ ...list[0], name: 'Türkçe', provider: '', purpose: '', connection: '', usedIn: [] }, 'turkce'))
 check('category counts sum to the list', R.categoryCounts(list).reduce((n, c) => n + c.count, 0) === list.length)
 
-console.log('\nsince vs git (skipped without git history)')
+console.log('\nsince vs git (needs the full history)')
 {
   const { execFileSync } = require('child_process')
   const root = path.join(__dirname, '..')
@@ -69,11 +69,18 @@ console.log('\nsince vs git (skipped without git history)')
       const [y, m, d] = out.split('-'); return `${d}.${m}.${y}`
     } catch { return null }
   }
-  const dated = list.map(e => [e, gitDate(e.sinceFrom)]).filter(([, g]) => g)
-  if (dated.length === 0) console.log('  (no git history — skipped)')
+  let shallow = true
+  try { shallow = execFileSync('git', ['rev-parse', '--is-shallow-repository'], { cwd: root, encoding: 'utf8' }).trim() !== 'false' } catch { /* no git */ }
+  // A shallow clone dates every file to its newest commit, so only full history counts.
+  const dated = shallow ? [] : list.map(e => [e, gitDate(e.sinceFrom)]).filter(([, g]) => g)
+  if (dated.length === 0) console.log('  (no full git history — skipped)')
   else {
     const off = dated.filter(([e, g]) => e.since !== g).map(([e, g]) => `${e.id}: ${e.since} ≠ ${g}`)
     check('since equals the first git commit of sinceFrom', off.length === 0, off.join('; '))
+    const firstDay = execFileSync('git', ['log', '--reverse', '--format=%ad', '--date=short'], { cwd: root, encoding: 'utf8' }).split('\n')[0].split('-').reverse().join('.')
+    const early = list.filter(e => e.since === firstDay && !e.sinceIsHistoryStart).map(e => e.id)
+    const late = list.filter(e => e.sinceIsHistoryStart && e.since !== firstDay).map(e => e.id)
+    check('"or earlier" exactly on the day the history starts', early.length === 0 && late.length === 0, [...early, ...late].join(', '))
   }
 }
 

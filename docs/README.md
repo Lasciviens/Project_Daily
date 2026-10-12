@@ -14,6 +14,7 @@ cross-AI task board → `codex-shortcuts.md`.
 
 | File | Purpose | Last verified |
 |---|---|---|
+| [deploy-setup.md](deploy-setup.md) | One-time setup of the automatic deploy (merge → migrations above 140 → edge functions → website): the two secrets `SUPABASE_ACCESS_TOKEN` and `SUPABASE_DB_URL` (Session pooler) in the GitHub environment `production`, the dry run, what to do when a run fails. | 11.10.2026 |
 | [termux-widgets.md](termux-widgets.md) | RP6 Termux widget setup/update, extension examples, installed-file map, ES-DE sync coverage, troubleshooting and dated delivery/device evidence. | 16.09.2026 |
 | [games/esde-completeness-audit.md](games/esde-completeness-audit.md) | Measured ten-game SD-to-DB comparison, whole-card media inventory, missing XML/media fields and the required non-video coverage contract. | 16.09.2026 |
 | `iphone-examples.md` | `phone-gateway` one-time server steps, the `x-phone-secret` pattern, and the full 11-action API table — deterministic `log_supplement`/`log_food`/`log_water`/`nutrition_today`/`recent_foods`/`search_library`/`sleep_stats`/`tasks_today` plus AI `ask`/`brief`/`sleep`. This table is the contract Shortcuts and widgets must match. | 24.07.2026 |

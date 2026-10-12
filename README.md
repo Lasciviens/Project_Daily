@@ -54,14 +54,16 @@ flowchart TD
     F --> G[Open draft PR]
     G --> H([User reviews & marks ready])
     H --> I[Merge to main]
-    I --> J[GitHub Actions: build-and-deploy job]
-    J --> M([GitHub Pages live ~1 min])
+    I --> J[GitHub Actions: migrations, then edge functions]
+    J --> K[then the website build-and-deploy]
+    K --> M([Everything live ~3–5 min])
 ```
 
 > **Never push directly to `main`.** All changes go through a PR.
-> GitHub Actions only builds and deploys the **frontend**. Database migrations
-> and Supabase Edge Functions are deployed **manually** (see `AGENTS.md` and
-> CLAUDE.md's Edge Functions section) — there is no CI job for either.
+> A merge deploys everything in order: new database migrations, every edge
+> function, then the website (`.github/workflows/deploy.yml`). One-time setup:
+> two secrets in the GitHub environment `production`, see
+> [`docs/deploy-setup.md`](docs/deploy-setup.md).
 
 ---
 
@@ -225,12 +227,12 @@ src/features/       one folder per feature: ai auth calendar daily devRequests d
 src/shared/         shared components (incl. UnifiedPlanModal, CommandBar), hooks, utils
 src/integrations/   supabase · tmdb · rp5-library (second Supabase project, games)
 src/security/       sessionGuard.tsx · supabaseClient.ts
-supabase/functions/ Deno edge functions — each self-contained, deployed manually
-supabase/migrations/ numbered .sql migrations — applied manually
+supabase/functions/ Deno edge functions — each self-contained, deployed on merge
+supabase/migrations/ numbered .sql migrations — those above 140 run on merge
 scripts/            generators + verification scripts, incl. iphone-shortcuts/ (Codex-owned)
 public/             PWA assets + push-sw.js (Web Push service-worker handlers)
 docs/               runbooks, coordination logs, API references — see docs/README.md
-.github/workflows/  deploy.yml — the only CI job (frontend build + Pages deploy)
+.github/workflows/  deploy.yml (migrations → functions → website) · pr-check.yml
 ```
 
 There is no unit-test framework in this repo (`@playwright/test` is the only
@@ -243,9 +245,12 @@ test dependency); one-off logic verification ships as a throwaway script under
 
 ```mermaid
 flowchart TD
-    PUSH([Push / merge to main]) --> GHA[GitHub Actions<br/>build-and-deploy]
+    PUSH([Push / merge to main]) --> GHA[GitHub Actions: Deploy<br/>always main's newest commit]
     DISPATCH([Manual workflow_dispatch]) --> GHA
-    GHA --> VITE[npm run build<br/>needs every VITE_* repo secret]
+    GHA --> TOK[backend: token check]
+    TOK --> MIG[backend: new migrations<br/>scripts/deploy/run-migrations.mjs]
+    MIG --> FN[backend: supabase functions deploy<br/>JWT settings from config.toml]
+    FN --> VITE[build-and-deploy: npm run build<br/>needs every VITE_* repo secret]
     VITE --> ARTIFACT[Upload dist/ as a Pages artifact]
     ARTIFACT --> D1[deploy-pages attempt 1<br/>continue-on-error]
     D1 -- succeeded --> PAGES([GitHub Pages live])
@@ -253,21 +258,25 @@ flowchart TD
     WAIT --> D2[deploy-pages retry<br/>this attempt gates the job]
     D2 --> PAGES
 
-    MANUAL([Manual: Supabase Dashboard / CLI]) --> MIGRATIONS[DB migrations<br/>supabase db push]
-    MANUAL --> FUNCTIONS[Edge Functions<br/>supabase functions deploy]
 ```
 
 Notes on the pipeline, all in `.github/workflows/deploy.yml`:
 
-- Only the frontend build is automated, via the official `actions/deploy-pages`
-  mechanism (not a `gh-pages` branch). Database migrations and Edge Functions
-  are **always deployed manually** — see `AGENTS.md` and CLAUDE.md's Edge
-  Functions table.
+- The `backend` job runs first: migrations numbered above 140 that have not run
+  yet (each once, recorded in `deploy.applied_migrations`), then every edge
+  function. A failing migration stops the run, so the functions and the
+  website stay on the previous version. The secrets `SUPABASE_ACCESS_TOKEN` and
+  `SUPABASE_DB_URL` live in the environment `production` (main only); without
+  them it only warns. Setup and dry run: `docs/deploy-setup.md`.
+- The website uses the official `actions/deploy-pages` mechanism (not a
+  `gh-pages` branch).
 - The Pages deploy step is intermittently flaky, so attempt 1 runs with
   `continue-on-error` and only the retry gates the job. A red-then-green run is
   expected behaviour, not a broken build.
-- `concurrency: { group: pages, cancel-in-progress: false }` — deploys queue
-  instead of cancelling each other.
+- Concurrency group `pages`, `cancel-in-progress: false` — one deploy at a
+  time; a third merge replaces a second one still waiting, which is harmless
+  because every run deploys main's newest commit. Dry runs have their own
+  group.
 - The build reads its `VITE_*` values from **GitHub Actions secrets**. A missing
   one produces a broken deploy rather than a failed build, because most of them
   only fail at call time.
