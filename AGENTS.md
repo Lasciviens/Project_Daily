@@ -371,6 +371,14 @@ which door the write came through.
   from ANY door is only *queued* by `trg_enqueue_calendar_event_delete` into
   `calendar_outbox` (migration 135); `google-tasks-sync`, which holds the
   token, removes the event.
+- **A synced workout completes its planned session in the database (migration
+  141).** `trg_hevy_workout_completes_plan` on `hevy_workouts` marks the
+  planned training task done and sets `tasks.hevy_workout_id` (never deletes,
+  never a future plan); `trg_tasks_link_training` fills `tasks.hevy_routine_id`
+  for every writer. These two columns are real FKs to the Hevy mirror (ON
+  DELETE SET NULL) — unlike 084/112, which chose none — because the sync
+  upserts Hevy rows in place. Edge functions must not close or delete
+  training tasks themselves.
 - **When adding a new "plannable" entity** (something else that can get a
   `time_blocks` row via `UnifiedPlanModal`'s `source` prop): decide whether it
   needs a cleanup-on-source-change trigger the same way `user_tv_episodes`/

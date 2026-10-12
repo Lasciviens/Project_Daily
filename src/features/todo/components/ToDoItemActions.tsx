@@ -26,8 +26,9 @@ interface Props extends ToDoItemActionHandlers {
 
 // Mobile: ONE 44px ⋯ menu instead of up to five side-by-side icon buttons —
 // those held ~136px of a 393px row and starved the title down to ~101px (a
-// normal title wrapped to six lines). Every action stays reachable, and the
-// row tap itself is still the fast path to edit.
+// normal title wrapped to six lines). Every action stays reachable; the row
+// tap is the fast path to edit (a training session's row opens the session,
+// so Edit here is how its task is edited).
 export function ToDoItemMenu({ task, ...h }: Props) {
   const isCancelled = task.status === 'cancelled'
   return (

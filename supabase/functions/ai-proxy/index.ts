@@ -2554,8 +2554,8 @@ const DB_CATALOG: Record<string, CatalogEntry> = {
   tasks: {
     access: 'rw',
     purpose: 'To-do tasks (the To-Do feature IS this table).',
-    columns: 'id, title, description, domain(personal|work|media), section(inbox|today|tomorrow|this_week|backlog), status(open|in_progress|waiting|done|cancelled), priority(low|medium|high), start_date(date; optional opening edge of a window — with due_date it means "do this between A and B"), due_date(date), due_time(time), waiting_for(text), is_focused(bool), source_type(manual|movie|tv_series|media|calendar|ai|training_session|project_item), source_id(uuid), sort_order, completed_at(timestamptz — when it was closed; use this, never updated_at, for "finished today"), created_at, updated_at',
-    rules: 'Deleting a task automatically deletes its linked time_blocks row too (task_id is ON DELETE CASCADE — no separate cleanup db_delete needed). due_date is the SOLE deadline — a task with a due_date can be late; a task\'s optional schedule slot (time_blocks linked via task_id) is a separate fact and never implies or changes due_date. If the user just wants to be reminded of something during a period ("go to the hytte this winter") with no date it must be done by, that is a wish_items row, not a task.',
+    columns: 'id, title, description, domain(personal|work|media), section(inbox|today|tomorrow|this_week|backlog), status(open|in_progress|waiting|done|cancelled), priority(low|medium|high), start_date(date; optional opening edge of a window — with due_date it means "do this between A and B"), due_date(date), due_time(time), waiting_for(text), is_focused(bool), source_type(manual|movie|tv_series|media|calendar|ai|training_session|project_item), source_id(uuid), sort_order, completed_at(timestamptz — when it was closed; use this, never updated_at, for "finished today"), hevy_routine_id(text; the Hevy routine a planned training session trains — the database fills it), hevy_workout_id(text; the Hevy workout that completed it — the database sets it), created_at, updated_at',
+    rules: 'Deleting a task automatically deletes its linked time_blocks row too (task_id is ON DELETE CASCADE — no separate cleanup db_delete needed). due_date is the SOLE deadline — a task with a due_date can be late; a task\'s optional schedule slot (time_blocks linked via task_id) is a separate fact and never implies or changes due_date. If the user just wants to be reminded of something during a period ("go to the hytte this winter") with no date it must be done by, that is a wish_items row, not a task. A planned training session is a task with source_type training_session and source_id = the routine id (hevy_routines.id), or a personal task titled exactly like the routine; the database links it (hevy_routine_id) and marks it done with the workout (hevy_workout_id) when that workout syncs — never set those two, and never delete a training task because it was trained.',
   },
   time_blocks: {
     access: 'rw',
@@ -3245,7 +3245,7 @@ async function getAthleteProfile(supabase: AnyRecord, userId: string): Promise<A
 // and a background job then changes or deletes that object; the app sets them
 // itself. Play counts are capped at the app's own 1–99 plays, because each
 // extra play becomes a Trakt history write.
-const AI_NO_WRITE = /^(google_(calendar_event_id|task_id|tasklist_id|etag|position|web_view_link|links|updated_at)|trakt_(id|note_id|note_text|list_id)|session_id|external_ref|external_source|ss_jeu_id|igdb_id|esde_(system|path|source|source_hash|assets))$/
+const AI_NO_WRITE = /^(google_(calendar_event_id|task_id|tasklist_id|etag|position|web_view_link|links|updated_at)|trakt_(id|note_id|note_text|list_id)|hevy_(routine|workout)_id|session_id|external_ref|external_source|ss_jeu_id|igdb_id|esde_(system|path|source|source_hash|assets))$/
 
 function aiWriteProblem(table: string, row: AnyRecord): string | null {
   for (const k of Object.keys(row)) {

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { AlertTriangle, Check, ChevronDown, ChevronRight, CornerDownRight } from 'lucide-react'
+import { AlertTriangle, Check, ChevronDown, ChevronRight, CornerDownRight, Dumbbell } from 'lucide-react'
 import type { Task } from '../types'
 import { useToggleTask, useDeleteTask, useUpdateTask, useTaskById, useSubtasks } from '../hooks/useTodos'
 import { useEntityModal } from '../../../shared/modals'
@@ -7,7 +7,7 @@ import { withProgress } from '../../../shared/hooks/useMutationWithFeedback'
 import { ToneDot, TonePill, Truncate, cx } from '../../../shared/ui'
 import { DOMAIN_LABEL } from '../domainColors'
 import { DOMAIN_TONE, PRIORITY_LABEL, PRIORITY_TONE, dueTone } from '../taskTones'
-import { isOverdue, dueLabel } from '../taskRules'
+import { isOverdue, isTrainingTask, dueLabel } from '../taskRules'
 import { todayStr, tomorrowStr } from '../../../shared/utils/dateUtils'
 import { windowRangeLabel } from '../../../shared/components/windowChips'
 import { useSwipeToReveal } from '../../../shared/hooks/useSwipeToReveal'
@@ -59,6 +59,10 @@ export function ToDoItem({ task, canMoveUp, canMoveDown, onMoveUp, onMoveDown, i
 
   // The hooks own error toasts + logging; only Delete gets per-call copy.
   const openEditor   = () => modal.open({ kind: 'task', id: task.id, config: { heading: 'Edit task' } })
+  // A planned training session opens as the session (its workout once
+  // trained, else its targets); ✎ still edits the task itself.
+  const training     = isTrainingTask(task)
+  const openRow      = training ? () => modal.open({ kind: 'training-session', taskId: task.id }) : openEditor
   const handleDelete = () => withProgress(() => remove.mutateAsync(task.id), { loading: 'Deleting…', success: 'Deleted' })
   const handleToggle = () => {
     if (!isDone) markJustDone(task.id)
@@ -113,12 +117,12 @@ export function ToDoItem({ task, canMoveUp, canMoveDown, onMoveUp, onMoveDown, i
           Delete
         </button>
 
-        {/* Entire row opens the editor; inline controls stopPropagation. */}
+        {/* Entire row opens the editor (a training session: the session); inline controls stopPropagation. */}
         <div
           role="button"
           tabIndex={0}
-          onClick={() => { if (!swipe.isOpen) openEditor() }}
-          onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openEditor() } }}
+          onClick={() => { if (!swipe.isOpen) openRow() }}
+          onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openRow() } }}
           className={cx(
             'group relative flex min-h-[44px] cursor-pointer items-start gap-2.5 rounded-row bg-surface px-3 py-2 transition-colors duration-150 press-feedback',
             hovered && 'bg-surface-hover',
@@ -160,7 +164,9 @@ export function ToDoItem({ task, canMoveUp, canMoveDown, onMoveUp, onMoveDown, i
             </div>
             <div className="ml-4 mt-1 flex flex-wrap items-center gap-1.5">
               {isCancelled && <TonePill tone="neutral">Cancelled</TonePill>}
-              <TonePill tone={DOMAIN_TONE[task.domain]}>{DOMAIN_LABEL[task.domain]}</TonePill>
+              {training
+                ? <TonePill tone={DOMAIN_TONE[task.domain]}><Dumbbell className="h-3 w-3" aria-hidden />Training</TonePill>
+                : <TonePill tone={DOMAIN_TONE[task.domain]}>{DOMAIN_LABEL[task.domain]}</TonePill>}
               {due?.text && (
                 <TonePill tone={due.tone} className="tabular-nums">
                   {isOverdue(task) && <AlertTriangle className="h-3 w-3" aria-label="Overdue" />}

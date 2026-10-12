@@ -154,6 +154,12 @@ check('future → upcoming (a future "activity" never marks it done)', planStatu
   check('never projected before effective_from', notYet && notYet.date === '2026-10-05', notYet && notYet.date)
   check('nothing planned → null', pickNextTrainingSession({ blocks: [], templates: [], today: '2026-09-27', nowHHMM: '12:00', lookaheadDays: 30 }) === null)
 }
+{
+  const trained = pickNextTrainingSession({ blocks: [{ id: 'B', title: 'Legs', date: '2026-09-27', start_time: '18:00:00', task_id: 't1', task_status: 'done' }], templates: [], today: '2026-09-27', nowHHMM: '07:30', lookaheadDays: 30 })
+  check('a block whose task is done (trained at 07:00) is not next', trained === null)
+  const cancelled = pickNextTrainingSession({ blocks: [{ id: 'B', title: 'Legs', date: '2026-09-28', start_time: '18:00:00', task_id: 't1', task_status: 'cancelled' }, { id: 'C', title: 'Pull', date: '2026-09-29', start_time: null, task_id: null }], templates: [], today: '2026-09-27', nowHHMM: '07:30', lookaheadDays: 30 })
+  check('a cancelled one is skipped for the next plan', cancelled?.id === 'C')
+}
 
 // ─── bodyMeasurementFields ──────────────────────────────────────────────────
 console.log('\n== bodyMeasurementFields.buildMeasurementPayload ==')

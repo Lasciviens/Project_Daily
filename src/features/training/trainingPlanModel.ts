@@ -29,6 +29,8 @@ export interface OneOffTrainingBlock {
   date:       string          // yyyy-MM-dd
   start_time: string | null   // HH:MM[:SS]
   task_id?:   string | null
+  /** Its linked task's status: a done or cancelled one is not a session to come. */
+  task_status?: string | null
 }
 
 export interface NextTrainingSession {
@@ -58,7 +60,8 @@ function hhmm(hour: number): string {
 }
 
 /** `templates` must already be the training ones. A block without a start
- *  time on today counts as still ahead (it has no time to have passed). */
+ *  time on today counts as still ahead (it has no time to have passed); a
+ *  block whose task is done (trained — migration 141) or cancelled is not. */
 export function pickNextTrainingSession(input: {
   blocks:        readonly OneOffTrainingBlock[]
   templates:     readonly RecurringBlockLike[]
@@ -68,6 +71,7 @@ export function pickNextTrainingSession(input: {
 }): NextTrainingSession | null {
   const { blocks, templates, today, nowHHMM, lookaheadDays } = input
   const candidates: NextTrainingSession[] = blocks
+    .filter(b => b.task_status !== 'done' && b.task_status !== 'cancelled')
     .filter(b => b.date > today || (b.date === today && (b.start_time ?? '99:99').slice(0, 5) >= nowHHMM))
     .map(b => ({ kind: 'block' as const, id: b.id, title: b.title, date: b.date, startTime: b.start_time?.slice(0, 5) ?? null, taskId: b.task_id ?? null }))
 

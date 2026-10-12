@@ -1,9 +1,11 @@
 import { useState } from 'react'
-import { Settings } from 'lucide-react'
+import { MapPin, Settings } from 'lucide-react'
+import { useGeolocation } from '../hooks/useGeolocation'
 import { useNow } from '../hooks/useNow'
 import { DeparturesTab } from './ruter/DeparturesTab'
 import { RoutesTab } from './ruter/RoutesTab'
 import { SettingsTab } from './ruter/SettingsTab'
+import { fmtMinsAgo } from './ruter/transitUtils'
 
 type Tab = 'routes' | 'departures' | 'settings'
 
@@ -28,30 +30,33 @@ export function TransitPanel({ active, initialTab = 'routes', planToStopId = nul
 
   return (
     <div className="min-w-0">
-      <div role="tablist" aria-label="Transit views" className="mb-4 flex items-center gap-1">
-        {TABS.map(t => (
+      <div className="mb-4 flex max-w-2xl flex-wrap items-center gap-x-2 gap-y-1">
+        <div role="tablist" aria-label="Transit views" className="flex items-center gap-1">
+          {TABS.map(t => (
+            <button
+              key={t.id}
+              type="button"
+              role="tab"
+              aria-selected={tab === t.id}
+              onClick={() => setTab(t.id)}
+              className="pill-tab"
+            >
+              {t.label}
+            </button>
+          ))}
           <button
-            key={t.id}
             type="button"
             role="tab"
-            aria-selected={tab === t.id}
-            onClick={() => setTab(t.id)}
-            className="pill-tab"
+            aria-selected={tab === 'settings'}
+            aria-label="Transit settings"
+            onClick={() => setTab('settings')}
+            className="pill-tab px-3"
           >
-            {t.label}
+            <Settings aria-hidden className="h-4 w-4" />
+            <span className="hidden sm:inline">Settings</span>
           </button>
-        ))}
-        <button
-          type="button"
-          role="tab"
-          aria-selected={tab === 'settings'}
-          aria-label="Transit settings"
-          onClick={() => setTab('settings')}
-          className="pill-tab ml-auto px-3"
-        >
-          <Settings aria-hidden className="h-4 w-4" />
-          <span className="hidden sm:inline">Settings</span>
-        </button>
+        </div>
+        {tab === 'routes' && <LocationAge now={now} />}
       </div>
 
       <div className="max-w-2xl">
@@ -66,5 +71,27 @@ export function TransitPanel({ active, initialTab = 'routes', planToStopId = nul
         )}
       </div>
     </div>
+  )
+}
+
+/**
+ * How old the shared location fix is, with a refresh. Routes plans "from
+ * here" with it (RoutesTab follows a refresh), so it sits beside the tabs.
+ */
+function LocationAge({ now }: { now: number }) {
+  const { data: geo, dataUpdatedAt, refetch, isFetching } = useGeolocation()
+  if (geo?.source !== 'gps') return null
+  return (
+    <p className="ml-auto flex items-center gap-1.5 text-micro text-fg-muted" title={`Location from ${fmtMinsAgo(dataUpdatedAt, now)}`}>
+      <MapPin aria-hidden className="h-3 w-3" /><span className="hidden sm:inline">Location from</span> {fmtMinsAgo(dataUpdatedAt, now)}
+      <button
+        type="button"
+        onClick={() => void refetch()}
+        disabled={isFetching}
+        className="min-h-[44px] min-w-[44px] px-2 font-semibold text-accent-600 disabled:opacity-50"
+      >
+        {isFetching ? 'Updating…' : 'Update'}
+      </button>
+    </p>
   )
 }

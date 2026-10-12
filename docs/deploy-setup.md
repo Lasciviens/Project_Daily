@@ -47,24 +47,37 @@ has its own queue and never replaces a real deploy waiting in line.
 2. **Generate new token**, name it `GitHub deploy`. If it asks for an expiry,
    pick the longest one; when it expires the deploy stops at "Check the access
    token" and you make a new one the same way.
-3. Copy it. It starts with `sbp_`. An API key (`eyJ…`, `sb_secret_…`,
+3. **Permissions:** keep the preset **No access** and set only two:
+   - **Project → Project Settings: Read**
+   - **Application services → Edge Functions: Read-write**
+
+   Everything else stays **None**: the migrations use the database address
+   (step 2), not this token, and a deploy never changes Edge Function
+   Secrets. Limit it to the one project. The review screen should read
+   "Read-write on 1 capability, read on 1, across 1 project". A missing
+   permission shows up as a 403 that names it (`missing_permissions`).
+4. Copy it (it is shown once). It starts with `sbp_`. An API key (`eyJ…`, `sb_secret_…`,
    `sb_publishable_…`) is the wrong thing; the workflow says so.
 
 ## 2. Database address
 
 1. Supabase Dashboard → the project **`hsaedwwqpcjizeozjbch`** (not the old
-   RP5 project) → **Connect** (top of the page) → **Connection string** →
-   **Session pooler**.
+   RP5 project) → **Connect** (top of the page) → the **Direct** tab
+   (Connection string) → **Session pooler**. (The Framework tab is for app
+   code, not this.)
 2. Copy the address. It must contain `postgres.hsaedwwqpcjizeozjbch` and
    `pooler.supabase.com:5432`, like
    `postgresql://postgres.hsaedwwqpcjizeozjbch:[YOUR-PASSWORD]@aws-…pooler.supabase.com:5432/postgres`.
    Not the "Direct connection" (`db.….supabase.co`, GitHub cannot reach it) and
    not the "Transaction pooler" (port `6543`). The workflow refuses those and
    any other project's address.
-3. Replace `[YOUR-PASSWORD]` (brackets included) with the database password.
+3. Replace `[YOUR-PASSWORD]` (brackets included) with the database password
+   — not your Supabase login, not an API key.
    - Don't know it? Project Settings → Database → **Reset database password**
      → **Generate a password**. The app does not use this password (its
      functions use API keys), so resetting it changes nothing else here.
+     A new password can take a few minutes to work; until then the dry run
+     says "password authentication failed".
    - A password with characters other than letters and digits must be
      URL-encoded (`@` → `%40`, `:` → `%3A`, `/` → `%2F`, `#` → `%23`,
      `%` → `%25`); a generated one avoids that.

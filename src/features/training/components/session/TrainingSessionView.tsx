@@ -1,12 +1,13 @@
 import { useEffect, useMemo, type ReactNode } from 'react'
 import { CalendarPlus } from 'lucide-react'
-import { ModalShell } from '../../../../shared/modals'
+import { ModalShell, useEntityModal } from '../../../../shared/modals'
 import { Button, SkeletonText, TonePill, Truncate } from '../../../../shared/ui'
 import { useHevyWorkoutDetail } from '../../hooks/useHevyWorkouts'
 import { useHevyRoutines } from '../../hooks/useHevyRoutines'
 import { useCurrentProgramRoutines } from '../../hooks/useAthleteProfile'
 import { useTrainingSkips } from '../../hooks/useTrainingSkips'
 import { useSessionAnchor, useSessionDay, type SessionRequest } from '../../hooks/useTrainingSessionDetail'
+import { formatWeekdayDate } from '../../../../shared/utils/dateFormat'
 import { matchRoutineToPlan } from '../../plan/nextSession'
 import { skipCovering, skippedText } from '../../plan/skippedRoutines'
 import { openPlanRoutine } from '../../planTraining'
@@ -41,8 +42,11 @@ const menuPlans = (plans: readonly CalendarPlanItem[], date: string): MenuPlan[]
  * session, so opening never flashes a second dialog.
  */
 export function TrainingSessionView({ request, onClose }: { request: SessionRequest; onClose: () => void }) {
+  const modal = useEntityModal()
   const anchor = useSessionAnchor(request)
-  const { resolved, todayStr } = useSessionDay(request, anchor.date, anchor.planRow)
+  const shown = anchor.request
+  const orphan = anchor.orphanTask
+  const { resolved, todayStr } = useSessionDay(shown, anchor.date, anchor.planRow)
   const workoutQ = useHevyWorkoutDetail(resolved?.kind === 'workout' ? resolved.workoutId : null)
   const routinesQ = useHevyRoutines()
   const { data: program } = useCurrentProgramRoutines()
@@ -59,23 +63,41 @@ export function TrainingSessionView({ request, onClose }: { request: SessionRequ
   const routine = useMemo<HevyRoutine | null>(() => {
     const routines = routinesQ.data ?? []
     if (workout) return workout.routine_id ? routines.find(r => r.id === workout.routine_id) ?? null : null
+    if (orphan) return routines.find(r => r.id === orphan.hevy_routine_id || r.id.toLowerCase() === orphan.source_id) ?? null
     if (!planItem || !date) return null
     const programIds = new Set((program ?? []).map(p => p.routine_id))
     return matchRoutineToPlan({ title: planItem.title, date, startTime: planStartHHMM(planItem), sourceId: planRoutineId(planItem) }, routines, programIds)
-  }, [routinesQ.data, workout, planItem, date, program])
+  }, [routinesQ.data, workout, orphan, planItem, date, program])
 
   let title: ReactNode = 'Loading…'
   let subtitle: ReactNode | undefined
   let body: ReactNode = <SkeletonText lines={5} />
   let actions: ReactNode = null
 
-  const anchorFailed = !date && ((anchor.query.isError && !anchor.query.isFetching) || (anchor.query.isSuccess && !anchor.query.isFetching))
-  if (anchorFailed) {
+  const anchorFailed = !date && !orphan && ((anchor.query.isError && !anchor.query.isFetching) || (anchor.query.isSuccess && !anchor.query.isFetching))
+  if (orphan) {
+    // A training task with no time on the calendar and no workout yet: the
+    // session's exercises and targets, and its task to give it a time.
+    const done = orphan.status === 'done'
+    title = orphan.title
+    subtitle = orphan.due_date ? formatWeekdayDate(orphan.due_date, 'long') : undefined
+    body = (
+      <div className="flex flex-col gap-4">
+        <StatusLine pill={<TonePill tone={done ? WORKOUT_TONE : 'neutral'}>{done ? SESSION_STATUS_LABEL.done : 'No time set'}</TonePill>}>
+          <span>{done ? 'Marked done; no Hevy workout is linked to it.' : 'Not on your calendar yet.'}</span>
+          <Button size="sm" onClick={() => modal.open({ kind: 'task', id: orphan.id, config: { heading: 'Edit task' } })}>
+            {done ? 'Edit task' : 'Set a time'}
+          </Button>
+        </StatusLine>
+        <PlannedSessionBody routine={routine} routinesLoading={routinesQ.isLoading} todayStr={todayStr} />
+      </div>
+    )
+  } else if (anchorFailed) {
     const failed = anchor.query.isError
-    title = request.workoutId ? 'Can’t open this workout' : 'Can’t open this session'
+    title = shown.workoutId ? 'Can’t open this workout' : 'Can’t open this session'
     body = failed
       ? <div className="flex flex-col items-start gap-3"><p className="text-body text-fg-2">Couldn’t load it.</p><Button size="sm" onClick={() => { void anchor.query.refetch() }}>Try again</Button></div>
-      : <p className="text-body text-fg-2">{request.workoutId ? 'This workout no longer exists.' : 'This planned session no longer exists.'}</p>
+      : <p className="text-body text-fg-2">{shown.workoutId ? 'This workout no longer exists.' : 'This planned session no longer exists.'}</p>
   } else if (resolved?.kind === 'missing') {
     title = 'Can’t open this session'
     body = <p className="text-body text-fg-2">This planned session no longer exists.</p>

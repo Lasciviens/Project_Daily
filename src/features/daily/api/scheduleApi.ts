@@ -117,13 +117,16 @@ export async function fetchCalendarLinkedTaskIds(taskIds: string[]): Promise<Set
 export async function fetchTrainingBlocksRange(from: string, to: string): Promise<TimeBlock[]> {
   const { data, error } = await supabase
     .from('time_blocks')
-    .select('*')
+    .select('*, task:tasks(status)')
     .eq('category', 'training')
     .gte('date', from)
     .lte('date', to)
     .order('date', { ascending: true })
   if (error) throw error
-  return data ?? []
+  // The linked task's status rides along so a trained session (its task done,
+  // migration 141) stops being "next"; the embed itself is not kept.
+  return (data ?? []).map(({ task, ...b }: TimeBlock & { task: { status: TimeBlock['task_status'] } | null }) =>
+    ({ ...b, task_status: task?.status ?? null }))
 }
 
 export async function createTimeBlock(input: CreateTimeBlockInput): Promise<TimeBlock> {

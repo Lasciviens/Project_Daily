@@ -52,6 +52,12 @@ export interface Task {
   google_local_edit_at:     string | null
   /** ONE canonical flag for "should this task sync to Google Tasks" — true once the app opts a task in (replaces the old inline skipGoogleTasks check); false covers both a plain local-only task and one deliberately excluded because it's linked to a Google Calendar event instead. Never two opposite-sense booleans. */
   google_sync_enabled:      boolean
+
+  // ── Training (migration 141) — undefined before it runs ───────────────────
+  /** The Hevy routine this task plans; filled by the database for every writer. */
+  hevy_routine_id?:         string | null
+  /** The Hevy workout that completed it; set by the database when the workout syncs. */
+  hevy_workout_id?:         string | null
 }
 
 export interface CreateTaskInput {

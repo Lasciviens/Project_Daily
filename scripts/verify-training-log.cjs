@@ -326,5 +326,11 @@ console.log('\n== trainingTabs ==')
   check('…only on Log', tabs.movedLogView('library', 'body') === null && tabs.movedLogView('log', 'hevy') === null)
 }
 
+console.log('\nsessionForTask (a training task opens as its session, migration 141)')
+check('a linked workout wins', JSON.stringify(sr.sessionForTask({ hevy_workout_id: 'w1' }, { id: 'b1', date: '2026-10-12' })) === JSON.stringify({ workoutId: 'w1' }))
+check('else its block', JSON.stringify(sr.sessionForTask({ hevy_workout_id: null }, { id: 'b1', date: '2026-10-12' })) === JSON.stringify({ plan: { kind: 'block', id: 'b1', date: '2026-10-12' } }))
+check('before 141 (no column) the block still opens', JSON.stringify(sr.sessionForTask({}, { id: 'b1', date: '2026-10-12' })) === JSON.stringify({ plan: { kind: 'block', id: 'b1', date: '2026-10-12' } }))
+check('neither: nothing to anchor to', sr.sessionForTask({ hevy_workout_id: null }, null) === null)
+
 console.log(`\n${passed} passed, ${failed} failed`)
 process.exit(failed ? 1 : 0)

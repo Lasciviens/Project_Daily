@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { useTravelProfile, type WalkPace } from '../../hooks/useTravelProfile'
+import { useTravelProfile, WALK_SPEED_MPS, type WalkPace } from '../../hooks/useTravelProfile'
 import { cx } from '../../../../shared/ui'
 
 function Choice({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
@@ -18,6 +18,13 @@ function Choice({ active, onClick, children }: { active: boolean; onClick: () =>
   )
 }
 
+/** "about 4.7 km/h — a 400 m walk takes about 5 min" for a pace. */
+function paceEffect(pace: WalkPace): string {
+  const mps = WALK_SPEED_MPS[pace]
+  const kmh = (mps * 3.6).toFixed(1)
+  return `About ${kmh} km/h — a 400 m walk takes about ${Math.round(400 / mps / 60)} min.`
+}
+
 /** Walking pace, transfers and accessibility — applied to every route search (Transit settings, Settings → Places). */
 export function TravelProfileFields() {
   const { profile, update: updateProfile } = useTravelProfile()
@@ -30,6 +37,11 @@ export function TravelProfileFields() {
             <Choice key={pace} active={profile.walkPace === pace} onClick={() => updateProfile({ walkPace: pace })}>{pace}</Choice>
           ))}
         </div>
+        <p className="mt-1.5 text-meta text-fg-muted">
+          {paceEffect(profile.walkPace)} Every walk in a trip (to the stop, between platforms, to where you're
+          going) is timed at this pace, so it changes when to leave and which changes are reachable. Slow leaves
+          more time; Fast allows tighter changes.
+        </p>
       </div>
       <div>
         <p className="field-label">Maximum transfers</p>
