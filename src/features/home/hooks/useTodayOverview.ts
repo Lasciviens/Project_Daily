@@ -104,10 +104,17 @@ export function useTodayOverview(date: string = todayStr()): TodayOverview {
     )
 
     const blockById = new Map([...(prevBlocksQ.data ?? []), ...blocks].map(b => [b.id, b]))
+    // A block whose task is closed (done — a trained session, migration 141 —
+    // or cancelled) is not what's next; it stays on the day's agenda.
+    const closedTaskIds = new Set([
+      ...(tasksQ.data ?? []).filter(t => t.status === 'done' || t.status === 'cancelled').map(t => t.id),
+      ...(trainingQ.data ?? []).filter(b => b.task_id && (b.task_status === 'done' || b.task_status === 'cancelled')).map(b => b.task_id as string),
+    ])
     const templateById = new Map(templates.map(t => [t.id, t]))
     const items: NextUpItem[] = []
     for (const p of projectOneOffBlocksForDay(blocks, prevBlocksQ.data ?? [])) {
       if (p.startHour < 0) continue // unscheduled — no place in a timeline
+      if (p.taskId && closedTaskIds.has(p.taskId)) continue
       const b = blockById.get(p.canonicalId)
       items.push({ kind: 'block', id: p.canonicalId, title: p.title, startHour: p.startHour, endHour: p.endHour, inProgress: false, startLabel: hourLabel(p.startHour), taskId: p.taskId, category: b?.category ?? null, planDate: b?.date ?? date })
     }

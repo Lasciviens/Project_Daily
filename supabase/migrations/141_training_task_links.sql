@@ -22,15 +22,20 @@
 --   hevy_routine_id for every writer: from source_id on a training_session
 --   task, or — for a personal task the assistant or a person typed — from the
 --   ONE routine whose title is exactly the task's title (case and outer
---   spaces ignored; two routines with that title link nothing).
+--   spaces ignored; two routines with that title link nothing). It is
+--   recomputed when the title or source changes, and reopening a done task
+--   drops its workout.
 --
 --   trg_hevy_workout_completes_plan (AFTER INSERT/UPDATE OF routine_id,
 --   start_time on hevy_workouts) marks the planned task done and links the
 --   workout: the open plan of the same routine on the workout's day (Oslo)
 --   or up to 6 days before it (a session done a day late), else the ONE open
 --   training plan on that day (a freeform workout, or another routine done
---   in its place — the calendar already shows it as "in place of"). A plan
---   the person ticked done that day is linked too, its status left alone.
+--   in its place — the calendar already shows it as "in place of"); a
+--   workout of the plan's own routine that day later takes the plan over
+--   from such a stand-in. A plan the person ticked done that day is linked
+--   too, its status left alone. A workout deleted in Hevy leaves its plan
+--   done (the link goes; the session happened).
 --   Never a future plan, never a delete; a workout links at most one task.
 --   The Hevy functions no longer delete anything (same PR).
 --
@@ -54,6 +59,10 @@ CREATE INDEX IF NOT EXISTS tasks_training_plans
   ON public.tasks (user_id, hevy_routine_id) WHERE hevy_routine_id IS NOT NULL;
 
 -- ── 1. Every training task knows its routine ────────────────────────────────
+-- Filled on insert, and recomputed when the title, domain or source changes
+-- (a task renamed away from a routine's name loses the link) — unless that
+-- same write set hevy_routine_id itself. Reopening a done task (or
+-- cancelling it) drops its workout, so a later workout can complete it.
 CREATE OR REPLACE FUNCTION public.tasks_link_training()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -63,25 +72,36 @@ DECLARE
   r_id text;
   n    int;
 BEGIN
-  IF NEW.hevy_routine_id IS NULL THEN
-    IF NEW.source_type = 'training_session' AND NEW.source_id IS NOT NULL THEN
-      SELECT r.id INTO r_id FROM hevy_routines r
-       WHERE lower(r.id) = NEW.source_id::text AND r.user_id = NEW.user_id;
-    ELSIF NEW.source_type IN ('manual', 'ai') AND NEW.domain = 'personal' THEN
-      SELECT min(r.id), count(*) INTO r_id, n FROM hevy_routines r
-       WHERE r.user_id = NEW.user_id
-         AND lower(btrim(r.title)) = lower(btrim(NEW.title));
-      IF n <> 1 THEN r_id := NULL; END IF;
-    END IF;
-    NEW.hevy_routine_id := r_id;
+  IF TG_OP = 'UPDATE' AND OLD.status = 'done' AND NEW.status <> 'done'
+     AND NEW.hevy_workout_id IS NOT DISTINCT FROM OLD.hevy_workout_id THEN
+    NEW.hevy_workout_id := NULL;
   END IF;
+
+  IF TG_OP = 'INSERT' THEN
+    IF NEW.hevy_routine_id IS NOT NULL THEN RETURN NEW; END IF;
+  ELSIF NEW.hevy_routine_id IS DISTINCT FROM OLD.hevy_routine_id
+     OR (NEW.title, NEW.domain, NEW.source_type, NEW.source_id)
+        IS NOT DISTINCT FROM (OLD.title, OLD.domain, OLD.source_type, OLD.source_id) THEN
+    RETURN NEW;
+  END IF;
+
+  IF NEW.source_type = 'training_session' AND NEW.source_id IS NOT NULL THEN
+    SELECT r.id INTO r_id FROM hevy_routines r
+     WHERE lower(r.id) = NEW.source_id::text AND r.user_id = NEW.user_id;
+  ELSIF NEW.source_type IN ('manual', 'ai') AND NEW.domain = 'personal' THEN
+    SELECT min(r.id), count(*) INTO r_id, n FROM hevy_routines r
+     WHERE r.user_id = NEW.user_id
+       AND lower(btrim(r.title)) = lower(btrim(NEW.title));
+    IF n <> 1 THEN r_id := NULL; END IF;
+  END IF;
+  NEW.hevy_routine_id := r_id;
   RETURN NEW;
 END;
 $$;
 
 DROP TRIGGER IF EXISTS trg_tasks_link_training ON public.tasks;
 CREATE TRIGGER trg_tasks_link_training
-  BEFORE INSERT OR UPDATE OF title, domain, source_type, source_id, hevy_routine_id ON public.tasks
+  BEFORE INSERT OR UPDATE OF title, domain, source_type, source_id, hevy_routine_id, status ON public.tasks
   FOR EACH ROW EXECUTE FUNCTION public.tasks_link_training();
 
 -- ── 2. A synced workout completes its planned session ───────────────────────
@@ -109,9 +129,14 @@ AS $$
      AND (c.status <> 'done' OR c.plan_day = p_day)
 $$;
 
+REVOKE ALL ON FUNCTION public.training_plan_candidates(uuid, date) FROM PUBLIC, anon, authenticated;
+
+-- SECURITY DEFINER so the rule never depends on who wrote the workout (it
+-- only ever reads and writes NEW.user_id's own tasks).
 CREATE OR REPLACE FUNCTION public.hevy_workout_completes_plan()
 RETURNS trigger
 LANGUAGE plpgsql
+SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
@@ -124,16 +149,44 @@ BEGIN
   IF EXISTS (SELECT 1 FROM tasks WHERE hevy_workout_id = NEW.id) THEN RETURN NEW; END IF;
   w_day := (NEW.start_time AT TIME ZONE 'Europe/Oslo')::date;
 
-  -- The plan of this routine: on the day first, then the latest overdue one;
-  -- an open plan before one already ticked.
+  -- 1. This routine's plan on the workout's day (an open one before one
+  --    already ticked by hand).
   IF NEW.routine_id IS NOT NULL THEN
     SELECT c.id INTO t_id FROM training_plan_candidates(NEW.user_id, w_day) c
-     WHERE c.routine = NEW.routine_id
-     ORDER BY (c.plan_day = w_day) DESC, (c.status <> 'done') DESC, c.plan_day DESC, c.created_at
+     WHERE c.routine = NEW.routine_id AND c.plan_day = w_day
+     ORDER BY (c.status <> 'done') DESC, c.created_at
      LIMIT 1;
   END IF;
 
-  -- Otherwise the one training plan on that day, if there is exactly one.
+  -- 2. This routine's plan on that day that step 4 gave to another workout
+  --    (a freeform run synced first): this workout is its own — take it over.
+  IF t_id IS NULL AND NEW.routine_id IS NOT NULL THEN
+    SELECT t.id INTO t_id
+      FROM tasks t JOIN hevy_workouts w ON w.id = t.hevy_workout_id
+     WHERE t.user_id = NEW.user_id
+       AND t.hevy_routine_id = NEW.routine_id
+       AND w.routine_id IS DISTINCT FROM NEW.routine_id
+       AND COALESCE((SELECT min(b.date) FROM time_blocks b WHERE b.task_id = t.id), t.due_date) = w_day
+     ORDER BY t.created_at
+     LIMIT 1;
+    IF t_id IS NOT NULL THEN
+      UPDATE tasks
+         SET hevy_workout_id = NEW.id,
+             completed_at    = COALESCE(NEW.end_time, NEW.start_time)
+       WHERE id = t_id;
+      RETURN NEW;
+    END IF;
+  END IF;
+
+  -- 3. This routine's latest overdue plan (done a few days late).
+  IF t_id IS NULL AND NEW.routine_id IS NOT NULL THEN
+    SELECT c.id INTO t_id FROM training_plan_candidates(NEW.user_id, w_day) c
+     WHERE c.routine = NEW.routine_id AND c.plan_day < w_day
+     ORDER BY c.plan_day DESC, c.created_at
+     LIMIT 1;
+  END IF;
+
+  -- 4. Otherwise the one training plan on that day, if there is exactly one.
   IF t_id IS NULL THEN
     SELECT min(c.id::text)::uuid, count(*) INTO t_id, n
       FROM training_plan_candidates(NEW.user_id, w_day) c WHERE c.plan_day = w_day;

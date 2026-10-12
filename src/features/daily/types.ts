@@ -45,6 +45,9 @@ export interface TimeBlock {
   episode_number?:  number | null
   notes:            string | null
   google_calendar_event_id?: string | null
+  /** Its linked task's status — only on the training-range read
+   *  (fetchTrainingBlocksRange): a trained session (task done) is no longer "next". */
+  task_status?:     'open' | 'in_progress' | 'done' | 'cancelled' | null
   created_at:       string
   updated_at:       string
 }

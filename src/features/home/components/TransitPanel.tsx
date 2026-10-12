@@ -88,7 +88,7 @@ function LocationAge({ now }: { now: number }) {
         type="button"
         onClick={() => void refetch()}
         disabled={isFetching}
-        className="min-h-[44px] font-semibold text-accent-600 disabled:opacity-50"
+        className="min-h-[44px] min-w-[44px] px-2 font-semibold text-accent-600 disabled:opacity-50"
       >
         {isFetching ? 'Updating…' : 'Update'}
       </button>

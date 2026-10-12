@@ -73,7 +73,9 @@ export function useSessionAnchor(asked: SessionRequest): SessionAnchor {
   }
   if (req.plan?.kind === 'block') return { ...base, date: block ? block.date : null, planRow, query: blockQ }
   if (req.plan?.kind === 'recurring') return { ...base, date: template ? recurringDate : null, planRow, query: templateQ as UseQueryResult<unknown> }
-  if (asked.taskId) return { ...base, date: null, planRow: null, query: (taskBlockQ.isError ? taskBlockQ : taskQ) as UseQueryResult<unknown> }
+  // A task still resolving: its own read until it is there, then its block's
+  // (so a finished task read alone never reads as "no longer exists").
+  if (asked.taskId) return { ...base, date: null, planRow: null, query: (!task || taskQ.isError ? taskQ : taskBlockQ) as UseQueryResult<unknown> }
   return { ...base, date: null, planRow: null, query: workoutQ }
 }
 
