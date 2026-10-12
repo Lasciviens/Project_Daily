@@ -16,7 +16,7 @@ export function PlaceButtons({ stops, disabled, onPick }: {
   const missing = places.filter(p => !p.stop).map(p => PLACE_LABEL[p.kind])
   return (
     <div>
-      <div className="grid grid-cols-2 gap-2 sm:max-w-md">
+      <div className="flex flex-wrap gap-2">
         {places.map(({ kind, stop }) => {
           const Icon = PLACE_ICON[kind]
           return (
@@ -25,7 +25,7 @@ export function PlaceButtons({ stops, disabled, onPick }: {
               type="button"
               disabled={!stop || disabled}
               onClick={() => stop && onPick(stop)}
-              className="flex min-h-[48px] items-center justify-center gap-2 rounded-control border border-line bg-surface-2 px-3 text-body font-semibold text-fg transition-colors duration-150 hover:bg-surface-hover disabled:opacity-50"
+              className="flex min-h-[44px] items-center gap-1.5 rounded-control border border-line bg-surface-2 px-3 text-meta font-semibold text-fg transition-colors duration-150 hover:bg-surface-hover disabled:opacity-50"
             >
               <Icon aria-hidden className="h-4 w-4 shrink-0 text-accent-600" />To {PLACE_LABEL[kind].toLowerCase()}
             </button>

@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react'
-import { ArrowUpDown, LocateFixed, MapPin, Plus, RefreshCw, Save, X } from 'lucide-react'
+import { ArrowUpDown, LocateFixed, Plus, RefreshCw, Save, X } from 'lucide-react'
 import { quayLabel, type StopResult, type TransitPlace } from '../../api/ruterApi'
 import { useTransitRoutes, type UserTransitRoute } from '../../hooks/useTransitRoutes'
 import { useTransitStops, type UserTransitStop } from '../../hooks/useTransitStops'
@@ -9,7 +9,7 @@ import { useStopDirections, useTrips } from '../../hooks/useTransitQueries'
 import { Button, IconButton, SectionLabel, Skeleton, Truncate, cx } from '../../../../shared/ui'
 import { StopSearchInput } from './StopSearchInput'
 import { TripCard } from './TripCard'
-import { fmtLastUpdated, fmtMinsAgo, fmtTime } from './transitUtils'
+import { fmtLastUpdated, fmtTime } from './transitUtils'
 import { toast } from '../../../../app/store'
 import { DateInput } from '../../../../shared/components/DateInput'
 import { todayStr as todayString } from '../../../../shared/utils/dateUtils'
@@ -194,7 +194,7 @@ export function RoutesTab({ active, now, pendingRouteId, onRouteConsumed, pendin
   const { routes, addRoute, removeRoute } = useTransitRoutes()
   const { stops: savedStops, isLoading: stopsLoading } = useTransitStops()
   const { recent: recentSearches, recordSearch } = useTransitRecentSearches()
-  const { data: geo, dataUpdatedAt: geoUpdatedAt, refetch: refetchGeo, isFetching: geoRefreshing } = useGeolocation()
+  const { data: geo, dataUpdatedAt: geoUpdatedAt } = useGeolocation()
 
   const [draftFrom,      setDraftFrom]      = useState<TransitPlace | null>(null)
   const [draftTo,        setDraftTo]        = useState<TransitPlace | null>(null)
@@ -223,6 +223,15 @@ export function RoutesTab({ active, now, pendingRouteId, onRouteConsumed, pendin
   if (!autoFilledFrom && !draftFrom && geo?.source === 'gps') {
     setDraftFrom({ kind: 'coords', lat: geo.lat, lon: geo.lon, name: 'Current location' })
     setAutoFilledFrom(true)
+  }
+  // The panel's "Location from … · Update" (TransitPanel) refreshes the shared
+  // fix; a From still set to the current location follows it.
+  const [seenGeoAt, setSeenGeoAt] = useState(geoUpdatedAt)
+  if (geoUpdatedAt !== seenGeoAt) {
+    setSeenGeoAt(geoUpdatedAt)
+    if (geo?.source === 'gps' && draftFrom?.kind === 'coords' && draftFrom.name === 'Current location') {
+      setDraftFrom({ kind: 'coords', lat: geo.lat, lon: geo.lon, name: 'Current location' })
+    }
   }
 
   // A favorite Route selected from the Settings tab lands here once, applied
@@ -332,16 +341,6 @@ export function RoutesTab({ active, now, pendingRouteId, onRouteConsumed, pendin
       setPlace(place); setState('granted')
     } catch (e) {
       setState(reportLocationError(e as GeolocationPositionError))
-    }
-  }
-
-  // Explicit "update current location" escape hatch — forces a fresh GPS read
-  // (bypassing the cache) and, if From is currently set to the cached location,
-  // refreshes it in place too.
-  async function refreshCurrentLocation() {
-    const { data: fresh } = await refetchGeo()
-    if (fresh?.source === 'gps' && draftFrom?.kind === 'coords') {
-      setDraftFrom({ kind: 'coords', lat: fresh.lat, lon: fresh.lon, name: 'Current location' })
     }
   }
 
@@ -496,28 +495,13 @@ export function RoutesTab({ active, now, pendingRouteId, onRouteConsumed, pendin
         </div>
       )}
 
-      {/* Current-location freshness — the cached fix is reused (see
-          resolveGpsPlace), so say how old it is and offer a refresh. */}
-      {geo?.source === 'gps' && (
-        <p className="-mt-2 flex flex-wrap items-center gap-x-1.5 text-micro text-fg-muted">
-          <MapPin aria-hidden className="h-3 w-3" /> Using location from {fmtMinsAgo(geoUpdatedAt, now)}
-          <button
-            type="button"
-            onClick={refreshCurrentLocation}
-            disabled={geoRefreshing}
-            className="min-h-[44px] font-semibold text-accent-600 disabled:opacity-50"
-          >
-            {geoRefreshing ? 'Updating…' : 'Update'}
-          </button>
-        </p>
-      )}
       {fromLocState === 'loading' && !geo && (
         <p className="text-micro text-fg-muted">Getting location…</p>
       )}
 
       {/* Planner form — collapses to a summary bar after planning */}
       {formCollapsed && search ? (
-        <div className="flex items-center gap-2 px-3 py-3 bg-accent-50 border border-accent-500/30 rounded-row">
+        <div className="flex w-fit max-w-full items-center gap-2 rounded-row border border-accent-500/30 bg-accent-50 py-2 pl-3 pr-1 sm:max-w-sm">
           {/* Route summary with colored origin/dest dots */}
           <div className="flex-1 min-w-0 space-y-0.5">
             <div className="flex items-center gap-1.5 min-w-0">
