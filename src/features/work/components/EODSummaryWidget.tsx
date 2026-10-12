@@ -3,7 +3,9 @@ import type { ReactNode } from 'react'
 import type { Task } from '../../todo/types'
 import type { Tone } from '../../../shared/ui'
 import { STATUS_TONE } from '../../todo/taskTones'
-import { OVERDUE_TONE, isOverdue, isCompletedToday } from './workMeta'
+import { OVERDUE_TONE } from './workMeta'
+import { countTasks } from '../../todo/taskRules'
+import { todayStr } from '../../../shared/utils/dateUtils'
 
 function StatRow({ icon, label, count, tone }: { icon: ReactNode; label: string; count: number; tone: Tone }) {
   return (
@@ -17,11 +19,9 @@ function StatRow({ icon, label, count, tone }: { icon: ReactNode; label: string;
 
 // Rendered inside WorkSidebar's rail card (no chrome of its own).
 export default function EODSummaryWidget({ tasks }: { tasks: Task[] }) {
-  const done       = tasks.filter(t => t.status === 'done' && isCompletedToday(t)).length
-  const inProgress = tasks.filter(t => t.status === 'in_progress').length
-  const open       = tasks.filter(t => t.status === 'open').length
-  const waiting    = tasks.filter(t => t.status === 'waiting').length
-  const overdue    = tasks.filter(isOverdue).length
+  // The same counts as the header and Daily (taskRules): done = closed today.
+  const today = todayStr()
+  const { done, inProgress, todo: open, waiting, overdue } = countTasks(tasks, today, today)
 
   if (done > 0 && inProgress === 0 && open === 0 && waiting === 0 && overdue === 0) {
     return (

@@ -1,25 +1,25 @@
 import { useMemo } from 'react'
-import { useTasksForDay } from '../../todo/hooks/useTodos'
+import { useDayTasks } from '../../todo/hooks/useTodos'
 import { useTimeBlocks, useTrainingBlocks, useScheduleBlocks } from '../../daily/hooks/useSchedule'
 import { useCalendarEventsForDay } from '../../calendar/hooks/useCalendar'
-import {
-  projectOneOffBlocksForDay, projectRecurringBlocksForDay, projectCalendarEventForDay,
-} from '../../daily/components/dayAgendaProjection'
-import { closedOn, isOverdue } from '../../todo/taskRules'
+import { aheadOnDay, buildDaySchedule, plannedMinutes } from '../../daily/daySchedule'
+import type { TaskCounts } from '../../todo/taskRules'
 import { shiftDateStr, todayStr } from '../../../shared/utils/dateUtils'
+import { useNow } from './useNow'
 import { pickNextTrainingSession, type NextTrainingSession } from '../../training/trainingPlanModel'
 import { NEXT_SESSION_LOOKAHEAD_DAYS } from '../../training/hooks/useTrainingSessions'
 import type { ScheduleBlock } from '../../daily/types'
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  One source for "what does today look like": task counts, what's next on
-//  the schedule and the next training session. The Home hero, Daily's quick
-//  rail and the training card should all read this instead of re-deriving it
-//  (each copy used to disagree — cancelled tasks in one denominator and not
-//  another, recurring templates and calendar events missing from "next up").
+//  One source for "what does a day look like": its task counts (the one day
+//  list, taskRules.dayTasks), what's next and how much time it holds (the one
+//  day schedule, daily/daySchedule) and the next training session. The Home
+//  hero and Daily's rail read this; Daily's agenda builds the same schedule.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export interface NextUpItem {
+  /** Unique on the day (a weekly plan can show twice: yesterday's tail and today's). */
+  key: string
   kind: 'block' | 'recurring' | 'calendar'
   /** Real time_blocks / schedule_blocks id or Google event id (edit routing). */
   id: string
@@ -44,10 +44,12 @@ export interface NextUpItem {
 export type NextTrainingItem = NextTrainingSession
 
 export interface TodayOverview {
-  tasks: { open: number; done: number; overdue: number; total: number }
+  tasks: TaskCounts
   nextUp: NextUpItem | null
   /** Everything left on the viewed day's schedule, in order (in-progress first). */
   upcoming: NextUpItem[]
+  /** Minutes the day's schedule holds (every timed item, its own portion). */
+  plannedMinutes: number
   nextTraining: NextTrainingItem | null
   /** The training session after `nextTraining` — what the Home hero shows when
    *  the next training is already the "Next up" item, so one session is never
@@ -69,69 +71,33 @@ function minuteAfter(hhmm: string): string {
   return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`
 }
 
-const dayOfWeekOf = (dateStr: string) => new Date(`${dateStr}T00:00:00`).getDay()
-
 export function useTodayOverview(date: string = todayStr()): TodayOverview {
   const prevDay = shiftDateStr(date, -1)
   const trainingTo = shiftDateStr(date, NEXT_SESSION_LOOKAHEAD_DAYS)
 
-  const tasksQ = useTasksForDay(new Date(`${date}T00:00:00`), 'today')
+  const dayTasks = useDayTasks(date)
   const blocksQ = useTimeBlocks(date)
   const prevBlocksQ = useTimeBlocks(prevDay)
   const templatesQ = useScheduleBlocks()
   const calendarQ = useCalendarEventsForDay(date)
   const trainingQ = useTrainingBlocks(date, trainingTo)
+  // The clock ticks on today, so "Now" / "Next up" move on without a refetch.
+  const nowMs = useNow(date === todayStr(), 60_000)
 
   return useMemo(() => {
     const isToday = date === todayStr()
-    const now = new Date()
+    const now = new Date(nowMs)
     const nowHour = now.getHours() + now.getMinutes() / 60
 
-    // Counts: done only when it was closed on this day (completed_at), cancelled never counts.
-    const tasks = (tasksQ.data ?? []).filter(t =>
-      t.status !== 'cancelled' && (t.status !== 'done' || closedOn(t, date)))
-    const taskCounts = {
-      open: tasks.filter(t => t.status !== 'done').length,
-      done: tasks.filter(t => t.status === 'done').length,
-      overdue: tasks.filter(isOverdue).length,
-      total: tasks.length,
-    }
-
-    const blocks = blocksQ.data ?? []
     const templates: ScheduleBlock[] = templatesQ.data ?? []
-    const linkedEventIds = new Set(
-      [...blocks, ...(prevBlocksQ.data ?? [])].map(b => b.google_calendar_event_id).filter(Boolean) as string[],
-    )
-
-    const blockById = new Map([...(prevBlocksQ.data ?? []), ...blocks].map(b => [b.id, b]))
-    // A block whose task is closed (done — a trained session, migration 141 —
-    // or cancelled) is not what's next; it stays on the day's agenda.
-    const closedTaskIds = new Set([
-      ...(tasksQ.data ?? []).filter(t => t.status === 'done' || t.status === 'cancelled').map(t => t.id),
-      ...(trainingQ.data ?? []).filter(b => b.task_id && (b.task_status === 'done' || b.task_status === 'cancelled')).map(b => b.task_id as string),
-    ])
-    const templateById = new Map(templates.map(t => [t.id, t]))
-    const items: NextUpItem[] = []
-    for (const p of projectOneOffBlocksForDay(blocks, prevBlocksQ.data ?? [])) {
-      if (p.startHour < 0) continue // unscheduled — no place in a timeline
-      if (p.taskId && closedTaskIds.has(p.taskId)) continue
-      const b = blockById.get(p.canonicalId)
-      items.push({ kind: 'block', id: p.canonicalId, title: p.title, startHour: p.startHour, endHour: p.endHour, inProgress: false, startLabel: hourLabel(p.startHour), taskId: p.taskId, category: b?.category ?? null, planDate: b?.date ?? date })
-    }
-    for (const p of projectRecurringBlocksForDay(date, dayOfWeekOf(date), templates)) {
-      items.push({ kind: 'recurring', id: p.canonicalId, title: p.title, startHour: p.startHour, endHour: p.endHour, inProgress: false, startLabel: hourLabel(p.startHour), category: templateById.get(p.canonicalId)?.category ?? null, planDate: p.spillover ? prevDay : date })
-    }
-    for (const e of calendarQ.data ?? []) {
-      if (linkedEventIds.has(e.id)) continue // already shown as its block
-      const p = projectCalendarEventForDay(date, e)
-      if (!p) continue
-      items.push({ kind: 'calendar', id: e.id, title: e.summary || '(No title)', startHour: p.startHour, endHour: p.endHour, inProgress: false, startLabel: hourLabel(p.startHour) })
-    }
-
-    const upcoming = items
-      .filter(i => !isToday || i.endHour > nowHour)
-      .map(i => ({ ...i, inProgress: isToday && i.startHour <= nowHour && i.endHour > nowHour }))
-      .sort((a, b) => a.startHour - b.startHour)
+    const items = buildDaySchedule({
+      date, blocks: blocksQ.data ?? [], prevBlocks: prevBlocksQ.data ?? [], templates, events: calendarQ.data ?? [],
+    })
+    const upcoming: NextUpItem[] = aheadOnDay(items, isToday, nowHour).map(i => ({
+      key: i.id, kind: i.kind, id: i.canonicalId, title: i.title, startHour: i.startHour, endHour: i.endHour,
+      inProgress: i.inProgress, startLabel: hourLabel(i.startHour), taskId: i.taskId,
+      category: i.block?.category ?? i.template?.category ?? null, planDate: i.planDate,
+    }))
 
     // Next training from the viewed day on: one-off training blocks plus
     // recurring training templates — the same pure rule the Training banner
@@ -155,12 +121,13 @@ export function useTodayOverview(date: string = todayStr()): TodayOverview {
     }) : null
 
     return {
-      tasks: taskCounts,
+      tasks: dayTasks.counts,
       nextUp: upcoming[0] ?? null,
       upcoming,
+      plannedMinutes: plannedMinutes(items),
       nextTraining,
       trainingAfterNext,
-      isLoading: tasksQ.isLoading || blocksQ.isLoading || templatesQ.isLoading,
+      isLoading: dayTasks.isLoading || blocksQ.isLoading || templatesQ.isLoading,
     }
-  }, [date, prevDay, tasksQ.data, tasksQ.isLoading, blocksQ.data, blocksQ.isLoading, prevBlocksQ.data, templatesQ.data, templatesQ.isLoading, calendarQ.data, trainingQ.data])
+  }, [date, nowMs, dayTasks.counts, dayTasks.isLoading, blocksQ.data, blocksQ.isLoading, prevBlocksQ.data, templatesQ.data, templatesQ.isLoading, calendarQ.data, trainingQ.data])
 }

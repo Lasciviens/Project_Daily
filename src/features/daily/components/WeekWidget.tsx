@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { SlidersHorizontal } from 'lucide-react'
 import { addDays, addWeeks, format, startOfWeek, endOfWeek, isToday, isSameDay, getISOWeek, differenceInCalendarWeeks } from 'date-fns'
 import { formatDateRange, formatWeekdayDate } from '../../../shared/utils/dateFormat'
-import { useTasksByWeek } from '../../todo/hooks/useTodos'
+import { useOpenOnDay, useTasksByWeek, useWeekCounts } from '../../todo/hooks/useTodos'
+import { isOpenTask } from '../../todo/taskRules'
 import { useCalendarEventDatesForRange, useCalendarList } from '../../calendar/hooks/useCalendar'
 import { useCalendarStore } from '../../../app/store'
 import { DateNav } from '../../../shared/components/DateNav'
@@ -44,12 +45,9 @@ export function WeekWidget({ onDayClick, highlightDate, className = 'max-w-3xl' 
 
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i))
 
-  function openCountForDay(date: Date): number {
-    const dateStr = format(date, 'yyyy-MM-dd')
-    return tasks.filter(
-      t => t.due_date === dateStr && t.status !== 'done' && t.status !== 'cancelled'
-    ).length
-  }
+  // The same open count as the day pane (taskRules.onDay).
+  const openOn = useOpenOnDay(tasks)
+  const openCountForDay = (date: Date) => openOn(format(date, 'yyyy-MM-dd'))
 
   function hasCalEventOnDay(date: Date): boolean {
     return calDates?.has(format(date, 'yyyy-MM-dd')) ?? false
@@ -68,14 +66,14 @@ export function WeekWidget({ onDayClick, highlightDate, className = 'max-w-3xl' 
     return selectedCalendarIds.includes(id)
   }
 
-  const floatingTasks = tasks.filter(
-    (t): t is Task => !t.due_date && t.status !== 'done'
-  )
+  const floatingTasks = tasks.filter((t): t is Task => !t.due_date && isOpenTask(t))
 
-  const openTotal   = tasks.filter(t => t.status !== 'done' && t.status !== 'cancelled').length
-  const totalTasks  = tasks.filter(t => t.status !== 'cancelled').length
-  const doneTasks   = tasks.filter(t => t.status === 'done').length
-  const donePercent = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0
+  // Counted the day lists' way; a task finished in another week no longer
+  // counts in this one (taskRules.weekCounts).
+  const progress    = useWeekCounts(tasks, format(weekStart, 'yyyy-MM-dd'), format(weekEnd, 'yyyy-MM-dd'))
+  const openTotal   = progress.open
+  const totalTasks  = progress.open + progress.done
+  const donePercent = progress.percent
 
   return (
     <Card className={className}>

@@ -18,6 +18,7 @@
 // activity, a skip of that routine's week.
 
 import type { TaskStatus } from '../../todo/types'
+import { OPEN_STATUSES } from '../../todo/taskRules'
 import type { Tone } from '../../../shared/ui/Tone'
 import { formatWeekdayDate } from '../../../shared/utils/dateFormat'
 
@@ -78,7 +79,7 @@ export interface SessionStatus {
   open: boolean
 }
 
-const OPEN_TASK: ReadonlySet<TaskStatus> = new Set(['open', 'in_progress', 'waiting'])
+const OPEN_TASK: ReadonlySet<TaskStatus> = new Set(OPEN_STATUSES)
 
 function shiftDay(date: string, n: number): string {
   const d = new Date(`${date}T12:00:00`)

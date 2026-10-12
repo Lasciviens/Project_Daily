@@ -16,6 +16,7 @@ import { DateNav } from '../../../shared/components/DateNav'
 import { Button, Card, CardHeader, PageBoard, PageContainer, PageHeader, SegmentedControl, TonePill, type SegmentedOption, Truncate, useBoardStep, usePageStep } from '../../../shared/ui'
 import { boardWidthRem } from '../../../shared/ui/pageBoardRules'
 import { useTasksByMonth } from '../../todo/hooks/useTodos'
+import { isOpenTask } from '../../todo/taskRules'
 import { formatLocalDate } from '../../../shared/utils/dateUtils'
 import { DAY_BOARD, MONTH_BOARD, TASKS_BOARD, WEEK_BOARD, glanceInColumn, type DaySection, type PickerSection } from '../dailyBoards'
 
@@ -259,7 +260,7 @@ function UpcomingActivities({ onPick }: { onPick: (d: Date) => void }) {
   const todayStr = formatLocalDate(today)
 
   const upcoming = tasks
-    .filter(t => t.due_date && t.due_date >= todayStr && t.status !== 'done' && t.status !== 'cancelled')
+    .filter(t => t.due_date && t.due_date >= todayStr && isOpenTask(t))
     .sort((a, b) => (a.due_date! < b.due_date! ? -1 : a.due_date! > b.due_date! ? 1 : (a.due_time ?? '') < (b.due_time ?? '') ? -1 : 1))
 
   const byDay = new Map<string, typeof upcoming>()

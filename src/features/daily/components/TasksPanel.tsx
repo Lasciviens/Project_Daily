@@ -2,7 +2,7 @@ import { useMemo, type ReactNode } from 'react'
 import { useAllTasks } from '../../todo/hooks/useTodos'
 import { ToDoItem } from '../../todo/components/ToDoItem'
 import { useNewIds } from '../../../shared/hooks/useNewIds'
-import { completedWithinLast24h } from '../../todo/taskRules'
+import { taskGroups } from '../../todo/taskRules'
 import { formatLocalDate } from '../../../shared/utils/dateUtils'
 import { CheckCircle2 } from 'lucide-react'
 import { Card, EmptyState, PageBoard, Skeleton, ToneDot, type Tone } from '../../../shared/ui'
@@ -21,7 +21,7 @@ const GROUP_META: Record<TaskGroup, { title: string; tone: Tone }> = {
   today:    { title: 'Today', tone: 'accent' },
   upcoming: { title: 'Upcoming', tone: 'neutral' },
   noDate:   { title: 'No date', tone: 'neutral' },
-  done:     { title: 'Recently done', tone: 'success' },
+  done:     { title: 'Done today', tone: 'success' },
 }
 
 /** What a column card says when all of its groups are empty. */
@@ -30,9 +30,9 @@ const EMPTY_TEXT: Record<TaskSection, string> = {
   now: 'Nothing overdue or due today.',
   upcoming: 'Nothing upcoming.',
   noDate: 'No undated tasks.',
-  done: 'Nothing finished in the last 24 hours.',
-  later: 'Nothing upcoming, undated or recently done.',
-  noDateDone: 'No undated or recently finished tasks.',
+  done: 'Nothing finished today.',
+  later: 'Nothing upcoming, undated or done today.',
+  noDateDone: 'No undated tasks, nothing done today.',
 }
 
 function Section({ title, tasks, tone, fresh }: { title: string; tasks: Task[]; tone: Tone; fresh: ReadonlySet<string> }) {
@@ -56,29 +56,8 @@ export function TasksPanel() {
   const fresh = useNewIds(tasks.map(t => t.id), 'all', !isLoading)
   const today = formatLocalDate(new Date())
 
-  const g = useMemo(() => {
-    const active = tasks.filter(t => t.status !== 'done')
-    // A live window: start_date has arrived and due_date is still ahead. The
-    // last day of a window is deliberately NOT here — on due_date the deadline
-    // is what matters, so it belongs in Today, and Open now only ever takes
-    // rows away from Upcoming (nothing renders twice).
-    //
-    // Computed off useAllTasks' existing select('*'), so it needs no query and
-    // no column name in any select list: before migration 069 start_date simply
-    // reads undefined and this group stays empty.
-    const openNow = (t: Task) =>
-      !!t.start_date && !!t.due_date && t.start_date <= today && t.due_date > today
-    // yyyy-mm-dd strings compare lexicographically, so a plain string compare
-    // is a correct date compare here (no timezone parsing needed).
-    return {
-      overdue:  active.filter(t => t.due_date && t.due_date < today),
-      openNow:  active.filter(openNow),
-      today:    active.filter(t => t.due_date === today),
-      upcoming: active.filter(t => t.due_date && t.due_date > today && !openNow(t)),
-      noDate:   active.filter(t => !t.due_date),
-      done:     tasks.filter(t => t.status === 'done' && completedWithinLast24h(t)),
-    }
-  }, [tasks, today])
+  // The groups come from the task rules every page shares (taskRules.taskGroups).
+  const g = useMemo(() => taskGroups(tasks, today), [tasks, today])
 
   if (isLoading) {
     return (

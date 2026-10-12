@@ -32,10 +32,6 @@ export const PRIORITY_ICON: Record<TaskPriority, string> = { high: '▲', medium
 
 const PRIORITY_ORDER: Record<string, number> = { high: 0, medium: 1, low: 2 }
 
-export function isCompletedToday(task: Task): boolean {
-  return task.updated_at?.slice(0, 10) === todayStr()
-}
-
 export function sortTasks(tasks: Task[]): Task[] {
   return [...tasks].sort((a, b) => {
     const pa = PRIORITY_ORDER[a.priority] ?? 1

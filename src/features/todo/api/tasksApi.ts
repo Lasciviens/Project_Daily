@@ -1,6 +1,8 @@
 import { supabase } from '../../../integrations/supabase/client'
 import { requireUser } from '../../../shared/utils/requireUser'
 import { ensureLinkedCalendarEventRemoved } from '../../calendar/api/calendarTokenSync'
+import { shiftDateStr } from '../../../shared/utils/dateUtils'
+import { OPEN_STATUSES } from '../taskRules'
 import type { Task, CreateTaskInput, UpdateTaskInput } from '../types'
 
 // All active tasks (+ done, so the UI can show a "recently done" group) for the
@@ -45,45 +47,63 @@ export async function fetchOpenTrainingSessionTasks(): Promise<Task[]> {
   return data ?? []
 }
 
-export async function fetchTasksForDay(dateStr: string, section: string): Promise<Task[]> {
-  // 'today' is the one section whose UNDATED rows legitimately belong to the day
-  // being viewed (an undated task parked in 'today' is today's work), and an open
-  // task whose due_date has passed must still surface there as overdue rather
-  // than silently vanish — hence `lte`.
-  //
-  // Every other day view must match the date EXACTLY. useDayData maps a whole
-  // RANGE of day-offsets onto ONE section value (+2..+7 → 'this_week',
-  // everything else → 'backlog'), so keeping `due_date.is.null` here meant a
-  // single undated 'this_week' row rendered on all six of those days, and a
-  // single undated 'backlog' row claimed yesterday *and* every far-future day.
-  // Nothing loses its home: undated rows still reach fetchAllTasks →
-  // TasksPanel's "No date" group; undated 'this_week' rows also stay in
-  // fetchTasksByWeek's section arm → DayView's "This week — no date" band.
-  const dueFilter = section === 'today'
-    ? `due_date.is.null,due_date.lte.${dateStr}`
-    : `due_date.eq.${dateStr}`
-
-  const [sectionRes, dateRes] = await Promise.all([
-    supabase
-      .from('tasks')
-      .select('*')
-      .eq('section', section)
-      .or(dueFilter)
-      .neq('status', 'cancelled')
-      .order('sort_order', { ascending: true, nullsFirst: false })
-      .order('created_at', { ascending: false }),
+/**
+ * Every task that can be on `dateStr`'s list (taskRules.onDay decides which
+ * are): due that day, closed that day (done or cancelled), and — on today —
+ * every open task that is overdue, whatever its section, plus undated open
+ * ones parked in Today.
+ *
+ * Only Today keeps undated rows: Daily once mapped a whole range of days
+ * onto one section (+2…+7 → this_week, the rest → backlog), so an undated row
+ * of that section rendered on every one of those days. Undated rows still
+ * reach fetchAllTasks → TasksPanel's "No date" group, and undated this_week
+ * rows fetchTasksByWeek → DayView's "This week — no date" band.
+ *
+ * An open overdue task used to surface on Today only when it sat in the Today
+ * section; one filed in the Inbox or Backlog vanished from Daily and Home
+ * while the Tasks tab and Work counted it overdue. Done rows of the Today
+ * section are no longer read wholesale (they piled up for ever and only the
+ * ones closed on the day are shown) — the closed-that-day read brings those.
+ */
+export async function fetchTasksForDay(dateStr: string, today: string): Promise<Task[]> {
+  const dayStart = new Date(`${dateStr}T00:00:00`).toISOString()
+  const nextStart = new Date(`${shiftDateStr(dateStr, 1)}T00:00:00`).toISOString()
+  const reads = [
     supabase
       .from('tasks')
       .select('*')
       .eq('due_date', dateStr)
-      .neq('section', section)
       .neq('status', 'cancelled')
       .order('sort_order', { ascending: true, nullsFirst: false })
       .order('created_at', { ascending: false }),
-  ])
-  if (sectionRes.error) throw sectionRes.error
-  if (dateRes.error) throw dateRes.error
-  return [...(sectionRes.data ?? []), ...(dateRes.data ?? [])]
+    supabase
+      .from('tasks')
+      .select('*')
+      .gte('completed_at', dayStart)
+      .lt('completed_at', nextStart)
+      .order('completed_at', { ascending: true }),
+  ]
+  if (dateStr === today) {
+    reads.push(supabase
+      .from('tasks')
+      .select('*')
+      .in('status', [...OPEN_STATUSES])
+      .or(`due_date.lt.${today},and(due_date.is.null,section.eq.today)`)
+      .order('sort_order', { ascending: true, nullsFirst: false })
+      .order('created_at', { ascending: false }))
+  }
+  const results = await Promise.all(reads)
+  const seen = new Set<string>()
+  const out: Task[] = []
+  for (const r of results) {
+    if (r.error) throw r.error
+    for (const t of (r.data ?? []) as Task[]) {
+      if (seen.has(t.id)) continue
+      seen.add(t.id)
+      out.push(t)
+    }
+  }
+  return out
 }
 
 export async function fetchTasksByWeek(weekStart: string, weekEnd: string): Promise<Task[]> {
