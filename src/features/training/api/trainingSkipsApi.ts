@@ -39,17 +39,26 @@ export async function fetchTrainingSkips(fromWeek: string): Promise<TrainingSkip
   return (data ?? []) as TrainingSkip[]
 }
 
-/** One skip per routine per due week (the table's unique key): skipping the
- *  same session again replaces the reason instead of failing. */
+/** A skip of a missed routine with no plan (Missed sessions): one per routine
+ *  per due week — skipping the same week again replaces the reason. A
+ *  planned session's own skip is written by trainingPlanApi.skipPlan. */
 export async function createTrainingSkip(input: CreateTrainingSkipInput): Promise<TrainingSkip> {
   const user = await requireUser()
-  const { data, error } = await supabase
-    .from('training_skips')
-    .upsert({ user_id: user.id, routine_id: input.routine_id, week_start: input.week_start, reason: input.reason.trim() }, { onConflict: 'user_id,routine_id,week_start' })
-    .select()
-    .single()
-  if (error) throw isMissingTable(error) ? new Error(NOT_MIGRATED_112) : error
-  return data as TrainingSkip
+  const row = { user_id: user.id, routine_id: input.routine_id, week_start: input.week_start, reason: input.reason.trim() }
+  const found = await supabase.from('training_skips').select('id')
+    .eq('routine_id', input.routine_id).eq('week_start', input.week_start).is('task_id', null).maybeSingle()
+  if (found.error) {
+    // Before 142 (no task_id): 112's own key covers the upsert.
+    if (!/task_id/.test(found.error.message ?? '')) throw isMissingTable(found.error) ? new Error(NOT_MIGRATED_112) : found.error
+    const legacy = await supabase.from('training_skips').upsert(row, { onConflict: 'user_id,routine_id,week_start' }).select().single()
+    if (legacy.error) throw isMissingTable(legacy.error) ? new Error(NOT_MIGRATED_112) : legacy.error
+    return legacy.data as TrainingSkip
+  }
+  const res = found.data
+    ? await supabase.from('training_skips').update({ reason: row.reason }).eq('id', found.data.id).select().single()
+    : await supabase.from('training_skips').insert(row).select().single()
+  if (res.error) throw isMissingTable(res.error) ? new Error(NOT_MIGRATED_112) : res.error
+  return res.data as TrainingSkip
 }
 
 export async function deleteTrainingSkip(id: string): Promise<void> {

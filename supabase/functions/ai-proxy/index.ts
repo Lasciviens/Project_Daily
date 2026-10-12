@@ -2555,13 +2555,19 @@ const DB_CATALOG: Record<string, CatalogEntry> = {
     access: 'rw',
     purpose: 'To-do tasks (the To-Do feature IS this table).',
     columns: 'id, title, description, domain(personal|work|media), section(inbox|today|tomorrow|this_week|backlog), status(open|in_progress|waiting|done|cancelled), priority(low|medium|high), start_date(date; optional opening edge of a window — with due_date it means "do this between A and B"), due_date(date), due_time(time), waiting_for(text), is_focused(bool), source_type(manual|movie|tv_series|media|calendar|ai|training_session|project_item), source_id(uuid), sort_order, completed_at(timestamptz — when it was closed; use this, never updated_at, for "finished today"), hevy_routine_id(text; the Hevy routine a planned training session trains — the database fills it), hevy_workout_id(text; the Hevy workout that completed it — the database sets it), created_at, updated_at',
-    rules: 'Deleting a task automatically deletes its linked time_blocks row too (task_id is ON DELETE CASCADE — no separate cleanup db_delete needed). due_date is the SOLE deadline — a task with a due_date can be late; a task\'s optional schedule slot (time_blocks linked via task_id) is a separate fact and never implies or changes due_date. If the user just wants to be reminded of something during a period ("go to the hytte this winter") with no date it must be done by, that is a wish_items row, not a task. A planned training session is a task with source_type training_session and source_id = the routine id (hevy_routines.id), or a personal task titled exactly like the routine; the database links it (hevy_routine_id) and marks it done with the workout (hevy_workout_id) when that workout syncs — never set those two, and never delete a training task because it was trained.',
+    rules: 'Deleting a task automatically deletes its linked time_blocks row too (task_id is ON DELETE CASCADE — no separate cleanup db_delete needed). due_date is the SOLE deadline — a task with a due_date can be late; a task\'s optional schedule slot (time_blocks linked via task_id) is a separate fact and never implies or changes due_date — EXCEPT for a training task (below), whose day and time are its slot\'s. If the user just wants to be reminded of something during a period ("go to the hytte this winter") with no date it must be done by, that is a wish_items row, not a task. A planned training session is a task with source_type training_session and source_id = the routine id (hevy_routines.id), or a personal task titled exactly like the routine; the database links it (hevy_routine_id) and marks it done with the workout (hevy_workout_id) when that workout syncs — never set those two, and never delete a training task because it was trained. A training task\'s due_date/due_time and its time_blocks row move together (migration 142): update either one, the database moves the other (its Google Calendar event follows the next time the app edits it). Never cancel a training task directly: to skip it, ask the user why first and db_insert a training_skips row (the database cancels the task).',
   },
   time_blocks: {
     access: 'rw',
     purpose: 'One-off day schedule / timeline blocks for a specific date.',
     columns: 'id, date(date), title, start_time(time HH:MM:SS), duration_minutes(int), color(blue|green|orange|purple|accent|red), category(daily|training|media|games|work|projects|other), task_id(uuid; the ONLY representation of "linked to a Task" — never source_type), source_type(training_session|movie|tv_episode|project_item|calendar|manual; the REAL originating entity, independent of task_id, never "task"), source_id(uuid), notes, created_at, updated_at',
     rules: 'Set category to match the block type (e.g. "training" for a planned workout) — training/media/work calendar views filter by it. To reschedule to another day, update the date column. To link a block to a task, set task_id — never set source_type to "task".',
+  },
+  training_skips: {
+    access: 'rw',
+    purpose: 'A skipped training session and why (Training → Missed sessions, the session popup\'s Skip). A row with task_id IS that planned session\'s skip: inserting it cancels the task, deleting it (undo) reopens it (migration 142). A row with no task_id skips a missed routine for one week.',
+    columns: 'id, routine_id(text = hevy_routines.id; filled from the task when omitted), week_start(date, the Monday of the week the session was planned in), reason(text, 3–500 characters, required), task_id(uuid → tasks, the planned session; one skip per session), plan_date(date, the day it was planned for), created_at',
+    rules: 'Ask the user WHY before skipping a session — a reason is required (the owner\'s rule); offer moving it to another day instead (update the task\'s due_date). Skip a planned session with {task_id, week_start, plan_date, reason}; a missed routine with no plan with {routine_id, week_start, reason}. Undo = db_delete that row. Never set a training task\'s status to cancelled yourself.',
   },
   recipes: {
     access: 'rw',
@@ -3197,7 +3203,7 @@ async function getDaySummary(supabase: AnyRecord, userId: string, args: AnyRecor
     const [tasksR, foodR, blocksR, workoutR] = await Promise.allSettled([
       supabase.from('tasks').select('id,title,priority').eq('user_id', userId).or(`section.eq.today,due_date.eq.${date}`).neq('status', 'cancelled').neq('status', 'done'),
       supabase.from('food_log_entries').select('calories,protein_g').eq('user_id', userId).eq('date', date).eq('status', 'eaten'),
-      supabase.from('time_blocks').select('title,start_time,duration_minutes').eq('user_id', userId).eq('date', date).order('start_time', { ascending: true }),
+      supabase.from('time_blocks').select('title,start_time,duration_minutes,task:tasks(status)').eq('user_id', userId).eq('date', date).order('start_time', { ascending: true }),
       supabase.from('hevy_workouts').select('id').eq('user_id', userId).gte('start_time', `${date}T00:00:00`).lte('start_time', `${date}T23:59:59`),
     ])
     const g = (r: AnyRecord): AnyRecord[] => r.status === 'fulfilled' ? (r.value.data ?? []) : []
@@ -3208,7 +3214,10 @@ async function getDaySummary(supabase: AnyRecord, userId: string, args: AnyRecor
       open_tasks: g(tasksR).map((t: AnyRecord) => ({ id: t.id, title: t.title, priority: t.priority })),
       kcal_eaten: Math.round(food.reduce((a: number, x: AnyRecord) => a + (Number(x.calories) || 0), 0)),
       protein_g_eaten: Math.round(food.reduce((a: number, x: AnyRecord) => a + (Number(x.protein_g) || 0), 0)),
-      schedule: g(blocksR).map((b: AnyRecord) => ({ time: b.start_time?.slice(0, 5) ?? null, title: b.title, minutes: b.duration_minutes })),
+      // A skipped session (its task cancelled, migration 142) stays on the
+      // calendar grey but is not part of the day's plan.
+      schedule: g(blocksR).filter((b: AnyRecord) => b.task?.status !== 'cancelled')
+        .map((b: AnyRecord) => ({ time: b.start_time?.slice(0, 5) ?? null, title: b.title, minutes: b.duration_minutes, ...(b.task?.status === 'done' ? { done: true } : {}) })),
       workout_logged: g(workoutR).length > 0,
     }
   } catch (e) { return { success: false, error: (e as Error).message } }

@@ -1,12 +1,15 @@
-import { useState } from 'react'
 import { AlertTriangle, CalendarCheck, CalendarPlus, SkipForward, Undo2 } from 'lucide-react'
 import { Button, Card, cx } from '../../../../shared/ui'
 import { InfoBubble } from '../../../../shared/components/InfoBubble'
+import { useEntityModal } from '../../../../shared/modals'
 import { openPlanRoutine } from '../../planTraining'
 import { useMissedSessions, useUndoTrainingSkip } from '../../hooks/useTrainingSkips'
+import { useTrainingPlanActions } from '../../hooks/useTrainingPlanActions'
+import { useOpenTrainingSessionTasks } from '../../../todo/hooks/useTodos'
 import { OVERDUE_AFTER_DAYS, missedText, type RoutineAttention } from '../../plan/skippedRoutines'
+import type { TrainingPlanRef } from '../../api/trainingPlanApi'
+import type { Task } from '../../../todo/types'
 import { plannedDayText, shortDay } from './missedSessionCopy'
-import { SkipSessionSheet } from './SkipSessionSheet'
 
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 
@@ -24,15 +27,35 @@ function Label() {
   )
 }
 
-function Row({ item, today, onSkip }: { item: RoutineAttention; today: string; onSkip: (a: RoutineAttention) => void }) {
+/** The routine's open plan from before today, newest first — the session
+ *  "Plan it" moves and "Skip" skips (owner: never a second plan beside it). */
+function openPastPlan(tasks: readonly Task[], routineId: string, today: string): TrainingPlanRef | null {
+  const t = tasks
+    .filter(x => x.hevy_routine_id === routineId && x.due_date && x.due_date < today)
+    .sort((a, b) => (b.due_date ?? '').localeCompare(a.due_date ?? ''))[0]
+  if (!t?.due_date) return null
+  return {
+    target: { kind: 'task', taskId: t.id, blockId: null },
+    info: { title: t.title, date: t.due_date, startHHMM: t.due_time?.slice(0, 5) ?? null, minutes: null, routineId },
+  }
+}
+
+function Row({ item, today, openTasks }: { item: RoutineAttention; today: string; openTasks: readonly Task[] }) {
+  const modal = useEntityModal()
   const undo = useUndoTrainingSkip()
+  const actions = useTrainingPlanActions()
+  const pending = openPastPlan(openTasks, item.routineId, today)
+  const planIt = () => (pending ? actions.openMove(pending) : openPlanRoutine({ id: item.routineId, title: item.title }, { date: today }))
+  const skip = () => modal.open({ kind: 'training-plan-skip', ...(pending
+    ? { plan: pending }
+    : { missed: { routineId: item.routineId, title: item.title, dueDate: item.dueDate, weekStart: item.weekStart } }) })
   const icon = item.kind === 'overdue'
     ? <AlertTriangle aria-hidden className="mt-0.5 h-4 w-4 shrink-0 text-warn" />
     : item.kind === 'skipped'
       ? <SkipForward aria-hidden className="mt-0.5 h-4 w-4 shrink-0 text-fg-muted" />
       : <CalendarCheck aria-hidden className="mt-0.5 h-4 w-4 shrink-0 text-info" />
   const detail = item.kind === 'overdue'
-    ? `${capitalize(missedText(item))} · was due ${shortDay(item.dueDate)}`
+    ? `${capitalize(missedText(item))} · was due ${shortDay(item.dueDate)}${pending ? ` · planned ${shortDay(pending.info.date)}, not done` : ''}`
     : item.kind === 'skipped'
       ? `Skipped the ${shortDay(item.dueDate)} session: ${item.skip.reason}`
       : `Replanned for ${plannedDayText(item.plannedDate, today)}`
@@ -47,13 +70,14 @@ function Row({ item, today, onSkip }: { item: RoutineAttention; today: string; o
       </div>
       {item.kind === 'overdue' && (
         <div className="flex flex-wrap gap-2 pl-6 sm:shrink-0 sm:pl-0">
-          <Button size="sm" icon={<CalendarPlus />} onClick={() => openPlanRoutine({ id: item.routineId, title: item.title }, { date: today })}>Plan it</Button>
-          <Button size="sm" variant="ghost" icon={<SkipForward />} onClick={() => onSkip(item)}>Skip</Button>
+          <Button size="sm" icon={<CalendarPlus />} onClick={planIt}>{pending ? 'Move it' : 'Plan it'}</Button>
+          <Button size="sm" variant="ghost" icon={<SkipForward />} onClick={skip}>Skip</Button>
         </div>
       )}
       {item.kind === 'skipped' && (
         <div className="pl-6 sm:shrink-0 sm:pl-0">
-          <Button size="sm" variant="ghost" icon={<Undo2 />} loading={undo.isPending} onClick={() => undo.mutate(item.skip.id)}>Undo</Button>
+          <Button size="sm" variant="ghost" icon={<Undo2 />} loading={undo.isPending || actions.busy}
+            onClick={() => (item.skip.task_id ? void actions.undoSkip({ taskId: item.skip.task_id }).catch(() => {}) : undo.mutate(item.skip.id))}>Undo</Button>
         </div>
       )}
     </li>
@@ -61,18 +85,17 @@ function Row({ item, today, onSkip }: { item: RoutineAttention; today: string; o
 }
 
 /** Overdue / skipped (/ replanned) current-program routines with their two
- *  answers — plan it or skip it with a reason. Renders nothing when there is
- *  nothing to say. */
+ *  answers — plan it (or move its open plan) or skip it with a reason (the
+ *  shared Move and Skip sheets). Renders nothing when there is nothing to say. */
 export function MissedSessionsList({ items, today, className }: { items: readonly RoutineAttention[]; today: string; className?: string }) {
-  const [skipping, setSkipping] = useState<RoutineAttention | null>(null)
+  const { data: openTasks = [] } = useOpenTrainingSessionTasks()
   if (items.length === 0) return null
   return (
     <div className={cx('flex flex-col gap-2', className)}>
       <Label />
       <ul className="flex flex-col gap-2">
-        {items.map(a => <Row key={a.routineId} item={a} today={today} onSkip={setSkipping} />)}
+        {items.map(a => <Row key={a.routineId} item={a} today={today} openTasks={openTasks} />)}
       </ul>
-      <SkipSessionSheet item={skipping} onClose={() => setSkipping(null)} />
     </div>
   )
 }

@@ -83,7 +83,7 @@ export function useTasksByMonth(monthStart: Date, monthEnd: Date) {
 // The outbox (populated atomically with the tasks write, not by this call)
 // is the actual safety net — a failure here just means "will retry later",
 // never a lost operation.
-async function drainBestEffort(token: string | null, context: Record<string, unknown>): Promise<string | null> {
+export async function drainBestEffort(token: string | null, context: Record<string, unknown>): Promise<string | null> {
   if (!token) return null
   try {
     const { failed } = await drainGoogleTasksOutbox(token)
@@ -172,7 +172,9 @@ export function useToggleTask() {
       if (token) await drainBestEffort(token, { taskId: id })
       return task
     },
-    invalidates: [qk.tasks.all],
+    // The schedule reads carry each block's task status (Training's "next
+    // session", the agenda's Done) — a tick refreshes them too.
+    invalidates: ['taskGraph'],
   })
 }
 

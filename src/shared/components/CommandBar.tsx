@@ -6,6 +6,7 @@ import { useUIStore } from '../../app/store'
 import { NAV } from '../../app/navigation'
 import { useTasksBySection, useCreateTask } from '../../features/todo/hooks/useTodos'
 import { PRIORITY_TONE, DOMAIN_TONE } from '../../features/todo/taskTones'
+import { isTrainingTask } from '../../features/todo/taskRules'
 import type { Task } from '../../features/todo/types'
 import { ModalShell, useEntityModal } from '../modals'
 import { ToneDot, TonePill, Truncate } from '../ui'
@@ -14,7 +15,7 @@ import { withProgress } from '../hooks/useMutationWithFeedback'
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type NavItem = { kind: 'nav'; id: string; label: string; icon: LucideIcon; path: string; terms: string }
-type TaskItem = { kind: 'task'; id: string; label: string; domain: Task['domain']; priority: Task['priority'] }
+type TaskItem = { kind: 'task'; id: string; label: string; domain: Task['domain']; priority: Task['priority']; training: boolean }
 type CreateItem = { kind: 'create'; id: 'create-task'; label: string; query: string }
 type ResultItem = NavItem | TaskItem | CreateItem
 
@@ -119,7 +120,7 @@ function Palette({ onClose }: { onClose: () => void }) {
     return allTasks
       .filter(t => fuzzyMatch(t.title, trimmed))
       .slice(0, 8)
-      .map(t => ({ kind: 'task', id: t.id, label: t.title, domain: t.domain, priority: t.priority }))
+      .map(t => ({ kind: 'task', id: t.id, label: t.title, domain: t.domain, priority: t.priority, training: isTrainingTask(t) }))
   }, [isSearching, allTasks, trimmed])
 
   async function handleSelect(item: ResultItem | null) {
@@ -135,7 +136,9 @@ function Palette({ onClose }: { onClose: () => void }) {
 
     if (item.kind === 'task') {
       onClose()
-      modal.open({ kind: 'task', id: item.id })
+      // A training session opens as the session, as from its task row.
+      if (item.training) modal.open({ kind: 'training-session', taskId: item.id })
+      else modal.open({ kind: 'task', id: item.id })
       return
     }
 

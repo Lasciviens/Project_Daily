@@ -14,10 +14,16 @@ import { useEntityModal } from '../../../shared/modals'
 import { EditCalendarEventModal } from '../../calendar/components/EditCalendarEventModal'
 import { useCalendarStore, toast } from '../../../app/store'
 import { qk } from '../../../shared/query'
-import { Button, IconButton, Truncate, cx } from '../../../shared/ui'
+import { Button, IconButton, TonePill, Truncate, cx } from '../../../shared/ui'
 import { formatDurationMinutes } from '../../../shared/utils/formatDuration'
 import { projectOneOffBlocksForDay, projectRecurringBlocksForDay, projectCalendarEventForDay } from './dayAgendaProjection'
 import type { CalendarEvent } from '../../calendar/types'
+import { TrainingPlanMenu } from '../../training/components/session/TrainingPlanActions'
+import { SESSION_LABEL, SESSION_TONE, sessionStatus } from '../../training/plan/sessionState'
+import { planFacts } from '../../training/plan/planFacts'
+import { useDayPlanContext } from '../../training/hooks/usePlanContext'
+import type { TaskStatus } from '../../todo/types'
+import type { TrainingPlanRef } from '../../training/api/trainingPlanApi'
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  DayAgenda — replaces the old 24h × 52px pixel-grid DayTimeline. Design
@@ -81,6 +87,13 @@ interface AgendaBlock {
   spillover:      boolean
   /** time_blocks / schedule_blocks category — a training row opens the session popup. */
   category?:      string
+  /** A one-off block's task state (fetchTimeBlocks) — a training row reads
+   *  Done / Skipped from it, like its popup (training/plan/sessionState). */
+  taskStatus?:    string | null
+  taskWorkoutId?: string | null
+  taskRoutineId?: string | null
+  /** The routine a training block was planned from. */
+  routineId?:     string | null
 }
 
 // `bare` — render as a chrome-less pane inside a parent surface (Daily's hero
@@ -154,6 +167,8 @@ export function DayAgenda({ date, bare = false }: { date: Date; bare?: boolean }
       id: p.id, canonicalId: p.canonicalId, kind: p.kind, title: p.title, dateStr,
       startHour: p.startHour, endHour: p.endHour, taskId: p.taskId, spillover: p.spillover,
       edgeClass: COLOR_EDGE[original?.color ?? 'accent'] ?? COLOR_EDGE.accent, category: original?.category,
+      taskStatus: original?.task_status ?? null, taskWorkoutId: original?.task_workout_id ?? null, taskRoutineId: original?.task_routine_id ?? null,
+      routineId: original?.source_type === 'training_session' ? original.source_id ?? null : null,
     })
   }
   for (const e of calEvents ?? []) {
@@ -188,6 +203,8 @@ export function DayAgenda({ date, bare = false }: { date: Date; bare?: boolean }
   const timed        = blocks.filter(b => b.startHour >= 0).sort((a, b) => a.startHour - b.startHour)
   const night        = timed.filter(b => b.startHour < NIGHT_END)
   const day          = timed.filter(b => b.startHour >= NIGHT_END)
+  // A training row's status is built like its popup's (plan/planFacts).
+  const planCtx = useDayPlanContext(dateStr, blocks.some(b => b.category === 'training'))
 
   const overlappingIds = new Set<string>()
   for (let i = 0; i < timed.length; i++) {
@@ -239,6 +256,24 @@ export function DayAgenda({ date, bare = false }: { date: Date; bare?: boolean }
     modal.open({ kind: 'time-block', id: block.canonicalId, config: { heading: 'Edit block' } })
   }
 
+  // A training row as the session it is: its task (and block), an older
+  // block with no task, or a day of a weekly plan nobody acted on yet.
+  function trainingPlanOf(block: AgendaBlock): TrainingPlanRef {
+    const date = block.spillover ? prevDateStr : dateStr
+    const target: TrainingPlanRef['target'] = block.kind === 'recurring'
+      ? { kind: 'weekly', templateId: block.canonicalId, date }
+      : block.taskId ? { kind: 'task', taskId: block.taskId, blockId: block.canonicalId } : { kind: 'block', blockId: block.canonicalId }
+    return {
+      target,
+      info: {
+        title: block.title, date,
+        startHHMM: block.startHour >= 0 && !block.spillover ? hourToTimeStr(block.startHour) : null,
+        minutes: Math.round((block.endHour - block.startHour) * 60) || null,
+        routineId: block.taskRoutineId ?? block.routineId ?? planCtx.routineOf({ title: block.title, date }),
+      },
+    }
+  }
+
   // ── Row renderer (plain render function, not a nested component —
   //     react-hooks/static-components: components created during render get a
   //     new identity every render and remount their subtree) ──
@@ -250,6 +285,17 @@ export function DayAgenda({ date, bare = false }: { date: Date; bare?: boolean }
     const taskNotes  = block.taskId ? taskNotesMap.get(block.taskId) : null
     const isPast     = today && block.endHour <= nowHour
     const isActive   = today && block.startHour <= nowHour && block.endHour > nowHour
+    // A training session: the same status and the same actions (⋯) as its
+    // popup and its task row — Done/Skipped on the row, Move/Skip/Delete with
+    // Undo behind ⋯ (training/components/session/TrainingPlanActions).
+    const session = block.category === 'training' && !isCal ? trainingPlanOf(block) : null
+    const sessionState = session ? sessionStatus(planFacts({
+      date: session.info.date, startHHMM: session.info.startHHMM, minutes: session.info.minutes,
+      taskId: block.taskId ?? null, taskStatus: (block.taskStatus as TaskStatus | null | undefined) ?? null,
+      taskWorkoutId: block.taskWorkoutId ?? null, taskRoutineId: block.taskRoutineId ?? null,
+      routineId: session.info.routineId,
+    }, { today: format(new Date(), 'yyyy-MM-dd'), nowHHMM: hourToTimeStr(nowHour), skips: planCtx.skips, hasActivity: planCtx.hasActivity })) : null
+    const sessionMark = sessionState && (sessionState.state === 'done' || sessionState.state === 'skipped') ? sessionState.state : null
 
     function postpone30m() {
       updateBlock.mutate({ id: block.canonicalId, patch: { start_time: `${hourToTimeStr(Math.min(23.5, block.startHour + 0.5))}:00` } })
@@ -281,7 +327,7 @@ export function DayAgenda({ date, bare = false }: { date: Date; bare?: boolean }
           'group cursor-pointer rounded-control border-l-2 px-2.5 py-1.5 transition-colors duration-150',
           block.edgeClass,
           isActive || isSelected ? 'bg-surface-2' : 'hover:bg-surface-hover',
-          isPast && 'opacity-50',
+          (isPast || sessionMark === 'skipped') && 'opacity-50',
           overlaps && 'ring-1 ring-inset ring-danger/40',
         )}
       >
@@ -311,12 +357,19 @@ export function DayAgenda({ date, bare = false }: { date: Date; bare?: boolean }
               {taskNotes && <StickyNote className="h-3 w-3 shrink-0 text-fg-faint" aria-label="Has notes" />}
               {overlaps && <AlertTriangle data-tone="danger" className="tone-text h-3.5 w-3.5 shrink-0" aria-label="Overlaps another block" />}
               {isActive && <span className="shrink-0 text-micro font-semibold text-accent-600">now</span>}
+              {sessionMark && <TonePill tone={SESSION_TONE[sessionMark]} className="shrink-0">{SESSION_LABEL[sessionMark]}</TonePill>}
             </p>
             {isSelected && taskNotes && (
               <Truncate as="p" lines={2} reveal="none" className="mt-0.5 text-meta text-fg-muted">{taskNotes}</Truncate>
             )}
           </div>
-          {!isCal && isSelected && (
+          {session && sessionState && (
+            <div className="flex shrink-0 items-center" onClick={e => e.stopPropagation()}>
+              <TrainingPlanMenu plan={session} status={sessionState}
+                weekly={session.target.kind === 'weekly' ? { templateId: session.target.templateId } : null} />
+            </div>
+          )}
+          {!isCal && !session && isSelected && (
             <div className="order-last flex w-full items-center justify-end gap-1 sm:order-none sm:w-auto sm:shrink-0" onClick={e => e.stopPropagation()}>
               {block.kind === 'block' && !block.spillover && block.startHour >= 0 && (
                 <button type="button" onClick={postpone30m} className={quickBtn}>+30m</button>
@@ -336,7 +389,7 @@ export function DayAgenda({ date, bare = false }: { date: Date; bare?: boolean }
               ><Trash2 className="h-3.5 w-3.5" aria-hidden /></button>
             </div>
           )}
-          {!isCal && (
+          {!isCal && !session && (
             <div className="flex shrink-0 items-center" onClick={e => e.stopPropagation()}>
               <button
                 type="button"

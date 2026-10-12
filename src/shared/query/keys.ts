@@ -29,6 +29,8 @@ export const qk = {
     templates: () => ['schedule', 'blocks'] as const,
     block: (id: string) => ['schedule', 'block', id] as const,
     byTask: (taskId: string) => ['schedule', 'by-task', taskId] as const,
+    /** The one-off block a day of a weekly plan became (migration 142). */
+    occurrence: (templateId: string, date: string) => ['schedule', 'occurrence', templateId, date] as const,
   },
   calendar: {
     all: ['calendar'] as const,

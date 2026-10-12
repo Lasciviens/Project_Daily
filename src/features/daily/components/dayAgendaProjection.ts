@@ -163,6 +163,10 @@ export interface RecurringBlockLike {
    *  "no lower bound", i.e. exactly the old behaviour, so the UI degrades
    *  to today's rendering instead of hiding every recurring block. */
   effective_from?: string | null
+  /** Days this template is NOT projected on: each became a one-off plan of
+   *  its own (migration 142 — a training session moved, skipped or marked
+   *  done on its own). Missing before 142: no day is left out. */
+  except_dates?: readonly string[] | null
 }
 
 /** Local-time day shift on a 'yyyy-MM-dd' string. Deliberately NOT
@@ -180,7 +184,7 @@ function shiftDayStr(dateStr: string, delta: number): string {
  *  `dayStr`. 'yyyy-MM-dd' strings compare correctly lexicographically, so no
  *  Date parsing or timezone handling is involved. */
 function isEffectiveOn(b: RecurringBlockLike, dayStr: string): boolean {
-  return !b.effective_from || dayStr >= b.effective_from
+  return (!b.effective_from || dayStr >= b.effective_from) && !(b.except_dates ?? []).includes(dayStr)
 }
 
 /** Projects recurring schedule_blocks onto ONE calendar day (`dateStr`, whose

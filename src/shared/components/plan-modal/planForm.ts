@@ -79,7 +79,7 @@ export function buildInitialForm(
     duration,
     customMin:  isPreset ? '' : String(duration),
     category:   scheduleBlock?.category ?? timeBlock?.category ?? defaults?.category
-                ?? defaultScheduleCategory(domain, task?.source_type),
+                ?? defaultScheduleCategory(domain, task?.hevy_routine_id ? 'training_session' : task?.source_type),
     recurrence: scheduleBlock ? inferRecurrenceMode(scheduleBlock.days_of_week) : (defaults?.recurrence ?? 'none'),
     weeklyDays: scheduleBlock?.days_of_week ?? defaults?.daysOfWeek ?? WEEKDAYS,
     // Editing an existing plan whose block already has a linked task (e.g.

@@ -11,7 +11,9 @@ import { useRecoveryNotes } from './useRecoveryNotes'
 import { NextExerciseCard } from './NextExerciseCard'
 import { SourceNote } from '../program/SourceNote'
 import { MissedSessionsCard } from '../program/MissedSessions'
-import { SessionPlanMenu } from '../session/SessionPlanMenu'
+import { TrainingPlanMenu } from '../session/TrainingPlanActions'
+import { sessionStatus } from '../../plan/sessionState'
+import type { TrainingPlanRef } from '../../api/trainingPlanApi'
 import { NEXT_BOARD } from '../../trainingBoards'
 import { MuscleWatchLine } from '../../../health/goal/MuscleWatchCard'
 
@@ -30,12 +32,19 @@ function lastDoneText(last: string | null, today: string): string {
 function SessionHeader({ plan }: { plan: NextPlan }) {
   const { pick, routine, session, today } = plan
   const title = routine?.title ?? session?.title ?? 'Next session'
-  // The exercises are already on this page, so the plan itself (date, time,
-  // which routine) is a deliberate second step behind ⋯ — the same menu as
-  // the session popup.
-  const planned = pick?.source === 'planned' && session
-    ? [{ ref: { kind: session.kind, id: session.id, date: session.date }, title: session.title }]
-    : []
+  // The exercises are already on this page, so the plan's actions (done,
+  // move, skip, edit, delete) sit behind ⋯ — the same list as the session
+  // popup and the task row (TrainingPlanActions).
+  const planned: TrainingPlanRef | null = pick?.source === 'planned' && session
+    ? {
+        target: session.taskId ? { kind: 'task', taskId: session.taskId, blockId: session.kind === 'block' ? session.id : null }
+          : session.kind === 'block' ? { kind: 'block', blockId: session.id }
+          : { kind: 'weekly', templateId: session.id, date: session.date },
+        info: { title: session.title, date: session.date, startHHMM: session.startTime, minutes: null, routineId: routine?.id ?? null },
+      }
+    : null
+  // Next only ever holds a session still to come (pickNextTrainingSession).
+  const status = planned ? sessionStatus({ date: planned.info.date, startHHMM: planned.info.startHHMM, taskStatus: session?.taskId ? 'open' : null, today }) : null
   return (
     <Card className="flex flex-col gap-3">
       <div className="flex items-start gap-3">
@@ -48,7 +57,11 @@ function SessionHeader({ plan }: { plan: NextPlan }) {
             {routine ? ` · ${lastDoneText(pick?.lastTrained ?? null, today)}` : ''}
           </p>
         </div>
-        {planned.length > 0 && <span className="-mr-2 -mt-1"><SessionPlanMenu plans={planned} label="Change this session" /></span>}
+        {planned && status && (
+          <span className="-mr-2 -mt-1">
+            <TrainingPlanMenu plan={planned} status={status} weekly={planned.target.kind === 'weekly' ? { templateId: planned.target.templateId } : null} label="Session actions" />
+          </span>
+        )}
       </div>
       {pick?.source === 'planned' && !routine && (
         <p className="text-meta text-fg-muted">This session isn&apos;t linked to a Hevy routine, so there&apos;s no exercise list. Plan it from a routine (Library → Routines) to see targets here.</p>

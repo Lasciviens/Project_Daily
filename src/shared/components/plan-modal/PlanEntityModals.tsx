@@ -19,8 +19,43 @@ import { UnifiedPlanModal } from './UnifiedPlanModal'
 import { useTaskById } from '../../../features/todo/hooks/useTodos'
 import { useTimeBlock, useScheduleBlock } from '../../../features/daily/hooks/useSchedule'
 import type { EntityModalProps } from '../../modals/types'
-import type { PlanResult } from './planModal.types'
+import type { PlanModalConfig, PlanResult } from './planModal.types'
 import { useFirstLoaded } from '../../modals/useFirstLoaded'
+import { isTrainingTask } from '../../../features/todo/taskRules'
+import type { Task } from '../../../features/todo/types'
+import type { ScheduleBlock } from '../../../features/daily/types'
+import { useTrainingPlanActions } from '../../../features/training/hooks/useTrainingPlanActions'
+import { todayStr } from '../../utils/dateUtils'
+
+/** A training session's Delete is the session's own (asks, deletes task +
+ *  block + skip, offers Undo) from every editor, as from the popup and the
+ *  task row (owner: every delete asks and offers Undo). */
+function useTrainingDelete(task: Task | undefined, template: ScheduleBlock | undefined) {
+  const actions = useTrainingPlanActions()
+  if (task && isTrainingTask(task)) {
+    return () => actions.deleteSession({
+      target: { kind: 'task', taskId: task.id, blockId: null },
+      info: { title: task.title, date: task.due_date ?? todayStr(), startHHMM: task.due_time?.slice(0, 5) ?? null, minutes: null, routineId: task.hevy_routine_id ?? null },
+    })
+  }
+  if (template?.category === 'training') return () => actions.deleteWeekly(template.id, template.title)
+  return undefined
+}
+
+/**
+ * A training session's task edits the same way from every entry point
+ * (owner, 12.10.2026): its day and time are the session's (migration 142
+ * keeps the task and its block together), so the editor shows one day — the
+ * schedule's — instead of a separate deadline that would only be overwritten.
+ */
+function taskEditorConfig(task: Task | undefined, config: PlanModalConfig | undefined): PlanModalConfig | undefined {
+  if (!task || !isTrainingTask(task)) return config
+  return {
+    ...config,
+    heading: config?.heading ?? 'Edit session',
+    hideTaskFields: [...new Set([...(config?.hideTaskFields ?? []), 'startDate', 'dueDate', 'dueTime', 'section'] as const)],
+  }
+}
 
 type LoadState = { loading?: boolean; loadError?: { message: string; onRetry?: () => void } }
 
@@ -37,10 +72,12 @@ export function TaskEntityModal({ request, onClose }: EntityModalProps<'task'>) 
   const query = useTaskById(id)
   const task = useFirstLoaded(query.data, query)
   const load = id ? loadStateOf(query, !!task, 'task') : {}
+  const trainingDelete = useTrainingDelete(task, undefined)
   return (
     <UnifiedPlanModal
       open onClose={onClose} mode="task" task={task}
-      config={config} defaults={defaults} source={source} onSaved={onSaved}
+      config={taskEditorConfig(task, config)} defaults={defaults} source={source} onSaved={onSaved}
+      onDeleteOverride={trainingDelete}
       {...load}
     />
   )
@@ -60,6 +97,7 @@ function BlockEditor({ blockId, onClose, passThrough }: {
   const taskQuery = useTaskById(block?.task_id)
   const task = useFirstLoaded(taskQuery.data, taskQuery)
   const onSaved: ((r: PlanResult) => void) | undefined = passThrough?.onSaved
+  const trainingDelete = useTrainingDelete(task, undefined)
 
   if (!block) {
     return <UnifiedPlanModal open onClose={onClose} mode="schedule" {...loadStateOf(blockQuery, false, 'schedule')} />
@@ -68,6 +106,7 @@ function BlockEditor({ blockId, onClose, passThrough }: {
     return (
       <UnifiedPlanModal
         open onClose={onClose} mode="task" task={task} onSaved={onSaved}
+        config={taskEditorConfig(task, undefined)} onDeleteOverride={trainingDelete}
         {...loadStateOf(taskQuery, !!task, 'task')}
       />
     )
@@ -100,10 +139,12 @@ export function ScheduleBlockEntityModal({ request, onClose }: EntityModalProps<
   const query = useScheduleBlock(id)
   const scheduleBlock = useFirstLoaded(query.data, query)
   const load = id ? loadStateOf(query, !!scheduleBlock, 'repeating schedule') : {}
+  const trainingDelete = useTrainingDelete(undefined, scheduleBlock)
   return (
     <UnifiedPlanModal
       open onClose={onClose} mode="recurring" scheduleBlock={scheduleBlock}
       config={config} defaults={defaults} source={source} onSaved={onSaved}
+      onDeleteOverride={trainingDelete}
       {...load}
     />
   )

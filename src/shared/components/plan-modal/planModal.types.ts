@@ -169,4 +169,8 @@ export interface UnifiedPlanModalProps {
   loading?: boolean
   /** The row couldn't be loaded: the shell shows this message (+ retry). */
   loadError?: { message: string; onRetry?: () => void }
+  /** Replaces the footer's Delete (a training session's: it asks, deletes the
+   *  session and offers Undo — training/useTrainingPlanActions). Resolves true
+   *  when it was deleted; the editor then closes. */
+  onDeleteOverride?: () => Promise<boolean>
 }

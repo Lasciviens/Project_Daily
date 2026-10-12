@@ -16,6 +16,7 @@
 import type { PlanDefaults, PlanModalConfig, PlanSource, PlanResult } from '../components/plan-modal'
 import type { MealSlot } from '../../features/recipes/types'
 import type { MediaRef, MediaType } from '../../features/media/types'
+import type { TrainingPlanRef } from '../../features/training/api/trainingPlanApi'
 
 export type EntityModalRequest =
   // Tasks and schedule — every former UnifiedPlanModal mount.
@@ -42,6 +43,11 @@ export type EntityModalRequest =
   /** One training session: a logged Hevy workout (`workoutId`) or a planned
    *  one (`plan` — a recurring occurrence has no row, so it carries its day). */
   | { kind: 'training-session'; workoutId?: string; plan?: { kind: 'block' | 'recurring'; id: string; date: string }; taskId?: string }
+  // Move or skip one planned training session — the same sheets from every
+  // view (features/training/modals/TrainingPlanSheets). Skip also takes a
+  // missed routine with no plan (Training → Missed sessions).
+  | { kind: 'training-plan-move'; plan: TrainingPlanRef }
+  | { kind: 'training-plan-skip'; plan?: TrainingPlanRef; missed?: { routineId: string; title: string; dueDate: string; weekStart: string } }
   /** One Apple Health workout (Health → Workouts), with its matching Hevy session. */
   | { kind: 'health-workout'; id: string }
   /** Log or edit a Hevy body measurement; `date` opens that day's row (default today). */

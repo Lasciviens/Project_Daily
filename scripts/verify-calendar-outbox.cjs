@@ -254,7 +254,8 @@ function calendarAgreementSection() {
   check('the linked calendar is primary', want === 'primary')
   const callRe = /\b(create|get|update|delete)CalendarEvent\(\s*token\s*,\s*'([^']+)'/g
   const callers = [
-    'src/shared/components/plan-modal/UnifiedPlanModal.tsx',
+    // The plan editor's (and Undo's) event link — moved out of UnifiedPlanModal 12.10.2026.
+    'src/features/calendar/api/linkBlockCalendarEvent.ts',
     'src/features/daily/api/scheduleApi.ts',
     'src/features/calendar/api/calendarTokenSync.ts',
   ]
@@ -263,7 +264,7 @@ function calendarAgreementSection() {
     const other = calls.filter((m) => m[2] !== want).map((m) => `${m[1]}CalendarEvent → '${m[2]}'`)
     check(`${path.basename(file)}: ${calls.length} block-event call(s), all in '${want}'`, calls.length > 0 && other.length === 0, other.join(', '))
   }
-  check('UnifiedPlanModal creates the linked event (createCalendarEvent) in it',
+  check('linkBlockCalendarEvent creates the linked event (createCalendarEvent) in it',
     [...read(callers[0]).matchAll(callRe)].some((m) => m[1] === 'create' && m[2] === want))
   const insert = migration.match(/INSERT INTO public\.calendar_outbox[\s\S]*?VALUES\s*\(\s*OLD\.user_id\s*,\s*'([^']+)'/)
   check(`migration 135's trigger queues '${want}'`, !!insert && insert[1] === want, insert ? insert[1] : 'INSERT not found')

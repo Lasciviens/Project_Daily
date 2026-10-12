@@ -95,23 +95,26 @@ async function buildBriefContext(userId: string): Promise<string> {
     } else { lines.push('\nBUGÜNKÜ İŞLER: yok') }
   } catch { /* omit section */ }
   try {
+    // A skipped session (its task cancelled, migration 142) is not on today's program.
     const { data: blocks } = await supabase.from('time_blocks')
-      .select('title, start_time, duration_minutes')
+      .select('title, start_time, duration_minutes, task:tasks(status)')
       .eq('user_id', userId).eq('date', today)
       .order('start_time', { ascending: true }).limit(20)
-    const withTime = (blocks as AnyRecord[] ?? []).filter(b => b.start_time)
+    const withTime = (blocks as AnyRecord[] ?? []).filter(b => b.start_time && b.task?.status !== 'cancelled')
     if (withTime.length) {
       lines.push('\nBUGÜNKÜ PROGRAM:')
       for (const b of withTime) lines.push(`  - ${String(b.start_time).slice(0, 5)} ${b.title}${b.duration_minutes ? ` (${b.duration_minutes}dk)` : ''}`)
     }
   } catch { /* omit section */ }
   try {
-    const { data: tr } = await supabase.from('time_blocks')
-      .select('title, date, start_time')
+    // Skipped (cancelled) and already trained (done) sessions are not upcoming.
+    const { data: rows } = await supabase.from('time_blocks')
+      .select('title, date, start_time, task:tasks(status)')
       .eq('user_id', userId).eq('category', 'training')
       .gte('date', today).lte('date', dateFromToday(14))
-      .order('date', { ascending: true }).limit(5)
-    if (tr?.length) {
+      .order('date', { ascending: true }).limit(15)
+    const tr = (rows as AnyRecord[] ?? []).filter(b => !['cancelled', 'done'].includes(b.task?.status)).slice(0, 5)
+    if (tr.length) {
       lines.push('\nYAKLAŞAN ANTRENMANLAR:')
       for (const s of tr as AnyRecord[]) lines.push(`  - ${s.date}${s.start_time ? ` ${String(s.start_time).slice(0, 5)}` : ''} ${s.title}`)
     }

@@ -12,6 +12,10 @@ import { openPlanRoutine } from '../../../training/planTraining'
 import { ToneDot, TonePill, Truncate } from '../../../../shared/ui'
 import { useEntityModal } from '../../../../shared/modals'
 import { shiftDateStr, todayStr } from '../../../../shared/utils/dateUtils'
+import { SESSION_LABEL, SESSION_TONE, sessionStatus } from '../../../training/plan/sessionState'
+import { planFacts } from '../../../training/plan/planFacts'
+import { useDayPlanContext } from '../../../training/hooks/usePlanContext'
+import type { TaskStatus } from '../../../todo/types'
 
 interface PlannedRow {
   id: string
@@ -20,6 +24,13 @@ interface PlannedRow {
   recurring: boolean
   /** The session popup's request: the block, or the template on this day. */
   ref: { kind: 'block' | 'recurring'; id: string; date: string }
+  /** Its task's state (a one-off block): the row's status pill. */
+  taskId: string | null
+  taskStatus: TaskStatus | null
+  taskWorkoutId: string | null
+  taskRoutineId: string | null
+  /** The routine its own block names (planned from a routine). */
+  sourceRoutineId: string | null
 }
 
 const ROW = 'row row-interactive -mx-3 w-[calc(100%+1.5rem)] gap-2 text-left'
@@ -42,6 +53,7 @@ export function TrainingCard({ date }: { date: string }) {
   const { data: loggedToday = [] } = useHevyWorkoutsRange(date, date)
   const { data: routines = [] } = useHevyRoutines()
   const [showPicker, setShowPicker] = useState(false)
+  const planCtx = useDayPlanContext(date)
   // A row opens the session (what was lifted, or the plan's exercises and
   // targets); changing the plan is behind that popup's ⋯.
   const modal = useEntityModal()
@@ -50,10 +62,14 @@ export function TrainingCard({ date }: { date: string }) {
 
   const planned: PlannedRow[] = useMemo(() => [
     ...trainingBlocks.filter(b => b.date === date)
-      .map(b => ({ id: b.id, title: b.title, time: b.start_time?.slice(0, 5) ?? null, recurring: false, ref: { kind: 'block' as const, id: b.id, date } })),
+      .map(b => ({
+        id: b.id, title: b.title, time: b.start_time?.slice(0, 5) ?? null, recurring: false, ref: { kind: 'block' as const, id: b.id, date },
+        taskId: b.task_id ?? null, taskStatus: b.task_status ?? null, taskWorkoutId: b.task_workout_id ?? null,
+        taskRoutineId: b.task_routine_id ?? null, sourceRoutineId: b.source_type === 'training_session' ? b.source_id ?? null : null,
+      })),
     ...projectRecurringBlocksForDay(date, new Date(`${date}T00:00:00`).getDay(), trainingTemplates)
       .filter(p => !p.spillover)
-      .map(p => ({ id: `${p.canonicalId}__${date}`, title: p.title, time: hhmm(p.startHour), recurring: true, ref: { kind: 'recurring' as const, id: p.canonicalId, date } })),
+      .map(p => ({ id: `${p.canonicalId}__${date}`, title: p.title, time: hhmm(p.startHour), recurring: true, ref: { kind: 'recurring' as const, id: p.canonicalId, date }, taskId: null, taskStatus: null, taskWorkoutId: null, taskRoutineId: null, sourceRoutineId: null })),
   ].sort((a, b) => (a.time ?? '99:99').localeCompare(b.time ?? '99:99')), [trainingBlocks, trainingTemplates, date])
 
   // Only needed on a rest day: the next session after the viewed day.
@@ -81,17 +97,22 @@ export function TrainingCard({ date }: { date: string }) {
         </ul>
       ) : planned.length > 0 ? (
         <div className="flex flex-col">
-          {planned.map(b => (
-            <button key={b.id} type="button" className={ROW} onClick={() => modal.open({ kind: 'training-session', plan: b.ref })}>
-              <ToneDot tone="accent" />
-              <Truncate className="flex-1 text-body text-fg">{`${b.recurring ? '⟳ ' : ''}${b.title}`}</Truncate>
-              {b.time && <span className="shrink-0 text-meta tabular-nums text-fg-muted">{b.time}</span>}
-              <ChevronRight aria-hidden className="h-4 w-4 shrink-0 text-fg-faint" />
-            </button>
-          ))}
-          <p className="mt-0.5 text-meta text-fg-muted">
-            {date < todayStr() ? 'Planned — nothing logged' : 'Planned — not logged yet'}
-          </p>
+          {planned.map(b => {
+            // The same facts and status as the session popup and the agenda (planFacts → sessionState).
+            const st = sessionStatus(planFacts({
+              date, startHHMM: b.time, taskId: b.taskId, taskStatus: b.taskStatus, taskWorkoutId: b.taskWorkoutId, taskRoutineId: b.taskRoutineId,
+              routineId: b.sourceRoutineId ?? planCtx.routineOf({ title: b.title, date, startHHMM: b.time }),
+            }, { today: todayStr(), skips: planCtx.skips, hasActivity: planCtx.hasActivity }))
+            return (
+              <button key={b.id} type="button" className={ROW} onClick={() => modal.open({ kind: 'training-session', plan: b.ref })}>
+                <ToneDot tone={SESSION_TONE[st.state]} />
+                <Truncate className={`flex-1 text-body ${st.state === 'skipped' ? 'text-fg-muted' : 'text-fg'}`}>{`${b.recurring ? '⟳ ' : ''}${b.title}`}</Truncate>
+                {b.time && <span className="shrink-0 text-meta tabular-nums text-fg-muted">{b.time}</span>}
+                <TonePill tone={SESSION_TONE[st.state]}>{SESSION_LABEL[st.state]}</TonePill>
+                <ChevronRight aria-hidden className="h-4 w-4 shrink-0 text-fg-faint" />
+              </button>
+            )
+          })}
         </div>
       ) : (
         <div className="flex flex-col gap-1.5">
