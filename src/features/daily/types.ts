@@ -13,6 +13,8 @@ export interface ScheduleBlock {
    *  because a pre-081 row simply doesn't carry it, and the projection
    *  treats that as "no lower bound" (the old behaviour). */
   effective_from?: string
+  /** Days left out (migration 142): each became a one-off plan of its own. */
+  except_dates?: string[]
   created_at:   string
   updated_at:   string
 }
@@ -45,6 +47,10 @@ export interface TimeBlock {
   episode_number?:  number | null
   notes:            string | null
   google_calendar_event_id?: string | null
+  /** The weekly plan (schedule_blocks) whose day this block replaces, and
+   *  that day (migration 142): one occurrence turned into a plan of its own. */
+  schedule_block_id?: string | null
+  occurrence_date?:   string | null
   /** Its linked task's status — only on the training-range read
    *  (fetchTrainingBlocksRange): a trained session (task done) is no longer "next". */
   task_status?:     'open' | 'in_progress' | 'done' | 'cancelled' | null
