@@ -1,9 +1,9 @@
 import { useCallback, useMemo, useState, type ReactNode } from 'react'
 import { formatWeekdayDate } from '../../../shared/utils/dateFormat'
 import { AlertTriangle, Check, PanelRightClose, PanelRightOpen, Plus, Zap } from 'lucide-react'
-import { useWorkTasks, useUpdateTask, useDeleteTask, useToggleTask, useCreateTask } from '../../todo/hooks/useTodos'
+import { useWorkTasks, useCreateTask } from '../../todo/hooks/useTodos'
+import { useTaskActions } from '../../todo/hooks/useTaskActions'
 import { useEntityModal } from '../../../shared/modals'
-import { withProgress } from '../../../shared/hooks/useMutationWithFeedback'
 import { Button, IconButton, PageBoard, PageContainer, PageHeader, Skeleton, TonePill, usePageStep } from '../../../shared/ui'
 import WorkBoard from '../components/WorkBoard'
 import WorkListView from '../components/WorkListView'
@@ -12,7 +12,9 @@ import OverdueStrip from '../components/OverdueStrip'
 import WorkSidebar from '../components/WorkSidebar'
 import { WorkHeroArt } from '../components/WorkHeroArt'
 import WorkToolbar, { type PrioFilter, type ViewMode } from '../components/WorkToolbar'
-import { isOverdue, isCompletedToday, matchesSearch, sortTasks } from '../components/workMeta'
+import { matchesSearch, sortTasks } from '../components/workMeta'
+import { countTasks, isFocusedOpen, isOverdueOn } from '../../todo/taskRules'
+import { todayStr } from '../../../shared/utils/dateUtils'
 import { STATUS_TONE } from '../../todo/taskTones'
 import type { Task, TaskStatus } from '../../todo/types'
 import { railToggleFrom, workHeaderCapRem, workLayout, type WorkSection } from '../workBoard'
@@ -30,21 +32,22 @@ function usePersisted<T extends string>(key: string, initial: T): [T, (v: T) => 
 
 export function WorkPage() {
   const { data: tasks = [], isLoading } = useWorkTasks()
-  const updateTask = useUpdateTask()
-  const deleteTask = useDeleteTask()
-  const toggleTask = useToggleTask()
   const createTask = useCreateTask()
+  // THE task actions (useTaskActions) — the same as Daily's and Home's rows.
+  const act = useTaskActions()
+  const today = todayStr()
 
   const modal = useEntityModal()
   const openNew  = useCallback(() => modal.open({ kind: 'task', config: { heading: 'New task' }, defaults: { domain: 'work', section: 'today' } }), [modal])
-  const openEdit = useCallback((task: Task) => modal.open({ kind: 'task', id: task.id, config: { heading: 'Edit task' } }), [modal])
+  const openEdit = act.edit
 
   const [search, setSearch]         = useState('')
   const [prioFilter, setPrioFilter] = useState<PrioFilter>('all')
   const [view, setView]             = usePersisted<ViewMode>('work_view', 'board')
   const [rail, setRail]             = usePersisted<'open' | 'closed'>('work_rail', 'open')
 
-  const focusedTasks = tasks.filter(t => t.is_focused)
+  // Focus is for work still to do; a closed task leaves it (migration 143).
+  const focusedTasks = tasks.filter(isFocusedOpen)
   const focusedIds = focusedTasks.map(t => t.id)
 
   const filtered = useMemo(() => tasks.filter(t =>
@@ -52,44 +55,32 @@ export function WorkPage() {
   ), [tasks, search, prioFilter])
 
   const overdueTasks = useMemo(
-    () => sortTasks(filtered.filter(t => isOverdue(t) && t.status !== 'in_progress')),
-    [filtered]
+    () => sortTasks(filtered.filter(t => isOverdueOn(t, today) && t.status !== 'in_progress')),
+    [filtered, today]
   )
 
-  const doneToday    = tasks.filter(t => t.status === 'done' && isCompletedToday(t)).length
-  const wip          = tasks.filter(t => t.status === 'in_progress').length
-  const overdueCount = tasks.filter(isOverdue).length
+  // The same counts as Daily and Home (taskRules): done = closed today.
+  const counts = countTasks(tasks, today, today)
 
-  const toggleFocus = useCallback((task: Task) => {
-    updateTask.mutate({ id: task.id, patch: {
-      is_focused: !task.is_focused,
-      ...((!task.is_focused && task.status === 'open') ? { status: 'in_progress' as TaskStatus } : {}),
-    } })
-  }, [updateTask])
-
+  // Cards and rows hand over an id; the actions take the task.
+  const byId = useCallback((id: string) => tasks.find(t => t.id === id), [tasks])
+  const handleStatusChange = useCallback((id: string, status: TaskStatus, waitingFor?: string) => {
+    const task = byId(id)
+    if (task) void act.setStatus(task, status, { waitingFor })
+  }, [act, byId])
+  const handleMarkDone = useCallback((id: string) => {
+    const task = byId(id)
+    if (task) void act.setDone(task, true)
+  }, [act, byId])
   const clearFocus = useCallback((id: string) => {
-    updateTask.mutate({ id, patch: { is_focused: false } })
-  }, [updateTask])
-
-  const handleStatusChange = useCallback(async (id: string, status: TaskStatus, waitingFor?: string) => {
-    await withProgress(() => updateTask.mutateAsync({ id, patch: {
-      status,
-      ...(waitingFor !== undefined ? { waiting_for: waitingFor } : {}),
-      ...(status === 'done' || status === 'cancelled' ? { is_focused: false } : {}),
-    } }), { loading: 'Updating…', success: 'Updated' })
-  }, [updateTask])
-
-  const handleMarkDone = useCallback(async (id: string) => {
-    await withProgress(async () => {
-      await toggleTask.mutateAsync({ id, isDone: true })
-      await updateTask.mutateAsync({ id, patch: { is_focused: false } })
-    }, { loading: 'Marking done…', success: 'Marked done' })
-  }, [toggleTask, updateTask])
-
-  const handleDelete = useCallback(async (id: string) => {
-    if (!(await modal.confirm({ title: 'Delete this task?', confirmLabel: 'Delete', destructive: true }))) return
-    await withProgress(() => deleteTask.mutateAsync(id), { loading: 'Deleting…', success: 'Deleted' })
-  }, [deleteTask, modal])
+    const task = byId(id)
+    if (task?.is_focused) void act.toggleFocus(task)
+  }, [act, byId])
+  const handleDelete = useCallback((id: string) => {
+    const task = byId(id)
+    if (task) void act.remove(task)
+  }, [act, byId])
+  const toggleFocus = useCallback((task: Task) => { void act.toggleFocus(task) }, [act])
 
   const handleQuickAdd = useCallback((title: string) => {
     createTask.mutate({ title, section: 'today', domain: 'work', priority: 'medium' })
@@ -146,10 +137,10 @@ export function WorkPage() {
             actions={
               <>
                 <span className="flex items-center gap-1.5" aria-label="Today at a glance">
-                  <TonePill tone={STATUS_TONE.done} className="tabular-nums"><Check aria-hidden className="h-3 w-3" />{doneToday} done</TonePill>
-                  <TonePill tone={STATUS_TONE.in_progress} className="tabular-nums"><Zap aria-hidden className="h-3 w-3" />{wip} active</TonePill>
-                  {overdueCount > 0 && (
-                    <TonePill tone="danger" className="tabular-nums"><AlertTriangle aria-hidden className="h-3 w-3" />{overdueCount} overdue</TonePill>
+                  <TonePill tone={STATUS_TONE.done} className="tabular-nums"><Check aria-hidden className="h-3 w-3" />{counts.done} done</TonePill>
+                  <TonePill tone={STATUS_TONE.in_progress} className="tabular-nums"><Zap aria-hidden className="h-3 w-3" />{counts.inProgress} active</TonePill>
+                  {counts.overdue > 0 && (
+                    <TonePill tone="danger" className="tabular-nums"><AlertTriangle aria-hidden className="h-3 w-3" />{counts.overdue} overdue</TonePill>
                   )}
                 </span>
                 <Button variant="primary" icon={<Plus />} onClick={openNew} className="ml-auto sm:ml-0">New task</Button>

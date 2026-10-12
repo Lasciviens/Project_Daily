@@ -1,7 +1,6 @@
 import { formatDurationBetween as fmtDuration } from '../../../shared/utils/formatDuration'
 import { fmtTrainingDate as fmtDate, fmtTrainingTime as fmtTime } from '../dateFormat'
-import { useToggleTask } from '../../todo/hooks/useTodos'
-import { withProgress } from '../../../shared/hooks/useMutationWithFeedback'
+import { useTaskActions } from '../../todo/hooks/useTaskActions'
 import { useEntityModal } from '../../../shared/modals'
 import { Button, Truncate } from '../../../shared/ui'
 import type { HevyWorkoutListItem } from '../api/hevyApi'
@@ -22,7 +21,7 @@ export function HevyWorkoutCard({ workout, onClick, matchedTask }: Props) {
   const duration      = fmtDuration(workout.start_time, workout.end_time)
   const date          = fmtDate(workout.start_time ?? workout.hevy_created_at)
   const time          = fmtTime(workout.start_time)
-  const toggleTask    = useToggleTask()
+  const act           = useTaskActions()
   const modal         = useEntityModal()
 
   // Marks the plan done instead of deleting it (it used to hard-delete the
@@ -35,7 +34,8 @@ export function HevyWorkoutCard({ workout, onClick, matchedTask }: Props) {
       confirmLabel: 'Mark done',
     })
     if (!ok) return
-    await withProgress(() => toggleTask.mutateAsync({ id: task.id, isDone: true }), { loading: 'Marking done…', success: 'Planned session marked done' })
+    // The session's own Mark done (useTaskActions), as on its popup and its task row.
+    await act.setDone(task, true)
   }
 
   return (
@@ -69,7 +69,7 @@ export function HevyWorkoutCard({ workout, onClick, matchedTask }: Props) {
           <Truncate className="flex-1 text-meta text-fg-2" fullText={`Planned: ${matchedTask.title}`}>
             Planned: <strong className="text-fg">{matchedTask.title}</strong>
           </Truncate>
-          <Button size="sm" loading={toggleTask.isPending} onClick={() => void closeOut(matchedTask)} className="shrink-0">
+          <Button size="sm" loading={act.busy} onClick={() => void closeOut(matchedTask)} className="shrink-0">
             Mark done
           </Button>
         </div>

@@ -6,6 +6,7 @@ import {
 } from 'date-fns'
 import { formatMonthYear, formatWeekdayDate } from '../../../shared/utils/dateFormat'
 import { useTasksByMonth } from '../../todo/hooks/useTodos'
+import { isOpenTask } from '../../todo/taskRules'
 import { useCalendarEventDatesForRange } from '../../calendar/hooks/useCalendar'
 import { DateNav } from '../../../shared/components/DateNav'
 import { Card, TonePill, cx } from '../../../shared/ui'
@@ -51,7 +52,7 @@ export function MonthWidget({ onDayClick, highlightDate, big }: Props) {
     return tasks.some(t => t.due_date === dateStr && t.status !== 'cancelled')
   }
 
-  const openCount = tasks.filter(t => t.status !== 'done' && t.status !== 'cancelled').length
+  const openCount = tasks.filter(isOpenTask).length
 
   return (
     <Card>

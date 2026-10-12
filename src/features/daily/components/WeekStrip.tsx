@@ -3,7 +3,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { cx } from '../../../shared/ui'
 import { addDays, addWeeks, format, startOfWeek, isToday, isSameDay, getISOWeek } from 'date-fns'
 import { formatWeekdayDate } from '../../../shared/utils/dateFormat'
-import { useTasksByWeek } from '../../todo/hooks/useTodos'
+import { useOpenOnDay, useTasksByWeek } from '../../todo/hooks/useTodos'
 import { useCalendarEventDatesForRange } from '../../calendar/hooks/useCalendar'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -33,10 +33,9 @@ export function WeekStrip({ viewDate, onDayClick }: Props) {
   const { data: tasks = [] } = useTasksByWeek(weekStart, addDays(weekStart, 6))
   const { data: calDates }   = useCalendarEventDatesForRange(weekStart, addDays(weekStart, 6))
 
-  function openCount(d: Date): number {
-    const s = format(d, 'yyyy-MM-dd')
-    return tasks.filter(t => t.due_date === s && t.status !== 'done' && t.status !== 'cancelled').length
-  }
+  // The same open count as the day pane (taskRules.onDay).
+  const openOn = useOpenOnDay(tasks)
+  const openCount = (d: Date) => openOn(format(d, 'yyyy-MM-dd'))
 
   const chevron = 'grid min-h-[44px] min-w-[32px] place-items-center rounded-control text-fg-faint transition-colors duration-150 hover:bg-surface-hover hover:text-fg'
 

@@ -7,8 +7,8 @@ import { useTodayOverview } from './useTodayOverview'
 import { useWeather } from './useWeather'
 import { useCurrencyRates } from './useCurrencyRates'
 import { useWeekTrainingStats } from './useWeekTrainingStats'
-import { useTasksForDay } from '../../todo/hooks/useTodos'
-import { closedOn, isOverdue } from '../../todo/taskRules'
+import { useDayTasks } from '../../todo/hooks/useTodos'
+import { isOverdueOn } from '../../todo/taskRules'
 import { useDayNutrition } from '../../daily/hooks/useDayNutrition'
 import { useDayTargets } from '../../daily/hooks/useDayTargets'
 import { useWaterDay } from '../../daily/hooks/useWater'
@@ -92,7 +92,7 @@ export function useDailyBrief(): { brief: DailyBrief; isLoading: boolean } {
   const date = todayStr()
 
   const overview = useTodayOverview(date)
-  const tasksQ = useTasksForDay(new Date(`${date}T00:00:00`), 'today')
+  const day = useDayTasks(date)
   const { data: weather } = useWeather()
   const { data: currency } = useCurrencyRates()
   const training = useWeekTrainingStats()
@@ -112,10 +112,6 @@ export function useDailyBrief(): { brief: DailyBrief; isLoading: boolean } {
   const { data: nextEp } = useNextEpisode(current?.id ?? null, current?.tv_series.tmdb_id ?? null, current?.tv_series.number_of_episodes ?? null)
 
   const brief = useMemo(() => {
-    const tasks = (tasksQ.data ?? []).filter(t => t.status !== 'cancelled')
-    const open = tasks.filter(t => t.status !== 'done')
-    const doneToday = tasks.filter(t => t.status === 'done' && closedOn(t, date)).length
-
     const next = overview.nextUp
     const nt = overview.nextTraining
     const trainingToday = nt && nt.date === date ? nt : null
@@ -125,9 +121,10 @@ export function useDailyBrief(): { brief: DailyBrief; isLoading: boolean } {
       hour,
       today: date,
       weather: weatherInput(weather),
-      tasks: tasksQ.data ? {
-        open: open.map(t => ({ title: t.title, priority: t.priority, overdue: isOverdue(t), dueTime: t.due_time ?? null })),
-        doneToday,
+      // The same day list as Home's tasks card and Daily (useDayTasks).
+      tasks: day.ready ? {
+        open: day.open.map(t => ({ title: t.title, priority: t.priority, overdue: isOverdueOn(t, date), dueTime: t.due_time ?? null })),
+        doneToday: day.counts.done,
       } : null,
       schedule: overview.isLoading ? null : {
         next: next ? { title: next.title, startLabel: next.startLabel, startHour: next.startHour, inProgress: next.inProgress } : null,
@@ -166,7 +163,7 @@ export function useDailyBrief(): { brief: DailyBrief; isLoading: boolean } {
       nokTry: currency ? { rate: currency.primary.rate, changePct: currency.primary.changePct } : null,
     }
     return buildDailyBrief(input)
-  }, [hour, date, tasksQ.data, overview, training, profile, weather, currency, nutrition, targets, waterMl, tvEntries, movieEntries, current, nextEp])
+  }, [hour, date, day.open, day.counts.done, day.ready, overview, training, profile, weather, currency, nutrition, targets, waterMl, tvEntries, movieEntries, current, nextEp])
 
-  return { brief, isLoading: tasksQ.isLoading || overview.isLoading }
+  return { brief, isLoading: day.isLoading || overview.isLoading }
 }

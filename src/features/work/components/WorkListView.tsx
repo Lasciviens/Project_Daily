@@ -1,7 +1,9 @@
 import { Check, RotateCcw, Trash2, Zap } from 'lucide-react'
 import type { Task, TaskStatus } from '../../todo/types'
 import { EmptyState, TonePill, cx, Truncate } from '../../../shared/ui'
-import { STATUS_CYCLE, isCompletedToday, isOverdue, taskStatusMeta } from './workMeta'
+import { STATUS_CYCLE, isOverdue, taskStatusMeta } from './workMeta'
+import { closedOn } from '../../todo/taskRules'
+import { todayStr } from '../../../shared/utils/dateUtils'
 import { DueChip, PriorityMark, WaitingChip } from './WorkTaskBits'
 
 interface Props {
@@ -23,8 +25,9 @@ const ACTION = 'grid place-items-center rounded-control min-h-[44px] min-w-[44px
 export default function WorkListView({
   tasks, focusedTaskIds, onStatusChange, onDelete, onEdit, onFocus,
 }: Props) {
+  const today = todayStr()
   const rows = tasks
-    .filter(t => t.status !== 'done' || isCompletedToday(t))
+    .filter(t => t.status !== 'done' || closedOn(t, today))
     .sort((a, b) => {
       const oa = isOverdue(a) ? 0 : 1
       const ob = isOverdue(b) ? 0 : 1

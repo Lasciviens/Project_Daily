@@ -1,3 +1,4 @@
+import { useCallback, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import {
@@ -23,6 +24,8 @@ import { toast, useCalendarStore } from '../../../app/store'
 import { logError } from '../../../shared/utils/logError'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
 import { qk, STALE } from '../../../shared/query'
+import { dayTasks, isOpenTask, openOnDay, sectionForDay, weekCounts } from '../taskRules'
+import { todayStr } from '../../../shared/utils/dateUtils'
 import type { CreateTaskInput, UpdateTaskInput, Task } from '../types'
 
 // Aggregated overview of every active task (+ recently done) — the Daily "Tasks"
@@ -52,12 +55,40 @@ export function useOpenTrainingSessionTasks() {
   })
 }
 
-export function useTasksForDay(date: Date, section: string) {
-  const dateStr = format(date, 'yyyy-MM-dd')
-  return useQuery({
-    queryKey: qk.tasks.day(dateStr, section),
-    queryFn: () => fetchTasksForDay(dateStr, section),
+/**
+ * THE day list (Daily's day pane and rail, Home's tasks card, overview and
+ * brief, the week strip's today count): one read, split by taskRules.dayTasks
+ * — open (overdue first), done and cancelled on that day, and their counts.
+ */
+export function useDayTasks(day: string) {
+  const today = todayStr()
+  const query = useQuery({
+    queryKey: qk.tasks.day(day, today),
+    queryFn: () => fetchTasksForDay(day, today),
+    staleTime: STALE.live,
   })
+  const split = useMemo(() => dayTasks(query.data ?? [], day, today), [query.data, day, today])
+  return { ...split, section: sectionForDay(day, today), isLoading: query.isLoading, ready: query.data !== undefined }
+}
+
+/**
+ * Open tasks on a day, as the week strips count them: today's from the day
+ * list (its overdue and undated Today rows count, as the day pane shows), any
+ * other day's from `tasks` (due that day).
+ */
+export function useOpenOnDay(tasks: readonly Task[]): (day: string) => number {
+  const today = todayStr()
+  const todayOpen = useDayTasks(today).counts.open
+  return useCallback((day: string) => (day === today ? todayOpen : openOnDay(tasks, day, today)), [tasks, today, todayOpen])
+}
+
+/** A week's open / done / % (taskRules.weekCounts) over the week read and today's list. */
+export function useWeekCounts(weekTasks: readonly Task[], from: string, to: string) {
+  const today = todayStr()
+  const todayList = useDayTasks(today)
+  return useMemo(() => weekCounts({
+    weekTasks, todayTasks: [...todayList.open, ...todayList.done], from, to, today,
+  }), [weekTasks, todayList.open, todayList.done, from, to, today])
 }
 
 export function useTasksByWeek(weekStart: Date, weekEnd: Date) {
@@ -298,7 +329,7 @@ export function usePushToGoogleTasks() {
       if (!token) throw new Error('Google account not connected')
 
       const notYetSynced = tasks.filter(t =>
-        !t.google_task_id && t.status !== 'done' && t.status !== 'cancelled')
+        !t.google_task_id && isOpenTask(t))
 
       const calendarLinkedIds = await fetchCalendarLinkedTaskIds(notYetSynced.map(t => t.id))
       const candidates = notYetSynced.filter(t => !calendarLinkedIds.has(t.id))

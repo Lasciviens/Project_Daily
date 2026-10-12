@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { format, getDay, isToday, subDays } from 'date-fns'
+import { format, isToday, subDays } from 'date-fns'
 import { useQueryClient } from '@tanstack/react-query'
 import {
   AlertTriangle, CalendarDays, CornerDownRight, Moon, MoreHorizontal, Plus, RefreshCw, Repeat, StickyNote, Trash2,
@@ -16,7 +16,7 @@ import { useCalendarStore, toast } from '../../../app/store'
 import { qk } from '../../../shared/query'
 import { Button, IconButton, TonePill, Truncate, cx } from '../../../shared/ui'
 import { formatDurationMinutes } from '../../../shared/utils/formatDuration'
-import { projectOneOffBlocksForDay, projectRecurringBlocksForDay, projectCalendarEventForDay } from './dayAgendaProjection'
+import { aheadOnDay, buildDaySchedule, plannedMinutes } from '../daySchedule'
 import type { CalendarEvent } from '../../calendar/types'
 import { TrainingPlanMenu } from '../../training/components/session/TrainingPlanActions'
 import { SESSION_LABEL, SESSION_TONE, sessionStatus } from '../../training/plan/sessionState'
@@ -83,8 +83,10 @@ interface AgendaBlock {
   dateStr:        string
   taskId?:        string | null
   calendarEvent?: CalendarEvent
-  allDay?:        boolean
+  allDay:         boolean
   spillover:      boolean
+  /** Its task is done or cancelled (daySchedule): never "next". */
+  closed:         boolean
   /** time_blocks / schedule_blocks category — a training row opens the session popup. */
   category?:      string
   /** A one-off block's task state (fetchTimeBlocks) — a training row reads
@@ -101,7 +103,6 @@ interface AgendaBlock {
 export function DayAgenda({ date, bare = false }: { date: Date; bare?: boolean }) {
   const dateStr     = format(date, 'yyyy-MM-dd')
   const prevDateStr = format(subDays(date, 1), 'yyyy-MM-dd')
-  const dayOfWeek   = getDay(date)
 
   const [editEvent,         setEditEvent]         = useState<CalendarEvent | null>(null)
   const [selectedId,        setSelectedId]        = useState<string | null>(null)
@@ -134,69 +135,24 @@ export function DayAgenda({ date, bare = false }: { date: Date; bare?: boolean }
   const { data: linkedTasksFull = [] } = useTasksByIds(linkedTaskIds)
   const taskNotesMap = new Map(linkedTasksFull.map(t => [t.id, t.description ?? null]))
 
-  // A block's own google_calendar_event_id already represents its Google
-  // Calendar presence — an event fetched separately from the Calendar API
-  // for the same id would otherwise render the same thing twice. Real bug
-  // fixed: this used to build the set from `timeBlocks` alone. A block
-  // whose OWN date is YESTERDAY but that crosses midnight into today
-  // renders a spillover row today (via projectOneOffBlocksForDay's
-  // `previousDayBlocks` argument) sourced from `prevTimeBlocks` — and its
-  // linked Calendar event, per Google's own events.list window semantics
-  // (an event matches a day's query whenever event.end > that day's
-  // timeMin), is ALSO returned by today's own `useCalendarEventsForDay`
-  // fetch. Without prevTimeBlocks in this set, that event rendered a
-  // second time as a separate 'calendar' row alongside its own spillover.
-  const linkedGCalIds = new Set(
-    [...timeBlocks, ...prevTimeBlocks].map(b => b.google_calendar_event_id).filter(Boolean)
-  )
-
-  // ── Assemble the unified block list ─────────────────────────────────────
-  const blocks: AgendaBlock[] = []
-
-  for (const p of projectRecurringBlocksForDay(dateStr, dayOfWeek, schedBlocks)) {
-    const original = schedBlocks.find(s => s.id === p.canonicalId)
-    blocks.push({
-      id: p.id, canonicalId: p.canonicalId, kind: p.kind, title: p.title, dateStr,
-      startHour: p.startHour, endHour: p.endHour, taskId: p.taskId, spillover: p.spillover,
-      edgeClass: COLOR_EDGE[original?.color ?? 'blue'] ?? COLOR_EDGE.blue, category: original?.category,
-    })
-  }
-  for (const p of projectOneOffBlocksForDay(timeBlocks, prevTimeBlocks)) {
-    const original = (p.spillover ? prevTimeBlocks : timeBlocks).find(b => b.id === p.canonicalId)
-    blocks.push({
-      id: p.id, canonicalId: p.canonicalId, kind: p.kind, title: p.title, dateStr,
-      startHour: p.startHour, endHour: p.endHour, taskId: p.taskId, spillover: p.spillover,
-      edgeClass: COLOR_EDGE[original?.color ?? 'accent'] ?? COLOR_EDGE.accent, category: original?.category,
-      taskStatus: original?.task_status ?? null, taskWorkoutId: original?.task_workout_id ?? null, taskRoutineId: original?.task_routine_id ?? null,
-      routineId: original?.source_type === 'training_session' ? original.source_id ?? null : null,
-    })
-  }
-  for (const e of calEvents ?? []) {
-    if (linkedGCalIds.has(e.id)) continue
-    if (e.start.dateTime) {
-      // Real bug fixed: this used to build startHour/endHour straight from
-      // each instant's own `.getHours()+.getMinutes()/60` — correct for
-      // each instant in isolation, but assembled into one startHour/endHour
-      // pair for TODAY's render, a cross-midnight event (23:00 yesterday →
-      // 01:00 today) produced startHour=23 > endHour=1: a negative-duration
-      // "row" that broke the overlap check and the booked-minutes sum the
-      // moment a Calendar event crossed midnight. projectCalendarEventForDay
-      // clips it onto THIS day exactly like the one-off/recurring block
-      // helpers already do for their own cross-midnight rows.
-      const projected = projectCalendarEventForDay(dateStr, e)
-      if (!projected) continue
-      blocks.push({
-        id: e.id, canonicalId: e.id, kind: 'calendar', title: e.summary ?? '(no title)', dateStr,
-        startHour: projected.startHour, endHour: projected.endHour,
-        edgeClass: COLOR_EDGE.green, calendarEvent: e, spillover: projected.spillover,
-      })
-    } else if (e.start.date) {
-      blocks.push({
-        id: e.id, canonicalId: e.id, kind: 'calendar', title: e.summary ?? '(no title)', dateStr,
-        startHour: -1, endHour: -1, edgeClass: COLOR_EDGE.green, calendarEvent: e, allDay: true, spillover: false,
-      })
+  // ── The day's items: the one day schedule (daySchedule.ts), shared with
+  // Home and Daily's rail — a block's own Google event (yesterday's too, for a
+  // cross-midnight block) is that block, never a second row.
+  const items = buildDaySchedule({ date: dateStr, blocks: timeBlocks, prevBlocks: prevTimeBlocks, templates: schedBlocks, events: calEvents ?? [] })
+  const blocks: AgendaBlock[] = items.map(i => {
+    const b = i.block
+    // A one-off block's own tag defaults to the accent, a weekly plan's to blue.
+    const fallback = i.kind === 'block' ? 'accent' : 'blue'
+    return {
+      id: i.id, canonicalId: i.canonicalId, kind: i.kind, title: i.title, dateStr,
+      startHour: i.startHour, endHour: i.endHour, taskId: i.taskId, spillover: i.spillover, allDay: i.allDay,
+      closed: i.closed, calendarEvent: i.event,
+      edgeClass: i.kind === 'calendar' ? COLOR_EDGE.green : COLOR_EDGE[(b ?? i.template)?.color ?? fallback] ?? COLOR_EDGE[fallback],
+      category: b?.category ?? i.template?.category,
+      taskStatus: b?.task_status ?? null, taskWorkoutId: b?.task_workout_id ?? null, taskRoutineId: b?.task_routine_id ?? null,
+      routineId: b?.source_type === 'training_session' ? b.source_id ?? null : null,
     }
-  }
+  })
 
   const allDayEvents = blocks.filter(b => b.allDay)
   const unscheduled  = blocks.filter(b => !b.allDay && b.startHour < 0)
@@ -215,15 +171,15 @@ export function DayAgenda({ date, bare = false }: { date: Date; bare?: boolean }
     }
   }
 
-  // Every row's endHour/startHour is already clipped to this day's own
-  // [0,24) window by the projection helpers, so summing them here can never
-  // double-count a minute that also appears (as a separate spillover row)
-  // on the adjacent day.
-  const totalBookedMin = timed.reduce((s, b) => s + Math.max(0, (b.endHour - b.startHour) * 60), 0)
+  // The same "planned" and "next" as Home and Daily's rail (daySchedule):
+  // every row is already clipped to this day, so nothing counts twice; the
+  // next is the first row not yet over whose task isn't closed — "Now" while
+  // it is under way.
+  const totalBookedMin = plannedMinutes(blocks)
   const now = new Date()
   const nowHour = now.getHours() + now.getMinutes() / 60
   const today = isToday(date)
-  const nextBlock = today ? day.find(b => b.startHour > nowHour) : undefined
+  const nextBlock = today ? aheadOnDay(blocks, true, nowHour)[0] : undefined
 
   // "+ Add" — always creates a standalone one-off block (schedule mode);
   // "Also add to Tasks" is offered inside ScheduleTab itself.
@@ -433,11 +389,15 @@ export function DayAgenda({ date, bare = false }: { date: Date; bare?: boolean }
               <span className="whitespace-nowrap text-micro tabular-nums text-fg-muted">· {formatDurationMinutes(totalBookedMin)} planned</span>
             )}
           </div>
-          {nextBlock && (
+          {nextBlock && (nextBlock.inProgress ? (
+            <Truncate as="p" className="mt-0.5 text-meta text-fg-muted" fullText={`Now: ${nextBlock.title} until ${hourToTimeStr(nextBlock.endHour)}`}>
+              Now: <span className="font-semibold text-fg-2">{nextBlock.title}</span> until {hourToTimeStr(nextBlock.endHour)}
+            </Truncate>
+          ) : (
             <Truncate as="p" className="mt-0.5 text-meta text-fg-muted" fullText={`Next: ${nextBlock.title} at ${hourToTimeStr(nextBlock.startHour)}`}>
               Next: <span className="font-semibold text-fg-2">{nextBlock.title}</span> at {hourToTimeStr(nextBlock.startHour)}
             </Truncate>
-          )}
+          ))}
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
           {calToken && (

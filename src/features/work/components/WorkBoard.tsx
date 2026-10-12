@@ -7,7 +7,9 @@ import type { Task, TaskStatus } from '../../todo/types'
 import { ChevronDown, Plus } from 'lucide-react'
 import { cx } from '../../../shared/ui'
 import WorkTaskCard from './WorkTaskCard'
-import { BOARD_COLUMNS, isCompletedToday, isOverdue, sortTasks, type BoardStatus, type StatusMeta } from './workMeta'
+import { BOARD_COLUMNS, isOverdue, sortTasks, type BoardStatus, type StatusMeta } from './workMeta'
+import { closedOn } from '../../todo/taskRules'
+import { todayStr } from '../../../shared/utils/dateUtils'
 
 interface BoardColumnProps {
   col: StatusMeta
@@ -126,10 +128,12 @@ export default function WorkBoard({
     useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 8 } }),
   )
 
+  const today = todayStr()
   const columnTasks = Object.fromEntries(
     BOARD_COLUMNS.map(col => {
       let colTasks = tasks.filter(t => t.status === col.id)
-      if (col.id === 'done') colTasks = colTasks.filter(isCompletedToday)
+      // Done today = closed today (taskRules), as on Daily and Home.
+      if (col.id === 'done') colTasks = colTasks.filter(t => closedOn(t, today))
       // Overdue tasks live in the alert strip, not in To-do/Waiting columns…
       // except in_progress: actively-worked tasks stay visible on the board.
       if (col.id === 'open' || col.id === 'waiting') colTasks = colTasks.filter(t => !isOverdue(t))

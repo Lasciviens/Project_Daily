@@ -13,7 +13,8 @@ export const qk = {
     list: () => ['tasks', 'all'] as const,
     section: (section: string) => ['tasks', 'section', section] as const,
     trainingOpen: () => ['tasks', 'training-session-open'] as const,
-    day: (date: string, section: string) => ['tasks', 'day', date, section] as const,
+    /** One day's list; `today` in the key so midnight starts a fresh read. */
+    day: (date: string, today: string) => ['tasks', 'day', date, today] as const,
     week: (from: string, to: string) => ['tasks', 'week', from, to] as const,
     month: (from: string, to: string) => ['tasks', 'month', from, to] as const,
     work: () => ['tasks', 'work'] as const,

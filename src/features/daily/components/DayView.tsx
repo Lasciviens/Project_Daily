@@ -2,13 +2,12 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ChevronDown, ChevronRight, Plus } from 'lucide-react'
 import { format, startOfWeek, endOfWeek } from 'date-fns'
-import { useDayData } from '../hooks/useDayData'
-import { useTasksByWeek } from '../../todo/hooks/useTodos'
+import { useDayTasks, useTasksByWeek } from '../../todo/hooks/useTodos'
 import { ToDoItem } from '../../todo/components/ToDoItem'
 import { useNewIds } from '../../../shared/hooks/useNewIds'
 import { useEntityModal } from '../../../shared/modals'
 import { Skeleton, ToneDot, TonePill, cx, Truncate } from '../../../shared/ui'
-import { completedWithinLast24h } from '../../todo/taskRules'
+import { isOpenTask } from '../../todo/taskRules'
 import { useOpenWishes } from '../../wishes/hooks/useWishes'
 import { wishPeriodLabel } from '../../wishes/wishRules'
 import type { WishItem } from '../../wishes/types'
@@ -58,27 +57,25 @@ function OpenWishesRow({ wishes }: { wishes: WishItem[] }) {
 // the card border + accent bar). The undated "this week" tasks moved here
 // from the old WeekWidget column so nothing was lost in the consolidation.
 export function DayView({ date }: Props) {
-  const { tasks, isLoading, section } = useDayData(date)
+  const day = format(date, 'yyyy-MM-dd')
+  // The one day list (taskRules.dayTasks): open — waiting too — overdue
+  // first; done and cancelled = closed on this day (what you finished
+  // yesterday is under yesterday).
+  const { open: openTasks, done: doneTasks, cancelled: cancelledTasks, isLoading, section } = useDayTasks(day)
   const { data: openWishes = [] } = useOpenWishes()
   const modal = useEntityModal()
   const [showWeek, setShowWeek] = useState(false)
 
   const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 })
   const { data: weekTasks = [] } = useTasksByWeek(weekStart, endOfWeek(weekStart, { weekStartsOn: 1 }))
-  const floating = weekTasks.filter(
-    (t): t is Task => !t.due_date && t.status !== 'done' && t.status !== 'cancelled',
-  )
+  const floating = weekTasks.filter((t): t is Task => !t.due_date && isOpenTask(t))
 
-  const openTasks      = tasks.filter(t => t.status === 'open' || t.status === 'in_progress')
-  const doneTasks      = tasks.filter(t => t.status === 'done' && completedWithinLast24h(t))
-  // A cancelled task stays visible (same 24h window as Done) so it doesn't
-  // look identical to a silent delete; counts elsewhere still exclude it.
-  const cancelledTasks = tasks.filter(t => t.status === 'cancelled' && completedWithinLast24h(t))
   // A task added while the day is on screen rises in; the day's own rows don't.
-  const fresh = useNewIds(tasks.map(t => t.id), format(date, 'yyyy-MM-dd'), !isLoading)
+  // A cancelled task stays visible on its day so it doesn't look like a
+  // silent delete; counts never include it.
+  const fresh = useNewIds([...openTasks, ...doneTasks, ...cancelledTasks].map(t => t.id), day, !isLoading)
 
   const addTask = () => {
-    const day = format(date, 'yyyy-MM-dd')
     modal.open({ kind: 'task', config: { heading: 'New task' }, defaults: { section, date: day, dueDate: day } })
   }
 

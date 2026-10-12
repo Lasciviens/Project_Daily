@@ -4,6 +4,7 @@ import { X } from 'lucide-react'
 import { Sheet } from '../../../shared/components/Sheet'
 import { Button } from '../../../shared/ui'
 import { useAllTasks, useSetParentTask } from '../hooks/useTodos'
+import { isOpenTask } from '../taskRules'
 import type { Task } from '../types'
 
 interface Props {
@@ -40,7 +41,7 @@ export function SetParentTaskSheet({ open, onClose, task, hasSubtasks }: Props) 
   // once) intentionally left out of this simple picker.
   const candidates = tasks.filter(t =>
     t.id !== task.id
-    && t.status !== 'done' && t.status !== 'cancelled'
+    && isOpenTask(t)
     && !childIds.has(t.id)     // would create a 3-level chain from below
     && !t.parent_task_id       // candidate already a subtask itself — same reason
     && (!task.google_task_id || (!!t.google_task_id && t.google_tasklist_id === task.google_tasklist_id))

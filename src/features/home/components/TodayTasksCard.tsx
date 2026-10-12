@@ -2,8 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { ListTodo, Plus } from 'lucide-react'
 import { Card, CardHeader, EmptyState, IconButton, Skeleton } from '../../../shared/ui'
-import { useTasksForDay, useCreateTask } from '../../todo/hooks/useTodos'
-import { closedOn, isOverdue } from '../../todo/taskRules'
+import { useDayTasks, useCreateTask } from '../../todo/hooks/useTodos'
 import { ToDoItem } from '../../todo/components/ToDoItem'
 import { todayStr } from '../../../shared/utils/dateUtils'
 import { useNewIds } from '../../../shared/hooks/useNewIds'
@@ -12,23 +11,20 @@ const SHOWN = 5
 
 /**
  * Today's open tasks with the full row behaviour (toggle, cancel, swipe to
- * delete; tapping opens the shared task popup) plus a quick-add. Uses the
- * same day query as Daily; cancelled never counts, done only when it was closed
- * today (completed_at — not updated_at, which any sync or reorder moves).
+ * delete; tapping opens the shared task popup) plus a quick-add. The same day
+ * list as Daily (useDayTasks): open ones overdue first, done = closed today,
+ * cancelled never counts.
  */
 export function TodayTasksCard() {
-  const { data = [], isLoading } = useTasksForDay(new Date(), 'today')
+  const { open, counts, isLoading } = useDayTasks(todayStr())
   const create = useCreateTask()
   const [title, setTitle] = useState('')
   const [showAll, setShowAll] = useState(false)
 
-  const countable = data.filter(t => t.status !== 'cancelled' && (t.status !== 'done' || closedOn(t, todayStr())))
-  const done = countable.filter(t => t.status === 'done').length
-  const open = countable
-    .filter(t => t.status !== 'done')
-    .sort((a, b) => Number(isOverdue(b)) - Number(isOverdue(a)))
-  const progress = countable.length ? (done / countable.length) * 100 : 0
-  const fresh = useNewIds(data.map(t => t.id), 'today', !isLoading)
+  const done = counts.done
+  const total = counts.open + counts.done
+  const progress = total ? (done / total) * 100 : 0
+  const fresh = useNewIds(open.map(t => t.id), 'today', !isLoading)
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -44,12 +40,12 @@ export function TodayTasksCard() {
       <CardHeader
         icon={<ListTodo />}
         title="Today's tasks"
-        subtitle={countable.length ? `${done} of ${countable.length} done` : undefined}
+        subtitle={total ? `${done} of ${total} done` : undefined}
         action={<Link to="/daily" className="inline-flex min-h-[44px] items-center px-1 text-meta font-semibold text-accent-600">Open Daily</Link>}
       />
 
-      {countable.length > 0 && (
-        <div className="mb-3 h-1.5 overflow-hidden rounded-full bg-surface-2" role="progressbar" aria-valuemin={0} aria-valuemax={countable.length} aria-valuenow={done} aria-label="Tasks done today">
+      {total > 0 && (
+        <div className="mb-3 h-1.5 overflow-hidden rounded-full bg-surface-2" role="progressbar" aria-valuemin={0} aria-valuemax={total} aria-valuenow={done} aria-label="Tasks done today">
           <div className="h-full rounded-full bg-accent-500 transition-[width] duration-300" style={{ width: `${progress}%` }} />
         </div>
       )}
