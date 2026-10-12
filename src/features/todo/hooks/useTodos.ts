@@ -83,7 +83,7 @@ export function useTasksByMonth(monthStart: Date, monthEnd: Date) {
 // The outbox (populated atomically with the tasks write, not by this call)
 // is the actual safety net — a failure here just means "will retry later",
 // never a lost operation.
-async function drainBestEffort(token: string | null, context: Record<string, unknown>): Promise<string | null> {
+export async function drainBestEffort(token: string | null, context: Record<string, unknown>): Promise<string | null> {
   if (!token) return null
   try {
     const { failed } = await drainGoogleTasksOutbox(token)

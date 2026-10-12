@@ -1,24 +1,25 @@
 import { useEffect, useMemo, type ReactNode } from 'react'
-import { CalendarPlus } from 'lucide-react'
+import { CalendarCog, CalendarPlus, Pencil, Trash2 } from 'lucide-react'
 import { ModalShell, useEntityModal } from '../../../../shared/modals'
 import { Button, SkeletonText, TonePill, Truncate } from '../../../../shared/ui'
 import { useHevyWorkoutDetail } from '../../hooks/useHevyWorkouts'
 import { useHevyRoutines } from '../../hooks/useHevyRoutines'
 import { useCurrentProgramRoutines } from '../../hooks/useAthleteProfile'
 import { useTrainingSkips } from '../../hooks/useTrainingSkips'
+import { useTrainingPlanActions } from '../../hooks/useTrainingPlanActions'
 import { useSessionAnchor, useSessionDay, type SessionRequest } from '../../hooks/useTrainingSessionDetail'
-import { formatWeekdayDate } from '../../../../shared/utils/dateFormat'
 import { matchRoutineToPlan } from '../../plan/nextSession'
-import { skipCovering, skippedText } from '../../plan/skippedRoutines'
+import { skipForPlan } from '../../plan/skippedRoutines'
+import { SESSION_LABEL, SESSION_TONE, sessionNote, sessionStatus, type SessionStatus } from '../../plan/sessionState'
 import { openPlanRoutine } from '../../planTraining'
 import { rememberShownWorkout } from '../../sessionLinks'
-import { PLAN_TONE, WORKOUT_TONE, type CalendarPlanItem } from '../calendar/calendarModel'
+import { WORKOUT_TONE } from '../calendar/calendarModel'
 import { planRoutineId, planStartHHMM, workoutStartHHMM } from '../calendar/calendarSessions'
-import {
-  SESSION_STATUS_LABEL, coveredPlanNote, planMinutes, planRefOf, sessionWhenLabel, weekdaysLabel,
-} from '../../sessionRef'
+import { coveredPlanNote, planMinutes, sessionWhenLabel, weekdaysLabel } from '../../sessionRef'
 import type { HevyRoutine } from '../../types.hevy'
-import { SessionPlanMenu, type ExtraAction, type MenuPlan } from './SessionPlanMenu'
+import type { PlanTarget, TrainingPlanRef } from '../../api/trainingPlanApi'
+import { SessionActionBar, SessionMenu } from './TrainingPlanActions'
+import { useSessionActionItems, type SessionActionItem } from '../../hooks/useSessionActionItems'
 import { WorkoutSessionBody } from './WorkoutSessionBody'
 import { PlannedSessionBody } from './PlannedSessionBody'
 
@@ -31,22 +32,56 @@ function StatusLine({ pill, children }: { pill: ReactNode; children?: ReactNode 
   )
 }
 
-const menuPlans = (plans: readonly CalendarPlanItem[], date: string): MenuPlan[] =>
-  plans.flatMap(p => { const ref = planRefOf(p, date); return ref ? [{ ref, title: p.title }] : [] })
+const nowHHMM = () => { const d = new Date(); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}` }
+
+/** A plan's status line, its main actions and its targets. */
+function PlanBody({ status, primary, routine, repeats, offSchedule, routinesLoading, todayStr }: {
+  status: SessionStatus
+  primary: readonly SessionActionItem[]
+  routine: HevyRoutine | null
+  repeats: string | null
+  offSchedule: boolean
+  routinesLoading: boolean
+  todayStr: string
+}) {
+  const note = sessionNote(status, routine?.title ?? null)
+  return (
+    <div className="flex flex-col gap-4">
+      <StatusLine pill={<TonePill tone={SESSION_TONE[status.state]}>{SESSION_LABEL[status.state]}</TonePill>}>
+        {repeats && <span>⟳ {repeats}</span>}
+        {note && <span className="min-w-0 break-words text-fg-2">{note}</span>}
+        {offSchedule && <span>This plan no longer falls on this day.</span>}
+      </StatusLine>
+      <SessionActionBar items={primary} />
+      <PlannedSessionBody routine={routine} routinesLoading={routinesLoading} todayStr={todayStr} />
+    </div>
+  )
+}
+
+interface PlanContext {
+  plan: TrainingPlanRef
+  status: SessionStatus
+  weekly: { templateId: string } | null
+  skipId: string | null
+}
 
 /**
  * The ONE training-session popup: a logged workout, or a planned session
- * (with the progress engine's targets, like Next). Compact by default —
- * exercises and the Apple Watch numbers are collapsed; changing or deleting
- * the plan sits behind ⋯. One shell from the first frame to the loaded
- * session, so opening never flashes a second dialog.
+ * (with the progress engine's targets, like Next). Opened from a task, its
+ * block on the calendar or a weekly plan's day, a plan reads the same task,
+ * the same status (plan/sessionState) and offers the same actions
+ * (TrainingPlanActions): Mark done, Move, Skip with a reason, Edit, Delete
+ * with Undo. One shell from the first frame to the loaded session, so
+ * opening never flashes a second dialog.
  */
 export function TrainingSessionView({ request, onClose }: { request: SessionRequest; onClose: () => void }) {
   const modal = useEntityModal()
+  const planActions = useTrainingPlanActions()
   const anchor = useSessionAnchor(request)
   const shown = anchor.request
   const orphan = anchor.orphanTask
-  const { resolved, todayStr } = useSessionDay(shown, anchor.date, anchor.planRow)
+  const task = anchor.task
+  const { resolved, todayStr, hasActivity } = useSessionDay(shown, anchor.date, anchor.planRow)
   const workoutQ = useHevyWorkoutDetail(resolved?.kind === 'workout' ? resolved.workoutId : null)
   const routinesQ = useHevyRoutines()
   const { data: program } = useCurrentProgramRoutines()
@@ -60,14 +95,58 @@ export function TrainingSessionView({ request, onClose }: { request: SessionRequ
 
   const planItem = resolved?.kind === 'plan' ? resolved.plan : null
   const workout = resolved?.kind === 'workout' ? workoutQ.data ?? null : null
+  // The plan's task names its routine (141); a plan with no task is matched
+  // by its block's routine or its title.
   const routine = useMemo<HevyRoutine | null>(() => {
     const routines = routinesQ.data ?? []
     if (workout) return workout.routine_id ? routines.find(r => r.id === workout.routine_id) ?? null : null
-    if (orphan) return routines.find(r => r.id === orphan.hevy_routine_id || r.id.toLowerCase() === orphan.source_id) ?? null
+    const linked = task?.hevy_routine_id ? routines.find(r => r.id === task.hevy_routine_id) : null
+    if (linked) return linked
+    if (orphan) return routines.find(r => r.id.toLowerCase() === orphan.source_id) ?? null
     if (!planItem || !date) return null
     const programIds = new Set((program ?? []).map(p => p.routine_id))
     return matchRoutineToPlan({ title: planItem.title, date, startTime: planStartHHMM(planItem), sourceId: planRoutineId(planItem) }, routines, programIds)
-  }, [routinesQ.data, workout, orphan, planItem, date, program])
+  }, [routinesQ.data, workout, task, orphan, planItem, date, program])
+
+  // The planned session shown (a plan, or a task not on the calendar): one
+  // target, one status (sessionState), one action list for buttons and ⋯.
+  const planCtx = ((): PlanContext | null => {
+    const now = nowHHMM()
+    if (orphan) {
+      const day = orphan.due_date ?? todayStr
+      const plan: TrainingPlanRef = {
+        target: { kind: 'task', taskId: orphan.id, blockId: null },
+        info: { title: orphan.title, date: day, startHHMM: orphan.due_time?.slice(0, 5) ?? null, minutes: null, routineId: routine?.id ?? orphan.hevy_routine_id ?? null },
+      }
+      const skip = skipForPlan(skips ?? [], { taskId: orphan.id, taskCancelled: orphan.status === 'cancelled', routineId: plan.info.routineId, date: day })
+      const status = sessionStatus({ date: day, taskStatus: orphan.status, taskWorkoutId: orphan.hevy_workout_id, skipReason: skip?.reason, skipped: !!skip, today: todayStr, nowHHMM: now })
+      return { plan, status, weekly: null, skipId: null }
+    }
+    if (resolved?.kind !== 'plan' || !planItem || !date) return null
+    const block = planItem.kind === 'block' ? planItem.timeBlock ?? null : null
+    const template = planItem.kind === 'recurring' ? planItem.scheduleBlock ?? null : null
+    const taskId = task?.id ?? block?.task_id ?? null
+    if (!taskId && !block && !template) return null
+    const target: PlanTarget = taskId ? { kind: 'task', taskId, blockId: block?.id ?? null }
+      : block ? { kind: 'block', blockId: block.id }
+      : { kind: 'weekly', templateId: template!.id, date }
+    const plan: TrainingPlanRef = {
+      target,
+      info: { title: planItem.title, date, startHHMM: planStartHHMM(planItem), minutes: planMinutes(planItem), routineId: routine?.id ?? task?.hevy_routine_id ?? null },
+    }
+    const skip = skipForPlan(skips ?? [], { taskId, taskCancelled: task?.status === 'cancelled', routineId: plan.info.routineId, date })
+    const status = sessionStatus({
+      date, startHHMM: plan.info.startHHMM, minutes: plan.info.minutes,
+      taskStatus: taskId ? task?.status ?? block?.task_status ?? 'open' : null,
+      taskWorkoutId: task?.hevy_workout_id ?? null, activityOnDay: hasActivity,
+      skipReason: skip?.reason, skipped: !!skip, today: todayStr, nowHHMM: now,
+    })
+    return { plan, status, weekly: target.kind === 'weekly' ? { templateId: target.templateId } : null, skipId: !taskId ? skip?.id ?? null : null }
+  })()
+  const planItems = useSessionActionItems({
+    plan: planCtx?.plan ?? null, status: planCtx?.status ?? null,
+    weekly: planCtx?.weekly, skipId: planCtx?.skipId, onGone: onClose,
+  })
 
   let title: ReactNode = 'Loading…'
   let subtitle: ReactNode | undefined
@@ -75,23 +154,15 @@ export function TrainingSessionView({ request, onClose }: { request: SessionRequ
   let actions: ReactNode = null
 
   const anchorFailed = !date && !orphan && ((anchor.query.isError && !anchor.query.isFetching) || (anchor.query.isSuccess && !anchor.query.isFetching))
-  if (orphan) {
-    // A training task with no time on the calendar and no workout yet: the
-    // session's exercises and targets, and its task to give it a time.
-    const done = orphan.status === 'done'
+  if (orphan && planCtx) {
+    // A training task with no time on the calendar and no workout yet.
     title = orphan.title
-    subtitle = orphan.due_date ? formatWeekdayDate(orphan.due_date, 'long') : undefined
+    subtitle = `${sessionWhenLabel(planCtx.plan.info.date, planCtx.plan.info.startHHMM, null)} · not on your calendar`
     body = (
-      <div className="flex flex-col gap-4">
-        <StatusLine pill={<TonePill tone={done ? WORKOUT_TONE : 'neutral'}>{done ? SESSION_STATUS_LABEL.done : 'No time set'}</TonePill>}>
-          <span>{done ? 'Marked done; no Hevy workout is linked to it.' : 'Not on your calendar yet.'}</span>
-          <Button size="sm" onClick={() => modal.open({ kind: 'task', id: orphan.id, config: { heading: 'Edit task' } })}>
-            {done ? 'Edit task' : 'Set a time'}
-          </Button>
-        </StatusLine>
-        <PlannedSessionBody routine={routine} routinesLoading={routinesQ.isLoading} todayStr={todayStr} />
-      </div>
+      <PlanBody status={planCtx.status} primary={planItems.primary} routine={routine} repeats={null} offSchedule={false}
+        routinesLoading={routinesQ.isLoading} todayStr={todayStr} />
     )
+    actions = <SessionMenu items={planItems.more} />
   } else if (anchorFailed) {
     const failed = anchor.query.isError
     title = shown.workoutId ? 'Can’t open this workout' : 'Can’t open this session'
@@ -105,16 +176,32 @@ export function TrainingSessionView({ request, onClose }: { request: SessionRequ
     const plans = resolved.plans
     title = workout?.title ?? (plans[0]?.title ?? 'Workout')
     subtitle = sessionWhenLabel(date, workout ? workoutStartHHMM(workout) : null, null)
-    const extra: ExtraAction[] = routine
-      ? [{ label: 'Plan this routine again…', icon: <CalendarPlus />, onSelect: () => openPlanRoutine(routine) }]
-      : []
-    actions = <SessionPlanMenu plans={menuPlans(plans, date)} extra={extra} label="Session actions" />
+    // The plans this workout did: change or delete each (Delete asks and
+    // offers Undo), and plan the routine again for another day.
+    const items: SessionActionItem[] = []
+    if (routine) items.push({ key: 'again', label: 'Plan this routine again…', icon: <CalendarPlus />, onSelect: () => openPlanRoutine(routine) })
+    for (const p of plans) {
+      const suffix = plans.length > 1 ? ` · ${p.title}` : ''
+      if (p.kind === 'recurring' && p.scheduleBlock) {
+        const id = p.scheduleBlock.id
+        items.push({ key: `weekly-${p.id}`, label: `Change weekly plan…${suffix}`, icon: <CalendarCog />, onSelect: () => modal.open({ kind: 'schedule-block', id, config: { heading: 'Change weekly plan' } }) })
+        continue
+      }
+      const b = p.timeBlock
+      if (!b) continue
+      const target: PlanTarget = b.task_id ? { kind: 'task', taskId: b.task_id, blockId: b.id } : { kind: 'block', blockId: b.id }
+      const ref: TrainingPlanRef = { target, info: { title: p.title, date: b.date, startHHMM: planStartHHMM(p), minutes: planMinutes(p), routineId: planRoutineId(p) } }
+      items.push({ key: `edit-${p.id}`, label: `${b.task_id ? 'Edit session…' : 'Edit plan…'}${suffix}`, icon: <Pencil />,
+        onSelect: () => (b.task_id ? modal.open({ kind: 'task', id: b.task_id }) : modal.open({ kind: 'time-block', id: b.id, config: { heading: 'Change plan' } })) })
+      items.push({ key: `delete-${p.id}`, label: `Delete plan${suffix}`, icon: <Trash2 />, danger: true, onSelect: () => { void planActions.deleteSession(ref) } })
+    }
+    actions = <SessionMenu items={items} />
     if (workoutQ.isError) {
       body = <div className="flex flex-col items-start gap-3"><p className="text-body text-fg-2">Couldn’t load this workout.</p><Button size="sm" onClick={() => { void workoutQ.refetch() }}>Try again</Button></div>
     } else if (workout) {
       body = (
         <div className="flex flex-col gap-4">
-          <StatusLine pill={<TonePill tone={WORKOUT_TONE}>{SESSION_STATUS_LABEL.done}</TonePill>}>
+          <StatusLine pill={<TonePill tone={WORKOUT_TONE}>{SESSION_LABEL.done}</TonePill>}>
             {plans.length > 0 && <span className="min-w-0">{coveredPlanNote(plans, workout)}</span>}
           </StatusLine>
           {workout.description && <Truncate as="p" lines={2} className="whitespace-pre-line text-meta text-fg-muted">{workout.description}</Truncate>}
@@ -122,31 +209,16 @@ export function TrainingSessionView({ request, onClose }: { request: SessionRequ
         </div>
       )
     }
-  } else if (resolved?.kind === 'plan' && planItem && date) {
-    const { status, offSchedule } = resolved
+  } else if (resolved?.kind === 'plan' && planItem && date && planCtx) {
+    const template = planItem.kind === 'recurring' ? planItem.scheduleBlock ?? null : null
     title = planItem.title
-    subtitle = sessionWhenLabel(date, planStartHHMM(planItem), planMinutes(planItem))
-    const extra: ExtraAction[] = routine && (status === 'missed' || status === 'done')
-      ? [{ label: 'Plan it again…', icon: <CalendarPlus />, onSelect: () => openPlanRoutine(routine) }]
-      : []
-    actions = <SessionPlanMenu plans={menuPlans([planItem], date)} extra={extra} onDeleted={onClose} />
-    // A missed session the athlete skipped with a reason says so (Next's
-    // "Skip" writes training_skips); otherwise nothing was logged.
-    const skip = status === 'missed' ? skipCovering(skips ?? [], routine?.id, date) : null
-    const repeats = planItem.kind === 'recurring' && planItem.scheduleBlock ? `Repeats ${weekdaysLabel(planItem.scheduleBlock.days_of_week)}` : null
+    subtitle = sessionWhenLabel(date, planCtx.plan.info.startHHMM, planCtx.plan.info.minutes)
     body = (
-      <div className="flex flex-col gap-4">
-        <StatusLine pill={<TonePill tone={PLAN_TONE[status]}>{SESSION_STATUS_LABEL[status]}</TonePill>}>
-          {repeats && <span>⟳ {repeats}</span>}
-          {status === 'missed' && (skip
-            ? <span className="min-w-0 break-words text-fg-2">{skippedText(skip)}</span>
-            : <span>Nothing was logged that day.</span>)}
-          {status === 'done' && <span>A Strava activity covered that day.</span>}
-          {offSchedule && <span>This plan no longer falls on this day.</span>}
-        </StatusLine>
-        <PlannedSessionBody routine={routine} routinesLoading={routinesQ.isLoading} todayStr={todayStr} />
-      </div>
+      <PlanBody status={planCtx.status} primary={planItems.primary} routine={routine}
+        repeats={template ? `Repeats ${weekdaysLabel(template.days_of_week)}` : null} offSchedule={resolved.offSchedule}
+        routinesLoading={routinesQ.isLoading} todayStr={todayStr} />
     )
+    actions = <SessionMenu items={planItems.more} />
   }
 
   return (

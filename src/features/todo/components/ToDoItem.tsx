@@ -14,6 +14,8 @@ import { useSwipeToReveal } from '../../../shared/hooks/useSwipeToReveal'
 import { SetParentTaskSheet } from './SetParentTaskSheet'
 import { MoveToListSheet } from './MoveToListSheet'
 import { ToDoItemHoverActions, ToDoItemMenu } from './ToDoItemActions'
+import { useTrainingPlanActions } from '../../training/hooks/useTrainingPlanActions'
+import type { TrainingPlanRef } from '../../training/api/trainingPlanApi'
 
 // A tick often moves the row to another list (Done), which mounts a NEW
 // ToDoItem there — remember the tick for a moment so that one still pops.
@@ -60,14 +62,25 @@ export function ToDoItem({ task, canMoveUp, canMoveDown, onMoveUp, onMoveDown, i
   // The hooks own error toasts + logging; only Delete gets per-call copy.
   const openEditor   = () => modal.open({ kind: 'task', id: task.id, config: { heading: 'Edit task' } })
   // A planned training session opens as the session (its workout once
-  // trained, else its targets); ✎ still edits the task itself.
+  // trained, else its targets); ✎ still edits the task itself. Its tick,
+  // Move, Skip and Delete are the session's own actions (the same hook as
+  // the session popup, Daily's agenda and Training): Skip asks why, Delete
+  // asks and offers Undo.
   const training     = isTrainingTask(task)
+  const session      = useTrainingPlanActions()
+  const plan: TrainingPlanRef = {
+    target: { kind: 'task', taskId: task.id, blockId: null },
+    info: { title: task.title, date: task.due_date ?? todayStr(), startHHMM: task.due_time?.slice(0, 5) ?? null, minutes: null, routineId: task.hevy_routine_id ?? null },
+  }
   const openRow      = training ? () => modal.open({ kind: 'training-session', taskId: task.id }) : openEditor
-  const handleDelete = () => withProgress(() => remove.mutateAsync(task.id), { loading: 'Deleting…', success: 'Deleted' })
+  const handleDelete = () => (training
+    ? session.deleteSession(plan)
+    : withProgress(() => remove.mutateAsync(task.id), { loading: 'Deleting…', success: 'Deleted' }))
   const handleToggle = () => {
     if (!isDone) markJustDone(task.id)
     setJustDone(!isDone)
-    toggle.mutate({ id: task.id, isDone: !isDone })
+    if (training) void (isDone ? session.reopen(plan) : session.markDone(plan)).catch(() => {})
+    else toggle.mutate({ id: task.id, isDone: !isDone })
   }
   const handleCancel = () => update.mutate({ id: task.id, patch: { status: 'cancelled' } })
   const handleReopen = () => update.mutate({ id: task.id, patch: { status: 'open' } })
@@ -80,7 +93,14 @@ export function ToDoItem({ task, canMoveUp, canMoveDown, onMoveUp, onMoveDown, i
     onReopen: handleReopen,
     onDelete: () => { void handleDelete() },
     onMoveUp, onMoveDown, canMoveUp, canMoveDown,
-    busy: update.isPending || remove.isPending,
+    busy: update.isPending || remove.isPending || session.busy,
+    // The task row only knows the task; the move sheet finds its block (a
+    // task-only target moves the task, and the database moves its block, 142).
+    training: training ? {
+      onMove: () => session.openMove(plan),
+      onSkip: () => session.openSkip(plan),
+      onUndoSkip: () => { void session.undoSkip({ taskId: task.id }).catch(() => {}) },
+    } : undefined,
   }
 
   const today = todayStr()
@@ -135,7 +155,7 @@ export function ToDoItem({ task, canMoveUp, canMoveDown, onMoveUp, onMoveDown, i
           <button
             type="button"
             onClick={e => { e.stopPropagation(); handleToggle() }}
-            disabled={toggle.isPending}
+            disabled={toggle.isPending || session.busy}
             aria-label={isDone ? 'Mark as open' : 'Mark as done'}
             aria-pressed={isDone}
             className="-ml-3 flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center lg:ml-0 lg:mt-0.5 lg:h-auto lg:min-h-0 lg:w-auto lg:min-w-0"
@@ -163,7 +183,7 @@ export function ToDoItem({ task, canMoveUp, canMoveDown, onMoveUp, onMoveDown, i
               </span>
             </div>
             <div className="ml-4 mt-1 flex flex-wrap items-center gap-1.5">
-              {isCancelled && <TonePill tone="neutral">Cancelled</TonePill>}
+              {isCancelled && <TonePill tone="neutral">{training ? 'Skipped' : 'Cancelled'}</TonePill>}
               {training
                 ? <TonePill tone={DOMAIN_TONE[task.domain]}><Dumbbell className="h-3 w-3" aria-hidden />Training</TonePill>
                 : <TonePill tone={DOMAIN_TONE[task.domain]}>{DOMAIN_LABEL[task.domain]}</TonePill>}

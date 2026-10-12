@@ -53,7 +53,9 @@ export interface TimeBlock {
   occurrence_date?:   string | null
   /** Its linked task's status — only on the training-range read
    *  (fetchTrainingBlocksRange): a trained session (task done) is no longer "next". */
-  task_status?:     'open' | 'in_progress' | 'done' | 'cancelled' | null
+  task_status?:     'open' | 'in_progress' | 'waiting' | 'done' | 'cancelled' | null
+  /** Its linked task's Hevy workout (141), on the same reads. */
+  task_workout_id?: string | null
   created_at:       string
   updated_at:       string
 }

@@ -66,14 +66,21 @@ export async function deleteScheduleBlock(id: string): Promise<void> {
   if (error) throw error
 }
 
+// A block's task state rides along (not kept as an embed): a training
+// session's row shows Done / Skipped from the same facts as its popup
+// (training/plan/sessionState).
+type TaskEmbed = { task: { status: TimeBlock['task_status']; hevy_workout_id?: string | null } | null }
+const withTaskState = ({ task, ...b }: TimeBlock & TaskEmbed): TimeBlock =>
+  ({ ...b, task_status: task?.status ?? null, task_workout_id: task?.hevy_workout_id ?? null })
+
 export async function fetchTimeBlocks(dateStr: string): Promise<TimeBlock[]> {
   const { data, error } = await supabase
     .from('time_blocks')
-    .select('*')
+    .select('*, task:tasks(status, hevy_workout_id)')
     .eq('date', dateStr)
     .order('start_time', { ascending: true, nullsFirst: false })
   if (error) throw error
-  return data ?? []
+  return ((data ?? []) as (TimeBlock & TaskEmbed)[]).map(withTaskState)
 }
 
 export async function fetchTimeBlock(id: string): Promise<TimeBlock | null> {
@@ -117,7 +124,7 @@ export async function fetchCalendarLinkedTaskIds(taskIds: string[]): Promise<Set
 export async function fetchTrainingBlocksRange(from: string, to: string): Promise<TimeBlock[]> {
   const { data, error } = await supabase
     .from('time_blocks')
-    .select('*, task:tasks(status)')
+    .select('*, task:tasks(status, hevy_workout_id)')
     .eq('category', 'training')
     .gte('date', from)
     .lte('date', to)
@@ -125,8 +132,7 @@ export async function fetchTrainingBlocksRange(from: string, to: string): Promis
   if (error) throw error
   // The linked task's status rides along so a trained session (its task done,
   // migration 141) stops being "next"; the embed itself is not kept.
-  return (data ?? []).map(({ task, ...b }: TimeBlock & { task: { status: TimeBlock['task_status'] } | null }) =>
-    ({ ...b, task_status: task?.status ?? null }))
+  return ((data ?? []) as (TimeBlock & TaskEmbed)[]).map(withTaskState)
 }
 
 export async function createTimeBlock(input: CreateTimeBlockInput): Promise<TimeBlock> {

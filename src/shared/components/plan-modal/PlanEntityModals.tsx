@@ -19,8 +19,25 @@ import { UnifiedPlanModal } from './UnifiedPlanModal'
 import { useTaskById } from '../../../features/todo/hooks/useTodos'
 import { useTimeBlock, useScheduleBlock } from '../../../features/daily/hooks/useSchedule'
 import type { EntityModalProps } from '../../modals/types'
-import type { PlanResult } from './planModal.types'
+import type { PlanModalConfig, PlanResult } from './planModal.types'
 import { useFirstLoaded } from '../../modals/useFirstLoaded'
+import { isTrainingTask } from '../../../features/todo/taskRules'
+import type { Task } from '../../../features/todo/types'
+
+/**
+ * A training session's task edits the same way from every entry point
+ * (owner, 12.10.2026): its day and time are the session's (migration 142
+ * keeps the task and its block together), so the editor shows one day — the
+ * schedule's — instead of a separate deadline that would only be overwritten.
+ */
+function taskEditorConfig(task: Task | undefined, config: PlanModalConfig | undefined): PlanModalConfig | undefined {
+  if (!task || !isTrainingTask(task)) return config
+  return {
+    ...config,
+    heading: config?.heading ?? 'Edit session',
+    hideTaskFields: [...new Set([...(config?.hideTaskFields ?? []), 'startDate', 'dueDate', 'dueTime', 'section'] as const)],
+  }
+}
 
 type LoadState = { loading?: boolean; loadError?: { message: string; onRetry?: () => void } }
 
@@ -40,7 +57,7 @@ export function TaskEntityModal({ request, onClose }: EntityModalProps<'task'>) 
   return (
     <UnifiedPlanModal
       open onClose={onClose} mode="task" task={task}
-      config={config} defaults={defaults} source={source} onSaved={onSaved}
+      config={taskEditorConfig(task, config)} defaults={defaults} source={source} onSaved={onSaved}
       {...load}
     />
   )
@@ -68,6 +85,7 @@ function BlockEditor({ blockId, onClose, passThrough }: {
     return (
       <UnifiedPlanModal
         open onClose={onClose} mode="task" task={task} onSaved={onSaved}
+        config={taskEditorConfig(task, undefined)}
         {...loadStateOf(taskQuery, !!task, 'task')}
       />
     )

@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react'
 import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
 import {
-  ArrowDown, ArrowUp, Ban, CornerDownRight, ExternalLink, ListTree, MoreHorizontal, Pencil, RotateCcw, Trash2,
+  ArrowDown, ArrowUp, Ban, CalendarClock, CornerDownRight, ExternalLink, ListTree, MoreHorizontal, Pencil, RotateCcw,
+  SkipForward, Trash2, Undo2,
 } from 'lucide-react'
 import { cx } from '../../../shared/ui'
 import type { Task } from '../types'
@@ -18,6 +19,10 @@ export interface ToDoItemActionHandlers {
   canMoveUp?:    boolean
   canMoveDown?:  boolean
   busy:          boolean
+  /** A planned training session: Move instead of nothing, Skip (with a
+   *  reason) instead of Cancel, Undo skip instead of Reopen — the same
+   *  actions as the session popup (training/useTrainingPlanActions). */
+  training?:     { onMove: () => void; onSkip: () => void; onUndoSkip: () => void }
 }
 
 interface Props extends ToDoItemActionHandlers {
@@ -42,6 +47,7 @@ export function ToDoItemMenu({ task, ...h }: Props) {
         className="menu w-52 [--anchor-gap:4px] transition duration-150 data-[closed]:scale-95 data-[closed]:opacity-0"
       >
         <Item icon={<Pencil />} onClick={h.onEdit}>Edit</Item>
+        {h.training && !isCancelled && task.status !== 'done' && <Item icon={<CalendarClock />} onClick={h.training.onMove}>Move…</Item>}
         {h.onMoveUp && <Item icon={<ArrowUp />} onClick={h.onMoveUp} disabled={!h.canMoveUp}>Move up</Item>}
         {h.onMoveDown && <Item icon={<ArrowDown />} onClick={h.onMoveDown} disabled={!h.canMoveDown}>Move down</Item>}
         <Item icon={<CornerDownRight />} onClick={h.onSetParent}>Set parent…</Item>
@@ -57,9 +63,13 @@ export function ToDoItemMenu({ task, ...h }: Props) {
         {/* Cancel keeps a record, unlike Delete. Reopen re-fires migration
             071's "un-cancelled" trigger branch, which enqueues a fresh outbox
             'create' since Google Tasks has no undelete of its own. */}
-        {!isCancelled
-          ? <Item icon={<Ban />} onClick={h.onCancel} disabled={h.busy}>Cancel task</Item>
-          : <Item icon={<RotateCcw />} onClick={h.onReopen} disabled={h.busy}>Reopen</Item>}
+        {h.training
+          ? (!isCancelled
+              ? task.status !== 'done' && <Item icon={<SkipForward />} onClick={h.training.onSkip} disabled={h.busy}>Skip…</Item>
+              : <Item icon={<Undo2 />} onClick={h.training.onUndoSkip} disabled={h.busy}>Undo skip</Item>)
+          : (!isCancelled
+              ? <Item icon={<Ban />} onClick={h.onCancel} disabled={h.busy}>Cancel task</Item>
+              : <Item icon={<RotateCcw />} onClick={h.onReopen} disabled={h.busy}>Reopen</Item>)}
         <Item icon={<Trash2 />} onClick={h.onDelete} disabled={h.busy} danger>Delete</Item>
       </MenuItems>
     </Menu>
@@ -90,6 +100,7 @@ export function ToDoItemHoverActions({ task, ...h }: Props) {
       {h.onMoveUp && <HoverBtn label="Move up" onClick={h.onMoveUp} disabled={!h.canMoveUp}><ArrowUp /></HoverBtn>}
       {h.onMoveDown && <HoverBtn label="Move down" onClick={h.onMoveDown} disabled={!h.canMoveDown}><ArrowDown /></HoverBtn>}
       <HoverBtn label="Edit" onClick={h.onEdit}><Pencil /></HoverBtn>
+      {h.training && !isCancelled && task.status !== 'done' && <HoverBtn label="Move to another day" onClick={h.training.onMove}><CalendarClock /></HoverBtn>}
       <HoverBtn label="Set parent task" onClick={h.onSetParent}><CornerDownRight /></HoverBtn>
       <HoverBtn label="Move to list" onClick={h.onMoveToList}><ListTree /></HoverBtn>
       {task.google_web_view_link && (
@@ -99,9 +110,13 @@ export function ToDoItemHoverActions({ task, ...h }: Props) {
           className="grid h-7 w-7 place-items-center rounded-control text-fg-faint transition-colors hover:bg-surface-hover hover:text-fg [&_svg]:h-3.5 [&_svg]:w-3.5"
         ><ExternalLink aria-hidden /></a>
       )}
-      {!isCancelled
-        ? <HoverBtn label="Cancel (keeps a record, unlike Delete)" onClick={h.onCancel} disabled={h.busy}><Ban /></HoverBtn>
-        : <HoverBtn label="Reopen (re-creates it on Google Tasks if connected)" onClick={h.onReopen} disabled={h.busy}><RotateCcw /></HoverBtn>}
+      {h.training
+        ? (!isCancelled
+            ? task.status !== 'done' && <HoverBtn label="Skip (asks why)" onClick={h.training.onSkip} disabled={h.busy}><SkipForward /></HoverBtn>
+            : <HoverBtn label="Undo skip" onClick={h.training.onUndoSkip} disabled={h.busy}><Undo2 /></HoverBtn>)
+        : (!isCancelled
+            ? <HoverBtn label="Cancel (keeps a record, unlike Delete)" onClick={h.onCancel} disabled={h.busy}><Ban /></HoverBtn>
+            : <HoverBtn label="Reopen (re-creates it on Google Tasks if connected)" onClick={h.onReopen} disabled={h.busy}><RotateCcw /></HoverBtn>)}
       <HoverBtn label="Delete" onClick={h.onDelete} disabled={h.busy} danger><Trash2 /></HoverBtn>
     </div>
   )

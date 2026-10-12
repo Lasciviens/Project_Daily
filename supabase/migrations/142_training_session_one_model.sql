@@ -45,6 +45,11 @@
 --      a template deleted later leaves the blocks as ordinary one-off plans
 --      (ON DELETE SET NULL).
 --
+--   4. A planned session with no routine id (planned from a day of a weekly
+--      plan, or "Plan training" without picking one) links to the ONE routine
+--      titled exactly like it, as a typed task already did (141's rule now
+--      covers source_type 'training_session' without a source_id too).
+--
 -- Updates no existing row.
 
 -- ── 1. Day and time move together ───────────────────────────────────────────
@@ -206,3 +211,41 @@ DROP TRIGGER IF EXISTS trg_occurrence_replaces_day ON public.time_blocks;
 CREATE TRIGGER trg_occurrence_replaces_day
   AFTER INSERT OR UPDATE OF schedule_block_id, occurrence_date ON public.time_blocks
   FOR EACH ROW EXECUTE FUNCTION public.occurrence_replaces_day();
+
+-- ── 4. A session without a routine id links by its title (141, widened) ────
+CREATE OR REPLACE FUNCTION public.tasks_link_training()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = public
+AS $$
+DECLARE
+  r_id text;
+  n    int;
+BEGIN
+  IF TG_OP = 'UPDATE' AND OLD.status = 'done' AND NEW.status <> 'done'
+     AND NEW.hevy_workout_id IS NOT DISTINCT FROM OLD.hevy_workout_id THEN
+    NEW.hevy_workout_id := NULL;
+  END IF;
+
+  IF TG_OP = 'INSERT' THEN
+    IF NEW.hevy_routine_id IS NOT NULL THEN RETURN NEW; END IF;
+  ELSIF NEW.hevy_routine_id IS DISTINCT FROM OLD.hevy_routine_id
+     OR (NEW.title, NEW.domain, NEW.source_type, NEW.source_id)
+        IS NOT DISTINCT FROM (OLD.title, OLD.domain, OLD.source_type, OLD.source_id) THEN
+    RETURN NEW;
+  END IF;
+
+  IF NEW.source_type = 'training_session' AND NEW.source_id IS NOT NULL THEN
+    SELECT r.id INTO r_id FROM hevy_routines r
+     WHERE lower(r.id) = NEW.source_id::text AND r.user_id = NEW.user_id;
+  ELSIF (NEW.source_type IN ('manual', 'ai') AND NEW.domain = 'personal')
+     OR (NEW.source_type = 'training_session' AND NEW.source_id IS NULL) THEN
+    SELECT min(r.id), count(*) INTO r_id, n FROM hevy_routines r
+     WHERE r.user_id = NEW.user_id
+       AND lower(btrim(r.title)) = lower(btrim(NEW.title));
+    IF n <> 1 THEN r_id := NULL; END IF;
+  END IF;
+  NEW.hevy_routine_id := r_id;
+  RETURN NEW;
+END;
+$$;

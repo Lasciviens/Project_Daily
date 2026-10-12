@@ -28,10 +28,15 @@ export const SKIP_REASON_CHIPS = ['Sick', 'Travel', 'Rest / fatigue', 'Injury', 
 
 export interface SkipRecord {
   id: string
-  routine_id: string
+  /** null for a skipped plan with no routine ("Training", migration 142). */
+  routine_id: string | null
   /** Monday (yyyy-MM-dd) of the week the missed session was due. */
   week_start: string
   reason: string
+  /** The planned session (task) this skip cancelled (migration 142). */
+  task_id?: string | null
+  /** The day that session was planned for (142). */
+  plan_date?: string | null
 }
 
 export interface ProgramRoutineRef extends RoutineRef {
@@ -214,4 +219,19 @@ export function skipCovering(skips: readonly SkipRecord[], routineId: string | n
 /** "Skipped: Busy — Got busy and tired." — the reason exactly as written. */
 export function skippedText(skip: Pick<SkipRecord, 'reason'>): string {
   return `Skipped: ${skip.reason.trim()}`
+}
+
+/** The skip that covers one planned session (sessionState's skipReason):
+ *  its task's own skip (142); for a cancelled task with none, or a plan with
+ *  no task, the routine's skip for that week. */
+export function skipForPlan(
+  skips: readonly SkipRecord[],
+  plan: { taskId?: string | null; taskCancelled?: boolean; routineId?: string | null; date: string },
+): SkipRecord | null {
+  if (plan.taskId) {
+    const own = skips.find(s => s.task_id === plan.taskId)
+    if (own) return own
+    if (!plan.taskCancelled) return null
+  }
+  return skipCovering(skips, plan.routineId, plan.date)
 }
