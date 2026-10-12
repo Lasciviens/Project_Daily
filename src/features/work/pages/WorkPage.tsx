@@ -10,6 +10,7 @@ import WorkListView from '../components/WorkListView'
 import FocusStrip from '../components/FocusStrip'
 import OverdueStrip from '../components/OverdueStrip'
 import WorkSidebar from '../components/WorkSidebar'
+import { WorkHeroArt } from '../components/WorkHeroArt'
 import WorkToolbar, { type PrioFilter, type ViewMode } from '../components/WorkToolbar'
 import { isOverdue, isCompletedToday, matchesSearch, sortTasks } from '../components/workMeta'
 import { STATUS_TONE } from '../../todo/taskTones'
@@ -140,6 +141,7 @@ export function WorkPage() {
           <PageHeader
             className="mb-0 sm:mb-0"
             title="Work"
+            art={<WorkHeroArt />}
             subtitle={<span className="hidden sm:inline">{formatWeekdayDate(new Date(), 'long')}</span>}
             actions={
               <>

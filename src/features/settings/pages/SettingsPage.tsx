@@ -1,11 +1,12 @@
 import { useSearchParams } from 'react-router-dom'
-import { PageContainer, PageHeader, usePageStep } from '../../../shared/ui'
+import { HERO_BAND_BLEED, PageContainer, PageHeader, cx, usePageStep } from '../../../shared/ui'
 import { boardWidthRem } from '../../../shared/ui/pageBoardRules'
 import { ConnectionsTab } from '../../developer/components/ConnectionsTab'
 import { CONNECTIONS_BOARD } from '../../developer/developerBoards'
 import { PlacesTab } from '../components/PlacesTab'
 import { AppearanceTab } from '../components/AppearanceTab'
 import { ApisTab } from '../components/ApisTab'
+import { SettingsHeroArt } from '../components/SettingsHeroArt'
 import { APIS_BOARD, APPEARANCE_BOARD, PLACES_BOARD } from '../settingsBoards'
 
 type Tab = 'places' | 'appearance' | 'subscriptions' | 'apis'
@@ -37,8 +38,8 @@ export function SettingsPage() {
     <PageContainer>
       <div ref={widthRef}>
         <div style={headerCap != null ? { maxWidth: `${headerCap}rem` } : undefined}>
-          <PageHeader title="Settings">
-            <div role="tablist" aria-label="Settings sections" className="scroll-x -mx-4 flex gap-1 px-4 sm:mx-0 sm:px-0">
+          <PageHeader title="Settings" art={<SettingsHeroArt />}>
+            <div role="tablist" aria-label="Settings sections" className={cx('scroll-x flex gap-1', HERO_BAND_BLEED)}>
               {TABS.map(t => (
                 <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} onClick={() => selectTab(t.id)} className="pill-tab">
                   {t.label}

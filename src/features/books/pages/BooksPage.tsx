@@ -1,5 +1,6 @@
 import { useSearchParams } from 'react-router-dom'
-import { PageBoard, PageContainer, PageHeader } from '../../../shared/ui'
+import { HERO_BAND_BLEED, PageBoard, PageContainer, PageHeader, cx } from '../../../shared/ui'
+import { BooksHeroArt } from '../components/BooksHeroArt'
 import { DeliveryList } from '../components/DeliveryList'
 import { KoboSetupCard } from '../components/KoboSetupCard'
 import { KoboTab } from '../components/kobo/KoboTab'
@@ -27,8 +28,8 @@ export function BooksPage() {
   const select = (next: Tab) => setParams(() => new URLSearchParams({ tab: next }), { replace: true })
   return (
     <PageContainer>
-      <PageHeader title="Books">
-        <div role="tablist" aria-label="Books sections" className="scroll-x -mx-4 flex gap-1 px-4 sm:mx-0 sm:px-0">
+      <PageHeader title="Books" art={<BooksHeroArt />}>
+        <div role="tablist" aria-label="Books sections" className={cx('scroll-x flex gap-1', HERO_BAND_BLEED)}>
           {TABS.map(t => (
             <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} onClick={() => select(t.id)} className="pill-tab">
               {t.label}
