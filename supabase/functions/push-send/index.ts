@@ -66,12 +66,15 @@ async function buildMorning(userId: string): Promise<{ title: string; body: stri
   } catch { /* skip */ }
   let trLine = ''
   try {
+    // A skipped (cancelled) or already trained (done) session is not one to
+    // come (migration 142: skipping a session cancels its task).
     const { data } = await supabase.from('time_blocks')
-      .select('title, date')
+      .select('title, date, task:tasks(status)')
       .eq('user_id', userId).eq('category', 'training')
       .gte('date', today).lte('date', dateFromTodayUTC(3))
-      .order('date', { ascending: true }).limit(1)
-    if (data?.[0]) trLine = ` · 💪 ${(data[0] as AnyRecord).title}`
+      .order('date', { ascending: true }).limit(10)
+    const next = (data as AnyRecord[] ?? []).find(b => !['cancelled', 'done'].includes(b.task?.status))
+    if (next) trLine = ` · 💪 ${next.title}`
   } catch { /* skip */ }
   // A wish period opening is announced ONCE, on the day period_start lands on
   // today — a wish list is a memory, not a to-do, so repeating it every day of

@@ -279,7 +279,7 @@ const MODE_HEADING: Record<PlanMode, { create: string; edit: string }> = {
 
 export function UnifiedPlanModal({
   open, onClose, mode, config, defaults, source, task, timeBlock, scheduleBlock, scheduleExtra, taskExtra, onSaved,
-  loading = false, loadError,
+  loading = false, loadError, onDeleteOverride,
 }: UnifiedPlanModalProps) {
   // task / timeBlock / scheduleBlock presence always wins over an explicit
   // `mode` — a caller editing an existing row never needs to think about
@@ -765,6 +765,10 @@ export function UnifiedPlanModal({
   }
 
   async function handleDelete() {
+    if (onDeleteOverride) {
+      if (await onDeleteOverride()) onClose()
+      return
+    }
     const target = task
       ? { title: 'Delete this task?', label: 'Delete task', run: () => deleteTaskM.mutateAsync(task) }
       : scheduleBlock

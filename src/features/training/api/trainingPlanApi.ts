@@ -1,7 +1,8 @@
 import { supabase } from '../../../integrations/supabase/client'
 import { requireUser } from '../../../shared/utils/requireUser'
 import { createTask, deleteTask, updateTask, toggleTaskDone } from '../../todo/api/tasksApi'
-import { createTimeBlock, deleteScheduleBlock, deleteTimeBlock, updateTimeBlock } from '../../daily/api/scheduleApi'
+import { createTimeBlock, deleteScheduleBlock, deleteTimeBlock, fetchScheduleBlocks, fetchTimeBlocks, updateTimeBlock } from '../../daily/api/scheduleApi'
+import { findPlanTwin, type PlanTwin } from '../plan/planTwins'
 import { linkBlockCalendarEvent } from '../../calendar/api/linkBlockCalendarEvent'
 import { sectionForDate } from '../../../shared/components/plan-modal/planModal.config'
 import { createTrainingSkip } from './trainingSkipsApi'
@@ -108,13 +109,23 @@ export async function ensurePlanTask(target: PlanTarget, info: PlanInfo): Promis
         source_type: 'training_session', source_id: planTaskInput(info).source_id,
         schedule_block_id: target.templateId, occurrence_date: target.date,
       }).select('id').single()
-      if (error) throw isMissingColumn(error) ? new Error(NOT_MIGRATED_142) : error
+      if (error) {
+        if (isMissingColumn(error)) throw new Error(NOT_MIGRATED_142)
+        // Another tap (or tab) made it a moment ago: use that one.
+        if ((error as { code?: string }).code === '23505') return ensurePlanTask(target, info)
+        throw error
+      }
       blockId = data.id
     }
   }
   const task = await createTask(planTaskInput(info))
   await updateTimeBlock(blockId, { task_id: task.id })
   return { taskId: task.id, blockId }
+}
+
+/** The task a plan's done/reopen acts on — no block lookup for a task. */
+export async function planTaskId(target: PlanTarget, info: PlanInfo): Promise<string> {
+  return target.kind === 'task' ? target.taskId : (await ensurePlanTask(target, info)).taskId
 }
 
 export async function markPlanDone(taskId: string): Promise<void> {
@@ -143,6 +154,24 @@ export async function movePlan(rows: PlanRows, info: PlanInfo, to: { date: strin
   })
 }
 
+/** The same session already planned on `date` (planTwins — the plan editor's
+ *  rule), so Move can ask before putting it there twice. A failed read
+ *  answers null: the check guards, it never blocks. */
+export async function findTwinOn(date: string, plan: TrainingPlanRef): Promise<PlanTwin | null> {
+  try {
+    const [blocks, templates] = await Promise.all([fetchTimeBlocks(date), fetchScheduleBlocks()])
+    const own = plan.target.kind === 'task' || plan.target.kind === 'block' ? plan.target.blockId : null
+    return findPlanTwin({
+      date, title: plan.info.title, routineId: plan.info.routineId, excludeBlockId: own,
+      // A skipped session (its task cancelled) is not a twin; nor is this one.
+      blocks: blocks.filter(b => b.task_status !== 'cancelled' && (b.task_id == null || plan.target.kind !== 'task' || b.task_id !== plan.target.taskId)),
+      templates: templates.filter(t => t.category === 'training'),
+    })
+  } catch {
+    return null
+  }
+}
+
 /** The one-off block a day of a weekly plan became (142), or null. */
 export async function fetchOccurrenceBlockId(templateId: string, date: string): Promise<string | null> {
   const { data, error } = await supabase.from('time_blocks').select('id')
@@ -154,21 +183,18 @@ export async function fetchOccurrenceBlockId(templateId: string, date: string): 
   return data?.id ?? null
 }
 
-/** Skips the session with its reason: one skip row tied to its task, under
- *  the week it was planned in — the database cancels the task (142). One
- *  skip per routine per week (112): a week already skipped for the routine
- *  takes this reason and this task. */
+/** Skips the session with its reason: its own skip row (one per session,
+ *  keyed by its task), filed under the week it was planned in. The database
+ *  cancels the task and fills the routine from it (142). */
 export async function skipPlan(rows: PlanRows, s: { routineId: string | null; planDate: string; reason: string }): Promise<void> {
   const user = await requireUser()
   const row = {
     user_id: user.id, routine_id: s.routineId, week_start: weekStartOf(s.planDate),
     reason: s.reason.trim(), task_id: rows.taskId, plan_date: s.planDate,
   }
-  const res = s.routineId
-    ? await supabase.from('training_skips').upsert(row, { onConflict: 'user_id,routine_id,week_start' })
-    : await supabase.from('training_skips').insert(row)
+  const res = await supabase.from('training_skips').upsert(row, { onConflict: 'task_id' })
   if (!res.error) return
-  if (!isMissingColumn(res.error) && !/null value in column "routine_id"/i.test(res.error.message ?? '')) throw res.error
+  if (!isMissingColumn(res.error) && !/no unique or exclusion constraint|null value in column "routine_id"/i.test(res.error.message ?? '')) throw res.error
   // Before 142: the routine's week skip (the Missed card's) and a cancelled task.
   if (s.routineId) await createTrainingSkip({ routine_id: s.routineId, week_start: row.week_start, reason: row.reason })
   await updateTask(rows.taskId, { status: 'cancelled' })
@@ -224,30 +250,36 @@ export async function deletePlan(snapshot: PlanSnapshot): Promise<void> {
 /** Puts a deleted session back with the same ids: task, block, skip. Google
  *  copies were removed with it, so they are made again: the block's Calendar
  *  event here, the Google Task by the outbox (an inserted task with Google
- *  sync on queues its create). */
-export async function restorePlan(snapshot: PlanSnapshot): Promise<{ hadCalendarEvent: boolean }> {
-  if (snapshot.task) {
-    const row: Record<string, unknown> = { ...snapshot.task }
-    for (const k of Object.keys(row)) if (k.startsWith('google_') && k !== 'google_sync_enabled' && k !== 'google_tasklist_id') row[k] = null
-    const { error } = await supabase.from('tasks').insert(row)
-    if (error) throw error
+ *  sync on queues its create). A step that fails takes the restored task back
+ *  out (its block and skip go with it), so Undo never leaves half a session. */
+export async function restorePlan(snapshot: PlanSnapshot): Promise<{ calendar: 'none' | 'linked' | 'not_linked' | 'unknown' }> {
+  let insertedTask = false
+  try {
+    if (snapshot.task) {
+      const row: Record<string, unknown> = { ...snapshot.task }
+      for (const k of Object.keys(row)) if (k.startsWith('google_') && k !== 'google_sync_enabled' && k !== 'google_tasklist_id') row[k] = null
+      const { error } = await supabase.from('tasks').insert(row)
+      if (error) throw error
+      insertedTask = true
+    }
+    if (snapshot.block) {
+      const block: Record<string, unknown> = { ...snapshot.block, google_calendar_event_id: null }
+      // Joined fields some reads carry, not columns.
+      for (const k of ['task_status', 'task_workout_id', 'task_routine_id', 'task']) delete block[k]
+      const { error } = await supabase.from('time_blocks').insert(block)
+      if (error) throw error
+    }
+    if (snapshot.skips.length > 0) {
+      const { error } = await supabase.from('training_skips').insert(snapshot.skips)
+      if (error) throw error
+    }
+  } catch (err) {
+    if (insertedTask && snapshot.task) await supabase.from('tasks').delete().eq('id', snapshot.task.id)
+    throw err
   }
-  const hadCalendarEvent = !!snapshot.block?.google_calendar_event_id
-  if (snapshot.block) {
-    const block: Record<string, unknown> = { ...snapshot.block, google_calendar_event_id: null }
-    delete block.task_status   // a read-only join on some reads, not a column
-    const { error } = await supabase.from('time_blocks').insert(block)
-    if (error) throw error
-  }
-  if (snapshot.skips.length > 0) {
-    const { error } = await supabase.from('training_skips').insert(snapshot.skips)
-    if (error) throw error
-  }
-  if (hadCalendarEvent && snapshot.block) {
-    const b = snapshot.block
-    await linkBlockCalendarEvent(b.id, b.date, (b.start_time ?? '09:00').slice(0, 5), b.duration_minutes, b.title)
-  }
-  return { hadCalendarEvent }
+  if (!snapshot.block?.google_calendar_event_id) return { calendar: 'none' }
+  const b = snapshot.block
+  return { calendar: await linkBlockCalendarEvent(b.id, b.date, (b.start_time ?? '09:00').slice(0, 5), b.duration_minutes, b.title) }
 }
 
 // ── A weekly plan, deleted with Undo ────────────────────────────────────────

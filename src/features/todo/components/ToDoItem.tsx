@@ -67,6 +67,7 @@ export function ToDoItem({ task, canMoveUp, canMoveDown, onMoveUp, onMoveDown, i
   // the session popup, Daily's agenda and Training): Skip asks why, Delete
   // asks and offers Undo.
   const training     = isTrainingTask(task)
+  const trainedByWorkout = training && isDone && !!task.hevy_workout_id
   const session      = useTrainingPlanActions()
   const plan: TrainingPlanRef = {
     target: { kind: 'task', taskId: task.id, blockId: null },
@@ -155,8 +156,11 @@ export function ToDoItem({ task, canMoveUp, canMoveDown, onMoveUp, onMoveDown, i
           <button
             type="button"
             onClick={e => { e.stopPropagation(); handleToggle() }}
-            disabled={toggle.isPending || session.busy}
-            aria-label={isDone ? 'Mark as open' : 'Mark as done'}
+            // A session a Hevy workout completed stays done (the session popup
+            // offers no Reopen either: the workout would close it again).
+            disabled={toggle.isPending || session.busy || trainedByWorkout}
+            title={trainedByWorkout ? 'Done by a Hevy workout' : undefined}
+            aria-label={trainedByWorkout ? 'Done by a Hevy workout' : isDone ? 'Mark as open' : 'Mark as done'}
             aria-pressed={isDone}
             className="-ml-3 flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center lg:ml-0 lg:mt-0.5 lg:h-auto lg:min-h-0 lg:w-auto lg:min-w-0"
           >

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { Card } from '../../../../shared/ui'
 import { DateNav } from '../../../../shared/components/DateNav'
 import { InfoBubble } from '../../../../shared/components/InfoBubble'
@@ -13,7 +13,9 @@ import { mondayOf } from '../../progressAggregate'
 import { dayDataFor, type DayData } from './calendarModel'
 import { DAY_MARK_LABEL, monthGridRange, monthOf, monthWeeks, shiftMonth } from './monthGrid'
 import { DayMarkGlyph, StravaBar } from './DayMarkGlyph'
-import { useTrainingSkips } from '../../hooks/useTrainingSkips'
+import { usePlanContext } from '../../hooks/usePlanContext'
+import { planStartHHMM } from './calendarSessions'
+import type { CalendarPlanItem } from './calendarModel'
 import { MonthGrid } from './MonthGrid'
 import { DayDetailPanel } from './DayDetailPanel'
 
@@ -51,13 +53,14 @@ export function TrainingMonthCalendar() {
   const { data: activities = [] } = useStravaActivities({ from: bounds.fromISO, to: bounds.toISO, limit: 500 })
   const { data: plansByDate } = useTrainingPlansByDate(from, to)
   const { data: profile } = useAthleteProfile()
-  const { data: skips } = useTrainingSkips()
+  const { skips, routineOf } = usePlanContext()
+  const routineOfPlan = useCallback((p: CalendarPlanItem, date: string) => routineOf({ title: p.title, date, startHHMM: planStartHHMM(p) }), [routineOf])
 
   const dayByDate = useMemo(() => {
     const m = new Map<string, DayData>()
-    for (const w of weeks) for (const c of w.cells) m.set(c.date, dayDataFor(c.date, new Date(`${c.date}T12:00:00`), workouts, activities, plansByDate, todayStr, skips ?? []))
+    for (const w of weeks) for (const c of w.cells) m.set(c.date, dayDataFor(c.date, new Date(`${c.date}T12:00:00`), workouts, activities, plansByDate, todayStr, skips, routineOfPlan))
     return m
-  }, [weeks, workouts, activities, plansByDate, todayStr, skips])
+  }, [weeks, workouts, activities, plansByDate, todayStr, skips, routineOfPlan])
 
   const todayMonth = monthOf(todayStr)
   const onTodayMonth = todayMonth.year === view.year && todayMonth.month === view.month

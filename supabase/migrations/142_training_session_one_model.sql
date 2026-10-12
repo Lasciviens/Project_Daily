@@ -17,9 +17,14 @@
 --   1. Day and time are one fact. Moving the block moves the task's due
 --      date/time (trg_training_block_moves_task) and moving the task moves
 --      its block (trg_training_task_moves_block), whoever writes it (the app,
---      the assistant, a Google Tasks pull). Each side only writes when the
---      other differs, so the pair settles after one hop. Other tasks keep
---      077's independent deadline and slot.
+--      the assistant, a Google Tasks pull). A trigger acts only when its own
+--      row's day or time really changed in that write (NEW vs OLD), so a
+--      write that merely re-sends an old deadline (a Google Tasks snapshot,
+--      a full-row edit) never drags the block; and each side only writes
+--      when the other differs, so the pair settles after one hop. Training
+--      tasks whose block was moved before 142 are aligned once (section 5):
+--      the block's day wins (141 already treats it as the planned day).
+--      Other tasks keep 077's independent deadline and slot.
 --
 --   2. Skipping is cancelling, with a reason. training_skips gains task_id
 --      and plan_date: a skip recorded for a planned session cancels its task
@@ -29,9 +34,9 @@
 --      for; the app always asks), and reopening it removes the row
 --      (trg_training_task_cancel_skip). So a cancelled training task always
 --      has its skip, and the Missed-sessions rule (routine + week) sees it.
---      The skip stays keyed by the week of the PLANNED day; it keeps 112's
---      one-skip-per-routine-per-week rule (a second skip of the same routine
---      that week attaches nothing new).
+--      The skip is keyed by its task (one per session) and filed under the
+--      week of the PLANNED day; 112's one-per-routine-per-week rule now holds
+--      only for a missed routine with no plan.
 --
 --   3. One day of a weekly plan can become a plan of its own. time_blocks
 --      gains schedule_block_id + occurrence_date: acting on one occurrence of
@@ -50,7 +55,8 @@
 --      titled exactly like it, as a typed task already did (141's rule now
 --      covers source_type 'training_session' without a source_id too).
 --
--- Updates no existing row.
+-- Existing rows: a training task with a block takes the block's day and time
+-- (section 5). Nothing else is rewritten.
 
 -- ── 1. Day and time move together ───────────────────────────────────────────
 CREATE OR REPLACE FUNCTION public.training_block_moves_task()
@@ -60,6 +66,12 @@ SET search_path = public
 AS $$
 BEGIN
   IF NEW.task_id IS NULL THEN RETURN NULL; END IF;
+  -- Only a real move (or a new link) moves the task.
+  IF TG_OP = 'UPDATE' AND NEW.date IS NOT DISTINCT FROM OLD.date
+     AND NEW.start_time IS NOT DISTINCT FROM OLD.start_time
+     AND NEW.task_id IS NOT DISTINCT FROM OLD.task_id THEN
+    RETURN NULL;
+  END IF;
   UPDATE tasks t
      SET due_date = NEW.date,
          due_time = COALESCE(NEW.start_time, t.due_time)
@@ -82,8 +94,11 @@ LANGUAGE plpgsql
 SET search_path = public
 AS $$
 BEGIN
-  -- A deadline cleared is not a move: the block keeps its day.
+  -- A deadline cleared is not a move: the block keeps its day. A write that
+  -- re-sends the same day and time (a Google Tasks snapshot, a full-row
+  -- edit) is not a move either.
   IF NEW.due_date IS NULL THEN RETURN NULL; END IF;
+  IF NEW.due_date IS NOT DISTINCT FROM OLD.due_date AND NEW.due_time IS NOT DISTINCT FROM OLD.due_time THEN RETURN NULL; END IF;
   IF NOT (NEW.hevy_routine_id IS NOT NULL OR NEW.source_type = 'training_session') THEN RETURN NULL; END IF;
   UPDATE time_blocks b
      SET date       = NEW.due_date,
@@ -110,8 +125,36 @@ DO $$ BEGIN
   ALTER TABLE public.training_skips
     ADD CONSTRAINT training_skips_routine_or_task CHECK (routine_id IS NOT NULL OR task_id IS NOT NULL);
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-CREATE UNIQUE INDEX IF NOT EXISTS training_skips_task_key
-  ON public.training_skips (task_id) WHERE task_id IS NOT NULL;
+-- One skip per planned session (its task), and — as 112 had it — one skip per
+-- routine per week for a missed routine with no plan (Missed sessions). 112's
+-- key covered every row, so a second session of the same routine skipped in
+-- the same week took over the first one's row and reason.
+ALTER TABLE public.training_skips DROP CONSTRAINT IF EXISTS training_skips_user_id_routine_id_week_start_key;
+DO $$ BEGIN
+  ALTER TABLE public.training_skips ADD CONSTRAINT training_skips_task_id_key UNIQUE (task_id);
+EXCEPTION WHEN duplicate_object OR duplicate_table THEN NULL; END $$;
+CREATE UNIQUE INDEX IF NOT EXISTS training_skips_routine_week_key
+  ON public.training_skips (user_id, routine_id, week_start) WHERE task_id IS NULL;
+
+-- A session's skip names its routine (the task's), so Missed sessions (routine
+-- + week) sees it whichever view or writer skipped it.
+CREATE OR REPLACE FUNCTION public.training_skip_routine()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = public
+AS $$
+BEGIN
+  IF NEW.task_id IS NOT NULL AND NEW.routine_id IS NULL THEN
+    SELECT t.hevy_routine_id INTO NEW.routine_id FROM tasks t WHERE t.id = NEW.task_id;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_training_skip_routine ON public.training_skips;
+CREATE TRIGGER trg_training_skip_routine
+  BEFORE INSERT OR UPDATE OF task_id, routine_id ON public.training_skips
+  FOR EACH ROW EXECUTE FUNCTION public.training_skip_routine();
 
 COMMENT ON COLUMN public.training_skips.task_id IS
   'The planned session (training task) this skip cancelled; NULL for a skip of a missed routine with no plan (Training → Missed sessions). Deleting the row reopens the task.';
@@ -156,8 +199,6 @@ BEGIN
     IF EXISTS (SELECT 1 FROM training_skips WHERE task_id = NEW.id) THEN RETURN NULL; END IF;
     plan_day := COALESCE((SELECT min(b.date) FROM time_blocks b WHERE b.task_id = NEW.id), NEW.due_date,
                          (now() AT TIME ZONE 'Europe/Oslo')::date);
-    -- One skip per routine per week (112): a week already skipped for this
-    -- routine keeps its row; the cancelled task then reads that reason.
     INSERT INTO training_skips (user_id, routine_id, week_start, reason, task_id, plan_date)
     VALUES (NEW.user_id, NEW.hevy_routine_id, date_trunc('week', plan_day)::date,
             'Cancelled — no reason given', NEW.id, plan_day)
@@ -249,3 +290,15 @@ BEGIN
   RETURN NEW;
 END;
 $$;
+
+-- ── 5. Align existing training tasks with their block (once) ───────────────
+-- Before 142 a block could be moved (+1d in the agenda) while its task kept
+-- the old deadline. The block's day and time win, as 141 already reads them.
+UPDATE public.tasks t
+   SET due_date = b.date,
+       due_time = COALESCE(b.start_time, t.due_time)
+  FROM public.time_blocks b
+ WHERE b.task_id = t.id
+   AND (t.hevy_routine_id IS NOT NULL OR t.source_type = 'training_session')
+   AND (t.due_date IS DISTINCT FROM b.date
+        OR (b.start_time IS NOT NULL AND t.due_time IS DISTINCT FROM b.start_time));

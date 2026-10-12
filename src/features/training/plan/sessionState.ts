@@ -47,7 +47,12 @@ export interface SessionFacts {
   taskStatus?: TaskStatus | null
   /** tasks.hevy_workout_id — the workout the database linked to it (141). */
   taskWorkoutId?: string | null
-  /** A workout on the planned day that the day's pairing gave this plan. */
+  /** tasks.hevy_routine_id — only a plan with a routine can be completed by
+   *  a LATER workout (141 pairs a late workout by its routine). */
+  taskRoutineId?: string | null
+  /** A workout on the planned day that the day's pairing gave a plan with
+   *  NO task (a plan with a task is done only through its task: 141 links
+   *  the workout and closes it). */
   dayWorkoutId?: string | null
   /** A Strava activity on the planned day. */
   activityOnDay?: boolean
@@ -100,9 +105,10 @@ export function sessionStatus(f: SessionFacts): SessionStatus {
     return status('done', { doneBy: workoutId ? 'workout' : 'hand', workoutId })
   }
   if (task === 'cancelled') return status('skipped', { skipReason: f.skipReason ?? null })
-  // A workout that day covers the plan, task or not (two plans that day, a
-  // freeform workout: the database closes one task, the calendar pairs both).
-  if (f.dayWorkoutId) return status('done', { doneBy: 'workout', workoutId: f.dayWorkoutId })
+  // A plan with no task is covered by a workout that day; one with a task is
+  // done only through its task (the database links the workout and closes
+  // it, 141) — so the task row, the calendar and the popup never disagree.
+  if (task === null && f.dayWorkoutId) return status('done', { doneBy: 'workout', workoutId: f.dayWorkoutId })
   if (task === null && (f.skipped || f.skipReason)) return status('skipped', { skipReason: f.skipReason ?? null })
   // Strava only stands in for a plan with no task: an open task is the
   // truth, and only a workout or a tick closes it.
@@ -115,8 +121,9 @@ export function sessionStatus(f: SessionFacts): SessionStatus {
     if (start != null && now != null && now >= start && now < start + Math.max(1, f.minutes ?? 60)) return status('now')
     return status('today')
   }
+  // Only a plan with a routine can still be closed by a later workout.
   const until = shiftDay(f.date, LATE_WINDOW_DAYS)
-  if (task !== null && OPEN_TASK.has(task) && f.today <= until) return status('pending', { countsUntil: until })
+  if (task !== null && OPEN_TASK.has(task) && f.taskRoutineId && f.today <= until) return status('pending', { countsUntil: until })
   return status('missed')
 }
 

@@ -9,7 +9,7 @@ import { useTrainingSkips } from '../../hooks/useTrainingSkips'
 import { useTrainingPlanActions } from '../../hooks/useTrainingPlanActions'
 import { useSessionAnchor, useSessionDay, type SessionRequest } from '../../hooks/useTrainingSessionDetail'
 import { matchRoutineToPlan } from '../../plan/nextSession'
-import { skipForPlan } from '../../plan/skippedRoutines'
+import { planFacts } from '../../plan/planFacts'
 import { SESSION_LABEL, SESSION_TONE, sessionNote, sessionStatus, type SessionStatus } from '../../plan/sessionState'
 import { openPlanRoutine } from '../../planTraining'
 import { rememberShownWorkout } from '../../sessionLinks'
@@ -35,9 +35,10 @@ function StatusLine({ pill, children }: { pill: ReactNode; children?: ReactNode 
 const nowHHMM = () => { const d = new Date(); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}` }
 
 /** A plan's status line, its main actions and its targets. */
-function PlanBody({ status, primary, routine, repeats, offSchedule, routinesLoading, todayStr }: {
+function PlanBody({ status, primary, busy, routine, repeats, offSchedule, routinesLoading, todayStr }: {
   status: SessionStatus
   primary: readonly SessionActionItem[]
+  busy: boolean
   routine: HevyRoutine | null
   repeats: string | null
   offSchedule: boolean
@@ -52,7 +53,7 @@ function PlanBody({ status, primary, routine, repeats, offSchedule, routinesLoad
         {note && <span className="min-w-0 break-words text-fg-2">{note}</span>}
         {offSchedule && <span>This plan no longer falls on this day.</span>}
       </StatusLine>
-      <SessionActionBar items={primary} />
+      <SessionActionBar items={primary} busy={busy} />
       <PlannedSessionBody routine={routine} routinesLoading={routinesLoading} todayStr={todayStr} />
     </div>
   )
@@ -118,8 +119,10 @@ export function TrainingSessionView({ request, onClose }: { request: SessionRequ
         target: { kind: 'task', taskId: orphan.id, blockId: null },
         info: { title: orphan.title, date: day, startHHMM: orphan.due_time?.slice(0, 5) ?? null, minutes: null, routineId: routine?.id ?? orphan.hevy_routine_id ?? null },
       }
-      const skip = skipForPlan(skips ?? [], { taskId: orphan.id, taskCancelled: orphan.status === 'cancelled', routineId: plan.info.routineId, date: day })
-      const status = sessionStatus({ date: day, taskStatus: orphan.status, taskWorkoutId: orphan.hevy_workout_id, skipReason: skip?.reason, skipped: !!skip, today: todayStr, nowHHMM: now })
+      const status = sessionStatus(planFacts({
+        date: day, startHHMM: plan.info.startHHMM, taskId: orphan.id, taskStatus: orphan.status,
+        taskWorkoutId: orphan.hevy_workout_id, taskRoutineId: orphan.hevy_routine_id ?? null, routineId: plan.info.routineId,
+      }, { today: todayStr, nowHHMM: now, skips: skips ?? [] }))
       return { plan, status, weekly: null, skipId: null }
     }
     if (resolved?.kind !== 'plan' || !planItem || !date) return null
@@ -134,14 +137,15 @@ export function TrainingSessionView({ request, onClose }: { request: SessionRequ
       target,
       info: { title: planItem.title, date, startHHMM: planStartHHMM(planItem), minutes: planMinutes(planItem), routineId: routine?.id ?? task?.hevy_routine_id ?? null },
     }
-    const skip = skipForPlan(skips ?? [], { taskId, taskCancelled: task?.status === 'cancelled', routineId: plan.info.routineId, date })
-    const status = sessionStatus({
-      date, startHHMM: plan.info.startHHMM, minutes: plan.info.minutes,
-      taskStatus: taskId ? task?.status ?? block?.task_status ?? 'open' : null,
-      taskWorkoutId: task?.hevy_workout_id ?? null, activityOnDay: hasActivity,
-      skipReason: skip?.reason, skipped: !!skip, today: todayStr, nowHHMM: now,
-    })
-    return { plan, status, weekly: target.kind === 'weekly' ? { templateId: target.templateId } : null, skipId: !taskId ? skip?.id ?? null : null }
+    const facts = planFacts({
+      date, startHHMM: plan.info.startHHMM, minutes: plan.info.minutes, taskId,
+      taskStatus: task?.status ?? block?.task_status ?? null,
+      taskWorkoutId: task?.hevy_workout_id ?? block?.task_workout_id ?? null,
+      taskRoutineId: task?.hevy_routine_id ?? block?.task_routine_id ?? null,
+      routineId: routine?.id ?? null,
+    }, { today: todayStr, nowHHMM: now, skips: skips ?? [], hasActivity })
+    const status = sessionStatus(facts)
+    return { plan, status, weekly: target.kind === 'weekly' ? { templateId: target.templateId } : null, skipId: facts.skipId }
   })()
   const planItems = useSessionActionItems({
     plan: planCtx?.plan ?? null, status: planCtx?.status ?? null,
@@ -159,10 +163,10 @@ export function TrainingSessionView({ request, onClose }: { request: SessionRequ
     title = orphan.title
     subtitle = `${sessionWhenLabel(planCtx.plan.info.date, planCtx.plan.info.startHHMM, null)} · not on your calendar`
     body = (
-      <PlanBody status={planCtx.status} primary={planItems.primary} routine={routine} repeats={null} offSchedule={false}
+      <PlanBody status={planCtx.status} primary={planItems.primary} busy={planItems.busy} routine={routine} repeats={null} offSchedule={false}
         routinesLoading={routinesQ.isLoading} todayStr={todayStr} />
     )
-    actions = <SessionMenu items={planItems.more} />
+    actions = <SessionMenu items={planItems.more} busy={planItems.busy} />
   } else if (anchorFailed) {
     const failed = anchor.query.isError
     title = shown.workoutId ? 'Can’t open this workout' : 'Can’t open this session'
@@ -214,11 +218,11 @@ export function TrainingSessionView({ request, onClose }: { request: SessionRequ
     title = planItem.title
     subtitle = sessionWhenLabel(date, planCtx.plan.info.startHHMM, planCtx.plan.info.minutes)
     body = (
-      <PlanBody status={planCtx.status} primary={planItems.primary} routine={routine}
+      <PlanBody status={planCtx.status} primary={planItems.primary} busy={planItems.busy} routine={routine}
         repeats={template ? `Repeats ${weekdaysLabel(template.days_of_week)}` : null} offSchedule={resolved.offSchedule}
         routinesLoading={routinesQ.isLoading} todayStr={todayStr} />
     )
-    actions = <SessionMenu items={planItems.more} />
+    actions = <SessionMenu items={planItems.more} busy={planItems.busy} />
   }
 
   return (

@@ -34,11 +34,11 @@ export function useSessionActionItems(input: {
   weekly?: { templateId: string } | null
   skipId?: string | null
   onGone?: () => void
-}): { primary: SessionActionItem[]; more: SessionActionItem[] } {
+}): { primary: SessionActionItem[]; more: SessionActionItem[]; busy: boolean } {
   const { plan, status, weekly, skipId, onGone } = input
   const modal = useEntityModal()
   const a = useTrainingPlanActions()
-  if (!plan || !status) return { primary: [], more: [] }
+  if (!plan || !status) return { primary: [], more: [], busy: a.busy }
   const target = plan.target
   const hasTask = target.kind === 'task'
   const keys = sessionActions(status, { hasTask, weekly: !!weekly })
@@ -66,5 +66,5 @@ export function useSessionActionItems(input: {
       { key: 'deleteWeekly', label: 'Delete weekly plan', icon: <Trash2 />, danger: true, onSelect: () => { void a.deleteWeekly(weekly.templateId, plan.info.title).then(ok => { if (ok) onGone?.() }) } },
     )
   }
-  return { primary: items.filter(i => PRIMARY.has(i.key as SessionAction)), more }
+  return { primary: items.filter(i => PRIMARY.has(i.key as SessionAction)), more, busy: a.busy }
 }

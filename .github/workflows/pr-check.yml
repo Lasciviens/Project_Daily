@@ -78,6 +78,13 @@ jobs:
         env:
           DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
 
+      # Migration 142's triggers (training task ⇄ block, skip ⇄ cancel, weekly
+      # days) on a throwaway database: migrations 141 + 142 and their scenarios.
+      - name: Training session database scenarios
+        run: node scripts/verify-db-training-session.mjs
+        env:
+          DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
+
       # `npm run lint` is deliberately NOT a gate yet: it is red today, and a
       # large share of the errors come from eslint linting supabase/functions
       # (Deno code checked with browser globals). Narrow the ESLint scope and

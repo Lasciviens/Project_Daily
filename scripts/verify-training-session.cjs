@@ -8,14 +8,18 @@ const assert = require('assert')
 const S = require('../src/features/training/plan/sessionState.ts')
 const { skipForPlan } = require('../src/features/training/plan/skippedRoutines.ts')
 const { projectRecurringBlocksForDay } = require('../src/features/daily/components/dayAgendaProjection.ts')
+const { planFacts } = require('../src/features/training/plan/planFacts.ts')
+const { matchDaySessions } = require('../src/features/training/components/calendar/calendarSessions.ts')
 
 let n = 0
 const eq = (a, b, msg) => { assert.deepStrictEqual(a, b, msg); n++ }
 const st = f => S.sessionStatus({ today: '2026-10-12', ...f })
+// A plan planned from a routine (141 links its task to it).
+const R = { taskRoutineId: 'r-lower-b' }
 
 // ── The owner's screenshot (12.10.2026): Sunday's plan, its task still open ──
 {
-  const s = st({ date: '2026-10-11', startHHMM: '14:30', minutes: 60, taskStatus: 'open' })
+  const s = st({ date: '2026-10-11', startHHMM: '14:30', minutes: 60, taskStatus: 'open', ...R })
   eq(s.state, 'pending', 'an open plan from yesterday is not "Missed": a workout still completes it')
   eq(s.countsUntil, '2026-10-17', '141 window: six days after the planned day')
   eq(S.sessionNote(s, 'Lower B'), 'A Lower B workout until Sat 17.10.2026 still counts.', 'the note says until when, DD.MM.YYYY')
@@ -37,14 +41,19 @@ eq(st({ date: '2026-10-20', taskStatus: 'done' }).state, 'done', 'done ahead of 
   eq(S.sessionActions(s, { hasTask: true, weekly: false }), ['undoSkip', 'edit', 'delete'], 'undo, edit, delete')
 }
 eq(st({ date: '2026-10-11', taskStatus: 'cancelled' }).skipReason, null, 'cancelled with no skip row read: no reason, still skipped')
-eq(st({ date: '2026-10-11', taskStatus: 'open', activityOnDay: true }).state, 'pending', 'Strava never closes an open task (only a workout or a tick)')
-eq(st({ date: '2026-10-11', taskStatus: 'open', skipped: true, skipReason: 'Travel' }).state, 'pending', 'a routine-week skip does not cancel an open task by itself')
-eq(st({ date: '2026-10-11', taskStatus: 'in_progress' }).state, 'pending', 'in progress counts as open')
-eq(st({ date: '2026-10-11', taskStatus: 'waiting' }).state, 'pending', 'waiting counts as open')
+eq(st({ date: '2026-10-11', taskStatus: 'open', activityOnDay: true, ...R }).state, 'pending', 'Strava never closes an open task (only a workout or a tick)')
+eq(st({ date: '2026-10-11', taskStatus: 'open', skipped: true, skipReason: 'Travel', ...R }).state, 'pending', 'a routine-week skip does not cancel an open task by itself')
+eq(st({ date: '2026-10-11', taskStatus: 'in_progress', ...R }).state, 'pending', 'in progress counts as open')
+eq(st({ date: '2026-10-11', taskStatus: 'waiting', ...R }).state, 'pending', 'waiting counts as open')
+
+// ── Review fixes (12.10.2026) ──
+eq(st({ date: '2026-10-11', taskStatus: 'open' }).state, 'missed', 'no routine: no later workout can close it, so not "Not logged yet"')
+eq(st({ date: '2026-10-11', taskStatus: 'open', dayWorkoutId: 'w9', ...R }).state, 'pending', 'a plan with a task is done only through its task, never by a same-day workout alone')
+eq(st({ date: '2026-10-12', taskStatus: 'open', dayWorkoutId: 'w9' }).state, 'today', '…also today')
 
 // ── The six-day window, both edges ──
-eq(st({ date: '2026-10-06', taskStatus: 'open' }).state, 'pending', 'day 6 after the plan: still counts')
-eq(st({ date: '2026-10-05', taskStatus: 'open' }).state, 'missed', 'day 7: missed')
+eq(st({ date: '2026-10-06', taskStatus: 'open', ...R }).state, 'pending', 'day 6 after the plan: still counts')
+eq(st({ date: '2026-10-05', taskStatus: 'open', ...R }).state, 'missed', 'day 7: missed')
 eq(S.sessionNote(st({ date: '2026-10-05', taskStatus: 'open' })), 'Nothing was logged.', 'missed note')
 eq(S.sessionActions(st({ date: '2026-10-05', taskStatus: 'open' }), { hasTask: true, weekly: false }), ['done', 'move', 'skip', 'edit', 'delete'], 'a missed plan can still be done, moved or skipped')
 
@@ -111,6 +120,37 @@ eq(S.weekStartOf('2026-03-29'), '2026-03-23', 'across the DST change')
   const late = { id: 'n', title: 'Night', start_time: '23:00:00', end_time: '01:00:00', days_of_week: [1], except_dates: ['2026-10-12'] }
   eq(projectRecurringBlocksForDay('2026-10-13', 2, [late]).length, 0, 'its tail after midnight goes with it')
   eq(projectRecurringBlocksForDay('2026-10-20', 2, [late]).filter(p => p.spillover).length, 1, 'another week keeps its tail')
+}
+
+// ── One set of facts for every view (planFacts) ──
+{
+  const skips = [{ id: 's1', routine_id: 'r1', week_start: '2026-10-05', reason: 'Holiday', task_id: null }]
+  const ctx = { today: '2026-10-12', skips }
+  const weekly = planFacts({ date: '2026-10-08', title: 'x', routineId: 'r1' }, ctx)
+  eq(S.sessionStatus(weekly).state, 'skipped', 'a weekly day whose routine week was skipped reads Skipped (every view)')
+  eq(weekly.skipId, 's1', '…and carries the skip to undo')
+  const open = planFacts({ date: '2026-10-08', taskId: 't1', taskStatus: 'open', taskRoutineId: 'r1' }, ctx)
+  eq(S.sessionStatus(open).state, 'pending', 'an open task is not skipped by its routine\'s week')
+  eq(planFacts({ date: '2026-10-11', taskId: 't1' }, ctx).taskStatus, 'open', 'a task with no status read yet counts as open')
+  eq(planFacts({ date: '2026-10-11', taskId: 't1', taskStatus: 'open' }, { ...ctx, dayWorkoutId: 'w1' }).dayWorkoutId, null, 'a same-day workout is never handed to a plan with a task')
+  eq(planFacts({ date: '2026-10-11', taskId: 't1', taskRoutineId: 'r9', routineId: 'r1' }, ctx).routineId, 'r9', 'the task\'s routine wins over a title match')
+}
+
+// ── The calendar pairs a plan with a task only through its task (141) ──
+{
+  const W = (id, routine_id, t) => ({ id, title: 'Lower B', routine_id, start_time: `2026-10-11T${t}:00` })
+  const plan = (id, tb) => ({ id, title: 'Lower B', kind: 'block', timeBlock: { id, title: 'Lower B', date: '2026-10-11', start_time: '18:00:00', source_type: 'training_session', source_id: 'r1', ...tb } })
+  const day = (plans, workouts) => matchDaySessions({ date: '2026-10-11', todayStr: '2026-10-12', plans, workouts, hasActivity: false })
+  let d = day([plan('p1', { task_id: 't1', task_status: 'cancelled' })], [W('w1', 'r1', '18:05')])
+  eq([d.sessions[0].plans.length, d.openPlans[0].status], [0, 'skipped'], 'a skipped plan is not covered by a freeform/any workout that day: it stays Skipped')
+  d = day([plan('p1', { task_id: 't1', task_status: 'open', task_routine_id: 'r1' })], [W('w1', 'r1', '18:05')])
+  eq([d.sessions[0].plans.length, d.openPlans[0].status], [0, 'pending'], 'an open task the database did not close stays open (the task row agrees)')
+  d = day([plan('p1', { task_id: 't1', task_status: 'done', task_workout_id: 'w2' })], [W('w1', 'r1', '18:05'), W('w2', 'r1', '19:30')])
+  eq(d.sessions.find(x => x.workout.id === 'w2').plans.map(p => p.id), ['p1'], 'a done plan pairs with the workout linked to its task')
+  d = day([plan('p1', { task_id: 't1', task_status: 'done' })], [W('w1', null, '18:05')])
+  eq(d.sessions[0].plans.map(p => p.id), ['p1'], 'a plan ticked done by hand may show the day\'s workout')
+  d = day([plan('p1', {})], [W('w1', 'r1', '18:05')])
+  eq(d.sessions[0].plans.map(p => p.id), ['p1'], 'a plan with no task is covered by its routine\'s workout, as before')
 }
 
 // ── Guard: one status, one writer (owner, 12.10.2026: "shared components and

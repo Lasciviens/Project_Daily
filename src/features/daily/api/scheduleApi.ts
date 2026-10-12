@@ -69,14 +69,14 @@ export async function deleteScheduleBlock(id: string): Promise<void> {
 // A block's task state rides along (not kept as an embed): a training
 // session's row shows Done / Skipped from the same facts as its popup
 // (training/plan/sessionState).
-type TaskEmbed = { task: { status: TimeBlock['task_status']; hevy_workout_id?: string | null } | null }
+type TaskEmbed = { task: { status: TimeBlock['task_status']; hevy_workout_id?: string | null; hevy_routine_id?: string | null } | null }
 const withTaskState = ({ task, ...b }: TimeBlock & TaskEmbed): TimeBlock =>
-  ({ ...b, task_status: task?.status ?? null, task_workout_id: task?.hevy_workout_id ?? null })
+  ({ ...b, task_status: task?.status ?? null, task_workout_id: task?.hevy_workout_id ?? null, task_routine_id: task?.hevy_routine_id ?? null })
 
 export async function fetchTimeBlocks(dateStr: string): Promise<TimeBlock[]> {
   const { data, error } = await supabase
     .from('time_blocks')
-    .select('*, task:tasks(status, hevy_workout_id)')
+    .select('*, task:tasks(status, hevy_workout_id, hevy_routine_id)')
     .eq('date', dateStr)
     .order('start_time', { ascending: true, nullsFirst: false })
   if (error) throw error
@@ -124,7 +124,7 @@ export async function fetchCalendarLinkedTaskIds(taskIds: string[]): Promise<Set
 export async function fetchTrainingBlocksRange(from: string, to: string): Promise<TimeBlock[]> {
   const { data, error } = await supabase
     .from('time_blocks')
-    .select('*, task:tasks(status, hevy_workout_id)')
+    .select('*, task:tasks(status, hevy_workout_id, hevy_routine_id)')
     .eq('category', 'training')
     .gte('date', from)
     .lte('date', to)

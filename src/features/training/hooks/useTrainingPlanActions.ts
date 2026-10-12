@@ -5,7 +5,7 @@ import { qk } from '../../../shared/query'
 import { formatWeekdayDate } from '../../../shared/utils/dateFormat'
 import { drainBestEffort } from '../../todo/hooks/useTodos'
 import {
-  deletePlan, deleteWeeklyPlan, ensurePlanTask, markPlanDone, movePlan, reopenPlan, restorePlan, restoreWeeklyPlan,
+  deletePlan, deleteWeeklyPlan, ensurePlanTask, markPlanDone, planTaskId, movePlan, reopenPlan, restorePlan, restoreWeeklyPlan,
   skipPlan, snapshotPlan, snapshotWeeklyPlan, undoPlanSkip,
   type PlanTarget, type TrainingPlanRef,
 } from '../api/trainingPlanApi'
@@ -39,9 +39,9 @@ export function useTrainingPlanActions() {
     action: 'training_plan_done',
     successMessage: 'Marked done',
     mutationFn: async (p: TrainingPlanRef) => {
-      const rows = await ensurePlanTask(p.target, p.info)
-      await markPlanDone(rows.taskId)
-      await deliverGoogleTasks(rows.taskId)
+      const taskId = await planTaskId(p.target, p.info)
+      await markPlanDone(taskId)
+      await deliverGoogleTasks(taskId)
     },
     invalidates: [...INVALIDATES],
   })
@@ -94,8 +94,13 @@ export function useTrainingPlanActions() {
     action: 'training_plan_restore',
     successMessage: 'Restored',
     mutationFn: async (snapshot: Awaited<ReturnType<typeof snapshotPlan>>) => {
-      await restorePlan(snapshot)
+      const { calendar } = await restorePlan(snapshot)
       if (snapshot.task?.google_sync_enabled) await deliverGoogleTasks(snapshot.task.id)
+      // It was on Google Calendar and couldn't be put back right now (no
+      // Google sign-in on this device, or Google didn't answer).
+      if (calendar === 'unknown' || calendar === 'not_linked') {
+        toast.warning('Restored — but not back on Google Calendar. Open the session, Edit, and save it to add it again.')
+      }
     },
     invalidates: [...INVALIDATES],
   })

@@ -48,7 +48,7 @@ export interface DayData {
   openPlans: OpenPlan[]
 }
 
-export function dayDataFor(dateStr: string, date: Date, workouts: HevyWorkout[], activities: StravaActivity[], plansByDate: Map<string, CalendarPlanItem[]>, todayStr: string, skips: readonly SkipRecord[] = [], nowHHMM?: string): DayData {
+export function dayDataFor(dateStr: string, date: Date, workouts: HevyWorkout[], activities: StravaActivity[], plansByDate: Map<string, CalendarPlanItem[]>, todayStr: string, skips: readonly SkipRecord[] = [], routineOf?: (plan: CalendarPlanItem, date: string) => string | null): DayData {
   const dayActivities = activities.filter(a => activityDay(a) === dateStr)
   const { sessions, openPlans } = matchDaySessions({
     date: dateStr,
@@ -57,7 +57,7 @@ export function dayDataFor(dateStr: string, date: Date, workouts: HevyWorkout[],
     workouts: workouts.filter(w => workoutLocalDay(w) === dateStr),
     hasActivity: dayActivities.length > 0,
     skips,
-    nowHHMM,
+    routineOf,
   })
   return { date, activities: dayActivities, sessions, openPlans }
 }

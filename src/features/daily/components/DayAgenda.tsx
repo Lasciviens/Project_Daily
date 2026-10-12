@@ -20,6 +20,9 @@ import { projectOneOffBlocksForDay, projectRecurringBlocksForDay, projectCalenda
 import type { CalendarEvent } from '../../calendar/types'
 import { TrainingPlanMenu } from '../../training/components/session/TrainingPlanActions'
 import { SESSION_LABEL, SESSION_TONE, sessionStatus } from '../../training/plan/sessionState'
+import { planFacts } from '../../training/plan/planFacts'
+import { useDayPlanContext } from '../../training/hooks/usePlanContext'
+import type { TaskStatus } from '../../todo/types'
 import type { TrainingPlanRef } from '../../training/api/trainingPlanApi'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -88,6 +91,7 @@ interface AgendaBlock {
    *  Done / Skipped from it, like its popup (training/plan/sessionState). */
   taskStatus?:    string | null
   taskWorkoutId?: string | null
+  taskRoutineId?: string | null
   /** The routine a training block was planned from. */
   routineId?:     string | null
 }
@@ -163,7 +167,7 @@ export function DayAgenda({ date, bare = false }: { date: Date; bare?: boolean }
       id: p.id, canonicalId: p.canonicalId, kind: p.kind, title: p.title, dateStr,
       startHour: p.startHour, endHour: p.endHour, taskId: p.taskId, spillover: p.spillover,
       edgeClass: COLOR_EDGE[original?.color ?? 'accent'] ?? COLOR_EDGE.accent, category: original?.category,
-      taskStatus: original?.task_status ?? null, taskWorkoutId: original?.task_workout_id ?? null,
+      taskStatus: original?.task_status ?? null, taskWorkoutId: original?.task_workout_id ?? null, taskRoutineId: original?.task_routine_id ?? null,
       routineId: original?.source_type === 'training_session' ? original.source_id ?? null : null,
     })
   }
@@ -199,6 +203,8 @@ export function DayAgenda({ date, bare = false }: { date: Date; bare?: boolean }
   const timed        = blocks.filter(b => b.startHour >= 0).sort((a, b) => a.startHour - b.startHour)
   const night        = timed.filter(b => b.startHour < NIGHT_END)
   const day          = timed.filter(b => b.startHour >= NIGHT_END)
+  // A training row's status is built like its popup's (plan/planFacts).
+  const planCtx = useDayPlanContext(dateStr, blocks.some(b => b.category === 'training'))
 
   const overlappingIds = new Set<string>()
   for (let i = 0; i < timed.length; i++) {
@@ -263,7 +269,7 @@ export function DayAgenda({ date, bare = false }: { date: Date; bare?: boolean }
         title: block.title, date,
         startHHMM: block.startHour >= 0 && !block.spillover ? hourToTimeStr(block.startHour) : null,
         minutes: Math.round((block.endHour - block.startHour) * 60) || null,
-        routineId: block.routineId ?? null,
+        routineId: block.taskRoutineId ?? block.routineId ?? planCtx.routineOf({ title: block.title, date }),
       },
     }
   }
@@ -283,11 +289,12 @@ export function DayAgenda({ date, bare = false }: { date: Date; bare?: boolean }
     // popup and its task row — Done/Skipped on the row, Move/Skip/Delete with
     // Undo behind ⋯ (training/components/session/TrainingPlanActions).
     const session = block.category === 'training' && !isCal ? trainingPlanOf(block) : null
-    const sessionState = session ? sessionStatus({
+    const sessionState = session ? sessionStatus(planFacts({
       date: session.info.date, startHHMM: session.info.startHHMM, minutes: session.info.minutes,
-      taskStatus: (block.taskStatus as Parameters<typeof sessionStatus>[0]['taskStatus']) ?? (block.taskId ? 'open' : null),
-      taskWorkoutId: block.taskWorkoutId ?? null, today: format(new Date(), 'yyyy-MM-dd'), nowHHMM: hourToTimeStr(nowHour),
-    }) : null
+      taskId: block.taskId ?? null, taskStatus: (block.taskStatus as TaskStatus | null | undefined) ?? null,
+      taskWorkoutId: block.taskWorkoutId ?? null, taskRoutineId: block.taskRoutineId ?? null,
+      routineId: session.info.routineId,
+    }, { today: format(new Date(), 'yyyy-MM-dd'), nowHHMM: hourToTimeStr(nowHour), skips: planCtx.skips, hasActivity: planCtx.hasActivity })) : null
     const sessionMark = sessionState && (sessionState.state === 'done' || sessionState.state === 'skipped') ? sessionState.state : null
 
     function postpone30m() {

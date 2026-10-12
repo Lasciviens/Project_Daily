@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { CalendarClock, CalendarPlus, SkipForward } from 'lucide-react'
-import { ModalShell } from '../../../shared/modals'
+import { ModalShell, entityModal } from '../../../shared/modals'
+import { findTwinOn } from '../api/trainingPlanApi'
+import { planTwinMessage } from '../plan/planTwins'
 import type { EntityModalProps } from '../../../shared/modals/types'
 import { Button } from '../../../shared/ui'
 import { DateStepperField, FieldLabel, Time24Field } from '../../../shared/components/plan-modal/fields'
@@ -42,6 +44,16 @@ export function TrainingPlanMoveModal({ request, onClose }: EntityModalProps<'tr
   const unchanged = date === plan.info.date && (plan.info.startHHMM ? time === plan.info.startHHMM.slice(0, 5) : !timeTouched)
 
   const submit = async () => {
+    // The same session already on that day: ask first (the plan editor's rule).
+    if (date !== plan.info.date) {
+      const twin = await findTwinOn(date, plan)
+      if (twin && !(await entityModal.confirm({
+        title: 'Plan this session twice?',
+        message: `${planTwinMessage(twin)} Move it there anyway, or keep it where it is.`,
+        confirmLabel: 'Move anyway',
+        cancelLabel: 'Keep it here',
+      }))) return
+    }
     try { await actions.move(plan, date, plan.info.startHHMM || timeTouched ? time : null) } catch { return }
     onClose()
   }

@@ -10,7 +10,8 @@
 
 import { normalizeTitle } from '../../plan/nextSession'
 import { sessionStatus, type SessionState, type SessionStatus } from '../../plan/sessionState'
-import { skipForPlan, type SkipRecord } from '../../plan/skippedRoutines'
+import type { SkipRecord } from '../../plan/skippedRoutines'
+import { planFacts } from '../../plan/planFacts'
 import type { HevyWorkout } from '../../types.hevy'
 import type { CalendarPlanItem } from './calendarModel'
 
@@ -72,10 +73,19 @@ function timeGap(p: CalendarPlanItem, w: WorkoutLike): number {
   return a == null || b == null ? Number.POSITIVE_INFINITY : Math.abs(a - b)
 }
 
-/** How surely a workout is the planned session: 3 = planned from this
- *  workout's routine, 2 = same title, 1 = one title contains the other
- *  ("Push day — heavy" ⊃ "Push day"), 0 = nothing in common. */
+/** How surely a workout is the planned session: 4 = the workout the
+ *  database linked to the plan's task (141), 3 = planned from this workout's
+ *  routine, 2 = same title, 1 = one title contains the other ("Push day —
+ *  heavy" ⊃ "Push day"), 0 = nothing in common. A plan with a task follows
+ *  its task: its linked workout only; a skipped or still-open one pairs with
+ *  nothing (the database didn't link a workout to it); one ticked done by
+ *  hand may show the day's workout. */
 export function planWorkoutScore(p: CalendarPlanItem, w: WorkoutLike): number {
+  const block = p.timeBlock
+  if (block?.task_id) {
+    if (block.task_workout_id) return block.task_workout_id === w.id ? 4 : 0
+    if (block.task_status !== 'done') return 0
+  }
   const rid = planRoutineId(p)
   if (rid && w.routine_id && rid === w.routine_id) return 3
   const a = normalizeTitle(p.title)
@@ -107,8 +117,11 @@ export function matchDaySessions(input: {
   skips?: readonly SkipRecord[]
   /** 'HH:MM' now, for "Now" on today's plan. */
   nowHHMM?: string
+  /** The routine a plan trains when its own row doesn't say (a weekly plan,
+   *  matched by its title — usePlanContext), for its routine-week skip. */
+  routineOf?: (plan: CalendarPlanItem, date: string) => string | null
 }): DaySessions {
-  const { date, todayStr, plans, workouts, hasActivity, skips = [], nowHHMM } = input
+  const { date, todayStr, plans, workouts, hasActivity, skips = [], nowHHMM, routineOf } = input
   const planOf = new Map<number, number>()   // plan index → workout index
   const takenWorkouts = new Set<number>()
 
@@ -130,12 +143,16 @@ export function matchDaySessions(input: {
     planOf.set(pr.p, pr.w)
   }
 
-  // 3. Same-day cover, nearest start first. A future day can't have a
-  //    workout yet, but the guard keeps a clock-skewed row from marking one.
+  // 3. Same-day cover, nearest start first — for a plan with no task (or one
+  //    ticked done by hand): a plan with a task is covered only through it
+  //    (step 1's link). A future day can't have a workout yet, but the guard
+  //    keeps a clock-skewed row from marking one.
   if (date <= todayStr) {
     const left: { p: number; w: number; gap: number }[] = []
     plans.forEach((plan, p) => {
       if (planOf.has(p)) return
+      const b = plan.timeBlock
+      if (b?.task_id && (b.task_status !== 'done' || b.task_workout_id)) return
       workouts.forEach((wo, w) => { if (!takenWorkouts.has(w)) left.push({ p, w, gap: timeGap(plan, wo) }) })
     })
     left.sort((a, b) => a.gap - b.gap || a.p - b.p || a.w - b.w)
@@ -154,15 +171,15 @@ export function matchDaySessions(input: {
   const byStart = (a: string | null, b: string | null) => (a ?? '99:99').localeCompare(b ?? '99:99')
   sessions.sort((a, b) => byStart(workoutStartHHMM(a.workout), workoutStartHHMM(b.workout)) || a.workout.id.localeCompare(b.workout.id))
 
+  // THE status, from the same facts every view builds (plan/planFacts).
   const statusOf = (plan: CalendarPlanItem): SessionStatus => {
     const b = plan.timeBlock
-    const taskId = b?.task_id ?? null
-    const taskStatus = taskId ? b?.task_status ?? 'open' : null
-    const skip = skipForPlan(skips, { taskId, taskCancelled: taskStatus === 'cancelled', routineId: planRoutineId(plan), date })
-    return sessionStatus({
-      date, startHHMM: planStartHHMM(plan), taskStatus, taskWorkoutId: b?.task_workout_id ?? null,
-      activityOnDay: hasActivity, skipReason: skip?.reason, skipped: !!skip, today: todayStr, nowHHMM,
-    })
+    return sessionStatus(planFacts({
+      date, startHHMM: planStartHHMM(plan),
+      taskId: b?.task_id ?? null, taskStatus: b?.task_status ?? null,
+      taskWorkoutId: b?.task_workout_id ?? null, taskRoutineId: b?.task_routine_id ?? null,
+      routineId: planRoutineId(plan) ?? routineOf?.(plan, date) ?? null,
+    }, { today: todayStr, nowHHMM, skips, hasActivity }))
   }
   const openPlans: OpenPlan[] = plans
     .filter((_, p) => !planOf.has(p))
