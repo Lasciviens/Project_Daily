@@ -13,6 +13,7 @@ import { mondayOf } from '../../progressAggregate'
 import { dayDataFor, type DayData } from './calendarModel'
 import { DAY_MARK_LABEL, monthGridRange, monthOf, monthWeeks, shiftMonth } from './monthGrid'
 import { DayMarkGlyph, StravaBar } from './DayMarkGlyph'
+import { useTrainingSkips } from '../../hooks/useTrainingSkips'
 import { MonthGrid } from './MonthGrid'
 import { DayDetailPanel } from './DayDetailPanel'
 
@@ -20,7 +21,7 @@ function Legend() {
   return (
     <InfoBubble label="What the marks mean">
       <span className="flex flex-col gap-1.5">
-        {(['done', 'today', 'upcoming', 'missed'] as const).map(m => (
+        {(['done', 'today', 'pending', 'upcoming', 'missed', 'skipped'] as const).map(m => (
           <span key={m} className="flex items-center gap-2"><span className="grid w-4 place-items-center"><DayMarkGlyph mark={m} /></span>{DAY_MARK_LABEL[m]}</span>
         ))}
         <span className="flex items-center gap-2"><span className="grid w-4 place-items-center"><StravaBar /></span>Strava activity</span>
@@ -50,12 +51,13 @@ export function TrainingMonthCalendar() {
   const { data: activities = [] } = useStravaActivities({ from: bounds.fromISO, to: bounds.toISO, limit: 500 })
   const { data: plansByDate } = useTrainingPlansByDate(from, to)
   const { data: profile } = useAthleteProfile()
+  const { data: skips } = useTrainingSkips()
 
   const dayByDate = useMemo(() => {
     const m = new Map<string, DayData>()
-    for (const w of weeks) for (const c of w.cells) m.set(c.date, dayDataFor(c.date, new Date(`${c.date}T12:00:00`), workouts, activities, plansByDate, todayStr))
+    for (const w of weeks) for (const c of w.cells) m.set(c.date, dayDataFor(c.date, new Date(`${c.date}T12:00:00`), workouts, activities, plansByDate, todayStr, skips ?? []))
     return m
-  }, [weeks, workouts, activities, plansByDate, todayStr])
+  }, [weeks, workouts, activities, plansByDate, todayStr, skips])
 
   const todayMonth = monthOf(todayStr)
   const onTodayMonth = todayMonth.year === view.year && todayMonth.month === view.month

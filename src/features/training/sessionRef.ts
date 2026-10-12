@@ -11,7 +11,7 @@
 // a deliberate second step (the popup's ⋯ menu).
 
 import { matchDaySessions, planStartHHMM, planWorkoutScore } from './components/calendar/calendarSessions'
-import { planStatus, type PlanStatus } from './trainingPlanModel'
+import { sessionStatus, type SessionState } from './plan/sessionState'
 import { formatWeekdayDate } from '../../shared/utils/dateFormat'
 import { formatDurationMinutes } from '../../shared/utils/formatDuration'
 import type { CalendarPlanItem } from './components/calendar/calendarModel'
@@ -53,13 +53,6 @@ export function sessionForTask(
   return null
 }
 
-export const SESSION_STATUS_LABEL: Record<PlanStatus, string> = {
-  done:     'Done',
-  today:    'Today',
-  upcoming: 'Upcoming',
-  missed:   'Missed',
-}
-
 type DayWorkout = Pick<HevyWorkout, 'id' | 'title' | 'routine_id' | 'start_time'>
 
 export type ResolvedSession =
@@ -67,7 +60,7 @@ export type ResolvedSession =
   | { kind: 'workout'; workoutId: string; plans: CalendarPlanItem[]; openedFromPlan: boolean }
   /** A plan nothing covered. `offSchedule`: the plan's row exists but it no
    *  longer falls on that day (a template whose weekdays were changed). */
-  | { kind: 'plan'; plan: CalendarPlanItem; status: PlanStatus; offSchedule: boolean }
+  | { kind: 'plan'; plan: CalendarPlanItem; status: SessionState; offSchedule: boolean }
   /** The plan is gone (deleted) — nothing to show. */
   | { kind: 'missing' }
 
@@ -101,7 +94,11 @@ export function resolveTrainingSession(input: {
   if (covering) return { kind: 'workout', workoutId: covering.workout.id, plans: covering.plans, openedFromPlan: true }
   const open = day.openPlans.find(o => o.plan.id === id)
   if (open) return { kind: 'plan', plan: open.plan, status: open.status, offSchedule: false }
-  if (planRow) return { kind: 'plan', plan: planRow, status: planStatus(date, todayStr, hasActivity), offSchedule: true }
+  if (planRow) {
+    const b = planRow.timeBlock
+    const status = sessionStatus({ date, taskStatus: b?.task_id ? b.task_status ?? 'open' : null, activityOnDay: hasActivity, today: todayStr }).state
+    return { kind: 'plan', plan: planRow, status, offSchedule: true }
+  }
   return { kind: 'missing' }
 }
 

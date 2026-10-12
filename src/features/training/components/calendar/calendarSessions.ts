@@ -9,7 +9,8 @@
 // nothing covers stay separate — missed (past), today or upcoming.
 
 import { normalizeTitle } from '../../plan/nextSession'
-import { planStatus, type PlanStatus } from '../../trainingPlanModel'
+import { sessionStatus, type SessionState, type SessionStatus } from '../../plan/sessionState'
+import { skipForPlan, type SkipRecord } from '../../plan/skippedRoutines'
 import type { HevyWorkout } from '../../types.hevy'
 import type { CalendarPlanItem } from './calendarModel'
 
@@ -22,9 +23,12 @@ export interface DaySession {
 
 export interface OpenPlan {
   plan: CalendarPlanItem
-  /** Never 'done' via a Hevy workout (that plan would be a session) — only
-   *  via a Strava activity that day. */
-  status: PlanStatus
+  /** THE status of the plan (plan/sessionState): its task's (done, skipped,
+   *  not logged yet), else the day's (a Strava activity, its routine's skip),
+   *  else its date. Never done by a workout that day — that plan would be a
+   *  session above. */
+  status: SessionState
+  session: SessionStatus
 }
 
 export interface DaySessions {
@@ -99,8 +103,12 @@ export function matchDaySessions(input: {
   plans: readonly CalendarPlanItem[]
   workouts: readonly HevyWorkout[]
   hasActivity: boolean
+  /** Skips (training_skips) — a skipped plan reads "Skipped". */
+  skips?: readonly SkipRecord[]
+  /** 'HH:MM' now, for "Now" on today's plan. */
+  nowHHMM?: string
 }): DaySessions {
-  const { date, todayStr, plans, workouts, hasActivity } = input
+  const { date, todayStr, plans, workouts, hasActivity, skips = [], nowHHMM } = input
   const planOf = new Map<number, number>()   // plan index → workout index
   const takenWorkouts = new Set<number>()
 
@@ -146,10 +154,19 @@ export function matchDaySessions(input: {
   const byStart = (a: string | null, b: string | null) => (a ?? '99:99').localeCompare(b ?? '99:99')
   sessions.sort((a, b) => byStart(workoutStartHHMM(a.workout), workoutStartHHMM(b.workout)) || a.workout.id.localeCompare(b.workout.id))
 
-  const status = planStatus(date, todayStr, hasActivity)
+  const statusOf = (plan: CalendarPlanItem): SessionStatus => {
+    const b = plan.timeBlock
+    const taskId = b?.task_id ?? null
+    const taskStatus = taskId ? b?.task_status ?? 'open' : null
+    const skip = skipForPlan(skips, { taskId, taskCancelled: taskStatus === 'cancelled', routineId: planRoutineId(plan), date })
+    return sessionStatus({
+      date, startHHMM: planStartHHMM(plan), taskStatus, taskWorkoutId: b?.task_workout_id ?? null,
+      activityOnDay: hasActivity, skipReason: skip?.reason, skipped: !!skip, today: todayStr, nowHHMM,
+    })
+  }
   const openPlans: OpenPlan[] = plans
     .filter((_, p) => !planOf.has(p))
-    .map(plan => ({ plan, status }))
+    .map(plan => { const session = statusOf(plan); return { plan, status: session.state, session } })
     .sort((a, b) => byStart(planStartHHMM(a.plan), planStartHHMM(b.plan)) || a.plan.id.localeCompare(b.plan.id))
 
   return { sessions, openPlans }

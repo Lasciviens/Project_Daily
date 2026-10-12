@@ -4,7 +4,9 @@ import { useEntityModal } from '../../../../shared/modals'
 import { formatWeekdayDate } from '../../../../shared/utils/dateFormat'
 import { formatDistance } from '../../setFormat'
 import { openPlanSession } from '../../planTraining'
-import { SESSION_STATUS_LABEL, coveredPlanNote, planRefOf } from '../../sessionRef'
+import { coveredPlanNote, planRefOf } from '../../sessionRef'
+import { SESSION_LABEL } from '../../plan/sessionState'
+import { dayMarkOf } from './monthGrid'
 import { StravaTypeIcon } from '../StravaIcons'
 import { DayMarkGlyph, StravaBar } from './DayMarkGlyph'
 import { planStartHHMM, workoutStartHHMM, type DaySession, type OpenPlan } from './calendarSessions'
@@ -61,16 +63,16 @@ export function DayDetailPanel({ day, dateStr, todayStr }: { day: DayData | null
             />
           )
         }
-        const { plan, status } = e.open
+        const { plan, session } = e.open
         const ref = planRefOf(plan, dateStr)
-        const mark = status === 'done' ? 'done' : status
+        const mark = dayMarkOf({ sessions: [], openPlans: [e.open] }) ?? 'upcoming'
         return (
           <ListRow
             key={plan.id}
             className="-mx-3"
             leading={<span className={glyphSlot}><DayMarkGlyph mark={mark} /></span>}
             title={`${plan.kind === 'recurring' ? '⟳ ' : ''}${plan.title}`}
-            subtitle={[e.at, status === 'done' ? 'Done on Strava' : SESSION_STATUS_LABEL[status]].filter(Boolean).join(' · ')}
+            subtitle={[e.at, session.doneBy === 'activity' ? 'Done on Strava' : SESSION_LABEL[session.state]].filter(Boolean).join(' · ')}
             trailing={ref ? chevron : undefined}
             onClick={ref ? () => modal.open({ kind: 'training-session', plan: ref }) : undefined}
           />

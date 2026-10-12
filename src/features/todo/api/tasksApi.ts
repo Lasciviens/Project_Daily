@@ -29,14 +29,16 @@ export async function fetchTasksBySection(section: string): Promise<Task[]> {
   return data ?? []
 }
 
-// Open planned-training-session tasks (RoutinesTab "Plan routine") — used by
-// the Workouts tab to offer a manual "close this" fallback when a logged
-// Hevy workout can't be auto-matched to one by routine_id (freeform workouts).
+// Open planned training sessions — every training task (141's definition:
+// planned from a routine, or linked to one by its title). The Workouts tab
+// offers a manual "close this" for a workout the database couldn't pair;
+// Missed sessions moves or skips a routine's open past plan instead of
+// planning a second one.
 export async function fetchOpenTrainingSessionTasks(): Promise<Task[]> {
   const { data, error } = await supabase
     .from('tasks')
     .select('*')
-    .eq('source_type', 'training_session')
+    .or('source_type.eq.training_session,hevy_routine_id.not.is.null')
     .neq('status', 'done')
     .neq('status', 'cancelled')
   if (error) throw error

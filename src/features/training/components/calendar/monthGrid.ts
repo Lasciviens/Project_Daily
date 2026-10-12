@@ -3,7 +3,7 @@
 // the neighbouring months' days (so every week row is whole and its total
 // counts the full week), one mark per day, and the week totals.
 
-import type { PlanStatus } from '../../trainingPlanModel'
+import { SESSION_LABEL, type SessionState } from '../../plan/sessionState'
 
 const pad = (n: number) => String(n).padStart(2, '0')
 const ymd = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
@@ -54,24 +54,31 @@ export function shiftMonth(m: { year: number; month: number }, delta: number): {
   return { year: Math.floor(total / 12), month: ((total % 12) + 12) % 12 }
 }
 
-export type DayMark = 'done' | 'today' | 'missed' | 'upcoming'
+export type DayMark = 'done' | 'today' | 'pending' | 'missed' | 'upcoming' | 'skipped'
 
 export const DAY_MARK_LABEL: Record<DayMark, string> = {
   done:     'Trained',
   today:    'Planned today',
+  pending:  SESSION_LABEL.pending,
   upcoming: 'Planned',
   missed:   'Missed plan',
+  skipped:  SESSION_LABEL.skipped,
+}
+
+const MARK_OF: Record<SessionState, DayMark> = {
+  done: 'done', now: 'today', today: 'today', pending: 'pending', missed: 'missed', upcoming: 'upcoming', skipped: 'skipped',
 }
 
 /**
- * ONE mark per day, strongest first: a logged workout (or a plan a Strava
- * activity covered) → done; else a plan still open today → today; a plan
- * nothing covered in the past → missed; a future plan → upcoming.
+ * ONE mark per day, strongest first: a logged workout (or a plan done) →
+ * done; else a plan still open today → today; a past plan a late workout
+ * still completes → pending; a past plan nothing covered → missed; a future
+ * plan → upcoming; a day whose plans were all skipped → skipped (grey).
  */
-export function dayMarkOf(day: { sessions: readonly unknown[]; openPlans: readonly { status: PlanStatus }[] }): DayMark | null {
+export function dayMarkOf(day: { sessions: readonly unknown[]; openPlans: readonly { status: SessionState }[] }): DayMark | null {
   if (day.sessions.length > 0) return 'done'
-  const statuses = new Set(day.openPlans.map(o => o.status))
-  for (const s of ['done', 'today', 'missed', 'upcoming'] as const) if (statuses.has(s)) return s
+  const marks = new Set(day.openPlans.map(o => MARK_OF[o.status]))
+  for (const s of ['done', 'today', 'pending', 'missed', 'upcoming', 'skipped'] as const) if (marks.has(s)) return s
   return null
 }
 

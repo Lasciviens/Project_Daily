@@ -172,7 +172,9 @@ export function useToggleTask() {
       if (token) await drainBestEffort(token, { taskId: id })
       return task
     },
-    invalidates: [qk.tasks.all],
+    // The schedule reads carry each block's task status (Training's "next
+    // session", the agenda's Done) — a tick refreshes them too.
+    invalidates: ['taskGraph'],
   })
 }
 

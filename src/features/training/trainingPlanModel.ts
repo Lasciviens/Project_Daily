@@ -1,21 +1,8 @@
-// Planned-training rules shared by the Training calendar, the "next session"
-// banner and Home — pure and import-free apart from the (also pure) recurring
+// Planned-training rules shared by the "next session" banner and Home (a
+// plan's status lives in plan/sessionState) — pure and import-free apart from the (also pure) recurring
 // projection helper (scripts/verify-hevy-training.cjs).
 
 import { projectRecurringBlocksForDay, type RecurringBlockLike } from '../daily/components/dayAgendaProjection'
-
-// ── Plan status ──────────────────────────────────────────────────────────────
-// A plan on a day that has a logged workout or Strava activity is DONE, not
-// "missed" — the calendar used to paint every past plan red, including every
-// projected Mon/Wed/Fri slot sitting right next to that day's green workout.
-
-export type PlanStatus = 'today' | 'upcoming' | 'done' | 'missed'
-
-export function planStatus(dateStr: string, todayStr: string, trainedThatDay: boolean): PlanStatus {
-  if (trainedThatDay && dateStr <= todayStr) return 'done'
-  if (dateStr === todayStr) return 'today'
-  return dateStr > todayStr ? 'upcoming' : 'missed'
-}
 
 // ── Next session ─────────────────────────────────────────────────────────────
 // The soonest planned training session from now: one-off training blocks

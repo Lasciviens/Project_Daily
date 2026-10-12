@@ -1,7 +1,7 @@
 import { localDayOf } from '../../../../shared/utils/dateUtils'
 import type { Tone } from '../../../../shared/ui'
 import { workoutLocalDay } from '../../workoutDates'
-import type { PlanStatus } from '../../trainingPlanModel'
+import type { SkipRecord } from '../../plan/skippedRoutines'
 import type { HevyWorkout, StravaActivity } from '../../types.hevy'
 import type { TimeBlock, ScheduleBlock } from '../../../daily/types'
 import { matchDaySessions, type DaySession, type OpenPlan } from './calendarSessions'
@@ -23,8 +23,7 @@ export interface CalendarPlanItem {
 }
 
 // A plan a workout covers folds into that workout's entry (calendarSessions);
-// a plan left open is 'done' only when a Strava activity covered the day.
-export const PLAN_TONE: Record<PlanStatus, Tone> = { today: 'warn', upcoming: 'info', done: 'success', missed: 'danger' }
+// a plan left open has THE status of plan/sessionState (SESSION_TONE).
 export const WORKOUT_TONE: Tone = 'success'
 
 // Strava stores its UTC start; the day is the LOCAL day it started on.
@@ -49,7 +48,7 @@ export interface DayData {
   openPlans: OpenPlan[]
 }
 
-export function dayDataFor(dateStr: string, date: Date, workouts: HevyWorkout[], activities: StravaActivity[], plansByDate: Map<string, CalendarPlanItem[]>, todayStr: string): DayData {
+export function dayDataFor(dateStr: string, date: Date, workouts: HevyWorkout[], activities: StravaActivity[], plansByDate: Map<string, CalendarPlanItem[]>, todayStr: string, skips: readonly SkipRecord[] = [], nowHHMM?: string): DayData {
   const dayActivities = activities.filter(a => activityDay(a) === dateStr)
   const { sessions, openPlans } = matchDaySessions({
     date: dateStr,
@@ -57,6 +56,8 @@ export function dayDataFor(dateStr: string, date: Date, workouts: HevyWorkout[],
     plans: plansByDate.get(dateStr) ?? [],
     workouts: workouts.filter(w => workoutLocalDay(w) === dateStr),
     hasActivity: dayActivities.length > 0,
+    skips,
+    nowHHMM,
   })
   return { date, activities: dayActivities, sessions, openPlans }
 }

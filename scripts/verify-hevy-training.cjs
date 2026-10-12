@@ -20,7 +20,10 @@ process.env.TZ = 'Europe/Oslo'
 
 const rf = require('../src/features/training/routineForm')
 const { formatSet, formatDurationShort, formatDistance, formatRpe, rpeSuffix, anyRpe } = require('../src/features/training/setFormat')
-const { planStatus, pickNextTrainingSession } = require('../src/features/training/trainingPlanModel')
+const { pickNextTrainingSession } = require('../src/features/training/trainingPlanModel')
+const { sessionStatus } = require('../src/features/training/plan/sessionState')
+// A plan with no task, read from its day (the calendar's old planStatus rule, now sessionState).
+const planStatus = (date, today, activityOnDay) => sessionStatus({ date, today, activityOnDay, taskStatus: null }).state
 const { buildMeasurementPayload, ALL_FIELDS } = require('../src/features/training/bodyMeasurementFields')
 const { workoutLocalDay, localDayBoundsIso, workoutWindowFilter } = require('../src/features/training/workoutDates')
 const { resolveExerciseGif } = require('../src/features/training/exerciseGifResolver')
