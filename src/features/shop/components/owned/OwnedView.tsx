@@ -123,7 +123,8 @@ export function OwnedView({ items, categories, isLoading }: { items: ShopItem[];
       layout={OWNED_BOARD}
       stackGap="gap-4"
       sections={{
-        summary: <OwnedSummaryCard summary={summary} onAdd={() => modal.open({ kind: 'shop-own' })} onAddHad={() => modal.open({ kind: 'shop-own', had: true })} />,
+        summary: <OwnedSummaryCard summary={summary} onAdd={() => modal.open({ kind: 'shop-own' })} onAddHad={() => modal.open({ kind: 'shop-own', had: true })}
+          onNewChain={() => modal.open({ kind: 'shop-chain-builder' })} />,
         coming: deadlines.length > 0 && <ComingUpCard deadlines={deadlines} onOpen={id => modal.open({ kind: 'shop-item', id })} />,
         filters: anything && (
           <OwnedFiltersCard filters={filters} onChange={setFilters} sort={sort} onSort={setSort} categories={categories} chains={chainOptions} collapsible={isPhone} />

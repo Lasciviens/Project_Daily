@@ -28,6 +28,10 @@
 // POST { action: 'read', url }          → { result }   a preview, nothing stored
 // POST { action: 'check', ids: [≤ 10] } → { results }  the caller's own rows with a link
 // POST { action: 'rates' }              → { rates }    fill the caller's pending rates
+// POST { action: 'day_rates', pairs: [{ currency, day }] (≤ 60) }
+//                                       → { rates: [{ currency, day, nok_per_unit }] }
+//   the rates of given days for a chain being built (cached, else fetched
+//   and cached); a day Norges Bank has not published is left out
 // POST { action: 'sweep' }  (cron)      → { rates, checked, left, results }
 //   rates first, then the due links: things to buy (a model only while its
 //   general wish is open) and things you own that can still be returned —
@@ -621,6 +625,79 @@ async function dueItems(supabase: any, userId: string): Promise<Item[]> {
 interface RatesResult { needed: number; filled: number; pending: number; error?: string }
 
 /**
+ * Asks Norges Bank for the (currency, day) pairs not cached yet — one request
+ * for their span, a week before it so a weekend or a holiday at the start has
+ * a business day to carry — and caches the ones it publishes in fx_rates_nok.
+ * A day it has not published (today before 16:00, the future) stays missing.
+ */
+// deno-lint-ignore no-explicit-any
+async function cacheRates(supabase: any, missing: readonly { c: string; d: string }[], today: string): Promise<{ rows: CalendarRate[]; error?: string }> {
+  const start = new Date(Date.parse(`${missing.map(p => p.d).sort()[0]}T00:00:00Z`) - 7 * 86400_000).toISOString().slice(0, 10)
+  const end = missing.map(p => p.d).sort().pop() as string
+  const currencies = [...new Set(missing.map(p => p.c))]
+  try {
+    const ctl = new AbortController()
+    const timer = setTimeout(() => ctl.abort(), 10_000)
+    const res = await fetch(norgesBankUrl(start, end > today ? today : end, currencies), { signal: ctl.signal, headers: { Accept: 'application/vnd.sdmx.data+json, application/json' } })
+    clearTimeout(timer)
+    if (!res.ok) throw new Error(`Norges Bank answered ${res.status}`)
+    const calendar = calendarRates(parseNorgesBank(await res.json()), start, end > today ? today : end)
+    const wanted = new Set(missing.map(p => `${p.c}|${p.d}`))
+    const rows = calendar.filter(r => wanted.has(`${r.currency}|${r.day}`))
+    for (let i = 0; i < rows.length; i += 500) {
+      const { error: upErr } = await supabase.from('fx_rates_nok').upsert(rows.slice(i, i + 500), { onConflict: 'day,currency' })
+      if (upErr) throw upErr
+    }
+    return { rows }
+  } catch (e) {
+    return { rows: [], error: (e as Error).name === 'AbortError' ? 'Norges Bank took too long to answer' : (e as Error).message }
+  }
+}
+
+const DAY_RATES_LIMIT = 60
+
+/**
+ * The NOK rates of given days, for a chain being built in the app (nothing
+ * is saved yet, so no row waits for them): the cached ones, and the rest
+ * fetched from Norges Bank and cached. Only TRY / EUR / USD, only days from
+ * 1990 to today. A day Norges Bank has not published is left out.
+ */
+// deno-lint-ignore no-explicit-any
+async function dayRates(supabase: any, raw: unknown): Promise<{ rates: { currency: string; day: string; nok_per_unit: number }[]; error?: string }> {
+  const today = osloDay(new Date().toISOString())
+  const seen = new Set<string>()
+  const pairs: { c: string; d: string }[] = []
+  for (const p of Array.isArray(raw) ? raw : []) {
+    const c = typeof p?.currency === 'string' ? p.currency : ''
+    const d = typeof p?.day === 'string' ? p.day : ''
+    if (!(NB_CURRENCIES as readonly string[]).includes(c) || !/^\d{4}-\d{2}-\d{2}$/.test(d) || d < '1990-01-01' || d > today || seen.has(`${c}|${d}`)) continue
+    seen.add(`${c}|${d}`)
+    pairs.push({ c, d })
+    if (pairs.length >= DAY_RATES_LIMIT) break
+  }
+  if (!pairs.length) return { rates: [] }
+  const read = async () => {
+    const { data, error } = await supabase.from('fx_rates_nok').select('day, currency, nok_per_unit')
+      .in('day', [...new Set(pairs.map(p => p.d))]).in('currency', [...new Set(pairs.map(p => p.c))])
+    if (error) throw error
+    return ((data ?? []) as { day: string; currency: string; nok_per_unit: number }[])
+      .filter(r => seen.has(`${r.currency}|${r.day}`))
+      .map(r => ({ currency: r.currency, day: r.day, nok_per_unit: Number(r.nok_per_unit) }))
+  }
+  try {
+    const have = await read()
+    const got = new Set(have.map(r => `${r.currency}|${r.day}`))
+    const missing = pairs.filter(p => !got.has(`${p.c}|${p.d}`))
+    if (!missing.length) return { rates: have }
+    const cached = await cacheRates(supabase, missing, today)
+    const added = cached.rows.map(r => ({ currency: r.currency, day: r.day, nok_per_unit: Number(r.nok_per_unit) }))
+    return { rates: [...have, ...added], ...(cached.error ? { error: cached.error } : {}) }
+  } catch (e) {
+    return { rates: [], error: missingTable(e as { code?: string }) ? NOT_MIGRATED : (e as Error).message }
+  }
+}
+
+/**
  * Fills the rates the caller's rows wait for: which (currency, day) pairs are
  * missing, Norges Bank's answer for that span (a week before it, so a weekend
  * or a holiday at the start has a business day to carry), cached in
@@ -664,26 +741,9 @@ async function fillRates(supabase: any, userId: string): Promise<RatesResult> {
 
   let error: string | undefined
   if (missing.length) {
-    const start = new Date(Date.parse(`${missing.map(p => p.d).sort()[0]}T00:00:00Z`) - 7 * 86400_000).toISOString().slice(0, 10)
-    const end = missing.map(p => p.d).sort().pop() as string
-    const currencies = [...new Set(missing.map(p => p.c))]
-    try {
-      const ctl = new AbortController()
-      const timer = setTimeout(() => ctl.abort(), 10_000)
-      const res = await fetch(norgesBankUrl(start, end > today ? today : end, currencies), { signal: ctl.signal, headers: { Accept: 'application/vnd.sdmx.data+json, application/json' } })
-      clearTimeout(timer)
-      if (!res.ok) throw new Error(`Norges Bank answered ${res.status}`)
-      const calendar = calendarRates(parseNorgesBank(await res.json()), start, end > today ? today : end)
-      const wanted = new Set(missing.map(p => `${p.c}|${p.d}`))
-      const rows = calendar.filter(r => wanted.has(`${r.currency}|${r.day}`))
-      for (let i = 0; i < rows.length; i += 500) {
-        const { error: upErr } = await supabase.from('fx_rates_nok').upsert(rows.slice(i, i + 500), { onConflict: 'day,currency' })
-        if (upErr) throw upErr
-      }
-      for (const r of rows) have.add(`${r.currency}|${r.day}`)
-    } catch (e) {
-      error = (e as Error).name === 'AbortError' ? 'Norges Bank took too long to answer' : (e as Error).message
-    }
+    const cached = await cacheRates(supabase, missing, today)
+    for (const r of cached.rows) have.add(`${r.currency}|${r.day}`)
+    error = cached.error
   }
 
   // Touch the rows whose rate is now cached.
@@ -718,7 +778,7 @@ Deno.serve(async (req: Request) => {
   const started = Date.now()
   const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
 
-  let body: { action?: string; url?: unknown; ids?: unknown } = {}
+  let body: { action?: string; url?: unknown; ids?: unknown; pairs?: unknown } = {}
   try { body = await req.json() } catch { /* empty */ }
 
   let userId: string
@@ -752,6 +812,8 @@ Deno.serve(async (req: Request) => {
   }
 
   if (body.action === 'rates') return json({ rates: await fillRates(supabase, userId) })
+
+  if (body.action === 'day_rates') return json(await dayRates(supabase, body.pairs))
 
   if (body.action === 'check') {
     const ids = (Array.isArray(body.ids) ? body.ids : []).filter((x): x is string => typeof x === 'string').slice(0, USER_LIMIT)

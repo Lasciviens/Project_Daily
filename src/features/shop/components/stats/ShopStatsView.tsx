@@ -90,7 +90,7 @@ export function ShopStatsView({ items: allItems, categories, isLoading }: { item
     tiles: <StatsTiles year={year} totals={totals} owned={owned} valuedThings={valuedThings} use={use} resale={resale} kept={kept} onDrill={openDrill} />,
     money: <MoneyCard rows={months} year={year} data={data} onMonth={month => openDrill({ kind: 'month', month })} onOpen={openItem} />,
     timeline: <OwnershipTimeline items={items} categories={categories} today={today} onOpen={openItem} />,
-    chains: <ChainsCard chains={chains} onOpen={id => modal.open({ kind: 'shop-chain', id })} />,
+    chains: <ChainsCard chains={chains} onOpen={id => modal.open({ kind: 'shop-chain', id })} onNew={() => modal.open({ kind: 'shop-chain-builder' })} />,
     categories: <CategoriesCard data={data} onPick={(key, level) => openDrill({ kind: 'category', key, level })} />,
     stores: <StoresCard rows={stores} year={year} onPick={key => openDrill({ kind: 'store', key, year })} />,
     value: <ValueCard rows={value} today={today} onOpen={openItem} />,
