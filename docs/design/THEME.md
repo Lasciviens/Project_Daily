@@ -566,7 +566,10 @@ fix (e.g. treat a genres field as string-or-array, default missing counts).
 **Non-modal floating windows** (the request composer) are not Dialogs: render them with `createPortal`
 straight into `<body>` (outside `#root`), which Headless UI never marks inert and never treats as an
 outside click. Drag with `useFloatingWindow` (`src/shared/hooks/`). Mark such UI with
-`data-dev-request-ui` so page picking ignores it.
+`data-dev-request-ui` so page picking ignores it. A dropdown inside such a window is a `Listbox`
+**without `anchor`** (an anchored list is always portalled into `#headlessui-portal-root`, onto the
+menu layer — behind the window and any popup under it), `modal={false}`, placed `position: fixed` at
+its button so the window's scroll area doesn't clip it (`PropertyPills` + `propertyPillsPlacement.ts`).
 
 ---
 

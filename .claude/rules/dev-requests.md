@@ -8,6 +8,7 @@ Background: `docs/features/dev-requests.md`.
 
 - Nothing typed is ever lost: drafts live in `devRequestDraftStore.ts` (persisted on this device), never only in component state.
 - The floating composer is never a Dialog: it is a direct child of `<body>`, so it stays usable over popups.
+- Nothing inside the composer is portalled: a dropdown is a Headless UI `Listbox` without `anchor` (an anchored list always portals onto the menu layer, behind the window and the popups under it), placed fixed like `PropertyPills`.
 - The outline is stored as plain text in `description` (`outline.ts`): a blank line between points, two spaces start a sub-point; old formats still read and `descriptionForSave` rewrites them.
 - Picks are links in the text (`[[@id]]` + one hidden `[[pick …]]` line); deleting the link drops the pick on save. A pick records choices only (route, element, tabs), never what was typed into a field.
 - Drag reorder writes only the rows whose order changed.
