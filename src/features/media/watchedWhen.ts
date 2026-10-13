@@ -1,4 +1,5 @@
-// "When did you watch it?" — the Trakt app's four answers, as data.
+// "When did you watch it?" — the Trakt app's four answers (plus "Spread over
+// dates…" for several episodes), as data.
 // Pure and import-free (scripts/verify-watched-when.cjs).
 //
 //   now      → this moment
@@ -14,6 +15,23 @@ export type WatchedWhen =
   | { kind: 'unknown' }
 
 export const UNKNOWN_EPISODE_WATCHED_AT = '1970-01-01T00:00:00.000Z'
+
+/** An option of the sheet: one of the four answers, or "Spread over dates…". */
+export type WatchedWhenOption = WatchedWhen['kind'] | 'spread'
+
+/** "Spread over dates…" is offered whenever the sheet asks about more than one episode. */
+export function offersSpread(episodes: number): boolean {
+  return episodes > 1
+}
+
+/**
+ * The sheet's options in order. "Spread over dates…" comes 5th, after the
+ * four Trakt answers — never for one title or one episode (nothing to spread).
+ */
+export function watchedWhenOptions(allowSpread: boolean): WatchedWhenOption[] {
+  const four: WatchedWhenOption[] = ['now', 'release', 'other', 'unknown']
+  return allowSpread ? [...four, 'spread'] : four
+}
 
 /** A yyyy-MM-dd day as midday local time (so no time zone moves it to the day before). */
 export function middayIso(day: string): string {

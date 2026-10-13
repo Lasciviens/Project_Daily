@@ -3,14 +3,15 @@ import { WatchedWhenSheet, type WatchedWhenAnswer, type WatchedWhenAsk } from '.
 import type { WatchedWhen } from '../watchedWhen'
 
 /**
- * `ask` opens the "when did you watch it?" sheet and resolves the answer
- * (null = cancelled); `askSeries` also offers "Spread over dates…" and can
- * resolve `{ kind: 'spread' }`. Render `dialog`.
+ * `ask` opens the "when did you watch it?" sheet for one title or episode and
+ * resolves the answer (null = cancelled); `askMany` is for several episodes:
+ * it also offers "Spread over dates…" and can resolve `{ kind: 'spread' }`.
+ * Render `dialog`.
  */
 export function useWatchedWhenPrompt() {
   const [state, setState] = useState<WatchedWhenAsk | null>(null)
   const resolver = useRef<((w: WatchedWhenAnswer | null) => void) | null>(null)
-  const askSeries = useCallback((a: Omit<WatchedWhenAsk, 'allowSpread'>) => new Promise<WatchedWhenAnswer | null>(resolve => {
+  const askMany = useCallback((a: Omit<WatchedWhenAsk, 'allowSpread'>) => new Promise<WatchedWhenAnswer | null>(resolve => {
     resolver.current = resolve
     setState({ ...a, allowSpread: true })
   }), [])
@@ -24,5 +25,5 @@ export function useWatchedWhenPrompt() {
     setState(null)
   }
   const dialog = state ? <WatchedWhenSheet key={state.title} ask={state} onDone={onDone} /> : null
-  return { ask, askSeries, dialog }
+  return { ask, askMany, dialog }
 }

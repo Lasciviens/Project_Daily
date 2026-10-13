@@ -9,6 +9,7 @@ Trakt is the online service that keeps the owner's film and series history; the 
 
 - TV progress has one source: `user_tv_episodes`. The `current_season`/`current_episode` cache columns are written only by their trigger (050).
 - Marking an episode watched has one write path (`useMarkEpisodeWatched`) and never overwrites an existing watch date.
+- "When watched?" is one sheet (`WatchedWhenSheet`), asked only through `useWatchedWhenPrompt`; for more than one episode use `askMany`, whose 5th option opens `SpreadWatchedSheet` — never a copy of either (`verify-watched-when`).
 - Trakt is the source of truth for what it holds (watched + plays, ratings, watchlist, favorites, dropped shows, notes). App-only facts (Paused, priority, plans) stay local. When unsure whether something is only on screen or also stored: the data is one, and Trakt sees what the app shows.
 - Changes reach Trakt through the outbox triggers; the sync's own writes carry `x-trakt-sync: 1` so nothing loops.
 - Lists are Trakt lists; an automatic list keeps only its rule in `media_follows`.

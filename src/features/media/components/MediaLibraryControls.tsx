@@ -119,7 +119,7 @@ export function MediaLibraryControls({ detail, isMovie, userEntry, onRemoved }: 
     return extra > 0 ? { episodes: n.episodes + 1, extraPlays: n.extraPlays + extra } : n
   }, { episodes: 0, extraPlays: 0 })
   const qc = useQueryClient()
-  const { ask, askSeries, dialog } = useWatchedWhenPrompt()
+  const { ask, askMany, dialog } = useWatchedWhenPrompt()
   // "Spread over dates…" while completing: the Spread popup for this entry;
   // saving it marks the episodes, then completes the series with the plan's
   // first and last days as its start and finish.
@@ -165,7 +165,7 @@ export function MediaLibraryControls({ detail, isMovie, userEntry, onRemoved }: 
       movieWatchedAt = resolveWatchedAt(when, movie!.release_date, 'movie', now)
     }
     if (completed && !isMovie) {
-      const answer = await askSeries({ title: tv!.name, subtitle: 'Marks every aired episode as watched.', releaseLabel: 'each air date' })
+      const answer = await askMany({ title: tv!.name, subtitle: 'Marks every aired episode as watched.', releaseLabel: 'each air date' })
       if (!answer) return
       if (answer.kind === 'spread') spread = true
       else tvWhen = answer
@@ -233,7 +233,7 @@ export function MediaLibraryControls({ detail, isMovie, userEntry, onRemoved }: 
       patch.watched_at = resolveWatchedAt(when, movie!.release_date, 'movie', now)
     }
     if (tvEntry && status === 'completed' && tvEntry.status !== 'completed') {
-      const when = await askSeries({ title: tv!.name, subtitle: 'Marks every aired episode you haven’t marked yet.', releaseLabel: 'each air date' })
+      const when = await askMany({ title: tv!.name, subtitle: 'Marks every aired episode you haven’t marked yet.', releaseLabel: 'each air date' })
       if (!when) return
       if (when.kind === 'spread') {
         setSpreadFor({ tvEntryId: tvEntry.id, startedAt: tvEntry.started_at ?? null })

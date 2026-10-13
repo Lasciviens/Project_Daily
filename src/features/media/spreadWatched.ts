@@ -365,6 +365,93 @@ export function defaultLocalIso(day: string, time: string): string {
   return new Date(y, mo - 1, d, h, m).toISOString()
 }
 
+// ── what a plan is for ──────────────────────────────────────────────────
+
+/**
+ * What saving a spread does. `watched`: mark the episodes (Spread, Mark
+ * watched, Up to here, completing a series); `again`: one more play of each
+ * (Watched again); `redate`: new dates for watched episodes (Change date).
+ */
+export type SpreadMode = 'watched' | 'again' | 'redate'
+
+export interface SpreadWrites {
+  /** Not watched yet: marked at the planned time. */
+  mark: SpreadItem[]
+  /** Watched, mode `again`: one more play, the planned time becomes its kept date. */
+  again: SpreadItem[]
+  /** Watched, any other mode: only the kept date changes (plays stay). */
+  redate: SpreadItem[]
+}
+
+const refKey = (season: number, episode: number) => `${season}x${episode}`
+
+/** A plan split into its writes; `watched` holds `SxE` keys of watched episodes. */
+export function spreadWrites(plan: SpreadItem[], watched: Set<string>, mode: SpreadMode): SpreadWrites {
+  const out: SpreadWrites = { mark: [], again: [], redate: [] }
+  for (const p of plan) {
+    if (!watched.has(refKey(p.season, p.episode))) out.mark.push(p)
+    else if (mode === 'again') out.again.push(p)
+    else out.redate.push(p)
+  }
+  return out
+}
+
+/**
+ * A fixed set of episodes (a selection, "Up to here") in watching order, once
+ * each, with TMDB's air date and runtime where known (`info` keyed `SxE`). An
+ * episode TMDB didn't return stays in, without them.
+ */
+export function fixedSpreadEpisodes(
+  refs: { season: number; episode: number }[],
+  info: Map<string, { airDate?: string | null; runtime?: number | null }>,
+): SpreadEpisode[] {
+  const seen = new Set<string>()
+  return refs
+    .filter(r => { const k = refKey(r.season, r.episode); if (seen.has(k)) return false; seen.add(k); return true })
+    .sort((a, b) => a.season - b.season || a.episode - b.episode)
+    .map(r => {
+      const i = info.get(refKey(r.season, r.episode))
+      return { season: r.season, episode: r.episode, airDate: i?.airDate ?? null, runtime: i?.runtime ?? null }
+    })
+}
+
+/**
+ * The start the sheet suggests until one is picked. A rewatch starts the day
+ * after the latest kept date of those episodes (an unknown date — the
+ * epoch — doesn't count); anything else at the first episode's air date. Without
+ * either, a year ago. Never after today.
+ */
+export function spreadDefaultStart(
+  mode: SpreadMode,
+  episodes: SpreadEpisode[],
+  watchedAt: Map<string, string | null | undefined>,
+  today: string,
+): string {
+  let day: string | null = null
+  if (mode === 'again') {
+    for (const e of episodes) {
+      const at = watchedAt.get(refKey(e.season, e.episode))
+      const t = at ? Date.parse(at) : NaN
+      // Before 1971 = Trakt's "unknown date" (traktDates.isUnknownWatchedAt).
+      if (!Number.isFinite(t) || t < Date.UTC(1971, 0, 1)) continue
+      const d = localDay(at!)
+      if (!day || d > day) day = d
+    }
+    if (day) day = addDays(day, 1)
+  } else {
+    const air = episodes[0]?.airDate
+    if (air && isDay(air)) day = air
+  }
+  if (!day) day = addDays(today, -365)
+  return day > today ? today : day
+}
+
+/** The local yyyy-MM-dd of an ISO timestamp. */
+function localDay(iso: string): string {
+  const d = new Date(iso)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 // ── words ───────────────────────────────────────────────────────────────
 
 /** The big line: "About 2 episodes a day" / "About one episode every 12 days". */
