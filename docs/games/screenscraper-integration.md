@@ -820,8 +820,8 @@ counter); `maxrequestspermin = 1024 × (maxthreads + 1)`; resets at midnight CET
   marquees/manual, skip composites/bezels/themes/pictograms/video.
 - **The ES-DE originals** (537 MB on 25.09.2026; the card's full set is about
   2.5 GiB, see `docs/termux-widgets.md`) are the obvious reclaim — they are on
-  the handheld's SD card anyway. That is a change to the RP6 pipeline, not to
-  this scraper, and is left for the owner to decide.
+  the handheld's SD card anyway. On 13.10.2026 the owner deleted them; Storage
+  keeps low-resolution pictures only (`docs/termux-widgets.md`).
 
 ### 16.4 The credential problem, solved twice
 

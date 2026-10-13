@@ -8,14 +8,19 @@
 import { useId } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import {
-  DURATION_PRESETS, CATEGORY_LABELS, RECURRENCE_OPTIONS, DAY_LABELS,
-  displayDate, todayStr, tomorrowStr,
+  DURATION_PRESETS, CATEGORY_LABELS, RECURRENCE_OPTIONS, DAY_LABELS, DAY_NAMES, DAY_ORDER, REPEAT_UNIT_OPTIONS,
+  displayDate, todayStr, dayPickerFor, litDays, toggleRepeatDay, pickRecurrence, recurrenceProblem, repeatPreview,
+  type RepeatFormFields,
 } from './planModal.config'
+import { weekdayOfIso } from '../../../features/daily/recurrence'
 import { formatDurationMinutes } from '../../utils/formatDuration'
-import { ToneDot, cx, type Tone } from '../../ui'
+import { formatDate } from '../../utils/dateFormat'
+import { MetaLine, ToneDot, cx, type Tone } from '../../ui'
+import { SegmentedControl } from '../SegmentedControl'
+import { DateCalendar } from '../DateCalendar'
 import { choiceClass } from './fieldStyles'
 import type { TimeBlockCategory } from '../../../features/daily/types'
-import type { RecurrenceMode } from './planModal.types'
+import type { CustomRepeatKind, RecurrenceMode } from './planModal.types'
 
 const STEP_BTN =
   'inline-grid h-11 w-10 shrink-0 place-items-center rounded-input border border-line bg-surface-2 text-fg-2 ' +
@@ -56,7 +61,7 @@ export function TextField({
   )
 }
 
-// ── Date stepper — DD.MM.YYYY Day · ← → · compact Today/Tomorrow ──────────────
+// ── Date stepper — ← Day DD.MM.YYYY → (tap the date for a calendar) ──────────
 
 export function DateStepperField({
   value, onChange, onStep, locked,
@@ -66,39 +71,27 @@ export function DateStepperField({
   onStep: (dir: 1 | -1) => void
   locked?: boolean
 }) {
-  const today = todayStr()
-  const tmrw  = tomorrowStr()
   const inputId = useId()
   return (
-    <div>
-      <div className="flex items-center gap-2">
-        <button type="button" disabled={locked} onClick={() => onStep(-1)} aria-label="Previous day" className={STEP_BTN}>
-          <ChevronLeft className="h-4 w-4" aria-hidden />
-        </button>
-        <div className="flex-1">
-          <input
-            type="date" value={value} disabled={locked} id={inputId}
-            onChange={e => onChange(e.target.value)} className="sr-only"
-          />
-          <label
-            htmlFor={inputId}
-            className="flex min-h-[44px] cursor-pointer items-center justify-center rounded-input border border-line bg-surface-2 px-3 text-body font-medium tabular-nums text-fg"
-          >
-            {displayDate(value)}
-          </label>
-        </div>
-        <button type="button" disabled={locked} onClick={() => onStep(1)} aria-label="Next day" className={STEP_BTN}>
-          <ChevronRight className="h-4 w-4" aria-hidden />
-        </button>
+    <div className="flex items-center gap-2">
+      <button type="button" disabled={locked} onClick={() => onStep(-1)} aria-label="Previous day" className={STEP_BTN}>
+        <ChevronLeft className="h-4 w-4" aria-hidden />
+      </button>
+      <div className="flex-1">
+        <input
+          type="date" value={value} disabled={locked} id={inputId}
+          onChange={e => onChange(e.target.value)} className="sr-only"
+        />
+        <label
+          htmlFor={inputId}
+          className="flex min-h-[44px] cursor-pointer items-center justify-center rounded-input border border-line bg-surface-2 px-3 text-body font-medium tabular-nums text-fg"
+        >
+          {displayDate(value)}
+        </label>
       </div>
-      <div className="mt-2 flex gap-2">
-        {[{ label: 'Today', v: today }, { label: 'Tomorrow', v: tmrw }].map(s => (
-          <button
-            key={s.label} type="button" disabled={locked} onClick={() => onChange(s.v)}
-            aria-pressed={value === s.v} className={choiceClass(value === s.v)}
-          >{s.label}</button>
-        ))}
-      </div>
+      <button type="button" disabled={locked} onClick={() => onStep(1)} aria-label="Next day" className={STEP_BTN}>
+        <ChevronRight className="h-4 w-4" aria-hidden />
+      </button>
     </div>
   )
 }
@@ -200,47 +193,130 @@ export function CategorySelect({
   )
 }
 
-// ── Recurrence — mode pills + (weekly) day picker ─────────────────────────────
+// ── Recurrence — one line for the choice, the M–S day circles, Custom ────────
+//  The choice is a select so it stays ONE line at every width, whatever the
+//  number of options (owner, 13.10.2026). The circles show whenever days
+//  matter: Every day / Weekdays light theirs, a tap turns the choice into the
+//  set it now is (planModal.config's toggleRepeatDay). Monthly takes one
+//  weekday (or none = the same date). Custom is "every N days / weeks /
+//  months" or picked dates. For Monthly and Custom a summary and the next
+//  three days follow, from the same rule the agenda projects (recurrence.ts).
+
+function DayCircles({ lit, onToggle, single, locked }: {
+  lit: number[]
+  onToggle: (day: number) => void
+  single: boolean
+  locked?: boolean
+}) {
+  return (
+    <div role="group" aria-label={single ? 'Weekday (optional)' : 'Days'} className="flex gap-1">
+      {DAY_ORDER.map(d => {
+        const on = lit.includes(d)
+        return (
+          <button
+            key={d} type="button" disabled={locked} onClick={() => onToggle(d)} aria-pressed={on}
+            title={DAY_NAMES[d]} aria-label={DAY_NAMES[d]}
+            className={cx(
+              // 30px: on a 402px phone the seven fit on the select's line.
+              'h-[30px] w-[30px] shrink-0 rounded-full text-meta font-semibold transition-colors disabled:opacity-40',
+              on ? 'bg-accent-500 text-on-accent' : 'bg-surface-2 text-fg-muted hover:bg-surface-hover hover:text-fg',
+            )}
+          >{DAY_LABELS[d]}</button>
+        )
+      })}
+    </div>
+  )
+}
+
+const CUSTOM_KINDS: { value: CustomRepeatKind; label: string }[] = [
+  { value: 'every', label: 'Every…' },
+  { value: 'dates', label: 'Dates' },
+]
 
 export function RecurrenceField({
-  mode, weeklyDays, onMode, onToggleDay, locked, options = RECURRENCE_OPTIONS,
+  value, onChange, start, exceptDates, locked, options = RECURRENCE_OPTIONS,
 }: {
-  mode: RecurrenceMode
-  weeklyDays: number[]
-  onMode: (m: RecurrenceMode) => void
-  onToggleDay: (day: number) => void
+  value: RepeatFormFields
+  onChange: (p: Partial<RepeatFormFields>) => void
+  /** The plan's start ('yyyy-MM-dd'): the monthly / every-N anchor and Weekly's first day. */
+  start: string
+  /** A saved plan's left-out days — the preview skips them too. */
+  exceptDates?: readonly string[]
   locked?: boolean
   /** Defaults to the full list (incl. "No repeat") — RecurringTab passes
    *  RECURRING_EDIT_OPTIONS instead, since an existing recurring template
    *  must never offer converting itself into a one-off block. */
   options?: { value: RecurrenceMode; label: string }[]
 }) {
+  const picker = dayPickerFor(value)
+  const circles = picker && (
+    <DayCircles lit={litDays(value)} single={picker === 'single'} locked={locked} onToggle={d => onChange(toggleRepeatDay(value, d))} />
+  )
+  const custom = value.recurrence === 'custom'
+  const every = Number(value.repeatEvery)
+  const problem = recurrenceProblem(value)
+  // Every day / Weekdays / Weekly: the select and the circles already say it
+  // all — a summary line would only repeat them (an extra line on a phone).
+  const preview = value.recurrence === 'monthly' || custom ? repeatPreview(value, start, todayStr(), exceptDates) : null
+
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex flex-wrap gap-2">
-        {options.map(o => (
-          <button
-            key={o.value} type="button" disabled={locked} onClick={() => onMode(o.value)}
-            aria-pressed={mode === o.value} className={choiceClass(mode === o.value)}
-          >{o.label}</button>
-        ))}
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-2">
+        <select
+          aria-label="Repeat" value={value.recurrence} disabled={locked}
+          onChange={e => onChange(pickRecurrence(value, e.target.value as RecurrenceMode, weekdayOfIso(start)))}
+          className="select w-auto shrink-0 pr-2 disabled:opacity-60"
+        >
+          {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+        {custom
+          ? <SegmentedControl size="sm" options={CUSTOM_KINDS} value={value.customKind} onChange={k => onChange({ customKind: k })} />
+          : circles}
       </div>
-      {mode === 'weekly' && (
-        <div className="flex gap-1">
-          {DAY_LABELS.map((d, i) => {
-            const on = weeklyDays.includes(i)
-            return (
-              <button
-                key={i} type="button" disabled={locked} onClick={() => onToggleDay(i)} aria-pressed={on}
-                className={cx(
-                  'h-10 w-10 rounded-full text-meta font-semibold transition-colors disabled:opacity-40 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11',
-                  on ? 'bg-accent-500 text-on-accent' : 'bg-surface-2 text-fg-muted hover:bg-surface-hover',
-                )}
-              >{d}</button>
-            )
-          })}
+
+      {custom && value.customKind === 'every' && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          <div className="flex items-center gap-2">
+            <span className="text-body text-fg-2">Every</span>
+            <input
+              type="number" inputMode="numeric" min={1} max={99} value={value.repeatEvery} disabled={locked}
+              onChange={e => onChange({ repeatEvery: e.target.value })} aria-label="Repeat every"
+              className="input w-16 text-center tabular-nums disabled:opacity-60"
+            />
+            <select
+              aria-label="Unit" value={value.repeatUnit} disabled={locked}
+              onChange={e => onChange({ repeatUnit: e.target.value as RepeatFormFields['repeatUnit'] })}
+              className="select w-auto pr-2 disabled:opacity-60"
+            >
+              {REPEAT_UNIT_OPTIONS.map(u => <option key={u.value} value={u.value}>{every === 1 ? u.one : u.many}</option>)}
+            </select>
+          </div>
+          {circles}
         </div>
       )}
+
+      {custom && value.customKind === 'dates' && (
+        <DateCalendar
+          value={value.repeatDates[0] ?? start} selected={value.repeatDates}
+          onPick={iso => onChange({
+            repeatDates: value.repeatDates.includes(iso) ? value.repeatDates.filter(d => d !== iso) : [...value.repeatDates, iso].sort(),
+          })}
+        />
+      )}
+
+      {custom && value.customKind === 'dates' && value.repeatDates.length === 0
+        ? <p className="text-meta text-fg-muted">Tap the days it happens on.</p>
+        : problem
+        ? <p className="text-meta text-danger">{problem}</p>
+        : preview && (
+          <MetaLine
+            className="text-meta text-fg-muted"
+            items={[
+              <span key="s" className="font-medium text-fg-2">{preview.summary}</span>,
+              preview.next.length > 0 ? `Next ${preview.next.map(d => formatDate(d)).join(', ')}` : 'No date ahead',
+            ]}
+          />
+        )}
     </div>
   )
 }

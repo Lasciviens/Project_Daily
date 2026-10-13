@@ -14,6 +14,7 @@ Background: `docs/features/tasks.md`, `docs/features/daily.md`, `docs/features/w
 - `tasks.start_date` opens a window that `due_date` closes; it is never a second deadline, and a window filter is never added to `fetchTasksForDay`.
 - NEVER_HIDES: never add a wish/period/window/kind filter to an existing task query. The one exception is `taskRules.onDay` (only Today keeps undated rows).
 - Load-bearing: `planForm.ts`'s `section: 'today'` default — four server-side `section.eq.today` filters (`phone-gateway` ×2, `push-send`, `ai-proxy`) go silent if it changes.
+- A new task never gets the retired `tomorrow` / `this_week` section: a day's section comes from `taskRules.sectionForDay` (today → Today, any other day → Backlog).
 - `is_focused` clears when a task closes (143); reopening doesn't bring it back.
 - Daily's glance board uses explicit column counts, never auto-fill: a card never changes place with its content.
 - `useSwipeToReveal` captures the pointer only once a horizontal swipe is confirmed — capturing on pointerdown sends every tap on a nested button to the row.

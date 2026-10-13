@@ -17,6 +17,20 @@ const at = day => new Date(`${day}T12:00:00`).toISOString()
 let seq = 0
 const task = f => ({ id: `t${++seq}`, title: 'T', status: 'open', section: 'inbox', due_date: null, completed_at: null, is_focused: false, ...f })
 
+// ── The full list's order (fetchAllTasks sorts its id pages with it) ──
+{
+  const rows = [
+    { id: 'c', due_date: null, sort_order: 1 },
+    { id: 'b', due_date: '2026-10-14', sort_order: null },
+    { id: 'a', due_date: '2026-10-14', sort_order: 2 },
+    { id: 'd', due_date: '2026-10-13', sort_order: 9 },
+    { id: 'e', due_date: null, sort_order: null },
+    { id: 'f', due_date: '2026-10-14', sort_order: 2 },
+  ]
+  eq([...rows].sort(R.compareByDueThenOrder).map(r => r.id), ['d', 'a', 'f', 'b', 'c', 'e'],
+    'full list: due date first (undated last), then sort_order (unset last), then id')
+}
+
 // ── Open, closed, closed on a day ──
 eq(R.isOpenTask(task({ status: 'waiting' })), true, 'waiting is open (Daily used to hide it)')
 eq(R.isOpenTask(task({ status: 'in_progress' })), true, 'in progress is open')
@@ -152,11 +166,12 @@ eq(R.onDay(task({ status: 'done', due_date: TODAY, completed_at: at('2026-10-11'
 
 // ── Section of a day ──
 eq(R.sectionForDay(TODAY, TODAY), 'today', 'today')
-eq(R.sectionForDay('2026-10-13', TODAY), 'tomorrow', 'tomorrow')
-eq(R.sectionForDay('2026-10-19', TODAY), 'this_week', 'seven days ahead')
+// Tomorrow / This week are retired sections: a new task never gets one.
+eq(R.sectionForDay('2026-10-13', TODAY), 'backlog', 'tomorrow → backlog, not the legacy Tomorrow')
+eq(R.sectionForDay('2026-10-19', TODAY), 'backlog', 'seven days ahead → backlog, not the legacy This week')
 eq(R.sectionForDay('2026-10-20', TODAY), 'backlog', 'eight days ahead')
 eq(R.sectionForDay('2026-10-11', TODAY), 'backlog', 'yesterday')
-eq(R.sectionForDay('2026-03-30', '2026-03-29'), 'tomorrow', 'across the spring DST change')
+eq(R.sectionForDay('2026-03-30', '2026-03-29'), 'backlog', 'across the spring DST change')
 
 // ── Focus ──
 eq(R.isFocusedOpen(task({ is_focused: true, status: 'done' })), false, 'a finished task leaves the focus strip')

@@ -1,5 +1,7 @@
 import { useEffect } from 'react'
 import { useAutoRefreshCalendarToken } from '../../features/calendar/hooks/useCalendar'
+import { useCalendarSeriesTopUp } from '../../features/calendar/hooks/useCalendarSeriesTopUp'
+import { useGoogleTasksBackgroundSync } from '../../features/todo/hooks/useGoogleTasksSync'
 import { refreshThisDevicePush } from '../../security/accountState'
 
 /**
@@ -10,6 +12,10 @@ import { refreshThisDevicePush } from '../../security/accountState'
  */
 export function useAppBootstrap() {
   useAutoRefreshCalendarToken()
+  // Google Tasks → app when the app opens or returns to the front (throttled).
+  useGoogleTasksBackgroundSync()
+  // Repeating plans on Google Calendar: retry what Google didn't take, extend a monthly plan's year of days.
+  useCalendarSeriesTopUp()
   // Keeps this device's morning brief tied to the current login (security audit).
   useEffect(() => { void refreshThisDevicePush() }, [])
 }

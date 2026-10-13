@@ -8,6 +8,10 @@ export interface CalendarEvent {
   colorId?: string
   /** 'cancelled' = deleted; Google keeps it under its id until it is purged. */
   status?: 'confirmed' | 'tentative' | 'cancelled'
+  /** A repeating event's RRULE / RDATE / EXDATE lines (the series itself only). */
+  recurrence?: string[]
+  /** On an instance of a repeating event: the series' id (147 de-dupes by it). */
+  recurringEventId?: string
   htmlLink: string
   calendarId?: string  // attached client-side after fetch
 }

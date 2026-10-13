@@ -2,6 +2,9 @@ import { supabase } from '../../../integrations/supabase/client'
 import { requireUser } from '../../../shared/utils/requireUser'
 import { createTask, updateTask, toggleTaskDone } from '../../todo/api/tasksApi'
 import { createTimeBlock, fetchScheduleBlocks, fetchTimeBlocks, updateTimeBlock } from '../../daily/api/scheduleApi'
+import {
+  carryOccurrenceToCalendar, putSkippedDayBackOnCalendar, takeSkippedDayOffCalendar,
+} from '../../calendar/api/scheduleSeriesCalendar'
 import { findPlanTwin, type PlanTwin } from '../plan/planTwins'
 import { sectionForDate } from '../../../shared/components/plan-modal/planModal.config'
 import { createTrainingSkip } from './trainingSkipsApi'
@@ -84,6 +87,8 @@ export async function ensurePlanTask(target: PlanTarget, info: PlanInfo): Promis
   }
 
   let blockId: string
+  // A day of a plan that has no Google event of its own yet (147).
+  let carry = false
   if (target.kind === 'block') {
     const { data, error } = await supabase.from('time_blocks').select('task_id').eq('id', target.blockId).maybeSingle()
     if (error) throw error
@@ -91,12 +96,13 @@ export async function ensurePlanTask(target: PlanTarget, info: PlanInfo): Promis
     blockId = target.blockId
   } else {
     // Already turned into a plan of its own (a second tap, another tab).
-    const found = await supabase.from('time_blocks').select('id, task_id')
+    const found = await supabase.from('time_blocks').select('id, task_id, google_calendar_event_id')
       .eq('schedule_block_id', target.templateId).eq('occurrence_date', target.date).maybeSingle()
     if (found.error) throw isMissingColumn(found.error) ? new Error(NOT_MIGRATED_142) : found.error
     if (found.data?.task_id) return { taskId: found.data.task_id, blockId: found.data.id }
     if (found.data) {
       blockId = found.data.id
+      carry = !found.data.google_calendar_event_id
     } else {
       const user = await requireUser()
       const { data, error } = await supabase.from('time_blocks').insert({
@@ -113,10 +119,16 @@ export async function ensurePlanTask(target: PlanTarget, info: PlanInfo): Promis
         throw error
       }
       blockId = data.id
+      carry = true
     }
   }
   const task = await createTask(planTaskInput(info))
   await updateTimeBlock(blockId, { task_id: task.id })
+  // A day of a plan on Google Calendar (147): the series leaves the day out
+  // and the block gets its own event — in the background, after the plan's
+  // own writes, so Done / Move / Skip never wait on Google; it reads the
+  // block fresh, so a move or skip that ran meanwhile wins.
+  if (carry && target.kind === 'weekly') carryOccurrenceToCalendar(target.templateId, blockId)
   return { taskId: task.id, blockId }
 }
 
@@ -190,11 +202,14 @@ export async function skipPlan(rows: PlanRows, s: { routineId: string | null; pl
     reason: s.reason.trim(), task_id: rows.taskId, plan_date: s.planDate,
   }
   const res = await supabase.from('training_skips').upsert(row, { onConflict: 'task_id' })
-  if (!res.error) return
-  if (!isMissingColumn(res.error) && !/no unique or exclusion constraint|null value in column "routine_id"/i.test(res.error.message ?? '')) throw res.error
-  // Before 142: the routine's week skip (the Missed card's) and a cancelled task.
-  if (s.routineId) await createTrainingSkip({ routine_id: s.routineId, week_start: row.week_start, reason: row.reason })
-  await updateTask(rows.taskId, { status: 'cancelled' })
+  if (res.error) {
+    if (!isMissingColumn(res.error) && !/no unique or exclusion constraint|null value in column "routine_id"/i.test(res.error.message ?? '')) throw res.error
+    // Before 142: the routine's week skip (the Missed card's) and a cancelled task.
+    if (s.routineId) await createTrainingSkip({ routine_id: s.routineId, week_start: row.week_start, reason: row.reason })
+    await updateTask(rows.taskId, { status: 'cancelled' })
+  }
+  // A skipped day of a plan comes off Google Calendar (147); in the background.
+  if (rows.blockId) takeSkippedDayOffCalendar(rows.blockId)
 }
 
 /** Undoes a skip: the task's skip row goes and the database reopens the task
@@ -205,6 +220,8 @@ export async function undoPlanSkip(s: { taskId?: string | null; skipId?: string 
     if (error && !isMissingColumn(error)) throw error
     // Before 142 (no task_id) — and harmless after: reopen it ourselves.
     await updateTask(s.taskId, { status: 'open' })
+    // A day of a plan on Google Calendar gets its own event back (147); in the background.
+    putSkippedDayBackOnCalendar(s.taskId)
     return
   }
   if (s.skipId) {

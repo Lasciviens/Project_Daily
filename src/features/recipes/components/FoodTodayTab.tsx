@@ -7,13 +7,13 @@ import { useEntityModal } from '../../../shared/modals/useEntityModal'
 import { useNutritionCoach } from '../../daily/hooks/useNutritionCoach'
 import { CoachDecisionView } from '../../daily/components/CoachDecision'
 import { coachShort } from '../../health/goal/cutDecision'
-import { NutritionStatsCard } from './NutritionStatsCard'
 import { useRemoveFoodLogEntries, useRecentFoods, useAddFoodLogEntries } from '../hooks/useFoodLog'
 import { recentToEntry } from '../api/foodLogApi'
 import { usualForSlot } from '../foodSearch'
 import { useCopyYesterdayMeals } from '../../daily/hooks/useQuickMeals'
 import { FitsLeftCard } from './FitsLeftCard'
-import { WeeklyNutritionCard } from './WeeklyNutritionCard'
+import { RecentDaysCard } from './RecentDaysCard'
+import { QuickGuessCard } from './QuickGuessCard'
 import { useEatPlannedEntry } from '../hooks/useMealPlan'
 import { MacroBar } from './MacroBar'
 import { WaterTracker } from '../../daily/components/summary/WaterTracker'
@@ -42,8 +42,9 @@ function splitTitleQty(title: string): { name: string; qty: string | null } {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Food · Today — the full nutrition surface. The day's totals, water, week
-//  and coach beside the meal slots, placed per width by FOOD_TODAY_BOARD
+//  Food · Today — the full nutrition surface. The day's totals, water and the
+//  quick-log cards beside the meal slots, the last days and the coach under
+//  them, placed per width by FOOD_TODAY_BOARD
 //  (foodBoards.ts). A check on a PLANNED row confirms it as
 //  EATEN so it starts counting toward the day.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -262,9 +263,7 @@ export function FoodTodayTab({ date }: { date: string }) {
           <WaterTracker date={date} />
         </Card>),
 
-      week: <WeeklyNutritionCard date={date} />,
-
-      stats: <NutritionStatsCard date={date} />,
+      history: <RecentDaysCard date={date} weightKg={coach.weightKg} />,
 
       // Coach — collapsible on phones so the meal slots stay reachable.
       coach: (<Card>
@@ -285,6 +284,8 @@ export function FoodTodayTab({ date }: { date: string }) {
 
 
       fits: <FitsLeftCard date={date} kcalLeft={targets.calories - consumed} proteinLeft={targets.protein - protein} />,
+
+      guess: <QuickGuessCard date={date} />,
 
       meals: (
       <div className="grid min-w-0 grid-cols-1 content-start gap-3 stagger-in sm:gap-4">

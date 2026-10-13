@@ -18,11 +18,19 @@
 // googleTasksApi.ts's browser-side versions. If the Tasks API surface
 // changes, update both.
 //
-// Auth: EITHER a real user JWT (a future in-app "Sync now" button, mirroring
-// google-health-sync's Fetch-now path) OR the shared secret header
+// Auth: EITHER a real user JWT (the app's "Sync now" on Settings →
+// Subscriptions, and its background run when the app opens — both through
+// supabase.functions.invoke) OR the shared secret header
 // `x-sync-secret: <GOOGLE_TASKS_SYNC_SECRET>` (the cron schedule). Deploy
 // with "Enforce JWT Verification" OFF — same reason as every function
 // listed in supabase/config.toml.
+//
+// Body (optional): { full: true } reads every list in full now; { force: true }
+// also retries outbox rows that are waiting out a backoff. Without them the
+// run reads in full once a day (google_tasks_sync_state.last_full_sync_at,
+// migration 145) and otherwise only what Google changed since the last clean
+// run. Since this is now the app's only Google → app pull, the browser has no
+// copy of it to keep in step.
 //
 // Token: reuses the ONE Google refresh token stored by calendar-oauth in
 // user_calendar_tokens. UNLIKE google-health-sync, no down-scoping is
@@ -70,6 +78,97 @@ const supabase = createClient(
 // deno-lint-ignore no-explicit-any
 type AnyRecord = Record<string, any>
 
+// The block between the <google-tasks-rules> markers is a HAND MIRROR of
+// src/features/todo/api/googleTasksRules.ts — edit it there, then copy the
+// block here; scripts/verify-google-tasks.cjs fails when they differ.
+
+// <google-tasks-rules>
+/** Google's `due` is a date: "only date information is recorded; the time
+ *  portion of the timestamp is discarded". It comes back as midnight UTC of
+ *  that date, so the date part IS the day — converting it to a local time
+ *  read as the day before anywhere west of UTC. */
+export function googleDueToDate(due: string | null | undefined): string | null {
+  const m = /^(\d{4}-\d{2}-\d{2})/.exec(due ?? '')
+  return m ? m[1] : null
+}
+
+/** A local day (YYYY-MM-DD) as Google's `due`: midnight UTC of that day. */
+export function dateToGoogleDue(date: string | null | undefined): string | null {
+  return date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? `${date}T00:00:00.000Z` : null
+}
+
+/** What a failed Tasks API call means for the owner. */
+export type GoogleTasksFailureKind = 'auth' | 'scope' | 'api_disabled' | 'rate_limit' | 'not_found' | 'other'
+
+/** The machine-readable reasons in a Google error body:
+ *  `{ error: { errors: [{ reason }], details: [{ reason }] } }` — e.g. a token
+ *  without the Tasks scope answers 403 with `insufficientPermissions` and
+ *  `ACCESS_TOKEN_SCOPE_INSUFFICIENT`. Anything else reads as no reasons. */
+export function googleErrorReasons(body: unknown): string[] {
+  const err = body && typeof body === 'object' ? (body as Record<string, unknown>).error : null
+  if (!err || typeof err !== 'object') return []
+  const out: string[] = []
+  for (const key of ['errors', 'details']) {
+    const list = (err as Record<string, unknown>)[key]
+    if (!Array.isArray(list)) continue
+    for (const item of list) {
+      const reason = item && typeof item === 'object' ? (item as Record<string, unknown>).reason : null
+      if (typeof reason === 'string') out.push(reason)
+    }
+  }
+  return out
+}
+
+/** HTTP status + reasons → kind. Never a guess from the message text. */
+export function googleTasksFailureKind(status: number, reasons: readonly string[]): GoogleTasksFailureKind {
+  const has = (...r: string[]) => r.some(x => reasons.includes(x))
+  if (status === 401) return 'auth'
+  if (status === 404) return 'not_found'
+  if (has('ACCESS_TOKEN_SCOPE_INSUFFICIENT', 'insufficientPermissions')) return 'scope'
+  if (has('SERVICE_DISABLED', 'accessNotConfigured')) return 'api_disabled'
+  if (status === 429 || has('rateLimitExceeded', 'userRateLimitExceeded', 'RATE_LIMIT_EXCEEDED')) return 'rate_limit'
+  return 'other'
+}
+
+/** The error text the owner reads (toast, Settings → Subscriptions, Errors). */
+export function googleTasksFailureText(kind: GoogleTasksFailureKind, status: number, apiMessage?: string | null): string {
+  switch (kind) {
+    case 'auth': return 'Google sign-in expired: reconnect Google in Settings → Subscriptions'
+    case 'scope': return 'Google Tasks access was not granted: reconnect Google in Settings → Subscriptions and allow Tasks'
+    case 'api_disabled': return 'The Google Tasks API is turned off for this app\'s Google Cloud project'
+    case 'rate_limit': return 'Google Tasks is busy (rate limit): the next sync tries again'
+    default: {
+      const detail = (apiMessage ?? '').trim()
+      return `Google Tasks error ${status}${detail ? `: ${detail}` : ''}`
+    }
+  }
+}
+
+/** Every list is read in full again once the last full read is this old. */
+export const GOOGLE_TASKS_FULL_EVERY_MS = 24 * 60 * 60 * 1000
+/** An incremental read starts this long before the last clean run (clock skew). */
+export const GOOGLE_TASKS_LOOKBACK_MS = 60_000
+
+export type GoogleTasksPullPlan = { mode: 'full' } | { mode: 'incremental'; updatedMin: string }
+
+/** Full or incremental for this run. Full: asked for ("Sync now"), never
+ *  synced cleanly, or no clean full read in the last day (before migration 145
+ *  there is no last_full_sync_at, so every run is full). Incremental: tasks
+ *  Google changed since the last clean run, minus the look-back. */
+export function googleTasksPullPlan(
+  state: { last_success_at?: string | null; last_full_sync_at?: string | null } | null | undefined,
+  nowMs: number,
+  forceFull = false,
+): GoogleTasksPullPlan {
+  const lastSuccess = Date.parse(state?.last_success_at ?? '')
+  const lastFull = Date.parse(state?.last_full_sync_at ?? '')
+  if (forceFull || !Number.isFinite(lastSuccess) || !Number.isFinite(lastFull) || nowMs - lastFull >= GOOGLE_TASKS_FULL_EVERY_MS) {
+    return { mode: 'full' }
+  }
+  return { mode: 'incremental', updatedMin: new Date(lastSuccess - GOOGLE_TASKS_LOOKBACK_MS).toISOString() }
+}
+// </google-tasks-rules>
+
 const TASKS_BASE = 'https://www.googleapis.com/tasks/v1'
 
 // Mirrors src/features/todo/api/googleTasksApi.ts's GoogleTasksApiError /
@@ -80,10 +179,12 @@ const TASKS_BASE = 'https://www.googleapis.com/tasks/v1'
 // on the status, never a message substring match.
 class GoogleTasksApiError extends Error {
   readonly status: number
-  constructor(status: number, message: string) {
+  readonly kind: GoogleTasksFailureKind
+  constructor(status: number, message: string, kind: GoogleTasksFailureKind = googleTasksFailureKind(status, [])) {
     super(message)
     this.name = 'GoogleTasksApiError'
     this.status = status
+    this.kind = kind
   }
 }
 function isGoogleTaskNotFound(error: unknown): boolean {
@@ -101,7 +202,10 @@ async function googleRequest(token: string, path: string, options: RequestInit =
   })
   if (res.status === 204) return null
   const data = await res.json().catch(() => null)
-  if (!res.ok) throw new GoogleTasksApiError(res.status, data?.error?.message ?? `Google Tasks error ${res.status}`)
+  if (!res.ok) {
+    const kind = googleTasksFailureKind(res.status, googleErrorReasons(data))
+    throw new GoogleTasksApiError(res.status, googleTasksFailureText(kind, res.status, data?.error?.message), kind)
+  }
   return data
 }
 
@@ -133,14 +237,20 @@ async function paginateTasks(token: string, listId: string, params: Record<strin
   } while (pageToken)
   return out
 }
-const fullGoogleTasksSync = (token: string, listId: string) =>
-  paginateTasks(token, listId, { showCompleted: 'true', showHidden: 'true', showDeleted: 'true' })
-const incrementalGoogleTasksSync = (token: string, listId: string, updatedMinIso: string) =>
-  paginateTasks(token, listId, { showCompleted: 'true', showHidden: 'true', showDeleted: 'true', updatedMin: updatedMinIso })
+// Completed, hidden (cleared, or completed in Google's own apps — those come
+// back only with showHidden) and deleted tasks too: a pull mirrors every
+// state change, not only open tasks. Assigned tasks (from Docs or Chat,
+// `showAssigned`) are left out on purpose — see docs/integrations/google-tasks.md.
+const listTasks = (token: string, listId: string, updatedMin?: string) =>
+  paginateTasks(token, listId, {
+    showCompleted: 'true', showHidden: 'true', showDeleted: 'true',
+    ...(updatedMin ? { updatedMin } : {}),
+  })
 
 function createGoogleTask(token: string, listId: string, task: AnyRecord, opts?: { parent?: string }) {
   const body: AnyRecord = { title: task.title }
-  if (task.due_date) body.due = new Date(task.due_date + 'T12:00:00').toISOString()
+  const due = dateToGoogleDue(task.due_date)
+  if (due) body.due = due
   if (task.description) body.notes = task.description
   const qs = opts?.parent ? `?${new URLSearchParams({ parent: opts.parent })}` : ''
   return googleRequest(token, `/lists/${listId}/tasks${qs}`, { method: 'POST', body: JSON.stringify(body) })
@@ -149,7 +259,7 @@ function updateGoogleTask(token: string, listId: string, googleTaskId: string, t
   const body = {
     title: task.title,
     notes: task.description ?? '',
-    due:   task.due_date ? new Date(task.due_date + 'T12:00:00').toISOString() : null,
+    due:   dateToGoogleDue(task.due_date),
   }
   return googleRequest(token, `/lists/${listId}/tasks/${googleTaskId}`, { method: 'PATCH', body: JSON.stringify(body) })
 }
@@ -169,7 +279,6 @@ function moveGoogleTask(token: string, listId: string, id: string, opts: { desti
 function getGoogleTask(token: string, listId: string, id: string) {
   return googleRequest(token, `/lists/${listId}/tasks/${id}`)
 }
-const googleDueToLocalDate = (due: string): string => due.slice(0, 10)
 
 // ── Local-side list/parent resolution (mirrors googleTasksOutbox.ts) ───────
 // A read error here used to be indistinguishable from "no row found" — both
@@ -405,9 +514,9 @@ async function processDelete(token: string, userId: string, row: OutboxRow) {
 // pick up the SAME pending row (a genuine race, not hypothetical: Google's
 // own HTTP round-trip is exactly where the window lives) and both call
 // Google for the same 'create', producing a real duplicate task.
-async function drainOutbox(token: string, userId: string): Promise<{ drained: number; failed: number }> {
+async function drainOutbox(token: string, userId: string, force: boolean): Promise<{ drained: number; failed: number }> {
   const { data: rows, error } = await supabase.rpc('claim_google_tasks_outbox', {
-    p_respect_backoff: true, p_user_id: userId,
+    p_respect_backoff: !force, p_user_id: userId,
   })
   if (error) throw error
 
@@ -440,37 +549,51 @@ async function drainOutbox(token: string, userId: string): Promise<{ drained: nu
 }
 
 // ── Pull (Google → local) ───────────────────────────────────────────────────
-// Also reconciles STALE lists: a list deleted on Google's side used to keep
-// its local row forever (upsert-only, nothing ever removed it) — every
-// future run then kept including it in the target set and erroring on it,
-// and since the sync-state watermark only advances on a fully clean run
-// (see below), one deleted list would freeze it PERMANENTLY. Returns the
-// confirmed current rows so pullTasks builds its target set from THIS
-// fetch, never a second query that could race with the delete below.
+// Mirrors Google's lists into google_task_lists and returns the confirmed
+// rows, which of them are new (a new list is read in full whatever the
+// run's plan — an incremental read would miss its older tasks) and the lists
+// that could not be mirrored. One list's failure no longer hides silently:
+// it used to be dropped from the run with no error at all (the upsert's
+// error was never read), so its tasks never arrived — exactly what Google's
+// duplicate list names did against migration 076's title index (dropped in
+// 145).
 //
-// Before dropping a stale list's row, every task that belonged to it is
-// DETACHED (google_task_id/google_tasklist_id/google_sync_enabled all
-// cleared together — migration 074). A Task has no identity independent of
-// its list in this API (every endpoint addresses one via
-// /lists/{tasklist}/tasks/{task}), so ON DELETE SET NULL alone (clearing
-// only google_tasklist_id) would leave a real google_task_id pointing at a
-// task that only ever existed inside the now-deleted list — the next PATCH
-// against '@default' (resolveGoogleListId's fallback) 404s every time.
-async function syncGoogleTaskLists(token: string, userId: string): Promise<{ id: string; google_id: string }[]> {
+// Also reconciles STALE lists: a list deleted on Google's side used to keep
+// its local row forever (upsert-only, nothing ever removed it). Before
+// dropping a stale list's row, every task that belonged to it is DETACHED
+// (google_task_id/google_tasklist_id/google_sync_enabled all cleared
+// together — migration 074): a Task has no identity independent of its list
+// in this API (every endpoint addresses one via /lists/{tasklist}/tasks/
+// {task}), so a google_task_id left behind would 404 on every later write.
+interface ListMirror {
+  rows:   { id: string; google_id: string }[]
+  newIds: Set<string>
+  errors: AnyRecord
+}
+
+async function syncGoogleTaskLists(token: string, userId: string): Promise<ListMirror> {
   const [lists, defaultList] = await Promise.all([fetchGoogleTaskLists(token), fetchDefaultGoogleTaskList(token)])
 
-  const localRows: { id: string; google_id: string }[] = []
+  const { data: before, error: beforeError } = await supabase.from('google_task_lists').select('id, google_id').eq('user_id', userId)
+  if (beforeError) throw beforeError
+  const knownGoogleIds = new Set((before ?? []).map((r: AnyRecord) => r.google_id as string))
+
+  const mirror: ListMirror = { rows: [], newIds: new Set(), errors: {} }
   for (const l of lists) {
-    const { data } = await supabase.from('google_task_lists').upsert({
-      user_id: userId, google_id: l.id, title: l.title,
+    const { data, error } = await supabase.from('google_task_lists').upsert({
+      user_id: userId, google_id: l.id, title: l.title ?? '',
       is_default: l.id === defaultList.id, google_etag: l.etag, google_updated_at: l.updated,
-    }, { onConflict: 'user_id,google_id' }).select('id, google_id').maybeSingle()
-    if (data) localRows.push(data)
+    }, { onConflict: 'user_id,google_id' }).select('id, google_id').single()
+    if (error || !data) {
+      mirror.errors[l.id] = `list not mirrored: ${errorText(error ?? 'no row returned')}`
+      continue
+    }
+    mirror.rows.push(data)
+    if (!knownGoogleIds.has(l.id)) mirror.newIds.add(data.id)
   }
 
-  const { data: existing } = await supabase.from('google_task_lists').select('id, google_id').eq('user_id', userId)
   const currentGoogleIds = new Set(lists.map((l: AnyRecord) => l.id))
-  const staleIds = (existing ?? []).filter((row: AnyRecord) => !currentGoogleIds.has(row.google_id)).map((row: AnyRecord) => row.id)
+  const staleIds = (before ?? []).filter((row: AnyRecord) => !currentGoogleIds.has(row.google_id)).map((row: AnyRecord) => row.id)
   for (const staleId of staleIds) {
     const { error: detachError } = await supabase.rpc('detach_tasks_from_deleted_google_list', {
       p_google_tasklist_id: staleId, p_user_id: userId,
@@ -478,73 +601,101 @@ async function syncGoogleTaskLists(token: string, userId: string): Promise<{ id:
     if (detachError) throw detachError
   }
   if (staleIds.length) {
-    await supabase.from('google_task_lists').delete().in('id', staleIds)
+    const { error: deleteError } = await supabase.from('google_task_lists').delete().in('id', staleIds).eq('user_id', userId)
+    if (deleteError) throw deleteError
   }
 
-  return localRows
+  return mirror
 }
 
-async function upsertOne(rt: AnyRecord, userId: string, googleTasklistLocalId: string | null): Promise<string | null> {
+// google task id → local task id for every task already linked to Google:
+// resolves `parent` without a query per task (and across runs — an
+// incremental read's parent may have synced long ago). Paged: PostgREST
+// returns at most 1,000 rows.
+async function loadLinkedTaskIds(userId: string): Promise<Map<string, string>> {
+  const out = new Map<string, string>()
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await supabase.from('tasks').select('id, google_task_id')
+      .eq('user_id', userId).not('google_task_id', 'is', null)
+      .order('id').range(from, from + 999)
+    if (error) throw error
+    for (const row of (data ?? []) as AnyRecord[]) out.set(row.google_task_id, row.id)
+    if (!data || data.length < 1000) return out
+  }
+}
+
+async function upsertOne(rt: AnyRecord, userId: string, googleTasklistLocalId: string | null, parentLocalId: string | null): Promise<string | null> {
   const { data, error } = await supabase.rpc('upsert_task_from_google', {
-    p_google_task_id: rt.id, p_title: rt.title, p_notes: rt.notes ?? null,
-    p_due_date: rt.due ? googleDueToLocalDate(rt.due) : null, p_status: rt.status,
-    p_google_updated_at: rt.updated, p_google_tasklist_id: googleTasklistLocalId,
+    p_google_task_id: rt.id, p_title: typeof rt.title === 'string' ? rt.title : '', p_notes: rt.notes ?? null,
+    p_due_date: googleDueToDate(rt.due), p_status: rt.status,
+    p_google_updated_at: rt.updated ?? null, p_google_tasklist_id: googleTasklistLocalId,
+    p_parent_task_id: parentLocalId,
     p_completed_at: rt.completed ?? null, p_google_etag: rt.etag ?? null,
     p_google_position: rt.position ?? null, p_google_web_view_link: rt.webViewLink ?? null,
     p_google_hidden: rt.hidden ?? false, p_google_deleted: rt.deleted ?? false,
     p_user_id: userId,
+    p_google_links: Array.isArray(rt.links) ? rt.links : null,
   })
   if (error) throw error
   return data as string | null
 }
 
-// Per-list isolation (the google-health-sync lesson, applied here too): if
-// the user ever has multiple Google Task lists, one list's transient error
-// must not blank out every other list's otherwise-successful pull in the
-// same run — each list gets its own try/catch, and the caller decides
-// whether ANY per-list error should hold back the sync-state watermark.
-async function pullTasks(token: string, userId: string, sinceIso: string | null): Promise<{ imported: number; listErrors: AnyRecord }> {
-  const lists = await syncGoogleTaskLists(token, userId)
-  const targets = lists.length ? lists : [{ id: null as string | null, google_id: '@default' }]
+interface PullResult {
+  imported:   number
+  added:      number
+  /** Lists that could not be mirrored or read: they hold the watermark back. */
+  listErrors: AnyRecord
+  /** Single tasks that failed: reported, but they don't hold the watermark
+   *  back — a task that always fails would otherwise freeze every later run,
+   *  and the daily full read retries it anyway. */
+  taskErrors: string[]
+}
 
-  let imported = 0
-  const listErrors: AnyRecord = {}
-  for (const list of targets) {
+// Per-list and per-task isolation: one list that can't be read, or one task
+// whose write fails, no longer stops the rest (a single failing task used to
+// end its whole list's run, every run).
+async function pullTasks(token: string, userId: string, plan: GoogleTasksPullPlan): Promise<PullResult> {
+  const mirror = await syncGoogleTaskLists(token, userId)
+  const result: PullResult = { imported: 0, added: 0, listErrors: { ...mirror.errors }, taskErrors: [] }
+  const linked = await loadLinkedTaskIds(userId)
+
+  for (const list of mirror.rows) {
     try {
-      // A 60s look-back absorbs clock skew / request-boundary edge cases —
-      // upsert_task_from_google is idempotent on google_task_id, so
-      // re-processing a handful of already-seen tasks is harmless.
-      const remoteTasks = sinceIso
-        ? await incrementalGoogleTasksSync(token, list.google_id, new Date(new Date(sinceIso).getTime() - 60_000).toISOString())
-        : await fullGoogleTasksSync(token, list.google_id)
+      // A list new to the mirror is read in full, whatever the plan.
+      const updatedMin = plan.mode === 'incremental' && !mirror.newIds.has(list.id) ? plan.updatedMin : undefined
+      const remoteTasks = await listTasks(token, list.google_id, updatedMin)
 
+      // Pass 1: every task, with its parent when that is already known.
+      const parentLater: AnyRecord[] = []
       for (const rt of remoteTasks) {
-        const localId = await upsertOne(rt, userId, list.id)
-        if (localId) imported++
-      }
-      // Every task gets a parent resolution pass, not just the ones WITH a
-      // `parent` — a task moved back to top-level on Google's side (parent
-      // removed) still needs its LOCAL parent_task_id cleared to match;
-      // `continue`-ing past that case (the original bug here) left it stuck
-      // showing as a subtask forever. Resolved via the DB (not a batch-local
-      // map) so an incremental sync's parent — synced in an EARLIER run —
-      // still resolves correctly, not only within one delta.
-      for (const rt of remoteTasks) {
-        const { data: child } = await supabase.from('tasks').select('id').eq('user_id', userId).eq('google_task_id', rt.id).maybeSingle()
-        if (!child?.id) continue
-        let parentLocalId: string | null = null
-        if (rt.parent) {
-          const { data: parent } = await supabase.from('tasks').select('id').eq('user_id', userId).eq('google_task_id', rt.parent).maybeSingle()
-          if (!parent?.id) continue // named a parent we haven't synced yet — don't clear a real one on a lookup miss
-          parentLocalId = parent.id
+        try {
+          const parentLocalId = rt.parent ? linked.get(rt.parent) : null
+          const isNew = !linked.has(rt.id)
+          const localId = await upsertOne(rt, userId, list.id, parentLocalId ?? null)
+          if (!localId) continue
+          result.imported++
+          if (isNew) result.added++
+          linked.set(rt.id, localId)
+          if (rt.parent && parentLocalId === undefined) parentLater.push(rt)
+        } catch (e) {
+          result.taskErrors.push(`task ${rt.id}: ${errorText(e)}`)
         }
-        await supabase.rpc('set_task_parent_from_google', { p_task_id: child.id, p_parent_task_id: parentLocalId, p_user_id: userId })
+      }
+      // Pass 2: children whose parent came in during pass 1. A parent that
+      // still isn't known is left alone — never cleared on a lookup miss.
+      for (const rt of parentLater) {
+        const parentLocalId = linked.get(rt.parent)
+        if (!parentLocalId) continue
+        const { error } = await supabase.rpc('set_task_parent_from_google', {
+          p_task_id: linked.get(rt.id), p_parent_task_id: parentLocalId, p_user_id: userId,
+        })
+        if (error) result.taskErrors.push(`task ${rt.id} parent: ${errorText(error)}`)
       }
     } catch (e) {
-      listErrors[list.google_id] = (e as Error).message
+      result.listErrors[list.google_id] = errorText(e)
     }
   }
-  return { imported, listErrors }
+  return result
 }
 
 // ── Calendar outbox (Google Calendar, migration 135) ────────────────────────
@@ -626,7 +777,7 @@ export interface CalendarDrainSummary {
   deleted: number
   /** Google answered 404/410: it was gone already (usually the browser's own delete). */
   already_gone: number
-  /** A live time block still points at the event (a block put back, a shared id) — it stays. */
+  /** A live time block or repeating plan (147) still points at the event (one put back, a shared id) — it stays. */
   kept: number
   /** Backed off; tried again on a later run. */
   failed: number
@@ -644,7 +795,7 @@ export function emptyCalendarDrainSummary(): CalendarDrainSummary {
 
 /** The I/O a run needs — google-tasks-sync wires these to Google and Supabase. */
 export interface CalendarDrainDeps {
-  /** Event ids a live time block still points at: never deleted. */
+  /** Event ids a live time block or repeating plan still points at: never deleted. */
   stillLinked: ReadonlySet<string>
   /** One events.delete. Resolves (never rejects) with the HTTP status, or null with no answer. */
   deleteEvent(row: CalendarOutboxRow): Promise<{ status: number | null; message: string }>
@@ -768,15 +919,23 @@ async function drainCalendarOutbox(token: string, userId: string): Promise<Calen
   // Never delete an event a live block still points at: a block put back
   // after its delete, or a second block holding the same id. Every linked
   // event is in the primary calendar, so the event id alone decides.
+  const eventIds = [...new Set(rows.map((r) => r.event_id))]
   const { data: linked, error: linkedError } = await supabase.from('time_blocks')
     .select('google_calendar_event_id')
     .eq('user_id', userId)
-    .in('google_calendar_event_id', [...new Set(rows.map((r) => r.event_id))])
+    .in('google_calendar_event_id', eventIds)
   if (linkedError) throw linkedError
+  // …nor one a live repeating plan points at (its series, migration 147).
+  // Before 147 no plan can hold one: a missing column reads as none.
+  const { data: linkedPlans, error: linkedPlansError } = await supabase.from('schedule_blocks')
+    .select('google_calendar_event_id')
+    .eq('user_id', userId)
+    .in('google_calendar_event_id', eventIds)
+  if (linkedPlansError && linkedPlansError.code !== '42703' && linkedPlansError.code !== 'PGRST204') throw linkedPlansError
 
   const stopAt = Date.now() + CALENDAR_BUDGET_MS
   return drainCalendarRows(rows, {
-    stillLinked: new Set((linked ?? []).map((b: AnyRecord) => b.google_calendar_event_id as string)),
+    stillLinked: new Set([...(linked ?? []), ...(linkedPlans ?? [])].map((b: AnyRecord) => b.google_calendar_event_id as string)),
     deleteEvent: (row) => deleteCalendarEventOnce(token, row.calendar_id, row.event_id),
     removeRow: async (row) => {
       const { error: deleteError } = await supabase.from('calendar_outbox').delete().eq('id', row.id).eq('user_id', userId)
@@ -814,18 +973,41 @@ Deno.serve(async (req) => {
   }
   if (!userId) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: jsonHeaders })
 
+  const options = await req.json().catch(() => ({})) as AnyRecord
+  const forceFull = options?.full === true
+  const force = options?.force === true
+
   const syncedAt = new Date().toISOString()
+  const { data: prevState } = await supabase.from('google_tasks_sync_state').select('*').eq('user_id', userId).maybeSingle()
+  const prevError = String((prevState as AnyRecord | null)?.last_error ?? '')
+
+  // Writes the run's outcome. last_full_sync_at exists only once migration
+  // 145 ran: a write that names it is retried without it, so the rest of the
+  // state (the watermark above all) is never lost to an older schema.
   async function recordState(patch: AnyRecord) {
-    await supabase.from('google_tasks_sync_state').upsert({ user_id: userId, ...patch, updated_at: syncedAt }, { onConflict: 'user_id' })
+    const row = { user_id: userId, ...patch, updated_at: syncedAt }
+    let { error } = await supabase.from('google_tasks_sync_state').upsert(row, { onConflict: 'user_id' })
+    if (error && 'last_full_sync_at' in row && (error.code === '42703' || error.code === 'PGRST204')) {
+      const { last_full_sync_at: _unused, ...older } = row
+      ;({ error } = await supabase.from('google_tasks_sync_state').upsert(older, { onConflict: 'user_id' }))
+    }
+    if (error) console.error(`google-tasks-sync: sync state not saved: ${error.message}`)
+  }
+  // Developer → Errors gets a message once, not every 20 minutes while the
+  // same problem lasts (last_error still carries it on every run).
+  async function logOnce(message: string, context: AnyRecord) {
+    if (prevError.includes(message)) return
+    await supabase.from('app_error_logs').insert({ user_id: userId, message: `google-tasks-sync: ${message}`, context }).then(() => {}, () => {})
   }
   async function fail(status: number, error: string, reconnect = false) {
     await recordState({ last_error: error, last_error_at: syncedAt })
-    await supabase.from('app_error_logs').insert({ user_id: userId, message: `google-tasks-sync: ${error}`, context: { reconnect } }).then(() => {}, () => {})
+    await logOnce(error, { reconnect })
     return new Response(JSON.stringify({ error, reconnect_required: reconnect }), { status, headers: jsonHeaders })
   }
 
-  const { data: tokenRow } = await supabase.from('user_calendar_tokens').select('refresh_token').eq('user_id', userId).single()
-  if (!tokenRow?.refresh_token) return fail(401, 'not_connected — use Connect Google in the app', true)
+  const { data: tokenRow, error: tokenRowError } = await supabase.from('user_calendar_tokens').select('refresh_token').eq('user_id', userId).maybeSingle()
+  if (tokenRowError) return fail(500, `could not read the stored Google sign-in: ${tokenRowError.message}`)
+  if (!tokenRow?.refresh_token) return fail(401, 'Google is not connected: use Connect Google in Settings → Subscriptions', true)
 
   // Full-scope refresh (no down-scoping needed — see the header comment).
   const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
@@ -840,8 +1022,13 @@ Deno.serve(async (req) => {
   })
   if (!tokenRes.ok) {
     const err = await tokenRes.json().catch(() => ({} as AnyRecord))
+    // invalid_grant: the stored sign-in was revoked or expired. A refresh
+    // token dies after 7 days while the Google Cloud consent screen is in
+    // Testing (docs/deploy-checklist.md).
     const reconnect = err.error === 'invalid_grant'
-    return fail(reconnect ? 401 : 502, `token refresh failed: ${err.error ?? tokenRes.status}`, reconnect)
+    return fail(reconnect ? 401 : 502, reconnect
+      ? 'Google refused the stored sign-in (invalid_grant): reconnect Google in Settings → Subscriptions'
+      : `token refresh failed: ${err.error ?? tokenRes.status}`, reconnect)
   }
   const { access_token } = await tokenRes.json()
 
@@ -850,17 +1037,16 @@ Deno.serve(async (req) => {
   // independent concerns, each recorded separately.
   const errors: AnyRecord = {}
   let drainResult = { drained: 0, failed: 0 }
-  let imported = 0
+  let pull: PullResult = { imported: 0, added: 0, listErrors: {}, taskErrors: [] }
+  const plan = googleTasksPullPlan(prevState as AnyRecord | null, Date.now(), forceFull)
 
-  try { drainResult = await drainOutbox(access_token, userId) }
-  catch (e) { errors.drain = (e as Error).message }
+  try { drainResult = await drainOutbox(access_token, userId, force) }
+  catch (e) { errors.drain = errorText(e) }
 
   try {
-    const { data: state } = await supabase.from('google_tasks_sync_state').select('last_success_at').eq('user_id', userId).maybeSingle()
-    const result = await pullTasks(access_token, userId, state?.last_success_at ?? null)
-    imported = result.imported
-    if (Object.keys(result.listErrors).length) errors.pull = result.listErrors
-  } catch (e) { errors.pull = (e as Error).message }
+    pull = await pullTasks(access_token, userId, plan)
+    if (Object.keys(pull.listErrors).length) errors.pull = pull.listErrors
+  } catch (e) { errors.pull = errorText(e) }
 
   // Calendar outbox (migration 135) — last, so it never delays the Tasks
   // steps above. drainCalendarRows itself never rejects; a throw here is the
@@ -880,35 +1066,51 @@ Deno.serve(async (req) => {
   // because each metric's OWN watermark is really just "now", not a
   // precondition for correctly bounding the next fetch.)
   //
-  // Calendar trouble is reported next to it (partial_errors, last_error) but
-  // never holds the watermark back: the watermark bounds the next Tasks pull,
-  // which a Calendar failure has nothing to do with — a token without the
-  // calendar.events grant would otherwise freeze it for good.
+  // Single failed tasks (pull.taskErrors) and Calendar trouble are reported
+  // next to it (partial_errors, last_error) but never hold it back: the
+  // watermark bounds the next Tasks read, which a Calendar failure has
+  // nothing to do with, and one task that always fails would otherwise
+  // freeze it for good — the daily full read retries that task anyway.
   const calendarProblem = calendarError ?? (calendar.stopped ? `stopped: ${calendar.stopped}` : null)
-  const reported: AnyRecord = calendarProblem ? { ...errors, calendar: calendarProblem } : errors
-  // Calendar trouble also reaches Developer → Errors (last_error has no
-  // screen): a stop or failed step once per new message — the cron runs every
-  // 20 min — and every row that has just been parked.
-  if (calendarProblem || calendar.parked) {
-    const { data: prevState } = await supabase.from('google_tasks_sync_state').select('last_error').eq('user_id', userId).maybeSingle()
-    const prev = String((prevState as AnyRecord | null)?.last_error ?? '')
-    const messages = [
-      calendarProblem && !prev.includes(calendarProblem) ? `Google Calendar deletions stopped: ${calendarProblem}` : null,
-      calendar.parked ? `${calendar.parked} Google Calendar deletion${calendar.parked === 1 ? '' : 's'} failed ${CALENDAR_PARK_AFTER} times — now tried once a day` : null,
-    ].filter((m): m is string => m !== null)
-    for (const message of messages) {
-      await supabase.from('app_error_logs').insert({ user_id: userId, message: `google-tasks-sync: ${message}`, context: { calendar } }).then(() => {}, () => {})
-    }
-  }
+  const reported: AnyRecord = { ...errors }
+  if (pull.taskErrors.length) reported.tasks = pull.taskErrors.slice(0, 5).concat(pull.taskErrors.length > 5 ? [`… ${pull.taskErrors.length - 5} more`] : [])
+  if (calendarProblem) reported.calendar = calendarProblem
   const reportedKeys = Object.keys(reported)
+  const lastError = reportedKeys.length ? describeProblems(reported) : null
+
+  // Problems reach Developer → Errors too (last_error is on Settings →
+  // Subscriptions): once per new message, and every Calendar row that has
+  // just been parked.
+  if (lastError) await logOnce(lastError, { reported, mode: plan.mode })
+  if (calendar.parked) {
+    await supabase.from('app_error_logs').insert({
+      user_id: userId,
+      message: `google-tasks-sync: ${calendar.parked} Google Calendar deletion${calendar.parked === 1 ? '' : 's'} failed ${CALENDAR_PARK_AFTER} times — now tried once a day`,
+      context: { calendar },
+    }).then(() => {}, () => {})
+  }
   await recordState({
     ...(errorKeys.length === 0 ? { last_success_at: syncedAt } : {}),
-    last_error: reportedKeys.length ? JSON.stringify(reported) : null,
-    last_error_at: reportedKeys.length ? syncedAt : null,
+    ...(errorKeys.length === 0 && plan.mode === 'full' ? { last_full_sync_at: syncedAt } : {}),
+    last_error: lastError,
+    last_error_at: lastError ? syncedAt : null,
   })
 
+  const imported = pull.imported
   return new Response(JSON.stringify({
-    ok: reportedKeys.length === 0, drained: drainResult.drained, drain_failed: drainResult.failed,
-    imported, calendar, ...(reportedKeys.length ? { partial_errors: reported } : {}),
+    ok: reportedKeys.length === 0, mode: plan.mode, drained: drainResult.drained, drain_failed: drainResult.failed,
+    added: pull.added, imported, calendar, ...(reportedKeys.length ? { partial_errors: reported } : {}),
   }), { status: 200, headers: jsonHeaders })
 })
+
+// "Pull: …; Drain: …" for last_error — read by a person on Settings →
+// Subscriptions, so plain text, not the JSON it used to be.
+function describeProblems(reported: AnyRecord): string {
+  const label: AnyRecord = { drain: 'Sending', pull: 'Reading lists', tasks: 'Tasks', calendar: 'Calendar' }
+  return Object.entries(reported).map(([key, value]) => {
+    const text = typeof value === 'string' ? value
+      : Array.isArray(value) ? value.join('; ')
+      : Object.values(value as AnyRecord).map(String).join('; ')
+    return `${label[key] ?? key}: ${text}`
+  }).join(' · ').slice(0, 1000)
+}

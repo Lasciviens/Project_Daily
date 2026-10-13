@@ -48,6 +48,68 @@ ok(ids(M.sortRecipes(lib, 'kcal-high', new Map())), ['Bowl', 'Cake', 'Soup'], 'm
 ok(ids(M.sortRecipes(lib, 'cooked', new Map())), ['Cake', 'Bowl', 'Soup'], 'most cooked, never cooked by title')
 ok(ids(M.sortRecipes(lib, 'new', new Map())), ['Soup', 'Bowl', 'Cake'], 'newest first')
 
+// Library: today's room, "Fits today", one search over recipes and foods (13.10.2026)
+ok(M.dayRemaining({ calories: 2300, protein: 180 }, { calories: 1668, protein_g: 121.6 }), { kcal: 632, protein: 58 }, 'left today = targets − eaten')
+ok(M.dayRemaining({ calories: 2000, protein: 150 }, null), { kcal: 2000, protein: 150 }, 'nothing eaten yet → the whole target')
+ok(M.dayRemaining({ calories: 2000, protein: 150 }, { calories: 2250, protein_g: 160 }), { kcal: -250, protein: -10 }, 'over target → negative')
+ok([M.fitsCalories(450, 500), M.fitsCalories(500, 500), M.fitsCalories(501, 500), M.fitsCalories(null, 500), M.fitsCalories(0, 500), M.fitsCalories(300, null), M.fitsCalories(300, -20)],
+  [true, true, false, false, false, false, false], 'fits: known kcal ≤ left; unknown kcal, unknown room or none left never fits')
+ok(M.filterRecipes(recipes, { ...F, flags: ['fits'], kcalLeft: 500 }).map(r => r.id), ['Cake'], 'Fits today: 450 kcal fits 500 left, 600 and no-macros do not')
+ok(M.filterRecipes(recipes, { ...F, flags: ['fits'], kcalLeft: null }).map(r => r.id), [], 'Fits today while the day is loading shows nothing, never everything')
+ok(M.filterRecipes(recipes, { ...F, flags: ['fits', 'high-protein'], kcalLeft: 700 }).map(r => r.id), ['Bowl'], 'Fits today + High protein combine')
+ok(M.filterRecipes([rec('Lettost toast', { title: 'Brødskive med ost', calories: 300 })], { ...F, query: 'brod' }).length, 1, 'search folds ø (brød = brod)')
+ok(M.filterRecipes([rec('Soup', { title: 'Mercimek çorbası', calories: 240 })], { ...F, query: 'CORBASI' }).length, 1, 'search folds Turkish letters and case')
+{
+  const f = (id, o) => ({ id, name: id, unit: 'g', calories: null, protein_g: null, carbs_g: null, fat_g: null, fiber_g: null, sugar_g: null, serving_label: null, serving_grams: null, food_group_id: null, food_group: null, image_url: null, source: null, source_ref: null, created_at: '2026-01-01', user_id: 'u', ...o })
+  const pool = [
+    f('Kyllingfilet, rå', { calories: 106, protein_g: 23, carbs_g: 0, fat_g: 1.5 }),
+    f('Kylling pålegg', { calories: 100, protein_g: 20, serving_label: '1 slice', serving_grams: 15 }),
+    f('Whey', { calories: 380, protein_g: 80, carbs_g: 6, fat_g: 2, serving_label: '1 scoop', serving_grams: 30 }),
+    f('Milk drink', { unit: 'ml', calories: 64, protein_g: 3.4 }),
+    f('Cheesecake', { calories: 520, protein_g: 6, serving_label: '1 slice', serving_grams: 120 }),
+  ]
+  const S = (q, o = {}) => M.searchFoods(pool, { ...F, query: q, ...o }).map(h => h.food.id)
+  ok(M.defaultPortion(pool[2]), { food: pool[2], grams: 30, portion: '1 scoop (30 g)', kcal: 114, protein: 24 }, 'a food with a preset logs that portion')
+  ok(M.defaultPortion(pool[0]), { food: pool[0], grams: 100, portion: '100 g', kcal: 106, protein: 23 }, 'no preset → 100 g')
+  ok(M.defaultPortion(pool[3]).portion, '100 ml', 'a drink stored per 100 ml says ml')
+  ok(S(''), [], 'no search → no foods (the Library lists recipes)')
+  ok(S('PALEGG'), ['Kylling pålegg'], 'å folds to a, case ignored')
+  ok(S('kyl'), ['Kylling pålegg', 'Kyllingfilet, rå'], 'ranked like the logger: starts-with, shorter name first')
+  ok(S('kyl', { category: 'dinner' }), [], 'a meal-type category shows recipes only')
+  ok(S('kyl', { flags: ['saved'] }), [], 'the Saved meals view shows recipes only')
+  ok(S('e', { flags: ['fits'], kcalLeft: 120 }), ['Whey', 'Kylling pålegg', 'Kyllingfilet, rå'], 'Fits today judges the portion + logs: a 30 g scoop (114 kcal) fits 120 left, a 120 g cheesecake slice (624) does not')
+  ok(S('milk', { flags: ['fits'], kcalLeft: 64 }), ['Milk drink'], 'exactly the room left fits')
+  ok(S('milk', { flags: ['high-protein'] }), [], 'high protein is per 100 g (milk is not)')
+  ok(S('cheese', { flags: ['light'] }), [], 'Under 500 kcal judges the portion (a 624 kcal slice)')
+  ok(S('cheese', { flags: ['no-macros'] }), [], 'No macros hides foods that have them')
+}
+
+// The basket (logger + recipe builder): live totals, portions, saved rows
+{
+  const B = require('../src/features/recipes/foodBasket')
+  const food = (o) => ({ id: 'x', name: 'x', unit: 'g', calories: null, protein_g: null, carbs_g: null, fat_g: null, fiber_g: null, sugar_g: null, serving_label: null, serving_grams: null, ...o })
+  const chicken = food({ id: 'c', name: 'Chicken', calories: 106, protein_g: 23, carbs_g: 0, fat_g: 1.5 })
+  const rice = food({ id: 'r', name: 'Rice', calories: 130, protein_g: 2.7, carbs_g: 28, fat_g: 0.3, fiber_g: 0.4 })
+  const oil = food({ id: 'o', name: 'Olive oil', unit: 'ml', calories: 884, fat_g: 100, serving_label: '1 tbsp', serving_grams: 13 })
+  const basket = [{ ingredient: chicken, grams: 180 }, { ingredient: rice, grams: 200 }, { ingredient: oil, grams: 13 }]
+  const t = B.basketTotals(basket)
+  ok([Math.round(t.kcal * 10) / 10, Math.round(t.protein * 10) / 10, Math.round(t.carbs * 10) / 10, Math.round(t.fat * 10) / 10], [565.7, 46.8, 56, 16.3], 'basket totals: per 100 g × grams, summed')
+  ok(B.basketTotals([{ ingredient: chicken, grams: 0 }]).kcal, 0, 'an empty amount adds nothing')
+  ok(B.perPortion(t, 2), { kcal: 282.9, protein: 23.4, carbs: 28, fat: 8.2, fiber: 0.4, sugar: 0 }, 'per portion: ÷ portions, rounded to 0.1 like the saved recipe')
+  ok(B.perPortion(t, 0).kcal, 565.7, 'portions below 1 count as 1')
+  ok([B.wholePortions('2.6'), B.wholePortions(''), B.wholePortions('0'), B.wholePortions(4)], [3, 1, 1, 4], 'portions are whole numbers ≥ 1 (an integer column)')
+  ok(B.basketToIngredients(basket), [
+    { name: 'Chicken', quantity: 180, unit: 'g', note: null, library_ingredient_id: 'c' },
+    { name: 'Rice', quantity: 200, unit: 'g', note: null, library_ingredient_id: 'r' },
+    { name: 'Olive oil', quantity: 13, unit: 'ml', note: null, library_ingredient_id: 'o' },
+  ], 'saved rows: every one library-linked by weight (ml for drinks)')
+  ok(B.portionSteps({ ingredient: oil, grams: 26 }), { size: 13, count: 2, label: 'tbsp' }, '− / + steps by the preset')
+  ok(B.portionSteps({ ingredient: chicken, grams: 180 }), null, 'no preset → no stepper')
+  ok([B.lastGrams({ quantity: 150, unit: 'g' }), B.lastGrams({ quantity: 330, unit: 'ml' }), B.lastGrams({ quantity: 2, unit: 'pcs' }), B.lastGrams({ quantity: 0, unit: 'g' }), B.lastGrams({ quantity: 1, unit: 'kg' })],
+    [150, 330, undefined, undefined, undefined], 'a recent amount is reused only when it is grams / ml')
+  ok([B.amountUnit('ML'), B.amountUnit(null), B.amountUnit('g')], ['ml', 'g', 'g'], 'amount unit')
+}
+
 // Foods
 const food = (id, o) => ({ id, name: id, unit: 'g', calories: null, protein_g: null, carbs_g: null, fat_g: null, fiber_g: null, sugar_g: null, serving_label: null, serving_grams: null, food_group_id: null, food_group: null, image_url: null, source: null, source_ref: null, created_at: '2026-01-01', user_id: 'u', ...o })
 const foods = [

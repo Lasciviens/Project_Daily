@@ -5,7 +5,7 @@ import { Button } from '../../../shared/ui'
 import { DateCalendar } from '../../../shared/components/DateCalendar'
 import { formatDate } from '../../../shared/utils/dateFormat'
 import { todayStr } from '../../../shared/utils/dateUtils'
-import { middayIso, type WatchedWhen } from '../watchedWhen'
+import { middayIso, watchedWhenOptions, type WatchedWhen, type WatchedWhenOption } from '../watchedWhen'
 
 function Option({ icon, label, hint, onClick }: { icon: ReactNode; label: string; hint?: string | null; onClick: () => void }) {
   return (
@@ -21,31 +21,49 @@ function Option({ icon, label, hint, onClick }: { icon: ReactNode; label: string
   )
 }
 
+const OPTIONS: Record<WatchedWhenOption, { icon: ReactNode; label: string }> = {
+  now: { icon: <CheckCheck />, label: 'Just now' },
+  release: { icon: <CalendarDays />, label: 'Release date' },
+  other: { icon: <PencilLine />, label: 'Other date' },
+  unknown: { icon: <HelpCircle />, label: 'Unknown date' },
+  spread: { icon: <CalendarRange />, label: 'Spread over dates…' },
+}
+
 export interface WatchedWhenAsk {
   title: string
   subtitle?: string
   releaseLabel?: string | null
-  /** Completing a series: also offer "Spread over dates…" (the Spread watched dates popup). */
+  /**
+   * More than one episode (a selection, Up to here, completing a series): also
+   * offer "Spread over dates…" (the Spread watched dates popup) as the 5th option.
+   */
   allowSpread?: boolean
 }
 
-/** The sheet's answer: a time, or (series only) "spread the episodes over a period". */
+/** The sheet's answer: a time, or (several episodes) "spread them over a period". */
 export type WatchedWhenAnswer = WatchedWhen | { kind: 'spread' }
 
-/** The Trakt app's "when did you watch it?" sheet: Just now · Release date · Other date · (Spread over dates) · Unknown date. */
+/**
+ * The Trakt app's "when did you watch it?" sheet — the ONE copy, asked through
+ * `useWatchedWhenPrompt`: Just now · Release date · Other date · Unknown date
+ * · Spread over dates… (several episodes only; `watchedWhenOptions`).
+ */
 export function WatchedWhenSheet({ ask, onDone }: { ask: WatchedWhenAsk; onDone: (w: WatchedWhenAnswer | null) => void }) {
   const [picking, setPicking] = useState(false)
   // A day, never a time (owner rule): stored as midday local so no zone moves it.
   const [value, setValue] = useState(() => todayStr())
+  const choose = (kind: WatchedWhenOption) => {
+    if (kind === 'other') setPicking(true)
+    else onDone({ kind })
+  }
+  const hint = (kind: WatchedWhenOption) => (kind === 'release' ? ask.releaseLabel : kind === 'spread' ? 'Between two days' : null)
   return (
     <ModalShell onClose={() => onDone(null)} size="xs" layer="confirm" title={ask.title} subtitle={ask.subtitle ?? 'When did you watch it?'} bodyClassName="p-2">
       {!picking ? (
         <div className="divide-y divide-line overflow-hidden rounded-row border border-line">
-          <Option icon={<CheckCheck />} label="Just now" onClick={() => onDone({ kind: 'now' })} />
-          <Option icon={<CalendarDays />} label="Release date" hint={ask.releaseLabel} onClick={() => onDone({ kind: 'release' })} />
-          <Option icon={<PencilLine />} label="Other date" onClick={() => setPicking(true)} />
-          {ask.allowSpread && <Option icon={<CalendarRange />} label="Spread over dates…" hint="Between two days" onClick={() => onDone({ kind: 'spread' })} />}
-          <Option icon={<HelpCircle />} label="Unknown date" onClick={() => onDone({ kind: 'unknown' })} />
+          {watchedWhenOptions(!!ask.allowSpread).map(kind => (
+            <Option key={kind} icon={OPTIONS[kind].icon} label={OPTIONS[kind].label} hint={hint(kind)} onClick={() => choose(kind)} />
+          ))}
         </div>
       ) : (
         <div className="flex flex-col gap-2 p-2">

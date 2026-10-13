@@ -53,7 +53,7 @@ export function useFoodLogEntry(id: string | null | undefined) {
 export function useAddFoodLogEntries() {
   return useMutationWithFeedback({
     action:         'add_food_log_entries',
-    successMessage: (_: void, entries: FoodLogEntryInput[]) =>
+    successMessage: (_ids: string[], entries: FoodLogEntryInput[]) =>
       entries.length > 1 ? `Logged ${entries.length} items` : `Logged to ${entries[0]?.meal_slot ?? 'diary'}`,
     mutationFn:     (entries: FoodLogEntryInput[]) => addFoodLogEntries(entries),
     invalidates:    ['nutrition'],

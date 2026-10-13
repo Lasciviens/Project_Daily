@@ -13,7 +13,8 @@
 //      transit + six tiles, and news could only start under that: a hole in
 //      the middle (owner, 08.10.2026). There the tiles split — training,
 //      watched, books and games in one row under the week and tasks, weather
-//      and money under transit — so both columns end about together. A 1280px
+//      and money under transit, one above the other and as wide as it (owner,
+//      13.10.2026) — so both columns end about together. A 1280px
 //      laptop stacks the week and the tasks and keeps all six beside them.
 //   3  1920 — full widgets: weather/transit/currency/games, then training,
 //      media and books.
@@ -83,6 +84,22 @@ export const HOME_GLANCE: Record<string, HomeSection[]> = {
 
 /** The tile groups: a widget's tile is in `tiles` or in one of these. */
 export const TILE_SECTIONS: readonly HomeSection[] = ['tiles', 'outsideTiles', 'activityTiles']
+
+export type GlanceGroup = 'all' | 'outside' | 'activity'
+
+/**
+ * Each tile group's grid (GlanceTiles in HomePage.tsx; container queries on
+ * the group's own width). `all`: 2 across in a side column or on a phone, 3
+ * on a wider stack. `outside` (weather, money under transit on the split
+ * laptop): one tile per row, each as wide as the Transit card above it
+ * (owner, 13.10.2026). `activity` (training, watched, books, games under the
+ * week and the tasks): one row of 4.
+ */
+export const GLANCE_GROUP_GRID: Record<GlanceGroup, string> = {
+  all: 'grid-cols-2 @[36rem]:grid-cols-3',
+  outside: 'grid-cols-1',
+  activity: 'grid-cols-2 @[40rem]:grid-cols-4',
+}
 
 /** Headlines the news card lists: a list of 8 on a phone; about two rows of cards in the band. */
 export const NEWS_ROWS: Record<PageStep, number> = { 1: 8, 2: 12, 3: 14, 4: 16 }

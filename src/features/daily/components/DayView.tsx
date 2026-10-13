@@ -23,7 +23,8 @@ interface Props { date: Date }
 // band stacks WeekStrip → DayAgenda → DayView, so at 393px this pane is about
 // one screenful down, while the glance board (TodaySummary) sits below the whole
 // band and DayQuickRail only exists on wide pages (DAY_BOARD steps 3–4) —
-// neither is a phone surface. Do not "tidy" this into either of them.
+// neither is a phone surface. Do not "tidy" this into either of them. It sits
+// under the Tasks header, so the header lines up with the Schedule pane's.
 //
 // Deliberately quieter than the "N open" pill beside the Tasks heading: a wish
 // is a nudge, the day's tasks are the work.
@@ -77,21 +78,27 @@ export function DayView({ date }: Props) {
   // silent delete; counts never include it.
   const fresh = useNewIds([...openTasks, ...doneTasks, ...cancelledTasks].map(t => t.id), day, !isLoading)
 
+  // `section` is the day's own (taskRules.sectionForDay: Today, else Backlog —
+  // never a retired one), and the day is the task's due date.
   const addTask = () => {
     modal.open({ kind: 'task', config: { heading: 'New task' }, defaults: { section, date: day, dueDate: day } })
   }
 
   return (
     <div className="p-4 sm:p-5">
-      <OpenWishesRow wishes={openWishes} />
-
-      <div className="mb-2 flex min-h-[28px] items-center justify-between gap-2">
-        <h2 className="section-label">Tasks</h2>
-        <div className="flex items-center gap-2">
-          {doneTasks.length > 0 && <span className="text-meta tabular-nums text-fg-muted">{doneTasks.length} done</span>}
+      {/* The same header as the Schedule pane beside it (DayAgenda): label and
+          counts on the left, the pane's Add in the right corner — so the two
+          Adds sit in one line side by side and in the same place when stacked. */}
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+          <h2 className="section-label">Tasks</h2>
           {openTasks.length > 0 && <TonePill tone="accent">{openTasks.length} open</TonePill>}
+          {doneTasks.length > 0 && <span className="text-meta tabular-nums text-fg-muted">{doneTasks.length} done</span>}
         </div>
+        <Button variant="primary" size="sm" icon={<Plus />} onClick={addTask} className="shrink-0">Add task</Button>
       </div>
+
+      <OpenWishesRow wishes={openWishes} />
 
       {isLoading ? (
         <div className="space-y-2">
@@ -115,15 +122,6 @@ export function DayView({ date }: Props) {
           )}
 
           {openTasks.map(task => <ToDoItem key={task.id} task={task} isNew={fresh.has(task.id)} />)}
-
-          <button
-            type="button"
-            onClick={addTask}
-            className="mt-1 flex min-h-[44px] w-full items-center gap-2 rounded-row px-2 text-left text-body font-medium text-fg-muted transition-colors duration-150 hover:bg-surface-hover hover:text-accent-600"
-          >
-            <Plus className="h-4 w-4" aria-hidden />
-            Add task
-          </button>
 
           <TaskGroup label="Done" tasks={doneTasks} />
           <TaskGroup label="Cancelled" tasks={cancelledTasks} />

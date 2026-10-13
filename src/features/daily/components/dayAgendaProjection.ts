@@ -1,7 +1,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
-//  DayAgenda — PURE day-projection logic, deliberately import-free (no
-//  supabase client, no React) so it's testable via sucrase without tripping
-//  client.ts's env-var guard.
+//  DayAgenda — PURE day-projection logic: no supabase client, no React (its
+//  one import, recurrence.ts, is pure too) so it's testable via sucrase
+//  without tripping client.ts's env-var guard.
 //
 //  A block that crosses midnight (a one-off time_block whose start_time +
 //  duration_minutes pushes past 24:00, or a recurring schedule_blocks
@@ -15,6 +15,8 @@
 //  same minute is never double-counted across two days' pages, and nothing
 //  that actually happens after midnight goes missing from the agenda.
 // ─────────────────────────────────────────────────────────────────────────────
+
+import { addDaysIso, occursOn, type RepeatRule } from '../recurrence'
 
 export interface ProjectedBlock {
   /** Unique WITHIN one day's projection — a spillover row gets its own id
@@ -152,78 +154,49 @@ export function projectCalendarEventForDay(dateStr: string, event: CalendarEvent
   }
 }
 
-export interface RecurringBlockLike {
+export interface RecurringBlockLike extends RepeatRule {
   id:           string
   title:        string
   start_time:   string
   end_time:     string
-  days_of_week: number[]
-  /** First date this template may render on (migration 081, 'yyyy-MM-dd').
-   *  `undefined` = the column isn't there yet (pre-migration) — treated as
-   *  "no lower bound", i.e. exactly the old behaviour, so the UI degrades
-   *  to today's rendering instead of hiding every recurring block. */
-  effective_from?: string | null
-  /** Days this template is NOT projected on: each became a one-off plan of
-   *  its own (migration 142 — a training session moved, skipped or marked
-   *  done on its own). Missing before 142: no day is left out. */
-  except_dates?: readonly string[] | null
+  // days_of_week / repeat_* / effective_from / except_dates: the repeat rule
+  // (recurrence.ts). A missing effective_from (before 081) or except_dates
+  // (before 142) is no bound and no day left out — the old behaviour.
 }
 
-/** Local-time day shift on a 'yyyy-MM-dd' string. Deliberately NOT
- *  `toISOString().slice(0,10)` — that converts to UTC first, which lands on
- *  the wrong day for any timezone east of UTC during the evening. */
-function shiftDayStr(dateStr: string, delta: number): string {
-  const d = new Date(`${dateStr}T00:00:00`)
-  d.setDate(d.getDate() + delta)
-  const mm = String(d.getMonth() + 1).padStart(2, '0')
-  const dd = String(d.getDate()).padStart(2, '0')
-  return `${d.getFullYear()}-${mm}-${dd}`
-}
-
-/** Whether a template is allowed to produce an occurrence that STARTS on
- *  `dayStr`. 'yyyy-MM-dd' strings compare correctly lexicographically, so no
- *  Date parsing or timezone handling is involved. */
-function isEffectiveOn(b: RecurringBlockLike, dayStr: string): boolean {
-  return (!b.effective_from || dayStr >= b.effective_from) && !(b.except_dates ?? []).includes(dayStr)
-}
-
-/** Projects recurring schedule_blocks onto ONE calendar day (`dateStr`, whose
- *  weekday is `dayOfWeek`, 0=Sun…6=Sat). A template active on `dayOfWeek`
- *  contributes its normal occurrence, clipped at 24:00 if its own end_time
- *  crosses midnight (the overflow is projected again below, from the PREVIOUS
- *  weekday's own active-day check). A template active on the PREVIOUS weekday
- *  whose end_time crosses midnight contributes a spillover row for the portion
- *  that lands on `dateStr`.
+/** Projects recurring schedule_blocks onto ONE calendar day (`dateStr`,
+ *  'yyyy-MM-dd'). A template that occurs on `dateStr` (recurrence.occursOn —
+ *  its kind, effective_from and except_dates) contributes its normal
+ *  occurrence, clipped at 24:00 if its own end_time crosses midnight. A
+ *  template that occurs on the PREVIOUS day and crosses midnight contributes
+ *  a spillover row for the portion that lands on `dateStr`.
  *
  *  `effective_from` (migration 081) is what stops a template rendering into
- *  the PAST — the real bug this parameter exists for: schedule_blocks had no
- *  date bounds at all, so a "weekdays 16:30" template created today
- *  back-filled every Mon-Fri in recorded history with a block that never
- *  happened. Both branches are gated, and the spillover branch is gated on
- *  the PREVIOUS day (the day that occurrence actually starts on) — not on
- *  `dateStr` — so a template effective from today never leaks a
- *  "continued from yesterday" tail onto its own first day. */
+ *  the PAST — schedule_blocks had no date bounds at all, so a "weekdays
+ *  16:30" template created today back-filled every Mon-Fri in recorded
+ *  history. The spillover is asked about the PREVIOUS day (the day that
+ *  occurrence actually starts on) — not `dateStr` — so a template effective
+ *  from today never leaks a "continued from yesterday" tail onto its own
+ *  first day, and a day taken out (except_dates) takes its tail with it. */
 export function projectRecurringBlocksForDay(
   dateStr: string,
-  dayOfWeek: number,
-  scheduleBlocks: RecurringBlockLike[],
+  scheduleBlocks: readonly RecurringBlockLike[],
 ): ProjectedBlock[] {
   const out: ProjectedBlock[] = []
-  const previousDayOfWeek = (dayOfWeek + 6) % 7
-  const previousDateStr   = shiftDayStr(dateStr, -1)
+  const previousDateStr = addDaysIso(dateStr, -1)
 
   for (const b of scheduleBlocks) {
     const start = timeStrToHour(b.start_time)
     let end = timeStrToHour(b.end_time)
     if (end <= start) end += 24 // crosses midnight
 
-    if (b.days_of_week.includes(dayOfWeek) && isEffectiveOn(b, dateStr)) {
+    if (occursOn(b, dateStr)) {
       out.push({
         id: b.id, canonicalId: b.id, kind: 'recurring', title: b.title,
         startHour: start, endHour: Math.min(end, 24), taskId: null, spillover: false,
       })
     }
-    if (end > 24 && b.days_of_week.includes(previousDayOfWeek) && isEffectiveOn(b, previousDateStr)) {
+    if (end > 24 && occursOn(b, previousDateStr)) {
       out.push({
         id: `${b.id}__spillover`, canonicalId: b.id, kind: 'recurring', title: b.title,
         startHour: 0, endHour: Math.min(end - 24, 24), taskId: null, spillover: true,

@@ -62,8 +62,8 @@ export function useSessionActionItems(input: {
   const more = items.filter(i => !PRIMARY.has(i.key as SessionAction))
   if (weekly) {
     more.push(
-      { key: 'editWeekly', label: 'Change weekly plan…', icon: <CalendarCog />, onSelect: () => modal.open({ kind: 'schedule-block', id: weekly.templateId, config: { heading: 'Change weekly plan' } }) },
-      { key: 'deleteWeekly', label: 'Delete weekly plan', icon: <Trash2 />, danger: true, onSelect: () => { void a.deleteWeekly(weekly.templateId, plan.info.title).then(ok => { if (ok) onGone?.() }) } },
+      { key: 'editWeekly', label: 'Change repeating plan…', icon: <CalendarCog />, onSelect: () => modal.open({ kind: 'schedule-block', id: weekly.templateId, config: { heading: 'Change repeating plan' } }) },
+      { key: 'deleteWeekly', label: 'Delete repeating plan', icon: <Trash2 />, danger: true, onSelect: () => { void a.deleteWeekly(weekly.templateId, plan.info.title).then(ok => { if (ok) onGone?.() }) } },
     )
   }
   return { primary: items.filter(i => PRIMARY.has(i.key as SessionAction)), more, busy: a.busy }

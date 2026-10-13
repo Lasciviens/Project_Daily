@@ -1,10 +1,11 @@
 import type { ReactNode } from 'react'
 import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
 import {
-  ArrowDown, ArrowUp, Ban, CalendarClock, CornerDownRight, ExternalLink, ListTree, MoreHorizontal, Pencil, RotateCcw,
+  ArrowDown, ArrowUp, Ban, CalendarClock, CornerDownRight, ListTree, MoreHorizontal, Pencil, RotateCcw,
   SkipForward, Trash2, Undo2,
 } from 'lucide-react'
 import { cx } from '../../../shared/ui'
+import { GoogleTaskLinkButtons, GoogleTaskLinkMenuItems } from './GoogleTaskLinks'
 import type { Task } from '../types'
 
 export interface ToDoItemActionHandlers {
@@ -52,13 +53,7 @@ export function ToDoItemMenu({ task, ...h }: Props) {
         {h.onMoveDown && <Item icon={<ArrowDown />} onClick={h.onMoveDown} disabled={!h.canMoveDown}>Move down</Item>}
         <Item icon={<CornerDownRight />} onClick={h.onSetParent}>Set parent…</Item>
         <Item icon={<ListTree />} onClick={h.onMoveToList}>Move to list…</Item>
-        {task.google_web_view_link && (
-          <MenuItem>
-            <a href={task.google_web_view_link} target="_blank" rel="noreferrer" className="menu-item [&_svg]:h-4 [&_svg]:w-4">
-              <ExternalLink aria-hidden /> Open in Google Tasks
-            </a>
-          </MenuItem>
-        )}
+        <GoogleTaskLinkMenuItems task={task} />
         <div className="menu-sep" />
         {/* Cancel keeps a record, unlike Delete. Reopen re-fires migration
             071's "un-cancelled" trigger branch, which enqueues a fresh outbox
@@ -103,13 +98,7 @@ export function ToDoItemHoverActions({ task, ...h }: Props) {
       {h.training && !isCancelled && task.status !== 'done' && <HoverBtn label="Move to another day" onClick={h.training.onMove}><CalendarClock /></HoverBtn>}
       <HoverBtn label="Set parent task" onClick={h.onSetParent}><CornerDownRight /></HoverBtn>
       <HoverBtn label="Move to list" onClick={h.onMoveToList}><ListTree /></HoverBtn>
-      {task.google_web_view_link && (
-        <a
-          href={task.google_web_view_link} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()}
-          title="Open in Google Tasks" aria-label="Open in Google Tasks"
-          className="grid h-7 w-7 place-items-center rounded-control text-fg-faint transition-colors hover:bg-surface-hover hover:text-fg [&_svg]:h-3.5 [&_svg]:w-3.5"
-        ><ExternalLink aria-hidden /></a>
-      )}
+      <GoogleTaskLinkButtons task={task} />
       {h.training
         ? (!isCancelled
             ? task.status !== 'done' && <HoverBtn label="Skip (asks why)" onClick={h.training.onSkip} disabled={h.busy}><SkipForward /></HoverBtn>

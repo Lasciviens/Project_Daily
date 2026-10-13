@@ -96,9 +96,10 @@ const lead = (board, s) => B.resolveBoardLayout(board, s).lead
 check('Food Today: the totals rail leads (left) from 1280 up', [2, 3, 4].every(s => lead(F.FOOD_TODAY_BOARD, s) === 1
   && B.resolveBoardLayout(F.FOOD_TODAY_BOARD, s).columns[0].stack[0] === 'nutrition'))
 check('Food Today: the meal slots lead the main track from 1280 up', [2, 3, 4].every(s => B.resolveBoardLayout(F.FOOD_TODAY_BOARD, s).columns[1].stack[0] === 'meals'))
-check('Food Today at 1280/1469: the coach sits under the slots, so the totals rail is not the only tall column', eq(B.resolveBoardLayout(F.FOOD_TODAY_BOARD, 2).columns[1].stack, ['meals', 'coach']))
-check('Food Today: phone order — nutrition on top, then the slots → water → fits → week → stats → coach', eq(F.FOOD_TODAY_BOARD[1], ['nutrition', 'meals', 'water', 'fits', 'week', 'stats', 'coach']))
-check('Food Today: the nutrition stats sit right after the last 7 days at every step', [1, 2, 3, 4].every(s => { const cols = s === 1 ? [F.FOOD_TODAY_BOARD[1]] : B.resolveBoardLayout(F.FOOD_TODAY_BOARD, s).columns.map(c => c.stack); return cols.some(st => st.indexOf('stats') === st.indexOf('week') + 1 && st.includes('week')) }))
+check('Food Today at 1280/1469/1795: the last days and the coach sit under the slots in the wide main track', eq(B.resolveBoardLayout(F.FOOD_TODAY_BOARD, 2).columns[1].stack, ['meals', 'history', 'coach']))
+check('Food Today: phone order — nutrition on top, then the slots → water → fits → quick guess → last days → coach', eq(F.FOOD_TODAY_BOARD[1], ['nutrition', 'meals', 'water', 'fits', 'guess', 'history', 'coach']))
+check('Food Today: the last days sit right under the slots in main from 1280 up (owner 13.10.2026: not in the narrow rail)', [2, 3, 4].every(s => eq(B.resolveBoardLayout(F.FOOD_TODAY_BOARD, s).columns[1].stack.slice(0, 2), ['meals', 'history'])))
+check('Food Today: "what fits" (can be empty) always shares its track with the quick guess', [2, 3, 4].every(s => B.resolveBoardLayout(F.FOOD_TODAY_BOARD, s).columns.some(c => c.stack.includes('fits') && c.stack.includes('guess'))))
 check('Ingredients + Log + Wishes: their rail is sticky and first', [F.INGREDIENT_BOARD, T.LOG_BOARD, Wi.WISH_BOARD].every(b =>
   [2, 3, 4].every(s => { const l = B.resolveBoardLayout(b, s); return l.lead === 1 && l.columns[0].sticky })))
 check('Ingredients + Log + Wishes: the collection spans every other track', [F.INGREDIENT_BOARD, T.LOG_BOARD, Wi.WISH_BOARD].every(b =>

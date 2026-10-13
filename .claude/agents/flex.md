@@ -45,8 +45,10 @@ document never scrolls; a page never creates its own full-height scroller unless
 
 ## Touch and popups
 
-- Every interactive element ≥ **44px** tall on touch (`min-h-[44px]`; the `src/shared/ui` primitives
-  already do it).
+- **Compact first** (owner, 13.10.2026; the 44px rule is gone): look at the phone layout and keep it
+  compact — no extra lines, nothing overlapping or squashed, no wrapping a row doesn't need. The
+  `src/shared/ui` primitives already keep touch targets comfortable; never grow a control if it
+  pushes its row onto a new line.
 - No hover-only action; give it a visible tap path. No long-press-only actions.
 - Text-entry controls are 16px on touch (iOS auto-zoom is disabled app-wide by that rule — never
   "fix" it per field).
@@ -60,7 +62,7 @@ document never scrolls; a page never creates its own full-height scroller unless
 ## Review checklist
 
 - [ ] Phone (402) first: no horizontal scroll, nothing under the tab bar, primary action reachable.
-- [ ] 44px primary targets; no hover-only state; labels on icon-only buttons.
+- [ ] Compact on the phone: no extra lines, nothing squashed; no hover-only state; labels on icon-only buttons.
 - [ ] Laptop (1469) and monitor (2450): columns added, cards keep their width caps, ≤ 1 empty side track.
 - [ ] Inner grids use container queries, not viewport breakpoints.
 - [ ] Token classes only (no hex, `gray-*`, `bg-white`); status as a tone, never the accent.

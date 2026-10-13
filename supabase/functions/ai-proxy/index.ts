@@ -1536,10 +1536,10 @@ async function planMedia(supabase: AnyRecord, userId: string, args: AnyRecord): 
     ? `Watch: ${title} S${season ?? 1}E${episode ?? 1}`
     : `Watch: ${title}`
 
-  // Determine section from date
-  const today    = new Date().toISOString().slice(0, 10)
-  const tomorrow = new Date(Date.now() + 86400_000).toISOString().slice(0, 10)
-  const section  = date === today ? 'today' : date === tomorrow ? 'tomorrow' : 'this_week'
+  // The app's one rule (taskRules.sectionForDay): today's task is filed under
+  // Today, any other day's under Backlog — never the retired 'tomorrow' /
+  // 'this_week' sections. "Today" is the owner's day in Oslo, not UTC.
+  const section  = date === homeDay() ? 'today' : 'backlog'
 
   const { data: task, error: taskErr } = await supabase
     .from('tasks')
@@ -1628,15 +1628,26 @@ async function getCalendarEvents(supabase: AnyRecord, userId: string, args: AnyR
   const timeMin = new Date().toISOString()
   const timeMax = new Date(Date.now() + daysAhead * 86400_000).toISOString()
 
-  const eventsRes = await fetch(
-    `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${encodeURIComponent(timeMin)}&timeMax=${encodeURIComponent(timeMax)}&singleEvents=true&orderBy=startTime&maxResults=20`,
-    { headers: { Authorization: `Bearer ${access_token}` } }
-  )
+  // Every page: a repeating plan on Google (migration 147) is one instance a
+  // day, so the old 20-row cut dropped real meetings. Google may also return
+  // a short page while more remain — nextPageToken says so (events.list).
+  const items: AnyRecord[] = []
+  let pageToken: string | undefined
+  for (let page = 0; page < 8; page++) {
+    const params = new URLSearchParams({ timeMin, timeMax, singleEvents: 'true', orderBy: 'startTime', maxResults: '250' })
+    if (pageToken) params.set('pageToken', pageToken)
+    const eventsRes = await fetch(
+      `https://www.googleapis.com/calendar/v3/calendars/primary/events?${params}`,
+      { headers: { Authorization: `Bearer ${access_token}` } }
+    )
+    if (!eventsRes.ok) return { success: false, error: 'Failed to fetch calendar events' }
+    const eventsData = await eventsRes.json()
+    items.push(...(eventsData.items ?? []))
+    pageToken = typeof eventsData.nextPageToken === 'string' && eventsData.nextPageToken ? eventsData.nextPageToken : undefined
+    if (!pageToken) break
+  }
 
-  if (!eventsRes.ok) return { success: false, error: 'Failed to fetch calendar events' }
-  const eventsData = await eventsRes.json()
-
-  const events = (eventsData.items ?? []).map((e: AnyRecord) => ({
+  const events = items.map((e: AnyRecord) => ({
     id:       e.id,
     title:    e.summary,
     start:    e.start?.dateTime ?? e.start?.date,

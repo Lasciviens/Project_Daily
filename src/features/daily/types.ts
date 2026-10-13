@@ -1,3 +1,5 @@
+import type { RepeatKind, RepeatUnit } from './recurrence'
+
 export interface ScheduleBlock {
   id:           string
   user_id:      string
@@ -15,6 +17,23 @@ export interface ScheduleBlock {
   effective_from?: string
   /** Days left out (migration 142): each became a one-off plan of its own. */
   except_dates?: string[]
+  /** How it repeats (migration 146; missing before it = 'weekly'). The one
+   *  reader is recurrence.ts (occursOn) — see its header for each kind. */
+  repeat_kind?:     RepeatKind
+  /** 'interval' only: every N (1–99) days / weeks / months. */
+  repeat_interval?: number | null
+  repeat_unit?:     RepeatUnit | null
+  /** 'dates' only: the hand-picked days ('yyyy-MM-dd'). */
+  repeat_dates?:    string[] | null
+  /** Its ONE repeating Google Calendar event, in 'primary' (migration 147;
+   *  missing before it). The mapping is calendar/calendarSeries.ts. */
+  google_calendar_event_id?: string | null
+  /** The last day the event's RDATE list covers (the monthly kinds); null
+   *  when the event carries every occurrence. */
+  google_calendar_horizon?:  string | null
+  /** The zone the series is expanded in — set when it is created; only a
+   *  save from the planner changes it (background pushes reuse it). */
+  google_calendar_time_zone?: string | null
   created_at:   string
   updated_at:   string
 }
@@ -92,20 +111,31 @@ export interface UpdateTimeBlockInput {
   task_id?:                   string | null
 }
 
-export interface CreateScheduleBlockInput {
+/** The repeat columns a planner save writes (planModal.config's repeatRowFromForm). */
+export interface RepeatRow {
+  days_of_week:    number[]
+  repeat_kind:     RepeatKind
+  repeat_interval: number | null
+  repeat_unit:     RepeatUnit | null
+  repeat_dates:    string[] | null
+}
+
+export interface CreateScheduleBlockInput extends Partial<Omit<RepeatRow, 'days_of_week'>> {
   title:        string
   days_of_week: number[]
   start_time:   string
   end_time:     string
   color?:       string
   category?:    TimeBlockCategory
+  /** The first day (and the anchor of a monthly / every-N repeat); today when left out. */
+  effective_from?: string
 }
 
-export interface UpdateScheduleBlockInput {
+export interface UpdateScheduleBlockInput extends Partial<RepeatRow> {
   title?:        string
-  days_of_week?: number[]
   start_time?:   string
   end_time?:     string
   color?:        string
   category?:     TimeBlockCategory
+  effective_from?: string
 }

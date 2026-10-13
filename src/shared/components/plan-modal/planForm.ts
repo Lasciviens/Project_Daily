@@ -10,24 +10,25 @@ import type { Task, TaskSection, TaskPriority, TaskDomain } from '../../../featu
 import { DOMAIN_LABEL } from '../../../features/todo/domainColors'
 import {
   todayStr, nextPlanTime, DURATION_PRESETS, WEEKDAYS,
-  inferRecurrenceMode, minutesBetweenWrapping, defaultScheduleCategory,
+  repeatFormFromRow, minutesBetweenWrapping, defaultScheduleCategory, type RepeatFormFields,
 } from './planModal.config'
-import type { PlanDefaults, RecurrenceMode } from './planModal.types'
+import type { PlanDefaults } from './planModal.types'
 
-export interface PlanForm {
+export interface PlanForm extends RepeatFormFields {
   // Shared
   title: string
 
   // Schedule fields — used by mode 'schedule' AND 'recurring' (recurrence
   // controls which table a CREATE targets), and by mode 'task' when the
-  // "Add to schedule" toggle is on.
+  // "Add to schedule" toggle is on. The repeat fields (recurrence,
+  // weeklyDays, monthWeekday, customKind, repeatEvery, repeatUnit,
+  // repeatDates) come from RepeatFormFields. A repeating plan's `date` is its
+  // start (schedule_blocks.effective_from — the monthly / every-N anchor).
   date: string
   startTime: string
   duration: number
   customMin: string
   category: TimeBlockCategory
-  recurrence: RecurrenceMode
-  weeklyDays: number[]
   /** Schedule-mode-only: also create a linked Task on CREATE. Never shown/
    *  used in mode 'recurring' — there is no recurring-Task concept. */
   alsoCreateTask: boolean
@@ -74,14 +75,21 @@ export function buildInitialForm(
   return {
     title: scheduleBlock?.title ?? task?.title ?? timeBlock?.title ?? defaults?.title ?? '',
 
-    date:       timeBlock?.date ?? defaults?.date ?? today,
+    date:       timeBlock?.date ?? scheduleBlock?.effective_from ?? defaults?.date ?? today,
     startTime:  scheduleBlock?.start_time?.slice(0, 5) ?? timeBlock?.start_time?.slice(0, 5) ?? defaults?.startTime ?? nextPlanTime(),
     duration,
     customMin:  isPreset ? '' : String(duration),
     category:   scheduleBlock?.category ?? timeBlock?.category ?? defaults?.category
                 ?? defaultScheduleCategory(domain, task?.hevy_routine_id ? 'training_session' : task?.source_type),
-    recurrence: scheduleBlock ? inferRecurrenceMode(scheduleBlock.days_of_week) : (defaults?.recurrence ?? 'none'),
-    weeklyDays: scheduleBlock?.days_of_week ?? defaults?.daysOfWeek ?? WEEKDAYS,
+    recurrence:   defaults?.recurrence ?? 'none',
+    weeklyDays:   defaults?.daysOfWeek ?? WEEKDAYS,
+    monthWeekday: null,
+    customKind:   'every',
+    repeatEvery:  '2',
+    repeatUnit:   'week',
+    repeatDates:  [],
+    // A saved plan's own repeat (its kind, days, N, dates) wins.
+    ...(scheduleBlock ? repeatFormFromRow(scheduleBlock) : {}),
     // Editing an existing plan whose block already has a linked task (e.g.
     // Training's "Edit Session") must show that truthfully — previously this
     // only ever looked at `defaults`, which the edit call site never passes,
@@ -108,6 +116,9 @@ export function buildInitialForm(
     // opening an already-calendar-linked block seeded gcal=false, and
     // Save's "toggle went from checked to unchecked" branch unlinked the
     // real Google Calendar event the user never touched.
-    gcal: timeBlock ? !!timeBlock.google_calendar_event_id : (defaults?.gcal ?? false),
+    // A repeating plan's own series (147) seeds it the same way.
+    gcal: timeBlock ? !!timeBlock.google_calendar_event_id
+      : scheduleBlock ? !!scheduleBlock.google_calendar_event_id
+      : (defaults?.gcal ?? false),
   }
 }

@@ -8,6 +8,7 @@ Settled calls, one line each: what was decided, why, and where the full story li
 |---|---|---|
 | Wishes are their own table (`wish_items`), never rows in `tasks` or `shop_items`, and a new surface never hides existing rows (NEVER_HIDES) | Every `tasks.section` value leaks into the brief, the push and the lock screen; a season is a reminder, never a visibility rule (owner) | `docs/features/wishes.md` |
 | No density setting (Comfortable / Compact / Dense) | Tried and rejected | `docs/design/THEME.md` §6.6 |
+| No minimum button size (the 44px rule was dropped 13.10.2026): check the phone layout and keep it compact — no extra lines, nothing squashed | Owner: bigger buttons pushed rows onto new lines | `AGENTS.md` → Coding rules |
 | Connections live only on Settings → Subscriptions | One answer to "is X connected?"; only re-authentication may also appear at the point of failure | `docs/features/settings.md` |
 | The Home daily brief is rule-based, not AI (26.09.2026) | Same data, same text, no cost; the AI digest was deleted | `docs/features/home.md` |
 | The Weekly Review card was removed on request; `ai_reviews` stays as an unused table | Owner request | `docs/features/ai.md` |
@@ -37,6 +38,7 @@ Settled calls, one line each: what was decided, why, and where the full story li
 | Recipes are built in Supabase; RecipeSage was rejected | AGPL and a separate server | `docs/features/food.md` |
 | Food totals are derived from their source, never frozen at log time (26.09.2026) | The owner eats by these numbers | `docs/features/food.md` |
 | Wishes: no period tables, recurring MM-DD windows, seasonal reset, map or geofence | See the list | `docs/features/wishes.md` |
+| Game pictures in Storage are low resolution only (covers, ScreenScraper copies); the ES-DE originals stay on the RP6's SD card (13.10.2026) | The 1 GB storage wall; the owner deleted the uploaded originals | `docs/termux-widgets.md` |
 | Exercise GIFs stay on the public CDN | A full mirror is ~370 MB against the 1 GB storage wall | `docs/features/training.md` |
 
 ## Code that looks removable but isn't

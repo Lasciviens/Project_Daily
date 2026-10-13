@@ -10,6 +10,7 @@
  *   devRequestPrompt.ts   (the prompt for Claude, also from an unsaved draft)
  *   useFloatingWindow.ts  (keeping the composer window on screen)
  *   composer/windowSize.ts (resizing the request window)
+ *   components/propertyPillsPlacement.ts (where a detail pill's dropdown opens)
  *   pick/componentSourceTransform.ts (the build-time data-src stamps)
  * Against the REAL un-mocked modules via sucrase (no unit-test runner by convention).
  *
@@ -754,6 +755,30 @@ console.log('\n29 · Editing a re-check note (keys hash the words only)')
   check('the prompt remembers the request window it was built in', st.prompt.from.kind === 'edit' && st.prompt.from.id === 'a')
   check('a new draft or nothing', rules.sanitizeDraftState({ prompt: { from: { kind: 'new' } } }).prompt.from.kind === 'new' && rules.sanitizeDraftState({ prompt: { from: { kind: 'edit' } } }).prompt.from === null && rules.sanitizeDraftState({}).prompt.from === null)
   check('sameTarget', rules.sameTarget({ kind: 'new' }, { kind: 'new' }) && rules.sameTarget({ kind: 'edit', id: 'a' }, { kind: 'edit', id: 'a' }) && !rules.sameTarget({ kind: 'edit', id: 'a' }, { kind: 'edit', id: 'b' }) && !rules.sameTarget(null, { kind: 'new' }) && !rules.sameTarget({ kind: 'new' }, { kind: 'edit', id: 'a' }))
+}
+
+console.log('\n31 · Where a detail pill\'s dropdown opens')
+{
+  const { placeDropdown, DROPDOWN_SPACING } = require('../src/features/devRequests/components/propertyPillsPlacement')
+  const vp = { width: 1795, height: 939 }
+  const pill = { top: 300, bottom: 332, left: 1400 }
+  const fits = placeDropdown(pill, { width: 150, height: 200 }, vp)
+  check('room below → it opens below, 4px under the pill', !fits.above && fits.top === 336 && fits.left === 1400 && fits.maxHeight === DROPDOWN_SPACING.cap, JSON.stringify(fits))
+  const low = { top: 763, bottom: 795, left: 1420 }
+  const up = placeDropdown(low, { width: 150, height: 294 }, vp)
+  check('no room below → above the pill, its bottom 4px over it', up.above && up.top + 294 === 759 && up.maxHeight === DROPDOWN_SPACING.cap, JSON.stringify(up))
+  const small = placeDropdown(low, { width: 150, height: 120 }, vp)
+  check('a short list that fits below stays below', !small.above && small.top === 799 && small.maxHeight === 132, JSON.stringify(small))
+  const tall = placeDropdown({ top: 100, bottom: 132, left: 20 }, { width: 190, height: 1200 }, vp)
+  check('a long list is capped and scrolls', !tall.above && tall.maxHeight === DROPDOWN_SPACING.cap, JSON.stringify(tall))
+  const land = placeDropdown({ top: 212, bottom: 256, left: 132 }, { width: 150, height: 330 }, { width: 874, height: 402 })
+  check('a short screen: the side with more room, height cut to it', land.above && land.maxHeight === 200 && land.top === 8, JSON.stringify(land))
+  const edge = placeDropdown({ top: 300, bottom: 332, left: 1700 }, { width: 190, height: 100 }, vp)
+  check('kept 8px inside the right edge', edge.left === 1795 - 8 - 190, JSON.stringify(edge))
+  const wide = placeDropdown({ top: 300, bottom: 332, left: 10 }, { width: 900, height: 100 }, { width: 402, height: 874 })
+  check('never past the left margin', wide.left === 8, JSON.stringify(wide))
+  const none = placeDropdown({ top: 4, bottom: 900, left: 10 }, { width: 100, height: 100 }, { width: 402, height: 874 })
+  check('no room on either side → zero height, never negative', none.maxHeight === 0, JSON.stringify(none))
 }
 
 console.log(`\n${passed} passed, ${failed} failed`)

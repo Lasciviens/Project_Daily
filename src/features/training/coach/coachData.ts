@@ -5,6 +5,7 @@ import {
 import { fetchHealthMetricSeries, type HealthMetric } from '../../health/api/healthApi'
 import { fetchBodyweightSeries } from '../../health/api/bodyweightApi'
 import { fetchScheduleBlocks, fetchTrainingBlocksRange } from '../../daily/api/scheduleApi'
+import { weeklyDaysPerWeek } from '../../daily/recurrence'
 import { fetchTrainingSkips } from '../api/trainingSkipsApi'
 import { fetchDayTargets, type NutritionGoal } from '../../daily/api/dayTargetsApi'
 import { lastTrainedByRoutine } from '../progress-engine'
@@ -71,7 +72,8 @@ export async function gatherCoachData(): Promise<CoachData> {
   const balance = coachBalance({
     history, templates, routines, programRoutineIds: currentProgram.map(p => p.routine_id),
     trainingDaysPerWeek: profile?.training_days_per_week ?? null,
-    scheduledTrainingDays: new Set(scheduleBlocks.filter(b => b.category === 'training').flatMap(b => b.days_of_week)).size,
+    // Every N weeks counts 1/N of its days (recurrence.weeklyDaysPerWeek).
+    scheduledTrainingDays: weeklyDaysPerWeek(scheduleBlocks.filter(b => b.category === 'training')),
     today,
   })
 

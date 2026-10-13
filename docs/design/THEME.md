@@ -33,7 +33,7 @@
    add it to the primitive — don't fork it.
 4. **Elements content-sized; pages fill width with columns.** A card never stretches because the
    screen is wide; the page adds columns (`PageBoard`, §6.3, §6.6 W7).
-5. **Mobile-first, touch-honest.** Every interactive element has a ≥44px hit area on touch.
+5. **Mobile-first and compact.** Check the phone layout: no extra lines, nothing overlapping or squashed, the space used. No minimum button size (owner, 13.10.2026); the primitives keep touch targets comfortable.
    Hover is an enhancement (`@media (hover: hover)`), never the only way to reach an action.
 6. **UI → hook → api → Supabase.** Components never import the Supabase client. Popups load their
    own data by id. Mutations own their feedback and their cache invalidation (§10).
@@ -189,8 +189,12 @@ draw the caret where the sheet was before it animated in); with a mouse you type
 `__.__.____` mask (a key writes or clears one digit and nothing shifts; `07122026`, `071226`,
 `7.12.26`, `7-12-2026`, `7/12/26` and pasted dates are taken; a two-digit year is 20yy; an
 impossible or out-of-range date shows red and isn't saved — `dateMask.ts`, `verify-date-mask`) or
-open the calendar from its icon. A chart's month bars may name the month ("January", no year when
-the year is already picked); a date never does.
+open the calendar from its icon. The calendar's heading opens a year list (opened on the shown
+year; ↑/↓, Page Up/Down, Home/End) beside a Jan–Dec grid, in the same box: a year moves the view
+at once, a month goes back to the days, the arrows step a year meanwhile and Escape returns to the
+days — ten years back is three taps, not 120 (`dateCalendarMath.ts`, `verify-date-calendar`).
+A chart's month bars may name the month ("January", no year when the year is already picked); a
+date never does.
 
 **Poster covers** (Media): one `PosterTile`. Status is a belt across the top-left corner using `.poster-belt` + `data-tone` — fixed dark colours, not theme tones, because it sits on artwork in both themes and must keep white text ≥ 4.5:1; its size is in `cqw` of the cover. A score banner runs along the bottom. The user's own rating is never drawn on a cover.
 
@@ -416,8 +420,14 @@ app's own colours, never a photo. One shared way, so every page behaves the same
   from the tokens; also measured on real pixels at 393 and 1469px in both themes).
   No animation, no timers, no network; `aria-hidden`, `pointer-events-none`.
 - **Colours.** Only `HERO.accent` / `HERO.muted` (fills) and `HERO.hole` (the card surface, for cut-
-  outs), plus their `…Line` strokes — tokens, so both themes and every accent work. This is the one
-  place the accent is decoration.
+  outs), plus their `…Line` strokes — tokens, so both themes and every accent work. This art (and
+  the glance tiles' corner art below) is the one place the accent is decoration.
+- **Home's glance tiles** carry a small corner version (owner, 13.10.2026): `GlanceCarousel`'s
+  `art` takes a motif from `src/features/home/components/glanceMotifs.tsx` (192 × 88 canvas, the
+  subject in its right half) and `GlanceArt` draws it in the tile's top-right corner, in the band
+  above its first line (2.75rem tall, at most 6rem and a third of the tile wide) — right of the
+  label, behind the chevron — so it is never under text, adds no height and always takes the
+  free-space opacity (`scripts/verify-glance-art.cjs`).
 - **A new page's art:** one `src/features/<feature>/components/<Feature>HeroArt.tsx` returning SVG
   content drawn on the 640 × 140 canvas (`HERO_ART_VIEWBOX`): a few dozen simple shapes, the subject
   in the right half (the left 40 % fades), something quieter on the left; pass it as `art`. A
@@ -560,7 +570,10 @@ fix (e.g. treat a genres field as string-or-array, default missing counts).
 **Non-modal floating windows** (the request composer) are not Dialogs: render them with `createPortal`
 straight into `<body>` (outside `#root`), which Headless UI never marks inert and never treats as an
 outside click. Drag with `useFloatingWindow` (`src/shared/hooks/`). Mark such UI with
-`data-dev-request-ui` so page picking ignores it.
+`data-dev-request-ui` so page picking ignores it. A dropdown inside such a window is a `Listbox`
+**without `anchor`** (an anchored list is always portalled into `#headlessui-portal-root`, onto the
+menu layer — behind the window and any popup under it), `modal={false}`, placed `position: fixed` at
+its button so the window's scroll area doesn't clip it (`PropertyPills` + `propertyPillsPlacement.ts`).
 
 ---
 
@@ -702,7 +715,7 @@ chrome. English in the product (`AGENTS.md`).
 
 ## 12. Accessibility & touch
 
-- 44px minimum hit area on touch (`[@media(pointer:coarse)]:min-h-[44px]` is built into the primitives).
+- Touch targets: the primitives grow on touch screens (`[@media(pointer:coarse)]:min-h-[44px]`); a custom control never grows if that pushes its row onto a new line — compact wins.
 - Visible keyboard focus (`:focus-visible` accent outline following the control's radius); inputs use
   the accent halo instead.
 - Icon-only buttons have a label; decorative icons are `aria-hidden`.
@@ -717,7 +730,7 @@ chrome. English in the product (`AGENTS.md`).
 - [ ] Only token classes (no hex, no `gray-*`/`amber-*`/`bg-white`, no `text-[13px]`-style sizes).
 - [ ] Built from `src/shared/ui` primitives; status via tones; charts via `useChartColors`.
 - [ ] Works at 402 / 1469 / 2450px, light and dark, with no horizontal overflow.
-- [ ] Every interactive element ≥ 44px on touch; hover-only actions have a touch path.
+- [ ] Checked in the phone layout: compact, no extra lines, nothing squashed; hover-only actions have a touch path.
 - [ ] Loading, empty and error states present.
 - [ ] Entity popups opened with `useEntityModal`; local sheets use `ModalShell`; no native dialogs.
 - [ ] Data through hooks → api; keys from `qk`; stale from `STALE`; writes via `useMutationWithFeedback`

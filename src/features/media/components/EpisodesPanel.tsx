@@ -3,7 +3,8 @@ import { useQueryClient } from '@tanstack/react-query'
 import { withProgress } from '../../../shared/hooks/useMutationWithFeedback'
 import { episodeAirDates, useSeasonDetails } from '../hooks/useTMDB'
 import { useWatchedWhenPrompt } from '../hooks/useWatchedWhenPrompt'
-import { resolveWatchedAt } from '../watchedWhen'
+import { offersSpread, resolveWatchedAt } from '../watchedWhen'
+import type { SpreadMode } from '../spreadWatched'
 import { useWatchedEpisodes, useMarkEpisodeWatched, useSetEpisodeDates, useSetEpisodePlays } from '../hooks/useWatchedEpisodes'
 import { usePlaysPrompt } from '../hooks/usePlaysPrompt'
 import { CalendarDays, CalendarPlus, CalendarRange, Check, ListChecks, Repeat, RotateCcw, SlidersHorizontal, Undo2 } from 'lucide-react'
@@ -24,13 +25,17 @@ interface Props {
   tvEntryId:  string
 }
 
+type EpisodeKey = { season: number; episode: number }
+
 export function EpisodesPanel({ tv, tvEntryId }: Props) {
   const TODAY = todayStr()
   const realSeasons = (tv.seasons ?? []).filter(s => s.season_number > 0)
   const [season,    setSeason]    = useState(realSeasons[0]?.season_number ?? 1)
   const [selected,  setSelected]  = useState<Set<number>>(new Set())
   const [marking,   setMarking]   = useState(false)
-  const [spreading, setSpreading] = useState(false)
+  // The Spread popup: the Spread button (a from–to range), or "Spread over
+  // dates…" in the when-watched sheet for a fixed set of episodes.
+  const [spread,    setSpread]    = useState<{ only?: EpisodeKey[]; mode: SpreadMode } | null>(null)
 
   const { data: seasonData, isLoading } = useSeasonDetails(tv.id, season)
   const { data: watched = [] }          = useWatchedEpisodes(tvEntryId)
@@ -38,7 +43,7 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
   const setDates                        = useSetEpisodeDates()
   const modal                           = useEntityModal()
   const qc                              = useQueryClient()
-  const { ask, dialog }                 = useWatchedWhenPrompt()
+  const { ask, askMany, dialog }        = useWatchedWhenPrompt()
   const plays$                          = usePlaysPrompt()
   const setPlays                        = useSetEpisodePlays()
 
@@ -78,7 +83,7 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
     return runMarkRefs(nums.map(episode => ({ season, episode })), mode, loading, success)
   }
 
-  async function runMarkRefs(episodes: { season: number; episode: number }[], mode: 'watched' | 'again' | 'unwatched', loading: string, success: string) {
+  async function runMarkRefs(episodes: EpisodeKey[], mode: 'watched' | 'again' | 'unwatched', loading: string, success: string) {
     if (episodes.length === 0) return
     setMarking(true)
     const ok = await withProgress(
@@ -98,7 +103,7 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
   // TMDB's episode count, this season by its list) that isn't marked yet, plus
   // this one. Episodes already watched keep their date and plays.
   async function watchUpTo(epNum: number) {
-    const refs: { season: number; episode: number }[] = []
+    const refs: EpisodeKey[] = []
     for (const s of realSeasons) {
       if (s.season_number >= season) continue
       for (let e = 1; e <= s.episode_count; e++) refs.push({ season: s.season_number, episode: e })
@@ -107,33 +112,40 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
     const todo = refs.filter(r => !watchedAll.has(`${r.season}x${r.episode}`))
     if (todo.length === 0) return
     const label = `S${String(season).padStart(2, '0')}E${String(epNum).padStart(2, '0')}`
-    const timed = await withWhen(todo, `Up to ${label} · watched ones keep their date`)
+    const timed = await withWhen(todo, `Up to ${label} · watched ones keep their date`, 'watched')
     if (!timed) return
     await runMarkRefs(timed, 'watched', `Marking up to ${label}…`, `Watched up to ${label}`)
   }
 
-  const epLabel = (r: { season: number; episode: number }) => `S${r.season} · E${r.episode}`
+  const epLabel = (r: EpisodeKey) => `S${r.season} · E${r.episode}`
 
   // Marks exactly the skipped episodes, through the same when-watched prompt.
   async function markGaps() {
-    const timed = await withWhen(gaps.map(episode => ({ season, episode })), 'Marks only these episodes')
+    const timed = await withWhen(gaps.map(episode => ({ season, episode })), 'Marks only these episodes', 'watched')
     if (!timed) return
     await runMarkRefs(timed, 'watched', `Marking ${plural(timed.length)} as watched…`, 'Marked as watched')
   }
 
   // Trakt's "when did you watch it?": each episode gets its own time — with
-  // Release date, its own air date. Null = cancelled.
+  // Release date, its own air date. Null = cancelled, or handed to the Spread
+  // popup: for several episodes the sheet's 5th option, "Spread over dates…",
+  // opens it for exactly these episodes, saving as `mode` says.
   // `strict`: changing a date — an episode with no known air date is left as
   // it is instead of getting today's date.
-  async function withWhen(refs: { season: number; episode: number }[], verb: string, strict = false) {
+  async function withWhen(refs: EpisodeKey[], verb: string, mode: SpreadMode, strict = false) {
     const one = refs.length === 1 ? refs[0] : null
     const air = one && one.season === season ? (seasonData?.episodes ?? []).find(e => e.episode_number === one.episode)?.air_date : null
-    const when = await ask({
+    const prompt = {
       title: one ? `${tv.name} · ${epLabel(one)}` : `${tv.name} · ${refs.length} episodes`,
       subtitle: verb,
       releaseLabel: one ? (air ? formatDate(air) : null) : 'each air date',
-    })
+    }
+    const when = offersSpread(refs.length) ? await askMany(prompt) : await ask(prompt)
     if (!when) return null
+    if (when.kind === 'spread') {
+      setSpread({ only: refs, mode })
+      return null
+    }
     const now = new Date().toISOString()
     const dates = when.kind === 'release' ? await episodeAirDates(qc, tv.id, refs) : new Map<string, string | null>()
     const known = strict && when.kind === 'release' ? refs.filter(r => !!dates.get(`${r.season}x${r.episode}`)) : refs
@@ -146,15 +158,15 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
   // useMarkEpisodeWatched refreshes progress + the schedule (the DB trigger
   // deletes a watched episode's planned block, migration 043) and toasts errors.
   async function markSelectedWatched() {
-    const refs = await withWhen(selectedUnwatched.map(episode => ({ season, episode })), 'When did you watch it?')
+    const refs = await withWhen(selectedUnwatched.map(episode => ({ season, episode })), 'When did you watch it?', 'watched')
     if (refs) await runMarkRefs(refs, 'watched', `Marking ${plural(refs.length)} as watched…`, 'Marked as watched')
   }
   async function watchSelectedAgain() {
-    const refs = await withWhen(selectedWatched.map(episode => ({ season, episode })), 'When did you watch it again?')
+    const refs = await withWhen(selectedWatched.map(episode => ({ season, episode })), 'When did you watch it again?', 'again')
     if (refs) await runMarkRefs(refs, 'again', `Counting another play of ${plural(refs.length)}…`, 'Play counted')
   }
   // Change when episodes already watched were watched (Release date = each one's own air date).
-  async function changeDates(refs: { season: number; episode: number }[], verb: string) {
+  async function changeDates(refs: EpisodeKey[], verb: string) {
     // Trakt keeps a date per play; the app keeps one per episode, so every play gets the new date.
     const multi = watched.filter(w => (w.repeat_count ?? 0) > 0 && refs.some(r => r.season === w.season_number && r.episode === w.episode_number)).length
     if (multi > 0 && !(await modal.confirm({
@@ -162,7 +174,7 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
       message: 'The app keeps one date per episode, so every play of those episodes gets the new date — here and on Trakt.',
       confirmLabel: 'Change anyway',
     }))) return
-    const timed = await withWhen(refs, verb, true)
+    const timed = await withWhen(refs, verb, 'redate', true)
     if (!timed || timed.length === 0) return
     setMarking(true)
     const ok = await withProgress(
@@ -238,14 +250,16 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
     <div>
       {dialog}
       {plays$.dialog}
-      {spreading && (
+      {spread && (
         <SpreadWatchedSheet
           tvId={tv.id}
           tvName={tv.name}
           tvEntryId={tvEntryId}
           seasons={realSeasons.map(s => s.season_number)}
           defaultRuntime={tv.episode_run_time?.[0] ?? null}
-          onClose={() => setSpreading(false)}
+          only={spread.only}
+          mode={spread.mode}
+          onClose={saved => { setSpread(null); if (saved) setSelected(new Set()) }}
         />
       )}
       <SectionLabel className="mb-2">Episodes</SectionLabel>
@@ -284,7 +298,7 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
             )
           })}
         </div>
-        <Button size="sm" variant="ghost" icon={<CalendarRange />} onClick={() => setSpreading(true)} disabled={marking} title="Mark a run of episodes watched across a period you remember — with breaks">
+        <Button size="sm" variant="ghost" icon={<CalendarRange />} onClick={() => setSpread({ mode: 'watched' })} disabled={marking} title="Mark a run of episodes watched across a period you remember — with breaks">
           <span className="hidden sm:inline">Spread</span><span className="sr-only sm:hidden">Spread watched dates</span>
         </Button>
         {watched.length > 0 && (
@@ -394,7 +408,9 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
                     </span>
                     <Truncate className={`min-w-0 text-body font-medium ${isWatched ? 'text-fg-muted' : 'text-fg'}`}>{ep.name}</Truncate>
                   </span>
-                  <span className="mt-0.5 flex items-center gap-2 text-micro text-fg-muted tabular-nums">
+                  {/* Each fact stays whole; on a narrow row the plays pill wraps under
+                      the date instead of "Last watched" breaking over three lines. */}
+                  <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-micro text-fg-muted tabular-nums [&>*]:whitespace-nowrap">
                     {runtime && <span>{runtime}m</span>}
                     {ep.air_date && (
                       <span>{formatDate(ep.air_date)}</span>

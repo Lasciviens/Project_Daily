@@ -13,7 +13,8 @@ import { StepsSection } from '../components/StepsSection'
 import { EnergySection } from '../components/EnergySection'
 import { HeartSection } from '../components/HeartSection'
 import { VitalsReadingCard } from '../components/VitalsReadingCard'
-import { BodyScaleCard, BodyWeightTrendCard } from '../components/BodySection'
+import { BodyScaleCard } from '../components/BodySection'
+import { WeeklyChangesCard } from '../components/body/WeeklyChangesCard'
 import { HevyMeasurementsCard } from '../components/body/HevyMeasurementsCard'
 import { CardioFitnessSection } from '../components/CardioFitnessSection'
 import { HealthWorkoutsList } from '../components/HealthWorkoutsList'
@@ -135,10 +136,10 @@ export function HealthPage() {
           )}
 
           {section === 'body' && (
-            // Scale readings only in the charts and the trend; the Hevy log keeps its own card.
+            // Scale readings only in the charts and the weekly changes; the Hevy log keeps its own card.
             <SectionPanel id="body" layout={BODY_BOARD} sections={{
               scale: <Guard name="Body"><BodyScaleCard range={range} /></Guard>,
-              trend: <Guard name="Weight trend"><BodyWeightTrendCard range={range} /></Guard>,
+              weekly: <Guard name="Weekly changes"><WeeklyChangesCard range={range} /></Guard>,
               hevy: <Guard name="Logged in Hevy"><HevyMeasurementsCard anchor={anchor} /></Guard>,
             }} />
           )}

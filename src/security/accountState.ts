@@ -1,5 +1,6 @@
 import { supabase } from '../integrations/supabase/client'
 import { useCalendarStore } from '../app/store'
+import { SERIES_PENDING_KEY } from '../features/calendar/calendarSeries'
 
 // What signing out must leave behind (security audit 10.10.2026). Before this,
 // sign-out only ended the Supabase session: the Google token, the AI chat, the
@@ -50,6 +51,9 @@ export async function refreshThisDevicePush(): Promise<void> {
 export async function clearAccountState(): Promise<void> {
   try { useCalendarStore.getState().setAccessToken(null) } catch { /* */ }
   try { localStorage.removeItem('lasci-ai-chat') } catch { /* */ }
+  try { localStorage.removeItem('lasci.googleTasks.warnedError') } catch { /* */ }
+  // Repeating-plan Calendar pushes waiting for a retry (they name this account's plans).
+  try { localStorage.removeItem(SERIES_PENDING_KEY) } catch { /* */ }
   try {
     if (typeof caches !== 'undefined') await caches.delete('supabase-api')
   } catch { /* */ }

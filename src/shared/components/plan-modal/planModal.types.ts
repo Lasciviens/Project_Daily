@@ -46,7 +46,11 @@ export type TaskField =
   | 'scheduled'
   | 'gcal'
 
-export type RecurrenceMode = 'none' | 'daily' | 'weekdays' | 'weekly'
+/** The planner's Repeat choice. 'custom' is "every N days / weeks / months"
+ *  or "picked dates" (CustomRepeatKind). Stored as schedule_blocks' repeat
+ *  columns by planModal.config's repeatRowFromForm (migration 146). */
+export type RecurrenceMode = 'none' | 'daily' | 'weekdays' | 'weekly' | 'monthly' | 'custom'
+export type CustomRepeatKind = 'every' | 'dates'
 
 // ── Config — drives layout/visibility WITHOUT touching the modal ──────────────
 //  A caller hides or locks fields purely from its own file via this object.

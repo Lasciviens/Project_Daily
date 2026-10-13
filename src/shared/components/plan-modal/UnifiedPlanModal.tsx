@@ -21,6 +21,111 @@
 //  └─────────────────────────────────────────────────────────────────────────────┘
 //
 //  CHANGELOG
+//  2026-10-13 · v17 · Review fixes on v16 (repeating plans on Google):
+//                    (a) The series keeps a zone of its own
+//                    (schedule_blocks.google_calendar_time_zone, 147): a save
+//                    from this editor sets it from the device (Europe/Oslo
+//                    when none); every background push reuses it, so opening
+//                    the app abroad never re-zones a plan.
+//                    (b) The link is written only while the plan has no
+//                    series or this one, and cleared only while it still
+//                    names this one (a second tab or a stale clear never wins).
+//                    (c) A day of a plan turned into a slot (142) is carried to
+//                    Google in the background after the task and its link —
+//                    Done / Move / Skip no longer wait for Google; the slot's
+//                    own event is made only once Google took the EXDATE, else
+//                    the plan goes on a per-device retry list (said once,
+//                    retried on the next app open, cleared on sign-out). A
+//                    skipped day comes off Google; Undo skip puts it back.
+//                    A failed relink after Undo is retried the same way (no
+//                    "open it and save" note any more).
+//                    (d) ScheduleTab renders the checkbox block only with a
+//                    row in it (a repeat with Google not connected left an
+//                    empty 16px gap on the phone).
+//  2026-10-13 · v16 ·Repeating plans on Google Calendar (migration 147) +
+//                    four review fixes on v15:
+//                    (a) "Add to Google Calendar" now shows for a repeat too —
+//                    on create (Schedule tab with a repeat picked) and in the
+//                    repeating-plan editor ("Added to Google Calendar" once
+//                    linked). A plan becomes ONE repeating event in 'primary'
+//                    (calendar/calendarSeries.ts: RRULE for weekly / every N
+//                    days / weeks; an RDATE list for monthly / every N months
+//                    / picked dates, the monthly kinds a year ahead and pushed
+//                    again when the app opens with < 90 days left;
+//                    except_dates → EXDATE). The save hooks
+//                    (useCreate/UpdateScheduleBlock, `gcal`) add it, bring it
+//                    up to date on every save, or remove it when unticked —
+//                    the typed 'linked' / 'not_linked' / 'unknown' status,
+//                    deterministic event ids (blockEventId on the plan's id),
+//                    and a Calendar failure never undoes the local save. With
+//                    no Google connection (`gcal` undefined) the link is left
+//                    as it is. The form seeds gcal from the plan's own
+//                    google_calendar_event_id (an untouched save never
+//                    removes it). Delete removes the series (outbox safety
+//                    net, 147's trigger); Undo makes a new one. A day turned
+//                    into a one-off plan (142) gets an EXDATE and its own event
+//                    (trainingPlanApi.ensurePlanTask → carryOccurrenceToCalendar).
+//                    (b) Editing a saved plan shows "Starts" when the choice
+//                    counts from it (Monthly, every N days / weeks / months):
+//                    a weekly plan saved 05.03 turned Monthly used to anchor on
+//                    the 5th with no way to pick the 13th. A change of what it
+//                    counts from moves Starts to today (back to the saved start
+//                    when the choice returns to it, or to one without an
+//                    anchor — withStartForRepeatChange), and the save writes
+//                    effective_from from it (editedRepeatStart); any other
+//                    choice keeps the saved start as before.
+//                    (c) The summary + "Next …" line shows only for Monthly
+//                    and Custom — for Every day / Weekdays / Weekly it only
+//                    repeated the select and circles (an extra phone line).
+//                    (d) Custom → Dates is capped at 366 picks (146's CHECK) in
+//                    recurrenceProblem with a plain message, instead of a raw
+//                    constraint error on save.
+//                    (e) Outside this folder, the same review: a plan may be
+//                    monthly / every N / picked dates now, so "weekly plan"
+//                    became "repeating plan" (Daily's and Training's delete:
+//                    "Repeating plan deleted"; Training's "Change / Delete
+//                    repeating plan"), a workout's plan note reads the plan's
+//                    own repeat ("Planned every 2 weeks on Tue and Thu,
+//                    16:45", repeatSummary), and the coach / Program tab count
+//                    an every-N-weeks plan's days as 1/N of a training day
+//                    a week (recurrence.weeklyDaysPerWeek).
+//  2026-10-13 · v15 · More ways to repeat (migration 146) + owner's requests:
+//                    (a) Repeat is ONE line at every width — a select with No
+//                    repeat · Every day · Weekdays · Weekly · Monthly · Custom
+//                    — plus the M–S day circles (Monday first; stored 0=Sun
+//                    numbering unchanged; full day name on hover). Every day /
+//                    Weekdays light their circles; a tap turns the choice into
+//                    the set it now is (toggleRepeatDay). Picking Weekly with
+//                    no set of its own starts from the plan's weekday.
+//                    Monthly = the chosen weekday nearest the start's date, or
+//                    that date; Custom = every N days / weeks / months, or
+//                    picked dates (DateCalendar). A one-line summary and the
+//                    next three days come from recurrence.ts — the same rule
+//                    every projection uses. Validation is recurrenceProblem
+//                    (hasValidRecurrenceSelection still guards weekly).
+//                    (b) Saves write schedule_blocks' repeat columns
+//                    (repeatRowFromForm: "every 1 week" is stored as weekly,
+//                    "every 1 month" as monthly). A new repeat starts on the
+//                    planner's date (effective_from = form.date, labelled
+//                    "Starts"), no longer always today; picked dates start at
+//                    the earliest pick if that is earlier. Editing keeps the
+//                    saved start (only an earlier picked date moves it).
+//                    Before 146 is applied a weekly-style save still works
+//                    and the new kinds fail with "migration 146 not applied"
+//                    (scheduleApi).
+//                    (c) The date stepper lost its Today / Tomorrow chips.
+//                    (d) sectionForDate (the "Also add to Tasks" task and
+//                    Training's planned task) and Daily's day section
+//                    (taskRules.sectionForDay) no longer write the retired
+//                    Tomorrow / This week: any day but today files under
+//                    Backlog, so "(legacy)" shows only on an old row.
+//                    (e) Deleting a repeating plan says "Repeating plan
+//                    deleted" (it may not be weekly any more).
+//                    (f) The Google Task list field resolves/creates its list
+//                    with ensureValidCalendarToken() instead of the stored
+//                    token as is — an expired token used to fail with 401
+//                    when a new list name was typed; no valid connection now
+//                    says so in the same "Couldn't set up …" toast.
 //  2026-10-13 · v14 · One delete flow + faster saves (migration 144):
 //                    Delete goes through the shared delete hooks' run(): it
 //                    asks, deletes with one call that returns what went with
@@ -262,6 +367,7 @@ import { useCreateTask, useUpdateTask, useDeleteTask } from '../../../features/t
 import { useGoogleTaskLists } from '../../../features/todo/hooks/useGoogleTaskLists'
 import { resolveOrCreateGoogleTaskListId } from '../../../features/todo/api/googleTasksSync'
 import { linkBlockCalendarEvent } from '../../../features/calendar/api/linkBlockCalendarEvent'
+import { ensureValidCalendarToken } from '../../../features/calendar/api/calendarTokenSync'
 import { logError } from '../../utils/logError'
 import { withProgress } from '../../hooks/useMutationWithFeedback'
 import { invalidate } from '../../query'
@@ -273,9 +379,9 @@ import { TaskTab } from './TaskTab'
 import { RecurringTab } from './RecurringTab'
 import { buildInitialForm } from './planForm'
 import {
-  daysForRecurrence, endTimeFrom, sectionForDate,
+  endTimeFrom, sectionForDate, repeatRowFromForm, repeatStart, recurrenceProblem, editedRepeatStart, repeatAnchorOfRow,
   blockSourceTypeForTask, taskSourceTypeForBlock, needsGoogleTaskDedupe, shouldCreateLinkedTask,
-  needsGoogleTasksFallback, hasValidRecurrenceSelection, clampDurationMinutes,
+  needsGoogleTasksFallback, clampDurationMinutes,
 } from './planModal.config'
 import type { PlanForm } from './planForm'
 import type { PlanMode, UnifiedPlanModalProps, PlanModalConfig } from './planModal.types'
@@ -388,11 +494,19 @@ export function UnifiedPlanModal({
   }
 
   const patch = (p: Partial<PlanForm>) => setForm(f => ({ ...f, ...p }))
+  // Editing a repeating plan: its saved start and what it counts from.
+  const savedRepeat = scheduleBlock
+    ? { start: scheduleBlock.effective_from ?? form.date, anchor: repeatAnchorOfRow(scheduleBlock) }
+    : undefined
 
+  // A token that is still valid (refreshed when it has expired), never the
+  // stored one as is — typing a new list name after an hour used to fail with 401.
   async function resolveGoogleListField(): Promise<string | undefined> {
     if (!calToken || !form.googleListTitle.trim()) return undefined
     try {
-      return await resolveOrCreateGoogleTaskListId(calToken, form.googleListTitle)
+      const token = await ensureValidCalendarToken()
+      if (!token) throw new Error('the Google connection needs signing in again (Settings → Subscriptions)')
+      return await resolveOrCreateGoogleTaskListId(token, form.googleListTitle)
     } catch (err) {
       toast.error(`Couldn't set up "${form.googleListTitle.trim()}" on Google: ${(err as Error).message}`)
       return undefined
@@ -629,11 +743,13 @@ export function UnifiedPlanModal({
     // "also create task" only applies to the one-off path (there is no
     // recurring-Task concept in this app).
     if (form.recurrence !== 'none') {
-      await createRecur.mutateAsync({
-        title, days_of_week: daysForRecurrence(form.recurrence, form.weeklyDays),
+      const repeat = repeatRowFromForm(form)
+      // "Add to Google Calendar" makes the repeat ONE repeating event (147).
+      await createRecur.mutateAsync({ input: {
+        title, ...repeat, effective_from: repeatStart(repeat, form.date),
         start_time: startTimeVal, end_time: endTimeFrom(form.startTime, effDuration),
         color: defaults?.color ?? 'blue', category: form.category,
-      })
+      }, gcal: calToken ? form.gcal : undefined })
       onSaved?.({ mode: 'schedule', recurringCreated: true })
       return
     }
@@ -672,34 +788,39 @@ export function UnifiedPlanModal({
     onSaved?.({ mode: 'schedule', taskId: linkedTaskId, timeBlockCreated: true })
   }
 
-  // ── Save: mode='recurring' — schedule_blocks. No GCal (never implemented —
-  // the field is hidden entirely, not shown-but-inert), no linked Task.
+  // ── Save: mode='recurring' — schedule_blocks, no linked Task. Its Google
+  // Calendar series (147) follows "Add to Google Calendar" through the save
+  // hooks: ticked → added / brought up to date, unticked → removed. With no
+  // Google connection (`gcal` undefined) the link is left as it is.
   async function saveRecurring() {
     const title = form.title.trim()
     const effDuration = clampDurationMinutes(form.customMin !== '' ? Number(form.customMin) || 60 : form.duration)
     const startTimeVal = `${form.startTime}:00`
     // A recurring template is never "no repeat" — RecurringTab never offers
-    // picking 'none' (RECURRING_EDIT_OPTIONS), and inferRecurrenceMode
-    // (which seeds this form when editing an existing row) never returns
-    // it either. The old `form.recurrence === 'none' ? 'weekly' : ...`
-    // silently substituted a value the user never picked; removed rather
-    // than kept as a "just in case" fallback — handleSave's
-    // hasValidRecurrenceSelection guard is what actually protects against
-    // an incomplete selection now.
-    const days = daysForRecurrence(form.recurrence, form.weeklyDays)
+    // picking 'none' (RECURRING_EDIT_OPTIONS), and repeatFormFromRow (which
+    // seeds this form when editing an existing row) never returns it either.
+    // handleSave's recurrenceProblem guard protects against an incomplete
+    // selection.
+    const repeat = repeatRowFromForm(form)
 
+    const gcal = calToken ? form.gcal : undefined
     if (scheduleBlock) {
-      await updateRecur.mutateAsync({ id: scheduleBlock.id, patch: {
-        title, days_of_week: days, start_time: startTimeVal,
+      // A choice that counts from its start (Monthly, every N…) saves the
+      // "Starts" shown; any other keeps the saved start (editedRepeatStart).
+      const start = scheduleBlock.effective_from
+      const next = editedRepeatStart(form, repeat, start)
+      await updateRecur.mutateAsync({ id: scheduleBlock.id, gcal, patch: {
+        title, ...repeat, start_time: startTimeVal,
         end_time: endTimeFrom(form.startTime, effDuration), category: form.category,
+        ...(next && next !== start ? { effective_from: next } : {}),
       } })
       onSaved?.({ mode: 'recurring' })
       return
     }
-    await createRecur.mutateAsync({
-      title, days_of_week: days, start_time: startTimeVal,
+    await createRecur.mutateAsync({ input: {
+      title, ...repeat, effective_from: repeatStart(repeat, form.date), start_time: startTimeVal,
       end_time: endTimeFrom(form.startTime, effDuration), color: defaults?.color ?? 'blue', category: form.category,
-    })
+    }, gcal })
     onSaved?.({ mode: 'recurring', recurringCreated: true })
   }
 
@@ -713,13 +834,13 @@ export function UnifiedPlanModal({
   // syncTaskSchedule.
   const scheduleStillLoading = effectiveMode === 'task' && !!task && linkedBlock === undefined
 
-  // A weekly recurrence (mode='recurring', or mode='schedule' CREATE with a
-  // repeat picked) with zero days checked used to save anyway —
-  // daysForRecurrence silently substituted Mon-Fri, so unchecking every day
-  // quietly became "every weekday" instead of being rejected. Applies to
-  // both surfaces that can carry a 'weekly' recurrence value.
-  const recurrenceIncomplete = (effectiveMode === 'recurring' || effectiveMode === 'schedule')
-    && !hasValidRecurrenceSelection(form.recurrence, form.weeklyDays)
+  // An incomplete repeat (a weekly one with no day, every N weeks with no
+  // day, an N out of range, no picked date) can't be saved. A weekly one with
+  // zero days used to save anyway — Mon-Fri was silently substituted.
+  // Applies to both surfaces that can carry a repeat.
+  const recurrenceIssue = effectiveMode === 'recurring' || (effectiveMode === 'schedule' && !timeBlock)
+    ? recurrenceProblem(form) : null
+  const recurrenceIncomplete = recurrenceIssue != null
 
   // A training session planned on a day that already has it (the weekly ⟳
   // template, or the same routine planned once already) asks first — the
@@ -761,7 +882,7 @@ export function UnifiedPlanModal({
   async function handleSave() {
     if (!form.title.trim()) { toast.error('Title is required'); return }
     if (scheduleStillLoading) { toast.error('Still loading this task’s schedule — try again in a moment'); return }
-    if (recurrenceIncomplete) { toast.error('Pick at least one day for the weekly repeat.'); return }
+    if (recurrenceIssue) { toast.error(recurrenceIssue); return }
     if (!(await confirmNoTwin())) return
     setSaving(true)
     const ok = await withProgress(async () => {
@@ -790,7 +911,7 @@ export function UnifiedPlanModal({
       ? await deleteTaskM.run([task.id], { title: 'Delete this task?', message: title, confirmLabel: 'Delete task', done: 'Task deleted' })
       : scheduleBlock
         ? await deleteRecur.run([scheduleBlock.id], {
-          title: 'Delete this repeating schedule?', message: title, done: 'Weekly plan deleted' })
+          title: 'Delete this repeating schedule?', message: title, done: 'Repeating plan deleted' })
         : timeBlock
           ? await deleteBlock.run([timeBlock.id], { title: 'Delete this schedule?', message: title, done: 'Slot deleted' })
           : 'kept'
@@ -873,7 +994,10 @@ export function UnifiedPlanModal({
             <ScheduleTab form={form} patch={patch} config={effectiveScheduleConfig} gcalAvailable={!!calToken} extra={scheduleExtra} />
           )}
           {effectiveMode === 'recurring' && (
-            <RecurringTab form={form} patch={patch} extra={scheduleExtra} />
+            <RecurringTab
+              form={form} patch={patch} creating={!scheduleBlock} saved={savedRepeat} exceptDates={scheduleBlock?.except_dates}
+              gcalAvailable={!!calToken} calendarLinked={!!scheduleBlock?.google_calendar_event_id} extra={scheduleExtra}
+            />
           )}
         </>
       )}

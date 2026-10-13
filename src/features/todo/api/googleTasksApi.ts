@@ -1,5 +1,8 @@
-import { format } from 'date-fns'
 import type { Task } from '../types'
+import {
+  dateToGoogleDue, googleErrorReasons, googleTasksFailureKind, googleTasksFailureText,
+  type GoogleTasksFailureKind,
+} from './googleTasksRules'
 
 const BASE = 'https://www.googleapis.com/tasks/v1'
 
@@ -11,10 +14,13 @@ const BASE = 'https://www.googleapis.com/tasks/v1'
 // with no digits in it at all).
 export class GoogleTasksApiError extends Error {
   readonly status: number
-  constructor(status: number, message: string) {
+  /** What it means for the owner (googleTasksRules.googleTasksFailureKind). */
+  readonly kind: GoogleTasksFailureKind
+  constructor(status: number, message: string, kind: GoogleTasksFailureKind = googleTasksFailureKind(status, [])) {
     super(message)
     this.name = 'GoogleTasksApiError'
     this.status = status
+    this.kind = kind
   }
 }
 export function isGoogleTaskNotFound(error: unknown): boolean {
@@ -31,8 +37,11 @@ async function request(token: string, path: string, options: RequestInit = {}): 
     },
   })
   if (res.status === 204) return null
-  const data = await res.json()
-  if (!res.ok) throw new GoogleTasksApiError(res.status, data?.error?.message ?? `Google Tasks error ${res.status}`)
+  const data = await res.json().catch(() => null)
+  if (!res.ok) {
+    const kind = googleTasksFailureKind(res.status, googleErrorReasons(data))
+    throw new GoogleTasksApiError(res.status, googleTasksFailureText(kind, res.status, data?.error?.message), kind)
+  }
   return data
 }
 
@@ -45,26 +54,6 @@ export interface GoogleRemoteTaskList {
   title:   string
   etag:    string
   updated: string
-}
-
-export async function fetchGoogleTaskLists(token: string): Promise<GoogleRemoteTaskList[]> {
-  const out: GoogleRemoteTaskList[] = []
-  let pageToken: string | undefined
-  do {
-    const qs = new URLSearchParams({ maxResults: '100', ...(pageToken ? { pageToken } : {}) })
-    const data = await request(token, `/users/@me/lists?${qs}`) as { items?: GoogleRemoteTaskList[]; nextPageToken?: string }
-    out.push(...(data.items ?? []))
-    pageToken = data.nextPageToken
-  } while (pageToken)
-  return out
-}
-
-// The TaskList resource itself carries no "is this the default list" flag —
-// resolve it by fetching the @default alias and matching its real id against
-// fetchGoogleTaskLists' results (never assume a list's own `id` literally
-// equals the string "@default").
-export async function fetchDefaultGoogleTaskList(token: string): Promise<GoogleRemoteTaskList> {
-  return request(token, '/users/@me/lists/@default') as Promise<GoogleRemoteTaskList>
 }
 
 export async function createGoogleTaskList(token: string, title: string): Promise<GoogleRemoteTaskList> {
@@ -106,41 +95,6 @@ export interface GoogleRemoteTask {
   links?:       unknown[]
 }
 
-interface TasksListResponse {
-  items?:        GoogleRemoteTask[]
-  nextPageToken?: string
-}
-
-async function paginateTasks(token: string, googleListId: string, params: Record<string, string>): Promise<GoogleRemoteTask[]> {
-  const out: GoogleRemoteTask[] = []
-  let pageToken: string | undefined
-  do {
-    const qs = new URLSearchParams({ maxResults: '100', ...params, ...(pageToken ? { pageToken } : {}) })
-    const data = await request(token, `/lists/${googleListId}/tasks?${qs}`) as TasksListResponse
-    out.push(...(data.items ?? []))
-    pageToken = data.nextPageToken
-  } while (pageToken)
-  return out
-}
-
-// First-time (or forced re-) full sync: every task including hidden/deleted
-// tombstones, real pagination — this is what lets local fully mirror Google's
-// state instead of only ever seeing the not-yet-hidden subset.
-export async function fullGoogleTasksSync(token: string, googleListId = '@default'): Promise<GoogleRemoteTask[]> {
-  return paginateTasks(token, googleListId, { showCompleted: 'true', showHidden: 'true', showDeleted: 'true' })
-}
-
-// Poll for what changed since the last successful sync. Callers should pass
-// a cutoff a little EARLIER (~60s) than their stored "last synced" timestamp
-// to absorb clock-skew / request-boundary edge cases and dedupe the overlap
-// by task id afterwards — this function does not do that itself.
-export async function incrementalGoogleTasksSync(token: string, googleListId: string, updatedMinIso: string): Promise<GoogleRemoteTask[]> {
-  return paginateTasks(token, googleListId, {
-    showCompleted: 'true', showHidden: 'true', showDeleted: 'true',
-    updatedMin: updatedMinIso,
-  })
-}
-
 export async function getGoogleTask(token: string, googleListId: string, googleTaskId: string): Promise<GoogleRemoteTask> {
   return request(token, `/lists/${googleListId}/tasks/${googleTaskId}`) as Promise<GoogleRemoteTask>
 }
@@ -150,8 +104,8 @@ export async function createGoogleTask(
   opts?: { parent?: string; previous?: string },
 ): Promise<GoogleRemoteTask> {
   const body: Record<string, unknown> = { title: task.title }
-  // Use noon local time to avoid midnight-UTC off-by-one across timezones
-  if (task.due_date) body.due = new Date(task.due_date + 'T12:00:00').toISOString()
+  const due = dateToGoogleDue(task.due_date)
+  if (due) body.due = due
   if (task.description) body.notes = task.description
   const qs = new URLSearchParams()
   if (opts?.parent)   qs.set('parent', opts.parent)
@@ -167,7 +121,7 @@ export async function updateGoogleTask(token: string, googleListId: string, goog
   const body: Record<string, unknown> = {
     title: task.title,
     notes: task.description ?? '',
-    due:   task.due_date ? new Date(task.due_date + 'T12:00:00').toISOString() : null,
+    due:   dateToGoogleDue(task.due_date),
   }
   return request(token, `/lists/${googleListId}/tasks/${googleTaskId}`, {
     method: 'PATCH',
@@ -211,9 +165,4 @@ export async function moveGoogleTask(
   return request(token, `/lists/${googleListId}/tasks/${googleTaskId}/move${suffix}`, {
     method: 'POST',
   }) as Promise<GoogleRemoteTask>
-}
-
-// due comes back as RFC 3339 midnight UTC — convert to local date string 'yyyy-MM-dd'
-export function googleDueToLocalDate(due: string): string {
-  return format(new Date(due), 'yyyy-MM-dd')
 }

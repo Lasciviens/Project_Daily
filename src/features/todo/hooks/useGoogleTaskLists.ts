@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { useCalendarStore } from '../../../app/store'
+import { ensureValidCalendarToken } from '../../calendar/api/calendarTokenSync'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
 import { qk, STALE } from '../../../shared/query'
 import {
@@ -12,16 +12,18 @@ export function useGoogleTaskLists() {
   return useQuery({ queryKey: qk.googleTaskLists.all, queryFn: fetchGoogleTaskListRows, staleTime: STALE.live })
 }
 
-function requireToken(): string {
-  const token = useCalendarStore.getState().accessToken
-  if (!token) throw new Error('Google account not connected')
+// A token that is still valid — refreshed first when the stored one is past
+// its hour (the raw store value used to be sent and Google answered 401).
+async function requireToken(): Promise<string> {
+  const token = await ensureValidCalendarToken()
+  if (!token) throw new Error('Google is not connected: connect it in Settings → Subscriptions')
   return token
 }
 
 export function useCreateGoogleTaskList() {
   return useMutationWithFeedback({
     action: 'create_google_task_list',
-    mutationFn: (title: string) => createGoogleTaskListMirrored(requireToken(), title),
+    mutationFn: async (title: string) => createGoogleTaskListMirrored(await requireToken(), title),
     successMessage: 'List created',
     invalidates: [qk.googleTaskLists.all],
   })
@@ -30,8 +32,8 @@ export function useCreateGoogleTaskList() {
 export function useRenameGoogleTaskList() {
   return useMutationWithFeedback({
     action: 'rename_google_task_list',
-    mutationFn: ({ localId, googleId, title }: { localId: string; googleId: string; title: string }) =>
-      renameGoogleTaskListMirrored(requireToken(), localId, googleId, title),
+    mutationFn: async ({ localId, googleId, title }: { localId: string; googleId: string; title: string }) =>
+      renameGoogleTaskListMirrored(await requireToken(), localId, googleId, title),
     successMessage: 'List renamed',
     invalidates: [qk.googleTaskLists.all],
   })
@@ -40,8 +42,8 @@ export function useRenameGoogleTaskList() {
 export function useDeleteGoogleTaskList() {
   return useMutationWithFeedback({
     action: 'delete_google_task_list',
-    mutationFn: ({ localId, googleId }: { localId: string; googleId: string }) =>
-      deleteGoogleTaskListMirrored(requireToken(), localId, googleId),
+    mutationFn: async ({ localId, googleId }: { localId: string; googleId: string }) =>
+      deleteGoogleTaskListMirrored(await requireToken(), localId, googleId),
     silent: 'the delete flow reports the result',
     invalidates: [qk.googleTaskLists.all, qk.tasks.all],
   })

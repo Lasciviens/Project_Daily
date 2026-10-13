@@ -24,41 +24,113 @@ export async function fetchScheduleBlocks(): Promise<ScheduleBlock[]> {
   return data ?? []
 }
 
-// effective_from is stamped HERE, not at any call site: "a new recurring
-// template starts today, never retroactively" is a property of the entity, so
-// every writer gets it for free (and the one existing caller —
-// UnifiedPlanModal's saveRecurring — needs no change). The client's own LOCAL
-// today is sent rather than relying on the column's CURRENT_DATE default,
+const isMissingColumn = (e: { code?: string; message?: string }) =>
+  e.code === 'PGRST204' || e.code === '42703' || /column .* does not exist|could not find the '.*' column/i.test(e.message ?? '')
+
+// The repeat columns of migration 146. Before it is applied a weekly-style
+// repeat (every day / weekdays / weekly) still saves — the row simply goes
+// without them; any other kind can't be stored and says so by name.
+const REPEAT_COLUMNS = ['repeat_kind', 'repeat_interval', 'repeat_unit', 'repeat_dates'] as const
+export const REPEAT_NOT_MIGRATED = 'Repeating monthly, every N days/weeks/months or on picked dates needs migration 146 — migration 146 not applied yet.'
+
+/** The row without the 146 columns, or a named error when its repeat needs them. */
+function withoutRepeatColumns(row: Record<string, unknown>): Record<string, unknown> {
+  if (row.repeat_kind != null && row.repeat_kind !== 'weekly') throw new Error(REPEAT_NOT_MIGRATED)
+  const out = { ...row }
+  for (const c of REPEAT_COLUMNS) delete out[c]
+  return out
+}
+
+// effective_from is the template's first day: the start the planner picked,
+// else the client's own LOCAL today — never the column's CURRENT_DATE default,
 // which is the SERVER's UTC day and lands on yesterday for Oslo between 00:00
-// and 02:00. Retries once without the column so the app still works before
-// migration 081 is applied (the established 42703/PGRST204 fallback pattern).
+// and 02:00. It is never retroactive by accident (081). Falls back without the
+// 146 columns (see withoutRepeatColumns) and then without effective_from
+// (before 081), the established 42703/PGRST204 pattern.
 export async function createScheduleBlock(input: CreateScheduleBlockInput): Promise<ScheduleBlock> {
   const user = await requireUser()
-  const row: Record<string, unknown> = {
-    ...input, user_id: user.id, effective_from: todayStr(),
+  let row: Record<string, unknown> = {
+    ...input, user_id: user.id, effective_from: input.effective_from ?? todayStr(),
   }
-  const { data, error } = await supabase.from('schedule_blocks').insert(row).select().single()
+  for (let attempt = 0; ; attempt++) {
+    const { data, error } = await supabase.from('schedule_blocks').insert(row).select().single()
+    if (!error) return data
+    if (!isMissingColumn(error) || attempt >= 2) throw error
+    if (REPEAT_COLUMNS.some(c => c in row)) row = withoutRepeatColumns(row)
+    else if ('effective_from' in row) { row = { ...row }; delete row.effective_from }
+    else throw error
+  }
+}
+
+// A plain DB update. Its Google Calendar series (147) is pushed by the hook
+// (useUpdateScheduleBlock → calendar/api/scheduleSeriesCalendar.ts), which
+// reads the row this returns.
+export async function updateScheduleBlock(id: string, patch: UpdateScheduleBlockInput): Promise<ScheduleBlock> {
+  const write = (p: Record<string, unknown>) => supabase
+    .from('schedule_blocks')
+    .update({ ...p, updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .select()
+    .single()
+  const { data, error } = await write({ ...patch })
   if (!error) return data
-  if (error.code !== 'PGRST204' && error.code !== '42703') throw error
-  const withoutColumn = { ...row }
-  delete withoutColumn.effective_from
-  const retry = await supabase.from('schedule_blocks').insert(withoutColumn).select().single()
+  if (!isMissingColumn(error) || !REPEAT_COLUMNS.some(c => c in patch)) throw error
+  const retry = await write(withoutRepeatColumns({ ...patch }))
   if (retry.error) throw retry.error
   return retry.data
 }
 
-// Recurring templates have no Google Calendar support (never implemented —
-// the modal deliberately hides that checkbox in recurring mode rather than
-// show a control that silently does nothing), so this is a plain DB update.
-export async function updateScheduleBlock(id: string, patch: UpdateScheduleBlockInput): Promise<ScheduleBlock> {
-  const { data, error } = await supabase
-    .from('schedule_blocks')
-    .update({ ...patch, updated_at: new Date().toISOString() })
-    .eq('id', id)
-    .select()
-    .single()
+/** One repeating plan, read fresh (never cached): the Calendar series code
+ *  decides "create an event or not" off it. `.single()` — a missing row is an
+ *  error there, not "no event yet". */
+export async function fetchScheduleBlock(id: string): Promise<ScheduleBlock> {
+  const { data, error } = await supabase.from('schedule_blocks').select('*').eq('id', id).single()
   if (error) throw error
   return data
+}
+
+export const SERIES_NOT_MIGRATED = 'Adding a repeating plan to Google Calendar needs migration 147 — migration 147 not applied yet.'
+
+/** Whether the database has 147's link column (a fresh row read with `*` carries it, null or not). */
+export function hasSeriesColumns(row: object): boolean {
+  return 'google_calendar_event_id' in row
+}
+
+/**
+ * Links a repeating plan to its Google Calendar series (147) — only while the
+ * plan has no series or already this one (another tab may have linked its
+ * own meanwhile; then nothing is written and this answers false). Also keeps
+ * how far its RDATE list reaches and the zone it is expanded in. A raw api
+ * call: a failure is handled by the caller's compensation, never toasted as
+ * a failed save.
+ */
+export async function setScheduleBlockCalendarLink(
+  id: string, eventId: string, horizon: string | null, timeZone: string,
+): Promise<boolean> {
+  const user = await requireUser()
+  const { data, error } = await supabase.from('schedule_blocks')
+    .update({
+      google_calendar_event_id: eventId, google_calendar_horizon: horizon, google_calendar_time_zone: timeZone,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', id)
+    .eq('user_id', user.id)
+    .or(`google_calendar_event_id.is.null,google_calendar_event_id.eq.${eventId}`)
+    .select('id')
+  if (error) throw isMissingColumn(error) ? new Error(SERIES_NOT_MIGRATED) : error
+  return (data ?? []).length > 0
+}
+
+/** Forgets a plan's series — only while it still names `eventId` (the
+ *  clear_google_task_id_if_matches rule: a stale clear never drops a newer link). */
+export async function clearScheduleBlockCalendarLink(id: string, eventId: string): Promise<void> {
+  const user = await requireUser()
+  const { error } = await supabase.from('schedule_blocks')
+    .update({ google_calendar_event_id: null, google_calendar_horizon: null, updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .eq('user_id', user.id)
+    .eq('google_calendar_event_id', eventId)
+  if (error) throw isMissingColumn(error) ? new Error(SERIES_NOT_MIGRATED) : error
 }
 
 // A block's task state rides along (not kept as an embed): a training
@@ -67,6 +139,19 @@ export async function updateScheduleBlock(id: string, patch: UpdateScheduleBlock
 type TaskEmbed = { task: { status: TimeBlock['task_status']; hevy_workout_id?: string | null; hevy_routine_id?: string | null } | null }
 const withTaskState = ({ task, ...b }: TimeBlock & TaskEmbed): TimeBlock =>
   ({ ...b, task_status: task?.status ?? null, task_workout_id: task?.hevy_workout_id ?? null, task_routine_id: task?.hevy_routine_id ?? null })
+
+/** One block with its task's state, read fresh (null when it is gone): the
+ *  Calendar carry of a plan's day reads it, so a move or a skip that ran
+ *  meanwhile wins. */
+export async function fetchTimeBlockWithTask(id: string): Promise<TimeBlock | null> {
+  const { data, error } = await supabase
+    .from('time_blocks')
+    .select('*, task:tasks(status, hevy_workout_id, hevy_routine_id)')
+    .eq('id', id)
+    .maybeSingle()
+  if (error) throw error
+  return data ? withTaskState(data as TimeBlock & TaskEmbed) : null
+}
 
 export async function fetchTimeBlocks(dateStr: string): Promise<TimeBlock[]> {
   const { data, error } = await supabase

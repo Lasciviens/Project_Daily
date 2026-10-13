@@ -2,13 +2,10 @@ import { useState } from 'react'
 import { ChevronDown } from 'lucide-react'
 import { shiftDateStr } from '../../../shared/utils/dateUtils'
 import { scaleOnly } from '../bodyweight'
-import { buildTrendStats } from '../healthTrendStats'
 import { useBodyweightSeries } from '../hooks/useBodyweight'
 import { BodyCompositionPanel } from './BodyCompositionPanel'
 import { BodyweightCharts } from './BodyweightCharts'
 import { LONG_BACK_DAYS } from './dateNav'
-import { num, signed } from './overview/heroFormat'
-import { TrendCard } from './overview/TrendCard'
 import type { HealthRange } from './sectionTypes'
 import { SectionCard } from './sectionKit'
 
@@ -16,24 +13,19 @@ import { SectionCard } from './sectionKit'
 // data from the scale anyway"). Weigh-ins are sparse, so the charts keep a
 // 90-day window ENDING at the viewed day (the page's day control still moves
 // them). The read covers the page's long window, so it is the same download
-// the hero's weight tile uses, and the headline is the newest scale reading in
-// it. The scale report's other fields fold into "More from the scale". The
-// trend card reads the same scale-only readings, so the window never mixes
-// in a hand-typed Hevy weight the chart leaves out. The Hevy log ("Logged in
-// Hevy", HevyMeasurementsCard) keeps its own card and is never merged in; the
-// page places the three (healthBoards.ts → BODY_BOARD).
-function useScaleWindow(range: HealthRange) {
+// the hero's weight tile and the Weekly changes card use, and the headline is
+// the newest scale reading in it. The scale report's other fields fold into
+// "More from the scale". The Hevy log ("Logged in Hevy", HevyMeasurementsCard)
+// keeps its own card and is never merged in; the page places the cards
+// (healthBoards.ts → BODY_BOARD).
+
+/** The scale charts (the Body window's main card). */
+export function BodyScaleCard({ range }: { range: HealthRange }) {
   const { anchor, setAnchor, setPeriod } = range
   const from = shiftDateStr(anchor, -89)
   const series = useBodyweightSeries(shiftDateStr(anchor, -LONG_BACK_DAYS), anchor)
   const viewDay = (date: string) => { setPeriod('day'); setAnchor(date) }
   const scale = scaleOnly(series.data ?? [])
-  return { anchor, from, series, viewDay, scale }
-}
-
-/** The scale charts (the Body window's main card). */
-export function BodyScaleCard({ range }: { range: HealthRange }) {
-  const { anchor, from, series, viewDay, scale } = useScaleWindow(range)
   const days = scale.filter(d => d.date >= from)
   const latest = [...scale].reverse().find(d => d.kg != null) ?? null
   const [scaleOpen, setScaleOpen] = useState(false)
@@ -51,16 +43,5 @@ export function BodyScaleCard({ range }: { range: HealthRange }) {
         {scaleOpen && <BodyCompositionPanel />}
       </div>
     </SectionCard>
-  )
-}
-
-/** The weight trend of the same scale-only readings (the same query as the charts). */
-export function BodyWeightTrendCard({ range }: { range: HealthRange }) {
-  const { anchor, series, scale } = useScaleWindow(range)
-  if (series.isLoading) return null
-  const weighIns = scale.flatMap(d => (d.kg != null ? [{ date: d.date, value: d.kg }] : []))
-  return (
-    <TrendCard title="Weight trend" stats={buildTrendStats(weighIns, { to: anchor, direction: null, sparse: true })}
-      format={v => `${num(v, 1)} kg`} formatDelta={v => `${signed(v, 1)} kg`} direction={null} rateUnit="kg/week" />
   )
 }

@@ -31,7 +31,7 @@ what was asked. Before writing, read `AGENTS.md`, `docs/design/THEME.md` §9 (en
 4. **Components** — `src/features/<x>/components/`, built from `src/shared/ui` (`Card`, `Button`,
    `IconButton`, `PageContainer`/`PageHeader`, `PageBoard`, `StatTile`, `SegmentedControl`,
    `ToneDot`/`TonePill`, `EmptyState`, `Skeleton`, `Truncate` …). Token classes only, status as a tone, charts via `useChartColors()`, dates via
-   `src/shared/utils/dateFormat.ts` and `DateInput`, ≥ 44px touch targets, loading / empty / error
+   `src/shared/utils/dateFormat.ts` and `DateInput`, a compact phone layout (no extra lines), loading / empty / error
    states. No `supabase` import, no mutation toasts of your own. Split a file that does two jobs.
 5. **Popup** — local sub-step: `<ModalShell>`. A thing with an id opened from more than one place: an
    entity kind — request shape in `src/shared/modals/types.ts`, a

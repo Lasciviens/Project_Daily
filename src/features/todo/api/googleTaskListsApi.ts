@@ -26,13 +26,11 @@ export async function createGoogleTaskListMirrored(token: string, title: string)
   const trimmed = title.trim()
   const { id: userId } = await requireUser()
 
-  // Real gap fixed: this had NO dedup check at all (not even exact-
-  // match) — typing "work" here when "Work" already existed always
-  // created a second Google list. Case-insensitive, matching
-  // resolveOrCreateGoogleTaskListId's rule (and migration 076's DB-level
-  // backstop) — but this is an explicit "Add" action, so an existing
-  // match is reported as an error rather than silently reused.
-  const { data: existing } = await supabase.from('google_task_lists').select('title').eq('user_id', userId)
+  // The app never makes a second list of one name (any case) — Google would
+  // allow it, and lists made elsewhere can still share a name (migration
+  // 145). An explicit "Add" of an existing name is an error, not a reuse.
+  const { data: existing, error: readError } = await supabase.from('google_task_lists').select('title').eq('user_id', userId)
+  if (readError) throw readError
   if ((existing ?? []).some(l => l.title.trim().toLowerCase() === trimmed.toLowerCase())) {
     throw new Error(`A list named "${trimmed}" already exists`)
   }
@@ -43,6 +41,45 @@ export async function createGoogleTaskListMirrored(token: string, title: string)
     is_default: false, google_etag: remote.etag, google_updated_at: remote.updated,
   })
   if (error) throw error
+}
+
+// Resolves a free-typed list NAME (the plan editor's "Google Task list"
+// field) to a local google_task_lists id: an existing list of that name (any
+// case) is reused, otherwise the list is created on Google and mirrored.
+// Google itself allows several lists of one name; a pull mirrors them all
+// (migration 145) and this picks the first.
+export async function resolveOrCreateGoogleTaskListId(token: string, title: string): Promise<string> {
+  const trimmed = title.trim()
+  const { id: userId } = await requireUser()
+
+  const findExisting = async (): Promise<string | null> => {
+    // Two lists may share a name (145): always the same one — the default, then the oldest.
+    const { data: existing, error } = await supabase.from('google_task_lists').select('id, title').eq('user_id', userId)
+      .order('is_default', { ascending: false }).order('created_at', { ascending: true })
+    if (error) throw error
+    return (existing ?? []).find(l => l.title.trim().toLowerCase() === trimmed.toLowerCase())?.id ?? null
+  }
+
+  const existingId = await findExisting()
+  if (existingId) return existingId
+
+  const remote = await createGoogleTaskList(token, trimmed)
+  const { data, error } = await supabase.from('google_task_lists').insert({
+    user_id: userId, google_id: remote.id, title: remote.title,
+    is_default: false, google_etag: remote.etag, google_updated_at: remote.updated,
+  }).select('id').single()
+
+  if (error) {
+    // 23505: migration 076's title index, until 145 drops it — another save
+    // created the same name a moment earlier; use that one. Remove this
+    // branch once 145 is applied everywhere.
+    if (error.code === '23505') {
+      const winnerId = await findExisting()
+      if (winnerId) return winnerId
+    }
+    throw error
+  }
+  return data.id
 }
 
 export async function renameGoogleTaskListMirrored(token: string, localId: string, googleId: string, title: string): Promise<void> {

@@ -13,6 +13,7 @@
 import { matchDaySessions, planStartHHMM, planWorkoutScore } from './components/calendar/calendarSessions'
 import { sessionStatus, type SessionState } from './plan/sessionState'
 import { formatWeekdayDate } from '../../shared/utils/dateFormat'
+import { repeatSummary } from '../daily/recurrence'
 import { formatDurationMinutes } from '../../shared/utils/formatDuration'
 import type { CalendarPlanItem } from './components/calendar/calendarModel'
 import type { HevyWorkout } from './types.hevy'
@@ -129,23 +130,20 @@ export function planLabel(p: CalendarPlanItem): string {
 }
 
 /** What a workout's plans say under it: "Planned for 18:00" when the plan is
- *  this session (routine or name), "Planned weekly for 18:00" for a recurring
- *  slot, and "In place of ⟳ Upper B · 17:30" when a different session was
- *  done on a planned day. null without plans. */
+ *  this session (routine or name), "Planned every week on Mon, 18:00" for a
+ *  repeating plan (its own repeat, recurrence.repeatSummary — it may be
+ *  monthly or every N weeks), and "In place of ⟳ Upper B · 17:30" when a
+ *  different session was done on a planned day. null without plans. */
 export function coveredPlanNote(plans: readonly CalendarPlanItem[], workout: DayWorkout): string | null {
   if (plans.length === 0) return null
   return plans.map(p => {
     if (planWorkoutScore(p, workout) === 0) return `In place of ${planLabel(p)}`
     const t = planStartHHMM(p)
-    return `Planned${p.kind === 'recurring' ? ' weekly' : ''}${t ? ` for ${t}` : ''}`
+    if (p.kind === 'recurring' && p.scheduleBlock) {
+      const summary = repeatSummary(p.scheduleBlock)
+      return `Planned ${summary.charAt(0).toLowerCase()}${summary.slice(1)}${t ? `, ${t}` : ''}`
+    }
+    return `Planned${t ? ` for ${t}` : ''}`
   }).join(' · ')
 }
 
-const WEEKDAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-
-/** "Mon, Wed, Fri" (Monday first) / "every day" — a template's weekdays. */
-export function weekdaysLabel(days: readonly number[]): string {
-  const set = new Set(days.filter(d => Number.isInteger(d) && d >= 0 && d <= 6))
-  if (set.size === 7) return 'every day'
-  return [1, 2, 3, 4, 5, 6, 0].filter(d => set.has(d)).map(d => WEEKDAY_SHORT[d]).join(', ')
-}

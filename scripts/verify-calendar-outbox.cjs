@@ -11,7 +11,8 @@
  *      the request path and error text;
  *   6. the drain loop with fake I/O (stop, retry, kept, out of time, a row
  *      that fails after Google already deleted the event);
- *   7. every place that links an event uses the calendar the trigger queues;
+ *   7. every place that links an event uses the calendar the triggers queue
+ *      (135's for time blocks, 147's for repeating plans);
  *   8. migration 135's shape, and 9. the function's wiring.
  *
  *   Run:  node scripts/verify-calendar-outbox.cjs
@@ -35,6 +36,7 @@ function check(name, cond, detail) {
 const RULES_FILE = 'src/features/calendar/calendarOutboxRules.ts'
 const FUNCTION_FILE = 'supabase/functions/google-tasks-sync/index.ts'
 const MIGRATION_FILE = 'supabase/migrations/135_calendar_outbox.sql'
+const SERIES_MIGRATION_FILE = 'supabase/migrations/147_schedule_block_calendar_series.sql'
 const fnSource = read(FUNCTION_FILE)
 const migration = read(MIGRATION_FILE)
 
@@ -258,6 +260,8 @@ function calendarAgreementSection() {
     'src/features/calendar/api/linkBlockCalendarEvent.ts',
     'src/features/daily/api/scheduleApi.ts',
     'src/features/calendar/api/calendarTokenSync.ts',
+    // A repeating plan's series (147).
+    'src/features/calendar/api/scheduleSeriesCalendar.ts',
   ]
   for (const file of callers) {
     const calls = [...read(file).matchAll(callRe)]
@@ -270,6 +274,17 @@ function calendarAgreementSection() {
   check(`migration 135's trigger queues '${want}'`, !!insert && insert[1] === want, insert ? insert[1] : 'INSERT not found')
   const columnDefault = migration.match(/calendar_id\s+TEXT\s+NOT NULL DEFAULT '([^']+)'/)
   check(`calendar_outbox.calendar_id defaults to '${want}'`, !!columnDefault && columnDefault[1] === want)
+  check('scheduleSeriesCalendar creates the plan\'s series (createCalendarEvent) in it',
+    [...read(callers[3]).matchAll(callRe)].some((m) => m[1] === 'create' && m[2] === want))
+  const series = read(SERIES_MIGRATION_FILE)
+  const seriesInsert = series.match(/INSERT INTO public\.calendar_outbox[\s\S]*?VALUES\s*\(\s*OLD\.user_id\s*,\s*'([^']+)'/)
+  check(`migration 147's plan trigger queues '${want}'`, !!seriesInsert && seriesInsert[1] === want, seriesInsert ? seriesInsert[1] : 'INSERT not found')
+  check('migration 147\'s trigger is AFTER DELETE ... FOR EACH ROW on schedule_blocks, dropped first',
+    /DROP TRIGGER IF EXISTS trg_enqueue_calendar_series_delete ON public\.schedule_blocks;\s+CREATE TRIGGER trg_enqueue_calendar_series_delete\s+AFTER DELETE ON public\.schedule_blocks\s+FOR EACH ROW EXECUTE FUNCTION public\.enqueue_calendar_series_delete\(\)/.test(series))
+  check('migration 147\'s trigger function is SECURITY DEFINER and skips an account being deleted',
+    /enqueue_calendar_series_delete\(\)\s+RETURNS trigger\s+LANGUAGE plpgsql\s+SECURITY DEFINER\s+SET search_path = public/.test(series)
+    && /IF NOT EXISTS \(SELECT 1 FROM auth\.users WHERE id = OLD\.user_id\) THEN\s+RETURN NULL;/.test(series))
+  check('migration 147 queues each event once', /ON CONFLICT \(user_id, calendar_id, event_id\) DO NOTHING/.test(series))
 }
 
 function migrationSection() {
@@ -320,6 +335,9 @@ function wiringSection() {
   check('writes to the queue are scoped to the user', (f.match(/\.eq\('id', row\.id\)\.eq\('user_id', userId\)/g) ?? []).length === 2)
   check('still-linked events are read from time_blocks for this user',
     /from\('time_blocks'\)\s*\.select\('google_calendar_event_id'\)\s*\.eq\('user_id', userId\)\s*\.in\('google_calendar_event_id'/.test(f))
+  check('…and from schedule_blocks (a plan\'s series, 147) for this user',
+    /from\('schedule_blocks'\)\s*\.select\('google_calendar_event_id'\)\s*\.eq\('user_id', userId\)\s*\.in\('google_calendar_event_id'/.test(f))
+  check('…both feed stillLinked', /stillLinked: new Set\(\[\.\.\.\(linked \?\? \[\]\), \.\.\.\(linkedPlans \?\? \[\]\)\]/.test(f))
   check('the response carries the calendar summary', /imported, calendar, /.test(f))
   check('calendar trouble never gates the Tasks watermark', /errorKeys\.length === 0 \? \{ last_success_at: syncedAt \}/.test(f) && /const errorKeys = Object\.keys\(errors\)/.test(f))
   check('no _shared/ import (self-contained function)', !/from ['"]\.\.\/_shared/.test(fnSource))

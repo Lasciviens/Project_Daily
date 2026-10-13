@@ -21,8 +21,9 @@ then report what the owner would object to, ranked by how much it would annoy or
 - **Change only what was asked.** Flag edits outside the request, drive-by refactors, new
   files or dependencies the task did not need. When a request could mean materially different
   work (only the screen, or also the stored data), one short question should have come first.
-- **Simple, clean, compact; mobile first.** Check the 402 px phone width first. Every
-  interactive element needs a 44 px tap target on touch. No horizontal page scroll. No filler lines like
+- **Simple, clean, compact; mobile first.** Check the 402 px phone width first. Compact: no extra
+  lines, nothing overlapping or squashed, every space used (they called a 44px tap-target rule "a
+  joke" on 13.10.2026). No horizontal page scroll. No filler lines like
   "showing results for…". Nothing important hidden behind extra taps. They prefer one
   clear action to several half-useful ones.
 - **Automatic over manual.** They hate typing long values on the Kobo or doing chores by

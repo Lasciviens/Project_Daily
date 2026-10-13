@@ -54,3 +54,11 @@ Load-bearing details:
   card is tall whenever its npsso form shows) — one list on phones and tablets; from the laptop two
   labelled columns ("Signed in from here" / "Configured on the server"); from 1920 the accounts use a
   42rem main track and the server-side cards sit in 19–22rem columns.
+
+## Open question: Connections vs Subscriptions (owner, 13.10.2026)
+
+The owner said Settings → Subscriptions should hold only what they subscribe to ("Google is not a subscription, it's an integration") and wants to decide the split in a later session. Proposal from 13.10.2026, not built:
+- **Connections** — every integration: signed in from here (Google Calendar + Tasks, Strava, PlayStation, Trakt) and set up on the server (Steam, IGDB, Hevy, Apple Health via Health Auto Export, Kobo).
+- **Subscriptions** — only `service_subscriptions` rows that are paid or renew (likely Hevy Pro, PS Plus, Trakt VIP, Strava, Google One, the ScreenScraper membership, the Supabase plan, Gemini, Health Auto Export premium); a Connections card may link to its plan.
+- Questions for the owner: free accounts that renew (the IGDB/Twitch developer app, a free ScreenScraper account, the Steam API key) — Connections only? Is Health Auto Export a subscription or a one-off purchase? Rows with the cycle "Free" — their own group on Subscriptions, or moved?
+- Traps: Strava's return address (`REDIRECT_URI` in `stravaApi.ts`) and `traktCallback.ts` land on `#/settings?tab=subscriptions`, so that address must keep opening their cards; about ten in-app links point at `tab=subscriptions` (`SettingsMenu`, `MoreSheet`, `StravaTab`, `ListsView`, `ListDetail`, `SteamTab`, `PlayStationTab`, `EditCalendarEventModal`, `INTEGRATIONS_PATH` in `apiRegistry`, the `DeveloperPage` redirect).

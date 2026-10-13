@@ -9,8 +9,8 @@ import { todayStr } from '../../../shared/utils/dateUtils'
 import { useAllSeasons } from '../hooks/useTMDB'
 import { useMarkEpisodeWatched, useSetEpisodeDates, useWatchedEpisodes } from '../hooks/useWatchedEpisodes'
 import {
-  DEFAULT_SPREAD, addDays, fmt, planSpread, seedFrom, spreadHeadline,
-  type SpreadEpisode, type SpreadInput, type SpreadStyle,
+  DEFAULT_SPREAD, fixedSpreadEpisodes, fmt, planSpread, seedFrom, spreadDefaultStart, spreadHeadline, spreadWrites,
+  type SpreadEpisode, type SpreadInput, type SpreadMode, type SpreadStyle,
 } from '../spreadWatched'
 import { SpreadMonthStrip } from './SpreadMonthStrip'
 
@@ -30,7 +30,16 @@ interface Props {
   tvEntryId: string
   seasons: number[]
   defaultRuntime: number | null
-  onClose: () => void
+  /**
+   * A fixed set of episodes — the when-watched sheet's "Spread over dates…"
+   * for a selection, Up to here or the gaps. Without it the sheet offers a
+   * from–to range over every aired episode.
+   */
+  only?: { season: number; episode: number }[]
+  /** What the save does (spreadWatched.ts `SpreadMode`); default `watched`. */
+  mode?: SpreadMode
+  /** `saved`: true after a successful save. */
+  onClose: (saved?: boolean) => void
   /**
    * Completing the series: called after the episodes are marked, with the
    * first and last planned times (the series' start and finish). The button
@@ -41,14 +50,27 @@ interface Props {
 
 const key = (s: number, e: number) => `${s}x${e}`
 const label = (s: number, e: number) => `S${String(s).padStart(2, '0')}E${String(e).padStart(2, '0')}`
+const plural = (n: number) => `${n} episode${n === 1 ? '' : 's'}`
+/** A few episodes by name ("S01E02, S01E05"); more as first – last. */
+const fixedLabel = (eps: SpreadEpisode[]) => (eps.length <= 3
+  ? eps.map(e => label(e.season, e.episode)).join(', ')
+  : `${label(eps[0].season, eps[0].episode)} – ${label(eps[eps.length - 1].season, eps[eps.length - 1].episode)}`)
+
+/** The save button and the toast, per mode. */
+const WORDS: Record<SpreadMode, { verb: string; button: (n: number) => string; loading: (n: number) => string; done: (n: number) => string; note?: string }> = {
+  watched: { verb: 'Mark watched', button: n => `Mark ${plural(n)}`, loading: n => `Marking ${plural(n)}…`, done: n => `${plural(n)} marked watched` },
+  again: { verb: 'Count the plays', button: n => `Count ${n} play${n === 1 ? '' : 's'}`, loading: n => `Counting another play of ${plural(n)}…`, done: n => `Another play of ${plural(n)} counted`, note: 'each gets one more play' },
+  redate: { verb: 'Change dates', button: n => `Change ${n} date${n === 1 ? '' : 's'}`, loading: () => 'Changing watched dates…', done: n => `${n} watched date${n === 1 ? '' : 's'} changed`, note: 'plays stay' },
+}
 
 /**
  * Mark a run of episodes watched across a period you remember roughly, with
  * breaks you didn't watch in. Every change replans at once (spreadWatched.ts).
  */
-export function SpreadWatchedSheet({ tvId, tvName, tvEntryId, seasons, defaultRuntime, onClose, onSaved }: Props) {
+export function SpreadWatchedSheet({ tvId, tvName, tvEntryId, seasons, defaultRuntime, only, mode = 'watched', onClose, onSaved }: Props) {
   const TODAY = todayStr()
-  const all = useAllSeasons(tvId, seasons)
+  // A fixed set needs only its own seasons from TMDB.
+  const all = useAllSeasons(tvId, only ? [...new Set(only.map(r => r.season))] : seasons)
   const { data: watched = [] } = useWatchedEpisodes(tvEntryId)
   const mark = useMarkEpisodeWatched()
   const setDates = useSetEpisodeDates()
@@ -61,6 +83,12 @@ export function SpreadWatchedSheet({ tvId, tvName, tvEntryId, seasons, defaultRu
       .map(e => ({ season: s.season_number, episode: e.episode_number, airDate: e.air_date, runtime: e.runtime }))),
   [all.seasons, TODAY])
   const watchedKeys = useMemo(() => new Set(watched.map(w => key(w.season_number, w.episode_number))), [watched])
+  const watchedAt = useMemo(() => new Map(watched.map(w => [key(w.season_number, w.episode_number), w.watched_at])), [watched])
+  const fixed = useMemo(() => {
+    if (!only) return null
+    const info = new Map(all.seasons.flatMap(s => s.episodes.map(e => [key(s.season_number, e.episode_number), { airDate: e.air_date, runtime: e.runtime }] as const)))
+    return fixedSpreadEpisodes(only, info)
+  }, [only, all.seasons])
 
   const [from, setFrom] = useState<string | null>(null)
   const [to, setTo] = useState<string | null>(null)
@@ -82,50 +110,61 @@ export function SpreadWatchedSheet({ tvId, tvName, tvEntryId, seasons, defaultRu
   const toKey = to ?? (episodes.length ? key(episodes[episodes.length - 1].season, episodes[episodes.length - 1].episode) : '')
   const fromIdx = Math.max(0, episodes.findIndex(e => key(e.season, e.episode) === fromKey))
   const toIdx = Math.max(fromIdx, episodes.findIndex(e => key(e.season, e.episode) === toKey))
-  const inRange = episodes.slice(fromIdx, toIdx + 1)
+  const inRange = fixed ?? episodes.slice(fromIdx, toIdx + 1)
   const alreadyWatched = inRange.filter(e => watchedKeys.has(key(e.season, e.episode))).length
-  const toPlan: SpreadEpisode[] = overwrite ? inRange : inRange.filter(e => !watchedKeys.has(key(e.season, e.episode)))
-  // Until a start is typed, the first episode's air date (or a year ago).
-  const startDay = start || inRange[0]?.airDate || addDays(TODAY, -365)
+  // A fixed set for a rewatch or new dates is planned whole; marking never
+  // re-dates an episode already watched unless asked to (the range's checkbox).
+  const planAll = fixed ? mode !== 'watched' : overwrite
+  const toPlan: SpreadEpisode[] = planAll ? inRange : inRange.filter(e => !watchedKeys.has(key(e.season, e.episode)))
+  // Until a start is picked: a rewatch the day after its last kept date, else the first air date.
+  const startDay = start || spreadDefaultStart(mode, toPlan, watchedAt, TODAY)
+  const words = WORDS[mode]
 
   const input: SpreadInput = { start: startDay, end, breaks, weekdays, style, maxPerDay, startTime, runtime, respectAirDates: respectAir, seed }
+  // The plan is recomputed when anything it reads changes; the input object is
+  // keyed by its JSON so a new object with the same values doesn't replan.
+  const inputKey = JSON.stringify(input)
   const result = useMemo(() => planSpread(input, toPlan, TODAY),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [JSON.stringify(input), toPlan.length, fromIdx, toIdx, overwrite, watchedKeys, TODAY])
+    [inputKey, toPlan.length, fromIdx, toIdx, overwrite, watchedKeys, TODAY, episodes, fixed])
 
+  // Through the one episode write path: new episodes marked, watched ones
+  // counted again (repeat_count + 1 at the planned time) or re-dated.
   async function save() {
     if (!result.ok) return
-    const fresh = result.plan.filter(p => !watchedKeys.has(key(p.season, p.episode)))
-    const redate = result.plan.filter(p => watchedKeys.has(key(p.season, p.episode)))
+    const w = spreadWrites(result.plan, watchedKeys, mode)
+    const refs = (items: typeof result.plan) => items.map(p => ({ season: p.season, episode: p.episode, at: p.at }))
+    const n = result.plan.length
     setSaving(true)
     const ok = await withProgress(async () => {
-      if (fresh.length) await mark.mutateAsync({ tvEntryId, episodes: fresh.map(p => ({ season: p.season, episode: p.episode, at: p.at })), watchedOn: TODAY })
-      if (redate.length) await setDates.mutateAsync({ tvEntryId, episodes: redate.map(p => ({ season: p.season, episode: p.episode, at: p.at })) })
-      if (onSaved) await onSaved({ firstAt: result.plan[0].at, lastAt: result.plan[result.plan.length - 1].at })
+      if (w.mark.length) await mark.mutateAsync({ tvEntryId, episodes: refs(w.mark), watchedOn: TODAY })
+      if (w.again.length) await mark.mutateAsync({ tvEntryId, episodes: refs(w.again), again: true, watchedOn: TODAY })
+      if (w.redate.length) await setDates.mutateAsync({ tvEntryId, episodes: refs(w.redate) })
+      if (onSaved) await onSaved({ firstAt: result.plan[0].at, lastAt: result.plan[n - 1].at })
       return true
     }, {
-      loading: `Marking ${result.plan.length} episodes…`,
-      success: onSaved ? `${result.plan.length} episodes marked · series completed` : `${result.plan.length} episodes marked watched`,
+      loading: words.loading(n),
+      success: onSaved ? `${plural(n)} marked · series completed` : words.done(n),
     })
     setSaving(false)
-    if (ok) onClose()
+    if (ok) onClose(true)
   }
 
-  const loading = all.loading && episodes.length === 0
+  const loading = all.loading && (fixed ? all.seasons.length === 0 : episodes.length === 0)
 
   return (
     <ModalShell
-      onClose={onClose}
+      onClose={() => onClose()}
       size="lg"
       title="Spread watched dates"
       subtitle={tvName}
       footer={
         <div className="flex items-center justify-end gap-2">
-          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button variant="ghost" onClick={() => onClose()}>Cancel</Button>
           <Button variant="primary" loading={saving} disabled={!result.ok || saving} onClick={() => { void save() }}>
             {result.ok
-              ? `Mark ${result.plan.length} episode${result.plan.length === 1 ? '' : 's'}${onSaved ? ' & complete' : ''}`
-              : onSaved ? 'Mark & complete' : 'Mark watched'}
+              ? `${words.button(result.plan.length)}${onSaved ? ' & complete' : ''}`
+              : onSaved ? 'Mark & complete' : words.verb}
           </Button>
         </div>
       }
@@ -140,16 +179,27 @@ export function SpreadWatchedSheet({ tvId, tvName, tvEntryId, seasons, defaultRu
           {all.failed && <p className="text-meta text-warn">Some seasons didn't load from TMDB — their episodes are left out.</p>}
 
           <Field label="Episodes">
-            <div className="flex flex-wrap items-center gap-2">
-              <EpisodeSelect episodes={episodes} value={key(inRange[0]?.season ?? 1, inRange[0]?.episode ?? 1)} onChange={setFrom} aria="From episode" />
-              <span className="text-meta text-fg-muted">to</span>
-              <EpisodeSelect episodes={episodes.slice(fromIdx)} value={key(episodes[toIdx]?.season ?? 1, episodes[toIdx]?.episode ?? 1)} onChange={setTo} aria="To episode" />
-            </div>
-            <p className="mt-1 text-meta text-fg-muted tabular-nums">
-              {inRange.length} episode{inRange.length === 1 ? '' : 's'}
-              {alreadyWatched > 0 && <> · {alreadyWatched} already watched</>}
-            </p>
-            {alreadyWatched > 0 && (
+            {fixed ? (
+              // The set picked before (selection, Up to here): shown, not chosen again.
+              <p className="text-body text-fg tabular-nums">
+                {fixed.length > 0 && <>{fixedLabel(fixed)} · </>}
+                {plural(fixed.length)}
+                {words.note && <span className="text-fg-muted"> · {words.note}</span>}
+              </p>
+            ) : (
+              <>
+                <div className="flex flex-wrap items-center gap-2">
+                  <EpisodeSelect episodes={episodes} value={key(inRange[0]?.season ?? 1, inRange[0]?.episode ?? 1)} onChange={setFrom} aria="From episode" />
+                  <span className="text-meta text-fg-muted">to</span>
+                  <EpisodeSelect episodes={episodes.slice(fromIdx)} value={key(episodes[toIdx]?.season ?? 1, episodes[toIdx]?.episode ?? 1)} onChange={setTo} aria="To episode" />
+                </div>
+                <p className="mt-1 text-meta text-fg-muted tabular-nums">
+                  {plural(inRange.length)}
+                  {alreadyWatched > 0 && <> · {alreadyWatched} already watched</>}
+                </p>
+              </>
+            )}
+            {!fixed && alreadyWatched > 0 && (
               <label className="mt-1 flex min-h-[44px] items-center gap-2 text-body text-fg-2">
                 <input type="checkbox" checked={overwrite} onChange={e => setOverwrite(e.target.checked)} className="h-4 w-4 accent-accent-500" />
                 Give the watched ones new dates too

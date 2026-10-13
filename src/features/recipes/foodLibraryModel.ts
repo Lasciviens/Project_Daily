@@ -1,5 +1,6 @@
 // The Library (recipes) and Ingredients lists: usage from the diary, macro
-// density, filters and sorts. Pure and type-only (scripts/verify-food-library.cjs).
+// density, filters and sorts. Pure (scripts/verify-food-library.cjs).
+import { foldText, rankMatches } from './foodSearch'
 import type { FoodCategory, IngredientLibraryItem, MealSlot, RecipeWithIngredients } from './types'
 
 // ── Usage from the diary ────────────────────────────────────────────────────
@@ -62,7 +63,7 @@ export function isHighProtein(kcal: number | null, protein: number | null): bool
 
 // ── Recipes (Library) ───────────────────────────────────────────────────────
 export type RecipeSort = 'recent' | 'most' | 'protein' | 'density' | 'kcal-low' | 'kcal-high' | 'cooked' | 'az' | 'new'
-export type RecipeFlag = 'high-protein' | 'light' | 'no-macros' | 'saved'
+export type RecipeFlag = 'fits' | 'high-protein' | 'light' | 'no-macros' | 'saved'
 
 export const RECIPE_SORTS: { value: RecipeSort; label: string }[] = [
   { value: 'recent', label: 'Recently eaten' },
@@ -77,6 +78,7 @@ export const RECIPE_SORTS: { value: RecipeSort; label: string }[] = [
 ]
 
 export const RECIPE_FLAGS: { value: RecipeFlag; label: string; hint: string }[] = [
+  { value: 'fits', label: 'Fits today', hint: "One serving fits the calories you have left today" },
   { value: 'high-protein', label: 'High protein', hint: '25 g+ a serving, or 8 g+ per 100 kcal' },
   { value: 'light', label: 'Under 500 kcal', hint: 'A serving under 500 kcal' },
   { value: 'no-macros', label: 'No macros', hint: 'No calories set yet' },
@@ -90,23 +92,25 @@ export interface RecipeFilter {
   query: string
   category: FoodCategory | 'all'
   flags: RecipeFlag[]
+  /** Calories still open today — what "Fits today" compares a serving with. */
+  kcalLeft?: number | null
 }
 
-const fold = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
-  .replace(/ø/g, 'o').replace(/æ/g, 'ae').replace(/ı/g, 'i').replace(/ş/g, 's').replace(/ğ/g, 'g')
+const isLight = (kcal: number | null | undefined) => kcal != null && kcal > 0 && kcal < LIGHT_KCAL
 
 export function filterRecipes(recipes: readonly RecipeWithIngredients[], f: RecipeFilter): RecipeWithIngredients[] {
-  const q = fold(f.query.trim())
+  const q = foldText(f.query)
   const saved = f.flags.includes('saved')
   return recipes.filter(r => {
     // Saved meals stay out of the Library unless asked for; asked for, only they show.
     if (saved !== r.is_temp) return false
     if (f.category !== 'all' && r.category !== f.category) return false
+    if (f.flags.includes('fits') && !fitsCalories(r.calories, f.kcalLeft)) return false
     if (f.flags.includes('high-protein') && !isHighProtein(r.calories, r.protein_g)) return false
-    if (f.flags.includes('light') && !(r.calories != null && r.calories > 0 && r.calories < LIGHT_KCAL)) return false
+    if (f.flags.includes('light') && !isLight(r.calories)) return false
     if (f.flags.includes('no-macros') && hasMacros(r)) return false
     if (!q) return true
-    return fold(r.title).includes(q) || fold(r.description ?? '').includes(q) || r.ingredients.some(i => fold(i.name).includes(q))
+    return foldText(r.title).includes(q) || foldText(r.description ?? '').includes(q) || r.ingredients.some(i => foldText(i.name).includes(q))
   })
 }
 
@@ -141,6 +145,58 @@ export function sortRecipes(recipes: readonly RecipeWithIngredients[], sort: Rec
     az: byTitle,
   }
   return [...recipes].sort(cmp[sort])
+}
+
+// ── Today's room (Library "Fits today") ─────────────────────────────────────
+/** Calories and protein still open today: the targets minus what was eaten (negative when over). */
+export function dayRemaining(
+  targets: { calories: number; protein: number },
+  eaten: { calories?: number | null; protein_g?: number | null } | null | undefined,
+): { kcal: number; protein: number } {
+  return {
+    kcal: Math.round(targets.calories - (eaten?.calories ?? 0)),
+    protein: Math.round(targets.protein - (eaten?.protein_g ?? 0)),
+  }
+}
+
+/** One portion fits when its calories are known and no more than what is left. */
+export function fitsCalories(kcal: number | null | undefined, kcalLeft: number | null | undefined): boolean {
+  return kcal != null && kcal > 0 && kcalLeft != null && kcal <= kcalLeft
+}
+
+// ── Foods in the Library search ─────────────────────────────────────────────
+/** A library food as the Library offers it: the portion + logs (its preset, else 100 g / ml) and what that portion gives. */
+export interface FoodHit {
+  food: IngredientLibraryItem
+  grams: number
+  /** "1 scoop (30 g)" or "100 g". */
+  portion: string
+  kcal: number | null
+  protein: number | null
+}
+
+export function defaultPortion(f: IngredientLibraryItem): FoodHit {
+  const unit = f.unit?.trim().toLowerCase() === 'ml' ? 'ml' : 'g'
+  const p = portionMacros(f)
+  if (p) return { food: f, grams: p.grams, portion: `${f.serving_label || 'portion'} (${Math.round(p.grams)} ${unit})`, kcal: p.calories, protein: p.protein_g }
+  return { food: f, grams: 100, portion: `100 ${unit}`, kcal: f.calories == null ? null : Math.round(f.calories), protein: f.protein_g }
+}
+
+/**
+ * Library foods matching the search (ranked like the logger, accents folded),
+ * under the same quick filters as the recipes — judged on the portion + would
+ * log. A meal-type category or the Saved meals view shows recipes only.
+ */
+export function searchFoods(foods: readonly IngredientLibraryItem[], f: RecipeFilter, limit = 8): FoodHit[] {
+  if (!f.query.trim() || f.category !== 'all' || f.flags.includes('saved')) return []
+  const ranked = rankMatches([...foods], f.query, x => x.name, foods.length).map(defaultPortion)
+  return ranked.filter(h => {
+    if (f.flags.includes('fits') && !fitsCalories(h.kcal, f.kcalLeft)) return false
+    if (f.flags.includes('high-protein') && !isHighProteinFood(h.food)) return false
+    if (f.flags.includes('light') && !isLight(h.kcal)) return false
+    if (f.flags.includes('no-macros') && hasMacros(h.food)) return false
+    return true
+  }).slice(0, limit)
 }
 
 // ── Library foods (Ingredients) ─────────────────────────────────────────────
@@ -189,9 +245,9 @@ export interface FoodFilter {
 }
 
 export function filterFoods(foods: readonly IngredientLibraryItem[], f: FoodFilter, usage: Map<string, Usage>, recipeUse: Map<string, number>): IngredientLibraryItem[] {
-  const q = fold(f.query.trim())
+  const q = foldText(f.query)
   return foods.filter(i => {
-    if (q && !fold(i.name).includes(q)) return false
+    if (q && !foldText(i.name).includes(q)) return false
     if (f.group === '__other' ? !!i.food_group : f.group && i.food_group !== f.group) return false
     const used = usage.has(usageKey.ingredient(i.id)) || (recipeUse.get(i.id) ?? 0) > 0
     if (f.flags.includes('high-protein') && !isHighProteinFood(i)) return false

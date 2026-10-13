@@ -138,5 +138,49 @@ for (let k = 0; k < 150; k++) {
   else ok(r.suggestions.length > 0 || /watching days/.test(r.error), `sweep ${k}: a reason (${r.error})`)
 }
 
+// ── Spread from the when-watched sheet (a fixed set, per mode) ─────────
+{
+  const { spreadWrites, fixedSpreadEpisodes, spreadDefaultStart } = S
+  // A fixed set: watching order, once each, TMDB facts where known, unknown ones kept.
+  const info = new Map([['1x2', { airDate: '2015-01-08', runtime: 50 }], ['2x1', { airDate: '2016-01-01', runtime: null }]])
+  const fixed = fixedSpreadEpisodes([{ season: 2, episode: 1 }, { season: 1, episode: 2 }, { season: 1, episode: 9 }, { season: 1, episode: 2 }], info)
+  eq(fixed.map(e => `${e.season}x${e.episode}`), ['1x2', '1x9', '2x1'], 'fixed set: watching order, no duplicates')
+  eq(fixed[0], { season: 1, episode: 2, airDate: '2015-01-08', runtime: 50 }, 'fixed set: air date and runtime from TMDB')
+  eq(fixed[1], { season: 1, episode: 9, airDate: null, runtime: null }, 'fixed set: an episode TMDB lacks stays in')
+  eq(fixedSpreadEpisodes([], info), [], 'empty set')
+
+  // The writes per mode: new = marked; watched = one more play (again) or a new date.
+  const rp = planSpread(input({ start: '2026-01-01', end: '2026-03-01', respectAirDates: false }), series(1, 6), TODAY)
+  ok(rp.ok, 'a plan for the writes')
+  const watchedSet = new Set(['1x1', '1x2', '1x3'])
+  const wAgain = spreadWrites(rp.plan, watchedSet, 'again')
+  eq(wAgain.again.map(p => p.episode), [1, 2, 3], 'Watched again: the watched ones get one more play each')
+  eq(wAgain.mark.map(p => p.episode), [4, 5, 6], 'Watched again: an unwatched one is just marked')
+  eq(wAgain.redate, [], 'Watched again: nothing only re-dated')
+  eq(wAgain.again[1].at, rp.plan[1].at, 'Watched again: the play is at its planned time (the new kept date)')
+  const wMark = spreadWrites(rp.plan, watchedSet, 'watched')
+  eq([wMark.mark.length, wMark.again.length, wMark.redate.length], [3, 0, 3], 'Mark watched: new marked, watched ones re-dated, no extra plays')
+  const wRedate = spreadWrites(rp.plan, watchedSet, 'redate')
+  eq([wRedate.mark.length, wRedate.again.length, wRedate.redate.length], [3, 0, 3], 'Change date: watched ones re-dated, plays stay')
+  const all3 = spreadWrites(rp.plan, new Set(), 'again')
+  eq(all3.mark.length + all3.again.length + all3.redate.length, rp.plan.length, 'every planned episode is written exactly once')
+
+  // The suggested start.
+  const midday = (y, m, d) => new Date(y, m - 1, d, 12).toISOString()
+  const rew = [{ season: 1, episode: 1, airDate: '2015-01-01' }, { season: 1, episode: 2, airDate: '2015-01-08' }]
+  const at = new Map([['1x1', midday(2025, 5, 10)], ['1x2', midday(2025, 6, 2)]])
+  eq(spreadDefaultStart('again', rew, at, TODAY), '2025-06-03', 'rewatch: the day after the latest kept date')
+  eq(spreadDefaultStart('again', rew, new Map([['1x1', '1970-01-01T00:00:00.000Z']]), TODAY), addDays(TODAY, -365), 'rewatch with only unknown dates: a year ago')
+  eq(spreadDefaultStart('again', rew, new Map([['1x2', midday(2026, 10, 7)]]), TODAY), TODAY, 'rewatch last kept today: never after today')
+  eq(spreadDefaultStart('watched', rew, at, TODAY), '2015-01-01', 'marking: the first episode\'s air date')
+  eq(spreadDefaultStart('redate', [{ season: 1, episode: 3, airDate: null }], at, TODAY), addDays(TODAY, -365), 'no air date: a year ago')
+  eq(spreadDefaultStart('watched', [{ season: 1, episode: 1, airDate: '2027-01-01' }], at, TODAY), TODAY, 'a future air date: today')
+
+  // A rewatch spread from its suggested start lands after the last kept date.
+  const start = spreadDefaultStart('again', rew, at, TODAY)
+  const rr = planSpread(input({ start, end: TODAY }), rew, TODAY)
+  ok(rr.ok && rr.plan.every(p => p.day >= '2025-06-03'), 'rewatch plan: every new play after the last kept date')
+}
+
 console.log('DAYS ' + r1.plan.map(x => x.day).join(','))
 console.log(`verify-spread-watched: ${n} assertions passed`)
