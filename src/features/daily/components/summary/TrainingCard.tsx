@@ -67,7 +67,7 @@ export function TrainingCard({ date }: { date: string }) {
         taskId: b.task_id ?? null, taskStatus: b.task_status ?? null, taskWorkoutId: b.task_workout_id ?? null,
         taskRoutineId: b.task_routine_id ?? null, sourceRoutineId: b.source_type === 'training_session' ? b.source_id ?? null : null,
       })),
-    ...projectRecurringBlocksForDay(date, new Date(`${date}T00:00:00`).getDay(), trainingTemplates)
+    ...projectRecurringBlocksForDay(date, trainingTemplates)
       .filter(p => !p.spillover)
       .map(p => ({ id: `${p.canonicalId}__${date}`, title: p.title, time: hhmm(p.startHour), recurring: true, ref: { kind: 'recurring' as const, id: p.canonicalId, date }, taskId: null, taskStatus: null, taskWorkoutId: null, taskRoutineId: null, sourceRoutineId: null })),
   ].sort((a, b) => (a.time ?? '99:99').localeCompare(b.time ?? '99:99')), [trainingBlocks, trainingTemplates, date])

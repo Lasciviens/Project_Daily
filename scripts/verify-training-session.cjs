@@ -114,12 +114,12 @@ eq(S.weekStartOf('2026-03-29'), '2026-03-23', 'across the DST change')
 // ── A weekly plan leaves out the days that became plans of their own (142) ──
 {
   const tpl = { id: 'w', title: 'Upper A', start_time: '17:00:00', end_time: '18:00:00', days_of_week: [1, 4], except_dates: ['2026-10-12'] }
-  eq(projectRecurringBlocksForDay('2026-10-12', 1, [tpl]).length, 0, 'the excepted Monday is left out')
-  eq(projectRecurringBlocksForDay('2026-10-19', 1, [tpl]).length, 1, 'the next Monday is still there')
-  eq(projectRecurringBlocksForDay('2026-10-12', 1, [{ ...tpl, except_dates: undefined }]).length, 1, 'before 142 (no column): nothing left out')
+  eq(projectRecurringBlocksForDay('2026-10-12', [tpl]).length, 0, 'the excepted Monday is left out')
+  eq(projectRecurringBlocksForDay('2026-10-19', [tpl]).length, 1, 'the next Monday is still there')
+  eq(projectRecurringBlocksForDay('2026-10-12', [{ ...tpl, except_dates: undefined }]).length, 1, 'before 142 (no column): nothing left out')
   const late = { id: 'n', title: 'Night', start_time: '23:00:00', end_time: '01:00:00', days_of_week: [1], except_dates: ['2026-10-12'] }
-  eq(projectRecurringBlocksForDay('2026-10-13', 2, [late]).length, 0, 'its tail after midnight goes with it')
-  eq(projectRecurringBlocksForDay('2026-10-20', 2, [late]).filter(p => p.spillover).length, 1, 'another week keeps its tail')
+  eq(projectRecurringBlocksForDay('2026-10-13', [late]).length, 0, 'its tail after midnight goes with it')
+  eq(projectRecurringBlocksForDay('2026-10-20', [late]).filter(p => p.spillover).length, 1, 'another week keeps its tail')
 }
 
 // ── One set of facts for every view (planFacts) ──

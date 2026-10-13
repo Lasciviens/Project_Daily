@@ -340,15 +340,15 @@ console.log('\n== 14. DayAgenda cross-midnight projection ==')
   // The same scenario for a RECURRING template — Monday-only, 23:00-01:00.
   const recurringTemplate = { id: 'rec1', title: 'Late shift', start_time: '23:00:00', end_time: '01:00:00', days_of_week: [1] } // Monday=1
 
-  const mondayRecurring = projectRecurringBlocksForDay('2026-08-24', 1, [recurringTemplate])
+  const mondayRecurring = projectRecurringBlocksForDay('2026-08-24', [recurringTemplate])
   check('Monday (dayOfWeek=1) shows the template clipped to 23:00-24:00',
     mondayRecurring.length === 1 && mondayRecurring[0].startHour === 23 && mondayRecurring[0].endHour === 24 && !mondayRecurring[0].spillover)
 
-  const tuesdayRecurring = projectRecurringBlocksForDay('2026-08-25', 2, [recurringTemplate])
+  const tuesdayRecurring = projectRecurringBlocksForDay('2026-08-25', [recurringTemplate])
   check('Tuesday (dayOfWeek=2) shows the spillover tail 00:00-01:00',
     tuesdayRecurring.length === 1 && tuesdayRecurring[0].startHour === 0 && tuesdayRecurring[0].endHour === 1 && tuesdayRecurring[0].spillover === true)
 
-  const wednesdayRecurring = projectRecurringBlocksForDay('2026-08-26', 3, [recurringTemplate])
+  const wednesdayRecurring = projectRecurringBlocksForDay('2026-08-26', [recurringTemplate])
   check('Wednesday (not Monday or Tuesday) shows nothing at all',
     wednesdayRecurring.length === 0)
 
@@ -421,21 +421,21 @@ console.log('\n== 17. Recurring effective_from (no fabricated past occurrences) 
     days_of_week: [1, 2, 3, 4, 5], effective_from: '2026-08-24',
   }
   check('renders on its own effective_from day (boundary is INCLUSIVE)',
-    projectRecurringBlocksForDay('2026-08-24', 1, [weekdayTpl]).length === 1)
+    projectRecurringBlocksForDay('2026-08-24', [weekdayTpl]).length === 1)
   check('renders on a later matching weekday',
-    projectRecurringBlocksForDay('2026-08-25', 2, [weekdayTpl]).length === 1)
+    projectRecurringBlocksForDay('2026-08-25', [weekdayTpl]).length === 1)
   check('does NOT render on a matching weekday BEFORE effective_from (the reported bug)',
-    projectRecurringBlocksForDay('2026-08-17', 1, [weekdayTpl]).length === 0)
+    projectRecurringBlocksForDay('2026-08-17', [weekdayTpl]).length === 0)
   check('still does not render on a non-matching weekday after effective_from',
-    projectRecurringBlocksForDay('2026-08-30', 0, [weekdayTpl]).length === 0)
+    projectRecurringBlocksForDay('2026-08-30', [weekdayTpl]).length === 0)
 
   // Pre-migration-081 rows carry no effective_from at all -> old behaviour
   // (no lower bound), so the UI degrades instead of hiding everything.
   const legacyTpl = { ...weekdayTpl, effective_from: undefined }
   check('a row with no effective_from keeps the old unbounded behaviour',
-    projectRecurringBlocksForDay('2026-08-17', 1, [legacyTpl]).length === 1)
+    projectRecurringBlocksForDay('2026-08-17', [legacyTpl]).length === 1)
   check('null effective_from is treated the same as absent',
-    projectRecurringBlocksForDay('2026-08-17', 1, [{ ...weekdayTpl, effective_from: null }]).length === 1)
+    projectRecurringBlocksForDay('2026-08-17', [{ ...weekdayTpl, effective_from: null }]).length === 1)
 
   // A cross-midnight template must gate its spillover on the PREVIOUS day -
   // the day that occurrence actually starts on - so its own first day never
@@ -444,14 +444,148 @@ console.log('\n== 17. Recurring effective_from (no fabricated past occurrences) 
     id: 'rec-night', title: 'Late shift', start_time: '23:00:00', end_time: '01:00:00',
     days_of_week: [1], effective_from: '2026-08-24', // Monday
   }
-  const firstDay = projectRecurringBlocksForDay('2026-08-24', 1, [nightTpl])
+  const firstDay = projectRecurringBlocksForDay('2026-08-24', [nightTpl])
   check('effective_from day shows only its own occurrence, no spillover from the day before',
     firstDay.length === 1 && firstDay[0].spillover === false)
-  const dayAfter = projectRecurringBlocksForDay('2026-08-25', 2, [nightTpl])
+  const dayAfter = projectRecurringBlocksForDay('2026-08-25', [nightTpl])
   check('the day AFTER shows the spillover tail (its origin day is effective)',
     dayAfter.length === 1 && dayAfter[0].spillover === true)
   check('the Tuesday BEFORE effective_from shows no spillover either',
-    projectRecurringBlocksForDay('2026-08-18', 2, [nightTpl]).length === 0)
+    projectRecurringBlocksForDay('2026-08-18', [nightTpl]).length === 0)
+}
+
+console.log('\n== 18. Repeat choice: one line, day circles, monthly / custom (migration 146) ==')
+{
+  const C = require('../src/shared/components/plan-modal/planModal.config')
+  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b)
+  const base = { recurrence: 'none', weeklyDays: [1, 2, 3, 4, 5], monthWeekday: null, customKind: 'every', repeatEvery: '2', repeatUnit: 'week', repeatDates: [] }
+  const f = o => ({ ...base, ...o })
+
+  check('six choices, "No repeat" first; editing a saved plan never offers it',
+    same(C.RECURRENCE_OPTIONS.map(o => o.value), ['none', 'daily', 'weekdays', 'weekly', 'monthly', 'custom'])
+    && !C.RECURRING_EDIT_OPTIONS.some(o => o.value === 'none') && C.RECURRING_EDIT_OPTIONS.length === 5)
+  check('circles run Monday first; the stored numbering keeps 0 = Sunday',
+    same(C.DAY_ORDER, [1, 2, 3, 4, 5, 6, 0]) && C.DAY_LABELS[0] === 'S' && C.DAY_NAMES[0] === 'Sunday' && C.DAY_NAMES[1] === 'Monday')
+
+  check('which circles: weekly-style several, monthly one, every N days none, picked dates none',
+    C.dayPickerFor(f({ recurrence: 'daily' })) === 'multi' && C.dayPickerFor(f({ recurrence: 'monthly' })) === 'single'
+    && C.dayPickerFor(f({ recurrence: 'custom', repeatUnit: 'day' })) === null
+    && C.dayPickerFor(f({ recurrence: 'custom', repeatUnit: 'week' })) === 'multi'
+    && C.dayPickerFor(f({ recurrence: 'custom', repeatUnit: 'month' })) === 'single'
+    && C.dayPickerFor(f({ recurrence: 'custom', customKind: 'dates' })) === null
+    && C.dayPickerFor(f({ recurrence: 'none' })) === null)
+  check('Every day lights all seven, Weekdays Mon–Fri',
+    same(C.litDays(f({ recurrence: 'daily', weeklyDays: [2] })), [0, 1, 2, 3, 4, 5, 6])
+    && same(C.litDays(f({ recurrence: 'weekdays', weeklyDays: [2] })), [1, 2, 3, 4, 5]))
+
+  const tapSat = C.toggleRepeatDay(f({ recurrence: 'weekdays' }), 6)
+  check('a tap on Sat in Weekdays becomes Weekly Mon–Sat', tapSat.recurrence === 'weekly' && same(tapSat.weeklyDays, [1, 2, 3, 4, 5, 6]))
+  const tapWed = C.toggleRepeatDay(f({ recurrence: 'daily' }), 3)
+  check('a tap on Wed in Every day becomes Weekly without Wed', tapWed.recurrence === 'weekly' && same(tapWed.weeklyDays, [0, 1, 2, 4, 5, 6]))
+  const tapFri = C.toggleRepeatDay(f({ recurrence: 'weekly', weeklyDays: [1, 2, 3, 4] }), 5)
+  check('completing Mon–Fri in Weekly reads as Weekdays (as a saved plan opens)', tapFri.recurrence === 'weekdays')
+  const tapAll = C.toggleRepeatDay(f({ recurrence: 'weekly', weeklyDays: [0, 1, 2, 3, 4, 5] }), 6)
+  check('the seventh day reads as Every day', tapAll.recurrence === 'daily')
+  const tapLast = C.toggleRepeatDay(f({ recurrence: 'weekly', weeklyDays: [2] }), 2)
+  check('untapping the last day stays Weekly with no day (Save is blocked)', tapLast.recurrence === 'weekly' && same(tapLast.weeklyDays, []))
+  check('monthly takes one weekday; a second tap clears it',
+    C.toggleRepeatDay(f({ recurrence: 'monthly' }), 6).monthWeekday === 6
+    && C.toggleRepeatDay(f({ recurrence: 'monthly', monthWeekday: 6 }), 6).monthWeekday === null
+    && C.toggleRepeatDay(f({ recurrence: 'monthly', monthWeekday: 6 }), 1).monthWeekday === 1)
+  check('custom every N weeks toggles its own days and stays Custom',
+    same(C.toggleRepeatDay(f({ recurrence: 'custom', weeklyDays: [2] }), 4), { weeklyDays: [2, 4] }))
+  check('no circles, no change', same(C.toggleRepeatDay(f({ recurrence: 'custom', repeatUnit: 'day' }), 4), {}))
+
+  check('picking Weekly from Weekdays starts from the plan’s weekday, not Mon–Fri',
+    same(C.pickRecurrence(f({ recurrence: 'weekdays' }), 'weekly', 2), { recurrence: 'weekly', weeklyDays: [2] }))
+  check('picking Weekly keeps a set of its own',
+    same(C.pickRecurrence(f({ recurrence: 'daily', weeklyDays: [1, 3] }), 'weekly', 2), { recurrence: 'weekly', weeklyDays: [1, 3] }))
+  check('picking Custom from Weekdays starts every-N-weeks from the plan’s weekday too',
+    same(C.pickRecurrence(f({ recurrence: 'weekdays' }), 'custom', 4), { recurrence: 'custom', weeklyDays: [4] }))
+  check('picking Monthly changes only the choice', same(C.pickRecurrence(f({}), 'monthly', 2), { recurrence: 'monthly' }))
+
+  check('weekly with no day: "Pick at least one day." (hasValidRecurrenceSelection still guards)',
+    C.recurrenceProblem(f({ recurrence: 'weekly', weeklyDays: [] })) === 'Pick at least one day.')
+  check('every day / weekdays / monthly / no repeat are always complete',
+    ['daily', 'weekdays', 'monthly', 'none'].every(r => C.recurrenceProblem(f({ recurrence: r, weeklyDays: [] })) === null))
+  check('custom: an N of 0, 100, 1.5 or empty is refused',
+    ['0', '100', '1.5', ''].every(n => C.recurrenceProblem(f({ recurrence: 'custom', repeatEvery: n })) === 'Repeat every 1 to 99 weeks.'))
+  check('custom every N weeks needs a day', C.recurrenceProblem(f({ recurrence: 'custom', weeklyDays: [] })) === 'Pick at least one day.')
+  check('custom every N days needs none', C.recurrenceProblem(f({ recurrence: 'custom', repeatUnit: 'day', weeklyDays: [] })) === null)
+  check('picked dates need one', C.recurrenceProblem(f({ recurrence: 'custom', customKind: 'dates' })) === 'Pick at least one date.'
+    && C.recurrenceProblem(f({ recurrence: 'custom', customKind: 'dates', repeatDates: ['2026-10-20'] })) === null)
+
+  const row = o => C.repeatRowFromForm(f(o))
+  check('weekly-style choices store as weekly (unchanged meaning)',
+    same(row({ recurrence: 'weekdays' }), { days_of_week: [1, 2, 3, 4, 5], repeat_kind: 'weekly', repeat_interval: null, repeat_unit: null, repeat_dates: null })
+    && same(row({ recurrence: 'weekly', weeklyDays: [4, 2, 2] }).days_of_week, [2, 4]))
+  check('monthly with Saturday / without a weekday',
+    same(row({ recurrence: 'monthly', monthWeekday: 6 }), { days_of_week: [6], repeat_kind: 'monthly', repeat_interval: null, repeat_unit: null, repeat_dates: null })
+    && same(row({ recurrence: 'monthly' }).days_of_week, []))
+  check('every 2 weeks on Tue and Thu',
+    same(row({ recurrence: 'custom', weeklyDays: [4, 2] }), { days_of_week: [2, 4], repeat_kind: 'interval', repeat_interval: 2, repeat_unit: 'week', repeat_dates: null }))
+  check('every 3 days carries no weekday',
+    same(row({ recurrence: 'custom', repeatEvery: '3', repeatUnit: 'day' }), { days_of_week: [], repeat_kind: 'interval', repeat_interval: 3, repeat_unit: 'day', repeat_dates: null }))
+  check('every 6 months, the Friday nearest',
+    same(row({ recurrence: 'custom', repeatEvery: '6', repeatUnit: 'month', monthWeekday: 5 }), { days_of_week: [5], repeat_kind: 'interval', repeat_interval: 6, repeat_unit: 'month', repeat_dates: null }))
+  check('one shape per meaning: every 1 week = weekly, every 1 month = monthly, every 1 day = every day',
+    row({ recurrence: 'custom', repeatEvery: '1', weeklyDays: [2] }).repeat_kind === 'weekly'
+    && row({ recurrence: 'custom', repeatEvery: '1', repeatUnit: 'month' }).repeat_kind === 'monthly'
+    && same(row({ recurrence: 'custom', repeatEvery: '1', repeatUnit: 'day' }).days_of_week, [0, 1, 2, 3, 4, 5, 6]))
+  check('picked dates are stored sorted, once each',
+    same(row({ recurrence: 'custom', customKind: 'dates', repeatDates: ['2026-12-31', '2026-10-20', '2026-10-20'] }),
+      { days_of_week: [], repeat_kind: 'dates', repeat_interval: null, repeat_unit: null, repeat_dates: ['2026-10-20', '2026-12-31'] }))
+
+  // A saved row opens as the same choice, and saving it unchanged writes the same row.
+  const rows = [
+    { days_of_week: [0, 1, 2, 3, 4, 5, 6] }, { days_of_week: [1, 2, 3, 4, 5], repeat_kind: 'weekly' }, { days_of_week: [1, 4] },
+    { days_of_week: [6], repeat_kind: 'monthly' }, { days_of_week: [], repeat_kind: 'monthly' },
+    { days_of_week: [2, 4], repeat_kind: 'interval', repeat_interval: 2, repeat_unit: 'week' },
+    { days_of_week: [], repeat_kind: 'interval', repeat_interval: 3, repeat_unit: 'day' },
+    { days_of_week: [5], repeat_kind: 'interval', repeat_interval: 6, repeat_unit: 'month' },
+    { days_of_week: [], repeat_kind: 'dates', repeat_dates: ['2026-10-20', '2026-11-14'] },
+  ]
+  check('every kind round-trips: row → form → the same row', rows.every(r => {
+    const back = C.repeatRowFromForm(f(C.repeatFormFromRow(r)))
+    return same(back.days_of_week, r.days_of_week) && back.repeat_kind === (r.repeat_kind ?? 'weekly')
+      && back.repeat_interval === (r.repeat_interval ?? null) && back.repeat_unit === (r.repeat_unit ?? null)
+      && same(back.repeat_dates, r.repeat_dates ?? null)
+  }))
+  check('a row from before 146 (no repeat_kind) opens as its weekly-style choice',
+    C.repeatFormFromRow({ days_of_week: [1, 2, 3, 4, 5] }).recurrence === 'weekdays')
+
+  check('a repeat starts on the planner’s date; picked dates start at the earliest pick if earlier',
+    C.repeatStart(row({ recurrence: 'weekly', weeklyDays: [2] }), '2026-10-14') === '2026-10-14'
+    && C.repeatStart(row({ recurrence: 'custom', customKind: 'dates', repeatDates: ['2026-10-10', '2026-11-01'] }), '2026-10-14') === '2026-10-10'
+    && C.repeatStart(row({ recurrence: 'custom', customKind: 'dates', repeatDates: ['2026-10-20'] }), '2026-10-14') === '2026-10-14')
+
+  const p = C.repeatPreview(f({ recurrence: 'monthly', monthWeekday: 6 }), '2026-10-13', '2026-10-13')
+  check('preview: the owner’s monthly example — summary and the next three days',
+    p.summary === 'Every month, the Saturday nearest the 13th' && same(p.next, ['2026-11-14', '2026-12-12', '2027-01-16']))
+  const pw = C.repeatPreview(f({ recurrence: 'custom', weeklyDays: [2, 4] }), '2026-10-13', '2026-10-13', ['2026-10-15'])
+  check('preview: every 2 weeks, skipping a left-out day',
+    pw.summary === 'Every 2 weeks on Tue and Thu' && same(pw.next, ['2026-10-13', '2026-10-27', '2026-10-29']))
+  check('preview: none for No repeat or an incomplete choice',
+    C.repeatPreview(f({}), '2026-10-13', '2026-10-13') === null
+    && C.repeatPreview(f({ recurrence: 'weekly', weeklyDays: [] }), '2026-10-13', '2026-10-13') === null)
+
+  const monthlyTpl = { id: 's', user_id: 'u', title: 'Haircut', days_of_week: [6], start_time: '10:00:00', end_time: '11:00:00', color: 'blue', category: 'daily',
+    effective_from: '2026-10-13', repeat_kind: 'monthly', created_at: '', updated_at: '' }
+  const opened = buildInitialForm(undefined, undefined, undefined, monthlyTpl)
+  check('editing a monthly plan opens as Monthly + Saturday, its start as the date',
+    opened.recurrence === 'monthly' && opened.monthWeekday === 6 && opened.date === '2026-10-13')
+  const fresh = buildInitialForm({ date: '2026-10-14' })
+  check('a new plan starts with No repeat and its own date', fresh.recurrence === 'none' && fresh.date === '2026-10-14' && fresh.repeatUnit === 'week')
+}
+
+console.log('\n== 19. A task planned for a day never gets a retired section ==')
+{
+  const C = require('../src/shared/components/plan-modal/planModal.config')
+  const { todayStr, tomorrowStr } = require('../src/shared/utils/dateUtils')
+  check('today → Today', C.sectionForDate(todayStr()) === 'today')
+  check('tomorrow → Backlog (was the legacy Tomorrow)', C.sectionForDate(tomorrowStr()) === 'backlog')
+  check('next week → Backlog (was the legacy This week)', C.sectionForDate('2099-01-01') === 'backlog')
+  check('a past day → Backlog', C.sectionForDate('2020-01-01') === 'backlog')
 }
 
 console.log(`\n${passed} passed, ${failed} failed\n`)

@@ -152,11 +152,12 @@ eq(R.onDay(task({ status: 'done', due_date: TODAY, completed_at: at('2026-10-11'
 
 // ── Section of a day ──
 eq(R.sectionForDay(TODAY, TODAY), 'today', 'today')
-eq(R.sectionForDay('2026-10-13', TODAY), 'tomorrow', 'tomorrow')
-eq(R.sectionForDay('2026-10-19', TODAY), 'this_week', 'seven days ahead')
+// Tomorrow / This week are retired sections: a new task never gets one.
+eq(R.sectionForDay('2026-10-13', TODAY), 'backlog', 'tomorrow → backlog, not the legacy Tomorrow')
+eq(R.sectionForDay('2026-10-19', TODAY), 'backlog', 'seven days ahead → backlog, not the legacy This week')
 eq(R.sectionForDay('2026-10-20', TODAY), 'backlog', 'eight days ahead')
 eq(R.sectionForDay('2026-10-11', TODAY), 'backlog', 'yesterday')
-eq(R.sectionForDay('2026-03-30', '2026-03-29'), 'tomorrow', 'across the spring DST change')
+eq(R.sectionForDay('2026-03-30', '2026-03-29'), 'backlog', 'across the spring DST change')
 
 // ── Focus ──
 eq(R.isFocusedOpen(task({ is_focused: true, status: 'done' })), false, 'a finished task leaves the focus strip')

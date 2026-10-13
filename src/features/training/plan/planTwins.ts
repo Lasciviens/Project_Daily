@@ -62,8 +62,7 @@ export function findPlanTwin(input: {
     }
   }
   if (!name) return null
-  const weekday = new Date(`${date}T00:00:00`).getDay()
-  const hit = projectRecurringBlocksForDay(date, weekday, [...input.templates])
+  const hit = projectRecurringBlocksForDay(date, input.templates)
     .find(p => !p.spillover && norm(p.title) === name)
   return hit ? { kind: 'recurring', title: hit.title, startTime: hhmm(hit.startHour) } : null
 }

@@ -24,41 +24,60 @@ export async function fetchScheduleBlocks(): Promise<ScheduleBlock[]> {
   return data ?? []
 }
 
-// effective_from is stamped HERE, not at any call site: "a new recurring
-// template starts today, never retroactively" is a property of the entity, so
-// every writer gets it for free (and the one existing caller —
-// UnifiedPlanModal's saveRecurring — needs no change). The client's own LOCAL
-// today is sent rather than relying on the column's CURRENT_DATE default,
-// which is the SERVER's UTC day and lands on yesterday for Oslo between 00:00
-// and 02:00. Retries once without the column so the app still works before
-// migration 081 is applied (the established 42703/PGRST204 fallback pattern).
-export async function createScheduleBlock(input: CreateScheduleBlockInput): Promise<ScheduleBlock> {
-  const user = await requireUser()
-  const row: Record<string, unknown> = {
-    ...input, user_id: user.id, effective_from: todayStr(),
-  }
-  const { data, error } = await supabase.from('schedule_blocks').insert(row).select().single()
-  if (!error) return data
-  if (error.code !== 'PGRST204' && error.code !== '42703') throw error
-  const withoutColumn = { ...row }
-  delete withoutColumn.effective_from
-  const retry = await supabase.from('schedule_blocks').insert(withoutColumn).select().single()
-  if (retry.error) throw retry.error
-  return retry.data
+const isMissingColumn = (e: { code?: string; message?: string }) =>
+  e.code === 'PGRST204' || e.code === '42703' || /column .* does not exist|could not find the '.*' column/i.test(e.message ?? '')
+
+// The repeat columns of migration 146. Before it is applied a weekly-style
+// repeat (every day / weekdays / weekly) still saves — the row simply goes
+// without them; any other kind can't be stored and says so by name.
+const REPEAT_COLUMNS = ['repeat_kind', 'repeat_interval', 'repeat_unit', 'repeat_dates'] as const
+export const REPEAT_NOT_MIGRATED = 'Repeating monthly, every N days/weeks/months or on picked dates needs migration 146 — migration 146 not applied yet.'
+
+/** The row without the 146 columns, or a named error when its repeat needs them. */
+function withoutRepeatColumns(row: Record<string, unknown>): Record<string, unknown> {
+  if (row.repeat_kind != null && row.repeat_kind !== 'weekly') throw new Error(REPEAT_NOT_MIGRATED)
+  const out = { ...row }
+  for (const c of REPEAT_COLUMNS) delete out[c]
+  return out
 }
 
-// Recurring templates have no Google Calendar support (never implemented —
-// the modal deliberately hides that checkbox in recurring mode rather than
-// show a control that silently does nothing), so this is a plain DB update.
+// effective_from is the template's first day: the start the planner picked,
+// else the client's own LOCAL today — never the column's CURRENT_DATE default,
+// which is the SERVER's UTC day and lands on yesterday for Oslo between 00:00
+// and 02:00. It is never retroactive by accident (081). Falls back without the
+// 146 columns (see withoutRepeatColumns) and then without effective_from
+// (before 081), the established 42703/PGRST204 pattern.
+export async function createScheduleBlock(input: CreateScheduleBlockInput): Promise<ScheduleBlock> {
+  const user = await requireUser()
+  let row: Record<string, unknown> = {
+    ...input, user_id: user.id, effective_from: input.effective_from ?? todayStr(),
+  }
+  for (let attempt = 0; ; attempt++) {
+    const { data, error } = await supabase.from('schedule_blocks').insert(row).select().single()
+    if (!error) return data
+    if (!isMissingColumn(error) || attempt >= 2) throw error
+    if (REPEAT_COLUMNS.some(c => c in row)) row = withoutRepeatColumns(row)
+    else if ('effective_from' in row) { row = { ...row }; delete row.effective_from }
+    else throw error
+  }
+}
+
+// Recurring templates have no Google Calendar support yet (the modal hides
+// that checkbox in recurring mode rather than show a control that silently
+// does nothing), so this is a plain DB update.
 export async function updateScheduleBlock(id: string, patch: UpdateScheduleBlockInput): Promise<ScheduleBlock> {
-  const { data, error } = await supabase
+  const write = (p: Record<string, unknown>) => supabase
     .from('schedule_blocks')
-    .update({ ...patch, updated_at: new Date().toISOString() })
+    .update({ ...p, updated_at: new Date().toISOString() })
     .eq('id', id)
     .select()
     .single()
-  if (error) throw error
-  return data
+  const { data, error } = await write({ ...patch })
+  if (!error) return data
+  if (!isMissingColumn(error) || !REPEAT_COLUMNS.some(c => c in patch)) throw error
+  const retry = await write(withoutRepeatColumns({ ...patch }))
+  if (retry.error) throw retry.error
+  return retry.data
 }
 
 // A block's task state rides along (not kept as an embed): a training

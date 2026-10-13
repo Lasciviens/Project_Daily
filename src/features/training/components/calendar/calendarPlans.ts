@@ -30,7 +30,7 @@ export function buildPlansByDate(from: string, to: string, blocks: readonly Bloc
   if (training.length > 0) {
     for (let cursor = new Date(`${from}T12:00:00`); ymd(cursor) <= to; cursor.setDate(cursor.getDate() + 1)) {
       const dateStr = ymd(cursor)
-      for (const p of projectRecurringBlocksForDay(dateStr, cursor.getDay(), training)) {
+      for (const p of projectRecurringBlocksForDay(dateStr, training)) {
         if (p.spillover) continue
         const scheduleBlock = training.find(s => s.id === p.canonicalId)
         if (scheduleBlock) push(dateStr, { id: `${p.canonicalId}__${dateStr}`, title: p.title, kind: 'recurring', scheduleBlock: scheduleBlock as ScheduleBlock })
