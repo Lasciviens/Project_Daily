@@ -4,6 +4,7 @@ import { ChevronRight } from 'lucide-react'
 import { Skeleton, Truncate, cx } from '../../../shared/ui'
 import { useReducedMotion } from '../../../shared/hooks/useMotion'
 import { readGlanceIndex, saveGlanceIndex } from './glanceIndex'
+import { GlanceArt } from './GlanceArt'
 
 /** One screen of a glance tile: a big value + one line, or its own small body. */
 export interface GlanceScreen {
@@ -21,6 +22,8 @@ interface Props {
   id: string
   label: string
   icon: ReactNode
+  /** The tile's corner art: a motif from glanceMotifs.tsx. */
+  art?: ReactNode
   screens: GlanceScreen[]
   loading?: boolean
   /** In-app route, or… */
@@ -37,7 +40,7 @@ const DRAG_SLOP = 5
  * the keyboard, ←/→ on the tile's header. The dots say which screen is up. A
  * plain tap or click (not a drag) opens the tile's detail, like before.
  */
-export function GlanceCarousel({ id, label, icon, screens, loading, to, onClick }: Props) {
+export function GlanceCarousel({ id, label, icon, art, screens, loading, to, onClick }: Props) {
   const track = useRef<HTMLDivElement>(null)
   const [index, setIndex] = useState(() => readGlanceIndex(id))
   const count = screens.length
@@ -136,10 +139,11 @@ export function GlanceCarousel({ id, label, icon, screens, loading, to, onClick 
 
   return (
     <div
-      className="card-interactive glance-card flex min-h-[112px] min-w-0 cursor-pointer select-none flex-col p-3.5 text-left focus-within:ring-2 focus-within:ring-accent-500/40"
+      className="card-interactive glance-card relative isolate flex min-h-[112px] min-w-0 cursor-pointer select-none flex-col p-3.5 text-left focus-within:ring-2 focus-within:ring-accent-500/40"
       onClick={e => { if (e.defaultPrevented) return; if (to) navigate(to); else onClick?.() }}
       onClickCapture={onClickCapture}
     >
+      {art != null && <GlanceArt>{art}</GlanceArt>}
       {to
         ? <Link to={to} className={headerCls} aria-label={describe} onKeyDown={onKeyDown} onClick={e => e.stopPropagation()}>{headerInner}</Link>
         : <button type="button" className={headerCls} aria-label={describe} onKeyDown={onKeyDown} onClick={e => { e.stopPropagation(); onClick?.() }}>{headerInner}</button>}

@@ -416,8 +416,14 @@ app's own colours, never a photo. One shared way, so every page behaves the same
   from the tokens; also measured on real pixels at 393 and 1469px in both themes).
   No animation, no timers, no network; `aria-hidden`, `pointer-events-none`.
 - **Colours.** Only `HERO.accent` / `HERO.muted` (fills) and `HERO.hole` (the card surface, for cut-
-  outs), plus their `…Line` strokes — tokens, so both themes and every accent work. This is the one
-  place the accent is decoration.
+  outs), plus their `…Line` strokes — tokens, so both themes and every accent work. This art (and
+  the glance tiles' corner art below) is the one place the accent is decoration.
+- **Home's glance tiles** carry a small corner version (owner, 13.10.2026): `GlanceCarousel`'s
+  `art` takes a motif from `src/features/home/components/glanceMotifs.tsx` (192 × 88 canvas, the
+  subject in its right half) and `GlanceArt` draws it in the tile's top-right corner, in the band
+  above its first line (2.75rem tall, at most 6rem and a third of the tile wide) — right of the
+  label, behind the chevron — so it is never under text, adds no height and always takes the
+  free-space opacity (`scripts/verify-glance-art.cjs`).
 - **A new page's art:** one `src/features/<feature>/components/<Feature>HeroArt.tsx` returning SVG
   content drawn on the 640 × 140 canvas (`HERO_ART_VIEWBOX`): a few dozen simple shapes, the subject
   in the right half (the left 40 % fades), something quieter on the left; pass it as `art`. A

@@ -10,6 +10,7 @@ import { PLAY_STATUS_TONE } from '../../games/playStatusTones'
 import { useWidgetState } from '../hooks/useWidgetState'
 import { WidgetShell } from './WidgetShell'
 import { GlanceCarousel, type GlanceScreen } from './GlanceCarousel'
+import { GamesGlanceArt } from './glanceMotifs'
 import { TileDetail } from './TileDetail'
 import { useTilePopup } from '../hooks/useTilePopup'
 
@@ -144,6 +145,7 @@ export function GamesTile() {
         id="games"
         label="Games"
         icon={<Gamepad2 />}
+        art={<GamesGlanceArt />}
         {...(popup ? { onClick: () => setOpen(true) } : { to: '/games' })}
         loading={isLoading}
         screens={screens}

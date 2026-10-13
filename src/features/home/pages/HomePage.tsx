@@ -13,21 +13,20 @@ import { GamesHomeWidget, GamesTile } from '../components/GamesHomeWidget'
 import { BooksHomeWidget, BooksTile } from '../components/BooksHomeWidget'
 import { RecentMediaWidget, RecentMediaTile } from '../components/RecentMediaWidget'
 import { useElementWidthRem } from '../../../shared/hooks/useElementWidth'
-import { homeBoardFor, newsIsBand, newsRows, type HomeSection } from './homeBoard'
+import { GLANCE_GROUP_GRID, homeBoardFor, newsIsBand, newsRows, type GlanceGroup, type HomeSection } from './homeBoard'
 
 /**
- * Glance tiles with swipeable screens that open their detail. `all` = the six,
- * 2 across in a side column or on a phone, 3 on a wider stack; the split
- * laptop layout shows `outside` (weather, money — 2 across under transit) and
- * `activity` (training, watched, books, games — one row of 4 under the week
- * and the tasks).
+ * Glance tiles with swipeable screens that open their detail. `all` = the six;
+ * the split laptop layout shows `outside` (weather, money — under transit) and
+ * `activity` (training, watched, books, games — under the week and the
+ * tasks). Each group's grid is GLANCE_GROUP_GRID in homeBoard.ts.
  */
-function GlanceTiles({ group }: { group: 'all' | 'outside' | 'activity' }) {
+function GlanceTiles({ group }: { group: GlanceGroup }) {
   const outside = group !== 'activity'
   const activity = group !== 'outside'
   return (
     <section aria-label={group === 'outside' ? 'Weather and money' : group === 'activity' ? 'Training, watching, reading and games' : 'At a glance'} className="@container">
-      <div className={cx('grid grid-cols-2 gap-3', group === 'all' && '@[36rem]:grid-cols-3', group === 'activity' && '@[40rem]:grid-cols-4')}>
+      <div className={cx('grid gap-3', GLANCE_GROUP_GRID[group])}>
         {outside && <WeatherTile />}
         {outside && <CurrencyTile />}
         {activity && <TrainingTile />}

@@ -104,6 +104,20 @@ check('just below 69rem (main 43.9rem) still stacked → all six beside', H.home
 check('from 69rem (main 44rem, week and tasks side by side) the tiles split', H.homeBoardFor(69) === HOME_BOARD_SPLIT)
 check('1469 / 1795 laptops and 1920 with the sidebar open (≈ 73.6 / 91.7 / 99.9rem) split', [73.6, 91.7, 99.9].every(w => H.homeBoardFor(w) === HOME_BOARD_SPLIT))
 check('phones, tablets and the 3- and 4-column steps use the board as before', [30, 59.9, 100, 128, 150].every(w => H.homeBoardFor(w) === HOME_BOARD) && H.homeBoardFor(null) === HOME_BOARD)
+console.log('Home tile groups (GLANCE_GROUP_GRID)')
+const G = H.GLANCE_GROUP_GRID
+const colsOf = cls => cls.split(' ').filter(c => /grid-cols-/.test(c))
+check('outside (weather, money under transit): one tile per row, each as wide as the Transit card (owner, 13.10.2026)',
+  eq(colsOf(G.outside), ['grid-cols-1']))
+check('activity: 2 across, one row of 4 from 40rem', eq(colsOf(G.activity), ['grid-cols-2', '@[40rem]:grid-cols-4']))
+check('the split starts at a main track wide enough for the activity row of 4 (44rem ≥ 40rem)',
+  H.PAIR_SIDE_BY_SIDE_REM >= Number(G.activity.match(/@\[(\d+)rem\]:grid-cols-4/)[1]))
+check('all six (phone, 1280 side column): 2 across, 3 from 36rem', eq(colsOf(G.all), ['grid-cols-2', '@[36rem]:grid-cols-3']))
+check('a 24rem side column (1280) keeps the six 2 across', 24 < Number(G.all.match(/@\[(\d+)rem\]:grid-cols-3/)[1]))
+check('HomePage.tsx lays the groups out with GLANCE_GROUP_GRID', (() => {
+  const src = require('fs').readFileSync(require('path').join(__dirname, '../src/features/home/pages/HomePage.tsx'), 'utf8')
+  return src.includes('GLANCE_GROUP_GRID[group]') && !/grid-cols-\d/.test(src.slice(src.indexOf('function GlanceTiles'), src.indexOf('function HeroAndTasks')))
+})())
 check('the pair\'s container query in HomePage.tsx is the split\'s breakpoint', (() => {
   const src = require('fs').readFileSync(require('path').join(__dirname, '../src/features/home/pages/HomePage.tsx'), 'utf8')
   return src.includes(`@[${H.PAIR_SIDE_BY_SIDE_REM}rem]:grid-cols-2`)

@@ -11,6 +11,7 @@ import { useWidgetState } from '../hooks/useWidgetState'
 import { useTilePopup } from '../hooks/useTilePopup'
 import { WidgetShell } from './WidgetShell'
 import { GlanceCarousel, type GlanceScreen } from './GlanceCarousel'
+import { BooksGlanceArt } from './glanceMotifs'
 import { TileDetail } from './TileDetail'
 
 /**
@@ -135,6 +136,7 @@ export function BooksTile() {
         id="books"
         label="Books"
         icon={<BookOpen />}
+        art={<BooksGlanceArt />}
         {...(popup ? { onClick: () => setOpen(true) } : { to: '/books' })}
         loading={r.isLoading}
         screens={screens}
