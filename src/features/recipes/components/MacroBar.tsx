@@ -7,6 +7,8 @@ interface Props {
   /** Callers that already print the same split in grams next to the bar pass
    *  false — otherwise the percentages read as a duplicated macro row. */
   showLegend?: boolean
+  /** The bar's own size and shape (default a 8px rounded bar). */
+  barClassName?: string
 }
 
 const SEGMENTS = [
@@ -20,15 +22,16 @@ const SEGMENTS = [
  * from protein/carbs/fat (standard 4/4/9 kcal-per-gram conversion) — a more
  * visual read than three separate number badges.
  */
-export function MacroBar({ protein, carbs, fat, showLegend = true }: Props) {
+export function MacroBar({ protein, carbs, fat, showLegend = true, barClassName = 'h-2 rounded-full' }: Props) {
   const grams = { protein: protein ?? 0, carbs: carbs ?? 0, fat: fat ?? 0 }
   const kcal = Object.fromEntries(SEGMENTS.map(s => [s.key, grams[s.key] * s.kcalPerGram])) as Record<typeof SEGMENTS[number]['key'], number>
   const total = kcal.protein + kcal.carbs + kcal.fat
   if (total <= 0) return null
+  const split = SEGMENTS.map(s => `${s.label.toLowerCase()} ${Math.round((kcal[s.key] / total) * 100)}%`).join(' · ')
 
   return (
     <div>
-      <div className="flex h-2 overflow-hidden rounded-full bg-surface-2">
+      <div className={`flex overflow-hidden bg-surface-2 ${barClassName}`} title={`Calories from ${split}`}>
         {SEGMENTS.map(seg => {
           const pct = (kcal[seg.key] / total) * 100
           if (pct <= 0) return null

@@ -11,19 +11,20 @@ import { MacroWarningBadge } from './MacroWarningBadge'
 import { checkMacroConsistency } from '../macroSanity'
 import type { RecipeWithIngredients, IngredientDraft, MacroMode, IngredientLibraryItem } from '../types'
 import { DecimalInput } from './foodLogKit'
+import { wholePortions } from '../foodBasket'
+import { RecipeModalFoodLink } from './RecipeModalFoodLink'
+import type { RecipeDraft } from './RecipeBuilder'
 
 interface Props {
   /** Controlled callers pass it; the `recipe` entity modal omits it (always open). */
   open?: boolean
   onClose: () => void
   recipe?: RecipeWithIngredients   // present → edit mode
+  /** Create mode: what the quick builder already has ("All fields"). */
+  draft?: RecipeDraft
 }
 
 const EMPTY_ROW: IngredientDraft = { name: '', quantity: null, unit: null, note: null, library_ingredient_id: null }
-const NEW_INGREDIENT = '__new__'
-
-/** recipes.servings is a whole number (an integer column — "2.5" failed to save). */
-const wholeServings = (v: string) => Math.max(1, Math.round(Number(v) || 1))
 
 function numOrNull(v: string): number | null {
   if (v.trim() === '') return null
@@ -42,7 +43,7 @@ function previewMacros(ingredients: IngredientDraft[], servings: number, library
     { contributed: boolean; skipped: number; calories: number; protein_g: number; carbs_g: number; fat_g: number; fiber_g: number; sugar_g: number }
 }
 
-export function RecipeModal({ open = true, onClose, recipe }: Props) {
+export function RecipeModal({ open = true, onClose, recipe, draft }: Props) {
   const editMode = !!recipe
   const create = useCreateRecipe()
   const update = useUpdateRecipe()
@@ -76,8 +77,10 @@ export function RecipeModal({ open = true, onClose, recipe }: Props) {
 
   // Prefill when the modal opens or the edited recipe changes. Adjusting state
   // during render on a prop change is React's recommended pattern over a
-  // setState-in-effect (matches FoodLogModal/AssignMealModal).
-  const [seed, setSeed] = useState<{ open: boolean; recipe: RecipeWithIngredients | undefined }>({ open, recipe })
+  // setState-in-effect (matches AssignMealModal). The seed starts CLOSED: the
+  // entity modal mounts this already open with its recipe, and a seed equal
+  // to the props skipped the prefill — Edit recipe opened an empty form.
+  const [seed, setSeed] = useState<{ open: boolean; recipe: RecipeWithIngredients | undefined }>({ open: false, recipe: undefined })
   if (open !== seed.open || recipe !== seed.recipe) {
     setSeed({ open, recipe })
     if (open) {
@@ -106,8 +109,12 @@ export function RecipeModal({ open = true, onClose, recipe }: Props) {
         setSourceUrl(recipe.source_url ?? '')
         setImageUrl(recipe.image_url ?? '')
       } else {
-        setTitle(''); setServings('1'); setIngredients([{ ...EMPTY_ROW }])
-        setInstructions(''); setDescription(''); setMacroMode('manual')
+        setTitle(draft?.title ?? ''); setServings(String(draft?.servings ?? 1))
+        setIngredients(draft?.ingredients.length ? draft.ingredients : [{ ...EMPTY_ROW }])
+        setCategory(draft?.category ?? '')
+        setInstructions(''); setDescription('')
+        // The builder's rows are all library-linked by weight: their macros follow them.
+        setMacroMode(draft?.ingredients.length ? 'from_ingredients' : 'manual')
         setCalories(''); setProtein(''); setCarbs(''); setFiber(''); setSugar(''); setFat(''); setSourceUrl(''); setImageUrl('')
       }
       setNewIngredientRow(null)
@@ -121,16 +128,15 @@ export function RecipeModal({ open = true, onClose, recipe }: Props) {
   function addRow()          { setIngredients(rows => [...rows, { ...EMPTY_ROW }]) }
   function removeRow(idx: number) { setIngredients(rows => rows.filter((_, i) => i !== idx)) }
 
-  function handleLinkChange(idx: number, value: string) {
-    if (value === NEW_INGREDIENT) { setNewIngredientRow(idx); return }
-    const lib = library.find(l => l.id === value)
+  function handleLinkChange(idx: number, id: string | null) {
+    const lib = id ? library.find(l => l.id === id) : undefined
     // Keep a unit the user typed ("2 pcs" must not silently become "2 g");
     // only an empty unit takes the food's own.
     const typed = ingredients[idx].unit?.trim()
-    setRow(idx, { library_ingredient_id: value || null, unit: typed || lib?.unit || null, name: ingredients[idx].name || lib?.name || '' })
+    setRow(idx, { library_ingredient_id: id, unit: typed || lib?.unit || null, name: ingredients[idx].name || lib?.name || '' })
   }
 
-  const preview = macroMode === 'from_ingredients' ? previewMacros(ingredients, wholeServings(servings), library) : null
+  const preview = macroMode === 'from_ingredients' ? previewMacros(ingredients, wholePortions(servings), library) : null
 
   function applyParsedRecipe(parsed: Awaited<ReturnType<typeof parseRecipeText>>) {
     setTitle(parsed.title)
@@ -187,7 +193,7 @@ export function RecipeModal({ open = true, onClose, recipe }: Props) {
     setEstimating(true)
     const tid = toast.loading('Estimating macros with AI…')
     try {
-      const est = await estimateRecipeMacros(named, wholeServings(servings))
+      const est = await estimateRecipeMacros(named, wholePortions(servings))
       setCalories(est.calories?.toString() ?? '')
       setProtein(est.protein_g?.toString() ?? '')
       setCarbs(est.carbs_g?.toString() ?? '')
@@ -204,7 +210,7 @@ export function RecipeModal({ open = true, onClose, recipe }: Props) {
   async function handleSave() {
     if (!title.trim()) { toast.error('Title is required'); return }
     const input = {
-      title, description: description.trim() || null, servings: wholeServings(servings),
+      title, description: description.trim() || null, servings: wholePortions(servings),
       instructions: instructions.trim() || null,
       macro_mode: macroMode,
       calories: numOrNull(calories), protein_g: numOrNull(protein), carbs_g: numOrNull(carbs),
@@ -333,16 +339,10 @@ export function RecipeModal({ open = true, onClose, recipe }: Props) {
                   <IconButton label="Remove ingredient" onClick={() => removeRow(i)} className="text-fg-faint hover:text-danger"><X /></IconButton>
                 </div>
                 {macroMode === 'from_ingredients' && (
-                  <select
-                    value={row.library_ingredient_id ?? ''}
-                    onChange={e => handleLinkChange(i, e.target.value)}
-                    aria-label="Library ingredient"
-                    className="select ml-[3.75rem] w-auto text-meta"
-                  >
-                    <option value="">— link to a library ingredient for macros —</option>
-                    {library.map(l => <option key={l.id} value={l.id}>{l.name} (per 100{l.unit})</option>)}
-                    <option value={NEW_INGREDIENT}>+ New library ingredient…</option>
-                  </select>
+                  <div className="ml-[3.75rem] mr-11">
+                    <RecipeModalFoodLink value={row.library_ingredient_id} rowName={row.name} library={library}
+                      onChange={id => handleLinkChange(i, id)} onNew={() => setNewIngredientRow(i)} />
+                  </div>
                 )}
                 {newIngredientRow === i && (
                   <NewIngredientInline
