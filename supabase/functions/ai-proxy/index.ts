@@ -1536,10 +1536,10 @@ async function planMedia(supabase: AnyRecord, userId: string, args: AnyRecord): 
     ? `Watch: ${title} S${season ?? 1}E${episode ?? 1}`
     : `Watch: ${title}`
 
-  // Determine section from date
-  const today    = new Date().toISOString().slice(0, 10)
-  const tomorrow = new Date(Date.now() + 86400_000).toISOString().slice(0, 10)
-  const section  = date === today ? 'today' : date === tomorrow ? 'tomorrow' : 'this_week'
+  // The app's one rule (taskRules.sectionForDay): today's task is filed under
+  // Today, any other day's under Backlog — never the retired 'tomorrow' /
+  // 'this_week' sections. "Today" is the owner's day in Oslo, not UTC.
+  const section  = date === homeDay() ? 'today' : 'backlog'
 
   const { data: task, error: taskErr } = await supabase
     .from('tasks')
