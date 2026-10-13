@@ -189,8 +189,12 @@ draw the caret where the sheet was before it animated in); with a mouse you type
 `__.__.____` mask (a key writes or clears one digit and nothing shifts; `07122026`, `071226`,
 `7.12.26`, `7-12-2026`, `7/12/26` and pasted dates are taken; a two-digit year is 20yy; an
 impossible or out-of-range date shows red and isn't saved — `dateMask.ts`, `verify-date-mask`) or
-open the calendar from its icon. A chart's month bars may name the month ("January", no year when
-the year is already picked); a date never does.
+open the calendar from its icon. The calendar's heading opens a year list (opened on the shown
+year; ↑/↓, Page Up/Down, Home/End) beside a Jan–Dec grid, in the same box: a year moves the view
+at once, a month goes back to the days, the arrows step a year meanwhile and Escape returns to the
+days — ten years back is three taps, not 120 (`dateCalendarMath.ts`, `verify-date-calendar`).
+A chart's month bars may name the month ("January", no year when the year is already picked); a
+date never does.
 
 **Poster covers** (Media): one `PosterTile`. Status is a belt across the top-left corner using `.poster-belt` + `data-tone` — fixed dark colours, not theme tones, because it sits on artwork in both themes and must keep white text ≥ 4.5:1; its size is in `cqw` of the cover. A score banner runs along the bottom. The user's own rating is never drawn on a cover.
 

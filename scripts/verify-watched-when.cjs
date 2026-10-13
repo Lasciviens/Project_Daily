@@ -1,6 +1,8 @@
 require('sucrase/register')
 const assert = require('assert')
-const { resolveWatchedAt, seriesWatchedDates, middayIso, watchedWhenLabel, UNKNOWN_EPISODE_WATCHED_AT } = require('../src/features/media/watchedWhen.ts')
+const fs = require('fs')
+const path = require('path')
+const { resolveWatchedAt, seriesWatchedDates, middayIso, watchedWhenLabel, watchedWhenOptions, offersSpread, UNKNOWN_EPISODE_WATCHED_AT } = require('../src/features/media/watchedWhen.ts')
 process.env.TZ = 'Europe/Oslo'
 const now = '2026-09-30T10:00:00.000Z'
 let n = 0
@@ -21,5 +23,26 @@ eq(watchedWhenLabel({ kind: 'other', iso: '2025-05-05T20:00:00.000Z' }), 'on 05.
   eq(seriesWatchedDates({ kind: 'unknown' }, '2010-04-01', '2015-06-20', now).finished_at, null, 'series unknown -> no dates')
   eq(seriesWatchedDates({ kind: 'now' }, '2010-04-01', '2015-06-20', now).finished_at, now, 'series now -> now')
   eq(seriesWatchedDates({ kind: 'other', iso: '2025-05-05T12:00:00.000Z' }, null, null, now).finished_at, '2025-05-05T12:00:00.000Z', 'series other')
+}
+// The options: Spread over dates is the 5th, and only for several episodes
+// (a selection, Up to here, Watched again, Change date, completing a series).
+eq(watchedWhenOptions(false), ['now', 'release', 'other', 'unknown'], 'one title or episode: the four Trakt answers')
+eq(watchedWhenOptions(true), ['now', 'release', 'other', 'unknown', 'spread'], 'several episodes: Spread over dates is the 5th option')
+eq(offersSpread(1), false, 'one episode (or a movie): nothing to spread')
+eq(offersSpread(2), true, 'two episodes: spread offered')
+eq(offersSpread(0), false, 'no episodes: not offered')
+
+// One sheet, never a copy: its labels live only in WatchedWhenSheet.tsx, and
+// every screen asks through useWatchedWhenPrompt.
+{
+  const src = path.join(__dirname, '..', 'src')
+  const files = []
+  const walk = d => { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const p = path.join(d, e.name); if (e.isDirectory()) walk(p); else if (/\.tsx?$/.test(e.name)) files.push(p) } }
+  walk(src)
+  const rel = p => path.relative(src, p).split(path.sep).join('/')
+  const withLabel = files.filter(f => /['"`>]Unknown date['"`<]/.test(fs.readFileSync(f, 'utf8'))).map(rel)
+  eq(withLabel, ['features/media/components/WatchedWhenSheet.tsx'], 'the when-watched options are written once')
+  const renderers = files.filter(f => /<WatchedWhenSheet\b/.test(fs.readFileSync(f, 'utf8'))).map(rel)
+  eq(renderers, ['features/media/hooks/useWatchedWhenPrompt.tsx'], 'only the hook renders the sheet')
 }
 console.log(`verify-watched-when: ${n} assertions passed`)
