@@ -127,7 +127,7 @@ export function TgMoreMenu({ game, actions }: { game: TgGame; actions: TgActions
           title={`Delete "${game.title}"?`}
           message={syncedBy
             ? `${syncedBy[0].toUpperCase()}${syncedBy.slice(1)} adds it back as a new entry, without your status, rating or notes.`
-            : "This can't be undone — the game and all its platform entries will be removed from your library."}
+            : 'The game and all its platform entries leave your library. Undo brings them back, but not its ScreenScraper history.'}
           confirmLabel="Delete game"
           onConfirm={() => void deleteGame.run([game.id], { title: '', ask: false, done: `Deleted ${game.title}` })}
           onClose={() => setConfirmDelete(false)}

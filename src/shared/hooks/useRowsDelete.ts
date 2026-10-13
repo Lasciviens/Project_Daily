@@ -1,10 +1,12 @@
 import { useQueryClient, type QueryKey } from '@tanstack/react-query'
 import { useMutationWithFeedback } from './useMutationWithFeedback'
-import { confirmDelete } from '../modals/deleteFlow'
+import { confirmDelete, type RestoreAnswer } from '../modals/deleteFlow'
+import { toast } from '../../app/store'
+import { logError } from '../utils/logError'
 import type { InvalidationGroup } from '../query/invalidate'
 import { removeRowsFromCache } from '../query/cachePatch'
 import {
-  deleteRows, notRestoredNote, restoreRows, rowsOf,
+  deleteRows, restoreAnswer, restoreRows, rowsOf,
   type DeletedRows, type RestoreResult, type RowOverrides,
 } from '../utils/deletedRows'
 
@@ -16,11 +18,15 @@ export interface RowsDeleteOptions {
   invalidates: readonly (InvalidationGroup | QueryKey)[]
   /** Cached lists the deleted rows leave at once (from the delete's own answer). */
   cache?: QueryKey
-  /** Runs right after the delete (Google copies, a Trakt sync). */
+  /**
+   * Runs right after the delete (Google copies, a Trakt sync). The delete has
+   * happened by then: a failure here is logged and warned about, and Undo is
+   * still offered.
+   */
   afterDelete?: (snapshot: DeletedRows) => Promise<void> | void
   /** Columns to replace when the rows go back (ids of things deleted outside the app). */
   overrides?: (snapshot: DeletedRows) => RowOverrides
-  /** Runs after Undo; may return a note on what didn't come back. */
+  /** Runs after Undo when rows came back; may return a note on what didn't. */
   afterRestore?: (snapshot: DeletedRows, result: RestoreResult) => Promise<string | void> | string | void
   /** Plain names for tables in "Not brought back: …" ("ScreenScraper history"). */
   names?: Record<string, string>
@@ -52,7 +58,14 @@ export function useRowsDelete(o: RowsDeleteOptions) {
     silent: 'the delete flow reports the result',
     mutationFn: async ids => {
       const snapshot = await deleteRows(o.table, ids)
-      if (snapshot) await o.afterDelete?.(snapshot)
+      if (snapshot && o.afterDelete) {
+        try {
+          await o.afterDelete(snapshot)
+        } catch (err) {
+          logError(`${o.action}: deleted, but a follow-up step failed: ${(err as Error).message}`, { ids })
+          toast.warning(`Deleted, but a follow-up step failed: ${(err as Error).message}`)
+        }
+      }
       return snapshot
     },
     onSuccess: snapshot => {
@@ -60,13 +73,15 @@ export function useRowsDelete(o: RowsDeleteOptions) {
     },
     invalidates: o.invalidates,
   })
-  const restore = useMutationWithFeedback<string, DeletedRows>({
+  const restore = useMutationWithFeedback<RestoreAnswer, DeletedRows>({
     action: `restore_${o.table}`,
     silent: 'the delete flow reports the result',
     mutationFn: async snapshot => {
       const result = await restoreRows(snapshot, o.overrides?.(snapshot) ?? {})
-      const extra = await o.afterRestore?.(snapshot, result)
-      return [notRestoredNote(snapshot, result, o.names), extra].filter(Boolean).join(' · ')
+      const answer = restoreAnswer(snapshot, result, o.names)
+      if (typeof answer === 'object') return answer
+      const extra = result.restored > 0 ? await o.afterRestore?.(snapshot, result) : undefined
+      return [answer, extra].filter(Boolean).join(' · ')
     },
     invalidates: o.invalidates,
   })

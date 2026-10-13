@@ -65,6 +65,7 @@ export function useMutationWithFeedback<TData, TVariables = void, TContext = unk
   invalidates,
   refresh = 'background',
   logPayload = true,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- a type-level contract only, kept out of useMutation's options
   silent: _silent,
   mutationFn,
   onSuccess,

@@ -38,6 +38,8 @@ export function useCreateDevRequest() {
     successMessage: 'Added',
     mutationFn:     (input: CreateDevRequestInput) => createDevRequest(input),
     invalidates:    [QK],
+    // The next request's place (topSortOrder) is read from this list.
+    refresh:        'wait',
   })
 }
 

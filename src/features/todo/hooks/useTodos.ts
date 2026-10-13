@@ -25,7 +25,7 @@ import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFe
 import { qk, STALE } from '../../../shared/query'
 import { mapRowsInCache, putRowsInCache, restoreCache, snapshotCache } from '../../../shared/query/cachePatch'
 import { useRowsDelete } from '../../../shared/hooks/useRowsDelete'
-import { rowsOf, type DeletedRows, type RowOverrides } from '../../../shared/utils/deletedRows'
+import { rowsOf, type RowOverrides } from '../../../shared/utils/deletedRows'
 import { BLOCK_EVENT_RESET, relinkRestoredBlockEvents, removeDeletedBlockEvents } from '../../calendar/api/deletedBlockEvents'
 import { dayTasks, isOpenTask, openOnDay, sectionForDay, weekCounts } from '../taskRules'
 import { todayStr } from '../../../shared/utils/dateUtils'
@@ -244,12 +244,18 @@ export function useToggleTask() {
   })
 }
 
-/** A task put back by Undo had its Google Task deleted on Google: it gets a new one (the outbox creates it). */
-function taskGoogleReset(snapshot: DeletedRows): RowOverrides {
-  const keys = new Set(rowsOf<Record<string, unknown>>(snapshot, 'tasks').flatMap(r => Object.keys(r)))
-  const reset: Record<string, unknown> = {}
-  for (const k of keys) if (k.startsWith('google_') && k !== 'google_sync_enabled' && k !== 'google_tasklist_id') reset[k] = null
-  return { tasks: reset }
+/**
+ * A task put back by Undo had its Google Task deleted on Google: it comes
+ * back without the old Google ids, and the outbox creates a new one (its
+ * sync switch and list stay). google_hidden/google_deleted are NOT NULL
+ * (migration 071) — false, never null, or the whole Undo fails.
+ */
+export const TASK_GOOGLE_RESET: RowOverrides = {
+  tasks: {
+    google_task_id: null, google_etag: null, google_position: null, google_updated_at: null,
+    google_web_view_link: null, google_links: null, google_local_edit_at: null,
+    google_calendar_event_id: null, google_hidden: false, google_deleted: false,
+  },
 }
 
 /**
@@ -270,7 +276,7 @@ export function useDeleteTask() {
       await removeDeletedBlockEvents(snapshot)
       for (const t of rowsOf<Task>(snapshot, 'tasks')) syncGoogleTasksSoon({ taskId: t.id })
     },
-    overrides: snapshot => ({ ...taskGoogleReset(snapshot), ...BLOCK_EVENT_RESET }),
+    overrides: () => ({ ...TASK_GOOGLE_RESET, ...BLOCK_EVENT_RESET }),
     afterRestore: async snapshot => {
       for (const t of rowsOf<Task>(snapshot, 'tasks')) if (t.google_sync_enabled) syncGoogleTasksSoon({ taskId: t.id })
       return relinkRestoredBlockEvents(snapshot)

@@ -46,7 +46,7 @@ Module._load = function (request, parent, isMain) {
 const { runDeleteFlow, NO_UNDO } = require('../src/shared/modals/deleteFlowCore')
 const { mapRowsInCache, putRowsInCache, removeRowsFromCache, snapshotCache, restoreCache } = require('../src/shared/query/cachePatch')
 const { applyTaskPatch, taskUpdateMessage } = require('../src/features/todo/taskWrites')
-const { rowsOf, notRestoredNote } = require('../src/shared/utils/deletedRows')
+const { rowsOf, notRestoredNote, restoreAnswer } = require('../src/shared/utils/deletedRows')
 
 function deps(answer = true) {
   const log = { asked: null, undo: null, success: [], info: [], warning: [] }
@@ -89,6 +89,12 @@ const tick = () => new Promise(r => setTimeout(r, 0))
     await runDeleteFlow({ title: 'Delete?', remove: async () => [1], restore: async () => 'Not brought back: price history', done: 'Deleted', restored: 'Back' }, d)
     log.undo.onUndo(); await tick()
     ok(log.warning[0] === 'Back · Not brought back: price history', 'an Undo that could not bring everything back says so')
+  }
+  {
+    const { log, deps: d } = deps(true)
+    await runDeleteFlow({ title: 'Delete?', remove: async () => [1], restore: async () => ({ nothing: "Not restored — it's already there again" }), done: 'Deleted' }, d)
+    log.undo.onUndo(); await tick()
+    ok(log.warning[0] === "Not restored — it's already there again" && !log.success.length, 'an Undo that brought nothing back never says "Restored"')
   }
   {
     const { log, deps: d } = deps(true)
@@ -174,6 +180,12 @@ const tick = () => new Promise(r => setTimeout(r, 0))
     ok(rowsOf(snap, 'game_platforms').length === 2 && rowsOf(null, 'x').length === 0, 'rowsOf reads one table\'s deleted rows')
     ok(notRestoredNote(snap, { restored: 3, relinked: 0, skipped: ['scrape_decisions'] }, { scrape_decisions: 'its ScreenScraper history' }) === 'Not brought back: secret table, its ScreenScraper history', 'what didn\'t come back is named plainly')
     ok(notRestoredNote({ ...snap, hidden: [] }, { restored: 3, relinked: 0, skipped: [] }) === '', 'nothing to say when everything came back')
+    const clean = { ...snap, hidden: [] }
+    const total = clean.groups.reduce((n, g) => n + g.rows.length, 0)
+    ok(restoreAnswer(clean, { restored: total, relinked: 0, skipped: [] }) === '', 'everything back: Undo just says "Restored"')
+    ok(JSON.stringify(restoreAnswer(clean, { restored: 0, relinked: 0, skipped: [] })) === JSON.stringify({ nothing: "Not restored — it's already there again" }), 'nothing back (it exists again): said instead of "Restored"')
+    ok(restoreAnswer(clean, { restored: total - 1, relinked: 0, skipped: [] }) === '1 already there', 'some rows already there are counted')
+    ok(typeof restoreAnswer(clean, { restored: 0, relinked: 0, skipped: [clean.groups[0].table] }) === 'object', 'nothing back because it may not be written: not "Restored" either')
   }
 
   // ── 5. guards ───────────────────────────────────────────────────────────
@@ -183,41 +195,46 @@ const tick = () => new Promise(r => setTimeout(r, 0))
   ok(/\{ successMessage: .*silent\?: never \}\s*\|\s*\{ silent: string/s.test(primitive), 'a mutation must give a result message or a reason to stay silent')
   ok(!/supabase\.auth\.getUser\(\)/.test(read('src/shared/utils/requireUser.ts')), 'requireUser reads the local session (no auth round trip per save)')
 
-  // Every raw `.delete()` left in the client, with why it is not a user delete
-  // with Undo. A new one fails here until it is added with its reason.
+  // Every raw `.delete()` left in the client — how many per file, and why
+  // none is a user delete with Undo. A new one (also in a listed file) fails
+  // here until it goes through the flow or is counted with its reason.
   const ALLOWED_RAW_DELETES = {
-    'src/shared/utils/logError.ts': 'trims old error logs',
-    'src/shared/utils/deletedRows.ts': 'the shared delete itself (fallback before migration 144)',
-    'src/shared/hooks/usePushNotifications.ts': 'turning notifications off on this device',
-    'src/security/accountState.ts': 'sign-out clears this device',
-    'src/features/training/api/trainingSkipsApi.ts': 'Undo skip (the undo itself)',
-    'src/features/training/api/trainingPlanApi.ts': 'Undo skip (the undo itself)',
-    'src/features/training/api/athleteProfileApi.ts': 'saving the current program replaces its rows',
-    'src/features/todo/api/googleTasksSync.ts': 'a Google Tasks pull drops lists deleted on Google',
-    'src/features/todo/api/googleTasksOutbox.ts': 'a delivered outbox row',
-    'src/features/todo/api/googleTaskListsApi.ts': 'the list deleted on Google (no Undo: confirmDelete says so)',
-    'src/features/shop/api/shopApi.ts': 'shop_delete_items fallback before migration 137',
-    'src/features/recipes/api/recipesApi.ts': 'saving a recipe replaces its ingredient lines (fallback before 123)',
-    'src/features/recipes/api/mealPlanApi.ts': 'the legacy plan table before migration 061',
-    'src/features/recipes/api/foodLogApi.ts': 'a star toggled off (favourite)',
-    'src/features/media/reminders/remindersApi.ts': 'a reminder bell toggled off',
-    'src/features/media/api/watchedEpisodesApi.ts': 'Not watched (step 5 brings its Undo)',
-    'src/features/media/api/followsApi.ts': 'Follow toggled off / a list stops filling (its delete goes through useDeleteFollow)',
-    'src/features/home/api/transitStoreApi.ts': 'a Home/Work place replaced by a new stop; recent searches trimmed',
-    'src/features/developer/api/logsApi.ts': 'Clear all logs (no Undo: confirmDelete says so)',
-    'src/features/daily/api/waterApi.ts': 'the water card\'s own Undo chip (the undo itself)',
-    'src/features/books/api/libraryApi.ts': 'merging two books deletes the duplicate',
-    'src/features/books/api/koboControlApi.ts': 'a Kobo sleep image (its file is deleted: no Undo) and its storage cleanup',
-    'src/features/books/api/booksApi.ts': 'Kobo inbox housekeeping (files leave storage: no Undo)',
+    'src/shared/utils/logError.ts': [1, 'trims old error logs'],
+    'src/shared/utils/deletedRows.ts': [1, 'the shared delete itself (fallback before migration 144)'],
+    'src/shared/hooks/usePushNotifications.ts': [1, 'turning notifications off on this device'],
+    'src/security/accountState.ts': [1, 'sign-out clears this device'],
+    'src/features/training/api/trainingSkipsApi.ts': [1, 'Undo skip (the undo itself)'],
+    'src/features/training/api/trainingPlanApi.ts': [2, 'Undo skip (the undo itself)'],
+    'src/features/training/api/athleteProfileApi.ts': [1, 'saving the current program replaces its rows'],
+    'src/features/todo/api/googleTasksSync.ts': [1, 'a Google Tasks pull drops lists deleted on Google'],
+    'src/features/todo/api/googleTasksOutbox.ts': [1, 'a delivered outbox row'],
+    'src/features/todo/api/googleTaskListsApi.ts': [1, 'the list deleted on Google (no Undo: confirmDelete says so)'],
+    'src/features/shop/api/shopApi.ts': [1, 'shop_delete_items fallback before migration 137'],
+    'src/features/recipes/api/recipesApi.ts': [1, 'saving a recipe replaces its ingredient lines (fallback before 123)'],
+    'src/features/recipes/api/mealPlanApi.ts': [1, 'the legacy plan table before migration 061'],
+    'src/features/recipes/api/foodLogApi.ts': [1, 'a star toggled off (favourite)'],
+    'src/features/media/reminders/remindersApi.ts': [1, 'a reminder bell toggled off'],
+    'src/features/media/api/watchedEpisodesApi.ts': [1, 'Not watched (step 5 brings its Undo)'],
+    'src/features/media/api/followsApi.ts': [1, 'Follow toggled off / a list stops filling (its delete goes through useDeleteFollow)'],
+    'src/features/home/api/transitStoreApi.ts': [2, 'a Home/Work place replaced by a new stop; recent searches trimmed'],
+    'src/features/developer/api/logsApi.ts': [2, 'Clear all logs (no Undo: confirmDelete says so)'],
+    'src/features/daily/api/waterApi.ts': [1, 'the water card\'s own Undo chip (the undo itself)'],
+    'src/features/books/api/libraryApi.ts': [1, 'merging two books deletes the duplicate'],
+    'src/features/books/api/koboControlApi.ts': [2, 'a Kobo sleep image (its file is deleted: no Undo) and its storage cleanup'],
+    'src/features/books/api/booksApi.ts': [3, 'Kobo inbox housekeeping (files leave storage: no Undo)'],
   }
   const walk = dir => fs.readdirSync(path.join(root, dir), { withFileTypes: true }).flatMap(e =>
     e.isDirectory() ? walk(path.join(dir, e.name)) : /\.(ts|tsx)$/.test(e.name) ? [path.join(dir, e.name)] : [])
-  const found = new Set()
+  const found = new Map()
   for (const f of walk('src')) {
-    const lines = read(f).split('\n')
-    if (lines.some(l => /\.delete\(\)/.test(l) && !/^\s*(\/\/|\*)/.test(l))) found.add(f.split(path.sep).join('/'))
+    const n = read(f).split('\n').filter(l => !/^\s*(\/\/|\*)/.test(l))
+      .reduce((c, l) => c + (l.match(/\.delete\(\)/g) || []).length, 0)
+    if (n) found.set(f.split(path.sep).join('/'), n)
   }
-  for (const f of found) ok(f in ALLOWED_RAW_DELETES, `${f} deletes rows without the shared flow — use useRowsDelete / confirmDelete, or list it with its reason`)
+  for (const [f, n] of found) {
+    const listed = ALLOWED_RAW_DELETES[f]
+    ok(listed && listed[0] === n, `${f} has ${n} raw delete(s), ${listed ? listed[0] : 0} listed — use useRowsDelete / confirmDelete, or count it with its reason`)
+  }
   for (const f of Object.keys(ALLOWED_RAW_DELETES)) ok(found.has(f), `${f} is listed but no longer deletes — take it off the list`)
 
   console.log(`verify-delete-flow: ${pass} passed${fail ? `, ${fail} FAILED` : ''}`)

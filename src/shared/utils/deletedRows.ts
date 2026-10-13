@@ -76,6 +76,28 @@ export function rowsOf<T>(snapshot: DeletedRows | null | undefined, table: strin
   return (snapshot?.groups ?? []).filter(g => g.table === table).flatMap(g => g.rows as T[])
 }
 
+/** How many rows the snapshot holds to put back (the deleted rows, not the links). */
+export function snapshotRowCount(snapshot: DeletedRows): number {
+  return snapshot.groups.reduce((n, g) => n + g.rows.length, 0)
+}
+
+/**
+ * What Undo says when not everything came back — the restore's own counts,
+ * no second read: nothing at all (every row exists again — Undo pressed twice,
+ * or the same thing saved again meanwhile), some rows already there, tables
+ * it may not write. Empty when everything came back.
+ */
+export function restoreAnswer(
+  snapshot: DeletedRows, result: RestoreResult, names: Record<string, string> = {},
+): string | { nothing: string } {
+  const expected = snapshotRowCount(snapshot)
+  if (expected > 0 && result.restored === 0) {
+    return { nothing: notRestoredNote(snapshot, result, names) || "Not restored — it's already there again" }
+  }
+  const already = expected - result.restored - snapshot.groups.filter(g => result.skipped.includes(g.table)).reduce((n, g) => n + g.rows.length, 0)
+  return [already > 0 ? `${already} already there` : '', notRestoredNote(snapshot, result, names)].filter(Boolean).join(' · ')
+}
+
 /** What Undo could not bring back, said plainly (empty when everything came back). */
 export function notRestoredNote(snapshot: DeletedRows, result: RestoreResult, names: Record<string, string> = {}): string {
   const lost = [...new Set([...snapshot.hidden, ...result.skipped])].map(t => names[t] ?? t.replace(/_/g, ' '))

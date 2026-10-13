@@ -17,6 +17,7 @@ insert into public.tasks (id, user_id, title, google_task_id, google_sync_enable
   ('c0000000-0000-0000-0000-00000000000c', '00000000-0000-0000-0000-000000000001', 'Other', null, false, null),
   ('d0000000-0000-0000-0000-00000000000d', '00000000-0000-0000-0000-000000000002', 'Not mine', null, false, null);
 update public.tasks set parent_task_id = 'a0000000-0000-0000-0000-00000000000a' where title = 'Child';
+update public.tasks set google_etag = 'e-old', google_hidden = true where title = 'Parent';
 insert into public.time_blocks (id, user_id, task_id, date, start_time, title, google_calendar_event_id) values
   ('a1000000-0000-0000-0000-00000000000a', '00000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-00000000000a', '2026-10-13', '10:00', 'Parent', 'ev-old');
 insert into public.training_skips (id, user_id, task_id, reason) values
@@ -39,6 +40,9 @@ begin
   select array_agg(g ->> 'table' order by (g ->> 'table') collate "C") into tables from jsonb_array_elements(s -> 'links') g;
   perform public.t_ok(tables = array['tasks','wish_items'], 'links: the subtask and the wish that pointed at it');
   perform public.t_ok(s -> 'hidden' = '["task_secrets"]', 'a child the caller cannot read is named, not returned');
+  perform public.t_ok((select bool_and((g -> 'after' -> (x ->> 'id')) is not null and (g -> 'after' -> (x ->> 'id') ->> (g ->> 'col')) is null)
+                       from jsonb_array_elements(s -> 'links') g, jsonb_array_elements(g -> 'rows') x),
+                      'each link carries what the delete left (its emptied column)');
   perform public.t_ok(not exists (select 1 from public.tasks where title = 'Parent'), 'the task is gone');
   perform public.t_ok(not exists (select 1 from public.time_blocks), 'its slot went with it');
   perform public.t_ok((select parent_task_id from public.tasks where title = 'Child') is null, 'the subtask lost its parent');
@@ -49,12 +53,14 @@ set role authenticated;
 do $$
 declare r jsonb;
 begin
+  -- the client's overrides (useTodos TASK_GOOGLE_RESET, BLOCK_EVENT_RESET): NOT NULL flags go to false, never null
   r := public.app_restore_rows((select v from public.t_snap where k = 'task'),
-         '{"tasks": {"google_task_id": null}, "time_blocks": {"google_calendar_event_id": null}}');
+         '{"tasks": {"google_task_id": null, "google_etag": null, "google_hidden": false, "google_deleted": false},
+           "time_blocks": {"google_calendar_event_id": null}}');
   perform public.t_ok((r ->> 'restored')::int = 5, 'Undo puts back 5 rows (task, slot, skip, two tags): ' || r::text);
   perform public.t_ok((r ->> 'relinked')::int = 2, 'and re-links 2 (subtask, wish)');
   perform public.t_ok(exists (select 1 from public.tasks where id = 'a0000000-0000-0000-0000-00000000000a' and title = 'Parent' and due_date = '2026-10-13'), 'the task is back with the same id and values');
-  perform public.t_ok((select google_task_id from public.tasks where title = 'Parent') is null, 'an override replaced its old Google id');
+  perform public.t_ok((select google_task_id is null and google_etag is null and not google_hidden from public.tasks where title = 'Parent'), 'overrides replaced its old Google id, etag and flags');
   perform public.t_ok((select google_sync_enabled from public.tasks where title = 'Parent'), 'columns not overridden keep their value');
   perform public.t_ok(exists (select 1 from public.time_blocks where id = 'a1000000-0000-0000-0000-00000000000a' and google_calendar_event_id is null and start_time = '10:00'), 'the slot is back, its old event id replaced');
   perform public.t_ok((select reason from public.training_skips where id = 'a2000000-0000-0000-0000-00000000000a') = 'sick', 'the skip is back');
@@ -73,6 +79,21 @@ begin
   update public.tasks set parent_task_id = 'c0000000-0000-0000-0000-00000000000c' where title = 'Child';
   perform public.app_restore_rows(s, '{"tasks": {"google_task_id": null}}');
   perform public.t_ok((select parent_task_id from public.tasks where title = 'Child') = 'c0000000-0000-0000-0000-00000000000c', 'a subtask moved under another task meanwhile stays there');
+end $$;
+
+-- ── 2b. Edits made after the delete survive Undo; a blocked link is named ────
+insert into public.task_notes (id, task_id, body) values ('a5000000-0000-0000-0000-00000000000a', 'a0000000-0000-0000-0000-00000000000a', 'note');
+do $$
+declare s jsonb; r jsonb;
+begin
+  update public.tasks set parent_task_id = 'a0000000-0000-0000-0000-00000000000a' where title = 'Child';
+  s := public.app_delete_rows('tasks', array['a0000000-0000-0000-0000-00000000000a']);
+  update public.tasks set title = 'Child renamed', status = 'done', google_etag = 'e-new' where id = 'b0000000-0000-0000-0000-00000000000b';
+  r := public.app_restore_rows(s, '{"tasks": {"google_task_id": null, "google_hidden": false, "google_deleted": false}}');
+  perform public.t_ok((select parent_task_id = 'a0000000-0000-0000-0000-00000000000a' from public.tasks where id = 'b0000000-0000-0000-0000-00000000000b'), 'the renamed subtask points at its parent again');
+  perform public.t_ok((select title = 'Child renamed' and status = 'done' and google_etag = 'e-new' from public.tasks where id = 'b0000000-0000-0000-0000-00000000000b'), 'its new title, status and Google etag are kept');
+  perform public.t_ok(r -> 'skipped' ? 'task_notes', 'a link row level security won''t let us update is named in skipped: ' || r::text);
+  perform public.t_ok((select task_id from public.task_notes) is null, 'and is left as it is');
 end $$;
 
 -- ── 3. Nothing to delete ─────────────────────────────────────────────────────
@@ -129,8 +150,10 @@ begin
   perform public.t_ok((select macro_mode from public.recipes) = 'manual', 'rule 123 switched the recipe to typed macros');
   perform public.t_ok((select custom_title from public.food_log_entries) = 'Oats', 'rule 107 left the name on the diary row');
   perform public.t_ok(s -> 'touched' -> 0 ->> 'table' = 'recipes', 'the recipe the rule changed is returned as touched');
+  update public.recipes set title = 'Porridge 2';
   r := public.app_restore_rows(s);
   perform public.t_ok((select macro_mode from public.recipes) = 'from_ingredients', 'Undo switches the recipe back');
+  perform public.t_ok((select title from public.recipes) = 'Porridge 2', 'a rename made after the delete is kept');
   perform public.t_ok((select library_ingredient_id from public.recipe_ingredients) = 'e1000000-0000-0000-0000-00000000000e', 'the recipe line points at the food again');
   perform public.t_ok((select library_ingredient_id is not null and custom_title is null from public.food_log_entries), 'the diary row points at it again, without the copied name');
   perform public.t_ok((select kcal_x2 from public.food_log_entries) = 380, 'a generated column is computed again, not written');
@@ -193,3 +216,20 @@ begin
   perform public.t_ok(not exists (select 1 from public.tasks where title = 'Huge'), 'the task is gone');
 end $$;
 reset role;
+
+-- ── 9. Rule 043 switched off: the item's slot stays, and is not returned ────
+update public.link_rules set enabled = false;
+insert into public.projects (id, user_id, name) values ('f5000000-0000-0000-0000-00000000000f', '00000000-0000-0000-0000-000000000001', 'Garden');
+insert into public.project_items (id, project_id, title) values ('f6000000-0000-0000-0000-00000000000f', 'f5000000-0000-0000-0000-00000000000f', 'Dig');
+insert into public.time_blocks (id, user_id, date, title, source_type, source_id) values
+  ('f7000000-0000-0000-0000-00000000000f', '00000000-0000-0000-0000-000000000001', '2026-10-15', 'Dig', 'project_item', 'f6000000-0000-0000-0000-00000000000f');
+set role authenticated;
+do $$
+declare s jsonb;
+begin
+  s := public.app_delete_rows('projects', array['f5000000-0000-0000-0000-00000000000f']);
+  perform public.t_ok(not exists (select 1 from jsonb_array_elements(s -> 'groups') g where g ->> 'table' = 'time_blocks'), 'with rule 043 off the slot is not in the snapshot');
+  perform public.t_ok(exists (select 1 from public.time_blocks where id = 'f7000000-0000-0000-0000-00000000000f'), 'and it is still there');
+end $$;
+reset role;
+update public.link_rules set enabled = true;

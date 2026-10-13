@@ -56,7 +56,6 @@ export async function updateProject(id: string, patch: Partial<CreateProjectInpu
   if (error) throw error
 }
 
-
 // ─── Phases ───────────────────────────────────────────────────────────────────
 
 export async function fetchPhases(projectId: string): Promise<ProjectPhase[]> {
@@ -86,7 +85,6 @@ export async function updatePhase(id: string, patch: Partial<Pick<ProjectPhase, 
     .eq('id', id)
   if (error) throw error
 }
-
 
 // ─── Items ────────────────────────────────────────────────────────────────────
 

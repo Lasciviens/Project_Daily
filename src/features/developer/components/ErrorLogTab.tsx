@@ -1,10 +1,10 @@
-import { confirmDelete } from '../../../shared/modals'
 import { useState, type ReactNode } from 'react'
 import { AlertTriangle, CheckCircle2, RefreshCw, Trash2 } from 'lucide-react'
 import { Button, EmptyState, PageBoard, Skeleton } from '../../../shared/ui'
 import { useErrorLogs, useClearErrorLogs } from '../hooks/useLogs'
 import { ErrorDetail, ErrorList } from './ErrorLogRows'
 import { LIST_DETAIL_BOARD, paneSelection, type ListDetailSection } from '../developerBoards'
+import { confirmDelete } from '../../../shared/modals'
 
 // app_error_logs (last 2 days). On a wide page the picked error's message and
 // context open in a pane beside the list (developerBoards.ts); on phones the
@@ -21,7 +21,6 @@ export function ErrorLogTab() {
   function handleClear() {
     void confirmDelete({ title: 'Clear the error log?', message: 'Every logged error is deleted.', confirmLabel: 'Clear all', remove: () => clearLogs.mutateAsync(), done: 'Error log cleared' })
   }
-
 
   let list: ReactNode
   if (isLoading) {

@@ -200,7 +200,7 @@ export function MediaLibraryControls({ detail, isMovie, userEntry, onRemoved }: 
     if (!entryId) return
     const question = {
       title: `Remove "${isMovie ? movie!.title : tv!.name}" from your library?`,
-      message: 'With Trakt connected, its watch history, rating and watchlist entry are removed there too (Undo sends them back).',
+      message: 'With Trakt connected, its watch history, rating and watchlist entry are removed there too (Undo puts the title back here and sends it to Trakt again, with one date for all its plays).',
       confirmLabel: 'Remove',
       done: 'Removed from library',
     }

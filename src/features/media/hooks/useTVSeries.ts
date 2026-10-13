@@ -8,7 +8,7 @@ import {
   upsertTVSeries,
   addTVEntry,
   updateTVEntry,
-  } from '../api/tvApi'
+} from '../api/tvApi'
 import type { UserTVEntry, TMDBTVSeries } from '../types'
 
 export function useTVSeries() {
@@ -51,6 +51,9 @@ export function useAddTV() {
       return addTVEntry(series.id, status, priority, dates)
     },
     invalidates: ['media'],
+    // The title reads "in library" from these lists: until they have it, a
+    // second tap would add it again (and hit the unique key).
+    refresh: 'wait',
     onSuccess: () => scheduleTraktSync(qc),
   })
 }

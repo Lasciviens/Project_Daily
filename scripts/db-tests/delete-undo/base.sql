@@ -20,6 +20,9 @@ create table public.tasks (
   status text not null default 'open',
   parent_task_id uuid references public.tasks(id) on delete set null,
   google_task_id text, google_sync_enabled boolean not null default false,
+  google_etag text,
+  -- NOT NULL like 071's: Undo must reset them to false, never null
+  google_hidden boolean not null default false, google_deleted boolean not null default false,
   due_date date
 );
 create table public.schedule_blocks (
@@ -71,10 +74,17 @@ create table public.project_items (
   phase_id uuid references public.project_phases(id) on delete cascade,
   title text
 );
--- 043: a project item's schedule blocks go with it (by source, no foreign key)
-create or replace function public.cleanup_block_on_project_item_delete() returns trigger language plpgsql as $$
+-- 043: a project item's schedule blocks go with it (by source, no foreign key), while the rule is on
+create table public.link_rules (rule_name text primary key, enabled boolean not null default true);
+insert into public.link_rules values ('project_item_delete_cleans_block', true);
+create or replace function public.link_rule_enabled(p_rule_name text) returns boolean language sql stable as $$
+  select coalesce((select enabled from public.link_rules where rule_name = p_rule_name), false)
+$$;
+create or replace function public.cleanup_block_on_project_item_delete() returns trigger language plpgsql security definer as $$
 begin
-  delete from public.time_blocks where source_type = 'project_item' and source_id = old.id;
+  if public.link_rule_enabled('project_item_delete_cleans_block') then
+    delete from public.time_blocks where source_type = 'project_item' and source_id = old.id;
+  end if;
   return old;
 end $$;
 create trigger trg_cleanup_block_on_project_item_delete after delete on public.project_items
@@ -134,3 +144,15 @@ begin
   end loop;
 end $$;
 revoke all on public.task_secrets from authenticated;
+grant select on public.link_rules to authenticated;
+-- a link the caller may read and delete but not update (no UPDATE policy)
+create table public.task_notes (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid(),
+  task_id uuid references public.tasks(id) on delete set null,
+  body text
+);
+alter table public.task_notes enable row level security;
+create policy own_read on public.task_notes for select to authenticated using (user_id = auth.uid());
+create policy own_insert on public.task_notes for insert to authenticated with check (user_id = auth.uid());
+grant select, insert, update, delete on public.task_notes to authenticated;

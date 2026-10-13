@@ -21,6 +21,18 @@
 //  └─────────────────────────────────────────────────────────────────────────────┘
 //
 //  CHANGELOG
+//  2026-10-13 · v14 · One delete flow + faster saves (migration 144):
+//                    Delete goes through the shared delete hooks' run(): it
+//                    asks, deletes with one call that returns what went with
+//                    the row, and says "Task deleted · Undo" (Undo puts back
+//                    the same rows — slot, skip, links — and makes the Calendar
+//                    event again). Save is no longer "Saving…" while the
+//                    question is open. Unscheduling deletes the slot in the
+//                    database first, then its Calendar event (best effort; the
+//                    calendar outbox, 135, removes it if Google isn't reached)
+//                    — before, a missing Google connection blocked removing
+//                    the slot at all. The task/block hooks this editor calls
+//                    take { report: false }: the editor says "Saved" once.
 //  2026-09-26 · v13 · Theme + shared popup system (THEME.md §8–§10):
 //                    Chrome moved onto ModalShell — the hand-rolled Dialog,
 //                    backdrop and the module-level zCursor/useTopZIndex are
@@ -772,7 +784,8 @@ export function UnifiedPlanModal({
       return
     }
     const title = form.title.trim() || task?.title || timeBlock?.title || scheduleBlock?.title || ''
-    setSaving(true)
+    // The question is the flow's own popup: no "Saving…" while it asks;
+    // the delete hooks' `busy` covers the write itself (`working`).
     const result = task
       ? await deleteTaskM.run([task.id], { title: 'Delete this task?', message: title, confirmLabel: 'Delete task', done: 'Task deleted' })
       : scheduleBlock
@@ -781,10 +794,10 @@ export function UnifiedPlanModal({
         : timeBlock
           ? await deleteBlock.run([timeBlock.id], { title: 'Delete this schedule?', message: title, done: 'Slot deleted' })
           : 'kept'
-    setSaving(false)
     if (result === 'deleted' || result === 'gone') onClose()
   }
 
+  const working = saving || deleteTaskM.busy || deleteRecur.busy || deleteBlock.busy
   const primaryLabel = saving
     ? (editMode ? 'Saving…' : 'Planning…')
     : (editMode ? 'Save changes' : (effectiveMode === 'task' ? 'Add task' : effectiveMode === 'recurring' ? 'Save repeat' : 'Plan it'))
@@ -808,7 +821,7 @@ export function UnifiedPlanModal({
     <div className="flex items-center gap-2">
       {editMode && !blocked && (
         <Button
-          variant="ghost" icon={<Trash2 />} onClick={() => { void handleDelete() }} disabled={saving}
+          variant="ghost" icon={<Trash2 />} onClick={() => { void handleDelete() }} disabled={working}
           aria-label={deleteLabel}
           className="shrink-0 text-danger hover:text-danger max-sm:px-3 sm:mr-auto"
         >
@@ -816,7 +829,7 @@ export function UnifiedPlanModal({
         </Button>
       )}
       <div className="flex min-w-0 flex-1 gap-2 sm:ml-auto sm:flex-none">
-        <Button onClick={onClose} disabled={saving} className="flex-1 sm:flex-none">Cancel</Button>
+        <Button onClick={onClose} disabled={working} className="flex-1 sm:flex-none">Cancel</Button>
         {!loadError && (
           <Button
             variant="primary" onClick={() => { void handleSave() }} loading={saving}
@@ -829,7 +842,7 @@ export function UnifiedPlanModal({
   )
 
   return (
-    <ModalShell open={open} onClose={onClose} title={heading} footer={footer} size="md" dismissible={!saving}>
+    <ModalShell open={open} onClose={onClose} title={heading} footer={footer} size="md" dismissible={!working}>
       {loadError ? (
         <div className="flex flex-col items-center gap-3 py-6 text-center">
           <AlertCircle className="h-6 w-6 text-danger" aria-hidden />

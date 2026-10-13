@@ -58,9 +58,11 @@ export function useTransitStops() {
       const next = gone.some(s => s.is_default) ? stops.find(s => !gone.some(g => g.id === s.id)) : null
       if (next) await setDefaultTransitStop(next.id)
     },
-    afterRestore: async snapshot => {
-      const back = rowsOf<UserTransitStop>(snapshot, 'user_transit_stops').find(s => s.is_default)
-      if (back) await setDefaultTransitStop(back.id)
+    afterRestore: async (snapshot, result) => {
+      const rows = rowsOf<UserTransitStop>(snapshot, 'user_transit_stops')
+      const back = rows.find(s => s.is_default)
+      // Only when every stop came back: making a stop that isn't there the default would clear it.
+      if (back && result.restored >= rows.length) await setDefaultTransitStop(back.id)
     },
   })
   const makeDefault = useMutationWithFeedback({

@@ -14,9 +14,8 @@
 --             them (ON DELETE CASCADE, followed all the way down), parents
 --             first, so they can be inserted back in this order;
 --   links   — rows whose foreign key is set to NULL (ON DELETE SET NULL) —
---             their values before, to put back where the link is still empty;
---   touched — rows a rule changes without a foreign key (below), their values
---             before.
+--             their values before, and (`after`) what the delete left;
+--   touched — rows a rule changes without a foreign key (below), likewise.
 -- It returns NULL when nothing was deleted (gone already, or not yours): the
 -- caller says "Already deleted" without a second read. Over 10,000 rows (a
 -- long-read book's page events) it still deletes but returns `too_big` and no
@@ -24,8 +23,13 @@
 --
 -- app_restore_rows(snapshot, overrides) puts it all back with the same ids in
 -- one transaction (all or nothing), skipping a row that exists again
--- (ON CONFLICT DO NOTHING). `overrides` replaces columns per table — e.g. a
--- deleted task's old Google ids, which point at things deleted on Google.
+-- (ON CONFLICT DO NOTHING; `restored` says how many came back). A link or a
+-- touched row gets back only the columns that still hold what the delete left
+-- (a link only while it is still empty): an edit made since is kept. A row it
+-- may not update is named in `skipped`. `overrides` replaces columns per
+-- table — e.g. a deleted task's old Google ids, which point at things deleted
+-- on Google. A GENERATED ALWAYS identity column (reading_page_events) can't
+-- be written, so those rows come back with new ids.
 --
 -- Two rules delete or change rows without a foreign key; they are named here:
 --   043: deleting a project item deletes its schedule blocks
@@ -75,6 +79,56 @@ as $$
     and a.attname is distinct from p_except
 $$;
 
+-- For app_writable_columns' list, in the same order: each column goes back to
+-- its value before the delete (b) only where it still holds what the delete
+-- left there (a); anything changed since is kept. Compared as text, so every
+-- type works (json and point have no equality).
+create or replace function public.app_merge_columns(p_table regclass, p_except text default null)
+returns text
+language sql
+stable
+set search_path = ''
+as $$
+  select string_agg(pg_catalog.format('case when t.%1$I::text is not distinct from a.%1$I::text then b.%1$I else t.%1$I end',
+                                      a.attname), ', ' order by a.attnum)
+  from pg_catalog.pg_attribute a
+  where a.attrelid = p_table and a.attnum > 0 and not a.attisdropped
+    and a.attgenerated = '' and a.attidentity <> 'a'
+    and a.attname is distinct from p_except
+$$;
+
+-- Adds `after` (pk → the row as it is now) to each group of a snapshot.
+create or replace function public.app_rows_after(p_groups jsonb)
+returns jsonb
+language plpgsql
+stable
+security invoker
+set search_path = public, pg_temp
+as $$
+declare
+  g       jsonb;
+  v_tbl   regclass;
+  v_pk    text;
+  v_ids   text[];
+  v_after jsonb;
+  v_out   jsonb := '[]'::jsonb;
+begin
+  for g in select value from jsonb_array_elements(coalesce(p_groups, '[]'::jsonb)) loop
+    v_tbl := to_regclass(format('public.%I', g ->> 'table'));
+    v_pk  := g ->> 'pk';
+    v_after := '{}'::jsonb;
+    if v_tbl is not null and v_pk is not null then
+      select array_agg(e ->> v_pk) into v_ids from jsonb_array_elements(g -> 'rows') e;
+      execute format('select coalesce(jsonb_object_agg(x.%I::text, to_jsonb(x)), ''{}'') from %s x where x.%I = any ($1::%s[])',
+                     v_pk, v_tbl, v_pk, public.app_column_type(v_tbl, v_pk))
+        into v_after using v_ids;
+    end if;
+    v_out := v_out || jsonb_build_array(g || jsonb_build_object('after', v_after));
+  end loop;
+  return v_out;
+end;
+$$;
+
 create or replace function public.app_delete_rows(p_table text, p_ids text[])
 returns jsonb
 language plpgsql
@@ -104,6 +158,8 @@ declare
   v_cap     constant integer := 10000;
   v_too_big boolean := false;
   v_deleted integer;
+  v_n       integer;
+  v_on      boolean;
   r         record;
 begin
   if v_root is null then
@@ -129,6 +185,12 @@ begin
     where not ((v_name || ':' || x) = any (v_seen));
     continue when v_ids is null;
     v_seen := v_seen || array(select v_name || ':' || x from unnest(v_ids) x);
+    -- The cap is checked before any row is read: a long book's page events
+    -- must take the too_big path, not the statement timeout.
+    if v_count + array_length(v_ids, 1) > v_cap then
+      v_too_big := true;
+      exit;
+    end if;
 
     begin
       execute format('select coalesce(jsonb_agg(to_jsonb(x)), ''[]'') from %s x where x.%I = any ($1::%s[])',
@@ -166,19 +228,29 @@ begin
       v_cpk := public.app_pk_column(r.child);
       begin
         if r.action = 'c' and v_cpk is not null then
-          execute format('select coalesce(jsonb_agg(x.%I::text), ''[]'') from %s x where x.%I = any ($1::%s[])',
+          execute format('select coalesce(jsonb_agg(s.k), ''[]'') from (select x.%I::text as k from %s x where x.%I = any ($1::%s[]) limit $2) s',
                          v_cpk, r.child, r.col, public.app_column_type(r.child, r.col))
-            into v_cids using v_vals;
+            into v_cids using v_vals, v_cap - v_count + 1;
+          if v_count + jsonb_array_length(v_cids) > v_cap then
+            v_too_big := true;
+            exit;
+          end if;
           if jsonb_array_length(v_cids) > 0 then
             v_todo := v_todo || jsonb_build_object('t', r.child::oid, 'ids', v_cids);
           end if;
         else
+          execute format('select count(*) from (select 1 from %s x where x.%I = any ($1::%s[]) limit $2) s',
+                         r.child, r.col, public.app_column_type(r.child, r.col))
+            into v_n using v_vals, v_cap - v_count + 1;
+          continue when v_n = 0;
+          if v_count + v_n > v_cap then
+            v_too_big := true;
+            exit;
+          end if;
           execute format('select coalesce(jsonb_agg(to_jsonb(x)), ''[]'') from %s x where x.%I = any ($1::%s[])',
                          r.child, r.col, public.app_column_type(r.child, r.col))
             into v_crows using v_vals;
-          continue when jsonb_array_length(v_crows) = 0;
           v_count := v_count + jsonb_array_length(v_crows);
-          continue when v_count > v_cap;
           if r.action = 'c' then
             -- a child with no single key: its rows go back, its own children are not followed
             v_groups := v_groups || jsonb_build_object('table', r.child_name, 'pk', null, 'rows', v_crows);
@@ -191,13 +263,22 @@ begin
       end;
     end loop;
 
-    if v_count > v_cap then
-      v_too_big := true;
-      exit;
-    end if;
+    exit when v_too_big;
 
-    -- 043: a project item's schedule blocks go with it (by source, not a foreign key).
+    -- 043: a project item's schedule blocks go with it (by source, not a
+    -- foreign key) — while that rule is switched on, as the trigger checks.
+    v_on := false;
     if v_name = 'project_items' and to_regclass('public.time_blocks') is not null then
+      v_on := true;
+      if to_regprocedure('public.link_rule_enabled(text)') is not null then
+        begin
+          execute 'select public.link_rule_enabled($1)' into v_on using 'project_item_delete_cleans_block';
+        exception when insufficient_privilege then
+          v_on := true;  -- the trigger (SECURITY DEFINER) reads it either way
+        end;
+      end if;
+    end if;
+    if v_on then
       execute 'select coalesce(jsonb_agg(b.id::text), ''[]'') from public.time_blocks b
                where b.source_type = ''project_item'' and b.source_id::text = any ($1)'
         into v_cids using v_ids;
@@ -247,6 +328,12 @@ begin
                               'groups', '[]'::jsonb, 'links', '[]'::jsonb, 'touched', '[]'::jsonb, 'hidden', '[]'::jsonb);
   end if;
 
+  -- What the delete left in the rows it changed: Undo reverts a column only
+  -- where it still holds this, so an edit made since (a renamed subtask, a
+  -- Google sync's new etag) is kept.
+  v_links   := public.app_rows_after(v_links);
+  v_touched := public.app_rows_after(v_touched);
+
   return jsonb_build_object(
     'v', 1, 'root', p_table, 'deleted', v_deleted,
     'groups', v_groups, 'links', v_links, 'touched', v_touched, 'hidden', v_hidden);
@@ -275,6 +362,10 @@ declare
   v_next   jsonb;
   v_progress boolean;
   v_error  text;
+  v_merge  text;
+  v_after  jsonb;
+  v_guard  text;
+  v_exists boolean;
 begin
   if p_snapshot is null or p_snapshot ->> 'v' is distinct from '1' then
     raise exception 'app_restore_rows: not a delete snapshot' using errcode = '22023';
@@ -320,29 +411,40 @@ begin
     v_todo := v_next;
   end loop;
 
-  -- Links the delete emptied (only where still empty) and rows a rule changed.
+  -- Links the delete emptied (only where still empty) and rows a rule
+  -- changed: each column goes back only where it still holds what the delete
+  -- left (`after`), so edits made since are kept (app_merge_columns). A row
+  -- the caller may not update, or that can't take its old values any more,
+  -- is named in `skipped`, never passed over in silence.
   foreach v_kind in array array['links', 'touched'] loop
     for g in select value from jsonb_array_elements(coalesce(p_snapshot -> v_kind, '[]'::jsonb)) loop
       v_tbl := to_regclass(format('public.%I', g ->> 'table'));
       continue when v_tbl is null or g ->> 'pk' is null;
-      v_cols := public.app_writable_columns(v_tbl, g ->> 'pk');
+      v_cols  := public.app_writable_columns(v_tbl, g ->> 'pk');
+      v_merge := public.app_merge_columns(v_tbl, g ->> 'pk');
       v_pktype := public.app_column_type(v_tbl, g ->> 'pk');
+      v_guard := case when v_kind = 'links' then format(' and t.%I is null', g ->> 'col') else '' end;
       for x in select value from jsonb_array_elements(g -> 'rows') loop
+        -- With no record of it (an older snapshot), a link's only known change is its emptied column.
+        v_after := coalesce(g -> 'after' -> (x ->> (g ->> 'pk')),
+                            case when v_kind = 'links' then x || jsonb_build_object(g ->> 'col', null) else x end);
         begin
-          if v_kind = 'links' then
-            execute format('update %s t set (%s) = (select %s from jsonb_populate_record(null::%s, $1)) '
-                           'where t.%I = ($1 ->> %L)::%s and t.%I is null',
-                           v_tbl, v_cols, v_cols, v_tbl, g ->> 'pk', g ->> 'pk', v_pktype, g ->> 'col')
-              using x;
-          else
-            execute format('update %s t set (%s) = (select %s from jsonb_populate_record(null::%s, $1)) '
-                           'where t.%I = ($1 ->> %L)::%s',
-                           v_tbl, v_cols, v_cols, v_tbl, g ->> 'pk', g ->> 'pk', v_pktype)
-              using x;
-          end if;
+          execute format('update %s t set (%s) = (select %s from jsonb_populate_record(null::%s, $1) b, '
+                         'jsonb_populate_record(null::%s, $2) a) where t.%I = ($1 ->> %L)::%s%s',
+                         v_tbl, v_cols, v_merge, v_tbl, v_tbl, g ->> 'pk', g ->> 'pk', v_pktype, v_guard)
+            using x, v_after;
           get diagnostics v_n = row_count;
           v_relink := v_relink + v_n;
-        exception when insufficient_privilege then
+          if v_n = 0 then
+            -- Still there and still empty, yet not updated: row level security said no.
+            execute format('select exists (select 1 from %s t where t.%I = ($1 ->> %L)::%s%s)',
+                           v_tbl, g ->> 'pk', g ->> 'pk', v_pktype, v_guard)
+              into v_exists using x;
+            if v_exists then
+              v_skip := v_skip || to_jsonb(g ->> 'table');
+            end if;
+          end if;
+        exception when insufficient_privilege or check_violation or not_null_violation or unique_violation then
           v_skip := v_skip || to_jsonb(g ->> 'table');
         end;
       end loop;
@@ -378,11 +480,15 @@ end $$;
 revoke all on function public.app_pk_column(regclass) from public, anon;
 revoke all on function public.app_column_type(regclass, text) from public, anon;
 revoke all on function public.app_writable_columns(regclass, text) from public, anon;
+revoke all on function public.app_merge_columns(regclass, text) from public, anon;
+revoke all on function public.app_rows_after(jsonb) from public, anon;
 revoke all on function public.app_delete_rows(text, text[]) from public, anon;
 revoke all on function public.app_restore_rows(jsonb, jsonb) from public, anon;
 grant execute on function public.app_pk_column(regclass) to authenticated;
 grant execute on function public.app_column_type(regclass, text) to authenticated;
 grant execute on function public.app_writable_columns(regclass, text) to authenticated;
+grant execute on function public.app_merge_columns(regclass, text) to authenticated;
+grant execute on function public.app_rows_after(jsonb) to authenticated;
 grant execute on function public.app_delete_rows(text, text[]) to authenticated;
 grant execute on function public.app_restore_rows(jsonb, jsonb) to authenticated;
 

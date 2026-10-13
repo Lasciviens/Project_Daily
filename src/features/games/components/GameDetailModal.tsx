@@ -608,7 +608,7 @@ export function GameDetailModal({ gameId, onClose, initialEditing = false, class
     {game && (
       <UnifiedPlanModal open={planOpen} onClose={() => setPlanOpen(false)} mode="schedule" config={{ heading: 'Plan session' }} defaults={{ title: game.title, category: 'games', color: 'blue' }} />
     )}
-    <ConfirmDialog open={confirmDelete} title={`Delete "${game?.title}"?`} message="This can't be undone — the game and all its platform entries will be removed."
+    <ConfirmDialog open={confirmDelete} title={`Delete "${game?.title}"?`} message="The game and all its platform entries are removed. Undo brings them back, but not its ScreenScraper history."
       onConfirm={handleDelete} onClose={() => setConfirmDelete(false)} />
     </>
   )

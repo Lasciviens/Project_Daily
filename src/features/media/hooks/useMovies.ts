@@ -8,7 +8,7 @@ import {
   upsertMovie,
   addMovieEntry,
   updateMovieEntry,
-  } from '../api/moviesApi'
+} from '../api/moviesApi'
 import type { UserMovieEntry, TMDBMovie } from '../types'
 
 export function useMovies() {
@@ -53,6 +53,9 @@ export function useAddMovie() {
       return addMovieEntry(movie.id, status, priority, watchedAt !== undefined ? { watched_at: watchedAt } : {})
     },
     invalidates: ['media'],
+    // The title reads "in library" from these lists: until they have it, a
+    // second tap would add it again (and hit the unique key).
+    refresh: 'wait',
     onSuccess: () => scheduleTraktSync(qc),
   })
 }

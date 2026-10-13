@@ -29,9 +29,10 @@ export interface DeleteFlow<S> {
    * Puts the snapshot back with the same ids. Leave it out only when a delete
    * cannot be undone (it lives outside the app) — the question then says so.
    * Like remove, a mutation that shows its own errors. It may resolve with a
-   * note on what could not come back ("Not brought back: price history").
+   * note on what could not come back ("Not brought back: price history"),
+   * or `{ nothing }` when nothing came back — said instead of "Restored".
    */
-  restore?: (snapshot: S) => Promise<string | void>
+  restore?: (snapshot: S) => Promise<RestoreAnswer>
   /** This particular delete can't be undone after all (too big to hold). */
   canUndo?: (snapshot: S) => boolean
   /** The result: "Task deleted". */
@@ -39,6 +40,9 @@ export interface DeleteFlow<S> {
   /** After Undo; default "Restored". */
   restored?: string
 }
+
+/** What an Undo answers: a note after "Restored", or what to say when nothing came back. */
+export type RestoreAnswer = string | void | { nothing: string }
 
 export interface DeleteFlowDeps {
   confirm: (o: { title: string; message?: string; confirmLabel: string; destructive: true }) => Promise<boolean>
@@ -81,9 +85,10 @@ export async function runDeleteFlow<S>(flow: DeleteFlow<S>, deps: DeleteFlowDeps
     return 'deleted'
   }
   deps.undoToast(text, () => {
-    restore(snapshot).then(note => {
+    restore(snapshot).then(answer => {
       const done = flow.restored ?? 'Restored'
-      if (note) deps.warning(`${done} · ${note}`)
+      if (answer && typeof answer === 'object') deps.warning(answer.nothing)
+      else if (answer) deps.warning(`${done} · ${answer}`)
       else deps.success(done)
     }, () => undefined)
   })

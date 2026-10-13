@@ -1,6 +1,6 @@
 import { logError } from '../../../shared/utils/logError'
 import { rowsOf, type DeletedRows, type RowOverrides } from '../../../shared/utils/deletedRows'
-import { ensureLinkedCalendarEventRemoved } from './calendarTokenSync'
+import { ensureLinkedCalendarEventRemoved, ensureValidCalendarToken } from './calendarTokenSync'
 import { linkBlockCalendarEvent } from './linkBlockCalendarEvent'
 
 // Schedule slots deleted with something (a task, a project item, a block of
@@ -22,7 +22,10 @@ interface BlockRow {
 const withEvent = (s: DeletedRows | null) => rowsOf<BlockRow>(s, 'time_blocks').filter(b => !!b.google_calendar_event_id)
 
 export async function removeDeletedBlockEvents(snapshot: DeletedRows | null): Promise<void> {
-  await Promise.all(withEvent(snapshot).map(b =>
+  const blocks = withEvent(snapshot)
+  // Google not connected here: nothing to try (and nothing to log) — the outbox deletes them.
+  if (!blocks.length || !(await ensureValidCalendarToken())) return
+  await Promise.all(blocks.map(b =>
     ensureLinkedCalendarEventRemoved(b.google_calendar_event_id as string).catch(err => {
       logError(`Calendar event of a deleted block not removed yet (the calendar outbox retries): ${(err as Error).message}`, { blockId: b.id })
     })))

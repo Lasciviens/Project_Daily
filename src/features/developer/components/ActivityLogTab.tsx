@@ -1,4 +1,3 @@
-import { confirmDelete } from '../../../shared/modals'
 import { useMemo, useState, type ReactNode } from 'react'
 import { AlertTriangle, History } from 'lucide-react'
 import { Button, EmptyState, PageBoard, Skeleton, useBoardStep } from '../../../shared/ui'
@@ -7,6 +6,7 @@ import { CascadeBlock, LogRow } from './ActivityLogRows'
 import { ActivityLogDetail } from './ActivityLogDetail'
 import { ActivityLogFilters, type ActivityFilterState } from './ActivityLogFilters'
 import { DETAIL_PANE_FROM, LIST_DETAIL_BOARD, paneSelection, type ListDetailSection } from '../developerBoards'
+import { confirmDelete } from '../../../shared/modals'
 
 // CRUD audit trail as a readable timeline. Range is a preset (incl. 1h) OR an
 // explicit from/to window; type/operation/actor filter the loaded rows. On a
@@ -70,9 +70,8 @@ export function ActivityLogTab() {
   const linkedCount = shown ? (groups.find(g => g.some(l => l.id === shown.id))?.length ?? 1) : 0
 
   function handleClear() {
-    void confirmDelete({ title: 'Clear the activity log?', message: 'Deleted-row snapshots go with it, so nothing here can be recovered afterwards.', confirmLabel: 'Clear all', remove: () => clearLogs.mutateAsync(), done: 'Activity log cleared' })
+    void confirmDelete({ title: 'Clear the activity log?', message: 'The deleted-row snapshots it keeps go with it.', confirmLabel: 'Clear all', remove: () => clearLogs.mutateAsync(), done: 'Activity log cleared' })
   }
-
 
   let list: ReactNode
   if (isLoading) {

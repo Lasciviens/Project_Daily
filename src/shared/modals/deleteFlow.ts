@@ -2,7 +2,7 @@ import { toast } from '../../app/store'
 import { entityModal } from './useEntityModal'
 import { runDeleteFlow, type DeleteFlow } from './deleteFlowCore'
 
-export { NO_UNDO, type DeleteFlow } from './deleteFlowCore'
+export { NO_UNDO, type DeleteFlow, type RestoreAnswer } from './deleteFlowCore'
 
 /**
  * Every delete in the app goes through this: the question, the delete, the

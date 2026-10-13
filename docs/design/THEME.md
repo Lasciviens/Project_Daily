@@ -486,7 +486,9 @@ component; prefer the promise form). **Every delete** goes through one flow (13.
 deletes, says what happened and offers Undo — `useRowsDelete({ table, … }).run(ids, { title, done })`
 for rows in the app's database (Undo puts back the same rows and what went with them, migration
 144), `confirmDelete({ title, remove, restore?, done })` for anything else (no `restore` = the
-question says "This can't be undone."). Never a bare delete button that removes without asking.
+question says "This can't be undone."). Never a bare delete button that removes without asking;
+the one exception is a switch turned off with nothing written in it (unticking "watched at a
+cinema"): `ask: false`, and the Undo toast still comes.
 
 Side drawers (assistant, requests backlog) use `SideDrawer` (right edge, full height, 28rem by
 default via `widthClassName`, `headerExtra` for a filter row, Back/Esc aware) and become a
