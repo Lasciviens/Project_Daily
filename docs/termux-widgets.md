@@ -13,17 +13,14 @@ The server-side request contract for the game import is
 cover-only widget revision (see [Completed work](#completed-work-and-evidence)).
 **Device:** RP6 · **Termux distribution:** Google Play · **SD ID:** `6A0A-D741`.
 
-> **Check — has the first full content run finished?** The content widgets
-> (complete source metadata plus original images, no PDF manuals or video) and
-> their server side (migration 100, `esde-content-sync`) are in place. This guide
-> does not record whether the RP6 has that widget revision installed or whether
-> its first full run finished. One sign it ran: on 25.09.2026 Storage held about
-> 537 MB of ES-DE originals. That is about a fifth of the 2,553.7 MiB the card
-> holds, and a complete upload cannot fit the 1 GB Free plan — the ES-DE upload
-> endpoints now refuse anything that would take the `game-media` bucket past
-> 850 MB (`HTTP 413`, see [Troubleshooting](#troubleshooting)). To check: read
-> `~/.local/state/esde-sync/content-report.json` on the RP6 (`completed` and the
-> counts of the last run) and run `Kutuphane-Kontrol` for the local totals.
+> **Storage keeps low-resolution pictures only (owner, 13.10.2026).** The owner
+> deleted most of the `game-media` bucket, including the ES-DE originals; the
+> originals stay on the SD card. **`Oyunlari-Senkronize-Et` (Sync games) and
+> `Gorselleri-Senkronize-Et` (Sync images) still upload originals** — for new or
+> changed images, up to the 850 MB cap — until the uploader is changed. Until
+> then use `Metadatayi-Senkronize-Et` (games and statistics) and
+> `Kapaklari-Guncelle` (cover previews). The widget names move to English later
+> (owner, 13.10.2026).
 
 ## Quick navigation
 
@@ -492,9 +489,8 @@ video**. Added migration 100, the source/asset RPC, the binary content endpoint,
 the incremental original-image/source coordinator and two widget modes; the
 installer points the full-sync widget at the new coordinator. Server and local
 source-scan verification were complete at delivery; the first full upload was
-left for the owner to run from Termux. Whether it finished is the open check at
-the top of this guide — treat it as done only once an on-device
-`Content sync complete` report has been checked.
+left for the owner to run from Termux. The owner later confirmed the uploads
+done and, on 13.10.2026, deleted the originals again (the note at the top).
 
 ### Storage guard, 26.09.2026 and 04.10.2026
 
@@ -502,6 +498,6 @@ the top of this guide — treat it as done only once an on-device
 `game-media` bucket past the cap with 413 `storage_full` (950 MB from
 26.09.2026, 850 MB from 04.10.2026 to leave room for the Kobo buckets). On
 25.09.2026 the bucket held 537 MB of ES-DE originals and 52 MB of ES-DE cover
-previews. Reclaiming the originals (they are on the SD card anyway) is an open
-owner decision, recorded in
+previews. On 13.10.2026 the owner deleted the originals and kept only
+low-resolution pictures (see the note at the top); the earlier discussion is in
 [`screenscraper-integration.md` §16.3](games/screenscraper-integration.md#163-storage--the-constraint-and-the-choice).
