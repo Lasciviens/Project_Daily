@@ -233,7 +233,9 @@ function browserWiringSection() {
   check('the app syncs in the background when it opens', /useGoogleTasksBackgroundSync\(\)/.test(boot))
   const tasksApi = read('src/features/todo/api/tasksApi.ts')
   const all = tasksApi.slice(tasksApi.indexOf('export async function fetchAllTasks'), tasksApi.indexOf('export async function fetchTasksBySection'))
-  check('fetchAllTasks pages past 1,000 rows (undated rows sort last)', /\.range\(from, from \+ PAGE - 1\)/.test(all) && /data\.length < PAGE/.test(all))
+  check('fetchAllTasks pages past 1,000 rows, keyed on id (a row a sync moves is never skipped)',
+    /\.order\('id', \{ ascending: true \}\)/.test(all) && /\.gt\('id', last\)/.test(all) && /rows\.length < PAGE/.test(all) && !/\.range\(/.test(all))
+  check('…keeps each row once and sorts as before (due date, sort order, id)', /new Map\(out\.map/.test(all) && /\.sort\(compareByDueThenOrder\)/.test(all))
   const actions = read('src/features/todo/components/ToDoItemActions.tsx')
   check('task rows show Google\'s links (menu and hover strip)', /<GoogleTaskLinkMenuItems task=\{task\} \/>/.test(actions) && /<GoogleTaskLinkButtons task=\{task\} \/>/.test(actions))
   check('one consent list carries the Tasks scope', /'https:\/\/www\.googleapis\.com\/auth\/tasks'/.test(read('src/features/calendar/googleScopes.ts')))

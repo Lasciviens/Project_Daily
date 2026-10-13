@@ -131,6 +131,26 @@ export function dayTasks<T extends DayFields & OrderFields>(tasks: readonly T[],
   }
 }
 
+/** The order of the full task list (fetchAllTasks reads it in id pages and
+ *  sorts here): due date first, undated last; then sort_order, unset last;
+ *  then id. */
+export function compareByDueThenOrder(
+  a: Pick<Task, 'id' | 'due_date' | 'sort_order'>, b: Pick<Task, 'id' | 'due_date' | 'sort_order'>,
+): number {
+  if (a.due_date !== b.due_date) {
+    if (!a.due_date) return 1
+    if (!b.due_date) return -1
+    return a.due_date < b.due_date ? -1 : 1
+  }
+  const ao = a.sort_order ?? null, bo = b.sort_order ?? null
+  if (ao !== bo) {
+    if (ao === null) return 1
+    if (bo === null) return -1
+    return ao - bo
+  }
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0
+}
+
 export interface TaskGroups<T> {
   overdue:  T[]
   /** A live window: started, deadline still ahead (migration 069). */

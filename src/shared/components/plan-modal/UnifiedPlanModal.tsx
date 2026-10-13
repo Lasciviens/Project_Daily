@@ -21,7 +21,28 @@
 //  └─────────────────────────────────────────────────────────────────────────────┘
 //
 //  CHANGELOG
-//  2026-10-13 · v16 · Repeating plans on Google Calendar (migration 147) +
+//  2026-10-13 · v17 · Review fixes on v16 (repeating plans on Google):
+//                    (a) The series keeps a zone of its own
+//                    (schedule_blocks.google_calendar_time_zone, 147): a save
+//                    from this editor sets it from the device (Europe/Oslo
+//                    when none); every background push reuses it, so opening
+//                    the app abroad never re-zones a plan.
+//                    (b) The link is written only while the plan has no
+//                    series or this one, and cleared only while it still
+//                    names this one (a second tab or a stale clear never wins).
+//                    (c) A day of a plan turned into a slot (142) is carried to
+//                    Google in the background after the task and its link —
+//                    Done / Move / Skip no longer wait for Google; the slot's
+//                    own event is made only once Google took the EXDATE, else
+//                    the plan goes on a per-device retry list (said once,
+//                    retried on the next app open, cleared on sign-out). A
+//                    skipped day comes off Google; Undo skip puts it back.
+//                    A failed relink after Undo is retried the same way (no
+//                    "open it and save" note any more).
+//                    (d) ScheduleTab renders the checkbox block only with a
+//                    row in it (a repeat with Google not connected left an
+//                    empty 16px gap on the phone).
+//  2026-10-13 · v16 ·Repeating plans on Google Calendar (migration 147) +
 //                    four review fixes on v15:
 //                    (a) "Add to Google Calendar" now shows for a repeat too —
 //                    on create (Schedule tab with a repeat picked) and in the

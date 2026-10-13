@@ -96,16 +96,40 @@ export function hasSeriesColumns(row: object): boolean {
   return 'google_calendar_event_id' in row
 }
 
-/** Stores (or clears, with null) a repeating plan's Google Calendar series
- *  and how far its RDATE list reaches (147). The calendar-link write itself —
- *  a raw api call, so its failure is handled by the caller's compensation and
- *  never toasted as a failed save. */
-export async function setScheduleBlockCalendarLink(id: string, eventId: string | null, horizon: string | null): Promise<void> {
+/**
+ * Links a repeating plan to its Google Calendar series (147) — only while the
+ * plan has no series or already this one (another tab may have linked its
+ * own meanwhile; then nothing is written and this answers false). Also keeps
+ * how far its RDATE list reaches and the zone it is expanded in. A raw api
+ * call: a failure is handled by the caller's compensation, never toasted as
+ * a failed save.
+ */
+export async function setScheduleBlockCalendarLink(
+  id: string, eventId: string, horizon: string | null, timeZone: string,
+): Promise<boolean> {
   const user = await requireUser()
-  const { error } = await supabase.from('schedule_blocks')
-    .update({ google_calendar_event_id: eventId, google_calendar_horizon: horizon, updated_at: new Date().toISOString() })
+  const { data, error } = await supabase.from('schedule_blocks')
+    .update({
+      google_calendar_event_id: eventId, google_calendar_horizon: horizon, google_calendar_time_zone: timeZone,
+      updated_at: new Date().toISOString(),
+    })
     .eq('id', id)
     .eq('user_id', user.id)
+    .or(`google_calendar_event_id.is.null,google_calendar_event_id.eq.${eventId}`)
+    .select('id')
+  if (error) throw isMissingColumn(error) ? new Error(SERIES_NOT_MIGRATED) : error
+  return (data ?? []).length > 0
+}
+
+/** Forgets a plan's series — only while it still names `eventId` (the
+ *  clear_google_task_id_if_matches rule: a stale clear never drops a newer link). */
+export async function clearScheduleBlockCalendarLink(id: string, eventId: string): Promise<void> {
+  const user = await requireUser()
+  const { error } = await supabase.from('schedule_blocks')
+    .update({ google_calendar_event_id: null, google_calendar_horizon: null, updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .eq('user_id', user.id)
+    .eq('google_calendar_event_id', eventId)
   if (error) throw isMissingColumn(error) ? new Error(SERIES_NOT_MIGRATED) : error
 }
 
@@ -115,6 +139,19 @@ export async function setScheduleBlockCalendarLink(id: string, eventId: string |
 type TaskEmbed = { task: { status: TimeBlock['task_status']; hevy_workout_id?: string | null; hevy_routine_id?: string | null } | null }
 const withTaskState = ({ task, ...b }: TimeBlock & TaskEmbed): TimeBlock =>
   ({ ...b, task_status: task?.status ?? null, task_workout_id: task?.hevy_workout_id ?? null, task_routine_id: task?.hevy_routine_id ?? null })
+
+/** One block with its task's state, read fresh (null when it is gone): the
+ *  Calendar carry of a plan's day reads it, so a move or a skip that ran
+ *  meanwhile wins. */
+export async function fetchTimeBlockWithTask(id: string): Promise<TimeBlock | null> {
+  const { data, error } = await supabase
+    .from('time_blocks')
+    .select('*, task:tasks(status, hevy_workout_id, hevy_routine_id)')
+    .eq('id', id)
+    .maybeSingle()
+  if (error) throw error
+  return data ? withTaskState(data as TimeBlock & TaskEmbed) : null
+}
 
 export async function fetchTimeBlocks(dateStr: string): Promise<TimeBlock[]> {
   const { data, error } = await supabase

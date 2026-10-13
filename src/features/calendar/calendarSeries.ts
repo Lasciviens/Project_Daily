@@ -62,6 +62,8 @@ export interface SeriesTemplate extends RepeatRule {
   google_calendar_event_id?: string | null
   /** The last day the event's RDATE list covers (147); null = it lists them all. */
   google_calendar_horizon?:  string | null
+  /** The zone the series was created in (147). */
+  google_calendar_time_zone?: string | null
 }
 
 /** What events.insert / events.patch get. */
@@ -87,6 +89,15 @@ const TIME = /^(\d{2}):(\d{2})(?::(\d{2}))?/
 
 export function seriesTimeZone(tz: string | null | undefined): string {
   return tz && tz.trim() ? tz : SERIES_FALLBACK_TIME_ZONE
+}
+
+/** The zone a push expands the series in. A save from the planner takes the
+ *  device's (and may change it); every other push — a day carried over, the
+ *  horizon top-up, Undo, a retry — keeps the series' own, so opening the app
+ *  abroad never re-zones a plan. */
+export function seriesPushZone(storedZone: string | null | undefined, deviceZone: string | null | undefined, fromEditor: boolean): string {
+  if (!fromEditor && storedZone && storedZone.trim()) return storedZone
+  return seriesTimeZone(deviceZone)
 }
 
 /** 'HH:MM[:SS]' → 'HH:MM:SS', or null when it isn't a time. */
@@ -197,4 +208,49 @@ export function needsHorizonTopUp(t: SeriesTemplate, today: string): boolean {
   if (!t.google_calendar_event_id || !isHorizonKind(t) || !isIsoDay(today)) return false
   const h = t.google_calendar_horizon
   return !isIsoDay(h) || dayNumber(h) - dayNumber(today) < SERIES_TOPUP_DAYS
+}
+
+// ── Retries (pushes Google didn't take) ──────────────────────────────────────
+//  A day carried over (142) or an Undo whose push answered 'unknown' (no
+//  connection, a network or 5xx failure) is remembered on this device and
+//  pushed again the next time the app opens (useCalendarSeriesTopUp). The
+//  list lives in localStorage under SERIES_PENDING_KEY and is cleared on
+//  sign-out (security/accountState.ts).
+
+export const SERIES_PENDING_KEY = 'lasci.calendarSeries.pending'
+
+export interface PendingSeries {
+  planId:   string
+  /** Days of the plan (one-off blocks, 142) that get their own event once the series took their EXDATE. */
+  blockIds: string[]
+  /** Put back by Undo with its link reset: link it again. */
+  relink?:  boolean
+}
+
+/** The stored list, or [] for anything that isn't one. */
+export function parsePendingSeries(raw: string | null | undefined): PendingSeries[] {
+  try {
+    const list: unknown = JSON.parse(raw ?? '[]')
+    if (!Array.isArray(list)) return []
+    return list.flatMap((p): PendingSeries[] => {
+      const x = p as Partial<PendingSeries> | null
+      if (!x || typeof x.planId !== 'string' || !x.planId) return []
+      const blockIds = Array.isArray(x.blockIds) ? x.blockIds.filter((b): b is string => typeof b === 'string' && !!b) : []
+      return [{ planId: x.planId, blockIds: [...new Set(blockIds)], ...(x.relink ? { relink: true } : {}) }]
+    })
+  } catch {
+    return []
+  }
+}
+
+/** Adds a plan (and a day of it) to the list: one entry per plan, days merged. */
+export function addPendingSeries(list: readonly PendingSeries[], planId: string, blockId: string | null, relink = false): PendingSeries[] {
+  const at = list.findIndex(p => p.planId === planId)
+  const prev: PendingSeries = at >= 0 ? list[at] : { planId, blockIds: [] }
+  const next: PendingSeries = {
+    planId,
+    blockIds: blockId && !prev.blockIds.includes(blockId) ? [...prev.blockIds, blockId] : [...prev.blockIds],
+    ...(relink || prev.relink ? { relink: true } : {}),
+  }
+  return at >= 0 ? list.map((p, i) => (i === at ? next : p)) : [...list, next]
 }

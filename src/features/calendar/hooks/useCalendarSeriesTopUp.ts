@@ -4,14 +4,15 @@ import { useCalendarStore } from '../../../app/store'
 import { qk, STALE } from '../../../shared/query'
 import { logError } from '../../../shared/utils/logError'
 import { fetchScheduleBlocks } from '../../daily/api/scheduleApi'
-import { topUpSeriesHorizons } from '../api/scheduleSeriesCalendar'
+import { topUpCalendarSeries } from '../api/scheduleSeriesCalendar'
 
 /**
- * Once per app open, when Google is connected: a monthly-kind plan's
- * repeating event lists its days a year ahead (an RDATE list — no RRULE says
- * "the Saturday nearest the 13th"), so the list is pushed again once fewer
- * than 90 days of it remain (migration 147). Silent: nothing was asked for; a
- * failure is logged and the next open tries again.
+ * Once per app open, when Google is connected (migration 147): the repeating-
+ * plan pushes Google didn't take earlier (a day carried over, an Undo — any
+ * kind) go again, and a monthly-kind plan's event, which lists its days a year
+ * ahead (an RDATE list — no RRULE says "the Saturday nearest the 13th"), is
+ * pushed again once fewer than 90 days of it remain. Silent: nothing was asked
+ * for; a failure is logged and the next open tries again.
  */
 export function useCalendarSeriesTopUp() {
   const qc = useQueryClient()
@@ -22,7 +23,7 @@ export function useCalendarSeriesTopUp() {
     if (!connected || done.current) return
     done.current = true
     qc.fetchQuery({ queryKey: qk.schedule.templates(), queryFn: fetchScheduleBlocks, staleTime: STALE.long })
-      .then(topUpSeriesHorizons)
+      .then(topUpCalendarSeries)
       .catch(err => logError(`Calendar series top-up failed: ${(err as Error).message}`, { action: 'calendar_series_top_up' }))
   }, [qc, connected])
 }

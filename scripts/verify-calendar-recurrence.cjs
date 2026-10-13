@@ -218,6 +218,25 @@ console.log('\n6 · The horizon of the monthly kinds')
   check('the horizon constants (a year, 90 days)', S.SERIES_HORIZON_DAYS === 365 && S.SERIES_TOPUP_DAYS === 90)
 }
 
+console.log('\n6b · The zone a push uses, and the retry list')
+{
+  check('a save from the planner takes the device\'s zone (it may change it)', S.seriesPushZone('Europe/Oslo', 'America/New_York', true) === 'America/New_York')
+  check('any other push keeps the series\' own zone (opening the app abroad never re-zones it)', S.seriesPushZone('Europe/Oslo', 'America/New_York', false) === 'Europe/Oslo')
+  check('no stored zone: the device\'s, else Europe/Oslo', S.seriesPushZone(null, 'Asia/Tokyo', false) === 'Asia/Tokyo' && S.seriesPushZone('', '', false) === 'Europe/Oslo' && S.seriesPushZone(undefined, undefined, true) === 'Europe/Oslo')
+  check('the retry list: garbage reads as empty', eq(S.parsePendingSeries('nope'), []) && eq(S.parsePendingSeries(null), []) && eq(S.parsePendingSeries('{"a":1}'), []))
+  check('…entries without a plan id are dropped, odd block ids too',
+    eq(S.parsePendingSeries(JSON.stringify([{ planId: 'p', blockIds: ['b', 7, '', 'b'] }, { blockIds: ['x'] }, null])), [{ planId: 'p', blockIds: ['b'] }]))
+  let list = S.addPendingSeries([], 'p1', 'b1')
+  list = S.addPendingSeries(list, 'p1', 'b2')
+  list = S.addPendingSeries(list, 'p1', 'b1')
+  list = S.addPendingSeries(list, 'p2', null, true)
+  list = S.addPendingSeries(list, 'p2', 'b9')
+  check('one entry per plan, days merged once each; relink is kept', eq(list, [{ planId: 'p1', blockIds: ['b1', 'b2'] }, { planId: 'p2', blockIds: ['b9'], relink: true }]), JSON.stringify(list))
+  check('…and it round-trips through storage', eq(S.parsePendingSeries(JSON.stringify(list)), list))
+  check('the storage key is the one sign-out clears', S.SERIES_PENDING_KEY === 'lasci.calendarSeries.pending'
+    && require('fs').readFileSync(require('path').join(__dirname, '../src/security/accountState.ts'), 'utf8').includes('localStorage.removeItem(SERIES_PENDING_KEY)'))
+}
+
 console.log('\n7 · The agenda shows a linked plan once')
 {
   const tpl = {

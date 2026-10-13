@@ -1,7 +1,7 @@
 import { supabase } from '../../../integrations/supabase/client'
 import { requireUser } from '../../../shared/utils/requireUser'
 import { shiftDateStr } from '../../../shared/utils/dateUtils'
-import { OPEN_STATUSES } from '../taskRules'
+import { OPEN_STATUSES, compareByDueThenOrder } from '../taskRules'
 import type { Task, CreateTaskInput, UpdateTaskInput } from '../types'
 
 // All active tasks (+ done, so the UI can show a "recently done" group) for the
@@ -9,24 +9,31 @@ import type { Task, CreateTaskInput, UpdateTaskInput } from '../types'
 // / Upcoming / No date / Done. Cancelled excluded (app-wide convention).
 // Read in pages: PostgREST stops at 1,000 rows, and done tasks pile up for
 // ever — past 1,000 the cut fell on the undated rows (sorted last), so
-// "No date" (where imported Google tasks land) quietly lost tasks.
+// "No date" (where imported Google tasks land) quietly lost tasks. The pages
+// are keyed on id (keyset), never offsets: a row a sync edits between two
+// pages keeps its place, where an offset page on due_date could move it
+// across the boundary and skip it. Sorted here afterwards
+// (taskRules.compareByDueThenOrder — the order the query used to give).
 export async function fetchAllTasks(): Promise<Task[]> {
   const PAGE = 1000
   const out: Task[] = []
-  for (let from = 0; ; from += PAGE) {
-    const { data, error } = await supabase
+  for (let last: string | null = null; ;) {
+    let query = supabase
       .from('tasks')
       .select('*')
       .neq('status', 'cancelled')
-      .order('due_date', { ascending: true, nullsFirst: false })
-      .order('sort_order', { ascending: true, nullsFirst: false })
       .order('id', { ascending: true })
-      .range(from, from + PAGE - 1)
+      .limit(PAGE)
+    if (last) query = query.gt('id', last)
+    const { data, error } = await query
     if (error) throw error
-    out.push(...(data ?? []))
-    // A row moved by a sync between two pages can come twice: keep it once.
-    if (!data || data.length < PAGE) return [...new Map(out.map(t => [t.id, t])).values()]
+    const rows = (data ?? []) as Task[]
+    out.push(...rows)
+    if (rows.length < PAGE) break
+    last = rows[rows.length - 1].id
   }
+  // Keep each row once (a cheap guard; keyset pages don't overlap).
+  return [...new Map(out.map(t => [t.id, t])).values()].sort(compareByDueThenOrder)
 }
 
 export async function fetchTasksBySection(section: string): Promise<Task[]> {

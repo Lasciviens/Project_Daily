@@ -31,6 +31,9 @@ export function ScheduleTab({ form, patch, config, gcalAvailable, extra }: Props
   const repeats = form.recurrence !== 'none'
   // Picked dates need no start of their own (the earliest pick is it).
   const pickingDates = form.recurrence === 'custom' && form.customKind === 'dates'
+  // The wrapper renders only with a row in it (an empty one was a stray gap on the phone).
+  const showTaskBox = !repeats && !hidden('alsoCreateTask')
+  const showGcalBox = !hidden('gcal') && gcalAvailable
 
   return (
     <div className="flex flex-col gap-4">
@@ -100,17 +103,19 @@ export function ScheduleTab({ form, patch, config, gcalAvailable, extra }: Props
           schedule_blocks once a repeat is picked and there is no recurring-
           Task concept, so it must not render then. "Add to Google Calendar"
           works for both: a repeat becomes ONE repeating event (147). */}
-      <div className="flex flex-col gap-2">
-        {form.recurrence === 'none' && !hidden('alsoCreateTask') && (
-          <CheckboxRow
-            checked={form.alsoCreateTask} onChange={v => patch({ alsoCreateTask: v })}
-            label="Also add to Tasks"
-          />
-        )}
-        {!hidden('gcal') && gcalAvailable && (
-          <CheckboxRow checked={form.gcal} onChange={v => patch({ gcal: v })} label="Add to Google Calendar" />
-        )}
-      </div>
+      {(showTaskBox || showGcalBox) && (
+        <div className="flex flex-col gap-2">
+          {showTaskBox && (
+            <CheckboxRow
+              checked={form.alsoCreateTask} onChange={v => patch({ alsoCreateTask: v })}
+              label="Also add to Tasks"
+            />
+          )}
+          {showGcalBox && (
+            <CheckboxRow checked={form.gcal} onChange={v => patch({ gcal: v })} label="Add to Google Calendar" />
+          )}
+        </div>
+      )}
     </div>
   )
 }

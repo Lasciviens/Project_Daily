@@ -11,8 +11,11 @@ select ok('C0 google_calendar_event_id is text, nullable',
   (select data_type || '/' || is_nullable from information_schema.columns where table_name = 'schedule_blocks' and column_name = 'google_calendar_event_id'), 'text/YES');
 select ok('C0 google_calendar_horizon is a date, nullable',
   (select data_type || '/' || is_nullable from information_schema.columns where table_name = 'schedule_blocks' and column_name = 'google_calendar_horizon'), 'date/YES');
+select ok('C0 google_calendar_time_zone is text, nullable',
+  (select data_type || '/' || is_nullable from information_schema.columns where table_name = 'schedule_blocks' and column_name = 'google_calendar_time_zone'), 'text/YES');
 select ok('C0 no existing plan is linked (nothing is pushed in bulk)',
-  (select count(*)::text from schedule_blocks where google_calendar_event_id is not null or google_calendar_horizon is not null), '0');
+  (select count(*)::text from schedule_blocks
+    where google_calendar_event_id is not null or google_calendar_horizon is not null or google_calendar_time_zone is not null), '0');
 select ok('C0 the re-run left one trigger, not two',
   (select count(*)::text from pg_trigger where tgrelid = 'public.schedule_blocks'::regclass and tgname = 'trg_enqueue_calendar_series_delete'), '1');
 select ok('C0 the trigger function is SECURITY DEFINER',
@@ -20,11 +23,23 @@ select ok('C0 the trigger function is SECURITY DEFINER',
 
 -- C1 the browser links a plan (its own role, RLS on) and later deletes it
 set role authenticated;
-update schedule_blocks set google_calendar_event_id = '0000000000004000800000000000000a', google_calendar_horizon = '2027-11-14'
- where id = '00000000-0000-4000-8000-000000000002';
+-- the app's conditional link: only while the plan has no series (or this one)
+update schedule_blocks set google_calendar_event_id = '0000000000004000800000000000000a', google_calendar_horizon = '2027-11-14',
+       google_calendar_time_zone = 'Europe/Oslo'
+ where id = '00000000-0000-4000-8000-000000000002'
+   and (google_calendar_event_id is null or google_calendar_event_id = '0000000000004000800000000000000a');
 select ok('C1 the browser may write the link on its own plan',
-  (select google_calendar_event_id || ' ' || google_calendar_horizon from schedule_blocks where id = '00000000-0000-4000-8000-000000000002'),
-  '0000000000004000800000000000000a 2027-11-14');
+  (select google_calendar_event_id || ' ' || google_calendar_horizon || ' ' || google_calendar_time_zone from schedule_blocks where id = '00000000-0000-4000-8000-000000000002'),
+  '0000000000004000800000000000000a 2027-11-14 Europe/Oslo');
+-- a second link with another id (another tab) matches nothing: the first stays
+update schedule_blocks set google_calendar_event_id = '0000000000004000800000000000000b'
+ where id = '00000000-0000-4000-8000-000000000002'
+   and (google_calendar_event_id is null or google_calendar_event_id = '0000000000004000800000000000000b');
+-- and a clear that names a stale id matches nothing either
+update schedule_blocks set google_calendar_event_id = null, google_calendar_horizon = null
+ where id = '00000000-0000-4000-8000-000000000002' and google_calendar_event_id = '00000000000040008000000000000old';
+select ok('C1 a conditional link or clear naming another series leaves the link alone',
+  (select google_calendar_event_id from schedule_blocks where id = '00000000-0000-4000-8000-000000000002'), '0000000000004000800000000000000a');
 delete from schedule_blocks where id = '00000000-0000-4000-8000-000000000002';
 reset role;
 select ok('C1 deleting a linked plan as the browser queues its event (no INSERT grant needed)',

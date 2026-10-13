@@ -19,6 +19,12 @@
 --   google_calendar_horizon  date  the last day the event's RDATE list
 --                                  covers; NULL when the event carries every
 --                                  occurrence (an RRULE, or all picked dates)
+--   google_calendar_time_zone text the IANA zone the series is expanded in,
+--                                  set when it is created (the device's zone,
+--                                  Europe/Oslo when it names none); background
+--                                  pushes reuse it, only a save from the
+--                                  editor may change it — so opening the app
+--                                  abroad never re-zones a plan
 --
 -- A plan deleted on the server (plain SQL, a cascade from a deleted account
 -- aside) has no Google token at hand, so its event is queued in
@@ -30,20 +36,23 @@
 -- event id, so the old one is safe to delete). time_block_id stays NULL on
 -- these rows (it names a time block); the payload names the plan.
 --
--- Additive: two nullable columns, one trigger function, one trigger. No row
+-- Additive: three nullable columns, one trigger function, one trigger. No row
 -- changes. Re-runnable. No new table, so no owner_lock_apply; ai-proxy's
 -- DB_CATALOG has no schedule_blocks entry, so the assistant can't write the
 -- link either.
 -- ═══════════════════════════════════════════════════════════════════════════
 
 ALTER TABLE public.schedule_blocks
-  ADD COLUMN IF NOT EXISTS google_calendar_event_id text,
-  ADD COLUMN IF NOT EXISTS google_calendar_horizon  date;
+  ADD COLUMN IF NOT EXISTS google_calendar_event_id  text,
+  ADD COLUMN IF NOT EXISTS google_calendar_horizon   date,
+  ADD COLUMN IF NOT EXISTS google_calendar_time_zone text;
 
 COMMENT ON COLUMN public.schedule_blocks.google_calendar_event_id IS
   'The plan''s ONE repeating Google Calendar event (in primary), migration 147. Mapping: src/features/calendar/calendarSeries.ts. A delete queues it in calendar_outbox.';
 COMMENT ON COLUMN public.schedule_blocks.google_calendar_horizon IS
   'The last day the event''s RDATE list covers (monthly / every N months); NULL when the event carries every occurrence. The app pushes it again when fewer than 90 days remain.';
+COMMENT ON COLUMN public.schedule_blocks.google_calendar_time_zone IS
+  'The IANA zone the plan''s Google Calendar series is expanded in (set when it is created; only a save from the planner changes it).';
 
 CREATE OR REPLACE FUNCTION public.enqueue_calendar_series_delete()
 RETURNS trigger
@@ -83,9 +92,9 @@ DO $$
 BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM information_schema.columns
-     WHERE table_schema = 'public' AND table_name = 'schedule_blocks' AND column_name = 'google_calendar_horizon'
+     WHERE table_schema = 'public' AND table_name = 'schedule_blocks' AND column_name = 'google_calendar_time_zone'
   ) THEN
-    RAISE EXCEPTION 'Migration 147 assertion failed: schedule_blocks.google_calendar_horizon is missing';
+    RAISE EXCEPTION 'Migration 147 assertion failed: schedule_blocks.google_calendar_time_zone is missing';
   END IF;
   IF NOT EXISTS (
     SELECT 1 FROM pg_trigger WHERE tgname = 'trg_enqueue_calendar_series_delete' AND tgrelid = 'public.schedule_blocks'::regclass

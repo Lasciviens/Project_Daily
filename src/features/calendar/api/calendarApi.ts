@@ -84,6 +84,22 @@ async function gcalFetch<T>(path: string, token: string, params: Record<string, 
   return gcalRequest<T>(qs ? `${path}?${qs}` : path, token)
 }
 
+/** Every page of an events.list: Google may answer a short (even empty) page
+ *  while more remain, and says so with nextPageToken. A repeating plan on
+ *  Google (147) is one instance a day, so a month's range is no longer small. */
+async function listAllEvents(path: string, token: string, params: Record<string, string>): Promise<CalendarEvent[]> {
+  const out: CalendarEvent[] = []
+  let pageToken: string | undefined
+  for (let page = 0; page < 10; page++) {
+    const data = await gcalFetch<{ items?: CalendarEvent[]; nextPageToken?: string }>(
+      path, token, { ...params, maxResults: '250', ...(pageToken ? { pageToken } : {}) })
+    out.push(...(data.items ?? []))
+    pageToken = data.nextPageToken || undefined
+    if (!pageToken) break
+  }
+  return out
+}
+
 export async function fetchCalendarList(token: string): Promise<CalendarListEntry[]> {
   const data = await gcalFetch<{ items: CalendarListEntry[] }>('/users/me/calendarList', token)
   return data.items ?? []
@@ -101,12 +117,12 @@ export async function fetchEventsForDay(token: string, date: string, calendarId 
   const nextDay = new Date(date + 'T00:00:00')
   nextDay.setDate(nextDay.getDate() + 1)
   const timeMax = nextDay.toISOString()
-  const data = await gcalFetch<{ items: CalendarEvent[] }>(
+  const items = await listAllEvents(
     `/calendars/${encodeURIComponent(calendarId)}/events`,
     token,
     { timeMin, timeMax, singleEvents: 'true', orderBy: 'startTime' }
   )
-  return (data.items ?? []).map(e => ({ ...e, calendarId }))
+  return items.map(e => ({ ...e, calendarId }))
 }
 
 export async function exchangeCalendarCode(
@@ -149,12 +165,12 @@ export async function fetchEventsForRange(
   timeMax: string,
   calendarId = 'primary'
 ): Promise<CalendarEvent[]> {
-  const data = await gcalFetch<{ items: CalendarEvent[] }>(
+  const items = await listAllEvents(
     `/calendars/${encodeURIComponent(calendarId)}/events`,
     token,
     { timeMin, timeMax, singleEvents: 'true', orderBy: 'startTime' }
   )
-  return (data.items ?? []).map(e => ({ ...e, calendarId }))
+  return items.map(e => ({ ...e, calendarId }))
 }
 
 export async function updateCalendarEvent(

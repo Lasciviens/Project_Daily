@@ -17,6 +17,20 @@ const at = day => new Date(`${day}T12:00:00`).toISOString()
 let seq = 0
 const task = f => ({ id: `t${++seq}`, title: 'T', status: 'open', section: 'inbox', due_date: null, completed_at: null, is_focused: false, ...f })
 
+// ── The full list's order (fetchAllTasks sorts its id pages with it) ──
+{
+  const rows = [
+    { id: 'c', due_date: null, sort_order: 1 },
+    { id: 'b', due_date: '2026-10-14', sort_order: null },
+    { id: 'a', due_date: '2026-10-14', sort_order: 2 },
+    { id: 'd', due_date: '2026-10-13', sort_order: 9 },
+    { id: 'e', due_date: null, sort_order: null },
+    { id: 'f', due_date: '2026-10-14', sort_order: 2 },
+  ]
+  eq([...rows].sort(R.compareByDueThenOrder).map(r => r.id), ['d', 'a', 'f', 'b', 'c', 'e'],
+    'full list: due date first (undated last), then sort_order (unset last), then id')
+}
+
 // ── Open, closed, closed on a day ──
 eq(R.isOpenTask(task({ status: 'waiting' })), true, 'waiting is open (Daily used to hide it)')
 eq(R.isOpenTask(task({ status: 'in_progress' })), true, 'in progress is open')

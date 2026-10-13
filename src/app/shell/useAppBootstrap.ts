@@ -14,7 +14,7 @@ export function useAppBootstrap() {
   useAutoRefreshCalendarToken()
   // Google Tasks → app when the app opens or returns to the front (throttled).
   useGoogleTasksBackgroundSync()
-  // A monthly plan's Google Calendar series lists a year of days: extend it when it runs low.
+  // Repeating plans on Google Calendar: retry what Google didn't take, extend a monthly plan's year of days.
   useCalendarSeriesTopUp()
   // Keeps this device's morning brief tied to the current login (security audit).
   useEffect(() => { void refreshThisDevicePush() }, [])

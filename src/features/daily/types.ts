@@ -31,6 +31,9 @@ export interface ScheduleBlock {
   /** The last day the event's RDATE list covers (the monthly kinds); null
    *  when the event carries every occurrence. */
   google_calendar_horizon?:  string | null
+  /** The zone the series is expanded in — set when it is created; only a
+   *  save from the planner changes it (background pushes reuse it). */
+  google_calendar_time_zone?: string | null
   created_at:   string
   updated_at:   string
 }
