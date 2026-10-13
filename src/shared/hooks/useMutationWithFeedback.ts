@@ -9,13 +9,27 @@ import { invalidate, type InvalidationGroup } from '../query/invalidate'
 // of the feedback so call sites never hand-write toast blocks:
 //
 // - `action`          snake_case logError context ("delete_task"). Required.
-// - `successMessage`  opt-in success toast (edits feel live without one).
+// - `successMessage`  the result the user is told when the write succeeds
+//                     ("Task saved"). Every user action reports its result
+//                     (owner, 13.10.2026), so a hook gives either this or
+//   `silent`          the reason it says nothing itself: the write is
+//                     automatic (a sync, a debounce), or its caller reports
+//                     the result (the delete flow, withProgress). A message
+//                     resolving to undefined stays silent for that call.
 // - `loadingMessage`  opt-in "Saving…" toast for slow writes, dismissed when
 //                     the request settles (kept out of onMutate's context, so
 //                     optimistic hooks keep their snapshot there).
 // - `invalidates`     groups / keys refreshed after the mutation settles,
 //                     success or failure (an optimistic write rolled back
 //                     still needs the server truth).
+// - `refresh`         'background' (default): the refresh runs on its own and
+//                     the mutation resolves as soon as the write answers — the
+//                     write's own result decides success, not a re-read.
+//                     Before, every save also waited for every list under its
+//                     groups to download again (the Google Calendar list
+//                     included), which is what kept the UI waiting. 'wait'
+//                     only for a flow that reads the refreshed cache right
+//                     after (two clicks must see the first one's row).
 // - `logPayload`      false: the input never reaches app_error_logs. Set it
 //                     when the input IS a secret (a pasted token, an OAuth
 //                     code) — the AI can read that table (security audit).
@@ -26,15 +40,19 @@ import { invalidate, type InvalidationGroup } from '../query/invalidate'
 type Target = InvalidationGroup | QueryKey
 type Resolve<T, A extends unknown[]> = T | ((...args: A) => T)
 
-interface FeedbackMutationOptions<TData, TVariables, TContext>
-  extends UseMutationOptions<TData, Error, TVariables, TContext> {
-  action: string
-  successMessage?: Resolve<string | undefined, [TData, TVariables]>
-  loadingMessage?: Resolve<string | undefined, [TVariables]>
-  errorFallback?: string
-  invalidates?: Resolve<readonly Target[], [TData | undefined, TVariables]>
-  logPayload?: boolean
-}
+type ResultFeedback<TData, TVariables> =
+  | { successMessage: Resolve<string | undefined, [TData, TVariables]>; silent?: never }
+  | { silent: string; successMessage?: never }
+
+type FeedbackMutationOptions<TData, TVariables, TContext> =
+  UseMutationOptions<TData, Error, TVariables, TContext> & ResultFeedback<TData, TVariables> & {
+    action: string
+    loadingMessage?: Resolve<string | undefined, [TVariables]>
+    errorFallback?: string
+    invalidates?: Resolve<readonly Target[], [TData | undefined, TVariables]>
+    refresh?: 'background' | 'wait'
+    logPayload?: boolean
+  }
 
 const resolve = <T, A extends unknown[]>(v: Resolve<T, A> | undefined, ...args: A) =>
   (typeof v === 'function' ? (v as (...a: A) => T)(...args) : v)
@@ -45,7 +63,9 @@ export function useMutationWithFeedback<TData, TVariables = void, TContext = unk
   loadingMessage,
   errorFallback,
   invalidates,
+  refresh = 'background',
   logPayload = true,
+  silent: _silent,
   mutationFn,
   onSuccess,
   onError,
@@ -77,7 +97,11 @@ export function useMutationWithFeedback<TData, TVariables = void, TContext = unk
     },
     onSettled: async (data, error, variables, onMutateResult, context) => {
       const targets = resolve(invalidates, data, variables)
-      if (targets?.length) await invalidate(qc, ...targets)
+      if (targets?.length) {
+        const refreshed = invalidate(qc, ...targets)
+        if (refresh === 'wait') await refreshed
+        else void refreshed.catch(() => undefined)
+      }
       return onSettled?.(data, error, variables, onMutateResult, context)
     },
   })

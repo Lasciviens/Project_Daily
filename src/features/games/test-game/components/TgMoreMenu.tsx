@@ -118,7 +118,7 @@ export function TgMoreMenu({ game, actions }: { game: TgGame; actions: TgActions
           confirmLabel="Hide instead"
           onConfirm={() => setStatus('hidden')}
           onClose={() => setConfirmDelete(false)}
-          secondary={{ label: 'Delete anyway', danger: true, onClick: () => deleteGame.mutate(game.id) }}
+          secondary={{ label: 'Delete anyway', danger: true, onClick: () => void deleteGame.run([game.id], { title: '', ask: false, done: `Deleted ${game.title}` }) }}
         />
       ) : (
         <TgConfirmDialog
@@ -129,7 +129,7 @@ export function TgMoreMenu({ game, actions }: { game: TgGame; actions: TgActions
             ? `${syncedBy[0].toUpperCase()}${syncedBy.slice(1)} adds it back as a new entry, without your status, rating or notes.`
             : "This can't be undone — the game and all its platform entries will be removed from your library."}
           confirmLabel="Delete game"
-          onConfirm={() => deleteGame.mutate(game.id)}
+          onConfirm={() => void deleteGame.run([game.id], { title: '', ask: false, done: `Deleted ${game.title}` })}
           onClose={() => setConfirmDelete(false)}
         />
       )}

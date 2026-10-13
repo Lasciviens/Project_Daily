@@ -1,6 +1,5 @@
 import { Trash2 } from 'lucide-react'
 import { Card, IconButton } from '../../../shared/ui'
-import { useEntityModal } from '../../../shared/modals'
 import { haptic } from '../../../shared/utils/haptics'
 import { InlineText } from './InlineText'
 import { InlineTextArea } from './InlineTextArea'
@@ -14,21 +13,18 @@ const PROJECT_STATUSES: ProjectStatus[] = ['active', 'on_hold', 'completed', 'ar
 
 /** Name, status, description, progress and colour of one project. */
 export function ProjectHeaderCard({ project, items, onDeleted }: { project: Project; items: ProjectItem[]; onDeleted: () => void }) {
-  const modal = useEntityModal()
   const updateProject = useUpdateProject()
   const deleteProject = useDeleteProject()
   const patch = (p: Parameters<typeof updateProject.mutate>[0]['patch']) => updateProject.mutate({ id: project.id, patch: p })
 
   async function handleDelete() {
-    const ok = await modal.confirm({
+    const result = await deleteProject.run([project.id], {
       title: `Delete "${project.name}"?`,
-      message: 'This removes all its phases and items.',
+      message: 'Its phases and items go too.',
       confirmLabel: 'Delete project',
-      destructive: true,
+      done: 'Project deleted',
     })
-    if (!ok) return
-    try { await deleteProject.mutateAsync(project.id) } catch { return }
-    onDeleted()
+    if (result === 'deleted' || result === 'gone') onDeleted()
   }
 
   // Capped like a main-track card: a name, a progress bar and six colour
@@ -50,7 +46,7 @@ export function ProjectHeaderCard({ project, items, onDeleted }: { project: Proj
           labels={PROJECT_STATUS_LABEL}
           onCycle={status => patch({ status })}
         />
-        <IconButton label={`Delete project ${project.name}`} onClick={() => { void handleDelete() }} disabled={deleteProject.isPending}
+        <IconButton label={`Delete project ${project.name}`} onClick={() => { void handleDelete() }} disabled={deleteProject.busy}
           className="ml-auto hover:text-danger">
           <Trash2 />
         </IconButton>

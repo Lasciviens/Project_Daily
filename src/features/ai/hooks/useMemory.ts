@@ -1,7 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
+import { useRowsDelete } from '../../../shared/hooks/useRowsDelete'
 import { qk, STALE } from '../../../shared/query'
-import { fetchMemories, createMemory, updateMemory, deleteMemory } from '../api/memoryApi'
+import { fetchMemories, createMemory, updateMemory } from '../api/memoryApi'
 import type { AiMemory, CreateMemoryInput } from '../api/memoryApi'
 
 export function useMemories() {
@@ -20,6 +21,7 @@ export function useCreateMemory() {
 export function useUpdateMemory() {
   return useMutationWithFeedback({
     action:     'update_ai_memory',
+    successMessage: 'Memory saved',
     mutationFn: ({ id, patch }: { id: string; patch: Partial<Pick<AiMemory, 'kind' | 'title' | 'content'>> }) =>
       updateMemory(id, patch),
     invalidates: [qk.memory.all],
@@ -27,10 +29,5 @@ export function useUpdateMemory() {
 }
 
 export function useDeleteMemory() {
-  return useMutationWithFeedback({
-    action:         'delete_ai_memory',
-    successMessage: 'Deleted',
-    mutationFn:     (id: string) => deleteMemory(id),
-    invalidates:    [qk.memory.all],
-  })
+  return useRowsDelete({ table: 'ai_memory', action: 'delete_ai_memory', invalidates: [qk.memory.all], cache: qk.memory.all })
 }

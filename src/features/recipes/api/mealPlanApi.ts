@@ -107,14 +107,6 @@ export async function setMealPlanEntry(input: CreateMealPlanEntryInput): Promise
   if (legacy.error) throw legacy.error
 }
 
-export async function deleteMealPlanEntry(id: string): Promise<void> {
-  // Delete by id from the unified table (post-061). Pre-061 the id belongs to
-  // recipe_meal_plans instead, so also try there — ignore "table gone" post-061.
-  const a = await supabase.from('food_log_entries').delete().eq('id', id)
-  await supabase.from('recipe_meal_plans').delete().eq('id', id)
-  if (a.error) throw a.error
-}
-
 type Snap = { calories: number | null; protein_g: number | null; carbs_g: number | null; fat_g: number | null; fiber_g: number | null; sugar_g: number | null }
 const EMPTY_SNAP: Snap = { calories: null, protein_g: null, carbs_g: null, fat_g: null, fiber_g: null, sugar_g: null }
 

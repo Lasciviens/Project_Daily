@@ -1,6 +1,6 @@
+import { confirmDelete } from '../../../shared/modals'
 import { useMemo, useState, type ReactNode } from 'react'
 import { AlertTriangle, History } from 'lucide-react'
-import { useEntityModal } from '../../../shared/modals'
 import { Button, EmptyState, PageBoard, Skeleton, useBoardStep } from '../../../shared/ui'
 import { useAuditLogs, useClearAuditLogs, type AuditLog } from '../hooks/useLogs'
 import { CascadeBlock, LogRow } from './ActivityLogRows'
@@ -46,7 +46,6 @@ export function ActivityLogTab() {
 
   const { data: logs = [], isLoading, isFetching, error, refetch } = useAuditLogs({ rangeHours, customFrom, customTo })
   const clearLogs = useClearAuditLogs()
-  const modal = useEntityModal()
 
   const tables = useMemo(() => [...new Set(logs.map(l => l.table_name))].sort(), [logs])
 
@@ -70,10 +69,10 @@ export function ActivityLogTab() {
   const shown = filtered.find(l => l.id === shownId) ?? null
   const linkedCount = shown ? (groups.find(g => g.some(l => l.id === shown.id))?.length ?? 1) : 0
 
-  async function handleClear() {
-    if (!(await modal.confirm({ title: 'Clear the activity log?', message: 'Deleted-row snapshots go with it, so nothing here can be recovered afterwards.', confirmLabel: 'Clear all', destructive: true }))) return
-    clearLogs.mutate()
+  function handleClear() {
+    void confirmDelete({ title: 'Clear the activity log?', message: 'Deleted-row snapshots go with it, so nothing here can be recovered afterwards.', confirmLabel: 'Clear all', remove: () => clearLogs.mutateAsync(), done: 'Activity log cleared' })
   }
+
 
   let list: ReactNode
   if (isLoading) {

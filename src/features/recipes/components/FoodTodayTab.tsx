@@ -135,7 +135,7 @@ export function FoodTodayTab({ date }: { date: string }) {
         modal.open({ kind: 'food-log-edit', entryId: meal.id, date })
       }
     }
-    const onDelete = () => remove.mutate({ ids: [meal.id], label: name })
+    const onDelete = () => void remove.run([meal.id], { title: `Remove “${name}”?`, done: `Removed ${name}` })
     const macroLine = [
       qty,
       meal.calories > 0 && `${meal.calories} kcal`,
@@ -207,7 +207,7 @@ export function FoodTodayTab({ date }: { date: string }) {
           {expanded && <span className="shrink-0 text-meta tabular-nums text-fg-muted @[40rem]:hidden">{group.calories} kcal</span>}
         </button>
         <IconButton label={`Remove the whole meal (${group.items.length} items)`} className="text-fg-faint hover:!text-danger"
-          onClick={() => remove.mutate({ ids: group.items.map(m => m.id), label: `${group.items.length} items` })}><X /></IconButton>
+          onClick={() => void remove.run(group.items.map(m => m.id), { title: `Remove the whole meal (${group.items.length} items)?`, done: `Removed ${group.items.length} items` })}><X /></IconButton>
         </div>
         {!expanded && <MetaLine items={totals} className="-mt-1 pb-2 pl-10 pr-4 text-meta tabular-nums text-fg-muted @[40rem]:hidden" />}
         {expanded && (

@@ -48,26 +48,6 @@ export async function addFoodLogEntries(entries: FoodLogEntryInput[]): Promise<v
   if (error) throw error
 }
 
-export async function deleteFoodLogEntry(id: string): Promise<void> {
-  const { error } = await supabase.from('food_log_entries').delete().eq('id', id)
-  if (error) throw error
-}
-
-/** Deletes rows and returns them exactly as they were — what "Undo" re-inserts. */
-export async function deleteFoodLogEntriesReturning(ids: string[]): Promise<FoodLogEntry[]> {
-  if (ids.length === 0) return []
-  const { data, error } = await supabase.from('food_log_entries').delete().in('id', ids).select('*')
-  if (error) throw error
-  return (data ?? []) as FoodLogEntry[]
-}
-
-/** Puts deleted rows back unchanged (same id, date, slot, group, created_at). */
-export async function restoreFoodLogEntries(rows: FoodLogEntry[]): Promise<void> {
-  if (rows.length === 0) return
-  const { error } = await supabase.from('food_log_entries').insert(rows)
-  if (error) throw error
-}
-
 // Edit an existing diary row — a fresh snapshot at edit time (the diary
 // contract: editing THIS row re-snapshots it; other rows/history untouched).
 // Callers pass a partial patch of the columns they changed.

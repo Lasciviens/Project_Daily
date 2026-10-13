@@ -1,4 +1,5 @@
 import { supabase } from '../../../integrations/supabase/client'
+import { requireUser } from '../../../shared/utils/requireUser'
 import {
   fetchGoogleTaskLists, fetchDefaultGoogleTaskList, createGoogleTaskList,
   fullGoogleTasksSync, googleDueToLocalDate,
@@ -30,9 +31,7 @@ interface LocalTaskList { id: string; google_id: string }
 // actively broken: the next edit would PATCH /lists/@default/tasks/<id> for
 // an id that never existed in @default, and Google 404s every time.
 export async function syncGoogleTaskLists(token: string): Promise<LocalTaskList[]> {
-  const { data: userData } = await supabase.auth.getUser()
-  const userId = userData.user?.id
-  if (!userId) throw new Error('Not signed in')
+  const { id: userId } = await requireUser()
 
   const [lists, defaultList] = await Promise.all([
     fetchGoogleTaskLists(token),
@@ -84,9 +83,7 @@ export async function syncGoogleTaskLists(token: string): Promise<LocalTaskList[
 // of surfacing an error.
 export async function resolveOrCreateGoogleTaskListId(token: string, title: string): Promise<string> {
   const trimmed = title.trim()
-  const { data: userData } = await supabase.auth.getUser()
-  const userId = userData.user?.id
-  if (!userId) throw new Error('Not signed in')
+  const { id: userId } = await requireUser()
 
   const findExisting = async (): Promise<string | null> => {
     const { data: existing } = await supabase.from('google_task_lists').select('id, title').eq('user_id', userId)

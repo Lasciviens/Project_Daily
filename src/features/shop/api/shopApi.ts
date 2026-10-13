@@ -276,11 +276,6 @@ export async function createShopLink(input: { from_id: string; to_id: string; am
   if (error) throw isMissingTable(error) ? new Error(NEEDS_137) : error
 }
 
-export async function deleteShopLink(id: string): Promise<void> {
-  const { error } = await supabase.from('shop_item_links').delete().eq('id', id)
-  if (error) throw error
-}
-
 // ─── Extra costs ──────────────────────────────────────────────────────────────
 
 export async function fetchShopCosts(): Promise<ShopItemCost[]> {
@@ -301,17 +296,6 @@ export async function createShopCost(input: CreateShopCostInput): Promise<ShopIt
 
 export async function updateShopCost(id: string, patch: Partial<Pick<ShopItemCost, 'label' | 'amount' | 'currency' | 'spent_on' | 'fx_nok'>>): Promise<void> {
   const { error } = await supabase.from('shop_item_costs').update(patch).eq('id', id)
-  if (error) throw error
-}
-
-export async function deleteShopCost(id: string): Promise<ShopItemCost | null> {
-  const { data, error } = await supabase.from('shop_item_costs').delete().eq('id', id).select().maybeSingle()
-  if (error) throw error
-  return data
-}
-
-export async function restoreShopCost(row: ShopItemCost): Promise<void> {
-  const { error } = await supabase.from('shop_item_costs').insert(row)
   if (error) throw error
 }
 

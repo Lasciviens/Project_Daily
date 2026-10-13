@@ -110,7 +110,7 @@ export function WishlistView({ items, categories, isLoading }: { items: ShopItem
       onOpenTask={() => { if (item.task_id) modal.open({ kind: 'task', id: item.task_id }) }}
       onMoveToQuick={() => update.mutate({ id: item.id, patch: { list: 'quick' } })}
       onDrop={() => update.mutate({ id: item.id, patch: { status: 'dropped' } })}
-      onDelete={() => remove.mutate({ ids: [item.id], label: item.title })}
+      onDelete={() => void remove.run(item)}
     />
   )
 

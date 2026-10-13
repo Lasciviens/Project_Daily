@@ -59,7 +59,3 @@ export async function updateWish(id: string, patch: UpdateWishInput): Promise<vo
   if (error) throw isMissingTable(error) ? new Error(NOT_MIGRATED) : error
 }
 
-export async function deleteWish(id: string): Promise<void> {
-  const { error } = await supabase.from('wish_items').delete().eq('id', id)
-  if (error) throw isMissingTable(error) ? new Error(NOT_MIGRATED) : error
-}

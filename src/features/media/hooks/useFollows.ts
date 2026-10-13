@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
+import { useRowsDelete } from '../../../shared/hooks/useRowsDelete'
 import { qk, STALE } from '../../../shared/query'
 import { addFollow, checkFollowsNow, fetchFollowEvents, fetchFollows, markEventsSeen, removeFollow, type FollowKind } from '../api/followsApi'
 
@@ -34,7 +35,13 @@ export function useCheckFollows() {
 export function useMarkFollowEventsSeen() {
   return useMutationWithFeedback({
     action: 'media_follow_seen',
+    successMessage: (_r, ids) => `${ids.length} marked seen`,
     mutationFn: (ids: string[]) => markEventsSeen(ids),
     invalidates: [qk.mediaFollows.events()],
   })
+}
+
+/** Deletes a rule that lives only in this app (and what it found), with Undo. */
+export function useDeleteFollow() {
+  return useRowsDelete({ table: 'media_follows', action: 'media_follow_delete', invalidates: [qk.mediaFollows.all], cache: qk.mediaFollows.all })
 }

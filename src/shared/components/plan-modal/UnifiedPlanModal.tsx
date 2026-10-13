@@ -240,7 +240,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { AlertCircle, Trash2 } from 'lucide-react'
 import { toast, useCalendarStore } from '../../../app/store'
 import {
-  useCreateTimeBlock, useCreateScheduleBlock, useUpdateTimeBlock, useDeleteTimeBlock,
+  useCreateTimeBlock, useCreateScheduleBlock, useUpdateTimeBlock, useDeleteTimeBlock, useRemoveSlotOnSave,
   useUpdateScheduleBlock, useDeleteScheduleBlock, linkedTimeBlockQuery,
 } from '../../../features/daily/hooks/useSchedule'
 import { fetchTimeBlocks, fetchScheduleBlocks } from '../../../features/daily/api/scheduleApi'
@@ -298,13 +298,15 @@ export function UnifiedPlanModal({
   const qc          = useQueryClient()
   const calToken    = useCalendarStore(s => s.accessToken)
   const createBlock = useCreateTimeBlock()
-  const updateBlock = useUpdateTimeBlock()
+  const updateBlock = useUpdateTimeBlock({ report: false })
   const deleteBlock = useDeleteTimeBlock()
+  const removeSlot  = useRemoveSlotOnSave()
   const createRecur = useCreateScheduleBlock()
   const updateRecur = useUpdateScheduleBlock()
   const deleteRecur = useDeleteScheduleBlock()
-  const createTask  = useCreateTask()
-  const updateTaskM = useUpdateTask()
+  // The editor reports the whole save ("Saved" / "Planned"), not each step.
+  const createTask  = useCreateTask({ report: false })
+  const updateTaskM = useUpdateTask({ report: false })
   const deleteTaskM = useDeleteTask()
   const { data: googleTaskLists = [] } = useGoogleTaskLists()
 
@@ -409,7 +411,7 @@ export function UnifiedPlanModal({
     const title = form.title.trim()
     if (!form.scheduled) {
       // "Unschedule": the time slot goes, the Task never does.
-      if (existingBlock) await deleteBlock.mutateAsync({ id: existingBlock.id, silent: true })
+      if (existingBlock) await removeSlot.mutateAsync(existingBlock.id)
       return 'not_linked'
     }
 
@@ -769,19 +771,18 @@ export function UnifiedPlanModal({
       if (await onDeleteOverride()) onClose()
       return
     }
-    const target = task
-      ? { title: 'Delete this task?', label: 'Delete task', run: () => deleteTaskM.mutateAsync(task) }
-      : scheduleBlock
-        ? { title: 'Delete this repeating schedule?', label: 'Delete', run: () => deleteRecur.mutateAsync(scheduleBlock.id) }
-        : timeBlock
-          ? { title: 'Delete this schedule?', label: 'Delete', run: () => deleteBlock.mutateAsync({ id: timeBlock.id, silent: true }) }
-          : null
-    if (!target) return
-    if (!(await entityModal.confirm({ title: target.title, confirmLabel: target.label, destructive: true }))) return
+    const title = form.title.trim() || task?.title || timeBlock?.title || scheduleBlock?.title || ''
     setSaving(true)
-    const ok = await withProgress(async () => { await target.run(); return true }, { loading: 'Deleting…', success: 'Deleted' })
+    const result = task
+      ? await deleteTaskM.run([task.id], { title: 'Delete this task?', message: title, confirmLabel: 'Delete task', done: 'Task deleted' })
+      : scheduleBlock
+        ? await deleteRecur.run([scheduleBlock.id], {
+          title: 'Delete this repeating schedule?', message: title, done: 'Weekly plan deleted' })
+        : timeBlock
+          ? await deleteBlock.run([timeBlock.id], { title: 'Delete this schedule?', message: title, done: 'Slot deleted' })
+          : 'kept'
     setSaving(false)
-    if (ok) onClose()
+    if (result === 'deleted' || result === 'gone') onClose()
   }
 
   const primaryLabel = saving

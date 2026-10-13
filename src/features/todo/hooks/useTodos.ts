@@ -1,5 +1,5 @@
 import { useCallback, useMemo } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import {
   fetchAllTasks,
@@ -15,7 +15,6 @@ import {
   createTask,
   updateTask,
   toggleTaskDone,
-  deleteTask,
 } from '../api/tasksApi'
 import { drainGoogleTasksOutbox } from '../api/googleTasksOutbox'
 import { pullGoogleTasks } from '../api/googleTasksSync'
@@ -24,8 +23,13 @@ import { toast, useCalendarStore } from '../../../app/store'
 import { logError } from '../../../shared/utils/logError'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
 import { qk, STALE } from '../../../shared/query'
+import { mapRowsInCache, putRowsInCache, restoreCache, snapshotCache } from '../../../shared/query/cachePatch'
+import { useRowsDelete } from '../../../shared/hooks/useRowsDelete'
+import { rowsOf, type DeletedRows, type RowOverrides } from '../../../shared/utils/deletedRows'
+import { BLOCK_EVENT_RESET, relinkRestoredBlockEvents, removeDeletedBlockEvents } from '../../calendar/api/deletedBlockEvents'
 import { dayTasks, isOpenTask, openOnDay, sectionForDay, weekCounts } from '../taskRules'
 import { todayStr } from '../../../shared/utils/dateUtils'
+import { applyTaskPatch, taskUpdateMessage } from '../taskWrites'
 import type { CreateTaskInput, UpdateTaskInput, Task } from '../types'
 
 // Aggregated overview of every active task (+ recently done) — the Daily "Tasks"
@@ -126,11 +130,26 @@ export async function drainBestEffort(token: string | null, context: Record<stri
   }
 }
 
-// Every task mutation below is built on useMutationWithFeedback: errors are
-// always toasted + logged, success is silent. Callers must not add their own
-// toast.error — use withProgress() for per-call loading/success copy.
+/**
+ * Delivers the Google Tasks outbox in the background: the save is done and
+ * reported as soon as the database answers (owner, 13.10.2026: "the UI keeps
+ * me waiting while it saves"); Google follows a moment later. Concurrent
+ * drains are safe (the outbox claim skips rows another drain holds).
+ */
+export function syncGoogleTasksSoon(context: Record<string, unknown>, warn = false): void {
+  const token = useCalendarStore.getState().accessToken
+  if (!token) return
+  void drainBestEffort(token, context).then(err => {
+    if (err && warn) toast.warning(`Google Tasks sync failed: ${err}`)
+  })
+}
 
-export function useCreateTask() {
+// Every task mutation below is built on useMutationWithFeedback: errors are
+// always toasted + logged, and the result is said once the write answers.
+// `report: false` is for a multi-step save that reports the whole result
+// itself (the plan editor's "Saved").
+
+export function useCreateTask({ report = true }: { report?: boolean } = {}) {
   return useMutationWithFeedback({
     action: 'create_task',
     // `skipGoogleTasks` is set by the plan modal when this task will also be
@@ -145,49 +164,55 @@ export function useCreateTask() {
       const googleSyncEnabled = !!token && !skipGoogleTasks
       const task = await createTask({ ...input, google_sync_enabled: googleSyncEnabled })
       // The INSERT's own trigger already enqueued the outbox row atomically —
-      // this just delivers it promptly instead of waiting for the next drain.
-      const googleTaskError = googleSyncEnabled ? await drainBestEffort(token, { taskId: task.id }) : null
-      return { task, googleTaskError }
+      // this delivers it promptly instead of waiting for the next drain.
+      if (googleSyncEnabled) syncGoogleTasksSoon({ taskId: task.id }, true)
+      return { task }
     },
-    // The task itself saved; only the Google copy is pending (the outbox retries).
-    onSuccess: ({ googleTaskError }) => { if (googleTaskError) toast.warning(`Google Tasks sync failed: ${googleTaskError}`) },
+    successMessage: () => (report ? 'Task added' : undefined),
     invalidates: [qk.tasks.all],
   })
 }
 
-export function useUpdateTask() {
+export function useUpdateTask({ report = true }: { report?: boolean } = {}) {
+  const qc = useQueryClient()
   return useMutationWithFeedback({
     action: 'update_task',
     mutationFn: async ({ id, patch }: { id: string; patch: UpdateTaskInput }) => {
       const task = await updateTask(id, patch)
-      // Whether this edit actually touched a Google-synced field (and
-      // whether it crossed a status bucket boundary, e.g. done vs in_progress
-      // vs waiting) is decided by migration 071's DB trigger, not here — it
-      // has the OLD/NEW row and the single source of truth for that
-      // condition. This call only delivers whatever got enqueued.
-      const token = useCalendarStore.getState().accessToken
-      if (token) await drainBestEffort(token, { taskId: id })
+      // Whether this edit touched a Google-synced field is decided by
+      // migration 071's DB trigger (it has OLD/NEW); this only delivers what
+      // it enqueued — in the background.
+      syncGoogleTasksSoon({ taskId: id })
 
       // Task title is canonical (migration 077) — a DB trigger already kept
       // the linked time_block's OWN title in sync regardless of which door
       // wrote it, but the REMOTE Google Calendar event needs an explicit
       // push here since a trigger has no OAuth token to reach it with.
-      // Routed through scheduleApi's updateTimeBlock (not a direct
-      // updateCalendarEvent call) so this shares the SAME typed-status
-      // lifecycle as every other calendar push — a confirmed 404 here
-      // clears the stale link exactly like it would from the plan modal,
-      // instead of a second, inconsistent "log and forget" path for the
-      // same remote event.
-      if (patch.title !== undefined && token) {
-        try {
-          const linked = await fetchTimeBlockByTaskId(id)
-          if (linked?.id) await updateTimeBlock(linked.id, { title: task.title })
-        } catch (err) {
-          logError(`Calendar event title sync failed: ${(err as Error).message}`, { taskId: id })
-        }
+      // Routed through scheduleApi's updateTimeBlock so it shares the typed
+      // calendar-status lifecycle of every other calendar push. In the
+      // background: the task is saved; the calendar follows.
+      if (patch.title !== undefined && useCalendarStore.getState().accessToken) {
+        void (async () => {
+          try {
+            const linked = await fetchTimeBlockByTaskId(id)
+            if (linked?.id) await updateTimeBlock(linked.id, { title: task.title })
+          } catch (err) {
+            logError(`Calendar event title sync failed: ${(err as Error).message}`, { taskId: id })
+          }
+        })()
       }
       return task
     },
+    onMutate: async ({ id, patch }) => {
+      await qc.cancelQueries({ queryKey: qk.tasks.all })
+      const snapshot = snapshotCache(qc, qk.tasks.all)
+      const now = new Date().toISOString()
+      mapRowsInCache<Task>(qc, qk.tasks.all, new Set([id]), t => applyTaskPatch(t, patch, now))
+      return { snapshot }
+    },
+    onSuccess: task => putRowsInCache(qc, qk.tasks.all, [task]),
+    onError: (_err, _vars, ctx) => { if (ctx) restoreCache(qc, ctx.snapshot) },
+    successMessage: (_task, { patch }) => (report ? taskUpdateMessage(patch) : undefined),
     // A task edit can move/retitle a linked schedule block — keep schedule
     // views in sync (the plan modal syncs the block itself).
     invalidates: ['taskGraph'],
@@ -195,33 +220,61 @@ export function useUpdateTask() {
 }
 
 export function useToggleTask() {
+  const qc = useQueryClient()
   return useMutationWithFeedback({
     action: 'toggle_task',
     mutationFn: async ({ id, isDone }: { id: string; isDone: boolean }) => {
       const task = await toggleTaskDone(id, isDone)
-      const token = useCalendarStore.getState().accessToken
-      if (token) await drainBestEffort(token, { taskId: id })
+      syncGoogleTasksSoon({ taskId: id })
       return task
     },
+    onMutate: async ({ id, isDone }) => {
+      await qc.cancelQueries({ queryKey: qk.tasks.all })
+      const snapshot = snapshotCache(qc, qk.tasks.all)
+      const now = new Date().toISOString()
+      mapRowsInCache<Task>(qc, qk.tasks.all, new Set([id]), t => applyTaskPatch(t, { status: isDone ? 'done' : 'open' }, now))
+      return { snapshot }
+    },
+    onSuccess: task => putRowsInCache(qc, qk.tasks.all, [task]),
+    onError: (_err, _vars, ctx) => { if (ctx) restoreCache(qc, ctx.snapshot) },
+    successMessage: (_task, { isDone }) => (isDone ? 'Task done' : 'Task reopened'),
     // The schedule reads carry each block's task status (Training's "next
     // session", the agenda's Done) — a tick refreshes them too.
     invalidates: ['taskGraph'],
   })
 }
 
+/** A task put back by Undo had its Google Task deleted on Google: it gets a new one (the outbox creates it). */
+function taskGoogleReset(snapshot: DeletedRows): RowOverrides {
+  const keys = new Set(rowsOf<Record<string, unknown>>(snapshot, 'tasks').flatMap(r => Object.keys(r)))
+  const reset: Record<string, unknown> = {}
+  for (const k of keys) if (k.startsWith('google_') && k !== 'google_sync_enabled' && k !== 'google_tasklist_id') reset[k] = null
+  return { tasks: reset }
+}
+
+/**
+ * THE task delete: one call deletes the task and returns what went with it —
+ * its schedule slot (and that slot's Google Calendar event, removed right
+ * after), its training skip, and the subtasks, wish and shopping item that
+ * pointed at it (migration 144). Undo puts all of it back with the same ids;
+ * Google Task and Calendar copies are made again.
+ *   del.run([task.id], { title: 'Delete this task?', done: 'Task deleted' })
+ */
 export function useDeleteTask() {
-  return useMutationWithFeedback({
+  return useRowsDelete({
+    table: 'tasks',
     action: 'delete_task',
-    mutationFn: async (taskOrId: string | Task) => {
-      const id = typeof taskOrId === 'string' ? taskOrId : taskOrId.id
-      // A hard delete's outbox 'delete' row (if the task was google_sync_enabled)
-      // is enqueued atomically by the trigger BEFORE the row is gone — no
-      // client-side lookup of google_task_id needed here any more.
-      await deleteTask(id)
-      const token = useCalendarStore.getState().accessToken
-      if (token) await drainBestEffort(token, { taskId: id })
+    invalidates: ['taskGraph', qk.training.skipsAll, qk.wishes.all],
+    cache: qk.tasks.all,
+    afterDelete: async snapshot => {
+      await removeDeletedBlockEvents(snapshot)
+      for (const t of rowsOf<Task>(snapshot, 'tasks')) syncGoogleTasksSoon({ taskId: t.id })
     },
-    invalidates: ['taskGraph'],
+    overrides: snapshot => ({ ...taskGoogleReset(snapshot), ...BLOCK_EVENT_RESET }),
+    afterRestore: async snapshot => {
+      for (const t of rowsOf<Task>(snapshot, 'tasks')) if (t.google_sync_enabled) syncGoogleTasksSoon({ taskId: t.id })
+      return relinkRestoredBlockEvents(snapshot)
+    },
   })
 }
 
@@ -263,14 +316,11 @@ export function useSetParentTask() {
     mutationFn: async ({ id, parentTaskId }: { id: string; parentTaskId: string | null }) => {
       const task = await updateTask(id, { parent_task_id: parentTaskId })
       // A parent_task_id change is a Google-visible field (migration 071's
-      // trigger enqueues 'update'/'move' for it) — every other mutation here
-      // drains right away instead of waiting for the next unrelated drain;
-      // this one was missed and left "Set parent" pending until something
-      // else happened to trigger a drain.
-      const token = useCalendarStore.getState().accessToken
-      if (token) await drainBestEffort(token, { taskId: id })
+      // trigger enqueues 'update'/'move' for it).
+      syncGoogleTasksSoon({ taskId: id })
       return task
     },
+    successMessage: (_task, { parentTaskId }) => (parentTaskId ? 'Now a subtask' : 'No longer a subtask'),
     invalidates: [qk.tasks.all],
   })
 }

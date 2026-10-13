@@ -3,16 +3,17 @@ import {
   fetchScheduleBlocks,
   createScheduleBlock,
   updateScheduleBlock,
-  deleteScheduleBlock,
   fetchTimeBlocks,
   fetchTimeBlock,
   fetchTimeBlockByTaskId,
   fetchTrainingBlocksRange,
   createTimeBlock,
   updateTimeBlock,
-  deleteTimeBlock,
 } from '../api/scheduleApi'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
+import { useRowsDelete } from '../../../shared/hooks/useRowsDelete'
+import { deleteRows } from '../../../shared/utils/deletedRows'
+import { BLOCK_EVENT_RESET, relinkRestoredBlockEvents, removeDeletedBlockEvents } from '../../calendar/api/deletedBlockEvents'
 import { qk, STALE } from '../../../shared/query'
 import type {
   CreateTimeBlockInput, UpdateTimeBlockInput, CreateScheduleBlockInput, UpdateScheduleBlockInput,
@@ -64,6 +65,7 @@ export const linkedTimeBlockQuery = (taskId: string) => queryOptions({
 export function useCreateScheduleBlock() {
   return useMutationWithFeedback({
     action:      'create_schedule_block',
+    silent:      'the plan editor reports the save',
     mutationFn:  (input: CreateScheduleBlockInput) => createScheduleBlock(input),
     invalidates: ['schedule'],
   })
@@ -76,16 +78,19 @@ export function useCreateScheduleBlock() {
 export function useUpdateScheduleBlock() {
   return useMutationWithFeedback({
     action:      'update_schedule_block',
+    silent:      'the plan editor reports the save',
     mutationFn:  ({ id, patch }: { id: string; patch: UpdateScheduleBlockInput }) => updateScheduleBlock(id, patch),
     invalidates: ['schedule'],
   })
 }
 
+/** Deletes a weekly plan with Undo; the days it became (migration 142) get their link back on Undo. */
 export function useDeleteScheduleBlock() {
-  return useMutationWithFeedback({
-    action:      'delete_schedule_block',
-    mutationFn:  (id: string) => deleteScheduleBlock(id),
+  return useRowsDelete({
+    table: 'schedule_blocks',
+    action: 'delete_schedule_block',
     invalidates: ['schedule'],
+    cache: qk.schedule.all,
   })
 }
 
@@ -115,33 +120,55 @@ export function useTrainingBlocks(from: string, to: string) {
 export function useCreateTimeBlock() {
   return useMutationWithFeedback({
     action:      'create_time_block',
+    silent:      'the plan editor reports the save',
     mutationFn:  (input: CreateTimeBlockInput) => createTimeBlock(input),
     invalidates: ['taskGraph'],
   })
 }
 
-// Covers drag-reposition, postpone, inline rename and the plan editor's own
-// block writes — frequent, autosave-like edits, so success stays silent while
-// failures always toast + log. mutateAsync resolves the typed calendarStatus.
+// Covers postpone (+30m / +1d) and the plan editor's own block writes.
+// mutateAsync resolves the typed calendarStatus. `report: false` for the plan
+// editor, which reports the whole save itself.
 //
 // Real gap fixed (migration 077): this used to silently drop
 // duration_minutes/category/color/google_calendar_event_id even though the
 // underlying API function already accepted them. Every field now passes through.
-export function useUpdateTimeBlock() {
+export function useUpdateTimeBlock({ report = true }: { report?: boolean } = {}) {
   return useMutationWithFeedback({
     action:      'update_time_block',
     mutationFn:  ({ id, patch }: { id: string; patch: UpdateTimeBlockInput; dateStr?: string; newDateStr?: string }) =>
       updateTimeBlock(id, patch),
+    successMessage: (_r, { patch }) => (!report ? undefined
+      : patch.date !== undefined ? 'Slot moved to another day'
+      : patch.start_time !== undefined ? 'Slot moved'
+      : patch.title !== undefined ? 'Slot renamed'
+      : 'Slot saved'),
     invalidates: ['taskGraph'],
   })
 }
 
-/** `silent` drops the "Deleted" toast when the delete is one step of a bigger save. */
+/**
+ * Deletes a one-off slot with Undo (the task it belongs to stays). Its Google
+ * Calendar event is removed right after; Undo makes a new one.
+ */
 export function useDeleteTimeBlock() {
+  return useRowsDelete({
+    table: 'time_blocks',
+    action: 'delete_time_block',
+    invalidates: ['taskGraph'],
+    cache: qk.schedule.all,
+    afterDelete: removeDeletedBlockEvents,
+    overrides: () => BLOCK_EVENT_RESET,
+    afterRestore: relinkRestoredBlockEvents,
+  })
+}
+
+/** The plan editor turning a task's slot off: one step of its save, which reports the result. */
+export function useRemoveSlotOnSave() {
   return useMutationWithFeedback({
-    action:         'delete_time_block',
-    successMessage: (_: void, v: { id: string; dateStr?: string; silent?: boolean }) => (v.silent ? undefined : 'Deleted'),
-    mutationFn:     ({ id }: { id: string; dateStr?: string; silent?: boolean }) => deleteTimeBlock(id),
-    invalidates:    ['taskGraph'],
+    action: 'delete_time_block',
+    silent: "a step of the plan editor's save",
+    mutationFn: async (id: string) => { await removeDeletedBlockEvents(await deleteRows('time_blocks', [id])) },
+    invalidates: ['taskGraph'],
   })
 }

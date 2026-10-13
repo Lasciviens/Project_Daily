@@ -1,7 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
+import { useRowsDelete } from '../../../shared/hooks/useRowsDelete'
 import { qk, STALE } from '../../../shared/query'
-import { fetchRecipes, createRecipe, updateRecipe, deleteRecipe, incrementTimesCooked } from '../api/recipesApi'
+import { fetchRecipes, createRecipe, updateRecipe, incrementTimesCooked } from '../api/recipesApi'
 import { refreshEatenEntries } from '../api/foodLogApi'
 import type { RecipeInput, RecipeWithIngredients } from '../types'
 
@@ -51,13 +52,13 @@ export function useUpdateRecipe() {
   })
 }
 
+/**
+ * Deletes a recipe or saved meal with Undo: its ingredient lines and
+ * favourite go with it, days you ate it keep their totals (rule 107); Undo
+ * puts it all back and re-links those days.
+ */
 export function useDeleteRecipe() {
-  return useMutationWithFeedback({
-    action:         'delete_recipe',
-    successMessage: 'Recipe deleted',
-    mutationFn:     (id: string) => deleteRecipe(id),
-    invalidates:    ['recipes', 'nutrition'],
-  })
+  return useRowsDelete({ table: 'recipes', action: 'delete_recipe', invalidates: ['recipes', 'nutrition', qk.foodLog.all], cache: qk.recipes.all })
 }
 
 export function useIncrementTimesCooked() {

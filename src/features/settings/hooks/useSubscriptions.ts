@@ -1,7 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
+import { useRowsDelete } from '../../../shared/hooks/useRowsDelete'
 import { qk, STALE } from '../../../shared/query'
-import { createSubscription, deleteSubscription, fetchSubscriptions, updateSubscription } from '../api/subscriptionsApi'
+import { createSubscription, fetchSubscriptions, updateSubscription } from '../api/subscriptionsApi'
 import type { SubscriptionInput } from '../subscriptionRules'
 import { useCurrencyRates } from '../../home/hooks/useCurrencyRates'
 
@@ -19,12 +20,7 @@ export function useSaveSubscription() {
 }
 
 export function useDeleteSubscription() {
-  return useMutationWithFeedback({
-    action: 'delete_subscription',
-    successMessage: 'Subscription removed',
-    mutationFn: (id: string) => deleteSubscription(id),
-    invalidates: [qk.subscriptions.all],
-  })
+  return useRowsDelete({ table: 'service_subscriptions', action: 'delete_subscription', invalidates: [qk.subscriptions.all], cache: qk.subscriptions.all })
 }
 
 /**

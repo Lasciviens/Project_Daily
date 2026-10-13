@@ -109,7 +109,13 @@ export const useToastStore = create<ToastState>((set, get) => ({
   toasts: [],
   show: (message, type = 'info', durationMs, action, extra) => {
     const id = Math.random().toString(36).slice(2)
-    set(s => ({ toasts: [...s.toasts, { id, type, message, action, extra }] }))
+    // Every action now reports its result (owner, 13.10.2026), so three quick
+    // taps of the same button must read as one message, not a stack of three:
+    // a plain toast with the same text and kind replaces the one on screen
+    // (and restarts its timer). Toasts with buttons (Undo) never merge — each
+    // one undoes its own action.
+    const same = (t: Toast) => !action && !t.action && t.type === type && t.message === message && type !== 'loading'
+    set(s => ({ toasts: [...s.toasts.filter(t => !same(t)), { id, type, message, action, extra }] }))
     // loading toasts stay until manually dismissed; action snackbars linger
     // longer (you need time to hit Undo); others auto-dismiss.
     const ms = durationMs ?? (type === 'loading' ? 0 : action ? 6000 : type === 'error' ? 5000 : 3000)
@@ -127,10 +133,10 @@ export const toast = {
   info:    (msg: string) => useToastStore.getState().show(msg, 'info'),
   warning: (msg: string) => useToastStore.getState().show(msg, 'warning'),
   dismiss: (id: string)  => useToastStore.getState().dismiss(id),
-  // Undo snackbar — show after a destructive action instead of a blocking
-  // confirm dialog. onUndo runs if the user taps "Undo" before it expires.
+  // The result of a done action with its Undo ("Task deleted · Undo").
+  // onUndo runs if the user taps "Undo" before it expires.
   undo: (msg: string, onUndo: () => void, durationMs = 6000) => {
-    const id = useToastStore.getState().show(msg, 'info', durationMs, {
+    const id = useToastStore.getState().show(msg, 'success', durationMs, {
       label: 'Undo',
       onClick: () => { onUndo(); useToastStore.getState().dismiss(id) },
     })

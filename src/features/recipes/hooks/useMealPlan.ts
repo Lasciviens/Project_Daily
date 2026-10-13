@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
 import { qk, STALE } from '../../../shared/query'
-import { fetchMealPlan, fetchMealPlanEntry, setMealPlanEntry, deleteMealPlanEntry, eatPlannedEntry } from '../api/mealPlanApi'
+import { fetchMealPlan, fetchMealPlanEntry, setMealPlanEntry, eatPlannedEntry } from '../api/mealPlanApi'
 import type { CreateMealPlanEntryInput, MealPlanEntry } from '../types'
 
 export function useMealPlan(weekStart: string, weekEnd: string) {
@@ -33,14 +33,8 @@ export function useSetMealPlanEntry() {
   })
 }
 
-export function useDeleteMealPlanEntry() {
-  return useMutationWithFeedback({
-    action:         'delete_meal_plan_entry',
-    successMessage: 'Removed',
-    mutationFn:     (id: string) => deleteMealPlanEntry(id),
-    invalidates:    ['nutrition'],
-  })
-}
+/** A planned meal is a diary row (migration 061): the same delete, with Undo. */
+export { useRemoveFoodLogEntries as useDeleteMealPlanEntry } from './useFoodLog'
 
 // Confirm a planned meal as eaten → it starts counting in the day's totals.
 export function useEatPlannedEntry() {

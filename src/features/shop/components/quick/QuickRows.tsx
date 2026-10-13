@@ -85,7 +85,7 @@ export function QuickRow({ item, price, onFindPrice }: { item: ShopItem; price: 
           </MenuItem>
           <div className="menu-sep" />
           <MenuItem>
-            <button type="button" className="menu-item is-danger" onClick={() => remove.mutate({ ids: [item.id], label: item.title })}>
+            <button type="button" className="menu-item is-danger" onClick={() => void remove.run(item)}>
               <Trash2 aria-hidden className={MENU_ICON} /> Delete
             </button>
           </MenuItem>

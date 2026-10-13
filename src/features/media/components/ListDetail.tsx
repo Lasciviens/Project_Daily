@@ -1,9 +1,9 @@
 import { Link } from 'react-router-dom'
 import { CloudUpload, Sparkles, Trash2, Unlink } from 'lucide-react'
-import { useEntityModal } from '../../../shared/modals'
+import { confirmDelete } from '../../../shared/modals'
 import { Button } from '../../../shared/ui'
 import { FOLLOW_KIND_LABEL as KIND_LABEL, type MediaFollow } from '../api/followsApi'
-import { useToggleFollow } from '../hooks/useFollows'
+import { useDeleteFollow } from '../hooks/useFollows'
 import { useCreateAutoList, useDeleteAutoList, useStopAutoFill } from '../hooks/useAutoLists'
 import { useDeleteTraktList } from '../trakt/useTraktExtras'
 import type { TraktList } from '../trakt/traktApi'
@@ -16,20 +16,21 @@ type Open = OpenMediaDetail
 
 /** A Trakt list — filled by you, or (✦) filled from TMDB by its rule. */
 export function TraktListDetail({ list, follow, onOpen, onGone, isQueue = false }: { list: TraktList; follow: MediaFollow | null; onOpen: Open; onGone: () => void; isQueue?: boolean }) {
-  const modal = useEntityModal()
   const delList = useDeleteTraktList()
   const delAuto = useDeleteAutoList()
   const stop = useStopAutoFill()
 
+  // Deleted on Trakt: no Undo (a new list would get a new id and lose its
+  // order), and the question says so.
   async function remove() {
-    const ok = await modal.confirm({
+    const result = await confirmDelete({
       title: `Delete “${list.name}”?`,
       message: follow ? 'The list is deleted on Trakt and stops filling itself. The titles stay in your library.' : 'The list is deleted on Trakt too. The titles stay in your library.',
-      confirmLabel: 'Delete list', destructive: true,
+      confirmLabel: 'Delete list',
+      remove: () => (follow ? delAuto.mutateAsync({ follow, listId: list.id }) : delList.mutateAsync(list.id)),
+      done: 'List deleted',
     })
-    if (!ok) return
-    if (follow) delAuto.mutate({ follow, listId: list.id }); else delList.mutate(list.id)
-    onGone()
+    if (result === 'deleted' || result === 'gone') onGone()
   }
 
   return (
@@ -60,15 +61,17 @@ export function TraktListDetail({ list, follow, onOpen, onGone, isQueue = false 
 
 /** A rule whose list is not on Trakt yet (made before this rule, or without Trakt). */
 export function PendingListDetail({ follow, connected, onOpen, onGone }: { follow: MediaFollow; connected: boolean; onOpen: Open; onGone: () => void }) {
-  const modal = useEntityModal()
   const put = useCreateAutoList()
-  const drop = useToggleFollow()
+  const drop = useDeleteFollow()
 
   async function remove() {
-    const ok = await modal.confirm({ title: `Delete “${follow.name}”?`, message: 'It is only in this app, so nothing changes on Trakt or in your library.', confirmLabel: 'Delete list', destructive: true })
-    if (!ok) return
-    drop.mutate({ followId: follow.id, kind: follow.kind, tmdbId: follow.tmdb_id, name: follow.name })
-    onGone()
+    const result = await drop.run([follow.id], {
+      title: `Delete “${follow.name}”?`,
+      message: 'It is only in this app, so nothing changes on Trakt or in your library.',
+      confirmLabel: 'Delete list',
+      done: 'List deleted',
+    })
+    if (result === 'deleted' || result === 'gone') onGone()
   }
 
   return (

@@ -54,7 +54,3 @@ export async function upsertExerciseGifOverride(
   return data
 }
 
-export async function deleteExerciseGifOverride(exerciseTemplateId: string): Promise<void> {
-  const { error } = await supabase.from('exercise_gif_overrides').delete().eq('exercise_template_id', exerciseTemplateId)
-  if (error) throw isMissingTable(error) ? new Error(NOT_MIGRATED) : error
-}

@@ -70,7 +70,7 @@ export function OwnedView({ items, categories, isLoading }: { items: ShopItem[];
       onUndoSale={() => undoSale.mutate(item.id)}
       onAccessory={() => modal.open({ kind: 'shop-accessory', itemId: item.id })}
       onChain={() => modal.open({ kind: 'shop-chain', id: item.id })}
-      onDelete={() => remove.mutate({ ids: [item.id, ...(acc.get(item.id) ?? []).map(a => a.id)], label: item.title })}
+      onDelete={() => void remove.run(item)}
     />
   )
 

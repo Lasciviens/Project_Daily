@@ -168,11 +168,6 @@ export async function updateAthleteLimitation(id: string, patch: UpdateLimitatio
   return data
 }
 
-export async function deleteAthleteLimitation(id: string): Promise<void> {
-  const { error } = await supabase.from('athlete_limitations').delete().eq('id', id)
-  if (error) throw isMissingTable(error) ? new Error(NOT_MIGRATED) : error
-}
-
 // ─── Current program (migration 084) — explicit, never inferred ────────────
 const NOT_MIGRATED_084 =
   'Progress decision-engine tables are not available yet — migration 084 has not been applied.'
@@ -241,11 +236,6 @@ export async function upsertMusclePreference(input: UpsertMusclePreferenceInput)
   return data
 }
 
-export async function deleteMusclePreference(muscleSlug: string): Promise<void> {
-  const { error } = await supabase.from('athlete_muscle_preferences').delete().eq('muscle_slug', muscleSlug)
-  if (error) throw isMissingTable(error) ? new Error(NOT_MIGRATED_084) : error
-}
-
 // ─── Exercise target overrides (migration 084) ──────────────────────────────
 export async function fetchExerciseTargetOverrides(): Promise<ExerciseTargetOverride[]> {
   const { data, error } = await supabase.from('exercise_target_overrides').select('*')
@@ -277,7 +267,3 @@ export async function upsertExerciseTargetOverride(input: UpsertExerciseTargetIn
   return data
 }
 
-export async function deleteExerciseTargetOverride(exerciseTemplateId: string): Promise<void> {
-  const { error } = await supabase.from('exercise_target_overrides').delete().eq('exercise_template_id', exerciseTemplateId)
-  if (error) throw isMissingTable(error) ? new Error(NOT_MIGRATED_084) : error
-}

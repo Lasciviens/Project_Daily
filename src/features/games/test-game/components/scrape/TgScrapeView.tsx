@@ -80,6 +80,7 @@ export function TgScrapeView({ games, counted, loading, layout }: {
   const seq = useRef(0)
   const runSearchMut = useMutationWithFeedback({
     action: 'screenscraper_search',
+    silent: 'a lookup: the results are the answer',
     mutationFn: async (v: { f: SearchForm; targetId: string | null; id: number }) => ({ ...v, response: await searchScreenScraper(formToRequest(v.f)) }),
     onSuccess: ({ f, targetId: tid, id, response }) => {
       // Only the latest search, and only while its game is still the one

@@ -2,8 +2,9 @@ import { useQuery } from '@tanstack/react-query'
 import { qk } from '../../../shared/query/keys'
 import { STALE } from '../../../shared/query/stale'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
+import { useRowsDelete } from '../../../shared/hooks/useRowsDelete'
 import {
-  createBook, deleteBook, fetchBooks, fetchReadingEvents, fetchReadingSettings, lookupBookMeta, mergeBooks,
+  createBook, fetchBooks, fetchReadingEvents, fetchReadingSettings, lookupBookMeta, mergeBooks,
   READING_DEFAULTS, saveQueueOrder, saveReadingSettings, updateBook,
 } from '../api/libraryApi'
 import { addDays, localDay } from '../readingAggregate'
@@ -68,6 +69,12 @@ export function useSaveReadingSettings() {
 export function useUpdateBook() {
   return useMutationWithFeedback({
     action: 'book_update',
+    successMessage: (_r, { patch }) => {
+      const keys = Object.keys(patch)
+      if (keys.length === 1 && patch.kind) return patch.kind === 'news' ? 'Moved to News' : 'Moved to Books'
+      if ('cover_url' in patch && keys.length <= 2) return 'Cover saved'
+      return 'Book saved'
+    },
     mutationFn: ({ id, patch }: { id: string; patch: BookPatch }) => updateBook(id, patch),
     invalidates: [qk.books.library()],
   })
@@ -91,18 +98,18 @@ export function useCreateBook() {
   })
 }
 
+/** Deletes a book with its reading history, with Undo (questions about it are re-linked). */
 export function useDeleteBook() {
-  return useMutationWithFeedback({
-    action: 'book_delete',
-    mutationFn: (id: string) => deleteBook(id),
-    successMessage: 'Book deleted',
-    invalidates: [qk.books.all],
+  return useRowsDelete({
+    table: 'books', action: 'book_delete', invalidates: [qk.books.all], cache: qk.books.all,
+    names: { book_deliveries: 'the link to its Kobo deliveries' },
   })
 }
 
 export function useSaveQueueOrder() {
   return useMutationWithFeedback({
     action: 'book_queue_order',
+    successMessage: 'Up next order saved',
     mutationFn: (rows: { id: string; queue_order: number }[]) => saveQueueOrder(rows),
     invalidates: [qk.books.library()],
   })

@@ -44,6 +44,7 @@ export function useReorderQueue(listId: number | null) {
   const key = qk.trakt.listItems(listId ?? 0)
   return useMutationWithFeedback({
     action: 'media_queue_reorder',
+    successMessage: 'Queue order saved',
     mutationFn: (ordered: TraktListItem[]) => reorderTraktList(listId!, ordered.map(i => i.listItemId)),
     onMutate: async (ordered: TraktListItem[]) => {
       await qc.cancelQueries({ queryKey: key })

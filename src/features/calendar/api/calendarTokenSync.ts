@@ -31,15 +31,13 @@ export async function ensureValidCalendarToken(): Promise<string | null> {
   }
 }
 
-// Remote-first removal of a linked Calendar event — the ONE place every
-// delete/unlink path (deleteTimeBlock, deleteTask; updateTimeBlock's own
-// explicit-unlink branch has its own richer no-token handling and is left
-// as-is) goes through. Throws whenever the remote outcome can't be
-// confirmed, on purpose: a caller must never proceed to drop its own local
-// pointer to an event it couldn't verify is actually gone — both
-// deleteTimeBlock and deleteTask used to do exactly that (no token, or a
-// non-404 delete failure, and the local delete still went ahead regardless),
-// leaving the remote event a permanent, untracked orphan.
+// Removes a deleted slot's Google Calendar event (deletedBlockEvents.ts calls
+// it right after a delete). Throws when the removal can't be confirmed — no
+// valid connection, or anything but a confirmed delete / already gone; the
+// caller logs it and the server's calendar outbox (migration 135), which
+// queued the event when its slot was deleted, removes it later. Before 135
+// this ran BEFORE the delete and refused the delete without a connection,
+// since the slot was the only pointer to its event.
 export async function ensureLinkedCalendarEventRemoved(eventId: string): Promise<void> {
   const token = await ensureValidCalendarToken()
   if (!token) throw new Error("Can't verify or remove the linked Google Calendar event — no valid Calendar connection")

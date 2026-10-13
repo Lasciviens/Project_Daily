@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
+import { confirmDelete } from '../../../shared/modals'
 import { qk } from '../../../shared/query/keys'
 import { STALE } from '../../../shared/query/stale'
 import {
@@ -52,8 +53,8 @@ export function useRemoveTraktPlayback() {
   const qc = useQueryClient()
   return useMutationWithFeedback({
     action: 'trakt_playback_remove',
-    mutationFn: (id: number) => removeTraktPlayback(id),
-    successMessage: 'Removed from Continue watching',
+    mutationFn: async (id: number) => { await removeTraktPlayback(id); return true },
+    silent: 'the delete flow reports the result',
     onMutate: (id: number) => {
       qc.setQueryData<TraktPlaybackItem[]>(qk.trakt.playback(), old => old?.filter(i => i.id !== id))
     },
@@ -99,21 +100,39 @@ export function useDeleteTraktList() {
   return useMutationWithFeedback({
     action: 'trakt_list_delete',
     loadingMessage: 'Deleting list…',
-    successMessage: 'List deleted',
-    mutationFn: (listId: number) => deleteTraktList(listId),
+    silent: 'the delete flow reports the result',
+    mutationFn: async (listId: number) => { await deleteTraktList(listId); return true },
     invalidates: [qk.trakt.lists()],
   })
 }
 
-/** Add to or remove from one list; refreshes that list and the counts. */
+/** Add to or remove from one list; refreshes that list and the counts. `quiet`: the caller reports it. */
 export function useChangeTraktList() {
   const qc = useQueryClient()
   return useMutationWithFeedback({
     action: 'trakt_list_change',
-    mutationFn: ({ listId, items, remove }: { listId: number; items: ListItemRef[]; remove?: boolean }) =>
-      (remove ? removeFromTraktList(listId, items) : addToTraktList(listId, items)),
-    successMessage: (_r, v) => (v.remove ? 'Removed from list' : 'Added to list'),
+    mutationFn: async ({ listId, items, remove }: { listId: number; items: ListItemRef[]; remove?: boolean; quiet?: boolean }) => {
+      await (remove ? removeFromTraktList(listId, items) : addToTraktList(listId, items))
+      return true
+    },
+    successMessage: (_r, v) => (v.quiet ? undefined : v.remove ? 'Removed from list' : 'Added to list'),
     onSuccess: (_r, v) => { void qc.invalidateQueries({ queryKey: qk.trakt.listItems(v.listId) }) },
     invalidates: [qk.trakt.lists()],
+  })
+}
+
+/**
+ * Takes titles off a Trakt list: asks, removes, "Removed Dune · Undo". Undo
+ * adds them again — at the end of the list (Trakt keeps no place for them).
+ */
+export function useRemoveFromTraktList() {
+  const change = useChangeTraktList()
+  return (listId: number, items: ListItemRef[], q: { title: string; done: string }) => confirmDelete({
+    title: q.title,
+    confirmLabel: 'Remove',
+    remove: () => change.mutateAsync({ listId, items, remove: true, quiet: true }),
+    restore: async () => { await change.mutateAsync({ listId, items, quiet: true }) },
+    done: q.done,
+    restored: 'Back on the list (at the end)',
   })
 }

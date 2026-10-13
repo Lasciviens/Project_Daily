@@ -38,9 +38,3 @@ export async function saveCinemaVisit(id: string | null, input: CinemaVisitInput
   if (error) throw error
 }
 
-export async function deleteCinemaVisits(ids: string[]): Promise<void> {
-  if (!ids.length) return
-  const { error } = await supabase.from('movie_cinema_visits').delete().in('id', ids)
-  if (missingTable(error)) throw new Error(NOT_APPLIED)
-  if (error) throw error
-}

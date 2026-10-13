@@ -117,6 +117,7 @@ export function useCleanupStorage() {
   const qc = useQueryClient()
   return useMutationWithFeedback({
     action: 'screenscraper_cleanup',
+    silent: 'onSuccess reports what was deleted (a dry run reports in the sheet)',
     // A server-side refusal comes back as status 'error' (not a thrown
     // error): it is turned into one here, so it is toasted like any failure.
     mutationFn: async (dryRun: boolean) => {
@@ -148,6 +149,7 @@ export function useApplyScrape() {
   const qc = useQueryClient()
   return useMutationWithFeedback({
     action: 'screenscraper_apply',
+    silent: 'the review shows the saved result screen',
     mutationFn: (req: ApplyRequest) => applyScrape(req),
     onSuccess: (_d, req) => afterWrite(qc, [req.game_id]),
   })
@@ -159,6 +161,7 @@ export function useApplyBatch() {
   const qc = useQueryClient()
   return useMutationWithFeedback({
     action: 'screenscraper_apply_batch',
+    silent: 'Many games reports each save in its list',
     mutationFn: ({ items, runId }: { items: BatchItem[]; runId?: string }) => applyBatch(items, runId),
     onSuccess: (_d, v) => { for (const i of v.items) qc.invalidateQueries({ queryKey: SS_KEYS.game(i.game_id) }) },
   })
@@ -171,7 +174,7 @@ export function useAfterScrapeWrite() {
 }
 
 export function useFindBatch() {
-  return useMutationWithFeedback({ action: 'screenscraper_find_batch', mutationFn: (ids: string[]) => findBatch(ids) })
+  return useMutationWithFeedback({ action: 'screenscraper_find_batch', silent: 'a lookup: the list shows what it found', mutationFn: (ids: string[]) => findBatch(ids) })
 }
 
 /**
@@ -183,6 +186,7 @@ export function useUndoScrape() {
   const qc = useQueryClient()
   return useMutationWithFeedback({
     action: 'screenscraper_undo',
+    silent: 'undoFeedback reports what was really undone',
     mutationFn: ({ runId, gameIds, scope }: { runId: string; gameIds: string[]; scope: 'game' | 'run' }) =>
       undoScrape(runId, scope === 'game' ? gameIds : undefined),
     onSuccess: (r, v) => { undoFeedback(r); afterWrite(qc, [...new Set([...v.gameIds, ...(r.reverted_ids ?? [])])]) },

@@ -78,13 +78,11 @@ export function AssignMealModal({ open, onClose, date, mealSlot, existing }: Pro
 
   async function handleRemove() {
     if (!existing) return
-    try {
-      await remove.mutateAsync(existing.id)
-      onClose()
-    } catch { return }
+    const result = await remove.run([existing.id], { title: 'Remove this planned meal?', done: 'Planned meal removed' })
+    if (result === 'deleted' || result === 'gone') onClose()
   }
 
-  const busy = setEntry.isPending || remove.isPending
+  const busy = setEntry.isPending || remove.busy
   const slotLabel = SLOT_OPTIONS.find(o => o.id === mealSlot)?.label ?? mealSlot
 
   return (
@@ -97,9 +95,9 @@ export function AssignMealModal({ open, onClose, date, mealSlot, existing }: Pro
       footer={
         <div className="flex gap-2">
           {existing && (
-            <Button variant="ghost" className="text-danger" onClick={handleRemove} loading={remove.isPending} disabled={setEntry.isPending}>Remove</Button>
+            <Button variant="ghost" className="text-danger" onClick={handleRemove} loading={remove.busy} disabled={setEntry.isPending}>Remove</Button>
           )}
-          <Button variant="primary" block onClick={handleSave} loading={setEntry.isPending} disabled={remove.isPending}>Save</Button>
+          <Button variant="primary" block onClick={handleSave} loading={setEntry.isPending} disabled={remove.busy}>Save</Button>
         </div>
       }
     >

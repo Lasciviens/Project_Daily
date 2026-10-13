@@ -489,3 +489,13 @@ export function planDefaults(item: Pick<ShopItem, 'title' | 'planned_date' | 'no
     ...(item.notes?.trim() ? { notes: item.notes.trim() } : {}),
   }
 }
+
+/**
+ * What deleting a row takes with it, the same from every screen (step 3,
+ * 13.10.2026: the record took bought accessories, Owned only the ones still
+ * owned, the wishlist none): the row and every accessory bought for it —
+ * sold or still yours. An accessory still to buy stays, as a wish of its own.
+ */
+export function deleteScope(items: readonly ShopItem[], item: Pick<ShopItem, 'id'>): string[] {
+  return [item.id, ...items.filter(i => i.accessory_of === item.id && i.status === 'bought').map(i => i.id)]
+}

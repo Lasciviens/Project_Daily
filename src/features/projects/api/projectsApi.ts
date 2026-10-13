@@ -56,10 +56,6 @@ export async function updateProject(id: string, patch: Partial<CreateProjectInpu
   if (error) throw error
 }
 
-export async function deleteProject(id: string): Promise<void> {
-  const { error } = await supabase.from('projects').delete().eq('id', id)
-  if (error) throw error
-}
 
 // ─── Phases ───────────────────────────────────────────────────────────────────
 
@@ -91,10 +87,6 @@ export async function updatePhase(id: string, patch: Partial<Pick<ProjectPhase, 
   if (error) throw error
 }
 
-export async function deletePhase(id: string): Promise<void> {
-  const { error } = await supabase.from('project_phases').delete().eq('id', id)
-  if (error) throw error
-}
 
 // ─── Items ────────────────────────────────────────────────────────────────────
 
@@ -126,7 +118,3 @@ export async function updateItem(id: string, patch: Partial<Pick<ProjectItem, 't
   if (error) throw error
 }
 
-export async function deleteItem(id: string): Promise<void> {
-  const { error } = await supabase.from('project_items').delete().eq('id', id)
-  if (error) throw error
-}

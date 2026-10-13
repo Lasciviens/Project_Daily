@@ -27,16 +27,18 @@ export function useSendPrepared() {
 export function useCancelDelivery() {
   return useMutationWithFeedback({
     action: 'kobo_cancel',
-    mutationFn: (d: BookDelivery) => cancelDelivery(d),
-    successMessage: 'Removed from the Kobo inbox',
+    mutationFn: async (d: BookDelivery) => { await cancelDelivery(d); return true },
+    silent: 'the delete flow reports the result',
     invalidates: [qk.books.all],
   })
 }
 
+/** A finished delivery's row: nothing to put back (its file is gone), so no Undo. */
 export function useDeleteDeliveryRow() {
   return useMutationWithFeedback({
     action: 'kobo_delete_row',
-    mutationFn: (id: string) => deleteDeliveryRow(id),
+    silent: 'the delete flow reports the result',
+    mutationFn: async (id: string) => { await deleteDeliveryRow(id); return true },
     invalidates: [qk.books.all],
   })
 }

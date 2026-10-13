@@ -1,8 +1,9 @@
 import { useQuery } from '@tanstack/react-query'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
+import { useRowsDelete } from '../../../shared/hooks/useRowsDelete'
 import { qk, STALE } from '../../../shared/query'
 import {
-  fetchTransitRoutes, insertTransitRoute, deleteTransitRoute, updateTransitRouteLabel,
+  fetchTransitRoutes, insertTransitRoute, updateTransitRouteLabel,
   type UserTransitRoute,
 } from '../api/transitStoreApi'
 import type { StopResult } from '../api/ruterApi'
@@ -24,12 +25,10 @@ export function useTransitRoutes() {
       insertTransitRoute(label, from, to, routes.length),
     invalidates: INVALIDATES,
   })
-  const remove = useMutationWithFeedback({
-    action: 'remove_transit_route', successMessage: 'Route removed',
-    mutationFn: deleteTransitRoute, invalidates: INVALIDATES,
-  })
+  const remove = useRowsDelete({ table: 'user_transit_routes', action: 'remove_transit_route', invalidates: INVALIDATES, cache: qk.transit.routes() })
   const rename = useMutationWithFeedback({
     action: 'rename_transit_route',
+    successMessage: 'Route renamed',
     mutationFn: ({ id, label }: { id: string; label: string }) => updateTransitRouteLabel(id, label),
     invalidates: INVALIDATES,
   })
@@ -39,7 +38,8 @@ export function useTransitRoutes() {
     routes,
     isLoading,
     addRoute:    (label: string, from: StopResult, to: StopResult) => add.mutateAsync({ label, from, to }),
-    removeRoute: (id: string) => remove.mutateAsync(id),
+    /** Asks, removes, "Route removed · Undo". */
+    removeRoute: (id: string, name: string) => remove.run([id], { title: `Remove ${name}?`, confirmLabel: 'Remove', done: 'Route removed' }),
     updateLabel: (id: string, label: string) => rename.mutateAsync({ id, label }),
   }
 }

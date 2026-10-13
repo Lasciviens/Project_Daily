@@ -139,7 +139,7 @@ export function ExerciseGifPicker({ templateId, title }: { templateId: string; t
                 <p className="text-meta font-semibold text-fg-2">Currently manually set</p>
                 <Truncate as="p" className="text-micro font-normal text-fg-muted">{existing.gif_url}</Truncate>
               </div>
-              <Button size="sm" variant="ghost" className="shrink-0 !text-danger" loading={remove.isPending} onClick={() => remove.mutate(templateId)}>
+              <Button size="sm" variant="ghost" className="shrink-0 !text-danger" loading={remove.busy} onClick={() => void remove.run([existing.id], { title: 'Go back to the automatic GIF?', message: title, confirmLabel: 'Revert', done: 'Back to the automatic GIF' })}>
                 Revert
               </Button>
             </div>

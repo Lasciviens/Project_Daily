@@ -107,7 +107,7 @@ export function MemoryTab() {
   }
 
   async function handleDelete(memory: AiMemory) {
-    if (await entityModal.confirm({ title: `Delete "${memory.title}"?`, confirmLabel: 'Delete', destructive: true })) deleteMemory.mutate(memory.id)
+    await deleteMemory.run([memory.id], { title: `Delete "${memory.title}"?`, done: 'Memory deleted' })
   }
 
   let list: ReactNode

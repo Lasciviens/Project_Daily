@@ -1,4 +1,5 @@
 import { supabase } from '../../../integrations/supabase/client'
+import { currentUserId } from '../../../shared/utils/requireUser'
 import { invokeAI, type Message } from '../../ai/api/aiApi'
 import { todayStr } from '../../../shared/utils/dateUtils'
 import { gatherCoachData } from '../coach/coachData'
@@ -66,10 +67,10 @@ export async function generatePTAssessment(input: PTAssessmentInput): Promise<PT
 
   // Persist the log — best-effort (an insert failure must not eat the reply).
   try {
-    const user = (await supabase.auth.getUser()).data.user
-    if (user) {
+    const userId = await currentUserId()
+    if (userId) {
       await supabase.from('pt_assessments').insert({
-        user_id:    user.id,
+        user_id:    userId,
         date:       todayStr(),
         feeling:    input.feeling,
         note:       input.note ?? null,

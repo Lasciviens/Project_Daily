@@ -1,4 +1,5 @@
 import { supabase } from '../../../integrations/supabase/client'
+import { requireUser } from '../../../shared/utils/requireUser'
 import { createGoogleTaskList, renameGoogleTaskList, deleteGoogleTaskList } from './googleTasksApi'
 
 // Local mirror (google_task_lists) + the matching Google Tasks call, one
@@ -23,9 +24,7 @@ export async function fetchGoogleTaskListRows(): Promise<GoogleTaskListRow[]> {
 
 export async function createGoogleTaskListMirrored(token: string, title: string): Promise<void> {
   const trimmed = title.trim()
-  const { data: userData } = await supabase.auth.getUser()
-  const userId = userData.user?.id
-  if (!userId) throw new Error('Not signed in')
+  const { id: userId } = await requireUser()
 
   // Real gap fixed: this had NO dedup check at all (not even exact-
   // match) — typing "work" here when "Work" already existed always

@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
+import { useRowsDelete } from '../../../shared/hooks/useRowsDelete'
 import { qk, STALE } from '../../../shared/query'
 import { scheduleTraktSync } from '../trakt/traktAutoSync'
 import {
@@ -7,8 +8,7 @@ import {
   upsertTVSeries,
   addTVEntry,
   updateTVEntry,
-  deleteTVEntry,
-} from '../api/tvApi'
+  } from '../api/tvApi'
 import type { UserTVEntry, TMDBTVSeries } from '../types'
 
 export function useTVSeries() {
@@ -35,6 +35,7 @@ export function useAddTV() {
   const qc = useQueryClient()
   return useMutationWithFeedback({
     action: 'add_tv',
+    silent: 'callers report the result (the same hook adds, rates, notes and completes)',
     mutationFn: async ({
       tmdb,
       status,
@@ -58,6 +59,7 @@ export function useUpdateTV() {
   const qc = useQueryClient()
   return useMutationWithFeedback({
     action: 'update_tv',
+    silent: 'callers report the result (the same hook adds, rates, notes and completes)',
     mutationFn: ({ id, patch }: { id: string; patch: Parameters<typeof updateTVEntry>[1] }) =>
       updateTVEntry(id, patch),
     invalidates: ['media'],
@@ -65,12 +67,18 @@ export function useUpdateTV() {
   })
 }
 
+/**
+ * Removes a title from the library with Undo (its watched episodes go with it).
+ * The Trakt outbox sends the removal; Undo puts the same rows back and the
+ * outbox sends them again (plays at their kept dates; the Trakt note is made
+ * anew, so the old link is cleared).
+ */
 export function useDeleteTV() {
   const qc = useQueryClient()
-  return useMutationWithFeedback({
-    action: 'delete_tv',
-    mutationFn: (id: string) => deleteTVEntry(id),
-    invalidates: ['media'],
-    onSuccess: () => scheduleTraktSync(qc),
+  return useRowsDelete({
+    table: 'user_tv_entries', action: 'delete_tv', invalidates: ['media'], cache: qk.media.tv,
+    overrides: () => ({ user_tv_entries: { trakt_note_id: null, trakt_note_text: null } }),
+    afterDelete: () => scheduleTraktSync(qc),
+    afterRestore: () => { scheduleTraktSync(qc) },
   })
 }

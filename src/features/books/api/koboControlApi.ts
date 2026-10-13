@@ -107,7 +107,3 @@ export async function fetchAiNotes(bookId?: string): Promise<BookAiNote[]> {
   return data ?? []
 }
 
-export async function deleteAiNote(id: string): Promise<void> {
-  const { error } = await supabase.from('book_ai_notes').delete().eq('id', id)
-  if (error) fail(error)
-}

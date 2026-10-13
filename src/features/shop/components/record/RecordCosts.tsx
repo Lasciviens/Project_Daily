@@ -50,7 +50,7 @@ export function RecordCosts({ itemId, costs }: { itemId: string; costs: readonly
                   {money(c.amount, c.currency)}
                   {c.currency !== 'NOK' && <span className="block text-fg-faint">{complete(nok) ? `≈ ${money(nok.nok)}` : 'rate pending'}</span>}
                 </span>
-                <button type="button" onClick={() => remove.mutate(c.id)} aria-label={`Remove ${c.label}`} className="icon-btn shrink-0 text-fg-faint hover:!text-danger">
+                <button type="button" onClick={() => void remove.run([c.id], { title: `Remove “${c.label}”?`, confirmLabel: 'Remove', done: `Removed ${c.label}` })} aria-label={`Remove ${c.label}`} className="icon-btn shrink-0 text-fg-faint hover:!text-danger">
                   <X aria-hidden className="h-4 w-4" />
                 </button>
               </li>

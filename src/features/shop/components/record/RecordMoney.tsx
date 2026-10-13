@@ -39,7 +39,7 @@ export function RecordMoney({ item, items, links, ctx, chain }: { item: ShopItem
         <Truncate as="span" className="text-body text-fg-2">{other?.title ?? 'A deleted item'}</Truncate>
         <span className="text-meta text-fg-muted">{other ? stateLine(other, dir) : ''}{l.amount != null ? ` · ${money(l.amount, other?.sale_currency ?? other?.value_currency ?? 'NOK')} of it` : ''}</span>
       </button>
-      <button type="button" onClick={() => del.mutate(l.id)} aria-label="Remove this link" title="Remove this link" className="icon-btn shrink-0 text-fg-faint hover:!text-danger">
+      <button type="button" onClick={() => void del.run([l.id], { title: 'Remove this money link?', confirmLabel: 'Remove', done: 'Link removed' })} aria-label="Remove this link" title="Remove this link" className="icon-btn shrink-0 text-fg-faint hover:!text-danger">
         <X aria-hidden className="h-4 w-4" />
       </button>
     </li>

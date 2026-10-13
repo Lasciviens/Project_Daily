@@ -482,8 +482,11 @@ Two ways to use it:
 
 Never hand-roll a `Dialog` + backdrop + panel. Never use `window.confirm` / `alert` — use
 `await modal.confirm({ title })` (it renders `ConfirmDialog`, which also exists as a controlled
-component; prefer the promise form). For a delete that can be reversed, delete at once and offer
-`toast.undo(message, onUndo)` instead of asking first (Food's diary rows).
+component; prefer the promise form). **Every delete** goes through one flow (13.10.2026): it asks,
+deletes, says what happened and offers Undo — `useRowsDelete({ table, … }).run(ids, { title, done })`
+for rows in the app's database (Undo puts back the same rows and what went with them, migration
+144), `confirmDelete({ title, remove, restore?, done })` for anything else (no `restore` = the
+question says "This can't be undone."). Never a bare delete button that removes without asking.
 
 Side drawers (assistant, requests backlog) use `SideDrawer` (right edge, full height, 28rem by
 default via `widthClassName`, `headerExtra` for a filter row, Back/Esc aware) and become a
@@ -587,7 +590,8 @@ A query whose widget is collapsed or hidden is `enabled: false`.
 return useMutationWithFeedback({
   action: 'update_task',                 // logError context (required)
   mutationFn: (p: Patch) => updateTask(p),
-  successMessage: 'Saved',               // optional; silent by default ("edits feel live")
+  successMessage: 'Task saved',          // the result — or silent: '<who reports it instead>'
+                                         // (one of the two is required)
   loadingMessage: 'Saving…',             // optional; for slow writes
   invalidates: ['taskGraph'],            // domain groups or explicit qk keys
 })
@@ -596,10 +600,14 @@ return useMutationWithFeedback({
 Errors are always toasted and logged to `app_error_logs`. **Callers never wrap `mutateAsync` in
 their own `toast.error`** — use `try { await m.mutateAsync(v) } catch { return }` only to stop a
 multi-step flow, or `withProgress(() => m.mutateAsync(v), { loading, success })` for per-call copy.
+The mutation resolves when the write answers — its own answer is the result; `invalidates` refresh
+in the background. A write that returns its row patches every cached list at once
+(`shared/query/cachePatch.ts`); task tick/edit/focus are optimistic.
 
 **Toasts** outside a mutation come from `toast` in `src/app/store.ts`: `success` · `error` ·
-`warning` · `info` · `loading` (stays until `toast.dismiss(id)`) · `undo(message, onUndo)`. They
-last 3s (errors 5s, undo 6s), render through the shell's `<Toaster>` (above the tab bar on phones,
+`warning` · `info` · `loading` (stays until `toast.dismiss(id)`) · `undo(message, onUndo)` (a
+success with an Undo button). They last 3s (errors 5s, undo 6s); a plain toast with the same text
+as one on screen replaces it, render through the shell's `<Toaster>` (above the tab bar on phones,
 bottom-left of the content elsewhere) and take their colour from a tone.
 
 **Invalidation groups** (`src/shared/query/invalidate.ts`): `taskGraph`, `schedule`, `nutrition`,

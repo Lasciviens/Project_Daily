@@ -70,7 +70,7 @@ export default function WeeklyGoalsWidget() {
             </label>
             <button
               type="button"
-              onClick={() => deleteGoal.mutate(goal.id)}
+              onClick={() => void deleteGoal.run([goal.id], { title: 'Delete this goal?', message: goal.title, done: 'Goal deleted' })}
               aria-label={`Delete goal ${goal.title}`}
               className="grid min-h-[44px] min-w-[44px] place-items-center rounded-control text-fg-faint transition-opacity focus-visible:opacity-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:hover:text-danger"
             >

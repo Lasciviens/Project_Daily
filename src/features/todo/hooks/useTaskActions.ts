@@ -1,5 +1,4 @@
 import { useEntityModal } from '../../../shared/modals'
-import { withProgress } from '../../../shared/hooks/useMutationWithFeedback'
 import { todayStr } from '../../../shared/utils/dateUtils'
 import { useTrainingPlanActions } from '../../training/hooks/useTrainingPlanActions'
 import type { TrainingPlanRef } from '../../training/api/trainingPlanApi'
@@ -32,7 +31,8 @@ export function doneByWorkout(task: Task): boolean {
  *
  * A training session is the session's own action (the same hook as its popup):
  * cancel = Skip (asks why), reopen a skip = Undo skip, delete asks and offers
- * Undo. Errors are toasted by the mutations; these never throw.
+ * Undo. Every action reports its result ("Task done", "Task deleted · Undo");
+ * errors are toasted by the mutations; these never throw.
  */
 export function useTaskActions() {
   const modal = useEntityModal()
@@ -94,11 +94,10 @@ export function useTaskActions() {
     } }))
   }
 
-  /** Asks first (owner's rule for every delete). */
+  /** Asks first, says what happened, offers Undo (the owner's rule for every delete). */
   async function removeTask(task: Task): Promise<void> {
     if (isTrainingTask(task)) return quietly(session.deleteSession(planRefForTask(task)))
-    if (!(await modal.confirm({ title: 'Delete this task?', confirmLabel: 'Delete', destructive: true }))) return
-    return quietly(withProgress(() => remove.mutateAsync(task.id), { loading: 'Deleting…', success: 'Deleted' }))
+    await remove.run([task.id], { title: 'Delete this task?', message: task.title, done: 'Task deleted' })
   }
 
   const edit = (task: Task) => modal.open({ kind: 'task', id: task.id, config: { heading: 'Edit task' } })
@@ -110,6 +109,6 @@ export function useTaskActions() {
     /** A training session's own: Move (asks the day and time), Skip (asks why). */
     move: (task: Task) => session.openMove(planRefForTask(task)),
     skip: (task: Task) => session.openSkip(planRefForTask(task)),
-    busy: toggle.isPending || update.isPending || remove.isPending || session.busy,
+    busy: toggle.isPending || update.isPending || remove.busy || session.busy,
   }
 }

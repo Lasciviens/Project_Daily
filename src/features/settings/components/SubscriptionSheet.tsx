@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ModalShell, useEntityModal } from '../../../shared/modals'
+import { ModalShell } from '../../../shared/modals'
 import { Button } from '../../../shared/ui'
 import { useDeleteSubscription, useSaveSubscription } from '../hooks/useSubscriptions'
 import {
@@ -30,7 +30,6 @@ export function SubscriptionSheet({ open, sub, service, onClose }: {
 }) {
   const save = useSaveSubscription()
   const remove = useDeleteSubscription()
-  const modal = useEntityModal()
   const [form, setForm] = useState<SubscriptionInput>(() => initialInput(sub, service))
   const [priceText, setPriceText] = useState(sub?.price != null ? String(sub.price) : '')
   const set = <K extends keyof SubscriptionInput>(k: K, v: SubscriptionInput[K]) => setForm(f => ({ ...f, [k]: v }))
@@ -39,7 +38,7 @@ export function SubscriptionSheet({ open, sub, service, onClose }: {
   // and saving it never changes the currency behind the user's back.
   const currencyOptions: string[] = (SUBSCRIPTION_CURRENCIES as readonly string[]).includes(form.currency)
     ? [...SUBSCRIPTION_CURRENCIES] : [...SUBSCRIPTION_CURRENCIES, form.currency]
-  const busy = save.isPending || remove.isPending
+  const busy = save.isPending || remove.busy
 
   async function submit() {
     if (!valid) return
@@ -58,9 +57,8 @@ export function SubscriptionSheet({ open, sub, service, onClose }: {
 
   async function handleDelete() {
     if (!sub) return
-    if (!(await modal.confirm({ title: 'Remove this subscription?', confirmLabel: 'Remove', destructive: true }))) return
-    try { await remove.mutateAsync(sub.id) } catch { return }
-    onClose()
+    const result = await remove.run([sub.id], { title: 'Remove this subscription?', message: sub.name ?? undefined, confirmLabel: 'Remove', done: 'Subscription removed' })
+    if (result === 'deleted' || result === 'gone') onClose()
   }
 
   return (

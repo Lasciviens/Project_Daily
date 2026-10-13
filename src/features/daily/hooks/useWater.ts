@@ -17,6 +17,7 @@ export function useAddWater(date: string) {
   return useMutationWithFeedback({
     action:      'add_water',
     mutationFn:  (amount_ml: number) => addWaterMl(date, amount_ml),
+    successMessage: (_r, ml) => `Added ${ml} ml`,
     invalidates: [qk.water.all],
   })
 }
@@ -25,6 +26,7 @@ export function useUndoWater(date: string) {
   return useMutationWithFeedback({
     action:      'undo_water',
     mutationFn:  () => undoLastWaterMl(date),
+    successMessage: ml => (ml ? `Took back ${ml} ml` : 'Nothing to take back'),
     invalidates: [qk.water.all],
   })
 }

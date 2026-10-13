@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { PencilLine, Plus, Ticket } from 'lucide-react'
-import { useEntityModal } from '../../../shared/modals'
 import { Button } from '../../../shared/ui'
 import { formatDate, toLocalDate } from '../../../shared/utils/dateFormat'
 import { haptic } from '../../../shared/utils/haptics'
@@ -33,7 +32,6 @@ export function CinemaVisits({ entry }: { entry: UserMovieEntry }) {
   const { data: visits = [] } = useMovieCinemaVisits(entry.movie_id)
   const save = useSaveCinemaVisit()
   const del = useDeleteCinemaVisit()
-  const modal = useEntityModal()
   const [editing, setEditing] = useState<CinemaVisit | 'new' | null>(null)
   const marked = visits.length > 0
   // Offered once it's watched (or being watched); visits already saved always show.
@@ -46,8 +44,15 @@ export function CinemaVisits({ entry }: { entry: UserMovieEntry }) {
       return
     }
     const hasDetails = visits.some(v => v.cinema || v.location || v.companions || v.cost != null || v.note)
-    if (hasDetails && !(await modal.confirm({ title: 'Remove the cinema visits?', message: 'Their details (cinema, company, cost, note) are deleted too.', confirmLabel: 'Remove', destructive: true }))) return
-    await del.mutateAsync(visits.map(v => v.id)).catch(() => null)
+    // Unticking a bare "watched at a cinema" is a toggle (Undo still there);
+    // with details written down it asks first.
+    await del.run(visits.map(v => v.id), {
+      title: 'Remove the cinema visits?',
+      message: 'Their details (cinema, company, cost, note) are deleted too.',
+      confirmLabel: 'Remove',
+      ask: hasDetails,
+      done: 'Cinema visits removed',
+    })
   }
 
   return (
@@ -57,7 +62,7 @@ export function CinemaVisits({ entry }: { entry: UserMovieEntry }) {
           type="button"
           aria-pressed={marked}
           onClick={() => { void toggle() }}
-          disabled={save.isPending || del.isPending}
+          disabled={save.isPending || del.busy}
           className="pill-tab press-feedback border border-line aria-pressed:border-transparent"
         >
           <Ticket aria-hidden className="h-4 w-4" /> {marked ? 'Watched at a cinema' : 'Watched at a cinema?'}

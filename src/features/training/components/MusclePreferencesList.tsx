@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { X, Plus } from 'lucide-react'
-import { entityModal } from '../../../shared/modals'
 import { Button } from '../../../shared/ui'
 import { useMusclePreferences, useUpsertMusclePreference, useDeleteMusclePreference } from '../hooks/useAthleteProfile'
 import { MAJOR_MUSCLES, labelForSlug } from '../muscleMap'
@@ -70,12 +69,8 @@ export function MusclePreferencesList() {
   const [slug, setSlug] = useState<string>(available[0] ?? '')
   const [pref, setPref] = useState<MusclePreference>('priority')
 
-  async function confirmDelete(item: AthleteMusclePreference) {
-    const ok = await entityModal.confirm({
-      title: 'Remove this preference?', message: labelForSlug(item.muscle_slug),
-      confirmLabel: 'Remove', destructive: true,
-    })
-    if (ok) del.mutate(item.muscle_slug)
+  function confirmDelete(item: AthleteMusclePreference) {
+    void del.run([item.id], { title: 'Remove this preference?', message: labelForSlug(item.muscle_slug), confirmLabel: 'Remove', done: 'Preference removed' })
   }
 
   function add() {

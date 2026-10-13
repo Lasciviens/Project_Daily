@@ -1,4 +1,5 @@
 import { supabase } from '../../../integrations/supabase/client'
+import { currentUserId } from '../../../shared/utils/requireUser'
 import { workoutWindowFilter, localDayBoundsIso, workoutLocalDay } from '../workoutDates'
 import type { ProgressSetRow, ProgressTemplateRow } from '../progressAggregate'
 import type {
@@ -469,12 +470,12 @@ export async function fetchHevyRoutineFolders(): Promise<HevyRoutineFolder[]> {
 // ─── Sync State ───────────────────────────────────────────────────────────────
 
 export async function fetchHevySyncState(): Promise<HevySyncState | null> {
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return null
+  const userId = await currentUserId()
+  if (!userId) return null
   const { data, error } = await supabase
     .from('hevy_workout_events_cursor')
     .select('*')
-    .eq('user_id', user.id)
+    .eq('user_id', userId)
     .maybeSingle()
   if (error) throw error
   return data ?? null

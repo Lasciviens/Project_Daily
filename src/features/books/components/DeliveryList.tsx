@@ -1,3 +1,4 @@
+import { confirmDelete } from '../../../shared/modals'
 import { BookOpen, Inbox, X } from 'lucide-react'
 import { Card, CardHeader, EmptyState, IconButton, SkeletonText, TonePill, Truncate } from '../../../shared/ui'
 import { formatDateTime } from '../../../shared/utils/dateFormat'
@@ -31,10 +32,10 @@ export function DeliveryList({ rows, loading }: { rows: BookDelivery[]; loading:
                   </p>
                 </div>
                 {d.status === 'queued' && (
-                  <IconButton label={`Cancel ${displayTitle(d)}`} onClick={() => cancel.mutate(d)}><X /></IconButton>
+                  <IconButton label={`Cancel ${displayTitle(d)}`} onClick={() => void confirmDelete({ title: `Take “${displayTitle(d)}” out of the Kobo inbox?`, message: 'The file is deleted before the Kobo fetches it.', confirmLabel: 'Take out', remove: () => cancel.mutateAsync(d), done: 'Removed from the Kobo inbox' })}><X /></IconButton>
                 )}
                 {done && (
-                  <IconButton label={`Remove ${displayTitle(d)} from the list`} onClick={() => remove.mutate(d.id)} className="text-fg-faint"><X /></IconButton>
+                  <IconButton label={`Remove ${displayTitle(d)} from the list`} onClick={() => void confirmDelete({ title: `Remove “${displayTitle(d)}” from the list?`, confirmLabel: 'Remove', remove: () => remove.mutateAsync(d.id), done: 'Removed from the list' })} className="text-fg-faint"><X /></IconButton>
                 )}
               </li>
             )

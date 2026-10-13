@@ -1,16 +1,15 @@
 import { useQuery } from '@tanstack/react-query'
 import { qk, STALE } from '../../../shared/query'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
+import { useRowsDelete } from '../../../shared/hooks/useRowsDelete'
 import {
   fetchWorkNote,
   upsertWorkNote,
   fetchPinnedLinks,
   createPinnedLink,
-  deletePinnedLink,
   fetchWeeklyGoals,
   createWeeklyGoal,
   toggleWeeklyGoal,
-  deleteWeeklyGoal,
 } from '../api/workApi'
 
 export function useWorkNote() {
@@ -22,6 +21,7 @@ export function useWorkNote() {
 export function useUpsertWorkNote() {
   return useMutationWithFeedback({
     action: 'upsert_work_note',
+    silent: 'autosave while typing — the widget shows "Saved"',
     errorFallback: "Couldn't save your notes",
     mutationFn: (content: string) => upsertWorkNote(content),
     invalidates: [qk.work.note()],
@@ -42,11 +42,7 @@ export function useCreatePinnedLink() {
 }
 
 export function useDeletePinnedLink() {
-  return useMutationWithFeedback({
-    action: 'delete_pinned_link',
-    mutationFn: (id: string) => deletePinnedLink(id),
-    invalidates: [qk.work.links()],
-  })
+  return useRowsDelete({ table: 'work_pinned_links', action: 'delete_pinned_link', invalidates: [qk.work.links()], cache: qk.work.links() })
 }
 
 export function useWeeklyGoals(weekStart: string) {
@@ -60,6 +56,7 @@ export function useWeeklyGoals(weekStart: string) {
 export function useCreateWeeklyGoal() {
   return useMutationWithFeedback({
     action: 'create_weekly_goal',
+    successMessage: 'Goal added',
     mutationFn: ({ weekStart, title }: { weekStart: string; title: string }) => createWeeklyGoal(weekStart, title),
     invalidates: [qk.work.goalsAll],
   })
@@ -68,15 +65,12 @@ export function useCreateWeeklyGoal() {
 export function useToggleWeeklyGoal() {
   return useMutationWithFeedback({
     action: 'toggle_weekly_goal',
+    successMessage: (_r, { done }) => (done ? 'Goal done' : 'Goal reopened'),
     mutationFn: ({ id, done }: { id: string; done: boolean }) => toggleWeeklyGoal(id, done),
     invalidates: [qk.work.goalsAll],
   })
 }
 
 export function useDeleteWeeklyGoal() {
-  return useMutationWithFeedback({
-    action: 'delete_weekly_goal',
-    mutationFn: (id: string) => deleteWeeklyGoal(id),
-    invalidates: [qk.work.goalsAll],
-  })
+  return useRowsDelete({ table: 'work_weekly_goals', action: 'delete_weekly_goal', invalidates: [qk.work.goalsAll], cache: qk.work.goalsAll })
 }

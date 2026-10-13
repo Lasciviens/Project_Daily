@@ -1,7 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
+import { useRowsDelete } from '../../../shared/hooks/useRowsDelete'
 import { qk, STALE } from '../../../shared/query'
-import { deleteCinemaVisits, fetchCinemaVisits, saveCinemaVisit, type CinemaVisit, type CinemaVisitInput } from '../api/cinemaApi'
+import { fetchCinemaVisits, saveCinemaVisit, type CinemaVisit, type CinemaVisitInput } from '../api/cinemaApi'
 
 /** Every cinema visit (one small list) — the library marks posters from it. */
 export function useCinemaVisits() {
@@ -23,16 +24,11 @@ export function useSaveCinemaVisit() {
   return useMutationWithFeedback({
     action: 'save_cinema_visit',
     mutationFn: ({ id, input }: { id: string | null; input: CinemaVisitInput }) => saveCinemaVisit(id, input),
-    successMessage: 'Saved',
+    successMessage: (_r, { id }) => (id ? 'Cinema visit saved' : 'Cinema visit added'),
     invalidates: [qk.media.cinemaVisits()],
   })
 }
 
 export function useDeleteCinemaVisit() {
-  return useMutationWithFeedback({
-    action: 'delete_cinema_visit',
-    mutationFn: (ids: string[]) => deleteCinemaVisits(ids),
-    successMessage: 'Removed',
-    invalidates: [qk.media.cinemaVisits()],
-  })
+  return useRowsDelete({ table: 'movie_cinema_visits', action: 'delete_cinema_visit', invalidates: [qk.media.cinemaVisits()], cache: qk.media.cinemaVisits() })
 }

@@ -1,12 +1,10 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
+import { useRowsDelete } from '../../../shared/hooks/useRowsDelete'
 import { qk, STALE } from '../../../shared/query'
-import { invalidate } from '../../../shared/query/invalidate'
-import { logError } from '../../../shared/utils/logError'
-import { toast } from '../../../app/store'
 import {
-  fetchFoodLog, addFoodLogEntries, deleteFoodLogEntry, updateFoodLogEntry, fetchRecentFoods, fetchFoodLogRange,
-  fetchFoodLogEntry, fetchFoodFavorites, deleteFoodLogEntriesReturning, restoreFoodLogEntries, addFoodFavorite, removeFoodFavorite, hideRecentFood, type LoggedFood, type RecentFood,
+  fetchFoodLog, addFoodLogEntries, updateFoodLogEntry, fetchRecentFoods, fetchFoodLogRange,
+  fetchFoodLogEntry, fetchFoodFavorites, addFoodFavorite, removeFoodFavorite, hideRecentFood, type LoggedFood, type RecentFood,
 } from '../api/foodLogApi'
 import { shiftDateStr, todayStr } from '../../../shared/utils/dateUtils'
 import type { FoodLogEntry, FoodLogEntryInput } from '../types'
@@ -62,31 +60,13 @@ export function useAddFoodLogEntries() {
   })
 }
 
-export function useDeleteFoodLogEntry() {
-  return useMutationWithFeedback({
-    action:      'delete_food_log_entry',
-    mutationFn:  ({ id }: { id: string; date: string }) => deleteFoodLogEntry(id),
-    invalidates: ['nutrition'],
-  })
-}
-
-// Removes one diary row — or a whole "As meal" group — right away and offers
-// Undo, instead of a blocking confirm. Undo re-inserts the rows unchanged.
+/**
+ * THE diary delete — a row, a whole "As meal" group, a planned meal: asks,
+ * removes, "Removed Kebab · Undo". Undo puts the same rows back (their totals
+ * are computed again from their source, migration 106).
+ */
 export function useRemoveFoodLogEntries() {
-  const qc = useQueryClient()
-  return useMutationWithFeedback({
-    action:      'remove_food_log_entries',
-    mutationFn:  ({ ids }: { ids: string[]; label: string }) => deleteFoodLogEntriesReturning(ids),
-    invalidates: ['nutrition'],
-    onSuccess: (rows, { label }) => {
-      if (rows.length === 0) return
-      toast.undo(`Removed ${label}`, () => {
-        restoreFoodLogEntries(rows)
-          .then(() => { invalidate(qc, 'nutrition'); toast.success('Restored') })
-          .catch((e: Error) => { toast.error(e.message || 'Could not restore'); logError(`restore_food_log_entries: ${e.message}`, { action: 'restore_food_log_entries' }) })
-      })
-    },
-  })
+  return useRowsDelete({ table: 'food_log_entries', action: 'remove_food_log_entries', invalidates: ['nutrition'], cache: qk.foodLog.all })
 }
 
 export function useUpdateFoodLogEntry() {
@@ -121,6 +101,7 @@ export function useAddFoodFavorite() {
 export function useRemoveFoodFavorite() {
   return useMutationWithFeedback({
     action:      'remove_food_favorite',
+    successMessage: 'Removed from favourites',
     mutationFn:  (foodKey: string) => removeFoodFavorite(foodKey),
     invalidates: [qk.foodLog.favorites()],
   })

@@ -1,7 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import { Briefcase, Home } from 'lucide-react'
 import { Button, Card, CardHeader, PageBoard } from '../../../shared/ui'
-import { useEntityModal } from '../../../shared/modals'
 import { useTransitStops, DuplicateStopError, type UserTransitStop } from '../../home/hooks/useTransitStops'
 import type { StopResult } from '../../home/api/ruterApi'
 import { StopSearchInput } from '../../home/components/ruter/StopSearchInput'
@@ -17,8 +16,7 @@ import { PLACES_BOARD, type PlacesSection } from '../settingsBoards'
 const ICON: Record<PlaceKind, typeof Home> = { home: Home, work: Briefcase }
 
 function PlaceCard({ kind }: { kind: PlaceKind }) {
-  const { stops, addStop, updateStop, removeStop } = useTransitStops()
-  const modal = useEntityModal()
+  const { stops, addStop, updateStop, removeStop, dropStop } = useTransitStops()
   const place = findPlace(stops, kind)
   const label = PLACE_LABEL[kind]
   const Icon = ICON[kind]
@@ -31,7 +29,7 @@ function PlaceCard({ kind }: { kind: PlaceKind }) {
   // The old place is dropped only after the new one saved, so a failed save
   // never leaves you without a Home.
   async function dropOld(old: UserTransitStop | null, keepId?: string) {
-    if (old && old.id !== keepId) await removeStop(old.id)
+    if (old && old.id !== keepId) await dropStop(old.id)
   }
 
   async function handleSave(quayId: string | null, quayDescription: string | null, name: string) {
@@ -54,8 +52,7 @@ function PlaceCard({ kind }: { kind: PlaceKind }) {
 
   async function handleRemove() {
     if (!place) return
-    if (!(await modal.confirm({ title: `Remove your ${label.toLowerCase()} place?`, message: `${place.stop_name} is removed from your saved stops.`, confirmLabel: 'Remove', destructive: true }))) return
-    removeStop(place.id).catch(() => { /* toasted by the hook */ })
+    await removeStop(place.id, { title: `Remove your ${label.toLowerCase()} place?`, message: `${place.stop_name} is removed from your saved stops.` })
   }
 
   return (

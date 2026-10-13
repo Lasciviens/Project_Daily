@@ -1,5 +1,4 @@
 import { ArrowDown, ArrowUp, CalendarPlus, ChevronsUp, X } from 'lucide-react'
-import { toast } from '../../../app/store'
 import { posterUrl } from '../../../integrations/tmdb/client'
 import { useEntityModal } from '../../../shared/modals'
 import { IconButton, Skeleton, ToneDot, Truncate } from '../../../shared/ui'
@@ -8,7 +7,7 @@ import { BUCKET_LABEL, BUCKET_TONE } from '../libraryModel'
 import { libraryKey } from '../listModel'
 import { moveItem } from '../queue/queueModel'
 import { useQueue, useReorderQueue } from '../queue/useQueue'
-import { useChangeTraktList } from '../trakt/useTraktExtras'
+import { useRemoveFromTraktList } from '../trakt/useTraktExtras'
 import type { TraktListItem } from '../trakt/traktApi'
 import type { MediaType, OpenMediaDetail } from '../types'
 
@@ -19,7 +18,7 @@ import type { MediaType, OpenMediaDetail } from '../types'
 export function QueuePanel({ onOpen }: { onOpen: OpenMediaDetail }) {
   const { list, items, loading } = useQueue()
   const reorder = useReorderQueue(list?.id ?? null)
-  const change = useChangeTraktList()
+  const removeItems = useRemoveFromTraktList()
   const index = useLibraryIndex()
   const modal = useEntityModal()
 
@@ -30,11 +29,9 @@ export function QueuePanel({ onOpen }: { onOpen: OpenMediaDetail }) {
   const typeOf = (i: TraktListItem): MediaType => (i.type === 'show' ? 'tv' : 'movie')
   const libOf = (i: TraktListItem) => (i.tmdb ? index.get(libraryKey(typeOf(i), i.tmdb)) : undefined)
   const move = (from: number, to: number) => { if (from !== to) reorder.mutate(moveItem(items, from, to)) }
-  const remove = (items: TraktListItem[], label: string) => {
+  const remove = (items: TraktListItem[], title: string, done: string) => {
     const refs = items.filter(i => i.tmdb).map(i => ({ type: i.type, tmdb: i.tmdb! }))
-    change.mutate({ listId: list.id, items: refs, remove: true }, {
-      onSuccess: () => toast.undo(label, () => change.mutate({ listId: list.id, items: refs })),
-    })
+    void removeItems(list.id, refs, { title, done })
   }
   const finished = items.filter(i => libOf(i)?.bucket === 'completed')
 
@@ -43,7 +40,7 @@ export function QueuePanel({ onOpen }: { onOpen: OpenMediaDetail }) {
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-meta text-fg-muted">
         <span>{items.length} title{items.length === 1 ? '' : 's'} · the order is saved on Trakt</span>
         {finished.length > 0 && (
-          <button type="button" className="min-h-[44px] font-semibold text-accent-600" onClick={() => remove(finished, `Took ${finished.length} watched out of the Queue`)}>
+          <button type="button" className="min-h-[44px] font-semibold text-accent-600" onClick={() => remove(finished, `Take ${finished.length} watched out of the Queue?`, `Took ${finished.length} watched out of the Queue`)}>
             Remove {finished.length} watched
           </button>
         )}
@@ -74,7 +71,7 @@ export function QueuePanel({ onOpen }: { onOpen: OpenMediaDetail }) {
                   kind: 'time-block', config: { heading: 'Plan to watch' },
                   defaults: { title: `Watch: ${i.title}`, duration: i.type === 'show' ? 60 : 120, category: 'media', color: 'purple', alsoCreateTask: true },
                 })}><CalendarPlus /></IconButton>
-                <IconButton label={`Remove ${i.title} from the Queue`} onClick={() => remove([i], `Took “${i.title}” out of the Queue`)}><X /></IconButton>
+                <IconButton label={`Remove ${i.title} from the Queue`} onClick={() => remove([i], `Take “${i.title}” out of the Queue?`, `Took “${i.title}” out of the Queue`)}><X /></IconButton>
               </div>
             </li>
           )

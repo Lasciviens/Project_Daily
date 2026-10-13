@@ -1,7 +1,8 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from '../../../app/store'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
-import { logError } from '../../../shared/utils/logError'
+import { confirmDelete } from '../../../shared/modals'
+import { deleteScope } from '../shopModel'
 import { qk, STALE } from '../../../shared/query'
 import {
   fetchShopCategories, createShopCategory,
@@ -26,6 +27,7 @@ export function useShopCategories() {
 export function useCreateShopCategory() {
   return useMutationWithFeedback({
     action:      'create_shop_category',
+    silent:      'a step of the item form, which reports the save',
     mutationFn:  (input: CreateShopCategoryInput) => createShopCategory(input),
     invalidates: [qk.shop.categories()],
   })
@@ -124,20 +126,37 @@ export function useBuyNow(onDetails?: (id: string) => void) {
   }
 }
 
-/** Deletes at once and offers Undo: the rows come back with their links, costs and accessories. */
+/**
+ * THE shop delete: asks ("Its 2 accessories go too."), deletes the row and
+ * the accessories bought for it (deleteScope), "Deleted Kindle · Undo" — Undo
+ * puts them back with their links, costs and accessories (shop_restore_items,
+ * migration 137; its own order of parents and links, which the shop rules need).
+ */
 export function useDeleteShopItems() {
-  const qc = useQueryClient()
-  return useMutationWithFeedback({
+  const items = useShopItems().data ?? []
+  const remove = useMutationWithFeedback({
     action:     'delete_shop_items',
-    mutationFn: ({ ids }: { ids: string[]; label: string }) => deleteShopItems(ids),
+    silent:     'the delete flow reports the result',
+    mutationFn: (ids: string[]) => deleteShopItems(ids),
     invalidates: SHOP_ROWS,
-    onSuccess: (snapshot: ShopSnapshot, { label }) => {
-      if (!snapshot.items.length) return
-      toast.undo(`Deleted ${label}`, () => {
-        restoreShopItems(snapshot)
-          .then(() => { for (const key of SHOP_ROWS) void qc.invalidateQueries({ queryKey: key }); toast.success('Restored') })
-          .catch((e: Error) => { toast.error(e.message || 'Could not restore'); logError(`restore_shop_items: ${e.message}`, { action: 'restore_shop_items' }) })
-      })
-    },
   })
+  const restore = useMutationWithFeedback({
+    action:     'restore_shop_items',
+    silent:     'the delete flow reports the result',
+    mutationFn: async (snapshot: ShopSnapshot) => { await restoreShopItems(snapshot) },
+    invalidates: SHOP_ROWS,
+  })
+  function run(item: ShopItem): Promise<'deleted' | 'kept' | 'gone' | 'failed'> {
+    const ids = deleteScope(items, item)
+    const more = ids.length - 1
+    return confirmDelete<ShopSnapshot>({
+      title: `Delete “${item.title}”?`,
+      message: more > 0 ? `Its ${more} accessor${more === 1 ? 'y goes' : 'ies go'} too.` : undefined,
+      remove: () => remove.mutateAsync(ids),
+      isEmpty: snapshot => snapshot.items.length === 0,
+      restore: snapshot => restore.mutateAsync(snapshot),
+      done: `Deleted ${item.title}`,
+    })
+  }
+  return { run, busy: remove.isPending || restore.isPending }
 }

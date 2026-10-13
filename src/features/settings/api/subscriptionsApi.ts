@@ -38,7 +38,3 @@ export async function updateSubscription(id: string, patch: Partial<Subscription
   if (error) throw isMissingTable(error) ? new Error(NOT_MIGRATED_115) : error
 }
 
-export async function deleteSubscription(id: string): Promise<void> {
-  const { error } = await supabase.from('service_subscriptions').delete().eq('id', id)
-  if (error) throw isMissingTable(error) ? new Error(NOT_MIGRATED_115) : error
-}

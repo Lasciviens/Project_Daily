@@ -70,7 +70,3 @@ export async function updateMovieEntry(
   return data
 }
 
-export async function deleteMovieEntry(id: string): Promise<void> {
-  const { error } = await supabase.from('user_movie_entries').delete().eq('id', id)
-  if (error) throw error
-}

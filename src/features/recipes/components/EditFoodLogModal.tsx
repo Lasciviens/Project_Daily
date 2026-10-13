@@ -4,7 +4,7 @@ import { Button } from '../../../shared/ui'
 import { SlotSelect } from './foodLogKit'
 import { sanitizeDecimal } from './foodLogUtils'
 import { toast } from '../../../app/store'
-import { useUpdateFoodLogEntry, useDeleteFoodLogEntry } from '../hooks/useFoodLog'
+import { useUpdateFoodLogEntry, useRemoveFoodLogEntries } from '../hooks/useFoodLog'
 import { useIngredientLibrary } from '../hooks/useIngredientLibrary'
 import { useRecipes } from '../hooks/useRecipes'
 import { ingredientSnapshot, recipeSnapshot } from '../api/foodLogApi'
@@ -39,11 +39,11 @@ export type EditableFoodEntry = Pick<DayMeal, 'id' | 'meal_slot' | 'title' | 'lo
 
 interface Props { meal: EditableFoodEntry; date: string; onClose: () => void }
 
-export function EditFoodLogModal({ meal, date, onClose }: Props) {
+export function EditFoodLogModal({ meal, onClose }: Props) {
   const { data: library = [] } = useIngredientLibrary()
   const { data: recipes = [] } = useRecipes()
   const update = useUpdateFoodLogEntry()
-  const del = useDeleteFoodLogEntry()
+  const del = useRemoveFoodLogEntries()
 
   const le = meal.logEntry
   const lib = le?.library_ingredient_id ? library.find(l => l.id === le.library_ingredient_id) : undefined
@@ -89,7 +89,7 @@ export function EditFoodLogModal({ meal, date, onClose }: Props) {
     } catch { /* useMutationWithFeedback already toasts; this just avoids an unhandled rejection */ }
   }
 
-  const saving = update.isPending || del.isPending
+  const saving = update.isPending || del.busy
 
   return (
     <ModalShell
@@ -100,11 +100,11 @@ export function EditFoodLogModal({ meal, date, onClose }: Props) {
       dismissible={!saving}
       footer={
         <div className="flex gap-2">
-          <Button variant="ghost" className="text-danger" loading={del.isPending} disabled={update.isPending}
-            onClick={() => del.mutate({ id: meal.id, date }, { onSuccess: onClose })}>
+          <Button variant="ghost" className="text-danger" loading={del.busy} disabled={update.isPending}
+            onClick={async () => { const r = await del.run([meal.id], { title: `Remove “${meal.title}”?`, done: `Removed ${meal.title}` }); if (r === 'deleted' || r === 'gone') onClose() }}>
             Delete
           </Button>
-          <Button variant="primary" block onClick={handleSave} loading={update.isPending} disabled={del.isPending}>
+          <Button variant="primary" block onClick={handleSave} loading={update.isPending} disabled={del.busy}>
             Save
           </Button>
         </div>

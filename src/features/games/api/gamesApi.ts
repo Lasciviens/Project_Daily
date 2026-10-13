@@ -257,7 +257,6 @@ export async function fetchGameStats(): Promise<{ rows: StatsRow[]; platforms: {
   return { rows, platforms }
 }
 
-
 export async function fetchPlayQueue(): Promise<QueueGame[]> {
   const rows = await withListColumns(GAME_LIST_COLUMNS, async cols => {
     const { data, error } = await supabase
@@ -356,11 +355,6 @@ export async function setPlayStatus(id: string, status: PlayStatus): Promise<voi
   if (error) throw isMissingTable(error) ? new Error(NOT_MIGRATED) : error
 }
 
-export async function deleteGame(id: string): Promise<void> {
-  const { error } = await supabase.from('games').delete().eq('id', id)
-  if (error) throw isMissingTable(error) ? new Error(NOT_MIGRATED) : error
-}
-
 // Add game to end of queue (assigns next sequential play_order). Returns the
 // position written, so the caller can correct its optimistic guess.
 export async function addToQueue(id: string): Promise<number> {
@@ -409,11 +403,6 @@ export async function addPlatform(gameId: string, input: GamePlatformInput): Pro
 
 export async function updatePlatform(id: string, patch: Partial<GamePlatformInput>): Promise<void> {
   const { error } = await supabase.from('game_platforms').update(patch).eq('id', id)
-  if (error) throw isMissingTable(error) ? new Error(NOT_MIGRATED) : error
-}
-
-export async function deletePlatform(id: string): Promise<void> {
-  const { error } = await supabase.from('game_platforms').delete().eq('id', id)
   if (error) throw isMissingTable(error) ? new Error(NOT_MIGRATED) : error
 }
 

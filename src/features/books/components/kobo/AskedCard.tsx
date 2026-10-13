@@ -1,7 +1,6 @@
 import { MessageCircleQuestion, Trash2 } from 'lucide-react'
 import { Card, CardHeader, IconButton, Truncate } from '../../../../shared/ui'
 import { formatDate } from '../../../../shared/utils/dateFormat'
-import { useEntityModal } from '../../../../shared/modals'
 import { useAiNotes, useDeleteAiNote } from '../../hooks/useKoboControl'
 import type { BookAiNote } from '../../types'
 
@@ -26,16 +25,13 @@ export function AskedCard({ bookId, title = 'Asked on the Kobo' }: { bookId?: st
   return (
     <Card>
       <CardHeader title={title} icon={<MessageCircleQuestion />} subtitle={`${rows.length} ${rows.length === 1 ? 'question' : 'questions'}`} />
-      <AskedList rows={rows} onDelete={id => remove.mutate(id)} showBook={!bookId} />
+      <AskedList rows={rows} onDelete={id => void remove.run([id], { title: 'Delete this question and its answer?', done: 'Question deleted' })} showBook={!bookId} />
     </Card>
   )
 }
 
 export function AskedList({ rows, onDelete, showBook }: { rows: BookAiNote[]; onDelete: (id: string) => void; showBook: boolean }) {
-  const modal = useEntityModal()
-  const ask = async (id: string) => {
-    if (await modal.confirm({ title: 'Delete this question and its answer?', confirmLabel: 'Delete', destructive: true })) onDelete(id)
-  }
+  const ask = (id: string) => onDelete(id)
   return (
     <ul className="flex flex-col divide-y divide-line">
       {rows.map(n => (

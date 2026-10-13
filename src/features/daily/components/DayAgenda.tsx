@@ -340,9 +340,20 @@ export function DayAgenda({ date, bare = false }: { date: Date; bare?: boolean }
                 type="button"
                 aria-label="Delete block"
                 onClick={() => {
-                  if (isRecurring) deleteScheduleBlock.mutate(block.canonicalId)
-                  else deleteBlock.mutate({ id: block.canonicalId, dateStr: block.dateStr })
                   setSelectedId(null)
+                  if (isRecurring) {
+                    void deleteScheduleBlock.run([block.canonicalId], {
+                      title: `Delete the weekly plan “${block.title}”?`,
+                      message: 'Every day it repeats on leaves the agenda. Days already planned on their own stay.',
+                      done: 'Weekly plan deleted',
+                    })
+                  } else {
+                    void deleteBlock.run([block.canonicalId], {
+                      title: `Delete “${block.title}” from the schedule?`,
+                      message: block.taskId ? 'Only the time slot goes; the task stays.' : undefined,
+                      done: 'Slot deleted',
+                    })
+                  }
                 }}
                 className={cx(quickBtn, 'hover:text-danger')}
               ><Trash2 className="h-3.5 w-3.5" aria-hidden /></button>

@@ -82,8 +82,9 @@ export function useDeleteAutoList() {
     mutationFn: async (v: { follow: MediaFollow; listId: number | null }) => {
       if (v.listId) await deleteTraktList(v.listId)
       await removeFollow(v.follow.id)
+      return true
     },
-    successMessage: 'List deleted',
+    silent: 'the delete flow reports the result',
     invalidates: [qk.trakt.lists(), qk.mediaFollows.all],
   })
 }
