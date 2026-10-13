@@ -1,5 +1,9 @@
 # Automatic deploy — one-time setup
 
+**Status: set up on 12.10.2026 (the first dry run was green).** Steps 0–4 below are
+kept for a rebuild (a new token, a new database password, a new project); "From
+now on" is the part to read day to day.
+
 Once set up, a merge to `main` deploys everything, in this order
 (`.github/workflows/deploy.yml`):
 
@@ -27,8 +31,8 @@ has its own queue and never replaces a real deploy waiting in line.
 
 ## 0. Before you start
 
-- Migrations 139 and 140 have been run in the SQL editor (CLAUDE.md → Pending
-  manual steps, first rows). The deploy refuses to touch the database
+- Migrations 139 and 140 have been run in the SQL editor (done; the green dry
+  run of 12.10.2026 confirmed it). The deploy refuses to touch the database
   otherwise.
 - **Before merging,** delete leftovers of earlier deploy attempts (06.06.2026–
   14.07.2026): GitHub → **Settings** → **Secrets and variables** → **Actions** →

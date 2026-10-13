@@ -1,66 +1,64 @@
-# ScreenScraper + ES-DE integration — working notes
+# ScreenScraper and ES-DE — integration reference
 
-> **TEMP / WORKING DOC.** This is the scratchpad for the Games auto-scrape work
-> (ScreenScraper metadata + ES-DE play-stats sync). Fold the settled parts into
-> `CLAUDE.md`'s Games Feature Detail and delete this file once the feature ships.
->
+The durable reference for two integrations of the Games page: **ScreenScraper**
+(metadata and artwork for retro games, Games → Scrape) and the **ES-DE import**
+from the RP6 handheld (the `esde-sync` contract). The feature itself is
+described in [`docs/features/games.md`](../features/games.md); the device side
+(Termux scripts and widgets) in [`docs/termux-widgets.md`](../termux-widgets.md).
+
 > **No credentials live in this file, and none ever should.** `devid` /
-> `devpassword` / the member password belong in Supabase Vault only. See the
-> security finding below — this is not a formality, the API leaks them if you
-> are careless.
+> `devpassword` / the member password are server-side secrets only. See §3 —
+> this is not a formality, the API leaks them if you are careless.
 
-Last verified live: **2026-09-15**, against `api.screenscraper.fr/api2`.
+**Where to look:** §16 is the current scraper (rewritten from scratch on
+25.09.2026) and the complete API map it was built from. §1–§6 are the API
+facts measured first (auth, limits, the credential leak, plain-text errors,
+field mapping, system ids). §8–§11 are the ES-DE import: transport, the
+measured export, the contract and the order of work. Sections 7 and 12–15
+described the first scraper, which is gone; they live in
+[`docs/archive/screenscraper-v1.md`](../archive/screenscraper-v1.md). The
+numbers are kept so that citations elsewhere (§10, §16 in code, scripts and
+the coordination logs) stay valid.
 
-> **2026-09-25 — the scraper was rewritten from scratch.** §12–§15 describe the
-> first version (studio, `apply_match`, `apply_reviewed`, `scrape`), which is
-> gone. **§16 is the current design** and the complete API map it was built
-> from; §1–§11 (auth, limits, the credential leak, plain-text errors, system
-> ids, the ES-DE import) still hold.
+First verified live: **15.09.2026**, against `api.screenscraper.fr/api2`.
 
 ---
 
 ## 1. What was verified live (not guessed)
 
-Every shape below came from a real call made during this session, per this
-repo's "never add a speculative external-API field" rule.
+Every shape below came from a real call, per this repo's "never add a
+speculative external-API field" rule.
 
 | Endpoint | Result | Notes |
 |---|---|---|
 | `ssuserInfos.php` | **403** → **200** | 403 with dev credentials alone; 200 once the member `ssid`/`sspassword` are sent (see §2) |
 | `jeuRecherche.php` | **200**, ~2.3 MB | Fuzzy search by name. Returned 30 candidate games for one query |
-| `jeuInfos.php` (match) | **200**, ~208 KB | Exact lookup by ROM filename. This is the endpoint the sync will use |
+| `jeuInfos.php` (match) | **200**, ~208 KB | Exact lookup by ROM filename |
 | `jeuInfos.php` (no match) | **404** | ⚠️ **plain text, NOT JSON** — see §4 |
-| `systemesListe.php` | **200**, ~4.0 MB | 250 systems, carries the ES-DE/RetroPie folder-name mapping (§5) |
+| `systemesListe.php` | **200**, ~4.0 MB | 250 systems, carries the ES-DE/RetroPie folder-name mapping (§6) |
 
 ---
 
-## 2. Auth: two independent credential pairs, and only one of them is set up
+## 2. Auth: two credential pairs, both in place
 
 ScreenScraper wants **two** pairs, and they are not interchangeable:
 
-- `devid` + `devpassword` — the *application* identity. **We have this and it
-  works.**
-- `ssid` + `sspassword` — the *user account*, and what carries the **paid
+- `devid` + `devpassword` — the *application* identity.
+- `ssid` + `sspassword` — the *member account*, which carries the **paid
   membership**. This is the screenscraper.fr website login, NOT the "Password"
-  column on the dev page (that one is the devpassword). Now in hand and
-  verified working.
+  column on the developer page (that one is the devpassword).
 
-Consequence, measured from the live `ssuser` block on an anonymous call:
+Both pairs are set up and verified. They are the four secrets
+`SCREENSCRAPER_DEVID` / `SCREENSCRAPER_DEVPASSWORD` / `SCREENSCRAPER_SSID` /
+`SCREENSCRAPER_SSPASSWORD` ([`docs/backend/environment.md`](../backend/environment.md)), read by
+`screenscraper-sync` and `screenscraper-media`. All four are needed on every
+call: with only the dev pair the account is anonymous.
 
-```
-niveau:             0        ← anonymous: no member credentials sent
-maxthreads:         1
-maxrequestsperday:  10000
-maxrequestspermin:  3072
-maxdownloadspeed:   128      (KB/s)
-```
-
-### Premium IS recognised once the member credentials are sent — measured
+### Anonymous vs premium — measured 15.09.2026
 
 The paid membership hangs off the **member account**, not the dev app. Sending
-`ssid` + `sspassword` (the screenscraper.fr website login) alongside the dev
-pair switches it on. Measured on a real `ssuserInfos.php` call and confirmed
-again on a real `jeuInfos.php` call:
+`ssid` + `sspassword` alongside the dev pair switches it on. Measured on a real
+`ssuserInfos.php` call and confirmed again on a real `jeuInfos.php` call:
 
 | | anonymous (dev only) | **premium (member sent)** | change |
 |---|---|---|---|
@@ -71,15 +69,13 @@ again on a real `jeuInfos.php` call:
 | `maxdownloadspeed` | 128 KB/s | **2 176 KB/s** | **17×** |
 | `maxrequestskoperday` | 1 000 | 10 000 | 10× |
 
-The 17× media download speed is the one that matters most for a first full
-scrape, since cover art is the bulk of the bytes. Six threads also means the
-scrape no longer has to be strictly sequential.
+The account read **level 10 and 7 threads** when the rewrite measured it on
+25.09.2026 (§16.2).
 
-**Watch the shared daily counter.** That same call reported
-`requeststoday: 24160` — the quota is per *account*, so scraping done on the
-device itself (ES-DE's own scraper) spends from the same 100 000. Read
+**Watch the shared daily counter.** The quota is per *account*, so scraping done
+on the device itself (ES-DE's own scraper) spends from the same 100 000. Read
 `requeststoday` at the start of a run and back off rather than assuming a fresh
-budget.
+budget (the rewrite's quota floor does this, §2b).
 
 Earlier dead ends, recorded so nobody retries them: forcing a level via the
 documented debug mode (`devdebugpassword` + `forcelevel`) at 0/1/20/30/99
@@ -87,10 +83,6 @@ returned identical anonymous limits every time, because `forcelevel` overrides a
 *logged-in* user's level and there was no logged-in user. And
 `userlevelsListe.php` returns **contribution** ranks (Membre → Contributeur →
 Admin), a different axis from the paid membership.
-
-**Store as** `SCREENSCRAPER_DEVID` / `SCREENSCRAPER_DEVPASSWORD` /
-`SCREENSCRAPER_SSID` / `SCREENSCRAPER_SSPASSWORD` in Supabase Vault. All four
-are needed; the pairs are not interchangeable.
 
 ---
 
@@ -109,13 +101,13 @@ account or cited from those sources.
 | **Donor (€10 one-time)** | **+5 for life** | — |
 | Contributor | 8 | 40 Mb/s |
 
-This account reads **6 threads** = 1 base + 5 donor, matching its panel
-(`Member donor (1) / Developer`). Contributor tier is earned by contributing
-data, not bought.
+On 15.09.2026 this account read **6 threads** = 1 base + 5 donor, matching its
+panel (`Member donor (1) / Developer`); it read 7 on 25.09.2026. Contributor
+tier is earned by contributing data, not bought.
 
 ### ⚠️ `requeststoday` is NOT the panel's "Scrapes Today", and NOT a clean counter
 
-The user's panel showed `Scrapes Today: 30 / 100000` while the API's
+The panel showed `Scrapes Today: 30 / 100000` while the API's
 `ssuser.requeststoday` read **24 320** at the same moment. Measured directly:
 
 - calling `ssuserInfos.php` repeatedly did **not** move the counter (5 reads,
@@ -124,36 +116,39 @@ The user's panel showed `Scrapes Today: 30 / 100000` while the API's
 
 So `requeststoday` counts something coarser and/or wider than "scrapes this
 tool made" — it does not increment 1:1 with our requests, and it does not agree
-with the figure the website shows. **Do not build pacing on the assumption that
-it is our own request count.** Read it as a rough ceiling indicator only; do the
-real pacing client-side, from requests we actually issued.
+with the figure the website shows. Treat it as a rough ceiling indicator, never
+as our own request count.
 
-### Pacing rule to implement
+### Pacing
 
-- **Sleep ~1.2 s between requests.** Skyscraper hard-codes
-  `limitTimer.setInterval(1200)` with the comment that it is "set a bit above
-  1.0 as requested by the good folks at ScreenScraper". That is a politeness
-  contract with the service, not just a technical limit — honour it even though
-  our measured `maxrequestspermin` is far higher.
-- **Never exceed `maxthreads`** (6 here). RomM's issue documents the formula
-  `maxrequestspermin = threads × 50`; note our account reports **7168**, which
-  does not fit that formula, so prefer the reported field over the formula and
-  prefer the 1.2 s floor over both.
-- **Track KO (not-found) separately.** `maxrequestskoperday` is 10 000 here and
-  is its own budget. A library full of unmatched files burns it fast — which is
-  exactly why the `._` AppleDouble sidecars and the `androidapps`/`steam`
-  pseudo-systems (§9) must be filtered out *before* scraping, not discovered as
-  failures.
+- **Skyscraper sleeps ~1.2 s between requests** (`limitTimer.setInterval(1200)`,
+  "set a bit above 1.0 as requested by the good folks at ScreenScraper") — a
+  politeness contract with the service, not just a technical limit.
+- **Never exceed `maxthreads`.** RomM's issue documents
+  `maxrequestspermin = threads × 50`; that does not fit this account. The
+  formula that does is `1024 × (maxthreads + 1)` (§16.2: 6 threads → 7 168).
+  Prefer the reported field over any formula.
+- **Track KO (not-found) separately.** `maxrequestskoperday` is its own budget.
+  A library full of unmatched files burns it fast — which is why the `._`
+  AppleDouble sidecars and the launcher pseudo-systems (§9) must be filtered out
+  *before* scraping, not discovered as failures.
+
+**What the current code does** (§16): it does not sleep between requests; it
+bounds concurrency instead. `screenscraper-sync` runs at most **3** lookups at
+once per call (Many games looks up 10 games per call and saves 5), retries once
+after 1.5 s when ScreenScraper says busy, and refuses to start when fewer than
+**300 requests or 50 misses** are left today — a floor kept for the handheld,
+read from `requeststoday` as a rough ceiling. The browser loads proxied images
+3 at a time (`ssImageQueue.ts`), retrying after a pause on "busy".
 
 ### Failure signals to branch on
 
-Confirmed live: the API signals via **HTTP status**, and the body of a failure is
-**plain text, not JSON** (§4). Verified headers carry no rate-limit metadata —
-no `Retry-After`, no `X-RateLimit-*`; the response headers are plain nginx +
-CORS only. So status code is the only structured signal.
+The API signals via **HTTP status** and a failure body is **plain text, not
+JSON** (§4) — and a failed login often comes back as HTTP **200** (§16.2), so
+the body has to be read too (`classifyText` in `scraper/ssRules.ts`). Verified
+headers carry no rate-limit metadata — no `Retry-After`, no `X-RateLimit-*`.
 
-Skyscraper additionally matches these strings, which are worth recognising
-because they mean *stop*, not *retry*:
+Skyscraper additionally matches these strings, which mean *stop*, not *retry*:
 
 | String | Meaning |
 |---|---|
@@ -164,16 +159,13 @@ because they mean *stop*, not *retry*:
 | `non trouvée` | game not found (normal) |
 
 Skyscraper retries up to **4 times** on ordinary failures but **never** on
-blacklist / quota / API-closed / invalid-JSON — those abort the run. Mirror
-that: retrying a quota error just deepens the hole.
+blacklist / quota / API-closed / invalid-JSON — those abort the run. Retrying a
+quota error just deepens the hole.
 
-### Practical budget for our case
+### Practical budget
 
-The whole library is well under 10 000 games (§9). At 1.2 s/request sequentially
-that is a few hours for a first full pass, and essentially nothing on the
-incremental runs afterwards. **The quota is not the binding constraint; the
-politeness interval is.** There is no reason to push threads to 6 for a one-off
-backfill that can simply run in the background.
+The whole library is well under 10 000 games (§9). **The quota is not the
+binding constraint for this library; politeness and the shared counter are.**
 
 ---
 
@@ -182,8 +174,8 @@ backfill that can simply run in the background.
 This is the single most important finding here.
 
 Every media entry the API returns carries a ready-made URL with credentials
-inline — and once the member pair is sent (which we now do, for premium), the
-URL carries **the account password too**, not just the dev one:
+inline — and since the member pair is sent, the URL carries **the account
+password too**, not just the dev one:
 
 ```
 https://neoclone.screenscraper.fr/api2/mediaJeu.php
@@ -191,41 +183,42 @@ https://neoclone.screenscraper.fr/api2/mediaJeu.php
   &ssid=<SSID>&sspassword=<ACCOUNT PASSWORD>&systemeid=1&jeuid=3&media=sstitle(wor)
 ```
 
-The same is true of `systemesListe`'s `medias[].url`.
+The same is true of `systemesListe`'s `medias[].url`, of
+`header.commandRequested` (it echoes the full request URL) and of a hack's
+`downloadurl`.
 
-**Therefore:**
-- **Never store a ScreenScraper media URL verbatim** in `games.primary_cover_url`,
-  `screenshot_url`, `fanart_url`, or anywhere else in the DB. Those columns are
-  read by the browser, so doing this would ship our API credentials to the client
-  and into every DB backup.
-- The sync must either (a) download the image server-side and re-host it in
-  Supabase Storage, or (b) store only the *parameters* (`systemeid`, `jeuid`,
-  `media` type) and have an edge function rebuild the signed URL on demand.
-- **(a) is the better fit** — it matches how this app already treats external
-  media, and it removes the runtime dependency entirely. It also sidesteps the
-  128 KB/s anonymous download cap being hit on every page view.
+**How the app handles it (§16.4):** no ScreenScraper URL is ever stored,
+logged or returned to the browser. Every payload passes through
+`stripCredentials`, and every error is scrubbed. A file the owner keeps is
+**copied** server-side into Supabase Storage (the image columns —
+`primary_cover_url`, `screenshot_url`, `fanart_url` — only ever take a stored
+copy); everything else is streamed through the `screenscraper-media` proxy,
+which adds the credentials server-side and only serves requests signed per
+game.
 
 ---
 
 ## 4. ⚠️ Error responses are plain text, not JSON
 
-Both failure modes return a non-JSON body. Parsing the response as JSON
-unconditionally will throw before the error is ever inspected:
+Failure bodies are not JSON. Parsing the response as JSON unconditionally will
+throw before the error is ever inspected:
 
 | Condition | HTTP | Body (verbatim) |
 |---|---|---|
 | ROM not found | `404` | `Erreur : Rom/Iso/Dossier non trouvée !` |
 | Bad credentials | `403` | `Erreur de login : Vérifier les identifiants utilisateurs !` |
 
-The sync must branch on **status code first**, and only parse JSON on `200`.
-A 404 is a normal, expected outcome (an unmatched ROM) — it should mark the row
-`needs_review`, never fail the run.
+Branch on the status code **and** the body; only parse JSON when the body is
+JSON. The full list of codes is in §16.2. A miss is a normal outcome (an
+unmatched ROM): the scraper reports it as "no match" for that lookup and goes
+on; it never fails the run and never flags the game.
 
 ---
 
-## 5. Field mapping → our `games` schema
+## 5. Field mapping → our schema
 
-Real response keys from `jeuInfos.php` → `response.jeu`:
+Real response keys from `jeuInfos.php` → `response.jeu` (the complete list,
+including `themes`, `styles`, `hacks` and the rest, is in §16.2):
 
 ```
 id, romid, notgame, noms, cloneof, systeme, editeur, developpeur,
@@ -233,28 +226,36 @@ joueurs, note, topstaff, rotation, synopsis, classifications, dates,
 genres, modes, familles, tips, actions, medias, roms, rom
 ```
 
+How the current scraper maps them (`toCandidate` in `scraper/ssRules.ts`).
+Region and language orders come from "What to save" (`screenscraper_prefs`;
+defaults: regions `ss, wor, eu, us, jp`, languages `en, fr, de, es, it, pt`).
+Every field has a policy — **fill** (only when empty, the default), **replace**
+or **skip**.
+
 | Our column | ScreenScraper source | Shape / gotcha |
 |---|---|---|
-| `title` | `noms[]` | Array of `{region, text}` — regions seen: `ss`, `us`, `jp`, `eu`. Pick `ss` (ScreenScraper canonical) first, then `us`, then `eu` |
-| `release_year` | `dates[]` | Array of `{region, text}`, text is `YYYY-MM-DD`. Take the earliest, or match the ROM's own region |
-| `publisher` | `editeur.text` | `{id, text}` |
-| `developer` | `developpeur.text` | `{id, text}` |
-| `description` | `synopsis[]` | Array of `{langue, text}` — pick `langue == 'en'` |
-| `genres` (text[]) | `genres[]` | Each has `noms[{langue,text}]`; take the `en` entry. `principale: "1"` marks the primary genre |
-| `series_name` | `familles[]` | **This is the series** ("Sonic"). Same `noms[{langue,text}]` shape; often only `fr` exists — fall back to any language |
-| `players` | `joueurs.text` | A **range string** like `"1-2"`, not an integer |
-| `modes` | `modes[]` | Same multi-language `noms[]` shape |
-| `age_rating` | `classifications[]` | Array of `{type, text}` — types seen: `SS`, `PEGI`, `CERO`, `ESRB`, `Tectoy`. Prefer `PEGI`, else `ESRB` |
-| `external_ref` | `jeu.id` | The stable ScreenScraper game id |
-| `external_source` | — | Literal `'screenscraper'` (already in the CHECK) |
-| `primary_cover_url` etc. | `medias[]` | **See §3 — do not store the URL** |
+| `games.title` | `noms[]` | `{region, text}`; picked by the region order (`ss` = their canonical name). Non-games carry a `ZZZ(notgame):` prefix, which is stripped |
+| `games.release_year` | `dates[]` | `{region, text}`, text `YYYY` or `YYYY-MM-DD`; the earliest year across all regions |
+| `game_platforms.release_date` | `dates[]` | A full date only: the ROM's own region first, then the region order, else the earliest. A year is never padded into a fake day |
+| `games.publisher` / `developer` | `editeur.text` / `developpeur.text` | `{id, text}` |
+| `games.description` | `synopsis[]` | `{langue, text}`, picked by the language order |
+| `games.genres` / `modes` (text[]) | `genres[]` / `modes[]` | Each entry has `noms[{langue,text}]`; `principale: "1"` entries lead |
+| `games.series_name` | `familles[]` | **This is the series** ("Sonic"). Often only `fr` exists — falls back to any language |
+| `games.players` | `joueurs.text` | A **range string** like `"1-2"`, not an integer |
+| `games.age_rating` | `classifications[]` | `{type, text}`; PEGI first, then ESRB, CERO, USK, SS — stored as `"PEGI 12"` |
+| `game_platforms.rating` | `note.text` | **Out of 20** (`"17"` = 17/20), stored ×5 on the 0–100 scale |
+| `game_platforms.region` / `version_title` / `rom_status` | `rom{…}` | The matched dump's regions and filename tags; `rom_status = 'verified'` only after a hash match |
+| `primary_cover_url` / `screenshot_url` / `fanart_url` / `game_platforms.wheel_url` | `medias[]` | `box-2D` / `ss` / `fanart` / `wheel-hd`, and **only a stored copy** — never their URL (§3) |
+| `games.ss_jeu_id` | `jeu.id` | The match marker (+ `ss_scraped_at`). **Never** `external_source`/`external_ref` — those belong to the ES-DE sync (§16.6) |
 
-**`note.text` is a rating out of 20**, not out of 10 or 100 (`"17"` = 17/20).
-Convert deliberately; do not write it into a 1-10 `rating` column raw — and note
-that `games.rating` is the user's OWN score, so a ScreenScraper score probably
-belongs in a separate column or nowhere at all.
+**Scores never touch `games.rating`.** `games.rating` is `numeric(3,1)` 0–10
+and is the **user's own** score; nothing external ever writes it. Every
+provider score goes to `game_platforms.rating`, `numeric(4,1)` 0–100: ES-DE's
+0–1 decimal ×100 (§10), ScreenScraper's /20 ×5. One column, one scale.
 
-### Media types available (26)
+### Media types
+
+The first sample carried 26 types:
 
 ```
 bezel-16-9, box-2D, box-2D-back, box-2D-side, box-3D, box-texture,
@@ -264,16 +265,16 @@ steamgrid, support-2D, support-texture, themehs, video,
 video-normalized, wheel-carbon, wheel-hd, wheel-steel
 ```
 
-Each entry: `{type, parent, url, region, crc, md5, sha1, size, format}`.
-For our three columns: `box-2D` → cover, `ss` (in-game screen) → screenshot,
-`fanart` → fanart.
+`mediasJeuListe` lists 50 (§16.2); the app's catalogue with each type's default
+mode is `scraper/ssMediaCatalog.ts`. Each entry:
+`{type, parent, url, region, crc, md5, sha1, size, format}`.
 
 ### The `rom` block — exact-match keys
 
 `jeu.rom` carries `romfilename`, `romcrc`, `rommd5`, `romsha1`, `romsize`,
 `romregions`, plus flags (`beta`, `demo`, `proto`, `hack`, `unl`, `alt`, `best`).
-**CRC/MD5/SHA1 matching is far more reliable than filename matching** — if the
-device-side script can compute a CRC32 per ROM, use `crc=` instead of `romnom=`.
+**Hash matching is far more reliable than filename matching**; the current
+search sends hashes, filename, size and serial when it has them (§16.2).
 
 ---
 
@@ -293,102 +294,74 @@ device-side script can compute a CRC32 per ROM, use `crc=` instead of `romnom=`.
 ```
 
 **ES-DE uses the RetroPie folder-naming convention**, so `nom_retropie` is the
-join key: an ES-DE `roms/megadrive/` folder → `systemeid=1`. Build this map
-ONCE and cache it (it is a 4 MB response; re-fetch quarterly at most).
+main join key: an ES-DE `roms/megadrive/` folder → `systemeid=1`. Also on each
+system: `extensions` (`"gen,md,smd,bin,sg"`) and `romtype`.
 
-Also on each system: `extensions` (`"gen,md,smd,bin,sg"`) and `romtype`.
+**How it is stored:** the list is cached in `screenscraper_systems` (migration
+094), filled by `screenscraper-sync`'s `refresh_systems` action (a 4 MB answer —
+re-fetch rarely). Each row's aliases are `nom_retropie` plus every other name
+(eu, us, jp, common, recalbox, launchbox), also in a punctuation-free form,
+because some ES-DE folders (`n3ds`) are not in their RetroPie field. Several
+systems claim the same alias (`snes`: 4 Super Nintendo and 202 "Super Mario
+World Hacks"), so **the lowest id wins** — a last-write-wins map once sent 604
+games to a ROM-hack database.
 
 ---
 
-## 7. Open decisions
+## 7. Open decisions (moved)
 
-- [x] ~~Member account password → premium~~ **DONE** — supplied and verified;
-      real premium numbers recorded in §2
-- [x] ~~Image strategy~~ **DECIDED — mirror into Supabase Storage.** A URL the
-      browser must fetch cannot be hidden from it: whatever goes in `<img src>`
-      is visible in devtools and stored in every backup of that row, so the only
-      real fix is that the browser never receives a ScreenScraper URL at all.
-      The alternative (keep the reference, proxy each view through an edge
-      function) removes the storage cost and replaces it with a far worse one —
-      every thumbnail view becomes one function invocation plus one
-      ScreenScraper download, spending the premium 2176 KB/s and the shared
-      100k/day counter on page views rather than on scraping. Mirroring is
-      one-time and, at premium speed, cheap: ~150-250 MB for 1210 covers.
-      **Hard rule: `primary_cover_url` / `screenshot_url` / `box_url` hold a
-      Storage URL only — never a ScreenScraper one.**
-- [x] ~~Where an external score lives without colliding with the user's own
-      `games.rating`~~ **DECIDED** (§10) — `games.rating` is `numeric(3,1)`
-      0-10 and is the USER's own score; nothing external ever writes it. Every
-      provider score goes to `game_platforms.rating`, which 089 already sized
-      `numeric(4,1)` 0-100 for exactly this. ES-DE's 0-1 decimal is stored
-      there ×100; ScreenScraper's /20 will be ×5. One column, one scale, and
-      the user's score is never touched
-- [x] ~~Whether the device script can compute CRC32~~ **DECIDED — not a
-      blocker, revisit as a cheap win.** Matching proceeds on `romnom` +
-      `systemeid`, which is the path §1's own successful `jeuInfos` 200 used.
-      It is sufficient where it actually matters right now: all 96 games
-      missing metadata are `.sfc` with No-Intro names
-      (`Super Mario RPG - Legend of the Seven Stars (USA).sfc`), the best case
-      for filename matching. Worth picking up later because it is nearly free
-      for part of the library: 495 of 1210 entries are `.zip`, whose inner
-      CRC32 is readable straight from the archive's central directory with no
-      decompression, and file size is a `stat()`. Skip it for the 148 disc
-      images (`.chd`/`.iso`/`.rvz`) — hashing those means reading tens of GB on
-      a handheld.
+The first version's decision list moved to
+[the archive](../archive/screenscraper-v1.md). The one decision still in force
+— provider scores never write `games.rating` — is in §5.
 
 ---
 
 ## 8. ES-DE transport — decision and rationale
 
-See the repo discussion; summary of the agreed shape:
-
-**Phase 1 — one-time full export (manual).** Pull the ES-DE `gamelist.xml`
-files off the device once, land them somewhere reachable, and do the initial
-bulk import. No automation needed for this; it happens once.
-
-**Phase 2 — incremental push from the device.** A small script on the RP6
-(Termux) reads the gamelist files, sends only what changed, and is triggered
-manually/occasionally rather than on a schedule.
+**One path for the first import and every later push.** A script on the RP6
+(Termux) reads the gamelist files, sends only what changed, and is triggered by
+hand (a Termux widget), never on a schedule. The one-time full import was the
+same code path with more rows (§11).
 
 **Why a device-side push, not a cloud-side pull:** Supabase's `pg_cron` can only
 reach things that are already on the internet. The RP6 is behind home NAT with
 no stable address, so a cron job can never "go get" the file. The device has to
-initiate. This is exactly the pattern `phone-gateway` already uses (device holds
-a secret, POSTs to an edge function, function acts as the single user with the
-service role) — reuse it rather than inventing a second one.
+initiate. This is the pattern `phone-gateway` already uses (device holds a
+secret, POSTs to an edge function, the function acts as the single user with
+the service role) — reused, with its own door (§10).
 
 **Syncthing vs KDE Connect vs Termux script:**
 
 | Option | Verdict |
 |---|---|
-| **KDE Connect** | ✗ Not suited. It is a phone↔desktop pairing tool (notifications, clipboard, ad-hoc file send). It has no unattended folder-sync daemon, so nothing would happen unless you pushed the file by hand every time |
-| **Syncthing** | ~ Works, but solves the wrong half. It would keep `gamelist.xml` mirrored to your MacBook continuously — good for Phase 1 convenience, but it still needs a *second* step to get the data into Supabase, and the Mac has to be on. It adds a moving part without removing one |
-| **Termux script → edge function** | ✓ **Recommended.** One hop, no intermediate device, no always-on node. The script parses the XML on-device, diffs against a stored hash, and POSTs only changes. Matches `phone-gateway`'s existing security model exactly |
+| **KDE Connect** | ✗ Not suited. It is a phone↔desktop pairing tool (notifications, clipboard, ad-hoc file send). It has no unattended folder-sync daemon, so nothing would happen unless the file was pushed by hand every time |
+| **Syncthing** | ~ Works, but solves the wrong half. It would keep `gamelist.xml` mirrored to a Mac continuously, but still needs a *second* step to get the data into Supabase, and the Mac has to be on. It adds a moving part without removing one |
+| **Termux script → edge function** | ✓ **Chosen.** One hop, no intermediate device, no always-on node. The script parses the XML on-device, diffs against stored fingerprints, and POSTs only changes. Matches `phone-gateway`'s security model |
 
-**Incremental strategy (the "only updates, not everything" requirement):** store
-a per-file hash (or per-game `lastplayed`/`playcount` fingerprint) on the device
-after each successful push, and send only rows whose fingerprint changed. The
-server side stays a plain idempotent upsert keyed on `(system, rom filename)`,
-so a full re-push is always safe if the local state is ever lost.
+**Incremental strategy (the "only updates, not everything" requirement):** a
+per-game fingerprint is stored on the device after each acknowledged push, and
+only rows whose fingerprint changed are sent. The server side stays a plain
+idempotent upsert keyed on `(system, rom path)`, so a full re-push is always
+safe if the local state is ever lost.
 
-**Ownership: Codex owns the device-side Termux script** (user decision,
-2026-09-15). It lives under `scripts/` and touches the device, not `src/` or
-`supabase/`, which matches Codex's existing side of the two-AI split in
-`CLAUDE.md`. Claude owns the receiving end (the edge-function action, the
-migration and the schema). Revisit later if that split stops fitting.
+**History.** The device-side push started as Codex task C7 (done 16.09.2026,
+PR #440); Claude wrote the receiving functions, the migrations and this
+contract. Who may change which file now follows the two-AI rules in
+`AGENTS.md`. Install, update and troubleshooting:
+[`docs/termux-widgets.md`](../termux-widgets.md).
 
 ---
 
-## 9. The real ES-DE export — measured, 2026-09-15
+## 9. The real ES-DE export — measured 15.09.2026
 
-Run against the user's actual export (`ES-DE Copy`, ES-DE **3.4.1-58 (r51)**,
+Run against the owner's actual export (`ES-DE Copy`, ES-DE **3.4.1-58 (r51)**,
 Android app on an Adreno 740 device). **Self-check passed** — `<path>` count
 equals `<game>` count in every file, so every number below is measured, not
 estimated.
 
 **1.3 MB total.** 33 files; 26 `gamelist.xml` (24 live + 2 stale CLEANUP
-snapshots) totalling 1.2 MB. `downloaded_media` was not copied and is not
-needed. Only `gamelists/` plus two config files are in scope.
+snapshots) totalling 1.2 MB. `downloaded_media` was not copied for this
+measurement. Only `gamelists/` plus two config files were in scope.
 
 ### 1150 games across 24 systems
 
@@ -414,8 +387,7 @@ needed. Only `gamelists/` plus two config files are in scope.
 be excluded up front so they do not burn the separate KO quota (§2b).
 
 **Real scrape budget: 1125 games.** 1150 minus 4 launcher-shortcut entries minus
-21 AppleDouble sidecars (below). At the measured premium ceiling that is a
-single-digit-minute full pass, and incremental runs are far smaller.
+21 AppleDouble sidecars (below).
 
 `<folder>` elements also exist alongside `<game>` in some lists (switch 7,
 genesis 3, n3ds 3, nes/snes/wiiu 1 each). They are directory entries carrying
@@ -449,12 +421,11 @@ The 97–98 % band is one consistent set: those are the games ES-DE has already
 scraped. The ~2 % gap is the same unscraped games in every column, not a
 per-field quality issue — which is exactly the set ScreenScraper should fill.
 
-**`altemulator` does NOT appear in this export.** An earlier draft of this
-section listed it from a mis-parsed sample; the verified run shows 18 distinct
-`<game>` child elements and `altemulator` is not among them. Do not write an
-importer branch for it.
+**`altemulator` does NOT appear in this export.** An earlier draft listed it
+from a mis-parsed sample; the verified run shows 18 distinct `<game>` child
+elements and `altemulator` is not among them.
 
-**`playtime` is the find.** `games` already has empty `esde_playcount` /
+**`playtime` is the find.** `games` already had `esde_playcount` /
 `esde_last_played` / `esde_playtime_seconds` columns; all three map directly and
 `playtime` is already in seconds.
 
@@ -470,8 +441,7 @@ two fields the data supports making required.
    `./._Legend of Zelda, The - Ocarina of Time (USA).z64`. The `._` prefix is a
    macOS resource-fork sidecar created when the folder was copied to the Mac,
    **not a real ROM**. Filter them out or they get scraped, fail, and burn KO
-   quota. (They exist in the *copy*; whether the device itself has them is worth
-   confirming before the device-side script assumes either way.)
+   quota.
 2. **Extension-less paths** exist (folder-based games). Matching logic that
    assumes an extension will mishandle them.
 
@@ -486,16 +456,16 @@ the count separately — an early run sampled one by accident and reported a
 
 - **`custom_systems/es_systems.xml`** (42 KB, 25 `<system>`, every field 100 %
   filled) — `name`, `fullname`, `path`, `extension`, `platform`, `theme` per
-  system. `platform` is the natural bridge to ScreenScraper's system ids (§6);
+  system. `platform` is a natural bridge to ScreenScraper's system ids (§6);
   `extension` says which files are even candidate ROMs.
 - **`custom_systems/es_find_rules.xml`** (55 entries) — emulator discovery. Not
   useful to us.
 - **`settings/es_settings.xml`** (9 KB) — 103 `<bool>`, 53 `<string>`, 17
   `<int>`. App preferences; nothing we need.
 - **`collections/custom-mario.cfg`, `custom-pokemon.cfg`** — both **empty**, so
-  there is no custom-collection data to import today.
+  there was no custom-collection data to import.
 
-### Running it
+### Running the inspector
 
 ```
 node scripts/inspect-esde-export.mjs        # native macOS folder picker
@@ -507,12 +477,15 @@ READ-ONLY, uploads nothing. Paste the OUTPUT, never the files.
 
 ---
 
-## 10. The gateway contract — `import_esde_games`
+## 10. The ES-DE import contract — `esde-sync` (`import_esde_games`)
 
-**This section is the contract.** The device-side script (Codex, C7) and the
-edge-function handler (Claude) are written against it; neither side may assume
-anything it does not state. Everything here is derived from the measured export
-in §9, not from what ES-DE could theoretically emit.
+**This section is the contract** between the device-side push
+(`scripts/push-esde-library.py`, also used by the widgets' `sync-esde.py`) and
+the `esde-sync` edge function. Neither side may assume anything it does not
+state. Everything here is derived from the measured export in §9, not from what
+ES-DE could theoretically emit. Pure rules are verified by
+`scripts/verify-esde-import-rules.cjs` (59 assertions), whose source
+`src/features/games/api/esdeImportRules.ts` is hand-mirrored into the function.
 
 ### Endpoint
 
@@ -522,14 +495,20 @@ Content-Type: application/json
 x-esde-secret: <ESDE_SYNC_SECRET>
 ```
 
-**Its own function and its own secret, not an action on `phone-gateway`.**
-§8 said "reuse the phone-gateway *pattern*", and that is what this does — device
-holds a static revocable secret, POSTs to an edge function, the function
-resolves the single user server-side with the service role, which never leaves
-the server. But `phone-gateway` is the *iPhone's* door and carries the iPhone's
-secret. This is a different physical device with a different lifecycle:
-revoking the handheld must never revoke the phone's Shortcuts, and vice versa.
-Same pattern, separate door.
+**Its own function and its own secret, not an action on `phone-gateway`.** It
+reuses the `phone-gateway` *pattern* — the device holds a static revocable
+secret, POSTs to an edge function, and the function resolves the single user
+(`HEVY_USER_ID`) server-side with the service role, which never leaves the
+server. But `phone-gateway` is the *iPhone's* door and carries the iPhone's
+secret. The handheld is a different physical device with a different lifecycle:
+revoking one must never revoke the other. JWT verification is off for this
+function (`supabase/config.toml`); it checks its own secret. `ESDE_SYNC_SECRET`
+and `HEVY_USER_ID` are read from the Edge Function secrets.
+
+The same secret also opens the two companion endpoints the widgets use:
+`esde-media-sync` (inventory, optimized covers, guarded variant deletion —
+migration 094) and `esde-content-sync` (source XML and original images —
+migration 100). They are described in [`docs/termux-widgets.md`](../termux-widgets.md).
 
 ### Request
 
@@ -545,10 +524,10 @@ Same pattern, separate door.
 
 | Field | Required | Notes |
 |---|---|---|
-| `action` | yes | exactly `import_esde_games` |
-| `timezone` | no | IANA zone the device's timestamps are in. Defaults to `Europe/Oslo` — the only zone in play. Resolved DST-safely server-side, same two-pass technique `import_body_composition` already uses |
+| `action` | yes | exactly `import_esde_games` (the only action) |
+| `timezone` | no | IANA zone the device's timestamps are in. Defaults to `Europe/Oslo`. Resolved DST-safely server-side, the same two-pass technique `phone-gateway`'s `import_body_composition` uses; an unknown zone rejects the batch |
 | `batch`, `batches` | no | purely informational, echoed back so a partial run is legible in the device's own log. They carry **no server state** — see "Batching" below |
-| `games` | yes | 1-150 entries |
+| `games` | yes | 1–150 entries |
 
 ### One `games` entry — exactly the fields §9 measured
 
@@ -572,33 +551,34 @@ Same pattern, separate door.
 }
 ```
 
-`system` (the folder name), `path` and `name` are **required** — they are the
-only three fields §9 measured at 100 % (`name` at 100 %, `path` at 100 %, and
-`system` is the folder the file was read from). Every other field is omitted
-when ES-DE did not write it; **do not send `null`, an empty string or a zero
-for a missing value** — absent and zero are different facts, especially for
-`playcount`/`playtime`.
+`system` (the folder name), `path` and `name` are **required** — the only three
+fields §9 measured at 100 % (`system` is the folder the file was read from).
+Every other field is omitted when ES-DE did not write it; **do not send `null`,
+an empty string or a zero for a missing value** — absent and zero are different
+facts, especially for `playcount`/`playtime`. ES-DE's own all-zero timestamp
+reads as absent.
 
 **Send ES-DE's values verbatim.** Do not reformat the timestamps, do not split
 `genre` on the comma, do not rescale `rating`, do not resolve `path` to an
-absolute path. Every one of those conversions is the gateway's job, and doing
-it twice is how the two sides drift apart.
+absolute path. Every one of those conversions is the server's job, and doing it
+twice is how the two sides drift apart.
 
 ### What the device must NOT send
 
 All four are measured facts from §9, not defensive guesses:
 
 1. **`androidapps`, `androidgames`, `emulators`, `steam`** — launcher
-   shortcuts, not ROMs (a real entry is `./Settings.app`). 4 games total.
-2. **Any path whose basename starts with `._`** — macOS AppleDouble sidecars,
-   21 of them. Present in the Mac copy; confirm whether the device itself has
-   them rather than assuming either way.
+   shortcuts, not ROMs (a real entry is `./Settings.app`).
+2. **Any path whose basename starts with `._`** — macOS AppleDouble sidecars.
 3. **`<folder>` elements** — directory entries that carry their own metadata
-   and are not games (switch 7, genesis 3, n3ds 3, nes/snes/wiiu 1 each).
+   and are not games.
 4. **Anything under `gamelists/CLEANUP/`** — ES-DE's own dated backups. Real
    files, stale data.
 
-After those exclusions the real payload is **1125 games**.
+The device script adds its own filters on top (ROMs missing from disk,
+standalone Switch DLC/update packages); see
+[`docs/termux-widgets.md`](../termux-widgets.md#which-entries-are-sent). On the
+measured export the real payload was **1125 games**.
 
 ### Batching
 
@@ -609,7 +589,8 @@ unchanged; a full re-push is always safe. That is deliberate — it removes the
 entire class of "half a sync is stuck in the database" failure, and it is why
 no `esde_sync_runs` table exists (093's header note).
 
-Cap a request at **150 games**, so the full library is 8 requests.
+Cap a request at **150 games**, so 1125 games are 8 requests. One
+`(system, path)` may appear only once per batch.
 
 ### Response
 
@@ -619,17 +600,25 @@ Cap a request at **150 games**, so the full library is 8 requests.
 ```
 
 - `skipped` — entries the server itself declined (`hidden: true`).
-- `flagged` — rows written with `needs_review = true` (`broken: true`).
+- `flagged` — written entries with `broken: true` (they are also counted in
+  `created` or `updated`).
 - `400 { "status": "validation_error", "errors": { "3": "path is required" } }`
-  — keyed by the entry's index in `games`. **Nothing is written**; the whole
-  batch is rejected, so a fixed-and-resent batch cannot double-apply.
-- `500 { "status": "server_error", … }`.
+  — keyed by the entry's index in `games` (or `timezone` / `games` for a
+  batch-level problem). **Nothing is written**; the whole batch is rejected, so a
+  fixed-and-resent batch cannot double-apply.
+- `401` — wrong or missing `x-esde-secret`. `503` — `HEVY_USER_ID` not set.
+- `500 { "status": "server_error", … }` — retry the same batch. If the
+  `games` rows went in but the `game_platforms` insert failed, the answer says
+  `games_written`; a re-sent batch then finds them by key.
 
 ### What the server does with each field
 
+**Create** (no row for the key yet) — one `games` row plus one `game_platforms`
+row:
+
 | Incoming | Lands as |
 |---|---|
-| `system` | `game_platforms.esde_system` (the key) **and** `game_platforms.system` on create only — after that the display value is the user's to rename |
+| `system` | `game_platforms.esde_system` (the key) **and** `game_platforms.system` — after that the display value is the user's to rename |
 | `path` | `game_platforms.esde_path` (the key) |
 | `name` | `games.title` |
 | `desc` | `games.description` |
@@ -637,42 +626,45 @@ Cap a request at **150 games**, so the full library is 8 requests.
 | `genre` | split on `,`, trimmed → `games.genres text[]` |
 | `players` | `games.players` verbatim (it is a range string, `1-2`) |
 | `releasedate` | year → `games.release_year`; full date → `game_platforms.release_date` |
-| `rating` (0-1) | `game_platforms.rating` **×100**. Never `games.rating` — that is the user's own 0-10 score (§7) |
-| `playcount`, `playtime`, `lastplayed` | rolled up onto `games` (below) |
+| `rating` (0–1) | `game_platforms.rating` **×100**. Never `games.rating` (§5) |
+| `playcount`, `playtime`, `lastplayed` | `game_platforms.esde_*` and the same values on `games.esde_*` |
 | `broken: true` | `needs_review = true` on both rows |
 | `hidden: true` | entry skipped entirely |
-| — | `external_source = 'esde'`, `synced_at = now()` |
+| — | `external_source = 'esde'` on both rows, `synced_at = now()`, `is_primary_variant = true` (a new game's only variant is its primary) |
+
+**Update** (the key exists) — **play statistics only**, plus
+`needs_review = true` for `broken: true`. Metadata is a create-time fact:
+re-writing title/description/genres on every push would silently undo the
+user's own curation (the same shape as the Hevy body-measurement overwrite
+incident). `--full` resends metadata but does not make the server overwrite it.
 
 **Timestamps.** `YYYYMMDDTHHMMSS` with no offset — ES-DE writes local wall-clock
-time. Resolved through the request's `timezone` using the same DST-safe
-two-pass conversion `import_body_composition` uses, never a hardcoded offset.
+time. Resolved through the request's `timezone`, never a hardcoded offset.
 
-**Play-statistic roll-up.** 089 put `esde_playcount` / `esde_playtime_seconds`
-/ `esde_last_played` on `games`, while ES-DE reports per (system, file) — i.e.
-per variant. When a game holds more than one variant the server **sums**
-playcount and playtime and takes the **max** `lastplayed` across them. For the
-1125 games here that is a no-op (one variant each); it only matters once a
-title is manually merged across systems later, and summing is the only
-answer that does not silently discard a real play session.
+**Play-statistic roll-up.** ES-DE reports per (system, file) — per variant —
+while `games.esde_playcount` / `esde_playtime_seconds` / `esde_last_played`
+describe the whole game. On every update the server **sums** play count and
+play time and takes the **latest** last-played across the game's variants (null
+when no variant reported anything — "never launched" is not "0 launches").
+Summing is the only rule that cannot discard a real play session. This matters
+for games merged in Games → Advanced → Duplicates (migration 131 moves the
+other copy's variants over); a single-variant game's roll-up is just its own row.
+
+**Backlog → Playing.** When the rolled-up play time reaches **30 minutes** and
+the game's status is `backlog`, the server sets it to `playing`. Only from
+`backlog`: `completed`, `dropped` and `wishlist` are statements the user made.
+
+**Not written:** the source-neutral play columns from migration 096
+(`play_seconds` / `play_count` / `last_played_at`). The page reads the live
+`esde_*` columns for retro rows (`playStatsOf` in `gameStats.ts`); the gap is
+tracked in [`test-game-known-issues.md`](test-game-known-issues.md).
 
 **Matching.** The upsert target is the partial unique index migration 093
-creates: `(user_id, esde_system, esde_path)`. No row → create one `games` row
-plus one `game_platforms` row. **One ES-DE entry always becomes one game row.**
-The server never merges two entries into one game by title similarity — a
-title appearing on two systems is a real, intentional shape (089's own note),
-and deciding that two files are the same game is a curation judgement, not
-something a sync should guess at.
-
-### Where the pieces stand
-
-| Piece | Owner | State |
-|---|---|---|
-| Migration 093 (the sync key + per-variant stat columns) | Claude | written, **not applied** |
-| `supabase/functions/esde-sync/` | Claude | written, **not deployed**, not yet exercised against a live request |
-| Its pure logic — timestamps, rating rescale, roll-up | Claude | verified, 59 assertions (`scripts/verify-esde-import-rules.cjs`) |
-| `ESDE_SYNC_SECRET` in Supabase Vault | user | not set |
-| Device-side reader + pusher (C7) | Codex | not started, unblocked by this section |
-| ScreenScraper enrichment | Claude | not started — deliberately AFTER the import, see §11 |
+creates: `(user_id, esde_system, esde_path)`. **One ES-DE entry always becomes
+one game row.** The server never merges two entries into one game by title
+similarity — a title appearing on two systems is a real, intentional shape, and
+deciding that two files are the same game is a curation judgement (the owner's,
+through Duplicates → Compare & merge), not something a sync should guess at.
 
 ---
 
@@ -680,246 +672,41 @@ something a sync should guess at.
 
 Worth stating plainly because the intuitive order is backwards.
 
-**Step 1 — ES-DE into the database.** Codex's script reads the gamelists on the
-device and POSTs them to `esde-sync`. No ScreenScraper involvement at all. §9
-measured the metadata at **97-98 % already filled**, because ES-DE has scraped
-this library before, so this single step lands a working library: 1125 games
-with titles, descriptions, developers, publishers, genres, release years,
-players and ratings, plus the play statistics nothing else in this app has.
-
-There is no intermediate hop — no MacBook, no file transfer. The one-time full
-import and the later incremental pushes are the same code path with a different
-number of rows, which is also why the first run needs no separate script.
+**Step 1 — ES-DE into the database.** The device script reads the gamelists on
+the handheld and POSTs them to `esde-sync`. No ScreenScraper involvement at all.
+§9 measured the metadata at **97–98 % already filled**, because ES-DE has
+scraped this library before, so this single step lands a working library:
+titles, descriptions, developers, publishers, genres, release years, players and
+ratings, plus the play statistics nothing else in this app has.
 
 **Step 2 — ScreenScraper fills what is left.** Two real gaps: the ~2 % of games
-ES-DE never matched, and artwork (the device's `downloaded_media` folder is
-15 GB and was deliberately not copied). That is a much smaller, much cheaper job
-than scraping 1125 games from nothing — and at the premium limits measured in
-§2 it is minutes, not an overnight run.
+ES-DE never matched, and artwork beyond what the handheld uploads. That is a
+much smaller job than scraping a whole library from nothing.
 
-**Why not scrape first:** a scraper has to be told what to look for. Before
-step 1 the database is empty, so there is nothing to enrich and no way to tell
-a match from a miss. After step 1 every row carries a real title, system and
-filename — which is exactly what ScreenScraper matches on. Doing it in the
-other order means scraping blind and then trying to reconcile two independently
-built libraries.
+**Why not scrape first:** a scraper has to be told what to look for. Before step
+1 the database is empty, so there is nothing to enrich and no way to tell a match
+from a miss. After step 1 every row carries a real title, system and filename —
+which is exactly what ScreenScraper matches on.
 
-
----
-
-## 12. Search + hand-picked match (added 2026-09-16)
-
-The automatic pass matches on a ROM **filename**, which is all `jeuInfos.php`
-is given. "Contra (USA).zip" landing on Contra III is therefore a normal
-outcome, not a bug with a one-time fix — the library needs a way to correct a
-match by hand, and a way to approve matches before they are written.
-
-### `search`
-
-`{ action: 'search', query, system? }` → `jeuRecherche.php` (verified live,
-§1: 200, 30 candidates for one query), optionally scoped by ES-DE system name
-through the same lowest-id-wins alias map the scrape path uses. Returns up to
-12 candidates.
-
-**No image URL crosses the boundary.** Every ScreenScraper media URL carries
-`devid`/`devpassword` in its query string, so a candidate can only report
-`has_cover: true|false`. Artwork is fetched server-side and re-hosted for the
-one candidate actually chosen.
-
-### `apply_match`
-
-`{ action: 'apply_match', game_id, jeu_id, query, system?, dry_run? }`.
-
-It **re-runs the same search** and takes the entry with the chosen id, rather
-than fetching that id directly. `jeuInfos.php` has a documented `gameid`
-parameter, but this session had no way to call the API (the credentials live in
-Vault, reachable only from the deployed function), and this repo does not ship
-an external field it has not confirmed live. `jeuRecherche` IS confirmed, and
-it returns complete game entries — that is why 30 of them weigh 2.3 MB — so the
-chosen entry already carries everything a match needs. Cost: one extra search
-call per apply. **If a later session can verify `gameid` against the live API,
-switching to it removes that call.**
-
-Writes follow the automatic path exactly: `fillOnlyMissing` (nothing the user
-entered is overwritten), artwork mirrored into the `game-media` bucket, the
-provider score onto `game_platforms.rating` (never `games.rating`). One
-difference: a hand-picked match also clears `needs_review`, since choosing it
-IS the review.
-
-### `scrape` gained a `systems` scope
-
-`{ action: 'scrape', systems: ['snes','n64'] }` narrows the automatic candidate
-pick to those ES-DE systems. The scope is walked in slices of 200 ids
-(PostgREST's `.in()` is URL-length bound — 200 ≈ 7.4 KB is safe, 1000 is a
-measured 400) until enough unscraped games are found, rather than truncating at
-the first slice and reporting "nothing left" while later slices still held work.
+**How it went:** step 1 landed on 16.09.2026 (1,028 active variants and 866
+optimized covers; dated record in `docs/termux-widgets.md`). The handheld's
+content widget later added the parsed source XML and original images. Step 2 is
+the Scrape page, rewritten on 25.09.2026 (§16).
 
 ---
 
-## 13. The workbench (2026-09-16)
-
-The first review UI was one button reading "look up next 6". It chose the six
-itself, so the only thing worth knowing — WHICH six — became visible after the
-answers came back, when it was too late not to ask. Two deeper problems were
-found reviewing it, and both were real:
-
-**Approval was not bound to what was reviewed.** The dry run and the apply were
-two independent `jeuInfos.php` calls. The user approved the result of lookup A
-and the app wrote whatever lookup B returned. Usually identical; nothing
-guaranteed it, and nothing checked it.
-
-The apply still re-fetches — that is how the check is made — so the flow does
-cost two metadata calls per approved game. **That is the price of the
-guarantee, not a defect, and the UI quotes both halves** ("≈ 6 to look up,
-6 more to save") rather than showing one and spending the other. Dropping the
-second call would mean trusting a payload the client sends back, which is the
-weaker design.
-
-**The dry run returned field NAMES, never values.** "Would fill: description,
-genres" cannot be approved by anyone — approving means reading the description
-and seeing whose game it describes.
-
-### What replaced it
-
-| Piece | What it is |
-|---|---|
-| `screenscraperStudio.ts` | Pure logic: what a game is missing, candidate selection, request-cost projection, quota verdict, title-confidence, undo derivation. (Deleted with the studio in the 2026-09-25 rewrite, §16.) |
-| `apply_reviewed` | Writes EXACTLY the reviewed entry. Carries the `jeu_id` that was shown; if the fetch answers with a different entry it returns `stale_proposal` and writes nothing. `fillOnlyMissing` still runs against the live row, so the client can only ever narrow a write, never widen it. |
-| `proposed` on a dry run | The actual values, truncated at 600 chars, so a field can be read before it is accepted. Per-field checkboxes, defaulted on. |
-| Candidate art | The cover is mirrored to `game-media/pending/<game_id>/<jeu_id>/cover.<ext>` at REVIEW time and promoted by a Storage **copy** on approval — no second image download. The browser still never receives a ScreenScraper URL. Note the bucket is world-readable by policy (094), so this prefix is separated from the database and the canonical paths, **not** from the internet. `sweep_pending` clears what nobody approved, and a "Clear unused art" button calls it. |
-| `scrape_decisions` (097) | Every decision, durably. Progress across sessions, and the substrate for undo. |
-| `undo_run` | Reverts a whole run. Costs nothing against the quota. It nulls the fields the run wrote, but **only where the live value still equals `written_values`** — a field edited since belongs to the user and is reported back rather than cleared. A first draft compared against `null` instead, which detects nothing and would have destroyed a hand-rewritten description while claiming it could not. Storage objects are removed only for columns actually cleared, and `needs_review` is restored only if it is still what the apply left. |
-| Pacing | §2b's ~1.2 s interval between waves, which the code promised in writing and had never implemented. |
-| Match signals | The ROM filename the match was made on, the system actually searched, and the entry's own `notgame`/hack/beta/proto/region flags — all present in every response and previously discarded. |
-
-### Deliberately NOT built
-
-- **A confidence percentage, and anything auto-approved by one.** There is no
-  ground truth to calibrate a threshold against, this repo has a standing rule
-  against synthetic composite metrics (Health's "no derived sleep metrics",
-  `RecoveryLoadPanel`'s refusal of a readiness score), and a number invites the
-  auto-approve button that defeats the reason a review step exists. The signals
-  are named observations instead.
-- **An "overwrite existing fields" mode.** `fillOnlyMissing` is load-bearing
-  three times over: it protects the user's own curation, it protects ES-DE's
-  98%-filled metadata, and it is the ONLY reason undo can be derived without
-  storing row snapshots. Removing it silently removes undo.
-- **Candidate artwork straight from `search` results.** A media URL carries the
-  credentials, full stop. Art reaches the browser only through the quarantine
-  mirror, and only for a proposed match — not for twelve search hits of which
-  eleven are discarded.
-- **An ETA or a per-request budget from `requeststoday`.** §2b measured it
-  non-1:1 and disagreeing with their own panel by three orders of magnitude.
-  It is shown as a ceiling, labelled as approximate, and never counted down.
-
-
----
-
-## 14. Looking a game up by what you actually know (2026-09-16)
-
-Name search is the WEAKEST identity a game has, and it was the only one the
-workbench offered. On this library it is a guess competing with every romhack
-that shares the title — which is how 604 games ended up matched against hack
-collections in the first place.
-
-**Researched against two sources before building anything**: ScreenScraper's
-own API page (`api.screenscraper.fr/webapi2.php`) and Skyscraper's
-`screenscraper.cpp`, the reference client.
-
-| Parameter | Endpoint | What it is |
-|---|---|---|
-| `crc` / `md5` / `sha1` | `jeuInfos.php` | An **exact** identity. Skyscraper sends all three together with the filename, because a hash cannot be wrong and a filename is a guess. |
-| `romnom` + `romtaille` | `jeuInfos.php` | The filename, sharpened by the file size. `romtaille` is what Skyscraper adds whenever it has it. |
-| `serialnum` | `jeuInfos.php` | The disc serial (`SLUS-00001`), for CD/DVD systems. |
-| `gameid` | `jeuInfos.php` | Their own game id, straight off a screenscraper.fr page. |
-| `systemeid` | both | Scopes the lookup. |
-| `romtype` | `jeuInfos.php` | `rom` for everything here. |
-| `recherche` | `jeuRecherche.php` | The name. **This endpoint really does take only `recherche` + `systemeid`** — the richness is all on `jeuInfos`. |
-
-So the panel is a query builder with five modes, and only `name` goes through
-`jeuRecherche`; the rest go through `jeuInfos` and answer with ONE definite
-game rather than a list. A hash is shape-checked client-side and again in the
-function before it is sent — a mistyped hash otherwise spends a request to be
-told nothing, and their 404s are plain text, not JSON.
-
-**`gameid` also removes the extra search call `apply_match` used to make.**
-§12 flagged it as documented-but-unverified and re-ran the whole search to find
-the chosen entry again. It is now fetched by id, **with the search re-run kept
-as the fallback** — documented is not the same as verified against the live
-API, and this repo does not confuse the two. It is also the only way to apply a
-candidate from a hash, serial or id lookup, which have no search behind them.
-
-### Side by side, not a list of field names
-
-The review card printed field NAMES, then a later version printed the incoming
-values on their own. Neither answers the question a person actually asks —
-*"is this the same game as mine?"* — which two columns and a mark per row
-answer at a glance: **yours on the left, theirs on the right, ✓ where they
-agree and ✕ where they do not**, with the gaps they can fill tickable.
-
-`comparableAgreement` scores only the fields BOTH sides filled. Scoring the
-others would give a bare row a perfect zero-of-zero against every candidate,
-right and wrong alike. `valuesAgree` is deliberately loose — case-insensitive,
-order-insensitive for lists — because marking `Action, Platform` against
-`platform, action` as a difference trains the eye to ignore the marks.
-
-
----
-
-## 15. What their answer actually contains, and what we now keep (2026-09-16)
-
-Three defects found in live use, all mine.
-
-**`systemeid` is MANDATORY for a filename lookup.** Their own error says it:
-`Champ systemeid obligatoire si aucun CRC`. §14's change assumed it was
-optional and turned a clean refusal into their 400. The correct behaviour:
-filename + system when the system is known, and the game's **title through
-jeuRecherche** (which genuinely needs no id) when it is not — marked `via:
-'name'` so the review knows a name match is a weaker claim than a filename
-match. A hash needs no system either, which is why it is the best mode.
-
-**The dry run sent only the GAPS.** `proposed` was built from
-`fillOnlyMissing`, so any field the user already had was absent from the
-payload and the comparison rendered it as "—" on ScreenScraper's side. A
-complete response looked like a nearly empty one, and the side-by-side view was
-useless exactly where it mattered. `proposed` is now the WHOLE mapped
-candidate; `would_fill` remains what is writable.
-
-**Twenty-three of twenty-six media types were being thrown away**, along with
-most of the metadata block. Migration `099` adds two jsonb columns:
-
-| Column | What goes in |
-|---|---|
-| `games.media` | media type → **Supabase Storage URL**, for every non-video type mirrored. Never a ScreenScraper URL — theirs carry `devid`/`devpassword`. |
-| `games.provider_data` | everything else: their /20 score, `rotation`, `cloneof`, `notgame`, every regional title and date, the full `classifications` list, the ROM block's crc/md5/sha1/size/regions/languages and its beta/demo/proto/hack/unl/alt flags, and the **media inventory** — which types exist with their region/format/size, including the ones not mirrored, so "what else is available" is answerable without asking again. |
-
-Two jsonb columns rather than twenty-six real ones because this is a provider's
-payload, not facts this app reasons about: nothing filters, sorts or joins on
-it, and the UI reads a key when it wants one. Same shape, same reason, as
-`health_workouts.raw`.
-
-**Video is the one exclusion, and it is deliberate**: `video` and
-`video-normalized` are tens of megabytes per game against a bucket sized for
-box art, and nothing in this app plays one. Everything else they send is taken.
-
-Mirroring all of it is one download per image, so `all_media` defaults on but
-is a flag — twenty images a game across a thousand games is not something to
-spend a shared daily allowance on by accident.
-
-
----
-
-## 16. The rewrite (2026-09-25) — the full API map and the current design
+## 16. The rewrite (25.09.2026) — the full API map and the current design
 
 ### 16.1 Why
 
 Measured against the live database before the rewrite: 1,030 retro games, **45**
 ever matched, `provider_data` filled on **1**, `games.media` on **0**, age rating
 3 %, modes 2 %, series 4 %, `game_platforms.region/wheel_url/box_url` 0 %. The
-per-game Scrape button (`apply_match`) never wrote `provider_data` or extra
-media, and only about 11 of the ~25 fields their answer carries were mapped.
-Storage: the `game-media` bucket already held **596 MB of the Free plan's 1 GB**
-(537 MB ES-DE original PNGs, 52 MB ES-DE WebP covers, 13 MB ScreenScraper).
+first version's per-game Scrape button (`apply_match`) never wrote
+`provider_data` or extra media, and only about 11 of the ~25 fields their answer
+carries were mapped. Storage: the `game-media` bucket already held **596 MB of
+the Free plan's 1 GB** (537 MB ES-DE original PNGs, 52 MB ES-DE WebP covers,
+13 MB ScreenScraper).
 
 ### 16.2 The API, completely (verified)
 
@@ -942,7 +729,7 @@ Known JSON defects: trailing commas, unescaped backslashes in synopses (parsed l
 | `mediaJeu.php` | a game image | `systemeid`, `jeuid`, `media` (token), `maxwidth`, `maxheight`, `outputformat=png\|jpg`, `crc`/`md5`/`sha1` → `CRCOK`/`MD5OK`/`SHA1OK`/`NOMEDIA` |
 | `mediaVideoJeu.php`, `mediaManuelJeu.php` | video (mp4), manual (pdf) | same, **no resizing** |
 | `mediaSysteme.php`, `mediaGroup.php`, `mediaCompagnie.php` | system art, genre/mode/rating pictograms, publisher logos | resizable |
-| `systemesListe.php` | 250 systems with every naming convention | cached in `screenscraper_systems` |
+| `systemesListe.php` | 250 systems with every naming convention | cached in `screenscraper_systems` (§6) |
 | `genresListe`, `regionsListe`, `languesListe`, `famillesListe`, `classificationsListe`, `mediasJeuListe` (50 types), `infosJeuListe`, `infosRomListe`, `nbJoueursListe`, `supportTypesListe`, `romTypesListe`, `userlevelsListe` | catalogues | six languages (`nom_fr/de/en/es/it/pt`) |
 | `ssuserInfos.php`, `ssinfraInfos.php` | account / server status | `ssuser` also rides along with every answer |
 | `botNote.php`, `botProposition.php` | **write** (rate, propose) | not used |
@@ -990,9 +777,9 @@ fields / bad hash / path in `romnom`; 401 closed to non-members (server CPU >
 blacklisted; 429 thread or per-minute limit; 430 daily quota; 431 too many
 unrecognised ROMs today.
 
-**Account (measured).** Level 10, premium, **7 threads**, 100,000 requests/day,
-account-wide (the handheld's ES-DE scraping spends from the same counter);
-`maxrequestspermin = 1024 × (maxthreads + 1)`; resets at midnight CET.
+**Account (measured 25.09.2026).** Level 10, premium, **7 threads**, 100,000
+requests/day, account-wide (the handheld's ES-DE scraping spends from the same
+counter); `maxrequestspermin = 1024 × (maxthreads + 1)`; resets at midnight CET.
 
 **Licence.** Media is CC BY-NC-SA 4.0 — the app credits ScreenScraper.fr.
 
@@ -1003,9 +790,11 @@ account-wide (the handheld's ES-DE scraping spends from the same counter);
   then **every request in the project returns 402** — tasks, food and training
   too. So a budget check in code is required, not optional.
 - Edge functions: 2 s CPU per request, 150 s wall clock (free). WebP encoding in
-  WASM (jSquash) measured 0.1–0.9 s CPU per image in Node and needs `.wasm`
-  bundling that a Dashboard deploy cannot do — rejected for now. ScreenScraper
-  resizes for free (`maxwidth` + `outputformat`), so that is what Save uses.
+  WASM (jSquash) measured 0.1–0.9 s CPU per image in Node and needed `.wasm`
+  bundling that the hand deploys of the time (Dashboard) could not do —
+  rejected. Deploys use the CLI since 12.10.2026, so the CPU cost is the
+  remaining reason. ScreenScraper resizes for free (`maxwidth` +
+  `outputformat`), so that is what Save uses.
 - Measured sizes: box art 162–734 KB PNG → 24–61 KB at 640 px; a transparent
   logo 63 → 14 KB; a native-resolution pixel-art screenshot is 3–4 KB as PNG
   and gets *bigger* as JPEG (hence "small originals stay PNG").
@@ -1020,22 +809,24 @@ account-wide (the handheld's ES-DE scraping spends from the same counter);
   The function reads `game_media_usage()` and reserves room for the WHOLE save
   before copying anything (`decideMediaModes`); what does not fit is shown
   online instead and the result says so. The budget (default 800 MB) is capped
-  at **950 MB** in code, and the ES-DE pushes (`esde-content-sync`,
-  `esde-media-sync`) refuse uploads past the same 950 MB with 413
-  `storage_full`. Unused copies can be found and deleted from the settings
-  sheet (`cleanup`, dry run first). Defaults copy box
-  front/back, screenshot, title screen, fan art and the HD logo (≈ 285 MB worst
-  case for 1,100 games), link 3D box/spine/texture/cartridge/Steam grid/logos/
+  at **850 MB** in code (`HARD_CAP_MB`; lowered from 950 MB on 04.10.2026 to
+  leave 130 MB for the Kobo buckets — inbox 100, covers 20, sleep images 10,
+  migrations 125/127), and the ES-DE pushes
+  (`esde-content-sync`, `esde-media-sync`) refuse uploads past the same 850 MB
+  with 413 `storage_full`. Unused copies can be found and deleted from the
+  settings sheet (`cleanup`, dry run first). Defaults copy box front/back,
+  screenshot, title screen, fan art and the HD logo (≈ 285 MB worst case for
+  1,100 games), link 3D box/spine/texture/cartridge/Steam grid/logos/
   marquees/manual, skip composites/bezels/themes/pictograms/video.
-- **The ES-DE originals** (537 MB now; the full set measured at 2.5 GiB in
-  `docs/termux-widgets.md`) are the obvious reclaim — they are on the handheld's
-  SD card anyway. That is a change to the RP6 pipeline, not to this scraper, and
-  was left for the owner to decide.
+- **The ES-DE originals** (537 MB on 25.09.2026; the card's full set is about
+  2.5 GiB, see `docs/termux-widgets.md`) are the obvious reclaim — they are on
+  the handheld's SD card anyway. That is a change to the RP6 pipeline, not to
+  this scraper, and is left for the owner to decide.
 
 ### 16.4 The credential problem, solved twice
 
-Every ScreenScraper URL carries all four credentials. The old version solved it
-by downloading and re-hosting everything it showed (costly: every preview a
+Every ScreenScraper URL carries all four credentials. The first version solved
+it by downloading and re-hosting everything it showed (costly: every preview a
 Storage object). The rewrite keeps that for **Save** and adds a proxy for
 everything else:
 
@@ -1054,17 +845,18 @@ everything else:
 - The function adds the credentials server-side, follows at most one redirect
   and never with them, passes through only file content types and a header
   whitelist (+ `nosniff`, `Content-Security-Policy: default-src 'none'; sandbox`,
-  inline disposition), and maps their plain-text answers to 404/503 without
-  echoing them.
+  inline disposition — manuals without the sandbox CSP, which PDF viewers
+  refuse), and maps their plain-text answers to 404/503 without echoing them.
 - `screenscraper-sync` is **owner only** (`HEVY_USER_ID`, else 403).
 
 ### 16.5 Contract (`screenscraper-sync`)
 
 | Action | Body | Answer |
 |---|---|---|
-| `status` | — | account (level, premium, threads, used, max, misses), `remaining_today`, `storage` (per category + budget/hard cap), library counts |
+| `status` | — | account (level, premium, threads, used, max, misses), `remaining_today`, `storage` (per category + budget/hard cap), library counts, `systems_known` |
 | `storage` | — | `{ total, groups[], budget_mb, hard_cap_mb }` from `game_media_usage()` — no ScreenScraper request |
-| `sign` | `items[{jeu_id, system_id}]` | fresh `{sig, exp}` per game for the media proxy (never stored) |
+| `refresh_systems` | — | re-reads `systemesListe.php` into `screenscraper_systems` (§6); `{ systems }` |
+| `sign` | `items[{jeu_id, system_id}]` (≤ 60) | fresh `{sig, exp}` per game for the media proxy (never stored) |
 | `search` | `name?`, `system?` (ES-DE folder or id), `rom?` `{filename,size,crc,md5,sha1,serial}`, `jeu_id?`, `previous_id?`, `use_name?`, `use_rom?` | `candidates[]` (normalized, signed), `outcomes[]` per lookup, `system`, `remaining_today` |
 | `candidate` | `jeu_id`, `matched_by?` | one candidate (all dumps) + `record` (their answer minus URLs) |
 | `apply` | `game_id`, `jeu_id`, `system?`, `rom?`, `fields{field: fill\|replace\|skip}`, `media[{type, token, mode: store\|on_demand}]`, `overrides{title_region, description_lang}`, `matched_by`, `prefs?`, `run_id?` | `result{outcome, verified_rom, written[], skipped[], media[], bytes_stored, remaining_today}` |
@@ -1076,9 +868,9 @@ everything else:
 The browser never sends a field value — only choices. The function refetches the
 entry (by ROM first when ROM info is known, so the answer carries this dump's
 `rom` block), refuses when a different entry comes back (`stale`), and applies
-the choices against the live row.
+the choices against the live row. A save clears `needs_review`; undo restores it.
 
-### 16.6 Where the data lives (after the hardening pass)
+### 16.6 Where the data lives
 
 - `games.ss_jeu_id` / `ss_scraped_at` — the match marker. **Never**
   `external_source`/`external_ref`: those are the ES-DE sync's (`esde-sync`
@@ -1097,4 +889,23 @@ the choices against the live row.
   no audit trigger (it is itself the audit).
 - Storage `game-media/screenscraper/<game>/…` — copies only; unique paths per
   save, so undo can restore the previous copy and `cleanup` can find orphans.
+- `screenscraper_prefs` — "What to save" (field policies, media modes, image
+  size, region and language order, full-record switch, budget).
 
+### 16.7 Known limitations — reviewed and accepted (26.09.2026)
+
+- **Proxy links are per game, not per file** (`screenscraper-media`): one
+  signature opens any file of that game on that system until it expires (end of
+  next week). A leaked link can stream that game's manual or video for up to two
+  weeks, spending the shared daily allowance; the proxy has no quota floor of its
+  own (it cannot see the counter without an extra request per file). Accepted:
+  the owner is the only user and links are never stored.
+- **Undo does not bring back the previous full record** (`game_scrape_records`
+  holds one row per game; undo deletes it). A re-scrape fetches it again.
+- **The storage budget is checked per save**: two saves running at the same
+  moment (two tabs) each reserve against the same usage reading and can
+  overshoot the budget by one save's copies. The 850 MB hard cap and the ES-DE
+  guard still hold.
+- **Changing "What to save" during an open review** does not change that
+  review's choices (they are seeded when it opens); the next review uses the new
+  settings.
