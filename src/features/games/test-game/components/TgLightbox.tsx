@@ -3,7 +3,7 @@ import { Dialog, DialogBackdrop, DialogPanel } from '@headlessui/react'
 import { ChevronLeft, ChevronRight, X } from 'lucide-react'
 import { useHistoryDismiss } from '../../../../shared/hooks/useHistoryDismiss'
 
-// White-on-black is the photo-overlay role (CLAUDE.md → Dark Mode): the
+// White-on-black is the photo-overlay role (docs/platform-shell.md → Dark mode): the
 // scrim is black in both themes, so its controls are not theme tokens.
 const CONTROL = 'inline-flex h-11 w-11 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur transition-colors [@media(hover:hover)]:hover:bg-white/20 active:bg-white/20'
 const SWIPE_PX = 48

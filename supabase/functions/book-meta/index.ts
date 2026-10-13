@@ -1,5 +1,5 @@
 // book-meta — fills a book's cover, page count, publisher and year
-// (docs/kobo/PLAN.md §4.5). Browser JWT (verify_jwt ON); the caller's own row is
+// (docs/kobo/REFERENCE.md §4.5). Browser JWT (verify_jwt ON); the caller's own row is
 // read and written through RLS with the caller's token.
 //
 // Source order: Nasjonalbiblioteket (api.nb.no, no key — Norwegian books are

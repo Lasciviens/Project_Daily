@@ -3,7 +3,7 @@ import { supabase } from '../../../integrations/supabase/client'
 // ─────────────────────────────────────────────────────────────────────────────
 //  PlayStation Network — proxied through the `psn-api` edge function. Sony
 //  has no official API; this is the community npsso-cookie flow (see
-//  CLAUDE.md's Games Feature Detail research note). Tokens live server-side
+//  docs/features/games.md's research note). Tokens live server-side
 //  in `psn_tokens` (migration 091) — the client never sees them, only a
 //  derived connection status.
 //

@@ -1,6 +1,6 @@
 // Throwaway verification for the Analytics KPI drill-downs
 // (src/features/games/test-game/components/tgAnalyticsModel.ts): every tile's
-// list adds up to that tile's number. No unit test framework here (CLAUDE.md).
+// list adds up to that tile's number. No unit test framework here (AGENTS.md).
 //   node scripts/verify-tg-analytics.cjs
 require('sucrase/register')
 const assert = require('assert')

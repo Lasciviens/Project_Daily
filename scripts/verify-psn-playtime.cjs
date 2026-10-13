@@ -7,7 +7,7 @@
  * exposes — every hour shown on the PlayStation tab, every sort, and the
  * library's total all run through this one parser. A silent bug here would
  * misreport hours everywhere with nothing to catch it (this repo ships no
- * unit-test framework — see CLAUDE.md's Session Workflow; the precedent is
+ * unit-test framework — see AGENTS.md → Workflow; the precedent is
  * scripts/verify-health-source-resolver.cjs).
  *
  * Run: node scripts/verify-psn-playtime.cjs

@@ -20,7 +20,7 @@ import { formatLocalDate } from '../../../shared/utils/dateUtils'
 //  Nutrition is the tall module (its meal list), so from three columns it
 //  takes a double slot three rows tall and the small modules stack beside it
 //  instead of stretching to its height (B = Books' reading cell; every grid
-//  is full — docs/kobo/PLAN.md §4.4):
+//  is full — docs/kobo/REFERENCE.md §4.4):
 //    2 columns  N N / T W / H G / S B
 //    3 columns  N N T / N N W / N N H / G S B
 //    4 columns  N N T W / N N H G / N N S B

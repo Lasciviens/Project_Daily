@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /*
- * Verification — the Trakt first-import preview (docs/trakt/PLAN.md), against
+ * Verification — the Trakt first-import preview (docs/trakt/REFERENCE.md), against
  * the real traktPreview.ts via sucrase. Covers: matching by TMDB id only,
  * plays = 1 + repeat_count, Trakt-wins changes, app-only facts listed as
  * "send to Trakt", watchlist vs already-watched, no-TMDB items unmatched,

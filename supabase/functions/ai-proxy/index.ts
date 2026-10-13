@@ -3067,7 +3067,9 @@ async function logQuery(
 //     permission-denied at the DB; result rows are hard-capped (LIMIT 500).
 // The text guard below is a best-effort UX filter (clear errors, cheap block of
 // obvious system-catalog probes) layered on top — it is NOT relied on for
-// containment. It fails CLOSED: anything it can't vet is rejected.
+// containment. It fails CLOSED: anything it can't vet is rejected. Don't re-add
+// the broad DML keyword regex that was removed: it rejected valid reads with
+// "update" inside a string, and the read-only transaction already stops writes.
 async function runReadQuery(args: AnyRecord, authHeader?: string): Promise<AnyRecord> {
   try {
     if (!authHeader) return { success: false, error: 'No auth context for live query.' }

@@ -8,8 +8,8 @@
 //  loading, then renders UnifiedPlanModal. A create request (no id) renders
 //  immediately.
 //
-//  THE routing rule for one-off blocks lives here, once (CLAUDE.md "Task ↔
-//  Schedule model"): a block with a task_id is ALWAYS edited as its task
+//  THE routing rule for one-off blocks lives here, once (docs/features/planning-calendar.md, "Task and
+//  schedule model"): a block with a task_id is ALWAYS edited as its task
 //  (mode 'task'), never through `timeBlock` — opening a task-linked block as
 //  a standalone block is exactly how a second task used to get minted.
 // ─────────────────────────────────────────────────────────────────────────────

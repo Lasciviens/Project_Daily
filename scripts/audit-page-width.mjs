@@ -1,21 +1,21 @@
 #!/usr/bin/env node
-// Throwaway audit (CLAUDE.md → Layout width, W6/W7): how much of the page's
+// Throwaway audit (THEME.md §6.6, W6/W7): how much of the page's
 // width a view actually uses. Per route × width it reports
 //   avail  — the page's content width (inside <main> minus the page gutters);
 //   used   — distance from the content's left edge to the rightmost painted box
 //            (a card, a tile, a bordered row) outside the page header;
 //   empty  — avail − used: the band right of the rightmost card (the complaint);
 //   height — the page's scroll height (long pages are the other half of it);
-//   hOverflow — horizontal overflow of the document or <main> (must be false at 393).
+//   hOverflow — horizontal overflow of the document or <main> (must be false at 402).
 //
 // Runs against the mocked app harness (the real app on a mock Supabase):
 //   node scripts/audit-page-width.mjs --harness <dir with mock-server.cjs> \
-//        [--base http://127.0.0.1:5371] [--routes home,daily,daily:week] [--widths 393,1469,2450] \
+//        [--base http://127.0.0.1:5371] [--routes home,daily,daily:week] [--widths 402,1469,2450] \
 //        [--theme light|dark] [--shots <dir>] [--json] [--glance]
 // A route `daily:week` opens /daily and then picks the "Week" tab (same for
 // month/tasks). `--glance` instead checks Daily's glance board at every width:
 // each cell's x and width must be identical on a full day and an empty one
-// (CLAUDE.md → Daily, "boxes never change position"). The harness is NOT part
+// (docs/features/daily.md, "boxes never change position"). The harness is NOT part
 // of the repo; nothing here talks to a real backend.
 import { createRequire } from 'node:module'
 import fs from 'node:fs'
@@ -26,13 +26,13 @@ const args = process.argv.slice(2)
 const opt = (name, dflt) => { const i = args.indexOf(`--${name}`); return i >= 0 ? args[i + 1] : dflt }
 const harness = opt('harness', process.env.APP_HARNESS)
 if (!harness || !fs.existsSync(path.join(harness, 'mock-server.cjs'))) {
-  console.error('usage: audit-page-width.mjs --harness <dir containing mock-server.cjs> [--base url] [--routes a,b:tab] [--widths 393,1469,2450] [--shots dir]')
+  console.error('usage: audit-page-width.mjs --harness <dir containing mock-server.cjs> [--base url] [--routes a,b:tab] [--widths 402,1469,2450] [--shots dir]')
   process.exit(2)
 }
 const BASE = opt('base', 'http://127.0.0.1:5371')
 const ROUTES = opt('routes', 'home,daily,daily:week,daily:month,daily:tasks,recipes,shop,media,work,projects,training,health,wishes,developer').split(',')
-const WIDTHS = opt('widths', '393,1469,2450').split(',').map(Number)
-const HEIGHT = { 393: 852, 1469: 680, 2450: 1130 }
+const WIDTHS = opt('widths', '402,1469,2450').split(',').map(Number)
+const HEIGHT = { 402: 874, 1469: 680, 2450: 1130 }
 const THEME = opt('theme', 'light')
 const SHOTS = opt('shots', null)
 const asJson = args.includes('--json')

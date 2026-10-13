@@ -284,7 +284,7 @@ export function RoutesTab({ active, now, pendingRouteId, onRouteConsumed, pendin
 
   function swapStops() { setDraftFrom(draftTo); setDraftTo(draftFrom) }
 
-  // Every async action must give feedback on completion (CLAUDE.md) — the
+  // Every async action must give feedback on completion (AGENTS.md) — the
   // 'error' bucket (timeout / position unavailable) previously set state but
   // rendered NO message anywhere, so a GPS timeout failed completely silently
   // (only 'denied' had a visible message). A toast covers both branches.

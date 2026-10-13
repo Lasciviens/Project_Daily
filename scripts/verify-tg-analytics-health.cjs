@@ -1,7 +1,7 @@
 // Throwaway verification for the Analytics "Data health" wording
 // (src/features/games/test-game/components/tgAnalyticsHealthCopy.ts), checked
 // against the real figures from tgAnalyticsHealth.ts. No unit test framework
-// in this repo (CLAUDE.md).
+// in this repo (AGENTS.md).
 //   node scripts/verify-tg-analytics-health.cjs
 require('sucrase/register')
 const assert = require('assert')

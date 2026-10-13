@@ -57,7 +57,7 @@ jobs:
 
       # Pure-function regression suite for the Training -> Progress exercise
       # progress engine (src/features/training/progress-engine/) — this repo
-      # has no unit-test runner by convention (see CLAUDE.md), so these run
+      # has no unit-test runner by convention (see AGENTS.md), so these run
       # directly via sucrase against the real, un-mocked modules. Previously
       # only ever run locally by hand; a broken engine change could merge
       # with a green PR-check. Add further scripts/verify-*.cjs suites here

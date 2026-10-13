@@ -1,6 +1,6 @@
 // Throwaway verification for src/features/games/test-game/tgMergeModel.ts
 // (the Compare & merge preview) and its SQL twin, migration 131's
-// merge_games() — no unit test framework in this repo (CLAUDE.md).
+// merge_games() — no unit test framework in this repo (AGENTS.md).
 //   node scripts/verify-tg-merge.cjs
 require('sucrase/register')
 const assert = require('assert')

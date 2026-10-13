@@ -1,12 +1,15 @@
 # AI layer — cost & capability reference (as shipped)
 
-> **Status: SHIPPED.** Written 21/07/2026; phases 1–4 are all live — client `aiApi.ts` plus a redeployed `ai-proxy`,
-> with migrations `064` (`ai_usage_log`, `ai_query_log`, `ai_memory`, the `ai_run_read_query` RPC) and `065`
-> (pgvector, `ai_embeddings`, `ai_semantic_search()`, `ai_reviews`) applied.
+> **Status: SHIPPED.** Written 21.07.2026, updated 13.10.2026; phases 1–4 are all live — client `aiApi.ts` plus
+> `ai-proxy`, with migrations `064` (`ai_usage_log`, `ai_query_log`, `ai_memory`, the `ai_run_read_query` RPC), `065`
+> (pgvector, `ai_embeddings`, `ai_semantic_search()`, `ai_reviews`) and `140` (`ai_pending_actions`, search copies
+> that follow their rows) applied.
 > **This is a reference, not a plan.** Read it before any `ai-proxy` / `aiApi.ts` cost or capability work.
+> **Removed since:** the AI-written daily briefing and the weekly review. Home's brief is rule-based now (no AI call,
+> no cost); `ai_reviews` is an unused empty table. The phone `brief` action is still AI (one single-shot call).
 > **Deferred by decision:** explicit `cachedContent` (only if `ai_usage_log.cached_tokens` shows implicit misses
-> dominate) · embed-on-write freshness (reindex is manual — Developer → "Reindex AI search") · a dedicated Food
-> "add by photo" button (the chat vision path already covers it) · nightly `daily_rollups`.
+> dominate) · embedding on every write (a search catches up instead, §3) · a dedicated Food "add by photo" button
+> (the chat vision path already covers it) · nightly `daily_rollups`.
 
 ## 1. Cost model
 
@@ -53,6 +56,11 @@ means no manual normalisation**; vector `limit ≤ 8`; `user_id` filtered inside
 `{source_table, source_id, snippet, score}` and the model then `db_query`s the live row by id — **embeddings locate,
 live SQL answers; never use a similarity hit as the factual value of anything current-state.**
 
+**Copies follow their rows (migration 140).** A trigger deletes a row's search copy when the row is deleted or its
+searched text changes, so a deleted memory or an old wording is never fed back to the model. Every `semantic_search`
+first embeds up to **32** rows that have no copy (`EMBED_CATCH_UP`), so edits come back by themselves within a few
+searches. Developer → "Reindex AI search" still re-embeds everything.
+
 **Decision ladder the system prompt teaches:**
 
 ```
@@ -60,7 +68,7 @@ current value / list?          → db_query
 average / trend / compare?     → db_aggregate
 "the whole day/week picture"?  → hot-path RPC tool
 "that thing I wrote/saved…"?   → semantic_search → db_query by id
-write?                         → db_insert/update/delete (+ the confirm rules)
+write?                         → db_insert/update; a delete becomes a Confirm card (§6)
 external world?                → special tools (transit / calendar / media / …)
 ```
 
@@ -97,8 +105,7 @@ substrate for later promoting hot queries into the UI.
   slicing anything.
 - **Model routing changes only the *starting* model** of the existing fallback chain
   (`SURFACE_MODEL.phone = gemini-3.1-flash-lite`); a 503 still falls through the whole chain — no new plumbing.
-- **Batch API: never interactive.** Reserved for the embeddings backfill (50% off) and future bulk enrichment; not
-  worth it for one daily briefing.
+- **Batch API: never interactive.** Reserved for the embeddings backfill (50% off) and future bulk enrichment.
 
 ## 6. Security invariants (none relaxed)
 
@@ -108,7 +115,12 @@ substrate for later promoting hot queries into the UI.
 3. No raw SQL from the model on the default path.
 4. `security definer` RPCs pin `set search_path = public` and take `p_user` injected by the edge function from auth,
    never from the model.
-5. Announce before create/update/delete; **explicit user confirmation before ANY delete**.
+5. Announce before create/update. **A delete (`db_delete`) or a Hevy routine rewrite never runs from the tool loop:**
+   it is stored in `ai_pending_actions` (migration 140) and shown as a **Confirm card**; it runs only on a separate
+   `confirmAction` request from the app, which the model cannot send — exactly the rows shown, once, for the same
+   account, within 15 minutes. The phone has no button, so it cannot delete. This is enforced in code, not by a
+   prompt rule, so text in a calendar invite, a title or a web page cannot delete anything. The model also may not
+   set link columns (`AI_NO_WRITE`: Google, Trakt, Hevy, ES-DE, ScreenScraper and IGDB ids).
 6. `semantic_search` returns only the caller's rows (user_id filter inside the vector query).
 7. Limits: 16-turn loop cap · `db_aggregate` ≤366 groups · vector `limit ≤ 8`.
 
@@ -120,16 +132,15 @@ substrate for later promoting hot queries into the UI.
 - **(E) frontend-executed query plans** — latency ×N inside a 16-turn loop; rejected for chat. (Note: the app's own
   UI already *is* this layer for known views.)
 - **(F) RAG-first** — embeddings are STALE copies, useless for "how many kcal today"; a complement only.
-- **(G) precomputed rollups** — staleness; the natural substrate for a future weekly review, not needed for v1.
+- **(G) precomputed rollups** — staleness; not needed (the AI weekly review that might have used them was removed).
 
 ## 8. Already right — do not churn
 
 `DB_CATALOG` stays behind `describe_database` (on-demand, not in the prompt) · `thinking_level: MINIMAL` in the loop
-with the request body built **per model** (thinking tokens are not the leak) · structured mode sends no tools · the
-daily briefing is once/day + localStorage-cached · the weekly review is client-side lazy+cached the same way (no
-cron) · `plan_trip`'s one-shot resolve-in-tool latency design.
+with the request body built **per model** (thinking tokens are not the leak) · structured mode sends no tools · Home's
+brief costs nothing (rule-based, no AI) · `plan_trip`'s one-shot resolve-in-tool latency design.
 
-## 9. Pricing appendix (July 2026 — MEDIUM confidence, verify on live billing)
+## 9. Pricing appendix (snapshot of 21.07.2026 — MEDIUM confidence, verify on live billing)
 
 | Model | In $/M | Out $/M |
 |---|---|---|

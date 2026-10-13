@@ -1,4 +1,6 @@
-# ES-DE completeness audit — 2026-09-16
+# ES-DE completeness audit — 16.09.2026
+
+> **Archived 13.10.2026** (moved from `docs/games/`): a dated snapshot taken before the content widget existed; for the current device side see [the RP6 widget guide](../termux-widgets.md).
 
 > Historical pre-expansion findings. After reviewing this report, the user
 > requested the new widgets to exclude **PDF manuals as well as video**.
@@ -48,7 +50,7 @@ python3 scripts/audit-esde-source.py \
 
 That command only reads the card and writes the requested JSON; it performs no
 network or DB access. Re-query the DB with explicit authorization for a new audit.
-The compact [comparison evidence](esde-audit-2026-09-16.json) records exact sample
+The compact [comparison evidence](../games/esde-audit-2026-09-16.json) records exact sample
 identities, categories, compared fields and statistics without credentials or
 user IDs. Counts below are a dated snapshot, not future sync invariants.
 

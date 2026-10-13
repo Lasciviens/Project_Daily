@@ -1,6 +1,66 @@
 # Changelog
 
-## 2.0.0 — Phase 2-5 rewrite (this PR)
+## Display-only changes after 2.1.0 (27.09.2026, no version bump)
+
+No decision, target or evidence level changed, so `ALGORITHM_VERSION` stayed 2.1.0:
+
+- `CanonicalSet.rpe` carries `hevy_sets.rpe` through `normalize.ts` for display only;
+  `format.ts` adds " @ RPE 8/9/10" (via `setFormat.rpeSuffix`) where a logged session is
+  shown — Last time, session lists, the chart tooltip, the coach. No engine function reads
+  it (see `DATA_AND_LIMITATIONS.md`).
+- Personal-record events are kept off every screen (`copy.ts` `visibleEvents`); the engine
+  still emits them and they still count as evidence for the program verdict.
+
+## 2.1.0 — targets for every session shape, unit-aware trends (27.09.2026)
+
+From the Training audit (commit `a8b89cfa`, "Training + Health: fix the audited bugs and
+data paths"). `ALGORITHM_VERSION` 2.0.0 → 2.1.0.
+
+- **Next targets for every session shape.** A top-set + backoff session keeps each set's
+  OWN load in the plan (prescribing the backoff reps at the top-set weight was a real bug),
+  and only the top set's load goes up. Every "stay at this load" action gets double
+  progression: keep the load, add one rep (or five seconds on a timed hold) to the first set
+  below the minimum, else below the top of the range; a set that dropped since last time
+  means "get back to last time". The first session of an exercise already gets such a plan.
+  A bodyweight movement ready to progress is told to add weight or a harder variation.
+  When no numeric target can be given, `nextTargetBlocker` says why (`no_sets`,
+  `mixed_load`, `set_count_mismatch`, `missing_values`, `action`).
+- **READY_TO_INCREASE for top-set + backoff schemes:** a complete session whose top set is
+  at the top of the range and whose backoff sets all clear the minimum now qualifies (before,
+  such a scheme could never be told to add load).
+- **Routine targets from the routine's own sets** (`policies.ts` `routineTargetFromSets`):
+  warm-ups **and dropsets** are excluded (counting a dropset made a 3-set + dropset routine
+  demand 4 sets forever and blocked "Ready to increase"); with no rep range, the fixed reps
+  are the target, so a 5×5 is 5–5.
+- **No generic default for bodyweight reps** (it was 10–15, which made sub-10 pull-up
+  progress read "below the minimum"): without a saved target every extra rep counts.
+- **Unit-aware, symmetric trend thresholds.** Timed and distance totals use floors relative
+  to their own mean (4 % noise, 1 % slope — `relativeNoiseFloor`, `relativeSlopeFloor`)
+  instead of the 1-rep floor, which meant a plank could never read ACCUMULATING or
+  POSSIBLE_PLATEAU. ACCUMULATING and DECLINING now need the same evidence: a slope past its
+  floor AND either a low-noise series or a one-sided 95 % t-test on the slope (before, only
+  improvement needed low noise).
+- **New action `LOG_COMPARABLE_SESSION`** for a session that could not be compared at all
+  (mixed loads, nothing the metric reads); it used to read HOLD_STEADY, which is now
+  "Repeat and add a rep". `observedTransition` is direction-aware, so any LOAD_DECREASED
+  (a lighter weight, or more assistance) is REVIEW_LOAD_REDUCTION.
+- **One estimated 1RM per session** (`metricStrategy.ts` `sessionBestE1rm`: the set with the
+  best e1RM value) used by current state, the estimated-strength event and the charts; one
+  `EST_1RM_MAX_REPS`.
+- **Event names say what the engine sees:** the loaded history is the last 6 months of the
+  current program, so a "Load PR" became "Best load (6 months)", and so on.
+- New catalog codes `REPS_UNCHANGED`, `REPS_DECLINED`, `LOG_COMPARABLE_SESSION` and one entry
+  per data-quality flag (`DATA_QUALITY_FLAG_CODE`), so the UI never shows a raw enum.
+- **Code moved into the engine:** `program.ts` (the program verdict, from the deleted
+  `progressDecisions.ts`; `progressCopy.ts` deleted too), `weeklyChanges.ts`, `format.ts`,
+  `chartSeries.ts` (the trend chart draws the engine's own numbers).
+- **The engine runs once per page** instead of once per card (today
+  `progressModel.ts` via `TrainingProgressProvider`, see `README.md`).
+
+`scripts/verify-progress-engine.cjs` grew with these cases (329 assertions as of
+13.10.2026); `scripts/verify-progress-decisions.cjs` now covers only the program decision.
+
+## 2.0.0 — Phase 2-5 rewrite (03.09.2026)
 
 Full replacement of the per-exercise pieces of `progressDecisions.ts`
 (`ExerciseDecision`, `computeExerciseDecision`, `ExposureSummary`,

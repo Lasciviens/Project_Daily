@@ -1,7 +1,7 @@
 import type { LocalLibrary, TraktItem, TraktSnapshot } from './traktTypes'
 import { movieWatchedAt } from './traktDates'
 
-// The import itself, as data (docs/trakt/PLAN.md phase 2): what each title
+// The import itself, as data (docs/features/media.md, Trakt phase 2): what each title
 // becomes here, and what goes to Trakt so both sides hold the same record.
 // Pure and import-free (scripts/verify-trakt-import-plan.cjs). Running it
 // again after a successful import plans no pushes and no episode writes.

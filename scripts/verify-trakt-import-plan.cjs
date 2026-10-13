@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /*
- * Verification — the Trakt import plan (docs/trakt/PLAN.md phase 2), against
+ * Verification — the Trakt import plan (docs/features/media.md, Trakt phase 2), against
  * the real traktImportPlan.ts via sucrase: Trakt wins, app-only facts are
  * pushed, watched/watching beats wishlist on both sides, plays = 1 + repeat,
  * Completed vs Watching from aired episodes, and a second run plans nothing.

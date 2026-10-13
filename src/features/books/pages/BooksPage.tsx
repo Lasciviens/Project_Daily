@@ -18,7 +18,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'kobo', label: 'Kobo' },
 ]
 
-/** Books — the library, reading statistics from the Kobo, Send to Kobo, and the Kobo itself (docs/kobo/PLAN.md). */
+/** Books — the library, reading statistics from the Kobo, Send to Kobo, and the Kobo itself (docs/kobo/REFERENCE.md). */
 export function BooksPage() {
   const [params, setParams] = useSearchParams()
   // ?tab=reading was the Stats tab's old name (Daily's Reading card and old links).

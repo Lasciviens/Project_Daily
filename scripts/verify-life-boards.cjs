@@ -18,7 +18,7 @@ function check(name, cond, detail) {
 const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b)
 const rem = 16
 
-// Page content widths: viewport − sidebar − 2 × gutter (CLAUDE.md reference sizes).
+// Page content widths: viewport − sidebar − 2 × gutter (THEME.md §6.6 reference screens).
 const W = { laptop1280: 1280 - 232 - 64, laptop: 1469 - 232 - 64, fhd: 1920 - 232 - 64, monitor: 2450 - 232 - 64 }
 
 /** Width the board's tracks take at a page width (what is left over is empty). */

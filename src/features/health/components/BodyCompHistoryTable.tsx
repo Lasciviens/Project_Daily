@@ -8,7 +8,7 @@ import { ChevronDown } from 'lucide-react'
 // demand" rule: secondary/raw detail lives behind a tap, not permanent screen
 // area). A plain horizontally-scrolling table rather than a desktop-table/
 // mobile-card split: 15 columns don't compress into a stacked card without
-// either losing fields or growing very tall per row, and CLAUDE.md's own W2
+// either losing fields or growing very tall per row, and THEME.md's W2
 // rule already sanctions overflow-x-auto for genuinely wide content like this.
 export function BodyCompHistoryTable({ reports }: { reports: BodyCompositionReport[] }) {
   const [open, setOpen] = useState(false)

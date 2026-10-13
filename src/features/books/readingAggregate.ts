@@ -1,4 +1,4 @@
-// Reading statistics from KOReader's page events (docs/kobo/PLAN.md §4.3, §5).
+// Reading statistics from KOReader's page events (docs/kobo/REFERENCE.md §4.3, §5).
 // Pure and import-free (type-only); verified by scripts/verify-reading-aggregate.cjs.
 //
 // Two rules that are not polish:

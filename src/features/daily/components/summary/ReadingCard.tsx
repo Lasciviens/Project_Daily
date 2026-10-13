@@ -10,7 +10,7 @@ import { BookCover } from '../../../books/components/BookCover'
 
 // Reading on the glance board: minutes on the viewed day against the goal, the
 // streak, and the book in hand. A day the Kobo has not reported yet says so
-// instead of showing a zero (docs/kobo/PLAN.md §5).
+// instead of showing a zero (docs/kobo/REFERENCE.md §5).
 export function ReadingCard({ date }: { date: string }) {
   const events = useReadingEvents(120)
   const { data: settings } = useReadingSettings()

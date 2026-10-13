@@ -1,5 +1,5 @@
 // Throwaway verification for src/features/games/test-game/testGameModel.ts —
-// no unit test framework in this repo (CLAUDE.md).
+// no unit test framework in this repo (AGENTS.md).
 //   node scripts/verify-test-game-model.cjs
 require('sucrase/register')
 const assert = require('assert')

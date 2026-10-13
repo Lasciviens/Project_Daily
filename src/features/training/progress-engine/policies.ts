@@ -159,7 +159,7 @@ export function resolveLoadIncrementKg(
 /** Derives an equipment class from the exercise's OWN title — the same
  *  token-based equipment extraction `exerciseGifResolver.ts` already uses
  *  (and ships) for GIF matching, reused here rather than inventing a second
- *  detector or a speculative new DB field (CLAUDE.md's own rule against
+ *  detector or a speculative new DB field (AGENTS.md's rule against
  *  guessing at unverified external schema). Kettlebell is mapped to
  *  'dumbbell' (a fixed-increment handheld load, the same granularity);
  *  cable/Smith machine map to 'machine' (pin/fixed-plate loaded, same

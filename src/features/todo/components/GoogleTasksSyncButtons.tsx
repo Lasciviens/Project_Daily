@@ -5,7 +5,7 @@ import { useAllTasks, useSyncFromGoogleTasks, usePushToGoogleTasks } from '../ho
 import { GoogleTaskListsSheet } from './GoogleTaskListsSheet'
 
 // Two manual actions for the Google Tasks integration, previously defined
-// but unreachable from any UI (CLAUDE.md: "known side effect" of the old
+// but unreachable from any UI (a "known side effect" of the old
 // global To-Do drawer's removal). Real-time per-task sync already covers
 // create/edit/complete/delete automatically — these two exist for the cases
 // that automatic sync can't reach:

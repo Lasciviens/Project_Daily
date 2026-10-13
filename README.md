@@ -1,348 +1,83 @@
 # Lasci's Board
 
-A single-user personal dashboard built with React + Supabase. It covers daily
-planning and to-dos, a food/nutrition diary with bodyweight-driven coaching,
-media tracking (movies/TV via TMDB), a work task board, projects, a games
-library, training and health (Hevy, Strava, Apple Health), Google Calendar
-sync, Oslo transit and weather, an AI
-assistant with generic database access, an iPhone control surface (Shortcuts,
-Siri, Scriptable widgets) and lock-screen push notifications.
+A personal dashboard for one owner, installable as a phone app (PWA). It brings
+the owner's day, food, shopping, media, training, health, games and reading
+into one place, with an AI assistant and an iPhone surface on top.
 
-**Live app:** https://lasciviens.github.io/Project_Daily/#/login
-**Repo:** https://github.com/Lasciviens/Project_Daily
+**Live app:** https://lasciviens.github.io/Project_Daily/#/login · **Repo:** https://github.com/Lasciviens/Project_Daily
 
----
+## What is in it
 
-## Documentation
-
-**RP6 / Android: [Termux widget guide — setup, editing, new widgets and completed work](docs/termux-widgets.md).**
-
-ES-DE coverage: [10-game media and metadata audit](docs/games/esde-completeness-audit.md)
-— records the original gaps. The new widgets preserve metadata and original
-images, excluding PDF manuals and video, as documented in the widget guide.
-
-| Read this | For |
+| Area | In short |
 |---|---|
-| [`CLAUDE.md`](CLAUDE.md) | The agent bible — current feature + architecture state, coding rules, edge-function inventory, key patterns. Updated every session; it wins on any disagreement. |
-| [`AGENTS.md`](AGENTS.md) | Database/schema/Supabase rules: migrations, RLS, edge-function conventions. |
-| [`docs/README.md`](docs/README.md) | Index of the deep-dive docs — setup runbooks, the cross-AI coordination channel, and verified API references. |
-| [`supabase/migrations/`](supabase/migrations) | The schema source of truth. There is no separate data-model document. |
-| In-app **Dev Requests** drawer | The live backlog (`dev_requests` table), not a markdown list. |
+| Home | A rule-based daily brief, now/next, today's tasks, transit, weather, currency, news and glance tiles |
+| Personal (Daily) | Day / Week / Month / Tasks views, the day's schedule, a glance board; one `tasks` table for every page |
+| Food | Diary and meal plan in one table, recipes, barcode and online food search, water, a nutrition coach |
+| Shop | Wishlist with a price watch, a quick shopping list with grocery-chain prices, the things you own and money chains |
+| Media | Movies and TV from TMDB, two-way Trakt sync, lists, a queue and stats |
+| Training | Hevy workouts and routines, a progress engine per exercise, Strava, an AI coach |
+| Health | Apple Health (through the Health Auto Export app), the smart scale, goal progress |
+| Games | Retro library from the handheld (ES-DE), Steam, PlayStation, ScreenScraper and IGDB data |
+| Books | A Kobo e-reader through a KOReader plugin: reading stats, Send to Kobo, device settings from the app |
+| Wishes | Things to do and places to go, each with a reminder period that is never a deadline |
+| Work · Projects | A work task board; projects with phases and items |
+| AI assistant | Gemini through the `ai-proxy` edge function, with allow-listed database tools; a delete runs only after a Confirm card |
+| iPhone | `phone-gateway` (12 actions), 11 generated Apple Shortcuts, Scriptable widgets and a food logger, a morning Web Push |
 
-iPhone side specifically: [`docs/iphone-examples.md`](docs/iphone-examples.md)
-(gateway action contract + Shortcut recipes),
-[`docs/iphone-web-integration.md`](docs/iphone-web-integration.md) (why it is
-built this way + iOS platform limits),
-[`docs/scriptable-food-logger.md`](docs/scriptable-food-logger.md),
-[`docs/scriptable-widgets.md`](docs/scriptable-widgets.md),
-[`docs/web-push-setup.md`](docs/web-push-setup.md).
+Also: Settings (places, appearance, connections and subscriptions, a list of
+every external API), a Developer
+page (activity log, errors, AI memory) and the in-app **Dev Requests** drawer,
+which is the live backlog.
 
----
+## Stack
 
-## Development Workflow
+React 19 · TypeScript 6 · Vite 8 · Tailwind CSS 3 · TanStack Query 5 · Zustand 5 ·
+React Router 7 (HashRouter, `/#/route`) · Headless UI 2 · Recharts 3 ·
+vite-plugin-pwa. Backend: Supabase (Postgres with row level security, Auth,
+Deno edge functions, pg_cron). Hosting: GitHub Pages. No unit-test framework:
+logic is checked by `scripts/verify-*.cjs|mjs`.
 
-Every session runs inside a fresh container on [Claude Code on the web](https://claude.ai/code). Git is the only persistent memory between sessions.
-
-```mermaid
-flowchart TD
-    A([User describes task]) --> B[Claude creates branch<br/>claude/descriptive-name]
-    B --> C[Write code]
-    C --> D[npm run build<br/>tsc -b + vite build]
-    D --> E{Build passes?}
-    E -- No --> C
-    E -- Yes --> F[git commit + push]
-    F --> G[Open draft PR]
-    G --> H([User reviews & marks ready])
-    H --> I[Merge to main]
-    I --> J[GitHub Actions: migrations, then edge functions]
-    J --> K[then the website build-and-deploy]
-    K --> M([Everything live ~3–5 min])
-```
-
-> **Never push directly to `main`.** All changes go through a PR.
-> A merge deploys everything in order: new database migrations, every edge
-> function, then the website (`.github/workflows/deploy.yml`). One-time setup:
-> two secrets in the GitHub environment `production`, see
-> [`docs/deploy-setup.md`](docs/deploy-setup.md).
-
----
-
-## Tech Architecture
-
-```mermaid
-flowchart LR
-    subgraph Client["Client — GitHub Pages, static"]
-        R[React 19 + TypeScript]
-        RR[HashRouter /#/route]
-        Z[Zustand — UI state]
-        TQ[TanStack Query v5<br/>server state]
-        TW[Tailwind CSS v3]
-        SW[vite-plugin-pwa<br/>service worker + push-sw.js]
-        R --> RR
-        R --> Z
-        R --> TQ
-        R --> TW
-        R --> SW
-    end
-
-    subgraph Phone["iPhone"]
-        SHORT[Apple Shortcuts / Siri]
-        SCRIPT[Scriptable widgets<br/>+ food logger]
-    end
-
-    subgraph Supabase["Supabase — backend"]
-        PG[(Postgres + RLS)]
-        AUTH[Auth]
-        EF[Edge Functions<br/>Deno]
-        CRON[pg_cron]
-        PG --- AUTH
-        EF --- PG
-        CRON --> EF
-    end
-
-    subgraph APIs["External services"]
-        GEMINI[Gemini 3.5 Flash<br/>+ 4-model fallback]
-        HEVY[Hevy API]
-        HAE[Health Auto Export<br/>iOS app]
-        STRAVA[Strava]
-        KASSAL[Kassalapp<br/>NO branded groceries]
-        NEWS[RSS feeds]
-        GCAL[Google Calendar<br/>+ Tasks]
-        TMDB[TMDB<br/>movies & TV]
-        ENTUR[EnTur<br/>transit + geocoder]
-        MET[MET Norway<br/>weather]
-        OXR[Open Exchange Rates]
-        OFF[Open Food Facts<br/>+ NIH DSLD]
-        GIFS[Exercise GIF CDN<br/>jsDelivr]
-        WEBPUSH[Browser push service<br/>VAPID]
-    end
-
-    TQ -->|REST| PG
-    TQ -->|invoke| EF
-    SHORT -->|x-phone-secret| EF
-    SCRIPT -->|x-phone-secret| EF
-
-    EF -->|proxied| GEMINI
-    EF -->|proxied| HEVY
-    HEVY -->|webhook| EF
-    HAE -->|webhook| EF
-    EF -->|proxied| STRAVA
-    EF -->|proxied| KASSAL
-    EF -->|proxied| NEWS
-    EF -->|OAuth code + refresh| GCAL
-    EF -->|VAPID| WEBPUSH
-    WEBPUSH -->|notification| SW
-
-    TQ -->|direct| TMDB
-    TQ -->|direct, bearer token| GCAL
-    TQ -->|direct| ENTUR
-    TQ -->|direct| MET
-    TQ -->|direct| OXR
-    TQ -->|direct| OFF
-    TQ -->|direct| GIFS
-```
-
-Two things the diagram is deliberate about:
-
-- **Only secrets go through Edge Functions.** TMDB, EnTur, MET Norway, Open
-  Exchange Rates, Open Food Facts, NIH DSLD and the GIF CDN are called
-  straight from the browser with client-safe keys. Google
-  Calendar is split: the OAuth code exchange and refresh run in
-  `calendar-oauth`/`calendar-token`, while the Calendar and Tasks API calls
-  themselves are direct from the client with the bearer token.
-- **`pg_cron` is load-bearing**, not decoration: it drives the morning Web Push
-  brief.
-
----
-
-## Features
-
-Daily planning + to-dos, a unified food diary (meal plan, macros/fiber/sugar,
-barcode + online food search, supplements, water) with a bodyweight-driven
-nutrition coach, a shop/wishlist, media tracking (movies/TV via TMDB with
-per-episode progress), a work kanban/list board, projects, a games library,
-training and health (Hevy workouts/routines/PRs, Strava, Apple Health via
-Health Auto Export, plus an AI PT coach), Google Calendar sync, Oslo transit
-and weather, a Developer page (audit trail +
-error logs) and an in-app Dev Requests backlog.
-
-Cross-cutting surfaces:
-
-- **AI assistant** — Gemini through the `ai-proxy` edge function: generic
-  allow-listed database read/write, server-side aggregation, day summaries,
-  photo (vision) input, pgvector semantic search, durable memory, an opt-in
-  read-only live-SQL escape hatch, per-surface model routing and usage logging.
-- **iPhone surface** — the `phone-gateway` edge function is the one durable
-  entry point (authenticated by a device secret, acting as the single user
-  server-side). It exposes deterministic actions (`log_supplement`, `log_food`,
-  `log_water`, `nutrition_today`, `recent_foods`, `search_library`,
-  `sleep_stats`, `tasks_today`) plus AI actions (`ask`, `brief`, `sleep`)
-  forwarded to `ai-proxy`. On top of it: 11 generated Apple Shortcuts, a
-  Scriptable food logger and four home-screen widgets.
-- **Web Push** — a `pg_cron` job calls `push-send`, which signs a VAPID push so
-  the morning brief reaches the lock screen while the app is closed.
-- **Installable PWA** — service worker with auto-update, pull-to-refresh, a
-  mobile app shell with a floating tab bar, dark mode and a ⌘K command bar.
-
-**Feature status is tracked in `CLAUDE.md`'s Features table, not here** — that
-file is updated every session and is the current source of truth; duplicating
-per-feature status here would just go stale.
-
----
-
-## Routes
-
-```
-/#/login          → LoginPage          (public)
-/#/reset-password → ResetPasswordPage  (public — reached from the Supabase
-                                        recovery email or "Forgot password?")
-/#/home           → HomePage
-/#/daily          → DailyPage    (nav: "Personal" — Daily only, no in-page tabs)
-/#/recipes        → RecipesPage  (nav: "Food" — in-header Food | Shop tabs)
-/#/shop           → ShopPage     (same "Food" nav group and tabs)
-/#/media          → MediaPage
-/#/work           → WorkPage
-/#/projects       → ProjectsPage
-/#/training       → TrainingPage
-/#/games          → TestGamePage (the Game Library design; /#/games-legacy and /#/test-game redirect here)
-/#/developer      → DeveloperPage      (reached via the Settings ⚙ menu)
-```
-
-Desktop nav order is Home · Personal · Food · Media · Work · Training ·
-Projects · Games. The route stays `/#/recipes`, but the UI calls it **Food** —
-paths were kept stable through the nav restructure so existing deep links still
-work.
-
-Everything except `/#/login` and `/#/reset-password` is behind `SessionGuard`
-(`src/app/router.tsx`).
-
----
-
-## Repository layout
-
-```
-src/app/            router.tsx · layout.tsx (nav + app shell) · providers.tsx · store.ts (Zustand)
-src/features/       one folder per feature: ai auth calendar daily devRequests developer
-                    games home media personal projects recipes(=Food) shop todo training work
-src/shared/         shared components (incl. UnifiedPlanModal, CommandBar), hooks, utils
-src/integrations/   supabase · tmdb · rp5-library (second Supabase project, games)
-src/security/       sessionGuard.tsx · supabaseClient.ts
-supabase/functions/ Deno edge functions — each self-contained, deployed on merge
-supabase/migrations/ numbered .sql migrations — those above 140 run on merge
-scripts/            generators + verification scripts, incl. iphone-shortcuts/ (Codex-owned)
-public/             PWA assets + push-sw.js (Web Push service-worker handlers)
-docs/               runbooks, coordination logs, API references — see docs/README.md
-.github/workflows/  deploy.yml (migrations → functions → website) · pr-check.yml
-```
-
-There is no unit-test framework in this repo (`@playwright/test` is the only
-test dependency); one-off logic verification ships as a throwaway script under
-`scripts/`.
-
----
-
-## Deployment Pipeline
-
-```mermaid
-flowchart TD
-    PUSH([Push / merge to main]) --> GHA[GitHub Actions: Deploy<br/>always main's newest commit]
-    DISPATCH([Manual workflow_dispatch]) --> GHA
-    GHA --> TOK[backend: token check]
-    TOK --> MIG[backend: new migrations<br/>scripts/deploy/run-migrations.mjs]
-    MIG --> FN[backend: supabase functions deploy<br/>JWT settings from config.toml]
-    FN --> VITE[build-and-deploy: npm run build<br/>needs every VITE_* repo secret]
-    VITE --> ARTIFACT[Upload dist/ as a Pages artifact]
-    ARTIFACT --> D1[deploy-pages attempt 1<br/>continue-on-error]
-    D1 -- succeeded --> PAGES([GitHub Pages live])
-    D1 -- failed --> WAIT[sleep 20]
-    WAIT --> D2[deploy-pages retry<br/>this attempt gates the job]
-    D2 --> PAGES
-
-```
-
-Notes on the pipeline, all in `.github/workflows/deploy.yml`:
-
-- The `backend` job runs first: migrations numbered above 140 that have not run
-  yet (each once, recorded in `deploy.applied_migrations`), then every edge
-  function. A failing migration stops the run, so the functions and the
-  website stay on the previous version. The secrets `SUPABASE_ACCESS_TOKEN` and
-  `SUPABASE_DB_URL` live in the environment `production` (main only); without
-  them it only warns. Setup and dry run: `docs/deploy-setup.md`.
-- The website uses the official `actions/deploy-pages` mechanism (not a
-  `gh-pages` branch).
-- The Pages deploy step is intermittently flaky, so attempt 1 runs with
-  `continue-on-error` and only the retry gates the job. A red-then-green run is
-  expected behaviour, not a broken build.
-- Concurrency group `pages`, `cancel-in-progress: false` — one deploy at a
-  time; a third merge replaces a second one still waiting, which is harmless
-  because every run deploys main's newest commit. Dry runs have their own
-  group.
-- The build reads its `VITE_*` values from **GitHub Actions secrets**. A missing
-  one produces a broken deploy rather than a failed build, because most of them
-  only fail at call time.
-
----
-
-## Quick Start
+## Quick start
 
 ```bash
-npm install
-
-# Dev server (http://localhost:5173)
-npm run dev
-
-# Type-check + build (what CI runs)
-npm run build
-
-# Lint
+npm ci                            # Node 22, as in CI
+npm run dev                       # http://localhost:5173/Project_Daily/
+npm run build                     # type-check + production build
 npm run lint
+node scripts/run-all-verify.mjs   # every verify script, as the PR check runs them
 ```
 
-### Environment variables
+The `verify-db-*` scripts need a throwaway Postgres in `VERIFY_DB_URL` and are
+skipped without one.
 
-Create a `.env.local` at the project root. (`.env.example` and
-`.env.local.example` exist but are both out of date — use the table below.)
+Put the client variables in `.env.local` (names only here; `.env.example` is
+out of date). `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are required;
+`VITE_TMDB_API_KEY`, `VITE_GOOGLE_CLIENT_ID`, `VITE_STRAVA_CLIENT_ID`,
+`VITE_OXR_APP_ID` and `VITE_VAPID_PUBLIC_KEY` turn on their features. Every
+other key lives server-side only (Supabase Edge Function secrets and Vault):
+[`docs/backend/environment.md`](docs/backend/environment.md).
 
-| Variable | Purpose | Required? |
-|---|---|---|
-| `VITE_SUPABASE_URL` | Main Supabase project URL | **Yes** — the app throws at import without it |
-| `VITE_SUPABASE_ANON_KEY` | Main Supabase anon key | **Yes** — same |
-| `VITE_TMDB_API_KEY` | TMDB key, client-safe | Media features throw at call time without it |
-| `VITE_GOOGLE_CLIENT_ID` | Google OAuth client ID — one consent covering Calendar and Tasks | Optional; Google features are hidden without it |
-| `VITE_STRAVA_CLIENT_ID` | Strava OAuth client ID | Optional; Strava connect only |
-| `VITE_OXR_APP_ID` | Open Exchange Rates app id | Optional; the Currency widget errors without it |
-| `VITE_VAPID_PUBLIC_KEY` | Web Push **public** key, safe to expose | Optional; push subscribe is unavailable without it |
+## How deploy works
 
-All seven are set as GitHub Actions secrets for the deploy build. Games
-(`games`/`game_platforms`, migration 089) lives in the main Supabase project
-now — no separate client/keys.
+Work happens on a branch and reaches `main` through a pull request. A merge to
+`main` deploys, in order: the new database migrations (numbered above 140, each
+once), every edge function, then the website. A failing step stops the run, so
+nothing after it changes. Setup and recovery:
+[`docs/deploy-setup.md`](docs/deploy-setup.md).
 
-Server-side secrets live in **Supabase Vault / Edge Function secrets only,
-never in the client** — the Gemini API key (`GEMINI_API_KEY`), Google OAuth
-client secret, `HEVY_*`, `HEALTH_EXPORT_WEBHOOK_SECRET`,
-`KASSALAPP_API_KEY`, `PHONE_GATEWAY_SECRET`,
-`VAPID_PRIVATE_KEY`/`VAPID_SUBJECT`, `PUSH_CRON_SECRET`, `STRAVA_CLIENT_SECRET`.
-CLAUDE.md's Environment Variables table is the full list.
+## Where to read next
 
----
-
-## Working in this repo
-
-- **Never commit directly to `main`.** Branch as `claude/<descriptive-name>`
-  (e.g. `claude/add-weather-widget`) and open a PR.
-- **English only in every repo artifact** — code, comments, UI strings, commit
-  messages, PR text, docs. The single exception is Turkish inside the generated
-  iPhone shortcuts' and widgets' on-phone user-facing strings, which is the
-  personal-device UX language.
-- **Two AI agents work this repo.** Claude is the manager and owns `src/**`,
-  `supabase/**`, migrations and all of `docs/**`. **Codex owns
-  `scripts/iphone-shortcuts/**` and nothing else.** Tasks flow through
-  [`docs/codex-shortcuts.md`](docs/codex-shortcuts.md); messages flow through
-  two append-only logs described in
-  [`docs/coord/README.md`](docs/coord/README.md). Never generate shortcuts with
-  a real `x-phone-secret` committed — the checked-in source uses a placeholder.
-- **Layout is content-sized, mobile-first.** Before building any widget, read
-  CLAUDE.md's "Layout width" and "Width Standard" rules and its reference
-  viewports (mobile 852×393, laptop 1469×680, monitor 2450×1130) — nothing is
-  stretched edge-to-edge here.
-- Dates are always `en-GB` (DD/MM/YYYY).
+| File | For |
+|---|---|
+| [`AGENTS.md`](AGENTS.md) | The shared rulebook for every AI working on the repo (Claude and Codex) |
+| [`CLAUDE.md`](CLAUDE.md) | `@AGENTS.md` plus Claude-only notes |
+| [`.claude/rules/`](.claude/rules) | Short rule files Claude Code loads by itself when matching files are touched |
+| [`docs/features/`](docs/features/README.md) | One description per feature |
+| [`docs/platform-shell.md`](docs/platform-shell.md) | App shell, routes, PWA updates, iOS gotchas |
+| [`docs/design/THEME.md`](docs/design/THEME.md) | The UI guide: tokens, primitives, layout, popups |
+| [`docs/backend/edge-functions.md`](docs/backend/edge-functions.md) · [`environment.md`](docs/backend/environment.md) | Edge functions; every variable and secret |
+| [`docs/deploy-setup.md`](docs/deploy-setup.md) · [`deploy-checklist.md`](docs/deploy-checklist.md) | The automatic deploy; manual steps still open |
+| [`docs/decisions.md`](docs/decisions.md) | Decisions not to revisit |
+| [`docs/integrations/`](docs/integrations) | One file per newly added external API |
+| [`docs/README.md`](docs/README.md) | Index of every other doc: runbooks, coordination, references |
+| [`supabase/migrations/`](supabase/migrations) | The schema itself |

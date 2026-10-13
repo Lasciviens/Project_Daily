@@ -1,7 +1,7 @@
 import type { LocalLibrary, LocalMovie, LocalShow, TraktItem, TraktSnapshot } from './traktTypes'
 import { buildNotePlan, type TraktNoteType } from './traktNotes'
 
-// The first import's dry run (docs/trakt/PLAN.md §1): what importing Trakt
+// The first import's dry run (docs/trakt/REFERENCE.md §1): what importing Trakt
 // would change here, and what the app holds that Trakt does not, without
 // writing anything. Pure and import-free (scripts/verify-trakt-preview.cjs).
 //

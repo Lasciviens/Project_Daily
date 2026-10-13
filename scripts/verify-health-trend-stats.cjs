@@ -3,7 +3,7 @@
  * Verification — healthTrendStats.ts (the Health page's 7/30/90-day change,
  * weekly rate, best/worst week, variability, wake-time spread, usual ranges
  * and the overnight-vitals status) and benchmarks/referenceLadder.ts.
- * Runs the real modules through sucrase (no test framework, per CLAUDE.md).
+ * Runs the real modules through sucrase (no test framework, per AGENTS.md).
  *
  * Run: node scripts/verify-health-trend-stats.cjs
  */

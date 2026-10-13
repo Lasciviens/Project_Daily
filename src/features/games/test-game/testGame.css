@@ -4,8 +4,8 @@
    A plain stylesheet imported by TestGamePage.tsx, deliberately OUTSIDE any
    Tailwind @layer: several selectors here only ever match at runtime
    (data-status values, is-active states set from JS), and Tailwind purges
-   @layer rules whose selectors it cannot find in source (see CLAUDE.md's
-   recharts/view-transition note). Plain rules are never purged.
+   @layer rules whose selectors it cannot find in source (see AGENTS.md → Platform rules,
+   runtime-only class names). Plain rules are never purged.
 
    Everything is scoped to `.tg-root`, so nothing leaks into the rest of the
    app. Light is the default; `.dark` (stamped on <html> by the app's theme

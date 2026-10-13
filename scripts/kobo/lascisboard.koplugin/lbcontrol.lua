@@ -1,5 +1,5 @@
 --[[--
-What the app tells the Kobo to change (docs/kobo/PLAN.md, round 2):
+What the app tells the Kobo to change (docs/kobo/REFERENCE.md, round 2):
 statuses and ratings set in the app, KOReader settings, the menu order and
 the sleep screen images. Plus the report the app shows back (current values
 and the menus). Every write here is checked by lbcore first.

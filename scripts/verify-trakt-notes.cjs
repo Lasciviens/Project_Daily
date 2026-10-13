@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /*
- * Verification — Trakt notes ↔ personal_note (docs/trakt/PLAN.md §12),
+ * Verification — Trakt notes ↔ personal_note (docs/trakt/REFERENCE.md §12),
  * against the real src/features/media/trakt/traktNotes.ts via sucrase:
  * the 500-character rule, reading Trakt's notes list (only a title's own
  * note, the newest per title, a broken answer counted, never read as "no

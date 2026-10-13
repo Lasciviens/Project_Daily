@@ -281,7 +281,7 @@ jobs:
           VITE_GOOGLE_CLIENT_ID:      ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
           VITE_STRAVA_CLIENT_ID:      ${{ secrets.VITE_STRAVA_CLIENT_ID }}
           VITE_OXR_APP_ID:            ${{ secrets.VITE_OXR_APP_ID }}
-          # CLAUDE.md documents this one as an Actions *Variable* while it is
+          # docs/backend/environment.md documents this one as an Actions *Variable* while it is
           # wired here as a secret — accept either so a settings mismatch can't
           # silently ship an empty VAPID key (Web Push would then fail only when
           # the user taps the Settings toggle).

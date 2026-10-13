@@ -14,7 +14,7 @@ const dayOf = (iso: string) => localDayOf(iso) ?? iso.slice(0, 10)
 // One featured chart with a metric picker, rather than 14 permanent small
 // multiples — this table has enough fields that showing all of them as
 // full-size charts at once would be the "wall of charts" this app's own
-// Training Progress redesign explicitly moved away from (see CLAUDE.md's
+// Training Progress redesign explicitly moved away from (see docs/features/training.md's
 // Progress-tab small-multiples/indexed-chart notes). Every metric here is
 // single-series (no legend needed) so the picker can reuse one persistent
 // colour per field without any simultaneous-identity concern. Drawn like the

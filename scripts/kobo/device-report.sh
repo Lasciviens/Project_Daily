@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Kobo Phase 0 device report (docs/kobo/PLAN.md §10.6). READ-ONLY: it never
+# Kobo Phase 0 device report (docs/kobo/REFERENCE.md §10.6). READ-ONLY: it never
 # writes to the device. Prints no titles and no reading data, so the output
 # can be pasted into a chat.
 #

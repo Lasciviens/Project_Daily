@@ -1,7 +1,7 @@
 // Throwaway verification for the Analytics Collection tab's pure helpers
 // (src/features/games/test-game/components/tgAnalyticsCollection.ts), run
 // against the real tgAnalyticsMore figures they reshape. No unit test
-// framework here (CLAUDE.md).
+// framework here (AGENTS.md).
 //   node scripts/verify-tg-analytics-collection.cjs
 require('sucrase/register')
 const assert = require('assert')

@@ -3,7 +3,7 @@
  * Verification — healthDateLabels.ts (the Health page's period-navigator
  * label, the weekly-bar range label and the "last night" rule) and the
  * navigator wiring in components/dateNav.ts. Runs the real modules through
- * sucrase (no test framework, per CLAUDE.md).
+ * sucrase (no test framework, per AGENTS.md).
  *
  * Run: node scripts/verify-health-date-labels.cjs
  */

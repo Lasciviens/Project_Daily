@@ -1,0 +1,36 @@
+# iPhone surface (Shortcuts, Scriptable, Web Push)
+
+> Moved out of CLAUDE.md on 13.10.2026 (word for word, apart from translated quotes). This file describes how the feature works and why. The rules Claude must follow while changing it are in `.claude/rules/iphone.md`, which Claude Code loads by itself when a matching file is read or edited.
+
+## Overview
+
+See iPhone section below. `phone-gateway` (12 actions) + 11 Apple Shortcuts + a Scriptable food logger + 4 widgets.
+
+## Web Push (summary)
+
+See iPhone section below. Migration `068` + `push-send` + pg_cron morning brief + `public/push-sw.js`; toggle in Settings (⚙) → Notifications.
+
+## iPhone surface (Shortcuts · Scriptable · Web Push)
+
+**`phone-gateway`** is the single durable entry point (see the Edge Functions table for auth). **12 actions:** deterministic `log_supplement` · `log_food` · `log_water` · `nutrition_today` (includes `water_ml`) · `recent_foods` · `search_library` · `sleep_stats` · `tasks_today` · `import_body_composition`; AI `ask` · `brief` · `sleep` (forwarded to `ai-proxy` with the same secret). The action table in `docs/iphone-examples.md` is **the contract** — Shortcuts and widgets must match it.
+
+**`import_body_composition` (migration `085`, new `body_composition_reports` table)** — a smart-scale "Body composition analysis report" photo is shared to an Apple Shortcut, which OCRs the fixed report layout **on-device** (Apple's built-in OCR, no LLM anywhere in this path) and POSTs the 14 extracted numbers here. Deliberately narrow: only the 14 measured numbers + `measured_at` — no name/gender/reference-ranges/segmental-left-right breakdown (those are either PII, derivable, or the device's own classification judgment, none of which this table stores), no original-image storage, and it never touches `hevy_body_measurements`/`health_metrics` (a third, separate body-composition source — never merged or joined with those).
+- **Timezone, never a hardcoded offset.** The report prints a local wall-clock time with no UTC offset of its own; the gateway resolves it to a real instant via a DST-safe two-pass IANA-offset technique (`zonedWallTimeToUtcMs`/`parseNaiveLocalDateTime` in `phone-gateway/index.ts`) using an optional `measurement_timezone` request field (defaults to `Europe/Oslo`, the only zone in play today). `measured_at` in the DB is always the real reading instant, never the upload time.
+- **Validation is numeric sanity, never the device's own classification.** Every field is checked for presence/finiteness/a generous sane range, plus two cross-field consistency checks the report's own rounding has to satisfy: `body_fat_mass_kg ≈ weight_kg × body_fat_percent / 100` and `lean_body_mass_kg ≈ weight_kg − body_fat_mass_kg` (tolerance: the larger of 0.15 kg or 0.5% of `weight_kg`, sized to the report's 1-decimal rounding). A validation failure writes nothing and returns a field-keyed `validation_error`.
+- **Dedupe is DB-enforced, not just app logic.** A unique index on `(user_id, source, measured_at)` is the real guarantee; the gateway handler selects first so it can answer cleanly (`already_exists` when a re-sent report matches byte-for-byte within a tight re-send tolerance, `conflict` — never a silent overwrite — when the same `measured_at` carries different numbers) and separately catches the Postgres `23505` race for a genuinely concurrent duplicate submission, resolving it the same way instead of surfacing a raw DB error.
+- **`source` is a CHECK-constrained text column, currently only `'movinglife_report'`** (AGENTS.md rule 7: CHECK over enum, trivially extendable later) — set server-side, never sent by the client.
+- Rows are **immutable** — the gateway never updates one, only inserts or refuses; no `updated_at` column exists because none is ever mutated. `body_composition_reports` is a user-authored table (`trg_audit` attached) and is `ro` in `ai-proxy`'s `DB_CATALOG` (readable for trend questions alongside `hevy_body_measurements`/`health_metrics`; not `rw` — the AI never bypasses the gateway's validation by inserting directly).
+- **Codex's job (C6 on the board, `docs/codex-shortcuts.md`) is only the last step** of an already-working OCR Shortcut — POST the extracted numbers here and show a result notification; the OCR/extraction logic itself is explicitly out of scope for that task. Full request/response contract with real examples: `docs/iphone-examples.md`'s `import_body_composition` section.
+
+**The ~25s design constraint (why the AI actions look the way they do):** iOS Shortcuts' "Get Contents of URL" times out at roughly 25s, which is short for a tool-looping LLM. Three deliberate choices, all in `phone-gateway`/`ai-proxy`:
+1. **`FAST_MODEL = 'gemini-3.1-flash-lite'`** starts every AI action, skipping the frequently 503-overloaded 3.5-flash primary; ai-proxy still falls through the rest of the chain.
+2. **Single-shot, not a tool loop** — `brief` pre-builds its context SERVER-SIDE (`buildBriefContext`: today's tasks + schedule + upcoming training, service-role queries explicitly user-scoped, best-effort per section) and sends `surface: 'phone'`, which `toolsFor()` maps to **no tools**, so Gemini answers in one turn. Gemini rejects an empty tools array, so the key is dropped from the body entirely.
+3. **A 22s `AbortController`** on the ai-proxy call returns a clean error BEFORE the client cutoff instead of a silent hang.
+
+**Apple Shortcuts generator** — `scripts/iphone-shortcuts/` (built by Codex; claim it on `docs/codex-shortcuts.md` before editing): `generate.mjs` emits 11 shortcuts — `Log Creatine`, `Su İç`, `AI'a Sor`, `Sabah Brief`, `Beslenme Durumu`, `Uyku Özeti`, `Uyku İstatistikleri`, `Bugünün Taskları`, `Barkod Tara`, `Atıştırmalık Logla`, `Akşam Yemeği Logla`. Rules: the device secret is written as the `__PHONE_GATEWAY_SECRET__` placeholder — **never commit a signed `.plist`/`.shortcut` containing the real secret**. Cross-app contract: **`Barkod Tara` scans with iOS's built-in barcode action, then opens `scriptable:///run/Yemek%20Logla?ean=<code>`** — so the Scriptable script MUST be named exactly `Yemek Logla` and read `args.queryParameters.ean`. Spec + task board: `docs/codex-shortcuts.md`.
+
+**Scriptable** — `docs/scriptable-food-logger.md` (the `Yemek Logla` mini app: recents / own library / Open Food Facts / scanned barcode) and `docs/scriptable-widgets.md` (4 home-screen widgets — `Uyku Paneli`, `Komuta Merkezi`, `Hizli Log Paneli`, `Makro Halkalari` — plus the `HizliLog` runner). **Script names are load-bearing**: deep links resolve by name.
+
+**Web Push (lock-screen morning brief)** — migration `068` creates `push_subscriptions` + the pg_cron job `lascis-morning-push` (`'0 7 * * *'` = 07:00 UTC ≈ 09:00 Oslo in summer / 08:00 in winter), which calls `push-send` via `net.http_post` with `x-cron-secret` read from Vault inside the cron (never in the SQL text). Client: `usePushNotifications` + a toggle in Settings (⚙) → Notifications. The SW push/notificationclick handlers live in **`public/push-sw.js`**, pulled into the Workbox service worker via `vite.config`'s `workbox.importScripts` — a separate file so the generated SW isn't hand-edited. Setup runbook: `docs/web-push-setup.md`. See Platform & Shell for the hard iOS Web Push constraints (installed PWA only, visible notification required).
+
+---

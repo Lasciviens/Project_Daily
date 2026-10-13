@@ -1,4 +1,4 @@
-// trakt-api — the app's door to Trakt (docs/trakt/PLAN.md).
+// trakt-api — the app's door to Trakt (docs/trakt/REFERENCE.md).
 //
 // Connect (OAuth code exchange), status, disconnect (revoke), a read-only
 // `snapshot` of everything Trakt holds, `import` (the first import: the
@@ -426,7 +426,7 @@ function movieWatchedAt(iso: string | null | undefined): string | null {
 }
 
 // ── traktNotes.ts ──
-// Trakt notes ↔ personal_note (docs/trakt/PLAN.md §12 has the API facts).
+// Trakt notes ↔ personal_note (docs/trakt/REFERENCE.md §12 has the API facts).
 // Pure and import-free (scripts/verify-trakt-notes.cjs), shared into the
 // trakt-api edge function by scripts/sync-trakt-shared.mjs.
 //
@@ -631,7 +631,7 @@ function noteDrainStep(local: { note: string | null; noteId: number | null; sync
 }
 
 // ── traktImportPlan.ts ──
-// The import itself, as data (docs/trakt/PLAN.md phase 2): what each title
+// The import itself, as data (docs/features/media.md, Trakt phase 2): what each title
 // becomes here, and what goes to Trakt so both sides hold the same record.
 // Pure and import-free (scripts/verify-trakt-import-plan.cjs). Running it
 // again after a successful import plans no pushes and no episode writes.
@@ -892,7 +892,7 @@ function pushCount(p: PushPlan): number {
 }
 
 // ── traktSyncPlan.ts ──
-// The automatic sync, as data (docs/trakt/PLAN.md phase 3): Trakt → app.
+// The automatic sync, as data (docs/features/media.md, Trakt phase 3): Trakt → app.
 // Pure and import-free (scripts/verify-trakt-sync-plan.cjs), shared into the
 // trakt-api edge function by scripts/sync-trakt-shared.mjs.
 //
@@ -1709,7 +1709,7 @@ async function drainOutbox(db: Db, userId: string, token: string, deadline: numb
 
 // ── Notes (migration 136): personal_note ↔ the Trakt note on a movie/show ────
 // API (checked 07.10.2026 — API blueprint "Notes" + trakt/trakt-api's contract,
-// docs/trakt/PLAN.md §12): POST /notes {movie|show, notes} → 201 {id, …};
+// docs/trakt/REFERENCE.md §12): POST /notes {movie|show, notes} → 201 {id, …};
 // PUT /notes/{id} {notes} → 200; DELETE /notes/{id} → 204; GET
 // /users/me/notes/{movies|shows} (paginated) → [{attached_to, type, movie|show,
 // note}]; ≤ 500 characters; a note on a movie/show is always private;

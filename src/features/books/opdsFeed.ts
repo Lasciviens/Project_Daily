@@ -1,6 +1,6 @@
 // The Send to Kobo OPDS feed — pure and import-free, GENERATED into
 // supabase/functions/kobo-sync by scripts/sync-kobo-shared.mjs and verified by
-// scripts/verify-kobo-feed.cjs. Rules (docs/kobo/PLAN.md §8.2), read from
+// scripts/verify-kobo-feed.cjs. Rules (docs/kobo/REFERENCE.md §8.2), read from
 // KOReader's opdsparser.lua / opdsbrowser.lua:
 // - Atom XML only (OPDS 1.2), double-quoted attributes, the five basic entities.
 // - Every link absolute (KOReader drops a query string on relative links).

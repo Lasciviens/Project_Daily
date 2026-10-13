@@ -9,7 +9,7 @@
  * (AGENTS.md: "no _shared imports", and it calls `Deno.serve`/`Deno.env` at
  * module scope, which don't exist under Node). This is the same constraint
  * that made the Hevy upsert logic get inlined into 4 functions by hand
- * (CLAUDE.md's Edge Functions section) — the trade-off here is the same:
+ * (docs/backend/edge-functions.md) — the trade-off here is the same:
  * if the gateway's logic changes, this file must be updated to match.
  *
  * There is no live Supabase/Deno available in this environment, so this

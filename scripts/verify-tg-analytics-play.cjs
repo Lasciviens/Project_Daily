@@ -1,6 +1,6 @@
 // Throwaway verification for the Analytics Play tab's pure helpers
 // (src/features/games/test-game/components/tgAnalyticsTrophies.ts and
-// tgAnalyticsPlay.ts). No unit test framework here (CLAUDE.md).
+// tgAnalyticsPlay.ts). No unit test framework here (AGENTS.md).
 //   node scripts/verify-tg-analytics-play.cjs
 require('sucrase/register')
 const assert = require('assert')

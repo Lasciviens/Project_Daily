@@ -2,7 +2,7 @@
 /*
  * Verification — healthWindowStats.ts, the ONE rule behind every Health
  * headline number (section headlines, the side panel, Daily's health card).
- * Runs the real module through sucrase (no test framework, per CLAUDE.md).
+ * Runs the real module through sucrase (no test framework, per AGENTS.md).
  *
  * The bugs it pins down (audit H-01 / H-02 / T06):
  *   - the side panel dropped TODAY everywhere, so Day mode on today was all

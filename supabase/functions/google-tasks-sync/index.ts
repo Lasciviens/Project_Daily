@@ -21,8 +21,8 @@
 // Auth: EITHER a real user JWT (a future in-app "Sync now" button, mirroring
 // google-health-sync's Fetch-now path) OR the shared secret header
 // `x-sync-secret: <GOOGLE_TASKS_SYNC_SECRET>` (the cron schedule). Deploy
-// with "Enforce JWT Verification" OFF — same reason as the six functions
-// already listed for that in CLAUDE.md.
+// with "Enforce JWT Verification" OFF — same reason as every function
+// listed in supabase/config.toml.
 //
 // Token: reuses the ONE Google refresh token stored by calendar-oauth in
 // user_calendar_tokens. UNLIKE google-health-sync, no down-scoping is
