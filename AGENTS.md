@@ -28,6 +28,7 @@ Codex reads this file by itself; `CLAUDE.md` imports it, so Claude and Codex fol
 - Don't add files the task doesn't need; scratch scripts and outputs stay out of the repo.
 - **A new external API** gets `docs/integrations/<service>.md` before its code ships: how we authenticate, the endpoints called, the fields read and written, the fields deliberately unused and why, traps, and the date it was checked. Confirm a field's real shape (one live sample or the provider's own example) before code reads it — never a guessed field.
 - The backlog is the in-app Dev Requests drawer (`dev_requests`), not a markdown list.
+- **Raise at the start of every session until it is fixed:** the RP6 widgets were renovated on the device (13.10.2026) and the repo copies (`scripts/*esde*`, `scripts/setup-esde-widgets.sh`) may be out of date. Ask the owner to bring the current versions into the repo.
 - App: https://lasciviens.github.io/Project_Daily/#/login · Repo: https://github.com/Lasciviens/Project_Daily
 
 ## Two AIs: Claude and Codex
@@ -43,7 +44,7 @@ React 19 + TypeScript 6 + Vite 8 · react-router v7 with HashRouter (GitHub Page
 
 ## Coding rules
 
-- **Mobile-first.** Every interactive element is at least 44px tall on touch (`min-h-[44px]`; the `src/shared/ui` primitives do it). Hover-only actions get a touch fallback. No horizontal page overflow. Reference screens: phone 402×874 (and 874×402), laptop 1469×680, monitor 2450×1130.
+- **Mobile-first and compact.** Check every UI change in the phone layout (402×874, and sideways 874×402) and look at it: keep it compact and use the space it has — no extra lines, nothing overlapping or squashed, nothing wrapping onto a line it doesn't need. There is no minimum button size; the `src/shared/ui` primitives already keep touch targets comfortable. Hover-only actions get a touch fallback. No horizontal page overflow. Other reference screens: laptop 1469×680, monitor 2450×1130.
 - **UI comes from `docs/design/THEME.md`:** token classes only (no hex, `gray-*`, `bg-white`, `text-[13px]`); build from `src/shared/ui`; lucide icons, emoji only as content; a status is a tone, never the accent; charts take colours from `useChartColors()`.
 - Pages lay out with `PageBoard`; widths follow the container, and wide screens add columns instead of stretching cards (THEME §6).
 - **Every popup renders `ModalShell`** (`SideDrawer` for drawers) — never a raw Headless UI `Dialog`, `window.confirm` or `alert`; the one exception is the Games page's own `Tg*` dialogs (`docs/features/games.md`). An entity popup opens with `useEntityModal().open({ kind, id })` or `{ kind, defaults }` — never rows; the adapter loads by id. Combobox, Popover and Menu come from Headless UI, never hand-made open/close state.

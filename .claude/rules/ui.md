@@ -17,5 +17,5 @@ The full guide is `docs/design/THEME.md` — read the section you need before a 
   - W6 At 402 / 1469 / 2450 px: no horizontal overflow; check with `scripts/audit-page-width.mjs`.
   - W7 PageBoard: one main track (≤ 56rem) + 0–3 side tracks of 24rem; steps on the page's own width at 60 / 100 / 128 rem; positions never depend on content.
 - Toasts: success, error, warning, info, loading and undo (THEME §10); a plain toast with the same text replaces the one on screen; toasts with Undo never merge.
-- Interactive elements ≥ 44px; hover-only actions get a touch fallback.
+- Compact first: check every UI change in the phone layout (402×874, and sideways 874×402) and look at it: keep it compact and use the space it has — no extra lines, nothing overlapping or squashed, nothing wrapping onto a line it doesn't need. No minimum button size. Hover-only actions get a touch fallback.
 - No density setting (tried and rejected).

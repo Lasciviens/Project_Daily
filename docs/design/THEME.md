@@ -33,7 +33,7 @@
    add it to the primitive — don't fork it.
 4. **Elements content-sized; pages fill width with columns.** A card never stretches because the
    screen is wide; the page adds columns (`PageBoard`, §6.3, §6.6 W7).
-5. **Mobile-first, touch-honest.** Every interactive element has a ≥44px hit area on touch.
+5. **Mobile-first and compact.** Check the phone layout: no extra lines, nothing overlapping or squashed, the space used. No minimum button size (owner, 13.10.2026); the primitives keep touch targets comfortable.
    Hover is an enhancement (`@media (hover: hover)`), never the only way to reach an action.
 6. **UI → hook → api → Supabase.** Components never import the Supabase client. Popups load their
    own data by id. Mutations own their feedback and their cache invalidation (§10).
@@ -702,7 +702,7 @@ chrome. English in the product (`AGENTS.md`).
 
 ## 12. Accessibility & touch
 
-- 44px minimum hit area on touch (`[@media(pointer:coarse)]:min-h-[44px]` is built into the primitives).
+- Touch targets: the primitives grow on touch screens (`[@media(pointer:coarse)]:min-h-[44px]`); a custom control never grows if that pushes its row onto a new line — compact wins.
 - Visible keyboard focus (`:focus-visible` accent outline following the control's radius); inputs use
   the accent halo instead.
 - Icon-only buttons have a label; decorative icons are `aria-hidden`.
@@ -717,7 +717,7 @@ chrome. English in the product (`AGENTS.md`).
 - [ ] Only token classes (no hex, no `gray-*`/`amber-*`/`bg-white`, no `text-[13px]`-style sizes).
 - [ ] Built from `src/shared/ui` primitives; status via tones; charts via `useChartColors`.
 - [ ] Works at 402 / 1469 / 2450px, light and dark, with no horizontal overflow.
-- [ ] Every interactive element ≥ 44px on touch; hover-only actions have a touch path.
+- [ ] Checked in the phone layout: compact, no extra lines, nothing squashed; hover-only actions have a touch path.
 - [ ] Loading, empty and error states present.
 - [ ] Entity popups opened with `useEntityModal`; local sheets use `ModalShell`; no native dialogs.
 - [ ] Data through hooks → api; keys from `qk`; stale from `STALE`; writes via `useMutationWithFeedback`

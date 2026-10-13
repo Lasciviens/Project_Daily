@@ -14,13 +14,16 @@ cover-only widget revision (see [Completed work](#completed-work-and-evidence)).
 **Device:** RP6 · **Termux distribution:** Google Play · **SD ID:** `6A0A-D741`.
 
 > **Storage keeps low-resolution pictures only (owner, 13.10.2026).** The owner
-> deleted most of the `game-media` bucket, including the ES-DE originals; the
-> originals stay on the SD card. **`Oyunlari-Senkronize-Et` (Sync games) and
-> `Gorselleri-Senkronize-Et` (Sync images) still upload originals** — for new or
-> changed images, up to the 850 MB cap — until the uploader is changed. Until
-> then use `Metadatayi-Senkronize-Et` (games and statistics) and
-> `Kapaklari-Guncelle` (cover previews). The widget names move to English later
-> (owner, 13.10.2026).
+> deleted the ES-DE originals from the `game-media` bucket; they stay on the SD
+> card. A check that day found 2,107 references in `game_platforms.esde_assets`,
+> all pointing at deleted files.
+>
+> **The widgets were renovated on the device (13.10.2026), and this guide and the
+> scripts in the repo may not match them.** As written here,
+> `Oyunlari-Senkronize-Et` (Sync games) and `Gorselleri-Senkronize-Et` (Sync
+> images) upload originals for new or changed images. Bring the current device
+> versions into the repo before changing anything here (`AGENTS.md` asks for it
+> every session). The widget names move to English later.
 
 ## Quick navigation
 

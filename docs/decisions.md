@@ -8,7 +8,7 @@ Settled calls, one line each: what was decided, why, and where the full story li
 |---|---|---|
 | Wishes are their own table (`wish_items`), never rows in `tasks` or `shop_items`, and a new surface never hides existing rows (NEVER_HIDES) | Every `tasks.section` value leaks into the brief, the push and the lock screen; a season is a reminder, never a visibility rule (owner) | `docs/features/wishes.md` |
 | No density setting (Comfortable / Compact / Dense) | Tried and rejected | `docs/design/THEME.md` §6.6 |
-| Every interactive element is at least 44px on touch — no smaller corner or secondary buttons (13.10.2026) | Owner's call | `AGENTS.md` → Coding rules |
+| No minimum button size (the 44px rule was dropped 13.10.2026): check the phone layout and keep it compact — no extra lines, nothing squashed | Owner: bigger buttons pushed rows onto new lines | `AGENTS.md` → Coding rules |
 | Connections live only on Settings → Subscriptions | One answer to "is X connected?"; only re-authentication may also appear at the point of failure | `docs/features/settings.md` |
 | The Home daily brief is rule-based, not AI (26.09.2026) | Same data, same text, no cost; the AI digest was deleted | `docs/features/home.md` |
 | The Weekly Review card was removed on request; `ai_reviews` stays as an unused table | Owner request | `docs/features/ai.md` |
