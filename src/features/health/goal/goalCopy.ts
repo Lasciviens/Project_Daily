@@ -108,10 +108,10 @@ export function leftOutLine(p: PairedBalance): string {
   return parts.length ? `Left out: ${parts.join(' · ')}.` : 'No day was left out — every day has a full diary and a complete Apple day.'
 }
 
-/** Why Activity and Food's "Last 7 days" can show a different number. */
+/** Why Activity and Food's "Last 7 / 14 / 28 days" can show a different number. */
 export const OTHER_SCREENS_NOTE =
   'Other screens count different days: Activity shows only Apple\'s burn, for the period picked there (7 days by default), '
-  + 'and Food\'s “Last 7 days” averages every logged day up to today — including today\'s unfinished diary. '
+  + 'and Food\'s “Last 7 / 14 / 28 days” averages every fully logged day before today, whether or not Apple has a complete day. '
   + 'This comparison uses the same finished days on both sides.'
 
 /** Muscle watch's level pill (muscleWatch.ts). */

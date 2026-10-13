@@ -32,20 +32,23 @@ export async function fetchFoodLog(date: string): Promise<FoodLogEntry[]> {
   return data ?? []
 }
 
-export async function addFoodLogEntries(entries: FoodLogEntryInput[]): Promise<void> {
-  if (entries.length === 0) return
+/** Logs the rows as eaten; returns the new rows' ids (what an Undo deletes). */
+export async function addFoodLogEntries(entries: FoodLogEntryInput[]): Promise<string[]> {
+  if (entries.length === 0) return []
   const user = await requireUser()
   const base = entries.map(e => ({ ...e, user_id: user.id }))
-  let { error } = await supabase.from('food_log_entries').insert(base.map(r => ({ ...r, status: 'eaten' })))
+  const insert = (rows: object[]) => supabase.from('food_log_entries').insert(rows).select('id')
+  let { data, error } = await insert(base.map(r => ({ ...r, status: 'eaten' })))
   if (error && isMissingMealGroup(error)) {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const stripped = base.map(({ meal_group_id, ...rest }) => rest)
-    error = (await supabase.from('food_log_entries').insert(stripped.map(r => ({ ...r, status: 'eaten' })))).error
+    ;({ data, error } = await insert(stripped.map(r => ({ ...r, status: 'eaten' }))))
   }
   if (error && isMissingStatus(error)) {
-    error = (await supabase.from('food_log_entries').insert(base)).error   // pre-061: no status column
+    ({ data, error } = await insert(base))   // pre-061: no status column
   }
   if (error) throw error
+  return (data ?? []).map(r => String((r as { id: string }).id))
 }
 
 // Edit an existing diary row — a fresh snapshot at edit time (the diary
@@ -66,17 +69,33 @@ export type LoggedFood = FoodLogEntry & { title: string }
 // actually LOGGED (food_log_entries) shows up next to what you PLANNED
 // (recipe_meal_plans), instead of the grid looking empty. Same name-joins as
 // fetchFoodLog so titles resolve without a second round-trip.
+const RANGE_PAGE = 1000
+
+// Paged: PostgREST answers at most 1,000 rows, and a detailed diary passes
+// that within a few weeks (the Library's 90-day usage read, the 28-day
+// "Last N days" card) — an unpaged read silently lost the newest days.
 export async function fetchFoodLogRange(fromDate: string, toDate: string): Promise<LoggedFood[]> {
-  const q = () => supabase
-    .from('food_log_entries')
-    .select('*, ingredient:recipe_ingredient_library(name), recipe:recipes(title)')
-    .gte('date', fromDate)
-    .lte('date', toDate)
-    .order('created_at', { ascending: true })
-  let { data, error } = await q().eq('status', 'eaten')
-  if (error && isMissingStatus(error)) ({ data, error } = await q())
-  if (error) throw error
-  const rows = (data ?? []) as unknown as (FoodLogEntry & { ingredient: { name: string } | null; recipe: { title: string } | null })[]
+  const q = (offset: number, withStatus: boolean) => {
+    const base = supabase
+      .from('food_log_entries')
+      .select('*, ingredient:recipe_ingredient_library(name), recipe:recipes(title)')
+      .gte('date', fromDate)
+      .lte('date', toDate)
+    return (withStatus ? base.eq('status', 'eaten') : base)
+      .order('created_at', { ascending: true })
+      .order('id', { ascending: true })
+      .range(offset, offset + RANGE_PAGE - 1)
+  }
+  const data: unknown[] = []
+  let withStatus = true
+  for (let offset = 0; ; offset += RANGE_PAGE) {
+    let page = await q(offset, withStatus)
+    if (page.error && withStatus && isMissingStatus(page.error)) { withStatus = false; page = await q(offset, false) }
+    if (page.error) throw page.error
+    data.push(...(page.data ?? []))
+    if ((page.data?.length ?? 0) < RANGE_PAGE) break
+  }
+  const rows = data as (FoodLogEntry & { ingredient: { name: string } | null; recipe: { title: string } | null })[]
   return rows.map(({ ingredient, recipe, ...row }) => ({
     ...row,
     title: ingredient?.name ?? recipe?.title ?? row.custom_title ?? '—',

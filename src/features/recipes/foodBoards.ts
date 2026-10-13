@@ -3,23 +3,27 @@
 import type { BoardLayouts } from '../../shared/ui/pageBoardRules'
 
 // ── Today ───────────────────────────────────────────────────────────────────
-// The day's totals lead on the left (a rail), the meal slots take the main
-// track, and the week, the nutrition stats and the coach fill the tracks to
-// the right:
+// The day's totals and the quick-log cards lead on the left (a rail), the
+// meal slots take the main track with the last days under them (they need the
+// width: a column per day, the findings beside the chart), and the coach
+// fills the tracks to the right:
 //   1  phone, tablet — the day's nutrition on top, then the meal slots (owner,
-//      07.10.2026), then water, what fits, last 7 days, stats, coach.
-//   2  1280 / 1469 — the totals rail (nutrition, water, what fits, last 7 days, stats)
-//      beside the slots, the coach under the slots.
-//   3  1920 — nutrition + water + what fits | slots | last 7 days + stats + coach.
-//   4  2450 — nutrition + water + what fits | slots | last 7 days + stats | coach.
-export const FOOD_TODAY_SECTIONS = ['nutrition', 'water', 'fits', 'week', 'stats', 'coach', 'meals'] as const
+//      07.10.2026), then water, what fits, quick guess, last days, coach.
+//   2  1280 / 1469 / 1795 — the rail (nutrition, water, what fits, quick
+//      guess) beside the slots; the last days and the coach under the slots
+//      (owner, 13.10.2026: the stats sat in the narrow rail while main was empty).
+//   3  1920 — nutrition + water + what fits + quick guess | slots + last days | coach.
+//   4  2450 — nutrition + water | slots + last days | what fits + quick guess | coach.
+// "What fits" can be empty, so it always shares its track with the quick
+// guess (never empty): no track is ever left blank.
+export const FOOD_TODAY_SECTIONS = ['nutrition', 'water', 'fits', 'guess', 'history', 'coach', 'meals'] as const
 export type FoodTodaySection = typeof FOOD_TODAY_SECTIONS[number]
 
 export const FOOD_TODAY_BOARD: BoardLayouts<FoodTodaySection> = {
-  1: ['nutrition', 'meals', 'water', 'fits', 'week', 'stats', 'coach'],
-  2: { lead: 1, columns: [['nutrition', 'water', 'fits', 'week', 'stats'], ['meals', 'coach']] },
-  3: { lead: 1, columns: [['nutrition', 'water', 'fits'], ['meals'], ['week', 'stats', 'coach']] },
-  4: { lead: 1, columns: [['nutrition', 'water', 'fits'], ['meals'], ['week', 'stats'], ['coach']] },
+  1: ['nutrition', 'meals', 'water', 'fits', 'guess', 'history', 'coach'],
+  2: { lead: 1, columns: [['nutrition', 'water', 'fits', 'guess'], ['meals', 'history', 'coach']] },
+  3: { lead: 1, columns: [['nutrition', 'water', 'fits', 'guess'], ['meals', 'history'], ['coach']] },
+  4: { lead: 1, columns: [['nutrition', 'water'], ['meals', 'history'], ['fits', 'guess'], ['coach']] },
 }
 
 // ── Ingredients ─────────────────────────────────────────────────────────────
