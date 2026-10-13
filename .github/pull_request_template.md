@@ -22,15 +22,18 @@
      verification of a behaviour change. -->
 
 - [ ] `npm run build` green
-- [ ] UI change checked at 393 / 1469 / 2450px
+- [ ] UI change checked at 402 / 1469 / 2450px
+- [ ] Visible dates are DD.MM.YYYY
+- [ ] Every user action shows its result; deletes ask and offer Undo
 - [ ] Real-data / E2E check — what was run and what it returned:
 
 ## Docs
 
-- [ ] `CLAUDE.md` updated (feature or architecture state changed) — or N/A
-- [ ] `AGENTS.md` updated (new DB / RLS / edge-function convention) — or N/A
+- [ ] `docs/features/<feature>.md` and `.claude/rules/<area>.md` updated — or N/A
+- [ ] `AGENTS.md` updated (a rule or the map changed) — or N/A
+- [ ] A step only the owner can do is in `docs/deploy-checklist.md` — or N/A
 
 ## Scope
 
 Owner: Claude / Codex
-<!-- Codex PRs touch scripts/iphone-shortcuts/** only — docs/codex-shortcuts.md rule 1. -->
+<!-- One AI per file: the files this PR changes are claimed on docs/codex-shortcuts.md. -->

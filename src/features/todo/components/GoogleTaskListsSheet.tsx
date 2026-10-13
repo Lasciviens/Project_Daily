@@ -75,7 +75,7 @@ function ListRow({ list }: { list: GoogleTaskListRow }) {
 // kept OUTSIDE UnifiedPlanModal (same reasoning that put "Set parent" in its
 // own SetParentTaskSheet rather than the modal's taskExtra slot — taskExtra
 // is a plain ReactNode with no access to the modal's own form/patch state,
-// per CLAUDE.md's start_date precedent).
+// per docs/features/tasks.md's start_date precedent).
 export function GoogleTaskListsSheet({ open, onClose }: Props) {
   const { data: lists = [], isLoading } = useGoogleTaskLists()
   const create = useCreateGoogleTaskList()

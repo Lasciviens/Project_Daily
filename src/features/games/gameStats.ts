@@ -163,7 +163,7 @@ export function isRealSession(seconds: number | null | undefined): boolean {
 /**
  * Most recently played first, among games with real recorded play. Everything
  * else keeps its own relative order BELOW that block rather than being
- * filtered out — a sort must never remove rows (CLAUDE.md's NEVER_HIDES).
+ * filtered out — a sort must never remove rows (AGENTS.md's NEVER_HIDES).
  */
 export function sortByRecentlyPlayed<T extends PlayStatRow>(games: T[]): T[] {
   const ranked = (g: T) => { const p = playStatsOf(g); return isRealSession(p.seconds) && p.last ? p.last : null }

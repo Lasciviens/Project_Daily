@@ -63,6 +63,9 @@ export async function fetchOpenTrainingSessionTasks(): Promise<Task[]> {
  * while the Tasks tab and Work counted it overdue. Done rows of the Today
  * section are no longer read wholesale (they piled up for ever and only the
  * ones closed on the day are shown) — the closed-that-day read brings those.
+ *
+ * Never add a wish/period/window/kind filter here (NEVER_HIDES): a new surface
+ * only adds rows. A missing column here also breaks DayView, the rail and Home.
  */
 export async function fetchTasksForDay(dateStr: string, today: string): Promise<Task[]> {
   const dayStart = new Date(`${dateStr}T00:00:00`).toISOString()

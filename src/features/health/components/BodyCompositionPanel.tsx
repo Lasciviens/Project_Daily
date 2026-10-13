@@ -10,7 +10,7 @@ import { formatDateTime } from '../../../shared/utils/dateFormat'
 
 // Smart-scale "body composition analysis report" scans (migration 085,
 // imported via phone-gateway's import_body_composition action — see
-// CLAUDE.md's iPhone surface section). Weight, body fat % and lean mass are
+// docs/features/iphone.md). Weight, body fat % and lean mass are
 // NOT repeated here: the scale writes them into Apple Health, and the Body
 // window's own charts above already draw them (two "Weight" charts in one
 // card disagreed, H-12). This panel keeps what only the report carries; the

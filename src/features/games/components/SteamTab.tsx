@@ -17,7 +17,7 @@ import { Truncate } from '../../../shared/ui/Truncate'
 // (personal Web API key + SteamID64 in Vault). Everything about the user is a
 // live passthrough with no local table; only store metadata is cached
 // server-side (`steam_apps`, migration 092) because Steam rate-limits that
-// endpoint hard. See CLAUDE.md's Games Feature Detail.
+// endpoint hard. See docs/features/games.md.
 
 const PERSONA_STATE: Record<number, string> = {
   0: 'Offline', 1: 'Online', 2: 'Busy', 3: 'Away',

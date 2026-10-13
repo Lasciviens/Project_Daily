@@ -69,7 +69,7 @@ const STRATEGIES: Record<ProgressMetricKind, MetricStrategy> = {
     higherIsBetter: true,
   },
   // Distance is deliberately gated on BOTH fields being present — this
-  // repo's own rule (CLAUDE.md, EnTur/Kassalapp precedent) is to never
+  // repo's own rule (AGENTS.md, EnTur/Kassalapp precedent) is to never
   // compute a derived figure (pace) from one side of a pair unless both
   // sides are actually logged together; requiring durationSeconds here
   // even though valueOf only reads distanceMeters keeps the eligibility

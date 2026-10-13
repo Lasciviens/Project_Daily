@@ -36,7 +36,7 @@ export interface Task {
   completed_at:             string | null
   /** Google's own opaque lexicographic sibling-ordering string — never parsed/computed locally, only stored and echoed back on move(). */
   google_position:          string | null
-  /** For future conditional-write (If-Match) use — NOT relied on for conflict detection today; Tasks-API-specific enforcement of If-Match is unverified against a live account (see CLAUDE.md). */
+  /** For future conditional-write (If-Match) use — NOT relied on for conflict detection today; Tasks-API-specific enforcement of If-Match is unverified against a live account. */
   google_etag:              string | null
   /** Google's own last-modified timestamp — the clock the conflict rule compares against google_local_edit_at. */
   google_updated_at:        string | null

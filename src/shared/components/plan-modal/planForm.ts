@@ -90,6 +90,8 @@ export function buildInitialForm(
     alsoCreateTask: timeBlock?.task_id != null || (defaults?.alsoCreateTask ?? false),
 
     notes:      task?.description ?? defaults?.notes ?? '',
+    // Keep 'today': four server-side `section.eq.today` reads (phone-gateway ×2,
+    // push-send, ai-proxy) would silently go quiet if new tasks defaulted elsewhere.
     section:    task?.section ?? defaults?.section ?? 'today',
     priority:   task?.priority ?? defaults?.priority ?? 'medium',
     domain,

@@ -2,8 +2,8 @@ import { supabase } from '../../../integrations/supabase/client'
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Steam — proxied through the `steam-api` edge function (personal API key +
-//  SteamID64 stay in Vault, never in the client). See CLAUDE.md's Games
-//  Feature Detail research note for the full scoping rationale.
+//  SteamID64 stay in Vault, never in the client). See docs/features/games.md's
+//  research note for the full scoping rationale.
 //
 //  Everything about the USER (owned games, playtime, achievements) is a live
 //  passthrough with no local table. Store METADATA is the one exception —

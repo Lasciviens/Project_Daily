@@ -1,5 +1,5 @@
 // Throwaway verification for src/features/games/gameStats.ts — no unit-test
-// framework in this repo (see CLAUDE.md), so this runs the REAL module through
+// framework in this repo (see AGENTS.md), so this runs the REAL module through
 // sucrase and asserts against it.  node scripts/verify-game-stats.cjs
 require('sucrase/register')
 const assert = require('assert')

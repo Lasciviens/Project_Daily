@@ -17,7 +17,7 @@ const STATS_QK  = ['games', 'stats']
 
 // Every mutation below reaches the WHOLE 'games' namespace rather than one
 // narrow key — the same reasoning this app applies to schedule mutations
-// (CLAUDE.md: "never give a view its own private query key"). One-row edits
+// (.claude/rules/planning.md: "never give a view its own private query key"). One-row edits
 // (status, rating, queue) patch every cached read optimistically and mark the
 // big lists stale without refetching them (settleRowEdit); create, delete and
 // platform changes still refetch everything.

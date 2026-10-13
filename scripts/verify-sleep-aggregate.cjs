@@ -1,6 +1,6 @@
 // Verification for healthAggregate.ts's sleep functions, run through sucrase
 // against the REAL module (no mocks) — this repo ships no unit-test framework,
-// see CLAUDE.md's Session Workflow.
+// see AGENTS.md → Workflow.
 //
 // Why this exists: sleep aggregation is the most bug-prone code in the Health
 // feature — four real, live-confirmed bugs have been fixed in it (the Safari

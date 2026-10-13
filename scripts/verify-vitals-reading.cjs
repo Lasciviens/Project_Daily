@@ -3,7 +3,7 @@
  * Verification — vitalsReading.ts (the Heart & vitals window's plain-language
  * reading: each signal against your own usual range, the change against the
  * period before, and the overall verdict). Runs the real module through
- * sucrase (no test framework, per CLAUDE.md). All fixtures are synthetic.
+ * sucrase (no test framework, per AGENTS.md). All fixtures are synthetic.
  *
  * Run: node scripts/verify-vitals-reading.cjs
  */

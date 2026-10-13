@@ -1,6 +1,6 @@
 // Shared types for the Games feature — reads/writes this app's own `games` /
 // `game_platforms` tables (migration 089), no longer the separate RP5
-// Supabase project. See CLAUDE.md's Games Feature Detail section for the
+// Supabase project. See docs/features/games.md for the
 // full schema rationale (why game_platforms stayed a real table, why
 // systems/emulators/genres/series collapsed to plain columns, etc.).
 

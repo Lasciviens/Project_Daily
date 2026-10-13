@@ -1,7 +1,7 @@
 // psn-api — proxies the PlayStation Network via the community-maintained
 // `psn-api` npm package (github.com/achievements-app/psn-api). Sony has NO
 // official public API for this (see the Games Feature Detail research note
-// in CLAUDE.md) — this is reverse-engineered and can break without notice.
+// in docs/features/games.md) — this is reverse-engineered and can break without notice.
 //
 // UNVERIFIED AGAINST A REAL ACCOUNT — this session has no PSN credentials
 // to test against. Every remote call is wrapped defensively; if the
@@ -16,7 +16,7 @@
 // token (~1h) from the refresh token on later calls without re-touching the
 // npsso (~60d) every time. Sony added a reCAPTCHA to the login flow that
 // blocks a *fully scripted* npsso mint — the human still has to paste a
-// fresh npsso periodically (see CLAUDE.md); nothing here works around that.
+// fresh npsso periodically (see docs/features/games.md); nothing here works around that.
 //
 // `verify_jwt` stays ON — every action needs the caller's user id (to scope
 // psn_tokens), resolved via `supabase.auth.getUser` on the request's own

@@ -9,7 +9,7 @@ import type { GameLibrary } from '../types'
 // rated, marked completed and counted in Analytics like any other.
 //
 // Explicitly a BUTTON, not something that happens on tab load: the Steam and
-// PlayStation tabs are deliberately lazy about what they fetch (see CLAUDE.md's
+// PlayStation tabs are deliberately lazy about what they fetch (see docs/features/games.md's
 // loading-priority note), and writing several hundred rows every time someone
 // glances at a tab would be exactly the kind of eager work that design forbids.
 //

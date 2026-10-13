@@ -7,7 +7,7 @@ import {
 // Read-only proxy calls. Nothing about the USER is cached locally (Steam is
 // the source of truth and nothing else in this app joins against it) — only
 // store metadata, which the edge function caches in `steam_apps` because
-// Steam rate-limits that endpoint hard. See CLAUDE.md's Games Feature Detail.
+// Steam rate-limits that endpoint hard. See docs/features/games.md.
 //
 // LOADING PRIORITY (a deliberate order, not an accident): the tab's first
 // paint needs exactly TWO requests — the profile header and the library

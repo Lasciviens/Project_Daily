@@ -62,6 +62,8 @@ export function DayView({ date }: Props) {
   // first; done and cancelled = closed on this day (what you finished
   // yesterday is under yesterday).
   const { open: openTasks, done: doneTasks, cancelled: cancelledTasks, isLoading, isError, refetch, section } = useDayTasks(day)
+  // The open-wish link lives here, not in the glance board or the quick rail:
+  // on a phone this is about one screen down; the others are further or hidden.
   const { data: openWishes = [] } = useOpenWishes()
   const modal = useEntityModal()
   const [showWeek, setShowWeek] = useState(false)

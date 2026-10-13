@@ -4,8 +4,8 @@ import { boardTemplate, resolveBoardLayout, type BoardLayouts } from './pageBoar
 import { PageStepContext, usePageStep } from './usePageStep'
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  PageBoard — how a page uses a wide screen (THEME.md §6.3, CLAUDE.md →
-//  Layout width W7). Cards keep their own caps; the page fills width by adding
+//  PageBoard — how a page uses a wide screen (THEME.md §6.3 and
+//  §6.6, W7). Cards keep their own caps; the page fills width by adding
 //  COLUMNS: one main track (≤ 56rem) plus up to three 24rem side tracks. The
 //  step is measured on the board's OWN width (the page's content width, which
 //  the sidebar, a collapsed sidebar or a drawer all change), never on the

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Throwaway audit (THEME.md §3 / §5, CLAUDE.md → W6): finds text that doesn't
+// Throwaway audit (THEME.md §3 / §5 / §6.6 W6): finds text that doesn't
 // behave at its box, on real rendered pages. Two lists per route × width:
 //   SPILL — an element (a chip, a label) that runs out of its parent's box,
 //           or text running out of its own box, where nothing clips it;
@@ -9,7 +9,7 @@
 //
 // Runs against the mocked app harness (the real app on a mock Supabase):
 //   node scripts/audit-text-overflow.mjs --harness <dir with mock-server.cjs> \
-//        [--base http://127.0.0.1:5371] [--routes home,daily] [--widths 393,1469,2450] [--json]
+//        [--base http://127.0.0.1:5371] [--routes home,daily] [--widths 402,1469,2450] [--json]
 //   node scripts/audit-text-overflow.mjs --static [--src src]   (source scan only, no browser)
 // The harness is NOT part of the repo; nothing here talks to a real backend.
 import { createRequire } from 'node:module'
@@ -48,13 +48,13 @@ if (args.includes('--static')) {
 
 const harness = opt('harness', process.env.APP_HARNESS)
 if (!harness || !fs.existsSync(path.join(harness, 'mock-server.cjs'))) {
-  console.error('usage: audit-text-overflow.mjs --harness <dir containing mock-server.cjs> [--base url] [--routes a,b] [--widths 393,1469]')
+  console.error('usage: audit-text-overflow.mjs --harness <dir containing mock-server.cjs> [--base url] [--routes a,b] [--widths 402,1469]')
   process.exit(2)
 }
 const BASE = opt('base', 'http://127.0.0.1:5371')
 const ROUTES = opt('routes', 'home,daily,recipes,shop,media,work,projects,training,health,wishes,developer,games').split(',')
-const WIDTHS = opt('widths', '393,1469,2450').split(',').map(Number)
-const HEIGHT = { 393: 852, 1469: 680, 2450: 1130 }
+const WIDTHS = opt('widths', '402,1469,2450').split(',').map(Number)
+const HEIGHT = { 402: 874, 1469: 680, 2450: 1130 }
 const asJson = args.includes('--json')
 
 const { chromium } = require(path.resolve('node_modules/playwright'))

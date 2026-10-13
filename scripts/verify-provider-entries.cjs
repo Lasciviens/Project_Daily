@@ -1,5 +1,5 @@
 // Throwaway verification for src/features/games/providerEntries.ts — no unit
-// test framework in this repo (CLAUDE.md).  node scripts/verify-provider-entries.cjs
+// test framework in this repo (AGENTS.md).  node scripts/verify-provider-entries.cjs
 require('sucrase/register')
 const assert = require('assert')
 const P = require('../src/features/games/providerEntries.ts')

@@ -1,7 +1,7 @@
 // Throwaway verification for the Analytics Overview tab's own pure pieces:
 // the Activity chart rows and words (tgAnalyticsActivity.ts) and the KPI /
 // idle / hidden copy (tgAnalyticsDrillCopy.ts). No unit test framework here
-// (CLAUDE.md).
+// (AGENTS.md).
 //   node scripts/verify-tg-analytics-overview.cjs
 require('sucrase/register')
 const assert = require('assert')

@@ -6,8 +6,7 @@ import {
   fetchPsnTitleTrophies, fetchPsnTrophyGroups,
 } from '../api/psnApi'
 
-// LOADING PRIORITY — the same tiering the Steam tab uses (CLAUDE.md's Games
-// Feature Detail): first paint costs the profile plus the playtime library,
+// LOADING PRIORITY — the same tiering the Steam tab uses (docs/features/games.md): first paint costs the profile plus the playtime library,
 // and nothing else. Purchase provenance (PS Plus badges) is queued behind
 // the library; the trophy-set list only loads when its view is opened; the
 // store-SKU→trophy-set bridge and the trophy list itself are keyed to a game

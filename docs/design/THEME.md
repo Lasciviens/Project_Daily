@@ -32,7 +32,7 @@
    open an entity popup, one mutation primitive, one place for query keys. If you need a variant,
    add it to the primitive — don't fork it.
 4. **Elements content-sized; pages fill width with columns.** A card never stretches because the
-   screen is wide; the page adds columns (`PageBoard`, §6.3, CLAUDE.md → Layout width W7).
+   screen is wide; the page adds columns (`PageBoard`, §6.3, §6.6 W7).
 5. **Mobile-first, touch-honest.** Every interactive element has a ≥44px hit area on touch.
    Hover is an enhancement (`@media (hover: hover)`), never the only way to reach an action.
 6. **UI → hook → api → Supabase.** Components never import the Supabase client. Popups load their
@@ -165,7 +165,7 @@ const c = useChartColors()
 - **Identity colours stay literal**: third-party brand colours (a transit operator's line colour, a
   fitness service's brand orange) and physiological categories that users know by colour (sleep
   stages) are data, not chrome. Keep them in one constant per feature.
-- Bars start at zero; trend lines may zoom (see CLAUDE.md Training notes). Tooltips dedupe series.
+- Bars start at zero; trend lines may zoom (see `docs/features/training.md`). Tooltips dedupe series.
 
 ---
 
@@ -184,6 +184,13 @@ date-fns pattern with month names. Two exceptions: chart axis ticks may drop the
 (`formatDayMonth` → `15.09`), and Health's range bar (`healthDateLabels.numericSpanLabel`,
 `21.09 – 27.09`). A calendar's month heading (`September 2026`, `formatMonthYear`) names a month,
 not a date. Typed dates use `DateInput` (DD.MM.YYYY), not a native `<input type="date">` or `datetime-local` (a "when did you watch it" style picker asks for a day, never a time).
+On touch screens `DateInput` opens a month calendar (`DateCalendar`, no keyboard — typing made iOS
+draw the caret where the sheet was before it animated in); with a mouse you type into a fixed
+`__.__.____` mask (a key writes or clears one digit and nothing shifts; `07122026`, `071226`,
+`7.12.26`, `7-12-2026`, `7/12/26` and pasted dates are taken; a two-digit year is 20yy; an
+impossible or out-of-range date shows red and isn't saved — `dateMask.ts`, `verify-date-mask`) or
+open the calendar from its icon. A chart's month bars may name the month ("January", no year when
+the year is already picked); a date never does.
 
 **Poster covers** (Media): one `PosterTile`. Status is a belt across the top-left corner using `.poster-belt` + `data-tone` — fixed dark colours, not theme tones, because it sits on artwork in both themes and must keep white text ≥ 4.5:1; its size is in `cqw` of the cover. A score banner runs along the bottom. The user's own rating is never drawn on a cover.
 
@@ -327,7 +334,7 @@ on `<main>`), never magic numbers. `--ios-viewport-gap` (`app/iosViewportFix.ts`
 installed iOS PWA's short viewport; phone tab bars sit at `bottom: calc(-1 * var(--ios-viewport-gap))`.
 
 Games is a `fullHeight` page with its own token set (`testGame.css`, `.tg-root` / `.tg-portal`) and
-its own left navigation panel; it uses the shell's `ModalHost` and `Toaster`. See CLAUDE.md → Games.
+its own left navigation panel; it uses the shell's `ModalHost` and `Toaster`. See `docs/features/games.md`.
 
 ### 6.2 Page anatomy
 
@@ -384,8 +391,8 @@ actions (right) share the first row — no empty line. Don't add a tagline subti
 
 Single-line content ≤ 640px · text inputs ≤ `max-w-md` · auto-fill columns ≤ 384px · charts capped
 by role (`max-w-2xl` small trend, `max-w-4xl` primary) and aspect-locked · no horizontal page
-overflow at 393 / 1469 / 2450px, and at 1469/2450 at most one side track (24rem) left empty in the
-default view (`scripts/audit-page-width.mjs`). Verify at those widths (CLAUDE.md → W6).
+overflow at 402 / 1469 / 2450px, and at 1469/2450 at most one side track (24rem) left empty in the
+default view (`scripts/audit-page-width.mjs`). Verify at those widths (§6.6 → W6).
 
 ### 6.5 Header art
 
@@ -416,6 +423,30 @@ app's own colours, never a photo. One shared way, so every page behaves the same
   in the right half (the left 40 % fades), something quieter on the left; pass it as `art`. A
   sideways-scrolling tab strip in the band bleeds to its edges with `HERO_BAND_BLEED`. Add the page
   to `scripts/verify-hero-art.cjs`.
+
+### 6.6 Layout width rules (W1–W7)
+
+Cards keep their own width caps; a page uses a wide screen by ADDING columns, never by stretching
+cards. Pages use `PageBoard` (`src/shared/ui/PageBoard.tsx`, rules in `pageBoardRules.ts`).
+
+- Page wrapper: `PageContainer` (`px-4 sm:px-6 lg:px-8`, left-aligned, `@container/page`). Default cap `max-w-[135rem]` = the widest board; beyond it the page stays left-aligned. `narrow` for forms, `full` only for a page with its own full-width layout. Page background `bg-canvas`, cards `bg-surface`.
+- **W1 · Container-relative, not viewport.** Anything placed by PageBoard sizes its inner grids and rings on its own width (`@container` + `@[..rem]:`) or the page's (`@[61rem]/page:`), never viewport `sm:/lg:` — a 24rem side track at 2450 is narrower than a phone-landscape viewport.
+- **W2 · Column flow.** Collections flow into content-width columns: `grid-cols-[repeat(auto-fill,minmax(MIN,MAX))]` + `justify-start`; caps: dense rows `15–18rem`, cards `19–22rem`, large cards `24–28rem`; a single content row never exceeds **40rem**. In a wide track use `minmax(MIN,1fr)` (a fixed maximum makes auto-fill count columns by the maximum and leaves a column's worth empty). A grid that gains columns by steps declares its base track (`grid-cols-1`) — an implicit `auto` track grows to a long title's min-content and a card's `overflow-hidden` hides it from the audit. Items of varying height (phases, library groups) never use a row grid: deal them into column stacks by index (`dealByIndex` in `projectBoard.ts`, `PhaseColumns`) or wrap content-sized blocks. Alphabetical multi-column lists use CSS `columns-*` with `break-inside-avoid` rows so the order reads down each column. (Exception: `TodaySummary` uses explicit column steps — positional stability outranks column flow there.)
+- **W3 · Controls are content-sized.** Text/search inputs `≤ max-w-md`; info banners `w-fit`; a one-line control is never full-width.
+- **W4 · Charts: aspect-locked + capped** by role (small trend `max-w-2xl`, primary `max-w-4xl` = 896px).
+- **W5 · Detail on demand.** Secondary info lives in a hover/tap peek (desktop hover + mobile tap).
+- **W6 · Measurable.** At 402 / 1469 / 2450: no horizontal overflow; no single-line content > 640px, no auto-fill column > 384px, no text input > 512px, no chart svg > 896px; and at 1469 and 2450 the default view leaves at most one side track (24rem) empty. A page with fewer sections than columns documents where it stops. Check with `node scripts/audit-page-width.mjs --harness <dir>` (`--glance` checks Daily's glance cells full vs empty day).
+- **W7 · PageBoard.** One main track (≤ 56rem, a layout may lower it) + 0–3 fixed 24rem side tracks, 1rem gaps. The step is measured on the page's OWN width, never the viewport: < 60rem one stack (phones, tablets) · 60–100rem main + 1 side (1280/1469 laptops) · 100–128rem main + 2 (1920) · ≥ 128rem main + 3 (2450). Each step declares which section goes in which column (`{ top, columns: [[…], { stack, span, sticky }], bottom, main, lead }`); columns are stacks (no masonry, no dense packing), so positions never depend on content. A section that moves column at a step change remounts (desktop resize only). Rules:
+  - `lead: n` puts side tracks before main: a rail that drives or sums up the main column (a calendar, a day's totals, an add form) reads first on the left.
+  - A section that can be empty goes in the last track, so an empty track is only ever at the far right. A card whose content is bounded (≤ 2 metrics, a few short rows) never spans; the window stops early with empty trailing tracks, documented in its board file (Cardio, Coach, Goal at 2450).
+  - A band (`top`/`bottom`) spans only the tracks its own step declares, so a full-width band is declared at every step. Never put a collection in a `bottom` band under a much taller column (it starts after the tallest column ends); give it a column.
+  - A section that is its host card's block on a phone is **absent** from step 1; the host decides with `keysAt(layout, useBoardStep())` (Health Sleep breathing, Cardio recovery, the Goal blocks).
+  - A `sticky` column pins only while it fits the scroll area (`StickyStack` re-checks on resize). A page header above a board that stops short caps itself to `boardWidthRem(layout, step)`; `useElementWidthRem` (`src/shared/hooks/useElementWidth.ts`) measures a component's own width in rem.
+  - Layouts live in `homeBoard.ts`, `dailyBoards.ts`, `foodBoards.ts`, `wishesBoard.ts`, `healthBoards.ts`, `trainingBoards.ts`, `mediaBoard.ts`, `workBoard.ts`, `projectBoard.ts`, `developerBoards.ts`, checked by `scripts/verify-page-board.cjs` (Home, Daily), `verify-life-boards.cjs` (Food, Wishes, Health, Training) and `verify-feature-boards.cjs` (Media, Work, Projects, Developer).
+- **No density setting.** A Comfortable/Compact/Dense toggle was tried and rejected — don't reintroduce it.
+
+Reference screens: phone 402×874 (iPhone 16/17 Pro) and the same phone sideways (874×402), laptop
+1469×680, monitor 2450×1130. Read a browser's size with `window.innerWidth + 'x' + window.innerHeight`.
 
 ---
 
@@ -502,6 +533,29 @@ four numbers that answers the object's question for its state, then two columns 
 as "+" chips (`FactChips`) instead of empty inputs; edits gather in a draft and the footer shows
 Discard / Save only when something changed (closing with changes asks first). Creating stays a small `md`
 sheet — a record is for a row that already exists.
+
+**Headless UI pieces** (`@headlessui/react` v2) — never hand-made open/close state for these. They
+handle click-outside, Escape, focus trap, portal rendering and ARIA; anything portalled uses token
+classes (and, on `/games`, the `tg-portal` class).
+
+| Use case | Component | Notes |
+|---|---|---|
+| Modal / drawer | `ModalShell` / `SideDrawer`, never a raw `Dialog` | they wrap Headless UI `Dialog` with sheet, drag, Back and stacking built in |
+| Search autocomplete | `Combobox` + `ComboboxInput` + `ComboboxOptions` + `ComboboxOption` | `immediate` goes on the root `<Combobox>` when options should show on focus; `data-[focus]:` styles the active option |
+| Floating action panel | `Popover` + `PopoverButton` + `PopoverPanel` | `anchor="top start"` / `"bottom start"` (Floating UI) |
+| Dropdown menu | `Menu` + `MenuButton` + `MenuItems` + `MenuItem` | `anchor="bottom end"`; keyboard navigation built in |
+
+Reference files: `src/shared/modals/ModalShell.tsx` + `SideDrawer.tsx`,
+`src/features/home/components/ruter/StopSearchInput.tsx` (Combobox),
+`src/features/media/components/PlanThisButton.tsx` (Popover), `src/shared/components/SettingsMenu.tsx` (Menu).
+
+**Render-time crashes.** One bad field shape turns into a TypeError during render, and without a
+boundary React unmounts the whole tree — a blank page (how the PlayStation game popup once failed).
+A `try/catch` around a fetch never sees it. Wrap any surface whose data shape isn't guaranteed (the
+PlayStation and Steam tabs and popups, the Games detail blocks) in `ErrorBoundary`
+(`src/shared/components/ErrorBoundary.tsx`): the failure stays inside its own card, is logged to
+`app_error_logs` and offers Try again. Guard the fields too — the boundary is the backstop, not the
+fix (e.g. treat a genres field as string-or-array, default missing counts).
 
 **Non-modal floating windows** (the request composer) are not Dialogs: render them with `createPortal`
 straight into `<body>` (outside `#root`), which Headless UI never marks inert and never treats as an
@@ -606,6 +660,23 @@ The mutation resolves when the write answers — its own answer is the result; `
 in the background. A write that returns its row patches every cached list at once
 (`shared/query/cachePatch.ts`); task tick/edit/focus are optimistic.
 
+More on results (13.10.2026, owner: "after what the user does, a message by its outcome"):
+
+- `silent: '<why>'` is for a write that something else reports (the delete flow, the plan editor's
+  "Saved", a sheet's `withProgress`, an Undo toast) or that is not a user action (autosave while
+  typing, a drag whose list shows the order, a lookup whose results are the answer). A hook used both
+  alone and as a step of a bigger save takes `{ report: false }` (`useCreateTask`, `useUpdateTask`,
+  `useUpdateTimeBlock`, `useUpdateProject`, `useUpdateItem`, `useCreateShopLink`).
+- The message comes from the write's own answer and its input — never a second read. `refresh: 'wait'`
+  only for a flow that reads the refreshed cache right after.
+- Rollbacks use `snapshotCache` / `restoreCache` (`cachePatch.ts`); task writes apply the database's
+  own rules before the answer (`todo/taskWrites.ts` → `applyTaskPatch`) and cancel in-flight reads.
+  Google Tasks delivery and a task's Calendar title push run in the background; `requireUser()` reads
+  the local session instead of asking the auth server before every save (RLS checks the id).
+- An async action that is not a TanStack mutation at all (a button calling an api directly) uses the
+  manual pattern: `const id = toast.loading('Saving…')`, then `toast.dismiss(id)` and
+  `toast.success(…)` or `toast.error(err.message)`.
+
 **Toasts** outside a mutation come from `toast` in `src/app/store.ts`: `success` · `error` ·
 `warning` · `info` · `loading` (stays until `toast.dismiss(id)`) · `undo(message, onUndo)` (a
 success with an Undo button). They last 3s (errors 5s, undo 6s); a plain toast with the same text
@@ -625,7 +696,7 @@ food, toggle a task), they call the same hook — never two copies with differen
 Sentence case everywhere ("Log food", not "Log Food"). Name things the way the user thinks of them.
 Buttons are verbs; toasts confirm in past tense ("Saved", "Deleted", "Logged 420 kcal"); errors say
 what failed and what to do. Numbers carry units. No exclamation marks, no apologies, no emoji in
-chrome. English in the product; the only exception is on-phone shortcut/widget strings (CLAUDE.md).
+chrome. English in the product (`AGENTS.md`).
 
 ---
 
@@ -645,7 +716,7 @@ chrome. English in the product; the only exception is on-phone shortcut/widget s
 
 - [ ] Only token classes (no hex, no `gray-*`/`amber-*`/`bg-white`, no `text-[13px]`-style sizes).
 - [ ] Built from `src/shared/ui` primitives; status via tones; charts via `useChartColors`.
-- [ ] Works at 393 / 1469 / 2450px, light and dark, with no horizontal overflow.
+- [ ] Works at 402 / 1469 / 2450px, light and dark, with no horizontal overflow.
 - [ ] Every interactive element ≥ 44px on touch; hover-only actions have a touch path.
 - [ ] Loading, empty and error states present.
 - [ ] Entity popups opened with `useEntityModal`; local sheets use `ModalShell`; no native dialogs.

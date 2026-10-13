@@ -2,12 +2,12 @@ import { supabase } from '../../../integrations/supabase/client'
 
 // Smart-scale "body composition analysis report" scans, imported via
 // phone-gateway's import_body_composition action (migration 085) — see
-// CLAUDE.md's iPhone surface section. Read-only from the web app: nothing
+// docs/features/iphone.md. Read-only from the web app: nothing
 // here ever inserts/updates a row, the gateway is the only writer (and it
 // never updates one either — rows are immutable once written).
 //
 // A SEPARATE source from hevy_body_measurements (Hevy app) and health_metrics
-// (Apple Health / Health Auto Export) — per CLAUDE.md's explicit rule, never
+// (Apple Health / Health Auto Export) — per docs/features/iphone.md, never
 // merge or join across the three; this file only ever reads its own table.
 export interface BodyCompositionReport {
   id:                       string

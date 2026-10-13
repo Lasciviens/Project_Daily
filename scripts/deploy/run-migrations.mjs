@@ -119,7 +119,7 @@ if (!testing) {
   const { rows } = await first.query(
     "select to_regprocedure('public.owner_lock_apply(regclass)') is not null and to_regclass('public.ai_pending_actions') is not null as ok")
   if (!rows[0].ok) {
-    fail('Migrations 139 and 140 have not run on this database (they are run by hand in the SQL editor, CLAUDE.md → Pending manual steps). Nothing was changed.')
+    fail('Migrations 139 and 140 have not run on this database (they are run by hand in the SQL editor, docs/deploy-checklist.md). Nothing was changed.')
   }
 }
 let ledger = await readLedger(first)

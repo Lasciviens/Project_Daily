@@ -15,7 +15,7 @@ const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b)
 
 // Page content widths at the reference viewports: viewport − sidebar − 2 × gutter.
 const W = {
-  phone: 393 - 32,                 // 361
+  phone: 402 - 32,                 // 370
   tablet: 768 - 68 - 48,           // 652
   tablet1024: 1024 - 68 - 64,      // 892 (lg gutters start at 1024)
   laptop1280: 1280 - 232 - 64,     // 984

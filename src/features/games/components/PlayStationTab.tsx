@@ -22,7 +22,7 @@ import type { ProviderGameInput } from '../api/gamesApi'
 import { Truncate } from '../../../shared/ui/Truncate'
 
 // PlayStation integration — the community npsso-cookie flow (Sony has no
-// official API; see CLAUDE.md's Games Feature Detail research note).
+// official API; see docs/features/games.md's research note).
 // UNVERIFIED against a real account in this authoring session — response
 // shapes are read defensively with fallbacks.
 //
@@ -382,7 +382,7 @@ function ConnectedView() {
   )
 }
 
-// CLAUDE.md's "connections live in ONE place" rule says a feature page may
+// AGENTS.md's "connections live in one place" rule says a feature page may
 // LINK to Settings → Subscriptions but must never carry its own connect UI.
 // This is a deliberate, narrow exception the user asked for (2026-09-25), and
 // it serves the rule's actual purpose rather than defeating it: the rule
