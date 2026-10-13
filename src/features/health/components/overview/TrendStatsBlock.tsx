@@ -33,7 +33,7 @@ function Cell({ label, value, sub }: { label: string; value: string; sub?: strin
 }
 
 export function TrendStatsBlock({ stats, format, formatDelta, per, direction, rateUnit, className }: Props) {
-  // The Monday–Sunday range, not just its Monday ("7–13 Jul").
+  // The Monday–Sunday range, not just its Monday ("07.07.2026 – 13.07.2026").
   const weekLabel = (w: { weekStart: string }) => weekRangeLabel(w.weekStart, todayStr())
   const v = stats.variability
   const hasAny = stats.changes.some(c => c.delta != null) || stats.best || stats.rate || v.verdict

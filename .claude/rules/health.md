@@ -12,6 +12,7 @@ Background: `docs/features/health.md`.
 - The three sleep merges (client, `ai-proxy`, `phone-gateway`) follow one contract — change them together.
 - "Last night" is only the night filed under the selected day; never show an older night as last night.
 - One bodyweight series, scale first (`bodyweight.ts`); body fat and lean mass come only from the scale in use.
+- A body change smaller than its measurement noise reads "steady" and gets no colour (`weeklyBodyChanges.ts`, `bodyGoal.GOAL_NOISE`); the scale's body score is shown, never judged.
 - No composite health score and no invented derived metric. Aims agree with their band (`aimGuidance.ts`).
 - Charts: hover shows values; only explicit links inside a tooltip navigate; a bar click never does.
 - One date and period control for the whole page (`HealthRangeBar`).

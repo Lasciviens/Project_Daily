@@ -61,13 +61,13 @@ export const HEART_BOARD: BoardLayouts<typeof HEART_SECTIONS[number]> = {
 }
 
 // ── Body ────────────────────────────────────────────────────────────────────
-// The scale charts in main; the weight trend and the Hevy log beside them.
-export const BODY_SECTIONS = ['scale', 'trend', 'hevy'] as const
+// The scale charts in main; the weekly changes and the Hevy log beside them.
+export const BODY_SECTIONS = ['scale', 'weekly', 'hevy'] as const
 export const BODY_BOARD: BoardLayouts<typeof BODY_SECTIONS[number]> = {
-  1: ['scale', 'trend', 'hevy'],
-  2: { columns: [['scale'], ['trend', 'hevy']] },
-  3: { columns: [['scale'], ['trend'], ['hevy']] },
-  4: { columns: [['scale'], ['trend'], { stack: ['hevy'], span: 2 }] },
+  1: ['scale', 'weekly', 'hevy'],
+  2: { columns: [['scale'], ['weekly', 'hevy']] },
+  3: { columns: [['scale'], ['weekly'], ['hevy']] },
+  4: { columns: [['scale'], ['weekly'], { stack: ['hevy'], span: 2 }] },
 }
 
 // ── Goal progress ───────────────────────────────────────────────────────────
