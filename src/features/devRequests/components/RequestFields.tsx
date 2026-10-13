@@ -81,7 +81,7 @@ export function RequestFields({ fields, onChange, review, onTailNote, status, ti
       onChange: v => onChange({ priority: v as DevRequestPriority }),
     },
     {
-      id: 'page', name: 'Page', icon: <FileText aria-hidden />, value: fields.page, list: true,
+      id: 'page', name: 'Page', icon: <FileText aria-hidden />, value: fields.page,
       options: pages,
       onChange: v => onChange({ page: v }),
     },
