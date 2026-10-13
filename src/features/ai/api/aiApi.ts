@@ -1,4 +1,4 @@
-import { format } from 'date-fns'
+import { addDays, format } from 'date-fns'
 import { supabase } from '../../../integrations/supabase/client'
 import { parseFunctionErrorBody } from '../../../shared/utils/functionError'
 import { resolveWishWindow, wishPeriodLabel } from '../../wishes/wishRules'
@@ -122,13 +122,17 @@ type MemoryContextRow = { id: string; title: string; content: string; kind: stri
 
 async function buildContext(): Promise<string> {
   const today = format(new Date(), 'yyyy-MM-dd')
+  const weekEnd = format(addDays(new Date(), 7), 'yyyy-MM-dd')
 
   const results = await Promise.allSettled([
     // Today's list is Daily's and Home's own (taskRules.dayTasks over the one
     // day read): open overdue ones from any section too, done = closed today.
     fetchTasksForDay(today, today).then(rows => ({ data: rows })),
+    // This week = due in the next 7 days, plus old rows still filed under the
+    // retired 'this_week' section (new tasks for another day go to Backlog).
     supabase.from('tasks').select('id, title, priority, domain')
-      .eq('section', 'this_week').neq('status', 'cancelled').neq('status', 'done').limit(8),
+      .or(`section.eq.this_week,and(due_date.gt.${today},due_date.lte.${weekEnd})`)
+      .neq('status', 'cancelled').neq('status', 'done').order('due_date', { ascending: true, nullsFirst: false }).limit(8),
     supabase.from('tasks').select('id, title, priority')
       .eq('section', 'inbox').neq('status', 'cancelled').neq('status', 'done').limit(5),
     supabase.from('tasks').select('id, title, priority, section')

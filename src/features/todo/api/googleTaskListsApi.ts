@@ -53,7 +53,9 @@ export async function resolveOrCreateGoogleTaskListId(token: string, title: stri
   const { id: userId } = await requireUser()
 
   const findExisting = async (): Promise<string | null> => {
+    // Two lists may share a name (145): always the same one — the default, then the oldest.
     const { data: existing, error } = await supabase.from('google_task_lists').select('id, title').eq('user_id', userId)
+      .order('is_default', { ascending: false }).order('created_at', { ascending: true })
     if (error) throw error
     return (existing ?? []).find(l => l.title.trim().toLowerCase() === trimmed.toLowerCase())?.id ?? null
   }

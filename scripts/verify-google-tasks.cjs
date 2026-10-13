@@ -249,7 +249,8 @@ function migrationSection() {
   check('the old signature dropped is 075\'s 15 arguments',
     /drop function if exists public\.upsert_task_from_google\(\s*text, text, text, date, text, timestamptz, uuid, uuid, timestamptz, text, text, text, boolean, boolean, uuid\s*\)/.test(sql))
   check('p_google_links is the last parameter', /p_user_id\s+uuid\s+default null,\s*p_google_links\s+jsonb\s+default null\s*\)/.test(sql))
-  check('grants: not anon; the browser and the service role', /from public, anon;/.test(sql) && /to authenticated, service_role;/.test(sql))
+  check('grants: only the service role (no anon, no signed-in browser)',
+    (sql.match(/from public, anon, authenticated;/g) || []).length === 2 && !/to authenticated/.test(sql) && (sql.match(/to service_role;/g) || []).length === 2)
   check('adds last_full_sync_at if missing', /add column if not exists last_full_sync_at timestamptz/.test(sql))
   check('no BEGIN/COMMIT', !/^\s*(begin|commit)\s*;/im.test(sql))
   check('the DB scenarios run in the PR check', /node scripts\/verify-db-google-tasks-pull\.mjs/.test(read('.github/workflows/pr-check.yml')))

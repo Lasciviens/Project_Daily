@@ -6,7 +6,7 @@ import { todayStr } from '../../../shared/utils/dateUtils'
 import { useRecipes } from '../hooks/useRecipes'
 import { useIngredientLibrary } from '../hooks/useIngredientLibrary'
 import { useAddFoodLogEntries } from '../hooks/useFoodLog'
-import { USAGE_DAYS, useFoodUsage } from '../hooks/useFoodUsage'
+import { useFoodUsage } from '../hooks/useFoodUsage'
 import { useDayTargets } from '../../daily/hooks/useDayTargets'
 import { useDayNutrition } from '../../daily/hooks/useDayNutrition'
 import { ingredientSnapshot, recipeSnapshot } from '../api/foodLogApi'
@@ -83,20 +83,22 @@ export function LibraryTab() {
     )
   }
 
+  // One line only when it says something: saved meals explained, or how much
+  // a search or filter left (no standing caption on the phone).
   const summary = flags.includes('saved')
     ? 'Saved meals from the logger. They stay out of the Library until you tick “Show in Library” in their editor.'
-    : [
-        shown.length === libraryCount ? `${libraryCount} recipes` : `${shown.length} of ${libraryCount} recipes`,
-        foodHits.length > 0 && `${foodHits.length} ${foodHits.length === 1 ? 'food' : 'foods'}`,
-        'per serving',
-        `eaten counts: last ${USAGE_DAYS} days`,
-      ].filter(Boolean).join(' · ')
+    : narrowed
+      ? [
+          `${shown.length} of ${libraryCount} recipes`,
+          foodHits.length > 0 && `${foodHits.length} ${foodHits.length === 1 ? 'food' : 'foods'}`,
+        ].filter(Boolean).join(' · ')
+      : ''
 
   return (
     <div className="flex flex-col gap-3">
       <LibraryTabFilters query={query} onQuery={setQuery} sort={sort} onSort={setSort} flags={flags} onToggleFlag={toggle}
         category={category} onCategory={setCategory} kcalLeft={kcalLeft} savedCount={savedCount} />
-      <p className="text-meta text-fg-muted">{summary}</p>
+      {summary && <p className="text-meta text-fg-muted">{summary}</p>}
 
       {shown.length === 0 && foodHits.length === 0 ? (
         <EmptyState title={flags.includes('fits') && kcalLeft != null && kcalLeft <= 0 ? 'Nothing fits — today’s calories are used' : 'Nothing matches'}

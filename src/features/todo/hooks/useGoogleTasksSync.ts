@@ -1,13 +1,13 @@
 import { useEffect } from 'react'
 import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
-import { useCalendarStore } from '../../../app/store'
+import { toast, useCalendarStore } from '../../../app/store'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
 import { qk, STALE } from '../../../shared/query'
 import { ensureValidCalendarToken } from '../../calendar/api/calendarTokenSync'
 import { fetchCalendarLinkedTaskIds } from '../../daily/api/scheduleApi'
 import { drainGoogleTasksOutbox } from '../api/googleTasksOutbox'
 import { fetchGoogleTasksSyncState, runGoogleTasksSync } from '../api/googleTasksSync'
-import { googleTasksSyncMessage, shouldBackgroundSync, type GoogleTasksSyncSummary } from '../api/googleTasksRules'
+import { googleTasksSyncHealth, googleTasksSyncMessage, shouldBackgroundSync, type GoogleTasksSyncSummary } from '../api/googleTasksRules'
 import { updateTask } from '../api/tasksApi'
 import { isOpenTask } from '../taskRules'
 import type { Task } from '../types'
@@ -86,6 +86,26 @@ export function usePushToGoogleTasks() {
 // One background run at a time for the whole app.
 let backgroundRun: Promise<void> | null = null
 
+/** localStorage key of the sync error this device was last warned about. */
+export const GOOGLE_TASKS_WARNED_KEY = 'lasci.googleTasks.warnedError'
+
+/**
+ * A failed sync must not stay silent (owner, point 16 of 13.10.2026: "No sync"
+ * with nothing on screen). After a background run, a failure the device hasn't
+ * been told about yet gets one warning toast; the same error repeating every
+ * run stays quiet, and a good run clears the memory so the next failure warns.
+ */
+async function warnOnNewFailure(qc: QueryClient): Promise<void> {
+  const state = await qc.fetchQuery({ queryKey: qk.googleTasks.syncState(), queryFn: fetchGoogleTasksSyncState, staleTime: 0 })
+  const health = googleTasksSyncHealth(state)
+  try {
+    if (health.kind === 'ok') { localStorage.removeItem(GOOGLE_TASKS_WARNED_KEY); return }
+    if (health.kind !== 'failed' || localStorage.getItem(GOOGLE_TASKS_WARNED_KEY) === health.error) return
+    localStorage.setItem(GOOGLE_TASKS_WARNED_KEY, health.error)
+  } catch { /* storage blocked: warn anyway */ }
+  if (health.kind === 'failed') toast.warning(`Google Tasks sync failed: ${health.error} — see Settings → Subscriptions → Google`)
+}
+
 async function syncInBackground(qc: QueryClient): Promise<void> {
   const connected = !!useCalendarStore.getState().accessToken
   if (backgroundRun || !connected) return
@@ -103,6 +123,7 @@ async function syncInBackground(qc: QueryClient): Promise<void> {
     .finally(() => {
       backgroundRun = null
       void qc.invalidateQueries({ queryKey: qk.googleTasks.all })
+      void warnOnNewFailure(qc).catch(() => {})
     })
   return backgroundRun
 }
@@ -110,8 +131,9 @@ async function syncInBackground(qc: QueryClient): Promise<void> {
 /**
  * Brings Google's changes in when the app opens or comes back to the front,
  * at most every 10 minutes counting the cron's own runs — so the app is
- * current even when the 20-minute cron isn't running. Silent: nothing was
- * asked for; a failure is in the sync state and the error log.
+ * current even when the 20-minute cron isn't running. Quiet when it works; a
+ * new failure gets one warning toast (warnOnNewFailure), and every failure is
+ * in the sync state (Settings → Subscriptions) and the error log.
  */
 export function useGoogleTasksBackgroundSync() {
   const qc = useQueryClient()

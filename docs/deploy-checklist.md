@@ -5,7 +5,7 @@ A merge deploys migrations (above 140), every edge function and the website by i
 | Status | Step | Needed for |
 |---|---|---|
 | ? | Google Cloud → APIs & Services → **Google Tasks API** enabled in the project of `GOOGLE_CLIENT_ID` | Any Google Tasks call; without it the sync line on Settings → Subscriptions says "The Google Tasks API is turned off". |
-| ? | After the merge with migration 145: Settings → Subscriptions → Google → **Sync now**, then read the line under the buttons | Google tasks in the app again; the line names what is wrong (expired sign-in, Tasks not allowed, the API turned off). |
+| ? | After the merge (the app syncs by itself when it opens): open Settings → Subscriptions and read the Google Tasks line under the buttons | It names what is wrong, if anything (expired sign-in, Tasks not allowed, the API turned off); a new failure also shows as a warning when the app opens. |
 
 Every earlier step was confirmed done on 13.10.2026, and a check showed migrations 100–138 all ran.
 

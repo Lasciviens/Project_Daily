@@ -24,7 +24,8 @@ export async function fetchAllTasks(): Promise<Task[]> {
       .range(from, from + PAGE - 1)
     if (error) throw error
     out.push(...(data ?? []))
-    if (!data || data.length < PAGE) return out
+    // A row moved by a sync between two pages can come twice: keep it once.
+    if (!data || data.length < PAGE) return [...new Map(out.map(t => [t.id, t])).values()]
   }
 }
 

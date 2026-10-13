@@ -121,9 +121,12 @@ export function SpreadWatchedSheet({ tvId, tvName, tvEntryId, seasons, defaultRu
   const words = WORDS[mode]
 
   const input: SpreadInput = { start: startDay, end, breaks, weekdays, style, maxPerDay, startTime, runtime, respectAirDates: respectAir, seed }
+  // The plan is recomputed when anything it reads changes; the input object is
+  // keyed by its JSON so a new object with the same values doesn't replan.
+  const inputKey = JSON.stringify(input)
   const result = useMemo(() => planSpread(input, toPlan, TODAY),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [JSON.stringify(input), toPlan.length, fromIdx, toIdx, overwrite, watchedKeys, TODAY, episodes, fixed])
+    [inputKey, toPlan.length, fromIdx, toIdx, overwrite, watchedKeys, TODAY, episodes, fixed])
 
   // Through the one episode write path: new episodes marked, watched ones
   // counted again (repeat_count + 1 at the planned time) or re-dated.

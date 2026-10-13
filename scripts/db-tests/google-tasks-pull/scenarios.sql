@@ -129,18 +129,23 @@ select ok('G13 without one the parent is set',
   (select (parent_task_id = (select id from tasks where google_task_id = 'g-blank'))::text from tasks where google_task_id = 'g-email'), 'true');
 select ok('G13 and nothing was queued', (select count(*)::text from google_tasks_outbox), '0');
 
--- G14 a signed-in caller writes only as itself: p_user_id is ignored.
+-- G14 a signed-in browser can't call it at all: only the sync function (service role) writes.
 select set_config('test.role', 'authenticated', false), set_config('test.uid', '00000000-0000-4000-8000-0000000000b2', false);
 set role authenticated;
-select upsert_task_from_google('g-other', 'Mine', null, null, 'needsAction', '2026-10-13T08:00:00Z',
-  p_user_id => '00000000-0000-4000-8000-0000000000a1');
+do $$ begin
+  perform upsert_task_from_google('g-other', 'Mine', null, null, 'needsAction', '2026-10-13T08:00:00Z',
+    p_user_id => '00000000-0000-4000-8000-0000000000a1');
+  raise exception 'G14: a signed-in caller could run upsert_task_from_google';
+exception when insufficient_privilege then null;
+end $$;
 reset role;
-select ok('G14 a browser call lands on the caller, not the named user',
-  (select user_id::text from tasks where google_task_id = 'g-other'), '00000000-0000-4000-8000-0000000000b2');
+select ok('G14 a browser call is refused and writes nothing',
+  (select count(*)::text from tasks where google_task_id = 'g-other'), '0');
 
--- G15 grants: signed-out callers can't run either function.
+-- G15 grants: only the service role runs either function.
 select ok('G15 anon cannot upsert', has_function_privilege('anon', 'public.upsert_task_from_google(text, text, text, date, text, timestamptz, uuid, uuid, timestamptz, text, text, text, boolean, boolean, uuid, jsonb)', 'execute')::text, 'false');
-select ok('G15 authenticated can upsert', has_function_privilege('authenticated', 'public.upsert_task_from_google(text, text, text, date, text, timestamptz, uuid, uuid, timestamptz, text, text, text, boolean, boolean, uuid, jsonb)', 'execute')::text, 'true');
+select ok('G15 authenticated cannot upsert', has_function_privilege('authenticated', 'public.upsert_task_from_google(text, text, text, date, text, timestamptz, uuid, uuid, timestamptz, text, text, text, boolean, boolean, uuid, jsonb)', 'execute')::text, 'false');
+select ok('G15 authenticated cannot set a parent', has_function_privilege('authenticated', 'public.set_task_parent_from_google(uuid, uuid, uuid)', 'execute')::text, 'false');
 select ok('G15 service_role can upsert', has_function_privilege('service_role', 'public.upsert_task_from_google(text, text, text, date, text, timestamptz, uuid, uuid, timestamptz, text, text, text, boolean, boolean, uuid, jsonb)', 'execute')::text, 'true');
 select ok('G15 anon cannot set a parent', has_function_privilege('anon', 'public.set_task_parent_from_google(uuid, uuid, uuid)', 'execute')::text, 'false');
 select ok('G15 service_role can set a parent', has_function_privilege('service_role', 'public.set_task_parent_from_google(uuid, uuid, uuid)', 'execute')::text, 'true');

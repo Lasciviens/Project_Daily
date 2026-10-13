@@ -50,6 +50,7 @@ export async function refreshThisDevicePush(): Promise<void> {
 export async function clearAccountState(): Promise<void> {
   try { useCalendarStore.getState().setAccessToken(null) } catch { /* */ }
   try { localStorage.removeItem('lasci-ai-chat') } catch { /* */ }
+  try { localStorage.removeItem('lasci.googleTasks.warnedError') } catch { /* */ }
   try {
     if (typeof caches !== 'undefined') await caches.delete('supabase-api')
   } catch { /* */ }

@@ -153,7 +153,15 @@ begin
     p_google_updated_at, p_google_etag, p_google_position, p_google_web_view_link, v_links,
     false, false, true, p_completed_at, 0
   )
+  on conflict (user_id, google_task_id) where google_task_id is not null do nothing
   returning id into v_id;
+
+  -- Two runs at once (the cron, the app opening, Sync now) can both see the
+  -- task as new: the first insert stands, the second returns its row.
+  if v_id is null then
+    select id into v_id from public.tasks
+     where user_id = v_user_id and google_task_id = p_google_task_id;
+  end if;
 
   return v_id;
 end;
@@ -161,10 +169,13 @@ $$;
 
 revoke all on function public.upsert_task_from_google(
   text, text, text, date, text, timestamptz, uuid, uuid, timestamptz, text, text, text, boolean, boolean, uuid, jsonb
-) from public, anon;
+) from public, anon, authenticated;
+-- Only the sync function (service role) calls it: the browser's own pull was
+-- removed, and a SECURITY DEFINER write open to every signed-in account would
+-- step past the owner lock (139).
 grant execute on function public.upsert_task_from_google(
   text, text, text, date, text, timestamptz, uuid, uuid, timestamptz, text, text, text, boolean, boolean, uuid, jsonb
-) to authenticated, service_role;
+) to service_role;
 
 -- D ───────────────────────────────────────────────────────────────────────────
 create or replace function public.set_task_parent_from_google(
@@ -185,5 +196,5 @@ begin
 end;
 $$;
 
-revoke all on function public.set_task_parent_from_google(uuid, uuid, uuid) from public, anon;
-grant execute on function public.set_task_parent_from_google(uuid, uuid, uuid) to authenticated, service_role;
+revoke all on function public.set_task_parent_from_google(uuid, uuid, uuid) from public, anon, authenticated;
+grant execute on function public.set_task_parent_from_google(uuid, uuid, uuid) to service_role;

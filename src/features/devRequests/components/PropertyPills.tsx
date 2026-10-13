@@ -29,7 +29,7 @@ export interface Property {
 
 const PILL = cx(
   'inline-flex h-8 min-w-0 max-w-[14rem] items-center gap-1.5 rounded-full border px-2.5 text-meta font-medium transition-colors duration-100',
-  '[@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:px-3 disabled:opacity-60',
+  'disabled:opacity-60',
   '[&>svg:first-child]:h-3.5 [&>svg:first-child]:w-3.5 [&>svg:first-child]:shrink-0 [&>svg:first-child]:text-fg-muted',
   'border-line bg-surface text-fg-2 [@media(hover:hover)]:hover:border-line-strong [@media(hover:hover)]:hover:bg-surface-hover',
   'data-[open]:border-accent-500/50 data-[open]:bg-accent-50 data-[open]:text-accent-700',
