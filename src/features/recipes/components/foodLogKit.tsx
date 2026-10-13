@@ -1,9 +1,12 @@
 import { useState, type InputHTMLAttributes } from 'react'
 import { Listbox, ListboxButton, ListboxOptions, ListboxOption } from '@headlessui/react'
-import { ChevronDown, Star, X } from 'lucide-react'
-import { Truncate, cx } from '../../../shared/ui'
+import { ChevronDown, Minus, Plus, Star, X } from 'lucide-react'
+import { IconButton, Truncate, cx } from '../../../shared/ui'
 import { SLOT_OPTIONS, foodEmoji, sanitizeDecimal } from './foodLogUtils'
-import type { MealSlot } from '../types'
+import { MacroWarningBadge } from './MacroWarningBadge'
+import { checkMacroConsistency } from '../macroSanity'
+import { amountUnit, basketTotals, portionSteps, type BasketItem } from '../foodBasket'
+import type { IngredientLibraryItem, MealSlot } from '../types'
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Shared visual kit for the food-logging surfaces: the slot dropdown (one
@@ -128,5 +131,74 @@ export function DecimalInput({ value, onValue, ...rest }: {
   return (
     <input {...rest} inputMode="decimal" value={text}
       onChange={e => { const t = sanitizeDecimal(e.target.value); setText(t); onValue(t === '' ? null : Number(t)) }} />
+  )
+}
+
+// One basket line, the same in the logger and the recipe builder: ONE row on
+// every width (owner, 06.10.2026) with an always-typeable amount (owner,
+// 07.10.2026); − / + step it by one portion when the food has a preset.
+export function BasketRow({ item, onGrams, onRemove, showProtein = false }: {
+  item: BasketItem
+  onGrams: (raw: string) => void
+  onRemove: () => void
+  /** Adds the row's protein from `sm` up (the recipe builder). */
+  showProtein?: boolean
+}) {
+  const f = item.ingredient
+  const unit = amountUnit(f.unit)
+  const steps = portionSteps(item)
+  const t = basketTotals([item])
+  const portionHint = steps ? ` · ${steps.count} × ${steps.label}` : ''
+  return (
+    <div className="flex min-h-[48px] items-center gap-1.5 sm:gap-2">
+      <span className="max-sm:hidden"><FoodThumb name={f.name} group={f.food_group} imageUrl={f.image_url} size={28} /></span>
+      <Truncate className="min-w-0 flex-1 text-body text-fg">{f.name}</Truncate>
+      <div className="flex shrink-0 items-center" title={`${Math.round(item.grams)} ${unit}${portionHint}`}>
+        {steps && (
+          <IconButton label="One portion less" className="h-9 w-8 sm:w-9" onClick={() => onGrams(String(Math.max(1, steps.count - 1) * steps.size))}><Minus /></IconButton>
+        )}
+        <input value={item.grams || ''} onChange={e => onGrams(e.target.value)} inputMode="decimal" aria-label={`${f.name} amount in ${unit}${portionHint}`}
+          aria-invalid={!(item.grams > 0)}
+          className={cx('input w-14 px-1.5 text-right tabular-nums sm:w-16', !(item.grams > 0) && 'border-danger')} />
+        <span className="ml-1 text-meta text-fg-muted">{unit}</span>
+        {steps && (
+          <IconButton label="One portion more" className="h-9 w-8 sm:w-9" onClick={() => onGrams(String((steps.count + 1) * steps.size))}><Plus /></IconButton>
+        )}
+      </div>
+      <span className="w-[3.25rem] shrink-0 text-right text-meta text-fg-muted tabular-nums sm:w-14">{Math.round(t.kcal)} kcal</span>
+      {showProtein && <span className="hidden w-20 shrink-0 text-right text-meta text-fg-muted tabular-nums sm:block">{Math.round(t.protein)} g protein</span>}
+      <IconButton label={`Remove ${f.name}`} className="h-9 w-8 shrink-0 text-fg-faint hover:text-danger sm:w-9" onClick={onRemove}><X /></IconButton>
+    </div>
+  )
+}
+
+// A library food in the search results: the row adds it, the warning badge
+// sits beside it — a div, not a button, since MacroWarningBadge is itself a
+// Popover button and a <button> can't nest another one.
+export function FoodMatchRow({ food, onAdd, showProtein = false }: {
+  food: IngredientLibraryItem
+  onAdd: () => void
+  /** "· 23 g protein" after the kcal (the recipe builder). */
+  showProtein?: boolean
+}) {
+  const macroCheck = checkMacroConsistency(food.calories, food.protein_g, food.carbs_g, food.fat_g)
+  return (
+    <div className="row row-interactive min-h-[56px] px-1">
+      <button type="button" onClick={onAdd} className="flex min-w-0 flex-1 items-center gap-3 text-left">
+        <FoodThumb name={food.name} group={food.food_group} imageUrl={food.image_url} size={40} />
+        <span className="min-w-0 flex-1">
+          <Truncate className="text-body font-medium text-fg">{food.name}</Truncate>
+          <span className="block text-meta text-fg-muted">
+            {food.calories != null && `${Math.round(food.calories)} kcal`}
+            {showProtein && food.protein_g != null && ` · ${Math.round(food.protein_g)} g protein`}
+            {food.calories != null && ` · 100${amountUnit(food.unit)}`}
+            {food.serving_label && ` · ${food.serving_label}`}
+          </span>
+        </span>
+        {/* The row's visual add affordance — inside the button so tapping it adds. */}
+        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-accent-50 text-accent-600"><Plus className="h-4 w-4" aria-hidden /></span>
+      </button>
+      <MacroWarningBadge result={macroCheck} />
+    </div>
   )
 }

@@ -22,3 +22,5 @@ Background: `docs/features/food.md`.
 - AI recipe extraction (`parseRecipeText`, `parseRecipeFromUrl`, `estimateRecipeMacros`) is editor-only, never called from the chat panel; a recipe shared in chat is never a shop item.
 - All goal coaching comes from one decision module (`health/goal/cutDecision.ts`) — Food, Health and the goal editor show its answer, never their own.
 - `useDayTargets` uses `placeholderData`, never `initialData` (which skipped the real fetch).
+- The logger and the recipe builder share one search and basket (`FoodSearchField`, `NewFoodForm`, `foodLogKit` rows, `foodBasket.ts`) — change it there, never fork a second copy.
+- A popup that prefills from props during render starts its seed closed (`{ open: false }`): entity modals mount already open, and a seed equal to the props skipped the prefill (Edit recipe opened empty).

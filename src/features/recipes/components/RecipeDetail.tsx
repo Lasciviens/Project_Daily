@@ -3,7 +3,7 @@ import { Check, ChefHat, Flame, Minus, Plus, ShoppingBag, UtensilsCrossed, Exter
 import { toast } from '../../../app/store'
 import { ModalShell } from '../../../shared/modals/ModalShell'
 import { entityModal } from '../../../shared/modals/useEntityModal'
-import { Button, IconButton, Truncate } from '../../../shared/ui'
+import { Button, IconButton, MetaLine, Truncate } from '../../../shared/ui'
 import { cx } from '../../../shared/ui/cx'
 import { useDeleteRecipe, useIncrementTimesCooked } from '../hooks/useRecipes'
 import { useAddMissingIngredientsToShop } from '../hooks/useShopIntegration'
@@ -212,11 +212,11 @@ export function RecipeDetail({ recipe, onClose, onEdit }: Props) {
             `servings` (not the recipe's base yield) — the "% of the batch"
             used to double when the batch was scaled up. */}
         {ate > 0 && (recipe.calories != null || servings > 1) && (
-          <p className="-mt-2 text-meta text-fg-muted tabular-nums">
-            Eating <strong className="text-fg-2">{ate}</strong> of {servings} portion{servings === 1 ? '' : 's'}
-            {servings > 0 && <span> · {Math.round((ate / servings) * 100)}% of the batch</span>}
-            {recipe.calories != null && <span> · logs <strong className="text-fg-2">{Math.round(recipe.calories * ate)}</strong> kcal</span>}
-          </p>
+          <MetaLine className="-mt-2 text-meta text-fg-muted tabular-nums" items={[
+            <>Eating <strong className="text-fg-2">{ate}</strong> of {servings}{servings > 0 && ` (${Math.round((ate / servings) * 100)}%)`}</>,
+            recipe.calories != null && <>logs <strong className="text-fg-2">{Math.round(recipe.calories * ate)}</strong> kcal</>,
+            recipe.protein_g != null && <><strong className="text-fg-2">{Math.round(recipe.protein_g * ate)}</strong> g protein</>,
+          ]} />
         )}
 
         {/* Macros (scaled to selected servings) */}

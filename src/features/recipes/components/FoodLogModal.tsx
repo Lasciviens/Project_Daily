@@ -1,26 +1,23 @@
 import { useMemo, useState, type ReactNode } from 'react'
-import { Camera, ChevronRight, Globe, Minus, Pencil, Plus, Save, Search, Star, X } from 'lucide-react'
+import { ChevronRight, Pencil, Plus, Save, Star } from 'lucide-react'
 import { ModalShell } from '../../../shared/modals/ModalShell'
 import { entityModal } from '../../../shared/modals/useEntityModal'
-import { Button, IconButton, Truncate } from '../../../shared/ui'
+import { Button, Truncate } from '../../../shared/ui'
 import { cx } from '../../../shared/ui/cx'
-import { useIngredientLibrary, useCreateIngredientLibraryItem, useUpsertExternalFood } from '../hooks/useIngredientLibrary'
+import { useIngredientLibrary } from '../hooks/useIngredientLibrary'
 import {
   useAddFoodLogEntries, useRecentFoods, useFoodFavorites, useAddFoodFavorite, useRemoveFoodFavorite, useHideRecentFood,
 } from '../hooks/useFoodLog'
 import { useRecipes, useCreateRecipe } from '../hooks/useRecipes'
 import { ingredientSnapshot, recipeSnapshot, recentToEntry, type RecentFood } from '../api/foodLogApi'
-import { WEIGHT_UNITS } from '../api/recipesApi'
-import { lookupBarcode, type BarcodeProduct } from '../api/openFoodFactsApi'
-import { BarcodeScanner } from './BarcodeScanner'
-import { OnlineFoodSearch } from './OnlineFoodSearch'
 import { MealPortionPicker } from './MealPortionPicker'
-import { SlotSelect, FoodThumb, FoodTile } from './foodLogKit'
+import { SlotSelect, FoodThumb, FoodTile, BasketRow, FoodMatchRow } from './foodLogKit'
 import { sanitizeDecimal, slotForNow } from './foodLogUtils'
-import { MacroWarningBadge } from './MacroWarningBadge'
+import { FoodSearchField } from './FoodSearchField'
+import { NewFoodForm, type NewFoodSeed } from './NewFoodForm'
 import { QuickAddCustom, type QuickAddValues } from './QuickAddCustom'
 import { parseQuickAdd, rankMatches, sortForSlot } from '../foodSearch'
-import { checkMacroConsistency } from '../macroSanity'
+import { amountUnit, basketTotals, basketToIngredients, lastGrams, wholePortions, type BasketItem } from '../foodBasket'
 import { useDayNutrition } from '../../daily/hooks/useDayNutrition'
 import { useDayTargets } from '../../daily/hooks/useDayTargets'
 import { toast } from '../../../app/store'
@@ -44,11 +41,6 @@ import { formatWeekdayDate } from '../../../shared/utils/dateFormat'
 //  (title + calories) without creating an ingredient.
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** A basket amount is grams, or ml for a drink stored per 100 ml. */
-const amountUnit = (u: string | null | undefined) => (u?.trim().toLowerCase() === 'ml' ? 'ml' : 'g')
-
-interface BasketItem { ingredient: IngredientLibraryItem; grams: number }
-
 interface Props {
   /** Controlled callers pass it; the `food-log` entity modal omits it. */
   open?:         boolean
@@ -67,8 +59,6 @@ export function FoodLogModal({ open = true, onClose, date, defaultSlot, defaultQ
   const { data: recents = [] } = useRecentFoods()
   const { data: favorites = [] } = useFoodFavorites()
   const { data: recipes = [] } = useRecipes()
-  const createIngredient = useCreateIngredientLibraryItem()
-  const upsertExternal = useUpsertExternalFood()
   const createRecipe = useCreateRecipe()
   const addEntries = useAddFoodLogEntries()
   const addFavorite = useAddFoodFavorite()
@@ -96,18 +86,11 @@ export function FoodLogModal({ open = true, onClose, date, defaultSlot, defaultQ
   const [recentOpen, setRecentOpen] = useState(true)
 
   const [basket, setBasket] = useState<BasketItem[]>([])
-  const [showNew, setShowNew] = useState(false)
-  const [nName, setNName] = useState('')
-  const [nKcal, setNKcal] = useState(''); const [nProt, setNProt] = useState('')
-  const [nCarb, setNCarb] = useState(''); const [nFat, setNFat] = useState('')
-  const [nFiber, setNFiber] = useState('')
-  const [nSugar, setNSugar] = useState('')
-  const [nServLabel, setNServLabel] = useState(''); const [nServGrams, setNServGrams] = useState('')
-
-  const [scanOpen, setScanOpen] = useState(false)
-  const [scanning, setScanning] = useState(false)
-  const [onlineOpen, setOnlineOpen] = useState(false)
-  const [scanMeta, setScanMeta] = useState<{ source: string; source_ref: string; image_url: string | null } | null>(null)
+  // The new-food form's seed (a typed name or a scanned / online product);
+  // a new seed remounts the form (`newFoodKey`).
+  const [newFood, setNewFood] = useState<NewFoodSeed | null>(null)
+  const [newFoodKey, setNewFoodKey] = useState(0)
+  const openNewFood = (seed: NewFoodSeed) => { setNewFood(seed); setNewFoodKey(k => k + 1) }
 
   // Re-seed per open (instance is reused) — sanctioned adjust-during-render.
   const [wasOpen, setWasOpen] = useState(open)
@@ -117,48 +100,14 @@ export function FoodLogModal({ open = true, onClose, date, defaultSlot, defaultQ
       setSlot(defaultSlot ?? slotForNow())
       setQuery(defaultQuery ?? '')
       setMealName(''); setMealServings('1'); setPortionRecipe(null); setSaveMealOpen(false)
-      setBasket([]); setShowNew(false); setScanMeta(null); setAsMeal(true); setOnlineOpen(false)
+      setBasket([]); setNewFood(null); setAsMeal(true)
     }
-  }
-
-  function prefillFromProduct(p: BarcodeProduct) {
-    setNName(p.name)
-    setNKcal(p.calories != null ? String(p.calories) : '')
-    setNProt(p.protein_g != null ? String(p.protein_g) : '')
-    setNCarb(p.carbs_g != null ? String(p.carbs_g) : '')
-    setNFat(p.fat_g != null ? String(p.fat_g) : '')
-    setNFiber(p.fiber_g != null ? String(p.fiber_g) : '')
-    setNSugar(p.sugar_g != null ? String(p.sugar_g) : '')
-    setNServLabel(p.serving_grams != null ? '1 serving' : '')
-    setNServGrams(p.serving_grams != null ? String(p.serving_grams) : '')
-    setScanMeta({ source: p.source ?? 'openfoodfacts', source_ref: p.code, image_url: p.image_url })
-    setShowNew(true)
-    setOnlineOpen(false)
-  }
-
-  async function handleBarcode(code: string) {
-    setScanOpen(false); setScanning(true)
-    const tid = toast.loading('Looking up barcode…')
-    try {
-      const p = await lookupBarcode(code)
-      toast.dismiss(tid)
-      if (!p) { toast.error('Product not found in Open Food Facts'); return }
-      // The same product by barcode first (names differ between sources), then by name.
-      const existing = library.find(i => i.source_ref === code)
-        ?? library.find(i => i.name.trim().toLowerCase() === p.name.trim().toLowerCase())
-      if (existing) { addToBasket(existing); toast.success(`${p.name} — already in your library`); return }
-      prefillFromProduct(p)
-      toast.success(`Found: ${p.name} — review & add`)
-    } catch {
-      toast.dismiss(tid); toast.error('Barcode lookup failed')
-    } finally { setScanning(false) }
   }
 
   function addRecent(r: RecentFood) {
     const lib = r.library_ingredient_id ? library.find(l => l.id === r.library_ingredient_id) : null
     // Add the amount the tile shows (the last one eaten), not the default portion.
-    const lastGrams = r.quantity != null && r.quantity > 0 && WEIGHT_UNITS.has((r.unit ?? 'g').trim().toLowerCase()) ? r.quantity : undefined
-    if (lib) { addToBasket(lib, lastGrams); return }
+    if (lib) { addToBasket(lib, lastGrams(r)); return }
     addEntries.mutate([recentToEntry(r, date, slot)])
   }
 
@@ -218,34 +167,7 @@ export function FoodLogModal({ open = true, onClose, date, defaultSlot, defaultQ
     setBasket(b => b.map((it, i) => (i === idx ? { ...it, grams: Number.isFinite(n) ? n : 0 } : it)))
   }
 
-  const totals = basket.reduce(
-    (acc, it) => {
-      const s = ingredientSnapshot(it.ingredient, it.grams)
-      return {
-        kcal: acc.kcal + (s.calories ?? 0), prot: acc.prot + (s.protein_g ?? 0),
-        carb: acc.carb + (s.carbs_g ?? 0), fat: acc.fat + (s.fat_g ?? 0),
-      }
-    },
-    { kcal: 0, prot: 0, carb: 0, fat: 0 },
-  )
-
-  async function handleNewIngredient() {
-    if (!nName.trim()) return
-    const num = (s: string) => (s === '' ? null : Number(s))
-    const input = {
-      name: nName, calories: num(nKcal), protein_g: num(nProt), carbs_g: num(nCarb),
-      fat_g: num(nFat), fiber_g: num(nFiber), sugar_g: num(nSugar),
-      serving_label: nServLabel || null, serving_grams: num(nServGrams),
-    }
-    try {
-      const created = scanMeta
-        ? await upsertExternal.mutateAsync({ ...input, source: scanMeta.source, source_ref: scanMeta.source_ref, image_url: scanMeta.image_url })
-        : await createIngredient.mutateAsync(input)
-      addToBasket(created)
-      setShowNew(false); setScanMeta(null)
-      setNName(''); setNKcal(''); setNProt(''); setNCarb(''); setNFat(''); setNFiber(''); setNSugar(''); setNServLabel(''); setNServGrams('')
-    } catch { return }   // the hook already toasted + logged
-  }
+  const totals = basketTotals(basket)
 
   function handleQuickAdd(v: QuickAddValues) {
     addEntries.mutate(
@@ -277,23 +199,22 @@ export function FoodLogModal({ open = true, onClose, date, defaultSlot, defaultQ
 
   async function handleSaveMeal() {
     if (basket.length === 0 || !mealName.trim()) return
-    const servingsN = Math.max(1, Math.round(Number(sanitizeDecimal(mealServings)) || 1))   // recipes.servings is an integer
+    const servingsN = wholePortions(sanitizeDecimal(mealServings))
     try {
       // 'from_ingredients': the save computes macros from the basket, and every
       // later ingredient edit recomputes them. 'manual' froze the total forever.
       await createRecipe.mutateAsync({
         title: mealName.trim(), servings: servingsN, macro_mode: 'from_ingredients',
         is_temp: !saveToLibrary,
-        ingredients: basket.map(it => ({ name: it.ingredient.name, quantity: it.grams, unit: amountUnit(it.ingredient.unit), note: null, library_ingredient_id: it.ingredient.id })),
+        ingredients: basketToIngredients(basket),
       })
       setMealName(''); setMealServings('1'); setSaveMealOpen(false); setSaveToLibrary(false)
     } catch { return }
   }
 
   const dateLabel = formatWeekdayDate(date)
-  const protLeft = Math.round(targets.protein - (nut?.protein_g ?? 0) - totals.prot)
+  const protLeft = Math.round(targets.protein - (nut?.protein_g ?? 0) - totals.protein)
   const kcalLeft = Math.round(targets.calories - (nut?.calories ?? 0) - totals.kcal)
-  const addingIngredient = createIngredient.isPending || upsertExternal.isPending
 
   const sectionToggle = (isOpen: boolean, onToggle: () => void, label: ReactNode) => (
     <button type="button" onClick={onToggle} aria-expanded={isOpen}
@@ -333,37 +254,10 @@ export function FoodLogModal({ open = true, onClose, date, defaultSlot, defaultQ
                   </Button>
                 </div>
               </div>
-              {basket.map((it, i) => {
-                const snap = ingredientSnapshot(it.ingredient, it.grams)
-                const sg = it.ingredient.serving_grams
-                const count = sg ? Math.max(1, Math.round(it.grams / sg)) : 1
-                const hasStepper = !!it.ingredient.serving_label && sg != null
-                // ONE row per item on every width (owner, 06.10.2026), and the
-                // amount is always a box you can type in (owner, 07.10.2026);
-                // − / + step it by one portion when the food has one.
-                const portionHint = hasStepper ? ` · ${count} × ${it.ingredient.serving_label!.replace(/^1\s*/, '')}` : ''
-                return (
-                  <div key={`${it.ingredient.id}-${i}`} className="flex min-h-[48px] items-center gap-1.5 sm:gap-2">
-                    <span className="max-sm:hidden"><FoodThumb name={it.ingredient.name} group={it.ingredient.food_group} imageUrl={it.ingredient.image_url} size={28} /></span>
-                    <Truncate className="min-w-0 flex-1 text-body text-fg">{it.ingredient.name}</Truncate>
-                    <div className="flex shrink-0 items-center" title={`${Math.round(it.grams)} ${amountUnit(it.ingredient.unit)}${portionHint}`}>
-                      {hasStepper && (
-                        <IconButton label="One portion less" className="h-9 w-8 sm:w-9" onClick={() => setGrams(i, String(Math.max(1, count - 1) * sg))}><Minus /></IconButton>
-                      )}
-                      <input value={it.grams || ''} onChange={e => setGrams(i, e.target.value)} inputMode="decimal" aria-label={`${it.ingredient.name} amount in ${amountUnit(it.ingredient.unit)}${portionHint}`}
-                        aria-invalid={!(it.grams > 0)}
-                        className={cx('input w-14 px-1.5 text-right tabular-nums sm:w-16', !(it.grams > 0) && 'border-danger')} />
-                      <span className="ml-1 text-meta text-fg-muted">{amountUnit(it.ingredient.unit)}</span>
-                      {hasStepper && (
-                        <IconButton label="One portion more" className="h-9 w-8 sm:w-9" onClick={() => setGrams(i, String((count + 1) * sg))}><Plus /></IconButton>
-                      )}
-                    </div>
-                    <span className="w-[3.25rem] shrink-0 text-right text-meta text-fg-muted tabular-nums sm:w-14">{Math.round(snap.calories ?? 0)} kcal</span>
-                    <IconButton label={`Remove ${it.ingredient.name}`} className="h-9 w-8 shrink-0 text-fg-faint hover:text-danger sm:w-9"
-                      onClick={() => setBasket(b => b.filter((_, j) => j !== i))}><X /></IconButton>
-                  </div>
-                )
-              })}
+              {basket.map((it, i) => (
+                <BasketRow key={`${it.ingredient.id}-${i}`} item={it} onGrams={raw => setGrams(i, raw)}
+                  onRemove={() => setBasket(b => b.filter((_, j) => j !== i))} />
+              ))}
               {saveMealOpen && (
                 <div className="mt-1 flex flex-wrap items-center gap-1.5 border-t border-line pb-1 pt-2">
                   <input value={mealName} onChange={e => setMealName(e.target.value)} placeholder="Meal name…" aria-label="Meal name"
@@ -388,9 +282,9 @@ export function FoodLogModal({ open = true, onClose, date, defaultSlot, defaultQ
               <p className="text-ui font-bold text-fg tabular-nums">
                 {Math.round(totals.kcal)} <span className="font-normal text-fg-muted">kcal</span>
                 <span className="font-normal text-fg-faint"> · </span>
-                {Math.round(totals.prot)}<span className="font-normal text-fg-muted">g protein</span>
+                {Math.round(totals.protein)}<span className="font-normal text-fg-muted">g protein</span>
                 {basket.length > 0 && (
-                  <span className="hidden font-normal text-fg-muted sm:inline"> · {Math.round(totals.carb)}g carbs · {Math.round(totals.fat)}g fat</span>
+                  <span className="hidden font-normal text-fg-muted sm:inline"> · {Math.round(totals.carbs)}g carbs · {Math.round(totals.fat)}g fat</span>
                 )}
               </p>
               {(targets.protein > 0 || targets.calories > 0) && (
@@ -408,30 +302,8 @@ export function FoodLogModal({ open = true, onClose, date, defaultSlot, defaultQ
         </div>
       }
     >
-      {/* Search — sticky so it never scrolls away from the results. */}
-      <div className="sticky top-0 z-[1] -mx-4 bg-surface px-4 pb-1 pt-3">
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-fg-faint" aria-hidden />
-          <input
-            value={query}
-            onChange={e => setQuery(e.target.value)}
-            placeholder="Search food…"
-            aria-label="Search food"
-            className="input min-h-[48px] pl-10 pr-24"
-          />
-          <div className="absolute right-1 top-1/2 flex -translate-y-1/2 gap-0.5">
-            <IconButton label="Scan barcode" onClick={() => setScanOpen(true)} disabled={scanning}><Camera /></IconButton>
-            <IconButton label="Search online" onClick={() => setOnlineOpen(o => !o)} aria-pressed={onlineOpen}
-              className={cx(onlineOpen && 'bg-accent-50 text-accent-700')}><Globe /></IconButton>
-          </div>
-        </div>
-      </div>
-
-      {onlineOpen && (
-        <div className="rounded-card border border-accent-500/25 bg-accent-50 p-3">
-          <OnlineFoodSearch initialQuery={query} onPick={prefillFromProduct} />
-        </div>
-      )}
+      <FoodSearchField query={query} onQuery={setQuery} library={library}
+        onExisting={food => addToBasket(food)} onProduct={product => openNewFood({ name: product.name, product })} />
 
       {portionRecipe && (
         <MealPortionPicker
@@ -442,45 +314,9 @@ export function FoodLogModal({ open = true, onClose, date, defaultSlot, defaultQ
         />
       )}
 
-      {showNew && (
-        <div className="flex flex-col gap-2 rounded-card border border-accent-500/25 bg-accent-50 p-3.5">
-          <div className="flex items-center gap-2">
-            {scanMeta?.image_url && <FoodThumb name={nName} imageUrl={scanMeta.image_url} size={36} />}
-            <p className="text-meta font-semibold text-accent-700">New ingredient · per 100g (one-time — reusable forever)</p>
-          </div>
-          <input value={nName} onChange={e => setNName(e.target.value)} placeholder="Name" aria-label="Name" className="input" />
-          <div className="grid grid-cols-3 gap-1.5">
-            {[
-              { v: nKcal, set: setNKcal, ph: 'kcal' },
-              { v: nProt, set: setNProt, ph: 'Protein' },
-              { v: nCarb, set: setNCarb, ph: 'Carbs' },
-              { v: nFat, set: setNFat, ph: 'Fat' },
-              { v: nFiber, set: setNFiber, ph: 'Fiber' },
-              { v: nSugar, set: setNSugar, ph: 'Sugar' },
-            ].map(m => (
-              <input key={m.ph} value={m.v} onChange={e => m.set(sanitizeDecimal(e.target.value))} inputMode="decimal"
-                placeholder={m.ph} aria-label={m.ph} className="input tabular-nums" />
-            ))}
-          </div>
-          {(() => {
-            const num = (v: string) => (v === '' ? null : Number(v))
-            const check = checkMacroConsistency(num(nKcal), num(nProt), num(nCarb), num(nFat))
-            return check?.inconsistent ? (
-              <div data-tone="warn" className="tone-text flex items-center gap-1.5 text-meta">
-                <MacroWarningBadge result={check} />
-                <span>Calories don't match protein/carbs/fat — {check.deltaPct}% off. Tap the badge for details.</span>
-              </div>
-            ) : null
-          })()}
-          <div className="grid grid-cols-2 gap-1.5">
-            <input value={nServLabel} onChange={e => setNServLabel(e.target.value)} placeholder="Portion label (1 scoop)" aria-label="Portion label" className="input" />
-            <input value={nServGrams} onChange={e => setNServGrams(sanitizeDecimal(e.target.value))} inputMode="decimal" placeholder="= grams" aria-label="Portion grams" className="input" />
-          </div>
-          <div className="flex gap-2">
-            <Button variant="ghost" onClick={() => { setShowNew(false); setScanMeta(null) }}>Cancel</Button>
-            <Button variant="primary" block onClick={handleNewIngredient} loading={addingIngredient} disabled={!nName.trim()}>Add to meal</Button>
-          </div>
-        </div>
+      {newFood && (
+        <NewFoodForm key={newFoodKey} seed={newFood} onCancel={() => setNewFood(null)}
+          onCreated={created => { addToBasket(created); setNewFood(null) }} />
       )}
 
       {q ? (
@@ -508,30 +344,11 @@ export function FoodLogModal({ open = true, onClose, date, defaultSlot, defaultQ
               <span className="shrink-0 text-meta font-semibold text-accent-600">Log again</span>
             </button>
           ))}
-          {matches.map(ing => {
-            const macroCheck = checkMacroConsistency(ing.calories, ing.protein_g, ing.carbs_g, ing.fat_g)
-            // A div, not a button — MacroWarningBadge is itself a Popover
-            // button, and a <button> can't nest another one.
-            return (
-              <div key={ing.id} className="row row-interactive min-h-[56px] px-1">
-                <button type="button" onClick={() => addToBasket(ing, quickParsed.grams ?? undefined)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
-                  <FoodThumb name={ing.name} group={ing.food_group} imageUrl={ing.image_url} size={40} />
-                  <span className="min-w-0 flex-1">
-                    <Truncate className="text-body font-medium text-fg">{ing.name}</Truncate>
-                    <span className="block text-meta text-fg-muted">
-                      {ing.calories != null && `${Math.round(ing.calories)} kcal · 100g`}
-                      {ing.serving_label && ` · ${ing.serving_label}`}
-                    </span>
-                  </span>
-                  {/* The row's visual add affordance — inside the button so tapping it adds. */}
-                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-accent-50 text-accent-600"><Plus className="h-4 w-4" aria-hidden /></span>
-                </button>
-                <MacroWarningBadge result={macroCheck} />
-              </div>
-            )
-          })}
+          {matches.map(ing => (
+            <FoodMatchRow key={ing.id} food={ing} onAdd={() => addToBasket(ing, quickParsed.grams ?? undefined)} />
+          ))}
           {!quickFirst && !exactLibraryHit && <QuickAddCustom query={query} busy={addEntries.isPending} onLog={handleQuickAdd} />}
-          <button type="button" onClick={() => { setShowNew(true); setNName(quickParsed.title) }} className="row row-interactive min-h-[52px] px-1 text-left">
+          <button type="button" onClick={() => openNewFood({ name: quickParsed.title })} className="row row-interactive min-h-[52px] px-1 text-left">
             <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-dashed border-accent-500/50 text-accent-600"><Plus className="h-4 w-4" aria-hidden /></span>
             <span className="text-body text-accent-700">Save “{quickParsed.title}” as an ingredient (per 100g)…</span>
           </button>
@@ -617,8 +434,6 @@ export function FoodLogModal({ open = true, onClose, date, defaultSlot, defaultQ
           )}
         </>
       )}
-
-      <BarcodeScanner open={scanOpen} onClose={() => setScanOpen(false)} onDetected={handleBarcode} />
     </ModalShell>
   )
 }
