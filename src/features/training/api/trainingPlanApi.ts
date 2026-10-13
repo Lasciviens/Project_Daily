@@ -2,6 +2,7 @@ import { supabase } from '../../../integrations/supabase/client'
 import { requireUser } from '../../../shared/utils/requireUser'
 import { createTask, updateTask, toggleTaskDone } from '../../todo/api/tasksApi'
 import { createTimeBlock, fetchScheduleBlocks, fetchTimeBlocks, updateTimeBlock } from '../../daily/api/scheduleApi'
+import { carryOccurrenceToCalendar } from '../../calendar/api/scheduleSeriesCalendar'
 import { findPlanTwin, type PlanTwin } from '../plan/planTwins'
 import { sectionForDate } from '../../../shared/components/plan-modal/planModal.config'
 import { createTrainingSkip } from './trainingSkipsApi'
@@ -84,6 +85,7 @@ export async function ensurePlanTask(target: PlanTarget, info: PlanInfo): Promis
   }
 
   let blockId: string
+  let newDay = false
   if (target.kind === 'block') {
     const { data, error } = await supabase.from('time_blocks').select('task_id').eq('id', target.blockId).maybeSingle()
     if (error) throw error
@@ -113,7 +115,16 @@ export async function ensurePlanTask(target: PlanTarget, info: PlanInfo): Promis
         throw error
       }
       blockId = data.id
+      newDay = true
     }
+  }
+  // A day of a plan on Google Calendar (147): the series leaves the day out
+  // and the new block gets its own event, before any move pushes it.
+  if (newDay && target.kind === 'weekly') {
+    await carryOccurrenceToCalendar(target.templateId, {
+      id: blockId, date: info.date, startHHMM: info.startHHMM, title: info.title,
+      minutes: info.minutes && info.minutes > 0 ? info.minutes : 60,
+    })
   }
   const task = await createTask(planTaskInput(info))
   await updateTimeBlock(blockId, { task_id: task.id })

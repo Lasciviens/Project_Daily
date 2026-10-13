@@ -25,6 +25,12 @@ export interface ScheduleBlock {
   repeat_unit?:     RepeatUnit | null
   /** 'dates' only: the hand-picked days ('yyyy-MM-dd'). */
   repeat_dates?:    string[] | null
+  /** Its ONE repeating Google Calendar event, in 'primary' (migration 147;
+   *  missing before it). The mapping is calendar/calendarSeries.ts. */
+  google_calendar_event_id?: string | null
+  /** The last day the event's RDATE list covers (the monthly kinds); null
+   *  when the event carries every occurrence. */
+  google_calendar_horizon?:  string | null
   created_at:   string
   updated_at:   string
 }

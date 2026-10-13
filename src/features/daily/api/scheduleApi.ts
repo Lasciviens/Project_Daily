@@ -62,9 +62,9 @@ export async function createScheduleBlock(input: CreateScheduleBlockInput): Prom
   }
 }
 
-// Recurring templates have no Google Calendar support yet (the modal hides
-// that checkbox in recurring mode rather than show a control that silently
-// does nothing), so this is a plain DB update.
+// A plain DB update. Its Google Calendar series (147) is pushed by the hook
+// (useUpdateScheduleBlock → calendar/api/scheduleSeriesCalendar.ts), which
+// reads the row this returns.
 export async function updateScheduleBlock(id: string, patch: UpdateScheduleBlockInput): Promise<ScheduleBlock> {
   const write = (p: Record<string, unknown>) => supabase
     .from('schedule_blocks')
@@ -78,6 +78,35 @@ export async function updateScheduleBlock(id: string, patch: UpdateScheduleBlock
   const retry = await write(withoutRepeatColumns({ ...patch }))
   if (retry.error) throw retry.error
   return retry.data
+}
+
+/** One repeating plan, read fresh (never cached): the Calendar series code
+ *  decides "create an event or not" off it. `.single()` — a missing row is an
+ *  error there, not "no event yet". */
+export async function fetchScheduleBlock(id: string): Promise<ScheduleBlock> {
+  const { data, error } = await supabase.from('schedule_blocks').select('*').eq('id', id).single()
+  if (error) throw error
+  return data
+}
+
+export const SERIES_NOT_MIGRATED = 'Adding a repeating plan to Google Calendar needs migration 147 — migration 147 not applied yet.'
+
+/** Whether the database has 147's link column (a fresh row read with `*` carries it, null or not). */
+export function hasSeriesColumns(row: object): boolean {
+  return 'google_calendar_event_id' in row
+}
+
+/** Stores (or clears, with null) a repeating plan's Google Calendar series
+ *  and how far its RDATE list reaches (147). The calendar-link write itself —
+ *  a raw api call, so its failure is handled by the caller's compensation and
+ *  never toasted as a failed save. */
+export async function setScheduleBlockCalendarLink(id: string, eventId: string | null, horizon: string | null): Promise<void> {
+  const user = await requireUser()
+  const { error } = await supabase.from('schedule_blocks')
+    .update({ google_calendar_event_id: eventId, google_calendar_horizon: horizon, updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .eq('user_id', user.id)
+  if (error) throw isMissingColumn(error) ? new Error(SERIES_NOT_MIGRATED) : error
 }
 
 // A block's task state rides along (not kept as an embed): a training

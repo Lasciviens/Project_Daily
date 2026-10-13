@@ -199,8 +199,8 @@ export function CategorySelect({
 //  matter: Every day / Weekdays light theirs, a tap turns the choice into the
 //  set it now is (planModal.config's toggleRepeatDay). Monthly takes one
 //  weekday (or none = the same date). Custom is "every N days / weeks /
-//  months" or picked dates. The summary and the next three days come from the
-//  same rule the agenda projects (recurrence.ts).
+//  months" or picked dates. For Monthly and Custom a summary and the next
+//  three days follow, from the same rule the agenda projects (recurrence.ts).
 
 function DayCircles({ lit, onToggle, single, locked }: {
   lit: number[]
@@ -255,7 +255,9 @@ export function RecurrenceField({
   const custom = value.recurrence === 'custom'
   const every = Number(value.repeatEvery)
   const problem = recurrenceProblem(value)
-  const preview = repeatPreview(value, start, todayStr(), exceptDates)
+  // Every day / Weekdays / Weekly: the select and the circles already say it
+  // all — a summary line would only repeat them (an extra line on a phone).
+  const preview = value.recurrence === 'monthly' || custom ? repeatPreview(value, start, todayStr(), exceptDates) : null
 
   return (
     <div className="flex flex-col gap-2">

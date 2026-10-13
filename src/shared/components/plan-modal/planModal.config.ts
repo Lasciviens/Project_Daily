@@ -10,7 +10,7 @@ import type { TaskSection, TaskSourceType } from '../../../features/todo/types'
 import type { TimeBlockCalendarStatus } from '../../../features/daily/api/scheduleSyncRules'
 import { sectionForDay } from '../../../features/todo/taskRules'
 import {
-  MAX_REPEAT_INTERVAL, nextOccurrences, repeatSummary, type RepeatUnit,
+  MAX_REPEAT_DATES, MAX_REPEAT_INTERVAL, nextOccurrences, repeatSummary, type RepeatUnit,
 } from '../../../features/daily/recurrence'
 import { todayStr, tomorrowStr } from '../../utils/dateUtils'
 import { formatWeekdayDate } from '../../utils/dateFormat'
@@ -233,7 +233,12 @@ export function pickRecurrence(f: RepeatFormFields, mode: RecurrenceMode, startW
 export function recurrenceProblem(f: RepeatFormFields): string | null {
   if (!hasValidRecurrenceSelection(f.recurrence, f.weeklyDays)) return 'Pick at least one day.'
   if (f.recurrence !== 'custom') return null
-  if (f.customKind === 'dates') return f.repeatDates.length === 0 ? 'Pick at least one date.' : null
+  if (f.customKind === 'dates') {
+    const n = new Set(f.repeatDates).size
+    if (n === 0) return 'Pick at least one date.'
+    // The database keeps at most 366 (146's CHECK) — say so before saving.
+    return n > MAX_REPEAT_DATES ? `Pick at most ${MAX_REPEAT_DATES} dates (${n} picked).` : null
+  }
   const n = Number(f.repeatEvery)
   if (!Number.isInteger(n) || n < 1 || n > MAX_REPEAT_INTERVAL) return `Repeat every 1 to ${MAX_REPEAT_INTERVAL} ${f.repeatUnit}s.`
   if (f.repeatUnit === 'week' && f.weeklyDays.length === 0) return 'Pick at least one day.'
@@ -292,6 +297,51 @@ export function repeatFormFromRow(row: {
 export function repeatStart(row: RepeatRow, start: string): string {
   const first = row.repeat_kind === 'dates' ? row.repeat_dates?.[0] : undefined
   return first && first < start ? first : start
+}
+
+/** What a choice counts from (its start, effective_from): the day of the month
+ *  for Monthly and every N months, the first day for every N days / weeks.
+ *  null for Every day / Weekdays / Weekly and picked dates, whose start only
+ *  bounds them. */
+export type RepeatAnchor = 'month' | 'week' | 'day'
+
+export function repeatAnchorOf(f: Pick<RepeatFormFields, 'recurrence' | 'customKind' | 'repeatUnit'>): RepeatAnchor | null {
+  if (f.recurrence === 'monthly') return 'month'
+  if (f.recurrence === 'custom' && f.customKind === 'every') return f.repeatUnit
+  return null
+}
+
+/** The same for a saved plan's columns. */
+export function repeatAnchorOfRow(row: { repeat_kind?: string | null; repeat_unit?: RepeatUnit | null }): RepeatAnchor | null {
+  if (row.repeat_kind === 'monthly') return 'month'
+  if (row.repeat_kind === 'interval') return row.repeat_unit ?? null
+  return null
+}
+
+/**
+ * Editing a saved plan: a Repeat change that changes what the plan counts
+ * from moves "Starts" — to today for a new anchor (a weekly plan turned
+ * monthly must not count from the day it was first saved: "the Saturday
+ * nearest the 5th" when the owner meant the 13th), back to the saved start
+ * when the choice returns to the saved anchor or to one without an anchor.
+ * Returns the patch with `date` added when it moves.
+ */
+export function withStartForRepeatChange<P extends Partial<RepeatFormFields>>(
+  form: RepeatFormFields, p: P, saved: { start: string; anchor: RepeatAnchor | null }, today: string,
+): P & { date?: string } {
+  const before = repeatAnchorOf(form)
+  const after = repeatAnchorOf({ ...form, ...p })
+  if (after === before) return p
+  return { ...p, date: after === null || after === saved.anchor ? saved.start : today }
+}
+
+/** effective_from when a saved plan is saved again: the "Starts" shown for a
+ *  choice that counts from it; otherwise the saved start stays (moving it
+ *  would rewrite the plan's history) — only picked dates before it move it
+ *  earlier, so none is hidden. */
+export function editedRepeatStart(f: RepeatFormFields & { date: string }, row: RepeatRow, savedStart: string | null | undefined): string | undefined {
+  if (repeatAnchorOf(f)) return repeatStart(row, f.date)
+  return savedStart ? repeatStart(row, savedStart) : undefined
 }
 
 /** The one-line summary and the next three days of the current choice, as the

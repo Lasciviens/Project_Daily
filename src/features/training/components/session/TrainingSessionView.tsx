@@ -189,7 +189,7 @@ export function TrainingSessionView({ request, onClose }: { request: SessionRequ
       const suffix = plans.length > 1 ? ` · ${p.title}` : ''
       if (p.kind === 'recurring' && p.scheduleBlock) {
         const id = p.scheduleBlock.id
-        items.push({ key: `weekly-${p.id}`, label: `Change weekly plan…${suffix}`, icon: <CalendarCog />, onSelect: () => modal.open({ kind: 'schedule-block', id, config: { heading: 'Change weekly plan' } }) })
+        items.push({ key: `weekly-${p.id}`, label: `Change repeating plan…${suffix}`, icon: <CalendarCog />, onSelect: () => modal.open({ kind: 'schedule-block', id, config: { heading: 'Change repeating plan' } }) })
         continue
       }
       const b = p.timeBlock

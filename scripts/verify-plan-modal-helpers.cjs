@@ -165,6 +165,15 @@ console.log('\n== 7. buildInitialForm — gcal seeded from the REAL entity, not 
     buildInitialForm({ gcal: true }, undefined, undefined, undefined).gcal === true)
   check('CREATE (no timeBlock), no defaults -> gcal=false',
     buildInitialForm(undefined, undefined, undefined, undefined).gcal === false)
+  // A repeating plan's own series (147) seeds it the same way, so saving an
+  // untouched plan never removes its event from Google Calendar.
+  const plan = { id: 's1', user_id: 'u', title: 'Upper A', days_of_week: [1, 4], start_time: '17:00:00', end_time: '18:00:00',
+    color: 'blue', category: 'training', effective_from: '2026-09-01', created_at: '', updated_at: '' }
+  check('editing a repeating plan on Google Calendar seeds gcal=true',
+    buildInitialForm(undefined, undefined, undefined, { ...plan, google_calendar_event_id: 'abc' }).gcal === true)
+  check('editing a repeating plan not on it (or from before 147) seeds gcal=false',
+    buildInitialForm(undefined, undefined, undefined, { ...plan, google_calendar_event_id: null }).gcal === false
+    && buildInitialForm(undefined, undefined, undefined, plan).gcal === false)
 }
 
 console.log('\n== 8. shouldSkipPendingCreate — the outbox drain half of the dedupe-ordering fix ==')
@@ -514,6 +523,16 @@ console.log('\n== 18. Repeat choice: one line, day circles, monthly / custom (mi
   check('custom every N days needs none', C.recurrenceProblem(f({ recurrence: 'custom', repeatUnit: 'day', weeklyDays: [] })) === null)
   check('picked dates need one', C.recurrenceProblem(f({ recurrence: 'custom', customKind: 'dates' })) === 'Pick at least one date.'
     && C.recurrenceProblem(f({ recurrence: 'custom', customKind: 'dates', repeatDates: ['2026-10-20'] })) === null)
+  {
+    const R = require('../src/features/daily/recurrence')
+    const days = n => Array.from({ length: n }, (_, i) => R.addDaysIso('2026-01-01', i))
+    check('picked dates: 366 is the most a plan holds (the database CHECK\'s limit)', R.MAX_REPEAT_DATES === 366
+      && C.recurrenceProblem(f({ recurrence: 'custom', customKind: 'dates', repeatDates: days(366) })) === null)
+    check('picked dates: 367 can\'t be saved, with a plain message instead of a constraint error',
+      C.recurrenceProblem(f({ recurrence: 'custom', customKind: 'dates', repeatDates: days(367) })) === 'Pick at most 366 dates (367 picked).')
+    check('picked dates: a date picked twice counts once',
+      C.recurrenceProblem(f({ recurrence: 'custom', customKind: 'dates', repeatDates: [...days(366), '2026-01-01'] })) === null)
+  }
 
   const row = o => C.repeatRowFromForm(f(o))
   check('weekly-style choices store as weekly (unchanged meaning)',
@@ -576,6 +595,47 @@ console.log('\n== 18. Repeat choice: one line, day circles, monthly / custom (mi
     opened.recurrence === 'monthly' && opened.monthWeekday === 6 && opened.date === '2026-10-13')
   const fresh = buildInitialForm({ date: '2026-10-14' })
   check('a new plan starts with No repeat and its own date', fresh.recurrence === 'none' && fresh.date === '2026-10-14' && fresh.repeatUnit === 'week')
+
+  // Editing a saved plan: "Starts" for a choice that counts from it.
+  check('what a choice counts from: Monthly and every N months the month, every N weeks / days their unit, the rest nothing',
+    C.repeatAnchorOf(f({ recurrence: 'monthly' })) === 'month'
+    && C.repeatAnchorOf(f({ recurrence: 'custom', repeatUnit: 'month' })) === 'month'
+    && C.repeatAnchorOf(f({ recurrence: 'custom', repeatUnit: 'week' })) === 'week'
+    && C.repeatAnchorOf(f({ recurrence: 'custom', repeatUnit: 'day' })) === 'day'
+    && ['daily', 'weekdays', 'weekly', 'none'].every(r => C.repeatAnchorOf(f({ recurrence: r })) === null)
+    && C.repeatAnchorOf(f({ recurrence: 'custom', customKind: 'dates' })) === null)
+  check('…the same for a saved row',
+    C.repeatAnchorOfRow({ repeat_kind: 'monthly' }) === 'month' && C.repeatAnchorOfRow({ repeat_kind: 'interval', repeat_unit: 'week' }) === 'week'
+    && C.repeatAnchorOfRow({ repeat_kind: 'weekly' }) === null && C.repeatAnchorOfRow({}) === null && C.repeatAnchorOfRow({ repeat_kind: 'dates' }) === null)
+  const savedWeekly = { start: '2026-03-05', anchor: null }
+  const weeklyForm = f({ recurrence: 'weekly', weeklyDays: [6] })
+  const toMonthly = C.withStartForRepeatChange(weeklyForm, { recurrence: 'monthly' }, savedWeekly, '2026-10-13')
+  check('the reported case: a weekly plan saved 05.03 turned Monthly starts today (13.10), not on the 5th',
+    toMonthly.date === '2026-10-13' && toMonthly.recurrence === 'monthly')
+  check('…its preview then reads the 13th',
+    C.repeatPreview(f({ recurrence: 'monthly', monthWeekday: 6 }), toMonthly.date, '2026-10-13').summary === 'Every month, the Saturday nearest the 13th')
+  check('…and back to Weekly returns the saved start (no anchor, history kept)',
+    C.withStartForRepeatChange(f({ recurrence: 'monthly', monthWeekday: 6 }), { recurrence: 'weekly' }, savedWeekly, '2026-10-13').date === '2026-03-05')
+  check('a change that keeps what it counts from leaves Starts alone (a day circle, Weekly → Every day)',
+    !('date' in C.withStartForRepeatChange(weeklyForm, { weeklyDays: [1, 6] }, savedWeekly, '2026-10-13'))
+    && !('date' in C.withStartForRepeatChange(weeklyForm, { recurrence: 'daily' }, savedWeekly, '2026-10-13')))
+  const savedMonthly = { start: '2026-05-05', anchor: 'month' }
+  check('a saved monthly plan turned every 2 months keeps its anchor (both count from the day of the month)',
+    !('date' in C.withStartForRepeatChange(f({ recurrence: 'monthly' }), { recurrence: 'custom', customKind: 'every', repeatUnit: 'month' }, savedMonthly, '2026-10-13')))
+  check('a saved monthly plan turned every 2 weeks starts today; back to monthly, its saved start again',
+    C.withStartForRepeatChange(f({ recurrence: 'monthly' }), { recurrence: 'custom', customKind: 'every', repeatUnit: 'week' }, savedMonthly, '2026-10-13').date === '2026-10-13'
+    && C.withStartForRepeatChange(f({ recurrence: 'custom', repeatUnit: 'week' }), { recurrence: 'monthly' }, savedMonthly, '2026-10-13').date === '2026-05-05')
+  const monthlyRow = C.repeatRowFromForm(f({ recurrence: 'monthly', monthWeekday: 6 }))
+  check('saving: a choice that counts from its start writes the Starts shown',
+    C.editedRepeatStart({ ...f({ recurrence: 'monthly', monthWeekday: 6 }), date: '2026-10-13' }, monthlyRow, '2026-03-05') === '2026-10-13')
+  const weeklyRow = C.repeatRowFromForm(weeklyForm)
+  check('saving: any other choice keeps the saved start',
+    C.editedRepeatStart({ ...weeklyForm, date: '2026-10-13' }, weeklyRow, '2026-03-05') === '2026-03-05')
+  const datesForm = f({ recurrence: 'custom', customKind: 'dates', repeatDates: ['2026-02-01', '2026-11-01'] })
+  check('saving: picked dates before the saved start still move it earlier',
+    C.editedRepeatStart({ ...datesForm, date: '2026-03-05' }, C.repeatRowFromForm(datesForm), '2026-03-05') === '2026-02-01')
+  check('saving: a row with no saved start (before 081) and no anchor writes none',
+    C.editedRepeatStart({ ...weeklyForm, date: '2026-10-13' }, weeklyRow, undefined) === undefined)
 }
 
 console.log('\n== 19. A task planned for a day never gets a retired section ==')

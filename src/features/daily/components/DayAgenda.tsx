@@ -343,9 +343,9 @@ export function DayAgenda({ date, bare = false }: { date: Date; bare?: boolean }
                   setSelectedId(null)
                   if (isRecurring) {
                     void deleteScheduleBlock.run([block.canonicalId], {
-                      title: `Delete the weekly plan “${block.title}”?`,
+                      title: `Delete the repeating plan “${block.title}”?`,
                       message: 'Every day it repeats on leaves the agenda. Days already planned on their own stay.',
-                      done: 'Weekly plan deleted',
+                      done: 'Repeating plan deleted',
                     })
                   } else {
                     void deleteBlock.run([block.canonicalId], {

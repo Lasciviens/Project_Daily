@@ -777,7 +777,7 @@ export interface CalendarDrainSummary {
   deleted: number
   /** Google answered 404/410: it was gone already (usually the browser's own delete). */
   already_gone: number
-  /** A live time block still points at the event (a block put back, a shared id) — it stays. */
+  /** A live time block or repeating plan (147) still points at the event (one put back, a shared id) — it stays. */
   kept: number
   /** Backed off; tried again on a later run. */
   failed: number
@@ -795,7 +795,7 @@ export function emptyCalendarDrainSummary(): CalendarDrainSummary {
 
 /** The I/O a run needs — google-tasks-sync wires these to Google and Supabase. */
 export interface CalendarDrainDeps {
-  /** Event ids a live time block still points at: never deleted. */
+  /** Event ids a live time block or repeating plan still points at: never deleted. */
   stillLinked: ReadonlySet<string>
   /** One events.delete. Resolves (never rejects) with the HTTP status, or null with no answer. */
   deleteEvent(row: CalendarOutboxRow): Promise<{ status: number | null; message: string }>
@@ -919,15 +919,23 @@ async function drainCalendarOutbox(token: string, userId: string): Promise<Calen
   // Never delete an event a live block still points at: a block put back
   // after its delete, or a second block holding the same id. Every linked
   // event is in the primary calendar, so the event id alone decides.
+  const eventIds = [...new Set(rows.map((r) => r.event_id))]
   const { data: linked, error: linkedError } = await supabase.from('time_blocks')
     .select('google_calendar_event_id')
     .eq('user_id', userId)
-    .in('google_calendar_event_id', [...new Set(rows.map((r) => r.event_id))])
+    .in('google_calendar_event_id', eventIds)
   if (linkedError) throw linkedError
+  // …nor one a live repeating plan points at (its series, migration 147).
+  // Before 147 no plan can hold one: a missing column reads as none.
+  const { data: linkedPlans, error: linkedPlansError } = await supabase.from('schedule_blocks')
+    .select('google_calendar_event_id')
+    .eq('user_id', userId)
+    .in('google_calendar_event_id', eventIds)
+  if (linkedPlansError && linkedPlansError.code !== '42703' && linkedPlansError.code !== 'PGRST204') throw linkedPlansError
 
   const stopAt = Date.now() + CALENDAR_BUDGET_MS
   return drainCalendarRows(rows, {
-    stillLinked: new Set((linked ?? []).map((b: AnyRecord) => b.google_calendar_event_id as string)),
+    stillLinked: new Set([...(linked ?? []), ...(linkedPlans ?? [])].map((b: AnyRecord) => b.google_calendar_event_id as string)),
     deleteEvent: (row) => deleteCalendarEventOnce(token, row.calendar_id, row.event_id),
     removeRow: async (row) => {
       const { error: deleteError } = await supabase.from('calendar_outbox').delete().eq('id', row.id).eq('user_id', userId)
