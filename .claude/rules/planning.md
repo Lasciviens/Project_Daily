@@ -23,5 +23,6 @@ Background: `docs/features/planning-calendar.md`.
 - `GOOGLE_SCOPES` (`calendar/googleScopes.ts`) is the one consent list. Calendar writes go through `ensureValidCalendarToken()`.
 - Every linked Calendar event lives in `'primary'`; a path that links another calendar must store it on `time_blocks` and in the outbox trigger (`verify-calendar-outbox`).
 - Duration is 1–1440 minutes (`clampDurationMinutes`, CHECK in 080). Recurring templates start at `effective_from` (081) and never render before it. Blocks crossing midnight project onto both days (`dayAgendaProjection.ts`).
-- A weekly recurrence with no day selected can't be saved (`hasValidRecurrenceSelection`); editing a recurring template never silently turns it into a one-off.
+- Whether a recurring plan occurs on a day is answered only by `daily/recurrence.ts` (`occursOn` / `occurrencesBetween`; weekday layouts use `weeklyDaysOf`) — never a `days_of_week` test of its own: since 146 a plan may repeat monthly, every N days/weeks/months or on picked dates (`verify-recurrence`).
+- An incomplete repeat can't be saved (`recurrenceProblem`, which runs `hasValidRecurrenceSelection` for weekly); editing a recurring template never silently turns it into a one-off. The Repeat choice stays one line (a select) at every width.
 - Schedule writes invalidate the whole `schedule`/`taskGraph` groups; never give a schedule view its own private query key.

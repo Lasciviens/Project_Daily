@@ -15,7 +15,8 @@ import { openPlanRoutine } from '../../planTraining'
 import { rememberShownWorkout } from '../../sessionLinks'
 import { WORKOUT_TONE } from '../calendar/calendarModel'
 import { planRoutineId, planStartHHMM, workoutStartHHMM } from '../calendar/calendarSessions'
-import { coveredPlanNote, planMinutes, sessionWhenLabel, weekdaysLabel } from '../../sessionRef'
+import { coveredPlanNote, planMinutes, sessionWhenLabel } from '../../sessionRef'
+import { repeatSummary } from '../../../daily/recurrence'
 import type { HevyRoutine } from '../../types.hevy'
 import type { PlanTarget, TrainingPlanRef } from '../../api/trainingPlanApi'
 import { SessionActionBar, SessionMenu } from './TrainingPlanActions'
@@ -219,7 +220,7 @@ export function TrainingSessionView({ request, onClose }: { request: SessionRequ
     subtitle = sessionWhenLabel(date, planCtx.plan.info.startHHMM, planCtx.plan.info.minutes)
     body = (
       <PlanBody status={planCtx.status} primary={planItems.primary} busy={planItems.busy} routine={routine}
-        repeats={template ? `Repeats ${weekdaysLabel(template.days_of_week)}` : null} offSchedule={resolved.offSchedule}
+        repeats={template ? repeatSummary(template) : null} offSchedule={resolved.offSchedule}
         routinesLoading={routinesQ.isLoading} todayStr={todayStr} />
     )
     actions = <SessionMenu items={planItems.more} busy={planItems.busy} />

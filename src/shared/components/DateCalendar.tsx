@@ -25,12 +25,15 @@ function monthCells(year: number, month: number): { date: string; day: number; i
 /**
  * A month grid to pick one day (yyyy-MM-dd). Days outside min/max are
  * disabled; the arrows never move past a month with nothing pickable.
+ * With `selected` it marks several days (the caller toggles them in onPick);
+ * `value` then only picks the month it opens on.
  */
-export function DateCalendar({ value, min, max, onPick }: {
+export function DateCalendar({ value, min, max, onPick, selected }: {
   value: string
   min?: string
   max?: string
   onPick: (iso: string) => void
+  selected?: readonly string[]
 }) {
   const today = todayStr()
   const start = value || (max && max < today ? max : min && min > today ? min : today)
@@ -62,14 +65,14 @@ export function DateCalendar({ value, min, max, onPick }: {
         {WEEKDAYS.map(w => <span key={w} className="pb-1 text-micro font-semibold text-fg-faint">{w}</span>)}
         {cells.map(c => {
           const ok = allowed(c.date)
-          const selected = c.date === value
+          const isSelected = selected ? selected.includes(c.date) : c.date === value
           return (
             <button key={c.date} type="button" disabled={!ok} onClick={() => onPick(c.date)}
               aria-label={`${c.date.slice(8)}.${c.date.slice(5, 7)}.${c.date.slice(0, 4)}`}
-              aria-pressed={selected}
+              aria-pressed={isSelected}
               className={cx(
                 'mx-auto flex h-10 w-10 items-center justify-center rounded-full text-body tabular-nums transition-colors',
-                selected ? 'bg-accent-500 font-semibold text-on-accent'
+                isSelected ? 'bg-accent-500 font-semibold text-on-accent'
                   : c.date === today ? 'font-semibold text-accent-600 ring-1 ring-accent-300 hover:bg-accent-50'
                   : c.inMonth ? 'text-fg hover:bg-surface-hover' : 'text-fg-faint hover:bg-surface-hover',
                 'disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent',
@@ -79,7 +82,7 @@ export function DateCalendar({ value, min, max, onPick }: {
           )
         })}
       </div>
-      {allowed(today) && value !== today && (
+      {!selected && allowed(today) && value !== today && (
         <button type="button" onClick={() => onPick(today)}
           className="mt-1 min-h-[44px] w-full rounded-control text-meta font-semibold text-accent-600 hover:bg-accent-50">
           Today

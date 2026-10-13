@@ -36,10 +36,6 @@ function shiftDay(dateStr: string, delta: number): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-function weekdayOf(dateStr: string): number {
-  return new Date(`${dateStr}T00:00:00`).getDay()
-}
-
 function hhmm(hour: number): string {
   const h = Math.floor(hour)
   const m = Math.round((hour - h) * 60)
@@ -65,7 +61,7 @@ export function pickNextTrainingSession(input: {
   if (templates.length > 0) {
     for (let i = 0; i <= lookaheadDays; i++) {
       const day = shiftDay(today, i)
-      const hit = projectRecurringBlocksForDay(day, weekdayOf(day), [...templates])
+      const hit = projectRecurringBlocksForDay(day, templates)
         .filter(p => !p.spillover && (day !== today || hhmm(p.startHour) >= nowHHMM))
         .sort((a, b) => a.startHour - b.startHour)[0]
       if (hit) {

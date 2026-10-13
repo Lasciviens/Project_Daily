@@ -162,16 +162,15 @@ export function taskGroups<T extends DayFields & Pick<Task, 'start_date'>>(tasks
 }
 
 /**
- * The section a task added on `day` goes to: today, tomorrow, this week
- * (2–7 days ahead) or the backlog. Only Today's undated rows belong to a day
- * (onDay); the other sections are just where a new task is filed.
+ * The section a task added on `day` goes to: Today for today, Backlog for any
+ * other day — never the retired Tomorrow / This week (the planner shows those
+ * only as "(legacy)" on an old row). A dated task sits on its due day by its
+ * date (onDay), whatever its section; and Backlog keeps a future task out of
+ * today's server-side lists (`section.eq.today` in phone-gateway, push-send,
+ * ai-proxy), exactly as Tomorrow / This week did.
  */
 export function sectionForDay(day: string, today: string): TaskSection {
-  const diff = Math.round((Date.parse(`${day}T12:00:00`) - Date.parse(`${today}T12:00:00`)) / 86_400_000)
-  if (diff === 0) return 'today'
-  if (diff === 1) return 'tomorrow'
-  if (diff > 1 && diff <= 7) return 'this_week'
-  return 'backlog'
+  return day === today ? 'today' : 'backlog'
 }
 
 /** Open tasks on `day` — the number the week strips put under a day. */

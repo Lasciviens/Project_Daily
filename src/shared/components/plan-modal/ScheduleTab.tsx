@@ -12,7 +12,7 @@ import {
   FieldLabel, Required, TextField, DateStepperField, Time24Field, DurationField,
   CategorySelect, RecurrenceField, CheckboxRow,
 } from './fields'
-import { stepDate, shiftTime, isScheduleFieldHidden, isScheduleFieldLocked, hasValidRecurrenceSelection } from './planModal.config'
+import { stepDate, shiftTime, isScheduleFieldHidden, isScheduleFieldLocked } from './planModal.config'
 import type { PlanModalConfig } from './planModal.types'
 import type { PlanForm } from './planForm'
 
@@ -28,12 +28,9 @@ export function ScheduleTab({ form, patch, config, gcalAvailable, extra }: Props
   const hidden = (f: Parameters<typeof isScheduleFieldHidden>[0]) => isScheduleFieldHidden(f, config)
   const locked = (f: Parameters<typeof isScheduleFieldLocked>[0]) => isScheduleFieldLocked(f, config)
 
-  function toggleDay(day: number) {
-    const next = form.weeklyDays.includes(day)
-      ? form.weeklyDays.filter(d => d !== day)
-      : [...form.weeklyDays, day].sort()
-    patch({ weeklyDays: next })
-  }
+  const repeats = form.recurrence !== 'none'
+  // Picked dates need no start of their own (the earliest pick is it).
+  const pickingDates = form.recurrence === 'custom' && form.customKind === 'dates'
 
   return (
     <div className="flex flex-col gap-4">
@@ -47,9 +44,9 @@ export function ScheduleTab({ form, patch, config, gcalAvailable, extra }: Props
         </div>
       )}
 
-      {!hidden('date') && (
+      {!hidden('date') && !pickingDates && (
         <div>
-          <FieldLabel>Date</FieldLabel>
+          <FieldLabel>{repeats ? 'Starts' : 'Date'}</FieldLabel>
           <DateStepperField
             value={form.date} onChange={v => patch({ date: v })}
             onStep={dir => patch({ date: stepDate(form.date, dir) })} locked={locked('date')}
@@ -92,13 +89,7 @@ export function ScheduleTab({ form, patch, config, gcalAvailable, extra }: Props
       {!hidden('recurrence') && (
         <div>
           <FieldLabel>Repeat</FieldLabel>
-          <RecurrenceField
-            mode={form.recurrence} weeklyDays={form.weeklyDays}
-            onMode={m => patch({ recurrence: m })} onToggleDay={toggleDay} locked={locked('recurrence')}
-          />
-          {!hasValidRecurrenceSelection(form.recurrence, form.weeklyDays) && (
-            <p className="mt-1.5 text-meta text-danger">Pick at least one day.</p>
-          )}
+          <RecurrenceField value={form} onChange={patch} start={form.date} locked={locked('recurrence')} />
         </div>
       )}
 

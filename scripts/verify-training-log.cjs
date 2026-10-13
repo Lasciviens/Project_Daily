@@ -260,8 +260,6 @@ console.log('\n== sessionRef ==')
   check('coveredPlanNote: a recurring slot → "Planned weekly for <time>"', sr.coveredPlanNote([recurring('r__d', 'Lower A', '16:45:00')], workout('w', 'Lower A')) === 'Planned weekly for 16:45')
   check('coveredPlanNote: a different session on a planned day says what it replaced', sr.coveredPlanNote([recurring('r__d', 'Upper B', '17:30:00')], workout('w', 'Random')) === 'In place of ⟳ Upper B · 17:30')
   check('coveredPlanNote: no plans → null', sr.coveredPlanNote([], workout('w', 'X')) === null)
-  check('weekdaysLabel: Monday first', sr.weekdaysLabel([5, 1, 3]) === 'Mon, Wed, Fri' && sr.weekdaysLabel([0, 6]) === 'Sat, Sun')
-  check('weekdaysLabel: all seven → every day', sr.weekdaysLabel([0, 1, 2, 3, 4, 5, 6]) === 'every day')
 }
 
 // ─── sessionLinks ───────────────────────────────────────────────────────────

@@ -141,11 +141,3 @@ export function coveredPlanNote(plans: readonly CalendarPlanItem[], workout: Day
   }).join(' · ')
 }
 
-const WEEKDAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-
-/** "Mon, Wed, Fri" (Monday first) / "every day" — a template's weekdays. */
-export function weekdaysLabel(days: readonly number[]): string {
-  const set = new Set(days.filter(d => Number.isInteger(d) && d >= 0 && d <= 6))
-  if (set.size === 7) return 'every day'
-  return [1, 2, 3, 4, 5, 6, 0].filter(d => set.has(d)).map(d => WEEKDAY_SHORT[d]).join(', ')
-}

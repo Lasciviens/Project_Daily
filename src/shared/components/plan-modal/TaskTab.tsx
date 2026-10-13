@@ -30,8 +30,9 @@ import type { TaskSection, TaskPriority, TaskDomain } from '../../../features/to
 // 'tomorrow' and 'this_week' are deliberately NOT offered: neither has a home of
 // its own in the UI, so picking one only made a task float like Backlog while
 // claiming a date-shaped name. The TaskSection TYPE keeps both values — existing
-// rows still hold them and other writers (planModal.config's sectionForDate,
-// DayAgenda, ai-proxy) still produce them.
+// rows still hold them (shown as "(legacy)" below). The app no longer writes
+// them (taskRules.sectionForDay: today → Today, any other day → Backlog);
+// ai-proxy's own task create still does (supabase/functions/ai-proxy).
 const SECTIONS: { id: TaskSection; label: string }[] = [
   { id: 'inbox',     label: 'Inbox'     },
   { id: 'today',     label: 'Today'     },

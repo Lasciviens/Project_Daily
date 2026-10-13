@@ -3,6 +3,7 @@ import { Button, Card, CardHeader } from '../../../../shared/ui'
 import { useEntityModal } from '../../../../shared/modals'
 import { InfoBubble } from '../../../../shared/components/InfoBubble'
 import type { ScheduleBlock } from '../../../daily/types'
+import { repeatKindOf, repeatSummary, weeklyDaysOf } from '../../../daily/recurrence'
 import { SourceNote } from './SourceNote'
 
 // Mon-first week; days_of_week uses 0 = Sunday.
@@ -20,7 +21,12 @@ export function WeeklyScheduleCard({ templates, targetDays, routineCount, passes
   passes: number
 }) {
   const modal = useEntityModal()
-  const weekdays = new Set(templates.flatMap(t => t.days_of_week))
+  // The grid is a week: only weekly plans sit on its days. A plan that repeats
+  // otherwise (monthly, every N, picked dates) is listed under it by its rule.
+  const weekly = templates.filter(t => repeatKindOf(t) === 'weekly')
+  const other = templates.filter(t => repeatKindOf(t) !== 'weekly')
+  const weekdays = new Set(weekly.flatMap(weeklyDaysOf))
+  const edit = (t: ScheduleBlock) => modal.open({ kind: 'schedule-block', id: t.id, config: { heading: 'Edit recurring session' } })
   return (
     <Card className="max-w-2xl">
       <CardHeader
@@ -38,7 +44,7 @@ export function WeeklyScheduleCard({ templates, targetDays, routineCount, passes
       <div className="@container">
       <div className="grid grid-cols-1 gap-1 @xl:grid-cols-7">
         {WEEK.map(d => {
-          const items = templates.filter(t => t.days_of_week.includes(d.dow)).sort((a, b) => a.start_time.localeCompare(b.start_time))
+          const items = weekly.filter(t => weeklyDaysOf(t).includes(d.dow)).sort((a, b) => a.start_time.localeCompare(b.start_time))
           return (
             <div key={d.dow} className={`flex items-start gap-2 rounded-row border px-2 py-1 @xl:min-h-[64px] @xl:flex-col @xl:gap-1 @xl:p-1.5 ${weekdays.has(d.dow) ? 'border-accent-200 bg-accent-50' : 'border-line bg-surface'}`}>
               <span className="w-9 shrink-0 pt-1 text-micro font-semibold uppercase text-fg-muted @xl:w-auto @xl:pt-0">{d.label}</span>
@@ -48,7 +54,7 @@ export function WeeklyScheduleCard({ templates, targetDays, routineCount, passes
                   <button
                     key={t.id}
                     type="button"
-                    onClick={() => modal.open({ kind: 'schedule-block', id: t.id, config: { heading: 'Edit recurring session' } })}
+                    onClick={() => edit(t)}
                     className="flex min-h-[44px] min-w-0 items-baseline gap-2 rounded-control text-left text-meta font-medium text-fg hover:underline @xl:block"
                     title={`${t.title} · ${t.start_time.slice(0, 5)}`}
                   >
@@ -62,6 +68,18 @@ export function WeeklyScheduleCard({ templates, targetDays, routineCount, passes
         })}
       </div>
       </div>
+      {other.length > 0 && (
+        <ul className="mt-2 flex flex-col">
+          {other.map(t => (
+            <li key={t.id}>
+              <button type="button" onClick={() => edit(t)} className="flex w-full min-w-0 flex-wrap items-baseline gap-x-2 rounded-control py-1 text-left text-meta hover:underline">
+                <span className="min-w-0 break-words font-medium text-fg">{t.title}</span>
+                <span className="tabular-nums text-fg-muted">{t.start_time.slice(0, 5)} · {repeatSummary(t)}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
       <div className="mt-3 flex flex-col gap-1 border-t border-line pt-3">
         <p className="flex items-center gap-1.5 text-meta text-fg-muted">
           {routineCount > 0

@@ -59,11 +59,10 @@ export function buildDaySchedule(input: {
 }): DayItem[] {
   const { date, blocks, prevBlocks, templates, events } = input
   const prevDay = shiftDay(date, -1)
-  const dayOfWeek = new Date(`${date}T12:00:00`).getDay()
   const items: DayItem[] = []
 
   const templateById = new Map(templates.map(t => [t.id, t]))
-  for (const p of projectRecurringBlocksForDay(date, dayOfWeek, [...templates])) {
+  for (const p of projectRecurringBlocksForDay(date, templates)) {
     items.push({
       id: p.id, canonicalId: p.canonicalId, kind: 'recurring', title: p.title,
       startHour: p.startHour, endHour: p.endHour, spillover: p.spillover, allDay: false,

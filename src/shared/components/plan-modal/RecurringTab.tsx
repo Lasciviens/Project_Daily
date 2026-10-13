@@ -8,32 +8,28 @@
 //  silently does nothing would be worse than no control at all).
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { FieldLabel, Required, TextField, Time24Field, DurationField, CategorySelect, RecurrenceField } from './fields'
-import { shiftTime, RECURRING_EDIT_OPTIONS, hasValidRecurrenceSelection } from './planModal.config'
+import { FieldLabel, Required, TextField, Time24Field, DurationField, CategorySelect, RecurrenceField, DateStepperField } from './fields'
+import { shiftTime, stepDate, RECURRING_EDIT_OPTIONS } from './planModal.config'
 import type { PlanForm } from './planForm'
 
 interface Props {
   form: PlanForm
   patch: (p: Partial<PlanForm>) => void
+  /** Creating: the start date is picked here. Editing keeps the saved start
+   *  (effective_from — moving it would rewrite the plan's history). */
+  creating: boolean
+  /** The saved plan's left-out days, so the preview skips them too. */
+  exceptDates?: readonly string[]
   extra?: React.ReactNode
 }
 
-export function RecurringTab({ form, patch, extra }: Props) {
-  function toggleDay(day: number) {
-    const next = form.weeklyDays.includes(day)
-      ? form.weeklyDays.filter(d => d !== day)
-      : [...form.weeklyDays, day].sort()
-    patch({ weeklyDays: next })
-  }
-
+export function RecurringTab({ form, patch, creating, exceptDates, extra }: Props) {
   // A recurring template is never "no repeat" — RECURRING_EDIT_OPTIONS
-  // (no 'none' pill) makes that unselectable at the UI level. The mode
-  // itself should never actually BE 'none' here (buildInitialForm infers
-  // it via inferRecurrenceMode, which only ever returns daily/weekdays/
-  // weekly for an existing scheduleBlock), so no display fallback is
-  // needed — unlike before, when 'none' silently displayed as 'weekly'
-  // while saveRecurring quietly converted the real value behind it.
-  const showZeroDaysWarning = form.recurrence === 'weekly' && !hasValidRecurrenceSelection('weekly', form.weeklyDays)
+  // (no 'none' option) makes that unselectable at the UI level. The mode
+  // itself should never actually BE 'none' here (buildInitialForm reads it
+  // through repeatFormFromRow, which never returns it for a saved row), so
+  // no display fallback is needed.
+  const pickingDates = form.recurrence === 'custom' && form.customKind === 'dates'
 
   return (
     <div className="flex flex-col gap-4">
@@ -42,18 +38,16 @@ export function RecurringTab({ form, patch, extra }: Props) {
         <TextField value={form.title} onChange={v => patch({ title: v })} placeholder="What repeats?" autoFocus />
       </div>
 
+      {creating && !pickingDates && (
+        <div>
+          <FieldLabel>Starts</FieldLabel>
+          <DateStepperField value={form.date} onChange={v => patch({ date: v })} onStep={dir => patch({ date: stepDate(form.date, dir) })} />
+        </div>
+      )}
+
       <div>
         <FieldLabel>Repeat</FieldLabel>
-        <RecurrenceField
-          mode={form.recurrence}
-          weeklyDays={form.weeklyDays}
-          onMode={m => patch({ recurrence: m })}
-          onToggleDay={toggleDay}
-          options={RECURRING_EDIT_OPTIONS}
-        />
-        {showZeroDaysWarning && (
-          <p className="mt-1.5 text-meta text-danger">Pick at least one day.</p>
-        )}
+        <RecurrenceField value={form} onChange={patch} start={form.date} exceptDates={exceptDates} options={RECURRING_EDIT_OPTIONS} />
       </div>
 
       <div>

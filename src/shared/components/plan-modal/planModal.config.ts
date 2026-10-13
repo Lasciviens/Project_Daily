@@ -4,14 +4,18 @@
 //  reused. Visual/behavioural defaults live here, NOT scattered in the modal.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { format, addDays, parseISO, isToday, isTomorrow } from 'date-fns'
-import type { TimeBlockCategory } from '../../../features/daily/types'
+import { format, addDays, parseISO } from 'date-fns'
+import type { RepeatRow, TimeBlockCategory } from '../../../features/daily/types'
 import type { TaskSection, TaskSourceType } from '../../../features/todo/types'
 import type { TimeBlockCalendarStatus } from '../../../features/daily/api/scheduleSyncRules'
+import { sectionForDay } from '../../../features/todo/taskRules'
+import {
+  MAX_REPEAT_INTERVAL, nextOccurrences, repeatSummary, type RepeatUnit,
+} from '../../../features/daily/recurrence'
 import { todayStr, tomorrowStr } from '../../utils/dateUtils'
 import { formatWeekdayDate } from '../../utils/dateFormat'
 import type {
-  PlanModalConfig, ScheduleField, TaskField, RecurrenceMode,
+  PlanModalConfig, ScheduleField, TaskField, RecurrenceMode, CustomRepeatKind,
 } from './planModal.types'
 
 export { todayStr, tomorrowStr }
@@ -48,11 +52,14 @@ export const CATEGORY_LABELS: Record<TimeBlockCategory, string> = {
   other:    'Other',
 }
 
+// One line at every width (a select, not a chip row — owner, 13.10.2026).
 export const RECURRENCE_OPTIONS: { value: RecurrenceMode; label: string }[] = [
   { value: 'none',     label: 'No repeat' },
   { value: 'daily',    label: 'Every day' },
   { value: 'weekdays', label: 'Weekdays' },
   { value: 'weekly',   label: 'Weekly' },
+  { value: 'monthly',  label: 'Monthly' },
+  { value: 'custom',   label: 'Custom' },
 ]
 
 // RecurringTab (editing an EXISTING schedule_blocks row) must never offer
@@ -64,6 +71,9 @@ export const RECURRENCE_OPTIONS: { value: RecurrenceMode; label: string }[] = [
 export const RECURRING_EDIT_OPTIONS = RECURRENCE_OPTIONS.filter(o => o.value !== 'none')
 
 export const DAY_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'] as const   // 0=Sun … 6=Sat
+export const DAY_NAMES  = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] as const
+/** The day circles' order: Monday first. The stored numbering (0 = Sunday) never changes. */
+export const DAY_ORDER  = [1, 2, 3, 4, 5, 6, 0] as const
 export const WEEKDAYS   = [1, 2, 3, 4, 5]
 export const EVERY_DAY  = [0, 1, 2, 3, 4, 5, 6]
 
@@ -111,20 +121,16 @@ export function endTimeFrom(startHHMM: string, durationMin: number): string {
   return shiftTime(startHHMM, durationMin)
 }
 
-/** Map an arbitrary date to the right To-Do section. */
+/** The To-Do section of a task planned for `iso` — taskRules.sectionForDay's
+ *  one rule (today → Today, any other day → Backlog; never the retired
+ *  Tomorrow / This week). */
 export function sectionForDate(iso: string): TaskSection {
-  try {
-    const d = parseISO(iso)
-    if (isToday(d))    return 'today'
-    if (isTomorrow(d)) return 'tomorrow'
-    return 'this_week'
-  } catch {
-    return 'today'
-  }
+  return sectionForDay(iso, todayStr())
 }
 
-/** Resolve a recurrence mode + explicit weekly days into the days_of_week
- *  array. Deliberately does NOT fall back to Mon-Fri when weeklyDays is
+/** Resolve a weekly-style recurrence mode + explicit weekly days into the
+ *  days_of_week array ([] for none / monthly / custom — repeatRowFromForm
+ *  builds those). Deliberately does NOT fall back to Mon-Fri when weeklyDays is
  *  empty — that silent substitution used to let "uncheck every day, hit
  *  Save" quietly become "every weekday" instead of being rejected.
  *  hasValidRecurrenceSelection is the gate that must run BEFORE this. */
@@ -135,10 +141,11 @@ export function daysForRecurrence(mode: RecurrenceMode, weeklyDays: number[]): n
   return []
 }
 
-/** Whether a recurrence selection is complete enough to save. Only 'weekly'
+/** Whether a weekly-style selection is complete enough to save. Only 'weekly'
  *  needs at least one day checked — 'daily'/'weekdays' are fully determined
  *  by their mode alone, and 'none' (one-off CREATE only — never valid while
- *  editing an existing recurring template) has no days concept at all. */
+ *  editing an existing recurring template) has no days concept at all. The
+ *  monthly / custom checks are recurrenceProblem's, which runs this first. */
 export function hasValidRecurrenceSelection(mode: RecurrenceMode, weeklyDays: number[]): boolean {
   return mode !== 'weekly' || weeklyDays.length > 0
 }
@@ -152,6 +159,148 @@ export function inferRecurrenceMode(daysOfWeek: number[]): RecurrenceMode {
   if (sorted.length === 7 && EVERY_DAY.every(d => sorted.includes(d))) return 'daily'
   if (sorted.length === 5 && WEEKDAYS.every(d => sorted.includes(d)))  return 'weekdays'
   return 'weekly'
+}
+
+// ── Repeat: monthly, every N, picked dates (migration 146) ───────────────────
+//  The planner's Repeat state (PlanForm's repeat fields) ⇄ schedule_blocks'
+//  repeat columns. What a stored row MEANS is recurrence.ts's job (occursOn,
+//  repeatSummary); these helpers only translate and validate the form.
+
+export interface RepeatFormFields {
+  recurrence:   RecurrenceMode
+  /** Weekly-style days, and "every N weeks" days (0 = Sunday). */
+  weeklyDays:   number[]
+  /** Monthly (and every N months): the weekday nearest the start's date, or none = that date. */
+  monthWeekday: number | null
+  customKind:   CustomRepeatKind
+  /** "Every [N]" as typed (validated by recurrenceProblem). */
+  repeatEvery:  string
+  repeatUnit:   RepeatUnit
+  repeatDates:  string[]
+}
+
+export const REPEAT_UNIT_OPTIONS: { value: RepeatUnit; one: string; many: string }[] = [
+  { value: 'day',   one: 'day',   many: 'days'   },
+  { value: 'week',  one: 'week',  many: 'weeks'  },
+  { value: 'month', one: 'month', many: 'months' },
+]
+
+/** Which day circles a choice shows: several days, one weekday (optional), or none. */
+export function dayPickerFor(f: Pick<RepeatFormFields, 'recurrence' | 'customKind' | 'repeatUnit'>): 'multi' | 'single' | null {
+  switch (f.recurrence) {
+    case 'daily': case 'weekdays': case 'weekly': return 'multi'
+    case 'monthly': return 'single'
+    case 'custom':
+      if (f.customKind === 'dates') return null
+      return f.repeatUnit === 'week' ? 'multi' : f.repeatUnit === 'month' ? 'single' : null
+    default: return null
+  }
+}
+
+/** The circles lit for the current choice (Every day lights all seven, Weekdays Mon–Fri). */
+export function litDays(f: RepeatFormFields): number[] {
+  const picker = dayPickerFor(f)
+  if (picker === 'single') return f.monthWeekday == null ? [] : [f.monthWeekday]
+  if (picker === 'multi') return f.recurrence === 'custom' ? f.weeklyDays : daysForRecurrence(f.recurrence, f.weeklyDays)
+  return []
+}
+
+/** A tap on a day circle. Weekly-style choices follow the days (all seven =
+ *  Every day, Mon–Fri = Weekdays, any other set = Weekly — the same reading as
+ *  opening a saved plan, inferRecurrenceMode); a monthly-style choice takes
+ *  one weekday, and a second tap clears it (back to "the same date"). */
+export function toggleRepeatDay(f: RepeatFormFields, day: number): Partial<RepeatFormFields> {
+  const picker = dayPickerFor(f)
+  if (picker === 'single') return { monthWeekday: f.monthWeekday === day ? null : day }
+  if (picker !== 'multi') return {}
+  const current = litDays(f)
+  const next = current.includes(day) ? current.filter(d => d !== day) : [...current, day].sort((a, b) => a - b)
+  if (f.recurrence === 'custom') return { weeklyDays: next }
+  return { recurrence: next.length === 0 ? 'weekly' : inferRecurrenceMode(next), weeklyDays: next }
+}
+
+/** Picking a choice in the Repeat select. Weekly (and Custom's "every N
+ *  weeks") keep a set of days of their own; when the days on hand are every
+ *  day or Mon–Fri (or none) they start from the plan's own weekday
+ *  (`startWeekday`), so "Weekly" never shows the same circles as Weekdays. */
+export function pickRecurrence(f: RepeatFormFields, mode: RecurrenceMode, startWeekday: number): Partial<RepeatFormFields> {
+  if (mode !== 'weekly' && mode !== 'custom') return { recurrence: mode }
+  const own = f.weeklyDays.length > 0 && inferRecurrenceMode(f.weeklyDays) === 'weekly'
+  return { recurrence: mode, weeklyDays: own ? f.weeklyDays : [startWeekday] }
+}
+
+/** Why the Repeat choice can't be saved yet, or null when it can. */
+export function recurrenceProblem(f: RepeatFormFields): string | null {
+  if (!hasValidRecurrenceSelection(f.recurrence, f.weeklyDays)) return 'Pick at least one day.'
+  if (f.recurrence !== 'custom') return null
+  if (f.customKind === 'dates') return f.repeatDates.length === 0 ? 'Pick at least one date.' : null
+  const n = Number(f.repeatEvery)
+  if (!Number.isInteger(n) || n < 1 || n > MAX_REPEAT_INTERVAL) return `Repeat every 1 to ${MAX_REPEAT_INTERVAL} ${f.repeatUnit}s.`
+  if (f.repeatUnit === 'week' && f.weeklyDays.length === 0) return 'Pick at least one day.'
+  return null
+}
+
+const sortedDays = (days: number[]) => [...new Set(days)].sort((a, b) => a - b)
+
+/** The repeat columns a save writes. One meaning, one shape: "every 1 week"
+ *  is stored as weekly, "every 1 month" as monthly, "every 1 day" as every
+ *  day. Call only for a choice recurrenceProblem accepts and that repeats. */
+export function repeatRowFromForm(f: RepeatFormFields): RepeatRow {
+  const weekly = (days: number[]): RepeatRow =>
+    ({ days_of_week: sortedDays(days), repeat_kind: 'weekly', repeat_interval: null, repeat_unit: null, repeat_dates: null })
+  const monthly = (every: number): RepeatRow => {
+    const days = f.monthWeekday == null ? [] : [f.monthWeekday]
+    return every === 1
+      ? { days_of_week: days, repeat_kind: 'monthly', repeat_interval: null, repeat_unit: null, repeat_dates: null }
+      : { days_of_week: days, repeat_kind: 'interval', repeat_interval: every, repeat_unit: 'month', repeat_dates: null }
+  }
+  if (f.recurrence === 'monthly') return monthly(1)
+  if (f.recurrence !== 'custom') return weekly(daysForRecurrence(f.recurrence, f.weeklyDays))
+  if (f.customKind === 'dates') {
+    return { days_of_week: [], repeat_kind: 'dates', repeat_interval: null, repeat_unit: null, repeat_dates: [...new Set(f.repeatDates)].sort() }
+  }
+  const every = Math.min(MAX_REPEAT_INTERVAL, Math.max(1, Math.floor(Number(f.repeatEvery)) || 1))
+  if (f.repeatUnit === 'month') return monthly(every)
+  if (f.repeatUnit === 'day') {
+    return every === 1 ? weekly(EVERY_DAY) : { days_of_week: [], repeat_kind: 'interval', repeat_interval: every, repeat_unit: 'day', repeat_dates: null }
+  }
+  return every === 1 ? weekly(f.weeklyDays)
+    : { days_of_week: sortedDays(f.weeklyDays), repeat_kind: 'interval', repeat_interval: every, repeat_unit: 'week', repeat_dates: null }
+}
+
+/** A saved plan's repeat columns as the planner's Repeat state (the inverse of repeatRowFromForm). */
+export function repeatFormFromRow(row: {
+  days_of_week: number[]; repeat_kind?: string | null; repeat_interval?: number | null
+  repeat_unit?: RepeatUnit | null; repeat_dates?: string[] | null
+}): Partial<RepeatFormFields> {
+  const days = sortedDays(row.days_of_week ?? [])
+  if (row.repeat_kind === 'monthly') return { recurrence: 'monthly', monthWeekday: days[0] ?? null }
+  if (row.repeat_kind === 'dates') return { recurrence: 'custom', customKind: 'dates', repeatDates: [...(row.repeat_dates ?? [])].sort() }
+  if (row.repeat_kind === 'interval') {
+    const unit = row.repeat_unit ?? 'week'
+    return {
+      recurrence: 'custom', customKind: 'every', repeatEvery: String(row.repeat_interval ?? 2), repeatUnit: unit,
+      ...(unit === 'month' ? { monthWeekday: days[0] ?? null } : unit === 'week' ? { weeklyDays: days } : {}),
+    }
+  }
+  return { recurrence: inferRecurrenceMode(days), weeklyDays: days }
+}
+
+/** The first day a repeat may occur on (schedule_blocks.effective_from): the
+ *  planner's start date — or, for picked dates, the earliest of the start and
+ *  the first pick, so no picked day is hidden behind the start. */
+export function repeatStart(row: RepeatRow, start: string): string {
+  const first = row.repeat_kind === 'dates' ? row.repeat_dates?.[0] : undefined
+  return first && first < start ? first : start
+}
+
+/** The one-line summary and the next three days of the current choice, as the
+ *  saved plan will have them (recurrence.ts); null while it can't be saved. */
+export function repeatPreview(f: RepeatFormFields, start: string, today: string, exceptDates: readonly string[] = []): { summary: string; next: string[] } | null {
+  if (f.recurrence === 'none' || recurrenceProblem(f)) return null
+  const row = repeatRowFromForm(f)
+  const rule = { ...row, effective_from: repeatStart(row, start), except_dates: exceptDates }
+  return { summary: repeatSummary(rule), next: nextOccurrences(rule, today, 3) }
 }
 
 /** Minutes between two HH:MM times, wrapping past midnight (23:30-00:30 =
