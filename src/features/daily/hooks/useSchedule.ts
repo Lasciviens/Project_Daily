@@ -14,10 +14,14 @@ import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFe
 import { useRowsDelete } from '../../../shared/hooks/useRowsDelete'
 import { deleteRows } from '../../../shared/utils/deletedRows'
 import { BLOCK_EVENT_RESET, relinkRestoredBlockEvents, removeDeletedBlockEvents } from '../../calendar/api/deletedBlockEvents'
+import {
+  SERIES_EVENT_RESET, relinkRestoredSeriesEvents, removeDeletedSeriesEvents, syncScheduleSeriesAfterSave,
+} from '../../calendar/api/scheduleSeriesCalendar'
 import { qk, STALE } from '../../../shared/query'
 import type {
-  CreateTimeBlockInput, UpdateTimeBlockInput, CreateScheduleBlockInput, UpdateScheduleBlockInput,
+  CreateTimeBlockInput, UpdateTimeBlockInput, CreateScheduleBlockInput, UpdateScheduleBlockInput, ScheduleBlock,
 } from '../types'
+import type { TimeBlockCalendarStatus } from '../api/scheduleSyncRules'
 
 export function useScheduleBlocks() {
   return useQuery({
@@ -60,13 +64,25 @@ export const linkedTimeBlockQuery = (taskId: string) => queryOptions({
   staleTime: 0,
 })
 
+/** A repeating plan's save and what its Google Calendar series did (147). */
+export interface ScheduleBlockSaveResult {
+  block:          ScheduleBlock
+  calendarStatus: TimeBlockCalendarStatus
+}
+
 // Recurring templates live under qk.schedule, so the 'schedule' group covers
-// every template/day/range view at once.
+// every template/day/range view at once. `gcal`: the planner's "Add to Google
+// Calendar" (undefined = no connection to ask with). The series' own failure
+// never fails the save — it is reported once by scheduleSeriesCalendar. The
+// 'schedule' group refreshes the day's Google events too (the series' instances).
 export function useCreateScheduleBlock() {
   return useMutationWithFeedback({
     action:      'create_schedule_block',
     silent:      'the plan editor reports the save',
-    mutationFn:  (input: CreateScheduleBlockInput) => createScheduleBlock(input),
+    mutationFn:  async ({ input, gcal }: { input: CreateScheduleBlockInput; gcal?: boolean }): Promise<ScheduleBlockSaveResult> => {
+      const block = await createScheduleBlock(input)
+      return { block, calendarStatus: await syncScheduleSeriesAfterSave(block, gcal) }
+    },
     invalidates: ['schedule'],
   })
 }
@@ -75,22 +91,32 @@ export function useCreateScheduleBlock() {
 // way to edit an existing recurring template at all before this — only
 // create/delete existed at the API layer, so a schedule_blocks row, once
 // created, was permanently stuck as-is short of deleting and recreating it.
+// Every save also brings its Google Calendar series up to date (147) — or
+// adds / removes it, per `gcal`.
 export function useUpdateScheduleBlock() {
   return useMutationWithFeedback({
     action:      'update_schedule_block',
     silent:      'the plan editor reports the save',
-    mutationFn:  ({ id, patch }: { id: string; patch: UpdateScheduleBlockInput }) => updateScheduleBlock(id, patch),
+    mutationFn:  async ({ id, patch, gcal }: { id: string; patch: UpdateScheduleBlockInput; gcal?: boolean }): Promise<ScheduleBlockSaveResult> => {
+      const block = await updateScheduleBlock(id, patch)
+      return { block, calendarStatus: await syncScheduleSeriesAfterSave(block, gcal) }
+    },
     invalidates: ['schedule'],
   })
 }
 
-/** Deletes a weekly plan with Undo; the days it became (migration 142) get their link back on Undo. */
+/** Deletes a repeating plan with Undo; the days it became (migration 142) get
+ *  their link back on Undo. Its Google Calendar series is removed right after
+ *  (the calendar outbox, 147, if Google isn't reached); Undo makes a new one. */
 export function useDeleteScheduleBlock() {
   return useRowsDelete({
     table: 'schedule_blocks',
     action: 'delete_schedule_block',
     invalidates: ['schedule'],
     cache: qk.schedule.all,
+    afterDelete: removeDeletedSeriesEvents,
+    overrides: () => SERIES_EVENT_RESET,
+    afterRestore: relinkRestoredSeriesEvents,
   })
 }
 

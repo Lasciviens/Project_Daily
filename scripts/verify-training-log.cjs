@@ -50,7 +50,7 @@ console.log('\n== calendarSessions: the reported duplicate ==')
   const r = day('2026-09-22', [recurring('sb1__2026-09-22', 'Lower A (Quadriceps & Kalf)')], [workout('w1', 'Lower A (Quadriceps & Kalf)')])
   check('a recurring slot and its same-titled workout are ONE session', r.sessions.length === 1 && r.openPlans.length === 0)
   check('the session carries the plan it covered', r.sessions[0].plans.length === 1 && r.sessions[0].plans[0].id === 'sb1__2026-09-22')
-  check('its note reads "Planned weekly for 16:30" (the popup\'s words)', sr.coveredPlanNote(r.sessions[0].plans, r.sessions[0].workout) === 'Planned weekly for 16:30')
+  check('its note reads "Planned every week on Mon, 16:30" (the popup\'s words, the plan\'s own repeat)', sr.coveredPlanNote(r.sessions[0].plans, r.sessions[0].workout) === 'Planned every week on Mon, 16:30')
 }
 
 console.log('\n== calendarSessions: matching evidence ==')
@@ -257,7 +257,13 @@ console.log('\n== sessionRef ==')
   check('planMinutes: a template across midnight', sr.planMinutes({ id: 'r', title: 'X', kind: 'recurring', scheduleBlock: { start_time: '23:30:00', end_time: '00:30:00' } }) === 60)
   check('planLabel names a recurring plan with ⟳ and its time', sr.planLabel(recurring('r__d', 'Lower A', '16:45:00')) === '⟳ Lower A · 16:45')
   check('coveredPlanNote: the plan IS this session → "Planned for <time>"', sr.coveredPlanNote([block('b', 'Push', { start: '18:00:00' })], workout('w', 'Push')) === 'Planned for 18:00')
-  check('coveredPlanNote: a recurring slot → "Planned weekly for <time>"', sr.coveredPlanNote([recurring('r__d', 'Lower A', '16:45:00')], workout('w', 'Lower A')) === 'Planned weekly for 16:45')
+  check('coveredPlanNote: a recurring slot → "Planned <its repeat>, <time>"', sr.coveredPlanNote([recurring('r__d', 'Lower A', '16:45:00')], workout('w', 'Lower A')) === 'Planned every week on Mon, 16:45')
+  const every2 = recurring('r2__d', 'Lower A', '16:45:00')
+  every2.scheduleBlock = { ...every2.scheduleBlock, days_of_week: [2, 4], repeat_kind: 'interval', repeat_unit: 'week', repeat_interval: 2 }
+  check('coveredPlanNote: every 2 weeks says so (never "weekly")', sr.coveredPlanNote([every2], workout('w', 'Lower A')) === 'Planned every 2 weeks on Tue and Thu, 16:45', sr.coveredPlanNote([every2], workout('w', 'Lower A')))
+  const monthly = recurring('r3__d', 'Lower A', '10:00:00')
+  monthly.scheduleBlock = { ...monthly.scheduleBlock, days_of_week: [6], repeat_kind: 'monthly', effective_from: '2026-10-13' }
+  check('coveredPlanNote: a monthly plan reads its rule', sr.coveredPlanNote([monthly], workout('w', 'Lower A')) === 'Planned every month, the Saturday nearest the 13th, 10:00', sr.coveredPlanNote([monthly], workout('w', 'Lower A')))
   check('coveredPlanNote: a different session on a planned day says what it replaced', sr.coveredPlanNote([recurring('r__d', 'Upper B', '17:30:00')], workout('w', 'Random')) === 'In place of ⟳ Upper B · 17:30')
   check('coveredPlanNote: no plans → null', sr.coveredPlanNote([], workout('w', 'X')) === null)
 }

@@ -89,7 +89,7 @@ export interface CalendarDrainSummary {
   deleted: number
   /** Google answered 404/410: it was gone already (usually the browser's own delete). */
   already_gone: number
-  /** A live time block still points at the event (a block put back, a shared id) — it stays. */
+  /** A live time block or repeating plan (147) still points at the event (one put back, a shared id) — it stays. */
   kept: number
   /** Backed off; tried again on a later run. */
   failed: number
@@ -107,7 +107,7 @@ export function emptyCalendarDrainSummary(): CalendarDrainSummary {
 
 /** The I/O a run needs — google-tasks-sync wires these to Google and Supabase. */
 export interface CalendarDrainDeps {
-  /** Event ids a live time block still points at: never deleted. */
+  /** Event ids a live time block or repeating plan still points at: never deleted. */
   stillLinked: ReadonlySet<string>
   /** One events.delete. Resolves (never rejects) with the HTTP status, or null with no answer. */
   deleteEvent(row: CalendarOutboxRow): Promise<{ status: number | null; message: string }>

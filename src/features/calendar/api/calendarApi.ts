@@ -199,8 +199,13 @@ export async function createCalendarEvent(
     id?: string
     summary:     string
     description?: string
+    /** A wall-clock dateTime (no offset) is read in `timeZone`; a repeating
+     *  event needs the zone — its repeat is expanded in it. */
     start:       { dateTime: string; timeZone: string }
     end:         { dateTime: string; timeZone: string }
+    /** RRULE / RDATE / EXDATE lines of a repeating event (RFC 5545; no
+     *  DTSTART — `start` is it). See calendar/calendarSeries.ts. */
+    recurrence?: string[]
   }
 ): Promise<CalendarEvent> {
   return gcalRequest<CalendarEvent>(

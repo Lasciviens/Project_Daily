@@ -93,12 +93,12 @@ export function useTrainingPlanActions() {
   const removeBlock = useDeleteTimeBlock()
   const removeWeekly = useDeleteScheduleBlock()
 
-  /** Asks, deletes a weekly plan (every day it repeats on), then offers Undo. */
+  /** Asks, deletes a repeating plan (every day it repeats on), then offers Undo. */
   async function deleteWeekly(templateId: string, title: string): Promise<boolean> {
     const result = await removeWeekly.run([templateId], {
-      title: `Delete the weekly plan “${title}”?`,
+      title: `Delete the repeating plan “${title}”?`,
       message: 'Every day it repeats on leaves the calendar, past and future. Days already moved, skipped or done on their own stay, and logged workouts stay.',
-      done: 'Weekly plan deleted',
+      done: 'Repeating plan deleted',
     })
     return result === 'deleted' || result === 'gone'
   }

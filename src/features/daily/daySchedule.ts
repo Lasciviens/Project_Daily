@@ -83,10 +83,12 @@ export function buildDaySchedule(input: {
   }
 
   // A block's own event is that block; Google returns yesterday's
-  // cross-midnight event for today too, so yesterday's blocks count here.
-  const linked = new Set([...blocks, ...prevBlocks].map(b => b.google_calendar_event_id).filter(Boolean))
+  // cross-midnight event for today too, so yesterday's blocks count here. A
+  // repeating plan's event (147) comes back as its instances — each with the
+  // series id as recurringEventId — and the plan's own row already shows it.
+  const linked = linkedCalendarEventIds([...blocks, ...prevBlocks], templates)
   for (const e of events) {
-    if (linked.has(e.id)) continue
+    if (isLinkedCalendarEvent(e, linked)) continue
     if (e.start.dateTime) {
       const p = projectCalendarEventForDay(date, e)
       if (!p) continue
@@ -104,6 +106,23 @@ export function buildDaySchedule(input: {
     }
   }
   return items
+}
+
+/** The Google event ids the app's own rows already show: one-off blocks' and
+ *  repeating plans' (a plan's event is a series). */
+export function linkedCalendarEventIds(
+  blocks: readonly Pick<TimeBlock, 'google_calendar_event_id'>[],
+  templates: readonly Pick<ScheduleBlock, 'google_calendar_event_id'>[],
+): Set<string> {
+  const ids = [...blocks, ...templates].map(r => r.google_calendar_event_id)
+  return new Set(ids.filter((id): id is string => !!id))
+}
+
+/** An event the app shows as its own row: a linked event, or an instance of a
+ *  linked series (Google's singleEvents listing gives each instance its own
+ *  id and the series id as recurringEventId). */
+export function isLinkedCalendarEvent(e: Pick<CalendarEvent, 'id' | 'recurringEventId'>, linked: ReadonlySet<string>): boolean {
+  return linked.has(e.id) || (!!e.recurringEventId && linked.has(e.recurringEventId))
 }
 
 /** Items with a time, in start order. */

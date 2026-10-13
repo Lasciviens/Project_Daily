@@ -28,11 +28,11 @@
 //  unique. It may fall in the neighbouring month (the Saturday nearest the
 //  1st can be the 30th before it); it is still that month's occurrence.
 //
-//  Google Calendar (a later step): weekly / interval-day / interval-week map
-//  to an RRULE (FREQ=WEEKLY;BYDAY=… / FREQ=DAILY;INTERVAL=N /
-//  FREQ=WEEKLY;INTERVAL=N;BYDAY=…;WKST=MO) with DTSTART = effective_from;
-//  monthly, interval-month and dates to an RDATE list (occurrencesBetween);
-//  except_dates to EXDATEs.
+//  Google Calendar (147): a linked plan is ONE repeating event —
+//  calendar/calendarSeries.ts maps weekly / interval-day / interval-week to
+//  an RRULE, monthly / interval-month / dates to an RDATE list
+//  (occurrencesBetween) and except_dates to EXDATEs, starting on the first
+//  day this rule has on or after effective_from.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export type RepeatKind = 'weekly' | 'monthly' | 'interval' | 'dates'
@@ -42,6 +42,8 @@ export const REPEAT_KINDS: readonly RepeatKind[] = ['weekly', 'monthly', 'interv
 export const REPEAT_UNITS: readonly RepeatUnit[] = ['day', 'week', 'month']
 /** The largest "every N" the planner offers (the database allows the same). */
 export const MAX_REPEAT_INTERVAL = 99
+/** The most picked dates one plan holds (146's CHECK allows the same). */
+export const MAX_REPEAT_DATES = 366
 
 /** The repeat columns of a schedule_blocks row (all but days_of_week optional:
  *  before migration 146 a row has none of them and is weekly). */
@@ -188,6 +190,20 @@ export function weeklyDaysOf(rule: RepeatRule): number[] {
   const kind = repeatKindOf(rule)
   if (kind === 'weekly' || (kind === 'interval' && rule.repeat_unit === 'week')) return validDays(rule.days_of_week)
   return []
+}
+
+/** Training days a week the plans hold on average, weekday by weekday: one a
+ *  plan covers every week counts 1, one covered only every N weeks counts 1/N
+ *  (the most frequent plan on a weekday wins — two plans on one Monday are
+ *  still one day). Monthly, every N days / months and picked dates have no
+ *  fixed weekday and add nothing. Rounded to two decimals. */
+export function weeklyDaysPerWeek(rules: readonly RepeatRule[]): number {
+  const share = new Map<number, number>()
+  for (const r of rules) {
+    const each = repeatKindOf(r) === 'interval' ? 1 / intervalOf(r) : 1
+    for (const d of weeklyDaysOf(r)) share.set(d, Math.max(share.get(d) ?? 0, each))
+  }
+  return Math.round([...share.values()].reduce((a, b) => a + b, 0) * 100) / 100
 }
 
 // ── One-line summary ─────────────────────────────────────────────────────────

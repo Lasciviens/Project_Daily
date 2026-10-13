@@ -351,8 +351,9 @@ which door the write came through.
   deletes stay at the API layer (`src/features/daily/api/scheduleApi.ts`,
   `src/features/todo/api/tasksApi.ts`; one task = one event). A block delete
   from ANY door is only *queued* by `trg_enqueue_calendar_event_delete` into
-  `calendar_outbox` (migration 135); `google-tasks-sync`, which holds the
-  token, removes the event.
+  `calendar_outbox` (migration 135) — and a repeating plan's delete by
+  `trg_enqueue_calendar_series_delete` (147); `google-tasks-sync`, which holds
+  the token, removes the event.
 - **A synced workout completes its planned session in the database (migration
   141).** `trg_hevy_workout_completes_plan` on `hevy_workouts` marks the
   planned training task done and sets `tasks.hevy_workout_id` (never deletes,

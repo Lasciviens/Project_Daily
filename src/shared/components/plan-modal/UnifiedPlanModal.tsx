@@ -21,6 +21,53 @@
 //  └─────────────────────────────────────────────────────────────────────────────┘
 //
 //  CHANGELOG
+//  2026-10-13 · v16 · Repeating plans on Google Calendar (migration 147) +
+//                    four review fixes on v15:
+//                    (a) "Add to Google Calendar" now shows for a repeat too —
+//                    on create (Schedule tab with a repeat picked) and in the
+//                    repeating-plan editor ("Added to Google Calendar" once
+//                    linked). A plan becomes ONE repeating event in 'primary'
+//                    (calendar/calendarSeries.ts: RRULE for weekly / every N
+//                    days / weeks; an RDATE list for monthly / every N months
+//                    / picked dates, the monthly kinds a year ahead and pushed
+//                    again when the app opens with < 90 days left;
+//                    except_dates → EXDATE). The save hooks
+//                    (useCreate/UpdateScheduleBlock, `gcal`) add it, bring it
+//                    up to date on every save, or remove it when unticked —
+//                    the typed 'linked' / 'not_linked' / 'unknown' status,
+//                    deterministic event ids (blockEventId on the plan's id),
+//                    and a Calendar failure never undoes the local save. With
+//                    no Google connection (`gcal` undefined) the link is left
+//                    as it is. The form seeds gcal from the plan's own
+//                    google_calendar_event_id (an untouched save never
+//                    removes it). Delete removes the series (outbox safety
+//                    net, 147's trigger); Undo makes a new one. A day turned
+//                    into a one-off plan (142) gets an EXDATE and its own event
+//                    (trainingPlanApi.ensurePlanTask → carryOccurrenceToCalendar).
+//                    (b) Editing a saved plan shows "Starts" when the choice
+//                    counts from it (Monthly, every N days / weeks / months):
+//                    a weekly plan saved 05.03 turned Monthly used to anchor on
+//                    the 5th with no way to pick the 13th. A change of what it
+//                    counts from moves Starts to today (back to the saved start
+//                    when the choice returns to it, or to one without an
+//                    anchor — withStartForRepeatChange), and the save writes
+//                    effective_from from it (editedRepeatStart); any other
+//                    choice keeps the saved start as before.
+//                    (c) The summary + "Next …" line shows only for Monthly
+//                    and Custom — for Every day / Weekdays / Weekly it only
+//                    repeated the select and circles (an extra phone line).
+//                    (d) Custom → Dates is capped at 366 picks (146's CHECK) in
+//                    recurrenceProblem with a plain message, instead of a raw
+//                    constraint error on save.
+//                    (e) Outside this folder, the same review: a plan may be
+//                    monthly / every N / picked dates now, so "weekly plan"
+//                    became "repeating plan" (Daily's and Training's delete:
+//                    "Repeating plan deleted"; Training's "Change / Delete
+//                    repeating plan"), a workout's plan note reads the plan's
+//                    own repeat ("Planned every 2 weeks on Tue and Thu,
+//                    16:45", repeatSummary), and the coach / Program tab count
+//                    an every-N-weeks plan's days as 1/N of a training day
+//                    a week (recurrence.weeklyDaysPerWeek).
 //  2026-10-13 · v15 · More ways to repeat (migration 146) + owner's requests:
 //                    (a) Repeat is ONE line at every width — a select with No
 //                    repeat · Every day · Weekdays · Weekly · Monthly · Custom
@@ -311,7 +358,7 @@ import { TaskTab } from './TaskTab'
 import { RecurringTab } from './RecurringTab'
 import { buildInitialForm } from './planForm'
 import {
-  endTimeFrom, sectionForDate, repeatRowFromForm, repeatStart, recurrenceProblem,
+  endTimeFrom, sectionForDate, repeatRowFromForm, repeatStart, recurrenceProblem, editedRepeatStart, repeatAnchorOfRow,
   blockSourceTypeForTask, taskSourceTypeForBlock, needsGoogleTaskDedupe, shouldCreateLinkedTask,
   needsGoogleTasksFallback, clampDurationMinutes,
 } from './planModal.config'
@@ -426,6 +473,10 @@ export function UnifiedPlanModal({
   }
 
   const patch = (p: Partial<PlanForm>) => setForm(f => ({ ...f, ...p }))
+  // Editing a repeating plan: its saved start and what it counts from.
+  const savedRepeat = scheduleBlock
+    ? { start: scheduleBlock.effective_from ?? form.date, anchor: repeatAnchorOfRow(scheduleBlock) }
+    : undefined
 
   // A token that is still valid (refreshed when it has expired), never the
   // stored one as is — typing a new list name after an hour used to fail with 401.
@@ -672,11 +723,12 @@ export function UnifiedPlanModal({
     // recurring-Task concept in this app).
     if (form.recurrence !== 'none') {
       const repeat = repeatRowFromForm(form)
-      await createRecur.mutateAsync({
+      // "Add to Google Calendar" makes the repeat ONE repeating event (147).
+      await createRecur.mutateAsync({ input: {
         title, ...repeat, effective_from: repeatStart(repeat, form.date),
         start_time: startTimeVal, end_time: endTimeFrom(form.startTime, effDuration),
         color: defaults?.color ?? 'blue', category: form.category,
-      })
+      }, gcal: calToken ? form.gcal : undefined })
       onSaved?.({ mode: 'schedule', recurringCreated: true })
       return
     }
@@ -715,8 +767,10 @@ export function UnifiedPlanModal({
     onSaved?.({ mode: 'schedule', taskId: linkedTaskId, timeBlockCreated: true })
   }
 
-  // ── Save: mode='recurring' — schedule_blocks. No GCal (never implemented —
-  // the field is hidden entirely, not shown-but-inert), no linked Task.
+  // ── Save: mode='recurring' — schedule_blocks, no linked Task. Its Google
+  // Calendar series (147) follows "Add to Google Calendar" through the save
+  // hooks: ticked → added / brought up to date, unticked → removed. With no
+  // Google connection (`gcal` undefined) the link is left as it is.
   async function saveRecurring() {
     const title = form.title.trim()
     const effDuration = clampDurationMinutes(form.customMin !== '' ? Number(form.customMin) || 60 : form.duration)
@@ -728,23 +782,24 @@ export function UnifiedPlanModal({
     // selection.
     const repeat = repeatRowFromForm(form)
 
+    const gcal = calToken ? form.gcal : undefined
     if (scheduleBlock) {
-      // The saved start stays (moving it would rewrite the plan's history);
-      // only picked dates before it move it earlier, so none is hidden.
+      // A choice that counts from its start (Monthly, every N…) saves the
+      // "Starts" shown; any other keeps the saved start (editedRepeatStart).
       const start = scheduleBlock.effective_from
-      const earlier = start ? repeatStart(repeat, start) : undefined
-      await updateRecur.mutateAsync({ id: scheduleBlock.id, patch: {
+      const next = editedRepeatStart(form, repeat, start)
+      await updateRecur.mutateAsync({ id: scheduleBlock.id, gcal, patch: {
         title, ...repeat, start_time: startTimeVal,
         end_time: endTimeFrom(form.startTime, effDuration), category: form.category,
-        ...(earlier && earlier !== start ? { effective_from: earlier } : {}),
+        ...(next && next !== start ? { effective_from: next } : {}),
       } })
       onSaved?.({ mode: 'recurring' })
       return
     }
-    await createRecur.mutateAsync({
+    await createRecur.mutateAsync({ input: {
       title, ...repeat, effective_from: repeatStart(repeat, form.date), start_time: startTimeVal,
       end_time: endTimeFrom(form.startTime, effDuration), color: defaults?.color ?? 'blue', category: form.category,
-    })
+    }, gcal })
     onSaved?.({ mode: 'recurring', recurringCreated: true })
   }
 
@@ -918,7 +973,10 @@ export function UnifiedPlanModal({
             <ScheduleTab form={form} patch={patch} config={effectiveScheduleConfig} gcalAvailable={!!calToken} extra={scheduleExtra} />
           )}
           {effectiveMode === 'recurring' && (
-            <RecurringTab form={form} patch={patch} creating={!scheduleBlock} exceptDates={scheduleBlock?.except_dates} extra={scheduleExtra} />
+            <RecurringTab
+              form={form} patch={patch} creating={!scheduleBlock} saved={savedRepeat} exceptDates={scheduleBlock?.except_dates}
+              gcalAvailable={!!calToken} calendarLinked={!!scheduleBlock?.google_calendar_event_id} extra={scheduleExtra}
+            />
           )}
         </>
       )}

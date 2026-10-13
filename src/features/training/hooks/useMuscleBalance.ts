@@ -4,7 +4,7 @@ import { useHevyExerciseTemplates } from './useHevyExerciseTemplates'
 import { useAthleteProfile, useCurrentProgramRoutines } from './useAthleteProfile'
 import { useMuscleVolume } from './useMuscleVolume'
 import { useScheduleBlocks } from '../../daily/hooks/useSchedule'
-import { weeklyDaysOf } from '../../daily/recurrence'
+import { weeklyDaysPerWeek } from '../../daily/recurrence'
 import { todayStr } from '../../../shared/utils/dateUtils'
 import type { ScheduleBlock } from '../../daily/types'
 import type { HevyRoutine } from '../types.hevy'
@@ -39,9 +39,10 @@ export function usePlannedProgram(): PlannedProgram {
     const plan = buildPlannedProgram({
       routines, programRoutineIds: program.map(p => p.routine_id), templates,
       trainingDaysPerWeek: targetDays,
-      // Weekdays a week-shaped repeat covers (recurrence.weeklyDaysOf); a
-      // monthly or picked-dates plan has no fixed weekday.
-      scheduledTrainingDays: new Set(trainingTemplates.flatMap(weeklyDaysOf)).size,
+      // Days a week the week-shaped repeats cover, every N weeks counting 1/N
+      // (recurrence.weeklyDaysPerWeek); a monthly or picked-dates plan has no
+      // fixed weekday.
+      scheduledTrainingDays: weeklyDaysPerWeek(trainingTemplates),
     })
     return { ...plan, trainingTemplates, targetDays, isLoading }
   }, [program, routines, scheduleBlocks, profile, templates, isLoading])

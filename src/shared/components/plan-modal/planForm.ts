@@ -116,6 +116,9 @@ export function buildInitialForm(
     // opening an already-calendar-linked block seeded gcal=false, and
     // Save's "toggle went from checked to unchecked" branch unlinked the
     // real Google Calendar event the user never touched.
-    gcal: timeBlock ? !!timeBlock.google_calendar_event_id : (defaults?.gcal ?? false),
+    // A repeating plan's own series (147) seeds it the same way.
+    gcal: timeBlock ? !!timeBlock.google_calendar_event_id
+      : scheduleBlock ? !!scheduleBlock.google_calendar_event_id
+      : (defaults?.gcal ?? false),
   }
 }
