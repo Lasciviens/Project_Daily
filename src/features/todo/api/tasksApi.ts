@@ -7,15 +7,25 @@ import type { Task, CreateTaskInput, UpdateTaskInput } from '../types'
 // All active tasks (+ done, so the UI can show a "recently done" group) for the
 // aggregated Tasks overview on Daily — grouped client-side into Overdue / Today
 // / Upcoming / No date / Done. Cancelled excluded (app-wide convention).
+// Read in pages: PostgREST stops at 1,000 rows, and done tasks pile up for
+// ever — past 1,000 the cut fell on the undated rows (sorted last), so
+// "No date" (where imported Google tasks land) quietly lost tasks.
 export async function fetchAllTasks(): Promise<Task[]> {
-  const { data, error } = await supabase
-    .from('tasks')
-    .select('*')
-    .neq('status', 'cancelled')
-    .order('due_date', { ascending: true, nullsFirst: false })
-    .order('sort_order', { ascending: true, nullsFirst: false })
-  if (error) throw error
-  return data ?? []
+  const PAGE = 1000
+  const out: Task[] = []
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await supabase
+      .from('tasks')
+      .select('*')
+      .neq('status', 'cancelled')
+      .order('due_date', { ascending: true, nullsFirst: false })
+      .order('sort_order', { ascending: true, nullsFirst: false })
+      .order('id', { ascending: true })
+      .range(from, from + PAGE - 1)
+    if (error) throw error
+    out.push(...(data ?? []))
+    if (!data || data.length < PAGE) return out
+  }
 }
 
 export async function fetchTasksBySection(section: string): Promise<Task[]> {

@@ -206,7 +206,6 @@ const tick = () => new Promise(r => setTimeout(r, 0))
     'src/features/training/api/trainingSkipsApi.ts': [1, 'Undo skip (the undo itself)'],
     'src/features/training/api/trainingPlanApi.ts': [2, 'Undo skip (the undo itself)'],
     'src/features/training/api/athleteProfileApi.ts': [1, 'saving the current program replaces its rows'],
-    'src/features/todo/api/googleTasksSync.ts': [1, 'a Google Tasks pull drops lists deleted on Google'],
     'src/features/todo/api/googleTasksOutbox.ts': [1, 'a delivered outbox row'],
     'src/features/todo/api/googleTaskListsApi.ts': [1, 'the list deleted on Google (no Undo: confirmDelete says so)'],
     'src/features/shop/api/shopApi.ts': [1, 'shop_delete_items fallback before migration 137'],
