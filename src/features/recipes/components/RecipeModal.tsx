@@ -4,7 +4,6 @@ import { toast } from '../../../app/store'
 import { ModalShell } from '../../../shared/modals/ModalShell'
 import { Button, IconButton, SegmentedControl } from '../../../shared/ui'
 import { useCreateRecipe, useDeleteRecipe, useUpdateRecipe } from '../hooks/useRecipes'
-import { entityModal } from '../../../shared/modals/useEntityModal'
 import { useIngredientLibrary, useCreateIngredientLibraryItem } from '../hooks/useIngredientLibrary'
 import { parseRecipeText, parseRecipeFromUrl, estimateRecipeMacros } from '../../ai/api/aiApi'
 import { canComputeFromIngredients, sumMacros } from '../api/recipesApi'
@@ -226,9 +225,8 @@ export function RecipeModal({ open = true, onClose, recipe }: Props) {
   async function handleDelete() {
     if (!recipe) return
     const what = recipe.is_temp ? 'saved meal' : 'recipe'
-    const ok = await entityModal.confirm({ title: `Delete "${recipe.title}"?`, message: `Days you ate this ${what} keep their totals. This can't be undone.`, confirmLabel: `Delete ${what}` })
-    if (!ok) return
-    try { await remove.mutateAsync(recipe.id); onClose() } catch { return }
+    const result = await remove.run([recipe.id], { title: `Delete "${recipe.title}"?`, message: `Days you ate this ${what} keep their totals.`, confirmLabel: `Delete ${what}`, done: `${recipe.title} deleted` })
+    if (result === 'deleted' || result === 'gone') onClose()
   }
 
   const saving = create.isPending || update.isPending
@@ -259,7 +257,7 @@ export function RecipeModal({ open = true, onClose, recipe }: Props) {
                 <input type="checkbox" className="h-4 w-4" checked={!isTemp} onChange={e => setIsTemp(!e.target.checked)} />
                 Show in Library
               </label>
-              <Button variant="ghost" size="sm" className="text-danger" onClick={handleDelete} loading={remove.isPending} disabled={saving}>
+              <Button variant="ghost" size="sm" className="text-danger" onClick={handleDelete} loading={remove.busy} disabled={saving}>
                 Delete
               </Button>
             </div>

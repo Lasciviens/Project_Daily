@@ -1,4 +1,5 @@
 import { supabase } from '../../../security/supabaseClient'
+import { requireUser } from '../../../shared/utils/requireUser'
 import { defaultGamesPrefs, gamesPrefsDoc, normalizeGamesPrefs, type GamesPrefs } from './gamesPrefs'
 
 const missingTable = (e: { code?: string; message?: string } | null) =>
@@ -15,9 +16,7 @@ export async function fetchGamesPrefs(): Promise<GamesPrefs> {
 }
 
 export async function saveGamesPrefs(prefs: GamesPrefs): Promise<GamesPrefs> {
-  const { data: auth } = await supabase.auth.getUser()
-  const userId = auth.user?.id
-  if (!userId) throw new Error('Not signed in')
+  const { id: userId } = await requireUser()
   const doc = gamesPrefsDoc(prefs)
   const { error } = await supabase.from('games_prefs').upsert({ user_id: userId, prefs: doc }, { onConflict: 'user_id' })
   if (error) {

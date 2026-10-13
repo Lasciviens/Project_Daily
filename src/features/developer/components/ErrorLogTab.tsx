@@ -1,10 +1,10 @@
 import { useState, type ReactNode } from 'react'
 import { AlertTriangle, CheckCircle2, RefreshCw, Trash2 } from 'lucide-react'
-import { useEntityModal } from '../../../shared/modals'
 import { Button, EmptyState, PageBoard, Skeleton } from '../../../shared/ui'
 import { useErrorLogs, useClearErrorLogs } from '../hooks/useLogs'
 import { ErrorDetail, ErrorList } from './ErrorLogRows'
 import { LIST_DETAIL_BOARD, paneSelection, type ListDetailSection } from '../developerBoards'
+import { confirmDelete } from '../../../shared/modals'
 
 // app_error_logs (last 2 days). On a wide page the picked error's message and
 // context open in a pane beside the list (developerBoards.ts); on phones the
@@ -13,15 +13,13 @@ import { LIST_DETAIL_BOARD, paneSelection, type ListDetailSection } from '../dev
 export function ErrorLogTab() {
   const { data: logs = [], isLoading, isFetching, error, refetch } = useErrorLogs()
   const clearLogs = useClearErrorLogs()
-  const modal = useEntityModal()
   const [picked, setPicked] = useState<string | null>(null)
 
   const shownId = paneSelection(logs.map(l => l.id), picked)
   const shown = logs.find(l => l.id === shownId) ?? null
 
-  async function handleClear() {
-    if (!(await modal.confirm({ title: 'Clear the error log?', message: 'Every logged error is deleted.', confirmLabel: 'Clear all', destructive: true }))) return
-    clearLogs.mutate()
+  function handleClear() {
+    void confirmDelete({ title: 'Clear the error log?', message: 'Every logged error is deleted.', confirmLabel: 'Clear all', remove: () => clearLogs.mutateAsync(), done: 'Error log cleared' })
   }
 
   let list: ReactNode

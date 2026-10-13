@@ -1,10 +1,9 @@
 import { useQuery } from '@tanstack/react-query'
 import { qk, STALE } from '../../../shared/query'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
+import { useRowsDelete } from '../../../shared/hooks/useRowsDelete'
 import {
-  fetchExerciseGifOverrides, upsertExerciseGifOverride, deleteExerciseGifOverride,
-  type ExerciseGifOverride,
-} from '../api/exerciseGifOverrideApi'
+  fetchExerciseGifOverrides, upsertExerciseGifOverride, type ExerciseGifOverride } from '../api/exerciseGifOverrideApi'
 
 const OVERRIDES_KEY = qk.training.exerciseGifOverrides
 
@@ -23,10 +22,5 @@ export function useUpsertExerciseGifOverride() {
 }
 
 export function useDeleteExerciseGifOverride() {
-  return useMutationWithFeedback({
-    action:         'delete_exercise_gif_override',
-    successMessage: 'Reverted to automatic match',
-    mutationFn:     (templateId: string) => deleteExerciseGifOverride(templateId),
-    invalidates:    [OVERRIDES_KEY],
-  })
+  return useRowsDelete({ table: 'exercise_gif_overrides', action: 'delete_exercise_gif_override', invalidates: [OVERRIDES_KEY], cache: OVERRIDES_KEY })
 }

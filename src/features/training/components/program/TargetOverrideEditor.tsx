@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { Button } from '../../../../shared/ui'
-import { entityModal } from '../../../../shared/modals'
 import { useUpsertExerciseTargetOverride, useDeleteExerciseTargetOverride } from '../../hooks/useAthleteProfile'
 import type { ExerciseTargetOverride } from '../../types.athlete'
 
@@ -24,8 +23,9 @@ export function TargetOverrideEditor({ templateId, title, current, fallback, onD
   const valid = Number.isFinite(lo) && Number.isFinite(hi) && lo >= 1 && hi >= lo && hi <= 100
 
   async function remove() {
-    const ok = await entityModal.confirm({ title: 'Remove your own target?', message: `${title} goes back to the routine's rep range.`, confirmLabel: 'Remove', destructive: true })
-    if (ok) del.mutate(templateId, { onSuccess: onDone })
+    if (!current) return
+    const result = await del.run([current.id], { title: 'Remove your own target?', message: `${title} goes back to the routine's rep range.`, confirmLabel: 'Remove', done: 'Target removed' })
+    if (result === 'deleted' || result === 'gone') onDone()
   }
 
   return (
@@ -49,7 +49,7 @@ export function TargetOverrideEditor({ templateId, title, current, fallback, onD
           Save target
         </Button>
         <Button size="sm" variant="ghost" onClick={onDone}>Cancel</Button>
-        {current && <Button size="sm" variant="ghost" loading={del.isPending} onClick={() => void remove()}>Use routine&apos;s range</Button>}
+        {current && <Button size="sm" variant="ghost" loading={del.busy} onClick={() => void remove()}>Use routine&apos;s range</Button>}
       </div>
     </div>
   )

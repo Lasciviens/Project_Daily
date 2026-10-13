@@ -153,10 +153,10 @@ function ShopItemEditor({ item, defaults = {}, onClose, categories }: Props & { 
     }
   }
 
-  function remove() {
+  async function remove() {
     if (!item) return
-    removeItems.mutate({ ids: [item.id], label: item.title })
-    onClose()
+    const r = await removeItems.run(item)
+    if (r === 'deleted' || r === 'gone') onClose()
   }
 
   const newTopMissing = draft.topId === NEW_CATEGORY && !draft.newTop.trim()

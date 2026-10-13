@@ -18,6 +18,7 @@ export function useStartTraktConnect() {
   return useMutationWithFeedback({
     action: 'trakt_authorize_url',
     loadingMessage: 'Opening Trakt…',
+    silent: 'the page leaves for Trakt',
     mutationFn: async () => {
       const { url } = await traktAuthorizeUrl(newTraktState())
       window.location.assign(url)

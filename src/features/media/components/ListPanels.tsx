@@ -1,10 +1,9 @@
 import { useMemo, useState } from 'react'
 import { X } from 'lucide-react'
-import { toast } from '../../../app/store'
 import { todayStr } from '../../../shared/utils/dateUtils'
 import { useLibraryIndex } from '../hooks/useLibraryIndex'
 import { useSmartListTitles } from '../hooks/useSmartLists'
-import { useChangeTraktList, useTraktListItems } from '../trakt/useTraktExtras'
+import { useRemoveFromTraktList, useTraktListItems } from '../trakt/useTraktExtras'
 import type { MediaFollow } from '../api/followsApi'
 import { watchedProgress, withLibrary, type ListTitle } from '../listModel'
 import type { OpenMediaDetail } from '../types'
@@ -26,7 +25,7 @@ export function ListProgress({ titles }: { titles: ListTitle[] | undefined }) {
 /** A Trakt list's titles (remove from the corner). */
 export function TraktListPanel({ listId, onOpen }: { listId: number; onOpen: OpenMediaDetail }) {
   const items = useTraktListItems(listId)
-  const change = useChangeTraktList()
+  const removeItems = useRemoveFromTraktList()
   const titles: ListTitle[] | undefined = useMemo(() => items.data?.filter(i => i.tmdb).map((i, n) => ({
     type: i.type === 'show' ? 'tv' : 'movie', tmdbId: i.tmdb!, title: i.title, posterPath: i.posterPath, release: null, year: i.year, order: i.rank ?? n,
   })), [items.data])
@@ -43,9 +42,7 @@ export function TraktListPanel({ listId, onOpen }: { listId: number; onOpen: Ope
           <button type="button" aria-label={`Remove ${r.title} from this list`}
             onClick={() => {
               const item = { type: r.type === 'tv' ? 'show' as const : 'movie' as const, tmdb: r.tmdbId }
-              change.mutate({ listId, items: [item], remove: true }, {
-                onSuccess: () => toast.undo(`Removed ${r.title}`, () => change.mutate({ listId, items: [item] })),
-              })
+              void removeItems(listId, [item], { title: `Remove “${r.title}” from this list?`, done: `Removed ${r.title}` })
             }}
             className="-m-2 grid h-11 w-11 place-items-center">
             <span className="grid h-7 w-7 place-items-center rounded-full bg-scrim/60 text-white hover:bg-scrim/80"><X aria-hidden className="h-3.5 w-3.5" /></span>

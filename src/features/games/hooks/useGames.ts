@@ -1,10 +1,11 @@
 import { useMemo } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
+import { useRowsDelete } from '../../../shared/hooks/useRowsDelete'
 import {
   fetchGameStats, fetchAllGames, fetchGameDetail, fetchPlayQueue,
-  createGame, updateGame, deleteGame, reorderQueue, addToQueue, removeFromQueue, removeManyFromQueue,
-  addPlatform, updatePlatform, deletePlatform, setPrimaryVariant, setPlayStatus,
+  createGame, updateGame, reorderQueue, addToQueue, removeFromQueue, removeManyFromQueue,
+  addPlatform, updatePlatform, setPrimaryVariant, setPlayStatus,
   fetchLibraryGames,
 } from '../api/gamesApi'
 import { nextQueuePosition, patchGameData, statusPatch } from '../api/gameCachePatch'
@@ -125,10 +126,23 @@ export function useCreateGame() {
  * read. `scopeId` (e.g. `game-<id>`) runs a game's writes one at a time, so
  * rapid taps land in the order they were made.
  */
+/** What a one-row edit tells you. */
+function gameEditMessage(patch: GamePatch): string {
+  const keys = Object.keys(patch)
+  if (keys.length === 1) {
+    if ('rating' in patch) return patch.rating == null ? 'Rating cleared' : 'Rating saved'
+    if ('play_notes' in patch) return 'Notes saved'
+    if ('needs_review' in patch) return patch.needs_review ? 'Marked for review' : 'Review mark removed'
+    if ('is_iconic' in patch || 'is_coop' in patch) return 'Saved'
+  }
+  return 'Game saved'
+}
+
 export function useUpdateGame(scopeId?: string) {
   const qc = useQueryClient()
   return useMutationWithFeedback<void, { id: string; patch: GamePatch }, EditCtx>({
     action: 'update_game',
+    successMessage: (_d, v) => gameEditMessage(v.patch),
     ...(scopeId && { scope: { id: scopeId } }),
     mutationFn: ({ id, patch }) => updateGame(id, patch),
     onMutate: ({ id, patch }) => patchGameCaches(qc, id, patch),
@@ -152,13 +166,16 @@ export function useSetPlayStatus(scopeId?: string) {
   })
 }
 
+/**
+ * Deletes a game with Undo (its platforms come back too). The screens ask
+ * with their own dialog (Hide instead / Delete anyway), so the flow does not
+ * ask again. ScreenScraper's history of the game can't be written back from
+ * here — Undo says so.
+ */
 export function useDeleteGame() {
-  const qc = useQueryClient()
-  return useMutationWithFeedback<void, string>({
-    action: 'delete_game',
-    successMessage: 'Game deleted',
-    mutationFn: deleteGame,
-    onSuccess: () => invalidateAllGames(qc),
+  return useRowsDelete({
+    table: 'games', action: 'delete_game', invalidates: [['games']],
+    names: { scrape_decisions: 'its ScreenScraper history', game_scrape_records: 'its ScreenScraper record' },
   })
 }
 
@@ -166,6 +183,7 @@ export function useReorderQueue() {
   const qc = useQueryClient()
   return useMutationWithFeedback<void, { id: string; play_order: number }[], EditCtx>({
     action: 'reorder_play_queue',
+    successMessage: 'Queue order saved',
     mutationFn: reorderQueue,
     // Every cached read gets the new positions at once (the Library, the
     // provider libraries and the queue all read play_order), then only the
@@ -236,19 +254,15 @@ export function useUpdatePlatform() {
   const qc = useQueryClient()
   return useMutationWithFeedback<void, { id: string; patch: Partial<GamePlatformInput> }>({
     action: 'update_game_platform',
+    successMessage: 'Platform saved',
     mutationFn: ({ id, patch }) => updatePlatform(id, patch),
     onSuccess: () => invalidateAllGames(qc),
   })
 }
 
+/** Removes a platform from a game with Undo (the screen's own dialog asks first). */
 export function useDeletePlatform() {
-  const qc = useQueryClient()
-  return useMutationWithFeedback<void, string>({
-    action: 'delete_game_platform',
-    successMessage: 'Platform removed',
-    mutationFn: deletePlatform,
-    onSuccess: () => invalidateAllGames(qc),
-  })
+  return useRowsDelete({ table: 'game_platforms', action: 'delete_game_platform', invalidates: [['games']] })
 }
 
 export function useSetPrimaryVariant() {

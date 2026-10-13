@@ -1,8 +1,9 @@
 import { useQuery } from '@tanstack/react-query'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
+import { useRowsDelete } from '../../../shared/hooks/useRowsDelete'
 import { qk, STALE } from '../../../shared/query'
 import { formatLocalDate } from '../../../shared/utils/dateUtils'
-import { fetchWishes, createWish, updateWish, deleteWish } from '../api/wishesApi'
+import { fetchWishes, createWish, updateWish } from '../api/wishesApi'
 import { resolveWishWindow } from '../wishRules'
 import type { WishItem, CreateWishInput, UpdateWishInput } from '../types'
 
@@ -40,16 +41,18 @@ export function useCreateWish() {
 export function useUpdateWish() {
   return useMutationWithFeedback({
     action:      'update_wish',
+    successMessage: (_r, { patch }) => {
+      const keys = Object.keys(patch)
+      if (keys.length <= 2 && patch.status === 'done') return 'Wish done'
+      if (keys.length <= 2 && patch.status === 'planned') return 'Wish planned'
+      if (keys.length === 1 && patch.status === 'dropped') return 'Wish dropped'
+      return 'Wish saved'
+    },
     mutationFn:  ({ id, patch }: { id: string; patch: UpdateWishInput }) => updateWish(id, patch),
     invalidates: [qk.wishes.all],
   })
 }
 
 export function useDeleteWish() {
-  return useMutationWithFeedback({
-    action:         'delete_wish',
-    successMessage: 'Deleted',
-    mutationFn:     (id: string) => deleteWish(id),
-    invalidates:    [qk.wishes.all],
-  })
+  return useRowsDelete({ table: 'wish_items', action: 'delete_wish', invalidates: [qk.wishes.all], cache: qk.wishes.all })
 }

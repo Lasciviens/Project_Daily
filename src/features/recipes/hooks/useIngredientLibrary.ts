@@ -1,9 +1,9 @@
 import { useQuery } from '@tanstack/react-query'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
+import { useRowsDelete } from '../../../shared/hooks/useRowsDelete'
 import { qk, STALE } from '../../../shared/query'
 import {
-  fetchIngredientLibrary, createIngredientLibraryItem, updateIngredientLibraryItem, deleteIngredientLibraryItem,
-  upsertExternalFood,
+  fetchIngredientLibrary, createIngredientLibraryItem, updateIngredientLibraryItem, upsertExternalFood,
 } from '../api/ingredientLibraryApi'
 import { recomputeRecipesUsingIngredient } from '../api/recipesApi'
 import { refreshEatenEntries } from '../api/foodLogApi'
@@ -20,6 +20,7 @@ export function useIngredientLibrary() {
 export function useCreateIngredientLibraryItem() {
   return useMutationWithFeedback({
     action:      'create_ingredient_library_item',
+    successMessage: (item) => `${item.name} added to your foods`,
     mutationFn:  (input: CreateIngredientLibraryItemInput) => createIngredientLibraryItem(input),
     invalidates: [qk.ingredients.all],
   })
@@ -29,6 +30,7 @@ export function useCreateIngredientLibraryItem() {
 export function useUpsertExternalFood() {
   return useMutationWithFeedback({
     action:      'upsert_external_food',
+    successMessage: (item) => `${item.name} is in your foods`,
     mutationFn:  (input: CreateIngredientLibraryItemInput) => upsertExternalFood(input),
     invalidates: [qk.ingredients.all],
   })
@@ -37,6 +39,7 @@ export function useUpsertExternalFood() {
 export function useUpdateIngredientLibraryItem() {
   return useMutationWithFeedback({
     action:     'update_ingredient_library_item',
+    successMessage: 'Food saved',
     // Totals are derived: a macro edit recalculates the recipes built from this
     // ingredient and every eaten diary row that uses it or those recipes.
     mutationFn: async ({ id, input }: { id: string; input: CreateIngredientLibraryItemInput }) => {
@@ -49,10 +52,15 @@ export function useUpdateIngredientLibraryItem() {
   })
 }
 
+/**
+ * Deletes a food with Undo. Recipes built from it switch to typed macros and
+ * keep their totals, days you ate it keep theirs (rules 107, 123); Undo puts
+ * the food back, re-links those recipe lines and diary rows and switches the
+ * recipes back (migration 144).
+ */
 export function useDeleteIngredientLibraryItem() {
-  return useMutationWithFeedback({
-    action:      'delete_ingredient_library_item',
-    mutationFn:  (id: string) => deleteIngredientLibraryItem(id),
-    invalidates: [qk.ingredients.all, 'recipes', 'nutrition'],
+  return useRowsDelete({
+    table: 'recipe_ingredient_library', action: 'delete_ingredient_library_item',
+    invalidates: [qk.ingredients.all, 'recipes', 'nutrition'], cache: qk.ingredients.all,
   })
 }

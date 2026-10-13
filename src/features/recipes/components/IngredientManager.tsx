@@ -6,7 +6,6 @@ import { withProgress } from '../../../shared/hooks/useMutationWithFeedback'
 import { lookupBarcode, type BarcodeProduct } from '../api/openFoodFactsApi'
 import { BarcodeScanner } from './BarcodeScanner'
 import { OnlineFoodSearch } from './OnlineFoodSearch'
-import { entityModal } from '../../../shared/modals/useEntityModal'
 import { Button, Card, IconButton, PageBoard, Truncate, cx } from '../../../shared/ui'
 import { IngredientList } from './IngredientList'
 import { sanitizeDecimal } from './foodLogUtils'
@@ -103,7 +102,7 @@ export function IngredientManager() {
       if (editingId) await update.mutateAsync({ id: editingId, input })
       else await create.mutateAsync(input)
       return true
-    }, { loading: editingId ? 'Saving…' : 'Adding…', success: editingId ? 'Saved' : 'Added' })
+    }, { loading: editingId ? 'Saving…' : 'Adding…' })
     if (ok) reset()
   }
 
@@ -111,10 +110,8 @@ export function IngredientManager() {
     const message = usedIn > 0
       ? `It is in ${usedIn} recipe${usedIn === 1 ? '' : 's'}. ${usedIn === 1 ? 'That recipe keeps' : 'They keep'} the totals ${usedIn === 1 ? 'it has' : 'they have'} now (switched to typed macros), and days you ate it keep theirs.`
       : 'Days you ate it keep their totals.'
-    const confirmed = await entityModal.confirm({ title: `Delete "${ing.name}"?`, message, confirmLabel: 'Delete', destructive: true })
-    if (!confirmed) return
-    if (editingId === ing.id) reset()
-    void withProgress(() => remove.mutateAsync(ing.id), { loading: 'Deleting…', success: 'Deleted' })
+    const result = await remove.run([ing.id], { title: `Delete "${ing.name}"?`, message, done: `${ing.name} deleted` })
+    if ((result === 'deleted' || result === 'gone') && editingId === ing.id) reset()
   }
 
   const busy = create.isPending || update.isPending

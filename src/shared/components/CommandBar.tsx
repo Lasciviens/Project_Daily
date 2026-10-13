@@ -10,7 +10,6 @@ import { isTrainingTask } from '../../features/todo/taskRules'
 import type { Task } from '../../features/todo/types'
 import { ModalShell, useEntityModal } from '../modals'
 import { ToneDot, TonePill, Truncate } from '../ui'
-import { withProgress } from '../hooks/useMutationWithFeedback'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -143,11 +142,9 @@ function Palette({ onClose }: { onClose: () => void }) {
     }
 
     if (!item.query) return
-    // useCreateTask toasts + logs its own failures; this adds the per-call copy.
-    const created = await withProgress(
-      () => createTask.mutateAsync({ title: item.query, domain: 'personal', section: 'today', priority: 'medium' }),
-      { loading: 'Creating task…', success: 'Task created' },
-    )
+    // useCreateTask says "Task added" (or the error) itself.
+    const created = await createTask.mutateAsync({ title: item.query, domain: 'personal', section: 'today', priority: 'medium' })
+      .catch(() => undefined)
     if (created !== undefined) onClose()
   }
 

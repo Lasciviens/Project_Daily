@@ -19,8 +19,8 @@ export function useErrorLogs() {
 export function useClearErrorLogs() {
   return useMutationWithFeedback({
     action:         'clear_error_logs',
-    successMessage: 'Logs cleared',
-    mutationFn:     clearErrorLogs,
+    silent:         'the delete flow reports the result',
+    mutationFn:     async () => { await clearErrorLogs(); return true },
     invalidates:    [qk.logs.errors()],
   })
 }
@@ -36,8 +36,8 @@ export function useAuditLogs(filter: AuditLogFilter) {
 export function useClearAuditLogs() {
   return useMutationWithFeedback({
     action:         'clear_audit_logs',
-    successMessage: 'Activity log cleared',
-    mutationFn:     clearAuditLogs,
+    silent:         'the delete flow reports the result',
+    mutationFn:     async () => { await clearAuditLogs(); return true },
     invalidates:    [qk.logs.audit()],
   })
 }

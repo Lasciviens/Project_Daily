@@ -28,8 +28,9 @@ export async function addWaterMl(date: string, amount_ml: number): Promise<void>
 }
 
 // Undo = delete the most recently logged amount for the date (matches how the
-// user thinks about it — "oops, take that last one back").
-export async function undoLastWaterMl(date: string): Promise<void> {
+// user thinks about it — "oops, take that last one back"). Resolves the amount
+// the delete itself returned, or null when there was nothing to take back.
+export async function undoLastWaterMl(date: string): Promise<number | null> {
   const { data, error } = await supabase
     .from('water_log_entries')
     .select('id')
@@ -38,7 +39,8 @@ export async function undoLastWaterMl(date: string): Promise<void> {
     .limit(1)
   if (error) throw error
   const id = data?.[0]?.id
-  if (!id) return
-  const { error: delErr } = await supabase.from('water_log_entries').delete().eq('id', id)
+  if (!id) return null
+  const { data: gone, error: delErr } = await supabase.from('water_log_entries').delete().eq('id', id).select('amount_ml')
   if (delErr) throw delErr
+  return gone?.[0]?.amount_ml ?? null
 }

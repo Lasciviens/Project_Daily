@@ -146,7 +146,7 @@ function PlatformRow({ platform, gameId }: { platform: GamePlatform; gameId: str
       )}
       {!editing && <PlatformDetails platform={platform} />}
       <ConfirmDialog open={confirmDelete} title="Remove this platform?" message={`Removes ${platform.system} from this game — the game itself stays.`}
-        onConfirm={() => del.mutate(platform.id)} onClose={() => setConfirmDelete(false)} />
+        onConfirm={() => void del.run([platform.id], { title: '', ask: false, done: 'Platform removed' })} onClose={() => setConfirmDelete(false)} />
     </div>
   )
 }
@@ -448,8 +448,9 @@ export function GameDetailModal({ gameId, onClose, initialEditing = false, class
     update.mutate({ id, patch }, { onSuccess: finishEditing })
   }
 
-  function handleDelete() {
-    del.mutate(gameId, { onSuccess: onClose })
+  async function handleDelete() {
+    const result = await del.run([gameId], { title: '', ask: false, done: 'Game deleted' })
+    if (result === 'deleted' || result === 'gone') onClose()
   }
 
   return (
@@ -607,7 +608,7 @@ export function GameDetailModal({ gameId, onClose, initialEditing = false, class
     {game && (
       <UnifiedPlanModal open={planOpen} onClose={() => setPlanOpen(false)} mode="schedule" config={{ heading: 'Plan session' }} defaults={{ title: game.title, category: 'games', color: 'blue' }} />
     )}
-    <ConfirmDialog open={confirmDelete} title={`Delete "${game?.title}"?`} message="This can't be undone — the game and all its platform entries will be removed."
+    <ConfirmDialog open={confirmDelete} title={`Delete "${game?.title}"?`} message="The game and all its platform entries are removed. Undo brings them back, but not its ScreenScraper history."
       onConfirm={handleDelete} onClose={() => setConfirmDelete(false)} />
     </>
   )

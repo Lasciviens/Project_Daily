@@ -34,7 +34,7 @@ export function MemoryDetail({ memory, onDelete, onDirtyChange }: {
     if (!draftValid(draft) || !changed) return
     await withProgress(
       () => update.mutateAsync({ id: memory.id, patch: { kind: draft.kind, title: draft.title.trim(), content: draft.content.trim() } }),
-      { loading: 'Saving…', success: 'Saved' },
+      { loading: 'Saving…' },
     )
   }
 

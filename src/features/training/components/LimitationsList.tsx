@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { X, Plus } from 'lucide-react'
-import { entityModal } from '../../../shared/modals'
 import { Button } from '../../../shared/ui'
 import {
   useAthleteLimitations, useCreateLimitation, useUpdateLimitation, useDeleteLimitation,
@@ -92,12 +91,8 @@ export function LimitationsList() {
   const [severity, setSeverity] = useState<LimitationSeverity>('monitor')
   const [note, setNote] = useState('')
 
-  async function confirmDelete(item: AthleteLimitation) {
-    const ok = await entityModal.confirm({
-      title: 'Delete this limitation?', message: movementPatternLabel(item.movement_pattern),
-      confirmLabel: 'Delete', destructive: true,
-    })
-    if (ok) del.mutate(item.id)
+  function confirmDelete(item: AthleteLimitation) {
+    void del.run([item.id], { title: 'Delete this limitation?', message: movementPatternLabel(item.movement_pattern), done: 'Limitation deleted' })
   }
 
   function add() {

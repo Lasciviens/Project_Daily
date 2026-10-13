@@ -72,7 +72,3 @@ export async function updateTVEntry(
   return data
 }
 
-export async function deleteTVEntry(id: string): Promise<void> {
-  const { error } = await supabase.from('user_tv_entries').delete().eq('id', id)
-  if (error) throw error
-}

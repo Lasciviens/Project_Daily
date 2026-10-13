@@ -1,21 +1,19 @@
 import { useQuery } from '@tanstack/react-query'
 import { qk, STALE } from '../../../shared/query'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
+import { useRowsDelete } from '../../../shared/hooks/useRowsDelete'
 import {
   fetchAthleteProfile,
   upsertAthleteProfile,
   fetchAthleteLimitations,
   createAthleteLimitation,
   updateAthleteLimitation,
-  deleteAthleteLimitation,
   fetchCurrentProgramRoutines,
   setCurrentProgramRoutines,
   fetchMusclePreferences,
   upsertMusclePreference,
-  deleteMusclePreference,
   fetchExerciseTargetOverrides,
   upsertExerciseTargetOverride,
-  deleteExerciseTargetOverride,
 } from '../api/athleteProfileApi'
 import type {
   AthleteProfile, UpsertAthleteProfileInput, CreateLimitationInput, UpdateLimitationInput,
@@ -75,18 +73,14 @@ export function useCreateLimitation() {
 export function useUpdateLimitation() {
   return useMutationWithFeedback({
     action:     'update_athlete_limitation',
+    successMessage: 'Limitation saved',
     mutationFn: ({ id, patch }: { id: string; patch: UpdateLimitationInput }) => updateAthleteLimitation(id, patch),
     invalidates:    [LIMITATIONS_BASE_KEY],
   })
 }
 
 export function useDeleteLimitation() {
-  return useMutationWithFeedback({
-    action:         'delete_athlete_limitation',
-    successMessage: 'Limitation removed',
-    mutationFn:     (id: string) => deleteAthleteLimitation(id),
-    invalidates:    [LIMITATIONS_BASE_KEY],
-  })
+  return useRowsDelete({ table: 'athlete_limitations', action: 'delete_athlete_limitation', invalidates: [LIMITATIONS_BASE_KEY], cache: LIMITATIONS_BASE_KEY })
 }
 
 // ─── Current program (explicit, never inferred) ─────────────────────────────
@@ -122,12 +116,7 @@ export function useUpsertMusclePreference() {
 }
 
 export function useDeleteMusclePreference() {
-  return useMutationWithFeedback({
-    action:         'delete_muscle_preference',
-    successMessage: 'Removed',
-    mutationFn:     (muscleSlug: string) => deleteMusclePreference(muscleSlug),
-    invalidates:    [MUSCLE_PREFS_KEY],
-  })
+  return useRowsDelete({ table: 'athlete_muscle_preferences', action: 'delete_muscle_preference', invalidates: [MUSCLE_PREFS_KEY], cache: MUSCLE_PREFS_KEY })
 }
 
 // ─── Exercise target overrides ───────────────────────────────────────────────
@@ -147,10 +136,5 @@ export function useUpsertExerciseTargetOverride() {
 }
 
 export function useDeleteExerciseTargetOverride() {
-  return useMutationWithFeedback({
-    action:         'delete_exercise_target_override',
-    successMessage: 'Target removed',
-    mutationFn:     (exerciseTemplateId: string) => deleteExerciseTargetOverride(exerciseTemplateId),
-    invalidates:    [EXERCISE_TARGETS_KEY],
-  })
+  return useRowsDelete({ table: 'exercise_target_overrides', action: 'delete_exercise_target_override', invalidates: [EXERCISE_TARGETS_KEY], cache: EXERCISE_TARGETS_KEY })
 }

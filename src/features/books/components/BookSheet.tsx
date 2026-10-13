@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react'
 import { BookOpen, Trash2 } from 'lucide-react'
 import { ModalShell } from '../../../shared/modals/ModalShell'
-import { useEntityModal } from '../../../shared/modals'
 import { Button, IconButton } from '../../../shared/ui'
 import { STAGE_TONE } from '../../../shared/theme/stage'
 import { DateInput } from '../../../shared/components/DateInput'
@@ -44,7 +43,6 @@ export function BookSheet({ book, onClose }: { book: Book; onClose: () => void }
   const remove = useDeleteBook()
   const notes = useAiNotes(book.id)
   const removeNote = useDeleteAiNote()
-  const modal = useEntityModal()
   const events = useBookEvents(book.id)
   const recent = useMemo(() => sessions(events.data ?? []).slice(-8).reverse(), [events.data])
   const total = useMemo(() => (events.data ?? []).reduce((t, e) => t + e.duration_seconds, 0), [events.data])
@@ -86,12 +84,12 @@ export function BookSheet({ book, onClose }: { book: Book; onClose: () => void }
   }
 
   async function del() {
-    const ok = await modal.confirm({
+    const result = await remove.run([book.id], {
       title: `Delete “${book.title}”?`,
       message: book.on_device ? 'Its reading history goes too. The file stays on the Kobo, so the next sync adds the book back.' : 'Its reading history goes too.',
-      confirmLabel: 'Delete', destructive: true,
+      done: 'Book deleted',
     })
-    if (ok) remove.mutate(book.id, { onSuccess: onClose })
+    if (result === 'deleted' || result === 'gone') onClose()
   }
 
   return (
@@ -180,7 +178,7 @@ export function BookSheet({ book, onClose }: { book: Book; onClose: () => void }
           </section>
           {(notes.data?.length ?? 0) > 0 && (
             <section><span className="field-label">Asked on the Kobo</span>
-              <AskedList rows={notes.data ?? []} onDelete={id => removeNote.mutate(id)} showBook={false} /></section>
+              <AskedList rows={notes.data ?? []} onDelete={id => void removeNote.run([id], { title: 'Delete this question and its answer?', done: 'Question deleted' })} showBook={false} /></section>
           )}
         </div>
       </div>

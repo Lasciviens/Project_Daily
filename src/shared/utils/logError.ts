@@ -1,4 +1,5 @@
 import { supabase } from '../../integrations/supabase/client'
+import { currentUserId } from './requireUser'
 
 // Keys whose values never reach app_error_logs, at any depth (the AI can read
 // that table). A raw secret passed as the whole payload is the caller's job:
@@ -17,8 +18,8 @@ export function redactSecrets(value: unknown, depth = 0): unknown {
 
 export async function logError(message: string, context?: Record<string, unknown>): Promise<void> {
   try {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
+    const userId = await currentUserId()
+    if (!userId) return
 
     // Always capture environment context so a log entry is self-contained and
     // trackable, then merge in whatever the caller passed (payloads, raw API
@@ -33,14 +34,14 @@ export async function logError(message: string, context?: Record<string, unknown
     // Insert new log entry and clean up entries older than 2 days in one go
     await Promise.all([
       supabase.from('app_error_logs').insert({
-        user_id: user.id,
+        user_id: userId,
         message,
         context: enriched,
       }),
       supabase
         .from('app_error_logs')
         .delete()
-        .eq('user_id', user.id)
+        .eq('user_id', userId)
         .lt('created_at', new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString()),
     ])
   } catch {

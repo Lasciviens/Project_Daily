@@ -25,7 +25,7 @@ export function useIgdbSearch(query: string) {
 
 /** Looks up candidates; scoring and saving are the caller's (the batch). */
 export function useIgdbMatch() {
-  return useMutationWithFeedback({ action: 'igdb_match', mutationFn: (items: IgdbMatchItem[]) => matchIgdb(items) })
+  return useMutationWithFeedback({ action: 'igdb_match', silent: 'a lookup: the batch shows what it found', mutationFn: (items: IgdbMatchItem[]) => matchIgdb(items) })
 }
 
 /** Saves picked matches. The library refresh is the caller's (`useAfterIgdbWrite`),
@@ -34,6 +34,7 @@ export function useApplyIgdb() {
   const qc = useQueryClient()
   return useMutationWithFeedback({
     action: 'igdb_apply',
+    silent: 'the batch and the detail report what was saved',
     mutationFn: (items: IgdbApplyItem[]) => applyIgdb(items),
     onSuccess: (_d, items) => { for (const i of items) qc.invalidateQueries({ queryKey: IGDB_KEYS.data(i.game_id) }) },
   })

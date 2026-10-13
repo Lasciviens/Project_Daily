@@ -21,7 +21,7 @@ const HOW: ShopDisposal[] = ['sold', 'traded_in', 'given', 'broken', 'lost', 'ot
  */
 export function OwnSheet({ had: hadInitially, items, categories, onClose }: { had: boolean; items: ShopItem[]; categories: ShopCategory[]; onClose: () => void }) {
   const create = useCreateShopItem()
-  const link = useCreateShopLink()
+  const link = useCreateShopLink({ report: false })
   const fill = useFillRatesNow()
   const today = todayStr()
   const [had, setHad] = useState(hadInitially)

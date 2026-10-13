@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
+import { useRowsDelete } from '../../../shared/hooks/useRowsDelete'
 import { qk, STALE } from '../../../shared/query'
 import { scheduleTraktSync } from '../trakt/traktAutoSync'
 import {
@@ -7,7 +8,6 @@ import {
   upsertMovie,
   addMovieEntry,
   updateMovieEntry,
-  deleteMovieEntry,
 } from '../api/moviesApi'
 import type { UserMovieEntry, TMDBMovie } from '../types'
 
@@ -36,6 +36,7 @@ export function useAddMovie() {
   const qc = useQueryClient()
   return useMutationWithFeedback({
     action: 'add_movie',
+    silent: 'callers report the result (the same hook adds, rates, notes and completes)',
     mutationFn: async ({
       tmdb,
       status,
@@ -52,6 +53,9 @@ export function useAddMovie() {
       return addMovieEntry(movie.id, status, priority, watchedAt !== undefined ? { watched_at: watchedAt } : {})
     },
     invalidates: ['media'],
+    // The title reads "in library" from these lists: until they have it, a
+    // second tap would add it again (and hit the unique key).
+    refresh: 'wait',
     onSuccess: () => scheduleTraktSync(qc),
   })
 }
@@ -60,6 +64,7 @@ export function useUpdateMovie() {
   const qc = useQueryClient()
   return useMutationWithFeedback({
     action: 'update_movie',
+    silent: 'callers report the result (the same hook adds, rates, notes and completes)',
     mutationFn: ({ id, patch }: { id: string; patch: Parameters<typeof updateMovieEntry>[1] }) =>
       updateMovieEntry(id, patch),
     invalidates: ['media'],
@@ -67,12 +72,18 @@ export function useUpdateMovie() {
   })
 }
 
+/**
+ * Removes a title from the library with Undo.
+ * The Trakt outbox sends the removal; Undo puts the same rows back and the
+ * outbox sends them again (plays at their kept dates; the Trakt note is made
+ * anew, so the old link is cleared).
+ */
 export function useDeleteMovie() {
   const qc = useQueryClient()
-  return useMutationWithFeedback({
-    action: 'delete_movie',
-    mutationFn: (id: string) => deleteMovieEntry(id),
-    invalidates: ['media'],
-    onSuccess: () => scheduleTraktSync(qc),
+  return useRowsDelete({
+    table: 'user_movie_entries', action: 'delete_movie', invalidates: ['media'], cache: qk.media.movies,
+    overrides: () => ({ user_movie_entries: { trakt_note_id: null, trakt_note_text: null } }),
+    afterDelete: () => scheduleTraktSync(qc),
+    afterRestore: () => { scheduleTraktSync(qc) },
   })
 }

@@ -70,10 +70,8 @@ export function WishesPage() {
     })
   }
 
-  async function confirmDelete(wish: WishItem) {
-    if (await modal.confirm({ title: 'Delete this wish?', message: wish.title, confirmLabel: 'Delete', destructive: true })) {
-      remove.mutate(wish.id)
-    }
+  function confirmDelete(wish: WishItem) {
+    void remove.run([wish.id], { title: 'Delete this wish?', message: wish.title, done: 'Wish deleted' })
   }
 
   const groupsSection = isLoading ? (

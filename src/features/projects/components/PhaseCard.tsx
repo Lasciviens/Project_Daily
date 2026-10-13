@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
 import { ChevronDown, MoreHorizontal, Plus, Trash2 } from 'lucide-react'
-import { useEntityModal } from '../../../shared/modals'
 import { StatusCycleChip } from './StatusCycleChip'
 import { InlineText } from './InlineText'
 import { ItemRow } from './ItemRow'
@@ -15,7 +14,7 @@ interface Props {
   items:          ProjectItem[]
   typeFilter?:    ItemType | null
   onUpdatePhase:  (patch: Partial<Pick<ProjectPhase, 'name' | 'status'>>) => void
-  onDeletePhase:  () => void
+  onDeletePhase:  (question: { title: string; message?: string; confirmLabel: string }) => void
   onAddItem:      () => void
   onUpdateItem:   (itemId: string, patch: Partial<Pick<ProjectItem, 'title' | 'notes' | 'type' | 'status' | 'priority'>>) => void
   onDeleteItem:   (itemId: string) => void
@@ -28,7 +27,6 @@ export function PhaseCard({
   onUpdateItem, onDeleteItem, onEditItem,
 }: Props) {
   const [open, setOpen] = useState(true)
-  const modal = useEntityModal()
 
   const totalCount = items.length
   const doneCount  = items.filter(i => i.status === 'done').length
@@ -38,14 +36,12 @@ export function PhaseCard({
   const openItems = visible.filter(i => i.status !== 'done')
   const doneItems = visible.filter(i => i.status === 'done')
 
-  async function confirmDelete() {
-    const ok = await modal.confirm({
+  function confirmDelete() {
+    onDeletePhase({
       title: `Delete "${phase.name}"?`,
-      message: totalCount > 0 ? `This also removes the ${totalCount} item${totalCount !== 1 ? 's' : ''} in this phase.` : undefined,
+      message: totalCount > 0 ? `Its ${totalCount} item${totalCount !== 1 ? 's go' : ' goes'} too.` : undefined,
       confirmLabel: 'Delete phase',
-      destructive: true,
     })
-    if (ok) onDeletePhase()
   }
 
   const renderItem = (item: ProjectItem) => (

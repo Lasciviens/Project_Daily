@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { ModalShell } from '../../../shared/modals/ModalShell'
-import { useEntityModal } from '../../../shared/modals'
 import { DateInput } from '../../../shared/components/DateInput'
 import { Button } from '../../../shared/ui'
 import { todayStr } from '../../../shared/utils/dateUtils'
@@ -20,7 +19,6 @@ interface Props {
 export function CinemaVisitSheet({ movieId, title, visit, defaultDate, onClose }: Props) {
   const save = useSaveCinemaVisit()
   const del = useDeleteCinemaVisit()
-  const modal = useEntityModal()
   const [date, setDate] = useState(visit?.watched_on ?? defaultDate)
   const [cinema, setCinema] = useState(visit?.cinema ?? '')
   const [location, setLocation] = useState(visit?.location ?? '')
@@ -31,7 +29,7 @@ export function CinemaVisitSheet({ movieId, title, visit, defaultDate, onClose }
 
   const costNum = cost.trim() === '' ? null : Number(cost.replace(',', '.'))
   const costBad = costNum != null && (!Number.isFinite(costNum) || costNum < 0)
-  const busy = save.isPending || del.isPending
+  const busy = save.isPending || del.busy
 
   async function onSave() {
     const clean = (s: string) => s.trim() || null
@@ -46,8 +44,8 @@ export function CinemaVisitSheet({ movieId, title, visit, defaultDate, onClose }
 
   async function onDelete() {
     if (!visit) return
-    if (!(await modal.confirm({ title: 'Delete this cinema visit?', confirmLabel: 'Delete', destructive: true }))) return
-    try { await del.mutateAsync([visit.id]); onClose() } catch { /* toasted */ }
+    const result = await del.run([visit.id], { title: 'Delete this cinema visit?', done: 'Cinema visit deleted' })
+    if (result === 'deleted' || result === 'gone') onClose()
   }
 
   return (

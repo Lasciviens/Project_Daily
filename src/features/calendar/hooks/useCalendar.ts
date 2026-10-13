@@ -13,6 +13,7 @@ import {
   deleteCalendarEvent,
 } from '../api/calendarApi'
 import { qk, STALE } from '../../../shared/query'
+import { ensureValidCalendarToken } from '../api/calendarTokenSync'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
 
 const REFRESH_THRESHOLD_MS = 5 * 60_000  // refresh when ≤5 min remaining
@@ -169,12 +170,15 @@ export function useUpdateCalendarEvent() {
 }
 
 export function useDeleteCalendarEvent() {
-  const { accessToken } = useCalendarStore()
   return useMutationWithFeedback({
     action: 'delete_calendar_event',
-    successMessage: 'Event deleted',
-    mutationFn: ({ calendarId, eventId }: { calendarId: string; eventId: string }) =>
-      deleteCalendarEvent(accessToken!, calendarId, eventId),
+    silent: 'the delete flow reports the result',
+    mutationFn: async ({ calendarId, eventId }: { calendarId: string; eventId: string }) => {
+      const token = await ensureValidCalendarToken()
+      if (!token) throw new Error('Google Calendar is not connected on this device')
+      await deleteCalendarEvent(token, calendarId, eventId)
+      return true
+    },
     invalidates: [qk.calendar.all],
   })
 }

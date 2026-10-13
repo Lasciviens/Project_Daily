@@ -3,7 +3,7 @@ import { useLocation } from 'react-router-dom'
 import { ArrowUpRight, CalendarClock, Check, CheckCheck, CornerUpLeft, Crosshair, ListChecks, Plus, Quote, Send, Sparkles, Trash2, Undo2 } from 'lucide-react'
 import { useDevRequestDrafts } from '../devRequestDraftStore'
 import { cardTimeline, draftFromRow, isDraftEmpty, type ComposerTarget, type DraftFields } from '../devRequestRules'
-import { useDeleteDevRequest, useDevRequests, useUpdateDevRequest } from '../hooks/useDevRequests'
+import { useDeleteDevRequests, useDevRequests, useUpdateDevRequest } from '../hooks/useDevRequests'
 import { discardEditDraft, discardNewDraft, useSaveDevRequestDraft } from '../hooks/useDevRequestDraft'
 import { useEditTailNote, useMarkRequestDone, useReviewPoint, useSendToRecheck } from '../hooks/usePointReview'
 import { useComposerPrompt } from './useComposerPrompt'
@@ -15,7 +15,6 @@ import { ReviewMeter } from '../components/ReviewMeter'
 import { PageContextToggle } from '../components/PageContextToggle'
 import type { OutlineHandle } from '../components/OutlineEditor'
 import { pageOptionFor } from '../components/devRequestMeta'
-import { useEntityModal } from '../../../shared/modals'
 import { Button, IconButton, Skeleton, Truncate } from '../../../shared/ui'
 import { formatDateTime } from '../../../shared/utils/dateFormat'
 
@@ -47,7 +46,6 @@ const open = (id: string) => useDevRequestDrafts.getState().openComposer({ kind:
  */
 export function ComposerRequestView({ target, readPage, onPick, onQuote, mouse, flash, titleRef, outlineRef, onDone, onDeleted }: Props) {
   const { pathname } = useLocation()
-  const modal = useEntityModal()
   const { data: requests, isLoading } = useDevRequests()
   const row = target.kind === 'edit' ? requests?.find(r => r.id === target.id) ?? null : null
   const seed = useMemo(() => (row ? draftFromRow(row) : null), [row])
@@ -55,7 +53,7 @@ export function ComposerRequestView({ target, readPage, onPick, onQuote, mouse, 
   const editDraft = useDevRequestDrafts(s => (target.kind === 'edit' ? s.editDrafts[target.id] : undefined))
   const { saveNew, saveEdit, pending } = useSaveDevRequestDraft()
   const updateStatus = useUpdateDevRequest()
-  const deleteRequest = useDeleteDevRequest()
+  const deleteRequest = useDeleteDevRequests()
   const reviewPoint = useReviewPoint()
   const sendToRecheck = useSendToRecheck()
   const markDone = useMarkRequestDone()
@@ -104,9 +102,8 @@ export function ComposerRequestView({ target, readPage, onPick, onQuote, mouse, 
   const discardNew = () => discardNewDraft({ start: readPage(), page: pageOptionFor(pathname) })
   async function remove() {
     if (!row) return
-    const ok = await modal.confirm({ title: `Delete "${row.title}"?`, message: 'The request and its points are removed. This can\'t be undone.', confirmLabel: 'Delete', destructive: true })
-    if (!ok) return
-    try { await deleteRequest.mutateAsync(row.id) } catch { return }
+    const result = await deleteRequest.run([row.id], { title: `Delete "${row.title}"?`, message: 'The request and its points are removed.', done: 'Request deleted' })
+    if (result !== 'deleted' && result !== 'gone') return
     useDevRequestDrafts.getState().clearEditDraft(row.id)
     onDeleted()
   }

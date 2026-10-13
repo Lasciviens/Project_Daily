@@ -145,7 +145,7 @@ function SlotRow({ date, slot, label, icon, isNow, meals, fresh }: {
                   a 393px phone, and both editors this row opens carry Delete. */}
               <button
                 type="button"
-                onClick={() => remove.mutate({ ids: [meal.id], label: meal.title })}
+                onClick={() => void remove.run([meal.id], { title: `Remove “${meal.title}”?`, done: `Removed ${meal.title}` })}
                 className={cx(iconBtn, 'hidden hover:text-danger sm:grid')}
                 aria-label={`Remove ${meal.title}`}
               ><X className="h-4 w-4" aria-hidden /></button>

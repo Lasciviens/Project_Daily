@@ -60,7 +60,7 @@ export default function PinnedLinksWidget() {
               </a>
               <button
                 type="button"
-                onClick={() => deleteLink.mutate(link.id)}
+                onClick={() => void deleteLink.run([link.id], { title: 'Remove this link?', message: link.title, confirmLabel: 'Remove', done: 'Link removed' })}
                 aria-label={`Remove ${link.title}`}
                 className="grid min-h-[40px] min-w-[40px] place-items-center rounded-full text-fg-faint transition-opacity [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:hover:text-danger focus-visible:opacity-100 [@media(pointer:coarse)]:min-h-[44px] [@media(pointer:coarse)]:min-w-[44px]"
               >

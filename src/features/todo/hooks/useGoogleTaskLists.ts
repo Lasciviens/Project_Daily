@@ -32,6 +32,7 @@ export function useRenameGoogleTaskList() {
     action: 'rename_google_task_list',
     mutationFn: ({ localId, googleId, title }: { localId: string; googleId: string; title: string }) =>
       renameGoogleTaskListMirrored(requireToken(), localId, googleId, title),
+    successMessage: 'List renamed',
     invalidates: [qk.googleTaskLists.all],
   })
 }
@@ -41,7 +42,7 @@ export function useDeleteGoogleTaskList() {
     action: 'delete_google_task_list',
     mutationFn: ({ localId, googleId }: { localId: string; googleId: string }) =>
       deleteGoogleTaskListMirrored(requireToken(), localId, googleId),
-    successMessage: 'List deleted',
+    silent: 'the delete flow reports the result',
     invalidates: [qk.googleTaskLists.all, qk.tasks.all],
   })
 }

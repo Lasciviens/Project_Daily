@@ -31,7 +31,7 @@ export function ProjectDetail({ project, onBack, onDelete }: Props) {
   const { data: phases = [], isLoading: phasesLoading } = usePhases(project.id)
   const { data: allItems = [] } = useItems(project.id)
 
-  const updateProject = useUpdateProject()
+  const updateProject = useUpdateProject({ report: false })
   const createPhase   = useCreatePhase(project.id)
   const updatePhase   = useUpdatePhase(project.id)
   const deletePhase   = useDeletePhase(project.id)
@@ -90,10 +90,10 @@ export function ProjectDetail({ project, onBack, onDelete }: Props) {
                     items={allItems.filter(i => i.phase_id === phase.id)}
                     typeFilter={typeFilter}
                     onUpdatePhase={patch => updatePhase.mutate({ id: phase.id, patch })}
-                    onDeletePhase={() => deletePhase.mutate(phase.id)}
+                    onDeletePhase={q => void deletePhase.run([phase.id], { ...q, done: 'Phase deleted' })}
                     onAddItem={() => modal.open({ kind: 'project-item', projectId: project.id, phaseId: phase.id })}
                     onUpdateItem={(itemId, patch) => updateItem.mutate({ id: itemId, patch })}
-                    onDeleteItem={itemId => deleteItem.mutate(itemId)}
+                    onDeleteItem={itemId => void deleteItem.run([itemId], { title: 'Delete this item?', message: allItems.find(i => i.id === itemId)?.title, done: 'Item deleted' })}
                     onEditItem={item => modal.open({ kind: 'project-item', projectId: project.id, id: item.id })}
                   />
                 ),

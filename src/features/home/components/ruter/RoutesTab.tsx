@@ -443,7 +443,7 @@ export function RoutesTab({ active, now, pendingRouteId, onRouteConsumed, pendin
                   return (
                     <SavedRouteChip key={r.id} route={r} active={active}
                       onSelect={() => applyPreset(r)}
-                      onDelete={() => removeRoute(r.id).catch(() => { /* toasted by the hook */ })} />
+                      onDelete={() => void removeRoute(r.id, r.label)} />
                   )
                 })}
               </div>

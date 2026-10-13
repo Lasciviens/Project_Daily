@@ -2,11 +2,12 @@ import { useEffect, useMemo } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from '../../../app/store'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
+import { useRowsDelete } from '../../../shared/hooks/useRowsDelete'
 import { logError } from '../../../shared/utils/logError'
 import { qk, STALE } from '../../../shared/query'
 import {
-  createShopCost, createShopLink, deleteShopCost, deleteShopLink, fetchShopCosts, fetchShopLinks,
-  recordSale, restoreShopCost, undoSale, updateShopCost, type SaleInput,
+  createShopCost, createShopLink, fetchShopCosts, fetchShopLinks,
+  recordSale, undoSale, updateShopCost, type SaleInput,
 } from '../api/shopApi'
 import { fillRates } from '../api/shopPriceApi'
 import { moneyCtx, ratesPending, type MoneyCtx } from '../ownModel'
@@ -65,26 +66,25 @@ export function useFillRatesNow() {
   }
 }
 
-export function useCreateShopLink() {
+/** `report: false` when the link is one step of a bigger save (Add something I own). */
+export function useCreateShopLink({ report = true }: { report?: boolean } = {}) {
   return useMutationWithFeedback({
     action:      'create_shop_link',
+    successMessage: () => (report ? 'Money linked' : undefined),
     mutationFn:  (input: { from_id: string; to_id: string; amount?: number | null }) => createShopLink(input),
     invalidates: [qk.shop.links()],
   })
 }
 
 export function useDeleteShopLink() {
-  return useMutationWithFeedback({
-    action:      'delete_shop_link',
-    mutationFn:  (id: string) => deleteShopLink(id),
-    invalidates: [qk.shop.links()],
-  })
+  return useRowsDelete({ table: 'shop_item_links', action: 'delete_shop_link', invalidates: [qk.shop.links()], cache: qk.shop.links() })
 }
 
 export function useCreateShopCost() {
   const fill = useFillRatesNow()
   return useMutationWithFeedback({
     action:      'create_shop_cost',
+    successMessage: (row) => (row.amount < 0 ? `Added ${row.label} (money back)` : `Added ${row.label}`),
     mutationFn:  (input: CreateShopCostInput) => createShopCost(input),
     onSuccess:   (row: ShopItemCost) => { if (row.currency !== 'NOK' && row.fx_nok == null) fill() },
     invalidates: [qk.shop.costs()],
@@ -94,27 +94,14 @@ export function useCreateShopCost() {
 export function useUpdateShopCost() {
   return useMutationWithFeedback({
     action:      'update_shop_cost',
+    successMessage: 'Cost saved',
     mutationFn:  ({ id, patch }: { id: string; patch: Parameters<typeof updateShopCost>[1] }) => updateShopCost(id, patch),
     invalidates: [qk.shop.costs()],
   })
 }
 
-/** Deletes at once with Undo. */
 export function useDeleteShopCost() {
-  const qc = useQueryClient()
-  return useMutationWithFeedback({
-    action:      'delete_shop_cost',
-    mutationFn:  (id: string) => deleteShopCost(id),
-    invalidates: [qk.shop.costs()],
-    onSuccess:   (row: ShopItemCost | null) => {
-      if (!row) return
-      toast.undo(`Removed ${row.label}`, () => {
-        restoreShopCost(row)
-          .then(() => qc.invalidateQueries({ queryKey: qk.shop.costs() }))
-          .catch((e: Error) => { toast.error(e.message || 'Could not restore'); logError(`restore_shop_cost: ${e.message}`, { action: 'restore_shop_cost' }) })
-      })
-    },
-  })
+  return useRowsDelete({ table: 'shop_item_costs', action: 'delete_shop_cost', invalidates: [qk.shop.costs()], cache: qk.shop.costs() })
 }
 
 /** One sale (or giving away) in one transaction; the toast offers Undo. */
@@ -123,6 +110,7 @@ export function useRecordSale() {
   const fill = useFillRatesNow()
   return useMutationWithFeedback({
     action:      'record_shop_sale',
+    silent:      'its toast with Undo reports it',
     mutationFn:  ({ input }: { input: SaleInput; label: string }) => recordSale(input),
     invalidates: SHOP_ROWS,
     onSuccess:   (_d, { input, label }) => {

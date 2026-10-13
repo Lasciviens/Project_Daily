@@ -1,3 +1,4 @@
+import { confirmDelete } from '../../../shared/modals'
 import { useState } from 'react'
 import { X } from 'lucide-react'
 import { posterUrl } from '../../../integrations/tmdb/client'
@@ -85,7 +86,7 @@ export function ContinueWatching({ posters, onOpenDetail }: { posters: Map<strin
         {items.map(i => (
           <Tile key={i.id} item={i} posters={posters} inLibrary={!!entry(i)}
             onOpen={() => onOpenDetail(i.tmdb!, i.type === 'movie' ? 'movie' : 'tv', sequence)}
-            onRemove={() => remove.mutate(i.id)} />
+            onRemove={() => void confirmDelete({ title: `Remove “${i.title}” from Continue watching?`, message: 'Its paused spot is deleted on Trakt.', confirmLabel: 'Remove', remove: () => remove.mutateAsync(i.id), done: 'Removed from Continue watching' })} />
         ))}
       </div>
     </section>

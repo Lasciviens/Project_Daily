@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { X } from 'lucide-react'
 import { Sheet } from '../../../shared/components/Sheet'
-import { useEntityModal } from '../../../shared/modals'
+import { confirmDelete } from '../../../shared/modals'
 import { Button, IconButton, TonePill, Truncate } from '../../../shared/ui'
 import {
   useGoogleTaskLists, useCreateGoogleTaskList, useRenameGoogleTaskList, useDeleteGoogleTaskList,
@@ -14,7 +14,6 @@ interface Props {
 }
 
 function ListRow({ list }: { list: GoogleTaskListRow }) {
-  const modal = useEntityModal()
   const [editing, setEditing] = useState(false)
   const [title, setTitle] = useState(list.title)
   const rename = useRenameGoogleTaskList()
@@ -28,14 +27,15 @@ function ListRow({ list }: { list: GoogleTaskListRow }) {
     setEditing(false)
   }
 
-  async function confirmDelete() {
-    const ok = await modal.confirm({
+  function deleteList() {
+    // Deleted on Google: there is no Undo, and the question says so.
+    void confirmDelete({
       title: `Delete "${list.title}"?`,
       message: 'Tasks in it stay here, un-synced from Google.',
       confirmLabel: 'Delete list',
-      destructive: true,
+      remove: () => remove.mutateAsync({ localId: list.id, googleId: list.google_id }).then(() => true),
+      done: 'List deleted',
     })
-    if (ok) remove.mutate({ localId: list.id, googleId: list.google_id })
   }
 
   return (
@@ -62,7 +62,7 @@ function ListRow({ list }: { list: GoogleTaskListRow }) {
       )}
       {list.is_default && <TonePill tone="accent" className="shrink-0">Default</TonePill>}
       {!list.is_default && (
-        <IconButton label="Delete list" onClick={() => { void confirmDelete() }} disabled={remove.isPending} className="text-fg-faint hover:text-danger">
+        <IconButton label="Delete list" onClick={deleteList} disabled={remove.isPending} className="text-fg-faint hover:text-danger">
           <X aria-hidden />
         </IconButton>
       )}

@@ -3,7 +3,7 @@ import { useLocation } from 'react-router-dom'
 import { Plus, ChevronRight, Trash2, ArrowUpDown, Zap, Sparkles, Check, PenLine, X, Inbox } from 'lucide-react'
 import { useUIStore } from '../../../app/store'
 import {
-  devRequestsReadFrom, useDevRequests, useDeleteDevRequest, useBulkDeleteDevRequests, useReorderDevRequests,
+  devRequestsReadFrom, useDevRequests, useDeleteDevRequests, useReorderDevRequests,
   useSetDevRequestsStatus, useMarkDevRequestsPrompted,
 } from '../hooks/useDevRequests'
 import { discardNewDraft } from '../hooks/useDevRequestDraft'
@@ -44,8 +44,7 @@ export function DevRequestsDrawer() {
   const { data: requests = [], isLoading, isSuccess } = useDevRequests()
   const setStatus = useSetDevRequestsStatus()
   const markPrompted = useMarkDevRequestsPrompted()
-  const deleteRequest = useDeleteDevRequest()
-  const bulkDelete = useBulkDeleteDevRequests()
+  const remove = useDeleteDevRequests()
   const reorder = useReorderDevRequests()
 
   const prefs = useDevRequestDrafts(s => s.drawer)
@@ -103,39 +102,33 @@ export function DevRequestsDrawer() {
   // have no other delete path, so the bulk action covers both.
   const closedIds = requests.filter(r => r.status === 'done' || r.status === 'dismissed').map(r => r.id)
 
+  // Unsaved edits of a deleted request are kept until the delete answers, so a
+  // failed delete loses nothing; Undo brings the rows back, not the drafts.
   async function handleDeleteAllClosed() {
     if (closedIds.length === 0) return
-    const ok = await modal.confirm({
-      title: `Delete ${closedIds.length} closed request${closedIds.length === 1 ? '' : 's'}?`,
-      message: "Every done and dismissed request is removed. This can't be undone.",
-      confirmLabel: 'Delete',
-      destructive: true,
-    })
-    if (!ok) return
     const ids = [...closedIds]
-    // Drafts go only once the rows are gone: a failed delete keeps unsaved edits.
-    try { await bulkDelete.mutateAsync(ids) } catch { return }
-    useDevRequestDrafts.getState().pruneEditDrafts(ids)
+    const result = await remove.run(ids, {
+      title: `Delete ${ids.length} closed request${ids.length === 1 ? '' : 's'}?`,
+      message: 'Every done and dismissed request is removed.',
+      done: `${ids.length} request${ids.length === 1 ? '' : 's'} deleted`,
+    })
+    if (result === 'deleted') useDevRequestDrafts.getState().pruneEditDrafts(ids)
   }
 
   async function handleDelete(request: DevRequest) {
-    const ok = await modal.confirm({ title: `Delete "${request.title}"?`, confirmLabel: 'Delete', destructive: true })
-    if (!ok) return
-    try { await deleteRequest.mutateAsync(request.id) } catch { return }
-    useDevRequestDrafts.getState().clearEditDraft(request.id)
+    const result = await remove.run([request.id], { title: `Delete "${request.title}"?`, done: 'Request deleted' })
+    if (result === 'deleted') useDevRequestDrafts.getState().clearEditDraft(request.id)
   }
 
   async function handleDeletePicked() {
     const ids = [...pickedIds]
     if (ids.length === 0) return
-    const ok = await modal.confirm({
+    const result = await remove.run(ids, {
       title: `Delete ${ids.length} request${ids.length === 1 ? '' : 's'}?`,
-      message: "The selected requests are removed. This can't be undone.",
-      confirmLabel: 'Delete',
-      destructive: true,
+      message: 'The selected requests are removed.',
+      done: `${ids.length} request${ids.length === 1 ? '' : 's'} deleted`,
     })
-    if (!ok) return
-    try { await bulkDelete.mutateAsync(ids) } catch { return }
+    if (result !== 'deleted') return
     const s = useDevRequestDrafts.getState()
     s.pruneEditDrafts(ids)
     s.setDrawer({ picked: s.drawer.picked.filter(id => !ids.includes(id)) })
@@ -237,7 +230,7 @@ export function DevRequestsDrawer() {
   // tablet/desktop the composer is tucked away while this drawer is open).
   const composerHasNew = composer.open && composer.target.kind === 'new'
   const showDraftBanner = !isDraftEmpty(newDraft)
-  const busy = setStatus.isPending || bulkDelete.isPending
+  const busy = setStatus.isPending || remove.busy
 
   return (
     <SideDrawer
@@ -300,7 +293,7 @@ export function DevRequestsDrawer() {
                   size="sm"
                   icon={<Trash2 />}
                   onClick={() => void handleDeleteAllClosed()}
-                  disabled={bulkDelete.isPending}
+                  disabled={remove.busy}
                   title="Delete every done + dismissed request"
                   className="text-fg-muted hover:!text-danger"
                 >

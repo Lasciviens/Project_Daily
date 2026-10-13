@@ -1,8 +1,8 @@
+import { confirmDelete } from '../../../../shared/modals'
 import { useRef } from 'react'
 import { Check, ImagePlus, Moon, Trash2 } from 'lucide-react'
 import { Button, Card, CardHeader, IconButton, TonePill, cx } from '../../../../shared/ui'
 import { HelpTip } from '../../../../shared/components/HelpTip'
-import { useEntityModal } from '../../../../shared/modals'
 import { useDeleteSleepImage, useKoboConfig, useSaveKoboConfig, useSleepImages, useSleepImageUrls, useUploadSleepImages } from '../../hooks/useKoboControl'
 import { SETTING_GROUPS } from '../../koboSettingsCatalogue'
 import { SettingHelp } from './SettingControl'
@@ -91,7 +91,6 @@ function SleepImages({ purpose }: { purpose: 'pick' | 'random' | 'fallback' }) {
   const remove = useDeleteSleepImage()
   const config = useKoboConfig()
   const save = useSaveKoboConfig()
-  const modal = useEntityModal()
   const input = useRef<HTMLInputElement>(null)
   const rows = images.data ?? []
   const used = rows.reduce((t, r) => t + r.size_bytes, 0)
@@ -122,9 +121,7 @@ function SleepImages({ purpose }: { purpose: 'pick' | 'random' | 'fallback' }) {
                   : <span className="block aspect-[3/4] w-full bg-surface-2" />}
               </button>
               <IconButton label={`Delete ${img.filename}`} className="absolute right-0 top-0 bg-surface/80"
-                onClick={async () => {
-                  if (await modal.confirm({ title: 'Delete this image?', message: 'It is removed from the Kobo at its next sync.', confirmLabel: 'Delete', destructive: true })) remove.mutate(img)
-                }}><Trash2 /></IconButton>
+                onClick={() => void confirmDelete({ title: 'Delete this image?', message: 'It is removed from the Kobo at its next sync.', remove: () => remove.mutateAsync(img), done: 'Image deleted' })}><Trash2 /></IconButton>
             </li>
           ))}
         </ul>

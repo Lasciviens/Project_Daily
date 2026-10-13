@@ -101,6 +101,7 @@ export function useSetEpisodeDates() {
   const qc = useQueryClient()
   return useMutationWithFeedback({
     action: 'set_episode_dates',
+    silent: 'the episode sheets report the result',
     mutationFn: ({ tvEntryId, episodes }: { tvEntryId: string; episodes: { season: number; episode: number; at: string }[] }) =>
       setEpisodesWatchedAt(tvEntryId, episodes),
     invalidates: ['episodeWatched'],
@@ -113,6 +114,7 @@ export function useSetEpisodePlays() {
   const qc = useQueryClient()
   return useMutationWithFeedback({
     action: 'set_episode_plays',
+    silent: 'the plays sheet reports the result ("Watched 3 times")',
     mutationFn: ({ tvEntryId, season, episode, plays, at }: { tvEntryId: string; season: number; episode: number; plays: number; at?: string }) =>
       setEpisodePlays(tvEntryId, season, episode, plays, at),
     invalidates: ['episodeWatched'],

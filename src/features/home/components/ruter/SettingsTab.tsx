@@ -51,14 +51,12 @@ export function SettingsTab({ active = true, onSelectRoute }: { active?: boolean
     }
   }
 
-  async function handleRemoveStop(id: string, name: string) {
-    if (!(await modal.confirm({ title: `Remove ${name}?`, confirmLabel: 'Remove', destructive: true }))) return
-    removeStop(id).catch(() => { /* toasted by the hook */ })
+  function handleRemoveStop(id: string, name: string) {
+    void removeStop(id, { title: `Remove ${name}?` })
   }
 
-  async function handleRemoveRoute(id: string, name: string) {
-    if (!(await modal.confirm({ title: `Remove ${name}?`, confirmLabel: 'Remove', destructive: true }))) return
-    removeRoute(id).catch(() => { /* toasted by the hook */ })
+  function handleRemoveRoute(id: string, name: string) {
+    void removeRoute(id, name)
   }
 
   return (

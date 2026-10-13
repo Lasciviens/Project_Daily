@@ -132,11 +132,6 @@ export async function insertTransitRoute(label: string, from: StopResult, to: St
   if (error) throw error
 }
 
-export async function deleteTransitRoute(id: string): Promise<void> {
-  const { error } = await supabase.from('user_transit_routes').delete().eq('id', id)
-  if (error) throw error
-}
-
 export async function updateTransitRouteLabel(id: string, label: string): Promise<void> {
   const { error } = await supabase.from('user_transit_routes').update({ label }).eq('id', id)
   if (error) throw error

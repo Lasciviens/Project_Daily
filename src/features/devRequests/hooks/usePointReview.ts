@@ -67,6 +67,9 @@ export function useSendToRecheck() {
   return useMutationWithFeedback({
     action:         'send_dev_request_points_to_recheck',
     successMessage: 'Sent to re-check',
+    // Reads the cached list to find the open re-check request: a second send
+    // right after must see the first one's row, so this waits for the refresh.
+    refresh:        'wait',
     mutationFn: async ({ original, keys }: { original: DevRequest; keys: string[] }) => {
       const all = qc.getQueryData<DevRequest[]>(qk.devRequests.all) ?? await fetchDevRequests()
       const row = all.find(r => r.id === original.id) ?? original

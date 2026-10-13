@@ -103,9 +103,8 @@ export function RecipeDetail({ recipe, onClose, onEdit }: Props) {
     perServing == null ? null : Math.round(perServing * servings)
 
   async function handleDelete() {
-    const ok = await entityModal.confirm({ title: `Delete "${recipe.title}"?`, message: "Days you ate it keep their totals. This can't be undone.", confirmLabel: 'Delete recipe' })
-    if (!ok) return
-    remove.mutate(recipe.id, { onSuccess: onClose })
+    const result = await remove.run([recipe.id], { title: `Delete "${recipe.title}"?`, message: 'Days you ate it keep their totals.', confirmLabel: 'Delete recipe', done: `${recipe.title} deleted` })
+    if (result === 'deleted' || result === 'gone') onClose()
   }
 
   function handleEdit() {
@@ -152,7 +151,7 @@ export function RecipeDetail({ recipe, onClose, onEdit }: Props) {
       ) : undefined}
       footer={
         <div className="flex gap-2">
-          <Button variant="ghost" className="text-danger" onClick={handleDelete} loading={remove.isPending}>Delete</Button>
+          <Button variant="ghost" className="text-danger" onClick={handleDelete} loading={remove.busy}>Delete</Button>
           <Button variant="primary" block onClick={handleEdit}>Edit recipe</Button>
         </div>
       }

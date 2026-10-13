@@ -1,4 +1,5 @@
 import { recentRuns, undoableApplies, type JournalRow, type RecentRun } from './ssJournal'
+import { requireUser } from '../../../shared/utils/requireUser'
 import { supabase } from '../../../integrations/supabase/client'
 import { parseFunctionErrorBody } from '../../../shared/utils/functionError'
 import type { FieldPolicy, MatchBasis, SsCandidate, SsField, SsMediaChoice, SsMediaEntry, SsPrefs, SsQueryOutcome, SsRomQuery } from './ssTypes'
@@ -208,9 +209,7 @@ export async function fetchScrapePrefs(): Promise<SsPrefs> {
 
 export async function saveScrapePrefs(prefs: SsPrefs): Promise<SsPrefs> {
   const clean = normalizePrefs(prefs)
-  const { data: auth } = await supabase.auth.getUser()
-  const userId = auth.user?.id
-  if (!userId) throw new Error('Not signed in')
+  const { id: userId } = await requireUser()
   const { error } = await supabase.from('screenscraper_prefs').upsert({ user_id: userId, prefs: clean }, { onConflict: 'user_id' })
   if (error) {
     if (missingTable(error)) throw new Error('Saving scrape settings needs migration 104 (screenscraper_prefs) — not applied yet.')

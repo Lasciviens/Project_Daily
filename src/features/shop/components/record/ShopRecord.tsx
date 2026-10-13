@@ -136,7 +136,7 @@ export function ShopRecord({ item, onClose }: { item: ShopItem; onClose: () => v
       ) : (
         <div className="flex items-center gap-2">
           <Button variant="ghost" icon={<Trash2 />} className="text-danger"
-            onClick={() => { remove.mutate({ ids: [item.id, ...accessories.filter(a => a.status === 'bought').map(a => a.id)], label: item.title }); onClose() }}>Delete</Button>
+            onClick={async () => { const r = await remove.run(item); if (r === 'deleted' || r === 'gone') onClose() }}>Delete</Button>
           <Button onClick={onClose} className="ml-auto">Close</Button>
         </div>
       )}

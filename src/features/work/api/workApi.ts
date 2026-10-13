@@ -50,10 +50,6 @@ export async function createPinnedLink(title: string, url: string): Promise<Work
   return data
 }
 
-export async function deletePinnedLink(id: string): Promise<void> {
-  const { error } = await supabase.from('work_pinned_links').delete().eq('id', id)
-  if (error) throw error
-}
 
 export async function fetchWeeklyGoals(weekStart: string): Promise<WorkWeeklyGoal[]> {
   const user = await requireUser()
@@ -87,7 +83,3 @@ export async function toggleWeeklyGoal(id: string, done: boolean): Promise<void>
   if (error) throw error
 }
 
-export async function deleteWeeklyGoal(id: string): Promise<void> {
-  const { error } = await supabase.from('work_weekly_goals').delete().eq('id', id)
-  if (error) throw error
-}

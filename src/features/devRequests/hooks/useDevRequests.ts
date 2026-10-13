@@ -1,10 +1,11 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { qk, STALE } from '../../../shared/query'
 import {
-  fetchDevRequests, createDevRequest, updateDevRequest, deleteDevRequest, deleteDevRequests, reorderDevRequests,
+  fetchDevRequests, createDevRequest, updateDevRequest, reorderDevRequests,
   setDevRequestsStatus, markDevRequestsPrompted,
 } from '../api/devRequestsApi'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
+import { useRowsDelete } from '../../../shared/hooks/useRowsDelete'
 import { applyReorder } from '../devRequestRules'
 import type { DevRequest, CreateDevRequestInput, DevRequestStatus } from '../types'
 
@@ -37,38 +38,31 @@ export function useCreateDevRequest() {
     successMessage: 'Added',
     mutationFn:     (input: CreateDevRequestInput) => createDevRequest(input),
     invalidates:    [QK],
+    // The next request's place (topSortOrder) is read from this list.
+    refresh:        'wait',
   })
 }
 
 export function useUpdateDevRequest() {
   return useMutationWithFeedback({
     action:     'update_dev_request',
+    successMessage: (_r, { patch }) => (Object.keys(patch).length === 1 && patch.status
+      ? (patch.status === 'done' ? 'Request done' : patch.status === 'dismissed' ? 'Request dismissed' : patch.status === 'in_progress' ? 'Request in progress' : 'Request reopened')
+      : 'Request saved'),
     mutationFn: ({ id, patch }: { id: string; patch: Parameters<typeof updateDevRequest>[1] }) => updateDevRequest(id, patch),
     invalidates: [QK],
   })
 }
 
-export function useDeleteDevRequest() {
-  return useMutationWithFeedback({
-    action:         'delete_dev_request',
-    successMessage: 'Deleted',
-    mutationFn:     (id: string) => deleteDevRequest(id),
-    invalidates:    [QK],
-  })
-}
-
-export function useBulkDeleteDevRequests() {
-  return useMutationWithFeedback({
-    action:         'bulk_delete_dev_requests',
-    successMessage: 'Deleted',
-    mutationFn:     (ids: string[]) => deleteDevRequests(ids),
-    invalidates:    [QK],
-  })
+/** One or several requests, with Undo (single and bulk deletes are the same call). */
+export function useDeleteDevRequests() {
+  return useRowsDelete({ table: 'dev_requests', action: 'delete_dev_requests', invalidates: [QK], cache: QK })
 }
 
 export function useSetDevRequestsStatus() {
   return useMutationWithFeedback({
     action:      'set_dev_requests_status',
+    successMessage: (_r, { ids, status }) => `${ids.length} request${ids.length === 1 ? '' : 's'} ${status === 'done' ? 'done' : status === 'dismissed' ? 'dismissed' : 'updated'}`,
     mutationFn:  ({ ids, status }: { ids: string[]; status: DevRequestStatus }) => setDevRequestsStatus(ids, status),
     invalidates: [QK],
   })
@@ -79,6 +73,7 @@ export function useSetDevRequestsStatus() {
 export function useMarkDevRequestsPrompted() {
   return useMutationWithFeedback({
     action:      'mark_dev_requests_prompted',
+    silent:      'bookkeeping behind Copy, which reports itself',
     mutationFn:  (ids: string[]) => markDevRequestsPrompted(ids),
     invalidates: [QK],
   })
@@ -92,6 +87,7 @@ export function useReorderDevRequests() {
   const qc = useQueryClient()
   return useMutationWithFeedback({
     action:     'reorder_dev_requests',
+    successMessage: 'Order saved',
     mutationFn: (changes: { id: string; sort_order: number }[]) => reorderDevRequests(changes),
     onMutate:   async (changes: { id: string; sort_order: number }[]) => {
       await qc.cancelQueries({ queryKey: QK })
@@ -113,6 +109,7 @@ export function useSetDevRequestDescription() {
   const qc = useQueryClient()
   return useMutationWithFeedback({
     action:     'review_dev_request_point',
+    silent:     'a tap on a point: the point itself flips at once',
     mutationFn: ({ id, description }: { id: string; description: string }) => updateDevRequest(id, { description }),
     onMutate:   async ({ id, description }: { id: string; description: string }) => {
       await qc.cancelQueries({ queryKey: QK })

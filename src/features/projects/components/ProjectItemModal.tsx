@@ -49,7 +49,7 @@ export function ProjectItemModal({ open = true, onClose, projectId, phases, defa
   const [priority, setPriority] = useState<ItemPriority>(item?.priority ?? 'medium')
 
   const createItem = useCreateItem(projectId)
-  const updateItem = useUpdateItem(projectId)
+  const updateItem = useUpdateItem(projectId, { report: false })
   const saving = createItem.isPending || updateItem.isPending
 
   async function handleSave() {

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ModalShell, useEntityModal } from '../../../shared/modals'
+import { ModalShell, confirmDelete } from '../../../shared/modals'
 import { Button } from '../../../shared/ui'
 import { useUpdateCalendarEvent, useDeleteCalendarEvent } from '../hooks/useCalendar'
 import type { CalendarEvent } from '../types'
@@ -21,7 +21,6 @@ interface Props {
 
 /** Edit or delete one Google Calendar event. The hooks toast the result. */
 export function EditCalendarEventModal({ event, onClose }: Props) {
-  const modal = useEntityModal()
   const [title,   setTitle]   = useState(event.summary ?? '')
   const [desc,    setDesc]    = useState(event.description ?? '')
   const [startDT, setStartDT] = useState(event.start.dateTime ? toLocalDatetimeInput(event.start.dateTime) : '')
@@ -52,12 +51,13 @@ export function EditCalendarEventModal({ event, onClose }: Props) {
   }
 
   async function handleDelete() {
-    const ok = await modal.confirm({ title: 'Delete this event?', message: 'It is removed from Google Calendar.', confirmLabel: 'Delete', destructive: true })
-    if (!ok) return
-    try {
-      await remove.mutateAsync({ calendarId, eventId: event.id })
-      onClose()
-    } catch { /* toasted by the hook */ }
+    const result = await confirmDelete({
+      title: 'Delete this event?',
+      message: 'It is removed from Google Calendar.',
+      remove: () => remove.mutateAsync({ calendarId, eventId: event.id }),
+      done: 'Event deleted',
+    })
+    if (result === 'deleted') onClose()
   }
 
   return (

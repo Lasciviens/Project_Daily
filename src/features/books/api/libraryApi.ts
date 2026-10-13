@@ -38,11 +38,6 @@ export async function createBook(row: { title: string; author?: string | null; r
   return data as Book
 }
 
-export async function deleteBook(id: string): Promise<void> {
-  const { error } = await supabase.from('books').delete().eq('id', id)
-  if (error) fail(error)
-}
-
 /** Writes new queue positions (only the rows whose position changed). */
 export async function saveQueueOrder(rows: { id: string; queue_order: number }[]): Promise<void> {
   for (const r of rows) {
@@ -90,7 +85,8 @@ export async function mergeBooks(survivor: Book, loser: Book): Promise<void> {
     const { error: e4 } = await supabase.from('books').update(keys).eq('id', survivor.id)
     if (e4) fail(e4)
   }
-  await deleteBook(loser.id)
+  const { error: e5 } = await supabase.from('books').delete().eq('id', loser.id)
+  if (e5) fail(e5)
 }
 
 /** Page events since `fromIso` (paged past PostgREST's 1,000-row cap). */

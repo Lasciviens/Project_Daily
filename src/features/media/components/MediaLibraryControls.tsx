@@ -6,7 +6,6 @@ import { withProgress } from '../../../shared/hooks/useMutationWithFeedback'
 import { haptic } from '../../../shared/utils/haptics'
 import { Button, SectionLabel, TonePill } from '../../../shared/ui'
 import { STAGE_TONE, type Stage } from '../../../shared/theme/stage'
-import { useEntityModal } from '../../../shared/modals'
 import { useMarkEpisodeWatched, useWatchedEpisodes } from '../hooks/useWatchedEpisodes'
 import { episodeAirDates } from '../hooks/useTMDB'
 import { useWatchedWhenPrompt } from '../hooks/useWatchedWhenPrompt'
@@ -97,7 +96,6 @@ export function MediaLibraryControls({ detail, isMovie, userEntry, onRemoved }: 
   const movie = isMovie ? (detail as TMDBMovieFull) : null
   const tv = !isMovie ? (detail as TMDBTVFull) : null
   const statuses = isMovie ? MOVIE_STATUSES : TV_STATUSES
-  const modal = useEntityModal()
 
   const addMovie    = useAddMovie()
   const addTV       = useAddTV()
@@ -200,18 +198,14 @@ export function MediaLibraryControls({ detail, isMovie, userEntry, onRemoved }: 
 
   async function handleRemove() {
     if (!entryId) return
-    const title = isMovie ? movie!.title : tv!.name
-    if (!(await modal.confirm({
-      title: `Remove "${title}" from your library?`,
-      message: 'With Trakt connected, its watch history, rating and watchlist entry are removed there too.',
-      confirmLabel: 'Remove', destructive: true,
-    }))) return
-    const ok = await withProgress(async () => {
-      if (isMovie) await removeMovie.mutateAsync(entryId)
-      else await removeTV.mutateAsync(entryId)
-      return true
-    }, { loading: 'Removing…', success: 'Removed from library' })
-    if (ok) onRemoved?.()
+    const question = {
+      title: `Remove "${isMovie ? movie!.title : tv!.name}" from your library?`,
+      message: 'With Trakt connected, its watch history, rating and watchlist entry are removed there too (Undo puts the title back here and sends it to Trakt again, with one date for all its plays).',
+      confirmLabel: 'Remove',
+      done: 'Removed from library',
+    }
+    const result = isMovie ? await removeMovie.run([entryId], question) : await removeTV.run([entryId], question)
+    if (result === 'deleted' || result === 'gone') onRemoved?.()
   }
 
   // Completing a whole series marks every aired episode not marked yet (each
@@ -396,7 +390,7 @@ export function MediaLibraryControls({ detail, isMovie, userEntry, onRemoved }: 
         <AddToListMenu type={isMovie ? 'movie' : 'show'} tmdb={detail.id} title={isMovie ? movie!.title : tv!.name} />
         {/* Icon-only on phones so the row fits one line at 393px. */}
         <Button size="sm" variant="ghost" icon={<Trash2 />} className="text-danger max-sm:px-2.5" onClick={handleRemove}
-          aria-label="Remove from library" disabled={removeMovie.isPending || removeTV.isPending}>
+          aria-label="Remove from library" disabled={removeMovie.busy || removeTV.busy}>
           <span className="max-sm:sr-only">Remove</span>
         </Button>
       </div>

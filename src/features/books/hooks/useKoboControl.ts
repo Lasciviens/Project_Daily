@@ -2,8 +2,9 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { qk } from '../../../shared/query/keys'
 import { STALE } from '../../../shared/query/stale'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
+import { useRowsDelete } from '../../../shared/hooks/useRowsDelete'
 import {
-  deleteAiNote, deleteSleepImage, fetchAiNotes, fetchKoboConfig, fetchKoboDeviceState, fetchSleepImages, saveKoboConfig,
+  deleteSleepImage, fetchAiNotes, fetchKoboConfig, fetchKoboDeviceState, fetchSleepImages, saveKoboConfig,
   sleepImageUrls, uploadBookCover, uploadSleepImage,
 } from '../api/koboControlApi'
 import { resizeImage } from '../api/imageResize'
@@ -30,6 +31,7 @@ export function useSaveKoboConfig() {
   const qc = useQueryClient()
   return useMutationWithFeedback({
     action: 'kobo_config_save',
+    successMessage: 'Saved for the Kobo',
     mutationKey: ['books', 'kobo-config-save'],
     // One at a time: each save carries the whole settings object, so two quick
     // changes landing out of order would lose the first.
@@ -92,8 +94,8 @@ export function useUploadSleepImages() {
 export function useDeleteSleepImage() {
   return useMutationWithFeedback({
     action: 'kobo_sleep_delete',
-    mutationFn: (img: SleepImage) => deleteSleepImage(img),
-    successMessage: 'Image removed',
+    mutationFn: async (img: SleepImage) => { await deleteSleepImage(img); return true },
+    silent: 'the delete flow reports the result',
     invalidates: [qk.books.sleepImages(), qk.books.koboConfig()],
   })
 }
@@ -115,10 +117,7 @@ export function useAiNotes(bookId?: string) {
   return useQuery({ queryKey: qk.books.aiNotes(bookId), queryFn: () => fetchAiNotes(bookId), staleTime: STALE.default })
 }
 
+/** A question asked on the Kobo and its answer, with Undo (migration 144 lets you write it back). */
 export function useDeleteAiNote() {
-  return useMutationWithFeedback({
-    action: 'book_ai_note_delete',
-    mutationFn: (id: string) => deleteAiNote(id),
-    invalidates: [['books', 'ai-notes']],
-  })
+  return useRowsDelete({ table: 'book_ai_notes', action: 'book_ai_note_delete', invalidates: [['books', 'ai-notes']], cache: ['books', 'ai-notes'] })
 }

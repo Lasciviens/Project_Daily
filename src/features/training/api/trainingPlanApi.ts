@@ -1,14 +1,11 @@
 import { supabase } from '../../../integrations/supabase/client'
 import { requireUser } from '../../../shared/utils/requireUser'
-import { createTask, deleteTask, updateTask, toggleTaskDone } from '../../todo/api/tasksApi'
-import { createTimeBlock, deleteScheduleBlock, deleteTimeBlock, fetchScheduleBlocks, fetchTimeBlocks, updateTimeBlock } from '../../daily/api/scheduleApi'
+import { createTask, updateTask, toggleTaskDone } from '../../todo/api/tasksApi'
+import { createTimeBlock, fetchScheduleBlocks, fetchTimeBlocks, updateTimeBlock } from '../../daily/api/scheduleApi'
 import { findPlanTwin, type PlanTwin } from '../plan/planTwins'
-import { linkBlockCalendarEvent } from '../../calendar/api/linkBlockCalendarEvent'
 import { sectionForDate } from '../../../shared/components/plan-modal/planModal.config'
 import { createTrainingSkip } from './trainingSkipsApi'
 import { weekStartOf } from '../plan/sessionState'
-import type { Task } from '../../todo/types'
-import type { TimeBlock } from '../../daily/types'
 
 // Every write a planned training session can take — the ONE place each one
 // is implemented (owner, 12.10.2026: one action, one hook, everywhere). The
@@ -216,87 +213,3 @@ export async function undoPlanSkip(s: { taskId?: string | null; skipId?: string 
   }
 }
 
-// ── Delete, with Undo ───────────────────────────────────────────────────────
-
-export interface PlanSnapshot {
-  task: Task | null
-  block: TimeBlock | null
-  skips: Record<string, unknown>[]
-}
-
-/** Everything a delete removes, so Undo can put it back. */
-export async function snapshotPlan(rows: { taskId: string | null; blockId: string | null }): Promise<PlanSnapshot> {
-  const [task, block, skips] = await Promise.all([
-    rows.taskId ? supabase.from('tasks').select('*').eq('id', rows.taskId).maybeSingle() : Promise.resolve({ data: null, error: null }),
-    rows.blockId
-      ? supabase.from('time_blocks').select('*').eq('id', rows.blockId).maybeSingle()
-      : rows.taskId ? supabase.from('time_blocks').select('*').eq('task_id', rows.taskId).maybeSingle() : Promise.resolve({ data: null, error: null }),
-    rows.taskId ? supabase.from('training_skips').select('*').eq('task_id', rows.taskId) : Promise.resolve({ data: [], error: null }),
-  ])
-  if (task.error) throw task.error
-  if (block.error) throw block.error
-  // Before 142 there is no task_id to read skips by: nothing to keep.
-  if (skips.error && !isMissingColumn(skips.error)) throw skips.error
-  return { task: (task.data as Task | null) ?? null, block: (block.data as TimeBlock | null) ?? null, skips: (skips.data ?? []) as Record<string, unknown>[] }
-}
-
-/** Deletes the session: its task (the block goes with it, and its Google
- *  Calendar event first — deleteTask), or a block with no task. */
-export async function deletePlan(snapshot: PlanSnapshot): Promise<void> {
-  if (snapshot.task) { await deleteTask(snapshot.task.id); return }
-  if (snapshot.block) await deleteTimeBlock(snapshot.block.id)
-}
-
-/** Puts a deleted session back with the same ids: task, block, skip. Google
- *  copies were removed with it, so they are made again: the block's Calendar
- *  event here, the Google Task by the outbox (an inserted task with Google
- *  sync on queues its create). A step that fails takes the restored task back
- *  out (its block and skip go with it), so Undo never leaves half a session. */
-export async function restorePlan(snapshot: PlanSnapshot): Promise<{ calendar: 'none' | 'linked' | 'not_linked' | 'unknown' }> {
-  let insertedTask = false
-  try {
-    if (snapshot.task) {
-      const row: Record<string, unknown> = { ...snapshot.task }
-      for (const k of Object.keys(row)) if (k.startsWith('google_') && k !== 'google_sync_enabled' && k !== 'google_tasklist_id') row[k] = null
-      const { error } = await supabase.from('tasks').insert(row)
-      if (error) throw error
-      insertedTask = true
-    }
-    if (snapshot.block) {
-      const block: Record<string, unknown> = { ...snapshot.block, google_calendar_event_id: null }
-      // Joined fields some reads carry, not columns.
-      for (const k of ['task_status', 'task_workout_id', 'task_routine_id', 'task']) delete block[k]
-      const { error } = await supabase.from('time_blocks').insert(block)
-      if (error) throw error
-    }
-    if (snapshot.skips.length > 0) {
-      const { error } = await supabase.from('training_skips').insert(snapshot.skips)
-      if (error) throw error
-    }
-  } catch (err) {
-    if (insertedTask && snapshot.task) await supabase.from('tasks').delete().eq('id', snapshot.task.id)
-    throw err
-  }
-  if (!snapshot.block?.google_calendar_event_id) return { calendar: 'none' }
-  const b = snapshot.block
-  return { calendar: await linkBlockCalendarEvent(b.id, b.date, (b.start_time ?? '09:00').slice(0, 5), b.duration_minutes, b.title) }
-}
-
-// ── A weekly plan, deleted with Undo ────────────────────────────────────────
-
-/** The weekly plan's row, so Undo can put it back (with its except_dates:
- *  days already turned into plans of their own stay out). */
-export async function snapshotWeeklyPlan(templateId: string): Promise<Record<string, unknown>> {
-  const { data, error } = await supabase.from('schedule_blocks').select('*').eq('id', templateId).single()
-  if (error) throw error
-  return data as Record<string, unknown>
-}
-
-export async function deleteWeeklyPlan(templateId: string): Promise<void> {
-  await deleteScheduleBlock(templateId)
-}
-
-export async function restoreWeeklyPlan(row: Record<string, unknown>): Promise<void> {
-  const { error } = await supabase.from('schedule_blocks').insert(row)
-  if (error) throw error
-}

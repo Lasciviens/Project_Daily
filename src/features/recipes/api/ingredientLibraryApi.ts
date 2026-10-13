@@ -105,18 +105,3 @@ export async function updateIngredientLibraryItem(id: string, input: CreateIngre
   return data
 }
 
-export async function deleteIngredientLibraryItem(id: string): Promise<void> {
-  // Recipes calculated from this food keep the totals they have (switch to
-  // manual) — otherwise they, and every past day they were eaten, would drop
-  // this food's calories. Migration 123 does the same in the database.
-  const { data: links, error: linkError } = await supabase.from('recipe_ingredients').select('recipe_id').eq('library_ingredient_id', id)
-  if (linkError) throw linkError
-  const recipeIds = [...new Set((links ?? []).map(l => l.recipe_id as string))]
-  if (recipeIds.length) {
-    const { error: freezeError } = await supabase.from('recipes').update({ macro_mode: 'manual' })
-      .in('id', recipeIds).eq('macro_mode', 'from_ingredients')
-    if (freezeError) throw freezeError
-  }
-  const { error } = await supabase.from('recipe_ingredient_library').delete().eq('id', id)
-  if (error) throw error
-}
