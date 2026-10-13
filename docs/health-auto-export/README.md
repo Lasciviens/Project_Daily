@@ -26,7 +26,7 @@ each one after importing** (see caveats below) rather than trusting it blindly.
   preference**. With Time Grouping on "Default", Health Auto Export exports raw
   overlapping samples: starting a Fitness-app workout makes HealthKit hold
   overlapping step samples, and one stream delivered the same minutes twice as
-  float-noise twins (20/07/2026 showed **15,362** steps against Apple's own
+  float-noise twins (20.07.2026 showed **15,362** steps against Apple's own
   **5,731**). With **Hours** the app genuinely aggregates and Apple's own
   overlap-dedup is applied at the source. (This also corrects the older
   "Health Auto Export ignores Summarize" note.)

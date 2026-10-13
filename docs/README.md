@@ -20,6 +20,7 @@ board → `codex-shortcuts.md`.
 | [platform-shell.md](platform-shell.md) | The app shell, routes, PWA updates (installed in the background, applied at a quiet moment) and the device-verified iOS gotchas. | 13.10.2026 |
 | [design/THEME.md](design/THEME.md) | The binding UI guide: tokens, typography, primitives, layout (PageBoard), popups, the entity-modal system, the hook/query/mutation conventions. Read before any UI change. | 13.10.2026 |
 | [backend/edge-functions.md](backend/edge-functions.md) | Every edge function: purpose, auth, JWT setting, and how the automatic deploy treats them. | 13.10.2026 |
+| [backend/database.md](backend/database.md) | Database conventions in depth: migrations, RLS and the owner lock, audit triggers, linked-entity sync, missing-table fallbacks. The short rules are `.claude/rules/database.md`. | 13.10.2026 |
 | [backend/environment.md](backend/environment.md) | Every variable and secret: client build variables, Edge Function secrets, Vault, the GitHub `production` environment. | 13.10.2026 |
 | [decisions.md](decisions.md) | Decisions not to revisit, with the reason for each. | 13.10.2026 |
 | [integrations/](integrations) | **Rule:** every NEW external API gets `integrations/<service>.md` — auth, endpoints, fields read and written, fields deliberately unused, traps, the date it was checked. No files yet; older APIs are added only when needed. | 13.10.2026 |
@@ -42,10 +43,10 @@ board → `codex-shortcuts.md`.
 
 | File | Purpose | Last verified |
 |---|---|---|
-| [coord/README.md](coord/README.md) | The two-channel append-only Codex ⇄ Claude protocol: message format, who writes where, and the loop. | 23.07.2026 |
+| [coord/README.md](coord/README.md) | The two-channel append-only Codex ⇄ Claude protocol: message format, who writes where, and the loop. | 13.10.2026 |
 | [coord/to-codex.md](coord/to-codex.md) | Claude → Codex append-only log. Claude writes only; newest entry on top. | 11.10.2026 |
 | [coord/to-claude.md](coord/to-claude.md) | Codex → Claude append-only log. Codex writes only; never edit it. | 24.07.2026 |
-| [codex-shortcuts.md](codex-shortcuts.md) | The stable spec + task board for Codex, who owns `scripts/iphone-shortcuts/`: the role split, the 6 rules, and the C-numbered tasks with statuses. | 11.10.2026 |
+| [codex-shortcuts.md](codex-shortcuts.md) | The Claude ⇄ Codex task board: roles (both AIs work anywhere, one AI per file), the rules, what each AI is working on, and the C-numbered tasks with statuses. | 13.10.2026 |
 
 ## Reference — verified, durable
 
@@ -77,7 +78,7 @@ board → `codex-shortcuts.md`.
 
 - Every new doc must be added to this index with a "last verified" date (DD.MM.YYYY).
 - Every new external API gets `integrations/<service>.md` in the same change that first calls it.
-- Repo artifacts are English-only (Turkish appears only inside on-phone user-facing strings).
+- Repo artifacts are English-only (`AGENTS.md`); the on-phone Turkish text still in the Shortcuts is task C9.
 - **Don't add phase trackers, DoD checklists or PM-approval docs** — process scaffolding gets
   deleted once the work ships; only durable facts stay.
 - When a doc is superseded, re-home its durable facts (into `AGENTS.md`, `features/` or the

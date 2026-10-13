@@ -22,7 +22,7 @@
 - **iOS standalone short-viewport bug (reported: the tab bar floated ~a status bar above the screen bottom on every page):** in the installed PWA the layout viewport can be short by the top safe area, so `100dvh` and `fixed bottom-0` stop early. `app/iosViewportFix.ts` (standalone only) sets `--ios-viewport-gap` = screen height − the height a `position: fixed; inset: 0` probe actually covers (0–80px, else 0; re-measured on resize, return from background and `pageshow`). `innerHeight` was tried first and is wrong: it can stay short while fixed layout is already full height, which pushed the bar below the screen; `#root` adds it to its height and the phone tab bar (`BottomTabBar`) sits at `bottom: calc(-1 * gap)`. A no-op in the browser. Not yet confirmed on a device.
 - **Never `overflow-x: hidden` on html/body** (real regression, 07.10.2026): it makes body a scroll container (the other axis computes to auto) and in the installed iOS app the tab bar and every bottom sheet floated a status bar above the screen bottom. The sideways-pan guard is `<main>`'s `overflow-x-hidden` (AppShell) plus `#root { overflow-x: clip }` (clip makes no scroll container).
 - **CommandBar (⌘K) has a phone trigger**: `MobileHeader`'s Search icon button (⌘K can't be typed on a phone).
-- **Motion test set** (THEME §7): card lift, count-ups, ring sweeps, check pop, row arrival and toast fade — always on (the Animations setting was removed 2026-09-29), never with reduced motion (a global reduced-motion rule also stops the base slides; JS motion checks `useMotion()`).
+- **Motion test set** (THEME §7): card lift, count-ups, ring sweeps, check pop, row arrival and toast fade — always on (the Animations setting was removed 29.09.2026), never with reduced motion (a global reduced-motion rule also stops the base slides; JS motion checks `useMotion()`).
 
 **iOS platform limits — hard constraints for anything "while the app is closed"** (full rationale: `docs/iphone-web-integration.md`):
 - **No background execution at all.** PWAs get no Background/Periodic Sync; Shortcuts has no daemon. Unattended runs need a trigger (time/location/NFC) and **iOS forces a visible banner on every auto-run automation**. Server→phone delivery must go through Web Push.
@@ -45,9 +45,9 @@
 /#/work       → WorkPage
 /#/projects   → ProjectsPage
 /#/training   → TrainingPage
-/#/health     → HealthPage   (Apple Health; a Training tab until 2026-09-27)
+/#/health     → HealthPage   (Apple Health; a Training tab until 27.09.2026)
 /#/games      → TestGamePage (inside AppShell, fullHeight; ?section=&platform= in the address)
-/#/games-legacy → redirects to /#/games (the old Games page was deleted 2026-09-26; /#/games-demo and /#/games-cover-demo redirect too)
+/#/games-legacy → redirects to /#/games (the old Games page was deleted 26.09.2026; /#/games-demo and /#/games-cover-demo redirect too)
 /#/wishes     → WishesPage   (reached from the phone More sheet — the 5 tab-bar slots are full — and the sidebar)
 /#/books      → BooksPage    (More sheet + sidebar; ?tab=library|reading|send)
 /#/developer  → DeveloperPage (sidebar footer, More sheet, Settings ⚙ menu)
@@ -59,13 +59,13 @@ Everything except `/login` and `/reset-password` is protected by `SessionGuard` 
 
 **Nav grouping** (all in `src/app/navigation.ts`; routes are stable so deep links never break): sidebar groups **Overview** (Home) · **Life** (Personal, Food, Shop, Training, Health, Wishes) · **Media & play** (Media, Games) · **Work** (Work, Projects), Developer in the sidebar footer. Phone tab bar = 5 slots (Home · Personal · **Food** · Media · Training) + More; **Wishes leads the More sheet** (`moreFirst`), Health follows it (a wish list that has to be hunted for is dead in three weeks). Shop is its own entry (sidebar + More sheet, owner 06.10.2026); the old Food | Shop switch is gone. Daily renders no group tabs.
 
-**Password reset (real bug, fixed):** the app had no recovery flow — Supabase's reset email redirected back with a recovery token, but nothing read it or showed a "set new password" form, so the link silently did nothing (a very common gap — see the `gotrue-js`/`auth-js` issues about apps not handling `PASSWORD_RECOVERY`). Fixed: LoginPage's "Forgot password?" → `requestPasswordReset()` (`security/supabaseClient.ts`) calls `supabase.auth.resetPasswordForEmail(email, { redirectTo })` pointing at `#/reset-password`; `ResetPasswordPage` listens for the `PASSWORD_RECOVERY` auth event (plus a session-check fallback in case the event fires before the listener attaches). **One-time manual step:** the redirect URL (GitHub Pages URL + `http://localhost:5173/#/reset-password`) must be added to Supabase Dashboard → Authentication → URL Configuration → Redirect URLs, or Supabase silently refuses to send the token.
+**Password reset (real bug, fixed):** the app had no recovery flow — Supabase's reset email redirected back with a recovery token, but nothing read it or showed a "set new password" form, so the link silently did nothing (a very common gap — see the `gotrue-js`/`auth-js` issues about apps not handling `PASSWORD_RECOVERY`). Fixed: LoginPage's "Forgot password?" → `requestPasswordReset()` (`security/supabaseClient.ts`) calls `supabase.auth.resetPasswordForEmail(email, { redirectTo })` pointing at `#/reset-password`; `ResetPasswordPage` listens for the `PASSWORD_RECOVERY` auth event (plus a session-check fallback in case the event fires before the listener attaches). **One-time manual step:** the redirect URLs (`https://lasciviens.github.io/Project_Daily/#/reset-password` and `http://localhost:5173/Project_Daily/#/reset-password` — the app sends `origin + BASE_URL + #/reset-password`) must be added to Supabase Dashboard → Authentication → URL Configuration → Redirect URLs, or Supabase silently refuses to send the token.
 
 ---
 
 ## Auth
 
-LoginPage + password recovery (`/reset-password`, see Routes)
+LoginPage + password recovery (`/reset-password`, see Routes above)
 
 ## Command bar
 

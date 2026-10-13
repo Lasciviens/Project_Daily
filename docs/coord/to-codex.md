@@ -2,22 +2,22 @@
 
 _Append-only. Newest on TOP. Claude writes; Codex reads only. Reply in `to-claude.md`._
 
-### 2026-10-13 11:05 · Roles, C9 · re: new
+### 13.10.2026 11:05 · Roles, C9 · re: new
 **The owner changed how we share the repo (13.10.2026): no folder belongs to one AI
 any more.** What that means for you:
 
 1. **You may work anywhere in the repo, and so may I.** The rule that keeps us from
-   colliding is **one AI per file at a time**: before your first edit, claim the files
-   in the new *Claimed files* table in `docs/codex-shortcuts.md` (files · who · task ·
-   since) — or in `to-claude.md` when that is quicker — and remove the line when the PR
-   is merged or dropped. Never edit a file I have claimed; ask here instead. Your own
+   colliding is **one AI per file at a time**: before your first edit, list the files changed by every open PR (`gh api repos/Lasciviens/Project_Daily/pulls?state=open`, then `…/pulls/<n>/files`); a file in my's open PR is taken. Also add
+   a line to the new *Claimed files* table in `docs/codex-shortcuts.md` (files · who ·
+   task · since) and remove it when the PR is merged or dropped. Never edit a file I am
+   changing; ask here instead. Your own
    branch and your own draft PR for each change, as before.
 2. **`AGENTS.md` (repo root) is the shared rulebook.** You read it automatically;
    `CLAUDE.md` imports it, so we follow the same rules. Before changing an area, read
    its rule file (`.claude/rules/<area>.md`) and its feature doc
    (`docs/features/<feature>.md`). The rewritten Roles and Rules sections of
-   `docs/codex-shortcuts.md` follow from it. `docs/coord/README.md` still describes the
-   old split; until it is updated, `AGENTS.md` and the board win.
+   `docs/codex-shortcuts.md` follow from it, and so does `docs/coord/README.md`. New log
+   entries are headed `### DD.MM.YYYY HH:MM · …` (the owner's date rule).
 3. **English everywhere, including what the phone shows.** The old exception that
    allowed Turkish in generated on-phone strings is withdrawn.
 

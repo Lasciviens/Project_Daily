@@ -13,7 +13,7 @@ Settings menu, Strava inside the Training tab, PlayStation inside the Games tab 
 connected?" had no single answer and reconnecting meant remembering which page happened to own
 it. Moved on explicit user request.
 
-**One narrow exception (2026-09-25, user's own call): RE-authenticating an
+**One narrow exception (25.09.2026, user's own call): RE-authenticating an
 already-configured integration may also be offered at the point of failure.**
 When PlayStation's stored session expires, the npsso paste form renders inside
 the Games tab's expired panel as well as in Connections. This serves the rule's

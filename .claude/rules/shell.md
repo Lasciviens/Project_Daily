@@ -15,7 +15,7 @@ Background: `docs/platform-shell.md`.
 - Never `overflow-x: hidden` on html/body; `#root` uses `overflow-x: clip`.
 - View-transition names are unique per element; all view-transition CSS and every rule for runtime-only class names live outside `@layer`.
 - `.glass-chrome`: write only the standard `backdrop-filter` (autoprefixer adds the Safari one).
-- The tab bar wrapper is `h-full` only on routes flagged `fullHeight`; everywhere else it stays auto-height.
+- AppShell's page (Outlet) wrapper is `h-full` only on routes flagged `fullHeight` (today `/games`); everywhere else it stays auto-height, or tall pages hide their last card under the tab bar.
 - iOS zoom is prevented by `maximum-scale=1` + 16px text controls on touch; never per field.
 - The service worker uses `registerType: 'prompt'`: a new version waits and reloads only in the background or after 10 idle minutes, never with a dialog open or text in a field (`swUpdateRules.ts`). It caches no Supabase responses.
 - A new page goes in `src/app/pages.ts` (and `PRELOAD_ORDER`) and `src/app/navigation.ts`.

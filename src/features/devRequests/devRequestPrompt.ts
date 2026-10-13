@@ -130,7 +130,7 @@ export function buildClaudePrompt(requests: readonly PromptRequest[]): string {
   })
   const example = one ? '1.2' : 'Request 2 · 1.2'
   const rules = [
-    'Read CLAUDE.md and docs/design/THEME.md first.',
+    'Read AGENTS.md (CLAUDE.md imports it) and docs/design/THEME.md first.',
     ...(anyMarks ? ['A quoted name with [n] (e.g. “Water card” [1]) is a spot I pointed at in the live app. Footnote [n], [Picked …] and [Page context] blocks give the route with its query, the component and file that rendered it, and the exact visible labels — search the code for those labels.'] : []),
     ...(anyFixed ? ['Points marked [already fixed] work now: leave that code alone.'] : []),
     ...(anyMoved ? ['Skip points marked [moved …]: another request covers them.'] : []),

@@ -12,9 +12,10 @@
   both work anywhere in the repo. Before that date Codex owned `scripts/iphone-shortcuts/`
   and nothing else, and Claude everything else; older entries in the logs still talk that
   way.
-- **What prevents clashes: one AI per file at a time.** Claim the files you will change in
-  *Claimed files* below (or in your own coordination log) **before** starting, and release
-  them when the PR is merged or dropped. Each AI works on its own branch and its own PR.
+- **What prevents clashes: one AI per file at a time.** A claim written here lives on your
+  branch until it merges, so the check that counts is the open PRs: before your first edit, list the files changed by every open PR (`gh api repos/Lasciviens/Project_Daily/pulls?state=open`, then `…/pulls/<n>/files`); a file in the other AI's open PR is taken. Also
+  note the files you will change in *Claimed files* below (or in your own log) so the
+  owner sees them. Each AI works on its own branch and its own PR.
 - **`AGENTS.md`** (repo root) is the shared rulebook both follow — Codex reads it
   automatically, and `CLAUDE.md` imports it. Before changing an area, read its rule file
   (`.claude/rules/<area>.md`) and its feature doc (`docs/features/<feature>.md`).
@@ -24,9 +25,9 @@
 
 ## Rules both AIs follow
 
-1. **Claim before you change.** One AI per file at a time: add a line to *Claimed files*
-   (files, who, task, date) before the first edit and remove it when the PR is merged or
-   dropped. Never edit a file the other AI has claimed — ask in your log instead. If your
+1. **Claim before you change.** One AI per file at a time: before your first edit, list the files changed by every open PR (`gh api repos/Lasciviens/Project_Daily/pulls?state=open`, then `…/pulls/<n>/files`); a file in the other AI's open PR is taken. Add a line to
+   *Claimed files* (files, who, task, date) and remove it when the PR is merged or dropped.
+   Never edit a file the other AI is changing — ask in your log instead. If your
    task needs a change in such a file (for example a new `phone-gateway` **action** or
    response **field** for a Shortcut), say so in your log and wait for the other side, or for
    the claim to be released; never invent the other half.
@@ -211,6 +212,6 @@ back-and-forth lives in two append-only logs so messages don't tangle:
 - **`coord/to-claude.md`** — Codex → Claude (reports/questions/blockers). Codex
   writes, Claude reads and updates the task statuses above.
 - Never edit the other side's log. Newest entry on top, headed
-  `### YYYY-MM-DD HH:MM · <task id> · re: <prior|new>` (that header format is the
-  protocol). A new entry in the other log with `re:` pointing at yours IS the reply.
+  `### DD.MM.YYYY HH:MM · <task id> · re: <prior|new>` (that header format is the
+  protocol; entries before 13.10.2026 used `YYYY-MM-DD`). A new entry in the other log with `re:` pointing at yours IS the reply.
   A claim may be made in your own log instead of the table above when that is quicker.

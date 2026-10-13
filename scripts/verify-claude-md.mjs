@@ -6,7 +6,8 @@
 //   - the guide and the rule files are English (no Turkish-only letters);
 //   - every .claude/rules/*.md has a `paths:` frontmatter list, and each glob
 //     matches at least one tracked file;
-//   - every repo path the guide or a rule file names in backticks exists.
+//   - every file the guide, a rule file, an agent file or the short docs
+//     name in backticks exists.
 import { execFileSync } from 'node:child_process'
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
@@ -78,14 +79,23 @@ for (const [path, text] of docs) {
   check(bad < 0, `${path}:${bad + 1}: Turkish letters — the guide is English`)
 }
 
-// Repo paths named in backticks must exist. Placeholders (<x>), globs and
-// line references (file.ts:12) are skipped or trimmed.
-const PATH_RE = /`((?:src|docs|scripts|supabase|public|\.claude|\.github)\/[^`\s]*)`/g
-for (const [path, text] of docs) {
-  for (const m of text.matchAll(PATH_RE)) {
-    let p = m[1].replace(/:\d+$/, '').replace(/#.*$/, '')
-    if (/[<*{]/.test(p)) continue
-    check(existsSync(join(root, p)), `${path}: names \`${p}\`, which does not exist`)
+// Files named in backticks must exist: a repo path (`src/…`) as written, a
+// shorter name (`todo/taskRules.ts`, `useTodos.ts`) as the end of some tracked
+// path. Placeholders (<x>), globs and line references (file.ts:12) are skipped
+// or trimmed. Besides the guide and the rule files, the agent files and the
+// short docs the guide points to are checked too.
+const extra = ['docs/decisions.md', 'docs/deploy-checklist.md', 'docs/features/README.md']
+for (const f of readdirSync(join(root, '.claude/agents')).filter(f => f.endsWith('.md'))) extra.push(`.claude/agents/${f}`)
+const pathDocs = [...docs, ...extra.filter(f => existsSync(join(root, f))).map(f => [f, read(f)])]
+const ROOTED = /^(?:src|docs|scripts|supabase|public|\.claude|\.github)\//
+const FILE = /^[\w.@-]+(?:\/[\w.@-]+)*\.(?:ts|tsx|mjs|cjs|js|sql|css|md|json|toml|yml|lua|sh|py)$/
+const NOT_IN_REPO = /^(?:settings\/|\/|\.kobo\/|statistics\.sqlite3|KoboReader\.sqlite)/
+for (const [path, text] of pathDocs) {
+  for (const m of text.matchAll(/`([^`\s]+)`/g)) {
+    const p = m[1].replace(/:\d+(?:-\d+)?$/, '').replace(/#.*$/, '')
+    if (/[<*{]|NNN/.test(p) || NOT_IN_REPO.test(p)) continue
+    if (ROOTED.test(p)) check(existsSync(join(root, p)), `${path}: names \`${p}\`, which does not exist`)
+    else if (FILE.test(p)) check(tracked.some(t => t === p || t.endsWith('/' + p)), `${path}: names \`${p}\`, which matches no file`)
   }
 }
 

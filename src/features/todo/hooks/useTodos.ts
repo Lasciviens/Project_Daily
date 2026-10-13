@@ -341,7 +341,7 @@ export function useWorkTasks() {
 // Full pull from Google Tasks (every list, real pagination, tombstones
 // included) — reconciles local against Google's true state rather than
 // only ever importing genuinely-new tasks. Was unreachable from any UI
-// before 20/08/2026 (a "known side effect" of the old To-Do
+// before 20.08.2026 (a "known side effect" of the old To-Do
 // drawer's removal); wired up via GoogleTasksSyncButtons.
 export function useSyncFromGoogleTasks() {
   return useMutationWithFeedback({

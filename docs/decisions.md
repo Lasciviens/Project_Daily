@@ -21,7 +21,6 @@ Settled calls, one line each: what was decided, why, and where the full story li
 | Decision | Why | Details |
 |---|---|---|
 | `time_blocks.effective_until` was not added | An end date is a feature with its own UI; a column with no reader or writer is speculative schema | `docs/features/planning-calendar.md` |
-| Google Tasks: only the default list; no subtasks, manual order or links | Our domains/sections don't map onto Google's lists; `tasks` has no parent concept | `docs/features/planning-calendar.md` |
 | ES-DE sync is its own function and secret, not a `phone-gateway` action | Revoking the handheld must never revoke the iPhone | `docs/backend/edge-functions.md` |
 | Steam wishlist and PS Store wishlist are not built | No official endpoint | `docs/features/games.md` |
 | PlayStation playtime and trophies stay two views | Sony keys them by different ids; bridging a whole library costs one call per 5 games | `docs/features/games.md` |

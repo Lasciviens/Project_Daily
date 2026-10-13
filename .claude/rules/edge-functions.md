@@ -17,7 +17,7 @@ Each function's purpose, auth and secrets: `docs/backend/edge-functions.md` · s
 - Secrets come from `Deno.env.get(…)`. `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` are injected by the platform. A cron job reads its secret from Vault inside the SQL job; the function reads the same value from its environment.
 - CORS: allow the origin, list every custom header in `Access-Control-Allow-Headers`, answer the OPTIONS preflight.
 - Keys go in headers; if the API demands the URL, use `fetchHidingUrl` so an error names the service, not the URL. A fetch of a URL someone supplied goes through `isPrivateHost` and re-checks every redirect.
-- Imports pinned to exact versions (`npm:@supabase/supabase-js@2.107.0` style), never `@2`/`^2`.
+- Imports pinned to exact versions (`https://esm.sh/@supabase/supabase-js@2.107.0`, `npm:psn-api@2.18.1`, `npm:web-push@3.6.7`), never `@2`/`^2`.
 - Duplicated code is deliberate and must change together:
   - The Hevy upsert logic is inlined in `hevy-sync`, `hevy-initial-sync`, `hevy-incremental-sync` and `hevy-api` — change all four.
   - Sections marked GENERATED (`// <ss-shared>`, Trakt plans, `readingSync`/`opdsFeed`) are edited at their `src/` source and regenerated with `scripts/sync-*-shared.mjs`.

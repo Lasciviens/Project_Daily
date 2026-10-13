@@ -22,7 +22,7 @@ split into **two append-only logs + one stable spec**:
 Each entry:
 
 ```
-### YYYY-MM-DD HH:MM · <topic / task id, e.g. C1> · re: <prior entry date or "new">
+### DD.MM.YYYY HH:MM · <topic / task id, e.g. C1> · re: <prior entry date or "new">
 <body>
 ```
 

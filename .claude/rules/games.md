@@ -3,6 +3,7 @@ paths:
   - "src/features/games/**"
   - "supabase/functions/screenscraper-*/**"
   - "supabase/functions/esde-*/**"
+  - "scripts/*esde*"
   - "supabase/functions/steam-api/**"
   - "supabase/functions/psn-api/**"
   - "supabase/functions/igdb-api/**"

@@ -6,6 +6,10 @@ paths:
   - "src/features/todo/api/google*"
   - "supabase/functions/google-tasks-sync/**"
   - "supabase/functions/calendar-*/**"
+  - "src/features/daily/hooks/useSchedule.ts"
+  - "src/features/daily/components/DayAgenda*"
+  - "src/features/daily/components/dayAgendaProjection.ts"
+  - "src/features/todo/hooks/useTodos.ts"
 ---
 # Planning, schedule and Google rules
 

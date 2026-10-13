@@ -22,7 +22,7 @@ then report what the owner would object to, ranked by how much it would annoy or
   files or dependencies the task did not need. When a request could mean materially different
   work (only the screen, or also the stored data), one short question should have come first.
 - **Simple, clean, compact; mobile first.** Check the 402 px phone width first. Every
-  primary control needs a 44 px tap target. No horizontal page scroll. No filler lines like
+  interactive element needs a 44 px tap target on touch. No horizontal page scroll. No filler lines like
   "showing results for…". Nothing important hidden behind extra taps. They prefer one
   clear action to several half-useful ones.
 - **Automatic over manual.** They hate typing long values on the Kobo or doing chores by

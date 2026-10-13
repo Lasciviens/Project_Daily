@@ -3,6 +3,8 @@ paths:
   - "src/features/recipes/**"
   - "src/features/daily/**/*Water*"
   - "src/features/daily/**/*Nutrition*"
+  - "src/features/daily/hooks/useDayTargets.ts"
+  - "src/features/daily/hooks/useQuickMeals.ts"
   - "src/features/health/goal/**"
   - "supabase/functions/food-search/**"
 ---

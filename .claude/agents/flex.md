@@ -45,9 +45,8 @@ document never scrolls; a page never creates its own full-height scroller unless
 
 ## Touch and popups
 
-- Every primary interactive element ≥ **44px** tall (`min-h-[44px]`; the `src/shared/ui` primitives
-  already do it). A smaller secondary control on a dense grid only when the item's own tap target is
-  ≥ 44px.
+- Every interactive element ≥ **44px** tall on touch (`min-h-[44px]`; the `src/shared/ui` primitives
+  already do it).
 - No hover-only action; give it a visible tap path. No long-press-only actions.
 - Text-entry controls are 16px on touch (iOS auto-zoom is disabled app-wide by that rule — never
   "fix" it per field).

@@ -303,7 +303,7 @@ which door the write came through.
   SOFT-CANCELED, it did not delete** (migration 047): when a plan's block was
   deleted, the linked task became `status='cancelled'` (reversible, visible),
   never a hard `DELETE`.
-  **⚠️ RETIRED by migration 077 (2026-08-22):** `block_delete_cascades_task`
+  **⚠️ RETIRED by migration 077 (22.08.2026):** `block_delete_cascades_task`
   and its sibling `block_task_date_sync` (the trigger that kept
   `tasks.due_date`/`due_time` and `time_blocks.date`/`start_time`
   bidirectionally equal) are now `enabled=false` with a "RETIRED" description
