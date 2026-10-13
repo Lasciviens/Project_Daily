@@ -1,6 +1,6 @@
 // The Kobo plugin's sync contract — pure and import-free, GENERATED into
 // supabase/functions/kobo-sync by scripts/sync-kobo-shared.mjs and verified by
-// scripts/verify-reading-sync.cjs (docs/kobo/PLAN.md §4.1, §4.2).
+// scripts/verify-reading-sync.cjs (docs/kobo/REFERENCE.md §4.1, §4.2).
 //
 // A request carries the books it mentions (metadata from Nickel's database and
 // KOReader's statistics/sidecars) and KOReader's page_stat_data rows grouped by

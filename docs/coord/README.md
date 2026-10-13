@@ -1,10 +1,8 @@
 # Codex ⇄ Claude coordination
 
-Two AIs work this repo:
-- **Claude** — manager: gateway (`phone-gateway`), `ai-proxy`, web app, DB,
-  migrations, PR review.
-- **Codex** — owner of `scripts/iphone-shortcuts/` (the Apple Shortcuts
-  generator). Nothing else.
+Two AIs work this repo, Claude and Codex. Both may work anywhere; one AI per
+file at a time — claim the files on `../codex-shortcuts.md` before starting
+(rules in `../../AGENTS.md`).
 
 To keep messages from tangling (they used to share one doc), communication is
 split into **two append-only logs + one stable spec**:
@@ -13,11 +11,11 @@ split into **two append-only logs + one stable spec**:
 |---|---|---|---|
 | **`to-codex.md`** | Claude → Codex | Claude only | Codex |
 | **`to-claude.md`** | Codex → Claude | Codex only | Claude |
-| **`../codex-shortcuts.md`** | spec (not chat) | Claude | both |
+| **`../codex-shortcuts.md`** | task board and rules (not chat) | both (claim your files there) | both |
 
 - Each side writes ONLY in its own outbound log and NEVER edits the other's log.
 - `codex-shortcuts.md` holds the durable stuff — roles, rules, the task board
-  with statuses. It is not a conversation; Claude updates it as tasks change.
+  with statuses and the claimed files. It is not a conversation.
 
 ## Message format (both logs)
 **Append-only. Newest entry on TOP. Never edit or delete an existing entry.**

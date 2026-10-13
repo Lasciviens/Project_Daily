@@ -1,4 +1,4 @@
-// kobo-sync — Send to Kobo, step 1 (docs/kobo/PLAN.md §8.2, roadmap Phase 2).
+// kobo-sync — Send to Kobo, step 1 (docs/kobo/REFERENCE.md §8.2, roadmap Phase 2).
 //
 // Serves an OPDS 1.2 (Atom) catalogue that KOReader adds once as a catalogue
 // with "Sync catalog" ticked; "Sync all catalogs" then downloads every new
@@ -45,7 +45,7 @@ const COVER_TYPES: Record<string, string> = { 'image/jpeg': 'jpg', 'image/png': 
 // ── opdsFeed.ts ──
 // The Send to Kobo OPDS feed — pure and import-free, GENERATED into
 // supabase/functions/kobo-sync by scripts/sync-kobo-shared.mjs and verified by
-// scripts/verify-kobo-feed.cjs. Rules (docs/kobo/PLAN.md §8.2), read from
+// scripts/verify-kobo-feed.cjs. Rules (docs/kobo/REFERENCE.md §8.2), read from
 // KOReader's opdsparser.lua / opdsbrowser.lua:
 // - Atom XML only (OPDS 1.2), double-quoted attributes, the five basic entities.
 // - Every link absolute (KOReader drops a query string on relative links).
@@ -212,7 +212,7 @@ function parseRoute(pathname: string): Route | null {
 // ── readingSync.ts ──
 // The Kobo plugin's sync contract — pure and import-free, GENERATED into
 // supabase/functions/kobo-sync by scripts/sync-kobo-shared.mjs and verified by
-// scripts/verify-reading-sync.cjs (docs/kobo/PLAN.md §4.1, §4.2).
+// scripts/verify-reading-sync.cjs (docs/kobo/REFERENCE.md §4.1, §4.2).
 //
 // A request carries the books it mentions (metadata from Nickel's database and
 // KOReader's statistics/sidecars) and KOReader's page_stat_data rows grouped by
@@ -1618,7 +1618,7 @@ async function touchState(db: Db, userId: string, patch: Record<string, unknown>
 
 const BOOK_COLUMNS = 'id, koreader_md5, title, author, series, series_index, language, isbn, publisher, description, page_count, file_path, kobo_content_id, read_status, rating, started_at, finished_at, progress_pct, last_read_at, read_seconds, read_pages, device_status, device_rating, on_device, kind, file_size, subjects'
 
-// ── The plugin's sync (docs/kobo/PLAN.md §4.1) ──────────────────────────────
+// ── The plugin's sync (docs/kobo/REFERENCE.md §4.1) ──────────────────────────────
 async function handleSync(db: Db, userId: string, body: SyncBody) {
   const nowSec = Math.floor(Date.now() / 1000)
   const books = body.books ?? []

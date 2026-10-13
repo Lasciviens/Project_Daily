@@ -1,17 +1,27 @@
 # Data sources and known limitations
 
-## RPE/RIR — deliberately not a dependency
+## RPE/RIR — shown, deliberately never a decision input
 
-`hevy_sets.rpe` exists as a column but is confirmed (per `CLAUDE.md`'s own
-live-data check) to be 100% null in this app's real data. The engine:
+RPE is logged now: sets rated in Hevy arrive in `hevy_sets.rpe` (synced all
+along — the column was empty only while nothing was rated), and the app
+shows it wherever a logged set appears (" @ RPE 8/9/10", one formatter:
+`setFormat.ts` `rpeSuffix`). Inside the engine it is **display only**:
 
-- Never reads `rpe` anywhere in `progress-engine/`.
-- Never caps, lowers, or otherwise changes `evidence.recommendation` based
-  on its presence or absence.
-- Never displays an "effort not tracked" caveat.
+- `normalize.ts` copies it onto `CanonicalSet.rpe` and `format.ts` prints it
+  when a caller asks (`formatSessionSets(…, { rpe: true })` — Last time,
+  session lists, the chart tooltip, the coach). No other engine function
+  reads it.
+- It never caps, lowers, or otherwise changes a decision, a next target or
+  `evidence.recommendation`, whether a set was rated or not, and there is no
+  "effort not tracked" caveat.
+- Outside the engine it is context only: Training → Next adds an
+  informational "near your limit" (average ≥ 9.5) or "room to push" (≤ 7)
+  note that never changes the target, and the coach snapshot carries the
+  same numbers.
 
-If RPE is logged in the future, it may only ever appear as optional,
-clearly-separate context — never feeding a decision or an evidence level.
+Making RPE a decision input (for example capping "Ready to increase" on a
+session rated 10) would be a decision change: bump `ALGORITHM_VERSION` and
+record it in `CHANGELOG.md`.
 
 ## `PROGRAM_CHANGED` — reserved, not implemented
 
@@ -73,7 +83,8 @@ increment only (see `ALGORITHM.md`).
 
 - **Failure sets are real working sets.** Verified against two independent,
   already-shipped statements in this repo (`progressAggregate.ts`'s own
-  comment and `CLAUDE.md`'s Training → Progress documentation), not a
+  comment and the Training → Progress documentation, then in `CLAUDE.md`,
+  now in `docs/features/training.md`), not a
   fresh guess and not a live Hevy API call (no such access in the
   authoring session).
 - **`hevy_workouts.title` / `hevy_sets.index`** — verified against the
@@ -91,7 +102,8 @@ across many prior sessions: no Supabase login is available in the
 authoring sandbox. Verification in this round consisted of:
 
 1. The full pure-function test suite (`scripts/verify-progress-engine.cjs`,
-   72 assertions) against the real, un-mocked engine code.
+   72 assertions at 2.0.0; 329 as of 13.10.2026) against the real, un-mocked
+   engine code.
 2. `npx tsc --noEmit`, `npm run build`, and `eslint` on every touched file.
 3. A temporary, local-only harness (not committed) that rendered the REAL
    `ProgressOverview`/`ExerciseDecisionTable` production components against

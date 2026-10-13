@@ -1,9 +1,11 @@
 # Kobo integration — plan (reading tracker, book delivery, fun)
 
-> **Temporary working document.** Same role as `docs/progress-redesign/PLAN.md` had: it
-> exists so the plan survives between sessions while the feature is being built and
-> critiqued. Once the feature ships and CLAUDE.md carries a "Books Feature Detail"
-> section, **delete this file** — CLAUDE.md is the settled record, this is not.
+> **Archived 13.10.2026:** Phases 0–4 and rounds 2–4 are built (rounds 3–4, plugins 1.2–1.3, are documented in [`docs/features/books.md`](../features/books.md); plugin 1.4 in [`docs/kobo/SETUP.md`](../kobo/SETUP.md)); the facts that stay useful, the firmware rule, Phases 5–6 and the §14 ideas are in [`docs/kobo/REFERENCE.md`](../kobo/REFERENCE.md), under the same section numbers — this file is the plan as it was written.
+
+> **Temporary working document.** It existed so the plan survived between sessions while
+> the feature was being built and critiqued. Once the feature ships and CLAUDE.md carries a
+> "Books Feature Detail" section, **delete this file** — CLAUDE.md is the settled record,
+> this is not.
 >
 > Status: **research complete, nothing built.**
 > - **Fourth pass (2026-09-29).** Scope widened, at the owner's request, from the reading
@@ -1622,7 +1624,7 @@ patches, and the **Bookshelf sleep screen** patch
 ([ameyrk99/koreader-bookshelf-screensaver](https://github.com/ameyrk99/koreader-bookshelf-screensaver),
 AGPL-3.0, commit `3e2b4f11`: recent books as spines that fill like progress bars, the open book
 standing on top). ZenOS, SimpleUI, Menu Customizer and the other extras are not installed; the
-owner will ask for changes if wanted. Install steps: `SETUP-PHASE-3-4.md`.
+owner will ask for changes if wanted. Install steps: `docs/kobo/SETUP.md` (was `SETUP-PHASE-3-4.md`).
 
 ### 9.6 Small delights, zero code
 
@@ -1891,7 +1893,7 @@ Shortcut, as a new C task on `docs/codex-shortcuts.md`.
 
 ### Phase 3 — Books page and library (Claude; medium)
 
-**Built 05.10.2026** together with Phase 4 (setup: `SETUP-PHASE-3-4.md`). Two deliberate
+**Built 05.10.2026** together with Phase 4 (setup: `docs/kobo/SETUP.md`, then `SETUP-PHASE-3-4.md`). Two deliberate
 changes from the text below, both because the plugin exists now:
 - **No browser `sql.js` import.** The plugin reads Nickel's `KoboReader.sqlite` read-only on
   the device (Nickel is not running while KOReader is) and computes `util.partialMD5` itself,

@@ -445,7 +445,7 @@ export const API_REGISTRY: readonly ApiEntry[] = [
   {
     id: 'kobo', name: 'Kobo (KOReader)', provider: 'KOReader on a Kobo Clara BW', category: 'Device', official: true,
     docsUrl: 'https://specs.opds.io/opds-1.2',
-    moreDocs: [{ label: 'KOReader OPDS', url: 'https://koreader.rocks/user_guide/#L1-opdscatalog' }, { label: 'Plan', url: 'https://github.com/Lasciviens/Project_Daily/blob/main/docs/kobo/PLAN.md' }],
+    moreDocs: [{ label: 'KOReader OPDS', url: 'https://koreader.rocks/user_guide/#L1-opdscatalog' }, { label: 'Reference', url: 'https://github.com/Lasciviens/Project_Daily/blob/main/docs/kobo/REFERENCE.md' }],
     purpose: 'The Books page: reading time, progress and the library come from KOReader on the Kobo (our Lasci\'s Board plugin), and books sent from the app download to the Kobo by themselves.',
     transports: ['browser', 'edge', 'device', 'cron'],
     connection: 'The plugin (scripts/kobo/lascisboard.koplugin) posts KOReader statistics rows from a cursor plus the library (Nickel\'s database read-only, sidecars, statistics) to kobo-sync /sync whenever Wi-Fi comes on, and downloads the inbox (/inbox → 10-minute signed URLs → /deliveries/<id>/ack). The browser uploads to the private kobo-inbox bucket; an OPDS 1.2 feed is the fallback. A daily cron deletes files 24 h after download or 7 days unfetched. book-meta fills covers and pages from Nasjonalbiblioteket and Open Library.',

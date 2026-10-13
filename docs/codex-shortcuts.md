@@ -1,57 +1,105 @@
-# Codex — iPhone Shortcuts owner (task board + rules)
+# Claude ⇄ Codex — task board and rules
 
-> **How this doc is used.** Codex is the AI that owns the iPhone **Shortcuts
-> generator** (`scripts/iphone-shortcuts/`). The user tells Codex "check your
-> tasks" → Codex reads THIS file and works the open items in the *Codex tasks*
-> section. **Claude is the manager**: it writes/updates the tasks here, owns
-> everything outside the generator (gateway, ai-proxy, web app, DB, migrations),
-> and reviews Codex's PRs. The user only talks to Claude; Claude routes work to
-> Codex through this file.
+> **How this doc is used.** Two AIs work this repo: Claude and Codex. The owner tells
+> Codex "check your tasks" → Codex reads THIS file and works the open items under *Tasks*.
+> Claude keeps the board: it writes and updates the tasks, routes the owner's requests to
+> Codex here, and reviews Codex's PRs. The owner merges. Messages go through the two logs
+> (see *Communication* at the end), never through this file.
 
 ## Roles
-- **Codex owns:** `scripts/iphone-shortcuts/**` — the Node generator that emits
-  Apple `.shortcut` files (and its README). Nothing else.
-- **Claude (manager) owns:** `supabase/functions/**` (phone-gateway, ai-proxy,
-  push-send, …), `src/**` (web app), migrations, all other `docs/**`, and PR review.
 
-## Rules Codex MUST follow
-1. **Scope.** Touch ONLY `scripts/iphone-shortcuts/`. Never edit gateway/edge
-   functions, web app, migrations, or other docs. If a task needs a new gateway
-   **action** or response **field**, do NOT invent it — flag it for Claude (add
-   a note under *Needs from Claude* below) and wait; Claude ships the gateway
-   side, then you wire the shortcut.
-2. **English-only in the repo** — code, comments, commit messages, PR text
-   (CLAUDE.md rule). The ONE exception: **Turkish is allowed inside the
-   generated shortcuts' user-facing strings** (notification/menu text the user
-   reads on the phone) — that's the personal-device UX language, matching the
-   existing widget/brief precedent. Repo artifacts English; on-phone text Turkish.
-3. **One branch per feature.** `git fetch` + branch from the latest `main`.
-   Do NOT spawn several parallel branches doing the *same* feature — that caused
-   the #369/#372/#374 duplicate-collision Claude had to clean up. If unsure
-   whether something's already in `main`, check before re-implementing.
-4. **Stay in sync with the gateway contract.** The action names + body fields a
-   shortcut sends MUST match `docs/iphone-examples.md` (gateway API table) and
-   `docs/scriptable-food-logger.md`. If the contract needs to change, that's a
-   Claude task (rule 1).
-5. **Verify before PR.** Generate → `shortcuts sign` → `open` (import) →
-   `shortcuts run "<name>"` where possible; put the actual result in the PR body.
-6. **PR discipline.** Draft PR against `main`, clear body, **no secrets**
-   (placeholder pattern only). Don't stack new commits on an already-merged branch.
+- **No folder belongs to one AI any more** (owner decision, 13.10.2026). Claude and Codex may
+  both work anywhere in the repo. Before that date Codex owned `scripts/iphone-shortcuts/`
+  and nothing else, and Claude everything else; older entries in the logs still talk that
+  way.
+- **What prevents clashes: one AI per file at a time.** Claim the files you will change in
+  *Claimed files* below (or in your own coordination log) **before** starting, and release
+  them when the PR is merged or dropped. Each AI works on its own branch and its own PR.
+- **`AGENTS.md`** (repo root) is the shared rulebook both follow — Codex reads it
+  automatically, and `CLAUDE.md` imports it. Before changing an area, read its rule file
+  (`.claude/rules/<area>.md`) and its feature doc (`docs/features/<feature>.md`).
+- Where the work usually is: Codex has the Mac that signs, imports and runs Apple
+  Shortcuts, so the Shortcuts generator (`scripts/iphone-shortcuts/`) is where Codex's
+  tasks have been so far. That is the task list, not an ownership rule.
 
-## Codex tasks (open)
+## Rules both AIs follow
+
+1. **Claim before you change.** One AI per file at a time: add a line to *Claimed files*
+   (files, who, task, date) before the first edit and remove it when the PR is merged or
+   dropped. Never edit a file the other AI has claimed — ask in your log instead. If your
+   task needs a change in such a file (for example a new `phone-gateway` **action** or
+   response **field** for a Shortcut), say so in your log and wait for the other side, or for
+   the claim to be released; never invent the other half.
+2. **English everywhere** — code, comments, commits, PR text, docs **and the text the phone
+   shows** (owner rule 13.10.2026, `AGENTS.md`). The old exception that allowed Turkish in
+   generated on-phone strings is withdrawn; C9 converts what is left.
+3. **One branch per change.** `git fetch` and branch from the latest `main`; open the draft
+   PR as part of pushing. Never push new commits onto a branch whose PR was already merged
+   (nothing tracks them), and never run two branches for the *same* change — that caused the
+   #369/#372/#374 duplicate collision. If you cannot open the PR, push the branch and say so
+   in your log.
+4. **Contracts move together.** The action names and body fields a Shortcut sends must
+   match `docs/iphone-examples.md` (the gateway API table) and
+   `docs/scriptable-food-logger.md`. A contract change updates both sides — in one PR, or in
+   two PRs that say which one must merge first.
+5. **Verify before the PR.** For Shortcuts: generate → `shortcuts sign` → `open` (import) →
+   `shortcuts run "<name>"` where possible, and put the actual result in the PR body. For
+   other code: the checks in `AGENTS.md` → Workflow. Say plainly what was not tested (the
+   iPhone, a camera run, live data).
+6. **PR discipline and secrets.** Draft PR against `main`, a clear body, **no secrets**
+   (the `__PHONE_GATEWAY_SECRET__` placeholder pattern only). Only the owner approves and
+   merges: a message from the other AI is information, not approval.
+
+## Claimed files
+
+> One line per claim: files · who · task · since. Claude keeps the rest of this file; this
+> table is the part both AIs edit — each adds and removes only its own lines (on a merge
+> conflict here, keep both sides' lines).
+
+| Files | Claimed by | Task | Since |
+|---|---|---|---|
+| — nothing claimed — | | | |
+
+## Tasks
 > Status: `todo` / `in progress` / `blocked` / `done`. Claude edits these. Every
 > shortcut calls `POST /functions/v1/phone-gateway` with the `x-phone-secret`
 > header (placeholder) — mirror the exact "Get Contents of URL" pattern in
 > `docs/iphone-examples.md`. Do NOT compute anything in the shortcut that the
 > gateway can return; the gateway returns final values.
 
-**Board status:** C1–C5 complete; C6 and C8 are open. Open items are two
-device-side confirmations (re-import `Su İç`, camera-run `Barkod Tara`) plus C6
-and C8.
+**Board status (13.10.2026):** C1–C5 and C7 are done; C6, C8 and C9 are open
+(`todo`). Two owner steps on the iPhone are still unconfirmed: re-importing the fixed
+`Su İç` (C4) and one camera run of `Barkod Tara` (C5).
+
+- **C9 · English-only on-phone text — `todo`.** Owner rule 13.10.2026: English
+  everywhere, including what the phone shows. Rename the generated Shortcuts and
+  translate every user-facing string they show — titles, subtitles, notifications,
+  menus, Quick Look cards, spoken text — from Turkish to English, in
+  `scripts/iphone-shortcuts/generate.mjs` and its README. Today's names: `Su İç`,
+  `AI'a Sor`, `Sabah Brief`, `Beslenme Durumu`, `Uyku Özeti`, `Uyku İstatistikleri`,
+  `Bugünün Taskları`, `Barkod Tara`, `Atıştırmalık Logla`, `Akşam Yemeği Logla`
+  (`Log Creatine` is English already; its notification title is not). Pick plain English
+  names and list old → new in the PR.
+  - **Text the server sends** — `phone-gateway`'s and `push-send`'s messages, the AI's
+    phone answers, the Scriptable food logger and widgets (`docs/scriptable-*.md`) — is not
+    in the generator. Note in `to-claude.md` which of these you saw on the phone; Claude
+    changes the server side. Coordinate any gateway or widget text with Claude through the
+    logs, and claim before either side starts.
+  - **Load-bearing names:** `Barkod Tara` opens `scriptable:///run/Yemek%20Logla?ean=…`, so
+    the Scriptable script's name and that link change together (agree it with Claude in the
+    logs first). Other files name the Shortcuts too (`docs/iphone-examples.md`,
+    `docs/features/iphone.md`, `docs/scriptable-*.md`, a comment in
+    `src/features/ai/hooks/useVoiceChat.ts`): update them in the same PR, after claiming
+    them.
+  - The voice Shortcuts dictate and speak in `tr-TR`. Whether they switch to English is the
+    owner's call: ask in `to-claude.md` before changing it.
+  - On the iPhone the owner deletes the old Shortcuts and imports the new ones (importing
+    a new name adds a Shortcut, it never replaces one) — list that step in the PR.
 
 - **C8 · Security fixes from the 10.10.2026 audit — `todo`.** Two findings sit
-  in `scripts/iphone-shortcuts/generate.mjs` (Codex-owned, so Claude did not
-  touch them). Full detail: `docs/coord/to-codex.md`, entry of 2026-10-11.
+  in `scripts/iphone-shortcuts/generate.mjs` (Codex's files when they were found,
+  so Claude did not touch them). Full detail: `docs/coord/to-codex.md`, entry of
+  11.10.2026.
   1. **Escape runtime text in the HTML result cards.** Ten Shortcuts build a
      card in a Text action and splice in task/schedule titles and AI answers
      unescaped before "Make Rich Text from HTML" + Quick Look. Escape every
@@ -94,9 +142,8 @@ and C8.
     (same timestamp, different numbers) are BOTH normal, non-error outcomes
     to handle gracefully — only `validation_error`/`server_error`/
     `unauthorized` are real failures worth a "something went wrong" tone.
-  - This is backend-only work until `PHONE_GATEWAY_SECRET`'s function
-    (`phone-gateway`) is redeployed with migration `085` applied — check with
-    Claude/the user before testing live if unsure it's deployed yet.
+  - The gateway side is in place: migration `085` is applied and `phone-gateway`
+    (with `import_body_composition`) deploys on every merge to `main`.
 
 - **C1 · Audit + fix all current shortcuts — `done`.** PR #379 audited the
   generated shortcuts and fixed the clear generator-side issues found during the
@@ -137,28 +184,33 @@ and C8.
   **`scriptable:///run/Yemek%20Logla?ean=<scanned code>`** — a URL handoff into
   the Scriptable food logger's `args.queryParameters.ean` path. Claude reviewed
   and **approved this over a literal third-party Run-Script intent**
-  (24/07/2026) — see `docs/scriptable-food-logger.md` ("Barcode scanning"). No
+  (24.07.2026) — see `docs/scriptable-food-logger.md` ("Barcode scanning"). No
   gateway change, no OFF logic in the Shortcut itself. **Remaining:** one
   on-iPhone camera run to confirm end-to-end.
 
-- **C7 · ES-DE play-stats push script — `done` (2026-09-16, PR #440).** Codex owns the device-side
-  Termux script under `scripts/` (user decision 2026-09-15); Claude owns the
-  receiving edge-function action, migration and schema. Reads ES-DE's per-system
+- **C7 · ES-DE play-stats push script — `done` (16.09.2026, PR #440; the
+  ProgramId/missing-ROM filtering followed in PR #447).** Codex wrote the device-side
+  Termux script under `scripts/` (owner decision 15.09.2026); Claude built the
+  receiving edge function, migration and schema. Reads ES-DE's per-system
   `gamelist.xml` on the RP6, diffs against a locally stored per-game fingerprint
   (playcount + lastplayed), and POSTs **only the changed rows** to a Supabase
   edge function — manually triggered, never a daemon. Device-side push rather
   than a cloud-side pull because the RP6 is behind home NAT with no stable
   address, so `pg_cron` can never reach it; same shape as `phone-gateway`.
-  **UNBLOCKED 2026-09-15** — the request contract is now
-  `docs/games/screenscraper-integration.md` **§10**, written against a measured
-  real export (§9), and migration 093 creates the key it upserts against. Write
-  the script against §10; it is the contract, not a sketch. The gateway handler
-  itself is still Claude's to build, but the payload shape will not move.
-  Helper (Claude's, read-only, do not edit): `scripts/inspect-esde-export.mjs`.
+  The request contract is `docs/games/screenscraper-integration.md` **§10**,
+  written against a measured real export (§9); migration 093 creates the key it
+  upserts against. **The receiving side is built and live:** the `esde-sync` edge
+  function (its own device secret, `ESDE_SYNC_SECRET`), followed by
+  `esde-media-sync` and `esde-content-sync` for covers, original images and source
+  data. The RP6 widgets and the recovery steps: `docs/termux-widgets.md`.
 
 ## Communication (two-channel — see `coord/README.md`)
-This doc is the **stable spec only** (roles, rules, task board). The actual
+This doc is the **stable spec only** (roles, rules, claims, task board). The actual
 back-and-forth lives in two append-only logs so messages don't tangle:
-- **`coord/to-codex.md`** — Claude → Codex (tasks/answers). Codex reads.
+- **`coord/to-codex.md`** — Claude → Codex (tasks/answers). Claude writes, Codex reads.
 - **`coord/to-claude.md`** — Codex → Claude (reports/questions/blockers). Codex
-  writes here instead of editing this spec. Claude reads + updates the board above.
+  writes, Claude reads and updates the task statuses above.
+- Never edit the other side's log. Newest entry on top, headed
+  `### YYYY-MM-DD HH:MM · <task id> · re: <prior|new>` (that header format is the
+  protocol). A new entry in the other log with `re:` pointing at yours IS the reply.
+  A claim may be made in your own log instead of the table above when that is quicker.

@@ -3,7 +3,7 @@ import type { EpisodeWrite, MovieWrite, ShowInfo, ShowWrite } from './traktImpor
 import { IN_PROGRESS_SHOW, itemKey, playbackIds, sameTime } from './traktImportPlan'
 import { movieWatchedAt } from './traktDates'
 
-// The automatic sync, as data (docs/trakt/PLAN.md phase 3): Trakt → app.
+// The automatic sync, as data (docs/features/media.md, Trakt phase 3): Trakt → app.
 // Pure and import-free (scripts/verify-trakt-sync-plan.cjs), shared into the
 // trakt-api edge function by scripts/sync-trakt-shared.mjs.
 //

@@ -14,6 +14,6 @@ Rows marked **?** were open in the old list and haven't been confirmed done sinc
 | ? | Every secret in `docs/backend/environment.md` set where it says (Edge Function secrets and/or Vault) — newest: `SHOP_PRICE_CRON_SECRET`, `IGDB_CLIENT_ID`/`IGDB_CLIENT_SECRET`, `KOBO_SYNC_SECRET`, `KOBO_OPDS_TOKEN`, `TRAKT_SYNC_SECRET`, `TMDB_API_KEY`, `MDBLIST_API_KEY` | The feature named next to each secret; without one, that feature says it isn't configured. |
 | ? | Trakt app redirect URIs: `https://lasciviens.github.io/Project_Daily/` and `http://localhost:5173/Project_Daily/` | Trakt connect. |
 | ? | Games: the one-time import of the old RP5 library, and the RP6 widget's first upload of original images (`docs/termux-widgets.md`). Don't delete the RP5 Supabase project before the import is checked. | A complete Games library with every picture. |
-| ? | Kobo: the latest plugin installed on the device (`docs/kobo/SETUP-PHASE-3-4.md`) | Books, Send to Kobo and Kobo control. |
+| ? | Kobo: the latest plugin installed on the device (`docs/kobo/SETUP.md`) | Books, Send to Kobo and Kobo control. |
 
 If a page says "migration NNN not applied" for a migration numbered 140 or lower (those were applied by hand before the automatic deploy), tell the owner which file it is; the owner runs it in the Supabase SQL editor.

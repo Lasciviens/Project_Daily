@@ -11,7 +11,7 @@ import { useDisconnectTrakt, useFinishTraktConnect, useStartTraktConnect, useSyn
 import { TraktPreviewSheet } from './TraktPreviewSheet'
 
 // Trakt on Settings → Subscriptions: connect, sync status + Sync now, the
-// import preview, disconnect (docs/trakt/PLAN.md). The Connections rule: this
+// import preview, disconnect (docs/trakt/REFERENCE.md). The Connections rule: this
 // is the only place Trakt is connected or disconnected. Syncing itself runs on
 // its own — every 30 minutes and a few seconds after a change here.
 export function TraktCard() {

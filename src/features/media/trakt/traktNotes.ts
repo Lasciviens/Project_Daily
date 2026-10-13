@@ -1,4 +1,4 @@
-// Trakt notes ↔ personal_note (docs/trakt/PLAN.md §12 has the API facts).
+// Trakt notes ↔ personal_note (docs/trakt/REFERENCE.md §12 has the API facts).
 // Pure and import-free (scripts/verify-trakt-notes.cjs), shared into the
 // trakt-api edge function by scripts/sync-trakt-shared.mjs.
 //

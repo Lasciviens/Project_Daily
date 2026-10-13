@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Copies lascisboard.koplugin to the Kobo over SSH (docs/kobo/PLAN.md §10.5).
+# Copies lascisboard.koplugin to the Kobo over SSH (docs/kobo/REFERENCE.md §10.5).
 # KOReader must be running with its SSH server on (Host "kobo" in ~/.ssh/config).
 # Restart KOReader afterwards so it loads the new code.
 #   bash scripts/kobo/deploy-plugin.sh

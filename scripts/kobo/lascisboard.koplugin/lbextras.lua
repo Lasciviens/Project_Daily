@@ -1,5 +1,5 @@
 --[[--
-The smaller extras (docs/kobo/PLAN.md, round 2):
+The smaller extras (docs/kobo/REFERENCE.md, round 2):
   * a book's own cover, read from inside the EPUB, for the app;
   * today's minutes against the app's goal + the streak, in the status bar;
   * capture: a note typed on the Kobo becomes a task, a wish or a book in the app;

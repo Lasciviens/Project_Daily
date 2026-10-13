@@ -1,5 +1,5 @@
 --[[--
-Lasci's Board for KOReader (docs/kobo/PLAN.md, Phase 4).
+Lasci's Board for KOReader (docs/kobo/REFERENCE.md, Phase 4).
 
 What it does, all by itself whenever Wi-Fi comes on (NetworkConnected):
   * sends new reading-statistics rows (KOReader's page_stat_data) and the
@@ -124,7 +124,7 @@ end
 -- ── HTTP ─────────────────────────────────────────────────────────────────────
 
 -- KOReader ships this bundle but never passes it to LuaSec, whose default is
--- verify = "none" (docs/kobo/PLAN.md §3.0). The device secret travels on every
+-- verify = "none" (docs/kobo/REFERENCE.md §3.0). The device secret travels on every
 -- call, so the plugin checks the chain against the bundle and the name itself.
 -- Settings → "Check the server's certificate" turns it off if a sync ever fails
 -- with a certificate error (security audit 10.10.2026).

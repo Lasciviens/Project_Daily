@@ -1,6 +1,6 @@
 -- Adds (or updates) the "Lasci's Board" Send to Kobo catalogue in KOReader's
 -- OPDS settings, so nobody has to type a 90-character address on the Kobo.
--- Runs ON THE KOBO with KOReader's own luajit (docs/kobo/PLAN.md, Phase 2):
+-- Runs ON THE KOBO with KOReader's own luajit (docs/kobo/REFERENCE.md, Phase 2):
 --
 --   printf '%s' "$TOKEN" | ssh kobo 'cd /mnt/onboard/.adds/koreader && ./luajit /tmp/add-opds-catalog.lua'
 --

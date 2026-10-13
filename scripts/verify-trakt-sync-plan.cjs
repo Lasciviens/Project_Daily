@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /*
- * Verification — the automatic Trakt sync plan (docs/trakt/PLAN.md phase 3),
+ * Verification — the automatic Trakt sync plan (docs/features/media.md, Trakt phase 3),
  * against the real traktSyncPlan.ts / traktDates.ts via sucrase: Trakt is
  * mirrored (additions AND removals), unsent app changes are left alone,
  * app-only states are never touched, a note keeps an entry, big removals

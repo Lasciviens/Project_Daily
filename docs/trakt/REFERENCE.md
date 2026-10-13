@@ -1,10 +1,18 @@
-# Trakt integration — plan
+# Trakt — reference (rules, API facts, the `trakt-api` contract)
 
-Status: **phases 1–6 built** (the last piece: notes, migration `136_trakt_notes.sql`, 07.10.2026) —
-migrations `116`–`124`, `132`, `136`, edge function `trakt-api`, `src/features/media/trakt/`,
-Settings → Subscriptions → Trakt.
-Written 30.09.2026; the owner's second pass the same day cut per-play history and
-season/episode ratings (below). Delete this file once the feature ships and CLAUDE.md's Media section carries it.
+> The lasting part of the Trakt plan. Everything in it is built: migrations `116`–`124`,
+> `132` and `136`, the edge function `trakt-api`, `src/features/media/trakt/`, and the Trakt
+> card on Settings → Subscriptions. How the feature works is in
+> [`docs/features/media.md`](../features/media.md). This file keeps the owner's rules, what
+> Trakt holds versus the app, the two-way rules, lists and follows, and the API facts the
+> code relies on.
+>
+> **Section numbers are the original plan's** (§1, §2, §6, §11, §12), so a code comment
+> that cites `docs/trakt/PLAN.md §1` or `§12` finds the same text here. The plan's other
+> sections — identity details, tables, sync steps, Rotten Tomatoes, pieces, phases and owner
+> steps (§3–§5, §7–§10) — were dropped once built; they are in git history
+> (`git log --follow -p docs/trakt/REFERENCE.md`), and the facts from them that still matter
+> are folded into §1 and §12.
 
 ## 1. The rules (owner's decisions)
 
@@ -18,8 +26,13 @@ season/episode ratings (below). Delete this file once the feature ships and CLAU
 - **Notes are one thing.** `personal_note` on a movie or show IS the Trakt note on that movie or show
   (`trakt_note_id` links them; `trakt_note_text` keeps the text both sides had at the last sync — migration 136).
 - **One film is one row, one show is one row.** The TMDB id is the identity
-  (`movies.tmdb_id` / `tv_series.tmdb_id` are already `UNIQUE NOT NULL`); Trakt, IMDb
-  and TVDB ids are extra columns on that same row. Rotten Tomatoes attaches by TMDB id.
+  (`movies.tmdb_id` / `tv_series.tmdb_id` are `UNIQUE NOT NULL`); Trakt, IMDb and TVDB ids
+  are extra columns on that same row, each with a partial unique index, and Rotten Tomatoes
+  attaches by TMDB id. Trakt sends every item with `ids: { trakt, slug, tmdb, imdb, tvdb }`:
+  an item with a TMDB id is upserted on `tmdb_id`; an item with none, or whose TMDB lookup
+  failed, goes to `trakt_unmatched` with the reason — never a guessed row. A Trakt/IMDb/TVDB
+  id that another row already holds is skipped, never forced. Episodes match on show +
+  season + episode, the unique key of `user_tv_episodes`.
 - **Preview before the first write.** The first import is a dry run showing counts
   (matched, new, changes, pushes to Trakt, unmatched) before anything is saved.
 - **App-only data is never deleted by a sync.** Data that came from Trakt mirrors
@@ -31,91 +44,41 @@ season/episode ratings (below). Delete this file once the feature ships and CLAU
 |---|---|---|---|
 | Watched + play counts + last watched (movies, episodes) | `GET /sync/watched/{movies,shows}` · `POST /sync/history`, `/sync/history/remove` | `status='completed'` / `user_tv_episodes` row + `repeat_count` + `watched_at` | **Trakt** |
 | Ratings 1–10 — movies and shows only | `GET /sync/ratings/{movies,shows}` · `POST /sync/ratings`, `/remove` | `user_movie_entries.rating`, `user_tv_entries.rating` | **Trakt** |
-| Watchlist (with its order and note) | `GET /sync/watchlist` · `POST`, `/remove`, `/reorder` | `status='wishlist'` + `watchlist_rank` | **Trakt** |
-| Favorites | `GET /sync/favorites` · `POST`, `/remove` | new `is_favorite` | **Trakt** |
+| Watchlist (with its order) | `GET /sync/watchlist/{movies,shows}/rank/asc` · `POST /sync/watchlist`, `/remove` | `status='wishlist'` + `watchlist_rank` (the order is read from Trakt, not written back) | **Trakt** |
+| Favorites | `GET /sync/favorites` · `POST`, `/remove` | `is_favorite` | **Trakt** |
 | Dropped shows | `GET /users/hidden/dropped` · `POST /users/hidden/dropped`, `/remove` | `user_tv_entries.status='dropped'` | **Trakt** |
 | Notes (≤ 500 characters, always private) on a movie or show itself — notes on an episode, a season, a person, a play, a rating or a collection item are left alone | `GET /users/me/notes/{movies,shows}` · `POST /notes`, `PUT/DELETE /notes/{id}` | `personal_note` (+ `trakt_note_id`, `trakt_note_text`) | **Trakt** |
-| Paused mid-film/episode (%) | `GET /sync/playback` · `DELETE /sync/playback/{id}` | new `playback_progress` — "Continue watching" | Trakt |
-| My upcoming episodes | `GET /calendars/my/shows` | replaces the TMDB-built release list for shows you follow | Trakt |
+| Paused mid-film/episode (%) | `GET /sync/playback` · `DELETE /sync/playback/{id}` | read live — Media's "Continue watching"; ✕ removes it on Trakt | Trakt |
+| My upcoming episodes | `GET /calendars/my/shows` | read live, merged into Coming soon (Watching/Completed shows only) | Trakt |
+| Personal lists | `/users/me/lists…` | read live — Media → Lists, the Queue, follows' lists (§11) | Trakt |
 | Change detection | `GET /sync/last_activities` (one call) | `trakt_sync_state` | — |
-| Personal lists | `/users/me/lists…` | **later**, not in this build | — |
 | Collection (owned copies) | `/sync/collection` | **not used** — no owned-media feature here | — |
 | Paused (on hold) status | *(no Trakt equivalent)* | `user_tv_entries.status='paused'` | **app** |
 | Dropped **movie** | *(Trakt drops shows only)* | `user_movie_entries.status='dropped'` | **app** |
 | Priority, planned sessions (`time_blocks`) | *(none)* | as today | **app** |
-| Posters, overview, genres, runtimes | TMDB (as today) | `movies` / `tv_series` | TMDB |
-| Rotten Tomatoes + Metacritic scores | MDBList, by TMDB id | `movies` / `tv_series` rating columns | MDBList |
+| Posters, overview, genres, runtimes | TMDB | `movies` / `tv_series` | TMDB |
+| Rotten Tomatoes, Metacritic, IMDb and Letterboxd scores | MDBList, by TMDB id (§12) | `movies` / `tv_series` rating columns | MDBList |
 
 Checkins and scrobbling are not built: plays scrobbled by Plex, Infuse or your TV
 reach Trakt and come back here through the normal history sync.
 
-## 3. Identity — one row per title
-
-Trakt sends every item with `ids: { trakt, slug, tmdb, imdb, tvdb }`.
-
-1. `ids.tmdb` present → upsert the catalogue row on `tmdb_id`, fill the other ids.
-2. No TMDB id but an IMDb id → TMDB `/find/{imdb_id}`, then step 1.
-3. Neither → `trakt_unmatched` (shown on the Media page for a manual pick). Never a
-   guessed row.
-
-Catalogue columns added: `trakt_id`, `trakt_slug`, `imdb_id` (identifier only — no IMDb
-data is used) on both; `tvdb_id` on `tv_series`. Each gets a partial unique index
-(`WHERE … IS NOT NULL`) so no two rows can claim the same id. Existing rows are
-backfilled by `tmdb_id` so today's library and Trakt meet on the same rows.
-
-Episodes match on show + season + episode — the existing unique key of
-`user_tv_episodes`.
-
-## 4. Tables (migration `116_trakt.sql`, additive only)
-
-**Changed — existing tables** (columns added, nothing removed, no row updated)
-
-| Table | Added |
-|---|---|
-| `movies`, `tv_series` | the ids in §3; `rt_critics`, `rt_audience`, `metacritic`, `ratings_fetched_at` |
-| `user_movie_entries` | `is_favorite`, `watchlist_rank`, `trakt_note_id`, `playback_progress`, `playback_paused_at`, `trakt_synced_at` (`repeat_count` already existed) |
-| `user_tv_entries` | `is_favorite`, `watchlist_rank`, `trakt_note_id`, `trakt_synced_at` |
-| `user_tv_episodes` | `repeat_count`, `trakt_note_id`, `playback_progress`, `playback_paused_at` |
-
-**New — plumbing** (never in `ai-proxy`'s `DB_CATALOG`; no audit trigger on the secret table)
-
-| Table | Holds |
-|---|---|
-| `trakt_tokens` | access + refresh token, expiry, username — RLS on with no policy (service role only; the `psn_tokens` rule) |
-| `trakt_sync_state` | the last `last_activities`, last sync / full reconcile, last error (owner can read) |
-| `trakt_outbox` | pending writes to Trakt, one row per change, drained oldest-first per item (the Google Tasks outbox pattern) — service role only |
-| `trakt_unmatched` | Trakt items with no TMDB match, for a manual pick |
-
-**Added by `136_trakt_notes.sql`** (additive, no row updated): `trakt_note_text` on `user_movie_entries` and
-`user_tv_entries`, `trakt_sync_state.notes_synced_at`, `media_follows.pending_list_ids` / `list_error` /
-`list_error_at`, and the notes outbox trigger (`trakt_outbox_note`, its own function — 132's are untouched).
-
-## 5. How a sync runs
-
-1. `GET /sync/last_activities` — one call; compare with `trakt_sync_state`.
-2. Only categories that changed are fetched: history since the last sync (`start_at`),
-   ratings, watchlist, favorites, dropped, notes, playback.
-3. **Removals:** when `watched_at` moved, `GET /sync/watched` (plays per title, per
-   episode) is compared with local counts and mirrored exactly (Trakt's `reset_at`
-   marks a show restarted). A weekly full reconcile catches anything else.
-4. Each item: match (§3) → upsert.
-5. The outbox drains FIRST (app → Trakt), so the mirror in steps 2–4 never undoes a change made here; items still waiting (or just sent) are skipped by the mirror.
-
-Watched endpoints (since 03.07.2026): paginated, seasons only with `extended=progress` (100 per page).
-Limits: reads 1,000 per 5 minutes, writes **1 per second** — the outbox paces itself.
-Runs on a cron (every 30 min), a manual Sync button, and after app edits.
-Tokens last 24 hours and refresh automatically.
-
 ## 6. Two-way rules
 
-- An app edit writes locally at once (the UI stays instant) and adds an outbox row.
+- An app edit writes locally at once (the UI stays instant) and adds an outbox row — from
+  any writer (web, AI, SQL), queued by the triggers of migrations 117, 118, 120, 132 and 136.
+  A write carrying the `x-trakt-sync: 1` request header (the sync's own client) is skipped,
+  so the sync never queues its own writes. The outbox drains **first** (app → Trakt), so the
+  mirror never undoes a change made here; items still waiting (or just sent) are left alone
+  by the mirror.
 - A watch logged here is sent as one play; the next watched read returns the new
   count, so nothing is counted twice.
 - If Trakt rejects a write (e.g. an item Trakt doesn't know), the row stays app-only
   and the Media page says so.
 - **First import:** titles you watched in the app but not on Trakt are listed in the
   preview and pushed to Trakt when you confirm — after that, Trakt holds the complete
-  record.
+  record. The sync refuses to run until a complete import has stamped
+  `trakt_sync_state.imported_at` (migration 124), because it treats Trakt as the truth and
+  would otherwise wipe app-only data.
 - **Notes (migration 136, built 07.10.2026)** — `src/features/media/trakt/traktNotes.ts`
   (`scripts/verify-trakt-notes.cjs`):
   - Only the note on a movie or show itself; episode notes stay app-only. A Trakt note on a
@@ -146,81 +109,93 @@ Tokens last 24 hours and refresh automatically.
   - Disconnect clears every note link and `notes_synced_at`: a new connection — maybe
     another Trakt account — compares every note again.
 
-## 7. Rotten Tomatoes
+## 11. Lists and follows
 
-No free official API (licensed access starts around $60,000 a year). **MDBList**
-looks up by TMDB id and returns Tomatometer, audience score and Metacritic. Fetched only
-for titles in your library, refreshed at most weekly. Needs a free MDBList API key
-(`MDBLIST_API_KEY`); its daily limit is confirmed when the key is created.
-
-## 8. Pieces
-
-| Piece | What |
-|---|---|
-| `116_trakt.sql` | everything in §4 ✅ |
-| `trakt-api` | ✅ `authorize_url`, `connect`, `status`, `disconnect`, `snapshot`, `import`, `sync` (outbox drain → mirror → notes comparison), cron secret |
-| Ratings step | MDBList by TMDB id, inside `trakt-api` |
-| Pure modules + verify scripts | ✅ `traktPreview.ts`, `traktImportPlan.ts`, `traktSyncPlan.ts`, `traktNotes.ts`, `followRules.ts` — `scripts/verify-trakt-{preview,import-plan,sync-plan,notes}.cjs`, `verify-media-follows.cjs` |
-| UI | Settings → Subscriptions card; Media: import preview, sync status, unmatched list, Continue watching, favorites, RT chips |
-
-## 9. Phases
-
-| Phase | Result | Gate |
-|---|---|---|
-| 1 ✅ | Connect Trakt + **dry-run preview** | the counts look right to you |
-| 2 ✅ | First import (+ push of app-only watches), id backfill | no duplicate titles; paused/priority untouched |
-| 3 ✅ | Incremental sync + reconcile (cron + Sync button) | a play scrobbled elsewhere appears within 30 min; a play removed on Trakt disappears here |
-| 4 ✅ | Two-way through the outbox (watched, plays, ratings, watchlist, dropped; notes come with phase 5) | a rating, watch or note made here shows on trakt.tv |
-| 5 ✅ | ✅ Favorites (two-way, migration 118), ✅ Continue watching (`/sync/playback`, live), ✅ my calendar (`/calendars/my/shows`, in Coming soon), ✅ personal lists (live, Media → Lists), ✅ notes (two-way, migration 136) | each visible on the Media page |
-| 6 ✅ | Rotten Tomatoes (critics + audience), Metacritic, IMDb, Letterboxd via MDBList — title page chips, Library 🍅 + sort | scores on posters and in details |
-
-## 10. Owner steps
-
-- Done: Trakt app created; `TRAKT_CLIENT_ID` / `TRAKT_CLIENT_SECRET` / `MDBLIST_API_KEY` in secrets.
-- Phase 1: apply `116_trakt.sql`, deploy `trakt-api` (JWT verification **ON**).
-- Phase 2: redeploy `trakt-api`, then Preview import → Import now. Watched/watching beats wishlist on both sides (owner, 30.09.2026).
-- Phases 3–4: apply `117_trakt_sync.sql`; redeploy `trakt-api` with JWT verification **OFF**; `TRAKT_SYNC_SECRET` in Edge secrets + Vault; `TMDB_API_KEY` in Edge secrets.
-- Notes + follow lists that keep a refused film: apply `136_trakt_notes.sql`, redeploy `trakt-api` (JWT verification **OFF**). Either order is safe.
-- Redirect URIs on the Trakt app: `https://lasciviens.github.io/Project_Daily/` (and
-  `http://localhost:5173/Project_Daily/` for local testing).
-- Per phase: apply the named migration and deploy the named function.
-
-## 11. Lists (built 30.09.2026) and what is still proposed
-
-- ✅ **Lists = Trakt personal lists, read live** (no local table: Trakt holds them): Media → Lists
+- **Lists = Trakt personal lists, read live** (no local table: Trakt holds them): Media → Lists
   (pick, see, remove, new, delete), "Add to list" on every title page, and **Save as list** on a
   film's franchise strip (TMDB `belongs_to_collection` → `/collection/{id}`, release order).
   Private by default. Free accounts have a small list/item allowance (Trakt 420).
-- ✅ **Follows (migration `119`, 30.09.2026):** follow a franchise (TMDB collection), studio
-  (company), director or actor from a movie's page (**Follow** menu). `media_follows` keeps each
-  follow's known movie ids and trailer keys; `trakt-api`'s `checkFollows` (inside the sync cron,
-  at most once per ~20 h per follow, ≤ 15 per run, or **Check now** / the `follows_check` action)
-  records new titles and new trailers (TMDB `/movie/{id}/videos`, Trailer on YouTube) as
-  `media_follow_events`. The first check only stores a baseline, so following something never
-  floods the feed. A follow can be linked to a Trakt list: its new titles are added there.
-  Shown under Media → Lists → Following (Mark seen, trailer link).
-- ✅ **A film the linked list did not take is never lost (migration 136, 07.10.2026):** the check
-  used to count a film as known even when Trakt refused the add (its 420 account limit, an error,
-  no token at hand), so it never reached the list. Now such a film waits in
-  `media_follows.pending_list_ids` with the reason in `list_error`, is sent again at the next check
-  (daily, or Check now) and leaves the queue only when Trakt took it; a film Trakt answers
-  `not_found` for waits only while it is still new by its own date. A waiting film TMDB no longer
-  lists for the follow is dropped. The Lists page shows it (What's new and the ✦ list's own page).
-  Rules: `followRules.ts` (`followListToSend`, `followListPending`), `scripts/verify-media-follows.cjs`.
-- Still proposed (not built): a **Web Push** for a new title/trailer. Web Push delivery is still
-  unverified on the phone and `push-send` only knows the morning trigger, so events stay in the
-  app for now. Daily checks run only while Trakt is connected (they ride the Trakt cron).
+- **The Queue** is a private Trakt list named "Queue"; its order is saved on Trakt with
+  `list_reorder` (§12).
+- **Follows (migration `119`, 30.09.2026):** follow a franchise (TMDB collection), studio
+  (company), director or actor from a movie's page (**Follow** menu), or a keyword through
+  New list → "Fill automatically" (migration 120). `media_follows`
+  keeps each follow's known movie ids and trailer keys; `trakt-api`'s `checkFollows` (inside
+  the sync cron, at most once per ~20 h per follow, ≤ 15 per run, or **Check now** / the
+  `follows_check` action) records new titles and new trailers (TMDB `/movie/{id}/videos`,
+  Trailer on YouTube) as `media_follow_events`. The first check only stores a baseline, so
+  following something never floods the feed. A follow is the rule behind a Trakt list
+  (`trakt_list_id`): its new titles are added to that list.
+- **A film the linked list did not take is never lost (migration 136, 07.10.2026):** such a
+  film (Trakt's 420 account limit, an error, no token at hand) waits in
+  `media_follows.pending_list_ids` with the reason in `list_error`, is sent again at the next
+  check (daily, or Check now) and leaves the queue only when Trakt took it; a film Trakt
+  answers `not_found` for waits only while it is still new by its own date. A waiting film
+  TMDB no longer lists for the follow is dropped. The Lists page shows it (What's new and the
+  ✦ list's own page). Rules: `followRules.ts` (`followListToSend`, `followListPending`),
+  `scripts/verify-media-follows.cjs`.
+- Still proposed (not built): a **Web Push** for a new title or trailer. Daily checks run only
+  while Trakt is connected (they ride the Trakt cron).
 
-## 12. API facts used by phases 5–6 (checked 30.09.2026; notes 07.10.2026)
+## 12. API facts and the `trakt-api` contract
+
+### The `trakt-api` contract
+
+One edge function, platform JWT verification **off** (listed in `supabase/config.toml`),
+auth checked inside: a browser user JWT (`supabase.auth.getUser`, then the owner lock's
+`isAppUser`), or the cron's `x-sync-secret: <TRAKT_SYNC_SECRET>`, which acts as
+`HEVY_USER_ID` and may only run `sync`. Tokens live in `trakt_tokens` (service role only) and
+are refreshed when less than 10 minutes remain. Without the Trakt secrets it answers
+`{error: 'not_configured'}`; a 401 from Trakt reads `{error: 'reauth_required'}`. The pure
+plans in `src/features/media/trakt/` are GENERATED into the function by
+`scripts/sync-trakt-shared.mjs` (`--check`).
+
+| Action | Needs Trakt | What it does |
+|---|---|---|
+| `ratings` | no | MDBList scores for one title (`mediaType`, `tmdbId`); stored on the catalogue row |
+| `follows_check` | no (fills a linked list only with a valid token) | runs the follow check now |
+| `authorize_url` | — | the OAuth URL for an allowed `redirectUri` |
+| `connect` | — | exchanges the OAuth `code`, stores the tokens |
+| `status` | — | connected, username, last sync, last error and result, imported, changes waiting, syncing |
+| `disconnect` | — | revokes on Trakt, clears note links, tokens and the outbox; the next connection starts with an import again |
+| `snapshot` | yes | a read-only snapshot of everything Trakt holds (the import preview), with notes |
+| `import` | yes | the first import: outbox and app-only facts to Trakt **first**, then Trakt → library; stamps `imported_at` only when complete |
+| `sync` | yes | outbox drain → mirror (only when `last_activities` moved; `full`/`force` flags) → notes comparison; refuses before the import |
+| `playback`, `playback_remove` | yes | Continue watching, and removing one paused item |
+| `calendar` | yes | my upcoming episodes |
+| `lists`, `list_items`, `list_create`, `list_delete`, `list_add`, `list_remove`, `list_reorder` | yes | personal lists, the Queue and follows' lists |
+
+One sync at a time (`trakt_sync_state.sync_started_at`, stale after 5 minutes). The cron job
+`lascis-trakt-sync` runs at :07 and :37; an edit in the app triggers a silent sync 4 s later.
+
+### Trakt — limits, pagination, tokens
+
+- Access tokens last 24 h (since 20.03.2025) and are refreshed from the refresh token.
+- GET: 1,000 calls per 5 minutes per user. POST: **one per second** — the outbox paces itself.
+  Paginated endpoints report `X-Pagination-Page-Count`.
+- Since 03.07.2026 (trakt-api discussion #775) `/sync/watched/*` is paginated (100 items
+  without a limit) and leaves out seasons unless `extended=progress` (≤ 100 per page); every
+  list is read through `getAll`.
+- Trakt's "unknown date" for a play is the epoch: movies store NULL, episodes keep the epoch
+  (NULL there means not watched), and every screen shows "date unknown".
+- `reset_at` stamps in `last_activities` mark a show whose watched progress was restarted.
+
+### Facts used by phases 5–6 (checked 30.09.2026; notes 07.10.2026)
 
 - MDBList: `POST https://api.mdblist.com/tmdb/{movie|show}?apikey=…` with `{"ids":["578",…]}` (≤ 200)
   returns items with `ratings[] {source, value, score, votes, url}`; sources `tomatoes`, `metacritic`,
   `imdb` (/10), `letterboxd` (/5); RT `url` is site-relative (`/m/jaws`). Audience score: `popcorn`
   or `tomatoesaudience` (not in the blueprint — both read). Free daily limit unpublished; 429 when over.
+  Rotten Tomatoes has no free official API (licensed access starts around $60,000 a year), so
+  MDBList is the only source. The sync refreshes library titles whose scores are older than
+  a week (≤ 200 per type); an opened title is fetched on demand (`ratings`).
 - Trakt: `/sync/favorites/{movies|shows}` (paginated, `rank`, `id`), `POST /sync/favorites[/remove]`
   `{movies:[{ids}],shows:[{ids}]}`; `/sync/playback` (not paginated, `progress` 0–100, last 6 months);
   `/calendars/my/shows/{date}/{days}` (≤ 33 days, UTC); `/users/me/lists` (+ `/items`, paginated;
   `/items/remove`); `last_activities.favorites.updated_at` drives the favorites mirror.
+- `POST /users/me/lists/{id}/items/reorder` with every list item id in the new order (API
+  blueprint, "Reorder List Items") — the `list_reorder` action, used by the Queue.
+- `DELETE /sync/playback/{id}` → 204; a 404 means it is already gone, which is the same result.
 - **Notes — verified 07.10.2026 against Trakt's own sources** (built on them, migration 136):
   - Sources: the API blueprint, group "Notes" and Users → "Get notes" (https://trakt.docs.apiary.io,
     raw: https://jsapi.apiary.io/apis/trakt.apib — marked deprecated since 11.06.2026 but still the
@@ -257,3 +232,10 @@ for titles in your library, refreshed at most weekly. Needs a free MDBList API k
 - Personal list items: `POST /users/me/lists/{id}/items` → 201 `{added, existing, not_found:
   {movies: [{ids}]}, list}`; over the account's limit → 420 with `X-Account-Limit` (blueprint
   example). The follow check reads `not_found` to keep a film Trakt doesn't know yet.
+
+### OAuth redirect URIs
+
+The Trakt app's redirect URIs, mirrored by an allow-list in the function:
+`https://lasciviens.github.io/Project_Daily/` and `http://localhost:5173/Project_Daily/`. The
+OAuth return (`?code=&state=` before the hash) is parked by `captureTraktCallback()` in
+`main.tsx` before the router starts; the Trakt card finishes it and checks `state`.
