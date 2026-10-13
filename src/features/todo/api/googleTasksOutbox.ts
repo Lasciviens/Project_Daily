@@ -35,8 +35,13 @@ interface OutboxRow {
 // ordering added in 079) uses FOR UPDATE SKIP LOCKED so two concurrent
 // claimers can never end up with the same row, AND never claims a newer row
 // for a task while an older one for that SAME task is still outstanding.
-async function claimRows(): Promise<OutboxRow[]> {
-  const { data, error } = await supabase.rpc('claim_google_tasks_outbox', { p_respect_backoff: false })
+//
+// The drain after each save respects the backoff: a fresh row is due at once
+// (next_retry_at defaults to now()), while a row that keeps failing waits its
+// turn instead of being retried — and failing again — on every save. Only a
+// manual Push passes force.
+async function claimRows(force: boolean): Promise<OutboxRow[]> {
+  const { data, error } = await supabase.rpc('claim_google_tasks_outbox', { p_respect_backoff: !force })
   if (error) throw error
   return (data ?? []) as OutboxRow[]
 }
@@ -337,8 +342,8 @@ export interface DrainResult {
   failed:  number
 }
 
-export async function drainGoogleTasksOutbox(token: string): Promise<DrainResult> {
-  const rows = await claimRows()
+export async function drainGoogleTasksOutbox(token: string, { force = false }: { force?: boolean } = {}): Promise<DrainResult> {
+  const rows = await claimRows(force)
 
   let drained = 0
   let failed  = 0

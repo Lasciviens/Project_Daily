@@ -23,6 +23,11 @@ export const qk = {
     subtasks: (parentId: string) => ['tasks', 'subtasks', parentId] as const,
   },
   googleTaskLists: { all: ['google-task-lists'] as const },
+  googleTasks: {
+    all: ['google-tasks'] as const,
+    /** google_tasks_sync_state: the server's last sync run. */
+    syncState: () => ['google-tasks', 'sync-state'] as const,
+  },
   schedule: {
     all: ['schedule'] as const,
     day: (date: string) => ['schedule', 'day', date] as const,

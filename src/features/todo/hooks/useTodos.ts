@@ -17,8 +17,8 @@ import {
   toggleTaskDone,
 } from '../api/tasksApi'
 import { drainGoogleTasksOutbox } from '../api/googleTasksOutbox'
-import { pullGoogleTasks } from '../api/googleTasksSync'
-import { updateTimeBlock, fetchTimeBlockByTaskId, fetchCalendarLinkedTaskIds } from '../../daily/api/scheduleApi'
+import { updateTimeBlock, fetchTimeBlockByTaskId } from '../../daily/api/scheduleApi'
+import { ensureValidCalendarToken } from '../../calendar/api/calendarTokenSync'
 import { toast, useCalendarStore } from '../../../app/store'
 import { logError } from '../../../shared/utils/logError'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
@@ -27,7 +27,7 @@ import { mapRowsInCache, putRowsInCache, restoreCache, snapshotCache } from '../
 import { useRowsDelete } from '../../../shared/hooks/useRowsDelete'
 import { rowsOf, type RowOverrides } from '../../../shared/utils/deletedRows'
 import { BLOCK_EVENT_RESET, relinkRestoredBlockEvents, removeDeletedBlockEvents } from '../../calendar/api/deletedBlockEvents'
-import { dayTasks, isOpenTask, openOnDay, sectionForDay, weekCounts } from '../taskRules'
+import { dayTasks, openOnDay, sectionForDay, weekCounts } from '../taskRules'
 import { todayStr } from '../../../shared/utils/dateUtils'
 import { applyTaskPatch, taskUpdateMessage } from '../taskWrites'
 import type { CreateTaskInput, UpdateTaskInput, Task } from '../types'
@@ -117,10 +117,14 @@ export function useTasksByMonth(monthStart: Date, monthEnd: Date) {
 // create/edit/toggle/delete still feels instant when Google is reachable.
 // The outbox (populated atomically with the tasks write, not by this call)
 // is the actual safety net — a failure here just means "will retry later",
-// never a lost operation.
-export async function drainBestEffort(token: string | null, context: Record<string, unknown>): Promise<string | null> {
-  if (!token) return null
+// never a lost operation. The token goes through ensureValidCalendarToken:
+// the stored one can be past its hour (a phone back from the background),
+// and every call then failed with 401 instead of refreshing first.
+async function drainBestEffort(context: Record<string, unknown>): Promise<string | null> {
+  if (!useCalendarStore.getState().accessToken) return null // Google not connected here
   try {
+    const token = await ensureValidCalendarToken()
+    if (!token) return 'Google sign-in expired: reconnect Google in Settings → Subscriptions'
     const { failed } = await drainGoogleTasksOutbox(token)
     return failed > 0 ? `${failed} Google Tasks sync operation(s) failed — will retry` : null
   } catch (err) {
@@ -137,9 +141,7 @@ export async function drainBestEffort(token: string | null, context: Record<stri
  * drains are safe (the outbox claim skips rows another drain holds).
  */
 export function syncGoogleTasksSoon(context: Record<string, unknown>, warn = false): void {
-  const token = useCalendarStore.getState().accessToken
-  if (!token) return
-  void drainBestEffort(token, context).then(err => {
+  void drainBestEffort(context).then(err => {
     if (err && warn) toast.warning(`Google Tasks sync failed: ${err}`)
   })
 }
@@ -335,77 +337,5 @@ export function useWorkTasks() {
   return useQuery({
     queryKey: qk.tasks.work(),
     queryFn: fetchWorkTasks,
-  })
-}
-
-// Full pull from Google Tasks (every list, real pagination, tombstones
-// included) — reconciles local against Google's true state rather than
-// only ever importing genuinely-new tasks. Was unreachable from any UI
-// before 20.08.2026 (a "known side effect" of the old To-Do
-// drawer's removal); wired up via GoogleTasksSyncButtons.
-export function useSyncFromGoogleTasks() {
-  return useMutationWithFeedback({
-    action: 'sync_from_google_tasks',
-    mutationFn: async () => {
-      const token = useCalendarStore.getState().accessToken
-      if (!token) throw new Error('Google account not connected')
-      const { imported } = await pullGoogleTasks(token)
-      return imported
-    },
-    successMessage: (count: number) =>
-      count > 0 ? `Synced ${count} task${count === 1 ? '' : 's'} from Google` : 'Google Tasks already up to date',
-    invalidates: [qk.tasks.all, qk.googleTaskLists.all],
-  })
-}
-
-// Catch-up action for tasks created before Google was connected, OR whose
-// create-time sync silently failed (a real incident: the ambiguous-overload
-// RPC bug, fixed separately, could leave google_sync_enabled=true with
-// google_task_id still NULL for anything created during that window — the
-// task never actually reached Google despite looking "already synced").
-//
-// The real signal for "not yet on Google" is the absence of google_task_id,
-// NOT google_sync_enabled — that flag reflects INTENT (set at create time,
-// before any Google call happens), not outcome. The old filter checked only
-// google_sync_enabled, so it silently skipped exactly the stuck-create case
-// this action exists to catch, always reporting "All tasks already in
-// Google Tasks" for them.
-//
-// Calendar-linked tasks (google_sync_enabled=false BY DESIGN — see
-// UnifiedPlanModal's skipGoogleTasks) also have no google_task_id, so
-// they're excluded by checking for a linked time_blocks row with its own
-// google_calendar_event_id — pushing those would recreate the exact
-// "task duplicated as both a Calendar event and a Task" bug that flag exists
-// to prevent.
-export function usePushToGoogleTasks() {
-  return useMutationWithFeedback({
-    action: 'push_to_google_tasks',
-    mutationFn: async (tasks: Task[]) => {
-      const token = useCalendarStore.getState().accessToken
-      if (!token) throw new Error('Google account not connected')
-
-      const notYetSynced = tasks.filter(t =>
-        !t.google_task_id && isOpenTask(t))
-
-      const calendarLinkedIds = await fetchCalendarLinkedTaskIds(notYetSynced.map(t => t.id))
-      const candidates = notYetSynced.filter(t => !calendarLinkedIds.has(t.id))
-
-      for (const t of candidates) {
-        // A task already marked google_sync_enabled=true (the stuck-create
-        // case) needs an explicit false→true transition to re-trigger
-        // migration 071's opt-in branch — setting true→true is a no-op the
-        // trigger doesn't see as a change at all.
-        if (t.google_sync_enabled) await updateTask(t.id, { google_sync_enabled: false })
-        await updateTask(t.id, { google_sync_enabled: true })
-      }
-
-      const { failed } = await drainGoogleTasksOutbox(token)
-      return { pushed: candidates.length - failed, failed }
-    },
-    successMessage: (r: { pushed: number; failed: number }) =>
-      r.pushed === 0 && r.failed === 0 ? 'All tasks already in Google Tasks'
-      : r.failed > 0 ? `Pushed ${r.pushed}, ${r.failed} failed`
-      : `Pushed ${r.pushed} task${r.pushed === 1 ? '' : 's'} to Google`,
-    invalidates: [qk.tasks.all],
   })
 }

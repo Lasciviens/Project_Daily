@@ -1,200 +1,50 @@
 import { supabase } from '../../../integrations/supabase/client'
-import { requireUser } from '../../../shared/utils/requireUser'
-import {
-  fetchGoogleTaskLists, fetchDefaultGoogleTaskList, createGoogleTaskList,
-  fullGoogleTasksSync, googleDueToLocalDate,
-  type GoogleRemoteTask,
-} from './googleTasksApi'
+import { parseFunctionErrorBody } from '../../../shared/utils/functionError'
+import type { GoogleTasksSyncSummary } from './googleTasksRules'
 
-interface LocalTaskList { id: string; google_id: string }
+// Google → app runs on the server only: the google-tasks-sync edge function
+// (every 20 minutes from pg_cron, and on demand from here with the signed-in
+// user's JWT) sends the outbox, reads every list (in full once a day or when
+// asked, otherwise what changed) and records the outcome in
+// google_tasks_sync_state. The browser used to run its own second copy of the
+// pull for the Import button; the two had drifted apart (dates, error
+// handling), so there is now one.
 
-// ── Task lists (google_task_lists mirror) ───────────────────────────────────
-// The TaskList resource carries no "is this the default list" flag — resolve
-// it by fetching the @default alias and matching its real id, never by
-// assuming a list's own id is literally the string "@default".
-//
-// Also reconciles STALE lists: a list deleted on Google's side used to keep
-// its local row forever (upsert-only, nothing ever removed it), so every
-// future pull kept including it in the target set and erroring on it — a
-// real incident this exact shape almost caused in the cron poller (a single
-// deleted list would freeze that run's sync-state watermark permanently,
-// since the per-list error never clears on its own). Returns the confirmed
-// current rows so callers build their target set from THIS fetch, not a
-// second DB query that could race with the delete below.
-//
-// Before dropping a stale list's row, every task that belonged to it is
-// DETACHED (google_task_id/google_tasklist_id/google_sync_enabled all
-// cleared together — migration 074). ON DELETE SET NULL alone would only
-// clear google_tasklist_id and leave a real google_task_id behind — a task
-// has no identity independent of its list in this API (every endpoint
-// addresses one via /lists/{tasklist}/tasks/{task}), so that combination is
-// actively broken: the next edit would PATCH /lists/@default/tasks/<id> for
-// an id that never existed in @default, and Google 404s every time.
-export async function syncGoogleTaskLists(token: string): Promise<LocalTaskList[]> {
-  const { id: userId } = await requireUser()
+// The plan editor imports the list resolver from here.
+export { resolveOrCreateGoogleTaskListId } from './googleTaskListsApi'
 
-  const [lists, defaultList] = await Promise.all([
-    fetchGoogleTaskLists(token),
-    fetchDefaultGoogleTaskList(token),
-  ])
-
-  const localRows: LocalTaskList[] = []
-  for (const l of lists) {
-    const { data, error } = await supabase.from('google_task_lists').upsert({
-      user_id:           userId,
-      google_id:         l.id,
-      title:             l.title,
-      is_default:        l.id === defaultList.id,
-      google_etag:       l.etag,
-      google_updated_at: l.updated,
-    }, { onConflict: 'user_id,google_id' }).select('id, google_id').single()
-    if (error) throw error
-    if (data) localRows.push(data)
-  }
-
-  const { data: existing } = await supabase.from('google_task_lists').select('id, google_id').eq('user_id', userId)
-  const currentGoogleIds = new Set(lists.map(l => l.id))
-  const staleIds = (existing ?? []).filter(row => !currentGoogleIds.has(row.google_id)).map(row => row.id)
-  for (const staleId of staleIds) {
-    const { error: detachError } = await supabase.rpc('detach_tasks_from_deleted_google_list', {
-      p_google_tasklist_id: staleId,
-    })
-    if (detachError) throw detachError
-  }
-  if (staleIds.length) {
-    await supabase.from('google_task_lists').delete().in('id', staleIds)
-  }
-
-  return localRows
+export interface GoogleTasksSyncOptions {
+  /** Read every list in full, not only what changed. */
+  full?:  boolean
+  /** Also retry outbox rows that are waiting out a backoff. */
+  force?: boolean
 }
 
-// Resolves a free-typed list NAME (from the task-creation "Google Task list"
-// field) to a local google_task_lists id — matching an existing list
-// case-insensitively so a name that's already there never duplicates, and
-// creating a brand-new one on Google (then mirroring it locally) otherwise.
-// Used by UnifiedPlanModal's save path — a task's list is now something the
-// user types/picks per task, not a fixed mapping off `domain`.
-//
-// The initial read-then-create is a TOCTOU race on its own (two near-
-// simultaneous calls for the same name could both see no match and both
-// create) — migration 076's case-insensitive UNIQUE index is the real
-// backstop: the loser's INSERT gets a 23505 violation instead of a
-// duplicate, and that's caught below to resolve to the winner's id instead
-// of surfacing an error.
-export async function resolveOrCreateGoogleTaskListId(token: string, title: string): Promise<string> {
-  const trimmed = title.trim()
-  const { id: userId } = await requireUser()
-
-  const findExisting = async (): Promise<string | null> => {
-    const { data: existing } = await supabase.from('google_task_lists').select('id, title').eq('user_id', userId)
-    return (existing ?? []).find(l => l.title.trim().toLowerCase() === trimmed.toLowerCase())?.id ?? null
-  }
-
-  const existingId = await findExisting()
-  if (existingId) return existingId
-
-  const remote = await createGoogleTaskList(token, trimmed)
-  const { data, error } = await supabase.from('google_task_lists').insert({
-    user_id: userId, google_id: remote.id, title: remote.title,
-    is_default: false, google_etag: remote.etag, google_updated_at: remote.updated,
-  }).select('id').single()
-
+/** One run of google-tasks-sync for the signed-in user. Throws with the
+ *  function's own error text (e.g. "token refresh failed: invalid_grant"). */
+export async function runGoogleTasksSync(opts: GoogleTasksSyncOptions = {}): Promise<GoogleTasksSyncSummary> {
+  const { data, error } = await supabase.functions.invoke('google-tasks-sync', { body: opts })
   if (error) {
-    // 23505 = unique_violation — another concurrent call won the race for
-    // this exact (case-insensitive) name. The list now exists on Google
-    // TWICE (this call's own create already went through, no undo for
-    // that), but the local mirror stays singular by resolving to whichever
-    // row won, rather than throwing or leaving an orphaned duplicate row.
-    if (error.code === '23505') {
-      const winnerId = await findExisting()
-      if (winnerId) return winnerId
-    }
-    throw error
+    const body = await parseFunctionErrorBody(error)
+    const message = typeof body?.error === 'string' ? body.error : error.message
+    throw new Error(body?.reconnect_required ? `${message} (reconnect Google in Settings → Subscriptions)` : message)
   }
-  return data.id
+  return (data ?? {}) as GoogleTasksSyncSummary
 }
 
-async function localGoogleTaskListId(googleListId: string): Promise<string | null> {
-  if (googleListId === '@default') {
-    const { data } = await supabase.from('google_task_lists').select('id').eq('is_default', true).maybeSingle()
-    return data?.id ?? null
-  }
-  const { data } = await supabase.from('google_task_lists').select('id').eq('google_id', googleListId).maybeSingle()
-  return data?.id ?? null
+/** google_tasks_sync_state (072, last_full_sync_at since 145): the server's
+ *  last run. `updated_at` is the last attempt, whatever its outcome. */
+export interface GoogleTasksSyncState {
+  last_success_at:    string | null
+  last_error:         string | null
+  last_error_at:      string | null
+  last_full_sync_at?: string | null
+  updated_at:         string
 }
 
-async function upsertOne(rt: GoogleRemoteTask, googleTasklistLocalId: string | null): Promise<string | null> {
-  const { data, error } = await supabase.rpc('upsert_task_from_google', {
-    p_google_task_id:       rt.id,
-    p_title:                rt.title,
-    p_notes:                rt.notes ?? null,
-    p_due_date:             rt.due ? googleDueToLocalDate(rt.due) : null,
-    p_status:               rt.status,
-    p_google_updated_at:    rt.updated,
-    p_google_tasklist_id:   googleTasklistLocalId,
-    p_completed_at:         rt.completed ?? null,
-    p_google_etag:          rt.etag ?? null,
-    p_google_position:      rt.position ?? null,
-    p_google_web_view_link: rt.webViewLink ?? null,
-    p_google_hidden:        rt.hidden ?? false,
-    p_google_deleted:       rt.deleted ?? false,
-  })
+export async function fetchGoogleTasksSyncState(): Promise<GoogleTasksSyncState | null> {
+  // `*`, not a column list: last_full_sync_at only exists once 145 ran.
+  const { data, error } = await supabase.from('google_tasks_sync_state').select('*').maybeSingle()
   if (error) throw error
-  return data as string | null
+  return (data ?? null) as GoogleTasksSyncState | null
 }
-
-export interface PullResult {
-  imported: number
-}
-
-// Full pull across every Google Task list — creates/updates local mirrors
-// via upsert_task_from_google (which itself refuses to overwrite a task
-// with a pending outbox row — see that function's comment), then resolves
-// parent/subtask relationships in a second pass once every sibling in the
-// batch has a local id.
-export async function pullGoogleTasks(token: string): Promise<PullResult> {
-  const lists = await syncGoogleTaskLists(token)
-  const targets = lists.length ? lists : [{ id: null as string | null, google_id: '@default' }]
-
-  let imported = 0
-
-  for (const list of targets) {
-    const remoteTasks = await fullGoogleTasksSync(token, list.google_id)
-    const idMap = new Map<string, string>() // google task id -> local uuid
-
-    for (const rt of remoteTasks) {
-      const localId = await upsertOne(rt, list.id)
-      if (localId) {
-        idMap.set(rt.id, localId)
-        imported++
-      }
-    }
-
-    // Every task gets a parent resolution pass, not just the ones WITH a
-    // `parent` — a task moved back to top-level on Google's side (parent
-    // removed) still needs its LOCAL parent_task_id cleared to match, and
-    // `continue`-ing past that case (the original bug here) left it stuck
-    // showing as a subtask forever, silently diverging from Google's truth.
-    for (const rt of remoteTasks) {
-      const localId = idMap.get(rt.id)
-      if (!localId) continue
-      const parentLocalId = rt.parent ? idMap.get(rt.parent) ?? null : null
-      // Skip only when a `parent` was named but couldn't be resolved in
-      // THIS batch (shouldn't happen for a full pull — every sibling is in
-      // the same batch — but never clear a real parent based on a lookup
-      // miss, only on Google genuinely reporting none).
-      if (rt.parent && !parentLocalId) continue
-      const { error } = await supabase.rpc('set_task_parent_from_google', {
-        p_task_id: localId, p_parent_task_id: parentLocalId,
-      })
-      if (error) throw error
-    }
-  }
-
-  return { imported }
-}
-
-// resolveGoogleListId's local-side counterpart, exported for callers (e.g.
-// GoogleTasksSyncButtons) that need to know which local google_task_lists
-// row backs a given task without duplicating this lookup.
-export { localGoogleTaskListId }
