@@ -6,6 +6,7 @@ import { useCurrencyRates } from '../hooks/useCurrencyRates'
 import { useWidgetState } from '../hooks/useWidgetState'
 import { WidgetShell } from './WidgetShell'
 import { GlanceCarousel, type GlanceScreen } from './GlanceCarousel'
+import { MoneyGlanceArt } from './glanceMotifs'
 import type { CurrencyData } from '../api/currencyApi'
 import { ChangeBadge, CurrencyDetails } from './CurrencyDetails'
 
@@ -55,7 +56,7 @@ export function CurrencyTile() {
   const screens = data ? currencyScreens(data) : [{ key: 'none', name: 'NOK → TRY', value: '—', hint: error ? 'Unavailable' : undefined }]
   return (
     <>
-      <GlanceCarousel id="currency" label="Money" icon={<Banknote />} loading={isLoading} screens={screens} onClick={() => setOpen(true)} />
+      <GlanceCarousel id="currency" label="Money" icon={<Banknote />} art={<MoneyGlanceArt />} loading={isLoading} screens={screens} onClick={() => setOpen(true)} />
       <ModalShell open={open} onClose={() => setOpen(false)} title="Currency" size="sm">
         {isLoading && <CurrencySkeleton />}
         {error && !data && <CurrencyError onRetry={() => refetch()} />}

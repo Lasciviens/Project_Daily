@@ -9,6 +9,7 @@ import { shiftDateStr } from '../../../shared/utils/dateUtils'
 import { useWidgetState } from '../hooks/useWidgetState'
 import { WidgetShell } from './WidgetShell'
 import { GlanceCarousel, type GlanceScreen } from './GlanceCarousel'
+import { TrainingGlanceArt } from './glanceMotifs'
 import { useAthleteProfile } from '../../training/hooks/useAthleteProfile'
 import { TileDetail } from './TileDetail'
 import { useTilePopup } from '../hooks/useTilePopup'
@@ -159,6 +160,7 @@ export function TrainingTile() {
         id="training"
         label="Training"
         icon={<Dumbbell />}
+        art={<TrainingGlanceArt />}
         {...(popup ? { onClick: () => setOpen(true) } : { to: '/training' })}
         loading={stats.isLoading}
         screens={screens}

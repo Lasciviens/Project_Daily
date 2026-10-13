@@ -7,6 +7,7 @@ import { useRecentlyWatched, type RecentlyWatchedItem } from '../../media/hooks/
 import { useWidgetState } from '../hooks/useWidgetState'
 import { WidgetShell } from './WidgetShell'
 import { GlanceCarousel, type GlanceScreen } from './GlanceCarousel'
+import { WatchedGlanceArt } from './glanceMotifs'
 import { readGlanceIndex } from './glanceIndex'
 import { useTVSeries } from '../../media/hooks/useTVSeries'
 import { useNextEpisode } from '../../media/hooks/useNextEpisode'
@@ -144,7 +145,7 @@ export function RecentMediaTile() {
   const action = popup ? { onClick: () => setOpen(true) } : latest || current ? { onClick: openOnPhone } : { to: '/media' }
   return (
     <>
-      <GlanceCarousel id="media" label="Watched" icon={<Clapperboard />} loading={isLoading} screens={screens} {...action} />
+      <GlanceCarousel id="media" label="Watched" icon={<Clapperboard />} art={<WatchedGlanceArt />} loading={isLoading} screens={screens} {...action} />
       {popup && (
         <TileDetail open={open} onClose={() => setOpen(false)} title="Recently watched" to="/media" openLabel="Open Media">
           <RecentMediaGrid enabled />

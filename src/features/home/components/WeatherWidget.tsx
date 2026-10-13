@@ -7,6 +7,7 @@ import { useWeather } from '../hooks/useWeather'
 import { useWidgetState } from '../hooks/useWidgetState'
 import { WidgetShell } from './WidgetShell'
 import { GlanceCarousel, type GlanceScreen } from './GlanceCarousel'
+import { WeatherGlanceArt } from './glanceMotifs'
 import { WeatherDetails } from './WeatherDetails'
 
 function WeatherSkeleton() {
@@ -105,7 +106,7 @@ export function WeatherTile() {
   const screens = data ? weatherScreens(data) : [{ key: 'none', name: 'Now', value: '—', hint: error ? 'Unavailable' : undefined }]
   return (
     <>
-      <GlanceCarousel id="weather" label="Weather" icon={<CloudSun />} loading={isLoading} screens={screens} onClick={() => setOpen(true)} />
+      <GlanceCarousel id="weather" label="Weather" icon={<CloudSun />} art={<WeatherGlanceArt />} loading={isLoading} screens={screens} onClick={() => setOpen(true)} />
       <ModalShell open={open} onClose={() => setOpen(false)} title="Weather" size="sm">
         {isLoading && <WeatherSkeleton />}
         {error && !data && <WeatherError message={(error as Error).message} onRetry={() => refetch()} />}
