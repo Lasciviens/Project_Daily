@@ -33,10 +33,10 @@ begin
   s := public.app_delete_rows('tasks', array['a0000000-0000-0000-0000-00000000000a']);
   insert into public.t_snap values ('task', s);
   perform public.t_ok((s ->> 'deleted')::int = 1, 'a task delete reports one row deleted');
-  select array_agg(g ->> 'table' order by g ->> 'table') into tables from jsonb_array_elements(s -> 'groups') g;
+  select array_agg(g ->> 'table' order by (g ->> 'table') collate "C") into tables from jsonb_array_elements(s -> 'groups') g;
   perform public.t_ok(tables = array['task_tags','tasks','time_blocks','training_skips'], 'it returns the task and every row deleted with it (' || array_to_string(tables, ',') || ')');
   perform public.t_ok((s -> 'groups' -> 0 ->> 'table') = 'tasks', 'the task comes first (parents first)');
-  select array_agg(g ->> 'table' order by g ->> 'table') into tables from jsonb_array_elements(s -> 'links') g;
+  select array_agg(g ->> 'table' order by (g ->> 'table') collate "C") into tables from jsonb_array_elements(s -> 'links') g;
   perform public.t_ok(tables = array['tasks','wish_items'], 'links: the subtask and the wish that pointed at it');
   perform public.t_ok(s -> 'hidden' = '["task_secrets"]', 'a child the caller cannot read is named, not returned');
   perform public.t_ok(not exists (select 1 from public.tasks where title = 'Parent'), 'the task is gone');
@@ -104,7 +104,7 @@ do $$
 declare s jsonb; r jsonb; tables text[];
 begin
   s := public.app_delete_rows('projects', array['f0000000-0000-0000-0000-00000000000f']);
-  select array_agg(distinct g ->> 'table' order by g ->> 'table') into tables from jsonb_array_elements(s -> 'groups') g;
+  select array_agg(distinct (g ->> 'table') collate "C" order by (g ->> 'table') collate "C") into tables from jsonb_array_elements(s -> 'groups') g;
   perform public.t_ok(tables = array['project_items','project_phases','projects','time_blocks'], 'a project returns its phases, items and the items'' slots');
   perform public.t_ok(not exists (select 1 from public.time_blocks where source_type = 'project_item'), 'rule 043 deleted the slot');
   -- the groups' order is put to the test: items before phases still restores
