@@ -127,8 +127,11 @@ async function get(path: string, token: string): Promise<{ data: unknown; pages:
 async function getAll(path: string, token: string, limit = 250): Promise<AnyRec[]> {
   const sep = path.includes('?') ? '&' : '?'
   const first = await get(`${path}${sep}page=1&limit=${limit}`, token)
+  // Past 200 pages the answer would be cut short — an error, never partial data
+  // (a mirror reading half a list would remove the other half).
+  if (first.pages > 200) throw new Error(`Trakt answered ${first.pages} pages for ${path.split('?')[0]} — more than the 200 the sync reads; nothing was changed`)
   const out = [...(first.data as AnyRec[] ?? [])]
-  for (let page = 2; page <= Math.min(first.pages, 200); page++) {
+  for (let page = 2; page <= first.pages; page++) {
     const next = await get(`${path}${sep}page=${page}&limit=${limit}`, token)
     out.push(...(next.data as AnyRec[] ?? []))
   }
@@ -1215,9 +1218,10 @@ function lastActivitiesChange(prev: unknown, next: unknown): { changed: boolean;
 // longer lists (the summary plan removes those, with its held-back guard),
 // are left alone. An item whose history came back empty is left alone too.
 //
-// App → Trakt: a removed watch removes ONE play — by its Trakt id, else the
-// play at the same time, else the play nearest in time that no other watch
-// here accounts for (playToRemove).
+// App → Trakt: a removed watch removes ONE play, and never a guessed one
+// (playToRemove): by its Trakt id, or a play at that exact second when Trakt
+// has more plays there than the watches left here account for. Otherwise the
+// remove waits until a pull has linked the title's watches to their plays.
 
 type WatchSource = 'app' | 'trakt' | 'backfill'
 interface LocalWatch { id: string; watchedAt: string | null; historyId: number | null; source: WatchSource; createdAt?: string | null }
@@ -1384,19 +1388,31 @@ interface HistoryTargets {
   needsFull: boolean
 }
 
+/** What the watches of one item here add up to: how many, the latest date, any not linked to a play yet. */
+interface LocalPlays { count: number; latest: string | null; unlinked: boolean }
+
+/** The per-item summary of a set of watches (the cache columns give the same count and latest date). */
+function localPlays(watches: Map<string, LocalWatch[]>): Map<string, LocalPlays> {
+  const out = new Map<string, LocalPlays>()
+  for (const [key, ws] of watches) {
+    const latest = ws.reduce<string | null>((x, w) => (secondOf(w.watchedAt) > secondOf(x) ? w.watchedAt : x), null)
+    out.set(key, { count: ws.length, latest, unlinked: ws.some(w => w.historyId == null) })
+  }
+  return out
+}
+
 /**
  * The titles whose plays here differ from Trakt's watched summary (another
  * count, another latest date, or a watch not linked to a play yet) — their
  * history is read one by one when there are few.
  */
-function historyTargets(snap: TraktSnapshot, local: Map<string, LocalWatch[]>, pending: Set<string>): HistoryTargets {
+function historyTargets(snap: TraktSnapshot, local: Map<string, LocalPlays>, pending: Set<string>): HistoryTargets {
   const out: HistoryTargets = { shows: new Map(), movies: new Map(), needsFull: false }
   const differs = (key: string, plays: number, at: string | null) => {
     if (pending.has(key)) return false
-    const mine = local.get(key) ?? []
-    if (mine.length !== plays || mine.some(w => w.historyId == null)) return true
-    const latest = mine.reduce<string | null>((x, w) => (secondOf(w.watchedAt) > secondOf(x) ? w.watchedAt : x), null)
-    return !!at && !sameSecond(latest, at)
+    const mine = local.get(key)
+    if (!mine || mine.count !== plays || mine.unlinked) return true
+    return !!at && !sameSecond(mine.latest, at)
   }
   const want = (map: Map<number, number>, tmdb: number, trakt: number) => {
     if (trakt > 0) map.set(tmdb, trakt)
@@ -1414,6 +1430,41 @@ function historyTargets(snap: TraktSnapshot, local: Map<string, LocalWatch[]>, p
   return out
 }
 
+/** A title of Trakt's watched summary: its key ('movie:<tmdb>' | 'show:<tmdb>'), TMDB and Trakt ids. */
+interface SummaryTitle { key: string; kind: 'movie' | 'show'; tmdb: number; trakt: number }
+
+/**
+ * Every title Trakt's watched summary lists, in one fixed order — a whole
+ * history read goes through them title by title and keeps its place
+ * (trakt_sync_state.history_cursor = the last key done), so it resumes in the
+ * next run instead of depending on one run's time.
+ */
+function summaryTitles(snap: TraktSnapshot): SummaryTitle[] {
+  const out: SummaryTitle[] = []
+  for (const m of snap.watchedMovies) if (m.item.ids.tmdb) out.push({ key: `movie:${m.item.ids.tmdb}`, kind: 'movie', tmdb: m.item.ids.tmdb, trakt: m.item.ids.trakt })
+  for (const sh of snap.watchedShows) if (sh.item.ids.tmdb) out.push({ key: `show:${sh.item.ids.tmdb}`, kind: 'show', tmdb: sh.item.ids.tmdb, trakt: sh.item.ids.trakt })
+  return out.sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))
+}
+
+/** The titles still to read after `cursor` ('' = from the start). */
+const titlesAfter = (titles: SummaryTitle[], cursor: string) => titles.filter(t => t.key > cursor)
+
+/** The item keys of one title in Trakt's summary (a movie's own key, a show's episodes). */
+function titleItemKeys(snap: TraktSnapshot, title: SummaryTitle): string[] {
+  if (title.kind === 'movie') return [watchKey.movie(title.tmdb)]
+  const sh = snap.watchedShows.find(x => x.item.ids.tmdb === title.tmdb)
+  return (sh?.episodes ?? []).map(([season, episode]) => watchKey.episode(title.tmdb, season, episode))
+}
+
+/**
+ * A pull never removes a big part of the watches here by itself: more than
+ * max(10, 10 %) of them at once waits for the owner's confirm (the Trakt
+ * card's "Sync anyway"), like the library's own removals.
+ */
+function watchRemovalsNeedConfirm(plan: WatchPlan, localCount: number): boolean {
+  return plan.removes.length > Math.max(10, Math.floor(localCount * 0.1))
+}
+
 /** Every item Trakt's watched summary lists, by key. */
 function summaryKeys(snap: TraktSnapshot): Set<string> {
   const out = new Set<string>()
@@ -1425,44 +1476,48 @@ function summaryKeys(snap: TraktSnapshot): Set<string> {
   return out
 }
 
+/** What to do with a removed watch's play: remove this one, nothing (it is gone), or wait for the ids. */
+type PlayRemoval = { kind: 'remove'; historyId: number } | { kind: 'gone' } | { kind: 'wait' }
+
 /**
- * The Trakt play a removed watch was: its own id when Trakt still has it;
- * else the play at the same time, else the one nearest in time — among the
- * plays no remaining watch here accounts for (by id, or by the same time).
- * null = nothing left to remove.
+ * The Trakt play a removed watch was — never a guess. By its own Trakt id
+ * (gone when Trakt no longer has it); without one, only a play at that exact
+ * second when Trakt has more plays there than the watches left here account
+ * for (their linked plays, and one each for the unlinked ones at that
+ * second). Anything else waits until a pull has linked the title's watches.
  */
-function playToRemove(removed: { historyId: number | null; watchedAt: string | null }, plays: TraktPlay[], keep: { historyId: number | null; watchedAt: string | null }[]): number | null {
-  if (removed.historyId != null) return plays.some(p => p.historyId === removed.historyId) ? removed.historyId : null
-  const keptIds = new Set(keep.filter(k => k.historyId != null).map(k => k.historyId!))
-  let open = plays.filter(p => !keptIds.has(p.historyId))
-  for (const k of keep) {
-    if (k.historyId != null) continue
-    const same = open.find(p => sameSecond(p.watchedAt, k.watchedAt))
-    if (same) open = open.filter(p => p !== same)
-  }
-  if (!open.length) return null
+function playToRemove(removed: { historyId: number | null; watchedAt: string | null }, plays: TraktPlay[], keep: { historyId: number | null; watchedAt: string | null }[]): PlayRemoval {
+  if (removed.historyId != null) return plays.some(p => p.historyId === removed.historyId) ? { kind: 'remove', historyId: removed.historyId } : { kind: 'gone' }
   const t = secondOf(removed.watchedAt)
-  const exact = open.find(p => secondOf(p.watchedAt) === t)
-  if (exact) return exact.historyId
-  const dist = (p: TraktPlay) => Math.abs(Math.max(0, secondOf(p.watchedAt)) - Math.max(0, t))
-  return open.reduce((best, p) => (dist(p) < dist(best) ? p : best)).historyId
+  const keptIds = new Set(keep.filter(k => k.historyId != null).map(k => k.historyId!))
+  const open = plays.filter(p => secondOf(p.watchedAt) === t && !keptIds.has(p.historyId)).sort((a, b) => b.historyId - a.historyId)
+  const claimed = keep.filter(k => k.historyId == null && secondOf(k.watchedAt) === t).length
+  return open.length > claimed ? { kind: 'remove', historyId: open[0].historyId } : { kind: 'wait' }
 }
 
 /**
- * Outbox rows that cancel out before anything is sent: a watch added and
- * removed again (or re-dated) while its add still waits — both rows go, so
- * Trakt never gets a play only to lose it again. Rows in send order.
+ * Outbox rows that cancel out before anything is sent — every waiting row,
+ * whatever its next_retry_at, in send order:
+ *   · an add not sent yet (or failed and waiting), then a remove of that watch
+ *     (removed, or re-dated): both go, Trakt never gets that play;
+ *   · a remove, then an add of the same watch at the same second (deleted,
+ *     then Undo before the drain): both go, Trakt keeps the play it has.
  */
 function cancelledOutboxRows(rows: { id: string; op: string; payload?: Record<string, unknown> | null }[]): string[] {
   const out: string[] = []
   const adds = new Map<string, string>()
+  const removes = new Map<string, { id: string; at: string | null }>()
   for (const r of rows) {
     const watch = typeof r.payload?.watch_id === 'string' ? r.payload.watch_id : null
     if (!watch) continue
-    if (r.op === 'history_add') adds.set(watch, r.id)
-    else if (r.op === 'history_remove_play' && adds.has(watch)) {
-      out.push(adds.get(watch)!, r.id)
-      adds.delete(watch)
+    const at = typeof r.payload?.watched_at === 'string' ? r.payload.watched_at : null
+    if (r.op === 'history_add') {
+      const rem = removes.get(watch)
+      if (rem && sameSecond(rem.at, at)) { out.push(rem.id, r.id); removes.delete(watch); continue }
+      adds.set(watch, r.id)
+    } else if (r.op === 'history_remove_play') {
+      if (adds.has(watch)) { out.push(adds.get(watch)!, r.id); adds.delete(watch); continue }
+      removes.set(watch, { id: r.id, at })
     }
   }
   return out
@@ -1657,12 +1712,15 @@ interface Local {
   showEntry: Map<number, { entryId: string; seriesId: string }>
 }
 
-async function loadLocal(db: Db, userId: string): Promise<Local> {
+async function loadLocal(db: Db, userId: string, withWatchDates = false): Promise<Local> {
   const [mv, tv, eps, watches] = await Promise.all([
     allRows(() => db.from('user_movie_entries').select('id, movie_id, status, repeat_count, rating, watched_at, watchlist_rank, personal_note, rewatch_round, movie:movies(tmdb_id, title, release_date)').eq('user_id', userId).order('id')),
     allRows(() => db.from('user_tv_entries').select('id, tv_series_id, status, rating, watchlist_rank, personal_note, rewatch_round, tv_series:tv_series(tmdb_id, title, first_air_date)').eq('user_id', userId).order('id')),
     allRows(() => db.from('user_tv_episodes').select('id, season_number, episode_number, repeat_count, watched_at, tv_series:tv_series(tmdb_id)').eq('user_id', userId).not('watched_at', 'is', null).order('id')),
-    allRows(() => db.from('media_watches').select('movie_entry_id, episode_id, watched_at').eq('user_id', userId).order('watched_at', { ascending: true, nullsFirst: true }).order('id')),
+    // Each watch's own date only for the import, which sends them (a sync reads a title's watches when it reads its plays).
+    withWatchDates
+      ? allRows(() => db.from('media_watches').select('movie_entry_id, episode_id, watched_at').eq('user_id', userId).order('watched_at', { ascending: true, nullsFirst: true }).order('id'))
+      : Promise.resolve([] as AnyRec[]),
   ])
   // Each watch's own date (migration 149), oldest first: the import sends those.
   const dates = new Map<string, (string | null)[]>()
@@ -1679,7 +1737,7 @@ async function loadLocal(db: Db, userId: string): Promise<Local> {
     movieEntry.set(tmdbId, { movieId: String(r.movie_id) })
     lib.movies.push({ tmdbId, title: String(m?.title ?? ''), year: yearOf(m?.release_date), status: String(r.status), repeatCount: Number(r.repeat_count) || 0,
       rating: (r.rating as number) ?? null, watchedAt: (r.watched_at as string) ?? null, watchlistRank: (r.watchlist_rank as number) ?? null, note: (r.personal_note as string) || null,
-      rewatchRound: (r.rewatch_round as number) ?? null, watches: dates.get(String(r.id)) })
+      rewatchRound: (r.rewatch_round as number) ?? null, watches: withWatchDates ? dates.get(String(r.id)) : undefined })
   }
   for (const r of tv) {
     const t = one(r.tv_series); const tmdbId = Number(t?.tmdb_id)
@@ -1691,7 +1749,7 @@ async function loadLocal(db: Db, userId: string): Promise<Local> {
   }
   for (const r of eps) {
     const tmdbId = Number(one(r.tv_series)?.tmdb_id)
-    if (tmdbId) lib.episodes.push({ tmdbId, season: Number(r.season_number), episode: Number(r.episode_number), repeatCount: Number(r.repeat_count) || 0, watchedAt: (r.watched_at as string) ?? null, watches: dates.get(String(r.id)) })
+    if (tmdbId) lib.episodes.push({ tmdbId, season: Number(r.season_number), episode: Number(r.episode_number), repeatCount: Number(r.repeat_count) || 0, watchedAt: (r.watched_at as string) ?? null, watches: withWatchDates ? dates.get(String(r.id)) : undefined })
   }
   return { lib, movieEntry, showEntry }
 }
@@ -1699,33 +1757,47 @@ async function loadLocal(db: Db, userId: string): Promise<Local> {
 // ── Watches (migration 149): Trakt's per-play history ⇄ media_watches ───────
 // API (checked 14.10.2026 — API blueprint "Get watched history" / "Remove
 // items from history" / "ID Lookup", and trakt/trakt-api's contract;
-// docs/trakt/REFERENCE.md §12): GET /sync/history/{movies|episodes} and
-// /sync/history/{movies|shows}/{trakt id} (paginated, newest first; a limit
-// above the endpoint's maximum is clamped, not refused) → [{id (64-bit: one
-// play), watched_at, action, type, movie | episode + show}]; POST
-// /sync/history/remove {ids: [..]} removes single plays → {deleted,
-// not_found: {.., ids}}; GET /search/tmdb/{id}?type=movie|show → [{type,
-// movie | show: {ids: {trakt}}}].
+// docs/integrations/trakt.md, docs/trakt/REFERENCE.md §12): GET
+// /sync/history/movies and /sync/history/{movies|shows}/{trakt id}
+// (paginated, newest first; a limit above the endpoint's maximum is clamped,
+// not refused) → [{id (64-bit: one play), watched_at, action, type, movie |
+// episode + show}]; POST /sync/history/remove {ids: [..]} removes single
+// plays → {deleted, not_found: {.., ids}}; GET /search/tmdb/{id}?type=movie|
+// show → [{type, movie | show: {ids: {trakt}}}].
 interface WatchRow extends LocalWatch {
   kind: 'movie' | 'episode'; movieEntryId: string | null; seriesId: string | null; season: number | null; episode: number | null
 }
-interface Watches { byKey: Map<string, LocalWatch[]>; rows: Map<string, WatchRow>; movieEntry: Map<number, string> }
+interface Watches { byKey: Map<string, LocalWatch[]>; rows: Map<string, WatchRow>; movieEntry: Map<number, string>; series: Map<number, string> }
 
-async function loadWatches(db: Db, userId: string): Promise<Watches> {
-  const [rows, mv] = await Promise.all([
-    allRows(() => db.from('media_watches').select('id, kind, movie_entry_id, tv_series_id, season_number, episode_number, watched_at, trakt_history_id, source, created_at, tv_series:tv_series(tmdb_id)').eq('user_id', userId).order('id')),
-    allRows(() => db.from('user_movie_entries').select('id, movie:movies(tmdb_id)').eq('user_id', userId).order('id')),
-  ])
-  const movieEntry = new Map<number, string>()
+/** The watches of some titles (by TMDB id), with what an insert needs: each movie's entry, each show's catalogue row. */
+async function loadWatches(db: Db, userId: string, movieTmdbs: number[], showTmdbs: number[]): Promise<Watches> {
+  const out: Watches = { byKey: new Map(), rows: new Map(), movieEntry: new Map(), series: new Map() }
   const entryTmdb = new Map<string, number>()
-  for (const r of mv) {
-    const tmdb = Number(one(r.movie)?.tmdb_id)
-    if (tmdb) { movieEntry.set(tmdb, String(r.id)); entryTmdb.set(String(r.id), tmdb) }
+  for (const part of chunk(movieTmdbs, 200)) {
+    const { data, error } = await db.from('user_movie_entries').select('id, movie:movies!inner(tmdb_id)').eq('user_id', userId).in('movie.tmdb_id', part)
+    if (error) throw error
+    for (const r of (data ?? []) as AnyRec[]) {
+      const tmdb = Number(one(r.movie)?.tmdb_id)
+      if (tmdb) { out.movieEntry.set(tmdb, String(r.id)); entryTmdb.set(String(r.id), tmdb) }
+    }
   }
-  const out: Watches = { byKey: new Map(), rows: new Map(), movieEntry }
+  const seriesTmdb = new Map<string, number>()
+  for (const part of chunk(showTmdbs, 200)) {
+    const { data, error } = await db.from('tv_series').select('id, tmdb_id').in('tmdb_id', part)
+    if (error) throw error
+    for (const r of (data ?? []) as AnyRec[]) { out.series.set(Number(r.tmdb_id), String(r.id)); seriesTmdb.set(String(r.id), Number(r.tmdb_id)) }
+  }
+  const cols = 'id, kind, movie_entry_id, tv_series_id, season_number, episode_number, watched_at, trakt_history_id, source, created_at'
+  const rows: AnyRec[] = []
+  for (const part of chunk([...entryTmdb.keys()], 200)) {
+    rows.push(...await allRows(() => db.from('media_watches').select(cols).eq('user_id', userId).in('movie_entry_id', part).order('id')))
+  }
+  for (const part of chunk([...seriesTmdb.keys()], 100)) {
+    rows.push(...await allRows(() => db.from('media_watches').select(cols).eq('user_id', userId).eq('kind', 'episode').in('tv_series_id', part).order('id')))
+  }
   for (const r of rows) {
     const kind = r.kind === 'movie' ? 'movie' : 'episode'
-    const tmdb = kind === 'movie' ? entryTmdb.get(String(r.movie_entry_id)) : Number(one(r.tv_series)?.tmdb_id)
+    const tmdb = kind === 'movie' ? entryTmdb.get(String(r.movie_entry_id)) : seriesTmdb.get(String(r.tv_series_id))
     if (!tmdb) continue
     const key = kind === 'movie' ? watchKey.movie(tmdb) : watchKey.episode(tmdb, Number(r.season_number), Number(r.episode_number))
     const w: WatchRow = {
@@ -1740,62 +1812,157 @@ async function loadWatches(db: Db, userId: string): Promise<Watches> {
   return out
 }
 
+/**
+ * What the watches here add up to per item, for deciding which titles to
+ * read: an episode's count and latest date from its cache columns (the
+ * trigger keeps them equal to its watches), a movie's from its watches (few),
+ * and which items have a watch not linked to a play yet.
+ */
+async function loadLocalPlays(db: Db, userId: string, lib: LocalLibrary): Promise<Map<string, LocalPlays>> {
+  const out = new Map<string, LocalPlays>()
+  for (const e of lib.episodes) out.set(watchKey.episode(e.tmdbId, e.season, e.episode), { count: 1 + Math.max(0, e.repeatCount), latest: e.watchedAt ?? null, unlinked: false })
+  const [movies, unlinked] = await Promise.all([
+    allRows(() => db.from('media_watches').select('id, watched_at, trakt_history_id, entry:user_movie_entries!inner(movie:movies(tmdb_id))').eq('user_id', userId).eq('kind', 'movie').order('id')),
+    allRows(() => db.from('media_watches').select('id, kind, season_number, episode_number, tv_series:tv_series(tmdb_id)').eq('user_id', userId).eq('kind', 'episode').is('trakt_history_id', null).order('id')),
+  ])
+  const byMovie = new Map<string, LocalWatch[]>()
+  for (const r of movies) {
+    const tmdb = Number(one(one(r.entry)?.movie)?.tmdb_id)
+    if (!tmdb) continue
+    const key = watchKey.movie(tmdb)
+    byMovie.set(key, [...(byMovie.get(key) ?? []), { id: String(r.id), watchedAt: (r.watched_at as string) ?? null, historyId: r.trakt_history_id == null ? null : Number(r.trakt_history_id), source: 'app' }])
+  }
+  for (const [k, v] of localPlays(byMovie)) out.set(k, v)
+  for (const r of unlinked) {
+    const tmdb = Number(one(r.tv_series)?.tmdb_id)
+    if (!tmdb) continue
+    const key = watchKey.episode(tmdb, Number(r.season_number), Number(r.episode_number))
+    const p = out.get(key)
+    if (p) p.unlinked = true
+  }
+  return out
+}
+
 /** Every page of a history read, parsed. */
 async function readHistory(path: string, token: string) {
   return parseHistory(await getAll(path, token))
 }
 
+const WATCH_BATCH = 10
+
 /**
- * Trakt → watches: the titles whose plays differ are read one by one (the
- * whole history on the first run after 149, on Sync now, after a reset, or
- * when there are many), then matched play by play (traktWatchPlan.ts). Runs
- * after the library writes, so a new episode or title already has its entry
- * (and the summary's placeholders, which the real plays replace).
+ * Trakt → watches, title by title (traktWatchPlan.ts), after the library
+ * writes (so a new title already has its entry and the summary's
+ * placeholders). The titles whose plays differ are read one by one; the
+ * WHOLE history — first run after 149 or a reconnect (history_synced_at
+ * NULL), Sync now, a progress reset, many or unidentified titles — goes title
+ * by title too, keeping its place in trakt_sync_state.history_cursor, so it
+ * resumes in the next run and never depends on one run's time. A pull never
+ * removes many watches by itself (watchRemovalsNeedConfirm; `force` applies
+ * them), and a play another watch still holds (23505) is skipped and counted.
  */
-async function syncWatches(db: Db, userId: string, token: string, snap: TraktSnapshot, pending: Set<string>, full: boolean) {
-  const { data: st } = await db.from('trakt_sync_state').select('history_synced_at').eq('user_id', userId).maybeSingle()
-  const local = await loadWatches(db, userId)
-  const targets = historyTargets(snap, local.byKey, pending)
-  const wholeHistory = full || !(st as AnyRec | null)?.history_synced_at || targets.needsFull
-    || targets.shows.size + targets.movies.size > HISTORY_TARGET_MAX
-  const watched = summaryKeys(snap)
-  let read = new Set<string>()
-  const plays: KeyedPlay[] = []
-  let unreadable = 0
-  if (wholeHistory) {
-    const [m, e] = await Promise.all([readHistory('/sync/history/movies', token), readHistory('/sync/history/episodes', token)])
-    plays.push(...m.plays, ...e.plays)
-    unreadable = m.unreadable + e.unreadable
-    // No history at all while Trakt's summary lists plays is an outage, not "remove everything".
-    if (!plays.length && watched.size) {
-      return { read: 0, wholeHistory, applied: null, unreadable, skipped: 0, error: 'Trakt sent no watch history although it lists watched titles — the watches here were left as they are' }
-    }
-    read = watched
-  } else {
-    for (const [tmdb, trakt] of targets.movies) {
-      const h = await readHistory(`/sync/history/movies/${trakt}`, token)
-      plays.push(...h.plays.filter(p => p.key === watchKey.movie(tmdb)))
-      unreadable += h.unreadable
-      read.add(watchKey.movie(tmdb))
-    }
-    for (const [tmdb, trakt] of targets.shows) {
-      const h = await readHistory(`/sync/history/shows/${trakt}`, token)
-      plays.push(...h.plays.filter(p => p.kind === 'episode' && p.tmdbId === tmdb))
-      unreadable += h.unreadable
-      for (const k of watched) if (k.startsWith(`ep:${tmdb}:`)) read.add(k)
-    }
-  }
-  const plan = buildWatchPlan({ watched, local: local.byKey, plays: playsByKey(plays), read, pending })
-  const applied = await applyWatchPlan(db, userId, local, plan)
-  if (wholeHistory) {
-    const { error } = await db.from('trakt_sync_state').update({ history_synced_at: new Date().toISOString() }).eq('user_id', userId)
+async function syncWatches(db: Db, userId: string, token: string, snap: TraktSnapshot, lib: LocalLibrary, pending: Set<string>,
+  opts: { full: boolean; force?: boolean; deadline: number }) {
+  const { data: st, error: stError } = await db.from('trakt_sync_state').select('history_synced_at, history_cursor').eq('user_id', userId).maybeSingle()
+  if (stError) throw stError
+  let cursor = ((st as AnyRec | null)?.history_cursor as string | null) ?? null
+  const result = { read: 0, wholeHistory: false, finished: false, applied: { linked: 0, added: 0, removed: 0, waiting: 0, staleLinks: 0 }, heldBack: 0, unreadable: 0, skipped: 0, noTraktId: 0, error: null as string | null }
+
+  let titles: SummaryTitle[]
+  if (cursor == null && !opts.full && (st as AnyRec | null)?.history_synced_at) {
+    const targets = historyTargets(snap, await loadLocalPlays(db, userId, lib), pending)
+    if (!targets.needsFull && targets.shows.size + targets.movies.size <= HISTORY_TARGET_MAX) {
+      titles = [
+        ...[...targets.movies].map(([tmdb, trakt]) => ({ key: `movie:${tmdb}`, kind: 'movie' as const, tmdb, trakt })),
+        ...[...targets.shows].map(([tmdb, trakt]) => ({ key: `show:${tmdb}`, kind: 'show' as const, tmdb, trakt })),
+      ]
+    } else cursor = ''
+  } else if (cursor == null) cursor = ''
+  if (cursor != null) {
+    result.wholeHistory = true
+    titles = titlesAfter(summaryTitles(snap), cursor)
+    const { error } = await db.from('trakt_sync_state').update({ history_cursor: cursor }).eq('user_id', userId)
     if (error) throw error
   }
-  return { read: read.size, wholeHistory, applied, unreadable, skipped: plan.skipped.length, error: null as string | null }
+
+  let batch: SummaryTitle[] = []
+  const batchPlays: KeyedPlay[] = []
+  const flush = async () => {
+    if (!batch.length) return
+    const read = new Set(batch.flatMap(t => titleItemKeys(snap, t)))
+    const local = await loadWatches(db, userId, batch.filter(t => t.kind === 'movie').map(t => t.tmdb), batch.filter(t => t.kind === 'show').map(t => t.tmdb))
+    let plan = buildWatchPlan({ watched: read, local: local.byKey, plays: playsByKey(batchPlays), read, pending })
+    result.skipped += plan.skipped.length
+    if (!opts.force && watchRemovalsNeedConfirm(plan, local.rows.size)) {
+      result.heldBack += plan.removes.length
+      plan = { ...plan, removes: [] }
+    }
+    const done = await applyWatchPlan(db, userId, local, plan)
+    for (const k of Object.keys(result.applied) as (keyof typeof result.applied)[]) result.applied[k] += done[k]
+    result.read += batch.length
+    if (cursor != null) {
+      cursor = batch[batch.length - 1].key
+      const { error } = await db.from('trakt_sync_state').update({ history_cursor: cursor }).eq('user_id', userId)
+      if (error) throw error
+    }
+    batch = []
+    batchPlays.length = 0
+  }
+
+  // Movies of a whole-history read: their whole history at once (a few pages).
+  const movieTitles = titles!.filter(t => t.kind === 'movie')
+  if (result.wholeHistory && movieTitles.length > 1) {
+    const h = await readHistory('/sync/history/movies', token)
+    result.unreadable += h.unreadable
+    const wanted = new Set(movieTitles.map(t => watchKey.movie(t.tmdb)))
+    batchPlays.push(...h.plays.filter(p => wanted.has(p.key)))
+    batch = movieTitles
+    await flush()
+  }
+  let left = 0
+  for (const t of titles!) {
+    if (result.wholeHistory && movieTitles.length > 1 && t.kind === 'movie') continue
+    if (Date.now() > opts.deadline) { left++; continue }
+    if (!(t.trakt > 0)) { result.noTraktId++; batch.push(t); continue }
+    const h = await readHistory(`/sync/history/${t.kind === 'movie' ? 'movies' : 'shows'}/${t.trakt}`, token)
+    result.unreadable += h.unreadable
+    batchPlays.push(...h.plays.filter(p => (t.kind === 'movie' ? p.key === watchKey.movie(t.tmdb) : p.kind === 'episode' && p.tmdbId === t.tmdb)))
+    batch.push(t)
+    if (batch.length >= WATCH_BATCH) await flush()
+  }
+  await flush()
+  if (result.wholeHistory && left === 0) {
+    result.finished = true
+    const { error } = await db.from('trakt_sync_state').update({ history_synced_at: new Date().toISOString(), history_cursor: null }).eq('user_id', userId)
+    if (error) throw error
+  }
+  return result
+}
+
+/** Rows one at a time after a chunk hit 23505 (a play another watch still holds): those are skipped and counted. */
+async function writeWatchRows(db: Db, rows: AnyRec[], write: (rows: AnyRec[]) => Promise<{ error: unknown }>) {
+  const r = { ok: 0, stale: 0, waiting: 0 }
+  for (const part of chunk(rows, 500)) {
+    const { error } = await write(part)
+    if (!error) { r.ok += part.length; continue }
+    const code = String((error as AnyRec).code)
+    // 23505: a stale link — the play is still on another watch here. 23503: a
+    // show with no library entry (its catalogue row failed this run) — next run.
+    if (code !== '23505' && code !== '23503') throw error
+    for (const row of part) {
+      const one = await write([row])
+      const c = one.error ? String((one.error as AnyRec).code) : null
+      if (c && c !== '23505' && c !== '23503') throw one.error
+      if (c === '23505') r.stale++
+      else if (c === '23503') r.waiting++
+      else r.ok++
+    }
+  }
+  return r
 }
 
 async function applyWatchPlan(db: Db, userId: string, local: Watches, plan: WatchPlan) {
-  const done = { linked: 0, added: 0, removed: 0, waiting: 0 }
+  const done = { linked: 0, added: 0, removed: 0, waiting: 0, staleLinks: 0 }
   // Updates, then additions, removals last: an item's watch count never passes 0 on the way.
   const upd = plan.updates.flatMap(u => {
     const w = local.rows.get(u.id)
@@ -1806,19 +1973,8 @@ async function applyWatchPlan(db: Db, userId: string, local: Watches, plan: Watc
       season_number: w.season, episode_number: w.episode, watched_at: u.watchedAt, trakt_history_id: u.historyId, source: 'trakt',
     }]
   })
-  for (const part of chunk(upd, 500)) {
-    const { error } = await db.from('media_watches').upsert(part, { onConflict: 'id' })
-    if (error) throw error
-    done.linked += part.length
-  }
-  // Episode watches name their show by tv_series_id: one lookup for the shows they belong to.
-  const showTmdb = [...new Set(plan.inserts.filter(i => i.key.startsWith('ep:')).map(i => Number(i.key.split(':')[1])))]
-  const seriesOf = new Map<number, string>()
-  for (const part of chunk(showTmdb, 200)) {
-    const { data, error } = await db.from('tv_series').select('id, tmdb_id').in('tmdb_id', part)
-    if (error) throw error
-    for (const r of data ?? []) seriesOf.set(Number(r.tmdb_id), String(r.id))
-  }
+  const u = await writeWatchRows(db, upd, rows => db.from('media_watches').upsert(rows, { onConflict: 'id' }))
+  done.linked += u.ok; done.staleLinks += u.stale; done.waiting += u.waiting
   const rows = plan.inserts.flatMap((i): AnyRec[] => {
     const [kind, a, b, c] = i.key.split(':')
     const base = { user_id: userId, watched_at: i.watchedAt, trakt_history_id: i.historyId, source: 'trakt' }
@@ -1827,22 +1983,12 @@ async function applyWatchPlan(db: Db, userId: string, local: Watches, plan: Watc
       if (!entry) { done.waiting++; return [] }
       return [{ ...base, kind: 'movie', movie_entry_id: entry }]
     }
-    const sid = seriesOf.get(Number(a))
+    const sid = local.series.get(Number(a))
     if (!sid) { done.waiting++; return [] }
     return [{ ...base, kind: 'episode', tv_series_id: sid, season_number: Number(b), episode_number: Number(c) }]
   })
-  for (const part of chunk(rows, 500)) {
-    const { error } = await db.from('media_watches').insert(part)
-    if (!error) { done.added += part.length; continue }
-    // 23503: a show with no library entry here (its catalogue row failed this run) — its plays wait for the next run.
-    if (String((error as AnyRec).code) !== '23503') throw error
-    for (const row of part) {
-      const r = await db.from('media_watches').insert(row)
-      if (r.error && String((r.error as AnyRec).code) !== '23503') throw r.error
-      if (r.error) done.waiting++
-      else done.added++
-    }
-  }
+  const ins = await writeWatchRows(db, rows, part => db.from('media_watches').insert(part))
+  done.added += ins.ok; done.staleLinks += ins.stale; done.waiting += ins.waiting
   for (const part of chunk(plan.removes, 200)) {
     const { error } = await db.from('media_watches').delete().eq('user_id', userId).in('id', part)
     if (error) throw error
@@ -2141,60 +2287,72 @@ async function itemWatches(db: Db, userId: string, p: AnyRec): Promise<{ history
     .eq('tv_series_id', (tv as AnyRec).id).eq('season_number', p.season).eq('episode_number', p.episode))
 }
 
+/** How long a single-play remove may wait for Trakt's play ids before it is dropped and reported. */
+const WAIT_FOR_IDS_DAYS = 7
+
 /**
- * The Trakt plays a run of removed watches were (149): the history id a
- * remove carries, else a lookup in the title's history — the play at the
- * same time, else the nearest one no remaining watch here accounts for
- * (playToRemove). A play that is gone already is left out.
+ * The Trakt plays a run of removed watches were (149) — never a guess
+ * (playToRemove): the history id a remove carries, else a play at that exact
+ * second that no watch left here accounts for, read from the title's history.
+ * `waiting` rows can't be told yet (before the first link of the watches to
+ * their plays, or a play at another second): they stay in the outbox; `gone`
+ * ones have nothing left to remove.
  */
-async function playIdsToRemove(db: Db, userId: string, token: string, rows: AnyRec[]): Promise<number[]> {
-  const out: number[] = []
+async function playIdsToRemove(db: Db, userId: string, token: string, rows: AnyRec[], linked: boolean) {
+  const out = { ids: [] as number[], waiting: [] as AnyRec[], gone: [] as AnyRec[] }
   const byTitle = new Map<string, AnyRec[]>()
   for (const r of rows) {
     const p = (r.payload ?? {}) as AnyRec
     const id = Number(p.history_id)
-    if (Number.isSafeInteger(id) && id > 0) { out.push(id); continue }
+    if (Number.isSafeInteger(id) && id > 0) { out.ids.push(id); continue }
+    // Not linked yet: the watches here may still be placeholders — wait for the first pull.
+    if (!linked) { out.waiting.push(r); continue }
     const title = `${p.type === 'movie' ? 'movie' : 'show'}:${Number(p.tmdb)}`
     byTitle.set(title, [...(byTitle.get(title) ?? []), r])
   }
   for (const [title, list] of byTitle) {
     const [type, tmdb] = title.split(':')
     const trakt = await traktIdOf(db, token, type as 'movie' | 'show', Number(tmdb))
-    if (!trakt) continue
+    if (!trakt) { out.waiting.push(...list); continue }
     const { plays } = await readHistory(`/sync/history/${type === 'movie' ? 'movies' : 'shows'}/${trakt}`, token)
     for (const r of list) {
       const p = (r.payload ?? {}) as AnyRec
-      const taken = new Set(out)
+      const taken = new Set(out.ids)
       const mine = plays.filter(x => x.key === String(r.item_key) && !taken.has(x.historyId))
-      const id = playToRemove({ historyId: null, watchedAt: (p.watched_at as string) ?? null }, mine, await itemWatches(db, userId, p))
-      if (id != null) out.push(id)
+      const verdict = playToRemove({ historyId: null, watchedAt: (p.watched_at as string) ?? null }, mine, await itemWatches(db, userId, p))
+      if (verdict.kind === 'remove') out.ids.push(verdict.historyId)
+      else if (verdict.kind === 'gone') out.gone.push(r)
+      else out.waiting.push(r)
     }
   }
-  return [...new Set(out)]
+  out.ids = [...new Set(out.ids)]
+  return out
 }
 
-async function drainOutbox(db: Db, userId: string, token: string, deadline: number) {
-  const out = { sent: 0, notFound: 0, failed: 0, left: 0, error: null as string | null, notes: null as NoteDrain | null }
+async function drainOutbox(db: Db, userId: string, token: string, deadline: number, linked: boolean) {
+  const out = { sent: 0, notFound: 0, failed: 0, left: 0, waitingForIds: 0, dropped: 0, error: null as string | null, notes: null as NoteDrain | null }
   const sentKeys: string[] = []
+  // A watch added and removed (or re-dated, or deleted and put back) before
+  // anything was sent: those rows cancel out across EVERY waiting row, whatever
+  // its next_retry_at — an add that failed and waits included (149).
+  const pairs = await db.from('trakt_outbox').select('id, op, payload').eq('user_id', userId)
+    .in('op', ['history_add', 'history_remove_play']).order('seq').limit(5000)
+  if (pairs.error && !missingColumn(pairs.error)) throw pairs.error
+  const cancelled = cancelledOutboxRows(((pairs.data ?? []) as AnyRec[]) as { id: string; op: string; payload?: Record<string, unknown> | null }[])
+  for (const part of chunk(cancelled, 200)) {
+    const { error } = await db.from('trakt_outbox').delete().in('id', part)
+    if (error) throw error
+  }
   // seq (migration 120) is the true insert order; created_at ties inside one trigger call.
-  // A never-tried single-play remove is due at once: 149 queues it an hour
+  // A never-tried single-play remove is due at once: 149 queues it 7 days
   // ahead only so the trakt-api it replaced can't drop it mid-deploy.
-  const base = () => db.from('trakt_outbox').select('id, op, item_key, payload, attempts')
+  const base = () => db.from('trakt_outbox').select('id, op, item_key, payload, attempts, created_at')
     .eq('user_id', userId)
     .or(`next_retry_at.lte."${new Date().toISOString()}",and(op.eq.history_remove_play,attempts.eq.0)`)
   let res = await base().order('seq').limit(500)
   if (res.error && missingColumn(res.error)) res = await base().order('created_at').order('id').limit(500)
   if (res.error) throw res.error
-  let waiting = (res.data ?? []) as AnyRec[]
-  // A watch added and removed (or re-dated) again before its add was sent:
-  // both rows go, so Trakt never gets a play only to lose it (149).
-  const cancelled = cancelledOutboxRows(waiting as { id: string; op: string; payload?: Record<string, unknown> | null }[])
-  if (cancelled.length) {
-    const { error } = await db.from('trakt_outbox').delete().in('id', cancelled)
-    if (error) throw error
-    const gone = new Set(cancelled)
-    waiting = waiting.filter(r => !gone.has(String(r.id)))
-  }
+  const waiting = (res.data ?? []) as AnyRec[]
   // Notes (136) go in their own pass, one title at a time: a note never waits
   // behind, or holds up, any other change.
   const noteRows = waiting.filter(r => NOTE_OPS.has(String(r.op)))
@@ -2203,19 +2361,43 @@ async function drainOutbox(db: Db, userId: string, token: string, deadline: numb
   while (rows.length && calls < 40 && Date.now() < deadline) {
     const batch = pickBatch(rows)
     const op = String(batch[0].op)
-    const ids = batch.map(r => r.id)
+    let ids = batch.map(r => r.id)
     const path = OUTBOX_PATHS[op]
     try {
       if (op === 'history_remove_play') {
-        // One play per removed watch, by its Trakt history id (looked up when not known yet).
-        const plays = await playIdsToRemove(db, userId, token, batch)
-        out.notFound += batch.length - plays.length
-        if (plays.length) {
-          const sent = await post(path, token, { ids: plays })
+        // One play per removed watch — by its Trakt id, or an exact match; never a guess.
+        const r = await playIdsToRemove(db, userId, token, batch, linked)
+        const now = Date.now()
+        const old = r.waiting.filter(x => now - Date.parse(String(x.created_at)) > WAIT_FOR_IDS_DAYS * 864e5)
+        const still = r.waiting.filter(x => !old.includes(x))
+        if (still.length) {
+          // Not an error: they wait for a pull to link the title's watches to their plays.
+          const { error } = await db.from('trakt_outbox').update({
+            attempts: Number(still[0].attempts ?? 0) + 1, last_error: "waiting for Trakt's play ids",
+            next_retry_at: new Date(now + 30 * 60_000).toISOString(),
+          }).in('id', still.map(x => x.id))
+          if (error) throw error
+          out.waitingForIds += still.length
+        }
+        // Waited a week without an exact match: dropped and reported (the next pull shows what Trakt has).
+        out.dropped += old.length
+        out.notFound += r.gone.length
+        if (r.ids.length) {
+          const sent = await post(path, token, { ids: r.ids })
           out.notFound += notFoundCount(sent)
           calls++
         }
-      } else if (path) {
+        const keep = new Set(still.map(x => x.id))
+        ids = ids.filter(id => !keep.has(id))
+        const { error: delError } = ids.length ? await db.from('trakt_outbox').delete().in('id', ids) : { error: null }
+        if (delError) throw delError
+        out.sent += ids.length - old.length - r.gone.length
+        sentKeys.push(...batch.filter(x => !keep.has(x.id)).map(x => String(x.item_key)))
+        const taken = new Set(batch.map(x => x.id))
+        rows = rows.filter(x => !taken.has(x.id))
+        continue
+      }
+      if (path) {
         const sent = await post(path, token, outboxBody(op, batch))
         out.notFound += notFoundCount(sent)
         calls++
@@ -3037,12 +3219,16 @@ async function pendingKeys(db: Db, userId: string, sentKeys: string[]): Promise<
 async function runSync(db: Db, userId: string, token: string, username: string | null, opts: { full?: boolean; force?: boolean }) {
   const runStart = Date.now()
   const deadline = runStart + 90_000
-  const drained = await drainOutbox(db, userId, token, deadline)
+  const { data: state } = await db.from('trakt_sync_state').select('last_activities, history_synced_at, history_cursor').eq('user_id', userId).maybeSingle()
+  // Until the watches have been linked to Trakt's plays once, a remove without
+  // a play id waits (149): it must never be matched against placeholders.
+  const linked = !!(state as AnyRec | null)?.history_synced_at
+  const drained = await drainOutbox(db, userId, token, deadline, linked)
   const lastActivities = (await get('/sync/last_activities', token)).data as AnyRec
-  const { data: state } = await db.from('trakt_sync_state').select('last_activities, history_synced_at').eq('user_id', userId).maybeSingle()
   const prev = ((state as AnyRec | null)?.last_activities ?? null) as AnyRec | null
-  // Never read per play yet (the first run after migration 149, or a new connection): pull now.
-  const historyDue = !(state as AnyRec | null)?.history_synced_at
+  // Never read per play yet (the first run after migration 149, or a new
+  // connection), or a whole-history read still under way: pull now.
+  const historyDue = !linked || (state as AnyRec | null)?.history_cursor != null
   // Scores never fail a sync: MDBList being down or out of quota is only noted.
   const scores = await refreshLibraryScores(db, userId).catch(e => ({ error: e instanceof Error ? e.message : String(e) }))
   const follows = await checkFollows(db, userId, token, false).catch(e => ({ error: e instanceof Error ? e.message : String(e) }))
@@ -3072,10 +3258,11 @@ async function runSync(db: Db, userId: string, token: string, username: string |
   await backfillIds(db, plan.ids)
   const unmatched = await recordUnmatched(db, userId, snap, unadded)
   // Every play with its own date (149) — after the entries exist; a failure is reported, the rest stands.
-  const watches = await syncWatches(db, userId, token, snap, pending, full).catch(e => {
+  const watches = await syncWatches(db, userId, token, snap, local.lib, pending, { full, force: opts.force, deadline: runStart + 100_000 }).catch(e => {
     if (e instanceof TraktError && e.status === 401) throw e
-    return { error: e instanceof Error ? e.message : String((e as AnyRec)?.message ?? e) }
+    return { error: e instanceof Error ? e.message : String((e as AnyRec)?.message ?? e), heldBack: 0 }
   })
+  heldBack += watches.heldBack ?? 0
   const favChanged = full || (prev?.favorites as AnyRec | undefined)?.updated_at !== (lastActivities?.favorites as AnyRec | undefined)?.updated_at
   const favorites = favChanged ? await mirrorFavorites(db, userId, token, pending) : null
   // A title that just came in from Trakt may already have a note there.
@@ -3100,9 +3287,11 @@ async function runImport(db: Db, userId: string, token: string, username: string
   const runStart = Date.now()
   // Without TMDB the import can't add new titles or tell a finished show from one in progress.
   if (!TMDB_KEY()) throw new Error('TMDB_API_KEY is not set on the trakt-api function (use the same TMDB key as the app)')
-  const drained = await drainOutbox(db, userId, token, Date.now() + 45_000)
+  const { data: state } = await db.from('trakt_sync_state').select('history_synced_at').eq('user_id', userId).maybeSingle()
+  const drained = await drainOutbox(db, userId, token, Date.now() + 45_000, !!(state as AnyRec | null)?.history_synced_at)
   const snap = await snapshot(token, username) as unknown as TraktSnapshot
-  const local = await loadLocal(db, userId)
+  // With each watch's own date: the import sends the app-only ones at their dates.
+  const local = await loadLocal(db, userId, true)
   const pending = await pendingKeys(db, userId, drained.sentKeys)
   const { info, details } = await showInfo(showsNeedingInfo(snap, local.lib))
   const plan = buildImportPlan(snap, local.lib, info, pending)
@@ -3115,7 +3304,7 @@ async function runImport(db: Db, userId: string, token: string, username: string
   const { done: applied, unadded } = await applyWrites(db, userId, local, plan, details)
   // Every play with its own date (149): the whole history, once the entries exist.
   // A failure here is reported; the next sync reads the history again (no stamp).
-  const watches = await syncWatches(db, userId, token, snap, pending, true).catch(e => {
+  const watches = await syncWatches(db, userId, token, snap, local.lib, pending, { full: true, deadline: runStart + 100_000 }).catch(e => {
     if (e instanceof TraktError && e.status === 401) throw e
     return { error: e instanceof Error ? e.message : String((e as AnyRec)?.message ?? e) }
   })

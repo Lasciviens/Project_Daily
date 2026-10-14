@@ -72,6 +72,8 @@ export interface UserMovieEntry {
   is_favorite?: boolean
   /** The round being watched again (migration 149); absent before it. */
   rewatch_round?: number | null
+  /** When that round started (149): a watch since then counts for it. */
+  rewatch_started_at?: string | null
   /** Every watch with its own date (migration 149); absent before it. */
   watches?: MediaWatch[]
   created_at: string
@@ -107,6 +109,8 @@ export interface UserTVEntry {
   is_favorite?: boolean
   /** The round being watched again (migration 149); absent before it. */
   rewatch_round?: number | null
+  /** When that round started (149): a watch since then counts for it. */
+  rewatch_started_at?: string | null
   created_at: string
   updated_at: string
   tv_series: TVSeries

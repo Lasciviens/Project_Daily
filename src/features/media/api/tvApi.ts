@@ -73,10 +73,13 @@ export async function updateTVEntry(
 }
 
 
-/** The round a show is being watched again in (migration 149); null when it isn't, or before 149. */
-export async function fetchRewatchRound(tvEntryId: string): Promise<number | null> {
-  const { data, error } = await supabase.from('user_tv_entries').select('status, rewatch_round').eq('id', tvEntryId).maybeSingle()
-  if (error) return null
-  const row = data as { status?: string; rewatch_round?: number | null } | null
-  return row && (row.status === 'watching' || row.status === 'paused') && (row.rewatch_round ?? 0) >= 2 ? row.rewatch_round! : null
+/** The round a show is being watched again in and when it started (migration 149); null when it isn't. */
+export async function fetchRewatchRound(tvEntryId: string): Promise<{ round: number; startedAt: string } | null> {
+  const { data, error } = await supabase.from('user_tv_entries').select('status, rewatch_round, rewatch_started_at').eq('id', tvEntryId).maybeSingle()
+  // Fallback (remove once 149 has run everywhere): no rewatch columns = no rewatch.
+  if (error && ['42703', 'PGRST204'].includes(String(error.code))) return null
+  if (error) throw error
+  const row = data as { status?: string; rewatch_round?: number | null; rewatch_started_at?: string | null } | null
+  return row && (row.status === 'watching' || row.status === 'paused') && (row.rewatch_round ?? 0) >= 2 && row.rewatch_started_at
+    ? { round: row.rewatch_round!, startedAt: row.rewatch_started_at } : null
 }

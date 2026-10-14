@@ -3,7 +3,7 @@ import { qk, STALE } from '../../../shared/query'
 import { fetchWatchedEpisodes } from '../api/watchedEpisodesApi'
 import { fetchRewatchRound } from '../api/tvApi'
 import { getSeasonDetails, getTVSeasons } from '../api/tmdbApi'
-import { airedRegularEpisodes, nextInRound, roundProgress, watchCounts } from '../watches'
+import { airedRegularEpisodes, doneInRound, nextInRound, roundProgress } from '../watches'
 
 // "What should I watch next?" computed from ACTUAL watched-episode rows
 // (user_tv_episodes), not from the entry's cached counters — the cache was
@@ -11,10 +11,11 @@ import { airedRegularEpisodes, nextInRound, roundProgress, watchCounts } from '.
 // if it goes stale again. TMDB season data supplies the episode title/air
 // date and the season boundary (when the next episode rolls into S+1).
 //
-// Watching it again (migration 149's rewatch_round): next is the first aired
-// regular episode watched fewer times than the round (all watched once,
-// round 2 → S01E01; after its second watch → S01E02), and `rewatch` says how
-// far the round is. Marking it adds a watch (`again`), never moves a date.
+// Watching it again (migration 149's rewatch_round + rewatch_started_at):
+// next is the first aired regular episode with no watch since the round
+// started (S01E01 first; once it is watched again, S01E02 — a pilot watched
+// three times before doesn't count), and `rewatch` says how far the round is.
+// Marking it adds a watch (`again`), never moves a date.
 export interface NextEpisodeInfo {
   caughtUp:      boolean
   season:        number | null   // null when caught up
@@ -44,7 +45,7 @@ async function computeNextEpisode(
   tmdbId: number,
   totalEpisodes: number | null,
 ): Promise<NextEpisodeInfo> {
-  const [watched, round] = await Promise.all([fetchWatchedEpisodes(tvEntryId), fetchRewatchRound(tvEntryId)])
+  const [watched, rewatchOf] = await Promise.all([fetchWatchedEpisodes(tvEntryId), fetchRewatchRound(tvEntryId)])
   const watchedCount = watched.length
 
   // Max watched (season, episode) — rows arrive sorted asc by season, episode.
@@ -53,12 +54,12 @@ async function computeNextEpisode(
 
   const base = { watchedCount, totalEpisodes, lastWatched }
 
-  if (round) {
+  if (rewatchOf) {
     try {
       const aired = airedRegularEpisodes(await getTVSeasons(tmdbId))
-      const counts = watchCounts(watched)
-      const rewatch = { round, ...roundProgress(aired, counts, round) }
-      const next = nextInRound(aired, counts, round)
+      const done = doneInRound(watched, rewatchOf.startedAt)
+      const rewatch = { round: rewatchOf.round, ...roundProgress(aired, done) }
+      const next = nextInRound(aired, done)
       if (!next) return { ...base, rewatch, caughtUp: true, season: null, episode: null, episodeTitle: null, airDate: null, released: false }
       return { ...base, rewatch, caughtUp: false, season: next.season, episode: next.episode, ...(await withEpisode(tmdbId, next.season, next.episode)) }
     } catch {

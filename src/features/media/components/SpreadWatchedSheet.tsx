@@ -6,13 +6,14 @@ import { DateInput } from '../../../shared/components/DateInput'
 import { withProgress } from '../../../shared/hooks/useMutationWithFeedback'
 import { formatDate } from '../../../shared/utils/dateFormat'
 import { todayStr } from '../../../shared/utils/dateUtils'
+import { toast } from '../../../app/store'
 import { useAllSeasons } from '../hooks/useTMDB'
 import { useMarkEpisodeWatched, useSetEpisodeDates, useWatchedEpisodes } from '../hooks/useWatchedEpisodes'
 import {
   DEFAULT_SPREAD, fixedSpreadEpisodes, fmt, planSpread, seedFrom, spreadDefaultStart, spreadHeadline, spreadWrites,
   type SpreadEpisode, type SpreadInput, type SpreadMode, type SpreadStyle,
 } from '../spreadWatched'
-import { watchFor } from '../watches'
+import { editableWatches, watchFor } from '../watches'
 import type { WatchPickAnswer } from './WatchPickSheet'
 import { SpreadMonthStrip } from './SpreadMonthStrip'
 
@@ -42,6 +43,8 @@ interface Props {
   mode?: SpreadMode
   /** Changing dates: the watch of each episode that moves (default the latest; migration 149). */
   pick?: WatchPickAnswer
+  /** Trakt connected: placeholders wait for Trakt's dates and are never moved. */
+  traktConnected?: boolean
   /** `saved`: true after a successful save. */
   onClose: (saved?: boolean) => void
   /**
@@ -71,7 +74,7 @@ const WORDS: Record<SpreadMode, { verb: string; button: (n: number) => string; l
  * Mark a run of episodes watched across a period you remember roughly, with
  * breaks you didn't watch in. Every change replans at once (spreadWatched.ts).
  */
-export function SpreadWatchedSheet({ tvId, tvName, tvEntryId, seasons, defaultRuntime, only, mode = 'watched', pick = 'latest', onClose, onSaved }: Props) {
+export function SpreadWatchedSheet({ tvId, tvName, tvEntryId, seasons, defaultRuntime, only, mode = 'watched', pick = 'latest', traktConnected = false, onClose, onSaved }: Props) {
   const TODAY = todayStr()
   // A fixed set needs only its own seasons from TMDB.
   const all = useAllSeasons(tvId, only ? [...new Set(only.map(r => r.season))] : seasons)
@@ -146,10 +149,15 @@ export function SpreadWatchedSheet({ tvId, tvName, tvEntryId, seasons, defaultRu
       if (w.redate.length) {
         // One watch per episode moves (the chosen one, else the latest); the others keep their dates.
         const rowOf = (s: number, e: number) => watched.find(x => x.season_number === s && x.episode_number === e)
-        await setDates.mutateAsync({
-          tvEntryId,
-          episodes: refs(w.redate).map(r => { const row = rowOf(r.season, r.episode); return { ...r, watchId: row?.watches ? watchFor(row.watches, pick)?.id ?? null : null } }),
-        })
+        // Only real plays move — an episode whose watches all wait for Trakt's dates is left as it is.
+        const moves = refs(w.redate).map(r => { const row = rowOf(r.season, r.episode); return { ...r, watchId: row?.watches ? watchFor(editableWatches(row.watches, traktConnected), pick)?.id ?? null : null } })
+        const named = moves.filter(m => m.watchId)
+        if (named.length < moves.length && moves.some(m => rowOf(m.season, m.episode)?.watches)) {
+          toast.info(`${moves.length - named.length} episode${moves.length - named.length === 1 ? '' : 's'} wait for Trakt's dates — the next sync brings them`)
+        }
+        if (named.length) await setDates.mutateAsync({ tvEntryId, episodes: named })
+        // Before migration 149 (no watch lists): setEpisodeWatchDates says so and writes nothing.
+        else if (!moves.some(m => rowOf(m.season, m.episode)?.watches)) await setDates.mutateAsync({ tvEntryId, episodes: moves })
       }
       if (onSaved) await onSaved({ firstAt: result.plan[0].at, lastAt: result.plan[n - 1].at })
       return true

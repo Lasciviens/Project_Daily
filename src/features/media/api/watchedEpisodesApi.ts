@@ -2,7 +2,7 @@ import { supabase } from '../../../integrations/supabase/client'
 import { requireUser } from '../../../shared/utils/requireUser'
 import type { WatchedEpisode } from '../types'
 import { middayIso } from '../watchedWhen'
-import { addWatches, isBefore149, NEEDS_149, setWatchDates, WATCH_COLUMNS } from './watchesApi'
+import { addWatches, isBefore149, NEEDS_149, NEEDS_149_DATES, setWatchDates, WATCH_COLUMNS } from './watchesApi'
 
 /** A yyyy-MM-dd day (midday local) or an exact ISO timestamp. */
 const toIso = (v: string) => (v.length === 10 ? middayIso(v) : v)
@@ -138,28 +138,6 @@ export async function markEpisodesWatched(
 }
 
 /**
- * Before migration 149 only: change the one date an episode kept (every play
- * of it moved). With 149 a date change names the watch it moves
- * (watchesApi.setWatchDates) and Trakt loses no other play.
- */
-export async function setEpisodesWatchedAtBefore149(tvEntryId: string, refs: { season: number; episode: number; at: string }[]): Promise<number> {
-  if (refs.length === 0) return 0
-  const rows = await fetchWatchedEpisodes(tvEntryId)
-  const byKey = new Map(rows.map(r => [`${r.season_number}x${r.episode_number}`, r]))
-  const out = refs.flatMap(r => {
-    const row = byKey.get(`${r.season}x${r.episode}`)
-    const at = toIso(r.at)
-    if (!row || (row.watched_at && Date.parse(row.watched_at) === Date.parse(at))) return []
-    return [{ id: row.id, user_id: row.user_id, tv_entry_id: row.tv_entry_id, tv_series_id: row.tv_series_id, season_number: row.season_number, episode_number: row.episode_number, watched_at: at }]
-  })
-  for (let i = 0; i < out.length; i += 500) {
-    const { error } = await supabase.from('user_tv_episodes').upsert(out.slice(i, i + 500), { onConflict: 'id' })
-    if (error) throw error
-  }
-  return out.length
-}
-
-/**
  * One more watch of each episode, at its own time (Watched again, a rewatch
  * round). Every other watch keeps its date; an episode not watched yet gets
  * its first. Before migration 149 the old way: plays + 1, the kept date moves.
@@ -235,12 +213,16 @@ export async function fetchAllWatchedEpisodeRows(): Promise<WatchedEpisodeRow[]>
 
 /**
  * New dates for chosen watches of episodes (each its own — on Trakt only that
- * play moves). Before migration 149 (no watch ids on screen) the episode's
- * one kept date changes instead.
+ * play moves). A change without a watch (before migration 149, or an episode
+ * whose watches all wait for Trakt's dates) is never sent down the old
+ * one-date path, which re-sent every play: it is skipped — and when none has
+ * a watch, nothing is written and a named error says why.
  */
-export async function setEpisodeWatchDates(tvEntryId: string, changes: { season: number; episode: number; at: string; watchId?: string | null }[]): Promise<number> {
-  if (changes.length === 0) return 0
-  if (changes.some(c => !c.watchId)) return setEpisodesWatchedAtBefore149(tvEntryId, changes)
+export async function setEpisodeWatchDates(tvEntryId: string, changes: { season: number; episode: number; at: string; watchId?: string | null }[]): Promise<{ changed: number; skipped: number }> {
+  if (changes.length === 0) return { changed: 0, skipped: 0 }
+  const named = changes.filter(c => !!c.watchId)
+  if (named.length === 0) throw new Error(NEEDS_149_DATES)
   const tvSeriesId = await resolveTvSeriesId(tvEntryId)
-  return setWatchDates(changes.map(c => ({ id: c.watchId!, target: { kind: 'episode' as const, tvSeriesId, season: c.season, episode: c.episode }, at: toIso(c.at) })))
+  const changed = await setWatchDates(named.map(c => ({ id: c.watchId!, target: { kind: 'episode' as const, tvSeriesId, season: c.season, episode: c.episode }, at: toIso(c.at) })))
+  return { changed, skipped: changes.length - named.length }
 }

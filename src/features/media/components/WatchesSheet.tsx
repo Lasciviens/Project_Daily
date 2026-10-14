@@ -6,7 +6,7 @@ import { DateInput } from '../../../shared/components/DateInput'
 import { todayStr } from '../../../shared/utils/dateUtils'
 import { isUnknownWatchedAt } from '../trakt/traktDates'
 import { middayIso } from '../watchedWhen'
-import { sortWatches, watchDate, type Watch } from '../watches'
+import { isPlaceholder, sortWatches, watchDate, type Watch } from '../watches'
 
 const EPOCH = '1970-01-01T00:00:00.000Z'
 
@@ -49,13 +49,17 @@ function WatchDateEditor({ start, target, saveLabel, onSave, onCancel }: {
  * Every watch of one episode or movie with its own date (migration 149): change
  * one's date, remove one (the one delete flow, with Undo), add one. Each
  * change reaches Trakt as that one play — the others keep theirs. Before 149
- * (`editable` false) it only shows the plays at the one date the app kept.
+ * (`editable` false) it only shows the plays at the one date the app kept. A
+ * placeholder — the one date the app kept, copied once per play, not linked to
+ * Trakt's play yet — says it waits for Trakt's dates and can't be changed or
+ * removed until the next sync links it (which play it stands for isn't known).
  */
-export function WatchesSheet({ title, target, watches, editable, busy, onClose, onAdd, onSetDate, onRemove }: {
+export function WatchesSheet({ title, target, watches, editable, traktConnected = false, busy, onClose, onAdd, onSetDate, onRemove }: {
   title: string
   target: 'movie' | 'episode'
   watches: readonly Watch[]
   editable: boolean
+  traktConnected?: boolean
   busy?: boolean
   onClose: () => void
   onAdd: (at: string | null) => Promise<unknown>
@@ -64,6 +68,7 @@ export function WatchesSheet({ title, target, watches, editable, busy, onClose, 
 }) {
   const [editing, setEditing] = useState<string | 'new' | null>(null)
   const list = sortWatches(watches)
+  const waiting = list.filter(w => isPlaceholder(w, traktConnected)).length
   const run = async (p: Promise<unknown>) => { await p; setEditing(null) }
 
   return (
@@ -88,8 +93,11 @@ export function WatchesSheet({ title, target, watches, editable, busy, onClose, 
         ) : (
           <div key={w.id} className="flex min-h-[40px] items-center gap-2 rounded-row px-2 hover:bg-surface-hover">
             <span className="w-6 shrink-0 text-micro font-semibold tabular-nums text-fg-faint">{i + 1}.</span>
-            <span className="min-w-0 flex-1 text-body tabular-nums text-fg">{watchDate(w)}</span>
-            {editable && (
+            <span className="min-w-0 flex-1 text-body tabular-nums text-fg">
+              {watchDate(w)}
+              {isPlaceholder(w, traktConnected) && <span className="ml-2 text-meta text-fg-muted">waiting for Trakt's dates</span>}
+            </span>
+            {editable && !isPlaceholder(w, traktConnected) && (
               <>
                 <IconButton label={`Change the date of watch ${i + 1}`} disabled={busy} onClick={() => setEditing(w.id)} className="text-fg-muted"><Pencil /></IconButton>
                 <IconButton label={`Remove watch ${i + 1}`} disabled={busy} onClick={() => { void onRemove(w) }} className="text-fg-muted hover:text-danger"><Trash2 /></IconButton>
@@ -102,9 +110,11 @@ export function WatchesSheet({ title, target, watches, editable, busy, onClose, 
             onCancel={() => setEditing(null)} onSave={at => { void run(onAdd(at)) }} />
         )}
         <p className="mt-1 px-2 text-meta text-fg-muted">
-          {editable
-            ? 'Each watch keeps its own date, here and on Trakt — a change moves only that one.'
-            : 'The app kept one date for every play here; each watch with its own date comes with the next update.'}
+          {!editable
+            ? 'The app kept one date for every play here; each watch with its own date comes with the next update.'
+            : waiting
+              ? 'The app kept one date for every play here. The next Trakt sync brings each watch its real date — until then those can\'t be changed.'
+              : 'Each watch keeps its own date, here and on Trakt — a change moves only that one.'}
         </p>
       </div>
     </ModalShell>

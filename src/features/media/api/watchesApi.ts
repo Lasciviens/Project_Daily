@@ -15,6 +15,8 @@ export const isBefore149 = (e: { code?: string } | null | undefined) =>
   ['PGRST200', 'PGRST205', '42P01', '42703', 'PGRST204'].includes(String(e?.code ?? ''))
 
 export const NEEDS_149 = 'Each watch with its own date needs migration 149 (media_watches) — it is not applied yet'
+/** A date change needs the watch it moves: before 149 it would have re-sent every play to Trakt at the new date. */
+export const NEEDS_149_DATES = 'Changing a watched date needs migration 149 (each watch with its own date) — it is not applied yet, so nothing was changed'
 
 /** A yyyy-MM-dd day (midday local), an exact ISO timestamp, or null (a movie's unknown date). */
 const toIso = (v: string | null) => (v == null ? null : v.length === 10 ? middayIso(v) : v)

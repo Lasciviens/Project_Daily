@@ -2,7 +2,8 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
 import { useRowsDelete } from '../../../shared/hooks/useRowsDelete'
 import { scheduleTraktSync } from '../trakt/traktAutoSync'
-import { addWatches, NEEDS_149, setWatchDates } from '../api/watchesApi'
+import { addWatches, NEEDS_149, NEEDS_149_DATES, setWatchDates } from '../api/watchesApi'
+import { confirmDelete } from '../../../shared/modals/deleteFlow'
 import { updateMovieEntry } from '../api/moviesApi'
 import { updateTVEntry } from '../api/tvApi'
 import type { UserMovieEntry } from '../types'
@@ -31,15 +32,18 @@ export function useAddMovieWatch() {
   })
 }
 
-/** A new date for one chosen watch of a movie; before 149 the movie's one kept date. */
+/**
+ * A new date for one chosen watch of a movie. Without a watch to name (before
+ * migration 149) nothing is written: the old one-date path re-sent every play.
+ */
 export function useSetMovieWatchDate() {
   const qc = useQueryClient()
   return useMutationWithFeedback({
     action: 'set_movie_watch_date',
     silent: 'the movie controls report the result ("Watched date changed")',
     mutationFn: async ({ entry, watchId, at }: { entry: UserMovieEntry; watchId: string | null; at: string | null }) => {
-      if (watchId) await setWatchDates([{ id: watchId, target: { kind: 'movie', movieEntryId: entry.id }, at }])
-      else await updateMovieEntry(entry.id, { watched_at: at })
+      if (!watchId) throw new Error(NEEDS_149_DATES)
+      await setWatchDates([{ id: watchId, target: { kind: 'movie', movieEntryId: entry.id }, at }])
     },
     invalidates: ['media'],
     onSuccess: () => scheduleTraktSync(qc),
@@ -61,6 +65,50 @@ export function useDeleteWatches() {
     afterRestore: () => { scheduleTraktSync(qc) },
     names: { media_watches: 'watches' },
   })
+}
+
+/**
+ * "Not watched" for a movie: asks, then Wishlist with no watches — on Trakt
+ * every play of it goes (the movie-wide remove, plays the app doesn't know
+ * included). "· Undo" adds its watches back, each at its own date (new plays
+ * on Trakt), and the first one makes it Completed again.
+ */
+export function useMovieNotWatched() {
+  const qc = useQueryClient()
+  const clear = useMutationWithFeedback({
+    action: 'movie_not_watched',
+    silent: 'the delete flow reports the result',
+    mutationFn: async (entry: UserMovieEntry) => {
+      await updateMovieEntry(entry.id, { status: 'wishlist', watched_at: null, repeat_count: 0 })
+      return (entry.watches ?? []).map(w => w.watched_at)
+    },
+    invalidates: ['media'],
+    onSuccess: () => scheduleTraktSync(qc),
+  })
+  const putBack = useMutationWithFeedback({
+    action: 'movie_not_watched_undo',
+    silent: 'the delete flow reports the result',
+    mutationFn: async ({ entry, dates }: { entry: UserMovieEntry; dates: (string | null)[] }) => {
+      await addWatches(dates.map(at => ({ target: { kind: 'movie' as const, movieEntryId: entry.id }, at })))
+    },
+    invalidates: ['media'],
+    onSuccess: () => scheduleTraktSync(qc),
+  })
+  function run(entry: UserMovieEntry) {
+    const n = entry.watches?.length ?? 1 + Math.max(0, entry.repeat_count ?? 0)
+    return confirmDelete<(string | null)[]>({
+      title: 'Mark as not watched?',
+      message: `Removes ${n === 1 ? 'its watch' : `all ${n} watches`} here and EVERY play of it on Trakt — the ones the app doesn't know too. It goes back to your Wishlist.`,
+      confirmLabel: 'Mark not watched',
+      remove: () => clear.mutateAsync(entry),
+      isEmpty: () => false,
+      restore: async dates => { await putBack.mutateAsync({ entry, dates }) },
+      canUndo: dates => dates.length > 0,
+      done: 'Marked as not watched',
+      restored: 'Watches back',
+    })
+  }
+  return { run, busy: clear.isPending || putBack.isPending }
 }
 
 const rewatchFailed = (e: unknown) =>

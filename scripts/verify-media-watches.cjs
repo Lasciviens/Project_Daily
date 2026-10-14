@@ -10,7 +10,8 @@ require('sucrase/register')
 process.env.TZ = 'Europe/Oslo'
 const assert = require('node:assert/strict')
 const {
-  sortWatches, watchDate, watchDates, watchSummary, pickWatch, watchFor, cacheWatches,
+  sortWatches, watchDate, watchDates, watchSummary, watchesLine, pickWatch, watchFor, cacheWatches,
+  isPlaceholder, editableWatches, inRound, doneInRound,
   rewatchStartRound, nextInRound, roundProgress, airedRegularEpisodes, watchCounts,
 } = require('../src/features/media/watches')
 
@@ -27,6 +28,8 @@ ok(watchSummary(got), '3 watches · 12.10.2018 · 01.12.2024 · 08.01.2026', 'th
 ok(watchSummary([got[0]]), 'Watched 08.01.2026', 'one watch')
 ok(watchSummary([w('u', '1970-01-01T00:00:00.000Z')]), 'Watched · date unknown', 'an unknown date says so')
 ok(watchSummary([]), '', 'no watch, no line')
+ok(watchesLine(got), '3 watches · last 08.01.2026', 'an episode row: the count and the latest, one short line')
+ok(watchesLine([got[0]]), 'Watched 08.01.2026', 'one watch')
 const many = [...got, w('d', '2026-02-01T20:00:00.000Z'), w('e', '2026-03-01T20:00:00.000Z')]
 ok(watchDates(many), '12.10.2018 · … · 01.02.2026 · 01.03.2026', 'more than three: the first and the two latest')
 ok(watchDate(w('x', null)), 'date unknown', 'a movie watched on an unknown date')
@@ -54,15 +57,39 @@ const aired = airedRegularEpisodes({
 })
 ok(aired.map(e => `${e.season}x${e.episode}`), ['1x1', '1x2', '2x1', '2x2'], 'aired regular episodes in order (no specials, nothing after the last aired)')
 ok(airedRegularEpisodes({ seasons: [{ season_number: 1, episode_count: 2 }] }).length, 2, 'without a last aired episode: every listed one')
-const counts = new Map([['1x1', 1], ['1x2', 1], ['2x1', 1], ['2x2', 1], ['0x1', 1]])
-ok(nextInRound(aired, counts, 2), { season: 1, episode: 1 }, 'rewatch started → next is S01E01')
-counts.set('1x1', 2)
-ok(nextInRound(aired, counts, 2), { season: 1, episode: 2 }, 'after S01E01\'s second watch → S01E02')
-ok(roundProgress(aired, counts, 2), { done: 1, total: 4 }, 'progress counts the episodes at the round')
-for (const k of ['1x2', '2x1', '2x2']) counts.set(k, 2)
-ok(nextInRound(aired, counts, 2), null, 'every aired episode at the round → finished')
-ok(nextInRound([...aired, { season: 2, episode: 3 }], counts, 2), { season: 2, episode: 3 }, 'a newly aired episode (never watched) is next in the round')
-ok(nextInRound(aired, new Map([['1x1', 3], ['1x2', 1]]), 2), { season: 1, episode: 2 }, 'extra watches of one episode don\'t carry over to the next')
+// A round counts the watches since it started (rewatch_started_at).
+const START = '2026-10-01T10:00:00.000Z'
+const before = (id, at) => ({ id, watched_at: at, source: 'trakt', created_at: at })
+const row = (s_, e, watches) => ({ season_number: s_, episode_number: e, watched_at: watches.length ? watches[watches.length - 1].watched_at : null, watches })
+ok(inRound(before('a', '2026-10-02T20:00:00.000Z'), START), true, 'a watch dated since the start is in the round')
+ok(inRound({ id: 'b', watched_at: '2018-01-01T12:00:00.000Z', source: 'app', created_at: '2026-10-05T09:00:00.000Z' }, START), true,
+  'a rewatch logged in the app since the start, with an older date, counts too')
+ok(inRound({ id: 'c', watched_at: '2018-01-01T12:00:00.000Z', source: 'trakt', created_at: '2026-10-05T09:00:00.000Z' }, START), false,
+  'an old play that only came in from Trakt since then does not')
+ok(inRound({ id: 'd', watched_at: '2026-10-01T10:00:00.000Z', source: 'trakt' }, '2026-10-01T10:00:00.400Z'), true, 'the same second as the start counts (seconds, like the database)')
+const pilotThrice = row(1, 1, [before('p1', '2019-01-01T12:00:00Z'), before('p2', '2020-01-01T12:00:00Z'), before('p3', '2021-01-01T12:00:00Z')])
+let done = doneInRound([pilotThrice, row(1, 2, [before('e2', '2020-02-01T12:00:00Z')])], START)
+ok([...done], [], 'a pilot watched three times before the round is not done in it')
+ok(nextInRound(aired, done), { season: 1, episode: 1 }, 'rewatch started → next is S01E01')
+done = doneInRound([row(1, 1, [...pilotThrice.watches, before('p4', '2026-10-03T20:00:00Z')]), row(1, 2, [before('e2', '2020-02-01T12:00:00Z')])], START)
+ok(nextInRound(aired, done), { season: 1, episode: 2 }, 'after S01E01 is watched in the round → S01E02')
+ok(roundProgress(aired, done), { done: 1, total: 4 }, 'progress counts the episodes done in the round')
+ok(nextInRound(aired, new Set(['1x1', '1x2', '2x1', '2x2'])), null, 'every aired episode done → the round is finished')
+ok(nextInRound([...aired, { season: 2, episode: 3 }], new Set(['1x1', '1x2', '2x1', '2x2'])), { season: 2, episode: 3 },
+  'an episode aired mid-round (never watched) is part of the round once aired')
+ok(nextInRound(aired, new Set(['1x2'])), { season: 1, episode: 1 }, 'an episode never watched before counts the same way as one watched')
+
+// ── Placeholders wait for Trakt's dates ──────────────────────────────────────
+{
+  const ph = { id: 'b', watched_at: '2026-01-08T20:00:00.000Z', source: 'backfill', trakt_history_id: null }
+  const linked = { id: 'l', watched_at: '2018-10-12T20:00:00.000Z', source: 'trakt', trakt_history_id: 5 }
+  const mine = { id: 'a', watched_at: '2026-02-02T20:00:00.000Z', source: 'app', trakt_history_id: null }
+  ok(isPlaceholder(ph, true), true, 'a backfilled watch not linked yet waits for Trakt\'s dates')
+  ok(isPlaceholder(ph, false), false, 'without Trakt it is just its date')
+  ok(isPlaceholder({ ...ph, trakt_history_id: 9 }, true), false, 'linked, it is a real play')
+  ok(editableWatches([ph, linked, mine], true).map(w => w.id), ['l', 'a'], 'Change date and remove pick only from the others')
+  ok(watchFor(editableWatches([ph, linked], true), 'latest').id, 'l', 'the latest editable watch, never a placeholder')
+}
 
 // ── Watches per episode ──────────────────────────────────────────────────────
 ok([...watchCounts([

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { SkipForward, Trash2, CheckCircle2, Heart, Repeat } from 'lucide-react'
 import { toast } from '../../../app/store'
@@ -57,14 +57,14 @@ const PILL_STAGE: Record<PillStatus, Stage> = {
 }
 
 /** Status picker: an aligned grid (three columns on a phone, two in the md+ rail), each status in its shared stage colour (shared/theme/stage.ts). */
-function StatusPills({ statuses, value, disabled, onPick }: {
+function StatusPills({ statuses, value, disabled, onPick, extra }: {
   statuses: typeof MOVIE_STATUSES
   value: PillStatus
   disabled?: boolean
   onPick: (s: PillStatus) => void
+  /** One more cell after the statuses (a movie's "Watch again" fills the grid's free one). */
+  extra?: ReactNode
 }) {
-  // A finished title is watched again from here: Watching becomes "Watch again" (a rewatch round, migration 149).
-  const label = (s: { value: PillStatus; label: string }) => (s.value === 'watching' && value === 'completed' ? 'Watch again' : s.label)
   return (
     <div role="group" aria-label="Status" className="grid grid-cols-3 gap-1 md:grid-cols-2">
       {statuses.map(s => (
@@ -78,9 +78,10 @@ function StatusPills({ statuses, value, disabled, onPick }: {
           className="stage-option press-feedback"
         >
           <span aria-hidden className="tone-dot" />
-          <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{label(s)}</span>
+          <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{s.label}</span>
         </button>
       ))}
+      {extra}
     </div>
   )
 }
@@ -254,7 +255,6 @@ export function MediaLibraryControls({ detail, isMovie, userEntry, onRemoved }: 
   }
 
   async function handleStatusChange(status: MediaStatus) {
-    if (status === 'watching' && userEntry?.status === 'completed') return handleWatchAgain()
     if (status === 'completed' && rewatchRound != null) {
       // Ending a rewatch: a movie gets its new watch; a show simply goes back to Completed.
       if (movieEntry) return finishMovieRewatch()
@@ -348,7 +348,14 @@ export function MediaLibraryControls({ detail, isMovie, userEntry, onRemoved }: 
       {dialog}
       {spreadDialog}
       <div className="space-y-2">
-        <StatusPills statuses={statuses} value={userEntry.status} disabled={updating} onPick={s => { void (s === 'unwatched' ? handleRemove() : handleStatusChange(s)) }} />
+        <StatusPills statuses={statuses} value={userEntry.status} disabled={updating} onPick={s => { void (s === 'unwatched' ? handleRemove() : handleStatusChange(s)) }}
+          extra={movieEntry?.status === 'completed' ? (
+            // Watching = plain Watching; this starts a rewatch round (migration 149).
+            <button type="button" disabled={updating} data-tone={STAGE_TONE.active} onClick={() => { haptic('light'); void handleWatchAgain() }} className="stage-option press-feedback">
+              <Repeat aria-hidden className="h-3.5 w-3.5 shrink-0" />
+              <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">Watch again</span>
+            </button>
+          ) : null} />
         {tvEntry && rewatchRound != null ? (
           // A rewatch reads as one: its round and the next episode of it.
           <p className="text-meta text-fg-muted tabular-nums">
@@ -371,10 +378,10 @@ export function MediaLibraryControls({ detail, isMovie, userEntry, onRemoved }: 
           ? <p className="text-meta text-fg-muted tabular-nums">Rewatching · watch {rewatchRound}</p>
           : <MovieWatchingInfo entry={movieEntry} />)}
         {movieEntry?.status === 'completed' && (
-          <MovieWatchedControls entry={movieEntry} releaseDate={movie!.release_date ?? null} disabled={updating} onPatch={patchEntry} />
+          <MovieWatchedControls entry={movieEntry} releaseDate={movie!.release_date ?? null} disabled={updating} />
         )}
         {tvEntry?.status === 'completed' && (
-          <SeriesFinishedControls entry={tvEntry} lastAirDate={tv!.last_air_date ?? null} disabled={updating} onPatch={patchEntry} />
+          <SeriesFinishedControls entry={tvEntry} lastAirDate={tv!.last_air_date ?? null} disabled={updating} onPatch={patchEntry} onWatchAgain={() => { void handleWatchAgain() }} />
         )}
         {movieEntry && <CinemaVisits entry={movieEntry} />}
       </div>

@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
+import { useRowsDelete } from '../../../shared/hooks/useRowsDelete'
 import { qk, STALE } from '../../../shared/query'
 import type { WatchedEpisode } from '../types'
 import { scheduleTraktSync } from '../trakt/traktAutoSync'
@@ -104,6 +105,23 @@ export function useMarkEpisodeWatched(opts?: { successMessage?: string }) {
     },
     invalidates: ['episodeWatched'],
     onSuccess: () => scheduleTraktSync(qc),
+  })
+}
+
+/**
+ * "Not watched" for episodes, with Undo (the one delete flow): their rows go
+ * and every watch with them; on Trakt every play of each episode goes (the
+ * episode-wide remove). Undo puts the rows and watches back and sends each
+ * watch again at its own date.
+ */
+export function useUnmarkEpisodes() {
+  const qc = useQueryClient()
+  return useRowsDelete({
+    table: 'user_tv_episodes', action: 'unmark_episodes', invalidates: ['episodeWatched'],
+    overrides: () => ({ media_watches: { trakt_history_id: null, source: 'app' } }),
+    afterDelete: () => scheduleTraktSync(qc),
+    afterRestore: () => { scheduleTraktSync(qc) },
+    names: { media_watches: 'watches' },
   })
 }
 

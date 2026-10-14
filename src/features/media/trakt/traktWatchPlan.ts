@@ -16,9 +16,10 @@ import { isUnknownWatchedAt } from './traktDates'
 // longer lists (the summary plan removes those, with its held-back guard),
 // are left alone. An item whose history came back empty is left alone too.
 //
-// App → Trakt: a removed watch removes ONE play — by its Trakt id, else the
-// play at the same time, else the play nearest in time that no other watch
-// here accounts for (playToRemove).
+// App → Trakt: a removed watch removes ONE play, and never a guessed one
+// (playToRemove): by its Trakt id, or a play at that exact second when Trakt
+// has more plays there than the watches left here account for. Otherwise the
+// remove waits until a pull has linked the title's watches to their plays.
 
 export type WatchSource = 'app' | 'trakt' | 'backfill'
 export interface LocalWatch { id: string; watchedAt: string | null; historyId: number | null; source: WatchSource; createdAt?: string | null }
@@ -185,19 +186,31 @@ export interface HistoryTargets {
   needsFull: boolean
 }
 
+/** What the watches of one item here add up to: how many, the latest date, any not linked to a play yet. */
+export interface LocalPlays { count: number; latest: string | null; unlinked: boolean }
+
+/** The per-item summary of a set of watches (the cache columns give the same count and latest date). */
+export function localPlays(watches: Map<string, LocalWatch[]>): Map<string, LocalPlays> {
+  const out = new Map<string, LocalPlays>()
+  for (const [key, ws] of watches) {
+    const latest = ws.reduce<string | null>((x, w) => (secondOf(w.watchedAt) > secondOf(x) ? w.watchedAt : x), null)
+    out.set(key, { count: ws.length, latest, unlinked: ws.some(w => w.historyId == null) })
+  }
+  return out
+}
+
 /**
  * The titles whose plays here differ from Trakt's watched summary (another
  * count, another latest date, or a watch not linked to a play yet) — their
  * history is read one by one when there are few.
  */
-export function historyTargets(snap: TraktSnapshot, local: Map<string, LocalWatch[]>, pending: Set<string>): HistoryTargets {
+export function historyTargets(snap: TraktSnapshot, local: Map<string, LocalPlays>, pending: Set<string>): HistoryTargets {
   const out: HistoryTargets = { shows: new Map(), movies: new Map(), needsFull: false }
   const differs = (key: string, plays: number, at: string | null) => {
     if (pending.has(key)) return false
-    const mine = local.get(key) ?? []
-    if (mine.length !== plays || mine.some(w => w.historyId == null)) return true
-    const latest = mine.reduce<string | null>((x, w) => (secondOf(w.watchedAt) > secondOf(x) ? w.watchedAt : x), null)
-    return !!at && !sameSecond(latest, at)
+    const mine = local.get(key)
+    if (!mine || mine.count !== plays || mine.unlinked) return true
+    return !!at && !sameSecond(mine.latest, at)
   }
   const want = (map: Map<number, number>, tmdb: number, trakt: number) => {
     if (trakt > 0) map.set(tmdb, trakt)
@@ -215,6 +228,41 @@ export function historyTargets(snap: TraktSnapshot, local: Map<string, LocalWatc
   return out
 }
 
+/** A title of Trakt's watched summary: its key ('movie:<tmdb>' | 'show:<tmdb>'), TMDB and Trakt ids. */
+export interface SummaryTitle { key: string; kind: 'movie' | 'show'; tmdb: number; trakt: number }
+
+/**
+ * Every title Trakt's watched summary lists, in one fixed order — a whole
+ * history read goes through them title by title and keeps its place
+ * (trakt_sync_state.history_cursor = the last key done), so it resumes in the
+ * next run instead of depending on one run's time.
+ */
+export function summaryTitles(snap: TraktSnapshot): SummaryTitle[] {
+  const out: SummaryTitle[] = []
+  for (const m of snap.watchedMovies) if (m.item.ids.tmdb) out.push({ key: `movie:${m.item.ids.tmdb}`, kind: 'movie', tmdb: m.item.ids.tmdb, trakt: m.item.ids.trakt })
+  for (const sh of snap.watchedShows) if (sh.item.ids.tmdb) out.push({ key: `show:${sh.item.ids.tmdb}`, kind: 'show', tmdb: sh.item.ids.tmdb, trakt: sh.item.ids.trakt })
+  return out.sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))
+}
+
+/** The titles still to read after `cursor` ('' = from the start). */
+export const titlesAfter = (titles: SummaryTitle[], cursor: string) => titles.filter(t => t.key > cursor)
+
+/** The item keys of one title in Trakt's summary (a movie's own key, a show's episodes). */
+export function titleItemKeys(snap: TraktSnapshot, title: SummaryTitle): string[] {
+  if (title.kind === 'movie') return [watchKey.movie(title.tmdb)]
+  const sh = snap.watchedShows.find(x => x.item.ids.tmdb === title.tmdb)
+  return (sh?.episodes ?? []).map(([season, episode]) => watchKey.episode(title.tmdb, season, episode))
+}
+
+/**
+ * A pull never removes a big part of the watches here by itself: more than
+ * max(10, 10 %) of them at once waits for the owner's confirm (the Trakt
+ * card's "Sync anyway"), like the library's own removals.
+ */
+export function watchRemovalsNeedConfirm(plan: WatchPlan, localCount: number): boolean {
+  return plan.removes.length > Math.max(10, Math.floor(localCount * 0.1))
+}
+
 /** Every item Trakt's watched summary lists, by key. */
 export function summaryKeys(snap: TraktSnapshot): Set<string> {
   const out = new Set<string>()
@@ -226,44 +274,48 @@ export function summaryKeys(snap: TraktSnapshot): Set<string> {
   return out
 }
 
+/** What to do with a removed watch's play: remove this one, nothing (it is gone), or wait for the ids. */
+export type PlayRemoval = { kind: 'remove'; historyId: number } | { kind: 'gone' } | { kind: 'wait' }
+
 /**
- * The Trakt play a removed watch was: its own id when Trakt still has it;
- * else the play at the same time, else the one nearest in time — among the
- * plays no remaining watch here accounts for (by id, or by the same time).
- * null = nothing left to remove.
+ * The Trakt play a removed watch was — never a guess. By its own Trakt id
+ * (gone when Trakt no longer has it); without one, only a play at that exact
+ * second when Trakt has more plays there than the watches left here account
+ * for (their linked plays, and one each for the unlinked ones at that
+ * second). Anything else waits until a pull has linked the title's watches.
  */
-export function playToRemove(removed: { historyId: number | null; watchedAt: string | null }, plays: TraktPlay[], keep: { historyId: number | null; watchedAt: string | null }[]): number | null {
-  if (removed.historyId != null) return plays.some(p => p.historyId === removed.historyId) ? removed.historyId : null
-  const keptIds = new Set(keep.filter(k => k.historyId != null).map(k => k.historyId!))
-  let open = plays.filter(p => !keptIds.has(p.historyId))
-  for (const k of keep) {
-    if (k.historyId != null) continue
-    const same = open.find(p => sameSecond(p.watchedAt, k.watchedAt))
-    if (same) open = open.filter(p => p !== same)
-  }
-  if (!open.length) return null
+export function playToRemove(removed: { historyId: number | null; watchedAt: string | null }, plays: TraktPlay[], keep: { historyId: number | null; watchedAt: string | null }[]): PlayRemoval {
+  if (removed.historyId != null) return plays.some(p => p.historyId === removed.historyId) ? { kind: 'remove', historyId: removed.historyId } : { kind: 'gone' }
   const t = secondOf(removed.watchedAt)
-  const exact = open.find(p => secondOf(p.watchedAt) === t)
-  if (exact) return exact.historyId
-  const dist = (p: TraktPlay) => Math.abs(Math.max(0, secondOf(p.watchedAt)) - Math.max(0, t))
-  return open.reduce((best, p) => (dist(p) < dist(best) ? p : best)).historyId
+  const keptIds = new Set(keep.filter(k => k.historyId != null).map(k => k.historyId!))
+  const open = plays.filter(p => secondOf(p.watchedAt) === t && !keptIds.has(p.historyId)).sort((a, b) => b.historyId - a.historyId)
+  const claimed = keep.filter(k => k.historyId == null && secondOf(k.watchedAt) === t).length
+  return open.length > claimed ? { kind: 'remove', historyId: open[0].historyId } : { kind: 'wait' }
 }
 
 /**
- * Outbox rows that cancel out before anything is sent: a watch added and
- * removed again (or re-dated) while its add still waits — both rows go, so
- * Trakt never gets a play only to lose it again. Rows in send order.
+ * Outbox rows that cancel out before anything is sent — every waiting row,
+ * whatever its next_retry_at, in send order:
+ *   · an add not sent yet (or failed and waiting), then a remove of that watch
+ *     (removed, or re-dated): both go, Trakt never gets that play;
+ *   · a remove, then an add of the same watch at the same second (deleted,
+ *     then Undo before the drain): both go, Trakt keeps the play it has.
  */
 export function cancelledOutboxRows(rows: { id: string; op: string; payload?: Record<string, unknown> | null }[]): string[] {
   const out: string[] = []
   const adds = new Map<string, string>()
+  const removes = new Map<string, { id: string; at: string | null }>()
   for (const r of rows) {
     const watch = typeof r.payload?.watch_id === 'string' ? r.payload.watch_id : null
     if (!watch) continue
-    if (r.op === 'history_add') adds.set(watch, r.id)
-    else if (r.op === 'history_remove_play' && adds.has(watch)) {
-      out.push(adds.get(watch)!, r.id)
-      adds.delete(watch)
+    const at = typeof r.payload?.watched_at === 'string' ? r.payload.watched_at : null
+    if (r.op === 'history_add') {
+      const rem = removes.get(watch)
+      if (rem && sameSecond(rem.at, at)) { out.push(rem.id, r.id); removes.delete(watch); continue }
+      adds.set(watch, r.id)
+    } else if (r.op === 'history_remove_play') {
+      if (adds.has(watch)) { out.push(adds.get(watch)!, r.id); adds.delete(watch); continue }
+      removes.set(watch, { id: r.id, at })
     }
   }
   return out

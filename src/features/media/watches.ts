@@ -5,7 +5,14 @@
 import { formatDate } from '../../shared/utils/dateFormat'
 import { isUnknownWatchedAt } from './trakt/traktDates'
 
-export interface Watch { id: string; watched_at: string | null }
+export interface Watch {
+  id: string
+  watched_at: string | null
+  /** Linked to its Trakt play (set by the sync). */
+  trakt_history_id?: number | null
+  source?: 'app' | 'trakt' | 'backfill'
+  created_at?: string
+}
 
 /** Oldest first; a watch on an unknown date (the epoch, or NULL on a movie) comes first. */
 export function sortWatches<W extends Watch>(watches: readonly W[]): W[] {
@@ -17,7 +24,20 @@ export function sortWatches<W extends Watch>(watches: readonly W[]): W[] {
 export const watchDate = (w: Watch) => (!w.watched_at || isUnknownWatchedAt(w.watched_at) ? 'date unknown' : formatDate(w.watched_at))
 
 /**
- * The dates a row shows: every one up to three, else the first and the two
+ * A placeholder: the one date the app kept before 149, copied once per play,
+ * not linked to Trakt's real play yet. With Trakt connected it waits for
+ * Trakt's dates (the next pull links it) and can't be changed or removed —
+ * which Trakt play it stands for isn't known.
+ */
+export const isPlaceholder = (w: Watch, traktConnected: boolean) =>
+  traktConnected && w.source === 'backfill' && w.trakt_history_id == null
+
+/** The watches a date change or a removal may act on. */
+export const editableWatches = <W extends Watch>(watches: readonly W[], traktConnected: boolean): W[] =>
+  watches.filter(w => !isPlaceholder(w, traktConnected))
+
+/**
+ * The dates a movie shows: every one up to three, else the first and the two
  * latest around "…" — "12.10.2018 · 01.12.2024 · 08.01.2026".
  */
 export function watchDates(watches: readonly Watch[]): string {
@@ -29,10 +49,18 @@ export function watchDates(watches: readonly Watch[]): string {
 /** One watch: "Watched 08.01.2026", or "Watched · date unknown". */
 export const watchedOnce = (w: Watch) => (watchDate(w) === 'date unknown' ? 'Watched · date unknown' : `Watched ${watchDate(w)}`)
 
-/** "Watched 08.01.2026" or "3 watches · 12.10.2018 · 01.12.2024 · 08.01.2026". */
+/** A movie: "Watched 08.01.2026" or "3 watches · 12.10.2018 · 01.12.2024 · 08.01.2026". */
 export function watchSummary(watches: readonly Watch[]): string {
   if (!watches.length) return ''
   return watches.length === 1 ? watchedOnce(watches[0]) : `${watches.length} watches · ${watchDates(watches)}`
+}
+
+/** An episode row, one short line: "Watched 08.01.2026" or "3 watches · last 08.01.2026" (the list is in its sheet). */
+export function watchesLine(watches: readonly Watch[]): string {
+  if (!watches.length) return ''
+  if (watches.length === 1) return watchedOnce(watches[0])
+  const latest = sortWatches(watches)[watches.length - 1]
+  return `${watches.length} watches · last ${watchDate(latest)}`
 }
 
 export type WatchPick = 'latest' | 'first'
@@ -58,14 +86,15 @@ export function cacheWatches(row: { id: string; watched_at: string | null; repea
   return Array.from({ length: 1 + Math.max(0, row.repeat_count ?? 0) }, (_, i) => ({ id: `${row.id}#${i}`, watched_at: row.watched_at }))
 }
 
-// ── Rewatching (migration 149's rewatch_round) ───────────────────────────────
+// ── Rewatching (migration 149's rewatch_round + rewatch_started_at) ──────────
 
 export interface RoundEpisode { season: number; episode: number }
 const key = (e: RoundEpisode) => `${e.season}x${e.episode}`
+const sec = (iso: string | null | undefined) => (iso ? Math.floor(Date.parse(iso) / 1000) : NaN)
 
 /**
- * The round a rewatch starts: one more than the fewest watches of the regular
- * episodes watched so far (specials don't count) — all watched once → 2.
+ * The round a rewatch starts (its number on screen): one more than the fewest
+ * watches of the regular episodes watched so far — all watched once → 2.
  */
 export function rewatchStartRound(counts: number[]): number {
   const regular = counts.filter(n => n > 0)
@@ -73,18 +102,35 @@ export function rewatchStartRound(counts: number[]): number {
 }
 
 /**
- * The next episode of a rewatch round: the first aired regular episode, in
- * watching order, watched fewer times than the round. null = round finished.
+ * A watch of the round: dated since it started, or added in the app since then
+ * (a rewatch logged on an unknown or earlier date) — the database's rule.
  */
-export function nextInRound(aired: RoundEpisode[], counts: Map<string, number>, round: number): RoundEpisode | null {
-  const order = aired.filter(e => e.season > 0).sort((a, b) => a.season - b.season || a.episode - b.episode)
-  return order.find(e => (counts.get(key(e)) ?? 0) < round) ?? null
+export function inRound(w: Watch, startedAt: string): boolean {
+  const start = sec(startedAt)
+  return sec(w.watched_at) >= start || (w.source === 'app' && sec(w.created_at) >= start)
 }
 
-/** How far a round is: aired regular episodes at the round already, of all of them. */
-export function roundProgress(aired: RoundEpisode[], counts: Map<string, number>, round: number): { done: number; total: number } {
+/** The episodes done in a round ("SxE"): those with a watch of the round. */
+export function doneInRound(rows: { season_number: number; episode_number: number; watches?: readonly Watch[] }[], startedAt: string): Set<string> {
+  const out = new Set<string>()
+  for (const r of rows) if (r.watches?.some(w => inRound(w, startedAt))) out.add(`${r.season_number}x${r.episode_number}`)
+  return out
+}
+
+/**
+ * The next episode of a rewatch round: the first aired regular episode, in
+ * watching order, not done in the round (a pilot watched three times before
+ * doesn't count; one never watched counts the same). null = round finished.
+ */
+export function nextInRound(aired: RoundEpisode[], done: Set<string>): RoundEpisode | null {
+  const order = aired.filter(e => e.season > 0).sort((a, b) => a.season - b.season || a.episode - b.episode)
+  return order.find(e => !done.has(key(e))) ?? null
+}
+
+/** How far a round is: aired regular episodes done in it, of all of them. */
+export function roundProgress(aired: RoundEpisode[], done: Set<string>): { done: number; total: number } {
   const regular = aired.filter(e => e.season > 0)
-  return { done: regular.filter(e => (counts.get(key(e)) ?? 0) >= round).length, total: regular.length }
+  return { done: regular.filter(e => done.has(key(e))).length, total: regular.length }
 }
 
 /**
