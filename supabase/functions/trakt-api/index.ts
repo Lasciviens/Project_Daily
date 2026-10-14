@@ -3562,7 +3562,11 @@ Deno.serve(async (req: Request) => {
         const notes = notesResult(r.drained.notes, r.notes)
         const watches = 'watches' in r ? r.watches : null
         const result = { kind: 'sync', at: now, pulled: r.pulled, drained: r.drained, applied: r.applied ?? null, watches, heldBack: r.heldBack ?? 0, kept: r.kept ?? 0, unmatched: r.unmatched ?? null, notes }
-        const problems = [r.drained.error && `Sending to Trakt failed: ${r.drained.error}`, watches?.error && `Watch dates: ${watches.error}`, notes?.error && `Notes: ${notes.error}`].filter(Boolean)
+        const problems = [
+          r.drained.error && `Sending to Trakt failed: ${r.drained.error}`,
+          r.drained.dropped && `${r.drained.dropped} removed watch${r.drained.dropped === 1 ? '' : 'es'} could not be matched to one Trakt play in ${WAIT_FOR_IDS_DAYS} days and ${r.drained.dropped === 1 ? 'was' : 'were'} not removed there — Trakt may still have ${r.drained.dropped === 1 ? 'that play' : 'those plays'}`,
+          watches?.error && `Watch dates: ${watches.error}`, notes?.error && `Notes: ${notes.error}`,
+        ].filter(Boolean)
         await stamp(db, userId, {
           last_sync_at: now, ...(body.full ? { last_full_at: now } : {}), last_activities: r.lastActivities,
           ...(r.notes ? { notes_synced_at: r.notes.complete ? now : null } : {}),

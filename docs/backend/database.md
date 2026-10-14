@@ -375,7 +375,13 @@ which door the write came through.
   `watched_at` NULL — the row stays so an Undo can put a watch back on it).
   A watch that names an `episode_id` that isn't there raises a foreign-key
   error (150's undo retries it after putting the episode back) instead of
-  making a second row for the episode.
+  making a second row for the episode. A sync write (x-trakt-sync) through
+  the cache columns only ever ADDS placeholder watches — it never removes or
+  re-dates one (trakt-api removes by Trakt play id); and the sync's writes to
+  `media_watches` are not audited (`trg_audit … WHEN (NOT
+  trakt_sync_writing())`, bulk-synced). A rewatch round
+  (`media_rewatch_finished`) and 043's planned-block rule
+  (`trg_media_watch_cleans_planned_block`) run on every watch insert.
   A write to the cache columns from any door (the assistant's `db_update`, the
   Trakt sync's summary writes, SQL, the app's older paths) is translated into
   watches by DEFERRED constraint triggers (`trg_media_watch_reconcile`) — so

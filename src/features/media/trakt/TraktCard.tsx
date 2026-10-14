@@ -39,7 +39,7 @@ export function TraktCard() {
   const applyRemovals = async () => {
     const ok = await entityModal.confirm({
       title: `Remove ${heldBack} item${heldBack === 1 ? '' : 's'} Trakt no longer has?`,
-      message: 'A sync found more removals than usual and waited for you. Check trakt.tv first if this looks wrong — the removed titles and episodes can only come back by adding them again.',
+      message: 'A sync found more removals than usual and waited for you — titles, episodes or single watches Trakt no longer has. Check trakt.tv first if this looks wrong: they can only come back by adding them again.',
       confirmLabel: 'Remove them', destructive: true,
     })
     if (ok) sync.mutate({ full: true, force: true })

@@ -84,21 +84,27 @@ reach Trakt and come back here through the normal history sync.
   record. The sync refuses to run until a complete import has stamped
   `trakt_sync_state.imported_at` (migration 124), because it treats Trakt as the truth and
   would otherwise wipe app-only data.
-- **Plays (migration 149, built 14.10.2026)** — `src/features/media/trakt/traktWatchPlan.ts`
-  (`scripts/verify-trakt-watch-plan.cjs`), DB scenarios `scripts/db-tests/media-watches/`:
-  - **App → Trakt, one play at a time:** a new watch → `history_add` at its own date; a removed
-    watch → `history_remove_play` (`POST /sync/history/remove {ids: [history id]}`; an unknown id
-    is looked up in the title's history first — the play at the same second, else the nearest
-    one no remaining watch accounts for); a new date on one watch = remove that play + add the
-    new one. The item-wide `history_remove` only when it is unmarked entirely. An add and a
-    remove of one watch still waiting cancel out.
+- **Plays (migration 149, built 14.10.2026; review fixes the same day)** —
+  `src/features/media/trakt/traktWatchPlan.ts` (`scripts/verify-trakt-watch-plan.cjs`), DB scenarios
+  `scripts/db-tests/media-watches/`, API facts `docs/integrations/trakt.md`:
+  - **App → Trakt, one play at a time, never a guessed one:** a new watch → `history_add` at its
+    own date; a removed watch → `history_remove_play` (`POST /sync/history/remove {ids: [history
+    id]}`). Without a history id, only a play at that exact second when Trakt has more plays there
+    than the watches left here account for; otherwise the remove waits ("waiting for Trakt's play
+    ids") until a pull has linked the title, and is dropped after 7 days with a message. Nothing
+    unlinked is sent before the first link (`history_synced_at`). A new date on one watch = remove
+    that play + add the new one; removing an item's last watch is that one play too. The
+    item-wide `history_remove` only for an explicit unmark ("Not watched", Wishlist, removed).
+    Waiting add/remove pairs of one watch cancel out (also a remove + add at the same second:
+    delete, then Undo).
   - **Trakt → app, play by play:** the titles whose plays differ from the watched summary are
-    read one by one (`/sync/history/{shows|movies}/{trakt id}`); the whole history on the first
-    run after 149, Sync now, a reset, a reconnect, or more than 25 differing titles. Linked plays
-    stay; the rest pair by the same second, then in date order (Trakt's date wins);
-    placeholders (`source = 'backfill'`, the one date the app had) are replaced. Pending items
-    and items the summary dropped are left alone; an empty history while the summary has plays
-    is an outage.
+    read one by one (`/sync/history/{shows|movies}/{trakt id}`); a whole-history read (first run
+    after 149, a reconnect, Sync now, a reset, more than 25 differing titles) goes title by title
+    and resumes through `trakt_sync_state.history_cursor`. Linked plays stay; the rest pair by
+    the same second, then in date order (Trakt's date wins); placeholders (`source =
+    'backfill'`, the one date the app had) are replaced. Pending items and items the summary
+    dropped are left alone; an empty history is left alone; more than max(10, 10 %) removals
+    wait for a confirm. A sync write never removes or re-dates a watch through the cache columns.
   - Not by date: `start_at` filters on the play's own date, so a backdated play would be missed.
 - **Notes (migration 136, built 07.10.2026)** — `src/features/media/trakt/traktNotes.ts`
   (`scripts/verify-trakt-notes.cjs`):
@@ -234,7 +240,10 @@ trakt/trakt-api's contract (`projects/api/src/contracts/sync/index.ts`, `history
   compares `all`.
 - `POST /shows/{id}/progress/watched/reset` (and `DELETE` to undo) is **VIP Only** (426 for
   others) and only changes Trakt's progress view (`reset_at`); not used — rewatch rounds are
-  app-side.
+  app-side (`rewatch_round`, `rewatch_started_at`).
+- A remove without a history id is never matched to the "nearest" play (owner-critic review,
+  14.10.2026): only an exact-second match no remaining watch accounts for.
+- Endpoints, fields, unused fields and traps in one place: `docs/integrations/trakt.md`.
 
 ### Facts used by phases 5–6 (checked 30.09.2026; notes 07.10.2026)
 

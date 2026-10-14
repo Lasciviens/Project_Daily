@@ -81,6 +81,8 @@ function syncSummary(r: TraktRunResult): string {
   if (a && (a.movies || a.shows || a.episodes)) parts.push(`${a.movies + a.shows + a.episodes} updated from Trakt`)
   if (a?.removed) parts.push(`${a.removed} removed`)
   if (r.heldBack) parts.push(`${r.heldBack} removals waiting for you`)
+  if (r.watches?.wholeHistory && !r.watches.finished) parts.push('watch dates still coming in from Trakt')
+  if (r.drained?.waitingForIds) parts.push(`${r.drained.waitingForIds} removed watch${r.drained.waitingForIds === 1 ? '' : 'es'} waiting for Trakt's play ids`)
   if (r.notes?.fromTrakt) parts.push(`${r.notes.fromTrakt} note${r.notes.fromTrakt === 1 ? '' : 's'} from Trakt`)
   if (r.notes?.refused) parts.push(`${r.notes.refused} note${r.notes.refused === 1 ? '' : 's'} not taken by Trakt`)
   return parts.length ? `Synced · ${parts.join(' · ')}` : 'Synced · already the same'
