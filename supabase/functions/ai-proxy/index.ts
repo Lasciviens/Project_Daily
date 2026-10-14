@@ -2565,7 +2565,7 @@ const DB_CATALOG: Record<string, CatalogEntry> = {
   tasks: {
     access: 'rw',
     purpose: 'To-do tasks (the To-Do feature IS this table).',
-    columns: 'id, title, description, domain(personal|work|media), section(inbox|today|tomorrow|this_week|backlog), status(open|in_progress|waiting|done|cancelled), priority(low|medium|high), start_date(date; optional opening edge of a window — with due_date it means "do this between A and B"), due_date(date), due_time(time), waiting_for(text), is_focused(bool), source_type(manual|movie|tv_series|media|calendar|ai|training_session|project_item), source_id(uuid), sort_order, completed_at(timestamptz — when it was closed; use this, never updated_at, for "finished today"), hevy_routine_id(text; the Hevy routine a planned training session trains — the database fills it), hevy_workout_id(text; the Hevy workout that completed it — the database sets it), created_at, updated_at',
+    columns: 'id, title, description, domain(personal|work|media), section(inbox|today|backlog — a task for any day but today goes under backlog with its due_date; old rows may still read the retired tomorrow|this_week, never write those), status(open|in_progress|waiting|done|cancelled), priority(low|medium|high), start_date(date; optional opening edge of a window — with due_date it means "do this between A and B"), due_date(date), due_time(time), waiting_for(text), is_focused(bool), source_type(manual|movie|tv_series|media|calendar|ai|training_session|project_item), source_id(uuid), sort_order, completed_at(timestamptz — when it was closed; use this, never updated_at, for "finished today"), hevy_routine_id(text; the Hevy routine a planned training session trains — the database fills it), hevy_workout_id(text; the Hevy workout that completed it — the database sets it), created_at, updated_at',
     rules: 'Deleting a task automatically deletes its linked time_blocks row too (task_id is ON DELETE CASCADE — no separate cleanup db_delete needed). due_date is the SOLE deadline — a task with a due_date can be late; a task\'s optional schedule slot (time_blocks linked via task_id) is a separate fact and never implies or changes due_date — EXCEPT for a training task (below), whose day and time are its slot\'s. If the user just wants to be reminded of something during a period ("go to the hytte this winter") with no date it must be done by, that is a wish_items row, not a task. A planned training session is a task with source_type training_session and source_id = the routine id (hevy_routines.id), or a personal task titled exactly like the routine; the database links it (hevy_routine_id) and marks it done with the workout (hevy_workout_id) when that workout syncs — never set those two, and never delete a training task because it was trained. A training task\'s due_date/due_time and its time_blocks row move together (migration 142): update either one, the database moves the other (its Google Calendar event follows the next time the app edits it). Never cancel a training task directly: to skip it, ask the user why first and db_insert a training_skips row (the database cancels the task).',
   },
   time_blocks: {
@@ -3290,6 +3290,11 @@ const AI_NO_WRITE = /^(google_(calendar_event_id|task_id|tasklist_id|etag|positi
 function aiWriteProblem(table: string, row: AnyRecord): string | null {
   for (const k of Object.keys(row)) {
     if (AI_NO_WRITE.test(k)) return `Not done: the assistant may not set ${k} on ${table} — the app sets it itself.`
+  }
+  // The app's one rule (taskRules.sectionForDay): Today for today, Backlog for
+  // any other day. Tomorrow / This week are retired; the planner has no pill for them.
+  if (table === 'tasks' && (row.section === 'tomorrow' || row.section === 'this_week')) {
+    return `Not done: ${row.section} is a retired task section — use today for today's task and backlog (with its due_date) for any other day.`
   }
   if ('repeat_count' in row) {
     const n = Number(row.repeat_count)

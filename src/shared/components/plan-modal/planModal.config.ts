@@ -6,7 +6,7 @@
 
 import { format, addDays, parseISO } from 'date-fns'
 import type { RepeatRow, TimeBlockCategory } from '../../../features/daily/types'
-import type { TaskSection, TaskSourceType } from '../../../features/todo/types'
+import type { LiveTaskSection, TaskSourceType } from '../../../features/todo/types'
 import type { TimeBlockCalendarStatus } from '../../../features/daily/api/scheduleSyncRules'
 import { sectionForDay } from '../../../features/todo/taskRules'
 import {
@@ -124,7 +124,7 @@ export function endTimeFrom(startHHMM: string, durationMin: number): string {
 /** The To-Do section of a task planned for `iso` — taskRules.sectionForDay's
  *  one rule (today → Today, any other day → Backlog; never the retired
  *  Tomorrow / This week). */
-export function sectionForDate(iso: string): TaskSection {
+export function sectionForDate(iso: string): LiveTaskSection {
   return sectionForDay(iso, todayStr())
 }
 

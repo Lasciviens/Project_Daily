@@ -25,24 +25,16 @@ import { PRIORITY_LABEL, PRIORITY_TONE } from '../../../features/todo/taskTones'
 import type { Tone } from '../../ui'
 import type { PlanModalConfig } from './planModal.types'
 import type { PlanForm } from './planForm'
-import type { TaskSection, TaskPriority, TaskDomain } from '../../../features/todo/types'
+import type { LiveTaskSection, TaskPriority, TaskDomain } from '../../../features/todo/types'
 
-// 'tomorrow' and 'this_week' are deliberately NOT offered: neither has a home of
-// its own in the UI, so picking one only made a task float like Backlog while
-// claiming a date-shaped name. The TaskSection TYPE keeps both values — existing
-// rows still hold them (shown as "(legacy)" below). The app no longer writes
-// them (taskRules.sectionForDay: today → Today, any other day → Backlog);
-// ai-proxy's own task create still does (supabase/functions/ai-proxy).
-const SECTIONS: { id: TaskSection; label: string }[] = [
+// The retired 'tomorrow' / 'this_week' are never offered: neither had a home of
+// its own in the UI. An old row that still holds one shows — and saves —
+// Backlog (taskRules.liveSection, in planForm).
+const SECTIONS: { id: LiveTaskSection; label: string }[] = [
   { id: 'inbox',     label: 'Inbox'     },
   { id: 'today',     label: 'Today'     },
   { id: 'backlog',   label: 'Backlog'   },
 ]
-
-const LEGACY_SECTION_LABEL: Partial<Record<TaskSection, string>> = {
-  tomorrow:  'Tomorrow',
-  this_week: 'This week',
-}
 
 const PRIORITIES: { id: TaskPriority; label: string; tone: Tone }[] = (['low', 'medium', 'high'] as const)
   .map(id => ({ id, label: PRIORITY_LABEL[id], tone: PRIORITY_TONE[id] }))
@@ -81,12 +73,6 @@ export function TaskTab({ form, patch, config, gcalAvailable, calendarLinked, ex
   const hidden = (f: Parameters<typeof isTaskFieldHidden>[0]) => isTaskFieldHidden(f, config)
   const locked = (f: Parameters<typeof isTaskFieldLocked>[0]) => isTaskFieldLocked(f, config)
 
-  // A task already parked in a retired section keeps its pill so the value is
-  // visible and highlighted; moving it off is one tap and the pill then goes away.
-  const sectionOptions = SECTIONS.some(s => s.id === form.section)
-    ? SECTIONS
-    : [...SECTIONS, { id: form.section, label: `${LEGACY_SECTION_LABEL[form.section] ?? form.section} (legacy)` }]
-
   return (
     <div className="flex flex-col gap-4">
       {!hidden('title') && (
@@ -109,12 +95,13 @@ export function TaskTab({ form, patch, config, gcalAvailable, calendarLinked, ex
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-4">
               {!hidden('section') && (
                 <ChipRow label="Section">
-                  <PillGroup options={sectionOptions} value={form.section} onChange={v => patch({ section: v })} locked={locked('section')} />
+                  <PillGroup options={SECTIONS} value={form.section} onChange={v => patch({ section: v })} locked={locked('section')} />
                 </ChipRow>
               )}
+              {/* Small pills: Low / Medium / High stay on one line in the half-width column. */}
               {!hidden('priority') && (
                 <ChipRow label="Priority">
-                  <PillGroup options={PRIORITIES} value={form.priority} onChange={v => patch({ priority: v })} locked={locked('priority')} />
+                  <PillGroup options={PRIORITIES} value={form.priority} onChange={v => patch({ priority: v })} locked={locked('priority')} size="sm" />
                 </ChipRow>
               )}
             </div>

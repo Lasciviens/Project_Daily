@@ -11,7 +11,7 @@
 
 import { localDayOf, todayStr, tomorrowStr } from '../../shared/utils/dateUtils'
 import { formatDate } from '../../shared/utils/dateFormat'
-import type { Task, TaskSection, TaskStatus } from './types'
+import type { Task, TaskSection, LiveTaskSection, TaskStatus } from './types'
 
 /** Still to do: open, in progress or waiting. */
 export const OPEN_STATUSES: readonly TaskStatus[] = ['open', 'in_progress', 'waiting']
@@ -184,14 +184,22 @@ export function taskGroups<T extends DayFields & Pick<Task, 'start_date'>>(tasks
 
 /**
  * The section a task added on `day` goes to: Today for today, Backlog for any
- * other day — never the retired Tomorrow / This week (the planner shows those
- * only as "(legacy)" on an old row). A dated task sits on its due day by its
- * date (onDay), whatever its section; and Backlog keeps a future task out of
- * today's server-side lists (`section.eq.today` in phone-gateway, push-send,
- * ai-proxy), exactly as Tomorrow / This week did.
+ * other day — never the retired Tomorrow / This week. A dated task sits on its
+ * due day by its date (onDay), whatever its section; and Backlog keeps a future
+ * task out of today's server-side lists (`section.eq.today` in phone-gateway,
+ * push-send, ai-proxy), exactly as Tomorrow / This week did.
  */
-export function sectionForDay(day: string, today: string): TaskSection {
+export function sectionForDay(day: string, today: string): LiveTaskSection {
   return day === today ? 'today' : 'backlog'
+}
+
+/**
+ * An old row's section as the planner shows and saves it: the retired
+ * Tomorrow / This week read as Backlog (the row keeps its date, so it stays on
+ * its day), every other section as it is.
+ */
+export function liveSection(section: TaskSection): LiveTaskSection {
+  return section === 'tomorrow' || section === 'this_week' ? 'backlog' : section
 }
 
 /** Open tasks on `day` — the number the week strips put under a day. */

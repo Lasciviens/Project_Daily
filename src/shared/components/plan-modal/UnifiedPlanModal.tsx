@@ -21,6 +21,26 @@
 //  └─────────────────────────────────────────────────────────────────────────────┘
 //
 //  CHANGELOG
+//  2026-10-14 · v18 · No "(legacy)" section pill at all (owner's re-check of
+//                    v15 (d)):
+//                    (a) TaskTab no longer adds a pill for a retired section.
+//                    An old row in Tomorrow / This week opens with Backlog
+//                    picked (taskRules.liveSection in buildInitialForm) and
+//                    Save writes Backlog; its date keeps it on its day.
+//                    (b) No writer can produce one: the form, PlanDefaults,
+//                    sectionForDate / sectionForDay and the task create and
+//                    update inputs take LiveTaskSection (inbox | today |
+//                    backlog), so TypeScript refuses a caller passing
+//                    'tomorrow'; the assistant's db_insert / db_update refuse
+//                    it too (ai-proxy aiWriteProblem, its catalogue says
+//                    backlog). Daily's Add task already sent Backlog since v15
+//                    (checked in a build); the pill still showed on every row
+//                    holding a retired section, and the assistant could still
+//                    write one.
+//                    (c) Priority's pills are small (PillGroup size="sm":
+//                    SegmentedControl's text-meta, px-2.5, same height) so Low
+//                    / Medium / High stay on one line in the half-width column
+//                    — High wrapped at 874×402 and 1795×939.
 //  2026-10-13 · v17 · Review fixes on v16 (repeating plans on Google):
 //                    (a) The series keeps a zone of its own
 //                    (schedule_blocks.google_calendar_time_zone, 147): a save

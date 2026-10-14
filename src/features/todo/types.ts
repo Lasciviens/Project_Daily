@@ -1,5 +1,7 @@
 export type TaskDomain    = 'personal' | 'work' | 'media'
 export type TaskSection   = 'inbox' | 'today' | 'tomorrow' | 'this_week' | 'backlog'
+/** What the app writes: 'tomorrow' / 'this_week' are retired — old rows may still hold them (taskRules.liveSection). */
+export type LiveTaskSection = Exclude<TaskSection, 'tomorrow' | 'this_week'>
 export type TaskStatus    = 'open' | 'in_progress' | 'waiting' | 'done' | 'cancelled'
 export type TaskPriority  = 'low' | 'medium' | 'high'
 export type TaskSourceType = 'manual' | 'movie' | 'tv_series' | 'media' | 'calendar' | 'ai' | 'training_session' | 'project_item'
@@ -64,7 +66,7 @@ export interface CreateTaskInput {
   title:       string
   description?: string | null
   domain?:     TaskDomain
-  section?:    TaskSection
+  section?:    LiveTaskSection
   priority?:   TaskPriority
   start_date?: string | null
   due_date?:   string | null
@@ -81,7 +83,7 @@ export interface UpdateTaskInput {
   title?:                    string
   description?:              string | null
   domain?:                   TaskDomain
-  section?:                  TaskSection
+  section?:                  LiveTaskSection
   status?:                   TaskStatus
   priority?:                 TaskPriority
   start_date?:               string | null
