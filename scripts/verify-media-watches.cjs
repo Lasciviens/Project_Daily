@@ -67,6 +67,9 @@ ok(inRound({ id: 'b', watched_at: '2018-01-01T12:00:00.000Z', source: 'app', cre
 ok(inRound({ id: 'c', watched_at: '2018-01-01T12:00:00.000Z', source: 'trakt', created_at: '2026-10-05T09:00:00.000Z' }, START), false,
   'an old play that only came in from Trakt since then does not')
 ok(inRound({ id: 'd', watched_at: '2026-10-01T10:00:00.000Z', source: 'trakt' }, '2026-10-01T10:00:00.400Z'), true, 'the same second as the start counts (seconds, like the database)')
+// Re-review 1: the sync links an app watch without making it 'trakt' (traktWatchPlan's link), so it keeps counting.
+ok(inRound({ id: 'e', watched_at: '1970-01-01T00:00:00.000Z', trakt_history_id: 9001, source: 'app', created_at: '2026-10-05T09:00:00.000Z' }, START), true,
+  'a round watch on an unknown date, linked to its Trakt play since, still counts')
 const pilotThrice = row(1, 1, [before('p1', '2019-01-01T12:00:00Z'), before('p2', '2020-01-01T12:00:00Z'), before('p3', '2021-01-01T12:00:00Z')])
 let done = doneInRound([pilotThrice, row(1, 2, [before('e2', '2020-02-01T12:00:00Z')])], START)
 ok([...done], [], 'a pilot watched three times before the round is not done in it')

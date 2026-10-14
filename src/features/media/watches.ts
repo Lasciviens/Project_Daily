@@ -25,16 +25,17 @@ export const watchDate = (w: Watch) => (!w.watched_at || isUnknownWatchedAt(w.wa
 
 /**
  * A placeholder: the one date the app kept before 149, copied once per play,
- * not linked to Trakt's real play yet. With Trakt connected it waits for
- * Trakt's dates (the next pull links it) and can't be changed or removed —
- * which Trakt play it stands for isn't known.
+ * not linked to Trakt's real play yet. While Trakt is connected and its whole
+ * history hasn't been read (`traktWaits`, useWatchesWaitForTrakt) it waits for
+ * Trakt's dates and can't be changed or removed — which Trakt play it stands
+ * for isn't known; the database refuses it too (149's lock).
  */
-export const isPlaceholder = (w: Watch, traktConnected: boolean) =>
-  traktConnected && w.source === 'backfill' && w.trakt_history_id == null
+export const isPlaceholder = (w: Watch, traktWaits: boolean) =>
+  traktWaits && w.source === 'backfill' && w.trakt_history_id == null
 
 /** The watches a date change or a removal may act on. */
-export const editableWatches = <W extends Watch>(watches: readonly W[], traktConnected: boolean): W[] =>
-  watches.filter(w => !isPlaceholder(w, traktConnected))
+export const editableWatches = <W extends Watch>(watches: readonly W[], traktWaits: boolean): W[] =>
+  watches.filter(w => !isPlaceholder(w, traktWaits))
 
 /**
  * The dates a movie shows: every one up to three, else the first and the two

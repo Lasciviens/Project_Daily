@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { CalendarDays, History, RotateCcw, Undo2 } from 'lucide-react'
+import { CalendarDays, History, Hourglass, RotateCcw, Undo2 } from 'lucide-react'
 import { toast } from '../../../app/store'
 import { withProgress } from '../../../shared/hooks/useMutationWithFeedback'
 import { Button, IconButton } from '../../../shared/ui'
@@ -7,8 +7,8 @@ import { formatDate } from '../../../shared/utils/dateFormat'
 import type { UserMovieEntry } from '../types'
 import { useWatchedWhenPrompt } from '../hooks/useWatchedWhenPrompt'
 import { useWatchPick } from '../hooks/useWatchPick'
-import { useAddMovieWatch, useDeleteWatches, useMovieNotWatched, useSetMovieWatchDate } from '../hooks/useWatches'
-import { useTraktStatus } from '../trakt/useTrakt'
+import { useAddMovieWatch, useDeleteWatches, useMovieNotWatched, useSetMovieWatchDate, WAITS_FOR_TRAKT } from '../hooks/useWatches'
+import { useWatchesWaitForTrakt } from '../trakt/useTrakt'
 import { resolveWatchedAt } from '../watchedWhen'
 import { cacheWatches, editableWatches, watchDate, watchFor, watchSummary, type Watch } from '../watches'
 import { WatchesSheet } from './WatchesSheet'
@@ -26,9 +26,11 @@ export function MovieWatchedControls({ entry, releaseDate, disabled }: {
 }) {
   const watches: Watch[] = entry.watches ?? cacheWatches(entry)
   const linked = !!entry.watches
-  const traktConnected = !!useTraktStatus().data?.connected
+  const traktWaits = useWatchesWaitForTrakt()
   // A placeholder waiting for Trakt's dates is never moved or removed.
-  const editable = linked ? editableWatches(watches, traktConnected) : []
+  const editable = linked ? editableWatches(watches, traktWaits) : []
+  // Not watched would remove placeholders too: it waits with them.
+  const waiting = linked && editable.length < watches.length
   const [listOpen, setListOpen] = useState(false)
 
   const { ask, dialog } = useWatchedWhenPrompt()
@@ -50,12 +52,12 @@ export function MovieWatchedControls({ entry, releaseDate, disabled }: {
   // A new date for ONE watch — the latest unless the user picks another; the others keep theirs.
   async function changeDate() {
     if (linked && !editable.length) {
-      toast.info("Its watches wait for Trakt's dates — the next sync brings them")
+      toast.info(WAITS_FOR_TRAKT)
       return
     }
     let target: Watch | null = watchFor(editable, 'latest')
     if (watches.length > 1 && linked) {
-      const a = await pick$.ask({ title: entry.movie.title, watches, traktConnected })
+      const a = await pick$.ask({ title: entry.movie.title, watches, traktWaits })
       if (!a) return
       target = watchFor(editable, a)
     }
@@ -91,7 +93,7 @@ export function MovieWatchedControls({ entry, releaseDate, disabled }: {
           target="movie"
           watches={watches}
           editable={linked}
-          traktConnected={traktConnected}
+          traktWaits={traktWaits}
           busy={busy}
           onClose={() => setListOpen(false)}
           onAdd={at => withProgress(() => addWatch.mutateAsync({ entry, at }).then(() => true), { loading: 'Adding a watch…', success: 'Watch added' })}
@@ -101,7 +103,10 @@ export function MovieWatchedControls({ entry, releaseDate, disabled }: {
       )}
       {/* Every watch with its own date, compact: "3 watches · 12.10.2018 · 01.12.2024 · 08.01.2026", and the list beside it. */}
       <div className="flex basis-full items-center gap-1">
-        <p className="min-w-0 flex-1 text-meta tabular-nums text-fg-muted">{watchSummary(watches)}</p>
+        <p className="min-w-0 flex-1 text-meta tabular-nums text-fg-muted">
+          {watchSummary(watches)}
+          {waiting && <span className="whitespace-nowrap"> · <Hourglass aria-hidden className="inline h-3 w-3 align-[-2px]" /> waits for Trakt's dates</span>}
+        </p>
         <IconButton label="Watches…" disabled={busy} onClick={() => setListOpen(true)} className="-my-1 text-fg-faint hover:text-fg-2">
           <History />
         </IconButton>
@@ -109,7 +114,7 @@ export function MovieWatchedControls({ entry, releaseDate, disabled }: {
       <Button size="sm" variant="ghost" icon={<CalendarDays />} disabled={busy} onClick={() => { void changeDate() }}>Change date</Button>
       <Button size="sm" icon={<RotateCcw />} disabled={busy} onClick={() => { void watchAgain() }}>Watched again</Button>
       {/* Icon-only on phones so the three fit one row. */}
-      <Button size="sm" variant="ghost" icon={<Undo2 />} disabled={busy} onClick={() => { void notWatched.run(entry) }} aria-label="Not watched" title="Not watched" className="max-sm:px-2.5">
+      <Button size="sm" variant="ghost" icon={<Undo2 />} disabled={busy || waiting} onClick={() => { void notWatched.run(entry, traktWaits) }} aria-label="Not watched" title={waiting ? "Not watched waits for Trakt's dates" : 'Not watched'} className="max-sm:px-2.5">
         <span className="max-sm:sr-only">Not watched</span>
       </Button>
     </div>

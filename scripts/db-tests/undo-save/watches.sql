@@ -42,6 +42,8 @@ insert into public.media_watches (user_id, kind, tv_series_id, season_number, ep
   ('00000000-0000-0000-0000-000000000001', 'episode', '20000000-0000-0000-0000-000000000017', 1, 2, '2019-01-01 20:00+00', 7003, 'trakt');
 commit;
 select public.t_clear();
+-- Trakt's whole history has been read (149 locks placeholders until then).
+update public.trakt_sync_state set history_synced_at = now();
 
 -- ── 1. A save from before 149 re-dated the episodes; 149's backfill put
 --       their latest watch at that date. Undoing the save moves the episode

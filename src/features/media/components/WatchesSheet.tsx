@@ -52,14 +52,15 @@ function WatchDateEditor({ start, target, saveLabel, onSave, onCancel }: {
  * (`editable` false) it only shows the plays at the one date the app kept. A
  * placeholder — the one date the app kept, copied once per play, not linked to
  * Trakt's play yet — says it waits for Trakt's dates and can't be changed or
- * removed until the next sync links it (which play it stands for isn't known).
+ * removed until Trakt's whole history has been read (which play it stands
+ * for isn't known; the database refuses it too).
  */
-export function WatchesSheet({ title, target, watches, editable, traktConnected = false, busy, onClose, onAdd, onSetDate, onRemove }: {
+export function WatchesSheet({ title, target, watches, editable, traktWaits = false, busy, onClose, onAdd, onSetDate, onRemove }: {
   title: string
   target: 'movie' | 'episode'
   watches: readonly Watch[]
   editable: boolean
-  traktConnected?: boolean
+  traktWaits?: boolean
   busy?: boolean
   onClose: () => void
   onAdd: (at: string | null) => Promise<unknown>
@@ -68,7 +69,7 @@ export function WatchesSheet({ title, target, watches, editable, traktConnected 
 }) {
   const [editing, setEditing] = useState<string | 'new' | null>(null)
   const list = sortWatches(watches)
-  const waiting = list.filter(w => isPlaceholder(w, traktConnected)).length
+  const waiting = list.filter(w => isPlaceholder(w, traktWaits)).length
   const run = async (p: Promise<unknown>) => { await p; setEditing(null) }
 
   return (
@@ -95,9 +96,9 @@ export function WatchesSheet({ title, target, watches, editable, traktConnected 
             <span className="w-6 shrink-0 text-micro font-semibold tabular-nums text-fg-faint">{i + 1}.</span>
             <span className="min-w-0 flex-1 text-body tabular-nums text-fg">
               {watchDate(w)}
-              {isPlaceholder(w, traktConnected) && <span className="ml-2 text-meta text-fg-muted">waiting for Trakt's dates</span>}
+              {isPlaceholder(w, traktWaits) && <span className="ml-2 text-meta text-fg-muted">waiting for Trakt's dates</span>}
             </span>
-            {editable && !isPlaceholder(w, traktConnected) && (
+            {editable && !isPlaceholder(w, traktWaits) && (
               <>
                 <IconButton label={`Change the date of watch ${i + 1}`} disabled={busy} onClick={() => setEditing(w.id)} className="text-fg-muted"><Pencil /></IconButton>
                 <IconButton label={`Remove watch ${i + 1}`} disabled={busy} onClick={() => { void onRemove(w) }} className="text-fg-muted hover:text-danger"><Trash2 /></IconButton>
@@ -113,7 +114,7 @@ export function WatchesSheet({ title, target, watches, editable, traktConnected 
           {!editable
             ? 'The app kept one date for every play here; each watch with its own date comes with the next update.'
             : waiting
-              ? 'The app kept one date for every play here. The next Trakt sync brings each watch its real date — until then those can\'t be changed.'
+              ? 'The app kept one date for every play here. Until the Trakt syncs have read your whole Trakt history, those can\'t be changed or removed; the read gives each the date of its Trakt play where it finds one.'
               : 'Each watch keeps its own date, here and on Trakt — a change moves only that one.'}
         </p>
       </div>

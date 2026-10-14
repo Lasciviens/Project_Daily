@@ -14,8 +14,9 @@ import { formatDate } from '../../../shared/utils/dateFormat'
 import { useAddMovie, useDeleteMovie, useUpdateMovie } from '../hooks/useMovies'
 import { useAddTV, useDeleteTV, useUpdateTV } from '../hooks/useTVSeries'
 import { useNextEpisode } from '../hooks/useNextEpisode'
-import { useAddMovieWatch, useStartRewatch } from '../hooks/useWatches'
-import { cacheWatches, rewatchStartRound, watchCounts } from '../watches'
+import { useAddMovieWatch, useMovieNotWatched, useStartRewatch, WAITS_FOR_TRAKT } from '../hooks/useWatches'
+import { useWatchesWaitForTrakt } from '../trakt/useTrakt'
+import { cacheWatches, isPlaceholder, rewatchStartRound, watchCounts } from '../watches'
 import { PlanThisButton } from './PlanThisButton'
 import { StarRating } from './StarRating'
 import { MovieWatchedControls } from './MovieWatchedControls'
@@ -111,11 +112,13 @@ export function MediaLibraryControls({ detail, isMovie, userEntry, onRemoved }: 
   const markWatched = useMarkEpisodeWatched()
   const startRewatch = useStartRewatch()
   const addMovieWatch = useAddMovieWatch()
+  const movieNotWatched = useMovieNotWatched()
+  const traktWaits = useWatchesWaitForTrakt()
 
   const entryId    = userEntry?.id
   const tvEntry    = !isMovie && userEntry ? (userEntry as UserTVEntry) : null
   const movieEntry = isMovie && userEntry ? (userEntry as UserMovieEntry) : null
-  const updating   = updateMovie.isPending || updateTV.isPending || startRewatch.isPending || addMovieWatch.isPending
+  const updating   = updateMovie.isPending || updateTV.isPending || startRewatch.isPending || addMovieWatch.isPending || movieNotWatched.busy
   // Being watched again (migration 149): the round under way.
   const rewatchRound = userEntry && (userEntry.status === 'watching' || userEntry.status === 'paused') ? userEntry.rewatch_round ?? null : null
 
@@ -123,6 +126,10 @@ export function MediaLibraryControls({ detail, isMovie, userEntry, onRemoved }: 
   // rollover from the real watched rows); the query is shared, so this is free.
   const nextEp = useNextEpisode(tvEntry?.id ?? null, tv?.id ?? null, tv?.number_of_episodes ?? null)
   const { data: watchedRows = [] } = useWatchedEpisodes(tvEntry?.id ?? null)
+  // A placeholder waiting for Trakt's dates would go with the title: removing it waits too.
+  const removeWaits = movieEntry
+    ? !!movieEntry.watches?.some(w => isPlaceholder(w, traktWaits))
+    : watchedRows.some(r => r.watches?.some(w => isPlaceholder(w, traktWaits)))
   const rewatched = watchedRows.reduce((n, w) => {
     const extra = Math.max(0, w.repeat_count ?? 0)
     return extra > 0 ? { episodes: n.episodes + 1, extraPlays: n.extraPlays + extra } : n
@@ -207,9 +214,13 @@ export function MediaLibraryControls({ detail, isMovie, userEntry, onRemoved }: 
 
   async function handleRemove() {
     if (!entryId) return
+    if (removeWaits) {
+      toast.info(WAITS_FOR_TRAKT)
+      return
+    }
     const question = {
       title: `Remove "${isMovie ? movie!.title : tv!.name}" from your library?`,
-      message: 'With Trakt connected, its watch history, rating and watchlist entry are removed there too (Undo puts the title back here and sends it to Trakt again, every watch at its own date).',
+      message: 'With Trakt connected, its watch history, rating and watchlist entry are removed there too. Undo puts the title back here and its watches on Trakt again, each as a new play at its own date.',
       confirmLabel: 'Remove',
       done: 'Removed from library',
     }
@@ -259,6 +270,12 @@ export function MediaLibraryControls({ detail, isMovie, userEntry, onRemoved }: 
       // Ending a rewatch: a movie gets its new watch; a show simply goes back to Completed.
       if (movieEntry) return finishMovieRewatch()
       void withProgress(() => patchEntry({ status: 'completed' }), { loading: 'Updating status…', success: 'Rewatch ended · Completed' })
+      return
+    }
+    // Wishlist on a watched movie removes every watch: the Not watched question and its Undo.
+    if (movieEntry && (status === 'wishlist' || status === 'upcoming') && (movieEntry.watches ?? cacheWatches(movieEntry)).length > 0
+        && (movieEntry.watches || movieEntry.status === 'completed')) {
+      await movieNotWatched.run(movieEntry, traktWaits)
       return
     }
     const now = new Date().toISOString()

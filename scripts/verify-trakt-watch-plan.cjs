@@ -12,7 +12,7 @@ require('sucrase/register')
 const assert = require('node:assert/strict')
 const {
   parseHistory, playsByKey, matchItem, buildWatchPlan, historyTargets, summaryKeys, playToRemove,
-  cancelledOutboxRows, storedWatchedAt, sameSecond, watchKey, HISTORY_TARGET_MAX,
+  cancelledOutboxRows, linkOnlyKeys, storedWatchedAt, sameSecond, watchKey, HISTORY_TARGET_MAX,
   localPlays, summaryTitles, titlesAfter, titleItemKeys, watchRemovalsNeedConfirm,
 } = require('../src/features/media/trakt/traktWatchPlan')
 
@@ -67,7 +67,7 @@ ok(sameSecond('2026-01-01T12:00:00.900Z', '2026-01-01T12:00:00.000Z'), true, 'th
   const same = matchItem('episode', local, [play(11, D('2018-10-12')), play(12, D('2024-12-01')), play(13, D('2026-01-08'))])
   ok(same, { updates: [], inserts: [], removes: [] }, 'an item that already matches plans nothing')
   const changed = matchItem('episode', local, [play(11, D('2018-10-12')), play(13, D('2026-01-08')), play(14, D('2026-02-02'))])
-  ok(changed.updates, [{ id: 'b', watchedAt: D('2026-02-02'), historyId: 14 }], 'a play removed and another added on Trakt: the freed watch takes the new play')
+  ok(changed.updates, [{ id: 'b', watchedAt: D('2026-02-02'), historyId: 14, source: 'trakt' }], 'a play removed and another added on Trakt: the freed watch takes the new play')
   const fewer = matchItem('episode', local, [play(11, D('2018-10-12'))])
   ok(fewer.removes.sort(), ['b', 'c'], 'plays removed on Trakt are removed here')
   const more = matchItem('episode', local.slice(0, 1), [play(11, D('2018-10-12')), play(15, D('2026-03-03'))])
@@ -77,7 +77,10 @@ ok(sameSecond('2026-01-01T12:00:00.900Z', '2026-01-01T12:00:00.000Z'), true, 'th
 {
   const local = [w('a', D('2018-10-12'), 11, 'trakt'), w('n', '2026-04-04T12:00:00.000Z')]
   const m = matchItem('episode', local, [play(11, D('2018-10-12')), play(16, '2026-04-04T12:00:00.000Z')])
-  ok(m.updates, [{ id: 'n', watchedAt: '2026-04-04T12:00:00.000Z', historyId: 16 }], 'the new watch is linked to its play (same second), its date untouched')
+  ok(m.updates, [{ id: 'n', watchedAt: '2026-04-04T12:00:00.000Z', historyId: 16, source: 'app' }], 'the new watch is linked to its play (same second), its date untouched — and stays the app\'s')
+  // Re-review 1: a rewatch logged in a round on an unknown date, then linked: still the app's (the round counts it by when it was added).
+  const r = matchItem('episode', [w('r', EPOCH)], [play(17, EPOCH)])
+  ok(r.updates, [{ id: 'r', watchedAt: EPOCH, historyId: 17, source: 'app' }], 'a round watch on an unknown date is linked and stays the app\'s')
 }
 // ── Movies: unknown dates ────────────────────────────────────────────────────
 {
@@ -101,7 +104,7 @@ ok(sameSecond('2026-01-01T12:00:00.900Z', '2026-01-01T12:00:00.000Z'), true, 'th
   ])
   const all = new Set(['ep:1399:1:1', 'ep:1399:1:2', 'ep:1399:1:3', 'movie:7'])
   const p = buildWatchPlan({ watched: all, local, plays, read: all, pending: new Set(['ep:1399:1:2']) })
-  ok(p.updates, [{ id: 'a', watchedAt: D('2018-10-12'), historyId: 1 }], 'a placeholder becomes the real play')
+  ok(p.updates, [{ id: 'a', watchedAt: D('2018-10-12'), historyId: 1, source: 'trakt' }], 'a placeholder becomes the real play')
   ok(p.inserts, [{ key: 'ep:1399:1:3', watchedAt: D('2026-01-11'), historyId: 7 }], 'an episode with no watch here gets its plays')
   ok(p.removes, [], 'an item with a change waiting in the outbox is left alone')
   ok(p.skipped, ['movie:7'], 'an item whose history came back empty is left alone, never emptied')
@@ -163,7 +166,7 @@ ok(sameSecond('2026-01-01T12:00:00.900Z', '2026-01-01T12:00:00.000Z'), true, 'th
   ok(playToRemove({ historyId: 12, watchedAt: D('2024-12-01') }, plays, keep), R(12), 'by its Trakt id')
   ok(playToRemove({ historyId: 99, watchedAt: D('2024-12-01') }, plays, keep), { kind: 'gone' }, 'a play Trakt no longer has: nothing to do')
   ok(playToRemove({ historyId: null, watchedAt: D('2024-12-01') }, plays, keep), R(12), 'not linked yet: the play at that exact second, no other watch there')
-  ok(playToRemove({ historyId: null, watchedAt: D('2024-11-30') }, plays, keep), { kind: 'wait' }, 'no play at that second: wait for the ids — never the nearest one')
+  ok(playToRemove({ historyId: null, watchedAt: D('2024-11-30') }, plays, keep), { kind: 'gone' }, 'no play at that second: nothing to remove — never the nearest one')
   const twins = [play(1, D('2026-01-08')), play(2, D('2026-01-08'))]
   ok(playToRemove({ historyId: null, watchedAt: D('2026-01-08') }, twins, [{ historyId: null, watchedAt: D('2026-01-08') }]), R(2),
     'two plays at one second, one watch left there: one play goes, one stays for it')
@@ -177,6 +180,26 @@ ok(sameSecond('2026-01-01T12:00:00.900Z', '2026-01-01T12:00:00.000Z'), true, 'th
   const placeholdersLeft = [{ historyId: null, watchedAt: D('2026-01-01') }, { historyId: null, watchedAt: D('2026-01-01') }, { historyId: null, watchedAt: D('2026-05-05') }]
   ok(playToRemove({ historyId: null, watchedAt: D('2026-01-01') }, real, placeholdersLeft), { kind: 'wait' },
     'a moved placeholder removes nothing (no 2020 removal): it waits until the title is linked')
+}
+
+// ── A remove waiting for the ids never keeps its title unlinked (re-review 2) ─
+{
+  const key = 'ep:1399:1:3'
+  const T = D('2026-01-10')
+  // One watch at T removed (its remove waits); the other one at T is still unlinked; Trakt has two plays there.
+  const plays = [play(31, T), play(32, T), play(33, D('2018-05-01'))]
+  const local = new Map([[key, [w('k', T), w('o', D('2018-05-01'), null, 'backfill')]]])
+  const outbox = [{ op: 'history_remove_play', item_key: key }, { op: 'history_add', item_key: 'ep:1399:1:4' }, { op: 'history_remove_play', item_key: 'ep:1399:1:4' }]
+  const linkOnly = linkOnlyKeys(outbox)
+  ok([...linkOnly], [key], 'an item whose only waiting row is a single-play remove is linked, not left alone')
+  const p = buildWatchPlan({ watched: new Set([key]), local, plays: new Map([[key, plays]]), read: new Set([key]), pending: new Set([key]), linkOnly })
+  ok(p.updates.map(u => [u.id, u.historyId, u.watchedAt]), [['k', 31, T], ['o', 33, D('2018-05-01')]], 'its watches are linked by the same second, no date moved')
+  ok([p.inserts.length, p.removes.length], [0, 0], 'nothing added or removed while the remove waits')
+  ok(playToRemove({ historyId: null, watchedAt: T }, plays, [{ historyId: 31, watchedAt: T }, { historyId: 33, watchedAt: D('2018-05-01') }]), { kind: 'remove', historyId: 32 },
+    'once linked, the waiting remove names its play')
+  const targets = historyTargets({ watchedMovies: [], watchedShows: [{ item: { ids: { tmdb: 1399, trakt: 1390 } }, episodes: [[1, 3, 2, T]] }] },
+    new Map([[key, { count: 2, latest: T, unlinked: true }]]), new Set([key]), linkOnly)
+  ok([...targets.shows.keys()], [1399], 'and its title is read for that')
 }
 
 // ── Cancelled before anything is sent ────────────────────────────────────────
@@ -196,6 +219,13 @@ ok(sameSecond('2026-01-01T12:00:00.900Z', '2026-01-01T12:00:00.000Z'), true, 'th
     { id: 'a', op: 'history_add', payload: { watch_id: 'W9', watched_at: D('2026-03-03') } },
     { id: 'b', op: 'history_remove_play', payload: { watch_id: 'W9', history_id: null, watched_at: D('2026-03-03') } },
   ]), ['a', 'b'], 'a failed add then its remove: both go, nothing unrelated is removed')
+  // Re-review E2: remove(W) … whole-item remove … add(W) (two Undos in reverse order): no pair across it.
+  ok(cancelledOutboxRows([
+    { id: 'r1', op: 'history_remove_play', item_key: 'ep:1399:1:3', payload: { watch_id: 'W', history_id: 55, watched_at: D('2026-01-10') } },
+    { id: 'x', op: 'history_remove', item_key: 'ep:1399:1:3', payload: { type: 'episode' } },
+    { id: 'a2', op: 'history_add', item_key: 'ep:1399:1:3', payload: { watch_id: 'W2', watched_at: D('2025-01-01') } },
+    { id: 'a1', op: 'history_add', item_key: 'ep:1399:1:3', payload: { watch_id: 'W', watched_at: D('2026-01-10') } },
+  ]), [], 'a whole-item remove between a remove and an add of one watch: none of them cancel')
   // Reviewer case 3: deleted, then Undo before the drain (the same watch at the same second).
   ok(cancelledOutboxRows([
     { id: 'x', op: 'history_remove_play', payload: { watch_id: 'W7', history_id: 77, watched_at: D('2025-05-05') } },

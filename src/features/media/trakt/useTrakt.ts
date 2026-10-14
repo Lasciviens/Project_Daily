@@ -13,6 +13,15 @@ export function useTraktStatus() {
   return useQuery({ queryKey: qk.trakt.status(), queryFn: fetchTraktStatus, staleTime: STALE.short, retry: false })
 }
 
+/**
+ * Placeholders wait for Trakt's dates (migration 149's lock): Trakt is
+ * connected and its whole history hasn't been read yet.
+ */
+export function useWatchesWaitForTrakt(): boolean {
+  const s = useTraktStatus().data
+  return !!s?.connected && !s.historyLinked
+}
+
 /** Leaves the app for Trakt's consent page; the answer comes back through traktCallback. */
 export function useStartTraktConnect() {
   return useMutationWithFeedback({

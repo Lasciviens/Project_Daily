@@ -1,4 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query'
+import { toast } from '../../../app/store'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
 import { useRowsDelete } from '../../../shared/hooks/useRowsDelete'
 import { scheduleTraktSync } from '../trakt/traktAutoSync'
@@ -7,6 +8,10 @@ import { confirmDelete } from '../../../shared/modals/deleteFlow'
 import { updateMovieEntry } from '../api/moviesApi'
 import { updateTVEntry } from '../api/tvApi'
 import type { UserMovieEntry } from '../types'
+import { isPlaceholder } from '../watches'
+
+/** What the screens say when a change would touch a placeholder (the database's own words, migration 149). */
+export const WAITS_FOR_TRAKT = "This watch waits for Trakt's dates — try again after the next Trakt sync"
 
 // Watches of a movie, the delete of any watch, and starting a rewatch
 // (migration 149). Episodes are marked and watched again through
@@ -68,10 +73,12 @@ export function useDeleteWatches() {
 }
 
 /**
- * "Not watched" for a movie: asks, then Wishlist with no watches — on Trakt
- * every play of it goes (the movie-wide remove, plays the app doesn't know
- * included). "· Undo" adds its watches back, each at its own date (new plays
- * on Trakt), and the first one makes it Completed again.
+ * "Not watched" for a movie — its button, or Wishlist picked on a watched
+ * movie: asks, then Wishlist with no watches. The status is the unmark: the
+ * database removes every watch and sends the movie-wide remove to Trakt
+ * (every play of it, the ones the app doesn't know too). "· Undo" adds its
+ * watches back, each at its own date (new plays on Trakt), and its status.
+ * A movie whose watches wait for Trakt's dates is left as it is.
  */
 export function useMovieNotWatched() {
   const qc = useQueryClient()
@@ -79,8 +86,9 @@ export function useMovieNotWatched() {
     action: 'movie_not_watched',
     silent: 'the delete flow reports the result',
     mutationFn: async (entry: UserMovieEntry) => {
-      await updateMovieEntry(entry.id, { status: 'wishlist', watched_at: null, repeat_count: 0 })
-      return (entry.watches ?? []).map(w => w.watched_at)
+      // Before 149 (no watch list) the cache columns are still the data.
+      await updateMovieEntry(entry.id, entry.watches ? { status: 'wishlist' } : { status: 'wishlist', watched_at: null, repeat_count: 0 })
+      return { dates: (entry.watches ?? []).map(w => w.watched_at), status: entry.status }
     },
     invalidates: ['media'],
     onSuccess: () => scheduleTraktSync(qc),
@@ -88,22 +96,28 @@ export function useMovieNotWatched() {
   const putBack = useMutationWithFeedback({
     action: 'movie_not_watched_undo',
     silent: 'the delete flow reports the result',
-    mutationFn: async ({ entry, dates }: { entry: UserMovieEntry; dates: (string | null)[] }) => {
-      await addWatches(dates.map(at => ({ target: { kind: 'movie' as const, movieEntryId: entry.id }, at })))
+    mutationFn: async ({ entry, was }: { entry: UserMovieEntry; was: { dates: (string | null)[]; status: UserMovieEntry['status'] } }) => {
+      // The first watch makes it Completed again; another status it had comes back after.
+      await addWatches(was.dates.map(at => ({ target: { kind: 'movie' as const, movieEntryId: entry.id }, at })))
+      if (was.status !== 'completed') await updateMovieEntry(entry.id, { status: was.status })
     },
     invalidates: ['media'],
     onSuccess: () => scheduleTraktSync(qc),
   })
-  function run(entry: UserMovieEntry) {
+  function run(entry: UserMovieEntry, traktWaits: boolean) {
+    if (entry.watches?.some(w => isPlaceholder(w, traktWaits))) {
+      toast.info(WAITS_FOR_TRAKT)
+      return Promise.resolve(null)
+    }
     const n = entry.watches?.length ?? 1 + Math.max(0, entry.repeat_count ?? 0)
-    return confirmDelete<(string | null)[]>({
+    return confirmDelete<{ dates: (string | null)[]; status: UserMovieEntry['status'] }>({
       title: 'Mark as not watched?',
       message: `Removes ${n === 1 ? 'its watch' : `all ${n} watches`} here and EVERY play of it on Trakt — the ones the app doesn't know too. It goes back to your Wishlist.`,
       confirmLabel: 'Mark not watched',
       remove: () => clear.mutateAsync(entry),
       isEmpty: () => false,
-      restore: async dates => { await putBack.mutateAsync({ entry, dates }) },
-      canUndo: dates => dates.length > 0,
+      restore: async was => { await putBack.mutateAsync({ entry, was }) },
+      canUndo: was => was.dates.length > 0,
       done: 'Marked as not watched',
       restored: 'Watches back',
     })

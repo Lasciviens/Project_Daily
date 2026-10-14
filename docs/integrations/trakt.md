@@ -72,11 +72,15 @@ accounts) and it only changes Trakt's progress view (`reset_at`); rewatch rounds
 - **An add returns no play ids.** A watch added here is linked to its Trakt play by the next pull (same item,
   same second). Until then its removal can only be matched by that exact second.
 - **Never guess a play to remove.** A remove without a play id removes a play at that exact second only when
-  Trakt has more plays there than the watches left here account for; otherwise it waits ("waiting for
-  Trakt's play ids", retried every 30 minutes after a pull) and is dropped after 7 days with a message on the
-  Trakt card. Before the first pull has linked the watches (`history_synced_at` NULL), no unlinked remove is
-  sent at all. The backfilled placeholders (one kept date per play) can't be changed or removed in the app
-  until they are linked.
+  Trakt has more plays there than the watches left here account for; with no play there at all it is gone
+  already (nothing sent). Otherwise it waits ("waiting for Trakt's play ids", retried every 30 minutes): the
+  next pull still reads that title and links its watches by id and same second (no date moved, nothing added
+  or removed), so the remove can then name its play; one that still can't is dropped after 7 days with a
+  message on the Trakt card. Before the first whole-history read has finished (`history_synced_at` NULL), no
+  unlinked remove is sent at all. The backfilled placeholders (one kept date per play) are locked in the
+  database until then — no writer but the sync may re-date or delete them ("This watch waits for Trakt's
+  dates — try again after the next Trakt sync"); when the read finishes, the ones it didn't link become
+  ordinary watches.
 - **Trakt doesn't check duplicates** on add; a watch added and removed (or deleted and put back by Undo)
   before the drain cancels out in the outbox instead of being sent twice.
 - **Page counts.** `getAll` reads `X-Pagination-Page-Count`; a limit above the endpoint's maximum is clamped,

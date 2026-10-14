@@ -54,6 +54,8 @@ export interface TraktStatus {
   /** Changes made here, waiting to be sent to Trakt. */
   pending: number
   syncing?: boolean
+  /** Trakt's whole history has been read since migration 149 (or the last connect): placeholders no longer wait for its dates. */
+  historyLinked?: boolean
   notConfigured?: boolean
 }
 

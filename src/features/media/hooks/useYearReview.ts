@@ -18,11 +18,12 @@ export function useYearReview(period: number | 'all' | null) {
     // A completed film with no watch date still counts all time ("unknown date").
     // Every watch on its own date (migration 149); before it, the plays at the one kept date.
     const movies: ReviewMovie[] = movieEntries
-      .filter(e => e.watches ? e.watches.length > 0 : e.status === 'completed' || (e.watched_at && (e.status === 'watching' || e.status === 'dropped')))
+      // A Watching/Dropped film with a date counts as before (it has no watch rows: a play exists only once completed).
+      .filter(e => (e.watches?.length ?? 0) > 0 || e.status === 'completed' || (e.watched_at && (e.status === 'watching' || e.status === 'dropped')))
       .map(e => ({
         tmdbId: e.movie.tmdb_id, title: e.movie.title, poster: e.movie.poster_path, runtime: e.movie.runtime,
         genres: names(e.movie.genres), watchedAt: e.watched_at ?? '', plays: e.watches?.length || 1 + Math.max(0, e.repeat_count ?? 0),
-        watches: e.watches?.map(w => w.watched_at ?? ''),
+        watches: e.watches?.length ? e.watches.map(w => w.watched_at ?? '') : undefined,
         rating: e.rating, tmdbRating: e.movie.tmdb_rating,
       }))
     const shows = new Map<string, ReviewShow>(tvEntries.map(e => [e.tv_series_id, {

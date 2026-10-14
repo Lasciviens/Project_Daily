@@ -77,6 +77,44 @@ begin
     'the cache keeps the latest watch and plays − 1');
 end $$;
 
+-- ── 2b. Placeholders wait for Trakt's dates (connected, history not read) ──
+set role authenticated;
+do $$
+begin
+  begin
+    delete from public.media_watches where episode_id = '22000000-0000-0000-0000-000000000004';
+    perform public.t_ok(false, 'the app cannot delete a placeholder');
+  exception when raise_exception then
+    perform public.t_ok(sqlerrm = 'This watch waits for Trakt''s dates — try again after the next Trakt sync', 'the app cannot delete a placeholder: ' || sqlerrm);
+  end;
+  begin
+    -- The old website moves the episode's one date (the cache): its translation would have to move a placeholder.
+    update public.user_tv_episodes set watched_at = '2026-02-02 12:00:00+00' where id = '22000000-0000-0000-0000-000000000003';
+    set constraints all immediate;
+    perform public.t_ok(false, 'nor can a cache write re-date one');
+  exception when raise_exception then
+    perform public.t_ok(sqlerrm like 'This watch waits for Trakt''s dates%', 'nor can a cache write re-date one');
+  end;
+  begin
+    -- Not watched: the episode row goes, its placeholders with it.
+    delete from public.user_tv_episodes where id = '22000000-0000-0000-0000-000000000003';
+    perform public.t_ok(false, 'nor Not watched take them along');
+  exception when raise_exception then
+    perform public.t_ok(true, 'nor Not watched take them along');
+  end;
+  perform public.t_ok(public.t_outbox() = '', 'nothing was queued for Trakt');
+end $$;
+reset role;
+-- The whole history has been read: what it didn't link becomes an ordinary watch, not locked.
+update public.trakt_sync_state set history_synced_at = now() where user_id = '00000000-0000-0000-0000-000000000001';
+do $$
+begin
+  perform public.t_ok(not exists (select 1 from public.media_watches where user_id = '00000000-0000-0000-0000-000000000001' and source = 'backfill'),
+    'when the read finishes, the placeholders it left become ordinary watches (source app)');
+  perform public.t_ok(public.t_outbox() = '', 'nothing queued for that either');
+end $$;
+set role authenticated;
+
 -- ── 3. Changing ONE watch's date: that play only, never the whole episode ───
 set role authenticated;
 update public.media_watches set watched_at = '2025-01-15 12:00:00+00' where trakt_history_id = 1002;
@@ -413,16 +451,33 @@ begin
   perform public.t_ok((select rewatch_started_at is not null from public.user_tv_entries where id = '21000000-0000-0000-0000-000000000003'), 'a round starts with its time');
   perform public.t_ok(not public.media_rewatch_finished('episode', '21000000-0000-0000-0000-000000000003'), 'a pilot watched three times before the round is not done for it');
 end $$;
--- A planned block for the pilot's rewatch goes when it is watched (043's rule, for a rewatch too).
-insert into public.time_blocks (source_type, source_id, season_number, episode_number) values ('tv_episode', '21000000-0000-0000-0000-000000000003', 1, 1);
+-- A planned block for the pilot's rewatch goes when it is watched (043's rule, for a rewatch too) —
+-- dated on or before the day it was watched; one for tomorrow stays.
+insert into public.time_blocks (date, source_type, source_id, season_number, episode_number) values
+  ('2018-05-31', 'tv_episode', '21000000-0000-0000-0000-000000000003', 1, 1),
+  (current_date + 1, 'tv_episode', '21000000-0000-0000-0000-000000000003', 1, 1);
 -- The pilot's round watch, logged in the app with an old date: it counts (added since the start).
 insert into public.media_watches (kind, tv_series_id, season_number, episode_number, watched_at)
 values ('episode', '20000000-0000-0000-0000-000000000003', 1, 1, '2018-06-01 12:00:00+00');
 do $$
 begin
-  perform public.t_ok(not exists (select 1 from public.time_blocks where source_id = '21000000-0000-0000-0000-000000000003'), 'a rewatch removes the episode''s planned block');
+  perform public.t_ok(not exists (select 1 from public.time_blocks where source_id = '21000000-0000-0000-0000-000000000003' and date = '2018-05-31'), 'a rewatch removes the episode''s planned block on or before its day');
+  perform public.t_ok(exists (select 1 from public.time_blocks where source_id = '21000000-0000-0000-0000-000000000003' and date = current_date + 1), 'but not one planned for after it');
   perform public.t_ok((select status = 'watching' and rewatch_round = 2 from public.user_tv_entries where id = '21000000-0000-0000-0000-000000000003'),
     'S1E2, never watched before, is still to watch: the round goes on');
+end $$;
+reset role;
+begin;
+select set_config('request.headers', '{"x-trakt-sync":"1"}', true);
+update public.media_watches set trakt_history_id = 1501, source = 'trakt'
+ where tv_series_id = '20000000-0000-0000-0000-000000000003' and watched_at = '2018-06-01 12:00:00+00';
+commit;
+set role authenticated;
+do $$
+begin
+  perform public.t_ok((select source = 'app' and trakt_history_id = 1501 from public.media_watches
+      where tv_series_id = '20000000-0000-0000-0000-000000000003' and watched_at = '2018-06-01 12:00:00+00'),
+    'linked to its Trakt play by the sync, a watch added in the app stays the app''s (it still counts for the round)');
 end $$;
 insert into public.media_watches (kind, tv_series_id, season_number, episode_number, watched_at)
 values ('episode', '20000000-0000-0000-0000-000000000003', 1, 2, now());
