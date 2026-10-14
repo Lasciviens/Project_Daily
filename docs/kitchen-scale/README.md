@@ -4,13 +4,17 @@ A home-made Wi-Fi kitchen scale with its own touchscreen. You pick a food (or sc
 
 This file is the project's one place for the parts in hand, the checked hardware facts, the design, the plan and the progress log. Update it in the same PR as any work on the scale.
 
-**Status (14.10.2026):** planning. The parts are listed below. Nothing is wired, flashed or built yet, and nothing in the app, the database or the edge functions has changed for the scale.
+**Status (14.10.2026):** stage 0 is ready to flash. The board-check firmware compiles; nothing has been flashed, wired or built yet. Nothing in the app, the database or the edge functions has changed for the scale.
 
 ## Progress log
 
 Newest on top. One entry per real step: what was done, what was run or measured, what it showed.
 
-- **14.10.2026**
+- **14.10.2026 · stage 0 firmware ready**
+  - The board-check firmware (`firmware/kitchen-scale`, v0.1.0) builds with PlatformIO in the cloud session: 396 KB, no warnings from our files.
+  - Not flashed yet: next step is *Flashing from the Mac* below.
+  - The owner's answers are recorded under *Decisions*.
+- **14.10.2026 · plan**
   - Plan written and parts inventory recorded.
   - Hardware facts checked against board files, datasheets and a photo of one board revision (sources under *Hardware facts*).
   - Waiting on the owner's answers under *Open questions*.
@@ -51,7 +55,7 @@ Newest on top. One entry per real step: what was done, what was run or measured,
 
 | Part | Qty | Note |
 |---|---|---|
-| MFRC522 (RC522) RFID reader, 13.56 MHz | 1 | Not in the first version. **Idea:** a sticker tag under each bowl or jar. The scale reads it and knows the bowl's own weight (automatic tare) or which food is in the jar. It needs 5 pins (SPI bus) and 3.3 V. The display board has no pins left for it next to the HX711; the ESP32-S3 dev board does. Check whether tags or cards came with it. |
+| MFRC522 (RC522) RFID reader, 13.56 MHz, with tags and a card | 1 | Later (stage 6); the owner wants it. **Idea:** a sticker tag under each bowl or jar. The scale reads it and knows the bowl's own weight (automatic tare) or which food is in the jar. It needs 5 pins (SPI bus) and 3.3 V. The display board has no pins left for it next to the HX711; the ESP32-S3 dev board does. |
 
 ### Electronics Fun Kit (full list)
 
@@ -84,8 +88,8 @@ Newest on top. One entry per real step: what was done, what was run or measured,
 
 ## Not in hand yet: to confirm or get
 
-- **Soldering iron.** The brief chose an FNIRSI HS-02A with 6 tips, a 951 flux pen and a silicone mat. Which of these have arrived?
-- **Multimeter**, to check which pin carries 5 V and which is GND before anything touches the display board. Cheap and strongly recommended.
+- **Soldering iron:** FNIRSI HS-02A, 6-tip box, ordered and on its way (14.10.2026). Stage 1 needs it: the HX711's header pins must be soldered.
+- **Multimeter:** none. Stage 0 doesn't need one (the pin finder uses an LED instead). Recommended before stage 1c, to check the 3.3 V supply; a basic one costs about 200 NOK.
 - **USB-C power adapter:** 5 V, at least 1 A.
 - **Platform and base:**
   - two stiff plates about 20 × 20 cm (plywood, acrylic or a cutting board)
@@ -154,8 +158,11 @@ Sources:
 
 ### Firmware tools
 
-- **Stack:** PlatformIO + the Arduino framework + LVGL. **C**
-- **Two known working screen setups:** [esp32-smartdisplay](https://github.com/rzeldent/esp32-smartdisplay) (LVGL 9, supports this board) or Arduino_GFX + LVGL 8.4 (ha5dzs). Pick one in stage 0. **C**
+- **Stack:** PlatformIO + the Arduino framework; LVGL comes in stage 2 for the real screens. **C**
+- **Platform:** PlatformIO's own `espressif32` platform still ships Arduino core 2.0.17, which the screen library no longer supports (the build fails on `esp32-hal-periman.h`, checked 14.10.2026). The firmware uses **pioarduino** 55.03.312 (Arduino core 3.3.12, 20.09.2026), the community-maintained platform that brings core 3 to PlatformIO. **C**
+- **Screen:** Arduino_GFX 1.6.8 with its own preset values for this board (12 MHz pixel clock; one project saw glitches at 16 MHz). **C**
+- **Touch:** our own read-only GT911 reader. The common TAMC_GT911 library rewrites the touch chip's stored configuration at every start, with a checksum computed from an uninitialised variable. **C** (read in its source)
+- **Other known setup:** [esp32-smartdisplay](https://github.com/rzeldent/esp32-smartdisplay) (LVGL 9) supports this board too; its CIY1 board file puts the LED on GPIO 16, which is the screen's HSYNC line. **C**
 - **Expected behaviour:** the screen pauses while flash memory is written (updates over Wi-Fi, saving settings). **C**
 
 ### Supabase and the network
@@ -168,7 +175,7 @@ Sources:
 - **No direct connection:** the website can't talk to the scale over home Wi-Fi. iPhone browsers block an unencrypted connection from an HTTPS page to a device at home. **C**
 - **No MQTT broker:** HiveMQ Cloud's free plan closes 31.12.2026, so no broker there. **C**
 
-## Design (proposed, not approved yet)
+## Design (first-version scope approved by the owner 14.10.2026)
 
 ```
 Load cell → HX711 → display board ──HTTPS + scale secret──▶ scale-gateway ──▶ Supabase tables
@@ -191,7 +198,7 @@ Phone / website (your normal login) ──────────────�
   - The reply carries whatever the phone sent, such as a scanned food. The website sees the weight about one second behind.
   - Streaming 5 readings a second through Realtime is a later choice, only if wanted.
 - **Secrets stay on the board.** The Wi-Fi password and the scale secret are typed on the touchscreen once and stored on the board, never in the code or the repo.
-- **Firmware location.** The firmware lives in this repo (proposed folder: `firmware/kitchen-scale/`), and CI compiles it on every PR. Claude writes and compiles it; the owner flashes the board over USB-C and reports what it shows.
+- **Firmware location.** The firmware lives in this repo in `firmware/kitchen-scale/`. The *Firmware check* workflow compiles it on every PR that touches it. Claude writes and compiles it; the owner flashes the board over USB-C and reports what it shows.
 
 ## Plan
 
@@ -199,9 +206,9 @@ Each stage ends with a check the owner does. A stage starts only after the previ
 
 **0. Know the parts.**
 - Photos of the display board (both sides), the HX711 and the load-cell label.
-- Install VS Code + PlatformIO.
-- Flash a "hello" screen to the display board.
-- *Check:* our text shows on the screen.
+- Install VS Code + PlatformIO and flash the board-check firmware (*Flashing from the Mac*).
+- It shows the chip, flash, PSRAM and touch status, draws where you touch, and has the pin finder.
+- *Check:* the screen works, touch is found and lines up with your finger, and the log lines are sent back.
 
 **1. Weighing on the bench.**
 - **a. Arduino Uno at 5 V:** solder the header pins onto the HX711, wire the load cell, print grams to the computer, calibrate with the reference weight. The kit's 16×2 LCD can show the weight.
@@ -249,13 +256,60 @@ Each stage ends with a check the owner does. A stage starts only after the previ
 - Recipes and daily totals on the scale.
 - RFID tags for bowls and jars.
 
+## Decisions
+
+Owner's answers, 14.10.2026:
+- **First version:** scan on the phone → weigh and save on the scale, with the website about one second behind. No remote Tare.
+- **Computer:** a Mac. No 3D printer, no multimeter.
+- **SD card:** one is available, but the scale doesn't need it. GPIO 41/42 stay free for us.
+- **RFID:** tags and a card came with the reader. It waits for a later stage.
+- **Order:** start the plan and the code before the soldering iron arrives.
+
 ## Open questions
 
-1. **Website live weight:** is "scan on the phone → weigh and save on the scale, website about 1 s behind" enough for the first version? Recommended: yes, and no remote Tare (you're standing at the scale anyway).
-2. **Display board:** is there a relay back plate? Will an SD card be used?
-3. **Your setup:** Windows or Mac? Is there a multimeter or a 3D printer?
-4. **Soldering tools:** which have arrived (iron, tips, flux pen, mat)?
-5. **Exact parts:** the ESP32-S3 dev board's exact name; Uno R3 or R4; the HX711 colour; the load cell's capacity; whether the RFID reader came with tags.
+1. **Relay back plate:** does the display board have one (a second board with screw terminals)? The photos in stage 0 will show it.
+2. **Exact part names:** the ESP32-S3 dev board, the Uno (R3 or R4), the HX711's colour, the load cell's capacity. Read them off the parts when they're out on the table.
+
+## Flashing from the Mac (stage 0)
+
+One-time setup:
+1. Install [Visual Studio Code](https://code.visualstudio.com/). In it, open Extensions and install **PlatformIO IDE**. Restart VS Code when it asks.
+2. Get the repo onto the Mac (GitHub Desktop or `git clone`), on the branch with the firmware.
+3. In VS Code: File → Open Folder → `firmware/kitchen-scale`. PlatformIO sees the project by itself.
+4. Click the ✓ (Build) in the blue bar at the bottom. The first build downloads the tools, about 1 GB, and takes several minutes. It ends with `SUCCESS`.
+
+Flash and read the log:
+1. Connect the display board to the Mac with a USB-C **data** cable (some cables only charge).
+2. Click → (Upload) in the bottom bar. PlatformIO finds the port by itself.
+   - Without a port: try another cable.
+   - Still nothing: install the CH340 driver from WCH, the maker of the board's USB chip. Recent macOS usually has it built in.
+3. Click the plug icon (Serial Monitor). Press the board's RST button to see the start-up lines again.
+
+What to check and send back:
+- **Photos:** the front and back of the display board.
+- **The log lines:** "Chip: …", "Flash: …", "Touch: …". Copy them.
+- **The screen:** does the text show? Do the Chip, Flash and PSRAM lines show 16 MB flash and 8 MB PSRAM? Does "Touch: GT911 found" show in green?
+- **Touch:** draw in the box. Is the dot right under your finger? If it appears mirrored or turned, say which way.
+
+### Pin finder (optional)
+
+This finds which pin on header H1 is which GPIO, without a multimeter.
+
+You need from the kits: a red LED, a 220 Ω resistor, the breadboard and two male–male jumper wires.
+
+1. **Unplug USB.**
+2. **Build the LED circuit:**
+   - LED long leg → resistor → jumper wire to one of the three unlabelled pins in H1's left column.
+   - LED short leg → jumper wire to H1's GND (top left).
+3. **Run it:** plug in USB and tap the "Pin finder" button (or type `p` in the Serial Monitor). Count the blinks:
+   - 1 = GPIO 40
+   - 2 = GPIO 2
+   - 3 = GPIO 1
+4. **Repeat** for the other two pins: unplug before moving a wire.
+
+Notes:
+- The resistor stays in line every time; a wire straight from one pin to another can damage the board.
+- If a relay back plate sits on H1, you'll hear the relays click 1, 2 or 3 times instead.
 
 ## Words used here
 

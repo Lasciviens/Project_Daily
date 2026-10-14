@@ -1,0 +1,41 @@
+# Compiles the kitchen scale firmware (firmware/kitchen-scale, PlatformIO) on every PR
+# that touches it, so the owner never flashes code that doesn't build.
+# Its own workflow so the website's PR check stays as fast as before.
+name: Firmware check
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'firmware/**'
+      - '.github/workflows/firmware-check.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: firmware-check-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  kitchen-scale:
+    name: Kitchen scale firmware builds
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      # The platform, the Arduino core and the toolchain are about 1 GB; keyed on
+      # platformio.ini so a version change downloads fresh.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: platformio-${{ hashFiles('firmware/kitchen-scale/platformio.ini') }}
+
+      - name: Install PlatformIO
+        run: pipx install platformio==6.2.0
+
+      - name: Build
+        working-directory: firmware/kitchen-scale
+        run: pio run -e display

@@ -29,3 +29,6 @@ dist-ssr
 dist
 .claude/worktrees/
 transit-mockup.html
+
+# PlatformIO build output (firmware/)
+.pio/
