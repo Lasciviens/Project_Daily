@@ -3,8 +3,8 @@
 -- the real migrations 144, 149 — twice — and 150, and scenarios.sql): the
 -- catalogue, the three library tables with the columns 116–136 added, the
 -- Trakt outbox with its 117/132/140 functions and triggers, 050's progress
--- cache, 037's audit log (150's "Undo this save" reads it), the owner lock,
--- and row level security like the app's.
+-- cache, 043's planned-block rule, 037's audit log (150's "Undo this save"
+-- reads it), the owner lock, and row level security like the app's.
 do $$ begin create role anon; exception when duplicate_object then null; end $$;
 do $$ begin create role authenticated; exception when duplicate_object then null; end $$;
 create schema if not exists auth;
@@ -216,6 +216,32 @@ begin
 end $$;
 create trigger trg_sync_tv_entry_progress after insert or update or delete on public.user_tv_episodes
   for each row execute function public.sync_tv_entry_progress();
+
+-- 043: an episode's first watch removes its planned block (149 adds the same for every watch).
+create table public.time_blocks (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid(),
+  date date not null default current_date, title text,
+  source_type text, source_id uuid, season_number integer, episode_number integer
+);
+alter table public.time_blocks enable row level security;
+create policy own on public.time_blocks for all to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
+grant select, insert, update, delete on public.time_blocks to authenticated;
+create table public.link_rules (rule_name text primary key, enabled boolean not null default true);
+insert into public.link_rules values ('episode_watched_cleans_block', true);
+create or replace function public.link_rule_enabled(p_rule_name text) returns boolean language sql stable as $$
+  select coalesce((select enabled from public.link_rules where rule_name = p_rule_name), false)
+$$;
+create or replace function public.cleanup_block_on_episode_watched() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if public.link_rule_enabled('episode_watched_cleans_block') then
+    delete from public.time_blocks where source_type = 'tv_episode' and source_id = NEW.tv_entry_id
+       and season_number = NEW.season_number and episode_number = NEW.episode_number;
+  end if;
+  return NEW;
+end $$;
+create trigger trg_cleanup_block_on_episode_watched after insert on public.user_tv_episodes
+  for each row execute function public.cleanup_block_on_episode_watched();
 
 -- 037: audited tables.
 create trigger trg_audit after insert or update or delete on public.user_movie_entries for each row execute function public.log_audit();

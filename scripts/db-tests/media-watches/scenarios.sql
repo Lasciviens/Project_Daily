@@ -20,7 +20,7 @@ create or replace function public.t_payload(p_op text) returns jsonb language sq
 $$;
 grant execute on function public.t_payload(text) to authenticated;
 create or replace function public.t_remove_play_held() returns boolean language sql security definer as $$
-  select bool_and(next_retry_at > now() + interval '50 minutes' and attempts = 0)
+  select bool_and(next_retry_at > now() + interval '6 days' and attempts = 0)
     from public.trakt_outbox where op = 'history_remove_play'
 $$;
 grant execute on function public.t_remove_play_held() to authenticated;
@@ -51,11 +51,11 @@ begin
     'a completed movie watched twice on an unknown date has 2 watches with no date');
   perform public.t_ok(not exists (select 1 from public.media_watches where movie_entry_id = '11000000-0000-0000-0000-000000000002'),
     'a wishlist movie has none');
-  perform public.t_ok((select count(*) from public.media_watches where movie_entry_id = '11000000-0000-0000-0000-000000000003') = 1,
-    'a dropped movie with a watch date has one');
+  perform public.t_ok((select count(*) from public.media_watches where movie_entry_id = '11000000-0000-0000-0000-000000000003') = 0,
+    'a dropped movie with a watch date has none (a movie play exists only once it was completed)');
   perform public.t_ok((select count(*) from public.media_watches where user_id = '00000000-0000-0000-0000-000000000002') = 1,
     'another user''s plays are theirs');
-  perform public.t_ok((select count(*) from public.media_watches) = 3 + 1 + 2 + 1 + 2 + 1 + 1 + 1,
+  perform public.t_ok((select count(*) from public.media_watches) = 3 + 1 + 2 + 1 + 2 + 1 + 1,
     'the second run of 149 added nothing');
   perform public.t_ok(public.t_outbox() = '', 'the backfill sent nothing to Trakt');
   perform public.t_ok((select history_synced_at is null from public.trakt_sync_state), 'the next sync reads the whole Trakt history');
@@ -91,7 +91,7 @@ begin
   v := public.t_payload('history_add');
   perform public.t_ok((v ->> 'watched_at')::timestamptz = '2025-01-15 12:00:00+00', 'the add carries the new date');
   perform public.t_ok(not public.t_has('history_remove'), 'no whole-episode remove was queued');
-  perform public.t_ok(public.t_remove_play_held(), 'the single-play remove is held from the old trakt-api (due in an hour, never tried)');
+  perform public.t_ok(public.t_remove_play_held(), 'the single-play remove is held from the old trakt-api (due in 7 days, never tried)');
   perform public.t_ok((select count(*) from public.media_watches where trakt_history_id in (1001, 1003)) = 2, 'the other watches keep their plays');
   perform public.t_ok((select trakt_history_id is null and source = 'app' from public.media_watches where watched_at = '2025-01-15 12:00:00+00'),
     'the re-dated watch lost its old Trakt id');
@@ -147,7 +147,7 @@ do $$
 begin
   perform public.t_ok((select watched_at is null and repeat_count = 0 from public.user_tv_episodes where id = '22000000-0000-0000-0000-000000000004'),
     'removing the last watch makes the episode not watched (its row stays for Undo)');
-  perform public.t_ok(public.t_outbox() = 'history_remove ep:1399:1:4', 'and removes it on Trakt (' || public.t_outbox() || ')');
+  perform public.t_ok(public.t_outbox() = 'history_remove_play ep:1399:1:4', 'and removes that one play on Trakt, not the whole episode (' || public.t_outbox() || ')');
 end $$;
 select public.t_clear();
 select public.app_restore_rows((select v from public.t_snap where k = 'lastwatch'));
@@ -274,12 +274,24 @@ do $$
 begin
   perform public.t_ok((select status = 'wishlist' and watched_at is null and repeat_count = 0 from public.user_movie_entries where id = '11000000-0000-0000-0000-000000000001'),
     'a completed movie without watches goes back to the Wishlist');
+  perform public.t_ok(public.t_count('history_remove_play') = 2 and public.t_count('watchlist_add') = 1 and not public.t_has('history_remove'),
+    'its last watches leave Trakt one play each, never the movie-wide remove (' || public.t_outbox() || ')');
 end $$;
+select public.t_clear();
 insert into public.media_watches (kind, movie_entry_id, watched_at) values ('movie', '11000000-0000-0000-0000-000000000001', null);
 do $$
 begin
   perform public.t_ok((select status = 'completed' and watched_at is null from public.user_movie_entries where id = '11000000-0000-0000-0000-000000000001'),
     'a watch makes a Wishlist movie Completed (here: on an unknown date)');
+end $$;
+select public.t_clear();
+-- Dropped with a date → Completed: its play goes to Trakt now.
+update public.user_movie_entries set status = 'completed' where id = '11000000-0000-0000-0000-000000000003';
+do $$
+begin
+  perform public.t_ok((select count(*) from public.media_watches where movie_entry_id = '11000000-0000-0000-0000-000000000003') = 1,
+    'a Dropped movie with a date gets its watch when it is completed');
+  perform public.t_ok(public.t_outbox() = 'history_add movie:103', 'and Trakt gets the play (' || public.t_outbox() || ')');
 end $$;
 select public.t_clear();
 -- Undo of a deleted movie puts back the entry and its watches once, unlinked from Trakt.
@@ -300,7 +312,7 @@ begin
     'Undo restores its watch once (no second one from the cache)');
   perform public.t_ok((select trakt_history_id is null from public.media_watches where movie_entry_id = '11000000-0000-0000-0000-000000000003'),
     'and unlinks it from the play Trakt removed');
-  perform public.t_ok((select status = 'dropped' and repeat_count = 0 from public.user_movie_entries where id = '11000000-0000-0000-0000-000000000003'), 'the entry is as it was');
+  perform public.t_ok((select status = 'completed' and repeat_count = 0 from public.user_movie_entries where id = '11000000-0000-0000-0000-000000000003'), 'the entry is as it was');
 end $$;
 select public.t_clear();
 
@@ -381,45 +393,105 @@ begin
 end $$;
 select public.t_clear();
 
--- ── 13. Rewatching ──────────────────────────────────────────────────────────
+-- ── 13. Rewatching: a round counts watches since it started ────────────────
 reset role;
-insert into public.tv_series (id, tmdb_id, title) values ('20000000-0000-0000-0000-000000000003', 1500, 'Rewatch show');
+-- TMDB's data on the show: S1 has 3 episodes, the last aired one is S1E2.
+insert into public.tv_series (id, tmdb_id, title, metadata_json) values ('20000000-0000-0000-0000-000000000003', 1500, 'Rewatch show',
+  '{"seasons":[{"season_number":0,"episode_count":1},{"season_number":1,"episode_count":3}],"last_episode_to_air":{"season_number":1,"episode_number":2}}');
 insert into public.user_tv_entries (id, user_id, tv_series_id, status) values
   ('21000000-0000-0000-0000-000000000003', '00000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000003', 'completed');
 set role authenticated;
+-- The pilot watched three times, a special once; S1E2 never.
 insert into public.media_watches (kind, tv_series_id, season_number, episode_number, watched_at) values
+  ('episode', '20000000-0000-0000-0000-000000000003', 1, 1, '2019-01-01 12:00:00+00'),
   ('episode', '20000000-0000-0000-0000-000000000003', 1, 1, '2020-01-01 12:00:00+00'),
-  ('episode', '20000000-0000-0000-0000-000000000003', 1, 2, '2020-01-02 12:00:00+00'),
+  ('episode', '20000000-0000-0000-0000-000000000003', 1, 1, '2021-01-01 12:00:00+00'),
   ('episode', '20000000-0000-0000-0000-000000000003', 0, 1, '2020-01-03 12:00:00+00');
 update public.user_tv_entries set status = 'watching', rewatch_round = 2 where id = '21000000-0000-0000-0000-000000000003';
-insert into public.media_watches (kind, tv_series_id, season_number, episode_number, watched_at)
-values ('episode', '20000000-0000-0000-0000-000000000003', 1, 1, '2026-09-01 12:00:00+00');
 do $$
 begin
+  perform public.t_ok((select rewatch_started_at is not null from public.user_tv_entries where id = '21000000-0000-0000-0000-000000000003'), 'a round starts with its time');
+  perform public.t_ok(not public.media_rewatch_finished('episode', '21000000-0000-0000-0000-000000000003'), 'a pilot watched three times before the round is not done for it');
+end $$;
+-- A planned block for the pilot's rewatch goes when it is watched (043's rule, for a rewatch too).
+insert into public.time_blocks (source_type, source_id, season_number, episode_number) values ('tv_episode', '21000000-0000-0000-0000-000000000003', 1, 1);
+-- The pilot's round watch, logged in the app with an old date: it counts (added since the start).
+insert into public.media_watches (kind, tv_series_id, season_number, episode_number, watched_at)
+values ('episode', '20000000-0000-0000-0000-000000000003', 1, 1, '2018-06-01 12:00:00+00');
+do $$
+begin
+  perform public.t_ok(not exists (select 1 from public.time_blocks where source_id = '21000000-0000-0000-0000-000000000003'), 'a rewatch removes the episode''s planned block');
   perform public.t_ok((select status = 'watching' and rewatch_round = 2 from public.user_tv_entries where id = '21000000-0000-0000-0000-000000000003'),
-    'a rewatching show stays Watching while the round is under way');
+    'S1E2, never watched before, is still to watch: the round goes on');
 end $$;
 insert into public.media_watches (kind, tv_series_id, season_number, episode_number, watched_at)
-values ('episode', '20000000-0000-0000-0000-000000000003', 1, 2, '2026-09-02 12:00:00+00');
+values ('episode', '20000000-0000-0000-0000-000000000003', 1, 2, now());
 do $$
 begin
-  perform public.t_ok((select status = 'completed' and rewatch_round is null from public.user_tv_entries where id = '21000000-0000-0000-0000-000000000003'),
-    'the watch that finishes round 2 (specials aside) makes it Completed again');
+  perform public.t_ok((select status = 'completed' and rewatch_round is null and rewatch_started_at is null from public.user_tv_entries where id = '21000000-0000-0000-0000-000000000003'),
+    'every aired episode (S1E3 has not aired; specials aside) watched in the round: Completed again');
 end $$;
 update public.user_tv_entries set status = 'paused', rewatch_round = 3 where id = '21000000-0000-0000-0000-000000000003';
-do $$ begin perform public.t_ok((select rewatch_round = 3 from public.user_tv_entries where id = '21000000-0000-0000-0000-000000000003'), 'a paused rewatch keeps its round'); end $$;
+do $$ begin perform public.t_ok((select rewatch_round = 3 and rewatch_started_at is not null from public.user_tv_entries where id = '21000000-0000-0000-0000-000000000003'), 'a paused rewatch keeps its round'); end $$;
 update public.user_tv_entries set status = 'dropped' where id = '21000000-0000-0000-0000-000000000003';
-do $$ begin perform public.t_ok((select rewatch_round is null from public.user_tv_entries where id = '21000000-0000-0000-0000-000000000003'), 'leaving Watching ends the round'); end $$;
+do $$ begin perform public.t_ok((select rewatch_round is null and rewatch_started_at is null from public.user_tv_entries where id = '21000000-0000-0000-0000-000000000003'), 'leaving Watching ends the round'); end $$;
 update public.user_movie_entries set status = 'watching', rewatch_round = 2 where id = '11000000-0000-0000-0000-000000000005';
 do $$ begin perform public.t_ok((select count(*) = 1 from public.media_watches where movie_entry_id = '11000000-0000-0000-0000-000000000005'), 'a movie rewatch keeps its watches'); end $$;
-insert into public.media_watches (kind, movie_entry_id, watched_at) values ('movie', '11000000-0000-0000-0000-000000000005', '2026-09-05 12:00:00+00');
+select public.t_clear();
+-- A play scrobbled on Trakt (a sync write) finishes a movie's round too.
+reset role;
+begin;
+select set_config('request.headers', '{"x-trakt-sync":"1"}', true);
+insert into public.media_watches (user_id, kind, movie_entry_id, watched_at, trakt_history_id, source)
+values ('00000000-0000-0000-0000-000000000001', 'movie', '11000000-0000-0000-0000-000000000005', now(), 7005, 'trakt');
+commit;
 do $$
 begin
   perform public.t_ok((select status = 'completed' and rewatch_round is null and repeat_count = 1 from public.user_movie_entries where id = '11000000-0000-0000-0000-000000000005'),
-    'a movie''s second watch finishes its rewatch');
-  perform public.t_ok(not public.t_has('history_remove') and not public.t_has('watchlist_add'), 'a rewatch round changes nothing on Trakt but the new plays');
+    'a movie''s play scrobbled on Trakt finishes its rewatch');
+  perform public.t_ok(public.t_outbox() = '', 'and nothing goes back to Trakt');
 end $$;
-reset role;
+
+-- ── 13b. A sync write never removes or re-dates a linked watch ──────────────
+begin;
+select set_config('request.headers', '{"x-trakt-sync":"1"}', true);
+update public.user_tv_episodes set repeat_count = 0, watched_at = '2020-02-02 12:00:00+00'
+ where tv_series_id = '20000000-0000-0000-0000-000000000002' and season_number = 2 and episode_number = 1;
+commit;
+do $$
+begin
+  perform public.t_ok((select count(*) = 1 and bool_and(trakt_history_id = 2001 and watched_at = '2026-08-01 12:00:00+00') from public.media_watches
+      where tv_series_id = '20000000-0000-0000-0000-000000000002' and season_number = 2 and episode_number = 1),
+    'Trakt''s summary with another date moves no linked watch (trakt-api reads the plays and removes by id)');
+  perform public.t_ok((select watched_at = '2026-08-01 12:00:00+00' from public.user_tv_episodes
+      where tv_series_id = '20000000-0000-0000-0000-000000000002' and season_number = 2 and episode_number = 1),
+    'and the cache keeps saying what the watches say');
+end $$;
+begin;
+select set_config('request.headers', '{"x-trakt-sync":"1"}', true);
+update public.user_tv_episodes set repeat_count = 0
+ where tv_series_id = '20000000-0000-0000-0000-000000000002' and season_number = 2 and episode_number = 2;
+commit;
+do $$
+begin
+  perform public.t_ok((select count(*) from public.media_watches where tv_series_id = '20000000-0000-0000-0000-000000000002' and season_number = 2 and episode_number = 2) = 2,
+    'fewer plays in Trakt''s summary remove no watch either');
+end $$;
+
+-- ── 13c. A Trakt pull's writes are not audited; the app's are ───────────────
+do $$
+declare n0 bigint := (select count(*) from public.audit_logs where table_name = 'media_watches');
+begin
+  perform set_config('request.headers', '{"x-trakt-sync":"1"}', true);
+  insert into public.media_watches (user_id, kind, tv_series_id, season_number, episode_number, watched_at, trakt_history_id, source)
+  values ('00000000-0000-0000-0000-000000000001', 'episode', '20000000-0000-0000-0000-000000000002', 3, 1, '2026-08-05 12:00:00+00', 2101, 'trakt');
+  perform public.t_ok((select count(*) from public.audit_logs where table_name = 'media_watches') = n0, 'a sync write on media_watches is not audited (bulk-synced)');
+  perform set_config('request.headers', '', true);
+  insert into public.media_watches (user_id, kind, tv_series_id, season_number, episode_number, watched_at)
+  values ('00000000-0000-0000-0000-000000000001', 'episode', '20000000-0000-0000-0000-000000000002', 3, 2, '2026-08-06 12:00:00+00');
+  perform public.t_ok((select count(*) from public.audit_logs where table_name = 'media_watches') = n0 + 1, 'an app write is (Undo can take it back)');
+end $$;
+select public.t_clear();
 
 -- ── 14. "Undo this save" (150) runs through these triggers: single plays ───
 create table public.t_tx (k text primary key, tx bigint);
