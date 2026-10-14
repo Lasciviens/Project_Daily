@@ -27,10 +27,13 @@ export function SeriesFinishedControls({ entry, lastAirDate, disabled, onPatch, 
     await withProgress(() => onPatch({ finished_at: at }), { loading: 'Changing the date…', success: 'Finished date changed' })
   }
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
       {dialog}
       <p className="text-meta text-fg-muted tabular-nums">Finished {entry.finished_at ? formatDate(entry.finished_at) : 'date unknown'}</p>
-      <Button size="sm" variant="ghost" icon={<CalendarDays />} disabled={disabled} onClick={() => { void change() }}>Change date</Button>
+      {/* Icon-only on phones so the date, its change and Watch again share one row. */}
+      <Button size="sm" variant="ghost" icon={<CalendarDays />} disabled={disabled} onClick={() => { void change() }} aria-label="Change date" title="Change date" className="max-sm:px-2.5">
+        <span className="max-sm:sr-only">Change date</span>
+      </Button>
       <Button size="sm" variant="ghost" icon={<Repeat />} disabled={disabled} onClick={onWatchAgain} title="Watch it again from the start: it stays Watching until every episode is watched again">Watch again</Button>
     </div>
   )

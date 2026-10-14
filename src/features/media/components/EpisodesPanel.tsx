@@ -10,7 +10,7 @@ import { useTraktStatus } from '../trakt/useTrakt'
 import { useDeleteWatches } from '../hooks/useWatches'
 import { useWatchPick } from '../hooks/useWatchPick'
 import type { WatchPickAnswer } from './WatchPickSheet'
-import { CalendarDays, CalendarPlus, CalendarRange, Check, History, ListChecks, RotateCcw, Undo2 } from 'lucide-react'
+import { CalendarDays, CalendarPlus, CalendarRange, Check, History, Hourglass, ListChecks, RotateCcw, Undo2 } from 'lucide-react'
 import { useEntityModal } from '../../../shared/modals'
 import { Button, SectionLabel, Skeleton, TonePill, Truncate } from '../../../shared/ui'
 import { ceilToQuarter } from '../../../shared/components/plan-modal/planModal.config'
@@ -492,8 +492,10 @@ export function EpisodesPanel({ tv, tvEntryId, rewatch = null }: Props) {
                     {isNext && <TonePill tone="info" className="shrink-0">Next · round {rewatch?.round}</TonePill>}
                     {/* One short line: the count and the latest (every date is in its watch list). */}
                     {watches.length > 0 && (
-                      <span className="whitespace-nowrap font-medium text-success">
-                        {watchesLine(watches)}{waitsForTrakt && <span className="font-normal text-fg-muted"> · Trakt dates to come</span>}
+                      <span className="font-medium text-success">
+                        <span className="whitespace-nowrap">{watchesLine(watches)}</span>
+                        {/* Placeholders: the real dates come with the next Trakt sync. */}
+                        {waitsForTrakt && <Hourglass role="img" aria-label="Waiting for Trakt's dates" className="ml-1 inline h-3 w-3 align-[-2px] text-fg-muted"><title>Waiting for Trakt's dates</title></Hourglass>}
                       </span>
                     )}
                     {!isWatched && paused != null && (

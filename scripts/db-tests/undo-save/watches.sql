@@ -117,7 +117,8 @@ begin
 end $$;
 select public.t_clear();
 
--- ── 3. Undoing a first watch removes the whole episode on Trakt: named ────
+-- ── 3. Undoing a first watch removes that one play on Trakt (149: removing
+--       an item's last watch is a single play, never the whole episode) ────
 do $$ begin
   insert into public.media_watches (kind, tv_series_id, season_number, episode_number, watched_at)
   values ('episode', '20000000-0000-0000-0000-000000000017', 1, 3, '2026-10-01 20:00+00');
@@ -128,8 +129,8 @@ do $$
 declare p jsonb;
 begin
   p := public.app_undo_transaction(public.t_tx('first_watch'));
-  perform public.t_ok(p -> 'outbox' = '[{"n": 1, "s": "trakt", "op": "history_remove", "items": ["Redate show S01E03"]}]',
-                      'undoing the episode''s first watch removes every play of it on Trakt: the item is named ' || (p ->> 'outbox'));
+  perform public.t_ok(p -> 'outbox' = '[{"n": 1, "s": "trakt", "op": "history_remove_play", "items": null}]',
+                      'undoing the episode''s first watch removes that one play on Trakt, not the whole episode ' || (p ->> 'outbox'));
   perform public.t_ok((p ->> 'needs_confirm')::boolean, 'and it needs confirming');
 end $$;
 
