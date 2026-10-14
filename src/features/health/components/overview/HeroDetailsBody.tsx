@@ -1,12 +1,11 @@
 import { Pencil } from 'lucide-react'
 import { Button, TonePill, useChartColors, type Tone } from '../../../../shared/ui'
 import { useEntityModal } from '../../../../shared/modals'
-import { addDaysIso } from '../../healthWindowStats'
 import { buildTrendStats, type VitalState } from '../../healthTrendStats'
 import { BETTER_LABEL, TILE_PLAIN, classify } from '../../benchmarks/healthBenchmarks'
 import { BODYWEIGHT_SOURCE_LABEL } from '../../bodyweight'
 import { fmtDayMonth } from '../healthFormat'
-import type { HealthHero } from './useHealthHero'
+import { BASELINE_DAYS, rollingFor, type HealthHero } from './useHealthHero'
 import { DailyTrend } from './DailyTrend'
 import { MetricExplainer } from './MetricExplainer'
 import { AimLine } from './AimLine'
@@ -29,50 +28,54 @@ function PlainAim({ plain, better, aim }: { plain: string; better: string; aim: 
 }
 
 export function RhrDetail({ hero, onViewDay }: Props) {
-  const { rhr, anchor: A, ctx } = hero
+  const { rhr, anchor: A, from: F, ctx, isDay } = hero
   const c = useChartColors()
   const b = rhr.baseline
-  const stats = buildTrendStats(rhr.series, { to: A, direction: 'down' })
+  const stats = buildTrendStats(rhr.series, { from: F, to: A, direction: 'down' })
   return (
     <div className="flex flex-col gap-5">
       <Summary>
-        Your 7-day average is <b className="text-fg">{num(rhr.avg7)} bpm</b>
-        {b && <> against your usual {num(b.median)} bpm over the 60 days before ({signed(rhr.delta ?? 0)} bpm)</>}.
+        {isDay ? 'That day' : 'Your average'}: <b className="text-fg">{num(rhr.value)} bpm</b>
+        {b && <>, against your usual {num(b.median)} bpm over the {BASELINE_DAYS} days before ({signed(rhr.delta ?? 0)} bpm)</>}.
         {' '}A rise of 5 bpm or more above your own baseline is a common fatigue or illness signal; it is a monitoring convention, not a diagnosis.
       </Summary>
-      <DailyTrend series={rhr.series} from={addDaysIso(A, -89)} to={A} kind="dots" rolling label="resting HR" unit="bpm"
-        ariaLabel="Resting heart rate per day, last 90 days, with your usual range" color={c.series[3]}
-        band={b?.sd != null ? { y1: b.mean - b.sd, y2: b.mean + b.sd, label: 'your usual range' } : undefined}
-        yDomain={['auto', 'auto']} onViewDay={onViewDay} />
+      {!isDay && (
+        <DailyTrend series={rhr.series} from={F} to={A} kind="dots" rolling={rollingFor(hero.days)} label="resting HR" unit="bpm"
+          ariaLabel="Resting heart rate per day, with your usual range" color={c.series[3]}
+          band={b?.sd != null ? { y1: b.mean - b.sd, y2: b.mean + b.sd, label: 'your usual range' } : undefined}
+          yDomain={['auto', 'auto']} onViewDay={onViewDay} />
+      )}
       <TrendStatsBlock stats={stats} format={v => num(v)} formatDelta={v => `${signed(v)} bpm`} direction="down" rateUnit="bpm/week" />
       <div className="border-t border-line pt-4">
-        <MetricExplainer metric="resting_heart_rate" ctx={ctx} value={rhr.avg7} cls={rhr.cls} aim={hero.aims.rhr} />
+        <MetricExplainer metric="resting_heart_rate" ctx={ctx} value={rhr.value} cls={rhr.cls} aim={hero.aims.rhr} />
       </div>
     </div>
   )
 }
 
 export function WeightDetail({ hero, onViewDay }: Props) {
-  const { weight: w, anchor: A, ctx } = hero
+  const { weight: w, anchor: A, from: F, ctx, isDay } = hero
   const c = useChartColors()
   const modal = useEntityModal()
-  const stats = buildTrendStats(w.series, { to: A, direction: null, sparse: true })
+  const stats = buildTrendStats(w.series, { from: F, to: A, direction: null, sparse: true })
   const lastSource = w.lastDate ? w.sources.get(w.lastDate) : undefined
   return (
     <div className="flex flex-col gap-5">
       <Summary>
-        {w.ma7 != null ? <>7-day average <b className="text-fg">{num(w.ma7, 1)} kg</b>. </> : null}
+        {w.value != null ? <>{isDay ? 'That day' : 'Average'} <b className="text-fg">{num(w.value, 1)} kg</b>. </> : null}
         {w.lastKg != null && w.lastDate && <>Last weigh-in {num(w.lastKg, 1)} kg on {fmtDayMonth(w.lastDate)}{lastSource ? ` (${BODYWEIGHT_SOURCE_LABEL[lastSource]})` : ''}. </>}
-        {w.perWeek != null && <>Over the last 28 days the trend is <b className="text-fg">{signed(w.perWeek, 2)} kg a week</b>.</>}
+        {stats.rate && <>The trend is <b className="text-fg">{signed(stats.rate.perWeek, 2)} kg a week</b>.</>}
       </Summary>
       <PlainAim plain={TILE_PLAIN.weight} better={BETTER_LABEL.range} aim={hero.aims.weight} />
       {/* The goal weight is set in the one goal editor (the `day-targets` popup). */}
       <Button size="sm" variant="secondary" className="self-start" icon={<Pencil aria-hidden />} onClick={() => modal.open({ kind: 'day-targets' })}>
         {hero.goalWeightKg != null ? 'Edit goal' : 'Set a goal weight'}
       </Button>
-      <DailyTrend series={w.series} from={addDaysIso(A, -89)} to={A} kind="line" rolling label="weigh-in" unit="kg"
-        ariaLabel="Weigh-ins over the last 90 days with the 7-day average" color={c.series[1]}
-        formatValue={v => num(v, 1)} yDomain={['auto', 'auto']} onViewDay={onViewDay} />
+      {!isDay && (
+        <DailyTrend series={w.series} from={F} to={A} kind="line" rolling={rollingFor(hero.days)} label="weigh-in" unit="kg"
+          ariaLabel="Weigh-ins per day" color={c.series[1]}
+          formatValue={v => num(v, 1)} yDomain={['auto', 'auto']} onViewDay={onViewDay} />
+      )}
       <TrendStatsBlock stats={stats} format={v => `${num(v, 1)} kg`} formatDelta={v => `${signed(v, 1)} kg`} direction={null} rateUnit="kg/week" />
       <p className="text-meta text-fg-muted">
         {w.fatPct != null && <>Latest body fat {num(w.fatPct, 1)}%. </>}
@@ -101,13 +104,13 @@ const stateTone = (i: HealthHero['vitals']['items'][number]): Tone => (i.good !=
 const stateLabel = (i: HealthHero['vitals']['items'][number]) => (i.good != null && i.state === i.good ? `${STATE_LABEL[i.state]} (good)` : STATE_LABEL[i.state])
 
 export function VitalsDetail({ hero, onViewDay }: Props) {
-  const { vitals: v, anchor: A, ctx } = hero
+  const { vitals: v, anchor: A, from: F, ctx, isDay } = hero
   const c = useChartColors()
   const resp = v.items.find(i => i.key === 'resp')
   const spo2 = v.items.find(i => i.key === 'spo2')
   const respCls = resp?.value != null ? classify('respiratory_rate', resp.value, { ...ctx, baseline: resp.range ? { mean: resp.range.center } : null }) : null
   const spo2Cls = spo2?.value != null ? classify('blood_oxygen', spo2.value, ctx) : null
-  const hrvStats = buildTrendStats(v.hrvSeries, { to: A, direction: 'up' })
+  const hrvStats = buildTrendStats(v.hrvSeries, { from: F, to: A, direction: 'up' })
   return (
     <div className="flex flex-col gap-5">
       <Summary>{v.summary.text}. Each reading is compared with your own usual range, not a population norm, and nothing is added up into a score.</Summary>
@@ -125,7 +128,7 @@ export function VitalsDetail({ hero, onViewDay }: Props) {
               </p>
               <p className="text-micro font-normal text-fg-muted">
                 {i.range ? (i.key === 'temp' ? `usual ± ${num((i.range.high - i.range.low) / 2, 1)} °C` : `usual ${num(i.range.low, i.decimals)}–${num(i.range.high, i.decimals)}`) : 'no usual range yet'}
-                {i.date && i.date !== A ? ` · ${fmtDayMonth(i.date)}` : ''}
+                {!isDay && i.value != null && ' · average'}
               </p>
             </div>
             <TonePill tone={stateTone(i)}>{stateLabel(i)}</TonePill>
@@ -135,17 +138,19 @@ export function VitalsDetail({ hero, onViewDay }: Props) {
       <p className="text-micro font-normal text-fg-faint">
         Apple’s Vitals app also watches sleeping heart rate; Health Auto Export doesn’t send it, so it isn’t counted here.
       </p>
-      <div>
-        <p className="section-label mb-1">HRV (SDNN), last 90 days</p>
-        <DailyTrend series={v.hrvSeries} from={addDaysIso(A, -89)} to={A} kind="dots" rolling label="HRV" unit="ms"
-          ariaLabel="Heart rate variability per day, last 90 days, with your usual range" color={c.series[1]}
-          band={v.hrvRange ? { y1: v.hrvRange.low, y2: v.hrvRange.high, label: 'your usual range' } : undefined}
-          yDomain={['auto', 'auto']} onViewDay={onViewDay} />
-      </div>
+      {!isDay && (
+        <div>
+          <p className="section-label mb-1">HRV (SDNN)</p>
+          <DailyTrend series={v.hrvSeries} from={F} to={A} kind="dots" rolling={rollingFor(hero.days)} label="HRV" unit="ms"
+            ariaLabel="Heart rate variability per day, with your usual range" color={c.series[1]}
+            band={v.hrvRange ? { y1: v.hrvRange.low, y2: v.hrvRange.high, label: 'your usual range' } : undefined}
+            yDomain={['auto', 'auto']} onViewDay={onViewDay} />
+        </div>
+      )}
       <TrendStatsBlock stats={hrvStats} format={x => num(x)} formatDelta={x => `${signed(x)} ms`} direction="up" />
       <div className="border-t border-line pt-4">
         <MetricExplainer metric="heart_rate_variability" ctx={{ ...ctx, baseline: v.hrvRange ? { mean: v.hrvRange.center, sd: (v.hrvRange.high - v.hrvRange.low) / 2 } : null }}
-          value={v.hrv7} cls={v.hrvCls} />
+          value={v.hrv} cls={v.hrvCls} />
       </div>
       {respCls && resp && (
         <div className="border-t border-line pt-4">

@@ -226,7 +226,7 @@ const row = (reading, key) => reading.rows.find(r => r.key === key)
   check('§11.3 every day of the week counted above', [rhr.daysAbove, rhr.daysBelow, rhr.daysChecked], [7, 0, 7])
   check('§11.4 period wording + day count', r.verdict.headline, 'One signal is off: resting heart rate averaged 10 bpm above your usual (high on 7 of 7 days).')
   check('§11.5 a whole week off → warn', r.verdict.tone, 'warn')
-  check('§11.6 vs the previous 7 days', [rhr.deltaVsPrevious, rhr.previousLabel], [10, 'vs the 7 days before'])
+  check('§11.6 vs the previous 7 days, labelled without the length', [rhr.deltaVsPrevious, rhr.previousLabel], [10, 'vs the period before'])
 }
 
 // ─── §12 Heart-rate recovery (population cut-off) ────────────────────────────
@@ -270,7 +270,8 @@ const row = (reading, key) => reading.rows.find(r => r.key === key)
   const s = baseSeries({ respiratory_rate: series(TO, DAYS, i => (i < 7 && i !== 2 ? null : 15 + 0.3 * wob(i))) })
   const r = period(s, 7)
   check('§15.1 one night in 7 → too few', [row(r, 'resp').status, row(r, 'resp').reason], ['unknown', 'few-readings'])
-  ok('§15.2 reason text', row(r, 'resp').reasonText.startsWith('Only 1 reading in these 7 days'), row(r, 'resp').reasonText)
+  ok('§15.2 reason text (no period length — the range bar names it)', row(r, 'resp').reasonText.startsWith('Only 1 reading in this period'), row(r, 'resp').reasonText)
+  check('§15.3 a period compares with the period before', row(r, 'rhr').previousLabel, 'vs the period before')
 }
 
 // ─── §16 Breathing rate: the +3 level ────────────────────────────────────────

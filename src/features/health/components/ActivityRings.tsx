@@ -1,9 +1,10 @@
 import { InfoBubble } from '../../../shared/components/InfoBubble'
 import type { HealthWindow } from '../healthWindowStats'
-import { useHealthDaily } from '../hooks/useHealthExport'
+import { useMetricWindow } from '../hooks/useHealthWindow'
 import { DEFAULT_RING_GOALS, type RingGoals } from './ringGoals'
 
-// Move / Exercise / Stand for one day. Apple's ring colours are identity data
+// Move / Exercise / Stand for one day, or the average day of the picked
+// period (against the daily goal). Apple's ring colours are identity data
 // users know by colour (THEME.md §2.5), so they stay literal in both themes.
 //
 // Ring GOALS: Health Auto Export doesn't send Apple's activity summary, so
@@ -18,11 +19,12 @@ const RINGS = [
   { key: 'apple_stand_hour',    goal: 'stand' as const,    label: 'Stand',    unit: 'hr',   color: '#38bdf8' },
 ]
 
-// Reads the page window's range so the day shares the download the panel and
-// sections already made.
-function useRingValue(metricKey: string, win: HealthWindow, date: string) {
-  const { data, isLoading } = useHealthDaily(metricKey, win.fetchFrom, win.to)
-  return { value: data?.find(d => d.date === date)?.value ?? null, isLoading }
+// That day's value, or the average day of the period picked in the range bar
+// (finished days only — today's rings are still filling). Reads the page
+// window's range, so it shares the download the sections already made.
+function useRingValue(metricKey: string, win: HealthWindow) {
+  const { summary, isLoading } = useMetricWindow(metricKey, win)
+  return { value: summary.value, isLoading }
 }
 
 function RingArc({ cx, cy, r, pct, color, strokeWidth }: {
@@ -44,15 +46,16 @@ function RingArc({ cx, cy, r, pct, color, strokeWidth }: {
   )
 }
 
-export function ActivityRings({ win, date, goals }: { win: HealthWindow; date: string; goals?: Partial<RingGoals> }) {
+export function ActivityRings({ win, goals }: { win: HealthWindow; goals?: Partial<RingGoals> }) {
   const g: RingGoals = { ...DEFAULT_RING_GOALS, ...goals }
   const usingDefaults = !goals || RINGS.some(r => goals[r.goal] == null)
-  const move = useRingValue('active_energy', win, date)
-  const exercise = useRingValue('apple_exercise_time', win, date)
-  const stand = useRingValue('apple_stand_hour', win, date)
+  const move = useRingValue('active_energy', win)
+  const exercise = useRingValue('apple_exercise_time', win)
+  const stand = useRingValue('apple_stand_hour', win)
   const values = [move.value, exercise.value, stand.value]
   const loading = move.isLoading || exercise.isLoading || stand.isLoading
-  const partial = date === win.today
+  const partial = win.isDay && win.to === win.today
+  const note = partial ? 'So far today' : win.isDay ? null : 'Average per day'
 
   const size = 176
   const center = size / 2
@@ -87,7 +90,7 @@ export function ActivityRings({ win, date, goals }: { win: HealthWindow; date: s
           </div>
         ))}
         <div className="flex items-center gap-1 text-micro text-fg-muted">
-          {partial ? 'So far today' : null}{partial && usingDefaults ? ' · ' : null}
+          {note}{note && usingDefaults ? ' · ' : null}
           {usingDefaults && (
             <>
               Placeholder goals

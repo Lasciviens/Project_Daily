@@ -61,7 +61,7 @@ type PageQuery = (from: number, to: number, withCount: boolean) => PromiseLike<{
   count?: number | null
 }>
 
-async function fetchAllPages<T>(page: PageQuery): Promise<T[]> {
+export async function fetchAllPages<T>(page: PageQuery): Promise<T[]> {
   const first = await page(0, MAX_ROWS_PER_PAGE - 1, true)
   if (first.error) throw first.error
   const rows = (first.data ?? []) as T[]

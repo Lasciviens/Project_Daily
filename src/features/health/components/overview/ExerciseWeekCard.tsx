@@ -1,20 +1,17 @@
 import { Card, TonePill, useChartColors } from '../../../../shared/ui'
-import { todayStr } from '../../../../shared/utils/dateUtils'
-import { addDaysIso } from '../../healthWindowStats'
-import { weeklyBuckets } from '../../healthTrendStats'
-import type { HealthHero } from './useHealthHero'
+import { exerciseWeeks, type HealthHero } from './useHealthHero'
 import { WeeklyBars } from './HeroDetailsActivity'
 import { num } from './heroFormat'
 
 // Weekly exercise against WHO 2020: Apple exercise minutes vs 150 a week and
-// days with a Hevy workout vs 2, over the last 12 complete weeks.
-export function ExerciseWeekCard({ exercise, anchor }: { exercise: HealthHero['exercise']; anchor: string }) {
+// days with a Hevy workout vs 2, for the weeks the picked period touches (a
+// day or 7 days still show this week and the one before; the newest week
+// counts up to the viewed day).
+export function ExerciseWeekCard({ hero }: { hero: HealthHero }) {
+  const { exercise, isDay, days } = hero
   const c = useChartColors()
-  const from = addDaysIso(anchor, -83)
-  // Complete weeks only: on a Sunday, today's unfinished day must not close its week.
-  const to = anchor === todayStr() ? addDaysIso(anchor, -1) : anchor
-  const minutes = weeklyBuckets(exercise.series, { from, to, agg: 'total', minDays: 1 })
-  const strength = weeklyBuckets(exercise.strengthDays.map(d => ({ date: d.date, value: 1 })), { from, to, agg: 'total', minDays: 0 })
+  const weeks = exerciseWeeks(exercise, hero.anchor)
+  const strength = days === 7 ? String(Math.round(exercise.strengthDays)) : num(exercise.strengthDays, 1)
   return (
     <Card className="@container flex flex-col gap-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -22,16 +19,20 @@ export function ExerciseWeekCard({ exercise, anchor }: { exercise: HealthHero['e
         {exercise.cls && <TonePill tone={exercise.cls.tone}>{exercise.cls.label}</TonePill>}
       </div>
       <p className="text-meta text-fg-2">
-        Last 7 days: {num(exercise.minutes7 ?? 0)} of 150 exercise minutes · {exercise.strengthDays7} of 2 strength days (Hevy)
+        {isDay
+          ? <>That day: {num(exercise.minutes ?? 0)} exercise minutes · {exercise.strengthDays ? 'a strength workout' : 'no strength workout'} (Hevy)</>
+          : <>{days === 7 ? 'Total' : 'Average week'}: {num(exercise.minutes ?? 0)} of 150 exercise minutes · {strength} of 2 strength days (Hevy)</>}
       </p>
       <div className="grid gap-3 @[34rem]:grid-cols-2">
         <div className="min-w-0">
           <p className="section-label mb-1">Minutes per week</p>
-          <WeeklyBars data={minutes} refY={150} refLabel="150" label="of exercise" unit="min" color={c.series[2]} ariaLabel="Exercise minutes per complete week" />
+          <WeeklyBars data={weeks.minutes} refY={150} refLabel="150" label="of exercise" unit="min" color={c.series[2]}
+            ariaLabel="Exercise minutes per week; the newest week counts up to the day you're viewing" />
         </div>
         <div className="min-w-0">
           <p className="section-label mb-1">Strength days per week</p>
-          <WeeklyBars data={strength} refY={2} refLabel="2" label="strength days" unit="" color={c.series[1]} ariaLabel="Days with a Hevy workout per complete week" />
+          <WeeklyBars data={weeks.strength} refY={2} refLabel="2" label="strength days" unit="" color={c.series[1]}
+            ariaLabel="Days with a Hevy workout per week; the newest week counts up to the day you're viewing" />
         </div>
       </div>
     </Card>

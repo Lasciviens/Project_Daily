@@ -1,7 +1,9 @@
-// Trend statistics for the Health page: how a metric has moved over 7, 30 and
-// 90 days, its weekly rate, its best and worst week, and whether it has become
-// steadier or more erratic. Plus the small derived reads the hero needs (wake-
-// time spread, a personal "usual range", the overnight-vitals status line).
+// Trend statistics for the Health page: how a metric has moved over the
+// period picked in the page's range bar (against the same number of days just
+// before), its weekly rate, its best and worst week inside the period, and
+// whether it has become steadier or more erratic. Plus the small derived reads
+// the hero needs (weekly totals, wake-time spread, the bed-and-wake rows, a
+// personal "usual range", the overnight-vitals status line).
 //
 // PURE — only the sibling pure healthWindowStats module is imported, so
 // scripts/verify-health-trend-stats.cjs can load it through sucrase.
@@ -123,6 +125,44 @@ export function bestWorstWeek(weeks: readonly WeekBucket[], direction: 'up' | 'd
   return direction === 'down' ? { best: lo, worst: hi } : { best: hi, worst: lo }
 }
 
+/** The Mondays of the weeks that overlap the `spanDays` ending on `anchor`,
+ *  newest first, at least `minWeeks` of them — a one-day or 7-day period still
+ *  shows this week and the one before. */
+export function weekStartsFor(anchor: string, spanDays: number, minWeeks = 2): string[] {
+  const last = mondayOfIso(anchor)
+  const first = mondayOfIso(addDaysIso(anchor, -(Math.max(1, spanDays) - 1)))
+  const n = Math.max(minWeeks, daysBetweenIso(first, last) / 7 + 1)
+  return Array.from({ length: n }, (_, i) => addDaysIso(last, -7 * i))
+}
+
+/** Each Monday–Sunday week's total, oldest first. The week holding `to`
+ *  counts only up to it (a running total). A week needs `minDays` readings:
+ *  0 keeps a week without any as a zero (days with a workout), 1 drops it
+ *  (no Watch data that week). */
+export function weekTotals(
+  series: readonly DayValue[],
+  opts: { weekStarts: readonly string[]; to: string; minDays?: number },
+): WeekBucket[] {
+  const minDays = opts.minDays ?? 1
+  return [...opts.weekStarts].sort().flatMap(ws => {
+    const end = addDaysIso(ws, 6)
+    const vals = valuesIn(series, ws, end < opts.to ? end : opts.to)
+    if (vals.length < minDays) return []
+    return [{ weekStart: ws, value: vals.reduce((a, b) => a + b, 0), days: vals.length }]
+  })
+}
+
+/** A running total over [from, to] as a weekly figure: one day's own total,
+ *  a 7-day period's total, or the average week of a longer period (total × 7
+ *  ÷ days). null without a reading. */
+export function weeklyTotal(series: readonly DayValue[], from: string, to: string): number | null {
+  const vals = valuesIn(series, from, to)
+  if (!vals.length) return null
+  const days = daysBetweenIso(from, to) + 1
+  const total = vals.reduce((a, b) => a + b, 0)
+  return days === 1 ? total : (total * 7) / days
+}
+
 // ── Variability ──────────────────────────────────────────────────────────────
 
 export interface VariabilityChange {
@@ -161,42 +201,49 @@ export function variabilityChange(
 // ── The bundle a section shows ───────────────────────────────────────────────
 
 export interface TrendStats {
-  changes: PeriodChange[]
+  /** The period's mean against the same number of days just before it. */
+  change: PeriodChange
+  /** Straight-line change per week through the period — 28 days or longer. */
   rate: { perWeek: number; n: number; days: number } | null
+  /** Best and worst complete Monday–Sunday week inside the period. */
   best: WeekBucket | null
   worst: WeekBucket | null
   weeksCompared: number
+  /** Day-to-day spread in the period against the period before. */
   variability: VariabilityChange
 }
 
 export interface TrendStatsOptions {
+  /** The period picked in the page's range bar, [from, to]. */
+  from: string
   to: string
   /** Leave this day out (today, while it is still in progress). */
   exclude?: string | null
   /** 'mean' for rates and levels (and per-day sums); 'total' for a weekly total. */
   weekAgg?: 'mean' | 'total'
   direction: 'up' | 'down' | null
-  /** Window of the weekly rate; 28 days by default. */
-  rateDays?: number
   /** Sparse metrics (weight) need fewer readings per side. */
   sparse?: boolean
 }
 
+/** A weekly rate needs a period this long — over a few days a fitted line is noise. */
+export const RATE_MIN_DAYS = 28
+
 export function buildTrendStats(series: readonly DayValue[], opts: TrendStatsOptions): TrendStats {
-  const { to, exclude, sparse } = opts
-  const changes = [7, 30, 90].map(days => periodChange(series, {
-    to, days, exclude, minPoints: sparse ? (days <= 7 ? 1 : 2) : (days <= 7 ? 3 : Math.ceil(days / 3)),
-  }))
-  const rateDays = opts.rateDays ?? 28
-  const r = weeklyRate(series, { to, days: rateDays, exclude, minPoints: sparse ? 3 : 7 })
-  const weeks = weeklyBuckets(series, { from: addDaysIso(to, -89), to: exclude === to ? addDaysIso(to, -1) : to, agg: opts.weekAgg ?? 'mean', minDays: sparse ? 1 : 4 })
+  const { from, to, exclude, sparse } = opts
+  const days = daysBetweenIso(from, to) + 1
+  const change = periodChange(series, {
+    to, days, exclude, minPoints: sparse || days === 1 ? 1 : days <= 7 ? 3 : Math.ceil(days / 3),
+  })
+  const r = days >= RATE_MIN_DAYS ? weeklyRate(series, { to, days, exclude, minPoints: sparse ? 3 : 7 }) : null
+  const weeks = weeklyBuckets(series, { from, to: exclude === to ? addDaysIso(to, -1) : to, agg: opts.weekAgg ?? 'mean', minDays: sparse ? 1 : 4 })
   const { best, worst } = bestWorstWeek(weeks, opts.direction)
   return {
-    changes,
-    rate: r ? { ...r, days: rateDays } : null,
+    change,
+    rate: r ? { ...r, days } : null,
     best, worst,
     weeksCompared: weeks.length,
-    variability: variabilityChange(series, { to, days: 30, exclude, minPoints: sparse ? 3 : 7 }),
+    variability: variabilityChange(series, { to, days, exclude, minPoints: sparse ? 3 : days <= 7 ? 5 : 7 }),
   }
 }
 
@@ -230,6 +277,73 @@ export function nightBounds(sessions: readonly { startMs: number; endMs: number 
 export function fmtClock(minutes: number): string {
   const m = ((Math.round(minutes) % 1440) + 1440) % 1440
   return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`
+}
+
+/** The circular mean of clock times (minutes after midnight): 23:50 and
+ *  00:10 average to 00:00, not 12:00. null without a value. */
+export function clockMean(minutes: readonly number[]): number | null {
+  const vals = minutes.filter(m => Number.isFinite(m))
+  if (!vals.length) return null
+  let s = 0, c = 0
+  for (const m of vals) { const a = (m / 1440) * 2 * Math.PI; s += Math.sin(a); c += Math.cos(a) }
+  let center = (Math.atan2(s, c) / (2 * Math.PI)) * 1440
+  if (center < 0) center += 1440
+  return Math.round(center) % 1440
+}
+
+export interface ClockNight {
+  date: string
+  /** Sleep onset / wake, minutes after midnight. */
+  onset: number
+  wake: number
+  /** Hours asleep that night (the measured total), null when unknown. */
+  asleep: number | null
+}
+
+/** One row of the bed-and-wake chart: a night, or the average night of a
+ *  week or a month (clock times as circular means, hours asleep as a mean). */
+export interface ClockRow extends ClockNight {
+  /** The last day the row covers (= date for a night). */
+  until: string
+  unit: 'night' | 'week' | 'month'
+  nights: number
+}
+
+/** Nights per row: one per night up to two weeks, one per Monday–Sunday
+ *  week up to 120 days, one per calendar month beyond — so the chart stays
+ *  about two weeks of rows tall whatever the period. */
+export function clockRowUnit(days: number): ClockRow['unit'] {
+  return days <= 14 ? 'night' : days <= 120 ? 'week' : 'month'
+}
+
+function lastOfMonth(date: string): string {
+  const [y, m] = date.split('-').map(Number)
+  return `${date.slice(0, 7)}-${String(new Date(Date.UTC(y, m, 0)).getUTCDate()).padStart(2, '0')}`
+}
+
+/** The bed-and-wake rows of the nights inside [from, to], oldest first; a
+ *  week or month row is clipped to the period. */
+export function clockRows(nights: readonly ClockNight[], from: string, to: string): ClockRow[] {
+  const inside = nights.filter(n => n.date >= from && n.date <= to).sort((a, b) => a.date.localeCompare(b.date))
+  const unit = clockRowUnit(daysBetweenIso(from, to) + 1)
+  if (unit === 'night') return inside.map(n => ({ ...n, until: n.date, unit, nights: 1 }))
+  const groups = new Map<string, ClockNight[]>()
+  for (const n of inside) {
+    const key = unit === 'week' ? mondayOfIso(n.date) : `${n.date.slice(0, 7)}-01`
+    groups.set(key, [...(groups.get(key) ?? []), n])
+  }
+  return [...groups.entries()].map(([key, g]) => {
+    const end = unit === 'week' ? addDaysIso(key, 6) : lastOfMonth(key)
+    const asleep = g.map(n => n.asleep).filter((v): v is number => v != null)
+    return {
+      date: key < from ? from : key,
+      until: end > to ? to : end,
+      onset: clockMean(g.map(n => n.onset)) as number,
+      wake: clockMean(g.map(n => n.wake)) as number,
+      asleep: asleep.length ? (mean(asleep) as number) : null,
+      unit, nights: g.length,
+    }
+  })
 }
 
 // ── Personal usual range + the overnight-vitals status ───────────────────────

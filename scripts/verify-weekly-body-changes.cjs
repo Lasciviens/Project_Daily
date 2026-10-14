@@ -104,5 +104,39 @@ check('§6.5 the 30-day view drops its oldest week (14.09–20.09), which ends b
 check('§6.6 nothing is cut when the first reading is older than every row',
   W.sinceFirstReading(rows, { ...series, weight: [{ date: '2026-09-01', value: 84 }, ...series.weight] }).dropped, 0)
 
+// ─── §7 the comment line under each week (rule-based, no AI) ─────────────────
+const cell = (avg, change = null, verdict = null) => ({ avg, days: avg == null ? 0 : 1, change, verdict })
+const none = cell(null)
+const wk = cells => ({ weekStart: '2026-10-12', weekEnd: '2026-10-18', cells: { weight: none, fat: none, muscle: none, score: none, ...cells } })
+const say = (cells, phase = 'cut') => W.weekComment(wk(cells), phase)
+check('§7.1 no reading that week', say({}), { text: 'No scale reading this week.', tone: 'neutral' })
+check('§7.2 readings but no week before', say({ weight: cell(82.5) }).text, 'No reading the week before to compare with.')
+check('§7.3 fat down and muscle up, both real → recomposition',
+  say({ fat: cell(23, -0.8, 'good'), muscle: cell(40, 0.7, 'good') }), { text: 'Fat −0.8 % and muscle +0.7 % — a good recomposition week', tone: 'success' })
+check('§7.4 the owner\'s example: the right way, but within the scale\'s noise (never coloured)',
+  say({ fat: cell(23, -0.3, 'steady'), muscle: cell(40, 0.2, 'steady') }), { text: 'Fat −0.3 % and muscle +0.2 % — right way, within the noise', tone: 'neutral' })
+check('§7.4b both inside the noise, the other way', say({ fat: cell(23, 0.3, 'steady'), muscle: cell(40, 0.2, 'steady') }).text,
+  'Fat +0.3 % and muscle +0.2 % — within the scale’s noise')
+check('§7.5 fat up and muscle down → the wrong way, warn',
+  say({ fat: cell(23, 0.8, 'bad'), muscle: cell(40, -0.7, 'bad') }), { text: 'Fat +0.8 % and muscle −0.7 % — the wrong way for both', tone: 'warn' })
+check('§7.6 fat down, muscle inside the noise → held',
+  say({ fat: cell(23, -0.8, 'good'), muscle: cell(40, -0.2, 'steady') }).text, 'Fat −0.8 % and muscle −0.2 % — fat down, muscle held')
+check('§7.7 cut: a real weight loss at pace', say({ weight: cell(82, -0.4, 'good') }), { text: 'Weight −0.4 kg — on track for your cut', tone: 'success' })
+check('§7.8 cut: weight up', say({ weight: cell(82, 0.4, 'bad') }).text, 'Weight +0.4 kg — wrong way for your cut')
+check('§7.9 cut: too fast', say({ weight: cell(82, -0.9, 'bad') }).text, 'Weight −0.9 kg — too fast for your cut')
+check('§7.10 maintain: a real drift', say({ weight: cell(82, 0.4, 'bad') }, 'maintain').text, 'Weight +0.4 kg — drifting up from maintenance')
+check('§7.11 weight on pace and fat down', say({ weight: cell(82, -0.5, 'good'), fat: cell(23, -0.7, 'good') }).text,
+  'Weight −0.5 kg, fat −0.7 % — on track for your cut, fat down too')
+check('§7.12 weight on pace but fat up → warn', say({ weight: cell(82, -0.5, 'good'), fat: cell(23, 0.7, 'bad') }),
+  { text: 'Weight −0.5 kg, fat +0.7 % — on track for your cut, but fat up', tone: 'warn' })
+check('§7.13 steady weight, fat down', say({ weight: cell(82, -0.1, 'steady'), fat: cell(23, -0.8, 'good') }).text,
+  'Weight −0.1 kg, fat −0.8 % — fat down at a steady weight')
+check('§7.14 everything inside the noise', say({ weight: cell(82, -0.1, 'steady'), fat: cell(23, -0.2, 'steady') }),
+  { text: 'Weight −0.1 kg, fat −0.2 % — within the scale’s noise', tone: 'neutral' })
+check('§7.15 phase still loading → numbers only, no judgement', say({ weight: cell(82, -0.6, 'plain') }, null), { text: 'Weight −0.6 kg.', tone: 'neutral' })
+check('§7.16 the body score alone is reported, not judged', say({ score: cell(79, 2, 'plain') }).text, 'Body score +2 — the scale’s own number.')
+check('§7.17 from the real rows: −0.4 kg on a cut, fat −0.5 inside the noise',
+  W.weekComment(rows[0], 'cut').text, 'Weight −0.4 kg, fat −0.5 % — on track for your cut')
+
 console.log(`\n${passed} passed, ${failed} failed`)
 process.exit(failed ? 1 : 0)

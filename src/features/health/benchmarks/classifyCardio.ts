@@ -186,7 +186,7 @@ export function classifyHrv(v: number, ctx: BenchmarkContext): Classification | 
     `${who} ${ageBandName(pick.row.min, pick.row.max, pick.clamped)}: ${fmt(mean, 1)} ± ${fmt(sd, 1)} ms on a 5-minute ECG (Voss 2015) — ` +
     'a different method from Apple’s short readings, which run about 8 ms lower than a chest strap.'
   const sources = [SRC.voss2015, SRC.appleWatchHrv2024, SRC.hillebrand2013]
-  const meaning = `Only rough context: compare your 7-day average with your own 60-day range instead. ${HRV_EVIDENCE}`
+  const meaning = `Only rough context: compare an average over several days with your own 60-day range instead. ${HRV_EVIDENCE}`
   if (v < mean - sd) {
     return build('heart_rate_variability', { band: 'low_for_age', label: 'Lower than typical for your age (different method)', tone: 'neutral' },
       { referenceText: reference, sources, meaning })

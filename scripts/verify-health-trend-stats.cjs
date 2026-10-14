@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 /*
- * Verification — healthTrendStats.ts (the Health page's 7/30/90-day change,
- * weekly rate, best/worst week, variability, wake-time spread, usual ranges
- * and the overnight-vitals status) and benchmarks/referenceLadder.ts.
+ * Verification — healthTrendStats.ts (the Health page's change over the
+ * picked period, weekly rate, best/worst week, variability, weekly totals,
+ * wake-time spread, the bed-and-wake rows, usual ranges and the
+ * overnight-vitals status) and benchmarks/referenceLadder.ts.
  * Runs the real modules through sucrase (no test framework, per AGENTS.md).
  *
  * Run: node scripts/verify-health-trend-stats.cjs
@@ -105,16 +106,48 @@ check('§5.5 same spread → similar', T.variabilityChange(series(TO, 60, i => (
 check('§5.6 too few readings → null verdict', T.variabilityChange(flat.slice(-3), { to: TO, days: 30 }).verdict, null)
 
 // ─── §6 buildTrendStats ──────────────────────────────────────────────────────
-const bundle = T.buildTrendStats(series(TO, 200, i => 8000 + (i < 7 ? 1000 : 0)), { to: TO, direction: 'up' })
-check('§6.1 three changes', bundle.changes.map(c => c.days), [7, 30, 90])
-check('§6.2 7-day change', bundle.changes[0].delta, 1000)
+// The period picked in the range bar is the window: [from, to].
+const lift = series(TO, 200, i => 8000 + (i < 7 ? 1000 : 0))
+const p90 = { from: addDays(TO, -89), to: TO, direction: 'up' }
+const bundle = T.buildTrendStats(lift, p90)
+check('§6.1 the change is the picked period against the one before', bundle.change.days, 90)
+check('§6.2 90 days: the last week lifts the mean by 7/90 of 1000', r1(bundle.change.delta), r1((7 * 1000) / 90))
 check('§6.3 best week is the latest', bundle.best.weekStart, '2026-09-21')
-check('§6.4 weeks compared over 90 days', bundle.weeksCompared, 12)
+check('§6.4 weeks compared = complete weeks inside the 90 days', bundle.weeksCompared, 12)
+const b7 = T.buildTrendStats(lift, { from: addDays(TO, -6), to: TO, direction: 'up' })
+check('§6.5 7 days: the change is the last 7 against the 7 before', [b7.change.days, b7.change.delta], [7, 1000])
+check('§6.6 7 days: no weekly rate (under 28 days)', b7.rate, null)
+check('§6.7 7 days: one complete week → no best/worst', [b7.best, b7.weeksCompared], [null, 1])
+const b30 = T.buildTrendStats(lift, { from: addDays(TO, -29), to: TO, direction: 'up' })
+check('§6.8 30 days: weeks inside the period only', b30.weeksCompared, 4)
+check('§6.9 30 days: the rate covers the period', b30.rate.days, 30)
+check('§6.10 30 days: spread compares the period with the 30 days before', b30.variability.days, 30)
+const b1 = T.buildTrendStats(lift, { from: TO, to: TO, direction: 'up' })
+check('§6.11 one day: that day against the day before', [b1.change.days, b1.change.current, b1.change.previous], [1, 9000, 9000])
+check('§6.12 one day in progress (excluded) → no change',
+  T.buildTrendStats(lift, { from: TO, to: TO, direction: 'up', exclude: TO }).change.current, null)
 const sparse = T.buildTrendStats([{ date: addDays(TO, -20), value: 82 }, { date: addDays(TO, -10), value: 81 }, { date: TO, value: 80 }],
-  { to: TO, direction: null, sparse: true })
-check('§6.5 sparse weight gives a rate', r2(sparse.rate.perWeek), -0.7)
-check('§6.6 excluded today not part of best week',
-  T.buildTrendStats(series(TO, 200, i => (i === 0 ? 1 : 10)), { to: TO, direction: 'up', exclude: TO }).worst.value, 10)
+  { from: addDays(TO, -29), to: TO, direction: null, sparse: true })
+check('§6.13 sparse weight gives a rate', r2(sparse.rate.perWeek), -0.7)
+check('§6.14 excluded today not part of best week',
+  T.buildTrendStats(series(TO, 200, i => (i === 0 ? 1 : 10)), { ...p90, exclude: TO }).worst.value, 10)
+
+// ─── §6b weeks of a period, weekly totals ───────────────────────────────────
+const TUE = '2026-10-13'
+check('§6b.1 7 days → this week and the one before', T.weekStartsFor(TUE, 7), ['2026-10-12', '2026-10-05'])
+check('§6b.2 30 days → the 5 weeks it touches', T.weekStartsFor(TUE, 30).length, 5)
+const mins = series(TUE, 21, () => 30) // 30 min every day for three weeks
+check('§6b.3 week totals, oldest first; the running week counts to `to`',
+  T.weekTotals(mins, { weekStarts: ['2026-10-12', '2026-10-05'], to: TUE }).map(w => [w.weekStart, w.value]),
+  [['2026-10-05', 210], ['2026-10-12', 60]])
+check('§6b.4 a week without readings is dropped (minDays 1)',
+  T.weekTotals([], { weekStarts: ['2026-10-12'], to: TUE }), [])
+check('§6b.5 …or kept as zero (minDays 0)',
+  T.weekTotals([], { weekStarts: ['2026-10-12'], to: TUE, minDays: 0 }).map(w => w.value), [0])
+check('§6b.6 weekly figure of a day = that day', T.weeklyTotal(mins, TUE, TUE), 30)
+check('§6b.7 weekly figure of 7 days = their total', T.weeklyTotal(mins, addDays(TUE, -6), TUE), 210)
+check('§6b.8 weekly figure of 14 days = the average week', T.weeklyTotal(mins, addDays(TUE, -13), TUE), 210)
+check('§6b.9 no readings → null', T.weeklyTotal([], addDays(TUE, -6), TUE), null)
 
 // ─── §7 timeOfDaySpread ──────────────────────────────────────────────────────
 check('§7.1 identical times → sd 0', T.timeOfDaySpread([420, 420, 420, 420, 420]).sd, 0)
@@ -127,6 +160,23 @@ check('§7.6 fewer than 5 nights → null', T.timeOfDaySpread([420, 430, 440]), 
 check('§7.7 nightBounds', T.nightBounds([{ startMs: 5, endMs: 10 }, { startMs: 1, endMs: 3 }]), { onsetMs: 1, wakeMs: 10 })
 check('§7.8 nightBounds empty', T.nightBounds([]), null)
 check('§7.9 fmtClock', [T.fmtClock(425), T.fmtClock(0), T.fmtClock(1439.6), T.fmtClock(-10)], ['07:05', '00:00', '00:00', '23:50'])
+check('§7.10 clockMean across midnight', T.clockMean([1430, 10]), 0)
+check('§7.11 clockMean of nothing', T.clockMean([]), null)
+
+// ─── §7b the bed-and-wake rows follow the period ────────────────────────────
+const nightsOf = (to, n) => Array.from({ length: n }, (_, i) => ({ date: addDays(to, -i), onset: i % 2 ? 1430 : 10, wake: 420, asleep: 7 }))
+const nights = nightsOf(TO, 400)
+check('§7b.1 one day → that night only', T.clockRows(nights, TO, TO).map(r => [r.date, r.unit]), [[TO, 'night']])
+check('§7b.2 7 days → 7 nightly rows, oldest first', T.clockRows(nights, addDays(TO, -6), TO).map(r => r.date)[0], addDays(TO, -6))
+const wk = T.clockRows(nights, addDays(TO, -29), TO)
+// 30 days to Sun 27.09 start on Sat 29.08: that week (24.08–30.08) is clipped to 29.08–30.08.
+check('§7b.3 30 days → weekly rows (5, the first clipped to the period)', [wk.length, wk[0].unit, wk[0].date, wk[0].until], [5, 'week', addDays(TO, -29), '2026-08-30'])
+// Four nights at 23:50 and three at 00:10 average to 23:59, not ~12:00.
+check('§7b.4 a weekly row averages its nights across midnight', [wk[1].onset, wk[1].wake, wk[1].nights, wk[1].asleep], [1439, 420, 7, 7])
+const mo = T.clockRows(nights, addDays(TO, -364), TO)
+check('§7b.5 1 year → monthly rows', [mo.length, mo[0].unit, mo.at(-1).date, mo.at(-1).until], [13, 'month', '2026-09-01', TO])
+check('§7b.6 90 days → weekly', T.clockRowUnit(90), 'week')
+check('§7b.7 nights outside the period are left out', T.clockRows(nights, addDays(TO, 10), addDays(TO, 12)), [])
 
 // ─── §8 usual range + vitals ─────────────────────────────────────────────────
 const hrv = [40, 50, 40, 50, 40, 50, 40, 50, 40, 50]
