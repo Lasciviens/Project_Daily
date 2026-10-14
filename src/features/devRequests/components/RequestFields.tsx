@@ -1,5 +1,5 @@
-import { useCallback, useMemo, useState, type ReactNode, type Ref } from 'react'
-import { ChevronDown, CircleDot, FileText, Flag, Gauge, IndentDecrease, IndentIncrease, Tag } from 'lucide-react'
+import { useCallback, useMemo, type ReactNode, type Ref } from 'react'
+import { CircleDot, FileText, Flag, Gauge, IndentDecrease, IndentIncrease, Tag } from 'lucide-react'
 import { CATEGORY_TONE, PAGE_CHOICES, PAGE_OPTIONS, PRIORITY_TONE, STATUSES, STATUS_LABEL, STATUS_TONE } from './devRequestMeta'
 import { CATEGORIES, EFFORTS, PRIORITIES, type DraftFields } from '../devRequestRules'
 import type { DevRequestCategory, DevRequestEffort, DevRequestPriority, DevRequestStatus } from '../types'
@@ -8,7 +8,7 @@ import { MarkList } from './MarkList'
 import { OutlineEditor, type OutlineHandle, type OutlineReview } from './OutlineEditor'
 import { PropertyPills, type Property } from './PropertyPills'
 import { useGoToMark } from '../pick/goToMark'
-import { IconButton, Truncate, cx } from '../../../shared/ui'
+import { IconButton, cx } from '../../../shared/ui'
 
 interface Props {
   fields: DraftFields
@@ -37,9 +37,10 @@ const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
  * The request as the request window edits it: a title, the outline editor —
  * the points, numbered as you write them (outline.ts), with links to picked
  * spots in them ("Water card" — a click opens the spot) and its toolbar
- * (Pick on page, indent) — then the details as pill buttons. On a phone the
- * details fold into one line under the points. Picks from before links show
- * as rows. Everything is stored in `description` (devRequestMarks.ts).
+ * (Pick on page, indent) — then the details as pill buttons, each a dropdown,
+ * on every screen (14.10.2026: the phone's "Details" fold is gone — one tap
+ * less to change a property). Picks from before links show as rows.
+ * Everything is stored in `description` (devRequestMarks.ts).
  */
 export function RequestFields({ fields, onChange, review, onTailNote, status, titleRef, outlineRef, flash, beforeEditor, tools, showKeys }: Props) {
   const parsed = useMemo(() => parseDescription(fields.description), [fields.description])
@@ -91,7 +92,6 @@ export function RequestFields({ fields, onChange, review, onTailNote, status, ti
       onChange: v => onChange({ effort: v as DevRequestEffort | '' }),
     },
   ]
-  const summary = props.map(p => p.options.find(o => o.value === p.value)?.label ?? p.value).filter(l => l && l !== 'Effort?').join(' · ')
   const indent = (d: 1 | -1) => { const h = outlineRef && typeof outlineRef === 'object' ? outlineRef.current : null; h?.indent(d) }
 
   return (
@@ -132,35 +132,10 @@ export function RequestFields({ fields, onChange, review, onTailNote, status, ti
           </>
         }
       />
-      <DetailsRow summary={summary}>
-        <PropertyPills items={props} />
-      </DetailsRow>
+      <PropertyPills items={props} />
       <MarkList marks={rows} onRemove={i => write({ marks: parsed.marks.filter(m => m !== rows[i]) })} />
     </div>
   )
 }
 
 const TOOL = cx('!h-9 !w-9 text-fg-muted [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11')
-
-/**
- * The details. On a phone they fold into one summary line under the points,
- * so the points stay the first thing on screen; a tap opens the pills.
- */
-function DetailsRow({ summary, children }: { summary: string; children: ReactNode }) {
-  const [open, setOpen] = useState(false)
-  return (
-    <section aria-label="Details" className="flex flex-col gap-2">
-      <button
-        type="button"
-        onClick={() => setOpen(v => !v)}
-        aria-expanded={open}
-        className="flex min-h-[44px] items-center gap-2 rounded-row border border-line bg-surface px-3 text-left sm:hidden"
-      >
-        <span className="section-label shrink-0">Details</span>
-        <Truncate reveal="none" className="min-w-0 flex-1 text-meta text-fg-2">{summary}</Truncate>
-        <ChevronDown aria-hidden className={cx('h-4 w-4 shrink-0 text-fg-muted transition-transform', open && 'rotate-180')} />
-      </button>
-      <div className={cx(open ? 'block' : 'hidden', 'sm:block')}>{children}</div>
-    </section>
-  )
-}
