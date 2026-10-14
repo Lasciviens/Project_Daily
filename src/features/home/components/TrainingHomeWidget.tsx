@@ -90,7 +90,12 @@ function nextWhen(date: string, time: string | null, today: string): string {
   return time ? `${day} ${time}` : day
 }
 
-export function TrainingTile() {
+/**
+ * The training glance tile. `large` (the side track of Home's split laptop
+ * board, 24rem wide): the first screen puts this week and the next session
+ * beside the streak, in place of the streak and this-week screens.
+ */
+export function TrainingTile({ large = false }: { large?: boolean }) {
   const stats = useWeekTrainingStats()
   const streak = useTrainingWeekStreak()
   const { data: next } = useNextTrainingSession()
@@ -101,44 +106,69 @@ export function TrainingTile() {
   const target = profile?.training_days_per_week ?? null
   const w = stats.lastWorkout
   const workoutSeconds = w?.start_time && w.end_time ? (new Date(w.end_time).getTime() - new Date(w.start_time).getTime()) / 1000 : null
+  const nextLine = next ? next.title : stats.hasData ? 'No session planned' : 'Nothing synced yet'
+
+  const streakBody = (
+    <div className="flex min-w-0 items-center gap-2.5">
+      <Flame aria-hidden className={streak.weeks > 0 ? 'h-10 w-10 shrink-0 fill-warn/25 text-warn' : 'h-10 w-10 shrink-0 text-fg-faint'} strokeWidth={2.25} />
+      <div className="min-w-0">
+        <p className="flex items-baseline gap-1 leading-none">
+          <span className="text-kpi font-bold tabular-nums text-fg"><AnimatedNumber value={streak.weeks} />{streak.capped ? '+' : ''}</span>
+          <span className="text-meta font-semibold text-fg-2">{streak.weeks === 1 ? 'week' : 'weeks'}</span>
+        </p>
+        <Truncate className="mt-1 text-meta text-fg-muted">
+          {streakLine(streak.weeks, stats.sessions)}
+        </Truncate>
+      </div>
+    </div>
+  )
+
+  const opening: GlanceScreen[] = large
+    ? [{
+        key: 'overview',
+        name: 'Streak & this week',
+        body: (
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="shrink-0">{streakBody}</div>
+            <div className="min-w-0 flex-1 space-y-1 border-l border-line pl-3">
+              <Truncate className="text-ui tabular-nums text-fg-muted">
+                <span className="font-semibold text-fg">{stats.sessions}{target ? ` of ${target}` : ''}</span> this week{stats.minutes > 0 ? ` · ${stats.minutes} min` : ''}
+              </Truncate>
+              <Truncate className="text-meta tabular-nums text-fg-muted">
+                {next ? `Next ${nextWhen(next.date, next.startTime, today)} · ${nextLine}` : nextLine}
+              </Truncate>
+            </div>
+          </div>
+        ),
+      }]
+    : [{
+        // The first screen is the streak alone — big and motivating (owner).
+        key: 'streak',
+        name: 'Streak',
+        body: streakBody,
+      }]
 
   const screens: GlanceScreen[] = [
-    {
-      // The first screen is the streak alone — big and motivating (owner).
-      key: 'streak',
-      name: 'Streak',
-      body: (
-        <div className="flex min-w-0 items-center gap-2.5">
-          <Flame aria-hidden className={streak.weeks > 0 ? 'h-10 w-10 shrink-0 fill-warn/25 text-warn' : 'h-10 w-10 shrink-0 text-fg-faint'} strokeWidth={2.25} />
-          <div className="min-w-0">
-            <p className="flex items-baseline gap-1 leading-none">
-              <span className="text-kpi font-bold tabular-nums text-fg"><AnimatedNumber value={streak.weeks} />{streak.capped ? '+' : ''}</span>
-              <span className="text-meta font-semibold text-fg-2">{streak.weeks === 1 ? 'week' : 'weeks'}</span>
-            </p>
-            <Truncate className="mt-1 text-meta text-fg-muted">
-              {streakLine(streak.weeks, stats.sessions)}
-            </Truncate>
-          </div>
-        </div>
-      ),
-    },
+    ...opening,
     {
       key: 'next',
       name: 'Next session',
       body: (
         <div className="min-w-0 space-y-1">
-          <Truncate className="text-ui font-semibold text-fg">{next ? next.title : stats.hasData ? 'No session planned' : 'Nothing synced yet'}</Truncate>
+          <Truncate className="text-ui font-semibold text-fg">{nextLine}</Truncate>
           {next && <Truncate className="text-meta tabular-nums text-fg-muted">{nextWhen(next.date, next.startTime, today)}</Truncate>}
         </div>
       ),
     },
-    {
+  ]
+  if (!large) {
+    screens.push({
       key: 'week',
       name: 'This week',
       value: <span className="flex items-baseline gap-1"><AnimatedNumber value={stats.sessions} />{target ? <span className="text-meta font-medium text-fg-muted">of {target} sessions</span> : <span className="text-meta font-medium text-fg-muted">sessions</span>}</span>,
       hint: stats.minutes > 0 ? `${stats.minutes} min${stats.km > 0 ? ` · ${stats.km.toFixed(1)} km` : ''}` : 'Nothing logged yet this week',
-    },
-  ]
+    })
+  }
   if (w) {
     screens.push({
       key: 'last',

@@ -50,6 +50,12 @@ export interface BoardColumn<K extends string> {
   span?: number
   /** Stick to the top while the page scrolls — only while the column fits the viewport (PageBoard checks; a taller one scrolls with the page). */
   sticky?: boolean
+  /**
+   * As tall as the tallest column, its last section grown to the end: the
+   * `fill` columns of a step end on one line, so a band below starts flush
+   * under all of them. Not with `sticky`.
+   */
+  fill?: boolean
 }
 
 export type BoardColumnSpec<K extends string> = readonly K[] | BoardColumn<K>
@@ -78,7 +84,7 @@ export interface BoardLayout<K extends string> {
 /** Step 1 is always one stack; wider steps are optional (a missing step uses the nearest one below). */
 export type BoardLayouts<K extends string> = { 1: readonly K[] } & Partial<Record<2 | 3 | 4, BoardLayout<K>>>
 
-export interface ResolvedColumn<K extends string> { stack: readonly K[]; span: number; sticky: boolean }
+export interface ResolvedColumn<K extends string> { stack: readonly K[]; span: number; sticky: boolean; fill: boolean }
 export interface ResolvedLayout<K extends string> {
   /** The declared step this layout came from (= its track count). */
   tracks: PageStep
@@ -95,8 +101,8 @@ function isColumn<K extends string>(c: BoardColumnSpec<K>): c is BoardColumn<K> 
 }
 
 function normalizeColumn<K extends string>(c: BoardColumnSpec<K>): ResolvedColumn<K> {
-  if (isColumn(c)) return { stack: c.stack, span: Math.max(1, Math.floor(c.span ?? 1)), sticky: !!c.sticky }
-  return { stack: c as readonly K[], span: 1, sticky: false }
+  if (isColumn(c)) return { stack: c.stack, span: Math.max(1, Math.floor(c.span ?? 1)), sticky: !!c.sticky, fill: !!c.fill }
+  return { stack: c as readonly K[], span: 1, sticky: false, fill: false }
 }
 
 /** The layout a step renders: the declared one, else the nearest declared step below it. */
@@ -114,7 +120,7 @@ export function resolveBoardLayout<K extends string>(layouts: BoardLayouts<K>, s
       }
     }
   }
-  return { tracks: 1, top: [], columns: [{ stack: layouts[1], span: 1, sticky: false }], bottom: [], main: `${BOARD.main}rem`, lead: 0 }
+  return { tracks: 1, top: [], columns: [{ stack: layouts[1], span: 1, sticky: false, fill: false }], bottom: [], main: `${BOARD.main}rem`, lead: 0 }
 }
 
 /**
@@ -155,6 +161,7 @@ export function validateBoardLayouts<K extends string>(layouts: BoardLayouts<K>,
       if (cols.length > 0 && used !== s) problems.push(`step ${s}: columns cover ${used} tracks, expected ${s}`)
       if (cols.length === 0 && !(l.top?.length || l.bottom?.length)) problems.push(`step ${s}: nothing placed`)
       if (l.lead != null && (!Number.isInteger(l.lead) || l.lead < 0 || l.lead > s - 1)) problems.push(`step ${s}: lead ${l.lead} must be 0–${s - 1}`)
+      if (cols.some(c => c.sticky && c.fill)) problems.push(`step ${s}: a column can't be both sticky and fill`)
     }
     const keys = keysAt(layouts, s)
     const seen = new Set<string>()

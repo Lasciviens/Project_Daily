@@ -1,8 +1,9 @@
-import { useState } from 'react'
-import { CloudSun } from 'lucide-react'
+import { useState, type ReactNode } from 'react'
+import { CloudRain, CloudSun, Droplets, Wind } from 'lucide-react'
 import { ModalShell } from '../../../shared/modals'
-import { Button, Skeleton } from '../../../shared/ui'
+import { Button, Skeleton, Truncate } from '../../../shared/ui'
 import { hoursFromNow, weatherIcon, weatherLabel, type WeatherData, type WeatherHour } from '../api/weatherApi'
+import { feelsLike } from '../briefRules'
 import { useWeather } from '../hooks/useWeather'
 import { useWidgetState } from '../hooks/useWidgetState'
 import { WidgetShell } from './WidgetShell'
@@ -99,11 +100,98 @@ function weatherScreens(data: WeatherData): GlanceScreen[] {
   return screens
 }
 
-/** Glance tile with swipeable screens; the full forecast opens in a sheet. */
-export function WeatherTile() {
+/** One fact under the large tile's "now": a small label over its value. */
+function Fact({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
+  return (
+    <div className="min-w-0 rounded-control bg-surface-2 px-2 py-1.5">
+      <p className="flex items-center gap-1 text-micro text-fg-muted"><span aria-hidden className="[&_svg]:h-3 [&_svg]:w-3">{icon}</span>{label}</p>
+      <Truncate className="text-meta font-semibold tabular-nums text-fg">{value}</Truncate>
+    </div>
+  )
+}
+
+/**
+ * The large tile's one screen (beside the tasks on Home's split laptop board,
+ * as tall as they are): now with feels-like and today's range; wind, rain
+ * and humidity; the next eight hours; the next five days. Spread over the
+ * tile's height.
+ */
+function weatherOverview(data: WeatherData): GlanceScreen {
+  const c = data.current
+  const ahead = hoursFromNow(data)
+  const hours = ahead.slice(1, 9)
+  const wet = hours.some(h => h.precip >= 0.1)
+  const rain12 = ahead.slice(0, 12).reduce((sum, h) => sum + h.precip, 0)
+  const fl = feelsLike(c.temp, c.windSpeed)
+  const feels = fl != null && c.temp - Math.round(fl) >= 2 ? Math.round(fl) : null
+  return {
+    key: 'overview',
+    name: 'Now',
+    body: (
+      <div className="flex min-w-0 flex-1 flex-col justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <span aria-hidden className="text-5xl leading-none">{weatherIcon(c.symbol)}</span>
+          <div className="min-w-0 flex-1">
+            <p className="text-kpi font-bold leading-none tabular-nums text-fg">{c.temp}°</p>
+            <Truncate className="mt-1 text-meta text-fg-muted">{weatherLabel(c.symbol)}{feels != null ? ` · feels like ${feels}°` : ''}</Truncate>
+          </div>
+          {data.today && (
+            <div className="shrink-0 text-right">
+              <p className="text-micro text-fg-muted">Today</p>
+              <p className="text-ui font-semibold tabular-nums text-fg">{data.today.min}–{data.today.max}°</p>
+            </div>
+          )}
+        </div>
+        <div className="grid grid-cols-3 gap-2">
+          <Fact icon={<Wind />} label="Wind" value={`${c.windSpeed} m/s${c.windDirection !== '—' ? ` ${c.windDirection}` : ''}`} />
+          <Fact icon={<CloudRain />} label="Next 12 h" value={rain12 >= 0.1 ? `${rain12.toFixed(1)} mm` : 'Dry'} />
+          <Fact icon={<Droplets />} label="Humidity" value={`${c.humidity}%`} />
+        </div>
+        {hours.length > 0 && (
+          <div className="min-w-0">
+            <p className="mb-1 text-micro font-medium text-fg-muted">Next hours</p>
+            <div className="grid grid-cols-8 gap-0.5 text-center">
+              {hours.map(h => (
+                <div key={h.time} className="min-w-0">
+                  <div className="text-micro tabular-nums text-fg-muted">{h.time}</div>
+                  <div aria-hidden className="text-xl leading-8">{weatherIcon(h.symbol)}</div>
+                  <div className="text-meta font-semibold tabular-nums text-fg">{h.temp}°</div>
+                  {wet && <div className="h-4 text-micro tabular-nums text-info">{h.precip >= 0.1 ? h.precip.toFixed(1) : ''}</div>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        {data.daily.length > 0 && (
+          <div className="min-w-0">
+            <p className="mb-1 text-micro font-medium text-fg-muted">Next days</p>
+            <div className="grid auto-cols-fr grid-flow-col gap-1.5">
+              {data.daily.slice(0, 5).map(d => (
+                <div key={d.date} className="flex min-w-0 flex-col items-center rounded-control bg-surface-2 px-1 py-1.5 tabular-nums">
+                  <span className="text-micro font-medium text-fg-muted">{d.label}</span>
+                  <span aria-hidden className="text-xl leading-8">{weatherIcon(d.symbol)}</span>
+                  <span className="text-meta font-semibold text-fg">{d.max}°</span>
+                  <span className="text-micro text-fg-muted">{d.min}°</span>
+                  <span className="h-4 text-micro text-info">{d.precip >= 0.1 ? `${d.precip.toFixed(1)} mm` : ''}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    ),
+  }
+}
+
+/**
+ * Glance tile with swipeable screens; the full forecast opens in a sheet.
+ * `large` (beside the tasks on the split laptop board): one screen with
+ * everything at once (`weatherOverview`).
+ */
+export function WeatherTile({ large = false }: { large?: boolean }) {
   const [open, setOpen] = useState(false)
   const { data, isLoading, error, refetch, geo } = useWeather()
-  const screens = data ? weatherScreens(data) : [{ key: 'none', name: 'Now', value: '—', hint: error ? 'Unavailable' : undefined }]
+  const screens = data ? (large ? [weatherOverview(data)] : weatherScreens(data)) : [{ key: 'none', name: 'Now', value: '—', hint: error ? 'Unavailable' : undefined }]
   return (
     <>
       <GlanceCarousel id="weather" label="Weather" icon={<CloudSun />} art={<WeatherGlanceArt />} loading={isLoading} screens={screens} onClick={() => setOpen(true)} />
