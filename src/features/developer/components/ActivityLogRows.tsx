@@ -3,13 +3,14 @@ import { cx, Truncate } from '../../../shared/ui'
 import { relativeTime } from '../../../shared/utils/relativeTime'
 import type { AuditLog } from '../hooks/useLogs'
 import { OP_META, fmtLogDate, friendlyTable, rowLabel } from './activityLogMeta'
-import { DiffView } from './ActivityLogDetail'
+import { DiffView, UndoSaveButton } from './ActivityLogDetail'
 
 // Rows of the CRUD audit timeline (audit_logs, written by DB triggers —
 // migration 037, +052 added dev_requests): a plain-language sentence per
 // change, same-transaction cascades grouped. A row either opens its diff in
 // place (phones, tablets) or picks it for the detail pane beside the list
-// (wider pages — pass `onSelect`).
+// (wider pages — pass `onSelect`). "Undo this save" sits on a group's header
+// and under a lone change's diff (migration 150: the whole transaction).
 
 interface RowProps {
   log: AuditLog
@@ -20,9 +21,11 @@ interface RowProps {
   onSelect?: () => void
   selected?: boolean
   nested?: boolean
+  /** Opens the undo preview for this change's save (a lone row; a group has it on its header). */
+  onUndo?: (txId: number) => void
 }
 
-export function LogRow({ log, expanded = false, onToggle, onSelect, selected = false, nested }: RowProps) {
+export function LogRow({ log, expanded = false, onToggle, onSelect, selected = false, nested, onUndo }: RowProps) {
   const op = OP_META[log.operation]
   const paneMode = !!onSelect
   return (
@@ -51,26 +54,31 @@ export function LogRow({ log, expanded = false, onToggle, onSelect, selected = f
         <div className="border-t border-line bg-surface-2 px-3 py-2">
           <p className="mb-1.5 text-meta text-fg-muted sm:hidden">{relativeTime(log.created_at)}</p>
           <DiffView log={log} />
+          {onUndo && !nested && <UndoSaveButton onClick={() => onUndo(log.tx_id)} className="-ml-1.5 mt-1.5" />}
         </div>
       )}
     </div>
   )
 }
 
-// Same-transaction group (>1 change) — a cascade, stacked with a left rail so
-// "this change triggered those" reads top-to-bottom.
-export function CascadeBlock({ group, expandedId, onToggle, selectedId, onSelect }: {
+// Same-transaction group (>1 change: one save, or a cascade) — stacked with a
+// left rail so "this change triggered those" reads top-to-bottom.
+export function CascadeBlock({ group, expandedId, onToggle, selectedId, onSelect, onUndo }: {
   group: AuditLog[]
   expandedId?: string | null
   onToggle?: (id: string) => void
   selectedId?: string | null
   onSelect?: (id: string) => void
+  onUndo?: (txId: number) => void
 }) {
   return (
     <div className="card overflow-hidden">
-      <p className="section-label flex items-center gap-1.5 border-b border-line px-3 py-2">
-        <Link2 aria-hidden className="h-3.5 w-3.5" /> Linked · same transaction · {group.length} changes
-      </p>
+      <div className="flex items-center gap-2 border-b border-line py-1 pl-3 pr-1.5">
+        <p className="section-label flex min-w-0 flex-1 items-center gap-1.5">
+          <Link2 aria-hidden className="h-3.5 w-3.5 shrink-0" /> Same save · {group.length} changes
+        </p>
+        {onUndo && <UndoSaveButton onClick={() => onUndo(group[0].tx_id)} />}
+      </div>
       <div className="my-1 ml-3 divide-y divide-line border-l-2 border-accent-500/30 pl-2">
         {group.map(log => (
           <LogRow

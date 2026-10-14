@@ -279,7 +279,8 @@
   .btn-primary   { @apply btn bg-accent-500 text-on-accent border border-transparent; }
   .btn-secondary { @apply btn bg-surface-2 text-fg border border-line; }
   .btn-ghost     { @apply btn bg-transparent text-fg-2 border border-transparent px-3; }
-  .btn-danger    { @apply btn bg-danger text-white border border-transparent; }
+  /* text-surface: white on the light red, near-black on the dark theme's lighter red (white there is 2.6:1) */
+  .btn-danger    { @apply btn bg-danger text-surface border border-transparent; }
   .btn-sm        { @apply min-h-[36px] px-3 text-body [@media(pointer:coarse)]:min-h-[44px]; }
   @media (hover: hover) {
     .btn-primary:hover:not(:disabled)   { @apply bg-accent-600; }

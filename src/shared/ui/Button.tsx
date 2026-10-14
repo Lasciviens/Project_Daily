@@ -3,6 +3,13 @@ import { cx } from './cx'
 
 type Variant = 'primary' | 'secondary' | 'ghost' | 'danger'
 
+// Written out in full: Tailwind keeps a class from index.css's component
+// layer only when it finds its name in the source — `btn-${variant}` left
+// `.btn-danger` out, so every danger button rendered unstyled.
+const VARIANT_CLASS: Record<Variant, string> = {
+  primary: 'btn-primary', secondary: 'btn-secondary', ghost: 'btn-ghost', danger: 'btn-danger',
+}
+
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: Variant
   size?: 'md' | 'sm'
@@ -22,7 +29,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       type={type}
       disabled={disabled || loading}
       aria-busy={loading || undefined}
-      className={cx(`btn-${variant}`, size === 'sm' && 'btn-sm', block && 'w-full', className)}
+      className={cx(VARIANT_CLASS[variant], size === 'sm' && 'btn-sm', block && 'w-full', className)}
       {...rest}
     >
       {loading

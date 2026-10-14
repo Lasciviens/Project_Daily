@@ -697,7 +697,8 @@ as one on screen replaces it, render through the shell's `<Toaster>` (above the 
 bottom-left of the content elsewhere) and take their colour from a tone.
 
 **Invalidation groups** (`src/shared/query/invalidate.ts`): `taskGraph`, `schedule`, `nutrition`,
-`recipes`, `episodeWatched`, `media`, `training`, `aiWrite`. Name what happened, not which keys.
+`recipes`, `episodeWatched`, `media`, `training`, `aiWrite`, `saveUndone` (every query — an undone
+save can have changed any table). Name what happened, not which keys.
 
 **One action, one hook.** If two screens perform the same write (mark an episode watched, log a
 food, toggle a task), they call the same hook — never two copies with different invalidation.
