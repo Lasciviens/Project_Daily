@@ -23,6 +23,7 @@ board → `codex-shortcuts.md`.
 | [backend/database.md](backend/database.md) | Database conventions in depth: migrations, RLS and the owner lock, audit triggers, linked-entity sync, missing-table fallbacks. The short rules are `.claude/rules/database.md`. | 13.10.2026 |
 | [backend/environment.md](backend/environment.md) | Every variable and secret: client build variables, Edge Function secrets, Vault, the GitHub `production` environment. | 13.10.2026 |
 | [decisions.md](decisions.md) | Decisions not to revisit, with the reason for each. | 13.10.2026 |
+| [kitchen-scale/README.md](kitchen-scale/README.md) | The DIY Wi-Fi kitchen scale project: parts in hand, checked hardware facts (ESP32-4848S040 pins, HX711, load cell), the proposed design (its own `scale-gateway` path), the staged plan, open questions and the dated progress log. | 14.10.2026 |
 | [integrations/](integrations) | **Rule:** every NEW external API gets `integrations/<service>.md` — auth, endpoints, fields read and written, fields deliberately unused, traps, the date it was checked. Older APIs are added when next worked on (first: `google-tasks.md`). | 13.10.2026 |
 
 ## Runbooks / setup — authoritative, follow exactly

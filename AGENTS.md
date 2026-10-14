@@ -42,7 +42,7 @@ Codex reads this file by itself; `CLAUDE.md` imports it, so Claude and Codex fol
 ## Stack and map
 
 React 19 + TypeScript 6 + Vite 8 · react-router v7 with HashRouter (GitHub Pages) · Tailwind CSS 3 with semantic tokens (`src/index.css`) · Zustand for UI state · TanStack Query 5 for server state · Supabase (Postgres, Auth, RLS, Edge Functions) · GitHub Pages via GitHub Actions · Playwright. No shadcn/ui, no SSR, no AI or provider key in client code.
-`src/app` — shell, router, `navigation.ts` (the one nav registry), `pages.ts` (lazy pages) · `src/shared` — UI primitives, popups, hooks, query keys · `src/features/<feature>` — api → hooks → components · `supabase/migrations`, `supabase/functions` · `scripts` — verify, deploy and device scripts.
+`src/app` — shell, router, `navigation.ts` (the one nav registry), `pages.ts` (lazy pages) · `src/shared` — UI primitives, popups, hooks, query keys · `src/features/<feature>` — api → hooks → components · `supabase/migrations`, `supabase/functions` · `scripts` — verify, deploy and device scripts · `firmware/kitchen-scale` — the kitchen scale's ESP32 firmware (PlatformIO; `docs/kitchen-scale/README.md`).
 
 ## Coding rules
 
