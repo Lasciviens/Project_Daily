@@ -114,8 +114,8 @@ function Fact({ icon, label, value }: { icon: ReactNode; label: string; value: s
  * The large tile's one screen (beside the tasks on Home's split laptop board,
  * as tall as they are): now with feels-like and today's range; wind, rain
  * and humidity; the next eight hours; the next five days. Top-aligned; the
- * day cards take whatever height the tile has to spare, so no gaps open
- * between the blocks.
+ * day rows share whatever height the tile has to spare (up to a cap), so no
+ * gaps open between the blocks.
  */
 function weatherOverview(data: WeatherData): GlanceScreen {
   const c = data.current
@@ -166,17 +166,17 @@ function weatherOverview(data: WeatherData): GlanceScreen {
         {data.daily.length > 0 && (
           <div className="flex min-w-0 flex-1 flex-col">
             <p className="mb-1 text-micro font-medium text-fg-muted">Next days</p>
-            <div className="grid flex-1 auto-cols-fr grid-flow-col gap-1.5">
+            <ul className="flex max-h-72 flex-1 flex-col divide-y divide-line">
               {data.daily.slice(0, 5).map(d => (
-                <div key={d.date} className="flex min-w-0 flex-col items-center justify-center rounded-control bg-surface-2 px-1 py-1.5 tabular-nums">
-                  <span className="text-micro font-medium text-fg-muted">{d.label}</span>
-                  <span aria-hidden className="text-xl leading-8">{weatherIcon(d.symbol)}</span>
-                  <span className="text-meta font-semibold text-fg">{d.max}°</span>
-                  <span className="text-micro text-fg-muted">{d.min}°</span>
-                  <span className="h-4 text-micro text-info">{d.precip >= 0.1 ? `${d.precip.toFixed(1)} mm` : ''}</span>
-                </div>
+                <li key={d.date} className="flex min-h-9 flex-1 items-center gap-2 tabular-nums">
+                  <span className="w-10 shrink-0 text-meta font-medium text-fg-muted">{d.label}</span>
+                  <span aria-hidden className="shrink-0 text-xl leading-none">{weatherIcon(d.symbol)}</span>
+                  <span className="min-w-0 flex-1 text-micro text-info">{d.precip >= 0.1 ? `${d.precip.toFixed(1)} mm` : ''}</span>
+                  <span className="shrink-0 text-meta text-fg-muted">{d.min}°</span>
+                  <span className="w-9 shrink-0 text-right text-meta font-semibold text-fg">{d.max}°</span>
+                </li>
               ))}
-            </div>
+            </ul>
           </div>
         )}
       </div>
