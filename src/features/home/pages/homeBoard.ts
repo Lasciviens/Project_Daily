@@ -12,9 +12,9 @@
 //      side (`homeBoardFor`), main became ~600px tall against ~1,150px of
 //      transit + six tiles, and news could only start under that: a hole in
 //      the middle (owner, 08.10.2026). There the board is two rows: brief +
-//      week | tasks beside transit + a large weather tile, the two columns
-//      ending on one line (`fill`: the weather tile ends where the tasks
-//      end); then one glance row on the same tracks — money, watched, books
+//      week | tasks beside transit + a large weather tile, only the side
+//      column filling (`fill`: the weather tile ends where the tasks end; a
+//      tall transit never stretches the week and the tasks); then one glance row on the same tracks — money, watched, books
 //      and games under the week and the tasks, a large training tile under
 //      the weather (owner, 14.10.2026). A 1280px laptop stacks the week and
 //      the tasks and keeps all six tiles beside them.
@@ -54,14 +54,15 @@ export const HOME_BOARD: BoardLayouts<HomeSection> = {
 }
 
 /**
- * Step 2 once the week and the tasks sit side by side: two rows. The columns
- * end on one line (`fill` — the weather tile ends where the tasks end, owner
- * 14.10.2026), and the glance row starts under both, on the same tracks.
+ * Step 2 once the week and the tasks sit side by side: two rows. Only the side
+ * column fills (the weather tile ends where the tasks end, owner 14.10.2026);
+ * main keeps its own height, so the week and the tasks never stretch when
+ * transit is tall. The glance row starts under both, on the same tracks.
  */
 export const HOME_BOARD_SPLIT: BoardLayouts<HomeSection> = {
   ...HOME_BOARD,
   2: {
-    columns: [{ stack: WIDE_MAIN, fill: true }, { stack: ['transit', 'weatherTile'], fill: true }],
+    columns: [WIDE_MAIN, { stack: ['transit', 'weatherTile'], fill: true }],
     bottom: ['glanceRow', 'news'],
     main: HOME_MAIN,
   },

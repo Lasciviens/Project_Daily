@@ -112,7 +112,7 @@ const say = (cells, phase = 'cut') => W.weekComment(wk(cells), phase)
 check('§7.1 no reading that week', say({}), { text: 'No scale reading this week.', tone: 'neutral' })
 check('§7.2 readings but no week before', say({ weight: cell(82.5) }).text, 'No reading the week before to compare with.')
 check('§7.3 fat down and muscle up, both real → recomposition',
-  say({ fat: cell(23, -0.8, 'good'), muscle: cell(40, 0.7, 'good') }), { text: 'Fat −0.8 % and muscle +0.7 % — a good recomposition week', tone: 'success' })
+  say({ fat: cell(23, -0.8, 'good'), muscle: cell(40, 0.7, 'good') }), { text: 'Fat −0.8 % and muscle +0.7 % — good recomposition', tone: 'success' })
 check('§7.4 the owner\'s example: the right way, but within the scale\'s noise (never coloured)',
   say({ fat: cell(23, -0.3, 'steady'), muscle: cell(40, 0.2, 'steady') }), { text: 'Fat −0.3 % and muscle +0.2 % — right way, within the noise', tone: 'neutral' })
 check('§7.4b both inside the noise, the other way', say({ fat: cell(23, 0.3, 'steady'), muscle: cell(40, 0.2, 'steady') }).text,
@@ -124,11 +124,11 @@ check('§7.6 fat down, muscle inside the noise → held',
 check('§7.7 cut: a real weight loss at pace', say({ weight: cell(82, -0.4, 'good') }), { text: 'Weight −0.4 kg — on track for your cut', tone: 'success' })
 check('§7.8 cut: weight up', say({ weight: cell(82, 0.4, 'bad') }).text, 'Weight +0.4 kg — wrong way for your cut')
 check('§7.9 cut: too fast', say({ weight: cell(82, -0.9, 'bad') }).text, 'Weight −0.9 kg — too fast for your cut')
-check('§7.10 maintain: a real drift', say({ weight: cell(82, 0.4, 'bad') }, 'maintain').text, 'Weight +0.4 kg — drifting up from maintenance')
+check('§7.10 maintain: a real drift', say({ weight: cell(82, 0.4, 'bad') }, 'maintain').text, 'Weight +0.4 kg — drifting off maintenance')
 check('§7.11 weight on pace and fat down', say({ weight: cell(82, -0.5, 'good'), fat: cell(23, -0.7, 'good') }).text,
-  'Weight −0.5 kg, fat −0.7 % — on track for your cut, fat down too')
+  'Weight −0.5 kg, fat −0.7 % — on track, fat down too')
 check('§7.12 weight on pace but fat up → warn', say({ weight: cell(82, -0.5, 'good'), fat: cell(23, 0.7, 'bad') }),
-  { text: 'Weight −0.5 kg, fat +0.7 % — on track for your cut, but fat up', tone: 'warn' })
+  { text: 'Weight −0.5 kg, fat +0.7 % — on track, but fat up', tone: 'warn' })
 check('§7.13 steady weight, fat down', say({ weight: cell(82, -0.1, 'steady'), fat: cell(23, -0.8, 'good') }).text,
   'Weight −0.1 kg, fat −0.8 % — fat down at a steady weight')
 check('§7.14 everything inside the noise', say({ weight: cell(82, -0.1, 'steady'), fat: cell(23, -0.2, 'steady') }),
@@ -137,6 +137,30 @@ check('§7.15 phase still loading → numbers only, no judgement', say({ weight:
 check('§7.16 the body score alone is reported, not judged', say({ score: cell(79, 2, 'plain') }).text, 'Body score +2 — the scale’s own number.')
 check('§7.17 from the real rows: −0.4 kg on a cut, fat −0.5 inside the noise',
   W.weekComment(rows[0], 'cut').text, 'Weight −0.4 kg, fat −0.5 % — on track for your cut')
+check('§7.18 fat and muscle held, weight too fast → the weight speaks (the line agrees with its amber)',
+  say({ weight: cell(82, -1.4, 'bad'), fat: cell(23, -0.3, 'steady'), muscle: cell(40, 0.2, 'steady') }),
+  { text: 'Weight −1.4 kg, fat −0.3 % — too fast for your cut', tone: 'warn' })
+check('§7.19 fat and muscle held, weight on pace → green, like the weight column',
+  say({ weight: cell(82, -0.5, 'good'), fat: cell(23, -0.3, 'steady'), muscle: cell(40, 0.2, 'steady') }),
+  { text: 'Weight −0.5 kg, fat −0.3 % — on track for your cut', tone: 'success' })
+check('§7.20 fat and muscle held, weight steady → still "within the noise"',
+  say({ weight: cell(82, -0.1, 'steady'), fat: cell(23, -0.3, 'steady'), muscle: cell(40, 0.2, 'steady') }).text,
+  'Fat −0.3 % and muscle +0.2 % — right way, within the noise')
+check('§7.21 fat judged alongside a weight verdict drops the phase name (it is in the subtitle)',
+  [say({ weight: cell(82, 0.6, 'bad'), fat: cell(23, -0.7, 'good') }).text, say({ weight: cell(82, -0.4, 'bad'), fat: cell(23, 0.7, 'bad') }, 'maintain').text],
+  ['Weight +0.6 kg, fat −0.7 % — wrong way, but fat down', 'Weight −0.4 kg, fat +0.7 % — drifting, fat up too'])
+{
+  // One phone line (402 px, text-micro) holds about 62 characters (measured
+  // in the app's font, 14.10.2026); every wording with one-digit changes stays at 58 or under.
+  const longest = []
+  const V = [['good', -1.4], ['bad', -1.4], ['bad', 1.4], ['steady', -0.2]]
+  for (const phase of ['cut', 'maintain', 'gain']) for (const [wv, wc] of V) for (const [fv, fc] of [['good', -1.8], ['bad', 1.8], ['steady', -0.3]]) {
+    longest.push(say({ weight: cell(82, wc, wv), fat: cell(23, fc, fv) }, phase).text)
+    for (const [mv, mc] of [['good', 1.7], ['bad', -1.7], ['steady', 0.2]]) longest.push(say({ weight: cell(82, wc, wv), fat: cell(23, fc, fv), muscle: cell(40, mc, mv) }, phase).text)
+  }
+  const over = longest.filter(t => t.length > 58)
+  check('§7.22 every comment fits one phone line (≤ 58 characters)', over, [])
+}
 
 console.log(`\n${passed} passed, ${failed} failed`)
 process.exit(failed ? 1 : 0)

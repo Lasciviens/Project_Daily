@@ -284,6 +284,13 @@ export function perMonth(i: ShopItem, ctx: MoneyCtx, today: string, accessories:
   return { nok: used.nok / months, months, used }
 }
 
+/** How a cost of use reads: "Per month ≈ 334 NOK", or — when it could sell
+ *  for more than it cost — "Gained ≈ 429 NOK a month"; never a minus number. */
+export function perMonthWords(nok: number): { label: 'Per month' | 'Gained'; nok: number; aMonth: boolean } {
+  const n = Math.round(nok)
+  return n < 0 ? { label: 'Gained', nok: -n, aMonth: true } : { label: 'Per month', nok: n, aMonth: false }
+}
+
 // ── The sale ─────────────────────────────────────────────────────────────────
 
 /**

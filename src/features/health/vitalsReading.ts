@@ -19,15 +19,18 @@
 //   resting HR     median ± 5 bpm — a sustained rise of 5+ bpm over your
 //                  60-day baseline is the recognised signal (research-rank;
 //                  Quer 2021 used resting-HR rises in illness detection)
-//   HRV            mean ± 1 SD of daily values, judged on the 7-day average
-//                  (Plews 2013 — single days swing too much)
+//   HRV            mean ± 1 SD of daily values (Plews 2013)
 //   breathing rate median ± 1.5 breaths/min (the app's existing band; a rise
 //                  of 3+ is the level Natarajan 2021 linked with infection)
 //   blood oxygen   mean ± 2 SD, at least ± 1 point (Watch error is ± 3–4 points)
 //   wrist temp     mean ± 2 SD, at least ± 0.3 °C, shown as a deviation
-//   walking HR     median ± 4 bpm, judged on the 7-day average (± 4 ≈ the
-//                  Watch's resting-HR error — a heuristic)
+//   walking HR     median ± 4 bpm (± 4 ≈ the Watch's resting-HR error — a
+//                  heuristic)
 //   HR recovery    more than 12 bpm in the first minute is typical (Cole 1999)
+//
+// Like every Health widget, it follows the picked period: a day reads that
+// day's value against the day before, a longer period its average against the
+// period before. No fixed 7-day window (owner, 14.10.2026).
 //
 // PURE — only sibling pure modules are imported, so
 // scripts/verify-vitals-reading.cjs can load it through sucrase.
@@ -52,8 +55,6 @@ export const BASELINE_DAYS = 60
 export const THIN_HISTORY = 28
 /** Days a Day view looks back when the day itself has no reading yet. */
 const DAY_FALLBACK_DAYS = 3
-/** A smoothed (7-day) value needs this many readings in its week. */
-const MIN_SMOOTH_READINGS = 3
 /** A run of out-of-range days ends at a gap longer than this. */
 const RUN_MAX_GAP_DAYS = 2
 /** How far back a run is looked for. */
@@ -99,8 +100,6 @@ export interface VitalSpec {
   floor?: number
   /** Readings needed in the 60 days before for a usual range. */
   minHistory: number
-  /** 1 = the day's own reading; 7 = the 7-day average ending on the day. */
-  smoothDays: number
   /** Show the value as a difference from your usual centre (wrist temperature). */
   deviation: boolean
   /** A reading this many days old still counts when the period has none (HR recovery). */
@@ -119,7 +118,7 @@ export const VITAL_SPECS: Record<VitalKey, VitalSpec> = {
   rhr: {
     key: 'rhr', metric: 'resting_heart_rate', label: 'Resting heart rate', phraseLabel: 'resting heart rate',
     unit: 'bpm', decimals: 0, group: 'recovery', concern: 'above', good: 'below',
-    range: { mode: 'median', halfWidth: 5 }, minHistory: 14, smoothDays: 1, deviation: false,
+    range: { mode: 'median', halfWidth: 5 }, minHistory: 14, deviation: false,
     about: 'Your lowest steady heart rate while awake and still, worked out by the Watch each day. Fatigue, stress, heat, alcohol and illness push it up.',
     rangeRule: 'your median over the 60 days before this day or period, ± 5 bpm — a sustained rise of more than 5 bpm is the recognised signal',
     sources: [VITALS_SRC.quer2021, SRC.appleWatchHrv2024, SRC.reimers2018],
@@ -127,15 +126,15 @@ export const VITAL_SPECS: Record<VitalKey, VitalSpec> = {
   hrv: {
     key: 'hrv', metric: 'heart_rate_variability', label: 'HRV (SDNN)', phraseLabel: 'HRV',
     unit: 'ms', decimals: 0, group: 'recovery', concern: 'below', good: 'above',
-    range: { mode: 'sd', k: 1 }, minHistory: 14, smoothDays: 7, deviation: false,
+    range: { mode: 'sd', k: 1 }, minHistory: 14, deviation: false,
     about: 'Heart rate variability: how much the time between heartbeats varies (Apple measures SDNN). Higher usually means more rested; strain, poor sleep, alcohol and illness lower it.',
-    rangeRule: 'your average over the 60 days before this day or period, ± 1 standard deviation, judged on the 7-day average (Plews 2013)',
+    rangeRule: 'your average over the 60 days before this day or period, ± 1 standard deviation (Plews 2013)',
     sources: [SRC.plews2013, SRC.appleWatchHrv2024, SRC.shaffer2017],
   },
   resp: {
     key: 'resp', metric: 'respiratory_rate', label: 'Breathing rate (sleep)', phraseLabel: 'breathing rate in sleep',
     unit: 'br/min', decimals: 1, group: 'recovery', concern: 'above', good: null,
-    range: { mode: 'median', halfWidth: 1.5 }, minHistory: 10, smoothDays: 1, deviation: false,
+    range: { mode: 'median', halfWidth: 1.5 }, minHistory: 10, deviation: false,
     about: 'Breaths per minute while you sleep. It is very steady from night to night, so a rise is one of the first things to change when you get ill.',
     rangeRule: 'your median over the 60 days before this day or period, ± 1.5 breaths a minute; a rise of 3 or more is the level linked with infection',
     sources: [SRC.natarajan2021, VITALS_SRC.appleVitals],
@@ -143,7 +142,7 @@ export const VITAL_SPECS: Record<VitalKey, VitalSpec> = {
   spo2: {
     key: 'spo2', metric: 'blood_oxygen_saturation', label: 'Blood oxygen (sleep)', phraseLabel: 'blood oxygen in sleep',
     unit: '%', decimals: 0, group: 'recovery', concern: 'below', good: null,
-    range: { mode: 'sd', k: 2, minHalfWidth: 1 }, minHistory: 10, smoothDays: 1, deviation: false,
+    range: { mode: 'sd', k: 2, minHalfWidth: 1 }, minHistory: 10, deviation: false,
     about: 'How much oxygen your blood carries, from spot readings while you sleep.',
     rangeRule: 'your average over the 60 days before this day or period, ± 2 standard deviations (at least ± 1 point)',
     transform: normalizeSpo2,
@@ -152,7 +151,7 @@ export const VITAL_SPECS: Record<VitalKey, VitalSpec> = {
   temp: {
     key: 'temp', metric: 'apple_sleeping_wrist_temperature', label: 'Wrist temperature (sleep)', phraseLabel: 'wrist temperature',
     unit: '°C', decimals: 1, group: 'recovery', concern: 'above', good: null,
-    range: { mode: 'sd', k: 2, minHalfWidth: 0.3 }, minHistory: 10, smoothDays: 1, deviation: true,
+    range: { mode: 'sd', k: 2, minHalfWidth: 0.3 }, minHistory: 10, deviation: true,
     about: 'Your overnight wrist-skin temperature compared with your usual night — Apple shows it the same way, as a difference.',
     rangeRule: 'your average night over the 60 days before this day or period, ± 2 standard deviations (at least ± 0.3 °C), shown as the difference from it',
     sources: [VITALS_SRC.appleWristTemp, VITALS_SRC.smarr2020, VITALS_SRC.appleVitals],
@@ -160,15 +159,15 @@ export const VITAL_SPECS: Record<VitalKey, VitalSpec> = {
   walking: {
     key: 'walking', metric: 'walking_heart_rate_average', label: 'Walking heart rate', phraseLabel: 'walking heart rate',
     unit: 'bpm', decimals: 0, group: 'fitness', concern: 'above', good: 'below',
-    range: { mode: 'median', halfWidth: 4 }, minHistory: 10, smoothDays: 7, deviation: false,
+    range: { mode: 'median', halfWidth: 4 }, minHistory: 10, deviation: false,
     about: 'Your average heart rate during ordinary walking through the day. It is a light, repeatable effort, so it drifts down as fitness improves.',
-    rangeRule: 'your median over the 60 days before this day or period, ± 4 bpm (about the Watch’s heart-rate error — a rule of thumb), judged on the 7-day average',
+    rangeRule: 'your median over the 60 days before this day or period, ± 4 bpm (about the Watch’s heart-rate error — a rule of thumb)',
     sources: [SRC.appleWatchHrv2024],
   },
   hrr: {
     key: 'hrr', metric: 'cardio_recovery', label: 'Heart-rate recovery', phraseLabel: 'heart-rate recovery',
     unit: 'bpm', decimals: 0, group: 'fitness', concern: 'below', good: null,
-    range: null, floor: 12, minHistory: 0, smoothDays: 1, deviation: false, lookbackDays: 30, minPeriodReadings: 1,
+    range: null, floor: 12, minHistory: 0, deviation: false, lookbackDays: 30, minPeriodReadings: 1,
     about: 'How far your heart rate falls in the first minute after a workout ends. A faster drop goes with better fitness.',
     rangeRule: 'typical is a drop of more than 12 bpm in the first minute after exercise (Cole 1999) — too few readings for a personal range',
     sources: [SRC.cole1999, SRC.qiu2017],
@@ -185,10 +184,10 @@ export interface VitalRow {
   spec: VitalSpec
   /** The judged value (raw unit — a deviation metric subtracts `usual.center` for display). */
   value: number | null
-  /** Where the value comes from: 'day' = that day's reading, 'smoothed' = the
-   *  7-day average ending on it, 'period' = the period's average,
-   *  'latest' = the newest reading (HR recovery, when the period has none). */
-  basis: 'day' | 'smoothed' | 'period' | 'latest'
+  /** Where the value comes from: 'day' = that day's reading, 'period' = the
+   *  period's average, 'latest' = the newest reading (HR recovery, when the
+   *  period has none). */
+  basis: 'day' | 'period' | 'latest'
   /** The day of the reading behind the value (the newest one in a period). */
   valueDate: string | null
   /** Readings behind the value. */
@@ -202,7 +201,7 @@ export interface VitalRow {
   status: VitalStatus
   signal: VitalSignal
   reason: VitalReason | null
-  /** Why a status is unknown, in words ("only 1 reading in these 7 days"). */
+  /** Why a status is unknown, in words ("Only 1 reading in this period"). */
   reasonText: string | null
   /** Period views: days whose reading sat outside your usual range. */
   daysAbove: number | null
@@ -310,12 +309,9 @@ function inSpan(s: readonly DayValue[], from: string, to: string): DayValue[] {
   return s.filter(d => d.date >= from && d.date <= to)
 }
 
-/** The value a single day carries: its own reading, or the 7-day average
- *  ending on it (needs MIN_SMOOTH_READINGS). null when neither exists. */
-function perDay(spec: VitalSpec, s: readonly DayValue[], date: string): number | null {
-  if (spec.smoothDays <= 1) return s.find(d => d.date === date)?.value ?? null
-  const vals = inSpan(s, addDaysIso(date, -(spec.smoothDays - 1)), date).map(d => d.value)
-  return vals.length >= MIN_SMOOTH_READINGS ? mean(vals) : null
+/** A single day's own reading, or null. */
+function perDay(s: readonly DayValue[], date: string): number | null {
+  return s.find(d => d.date === date)?.value ?? null
 }
 
 function stateOf(value: number, spec: VitalSpec, usual: UsualRange | null): VitalStatus {
@@ -342,7 +338,7 @@ function runAt(spec: VitalSpec, s: readonly DayValue[], end: string, usual: Usua
   let last: string | null = null
   for (const date of dates) {
     if (prev && daysBetweenIso(date, prev) > RUN_MAX_GAP_DAYS) break
-    const v = perDay(spec, s, date)
+    const v = perDay(s, date)
     if (v == null) break
     const st = stateOf(v, spec, usual)
     if (st !== 'above' && st !== 'below') break
@@ -362,20 +358,13 @@ function readRow(spec: VitalSpec, s: readonly DayValue[], from: string, to: stri
   const isDay = totalDays === 1
 
   let value: number | null = null
-  let basis: VitalRow['basis'] = isDay ? (spec.smoothDays > 1 ? 'smoothed' : 'day') : 'period'
+  let basis: VitalRow['basis'] = isDay ? 'day' : 'period'
   let valueDate: string | null = null
   let readings = 0
   let valueFrom = from
   let few = false
 
-  if (isDay && spec.smoothDays > 1) {
-    valueFrom = addDaysIso(to, -(spec.smoothDays - 1))
-    const win = inSpan(s, valueFrom, to)
-    readings = win.length
-    value = win.length ? mean(win.map(d => d.value)) : null
-    valueDate = win.length ? win[win.length - 1].date : null
-    few = win.length > 0 && win.length < MIN_SMOOTH_READINGS
-  } else if (isDay) {
+  if (isDay) {
     const lookback = spec.lookbackDays ?? DAY_FALLBACK_DAYS
     const hits = inSpan(s, addDaysIso(to, -(lookback - 1)), to)
     const hit = hits[hits.length - 1]
@@ -411,13 +400,13 @@ function readRow(spec: VitalSpec, s: readonly DayValue[], from: string, to: stri
 
   const usual = spec.range ? usualRange(history, spec.range, spec.minHistory) : null
 
-  // The period before: the same length (a Day view compares with the 7 days before).
-  const prevLen = isDay ? 7 : totalDays
-  const prevWin = basis === 'latest' ? [] : inSpan(s, addDaysIso(valueFrom, -prevLen), addDaysIso(valueFrom, -1))
-  const prevMin = isDay ? 3 : Math.max(2, Math.ceil(prevLen / 5))
+  // The period before: the same length (a Day view compares with the day before,
+  // like the Overview hero).
+  const prevWin = basis === 'latest' ? [] : inSpan(s, addDaysIso(valueFrom, -totalDays), addDaysIso(valueFrom, -1))
+  const prevMin = isDay ? 1 : Math.max(2, Math.ceil(totalDays / 5))
   const previous = prevWin.length >= prevMin ? mean(prevWin.map(d => d.value)) : null
   // A period's length is named by the range bar, so its own words don't repeat it.
-  const previousLabel = isDay ? 'vs the 7 days before' : 'vs the period before'
+  const previousLabel = isDay ? 'vs the day before' : 'vs the period before'
 
   let status: VitalStatus = 'unknown'
   let reason: VitalReason | null = null
@@ -427,9 +416,7 @@ function readRow(spec: VitalSpec, s: readonly DayValue[], from: string, to: stri
     reasonText = isDay ? 'No reading for this day.' : 'No reading in this period.'
   } else if (few) {
     reason = 'few-readings'
-    reasonText = isDay
-      ? `Only ${readings} reading${readings === 1 ? '' : 's'} in the 7 days to this day — too few for a 7-day average.`
-      : `Only ${readings} reading${readings === 1 ? '' : 's'} in this period — too few to judge it.`
+    reasonText = `Only ${readings} reading${readings === 1 ? '' : 's'} in this period — too few to judge it.`
   } else {
     status = stateOf(value, spec, usual)
     if (status === 'unknown') {
@@ -441,12 +428,10 @@ function readRow(spec: VitalSpec, s: readonly DayValue[], from: string, to: stri
 
   // Day by day inside a period (and the run at its end).
   let daysAbove: number | null = null, daysBelow: number | null = null, daysChecked: number | null = null
-  // (Smoothed signals are left out: a single day of HRV swings too much to
-  // judge, and counting 7-day averages as "days" would read oddly.)
-  if (!isDay && basis === 'period' && spec.smoothDays <= 1 && (usual || spec.floor != null)) {
+  if (!isDay && basis === 'period' && (usual || spec.floor != null)) {
     daysAbove = 0; daysBelow = 0; daysChecked = 0
     for (const d of inSpan(s, from, to)) {
-      const v = perDay(spec, s, d.date)
+      const v = perDay(s, d.date)
       if (v == null) continue
       daysChecked++
       const st = stateOf(v, spec, usual)
@@ -496,7 +481,7 @@ function meaningOf(row: VitalRow, isDay: boolean): string {
       if (status === 'above') return `${absDelta(row)} above your usual${span} — hard training, short sleep, alcohol, stress, heat or a cold coming on can all raise it.`
       return `${absDelta(row)} below your usual${span} — usually a sign of good recovery or better fitness.`
     case 'hrv':
-      if (status === 'inside') return `Within your normal range${isDay ? ' (7-day average — single days swing too much to judge)' : ''}.`
+      if (status === 'inside') return 'Within your normal range.'
       if (status === 'below') return 'Lower than your normal — your body may be under more strain than usual: hard training, poor sleep, alcohol, stress or illness can all lower it.'
       return 'Higher than your normal — usually a sign of good recovery.'
     case 'resp':
@@ -692,7 +677,7 @@ function buildVerdict(rows: VitalRow[], isDay: boolean, totalDays: number): Vita
     notes.push('Based on a single signal — one reading on its own says little.')
   }
   if (totalDays > 30 && notJudged.some(r => r.reason === 'no-history')) {
-    notes.push('A long period often has no earlier history to compare with — pick a day or 7 days to check how you’re doing now, or see the trend cards below.')
+    notes.push('A long period often has no earlier history to compare with — pick a shorter period to check how you’re doing now, or see the trend cards below.')
   }
 
   return { tone, label, headline, notes, concerns: concerns.map(r => r.key), goods: goods.map(r => r.key), judged: judged.length }

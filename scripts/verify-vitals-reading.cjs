@@ -40,6 +40,9 @@ function series(to, days, fn) {
 }
 // A small deterministic wobble so every range has a real spread: -1, 0, +1, 0, …
 const wob = i => [-1, 0, 1, 0][i % 4]
+// HRV's band is ± 1 SD, so the wobble's ends sit outside it; its usual day
+// (i = 0, the judged day) sits on the centre.
+const hrvBase = i => 45 + 3 * wob(i + 1)
 
 const TO = '2026-09-27'
 const DAYS = 120
@@ -48,7 +51,7 @@ const DAYS = 120
 function baseSeries(over = {}) {
   const s = {
     resting_heart_rate: series(TO, DAYS, i => 60 + wob(i)),
-    heart_rate_variability: series(TO, DAYS, i => 45 + 3 * wob(i)),
+    heart_rate_variability: series(TO, DAYS, hrvBase),
     respiratory_rate: series(TO, DAYS, i => 15 + 0.3 * wob(i)),
     blood_oxygen_saturation: series(TO, DAYS, i => 0.96 + 0.005 * wob(i)), // fractions, as exported
     apple_sleeping_wrist_temperature: series(TO, DAYS, i => 35.5 + 0.05 * wob(i)),
@@ -78,7 +81,7 @@ const row = (reading, key) => reading.rows.find(r => r.key === key)
   check('§1.5 nothing flagged', [r.verdict.concerns, r.verdict.goods], [[], []])
   check('§1.6 five recovery signals judged', r.verdict.judged, 5)
   check('§1.7 RHR usual = 60-day median ± 5', [row(r, 'rhr').usual.low, row(r, 'rhr').usual.high], [55, 65])
-  check('§1.8 HRV Day value is the 7-day average', row(r, 'hrv').basis, 'smoothed')
+  check('§1.8 HRV Day value is that day\'s own reading (no 7-day average)', [row(r, 'hrv').basis, row(r, 'hrv').value], ['day', 45])
   check('§1.9 no composite score anywhere in the output', Object.keys(r.verdict).includes('score'), false)
 }
 
@@ -95,8 +98,8 @@ const row = (reading, key) => reading.rows.find(r => r.key === key)
   check('§2.6 headline names it with its size', r.verdict.headline, 'One signal is off: resting heart rate is 8 bpm above your usual.')
   ok('§2.7 one-off framed as noise', r.verdict.notes.some(n => n.includes('One day is noise')), JSON.stringify(r.verdict.notes))
   ok('§2.8 meaning gives plain causes, no diagnosis', /can all raise it/.test(rhr.meaning) && !/you have/i.test(rhr.meaning), rhr.meaning)
-  check('§2.9 vs the 7 days before', r1(rhr.deltaVsPrevious), r1(68 - (60 + (wob(1) + wob(2) + wob(3) + wob(4) + wob(5) + wob(6) + wob(7)) / 7)))
-  check('§2.10 label', rhr.previousLabel, 'vs the 7 days before')
+  check('§2.9 vs the day before, like the Overview hero', rhr.deltaVsPrevious, 68 - (60 + wob(1)))
+  check('§2.10 label', rhr.previousLabel, 'vs the day before')
 }
 
 // ─── §3 Persistent: the same rise four days running ──────────────────────────
@@ -112,7 +115,7 @@ const row = (reading, key) => reading.rows.find(r => r.key === key)
 {
   const s = baseSeries({
     resting_heart_rate: tail(series(TO, DAYS, i => 60 + wob(i)), 1, () => 67),
-    heart_rate_variability: tail(series(TO, DAYS, i => 45 + 3 * wob(i)), 7, () => 30),
+    heart_rate_variability: tail(series(TO, DAYS, hrvBase), 7, () => 30),
   })
   const r = day(s)
   check('§4.1 HRV below', row(r, 'hrv').status, 'below')
@@ -125,12 +128,16 @@ const row = (reading, key) => reading.rows.find(r => r.key === key)
   ok('§4.6 HRV has been low for days → persistence note', r.verdict.notes.some(n => n.startsWith('HRV (SDNN) has been off')), JSON.stringify(r.verdict.notes))
 }
 
-// ─── §5 HRV smoothing: one low day is not a flag ─────────────────────────────
+// ─── §5 Day view: that day's HRV against the day before (the hero's tile) ────
 {
-  const s = baseSeries({ heart_rate_variability: tail(series(TO, DAYS, i => 45 + 3 * wob(i)), 1, () => 30) })
+  const s = baseSeries({ heart_rate_variability: tail(series(TO, DAYS, hrvBase), 1, () => 30) })
   const r = day(s)
-  check('§5.1 one low HRV day, 7-day average still usual', row(r, 'hrv').status, 'inside')
-  check('§5.2 verdict unchanged', r.verdict.tone, 'success')
+  const h = row(r, 'hrv')
+  check('§5.1 one low HRV day reads low, as on the HRV tile', [h.value, h.status, h.basis], [30, 'below', 'day'])
+  check('§5.2 against the day before', [h.deltaVsPrevious, h.previousLabel], [30 - hrvBase(1), 'vs the day before'])
+  check('§5.3 one signal off on one day → neutral, not a warning', r.verdict.tone, 'neutral')
+  const w = row(day(baseSeries({ walking_heart_rate_average: tail(series(TO, DAYS, i => 100 + wob(i)), 1, () => 106) })), 'walking')
+  check('§5.4 walking HR is that day\'s reading too', [w.value, w.status, w.basis, w.previousLabel], [106, 'above', 'day', 'vs the day before'])
 }
 
 // ─── §6 Sparse: thin history, a missing night, too few readings ──────────────
@@ -138,13 +145,13 @@ const row = (reading, key) => reading.rows.find(r => r.key === key)
   const s = baseSeries({
     blood_oxygen_saturation: series(TO, 6, () => 0.96), // 5 nights of history + tonight
     apple_sleeping_wrist_temperature: series(addDays(TO, -1), DAYS, i => 35.5 + 0.05 * wob(i)), // no reading tonight… or the 2 nights before
-    heart_rate_variability: series(TO, DAYS, i => (i < 7 && i !== 0 && i !== 3 ? null : 45 + 3 * wob(i))), // 2 readings in the last 7 days
+    heart_rate_variability: series(TO, DAYS, i => (i < 5 ? null : hrvBase(i))), // nothing in the last 5 days
   })
   const r = day(s)
   check('§6.1 SpO₂ has a value but no usual range yet', [row(r, 'spo2').value, row(r, 'spo2').status, row(r, 'spo2').reason], [96, 'unknown', 'no-history'])
   ok('§6.2 says how much history it has', row(r, 'spo2').reasonText.includes('5 of the 10 readings'), row(r, 'spo2').reasonText)
   check('§6.3 wrist temp falls back to last night (the newest within 3 days)', [row(r, 'temp').status, row(r, 'temp').valueDate], ['inside', addDays(TO, -1)])
-  check('§6.4 HRV with 2 of 7 days → too few for a 7-day average', [row(r, 'hrv').status, row(r, 'hrv').reason], ['unknown', 'few-readings'])
+  check('§6.4 HRV with no reading in the 3 days to this day → no reading (no older average stands in)', [row(r, 'hrv').status, row(r, 'hrv').reason, row(r, 'hrv').reasonText], ['unknown', 'no-reading', 'No reading for this day.'])
   ok('§6.5 not-judged list names them', r.verdict.notes.some(n => n.startsWith('Not judged:') && n.includes('HRV') && n.includes('Blood oxygen')), JSON.stringify(r.verdict.notes))
   check('§6.6 the judged count excludes them', r.verdict.judged, 3)
 
@@ -322,14 +329,29 @@ const row = (reading, key) => reading.rows.find(r => r.key === key)
   check('§19.5 2 high days (mean above) is not "persistent"', [row(r2, 'rhr').status, r2.verdict.tone], ['above', 'neutral'])
 }
 
-// ─── §20 Smoothed signals have no per-day count ──────────────────────────────
+// ─── §20 HRV in a period: its average, counted day by day like the rest ──────
 {
-  const s = baseSeries({ heart_rate_variability: tail(series(TO, DAYS, i => 45 + 3 * wob(i)), 7, () => 30) })
+  const s = baseSeries({ heart_rate_variability: tail(series(TO, DAYS, hrvBase), 7, () => 30) })
   const r = period(s, 7)
   const h = row(r, 'hrv')
-  check('§20.1 HRV week below, no day counts', [h.status, h.daysChecked], ['below', null])
-  check('§20.2 headline without a count', r.verdict.headline, 'One signal is off: HRV averaged below your usual range.')
-  ok('§20.3 a low 7-day average for a week is persistent', r.verdict.tone === 'warn' && r.verdict.notes.some(n => n.includes('readings in a row')), JSON.stringify(r.verdict))
+  check('§20.1 HRV week below, every day counted', [h.status, h.basis, h.daysBelow, h.daysChecked], ['below', 'period', 7, 7])
+  check('§20.2 headline with the day count', r.verdict.headline, 'One signal is off: HRV averaged below your usual range (low on 7 of 7 days).')
+  ok('§20.3 a low week is persistent', r.verdict.tone === 'warn' && r.verdict.notes.some(n => n.includes('readings in a row')), JSON.stringify(r.verdict))
+}
+
+// ─── §22 No fixed-window wording anywhere in the card ────────────────────────
+{
+  const texts = []
+  const collect = rd => {
+    texts.push(rd.verdict.headline, rd.verdict.label, ...rd.verdict.notes)
+    for (const x of rd.rows) texts.push(x.meaning, x.reasonText ?? '', x.previousLabel, x.spec.rangeRule, x.spec.about)
+  }
+  for (const rd of [day(baseSeries()), period(baseSeries(), 7), period(baseSeries(), 30),
+    day(baseSeries({ heart_rate_variability: series(TO, DAYS, i => (i < 5 ? null : hrvBase(i))) })),
+    period(baseSeries({ respiratory_rate: series(TO, DAYS, i => (i < 7 && i !== 2 ? null : 15)) }), 7)]) collect(rd)
+  const hits = texts.filter(t => /7-day|7 days|seven days/i.test(t))
+  check('§22.1 no "7-day" / "7 days" in any text', hits, [])
+  check('§22.2 no row is a smoothed value', day(baseSeries()).rows.filter(x => x.basis !== 'day' && x.basis !== 'latest').map(x => x.key), [])
 }
 
 // ─── §21 A difference on the edge of the rule gets a decimal ─────────────────

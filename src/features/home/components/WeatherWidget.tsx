@@ -113,8 +113,9 @@ function Fact({ icon, label, value }: { icon: ReactNode; label: string; value: s
 /**
  * The large tile's one screen (beside the tasks on Home's split laptop board,
  * as tall as they are): now with feels-like and today's range; wind, rain
- * and humidity; the next eight hours; the next five days. Spread over the
- * tile's height.
+ * and humidity; the next eight hours; the next five days. Top-aligned; the
+ * day cards take whatever height the tile has to spare, so no gaps open
+ * between the blocks.
  */
 function weatherOverview(data: WeatherData): GlanceScreen {
   const c = data.current
@@ -128,7 +129,7 @@ function weatherOverview(data: WeatherData): GlanceScreen {
     key: 'overview',
     name: 'Now',
     body: (
-      <div className="flex min-w-0 flex-1 flex-col justify-between gap-3">
+      <div className="flex min-w-0 flex-1 flex-col gap-3">
         <div className="flex min-w-0 items-center gap-3">
           <span aria-hidden className="text-5xl leading-none">{weatherIcon(c.symbol)}</span>
           <div className="min-w-0 flex-1">
@@ -163,11 +164,11 @@ function weatherOverview(data: WeatherData): GlanceScreen {
           </div>
         )}
         {data.daily.length > 0 && (
-          <div className="min-w-0">
+          <div className="flex min-w-0 flex-1 flex-col">
             <p className="mb-1 text-micro font-medium text-fg-muted">Next days</p>
-            <div className="grid auto-cols-fr grid-flow-col gap-1.5">
+            <div className="grid flex-1 auto-cols-fr grid-flow-col gap-1.5">
               {data.daily.slice(0, 5).map(d => (
-                <div key={d.date} className="flex min-w-0 flex-col items-center rounded-control bg-surface-2 px-1 py-1.5 tabular-nums">
+                <div key={d.date} className="flex min-w-0 flex-col items-center justify-center rounded-control bg-surface-2 px-1 py-1.5 tabular-nums">
                   <span className="text-micro font-medium text-fg-muted">{d.label}</span>
                   <span aria-hidden className="text-xl leading-8">{weatherIcon(d.symbol)}</span>
                   <span className="text-meta font-semibold text-fg">{d.max}°</span>

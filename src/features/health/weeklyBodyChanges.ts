@@ -165,15 +165,15 @@ function signedChange(v: number, decimals: number): string {
   return `${r > 0 ? '+' : r < 0 ? '−' : '±'}${Math.abs(r).toFixed(decimals)}`
 }
 
-const PHASE_NOUN: Record<Phase, string> = { cut: 'cut', maintain: 'maintenance', gain: 'gain' }
+const PHASE_NOUN: Record<Phase, string> = { cut: 'your cut', maintain: 'maintenance', gain: 'your gain' }
 
-/** What a judged weight change means for the phase. */
-function weightPhrase(cell: WeekCell, phase: Phase | null): string | null {
+/** What a judged weight change means for the phase. `bare` leaves the phase
+ *  out (the card's subtitle names it) so a fat clause still fits the line. */
+function weightPhrase(cell: WeekCell, phase: Phase | null, bare = false): string | null {
   if (!phase || cell.change == null || (cell.verdict !== 'good' && cell.verdict !== 'bad')) return null
-  if (cell.verdict === 'good') return `on track for your ${PHASE_NOUN[phase]}`
-  if (phase === 'maintain') return `drifting ${cell.change > 0 ? 'up' : 'down'} from maintenance`
   const against = (phase === 'cut' && cell.change > 0) || (phase === 'gain' && cell.change < 0)
-  return against ? `wrong way for your ${phase}` : `too fast for your ${phase}`
+  const word = cell.verdict === 'good' ? 'on track' : phase === 'maintain' ? 'drifting' : against ? 'wrong way' : 'too fast'
+  return bare ? word : `${word} ${word === 'drifting' ? 'off' : 'for'} ${PHASE_NOUN[phase]}`
 }
 
 const TONE_OF = { good: 'success', bad: 'warn' } as const
@@ -189,14 +189,17 @@ export function weekComment(row: WeekRow, phase: Phase | null): WeekComment {
   if (fatMove && muscleMove) {
     const nums = `${fatText.charAt(0).toUpperCase()}${fatText.slice(1)} and ${muscleText}`
     const say = (meaning: string, tone: WeekComment['tone']) => ({ text: `${nums} — ${meaning}`, tone })
-    if (fatMove === 'down' && muscleMove === 'up') return say('a good recomposition week', 'success')
+    if (fatMove === 'down' && muscleMove === 'up') return say('good recomposition', 'success')
     if (fatMove === 'up' && muscleMove === 'down') return say('the wrong way for both', 'warn')
     if (fatMove === 'down') return muscleMove === 'held' ? say('fat down, muscle held', 'success') : say('fat down, but muscle too', 'warn')
     if (muscleMove === 'up') return fatMove === 'held' ? say('muscle up, fat held', 'success') : say('muscle up, but fat too', 'warn')
     if (fatMove === 'up') return say('fat up, muscle held', 'warn')
     if (muscleMove === 'down') return say('muscle down, fat held', 'warn')
-    const rightWay = (fat.change as number) <= 0 && (muscle.change as number) >= 0
-    return say(rightWay ? 'right way, within the noise' : 'within the scale’s noise', 'neutral')
+    // Both held: a judged weight change speaks instead, so the line agrees with its colour.
+    if (!weightPhrase(weight, phase)) {
+      const rightWay = (fat.change as number) <= 0 && (muscle.change as number) >= 0
+      return say(rightWay ? 'right way, within the noise' : 'within the scale’s noise', 'neutral')
+    }
   }
 
   if (!weightMove && !fatMove) {
@@ -214,7 +217,7 @@ export function weekComment(row: WeekRow, phase: Phase | null): WeekComment {
   let meaning: string | null
   if (wp && fatJudged) {
     const same = TONE_OF[fatJudged] === TONE_OF[weight.verdict as 'good' | 'bad']
-    meaning = `${wp}, ${same ? '' : 'but '}fat ${fatMove}${same ? ' too' : ''}`
+    meaning = `${weightPhrase(weight, phase, true)}, ${same ? '' : 'but '}fat ${fatMove}${same ? ' too' : ''}`
   } else if (wp) meaning = wp
   else if (fatJudged) meaning = weightMove === 'held' ? `fat ${fatMove} at a steady weight` : `fat ${fatMove}`
   else if (weightMove !== 'up' && weightMove !== 'down' && fatMove !== 'up' && fatMove !== 'down') meaning = 'within the scale’s noise'

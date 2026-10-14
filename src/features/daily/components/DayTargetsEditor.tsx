@@ -6,9 +6,10 @@ import { todayStr } from '../../../shared/utils/dateUtils'
 import {
   bodyTargetText, parseBodyTargets, phaseStartFor, type BodyTargetField,
 } from '../../health/goal/goalSettings'
+import { dayMacroTargets } from '../../health/goal/cutDecision'
 import { useDayTargets, useDayTargetProfiles, type NutritionGoal, type DayTargets } from '../hooks/useDayTargets'
 import { useNutritionCoach } from '../hooks/useNutritionCoach'
-import { BodyTargetFields, EditorSection, GoalStepper, StepperRow } from './goalEditorParts'
+import { BodyTargetFields, EditorSection, GoalStepper, OptionalGoalStepper, StepperRow } from './goalEditorParts'
 import { GoalCoachBlock } from './GoalCoachBlock'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -23,6 +24,8 @@ import { GoalCoachBlock } from './GoalCoachBlock'
 //    off Maintain's by ~−500 (cut) / ~+300 (gain), never below the floor. The
 //    "since" date follows the phase: today for a new phase, the saved date
 //    when you go back to the saved one; editable either way.
+//  • Carbs and fat (153) are the owner's own when typed; empty = worked out
+//    (cutDecision.dayMacroTargets), the worked-out number shown in the field.
 //  • Body targets are one set for every phase (owner decision).
 //  • Coach "Apply" suggestions feed the draft.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -55,6 +58,9 @@ export function DayTargetsEditor({ onClose }: { date?: string; onClose: () => vo
   const coach = useNutritionCoach({ ...targets, goal: draft.goal, calories: draft.calories, protein: draft.protein })
   const patch = (p: Partial<DayTargets>) => { setTouched(true); setDraft(d => ({ ...d, ...p })) }
   const today = todayStr()
+  // What each field would be if left empty (the grey number), for the draft's calories and protein.
+  const workedCarbs = dayMacroTargets({ ...draft, carbs: null }, coach.fatFloorG).carbs
+  const workedFat = dayMacroTargets({ ...draft, fat: null }, coach.fatFloorG).fat
 
   function selectPhase(g: NutritionGoal) {
     const phaseStartDate = phaseStartFor(g, targets.goal, targets.phaseStartDate, today)
@@ -66,7 +72,8 @@ export function DayTargetsEditor({ onClose }: { date?: string; onClose: () => vo
       const calorieDelta = g === 'cut' ? -500 : g === 'gain' ? 300 : 0
       const calories = g === 'maintain' ? maintainCalories : Math.max(coach.calorieFloor, maintainCalories + calorieDelta)
       const protein = coach.weightKg != null ? coach.proteinByGoal[g] : d.protein
-      return { ...d, goal: g, phaseStartDate, calories, protein }
+      // New calories: the previous phase's carb and fat grams wouldn't fit them.
+      return { ...d, goal: g, phaseStartDate, calories, protein, carbs: null, fat: null }
     })
   }
 
@@ -100,7 +107,7 @@ export function DayTargetsEditor({ onClose }: { date?: string; onClose: () => vo
             </div>
           </EditorSection>
 
-          <EditorSection title="Daily targets" hint="Each phase remembers its own targets. Fibre ≈ 14 g per 1,000 kcal.">
+          <EditorSection title="Daily targets" hint="Each phase remembers its own targets. Leave carbs or fat empty and they’re worked out from calories and protein (the grey number). Fibre ≈ 14 g per 1,000 kcal.">
             <StepperRow label="Calories">
               <GoalStepper label="Calorie target" value={draft.calories} step={50} suffix="kcal" onChange={v => patch({ calories: v })} />
             </StepperRow>
@@ -111,6 +118,12 @@ export function DayTargetsEditor({ onClose }: { date?: string; onClose: () => vo
             )}
             <StepperRow label="Protein">
               <GoalStepper label="Protein target" value={draft.protein} step={10} suffix="g" onChange={v => patch({ protein: v })} />
+            </StepperRow>
+            <StepperRow label="Carbs">
+              <OptionalGoalStepper label="Carb target" value={draft.carbs} workedOut={workedCarbs} step={10} suffix="g" onChange={v => patch({ carbs: v })} />
+            </StepperRow>
+            <StepperRow label="Fat">
+              <OptionalGoalStepper label="Fat target" value={draft.fat} workedOut={workedFat} step={5} suffix="g" onChange={v => patch({ fat: v })} />
             </StepperRow>
             <StepperRow label="Water">
               <GoalStepper label="Water target" value={draft.water} step={250} suffix="ml" onChange={v => patch({ water: v })} />

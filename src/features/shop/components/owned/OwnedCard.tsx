@@ -4,7 +4,7 @@ import { ArrowRightLeft, ChevronDown, Link2, MoreHorizontal, Trash2, Undo2 } fro
 import { TonePill, Truncate, cx } from '../../../../shared/ui'
 import { formatDate } from '../../../../shared/utils/dateFormat'
 import {
-  add, boughtOn, complete, costOf, DISPOSAL_LABEL, durationLabel, gotOf, minus, perMonth, valueAgeDays, valueNowOf, VALUE_STALE_DAYS, ZERO,
+  add, boughtOn, complete, costOf, DISPOSAL_LABEL, durationLabel, gotOf, minus, perMonth, perMonthWords, valueAgeDays, valueNowOf, VALUE_STALE_DAYS, ZERO,
   type MoneyCtx,
 } from '../../ownModel'
 import { finalCostOf, type Chain } from '../../chainModel'
@@ -46,6 +46,7 @@ export function OwnedCard({ item, accessories, chain, watch, ctx, today, onOpen,
   // What left in the same sale counts with it: its cost and its share of the money.
   const together = item.sale_group ? accessories.filter(a => a.sale_group === item.sale_group) : []
   const per = perMonth(item, ctx, today, accessories)
+  const perWords = per ? perMonthWords(per.nok) : null
   const value = valueNowOf(item, ctx)
   const age = valueAgeDays(item, today)
   const final = chain ? finalCostOf(chain, item.id) : null
@@ -99,7 +100,7 @@ export function OwnedCard({ item, accessories, chain, watch, ctx, today, onOpen,
         ) : (
           <>
             {held && from && <Pair label="Owned"><Peek detail={`Since ${item.approx_dates ? '≈ ' : ''}${formatDate(from)}`}>{held}</Peek></Pair>}
-            {per && <Pair label="Per month">≈ {money(per.nok)}</Pair>}
+            {perWords && <Pair label={perWords.label}>≈ {money(perWords.nok)}{perWords.aMonth && ' a month'}</Pair>}
             {value && (
               <Pair label="Could sell for" className={stale ? 'text-warn' : undefined}>
                 {item.value_on ? <Peek detail={`Your estimate from ${formatDate(item.value_on)}`}><AmountText amount={value} /></Peek> : <AmountText amount={value} />}

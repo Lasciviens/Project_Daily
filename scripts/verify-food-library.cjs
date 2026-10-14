@@ -53,13 +53,9 @@ ok(M.dayRemaining({ calories: 2300, protein: 180 }, { calories: 1668, protein_g:
 ok(M.dayRemaining({ calories: 2000, protein: 150 }, null), { kcal: 2000, protein: 150 }, 'nothing eaten yet → the whole target')
 ok(M.dayRemaining({ calories: 2000, protein: 150 }, { calories: 2250, protein_g: 160 }), { kcal: -250, protein: -10 }, 'over target → negative')
 
-// Today → "What's left": four targets from the goal, and what is left of each (14.10.2026)
-ok(M.dayMacroTargets({ calories: 2200, protein: 160 }), { kcal: 2200, protein: 160, carbs: 226, fat: 73 },
-  'kcal and protein are the goal; fat 30 % of the kcal (660 / 9 = 73 g), carbs the rest ((2200 − 640 − 657) / 4)')
-ok(M.dayMacroTargets({ calories: 2200, protein: 160 }, 50), { kcal: 2200, protein: 160, carbs: 226, fat: 73 }, 'a fat floor under the 30 % changes nothing')
-ok(M.dayMacroTargets({ calories: 1500, protein: 180 }, 60), { kcal: 1500, protein: 180, carbs: 60, fat: 60 }, 'a fat floor over the 30 % lifts fat and carbs give way')
-ok(M.dayMacroTargets({ calories: 1200, protein: 250 }), { kcal: 1200, protein: 250, carbs: 0, fat: 40 }, 'carbs never go below 0')
-ok(M.dayMacroTargets({ calories: 2199.6, protein: 159.5 }, null), { kcal: 2200, protein: 160, carbs: 226, fat: 73 }, 'whole numbers; no floor = none')
+// Today → "What's left": what is left of each target (14.10.2026). The targets
+// themselves come from the goal decision (verify-cut-decision §10).
+ok(typeof M.dayMacroTargets, 'undefined', 'Food derives no targets of its own (the goal decision does)')
 const T = { kcal: 2200, protein: 160, carbs: 226, fat: 73 }
 const left = M.macrosLeft(T, { calories: 2320, protein_g: 120.4, carbs_g: 180, fat_g: 80 })
 ok(left.map(m => m.key), ['kcal', 'protein', 'carbs', 'fat'], 'always kcal, protein, carbs, fat')

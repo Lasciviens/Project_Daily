@@ -136,6 +136,12 @@ console.log('\n6 · Cost of use per month')
   check('gone: (cost − got) ÷ months, with only the accessories sold in the same sale', pg && near(pg.used.nok, 2800 + 199 - 2342 - 166) && near(pg.months, O.monthsBetween('2024-03-02', '2026-05-15')))
   check('a missing sale amount: no number', O.perMonth(item({ price: 100, bought_at: at('2025-01-01'), disposal: 'sold', disposed_on: '2026-01-01' }), CTX, TODAY) === null)
   check('a sale waiting for its rate: no number', O.perMonth(item({ price: 100, bought_at: at('2025-01-01'), disposal: 'sold', disposed_on: '2026-01-01', sale_price: 50, sale_currency: 'EUR' }), CTX, TODAY) === null)
+  check('the card: a cost reads "Per month ≈ 334"', JSON.stringify(O.perMonthWords(333.6)) === JSON.stringify({ label: 'Per month', nok: 334, aMonth: false }))
+  check('the card: worth more than it cost reads "Gained ≈ 429 … a month", never a minus number',
+    JSON.stringify(O.perMonthWords(-428.7)) === JSON.stringify({ label: 'Gained', nok: 429, aMonth: true }))
+  check('the card: under half a krone either way reads "Per month ≈ 0"', JSON.stringify(O.perMonthWords(-0.4)) === JSON.stringify({ label: 'Per month', nok: 0, aMonth: false }))
+  const ahead = O.perMonth(item({ price: 1000, bought_at: at('2026-04-14'), value_now: 3574, value_on: '2026-10-01' }), CTX, TODAY)
+  check('the card: an item that could sell for more than it cost is "Gained"', ahead && O.perMonthWords(ahead.nok).label === 'Gained' && O.perMonthWords(ahead.nok).nok > 0)
 }
 
 console.log('\n7 · Selling things together')

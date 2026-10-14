@@ -103,8 +103,10 @@ check('split step 2: main = brief → week | tasks; side = transit → weather (
   const c = B.resolveBoardLayout(HOME_BOARD_SPLIT, 2).columns
   return c.length === 2 && eq(c[0].stack, ['brief', 'pair']) && eq(c[1].stack, ['transit', 'weatherTile'])
 })())
-check('split step 2: both columns fill, so the weather tile ends where the tasks end (owner, 14.10.2026)',
-  B.resolveBoardLayout(HOME_BOARD_SPLIT, 2).columns.every(c => c.fill && !c.sticky))
+check('split step 2: the side column fills, so the weather tile ends where the tasks end (owner, 14.10.2026)',
+  (c => c[1].fill && !c[1].sticky)(B.resolveBoardLayout(HOME_BOARD_SPLIT, 2).columns))
+check('split step 2: main never fills, so a tall transit never stretches the week and the tasks',
+  B.resolveBoardLayout(HOME_BOARD_SPLIT, 2).columns[0].fill === false)
 check('split step 2: the glance row starts under both columns, then news', eq(B.resolveBoardLayout(HOME_BOARD_SPLIT, 2).bottom, ['glanceRow', 'news']))
 check('the glance row lies on the split board\'s own tracks (money · watched · books · games under main, training under the side)', (() => {
   const l = B.resolveBoardLayout(HOME_BOARD_SPLIT, 2)

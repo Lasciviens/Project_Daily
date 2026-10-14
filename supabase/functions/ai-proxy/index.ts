@@ -2820,13 +2820,13 @@ const DB_CATALOG: Record<string, CatalogEntry> = {
       'The user\'s GOAL is not here: the cut/maintain/gain phase, its start date, the daily calorie/protein/water targets and the body targets (goal weight, body fat %, muscle mass) all live on day_targets — one row, one goal. A request to lose fat or gain weight is a phase change on day_targets, not a training-focus change here.',
     ].join(' '),
   },
-  // day_targets is THE goal (migrations 086 + 113): one row per user holding the
+  // day_targets is THE goal (migrations 086 + 113 + 153): one row per user holding the
   // phase, its start date, the daily targets and the body targets — the same row
   // the app's one "Your goal" editor saves (Food, Daily and Health all show it).
   day_targets: {
     access: 'rw',
-    purpose: "The user's goal — a SINGLETON: at most ONE row per user, keyed by user_id (no id column). Holds the phase (goal: cut|maintain|gain) and the day it started, the daily calorie/protein/water targets, and the body targets (goal weight, body fat %, muscle mass — one set for every phase). Read it for any question about their goal, targets, deficit plan or progress toward a goal weight.",
-    columns: 'user_id(uuid, PRIMARY KEY — not "id"), calories(int kcal/day), protein_g(int g/day), water_ml(int ml/day), goal(the PHASE: cut|maintain|gain), last_calorie_adjust(date, nullable — last adaptive-calorie nudge, gates a 14-day cooldown), phase_start_date(date, nullable — first day of the current phase), goal_weight_kg(numeric 25–300, nullable), goal_body_fat_pct(numeric 3–60 — as the smart scale reports it, nullable), goal_muscle_mass_kg(numeric 10–150 — the scale report muscle % × weight, not lean mass, nullable), updated_at',
+    purpose: "The user's goal — a SINGLETON: at most ONE row per user, keyed by user_id (no id column). Holds the phase (goal: cut|maintain|gain) and the day it started, the daily calorie/protein/water targets with the optional carb and fat goals, and the body targets (goal weight, body fat %, muscle mass — one set for every phase). Read it for any question about their goal, targets, deficit plan or progress toward a goal weight.",
+    columns: 'user_id(uuid, PRIMARY KEY — not "id"), calories(int kcal/day), protein_g(int g/day), water_ml(int ml/day), carbs_g(int g/day 0–1000, nullable — NULL means the app works it out: what protein and fat leave of the calories), fat_g(int g/day 0–1000, nullable — NULL means worked out: 30 % of the calories, never under the cut’s fat floor), goal(the PHASE: cut|maintain|gain), last_calorie_adjust(date, nullable — last adaptive-calorie nudge, gates a 14-day cooldown), phase_start_date(date, nullable — first day of the current phase), goal_weight_kg(numeric 25–300, nullable), goal_body_fat_pct(numeric 3–60 — as the smart scale reports it, nullable), goal_muscle_mass_kg(numeric 10–150 — the scale report muscle % × weight, not lean mass, nullable), updated_at',
     rules: [
       'There is at most one row for this user — never insert a second one once a row exists.',
       'To write: first db_query this table with filters={} to check whether a row exists. If none exists, db_insert one. If one exists, db_update it with filters={"user_id":"<the user_id value from the row you just queried>"} (db_update refuses an empty filters object).',

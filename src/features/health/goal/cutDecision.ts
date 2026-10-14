@@ -5,7 +5,9 @@
 // (scripts/verify-cut-decision.cjs); the only runtime import is the pace math
 // in bodyGoal.ts.
 //
-// Designed with the sports-scientist + strength-coach agents. Three parts:
+// Designed with the sports-scientist + strength-coach agents. Three parts
+// (and D, the day's carb and fat targets that Food's "What's left" shows —
+// the owner's own when set, else worked out here, so no screen derives its own):
 //
 // A. PROTEIN. With a body-fat % from the scale, from fat-free mass (FFM =
 //    BW × (1 − BF)): aim 2.8 g/kg FFM, clamped to 1.6–2.2 g/kg bodyweight; the
@@ -203,6 +205,43 @@ export function calorieFloor(weightKg: number | null, bodyFatPct: number | null,
   const why = basis === 'resting' ? (ffm != null ? 'your estimated resting burn (500 + 22 × lean mass)' : 'about 24 kcal per kg')
     : basis === 'scale' ? '75 % of what the scale says you burn' : 'the 1,500 kcal minimum'
   return { kcal, basis, restingKcal: round10(resting), text: `Calorie floor ~${n0(kcal)} kcal — ${why}; a heuristic that only limits cutting.` }
+}
+
+// ── D. the day's four targets (Food → Today's "What's left") ───────────────
+/** Fat's share of the calories when no fat goal is set: the middle of the usual 20–35 %. */
+export const FAT_SHARE = 0.3
+
+export interface DayMacroTargets {
+  kcal: number
+  protein: number
+  carbs: number
+  fat: number
+  /** The owner set this goal (day_targets.carbs_g / fat_g, migration 153); false = worked out. */
+  carbsSet: boolean
+  fatSet: boolean
+  /** A worked-out fat target that is the cut's fat floor, not 30 % of the calories. */
+  fatFromFloor: boolean
+}
+
+/**
+ * kcal and protein are the goal. Carbs and fat are the owner's own goals when
+ * set; an empty one is worked out from the rest: fat 30 % of the calories,
+ * never under the cut's fat floor (`fatFloorG`, the decision's own); carbs
+ * what protein and fat leave (4/4/9 kcal per gram), never below 0.
+ */
+export function dayMacroTargets(
+  goal: { calories: number; protein: number; carbs?: number | null; fat?: number | null },
+  fatFloorG?: number | null,
+): DayMacroTargets {
+  const kcal = Math.max(0, Math.round(goal.calories))
+  const protein = Math.max(0, Math.round(goal.protein))
+  const fatSet = goal.fat != null
+  const carbsSet = goal.carbs != null
+  const share = (kcal * FAT_SHARE) / 9
+  const fatFromFloor = !fatSet && fatFloorG != null && fatFloorG > share
+  const fat = goal.fat != null ? Math.max(0, Math.round(goal.fat)) : Math.round(Math.max(share, fatFloorG ?? 0))
+  const carbs = goal.carbs != null ? Math.max(0, Math.round(goal.carbs)) : Math.max(0, Math.round((kcal - protein * 4 - fat * 9) / 4))
+  return { kcal, protein, carbs, fat, carbsSet, fatSet, fatFromFloor }
 }
 
 // ── pace label (the Pace pill everywhere) ──────────────────────────────────

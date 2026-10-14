@@ -51,7 +51,7 @@ export function useDayTargets() {
       // switching phases right after Save can't read the pre-save profile.
       qc.setQueryData<DayTargetProfiles>(PROFILES_QK, (old) => ({
         ...(old ?? {}),
-        [next.goal]: { calories: next.calories, protein: next.protein, water: next.water },
+        [next.goal]: { calories: next.calories, protein: next.protein, water: next.water, carbs: next.carbs, fat: next.fat },
       }))
       return { previous, previousProfiles }
     },
@@ -80,7 +80,7 @@ export function useDayTargets() {
   return { targets, update, fromDevice: state.fromDevice, isSaving: mutation.isPending, isLoaded: !isPlaceholderData }
 }
 
-// One saved {calories, protein, water} set per phase (migration 088) — the
+// One saved {calories, protein, water, carbs, fat} set per phase (088, 153) — the
 // editor's per-phase memory: switching Cut → Maintain → Cut recalls what was
 // last saved for Cut instead of carrying over Maintain's numbers.
 export function useDayTargetProfiles() {

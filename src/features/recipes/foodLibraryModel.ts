@@ -160,26 +160,9 @@ export function dayRemaining(
 }
 
 // ── Today's four targets (Today → "What's left") ────────────────────────────
-/** Fat's share of the calorie goal: the middle of the usual 20–35 % range. */
-export const FAT_SHARE = 0.3
-
+// The targets themselves come from THE goal decision (health/goal/cutDecision
+// .dayMacroTargets); this only says what is left of them.
 export type DayMacro = 'kcal' | 'protein' | 'carbs' | 'fat'
-export interface DayMacroTargets { kcal: number; protein: number; carbs: number; fat: number }
-
-/**
- * The day's four targets from the goal. The goal (day_targets) sets calories
- * and protein; carbs and fat split what the calories leave: fat is 30 % of
- * the calories (never under the coach's fat floor when it gives one — a cut
- * with a known weight), carbs are the rest after protein and fat (4/4/9 kcal
- * per gram), never below 0.
- */
-export function dayMacroTargets(goal: { calories: number; protein: number }, fatFloorG?: number | null): DayMacroTargets {
-  const kcal = Math.max(0, Math.round(goal.calories))
-  const protein = Math.max(0, Math.round(goal.protein))
-  const fat = Math.round(Math.max((kcal * FAT_SHARE) / 9, fatFloorG ?? 0))
-  const carbs = Math.max(0, Math.round((kcal - protein * 4 - fat * 9) / 4))
-  return { kcal, protein, carbs, fat }
-}
 
 export interface MacroLeft {
   key: DayMacro
@@ -193,7 +176,7 @@ export interface MacroLeft {
 
 /** What is left of each target today (kcal, protein, carbs, fat — in that order). */
 export function macrosLeft(
-  t: DayMacroTargets,
+  t: Readonly<Record<DayMacro, number>>,
   eaten: { calories?: number | null; protein_g?: number | null; carbs_g?: number | null; fat_g?: number | null } | null | undefined,
 ): MacroLeft[] {
   const got: Record<DayMacro, number> = {
