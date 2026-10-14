@@ -29,7 +29,7 @@ Full background and history: `docs/backend/database.md`.
 - PostgREST returns at most 1,000 rows: page open-ended reads with `.range()` until a page comes back short.
 
 ## Cross-entity rules live in the database
-- The app writes through three doors (web, the assistant's db tools, edge functions/webhooks), so a rule that must always hold is a trigger, not app code (043 `link_rules`, 077, 141, 142, 143).
+- The app writes through three doors (web, the assistant's db tools, edge functions/webhooks), so a rule that must always hold is a trigger, not app code (043 `link_rules`, 077, 141, 142, 143, 149's watch cache).
 - Google calls never run in a trigger (no OAuth token there): a server-side block delete only queues its Calendar event in `calendar_outbox` (135).
 - A claim query with per-row ordering uses a `NOT EXISTS` anti-join inside the CTE that carries `FOR UPDATE … SKIP LOCKED` — never a window function upstream of the lock (079; check `EXPLAIN` shows `LockRows`).
 - An RPC scoped through `effective_user_id(p_user_id)` needs `p_user_id` at every service-role call site (a service role has no `auth.uid()`).

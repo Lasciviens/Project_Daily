@@ -60,7 +60,7 @@ export async function addTVEntry(
 
 export async function updateTVEntry(
   id: string,
-  patch: Partial<Pick<UserTVEntry, 'status' | 'priority' | 'personal_note' | 'rating' | 'current_season' | 'current_episode' | 'planned_date' | 'notify_before_days' | 'repeat_count' | 'started_at' | 'finished_at' | 'is_favorite'>>
+  patch: Partial<Pick<UserTVEntry, 'status' | 'priority' | 'personal_note' | 'rating' | 'current_season' | 'current_episode' | 'planned_date' | 'notify_before_days' | 'repeat_count' | 'started_at' | 'finished_at' | 'is_favorite' | 'rewatch_round'>>
 ): Promise<UserTVEntry> {
   const { data, error } = await supabase
     .from('user_tv_entries')
@@ -72,3 +72,11 @@ export async function updateTVEntry(
   return data
 }
 
+
+/** The round a show is being watched again in (migration 149); null when it isn't, or before 149. */
+export async function fetchRewatchRound(tvEntryId: string): Promise<number | null> {
+  const { data, error } = await supabase.from('user_tv_entries').select('status, rewatch_round').eq('id', tvEntryId).maybeSingle()
+  if (error) return null
+  const row = data as { status?: string; rewatch_round?: number | null } | null
+  return row && (row.status === 'watching' || row.status === 'paused') && (row.rewatch_round ?? 0) >= 2 ? row.rewatch_round! : null
+}

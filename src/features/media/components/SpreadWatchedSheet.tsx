@@ -12,6 +12,8 @@ import {
   DEFAULT_SPREAD, fixedSpreadEpisodes, fmt, planSpread, seedFrom, spreadDefaultStart, spreadHeadline, spreadWrites,
   type SpreadEpisode, type SpreadInput, type SpreadMode, type SpreadStyle,
 } from '../spreadWatched'
+import { watchFor } from '../watches'
+import type { WatchPickAnswer } from './WatchPickSheet'
 import { SpreadMonthStrip } from './SpreadMonthStrip'
 
 const STYLES: { value: SpreadStyle; label: string; hint: string }[] = [
@@ -38,6 +40,8 @@ interface Props {
   only?: { season: number; episode: number }[]
   /** What the save does (spreadWatched.ts `SpreadMode`); default `watched`. */
   mode?: SpreadMode
+  /** Changing dates: the watch of each episode that moves (default the latest; migration 149). */
+  pick?: WatchPickAnswer
   /** `saved`: true after a successful save. */
   onClose: (saved?: boolean) => void
   /**
@@ -59,15 +63,15 @@ const fixedLabel = (eps: SpreadEpisode[]) => (eps.length <= 3
 /** The save button and the toast, per mode. */
 const WORDS: Record<SpreadMode, { verb: string; button: (n: number) => string; loading: (n: number) => string; done: (n: number) => string; note?: string }> = {
   watched: { verb: 'Mark watched', button: n => `Mark ${plural(n)}`, loading: n => `Marking ${plural(n)}…`, done: n => `${plural(n)} marked watched` },
-  again: { verb: 'Count the plays', button: n => `Count ${n} play${n === 1 ? '' : 's'}`, loading: n => `Counting another play of ${plural(n)}…`, done: n => `Another play of ${plural(n)} counted`, note: 'each gets one more play' },
-  redate: { verb: 'Change dates', button: n => `Change ${n} date${n === 1 ? '' : 's'}`, loading: () => 'Changing watched dates…', done: n => `${n} watched date${n === 1 ? '' : 's'} changed`, note: 'plays stay' },
+  again: { verb: 'Add the watches', button: n => `Add ${n} watch${n === 1 ? '' : 'es'}`, loading: n => `Adding a watch to ${plural(n)}…`, done: n => `A watch added to ${plural(n)}`, note: 'each gets one more watch' },
+  redate: { verb: 'Change dates', button: n => `Change ${n} date${n === 1 ? '' : 's'}`, loading: () => 'Changing watched dates…', done: n => `${n} watched date${n === 1 ? '' : 's'} changed`, note: 'one watch each, the others keep theirs' },
 }
 
 /**
  * Mark a run of episodes watched across a period you remember roughly, with
  * breaks you didn't watch in. Every change replans at once (spreadWatched.ts).
  */
-export function SpreadWatchedSheet({ tvId, tvName, tvEntryId, seasons, defaultRuntime, only, mode = 'watched', onClose, onSaved }: Props) {
+export function SpreadWatchedSheet({ tvId, tvName, tvEntryId, seasons, defaultRuntime, only, mode = 'watched', pick = 'latest', onClose, onSaved }: Props) {
   const TODAY = todayStr()
   // A fixed set needs only its own seasons from TMDB.
   const all = useAllSeasons(tvId, only ? [...new Set(only.map(r => r.season))] : seasons)
@@ -139,7 +143,14 @@ export function SpreadWatchedSheet({ tvId, tvName, tvEntryId, seasons, defaultRu
     const ok = await withProgress(async () => {
       if (w.mark.length) await mark.mutateAsync({ tvEntryId, episodes: refs(w.mark), watchedOn: TODAY })
       if (w.again.length) await mark.mutateAsync({ tvEntryId, episodes: refs(w.again), again: true, watchedOn: TODAY })
-      if (w.redate.length) await setDates.mutateAsync({ tvEntryId, episodes: refs(w.redate) })
+      if (w.redate.length) {
+        // One watch per episode moves (the chosen one, else the latest); the others keep their dates.
+        const rowOf = (s: number, e: number) => watched.find(x => x.season_number === s && x.episode_number === e)
+        await setDates.mutateAsync({
+          tvEntryId,
+          episodes: refs(w.redate).map(r => { const row = rowOf(r.season, r.episode); return { ...r, watchId: row?.watches ? watchFor(row.watches, pick)?.id ?? null : null } }),
+        })
+      }
       if (onSaved) await onSaved({ firstAt: result.plan[0].at, lastAt: result.plan[n - 1].at })
       return true
     }, {

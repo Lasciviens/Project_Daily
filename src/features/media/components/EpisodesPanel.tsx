@@ -5,50 +5,70 @@ import { episodeAirDates, useSeasonDetails } from '../hooks/useTMDB'
 import { useWatchedWhenPrompt } from '../hooks/useWatchedWhenPrompt'
 import { offersSpread, resolveWatchedAt } from '../watchedWhen'
 import type { SpreadMode } from '../spreadWatched'
-import { useWatchedEpisodes, useMarkEpisodeWatched, useSetEpisodeDates, useSetEpisodePlays } from '../hooks/useWatchedEpisodes'
-import { usePlaysPrompt } from '../hooks/usePlaysPrompt'
-import { CalendarDays, CalendarPlus, CalendarRange, Check, ListChecks, Repeat, RotateCcw, SlidersHorizontal, Undo2 } from 'lucide-react'
+import { useWatchedEpisodes, useMarkEpisodeWatched, useSetEpisodeDates } from '../hooks/useWatchedEpisodes'
+import { useDeleteWatches } from '../hooks/useWatches'
+import { useWatchPick } from '../hooks/useWatchPick'
+import type { WatchPickAnswer } from './WatchPickSheet'
+import { CalendarDays, CalendarPlus, CalendarRange, Check, History, ListChecks, RotateCcw, Undo2 } from 'lucide-react'
 import { useEntityModal } from '../../../shared/modals'
 import { Button, SectionLabel, Skeleton, TonePill, Truncate } from '../../../shared/ui'
 import { ceilToQuarter } from '../../../shared/components/plan-modal/planModal.config'
-import type { TMDBTVFull } from '../types'
+import type { TMDBTVFull, WatchedEpisode } from '../types'
 import { formatDate } from '../../../shared/utils/dateFormat'
 import { todayStr } from '../../../shared/utils/dateUtils'
 import { toast } from '../../../app/store'
-import { isUnknownWatchedAt } from '../trakt/traktDates'
 import { useTraktPlayback } from '../trakt/useTraktExtras'
 import { pausedEpisodes, seasonGaps } from '../episodeGaps'
+import { cacheWatches, sortWatches, watchCounts, watchDate, watchedOnce, watchFor, type Watch } from '../watches'
 import { SpreadWatchedSheet } from './SpreadWatchedSheet'
+import { WatchesSheet } from './WatchesSheet'
 
 interface Props {
   tv:         TMDBTVFull
   tvEntryId:  string
+  /** Watching it again (migration 149): the round under way — progress follows it. */
+  rewatchRound?: number | null
 }
 
 type EpisodeKey = { season: number; episode: number }
 
-export function EpisodesPanel({ tv, tvEntryId }: Props) {
+/** An episode's watches: the list (migration 149), else its plays at the one kept date. */
+const watchesOf = (row: WatchedEpisode): Watch[] => row.watches ?? cacheWatches(row)
+
+export function EpisodesPanel({ tv, tvEntryId, rewatchRound = null }: Props) {
   const TODAY = todayStr()
   const realSeasons = (tv.seasons ?? []).filter(s => s.season_number > 0)
   const [season,    setSeason]    = useState(realSeasons[0]?.season_number ?? 1)
   const [selected,  setSelected]  = useState<Set<number>>(new Set())
   const [marking,   setMarking]   = useState(false)
   // The Spread popup: the Spread button (a from–to range), or "Spread over
-  // dates…" in the when-watched sheet for a fixed set of episodes.
-  const [spread,    setSpread]    = useState<{ only?: EpisodeKey[]; mode: SpreadMode } | null>(null)
+  // dates…" in the when-watched sheet for a fixed set of episodes. `pick`: the
+  // watch Change dates moves (the latest unless the user chose).
+  const [spread,    setSpread]    = useState<{ only?: EpisodeKey[]; mode: SpreadMode; pick?: WatchPickAnswer } | null>(null)
+  // The watch list of one episode (this season).
+  const [watchesFor, setWatchesFor] = useState<number | null>(null)
 
   const { data: seasonData, isLoading } = useSeasonDetails(tv.id, season)
   const { data: watched = [] }          = useWatchedEpisodes(tvEntryId)
   const markWatched                     = useMarkEpisodeWatched()
   const setDates                        = useSetEpisodeDates()
+  const removeWatches                   = useDeleteWatches()
   const modal                           = useEntityModal()
   const qc                              = useQueryClient()
   const { ask, askMany, dialog }        = useWatchedWhenPrompt()
-  const plays$                          = usePlaysPrompt()
-  const setPlays                        = useSetEpisodePlays()
+  const pick$                           = useWatchPick()
 
   const watchedSet = new Set(watched.filter(w => w.season_number === season).map(w => w.episode_number))
   const watchedMap = new Map(watched.filter(w => w.season_number === season).map(w => [w.episode_number, w]))
+  const rowOf = (r: EpisodeKey) => watched.find(w => w.season_number === r.season && w.episode_number === r.episode)
+  // A rewatch round: an episode is "done" once watched `rewatchRound` times.
+  const counts = watchCounts(watched)
+  const countOf = (r: EpisodeKey) => counts.get(`${r.season}x${r.episode}`) ?? 0
+  const belowRound = (r: EpisodeKey) => rewatchRound != null && countOf(r) < rewatchRound
+  // The next episode of the round in this season's list (the first below it).
+  const nextInSeason = rewatchRound != null
+    ? (seasonData?.episodes ?? []).find(e => (!e.air_date || e.air_date <= TODAY) && belowRound({ season, episode: e.episode_number }))?.episode_number ?? null
+    : null
   // Trakt's paused playbacks (the same read as Continue watching, one query
   // for every row): an unwatched episode stopped part-way says how far.
   const { data: playback } = useTraktPlayback()
@@ -57,10 +77,11 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
   const gaps = seasonGaps(seasonData?.episodes ?? [], watchedSet, TODAY)
 
   // Watched count per season — drives the Netflix-style progress on the
-  // season tabs (n/total + a green fill bar), so where you are in a series
-  // is readable at a glance without opening each season.
+  // season tabs (n/total + a green fill bar); in a rewatch, the episodes at
+  // the round.
   const watchedBySeason = new Map<number, number>()
   for (const w of watched) {
+    if (rewatchRound != null && countOf({ season: w.season_number, episode: w.episode_number }) < rewatchRound) continue
     watchedBySeason.set(w.season_number, (watchedBySeason.get(w.season_number) ?? 0) + 1)
   }
 
@@ -75,7 +96,7 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
 
   // The selection split by what it holds: an episode already watched (here or
   // from Trakt) can't be "marked watched" again — that used to overwrite its
-  // real date with today. It can be watched again (one more play) or unmarked.
+  // real date with today. It can be watched again (one more watch) or unmarked.
   const selectedWatched   = [...selected].filter(n => watchedSet.has(n))
   const selectedUnwatched = [...selected].filter(n => !watchedSet.has(n))
 
@@ -101,7 +122,8 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
 
   // "Watched up to here": every episode before this one (earlier seasons by
   // TMDB's episode count, this season by its list) that isn't marked yet, plus
-  // this one. Episodes already watched keep their date and plays.
+  // this one. Episodes already watched keep their date and watches. In a
+  // rewatch round: every one below the round gets one more watch.
   async function watchUpTo(epNum: number) {
     const refs: EpisodeKey[] = []
     for (const s of realSeasons) {
@@ -109,9 +131,18 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
       for (let e = 1; e <= s.episode_count; e++) refs.push({ season: s.season_number, episode: e })
     }
     for (const ep of seasonData?.episodes ?? []) if (ep.episode_number <= epNum) refs.push({ season, episode: ep.episode_number })
+    const label = `S${String(season).padStart(2, '0')}E${String(epNum).padStart(2, '0')}`
+    if (rewatchRound != null) {
+      const todo = refs.filter(belowRound)
+      if (todo.length === 0) return
+      const timed = await withWhen(todo, `Round ${rewatchRound} up to ${label}`, 'again')
+      if (!timed) return
+      // Unwatched ones get their first watch, the rest one more — both through the one write path.
+      await runMarkRefs(timed, 'again', `Counting round ${rewatchRound} up to ${label}…`, `Round ${rewatchRound} up to ${label}`)
+      return
+    }
     const todo = refs.filter(r => !watchedAll.has(`${r.season}x${r.episode}`))
     if (todo.length === 0) return
-    const label = `S${String(season).padStart(2, '0')}E${String(epNum).padStart(2, '0')}`
     const timed = await withWhen(todo, `Up to ${label} · watched ones keep their date`, 'watched')
     if (!timed) return
     await runMarkRefs(timed, 'watched', `Marking up to ${label}…`, `Watched up to ${label}`)
@@ -132,7 +163,7 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
   // opens it for exactly these episodes, saving as `mode` says.
   // `strict`: changing a date — an episode with no known air date is left as
   // it is instead of getting today's date.
-  async function withWhen(refs: EpisodeKey[], verb: string, mode: SpreadMode, strict = false) {
+  async function withWhen(refs: EpisodeKey[], verb: string, mode: SpreadMode, strict = false, pick?: WatchPickAnswer) {
     const one = refs.length === 1 ? refs[0] : null
     const air = one && one.season === season ? (seasonData?.episodes ?? []).find(e => e.episode_number === one.episode)?.air_date : null
     const prompt = {
@@ -143,7 +174,7 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
     const when = offersSpread(refs.length) ? await askMany(prompt) : await ask(prompt)
     if (!when) return null
     if (when.kind === 'spread') {
-      setSpread({ only: refs, mode })
+      setSpread({ only: refs, mode, pick })
       return null
     }
     const now = new Date().toISOString()
@@ -163,56 +194,67 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
   }
   async function watchSelectedAgain() {
     const refs = await withWhen(selectedWatched.map(episode => ({ season, episode })), 'When did you watch it again?', 'again')
-    if (refs) await runMarkRefs(refs, 'again', `Counting another play of ${plural(refs.length)}…`, 'Play counted')
+    if (refs) await runMarkRefs(refs, 'again', `Adding a watch to ${plural(refs.length)}…`, refs.length === 1 ? 'Watch added' : `${refs.length} watches added`)
   }
-  // Change when episodes already watched were watched (Release date = each one's own air date).
+  // Change when episodes already watched were watched (Release date = each
+  // one's own air date). Each episode keeps every watch but the one chosen —
+  // the latest unless the user picks (migration 149).
   async function changeDates(refs: EpisodeKey[], verb: string) {
-    // Trakt keeps a date per play; the app keeps one per episode, so every play gets the new date.
-    const multi = watched.filter(w => (w.repeat_count ?? 0) > 0 && refs.some(r => r.season === w.season_number && r.episode === w.episode_number)).length
-    if (multi > 0 && !(await modal.confirm({
-      title: `${multi} of them ${multi === 1 ? 'was' : 'were'} watched more than once`,
-      message: 'The app keeps one date per episode, so every play of those episodes gets the new date — here and on Trakt.',
+    const rows = refs.map(rowOf).filter((r): r is WatchedEpisode => !!r)
+    const linked = rows.every(r => !!r.watches)
+    const multi = rows.filter(r => watchesOf(r).length > 1)
+    let pick: WatchPickAnswer = 'latest'
+    if (multi.length && linked) {
+      const a = await pick$.ask(refs.length === 1
+        ? { title: `${tv.name} · ${epLabel(refs[0])}`, watches: watchesOf(multi[0]) }
+        : { title: `${tv.name} · ${refs.length} episodes`, several: multi.length })
+      if (!a) return
+      pick = a
+    } else if (multi.length && !(await modal.confirm({
+      // Before migration 149 the app kept one date per episode.
+      title: `${multi.length} of them ${multi.length === 1 ? 'was' : 'were'} watched more than once`,
+      message: 'Until the update that keeps each watch\'s own date is applied, every play of those episodes gets the new date.',
       confirmLabel: 'Change anyway',
     }))) return
-    const timed = await withWhen(refs, verb, 'redate', true)
+    const timed = await withWhen(refs, verb, 'redate', true, pick)
     if (!timed || timed.length === 0) return
     setMarking(true)
     const ok = await withProgress(
-      () => setDates.mutateAsync({ tvEntryId, episodes: timed }).then(n => n),
-      { loading: 'Changing watched dates…', success: 'Watched dates changed' },
+      () => setDates.mutateAsync({
+        tvEntryId,
+        episodes: timed.map(t => { const row = rowOf(t); return { ...t, watchId: row?.watches ? watchFor(row.watches, pick)?.id ?? null : null } }),
+      }).then(n => n),
+      { loading: 'Changing watched dates…', success: timed.length === 1 ? 'Watched date changed' : 'Watched dates changed' },
     )
     if (ok != null) setSelected(new Set())
     setMarking(false)
   }
-  const changeSelectedDates = () => changeDates(selectedWatched.map(episode => ({ season, episode })), 'Change when you watched them')
+  const changeSelectedDates = () => changeDates(selectedWatched.map(episode => ({ season, episode })), 'Change when you watched it')
   const changeAllDates = () => changeDates(watched.map(w => ({ season: w.season_number, episode: w.episode_number })), `Every watched episode (${watched.length})`)
-
-  // Advanced: how many times this episode was watched and its kept date.
-  // Changing only the count keeps the date ("Watched again" asks for a new one).
-  async function editPlays(epNum: number) {
-    const row = watchedMap.get(epNum)
-    if (!row) return
-    const a = await plays$.ask({
-      title: `${tv.name} · ${epLabel({ season, episode: epNum })}`,
-      plays: 1 + Math.max(0, row.repeat_count ?? 0),
-      at: row.watched_at,
-      target: 'episode',
-    })
-    if (!a) return
-    await withProgress(
-      () => setPlays.mutateAsync({ tvEntryId, season, episode: epNum, plays: a.plays, at: a.dateKept ? undefined : a.at ?? undefined }).then(() => true),
-      { loading: 'Saving plays…', success: a.plays === 1 ? 'Watched once' : `Watched ${a.plays} times` },
-    )
-  }
 
   async function unmarkSelected() {
     const ok = await modal.confirm({
       title: `Mark ${plural(selectedWatched.length)} as not watched?`,
-      message: 'Removes the watched date and every play counted for them.',
+      message: 'Removes every watch of them — here and on Trakt.',
       confirmLabel: 'Mark not watched',
       destructive: true,
     })
     if (ok) await runMark(selectedWatched, 'unwatched', 'Removing watched…', 'Marked as not watched')
+  }
+
+  // The watch list of one episode: add, re-date or remove single watches.
+  const sheetRow = watchesFor != null ? watchedMap.get(watchesFor) ?? null : null
+  const sheetRef = watchesFor != null ? { season, episode: watchesFor } : null
+  async function removeWatch(w: Watch) {
+    const last = (sheetRow ? watchesOf(sheetRow).length : 0) <= 1
+    await removeWatches.run([w.id], {
+      title: 'Remove this watch?',
+      message: last
+        ? `${watchDate(w)} is its only watch: the episode becomes not watched, here and on Trakt.`
+        : `${watchDate(w)} — on Trakt only this play goes; the other watches stay.`,
+      confirmLabel: 'Remove',
+      done: last ? 'Watch removed · not watched' : 'Watch removed',
+    })
   }
 
   // Plan pre-fills from the selected episodes.
@@ -249,7 +291,24 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
   return (
     <div>
       {dialog}
-      {plays$.dialog}
+      {pick$.dialog}
+      {sheetRow && sheetRef && (
+        <WatchesSheet
+          title={`${tv.name} · ${epLabel(sheetRef)}`}
+          target="episode"
+          watches={watchesOf(sheetRow)}
+          editable={!!sheetRow.watches}
+          busy={markWatched.isPending || setDates.isPending || removeWatches.busy}
+          onClose={() => setWatchesFor(null)}
+          onAdd={at => withProgress(
+            () => markWatched.mutateAsync({ tvEntryId, episodes: [{ ...sheetRef, at: at ?? undefined }], again: true }).then(() => true),
+            { loading: 'Adding a watch…', success: 'Watch added' })}
+          onSetDate={(w, at) => withProgress(
+            () => setDates.mutateAsync({ tvEntryId, episodes: [{ ...sheetRef, at: at ?? '1970-01-01T00:00:00.000Z', watchId: w.id }] }).then(() => true),
+            { loading: 'Changing the date…', success: 'Watched date changed' })}
+          onRemove={removeWatch}
+        />
+      )}
       {spread && (
         <SpreadWatchedSheet
           tvId={tv.id}
@@ -259,6 +318,7 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
           defaultRuntime={tv.episode_run_time?.[0] ?? null}
           only={spread.only}
           mode={spread.mode}
+          pick={spread.pick}
           onClose={saved => { setSpread(null); if (saved) setSelected(new Set()) }}
         />
       )}
@@ -371,10 +431,12 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
             const isWatched  = watchedSet.has(ep.episode_number)
             const isSelected = selected.has(ep.episode_number)
             const watchedRow = watchedMap.get(ep.episode_number)
-            const watchedOn  = watchedRow?.watched_at
-            const plays      = 1 + Math.max(0, watchedRow?.repeat_count ?? 0)
+            const watches    = watchedRow ? sortWatches(watchesOf(watchedRow)) : []
             const runtime    = ep.runtime ?? tv.episode_run_time?.[0] ?? null
             const paused     = pausedAt.get(ep.episode_number) ?? null
+            const isNext     = nextInSeason === ep.episode_number
+            // In a rewatch round, an episode below the round reads as still to watch.
+            const done       = isWatched && !belowRound({ season, episode: ep.episode_number })
 
             const aired = !!ep.air_date && ep.air_date <= TODAY
             return (
@@ -387,7 +449,7 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
                   'flex min-h-[44px] min-w-0 flex-1 items-center gap-2.5 rounded-row px-2 py-1 text-left transition-colors',
                   // Watched rows read as done at a glance: tinted, dimmed title, check badge.
                   isSelected ? 'bg-accent-50 ring-1 ring-inset ring-accent-500/30'
-                    : isWatched ? 'bg-success-soft/60 hover:bg-success-soft'
+                    : done ? 'bg-success-soft/60 hover:bg-success-soft'
                     : 'hover:bg-surface-hover',
                 ].join(' ')}
               >
@@ -403,25 +465,26 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
 
                 <span className="min-w-0 flex-1">
                   <span className="flex items-baseline gap-1.5">
-                    <span className={`shrink-0 text-micro font-bold tabular-nums ${isWatched ? 'text-success' : 'text-fg-faint'}`}>
+                    <span className={`shrink-0 text-micro font-bold tabular-nums ${done ? 'text-success' : 'text-fg-faint'}`}>
                       E{String(ep.episode_number).padStart(2, '0')}
                     </span>
-                    <Truncate className={`min-w-0 text-body font-medium ${isWatched ? 'text-fg-muted' : 'text-fg'}`}>{ep.name}</Truncate>
+                    <Truncate className={`min-w-0 text-body font-medium ${done ? 'text-fg-muted' : 'text-fg'}`}>{ep.name}</Truncate>
                   </span>
-                  {/* Each fact stays whole; on a narrow row the plays pill wraps under
-                      the date instead of "Last watched" breaking over three lines. */}
-                  <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-micro text-fg-muted tabular-nums [&>*]:whitespace-nowrap">
-                    {runtime && <span>{runtime}m</span>}
+                  {/* Each fact stays whole; the watches wrap between dates on a narrow row. */}
+                  <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-micro text-fg-muted tabular-nums">
+                    {runtime && <span className="whitespace-nowrap">{runtime}m</span>}
                     {ep.air_date && (
-                      <span>{formatDate(ep.air_date)}</span>
+                      <span className="whitespace-nowrap">{formatDate(ep.air_date)}</span>
                     )}
-                    {isWatched && watchedOn && (
+                    {isNext && <TonePill tone="info" className="shrink-0">Next · round {rewatchRound}</TonePill>}
+                    {watches.length > 0 && (
                       <span className="font-medium text-success">
-                        {plays > 1 ? 'Last watched' : 'Watched'} {isUnknownWatchedAt(watchedOn) ? '· date unknown' : formatDate(watchedOn)}
+                        {watches.length === 1
+                          ? <span className="whitespace-nowrap">{watchedOnce(watches[0])}</span>
+                          : <><span className="whitespace-nowrap">{watches.length} watches</span>{watches.length > 3
+                              ? <> · <span className="whitespace-nowrap">{watchDate(watches[0])}</span> · … · <span className="whitespace-nowrap">{watchDate(watches[watches.length - 2])}</span> · <span className="whitespace-nowrap">{watchDate(watches[watches.length - 1])}</span></>
+                              : watches.map(w => <span key={w.id}> · <span className="whitespace-nowrap">{watchDate(w)}</span></span>)}</>}
                       </span>
-                    )}
-                    {isWatched && plays > 1 && (
-                      <TonePill tone="info" className="shrink-0"><Repeat aria-hidden className="h-3 w-3" />{plays} plays</TonePill>
                     )}
                     {!isWatched && paused != null && (
                       <TonePill tone="warn" className="shrink-0">Paused at {paused} %</TonePill>
@@ -429,7 +492,7 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
                   </span>
                 </span>
 
-                {isWatched && (
+                {done && (
                   <span aria-label="Watched" className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-success text-white">
                     <Check className="h-3 w-3" strokeWidth={3} />
                   </span>
@@ -438,13 +501,13 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
               {isWatched && (
                 <button
                   type="button"
-                  onClick={() => { void editPlays(ep.episode_number) }}
+                  onClick={() => setWatchesFor(ep.episode_number)}
                   disabled={marking}
-                  title="Plays and date"
-                  aria-label={`Plays and date of episode ${ep.episode_number}`}
+                  title="Watches"
+                  aria-label={`Watches of episode ${ep.episode_number}`}
                   className="grid min-h-[44px] w-11 shrink-0 place-items-center rounded-row text-fg-faint transition-colors hover:bg-surface-hover hover:text-fg-2 disabled:opacity-40"
                 >
-                  <SlidersHorizontal className="h-4 w-4" />
+                  <History className="h-4 w-4" />
                 </button>
               )}
               {!isWatched && aired && (

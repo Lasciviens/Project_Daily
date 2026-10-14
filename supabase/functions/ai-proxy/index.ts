@@ -500,7 +500,7 @@ const TOOLS = [
       },
       {
         name: 'mark_episode_watched',
-        description: 'Mark ONE TV episode as watched now. The show\'s progress (current_season/current_episode) follows by itself, and the change reaches Trakt by itself. An episode already marked watched keeps its real date (a rewatch is repeat_count + 1 on its user_tv_episodes row, via db_update). Use get_media first to get the entry_id.',
+        description: 'Mark ONE TV episode as watched now. The show\'s progress (current_season/current_episode) follows by itself, and the change reaches Trakt by itself. An episode already marked watched keeps its real date (watching it again is one more media_watches row, via db_insert). Use get_media first to get the entry_id.',
         parameters: {
           type: 'OBJECT',
           properties: {
@@ -2706,19 +2706,24 @@ const DB_CATALOG: Record<string, CatalogEntry> = {
     columns: 'user_id, daily_minutes_goal, streak_min_minutes, updated_at',
   },
   // The media library is synced with Trakt both ways: migrations 117/118/120/
-  // 132/136's outbox triggers queue every change to a Trakt-held fact from ANY
-  // writer (this function included — it sends no x-trakt-sync header), and
+  // 132/136/149's outbox triggers queue every change to a Trakt-held fact from
+  // ANY writer (this function included — it sends no x-trakt-sync header), and
   // trakt-api sends it within ~30 min. The rules say which facts those are.
+  // media_watches (149) is rw: the owner asks for "I watched it again on …" or
+  // "that first watch was in 2018" — one row per watch, and the database keeps
+  // the cache columns and Trakt (that one play) in step; its Trakt link
+  // (trakt_history_id, AI_NO_WRITE) and source are the sync's alone.
   // movies / tv_series (the shared TMDB catalogue) are not in this catalog:
   // they have no user_id, so db_query can't scope them — they are read through
   // the embeds named below.
   user_movie_entries: {
     access: 'rw',
     purpose: "The user's movie library — one row per film (wanted, watching, watched, dropped). Prefer get_media for an overview.",
-    columns: 'id, movie_id(uuid FK movies), status(wishlist = want to watch | watching | completed = watched | dropped | upcoming = LEGACY want-to-watch, read it as wishlist), priority(low|medium|high), rating(int 1-10 — the user\'s own; null = unrated), is_favorite(bool), personal_note(text — the user\'s own note on the film; it IS the film\'s private note on Trakt, synced both ways — Trakt keeps the first 499 characters + …), watched_at(timestamptz — when it was watched; NULL on a completed film = date unknown), repeat_count(int — extra plays: plays − 1), planned_date(date), watchlist_rank(int — Trakt watchlist order, set by the sync), created_at, updated_at. The film itself comes from the movies embed — select "*, movie:movies(title, release_date, genres, runtime, tmdb_rating, rt_critics, imdb_rating)": genres = jsonb array of {id, name}, runtime in minutes, tmdb_rating and imdb_rating /10, rt_critics/rt_audience = Rotten Tomatoes %, metacritic, letterboxd_rating /5.',
+    columns: 'id, movie_id(uuid FK movies), status(wishlist = want to watch | watching | completed = watched | dropped | upcoming = LEGACY want-to-watch, read it as wishlist), priority(low|medium|high), rating(int 1-10 — the user\'s own; null = unrated), is_favorite(bool), personal_note(text — the user\'s own note on the film; it IS the film\'s private note on Trakt, synced both ways — Trakt keeps the first 499 characters + …), watched_at(timestamptz — a CACHE of its latest watch in media_watches; NULL on a completed film = date unknown), repeat_count(int — a CACHE: watches − 1), rewatch_round(int ≥ 2 — the round it is being watched again in; NULL = not a rewatch), planned_date(date), watchlist_rank(int — Trakt watchlist order, set by the sync), created_at, updated_at. The film itself comes from the movies embed — select "*, movie:movies(title, release_date, genres, runtime, tmdb_rating, rt_critics, imdb_rating)": genres = jsonb array of {id, name}, runtime in minutes, tmdb_rating and imdb_rating /10, rt_critics/rt_audience = Rotten Tomatoes %, metacritic, letterboxd_rating /5.',
     rules: [
       '"Coming soon" is never a status: it is a wishlist (or legacy upcoming) film whose release_date is still ahead — derive it from the date. Never write status="upcoming"; use wishlist.',
-      'Watched = status "completed" plus watched_at: now when they just watched it, a day they name at midday (e.g. 2026-09-12T12:00:00Z), or NULL = date unknown — ask once when it is unclear, never guess a date. Watched again = repeat_count + 1 on the same row (one row per film, never a second one).',
+      'Watched = status "completed" plus watched_at: now when they just watched it, a day they name at midday (e.g. 2026-09-12T12:00:00Z), or NULL = date unknown — ask once when it is unclear, never guess a date (the database gives it its first watch). Watched again = one more media_watches row (kind "movie", movie_entry_id = this row\'s id, watched_at) — every other watch keeps its date; one row per film here, never a second one.',
+      'Watching it again: status "watching" + rewatch_round = its number of watches + 1; the watch that reaches the round makes it completed again by itself.',
       'Changes to status, watched_at, repeat_count, rating, is_favorite and personal_note reach Trakt by themselves — never tell the user to change Trakt by hand. Dropped, priority and planned_date are app-only.',
       'A film that is not in the library yet can only be added in the app (Media → search, which fetches it from TMDB) — never invent a movie_id.',
     ].join(' '),
@@ -2726,24 +2731,36 @@ const DB_CATALOG: Record<string, CatalogEntry> = {
   user_tv_entries: {
     access: 'rw',
     purpose: "The user's TV library — one row per show. Watched episodes are rows in user_tv_episodes. Prefer get_media for an overview.",
-    columns: 'id, tv_series_id(uuid FK tv_series), status(wishlist = want to watch | watching | paused | completed | dropped), priority(low|medium|high), rating(int 1-10 — the user\'s own rating of the show), is_favorite(bool), personal_note(text — the show\'s private note on Trakt, synced both ways), started_at(timestamptz — when they started the show), finished_at(timestamptz — when they finished it), current_season/current_episode(int — a CACHE of the highest watched episode in user_tv_episodes, kept by the database; season 1 episode 0 = nothing watched), planned_date(date), watchlist_rank(int — Trakt watchlist order, set by the sync), created_at, updated_at. The show itself comes from the tv_series embed — select "*, tv_series:tv_series(title, first_air_date, last_air_date, status, number_of_seasons, number_of_episodes, genres)": status is TMDB\'s (Returning Series, Ended…), genres = jsonb array of {id, name}.',
+    columns: 'id, tv_series_id(uuid FK tv_series), status(wishlist = want to watch | watching | paused | completed | dropped), priority(low|medium|high), rating(int 1-10 — the user\'s own rating of the show), is_favorite(bool), personal_note(text — the show\'s private note on Trakt, synced both ways), started_at(timestamptz — when they started the show), finished_at(timestamptz — when they finished it), rewatch_round(int ≥ 2 — watching it again: the round; NULL = not a rewatch), current_season/current_episode(int — a CACHE of the highest watched episode in user_tv_episodes, kept by the database; season 1 episode 0 = nothing watched), planned_date(date), watchlist_rank(int — Trakt watchlist order, set by the sync), created_at, updated_at. The show itself comes from the tv_series embed — select "*, tv_series:tv_series(title, first_air_date, last_air_date, status, number_of_seasons, number_of_episodes, genres)": status is TMDB\'s (Returning Series, Ended…), genres = jsonb array of {id, name}.',
     rules: [
       'NEVER write current_season/current_episode — they follow user_tv_episodes automatically. Record progress by marking episodes (mark_episode_watched, or user_tv_episodes rows).',
       '"Coming soon" is never a status: a wishlist show whose first_air_date is still ahead.',
       'Changes to status (wishlist, dropped), rating, is_favorite and personal_note reach Trakt by themselves; paused, priority, planned_date, started_at and finished_at are app-only.',
       'A show\'s completed/watching follows its watched episodes on the next Trakt sync (completed = every aired episode watched), so status="completed" alone may not stick: mark the episodes, or point the user to Completed on the show\'s page in the app, which marks every aired episode.',
+      'Watching a finished show again: status "watching" + rewatch_round = (fewest watches of its regular episodes) + 1 — it then stays Watching, its next episode is the first one watched fewer times than the round, and the watch that brings every watched episode up to the round makes it completed again by itself (watch = a media_watches row).',
       'A show that is not in the library yet can only be added in the app — never invent a tv_series_id.',
     ].join(' '),
   },
   user_tv_episodes: {
     access: 'rw',
     purpose: 'Watched TV episodes — THE source of truth for TV progress: one row per (show, season, episode).',
-    columns: 'id, tv_entry_id(uuid FK user_tv_entries), tv_series_id(uuid FK tv_series, required), season_number(int), episode_number(int), watched_at(timestamptz — set = watched; 1970-01-01T00:00:00Z = watched on an unknown date; NULL = not watched), repeat_count(int — extra plays: plays − 1), rating(int 1-10, app-only), personal_note(app-only), created_at, updated_at',
+    columns: 'id, tv_entry_id(uuid FK user_tv_entries), tv_series_id(uuid FK tv_series, required), season_number(int), episode_number(int), watched_at(timestamptz — set = watched; a CACHE of its latest watch in media_watches; 1970-01-01T00:00:00Z = watched on an unknown date; NULL = not watched), repeat_count(int — a CACHE: watches − 1), rating(int 1-10, app-only), personal_note(app-only), created_at, updated_at',
     rules: [
-      'Unique on (user_id, tv_series_id, season_number, episode_number): a rewatch is repeat_count + 1, never a second row. tv_series_id is required — read it (and tv_entry_id) from the parent user_tv_entries row first.',
+      'Unique on (user_id, tv_series_id, season_number, episode_number): one row per episode — each watch of it is a media_watches row. tv_series_id is required — read it (and tv_entry_id) from the parent user_tv_entries row first.',
+      'Marking an episode watched for the first time is this row (the database gives it its first watch). Watched again = a media_watches row, so the earlier watches keep their dates (repeat_count + 1 here still works: it becomes one watch at the watched_at you write).',
       'An episode already watched keeps its watched_at (its real date); change it only when the user corrects the date. A day they name is stored at midday (e.g. 2026-09-12T12:00:00Z); when they don\'t know when, store 1970-01-01T00:00:00Z — never NULL, which means not watched.',
-      'watched_at, repeat_count and deleting a row (= not watched) reach Trakt by themselves.',
+      'watched_at, repeat_count and deleting a row (= not watched: every watch and every play on Trakt) reach Trakt by themselves.',
       'Never invent episodes: only mark the season/episode numbers the user named or that their data shows exist.',
+    ].join(' '),
+  },
+  media_watches: {
+    access: 'rw',
+    purpose: 'Every watch of an episode or a film, each with its own date (one row per watch — a film seen in 2018 and again in 2026 has two). The episode/film rows keep only a cache of the latest date and the count.',
+    columns: 'id, kind(episode|movie), movie_entry_id(uuid FK user_movie_entries — a film\'s library row), episode_id(uuid FK user_tv_episodes — filled by the database), tv_series_id(uuid FK tv_series), season_number(int), episode_number(int) — the episode, for kind episode, watched_at(timestamptz — a day they name at midday, e.g. 2026-09-12T12:00:00Z; unknown date: 1970-01-01T00:00:00Z for an episode, NULL for a film), trakt_history_id(bigint — Trakt\'s id of this play, set by the sync), source(app|trakt|backfill — backfill = a copy of the one date the app kept before 14.10.2026, replaced by Trakt\'s real dates on the next sync), created_at, updated_at',
+    rules: [
+      'A new watch: kind "episode" + tv_series_id + season_number + episode_number (an episode with no watch yet becomes watched), or kind "movie" + movie_entry_id (a Wishlist film becomes completed); plus watched_at — ask when it is unclear, never guess a date.',
+      'Changing one watch\'s date (update watched_at) or deleting one watch moves or removes only that play on Trakt; the other watches keep their dates. Deleting the last watch = not watched. Never change trakt_history_id or source.',
+      'Read a title\'s watches with select "id, watched_at, source" and filter by movie_entry_id, or by tv_series_id + season_number + episode_number.',
     ].join(' '),
   },
   movie_cinema_visits: {
@@ -3267,7 +3284,7 @@ async function getAthleteProfile(supabase: AnyRecord, userId: string): Promise<A
 // and a background job then changes or deletes that object; the app sets them
 // itself. Play counts are capped at the app's own 1–99 plays, because each
 // extra play becomes a Trakt history write.
-const AI_NO_WRITE = /^(google_(calendar_event_id|task_id|tasklist_id|etag|position|web_view_link|links|updated_at)|trakt_(id|note_id|note_text|list_id)|hevy_(routine|workout)_id|session_id|external_ref|external_source|ss_jeu_id|igdb_id|esde_(system|path|source|source_hash|assets))$/
+const AI_NO_WRITE = /^(google_(calendar_event_id|task_id|tasklist_id|etag|position|web_view_link|links|updated_at)|trakt_(id|note_id|note_text|list_id|history_id)|hevy_(routine|workout)_id|session_id|external_ref|external_source|ss_jeu_id|igdb_id|esde_(system|path|source|source_hash|assets))$/
 
 function aiWriteProblem(table: string, row: AnyRecord): string | null {
   for (const k of Object.keys(row)) {

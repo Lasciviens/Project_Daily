@@ -60,4 +60,24 @@ const rr = buildYearReview(2026, rated, [], new Map())
 eq([rr.ratings.count, rr.ratings.mine, rr.ratings.tmdb], [2, 8, 6.8], 'averages over rated titles only')
 eq(rr.ratings.histogram[8] + rr.ratings.histogram[6], 2, 'a 9 and a 7 in the spread')
 eq('disagreements' in rr.ratings, false, 'no disagreement list (removed on request)')
+
+// Every watch on its own date (migration 149): a film seen in 2018 and twice in 2026.
+{
+  const twice = [{ tmdbId: 20, title: 'Again', poster: null, runtime: 100, genres: ['Drama'], watchedAt: '2026-04-01T20:00:00Z', plays: 3,
+    watches: ['2018-10-12T20:00:00Z', '2026-01-05T20:00:00Z', '2026-04-01T20:00:00Z'] }]
+  const got = [{ showId: 's1', season: 1, episode: 1, watchedAt: '2026-01-08T20:00:00Z', plays: 3,
+    watches: ['2018-10-12T20:00:00Z', '2024-12-01T20:00:00Z', '1970-01-01T00:00:00Z'] }]
+  eq(reviewYears(twice, got), [2026, 2024, 2018], 'each watch makes its own year')
+  const y18 = buildYearReview(2018, twice, got, shows)
+  eq([y18.moviePlays, y18.episodePlays, y18.minutes], [1, 1, 150], '2018: the first watch of each, one play each')
+  eq(y18.movies[0].watchedAt, '2018-10-12T20:00:00Z', 'dated by the watch in that year')
+  const y26 = buildYearReview(2026, twice, got, shows)
+  eq([y26.moviePlays, y26.rewatches.length, y26.episodePlays], [2, 1, 0], '2026: two plays of the film (a rewatch), the episode has no 2026 watch')
+  eq([y26.months[0].minutes, y26.months[3].minutes, y26.months[0].movies.length], [100, 100, 1], 'each watch in its own month')
+  eq(y26.activeDays, 2, 'two days with a watch')
+  const all = buildYearReview(null, twice, got, shows)
+  eq([all.moviePlays, all.episodePlays, all.undated], [3, 3, 1], 'all time: every watch, one on an unknown date')
+  eq(all.years.map(y => [y.year, y.plays]), [[2018, 2], [2024, 1], [2026, 2]], 'one bar per year, each watch in its own')
+  eq(unknownDateCount(twice, got), 1, 'plays on an unknown date are counted one by one')
+}
 console.log(`verify-year-review: ${n} assertions passed`)

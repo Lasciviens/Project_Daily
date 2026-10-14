@@ -1,14 +1,16 @@
 import { supabase } from '../../../integrations/supabase/client'
 import { requireUser } from '../../../shared/utils/requireUser'
 import type { Movie, UserMovieEntry, TMDBMovie } from '../types'
+import { isBefore149, WATCH_COLUMNS } from './watchesApi'
 
+/** The library's movies, each with its watches (migration 149; without them before it). */
 export async function fetchUserMovieEntries(): Promise<UserMovieEntry[]> {
-  const { data, error } = await supabase
-    .from('user_movie_entries')
-    .select('*, movie:movies(*)')
-    .order('created_at', { ascending: false })
+  const read = (cols: string) => supabase.from('user_movie_entries').select(cols).order('created_at', { ascending: false })
+  let { data, error } = await read(`*, movie:movies(*), watches:media_watches(${WATCH_COLUMNS})`)
+  // Fallback (remove once 149 has run everywhere).
+  if (error && isBefore149(error)) ({ data, error } = await read('*, movie:movies(*)'))
   if (error) throw error
-  return data ?? []
+  return (data ?? []) as unknown as UserMovieEntry[]
 }
 
 export async function upsertMovie(tmdb: TMDBMovie): Promise<Movie> {
@@ -58,7 +60,7 @@ export async function addMovieEntry(
 
 export async function updateMovieEntry(
   id: string,
-  patch: Partial<Pick<UserMovieEntry, 'status' | 'priority' | 'personal_note' | 'rating' | 'planned_date' | 'notify_before_days' | 'repeat_count' | 'watched_at' | 'is_favorite'>>
+  patch: Partial<Pick<UserMovieEntry, 'status' | 'priority' | 'personal_note' | 'rating' | 'planned_date' | 'notify_before_days' | 'repeat_count' | 'watched_at' | 'is_favorite' | 'rewatch_round'>>
 ): Promise<UserMovieEntry> {
   const { data, error } = await supabase
     .from('user_movie_entries')

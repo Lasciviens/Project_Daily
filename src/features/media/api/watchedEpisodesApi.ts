@@ -2,6 +2,7 @@ import { supabase } from '../../../integrations/supabase/client'
 import { requireUser } from '../../../shared/utils/requireUser'
 import type { WatchedEpisode } from '../types'
 import { middayIso } from '../watchedWhen'
+import { addWatches, isBefore149, NEEDS_149, setWatchDates, WATCH_COLUMNS } from './watchesApi'
 
 /** A yyyy-MM-dd day (midday local) or an exact ISO timestamp. */
 const toIso = (v: string) => (v.length === 10 ? middayIso(v) : v)
@@ -18,21 +19,27 @@ async function resolveTvSeriesId(tvEntryId: string): Promise<string> {
   return data.tv_series_id
 }
 
+/** Each watched episode with its watches (migration 149; without them before it). */
 export async function fetchWatchedEpisodes(tvEntryId: string): Promise<WatchedEpisode[]> {
   // Paged past PostgREST's 1,000-row cap (a long-running show can pass it).
+  const page = (cols: string, from: number) => supabase
+    .from('user_tv_episodes')
+    .select(cols)
+    .eq('tv_entry_id', tvEntryId)
+    .not('watched_at', 'is', null)
+    .order('season_number', { ascending: true })
+    .order('episode_number', { ascending: true })
+    .range(from, from + 999)
+  // Fallback (remove once 149 has run everywhere): an older schema has no watches to embed.
+  let cols = `*, watches:media_watches(${WATCH_COLUMNS})`
   const out: WatchedEpisode[] = []
   for (let from = 0; ; from += 1000) {
-    const { data, error } = await supabase
-      .from('user_tv_episodes')
-      .select('*')
-      .eq('tv_entry_id', tvEntryId)
-      .not('watched_at', 'is', null)
-      .order('season_number', { ascending: true })
-      .order('episode_number', { ascending: true })
-      .range(from, from + 999)
+    let { data, error } = await page(cols, from)
+    if (error && isBefore149(error) && cols !== '*') { cols = '*'; ({ data, error } = await page(cols, from)) }
     if (error) throw error
-    out.push(...(data ?? []))
-    if (!data || data.length < 1000) return out
+    const rows = (data ?? []) as unknown as WatchedEpisode[]
+    out.push(...rows)
+    if (rows.length < 1000) return out
   }
 }
 
@@ -71,7 +78,8 @@ export async function markEpisodeWatched(
   const tvSeriesId = await resolveTvSeriesId(tvEntryId)
   // Already watched (here or on Trakt): keep its real date. Overwriting it
   // with today would lose when it was actually seen; a rewatch is
-  // rewatchEpisode, which counts a play instead.
+  // rewatchEpisodes, which adds a watch instead. A first watch is this row:
+  // the database gives it its watch (migration 149).
   const { data: existing, error: readErr } = await supabase
     .from('user_tv_episodes').select('*')
     .eq('user_id', user.id).eq('tv_series_id', tvSeriesId)
@@ -130,11 +138,11 @@ export async function markEpisodesWatched(
 }
 
 /**
- * Change when already-watched episodes were watched (e.g. every one to its own
- * release date). Keeps plays; one upsert per 500 rows. The outbox trigger
- * (migration 120) resends those plays to Trakt at the new date.
+ * Before migration 149 only: change the one date an episode kept (every play
+ * of it moved). With 149 a date change names the watch it moves
+ * (watchesApi.setWatchDates) and Trakt loses no other play.
  */
-export async function setEpisodesWatchedAt(tvEntryId: string, refs: { season: number; episode: number; at: string }[]): Promise<number> {
+export async function setEpisodesWatchedAtBefore149(tvEntryId: string, refs: { season: number; episode: number; at: string }[]): Promise<number> {
   if (refs.length === 0) return 0
   const rows = await fetchWatchedEpisodes(tvEntryId)
   const byKey = new Map(rows.map(r => [`${r.season_number}x${r.episode_number}`, r]))
@@ -151,20 +159,30 @@ export async function setEpisodesWatchedAt(tvEntryId: string, refs: { season: nu
   return out.length
 }
 
-/** One more play of an already-watched episode: repeat_count + 1, last watched = that day. */
-export async function rewatchEpisode(
-  tvEntryId: string,
-  season: number,
-  episode: number,
-  watchedOn: string,
-): Promise<void> {
+/**
+ * One more watch of each episode, at its own time (Watched again, a rewatch
+ * round). Every other watch keeps its date; an episode not watched yet gets
+ * its first. Before migration 149 the old way: plays + 1, the kept date moves.
+ */
+export async function rewatchEpisodes(tvEntryId: string, refs: { season: number; episode: number; at: string }[]): Promise<void> {
+  if (refs.length === 0) return
+  const tvSeriesId = await resolveTvSeriesId(tvEntryId)
+  try {
+    await addWatches(refs.map(r => ({ target: { kind: 'episode' as const, tvSeriesId, season: r.season, episode: r.episode }, at: toIso(r.at) })))
+  } catch (e) {
+    if (!(e instanceof Error) || e.message !== NEEDS_149) throw e
+    for (const r of refs) await rewatchEpisodeBefore149(tvEntryId, r.season, r.episode, r.at)
+  }
+}
+
+/** Before migration 149: one more play = repeat_count + 1, the kept date = that day. */
+async function rewatchEpisodeBefore149(tvEntryId: string, season: number, episode: number, watchedOn: string): Promise<void> {
   const user = await requireUser()
   const { data, error } = await supabase
     .from('user_tv_episodes').select('id, repeat_count, watched_at')
     .eq('user_id', user.id).eq('tv_entry_id', tvEntryId)
     .eq('season_number', season).eq('episode_number', episode)
     .maybeSingle()
-  if (error && (error.code === '42703' || error.code === 'PGRST204')) throw new Error('Rewatches need migration 116 (episode play counts)')
   if (error) throw error
   if (!data?.watched_at) { await markEpisodeWatched(tvEntryId, season, episode, watchedOn); return }
   const { error: upErr } = await supabase
@@ -172,32 +190,6 @@ export async function rewatchEpisode(
     .update({ repeat_count: (data.repeat_count ?? 0) + 1, watched_at: toIso(watchedOn) })
     .eq('id', data.id)
   if (upErr) throw upErr
-}
-
-/**
- * Set how many times an already-watched episode was watched (plays = 1 +
- * repeat_count) and, when given, its kept date. Changing only the count keeps
- * the date. The outbox trigger (migration 132) sends fewer plays to Trakt too.
- */
-export async function setEpisodePlays(
-  tvEntryId: string,
-  season: number,
-  episode: number,
-  plays: number,
-  watchedAt?: string,
-): Promise<void> {
-  const user = await requireUser()
-  const patch: Record<string, unknown> = { repeat_count: Math.max(0, Math.round(plays) - 1) }
-  if (watchedAt) patch.watched_at = toIso(watchedAt)
-  const { data, error } = await supabase
-    .from('user_tv_episodes').update(patch)
-    .eq('user_id', user.id).eq('tv_entry_id', tvEntryId)
-    .eq('season_number', season).eq('episode_number', episode)
-    .not('watched_at', 'is', null)
-    .select('id')
-  if (error && (error.code === '42703' || error.code === 'PGRST204')) throw new Error('Play counts need migration 116 (episode play counts)')
-  if (error) throw error
-  if (!data?.length) throw new Error('That episode is not marked watched')
 }
 
 export async function unmarkEpisodeWatched(
@@ -217,17 +209,38 @@ export async function unmarkEpisodeWatched(
   await syncEntryProgress(tvEntryId)
 }
 
-export interface WatchedEpisodeRow { tv_series_id: string; season_number: number; episode_number: number; watched_at: string; repeat_count: number }
+export interface WatchedEpisodeRow {
+  tv_series_id: string; season_number: number; episode_number: number; watched_at: string; repeat_count: number
+  /** Each watch's own date (migration 149); absent before it. */
+  watches?: { watched_at: string }[]
+}
 
-/** Every watched episode row (for Year in review), paged past PostgREST's 1,000-row cap. */
+/** Every watched episode row with its watches (for Stats), paged past PostgREST's 1,000-row cap. */
 export async function fetchAllWatchedEpisodeRows(): Promise<WatchedEpisodeRow[]> {
+  const page = (cols: string, from: number) => supabase.from('user_tv_episodes')
+    .select(cols).not('watched_at', 'is', null).order('id').range(from, from + 999)
+  // Fallback (remove once 149 has run everywhere): no watches to embed before it.
+  const plain = 'tv_series_id, season_number, episode_number, watched_at, repeat_count'
+  let cols = `${plain}, watches:media_watches(watched_at)`
   const out: WatchedEpisodeRow[] = []
   for (let from = 0; ; from += 1000) {
-    const { data, error } = await supabase.from('user_tv_episodes')
-      .select('tv_series_id, season_number, episode_number, watched_at, repeat_count')
-      .not('watched_at', 'is', null).order('id').range(from, from + 999)
+    let { data, error } = await page(cols, from)
+    if (error && isBefore149(error) && cols !== plain) { cols = plain; ({ data, error } = await page(cols, from)) }
     if (error) throw error
-    out.push(...((data ?? []) as WatchedEpisodeRow[]))
-    if (!data || data.length < 1000) return out
+    const rows = (data ?? []) as unknown as WatchedEpisodeRow[]
+    out.push(...rows)
+    if (rows.length < 1000) return out
   }
+}
+
+/**
+ * New dates for chosen watches of episodes (each its own — on Trakt only that
+ * play moves). Before migration 149 (no watch ids on screen) the episode's
+ * one kept date changes instead.
+ */
+export async function setEpisodeWatchDates(tvEntryId: string, changes: { season: number; episode: number; at: string; watchId?: string | null }[]): Promise<number> {
+  if (changes.length === 0) return 0
+  if (changes.some(c => !c.watchId)) return setEpisodesWatchedAtBefore149(tvEntryId, changes)
+  const tvSeriesId = await resolveTvSeriesId(tvEntryId)
+  return setWatchDates(changes.map(c => ({ id: c.watchId!, target: { kind: 'episode' as const, tvSeriesId, season: c.season, episode: c.episode }, at: toIso(c.at) })))
 }

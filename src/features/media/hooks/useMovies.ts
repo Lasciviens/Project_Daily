@@ -74,9 +74,9 @@ export function useUpdateMovie() {
 
 /**
  * Removes a title from the library with Undo.
- * The Trakt outbox sends the removal; Undo puts the same rows back and the
- * outbox sends them again (plays at their kept dates; the Trakt note is made
- * anew, so the old link is cleared).
+ * The Trakt outbox sends the removal; Undo puts the same rows back (its
+ * watches too) and the outbox sends them again (each watch at its own date,
+ * migration 149; the Trakt note is made anew, so the old link is cleared).
  */
 export function useDeleteMovie() {
   const qc = useQueryClient()

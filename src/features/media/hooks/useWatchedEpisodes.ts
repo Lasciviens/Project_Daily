@@ -8,9 +8,8 @@ import {
   fetchWatchedEpisodes,
   markEpisodeWatched,
   markEpisodesWatched,
-  rewatchEpisode,
-  setEpisodePlays,
-  setEpisodesWatchedAt,
+  rewatchEpisodes,
+  setEpisodeWatchDates,
   unmarkEpisodeWatched,
 } from '../api/watchedEpisodesApi'
 
@@ -31,7 +30,7 @@ export interface MarkEpisodesInput {
   episodes: EpisodeRef[]
   /** false = unmark (remove the watched rows). Default true. */
   watched?: boolean
-  /** Count one more play of episodes already watched (a rewatch). */
+  /** One more watch of each episode (Watched again, a rewatch round) — every other watch keeps its date. */
   again?: boolean
   /** yyyy-MM-dd or an ISO timestamp; defaults to today. */
   watchedOn?: string
@@ -41,10 +40,10 @@ type Ctx = { key: readonly unknown[]; previous?: WatchedEpisode[] }
 
 /**
  * THE one "episode watched" write (THEME.md §10 — one action, one hook). Used
- * for a single tap, a season batch and "watched next episode" alike, so every
- * surface refreshes the same set: progress, next-up, recents and the planned
- * block the DB trigger deletes (group `episodeWatched`). Optimistic on the
- * series' watched list, rolled back on failure.
+ * for a single tap, a season batch, "watched next episode" and a rewatch
+ * alike, so every surface refreshes the same set: progress, next-up, recents
+ * and the planned block the DB trigger deletes (group `episodeWatched`).
+ * Optimistic on the series' watched list, rolled back on failure.
  */
 export function useMarkEpisodeWatched(opts?: { successMessage?: string }) {
   const qc = useQueryClient()
@@ -55,13 +54,16 @@ export function useMarkEpisodeWatched(opts?: { successMessage?: string }) {
     successMessage: opts?.successMessage,
     mutationFn: async ({ tvEntryId, episodes, watched = true, again, watchedOn }) => {
       const day = watchedOn ?? format(new Date(), 'yyyy-MM-dd')
-      if (watched && !again && episodes.length > 1) {
+      if (again) {
+        await rewatchEpisodes(tvEntryId, episodes.map(e => ({ season: e.season, episode: e.episode, at: e.at ?? day })))
+        return
+      }
+      if (watched && episodes.length > 1) {
         await markEpisodesWatched(tvEntryId, episodes, day)
         return
       }
       for (const { season, episode, at } of episodes) {
-        if (again) await rewatchEpisode(tvEntryId, season, episode, at ?? day)
-        else if (watched) await markEpisodeWatched(tvEntryId, season, episode, at ?? day)
+        if (watched) await markEpisodeWatched(tvEntryId, season, episode, at ?? day)
         else await unmarkEpisodeWatched(tvEntryId, season, episode)
       }
     },
@@ -70,9 +72,17 @@ export function useMarkEpisodeWatched(opts?: { successMessage?: string }) {
       await qc.cancelQueries({ queryKey: key })
       const previous = qc.getQueryData<WatchedEpisode[]>(key)
       const same = (w: WatchedEpisode, e: EpisodeRef) => w.season_number === e.season && w.episode_number === e.episode
+      const now = new Date().toISOString()
       qc.setQueryData<WatchedEpisode[]>(key, old => {
         if (!old) return old
-        if (again) return old.map(w => episodes.some(e => same(w, e)) ? { ...w, repeat_count: (w.repeat_count ?? 0) + 1 } : w)
+        if (again) {
+          return old.map(w => {
+            const e = episodes.find(x => same(w, x))
+            if (!e) return w
+            const watches = w.watches ? [...w.watches, { id: `optimistic-${e.season}x${e.episode}`, watched_at: e.at ?? now }] : undefined
+            return { ...w, repeat_count: (w.repeat_count ?? 0) + 1, watches }
+          })
+        }
         if (!watched) return old.filter(w => !episodes.some(e => same(w, e)))
         // A rapid double-tap must not add a duplicate optimistic row.
         const added = episodes.filter(e => !old.some(w => same(w, e))).map(e => ({
@@ -82,7 +92,8 @@ export function useMarkEpisodeWatched(opts?: { successMessage?: string }) {
           tv_series_id:   '',
           season_number:  e.season,
           episode_number: e.episode,
-          watched_at:     new Date().toISOString(),
+          watched_at:     e.at ?? now,
+          watches:        [{ id: `optimistic-${e.season}x${e.episode}`, watched_at: e.at ?? now }],
         }))
         return [...old, ...added]
       })
@@ -96,27 +107,18 @@ export function useMarkEpisodeWatched(opts?: { successMessage?: string }) {
   })
 }
 
-/** Change the watched date of episodes already watched (their plays stay). */
+/**
+ * New dates for chosen watches of episodes, each its own (Change date, Dates,
+ * Spread's Change dates, a date in the watch list). Every other watch — here
+ * and on Trakt — keeps its date.
+ */
 export function useSetEpisodeDates() {
   const qc = useQueryClient()
   return useMutationWithFeedback({
     action: 'set_episode_dates',
     silent: 'the episode sheets report the result',
-    mutationFn: ({ tvEntryId, episodes }: { tvEntryId: string; episodes: { season: number; episode: number; at: string }[] }) =>
-      setEpisodesWatchedAt(tvEntryId, episodes),
-    invalidates: ['episodeWatched'],
-    onSuccess: () => scheduleTraktSync(qc),
-  })
-}
-
-/** Set an episode's play count and (optionally) its kept date — the "Plays and date" sheet. */
-export function useSetEpisodePlays() {
-  const qc = useQueryClient()
-  return useMutationWithFeedback({
-    action: 'set_episode_plays',
-    silent: 'the plays sheet reports the result ("Watched 3 times")',
-    mutationFn: ({ tvEntryId, season, episode, plays, at }: { tvEntryId: string; season: number; episode: number; plays: number; at?: string }) =>
-      setEpisodePlays(tvEntryId, season, episode, plays, at),
+    mutationFn: ({ tvEntryId, episodes }: { tvEntryId: string; episodes: { season: number; episode: number; at: string; watchId?: string | null }[] }) =>
+      setEpisodeWatchDates(tvEntryId, episodes),
     invalidates: ['episodeWatched'],
     onSuccess: () => scheduleTraktSync(qc),
   })

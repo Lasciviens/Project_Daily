@@ -21,6 +21,9 @@ export function MediaDetailBody({ detail, mediaType, userEntry, onRemoved, onOpe
   const isMovie = mediaType === 'movie'
   const tv = !isMovie ? (detail as TMDBTVFull) : null
   const tvEntryId = !isMovie && userEntry ? userEntry.id : null
+  // A rewatch under way (migration 149): the episode list follows its round.
+  const tvEntry = !isMovie && userEntry ? (userEntry as UserTVEntry) : null
+  const rewatchRound = tvEntry && (tvEntry.status === 'watching' || tvEntry.status === 'paused') ? tvEntry.rewatch_round ?? null : null
   const stored = userEntry ? ('movie' in userEntry ? userEntry.movie : (userEntry as UserTVEntry).tv_series) : null
 
   const controls = <MediaLibraryControls detail={detail} isMovie={isMovie} userEntry={userEntry} onRemoved={onRemoved} />
@@ -53,14 +56,14 @@ export function MediaDetailBody({ detail, mediaType, userEntry, onRemoved, onOpe
             {isMovie && <CollectionListButton movie={detail as TMDBMovieFull} onOpenDetail={onOpenDetail} />}
           </>}
         />
-        {tv && tvEntryId && (tv.seasons?.length ?? 0) > 0 && <div className="hidden md:block"><EpisodesPanel tv={tv} tvEntryId={tvEntryId} /></div>}
+        {tv && tvEntryId && (tv.seasons?.length ?? 0) > 0 && <div className="hidden md:block"><EpisodesPanel tv={tv} tvEntryId={tvEntryId} rewatchRound={rewatchRound} /></div>}
         <div className="hidden md:block">
           <SimilarRow tmdbId={detail.id} mediaType={mediaType} onOpenDetail={(id, type) => onOpenDetail?.(id, type)} />
         </div>
       </div>
 
       {/* Phones: episodes and similar come after the controls. */}
-      {tv && tvEntryId && (tv.seasons?.length ?? 0) > 0 && <div className="order-3 md:hidden"><EpisodesPanel tv={tv} tvEntryId={tvEntryId} /></div>}
+      {tv && tvEntryId && (tv.seasons?.length ?? 0) > 0 && <div className="order-3 md:hidden"><EpisodesPanel tv={tv} tvEntryId={tvEntryId} rewatchRound={rewatchRound} /></div>}
       <div className="order-4 md:hidden">
         <SimilarRow tmdbId={detail.id} mediaType={mediaType} onOpenDetail={(id, type) => onOpenDetail?.(id, type)} />
       </div>

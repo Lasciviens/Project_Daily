@@ -368,6 +368,26 @@ which door the write came through.
   DELETE SET NULL) — unlike 084/112, which chose none — because the sync
   upserts Hevy rows in place. Edge functions must not close or delete
   training tasks themselves.
+- **A watch and the columns that cache it (migration 149).** Every watch of an
+  episode or movie is a `media_watches` row; `user_tv_episodes` and
+  `user_movie_entries` keep `watched_at`/`repeat_count` only as a cache
+  (`trg_media_watch_cache`: latest watch, count − 1; no watch = not watched,
+  `watched_at` NULL — the row stays so an Undo can put a watch back on it).
+  A watch that names an `episode_id` that isn't there raises a foreign-key
+  error (150's undo retries it after putting the episode back) instead of
+  making a second row for the episode.
+  A write to the cache columns from any door (the assistant's `db_update`, the
+  Trakt sync's summary writes, SQL, the app's older paths) is translated into
+  watches by DEFERRED constraint triggers (`trg_media_watch_reconcile`) — so
+  `app_restore_rows`, which puts back an entry and then its watches in one
+  transaction, is seen whole and nothing doubles. Two transaction-local
+  settings guard the loops: `app.media_watch_cache` (the cache trigger's own
+  writes queue no translation — the constraint trigger's `WHEN`) and
+  `app.media_watch_bulk` (unmarking a whole item deletes its watches without a
+  per-play Trakt remove each). Trigger order matters: `trg_media_watch_cache`
+  runs before `trg_trakt_outbox_watch` (name order), so the last watch of an
+  episode removed queues only the episode-wide remove. A rewatch round
+  (`rewatch_round`) is finished by the cache trigger too, for every door.
 - **When adding a new "plannable" entity** (something else that can get a
   `time_blocks` row via `UnifiedPlanModal`'s `source` prop): decide whether it
   needs a cleanup-on-source-change trigger the same way `user_tv_episodes`/

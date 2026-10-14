@@ -16,11 +16,13 @@ export function useYearReview(period: number | 'all' | null) {
 
   return useMemo(() => {
     // A completed film with no watch date still counts all time ("unknown date").
+    // Every watch on its own date (migration 149); before it, the plays at the one kept date.
     const movies: ReviewMovie[] = movieEntries
-      .filter(e => e.status === 'completed' || (e.watched_at && (e.status === 'watching' || e.status === 'dropped')))
+      .filter(e => e.watches ? e.watches.length > 0 : e.status === 'completed' || (e.watched_at && (e.status === 'watching' || e.status === 'dropped')))
       .map(e => ({
         tmdbId: e.movie.tmdb_id, title: e.movie.title, poster: e.movie.poster_path, runtime: e.movie.runtime,
-        genres: names(e.movie.genres), watchedAt: e.watched_at ?? '', plays: 1 + Math.max(0, e.repeat_count ?? 0),
+        genres: names(e.movie.genres), watchedAt: e.watched_at ?? '', plays: e.watches?.length || 1 + Math.max(0, e.repeat_count ?? 0),
+        watches: e.watches?.map(w => w.watched_at ?? ''),
         rating: e.rating, tmdbRating: e.movie.tmdb_rating,
       }))
     const shows = new Map<string, ReviewShow>(tvEntries.map(e => [e.tv_series_id, {
@@ -30,7 +32,8 @@ export function useYearReview(period: number | 'all' | null) {
     }]))
     const episodes: ReviewEpisode[] = (rows.data ?? []).map(r => ({
       showId: r.tv_series_id, season: r.season_number, episode: r.episode_number,
-      watchedAt: r.watched_at, plays: 1 + Math.max(0, r.repeat_count ?? 0),
+      watchedAt: r.watched_at, plays: r.watches?.length || 1 + Math.max(0, r.repeat_count ?? 0),
+      watches: r.watches?.length ? r.watches.map(w => w.watched_at) : undefined,
     }))
     const years = reviewYears(movies, episodes)
     const picked = period === 'all' ? null : (period ?? years[0] ?? new Date().getFullYear())

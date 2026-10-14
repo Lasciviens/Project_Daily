@@ -14,6 +14,8 @@ import { formatDate } from '../../../shared/utils/dateFormat'
 import { useAddMovie, useDeleteMovie, useUpdateMovie } from '../hooks/useMovies'
 import { useAddTV, useDeleteTV, useUpdateTV } from '../hooks/useTVSeries'
 import { useNextEpisode } from '../hooks/useNextEpisode'
+import { useAddMovieWatch, useStartRewatch } from '../hooks/useWatches'
+import { cacheWatches, rewatchStartRound, watchCounts } from '../watches'
 import { PlanThisButton } from './PlanThisButton'
 import { StarRating } from './StarRating'
 import { MovieWatchedControls } from './MovieWatchedControls'
@@ -61,6 +63,8 @@ function StatusPills({ statuses, value, disabled, onPick }: {
   disabled?: boolean
   onPick: (s: PillStatus) => void
 }) {
+  // A finished title is watched again from here: Watching becomes "Watch again" (a rewatch round, migration 149).
+  const label = (s: { value: PillStatus; label: string }) => (s.value === 'watching' && value === 'completed' ? 'Watch again' : s.label)
   return (
     <div role="group" aria-label="Status" className="grid grid-cols-3 gap-1 md:grid-cols-2">
       {statuses.map(s => (
@@ -74,7 +78,7 @@ function StatusPills({ statuses, value, disabled, onPick }: {
           className="stage-option press-feedback"
         >
           <span aria-hidden className="tone-dot" />
-          <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{s.label}</span>
+          <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{label(s)}</span>
         </button>
       ))}
     </div>
@@ -104,11 +108,15 @@ export function MediaLibraryControls({ detail, isMovie, userEntry, onRemoved }: 
   const updateMovie = useUpdateMovie()
   const updateTV    = useUpdateTV()
   const markWatched = useMarkEpisodeWatched()
+  const startRewatch = useStartRewatch()
+  const addMovieWatch = useAddMovieWatch()
 
   const entryId    = userEntry?.id
   const tvEntry    = !isMovie && userEntry ? (userEntry as UserTVEntry) : null
   const movieEntry = isMovie && userEntry ? (userEntry as UserMovieEntry) : null
-  const updating   = updateMovie.isPending || updateTV.isPending
+  const updating   = updateMovie.isPending || updateTV.isPending || startRewatch.isPending || addMovieWatch.isPending
+  // Being watched again (migration 149): the round under way.
+  const rewatchRound = userEntry && (userEntry.status === 'watching' || userEntry.status === 'paused') ? userEntry.rewatch_round ?? null : null
 
   // The same source of truth as Daily's "Watch next" card (handles season
   // rollover from the real watched rows); the query is shared, so this is free.
@@ -200,7 +208,7 @@ export function MediaLibraryControls({ detail, isMovie, userEntry, onRemoved }: 
     if (!entryId) return
     const question = {
       title: `Remove "${isMovie ? movie!.title : tv!.name}" from your library?`,
-      message: 'With Trakt connected, its watch history, rating and watchlist entry are removed there too (Undo puts the title back here and sends it to Trakt again, with one date for all its plays).',
+      message: 'With Trakt connected, its watch history, rating and watchlist entry are removed there too (Undo puts the title back here and sends it to Trakt again, every watch at its own date).',
       confirmLabel: 'Remove',
       done: 'Removed from library',
     }
@@ -224,7 +232,35 @@ export function MediaLibraryControls({ detail, isMovie, userEntry, onRemoved }: 
     if (todo.length) await markWatched.mutateAsync({ tvEntryId, episodes: todo })
   }
 
+  // Watch it again: Watching, round N — one more than its fewest watches
+  // (a movie: its watches + 1; a show: its least-watched regular episode + 1).
+  async function handleWatchAgain() {
+    const round = movieEntry
+      ? (movieEntry.watches ?? cacheWatches(movieEntry)).length + 1
+      : rewatchStartRound([...watchCounts(watchedRows.filter(w => w.season_number > 0)).values()])
+    await withProgress(
+      () => startRewatch.mutateAsync({ kind: movieEntry ? 'movie' : 'tv', id: entryId!, round }).then(() => true),
+      { loading: 'Starting a rewatch…', success: `Watching again · round ${round}` },
+    )
+  }
+
+  // A movie watched again: one more watch at its time (the database ends the round).
+  async function finishMovieRewatch() {
+    if (!movieEntry) return
+    const when = await ask({ title: movie!.title, subtitle: 'When did you finish watching it again?', releaseLabel: movie!.release_date ? formatDate(movie!.release_date) : null })
+    if (!when) return
+    const at = resolveWatchedAt(when, movie!.release_date, 'movie', new Date().toISOString())
+    await withProgress(() => addMovieWatch.mutateAsync({ entry: movieEntry, at }).then(() => true), { loading: 'Adding a watch…', success: 'Watched again · Completed' })
+  }
+
   async function handleStatusChange(status: MediaStatus) {
+    if (status === 'watching' && userEntry?.status === 'completed') return handleWatchAgain()
+    if (status === 'completed' && rewatchRound != null) {
+      // Ending a rewatch: a movie gets its new watch; a show simply goes back to Completed.
+      if (movieEntry) return finishMovieRewatch()
+      void withProgress(() => patchEntry({ status: 'completed' }), { loading: 'Updating status…', success: 'Rewatch ended · Completed' })
+      return
+    }
     const now = new Date().toISOString()
     const patch: EntryPatch = { status }
     if (movieEntry && status === 'completed' && movieEntry.status !== 'completed') {
@@ -284,8 +320,9 @@ export function MediaLibraryControls({ detail, isMovie, userEntry, onRemoved }: 
     const when = await ask({ title: `${tv!.name} · S${season} · E${episode}`, releaseLabel: info.airDate ? formatDate(info.airDate) : null })
     if (!when) return
     const at = resolveWatchedAt(when, info.airDate, 'episode', new Date().toISOString())!
+    // In a rewatch round the next episode gets one more watch; its earlier ones keep their dates.
     await withProgress(
-      () => markWatched.mutateAsync({ tvEntryId: tvEntry.id, episodes: [{ season, episode, at }] }),
+      () => markWatched.mutateAsync({ tvEntryId: tvEntry.id, episodes: [{ season, episode, at }], again: !!info.rewatch }),
       { loading: 'Marking next episode watched…', success: `S${season} E${episode} watched` },
     )
   }
@@ -312,17 +349,27 @@ export function MediaLibraryControls({ detail, isMovie, userEntry, onRemoved }: 
       {spreadDialog}
       <div className="space-y-2">
         <StatusPills statuses={statuses} value={userEntry.status} disabled={updating} onPick={s => { void (s === 'unwatched' ? handleRemove() : handleStatusChange(s)) }} />
-        {tvEntry && (
+        {tvEntry && rewatchRound != null ? (
+          // A rewatch reads as one: its round and the next episode of it.
+          <p className="text-meta text-fg-muted tabular-nums">
+            Rewatching · round {rewatchRound}
+            {nextEp.data?.rewatch && (nextEp.data.caughtUp
+              ? ' · round finished'
+              : nextEp.data.season != null && ` · next S${String(nextEp.data.season).padStart(2, '0')}E${String(nextEp.data.episode).padStart(2, '0')}`)}
+          </p>
+        ) : tvEntry && (
           <p className="text-meta text-fg-muted tabular-nums">Progress: S{tvEntry.current_season} E{tvEntry.current_episode}</p>
         )}
         {tvEntry && rewatched.episodes > 0 && (
-          // Per-play dates aren't kept (one date + a play count per episode), so this counts, never dates.
+          // A count for the whole show; each episode's watches and their dates are in its watch list.
           <TonePill tone="info" className="tabular-nums">
             <Repeat aria-hidden className="h-3.5 w-3.5" />
-            {rewatched.episodes} episode{rewatched.episodes === 1 ? '' : 's'} rewatched · {rewatched.extraPlays} extra play{rewatched.extraPlays === 1 ? '' : 's'}
+            {rewatched.episodes} episode{rewatched.episodes === 1 ? '' : 's'} rewatched · {rewatched.extraPlays} extra watch{rewatched.extraPlays === 1 ? '' : 'es'}
           </TonePill>
         )}
-        {movieEntry?.status === 'watching' && <MovieWatchingInfo entry={movieEntry} />}
+        {movieEntry?.status === 'watching' && (rewatchRound != null
+          ? <p className="text-meta text-fg-muted tabular-nums">Rewatching · watch {rewatchRound}</p>
+          : <MovieWatchingInfo entry={movieEntry} />)}
         {movieEntry?.status === 'completed' && (
           <MovieWatchedControls entry={movieEntry} releaseDate={movie!.release_date ?? null} disabled={updating} onPatch={patchEntry} />
         )}
@@ -382,7 +429,7 @@ export function MediaLibraryControls({ detail, isMovie, userEntry, onRemoved }: 
         )}
         {movieEntry?.status === 'watching' && (
           <Button size="sm" icon={<CheckCircle2 />} disabled={updating}
-            onClick={() => { void handleStatusChange('completed') }}>
+            onClick={() => { void (rewatchRound != null ? finishMovieRewatch() : handleStatusChange('completed')) }}>
             Mark watched
           </Button>
         )}
