@@ -53,6 +53,7 @@
     --success: 22 163 74;    --success-soft: 222 242 230;
     --warn:    217 119 6;    --warn-soft:    250 236 220;
     --danger:  220 38 38;    --danger-soft:  250 225 225;
+    --on-danger: 255 255 255; /* text on a filled danger (the danger button) */
     --info:    14 116 144;   --info-soft:    222 242 247;  /* cyan — never the accent hue */
     --neutral: 139 149 165;  --neutral-soft: 239 240 242;
     --neutral-fg: 71 85 105; /* neutral LABEL text: the dot colour is too faint for words */
@@ -118,6 +119,7 @@
     --success: 34 197 94;    --success-soft: 16 47 39;
     --warn:    245 158 11;   --warn-soft:    50 40 25;
     --danger:  248 113 113;  --danger-soft:  51 33 42;
+    --on-danger: 13 18 28;   /* near-black: white on this lighter red is 2.6:1 */
     --info:    34 196 224;   --info-soft:    12 40 50;     /* cyan — never the accent hue */
     --neutral: 138 148 166;  --neutral-soft: 33 39 50;
     --neutral-fg: 150 160 177;
@@ -279,8 +281,8 @@
   .btn-primary   { @apply btn bg-accent-500 text-on-accent border border-transparent; }
   .btn-secondary { @apply btn bg-surface-2 text-fg border border-line; }
   .btn-ghost     { @apply btn bg-transparent text-fg-2 border border-transparent px-3; }
-  /* text-surface: white on the light red, near-black on the dark theme's lighter red (white there is 2.6:1) */
-  .btn-danger    { @apply btn bg-danger text-surface border border-transparent; }
+  /* text-on-danger: white on the light red, near-black on the dark theme's lighter red (white there is 2.6:1) */
+  .btn-danger    { @apply btn bg-danger text-on-danger border border-transparent; }
   .btn-sm        { @apply min-h-[36px] px-3 text-body [@media(pointer:coarse)]:min-h-[44px]; }
   @media (hover: hover) {
     .btn-primary:hover:not(:disabled)   { @apply bg-accent-600; }

@@ -71,6 +71,8 @@ export type EntityModalRequest =
   | { kind: 'memory'; id: string }
   /** One book in the Books library (books, migration 126). */
   | { kind: 'book'; id: string }
+  /** Undo one save of the activity log (its transaction): the preview, then the undo (migrations 150/151). */
+  | { kind: 'undo-save'; txId: number }
   // Generic.
   | { kind: 'confirm'; title: string; message?: string; confirmLabel?: string; cancelLabel?: string; destructive?: boolean; resolve: (ok: boolean) => void }
 
