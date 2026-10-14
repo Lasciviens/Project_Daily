@@ -31,6 +31,7 @@ export default {
           faint:   rgb('ink-400'),    // placeholders, chevrons, decoration only
         },
         'on-accent': rgb('on-accent'),
+        'on-danger': rgb('on-danger'),
         success: tone('success'),
         warn:    tone('warn'),
         danger:  tone('danger'),

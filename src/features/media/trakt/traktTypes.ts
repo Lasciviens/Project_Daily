@@ -54,11 +54,15 @@ export interface TraktStatus {
   /** Changes made here, waiting to be sent to Trakt. */
   pending: number
   syncing?: boolean
+  /** Trakt's whole history has been read since migration 149 (or the last connect): placeholders no longer wait for its dates. */
+  historyLinked?: boolean
   notConfigured?: boolean
 }
 
 // ── The app's side, reduced to what matching needs ──────────────────────────
-export interface LocalMovie { tmdbId: number; title: string; year: number | null; status: string; repeatCount: number; rating: number | null; watchedAt?: string | null; watchlistRank?: number | null; note?: string | null }
-export interface LocalShow { tmdbId: number; title: string; year: number | null; status: string; rating: number | null; watchlistRank?: number | null; note?: string | null }
-export interface LocalEpisode { tmdbId: number; season: number; episode: number; repeatCount: number; watchedAt?: string | null }
+/** `rewatchRound`: the round being watched again (migration 149); a rewatching title stays Watching. */
+export interface LocalMovie { tmdbId: number; title: string; year: number | null; status: string; repeatCount: number; rating: number | null; watchedAt?: string | null; watchlistRank?: number | null; note?: string | null; rewatchRound?: number | null; watches?: (string | null)[] }
+export interface LocalShow { tmdbId: number; title: string; year: number | null; status: string; rating: number | null; watchlistRank?: number | null; note?: string | null; rewatchRound?: number | null }
+/** `watches`: each watch's own date (migration 149), oldest first, when known — the import sends those dates. */
+export interface LocalEpisode { tmdbId: number; season: number; episode: number; repeatCount: number; watchedAt?: string | null; watches?: (string | null)[] }
 export interface LocalLibrary { movies: LocalMovie[]; shows: LocalShow[]; episodes: LocalEpisode[]; notes?: LocalNote[] }

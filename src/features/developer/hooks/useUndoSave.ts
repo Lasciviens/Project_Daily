@@ -1,11 +1,12 @@
-import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from '../../../app/store'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
+import { entityModal } from '../../../shared/modals'
 import { qk, STALE } from '../../../shared/query'
 import { logError } from '../../../shared/utils/logError'
 import type { DeletedRows, RowOverrides } from '../../../shared/utils/deletedRows'
 import { applyUndo, fetchUndoPlan, type UndoPlan, type UndoResult } from '../api/undoSaveApi'
-import { undoDoneMessage, undoneCount } from '../components/undoPlanText'
+import { CALENDAR_FIELDS, touchesTrakt, undoDoneMessage, undoneCount } from '../components/undoPlanText'
 import { TASK_GOOGLE_RESET, syncGoogleTasksSoon } from '../../todo/hooks/useTodos'
 import { BLOCK_EVENT_RESET, relinkRestoredBlockEvents, removeDeletedBlockEvents } from '../../calendar/api/deletedBlockEvents'
 import {
@@ -13,40 +14,47 @@ import {
 } from '../../calendar/api/scheduleSeriesCalendar'
 import { updateTimeBlock } from '../../daily/api/scheduleApi'
 import type { UpdateTimeBlockInput } from '../../daily/types'
+import { scheduleTraktSync } from '../../media/trakt/traktAutoSync'
 
 export type { UndoPlan } from '../api/undoSaveApi'
 
-// "Undo this save" (Developer → Activity, migration 150). The preview and the
-// undo share the overrides the one delete flow's Undo uses (144): a row put
-// back must not claim a Google Task or Calendar event that was deleted on
+// "Undo this save" (Developer → Activity, migrations 150/151). The preview and
+// the undo share the overrides the one delete flow's Undo uses (144): a row
+// put back must not claim a Google Task or Calendar event that was deleted on
 // Google with it — it gets a new one right after (the follow-ups below).
 const UNDO_OVERRIDES: RowOverrides = { ...TASK_GOOGLE_RESET, ...BLOCK_EVENT_RESET, ...SERIES_EVENT_RESET }
 
-/** What undoing the save would do. Read fresh each time the preview opens. */
-export function useUndoPlan(txId: number | null) {
+/**
+ * Opens the preview for one save, from any screen: an entity popup in the
+ * app shell's host, so the result toast's Undo works after leaving Activity.
+ */
+export function openUndoSave(txId: number) {
+  entityModal.open({ kind: 'undo-save', txId })
+}
+
+/** What undoing the save would do (the database's trial run). Read fresh each time the preview opens. */
+export function useUndoPlan(txId: number, { enabled = true }: { enabled?: boolean } = {}) {
   return useQuery({
-    queryKey: qk.logs.undoPlan(txId ?? 0),
-    queryFn: () => fetchUndoPlan(txId as number, UNDO_OVERRIDES),
-    enabled: txId !== null,
+    queryKey: qk.logs.undoPlan(txId),
+    queryFn: () => fetchUndoPlan(txId, UNDO_OVERRIDES),
+    enabled,
     staleTime: STALE.live,
     gcTime: 0,
     refetchOnWindowFocus: false,
-    // keeps the last plan while the sheet closes (the sheet never shows it for another save)
-    placeholderData: keepPreviousData,
   })
 }
 
 const snapshotOf = (groups: DeletedRows['groups']): DeletedRows =>
   ({ v: 1, root: '', deleted: 0, groups, links: [], touched: [], hidden: [] })
 
-const CALENDAR_FIELDS = ['date', 'start_time', 'title', 'duration_minutes'] as const
-
 /**
  * After an undo: Google follows, the way it does after the one delete flow's
  * Undo — slots and plans the undo deleted leave Google Calendar, those it put
  * back get an event again, slots whose time or title went back move their
- * event, and Google Tasks delivers what the outbox queued. Best effort; a
- * note says what didn't follow.
+ * event, and Google Tasks delivers what the outbox queued. The preview lists
+ * these Calendar writes before they happen (151 counts them from the steps:
+ * `outbox` google_calendar create / update), so the owner confirms them.
+ * Best effort; a note says what didn't follow.
  */
 async function followUndo(result: UndoResult, txId: number): Promise<string> {
   const notes: string[] = []
@@ -84,10 +92,13 @@ async function followUndo(result: UndoResult, txId: number): Promise<string> {
  * Undoes one save (a transaction of the activity log) as previewed: the
  * plan's fingerprint goes back with it, so the database refuses if anything
  * changed since the preview. An undo can touch any table, so every query
- * refreshes afterwards. The result toast has an Undo of its own, which
- * `onUndoAgain` turns into the same preview for the undo's own save.
+ * refreshes afterwards — after `onApplied` (the sheet closes) and with the
+ * sheet's own plan dropped from the cache, so the refresh never runs the
+ * trial again (nor flashes "Nothing to undo"). The result toast has an Undo
+ * of its own: the same preview for the undo's own save.
  */
-export function useUndoSave(onUndoAgain: (txId: number) => void) {
+export function useUndoSave({ onApplied }: { onApplied?: () => void } = {}) {
+  const qc = useQueryClient()
   return useMutationWithFeedback({
     action: 'undo_save',
     silent: 'onSuccess below says the result, with an Undo toast',
@@ -104,9 +115,13 @@ export function useUndoSave(onUndoAgain: (txId: number) => void) {
       }
       return done
     },
-    onSuccess: done => {
+    onSuccess: (done, { txId }) => {
+      onApplied?.()
+      qc.removeQueries({ queryKey: qk.logs.undoPlan(txId), exact: true })
+      // Movies, shows and watches: Trakt hears it now, as after any media write.
+      if (touchesTrakt(done)) scheduleTraktSync(qc)
       const back = done.result?.undo_tx
-      if (undoneCount(done) > 0 && back) toast.undo(undoDoneMessage(done), () => onUndoAgain(back))
+      if (undoneCount(done) > 0 && back) toast.undo(undoDoneMessage(done), () => openUndoSave(back))
       else toast.success(undoDoneMessage(done))
     },
     invalidates: ['saveUndone'],

@@ -1,14 +1,23 @@
 import { supabase } from '../../../integrations/supabase/client'
 import { requireUser } from '../../../shared/utils/requireUser'
 import type { Movie, UserMovieEntry, TMDBMovie } from '../types'
+import { isBefore149, WATCH_COLUMNS } from './watchesApi'
 
+/** The library's movies, each with its watches (migration 149; without them before it), paged past 1,000 rows. */
 export async function fetchUserMovieEntries(): Promise<UserMovieEntry[]> {
-  const { data, error } = await supabase
-    .from('user_movie_entries')
-    .select('*, movie:movies(*)')
-    .order('created_at', { ascending: false })
-  if (error) throw error
-  return data ?? []
+  const page = (cols: string, from: number) => supabase.from('user_movie_entries').select(cols)
+    .order('created_at', { ascending: false }).order('id').range(from, from + 999)
+  // Fallback (remove once 149 has run everywhere).
+  let cols = `*, movie:movies(*), watches:media_watches(${WATCH_COLUMNS})`
+  const out: UserMovieEntry[] = []
+  for (let from = 0; ; from += 1000) {
+    let { data, error } = await page(cols, from)
+    if (error && isBefore149(error) && cols.includes('watches')) { cols = '*, movie:movies(*)'; ({ data, error } = await page(cols, from)) }
+    if (error) throw error
+    const rows = (data ?? []) as unknown as UserMovieEntry[]
+    out.push(...rows)
+    if (rows.length < 1000) return out
+  }
 }
 
 export async function upsertMovie(tmdb: TMDBMovie): Promise<Movie> {
@@ -58,7 +67,7 @@ export async function addMovieEntry(
 
 export async function updateMovieEntry(
   id: string,
-  patch: Partial<Pick<UserMovieEntry, 'status' | 'priority' | 'personal_note' | 'rating' | 'planned_date' | 'notify_before_days' | 'repeat_count' | 'watched_at' | 'is_favorite'>>
+  patch: Partial<Pick<UserMovieEntry, 'status' | 'priority' | 'personal_note' | 'rating' | 'planned_date' | 'notify_before_days' | 'repeat_count' | 'watched_at' | 'is_favorite' | 'rewatch_round'>>
 ): Promise<UserMovieEntry> {
   const { data, error } = await supabase
     .from('user_movie_entries')

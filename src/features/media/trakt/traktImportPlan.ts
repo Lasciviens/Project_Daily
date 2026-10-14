@@ -139,7 +139,7 @@ export function buildImportPlan(snap: TraktSnapshot, local: LocalLibrary, info: 
     const r = ratings.get(`movie:${id}`)
     const watched = !!t || l?.status === 'completed'
     let status: string
-    if (t) status = l?.status === 'dropped' ? 'dropped' : 'completed'
+    if (t) status = l?.status === 'dropped' ? 'dropped' : l && (l.rewatchRound ?? 0) >= 2 && l.status === 'watching' ? 'watching' : 'completed'
     else if (l?.status === 'completed') status = 'completed'
     else if (l && KEEP_MOVIE.has(l.status)) status = l.status
     else if (pb.movies.has(id)) status = 'watching'
@@ -155,7 +155,12 @@ export function buildImportPlan(snap: TraktSnapshot, local: LocalLibrary, info: 
       watchedAt: t ? movieWatchedAt(t.lastWatchedAt) : movieWatchedAt(l?.watchedAt),
       rating, watchlistRank: listed ? wl?.rank ?? null : null,
     })
-    if (l?.status === 'completed' && !t) push.history.movies.push(...playEntries({ tmdb: id }, l.watchedAt ?? null, playsOf(l.repeatCount), snap.fetchedAt))
+    if (l?.status === 'completed' && !t) {
+      push.history.movies.push(...(l.watches?.length
+        // Every watch at its own date (migration 149); an unknown one as Trakt's unknown date.
+        ? l.watches.map(at => ({ tmdb: id, watchedAt: at ?? '1970-01-01T00:00:00.000Z' }))
+        : playEntries({ tmdb: id }, l.watchedAt ?? null, playsOf(l.repeatCount), snap.fetchedAt)))
+    }
     if (l?.rating != null && !r) push.ratings.movies.push({ tmdb: id, rating: l.rating })
     if (listed && !wl) push.watchlistAdd.movies.push({ tmdb: id })
     if (wl && !listed) push.watchlistRemove.movies.push({ tmdb: id })
@@ -165,10 +170,10 @@ export function buildImportPlan(snap: TraktSnapshot, local: LocalLibrary, info: 
   const tShows = new Map<number, TraktSnapshot['watchedShows'][number]>()
   for (const w of snap.watchedShows) if (w.item.ids.tmdb) { tShows.set(w.item.ids.tmdb, w); note(w.item) }
   const lShows = new Map(local.shows.map(s => [s.tmdbId, s]))
-  const lEps = new Map<number, Map<string, { repeatCount: number; watchedAt: string | null }>>()
+  const lEps = new Map<number, Map<string, { repeatCount: number; watchedAt: string | null; watches?: (string | null)[] }>>()
   for (const e of local.episodes) {
     const m = lEps.get(e.tmdbId) ?? new Map()
-    m.set(`${e.season}x${e.episode}`, { repeatCount: e.repeatCount, watchedAt: e.watchedAt ?? null })
+    m.set(`${e.season}x${e.episode}`, { repeatCount: e.repeatCount, watchedAt: e.watchedAt ?? null, watches: e.watches })
     lEps.set(e.tmdbId, m)
   }
   const showKeys = new Set<number>([...tShows.keys(), ...lShows.keys(), ...lEps.keys(), ...dropped])
@@ -202,7 +207,10 @@ export function buildImportPlan(snap: TraktSnapshot, local: LocalLibrary, info: 
         if (theirs.has(key)) continue
         const [season, episode] = key.split('x').map(Number)
         if (pending.has(itemKey.episode(id, season, episode))) continue
-        push.history.episodes.push(...playEntries({ tmdb: id, season, episode }, v.watchedAt, playsOf(v.repeatCount), snap.fetchedAt))
+        push.history.episodes.push(...(v.watches?.length
+          // Every watch at its own date (migration 149); an unknown one as Trakt's unknown date.
+          ? v.watches.map((at: string | null) => ({ tmdb: id, season, episode, watchedAt: at ?? '1970-01-01T00:00:00.000Z' }))
+          : playEntries({ tmdb: id, season, episode }, v.watchedAt, playsOf(v.repeatCount), snap.fetchedAt)))
       }
     }
     if (pending.has(itemKey.show(id))) continue
@@ -216,6 +224,8 @@ export function buildImportPlan(snap: TraktSnapshot, local: LocalLibrary, info: 
       // Without TMDB's aired count nothing is known about "finished": keep the
       // status the show has (a Completed show must never drop to Watching).
       status = isDropped ? 'dropped'
+        // Being watched again (migration 149): stays Watching/Paused.
+        : l && (l.rewatchRound ?? 0) >= 2 && (l.status === 'watching' || l.status === 'paused') ? l.status
         : aired === undefined ? (l && IN_PROGRESS_SHOW.has(l.status) ? l.status : 'watching')
         : aired > 0 && regular >= aired ? 'completed'
         : l?.status === 'paused' ? 'paused' : 'watching'

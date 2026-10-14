@@ -1,7 +1,7 @@
 // Which titles a Stats number opens: one pure function per drill, shared by
 // every tile, bar and chip on the Stats page.
 import type { YearReview } from '../../yearReview'
-import { isKnown } from '../../yearReview'
+import { hasUnknownWatch, isKnown, watchDatesOf } from '../../yearReview'
 import type { DrillRow } from '../YearDrillList'
 import { formatDateRange } from '../../../../shared/utils/dateFormat'
 
@@ -32,7 +32,7 @@ export function drillRows(r: YearReview, d: Drill): { heading: string; rows: Dri
       return { heading: s ? `${s.show.title} · ${period}` : 'Episodes', rows: (s?.episodes ?? []).map(e => ({ key: `${e.season}x${e.episode}`, tmdbId: s!.show.tmdbId, type: 'tv', title: ep(e.season, e.episode), poster: s!.show.poster, detail: e.plays > 1 ? `${e.plays} plays` : s!.show.title, date: dateOf(e.watchedAt) })) }
     }
     case 'rewatches': return { heading: `Watched more than once · ${period}`, rows: r.rewatches.map((x, i) => ({ key: `r${i}`, tmdbId: x.tmdbId, type: x.type === 'movie' ? 'movie' : 'tv', title: x.title, poster: x.poster, detail: `${x.label} · ${x.plays} plays`, date: null })) }
-    case 'undated': return { heading: 'Watched on an unknown date', rows: [...r.movies.filter(m => !isKnown(m.watchedAt)).map(movie), ...episodes.filter(x => !isKnown(x.e.watchedAt)).map(episodeRow)] }
+    case 'undated': return { heading: 'Watched on an unknown date', rows: [...r.movies.filter(hasUnknownWatch).map(movie), ...episodes.filter(x => hasUnknownWatch(x.e)).map(episodeRow)] }
     case 'month': {
       const m = r.months[d.month - 1]
       return { heading: r.year == null ? 'Month' : monthRange(r.year, d.month), rows: [
@@ -41,8 +41,9 @@ export function drillRows(r: YearReview, d: Drill): { heading: string; rows: Dri
       ].sort(byDate) }
     }
     case 'weekday': return { heading: `Watched on a ${WEEKDAYS[d.day]} · ${period}`, rows: [
-      ...r.movies.filter(m => isKnown(m.watchedAt) && weekdayOf(m.watchedAt) === d.day).map(movie),
-      ...episodes.filter(x => isKnown(x.e.watchedAt) && weekdayOf(x.e.watchedAt) === d.day).map(episodeRow),
+      // Each watch on its own day (migration 149): a title watched on a Monday and a Friday is in both.
+      ...r.movies.filter(m => watchDatesOf(m).some(at => isKnown(at) && weekdayOf(at) === d.day)).map(movie),
+      ...episodes.filter(x => watchDatesOf(x.e).some(at => isKnown(at) && weekdayOf(at) === d.day)).map(episodeRow),
     ].sort(byDate) }
     case 'genre': {
       const g = r.genres.find(x => x.name === d.name)

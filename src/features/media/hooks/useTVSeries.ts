@@ -71,10 +71,10 @@ export function useUpdateTV() {
 }
 
 /**
- * Removes a title from the library with Undo (its watched episodes go with it).
- * The Trakt outbox sends the removal; Undo puts the same rows back and the
- * outbox sends them again (plays at their kept dates; the Trakt note is made
- * anew, so the old link is cleared).
+ * Removes a title from the library with Undo (its watched episodes and their
+ * watches go with it). The Trakt outbox sends the removal; Undo puts the same
+ * rows back and the outbox sends them again (each watch at its own date,
+ * migration 149; the Trakt note is made anew, so the old link is cleared).
  */
 export function useDeleteTV() {
   const qc = useQueryClient()

@@ -14,7 +14,9 @@ import { movieWatchedAt } from './traktDates'
 //
 // App-only facts are never touched: a Paused or Dropped show, a Dropped or
 // Upcoming movie, a Watching movie without plays, a show marked Watching or
-// Completed without episode rows, priority, plans. A movie with plays on
+// Completed without episode rows, a title being watched again (rewatch_round,
+// migration 149: it stays Watching while Trakt has every episode watched),
+// priority, plans. A movie with plays on
 // Trakt is Completed (Dropped stays). A title half-watched on Trakt (Continue
 // watching) with no entry here comes in as Watching. A watched show whose
 // seasons Trakt left out keeps its own episodes. An entry is only ever
@@ -71,6 +73,10 @@ export function showsNeedingInfoForSync(snap: TraktSnapshot, local: LocalLibrary
   return [...out]
 }
 
+/** A title being watched again (migration 149's rewatch_round) keeps its Watching/Paused. */
+export const isRewatching = (l: { status: string; rewatchRound?: number | null } | null | undefined) =>
+  !!l && (l.rewatchRound ?? 0) >= 2 && (l.status === 'watching' || l.status === 'paused')
+
 export function buildSyncPlan(snap: TraktSnapshot, local: LocalLibrary, info: Map<number, ShowInfo>, pending: Set<string>): SyncPlan {
   const plan: SyncPlan = { movies: [], shows: [], episodes: [], movieDeletes: [], showDeletes: [], episodeDeletes: [], ids: [], kept: [], showsWithoutRemovals: {} }
   const pb = playbackIds(snap)
@@ -101,8 +107,9 @@ export function buildSyncPlan(snap: TraktSnapshot, local: LocalLibrary, info: Ma
 
     let w: MovieWrite
     if (t) {
-      // Plays on Trakt = watched = Completed; Dropped is app-only and stays. The plays follow Trakt.
-      const status = l?.status === 'dropped' ? 'dropped' : 'completed'
+      // Plays on Trakt = watched = Completed; Dropped is app-only and stays, and
+      // so does a rewatch under way (Watching, migration 149). The plays follow Trakt.
+      const status = l?.status === 'dropped' ? 'dropped' : isRewatching(l) ? l!.status : 'completed'
       w = { tmdbId: id, item: t.item, status, repeatCount: Math.max(0, t.plays - 1), watchedAt: movieWatchedAt(t.lastWatchedAt), rating, watchlistRank: null }
     } else if (l && (l.status === 'watching' || l.status === 'dropped')) {
       // App-only states (a Watching movie may be half-watched on Trakt): only the rating follows Trakt.
@@ -199,6 +206,9 @@ export function buildSyncPlan(snap: TraktSnapshot, local: LocalLibrary, info: Ma
       const regular = [...eps].filter(k => !k.startsWith('0x')).length
       if (eps.size || epsUnknown) {
         if (isDropped) return 'dropped'
+        // Watching it again: every episode is watched, yet it stays Watching
+        // until the round is through (the database finishes it, migration 149).
+        if (isRewatching(l)) return l!.status
         if (aired !== undefined) return aired > 0 && regular >= aired ? 'completed' : l?.status === 'paused' ? 'paused' : 'watching'
         return l && IN_PROGRESS_SHOW.has(l.status) ? l.status : 'watching'
       }

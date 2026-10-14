@@ -60,7 +60,7 @@ export async function addTVEntry(
 
 export async function updateTVEntry(
   id: string,
-  patch: Partial<Pick<UserTVEntry, 'status' | 'priority' | 'personal_note' | 'rating' | 'current_season' | 'current_episode' | 'planned_date' | 'notify_before_days' | 'repeat_count' | 'started_at' | 'finished_at' | 'is_favorite'>>
+  patch: Partial<Pick<UserTVEntry, 'status' | 'priority' | 'personal_note' | 'rating' | 'current_season' | 'current_episode' | 'planned_date' | 'notify_before_days' | 'repeat_count' | 'started_at' | 'finished_at' | 'is_favorite' | 'rewatch_round'>>
 ): Promise<UserTVEntry> {
   const { data, error } = await supabase
     .from('user_tv_entries')
@@ -72,3 +72,14 @@ export async function updateTVEntry(
   return data
 }
 
+
+/** The round a show is being watched again in and when it started (migration 149); null when it isn't. */
+export async function fetchRewatchRound(tvEntryId: string): Promise<{ round: number; startedAt: string } | null> {
+  const { data, error } = await supabase.from('user_tv_entries').select('status, rewatch_round, rewatch_started_at').eq('id', tvEntryId).maybeSingle()
+  // Fallback (remove once 149 has run everywhere): no rewatch columns = no rewatch.
+  if (error && ['42703', 'PGRST204'].includes(String(error.code))) return null
+  if (error) throw error
+  const row = data as { status?: string; rewatch_round?: number | null; rewatch_started_at?: string | null } | null
+  return row && (row.status === 'watching' || row.status === 'paused') && (row.rewatch_round ?? 0) >= 2 && row.rewatch_started_at
+    ? { round: row.rewatch_round!, startedAt: row.rewatch_started_at } : null
+}

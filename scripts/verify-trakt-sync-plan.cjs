@@ -221,4 +221,39 @@ ok(movieWatchedAt(AT), AT, 'movie: real date kept')
   ok([removalCount(small), removalsNeedConfirm(small, l)], [2, false], 'a couple of removals go through')
 }
 
+// ── Rewatching (migration 149): a title watched again stays Watching ───────────
+{
+  // Every aired episode watched (Trakt now has round 2 of S1E1): stays Watching, round kept.
+  const l = lib({ shows: [ls(10, 'watching', { rewatchRound: 2 })], episodes: [le(10, 1, 1, 1), le(10, 1, 2)] })
+  const s = snap({ watchedShows: [ts(10, [[1, 1, 2, AT], [1, 2, 1, AT]])] })
+  const p = buildSyncPlan(s, l, new Map([[10, { aired: 2 }]]), none)
+  ok(find(p.shows, 10), undefined, 'a rewatching show with every episode watched is not flipped to Completed')
+  const plain = buildSyncPlan(s, lib({ shows: [ls(10, 'watching')], episodes: l.episodes }), new Map([[10, { aired: 2 }]]), none)
+  ok(find(plain.shows, 10).status, 'completed', 'the same show without a rewatch round is Completed, as before')
+  const paused = buildSyncPlan(s, lib({ shows: [ls(10, 'paused', { rewatchRound: 3 })], episodes: l.episodes }), new Map([[10, { aired: 2 }]]), none)
+  ok(find(paused.shows, 10), undefined, 'a paused rewatch stays Paused')
+  const dropped = buildSyncPlan(snap({ ...s, dropped: [{ item: show(10) }] }), l, new Map([[10, { aired: 2 }]]), none)
+  ok(find(dropped.shows, 10).status, 'dropped', 'dropped on Trakt still wins over a rewatch')
+}
+{
+  const l = lib({ movies: [lm(1, 'watching', { rewatchRound: 2, repeatCount: 0, watchedAt: AT })] })
+  const p = buildSyncPlan(snap({ watchedMovies: [tm(1, 1)] }), l, new Map(), none)
+  ok(p.movies, [], 'a movie being watched again stays Watching though Trakt has its play')
+  const two = buildSyncPlan(snap({ watchedMovies: [tm(1, 2, '2026-02-01T12:00:00.000Z')] }), l, new Map(), none)
+  ok([find(two.movies, 1).status, find(two.movies, 1).repeatCount], ['watching', 1], 'its new play comes in; the database finishes the round when the watch lands')
+  ok(buildSyncPlan(snap({ watchedMovies: [tm(1, 1)] }), lib({ movies: [lm(1, 'watching')] }), new Map(), none).movies[0].status, 'completed',
+    'a Watching movie that is not a rewatch becomes Completed when Trakt has a play, as before')
+  const imp = buildImportPlan(snap({ watchedMovies: [tm(1, 1)] }), l, new Map())
+  ok(imp.movies[0].status, 'watching', 'the import keeps a rewatch too')
+}
+// ── The import sends every watch at its own date (migration 149) ──────────────
+{
+  const l = lib({ shows: [ls(10, 'watching')], episodes: [{ ...le(10, 1, 1, 2), watches: ['2018-10-12T20:00:00.000Z', '2024-12-01T20:00:00.000Z', null] }] })
+  const p = buildImportPlan(snap(), l, new Map())
+  ok(p.push.history.episodes.map(e => e.watchedAt), ['2018-10-12T20:00:00.000Z', '2024-12-01T20:00:00.000Z', '1970-01-01T00:00:00.000Z'],
+    'an app-only episode goes to Trakt once per watch, each at its own date (unknown = the epoch)')
+  const m = buildImportPlan(snap(), lib({ movies: [lm(5, 'completed', { repeatCount: 1, watches: ['2020-01-01T12:00:00.000Z', '2021-01-01T12:00:00.000Z'] })] }), new Map())
+  ok(m.push.history.movies.map(e => e.watchedAt), ['2020-01-01T12:00:00.000Z', '2021-01-01T12:00:00.000Z'], 'a movie too')
+}
+
 console.log(`verify-trakt-sync-plan: ${n} assertions passed`)

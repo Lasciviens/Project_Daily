@@ -1,98 +1,122 @@
-import { CalendarDays, Repeat, RotateCcw, SlidersHorizontal, Undo2 } from 'lucide-react'
+import { useState } from 'react'
+import { CalendarDays, History, Hourglass, RotateCcw, Undo2 } from 'lucide-react'
+import { toast } from '../../../app/store'
 import { withProgress } from '../../../shared/hooks/useMutationWithFeedback'
-import { useEntityModal } from '../../../shared/modals'
-import { Button, IconButton, TonePill } from '../../../shared/ui'
+import { Button, IconButton } from '../../../shared/ui'
 import { formatDate } from '../../../shared/utils/dateFormat'
-import { isUnknownWatchedAt } from '../trakt/traktDates'
 import type { UserMovieEntry } from '../types'
 import { useWatchedWhenPrompt } from '../hooks/useWatchedWhenPrompt'
-import { usePlaysPrompt } from '../hooks/usePlaysPrompt'
+import { useWatchPick } from '../hooks/useWatchPick'
+import { useAddMovieWatch, useDeleteWatches, useMovieNotWatched, useSetMovieWatchDate, WAITS_FOR_TRAKT } from '../hooks/useWatches'
+import { useWatchesWaitForTrakt } from '../trakt/useTrakt'
 import { resolveWatchedAt } from '../watchedWhen'
-
-type Patch = Partial<Pick<UserMovieEntry, 'status' | 'watched_at' | 'repeat_count'>>
+import { cacheWatches, editableWatches, watchDate, watchFor, watchSummary, type Watch } from '../watches'
+import { WatchesSheet } from './WatchesSheet'
 
 /**
- * A watched movie's record: when, how many times, and the two ways to change
- * it — one more play (a rewatch) or not watched at all. Both reach Trakt
- * through the outbox (migration 117); "Not watched" removes every play there.
+ * A watched movie's record: every watch with its own date (migration 149),
+ * and the ways to change it — one more watch, a new date for one of them,
+ * the watch list, or not watched at all. Each reaches Trakt as that one play;
+ * "Not watched" (asks, then "· Undo") removes every play there.
  */
-export function MovieWatchedControls({ entry, releaseDate, disabled, onPatch }: {
+export function MovieWatchedControls({ entry, releaseDate, disabled }: {
   entry: UserMovieEntry
   releaseDate: string | null
   disabled?: boolean
-  onPatch: (patch: Patch) => Promise<unknown>
 }) {
-  const modal = useEntityModal()
-  const plays = 1 + Math.max(0, entry.repeat_count ?? 0)
-  const when = entry.watched_at && !isUnknownWatchedAt(entry.watched_at) ? formatDate(entry.watched_at) : 'date unknown'
+  const watches: Watch[] = entry.watches ?? cacheWatches(entry)
+  const linked = !!entry.watches
+  const traktWaits = useWatchesWaitForTrakt()
+  // A placeholder waiting for Trakt's dates is never moved or removed.
+  const editable = linked ? editableWatches(watches, traktWaits) : []
+  // Not watched would remove placeholders too: it waits with them.
+  const waiting = linked && editable.length < watches.length
+  const [listOpen, setListOpen] = useState(false)
 
   const { ask, dialog } = useWatchedWhenPrompt()
-  const plays$ = usePlaysPrompt()
+  const pick$ = useWatchPick()
+  const addWatch = useAddMovieWatch()
+  const setDate = useSetMovieWatchDate()
+  const remove = useDeleteWatches()
+  const notWatched = useMovieNotWatched()
+  const busy = disabled || addWatch.isPending || setDate.isPending || remove.busy || notWatched.busy
 
-  // Advanced: set how many times it was watched and the kept date directly —
-  // e.g. "watched 3 times" while keeping the date it was finished.
-  async function editPlays() {
-    const a = await plays$.ask({ title: entry.movie.title, plays, at: entry.watched_at, target: 'movie' })
-    if (!a) return
-    await withProgress(
-      () => onPatch({ repeat_count: a.plays - 1, ...(a.dateKept ? {} : { watched_at: a.at }) }),
-      { loading: 'Saving plays…', success: a.plays === 1 ? 'Watched once' : `Watched ${a.plays} times` },
-    )
-  }
-
-  // One more play; its time asked like Trakt does (Unknown keeps the last date).
+  // One more watch; its time asked like Trakt does (Unknown = a watch with no date).
   async function watchAgain() {
     const when = await ask({ title: entry.movie.title, subtitle: 'When did you watch it again?', releaseLabel: releaseDate ? formatDate(releaseDate) : null })
     if (!when) return
     const at = resolveWatchedAt(when, releaseDate, 'movie', new Date().toISOString())
-    await withProgress(
-      () => onPatch({ repeat_count: (entry.repeat_count ?? 0) + 1, ...(at ? { watched_at: at } : {}) }),
-      { loading: 'Counting another play…', success: 'Play counted' },
-    )
+    await withProgress(() => addWatch.mutateAsync({ entry, at }).then(() => true), { loading: 'Adding a watch…', success: 'Watch added' })
   }
 
-  // Change when it was watched (the latest play); Trakt gets the new date too (migration 120).
+  // A new date for ONE watch — the latest unless the user picks another; the others keep theirs.
   async function changeDate() {
-    if (plays > 1 && !(await modal.confirm({
-      title: `Watched ${plays} times`,
-      message: 'The app keeps one watched date per title, so every play gets the new date — here and on Trakt.',
-      confirmLabel: 'Change anyway',
-    }))) return
+    if (linked && !editable.length) {
+      toast.info(WAITS_FOR_TRAKT)
+      return
+    }
+    let target: Watch | null = watchFor(editable, 'latest')
+    if (watches.length > 1 && linked) {
+      const a = await pick$.ask({ title: entry.movie.title, watches, traktWaits })
+      if (!a) return
+      target = watchFor(editable, a)
+    }
     const when = await ask({ title: entry.movie.title, subtitle: 'Change when you watched it', releaseLabel: releaseDate ? formatDate(releaseDate) : null })
     if (!when) return
     const at = resolveWatchedAt(when, releaseDate, 'movie', new Date().toISOString())
-    await withProgress(() => onPatch({ watched_at: at }), { loading: 'Changing the date…', success: 'Watched date changed' })
+    // Before migration 149 there is no watch to name: the hook says so and writes nothing.
+    await withProgress(
+      () => setDate.mutateAsync({ entry, watchId: target?.id ?? null, at }).then(() => true),
+      { loading: 'Changing the date…', success: 'Watched date changed' },
+    )
   }
 
-  async function unwatch() {
-    const ok = await modal.confirm({
-      title: 'Mark as not watched?',
-      message: `Removes the watched date and all ${plays === 1 ? 'plays' : `${plays} plays`} — here and on Trakt. It goes back to your Wishlist.`,
-      confirmLabel: 'Mark not watched',
-      destructive: true,
+  async function removeWatch(w: Watch) {
+    const last = watches.length <= 1
+    await remove.run([w.id], {
+      title: 'Remove this watch?',
+      message: last
+        ? `${watchDate(w)} is its only watch: the film goes back to your Wishlist. On Trakt only this play goes.`
+        : `${watchDate(w)} — on Trakt only this play goes; the other watches stay.`,
+      confirmLabel: 'Remove',
+      done: last ? 'Watch removed · back on the Wishlist' : 'Watch removed',
     })
-    if (!ok) return
-    await withProgress(() => onPatch({ status: 'wishlist', watched_at: null, repeat_count: 0 }), { loading: 'Removing watched…', success: 'Marked as not watched' })
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
       {dialog}
-      {plays$.dialog}
-      {/* A rewatch reads clearly. Only the latest play's date is kept, so it says "last". */}
-      {plays > 1 ? (
-        <TonePill tone="info" className="tabular-nums">
-          <Repeat aria-hidden className="h-3.5 w-3.5" /> Watched {plays}× · last {when}
-        </TonePill>
-      ) : (
-        <p className="text-meta text-fg-muted tabular-nums">Watched {when}</p>
+      {pick$.dialog}
+      {listOpen && watches.length > 0 && (
+        <WatchesSheet
+          title={entry.movie.title}
+          target="movie"
+          watches={watches}
+          editable={linked}
+          traktWaits={traktWaits}
+          busy={busy}
+          onClose={() => setListOpen(false)}
+          onAdd={at => withProgress(() => addWatch.mutateAsync({ entry, at }).then(() => true), { loading: 'Adding a watch…', success: 'Watch added' })}
+          onSetDate={(w, at) => withProgress(() => setDate.mutateAsync({ entry, watchId: w.id, at }).then(() => true), { loading: 'Changing the date…', success: 'Watched date changed' })}
+          onRemove={removeWatch}
+        />
       )}
-      <IconButton label="Plays and date…" disabled={disabled} onClick={() => { void editPlays() }} className="text-fg-faint hover:text-fg-2">
-        <SlidersHorizontal />
-      </IconButton>
-      <Button size="sm" variant="ghost" icon={<CalendarDays />} disabled={disabled} onClick={() => { void changeDate() }}>Change date</Button>
-      <Button size="sm" icon={<RotateCcw />} disabled={disabled} onClick={() => { void watchAgain() }}>Watched again</Button>
-      <Button size="sm" variant="ghost" icon={<Undo2 />} disabled={disabled} onClick={() => { void unwatch() }}>Not watched</Button>
+      {/* Every watch with its own date, compact: "3 watches · 12.10.2018 · 01.12.2024 · 08.01.2026", and the list beside it. */}
+      <div className="flex basis-full items-center gap-1">
+        <p className="min-w-0 flex-1 text-meta tabular-nums text-fg-muted">
+          {watchSummary(watches)}
+          {waiting && <span className="whitespace-nowrap"> · <Hourglass aria-hidden className="inline h-3 w-3 align-[-2px]" /> waits for Trakt's dates</span>}
+        </p>
+        <IconButton label="Watches…" disabled={busy} onClick={() => setListOpen(true)} className="-my-1 text-fg-faint hover:text-fg-2">
+          <History />
+        </IconButton>
+      </div>
+      <Button size="sm" variant="ghost" icon={<CalendarDays />} disabled={busy} onClick={() => { void changeDate() }}>Change date</Button>
+      <Button size="sm" icon={<RotateCcw />} disabled={busy} onClick={() => { void watchAgain() }}>Watched again</Button>
+      {/* Icon-only on phones so the three fit one row. */}
+      <Button size="sm" variant="ghost" icon={<Undo2 />} disabled={busy || waiting} onClick={() => { void notWatched.run(entry, traktWaits) }} aria-label="Not watched" title={waiting ? "Not watched waits for Trakt's dates" : 'Not watched'} className="max-sm:px-2.5">
+        <span className="max-sm:sr-only">Not watched</span>
+      </Button>
     </div>
   )
 }

@@ -65,12 +65,30 @@ export interface UserMovieEntry {
   rating: number | null
   planned_date: string | null
   notify_before_days: number | null
+  /** A cache of the watches (migration 149): plays − 1. */
   repeat_count: number
+  /** A cache of the watches (migration 149): the latest watch; NULL = none or date unknown. */
   watched_at: string | null
   is_favorite?: boolean
+  /** The round being watched again (migration 149); absent before it. */
+  rewatch_round?: number | null
+  /** When that round started (149): a watch since then counts for it. */
+  rewatch_started_at?: string | null
+  /** Every watch with its own date (migration 149); absent before it. */
+  watches?: MediaWatch[]
   created_at: string
   updated_at: string
   movie: Movie
+}
+
+/** One watch of an episode or a movie (media_watches, migration 149). */
+export interface MediaWatch {
+  id: string
+  /** NULL = a movie watched on an unknown date; an episode's unknown date is the epoch. */
+  watched_at: string | null
+  trakt_history_id?: number | null
+  source?: 'app' | 'trakt' | 'backfill'
+  created_at?: string
 }
 
 export interface UserTVEntry {
@@ -89,6 +107,10 @@ export interface UserTVEntry {
   started_at: string | null
   finished_at: string | null
   is_favorite?: boolean
+  /** The round being watched again (migration 149); absent before it. */
+  rewatch_round?: number | null
+  /** When that round started (149): a watch since then counts for it. */
+  rewatch_started_at?: string | null
   created_at: string
   updated_at: string
   tv_series: TVSeries
@@ -199,9 +221,11 @@ export interface WatchedEpisode {
   tv_series_id:   string
   season_number:  number
   episode_number: number
-  watched_at:     string | null   // null = planned/not yet watched
-  /** Plays − 1 (migration 116); absent before it. */
+  watched_at:     string | null   // null = planned/not yet watched; a cache of the latest watch (149)
+  /** Plays − 1 (migration 116); a cache of the watches since 149; absent before 116. */
   repeat_count?:  number
+  /** Every watch with its own date (migration 149); absent before it. */
+  watches?:       MediaWatch[]
 }
 
 export interface TMDBCastMember {

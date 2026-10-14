@@ -46,7 +46,8 @@ export function WatchNextCard({ date }: { date: string }) {
     const n = next.data
     // Guard a refetch race: never claim success for a no-op write.
     if (!entry || !n || n.caughtUp || n.season == null || n.episode == null) return
-    markEpisode.mutate({ tvEntryId: entry.id, episodes: [{ season: n.season, episode: n.episode }], watchedOn: date })
+    // A rewatch round (migration 149): the next episode gets one more watch, its earlier ones keep their dates.
+    markEpisode.mutate({ tvEntryId: entry.id, episodes: [{ season: n.season, episode: n.episode }], watchedOn: date, again: !!n.rewatch })
   }
 
   // Movie fallback when there is no series in progress at all.
@@ -125,8 +126,10 @@ export function WatchNextCard({ date }: { date: string }) {
                   {n.episodeTitle && <span className="text-fg-muted"> — {n.episodeTitle}</span>}
                 </p>
                 <p className="mt-0.5 text-meta tabular-nums text-fg-muted">
-                  {n.watchedCount}{n.totalEpisodes ? `/${n.totalEpisodes}` : ''} watched
-                  {n.lastWatched && ` · last S${pad(n.lastWatched.season)}·E${pad(n.lastWatched.episode)}`}
+                  {n.rewatch
+                    ? `Rewatch · round ${n.rewatch.round} · ${n.rewatch.done}/${n.rewatch.total}`
+                    : <>{n.watchedCount}{n.totalEpisodes ? `/${n.totalEpisodes}` : ''} watched
+                      {n.lastWatched && ` · last S${pad(n.lastWatched.season)}·E${pad(n.lastWatched.episode)}`}</>}
                 </p>
                 {n.airDate && !n.released && (
                   <TonePill tone="warn" className="mt-1">

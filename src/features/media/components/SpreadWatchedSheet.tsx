@@ -6,12 +6,15 @@ import { DateInput } from '../../../shared/components/DateInput'
 import { withProgress } from '../../../shared/hooks/useMutationWithFeedback'
 import { formatDate } from '../../../shared/utils/dateFormat'
 import { todayStr } from '../../../shared/utils/dateUtils'
+import { toast } from '../../../app/store'
 import { useAllSeasons } from '../hooks/useTMDB'
 import { useMarkEpisodeWatched, useSetEpisodeDates, useWatchedEpisodes } from '../hooks/useWatchedEpisodes'
 import {
   DEFAULT_SPREAD, fixedSpreadEpisodes, fmt, planSpread, seedFrom, spreadDefaultStart, spreadHeadline, spreadWrites,
   type SpreadEpisode, type SpreadInput, type SpreadMode, type SpreadStyle,
 } from '../spreadWatched'
+import { editableWatches, watchFor } from '../watches'
+import type { WatchPickAnswer } from './WatchPickSheet'
 import { SpreadMonthStrip } from './SpreadMonthStrip'
 
 const STYLES: { value: SpreadStyle; label: string; hint: string }[] = [
@@ -38,6 +41,10 @@ interface Props {
   only?: { season: number; episode: number }[]
   /** What the save does (spreadWatched.ts `SpreadMode`); default `watched`. */
   mode?: SpreadMode
+  /** Changing dates: the watch of each episode that moves (default the latest; migration 149). */
+  pick?: WatchPickAnswer
+  /** Trakt connected: placeholders wait for Trakt's dates and are never moved. */
+  traktWaits?: boolean
   /** `saved`: true after a successful save. */
   onClose: (saved?: boolean) => void
   /**
@@ -59,15 +66,15 @@ const fixedLabel = (eps: SpreadEpisode[]) => (eps.length <= 3
 /** The save button and the toast, per mode. */
 const WORDS: Record<SpreadMode, { verb: string; button: (n: number) => string; loading: (n: number) => string; done: (n: number) => string; note?: string }> = {
   watched: { verb: 'Mark watched', button: n => `Mark ${plural(n)}`, loading: n => `Marking ${plural(n)}…`, done: n => `${plural(n)} marked watched` },
-  again: { verb: 'Count the plays', button: n => `Count ${n} play${n === 1 ? '' : 's'}`, loading: n => `Counting another play of ${plural(n)}…`, done: n => `Another play of ${plural(n)} counted`, note: 'each gets one more play' },
-  redate: { verb: 'Change dates', button: n => `Change ${n} date${n === 1 ? '' : 's'}`, loading: () => 'Changing watched dates…', done: n => `${n} watched date${n === 1 ? '' : 's'} changed`, note: 'plays stay' },
+  again: { verb: 'Add the watches', button: n => `Add ${n} watch${n === 1 ? '' : 'es'}`, loading: n => `Adding a watch to ${plural(n)}…`, done: n => `A watch added to ${plural(n)}`, note: 'each gets one more watch' },
+  redate: { verb: 'Change dates', button: n => `Change ${n} date${n === 1 ? '' : 's'}`, loading: () => 'Changing watched dates…', done: n => `${n} watched date${n === 1 ? '' : 's'} changed`, note: 'one watch each, the others keep theirs' },
 }
 
 /**
  * Mark a run of episodes watched across a period you remember roughly, with
  * breaks you didn't watch in. Every change replans at once (spreadWatched.ts).
  */
-export function SpreadWatchedSheet({ tvId, tvName, tvEntryId, seasons, defaultRuntime, only, mode = 'watched', onClose, onSaved }: Props) {
+export function SpreadWatchedSheet({ tvId, tvName, tvEntryId, seasons, defaultRuntime, only, mode = 'watched', pick = 'latest', traktWaits = false, onClose, onSaved }: Props) {
   const TODAY = todayStr()
   // A fixed set needs only its own seasons from TMDB.
   const all = useAllSeasons(tvId, only ? [...new Set(only.map(r => r.season))] : seasons)
@@ -136,18 +143,35 @@ export function SpreadWatchedSheet({ tvId, tvName, tvEntryId, seasons, defaultRu
     const refs = (items: typeof result.plan) => items.map(p => ({ season: p.season, episode: p.episode, at: p.at }))
     const n = result.plan.length
     setSaving(true)
-    const ok = await withProgress(async () => {
+    // The toast says what was written: an episode whose watches wait for Trakt's dates is not counted.
+    const done = await withProgress(async () => {
       if (w.mark.length) await mark.mutateAsync({ tvEntryId, episodes: refs(w.mark), watchedOn: TODAY })
       if (w.again.length) await mark.mutateAsync({ tvEntryId, episodes: refs(w.again), again: true, watchedOn: TODAY })
-      if (w.redate.length) await setDates.mutateAsync({ tvEntryId, episodes: refs(w.redate) })
+      let changed = 0
+      let waiting = 0
+      if (w.redate.length) {
+        // One watch per episode moves (the chosen one, else the latest); the others keep their dates.
+        const rowOf = (s: number, e: number) => watched.find(x => x.season_number === s && x.episode_number === e)
+        // Only real plays move — an episode whose watches all wait for Trakt's dates is left as it is.
+        const moves = refs(w.redate).map(r => { const row = rowOf(r.season, r.episode); return { ...r, watchId: row?.watches ? watchFor(editableWatches(row.watches, traktWaits), pick)?.id ?? null : null } })
+        const named = moves.filter(m => m.watchId)
+        if (named.length) await setDates.mutateAsync({ tvEntryId, episodes: named })
+        // Before migration 149 (no watch lists): setEpisodeWatchDates says so and writes nothing.
+        else if (!moves.some(m => rowOf(m.season, m.episode)?.watches)) await setDates.mutateAsync({ tvEntryId, episodes: moves })
+        changed = named.length
+        waiting = moves.length - named.length
+      }
       if (onSaved) await onSaved({ firstAt: result.plan[0].at, lastAt: result.plan[n - 1].at })
-      return true
-    }, {
-      loading: words.loading(n),
-      success: onSaved ? `${plural(n)} marked · series completed` : words.done(n),
-    })
+      return { written: w.mark.length + w.again.length + changed, changed, waiting }
+    }, { loading: words.loading(n) })
     setSaving(false)
-    if (ok) onClose(true)
+    if (!done) return
+    const waits = done.waiting ? `${done.waiting} wait${done.waiting === 1 ? 's' : ''} for Trakt's dates` : ''
+    if (onSaved) toast.success(`${plural(n)} marked · series completed`)
+    else if (done.written === 0) { if (waits) toast.info(`Nothing changed · ${waits}`) }
+    else if (mode === 'redate') toast.success(waits ? `${done.changed} changed · ${waits}` : words.done(done.changed))
+    else toast.success([w.mark.length + w.again.length && words.done(w.mark.length + w.again.length), done.changed && `${done.changed} re-dated`, waits].filter(Boolean).join(' · '))
+    onClose(true)
   }
 
   const loading = all.loading && (fixed ? all.seasons.length === 0 : episodes.length === 0)

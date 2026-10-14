@@ -79,11 +79,15 @@ that number would collide with a deleted one in history.
    Exempt by design, and say so in the header: bulk-synced tables (`hevy_*`,
    `health_*`, `strava_*` — sync spam) and high-frequency append-only tables
    (`water_log_entries`, `push_subscriptions`).
-   The log is also what "Undo this save" (Developer → Activity, migration
-   `150`) works from: one save = one `tx_id`, `seq` orders the changes inside
-   it, and `app_undo_transaction` puts back exactly what that transaction
-   changed — so an audited table needs a single `id` primary key to be
-   undoable, and a table without `trg_audit` can't be undone at all
+   The log is also what "Undo this save" (Developer → Activity, migrations
+   `150`/`151`) works from: one save = one `tx_id`, `seq` orders the changes
+   inside it, and `app_undo_transaction` puts back exactly what that
+   transaction changed — so an audited table needs a single `id` primary key
+   (or `user_id` for a one-row-per-account settings table) to be undoable,
+   and a table without `trg_audit` can't be undone at all. Its preview reads
+   the undo's own audit rows and outbox rows back, so a new outbox table
+   belongs in `app_undo_outbox`, a sync clock or outside-copy state column in
+   `app_undo_bookkeeping`, and a link to an outside copy in `app_undo_links`
    (`docs/features/developer.md`).
 10. **Grants:** table CRUD for the `authenticated` role is already covered by
     Supabase's public-schema default privileges — the explicit `GRANT SELECT,
@@ -368,6 +372,32 @@ which door the write came through.
   DELETE SET NULL) — unlike 084/112, which chose none — because the sync
   upserts Hevy rows in place. Edge functions must not close or delete
   training tasks themselves.
+- **A watch and the columns that cache it (migration 149).** Every watch of an
+  episode or movie is a `media_watches` row; `user_tv_episodes` and
+  `user_movie_entries` keep `watched_at`/`repeat_count` only as a cache
+  (`trg_media_watch_cache`: latest watch, count − 1; no watch = not watched,
+  `watched_at` NULL — the row stays so an Undo can put a watch back on it).
+  A watch that names an `episode_id` that isn't there raises a foreign-key
+  error (150's undo retries it after putting the episode back) instead of
+  making a second row for the episode. A sync write (x-trakt-sync) through
+  the cache columns only ever ADDS placeholder watches — it never removes or
+  re-dates one (trakt-api removes by Trakt play id); and the sync's writes to
+  `media_watches` are not audited (`trg_audit … WHEN (NOT
+  trakt_sync_writing())`, bulk-synced). A rewatch round
+  (`media_rewatch_finished`) and 043's planned-block rule
+  (`trg_media_watch_cleans_planned_block`) run on every watch insert.
+  A write to the cache columns from any door (the assistant's `db_update`, the
+  Trakt sync's summary writes, SQL, the app's older paths) is translated into
+  watches by DEFERRED constraint triggers (`trg_media_watch_reconcile`) — so
+  `app_restore_rows`, which puts back an entry and then its watches in one
+  transaction, is seen whole and nothing doubles. Two transaction-local
+  settings guard the loops: `app.media_watch_cache` (the cache trigger's own
+  writes queue no translation — the constraint trigger's `WHEN`) and
+  `app.media_watch_bulk` (unmarking a whole item deletes its watches without a
+  per-play Trakt remove each). Trigger order matters: `trg_media_watch_cache`
+  runs before `trg_trakt_outbox_watch` (name order), so the last watch of an
+  episode removed queues only the episode-wide remove. A rewatch round
+  (`rewatch_round`) is finished by the cache trigger too, for every door.
 - **When adding a new "plannable" entity** (something else that can get a
   `time_blocks` row via `UnifiedPlanModal`'s `source` prop): decide whether it
   needs a cleanup-on-source-change trigger the same way `user_tv_episodes`/

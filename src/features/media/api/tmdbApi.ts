@@ -37,6 +37,10 @@ export const getSimilarMovies = (tmdbId: number) =>
 export const getSimilarTV = (tmdbId: number) =>
   tmdbFetch<PagedResponse<TMDBSearchTV>>(`/tv/${tmdbId}/similar`)
 
+/** A show's seasons and its last aired episode (TMDB /tv/{id}, no appends) — for a rewatch round. */
+export const getTVSeasons = (tmdbId: number) =>
+  tmdbFetch<{ seasons?: { season_number: number; episode_count: number }[]; last_episode_to_air?: { season_number: number; episode_number: number } | null }>(`/tv/${tmdbId}`)
+
 export const getSeasonDetails = (tvId: number, season: number) =>
   tmdbFetch<import('../types').TMDBSeasonDetail>(`/tv/${tvId}/season/${season}`)
 

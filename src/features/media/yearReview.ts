@@ -1,21 +1,28 @@
 // Media stats — pure (scripts/verify-year-review.cjs). One period at a time:
 // a calendar year, or all time. Every figure keeps the rows behind it, so each
-// number on screen opens the real titles and episodes it counts. A play is
-// dated by its row's latest watch date (the app keeps one date per title /
-// episode plus a play count, not a play history); Trakt's "unknown date"
+// number on screen opens the real titles and episodes it counts. Every watch
+// counts on its own date (`watches`, migration 149): a film first seen in 2018
+// and again in 2026 is a 2018 play and a 2026 play. Rows without a watch list
+// (before 149) count `plays` at their one date. Trakt's "unknown date"
 // (before 1971, or none) never lands in a year, but all time counts it.
 
 export interface ReviewMovie {
   tmdbId: number; title: string; poster: string | null; runtime: number | null; genres: string[]
-  /** ISO; '' or before 1971 = watched on an unknown date. */
+  /** ISO; '' or before 1971 = watched on an unknown date. In a period: its latest watch there. */
   watchedAt: string; plays: number
+  /** Each watch's own date (migration 149); in a period, only the ones in it. */
+  watches?: string[]
   rating?: number | null; tmdbRating?: number | null
 }
 export interface ReviewShow {
   tmdbId: number; title: string; poster: string | null; runtime: number | null; genres: string[]
   rating?: number | null; tmdbRating?: number | null
 }
-export interface ReviewEpisode { showId: string; season: number; episode: number; watchedAt: string; plays: number }
+export interface ReviewEpisode {
+  showId: string; season: number; episode: number; watchedAt: string; plays: number
+  /** Each watch's own date (migration 149); in a period, only the ones in it. */
+  watches?: string[]
+}
 
 export interface ShowYear { show: ReviewShow; episodes: ReviewEpisode[]; plays: number; minutes: number }
 export interface GenreYear { name: string; minutes: number; movies: ReviewMovie[]; shows: ReviewShow[] }
@@ -67,11 +74,25 @@ const pad = (n: number) => String(n).padStart(2, '0')
 const dayKey = (iso: string) => { const d = new Date(iso); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` }
 const nextDay = (key: string) => { const d = new Date(`${key}T12:00:00`); d.setDate(d.getDate() + 1); return dayKey(d.toISOString()) }
 
+/** Every watch's date: its own (149), else `plays` times the row's one date. */
+export const watchDatesOf = (x: { watchedAt: string; plays: number; watches?: string[] }): string[] =>
+  x.watches?.length ? x.watches : Array.from({ length: Math.max(1, x.plays) }, () => x.watchedAt)
+
+/** Whether a row has a watch on an unknown date. */
+export const hasUnknownWatch = (x: { watchedAt: string; plays: number; watches?: string[] }) => watchDatesOf(x).some(d => !isKnown(d))
+
+/** A row narrowed to the watches in a period (null = none there): plays and latest date follow. */
+function inPeriodOf<T extends { watchedAt: string; plays: number; watches?: string[] }>(x: T, inPeriod: (iso: string) => boolean): T | null {
+  const d = watchDatesOf(x).filter(inPeriod)
+  if (!d.length) return null
+  const known = d.filter(isKnown).sort()
+  return { ...x, plays: d.length, watches: d, watchedAt: known[known.length - 1] ?? d[0] }
+}
+
 /** Years that have at least one dated watch, newest first. */
 export function reviewYears(movies: ReviewMovie[], episodes: ReviewEpisode[]): number[] {
   const ys = new Set<number>()
-  for (const m of movies) if (isKnown(m.watchedAt)) ys.add(yearOf(m.watchedAt))
-  for (const e of episodes) if (isKnown(e.watchedAt)) ys.add(yearOf(e.watchedAt))
+  for (const x of [...movies, ...episodes]) for (const d of watchDatesOf(x)) if (isKnown(d)) ys.add(yearOf(d))
   return [...ys].sort((a, b) => b - a)
 }
 
@@ -97,11 +118,13 @@ export function ratingStats(movies: ReviewMovie[], shows: ReviewShow[]): RatingS
 export function buildYearReview(year: number | null, movies: ReviewMovie[], episodes: ReviewEpisode[], shows: Map<string, ReviewShow>): YearReview {
   const inPeriod = (iso: string) => (year == null ? true : isKnown(iso) && yearOf(iso) === year)
   const byDate = (a: { watchedAt: string }, b: { watchedAt: string }) => a.watchedAt.localeCompare(b.watchedAt)
-  const ms = movies.filter(m => inPeriod(m.watchedAt)).sort(byDate)
-  const es = episodes.filter(e => inPeriod(e.watchedAt) && shows.has(e.showId)).sort(byDate)
+  const ms = movies.map(m => inPeriodOf(m, inPeriod)).filter((m): m is ReviewMovie => !!m).sort(byDate)
+  const es = episodes.filter(e => shows.has(e.showId)).map(e => inPeriodOf(e, inPeriod)).filter((e): e is ReviewEpisode => !!e).sort(byDate)
 
-  const movieMin = (m: ReviewMovie) => (m.runtime || DEFAULT_MOVIE_MIN) * m.plays
-  const epMin = (e: ReviewEpisode) => (shows.get(e.showId)!.runtime || DEFAULT_EP_MIN) * e.plays
+  const movieRun = (m: ReviewMovie) => m.runtime || DEFAULT_MOVIE_MIN
+  const epRun = (e: ReviewEpisode) => shows.get(e.showId)!.runtime || DEFAULT_EP_MIN
+  const movieMin = (m: ReviewMovie) => movieRun(m) * m.plays
+  const epMin = (e: ReviewEpisode) => epRun(e) * e.plays
 
   const byShow = new Map<string, ShowYear>()
   for (const e of es) {
@@ -118,13 +141,29 @@ export function buildYearReview(year: number | null, movies: ReviewMovie[], epis
 
   const months: MonthYear[] = Array.from({ length: 12 }, (_, i) => ({ month: i + 1, minutes: 0, movies: [], episodes: [] }))
   const years = new Map<number, YearBar>()
+  // One entry per dated watch: each lands on its own day.
   const dated = [
-    ...ms.filter(m => isKnown(m.watchedAt)).map(m => ({ at: m.watchedAt, plays: m.plays, minutes: movieMin(m) })),
-    ...es.filter(e => isKnown(e.watchedAt)).map(e => ({ at: e.watchedAt, plays: e.plays, minutes: epMin(e) })),
+    ...ms.flatMap(m => watchDatesOf(m).filter(isKnown).map(at => ({ at, plays: 1, minutes: movieRun(m) }))),
+    ...es.flatMap(e => watchDatesOf(e).filter(isKnown).map(at => ({ at, plays: 1, minutes: epRun(e) }))),
   ]
   if (year != null) {
-    for (const m of ms) { const x = months[new Date(m.watchedAt).getMonth()]; x.minutes += movieMin(m); x.movies.push(m) }
-    for (const e of es) { const x = months[new Date(e.watchedAt).getMonth()]; x.minutes += epMin(e); x.episodes.push({ ...e, show: shows.get(e.showId)! }) }
+    // A title watched in two months is in both, with the minutes of each watch.
+    for (const m of ms) {
+      const seen = new Set<number>()
+      for (const at of watchDatesOf(m)) {
+        const x = months[new Date(at).getMonth()]
+        x.minutes += movieRun(m)
+        if (!seen.has(x.month)) { seen.add(x.month); x.movies.push(m) }
+      }
+    }
+    for (const e of es) {
+      const seen = new Set<number>()
+      for (const at of watchDatesOf(e)) {
+        const x = months[new Date(at).getMonth()]
+        x.minutes += epRun(e)
+        if (!seen.has(x.month)) { seen.add(x.month); x.episodes.push({ ...e, show: shows.get(e.showId)! }) }
+      }
+    }
   } else {
     for (const d of dated) {
       const y = yearOf(d.at)
@@ -186,11 +225,11 @@ export function buildYearReview(year: number | null, movies: ReviewMovie[], epis
     busiestDay,
     longestStreak,
     ratings: ratingStats(ms, ratedShows),
-    undated: ms.filter(m => !isKnown(m.watchedAt)).length + es.filter(e => !isKnown(e.watchedAt)).length,
+    undated: [...ms, ...es].reduce((n, x) => n + watchDatesOf(x).filter(d => !isKnown(d)).length, 0),
   }
 }
 
-/** Unknown-date rows the review can't place in any year. */
+/** Plays on an unknown date: the review can't place them in any year. */
 export function unknownDateCount(movies: ReviewMovie[], episodes: ReviewEpisode[]) {
-  return movies.filter(m => !isKnown(m.watchedAt)).length + episodes.filter(e => !isKnown(e.watchedAt)).length
+  return [...movies, ...episodes].reduce((n, x) => n + watchDatesOf(x).filter(d => !isKnown(d)).length, 0)
 }

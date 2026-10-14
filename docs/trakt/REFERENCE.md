@@ -1,7 +1,7 @@
 # Trakt — reference (rules, API facts, the `trakt-api` contract)
 
 > The lasting part of the Trakt plan. Everything in it is built: migrations `116`–`124`,
-> `132` and `136`, the edge function `trakt-api`, `src/features/media/trakt/`, and the Trakt
+> `132`, `136` and `149`, the edge function `trakt-api`, `src/features/media/trakt/`, and the Trakt
 > card on Settings → Subscriptions. How the feature works is in
 > [`docs/features/media.md`](../features/media.md). This file keeps the owner's rules, what
 > Trakt holds versus the app, the two-way rules, lists and follows, and the API facts the
@@ -19,9 +19,12 @@
 - **Trakt is the source of truth for everything Trakt can hold.** If it exists on
   Trakt, Trakt's version wins. Only things Trakt has no place for stay app-only.
 - **Two-way.** Every change made in the app that Trakt can hold is written to Trakt.
-- **Rewatches count, as a number.** No per-play history (too much data): a title or
-  episode stores its play count as `repeat_count` = plays − 1 (the column Media's stats
-  already read), plus the latest watch date.
+- **Every watch keeps its own date (owner, 14.10.2026; superseded "rewatches count, as a
+  number").** Each play is a `media_watches` row with its own date and its Trakt history id
+  (migration 149); `repeat_count` (= plays − 1) and the latest watch date stay on the title /
+  episode row as a cache. A date change moves exactly the watch meant — Trakt never loses the
+  other plays of that item (the old "remove all plays + re-add at the new date" wiped the
+  owner's first-watch dates).
 - **No season or episode ratings** — only movie and show ratings.
 - **Notes are one thing.** `personal_note` on a movie or show IS the Trakt note on that movie or show
   (`trakt_note_id` links them; `trakt_note_text` keeps the text both sides had at the last sync — migration 136).
@@ -42,7 +45,9 @@
 
 | Data | Trakt endpoint (read / write) | Where it lives here | Owner |
 |---|---|---|---|
-| Watched + play counts + last watched (movies, episodes) | `GET /sync/watched/{movies,shows}` · `POST /sync/history`, `/sync/history/remove` | `status='completed'` / `user_tv_episodes` row + `repeat_count` + `watched_at` | **Trakt** |
+| Watched + play counts + last watched (movies, episodes) | `GET /sync/watched/{movies,shows}` · `POST /sync/history`, `/sync/history/remove` | `status='completed'` / `user_tv_episodes` row + `repeat_count` + `watched_at` (a cache since 149) | **Trakt** |
+| Every play with its own date (movies, episodes) | `GET /sync/history/{movies,episodes}`, `/sync/history/{movies,shows}/{id}` · `POST /sync/history`, `/sync/history/remove {ids}` | `media_watches` (one row per watch, `trakt_history_id`) | **Trakt** |
+| Watching it again (a rewatch round) | *(Trakt's progress reset is VIP-only, not used)* | `rewatch_round` on the entry | **app** |
 | Ratings 1–10 — movies and shows only | `GET /sync/ratings/{movies,shows}` · `POST /sync/ratings`, `/remove` | `user_movie_entries.rating`, `user_tv_entries.rating` | **Trakt** |
 | Watchlist (with its order) | `GET /sync/watchlist/{movies,shows}/rank/asc` · `POST /sync/watchlist`, `/remove` | `status='wishlist'` + `watchlist_rank` (the order is read from Trakt, not written back) | **Trakt** |
 | Favorites | `GET /sync/favorites` · `POST`, `/remove` | `is_favorite` | **Trakt** |
@@ -79,6 +84,28 @@ reach Trakt and come back here through the normal history sync.
   record. The sync refuses to run until a complete import has stamped
   `trakt_sync_state.imported_at` (migration 124), because it treats Trakt as the truth and
   would otherwise wipe app-only data.
+- **Plays (migration 149, built 14.10.2026; review fixes the same day)** —
+  `src/features/media/trakt/traktWatchPlan.ts` (`scripts/verify-trakt-watch-plan.cjs`), DB scenarios
+  `scripts/db-tests/media-watches/`, API facts `docs/integrations/trakt.md`:
+  - **App → Trakt, one play at a time, never a guessed one:** a new watch → `history_add` at its
+    own date; a removed watch → `history_remove_play` (`POST /sync/history/remove {ids: [history
+    id]}`). Without a history id, only a play at that exact second when Trakt has more plays there
+    than the watches left here account for; otherwise the remove waits ("waiting for Trakt's play
+    ids") until a pull has linked the title, and is dropped after 7 days with a message. Nothing
+    unlinked is sent before the first link (`history_synced_at`). A new date on one watch = remove
+    that play + add the new one; removing an item's last watch is that one play too. The
+    item-wide `history_remove` only for an explicit unmark ("Not watched", Wishlist, removed).
+    Waiting add/remove pairs of one watch cancel out (also a remove + add at the same second:
+    delete, then Undo).
+  - **Trakt → app, play by play:** the titles whose plays differ from the watched summary are
+    read one by one (`/sync/history/{shows|movies}/{trakt id}`); a whole-history read (first run
+    after 149, a reconnect, Sync now, a reset, more than 25 differing titles) goes title by title
+    and resumes through `trakt_sync_state.history_cursor`. Linked plays stay; the rest pair by
+    the same second, then in date order (Trakt's date wins); placeholders (`source =
+    'backfill'`, the one date the app had) are replaced. Pending items and items the summary
+    dropped are left alone; an empty history is left alone; more than max(10, 10 %) removals
+    wait for a confirm. A sync write never removes or re-dates a watch through the cache columns.
+  - Not by date: `start_at` filters on the play's own date, so a backdated play would be missed.
 - **Notes (migration 136, built 07.10.2026)** — `src/features/media/trakt/traktNotes.ts`
   (`scripts/verify-trakt-notes.cjs`):
   - Only the note on a movie or show itself; episode notes stay app-only. A Trakt note on a
@@ -179,6 +206,44 @@ One sync at a time (`trakt_sync_state.sync_started_at`, stale after 5 minutes). 
 - Trakt's "unknown date" for a play is the epoch: movies store NULL, episodes keep the epoch
   (NULL there means not watched), and every screen shows "date unknown".
 - `reset_at` stamps in `last_activities` mark a show whose watched progress was restarted.
+
+### Watch history (checked 14.10.2026 — migration 149)
+
+Sources: the API blueprint (https://trakt.docs.apiary.io, raw https://jsapi.apiary.io/apis/trakt.apib —
+deprecated since 11.06.2026 but still the detailed reference) groups Sync → "Get History", "Add to
+History", "Remove from History", Search → "ID Lookup", Shows → "Reset Watched Progress"; and
+trakt/trakt-api's contract (`projects/api/src/contracts/sync/index.ts`, `history` router;
+`schema/request/historyRemoveRequestSchema.ts`, `historyIdsRequestSchema.ts`,
+`schema/response/historyResponseSchema.ts`, `historyRemoveResponseSchema.ts`;
+`_internal/request/pageQuerySchema.ts`).
+
+- `GET /sync/history/{type}/{id}?start_at&end_at` (OAuth, paginated, extended): `type` movies |
+  shows | seasons | episodes, `id` a Trakt id (shows/{id} = every episode of the show). Rows,
+  newest first: `{id (64-bit — one play, the id that removes it), watched_at, action: scrobble |
+  checkin | watch, type: movie | episode, movie | episode {season, number, ids} + show {ids}}`
+  (contract: `id` int, `watched_at` datetime, `action`, `type`, passthrough). A valid id with no
+  history = `[]`.
+- Pagination: a limit above the endpoint's maximum is clamped, not refused ("often 250");
+  `X-Pagination-Page-Count` as everywhere.
+- `start_at`/`end_at` filter on the play's own `watched_at` (the contract documents
+  "YYYY-MM-DD"), so they can't find a play added later with an older date — the app reads per
+  title instead.
+- `POST /sync/history` adds plays (`watched_at` per item; `unknown` or the epoch = no date;
+  Trakt doesn't check duplicates) → `{added, updated?, not_found}` — no history ids come back,
+  so a new play is linked on the next pull.
+- `POST /sync/history/remove` with `ids: [history ids]` removes single plays ("raw history ids
+  … to delete single plays") → `{deleted: {movies, episodes}, not_found: {…, ids}}`; with movie /
+  show / season / episode objects it removes every play of the item.
+- `GET /search/tmdb/{id}?type=movie|show` (ID Lookup) → `[{type, score, movie | show: {ids:
+  {trakt, …}}}]` — the Trakt id of a title the catalogue has none for.
+- `GET /sync/last_activities` has `movies.watched_at` and `episodes.watched_at`; the sync still
+  compares `all`.
+- `POST /shows/{id}/progress/watched/reset` (and `DELETE` to undo) is **VIP Only** (426 for
+  others) and only changes Trakt's progress view (`reset_at`); not used — rewatch rounds are
+  app-side (`rewatch_round`, `rewatch_started_at`).
+- A remove without a history id is never matched to the "nearest" play (owner-critic review,
+  14.10.2026): only an exact-second match no remaining watch accounts for.
+- Endpoints, fields, unused fields and traps in one place: `docs/integrations/trakt.md`.
 
 ### Facts used by phases 5–6 (checked 30.09.2026; notes 07.10.2026)
 

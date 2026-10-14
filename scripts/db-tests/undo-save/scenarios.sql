@@ -1,8 +1,11 @@
--- Migration 150's scenarios: what "Undo this save" plans, that a preview
+-- "Undo this save" (migrations 150 and 151): what it plans, that a preview
 -- changes nothing, that an undo puts back exactly what the save changed in one
--- transaction, and that it stops at what it can't do safely. Setup runs as
--- the superuser; every save, preview and undo runs as `authenticated`, under
--- row level security, like the app.
+-- transaction, that it stops at what it can't do safely, and (151, 17–25)
+-- that it shows everything else it would set off: outside services, rows a
+-- rule changes besides, a row put back that a rule rewrites, a sync's save,
+-- rows in an unknown order, a save racing it. Setup runs as the superuser;
+-- every save, preview and undo runs as `authenticated`, under row level
+-- security, like the app.
 create or replace function public.t_ok(c boolean, msg text) returns void language plpgsql as $$
 begin
   if not coalesce(c, false) then raise exception 'FAIL  %', msg; end if;
@@ -109,6 +112,7 @@ insert into public.tasks (id, title, status, google_task_id, google_sync_enabled
 insert into public.time_blocks (id, task_id, date, start_time, title, google_calendar_event_id) values
   ('b1000000-0000-0000-0000-00000000000b', 'b0000000-0000-0000-0000-00000000000b', '2026-10-20', '09:00', 'Delete me', 'ev-b');
 insert into public.task_tags values ('b0000000-0000-0000-0000-00000000000b', 'x');
+insert into public.task_comments (task_id, body) values ('b0000000-0000-0000-0000-00000000000b', 'Bring the card');
 truncate public.google_tasks_outbox;
 set role authenticated;
 do $$
@@ -127,14 +131,22 @@ begin
   select value into tb from jsonb_array_elements(p -> 'tables') where value ->> 't' = 'time_blocks';
   perform public.t_ok((tk ->> 'revert')::int = 1 and (tk ->> 'delete')::int = 1 and (tk ->> 'reinsert')::int = 1, 'tasks: one to revert, one to delete, one to put back');
   perform public.t_ok((tb ->> 'delete')::int = 1 and (tb ->> 'reinsert')::int = 1, 'slots: the new one to delete, the deleted one to put back');
-  perform public.t_ok(tk -> 'columns' = '["status", "title"]', 'the revert names the columns it puts back');
-  perform public.t_ok(p -> 'not_logged' = '[{"t": "task_tags", "parent": "tasks"}]', 'a table outside the log that went with the deleted task is named: ' || (p ->> 'not_logged'));
-  perform public.t_ok(p -> 'collateral' = '[]' and not (p ->> 'needs_confirm')::boolean, 'the new task''s slot goes with it as the save''s own row, not as collateral');
+  perform public.t_ok(tk -> 'columns' = '["status", "title"]', 'the revert names the columns it puts back (the local-edit clock is bookkeeping)');
+  perform public.t_ok(p -> 'not_logged' = '[{"t": "task_comments", "how": "unlinked", "rows": 1, "parent": "tasks"}, {"t": "task_tags", "how": "deleted", "rows": 1, "parent": "tasks"}]',
+                      'tables outside the log the put-back task could have had rows in are named, deleted or unlinked: ' || (p ->> 'not_logged'));
+  perform public.t_ok(p -> 'collateral' = '[]', 'the new task''s slot goes with it as the save''s own row, not as collateral');
+  perform public.t_ok(p -> 'outbox' = '[{"n": 1, "s": "google_calendar", "op": "create"}, {"n": 1, "s": "google_tasks", "op": "create"}]',
+                      'putting back a synced task queues a new Google Task, and its slot that had an event gets a new one from the browser: the plan says both ' || (p ->> 'outbox'));
+  perform public.t_ok(p -> 'drift' = '[]' and p -> 'side_effects' = '[]', 'the task put back gets a new local-edit stamp: bookkeeping, not drift');
+  perform public.t_ok((p ->> 'needs_confirm')::boolean and not exists (select 1 from public.google_tasks_outbox where operation = 'create'),
+                      'it needs confirming, and the preview queued nothing');
+  perform public.t_ok(public.t_refused(public.t_tx('mixed'), null, '{"tasks": {"google_task_id": null}}') = 'UD001', 'unconfirmed, it is refused');
+  insert into public.t_tx values ('mixed_plan', null, p);
 end $$;
 do $$
 declare p jsonb;
 begin
-  p := public.app_undo_transaction(public.t_tx('mixed'), true, null, '{"tasks": {"google_task_id": null}}');
+  p := public.app_undo_transaction(public.t_tx('mixed'), true, (select plan ->> 'confirm' from public.t_tx where k = 'mixed_plan'), '{"tasks": {"google_task_id": null}}');
   perform public.t_ok((p -> 'result' ->> 'reverted')::int = 1 and (p -> 'result' ->> 'deleted')::int = 2 and (p -> 'result' ->> 'reinserted')::int = 2,
                       'the undo reverted 1, deleted 2, put back 2: ' || (p ->> 'result'));
   perform public.t_ok(not exists (select 1 from public.tasks where id = 'c0000000-0000-0000-0000-00000000000c')
@@ -171,6 +183,7 @@ begin
   perform public.t_ok((select count(*) from public.audit_logs where tx_id = public.t_tx('project')) = 3, 'the cascade logged 3 deletes in one save');
   p := public.app_undo_transaction(public.t_tx('project'), true);
   perform public.t_ok((p -> 'result' ->> 'reinserted')::int = 3, 'the undo puts back the project and both items');
+  perform public.t_ok(p -> 'not_logged' = '[]', 'a project without a code could have had no links outside the log: nothing to say, nothing to confirm');
   perform public.t_ok((select count(*) from public.project_items where project_id = 'f0000000-0000-0000-0000-00000000000f') = 2
                       and exists (select 1 from public.projects where id = 'f0000000-0000-0000-0000-00000000000f' and name = 'House'), 'with the same ids, parents before children');
 end $$;
@@ -464,3 +477,448 @@ begin
 end $$;
 reset role;
 select public.t_ok((select count(*) from public.tasks where title = 'Theirs') = 1, 'their task is untouched');
+
+-- ── 17. What goes to an outside service is in the plan (151) ────────────────
+insert into public.tasks (id, title, google_task_id, google_sync_enabled) values
+  ('b7000000-0000-0000-0000-000000000001', 'Synced one', 'g-1', true),
+  ('b7000000-0000-0000-0000-000000000002', 'Synced two', 'g-2', true);
+set role authenticated;
+do $$ begin
+  update public.tasks set title = title || ' (renamed)'
+   where id in ('b7000000-0000-0000-0000-000000000001', 'b7000000-0000-0000-0000-000000000002');
+  insert into public.t_tx values ('synced', txid_current());
+end $$;
+do $$
+declare p jsonb; n0 bigint := (select count(*) from public.google_tasks_outbox);
+begin
+  p := public.app_undo_transaction(public.t_tx('synced'));
+  perform public.t_ok(p -> 'outbox' = '[{"n": 2, "s": "google_tasks", "op": "update"}]',
+                      'undoing two renamed Google tasks sends two updates to Google: in the plan ' || (p ->> 'outbox'));
+  perform public.t_ok((p ->> 'needs_confirm')::boolean and p -> 'conflicts' = '[]' and p -> 'drift' = '[]' and p -> 'sync_save' = '[]',
+                      'a change outside the app needs confirming (nothing else here does; the save was yours, not a sync''s)');
+  perform public.t_ok((select count(*) from public.google_tasks_outbox) = n0, 'the trial run''s queue rows were rolled back');
+  perform public.t_ok(public.t_refused(public.t_tx('synced'), null) = 'UD001', 'unconfirmed, it is refused');
+  p := public.app_undo_transaction(public.t_tx('synced'), true, p ->> 'confirm');
+  perform public.t_ok((select count(*) from public.google_tasks_outbox) = n0 + 2 and (p -> 'result' ->> 'reverted')::int = 2,
+                      'confirmed: both titles go back and the two updates are queued, as shown');
+end $$;
+
+-- ── 18. A rule the undo sets off changes a row outside it (043) ─────────────
+reset role;
+insert into public.user_tv_entries (id, title) values ('e0000000-0000-0000-0000-000000000002', 'Plan Show');
+insert into public.user_tv_episodes (id, tv_entry_id, season_number, episode_number, watched_at)
+values ('e2100000-0000-0000-0000-000000000005', 'e0000000-0000-0000-0000-000000000002', 1, 5, '2026-09-01 20:00+00');
+truncate public.calendar_outbox;
+set role authenticated;
+do $$ begin
+  delete from public.user_tv_episodes where id = 'e2100000-0000-0000-0000-000000000005';
+  insert into public.t_tx values ('unwatch', txid_current());
+end $$;
+-- later: the episode is planned again, with a Google Calendar event
+do $$ begin
+  insert into public.time_blocks (id, date, title, google_calendar_event_id, source_type, source_id, season_number, episode_number)
+  values ('e2200000-0000-0000-0000-000000000005', '2026-10-20', 'Watch S01E05', 'ev-plan', 'tv_episode', 'e0000000-0000-0000-0000-000000000002', 1, 5);
+end $$;
+do $$
+declare p jsonb;
+begin
+  p := public.app_undo_transaction(public.t_tx('unwatch'));
+  perform public.t_ok(p -> 'side_effects' = '[{"t": "time_blocks", "id": "e2200000-0000-0000-0000-000000000005", "op": "DELETE", "label": "Watch S01E05", "columns": null}]',
+                      'putting the episode back sets off 043, which deletes the later plan: a side effect ' || (p ->> 'side_effects'));
+  perform public.t_ok(p -> 'outbox' = '[{"n": 1, "s": "google_calendar", "op": "delete"}]', 'and its Google Calendar event would go ' || (p ->> 'outbox'));
+  perform public.t_ok((p ->> 'needs_confirm')::boolean and p -> 'collateral' = '[]' and p -> 'drift' = '[]', 'it needs confirming');
+  perform public.t_ok(exists (select 1 from public.time_blocks where id = 'e2200000-0000-0000-0000-000000000005') and not exists (select 1 from public.calendar_outbox),
+                      'the preview deleted nothing and queued nothing');
+  perform public.t_ok(public.t_refused(public.t_tx('unwatch'), null) = 'UD001', 'unconfirmed, it is refused');
+  insert into public.t_tx values ('unwatch_plan', null, p);
+  p := public.app_undo_transaction(public.t_tx('unwatch'), true, p ->> 'confirm');
+  perform public.t_ok(p ->> 'confirm' = (select plan ->> 'confirm' from public.t_tx where k = 'unwatch_plan'), 'the apply found exactly what the preview showed (same fingerprint)');
+  perform public.t_ok(exists (select 1 from public.user_tv_episodes where id = 'e2100000-0000-0000-0000-000000000005')
+                      and not exists (select 1 from public.time_blocks where id = 'e2200000-0000-0000-0000-000000000005')
+                      and exists (select 1 from public.calendar_outbox where event_id = 'ev-plan'),
+                      'confirmed: the episode is back, the plan gone, its event queued for removal');
+end $$;
+
+-- ── 19. A row put back that a rule rewrites: drift, column by column ───────
+reset role;
+insert into public.stamped_notes (id, title) values ('b9000000-0000-0000-0000-000000000001', 'Stamped note');
+set role authenticated;
+do $$ begin
+  delete from public.stamped_notes where id = 'b9000000-0000-0000-0000-000000000001';
+  insert into public.t_tx values ('stamped', txid_current());
+end $$;
+do $$
+declare p jsonb;
+begin
+  p := public.app_undo_transaction(public.t_tx('stamped'));
+  perform public.t_ok(p -> 'drift' = '[{"t": "stamped_notes", "id": "b9000000-0000-0000-0000-000000000001", "how": "changed", "label": "Stamped note", "columns": ["stamped_at"]}]',
+                      'a row put back whose column a rule rewrites is "not exactly as before", with the column ' || (p ->> 'drift'));
+  perform public.t_ok((p ->> 'needs_confirm')::boolean, 'and it needs confirming');
+end $$;
+
+-- ── 20. One row per account, keyed by user_id (games_prefs and the like) ───
+reset role;
+insert into public.prefs (user_id, theme, page_size) values ('00000000-0000-0000-0000-000000000001', 'light', 20);
+set role authenticated;
+do $$ begin
+  update public.prefs set theme = 'dark';
+  insert into public.t_tx values ('prefs', txid_current());
+end $$;
+do $$
+declare p jsonb;
+begin
+  p := public.app_undo_transaction(public.t_tx('prefs'));
+  perform public.t_ok(p -> 'blocked' = '[]' and p -> 'tables' -> 0 ->> 't' = 'prefs' and (p -> 'tables' -> 0 ->> 'revert')::int = 1
+                      and p -> 'tables' -> 0 -> 'columns' = '["theme"]' and not (p ->> 'needs_confirm')::boolean,
+                      'a settings row keyed by user_id can be undone: its theme goes back ' || (p ->> 'tables'));
+  p := public.app_undo_transaction(public.t_tx('prefs'), true);
+  perform public.t_ok((select theme from public.prefs) = 'light', 'the old theme is back');
+end $$;
+do $$ begin
+  delete from public.prefs;
+  insert into public.t_tx values ('prefs_deleted', txid_current());
+end $$;
+do $$
+declare p jsonb;
+begin
+  p := public.app_undo_transaction(public.t_tx('prefs_deleted'), true);
+  perform public.t_ok((p -> 'result' ->> 'reinserted')::int = 1 and (select theme = 'light' and page_size = 20 from public.prefs), 'a deleted settings row comes back whole');
+end $$;
+do $$ begin delete from public.prefs; end $$;
+do $$ begin
+  insert into public.prefs (theme) values ('blue');
+  insert into public.t_tx values ('prefs_made', txid_current());
+end $$;
+do $$
+declare p jsonb;
+begin
+  p := public.app_undo_transaction(public.t_tx('prefs_made'), true);
+  perform public.t_ok((p -> 'result' ->> 'deleted')::int = 1 and not exists (select 1 from public.prefs), 'a settings row the save made is deleted');
+end $$;
+
+-- ── 21. Changes logged before 150, in an unknown order: blocked, not guessed ─
+reset role;
+insert into public.tasks (id, title) values ('ba000000-0000-0000-0000-000000000001', 'c'), ('ba000000-0000-0000-0000-000000000002', 'y');
+-- What 150's numbering of old rows could leave: one row's two changes
+-- (a → b, then b → c) numbered the other way round.
+do $$
+declare v_seq text := pg_get_serial_sequence('public.audit_logs', 'seq');
+begin
+  insert into public.audit_logs (user_id, table_name, operation, row_id, old_data, new_data, actor, tx_id, seq) values
+    ('00000000-0000-0000-0000-000000000001', 'tasks', 'UPDATE', 'ba000000-0000-0000-0000-000000000001', '{"title": "b"}', '{"title": "c"}', 'web', 900000001, nextval(v_seq)),
+    ('00000000-0000-0000-0000-000000000001', 'tasks', 'UPDATE', 'ba000000-0000-0000-0000-000000000001', '{"title": "a"}', '{"title": "b"}', 'web', 900000001, nextval(v_seq)),
+    ('00000000-0000-0000-0000-000000000001', 'tasks', 'UPDATE', 'ba000000-0000-0000-0000-000000000002', '{"title": "x"}', '{"title": "y"}', 'web', 900000001, nextval(v_seq));
+end $$;
+set role authenticated;
+do $$
+declare p jsonb;
+begin
+  p := public.app_undo_transaction(900000001);
+  perform public.t_ok(p -> 'blocked' = '[{"t": "tasks", "rows": 1, "count": 2, "labels": ["c"], "reason": "order_unknown"}]',
+                      'a row whose changes don''t chain up is blocked as "order unknown", never folded in a guessed order ' || (p ->> 'blocked'));
+  perform public.t_ok((p -> 'tables' -> 0 ->> 'revert')::int = 1 and (p -> 'tables' -> 0 ->> 'same')::int = 0 and (p ->> 'steps')::int = 1,
+                      'the row whose order is known is still undone; the other is never counted as unchanged');
+  perform public.t_ok((p ->> 'needs_confirm')::boolean, 'it needs confirming');
+  p := public.app_undo_transaction(900000001, true, p ->> 'confirm');
+  perform public.t_ok((select title from public.tasks where id = 'ba000000-0000-0000-0000-000000000001') = 'c'
+                      and (select title from public.tasks where id = 'ba000000-0000-0000-0000-000000000002') = 'x',
+                      'confirmed: the blocked row is left as it is, the other goes back');
+end $$;
+
+-- ── 22. A save made by AI / a sync on a synced table ───────────────────────
+reset role;
+set test.uid = 'none';
+do $$ begin
+  update public.user_tv_episodes set rating = 9 where id = 'e2100000-0000-0000-0000-000000000005';
+  insert into public.t_tx values ('pulled', txid_current());
+end $$;
+reset test.uid;
+set role authenticated;
+do $$
+declare p jsonb;
+begin
+  p := public.app_undo_transaction(public.t_tx('pulled'));
+  perform public.t_ok(p -> 'actors' = '["service"]' and p -> 'sync_save' = '["user_tv_episodes"]',
+                      'undoing a sync''s save on a synced table is named: it changes that service too ' || (p ->> 'sync_save'));
+  perform public.t_ok((p ->> 'needs_confirm')::boolean and p -> 'conflicts' = '[]' and p -> 'outbox' = '[]', 'and it needs confirming');
+  perform public.t_ok(public.t_refused(public.t_tx('pulled'), null) = 'UD001', 'unconfirmed, it is refused');
+end $$;
+
+-- ── 23. Outside the log: only what a put-back row could have had there ────
+reset role;
+insert into public.projects (id, name, code) values ('bb000000-0000-0000-0000-000000000001', 'Coded', 'P-1');
+insert into public.project_links (project_code, url) values ('P-1', 'https://example.org');
+set role authenticated;
+do $$ begin
+  delete from public.projects where id = 'bb000000-0000-0000-0000-000000000001';
+  insert into public.t_tx values ('coded', txid_current());
+end $$;
+do $$
+declare p jsonb;
+begin
+  p := public.app_undo_transaction(public.t_tx('coded'));
+  perform public.t_ok(p -> 'not_logged' = '[{"t": "project_links", "how": "deleted", "rows": 1, "parent": "projects"}]',
+                      'a project with a code could have had links outside the log: named ' || (p ->> 'not_logged'));
+  perform public.t_ok((p ->> 'needs_confirm')::boolean, 'and it needs confirming');
+end $$;
+-- A SET NULL table with no empty link had nothing pointing at the deleted row.
+reset role;
+delete from public.task_comments where task_id is null;
+insert into public.tasks (id, title) values ('be000000-0000-0000-0000-000000000001', 'No comments');
+set role authenticated;
+do $$ begin
+  delete from public.tasks where id = 'be000000-0000-0000-0000-000000000001';
+  insert into public.t_tx values ('no_comments', txid_current());
+end $$;
+do $$
+declare p jsonb;
+begin
+  p := public.app_undo_transaction(public.t_tx('no_comments'));
+  perform public.t_ok(p -> 'not_logged' = '[{"t": "task_tags", "how": "deleted", "rows": 1, "parent": "tasks"}]',
+                      'no comment has an empty link, so none pointed at the deleted task: only the tags are named ' || (p ->> 'not_logged'));
+end $$;
+
+-- ── 24. Saves seconds apart (Spread writes up to three): a hint ────────────
+-- Only for media rows; a save that was an undo itself is no part of it.
+do $$ begin
+  insert into public.user_tv_episodes (id, tv_entry_id, season_number, episode_number, watched_at)
+  values ('bc000000-0000-0000-0000-000000000001', 'e0000000-0000-0000-0000-000000000002', 2, 1, '2026-10-01 20:00+00');
+  insert into public.t_tx values ('spread1', txid_current());
+end $$;
+do $$ begin
+  insert into public.user_tv_episodes (id, tv_entry_id, season_number, episode_number, watched_at)
+  values ('bc000000-0000-0000-0000-000000000002', 'e0000000-0000-0000-0000-000000000002', 2, 2, '2026-10-02 20:00+00');
+  insert into public.t_tx values ('spread2', txid_current());
+end $$;
+do $$ begin
+  insert into public.user_tv_episodes (id, tv_entry_id, season_number, episode_number, watched_at)
+  values ('bc000000-0000-0000-0000-000000000003', 'e0000000-0000-0000-0000-000000000002', 2, 3, '2026-10-03 20:00+00');
+  insert into public.t_tx values ('spread3', txid_current());
+end $$;
+do $$ begin
+  insert into public.wish_items (id, title) values ('bc000000-0000-0000-0000-0000000000a1', 'Not media');
+  insert into public.t_tx values ('wish_near', txid_current());
+end $$;
+-- a media save, and its undo right after: the undo is no Spread save
+do $$ begin
+  insert into public.user_tv_episodes (id, tv_entry_id, season_number, episode_number, watched_at)
+  values ('bc000000-0000-0000-0000-000000000009', 'e0000000-0000-0000-0000-000000000002', 2, 9, '2026-10-09 20:00+00');
+  insert into public.t_tx values ('undone_near', txid_current());
+end $$;
+do $$
+declare p jsonb;
+begin
+  p := public.app_undo_transaction(public.t_tx('undone_near'), true);
+  insert into public.t_tx values ('undo_near', (p -> 'result' ->> 'undo_tx')::bigint);
+end $$;
+do $$
+declare p jsonb; q jsonb; w jsonb;
+begin
+  perform public.t_ok(exists (select 1 from public.audit_undos where undo_tx = public.t_tx('undo_near') and undone_tx = public.t_tx('undone_near')),
+                      'an applied undo is noted as one');
+  p := public.app_undo_transaction(public.t_tx('spread1'));
+  perform public.t_ok(p -> 'nearby' @> jsonb_build_array(jsonb_build_object('tx', public.t_tx('spread2'), 'when', 'after'),
+                                                         jsonb_build_object('tx', public.t_tx('spread3'), 'when', 'after')),
+                      'the first of three media saves seconds apart names the two after it ' || (p ->> 'nearby'));
+  perform public.t_ok(not p -> 'nearby' @> jsonb_build_array(jsonb_build_object('tx', public.t_tx('wish_near')))
+                      and not p -> 'nearby' @> jsonb_build_array(jsonb_build_object('tx', public.t_tx('undo_near'))),
+                      'a save of other rows and a save that was an undo are left out');
+  q := public.app_undo_transaction(public.t_tx('spread3'));
+  perform public.t_ok(q -> 'nearby' @> jsonb_build_array(jsonb_build_object('tx', public.t_tx('spread1'), 'when', 'before'),
+                                                         jsonb_build_object('tx', public.t_tx('spread2'), 'when', 'before'))
+                      and not q -> 'nearby' @> jsonb_build_array(jsonb_build_object('tx', public.t_tx('spread3'))),
+                      'the last names the two before it, never itself');
+  w := public.app_undo_transaction(public.t_tx('wish_near'));
+  perform public.t_ok(w -> 'nearby' = '[]', 'a save that touched no media rows gets no hint');
+  insert into public.t_tx values ('spread1_plan', null, p);
+end $$;
+-- one more save right after the preview: the hint changes, the fingerprint does not
+do $$ begin
+  insert into public.user_tv_episodes (tv_entry_id, season_number, episode_number, watched_at)
+  values ('e0000000-0000-0000-0000-000000000002', 2, 4, '2026-10-04 20:00+00');
+end $$;
+do $$
+declare p jsonb;
+begin
+  p := public.app_undo_transaction(public.t_tx('spread1'), true, (select plan ->> 'confirm' from public.t_tx where k = 'spread1_plan'));
+  perform public.t_ok((p -> 'result' ->> 'deleted')::int = 1, 'the hint is outside the fingerprint: a save nearby since the preview doesn''t refuse the undo');
+end $$;
+
+-- ── 25. A save that commits while the undo runs: seen, never overwritten ───
+-- Three sessions (dblink): another save holds the row; the undo, confirmed
+-- with the preview's fingerprint, waits for it (151 locks the rows before it
+-- reads them); the other save commits; the undo sees it and refuses.
+reset role;
+select set_config('test.dburl', :'dburl', false);
+do $$
+begin
+  create extension if not exists dblink;
+exception when others then
+  raise notice 'skip  no dblink extension here: the race scenario does not run';
+end $$;
+insert into public.tasks (id, title) values ('bd000000-0000-0000-0000-000000000001', 'r0');
+set role authenticated;
+do $$ begin
+  update public.tasks set title = 'r1' where id = 'bd000000-0000-0000-0000-000000000001';
+  insert into public.t_tx values ('race', txid_current());
+end $$;
+do $$ begin insert into public.t_tx values ('race_plan', null, public.app_undo_transaction(public.t_tx('race'))); end $$;
+reset role;
+do $$
+declare v_state text; v_waited boolean := false;
+begin
+  if not exists (select 1 from pg_extension where extname = 'dblink') then
+    return;
+  end if;
+  begin
+    perform dblink_connect('t_other', current_setting('test.dburl'));
+  exception when others then
+    raise notice 'skip  dblink could not open a second session here (%): the race scenario does not run', sqlstate;
+    return;
+  end;
+  perform dblink_exec('t_other', 'begin');
+  perform dblink_exec('t_other', 'update public.tasks set title = ''r2'' where id = ''bd000000-0000-0000-0000-000000000001''');
+  perform dblink_connect('t_undo', current_setting('test.dburl'));
+  perform dblink_exec('t_undo', 'set role authenticated');
+  perform dblink_send_query('t_undo', format('select public.t_refused(%s, %L)', public.t_tx('race'),
+                                             (select plan ->> 'confirm' from public.t_tx where k = 'race_plan')));
+  for i in 1 .. 100 loop
+    perform pg_stat_clear_snapshot();
+    v_waited := exists (select 1 from pg_stat_activity where wait_event_type = 'Lock' and query like '%t_refused%');
+    exit when v_waited;
+    perform pg_sleep(0.05);
+  end loop;
+  perform dblink_exec('t_other', 'commit');
+  select r.s into v_state from dblink_get_result('t_undo') as r(s text);
+  perform dblink_disconnect('t_other');
+  perform dblink_disconnect('t_undo');
+  perform public.t_ok(v_waited, 'the undo waited for the row another save was writing');
+  perform public.t_ok(v_state = 'UD002', 'once that save committed, the undo saw it and refused (look again): ' || coalesce(v_state, 'it ran'));
+  perform public.t_ok((select title from public.tasks where id = 'bd000000-0000-0000-0000-000000000001') = 'r2', 'the other save is kept, never overwritten unseen');
+end $$;
+-- …and a save that holds the row and never commits: the undo stops at its
+-- lock_timeout with 55P03 (the sheet: "another save is writing these rows").
+do $$ begin
+  update public.tasks set title = 'r3' where id = 'bd000000-0000-0000-0000-000000000001';
+  insert into public.t_tx values ('held', txid_current());
+end $$;
+do $$
+declare v_state text; v_plan jsonb;
+begin
+  if not exists (select 1 from pg_extension where extname = 'dblink') then
+    return;
+  end if;
+  begin
+    perform dblink_connect('t_holder', current_setting('test.dburl'));
+  exception when others then
+    raise notice 'skip  dblink could not open a second session here (%): the lock-timeout scenario does not run', sqlstate;
+    return;
+  end;
+  perform dblink_exec('t_holder', 'begin');
+  perform dblink_exec('t_holder', 'update public.tasks set title = ''r4'' where id = ''bd000000-0000-0000-0000-000000000001''');
+  perform set_config('lock_timeout', '300ms', true);  -- the undo keeps a shorter limit than its own 4 s
+  set local role authenticated;
+  v_plan := public.app_undo_transaction(public.t_tx('held'));
+  v_state := public.t_refused(public.t_tx('held'), v_plan ->> 'confirm');
+  reset role;
+  perform dblink_exec('t_holder', 'rollback');
+  perform dblink_disconnect('t_holder');
+  perform public.t_ok(not (v_plan ->> 'can_apply')::boolean and v_plan -> 'error' ->> 'code' = '55P03',
+                      'a preview whose trial run waits too long on another save''s row says so (55P03) ' || coalesce(v_plan ->> 'error', ''));
+  perform public.t_ok(v_state = '55P03', 'and an apply stops waiting with 55P03, not the request''s time limit: ' || coalesce(v_state, 'it ran'));
+end $$;
+
+-- ── 26. Pre-150 order, column by column: a probe the row check missed ───────
+-- Real order: C1 title a → b, C2 status open → done, C3 title b → c. Stored
+-- (seq) as C3, C2, C1: no two neighbours share a column, so only a check per
+-- column sees that the titles don't chain.
+reset role;
+insert into public.tasks (id, title, status) values ('bf000000-0000-0000-0000-000000000001', 'c', 'done'),
+                                                    ('bf000000-0000-0000-0000-000000000002', 'c', 'done');
+do $$
+declare v_seq text := pg_get_serial_sequence('public.audit_logs', 'seq');
+begin
+  insert into public.audit_logs (user_id, table_name, operation, row_id, old_data, new_data, actor, tx_id, seq) values
+    ('00000000-0000-0000-0000-000000000001', 'tasks', 'UPDATE', 'bf000000-0000-0000-0000-000000000001', '{"title": "b"}', '{"title": "c"}', 'web', 900000002, nextval(v_seq)),
+    ('00000000-0000-0000-0000-000000000001', 'tasks', 'UPDATE', 'bf000000-0000-0000-0000-000000000001', '{"status": "open"}', '{"status": "done"}', 'web', 900000002, nextval(v_seq)),
+    ('00000000-0000-0000-0000-000000000001', 'tasks', 'UPDATE', 'bf000000-0000-0000-0000-000000000001', '{"title": "a"}', '{"title": "b"}', 'web', 900000002, nextval(v_seq));
+  -- the same three changes in their real order, for another row: folded
+  insert into public.audit_logs (user_id, table_name, operation, row_id, old_data, new_data, actor, tx_id, seq) values
+    ('00000000-0000-0000-0000-000000000001', 'tasks', 'UPDATE', 'bf000000-0000-0000-0000-000000000002', '{"title": "a"}', '{"title": "b"}', 'web', 900000003, nextval(v_seq)),
+    ('00000000-0000-0000-0000-000000000001', 'tasks', 'UPDATE', 'bf000000-0000-0000-0000-000000000002', '{"status": "open"}', '{"status": "done"}', 'web', 900000003, nextval(v_seq)),
+    ('00000000-0000-0000-0000-000000000001', 'tasks', 'UPDATE', 'bf000000-0000-0000-0000-000000000002', '{"title": "b"}', '{"title": "c"}', 'web', 900000003, nextval(v_seq));
+end $$;
+set role authenticated;
+do $$
+declare p jsonb;
+begin
+  p := public.app_undo_transaction(900000002);
+  perform public.t_ok(p -> 'blocked' = '[{"t": "tasks", "rows": 1, "count": 3, "labels": ["c"], "reason": "order_unknown"}]'
+                      and (p ->> 'steps')::int = 0 and (p -> 'tables' -> 0 ->> 'same')::int = 0,
+                      'titles that don''t chain across a change of another column: order unknown, never a partial undo ' || (p ->> 'blocked'));
+  p := public.app_undo_transaction(900000002, true, p ->> 'confirm');
+  perform public.t_ok((select title = 'c' and status = 'done' from public.tasks where id = 'bf000000-0000-0000-0000-000000000001'), 'the row is left as it is');
+  p := public.app_undo_transaction(900000003);
+  perform public.t_ok(p -> 'blocked' = '[]' and p -> 'tables' -> 0 -> 'columns' = '["status", "title"]',
+                      'in their real order the same changes fold: status and title go back ' || (p ->> 'tables'));
+  p := public.app_undo_transaction(900000003, true, p ->> 'confirm');
+  perform public.t_ok((select title = 'a' and status = 'open' from public.tasks where id = 'bf000000-0000-0000-0000-000000000002'), 'to what they were before');
+end $$;
+
+-- ── 27. A rule changes a column outside the step on a row Undo writes (143) ─
+-- A save reopens a task; a later save focuses it; Undo puts `done` back and
+-- 143 clears is_focused. That is not "kept" — it is drift.
+reset role;
+insert into public.tasks (id, title, status) values ('c0f00000-0000-0000-0000-000000000001', 'Ship it', 'done');
+set role authenticated;
+do $$ begin
+  update public.tasks set status = 'open' where id = 'c0f00000-0000-0000-0000-000000000001';
+  insert into public.t_tx values ('reopen', txid_current());
+end $$;
+do $$ begin update public.tasks set is_focused = true where id = 'c0f00000-0000-0000-0000-000000000001'; end $$;
+do $$
+declare p jsonb;
+begin
+  p := public.app_undo_transaction(public.t_tx('reopen'));
+  perform public.t_ok(p -> 'drift' = '[{"t": "tasks", "id": "c0f00000-0000-0000-0000-000000000001", "how": "changed", "label": "Ship it", "columns": ["is_focused"]}]',
+                      'putting done back clears its focus (143): named as drift ' || (p ->> 'drift'));
+  perform public.t_ok(p -> 'kept' = '[]', 'and never listed as an edit Undo keeps ' || (p ->> 'kept'));
+  perform public.t_ok((p ->> 'needs_confirm')::boolean and p -> 'conflicts' = '[]', 'it needs confirming');
+  perform public.t_ok((select is_focused and status = 'open' from public.tasks where id = 'c0f00000-0000-0000-0000-000000000001'), 'the preview changed nothing');
+  p := public.app_undo_transaction(public.t_tx('reopen'), true, p ->> 'confirm');
+  perform public.t_ok((select status = 'done' and not is_focused from public.tasks where id = 'c0f00000-0000-0000-0000-000000000001'), 'confirmed: done, and out of focus');
+end $$;
+
+-- ── 28. Outside links are never put back: the plan says the link stays ─────
+reset role;
+insert into public.time_blocks (id, date, title) values ('c1f00000-0000-0000-0000-000000000001', '2026-10-25', 'Gym');
+set role authenticated;
+do $$ begin
+  -- the editor moved it and linked it to a new Google Calendar event
+  update public.time_blocks set title = 'Gym (moved)', google_calendar_event_id = 'ev-new' where id = 'c1f00000-0000-0000-0000-000000000001';
+  insert into public.t_tx values ('linked', txid_current());
+end $$;
+do $$
+declare p jsonb; tb jsonb;
+begin
+  p := public.app_undo_transaction(public.t_tx('linked'));
+  select value into tb from jsonb_array_elements(p -> 'tables') where value ->> 't' = 'time_blocks';
+  perform public.t_ok(tb -> 'columns' = '["title"]', 'the title goes back, the event link is not put back ' || (tb ->> 'columns'));
+  perform public.t_ok(p -> 'links_kept' = '[{"c": "google_calendar_event_id", "n": 1, "t": "time_blocks"}]', 'the plan says the slot keeps its event link ' || (p ->> 'links_kept'));
+  perform public.t_ok(p -> 'outbox' @> '[{"s": "google_calendar", "op": "update", "n": 1}]', 'and that the browser moves its event back (its title) ' || (p ->> 'outbox'));
+  perform public.t_ok((p ->> 'needs_confirm')::boolean and p -> 'drift' = '[]', 'it needs confirming; no drift');
+  p := public.app_undo_transaction(public.t_tx('linked'), true, p ->> 'confirm');
+  perform public.t_ok((select title = 'Gym' and google_calendar_event_id = 'ev-new' from public.time_blocks where id = 'c1f00000-0000-0000-0000-000000000001'),
+                      'confirmed: the old title, the link to the event that exists');
+end $$;
+do $$ begin
+  update public.time_blocks set google_calendar_event_id = 'ev-other' where id = 'c1f00000-0000-0000-0000-000000000001';
+  insert into public.t_tx values ('relinked', txid_current());
+end $$;
+do $$
+declare p jsonb;
+begin
+  p := public.app_undo_transaction(public.t_tx('relinked'));
+  perform public.t_ok((p ->> 'steps')::int = 0 and p -> 'links_kept' = '[{"c": "google_calendar_event_id", "n": 1, "t": "time_blocks"}]' and (p ->> 'needs_confirm')::boolean,
+                      'a save that only changed the link: nothing to put back, and the plan says the link stays (never "already as before")');
+end $$;
