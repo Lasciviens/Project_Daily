@@ -15,6 +15,7 @@ Full background and history: `docs/backend/database.md`.
 - Every table: RLS on right after `CREATE TABLE`; owner policy `USING ((select auth.uid()) = user_id) WITH CHECK (…)` — `(select auth.uid())`, never bare `auth.uid()` (046); `user_id uuid NOT NULL DEFAULT auth.uid() REFERENCES auth.users(id) ON DELETE CASCADE` (the default is load-bearing — the client and the assistant insert without it); `created_at timestamptz NOT NULL DEFAULT now()`, `updated_at` when rows change; `text CHECK (col IN (…))` instead of enum types; an index on `(user_id, <the column you filter or sort by>)`.
 - End every table-creating migration with `select public.owner_lock_apply('public.<table>');` (139).
 - A user-authored table gets `trg_audit` (`log_audit()`) in the same migration, or a one-line reason in the header why not (bulk-synced `hevy_*`/`health_*`/`strava_*`, high-frequency append-only tables).
+- An audited table is undoable from Developer → Activity (150, `app_undo_transaction`, through the table's own triggers): give it a single `id` primary key, or Undo lists its changes as blocked. `audit_logs.seq` is the order of changes inside a save — never drop it.
 - `GRANT EXECUTE` on every new function. Token tables: `REVOKE ALL … FROM anon, authenticated`, no browser policy, never in `ai-proxy`'s `DB_CATALOG`.
 - A trigger that inserts a row tied to a user (audit, outbox, queue) skips a user that no longer exists, or deleting the account aborts.
 - Dropping a table or column: grep the hard-coded name lists first (037's audit array, 046's policy list, `DB_CATALOG`).

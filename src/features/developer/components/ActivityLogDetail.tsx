@@ -1,17 +1,24 @@
-import { Link2 } from 'lucide-react'
-import { Card } from '../../../shared/ui'
+import { Link2, Undo2 } from 'lucide-react'
+import { Card, cx } from '../../../shared/ui'
 import type { AuditLog } from '../hooks/useLogs'
 import { OP_META, agoLabel, fmtLogDate, friendlyTable, rowLabel } from './activityLogMeta'
+import { formatDate, formatDateTime } from '../../../shared/utils/dateFormat'
 
 // What one audit change did: the readable diff shown inline under a row on
 // phones, and in the detail pane beside the timeline on wider pages
 // (developerBoards.ts → LIST_DETAIL_BOARD).
 
+// Stored timestamps and dates read DD.MM.YYYY (HH:MM), like every date in the app.
 function fmtValue(v: unknown): string {
   if (v === null || v === undefined || v === '') return '—'
   if (typeof v === 'object') return JSON.stringify(v)
+  if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(v)) return formatDateTime(v) || v
+  if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)) return formatDate(v) || v
   return String(v)
 }
+
+// Compared as stored, so a change finer than the shown minute still shows.
+const rawValue = (v: unknown) => JSON.stringify(v === undefined || v === '' ? null : v)
 
 // Keys not worth showing in a snapshot (plumbing).
 const HIDDEN_KEYS = new Set(['id', 'user_id', 'created_at', 'updated_at', 'sort_order'])
@@ -23,7 +30,7 @@ export function DiffView({ log }: { log: AuditLog }) {
   if (log.operation === 'UPDATE') {
     const keys = [...new Set([...Object.keys(log.old_data ?? {}), ...Object.keys(log.new_data ?? {})])]
       .filter(k => !HIDDEN_KEYS.has(k))
-      .filter(k => fmtValue(log.old_data?.[k]) !== fmtValue(log.new_data?.[k]))
+      .filter(k => rawValue(log.old_data?.[k]) !== rawValue(log.new_data?.[k]))
       .sort()
     if (keys.length === 0) return <p className="text-meta text-fg-muted">No visible field changes.</p>
     return (
@@ -68,12 +75,29 @@ export function DiffView({ log }: { log: AuditLog }) {
   )
 }
 
+/** The small "Undo this save" link (a group header, under a diff, the pane). */
+export function UndoSaveButton({ onClick, className }: { onClick: () => void; className?: string }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cx(
+        'inline-flex shrink-0 items-center gap-1 rounded-control px-1.5 py-0.5 text-meta font-semibold text-accent-600',
+        '[@media(hover:hover)]:hover:bg-surface-hover',
+        className,
+      )}
+    >
+      <Undo2 aria-hidden className="h-3.5 w-3.5" /> Undo this save
+    </button>
+  )
+}
+
 /**
  * The detail pane: the change as a sentence, when and by whom, and its diff.
  * Only rendered while the list shows something (an empty list has its own
  * empty state and no pane).
  */
-export function ActivityLogDetail({ log, linkedCount }: { log: AuditLog; linkedCount: number }) {
+export function ActivityLogDetail({ log, linkedCount, onUndo }: { log: AuditLog; linkedCount: number; onUndo?: (txId: number) => void }) {
   const op = OP_META[log.operation]
   return (
     <Card aria-label="Change details" className="flex max-h-[calc(100dvh-7rem)] flex-col gap-3 overflow-y-auto">
@@ -87,9 +111,10 @@ export function ActivityLogDetail({ log, linkedCount }: { log: AuditLog; linkedC
         <p className="text-meta tabular-nums text-fg-muted">{fmtLogDate(log.created_at)} · {agoLabel(log.created_at)}</p>
         {linkedCount > 1 && (
           <p className="flex items-center gap-1.5 text-meta text-fg-muted">
-            <Link2 aria-hidden className="h-3.5 w-3.5" /> One of {linkedCount} linked changes in the same transaction
+            <Link2 aria-hidden className="h-3.5 w-3.5" /> One of {linkedCount} changes in the same save
           </p>
         )}
+        {onUndo && <UndoSaveButton onClick={() => onUndo(log.tx_id)} className="-ml-1.5 self-start" />}
       </div>
       <div className="border-t border-line pt-3">
         <DiffView log={log} />

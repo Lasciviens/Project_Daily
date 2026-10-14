@@ -79,6 +79,12 @@ that number would collide with a deleted one in history.
    Exempt by design, and say so in the header: bulk-synced tables (`hevy_*`,
    `health_*`, `strava_*` — sync spam) and high-frequency append-only tables
    (`water_log_entries`, `push_subscriptions`).
+   The log is also what "Undo this save" (Developer → Activity, migration
+   `150`) works from: one save = one `tx_id`, `seq` orders the changes inside
+   it, and `app_undo_transaction` puts back exactly what that transaction
+   changed — so an audited table needs a single `id` primary key to be
+   undoable, and a table without `trg_audit` can't be undone at all
+   (`docs/features/developer.md`).
 10. **Grants:** table CRUD for the `authenticated` role is already covered by
     Supabase's public-schema default privileges — the explicit `GRANT SELECT,
     INSERT, UPDATE, DELETE ... TO authenticated` lines in migrations up to `051`
