@@ -9,10 +9,10 @@ import type { Task, CreateTaskInput, UpdateTaskInput } from '../types'
 // / Upcoming / No date / Done. Cancelled excluded (app-wide convention).
 // Read in pages: PostgREST stops at 1,000 rows, and done tasks pile up for
 // ever — past 1,000 the cut fell on the undated rows (sorted last), so
-// "No date" (where imported Google tasks land) quietly lost tasks. The pages
-// are keyed on id (keyset), never offsets: a row a sync edits between two
-// pages keeps its place, where an offset page on due_date could move it
-// across the boundary and skip it. Sorted here afterwards
+// "No date" (where imported Google tasks landed before 148) quietly lost
+// tasks. The pages are keyed on id (keyset), never offsets: a row a sync
+// edits between two pages keeps its place, where an offset page on due_date
+// could move it across the boundary and skip it. Sorted here afterwards
 // (taskRules.compareByDueThenOrder — the order the query used to give).
 export async function fetchAllTasks(): Promise<Task[]> {
   const PAGE = 1000
@@ -68,7 +68,8 @@ export async function fetchOpenTrainingSessionTasks(): Promise<Task[]> {
  * Every task that can be on `dateStr`'s list (taskRules.onDay decides which
  * are): due that day, closed that day (done or cancelled), and — on today —
  * every open task that is overdue, whatever its section, plus undated open
- * ones parked in Today.
+ * ones parked in Today — where a task Google sends without a date is filed
+ * (upsert_task_from_google, migration 148), so it needs no read of its own.
  *
  * Only Today keeps undated rows: Daily once mapped a whole range of days
  * onto one section (+2…+7 → this_week, the rest → backlog), so an undated row

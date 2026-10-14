@@ -33,6 +33,9 @@ const groups = {
     // assistant can write the current program / targets / assessments.
     qk.hevy.routines(), qk.training.currentProgram, qk.training.exerciseTargets, qk.training.ptAssessments,
   ],
+  /** A save was undone (Developer → Activity): it can have changed any table,
+   *  so every query refreshes (the empty key matches them all). */
+  saveUndone: [[] as const],
 } satisfies Record<string, readonly QueryKey[]>
 
 export type InvalidationGroup = keyof typeof groups

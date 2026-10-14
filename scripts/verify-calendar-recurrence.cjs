@@ -12,6 +12,9 @@
  *   4. time zones and daylight saving: wall-clock times + TZID, never UTC;
  *   5. plans crossing midnight end on the next day;
  *   6. the horizon of the monthly kinds and when it is pushed again;
+ *      6c. on Google from the day the plan is added (148), never its past
+ *          weeks — still exactly the app's days from then on;
+ *      6d. every plan at once: which ones, and the result line;
  *   7. the agenda shows a linked plan once (instances carry recurringEventId).
  *
  *   Run:  node scripts/verify-calendar-recurrence.cjs
@@ -235,6 +238,85 @@ console.log('\n6b · The zone a push uses, and the retry list')
   check('…and it round-trips through storage', eq(S.parsePendingSeries(JSON.stringify(list)), list))
   check('the storage key is the one sign-out clears', S.SERIES_PENDING_KEY === 'lasci.calendarSeries.pending'
     && require('fs').readFileSync(require('path').join(__dirname, '../src/security/accountState.ts'), 'utf8').includes('localStorage.removeItem(SERIES_PENDING_KEY)'))
+}
+
+console.log('\n6c · On Google from the day it is added (148), not the plan\'s past weeks')
+{
+  // A Tue/Thu plan the app has shown since 01.09; added to Google on Wednesday 14.10.
+  const old = plan({ days_of_week: [2, 4], effective_from: '2026-09-01' })
+  const added = map({ ...old, google_calendar_from: '2026-10-14' }, '2026-10-14')
+  check('added on a Wednesday: Google starts on the first Thursday (15.10), not on 01.09', added.first === '2026-10-15', added.first)
+  check('…and the link stores that day', added.from === '2026-10-14')
+  check('added on a day the plan has: it starts that day', map({ ...old, google_calendar_from: '2026-10-13' }).first === '2026-10-13')
+  check('a plan starting later than the day it was added keeps its own start',
+    map(plan({ days_of_week: [2, 4], effective_from: '2026-11-03', google_calendar_from: '2026-10-14' }), '2026-10-14').first === '2026-11-03')
+  check('no day stored (as before 148): effective_from', map(old).first === '2026-09-01' && map(old).from === null)
+  check('the app\'s own projection keeps the real start (the mapping only moves Google\'s)',
+    occurrencesBetween(old, '2026-09-01', '2026-09-03')[0] === '2026-09-01')
+  const ex = map({ ...old, google_calendar_from: '2026-10-14', except_dates: ['2026-10-06', '2026-10-20'] }, '2026-10-14')
+  check('a day taken out before Google\'s start is no EXDATE (Google never had it)', line(ex, 'EXDATE') === 'EXDATE;TZID=Europe/Oslo:20261020T163000', line(ex, 'EXDATE'))
+  // Every-N keeps its phase: every 2 weeks on Tuesday from 01.09 → 01.09, 15.09, 29.09, 13.10, 27.10…
+  const w2 = plan({ repeat_kind: 'interval', repeat_unit: 'week', repeat_interval: 2, days_of_week: [2], effective_from: '2026-09-01' })
+  const w2g = map({ ...w2, google_calendar_from: '2026-10-07' }, '2026-10-07')
+  check('every 2 weeks: from a later day Google starts on the plan\'s own next Tuesday (13.10), not the week after it', w2g.first === '2026-10-13', w2g.first)
+  const mo = plan({ repeat_kind: 'monthly', days_of_week: [6], effective_from: '2026-05-13' })
+  const mog = map({ ...mo, google_calendar_from: '2026-10-14' }, '2026-10-14')
+  check('monthly: the RDATE list starts after the first day from the link, none of the summer', mog.first === '2026-11-14' && !line(mog, 'RDATE').includes('202609'))
+  // Google's expansion from that start = the app's own days from it on.
+  const to = '2028-10-13'
+  for (const [name, t, from] of [
+    ['weekly Tue/Thu added on a Wednesday', old, '2026-10-14'],
+    ['every 2 weeks on Tuesday added mid-cycle', w2, '2026-10-07'],
+    ['every 3 days added two days in', plan({ repeat_kind: 'interval', repeat_unit: 'day', repeat_interval: 3, effective_from: '2026-10-01' }), '2026-10-12'],
+    ['monthly Saturday nearest the 13th', mo, '2026-10-14'],
+    ['picked dates, two of them past', plan({ repeat_kind: 'dates', repeat_dates: ['2026-09-20', '2026-10-01', '2026-10-20', '2027-01-05'], effective_from: '2026-09-20' }), '2026-10-14'],
+  ]) {
+    const p = map({ ...t, google_calendar_from: from }, from)
+    const until = p.horizon && p.horizon < to ? p.horizon : to
+    const want = occurrencesBetween(t, from, until)
+    let got
+    try { got = expand(p, until) } catch (e) { check(name, false, e.message); continue }
+    check(`${name}: Google has exactly the app's days from ${from} on (${want.length})`, eq(got, want),
+      `first diff: ${got.find((d, i) => d !== want[i]) ?? want.find(d => !got.includes(d))}`)
+  }
+
+  // Which day a push starts from.
+  check('seriesFromDay: the stored day', S.seriesFromDay({ google_calendar_from: '2026-10-14' }, '2026-11-01') === '2026-10-14')
+  check('seriesFromDay: none stored (a new link, or one from before 148) → today', S.seriesFromDay({ google_calendar_from: null }, '2026-11-01') === '2026-11-01')
+  check('seriesFromDay: a database without 148\'s column → null (effective_from, as before)', S.seriesFromDay({}, '2026-11-01') === null)
+  const push = S.seriesEventForPush({ ...old, google_calendar_from: null }, { today: '2026-10-14', timeZone: TZ })
+  check('a new link starts from today and stores it', push.first === '2026-10-15' && push.from === '2026-10-14')
+  const later = S.seriesEventForPush({ ...old, google_calendar_from: '2026-10-14' }, { today: '2027-03-02', timeZone: TZ })
+  check('a later push keeps the stored day (the series never creeps forward)', later.first === '2026-10-15' && later.from === '2026-10-14')
+  check('needsSeriesFromDay: linked before 148 (no day stored) → pushed once',
+    S.needsSeriesFromDay({ ...old, google_calendar_event_id: 'e', google_calendar_from: null }))
+  check('…not once it has one, not when unlinked, not without the column',
+    !S.needsSeriesFromDay({ ...old, google_calendar_event_id: 'e', google_calendar_from: '2026-10-14' })
+    && !S.needsSeriesFromDay({ ...old, google_calendar_event_id: null, google_calendar_from: null })
+    && !S.needsSeriesFromDay({ ...old, google_calendar_event_id: 'e' }))
+  const linked = { ...old, google_calendar_event_id: 'e', google_calendar_from: '2026-10-14' }
+  check('a day before Google\'s start stays off Google (done, moved, skipped there)', S.isBeforeSeriesStart(linked, '2026-10-13', '2026-10-20'))
+  check('…a day from the start on is carried as before', !S.isBeforeSeriesStart(linked, '2026-10-15', '2026-10-20') && !S.isBeforeSeriesStart(linked, '2026-10-22', '2026-10-20'))
+  check('…no day, no guard', !S.isBeforeSeriesStart(linked, null, '2026-10-20'))
+}
+
+console.log('\n6d · Every plan at once (148)')
+{
+  const rows = [
+    plan({ id: 'a', days_of_week: [1], google_calendar_from: null }),
+    plan({ id: 'b', days_of_week: [3], google_calendar_event_id: 'linked', google_calendar_from: '2026-10-01' }),
+    plan({ id: 'c', repeat_kind: 'dates', repeat_dates: ['2026-09-01', '2026-10-01'], effective_from: '2026-09-01', google_calendar_from: null }),
+    plan({ id: 'd', days_of_week: [], google_calendar_from: null }),
+    plan({ id: 'e', repeat_kind: 'monthly', days_of_week: [6], google_calendar_from: null }),
+  ]
+  check('only plans not on Google yet, with a day left from today (past picked dates and an empty week are skipped)',
+    eq(S.plansToAddToCalendar(rows, TODAY).map(r => r.id), ['a', 'e']))
+  check('the progress line', S.addPlansProgressText(6) === 'Adding 6 repeating plans to Google Calendar…' && S.addPlansProgressText(1) === 'Adding 1 repeating plan to Google Calendar…')
+  check('the result: all added', S.addPlansResultText({ added: 6, failed: 0 }) === 'Added 6 repeating plans to Google Calendar')
+  check('…one added', S.addPlansResultText({ added: 1, failed: 0 }) === 'Added 1 repeating plan to Google Calendar')
+  check('…some failed (they wait on the retry list)', S.addPlansResultText({ added: 6, failed: 1 }) === 'Added 6 repeating plans to Google Calendar · 1 failed — the app tries again the next time it opens')
+  check('…none went', S.addPlansResultText({ added: 0, failed: 2 }) === 'Couldn\'t add 2 repeating plans to Google Calendar — the app tries again the next time it opens')
+  check('…nothing to add', S.addPlansResultText({ added: 0, failed: 0 }) === 'Every repeating plan is already on Google Calendar')
 }
 
 console.log('\n7 · The agenda shows a linked plan once')

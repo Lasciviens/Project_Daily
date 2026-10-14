@@ -210,6 +210,8 @@ export const qk = {
   logs: {
     errors: () => ['error-logs'] as const,
     audit: (filter?: object) => (filter ? ['audit-logs', filter] as const : ['audit-logs'] as const),
+    /** What undoing one save (an audit transaction) would do — migration 150. */
+    undoPlan: (txId: number) => ['audit-logs', 'undo-plan', txId] as const,
     projectActivity: (projectId: string) => ['project-activity', projectId] as const,
   },
   external: {

@@ -8,6 +8,7 @@ import { formatDate, formatDateTime } from '../../../shared/utils/dateFormat'
 import { useHevySyncState } from '../../training/hooks/useHevySync'
 import { useLatestHealthValue } from '../../health/hooks/useHealthExport'
 import { GoogleTasksSyncButtons } from '../../todo/components/GoogleTasksSyncButtons'
+import { AddPlansToCalendarButton } from '../../calendar/components/AddPlansToCalendarButton'
 import { StravaWidget } from '../../training/components/StravaWidget'
 import { useStravaStatus } from '../../training/hooks/useTrainingSessions'
 import { usePsnStatus, useDisconnectPsn, usePsnProfile } from '../../games/hooks/usePlayStation'
@@ -90,6 +91,7 @@ function GoogleCard() {
         ) : (
           <Button variant="primary" onClick={() => { setError(null); login() }} loading={busy}>Connect Google</Button>
         )}
+        {connected && <AddPlansToCalendarButton />}
         {connected && <GoogleTasksSyncButtons />}
       </div>
       {error && <p role="alert" className="mt-2 text-meta text-danger">{error}</p>}

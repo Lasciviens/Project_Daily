@@ -96,41 +96,59 @@ export function hasSeriesColumns(row: object): boolean {
   return 'google_calendar_event_id' in row
 }
 
+/** One write of a plan's series link, only while the plan's series is
+ *  `only` ('free': none or this one; 'this': still this one). 148's start day
+ *  rides along only when given; a database without that column takes the
+ *  write without it (the series then starts at effective_from, as before
+ *  148). A missing 147 column is the named SERIES_NOT_MIGRATED error.
+ *  Answers how many rows it wrote (0: another link won). */
+async function writeSeriesLink(id: string, eventId: string, only: 'free' | 'this', patch: Record<string, unknown>): Promise<number> {
+  const user = await requireUser()
+  const write = (p: Record<string, unknown>) => {
+    const q = supabase.from('schedule_blocks')
+      .update({ ...p, updated_at: new Date().toISOString() })
+      .eq('id', id)
+      .eq('user_id', user.id)
+    return (only === 'free'
+      ? q.or(`google_calendar_event_id.is.null,google_calendar_event_id.eq.${eventId}`)
+      : q.eq('google_calendar_event_id', eventId)
+    ).select('id')
+  }
+  let { data, error } = await write(patch)
+  if (error && isMissingColumn(error) && 'google_calendar_from' in patch) {
+    const rest = { ...patch }
+    delete rest.google_calendar_from
+    ;({ data, error } = await write(rest))
+  }
+  if (error) throw isMissingColumn(error) ? new Error(SERIES_NOT_MIGRATED) : error
+  return (data ?? []).length
+}
+
 /**
  * Links a repeating plan to its Google Calendar series (147) — only while the
  * plan has no series or already this one (another tab may have linked its
  * own meanwhile; then nothing is written and this answers false). Also keeps
- * how far its RDATE list reaches and the zone it is expanded in. A raw api
+ * how far its RDATE list reaches, the zone it is expanded in and the day it
+ * starts from (148; null = effective_from, nothing written). A raw api
  * call: a failure is handled by the caller's compensation, never toasted as
  * a failed save.
  */
 export async function setScheduleBlockCalendarLink(
-  id: string, eventId: string, horizon: string | null, timeZone: string,
+  id: string, eventId: string, horizon: string | null, timeZone: string, from: string | null,
 ): Promise<boolean> {
-  const user = await requireUser()
-  const { data, error } = await supabase.from('schedule_blocks')
-    .update({
-      google_calendar_event_id: eventId, google_calendar_horizon: horizon, google_calendar_time_zone: timeZone,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', id)
-    .eq('user_id', user.id)
-    .or(`google_calendar_event_id.is.null,google_calendar_event_id.eq.${eventId}`)
-    .select('id')
-  if (error) throw isMissingColumn(error) ? new Error(SERIES_NOT_MIGRATED) : error
-  return (data ?? []).length > 0
+  const patch: Record<string, unknown> = {
+    google_calendar_event_id: eventId, google_calendar_horizon: horizon, google_calendar_time_zone: timeZone,
+  }
+  if (from) patch.google_calendar_from = from
+  return (await writeSeriesLink(id, eventId, 'free', patch)) > 0
 }
 
-/** Forgets a plan's series — only while it still names `eventId` (the
+/** Forgets a plan's series (and its start day: a new link starts from its own
+ *  day) — only while it still names `eventId` (the
  *  clear_google_task_id_if_matches rule: a stale clear never drops a newer link). */
 export async function clearScheduleBlockCalendarLink(id: string, eventId: string): Promise<void> {
-  const user = await requireUser()
-  const { error } = await supabase.from('schedule_blocks')
-    .update({ google_calendar_event_id: null, google_calendar_horizon: null, updated_at: new Date().toISOString() })
-    .eq('id', id)
-    .eq('user_id', user.id)
-    .eq('google_calendar_event_id', eventId)
-  if (error) throw isMissingColumn(error) ? new Error(SERIES_NOT_MIGRATED) : error
+  await writeSeriesLink(id, eventId, 'this',
+    { google_calendar_event_id: null, google_calendar_horizon: null, google_calendar_from: null })
 }
 
 // A block's task state rides along (not kept as an embed): a training
