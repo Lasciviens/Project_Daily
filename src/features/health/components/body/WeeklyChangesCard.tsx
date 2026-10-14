@@ -1,19 +1,25 @@
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import { ChevronDown } from 'lucide-react'
-import { Button, MetaLine, Skeleton } from '../../../../shared/ui'
+import { Button, MetaLine, Skeleton, ToneDot } from '../../../../shared/ui'
 import { InfoBubble } from '../../../../shared/components/InfoBubble'
 import { formatDate } from '../../../../shared/utils/dateFormat'
+import { todayStr } from '../../../../shared/utils/dateUtils'
 import type { Phase } from '../../goal/bodyGoal'
-import { VERDICT_TONE, type WeekCell, type WeeklyMetric, type WeeklyMetricMeta } from '../../weeklyBodyChanges'
+import { isoWeek, shortWeekSpan, weekRangeLabel } from '../../healthDateLabels'
+import { VERDICT_TONE, type WeekCell, type WeekComment, type WeeklyMetric, type WeeklyMetricMeta } from '../../weeklyBodyChanges'
 import { num, signed } from '../overview/heroFormat'
 import type { HealthRange } from '../sectionTypes'
 import { SectionCard } from '../sectionKit'
 import { useWeeklyBodyChanges } from './useWeeklyBodyChanges'
 
 // Health → Body, beside the scale charts: one row per Monday–Sunday week,
-// newest first — each column's week average and, under it, the change from the
-// week before, coloured by the phase (weeklyBodyChanges.ts). The page's period
-// sets how many weeks; a year folds after the first 14 (a 90-day window's worth).
+// newest first — its week number (underlined) with its days small on one line
+// ("12.10 – 18.10", the owner's form; the year appears once above a group of
+// weeks from another year), each column's week average and, under it, the
+// change from the week before, coloured by the phase, then one thin comment
+// line read from those same changes (weeklyBodyChanges.weekComment, rule-based).
+// The page's period sets the weeks; a year folds after the first 14 (a
+// 90-day window's worth).
 
 const FOLD_AT = 14
 const PHASE_WORD: Record<Phase, string> = { cut: 'Cut', maintain: 'Maintain', gain: 'Gain' }
@@ -33,10 +39,26 @@ function Change({ cell, meta }: { cell: WeekCell; meta: WeeklyMetricMeta }) {
   )
 }
 
+/** The thin line under a week; the dot carries its tone (none when neutral). */
+function CommentLine({ comment, span }: { comment: WeekComment; span: number }) {
+  return (
+    <tr>
+      <td colSpan={span} className="pb-1.5 text-left text-micro font-normal leading-snug text-fg-muted">
+        <span className="flex items-start gap-1.5">
+          {comment.tone !== 'neutral' && <ToneDot tone={comment.tone} className="mt-[0.35em] shrink-0" />}
+          <span className="min-w-0">{comment.text}</span>
+        </span>
+      </td>
+    </tr>
+  )
+}
+
 export function WeeklyChangesCard({ range }: { range: HealthRange }) {
-  const { rows, firstReading, metrics, phase, isLoading, dimmed } = useWeeklyBodyChanges(range)
+  const { rows, comments, firstReading, metrics, phase, isLoading, dimmed } = useWeeklyBodyChanges(range)
   const [all, setAll] = useState(false)
   const shown = all ? rows : rows.slice(0, FOLD_AT)
+  const today = todayStr()
+  const thisYear = isoWeek(today).year
   const anyReading = rows.some(r => metrics.some(m => r.cells[m.key].avg != null))
   const fromReport = metrics.some(m => m.key === 'muscle' || m.key === 'score')
 
@@ -46,8 +68,8 @@ export function WeeklyChangesCard({ range }: { range: HealthRange }) {
         <p className="flex items-center gap-1 text-body font-semibold text-fg">
           Weekly changes
           <InfoBubble label="About weekly changes">
-            Each row is a Monday–Sunday week: the average of the days with a reading and, under it, the change from the week
-            before. Green is good for your phase — weight moving the phase&apos;s way at its pace, body fat down, muscle up;
+            Each row is a Monday–Sunday week, by its week number: the average of the days with a reading and, under it, the
+            change from the week before; the line under the row says what those changes mean. Green is good for your phase — weight moving the phase&apos;s way at its pace, body fat down, muscle up;
             amber is the other way, or weight moving faster than the phase&apos;s pace. &ldquo;steady&rdquo; means smaller
             than the scale&apos;s own noise: ±0.3 kg, ±0.6 points body fat or muscle, 1 point body score. Body fat is from
             the scale in use only; muscle (% of body weight) and the body score only from the scale&apos;s photo report — the
@@ -67,32 +89,44 @@ export function WeeklyChangesCard({ range }: { range: HealthRange }) {
           <caption className="sr-only">Weekly averages and the change from the week before, newest week first</caption>
           <thead>
             <tr className="text-micro font-medium text-fg-muted">
-              <th scope="col" className="w-[5.25rem] pb-1 text-left font-medium">Week</th>
+              <th scope="col" className="w-[5.5rem] pb-1 text-left font-medium">Week</th>
               {metrics.map(m => (
                 <th key={m.key} scope="col" className="pb-1 pl-1 font-medium">{HEAD[m.key]}</th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {shown.map(r => (
-              <tr key={r.weekStart} className="border-t border-line align-top">
-                <th scope="row" className="py-1.5 text-left text-meta font-medium text-fg-2">
-                  {formatDate(r.weekStart)}
-                  <span className="block font-normal text-fg-muted">– {formatDate(r.weekEnd)}</span>
-                </th>
-                {metrics.map(m => {
-                  const cell = r.cells[m.key]
-                  return (
-                    <td key={m.key} className="py-1.5 pl-1">
-                      {cell.avg == null
-                        ? <span className="text-body text-fg-muted"><span aria-hidden>–</span><span className="sr-only">no reading</span></span>
-                        : <span className="block text-body font-semibold text-fg" title={`${cell.days} ${cell.days === 1 ? 'day' : 'days'} with a reading`}>{num(cell.avg, m.decimals)}</span>}
-                      <Change cell={cell} meta={m} />
-                    </td>
-                  )
-                })}
-              </tr>
-            ))}
+            {shown.map((r, i) => {
+              const { week, year } = isoWeek(r.weekStart)
+              const prevYear = i === 0 ? thisYear : isoWeek(shown[i - 1].weekStart).year
+              return (
+                <Fragment key={r.weekStart}>
+                  {year !== prevYear && (
+                    <tr>
+                      <th scope="rowgroup" colSpan={metrics.length + 1} className="border-t border-line pt-1.5 text-left text-micro font-semibold text-fg-muted">{year}</th>
+                    </tr>
+                  )}
+                  <tr className="border-t border-line align-top">
+                    <th scope="row" className="pb-0.5 pt-1.5 text-left font-medium" title={weekRangeLabel(r.weekStart, today)}>
+                      <span className="block text-meta text-fg-2 underline underline-offset-2">Week {week}</span>
+                      <span className="block whitespace-nowrap text-micro font-normal tabular-nums text-fg-muted">{shortWeekSpan(r.weekStart)}</span>
+                    </th>
+                    {metrics.map(m => {
+                      const cell = r.cells[m.key]
+                      return (
+                        <td key={m.key} className="pb-0.5 pl-1 pt-1.5">
+                          {cell.avg == null
+                            ? <span className="text-body text-fg-muted"><span aria-hidden>–</span><span className="sr-only">no reading</span></span>
+                            : <span className="block text-body font-semibold text-fg" title={`${cell.days} ${cell.days === 1 ? 'day' : 'days'} with a reading`}>{num(cell.avg, m.decimals)}</span>}
+                          <Change cell={cell} meta={m} />
+                        </td>
+                      )
+                    })}
+                  </tr>
+                  <CommentLine comment={comments[i]} span={metrics.length + 1} />
+                </Fragment>
+              )
+            })}
           </tbody>
         </table>
       )}

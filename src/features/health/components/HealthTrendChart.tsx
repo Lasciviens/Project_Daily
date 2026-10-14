@@ -154,7 +154,8 @@ export function HealthTrendChart({
                   ? (props: any) => props.value == null ? <g key={props.key} /> : (
                       <circle key={props.key} cx={props.cx} cy={props.cy} r={3.5} fill={s.dotColor!(props.payload)} stroke="none" />
                     )
-                  : { r: 2.5 }}
+                  // A dots-only series has no stroke, so its dots need a fill of their own.
+                  : s.dotsOnly ? { r: 2.5, fill: s.color, stroke: 'none' } : { r: 2.5 }}
                 activeDot={s.dashed ? false : { r: 5, fill: s.color }} isAnimationActive={false} />
             ))}
           </ComposedChart>

@@ -416,19 +416,20 @@ function readRow(spec: VitalSpec, s: readonly DayValue[], from: string, to: stri
   const prevWin = basis === 'latest' ? [] : inSpan(s, addDaysIso(valueFrom, -prevLen), addDaysIso(valueFrom, -1))
   const prevMin = isDay ? 3 : Math.max(2, Math.ceil(prevLen / 5))
   const previous = prevWin.length >= prevMin ? mean(prevWin.map(d => d.value)) : null
-  const previousLabel = isDay ? 'vs the 7 days before' : `vs the ${totalDays} days before`
+  // A period's length is named by the range bar, so its own words don't repeat it.
+  const previousLabel = isDay ? 'vs the 7 days before' : 'vs the period before'
 
   let status: VitalStatus = 'unknown'
   let reason: VitalReason | null = null
   let reasonText: string | null = null
   if (value == null) {
     reason = 'no-reading'
-    reasonText = isDay ? 'No reading for this day.' : `No reading in these ${totalDays} days.`
+    reasonText = isDay ? 'No reading for this day.' : 'No reading in this period.'
   } else if (few) {
     reason = 'few-readings'
     reasonText = isDay
       ? `Only ${readings} reading${readings === 1 ? '' : 's'} in the 7 days to this day — too few for a 7-day average.`
-      : `Only ${readings} reading${readings === 1 ? '' : 's'} in these ${totalDays} days — too few to judge the period.`
+      : `Only ${readings} reading${readings === 1 ? '' : 's'} in this period — too few to judge it.`
   } else {
     status = stateOf(value, spec, usual)
     if (status === 'unknown') {
@@ -587,7 +588,7 @@ function buildVerdict(rows: VitalRow[], isDay: boolean, totalDays: number): Vita
   const neutrals = judged.filter(r => r.signal === 'neutral')
   const notes: string[] = []
   const goodPhrase = (r: VitalRow) => r.key === 'rhr' ? 'resting heart rate is lower than usual' : r.key === 'hrv' ? 'HRV is higher than usual' : phraseOf(r, isDay)
-  const span = isDay ? 'this day' : `these ${totalDays} days`
+  const span = isDay ? 'this day' : 'this period'
 
   let tone: VerdictTone
   let label: string

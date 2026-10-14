@@ -54,25 +54,14 @@ function sortedAsc(reports: BodyCompositionReport[]): BodyCompositionReport[] {
   return [...reports].sort((a, b) => a.measured_at.localeCompare(b.measured_at))
 }
 
-export function filterSince(reports: BodyCompositionReport[], sinceMs: number): BodyCompositionReport[] {
-  return reports.filter(r => new Date(r.measured_at).getTime() >= sinceMs)
-}
-
-// Window chips for the featured trend chart / averages — 'all' never filters
-// (an empty/short history should never look broken by an over-eager cutoff).
-export type BodyCompWindow = '30d' | '90d' | '365d' | 'all'
-export const BODY_COMP_WINDOWS: { key: BodyCompWindow; label: string; days: number | null }[] = [
-  { key: '30d',  label: '30D',  days: 30 },
-  { key: '90d',  label: '90D',  days: 90 },
-  { key: '365d', label: '1Y',   days: 365 },
-  { key: 'all',  label: 'All',  days: null },
-]
-
-export function reportsInWindow(reports: BodyCompositionReport[], window: BodyCompWindow, referenceMs: number = Date.now()): BodyCompositionReport[] {
-  const sorted = sortedAsc(reports)
-  const days = BODY_COMP_WINDOWS.find(w => w.key === window)?.days ?? null
-  if (days == null) return sorted
-  return filterSince(sorted, referenceMs - days * 86_400_000)
+/** The scans whose local day (`dayOf(measured_at)`) falls in [from, to] — the
+ *  period picked in the Health page's range bar — oldest first. The panel used
+ *  to have its own 30D/90D/1Y/All chips counted back from now, which ignored
+ *  the page's period and day. */
+export function reportsBetween(
+  reports: BodyCompositionReport[], from: string, to: string, dayOf: (iso: string) => string,
+): BodyCompositionReport[] {
+  return sortedAsc(reports).filter(r => { const d = dayOf(r.measured_at); return d >= from && d <= to })
 }
 
 // The two most recent scans (chronological order preserved: [older, newer]).

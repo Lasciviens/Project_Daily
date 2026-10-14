@@ -21,12 +21,18 @@ function counted(v: number | null | undefined, format: (v: number) => string = x
 // "How you're doing": the six tier-1 tiles from the metric ranking
 // (docs/training-health/research/research-rank.json), in its order. No
 // composite score (house rule) — each tile stands on its own reference.
+// Every tile follows the range bar: a day shows that day's value, a longer
+// period its average (or, for exercise, its weekly total). The labels say
+// "average" / "total" only — the range bar already names the period.
 
 type TileId = 'sleep' | 'steps' | 'exercise' | 'rhr' | 'weight' | 'vitals'
 
 const TITLES: Record<TileId, string> = {
-  sleep: 'Sleep', steps: 'Steps', exercise: 'Exercise this week', rhr: 'Resting heart rate', weight: 'Weight', vitals: 'Overnight vitals',
+  sleep: 'Sleep', steps: 'Steps', exercise: 'Exercise', rhr: 'Resting heart rate', weight: 'Weight', vitals: 'Overnight vitals',
 }
+
+const delta = (a: number | null, b: number | null) => (a != null && b != null ? a - b : null)
+const capFirst = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 
 /** The window that holds each tile's full charts. */
 const TILE_SECTION: Record<TileId, HealthSectionId> = {
@@ -49,11 +55,18 @@ export function HealthHero({ hero, onViewDay, onOpenSection }: {
   const band = (c: { label: string; tone: 'danger' | 'warn' | 'neutral' | 'success' | 'info' } | null, prefix = '') =>
     c ? { label: `${prefix}${c.label}`, tone: c.tone } : null
 
-  const sleepDelta = sleep.avg7 != null && sleep.prevAvg7 != null ? sleep.avg7 - sleep.prevAvg7 : null
-  const stepsDelta = steps.avg7 != null && steps.prevAvg7 != null ? steps.avg7 - steps.prevAvg7 : null
-  const exDelta = exercise.minutes7 != null && exercise.prevMinutes7 != null ? exercise.minutes7 - exercise.prevMinutes7 : null
-  const hrvDelta = vitals.hrv7 != null && vitals.hrvRange ? vitals.hrv7 - vitals.hrvRange.center : null
-  const weightStale = weight.ma7 == null && weight.lastDate != null
+  const { isDay } = hero
+  const before = isDay ? 'the day before' : 'the period before'
+  const avg = isDay ? '' : ' · average'
+  const sleepDelta = delta(sleep.value, sleep.previous)
+  const stepsDelta = delta(steps.value, steps.previous)
+  const exDelta = delta(exercise.minutes, exercise.previous)
+  const hrvDelta = vitals.hrv != null && vitals.hrvRange ? vitals.hrv - vitals.hrvRange.center : null
+  const weightDelta = delta(weight.value, weight.previous)
+  const thatNight = isDay ? sleep.timeline.find(t => t.date === hero.anchor) : undefined
+  // A 7-day period's exercise is that week's total; a longer one, its average week.
+  const exUnit = isDay ? 'min' : hero.days === 7 ? 'of 150 min · total' : 'of 150 min a week · average'
+  const strengthDays = hero.days === 7 ? String(Math.round(exercise.strengthDays)) : num(exercise.strengthDays, 1)
 
   const bodyCls = weight.whtrCls ? band(weight.whtrCls, 'Waist-to-height · ') : band(weight.bmiCls, 'BMI · ')
   const bodyExtras = [
@@ -70,58 +83,61 @@ export function HealthHero({ hero, onViewDay, onOpenSection }: {
         {/* Only the night that ended on this day counts as "last night" — a
             missing night says so; it is never replaced by an older one. */}
         <HeroTile icon={<Moon />} label="Sleep" onOpen={() => setOpen('sleep')} isLoading={sleep.isLoading}
-          empty={sleep.avg7 == null && sleep.lastNight == null ? `${nightMissingText(hero.anchor, hero.today)}, and too few nights this week for an average.` : null}
-          value={counted(sleep.lastNight, hm)}
-          unit={nightNoun(hero.anchor, hero.today)}
-          sub={<>
-            {sleep.lastNight == null && <>{nightMissingText(hero.anchor, hero.today)}. </>}
-            {sleep.avg7 != null && <>7-night average {hm(sleep.avg7)} · </>}
-            {sleep.wake ? <>wake {fmtClock(sleep.wake.center)} ± {Math.round(sleep.wake.sd)} min</> : 'wake-time spread needs 5 nights'}
-          </>}
-          change={sleepDelta != null ? { text: `${signedHm(sleepDelta)} vs previous 7`, tone: changeTone(sleepDelta, 'up', 0.25) } : null}
+          empty={sleep.value == null ? (isDay ? `${nightMissingText(hero.anchor, hero.today)}.` : 'No sleep recorded in this period.') : null}
+          value={counted(sleep.value, hm)}
+          unit={isDay ? nightNoun(hero.anchor, hero.today) : '/night · average'}
+          sub={isDay
+            ? thatNight ? <>Asleep {fmtClock(thatNight.onset)} · woke {fmtClock(thatNight.wake)}</> : null
+            : <>
+              {sleep.lastNight != null ? <>{capFirst(nightNoun(hero.anchor, hero.today))} {hm(sleep.lastNight)}</> : nightMissingText(hero.anchor, hero.today)}
+              {' · '}{sleep.wake ? <>wake {fmtClock(sleep.wake.center)} ± {Math.round(sleep.wake.sd)} min</> : 'wake-time spread needs 5 nights'}
+            </>}
+          change={sleepDelta != null ? { text: `${signedHm(sleepDelta)} vs ${isDay ? 'the night before' : before}`, tone: changeTone(sleepDelta, 'up', 0.25) } : null}
           band={band(sleep.cls)} better="7–9 h is best, and a steady wake time" aim={hero.aims.sleep}
           plain={BENCHMARKS.sleep_duration.plain} />
 
         <HeroTile icon={<Footprints />} label="Steps" onOpen={() => setOpen('steps')} isLoading={steps.isLoading}
-          empty={steps.avg7 == null ? 'Too few days with steps in the last week.' : null}
-          value={counted(steps.avg7)} unit="/day, 7-day average"
-          sub={hero.isToday ? <>Today so far {num(steps.todaySoFar)}</> : null}
-          change={stepsDelta != null ? { text: `${signed(stepsDelta)} vs previous 7`, tone: changeTone(stepsDelta, 'up', 500) } : null}
+          empty={steps.value == null ? `No steps recorded ${isDay ? 'that day' : 'in this period'}.` : null}
+          value={counted(steps.value)} unit={isDay ? (steps.partial ? 'so far' : 'steps') : '/day · average'}
+          sub={steps.todaySoFar != null ? <>Today so far {num(steps.todaySoFar)}</> : null}
+          change={stepsDelta != null ? { text: `${signed(stepsDelta)} vs ${before}`, tone: changeTone(stepsDelta, 'up', 500) } : null}
           band={band(steps.cls)} better={BETTER_LABEL[betterFor(BENCHMARKS.step_count.higherIsBetter)]} aim={hero.aims.steps}
           plain={BENCHMARKS.step_count.plain} />
 
-        <HeroTile icon={<Dumbbell />} label="Exercise this week" onOpen={() => setOpen('exercise')} isLoading={exercise.isLoading}
-          empty={exercise.minutes7 == null && exercise.strengthDays7 === 0 ? 'No exercise minutes or workouts in the last 7 days.' : null}
-          value={counted(exercise.minutes7 ?? 0)} unit="of 150 min"
-          sub={<>Strength days {exercise.strengthDays7} of 2 (Hevy)</>}
-          change={exDelta != null ? { text: `${signed(exDelta)} min vs previous 7`, tone: changeTone(exDelta, 'up', 20) } : null}
+        <HeroTile icon={<Dumbbell />} label="Exercise" onOpen={() => setOpen('exercise')} isLoading={exercise.isLoading}
+          empty={exercise.minutes == null && exercise.strengthDays === 0 ? `No exercise minutes or workouts ${isDay ? 'that day' : 'in this period'}.` : null}
+          value={counted(exercise.minutes ?? 0)} unit={exUnit}
+          sub={isDay
+            ? <>{exercise.strengthDays ? 'A strength workout' : 'No strength workout'} in Hevy</>
+            : <>Strength days {strengthDays} of 2{hero.days > 7 ? ' a week' : ''} (Hevy)</>}
+          change={exDelta != null ? { text: `${signed(exDelta)} min vs ${before}`, tone: changeTone(exDelta, 'up', 20) } : null}
           band={band(exercise.cls)} better={BETTER_LABEL.higher} aim={hero.aims.exercise}
           plain={TILE_PLAIN.exercise} />
 
         <HeroTile icon={<HeartPulse />} label="Resting heart rate" onOpen={() => setOpen('rhr')} isLoading={rhr.isLoading}
-          empty={rhr.avg7 == null ? 'Too few resting heart-rate readings this week.' : null}
-          value={counted(rhr.avg7)} unit="bpm, 7-day average"
-          sub={rhr.baseline ? <>Your 60-day baseline {num(rhr.baseline.median)} bpm</> : 'Baseline needs 14 days of readings'}
-          change={rhr.delta != null ? { text: `${signed(rhr.delta)} bpm vs baseline`, tone: rhr.delta >= 5 ? 'warn' : rhr.delta <= -3 ? 'success' : 'neutral' } : null}
+          empty={rhr.value == null ? (isDay ? 'No resting heart-rate reading that day.' : 'No resting heart-rate readings in this period.') : null}
+          value={counted(rhr.value)} unit={`bpm${avg}`}
+          sub={rhr.baseline ? <>Your usual {num(rhr.baseline.median)} bpm</> : 'Your usual needs 14 days of readings'}
+          change={rhr.delta != null ? { text: `${signed(rhr.delta)} bpm vs your usual`, tone: rhr.delta >= 5 ? 'warn' : rhr.delta <= -3 ? 'success' : 'neutral' } : null}
           band={band(rhr.cls)} better={BETTER_LABEL.lower} aim={hero.aims.rhr}
           plain={BENCHMARKS.resting_heart_rate.plain} />
 
         <HeroTile icon={<Scale />} label="Weight" onOpen={() => setOpen('weight')} isLoading={weight.isLoading}
           empty={weight.lastKg == null ? 'No weigh-ins yet.' : null}
-          value={counted(weight.ma7 ?? weight.lastKg, v => num(v, 1))} unit={weightStale ? 'kg, last weigh-in' : 'kg, 7-day average'}
+          value={counted(weight.value ?? weight.lastKg, v => num(v, 1))} unit={weight.value == null ? 'kg · last weigh-in' : `kg${avg}`}
           sub={<>
             {weight.lastDate && <>Last weigh-in {fmtDayMonth(weight.lastDate)}</>}
             {bodyExtras && <> · {bodyExtras}</>}
           </>}
-          change={weight.perWeek != null ? { text: `${signed(weight.perWeek, 2)} kg/week (28 days)`, tone: 'neutral' } : null}
+          change={weightDelta != null ? { text: `${signed(weightDelta, 1)} kg vs ${before}`, tone: 'neutral' } : null}
           band={bodyCls} better={BETTER_LABEL.range} aim={hero.aims.weight}
           plain={TILE_PLAIN.weight} />
 
         <HeroTile icon={<Activity />} label="Overnight vitals" onOpen={() => setOpen('vitals')} isLoading={vitals.isLoading}
-          empty={vitals.hrv7 == null && vitals.summary.checked === 0 ? 'Not enough overnight readings yet.' : null}
-          value={counted(vitals.hrv7)} unit="ms HRV, 7-day average"
+          empty={vitals.hrv == null && vitals.summary.checked === 0 ? `Not enough overnight readings ${isDay ? 'that night' : 'in this period'}.` : null}
+          value={counted(vitals.hrv)} unit={`ms HRV${avg}`}
           sub={vitals.hrvRange ? <>Your usual {num(vitals.hrvRange.low)}–{num(vitals.hrvRange.high)} ms</> : 'Usual range needs 14 days of HRV'}
-          change={hrvDelta != null ? { text: `${signed(hrvDelta)} ms vs your average`, tone: 'neutral' } : null}
+          change={hrvDelta != null ? { text: `${signed(hrvDelta)} ms vs your usual`, tone: 'neutral' } : null}
           band={vitals.summary.tone ? { label: vitals.summary.text, tone: vitals.summary.tone } : null}
           better="Inside your own usual range is best" aim={hero.aims.vitals}
           plain={TILE_PLAIN.vitals} />

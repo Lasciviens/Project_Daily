@@ -3,7 +3,7 @@ import { localDayOf } from '../../../shared/utils/dateUtils'
 import {
   APPLE_BODY_METRICS, mergeBodyweight, splitAppleBodyRows, type BodyweightPoint, type BodyweightReading,
 } from '../bodyweight'
-import { fetchHealthMetricsBatch, fetchLatestHealthValue } from './healthApi'
+import { fetchAllPages, fetchHealthMetricsBatch, fetchLatestHealthValue } from './healthApi'
 
 // Reads for the ONE bodyweight series (see bodyweight.ts for the precedence
 // and why). Three tables, each read on its own and never joined in SQL:
@@ -32,31 +32,40 @@ function localMidnightIso(date: string, addDays = 0): string {
   return new Date(y, m - 1, d + addDays).toISOString()
 }
 
+// The Health page's year view reads two years (the year and the one before),
+// so both reads page past PostgREST's 1,000-row cap.
 async function readHevy(from: string, to: string): Promise<BodyweightReading[]> {
-  const { data, error } = await supabase
-    .from('hevy_body_measurements')
-    .select('date, weight_kg, fat_percent, lean_mass_kg, updated_at')
-    .gte('date', from)
-    .lte('date', to)
-    .order('date', { ascending: true })
-  if (error) throw error
-  return ((data ?? []) as { date: string; weight_kg: unknown; fat_percent: unknown; lean_mass_kg: unknown; updated_at: string | null }[])
+  const rows = await fetchAllPages<{ date: string; weight_kg: unknown; fat_percent: unknown; lean_mass_kg: unknown; updated_at: string | null }>(
+    (f, t, withCount) => supabase
+      .from('hevy_body_measurements')
+      .select('date, weight_kg, fat_percent, lean_mass_kg, updated_at', withCount ? { count: 'exact' } : undefined)
+      .gte('date', from)
+      .lte('date', to)
+      .order('date', { ascending: true })
+      .order('id', { ascending: true })
+      .range(f, t))
+  return rows
     .map(r => ({ date: r.date, at: r.updated_at ?? `${r.date}T12:00:00Z`, kg: num(r.weight_kg), fatPct: num(r.fat_percent), leanKg: num(r.lean_mass_kg) }))
 }
 
 async function readReport(from: string, to: string): Promise<BodyweightReading[]> {
-  const { data, error } = await supabase
-    .from('body_composition_reports')
-    .select('measured_at, weight_kg, body_fat_percent, lean_body_mass_kg')
-    .gte('measured_at', localMidnightIso(from))
-    .lt('measured_at', localMidnightIso(to, 1))
-    .order('measured_at', { ascending: true })
-  if (error) {
+  type Row = { id: string; measured_at: string; weight_kg: unknown; body_fat_percent: unknown; lean_body_mass_kg: unknown }
+  let rows: Row[]
+  try {
+    rows = await fetchAllPages<Row>((f, t, withCount) => supabase
+      .from('body_composition_reports')
+      .select('id, measured_at, weight_kg, body_fat_percent, lean_body_mass_kg', withCount ? { count: 'exact' } : undefined)
+      .gte('measured_at', localMidnightIso(from))
+      .lt('measured_at', localMidnightIso(to, 1))
+      .order('measured_at', { ascending: true })
+      .order('id', { ascending: true })
+      .range(f, t))
+  } catch (error) {
     // Migration 085 may not be applied: no report readings rather than no series.
     if (isMissingTable(error)) return []
     throw error
   }
-  return ((data ?? []) as { measured_at: string; weight_kg: unknown; body_fat_percent: unknown; lean_body_mass_kg: unknown }[])
+  return rows
     .map(r => ({
       date: localDayOf(r.measured_at) ?? r.measured_at.slice(0, 10), at: r.measured_at,
       kg: num(r.weight_kg), fatPct: num(r.body_fat_percent), leanKg: num(r.lean_body_mass_kg),

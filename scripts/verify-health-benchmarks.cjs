@@ -297,6 +297,10 @@ check('sleep 7.5 h → success, no action', (() => { const i = G.buildHealthInsi
 const rise = G.buildHealthInsights({ ...full, restingHr: 66, restingHrBaseline: 60 })
 check('resting HR +6 on baseline → resting-hr-rise (warn) instead of resting-hr', rise.some(i => i.id === 'resting-hr-rise' && i.tone === 'warn') && !rise.some(i => i.id === 'resting-hr'))
 check('no strength days → strength-health warns', G.buildHealthInsights({ ...full, strengthDaysPerWeek: 0 }).find(i => i.id === 'strength-health').tone === 'warn')
+check('a longer period\'s average week of 0.5 strength days is lifting, not none',
+  G.buildHealthInsights({ ...full, strengthDaysPerWeek: 0.5 }).find(i => i.id === 'strength-health').tone === 'success')
+check('insight texts carry no period length (the range bar names it)',
+  !G.buildHealthInsights({ ...full, strengthDaysPerWeek: 0 }).some(i => /7-day|this week/.test(`${i.title} ${i.text} ${i.action ?? ''}`)))
 check('aerobic ≥ 150 with lifting → combined success, no action', (() => { const i = G.buildHealthInsights({ ...full, weeklyModerateMin: 120, weeklyVigorousMin: 20 }).find(x => x.id === 'lifting-plus-cardio'); return i.tone === 'success' && i.action === null })())
 check('aerobic known, strength unknown → weekly-activity instead', (() => { const x = G.buildHealthInsights({ ...full, strengthDaysPerWeek: null }); return x.some(i => i.id === 'weekly-activity') && !x.some(i => i.id === 'lifting-plus-cardio') })())
 check('no VO2 reading → modifiable card asks for an outdoor walk/run', /outdoor/.test(G.buildHealthInsights({ ...full, vo2max: null }).find(i => i.id === 'vo2-modifiable').action))
@@ -375,6 +379,7 @@ check('steps 9,000: keep', A.stepsAim({ avg7: 9000, age: 40 }).status === 'keep'
 const ex = A.exerciseAim({ minutes7: 110, strengthDays7: 1 })
 check('exercise 110 min + 1 strength day: both gaps named', ex.status === 'improve' && /40 to go/.test(ex.text) && /1 to go/.test(ex.text), ex)
 check('exercise 160 min + 3 days: keep', A.exerciseAim({ minutes7: 160, strengthDays7: 3 }).status === 'keep')
+check('exercise: a fractional average week (1.5 strength days) → 1 to go', /2 strength days \(1 to go\)/.test(A.exerciseAim({ minutes7: 160, strengthDays7: 1.5 }).text))
 check('exercise 200 min + 0 days: only the strength gap', !/150 min/.test(A.exerciseAim({ minutes7: 200, strengthDays7: 0 }).text))
 check('exercise 110 min: two 20-minute walks cover the 40', /two brisk 20-minute walks cover it/.test(ex.text), ex.text)
 check('exercise 135 min: one 20-minute walk covers the 15', /one brisk 20-minute walk covers it/.test(A.exerciseAim({ minutes7: 135, strengthDays7: 2 }).text))

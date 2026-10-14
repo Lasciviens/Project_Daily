@@ -15,5 +15,5 @@ Background: `docs/features/health.md`.
 - A body change smaller than its measurement noise reads "steady" and gets no colour (`weeklyBodyChanges.ts`, `bodyGoal.GOAL_NOISE`); the scale's body score is shown, never judged.
 - No composite health score and no invented derived metric. Aims agree with their band (`aimGuidance.ts`).
 - Charts: hover shows values; only explicit links inside a tooltip navigate; a bar click never does.
-- One date and period control for the whole page (`HealthRangeBar`).
+- One date and period control for the whole page (`HealthRangeBar`), and every widget follows it: a day shows that day's value, a longer period its average (exercise: its weekly total) against the period before. Labels say "average" / "total" / "Change", never the period's length. Only a reading that can't be averaged (VO₂ max, a Hevy entry) shows the latest value with its date. No fixed 7-day windows, and no second period control on a card.
 - `date` is computed from the export's own local time, never from the UTC timestamp.

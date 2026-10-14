@@ -28,9 +28,9 @@ export function MetricMiniCard({ config, window, points, daily, latest, onViewDa
   const { metric, title, unit, decimals, description, showTodayCount, showTodayTimes, deviation } = config
   const [open, setOpen] = useState(false)
   const isLatest = getAggregationType(metric) === 'latest'
-  // A one-day window has no trend to expand into; point-in-time metrics
-  // always can (their history is the last year of readings).
-  const canExpand = isLatest || window.from !== window.to
+  // A one-day window has no trend to expand into; a longer one charts the
+  // period's readings (a point-in-time metric's too).
+  const canExpand = window.from !== window.to
   const summary = miniCardSummary(getAggregationType(metric), daily, latest, window, todayStr())
   const displayUnit = latest?.unit || points.find(p => p.unit)?.unit || unit
 
@@ -74,7 +74,7 @@ export function MetricMiniCard({ config, window, points, daily, latest, onViewDa
         className="flex min-h-[44px] items-center gap-1 border-t border-line px-3 text-micro font-semibold text-accent-600"
       >
         <ChevronDown aria-hidden className={`h-3 w-3 transition-transform ${open ? 'rotate-180' : ''}`} />
-        {open ? 'Hide history' : isLatest ? 'History (last year)' : 'History'}
+        {open ? 'Hide history' : 'History'}
       </button>}
       {open && canExpand && (
         <div className="px-3 pb-3">

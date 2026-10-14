@@ -38,7 +38,7 @@ export function betterFor(higherIsBetter: boolean | null): Better {
 /** The two tiles that aren't a single benchmark metric. */
 export const TILE_PLAIN = {
   weight:
-    'Your body weight as a 7-day average — a single weigh-in swings 1–2 kg with water, salt and food. On its own it can’t tell fat from muscle.',
+    'Your body weight — a single weigh-in swings 1–2 kg with water, salt and food, so an average over several days says more. On its own it can’t tell fat from muscle.',
   exercise:
     'Minutes that get you at least breathing harder (a brisk walk counts), plus the days you train your muscles. WHO’s minimum for health is 150 minutes and 2 strength days a week.',
   vitals:
@@ -62,7 +62,7 @@ export function restingHrAim(p: { value: number | null; baselineMedian?: number 
   if (p.delta != null && p.delta >= 5 && usual != null) {
     return {
       status: 'watch',
-      text: `back to your usual ${usual} bpm — this week is ${Math.round(p.delta)} above it. That is often short sleep, alcohol, heat, illness or hard training; take it easier until it settles, usually within days.`,
+      text: `back to your usual ${usual} bpm — you’re ${Math.round(p.delta)} above it. That is often short sleep, alcohol, heat, illness or hard training; take it easier until it settles, usually within days.`,
     }
   }
   if (value < 60) {
@@ -161,7 +161,8 @@ export function exerciseAim(p: { minutes7: number | null; strengthDays7: number 
       : `about ${Math.ceil(gap / 7 / 5) * 5} brisk minutes a day covers it`
     parts.push(`150 min a week (${fmt(gap)} to go — ${how})`)
   }
-  if (days < 2) parts.push(`2 strength days (${2 - days} to go)`)
+  // A longer period's average week can be fractional (1.5 a week → 1 to go).
+  if (days < 2) parts.push(`2 strength days (${Math.ceil(2 - days - 1e-9)} to go)`)
   return { status: 'improve', text: `${parts.join(' and ')}.` }
 }
 

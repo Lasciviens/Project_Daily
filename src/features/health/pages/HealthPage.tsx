@@ -64,6 +64,8 @@ export function HealthPage() {
   const viewDay = (date: string) => { setPeriod('day'); setAnchor(date) }
   const miniWindow = { from: win.from, to: win.to, period }
   const exclude = hero.isToday ? anchor : null
+  // Every trend card reads the period picked in the range bar.
+  const picked = { from: win.from, to: anchor }
   const label = HEALTH_SECTIONS.find(s => s.id === section)?.label ?? 'Health'
 
   return (
@@ -94,8 +96,8 @@ export function HealthPage() {
           {section === 'sleep' && (
             <SectionPanel id="sleep" note="Nights are filed under the morning you woke up." layout={SLEEP_BOARD} sections={{
               sleep: <Guard name="Sleep"><SleepCard range={range} /></Guard>,
-              timing: <Guard name="Sleep timing"><SleepTimingCard sleep={hero.sleep} /></Guard>,
-              trend: <TrendCard title="Sleep trend" stats={buildTrendStats(hero.sleep.nights, { to: anchor, direction: 'up' })}
+              timing: <Guard name="Sleep timing"><SleepTimingCard sleep={hero.sleep} from={win.from} to={anchor} /></Guard>,
+              trend: <TrendCard title="Sleep trend" stats={buildTrendStats(hero.sleep.nights, { ...picked, direction: 'up' })}
                 format={hm} formatDelta={signedHm} per="per night" direction="up" />,
               breathing: <MetricMiniGrid title="Breathing during sleep" metrics={SLEEP_EXTRA_METRICS} window={miniWindow} onViewDay={viewDay} hideWhenEmpty standalone="h3" />,
             }} />
@@ -103,11 +105,11 @@ export function HealthPage() {
 
           {section === 'activity' && (
             <SectionPanel id="activity" layout={ACTIVITY_BOARD} sections={{
-              rings: <Guard name="Activity rings"><ActivityRings win={win} date={anchor} /></Guard>,
+              rings: <Guard name="Activity rings"><ActivityRings win={win} /></Guard>,
               steps: <Guard name="Steps"><StepsSection range={range} /></Guard>,
-              stepsTrend: <TrendCard title="Steps trend" stats={buildTrendStats(hero.steps.series, { to: anchor, exclude, direction: 'up' })}
+              stepsTrend: <TrendCard title="Steps trend" stats={buildTrendStats(hero.steps.series, { ...picked, exclude, direction: 'up' })}
                 format={v => num(v)} formatDelta={v => signed(v)} direction="up" rateUnit="steps/day per week" />,
-              exercise: <Guard name="Weekly exercise"><ExerciseWeekCard exercise={hero.exercise} anchor={anchor} /></Guard>,
+              exercise: <Guard name="Weekly exercise"><ExerciseWeekCard hero={hero} /></Guard>,
               energy: <Guard name="Energy"><EnergySection range={range} /></Guard>,
               note: (
                 <p className="text-meta text-fg-muted">
@@ -128,9 +130,9 @@ export function HealthPage() {
             <SectionPanel id="heart" note="Each against your own usual range." layout={HEART_BOARD} sections={{
               vitals: <Guard name="Vitals reading"><VitalsReadingCard range={range} /></Guard>,
               heart: <Guard name="Heart"><HeartSection range={range} /></Guard>,
-              rhrTrend: <TrendCard title="Resting heart rate trend" stats={buildTrendStats(hero.rhr.series, { to: anchor, direction: 'down' })}
+              rhrTrend: <TrendCard title="Resting heart rate trend" stats={buildTrendStats(hero.rhr.series, { ...picked, direction: 'down' })}
                 format={v => num(v)} formatDelta={v => `${signed(v)} bpm`} direction="down" rateUnit="bpm/week" />,
-              hrvTrend: <TrendCard title="HRV trend" stats={buildTrendStats(hero.vitals.hrvSeries, { to: anchor, direction: 'up' })}
+              hrvTrend: <TrendCard title="HRV trend" stats={buildTrendStats(hero.vitals.hrvSeries, { ...picked, direction: 'up' })}
                 format={v => num(v)} formatDelta={v => `${signed(v)} ms`} direction="up" />,
             }} />
           )}
