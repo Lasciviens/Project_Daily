@@ -346,19 +346,20 @@ export function CheckboxRow({
 // ── Pill group — single-select chips (section / priority / domain) ────────────
 
 export function PillGroup<T extends string>({
-  options, value, onChange, locked,
+  options, value, onChange, locked, size,
 }: {
   options: { id: T; label: string; tone?: Tone }[]
   value: T
   onChange: (v: T) => void
   locked?: boolean
+  size?: 'md' | 'sm'
 }) {
   return (
     <div className="flex flex-wrap gap-1.5">
       {options.map(o => (
         <button
           key={o.id} type="button" disabled={locked} onClick={() => onChange(o.id)}
-          aria-pressed={value === o.id} className={choiceClass(value === o.id)}
+          aria-pressed={value === o.id} className={choiceClass(value === o.id, undefined, size)}
         >
           {o.tone && <ToneDot tone={o.tone} className={value === o.id ? 'ring-2 ring-surface/60' : undefined} />}
           {o.label}

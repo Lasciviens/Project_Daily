@@ -5,7 +5,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { TimeBlock, ScheduleBlock, TimeBlockCategory } from '../../../features/daily/types'
-import type { Task, TaskSection, TaskPriority, TaskDomain, TaskSourceType } from '../../../features/todo/types'
+import type { Task, LiveTaskSection, TaskPriority, TaskDomain, TaskSourceType } from '../../../features/todo/types'
 
 // ── Mode — replaces the old Task/Schedule TAB switcher entirely ─────────────
 // A caller decides which entity is being edited; the user never picks a tab.
@@ -87,7 +87,7 @@ export interface PlanDefaults {
 
   // Task tab
   notes?: string
-  section?: TaskSection
+  section?: LiveTaskSection
   priority?: TaskPriority
   domain?: TaskDomain
   /** Window opening edge (tasks.start_date). dueDate stays the deadline. */

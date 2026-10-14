@@ -6,8 +6,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { TimeBlock, TimeBlockCategory, ScheduleBlock } from '../../../features/daily/types'
-import type { Task, TaskSection, TaskPriority, TaskDomain } from '../../../features/todo/types'
+import type { Task, LiveTaskSection, TaskPriority, TaskDomain } from '../../../features/todo/types'
 import { DOMAIN_LABEL } from '../../../features/todo/domainColors'
+import { liveSection } from '../../../features/todo/taskRules'
 import {
   todayStr, nextPlanTime, DURATION_PRESETS, WEEKDAYS,
   repeatFormFromRow, minutesBetweenWrapping, defaultScheduleCategory, type RepeatFormFields,
@@ -35,7 +36,7 @@ export interface PlanForm extends RepeatFormFields {
 
   // Task fields
   notes: string
-  section: TaskSection
+  section: LiveTaskSection
   priority: TaskPriority
   domain: TaskDomain
   /** Opening edge of a "do it between A and B" window; dueDate stays the deadline. */
@@ -100,7 +101,8 @@ export function buildInitialForm(
     notes:      task?.description ?? defaults?.notes ?? '',
     // Keep 'today': four server-side `section.eq.today` reads (phone-gateway ×2,
     // push-send, ai-proxy) would silently go quiet if new tasks defaulted elsewhere.
-    section:    task?.section ?? defaults?.section ?? 'today',
+    // An old row in the retired Tomorrow / This week shows — and saves — Backlog.
+    section:    liveSection(task?.section ?? defaults?.section ?? 'today'),
     priority:   task?.priority ?? defaults?.priority ?? 'medium',
     domain,
     startDate:  task?.start_date ?? defaults?.startDate ?? '',

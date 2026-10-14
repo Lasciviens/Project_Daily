@@ -201,6 +201,10 @@ eq(R.sectionForDay('2026-10-19', TODAY), 'backlog', 'seven days ahead → backlo
 eq(R.sectionForDay('2026-10-20', TODAY), 'backlog', 'eight days ahead')
 eq(R.sectionForDay('2026-10-11', TODAY), 'backlog', 'yesterday')
 eq(R.sectionForDay('2026-03-30', '2026-03-29'), 'backlog', 'across the spring DST change')
+// An old row in a retired section opens — and saves — as Backlog (the planner has no pill for it).
+eq(R.liveSection('tomorrow'), 'backlog', 'an old Tomorrow row reads Backlog')
+eq(R.liveSection('this_week'), 'backlog', 'an old This-week row reads Backlog')
+for (const s of ['inbox', 'today', 'backlog']) eq(R.liveSection(s), s, `${s} stays ${s}`)
 
 // ── Focus ──
 eq(R.isFocusedOpen(task({ is_focused: true, status: 'done' })), false, 'a finished task leaves the focus strip')

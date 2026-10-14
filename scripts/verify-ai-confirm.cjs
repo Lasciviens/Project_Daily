@@ -9,7 +9,8 @@
  *   - Cancel deletes nothing; the phone (no button) cannot delete or confirm;
  *   - an account outside the allow-list gets 403;
  *   - the assistant cannot set link columns (google_calendar_event_id …),
- *     cannot pass off a memory as the user's, and play counts are capped.
+ *     cannot pass off a memory as the user's, and play counts are capped;
+ *   - it cannot write the retired tomorrow / this_week task sections.
  *
  *   Run:  node scripts/verify-ai-confirm.cjs
  */
@@ -136,6 +137,14 @@ let ok = 0, bad = 0; const check = (n, c, d) => { if (c) { ok++; console.log('  
   script = [gemini([{ functionCall: { name: 'db_update', args: { table: 'user_movie_entries', filters: '{"id":"m1"}', values: '{"repeat_count":10000}' } } }]), gemini([{ text: 'x' }])]
   r = await call({ messages: msg }, web)
   check('AI play count capped', r.body.steps?.some(s => s.includes('repeat_count must be')), JSON.stringify(r.body.steps))
+  // 8a. the retired Tomorrow / This week sections are never written (taskRules.sectionForDay)
+  const tasksBefore = JSON.stringify(tables.tasks)
+  script = [gemini([{ functionCall: { name: 'db_insert', args: { table: 'tasks', values: '{"title":"Call mum","section":"tomorrow","due_date":"2026-10-15"}' } } }]), gemini([{ text: 'x' }])]
+  r = await call({ messages: msg }, web)
+  check('AI cannot file a new task under the retired tomorrow', JSON.stringify(tables.tasks) === tasksBefore && r.body.steps?.some(s => s.includes('tomorrow is a retired task section')), JSON.stringify(r.body.steps))
+  script = [gemini([{ functionCall: { name: 'db_update', args: { table: 'tasks', filters: `{"id":"${tables.tasks[0].id}"}`, values: '{"section":"this_week"}' } } }]), gemini([{ text: 'x' }])]
+  r = await call({ messages: msg }, web)
+  check('AI cannot move a task to the retired this_week', JSON.stringify(tables.tasks) === tasksBefore && r.body.steps?.some(s => s.includes('this_week is a retired task section')), JSON.stringify(r.body.steps))
   // 8b. the card speaks plainly: table words and DD.MM.YYYY dates
   tables.water_log_entries = [{ id: 'w1', user_id: OWNER, amount_ml: 250, date: '2026-10-11' }]
   script = [gemini([{ functionCall: { name: 'db_delete', args: { table: 'water_log_entries', filters: '{"id":"w1"}' } } }])]
