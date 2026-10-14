@@ -283,7 +283,7 @@ export function FoodTodayTab({ date }: { date: string }) {
         </Card>),
 
 
-      fits: <FitsLeftCard date={date} kcalLeft={targets.calories - consumed} proteinLeft={targets.protein - protein} />,
+      fits: <FitsLeftCard date={date} goal={targets} eaten={nut} fatFloorG={coach.fatFloorG} />,
 
       guess: <QuickGuessCard date={date} />,
 

@@ -67,6 +67,8 @@ export const qk = {
   dayTargets: { all: ['day-targets'] as const, profiles: ['day-target-profiles'] as const },
   recipes: { all: ['recipes'] as const },
   ingredients: { all: ['recipe-ingredient-library'] as const },
+  /** Food · Today's Quick guess presets (quick_guess_items, migration 152). */
+  quickGuess: { all: ['quick-guess-items'] as const, list: () => ['quick-guess-items', 'list'] as const },
   shop: {
     all: ['shop'] as const,
     categories: () => ['shop', 'categories'] as const,

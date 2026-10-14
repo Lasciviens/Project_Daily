@@ -24,6 +24,14 @@ export const APPEARANCE_BOARD: BoardLayouts<AppearanceSection> = {
   2: { main: '42rem', columns: [['look'], ['notifications']] },
 }
 
+// ── Food ─────────────────────────────────────────────────────────────────
+// One bounded card (the Food settings rows: Quick guess), so the page stops
+// after it: a 42rem-capped list at every width, the other tracks left empty.
+export type FoodSettingsSection = 'today'
+export const FOOD_SETTINGS_BOARD: BoardLayouts<FoodSettingsSection> = {
+  1: ['today'],
+}
+
 // ── APIs ─────────────────────────────────────────────────────────────────
 // One collection (every external API, apiRegistry.ts) under a filter bar.
 // The list spans every track and flows its 19–22rem cards into as many
