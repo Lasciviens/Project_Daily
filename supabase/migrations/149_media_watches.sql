@@ -60,8 +60,19 @@
 --    date the app had), source 'backfill'; movies only when Completed. The
 --    next Trakt pull links them to the real plays (history_synced_at NULL →
 --    a full read, resumable through history_cursor). Queued nothing for Trakt.
--- 7. A watch of an episode (a rewatch too) removes its planned block, like
---    043's rule does for the episode's first watch.
+--    While Trakt is connected and that read hasn't finished, an unlinked
+--    placeholder is LOCKED: no writer but the sync may change its date or
+--    delete it (the app, the assistant, Undo, the old website through the
+--    cache columns, an unmark or a library removal that would take it along)
+--    — the error says "This watch waits for Trakt's dates — try again after
+--    the next Trakt sync". Which Trakt play it stands for isn't known, so its
+--    remove or new date could only be guessed. When the read finishes, the
+--    ones it didn't link become ordinary watches (source 'app').
+-- 7. A watch of an episode (a rewatch too) removes its planned blocks dated
+--    on or before the watch's day (Oslo time; an app watch on an unknown
+--    date: today) — a play from 2018 coming in from Trakt never removes
+--    tonight's plan. 043's own rule (the episode row's first watch) follows
+--    the same day.
 --
 -- trg_audit on media_watches for the app's own writes only: a Trakt pull's
 -- writes are bulk-synced (like hevy_*), so they are not audited — Undo can't
@@ -115,6 +126,12 @@ ALTER TABLE public.user_movie_entries ADD COLUMN IF NOT EXISTS rewatch_started_a
 ALTER TABLE public.trakt_sync_state ADD COLUMN IF NOT EXISTS history_synced_at timestamptz;
 -- A whole-history read in progress: the last title key done ('' = just started; NULL = none running).
 ALTER TABLE public.trakt_sync_state ADD COLUMN IF NOT EXISTS history_cursor text;
+-- "Review and apply" during a whole-history read: the read applies the
+-- removals it would hold back until it finishes (it runs over several syncs).
+ALTER TABLE public.trakt_sync_state ADD COLUMN IF NOT EXISTS history_force boolean NOT NULL DEFAULT false;
+-- Watch removals the history reads held back for the owner (the Trakt card's
+-- "Review and apply"), kept until they are applied or a read no longer finds them.
+ALTER TABLE public.trakt_sync_state ADD COLUMN IF NOT EXISTS history_held_back integer NOT NULL DEFAULT 0;
 
 -- ── 6. Backfill (before the triggers below exist on a first run; marked as a
 --    sync write so a re-run queues nothing for Trakt either) ────────────────
@@ -143,7 +160,9 @@ SELECT set_config('app.trakt_sync', '', true);
 -- ── 2. Before a watch is written: its shape, its parent, its Trakt link ─────
 -- A watch never moves to another item; only the Trakt sync may set
 -- trakt_history_id / source (any other writer's new date drops the link — the
--- old play is removed on Trakt and the new one added).
+-- old play is removed on Trakt and the new one added). A watch added in the
+-- app stays 'app' when the sync links it: a rewatch round counts an app watch
+-- by when it was added (5), whatever date Trakt has for it.
 CREATE OR REPLACE FUNCTION public.media_watch_before() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE
@@ -165,6 +184,8 @@ BEGIN
       ELSE
         NEW.trakt_history_id := OLD.trakt_history_id; NEW.source := OLD.source;
       END IF;
+    ELSIF OLD.source = 'app' THEN
+      NEW.source := 'app';
     END IF;
     RETURN NEW;
   END IF;
@@ -222,6 +243,61 @@ $$;
 DROP TRIGGER IF EXISTS trg_media_watch_before ON public.media_watches;
 CREATE TRIGGER trg_media_watch_before BEFORE INSERT OR UPDATE ON public.media_watches
   FOR EACH ROW EXECUTE FUNCTION public.media_watch_before();
+
+-- ── 6. Placeholders wait for Trakt's dates ──────────────────────────────────
+-- Trakt is connected and its whole history hasn't been read since 149 (or
+-- since a reconnect): an unlinked placeholder can't be told from the play it
+-- stands for yet.
+CREATE OR REPLACE FUNCTION public.media_watch_waits_for_trakt(p_user uuid)
+RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT EXISTS (SELECT 1 FROM public.trakt_tokens WHERE user_id = p_user)
+     AND NOT EXISTS (SELECT 1 FROM public.trakt_sync_state WHERE user_id = p_user AND history_synced_at IS NOT NULL)
+$$;
+
+-- Every writer but the sync: a new date on, or the delete of, a locked
+-- placeholder is refused with a message the screens and the assistant show.
+-- A delete that comes with the account's own deletion goes through.
+CREATE OR REPLACE FUNCTION public.media_watch_placeholder_lock() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  IF OLD.source = 'backfill' AND OLD.trakt_history_id IS NULL
+     AND (TG_OP = 'DELETE' OR date_trunc('second', NEW.watched_at) IS DISTINCT FROM OLD.watched_at)
+     AND NOT public.trakt_sync_writing()
+     AND EXISTS (SELECT 1 FROM auth.users WHERE id = OLD.user_id)
+     AND public.media_watch_waits_for_trakt(OLD.user_id) THEN
+    RAISE EXCEPTION 'This watch waits for Trakt''s dates — try again after the next Trakt sync'
+      USING errcode = 'P0001', hint = 'media_watches: a placeholder (source backfill) is linked to its Trakt play by the next history read';
+  END IF;
+  RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_media_watch_placeholder_lock ON public.media_watches;
+CREATE TRIGGER trg_media_watch_placeholder_lock BEFORE UPDATE OF watched_at OR DELETE ON public.media_watches
+  FOR EACH ROW EXECUTE FUNCTION public.media_watch_placeholder_lock();
+
+-- The whole-history read finished (history_synced_at set): the placeholders
+-- it didn't link (an item left out — waiting in the outbox, an empty history,
+-- removals held back) become ordinary watches at the date they have, so none
+-- stays locked. A sync write: nothing for Trakt, not audited.
+CREATE OR REPLACE FUNCTION public.media_watch_placeholders_settle() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  v_prev text := current_setting('app.trakt_sync', true);
+BEGIN
+  PERFORM set_config('app.trakt_sync', 'on', true);
+  UPDATE public.media_watches SET source = 'app'
+   WHERE user_id = NEW.user_id AND source = 'backfill' AND trakt_history_id IS NULL;
+  PERFORM set_config('app.trakt_sync', coalesce(v_prev, ''), true);
+  RETURN NULL;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_media_watch_placeholders_settle ON public.trakt_sync_state;
+CREATE TRIGGER trg_media_watch_placeholders_settle AFTER UPDATE OF history_synced_at ON public.trakt_sync_state
+  FOR EACH ROW WHEN (OLD.history_synced_at IS NULL AND NEW.history_synced_at IS NOT NULL)
+  EXECUTE FUNCTION public.media_watch_placeholders_settle();
 
 -- ── 5. Is a rewatch round finished? ─────────────────────────────────────────
 -- Done for the round = a watch dated since the round started, or one added in
@@ -377,7 +453,9 @@ CREATE TRIGGER trg_media_rewatch_guard BEFORE INSERT OR UPDATE OF status, rewatc
 -- (app.media_watch_cache). A sync write only adds placeholders — it never
 -- removes or re-dates a watch (a linked one is Trakt's play); trakt-api reads
 -- the title and removes by id. Not watched (Trakt holds no play of it any
--- more, or a writer unmarked it) removes every watch from any writer.
+-- more, or a writer unmarked it) removes every watch from any writer. It
+-- never picks a placeholder while another watch will do; one it must change
+-- while it waits for Trakt's dates refuses the write (the lock, 6).
 CREATE OR REPLACE FUNCTION public.media_watch_reconcile() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE
@@ -472,17 +550,19 @@ BEGIN
     RETURN NULL;
   END IF;
 
-  -- The latest watch holds the date the writer saw (and may have changed).
+  -- The latest watch holds the date the writer saw (and may have changed);
+  -- of several at that time, not a placeholder.
   SELECT id INTO v_keep FROM public.media_watches
    WHERE (v_kind = 'episode' AND episode_id = e.id) OR (v_kind = 'movie' AND movie_entry_id = m.id)
-   ORDER BY watched_at DESC NULLS LAST, created_at DESC, id DESC
+   ORDER BY watched_at DESC NULLS LAST, (source = 'backfill' AND trakt_history_id IS NULL), created_at DESC, id DESC
    LIMIT 1;
   IF v_n > v_target THEN
-    -- Fewer plays: the most recently added of the other watches go.
+    -- Fewer plays: the most recently added of the other watches go, real
+    -- watches before placeholders.
     DELETE FROM public.media_watches WHERE id IN (
       SELECT id FROM public.media_watches
        WHERE ((v_kind = 'episode' AND episode_id = e.id) OR (v_kind = 'movie' AND movie_entry_id = m.id)) AND id <> v_keep
-       ORDER BY created_at DESC, watched_at DESC NULLS LAST, id DESC
+       ORDER BY (source = 'backfill' AND trakt_history_id IS NULL), created_at DESC, watched_at DESC NULLS LAST, id DESC
        LIMIT v_n - v_target);
   END IF;
   IF v_latest IS DISTINCT FROM v_at THEN
@@ -504,22 +584,55 @@ CREATE CONSTRAINT TRIGGER trg_media_watch_reconcile AFTER INSERT OR UPDATE OF st
   WHEN (coalesce(current_setting('app.media_watch_cache', true), '') <> 'on')
   EXECUTE FUNCTION public.media_watch_reconcile();
 
--- ── 7. A watch of an episode removes its planned block (043's rule, for a
---    rewatch too: 043's own trigger fires only when the episode row is new) ─
+-- ── 7. A watch of an episode removes its planned blocks (043's rule, for a
+--    rewatch too: 043's own trigger fires only when the episode row is new)
+--    — only those dated on or before the day it was watched ───────────────
+-- The day a watch at p_at removes plans up to (Oslo time, like the planner):
+-- its own day; an unknown date written in the app = today (watched by now);
+-- an unknown date from Trakt removes none.
+CREATE OR REPLACE FUNCTION public.media_watch_plan_day(p_at timestamptz)
+RETURNS date
+LANGUAGE sql STABLE SET search_path = public AS $$
+  SELECT CASE
+    WHEN p_at >= timestamptz '1971-01-01 00:00:00+00' THEN (p_at AT TIME ZONE 'Europe/Oslo')::date
+    WHEN NOT public.trakt_sync_writing() THEN (now() AT TIME ZONE 'Europe/Oslo')::date
+  END
+$$;
+
 CREATE OR REPLACE FUNCTION public.media_watch_cleans_planned_block() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE
   v_entry uuid;
+  v_day   date := public.media_watch_plan_day(NEW.watched_at);
 BEGIN
-  IF to_regclass('public.time_blocks') IS NULL OR NOT public.link_rule_enabled('episode_watched_cleans_block') THEN RETURN NULL; END IF;
+  IF v_day IS NULL OR to_regclass('public.time_blocks') IS NULL OR NOT public.link_rule_enabled('episode_watched_cleans_block') THEN RETURN NULL; END IF;
   SELECT tv_entry_id INTO v_entry FROM public.user_tv_episodes WHERE id = NEW.episode_id;
   IF v_entry IS NULL THEN RETURN NULL; END IF;
   DELETE FROM public.time_blocks
    WHERE source_type = 'tv_episode'
      AND source_id = v_entry
      AND season_number = NEW.season_number
-     AND episode_number = NEW.episode_number;
+     AND episode_number = NEW.episode_number
+     AND date <= v_day;
   RETURN NULL;
+END;
+$$;
+
+-- 043's rule for an episode's first watch (its row inserted), the same way.
+CREATE OR REPLACE FUNCTION public.cleanup_block_on_episode_watched() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  v_day date := public.media_watch_plan_day(NEW.watched_at);
+BEGIN
+  IF v_day IS NOT NULL AND public.link_rule_enabled('episode_watched_cleans_block') THEN
+    DELETE FROM public.time_blocks
+     WHERE source_type = 'tv_episode'
+       AND source_id = NEW.tv_entry_id
+       AND season_number = NEW.season_number
+       AND episode_number = NEW.episode_number
+       AND date <= v_day;
+  END IF;
+  RETURN NEW;
 END;
 $$;
 DROP TRIGGER IF EXISTS trg_media_watch_cleans_planned_block ON public.media_watches;
@@ -675,14 +788,21 @@ DROP TRIGGER IF EXISTS trg_audit ON public.media_watches;
 CREATE TRIGGER trg_audit AFTER INSERT OR UPDATE OR DELETE ON public.media_watches
   FOR EACH ROW WHEN (NOT public.trakt_sync_writing()) EXECUTE FUNCTION public.log_audit();
 
--- Trigger functions are not callable as RPCs; the round check runs as its caller.
+-- Trigger functions are not callable as RPCs; the round check and the plan
+-- day run as their caller.
 REVOKE ALL ON FUNCTION public.media_watch_before() FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.media_watch_cache() FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.media_watch_reconcile() FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.media_rewatch_guard() FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.media_watch_cleans_planned_block() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.media_watch_placeholder_lock() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.media_watch_placeholders_settle() FROM PUBLIC, anon, authenticated;
+-- Reads trakt_tokens (service-role only): for the triggers, never an RPC.
+REVOKE ALL ON FUNCTION public.media_watch_waits_for_trakt(uuid) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.trakt_outbox_watch() FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.media_rewatch_finished(text, uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.media_rewatch_finished(text, uuid) TO authenticated;
+REVOKE ALL ON FUNCTION public.media_watch_plan_day(timestamptz) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.media_watch_plan_day(timestamptz) TO authenticated;
 
 select public.owner_lock_apply('public.media_watches');
