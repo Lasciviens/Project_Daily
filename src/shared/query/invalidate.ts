@@ -25,7 +25,7 @@ const groups = {
   /** After an Ask-AI turn: every table the assistant can write. */
   aiWrite: [
     qk.tasks.all, qk.schedule.all, qk.calendar.all,
-    qk.recipes.all, qk.ingredients.all, qk.mealPlan.all, qk.foodLog.all, qk.water.all, qk.dayTargets.all,
+    qk.recipes.all, qk.ingredients.all, qk.mealPlan.all, qk.foodLog.all, qk.water.all, qk.dayTargets.all, qk.quickGuess.all,
     qk.shop.all, qk.projects.all, qk.media.movies, qk.media.tv, qk.media.watchedAll, qk.media.nextEpisodeAll,
     qk.wishes.all, qk.devRequests.all, qk.memory.all, qk.work.all,
     qk.athlete.profile, qk.athlete.limitations, qk.athlete.musclePrefs,

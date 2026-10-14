@@ -5,21 +5,23 @@ import { ConnectionsTab } from '../../developer/components/ConnectionsTab'
 import { CONNECTIONS_BOARD } from '../../developer/developerBoards'
 import { PlacesTab } from '../components/PlacesTab'
 import { AppearanceTab } from '../components/AppearanceTab'
+import { FoodTab } from '../components/FoodTab'
 import { ApisTab } from '../components/ApisTab'
 import { SettingsHeroArt } from '../components/SettingsHeroArt'
-import { APIS_BOARD, APPEARANCE_BOARD, PLACES_BOARD } from '../settingsBoards'
+import { APIS_BOARD, APPEARANCE_BOARD, FOOD_SETTINGS_BOARD, PLACES_BOARD } from '../settingsBoards'
 
-type Tab = 'places' | 'appearance' | 'subscriptions' | 'apis'
+type Tab = 'places' | 'appearance' | 'food' | 'subscriptions' | 'apis'
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'places', label: 'Places' },
   { id: 'appearance', label: 'Appearance' },
+  { id: 'food', label: 'Food' },
   { id: 'subscriptions', label: 'Subscriptions' },
   { id: 'apis', label: 'Integrations and APIs' },
 ]
-const BOARD = { places: PLACES_BOARD, appearance: APPEARANCE_BOARD, subscriptions: CONNECTIONS_BOARD, apis: APIS_BOARD } as const
+const BOARD = { places: PLACES_BOARD, appearance: APPEARANCE_BOARD, food: FOOD_SETTINGS_BOARD, subscriptions: CONNECTIONS_BOARD, apis: APIS_BOARD } as const
 
-/** /settings — Places · Appearance · Subscriptions · Integrations and APIs, the tab kept in ?tab=.
+/** /settings — Places · Appearance · Food · Subscriptions · Integrations and APIs, the tab kept in ?tab=.
  *  The old `?tab=integrations` (the Subscriptions tab's earlier id) still opens Subscriptions. */
 export function SettingsPage() {
   const [params, setParams] = useSearchParams()
@@ -52,6 +54,7 @@ export function SettingsPage() {
 
       {tab === 'places' && <PlacesTab />}
       {tab === 'appearance' && <AppearanceTab />}
+      {tab === 'food' && <FoodTab />}
       {tab === 'subscriptions' && <ConnectionsTab />}
       {tab === 'apis' && <ApisTab />}
     </PageContainer>

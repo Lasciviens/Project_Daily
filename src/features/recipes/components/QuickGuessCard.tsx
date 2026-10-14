@@ -1,10 +1,10 @@
 import { useState } from 'react'
 import { Zap } from 'lucide-react'
-import { Card, CardHeader, SegmentedControl, Truncate } from '../../../shared/ui'
+import { Card, CardHeader, SegmentedControl, Skeleton, Truncate } from '../../../shared/ui'
 import { useEntityModal } from '../../../shared/modals/useEntityModal'
 import { todayStr } from '../../../shared/utils/dateUtils'
-import { useLogGuess, useRecentGuesses } from '../hooks/useQuickGuess'
-import { factorLabel, GUESS_FACTORS, GUESS_PRESETS, guessTitle, scaleGuess, type GuessMacros } from '../quickGuess'
+import { useLogGuess, useQuickGuessPresets, useRecentGuesses } from '../hooks/useQuickGuess'
+import { factorLabel, GUESS_FACTORS, guessTitle, scaleGuess, type GuessMacros } from '../quickGuess'
 import { foodEmoji, slotForNow, SLOT_OPTIONS } from './foodLogUtils'
 
 type FactorValue = `${typeof GUESS_FACTORS[number]}`
@@ -29,12 +29,14 @@ function GuessChip({ icon, title, sub, hint, onClick }: { icon: string; title: s
  * "Quick guess": log something you can't weigh — sweets, a soft drink, a
  * beer — as a one-off diary line with typical macros, in one tap. The size
  * switch scales every macro (½ to 2 portions) and goes back to 1 after a log;
- * your own recent one-off lines sit under the presets. Logs to the meal slot
- * for now (snack on another day), like "Fits what's left".
+ * your own recent one-off lines sit under the presets. The presets are the
+ * owner's own (Settings → Food → Quick guess, migration 152). Logs to the
+ * meal slot for now (snack on another day), like "What's left".
  */
 export function QuickGuessCard({ date }: { date: string }) {
   const modal = useEntityModal()
-  const recents = useRecentGuesses()
+  const { presets, isLoading, isError, refetch } = useQuickGuessPresets()
+  const recents = useRecentGuesses(presets)
   const log = useLogGuess()
   const [factor, setFactor] = useState<FactorValue>('1')
   const f = Number(factor)
@@ -51,12 +53,19 @@ export function QuickGuessCard({ date }: { date: string }) {
     <Card>
       <CardHeader title="Quick guess" variant="label" icon={<Zap />} subtitle={`Logs to ${slotName}`}
         action={<SegmentedControl size="sm" options={FACTORS} value={factor} onChange={setFactor} />} />
+      {isError && (
+        <p className="mb-1.5 text-meta text-fg-muted">
+          Your presets didn't load. <button type="button" onClick={refetch} className="font-semibold text-accent-600">Try again</button>
+        </p>
+      )}
       <div className="grid grid-cols-[repeat(auto-fill,minmax(10rem,1fr))] gap-1.5">
-        {GUESS_PRESETS.map(p => {
+        {isLoading && Array.from({ length: 4 }, (_, i) => <Skeleton key={i} className="h-[42px]" />)}
+        {presets.map(p => {
           const m = scaleGuess(p, f)
+          const one = [f === 1 ? '' : `${factorLabel(f)} ×`, p.portion].filter(Boolean).join(' ')
           return (
-            <GuessChip key={p.key} icon={p.icon} title={guessTitle(p.title, f)} sub={sub(m)}
-              hint={`${p.title}, ${f === 1 ? '' : `${factorLabel(f)} × `}${p.portion}: ${m.kcal} kcal · ${macroText(m)}`}
+            <GuessChip key={p.key} icon={p.icon || foodEmoji(p.title)} title={guessTitle(p.title, f)} sub={sub(m)}
+              hint={`${p.title}${one ? `, ${one}` : ''}: ${m.kcal} kcal · ${macroText(m)}`}
               onClick={() => logGuess(p.title, p)} />
           )
         })}

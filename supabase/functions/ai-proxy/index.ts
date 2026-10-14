@@ -1180,6 +1180,7 @@ const TABLE_WORDS: Record<string, [string, string]> = {
   tasks: ['task', 'tasks'], time_blocks: ['schedule block', 'schedule blocks'],
   schedule_blocks: ['repeating block', 'repeating blocks'], food_log_entries: ['food entry', 'food entries'],
   water_log_entries: ['water entry', 'water entries'], ai_memory: ['memory', 'memories'],
+  quick_guess_items: ['quick guess', 'quick guesses'],
   recipes: ['recipe', 'recipes'], shop_items: ['shop item', 'shop items'], wish_items: ['wish', 'wishes'],
   dev_requests: ['request', 'requests'], books: ['book', 'books'],
   user_movie_entries: ['film in your library', 'films in your library'],
@@ -2611,6 +2612,14 @@ const DB_CATALOG: Record<string, CatalogEntry> = {
     purpose: "The water diary — one row per amount the user drank. The day's total is the SUM of amount_ml for that date; the daily target is day_targets.water_ml.",
     columns: "id, date(date — the user's own day, yyyy-mm-dd; set it from the context's ISO date — left out, today in Oslo is used), amount_ml(int > 0), logged_at(timestamptz — when it was logged, default now), created_at",
     rules: "One row per amount drunk: 'I drank 500 ml' → insert {date, amount_ml: 500}; never edit a row into a running total. A glass with no amount given = 250 ml (the app's default); for anything else ask the amount once. Water NEVER goes in food_log_entries and has no macros or calories. 'How much water today?' → db_aggregate sum amount_ml with filters {date}. To take back the last amount, delete that row (newest logged_at); the app asks the user to Confirm.",
+  },
+  // Quick guess presets (migration 152): the chips on Food · Today's Quick
+  // guess card, edited in Settings → Food. A preset is a template, not a log.
+  quick_guess_items: {
+    access: 'rw',
+    purpose: "The user's Quick guess presets — the one-tap chips on Food · Today for food they can't weigh (a sweet, a soft drink, a beer). Each is a template with typical values for ONE portion; tapping it logs a one-off food_log_entries line (custom_title = the name), so a preset never holds what was eaten.",
+    columns: 'id, name(text 1–60 — also the diary title it logs), icon(an emoji, nullable), portion(text, nullable — what one portion is, e.g. "0.5 L"), calories(numeric > 0, ≤ 5000), protein_g, carbs_g, fat_g, sugar_g (numeric ≥ 0, per portion; sugar is part of carbs), sort_order(int — the chip order, smallest first), created_at, updated_at',
+    rules: "To log something the user ate, write food_log_entries — never insert here for that. Add or edit a preset only when the user asks to change their quick guesses; a new one goes last (sort_order = the highest + 1). Editing or deleting a preset never changes lines already logged.",
   },
   shop_categories: {
     access: 'rw',
