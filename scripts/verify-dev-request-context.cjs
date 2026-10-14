@@ -254,6 +254,8 @@ console.log('\n9 · Prompt for Claude')
   const plain = buildClaudePrompt([{ title: 'A', description: 'words', page: null, category: 'bug', priority: 'low' }])
   check('no explanation without captured blocks', !plain.includes('blocks give the route'))
   check('one request: no "Request 1" label', plain.includes('## A\nbug · low priority\n\nwords'), plain)
+  check('several requests: group connected points first', p.includes('- Before building, sort every point into groups by the area and files it touches'), p)
+  check('one plain request: no grouping rule', !plain.includes('sort every point into groups'))
   check('the rules end the prompt', /\n---\nHow to work:\n- Read AGENTS\.md \(CLAUDE\.md imports it\) and docs\/design\/THEME\.md first\./.test(plain) && plain.trim().endsWith('edge-function deploys).'))
 }
 
