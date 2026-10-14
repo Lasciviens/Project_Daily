@@ -4,7 +4,7 @@ A home-made Wi-Fi kitchen scale with its own touchscreen. You pick a food (or sc
 
 This file is the project's one place for the parts in hand, the checked hardware facts, the design, the plan and the progress log. Update it in the same PR as any work on the scale.
 
-**Status (14.10.2026):** stage 0 board check passed on the owner's display board: chip, 16 MB flash, 8 MB PSRAM, screen and touch all work. Still open for stage 0: photos of the board and the relay back plate question. Nothing has been wired or built yet. Nothing in the app, the database or the edge functions has changed for the scale.
+**Status (14.10.2026):** stage 0 is done on the owner's display board: chip, 16 MB flash, 8 MB PSRAM, screen and touch all work, and the back of the board is recorded (no relay back plate, board version V1.2). The only thing left open is the optional pin finder test. Nothing has been wired or built yet. Nothing in the app, the database or the edge functions has changed for the scale.
 
 ## Progress log
 
@@ -25,7 +25,18 @@ Newest on top. One entry per real step: what was done, what was run or measured,
     This confirms the N16R8 module (16 MB flash, 8 MB PSRAM) and the GT911 at its usual address 0x5D.
   - Screen (owner): the text shows clearly, the Chip, Flash and PSRAM lines are right, and "Touch: GT911 found" is green. The 12 MHz pixel clock gives no visible glitches.
   - Touch (owner + serial log): the dot appears right under the finger, with no mirroring or rotation. Taps on the four corners of the drawing box (y 200–380, x 22–458) came back as about (40, 215) top left, (438, 214) top right, (434, 366) bottom right and (40, 377) bottom left.
-  - Not done yet: photos of both sides of the board, whether a relay back plate is fitted (not checked yet), and the optional pin finder.
+  - Back of the board (owner's phone photo, read in another session; the photo is not in the repo): no relay back plate. The board sits alone in a metal housing and nothing is plugged into header H1.
+  - Silkscreen: "ESP32-4848S040" and the Guition logo. Next to the SD slot it reads "TF1 V1.2": TF1 is the SD slot's label, V1.2 is likely the board version. Date code "2525", likely 2025, week 25. Read from a photo, so not 100 % certain.
+  - Module: "sparkle IoT ESP32-S3", marked N16R8, with an external antenna on a u.FL cable running to an antenna strip at the bottom edge of the housing.
+  - On the board:
+    - CH340C USB-serial chip
+    - RST and BOOT buttons
+    - P1 4-pin socket (+5V, TX, RX, GND)
+    - P6 "BAT" battery socket with an IP5306 charger chip
+    - P7 "speak" speaker socket with an amplifier chip next to it
+    - microSD slot (TF1)
+    - an unfitted P2 footprint between the buttons
+  - Not done yet: the optional pin finder.
 
 - **14.10.2026 · stage 0 firmware ready**
   - The board-check firmware (`firmware/kitchen-scale`, v0.1.0) builds with PlatformIO in the cloud session: 396 KB, no warnings from our files.
@@ -144,6 +155,11 @@ Confidence: **C** = a primary source confirms it; **L** = likely (community sour
   - left column: GND plus three unlabelled pins, likely GPIO 40/2/1 **L**
 - **Test pad S3** = +3.2 V. **C**
 - **Relay back plate (mains power):** don't use it in the scale. One owner found its safety parts missing from the factory. Power the scale over USB-C only. **C**
+- **Board version:** the source photo behind these facts showed a V1.0 board; the owner's board is V1.2. **C** (owner's photo)
+  - "TF1" is the SD slot's label, not the board revision.
+  - Screen and touch work the same on both versions (stage 0 on the owner's board).
+- **Battery socket:** the board has one (P6, IP5306 charger chip), so a battery-powered scale is possible later. **C** (owner's photo)
+- **Metal housing:** it may weaken Wi-Fi; plan the antenna's position in the final enclosure. **L**
 
 Sources:
 - [rzeldent board files](https://github.com/rzeldent/platformio-espressif32-sunton) and their [back photo](https://github.com/rzeldent/platformio-espressif32-sunton/blob/main/assets/images/esp32-4848S040C-back.jpg)
@@ -284,8 +300,10 @@ Owner's answers, 14.10.2026:
 
 ## Open questions
 
-1. **Relay back plate:** does the display board have one (a second board with screw terminals)? The photos in stage 0 will show it.
-2. **Exact part names:** the ESP32-S3 dev board, the Uno (R3 or R4), the HX711's colour, the load cell's capacity. Read them off the parts when they're out on the table.
+1. **Exact part names:** the ESP32-S3 dev board, the Uno (R3 or R4), the HX711's colour, the load cell's capacity. Read them off the parts when they're out on the table.
+2. **GPIO 40/2/1:** do they reach header H1 or the speaker amplifier? Small 0 Ω resistors on the board decide this; the pin finder test will show it.
+
+Closed: **Relay back plate**: none (owner's photo of the back, 14.10.2026).
 
 ## Flashing from the Mac (stage 0)
 
