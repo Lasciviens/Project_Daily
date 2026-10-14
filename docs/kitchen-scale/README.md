@@ -4,11 +4,28 @@ A home-made Wi-Fi kitchen scale with its own touchscreen. You pick a food (or sc
 
 This file is the project's one place for the parts in hand, the checked hardware facts, the design, the plan and the progress log. Update it in the same PR as any work on the scale.
 
-**Status (14.10.2026):** stage 0 is ready to flash. The board-check firmware compiles; nothing has been flashed, wired or built yet. Nothing in the app, the database or the edge functions has changed for the scale.
+**Status (14.10.2026):** stage 0 board check passed on the owner's display board: chip, 16 MB flash, 8 MB PSRAM, screen and touch all work. Still open for stage 0: photos of the board and the relay back plate question. Nothing has been wired or built yet. Nothing in the app, the database or the edge functions has changed for the scale.
 
 ## Progress log
 
 Newest on top. One entry per real step: what was done, what was run or measured, what it showed.
+
+- **14.10.2026 · stage 0 flashed and checked on the board**
+  - Setup on the Mac: VS Code 1.141.2 + PlatformIO IDE 3.3.4, PlatformIO Core 6.2.0 (same as CI).
+  - `pio run -e display` built locally: 396,144 bytes, no warnings from our files. Uploaded over USB-C on the first try; the CH340 (USB VID:PID 1A86:7523) worked with macOS's built-in driver, no extra install.
+  - esptool at upload: ESP32-S3 (QFN56) revision v0.2, embedded PSRAM 8 MB, 40 MHz crystal, flash auto-detected as 16 MB. All four images written and hash-verified.
+  - Serial log after a reset (115200 baud):
+    ```
+    Kitchen scale - stage 0 board check - v0.1.0
+    Chip: ESP32-S3 rev 2, 2 cores, 240 MHz
+    Flash: 16777216 bytes, PSRAM: 8388608 bytes (8384788 free)
+    Screen: started
+    Touch: GT911 at 0x5D
+    ```
+    This confirms the N16R8 module (16 MB flash, 8 MB PSRAM) and the GT911 at its usual address 0x5D.
+  - Screen (owner): the text shows clearly, the Chip, Flash and PSRAM lines are right, and "Touch: GT911 found" is green. The 12 MHz pixel clock gives no visible glitches.
+  - Touch (owner + serial log): the dot appears right under the finger, with no mirroring or rotation. Taps on the four corners of the drawing box (y 200–380, x 22–458) came back as about (40, 215) top left, (438, 214) top right, (434, 366) bottom right and (40, 377) bottom left.
+  - Not done yet: photos of both sides of the board, whether a relay back plate is fitted (not checked yet), and the optional pin finder.
 
 - **14.10.2026 · stage 0 firmware ready**
   - The board-check firmware (`firmware/kitchen-scale`, v0.1.0) builds with PlatformIO in the cloud session: 396 KB, no warnings from our files.
