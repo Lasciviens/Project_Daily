@@ -5,11 +5,13 @@ import { Button, SectionLabel, SkeletonText, ToneDot } from '../../../shared/ui'
 import { useUndoPlan, useUndoSave } from '../hooks/useUndoSave'
 import { describeUndoPlan, type UndoLine } from './undoPlanText'
 
-// The preview before "Undo this save" (migration 150): what was changed again
-// later comes first (Undo would overwrite it), then what can't be undone,
-// then what changes — then Undo / Cancel. The plan is the database's own trial
-// run, so what is listed is what runs; if anything changes in between, the
-// database refuses and the plan is read again.
+// The preview before "Undo this save" (migrations 150/151): what was changed
+// again later comes first (Undo would overwrite it), then what goes to Trakt
+// or Google, then what can't be undone, then what changes — then Undo /
+// Cancel. The plan is the database's own trial run, so what is listed is
+// what runs; if anything changes in between, the database refuses and the
+// plan is read again. Rendered by the app shell's popup host (entity kind
+// `undo-save`), so it opens from any screen.
 
 const CONFLICTS_SHOWN = 5
 
@@ -48,32 +50,23 @@ function Section({ label, lines, cap }: { label: string; lines: UndoLine[]; cap?
   )
 }
 
-/**
- * `onUndoAgain` opens this sheet for the undo's own save — the result toast's
- * Undo, so taking an undo back gets the same preview first.
- */
-export function UndoSaveSheet({ txId, onClose, onUndoAgain }: {
-  txId: number | null
-  onClose: () => void
-  onUndoAgain: (txId: number) => void
-}) {
-  const plan = useUndoPlan(txId)
-  const undo = useUndoSave(onUndoAgain)
-  // The last plan stays on screen while the sheet closes; a new save never shows another save's plan.
-  const data = txId === null || !plan.isPlaceholderData ? plan.data : undefined
+export function UndoSaveSheet({ txId, onClose }: { txId: number; onClose: () => void }) {
+  // Once the undo has run, the sheet closes and its plan is not read again.
+  const [closing, setClosing] = useState(false)
+  const plan = useUndoPlan(txId, { enabled: !closing })
+  const undo = useUndoSave({ onApplied: () => { setClosing(true); onClose() } })
+  const data = plan.data
   const view = data ? describeUndoPlan(data) : null
   const busy = undo.isPending
 
   async function run() {
-    if (!data || txId === null) return
+    if (!data) return
     try {
       await undo.mutateAsync({ txId, confirm: data.confirm })
     } catch {
       // the hook said why (e.g. changed since the preview): show the plan as it is now
       void plan.refetch()
-      return
     }
-    onClose()
   }
 
   let body
@@ -90,24 +83,27 @@ export function UndoSaveSheet({ txId, onClose, onUndoAgain }: {
     body = (
       <div className="flex flex-col gap-4">
         {view.error && <p data-tone="danger" className="tone-soft rounded-row px-3 py-2 text-body">{view.error}</p>}
+        {view.hint && <p data-tone="info" className="tone-soft rounded-row px-3 py-1.5 text-meta text-fg-2">{view.hint}</p>}
         {view.nothingToDo && (
           <p className="text-body text-fg-2">Nothing to undo — everything this save changed is already as it was.</p>
         )}
         <Section label="Changed again later" lines={view.conflicts} cap={CONFLICTS_SHOWN} />
         <Section label="Not exactly as before" lines={view.drift} cap={CONFLICTS_SHOWN} />
+        <Section label="Outside the app" lines={view.outside} />
         <Section label="Can't be undone" lines={view.blocked} />
         <Section label="What Undo changes" lines={view.changes} />
         <Section label="Also affected" lines={view.also} cap={CONFLICTS_SHOWN} />
-        <ul className="flex list-disc flex-col gap-0.5 pl-4 text-meta text-fg-muted">
-          {view.notes.map(note => <li key={note}>{note}</li>)}
-        </ul>
+        {view.notes.length > 0 && (
+          <ul className="flex list-disc flex-col gap-0.5 pl-4 text-meta text-fg-muted">
+            {view.notes.map(note => <li key={note}>{note}</li>)}
+          </ul>
+        )}
       </div>
     )
   }
 
   return (
     <ModalShell
-      open={txId !== null}
       onClose={onClose}
       size="md"
       dismissible={!busy}

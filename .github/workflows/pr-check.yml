@@ -126,8 +126,10 @@ jobs:
         env:
           DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
 
-      # Migration 150's "Undo this save" (plan, conflicts, confirm, one
-      # transaction, undo of the undo, blocked changes, row level security).
+      # Migrations 150/151's "Undo this save" (plan, conflicts, confirm, one
+      # transaction, undo of the undo, blocked changes, row level security;
+      # outside services, side effects, a save racing the undo via dblink,
+      # and the undo of watch changes on a second database with 149).
       - name: Undo a save database scenarios
         run: node scripts/verify-db-undo-save.mjs
         env:

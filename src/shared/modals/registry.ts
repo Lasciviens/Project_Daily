@@ -42,5 +42,6 @@ export const MODAL_REGISTRY: { [K in ModalKind]: Entry<K> } = {
   'project-item':   L('project-item', () => import('../../features/projects/modals/ProjectItemEntityModal').then(m => m.ProjectItemEntityModal)),
   'memory':         L('memory', () => import('../../features/ai/modals/MemoryEntityModal').then(m => m.MemoryEntityModal)),
   'book':           L('book', () => import('../../features/books/modals/BookEntityModal').then(m => m.BookEntityModal)),
+  'undo-save':      L('undo-save', () => import('../../features/developer/modals/UndoSaveEntityModal').then(m => m.UndoSaveEntityModal)),
   'confirm':        L('confirm', () => import('./ConfirmModal').then(m => m.ConfirmModal)),
 }

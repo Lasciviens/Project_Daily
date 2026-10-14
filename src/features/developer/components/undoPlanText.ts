@@ -1,10 +1,13 @@
-import type { UndoBlocked, UndoCollateral, UndoConflict, UndoDrift, UndoPlan, UndoTable } from '../api/undoSaveApi'
+import type {
+  UndoBlocked, UndoCollateral, UndoConflict, UndoDrift, UndoNearby, UndoOutbox, UndoPlan, UndoService, UndoSideEffect, UndoTable,
+} from '../api/undoSaveApi'
 import { formatDate, formatDateTime, formatTime } from '../../../shared/utils/dateFormat'
 import { friendlyTable } from './activityLogMeta'
 
-// "Undo this save" in plain words (migration 150's plan → the preview's
+// "Undo this save" in plain words (migrations 150/151's plan → the preview's
 // lines). Pure, so verify-undo-plan-text runs it against real plans' shapes.
-// Conflicts come first, then what can't be undone, then what changes.
+// Conflicts come first, then what goes outside the app, then what can't be
+// undone, then what changes.
 
 export type UndoTone = 'warn' | 'danger' | 'neutral'
 
@@ -18,15 +21,19 @@ export interface UndoLine {
 export interface UndoPlanView {
   /** "73 changes · 14.10.2026 10:30 · You" */
   subtitle: string
+  /** Other saves seconds from this one (one Spread makes up to three): undo them too. */
+  hint: string | null
   /** Rows changed again later: Undo overwrites or deletes something newer. */
   conflicts: UndoLine[]
   /** Rows a database rule changes again right after Undo. */
   drift: UndoLine[]
+  /** What Undo changes on Trakt / Google, and a sync's save. */
+  outside: UndoLine[]
   /** Parts of the save Undo can't take back. */
   blocked: UndoLine[]
   /** What Undo changes, table by table. */
   changes: UndoLine[]
-  /** What Undo's deletes take with them that the save didn't make. */
+  /** What Undo's deletes take with them that the save didn't make, and rows a rule changes besides. */
   also: UndoLine[]
   notes: string[]
   /** Why Undo can't run at all, as things are. */
@@ -38,6 +45,7 @@ export interface UndoPlanView {
 }
 
 const n = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`
+const cap = (s: string) => s[0].toUpperCase() + s.slice(1)
 
 // Names that keep their capital in the middle of a sentence.
 const PROPER = /^(TV|Kobo|ScreenScraper|GIF)\b/
@@ -66,6 +74,12 @@ function columnList(columns: readonly string[], max = 3): string {
   return columns.length > max ? `${shown.join(', ')} +${columns.length - max} more` : shown.join(', ')
 }
 
+/** «a», «b», «c» +2 more */
+function nameList(names: readonly string[], max = 3): string {
+  const shown = names.slice(0, max).map(x => `«${x}»`).join(', ')
+  return names.length > max ? `${shown} +${names.length - max} more` : shown
+}
+
 /** A stored value, shortly: dates as DD.MM.YYYY (HH:MM), empty as "empty". */
 export function valueText(v: unknown): string {
   if (v === null || v === undefined || v === '') return 'empty'
@@ -87,8 +101,8 @@ function laterWhen(at: string, saveAt: string): string {
   return formatDate(at) === formatDate(saveAt) ? formatTime(at) : formatDateTime(at)
 }
 
-const nameOf = (c: { t: string; id: string | null; label: string | null }) =>
-  `${friendlyTable(c.t)} «${c.label ?? (c.id ? `#${c.id.slice(0, 8)}` : '—')}»`
+const rowName = (c: { id: string | null; label: string | null }) => c.label ?? (c.id ? `#${c.id.slice(0, 8)}` : '—')
+const nameOf = (c: { t: string; id: string | null; label: string | null }) => `${friendlyTable(c.t)} «${rowName(c)}»`
 
 function conflictLine(c: UndoConflict, saveAt: string): UndoLine {
   // The last later save that touched these columns (or the row), if the log has it.
@@ -122,9 +136,24 @@ function blockedLine(b: UndoBlocked): UndoLine {
       return { tone: 'danger', text: `${changes} to ${tableNoun(b.t ?? '?', 2)} — you may not read that table` }
     case 'unreadable':
       return { tone: 'danger', text: `${changes} to ${tableNoun(b.t ?? '?', 2)} — the old values no longer fit the table`, detail: b.detail }
+    case 'order_unknown': {
+      const rows = b.rows ?? 1
+      const names = b.labels?.length ? ` (${nameList(b.labels)})` : ''
+      return { tone: 'danger', text: `${n(rows, tableNoun(b.t ?? '?', 1), tableNoun(b.t ?? '?', 2))}${names} changed more than once in this save, order unknown — Undo leaves ${rows === 1 ? 'it' : 'them'} as ${rows === 1 ? 'it is' : 'they are'}` }
+    }
     default:
       return { tone: 'danger', text: `${changes} to ${tableNoun(b.t ?? '?', 2)} — rows without an id can't be undone` }
   }
+}
+
+function notLoggedLine(x: UndoPlan['not_logged'][number]): UndoLine {
+  const rows = cap(tableNoun(x.t, 2))
+  const count = x.rows ?? 1
+  const parent = count === 1 ? `a deleted ${tableNoun(x.parent, 1)}` : `${count} deleted ${tableNoun(x.parent, count)}`
+  const had = count === 1 ? 'if it had any' : 'if they had any'
+  return x.how === 'unlinked'
+    ? { tone: 'danger', text: `${rows} that pointed at ${parent} aren't in the log — ${had}, they stay unlinked` }
+    : { tone: 'danger', text: `${rows} of ${parent} aren't in the log — ${had}, they can't come back` }
 }
 
 function driftLine(d: UndoDrift): UndoLine {
@@ -155,17 +184,129 @@ function alsoLines(rows: readonly UndoCollateral[]): UndoLine[] {
     const { how, t } = g[0]
     if (how === 'hidden') return { tone: 'warn', text: `${HOW.hidden}: rows of ${tableNoun(t, 2)} you can't see` }
     if (how === 'too_big') return { tone: 'warn', text: `Too much goes with ${tableNoun(t, 2)} to list it all` }
-    const names = g.slice(0, 3).map(r => `«${r.label ?? (r.id ? `#${r.id.slice(0, 8)}` : '—')}»`).join(', ')
-    const more = g.length > 3 ? ` +${g.length - 3} more` : ''
-    return { tone: 'warn', text: `${HOW[how]}: ${g.length} ${tableNoun(t, g.length)} not made by this save (${names}${more})` }
+    return { tone: 'warn', text: `${HOW[how]}: ${g.length} ${tableNoun(t, g.length)} not made by this save (${nameList(g.map(rowName))})` }
   })
 }
 
-// Linked services follow the database's own triggers and the app's Undo
-// follow-ups: an undo of a synced change sends the reverse change there.
-const SYNCED: Record<string, string> = {
-  tasks: 'Google Tasks', time_blocks: 'Google Calendar', schedule_blocks: 'Google Calendar',
-  user_movie_entries: 'Trakt', user_tv_entries: 'Trakt', user_tv_episodes: 'Trakt',
+const SIDE_VERB: Record<UndoSideEffect['op'], string> = { DELETE: 'deleted', INSERT: 'made', UPDATE: 'changed' }
+
+/** Rows a rule (a trigger between tables) changes while Undo runs, grouped. */
+function sideLines(rows: readonly UndoSideEffect[], hidden: number): UndoLine[] {
+  const groups = new Map<string, UndoSideEffect[]>()
+  for (const r of rows) groups.set(`${r.op}:${r.t}`, [...(groups.get(`${r.op}:${r.t}`) ?? []), r])
+  const out: UndoLine[] = [...groups.values()].map(g => {
+    const { op, t } = g[0]
+    const cols = op === 'UPDATE' ? [...new Set(g.flatMap(r => r.columns ?? []))] : []
+    return {
+      tone: 'warn' as const,
+      text: `Also ${SIDE_VERB[op]} by a database rule: ${g.length} ${tableNoun(t, g.length)} (${nameList(g.map(rowName))})${cols.length ? ` · ${columnList(cols)}` : ''}`,
+    }
+  })
+  if (hidden > 0) out.push({ tone: 'warn', text: `${n(hidden, 'more change', 'more changes')} a database rule makes ${hidden === 1 ? "isn't" : "aren't"} in your log` })
+  return out
+}
+
+/**
+ * The table → outside service map: an undo of a change to one of these goes
+ * there too. Kept in step with app_undo_synced (migration 151) —
+ * verify-undo-plan-text compares the two.
+ */
+export const SYNCED: Record<string, UndoService> = {
+  tasks: 'google_tasks', time_blocks: 'google_calendar', schedule_blocks: 'google_calendar',
+  user_movie_entries: 'trakt', user_tv_entries: 'trakt', user_tv_episodes: 'trakt', media_watches: 'trakt',
+}
+
+export const SERVICE_NAME: Record<UndoService, string> = {
+  trakt: 'Trakt', google_tasks: 'Google Tasks', google_calendar: 'Google Calendar',
+}
+
+const SERVICE_ORDER: UndoService[] = ['trakt', 'google_tasks', 'google_calendar']
+
+function joinAnd(items: readonly string[]): string {
+  return items.length <= 1 ? items.join('') : `${items.slice(0, -1).join(', ')} and ${items.at(-1)}`
+}
+
+/** Trakt's outbox kinds in plain words; a whole-item remove gets a line of its own. */
+function traktLines(rows: readonly UndoOutbox[]): UndoLine[] {
+  const count = (...ops: string[]) => rows.filter(r => ops.includes(r.op)).reduce((s, r) => s + r.n, 0)
+  const out: UndoLine[] = []
+  const whole = rows.find(r => r.op === 'history_remove')
+  if (whole) {
+    const items = whole.items?.length ? ` (${nameList(whole.items)})` : ''
+    out.push({ tone: 'danger', text: `Trakt: every play of ${n(whole.n, 'item', 'items')}${items} is removed there — this can't be undone on Trakt` })
+  }
+  const parts: string[] = []
+  const removed = count('history_remove_play')
+  const added = count('history_add')
+  if (removed && added) parts.push(`${n(removed, 'play', 'plays')} removed and ${added} added at the restored dates`)
+  else if (removed) parts.push(`${n(removed, 'play', 'plays')} removed`)
+  else if (added) parts.push(`${n(added, 'play', 'plays')} added at the restored dates`)
+  const watchlist = count('watchlist_add', 'watchlist_remove')
+  if (watchlist) parts.push(`${n(watchlist, 'watchlist change', 'watchlist changes')}`)
+  const ratings = count('rating_add', 'rating_remove')
+  if (ratings) parts.push(`${n(ratings, 'rating', 'ratings')} changed`)
+  const notes = count('note_set', 'note_remove')
+  if (notes) parts.push(`${n(notes, 'note', 'notes')} changed`)
+  const dropped = count('dropped_add', 'dropped_remove')
+  if (dropped) parts.push(`${n(dropped, 'dropped mark', 'dropped marks')} changed`)
+  const known = ['history_remove', 'history_remove_play', 'history_add', 'watchlist_add', 'watchlist_remove', 'rating_add', 'rating_remove',
+    'note_set', 'note_remove', 'dropped_add', 'dropped_remove']
+  const other = rows.filter(r => !known.includes(r.op)).reduce((s, r) => s + r.n, 0)
+  if (other) parts.push(`${n(other, 'other change', 'other changes')}`)
+  if (parts.length) out.push({ tone: 'danger', text: `Trakt: ${parts.join(' · ')}` })
+  return out
+}
+
+const GOOGLE_WORDS: Record<'google_tasks' | 'google_calendar', { one: string; many: string; ops: Record<string, string> }> = {
+  google_tasks: { one: 'task', many: 'tasks', ops: { create: 'added', update: 'changed', delete: 'removed' } },
+  google_calendar: { one: 'event', many: 'events', ops: { create: 'added', update: 'changed', delete: 'removed' } },
+}
+
+function googleLine(s: 'google_tasks' | 'google_calendar', rows: readonly UndoOutbox[]): UndoLine {
+  const w = GOOGLE_WORDS[s]
+  const parts = rows.map(r => `${n(r.n, w.one, w.many)} ${w.ops[r.op] ?? r.op}`)
+  return { tone: 'danger', text: `${SERVICE_NAME[s]}: ${parts.join(' · ')}` }
+}
+
+/** What goes to Trakt / Google (the trial run's own outbox rows), and a sync's save. */
+function outsideLines(plan: UndoPlan): UndoLine[] {
+  const out: UndoLine[] = []
+  const outbox = plan.outbox ?? []
+  for (const s of SERVICE_ORDER) {
+    const rows = outbox.filter(r => r.s === s)
+    if (!rows.length) continue
+    if (s === 'trakt') out.push(...traktLines(rows))
+    else out.push(googleLine(s, rows))
+  }
+  const synced = [...new Set((plan.sync_save ?? []).map(t => SYNCED[t]).filter(Boolean))]
+    .sort((a, b) => SERVICE_ORDER.indexOf(a) - SERVICE_ORDER.indexOf(b))
+    .map(s => SERVICE_NAME[s])
+  if (synced.length) {
+    out.push({ tone: 'danger', text: `This save came from AI / sync, not from you. Undoing it changes ${joinAnd(synced)} too, and that can't be undone there` })
+  }
+  return out
+}
+
+/** One line: saves seconds from this one, by the same actor, on the same tables (one Spread makes up to three). */
+export function nearbyHint(nearby: readonly UndoNearby[] | undefined): string | null {
+  const after = (nearby ?? []).filter(x => x.when === 'after').length
+  const before = (nearby ?? []).filter(x => x.when === 'before').length
+  if (!after && !before) return null
+  if (after) {
+    const also = before ? ` and ${before} before` : ''
+    return `${n(after, 'more save', 'more saves')} seconds after this one${also} (same Spread?) — undo ${after + before === 1 ? 'it' : 'them'} too, newest first`
+  }
+  return `${n(before, 'more save', 'more saves')} seconds before this one (same Spread?) — undo ${before === 1 ? 'it' : 'them'} too, after this one`
+}
+
+/** The fields of a slot its Google Calendar event shows (useUndoSave → followUndo moves the event when one goes back). */
+export const CALENDAR_FIELDS = ['date', 'start_time', 'title', 'duration_minutes'] as const
+
+/** Slots and plans whose Google Calendar event the browser makes or moves after Undo (followUndo). */
+function followsCalendar(t: UndoTable): boolean {
+  if (t.t === 'schedule_blocks') return t.reinsert + t.revert + t.overwrite > 0
+  if (t.t !== 'time_blocks') return false
+  return t.reinsert > 0 || (t.revert + t.overwrite > 0 && t.columns.some(c => (CALENDAR_FIELDS as readonly string[]).includes(c)))
 }
 
 function notesOf(plan: UndoPlan): string[] {
@@ -184,11 +325,9 @@ function notesOf(plan: UndoPlan): string[] {
       notes.push(`${friendlyTable(t.t)} changes are no longer logged — this undo can't be undone itself`)
     }
   }
-  const services = [...new Set(plan.tables
-    .filter(t => t.revert + t.reinsert + t.delete + t.overwrite > 0 && SYNCED[t.t])
-    .map(t => SYNCED[t.t]))]
-  if (services.length) notes.push(`${services.join(' and ')} ${services.length === 1 ? 'gets' : 'get'} the reverse change too`)
-  notes.push('Only what the activity log keeps can be undone — synced data (Hevy, Health, Strava) isn\'t in it')
+  if (plan.tables.some(followsCalendar)) {
+    notes.push('Slots and plans put back or moved back get their Google Calendar event again, if they had one')
+  }
   return notes
 }
 
@@ -198,30 +337,26 @@ const ERRORS: Record<string, string> = {
   '23514': 'an old value breaks a rule of the table now',
   '23502': 'a value the table now needs is missing',
   '42501': 'some of these rows may not be changed',
+  '57014': 'this save is too big to undo here',
   UD004: 'a row can\'t be written back (gone, or not yours)',
 }
 
 export function describeUndoPlan(plan: UndoPlan): UndoPlanView {
   const who = plan.actors.includes('web') ? (plan.actors.includes('service') ? 'You and AI / sync' : 'You') : 'AI / sync'
-  const blocked = [
-    ...plan.blocked.map(blockedLine),
-    ...plan.not_logged.map(x => {
-      const rows = tableNoun(x.t, 2)
-      return {
-        tone: 'danger' as const,
-        text: `${rows[0].toUpperCase()}${rows.slice(1)} that went with a deleted ${tableNoun(x.parent, 1)} aren't in the log — they can't come back`,
-      }
-    }),
-  ]
+  // `?? []`: a plan from before migration 151 lacks these (remove once 151 is live everywhere).
+  const notLogged = plan.not_logged ?? []
+  const blocked = [...plan.blocked.map(blockedLine), ...notLogged.map(notLoggedLine)]
   const error = plan.error ? `Undo can't run: ${ERRORS[plan.error.code] ?? plan.error.message}` : null
-  const nothingToDo = plan.steps === 0 && plan.conflicts.length === 0 && plan.blocked.length === 0 && !plan.not_logged.length
+  const nothingToDo = plan.steps === 0 && plan.conflicts.length === 0 && plan.blocked.length === 0 && !notLogged.length
   return {
     subtitle: [n(plan.changes, 'change', 'changes'), formatDateTime(plan.at), who].filter(Boolean).join(' · '),
+    hint: nearbyHint(plan.nearby),
     conflicts: plan.conflicts.map(c => conflictLine(c, plan.at)),
     drift: (plan.drift ?? []).map(driftLine),
+    outside: outsideLines(plan),
     blocked,
     changes: plan.tables.flatMap(tableLines),
-    also: alsoLines(plan.collateral),
+    also: [...alsoLines(plan.collateral), ...sideLines(plan.side_effects ?? [], plan.side_hidden ?? 0)],
     notes: notesOf(plan),
     error,
     nothingToDo,
@@ -240,4 +375,12 @@ export function undoneCount(plan: UndoPlan): number {
 export function undoDoneMessage(plan: UndoPlan): string {
   const count = undoneCount(plan)
   return count === 0 ? 'Nothing to undo — already as before' : `Save undone · ${n(count, 'change', 'changes')} put back`
+}
+
+/** The undo changed media rows: Trakt should hear about it soon (the outbox drains on a sync). */
+export function touchesTrakt(plan: UndoPlan): boolean {
+  const r = plan.result
+  if (!r) return false
+  const tables = [...r.reverted_rows.map(x => x.t), ...r.reinserted_rows.map(x => x.t), ...r.deleted_rows.map(g => g.table)]
+  return tables.some(t => SYNCED[t] === 'trakt') || (plan.outbox ?? []).some(o => o.s === 'trakt')
 }

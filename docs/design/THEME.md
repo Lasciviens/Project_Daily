@@ -70,7 +70,9 @@ All tokens are RGB triplets (`--ink-900: 15 23 42`) so Tailwind's `/alpha` modif
 The legacy names (`cream-*`, `ink-*`, `canvas`) are kept because thousands of existing classes use
 them; they resolve to the same variables. **New code uses the semantic names.** Never use
 `text-white` for text on a filled accent — use `text-on-accent` (a yellow accent needs dark text).
-`text-white` is still correct over a photo or on `bg-danger`.
+Text on a filled `bg-danger` (the danger button, `.btn-danger`) is `text-on-danger` (`--on-danger`):
+white on the light theme's red, near-black on the dark theme's lighter red, where white is only
+2.6:1. `text-white` is still correct over a photo.
 
 ### 2.3 Accent
 
