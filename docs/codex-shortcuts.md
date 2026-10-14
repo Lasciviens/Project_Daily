@@ -59,7 +59,7 @@
 
 | Files | Claimed by | Task | Since |
 |---|---|---|---|
-| — nothing claimed — | | | |
+| `docs/kitchen-scale/` (and the planned `firmware/kitchen-scale/`) | Claude | Kitchen scale project | 14.10.2026 |
 
 ## Tasks
 > Status: `todo` / `in progress` / `blocked` / `done`. Claude edits these. Every
