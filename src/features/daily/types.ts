@@ -34,6 +34,9 @@ export interface ScheduleBlock {
   /** The zone the series is expanded in — set when it is created; only a
    *  save from the planner changes it (background pushes reuse it). */
   google_calendar_time_zone?: string | null
+  /** The day it was added to Google Calendar (148): the series starts on its
+   *  first day on or after this, not at effective_from. Missing before 148. */
+  google_calendar_from?: string | null
   created_at:   string
   updated_at:   string
 }

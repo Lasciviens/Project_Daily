@@ -61,7 +61,8 @@ type OrderFields = Partial<Pick<Task, 'sort_order' | 'created_at'>>
  * - closed that day (done or cancelled — so what you finished shows where you
  *   finished it, whatever its section or due date);
  * - on today only, every open task that is overdue, whatever its section,
- *   and an undated task parked in the Today section (it IS today's work).
+ *   and an undated task parked in the Today section (it IS today's work —
+ *   an undated Google import is filed there, migration 148).
  */
 export function onDay(task: DayFields, day: string, today: string): boolean {
   if (task.due_date === day) return true

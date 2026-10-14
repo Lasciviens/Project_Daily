@@ -67,6 +67,35 @@ eq(R.onDay(task({ section: 'this_week' }), '2026-10-14', TODAY), false, 'nor und
 eq(R.onDay(task({ due_date: '2026-10-11' }), '2026-10-11', TODAY), true, 'an open task due yesterday is on yesterday too')
 eq(R.onDay(task({ status: 'done', due_date: TODAY, completed_at: at('2026-10-11') }), '2026-10-11', TODAY), true, 'done early: on the day it was finished')
 
+// ── A Google task without a date is today's work (owner, 14.10.2026; migration 148) ──
+{
+  // The import files it under Today; from there the one Today rule shows it.
+  const g = task({ section: 'today', google_task_id: 'g-undated' })
+  eq(onToday(g), true, 'an undated Google import (filed under Today) is on Today')
+  eq(R.onDay(g, '2026-10-13', TODAY), false, '…and never on another day')
+  const groups = R.taskGroups([g, task({ section: 'inbox', google_task_id: 'g-dated', due_date: '2026-10-20' })], TODAY)
+  eq([groups.today.map(t => t.google_task_id), groups.noDate.length, groups.upcoming.map(t => t.google_task_id)], [['g-undated'], 0, ['g-dated']],
+    'Tasks tab: the undated import is under Today, not No date; a dated one under Upcoming')
+  // google_task_id alone is not "came from Google": the app pushes its own
+  // tasks there too, so an undated Backlog task the app pushed stays off Today.
+  eq(onToday(task({ section: 'backlog', google_task_id: 'g-pushed' })), false, 'a pushed undated Backlog task is not today\'s')
+
+  const root = path.join(__dirname, '..')
+  const read = f => fs.readFileSync(path.join(root, f), 'utf8')
+  const migs = fs.readdirSync(path.join(root, 'supabase/migrations')).filter(f => /^\d+_.*\.sql$/.test(f)).sort()
+  const upsert = migs.filter(f => /create or replace function public\.upsert_task_from_google\(/i.test(read(`supabase/migrations/${f}`))).pop()
+  eq(/case when p_due_date is null then 'today' else 'inbox' end/.test(read(`supabase/migrations/${upsert}`)), true,
+    `the newest upsert_task_from_google (${upsert}) files an undated import under Today`)
+  // The day reads find it by its section — keep that term in each of them.
+  const count = (f, s) => read(f).split(s).length - 1
+  eq(count('src/features/todo/api/tasksApi.ts', 'and(due_date.is.null,section.eq.today)'), 1, 'fetchTasksForDay reads undated Today rows')
+  eq([
+    count('supabase/functions/phone-gateway/index.ts', '.or(`section.eq.today,due_date.eq.${today}`)'),
+    count('supabase/functions/push-send/index.ts', '.or(`section.eq.today,due_date.eq.${today}`)'),
+    count('supabase/functions/ai-proxy/index.ts', '.or(`section.eq.today,due_date.eq.${date}`)'),
+  ], [2, 1, 1], 'the server-side today lists (phone-gateway ×2, push-send, ai-proxy) read the Today section')
+}
+
 // ── One day's list ──
 {
   seq = 0

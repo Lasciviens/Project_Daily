@@ -11,8 +11,8 @@ import { classifyCalendarPushFailure, type TimeBlockCalendarStatus } from '../..
 import type { ScheduleBlock } from '../../daily/types'
 import type { CalendarEvent } from '../types'
 import {
-  addPendingSeries, needsHorizonTopUp, parsePendingSeries, seriesEventFor, seriesPushZone,
-  SERIES_PENDING_KEY, type PendingSeries, type SeriesPlan,
+  addPendingSeries, isBeforeSeriesStart, needsHorizonTopUp, needsSeriesFromDay, parsePendingSeries, plansToAddToCalendar,
+  seriesEventForPush, seriesPushZone, SERIES_PENDING_KEY, type PendingSeries, type SeriesPlan,
 } from '../calendarSeries'
 import {
   blockEventId, createCalendarEvent, deleteCalendarEvent, getCalendarEvent, isCalendarConflict, isCalendarNotFound,
@@ -41,6 +41,8 @@ import { linkBlockCalendarEvent } from './linkBlockCalendarEvent'
 //      and cleared only while it still names this one (scheduleApi);
 //    · the zone: a save from the planner uses the device's, every other push
 //      the series' own (seriesPushZone);
+//    · the start: the plan's first day on or after the day it was added to
+//      Google (148, stored with the link) — never its past weeks;
 //    · a push Google didn't take from the background (a day carried over,
 //      Undo) is retried when the app next opens (the pending list).
 // ─────────────────────────────────────────────────────────────────────────────
@@ -48,14 +50,14 @@ import { linkBlockCalendarEvent } from './linkBlockCalendarEvent'
 type SeriesRow = Pick<ScheduleBlock,
   'id' | 'title' | 'start_time' | 'end_time' | 'days_of_week' | 'effective_from' | 'except_dates'
   | 'repeat_kind' | 'repeat_interval' | 'repeat_unit' | 'repeat_dates'
-  | 'google_calendar_event_id' | 'google_calendar_horizon' | 'google_calendar_time_zone'>
+  | 'google_calendar_event_id' | 'google_calendar_horizon' | 'google_calendar_time_zone' | 'google_calendar_from'>
 
 /** fromEditor: a save from the planner (may change the zone; reports failures).
  *  Every other caller is quiet and keeps the series' zone. */
 interface PushMode { fromEditor: boolean }
 
 const zoneFor = (row: SeriesRow, mode: PushMode) => seriesPushZone(row.google_calendar_time_zone, LOCAL_TZ, mode.fromEditor)
-const planFor = (row: SeriesRow, zone: string): SeriesPlan | null => seriesEventFor(row, { today: todayStr(), timeZone: zone })
+const planFor = (row: SeriesRow, zone: string): SeriesPlan | null => seriesEventForPush(row, { today: todayStr(), timeZone: zone })
 const message = (err: unknown) => (err as Error)?.message ?? String(err)
 
 function reportFailure(err: unknown, planId: string, mode: PushMode) {
@@ -153,10 +155,11 @@ async function pushSeries(row: SeriesRow, token: string, mode: PushMode): Promis
     reportFailure(err, row.id, mode)
     return 'unknown'
   }
-  if (plan.horizon !== (row.google_calendar_horizon ?? null) || zone !== row.google_calendar_time_zone) {
-    // The event is right; a failed note of how far it reaches (or its zone)
-    // only means the next app open pushes it again.
-    await setScheduleBlockCalendarLink(row.id, eventId, plan.horizon, zone)
+  if (plan.horizon !== (row.google_calendar_horizon ?? null) || zone !== row.google_calendar_time_zone
+      || plan.from !== (row.google_calendar_from ?? null)) {
+    // The event is right; a failed note of how far it reaches (its zone, the
+    // day it starts from) only means the next app open pushes it again.
+    await setScheduleBlockCalendarLink(row.id, eventId, plan.horizon, zone, plan.from)
       .catch(err => logError(`Calendar series: horizon not saved: ${message(err)}`, { planId: row.id }))
   }
   return 'linked'
@@ -182,7 +185,7 @@ export async function linkScheduleSeries(planId: string, mode: PushMode = { from
       return 'not_linked'
     }
     created = await createSeriesEvent(token, planId, plan)
-    if (await setScheduleBlockCalendarLink(planId, created.id, plan.horizon, zone)) return 'linked'
+    if (await setScheduleBlockCalendarLink(planId, created.id, plan.horizon, zone, plan.from)) return 'linked'
     // Another tab linked its own series meanwhile: that one stays, ours goes.
     await deleteCalendarEvent(token, 'primary', created.id).catch(err => {
       if (!isCalendarNotFound(err)) logError(`Calendar series: a second series not removed: ${message(err)}`, { planId })
@@ -250,9 +253,15 @@ async function linkDayEvent(blockId: string): Promise<boolean> {
   return true
 }
 
+/** The day this block replaces is before the plan's series starts on Google
+ *  (isBeforeSeriesStart): it stays off Google. */
+async function beforeSeriesStart(row: SeriesRow, blockId: string): Promise<boolean> {
+  return isBeforeSeriesStart(row, (await fetchTimeBlockWithTask(blockId))?.occurrence_date, todayStr())
+}
+
 async function carryOccurrence(planId: string, blockId: string): Promise<void> {
   const row = await fetchScheduleBlock(planId)
-  if (!row.google_calendar_event_id) return
+  if (!row.google_calendar_event_id || await beforeSeriesStart(row, blockId)) return
   const token = await ensureValidCalendarToken()
   const status = token ? await pushSeries(row, token, { fromEditor: false }) : 'unknown'
   // The day's own event only once the series left the day out — else Google
@@ -293,7 +302,7 @@ export function putSkippedDayBackOnCalendar(taskId: string): void {
     const b = await fetchTimeBlockByTaskId(taskId)
     if (!b?.schedule_block_id || b.google_calendar_event_id) return
     const plan = await fetchScheduleBlock(b.schedule_block_id)
-    if (!plan.google_calendar_event_id) return
+    if (!plan.google_calendar_event_id || await beforeSeriesStart(plan, b.id)) return
     if (!(await linkDayEvent(b.id))) deferSeries(plan.id, b.id, { warn: false })
   })().catch(err => logError(`Calendar: a day put back not linked again: ${message(err)}`, { taskId }))
 }
@@ -302,7 +311,9 @@ export function putSkippedDayBackOnCalendar(taskId: string): void {
 
 /** When the app opens with Google connected: the pushes Google didn't take
  *  (any kind) go again, then the monthly kinds whose RDATE list runs out
- *  within 90 days (needsHorizonTopUp). Quiet; what fails again waits. */
+ *  within 90 days (needsHorizonTopUp) and the series linked before 148 (no
+ *  start day stored: needsSeriesFromDay — pushed once from today, so Google
+ *  drops the past weeks it was given). Quiet; what fails again waits. */
 export async function topUpCalendarSeries(rows: readonly ScheduleBlock[]): Promise<void> {
   const token = await ensureValidCalendarToken()
   if (!token) return
@@ -332,7 +343,41 @@ export async function topUpCalendarSeries(rows: readonly ScheduleBlock[]): Promi
     writePending(keep ? [...others, keep] : others)
   }
   const today = todayStr()
-  for (const row of rows) if (!pushed.has(row.id) && needsHorizonTopUp(row, today)) await pushSeries(row, token, quiet)
+  for (const row of rows) {
+    if (!pushed.has(row.id) && (needsHorizonTopUp(row, today) || needsSeriesFromDay(row))) await pushSeries(row, token, quiet)
+  }
+}
+
+// ── Every plan at once (148) ─────────────────────────────────────────────────
+
+export interface AddPlansResult {
+  added:  number
+  /** Not taken by Google now: on the retry list (the next app open links them). */
+  failed: number
+}
+
+/**
+ * Settings → Subscriptions → Google, "Add plans to Calendar": every repeating
+ * plan not on Google Calendar yet gets its series, one after another, with
+ * the planner's own code (linkScheduleSeries — the same start rule: from
+ * today, never the plan's past weeks). Quiet per plan; the caller reports
+ * the counts once. A plan Google doesn't take now goes on the retry list as
+ * a re-link (`relink`), so the next app open adds it. Throws only when there
+ * is no Google connection to add with.
+ */
+export async function addPlansToCalendar(rows: readonly ScheduleBlock[]): Promise<AddPlansResult> {
+  if (!(await ensureValidCalendarToken())) throw new Error('Google is not connected — connect it on this card first')
+  const quiet: PushMode = { fromEditor: false }
+  const result: AddPlansResult = { added: 0, failed: 0 }
+  for (const row of plansToAddToCalendar(rows, todayStr())) {
+    const status = await linkScheduleSeries(row.id, quiet)
+    if (status === 'linked') result.added++
+    else if (status === 'unknown') {
+      result.failed++
+      deferSeries(row.id, null, { relink: true, warn: false })
+    }
+  }
+  return result
 }
 
 // ── Delete and Undo (the one delete flow, useDeleteScheduleBlock) ────────────

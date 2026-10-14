@@ -29,11 +29,15 @@
 //    except_dates      EXDATE (only days the rule really has — Google wants
 //                      an EXDATE to name a real occurrence).
 //
-//  Start = the rule's FIRST day on or after effective_from, not effective_from
-//  itself: RFC 5545 counts the start as an occurrence and leaves a start that
-//  doesn't fit the rule undefined (a Tuesday start for a Mon/Wed plan would
-//  put an extra Tuesday in Google). A first day that was taken out stays the
-//  start and gets an EXDATE, so skipping a day never moves the series.
+//  Start = the rule's FIRST day on or after the later of effective_from and
+//  the day the plan was added to Google (google_calendar_from, migration 148:
+//  owner, 14.10.2026 — a plan added today must not fill Google with its past
+//  weeks; the app's own projection still starts at effective_from). Never the
+//  day itself: RFC 5545 counts the start as an occurrence and leaves a start
+//  that doesn't fit the rule undefined (a Tuesday start for a Mon/Wed plan
+//  would put an extra Tuesday in Google). A first day that was taken out
+//  stays the start and gets an EXDATE, so skipping a day never moves the
+//  series.
 //
 //  A plan that crosses midnight (end before start, or equal = 24 h) ends on
 //  the next day — the same reading as dayAgendaProjection.ts.
@@ -64,6 +68,9 @@ export interface SeriesTemplate extends RepeatRule {
   google_calendar_horizon?:  string | null
   /** The zone the series was created in (147). */
   google_calendar_time_zone?: string | null
+  /** The day the plan was added to Google Calendar (148): its series starts
+   *  on the first real day on or after this. Missing before 148. */
+  google_calendar_from?: string | null
 }
 
 /** What events.insert / events.patch get. */
@@ -81,6 +88,9 @@ export interface SeriesPlan {
   /** Store on the row: the RDATE list's last day, or null when the event
    *  carries every occurrence (an RRULE, or all picked dates). */
   horizon: string | null
+  /** Store on the row: the day the series starts from (148), or null when
+   *  it starts at effective_from (no google_calendar_from given). */
+  from:    string | null
 }
 
 const BYDAY = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA']
@@ -145,10 +155,73 @@ export function seriesRrule(rule: RepeatRule): string | null {
 /** The rule's own pattern, with no day taken out. */
 const patternOf = (rule: RepeatRule): RepeatRule => ({ ...rule, except_dates: [] })
 
-/** The first day the rule's pattern has on or after its start (taken-out days count). */
-export function firstSeriesDay(rule: RepeatRule, today: string): string | null {
-  const from = isIsoDay(rule.effective_from) ? rule.effective_from : today
+/** The first day the rule's pattern has on or after its start — the later of
+ *  effective_from and the day it was added to Google (taken-out days count). */
+export function firstSeriesDay(rule: RepeatRule & Pick<SeriesTemplate, 'google_calendar_from'>, today: string): string | null {
+  const start = isIsoDay(rule.effective_from) ? rule.effective_from : today
+  const added = rule.google_calendar_from
+  const from = isIsoDay(added) && added > start ? added : start
   return nextOccurrences(patternOf(rule), from, 1, FIRST_DAY_SEARCH_DAYS)[0] ?? null
+}
+
+/** Whether the row comes from a database with 148's column (a `*` read carries it, null or not). */
+export function hasSeriesFromColumn(row: object): boolean {
+  return 'google_calendar_from' in row
+}
+
+/**
+ * The day a push starts the series from (148): the one stored with the link;
+ * else today — a new link, or a series linked before 148, which starts over
+ * from the day of this push. null without 148's column: the series then
+ * starts at effective_from, as before it.
+ */
+export function seriesFromDay(row: Pick<SeriesTemplate, 'google_calendar_from'>, today: string): string | null {
+  if (!hasSeriesFromColumn(row)) return null
+  return isIsoDay(row.google_calendar_from) ? row.google_calendar_from : today
+}
+
+/** A series linked before 148: no start day stored yet — the app pushes it
+ *  once when it opens, so Google drops the past weeks it was given. */
+export function needsSeriesFromDay(t: SeriesTemplate): boolean {
+  return !!t.google_calendar_event_id && hasSeriesFromColumn(t) && !isIsoDay(t.google_calendar_from)
+}
+
+/** The event a push sends today: seriesEventFor from the series' start day
+ *  (seriesFromDay) — what the plan's link stores as `from`. */
+export function seriesEventForPush(row: SeriesTemplate, opts: { today: string; timeZone: string }): SeriesPlan | null {
+  return seriesEventFor({ ...row, google_calendar_from: seriesFromDay(row, opts.today) }, opts)
+}
+
+/** A day of the plan before its series starts on Google (148: the day it was
+ *  added) was never there, so a change to it (done, moved, skipped, put
+ *  back) stays off Google too. */
+export function isBeforeSeriesStart(row: SeriesTemplate, day: string | null | undefined, today: string): boolean {
+  if (!isIsoDay(day)) return false
+  const first = firstSeriesDay({ ...row, google_calendar_from: seriesFromDay(row, today) }, today)
+  return !!first && day < first
+}
+
+/** The repeating plans one tap adds to Google Calendar (148): not on it yet,
+ *  with a day left to show from the day they would start there. */
+export function plansToAddToCalendar<T extends SeriesTemplate>(rows: readonly T[], today: string): T[] {
+  return rows.filter(r => !r.google_calendar_event_id
+    && seriesEventForPush(r, { today, timeZone: SERIES_FALLBACK_TIME_ZONE }) !== null)
+}
+
+const plans = (n: number) => `${n} repeating plan${n === 1 ? '' : 's'}`
+
+/** "Adding 6 repeating plans to Google Calendar…" */
+export function addPlansProgressText(count: number): string {
+  return `Adding ${plans(count)} to Google Calendar…`
+}
+
+/** The one result line of "Add plans to Calendar" ("Added 6 repeating plans
+ *  to Google Calendar · 1 failed — …"); a failed one waits on the retry list. */
+export function addPlansResultText(r: { added: number; failed: number }): string {
+  const retry = 'the app tries again the next time it opens'
+  if (!r.added && !r.failed) return 'Every repeating plan is already on Google Calendar'
+  if (!r.added) return `Couldn't add ${plans(r.failed)} to Google Calendar — ${retry}`
+  return `Added ${plans(r.added)} to Google Calendar${r.failed ? ` · ${r.failed} failed — ${retry}` : ''}`
 }
 
 /**
@@ -193,6 +266,7 @@ export function seriesEventFor(t: SeriesTemplate, opts: { today: string; timeZon
   return {
     first,
     horizon,
+    from: isIsoDay(t.google_calendar_from) ? t.google_calendar_from : null,
     body: {
       summary: t.title,
       start: { dateTime: `${first}T${startClock}`, timeZone: tz },

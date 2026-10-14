@@ -194,7 +194,7 @@ export const API_REGISTRY: readonly ApiEntry[] = [
     secrets: ['GOOGLE_TASKS_SYNC_SECRET (cron)'],
     direction: 'both', cadence: 'On open; the agenda\'s sync button refreshes; queued deletes every 20 min (cron)',
     usedIn: [{ label: 'Daily agenda', path: '/daily' }, { label: 'Home — next up', path: '/home' }],
-    tables: ['time_blocks.google_calendar_event_id', 'schedule_blocks.google_calendar_event_id', 'calendar_outbox'], migrations: ['038', '135', '147'],
+    tables: ['time_blocks.google_calendar_event_id', 'schedule_blocks.google_calendar_event_id', 'calendar_outbox'], migrations: ['038', '135', '147', '148'],
     cost: 'free',
     caveats: [
       'A block deleted on the server (AI, Hevy, triggers) loses its calendar event at the next cron run, up to 20 minutes later — while Google is disconnected the delete waits.',
@@ -212,7 +212,7 @@ export const API_REGISTRY: readonly ApiEntry[] = [
     auth: 'oauth', secrets: ['GOOGLE_TASKS_SYNC_SECRET (cron)'],
     direction: 'both', cadence: 'On each edit; Google → app every 20 min (cron), when the app opens and on Sync now',
     usedIn: [{ label: 'Daily — tasks', path: '/daily' }, { label: 'Work board', path: '/work' }, { label: 'Sync buttons', path: INTEGRATIONS_PATH }],
-    tables: ['google_tasks_outbox', 'google_tasks_sync_state', 'google_task_lists'], migrations: ['071', '072', '073', '078', '079', '145'],
+    tables: ['google_tasks_outbox', 'google_tasks_sync_state', 'google_task_lists'], migrations: ['071', '072', '073', '078', '079', '145', '148'],
     cost: 'free',
     caveats: ['A task with a calendar event is kept off Google Tasks so it appears in Google only once.', 'Due dates only (Google drops the time); manual order and tasks assigned from Docs/Chat are not mirrored.'],
     since: '19.06.2026', sinceFrom: 'src/features/todo/api/googleTasksApi.ts', hasIntegrationCard: true,
