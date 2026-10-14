@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Undo2 } from 'lucide-react'
 import { ModalShell } from '../../../shared/modals'
 import { Button, SectionLabel, SkeletonText, ToneDot } from '../../../shared/ui'
-import { useUndoPlan, useUndoSave } from '../hooks/useUndoSave'
+import { openUndoSave, useUndoPlan, useUndoSave } from '../hooks/useUndoSave'
 import { describeUndoPlan, type UndoLine } from './undoPlanText'
 
 // The preview before "Undo this save" (migrations 150/151): what was changed
@@ -83,7 +83,17 @@ export function UndoSaveSheet({ txId, onClose }: { txId: number; onClose: () => 
     body = (
       <div className="flex flex-col gap-4">
         {view.error && <p data-tone="danger" className="tone-soft rounded-row px-3 py-2 text-body">{view.error}</p>}
-        {view.hint && <p data-tone="info" className="tone-soft rounded-row px-3 py-1.5 text-meta text-fg-2">{view.hint}</p>}
+        {view.hint && (
+          // Opens that save's own preview above this one (Back returns here).
+          <button
+            type="button"
+            data-tone="info"
+            className="tone-soft rounded-row px-3 py-1.5 text-left text-meta text-fg-2"
+            onClick={() => openUndoSave(view.hint!.tx)}
+          >
+            {view.hint.text} · <span className="font-semibold text-accent-600">{view.hint.action}</span>
+          </button>
+        )}
         {view.nothingToDo && (
           <p className="text-body text-fg-2">Nothing to undo — everything this save changed is already as it was.</p>
         )}

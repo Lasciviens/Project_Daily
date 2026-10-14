@@ -146,11 +146,8 @@ console.log('\n4 · A mixed save, what goes along, what can\'t be undone')
   check('generated column follows', v.notes.includes('kcal x2 (diary entries) is worked out by the database — it follows'), v.notes)
   check('dropped column named', v.notes.includes("note (wishes) no longer exists — its old value can't go back"), v.notes)
   check('a table no longer logged is said', v.notes.includes("Wish changes are no longer logged — this undo can't be undone itself"), v.notes)
-  check('a slot put back gets its Calendar event again (the browser\'s follow-up)',
-    v.notes.includes('Slots and plans put back or moved back get their Google Calendar event again, if they had one'), v.notes)
+  check('no quiet Calendar note any more (the database counts those events)', !v.notes.some(n => /Google Calendar/.test(n)), v.notes)
   check('blocked → Undo anyway', v.confirmLabel === 'Undo anyway')
-  const moved = describeUndoPlan(plan({ tables: [table('time_blocks', { revert: 1, columns: ['note'] })] }))
-  check('…but not for a slot whose note goes back', !moved.notes.some(n => /Google Calendar/.test(n)), moved.notes)
 }
 
 console.log('\n5 · Nothing to do, can\'t run')
@@ -165,6 +162,12 @@ console.log('\n5 · Nothing to do, can\'t run')
   check('a statement timeout is named plainly', t.error === "Undo can't run: this save is too big to undo here", t.error)
   const apiSrc = readFileSync(join(__dirname, '../src/features/developer/api/undoSaveApi.ts'), 'utf8')
   check('…and so is the request that timed out', /'57014': 'This save is too big to undo here\.'/.test(apiSrc))
+  const l = describeUndoPlan(plan({ can_apply: false, error: { code: '55P03', message: 'canceling statement due to lock timeout' } }))
+  check('a row another save holds: try again in a moment', l.error === "Undo can't run: another save is writing these rows — try again in a moment", l.error)
+  check('…and an apply that waited too long says the same',
+    /'55P03': 'Another save is writing these rows — try again in a moment\.'/.test(apiSrc))
+  check('an apply\'s other known errors use the preview\'s words, not Postgres text',
+    /if \(UNDO_ERROR_TEXT\[code\]\) return new Error\(`Undo can't run: \$\{UNDO_ERROR_TEXT\[code\]\}\.`\)/.test(apiSrc))
 }
 
 console.log('\n6 · A rule changes a row again after Undo')
@@ -178,7 +181,7 @@ console.log('\n6 · A rule changes a row again after Undo')
     ],
   }))
   check('drift reads as a warning of its own', v.conflicts.length === 0 && JSON.stringify(v.drift.map(l => l.text)) === JSON.stringify([
-    "Task «Locked» — a database rule sets status again after Undo · it won't be exactly as before",
+    "Task «Locked» — a database rule changes status right after Undo · it won't be exactly as before",
     'Schedule block «Slot» — a database rule keeps it after Undo deletes it',
     'Task «#c1234567» — a database rule removes it again after Undo puts it back',
   ]), v.drift.map(l => l.text))
@@ -220,15 +223,43 @@ console.log('\n7 · Outside the app (151): a danger line per service')
   const v = describeUndoPlan(plan({
     needs_confirm: true, actors: ['service'], sync_save: ['user_tv_episodes', 'media_watches', 'tasks'],
   }))
-  check('a sync\'s save: one danger line naming the services', JSON.stringify(v.outside.map(l => [l.tone, l.text])) === JSON.stringify([
-    ['danger', "This save came from AI / sync, not from you. Undoing it changes Trakt and Google Tasks too, and that can't be undone there"],
+  check('a sync\'s save whose undo sends nothing: the services may bring it back', JSON.stringify(v.outside.map(l => [l.tone, l.text])) === JSON.stringify([
+    ['warn', 'This save came from AI / sync. Trakt and Google Tasks still have it — the next sync may bring it back'],
   ]), v.outside)
   check('…and who saved', v.subtitle.endsWith('· AI / sync'))
+  const sent = describeUndoPlan(plan({
+    needs_confirm: true, actors: ['service'], sync_save: ['user_tv_episodes', 'tasks'],
+    outbox: [{ s: 'trakt', op: 'history_add', n: 1, items: null }],
+  }))
+  check('a service that gets the undo\'s change is named by its outbox line only', JSON.stringify(sent.outside.map(l => l.text)) === JSON.stringify([
+    'Trakt: 1 play added at the restored dates',
+    'This save came from AI / sync. Google Tasks still has it — the next sync may bring it back',
+  ]), sent.outside.map(l => l.text))
+  const all = describeUndoPlan(plan({
+    needs_confirm: true, actors: ['service'], sync_save: ['tasks'], outbox: [{ s: 'google_tasks', op: 'update', n: 1 }],
+  }))
+  check('…and no sync line when it would only repeat the outbox lines', JSON.stringify(all.outside.map(l => l.text)) === JSON.stringify([
+    'Google Tasks: 1 task changed',
+  ]), all.outside.map(l => l.text))
+}
+{
+  const v = describeUndoPlan(plan({
+    needs_confirm: true,
+    outbox: [{ s: 'google_calendar', op: 'update', n: 2 }, { s: 'google_calendar', op: 'create', n: 1 }, { s: 'google_calendar', op: 'delete', n: 1 }],
+    links_kept: [{ t: 'time_blocks', c: 'google_calendar_event_id', n: 1 }, { t: 'tasks', c: 'google_tasklist_id', n: 2 }],
+  }))
+  check('Calendar: what the queue removes and the browser adds and moves, in one line', v.outside[0].text === 'Google Calendar: 1 event removed · 1 event added · 2 events changed', v.outside[0])
+  check('links Undo leaves are said', JSON.stringify(v.outside.slice(1).map(l => [l.tone, l.text])) === JSON.stringify([
+    ['warn', "Google Calendar: 1 schedule block keeps its current event link — Undo doesn't put the old one back"],
+    ['warn', "Google Tasks: 2 tasks keep their current Google list — Undo doesn't put the old one back"],
+  ]), v.outside.map(l => l.text))
+  const only = describeUndoPlan(plan({ steps: 0, needs_confirm: true, links_kept: [{ t: 'time_blocks', c: 'google_calendar_event_id', n: 1 }] }))
+  check('a save that only changed a link is not "nothing to undo"', !only.nothingToDo && !only.canUndo && only.outside.length === 1)
 }
 {
   // A plan from before 151 lacks the new fields: nothing breaks.
   const old = plan()
-  for (const k of ['side_effects', 'side_hidden', 'outbox', 'sync_save', 'nearby']) delete old[k]
+  for (const k of ['side_effects', 'side_hidden', 'outbox', 'sync_save', 'nearby', 'links_kept']) delete old[k]
   const v = describeUndoPlan(old)
   check('a plan from before 151 still reads', v.outside.length === 0 && v.also.length === 0 && v.hint === null)
 }
@@ -266,16 +297,22 @@ console.log('\n8 · Rows a rule changes besides, rows in an unknown order')
 
 console.log('\n9 · Saves seconds apart (one Spread makes up to three)')
 {
-  const at = '2026-10-14T08:30:01+00:00'
-  check('two after', nearbyHint([{ tx: 2, at, changes: 3, when: 'after' }, { tx: 3, at, changes: 3, when: 'after' }])
-    === '2 more saves seconds after this one (same Spread?) — undo them too, newest first')
-  check('one after, one before', nearbyHint([{ tx: 1, at, changes: 3, when: 'before' }, { tx: 3, at, changes: 3, when: 'after' }])
-    === '1 more save seconds after this one and 1 before (same Spread?) — undo them too, newest first')
-  check('two before', nearbyHint([{ tx: 1, at, changes: 3, when: 'before' }, { tx: 2, at, changes: 3, when: 'before' }])
-    === '2 more saves seconds before this one (same Spread?) — undo them too, after this one')
+  const at = (s) => `2026-10-14T08:30:0${s}+00:00`
+  const two = nearbyHint([{ tx: 3, at: at(4), changes: 3, when: 'after' }, { tx: 2, at: at(2), changes: 3, when: 'after' }])
+  check('two after: only if they belong together; opens the newest', two.text
+    === '2 more saves seconds later (one Spread?) — if they belong together, undo them too, newest first'
+    && two.tx === 3 && two.action === 'Open the newest', two)
+  const mixed = nearbyHint([{ tx: 1, at: at(0), changes: 3, when: 'before' }, { tx: 3, at: at(3), changes: 3, when: 'after' }])
+  check('one after, one before', mixed.text
+    === '1 more save seconds later and 1 earlier (one Spread?) — if they belong together, undo them too, newest first'
+    && mixed.tx === 3, mixed)
+  const before = nearbyHint([{ tx: 1, at: at(0), changes: 3, when: 'before' }, { tx: 2, at: at(1), changes: 3, when: 'before' }])
+  check('two before: opens the one right before', before.text
+    === '2 more saves seconds earlier (one Spread?) — if they belong together, undo them too, after this one'
+    && before.tx === 2 && before.action === 'Open the one before', before)
   check('none', nearbyHint([]) === null && nearbyHint(undefined) === null)
-  check('the sheet shows it', describeUndoPlan(plan({ nearby: [{ tx: 2, at, changes: 1, when: 'after' }] })).hint
-    === '1 more save seconds after this one (same Spread?) — undo it too, newest first')
+  check('the sheet shows it', describeUndoPlan(plan({ nearby: [{ tx: 2, at: at(1), changes: 1, when: 'after' }] })).hint.text
+    === '1 more save seconds later (one Spread?) — if they belong together, undo it too, newest first')
 }
 
 console.log('\n10 · After an undo of media rows, Trakt syncs')
