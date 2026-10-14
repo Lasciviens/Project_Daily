@@ -26,7 +26,12 @@ export function imageOf(item: Pick<ShopItem, 'image_url' | 'url'>, watch?: ShopP
 
 /** "4 889 + 1 138 lost on earlier things" — the parts of a final cost. */
 export function finalCostWords(own: number, carried: number): string {
-  return carried < 0 ? `${money(own)} − ${money(-carried)} made on earlier things` : `${money(own)} + ${money(carried)} lost on earlier things`
+  return finalCostParts(own, carried).join(' ')
+}
+
+/** The same in two pieces — the sum and what the earlier things did — so a narrow line breaks between them. */
+export function finalCostParts(own: number, carried: number): [string, string] {
+  return carried < 0 ? [`${money(own)} − ${money(-carried)}`, 'made on earlier things'] : [`${money(own)} + ${money(carried)}`, 'lost on earlier things']
 }
 
 /** "≈ 01.03.2022" for a day added from memory, else the day. */
