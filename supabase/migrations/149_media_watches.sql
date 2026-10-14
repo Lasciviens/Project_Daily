@@ -441,8 +441,15 @@ BEGIN
   END IF;
 
   IF TG_OP IN ('UPDATE', 'DELETE') THEN
-    PERFORM public.trakt_enqueue(w.user_id, 'history_remove_play', v_key, v_base || jsonb_build_object(
-      'watch_id', OLD.id, 'history_id', OLD.trakt_history_id, 'watched_at', OLD.watched_at));
+    -- Held for an hour: the trakt-api deployed before this migration deletes
+    -- an op it doesn't know without sending it, and the deploy runs migrations
+    -- first. The new trakt-api sends a never-tried single-play remove at once
+    -- regardless of next_retry_at, so the hold only hides it from the old one.
+    INSERT INTO public.trakt_outbox (user_id, op, item_key, payload, next_retry_at)
+    SELECT w.user_id, 'history_remove_play', v_key, v_base || jsonb_build_object(
+      'watch_id', OLD.id, 'history_id', OLD.trakt_history_id, 'watched_at', OLD.watched_at),
+      now() + interval '1 hour'
+    WHERE EXISTS (SELECT 1 FROM auth.users WHERE id = w.user_id);
   END IF;
   IF TG_OP IN ('INSERT', 'UPDATE') THEN
     PERFORM public.trakt_enqueue(w.user_id, 'history_add', v_key, v_base || jsonb_build_object(

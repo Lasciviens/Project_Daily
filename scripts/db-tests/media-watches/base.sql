@@ -128,6 +128,7 @@ create table public.trakt_outbox (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
   op text not null, item_key text not null, payload jsonb not null default '{}'::jsonb,
+  attempts integer not null default 0, next_retry_at timestamptz not null default now(), last_error text,
   created_at timestamptz not null default now(), seq bigserial
 );
 create or replace function public.trakt_sync_writing() returns boolean language sql stable as $$

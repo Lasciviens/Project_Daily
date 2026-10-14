@@ -19,6 +19,11 @@ create or replace function public.t_payload(p_op text) returns jsonb language sq
   select payload from public.trakt_outbox where op = p_op order by seq limit 1
 $$;
 grant execute on function public.t_payload(text) to authenticated;
+create or replace function public.t_remove_play_held() returns boolean language sql security definer as $$
+  select bool_and(next_retry_at > now() + interval '50 minutes' and attempts = 0)
+    from public.trakt_outbox where op = 'history_remove_play'
+$$;
+grant execute on function public.t_remove_play_held() to authenticated;
 create or replace function public.t_has(p_op text) returns boolean language sql security definer as $$
   select exists (select 1 from public.trakt_outbox where op = p_op)
 $$;
@@ -86,6 +91,7 @@ begin
   v := public.t_payload('history_add');
   perform public.t_ok((v ->> 'watched_at')::timestamptz = '2025-01-15 12:00:00+00', 'the add carries the new date');
   perform public.t_ok(not public.t_has('history_remove'), 'no whole-episode remove was queued');
+  perform public.t_ok(public.t_remove_play_held(), 'the single-play remove is held from the old trakt-api (due in an hour, never tried)');
   perform public.t_ok((select count(*) from public.media_watches where trakt_history_id in (1001, 1003)) = 2, 'the other watches keep their plays');
   perform public.t_ok((select trakt_history_id is null and source = 'app' from public.media_watches where watched_at = '2025-01-15 12:00:00+00'),
     'the re-dated watch lost its old Trakt id');

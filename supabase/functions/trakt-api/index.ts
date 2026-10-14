@@ -2177,8 +2177,11 @@ async function drainOutbox(db: Db, userId: string, token: string, deadline: numb
   const out = { sent: 0, notFound: 0, failed: 0, left: 0, error: null as string | null, notes: null as NoteDrain | null }
   const sentKeys: string[] = []
   // seq (migration 120) is the true insert order; created_at ties inside one trigger call.
+  // A never-tried single-play remove is due at once: 149 queues it an hour
+  // ahead only so the trakt-api it replaced can't drop it mid-deploy.
   const base = () => db.from('trakt_outbox').select('id, op, item_key, payload, attempts')
-    .eq('user_id', userId).lte('next_retry_at', new Date().toISOString())
+    .eq('user_id', userId)
+    .or(`next_retry_at.lte."${new Date().toISOString()}",and(op.eq.history_remove_play,attempts.eq.0)`)
   let res = await base().order('seq').limit(500)
   if (res.error && missingColumn(res.error)) res = await base().order('created_at').order('id').limit(500)
   if (res.error) throw res.error
