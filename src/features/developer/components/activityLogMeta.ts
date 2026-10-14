@@ -11,7 +11,7 @@ const TABLE_LABEL: Record<string, string> = {
   recipe_ingredient_library: 'Ingredient', recipe_meal_plans: 'Meal plan',
   shop_categories: 'Shop category', shop_items: 'Shop item', shop_item_costs: 'Shop cost', shop_item_links: 'Shop link',
   projects: 'Project', project_phases: 'Project phase', project_items: 'Project item',
-  user_movie_entries: 'Movie', user_tv_entries: 'TV series', user_tv_episodes: 'TV episode',
+  user_movie_entries: 'Movie', user_tv_entries: 'TV series', user_tv_episodes: 'TV episode', media_watches: 'Watch',
   movie_cinema_visits: 'Cinema visit', media_release_reminders: 'Release reminder',
   user_transit_stops: 'Transit stop', user_transit_routes: 'Transit route',
   work_notes: 'Work note', work_weekly_goals: 'Weekly goal', work_pinned_links: 'Pinned link',
@@ -27,7 +27,7 @@ const TABLE_LABEL: Record<string, string> = {
   books: 'Book', book_deliveries: 'Kobo delivery', reading_settings: 'Reading setting',
   kobo_device_config: 'Kobo setting', kobo_sleep_images: 'Kobo sleep image',
 }
-/** A table not named above reads as its name, made singular ("media_watches" → "media watch"). */
+/** A table not named above reads as its name, made singular ("media_follows" → "media follow"). */
 export function friendlyTable(t: string): string {
   const name = t.replace(/_/g, ' ')
   if (TABLE_LABEL[t]) return TABLE_LABEL[t]

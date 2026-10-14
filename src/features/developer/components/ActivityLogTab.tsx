@@ -5,7 +5,7 @@ import { useAuditLogs, useClearAuditLogs, type AuditLog } from '../hooks/useLogs
 import { CascadeBlock, LogRow } from './ActivityLogRows'
 import { ActivityLogDetail } from './ActivityLogDetail'
 import { ActivityLogFilters, type ActivityFilterState } from './ActivityLogFilters'
-import { UndoSaveSheet } from './UndoSaveSheet'
+import { openUndoSave } from '../hooks/useUndoSave'
 import { DETAIL_PANE_FROM, LIST_DETAIL_BOARD, paneSelection, type ListDetailSection } from '../developerBoards'
 import { confirmDelete } from '../../../shared/modals'
 
@@ -13,8 +13,9 @@ import { confirmDelete } from '../../../shared/modals'
 // explicit from/to window; type/operation/actor filter the loaded rows. On a
 // wide page the picked change opens in a pane beside the list
 // (developerBoards.ts → LIST_DETAIL_BOARD); on phones it opens in place.
-// Any save (a transaction) can be undone from here: a preview first
-// (UndoSaveSheet), then one database transaction (migration 150).
+// Any save (a transaction) can be undone from here: a preview first (the
+// `undo-save` popup, UndoSaveSheet), then one database transaction
+// (migrations 150/151).
 
 function Timeline({ groups, expanded, onToggle, picked, onPick, onUndo }: {
   groups: AuditLog[][]
@@ -47,7 +48,6 @@ export function ActivityLogTab() {
   const { rangeHours, customFrom, customTo, tableFilter, opFilter, actorFilter } = filters
   const [expanded, setExpanded] = useState<string | null>(null)
   const [picked, setPicked] = useState<string | null>(null)
-  const [undoTx, setUndoTx] = useState<number | null>(null)
 
   const { data: logs = [], isLoading, isFetching, error, refetch } = useAuditLogs({ rangeHours, customFrom, customTo })
   const clearLogs = useClearAuditLogs()
@@ -98,7 +98,7 @@ export function ActivityLogTab() {
   } else if (filtered.length === 0) {
     list = <EmptyState bordered icon={<History />} title="No activity in this window" description={logs.length > 0 ? 'Loosen the filters to see more.' : undefined} />
   } else {
-    list = <Timeline groups={groups} expanded={expanded} onToggle={id => setExpanded(e => e === id ? null : id)} picked={shownId} onPick={setPicked} onUndo={setUndoTx} />
+    list = <Timeline groups={groups} expanded={expanded} onToggle={id => setExpanded(e => e === id ? null : id)} picked={shownId} onPick={setPicked} onUndo={openUndoSave} />
   }
 
   const sections: Record<ListDetailSection, ReactNode> = {
@@ -121,13 +121,8 @@ export function ActivityLogTab() {
       </div>
     ),
     // Nothing listed → no pane: the list's own empty state already says so.
-    detail: isLoading || error || !shown ? null : <ActivityLogDetail log={shown} linkedCount={linkedCount} onUndo={setUndoTx} />,
+    detail: isLoading || error || !shown ? null : <ActivityLogDetail log={shown} linkedCount={linkedCount} onUndo={openUndoSave} />,
   }
 
-  return (
-    <>
-      <PageBoard sections={sections} layout={LIST_DETAIL_BOARD} stackGap="gap-3" stackClassName="max-w-4xl" />
-      <UndoSaveSheet txId={undoTx} onClose={() => setUndoTx(null)} onUndoAgain={setUndoTx} />
-    </>
-  )
+  return <PageBoard sections={sections} layout={LIST_DETAIL_BOARD} stackGap="gap-3" stackClassName="max-w-4xl" />
 }
