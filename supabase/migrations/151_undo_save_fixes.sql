@@ -2,41 +2,54 @@
 --
 -- Owner, 14.10.2026: "it should be safe to do. It should not miss anything
 -- while undoing it." 150 is live; this redefines its functions (same names
--- and arguments) and adds three helpers. No data changes.
+-- and arguments), adds helpers and one small table (audit_undos). No data
+-- changes.
 --
 --  1. Outside services. An undo writes through the tables' own triggers, so
 --     it queues changes for Trakt, Google Tasks and Google Calendar. The trial
---     run now counts the outbox rows it wrote, per service and kind
+--     run counts the outbox rows it wrote, per service and kind
 --     (app_undo_outbox; a whole-item Trakt history_remove names its items),
---     and the plan needs confirming when anything goes out. A NEW OUTBOX
---     TABLE must be added to app_undo_outbox, or Undo won't say what it sends.
---     Bookkeeping columns (app_undo_bookkeeping: updated_at, synced_at,
---     google_local_edit_at, media_watches' trakt_history_id and source) are
+--     plus the Google Calendar events the browser makes or moves right after
+--     (slots put back, slots moved back), and the plan needs confirming when
+--     anything goes out. A NEW OUTBOX TABLE must be added to app_undo_outbox,
+--     or Undo won't say what it sends.
+--     Bookkeeping columns (app_undo_bookkeeping: clocks and the state of the
+--     outside copy — updated_at, synced_at, google_local_edit_at, Google
+--     Tasks' etag/position/…, media_watches' trakt_history_id and source) are
 --     never put back nor compared: a watch the undo re-dates loses its Trakt
 --     play id by design (149), which is not "not exactly as before".
+--     Outside links (app_undo_links: a task's Google task and list, a slot's
+--     or plan's Google Calendar event, a title's Trakt note) are never put
+--     back either: the link must name what exists on that service now, and
+--     an old id names something deleted or replaced there. When the save
+--     changed one and it isn't back as before, the plan says the link stays
+--     (`links_kept`) and needs confirming.
 --  2. Rows the undo's own triggers change outside its steps (043: a watched
 --     episode deletes its plan) are read back from the undo's own audit rows
 --     (`side_effects`; `side_hidden` counts the ones the caller's log doesn't
---     show) and need confirming.
+--     show), and so is a column outside a step that a rule changes on a row
+--     the undo writes (143: putting `done` back clears `is_focused`) — that
+--     is `drift`, and such a row is never listed as "kept". All need
+--     confirming.
 --  3. A save made by AI / a sync (actor `service`) whose undo touches a synced
 --     table (app_undo_synced) is named (`sync_save`) and needs confirming:
---     undoing a Trakt or Google pull changes that service too.
---  4. Apply reads the save's rows FOR UPDATE before it compares them: a save
---     committing at the same moment is either seen (and the fingerprint
---     refuses) or waits for this undo.
+--     the service may still have the save's change.
+--  4. Apply locks the save's rows (FOR UPDATE) before it compares them: a
+--     save committing at the same moment is either seen (and the fingerprint
+--     refuses) or waits for this undo — at most lock_timeout (4 s), then 55P03.
 --  5. Deferred triggers (149's watch reconcile) fire at the end of the steps
 --     (SET CONSTRAINTS ALL IMMEDIATE), inside the trial run too, so what they
 --     change is in the preview.
 --  6. A row put back is compared column by column with its old row (override
---     keys, generated and always-identity columns, the key and bookkeeping
---     aside): a column a trigger rewrote is `drift`.
+--     keys, generated and always-identity columns, the key, bookkeeping and
+--     outside links aside): a column a trigger rewrote is `drift`.
 --  7. One-row-per-account tables keyed by user_id (games_prefs,
 --     screenscraper_prefs, reading_settings, kobo_device_config,
 --     athlete_profile, day_targets) can be undone: their audit rows carry no
 --     row id, so the account (audit_logs.user_id) is the key.
---  8. Changes logged before 150 got `seq` in storage order. The changes of a
---     row changed more than once in a save must chain up (each one's old
---     values = the previous one's new values on the columns both name) — else
+--  8. Changes logged before 150 got `seq` in storage order. A row changed
+--     more than once in a save must chain up COLUMN BY COLUMN (each change's
+--     old value of a column = the previous change's new value of it) — else
 --     the row is blocked ('order_unknown'), never folded in a guessed order.
 --  9. `not_logged` lists a table outside the log only for rows put back that
 --     it could point at (a non-null referenced value), with how many, and
@@ -45,18 +58,41 @@
 --     see); it now needs confirming too.
 -- 10. Collateral and side effects sort by their text, so a preview and its
 --     apply always give the same fingerprint.
--- 11. `nearby` (a hint, outside the fingerprint): other saves by the same
---     actor within 10 seconds that touched the same tables — Spread writes up
---     to three.
+-- 11. `nearby` (a hint, outside the fingerprint): for a save of media rows,
+--     other saves by the same actor within 10 seconds on the same media
+--     tables — Spread writes up to three — leaving out saves that were undos
+--     themselves (audit_undos, which apply fills).
+--
+-- audit_undos: one row per undo applied (its transaction, the save it took
+-- back). Bookkeeping for the hint, not user-authored: no trg_audit, not in
+-- ai-proxy's DB_CATALOG; rows older than 30 days go when the next undo runs.
 --
 -- SECURITY INVOKER as in 150 (row level security and the owner lock apply),
 -- except the count-only helpers (app_undo_hidden_changes, app_undo_outbox),
 -- which only ever answer for the caller's own account. Only identifiers read
 -- from the catalogue reach dynamic SQL (%I / regclass); values travel as
--- parameters. Re-runnable: CREATE OR REPLACE, grants re-stated.
+-- parameters. Re-runnable: IF NOT EXISTS, CREATE OR REPLACE, the policy
+-- guard, grants re-stated.
+
+-- The undos applied (for the nearby-saves hint: an undo is not a Spread).
+create table if not exists public.audit_undos (
+  undo_tx    bigint primary key,
+  undone_tx  bigint not null,
+  user_id    uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  created_at timestamptz not null default now()
+);
+alter table public.audit_undos enable row level security;
+do $$ begin
+  if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'audit_undos' and policyname = 'Users manage own undos') then
+    create policy "Users manage own undos" on public.audit_undos for all
+      using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
+  end if;
+end $$;
+create index if not exists audit_undos_user_created_idx on public.audit_undos (user_id, created_at);
+grant select, insert, delete on public.audit_undos to authenticated;
 
 -- Columns that are bookkeeping, not content: never put back, never compared
--- (a sync clock, a link to the outside service's own copy).
+-- (a clock, the state of the outside service's own copy).
 create or replace function public.app_undo_bookkeeping(p_table text)
 returns text[]
 language sql
@@ -64,7 +100,35 @@ immutable
 set search_path = ''
 as $$
   select array['updated_at', 'synced_at', 'google_local_edit_at']::text[]
-         || case when p_table = 'media_watches' then array['trakt_history_id', 'source']::text[] else '{}'::text[] end
+         || case p_table
+              when 'media_watches' then array['trakt_history_id', 'source']::text[]
+              when 'tasks' then array['google_etag', 'google_position', 'google_updated_at', 'google_web_view_link',
+                                      'google_links', 'google_hidden', 'google_deleted']::text[]
+              when 'schedule_blocks' then array['google_calendar_horizon']::text[]
+              when 'user_movie_entries' then array['trakt_note_text']::text[]
+              when 'user_tv_entries' then array['trakt_note_text']::text[]
+              else '{}'::text[]
+            end
+$$;
+
+-- Links to the outside service's copy of a row: never put back (an old id
+-- names something deleted or replaced there); the plan says when the save
+-- changed one (`links_kept`).
+create or replace function public.app_undo_links(p_table text)
+returns text[]
+language sql
+immutable
+set search_path = ''
+as $$
+  select case p_table
+    when 'tasks' then array['google_task_id', 'google_tasklist_id', 'google_calendar_event_id']::text[]
+    when 'time_blocks' then array['google_calendar_event_id']::text[]
+    when 'schedule_blocks' then array['google_calendar_event_id']::text[]
+    when 'user_movie_entries' then array['trakt_note_id']::text[]
+    when 'user_tv_entries' then array['trakt_note_id']::text[]
+    when 'user_tv_episodes' then array['trakt_note_id']::text[]
+    else '{}'::text[]
+  end
 $$;
 
 -- The outside service a table's triggers write to (kept in step with SYNCED
@@ -85,10 +149,14 @@ $$;
 
 -- What the caller's current transaction queued for outside services: outbox
 -- rows of the caller's account written in this transaction (created_at is the
--- transaction's start), per service and kind. A whole-item Trakt remove names
--- its items. Counts and names only, for the caller's own account; the queues
--- themselves stay unreadable (trakt_outbox is service-role only).
-create or replace function public.app_undo_outbox()
+-- transaction's start), per service and kind — Trakt's only after
+-- p_trakt_after (its seq), so a caller can leave out what was queued before
+-- it started. A whole-item Trakt remove names its items. Answers
+-- {rows, trakt_seq}: trakt_seq is the newest Trakt row of the caller now (the
+-- mark for a later call). Counts and names only, for the caller's own
+-- account; the queues themselves stay unreadable (trakt_outbox is
+-- service-role only).
+create or replace function public.app_undo_outbox(p_trakt_after bigint default 0)
 returns jsonb
 language plpgsql
 stable
@@ -99,11 +167,13 @@ declare
   v_uid  uuid := (select auth.uid());
   v_out  jsonb := '[]'::jsonb;
   v_part jsonb;
+  v_seq  bigint := 0;
 begin
   if v_uid is null or not public.is_app_user() then
-    return v_out;
+    return jsonb_build_object('rows', v_out, 'trakt_seq', 0);
   end if;
   if to_regclass('public.trakt_outbox') is not null then
+    execute 'select coalesce(max(o.seq), 0) from public.trakt_outbox o where o.user_id = $1' into v_seq using v_uid;
     if to_regclass('public.tv_series') is not null and to_regclass('public.movies') is not null then
       execute $q$
         select coalesce(jsonb_agg(jsonb_build_object('s', 'trakt', 'op', x.op, 'n', x.n, 'items', x.items) order by x.op), '[]'::jsonb)
@@ -111,25 +181,25 @@ begin
           select o.op, count(*)::integer as n,
                  case when o.op = 'history_remove' then jsonb_agg(distinct coalesce(
                    case when o.payload ->> 'type' = 'episode' then
-                     (select s.title from public.tv_series s where s.tmdb_id::text = o.payload ->> 'tmdb' limit 1)
+                     (select s.title from public.tv_series s where s.tmdb_id = (o.payload ->> 'tmdb')::integer limit 1)
                      || ' S' || lpad(o.payload ->> 'season', 2, '0') || 'E' || lpad(o.payload ->> 'episode', 2, '0') end,
                    case when o.payload ->> 'type' = 'movie' then
-                     (select m.title from public.movies m where m.tmdb_id::text = o.payload ->> 'tmdb' limit 1) end,
+                     (select m.title from public.movies m where m.tmdb_id = (o.payload ->> 'tmdb')::integer limit 1) end,
                    o.item_key)) end as items
           from public.trakt_outbox o
-          where o.user_id = $1 and o.created_at = now()
+          where o.user_id = $1 and o.created_at = now() and o.seq > $2
           group by o.op
         ) x $q$
-        into v_part using v_uid;
+        into v_part using v_uid, p_trakt_after;
     else
       execute $q$
         select coalesce(jsonb_agg(jsonb_build_object('s', 'trakt', 'op', x.op, 'n', x.n, 'items', x.items) order by x.op), '[]'::jsonb)
         from (select o.op, count(*)::integer as n,
                      case when o.op = 'history_remove' then jsonb_agg(distinct o.item_key) end as items
               from public.trakt_outbox o
-              where o.user_id = $1 and o.created_at = now()
+              where o.user_id = $1 and o.created_at = now() and o.seq > $2
               group by o.op) x $q$
-        into v_part using v_uid;
+        into v_part using v_uid, p_trakt_after;
     end if;
     v_out := v_out || v_part;
   end if;
@@ -153,7 +223,7 @@ begin
       into v_part using v_uid;
     v_out := v_out || v_part;
   end if;
-  return v_out;
+  return jsonb_build_object('rows', v_out, 'trakt_seq', v_seq);
 end;
 $$;
 
@@ -165,7 +235,8 @@ $$;
 -- waits for the next round; a round that gets nothing further raises the last
 -- error. Then the deferred triggers fire, and it reads back:
 --   drift        — a step row that isn't as its step left it (a column put
---                  back changed again, a row put back with a column rewritten,
+--                  back changed again, a column outside the step a rule
+--                  changed on it, a row put back with a column rewritten,
 --                  a deleted row still there, a put-back row gone again);
 --   side_effects — rows outside the steps that this transaction's own audit
 --                  rows show changed (a rule between tables); side_hidden
@@ -221,6 +292,7 @@ declare
   v_outbox   jsonb;
   v_mine     text[] := '{}';
   v_ukeyed   text[];
+  v_outside  jsonb;
   v_side     jsonb;
   v_labels   jsonb := '{}'::jsonb;
   v_lab      jsonb;
@@ -228,7 +300,7 @@ begin
   -- What this transaction holds already: only what the steps do counts below.
   select coalesce(max(a.seq), 0) into v_seq0 from public.audit_logs a where a.tx_id = v_tx;
   v_hidden0 := public.app_undo_hidden_changes(v_tx);
-  v_ob0 := public.app_undo_outbox();
+  v_ob0 := public.app_undo_outbox(0);
 
   loop
     v_next := '[]'::jsonb;
@@ -319,6 +391,42 @@ begin
   -- so what they change is read below.
   set constraints all immediate;
 
+  -- Tables keyed by user_id among what this transaction changed.
+  select coalesce(array_agg(d.t), '{}') into v_ukeyed
+  from (select distinct a.table_name as t from public.audit_logs a where a.tx_id = v_tx and a.seq > v_seq0) d
+  where public.app_pk_column(to_regclass(format('public.%I', d.t))) = 'user_id';
+
+  -- A row a step writes back can have a column OUTSIDE the step changed by a
+  -- rule (a BEFORE trigger on that very write — 143 clearing is_focused when
+  -- `done` goes back — or a later one): from this transaction's own audit
+  -- rows, the value before the undo against the value after it, bookkeeping
+  -- aside. Keyed "table:id" → the columns.
+  with st as (
+    select s0.value ->> 't' as t, r0.value ->> 'id' as id, r0.value -> 'set' as setj
+    from jsonb_array_elements(coalesce(p_steps, '[]'::jsonb)) s0, jsonb_array_elements(s0.value -> 'rows') r0
+    where s0.value ->> 'action' in ('revert', 'overwrite')
+  ), ch as (
+    select a.table_name as t, case when a.table_name = any (v_ukeyed) then a.user_id::text else a.row_id end as id,
+           e.key as col, a.seq, a.old_data -> e.key as ov, e.value as nv
+    from public.audit_logs a, jsonb_each(coalesce(a.new_data, '{}'::jsonb)) e
+    where a.tx_id = v_tx and a.seq > v_seq0 and a.operation = 'UPDATE'
+      and a.table_name in (select st.t from st)
+  ), net as (
+    select ch.t, ch.id, ch.col, (array_agg(ch.ov order by ch.seq))[1] as first_ov, (array_agg(ch.nv order by ch.seq desc))[1] as last_nv
+    from ch group by ch.t, ch.id, ch.col
+  )
+  select coalesce(jsonb_object_agg(q.k, q.cols), '{}'::jsonb) into v_outside
+  from (
+    select st.t || ':' || st.id as k, jsonb_agg(net.col order by net.col) as cols
+    from st join net on net.t = st.t and net.id = st.id
+    where not (st.setj ? net.col) and not (net.col = any (public.app_undo_bookkeeping(st.t)))
+      and net.first_ov is distinct from net.last_nv
+      -- a generated column follows the columns put back
+      and not exists (select 1 from pg_attribute pa
+                      where pa.attrelid = to_regclass(format('public.%I', st.t)) and pa.attname = net.col and pa.attgenerated <> '')
+    group by st.t, st.id
+  ) q;
+
   -- Is every row as the steps left it? A trigger a later step set off (a
   -- rule between tables) may have changed one again: `drift` names it.
   for s in select value from jsonb_array_elements(coalesce(p_steps, '[]'::jsonb)) loop
@@ -338,8 +446,9 @@ begin
     elsif s ->> 'action' = 'reinsert' then
       -- Gone again, or put back with a column a trigger rewrote. Compared as
       -- the table's own types (the old row is the log's JSON); what the
-      -- overrides reset, what the database fills in and bookkeeping aside.
-      v_skip := public.app_undo_bookkeeping(s ->> 't') || array[v_key]
+      -- overrides reset, what the database fills in, bookkeeping and outside
+      -- links aside.
+      v_skip := public.app_undo_bookkeeping(s ->> 't') || public.app_undo_links(s ->> 't') || array[v_key]
                 || array(select jsonb_object_keys(coalesce(p_overrides -> (s ->> 't'), '{}'::jsonb)));
       select coalesce(jsonb_object_agg(r ->> v_key, r), '{}'::jsonb) into v_orig from jsonb_array_elements(s -> 'rows') r;
       execute format('select coalesce(jsonb_object_agg(r ->> %L, to_jsonb(jsonb_populate_record(null::%s, r))), ''{}'') from jsonb_array_elements($1) r',
@@ -360,12 +469,17 @@ begin
         ) d on true
         where not v_now ? i or d.cols is not null), '[]'::jsonb);
     else
+      -- A column put back that isn't as set, or a column outside the step a
+      -- rule changed on this row.
       v_drift := v_drift || coalesce((
         select jsonb_agg(jsonb_build_object('t', s ->> 't', 'id', r ->> 'id', 'how', 'changed', 'columns', d.cols,
                                             'label', public.app_undo_label(v_now -> (r ->> 'id'))))
         from jsonb_array_elements(s -> 'rows') r,
-             lateral (select jsonb_agg(k order by k) as cols from jsonb_object_keys(r -> 'set') k
-                      where (v_now -> (r ->> 'id') -> k) is distinct from (r -> 'set' -> k)) d
+             lateral (select jsonb_agg(u.k order by u.k) as cols from (
+                        select k from jsonb_object_keys(r -> 'set') k
+                         where (v_now -> (r ->> 'id') -> k) is distinct from (r -> 'set' -> k)
+                        union
+                        select jsonb_array_elements_text(v_outside -> ((s ->> 't') || ':' || (r ->> 'id')))) u(k)) d
         where d.cols is not null), '[]'::jsonb);
     end if;
   end loop;
@@ -383,9 +497,6 @@ begin
 
   -- Side effects: what this transaction's own audit rows show changed beyond
   -- the steps (a rule between tables: 043 deleting a watched episode's plan).
-  select coalesce(array_agg(d.t), '{}') into v_ukeyed
-  from (select distinct a.table_name as t from public.audit_logs a where a.tx_id = v_tx and a.seq > v_seq0) d
-  where public.app_pk_column(to_regclass(format('public.%I', d.t))) = 'user_id';
   with a as (
     select a.table_name as t,
            case when a.table_name = any (v_ukeyed) then a.user_id::text else a.row_id end as k,
@@ -439,12 +550,16 @@ begin
                     else e end as c
         from jsonb_array_elements(v_side) e) x;
 
-  -- What the steps queued for outside services (Trakt, Google).
-  v_ob1 := public.app_undo_outbox();
+  -- What the steps queued for outside services (Trakt, Google). Trakt's rows
+  -- are read after the mark taken before the steps (so a whole-item remove
+  -- names only what the undo queued); the others are counted, less what the
+  -- transaction held before.
+  v_ob1 := public.app_undo_outbox(coalesce((v_ob0 ->> 'trakt_seq')::bigint, 0));
   select coalesce(jsonb_agg(e.v || jsonb_build_object('n', (e.v ->> 'n')::integer - coalesce(b.n, 0)) order by e.v ->> 's', e.v ->> 'op'), '[]'::jsonb)
     into v_outbox
-  from jsonb_array_elements(v_ob1) e(v)
-  left join (select x ->> 's' as s, x ->> 'op' as op, (x ->> 'n')::integer as n from jsonb_array_elements(v_ob0) x) b
+  from jsonb_array_elements(v_ob1 -> 'rows') e(v)
+  left join (select x ->> 's' as s, x ->> 'op' as op, (x ->> 'n')::integer as n
+             from jsonb_array_elements(v_ob0 -> 'rows') x where x ->> 's' <> 'trakt') b
     on b.s = e.v ->> 's' and b.op = e.v ->> 'op'
   where (e.v ->> 'n')::integer - coalesce(b.n, 0) > 0;
 
@@ -485,6 +600,13 @@ declare
   v_cols     jsonb;
   v_audited  boolean;
   v_book     text[];
+  v_links    text[];
+  v_lk       text[];
+  v_lkept    jsonb := '{}'::jsonb;
+  v_links_kept jsonb;
+  n_cal_new  integer := 0;
+  n_cal_move integer := 0;
+  v_outbox   jsonb;
   v_ids      text[];
   v_cur      jsonb;
   v_nb       jsonb;
@@ -548,6 +670,13 @@ begin
       using errcode = 'UD003';
   end if;
 
+  -- A row another save is writing is waited for, but only briefly: then
+  -- 55P03 ("try again in a moment"), never the request's own time limit
+  -- (57014). A shorter limit the caller set stays.
+  if coalesce(nullif(current_setting('lock_timeout'), '0'), '1h')::interval > interval '4 seconds' then
+    perform set_config('lock_timeout', '4s', true);
+  end if;
+
   -- One-row-per-account tables (settings) are keyed by user_id: their audit
   -- rows carry no row id, so the account is the row's key.
   select coalesce(array_agg(d.t), '{}') into v_ukeyed
@@ -556,9 +685,11 @@ begin
 
   -- 2 · One item per row: its changes folded in order — the first value each
   --     column had before the save, the last value it had after it. Changes
-  --     logged before 150 were numbered in storage order, so a row's changes
-  --     must chain up (each one's old values = the previous one's new values,
-  --     bookkeeping aside) or their order is unknown (`ordered` false).
+  --     logged before 150 were numbered in storage order, so a row changed
+  --     more than once must chain up, column by column: each change's old
+  --     value of a column = the previous change (of that column)'s new value,
+  --     bookkeeping aside; an INSERT only after a DELETE, nothing after a
+  --     DELETE but an INSERT. Else its order is unknown (`ordered` false).
   with c as (
     select a.table_name as t,
            case when a.table_name = any (v_ukeyed) then a.user_id::text else a.row_id end as id,
@@ -568,19 +699,27 @@ begin
   ), c2 as (
     select c.*, coalesce(c.id, '') as rk,
            lag(c.op) over (partition by c.t, coalesce(c.id, '') order by c.seq) as prev_op,
-           lag(c.n) over (partition by c.t, coalesce(c.id, '') order by c.seq) as prev_n
+           count(*) over (partition by c.t, coalesce(c.id, '')) as n_changes
     from c
+  ), cc as (
+    -- every column a change of a row changed more than once names: its value
+    -- before (o) and after (n) that change
+    select c2.t, c2.rk, c2.seq, e.key, c2.o ? e.key as has_o, c2.o -> e.key as ov, c2.n ? e.key as has_n, c2.n -> e.key as nv
+    from c2, lateral (select jsonb_object_keys(coalesce(c2.o, '{}'::jsonb) || coalesce(c2.n, '{}'::jsonb)) as key) e
+    where c2.n_changes > 1 and not (e.key = any (public.app_undo_bookkeeping(c2.t)))
+  ), broken as (
+    select distinct l.t, l.rk
+    from (select cc.*, lag(cc.has_n) over w as prev_has_n, lag(cc.nv) over w as prev_nv
+          from cc window w as (partition by cc.t, cc.rk, cc.key order by cc.seq)) l
+    where l.has_o and coalesce(l.prev_has_n, false) and l.prev_nv is distinct from l.ov
   ), r as (
     select c2.t, c2.rk, min(c2.id) as id, array_agg(c2.op order by c2.seq) as ops, max(c2.seq) as last_seq, count(*)::integer as n,
            bool_and(case
              when c2.prev_op is null then true
              when c2.op = 'INSERT' then c2.prev_op = 'DELETE'
              when c2.prev_op = 'DELETE' then false
-             else not exists (select 1 from jsonb_each(coalesce(c2.o, '{}'::jsonb)) e
-                              where coalesce(c2.prev_n, '{}'::jsonb) ? e.key
-                                and not (e.key = any (public.app_undo_bookkeeping(c2.t)))
-                                and (c2.prev_n -> e.key) is distinct from e.value)
-           end) as ordered
+             else true
+           end) as ops_ok
     from c2
     group by c2.t, c2.rk
   ), b as (
@@ -597,11 +736,12 @@ begin
     group by x.t, x.rk
   )
   select coalesce(jsonb_agg(jsonb_build_object(
-           't', r.t, 'id', r.id, 'ops', to_jsonb(r.ops), 'n', r.n, 'seq', r.last_seq, 'ordered', r.ordered,
+           't', r.t, 'id', r.id, 'ops', to_jsonb(r.ops), 'n', r.n, 'seq', r.last_seq, 'ordered', r.ops_ok and bk.t is null,
            'before', coalesce(b.obj, '{}'::jsonb), 'after', coalesce(f.obj, '{}'::jsonb)
          ) order by r.last_seq desc), '[]'::jsonb)
     into v_items
   from r
+  left join broken bk on bk.t = r.t and bk.rk = r.rk
   left join b on b.t = r.t and b.rk = r.rk
   left join f on f.t = r.t and f.rk = r.rk;
   v_mine := array(select (i ->> 't') || ':' || (i ->> 'id') from jsonb_array_elements(v_items) i where i ->> 'id' is not null);
@@ -664,6 +804,7 @@ begin
       select 1 from pg_trigger tg where tg.tgrelid = v_tbl and not tg.tgisinternal and tg.tgfoid = v_audit);
     v_ovk := array(select jsonb_object_keys(coalesce(p_overrides -> v_t, '{}'::jsonb)));
     v_book := public.app_undo_bookkeeping(v_t);
+    v_links := public.app_undo_links(v_t);
 
     -- The rows as they are, and the save's before/after typed like them
     -- (so a timestamp or a number compares as a value, not as text). An
@@ -726,11 +867,12 @@ begin
         continue;
       end if;
 
-      -- The columns the save's record names, key and bookkeeping aside; those
-      -- that can't take a value any more are reported, never passed over.
+      -- The columns the save's record names, key, bookkeeping and outside
+      -- links aside; those that can't take a value any more are reported,
+      -- never passed over.
       v_keys := array(
         select k from (select jsonb_object_keys(x -> 'before') as k union select jsonb_object_keys(x -> 'after')) s
-        where not (k = any (v_book || array['id', v_kcol])));
+        where not (k = any (v_book || v_links || array['id', v_kcol])));
       select v_skipcols || coalesce(jsonb_object_agg(k, coalesce(v_cols ->> k, 'dropped')), '{}'::jsonb)
         into v_skipcols
       from unnest(v_keys) k where coalesce(v_cols ->> k, 'dropped') <> 'ok';
@@ -791,6 +933,31 @@ begin
       elsif v_action = 'reinsert' then
         v_steps := array_append(v_steps, jsonb_build_object('t', v_t, 'k', v_kcol, 'id', v_id, 'action', 'reinsert', 'seq', x -> 'seq',
           'row', x -> 'before'));
+      end if;
+
+      -- An outside link this save changed that isn't back as it was: Undo
+      -- leaves it (it must name what exists on that service), and says so.
+      if v_before and v_after and r_cur is not null and cardinality(v_links) > 0 then
+        v_lk := array(select k from unnest(v_links) k
+                      where v_cols ->> k = 'ok' and (r_b -> k) is distinct from (r_a -> k) and (r_cur -> k) is distinct from (r_b -> k));
+        if cardinality(v_lk) > 0 then
+          select v_lkept || jsonb_build_object(v_t, coalesce(v_lkept -> v_t, '{}'::jsonb)
+                   || coalesce(jsonb_object_agg(k, coalesce((v_lkept -> v_t ->> k)::integer, 0) + 1), '{}'::jsonb))
+            into v_lkept
+          from unnest(v_lk) k;
+        end if;
+      end if;
+
+      -- What the browser does on Google Calendar right after (followUndo): a
+      -- slot or plan put back that had an event gets a new one; a slot whose
+      -- day, time, length or title goes back moves its event (a plan: any).
+      if v_action = 'reinsert' and v_t in ('time_blocks', 'schedule_blocks')
+         and (x -> 'before' ->> 'google_calendar_event_id') is not null then
+        n_cal_new := n_cal_new + 1;
+      elsif v_action in ('revert', 'overwrite') and (r_cur ->> 'google_calendar_event_id') is not null
+            and (v_t = 'schedule_blocks'
+                 or (v_t = 'time_blocks' and v_k && array['date', 'start_time', 'title', 'duration_minutes'])) then
+        n_cal_move := n_cal_move + 1;
       end if;
 
       if v_action = 'revert' then n_revert := n_revert + 1;
@@ -945,12 +1112,45 @@ begin
     from jsonb_array_elements(coalesce(v_run -> 'snapshots', '[]'::jsonb)) sn where (sn ->> 'too_big')::boolean
   ) s;
 
-  -- A save made by AI / a sync whose undo touches a synced table: undoing a
-  -- pull changes that service too.
+  -- A save made by AI / a sync whose undo touches a synced table: the
+  -- service may still have the save's change (the browser says what the
+  -- outbox lines don't).
   select coalesce(jsonb_agg(distinct st ->> 't' order by st ->> 't'), '[]'::jsonb)
     into v_sync
   from unnest(v_steps) st
   where v_actors ? 'service' and public.app_undo_synced(st ->> 't') is not null;
+
+  -- A later edit is "kept" only if the undo itself doesn't change that
+  -- column too (a rule on the row it writes back: drift says so instead).
+  v_kept := array(
+    select kp from unnest(v_kept) kp
+    where not exists (
+      select 1 from jsonb_array_elements(coalesce(v_run -> 'drift', '[]'::jsonb)) d,
+                    jsonb_array_elements_text(coalesce(d -> 'columns', '[]'::jsonb)) dc
+      where d ->> 't' = kp ->> 't' and d ->> 'id' = kp ->> 'id'
+        and exists (select 1 from jsonb_array_elements(kp -> 'later') l
+                    where jsonb_typeof(l -> 'columns') is distinct from 'array' or l -> 'columns' ? dc)));
+
+  -- What goes outside: the outbox rows the steps queued, and the Google
+  -- Calendar events the browser makes or moves right after (followUndo).
+  select coalesce(jsonb_agg(jsonb_build_object('s', g.s, 'op', g.op, 'n', g.n) || coalesce(g.extra, '{}'::jsonb) order by g.s, g.op), '[]'::jsonb)
+    into v_outbox
+  from (
+    select o.s, o.op, sum(o.n)::integer as n,
+           (array_agg(o.extra) filter (where o.extra is not null))[1] as extra
+    from (
+      select e ->> 's' as s, e ->> 'op' as op, (e ->> 'n')::integer as n, e - 's' - 'op' - 'n' as extra
+      from jsonb_array_elements(coalesce(v_run -> 'outbox', '[]'::jsonb)) e
+      union all select 'google_calendar', 'create', n_cal_new, null where n_cal_new > 0
+      union all select 'google_calendar', 'update', n_cal_move, null where n_cal_move > 0
+    ) o
+    group by o.s, o.op
+  ) g;
+
+  -- Outside links the save changed that Undo leaves as they are.
+  select coalesce(jsonb_agg(jsonb_build_object('t', t.key, 'c', c.key, 'n', (c.value #>> '{}')::integer) order by t.key, c.key), '[]'::jsonb)
+    into v_links_kept
+  from jsonb_each(v_lkept) t, jsonb_each(t.value) c;
 
   -- 9 · The plan, and its fingerprint: an apply must match what was shown.
   v_plan := jsonb_build_object(
@@ -959,13 +1159,13 @@ begin
     'drift', coalesce(v_run -> 'drift', '[]'::jsonb), 'steps', v_nsteps,
     'side_effects', coalesce(v_run -> 'side_effects', '[]'::jsonb),
     'side_hidden', coalesce((v_run ->> 'side_hidden')::integer, 0),
-    'outbox', coalesce(v_run -> 'outbox', '[]'::jsonb),
+    'outbox', v_outbox, 'links_kept', v_links_kept,
     'sync_save', v_sync);
   v_token := md5(v_plan::text);
   v_needs := cardinality(v_conf) > 0 or jsonb_array_length(v_blocked) > 0 or jsonb_array_length(v_coll) > 0
              or jsonb_array_length(v_plan -> 'drift') > 0 or jsonb_array_length(v_nolog) > 0
              or jsonb_array_length(v_plan -> 'side_effects') > 0 or (v_plan ->> 'side_hidden')::integer > 0
-             or jsonb_array_length(v_plan -> 'outbox') > 0 or jsonb_array_length(v_sync) > 0;
+             or jsonb_array_length(v_outbox) > 0 or jsonb_array_length(v_links_kept) > 0 or jsonb_array_length(v_sync) > 0;
 
   if p_apply then
     if p_confirm is not null and p_confirm <> v_token then
@@ -976,8 +1176,13 @@ begin
       raise exception 'app_undo_transaction: % conflicts, % blocked, % other rows, % rows a rule changes and % changes outside the app need confirming first',
         cardinality(v_conf), jsonb_array_length(v_blocked) + jsonb_array_length(v_nolog), jsonb_array_length(v_coll),
         jsonb_array_length(v_plan -> 'drift') + jsonb_array_length(v_plan -> 'side_effects'),
-        jsonb_array_length(v_plan -> 'outbox') + jsonb_array_length(v_sync)
+        jsonb_array_length(v_outbox) + jsonb_array_length(v_links_kept) + jsonb_array_length(v_sync)
         using errcode = 'UD001';
+    end if;
+    -- This undo is not a save of its own for the nearby-saves hint.
+    if (select auth.uid()) is not null and v_nsteps > 0 then
+      insert into public.audit_undos (undo_tx, undone_tx) values (txid_current(), p_tx_id) on conflict (undo_tx) do nothing;
+      delete from public.audit_undos where user_id = (select auth.uid()) and created_at < now() - interval '30 days';
     end if;
     v_result := jsonb_build_object(
       -- this undo's own transaction: undoing it is the way back
@@ -991,8 +1196,9 @@ begin
                        from jsonb_array_elements(v_run -> 'snapshots') sn, jsonb_array_elements(sn -> 'groups') g));
   end if;
 
-  -- Other saves by the same actor within seconds of this one that touched the
-  -- same tables (Spread writes up to three): a hint, not in the fingerprint.
+  -- For a save of media rows (where Spread writes up to three saves): other
+  -- saves by the same actor within seconds of it on the same media tables,
+  -- undos aside. A hint, not in the fingerprint.
   select coalesce(jsonb_agg(jsonb_build_object('tx', n.tx, 'at', n.at, 'changes', n.changes, 'when', n.wh)
                             order by n.at, n.tx), '[]'::jsonb)
     into v_nearby
@@ -1003,8 +1209,10 @@ begin
     where a.created_at between v_at - interval '10 seconds' and v_at + interval '10 seconds'
       and a.tx_id <> p_tx_id
       and v_actors ? a.actor
+      and not exists (select 1 from public.audit_undos u where u.undo_tx = a.tx_id)
     group by a.tx_id
-    having bool_or(a.table_name in (select distinct i ->> 't' from jsonb_array_elements(v_items) i))
+    having bool_or(a.table_name in (select distinct i ->> 't' from jsonb_array_elements(v_items) i
+                                    where i ->> 't' in ('user_tv_episodes', 'user_tv_entries', 'user_movie_entries', 'media_watches')))
   ) n;
 
   return v_plan || jsonb_build_object(
@@ -1015,19 +1223,25 @@ end;
 $$;
 
 revoke all on function public.app_undo_bookkeeping(text) from public, anon;
+revoke all on function public.app_undo_links(text) from public, anon;
 revoke all on function public.app_undo_synced(text) from public, anon;
-revoke all on function public.app_undo_outbox() from public, anon;
+revoke all on function public.app_undo_outbox(bigint) from public, anon;
 revoke all on function public.app_undo_steps(jsonb, jsonb) from public, anon;
 revoke all on function public.app_undo_transaction(bigint, boolean, text, jsonb) from public, anon;
 grant execute on function public.app_undo_bookkeeping(text) to authenticated;
+grant execute on function public.app_undo_links(text) to authenticated;
 grant execute on function public.app_undo_synced(text) to authenticated;
-grant execute on function public.app_undo_outbox() to authenticated;
+grant execute on function public.app_undo_outbox(bigint) to authenticated;
 grant execute on function public.app_undo_steps(jsonb, jsonb) to authenticated;
 grant execute on function public.app_undo_transaction(bigint, boolean, text, jsonb) to authenticated;
 
 comment on function public.app_undo_transaction(bigint, boolean, text, jsonb) is
-  'Undo one save (an audit_logs transaction): apply=false returns the plan (steps, conflicts with later saves, blocked changes, what deletes take with them, rows rules change again or besides, what goes to Trakt/Google) and changes nothing; apply=true runs it in one transaction and needs the plan''s confirm token when it lists anything to confirm. Runs as the caller (151).';
+  'Undo one save (an audit_logs transaction): apply=false returns the plan (steps, conflicts with later saves, blocked changes, what deletes take with them, rows rules change again or besides, what goes to Trakt/Google, outside links left as they are) and changes nothing; apply=true runs it in one transaction and needs the plan''s confirm token when it lists anything to confirm. Runs as the caller (151).';
 comment on function public.app_undo_steps(jsonb, jsonb) is
-  'Runs the steps app_undo_transaction built (revert/overwrite/delete/reinsert, by id or user_id), newest first, retrying a step a foreign key or unique index stops; then fires deferred triggers and reports drift, side effects and outbox rows. Runs as the caller (151).';
-comment on function public.app_undo_outbox() is
-  'Outbox rows (Trakt, Google Tasks, Google Calendar) the caller''s current transaction wrote for the caller''s account, counted per service and kind (151).';
+  'Runs the steps app_undo_transaction built (revert/overwrite/delete/reinsert, by id or user_id), newest first, retrying a step a foreign key or unique index stops; then fires deferred triggers and reports drift (a rule''s change to a step row too), side effects and outbox rows. Runs as the caller (151).';
+comment on function public.app_undo_outbox(bigint) is
+  'Outbox rows (Trakt after the given seq, Google Tasks, Google Calendar) the caller''s current transaction wrote for the caller''s account, counted per service and kind, with the newest Trakt seq as the next mark (151).';
+comment on table public.audit_undos is
+  'One row per "Undo this save" applied (its transaction, the save it took back), so the nearby-saves hint leaves undos out (151). Rows older than 30 days go when the next undo runs.';
+
+select public.owner_lock_apply('public.audit_undos');
