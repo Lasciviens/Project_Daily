@@ -4,15 +4,16 @@ import { fillDays, rollingMean, type DayValue } from '../healthWindowStats'
 import { usualRange, type UsualRange } from '../healthTrendStats'
 import { useHealthDaily } from '../hooks/useHealthExport'
 import { HealthTrendChart } from './HealthTrendChart'
-import { fmtAxisDay, fmtDayMonth } from './healthFormat'
+import { fmtAxisFor } from './healthFormat'
 
 // A recovery marker or overnight vital (resting HR, HRV, respiratory rate,
 // SpO₂, wrist temperature, walking HR) as a daily trend against YOUR usual
 // range — population norms fit Apple's short overnight readings poorly, so the
 // band is personal: mean ± 1 SD of the last 60 days by default, or the median
-// ± a fixed width (respiratory rate). Always at least 30 days of context, even
-// in Day mode, because one day of a recovery marker says nothing on its own.
-// Reads the page's long window (`fetchFrom`), so it shares that download.
+// ± a fixed width (respiratory rate). The chart spans the period picked in the
+// range bar; a single day shows that day's reading and its usual range, with
+// no chart (one point draws nothing). Reads the page's long window
+// (`fetchFrom`), so it shares that download.
 
 interface Props {
   metric: string
@@ -48,8 +49,8 @@ export function RecoveryTrend({
   metric, title, unit, color, from, to, fetchFrom, decimals = 0, rolling, rollingDays = 7, range, rangeText, usual: usualOverride, deviation, transform, refLines, onViewDay,
 }: Props) {
   const histFrom = shiftDateStr(to, -59)
-  const contextFrom = shiftDateStr(to, -29)
-  const chartFrom = from < contextFrom ? from : contextFrom
+  const chartFrom = from
+  const isDay = from === to
   const readFrom = fetchFrom && fetchFrom < histFrom ? fetchFrom : histFrom
   const { data: raw = [], isLoading } = useHealthDaily(metric, readFrom, to)
 
@@ -60,15 +61,19 @@ export function RecoveryTrend({
   const usual = usualOverride ?? usualRange(hist, range ?? { mode: 'sd', k: 1 }, 14)
   const shift = deviation && usual ? usual.center : 0
   const dense = fillDays(data.map(d => ({ date: d.date, value: d.value - shift })), chartFrom, to)
-  const mean7 = rolling ? rollingMean(dense, rollingDays, 3) : null
-  const chart = dense.map((d, i) => ({ label: fmtAxisDay(d.date), date: d.date, value: d.value, mean7: mean7?.[i].value ?? null }))
+  // A moving average only helps a chart longer than two weeks.
+  const smooth = rolling && dense.length > 14
+  const mean7 = smooth ? rollingMean(dense, rollingDays, 3) : null
+  const chart = dense.map((d, i) => ({ label: fmtAxisFor(d.date, dense.length), date: d.date, value: d.value, mean7: mean7?.[i].value ?? null }))
   const band = usual ? { y1: usual.low - shift, y2: usual.high - shift, label: 'your usual range', color } : undefined
-  const latest = [...data].reverse().find(d => d.date >= chartFrom && d.date <= to)
+  const readings = data.filter(d => d.date >= chartFrom && d.date <= to)
+  // That day's reading, or the period's average.
+  const value = readings.length ? readings.reduce((a, d) => a + d.value, 0) / readings.length : null
   const fmt = (v: number) => v.toLocaleString('en-GB', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })
   const sign = (v: number) => `${v > 0 ? '+' : v < 0 ? '−' : '±'}${fmt(Math.abs(v))}`
 
   if (isLoading) return <div className="h-[140px] rounded-row skeleton" aria-hidden />
-  if (!chart.some(d => d.value != null)) return null
+  if (value == null) return null
 
   return (
     <div className="flex flex-col gap-1 border-t border-line pt-3">
@@ -78,34 +83,34 @@ export function RecoveryTrend({
           <InfoBubble label={`About ${title}`}>
             The shaded band is your own usual range: {rangeText ?? 'the average of the last 60 days, ± one standard deviation'}
             {usual ? ` (${usual.n} days)` : ''}. A reading outside it is unusual for you, not necessarily a
-            problem.{rolling ? ` The dashed line is the ${rollingDays}-day average, which is steadier than single days.` : ''}
+            problem.{smooth ? ` The dashed line is the ${rollingDays}-day average, which is steadier than single days.` : ''}
             {deviation ? ' Shown as the difference from your usual night, the way Apple shows wrist temperature.' : ''}
           </InfoBubble>
         </p>
         <p className="text-meta text-fg-muted">
-          {latest && (
-            <><span className="font-semibold tabular-nums text-fg">{deviation && usual ? sign(latest.value - shift) : fmt(latest.value)} {unit}</span>
-              {' '}{latest.date === to ? 'latest' : fmtDayMonth(latest.date)} · </>
-          )}
+          <span className="font-semibold tabular-nums text-fg">{deviation && usual ? sign(value - shift) : fmt(value)} {unit}</span>
+          {isDay ? ' · ' : ' average · '}
           {usual
             ? deviation ? <>usual ± {fmt((usual.high - usual.low) / 2)} {unit}</> : <>usual {fmt(usual.low)}–{fmt(usual.high)} {unit}</>
             : 'too few days for a usual range yet'}
         </p>
       </div>
-      <HealthTrendChart
-        data={chart}
-        series={[
-          { key: 'value', label: title, color, kind: 'line' },
-          ...(rolling ? [{ key: 'mean7', label: `${rollingDays}-day average`, color, kind: 'line' as const, dashed: true }] : []),
-        ]}
-        unit={unit}
-        ariaLabel={`${title} per day with your usual range`}
-        height={130}
-        band={band}
-        refLines={refLines}
-        formatValue={deviation ? sign : fmt}
-        onViewDay={onViewDay}
-      />
+      {!isDay && (
+        <HealthTrendChart
+          data={chart}
+          series={[
+            { key: 'value', label: title, color, kind: 'line' },
+            ...(smooth ? [{ key: 'mean7', label: `${rollingDays}-day average`, color, kind: 'line' as const, dashed: true }] : []),
+          ]}
+          unit={unit}
+          ariaLabel={`${title} per day with your usual range`}
+          height={130}
+          band={band}
+          refLines={refLines}
+          formatValue={deviation ? sign : fmt}
+          onViewDay={onViewDay}
+        />
+      )}
     </div>
   )
 }

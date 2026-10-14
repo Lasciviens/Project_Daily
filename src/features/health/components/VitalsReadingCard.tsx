@@ -6,7 +6,7 @@ import { BASELINE_DAYS } from '../vitalsReading'
 import { useVitalsReading } from '../hooks/useVitalsReading'
 import { SourceList } from './overview/MetricExplainer'
 import type { HealthRange } from './sectionTypes'
-import { useRangeWindow, windowNoun } from './dateNav'
+import { useRangeWindow } from './dateNav'
 import { VitalsReadingRows } from './VitalsReadingRows'
 
 // "What your numbers say" — the top of the Heart & vitals window. The charts
@@ -14,8 +14,6 @@ import { VitalsReadingRows } from './VitalsReadingRows'
 // table (value · your usual · status · change) and a plain line per signal.
 // All of it comes from vitalsReading.ts (pure, verified) over the same
 // downloads the charts use. A count of what's off, never a score.
-
-const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 
 function LoadingCard() {
   return (
@@ -40,7 +38,7 @@ export function VitalsReadingCard({ range }: { range: HealthRange }) {
         className="mb-0"
         icon={<Stethoscope />}
         title="What your numbers say"
-        subtitle={`${cap(windowNoun(range.period, range.anchor))} · compared with the ${BASELINE_DAYS} days before`}
+        subtitle={`Compared with the ${BASELINE_DAYS} days before`}
         action={(
           <InfoBubble label="How this reading works">
             <span className="block">

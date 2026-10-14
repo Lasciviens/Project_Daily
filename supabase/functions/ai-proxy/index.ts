@@ -1180,6 +1180,7 @@ const TABLE_WORDS: Record<string, [string, string]> = {
   tasks: ['task', 'tasks'], time_blocks: ['schedule block', 'schedule blocks'],
   schedule_blocks: ['repeating block', 'repeating blocks'], food_log_entries: ['food entry', 'food entries'],
   water_log_entries: ['water entry', 'water entries'], ai_memory: ['memory', 'memories'],
+  quick_guess_items: ['quick guess', 'quick guesses'],
   recipes: ['recipe', 'recipes'], shop_items: ['shop item', 'shop items'], wish_items: ['wish', 'wishes'],
   dev_requests: ['request', 'requests'], books: ['book', 'books'],
   user_movie_entries: ['film in your library', 'films in your library'],
@@ -2565,7 +2566,7 @@ const DB_CATALOG: Record<string, CatalogEntry> = {
   tasks: {
     access: 'rw',
     purpose: 'To-do tasks (the To-Do feature IS this table).',
-    columns: 'id, title, description, domain(personal|work|media), section(inbox|today|tomorrow|this_week|backlog), status(open|in_progress|waiting|done|cancelled), priority(low|medium|high), start_date(date; optional opening edge of a window — with due_date it means "do this between A and B"), due_date(date), due_time(time), waiting_for(text), is_focused(bool), source_type(manual|movie|tv_series|media|calendar|ai|training_session|project_item), source_id(uuid), sort_order, completed_at(timestamptz — when it was closed; use this, never updated_at, for "finished today"), hevy_routine_id(text; the Hevy routine a planned training session trains — the database fills it), hevy_workout_id(text; the Hevy workout that completed it — the database sets it), created_at, updated_at',
+    columns: 'id, title, description, domain(personal|work|media), section(inbox|today|backlog — a task for any day but today goes under backlog with its due_date; old rows may still read the retired tomorrow|this_week, never write those), status(open|in_progress|waiting|done|cancelled), priority(low|medium|high), start_date(date; optional opening edge of a window — with due_date it means "do this between A and B"), due_date(date), due_time(time), waiting_for(text), is_focused(bool), source_type(manual|movie|tv_series|media|calendar|ai|training_session|project_item), source_id(uuid), sort_order, completed_at(timestamptz — when it was closed; use this, never updated_at, for "finished today"), hevy_routine_id(text; the Hevy routine a planned training session trains — the database fills it), hevy_workout_id(text; the Hevy workout that completed it — the database sets it), created_at, updated_at',
     rules: 'Deleting a task automatically deletes its linked time_blocks row too (task_id is ON DELETE CASCADE — no separate cleanup db_delete needed). due_date is the SOLE deadline — a task with a due_date can be late; a task\'s optional schedule slot (time_blocks linked via task_id) is a separate fact and never implies or changes due_date — EXCEPT for a training task (below), whose day and time are its slot\'s. If the user just wants to be reminded of something during a period ("go to the hytte this winter") with no date it must be done by, that is a wish_items row, not a task. A planned training session is a task with source_type training_session and source_id = the routine id (hevy_routines.id), or a personal task titled exactly like the routine; the database links it (hevy_routine_id) and marks it done with the workout (hevy_workout_id) when that workout syncs — never set those two, and never delete a training task because it was trained. A training task\'s due_date/due_time and its time_blocks row move together (migration 142): update either one, the database moves the other (its Google Calendar event follows the next time the app edits it). Never cancel a training task directly: to skip it, ask the user why first and db_insert a training_skips row (the database cancels the task).',
   },
   time_blocks: {
@@ -2611,6 +2612,14 @@ const DB_CATALOG: Record<string, CatalogEntry> = {
     purpose: "The water diary — one row per amount the user drank. The day's total is the SUM of amount_ml for that date; the daily target is day_targets.water_ml.",
     columns: "id, date(date — the user's own day, yyyy-mm-dd; set it from the context's ISO date — left out, today in Oslo is used), amount_ml(int > 0), logged_at(timestamptz — when it was logged, default now), created_at",
     rules: "One row per amount drunk: 'I drank 500 ml' → insert {date, amount_ml: 500}; never edit a row into a running total. A glass with no amount given = 250 ml (the app's default); for anything else ask the amount once. Water NEVER goes in food_log_entries and has no macros or calories. 'How much water today?' → db_aggregate sum amount_ml with filters {date}. To take back the last amount, delete that row (newest logged_at); the app asks the user to Confirm.",
+  },
+  // Quick guess presets (migration 152): the chips on Food · Today's Quick
+  // guess card, edited in Settings → Food. A preset is a template, not a log.
+  quick_guess_items: {
+    access: 'rw',
+    purpose: "The user's Quick guess presets — the one-tap chips on Food · Today for food they can't weigh (a sweet, a soft drink, a beer). Each is a template with typical values for ONE portion; tapping it logs a one-off food_log_entries line (custom_title = the name), so a preset never holds what was eaten.",
+    columns: 'id, name(text 1–60 — also the diary title it logs), icon(an emoji, nullable), portion(text, nullable — what one portion is, e.g. "0.5 L"), calories(numeric > 0, ≤ 5000), protein_g, carbs_g, fat_g, sugar_g (numeric ≥ 0, per portion; sugar is part of carbs), sort_order(int — the chip order, smallest first), created_at, updated_at',
+    rules: "To log something the user ate, write food_log_entries — never insert here for that. Add or edit a preset only when the user asks to change their quick guesses; a new one goes last (sort_order = the highest + 1). Editing or deleting a preset never changes lines already logged.",
   },
   shop_categories: {
     access: 'rw',
@@ -2811,13 +2820,13 @@ const DB_CATALOG: Record<string, CatalogEntry> = {
       'The user\'s GOAL is not here: the cut/maintain/gain phase, its start date, the daily calorie/protein/water targets and the body targets (goal weight, body fat %, muscle mass) all live on day_targets — one row, one goal. A request to lose fat or gain weight is a phase change on day_targets, not a training-focus change here.',
     ].join(' '),
   },
-  // day_targets is THE goal (migrations 086 + 113): one row per user holding the
+  // day_targets is THE goal (migrations 086 + 113 + 153): one row per user holding the
   // phase, its start date, the daily targets and the body targets — the same row
   // the app's one "Your goal" editor saves (Food, Daily and Health all show it).
   day_targets: {
     access: 'rw',
-    purpose: "The user's goal — a SINGLETON: at most ONE row per user, keyed by user_id (no id column). Holds the phase (goal: cut|maintain|gain) and the day it started, the daily calorie/protein/water targets, and the body targets (goal weight, body fat %, muscle mass — one set for every phase). Read it for any question about their goal, targets, deficit plan or progress toward a goal weight.",
-    columns: 'user_id(uuid, PRIMARY KEY — not "id"), calories(int kcal/day), protein_g(int g/day), water_ml(int ml/day), goal(the PHASE: cut|maintain|gain), last_calorie_adjust(date, nullable — last adaptive-calorie nudge, gates a 14-day cooldown), phase_start_date(date, nullable — first day of the current phase), goal_weight_kg(numeric 25–300, nullable), goal_body_fat_pct(numeric 3–60 — as the smart scale reports it, nullable), goal_muscle_mass_kg(numeric 10–150 — the scale report muscle % × weight, not lean mass, nullable), updated_at',
+    purpose: "The user's goal — a SINGLETON: at most ONE row per user, keyed by user_id (no id column). Holds the phase (goal: cut|maintain|gain) and the day it started, the daily calorie/protein/water targets with the optional carb and fat goals, and the body targets (goal weight, body fat %, muscle mass — one set for every phase). Read it for any question about their goal, targets, deficit plan or progress toward a goal weight.",
+    columns: 'user_id(uuid, PRIMARY KEY — not "id"), calories(int kcal/day), protein_g(int g/day), water_ml(int ml/day), carbs_g(int g/day 0–1000, nullable — NULL means the app works it out: what protein and fat leave of the calories), fat_g(int g/day 0–1000, nullable — NULL means worked out: 30 % of the calories, never under the cut’s fat floor), goal(the PHASE: cut|maintain|gain), last_calorie_adjust(date, nullable — last adaptive-calorie nudge, gates a 14-day cooldown), phase_start_date(date, nullable — first day of the current phase), goal_weight_kg(numeric 25–300, nullable), goal_body_fat_pct(numeric 3–60 — as the smart scale reports it, nullable), goal_muscle_mass_kg(numeric 10–150 — the scale report muscle % × weight, not lean mass, nullable), updated_at',
     rules: [
       'There is at most one row for this user — never insert a second one once a row exists.',
       'To write: first db_query this table with filters={} to check whether a row exists. If none exists, db_insert one. If one exists, db_update it with filters={"user_id":"<the user_id value from the row you just queried>"} (db_update refuses an empty filters object).',
@@ -2865,7 +2874,12 @@ const DB_CATALOG: Record<string, CatalogEntry> = {
   hevy_exercise_templates: {
     access: 'ro',
     purpose: 'Hevy exercise catalog (names + muscle groups).',
-    columns: 'id, title, type, primary_muscle_group, is_custom',
+    columns: 'id, title, type, primary_muscle_group, is_custom, thumbnail_url(Hevy\'s picture of the exercise; null when it has none)',
+  },
+  hevy_account: {
+    access: 'ro',
+    purpose: 'The Hevy account the app syncs (one row): its username, units and Hevy Pro, and Hevy\'s own workout count at the last check.',
+    columns: 'user_id, username, weight_unit(kg|lbs), distance_unit(kilometers|miles), is_pro, hevy_workout_count, count_checked_at, synced_at',
   },
   hevy_body_measurements: {
     access: 'ro',
@@ -3290,6 +3304,11 @@ const AI_NO_WRITE = /^(google_(calendar_event_id|task_id|tasklist_id|etag|positi
 function aiWriteProblem(table: string, row: AnyRecord): string | null {
   for (const k of Object.keys(row)) {
     if (AI_NO_WRITE.test(k)) return `Not done: the assistant may not set ${k} on ${table} — the app sets it itself.`
+  }
+  // The app's one rule (taskRules.sectionForDay): Today for today, Backlog for
+  // any other day. Tomorrow / This week are retired; the planner has no pill for them.
+  if (table === 'tasks' && (row.section === 'tomorrow' || row.section === 'this_week')) {
+    return `Not done: ${row.section} is a retired task section — use today for today's task and backlog (with its due_date) for any other day.`
   }
   if ('repeat_count' in row) {
     const n = Number(row.repeat_count)

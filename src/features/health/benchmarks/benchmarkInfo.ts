@@ -50,7 +50,7 @@ export const BENCHMARKS: Record<BenchmarkMetric, BenchmarkInfo> = {
     howToImprove:
       'Regular exercise raises it moderately (16 randomised trials, SMD 0.58). What lowers resting heart rate — aerobic fitness, enough sleep, less alcohol and stress — tends to raise it.',
     caveats:
-      'Apple reports SDNN from roughly one-minute readings every few hours; published norms use 5-minute or 24-hour ECG recordings, which are not interchangeable. Against a chest strap, Apple Watch read about 8 ms lower on average with a wide spread (MAPE 29%). Compare a 7-day average with your own 60-day range, and never compare SDNN with RMSSD (what Oura, Whoop and Garmin show).',
+      'Apple reports SDNN from roughly one-minute readings every few hours; published norms use 5-minute or 24-hour ECG recordings, which are not interchangeable. Against a chest strap, Apple Watch read about 8 ms lower on average with a wide spread (MAPE 29%). Judge an average over several days against your own 60-day range, and never compare SDNN with RMSSD (what Oura, Whoop and Garmin show).',
     sources: [SRC.voss2015, SRC.shaffer2017, SRC.plews2013, SRC.hillebrand2013, SRC.hrvExercise2024, SRC.appleWatchHrv2024],
     higherIsBetter: true,
     confidence: 'medium',

@@ -284,6 +284,13 @@ export function perMonth(i: ShopItem, ctx: MoneyCtx, today: string, accessories:
   return { nok: used.nok / months, months, used }
 }
 
+/** How a cost of use reads: "Per month ≈ 334 NOK", or — when it could sell
+ *  for more than it cost — "Gained ≈ 429 NOK a month"; never a minus number. */
+export function perMonthWords(nok: number): { label: 'Per month' | 'Gained'; nok: number; aMonth: boolean } {
+  const n = Math.round(nok)
+  return n < 0 ? { label: 'Gained', nok: -n, aMonth: true } : { label: 'Per month', nok: n, aMonth: false }
+}
+
 // ── The sale ─────────────────────────────────────────────────────────────────
 
 /**
@@ -416,7 +423,7 @@ export interface OwnedSummary {
   valued: number
 }
 
-/** The rail's "What I own": things still yours (accessories counted apart), what they cost and are worth. */
+/** Stats' "You own": things still yours (accessories counted apart), what they cost and are worth. */
 export function ownedSummary(items: readonly ShopItem[], ctx: MoneyCtx): OwnedSummary {
   let mine = 0, accessories = 0, gone = 0, valued = 0
   const paid: Amount[] = []
@@ -431,6 +438,47 @@ export function ownedSummary(items: readonly ShopItem[], ctx: MoneyCtx): OwnedSu
     if (v) { worth.push(v); valued++ }
   }
   return { mine, accessories, gone, paid: add(...paid), worth: add(...worth), valued }
+}
+
+export interface ShownSummary extends OwnedSummary {
+  /** Money back for the gone things in view (with what left in the same sale). */
+  got: Amount
+}
+
+/**
+ * Owned's rail: the summary of the cards the list shows (`cards`, after the
+ * filters and Mine · Sold or gone · All) — things still yours (accessories
+ * counted apart), what they cost and could sell for; the gone ones, what they
+ * cost with what left in the same sale, and what they brought back.
+ * `goneBelow`: the sold-or-gone things listed under Mine — counted, their money
+ * left out.
+ */
+export function shownSummary(cards: readonly ShopItem[], acc: ReadonlyMap<string, readonly ShopItem[]>, ctx: MoneyCtx, goneBelow = 0): ShownSummary {
+  let mine = 0, accessories = 0, gone = goneBelow, valued = 0
+  const paid: Amount[] = []
+  const worth: Amount[] = []
+  const got: Amount[] = []
+  const yours = (i: ShopItem) => {
+    paid.push(costOf(i, ctx))
+    const v = valueNowOf(i, ctx)
+    if (v) { worth.push(v); valued++ }
+  }
+  for (const c of cards) {
+    const on = acc.get(c.id) ?? []
+    if (c.disposal) {
+      gone++
+      for (const x of [c, ...(c.sale_group ? on.filter(a => a.sale_group === c.sale_group) : [])]) {
+        paid.push(costOf(x, ctx))
+        got.push(gotOf(x) ?? ZERO)
+      }
+    } else {
+      if (c.accessory_of) accessories++
+      else mine++
+      yours(c)
+    }
+    for (const a of on) if (!a.disposal) { accessories++; yours(a) }
+  }
+  return { mine, accessories, gone, paid: add(...paid), worth: add(...worth), valued, got: add(...got) }
 }
 
 /** How old "Could sell for" is, in days (shown beside it; warn after ~6 months). */

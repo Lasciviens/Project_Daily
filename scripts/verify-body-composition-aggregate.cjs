@@ -9,7 +9,7 @@
 require('sucrase/register')
 
 const {
-  BODY_COMP_FIELDS, fieldMeta, reportsInWindow, latestAndPrevious, deltaFor,
+  BODY_COMP_FIELDS, fieldMeta, reportsBetween, latestAndPrevious, deltaFor,
   average, computeTrend, dailySeries,
 } = require('../src/features/health/bodyCompositionAggregate')
 
@@ -43,27 +43,22 @@ console.log('\n1 · Field metadata — 14 fields, unique keys, throws on an unkn
   check('fieldMeta throws on an unknown key', threw)
 }
 
-console.log('\n2 · reportsInWindow — 30d/90d/365d/all, and out-of-order input is sorted')
+console.log('\n2 · reportsBetween — the page\'s period by local day, and out-of-order input is sorted')
 {
-  const now = new Date('2026-09-06T08:23:00Z').getTime()
+  const day = iso => iso.slice(0, 10)
   const reports = [
     report('2026-09-01T07:57:00.000Z'), // out of order on purpose
-    report('2025-01-01T00:00:00.000Z'), // > 1 year ago
+    report('2025-01-01T00:00:00.000Z'), // > 1 year before
     report('2026-08-31T08:00:00.000Z'),
-    report('2026-06-01T00:00:00.000Z'), // ~97 days before "now"
+    report('2026-06-01T00:00:00.000Z'), // ~97 days before
   ]
-  const w30 = reportsInWindow(reports, '30d', now)
-  check('30d keeps only the two September scans', w30.length === 2, String(w30.length))
-  check('30d result is chronologically sorted', w30[0].measured_at < w30[1].measured_at)
-
-  const w90 = reportsInWindow(reports, '90d', now)
-  check('90d excludes the ~97-day-old June scan', w90.length === 2, String(w90.length))
-
-  const w365 = reportsInWindow(reports, '365d', now)
-  check('365d excludes the 2025 scan but keeps the rest', w365.length === 3, String(w365.length))
-
-  const wAll = reportsInWindow(reports, 'all', now)
-  check('all returns every scan regardless of age', wAll.length === 4)
+  const w30 = reportsBetween(reports, '2026-08-08', '2026-09-06', day)
+  check('30 days keep only the two late scans', w30.length === 2, String(w30.length))
+  check('the result is chronologically sorted', w30[0].measured_at < w30[1].measured_at)
+  check('90 days exclude the ~97-day-old June scan', reportsBetween(reports, '2026-06-09', '2026-09-06', day).length === 2)
+  check('a year excludes the 2025 scan but keeps the rest', reportsBetween(reports, '2025-09-07', '2026-09-06', day).length === 3)
+  check('the period ends on the viewed day, not today', reportsBetween(reports, '2026-08-01', '2026-08-31', day).length === 1)
+  check('a single day', reportsBetween(reports, '2026-09-01', '2026-09-01', day).length === 1)
 }
 
 console.log('\n3 · latestAndPrevious — empty / one / many scans')

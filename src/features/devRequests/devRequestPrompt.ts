@@ -135,6 +135,9 @@ export function buildClaudePrompt(requests: readonly PromptRequest[]): string {
     ...(anyFixed ? ['Points marked [already fixed] work now: leave that code alone.'] : []),
     ...(anyMoved ? ['Skip points marked [moved …]: another request covers them.'] : []),
     ...(anyRecheck ? ['For a RE-CHECK, first find what the earlier attempt changed and why it didn\'t take; don\'t repeat it — look deeper.'] : []),
+    // Owner, 14.10.2026: work connected points together instead of fixing a
+    // spot and coming back to it for a later point.
+    ...(!one || anyNumbered ? ['Before building, sort every point into groups by the area and files it touches, and plan an order where connected points are done together, so nothing you finish has to be reopened for a later point. List the groups and their order at the top of your reply.'] : []),
     `For each ${one ? (anyNumbered ? 'point' : 'part') : `request${anyNumbered ? ' and point' : ''}`}: find the root cause, make the smallest correct change, and verify it (npx tsc -b, npm run build, the relevant scripts/verify-*.cjs${anyMarks ? ', and the spot I pointed at' : ''}).`,
     'Then commit, push and open a draft PR.',
     'If something is ambiguous or needs a decision from me, ask before building it.',

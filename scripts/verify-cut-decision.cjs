@@ -144,5 +144,24 @@ console.log('\n§9 Goal progress path reads the same decision')
   check('§9.4 training step kept', out.steps.some(s => s.key === 'training'), true)
 }
 
+console.log('\n§10 The day\'s four targets (Food → Today\'s "What\'s left")')
+{
+  const t = (goal, floor) => { const r = D.dayMacroTargets(goal, floor); return [r.kcal, r.protein, r.carbs, r.fat] }
+  check('§10.1 nothing set: fat 30 % of the kcal (660 / 9 = 73 g), carbs the rest ((2200 − 640 − 657) / 4)', t({ calories: 2200, protein: 160 }), [2200, 160, 226, 73])
+  check('§10.2 a fat floor under the 30 % changes nothing', t({ calories: 2200, protein: 160 }, 50), [2200, 160, 226, 73])
+  check('§10.3 a fat floor over the 30 % lifts fat and carbs give way', t({ calories: 1500, protein: 180 }, 60), [1500, 180, 60, 60])
+  check('§10.4 carbs never go below 0', t({ calories: 1200, protein: 250 }), [1200, 250, 0, 40])
+  check('§10.5 whole numbers; no floor = none', t({ calories: 2199.6, protein: 159.5, carbs: null, fat: null }, null), [2200, 160, 226, 73])
+  const both = D.dayMacroTargets({ calories: 2200, protein: 160, carbs: 250, fat: 60 }, 80)
+  check('§10.6 the owner\'s own carb and fat goals win (even over the cut\'s floor)', [both.carbs, both.fat, both.carbsSet, both.fatSet, both.fatFromFloor], [250, 60, true, true, false])
+  const fatOnly = D.dayMacroTargets({ calories: 2200, protein: 160, carbs: null, fat: 60 })
+  check('§10.7 a fat goal alone: carbs work out from it ((2200 − 640 − 540) / 4)', [fatOnly.carbs, fatOnly.fat, fatOnly.carbsSet, fatOnly.fatSet], [255, 60, false, true])
+  const carbsOnly = D.dayMacroTargets({ calories: 2200, protein: 160, carbs: 300, fat: null }, 50)
+  check('§10.8 a carb goal alone: fat still 30 % of the kcal', [carbsOnly.carbs, carbsOnly.fat, carbsOnly.carbsSet, carbsOnly.fatSet], [300, 73, true, false])
+  check('§10.9 fatFromFloor says when the floor set the worked-out fat', [D.dayMacroTargets({ calories: 1500, protein: 180 }, 60).fatFromFloor, D.dayMacroTargets({ calories: 2200, protein: 160 }, 50).fatFromFloor], [true, false])
+  check('§10.10 a zero goal is a goal, not "worked out"', [D.dayMacroTargets({ calories: 2000, protein: 150, carbs: 0 }).carbs, D.dayMacroTargets({ calories: 2000, protein: 150, carbs: 0 }).carbsSet], [0, true])
+  check('§10.11 the floor is the decision\'s own (cut, 0.6 g/kg)', D.buildGoalDecision(I()).fatFloorG, Math.round(83 * D.FAT_FLOOR_PER_KG))
+}
+
 console.log(`\n${passed} passed, ${failed} failed`)
 process.exit(failed ? 1 : 0)

@@ -13,27 +13,45 @@ import { GamesHomeWidget, GamesTile } from '../components/GamesHomeWidget'
 import { BooksHomeWidget, BooksTile } from '../components/BooksHomeWidget'
 import { RecentMediaWidget, RecentMediaTile } from '../components/RecentMediaWidget'
 import { useElementWidthRem } from '../../../shared/hooks/useElementWidth'
-import { GLANCE_GROUP_GRID, homeBoardFor, newsIsBand, newsRows, type GlanceGroup, type HomeSection } from './homeBoard'
+import { GLANCE_GROUP_GRID, GLANCE_ROW_TEMPLATE, homeBoardFor, newsIsBand, newsRows, type HomeSection } from './homeBoard'
 
 /**
- * Glance tiles with swipeable screens that open their detail. `all` = the six;
- * the split laptop layout shows `outside` (weather, money — under transit) and
- * `activity` (training, watched, books, games — under the week and the
- * tasks). Each group's grid is GLANCE_GROUP_GRID in homeBoard.ts.
+ * The six glance tiles, with swipeable screens that open their detail: on a
+ * phone and in the 1280 side column (GLANCE_GROUP_GRID.all).
  */
-function GlanceTiles({ group }: { group: GlanceGroup }) {
-  const outside = group !== 'activity'
-  const activity = group !== 'outside'
+function GlanceTiles() {
   return (
-    <section aria-label={group === 'outside' ? 'Weather and money' : group === 'activity' ? 'Training, watching, reading and games' : 'At a glance'} className="@container">
-      <div className={cx('grid gap-3', GLANCE_GROUP_GRID[group])}>
-        {outside && <WeatherTile />}
-        {outside && <CurrencyTile />}
-        {activity && <TrainingTile />}
-        {activity && <RecentMediaTile />}
-        {activity && <BooksTile />}
-        {activity && <GamesTile />}
+    <section aria-label="At a glance" className="@container">
+      <div className={cx('grid', GLANCE_GROUP_GRID.all)}>
+        <WeatherTile />
+        <CurrencyTile />
+        <TrainingTile />
+        <RecentMediaTile />
+        <BooksTile />
+        <GamesTile />
       </div>
+    </section>
+  )
+}
+
+/**
+ * The split laptop board's glance row, on the board's own tracks
+ * (GLANCE_ROW_TEMPLATE): money · watched · books · games under the week and
+ * the tasks (GLANCE_GROUP_GRID.row), a large training tile under transit and
+ * the weather. One grid row, so every tile has the same top and height.
+ */
+function GlanceRow() {
+  return (
+    <section aria-label="At a glance" className="grid gap-4" style={{ gridTemplateColumns: GLANCE_ROW_TEMPLATE }}>
+      <div className="@container">
+        <div className={cx('grid h-full', GLANCE_GROUP_GRID.row)}>
+          <CurrencyTile />
+          <RecentMediaTile />
+          <BooksTile />
+          <GamesTile />
+        </div>
+      </div>
+      <TrainingTile large />
     </section>
   )
 }
@@ -42,11 +60,12 @@ function GlanceTiles({ group }: { group: GlanceGroup }) {
  * The week and today's tasks side by side under the brief (laptop and up),
  * equal height, stacking again when the main track is narrow. The 44rem here
  * is homeBoard.ts' PAIR_SIDE_BY_SIDE_REM (the split layout starts there too).
+ * `h-full`: on the split board the pair grows to end with the weather tile.
  */
 function HeroAndTasks() {
   return (
     <div className="@container">
-      <div className="grid grid-cols-1 items-stretch gap-4 @[44rem]:grid-cols-2 [&>*]:h-full">
+      <div className="grid h-full grid-cols-1 items-stretch gap-4 @[44rem]:grid-cols-2 [&>*]:h-full">
         <HomeHero />
         <TodayTasksCard />
       </div>
@@ -79,9 +98,9 @@ export function HomePage() {
     tasks: <TodayTasksCard />,
     pair: <HeroAndTasks />,
     transit: <TransitCard />,
-    tiles: <GlanceTiles group="all" />,
-    outsideTiles: <GlanceTiles group="outside" />,
-    activityTiles: <GlanceTiles group="activity" />,
+    tiles: <GlanceTiles />,
+    weatherTile: <WeatherTile large />,
+    glanceRow: <GlanceRow />,
     news: <HomeNews />,
     weather: <WeatherWidget />,
     currency: <CurrencyWidget />,

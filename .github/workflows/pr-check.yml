@@ -143,6 +143,30 @@ jobs:
         env:
           DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
 
+      # Migration 152's Quick guess presets (the table rules, the seed for the
+      # allowed accounts, row level security, the owner lock, the delete with
+      # Undo).
+      - name: Quick guess presets database scenarios
+        run: node scripts/verify-db-quick-guess-items.mjs
+        env:
+          DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
+
+      # Migration 153's carb and fat goals (the columns on the goal row and on
+      # each phase's saved targets, old rows untouched, the range guard, row
+      # level security, the activity log).
+      - name: Carb and fat goals database scenarios
+        run: node scripts/verify-db-day-targets-macros.mjs
+        env:
+          DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
+
+      # Migration 154's Hevy additions (the exercise picture column and its URL
+      # check, hevy_account: read-only for the app, written by the service
+      # role, row level security, the owner lock, synced templates untouched).
+      - name: Hevy full API database scenarios
+        run: node scripts/verify-db-hevy-full-api.mjs
+        env:
+          DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
+
       # `npm run lint` is deliberately NOT a gate yet: it is red today, and a
       # large share of the errors come from eslint linting supabase/functions
       # (Deno code checked with browser globals). Narrow the ESLint scope and

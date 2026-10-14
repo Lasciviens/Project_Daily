@@ -22,8 +22,12 @@
 // pace bands as Goal progress), body fat down / muscle up is good in every
 // phase. The body score is the scale's own judgment and is shown, not judged.
 import { classifyRate, GOAL_NOISE, MIN_FAT_PCT_CHANGE, type Phase, type RateStatus } from './goal/bodyGoal'
-import { mondayOfIso } from './healthTrendStats'
-import { addDaysIso, daysBetweenIso, type DayValue } from './healthWindowStats'
+import { weekStartsFor } from './healthTrendStats'
+import { addDaysIso, type DayValue } from './healthWindowStats'
+
+// The page's period sets the weeks (healthTrendStats.weekStartsFor, shared
+// with Activity's weekly exercise bars).
+export { weekStartsFor }
 
 export type WeeklyMetric = 'weight' | 'fat' | 'muscle' | 'score'
 
@@ -72,16 +76,6 @@ export interface WeekRow {
 export type WeeklySeries = Record<WeeklyMetric, readonly DayValue[]>
 
 const round = (v: number, dp: number) => Math.round(v * 10 ** dp) / 10 ** dp
-
-/** The Mondays of the weeks that overlap the `spanDays` ending on `anchor`,
- *  newest first, at least `minWeeks` of them — a 7-day window still shows this
- *  week and the one before. */
-export function weekStartsFor(anchor: string, spanDays: number, minWeeks = 2): string[] {
-  const last = mondayOfIso(anchor)
-  const first = mondayOfIso(addDaysIso(anchor, -(Math.max(1, spanDays) - 1)))
-  const n = Math.max(minWeeks, daysBetweenIso(first, last) / 7 + 1)
-  return Array.from({ length: n }, (_, i) => addDaysIso(last, -7 * i))
-}
 
 /** Mean of the readings in [from, to] (one value per day expected), or null. */
 function weekMean(series: readonly DayValue[], from: string, to: string): { avg: number | null; days: number } {
@@ -146,4 +140,87 @@ export function sinceFirstReading(rows: readonly WeekRow[], series: WeeklySeries
  *  rows has a reading (muscle and body score exist only in photo reports). */
 export function shownMetrics(rows: readonly WeekRow[]): WeeklyMetricMeta[] {
   return WEEKLY_METRICS.filter(m => m.key === 'weight' || rows.some(r => r.cells[m.key].avg != null))
+}
+
+// ── The comment line under each week ─────────────────────────────────────────
+// Rule-based (no AI): it reads the same changes and verdicts the row shows, so
+// it can never disagree with the colours above it. Body fat and muscle
+// together say most; without muscle (no photo report that week) it reads
+// weight against the phase, with body fat alongside. A change inside the noise
+// is "held", and is said to be within the scale's noise. Phrases stay short so
+// the line fits one row of the card on a phone.
+
+export interface WeekComment { text: string; tone: 'success' | 'warn' | 'neutral' }
+
+type Move = 'up' | 'down' | 'held'
+
+function moveOf(cell: WeekCell): Move | null {
+  if (cell.change == null || cell.verdict == null) return null
+  if (cell.verdict === 'steady') return 'held'
+  return cell.change > 0 ? 'up' : 'down'
+}
+
+function signedChange(v: number, decimals: number): string {
+  const r = Number(v.toFixed(decimals))
+  return `${r > 0 ? '+' : r < 0 ? '−' : '±'}${Math.abs(r).toFixed(decimals)}`
+}
+
+const PHASE_NOUN: Record<Phase, string> = { cut: 'your cut', maintain: 'maintenance', gain: 'your gain' }
+
+/** What a judged weight change means for the phase. `bare` leaves the phase
+ *  out (the card's subtitle names it) so a fat clause still fits the line. */
+function weightPhrase(cell: WeekCell, phase: Phase | null, bare = false): string | null {
+  if (!phase || cell.change == null || (cell.verdict !== 'good' && cell.verdict !== 'bad')) return null
+  const against = (phase === 'cut' && cell.change > 0) || (phase === 'gain' && cell.change < 0)
+  const word = cell.verdict === 'good' ? 'on track' : phase === 'maintain' ? 'drifting' : against ? 'wrong way' : 'too fast'
+  return bare ? word : `${word} ${word === 'drifting' ? 'off' : 'for'} ${PHASE_NOUN[phase]}`
+}
+
+const TONE_OF = { good: 'success', bad: 'warn' } as const
+
+/** The thin line under a week: its main changes and what they mean. */
+export function weekComment(row: WeekRow, phase: Phase | null): WeekComment {
+  const { weight, fat, muscle, score } = row.cells
+  if (!WEEKLY_METRICS.some(m => row.cells[m.key].avg != null)) return { text: 'No scale reading this week.', tone: 'neutral' }
+  const fatMove = moveOf(fat), muscleMove = moveOf(muscle), weightMove = moveOf(weight)
+  const fatText = fat.change != null ? `fat ${signedChange(fat.change, 1)} %` : ''
+  const muscleText = muscle.change != null ? `muscle ${signedChange(muscle.change, 1)} %` : ''
+
+  if (fatMove && muscleMove) {
+    const nums = `${fatText.charAt(0).toUpperCase()}${fatText.slice(1)} and ${muscleText}`
+    const say = (meaning: string, tone: WeekComment['tone']) => ({ text: `${nums} — ${meaning}`, tone })
+    if (fatMove === 'down' && muscleMove === 'up') return say('good recomposition', 'success')
+    if (fatMove === 'up' && muscleMove === 'down') return say('the wrong way for both', 'warn')
+    if (fatMove === 'down') return muscleMove === 'held' ? say('fat down, muscle held', 'success') : say('fat down, but muscle too', 'warn')
+    if (muscleMove === 'up') return fatMove === 'held' ? say('muscle up, fat held', 'success') : say('muscle up, but fat too', 'warn')
+    if (fatMove === 'up') return say('fat up, muscle held', 'warn')
+    if (muscleMove === 'down') return say('muscle down, fat held', 'warn')
+    // Both held: a judged weight change speaks instead, so the line agrees with its colour.
+    if (!weightPhrase(weight, phase)) {
+      const rightWay = (fat.change as number) <= 0 && (muscle.change as number) >= 0
+      return say(rightWay ? 'right way, within the noise' : 'within the scale’s noise', 'neutral')
+    }
+  }
+
+  if (!weightMove && !fatMove) {
+    if (score.change != null) return { text: `Body score ${signedChange(score.change, 0)} — the scale’s own number.`, tone: 'neutral' }
+    return { text: 'No reading the week before to compare with.', tone: 'neutral' }
+  }
+
+  const nums = [weight.change != null ? `Weight ${signedChange(weight.change, 1)} kg` : null, fatText || null]
+    .filter(Boolean).join(', ')
+  const numsCap = `${nums.charAt(0).toUpperCase()}${nums.slice(1)}`
+  const wp = weightPhrase(weight, phase)
+  const fatJudged = fatMove === 'up' || fatMove === 'down' ? fat.verdict as 'good' | 'bad' : null
+  const tones = [weight.verdict, fat.verdict].filter((v): v is 'good' | 'bad' => v === 'good' || v === 'bad')
+  const tone: WeekComment['tone'] = tones.includes('bad') ? 'warn' : tones.includes('good') ? 'success' : 'neutral'
+  let meaning: string | null
+  if (wp && fatJudged) {
+    const same = TONE_OF[fatJudged] === TONE_OF[weight.verdict as 'good' | 'bad']
+    meaning = `${weightPhrase(weight, phase, true)}, ${same ? '' : 'but '}fat ${fatMove}${same ? ' too' : ''}`
+  } else if (wp) meaning = wp
+  else if (fatJudged) meaning = weightMove === 'held' ? `fat ${fatMove} at a steady weight` : `fat ${fatMove}`
+  else if (weightMove !== 'up' && weightMove !== 'down' && fatMove !== 'up' && fatMove !== 'down') meaning = 'within the scale’s noise'
+  else meaning = null
+  return { text: meaning ? `${numsCap} — ${meaning}` : `${numsCap}.`, tone }
 }

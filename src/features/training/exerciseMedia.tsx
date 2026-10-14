@@ -1,21 +1,27 @@
 import { useMemo, useState } from 'react'
 import { Pencil } from 'lucide-react'
-import { ModalShell } from '../../shared/modals'
+import { ModalShell, useEntityModal } from '../../shared/modals'
 import { Button, Truncate } from '../../shared/ui'
 import { useExerciseGifOverrides, useUpsertExerciseGifOverride, useDeleteExerciseGifOverride } from './hooks/useExerciseGifOverrides'
-import { resolveExerciseGif } from './exerciseGifResolver'
+import type { ExerciseMediaChoice } from './exerciseGifResolver'
 import { useExerciseImageDb } from './hooks/useExerciseImageDb'
+import { useExerciseMedia } from './hooks/useExerciseMedia'
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Exercise demo GIFs.
-//  Source: JahelCuadrado/ExerciseGymGifsDB — 1323 animated exercise GIFs with a
-//  clean JSON manifest, served CORS-open from jsDelivr (no API key, no proxy,
-//  works from a static GitHub Pages client). Hevy exercise names
-//  ("Bench Press (Barbell)") don't match the dataset's ("Barbell Bench Press")
-//  exactly, so we fuzzy-match at runtime: normalize → token-overlap (Jaccard) +
-//  an equipment-hint bonus, best match above a threshold, else null (graceful
-//  fallback — never a broken img). Each card shows a small looping thumbnail;
-//  tapping it opens a larger view with the movement instructions.
+//  Exercise pictures and demo GIFs.
+//  HEVY FIRST (migration 154, 14.10.2026 — owner: "change that as primarily
+//  to Hevy"): Hevy's exercise templates carry `thumbnail_url`, stored by both
+//  syncs. The small thumbnail and the popup's main picture are Hevy's; the
+//  popup adds a small labelled "Animated demo" below (chooseExerciseMedia in
+//  exerciseGifResolver.ts has the order).
+//
+//  FALLBACK / ANIMATED DEMO: JahelCuadrado/ExerciseGymGifsDB — 1323 animated
+//  exercise GIFs with a clean JSON manifest, served CORS-open from jsDelivr (no
+//  API key, no proxy, works from a static GitHub Pages client). Hevy exercise
+//  names ("Bench Press (Barbell)") don't match the dataset's ("Barbell Bench
+//  Press") exactly, so we fuzzy-match at runtime: normalize → token-overlap
+//  (Jaccard) + an equipment-hint bonus, best match above a threshold, else
+//  null (graceful fallback — never a broken img).
 //
 //  SELF-HOST PATH: the dataset's own gifUrl is used as-is, so every GIF URL is
 //  anchored to `GIF_SOURCE`. To move off the public CDN onto our own Supabase
@@ -31,61 +37,65 @@ import { useExerciseImageDb } from './hooks/useExerciseImageDb'
 //  short of a code change. `resolveExerciseGif` checks a per-user override
 //  table FIRST, keyed on the exercise's stable `exercise_template_id` (never
 //  its title, which the user can rename inside Hevy itself) before falling
-//  back to the fuzzy matcher. `ExerciseGifPicker` is the editor UI — it
+//  back to the fuzzy matcher. An override picks the animated DEMO; Hevy's
+//  picture stays the thumbnail. `ExerciseGifPicker` is the editor UI — it
 //  reuses the SAME already-fetched dataset (useExerciseImageDb) for
 //  searching a better match, or accepts any pasted URL for an exercise the
 //  dataset has no entry for at all.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Looping demo GIF thumbnail for an exercise, matched by name to
- * ExerciseGymGifsDB (or a manual override, if one exists for this
- * `templateId`). Tapping opens a larger view with the instructions.
- * Renders nothing on no-match or load error (graceful — never a broken box).
- * `templateId` is optional so existing call sites keep working unchanged;
- * omitting it just means this render can never pick up a manual override.
+ * An exercise's picture: Hevy's own first, else its demo GIF (a manual
+ * override or the name match). Tapping opens the exercise popup (`exercise`:
+ * the larger demo, instructions, muscles and Hevy's history of it).
+ * Renders nothing when there is no picture at all (graceful — never a broken
+ * box); a picture that fails to load gives way to the next one.
  */
-export function ExerciseThumb({ title, templateId, size = 48 }: { title: string; templateId?: string; size?: number }) {
-  const { data: db } = useExerciseImageDb()
-  const { data: overrides } = useExerciseGifOverrides()
-  // The URL that failed to load, not a boolean: saving a fixed GIF changes
+export function ExerciseThumb({ title, templateId, size = 48 }: { title: string; templateId: string; size?: number }) {
+  const media = useExerciseMedia(templateId, title)
+  const modal = useEntityModal()
+  // The URLs that failed to load, not a boolean: saving a fixed GIF changes
   // the URL, and the new one must get its chance without a remount.
-  const [failedUrl, setFailedUrl] = useState<string | null>(null)
-  const [open, setOpen] = useState(false)
-  const overridesByTemplateId = useMemo(() => new Map((overrides ?? []).map(o => [o.exercise_template_id, o.gif_url])), [overrides])
-  const match = useMemo(() => resolveExerciseGif(templateId, title, overridesByTemplateId, db), [title, templateId, overridesByTemplateId, db])
-
-  if (!match || failedUrl === match.gifUrl) return null
+  const [failed, setFailed] = useState<string[]>([])
+  const pick = media.thumbs.find(t => !failed.includes(t.url))
+  if (!pick) return null
 
   return (
-    <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="shrink-0 overflow-hidden rounded-lg border border-line bg-surface-2"
-        style={{ width: size, height: size }}
-        aria-label={`Show ${title} demo`}
-      >
-        <img src={match.gifUrl} alt="" loading="lazy" onError={() => setFailedUrl(match.gifUrl)} className="h-full w-full object-cover" />
-      </button>
+    <button
+      type="button"
+      onClick={() => modal.open({ kind: 'exercise', templateId, title })}
+      className="shrink-0 overflow-hidden rounded-lg border border-line bg-surface-2"
+      style={{ width: size, height: size }}
+      aria-label={`Show ${title}`}
+    >
+      <img src={pick.url} alt="" loading="lazy" onError={() => setFailed(f => [...f, pick.url])} className="h-full w-full object-cover" />
+    </button>
+  )
+}
 
-      <ModalShell open={open} onClose={() => setOpen(false)} title={title} size="sm">
-        <div className="flex flex-col gap-3">
-          <img src={match.gifUrl} alt={title} className="w-full rounded-row border border-line bg-surface-2" />
-          {match.overridden && <p className="text-meta text-fg-muted">Manually set for this exercise.</p>}
-          {!match.overridden && match.name.toLowerCase() !== title.toLowerCase() && (
-            <p className="text-meta text-fg-muted">Demo: {match.name}</p>
-          )}
-          {match.instructions.length > 0 && (
-            <ol className="flex list-inside list-decimal flex-col gap-1.5">
-              {match.instructions.map((step, i) => (
-                <li key={i} className="text-body leading-relaxed text-fg-2">{step}</li>
-              ))}
-            </ol>
-          )}
-        </div>
-      </ModalShell>
-    </>
+/** The popup's "Animated demo": a small GIF beside where it comes from and
+ *  the dataset's instructions (Hevy's own picture is the popup's main one). */
+export function ExerciseDemo({ demo, title }: { demo: NonNullable<ExerciseMediaChoice['demo']>; title: string }) {
+  const [broken, setBroken] = useState<string | null>(null)
+  const source = demo.source === 'override' ? 'set with Fix GIF'
+    : demo.name.toLowerCase() !== title.toLowerCase() ? `${demo.name} · ExerciseGymGifsDB` : 'ExerciseGymGifsDB'
+  return (
+    <section className="flex items-start gap-3 border-t border-line pt-3" aria-label="Animated demo">
+      {broken !== demo.gifUrl && (
+        <img src={demo.gifUrl} alt={`${title} — animated demo`} onError={() => setBroken(demo.gifUrl)}
+          className="h-24 w-24 shrink-0 rounded-lg border border-line bg-surface-2 object-cover" />
+      )}
+      <div className="flex min-w-0 flex-1 flex-col gap-1">
+        <p className="text-meta font-semibold text-fg">Animated demo <span className="font-normal text-fg-muted">· {source}</span></p>
+        {demo.instructions.length > 0 && (
+          <ol className="flex list-inside list-decimal flex-col gap-0.5">
+            {demo.instructions.map((step, i) => (
+              <li key={i} className="text-meta leading-snug text-fg-2">{step}</li>
+            ))}
+          </ol>
+        )}
+      </div>
+    </section>
   )
 }
 
@@ -132,6 +142,10 @@ export function ExerciseGifPicker({ templateId, title }: { templateId: string; t
 
       <ModalShell open={open} onClose={() => setOpen(false)} title={`Fix GIF — ${title}`} size="sm">
         <div className="flex flex-col gap-4">
+          <p className="text-meta text-fg-muted">
+            This sets the <strong className="font-semibold text-fg-2">animated demo</strong> in the exercise&apos;s popup.
+            The card picture stays Hevy&apos;s own whenever Hevy has one.
+          </p>
           {existing && (
             <div className="flex items-center gap-3 rounded-row border border-line bg-surface-2 p-2.5">
               <img src={existing.gif_url} alt="" className="h-14 w-14 rounded-md border border-line object-cover" />

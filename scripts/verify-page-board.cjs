@@ -64,6 +64,10 @@ check('step 1 → the stack', eq(B.resolveBoardLayout(L, 1).columns[0].stack, ['
 check('step 2 undeclared → falls back to step 1', B.resolveBoardLayout(L, 2).tracks === 1)
 check('step 4 undeclared → falls back to step 3 (the page stops at 3)', B.resolveBoardLayout(L, 4).tracks === 3)
 check('sticky and span are normalised', eq(B.resolveBoardLayout(L, 3).columns.map(c => [c.span, c.sticky]), [[1, false], [1, true], [1, false]]))
+check('fill is normalised (off unless set)', eq(B.resolveBoardLayout({ 1: ['a'], 2: { columns: [{ stack: ['a'], fill: true }, ['b']] } }, 2).columns.map(c => c.fill), [true, false])
+  && B.resolveBoardLayout(L, 1).columns[0].fill === false)
+check('PageBoard stretches a fill column and grows its last section', require('fs').readFileSync(require('path').join(__dirname, '../src/shared/ui/PageBoard.tsx'), 'utf8')
+  .includes("c.fill && 'self-stretch [&>:last-child]:grow'"))
 check('span below 1 is clamped', B.resolveBoardLayout({ 1: ['a'], 2: { columns: [{ stack: ['a'], span: 0 }, []] } }, 2).columns[0].span === 1)
 check('main defaults to 56rem, a layout can lower it', B.resolveBoardLayout(L, 3).main === '56rem'
   && B.resolveBoardLayout({ 1: ['a'], 2: { main: '40rem', columns: [['a'], []] } }, 2).main === '40rem')
@@ -76,6 +80,7 @@ check('a section placed twice is caught', B.validateBoardLayouts({ 1: ['a', 'a']
 check('an unknown section is caught', B.validateBoardLayouts({ 1: ['q'] }, ['a']).some(p => /unknown section "q"/.test(p)))
 check('an empty wide step is caught', B.validateBoardLayouts({ 1: ['a'], 2: {} }).some(p => /nothing placed/.test(p)))
 check('bands alone are a valid wide step', B.validateBoardLayouts({ 1: ['a', 'b'], 2: { top: ['a'], bottom: ['b'] } }).length === 0)
+check('a column both sticky and fill is caught', B.validateBoardLayouts({ 1: ['a'], 2: { columns: [['a'], { stack: ['b'], sticky: true, fill: true }] } }).some(p => /sticky and fill/.test(p)))
 
 console.log('Home layout')
 check('Home layout is valid', B.validateBoardLayouts(HOME_BOARD, HOME_SECTIONS).length === 0, B.validateBoardLayouts(HOME_BOARD, HOME_SECTIONS).join('; '))
@@ -90,13 +95,29 @@ for (const [name, board] of [['', HOME_BOARD], ['split ', HOME_BOARD_SPLIT]]) {
         && (keys.includes('pair') || ['hero', 'tasks'].every(k => keys.includes(k))) && glanceOk)
     check(`${name}step ${s}: a widget never shows beside its own tile, and no tile shows twice`,
       !(keys.some(k => TILE_SECTIONS.includes(k)) && keys.some(k => HOME_GLANCE[k]))
-        && !(keys.includes('tiles') && (keys.includes('outsideTiles') || keys.includes('activityTiles'))))
+        && !(keys.includes('tiles') && (keys.includes('weatherTile') || keys.includes('glanceRow'))))
   }
 }
-console.log('Home split laptop layout (owner, 08.10.2026: no hole between the columns)')
-check('split step 2: main = brief → week | tasks → training/watched/books/games; side = transit → weather/money', (() => {
+console.log('Home split laptop layout (owner, 08.10.2026: no hole between the columns; 14.10.2026: rows that line up)')
+check('split step 2: main = brief → week | tasks; side = transit → weather (large)', (() => {
   const c = B.resolveBoardLayout(HOME_BOARD_SPLIT, 2).columns
-  return c.length === 2 && eq(c[0].stack, ['brief', 'pair', 'activityTiles']) && eq(c[1].stack, ['transit', 'outsideTiles'])
+  return c.length === 2 && eq(c[0].stack, ['brief', 'pair']) && eq(c[1].stack, ['transit', 'weatherTile'])
+})())
+check('split step 2: the side column fills, so the weather tile ends where the tasks end (owner, 14.10.2026)',
+  (c => c[1].fill && !c[1].sticky)(B.resolveBoardLayout(HOME_BOARD_SPLIT, 2).columns))
+check('split step 2: main never fills, so a tall transit never stretches the week and the tasks',
+  B.resolveBoardLayout(HOME_BOARD_SPLIT, 2).columns[0].fill === false)
+check('split step 2: the glance row starts under both columns, then news', eq(B.resolveBoardLayout(HOME_BOARD_SPLIT, 2).bottom, ['glanceRow', 'news']))
+check('the glance row lies on the split board\'s own tracks (money · watched · books · games under main, training under the side)', (() => {
+  const l = B.resolveBoardLayout(HOME_BOARD_SPLIT, 2)
+  return H.GLANCE_ROW_TEMPLATE === B.boardTemplate(l.tracks, l.main, l.lead)
+})())
+check('HomePage.tsx: the row puts money, watched, books, games in the main track and the large training tile in the side track', (() => {
+  const src = require('fs').readFileSync(require('path').join(__dirname, '../src/features/home/pages/HomePage.tsx'), 'utf8')
+  const row = src.slice(src.indexOf('function GlanceRow'), src.indexOf('function HeroAndTasks'))
+  const order = ['<CurrencyTile />', '<RecentMediaTile />', '<BooksTile />', '<GamesTile />', '<TrainingTile large />'].map(t => row.indexOf(t))
+  return row.includes('gridTemplateColumns: GLANCE_ROW_TEMPLATE') && row.includes('className="grid gap-4"') && order.every((i, n) => i > 0 && (n === 0 || i > order[n - 1]))
+    && src.includes('weatherTile: <WeatherTile large />')
 })())
 check('the split changes step 2 only', [1, 3, 4].every(s => JSON.stringify(B.resolveBoardLayout(HOME_BOARD_SPLIT, s)) === JSON.stringify(B.resolveBoardLayout(HOME_BOARD, s))))
 check('a 1280px laptop (61.5rem: main 36.5rem, week and tasks stacked) keeps all six tiles beside them', H.homeBoardFor(61.5) === HOME_BOARD)
@@ -107,16 +128,16 @@ check('phones, tablets and the 3- and 4-column steps use the board as before', [
 console.log('Home tile groups (GLANCE_GROUP_GRID)')
 const G = H.GLANCE_GROUP_GRID
 const colsOf = cls => cls.split(' ').filter(c => /grid-cols-/.test(c))
-check('outside (weather, money under transit): one tile per row, each as wide as the Transit card (owner, 13.10.2026)',
-  eq(colsOf(G.outside), ['grid-cols-1']))
-check('activity: 2 across, one row of 4 from 40rem', eq(colsOf(G.activity), ['grid-cols-2', '@[40rem]:grid-cols-4']))
-check('the split starts at a main track wide enough for the activity row of 4 (44rem ≥ 40rem)',
-  H.PAIR_SIDE_BY_SIDE_REM >= Number(G.activity.match(/@\[(\d+)rem\]:grid-cols-4/)[1]))
+check('row (money, watched, books, games): 2 across, one row of 4 from 40rem', eq(colsOf(G.row), ['grid-cols-2', '@[40rem]:grid-cols-4']))
+check('row: the board\'s 1rem gap, so the four tiles\' edges line up with the week\'s and the tasks\' (gap-4)', G.row.split(' ').includes('gap-4'))
+check('the split starts at a main track wide enough for the row of 4 (44rem ≥ 40rem)',
+  H.PAIR_SIDE_BY_SIDE_REM >= Number(G.row.match(/@\[(\d+)rem\]:grid-cols-4/)[1]))
 check('all six (phone, 1280 side column): 2 across, 3 from 36rem', eq(colsOf(G.all), ['grid-cols-2', '@[36rem]:grid-cols-3']))
 check('a 24rem side column (1280) keeps the six 2 across', 24 < Number(G.all.match(/@\[(\d+)rem\]:grid-cols-3/)[1]))
 check('HomePage.tsx lays the groups out with GLANCE_GROUP_GRID', (() => {
   const src = require('fs').readFileSync(require('path').join(__dirname, '../src/features/home/pages/HomePage.tsx'), 'utf8')
-  return src.includes('GLANCE_GROUP_GRID[group]') && !/grid-cols-\d/.test(src.slice(src.indexOf('function GlanceTiles'), src.indexOf('function HeroAndTasks')))
+  return src.includes('GLANCE_GROUP_GRID.all') && src.includes('GLANCE_GROUP_GRID.row')
+    && !/grid-cols-\d/.test(src.slice(src.indexOf('function GlanceTiles'), src.indexOf('function HeroAndTasks')))
 })())
 check('the pair\'s container query in HomePage.tsx is the split\'s breakpoint', (() => {
   const src = require('fs').readFileSync(require('path').join(__dirname, '../src/features/home/pages/HomePage.tsx'), 'utf8')

@@ -1,49 +1,34 @@
 import { useState, useMemo } from 'react'
 import { useHevyExerciseTemplates } from '../hooks/useHevyExerciseTemplates'
 import { ExerciseThumb, ExerciseGifPicker } from '../exerciseMedia'
+import { exerciseTypeLabel } from '../hevyEnums'
+import { CreateExerciseModal } from './CreateExerciseModal'
 import type { HevyExerciseTemplate } from '../types.hevy'
-import { ChevronDown, Dumbbell } from 'lucide-react'
-import { EmptyState, Skeleton } from '../../../shared/ui'
+import { ChevronDown, Dumbbell, Plus } from 'lucide-react'
+import { useEntityModal } from '../../../shared/modals'
+import { Button, EmptyState, Skeleton } from '../../../shared/ui'
 
-// Friendly labels for Hevy's CustomExerciseType enum. Anything not listed
-// falls back to a humanized version (snake_case → "Title Case") so raw values
-// like "reps_only" never leak into the UI.
-const TYPE_LABELS: Record<string, string> = {
-  weight_reps:              'Weight × Reps',
-  reps_only:                'Reps',
-  bodyweight_reps:          'Bodyweight',
-  bodyweight_weighted:      'Weighted BW',
-  weighted_bodyweight:      'Weighted BW',
-  bodyweight_assisted_reps: 'Assisted BW',
-  assisted_bodyweight:      'Assisted BW',
-  bodyweight_assisted:      'Assisted BW',
-  duration:                 'Duration',
-  weight_duration:          'Weight × Time',
-  distance_duration:        'Distance × Time',
-  short_distance_weight:    'Weighted Distance',
-  weight_distance:          'Weight × Dist',
-  floors_duration:          'Floors × Time',
-  steps_duration:           'Steps × Time',
-}
-
-function humanizeType(type: string): string {
-  return TYPE_LABELS[type] ?? type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
-}
-
+// Friendly labels for Hevy's exercise types live in hevyEnums.ts (the
+// New exercise form uses the same ones).
 function TypeChip({ type }: { type: string }) {
   return (
-    <span className="chip shrink-0">{humanizeType(type)}</span>
+    <span className="chip shrink-0">{exerciseTypeLabel(type)}</span>
   )
 }
 
 function TemplateCard({ t }: { t: HevyExerciseTemplate }) {
+  const modal = useEntityModal()
   const muscles = t.secondary_muscle_groups ?? []
   return (
     <div className="card flex flex-col gap-2 p-3.5">
       <div className="flex items-start gap-2.5">
         <ExerciseThumb title={t.title} templateId={t.id} size={64} />
         <div className="flex-1 min-w-0 flex items-start justify-between gap-2">
-          <span className="text-body font-semibold leading-snug text-fg">{t.title}</span>
+          {/* The name opens the exercise too, so one with no picture still has its popup (Hevy's history). */}
+          <button type="button" onClick={() => modal.open({ kind: 'exercise', templateId: t.id, title: t.title })}
+            className="min-w-0 text-left text-body font-semibold leading-snug text-fg hover:text-accent-600">
+            {t.title}
+          </button>
           <TypeChip type={t.type} />
         </div>
       </div>
@@ -94,6 +79,7 @@ function MuscleGroup({ name, templates, forceOpen }: { name: string; templates: 
 export function ExerciseTemplatesTab() {
   const { data: templates = [], isLoading } = useHevyExerciseTemplates()
   const [search, setSearch] = useState('')
+  const [creating, setCreating] = useState(false)
 
   const filtered = useMemo(() => {
     if (!search.trim()) return templates
@@ -114,14 +100,17 @@ export function ExerciseTemplatesTab() {
 
   return (
     <div className="flex flex-col gap-3">
-      <input
-        type="search"
-        value={search}
-        onChange={e => setSearch(e.target.value)}
-        placeholder="Search exercises…"
-        aria-label="Search exercises"
-        className="input w-full max-w-md"
-      />
+      <div className="flex items-center gap-2">
+        <input
+          type="search"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Search exercises…"
+          aria-label="Search exercises"
+          className="input min-w-0 flex-1 sm:max-w-md"
+        />
+        <Button variant="primary" icon={<Plus />} onClick={() => setCreating(true)} className="shrink-0">New exercise</Button>
+      </div>
 
       {isLoading ? (
         <div className="space-y-2">
@@ -141,6 +130,7 @@ export function ExerciseTemplatesTab() {
           ))}
         </div>
       )}
+      <CreateExerciseModal open={creating} onClose={() => setCreating(false)} />
     </div>
   )
 }

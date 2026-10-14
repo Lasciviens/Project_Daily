@@ -52,6 +52,18 @@ ok(ids(M.sortRecipes(lib, 'new', new Map())), ['Soup', 'Bowl', 'Cake'], 'newest 
 ok(M.dayRemaining({ calories: 2300, protein: 180 }, { calories: 1668, protein_g: 121.6 }), { kcal: 632, protein: 58 }, 'left today = targets − eaten')
 ok(M.dayRemaining({ calories: 2000, protein: 150 }, null), { kcal: 2000, protein: 150 }, 'nothing eaten yet → the whole target')
 ok(M.dayRemaining({ calories: 2000, protein: 150 }, { calories: 2250, protein_g: 160 }), { kcal: -250, protein: -10 }, 'over target → negative')
+
+// Today → "What's left": what is left of each target (14.10.2026). The targets
+// themselves come from the goal decision (verify-cut-decision §10).
+ok(typeof M.dayMacroTargets, 'undefined', 'Food derives no targets of its own (the goal decision does)')
+const T = { kcal: 2200, protein: 160, carbs: 226, fat: 73 }
+const left = M.macrosLeft(T, { calories: 2320, protein_g: 120.4, carbs_g: 180, fat_g: 80 })
+ok(left.map(m => m.key), ['kcal', 'protein', 'carbs', 'fat'], 'always kcal, protein, carbs, fat')
+ok(left.map(m => m.left), [-120, 40, 46, -7], 'left = target − eaten (rounded); over a goal is negative: +120 kcal over, +7 g fat over')
+ok(left.map(m => m.eaten), [2320, 120, 180, 80], 'eaten, rounded')
+ok([left[0].share, left[1].share, left[3].share], [1, 0.75, 1], 'the bar: share of the target eaten, full when over')
+ok(M.macrosLeft(T, undefined).map(m => [m.left, m.share]), [[2200, 0], [160, 0], [226, 0], [73, 0]], 'nothing eaten (or still loading) → the whole target left')
+ok(M.macrosLeft({ kcal: 0, protein: 0, carbs: 0, fat: 0 }, { calories: 100 }).map(m => m.share), [1, 0, 0, 0], 'no target: a full bar once something is eaten, empty before')
 ok([M.fitsCalories(450, 500), M.fitsCalories(500, 500), M.fitsCalories(501, 500), M.fitsCalories(null, 500), M.fitsCalories(0, 500), M.fitsCalories(300, null), M.fitsCalories(300, -20)],
   [true, true, false, false, false, false, false], 'fits: known kcal ≤ left; unknown kcal, unknown room or none left never fits')
 ok(M.filterRecipes(recipes, { ...F, flags: ['fits'], kcalLeft: 500 }).map(r => r.id), ['Cake'], 'Fits today: 450 kcal fits 500 left, 600 and no-macros do not')

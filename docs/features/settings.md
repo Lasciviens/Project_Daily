@@ -4,7 +4,7 @@
 
 ## Connections live in one place
 Every external integration's **connect / disconnect / connection status** lives in
-**Settings → Subscriptions** (`/settings?tab=subscriptions` — the old `?tab=integrations` still works — renders `ConnectionsTab.tsx`; `/developer?tab=connections` redirects there). Each card also lists its subscriptions (`service_subscriptions`, migration `115`: price, cycle, renews_on, account, `requirement` `required` = the integration needs it / `info` = just FYI; pure rules in `settings/subscriptionRules.ts`, `verify-subscriptions`). Subscription prices carry a currency (NOK/TRY/USD/EUR) and show the other three small beneath, converted with the Home currency query (`useSubscriptionRates` reuses `useCurrencyRates`, no extra calls); the monthly total converts into one chosen currency. **Settings → Integrations and APIs** (`?tab=apis`, `apiRegistry.ts`, `ApisTab`, `verify-api-registry`) is a static registry of every external API/service: docs link, how connected, auth + secret names, direction, cadence, where used, since, limits, caveats. Settings also holds **Places** (Home/Work = saved transit stops labelled Home/Work, `transitPlaces.findPlace`; Transit's To home / To work buttons use them) and **Appearance** incl. **Display size** 80–125 % (root font-size from `useThemeStore`, stamped in `index.html`; 90 % gives a 100 %-zoom laptop the next wider PageBoard step). Older text here saying "Developer → Connections" means this page, and nowhere else. A feature page shows
+**Settings → Subscriptions** (`/settings?tab=subscriptions` — the old `?tab=integrations` still works — renders `ConnectionsTab.tsx`; `/developer?tab=connections` redirects there). Each card also lists its subscriptions (`service_subscriptions`, migration `115`: price, cycle, renews_on, account, `requirement` `required` = the integration needs it / `info` = just FYI; pure rules in `settings/subscriptionRules.ts`, `verify-subscriptions`). Subscription prices carry a currency (NOK/TRY/USD/EUR) and show the other three small beneath, converted with the Home currency query (`useSubscriptionRates` reuses `useCurrencyRates`, no extra calls); the monthly total converts into one chosen currency. **Settings → Integrations and APIs** (`?tab=apis`, `apiRegistry.ts`, `ApisTab`, `verify-api-registry`) is a static registry of every external API/service: docs link, how connected, auth + secret names, direction, cadence, where used, since, limits, caveats. Settings also holds **Places** (Home/Work = saved transit stops labelled Home/Work, `transitPlaces.findPlace`; Transit's To home / To work buttons use them) and **Appearance** incl. **Display size** 80–125 % (root font-size from `useThemeStore`, stamped in `index.html`; 90 % gives a 100 %-zoom laptop the next wider PageBoard step), and **Food** (`?tab=food`, `FoodTab`, 14.10.2026): one "Food · Today" card whose **Quick guess** row opens the preset editor (`QuickGuessEditor` from the Food feature — the owner's `quick_guess_items`, migration 152; see `docs/features/food.md`); one bounded card, so the tab is a single 42rem-capped stack at every width (`FOOD_SETTINGS_BOARD`). Older text here saying "Developer → Connections" means this page, and nowhere else. A feature page shows
 that integration's DATA; it may LINK to `/developer?tab=connections`, but it must never carry
 its own connect button, disconnect button, or status widget.
 
@@ -36,7 +36,11 @@ Two kinds of integration sit side by side there and are labelled differently, de
   from here.
 - **server-configured** (Steam, Hevy, Apple Health) — a single-user secret in Supabase Vault
   with no browser consent step at all, so the card is a read-only status readout. **Never render
-  a Connect button that can't actually connect anything.**
+  a Connect button that can't actually connect anything.** The Hevy card (14.10.2026, migration
+  154) also shows the account Hevy reports ("@username · Hevy Pro · kg · km") and, when Hevy's
+  workout count differs from the app's, the two counts with one button (**Fetch missing workouts** /
+  **Check workouts with Hevy**) — a sync action, not a connect — and a warning line when the last
+  account read failed (`docs/integrations/hevy.md`).
 
 Load-bearing details:
 - `GOOGLE_SCOPES` (`src/features/calendar/googleScopes.ts`) is the ONE definition of the Google

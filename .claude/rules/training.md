@@ -19,4 +19,6 @@ Background: `docs/features/training.md`.
 - A free-text limitation resolves through `muscleMap.resolveMovementPattern`; a `monitor` limitation never paints a muscle.
 - The body map uses the fixed `BODY_MAP_COLORS` palette (it sits on a dark stage), not theme tokens.
 - An exercise GIF override is keyed by `exercise_template_id`, never by title.
+- Exercise pictures: Hevy's `thumbnail_url` first, the GIF as fallback and animated demo — one chooser, `chooseExerciseMedia` (owner, 14.10.2026).
+- Every Hevy endpoint, field and trap is in `docs/integrations/hevy.md`: a Hevy change adds a dated entry to its Log. Hevy's create enums live in `hevyEnums.ts`, mirrored in `hevy-api` (`verify-hevy-api`).
 - Personal records stay off every screen (owner's call); the engine may still use them as evidence.

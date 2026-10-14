@@ -48,6 +48,9 @@ export type EntityModalRequest =
   // missed routine with no plan (Training → Missed sessions).
   | { kind: 'training-plan-move'; plan: TrainingPlanRef }
   | { kind: 'training-plan-skip'; plan?: TrainingPlanRef; missed?: { routineId: string; title: string; dueDate: string; weekStart: string } }
+  /** One exercise (a Hevy template): its picture and demo, muscles and Hevy's
+   *  own history of it. `title` is prefill for one the library here lacks. */
+  | { kind: 'exercise'; templateId: string; title?: string }
   /** One Apple Health workout (Health → Workouts), with its matching Hevy session. */
   | { kind: 'health-workout'; id: string }
   /** Log or edit a Hevy body measurement; `date` opens that day's row (default today). */

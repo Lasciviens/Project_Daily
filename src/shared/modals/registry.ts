@@ -29,6 +29,7 @@ export const MODAL_REGISTRY: { [K in ModalKind]: Entry<K> } = {
   'training-session': L('training-session', () => import('../../features/training/modals/TrainingSessionEntityModal').then(m => m.TrainingSessionEntityModal)),
   'training-plan-move': L('training-plan-move', () => import('../../features/training/modals/TrainingPlanSheets').then(m => m.TrainingPlanMoveModal)),
   'training-plan-skip': L('training-plan-skip', () => import('../../features/training/modals/TrainingPlanSheets').then(m => m.TrainingPlanSkipModal)),
+  'exercise':       L('exercise', () => import('../../features/training/modals/ExerciseEntityModal').then(m => m.ExerciseEntityModal)),
   'health-workout': L('health-workout', () => import('../../features/health/modals/HealthWorkoutEntityModal').then(m => m.HealthWorkoutEntityModal)),
   'body-measurement': L('body-measurement', () => import('../../features/health/modals/BodyMeasurementEntityModal').then(m => m.BodyMeasurementEntityModal)),
   'wish':           L('wish', () => import('../../features/wishes/modals/WishEntityModal').then(m => m.WishEntityModal)),

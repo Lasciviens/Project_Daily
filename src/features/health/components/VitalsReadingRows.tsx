@@ -20,10 +20,9 @@ function statusText(row: VitalRow): string {
   return row.status === 'above' ? 'Above your usual' : 'Below your usual'
 }
 
-/** Where the value comes from: "7-day average", "from 26 Sep", "average of 6 days". */
+/** Where the value comes from: "from 26.09.2026", "average of 6 days". */
 function basisText(row: VitalRow, to: string): string | null {
   if (row.value == null) return null
-  if (row.basis === 'smoothed') return '7-day average'
   if (row.basis === 'latest') return row.valueDate ? `latest, ${fmtDayMonth(row.valueDate)}` : 'latest'
   if (row.basis === 'period') {
     // Heart-rate recovery is one reading per workout, not per day.

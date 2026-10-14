@@ -23,6 +23,8 @@ Background: `docs/features/food.md`.
 - All goal coaching comes from one decision module (`health/goal/cutDecision.ts`) — Food, Health and the goal editor show its answer, never their own.
 - Today's "Last 7 / 14 / 28 days": every figure comes from the picked window (a fixed-window number made the switch look broken), and a half-logged day uses the goal report's `halfLoggedCutoff`, so Food and Health leave out the same days.
 - A quick guess is an ordinary one-off diary line; "your recent guesses" are derived from past one-off lines — never a table of their own.
+- Quick guess presets are the owner's rows (`quick_guess_items`, 152): a tap copies one into a one-off line, never a link, so editing a preset never rewrites the diary. `DEFAULT_GUESSES` and 152's seed change together (`verify-quick-guess` compares them).
+- Carb and fat goals are the owner's own (`day_targets.carbs_g` / `fat_g`, 153, per phase in `day_target_profiles`) or, when empty, worked out by `cutDecision.dayMacroTargets` — never by a screen. Going over a worked-out one is neutral; only a goal the owner set is judged.
 - `useDayTargets` uses `placeholderData`, never `initialData` (which skipped the real fetch).
 - The logger and the recipe builder share one search and basket (`FoodSearchField`, `NewFoodForm`, `foodLogKit` rows, `foodBasket.ts`) — change it there, never fork a second copy.
 - A popup that prefills from props during render starts its seed closed (`{ open: false }`): entity modals mount already open, and a seed equal to the props skipped the prefill (Edit recipe opened empty).

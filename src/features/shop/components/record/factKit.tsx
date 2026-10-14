@@ -22,7 +22,9 @@ export function Fact({ id, label, value, editing, onEdit, onDone, children, hint
 }) {
   const open = editing === id && children != null
   return (
-    <div className={cx('rounded-row', open && 'bg-surface-2 p-2')}>
+    // Open, the tint reaches past the row (-mx-2 px-2) so the label and the
+    // Done tick stay where the label and the pen were.
+    <div className={cx('rounded-row', open && '-mx-2 bg-surface-2 px-2 py-2')}>
       <div className="flex items-start gap-2">
         <span className="w-[8.5rem] shrink-0 pt-[11px] text-meta text-fg-muted max-[380px]:w-[6.5rem]">{label}</span>
         {open ? (
@@ -35,7 +37,7 @@ export function Fact({ id, label, value, editing, onEdit, onDone, children, hint
           </button>
         )}
         {open && (
-          <button type="button" onClick={onDone} aria-label={`Done with ${label}`} title="Done" className="icon-btn shrink-0 text-accent-600">
+          <button type="button" onClick={onDone} aria-label={`Done with ${label}`} title="Done" className="icon-btn -mr-2.5 shrink-0 text-accent-600">
             <Check aria-hidden className="h-4 w-4" />
           </button>
         )}
@@ -59,7 +61,10 @@ export function FactChips({ chips }: { chips: { id: string; label: string; onAdd
   )
 }
 
-/** An amount with its currency. */
+/**
+ * An amount with its currency, as one field: the number takes the room, the
+ * currency is a small plain dropdown at its end (owner, 14.10.2026).
+ */
 export function MoneyEditor({ amount, currency, onAmount, onCurrency, label, autoFocus }: {
   amount: number | null
   currency: ShopCurrency
@@ -69,9 +74,11 @@ export function MoneyEditor({ amount, currency, onAmount, onCurrency, label, aut
   autoFocus?: boolean
 }) {
   return (
-    <div className="flex max-w-xs gap-2">
-      <DecimalInput value={amount} onValue={onAmount} aria-label={label} placeholder="0" autoFocus={autoFocus} className="input min-w-0 flex-1 tabular-nums" />
-      <select value={currency} onChange={e => onCurrency(e.target.value as ShopCurrency)} aria-label={`${label} currency`} className="select w-[6.5rem] shrink-0">
+    <div className="flex min-h-[40px] w-full max-w-xs items-center rounded-input border border-line bg-surface-2 transition-[border-color,box-shadow] duration-100 focus-within:border-accent-500 focus-within:shadow-[0_0_0_3px_rgb(var(--accent-500)/0.18)] [@media(pointer:coarse)]:min-h-[44px]">
+      <DecimalInput value={amount} onValue={onAmount} aria-label={label} placeholder="0" autoFocus={autoFocus}
+        className="min-w-0 flex-1 self-stretch bg-transparent pl-3 text-body tabular-nums text-fg outline-none placeholder:text-fg-faint focus-visible:outline-none" />
+      <select value={currency} onChange={e => onCurrency(e.target.value as ShopCurrency)} aria-label={`${label} currency`}
+        className="my-1 mr-1 shrink-0 cursor-pointer rounded-control bg-transparent pl-1.5 text-meta font-semibold text-fg-muted outline-none hover:text-fg focus-visible:bg-surface-hover focus-visible:text-fg focus-visible:outline-none">
         {SHOP_CURRENCIES.map(c => <option key={c} value={c}>{c}</option>)}
       </select>
     </div>

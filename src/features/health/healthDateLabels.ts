@@ -71,6 +71,32 @@ export function numericSpanLabel(from: string, to: string, today: string): strin
  *  for sizing the bar's fixed-width date box. */
 export const NUMERIC_SPAN_MAX_CHARS = 23
 
+// ── Weeks ────────────────────────────────────────────────────────────────────
+
+/** The ISO 8601 week of a date (weeks start on Monday; week 1 holds the
+ *  year's first Thursday) and the year that week belongs to — 29.12.2025 is
+ *  week 1 of 2026. */
+export function isoWeek(date: string): { week: number; year: number } {
+  const { y, m, d } = parts(date)
+  const t = new Date(Date.UTC(y, m - 1, d))
+  t.setUTCDate(t.getUTCDate() + 4 - (t.getUTCDay() || 7)) // the Thursday of this week
+  const year = t.getUTCFullYear()
+  const week = Math.ceil(((t.getTime() - Date.UTC(year, 0, 1)) / 86_400_000 + 1) / 7)
+  return { week, year }
+}
+
+/** A week's days small on one line, the owner's form for Body's weekly
+ *  changes: "12.10 – 18.10" (the year is shown once per year group instead). */
+export function shortWeekSpan(weekStart: string): string {
+  return `${numericDay(weekStart, false)} – ${numericDay(addDays(weekStart, 6), false)}`
+}
+
+/** A calendar month as "10.2026" (the bed-and-wake chart's month rows). */
+export function numericMonth(date: string): string {
+  const { y, m } = parts(date)
+  return `${pad2(m)}.${y}`
+}
+
 // ── Weekly bars ──────────────────────────────────────────────────────────────
 
 /**

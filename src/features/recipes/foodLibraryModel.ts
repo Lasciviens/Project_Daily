@@ -159,6 +159,36 @@ export function dayRemaining(
   }
 }
 
+// ── Today's four targets (Today → "What's left") ────────────────────────────
+// The targets themselves come from THE goal decision (health/goal/cutDecision
+// .dayMacroTargets); this only says what is left of them.
+export type DayMacro = 'kcal' | 'protein' | 'carbs' | 'fat'
+
+export interface MacroLeft {
+  key: DayMacro
+  target: number
+  eaten: number
+  /** Target minus eaten, rounded; negative when over. */
+  left: number
+  /** How much of the target is eaten, 0–1 (1 when over or with no target). */
+  share: number
+}
+
+/** What is left of each target today (kcal, protein, carbs, fat — in that order). */
+export function macrosLeft(
+  t: Readonly<Record<DayMacro, number>>,
+  eaten: { calories?: number | null; protein_g?: number | null; carbs_g?: number | null; fat_g?: number | null } | null | undefined,
+): MacroLeft[] {
+  const got: Record<DayMacro, number> = {
+    kcal: eaten?.calories ?? 0, protein: eaten?.protein_g ?? 0, carbs: eaten?.carbs_g ?? 0, fat: eaten?.fat_g ?? 0,
+  }
+  return (['kcal', 'protein', 'carbs', 'fat'] as const).map(key => {
+    const target = t[key]
+    const e = Math.round(got[key])
+    return { key, target, eaten: e, left: target - e, share: target > 0 ? Math.min(1, e / target) : (e > 0 ? 1 : 0) }
+  })
+}
+
 /** One portion fits when its calories are known and no more than what is left. */
 export function fitsCalories(kcal: number | null | undefined, kcalLeft: number | null | undefined): boolean {
   return kcal != null && kcal > 0 && kcalLeft != null && kcal <= kcalLeft

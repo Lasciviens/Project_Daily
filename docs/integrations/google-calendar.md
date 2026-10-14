@@ -71,3 +71,7 @@ Date-times in RDATE/EXDATE are local times with `TZID` (RFC 5545: `RDATE;TZID=Am
 - **Cross-midnight.** An event that started yesterday and ends today is in today's list too (`event.end > timeMin`); the agenda clips it (`projectCalendarEventForDay`) and hides it when linked.
 - **Background pushes.** A day carried over or an Undo whose push answers 'unknown' is retried on the next app open (a per-device list, cleared on sign-out); the day's own event is made only after the series took its EXDATE, or Google would show the session twice.
 - **No token in triggers.** A slot or plan deleted on the server queues its event in `calendar_outbox` (135, 147); `google-tasks-sync` deletes it within ~20 minutes and never deletes an event a live slot or plan still points at.
+
+## Log
+
+- 13.10.2026 — last check against Google's Calendar reference and guides (see Checked above).

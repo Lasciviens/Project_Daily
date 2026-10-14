@@ -6,7 +6,7 @@ import { useVitalsReading } from '../hooks/useVitalsReading'
 import { VITAL_SPECS, type VitalKey } from '../vitalsReading'
 import type { HealthWindow } from '../healthWindowStats'
 import type { HealthRange } from './sectionTypes'
-import { useRangeWindow, windowNoun } from './dateNav'
+import { useRangeWindow } from './dateNav'
 import { HealthTrendChart } from './HealthTrendChart'
 import { RecoveryTrend } from './RecoveryTrend'
 import { HeadlineStat, SectionCard, SideStat, TrendBadge } from './sectionKit'
@@ -33,7 +33,7 @@ function HeartRangeStat({ win, isDay, anchor }: { win: HealthWindow; isDay: bool
 // (ranking tier 3): an all-day average mostly says how active the day was, so
 // comparing it across days means little.
 export function HeartSection({ range }: { range: HealthRange }) {
-  const { anchor, setAnchor, period, setPeriod } = range
+  const { anchor, setAnchor, setPeriod } = range
   const c = useChartColors()
   const win = useRangeWindow(range)
   const isDay = win.isDay
@@ -63,7 +63,7 @@ export function HeartSection({ range }: { range: HealthRange }) {
     <SectionCard dimmed={resting.isPlaceholderData}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <HeadlineStat
-          label={isDay ? `Resting heart rate · ${windowNoun(period, anchor)}` : `Resting heart rate · average, ${windowNoun(period, anchor)}`}
+          label={isDay ? 'Resting heart rate' : 'Resting heart rate · average'}
           value={resting.isLoading ? '…' : r(s.value)}
           unit={s.value != null ? 'bpm' : undefined}
           sub={isDay ? null : windowCaption(s)}

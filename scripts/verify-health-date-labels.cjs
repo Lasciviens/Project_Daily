@@ -73,6 +73,16 @@ check('week: past year across months', L.weekRangeLabel('2025-06-30', TODAY), '3
 check('week: across years, tooltip names both years', L.weekRangeLabel('2025-12-29', TODAY), '29.12.2025 – 04.01.2026')
 check('week: leap-year February', L.weekRangeLabel('2028-02-28', '2028-03-10'), '28.02.2028 – 05.03.2028')
 
+// ── Week numbers and the weekly-changes span ─────────────────────────────────
+check('iso week: Mon 12.10.2026 is week 42', L.isoWeek('2026-10-12'), { week: 42, year: 2026 })
+check('iso week: Sunday belongs to the week before Monday', L.isoWeek('2026-10-18'), { week: 42, year: 2026 })
+check('iso week: 29.12.2025 is week 1 of 2026', L.isoWeek('2025-12-29'), { week: 1, year: 2026 })
+check('iso week: 01.01.2027 (a Friday) is week 53 of 2026', L.isoWeek('2027-01-01'), { week: 53, year: 2026 })
+check('iso week: 04.01 is always week 1', L.isoWeek('2027-01-04'), { week: 1, year: 2027 })
+check('short week span: the owner\'s one-line form', L.shortWeekSpan('2026-10-12'), '12.10 – 18.10')
+check('short week span: across a year', L.shortWeekSpan('2025-12-29'), '29.12 – 04.01')
+check('month row label', L.numericMonth('2026-09-14'), '09.2026')
+
 // ── Last night ───────────────────────────────────────────────────────────────
 const nights = [
   { date: '2026-09-24', total: 7.2 },

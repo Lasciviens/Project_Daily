@@ -67,6 +67,8 @@ export const qk = {
   dayTargets: { all: ['day-targets'] as const, profiles: ['day-target-profiles'] as const },
   recipes: { all: ['recipes'] as const },
   ingredients: { all: ['recipe-ingredient-library'] as const },
+  /** Food · Today's Quick guess presets (quick_guess_items, migration 152). */
+  quickGuess: { all: ['quick-guess-items'] as const, list: () => ['quick-guess-items', 'list'] as const },
   shop: {
     all: ['shop'] as const,
     categories: () => ['shop', 'categories'] as const,
@@ -159,6 +161,14 @@ export const qk = {
     routines: () => ['hevy', 'routines'] as const,
     routineFolders: () => ['hevy', 'routine-folders'] as const,
     templates: () => ['hevy', 'templates'] as const,
+    /** One exercise template with its secondary muscles (the exercise popup). */
+    template: (id: string) => ['hevy', 'template', id] as const,
+    /** template id → Hevy's picture (migration 154), for every thumbnail. */
+    thumbnails: () => ['hevy', 'thumbnails'] as const,
+    /** hevy_account (154) and the stored workouts its count is compared with. */
+    account: () => ['hevy', 'account'] as const,
+    /** Hevy's own history of one exercise, read live through hevy-api. */
+    exerciseHistory: (templateId: string, range: string) => ['hevy', 'exercise-history', templateId, range] as const,
     prs: () => ['hevy', 'prs'] as const,
     measurements: (limit?: number) => ['hevy', 'measurements', limit] as const,
     measurementsAll: ['hevy', 'measurements'] as const,

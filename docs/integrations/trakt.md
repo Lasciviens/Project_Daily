@@ -93,3 +93,7 @@ accounts) and it only changes Trakt's progress view (`reset_at`); rewatch rounds
   `next_retry_at` 7 days ahead so the trakt-api from before 149 (which deletes an op it doesn't know
   without sending it) can't drop it; the current trakt-api sends a never-tried one at once.
 - **429 / 5xx**: one retry (a 5xx after 1.5 s, a 429 after `Retry-After`); writes are paced at one per second.
+
+## Log
+
+- 14.10.2026 — last check against Trakt's API blueprint and contract (see Checked above).

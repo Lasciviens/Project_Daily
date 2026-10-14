@@ -19,18 +19,21 @@ export interface HealthInsightInput {
   heightCm: number | null
   /** Latest VO2 max, ml/kg/min. */
   vo2max?: number | null
-  /** 7-day median resting heart rate, bpm. */
+  // The figures below are for the period picked on the Health page (a day's
+  // own value, or the period's average); the `7` in a name is historical.
+  /** Median resting heart rate over the period, bpm. */
   restingHr?: number | null
   /** Personal 60-day median resting heart rate, bpm. */
   restingHrBaseline?: number | null
-  /** 7-day mean HRV (SDNN), ms. */
+  /** Mean HRV (SDNN) over the period, ms. */
   hrvSdnn?: number | null
   /** Personal 60-day HRV mean and SD, ms. */
   hrvBaseline?: { mean: number; sd: number } | null
+  /** Steps a day over the period. */
   avgSteps7?: number | null
-  /** 7-day mean hours asleep per night. */
+  /** Mean hours asleep per night over the period. */
   avgSleepH7?: number | null
-  /** Spread (SD) of wake time over the last 7–14 nights, minutes. */
+  /** Spread (SD) of wake time over the period's nights, minutes. */
   sleepRegularity?: number | null
   bodyFatPct?: number | null
   weightKg?: number | null
@@ -118,8 +121,9 @@ export function buildHealthInsights(input: HealthInsightInput): Insight[] {
   const days = input.strengthDaysPerWeek
   const aerobicKnown = has(input.weeklyModerateMin) || has(input.weeklyVigorousMin)
   const aerobic = moderateEquivalentMinutes(input.weeklyModerateMin, input.weeklyVigorousMin)
+  // `days` can be a period's average week (0.5 = one session in two weeks).
   if (has(days)) {
-    if (days >= 1) {
+    if (days > 0) {
       const mins = has(input.strengthMinPerWeek) ? ` You log about ${fmt(input.strengthMinPerWeek)} min a week.` : ''
       out.push({
         id: 'strength-health',
@@ -136,16 +140,16 @@ export function buildHealthInsights(input: HealthInsightInput): Insight[] {
       out.push({
         id: 'strength-health',
         tone: 'warn',
-        title: 'No strength training this week',
+        title: 'No strength training in this period',
         text: 'Muscle-strengthening activity was linked to 10–17% lower risk of death, cardiovascular disease, cancer and diabetes (Momma 2022).',
         why: 'Going from none to some is the biggest single step; WHO recommends 2 or more days a week covering all major muscle groups.',
-        action: 'Plan two short full-body sessions this week.',
+        action: 'Plan two short full-body sessions a week.',
         sources: [SRC.momma2022, SRC.who2020],
       })
     }
   }
 
-  if (has(days) && days >= 1 && aerobicKnown) {
+  if (has(days) && days > 0 && aerobicKnown) {
     const met = aerobic >= 150
     out.push({
       id: 'lifting-plus-cardio',
@@ -207,7 +211,7 @@ export function buildHealthInsights(input: HealthInsightInput): Insight[] {
   if (has(input.avgSteps7)) {
     const c = classify('step_count', input.avgSteps7, ctx)!
     out.push(fromClassification('steps', `Steps: ${fmt(input.avgSteps7)} a day`, c,
-      `${c.label} (7-day average). ${c.referenceText}`,
+      `${c.label}. ${c.referenceText}`,
       c.nextStep
         ? `About ${fmt(c.nextStep.gap)} more steps a day — roughly ${fmt(Math.ceil(c.nextStep.gap / 100))} minutes of walking — reaches ${c.nextStep.label}.`
         : null))
@@ -225,8 +229,8 @@ export function buildHealthInsights(input: HealthInsightInput): Insight[] {
       text: input.avgSleepH7 < 6
         ? `Short sleep undercuts training: ${lossEvidence}`
         : short
-          ? `Just under the 7 h guideline (7-day average). Sleep protects training: ${lossEvidence}`
-          : `${c.label} (7-day average) — the recovery the evidence supports.`,
+          ? `Just under the 7 h guideline. Sleep protects training: ${lossEvidence}`
+          : `${c.label} — the recovery the evidence supports.`,
       why: short
         ? `In a small diet study, 5.5 h instead of 8.5 h in bed meant 60% more of the weight lost came from lean mass (Nedeltcheva 2010). ${c.meaning}`
         : c.meaning,
@@ -252,7 +256,7 @@ export function buildHealthInsights(input: HealthInsightInput): Insight[] {
         id: 'resting-hr-rise',
         tone: 'warn',
         title: `Resting heart rate is up ${fmt(rise)} bpm on your baseline`,
-        text: `${fmt(input.restingHr)} bpm this week against your usual ${fmt(input.restingHrBaseline!)}.`,
+        text: `${fmt(input.restingHr)} bpm against your usual ${fmt(input.restingHrBaseline!)}.`,
         why: 'Illness, alcohol, heat, dehydration, short sleep and hard training all raise it for a few days. A rise of 5 bpm or more over your own median is a common fatigue signal in training monitoring — a convention, not a diagnosis.',
         action: 'Take an easier day and check again in a couple of days; if it stays up and you feel unwell, talk to a doctor.',
         sources: [SRC.reimers2018, SRC.appleWatchHrv2024],

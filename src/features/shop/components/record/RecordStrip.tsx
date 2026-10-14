@@ -3,7 +3,7 @@ import { Truncate, cx } from '../../../../shared/ui'
 import { formatDate } from '../../../../shared/utils/dateFormat'
 import { currencyOf, priceNow, wishRange } from '../../shopModel'
 import { bestMatch } from '../../wishModel'
-import { add, boughtOn, complete, costOf, durationLabel, gotOf, minus, perMonth, valueNowOf, ZERO, type Amount, type MoneyCtx } from '../../ownModel'
+import { add, boughtOn, complete, costOf, durationLabel, gotOf, minus, perMonth, perMonthWords, valueNowOf, ZERO, type Amount, type MoneyCtx } from '../../ownModel'
 import { finalCostOf, ifSoldNow, type Chain, type IfSold } from '../../chainModel'
 import { AmountText } from '../shopKit'
 import { money } from '../shopFormat'
@@ -75,6 +75,7 @@ export function RecordStrip({ item, state, ctx, chain, watch, models, watches, a
     const together = item.sale_group ? accessories.filter(a => a.sale_group === item.sale_group) : []
     const from = boughtOn(item)
     const per = perMonth(item, ctx, today, accessories)
+    const perWords = per ? perMonthWords(per.nok) : null
     // An accessory's chain node is its item's: its own route cost is not one.
     const final = chain && !item.accessory_of ? finalCostOf(chain, item.id) : null
     cells.push(<Cell key="p" label="Paid" strong><PaidText item={item} /></Cell>)
@@ -84,7 +85,7 @@ export function RecordStrip({ item, state, ctx, chain, watch, models, watches, a
         <Cell key="v" label="Could sell for" hint={item.value_on ? formatDate(item.value_on) : 'not set'}>{value ? <AmountText amount={value} /> : '—'}</Cell>,
         final
           ? <Cell key="f" label="Final cost" hint={chain?.name ? `with earlier things in ${chain.name}` : 'with earlier things in its chain'}><AmountText amount={final.total} /></Cell>
-          : <Cell key="m" label="Per month" hint={per ? 'paid − could sell for' : 'needs "Could sell for"'}>{per ? `≈ ${money(per.nok)}` : '—'}</Cell>,
+          : <Cell key="m" label={perWords?.label ?? 'Per month'} hint={per ? 'paid − could sell for' : 'needs "Could sell for"'}>{perWords ? `≈ ${money(perWords.nok)}${perWords.aMonth ? ' a month' : ''}` : '—'}</Cell>,
         <IfSoldCell key="s" sold={ifSoldNow(item, accessories, ctx, final)} resale={!!item.for_resale} chained={!!final} />,
       )
     } else {

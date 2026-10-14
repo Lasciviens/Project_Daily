@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
 import { qk, STALE } from '../../../shared/query'
-import { fetchHevyRoutines, fetchHevyRoutineFolders, callHevyApi } from '../api/hevyApi'
+import { fetchHevyRoutines, fetchHevyRoutineFolders, callHevyApi, createHevyRoutineFolder } from '../api/hevyApi'
 
 export function useHevyRoutines() {
   return useQuery({
@@ -27,6 +27,19 @@ export function useCreateHevyRoutine() {
     loadingMessage: 'Creating routine…',
     successMessage: 'Routine created',
     mutationFn:     (payload: unknown) => callHevyApi('create_routine', payload),
+    invalidates:    ['training'],
+  })
+}
+
+/** A routine folder made in Hevy (POST /v1/routine_folders), then stored here. */
+export function useCreateHevyRoutineFolder() {
+  return useMutationWithFeedback({
+    action:         'create_routine_folder',
+    loadingMessage: 'Creating the folder in Hevy…',
+    successMessage: (r: Awaited<ReturnType<typeof createHevyRoutineFolder>>, title: string) => r.stored
+      ? `Folder “${title}” created`
+      : `Folder “${title}” created in Hevy — it shows here after the next Sync`,
+    mutationFn:     createHevyRoutineFolder,
     invalidates:    ['training'],
   })
 }

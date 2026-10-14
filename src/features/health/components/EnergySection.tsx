@@ -3,13 +3,13 @@ import { fillDays } from '../healthWindowStats'
 import { useHealthHourly } from '../hooks/useHealthExport'
 import { useEnergyWindow, MIN_COMPLETE_DAY_KCAL } from '../hooks/useHealthWindow'
 import type { HealthRange } from './sectionTypes'
-import { useRangeWindow, windowNoun } from './dateNav'
+import { useRangeWindow } from './dateNav'
 import { HealthTrendChart } from './HealthTrendChart'
 import { HeadlineStat, SectionCard, TrendBadge } from './sectionKit'
 import { fmtAxisFor, fmtInt } from './healthFormat'
 
 export function EnergySection({ range }: { range: HealthRange }) {
-  const { anchor, setAnchor, period, setPeriod } = range
+  const { anchor, setAnchor, setPeriod } = range
   const c = useChartColors()
   const win = useRangeWindow(range)
   const isDay = win.isDay
@@ -54,7 +54,7 @@ export function EnergySection({ range }: { range: HealthRange }) {
     <SectionCard dimmed={energy.isPlaceholderData}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <HeadlineStat
-          label={isDay ? `Energy · ${windowNoun(period, anchor)}` : `Energy · daily average, ${windowNoun(period, anchor)}`}
+          label={isDay ? 'Energy' : 'Energy · average per day'}
           value={energy.isLoading ? '…' : fmtInt(t.value)}
           unit={t.value != null ? `kcal${!isDay ? ' /day' : ''}` : undefined}
           sub={caption || null}

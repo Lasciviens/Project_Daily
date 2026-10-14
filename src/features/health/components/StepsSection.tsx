@@ -3,13 +3,13 @@ import { fillDays } from '../healthWindowStats'
 import { useHealthHourly } from '../hooks/useHealthExport'
 import { useMetricWindow } from '../hooks/useHealthWindow'
 import type { HealthRange } from './sectionTypes'
-import { useRangeWindow, windowNoun } from './dateNav'
+import { useRangeWindow } from './dateNav'
 import { HealthTrendChart } from './HealthTrendChart'
 import { HeadlineStat, SectionCard, SideStat, TrendBadge } from './sectionKit'
 import { fmtAxisFor, fmtInt, windowCaption } from './healthFormat'
 
 export function StepsSection({ range }: { range: HealthRange }) {
-  const { anchor, setAnchor, period, setPeriod } = range
+  const { anchor, setAnchor, setPeriod } = range
   const c = useChartColors()
   const win = useRangeWindow(range)
   const isDay = win.isDay
@@ -38,7 +38,7 @@ export function StepsSection({ range }: { range: HealthRange }) {
     <SectionCard dimmed={steps.isPlaceholderData}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <HeadlineStat
-          label={isDay ? `Steps · ${windowNoun(period, anchor)}` : `Steps · daily average, ${windowNoun(period, anchor)}`}
+          label={isDay ? 'Steps' : 'Steps · average per day'}
           value={steps.isLoading ? '…' : fmtInt(s.value)}
           unit={!isDay && s.value != null ? '/day' : undefined}
           sub={windowCaption(s)}

@@ -16,7 +16,9 @@ import { PageStepContext, usePageStep } from './usePageStep'
 //  content or on its neighbours' heights. `lead` puts side tracks BEFORE the
 //  main track — a rail on the left (a calendar, a day's totals, an add form)
 //  beside the collection it drives. A section that can be empty goes in the
-//  last track, so an empty track is never left between two cards.
+//  last track, so an empty track is never left between two cards. `fill`
+//  columns end on one line (their last section grows), so a band below them
+//  starts flush under all of them.
 //
 //  Moving a section to another column at a step change remounts it (it loses
 //  local state such as an open row). Phones never cross a step; on desktop
@@ -111,7 +113,8 @@ export function PageBoard<K extends string>({ sections, layout, stackClassName, 
               key={i}
               keys={c.stack}
               sections={sections}
-              className="gap-4"
+              // `fill`: as tall as the tallest column, the last section grown to the end.
+              className={cx('gap-4', c.fill && 'self-stretch [&>:last-child]:grow')}
               // Inline so any span works without a safelist.
               style={c.span > 1 ? { gridColumn: `span ${c.span} / span ${c.span}` } : undefined}
             />

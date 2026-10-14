@@ -1,5 +1,6 @@
 import { useSearchParams } from 'react-router-dom'
-import { Plus } from 'lucide-react'
+import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
+import { History, Link2, MoreHorizontal, Plus } from 'lucide-react'
 import { Button, PageContainer, PageHeader, SegmentedControl } from '../../../shared/ui'
 import { useEntityModal } from '../../../shared/modals'
 import { useBreakpoint } from '../../../shared/hooks/useBreakpoint'
@@ -74,9 +75,25 @@ export function ShopPage() {
               <SegmentedControl<OwnedTab> size="sm" value={ownedTab} onChange={t => set('owned', t)}
                 options={[{ value: 'things', label: 'Things' }, { value: 'stats', label: 'Stats' }]} />
             )}
-            <Button variant="primary" icon={<Plus />} aria-label={view === 'owned' ? 'Add something you own' : 'Add item'} className="shrink-0 sm:ml-auto" onClick={add}>
-              <span className="max-sm:hidden">{view === 'owned' ? 'Add something I own' : 'Add item'}</span>
-            </Button>
+            <div className="flex shrink-0 items-center gap-2 sm:ml-auto">
+              {view === 'owned' && <>
+                {/* Owned's other ways in: buttons where the row has room, one menu where it has not. */}
+                <Button variant="ghost" icon={<History />} className="hidden @[72rem]/page:inline-flex" onClick={() => modal.open({ kind: 'shop-own', had: true })}>Something I had</Button>
+                <Button variant="ghost" icon={<Link2 />} className="hidden @[72rem]/page:inline-flex" onClick={() => modal.open({ kind: 'shop-chain-builder' })}>New money chain</Button>
+                <Menu as="div" className="@[72rem]/page:hidden">
+                  <MenuButton className="icon-btn-bordered" aria-label="More ways to add" title="More ways to add">
+                    <MoreHorizontal aria-hidden className="h-[18px] w-[18px]" />
+                  </MenuButton>
+                  <MenuItems anchor="bottom end" transition className="menu w-56 [--anchor-gap:4px] transition duration-150 data-[closed]:scale-95 data-[closed]:opacity-0">
+                    <MenuItem><button type="button" onClick={() => modal.open({ kind: 'shop-own', had: true })} className="menu-item"><History aria-hidden className="h-4 w-4" /> Something I had</button></MenuItem>
+                    <MenuItem><button type="button" onClick={() => modal.open({ kind: 'shop-chain-builder' })} className="menu-item"><Link2 aria-hidden className="h-4 w-4" /> New money chain</button></MenuItem>
+                  </MenuItems>
+                </Menu>
+              </>}
+              <Button variant="primary" icon={<Plus />} aria-label={view === 'owned' ? 'Add something you own' : 'Add item'} onClick={add}>
+                <span className="max-sm:hidden">{view === 'owned' ? 'Add something I own' : 'Add item'}</span>
+              </Button>
+            </div>
           </div>
           {view === 'owned' && isPhone && (
             <SegmentedControl<OwnedTab> size="sm" fullWidth value={ownedTab} onChange={t => set('owned', t)}

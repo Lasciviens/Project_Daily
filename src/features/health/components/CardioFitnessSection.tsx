@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { ChevronDown } from 'lucide-react'
 import { TonePill, useChartColors } from '../../../shared/ui'
-import { shiftDateStr } from '../../../shared/utils/dateUtils'
 import { useHealthProfile } from '../../training/hooks/useAthleteProfile'
 import { contextFor, vo2Explain } from '../benchmarks/healthBenchmarks'
 import { daysBetweenIso } from '../healthWindowStats'
@@ -18,8 +17,9 @@ import { fmtDayMonth } from './healthFormat'
 // Cardio fitness, led by VO₂ max — deliberately NOT a hero tile (owner
 // correction): Apple only estimates it on outdoor walks, runs and hikes, it
 // reads 4.5–6.3 ml/kg/min low in validation studies, and it arrives a few
-// times a month. So it always shows its date, the ± watch band and a year of
-// dots, never a daily number.
+// times a month. So the headline is always the latest estimate on or before
+// the viewed day, with its date and the ± watch band — never a daily number —
+// and the dots cover the period picked in the range bar (none for one day).
 /** `extras`: the recovery grid at the card's foot (off when the page gives it a card of its own). */
 export function CardioFitnessSection({ range, extras = true }: { range: HealthRange; extras?: boolean }) {
   const { anchor, setAnchor, setPeriod, period } = range
@@ -28,7 +28,8 @@ export function CardioFitnessSection({ range, extras = true }: { range: HealthRa
   const { data: profile } = useHealthProfile()
   const ctx = contextFor(profile, win.today)
   const latest = useLatestHealthValue('vo2_max', anchor).data
-  const history = useHealthDaily('vo2_max', shiftDateStr(anchor, -364), anchor)
+  const history = useHealthDaily('vo2_max', win.from, anchor)
+  const inPeriod = (history.data ?? []).length > 0
   const [planOpen, setPlanOpen] = useState(false)
   const viewDay = (date: string) => { setPeriod('day'); setAnchor(date) }
 
@@ -68,9 +69,11 @@ export function CardioFitnessSection({ range, extras = true }: { range: HealthRa
               {ex.norwegianAverage && <> {ex.norwegianAverage.label}.</>}
             </p>
           )}
-          <DailyTrend series={history.data ?? []} from={shiftDateStr(anchor, -364)} to={anchor} kind="dots" label="VO₂ max" unit="ml/kg/min"
-            ariaLabel="VO₂ max estimates over the last 12 months" color={c.series[2]} formatValue={v => v.toFixed(1)}
-            refLines={refLines} yDomain={['auto', 'auto']} onViewDay={viewDay} />
+          {!win.isDay && (inPeriod
+            ? <DailyTrend series={history.data ?? []} from={win.from} to={anchor} kind="dots" label="VO₂ max" unit="ml/kg/min"
+                ariaLabel="VO₂ max estimates" color={c.series[2]} formatValue={v => v.toFixed(1)}
+                refLines={refLines} yDomain={['auto', 'auto']} onViewDay={viewDay} />
+            : !history.isLoading && <p className="text-meta text-fg-muted">No new estimate in this period.</p>)}
           {ex && (
             <div>
               <button type="button" aria-expanded={planOpen} onClick={() => setPlanOpen(o => !o)} className="btn-ghost btn-sm -ml-2 gap-1 px-2 text-meta">

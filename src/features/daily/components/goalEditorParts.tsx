@@ -42,6 +42,34 @@ export function GoalStepper({ label, value, step, suffix, onChange }: {
   )
 }
 
+/** A goal that may be left empty ("worked out for you"): the worked-out
+ *  number shows as the placeholder, and −/+ start from it. */
+export function OptionalGoalStepper({ label, value, workedOut, step, suffix, onChange }: {
+  label: string; value: number | null; workedOut: number; step: number; suffix: string; onChange: (v: number | null) => void
+}) {
+  const from = value ?? workedOut
+  const set = (v: number) => onChange(Math.max(0, v))
+  return (
+    <div className="flex items-center gap-1">
+      <button type="button" aria-label={`${label} −${step}`} onClick={() => set(from - step)} className="icon-btn-bordered">
+        <Minus className="h-4 w-4" aria-hidden />
+      </button>
+      <div className="relative">
+        <input
+          type="number" value={value ?? ''} min={0} step={step} aria-label={`${label} (empty = worked out, ${workedOut} ${suffix})`}
+          placeholder={String(workedOut)}
+          onChange={e => (e.target.value === '' ? onChange(null) : set(Math.round(Number(e.target.value)) || 0))}
+          className="input w-24 pr-10 text-center tabular-nums placeholder:text-fg-faint [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+        />
+        <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-meta text-fg-muted">{suffix}</span>
+      </div>
+      <button type="button" aria-label={`${label} +${step}`} onClick={() => set(from + step)} className="icon-btn-bordered">
+        <Plus className="h-4 w-4" aria-hidden />
+      </button>
+    </div>
+  )
+}
+
 export function StepperRow({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex items-center justify-between gap-2">

@@ -8,7 +8,7 @@ import {
 import { fillDays, mean } from '../healthWindowStats'
 import { useSleepWindow } from '../hooks/useHealthWindow'
 import type { HealthRange } from './sectionTypes'
-import { useRangeWindow, windowNoun } from './dateNav'
+import { useRangeWindow } from './dateNav'
 import { MetricMiniGrid } from './MetricMiniGrid'
 import { SLEEP_EXTRA_METRICS } from './miniMetrics'
 import { HealthTrendChart } from './HealthTrendChart'
@@ -64,7 +64,7 @@ export function SleepSection({ range, extras = true }: { range: HealthRange; ext
 
   const headline = isDay
     ? (anchor === win.today ? 'Last night' : `Night of ${fmtDayMonth(shiftDateStr(anchor, -1))} – ${fmtDayMonth(anchor)}`)
-    : `Sleep · average per night, ${windowNoun(period, anchor)}`
+    : 'Sleep · average per night'
 
   function manualHoursFor(date: string): number | null {
     const rows = sleep.points.filter(p => p.date === date && p.source === 'manual')
