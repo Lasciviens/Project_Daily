@@ -375,6 +375,28 @@ console.log('\n11 · Deadlines and the Owned view')
   const sum = O.ownedSummary(RPc, CTX)
   check('summary: 1 thing + 1 accessory, 2 gone, paid 4 889, worth 4 000 (1 valued)', sum.mine === 1 && sum.accessories === 1 && sum.gone === 2 && sum.paid.nok === 4889 && sum.worth.nok === 4000 && sum.valued === 1)
   const acc = O.accessoriesByItem(RP)
+
+  // Owned's rail sums what the list shows (owner, 14.10.2026: "updated based on the filters I have").
+  const view = (f) => {
+    const cards = O.ownedCards(RPc, cats, f)
+    const below = f.show === 'mine' ? O.ownedCards(RPc, cats, { ...f, show: 'gone' }).length : 0
+    return O.shownSummary(cards, acc, CTX, below)
+  }
+  const same = (a, b) => ['mine', 'accessories', 'gone', 'valued'].every(k => a[k] === b[k]) && a.paid.nok === b.paid.nok && a.worth.nok === b.worth.nok
+  const mineView = view(O.NO_OWNED_FILTERS)
+  check('rail, Mine, no filters: the same numbers as the whole collection', same(mineView, sum) && mineView.got.nok === 0)
+  const goneView = view({ ...O.NO_OWNED_FILTERS, show: 'gone' })
+  check('rail, Sold or gone: 2 things, paid 5 338 (RP4, RP5 + the 2 accessories sold with it), got back 4 200, nothing yours',
+    goneView.gone === 2 && goneView.mine === 0 && goneView.accessories === 0 && goneView.paid.nok === 1990 + 2800 + 199 + 349 && goneView.got.nok === 1400 + 2342 + 166 + 292 && goneView.valued === 0)
+  const allView = view({ ...O.NO_OWNED_FILTERS, show: 'all' })
+  check('rail, All: yours and gone together — paid 10 227 (the chain\'s own sum), worth 4 000, got 4 200',
+    allView.mine === 1 && allView.accessories === 1 && allView.gone === 2 && allView.paid.nok === 10227 && allView.worth.nok === 4000 && allView.got.nok === 4200)
+  const searched = view({ ...O.NO_OWNED_FILTERS, q: 'rp4' })
+  check('rail follows the search: nothing of yours matches, the one gone match is still counted', searched.mine === 0 && searched.accessories === 0 && searched.paid.nok === 0 && searched.gone === 1)
+  const resale = view({ ...O.NO_OWNED_FILTERS, resaleOnly: true })
+  check('rail follows "Bought to sell": none here, so all zero', resale.mine === 0 && resale.gone === 0 && resale.paid.nok === 0 && O.complete(resale.paid))
+  const otherCat = view({ ...O.NO_OWNED_FILTERS, show: 'all', category: 'none' })
+  check('rail follows the category: none without one', otherCat.mine + otherCat.gone + otherCat.accessories === 0)
   check('accessories by item (possessions only)', acc.get('rp5').map(x => x.id).join() === 'case,grip' && acc.get('rp6').map(x => x.id).join() === 'sd')
   const sorted = O.sortOwned([RP[0], RP[1], RP[4]], 'kept', CTX, TODAY, acc)
   check('sort by time kept', sorted.map(x => x.id).join() === 'rp5,rp4,rp6')

@@ -12,7 +12,7 @@ import { groupByCategory } from '../../shopModel'
 import { CARD_GRID, CategorySection, FoldAll } from '../CategorySection'
 import { useCollapsedGroups } from '../../hooks/useCollapsedGroups'
 import {
-  accessoriesByItem, comingUp, DISPOSAL_LABEL, isGone, NO_OWNED_FILTERS, ownedCards, ownedSummary, sortOwned,
+  accessoriesByItem, comingUp, DISPOSAL_LABEL, isGone, NO_OWNED_FILTERS, ownedCards, shownSummary, sortOwned,
   type OwnedFilters, type OwnedSort,
 } from '../../ownModel'
 import { chainIndex, chainsOf, chainTitle } from '../../chainModel'
@@ -51,10 +51,12 @@ export function OwnedView({ items, categories, isLoading }: { items: ShopItem[];
     () => (filters.show === 'mine' ? sortOwned(ownedCards(items, categories, { ...filters, show: 'gone' }, inChain), 'recent', ctx, today, acc) : []),
     [items, categories, filters, inChain, ctx, today, acc],
   )
-  const summary = useMemo(() => ownedSummary(items, ctx), [items, ctx])
+  // The summary follows what the list shows: the filters and Mine · Sold or gone · All.
+  const summary = useMemo(() => shownSummary(shown, acc, ctx, gone.length), [shown, acc, ctx, gone.length])
+  const filtered = filters.q.trim() !== '' || filters.category !== 'all' || filters.resaleOnly || filters.chain !== 'all'
   const deadlines = useMemo(() => comingUp(items, today), [items, today])
   const fold = useCollapsedGroups('owned')
-  const anything = summary.mine + summary.gone > 0
+  const anything = useMemo(() => ownedCards(items, categories, { ...NO_OWNED_FILTERS, show: 'all' }).length > 0, [items, categories])
 
   const card = (item: ShopItem) => (
     <OwnedCard
@@ -66,9 +68,7 @@ export function OwnedView({ items, categories, isLoading }: { items: ShopItem[];
       ctx={ctx}
       today={today}
       onOpen={() => modal.open({ kind: 'shop-item', id: item.id })}
-      onSell={() => modal.open({ kind: 'shop-sell', id: item.id })}
       onUndoSale={() => undoSale.mutate(item.id)}
-      onAccessory={() => modal.open({ kind: 'shop-accessory', itemId: item.id })}
       onChain={() => modal.open({ kind: 'shop-chain', id: item.id })}
       onDelete={() => void remove.run(item)}
     />
@@ -123,8 +123,7 @@ export function OwnedView({ items, categories, isLoading }: { items: ShopItem[];
       layout={OWNED_BOARD}
       stackGap="gap-4"
       sections={{
-        summary: <OwnedSummaryCard summary={summary} onAdd={() => modal.open({ kind: 'shop-own' })} onAddHad={() => modal.open({ kind: 'shop-own', had: true })}
-          onNewChain={() => modal.open({ kind: 'shop-chain-builder' })} />,
+        summary: anything && <OwnedSummaryCard summary={summary} show={filters.show} filtered={filtered} />,
         coming: deadlines.length > 0 && <ComingUpCard deadlines={deadlines} onOpen={id => modal.open({ kind: 'shop-item', id })} />,
         filters: anything && (
           <OwnedFiltersCard filters={filters} onChange={setFilters} sort={sort} onSort={setSort} categories={categories} chains={chainOptions} collapsible={isPhone} />
