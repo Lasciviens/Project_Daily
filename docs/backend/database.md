@@ -86,8 +86,9 @@ that number would collide with a deleted one in history.
    (or `user_id` for a one-row-per-account settings table) to be undoable,
    and a table without `trg_audit` can't be undone at all. Its preview reads
    the undo's own audit rows and outbox rows back, so a new outbox table
-   belongs in `app_undo_outbox` and a trigger-owned sync column in
-   `app_undo_bookkeeping` (`docs/features/developer.md`).
+   belongs in `app_undo_outbox`, a sync clock or outside-copy state column in
+   `app_undo_bookkeeping`, and a link to an outside copy in `app_undo_links`
+   (`docs/features/developer.md`).
 10. **Grants:** table CRUD for the `authenticated` role is already covered by
     Supabase's public-schema default privileges — the explicit `GRANT SELECT,
     INSERT, UPDATE, DELETE ... TO authenticated` lines in migrations up to `051`

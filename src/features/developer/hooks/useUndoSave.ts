@@ -51,8 +51,10 @@ const snapshotOf = (groups: DeletedRows['groups']): DeletedRows =>
  * After an undo: Google follows, the way it does after the one delete flow's
  * Undo — slots and plans the undo deleted leave Google Calendar, those it put
  * back get an event again, slots whose time or title went back move their
- * event, and Google Tasks delivers what the outbox queued. Best effort; a
- * note says what didn't follow.
+ * event, and Google Tasks delivers what the outbox queued. The preview lists
+ * these Calendar writes before they happen (151 counts them from the steps:
+ * `outbox` google_calendar create / update), so the owner confirms them.
+ * Best effort; a note says what didn't follow.
  */
 async function followUndo(result: UndoResult, txId: number): Promise<string> {
   const notes: string[] = []

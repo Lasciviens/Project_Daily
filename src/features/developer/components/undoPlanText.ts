@@ -1,6 +1,7 @@
 import type {
   UndoBlocked, UndoCollateral, UndoConflict, UndoDrift, UndoNearby, UndoOutbox, UndoPlan, UndoService, UndoSideEffect, UndoTable,
 } from '../api/undoSaveApi'
+import { UNDO_ERROR_TEXT } from '../undoErrorText'
 import { formatDate, formatDateTime, formatTime } from '../../../shared/utils/dateFormat'
 import { friendlyTable } from './activityLogMeta'
 
@@ -21,8 +22,8 @@ export interface UndoLine {
 export interface UndoPlanView {
   /** "73 changes · 14.10.2026 10:30 · You" */
   subtitle: string
-  /** Other saves seconds from this one (one Spread makes up to three): undo them too. */
-  hint: string | null
+  /** Other media saves seconds from this one (one Spread makes up to three): undo them too, if they belong together. */
+  hint: NearbyHint | null
   /** Rows changed again later: Undo overwrites or deletes something newer. */
   conflicts: UndoLine[]
   /** Rows a database rule changes again right after Undo. */
@@ -160,7 +161,7 @@ function driftLine(d: UndoDrift): UndoLine {
   const name = nameOf(d)
   if (d.how === 'still_there') return { tone: 'warn', text: `${name} — a database rule keeps it after Undo deletes it` }
   if (d.how === 'missing') return { tone: 'warn', text: `${name} — a database rule removes it again after Undo puts it back` }
-  return { tone: 'warn', text: `${name} — a database rule sets ${columnList(d.columns ?? [])} again after Undo · it won't be exactly as before` }
+  return { tone: 'warn', text: `${name} — a database rule changes ${columnList(d.columns ?? [])} right after Undo · it won't be exactly as before` }
 }
 
 function tableLines(t: UndoTable): UndoLine[] {
@@ -264,11 +265,36 @@ const GOOGLE_WORDS: Record<'google_tasks' | 'google_calendar', { one: string; ma
 
 function googleLine(s: 'google_tasks' | 'google_calendar', rows: readonly UndoOutbox[]): UndoLine {
   const w = GOOGLE_WORDS[s]
-  const parts = rows.map(r => `${n(r.n, w.one, w.many)} ${w.ops[r.op] ?? r.op}`)
+  const order = ['delete', 'create', 'update']
+  const parts = [...rows]
+    .sort((a, b) => order.indexOf(a.op) - order.indexOf(b.op))
+    .map(r => `${n(r.n, w.one, w.many)} ${w.ops[r.op] ?? r.op}`)
   return { tone: 'danger', text: `${SERVICE_NAME[s]}: ${parts.join(' · ')}` }
 }
 
-/** What goes to Trakt / Google (the trial run's own outbox rows), and a sync's save. */
+/** An outside link (app_undo_links) Undo leaves as it is: what it links, per column. */
+const LINK_WORDS: Record<string, { service: UndoService; what: string }> = {
+  google_calendar_event_id: { service: 'google_calendar', what: 'event link' },
+  google_task_id: { service: 'google_tasks', what: 'Google task link' },
+  google_tasklist_id: { service: 'google_tasks', what: 'Google list' },
+  trakt_note_id: { service: 'trakt', what: 'Trakt note link' },
+}
+
+function linkLine(l: UndoPlan['links_kept'][number]): UndoLine {
+  const w = LINK_WORDS[l.c] ?? { service: SYNCED[l.t] ?? 'google_tasks', what: `${columnLabel(l.c)}` }
+  const own = l.n === 1 ? 'its' : 'their'
+  return {
+    tone: 'warn',
+    text: `${SERVICE_NAME[w.service]}: ${n(l.n, tableNoun(l.t, 1), tableNoun(l.t, l.n))} ${l.n === 1 ? 'keeps' : 'keep'} ${own} current ${w.what} — Undo doesn't put the old one back`,
+  }
+}
+
+/**
+ * What goes to Trakt / Google (the trial run's outbox rows and the Calendar
+ * events the browser makes or moves right after), the outside links Undo
+ * leaves, and — for a sync's save — a service that gets nothing from this
+ * undo and may bring the change back.
+ */
 function outsideLines(plan: UndoPlan): UndoLine[] {
   const out: UndoLine[] = []
   const outbox = plan.outbox ?? []
@@ -278,36 +304,49 @@ function outsideLines(plan: UndoPlan): UndoLine[] {
     if (s === 'trakt') out.push(...traktLines(rows))
     else out.push(googleLine(s, rows))
   }
-  const synced = [...new Set((plan.sync_save ?? []).map(t => SYNCED[t]).filter(Boolean))]
+  out.push(...(plan.links_kept ?? []).map(linkLine))
+  const sent = new Set(outbox.map(o => o.s))
+  const quiet = [...new Set((plan.sync_save ?? []).map(t => SYNCED[t]).filter(Boolean))]
+    .filter(s => !sent.has(s))
     .sort((a, b) => SERVICE_ORDER.indexOf(a) - SERVICE_ORDER.indexOf(b))
     .map(s => SERVICE_NAME[s])
-  if (synced.length) {
-    out.push({ tone: 'danger', text: `This save came from AI / sync, not from you. Undoing it changes ${joinAnd(synced)} too, and that can't be undone there` })
+  if (quiet.length) {
+    out.push({ tone: 'warn', text: `This save came from AI / sync. ${joinAnd(quiet)} still ${quiet.length === 1 ? 'has' : 'have'} it — the next sync may bring it back` })
   }
   return out
 }
 
-/** One line: saves seconds from this one, by the same actor, on the same tables (one Spread makes up to three). */
-export function nearbyHint(nearby: readonly UndoNearby[] | undefined): string | null {
-  const after = (nearby ?? []).filter(x => x.when === 'after').length
-  const before = (nearby ?? []).filter(x => x.when === 'before').length
-  if (!after && !before) return null
-  if (after) {
-    const also = before ? ` and ${before} before` : ''
-    return `${n(after, 'more save', 'more saves')} seconds after this one${also} (same Spread?) — undo ${after + before === 1 ? 'it' : 'them'} too, newest first`
+export interface NearbyHint {
+  text: string
+  /** The save the hint's link opens: the newest after this one, else the newest before it. */
+  tx: number
+  action: string
+}
+
+/** One line: media saves seconds from this one, by the same actor (one Spread makes up to three) — if they belong together. */
+export function nearbyHint(nearby: readonly UndoNearby[] | undefined): NearbyHint | null {
+  const after = (nearby ?? []).filter(x => x.when === 'after')
+  const before = (nearby ?? []).filter(x => x.when === 'before')
+  if (!after.length && !before.length) return null
+  const newest = (xs: readonly UndoNearby[]) => [...xs].sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : a.tx - b.tx)).at(-1)!.tx
+  const them = after.length + before.length === 1 ? 'it' : 'them'
+  if (after.length) {
+    const also = before.length ? ` and ${before.length} earlier` : ''
+    return {
+      text: `${n(after.length, 'more save', 'more saves')} seconds later${also} (one Spread?) — if they belong together, undo ${them} too, newest first`,
+      tx: newest(after),
+      action: 'Open the newest',
+    }
   }
-  return `${n(before, 'more save', 'more saves')} seconds before this one (same Spread?) — undo ${before === 1 ? 'it' : 'them'} too, after this one`
+  return {
+    text: `${n(before.length, 'more save', 'more saves')} seconds earlier (one Spread?) — if they belong together, undo ${them} too, after this one`,
+    tx: newest(before),
+    action: 'Open the one before',
+  }
 }
 
 /** The fields of a slot its Google Calendar event shows (useUndoSave → followUndo moves the event when one goes back). */
 export const CALENDAR_FIELDS = ['date', 'start_time', 'title', 'duration_minutes'] as const
-
-/** Slots and plans whose Google Calendar event the browser makes or moves after Undo (followUndo). */
-function followsCalendar(t: UndoTable): boolean {
-  if (t.t === 'schedule_blocks') return t.reinsert + t.revert + t.overwrite > 0
-  if (t.t !== 'time_blocks') return false
-  return t.reinsert > 0 || (t.revert + t.overwrite > 0 && t.columns.some(c => (CALENDAR_FIELDS as readonly string[]).includes(c)))
-}
 
 function notesOf(plan: UndoPlan): string[] {
   const notes: string[] = []
@@ -325,20 +364,7 @@ function notesOf(plan: UndoPlan): string[] {
       notes.push(`${friendlyTable(t.t)} changes are no longer logged — this undo can't be undone itself`)
     }
   }
-  if (plan.tables.some(followsCalendar)) {
-    notes.push('Slots and plans put back or moved back get their Google Calendar event again, if they had one')
-  }
   return notes
-}
-
-const ERRORS: Record<string, string> = {
-  '23503': 'a row it needs was deleted since',
-  '23505': 'another row has taken its place since',
-  '23514': 'an old value breaks a rule of the table now',
-  '23502': 'a value the table now needs is missing',
-  '42501': 'some of these rows may not be changed',
-  '57014': 'this save is too big to undo here',
-  UD004: 'a row can\'t be written back (gone, or not yours)',
 }
 
 export function describeUndoPlan(plan: UndoPlan): UndoPlanView {
@@ -346,8 +372,9 @@ export function describeUndoPlan(plan: UndoPlan): UndoPlanView {
   // `?? []`: a plan from before migration 151 lacks these (remove once 151 is live everywhere).
   const notLogged = plan.not_logged ?? []
   const blocked = [...plan.blocked.map(blockedLine), ...notLogged.map(notLoggedLine)]
-  const error = plan.error ? `Undo can't run: ${ERRORS[plan.error.code] ?? plan.error.message}` : null
+  const error = plan.error ? `Undo can't run: ${UNDO_ERROR_TEXT[plan.error.code] ?? plan.error.message}` : null
   const nothingToDo = plan.steps === 0 && plan.conflicts.length === 0 && plan.blocked.length === 0 && !notLogged.length
+    && !(plan.links_kept ?? []).length
   return {
     subtitle: [n(plan.changes, 'change', 'changes'), formatDateTime(plan.at), who].filter(Boolean).join(' · '),
     hint: nearbyHint(plan.nearby),

@@ -1,5 +1,6 @@
 import { supabase } from '../../../integrations/supabase/client'
 import type { RowOverrides } from '../../../shared/utils/deletedRows'
+import { UNDO_ERROR_TEXT } from '../undoErrorText'
 
 // "Undo this save" on Developer → Activity (migrations 150, 151). One save =
 // one database transaction in audit_logs (tx_id). app_undo_transaction plans
@@ -85,7 +86,12 @@ export type UndoService = 'trakt' | 'google_tasks' | 'google_calendar'
 /** Outbox rows the trial run queued for an outside service, per kind (151). */
 export interface UndoOutbox {
   s: UndoService
-  /** Trakt: history_add, history_remove_play, history_remove (every play of an item), watchlist_*, rating_*, note_*, dropped_*; Google: create, update, delete. */
+  /**
+   * Trakt: history_add, history_remove_play, history_remove (every play of an
+   * item), watchlist_*, rating_*, note_*, dropped_*; Google Tasks: create,
+   * update, delete; Google Calendar: delete (queued), create / update (the
+   * browser right after the undo).
+   */
   op: string
   n: number
   /** Trakt history_remove: the items whose every play goes. */
@@ -165,8 +171,10 @@ export interface UndoPlan {
   side_effects: UndoSideEffect[]
   /** Such changes the caller's log doesn't show. */
   side_hidden: number
-  /** What the undo queues for Trakt / Google. */
+  /** What goes to Trakt / Google: the outbox rows the undo queues, and the Calendar events the browser makes or moves right after. */
   outbox: UndoOutbox[]
+  /** Outside links (a slot's event, a task's Google task or list, a Trakt note) the save changed that Undo leaves as they are now. */
+  links_kept: { t: string; c: string; n: number }[]
   /** A save by AI / a sync: the synced tables its undo changes (that service changes too). */
   sync_save: string[]
   /** Saves by the same actor within seconds that touched the same tables (a hint; not in the fingerprint). */
@@ -185,14 +193,18 @@ const MESSAGES: Record<string, string> = {
   UD001: 'Undo needs you to confirm what it lists first — look again.',
   UD002: 'This save changed since you looked — look again.',
   UD003: 'This save is no longer in the activity log (cleared, or older than 30 days).',
-  // statement_timeout: the trial run took longer than a request may
+  '55P03': 'Another save is writing these rows — try again in a moment.',
   '57014': 'This save is too big to undo here.',
   PGRST202: 'Undo isn\'t available yet (migration 150 not applied).',
   '42883': 'Undo isn\'t available yet (migration 150 not applied).',
 }
 
+/** An undo's error as the preview would say it, never raw Postgres text when the code is known. */
 function undoError(error: { code?: string; message: string }): Error {
-  return new Error((error.code && MESSAGES[error.code]) || error.message)
+  const code = error.code ?? ''
+  if (MESSAGES[code]) return new Error(MESSAGES[code])
+  if (UNDO_ERROR_TEXT[code]) return new Error(`Undo can't run: ${UNDO_ERROR_TEXT[code]}.`)
+  return new Error(error.message)
 }
 
 /** What undoing the save would do — changes nothing. */

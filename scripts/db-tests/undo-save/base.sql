@@ -28,6 +28,11 @@ create or replace function public.is_app_user() returns boolean language sql sta
   select exists (select 1 from public.app_allowed_users a where a.user_id = (select auth.uid()))
 $$;
 grant execute on function public.is_app_user() to authenticated;
+create or replace function public.owner_lock_apply(p_table regclass) returns void language plpgsql set search_path = '' as $$
+begin
+  execute format('drop policy if exists app_owner_lock on %s', p_table);
+  execute format('create policy app_owner_lock on %s as restrictive for all to public using ((select public.is_app_user())) with check ((select public.is_app_user()))', p_table);
+end $$;
 
 -- 037's audit log and 140's trigger function (verbatim but for the retention sweep)
 create table public.audit_logs (
@@ -115,9 +120,22 @@ create table public.tasks (
   google_task_id text, google_sync_enabled boolean not null default false,
   google_hidden boolean not null default false, google_deleted boolean not null default false,
   due_date date,
+  google_tasklist_id text,
   google_local_edit_at timestamptz,
+  is_focused boolean not null default false,
   updated_at timestamptz not null default now()
 );
+-- 143 (verbatim): a closed task leaves Work's focus, whoever closed it
+create or replace function public.tasks_closed_clears_focus() returns trigger language plpgsql as $$
+begin
+  if new.status in ('done', 'cancelled') and new.is_focused then
+    new.is_focused := false;
+  end if;
+  return new;
+end;
+$$;
+create trigger trg_tasks_closed_clears_focus before insert or update of status, is_focused on public.tasks
+  for each row execute function public.tasks_closed_clears_focus();
 create trigger trg_updated_at before update on public.tasks for each row execute function public.set_updated_at();
 -- 071: every local write stamps the task's local-edit clock (a row put back too)
 create or replace function public.stamp_google_local_edit() returns trigger language plpgsql as $$

@@ -150,4 +150,25 @@ begin
   perform public.t_ok((select count(*) from public.media_watches where tv_series_id = '20000000-0000-0000-0000-000000000017' and episode_number = 2) = 2,
                       'and it ran at commit');
 end $$;
+
+-- ── 5. A whole-item Trakt remove names only what the undo queued ──────────
+reset role;
+insert into public.movies (id, tmdb_id, title) values ('10000000-0000-0000-0000-000000000018', 1801, 'Undo movie');
+set role authenticated;
+do $$ begin
+  insert into public.user_movie_entries (id, movie_id, status, watched_at)
+  values ('11000000-0000-0000-0000-000000000018', '10000000-0000-0000-0000-000000000018', 'completed', '2026-10-05 20:00+00');
+  insert into public.t_tx values ('movie_added', txid_current());
+end $$;
+select public.t_clear();
+do $$
+declare p jsonb; r jsonb;
+begin
+  -- earlier in the same transaction: another title removed (its own whole-item remove)
+  delete from public.user_movie_entries where id = '11000000-0000-0000-0000-000000000004';
+  p := public.app_undo_transaction(public.t_tx('movie_added'));
+  select e into r from jsonb_array_elements(p -> 'outbox') e where e ->> 'op' = 'history_remove';
+  perform public.t_ok(r = '{"n": 1, "s": "trakt", "op": "history_remove", "items": ["Undo movie"]}',
+                      'deleting the movie the save added removes every play of it on Trakt: named — and only it, not a remove queued before ' || coalesce(r::text, 'none'));
+end $$;
 reset role;
