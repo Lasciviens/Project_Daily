@@ -4,12 +4,21 @@ A home-made Wi-Fi kitchen scale with its own touchscreen. You pick a food (or sc
 
 This file is the project's one place for the parts in hand, the checked hardware facts, the design, the plan and the progress log. Update it in the same PR as any work on the scale.
 
-**Status (14.10.2026):** stage 0 is done on the owner's display board: chip, 16 MB flash, 8 MB PSRAM, screen and touch all work, and the back of the board is recorded (no relay back plate, board version V1.2). The only thing left open is the optional pin finder test. Nothing has been wired or built yet. Nothing in the app, the database or the edge functions has changed for the scale.
+**Status (14.10.2026):** stage 0 is done on the owner's display board: chip, 16 MB flash, 8 MB PSRAM, screen and touch all work, and the back of the board is recorded (no relay back plate, board version V1.2). The only thing left open is the optional pin finder test. Stage 1 code (the weighing logic and the bench program) is ready and waits for the soldering iron. Nothing has been wired or built yet. Nothing in the app, the database or the edge functions has changed for the scale.
 
 ## Progress log
 
 Newest on top. One entry per real step: what was done, what was run or measured, what it showed.
 
+- **14.10.2026 · stage 1 code ready (not run on hardware yet)**
+  - Weighing logic, `firmware/kitchen-scale/lib/scale_core`:
+    - spike filter (median of 3 readings), then an average of 8 readings that restarts on a change over 4 g, so the number follows a new weight at once
+    - tare that waits for a stable reading; calibration from a known weight, which also works with the signal wires swapped
+    - "stable" when the 8 readings lie within 1 g; zero tracking within 0.5 g; overload above 5000 g or at the HX711's limits
+  - Checked on a computer: `node scripts/verify-scale-core.mjs` passes 32 checks. Five deliberately broken copies (spike filter, zero tracking, jump restart, stability window, tare) each fail at least one check.
+  - HX711 reader (`lib/hx711_reader`) and the bench program (`src/bench`, programs `bench` and `bench_native_usb`): weight 5 times a second, typed commands, the calibration saved on the board.
+  - All three programs build (`display`, `bench`, `bench_native_usb`); our own files now build with warnings treated as errors.
+  - Not run on hardware: it waits for the soldering iron (*Stage 1: weighing on the bench* below).
 - **14.10.2026 · stage 0 flashed and checked on the board**
   - Setup on the Mac: VS Code 1.141.2 + PlatformIO IDE 3.3.4, PlatformIO Core 6.2.0 (same as CI).
   - `pio run -e display` built locally: 396,144 bytes, no warnings from our files. Uploaded over USB-C on the first try; the CH340 (USB VID:PID 1A86:7523) worked with macOS's built-in driver, no extra install.
@@ -53,9 +62,9 @@ Newest on top. One entry per real step: what was done, what was run or measured,
 
 | Part | Qty | Role in the scale | To check |
 |---|---|---|---|
-| ESP32-4848S040 (Guition): ESP32-S3 N16R8, 4" 480×480 touchscreen, Wi-Fi + Bluetooth | 1 | The scale's brain and screen | Variant (relay back plate or not), revision printed on the back |
-| ESP32-S3 N16R8 development board | 1 | Bench board for stage 1. Same chip as the display board, with many free pins at 3.3 V, so the weighing code is built and tested here first. Possible RFID host later. | Exact board (print on it, one or two USB-C ports) |
-| Arduino Uno, from Kjell's "Arduino Startpakke" (art. 87875) | 1 | First wiring and calibration practice at 5 V, where nothing can be damaged | R3 or R4 (printed on the board) |
+| ESP32-4848S040 (Guition): ESP32-S3 N16R8, 4" 480×480 touchscreen, Wi-Fi + Bluetooth | 1 | The scale's brain and screen | Checked in stage 0: no relay back plate, version V1.2 |
+| ESP32-S3 N16R8 development board | 1 | Bench board for stage 1. Same chip as the display board, with many free pins at 3.3 V, so the weighing code is built and tested here first. Possible RFID host later. | Exact board (print on it); one or two USB-C ports, which decides `bench` or `bench_native_usb` |
+| Arduino Uno, from Kjell's "Arduino Startpakke" (art. 87875) | 1 | Spare: stage 1 goes straight to the ESP32-S3 dev board (see *Plan*) | — |
 
 ### Weighing
 
@@ -195,6 +204,12 @@ Sources:
 - **Platform:** PlatformIO's own `espressif32` platform still ships Arduino core 2.0.17, which the screen library no longer supports (the build fails on `esp32-hal-periman.h`, checked 14.10.2026). The firmware uses **pioarduino** 55.03.312 (Arduino core 3.3.12, 20.09.2026), the community-maintained platform that brings core 3 to PlatformIO. **C**
 - **Screen:** Arduino_GFX 1.6.8 with its own preset values for this board (12 MHz pixel clock; one project saw glitches at 16 MHz). **C**
 - **Touch:** our own read-only GT911 reader. The common TAMC_GT911 library rewrites the touch chip's stored configuration at every start, with a checksum computed from an uninitialised variable. **C** (read in its source)
+- **HX711 reader:** our own (`lib/hx711_reader`). Interrupts are off during each read, because a clock pulse held high for over 60 µs switches the HX711 off. **C** (datasheet)
+- **Firmware layout:**
+  - `platformio.ini`: the programs `display`, `bench` and `bench_native_usb` share one N16R8 settings block.
+  - Pins only in `include/board_4848s040.h` and `include/board_bench.h`.
+  - `lib/scale_core`: the weighing logic, with no Arduino calls, checked on a computer by `scripts/verify-scale-core.mjs` on every PR.
+  - Our own `src/` builds with `-Wall -Wextra -Werror`; the *Firmware check* workflow builds all three programs.
 - **Other known setup:** [esp32-smartdisplay](https://github.com/rzeldent/esp32-smartdisplay) (LVGL 9) supports this board too; its CIY1 board file puts the LED on GPIO 16, which is the screen's HSYNC line. **C**
 - **Expected behaviour:** the screen pauses while flash memory is written (updates over Wi-Fi, saving settings). **C**
 
@@ -244,9 +259,9 @@ Each stage ends with a check the owner does. A stage starts only after the previ
 - *Check:* the screen works, touch is found and lines up with your finger, and the log lines are sent back.
 
 **1. Weighing on the bench.**
-- **a. Arduino Uno at 5 V:** solder the header pins onto the HX711, wire the load cell, print grams to the computer, calibrate with the reference weight. The kit's 16×2 LCD can show the weight.
-- **b. ESP32-S3 dev board at 3.3 V:** the same weighing code on the same chip family as the display board, with free pins and nothing to risk.
-- **c. Display board:** on the confirmed free pins.
+- **a. ESP32-S3 dev board at 3.3 V:** solder the HX711's header pins and the load-cell wires, then run the bench program (*Stage 1: weighing on the bench*). It is the same chip and the same weighing code as the final scale, with free pins and nothing to risk.
+- **b. Display board:** the same wiring on the confirmed free pins (the pin finder decides which).
+- The Uno step was dropped (14.10.2026): the dev board is just as safe at 3.3 V, and one program to learn is simpler than two. The Uno stays a spare.
 - The load cell sits between two boards with spacers.
 - *Check:*
   - 5 objects match the Chef Matteo scale within about 1–2 g
@@ -300,7 +315,7 @@ Owner's answers, 14.10.2026:
 
 ## Open questions
 
-1. **Exact part names:** the ESP32-S3 dev board, the Uno (R3 or R4), the HX711's colour, the load cell's capacity. Read them off the parts when they're out on the table.
+1. **Exact part names:** the ESP32-S3 dev board and its USB-C ports (one or two), the HX711's colour, the load cell's capacity. Read them off the parts when they're out on the table.
 2. **GPIO 40/2/1:** do they reach header H1 or the speaker amplifier? Small 0 Ω resistors on the board decide this; the pin finder test will show it.
 
 Closed: **Relay back plate**: none (owner's photo of the back, 14.10.2026).
@@ -346,6 +361,74 @@ Notes:
 - The resistor stays in line every time; a wire straight from one pin to another can damage the board.
 - If a relay back plate sits on H1, you'll hear the relays click 1, 2 or 3 times instead.
 
+## Stage 1: weighing on the bench
+
+Needs the soldering iron. The program is `bench` in `firmware/kitchen-scale`.
+
+### What you need
+
+- ESP32-S3 dev board, HX711, load cell, breadboard and jumper wires (Kjell kit).
+- Soldering iron and solder.
+- Two stiff boards for a temporary rig, spacers and screws for the load cell (*Not in hand yet*).
+- A reference object weighed on the Chef Matteo scale, for example a full water bottle. Write its grams down.
+
+### Solder and wire
+
+1. Solder the 4 header pins onto the HX711's GND, DT, SCK and VCC holes.
+2. Solder the load cell's 4 wires to the HX711's other side:
+   - red → E+
+   - black → E−
+   - white → A−
+   - green → A+
+
+   B+ and B− stay empty.
+3. Push the HX711 and the dev board into the breadboard and connect, with USB unplugged:
+
+   | HX711 | ESP32-S3 dev board |
+   |---|---|
+   | VCC (and VDD, if the board has both) | 3V3 — **never 5V** |
+   | GND | GND |
+   | DT | GPIO 4 |
+   | SCK | GPIO 5 |
+
+4. Fix one end block of the load cell to the base board and the other to the platform board, each with a spacer, so only the end blocks touch. The arrow on the cell points down.
+
+### Flash and calibrate
+
+1. **Pick the USB port.** A dev board with two USB-C ports: use the one marked COM or UART, with the `bench` program. Only one port: use `bench_native_usb`.
+2. **Upload and open the log:** `pio run -e bench -t upload`, then `pio device monitor`.
+   - The log shows "Zeroing...", then "Zeroed.", then lines like `raw 123456  stable  (not calibrated)`.
+3. **Check the wiring:** press the platform lightly with a finger. The raw number must change by thousands; down instead of up is fine. If it doesn't move, or "No reading from the HX711" appears, recheck the wiring.
+4. **Calibrate:**
+   - With the platform empty, type `t` and wait for "Zeroed.".
+   - Put the reference object on and type `c <its grams>`, for example `c 1563`.
+   - Expect "Calibrated: … counts per gram (saved)". The calibration survives a power-off.
+
+Commands:
+
+| Command | What it does |
+|---|---|
+| `t` | Tare: zero the scale once the reading is stable |
+| `c <grams>` | Calibrate with a known weight on the scale |
+| `n` | Noise test: 10 s of readings, then the spread |
+| `r` | Raw counts on/off in the weight lines |
+| `i` | Info: calibration, offset, readings per second |
+| `forget` | Delete the saved calibration |
+| `h` | Help |
+
+### What to check and report
+
+Write each result into the progress log.
+
+1. **Five objects:** compare each against the Chef Matteo scale, in a small table. Good means within 1–2 g.
+2. **Noise test (`n`):** once empty and once with the reference object on. Good means a spread of 1 g or less.
+3. **Drift:** leave the reference object on for 10 minutes and note the first and last reading. Good means 2–3 g of change or less.
+4. **Readings per second (`i`):**
+   - About 10 is the HX711's quiet setting.
+   - About 80 means the module is wired for its fast mode, which is noisier.
+
+If readings jump around a lot, a missing E− to GND link on cheap HX711 modules is a known cause (*Hardware facts → HX711*).
+
 ## Words used here
 
 - **GPIO:** a pin the program can switch on and off or read, like a light switch the code controls.
@@ -360,4 +443,7 @@ Notes:
 - **PSRAM:** extra memory on the board. The screen's picture is kept there.
 - **LVGL:** the library that draws buttons, lists and numbers on the touchscreen.
 - **Edge function:** a small program that runs on Supabase's servers, the "door" a device knocks on.
+- **Header pins:** a row of metal pins soldered onto a small board so it plugs into a breadboard.
+- **Noise:** the small random wobble in the reading when nothing changes, like a needle that never quite stops.
+- **Drift:** a slow change in the reading over minutes while nothing changes on the scale.
 - **OTA (over the air):** installing a new firmware over Wi-Fi instead of the cable.

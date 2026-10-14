@@ -119,10 +119,10 @@ void setup() {
   delay(200);
   Serial.println();
   Serial.println("Kitchen scale - stage 0 board check - v" FIRMWARE_VERSION);
-  Serial.printf("Chip: %s rev %d, %d cores, %d MHz\n", ESP.getChipModel(), ESP.getChipRevision(),
-                ESP.getChipCores(), ESP.getCpuFreqMHz());
-  Serial.printf("Flash: %u bytes, PSRAM: %u bytes (%u free)\n", ESP.getFlashChipSize(),
-                ESP.getPsramSize(), ESP.getFreePsram());
+  Serial.printf("Chip: %s rev %d, %d cores, %lu MHz\n", ESP.getChipModel(), ESP.getChipRevision(),
+                ESP.getChipCores(), (unsigned long)ESP.getCpuFreqMHz());
+  Serial.printf("Flash: %lu bytes, PSRAM: %lu bytes (%lu free)\n", (unsigned long)ESP.getFlashChipSize(),
+                (unsigned long)ESP.getPsramSize(), (unsigned long)ESP.getFreePsram());
 
   if (!gfx->begin()) {
     Serial.println("Screen: begin() failed");
