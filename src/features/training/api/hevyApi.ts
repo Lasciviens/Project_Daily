@@ -13,7 +13,11 @@ import type {
   HevyRoutineSet,
   HevyRoutineFolder,
   HevySyncState,
+  HevyAccount,
 } from '../types.hevy'
+import type { CustomExercisePayload } from '../hevyEnums'
+import type { HevyHistorySet } from '../exerciseHistory'
+import type { MissingWorkoutsResult } from '../hevyAccountModel'
 
 // ─── Paged reads ─────────────────────────────────────────────────────────────
 // PostgREST caps every response at 1,000 rows (no max_rows override in
@@ -372,6 +376,31 @@ export async function triggerIncrementalHevySync(): Promise<{
   return postEdge('hevy-incremental-sync') as Promise<{ updated: number; deleted: number; routines?: number }>
 }
 
+// ─── Hevy reads and writes through hevy-api (migration 154) ──────────────────
+
+/** Hevy's own record of one exercise, set by set (read live, never stored). */
+export async function fetchHevyExerciseHistory(templateId: string, startDate?: string): Promise<HevyHistorySet[]> {
+  const res = await callHevyApi('exercise_history', { exercise_template_id: templateId, ...(startDate ? { start_date: startDate } : {}) }) as
+    { exercise_history?: unknown }
+  return Array.isArray(res?.exercise_history) ? res.exercise_history as HevyHistorySet[] : []
+}
+
+/** POST /v1/exercise_templates, then the new template is read back by id and
+ *  stored here. `stored: false` = created in Hevy, arrives with the next Sync. */
+export async function createHevyExerciseTemplate(payload: CustomExercisePayload): Promise<{ template_id: string | null; stored: boolean }> {
+  return callHevyApi('create_exercise_template', payload) as Promise<{ template_id: string | null; stored: boolean }>
+}
+
+/** POST /v1/routine_folders, read back by id and stored here. */
+export async function createHevyRoutineFolder(title: string): Promise<{ folder_id: number | null; stored: boolean }> {
+  return callHevyApi('create_routine_folder', { title }) as Promise<{ folder_id: number | null; stored: boolean }>
+}
+
+/** Every page of Hevy's workout list: stores the ones missing here. */
+export async function syncMissingHevyWorkouts(): Promise<MissingWorkoutsResult> {
+  return callHevyApi('sync_missing_workouts', {}) as Promise<MissingWorkoutsResult>
+}
+
 // Writes go through hevy-api (Hevy stays the source of truth; the function
 // upserts the local mirror from Hevy's own response).
 export async function callHevyApi(action: string, payload: unknown): Promise<unknown> {
@@ -454,6 +483,65 @@ export async function fetchHevyExerciseTemplates(): Promise<HevyExerciseTemplate
     ...t,
     secondary_muscle_groups: musclesByTemplate.get(t.id) ?? [],
   }))
+}
+
+// A table or column a migration adds, read before that migration ran.
+type PgError = { code?: string; message?: string } | null | undefined
+const isMissingTable = (e: PgError) => e?.code === '42P01' || e?.code === 'PGRST205' || /Could not find the table/i.test(e?.message ?? '')
+const isMissingColumn = (e: PgError) => e?.code === '42703' || e?.code === 'PGRST204'
+
+/** One template with its secondary muscles (the exercise popup); null when
+ *  the library here doesn't have it. */
+export async function fetchHevyExerciseTemplate(id: string): Promise<HevyExerciseTemplate | null> {
+  const [{ data, error }, { data: muscles, error: mErr }] = await Promise.all([
+    supabase.from('hevy_exercise_templates').select('*').eq('id', id).maybeSingle(),
+    supabase.from('hevy_exercise_template_muscles').select('muscle_group').eq('exercise_template_id', id).order('muscle_group'),
+  ])
+  if (error) throw error
+  if (mErr) throw mErr
+  if (!data) return null
+  return { ...(data as HevyExerciseTemplate), secondary_muscle_groups: (muscles ?? []).map(m => m.muscle_group as string) }
+}
+
+/** template id → Hevy's picture, for every exercise that has one. Before
+ *  migration 154 there is no column: no pictures (the GIFs still show).
+ *  The fallback can go once 154 has run everywhere. */
+export async function fetchHevyExerciseThumbnails(): Promise<Record<string, string>> {
+  try {
+    const rows = await fetchAllPages<{ id: string; thumbnail_url: string | null }>((f, t) =>
+      supabase.from('hevy_exercise_templates').select('id, thumbnail_url').not('thumbnail_url', 'is', null).order('id').range(f, t))
+    return Object.fromEntries(rows.filter(r => r.thumbnail_url).map(r => [r.id, r.thumbnail_url as string]))
+  } catch (e) {
+    if (isMissingColumn(e as PgError)) return {}
+    throw e
+  }
+}
+
+export interface HevyAccountStatus {
+  /** null before the first sync after migration 154 (or before 154 ran). */
+  account: HevyAccount | null
+  /** Workouts stored here that Hevy created up to its count check — what
+   *  hevy_workout_count is compared with. null when there is no count yet. */
+  localCount: number | null
+}
+
+export async function fetchHevyAccountStatus(): Promise<HevyAccountStatus> {
+  const userId = await currentUserId()
+  if (!userId) return { account: null, localCount: null }
+  const { data, error } = await supabase.from('hevy_account').select('*').eq('user_id', userId).maybeSingle()
+  if (error) {
+    // Migration 154 not applied yet: the card shows what it showed before.
+    if (isMissingTable(error)) return { account: null, localCount: null }
+    throw error
+  }
+  const account = (data ?? null) as HevyAccount | null
+  if (!account?.count_checked_at || account.hevy_workout_count == null) return { account, localCount: null }
+  const { count, error: cErr } = await supabase
+    .from('hevy_workouts')
+    .select('id', { count: 'exact', head: true })
+    .lte('hevy_created_at', account.count_checked_at)
+  if (cErr) throw cErr
+  return { account, localCount: count ?? 0 }
 }
 
 // ─── Routine Folders ──────────────────────────────────────────────────────────

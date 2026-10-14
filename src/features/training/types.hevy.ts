@@ -8,6 +8,8 @@ export interface HevyExerciseTemplate {
   type: string
   primary_muscle_group: string | null
   is_custom: boolean
+  /** Hevy's own picture (migration 154); absent before 154, null when Hevy has none. */
+  thumbnail_url?: string | null
   created_at: string
   synced_at: string
   secondary_muscle_groups?: string[] // from hevy_exercise_template_muscles join
@@ -161,6 +163,19 @@ export interface StravaActivity {
   notes: string | null
   created_at: string
   updated_at: string
+}
+
+// The Hevy account behind the key (migration 154, hevy_account): user info
+// and Hevy's own workout count, refreshed by every sync. Read-only here.
+export interface HevyAccount {
+  user_id: string
+  username: string | null
+  weight_unit: 'kg' | 'lbs' | null
+  distance_unit: 'kilometers' | 'miles' | null
+  is_pro: boolean | null
+  hevy_workout_count: number | null
+  count_checked_at: string | null
+  synced_at: string
 }
 
 // Sync state

@@ -23,4 +23,11 @@ And why.
 
 ## Traps
 Real surprises: odd shapes, rate limits, error bodies, time zones.
+
+## Log
+### DD.MM.YYYY — what changed
+What this change added, fixed or re-checked against the provider (newest first).
 ```
+
+Every service page keeps that dated **Log** at its end (owner, 14.10.2026): each change to the integration adds
+an entry on top, so the page says what was checked or changed and when.

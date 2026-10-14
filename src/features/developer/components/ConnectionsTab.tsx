@@ -5,7 +5,8 @@ import { BookOpen, CalendarDays, Bike, Gamepad2, Monitor, Dumbbell, HeartPulse, 
 import { exchangeGoogleCode, disconnectGoogle } from '../api/connectionsApi'
 import { Button, PageBoard } from '../../../shared/ui'
 import { formatDate, formatDateTime } from '../../../shared/utils/dateFormat'
-import { useHevySyncState } from '../../training/hooks/useHevySync'
+import { useFetchMissingHevyWorkouts, useHevyAccountStatus, useHevySyncState } from '../../training/hooks/useHevySync'
+import { hevyAccountFacts, workoutCountGap } from '../../training/hevyAccountModel'
 import { useLatestHealthValue } from '../../health/hooks/useHealthExport'
 import { GoogleTasksSyncButtons } from '../../todo/components/GoogleTasksSyncButtons'
 import { AddPlansToCalendarButton } from '../../calendar/components/AddPlansToCalendarButton'
@@ -238,14 +239,30 @@ function IgdbCard() {
 
 function HevyCard() {
   const sync = useHevySyncState()
+  const status = useHevyAccountStatus()
+  const fetchMissing = useFetchMissingHevyWorkouts()
   const last = sync.data?.last_events_since ?? null
+  const account = status.data?.account ?? null
+  // Hevy's own count (read on every sync) against the workouts stored here.
+  const gap = workoutCountGap(account?.hevy_workout_count, status.data?.localCount)
   return (
     <ConnectionCard service="hevy" kind="server" icon={<Dumbbell />} name="Hevy"
-      description="Imports your workouts, routines and body measurements from Hevy on every sync."
+      description="Imports your workouts, routines, exercises and body measurements from Hevy on every sync."
       status={sync.isLoading ? 'unknown' : last ? 'connected' : 'disconnected'}
       statusNote={!sync.isLoading && !last ? 'Never synced' : undefined}
-      details={[last && `Last sync ${formatDateTime(last)}`]}
-      footer="New workouts arrive by themselves through a webhook; press Sync on the Training page to fetch edits and routines." />
+      details={[...hevyAccountFacts(account), last && `Last sync ${formatDateTime(last)}`]}
+      footer="New workouts arrive by themselves through a webhook; press Sync on the Training page to fetch edits, routines and new exercises.">
+      {gap && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          <p className="text-meta tabular-nums text-warn">{gap.text}</p>
+          {gap.missing > 0 && (
+            <Button size="sm" icon={<RefreshCw />} loading={fetchMissing.isPending} onClick={() => fetchMissing.mutate()}>
+              Fetch missing workouts
+            </Button>
+          )}
+        </div>
+      )}
+    </ConnectionCard>
   )
 }
 

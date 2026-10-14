@@ -36,7 +36,10 @@ Two kinds of integration sit side by side there and are labelled differently, de
   from here.
 - **server-configured** (Steam, Hevy, Apple Health) — a single-user secret in Supabase Vault
   with no browser consent step at all, so the card is a read-only status readout. **Never render
-  a Connect button that can't actually connect anything.**
+  a Connect button that can't actually connect anything.** The Hevy card (14.10.2026, migration
+  154) also shows the account Hevy reports ("@username · Hevy Pro · kg · km") and, when Hevy's
+  workout count differs from the app's, the two counts with **Fetch missing workouts** — a sync
+  action, not a connect (`docs/integrations/hevy.md`).
 
 Load-bearing details:
 - `GOOGLE_SCOPES` (`src/features/calendar/googleScopes.ts`) is the ONE definition of the Google

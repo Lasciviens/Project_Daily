@@ -87,3 +87,7 @@ The outbox is drained by the browser right after a save (`googleTasksOutbox.ts`)
 - A deleted task stays readable as a tombstone (`deleted: true`) for a while; re-reading it must not change a task that is already cancelled.
 - Error bodies: `{ error: { code, message, errors: [{ reason }], details: [{ reason }] } }` — classify by status and reason (`googleTasksFailureKind`), never by the message text.
 - `tasks.insert` takes no client id: a create whose answer is lost can't be retried safely — the outbox checkpoints the created task in its own row (079).
+
+## Log
+
+- 13.10.2026 — last check against Google's Tasks reference (see Checked above).

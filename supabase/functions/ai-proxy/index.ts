@@ -2874,7 +2874,12 @@ const DB_CATALOG: Record<string, CatalogEntry> = {
   hevy_exercise_templates: {
     access: 'ro',
     purpose: 'Hevy exercise catalog (names + muscle groups).',
-    columns: 'id, title, type, primary_muscle_group, is_custom',
+    columns: 'id, title, type, primary_muscle_group, is_custom, thumbnail_url(Hevy\'s picture of the exercise; null when it has none)',
+  },
+  hevy_account: {
+    access: 'ro',
+    purpose: 'The Hevy account the app syncs (one row): its username, units and Hevy Pro, and Hevy\'s own workout count at the last check.',
+    columns: 'user_id, username, weight_unit(kg|lbs), distance_unit(kilometers|miles), is_pro, hevy_workout_count, count_checked_at, synced_at',
   },
   hevy_body_measurements: {
     access: 'ro',

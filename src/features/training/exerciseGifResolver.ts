@@ -78,3 +78,55 @@ export function resolveExerciseGif(
   if (!match) return null
   return { gifUrl: match.gifUrl, name: match.name, instructions: match.instructions, overridden: false }
 }
+
+// ── Hevy's own picture first (migration 154, 14.10.2026) ────────────────────
+// Owner: "change that as primarily to Hevy". Hevy's exercise templates carry
+// `thumbnail_url` (its OpenAPI; no live sample was read, so nothing assumes it
+// is animated). The ExerciseGymGifsDB GIF stays as the fallback, and as the
+// animated demo in the exercise popup when Hevy's picture is a still one.
+
+/** True for a URL whose file is a GIF (the extension, before any query). */
+export function isAnimatedImageUrl(url: string | null | undefined): boolean {
+  if (!url) return false
+  return /\.gif$/i.test(url.split(/[?#]/)[0])
+}
+
+export type ExerciseMediaSource = 'hevy' | 'override' | 'gifdb'
+
+export interface ExerciseMediaChoice {
+  /** Pictures for the small thumbnail, best first: the next one is tried when one fails to load. */
+  thumbs: { url: string; source: ExerciseMediaSource }[]
+  /** The popup's large view: an animated demo when there is one, else Hevy's picture. */
+  demo: (ResolvedExerciseMedia & { source: ExerciseMediaSource }) | null
+  /** Hevy's picture, when it has one. */
+  hevyUrl: string | null
+}
+
+/**
+ * - Thumbnail: Hevy's picture → a GIF you set with Fix GIF → the name-matched GIF.
+ * - Popup demo: the GIF you set (Fix GIF picks an animated demo on purpose) →
+ *   Hevy's picture when it is animated → the name-matched GIF → Hevy's still picture.
+ */
+export function chooseExerciseMedia(
+  templateId: string | undefined,
+  title: string,
+  hevyThumbnailUrl: string | null | undefined,
+  overridesByTemplateId: Map<string, string>,
+  db: IndexedExercise[] | null | undefined,
+): ExerciseMediaChoice {
+  const hevyUrl = hevyThumbnailUrl && /^https?:\/\//i.test(hevyThumbnailUrl) ? hevyThumbnailUrl : null
+  const gif = resolveExerciseGif(templateId, title, overridesByTemplateId, db)
+  const gifSource: ExerciseMediaSource = gif?.overridden ? 'override' : 'gifdb'
+
+  const thumbs: ExerciseMediaChoice['thumbs'] = []
+  if (hevyUrl) thumbs.push({ url: hevyUrl, source: 'hevy' })
+  if (gif && gif.gifUrl !== hevyUrl) thumbs.push({ url: gif.gifUrl, source: gifSource })
+
+  const hevyDemo = hevyUrl ? { gifUrl: hevyUrl, name: title, instructions: gif?.instructions ?? [], overridden: false, source: 'hevy' as const } : null
+  const demo: ExerciseMediaChoice['demo'] =
+    gif?.overridden ? { ...gif, source: 'override' }
+      : hevyDemo && isAnimatedImageUrl(hevyUrl) ? hevyDemo
+        : gif ? { ...gif, source: 'gifdb' }
+          : hevyDemo
+  return { thumbs, demo, hevyUrl }
+}

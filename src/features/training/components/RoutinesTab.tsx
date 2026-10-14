@@ -1,12 +1,13 @@
 import { useMemo, useState } from 'react'
 import { useHevyRoutines } from '../hooks/useHevyRoutines'
 import { useHevyExerciseTemplates } from '../hooks/useHevyExerciseTemplates'
-import { CalendarPlus, ChevronDown, ClipboardList, Pencil, Plus } from 'lucide-react'
+import { CalendarPlus, ChevronDown, ClipboardList, FolderPlus, Pencil, Plus } from 'lucide-react'
 import { Button, Card, EmptyState, IconButton, Skeleton, TonePill } from '../../../shared/ui'
 import { SET_TYPE_META } from '../setTypeMeta'
 import { formatSet } from '../setFormat'
 import { openPlanRoutine } from '../planTraining'
 import { NewRoutineModal, EditRoutineModal } from './RoutineModals'
+import { CreateRoutineFolderModal } from './CreateRoutineFolderModal'
 import { ExerciseThumb } from '../exerciseMedia'
 import type { HevyRoutine, HevyRoutineSet } from '../types.hevy'
 
@@ -129,6 +130,7 @@ export function RoutinesTab() {
   const { data: templates = [] } = useHevyExerciseTemplates()
   const typeById = useMemo(() => new Map(templates.map(t => [t.id, t.type])), [templates])
   const [newOpen,       setNewOpen]       = useState(false)
+  const [folderOpen,    setFolderOpen]    = useState(false)
   const [editingRoutine, setEditingRoutine] = useState<HevyRoutine | null>(null)
 
   if (isLoading) {
@@ -146,7 +148,10 @@ export function RoutinesTab() {
           <h3 className="text-lead font-semibold text-fg">Routines</h3>
           <p className="text-meta tabular-nums text-fg-muted">{routines.length} routine{routines.length !== 1 ? 's' : ''}</p>
         </div>
-        <Button variant="primary" icon={<Plus />} onClick={() => setNewOpen(true)}>New routine</Button>
+        <div className="flex shrink-0 items-center gap-2">
+          <Button icon={<FolderPlus />} onClick={() => setFolderOpen(true)}>New folder</Button>
+          <Button variant="primary" icon={<Plus />} onClick={() => setNewOpen(true)}>New routine</Button>
+        </div>
       </div>
       {/* Hevy's API can create and edit routines but has no delete. */}
       <p className="mb-3 max-w-xl text-meta text-fg-muted">To delete a routine, delete it in the Hevy app — it disappears here on the next Sync.</p>
@@ -160,6 +165,7 @@ export function RoutinesTab() {
       )}
 
       <NewRoutineModal isOpen={newOpen} onClose={() => setNewOpen(false)} />
+      <CreateRoutineFolderModal open={folderOpen} onClose={() => setFolderOpen(false)} />
       <EditRoutineModal routine={editingRoutine} onClose={() => setEditingRoutine(null)} />
     </>
   )
