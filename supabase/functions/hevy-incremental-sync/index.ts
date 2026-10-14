@@ -391,12 +391,14 @@ export function cleanUserInfo(body: any): HevyUserInfo | null {
   const raw = body?.data ?? body
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
   const username = typeof raw.username === 'string' && raw.username.trim() ? raw.username.trim().slice(0, 200) : null
-  return {
+  const info: HevyUserInfo = {
     username,
     weight_unit: raw.weight_unit === 'kg' || raw.weight_unit === 'lbs' ? raw.weight_unit : null,
     distance_unit: raw.distance_unit === 'kilometers' || raw.distance_unit === 'miles' ? raw.distance_unit : null,
     is_pro: typeof raw.is_pro === 'boolean' ? raw.is_pro : null,
   }
+  // Not one field as the spec describes it: another shape, not an account.
+  return Object.values(info).every((v) => v === null) ? null : info
 }
 
 /** GET /v1/workouts/count answers { workout_count }. */
@@ -407,31 +409,50 @@ export function cleanWorkoutCount(body: any): number | null {
 
 /** Reads user info and the workout count and stores them in hevy_account
  *  (migration 154). Never throws: the sync it follows has already
- *  succeeded, so a failure here only leaves the card's facts older. */
+ *  succeeded. A read that fails stores why (last_error, last_error_at —
+ *  a status or "unexpected shape", never a header or a key), keeps the
+ *  facts it already had, and says so in `error`; a good read clears it. */
 export async function refreshHevyAccount(
   supabase: ReturnType<typeof createClient>,
   userId: string,
   hevyApiKey: string,
-): Promise<{ ok: boolean; hevy_workout_count: number | null }> {
+): Promise<{ ok: boolean; hevy_workout_count: number | null; error: string | null }> {
+  const brief = (err: unknown) => String((err as Error)?.message ?? err ?? 'unknown error').slice(0, 120)
+  const problems: string[] = []
+  const row: Record<string, unknown> = { user_id: userId }
+  let count: number | null = null
   try {
-    const row: Record<string, unknown> = { user_id: userId }
     const info = await hevyGetJson('/v1/user/info', hevyApiKey)
-    const user = info.status >= 200 && info.status < 300 ? cleanUserInfo(info.data) : null
+    const answered = info.status >= 200 && info.status < 300
+    const user = answered ? cleanUserInfo(info.data) : null
     if (user) Object.assign(row, user, { synced_at: new Date().toISOString() })
+    else problems.push(answered ? 'user info: unexpected shape' : `user info: Hevy answered ${info.status}`)
+  } catch (err) {
+    problems.push(`user info: ${brief(err)}`)
+  }
+  try {
     // Taken before the request: the app compares the count with the
     // workouts Hevy created up to this moment.
     const checkedAt = new Date().toISOString()
     const counted = await hevyGetJson('/v1/workouts/count', hevyApiKey)
-    const count = counted.status >= 200 && counted.status < 300 ? cleanWorkoutCount(counted.data) : null
+    const answered = counted.status >= 200 && counted.status < 300
+    count = answered ? cleanWorkoutCount(counted.data) : null
     if (count != null) Object.assign(row, { hevy_workout_count: count, count_checked_at: checkedAt })
-    if (!user && count == null) return { ok: false, hevy_workout_count: null }
-    const { error } = await supabase.from('hevy_account').upsert(row, { onConflict: 'user_id' })
-    if (error) throw error
-    return { ok: !!user && count != null, hevy_workout_count: count }
+    else problems.push(answered ? 'count: unexpected shape' : `count: Hevy answered ${counted.status}`)
   } catch (err) {
-    console.warn(`hevy account not refreshed: ${(err as Error)?.message ?? 'unknown error'}`)
-    return { ok: false, hevy_workout_count: null }
+    problems.push(`count: ${brief(err)}`)
   }
+  const error = problems.length > 0 ? problems.join('; ').slice(0, 300) : null
+  Object.assign(row, { last_error: error, last_error_at: error ? new Date().toISOString() : null })
+  try {
+    const { error: dbErr } = await supabase.from('hevy_account').upsert(row, { onConflict: 'user_id' })
+    if (dbErr) throw dbErr
+  } catch (err) {
+    console.warn(`hevy account not stored: ${brief(err)}`)
+    return { ok: false, hevy_workout_count: count, error: error ?? `not stored: ${brief(err)}` }
+  }
+  if (error) console.warn(`hevy account not read: ${error}`)
+  return { ok: error === null, hevy_workout_count: count, error }
 }
 
 /** Every page of a Hevy list (`page`, `page_count`, the list under `key`).
@@ -630,9 +651,11 @@ async function refreshBodyMeasurements(supabase: any, userId: string): Promise<v
         neck_cm: m.neck_cm ?? null, shoulder_cm: m.shoulder_cm ?? null, chest_cm: m.chest_cm ?? null,
         left_bicep_cm: m.left_bicep_cm ?? null, right_bicep_cm: m.right_bicep_cm ?? null,
         left_forearm_cm: m.left_forearm_cm ?? null, right_forearm_cm: m.right_forearm_cm ?? null,
-        abdomen_cm: m.abdomen_cm ?? null, waist_cm: m.waist_cm ?? null, hips_cm: m.hips_cm ?? null,
-        left_thigh_cm: m.left_thigh_cm ?? null, right_thigh_cm: m.right_thigh_cm ?? null,
-        left_calf_cm: m.left_calf_cm ?? null, right_calf_cm: m.right_calf_cm ?? null,
+        // Hevy's OpenAPI names these seven without "_cm" (BodyMeasurement:
+        // abdomen, waist, hips, left_thigh …); either name is read.
+        abdomen_cm: m.abdomen ?? m.abdomen_cm ?? null, waist_cm: m.waist ?? m.waist_cm ?? null, hips_cm: m.hips ?? m.hips_cm ?? null,
+        left_thigh_cm: m.left_thigh ?? m.left_thigh_cm ?? null, right_thigh_cm: m.right_thigh ?? m.right_thigh_cm ?? null,
+        left_calf_cm: m.left_calf ?? m.left_calf_cm ?? null, right_calf_cm: m.right_calf ?? m.right_calf_cm ?? null,
         updated_at: now,
       })),
       { onConflict: 'user_id,date' },
@@ -798,23 +821,31 @@ Deno.serve(async (req) => {
     // created or edited in the Hevy app show up on Sync (no more needing
     // "Import all" for a new routine).
     let routinesSynced = 0
-    let templatesSynced = 0
     try {
       await syncAllRoutineFolders(supabase, user.id, hevyApiKey!)
-      templatesSynced = await syncAllExerciseTemplates(supabase, user.id, hevyApiKey!)
       routinesSynced = await refreshRoutines(supabase, user.id)
       await refreshBodyMeasurements(supabase, user.id)
     } catch (err) {
       return new Response(
-        JSON.stringify({ error: `refresh routines/exercises/body failed: ${(err as Error).message}` }),
+        JSON.stringify({ error: `refresh routines/body failed: ${(err as Error).message}` }),
         { status: 502, headers: { ...headers, 'Content-Type': 'application/json' } }
       )
     }
 
-    // Step 4c: An updated workout naming an exercise the library read above
-    // didn't return gets it by id (the workouts are stored already, so a
-    // failure here doesn't fail the Sync).
-    let templatesAdded = 0
+    // Step 4c: The exercise library (new custom exercises, Hevy's pictures),
+    // on its own: it never fails the Sync — `exercise_templates: null` tells
+    // the app it wasn't read this time (the next Sync tries again).
+    let templatesSynced: number | null = null
+    try {
+      templatesSynced = await syncAllExerciseTemplates(supabase, user.id, hevyApiKey!)
+    } catch (err) {
+      console.warn(`hevy-incremental-sync: exercise library not read: ${(err as Error).message}`)
+    }
+
+    // Step 4d: An updated workout naming an exercise the library doesn't
+    // have gets it by id (the workouts are stored already, so a failure here
+    // doesn't fail the Sync; `templates_added: null` says it wasn't checked).
+    let templatesAdded: number | null = null
     try {
       const updated = [...toUpdate].filter(([id]) => !toDeleteSet.has(id)).map(([, w]) => w)
       templatesAdded = await ensureExerciseTemplates(supabase, user.id, updated, hevyApiKey!)
@@ -849,7 +880,7 @@ Deno.serve(async (req) => {
       JSON.stringify({
         updated: updatedCount, deleted: toDeleteSet.size, routines: routinesSynced,
         exercise_templates: templatesSynced, templates_added: templatesAdded,
-        account_checked: account.ok, hevy_workout_count: account.hevy_workout_count,
+        account_checked: account.ok, account_error: account.error, hevy_workout_count: account.hevy_workout_count,
       }),
       { status: 200, headers: { ...headers, 'Content-Type': 'application/json' } }
     )

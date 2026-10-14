@@ -11,8 +11,8 @@ import { useExerciseMedia } from './hooks/useExerciseMedia'
 //  Exercise pictures and demo GIFs.
 //  HEVY FIRST (migration 154, 14.10.2026 — owner: "change that as primarily
 //  to Hevy"): Hevy's exercise templates carry `thumbnail_url`, stored by both
-//  syncs. The small thumbnail shows Hevy's picture; the popup's large view
-//  shows an animated demo when there is one (chooseExerciseMedia in
+//  syncs. The small thumbnail and the popup's main picture are Hevy's; the
+//  popup adds a small labelled "Animated demo" below (chooseExerciseMedia in
 //  exerciseGifResolver.ts has the order).
 //
 //  FALLBACK / ANIMATED DEMO: JahelCuadrado/ExerciseGymGifsDB — 1323 animated
@@ -73,32 +73,29 @@ export function ExerciseThumb({ title, templateId, size = 48 }: { title: string;
   )
 }
 
-const DEMO_SOURCE: Record<string, string> = {
-  hevy: 'Picture from Hevy',
-  override: 'Demo you set with Fix GIF',
-}
-
-/** The popup's large view: the demo (or Hevy's picture), where it comes
- *  from, and the dataset's instructions when it has them. */
+/** The popup's "Animated demo": a small GIF beside where it comes from and
+ *  the dataset's instructions (Hevy's own picture is the popup's main one). */
 export function ExerciseDemo({ demo, title }: { demo: NonNullable<ExerciseMediaChoice['demo']>; title: string }) {
   const [broken, setBroken] = useState<string | null>(null)
-  const source = DEMO_SOURCE[demo.source]
-    ?? (demo.name.toLowerCase() !== title.toLowerCase() ? `Demo: ${demo.name} · ExerciseGymGifsDB` : 'Demo from ExerciseGymGifsDB')
+  const source = demo.source === 'override' ? 'set with Fix GIF'
+    : demo.name.toLowerCase() !== title.toLowerCase() ? `${demo.name} · ExerciseGymGifsDB` : 'ExerciseGymGifsDB'
   return (
-    <div className="flex flex-col gap-2">
+    <section className="flex items-start gap-3 border-t border-line pt-3" aria-label="Animated demo">
       {broken !== demo.gifUrl && (
-        <img src={demo.gifUrl} alt={title} onError={() => setBroken(demo.gifUrl)}
-          className="mx-auto max-h-72 w-full max-w-sm rounded-row border border-line bg-surface-2 object-contain" />
+        <img src={demo.gifUrl} alt={`${title} — animated demo`} onError={() => setBroken(demo.gifUrl)}
+          className="h-24 w-24 shrink-0 rounded-lg border border-line bg-surface-2 object-cover" />
       )}
-      <p className="text-micro text-fg-muted">{source}</p>
-      {demo.instructions.length > 0 && (
-        <ol className="flex list-inside list-decimal flex-col gap-1.5">
-          {demo.instructions.map((step, i) => (
-            <li key={i} className="text-body leading-relaxed text-fg-2">{step}</li>
-          ))}
-        </ol>
-      )}
-    </div>
+      <div className="flex min-w-0 flex-1 flex-col gap-1">
+        <p className="text-meta font-semibold text-fg">Animated demo <span className="font-normal text-fg-muted">· {source}</span></p>
+        {demo.instructions.length > 0 && (
+          <ol className="flex list-inside list-decimal flex-col gap-0.5">
+            {demo.instructions.map((step, i) => (
+              <li key={i} className="text-meta leading-snug text-fg-2">{step}</li>
+            ))}
+          </ol>
+        )}
+      </div>
+    </section>
   )
 }
 
@@ -145,6 +142,10 @@ export function ExerciseGifPicker({ templateId, title }: { templateId: string; t
 
       <ModalShell open={open} onClose={() => setOpen(false)} title={`Fix GIF — ${title}`} size="sm">
         <div className="flex flex-col gap-4">
+          <p className="text-meta text-fg-muted">
+            This sets the <strong className="font-semibold text-fg-2">animated demo</strong> in the exercise&apos;s popup.
+            The card picture stays Hevy&apos;s own whenever Hevy has one.
+          </p>
           {existing && (
             <div className="flex items-center gap-3 rounded-row border border-line bg-surface-2 p-2.5">
               <img src={existing.gif_url} alt="" className="h-14 w-14 rounded-md border border-line object-cover" />

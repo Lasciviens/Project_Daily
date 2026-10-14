@@ -160,8 +160,9 @@ const bench = {
     const u = m.cleanUserInfo({ data: { id: 'x', username: 'lasci', name: 'L', url: 'https://hevy.com/user/lasci', weight_unit: 'kg', distance_unit: 'kilometers', is_pro: true } })
     check('user info is read from { data: UserInfo }', u && u.username === 'lasci' && u.weight_unit === 'kg' && u.distance_unit === 'kilometers' && u.is_pro === true, u)
     check('a bare UserInfo is tolerated', m.cleanUserInfo({ username: 'lasci', weight_unit: 'lbs', distance_unit: 'miles', is_pro: false }).weight_unit === 'lbs')
-    const odd = m.cleanUserInfo({ data: { username: '', weight_unit: 'stone', distance_unit: 'km', is_pro: 'yes' } })
-    check('values outside Hevy\'s enums are unknown (NULL), never guessed', odd.username === null && odd.weight_unit === null && odd.distance_unit === null && odd.is_pro === null, odd)
+    const odd = m.cleanUserInfo({ data: { username: 'lasci', weight_unit: 'stone', distance_unit: 'km', is_pro: 'yes' } })
+    check('values outside Hevy\'s enums are unknown (NULL), never guessed', odd.username === 'lasci' && odd.weight_unit === null && odd.distance_unit === null && odd.is_pro === null, odd)
+    check('an answer with not one recognised field is no account (unexpected shape)', m.cleanUserInfo({ data: { username: '', weight_unit: 'stone' } }) === null && m.cleanUserInfo({ error: 'x' }) === null)
     check('the count is read from { workout_count }', m.cleanWorkoutCount({ workout_count: 312 }) === 312)
     check('a missing or negative count is unknown', m.cleanWorkoutCount({}) === null && m.cleanWorkoutCount({ workout_count: -1 }) === null && m.cleanWorkoutCount({ workout_count: '312' }) === null)
   }
@@ -250,13 +251,23 @@ const bench = {
       '/v1/workouts/count': { status: 200, body: { workout_count: 312 } } }, ok).m.refreshHevyAccount(ok.client, 'u1', 'K')
     const row = ok.tables.hevy_account[0]
     check('the account row holds user info and the count', r.ok && r.hevy_workout_count === 312 && row.username === 'lasci' && row.hevy_workout_count === 312 && !!row.count_checked_at && !!row.synced_at, row)
+    check('a good read clears the stored reason', r.error === null && row.last_error === null && row.last_error_at === null)
     const half = fakeDb()
+    half.tables.hevy_account.push({ user_id: 'u1', username: 'lasci', hevy_workout_count: 3 })
     r = await load({ '/v1/workouts/count': { status: 200, body: { workout_count: 5 } } }, half).m.refreshHevyAccount(half.client, 'u1', 'K')
-    check('user info failing still stores the count (and touches no user field)', !r.ok && half.tables.hevy_account[0].hevy_workout_count === 5 && !('username' in half.tables.hevy_account[0]))
+    const kept = half.tables.hevy_account[0]
+    check('user info failing still stores the count and keeps the stored username', !r.ok && kept.hevy_workout_count === 5 && kept.username === 'lasci', kept)
+    check('…and stores why: "user info: Hevy answered 404"', r.error === 'user info: Hevy answered 404' && kept.last_error === r.error && !!kept.last_error_at, r.error)
+    const shape = fakeDb()
+    r = await load({ '/v1/user/info': { status: 200, body: { data: { username: 'lasci' } } }, '/v1/workouts/count': { status: 200, body: { total: 5 } } }, shape).m.refreshHevyAccount(shape.client, 'u1', 'K')
+    check('a count in another shape says "count: unexpected shape"', r.error === 'count: unexpected shape' && shape.tables.hevy_account[0].username === 'lasci')
+    const both = fakeDb()
+    r = await load({}, both).m.refreshHevyAccount(both.client, 'u1', 'K')
+    check('both reads failing still stores the reasons', r.ok === false && both.tables.hevy_account[0].last_error === 'user info: Hevy answered 404; count: Hevy answered 404')
     const missing = fakeDb({ failTable: 'hevy_account' })
     const t = load({ '/v1/user/info': { status: 200, body: { data: { username: 'x' } } }, '/v1/workouts/count': { status: 200, body: { workout_count: 1 } } }, missing)
     r = await t.m.refreshHevyAccount(missing.client, 'u1', 'K')
-    check('before migration 154 (no table) it never throws, and says so', r.ok === false && t.warnings.length === 1)
+    check('before migration 154 (no table) it never throws, and says so', r.ok === false && /^not stored/.test(r.error) && t.warnings.length === 1)
     check('its warning names no key', t.warnings.every(w => !w.includes('K"') && !/api-key/i.test(w)))
   }
 
@@ -283,6 +294,26 @@ const bench = {
   // The cursor is the moment reading began, never "now" after the work.
   check('events cursor = when the sync started reading', /const syncStartedAt = new Date\(\)\.toISOString\(\)[\s\S]*Paginate all events[\s\S]*last_events_since: syncStartedAt/.test(src['hevy-incremental-sync']))
   check('Import all sets the cursor to when it started', /const importStartedAt = new Date\(\)\.toISOString\(\)[\s\S]*last_events_since: importStartedAt/.test(src['hevy-initial-sync']))
+
+  // Body measurements: Hevy's OpenAPI names seven without "_cm".
+  console.log('\n== Body measurement names ==')
+  for (const f of ['abdomen', 'waist', 'hips', 'left_thigh', 'right_thigh', 'left_calf', 'right_calf']) {
+    const read = new RegExp(`${f}_cm: m\\.${f} \\?\\? m\\.${f}_cm \\?\\? null`)
+    check(`${f}: both syncs read the spec's name, then ours`, read.test(src['hevy-incremental-sync']) && read.test(src['hevy-initial-sync']))
+    check(`${f}: hevy-api sends it to Hevy as "${f}"`, new RegExp(`${f}_cm: '${f}'`).test(src['hevy-api']))
+  }
+  check('hevy-api maps every key it sends through HEVY_NAME', /hevyBody\[HEVY_NAME\[k\] \?\? k\] = v/.test(src['hevy-api']))
+
+  // The exercise library never fails a Sync; the account says why it failed.
+  console.log('\n== What a Sync reports ==')
+  const incr = src['hevy-incremental-sync']
+  check('Sync reads the library after routines and body measurements, in its own try',
+    /await refreshBodyMeasurements\(supabase, user\.id\)\s*\n\s*\} catch[\s\S]*?let templatesSynced: number \| null = null\s*\n\s*try \{\s*\n\s*templatesSynced = await syncAllExerciseTemplates/.test(incr))
+  check('Sync answers exercise_templates (null when not read), templates_added and account_error',
+    /exercise_templates: templatesSynced, templates_added: templatesAdded/.test(incr) && /account_error: account\.error/.test(incr))
+  check('Import all answers account_error', /account_error: account\.error/.test(src['hevy-initial-sync']))
+  check('the missing pass returns the stored workouts Hevy no longer lists (complete listing only)',
+    /not_in_hevy_workouts: notInHevy/.test(src['hevy-api']) && /if \(complete\) \{\s*\n\s*notInHevy = \[\]/.test(src['hevy-api']))
 
   console.log(`\n${passed} passed, ${failed} failed`)
   process.exit(failed ? 1 : 0)

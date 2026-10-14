@@ -31,7 +31,7 @@ const planStatus = (date, today, activityOnDay) => sessionStatus({ date, today, 
 const { buildMeasurementPayload, ALL_FIELDS } = require('../src/features/training/bodyMeasurementFields')
 const { workoutLocalDay, localDayBoundsIso, workoutWindowFilter } = require('../src/features/training/workoutDates')
 const { resolveExerciseGif, chooseExerciseMedia, isAnimatedImageUrl } = require('../src/features/training/exerciseGifResolver')
-const { hevyAccountFacts, workoutCountGap, missingWorkoutsMessage } = require('../src/features/training/hevyAccountModel')
+const { checkWorkoutsToast, hevyAccountFacts, hevyAccountWarning, hevySyncNotes, notInHevyQuestion, workoutCountGap, workoutsToOffer, missingWorkoutsMessage } = require('../src/features/training/hevyAccountModel')
 const { groupExerciseHistory, historyStartDate } = require('../src/features/training/exerciseHistory')
 const HE = require('../src/features/training/hevyEnums')
 const { parseStravaCallback, takeStravaState } = require('../src/features/training/stravaMeta')
@@ -217,19 +217,20 @@ console.log('\n== chooseExerciseMedia: Hevy first ==')
   const none = new Map()
   const a = chooseExerciseMedia('T1', 'Bench Press (Barbell)', hevy, none, db)
   check('thumbnail: Hevy\'s picture first, the matched GIF behind it', a.thumbs.map(t => t.source).join() === 'hevy,gifdb' && a.thumbs[0].url === hevy)
-  check('popup demo: the animated GIF when Hevy\'s picture is a still one', a.demo && a.demo.source === 'gifdb' && a.demo.gifUrl === gifUrl && a.hevyUrl === hevy)
+  check('popup: Hevy\'s picture is the main one, the matched GIF the "Animated demo" below', a.hevyUrl === hevy && a.demo && a.demo.source === 'gifdb' && a.demo.gifUrl === gifUrl)
   const animated = 'https://hevy.example/x/79D0BB3A.GIF?v=2'
   const b = chooseExerciseMedia('T1', 'Bench Press (Barbell)', animated, none, db)
-  check('popup demo: Hevy\'s own picture when it is animated', b.demo && b.demo.source === 'hevy' && b.demo.gifUrl === animated)
+  check('popup: no separate demo when Hevy\'s own picture already moves', b.hevyUrl === animated && b.demo === null)
   const fixed = 'https://fix.example/right.gif'
   const c = chooseExerciseMedia('T1', 'Bench Press (Barbell)', hevy, new Map([['T1', fixed]]), db)
-  check('a Fix GIF override is the popup demo; Hevy\'s picture stays the thumbnail', c.demo.source === 'override' && c.demo.gifUrl === fixed && c.thumbs[0].source === 'hevy' && c.thumbs[1].url === fixed)
+  check('a Fix GIF override is the animated demo; Hevy\'s picture stays the thumbnail and the main picture', c.demo.source === 'override' && c.demo.gifUrl === fixed && c.thumbs[0].source === 'hevy' && c.hevyUrl === hevy && c.thumbs[1].url === fixed)
+  check('a Fix GIF override shows even beside an animated Hevy picture', chooseExerciseMedia('T1', 'Bench Press (Barbell)', animated, new Map([['T1', fixed]]), db).demo.source === 'override')
   const d = chooseExerciseMedia('T2', 'Cable Y Raise', null, none, db)
-  check('no Hevy picture and no GIF match → nothing to show', d.thumbs.length === 0 && d.demo === null)
+  check('no Hevy picture and no GIF match → nothing to show', d.thumbs.length === 0 && d.demo === null && d.hevyUrl === null)
   const e = chooseExerciseMedia('T1', 'Bench Press (Barbell)', null, none, db)
-  check('no Hevy picture → the GIF is the thumbnail (the old behaviour)', e.thumbs.length === 1 && e.thumbs[0].source === 'gifdb' && e.demo.source === 'gifdb')
+  check('no Hevy picture → the GIF is the thumbnail and the only picture in the popup', e.thumbs.length === 1 && e.thumbs[0].source === 'gifdb' && e.demo.source === 'gifdb' && e.hevyUrl === null)
   const f = chooseExerciseMedia('T3', 'Zercher Lunge', hevy, none, [])
-  check('Hevy\'s still picture is the popup view when no GIF matches', f.demo && f.demo.source === 'hevy' && f.demo.instructions.length === 0)
+  check('Hevy\'s picture alone when no GIF matches (no empty demo)', f.hevyUrl === hevy && f.demo === null)
   check('a picture that isn\'t http(s) is ignored', chooseExerciseMedia('T1', 'Bench Press (Barbell)', 'javascript:x', none, db).thumbs[0].source === 'gifdb')
   check('GIF by extension only (query and hash ignored)', isAnimatedImageUrl('https://a/b.gif#x') && !isAnimatedImageUrl('https://a/gif.png') && !isAnimatedImageUrl(null))
 }
@@ -249,6 +250,28 @@ console.log('\n== hevyAccountModel ==')
   check('missing-workouts toast: fetched', missingWorkoutsMessage({ added: 2, complete: true, not_in_hevy: 0, hevy_workout_count: 312 }) === 'Fetched 2 workouts from Hevy')
   check('missing-workouts toast: nothing missing, extras named', missingWorkoutsMessage({ added: 0, complete: true, not_in_hevy: 1, hevy_workout_count: 3 }) === 'Nothing was missing · 1 workout here is no longer in Hevy')
   check('missing-workouts toast: an incomplete list says so', /stopped early/.test(missingWorkoutsMessage({ added: 1, complete: false, not_in_hevy: null, hevy_workout_count: null })))
+  check('any gap has a button: "Fetch missing workouts" when Hevy has more', g.action === 'Fetch missing workouts')
+  check('…and "Check workouts with Hevy" when the app has more', x.action === 'Check workouts with Hevy')
+  const q = notInHevyQuestion([
+    { id: 'a', title: 'Upper A', start_time: '2026-10-13T16:00:00Z' }, { id: 'b', title: 'Legs', start_time: '2026-10-05T16:00:00Z' },
+    { id: 'c', title: null, start_time: '2026-09-30T16:00:00Z' }, { id: 'd', title: 'Pull', start_time: null },
+  ])
+  check('delete question: names three (DD.MM.YYYY) and counts the rest', q.title === 'Delete the 4 workouts Hevy no longer has?' && q.message.startsWith('13.10.2026 Upper A, 05.10.2026 Legs, 30.09.2026 and 1 more:'), q)
+  check('delete question: a mixed check also says what it fetched', notInHevyQuestion([{ id: 'a', title: 'Upper A', start_time: null }], 3).message.startsWith('Fetched 3 workouts from Hevy. Upper A:'))
+  const offered = { added: 0, complete: true, not_in_hevy: 1, not_in_hevy_workouts: [{ id: 'a', title: 'Upper A', start_time: null }], hevy_workout_count: 1 }
+  check('no toast when the delete question follows (it would cover the question)', checkWorkoutsToast(offered) === undefined)
+  check('the toast when nothing is offered', checkWorkoutsToast({ ...offered, not_in_hevy: 0, not_in_hevy_workouts: [] }) === 'Nothing was missing')
+  check('nothing offered from an incomplete listing', workoutsToOffer({ ...offered, complete: false }).length === 0 && /stopped early/.test(checkWorkoutsToast({ ...offered, complete: false })))
+  check('…and its result reads "4 workouts deleted" (the flow adds Undo)', q.done === '4 workouts deleted')
+  check('one workout: singular question and result', notInHevyQuestion([{ id: 'a', title: 'Upper A', start_time: null }]).done === '1 workout deleted'
+    && notInHevyQuestion([{ id: 'a', title: 'Upper A', start_time: null }]).title === 'Delete the workout Hevy no longer has?')
+  check('account warning: the stored reason with its time', hevyAccountWarning({ last_error: 'user info: Hevy answered 404', last_error_at: '2026-10-14T13:05:00Z' }) === "Couldn't read the Hevy account (14.10.2026 15:05): user info: Hevy answered 404")
+  check('account warning: none after a good read', hevyAccountWarning({ last_error: null, last_error_at: null }) === null && hevyAccountWarning(null) === null)
+  check('Sync toast notes: library, new exercises, account (with why)',
+    hevySyncNotes({ exercise_templates: null, templates_added: null, account_checked: false, account_error: 'count: Hevy answered 500' })
+      === ' · exercise library not read · new exercises not checked · Hevy account not read (count: Hevy answered 500)')
+  check('Sync toast notes: nothing to add when all was read, or from a function older than 154',
+    hevySyncNotes({ exercise_templates: 412, templates_added: 0, account_checked: true, account_error: null }) === '' && hevySyncNotes({}) === '')
 }
 
 // ─── History from Hevy ──────────────────────────────────────────────────────

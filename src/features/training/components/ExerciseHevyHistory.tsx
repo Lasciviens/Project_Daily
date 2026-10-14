@@ -25,11 +25,11 @@ function HistorySetChip({ s, exerciseType }: { s: HevyHistorySet; exerciseType?:
 
 /**
  * "History from Hevy" — Hevy's own record of this exercise (GET
- * /v1/exercise_history through hevy-api), beside the app's computed one.
- * Collapsed until opened: opening it is a live call to Hevy.
+ * /v1/exercise_history through hevy-api, a live call; cached 5 minutes),
+ * beside the app's computed one. Open on the last 3 months; it can be folded.
  */
 export function ExerciseHevyHistory({ templateId, exerciseType }: { templateId: string; exerciseType?: string }) {
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(true)
   const [range, setRange] = useState<HistoryRange>('3m')
   const history = useHevyExerciseHistory(templateId, range, open)
   const workouts = useMemo(() => groupExerciseHistory(history.data ?? []), [history.data])
@@ -38,9 +38,9 @@ export function ExerciseHevyHistory({ templateId, exerciseType }: { templateId: 
   const rangeLabel = HISTORY_RANGES.find(r => r.value === range)?.label.toLowerCase()
 
   return (
-    <section className="border-t border-line pt-3">
+    <section className="border-t border-line pt-2">
       <button type="button" aria-expanded={open} onClick={() => setOpen(o => !o)}
-        className="flex min-h-[44px] w-full items-center justify-between gap-2 text-left">
+        className="flex min-h-9 w-full items-center justify-between gap-2 text-left">
         <span className="text-body font-semibold text-fg">History from Hevy</span>
         <ChevronDown aria-hidden className={`h-4 w-4 text-fg-faint transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>

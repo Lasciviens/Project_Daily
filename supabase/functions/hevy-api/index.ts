@@ -391,12 +391,14 @@ export function cleanUserInfo(body: any): HevyUserInfo | null {
   const raw = body?.data ?? body
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
   const username = typeof raw.username === 'string' && raw.username.trim() ? raw.username.trim().slice(0, 200) : null
-  return {
+  const info: HevyUserInfo = {
     username,
     weight_unit: raw.weight_unit === 'kg' || raw.weight_unit === 'lbs' ? raw.weight_unit : null,
     distance_unit: raw.distance_unit === 'kilometers' || raw.distance_unit === 'miles' ? raw.distance_unit : null,
     is_pro: typeof raw.is_pro === 'boolean' ? raw.is_pro : null,
   }
+  // Not one field as the spec describes it: another shape, not an account.
+  return Object.values(info).every((v) => v === null) ? null : info
 }
 
 /** GET /v1/workouts/count answers { workout_count }. */
@@ -407,31 +409,50 @@ export function cleanWorkoutCount(body: any): number | null {
 
 /** Reads user info and the workout count and stores them in hevy_account
  *  (migration 154). Never throws: the sync it follows has already
- *  succeeded, so a failure here only leaves the card's facts older. */
+ *  succeeded. A read that fails stores why (last_error, last_error_at —
+ *  a status or "unexpected shape", never a header or a key), keeps the
+ *  facts it already had, and says so in `error`; a good read clears it. */
 export async function refreshHevyAccount(
   supabase: ReturnType<typeof createClient>,
   userId: string,
   hevyApiKey: string,
-): Promise<{ ok: boolean; hevy_workout_count: number | null }> {
+): Promise<{ ok: boolean; hevy_workout_count: number | null; error: string | null }> {
+  const brief = (err: unknown) => String((err as Error)?.message ?? err ?? 'unknown error').slice(0, 120)
+  const problems: string[] = []
+  const row: Record<string, unknown> = { user_id: userId }
+  let count: number | null = null
   try {
-    const row: Record<string, unknown> = { user_id: userId }
     const info = await hevyGetJson('/v1/user/info', hevyApiKey)
-    const user = info.status >= 200 && info.status < 300 ? cleanUserInfo(info.data) : null
+    const answered = info.status >= 200 && info.status < 300
+    const user = answered ? cleanUserInfo(info.data) : null
     if (user) Object.assign(row, user, { synced_at: new Date().toISOString() })
+    else problems.push(answered ? 'user info: unexpected shape' : `user info: Hevy answered ${info.status}`)
+  } catch (err) {
+    problems.push(`user info: ${brief(err)}`)
+  }
+  try {
     // Taken before the request: the app compares the count with the
     // workouts Hevy created up to this moment.
     const checkedAt = new Date().toISOString()
     const counted = await hevyGetJson('/v1/workouts/count', hevyApiKey)
-    const count = counted.status >= 200 && counted.status < 300 ? cleanWorkoutCount(counted.data) : null
+    const answered = counted.status >= 200 && counted.status < 300
+    count = answered ? cleanWorkoutCount(counted.data) : null
     if (count != null) Object.assign(row, { hevy_workout_count: count, count_checked_at: checkedAt })
-    if (!user && count == null) return { ok: false, hevy_workout_count: null }
-    const { error } = await supabase.from('hevy_account').upsert(row, { onConflict: 'user_id' })
-    if (error) throw error
-    return { ok: !!user && count != null, hevy_workout_count: count }
+    else problems.push(answered ? 'count: unexpected shape' : `count: Hevy answered ${counted.status}`)
   } catch (err) {
-    console.warn(`hevy account not refreshed: ${(err as Error)?.message ?? 'unknown error'}`)
-    return { ok: false, hevy_workout_count: null }
+    problems.push(`count: ${brief(err)}`)
   }
+  const error = problems.length > 0 ? problems.join('; ').slice(0, 300) : null
+  Object.assign(row, { last_error: error, last_error_at: error ? new Date().toISOString() : null })
+  try {
+    const { error: dbErr } = await supabase.from('hevy_account').upsert(row, { onConflict: 'user_id' })
+    if (dbErr) throw dbErr
+  } catch (err) {
+    console.warn(`hevy account not stored: ${brief(err)}`)
+    return { ok: false, hevy_workout_count: count, error: error ?? `not stored: ${brief(err)}` }
+  }
+  if (error) console.warn(`hevy account not read: ${error}`)
+  return { ok: error === null, hevy_workout_count: count, error }
 }
 
 /** Every page of a Hevy list (`page`, `page_count`, the list under `key`).
@@ -733,9 +754,16 @@ async function handleUpsertBodyMeasurement(
   // Hevy 400s on ANY null field ("Expected number, received null") — nulls
   // must be OMITTED from the request body, not sent (live-verified; this was
   // why every save used to fail). An omitted field is stored as null.
+  // Our columns end in "_cm"; Hevy's OpenAPI names seven of them without it
+  // (PutBodyMeasurement / BodyMeasurement: abdomen, waist, hips, left_thigh,
+  // right_thigh, left_calf, right_calf), so those are sent under its names.
+  const HEVY_NAME: Record<string, string> = {
+    abdomen_cm: 'abdomen', waist_cm: 'waist', hips_cm: 'hips',
+    left_thigh_cm: 'left_thigh', right_thigh_cm: 'right_thigh', left_calf_cm: 'left_calf', right_calf_cm: 'right_calf',
+  }
   const hevyBody: Record<string, number> = {}
   for (const [k, v] of Object.entries(merged)) {
-    if (v !== null) hevyBody[k] = v
+    if (v !== null) hevyBody[HEVY_NAME[k] ?? k] = v
   }
   // Hevy has no DELETE for a body measurement, and an empty PUT isn't a
   // documented way to clear a day — refuse instead of leaving Hevy and the
@@ -930,8 +958,9 @@ async function handleCreateRoutineFolder(
 // Fetch missing workouts — every page of GET /v1/workouts (10 per page)
 // ---------------------------------------------------------------------------
 // For the Hevy card's count check (154): stores each workout Hevy lists that
-// isn't here, then reads the count again. Nothing here is deleted; a workout
-// that is here but not in Hevy's list is only counted (`not_in_hevy`).
+// isn't here, then reads the count again. Nothing here is deleted: after a
+// COMPLETE listing, the stored workouts Hevy no longer lists are returned
+// (`not_in_hevy_workouts`) and the app offers to delete them, with Undo.
 
 async function handleSyncMissingWorkouts(
   supabase: ReturnType<typeof createClient>,
@@ -958,19 +987,26 @@ async function handleSyncMissingWorkouts(
   const account = await refreshHevyAccount(supabase, userId, hevyApiKey)
 
   // Only a complete listing can say what Hevy doesn't have.
-  let notInHevy: number | null = null
+  type Stored = { id: string; title: string | null; start_time: string | null }
+  let notInHevy: Stored[] | null = null
   if (complete) {
-    notInHevy = 0
+    notInHevy = []
     for (let from = 0; ; from += 1000) {
-      const { data, error } = await supabase.from('hevy_workouts').select('id')
+      const { data, error } = await supabase.from('hevy_workouts').select('id, title, start_time')
         .eq('user_id', userId).order('id').range(from, from + 999)
       if (error) throw error
-      const rows = (data ?? []) as Array<{ id: string }>
-      notInHevy += rows.filter((r) => !hevyIds.has(r.id)).length
+      const rows = (data ?? []) as Stored[]
+      notInHevy.push(...rows.filter((r) => !hevyIds.has(r.id)))
       if (rows.length < 1000) break
     }
   }
-  return { added: added.length, complete, not_in_hevy: notInHevy, hevy_workout_count: account.hevy_workout_count }
+  return {
+    added: added.length, complete,
+    not_in_hevy: notInHevy ? notInHevy.length : null,
+    not_in_hevy_workouts: notInHevy,
+    hevy_workout_count: account.hevy_workout_count,
+    account_error: account.error,
+  }
 }
 
 // ---------------------------------------------------------------------------

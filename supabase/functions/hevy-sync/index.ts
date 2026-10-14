@@ -391,12 +391,14 @@ export function cleanUserInfo(body: any): HevyUserInfo | null {
   const raw = body?.data ?? body
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
   const username = typeof raw.username === 'string' && raw.username.trim() ? raw.username.trim().slice(0, 200) : null
-  return {
+  const info: HevyUserInfo = {
     username,
     weight_unit: raw.weight_unit === 'kg' || raw.weight_unit === 'lbs' ? raw.weight_unit : null,
     distance_unit: raw.distance_unit === 'kilometers' || raw.distance_unit === 'miles' ? raw.distance_unit : null,
     is_pro: typeof raw.is_pro === 'boolean' ? raw.is_pro : null,
   }
+  // Not one field as the spec describes it: another shape, not an account.
+  return Object.values(info).every((v) => v === null) ? null : info
 }
 
 /** GET /v1/workouts/count answers { workout_count }. */
@@ -407,31 +409,50 @@ export function cleanWorkoutCount(body: any): number | null {
 
 /** Reads user info and the workout count and stores them in hevy_account
  *  (migration 154). Never throws: the sync it follows has already
- *  succeeded, so a failure here only leaves the card's facts older. */
+ *  succeeded. A read that fails stores why (last_error, last_error_at —
+ *  a status or "unexpected shape", never a header or a key), keeps the
+ *  facts it already had, and says so in `error`; a good read clears it. */
 export async function refreshHevyAccount(
   supabase: ReturnType<typeof createClient>,
   userId: string,
   hevyApiKey: string,
-): Promise<{ ok: boolean; hevy_workout_count: number | null }> {
+): Promise<{ ok: boolean; hevy_workout_count: number | null; error: string | null }> {
+  const brief = (err: unknown) => String((err as Error)?.message ?? err ?? 'unknown error').slice(0, 120)
+  const problems: string[] = []
+  const row: Record<string, unknown> = { user_id: userId }
+  let count: number | null = null
   try {
-    const row: Record<string, unknown> = { user_id: userId }
     const info = await hevyGetJson('/v1/user/info', hevyApiKey)
-    const user = info.status >= 200 && info.status < 300 ? cleanUserInfo(info.data) : null
+    const answered = info.status >= 200 && info.status < 300
+    const user = answered ? cleanUserInfo(info.data) : null
     if (user) Object.assign(row, user, { synced_at: new Date().toISOString() })
+    else problems.push(answered ? 'user info: unexpected shape' : `user info: Hevy answered ${info.status}`)
+  } catch (err) {
+    problems.push(`user info: ${brief(err)}`)
+  }
+  try {
     // Taken before the request: the app compares the count with the
     // workouts Hevy created up to this moment.
     const checkedAt = new Date().toISOString()
     const counted = await hevyGetJson('/v1/workouts/count', hevyApiKey)
-    const count = counted.status >= 200 && counted.status < 300 ? cleanWorkoutCount(counted.data) : null
+    const answered = counted.status >= 200 && counted.status < 300
+    count = answered ? cleanWorkoutCount(counted.data) : null
     if (count != null) Object.assign(row, { hevy_workout_count: count, count_checked_at: checkedAt })
-    if (!user && count == null) return { ok: false, hevy_workout_count: null }
-    const { error } = await supabase.from('hevy_account').upsert(row, { onConflict: 'user_id' })
-    if (error) throw error
-    return { ok: !!user && count != null, hevy_workout_count: count }
+    else problems.push(answered ? 'count: unexpected shape' : `count: Hevy answered ${counted.status}`)
   } catch (err) {
-    console.warn(`hevy account not refreshed: ${(err as Error)?.message ?? 'unknown error'}`)
-    return { ok: false, hevy_workout_count: null }
+    problems.push(`count: ${brief(err)}`)
   }
+  const error = problems.length > 0 ? problems.join('; ').slice(0, 300) : null
+  Object.assign(row, { last_error: error, last_error_at: error ? new Date().toISOString() : null })
+  try {
+    const { error: dbErr } = await supabase.from('hevy_account').upsert(row, { onConflict: 'user_id' })
+    if (dbErr) throw dbErr
+  } catch (err) {
+    console.warn(`hevy account not stored: ${brief(err)}`)
+    return { ok: false, hevy_workout_count: count, error: error ?? `not stored: ${brief(err)}` }
+  }
+  if (error) console.warn(`hevy account not read: ${error}`)
+  return { ok: error === null, hevy_workout_count: count, error }
 }
 
 /** Every page of a Hevy list (`page`, `page_count`, the list under `key`).

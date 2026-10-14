@@ -176,6 +176,9 @@ export interface HevyAccount {
   hevy_workout_count: number | null
   count_checked_at: string | null
   synced_at: string
+  /** Why the last account read failed; null after a good one. */
+  last_error: string | null
+  last_error_at: string | null
 }
 
 // Sync state

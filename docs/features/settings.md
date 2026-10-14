@@ -38,8 +38,9 @@ Two kinds of integration sit side by side there and are labelled differently, de
   with no browser consent step at all, so the card is a read-only status readout. **Never render
   a Connect button that can't actually connect anything.** The Hevy card (14.10.2026, migration
   154) also shows the account Hevy reports ("@username · Hevy Pro · kg · km") and, when Hevy's
-  workout count differs from the app's, the two counts with **Fetch missing workouts** — a sync
-  action, not a connect (`docs/integrations/hevy.md`).
+  workout count differs from the app's, the two counts with one button (**Fetch missing workouts** /
+  **Check workouts with Hevy**) — a sync action, not a connect — and a warning line when the last
+  account read failed (`docs/integrations/hevy.md`).
 
 Load-bearing details:
 - `GOOGLE_SCOPES` (`src/features/calendar/googleScopes.ts`) is the ONE definition of the Google

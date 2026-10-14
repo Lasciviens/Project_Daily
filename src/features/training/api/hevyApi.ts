@@ -17,7 +17,7 @@ import type {
 } from '../types.hevy'
 import type { CustomExercisePayload } from '../hevyEnums'
 import type { HevyHistorySet } from '../exerciseHistory'
-import type { MissingWorkoutsResult } from '../hevyAccountModel'
+import type { HevySyncParts, MissingWorkoutsResult } from '../hevyAccountModel'
 
 // ─── Paged reads ─────────────────────────────────────────────────────────────
 // PostgREST caps every response at 1,000 rows (no max_rows override in
@@ -359,21 +359,27 @@ async function postEdge(fn: string, body?: unknown): Promise<unknown> {
   return res.json()
 }
 
-export async function triggerInitialHevySync(): Promise<{
+export interface InitialHevySyncResult extends HevySyncParts {
   exercise_templates: number
   routines: number
   workouts: number
   body_measurements: number
-}> {
-  return postEdge('hevy-initial-sync') as Promise<{ exercise_templates: number; routines: number; workouts: number; body_measurements: number }>
 }
 
-export async function triggerIncrementalHevySync(): Promise<{
+export async function triggerInitialHevySync(): Promise<InitialHevySyncResult> {
+  return postEdge('hevy-initial-sync') as Promise<InitialHevySyncResult>
+}
+
+/** What Sync answers; the 154 fields say what it couldn't read
+ *  (`exercise_templates`/`templates_added` null, `account_checked` false). */
+export interface IncrementalHevySyncResult extends HevySyncParts {
   updated: number
   deleted: number
   routines?: number
-}> {
-  return postEdge('hevy-incremental-sync') as Promise<{ updated: number; deleted: number; routines?: number }>
+}
+
+export async function triggerIncrementalHevySync(): Promise<IncrementalHevySyncResult> {
+  return postEdge('hevy-incremental-sync') as Promise<IncrementalHevySyncResult>
 }
 
 // ─── Hevy reads and writes through hevy-api (migration 154) ──────────────────

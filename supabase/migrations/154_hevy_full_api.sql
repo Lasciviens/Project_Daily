@@ -17,7 +17,9 @@
 --    workouts stored here (only those Hevy created before count_checked_at,
 --    so a workout the webhook brought in after the check is no mismatch).
 --    Units are Hevy's own enums; anything else is stored as NULL by the
---    functions, and the CHECKs refuse it here too.
+--    functions, and the CHECKs refuse it here too. A read that fails stores
+--    why in last_error / last_error_at (cleared by the next good read), so
+--    the card says the facts are old instead of looking fine.
 --
 -- Written by the Hevy edge functions with the service role only; the browser
 -- reads its own row (a select-own policy, no insert/update/delete policy or
@@ -59,6 +61,11 @@ CREATE TABLE IF NOT EXISTS public.hevy_account (
   count_checked_at   timestamptz,
   -- When user info was last read.
   synced_at          timestamptz NOT NULL DEFAULT now(),
+  -- Why the last account read failed ("user info: Hevy answered 404",
+  -- "count: unexpected shape"); NULL after a good read. No secrets: a status
+  -- or a shape, never a header or a URL with a key.
+  last_error         text CHECK (last_error IS NULL OR char_length(last_error) BETWEEN 1 AND 500),
+  last_error_at      timestamptz,
   created_at         timestamptz NOT NULL DEFAULT now(),
   updated_at         timestamptz NOT NULL DEFAULT now()
 );

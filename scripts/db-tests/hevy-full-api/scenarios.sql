@@ -113,6 +113,25 @@ reset role;
 select t_ok((select hevy_workout_count = 312 and count_checked_at is not null and updated_at > created_at and username = 'lasci'
                from public.hevy_account where user_id = '00000000-0000-0000-0000-000000000001'),
             'H3 the count lands beside the user info and moves updated_at');
+-- A failed read stores why; the facts already stored stay.
+set role service_role;
+do $$
+begin
+  update public.hevy_account set last_error = 'user info: Hevy answered 404', last_error_at = now()
+   where user_id = '00000000-0000-0000-0000-000000000001';
+  perform t_ok((select last_error = 'user info: Hevy answered 404' and last_error_at is not null and username = 'lasci' and hevy_workout_count = 312
+                  from public.hevy_account where user_id = '00000000-0000-0000-0000-000000000001'),
+               'H3 a failed read stores its reason beside the facts it keeps');
+  begin
+    update public.hevy_account set last_error = '' where user_id = '00000000-0000-0000-0000-000000000001';
+    perform t_ok(false, 'H3 an empty reason is refused (none is NULL)');
+  exception when check_violation then perform t_ok(true, 'H3 an empty reason is refused (none is NULL)'); end;
+  begin
+    update public.hevy_account set last_error = repeat('x', 501) where user_id = '00000000-0000-0000-0000-000000000001';
+    perform t_ok(false, 'H3 a reason over 500 characters is refused');
+  exception when check_violation then perform t_ok(true, 'H3 a reason over 500 characters is refused'); end;
+end $$;
+reset role;
 
 -- ── 4. The app reads only its own row ──────────────────────────────────────
 set role authenticated;
@@ -121,6 +140,7 @@ declare v_msg text;
 begin
   perform t_ok((select count(*) from public.hevy_account) = 1, 'H4 account 1 sees only its own row');
   perform t_ok((select username from public.hevy_account) = 'lasci', 'H4 and it is account 1''s');
+  perform t_ok((select last_error from public.hevy_account) = 'user info: Hevy answered 404', 'H4 the app reads the stored reason');
   begin
     insert into public.hevy_account (username) values ('me');
     perform t_ok(false, 'H4 the app cannot insert');

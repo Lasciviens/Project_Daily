@@ -36,7 +36,7 @@ that would add nothing are listed at the end.
 
 | Endpoint | Called by | When | Limits |
 |---|---|---|---|
-| `GET /v1/workouts` (`page`, `pageSize`) | `hevy-initial-sync` `syncWorkouts`; `hevy-api` `sync_missing_workouts` | Import all; the Hevy card's **Fetch missing workouts** | pageSize ≤ 10 |
+| `GET /v1/workouts` (`page`, `pageSize`) | `hevy-initial-sync` `syncWorkouts`; `hevy-api` `sync_missing_workouts` | Import all; the Hevy card's count-check button (**Fetch missing workouts** / **Check workouts with Hevy**) | pageSize ≤ 10 |
 | `POST /v1/workouts` | `hevy-api` `create_workout` | Log a workout here (`LogHevyWorkoutModal`) | answers 201 `{ workout: [Workout] }` |
 | `GET /v1/workouts/count` | `refreshHevyAccount` (shared block) in both syncs and `sync_missing_workouts` | after every Sync / Import all / missing pass | |
 | `GET /v1/workouts/events` (`page`, `pageSize`, `since`) | `hevy-incremental-sync` | Sync | pageSize ≤ 10; newest first |
@@ -86,7 +86,7 @@ Not called, deliberately:
 | `workout_count` | integer | `hevy_account.hevy_workout_count` + `count_checked_at` |
 | ExerciseHistoryEntry `workout_id`, `workout_title`, `workout_start_time`, `workout_end_time`, `exercise_template_id`, `weight_kg`, `reps`, `distance_meters`, `duration_seconds`, `rpe`, `custom_metric`, `set_type` | numbers nullable; `set_type` string | shown only (never stored): grouped by workout, date `DD.MM.YYYY`, each set with its type |
 | BodyMeasurement `date`, `weight_kg`, `lean_mass_kg`, `fat_percent`, `neck_cm`, `shoulder_cm`, `chest_cm`, `left/right_bicep_cm`, `left/right_forearm_cm` | numbers \| null | `hevy_body_measurements` |
-| BodyMeasurement circumferences — see the trap below | | `abdomen_cm`, `waist_cm`, `hips_cm`, `left/right_thigh_cm`, `left/right_calf_cm` |
+| BodyMeasurement `abdomen`, `waist`, `hips`, `left_thigh`, `right_thigh`, `left_calf`, `right_calf` (no `_cm` in the spec) | numbers \| null | read as `m.waist ?? m.waist_cm` (either name) into `abdomen_cm` … `right_calf_cm`; written to Hevy under the spec's names |
 | Paging `page_count` | integer | when to stop |
 
 ## Fields we deliberately don't use
@@ -143,10 +143,12 @@ Not called, deliberately:
 - **Custom exercises made in the Hevy app** used to reach the app only with Import all: a workout naming one
   showed an unknown exercise. The library is now re-read on every Sync, and a workout naming a template not
   stored here fetches it by id (the webhook too).
-- **Body-measurement names — open question.** The spec's `BodyMeasurement` and `PutBodyMeasurement` name seven
-  circumferences **without** `_cm` (`abdomen`, `waist`, `hips`, `left_thigh`, `right_thigh`, `left_calf`,
-  `right_calf`), while the code reads and writes `abdomen_cm` … `right_calf_cm`. Not changed: the earlier live
-  check covered the weight, not these seven. One live sample (`GET /v1/body_measurements`) settles it.
+- **Body-measurement names.** The spec's `BodyMeasurement` and `PutBodyMeasurement` name seven circumferences
+  **without** `_cm` (`abdomen`, `waist`, `hips`, `left_thigh`, `right_thigh`, `left_calf`, `right_calf`); the
+  other ten keep it (`neck_cm`, `chest_cm`, `left_bicep_cm` …). Until 14.10.2026 the code read and wrote
+  `waist_cm` etc., so those seven never arrived from Hevy and were probably never sent. Now both syncs read either
+  name (the spec's first) and `hevy-api` sends the spec's names (`HEVY_NAME`); our columns keep `_cm`. The spec
+  is the confirmation; the deploy checklist has the first real check (save a waist value, Sync, it stays).
 - **No delete anywhere.** The API cannot delete a workout, routine, folder, custom exercise or body measurement.
   Delete in the Hevy app: routines disappear here on the next Sync (pruned); workouts through the events feed;
   folders and custom exercises are not pruned.
@@ -154,15 +156,34 @@ Not called, deliberately:
   limit is documented; the spec asks for no requests at exactly xx:00 from hourly or daily jobs (ours are manual
   or the webhook).
 - **The count check** compares `workout_count` with the workouts stored here that Hevy created up to the check
-  (`hevy_created_at ≤ count_checked_at`), so a workout the webhook brought in afterwards is no mismatch.
-  "Fetch missing workouts" reads every page of `GET /v1/workouts` and stores only what's missing; it deletes
-  nothing and counts the stored workouts Hevy no longer lists.
+  (`hevy_created_at ≤ count_checked_at`), so a workout the webhook brought in afterwards is no mismatch. Any gap
+  has one button ("Fetch missing workouts" when Hevy has more, "Check workouts with Hevy" when the app has more):
+  it reads every page of `GET /v1/workouts`, stores what's missing, and — only after a complete listing — offers
+  the stored workouts Hevy no longer lists for deletion (the question, then "N workouts deleted · Undo").
+- **A failed account read says so.** `refreshHevyAccount` stores why in `hevy_account.last_error` /
+  `last_error_at` ("user info: Hevy answered 404", "count: unexpected shape"; a status or a shape, never a
+  header) and keeps the facts it already had; the Hevy card shows the line, the Sync toast adds " · Hevy
+  account not read (…)". A good read clears it.
+- **The exercise library never fails a Sync.** It is read after routines and body measurements, on its own;
+  when it fails, Sync answers `exercise_templates: null` and the toast says "exercise library not read".
 - `superset_id` is the spec's name; an older `supersets_id` is still read. Routine responses carry no `rpe`
   (stored NULL) and, in the spec, no `notes`.
 - Exercise history entries have no set index: sets are shown in the order Hevy sends them. Dates are sent in the
   spec's own format, whole seconds (`2024-01-01T00:00:00Z`).
 
 ## Log
+
+### 14.10.2026 — review fixes (migration 154, before its merge)
+
+- Body measurements: the seven circumferences are read under the spec's names (`waist`, …) or ours, and sent to
+  Hevy under the spec's names.
+- `hevy_account.last_error` / `last_error_at`: a failed user-info or count read is stored, shown on the Hevy card
+  and named in the Sync toasts.
+- The count check's button shows for any gap; stored workouts Hevy's complete list no longer has are offered for
+  deletion with Undo.
+- Sync reads the exercise library last and on its own (`exercise_templates: null` when it fails).
+- The exercise popup: Hevy's picture on top, History from Hevy open on 3 months, the GIF below as a small
+  labelled "Animated demo"; Fix GIF says it sets that demo.
 
 ### 14.10.2026 — the whole public API (migration 154)
 

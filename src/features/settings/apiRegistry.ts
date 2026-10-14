@@ -243,7 +243,7 @@ export const API_REGISTRY: readonly ApiEntry[] = [
     docsUrl: 'https://api.hevyapp.com/docs/',
     purpose: 'Workouts, routines and folders, exercises (with Hevy\'s own pictures), body measurements, the account and each exercise\'s history — the source of truth for strength training. Every endpoint of Hevy\'s public API is used (docs/integrations/hevy.md).',
     transports: ['edge', 'webhook-in'],
-    connection: 'Hevy calls hevy-sync on a new workout; Sync runs the events-based incremental sync and re-reads routines, folders, exercises, measurements and the account; hevy-api writes workouts, routines, folders, custom exercises and measurements back, reads an exercise\'s history and fetches missing workouts.',
+    connection: 'Hevy calls hevy-sync on a new workout; Sync runs the events-based incremental sync and re-reads routines, folders, exercises, measurements and the account; hevy-api writes workouts, routines, folders, custom exercises and measurements back, reads an exercise\'s history and checks the workouts against Hevy\'s full list (fetches missing ones; the app offers to delete ones Hevy no longer has, with Undo).',
     edgeFunctions: ['hevy-sync', 'hevy-initial-sync', 'hevy-incremental-sync', 'hevy-api'], endpoints: ['api.hevyapp.com/v1'],
     auth: 'api-key', secrets: ['HEVY_API_KEY', 'HEVY_WEBHOOK_SECRET', 'HEVY_USER_ID'],
     direction: 'both', cadence: 'Webhook on each workout + manual Sync',
