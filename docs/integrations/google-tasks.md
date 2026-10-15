@@ -91,3 +91,4 @@ The outbox is drained by the browser right after a save (`googleTasksOutbox.ts`)
 ## Log
 
 - 13.10.2026 — last check against Google's Tasks reference (see Checked above).
+- 15.10.2026 — migration 156: a repeat on Google Tasks ("Google Tasks · one per day", `schedule_blocks.google_target 'tasks'` or `'both'`). Google's API has no repeat field, so nothing repeats on Google's side: each day's task, made on its day by the hourly job (or the app when it opens), is an ordinary Google Task through the same outbox (071) with that day as `due`; ticking it in Google ticks the day (the pull, unchanged). A day that passed unticked is closed in the app as missed — cancelled, which removes its Google Task (the existing cancelled = deleted rule), so the widget never carries a day over. No new endpoint or field. The day's tasks go to the default list (a repeat stores no list yet).

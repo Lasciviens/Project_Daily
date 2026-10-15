@@ -211,14 +211,15 @@ export function RepeatRow({ row, active }: { row: DayRow; active: boolean }) {
 
 type PlanContext = ReturnType<typeof useDayPlanContext>
 
-/** The session as it is: its task (and slot), an older slot with no task, or
- *  a day of a repeating plan nobody acted on yet. */
+/** The session as it is: its task (and slot), an older slot with no task, a
+ *  day of a repeating plan that is a task (156 — made on its day), or one
+ *  with no task yet. */
 function trainingPlanOf(row: DayRow, planCtx: PlanContext): TrainingPlanRef {
   const i = row.item!
   const b = i.block
   const date = i.planDate
   const target: TrainingPlanRef['target'] = i.kind === 'recurring'
-    ? { kind: 'weekly', templateId: i.canonicalId, date }
+    ? (row.task ? { kind: 'task', taskId: row.task.id, blockId: null } : { kind: 'weekly', templateId: i.canonicalId, date })
     : i.taskId ? { kind: 'task', taskId: i.taskId, blockId: i.canonicalId } : { kind: 'block', blockId: i.canonicalId }
   const routineId = b?.source_type === 'training_session' ? b.source_id ?? null : null
   return {
@@ -227,7 +228,7 @@ function trainingPlanOf(row: DayRow, planCtx: PlanContext): TrainingPlanRef {
       title: i.title, date,
       startHHMM: i.startHour >= 0 && !i.spillover ? hourLabel(i.startHour) : null,
       minutes: i.startHour >= 0 ? Math.round((i.endHour - i.startHour) * 60) || null : null,
-      routineId: b?.task_routine_id ?? routineId ?? planCtx.routineOf({ title: i.title, date }),
+      routineId: b?.task_routine_id ?? row.task?.hevy_routine_id ?? routineId ?? planCtx.routineOf({ title: i.title, date }),
     },
   }
 }
@@ -238,13 +239,17 @@ export function TrainingRow({ row, planCtx, nowHour, active }: { row: DayRow; pl
   const i = row.item!
   const b = i.block
   const plan = trainingPlanOf(row, planCtx)
+  // The row's task (its slot's, or the day's own — 156) is the session's truth.
+  const t = row.task
   const status = sessionStatus(planFacts({
     date: plan.info.date, startHHMM: plan.info.startHHMM, minutes: plan.info.minutes,
-    taskId: i.taskId ?? null, taskStatus: (b?.task_status as TaskStatus | null | undefined) ?? null,
-    taskWorkoutId: b?.task_workout_id ?? null, taskRoutineId: b?.task_routine_id ?? null,
+    taskId: t?.id ?? i.taskId ?? null, taskStatus: t?.status ?? (b?.task_status as TaskStatus | null | undefined) ?? null,
+    taskWorkoutId: t?.hevy_workout_id ?? b?.task_workout_id ?? null, taskRoutineId: t?.hevy_routine_id ?? b?.task_routine_id ?? null,
+    taskMissed: t?.closed_reason === 'missed',
     routineId: plan.info.routineId,
   }, { today: format(new Date(), 'yyyy-MM-dd'), nowHHMM: hourLabel(nowHour), skips: planCtx.skips, hasActivity: planCtx.hasActivity }))
-  const weekly = plan.target.kind === 'weekly' ? { templateId: plan.target.templateId } : null
+  // A day of a repeating plan (with its day's task or not): the plan's own entries too.
+  const weekly = i.kind === 'recurring' ? { templateId: i.canonicalId } : null
   const can = sessionActions(status, { hasTask: plan.target.kind === 'task', weekly: !!weekly })
   const isDone = status.state === 'done'
   const mark = isDone || status.state === 'skipped' || status.state === 'missed' ? status.state : null

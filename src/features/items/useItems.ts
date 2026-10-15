@@ -4,6 +4,7 @@
 // one entry in Developer → Activity — and says its result. Google follows in
 // the background: a save never waits for Google and a Google failure never
 // undoes it (it is said once).
+import { useEffect } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast, useCalendarStore } from '../../app/store'
 import { useMutationWithFeedback } from '../../shared/hooks/useMutationWithFeedback'
@@ -19,7 +20,7 @@ import { resolveOrCreateGoogleTaskListId } from '../todo/api/googleTaskListsApi'
 import { sectionForDay } from '../todo/taskRules'
 import { useDeleteTask } from '../todo/hooks/useTodos'
 import {
-  convertOldItems, fetchCalendarReadbackState, fetchConvertPreview, repeatDay, saveItem, undoConversion,
+  convertOldItems, fetchCalendarReadbackState, fetchConvertPreview, repeatDay, runRepeatDaysToday, saveItem, undoConversion,
   type RepeatDayAnswer,
 } from './itemApi'
 import {
@@ -237,4 +238,44 @@ export function useCalendarReadbackState(enabled = true) {
     staleTime: STALE.default,
     enabled,
   })
+}
+
+// The last day this device ran app_repeat_days_today, and when (one run per
+// day and half hour is plenty: the hourly job does the same on the server).
+let repeatDaysRan: { day: string; at: number } | null = null
+let repeatDaysRunning: Promise<void> | null = null
+let repeatDaysLogged = false
+const REPEAT_DAYS_EVERY_MS = 30 * 60_000
+
+/**
+ * A repeat's day is a real task on its day (156): the hourly job makes today's
+ * and closes yesterday's unticked ones as missed; this is its fallback when
+ * the app opens or comes back to the front — the same call for this account,
+ * on this device's day. Quiet: it refreshes the lists when it changed
+ * something; a failure goes to Developer → Errors once (never a toast on every
+ * open). A database without 156 does nothing.
+ */
+export function useRepeatDaysOnOpen() {
+  const qc = useQueryClient()
+  useEffect(() => {
+    const run = () => {
+      if (document.visibilityState !== 'visible' || repeatDaysRunning) return
+      const day = todayStr()
+      if (repeatDaysRan && repeatDaysRan.day === day && Date.now() - repeatDaysRan.at < REPEAT_DAYS_EVERY_MS) return
+      repeatDaysRunning = runRepeatDaysToday(day)
+        .then(r => {
+          repeatDaysRan = { day, at: Date.now() }
+          if (r && (r.created > 0 || r.missed > 0)) void invalidate(qc, 'taskGraph')
+        })
+        .catch(err => {
+          if (repeatDaysLogged) return
+          repeatDaysLogged = true
+          logError(`Repeat days not made on open: ${(err as Error).message}`, { action: 'repeat_days_today' })
+        })
+        .finally(() => { repeatDaysRunning = null })
+    }
+    run()
+    document.addEventListener('visibilitychange', run)
+    return () => document.removeEventListener('visibilitychange', run)
+  }, [qc])
 }

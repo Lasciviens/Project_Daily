@@ -1,5 +1,6 @@
 import { toast, useCalendarStore } from '../../../app/store'
 import { logError } from '../../../shared/utils/logError'
+import { todayStr } from '../../../shared/utils/dateUtils'
 import { LOCAL_TZ } from '../../../shared/components/plan-modal/planModal.config'
 import {
   clearTimeBlockCalendarLinkIfMatches, fetchScheduleBlock, fetchTimeBlockByTaskId, fetchTimeBlockWithTask, updateTimeBlock,
@@ -8,7 +9,7 @@ import { classifyCalendarPushFailure, type TimeBlockCalendarStatus } from '../..
 import { fetchTaskById, updateTask } from '../../todo/api/tasksApi'
 import { drainGoogleTasksOutbox } from '../../todo/api/googleTasksOutbox'
 import type { RepeatDayAnswer, SaveItemAnswer } from '../../items/itemApi'
-import { dropItemBlock } from '../../items/itemApi'
+import { dropItemBlock, setRepeatDaysGoogleTasks } from '../../items/itemApi'
 import type { GoogleTarget } from '../../items/itemTypes'
 import { blockEventBody, eventPatchFor, type EventPushFields } from '../calendarEventRules'
 import { updateCalendarEvent } from './calendarApi'
@@ -35,7 +36,17 @@ import {
 //      Google Task id there does the event go (and an all-day presence slot
 //      after it).
 //  A done item's event has "✓ " in front (calendarEventRules.calendarTitle);
-//  reopening takes it off.
+//  reopening takes it off. A day of a repeat on its series gets no "✓ " when
+//  its day's task (156) is ticked: that would need a PATCH of the series'
+//  instance, which docs/integrations/google-calendar.md hasn't confirmed —
+//  the series keeps the day as it is (a day split off, 142, has its own event
+//  and gets the "✓ ").
+//
+//  A repeat (156) lives on Google as its series (calendar), as its days'
+//  Google Tasks ("one per day": each day's task, made on its day, through
+//  the outbox), both, or neither. Moving between them is the same rule: the
+//  new copy first — the series confirmed 'linked', or today's day task's
+//  Google Task id there — then the old one goes.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const message = (err: unknown) => (err as Error)?.message ?? String(err)
@@ -152,11 +163,30 @@ export async function settleItemGoogle(answer: SaveItemAnswer, google: GoogleTar
     }
     if (!connected()) return outcome
 
-    // A repeating item's rule: its ONE series (calendarSeries.ts).
+    // A repeating item's rule: its ONE series (calendarSeries.ts), and its
+    // days on Google Tasks (156: the database turned them on for tasks / both).
     if (answer.scheduleBlockId && !answer.occurrence) {
       const row = await fetchScheduleBlock(answer.scheduleBlockId)
-      outcome.calendar = await syncScheduleSeriesAfterSave(row, wantsCal)
-      if (!wantsCal && outcome.calendar === 'not_linked') outcome.calendar = 'off'
+      if (wantsCal) {
+        outcome.calendar = await syncScheduleSeriesAfterSave(row, true)
+        // → Calendar only: the series is confirmed — now its days' Google Tasks go.
+        if (outcome.calendar === 'linked' && !wantsTasks) {
+          await setRepeatDaysGoogleTasks(row.id, todayStr(), false)
+          void drainTasks()
+        }
+        if (wantsTasks) void drainTasks()
+        return outcome
+      }
+      // Off Calendar: its series goes — when the repeat moves to Google Tasks,
+      // only once today's Google Task is there (no day today: nothing to wait for).
+      if (row.google_calendar_event_id && wantsTasks && answer.dayTaskId && !(await googleTaskConfirmed(answer.dayTaskId))) {
+        toast.warning('Google Tasks hasn\'t confirmed today\'s task yet, so the Google Calendar series stays for now — save the repeat again to finish the move.')
+        outcome.calendar = 'unknown'
+        return outcome
+      }
+      outcome.calendar = await syncScheduleSeriesAfterSave(row, false)
+      if (outcome.calendar === 'not_linked') outcome.calendar = 'off'
+      if (wantsTasks) void drainTasks()
       return outcome
     }
 

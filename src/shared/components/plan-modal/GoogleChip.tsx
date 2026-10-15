@@ -2,9 +2,12 @@
 //  The Add sheet's Google chip (owner, 15.10.2026): it always shows the actual
 //  target — "Google Calendar · busy", "Google Tasks", "Not on Google" — never
 //  "Auto". Tap: Google Calendar / Google Tasks / Tasks and Calendar / Not on
-//  Google, each saying what it does for this item. Google Tasks can't repeat,
-//  so a repeat shows it disabled with that reason; Both warns "Shows twice in
-//  Google Calendar". The rules are sheetRules' (defaultGoogleTarget, …).
+//  Google, each saying what it does for this item. A repeat may go to Google
+//  Tasks since migration 156 — "Google Tasks · one per day": each day's task,
+//  made on its day, is a Google Task (the API can't repeat one). Both warns
+//  "Shows twice in Google Calendar". The rules are sheetRules' (googleChoices,
+//  googleTargetLabel, googleTargetProblem); a choice a rule blocks shows
+//  disabled with its reason.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'

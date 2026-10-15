@@ -57,6 +57,14 @@ eq(st({ date: '2026-10-05', taskStatus: 'open', ...R }).state, 'missed', 'day 7:
 eq(S.sessionNote(st({ date: '2026-10-05', taskStatus: 'open' })), 'Nothing was logged.', 'missed note')
 eq(S.sessionActions(st({ date: '2026-10-05', taskStatus: 'open' }), { hasTask: true, weekly: false }), ['done', 'move', 'skip', 'edit', 'delete'], 'a missed plan can still be done, moved or skipped')
 
+// ── A repeat's day closed as missed (156: cancelled + closed_reason 'missed') is not a skip ──
+eq(st({ date: '2026-10-11', taskStatus: 'cancelled', taskMissed: true, ...R }).state, 'pending', 'a training day the job closed as missed still reads "Not logged yet" while a late workout completes it (141)')
+eq(st({ date: '2026-10-05', taskStatus: 'cancelled', taskMissed: true, ...R }).state, 'missed', '…then Missed — never Skipped')
+eq(st({ date: '2026-10-05', taskStatus: 'cancelled', taskMissed: true, ...R }).open, true, '…and it can still be done, moved or skipped')
+eq(planFacts({ date: '2026-10-11', taskId: 't', taskStatus: 'cancelled', taskMissed: true, routineId: 'r' },
+  { today: '2026-10-12', skips: [{ id: 's', routine_id: 'r', week_start: '2026-10-05', reason: 'Travel', task_id: null }] }).skipped, false,
+  'a missed day is read like an open plan: its routine\'s week skip does not make it Skipped (only its own skip row would)')
+
 // ── A plan with no task (a weekly day, an older block) reads its day ──
 eq(st({ date: '2026-10-11' }).state, 'missed', 'no task, nothing logged: missed (no late window without a task)')
 eq(st({ date: '2026-10-11', dayWorkoutId: 'w9' }).state, 'done', 'a workout that day covers it')

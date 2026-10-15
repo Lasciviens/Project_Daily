@@ -54,7 +54,7 @@ export function MonthWidget({ onDayClick, highlightDate, big }: Props) {
   // (a missed one too: it stays on its day).
   const today = todayStr()
   const todayList = useDayTasks(today)
-  const repeats = useRepeatDays()
+  const repeats = useRepeatDays(tasks)
   function hasTasksOnDay(date: Date): boolean {
     const dateStr = format(date, 'yyyy-MM-dd')
     if (repeats.on(dateStr) > 0) return true

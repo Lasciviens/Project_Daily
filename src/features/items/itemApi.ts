@@ -43,6 +43,9 @@ export interface SaveItemAnswer {
   /** Google Tasks sync before and after the save (Tasks → Calendar keeps it on until Calendar is confirmed). */
   googleSyncWas: boolean
   googleSync: boolean
+  /** A repeat saved (156): today's day task, when the repeat has today — on
+   *  Google Tasks it is the new copy a series' removal waits for. */
+  dayTaskId: string | null
 }
 
 const str = (v: unknown) => (typeof v === 'string' && v ? v : null)
@@ -54,6 +57,7 @@ export function saveAnswerOf(raw: unknown): SaveItemAnswer {
     created: r.created === true, occurrence: r.occurrence === true, occurrenceDate: str(r.occurrenceDate),
     blockToDrop: str(r.blockToDrop), replacedTaskId: str(r.replacedTaskId), replacedScheduleBlockId: str(r.replacedScheduleBlockId),
     replacedEventId: str(r.replacedEventId), googleSyncWas: r.googleSyncWas === true, googleSync: r.googleSync === true,
+    dayTaskId: str(r.dayTaskId),
   }
 }
 
@@ -100,6 +104,41 @@ export async function repeatDay(scheduleBlockId: string, date: string, action: '
 }
 
 const count = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : Number(v) || 0)
+
+/** What the day's repeats run did (app_repeat_days_today, 156). */
+export interface RepeatDaysRun {
+  /** Days that passed unticked, closed as missed. */
+  missed: number
+  /** Today's days made tasks. */
+  created: number
+  failed: number
+  /** The day it ran for (the device's, within a day of Europe/Oslo's). */
+  today: string | null
+}
+
+/**
+ * The app's own call when it opens (the hourly job's fallback, 156): this
+ * account's repeats on `today` — yesterday's unticked days closed as missed,
+ * today's days made tasks. A database without 156 answers null (nothing to do).
+ */
+export async function runRepeatDaysToday(today: string): Promise<RepeatDaysRun | null> {
+  const { data, error } = await supabase.rpc('app_repeat_days_today', { p_today: today })
+  if (error) {
+    if (isMissingRpc(error)) return null
+    throw rpcError(error)
+  }
+  const r = (data ?? {}) as Record<string, unknown>
+  return { missed: count(r.missed), created: count(r.created), failed: count(r.failed), today: str(r.today) }
+}
+
+/** Google Tasks on or off for a repeat's days from `today` on that are still
+ *  to do (156) — the browser's step once a series is confirmed (the new copy
+ *  first, then the old one goes). */
+export async function setRepeatDaysGoogleTasks(scheduleBlockId: string, today: string, on: boolean): Promise<number> {
+  const { data, error } = await supabase.rpc('app_repeat_days_google_tasks', { p_plan: scheduleBlockId, p_today: today, p_on: on })
+  if (error) throw rpcError(error)
+  return count(data)
+}
 
 export async function fetchConvertPreview(today: string): Promise<ConvertPreview> {
   const { data, error } = await supabase.rpc('app_convert_preview', { p_today: today })
