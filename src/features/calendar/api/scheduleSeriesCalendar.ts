@@ -142,7 +142,7 @@ async function pushSeries(row: SeriesRow, token: string, mode: PushMode): Promis
   const eventId = row.google_calendar_event_id
   if (!eventId) return 'not_linked'
   const zone = zoneFor(row, mode)
-  let keepDays: string[] = []
+  let keepDays: string[]
   try { keepDays = await fetchSeriesInstanceDays(row.id, eventId) } catch (err) {
     // Without it a moved instance could get an EXDATE: don't push now.
     reportFailure(err, row.id, mode)

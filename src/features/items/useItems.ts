@@ -108,6 +108,15 @@ export function useRepeatDay() {
   })
 }
 
+export type DeleteOutcome = 'deleted' | 'kept' | 'gone' | 'failed'
+export interface DeleteQuestionWords {
+  title?: string
+  message?: string
+  confirmLabel?: string
+  /** false: the screen's own dialog already asked. */
+  ask?: boolean
+}
+
 /**
  * Deletes an item, with the question and Undo (useRowsDelete / confirmDelete):
  *   scope 'item' — a one-off item (its task, slot and Google copies);
@@ -134,26 +143,32 @@ export function useDeleteItem() {
     invalidates: ['taskGraph', qk.items.all],
   })
 
-  function run(target: DeleteItemTarget, opts: { scope?: DeleteItemScope } = {}) {
+  /** Deletes; resolves what happened ('kept' = the owner said no). `question`
+   *  replaces the words of the question (or `ask: false` when the screen's
+   *  own dialog asked — the sheet's "This day / Every day it repeats"). */
+  function run(target: DeleteItemTarget, opts: { scope?: DeleteItemScope } & DeleteQuestionWords = {}): Promise<DeleteOutcome> {
     const scope = opts.scope ?? 'item'
-    const title = target.title
+    const title = target.title ?? ''
+    const words = (title0: string, message0: string) => ({
+      title: opts.title ?? title0, message: opts.message ?? message0, ask: opts.ask,
+      ...(opts.confirmLabel ? { confirmLabel: opts.confirmLabel } : {}),
+    })
     if (scope === 'all' || (!target.taskId && !target.blockId && target.scheduleBlockId && scope !== 'day')) {
-      if (!target.scheduleBlockId) throw new Error('Delete every day: which repeating item?')
+      if (!target.scheduleBlockId) return Promise.reject(new Error('Delete every day: which repeating item?'))
       return delPlan.run([target.scheduleBlockId], {
-        title: 'Delete this repeating item?', message: `${title} — every day it repeats`, done: 'Repeating item deleted',
+        ...words('Delete this repeating item?', `${title} — every day it repeats`), done: 'Repeating item deleted',
       })
     }
     if (scope === 'day') {
-      if (!target.scheduleBlockId || !target.date) throw new Error('Delete one day: which day of the repeat?')
+      if (!target.scheduleBlockId || !target.date) return Promise.reject(new Error('Delete one day: which day of the repeat?'))
       const day = formatDate(target.date)
       if (target.taskId) {
-        return delTask.run([target.taskId], { title: `Delete ${day} only?`, message: `${title} — the other days stay`, done: `${day} deleted` })
+        return delTask.run([target.taskId], { ...words(`Delete ${day} only?`, `${title} — the other days stay`), done: `${day} deleted` })
       }
       const planId = target.scheduleBlockId
       const date = target.date
       return confirmDelete<RepeatDayAnswer | null>({
-        title: `Delete ${day} only?`,
-        message: `${title} — the other days stay`,
+        ...words(`Delete ${day} only?`, `${title} — the other days stay`),
         remove: async () => {
           const a = await dayOff.mutateAsync({ scheduleBlockId: planId, date, action: 'remove' })
           return a.changed ? a : null
@@ -167,9 +182,9 @@ export function useDeleteItem() {
         restored: describeRepeatDay('restore', date),
       })
     }
-    if (target.taskId) return delTask.run([target.taskId], { title: 'Delete this item?', message: title, done: 'Item deleted' })
-    if (target.blockId) return delBlock.run([target.blockId], { title: 'Delete this item?', message: title, done: 'Item deleted' })
-    throw new Error('Delete: which item?')
+    if (target.taskId) return delTask.run([target.taskId], { ...words('Delete this item?', title), done: 'Item deleted' })
+    if (target.blockId) return delBlock.run([target.blockId], { ...words('Delete this item?', title), done: 'Item deleted' })
+    return Promise.reject(new Error('Delete: which item?'))
   }
 
   return { run, busy: delTask.busy || delBlock.busy || delPlan.busy || dayOff.isPending }

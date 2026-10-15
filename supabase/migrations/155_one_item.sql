@@ -16,15 +16,16 @@
 --     tasks.google_target         'tasks'|'calendar'|'both'|'none'; NULL = an
 --                                 old row (its Google presence is whatever its
 --                                 google_sync_enabled / slot event say)
---     tasks.deadline_date/_time   "+ Deadline" (due by). The item's own day
---                                 and time stay in due_date / due_time, so
---                                 every day read (fetchTasksForDay, the brief,
---                                 phone-gateway, push-send) keeps working with
---                                 no new filter (NEVER_HIDES)
 --     time_blocks.busy            false = "do it at 14:00" (no length, blocks
 --                                 no time; Google: Free). A slot with a day and
---                                 no start_time is the item's all-day presence
---                                 on Google Calendar
+--                                 no start_time is the item's day with no time
+--                                 (on Google Calendar: all-day)
+--     No deadline column: "+ Deadline" (due by) is tasks.due_date/due_time,
+--     as before 077 split them — the item's own day and time ("do it at")
+--     live on its slot. An item with no deadline keeps its day in due_date
+--     too, so every day read (fetchTasksForDay, the brief, phone-gateway,
+--     push-send) keeps working with no new filter (NEVER_HIDES); an item with
+--     a day AND a deadline always has a slot holding the day.
 --     schedule_blocks.start_time / end_time may be NULL (both or neither): a
 --                                 repeat with no time (an all-day series)
 --     schedule_blocks.busy, google_target ('calendar'|'none'; Google Tasks
@@ -86,19 +87,13 @@ end $$;
 
 -- ── A. Columns ──────────────────────────────────────────────────────────────
 alter table public.tasks
-  add column if not exists google_target text,
-  add column if not exists deadline_date date,
-  add column if not exists deadline_time time;
+  add column if not exists google_target text;
 do $$ begin
   alter table public.tasks add constraint tasks_google_target_check
     check (google_target is null or google_target in ('tasks', 'calendar', 'both', 'none'));
 exception when duplicate_object then null; end $$;
 comment on column public.tasks.google_target is
   'Where the item lives on Google (155): tasks | calendar | both | none. NULL = a row saved before 155 — its presence is google_sync_enabled (Google Tasks) and its slot''s google_calendar_event_id (Calendar) until it is next saved.';
-comment on column public.tasks.deadline_date is
-  '"+ Deadline" (155): the day it is due by. The item''s own day stays in due_date (what every day read uses).';
-comment on column public.tasks.deadline_time is
-  'The deadline''s time (155), or NULL for the whole day.';
 
 alter table public.time_blocks
   add column if not exists busy boolean not null default true;
@@ -550,9 +545,16 @@ $$;
  *                             outboxes)
  *   repeat, scope day       → that day becomes an item of its own (142) and
  *                             takes the edit
- *   no repeat               → the task, and its slot when it has a time or
- *                             shows on Google Calendar on a day; a rule given
- *                             "no repeat" becomes a one-off item
+ *   no repeat               → the task (its due = the deadline when it has
+ *                             one, else its own day and time), and its slot
+ *                             (the item's day and time) when it has a time,
+ *                             shows on Google Calendar on a day, or has a day
+ *                             and a deadline; a rule given "no repeat"
+ *                             (scope all) becomes a one-off item
+ * The extras the sheet sends ride along: category / color (the slot's and a
+ * rule's look), startDate (tasks.start_date), blockSource (the slot's own
+ * origin, a TV episode with its numbers). A training task's day and time
+ * stay one fact with its slot (142's triggers): it never gets a deadline.
  *
  * Google (the RPC writes rows only; the browser makes the Calendar calls
  * after it — calendar/api/itemCalendar.ts):
@@ -595,6 +597,17 @@ declare
   v_list_raw  text := nullif(p_item ->> 'googleTaskList', '');
   v_src_type  text := nullif(p_item #>> '{source,type}', '');
   v_src_raw   text := nullif(p_item #>> '{source,id}', '');
+  -- The sheet's extras: the slot's (and a repeat's) look, a window's start,
+  -- the slot's own origin (time_blocks' vocabulary, a TV episode's numbers).
+  v_cat_in    text := nullif(p_item ->> 'category', '');
+  v_color_in  text := nullif(p_item ->> 'color', '');
+  v_has_start boolean := p_item ? 'startDate';
+  v_start     date := nullif(p_item ->> 'startDate', '')::date;
+  v_bsrc      jsonb := case when jsonb_typeof(p_item -> 'blockSource') = 'object' then p_item -> 'blockSource' end;
+  v_bsrc_type text;
+  v_bsrc_id   uuid;
+  v_season    integer;
+  v_episode   integer;
   v_uuid_re   constant text := '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$';
   v_list      uuid;
   v_src_id    uuid;
@@ -620,6 +633,8 @@ declare
   v_category  text;
   v_task_src  text;
   v_is_occ    boolean := false;
+  v_due_date  date;
+  v_due_time  time;
 begin
   v_created := v_task_id is null and v_block_id is null and v_plan_id is null;
   if v_user is null then
@@ -634,6 +649,13 @@ begin
   end if;
   if v_list_raw ~ v_uuid_re then v_list := v_list_raw::uuid; end if;
   if v_src_raw ~ v_uuid_re then v_src_id := v_src_raw::uuid; end if;
+  if v_bsrc is not null then
+    v_bsrc_type := public.item_block_source(nullif(v_bsrc ->> 'type', ''));
+    if (v_bsrc ->> 'id') ~ v_uuid_re then v_bsrc_id := (v_bsrc ->> 'id')::uuid; end if;
+    v_season := nullif(v_bsrc ->> 'seasonNumber', '')::integer;
+    v_episode := nullif(v_bsrc ->> 'episodeNumber', '')::integer;
+  end if;
+  if v_cat_in is not null and v_cat_in not in ('daily', 'training', 'media', 'games', 'work', 'projects', 'other') then v_cat_in := null; end if;
   if v_time is null then v_minutes := null; end if;
   if v_minutes is not null and (v_minutes < 1 or v_minutes > 1440) then
     raise exception 'A length is 1 minute to 24 hours' using errcode = 'IT005';
@@ -685,13 +707,14 @@ begin
         title = v_title, notes = v_notes, domain = v_domain, priority = v_priority,
         days_of_week = v_days, repeat_kind = v_kind, repeat_interval = v_interval, repeat_unit = v_unit, repeat_dates = v_dates,
         effective_from = v_starts, start_time = v_time, end_time = v_end, busy = v_busy,
+        category = coalesce(v_cat_in, p.category), color = coalesce(v_color_in, p.color),
         google_target = v_google, updated_at = now()
       where id = v_plan_id;
     else
       v_task_src := public.item_task_source(v_src_type);
-      v_category := public.item_default_category(v_domain, v_task_src);
+      v_category := coalesce(v_cat_in, public.item_default_category(v_domain, v_task_src));
       -- A one-off item turned into a repeat: its slot's category stays.
-      if v_task_id is not null then
+      if v_task_id is not null and v_cat_in is null then
         select * into b from public.time_blocks x where x.task_id = v_task_id and x.user_id = v_user;
         if found then v_category := b.category; end if;
       end if;
@@ -699,7 +722,7 @@ begin
                                           repeat_unit, repeat_dates, effective_from, start_time, end_time, busy, color, category,
                                           google_target)
       values (v_user, v_title, v_notes, v_domain, v_priority, v_days, v_kind, v_interval, v_unit, v_dates, v_starts,
-              v_time, v_end, v_busy, 'blue', v_category, v_google)
+              v_time, v_end, v_busy, coalesce(v_color_in, 'blue'), v_category, v_google)
       returning id into v_plan_id;
       if v_task_id is not null then
         -- The one-off it was: its slot goes with it (ON DELETE CASCADE), and the
@@ -734,11 +757,12 @@ begin
     raise exception 'Google Calendar needs a day: pick one, or choose Google Tasks' using errcode = 'IT003';
   end if;
 
-  -- A repeating item given "no repeat" (scope 'all' only — never by
-  -- leaving the repeat out of a day's or an item's save) becomes a one-off
-  -- item: the rule goes (its series through the calendar outbox); days
-  -- already split off stay.
-  if v_repeat is null and v_plan_id is not null and v_scope = 'all' and not v_is_occ then
+  -- A repeating item given "no repeat" becomes a one-off item: only when the
+  -- save edits the rule itself (scope 'all', no task or slot of its own) —
+  -- never by leaving the repeat out of a day's or an item's save. The rule
+  -- goes (its series through the calendar outbox); days already split off stay.
+  if v_repeat is null and v_plan_id is not null and v_scope = 'all' and not v_is_occ
+     and v_task_id is null and v_block_id is null then
     select s.google_calendar_event_id into v_replaced_event from public.schedule_blocks s where s.id = v_plan_id and s.user_id = v_user;
     delete from public.schedule_blocks where id = v_plan_id and user_id = v_user;
     if found then v_replaced_plan := v_plan_id; else v_replaced_event := null; end if;
@@ -750,23 +774,34 @@ begin
     select * into b from public.time_blocks x where x.id = v_block_id and x.user_id = v_user for update;
     if not found then raise exception 'This item is not there any more' using errcode = 'IT004'; end if;
     v_task_id := b.task_id;
-    if v_src_type is null then v_src_type := b.source_type; v_src_id := coalesce(v_src_id, b.source_id); end if;
+    if v_src_type is null and b.source_type is not null then
+      v_src_type := b.source_type; v_src_id := coalesce(v_src_id, b.source_id);
+    end if;
   end if;
+
+  -- A training session's day IS its deadline (142 moves the two together):
+  -- it never has one of its own.
+  if v_task_id is not null then
+    select * into t from public.tasks x where x.id = v_task_id and x.user_id = v_user for update;
+    if not found then raise exception 'This item is not there any more' using errcode = 'IT004'; end if;
+  end if;
+  v_task_src := case when v_src_type is not null then public.item_task_source(v_src_type) else coalesce(t.source_type, 'manual') end;
+  if v_task_src = 'training_session' or t.hevy_routine_id is not null then
+    v_dl_date := null; v_dl_time := null;
+  end if;
+  -- "+ Deadline" is the task's due; without one, the due is the item's own day and time.
+  v_due_date := coalesce(v_dl_date, v_date);
+  v_due_time := case when v_dl_date is not null then v_dl_time else v_time end;
 
   if v_task_id is null then
     v_sync := v_connected and v_google in ('tasks', 'both');
-    v_task_src := public.item_task_source(v_src_type);
-    insert into public.tasks (user_id, title, description, domain, section, status, priority, due_date, due_time,
-                             deadline_date, deadline_time, source_type, source_id, google_target, google_sync_enabled,
-                             google_tasklist_id)
+    insert into public.tasks (user_id, title, description, domain, section, status, priority, start_date, due_date, due_time,
+                             source_type, source_id, google_target, google_sync_enabled, google_tasklist_id)
     values (v_user, v_title, v_notes, v_domain, coalesce(v_section, public.item_section_for_day(v_date, v_today)), 'open',
-            v_priority, coalesce(v_date, v_dl_date), case when v_date is not null then v_time else v_dl_time end,
-            v_dl_date, v_dl_time, v_task_src, v_src_id, v_google, v_sync, v_list)
+            v_priority, v_start, v_due_date, v_due_time, v_task_src, v_src_id, v_google, v_sync, v_list)
     returning * into t;
     v_task_id := t.id;
   else
-    select * into t from public.tasks x where x.id = v_task_id and x.user_id = v_user for update;
-    if not found then raise exception 'This item is not there any more' using errcode = 'IT004'; end if;
     v_sync_was := t.google_sync_enabled;
     v_sync := case
       when v_google in ('tasks', 'both') then v_connected or t.google_sync_enabled
@@ -779,19 +814,20 @@ begin
                          case when v_date is not null then public.item_section_for_day(v_date, v_today)
                               when t.section in ('inbox', 'today', 'backlog') then t.section
                               else 'backlog' end),
-      due_date = coalesce(v_date, v_dl_date),
-      due_time = case when v_date is not null then v_time else v_dl_time end,
-      deadline_date = v_dl_date, deadline_time = v_dl_time,
+      start_date = case when v_has_start then v_start else t.start_date end,
+      due_date = v_due_date, due_time = v_due_time,
       google_target = v_google, google_sync_enabled = v_sync,
       google_tasklist_id = coalesce(v_list, t.google_tasklist_id),
-      source_type = case when v_src_type is not null then public.item_task_source(v_src_type) else t.source_type end,
+      source_type = v_task_src,
       source_id = case when v_src_type is not null then v_src_id else t.source_id end
     where id = v_task_id
     returning * into t;
   end if;
 
-  -- The slot: wanted for a time, or for a day on Google Calendar.
-  v_want_blk := v_time is not null or (v_date is not null and v_google in ('calendar', 'both'));
+  -- The slot: the item's day and time — wanted for a time, for a day on
+  -- Google Calendar, and for a day whose deadline is elsewhere.
+  v_want_blk := v_time is not null
+    or (v_date is not null and (v_google in ('calendar', 'both') or v_dl_date is not null));
   v_busy := v_time is not null and v_minutes is not null;
   if v_block_id is not null then
     select * into b from public.time_blocks x where x.id = v_block_id and x.user_id = v_user for update;
@@ -807,14 +843,22 @@ begin
       update public.time_blocks set
         date = v_date, start_time = v_time,
         duration_minutes = case when v_time is null then b.duration_minutes else coalesce(v_minutes, 15) end,
-        busy = v_busy, title = v_title, task_id = v_task_id, updated_at = now()
+        busy = v_busy, title = v_title, task_id = v_task_id,
+        category = coalesce(v_cat_in, b.category), color = coalesce(v_color_in, b.color),
+        source_type = case when v_bsrc is not null then v_bsrc_type else b.source_type end,
+        source_id = case when v_bsrc is not null then v_bsrc_id else b.source_id end,
+        season_number = case when v_bsrc is not null then v_season else b.season_number end,
+        episode_number = case when v_bsrc is not null then v_episode else b.episode_number end,
+        updated_at = now()
       where id = v_block_id;
     else
       insert into public.time_blocks (user_id, date, title, start_time, duration_minutes, busy, color, category, task_id,
-                                      source_type, source_id)
+                                      source_type, source_id, season_number, episode_number)
       values (v_user, v_date, v_title, v_time, case when v_time is null then 60 else coalesce(v_minutes, 15) end, v_busy,
-              'accent', public.item_default_category(v_domain, t.source_type), v_task_id,
-              public.item_block_source(coalesce(v_src_type, t.source_type)), coalesce(v_src_id, t.source_id))
+              coalesce(v_color_in, 'accent'), coalesce(v_cat_in, public.item_default_category(v_domain, t.source_type)), v_task_id,
+              case when v_bsrc is not null then v_bsrc_type else public.item_block_source(coalesce(v_src_type, t.source_type)) end,
+              case when v_bsrc is not null then v_bsrc_id else coalesce(v_src_id, t.source_id) end,
+              v_season, v_episode)
       returning id into v_block_id;
     end if;
   elsif v_block_id is not null then
@@ -839,7 +883,8 @@ $$;
 /*
  * The slot an item no longer needs, once the browser removed its event
  * (blockToDrop above): deleted only while it has no event and its task still
- * doesn't want it (no time, not on Google Calendar). Answers true when it went.
+ * doesn't want it (no time, not on Google Calendar, no deadline elsewhere
+ * that the slot's day stands against). Answers true when it went.
  */
 create or replace function public.app_item_drop_block(p_block uuid)
 returns boolean
@@ -854,7 +899,8 @@ begin
    using public.tasks t
    where b.id = p_block and b.user_id = v_user and t.id = b.task_id
      and b.google_calendar_event_id is null and b.start_time is null
-     and coalesce(t.google_target, 'none') not in ('calendar', 'both');
+     and coalesce(t.google_target, 'none') not in ('calendar', 'both')
+     and t.due_date is not distinct from b.date and t.due_time is null;
   return found;
 end;
 $$;
@@ -1143,9 +1189,12 @@ begin
                busy = case when v_time is null then false else v_busy end, updated_at = now()
          where id = b.id;
         if b.task_id is not null then
-          update public.tasks set due_date = v_date, due_time = v_time,
+          -- The task's due follows only while it is the slot's own day (and
+          -- time): a deadline elsewhere stays where the owner put it.
+          update public.tasks set due_date = v_date, due_time = case when due_time is null then null else v_time end,
                  section = case when section in ('today', 'backlog') then public.item_section_for_day(v_date, v_today) else section end
-           where id = b.task_id;
+           where id = b.task_id and due_date is not distinct from b.date
+             and (due_time is null or due_time is not distinct from b.start_time);
         end if;
         v_moved := true;
       end if;

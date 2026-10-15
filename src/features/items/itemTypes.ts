@@ -39,12 +39,23 @@ export interface ItemInput {
   deadline?: { date: string; time: string | null } | null
   repeat?: RepeatInput | null
   google: GoogleTarget
-  /** A Google Tasks list: its local id (google_task_lists.id) or a title (made on Google when new). */
+  /** A Google Tasks list: its local id (google_task_lists.id, what the sheet
+   *  resolves) — a name is found or made on Google by useSaveItem. */
   googleTaskList?: string | null
-  source?: { type: string; id: string } | null
+  /** The task's origin (tasks.source_type vocabulary: tv_series, not
+   *  tv_episode); `id` may be null (a training session with no routine). */
+  source?: { type: string; id: string | null } | null
   /** Inbox / Today / Backlog when a screen keeps sections (the Tasks tab); otherwise
    *  itemRules.sectionForItem decides from the day. */
   section?: 'inbox' | 'today' | 'backlog' | null
+  /** The slot's (and a repeat's) look: category and colour; left out = kept (new: from the domain). */
+  category?: string | null
+  color?: string | null
+  /** tasks.start_date, a window's opening edge; left out = kept. */
+  startDate?: string | null
+  /** The slot's own origin when it differs from the task's (time_blocks.source_type
+   *  vocabulary — a TV episode with its numbers; 077). */
+  blockSource?: { type: string; id: string | null; seasonNumber?: number; episodeNumber?: number } | null
 }
 
 export interface SavedItem {
@@ -94,9 +105,9 @@ export interface RepeatDayInput {
   title?: string
 }
 
-/** A Google choice that can't be saved (error) or needs a word in the sheet (warning). */
+/** A Google choice that can't be saved for this item (blocked) or is said in the sheet (warning). */
 export interface GoogleTargetProblem {
-  level: 'error' | 'warning'
+  level: 'blocked' | 'warning'
   message: string
 }
 
@@ -107,7 +118,8 @@ export interface DeleteItemTarget {
   scheduleBlockId?: string | null
   /** The repeat's day, for scope 'day'. */
   date?: string | null
-  title: string
+  /** The item's title (said under the question). */
+  title?: string
 }
 
 export type DeleteItemScope = 'item' | 'day' | 'all'

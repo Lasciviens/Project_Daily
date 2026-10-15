@@ -85,7 +85,9 @@ export interface TimeBlock {
   schedule_block_id?: string | null
   occurrence_date?:   string | null
   /** false: a time with no length ("at 14:00") — the slot doesn't block time
-   *  and its Google event is Free (migration 155). Missing before it = busy. */
+   *  and its Google event is Free (migration 155; duration_minutes then holds
+   *  a nominal 15). Missing before it = busy. A slot with no start_time is
+   *  the item's day with no time (its all-day presence on Google Calendar). */
   busy?:            boolean | null
   /** Its linked task's status — only on the training-range read
    *  (fetchTrainingBlocksRange): a trained session (task done) is no longer "next". */
@@ -93,10 +95,6 @@ export interface TimeBlock {
   /** Its linked task's Hevy workout and routine (141), on the same reads. */
   task_workout_id?: string | null
   task_routine_id?: string | null
-  /** One item (155; missing before it = true): false = "do it at 14:00" —
-   *  no length, blocks no time (duration_minutes holds a nominal 15), Free on
-   *  Google. A slot with no start_time is an item's all-day presence. */
-  busy?:            boolean
   created_at:       string
   updated_at:       string
 }
@@ -126,7 +124,7 @@ export interface UpdateTimeBlockInput {
   category?:                  TimeBlockCategory
   color?:                     string
   /** false: no length (155). */
-  busy?:                      boolean
+  busy?:                      boolean | null
   google_calendar_event_id?:  string | null
   /** Only ever set on an edit that links a previously-standalone block to a
    *  freshly-created Task ("Also add to Tasks" on an existing block) — see

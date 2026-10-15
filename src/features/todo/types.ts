@@ -62,11 +62,9 @@ export interface Task {
   hevy_workout_id?:         string | null
 
   // ── One item (migration 155) — undefined before it runs ───────────────────
-  /** Where the item lives on Google; null = saved before 155 (its presence is google_sync_enabled + its slot's event). */
+  /** Where the item lives on Google; null = saved before 155 (its presence is google_sync_enabled + its slot's event).
+   *  (An item's deadline is due_date/due_time when it differs from its slot's day and time — items/itemRules.) */
   google_target?:           'tasks' | 'calendar' | 'both' | 'none' | null
-  /** "+ Deadline" (due by); the item's own day stays in due_date. */
-  deadline_date?:           string | null
-  deadline_time?:           string | null
 }
 
 export interface CreateTaskInput {

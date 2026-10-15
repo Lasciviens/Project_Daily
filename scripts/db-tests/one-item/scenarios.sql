@@ -64,8 +64,8 @@ select public.t_ok((select count(*) from public.audit_logs) = (select audit_rows
   '155: wrote no row anywhere (the activity log has no change from it)');
 select public.t_ok(not exists (select 1 from public.time_blocks where not busy)
   and not exists (select 1 from public.schedule_blocks where not busy or google_target is not null or domain is not null)
-  and not exists (select 1 from public.tasks where google_target is not null or deadline_date is not null),
-  '155: old rows keep today''s behaviour (busy, no Google target, no deadline)');
+  and not exists (select 1 from public.tasks where google_target is not null),
+  '155: old rows keep today''s behaviour (busy, no Google target)');
 select public.t_ok((select is_nullable from information_schema.columns where table_name = 'schedule_blocks' and column_name = 'start_time') = 'YES'
   and public.t_err($$insert into public.schedule_blocks (user_id, title, days_of_week, start_time, end_time) values
      ('00000000-0000-0000-0000-000000000001', 'x', '{1}', '10:00', null)$$) = '23514',
@@ -122,14 +122,42 @@ begin
     'save: a time with a length → a busy slot');
   r := public.app_save_item('{"title":"Report","domain":"work","priority":"medium","date":"2026-10-16","time":null,
     "durationMinutes":null,"deadline":{"date":"2026-10-20","time":"12:00"},"google":"tasks","today":"2026-10-15"}');
-  perform public.t_ok((select due_date = '2026-10-16' and deadline_date = '2026-10-20' and deadline_time = '12:00' and due_time is null
-                         from public.tasks where id = (r ->> 'taskId')::uuid) and r ->> 'blockId' is null,
-    'save: "+ Deadline" is kept apart; the item''s own day stays in due_date');
+  insert into public.t_keep values ('report', r, txid_current());
+  select * into b from public.time_blocks where id = (r ->> 'blockId')::uuid;
+  perform public.t_ok((select due_date = '2026-10-20' and due_time = '12:00' and section = 'backlog'
+                         from public.tasks where id = (r ->> 'taskId')::uuid)
+    and b.date = '2026-10-16' and b.start_time is null and not b.busy,
+    'save: "+ Deadline" is the task''s due; a slot holds the item''s own day (Daily never shows the deadline as a do-time)');
   r := public.app_save_item('{"title":"Someday","domain":"personal","priority":"medium","date":null,"time":null,
     "durationMinutes":null,"deadline":{"date":"2026-10-25","time":null},"google":"none","today":"2026-10-15"}');
-  perform public.t_ok((select due_date = '2026-10-25' and deadline_date = '2026-10-25' and section = 'inbox'
-                         from public.tasks where id = (r ->> 'taskId')::uuid),
-    'save: a deadline with no day still shows on its day (due_date), in the Inbox');
+  perform public.t_ok((select due_date = '2026-10-25' and section = 'inbox' from public.tasks where id = (r ->> 'taskId')::uuid)
+    and r ->> 'blockId' is null,
+    'save: a deadline with no day still shows on its day (due_date), in the Inbox, no slot');
+  r := public.app_save_item('{"title":"Gym","domain":"personal","priority":"medium","date":"2026-10-17","time":"17:30","durationMinutes":60,
+    "deadline":{"date":"2026-10-20","time":null},"google":"none","source":{"type":"training_session","id":null},"category":"training","today":"2026-10-15"}');
+  perform public.t_ok((select due_date = '2026-10-17' and due_time = '17:30' and source_type = 'training_session'
+                         from public.tasks where id = (r ->> 'taskId')::uuid)
+    and (select category from public.time_blocks where id = (r ->> 'blockId')::uuid) = 'training',
+    'save: a training session never gets a deadline (its day and time are one fact with its slot, 142)');
+  r := public.app_save_item('{"title":"S02E05","domain":"media","priority":"medium","date":"2026-10-17","time":"21:00","durationMinutes":50,
+    "google":"none","source":{"type":"tv_series","id":"00000000-0000-4000-8000-0000000000aa"},"category":"media","color":"purple",
+    "startDate":"2026-10-16","blockSource":{"type":"tv_episode","id":"00000000-0000-4000-8000-0000000000aa","seasonNumber":2,"episodeNumber":5},
+    "today":"2026-10-15"}');
+  perform public.t_ok((select source_type = 'tv_series' and start_date = '2026-10-16' from public.tasks where id = (r ->> 'taskId')::uuid)
+    and (select source_type = 'tv_episode' and season_number = 2 and episode_number = 5 and color = 'purple' and category = 'media'
+           from public.time_blocks where id = (r ->> 'blockId')::uuid),
+    'save: the sheet''s extras — the slot''s own source with its episode, its look, the task''s window start');
+end $$;
+
+do $$
+declare r jsonb; k jsonb := public.t_v('report');
+begin
+  -- the deadline goes: the presence slot that only held the day can go too (no event on it)
+  r := public.app_save_item(jsonb_build_object('taskId', k ->> 'taskId', 'title', 'Report', 'domain', 'work', 'priority', 'medium',
+    'date', '2026-10-16', 'time', null, 'durationMinutes', null, 'deadline', null, 'google', 'tasks', 'today', '2026-10-15'));
+  perform public.t_ok(r ->> 'blockId' is null and not exists (select 1 from public.time_blocks where task_id = (k ->> 'taskId')::uuid)
+    and (select due_date = '2026-10-16' and due_time is null from public.tasks where id = (k ->> 'taskId')::uuid),
+    'save: no deadline any more → the due is the day again and the day''s slot goes');
 end $$;
 
 select public.t_ok(public.t_err($$select public.app_save_item('{"title":"x","domain":"personal","priority":"low","date":null,"time":"10:00","google":"none"}')$$) = 'IT003',
@@ -332,6 +360,11 @@ begin
   perform public.t_ok(exists (select 1 from public.schedule_blocks where id = plan) and r ->> 'replacedScheduleBlockId' is null
     and (select start_time from public.time_blocks where id = (k ->> 'blockId')::uuid) = '08:30',
     'a day''s item saved with no repeat (scope item) edits that day; the rule is never deleted');
+  r := public.app_save_item(jsonb_build_object('taskId', k ->> 'taskId', 'blockId', k ->> 'blockId', 'scheduleBlockId', plan, 'scope', 'all',
+    'title', 'Water plants (balcony)', 'domain', 'personal', 'priority', 'low', 'date', '2026-11-16', 'time', '08:30',
+    'durationMinutes', 20, 'google', 'calendar', 'today', '2026-10-15'));
+  perform public.t_ok(exists (select 1 from public.schedule_blocks where id = plan) and r ->> 'replacedScheduleBlockId' is null,
+    '…even saved with scope all: a save that names a task or slot never deletes the rule');
   r := public.app_save_item(jsonb_build_object('scheduleBlockId', plan, 'scope', 'day', 'occurrenceDate', '2026-11-22',
     'title', 'Water plants', 'domain', 'personal', 'priority', 'low', 'date', '2026-11-22', 'time', null,
     'durationMinutes', null, 'google', 'calendar', 'today', '2026-10-15'));

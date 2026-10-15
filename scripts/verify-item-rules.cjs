@@ -44,10 +44,13 @@ check('never both by default', ['tasks', 'calendar'].includes(R.defaultGoogleTar
 
 console.log('\n2 · Google choices that can\'t be saved, and the warning')
 const p = R.googleTargetProblem
-check('Tasks for a repeat → an error with its reason', p(item({ google: 'tasks', repeat: { kind: 'weekly', daysOfWeek: [1], startsOn: TODAY } }))?.level === 'error'
-  && /can't repeat/.test(p(item({ google: 'tasks', repeat: { kind: 'weekly', daysOfWeek: [1], startsOn: TODAY } })).message))
-check('Both for a repeat → the same error', p(item({ google: 'both', repeat: { kind: 'weekly', daysOfWeek: [1], startsOn: TODAY } }))?.level === 'error')
-check('Calendar with no day → an error', p(item({ google: 'calendar' }))?.level === 'error')
+check('Tasks for a repeat → blocked, with its reason', eq(p(item({ google: 'tasks', repeat: { kind: 'weekly', daysOfWeek: [1], startsOn: TODAY } })),
+  { level: 'blocked', message: "Google Tasks can't repeat" }))
+check('Both for a repeat → blocked too', p(item({ google: 'both', repeat: { kind: 'weekly', daysOfWeek: [1], startsOn: TODAY } }))?.level === 'blocked')
+check('Calendar with no day: not a chip problem, but the save says so', p(item({ google: 'calendar' })) === null
+  && /Google Calendar needs a day/.test(R.itemInputProblem(item({ google: 'calendar' })) ?? ''))
+check('…one day of a repeat (scope day, no repeat in the save) may be on Calendar',
+  R.itemInputProblem(item({ google: 'calendar', scope: 'day', scheduleBlockId: 'p', occurrenceDate: TODAY, date: TODAY })) === null)
 check('Both → the warning "Shows twice in Google Calendar"', eq(p(item({ google: 'both', date: TODAY })), { level: 'warning', message: 'Shows twice in Google Calendar' }))
 check('Calendar for a repeat with no time → fine (an all-day series)', p(item({ google: 'calendar', repeat: { kind: 'weekly', daysOfWeek: [0], startsOn: TODAY } })) === null)
 check('Not on Google → fine', p(item({ google: 'none' })) === null)
@@ -88,10 +91,15 @@ check('a slot with no length → no length shown', R.itemFromRows(task(), blk({ 
 const pres = R.itemFromRows(task({ due_time: null }), blk({ start_time: null, busy: false }), null)
 check('an all-day presence → a day, no time', pres.time === null && pres.date === '2026-10-20' && pres.durationMinutes === null)
 check('a task with no slot: its time from due_time', R.itemFromRows(task({ due_time: '16:00:00' }), null, null).time === '16:00')
-check('a deadline opens apart from the day', eq(R.itemFromRows(task({ deadline_date: '2026-10-25', deadline_time: '12:00:00' }), null, null).deadline, { date: '2026-10-25', time: '12:00' }))
+check('a due day other than the slot\'s is the deadline (the slot holds the day)',
+  eq(R.itemFromRows(task({ due_date: '2026-10-25', due_time: '12:00:00' }), blk(), null).deadline, { date: '2026-10-25', time: '12:00' })
+  && R.itemFromRows(task({ due_date: '2026-10-25', due_time: '12:00:00' }), blk(), null).date === '2026-10-20')
+check('…a due time other than the slot\'s on the same day is the deadline too', eq(R.itemFromRows(task({ due_time: '17:00:00' }), blk(), null).deadline, { date: '2026-10-20', time: '17:00' }))
+check('…the same day and time (or no due time) is no deadline', R.itemFromRows(task(), blk(), null).deadline === null && R.itemFromRows(task({ due_time: null }), blk(), null).deadline === null)
+check('…a task with no slot is on its due day and time (never a deadline)', R.itemFromRows(task(), null, null).deadline === null && R.itemFromRows(task(), null, null).date === '2026-10-20')
 check('a list and a source ride along', eq(R.itemFromRows(task({ google_tasklist_id: 'l1', source_type: 'movie', source_id: 'm1' }), null, null).source, { type: 'movie', id: 'm1' })
   && R.itemFromRows(task({ google_tasklist_id: 'l1' }), null, null).googleTaskList === 'l1')
-check('a done title loses "✓ " in the sheet', R.itemFromRows(task({ title: '✓ Dentist' }), null, null).title === 'Dentist')
+check('a training session with no routine keeps its source type (no id)', eq(R.itemFromRows(task({ source_type: 'training_session' }), null, null).source, { type: 'training_session', id: '' }))
 const plan = {
   id: 'p1', title: 'Water plants', days_of_week: [0], start_time: null, end_time: null, effective_from: '2026-10-18', except_dates: [],
   repeat_kind: 'weekly', repeat_interval: null, repeat_unit: null, repeat_dates: null, category: 'other', color: 'blue',
@@ -105,11 +113,14 @@ const timedPlan = R.itemFromRows(null, null, { ...plan, start_time: '17:30:00', 
 check('…a timed rule: its time and length', timedPlan.time === '17:30' && timedPlan.durationMinutes === 60)
 check('…crossing midnight: 23:00–01:00 is 120 minutes', R.itemFromRows(null, null, { ...plan, start_time: '23:00:00', end_time: '01:00:00', busy: true }).durationMinutes === 120)
 check('…every 2 weeks reads back as interval', eq(R.itemFromRows(null, null, { ...plan, repeat_kind: 'interval', repeat_interval: 2, repeat_unit: 'week', days_of_week: [2, 4] }).repeat,
-  { kind: 'interval', interval: 2, unit: 'week', daysOfWeek: [2, 4], startsOn: '2026-10-18' }))
-const day = R.itemFromRows(task({ id: 't9' }), blk({ id: 'b9', schedule_block_id: 'p1', occurrence_date: '2026-10-25', date: '2026-10-26' }), plan)
-check('a day of a repeat: scope day, its plan and its own day, the repeat for "All days"', day.scope === 'day' && day.scheduleBlockId === 'p1'
-  && day.occurrenceDate === '2026-10-25' && day.date === '2026-10-26' && day.repeat?.kind === 'weekly' && day.taskId === 't9')
-check('…without the plan at hand it still names its day (a save never deletes the rule: scope day)', R.itemFromRows(task(), blk({ schedule_block_id: 'p1', occurrence_date: '2026-10-25' }), null).scope === 'day')
+  { kind: 'interval', daysOfWeek: [2, 4], interval: 2, unit: 'week', startsOn: '2026-10-18' }))
+const day = R.itemFromRows(task({ id: 't9' }), blk({ id: 'b9', schedule_block_id: 'p1', occurrence_date: '2026-10-25', date: '2026-10-26' }), null)
+check('a day of a repeat that is its own item opens as that item (scope item: its save never touches the rule)',
+  day.scope === 'item' && day.scheduleBlockId === null && day.date === '2026-10-26' && day.taskId === 't9' && day.blockId === 'b9')
+check('a rule with no length (busy false) reads no length, not its nominal 15 minutes',
+  R.itemFromRows(null, null, { ...plan, start_time: '14:00:00', end_time: '14:15:00', busy: false }).durationMinutes === null)
+check('a rule\'s own domain, priority and notes (155)', R.itemFromRows(null, null, { ...plan, domain: 'work', notes: 'n' }).domain === 'work'
+  && R.itemFromRows(null, null, { ...plan, domain: 'work', notes: 'n' }).notes === 'n')
 const old = R.itemFromRows(null, blk({ id: 'b5', category: 'work', title: 'Old meeting' }), null)
 check('an old standalone slot: its own title, domain from its category, its event → Calendar', old.taskId === null && old.blockId === 'b5'
   && old.domain === 'work' && old.google === 'calendar' && old.title === 'Old meeting')
@@ -132,9 +143,6 @@ check('repeat days: "Done for 15.10.2026", "Skipped …", "… open again"', R.d
   && R.describeRepeatDay('skip', TODAY) === 'Skipped 15.10.2026' && R.describeRepeatDay('undo', TODAY) === '15.10.2026 open again')
 check('conversion lines', R.describeConverted(4) === 'Converted 4 old slots into items' && /Nothing to convert/.test(R.describeConverted(0))
   && R.describeConvertUndone({ undone: 3, kept: 1 }) === 'Conversion undone: 3 items are slots again · 1 kept (changed since)')
-check('the read-back line: DD.MM.YYYY HH:MM, its error, before 155', /^Calendar changes read \d{2}\.\d{2}\.\d{4} \d{2}:\d{2}$/.test(R.readbackStateText({ lastRunAt: '2026-10-15T09:00:00Z', lastCleanAt: '2026-10-15T09:00:00Z', lastError: null }))
-  && /failed — boom$/.test(R.readbackStateText({ lastRunAt: '2026-10-15T09:00:00Z', lastCleanAt: null, lastError: 'boom' }))
-  && /not set up yet/.test(R.readbackStateText({ lastRunAt: null, lastCleanAt: null, lastError: null, available: false })))
 const all = [R.describeSaved(item({ date: TODAY, time: '17:30', durationMinutes: 60, google: 'calendar' }), saved({})), R.describeRepeatDay('done', TODAY)]
 check('no month names, no ISO dates, no "/" in what it says', all.every(t => !/\d{4}-\d{2}-\d{2}|\/|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec/.test(t)))
 
@@ -144,6 +152,12 @@ const hooks = read('src/features/items/useItems.ts')
 check('every write is one RPC (no table writes in itemApi)', !/\.(insert|update|upsert|delete)\(/.test(api)
   && ['app_save_item', 'app_repeat_day', 'app_convert_apply', 'app_convert_undo', 'app_item_drop_block'].every(n => api.includes(`rpc('${n}'`)))
 check('a database without 155 says so by name', /migration 155 not applied/.test(api) && /PGRST202/.test(api))
+const sheet = read('src/features/items/sheetRules.ts')
+check('the sheet\'s helpers re-export the ONE implementation (no second copy)',
+  /export \{\s*defaultGoogleTarget, googleTargetProblem, sectionForItem, itemFromRows, storedGoogleTarget, presentGoogleTarget,/.test(sheet)
+  && !/export function (defaultGoogleTarget|googleTargetProblem|sectionForItem|itemFromRows|storedGoogleTarget|presentGoogleTarget)\b/.test(sheet))
+check('the sheet\'s delete is the data layer\'s (useDeleteItem)', /useDeleteItem\(\)/.test(read('src/features/items/useSheetDelete.ts'))
+  && !/action: 'skip'/.test(read('src/features/items/useSheetDelete.ts')))
 check('the read-back state reads the run\'s outcome only (never the sync token)', /select\('last_run_at, last_clean_at, last_error, last_applied'\)/.test(api) && !/sync_token/.test(api))
 check('every hook mutation goes through useMutationWithFeedback', !/useMutation\(/.test(hooks) && (hooks.match(/useMutationWithFeedback</g) ?? []).length >= 5)
 check('deletes go through the one delete flow (useRowsDelete hooks / confirmDelete)', /useDeleteTask\(\)/.test(hooks) && /useDeleteScheduleBlock\(\)/.test(hooks) && /confirmDelete</.test(hooks))
