@@ -13,7 +13,7 @@ Background: `docs/features/tasks.md`, `docs/features/daily.md`, `docs/features/w
 - "Closed on a day" reads `tasks.completed_at` (stamped by a trigger, 129), never `updated_at` — any sync moves `updated_at`.
 - `tasks.start_date` opens a window that `due_date` closes; it is never a second deadline, and a window filter is never added to `fetchTasksForDay`.
 - NEVER_HIDES: never add a wish/period/window/kind filter to an existing task query. The one exception is `taskRules.onDay` (only Today keeps undated rows).
-- Load-bearing: `planForm.ts`'s `section: 'today'` default — four server-side `section.eq.today` filters (`phone-gateway` ×2, `push-send`, `ai-proxy`) go silent if it changes.
+- Load-bearing: a new item's date defaults to today (or the caller's day) in `planForm.ts` and Home's quick add, so it files under Today (the section follows the date, 155) — four server-side `section.eq.today` filters (`phone-gateway` ×2, `push-send`, `ai-proxy`) go silent if new items default to no date.
 - An undated task that comes from Google is filed under Today by `upsert_task_from_google` (148), never picked up by a read rule on `google_task_id`: the app pushes its own tasks to Google too, so that would pull every undated Backlog task onto Today (`verify-task-model`).
 - No writer produces the retired `tomorrow` / `this_week` section: a day's section comes from `taskRules.sectionForDay` (today → Today, any other day → Backlog); writers take `LiveTaskSection`; an old row opens and saves as Backlog (`taskRules.liveSection`) — never a "(legacy)" pill; ai-proxy's writes refuse them (`verify-ai-confirm`).
 - `is_focused` clears when a task closes (143); reopening doesn't bring it back.
