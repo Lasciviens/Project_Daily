@@ -24,6 +24,7 @@ import { OtherSubscriptions, SubscriptionSummary } from '../../settings/componen
 import { ConnectionCard, type Status } from './ConnectionCard'
 import { TraktCard } from '../../media/trakt/TraktCard'
 import { useKoboFeedState } from '../../books/hooks/useBooks'
+import { CalendarReadbackLine, ConvertOldItemsButton } from './ConvertOldItems'
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  CONNECTIONS (Settings → Subscriptions) — the ONE place every external integration is connected,
@@ -93,8 +94,11 @@ function GoogleCard() {
           <Button variant="primary" onClick={() => { setError(null); login() }} loading={busy}>Connect Google</Button>
         )}
         {connected && <AddPlansToCalendarButton />}
+        {/* Data only (no Google call), so it shows connected or not. */}
+        <ConvertOldItemsButton />
         {connected && <GoogleTasksSyncButtons />}
       </div>
+      {connected && <CalendarReadbackLine />}
       {error && <p role="alert" className="mt-2 text-meta text-danger">{error}</p>}
     </ConnectionCard>
   )

@@ -36,7 +36,7 @@ export const BLOCK_EVENT_RESET: RowOverrides = { time_blocks: { google_calendar_
 
 /** After Undo: the blocks that had a Google Calendar event get one again. Returns a note when one couldn't. */
 export async function relinkRestoredBlockEvents(snapshot: DeletedRows): Promise<string> {
-  const results = await Promise.all(withEvent(snapshot).map(b =>
-    linkBlockCalendarEvent(b.id, b.date, (b.start_time ?? '09:00').slice(0, 5), b.duration_minutes, b.title ?? '')))
+  // The event is made from the slot as it is back (an all-day one for a slot with no time, 155).
+  const results = await Promise.all(withEvent(snapshot).map(b => linkBlockCalendarEvent(b.id)))
   return results.some(r => r !== 'linked') ? 'not back on Google Calendar yet (open it and save to add it again)' : ''
 }

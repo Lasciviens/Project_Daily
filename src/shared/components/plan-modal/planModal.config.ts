@@ -462,22 +462,11 @@ export function shouldCreateLinkedTask(alsoCreateTask: boolean, existingTaskId?:
 }
 
 // ── Config resolution ─────────────────────────────────────────────────────────
-// Note: there is no more resolveTabs/resolveDefaultTab — `mode` (task /
-// schedule / recurring) replaces the old tab switcher entirely; a caller
-// decides which entity it wants edited, not the user via a tab click.
 
 export function isScheduleFieldHidden(field: ScheduleField, config?: PlanModalConfig): boolean {
   return !!config?.hideScheduleFields?.includes(field)
 }
 
-export function isScheduleFieldLocked(field: ScheduleField, config?: PlanModalConfig): boolean {
-  return !!config?.lockScheduleFields?.includes(field)
-}
-
 export function isTaskFieldHidden(field: TaskField, config?: PlanModalConfig): boolean {
   return !!config?.hideTaskFields?.includes(field)
-}
-
-export function isTaskFieldLocked(field: TaskField, config?: PlanModalConfig): boolean {
-  return !!config?.lockTaskFields?.includes(field)
 }

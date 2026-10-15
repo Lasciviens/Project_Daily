@@ -356,5 +356,37 @@ console.log('\n7 · The agenda shows a linked plan once')
   check('dayNumber sanity', dayNumber('2026-10-14') - dayNumber(TODAY) === 1)
 }
 
+console.log('\n8 · One item (155): a repeat with no time is an all-day series; Busy / Free; days held by a moved instance')
+{
+  const allDay = (over) => plan({ start_time: null, end_time: null, ...over })
+  const sun = map(allDay({ days_of_week: [0], effective_from: '2026-10-18', except_dates: ['2026-10-25'] }))
+  check('no time → start/end are dates: the first day and the day after (Google\'s end is exclusive)',
+    eq(sun.body.start, { date: '2026-10-18' }) && eq(sun.body.end, { date: '2026-10-19' }), JSON.stringify(sun.body.start))
+  check('…the same RRULE as a timed weekly plan', line(sun, 'RRULE') === 'RRULE:FREQ=WEEKLY;WKST=MO;BYDAY=SU')
+  check('…a day taken out is a date: EXDATE;VALUE=DATE:20261025 (no TZID, no time)', line(sun, 'EXDATE') === 'EXDATE;VALUE=DATE:20261025', line(sun, 'EXDATE'))
+  check('…all-day is Free', sun.body.transparency === 'transparent')
+  const mo = map(allDay({ repeat_kind: 'monthly', days_of_week: [6] }))
+  check('an all-day monthly plan: RDATE;VALUE=DATE with dates only',
+    /^RDATE;VALUE=DATE:\d{8}(,\d{8})*$/.test(line(mo, 'RDATE')) && line(mo, 'RDATE').startsWith('RDATE;VALUE=DATE:20261212,'), line(mo, 'RDATE'))
+  const allDayDays = (p, to) => {
+    const days = new Set([p.body.start.date])
+    const list = (l) => l.slice(l.indexOf(':') + 1).split(',').map(s => `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`)
+    for (const l of p.body.recurrence) if (l.startsWith('RDATE')) list(l).forEach(d => days.add(d))
+    const ex = new Set(p.body.recurrence.filter(l => l.startsWith('EXDATE')).flatMap(list))
+    return [...days].filter(d => d <= to && !ex.has(d)).sort()
+  }
+  const moRule = allDay({ repeat_kind: 'monthly', days_of_week: [6] })
+  check('…its days are exactly the app\'s days (a year)', eq(allDayDays(mo, '2027-10-13'), occurrencesBetween(moRule, '2026-11-14', '2027-10-13')))
+  check('a broken time still gives no event (only both NULL means all-day)', map(plan({ days_of_week: [2], start_time: null })) === null)
+  const busy = map(plan({ days_of_week: [2] }))
+  const free = map(plan({ days_of_week: [2], busy: false, end_time: '16:45:00' }))
+  check('a time with a length is Busy (opaque); with none, Free (transparent) with its nominal end',
+    busy.body.transparency === 'opaque' && free.body.transparency === 'transparent' && free.body.end.dateTime === '2026-10-13T16:45:00')
+  const kept = map(plan({ days_of_week: [2, 4], except_dates: ['2026-10-15', '2026-10-20'] }), TODAY, TZ)
+  const keptDay = S.seriesEventFor(plan({ days_of_week: [2, 4], except_dates: ['2026-10-15', '2026-10-20'] }), { today: TODAY, timeZone: TZ, keepDays: ['2026-10-15'] })
+  check('a day held by a moved instance gets no EXDATE (it would cancel that instance on Google); the others still do',
+    line(kept, 'EXDATE') === 'EXDATE;TZID=Europe/Oslo:20261015T163000,20261020T163000' && line(keptDay, 'EXDATE') === 'EXDATE;TZID=Europe/Oslo:20261020T163000', line(keptDay, 'EXDATE'))
+}
+
 console.log(`\n${passed} passed, ${failed} failed`)
 process.exit(failed ? 1 : 0)

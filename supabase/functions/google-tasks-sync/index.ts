@@ -6,10 +6,14 @@
 // shipped real-time local→Google sync (the outbox, drained on every local
 // mutation) and a manual pull button, but nothing that runs unattended.
 //
-// It also drains the Google CALENDAR outbox (migration 135, last step of a
-// run): a time block deleted on the server queues its linked Calendar event
-// there, and this run deletes it with the same token — see the "Calendar
-// outbox" section below.
+// It also drains the Google CALENDAR outbox (migration 135): a time block
+// deleted on the server queues its linked Calendar event there, and this run
+// deletes it with the same token; since 155 a linked slot changed on the
+// server is queued as an 'upsert' and its event brought up to date — see the
+// "Calendar outbox" section below. Just before it, the Google Calendar
+// read-back (155): changes the owner made in Google Calendar to events the
+// app linked come back to their items (a sync token on the primary
+// calendar) — first, so the outbox then pushes rows that already have them.
 //
 // Self-contained (no supabase/functions/_shared/ import) per this repo's
 // established Hevy-functions convention — Deno Dashboard deploys don't
@@ -708,6 +712,11 @@ async function pullTasks(token: string, userId: string, plan: GoogleTasksPullPla
 // Tasks steps use. The browser still removes an event itself before it
 // deletes the block, so most queued rows simply read 404/410 here and go.
 //
+// Since 155 a row may also be an 'upsert': a linked slot or plan changed on
+// the server (the assistant, a Google Tasks pull renaming its task, Hevy
+// closing a session, any task ticked done or reopened — the "✓ "), and this
+// step PATCHes the event from the row as it is now.
+//
 // The block between the <calendar-outbox-rules> markers is a HAND MIRROR of
 // src/features/calendar/calendarOutboxRules.ts — edit it there, then copy the
 // block here; scripts/verify-calendar-outbox.cjs fails when they differ.
@@ -769,6 +778,10 @@ export interface CalendarOutboxRow {
   calendar_id: string
   event_id: string
   attempts: number
+  /** 'delete' (135) or 'upsert' (155); missing = delete. */
+  operation?: 'delete' | 'upsert'
+  /** The request this run read (155): the row is removed only while it still holds it. */
+  requested_at?: string
 }
 
 /** One run's tally — google-tasks-sync returns it as `calendar`. */
@@ -787,10 +800,14 @@ export interface CalendarDrainSummary {
   stopped: string | null
   /** Rows that reached CALENDAR_PARK_AFTER failures this run (now tried daily). */
   parked: number
+  /** Upserts (155): events brought up to date. */
+  patched: number
+  /** Upserts with nothing left to push (no live slot or plan holds the event any more). */
+  untracked: number
 }
 
 export function emptyCalendarDrainSummary(): CalendarDrainSummary {
-  return { deleted: 0, already_gone: 0, kept: 0, failed: 0, left: 0, stopped: null, parked: 0 }
+  return { deleted: 0, already_gone: 0, kept: 0, failed: 0, left: 0, stopped: null, parked: 0, patched: 0, untracked: 0 }
 }
 
 /** The I/O a run needs — google-tasks-sync wires these to Google and Supabase. */
@@ -799,6 +816,8 @@ export interface CalendarDrainDeps {
   stillLinked: ReadonlySet<string>
   /** One events.delete. Resolves (never rejects) with the HTTP status, or null with no answer. */
   deleteEvent(row: CalendarOutboxRow): Promise<{ status: number | null; message: string }>
+  /** One events.patch from the live row (155); null = no live slot or plan holds the event any more. */
+  patchEvent?(row: CalendarOutboxRow): Promise<{ status: number | null; message: string } | null>
   removeRow(row: CalendarOutboxRow): Promise<void>
   backOff(row: CalendarOutboxRow, attempts: number, delaySeconds: number, message: string): Promise<void>
   /** False once the run should start no further deletes (its time budget). */
@@ -819,6 +838,25 @@ async function settleCalendarRow(
   deps: CalendarDrainDeps,
   summary: CalendarDrainSummary,
 ): Promise<string | null> {
+  if (row.operation === 'upsert') {
+    const pushed = deps.patchEvent ? await deps.patchEvent(row) : null
+    if (pushed === null) {
+      await deps.removeRow(row)
+      summary.untracked++
+      return null
+    }
+    const result = calendarDeleteOutcome(pushed.status)
+    if (result === 'deleted' || result === 'gone') {
+      // Gone on Google: the read-back turns the item's Calendar presence off.
+      await deps.removeRow(row)
+      if (result === 'deleted') summary.patched++
+      else summary.already_gone++
+      return null
+    }
+    const why = pushed.message || `Calendar API ${pushed.status ?? 'unreachable'}`
+    if (result === 'stop') summary.stopped = why
+    return why
+  }
   if (deps.stillLinked.has(row.event_id)) {
     await deps.removeRow(row)
     summary.kept++
@@ -867,6 +905,242 @@ export async function drainCalendarRows(
 }
 // </calendar-outbox-rules>
 
+// The block between the <calendar-event-rules> markers is a HAND MIRROR of
+// src/features/calendar/calendarEventRules.ts (migration 155: a slot's event,
+// and what a change read back from Google Calendar means) — edit it there,
+// then copy the block here; scripts/verify-calendar-event-rules.cjs fails when
+// they differ.
+
+// <calendar-event-rules>
+/** "Do it at 14:00" has no length: Google gets a short Free event (a
+ *  zero-length one risks 400 timeRangeEmpty). Also the slot's stored length. */
+export const NOMINAL_EVENT_MINUTES = 15
+/** In front of a done item's event title (owner, 15.10.2026); Undo takes it off. */
+export const DONE_MARK = '✓ '
+/** The zone a server-side push uses (time_blocks keeps none): the owner's. */
+export const SERVER_EVENT_TIME_ZONE = 'Europe/Oslo'
+
+/** The event title: "✓ " in front once the item is done (never twice). */
+export function calendarTitle(title: string | null | undefined, done: boolean): string {
+  const clean = stripDoneMark(title ?? '')
+  return done ? `${DONE_MARK}${clean}` : clean
+}
+
+/** A title as the app keeps it: without the done mark Google shows. */
+export function stripDoneMark(summary: string | null | undefined): string {
+  let s = (summary ?? '').trim()
+  while (s.startsWith('✓')) s = s.slice(1).trim()
+  return s
+}
+
+const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/
+const CLOCK = /^(\d{2}):(\d{2})(?::(\d{2}))?/
+
+/** 'yyyy-MM-dd' + n days (calendar arithmetic, no time zone involved). */
+export function addDaysToIso(day: string, n: number): string {
+  const [y, m, d] = day.split('-').map(Number)
+  const t = new Date(Date.UTC(y, m - 1, d + n))
+  return t.toISOString().slice(0, 10)
+}
+
+/** 'HH:MM[:SS]' → minutes after midnight, or null. */
+export function clockMinutes(t: string | null | undefined): number | null {
+  const m = CLOCK.exec(t ?? '')
+  if (!m || Number(m[1]) > 23 || Number(m[2]) > 59) return null
+  return Number(m[1]) * 60 + Number(m[2])
+}
+
+const pad = (n: number) => String(n).padStart(2, '0')
+
+/** A wall-clock date-time `minutes` after `day` 00:00 (may roll into later days). */
+export function wallClockAt(day: string, minutes: number): string {
+  const days = Math.floor(minutes / 1440)
+  const rest = minutes - days * 1440
+  return `${addDaysToIso(day, days)}T${pad(Math.floor(rest / 60))}:${pad(rest % 60)}:00`
+}
+
+/** The columns of a slot (time_blocks) its event is made from. */
+export interface EventBlock {
+  date: string
+  start_time: string | null
+  duration_minutes: number
+  title: string | null
+  /** false: no length — Free on Google (155). Missing before 155 = busy. */
+  busy?: boolean | null
+}
+
+export type EventTime = { date: string } | { dateTime: string; timeZone: string }
+
+/** What events.insert / events.patch get for a slot. */
+export interface BlockEventBody {
+  summary: string
+  start: EventTime
+  end: EventTime
+  transparency: 'opaque' | 'transparent'
+}
+
+/**
+ * The Google event of a slot: a day with no time is an all-day event (end =
+ * the next day — Google's end is exclusive) and Free; a time is a wall-clock
+ * dateTime in `timeZone` (DST-safe), Busy when the slot has a length, Free
+ * with a nominal end when it doesn't. null when the slot has no usable day.
+ */
+export function blockEventBody(b: EventBlock, opts: { done: boolean; timeZone: string }): BlockEventBody | null {
+  if (!ISO_DAY.test(b.date ?? '')) return null
+  const summary = calendarTitle(b.title, opts.done)
+  const start = clockMinutes(b.start_time)
+  if (start === null) {
+    return { summary, start: { date: b.date }, end: { date: addDaysToIso(b.date, 1) }, transparency: 'transparent' }
+  }
+  const busy = b.busy !== false
+  const length = Math.min(1440, Math.max(1, Math.round(Number(b.duration_minutes) || (busy ? 60 : NOMINAL_EVENT_MINUTES))))
+  const timeZone = opts.timeZone && opts.timeZone.trim() ? opts.timeZone : SERVER_EVENT_TIME_ZONE
+  return {
+    summary,
+    start: { dateTime: wallClockAt(b.date, start), timeZone },
+    end: { dateTime: wallClockAt(b.date, start + length), timeZone },
+    transparency: busy ? 'opaque' : 'transparent',
+  }
+}
+
+/** What a push sends: 'all' (the slot's day, time, length, Busy/Free and
+ *  title) or 'title' (a done mark, a series renamed: ONLY the summary). */
+export type EventPushFields = 'all' | 'title'
+
+/**
+ * The PATCH a push sends. A title push carries the summary and nothing else,
+ * so ticking an item done never sends its old day or time back over a move
+ * the owner made in Google Calendar. Anything but 'title' is the whole event.
+ */
+export function eventPatchFor(body: BlockEventBody, fields: EventPushFields | string | null | undefined): Partial<BlockEventBody> {
+  return fields === 'title' ? { summary: body.summary } : body
+}
+
+/** The done mark's PATCH: the title with or without "✓ " — and only that. */
+export function doneMarkPatch(title: string | null | undefined, done: boolean): { summary: string } {
+  return { summary: calendarTitle(title, done) }
+}
+
+// ── The read-back (google-tasks-sync) ───────────────────────────────────────
+
+/** The fields of a Google event the read-back reads (events.list, singleEvents=false). */
+export interface GoogleEventLike {
+  id?: string
+  status?: string
+  summary?: string
+  start?: { date?: string; dateTime?: string; timeZone?: string }
+  end?: { date?: string; dateTime?: string; timeZone?: string }
+  transparency?: string
+  recurringEventId?: string
+  originalStartTime?: { date?: string; dateTime?: string; timeZone?: string }
+  updated?: string
+}
+
+/** One change as apply_calendar_readback (migration 155) takes it. */
+export interface ReadbackEvent {
+  id: string
+  seriesId: string | null
+  status: 'confirmed' | 'tentative' | 'cancelled'
+  title: string | null
+  allDay: boolean
+  date: string | null
+  time: string | null
+  minutes: number | null
+  busy: boolean
+  originalDate: string | null
+  updated: string | null
+}
+
+/** An RFC 3339 instant as the wall clock in `timeZone` ({ date, time 'HH:MM:SS' }). */
+export function wallClockIn(instant: string, timeZone: string): { date: string; time: string } | null {
+  const ms = Date.parse(instant)
+  if (!Number.isFinite(ms)) return null
+  let parts: Intl.DateTimeFormatPart[]
+  try {
+    parts = new Intl.DateTimeFormat('en-GB', {
+      timeZone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
+    }).formatToParts(new Date(ms))
+  } catch {
+    return null
+  }
+  const get = (type: string) => parts.find(p => p.type === type)?.value ?? ''
+  return { date: `${get('year')}-${get('month')}-${get('day')}`, time: `${get('hour')}:${get('minute')}:${get('second')}` }
+}
+
+const dayOf = (t: { date?: string; dateTime?: string; timeZone?: string } | undefined, zone: string): string | null => {
+  if (!t) return null
+  if (t.date && ISO_DAY.test(t.date)) return t.date
+  if (t.dateTime) return wallClockIn(t.dateTime, t.timeZone || zone)?.date ?? null
+  return null
+}
+
+/**
+ * A Google event as the change the read-back applies. Times are read as the
+ * wall clock of the event's own zone (else the calendar's), the length from
+ * the two instants (an all-day event: whole days), the title without "✓ ".
+ * A cancelled entry may carry only its id (and, for one day of a series,
+ * recurringEventId + originalStartTime — Google's reference). null for
+ * something with no id.
+ */
+export function readbackEvent(e: GoogleEventLike, calendarZone: string): ReadbackEvent | null {
+  if (!e || typeof e.id !== 'string' || !e.id) return null
+  const zone = (e.start?.timeZone || calendarZone || SERVER_EVENT_TIME_ZONE)
+  const seriesId = typeof e.recurringEventId === 'string' && e.recurringEventId ? e.recurringEventId : null
+  const originalDate = dayOf(e.originalStartTime, e.originalStartTime?.timeZone || zone)
+  const status = e.status === 'cancelled' ? 'cancelled' : e.status === 'tentative' ? 'tentative' : 'confirmed'
+  const base = { id: e.id, seriesId, originalDate, updated: typeof e.updated === 'string' ? e.updated : null }
+  if (status === 'cancelled') {
+    return { ...base, status, title: null, allDay: false, date: null, time: null, minutes: null, busy: false }
+  }
+  const title = typeof e.summary === 'string' ? stripDoneMark(e.summary) : null
+  const busy = e.transparency !== 'transparent'
+  if (e.start?.date && ISO_DAY.test(e.start.date)) {
+    const endDay = e.end?.date && ISO_DAY.test(e.end.date) ? e.end.date : addDaysToIso(e.start.date, 1)
+    const days = Math.max(1, Math.round((Date.parse(`${endDay}T00:00:00Z`) - Date.parse(`${e.start.date}T00:00:00Z`)) / 86_400_000))
+    return { ...base, status, title, allDay: true, date: e.start.date, time: null, minutes: Math.min(1440, days * 1440), busy: false }
+  }
+  const startAt = e.start?.dateTime ? wallClockIn(e.start.dateTime, zone) : null
+  if (!startAt) return { ...base, status, title, allDay: false, date: null, time: null, minutes: null, busy }
+  const startMs = Date.parse(e.start!.dateTime!)
+  const endMs = e.end?.dateTime ? Date.parse(e.end.dateTime) : NaN
+  const minutes = Number.isFinite(endMs) && endMs > startMs ? Math.min(1440, Math.round((endMs - startMs) / 60_000)) : null
+  return { ...base, status, title, allDay: false, date: startAt.date, time: startAt.time, minutes, busy }
+}
+
+/** The first read (and the one after a 410) only fetches a sync token. */
+export type ReadbackPlan = { mode: 'baseline' } | { mode: 'incremental'; syncToken: string }
+
+export function readbackPlan(state: { sync_token?: string | null } | null | undefined): ReadbackPlan {
+  const token = state?.sync_token
+  return typeof token === 'string' && token ? { mode: 'incremental', syncToken: token } : { mode: 'baseline' }
+}
+
+/** How far back the baseline reads (it only needs the token at its end). */
+export const READBACK_BASELINE_DAYS = 7
+/** Pages a run reads at most (2500 events each). */
+export const READBACK_MAX_PAGES = 20
+
+/**
+ * events.list parameters. Google: "Sync tokens aren't compatible with most
+ * filters" — timeMin goes on the baseline only; with a syncToken no
+ * timeMin/timeMax/updatedMin/orderBy/q, and showDeleted can't be false (it is
+ * left out on both, so both requests carry the same set otherwise). A page
+ * repeats the same query with its pageToken.
+ */
+export function readbackListParams(plan: ReadbackPlan, nowMs: number, pageToken?: string | null): Record<string, string> {
+  const params: Record<string, string> = { maxResults: '2500' }
+  if (plan.mode === 'incremental') params.syncToken = plan.syncToken
+  else params.timeMin = new Date(nowMs - READBACK_BASELINE_DAYS * 86_400_000).toISOString()
+  if (pageToken) params.pageToken = pageToken
+  return params
+}
+
+/** 410 Gone on a sync token: Google wants a fresh full sync. */
+export function isSyncTokenGone(status: number | null | undefined): boolean {
+  return status === 410
+}
+// </calendar-event-rules>
+
 const CALENDAR_BASE = 'https://www.googleapis.com/calendar/v3'
 // At most CALENDAR_BATCH rows a run, and no new delete once CALENDAR_BUDGET_MS
 // has passed: with the 20-minute cron that is up to 150 events an hour, and a
@@ -897,48 +1171,125 @@ async function deleteCalendarEventOnce(token: string, calendarId: string, eventI
   }
 }
 
+// The same request as the browser's calendarApi.ts updateCalendarEvent
+// (PATCH, JSON body), answering with the status instead of throwing.
+async function patchCalendarEventOnce(token: string, calendarId: string, eventId: string, body: AnyRecord): Promise<{ status: number | null; message: string }> {
+  try {
+    const res = await fetch(`${CALENDAR_BASE}${calendarEventPath(calendarId, eventId)}`, {
+      method: 'PATCH',
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(CALENDAR_REQUEST_TIMEOUT_MS),
+    })
+    const text = await res.text().catch(() => '')
+    if (res.ok) return { status: res.status, message: '' }
+    let detail = ''
+    try { detail = JSON.parse(text)?.error?.message ?? '' } catch { /* not JSON */ }
+    return { status: res.status, message: `Calendar API ${res.status}${detail ? `: ${detail}` : ''}` }
+  } catch (e) {
+    return { status: null, message: `Calendar API unreachable: ${errorText(e)}` }
+  }
+}
+
+type QueuedRow = CalendarOutboxRow & { payload?: AnyRecord }
+
+// An upsert (155): the event from the row that holds it NOW — a slot (its
+// day, time, length, Busy/Free, "✓ " when its task is done; Oslo's wall
+// clock, time_blocks keeps no zone) or a plan's series (its title only: the
+// rule itself is the app's — calendar/calendarSeries.ts). null = no live
+// slot or plan holds it any more (nothing to push).
+async function patchQueuedEvent(token: string, userId: string, row: QueuedRow): Promise<{ status: number | null; message: string } | null> {
+  if (row.payload?.series) {
+    const { data: plan, error } = await supabase.from('schedule_blocks')
+      .select('id, title').eq('user_id', userId).eq('google_calendar_event_id', row.event_id).limit(1).maybeSingle()
+    if (error) throw error
+    if (!plan) return null
+    return patchCalendarEventOnce(token, row.calendar_id, row.event_id, { summary: stripDoneMark(plan.title) })
+  }
+  const { data: block, error } = await supabase.from('time_blocks')
+    .select('id, date, start_time, duration_minutes, title, busy, task:tasks(status)')
+    .eq('user_id', userId).eq('google_calendar_event_id', row.event_id).limit(1).maybeSingle()
+  if (error) throw error
+  if (!block) return null
+  const body = blockEventBody(block as unknown as EventBlock, {
+    done: (block as AnyRecord).task?.status === 'done', timeZone: SERVER_EVENT_TIME_ZONE,
+  })
+  if (!body) return null
+  // A done mark sends the title ONLY (payload.fields 'title'): never the slot's
+  // day back over a move the owner made in Google Calendar.
+  return patchCalendarEventOnce(token, row.calendar_id, row.event_id, { ...eventPatchFor(body, row.payload?.fields) })
+}
+
 async function drainCalendarOutbox(token: string, userId: string): Promise<CalendarStepResult> {
   const { data, error } = await supabase.from('calendar_outbox')
-    .select('id, calendar_id, event_id, attempts')
+    .select('id, calendar_id, event_id, attempts, operation, requested_at, payload')
     .eq('user_id', userId)
-    // The only operation today (a CHECK in 135) — named anyway, so a later
-    // operation can never be read as "delete this event".
-    .eq('operation', 'delete')
+    // The two operations there are (135's delete, 155's upsert) — named, so a
+    // later one can never be read as either.
+    .in('operation', ['delete', 'upsert'])
     .lte('next_retry_at', new Date().toISOString())
     .order('created_at', { ascending: true })
     .limit(CALENDAR_BATCH)
   if (error) {
     // Pre-migration-safe: before 135 there is nothing to drain — say so
-    // instead of failing every run.
+    // instead of failing every run. Before 155 there is no requested_at:
+    // the delete rows are read as 135 has them.
     if (isMissingTableError(error)) return { ...emptyCalendarDrainSummary(), skipped: 'not_migrated' }
+    if (error.code === '42703' || error.code === 'PGRST204') return drainCalendarDeletesBefore155(token, userId)
     throw error
   }
-  const rows = (data ?? []) as CalendarOutboxRow[]
+  return drainCalendarRowsFor(token, userId, (data ?? []) as QueuedRow[])
+}
+
+async function drainCalendarDeletesBefore155(token: string, userId: string): Promise<CalendarStepResult> {
+  const { data, error } = await supabase.from('calendar_outbox')
+    .select('id, calendar_id, event_id, attempts')
+    .eq('user_id', userId)
+    .eq('operation', 'delete')
+    .lte('next_retry_at', new Date().toISOString())
+    .order('created_at', { ascending: true })
+    .limit(CALENDAR_BATCH)
+  if (error) throw error
+  return drainCalendarRowsFor(token, userId, (data ?? []) as QueuedRow[])
+}
+
+async function drainCalendarRowsFor(token: string, userId: string, rows: QueuedRow[]): Promise<CalendarStepResult> {
   if (!rows.length) return emptyCalendarDrainSummary()
 
   // Never delete an event a live block still points at: a block put back
   // after its delete, or a second block holding the same id. Every linked
   // event is in the primary calendar, so the event id alone decides.
-  const eventIds = [...new Set(rows.map((r) => r.event_id))]
-  const { data: linked, error: linkedError } = await supabase.from('time_blocks')
-    .select('google_calendar_event_id')
-    .eq('user_id', userId)
-    .in('google_calendar_event_id', eventIds)
-  if (linkedError) throw linkedError
-  // …nor one a live repeating plan points at (its series, migration 147).
-  // Before 147 no plan can hold one: a missing column reads as none.
-  const { data: linkedPlans, error: linkedPlansError } = await supabase.from('schedule_blocks')
-    .select('google_calendar_event_id')
-    .eq('user_id', userId)
-    .in('google_calendar_event_id', eventIds)
-  if (linkedPlansError && linkedPlansError.code !== '42703' && linkedPlansError.code !== 'PGRST204') throw linkedPlansError
+  const eventIds = [...new Set(rows.filter((r) => r.operation !== 'upsert').map((r) => r.event_id))]
+  let linked: AnyRecord[] = []
+  let linkedPlans: AnyRecord[] = []
+  if (eventIds.length) {
+    const { data: linkedBlocks, error: linkedError } = await supabase.from('time_blocks')
+      .select('google_calendar_event_id')
+      .eq('user_id', userId)
+      .in('google_calendar_event_id', eventIds)
+    if (linkedError) throw linkedError
+    linked = linkedBlocks ?? []
+    // …nor one a live repeating plan points at (its series, migration 147).
+    // Before 147 no plan can hold one: a missing column reads as none.
+    const { data: linkedPlanRows, error: linkedPlansError } = await supabase.from('schedule_blocks')
+      .select('google_calendar_event_id')
+      .eq('user_id', userId)
+      .in('google_calendar_event_id', eventIds)
+    if (linkedPlansError && linkedPlansError.code !== '42703' && linkedPlansError.code !== 'PGRST204') throw linkedPlansError
+    linkedPlans = linkedPlanRows ?? []
+  }
 
   const stopAt = Date.now() + CALENDAR_BUDGET_MS
   return drainCalendarRows(rows, {
     stillLinked: new Set([...(linked ?? []), ...(linkedPlans ?? [])].map((b: AnyRecord) => b.google_calendar_event_id as string)),
     deleteEvent: (row) => deleteCalendarEventOnce(token, row.calendar_id, row.event_id),
+    patchEvent: (row) => patchQueuedEvent(token, userId, row as QueuedRow),
     removeRow: async (row) => {
-      const { error: deleteError } = await supabase.from('calendar_outbox').delete().eq('id', row.id).eq('user_id', userId)
+      // Only the request this run read: one made meanwhile (requested_at
+      // moved, 155) stays for the next run.
+      let removal = supabase.from('calendar_outbox').delete().eq('id', row.id).eq('user_id', userId)
+      if (row.requested_at) removal = removal.eq('requested_at', row.requested_at)
+      const { error: deleteError } = await removal
       if (deleteError) throw deleteError
     },
     backOff: async (row, attempts, delaySeconds, message) => {
@@ -951,6 +1302,133 @@ async function drainCalendarOutbox(token: string, userId: string): Promise<Calen
     },
     timeLeft: () => Date.now() < stopAt,
   })
+}
+
+// ── Google Calendar read-back (migration 155) ──────────────────────────────
+// Changes the owner makes in Google Calendar come back: a moved or renamed
+// one-off event moves / renames its item, one day of a series moved becomes
+// that day's own item (142), a deleted event turns the item's Calendar
+// presence off (the item stays). Only events whose ids a slot or plan stores
+// are acted on (apply_calendar_readback decides, row by row). A sync token on
+// the primary calendar (google_calendar_sync_state): the first run, and the
+// run after Google answers 410, only takes a token (a baseline) — nothing
+// before it is applied. The token moves only when every change was applied.
+// Google's rules for all of this: docs/integrations/google-calendar.md.
+
+interface ReadbackSummary {
+  mode: 'baseline' | 'incremental' | 'reset'
+  read: number
+  applied: number
+  outcomes: Record<string, number>
+  error: string | null
+  skipped?: 'not_migrated'
+}
+
+async function listCalendarPage(token: string, params: Record<string, string>): Promise<{ status: number; body: AnyRecord | null; message: string }> {
+  const qs = new URLSearchParams(params).toString()
+  try {
+    const res = await fetch(`${CALENDAR_BASE}/calendars/primary/events?${qs}`, {
+      headers: { 'Authorization': `Bearer ${token}` },
+      signal: AbortSignal.timeout(CALENDAR_REQUEST_TIMEOUT_MS),
+    })
+    const body = await res.json().catch(() => null) as AnyRecord | null
+    return { status: res.status, body, message: res.ok ? '' : `Calendar API ${res.status}${body?.error?.message ? `: ${body.error.message}` : ''}` }
+  } catch (e) {
+    return { status: 0, body: null, message: `Calendar API unreachable: ${errorText(e)}` }
+  }
+}
+
+async function readCalendarChanges(token: string, userId: string): Promise<ReadbackSummary> {
+  const summary: ReadbackSummary = { mode: 'baseline', read: 0, applied: 0, outcomes: {}, error: null }
+  const { data: state, error: stateError } = await supabase.from('google_calendar_sync_state')
+    .select('sync_token').eq('user_id', userId).maybeSingle()
+  if (stateError) {
+    if (isMissingTableError(stateError)) return { ...summary, skipped: 'not_migrated' }
+    throw stateError
+  }
+  const runAt = new Date().toISOString()
+  async function record(patch: AnyRecord) {
+    const { error } = await supabase.from('google_calendar_sync_state')
+      .upsert({ user_id: userId, last_run_at: runAt, ...patch }, { onConflict: 'user_id' })
+    if (error) console.error(`google-tasks-sync: calendar read-back state not saved: ${error.message}`)
+  }
+
+  let plan = readbackPlan(state as AnyRecord | null)
+  summary.mode = plan.mode
+  let pageToken: string | null = null
+  let zone = SERVER_EVENT_TIME_ZONE
+  const items: AnyRecord[] = []
+  let nextSyncToken: string | null = null
+  let reset = false
+  for (let page = 0; page < READBACK_MAX_PAGES; page++) {
+    const res = await listCalendarPage(token, readbackListParams(plan, Date.now(), pageToken))
+    if (isSyncTokenGone(res.status) && plan.mode === 'incremental' && !reset) {
+      // "the client should clear its storage and perform a full
+      // synchronization without any syncToken": a new baseline, now.
+      reset = true
+      summary.mode = 'reset'
+      plan = { mode: 'baseline' }
+      pageToken = null
+      items.length = 0
+      page = -1
+      continue
+    }
+    if (res.status < 200 || res.status >= 300 || !res.body) {
+      summary.error = res.message || 'Calendar API: no answer'
+      await record({ last_error: summary.error, last_error_at: runAt })
+      return summary
+    }
+    if (typeof res.body.timeZone === 'string' && res.body.timeZone) zone = res.body.timeZone
+    if (plan.mode === 'incremental') items.push(...(Array.isArray(res.body.items) ? res.body.items : []))
+    pageToken = typeof res.body.nextPageToken === 'string' && res.body.nextPageToken ? res.body.nextPageToken : null
+    nextSyncToken = typeof res.body.nextSyncToken === 'string' && res.body.nextSyncToken ? res.body.nextSyncToken : null
+    if (!pageToken) break
+  }
+  if (!nextSyncToken) {
+    summary.error = pageToken ? `more than ${READBACK_MAX_PAGES} pages of changes — read on the next run` : 'Google sent no sync token'
+    await record({ last_error: summary.error, last_error_at: runAt })
+    return summary
+  }
+  summary.read = items.length
+
+  // Only events a slot or plan of this account stores are looked at.
+  const changes = items.map((e) => readbackEvent(e as GoogleEventLike, zone)).filter((e): e is ReadbackEvent => e !== null)
+  const ids = [...new Set(changes.flatMap((c) => [c.id, c.seriesId].filter((x): x is string => !!x)))]
+  const ours = new Set<string>()
+  for (let i = 0; i < ids.length; i += 200) {
+    const chunk = ids.slice(i, i + 200)
+    const [blocks, plans] = await Promise.all([
+      supabase.from('time_blocks').select('google_calendar_event_id').eq('user_id', userId).in('google_calendar_event_id', chunk),
+      supabase.from('schedule_blocks').select('google_calendar_event_id').eq('user_id', userId).in('google_calendar_event_id', chunk),
+    ])
+    if (blocks.error) throw blocks.error
+    if (plans.error) throw plans.error
+    for (const r of [...(blocks.data ?? []), ...(plans.data ?? [])]) ours.add((r as AnyRecord).google_calendar_event_id)
+  }
+  let failures = 0
+  for (const c of changes) {
+    if (!ours.has(c.id) && !(c.seriesId && ours.has(c.seriesId))) continue
+    const { data: outcome, error } = await supabase.rpc('apply_calendar_readback', { p_user: userId, p_event: c })
+    if (error) {
+      failures++
+      summary.error = `a change not applied: ${error.message}`
+      continue
+    }
+    const key = String(outcome ?? 'unknown')
+    summary.outcomes[key] = (summary.outcomes[key] ?? 0) + 1
+    if (!['same', 'stale', 'ignored', 'not_ours'].includes(key)) summary.applied++
+  }
+  if (failures) {
+    // The token stays: the next run reads these changes again (applying one twice is a no-op).
+    await record({ last_error: summary.error, last_error_at: runAt, last_applied: summary.applied })
+    return summary
+  }
+  await record({
+    sync_token: nextSyncToken, last_clean_at: runAt, last_applied: summary.applied,
+    last_error: reset ? 'Google reset the Calendar read-back (410): changes made just before it were not read' : null,
+    last_error_at: reset ? runAt : null,
+  })
+  return summary
 }
 
 // ── Handler ──────────────────────────────────────────────────────────────────
@@ -1051,6 +1529,16 @@ Deno.serve(async (req) => {
   // Calendar outbox (migration 135) — last, so it never delays the Tasks
   // steps above. drainCalendarRows itself never rejects; a throw here is the
   // step failing as a whole (its read of the queue or of time_blocks).
+  // Google Calendar read-back (155) — BEFORE the outbox: a move the owner
+  // made in Google reaches the slot first, so the drain then pushes the
+  // moved row (never the old day back over it). A change the app made after
+  // Google's wins either way (the read-back's stale rule: Google's `updated`
+  // ≤ the slot's updated_at).
+  let readback: ReadbackSummary | null = null
+  let readbackError: string | null = null
+  try { readback = await readCalendarChanges(access_token, userId) }
+  catch (e) { readbackError = errorText(e) }
+
   let calendar: CalendarStepResult = emptyCalendarDrainSummary()
   let calendarError: string | null = null
   try { calendar = await drainCalendarOutbox(access_token, userId) }
@@ -1075,6 +1563,8 @@ Deno.serve(async (req) => {
   const reported: AnyRecord = { ...errors }
   if (pull.taskErrors.length) reported.tasks = pull.taskErrors.slice(0, 5).concat(pull.taskErrors.length > 5 ? [`… ${pull.taskErrors.length - 5} more`] : [])
   if (calendarProblem) reported.calendar = calendarProblem
+  const readbackProblem = readbackError ?? (readback?.mode !== 'reset' ? readback?.error : null) ?? null
+  if (readbackProblem) reported.readback = readbackProblem
   const reportedKeys = Object.keys(reported)
   const lastError = reportedKeys.length ? describeProblems(reported) : null
 
@@ -1099,14 +1589,14 @@ Deno.serve(async (req) => {
   const imported = pull.imported
   return new Response(JSON.stringify({
     ok: reportedKeys.length === 0, mode: plan.mode, drained: drainResult.drained, drain_failed: drainResult.failed,
-    added: pull.added, imported, calendar, ...(reportedKeys.length ? { partial_errors: reported } : {}),
+    added: pull.added, imported, calendar, readback, ...(reportedKeys.length ? { partial_errors: reported } : {}),
   }), { status: 200, headers: jsonHeaders })
 })
 
 // "Pull: …; Drain: …" for last_error — read by a person on Settings →
 // Subscriptions, so plain text, not the JSON it used to be.
 function describeProblems(reported: AnyRecord): string {
-  const label: AnyRecord = { drain: 'Sending', pull: 'Reading lists', tasks: 'Tasks', calendar: 'Calendar' }
+  const label: AnyRecord = { drain: 'Sending', pull: 'Reading lists', tasks: 'Tasks', calendar: 'Calendar', readback: 'Calendar changes' }
   return Object.entries(reported).map(([key, value]) => {
     const text = typeof value === 'string' ? value
       : Array.isArray(value) ? value.join('; ')

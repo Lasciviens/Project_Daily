@@ -19,11 +19,14 @@ import type { MediaRef, MediaType } from '../../features/media/types'
 import type { TrainingPlanRef } from '../../features/training/api/trainingPlanApi'
 
 export type EntityModalRequest =
-  // Tasks and schedule — every former UnifiedPlanModal mount.
+  // One item (migration 155): these four open the same Add sheet (plan-modal/
+  // PlanEntityModals) — a task, a one-off block, a repeat; the kind only says
+  // which row the id names and what a new item starts with.
   | { kind: 'task'; id?: string; defaults?: PlanDefaults; config?: PlanModalConfig; source?: PlanSource; onSaved?: (r: PlanResult) => void }
   | { kind: 'time-block'; id?: string; defaults?: PlanDefaults; config?: PlanModalConfig; source?: PlanSource; onSaved?: (r: PlanResult) => void }
-  | { kind: 'schedule-block'; id?: string; defaults?: PlanDefaults; config?: PlanModalConfig; source?: PlanSource; onSaved?: (r: PlanResult) => void }
-  /** Opens whatever editor a one-off block belongs to: its task when task-linked, else the block. */
+  /** `occurrenceDate`: the day of the repeat it was opened on — the sheet then offers This day | All days. */
+  | { kind: 'schedule-block'; id?: string; occurrenceDate?: string; defaults?: PlanDefaults; config?: PlanModalConfig; source?: PlanSource; onSaved?: (r: PlanResult) => void }
+  /** A one-off block by id, opened as its task's item when it has one. */
   | { kind: 'plan-block'; blockId: string }
   // Food.
   /** Log food (basket logger). `query` prefills the search box. */

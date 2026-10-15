@@ -1,9 +1,10 @@
 import { toast } from '../../../app/store'
 import { logError } from '../../../shared/utils/logError'
-import { fetchTimeBlockCalendarEventId, updateTimeBlock } from '../../daily/api/scheduleApi'
+import { fetchTimeBlockWithTask, updateTimeBlock } from '../../daily/api/scheduleApi'
 import type { TimeBlockCalendarStatus } from '../../daily/api/scheduleSyncRules'
 import { LOCAL_TZ } from '../../../shared/components/plan-modal/planModal.config'
 import type { CalendarEvent } from '../types'
+import { blockEventBody } from '../calendarEventRules'
 import {
   blockEventId, createCalendarEvent, deleteCalendarEvent, getCalendarEvent, isCalendarConflict, isCalendarNotFound,
 } from './calendarApi'
@@ -22,7 +23,14 @@ import { ensureValidCalendarToken } from './calendarTokenSync'
 // three-way TimeBlockCalendarStatus as updateTimeBlock, so a caller that's
 // about to drop (or mint) the task's OTHER Google representation gets a
 // real, confirmed answer instead of an assumption.
-export async function linkBlockCalendarEvent(blockId: string, dateStr: string, timeHHMM: string, durationMin: number, title: string): Promise<TimeBlockCalendarStatus> {
+//
+// Since 155 the event is built from the slot AS IT IS (read fresh here), not
+// from the caller's values: a slot with no time is an all-day event, one
+// with no length is Free, and a done task's event has "✓ " in front
+// (calendarEventRules.blockEventBody). The other parameters are kept for the
+// callers that still pass them and are only used when the row can't say
+// (a database before 155 has no `busy`: the slot then reads as Busy).
+export async function linkBlockCalendarEvent(blockId: string, dateStr?: string, timeHHMM?: string | null, durationMin?: number, title?: string): Promise<TimeBlockCalendarStatus> {
   // ensureValidCalendarToken (not the reactive `calToken` above) so this
   // still works right after the stored token expired, instead of quietly
   // reporting 'unknown' the way a raw, unrefreshed token would.
@@ -33,11 +41,18 @@ export async function linkBlockCalendarEvent(blockId: string, dateStr: string, t
     // failure here (network, RLS, …) looked identical to "no event
     // linked yet" and this function would go on to create a SECOND
     // event for a block that already had one. The api read throws.
-    const currentEventId = await fetchTimeBlockCalendarEventId(blockId)
-    if (currentEventId) return 'linked'
+    const block = await fetchTimeBlockWithTask(blockId)
+    if (!block) return 'not_linked' // the slot is gone: nothing to put on Google
+    if (block.google_calendar_event_id) return 'linked'
 
-    const start = new Date(`${dateStr}T${timeHHMM}:00`)
-    const end   = new Date(start.getTime() + durationMin * 60_000)
+    const body = blockEventBody({
+      date: block.date ?? dateStr ?? '',
+      start_time: block.start_time ?? (block.date ? null : timeHHMM ?? null),
+      duration_minutes: block.duration_minutes ?? durationMin ?? 60,
+      title: block.title ?? title ?? '',
+      busy: block.busy,
+    }, { done: block.task_status === 'done', timeZone: LOCAL_TZ })
+    if (!body) throw new Error('the slot has no day to show on Google Calendar')
     // A deterministic, client-supplied event id (this block's own uuid,
     // dashes stripped — hex-only, a valid subset of Calendar's base32hex
     // id charset) makes the create itself retry-safe: if a PRIOR attempt's
@@ -53,12 +68,7 @@ export async function linkBlockCalendarEvent(blockId: string, dateStr: string, t
     for (let attempt = 0; attempt < 5 && !created; attempt++) {
       const eventId = blockEventId(blockId, attempt)
       try {
-        created = await createCalendarEvent(token, 'primary', {
-          id: eventId,
-          summary: title,
-          start:   { dateTime: start.toISOString(), timeZone: LOCAL_TZ },
-          end:     { dateTime: end.toISOString(),   timeZone: LOCAL_TZ },
-        })
+        created = await createCalendarEvent(token, 'primary', { id: eventId, ...body })
       } catch (createErr) {
         if (!isCalendarConflict(createErr)) throw createErr
         // Already exists on Google under this id — a previous attempt's
@@ -74,11 +84,7 @@ export async function linkBlockCalendarEvent(blockId: string, dateStr: string, t
     // Five unlinks of one block used every id in its sequence: let Google
     // pick the id (only the lost-response retry safety is given up).
     if (!created) {
-      created = await createCalendarEvent(token, 'primary', {
-        summary: title,
-        start:   { dateTime: start.toISOString(), timeZone: LOCAL_TZ },
-        end:     { dateTime: end.toISOString(),   timeZone: LOCAL_TZ },
-      })
+      created = await createCalendarEvent(token, 'primary', { ...body })
     }
 
     try {

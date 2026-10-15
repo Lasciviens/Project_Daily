@@ -1,6 +1,7 @@
 ---
 paths:
   - "src/shared/components/plan-modal/**"
+  - "src/features/items/**"
   - "src/features/calendar/**"
   - "src/features/daily/api/**"
   - "src/features/todo/api/google*"
@@ -17,7 +18,10 @@ paths:
 
 Background: `docs/features/planning-calendar.md`.
 
-- `UnifiedPlanModal` is the one planner. Callers open it through `useEntityModal` (`task`, `time-block`, `schedule-block`, `plan-block`); `PlanEntityModals.tsx` holds the one routing rule (a block with a `task_id` opens as its task). Log every logic change in the CHANGELOG at the top of `UnifiedPlanModal.tsx`.
+- `UnifiedPlanModal` is the one Add sheet (one item, 155): one form (`ItemForm.tsx`), one save (`useSaveItem`), one delete (`items/useSheetDelete`, the stand-in for `useDeleteItem`) — never a table write in the sheet. `task`, `time-block`, `schedule-block`, `plan-block` are aliases that open it through `useEntityModal`; `PlanEntityModals.tsx` loads the item's rows by id and holds the one routing rule (a block with a `task_id` opens as its task). Log every logic change in the CHANGELOG at the top of `UnifiedPlanModal.tsx`.
+- The section follows the date (no date → Inbox, today → Today, another day → Backlog); a new item's date defaults to today or the caller's day — never undated by default (`.claude/rules/tasks.md`).
+- The Google chip shows the actual target, never "Auto"; its default and problems come only from `items/sheetRules.ts` (or the data layer's copy of the same rules, once it lands): a time or a repeat → Calendar, no time → Tasks, Both only when picked and with "Shows twice in Google Calendar", Tasks never for a repeat.
+- Quick add has one parser (`items/quickAdd.ts`) for the sheet's title and Home's quick add; a bare number is never read; a new reading gets its cases in `verify-quick-add`.
 - A task and its one-off slot are independent facts. `time_blocks.task_id` is the only link; `time_blocks.source_type` is never `'task'` (it names the block's real origin). TV vocabulary differs: tasks use `tv_series`, time_blocks `tv_episode`. A training task's day/time and block move together (142).
 - Calendar status is typed: `'linked' | 'not_linked' | 'unknown'` from the real HTTP status (`isCalendarNotFound` accepts 404 and 410) — never a message-string guess. `'unknown'` never deletes a Google Task copy and never creates a fallback.
 - One task = one Google entry: a task linked to a Calendar event skips Google Tasks. Don't simplify away `skipGoogleTasks` in `useTodos.ts`; apply the dedupe only after the Calendar link is confirmed.
@@ -34,3 +38,8 @@ Background: `docs/features/planning-calendar.md`.
 - An incomplete repeat can't be saved (`recurrenceProblem`, which runs `hasValidRecurrenceSelection` for weekly, and caps picked dates at 366); editing a recurring template never silently turns it into a one-off. The Repeat choice stays one line (a select) at every width.
 - Editing a plan keeps its `effective_from`, except for a choice that counts from it (Monthly, every N): "Starts" shows and is saved (`editedRepeatStart`).
 - Schedule writes invalidate the whole `schedule`/`taskGraph` groups; never give a schedule view its own private query key.
+- One item (155) — Google: the Google choice is stored per item (`google_target`; NULL = an old row, read as where it IS, `itemRules.presentGoogleTarget` — never a default, so a save never moves an old item on Google by itself). The item rules live once, in `items/itemRules.ts` (`sheetRules.ts` re-exports them) — never a second implementation.
+- An item moving between Google Tasks and Calendar: the new copy first, confirmed, then the old one goes (`calendar/api/itemCalendar.settleItemGoogle`); `'unknown'` removes nothing. `app_save_item` never turns Google Tasks off for a move to Calendar (the browser does, after `'linked'`) and keeps a slot whose event must go (`blockToDrop`).
+- A slot's event is built only by `calendarEventRules.blockEventBody` (all-day for no time, Free for no length, "✓ " when its task is done), hand-mirrored into `google-tasks-sync` between `<calendar-event-rules>` markers (`verify-calendar-event-rules`); a repeat with no time is an all-day series (`VALUE=DATE` lines). Pushes read the row as it is, never the caller's copy.
+- A server-side change to a linked slot or plan reaches Google through `calendar_outbox`'s `upsert` (155): never call Google from a trigger; a delete wins over a waiting upsert; a drain removes a row only while `requested_at` is what it read. Writes that come FROM Google (the read-back) set `app.calendar_readback` so nothing is sent back.
+- Google Calendar → app runs only in `google-tasks-sync`'s read-back (sync token, `apply_calendar_readback`): only ids a slot or plan stores; a deletion turns the Calendar presence off, never deletes or cancels the item; the first run and the run after a 410 are baselines; the token moves only when every change applied. A day held by a moved instance of its series (`<seriesId>_…` on its slot) never gets an EXDATE (`keepDays`). The read-back runs BEFORE the outbox drain; it deletes a slot only under `app_item_drop_block`'s guard (not a split-off day, the task's due is that day). A done / reopen push sends the title only (`eventPatchFor(…, 'title')`, outbox `fields: 'title'`) — never a day or time.

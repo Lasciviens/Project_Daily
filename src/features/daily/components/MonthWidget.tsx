@@ -11,6 +11,7 @@ import { todayStr } from '../../../shared/utils/dateUtils'
 import { useCalendarEventDatesForRange } from '../../calendar/hooks/useCalendar'
 import { DateNav } from '../../../shared/components/DateNav'
 import { Card, TonePill, cx } from '../../../shared/ui'
+import { useRepeatDays } from '../hooks/useSchedule'
 
 interface Props {
   onDayClick?:    (date: Date) => void
@@ -48,17 +49,21 @@ export function MonthWidget({ onDayClick, highlightDate, big }: Props) {
     d = addDays(d, 1)
   }
 
-  // A dot when the day pane would list something (taskRules): open on that
-  // day, or finished on it — today's from the day list.
+  // A dot when the day's list would show something (taskRules): open on that
+  // day, or finished on it — today's from the day list — or a repeat day
+  // (a missed one too: it stays on its day).
   const today = todayStr()
   const todayList = useDayTasks(today)
+  const repeats = useRepeatDays()
   function hasTasksOnDay(date: Date): boolean {
     const dateStr = format(date, 'yyyy-MM-dd')
+    if (repeats.on(dateStr) > 0) return true
     if (dateStr === today) return todayList.open.length + todayList.done.length > 0
     return tasks.some(t => onDay(t, dateStr, today) && (isOpenTask(t) || closedOn(t, dateStr)))
   }
 
   const openCount = tasks.filter(isOpenTask).length
+    + repeats.toDoBetween(format(monthStart, 'yyyy-MM-dd'), format(monthEnd, 'yyyy-MM-dd'))
 
   return (
     <Card>

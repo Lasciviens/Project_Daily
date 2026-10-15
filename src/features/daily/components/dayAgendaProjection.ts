@@ -157,8 +157,11 @@ export function projectCalendarEventForDay(dateStr: string, event: CalendarEvent
 export interface RecurringBlockLike extends RepeatRule {
   id:           string
   title:        string
-  start_time:   string
-  end_time:     string
+  /** null: a repeat with no time ("water the plants every Sunday", 155) —
+   *  it occurs on its days as an anytime row (-1/-1) and never spills. */
+  start_time:   string | null
+  /** null with a start: "at 14:00", no length — a moment, never a span. */
+  end_time:     string | null
   // days_of_week / repeat_* / effective_from / except_dates: the repeat rule
   // (recurrence.ts). A missing effective_from (before 081) or except_dates
   // (before 142) is no bound and no day left out — the old behaviour.
@@ -186,9 +189,15 @@ export function projectRecurringBlocksForDay(
   const previousDateStr = addDaysIso(dateStr, -1)
 
   for (const b of scheduleBlocks) {
+    if (!b.start_time) {
+      if (occursOn(b, dateStr)) {
+        out.push({ id: b.id, canonicalId: b.id, kind: 'recurring', title: b.title, startHour: -1, endHour: -1, taskId: null, spillover: false })
+      }
+      continue
+    }
     const start = timeStrToHour(b.start_time)
-    let end = timeStrToHour(b.end_time)
-    if (end <= start) end += 24 // crosses midnight
+    let end = b.end_time ? timeStrToHour(b.end_time) : start
+    if (b.end_time && end <= start) end += 24 // crosses midnight
 
     if (occursOn(b, dateStr)) {
       out.push({

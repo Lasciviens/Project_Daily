@@ -1,50 +1,29 @@
 // ─────────────────────────────────────────────────────────────────────────────
-//  UnifiedPlanModal — TYPES & CONFIG CONTRACT
+//  UnifiedPlanModal (the Add sheet) — TYPES & CONFIG CONTRACT
 //  See UnifiedPlanModal.tsx for the rulebook + changelog. This file holds the
-//  public contract: anything a caller needs to drive the modal lives here.
+//  public contract: anything a caller needs to drive the sheet lives here.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { TimeBlock, ScheduleBlock, TimeBlockCategory } from '../../../features/daily/types'
 import type { Task, LiveTaskSection, TaskPriority, TaskDomain, TaskSourceType } from '../../../features/todo/types'
 
-// ── Mode — replaces the old Task/Schedule TAB switcher entirely ─────────────
-// A caller decides which entity is being edited; the user never picks a tab.
-// 'task'      — Task create/edit, with an optional "Add to schedule" section
-//               for at most one linked one-off time_block.
-// 'schedule'  — a plain one-off time_block create/edit (with an optional
-//               "Also add to Tasks" checkbox on CREATE only).
-// 'recurring' — a schedule_blocks (recurring template) create/edit.
+// ── Mode — which alias opened a NEW item ──────────────────────────────────────
+// One item since migration 155: a task, its slot and its repeat are parts of
+// one form, so mode only decides what a new item starts with —
+// 'task'      — no time (Daily's / Work's Add, a wish, a purchase)
+// 'schedule'  — a time and a length (planning a session, an episode)
+// 'recurring' — a weekly repeat
+// An edit ignores it: the saved rows say what the item has.
 export type PlanMode = 'task' | 'schedule' | 'recurring'
 
-// ── Field keys (every togglable field has a stable key) ───────────────────────
+// ── Field keys a caller may hide ─────────────────────────────────────────────
 
-export type ScheduleField =
-  | 'title'
-  | 'date'
-  | 'time'
-  | 'duration'
-  | 'category'
-  | 'recurrence'
-  | 'alsoCreateTask'
-  | 'gcal'
+/** 'recurrence': no "+ Repeat"; 'gcal': no Google chip. */
+export type ScheduleField = 'recurrence' | 'gcal'
 
-export type TaskField =
-  | 'title'
-  | 'notes'
-  | 'section'
-  | 'priority'
-  | 'domain'
-  /** The "do it between A and B" window control (writes startDate + dueDate). */
-  | 'startDate'
-  | 'dueDate'
-  | 'dueTime'
-  /** Free-text Google Task list picker/creator (writes google_tasklist_id). */
-  | 'googleList'
-  /** The "Add to schedule" toggle + its date/time/duration/category/GCal
-   *  sub-fields — hide this whole section for a caller that never wants a
-   *  Task schedulable (there currently is none, but the seam exists). */
-  | 'scheduled'
-  | 'gcal'
+/** Each hides its "+" chip and row. 'startDate' is the "do it between" window
+ *  under "+ Deadline"; 'dueDate' / 'dueTime' hide the deadline itself. */
+export type TaskField = 'notes' | 'priority' | 'domain' | 'startDate' | 'dueDate' | 'dueTime' | 'googleList'
 
 /** The planner's Repeat choice. 'custom' is "every N days / weeks / months"
  *  or "picked dates" (CustomRepeatKind). Stored as schedule_blocks' repeat
@@ -52,30 +31,24 @@ export type TaskField =
 export type RecurrenceMode = 'none' | 'daily' | 'weekdays' | 'weekly' | 'monthly' | 'custom'
 export type CustomRepeatKind = 'every' | 'dates'
 
-// ── Config — drives layout/visibility WITHOUT touching the modal ──────────────
-//  A caller hides or locks fields purely from its own file via this object.
-//  Example: config={{ hideScheduleFields: ['category'] }}
+// ── Config — shapes the sheet from the caller's file ─────────────────────────
+//  Example: config={{ heading: 'Plan to watch' }}. A hidden field's row and
+//  its "+" chip don't show (a training session hides the deadline: its day is
+//  the session's, 142).
 
 export interface PlanModalConfig {
-  /** Header text override. Default: derived from mode ('Task' / 'Schedule' / 'Repeat'). */
+  /** Header text. Default: "Add" for a new item, "Edit" for a saved one. */
   heading?: string
-  /** Fields hidden entirely (Schedule tab). */
   hideScheduleFields?: ScheduleField[]
-  /** Fields hidden entirely (Task tab). */
   hideTaskFields?: TaskField[]
-  /** Fields visible but read-only (Schedule tab). */
-  lockScheduleFields?: ScheduleField[]
-  /** Fields visible but read-only (Task tab). */
-  lockTaskFields?: TaskField[]
 }
 
 // ── Defaults — prefilled values ───────────────────────────────────────────────
 
 export interface PlanDefaults {
-  /** Shared across both tabs — Plan title === Task title. */
   title?: string
 
-  // Schedule tab
+  // When: the item's day and time (dueDate counts as the day when date is missing)
   date?: string             // yyyy-MM-dd
   startTime?: string        // HH:MM (24h)
   duration?: number         // minutes
@@ -83,10 +56,12 @@ export interface PlanDefaults {
   color?: string
   recurrence?: RecurrenceMode
   daysOfWeek?: number[]     // 0=Sun … 6=Sat (only used when recurrence='weekly')
+  /** Before one item (155) a slot could come without a task; now every item
+   *  is one — kept so older callers still type-check, it changes nothing. */
   alsoCreateTask?: boolean
 
-  // Task tab
   notes?: string
+  /** Only 'inbox' still matters: a new item with no date of its own starts undated. The section follows the date. */
   section?: LiveTaskSection
   priority?: TaskPriority
   domain?: TaskDomain
@@ -94,10 +69,10 @@ export interface PlanDefaults {
   startDate?: string        // yyyy-MM-dd
   dueDate?: string          // yyyy-MM-dd
   dueTime?: string          // HH:MM
-  /** Pre-open the Task editor's "Add to schedule" section already toggled on. */
+  /** A 'task' item that starts with a time and a length (startTime / duration). */
   scheduled?: boolean
 
-  // Shared
+  /** Start on Google Calendar whatever the default says. */
   gcal?: boolean
 }
 
@@ -135,46 +110,31 @@ export interface UnifiedPlanModalProps {
   open: boolean
   onClose: () => void
 
-  /** Required for CREATE (no task/timeBlock/scheduleBlock given) — decides
-   *  which entity gets created. Ignored/inferred for EDIT: passing `task`
-   *  always means mode 'task', `timeBlock` means 'schedule', `scheduleBlock`
-   *  means 'recurring' — a caller editing an existing row never needs to
-   *  also pass `mode` (though it's harmless if it does, as long as it
-   *  agrees). */
+  /** A new item: what it starts with (see PlanMode). Ignored for an edit. */
   mode?: PlanMode
 
   config?: PlanModalConfig
   defaults?: PlanDefaults
   source?: PlanSource
 
-  /** Edit mode for a Task. When set, the editor opens populated + shows Delete. */
+  /** Editing: the item's task, its slot (a task's one-off time_block, or a
+   *  block of its own) and its repeat rule — whichever it has, loaded by id
+   *  (PlanEntityModals). */
   task?: Task
-
-  /** Edit mode for a standalone or task-linked one-off time_block. Only pass
-   *  this for a block with NO linked task (task_id null) — a task-linked
-   *  block should be edited via `task` instead (loading the block itself
-   *  happens inside the modal, keyed off task_id, so its Schedule section
-   *  is correct without the caller re-fetching it). */
-  timeBlock?: TimeBlock
-
-  /** Edit mode for a recurring schedule_blocks row. */
+  timeBlock?: TimeBlock | null
   scheduleBlock?: ScheduleBlock
-
-  /** Extra caller-owned UI injected at the bottom of the Schedule section (Yol 1). */
-  scheduleExtra?: React.ReactNode
-  /** Extra caller-owned UI injected at the bottom of the Task section (Yol 1). */
-  taskExtra?: React.ReactNode
+  /** A repeating item opened on one of its days: offers This day | All days. */
+  occurrenceDate?: string | null
 
   /** Fires after a successful save, before close — for caller-side follow-up. */
   onSaved?: (result: PlanResult) => void
 
-  /** The row being edited is still loading by id (PlanEntityModals): the
-   *  shell shows a skeleton and Save stays disabled. */
+  /** The rows are still loading by id: the shell shows a skeleton and Save stays disabled. */
   loading?: boolean
-  /** The row couldn't be loaded: the shell shows this message (+ retry). */
+  /** The rows couldn't be loaded: the shell shows this message (+ retry). */
   loadError?: { message: string; onRetry?: () => void }
   /** Replaces the footer's Delete (a training session's: it asks, deletes the
    *  session and offers Undo — training/useTrainingPlanActions). Resolves true
-   *  when it was deleted; the editor then closes. */
+   *  when it was deleted; the sheet then closes. */
   onDeleteOverride?: () => Promise<boolean>
 }

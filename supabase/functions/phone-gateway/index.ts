@@ -96,14 +96,20 @@ async function buildBriefContext(userId: string): Promise<string> {
   } catch { /* omit section */ }
   try {
     // A skipped session (its task cancelled, migration 142) is not on today's program.
-    const { data: blocks } = await supabase.from('time_blocks')
-      .select('title, start_time, duration_minutes, task:tasks(status)')
+    // A slot with no length (busy false, 155: "do it at 14:00") shows no "(Ndk)" —
+    // its stored minutes are nominal. Before 155 there is no busy column: read without it.
+    const read = (cols: string) => supabase.from('time_blocks')
+      .select(cols)
       .eq('user_id', userId).eq('date', today)
       .order('start_time', { ascending: true }).limit(20)
+    let { data: blocks, error: blocksError } = await read('title, start_time, duration_minutes, busy, task:tasks(status)')
+    if (blocksError && (blocksError.code === '42703' || blocksError.code === 'PGRST204')) {
+      ;({ data: blocks } = await read('title, start_time, duration_minutes, task:tasks(status)'))
+    }
     const withTime = (blocks as AnyRecord[] ?? []).filter(b => b.start_time && b.task?.status !== 'cancelled')
     if (withTime.length) {
       lines.push('\nBUGÜNKÜ PROGRAM:')
-      for (const b of withTime) lines.push(`  - ${String(b.start_time).slice(0, 5)} ${b.title}${b.duration_minutes ? ` (${b.duration_minutes}dk)` : ''}`)
+      for (const b of withTime) lines.push(`  - ${String(b.start_time).slice(0, 5)} ${b.title}${b.duration_minutes && b.busy !== false ? ` (${b.duration_minutes}dk)` : ''}`)
     }
   } catch { /* omit section */ }
   try {

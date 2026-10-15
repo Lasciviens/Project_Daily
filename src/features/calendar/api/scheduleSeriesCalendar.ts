@@ -4,8 +4,8 @@ import { todayStr } from '../../../shared/utils/dateUtils'
 import { rowsOf, type DeletedRows, type RowOverrides } from '../../../shared/utils/deletedRows'
 import { LOCAL_TZ } from '../../../shared/components/plan-modal/planModal.config'
 import {
-  clearScheduleBlockCalendarLink, fetchScheduleBlock, fetchTimeBlockByTaskId, fetchTimeBlockWithTask, hasSeriesColumns,
-  setScheduleBlockCalendarLink, updateTimeBlock, SERIES_NOT_MIGRATED,
+  clearScheduleBlockCalendarLink, fetchScheduleBlock, fetchSeriesInstanceDays, fetchTimeBlockByTaskId, fetchTimeBlockWithTask,
+  hasSeriesColumns, setScheduleBlockCalendarLink, updateTimeBlock, SERIES_NOT_MIGRATED,
 } from '../../daily/api/scheduleApi'
 import { classifyCalendarPushFailure, type TimeBlockCalendarStatus } from '../../daily/api/scheduleSyncRules'
 import type { ScheduleBlock } from '../../daily/types'
@@ -44,20 +44,24 @@ import { linkBlockCalendarEvent } from './linkBlockCalendarEvent'
 //    · the start: the plan's first day on or after the day it was added to
 //      Google (148, stored with the link) — never its past weeks;
 //    · a push Google didn't take from the background (a day carried over,
-//      Undo) is retried when the app next opens (the pending list).
+//      Undo) is retried when the app next opens (the pending list);
+//    · since 155 a repeat with no time is an all-day series, Busy / Free
+//      follows the plan, and a day held by a moved instance of the series
+//      (the Calendar read-back) never gets an EXDATE.
 // ─────────────────────────────────────────────────────────────────────────────
 
 type SeriesRow = Pick<ScheduleBlock,
   'id' | 'title' | 'start_time' | 'end_time' | 'days_of_week' | 'effective_from' | 'except_dates'
   | 'repeat_kind' | 'repeat_interval' | 'repeat_unit' | 'repeat_dates'
-  | 'google_calendar_event_id' | 'google_calendar_horizon' | 'google_calendar_time_zone' | 'google_calendar_from'>
+  | 'google_calendar_event_id' | 'google_calendar_horizon' | 'google_calendar_time_zone' | 'google_calendar_from' | 'busy'>
 
 /** fromEditor: a save from the planner (may change the zone; reports failures).
  *  Every other caller is quiet and keeps the series' zone. */
 interface PushMode { fromEditor: boolean }
 
 const zoneFor = (row: SeriesRow, mode: PushMode) => seriesPushZone(row.google_calendar_time_zone, LOCAL_TZ, mode.fromEditor)
-const planFor = (row: SeriesRow, zone: string): SeriesPlan | null => seriesEventForPush(row, { today: todayStr(), timeZone: zone })
+const planFor = (row: SeriesRow, zone: string, keepDays: readonly string[] = []): SeriesPlan | null =>
+  seriesEventForPush(row, { today: todayStr(), timeZone: zone, keepDays })
 const message = (err: unknown) => (err as Error)?.message ?? String(err)
 
 function reportFailure(err: unknown, planId: string, mode: PushMode) {
@@ -138,7 +142,13 @@ async function pushSeries(row: SeriesRow, token: string, mode: PushMode): Promis
   const eventId = row.google_calendar_event_id
   if (!eventId) return 'not_linked'
   const zone = zoneFor(row, mode)
-  const plan = planFor(row, zone)
+  let keepDays: string[]
+  try { keepDays = await fetchSeriesInstanceDays(row.id, eventId) } catch (err) {
+    // Without it a moved instance could get an EXDATE: don't push now.
+    reportFailure(err, row.id, mode)
+    return 'unknown'
+  }
+  const plan = planFor(row, zone, keepDays)
   if (!plan) return removeSeries(row, token, mode)
   try {
     await updateCalendarEvent(token, 'primary', eventId, { ...plan.body })
@@ -236,8 +246,9 @@ export async function syncScheduleSeriesAfterSave(row: SeriesRow, want: boolean 
  */
 async function linkDayEvent(blockId: string): Promise<boolean> {
   const b = await fetchTimeBlockWithTask(blockId)
-  if (!b || b.google_calendar_event_id || !b.start_time || b.task_status === 'cancelled') return true
-  const status = await linkBlockCalendarEvent(b.id, b.date, b.start_time.slice(0, 5), b.duration_minutes, b.title)
+  // A day with no time (a repeat with no time, 155) gets an all-day event.
+  if (!b || b.google_calendar_event_id || b.task_status === 'cancelled') return true
+  const status = await linkBlockCalendarEvent(b.id)
   if (status !== 'linked') return status !== 'unknown'
   // Settle on the block as it is after the link: a move pushes the event, a
   // skip takes it off, a delete removes it (its first id — a new block never
@@ -247,8 +258,12 @@ async function linkDayEvent(blockId: string): Promise<boolean> {
     await ensureLinkedCalendarEventRemoved(blockEventId(blockId, 0)).catch(() => {})
   } else if (now.task_status === 'cancelled') {
     await updateTimeBlock(blockId, { google_calendar_event_id: null })
-  } else if (now.date !== b.date || now.start_time !== b.start_time || now.duration_minutes !== b.duration_minutes || now.title !== b.title) {
-    await updateTimeBlock(blockId, { date: now.date, start_time: now.start_time, duration_minutes: now.duration_minutes, title: now.title })
+  } else if (now.date !== b.date || now.start_time !== b.start_time || now.duration_minutes !== b.duration_minutes || now.title !== b.title
+             || now.busy !== b.busy || now.task_status !== b.task_status) {
+    await updateTimeBlock(blockId, {
+      date: now.date, start_time: now.start_time, duration_minutes: now.duration_minutes, title: now.title,
+      ...(now.busy !== undefined ? { busy: now.busy } : {}),
+    })
   }
   return true
 }

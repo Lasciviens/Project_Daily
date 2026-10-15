@@ -260,12 +260,13 @@ function traktLines(rows: readonly UndoOutbox[]): UndoLine[] {
 
 const GOOGLE_WORDS: Record<'google_tasks' | 'google_calendar', { one: string; many: string; ops: Record<string, string> }> = {
   google_tasks: { one: 'task', many: 'tasks', ops: { create: 'added', update: 'changed', delete: 'removed' } },
-  google_calendar: { one: 'event', many: 'events', ops: { create: 'added', update: 'changed', delete: 'removed' } },
+  // 'upsert' (155): a linked slot changed on the server — its event is brought up to date.
+  google_calendar: { one: 'event', many: 'events', ops: { create: 'added', update: 'changed', upsert: 'changed', delete: 'removed' } },
 }
 
 function googleLine(s: 'google_tasks' | 'google_calendar', rows: readonly UndoOutbox[]): UndoLine {
   const w = GOOGLE_WORDS[s]
-  const order = ['delete', 'create', 'update']
+  const order = ['delete', 'create', 'update', 'upsert']
   const parts = [...rows]
     .sort((a, b) => order.indexOf(a.op) - order.indexOf(b.op))
     .map(r => `${n(r.n, w.one, w.many)} ${w.ops[r.op] ?? r.op}`)

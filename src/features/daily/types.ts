@@ -37,6 +37,17 @@ export interface ScheduleBlock {
   /** The day it was added to Google Calendar (148): the series starts on its
    *  first day on or after this, not at effective_from. Missing before 148. */
   google_calendar_from?: string | null
+  /** One item (155; missing before it): false = a time with no length —
+   *  blocks no time, Free on Google; end_time is then start + 15 min, nominal.
+   *  NOTE: since 155 start_time and end_time may BOTH be null — a repeat with
+   *  no time (an all-day series). Readers must guard (`start_time == null`). */
+  busy?:          boolean
+  /** 'calendar' | 'none' (155); null = saved before 155 (on Google when google_calendar_event_id is set). */
+  google_target?: 'calendar' | 'none' | null
+  /** What a ticked-off day of it becomes (155); null on older rows. */
+  domain?:        'personal' | 'work' | 'media' | null
+  priority?:      'low' | 'medium' | 'high' | null
+  notes?:         string | null
   created_at:   string
   updated_at:   string
 }
@@ -73,6 +84,11 @@ export interface TimeBlock {
    *  that day (migration 142): one occurrence turned into a plan of its own. */
   schedule_block_id?: string | null
   occurrence_date?:   string | null
+  /** false: a time with no length ("at 14:00") — the slot doesn't block time
+   *  and its Google event is Free (migration 155; duration_minutes then holds
+   *  a nominal 15). Missing before it = busy. A slot with no start_time is
+   *  the item's day with no time (its all-day presence on Google Calendar). */
+  busy?:            boolean | null
   /** Its linked task's status — only on the training-range read
    *  (fetchTrainingBlocksRange): a trained session (task done) is no longer "next". */
   task_status?:     'open' | 'in_progress' | 'waiting' | 'done' | 'cancelled' | null
@@ -107,6 +123,8 @@ export interface UpdateTimeBlockInput {
   duration_minutes?:          number
   category?:                  TimeBlockCategory
   color?:                     string
+  /** false: no length (155). */
+  busy?:                      boolean | null
   google_calendar_event_id?:  string | null
   /** Only ever set on an edit that links a previously-standalone block to a
    *  freshly-created Task ("Also add to Tasks" on an existing block) — see
