@@ -87,7 +87,8 @@ export function ItemForm({
     if (r === 'priority') return !hideTask('priority')
     if (r === 'deadline') return !(hideTask('dueDate') && hideTask('startDate'))
     if (r === 'area') return !hideTask('domain')
-    return showGoogle && hasGoogleTasks(target) && !hideTask('googleList')
+    // A repeat's days go to the default list (156 stores no list per repeat).
+    return showGoogle && hasGoogleTasks(target) && !repeating && !hideTask('googleList')
   })
   const open = (r: SheetRow) => form.shown.includes(r) && rows.includes(r)
   const addable = rows.filter(r => !VALUE_FACTS.includes(r) && !open(r))
