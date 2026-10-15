@@ -23,8 +23,8 @@ export function useRepeatDay() {
   })
 }
 
-export function useConvertPreview(enabled = true) {
-  return useQuery<ConvertPreview>({ queryKey: qk.items.convertPreview(), queryFn: async () => notYet('Convert preview'), staleTime: STALE.default, enabled: false && enabled })
+export function useConvertPreview() {
+  return useQuery<ConvertPreview>({ queryKey: qk.items.convertPreview(), queryFn: async () => notYet('Convert preview'), staleTime: STALE.default, enabled: false })
 }
 
 export function useConvertOldItems() {
