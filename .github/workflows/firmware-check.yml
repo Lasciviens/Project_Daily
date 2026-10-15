@@ -36,6 +36,6 @@ jobs:
       - name: Install PlatformIO
         run: pipx install platformio==6.2.0
 
-      - name: Build
+      - name: Build every program
         working-directory: firmware/kitchen-scale
-        run: pio run -e display
+        run: pio run -e display -e bench -e bench_native_usb
