@@ -63,6 +63,12 @@
 --     can't take a conversion back by deleting its tasks — time_blocks.task_id
 --     is ON DELETE CASCADE and that would take the original slots with them.
 --     The conversion's own Undo (app_convert_undo) is the way back.
+--  G. A task and its slot, for every writer: the item's day moves with its
+--     slot (item_slot_moves_due — 142's way, for every item, unless its due
+--     is a deadline elsewhere); watching a planned episode marks its task done
+--     and deleting a project item closes its slots' tasks (149's and 043's
+--     cleanup functions, redefined with only that step added); 144's
+--     app_delete_rows holds those project-item tasks for Undo.
 --
 -- Safety (DB scenarios: scripts/verify-db-one-item.mjs): this migration
 -- updates, inserts and deletes NO existing row, queues nothing in either
@@ -219,7 +225,11 @@ end;
 $$;
 
 -- Queues an upsert of one event: a waiting upsert is asked again (requested_at
--- moves, retries reset); a waiting delete is left as it is.
+-- moves, retries reset); a waiting delete is left as it is. `fields` says
+-- what the drain sends: 'title' (a done mark, a rename of a series: ONLY the
+-- summary — a done tick must never push an old day over a move made in
+-- Google) or 'all' (the slot's day, time, length, Busy/Free and title); two
+-- requests merged are 'all' when either was.
 create or replace function public.calendar_outbox_request_upsert(p_user uuid, p_event text, p_block uuid, p_payload jsonb)
 returns void
 language plpgsql
@@ -232,7 +242,10 @@ begin
   insert into public.calendar_outbox (user_id, calendar_id, event_id, operation, time_block_id, payload, requested_at)
   values (p_user, 'primary', p_event, 'upsert', p_block, coalesce(p_payload, '{}'::jsonb), clock_timestamp())
   on conflict (user_id, calendar_id, event_id) do update
-    set requested_at = excluded.requested_at, next_retry_at = now(), attempts = 0, last_error = null, payload = excluded.payload
+    set requested_at = excluded.requested_at, next_retry_at = now(), attempts = 0, last_error = null,
+        payload = excluded.payload || jsonb_build_object('fields',
+          case when coalesce(public.calendar_outbox.payload ->> 'fields', 'all') = 'all'
+                 or coalesce(excluded.payload ->> 'fields', 'all') = 'all' then 'all' else 'title' end)
     where public.calendar_outbox.operation = 'upsert';
 end;
 $$;
@@ -257,7 +270,7 @@ begin
     return null;
   end if;
   perform public.calendar_outbox_request_upsert(new.user_id, new.google_calendar_event_id, new.id,
-    jsonb_build_object('title', new.title, 'date', new.date, 'start_time', new.start_time));
+    jsonb_build_object('fields', 'all', 'title', new.title, 'date', new.date, 'start_time', new.start_time));
   return null;
 end;
 $$;
@@ -281,7 +294,7 @@ begin
   for b in select id, user_id, title, date, google_calendar_event_id from public.time_blocks
             where task_id = new.id and google_calendar_event_id is not null loop
     perform public.calendar_outbox_request_upsert(b.user_id, b.google_calendar_event_id, b.id,
-      jsonb_build_object('title', b.title, 'date', b.date, 'done', new.status = 'done'));
+      jsonb_build_object('fields', 'title', 'title', b.title, 'date', b.date, 'done', new.status = 'done'));
   end loop;
   return null;
 end;
@@ -306,7 +319,7 @@ begin
   end if;
   if new.title is not distinct from old.title then return null; end if;
   perform public.calendar_outbox_request_upsert(new.user_id, new.google_calendar_event_id, null,
-    jsonb_build_object('series', true, 'schedule_block_id', new.id, 'title', new.title));
+    jsonb_build_object('fields', 'title', 'series', true, 'schedule_block_id', new.id, 'title', new.title));
   return null;
 end;
 $$;
@@ -898,7 +911,7 @@ begin
   delete from public.time_blocks b
    using public.tasks t
    where b.id = p_block and b.user_id = v_user and t.id = b.task_id
-     and b.google_calendar_event_id is null and b.start_time is null
+     and b.google_calendar_event_id is null and b.start_time is null and b.schedule_block_id is null
      and coalesce(t.google_target, 'none') not in ('calendar', 'both')
      and t.due_date is not distinct from b.date and t.due_time is null;
   return found;
@@ -1174,8 +1187,14 @@ begin
         update public.tasks
            set google_target = case google_target when 'calendar' then 'none' when 'both' then 'tasks' else google_target end
          where id = b.task_id and google_target in ('calendar', 'both');
-        -- A slot that only put the item's day on Google Calendar goes; the item stays.
-        if b.start_time is null then delete from public.time_blocks where id = b.id; end if;
+        -- A slot that only put the item's day on Google Calendar goes (the
+        -- item stays) — app_item_drop_block's guard: not a day split off a
+        -- repeat, and the task's due IS that day (no deadline elsewhere that
+        -- the slot's day stands against). Any other slot keeps the day.
+        if b.start_time is null and b.schedule_block_id is null
+           and t.due_date is not distinct from b.date and t.due_time is null then
+          delete from public.time_blocks where id = b.id;
+        end if;
       end if;
       v_out := 'unlinked';
     elsif v_updated is not null and b.updated_at is not null and v_updated <= b.updated_at then
@@ -1188,14 +1207,9 @@ begin
                duration_minutes = case when v_time is null then duration_minutes else v_minutes end,
                busy = case when v_time is null then false else v_busy end, updated_at = now()
          where id = b.id;
-        if b.task_id is not null then
-          -- The task's due follows only while it is the slot's own day (and
-          -- time): a deadline elsewhere stays where the owner put it.
-          update public.tasks set due_date = v_date, due_time = case when due_time is null then null else v_time end,
-                 section = case when section in ('today', 'backlog') then public.item_section_for_day(v_date, v_today) else section end
-           where id = b.task_id and due_date is not distinct from b.date
-             and (due_time is null or due_time is not distinct from b.start_time);
-        end if;
+        -- The task's due follows by itself (item_slot_moves_due; 142 for a
+        -- training session) — only while it was the slot's own day: a
+        -- deadline elsewhere stays where the owner put it.
         v_moved := true;
       end if;
       if v_title is not null and v_title is distinct from coalesce(t.title, b.title) then
@@ -1258,6 +1272,348 @@ begin
   end if;
   perform set_config('app.calendar_readback', 'off', true);
   return v_out;
+end;
+$$;
+
+-- ── G. A task and its slot, for every writer (155) ──────────────────────────
+-- Since 155 every item the sheet saves has a task, so the rules that remove
+-- or move a slot without a foreign key must take its task along — else the
+-- task stays open (and goes overdue) or keeps an old day that then reads as a
+-- deadline. Each function below is its migration's own body (named), with
+-- only the task step added.
+
+-- 1. The item's day moves with its slot — for every writer (the assistant,
+--    a sync, plain SQL), the way 142 does it for a training session: when a
+--    slot's day or time changes and its task's due WAS that day (and time, or
+--    no time) — i.e. no deadline elsewhere — the due follows. A training task
+--    is left to 142's own pair of triggers; a due elsewhere (a deadline) stays.
+create or replace function public.item_slot_moves_due()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
+begin
+  if new.task_id is null or new.task_id is distinct from old.task_id then return null; end if;
+  if (new.date, new.start_time) is not distinct from (old.date, old.start_time) then return null; end if;
+  update tasks t
+     set due_date = new.date,
+         due_time = case when t.due_time is null then null else new.start_time end,
+         section  = case when t.section in ('today', 'backlog')
+                         then public.item_section_for_day(new.date, (now() at time zone 'Europe/Oslo')::date) else t.section end
+   where t.id = new.task_id
+     and not (t.hevy_routine_id is not null or t.source_type = 'training_session')
+     and t.due_date is not distinct from old.date
+     and (t.due_time is null or t.due_time is not distinct from old.start_time)
+     and (t.due_date, t.due_time) is distinct from (new.date, case when t.due_time is null then null else new.start_time end);
+  return null;
+end;
+$$;
+drop trigger if exists trg_item_slot_moves_due on public.time_blocks;
+create trigger trg_item_slot_moves_due
+  after update of date, start_time on public.time_blocks
+  for each row execute function public.item_slot_moves_due();
+
+-- 2. Watching a planned episode removes its slot (149) — and now marks the
+--    slot's task done (it was watched), instead of leaving it open.
+create or replace function public.media_watch_cleans_planned_block() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare
+  v_entry uuid;
+  v_day   date := public.media_watch_plan_day(new.watched_at);
+begin
+  if v_day is null or to_regclass('public.time_blocks') is null or not public.link_rule_enabled('episode_watched_cleans_block') then return null; end if;
+  select tv_entry_id into v_entry from public.user_tv_episodes where id = new.episode_id;
+  if v_entry is null then return null; end if;
+  -- 155: the planned episode's task is done (before its slot goes).
+  update public.tasks t set status = 'done'
+   where t.status in ('open', 'in_progress', 'waiting')
+     and t.id in (select b.task_id from public.time_blocks b
+                   where b.source_type = 'tv_episode' and b.source_id = v_entry
+                     and b.season_number = new.season_number and b.episode_number = new.episode_number
+                     and b.date <= v_day and b.task_id is not null);
+  delete from public.time_blocks
+   where source_type = 'tv_episode'
+     and source_id = v_entry
+     and season_number = new.season_number
+     and episode_number = new.episode_number
+     and date <= v_day;
+  return null;
+end;
+$$;
+
+-- 043's rule for an episode's first watch, as 149 left it — the same step.
+create or replace function public.cleanup_block_on_episode_watched() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare
+  v_day date := public.media_watch_plan_day(new.watched_at);
+begin
+  if v_day is not null and public.link_rule_enabled('episode_watched_cleans_block') then
+    -- 155: the planned episode's task is done (before its slot goes).
+    update public.tasks t set status = 'done'
+     where t.status in ('open', 'in_progress', 'waiting')
+       and t.id in (select b.task_id from public.time_blocks b
+                     where b.source_type = 'tv_episode' and b.source_id = new.tv_entry_id
+                       and b.season_number = new.season_number and b.episode_number = new.episode_number
+                       and b.date <= v_day and b.task_id is not null);
+    delete from public.time_blocks
+     where source_type = 'tv_episode'
+       and source_id = new.tv_entry_id
+       and season_number = new.season_number
+       and episode_number = new.episode_number
+       and date <= v_day;
+  end if;
+  return new;
+end;
+$$;
+
+-- 3. Deleting a project item removes its slots (043) — and now closes their
+--    open tasks the way the item stood: done when it was done, cancelled
+--    otherwise (it is gone; its planned work won't be done). app_delete_rows
+--    (below) holds those tasks for Undo.
+create or replace function public.cleanup_block_on_project_item_delete()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if public.link_rule_enabled('project_item_delete_cleans_block') then
+    update public.tasks t set status = case when old.status = 'done' then 'done' else 'cancelled' end
+     where t.status in ('open', 'in_progress', 'waiting')
+       and t.id in (select b.task_id from public.time_blocks b
+                     where b.source_type = 'project_item' and b.source_id = old.id and b.task_id is not null);
+    delete from public.time_blocks
+     where source_type = 'project_item' and source_id = old.id;
+  end if;
+  return old;
+end;
+$$;
+
+-- 4. 144's delete with Undo, verbatim but for the block that holds rule 3's
+--    tasks ("a rule that changes rows without a foreign key must be added to
+--    app_delete_rows too, or Undo misses it").
+create or replace function public.app_delete_rows(p_table text, p_ids text[])
+returns jsonb
+language plpgsql
+security invoker
+set search_path = public, pg_temp
+as $$
+declare
+  v_root    regclass := to_regclass(format('public.%I', p_table));
+  v_pk      text;
+  v_groups  jsonb := '[]'::jsonb;
+  v_links   jsonb := '[]'::jsonb;
+  v_touched jsonb := '[]'::jsonb;
+  v_hidden  jsonb := '[]'::jsonb;
+  v_seen    text[] := '{}';
+  v_todo    jsonb;
+  v_item    jsonb;
+  v_tbl     regclass;
+  v_name    text;
+  v_tpk     text;
+  v_ids     text[];
+  v_rows    jsonb;
+  v_vals    text[];
+  v_cpk     text;
+  v_cids    jsonb;
+  v_crows   jsonb;
+  v_count   integer := 0;
+  v_cap     constant integer := 10000;
+  v_too_big boolean := false;
+  v_deleted integer;
+  v_n       integer;
+  v_on      boolean;
+  r         record;
+begin
+  if v_root is null then
+    raise exception 'app_delete_rows: unknown table %', p_table using errcode = '42P01';
+  end if;
+  v_pk := public.app_pk_column(v_root);
+  if v_pk is null then
+    raise exception 'app_delete_rows: % has no single-column key', p_table;
+  end if;
+  if coalesce(array_length(p_ids, 1), 0) = 0 then
+    return null;
+  end if;
+
+  v_todo := jsonb_build_array(jsonb_build_object('t', v_root::oid, 'ids', to_jsonb(p_ids)));
+  while jsonb_array_length(v_todo) > 0 loop
+    v_item := v_todo -> 0;
+    v_todo := v_todo - 0;
+    v_tbl  := (v_item ->> 't')::oid::regclass;
+    v_name := (select c.relname::text from pg_class c where c.oid = v_tbl);
+    v_tpk  := public.app_pk_column(v_tbl);
+    select array_agg(x) into v_ids
+    from jsonb_array_elements_text(v_item -> 'ids') x
+    where not ((v_name || ':' || x) = any (v_seen));
+    continue when v_ids is null;
+    v_seen := v_seen || array(select v_name || ':' || x from unnest(v_ids) x);
+    -- The cap is checked before any row is read: a long book's page events
+    -- must take the too_big path, not the statement timeout.
+    if v_count + array_length(v_ids, 1) > v_cap then
+      v_too_big := true;
+      exit;
+    end if;
+
+    begin
+      execute format('select coalesce(jsonb_agg(to_jsonb(x)), ''[]'') from %s x where x.%I = any ($1::%s[])',
+                     v_tbl, v_tpk, public.app_column_type(v_tbl, v_tpk))
+        into v_rows using v_ids;
+    exception when insufficient_privilege then
+      -- deleted with its parent all the same; it can't be put back
+      v_hidden := v_hidden || to_jsonb(v_name);
+      continue;
+    end;
+    continue when jsonb_array_length(v_rows) = 0;
+    v_count := v_count + jsonb_array_length(v_rows);
+    if v_count > v_cap then
+      v_too_big := true;
+      exit;
+    end if;
+    v_groups := v_groups || jsonb_build_object('table', v_name, 'pk', v_tpk, 'rows', v_rows);
+
+    -- Rows that point here by a single-column foreign key in this schema.
+    for r in
+      select c.conrelid::regclass as child, cc.relname::text as child_name,
+             ca.attname::text as col, pa.attname::text as refcol, c.confdeltype as action
+      from pg_constraint c
+      join pg_class cc on cc.oid = c.conrelid
+      join pg_namespace n on n.oid = cc.relnamespace and n.nspname = 'public'
+      join pg_attribute ca on ca.attrelid = c.conrelid and ca.attnum = c.conkey[1]
+      join pg_attribute pa on pa.attrelid = c.confrelid and pa.attnum = c.confkey[1]
+      where c.contype = 'f' and c.confrelid = v_tbl and array_length(c.conkey, 1) = 1
+        and c.confdeltype in ('c', 'n', 'd')
+    loop
+      select array_agg(e ->> r.refcol) into v_vals
+      from jsonb_array_elements(v_rows) e
+      where e ->> r.refcol is not null;
+      continue when v_vals is null;
+      v_cpk := public.app_pk_column(r.child);
+      begin
+        if r.action = 'c' and v_cpk is not null then
+          execute format('select coalesce(jsonb_agg(s.k), ''[]'') from (select x.%I::text as k from %s x where x.%I = any ($1::%s[]) limit $2) s',
+                         v_cpk, r.child, r.col, public.app_column_type(r.child, r.col))
+            into v_cids using v_vals, v_cap - v_count + 1;
+          if v_count + jsonb_array_length(v_cids) > v_cap then
+            v_too_big := true;
+            exit;
+          end if;
+          if jsonb_array_length(v_cids) > 0 then
+            v_todo := v_todo || jsonb_build_object('t', r.child::oid, 'ids', v_cids);
+          end if;
+        else
+          execute format('select count(*) from (select 1 from %s x where x.%I = any ($1::%s[]) limit $2) s',
+                         r.child, r.col, public.app_column_type(r.child, r.col))
+            into v_n using v_vals, v_cap - v_count + 1;
+          continue when v_n = 0;
+          if v_count + v_n > v_cap then
+            v_too_big := true;
+            exit;
+          end if;
+          execute format('select coalesce(jsonb_agg(to_jsonb(x)), ''[]'') from %s x where x.%I = any ($1::%s[])',
+                         r.child, r.col, public.app_column_type(r.child, r.col))
+            into v_crows using v_vals;
+          v_count := v_count + jsonb_array_length(v_crows);
+          if r.action = 'c' then
+            -- a child with no single key: its rows go back, its own children are not followed
+            v_groups := v_groups || jsonb_build_object('table', r.child_name, 'pk', null, 'rows', v_crows);
+          elsif v_cpk is not null then
+            v_links := v_links || jsonb_build_object('table', r.child_name, 'pk', v_cpk, 'col', r.col, 'rows', v_crows);
+          end if;
+        end if;
+      exception when insufficient_privilege then
+        v_hidden := v_hidden || to_jsonb(r.child_name);
+      end;
+    end loop;
+
+    exit when v_too_big;
+
+    -- 043: a project item's schedule blocks go with it (by source, not a
+    -- foreign key) — while that rule is switched on, as the trigger checks.
+    v_on := false;
+    if v_name = 'project_items' and to_regclass('public.time_blocks') is not null then
+      v_on := true;
+      if to_regprocedure('public.link_rule_enabled(text)') is not null then
+        begin
+          execute 'select public.link_rule_enabled($1)' into v_on using 'project_item_delete_cleans_block';
+        exception when insufficient_privilege then
+          v_on := true;  -- the trigger (SECURITY DEFINER) reads it either way
+        end;
+      end if;
+    end if;
+    if v_on then
+      execute 'select coalesce(jsonb_agg(b.id::text), ''[]'') from public.time_blocks b
+               where b.source_type = ''project_item'' and b.source_id::text = any ($1)'
+        into v_cids using v_ids;
+      if jsonb_array_length(v_cids) > 0 then
+        v_todo := v_todo || jsonb_build_object('t', 'public.time_blocks'::regclass::oid, 'ids', v_cids);
+      end if;
+    end if;
+
+    -- 155: the same rule closes the open tasks of those blocks (a deleted
+    -- project item's planned work is done or won't be — 155's
+    -- cleanup_block_on_project_item_delete); Undo puts their status back.
+    if v_on and to_regclass('public.tasks') is not null then
+      execute 'select coalesce(jsonb_agg(to_jsonb(t)), ''[]'') from public.tasks t
+               where t.status in (''open'', ''in_progress'', ''waiting'')
+                 and t.id in (select b.task_id from public.time_blocks b
+                              where b.source_type = ''project_item'' and b.source_id::text = any ($1) and b.task_id is not null)'
+        into v_crows using v_ids;
+      if jsonb_array_length(v_crows) > 0 then
+        v_touched := v_touched || jsonb_build_object('table', 'tasks', 'pk', 'id', 'rows', v_crows);
+      end if;
+    end if;
+
+    -- 123: recipes built from a deleted food switch to typed macros.
+    if v_name = 'recipe_ingredient_library' and to_regclass('public.recipes') is not null then
+      execute 'select coalesce(jsonb_agg(to_jsonb(x)), ''[]'') from public.recipes x
+               where x.macro_mode = ''from_ingredients''
+                 and x.id in (select ri.recipe_id from public.recipe_ingredients ri
+                              where ri.library_ingredient_id::text = any ($1))'
+        into v_crows using v_ids;
+      if jsonb_array_length(v_crows) > 0 then
+        v_touched := v_touched || jsonb_build_object('table', 'recipes', 'pk', 'id', 'rows', v_crows);
+      end if;
+    end if;
+  end loop;
+
+  -- A row deleted itself is put back from its group, never as a link.
+  select coalesce(jsonb_agg(l || jsonb_build_object('rows', kept)) filter (where jsonb_array_length(kept) > 0), '[]')
+    into v_links
+  from (
+    select l, (select coalesce(jsonb_agg(x), '[]') from jsonb_array_elements(l -> 'rows') x
+               where not (((l ->> 'table') || ':' || (x ->> (l ->> 'pk'))) = any (v_seen))) as kept
+    from jsonb_array_elements(v_links) l
+  ) s;
+  select coalesce(jsonb_agg(l || jsonb_build_object('rows', kept)) filter (where jsonb_array_length(kept) > 0), '[]')
+    into v_touched
+  from (
+    select l, (select coalesce(jsonb_agg(x), '[]') from jsonb_array_elements(l -> 'rows') x
+               where not (((l ->> 'table') || ':' || (x ->> (l ->> 'pk'))) = any (v_seen))) as kept
+    from jsonb_array_elements(v_touched) l
+  ) s;
+
+  execute format('delete from %s x where x.%I = any ($1::%s[])', v_root, v_pk, public.app_column_type(v_root, v_pk))
+    using p_ids;
+  get diagnostics v_deleted = row_count;
+  if v_deleted = 0 then
+    return null;
+  end if;
+  if v_too_big then
+    -- Deleted all the same; there is just too much to hold for Undo.
+    return jsonb_build_object('v', 1, 'root', p_table, 'deleted', v_deleted, 'too_big', true,
+                              'groups', '[]'::jsonb, 'links', '[]'::jsonb, 'touched', '[]'::jsonb, 'hidden', '[]'::jsonb);
+  end if;
+
+  -- What the delete left in the rows it changed: Undo reverts a column only
+  -- where it still holds this, so an edit made since (a renamed subtask, a
+  -- Google sync's new etag) is kept.
+  v_links   := public.app_rows_after(v_links);
+  v_touched := public.app_rows_after(v_touched);
+
+  return jsonb_build_object(
+    'v', 1, 'root', p_table, 'deleted', v_deleted,
+    'groups', v_groups, 'links', v_links, 'touched', v_touched, 'hidden', v_hidden);
 end;
 $$;
 

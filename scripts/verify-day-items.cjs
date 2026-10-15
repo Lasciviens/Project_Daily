@@ -84,6 +84,13 @@ console.log('\n== 4. Days of a repeat: open, missed, done, skipped — all on th
   eq(acted.timed[0].repeat, { scheduleBlockId: 'walk', date: TODAY, acted: true }, 'acted on: it still names the plan and its day')
   const skipped = day({ templates: [plan('walk', { except_dates: [TODAY] })], blocks: [{ ...doneDay, task_status: 'cancelled' }], tasks: { cancelled: [task('t-walk', { status: 'cancelled' })] } })
   eq(skipped.timed.map(x => x.state), ['skipped'], 'a skipped day reads Skipped, in its slot')
+  // Yesterday's day of the plan, moved forward to today and not ticked yet: open, not Missed.
+  const movedDay = block('b-walk-y', { title: 'walk', task_id: 't-walk-y', task_status: 'open', start_time: '20:00:00', schedule_block_id: 'walk', occurrence_date: YESTERDAY })
+  const moved = day({ templates: [plan('walk', { except_dates: [YESTERDAY] })], blocks: [movedDay], tasks: { open: [task('t-walk-y')] } })
+  eq(moved.timed.filter(x => x.key === 'b-walk-y').map(x => [x.state, x.repeat.date]), [['open', YESTERDAY]],
+    'a day of a repeat moved forward (to today) is open, not Missed — judged from the slot\'s own day; it still names the plan\'s day')
+  const movedBack = day({ day: YESTERDAY, templates: [plan('walk', { except_dates: [TODAY] })], blocks: [{ ...doneDay, task_status: 'open', date: YESTERDAY }], tasks: { open: [task('t-walk', { due_date: YESTERDAY })] } })
+  eq(movedBack.timed.filter(x => x.key === 'b-walk').map(x => x.state), ['missed'], '…and one moved back to a past day, not ticked, is Missed')
   eq(D.repeatDayRequest('walk', TODAY), { kind: 'schedule-block', id: 'walk', occurrenceDate: TODAY, defaults: { date: TODAY } }, 'a repeat\'s day opens the sheet on that day (This day | All days)')
 }
 
@@ -123,6 +130,12 @@ console.log('\n== 7. Time with no length (155): a moment, never planned, never o
   eq(skip.timed.map(x => x.overlaps), [false, false], 'a cancelled or skipped span no longer takes its time: no overlap')
   const items = S.buildDaySchedule({ date: TODAY, blocks: [block('meet', { duration_minutes: 90 }), block('pill', { start_time: '10:30:00', busy: false })], prevBlocks: [], templates: [plan('remind', { start_time: '20:00:00', end_time: null })], events: [] })
   eq(S.plannedMinutes(items), 90, 'planned time counts only what holds time')
+  // As the save stores it (155): a repeat at 20:00 with no length keeps a nominal end (20:15) and busy false.
+  const nominal = plan('pills', { start_time: '20:00:00', end_time: '20:15:00', busy: false })
+  const withNominal = S.buildDaySchedule({ date: TODAY, blocks: [block('film', { start_time: '20:00:00', duration_minutes: 60 })], prevBlocks: [], templates: [nominal], events: [] })
+  eq([withNominal.find(i => i.kind === 'recurring')?.busy, S.plannedMinutes(withNominal)], [false, 60], 'a repeat stored with a nominal end and busy false holds no time (not planned)')
+  eq(day({ blocks: [block('film', { start_time: '20:00:00', duration_minutes: 60 })], templates: [nominal] }).timed.map(x => [x.key, x.overlaps]).sort(), [['film', false], ['pills', false]],
+    '…and never overlaps what it sits on')
   eq(projectRecurringBlocksForDay(TODAY, [plan('remind', { start_time: '20:00:00', end_time: null })]).map(p => [p.startHour, p.endHour]), [[20, 20]], 'a repeat at a time with no length is a moment')
   eq(projectRecurringBlocksForDay('2026-10-16', [plan('night', { start_time: null, end_time: null })]).map(p => [p.startHour, p.spillover]), [[-1, false]], 'a repeat with no time occurs as anytime and never spills')
 }

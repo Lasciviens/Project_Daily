@@ -72,6 +72,23 @@ check('no zone → Europe/Oslo (the server\'s)', R.blockEventBody({ date: '2026-
 check('no usable day → no event', R.blockEventBody({ date: 'soon', start_time: '09:00', duration_minutes: 30, title: 'x' }, { done: false, timeZone: TZ }) === null)
 check('a length over a day is capped at 24 h', R.blockEventBody({ date: '2026-10-15', start_time: '09:00', duration_minutes: 5000, title: 'x' }, { done: false, timeZone: TZ }).end.dateTime === '2026-10-16T09:00:00')
 
+console.log('\n3b · A done / reopen push is the title ONLY (never the day back over a move made in Google)')
+check('eventPatchFor(body, \'title\') carries the summary and nothing else', eq(Object.keys(R.eventPatchFor(busy, 'title')), ['summary'])
+  && R.eventPatchFor(busy, 'title').summary === '✓ Gym')
+check('…no start, end or transparency in it', !('start' in R.eventPatchFor(busy, 'title')) && !('end' in R.eventPatchFor(busy, 'title')) && !('transparency' in R.eventPatchFor(busy, 'title')))
+check('\'all\' (and a missing or unknown value — older queue rows) is the whole event', eq(R.eventPatchFor(busy, 'all'), busy) && eq(R.eventPatchFor(busy, undefined), busy) && eq(R.eventPatchFor(busy, 'x'), busy))
+check('doneMarkPatch: only the summary, with or without "✓ "', eq(R.doneMarkPatch('Gym', true), { summary: '✓ Gym' }) && eq(R.doneMarkPatch('✓ Gym', false), { summary: 'Gym' }))
+const itemCal = read('src/features/calendar/api/itemCalendar.ts')
+check('the browser\'s done / reopen push sends the title only (refreshTaskEventSoon, a repeat\'s day done / undone)',
+  /pushBlockCalendarEvent\(block\.id, 'title'\)/.test(itemCal) && (itemCal.match(/pushBlockCalendarEvent\(answer\.blockId, 'title'\)/g) ?? []).length === 2
+  && /eventPatchFor\(body, fields\)/.test(itemCal))
+check('the server\'s queued push sends what the row asked for (payload.fields)', /eventPatchFor\(body, row\.payload\?\.fields\)/.test(fn))
+const mig = read('supabase/migrations/155_one_item.sql')
+check('the done mark queues a title-only request; a slot change queues the whole event; merged, \'all\' wins',
+  /jsonb_build_object\('fields', 'title', 'title', b\.title, 'date', b\.date, 'done'/.test(mig)
+  && /jsonb_build_object\('fields', 'all', 'title', new\.title/.test(mig)
+  && /or coalesce\(excluded\.payload ->> 'fields', 'all'\) = 'all' then 'all' else 'title' end/.test(mig))
+
 console.log('\n4 · A Google event read back')
 const moved = R.readbackEvent({ id: 'evLunch', status: 'confirmed', summary: '✓ Lunch', start: { dateTime: '2026-10-23T10:30:00Z', timeZone: 'Europe/Oslo' }, end: { dateTime: '2026-10-23T12:00:00Z' }, updated: '2026-10-15T09:00:00.000Z' }, 'Europe/Oslo')
 check('a UTC instant reads as the event zone\'s wall clock (12:30 in Oslo, summer time)', moved.date === '2026-10-23' && moved.time === '12:30:00', JSON.stringify(moved))
@@ -110,7 +127,8 @@ check('410 = the token is gone; 404 / 500 are not', R.isSyncTokenGone(410) && !R
 
 console.log('\n6 · google-tasks-sync\'s read-back')
 const rb = fn.slice(fn.indexOf('async function readCalendarChanges('), fn.indexOf('// ── Handler ──'))
-check('it runs after the calendar outbox', /readback = await readCalendarChanges\(access_token, userId\)/.test(fn) && fn.indexOf('readCalendarChanges(access_token') > fn.indexOf('drainCalendarOutbox(access_token'))
+check('it runs BEFORE the calendar outbox (a move made in Google reaches the slot before the drain pushes it)',
+  /readback = await readCalendarChanges\(access_token, userId\)/.test(fn) && fn.indexOf('readCalendarChanges(access_token') < fn.indexOf('calendar = await drainCalendarOutbox(access_token'))
 check('it reads only the primary calendar', /\/calendars\/primary\/events\?/.test(fn))
 check('410 → a new baseline in the same run (once)', /isSyncTokenGone\(res\.status\) && plan\.mode === 'incremental' && !reset/.test(rb) && /plan = \{ mode: 'baseline' \}/.test(rb))
 check('a baseline applies nothing (only incremental items are kept)', /if \(plan\.mode === 'incremental'\) items\.push/.test(rb))

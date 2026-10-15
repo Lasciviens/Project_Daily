@@ -607,6 +607,133 @@ select public.t_ok(public.t_err($$select sync_token from public.google_calendar_
   'read-back state: the browser reads the run''s outcome, never the sync token');
 reset role;
 
+-- ═══ 6b. The read-back never deletes a slot that holds the item's day ════════
+set role authenticated;
+do $$
+declare r jsonb;
+begin
+  -- the reviewer's case: "Report" on 16.10, due by 20.10, on Google Calendar
+  r := public.app_save_item('{"title":"Report 2","domain":"work","priority":"medium","date":"2026-10-16","time":null,
+    "durationMinutes":null,"deadline":{"date":"2026-10-20","time":null},"google":"calendar","today":"2026-10-15"}');
+  insert into public.t_keep values ('report2', r, txid_current());
+end $$;
+reset role;
+update public.time_blocks set google_calendar_event_id = 'evReport2' where id = ((select v from public.t_keep where k = 'report2') ->> 'blockId')::uuid;
+update public.time_blocks set google_calendar_event_id = 'evSun25'
+ where schedule_block_id = ((select v from public.t_keep where k = 'sunday') ->> 'scheduleBlockId')::uuid and occurrence_date = '2026-10-25';
+do $$
+declare r text; k jsonb := public.t_v('report2'); v_block uuid;
+begin
+  r := public.apply_calendar_readback('00000000-0000-0000-0000-000000000001', '{"id":"evReport2","status":"cancelled"}');
+  perform public.t_ok(r = 'unlinked'
+    and (select date = '2026-10-16' and start_time is null and google_calendar_event_id is null from public.time_blocks where id = (k ->> 'blockId')::uuid)
+    and (select due_date = '2026-10-20' and google_target = 'none' and status = 'open' from public.tasks where id = (k ->> 'taskId')::uuid),
+    'read-back: an all-day slot whose day differs from its deadline (16.10, due 20.10) is KEPT when its event is deleted in Google — only the link goes');
+  select id into v_block from public.time_blocks
+   where schedule_block_id = (public.t_v('sunday') ->> 'scheduleBlockId')::uuid and occurrence_date = '2026-10-25';
+  r := public.apply_calendar_readback('00000000-0000-0000-0000-000000000001', '{"id":"evSun25","status":"cancelled"}');
+  perform public.t_ok(r = 'unlinked' and exists (select 1 from public.time_blocks where id = v_block and google_calendar_event_id is null),
+    'read-back: a day split off a repeat (all-day) is KEPT when its event is deleted in Google (it holds the day out of the repeat)');
+end $$;
+
+-- ═══ 8. A task and its slot, for every writer ════════════════════════════════
+do $$
+declare v_t uuid; v_b uuid; v_t2 uuid; v_b2 uuid; v_t3 uuid; v_b3 uuid;
+begin
+  insert into public.tasks (user_id, title, section, due_date, due_time, google_target)
+  values ('00000000-0000-0000-0000-000000000001', 'Plain', 'backlog', '2026-10-22', '14:00', 'none') returning id into v_t;
+  insert into public.time_blocks (user_id, date, title, start_time, duration_minutes, task_id)
+  values ('00000000-0000-0000-0000-000000000001', '2026-10-22', 'Plain', '14:00', 30, v_t) returning id into v_b;
+  insert into public.tasks (user_id, title, section, due_date, due_time, google_target)
+  values ('00000000-0000-0000-0000-000000000001', 'With deadline', 'backlog', '2026-10-30', '12:00', 'none') returning id into v_t2;
+  insert into public.time_blocks (user_id, date, title, start_time, duration_minutes, task_id)
+  values ('00000000-0000-0000-0000-000000000001', '2026-10-22', 'With deadline', '09:00', 30, v_t2) returning id into v_b2;
+  insert into public.tasks (user_id, title, section, due_date, due_time, google_target)
+  values ('00000000-0000-0000-0000-000000000001', 'Old row', 'backlog', '2026-10-22', null, null) returning id into v_t3;
+  insert into public.time_blocks (user_id, date, title, start_time, duration_minutes, task_id)
+  values ('00000000-0000-0000-0000-000000000001', '2026-10-22', 'Old row', '09:00', 30, v_t3) returning id into v_b3;
+  -- the assistant (service role, no user) moves the slots
+  perform set_config('test.uid', 'none', true);
+  update public.time_blocks set date = '2026-10-23', start_time = '15:00' where id = v_b;
+  update public.time_blocks set date = '2026-10-24' where id = v_b2;
+  update public.time_blocks set date = '2026-10-25' where id = v_b3;
+  perform set_config('test.uid', '', true);
+  perform public.t_ok((select due_date = '2026-10-23' and due_time = '15:00' from public.tasks where id = v_t),
+    'a slot moved by any writer takes its task''s day and time along (no deadline elsewhere)');
+  perform public.t_ok((select due_date = '2026-10-30' and due_time = '12:00' from public.tasks where id = v_t2),
+    '…a deadline elsewhere (due 30.10 12:00) stays where it is');
+  perform public.t_ok((select due_date = '2026-10-25' and due_time is null from public.tasks where id = v_t3),
+    '…an old row with a day and no due time follows the day (and keeps no time)');
+end $$;
+
+do $$
+begin
+  -- 142 still holds for a training session: its day and time move with its block, both ways
+  update public.time_blocks set date = '2026-10-21', start_time = '18:00' where id = '00000000-0000-4000-8000-0000000000e2';
+  perform public.t_ok((select due_date = '2026-10-21' and due_time = '18:00' from public.tasks where id = '00000000-0000-4000-8000-0000000000e1'),
+    '142: a training session''s task moves with its block');
+  update public.tasks set due_date = '2026-10-22' where id = '00000000-0000-4000-8000-0000000000e1';
+  perform public.t_ok((select date from public.time_blocks where id = '00000000-0000-4000-8000-0000000000e2') = '2026-10-22',
+    '142: …and its block with its task');
+end $$;
+
+-- A planned episode watched: its slot goes (149) and its task is DONE, not left open
+insert into public.user_tv_entries (id, user_id, title)
+values ('00000000-0000-4000-8000-0000000000aa', '00000000-0000-0000-0000-000000000001', 'The Show');
+set role authenticated;
+do $$
+declare r jsonb; r2 jsonb; v_ep uuid;
+begin
+  r := public.app_save_item('{"title":"The Show S02E06","domain":"media","priority":"medium","date":"2026-10-16","time":"21:00","durationMinutes":50,
+    "google":"none","source":{"type":"tv_series","id":"00000000-0000-4000-8000-0000000000aa"},"category":"media",
+    "blockSource":{"type":"tv_episode","id":"00000000-0000-4000-8000-0000000000aa","seasonNumber":2,"episodeNumber":6},"today":"2026-10-15"}');
+  -- 043 / 149: the episode's first watch (its row inserted, watched)
+  insert into public.user_tv_episodes (user_id, tv_entry_id, season_number, episode_number, watched_at)
+  values ('00000000-0000-0000-0000-000000000001', '00000000-0000-4000-8000-0000000000aa', 2, 6, '2026-10-16 21:30+00');
+  perform public.t_ok(not exists (select 1 from public.time_blocks where id = (r ->> 'blockId')::uuid)
+    and (select status = 'done' and completed_at is not null from public.tasks where id = (r ->> 'taskId')::uuid),
+    '149/043: an episode watched → its planned slot goes and its task is done (never left open to go overdue)');
+  -- 149: a watch recorded in media_watches (the episode row was there already, unwatched)
+  insert into public.user_tv_episodes (user_id, tv_entry_id, season_number, episode_number, watched_at)
+  values ('00000000-0000-0000-0000-000000000001', '00000000-0000-4000-8000-0000000000aa', 2, 7, null) returning id into v_ep;
+  r2 := public.app_save_item('{"title":"The Show S02E07","domain":"media","priority":"medium","date":"2026-10-18","time":"21:00","durationMinutes":50,
+    "google":"none","source":{"type":"tv_series","id":"00000000-0000-4000-8000-0000000000aa"},"category":"media",
+    "blockSource":{"type":"tv_episode","id":"00000000-0000-4000-8000-0000000000aa","seasonNumber":2,"episodeNumber":7},"today":"2026-10-15"}');
+  insert into public.media_watches (user_id, kind, episode_id, tv_series_id, season_number, episode_number, watched_at)
+  values ('00000000-0000-0000-0000-000000000001', 'episode', v_ep, gen_random_uuid(), 2, 7, '2026-10-18 21:40+00');
+  perform public.t_ok(not exists (select 1 from public.time_blocks where id = (r2 ->> 'blockId')::uuid)
+    and (select status from public.tasks where id = (r2 ->> 'taskId')::uuid) = 'done',
+    '149: a watch in media_watches → the planned slot goes and its task is done');
+end $$;
+
+-- A project item deleted: its slot goes (043) and its task is closed the way the item stood; Undo puts all of it back
+do $$
+declare r jsonb; r2 jsonb; v_p uuid; v_i uuid; v_i2 uuid; snap jsonb; back jsonb;
+begin
+  insert into public.projects (user_id, name) values ('00000000-0000-0000-0000-000000000001', 'House') returning id into v_p;
+  insert into public.project_items (user_id, project_id, title) values ('00000000-0000-0000-0000-000000000001', v_p, 'Paint door') returning id into v_i;
+  insert into public.project_items (user_id, project_id, title, status) values ('00000000-0000-0000-0000-000000000001', v_p, 'Fix tap', 'done') returning id into v_i2;
+  r := public.app_save_item(jsonb_build_object('title', 'Paint door', 'domain', 'personal', 'priority', 'medium', 'date', '2026-10-19', 'time', '10:00',
+    'durationMinutes', 120, 'google', 'none', 'source', jsonb_build_object('type', 'project_item', 'id', v_i),
+    'blockSource', jsonb_build_object('type', 'project_item', 'id', v_i), 'category', 'projects', 'today', '2026-10-15'));
+  r2 := public.app_save_item(jsonb_build_object('title', 'Fix tap', 'domain', 'personal', 'priority', 'medium', 'date', '2026-10-19', 'time', '13:00',
+    'durationMinutes', 30, 'google', 'none', 'source', jsonb_build_object('type', 'project_item', 'id', v_i2),
+    'blockSource', jsonb_build_object('type', 'project_item', 'id', v_i2), 'category', 'projects', 'today', '2026-10-15'));
+  snap := public.app_delete_rows('project_items', array[v_i::text]);
+  perform public.t_ok(not exists (select 1 from public.time_blocks where id = (r ->> 'blockId')::uuid)
+    and (select status from public.tasks where id = (r ->> 'taskId')::uuid) = 'cancelled',
+    '043: a project item deleted while open → its slot goes, its task is cancelled (never left open)');
+  back := public.app_restore_rows(snap);
+  perform public.t_ok(exists (select 1 from public.project_items where id = v_i)
+    and exists (select 1 from public.time_blocks where id = (r ->> 'blockId')::uuid and task_id = (r ->> 'taskId')::uuid)
+    and (select status from public.tasks where id = (r ->> 'taskId')::uuid) = 'open',
+    '…Undo puts the item, its slot AND its task''s status back (app_delete_rows holds the task)');
+  snap := public.app_delete_rows('project_items', array[v_i2::text]);
+  perform public.t_ok((select status from public.tasks where id = (r2 ->> 'taskId')::uuid) = 'done',
+    '043: a project item deleted when done → its task is done');
+end $$;
+reset role;
+
 -- ═══ 7. Activity trail, account deletion, the owner lock ════════════════════
 select public.t_ok(exists (select 1 from public.audit_logs where table_name = 'schedule_blocks' and operation = 'UPDATE'),
   'repeating plans are in the activity log now');

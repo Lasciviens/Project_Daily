@@ -304,3 +304,64 @@ grant select on public.google_tasks_outbox to authenticated;
 -- the service role reads and writes everything (it bypasses row level security in Supabase)
 grant all on all tables in schema public to service_role;
 alter role service_role bypassrls;
+
+-- The rules 155 extends (their REAL functions and triggers are loaded from the
+-- migrations by verify-db-one-item.mjs, right after this file): 043's link
+-- rules and its project-item cleanup, 117's Trakt-sync switch, 142's
+-- training day/time pair, 149's planned-episode cleanup. Their tables, as
+-- small as they can be.
+create table public.link_rules (rule_name text primary key, enabled boolean not null default true);
+insert into public.link_rules values ('episode_watched_cleans_block', true), ('project_item_delete_cleans_block', true);
+create or replace function public.link_rule_enabled(p_rule_name text)
+returns boolean language sql stable set search_path = public as $$
+  select coalesce((select enabled from public.link_rules where rule_name = p_rule_name), false);
+$$;
+grant execute on function public.link_rule_enabled(text) to authenticated;
+create or replace function public.trakt_sync_writing() returns boolean language sql stable as $$
+  select coalesce(nullif(current_setting('request.headers', true), '')::jsonb ->> 'x-trakt-sync', '') = '1'
+      or coalesce(current_setting('app.trakt_sync', true), '') = 'on'
+$$;
+create table public.user_tv_entries (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  title text not null
+);
+create table public.user_tv_episodes (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  tv_entry_id uuid not null references public.user_tv_entries(id) on delete cascade,
+  season_number integer not null, episode_number integer not null,
+  watched_at timestamptz
+);
+create table public.media_watches (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  kind text not null check (kind in ('movie', 'episode')),
+  episode_id uuid references public.user_tv_episodes(id) on delete cascade,
+  tv_series_id uuid,
+  season_number integer, episode_number integer,
+  watched_at timestamptz,
+  source text not null default 'app'
+);
+create table public.projects (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  name text not null
+);
+create table public.project_items (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  project_id uuid not null references public.projects(id) on delete cascade,
+  title text not null,
+  status text not null default 'open' check (status in ('open', 'in_progress', 'done', 'cancelled'))
+);
+do $$
+declare t text;
+begin
+  foreach t in array array['user_tv_entries', 'user_tv_episodes', 'media_watches', 'projects', 'project_items'] loop
+    execute format('alter table public.%I enable row level security', t);
+    execute format('create policy own on public.%I for all to authenticated using (user_id = (select auth.uid())) with check (user_id = (select auth.uid()))', t);
+    execute format('grant select, insert, update, delete on public.%I to authenticated', t);
+    execute format('create trigger trg_audit after insert or update or delete on public.%I for each row execute function public.log_audit()', t);
+  end loop;
+end $$;

@@ -106,6 +106,24 @@ export function blockEventBody(b: EventBlock, opts: { done: boolean; timeZone: s
   }
 }
 
+/** What a push sends: 'all' (the slot's day, time, length, Busy/Free and
+ *  title) or 'title' (a done mark, a series renamed: ONLY the summary). */
+export type EventPushFields = 'all' | 'title'
+
+/**
+ * The PATCH a push sends. A title push carries the summary and nothing else,
+ * so ticking an item done never sends its old day or time back over a move
+ * the owner made in Google Calendar. Anything but 'title' is the whole event.
+ */
+export function eventPatchFor(body: BlockEventBody, fields: EventPushFields | string | null | undefined): Partial<BlockEventBody> {
+  return fields === 'title' ? { summary: body.summary } : body
+}
+
+/** The done mark's PATCH: the title with or without "✓ " — and only that. */
+export function doneMarkPatch(title: string | null | undefined, done: boolean): { summary: string } {
+  return { summary: calendarTitle(title, done) }
+}
+
 // ── The read-back (google-tasks-sync) ───────────────────────────────────────
 
 /** The fields of a Google event the read-back reads (events.list, singleEvents=false). */

@@ -169,9 +169,11 @@ export function buildDayRows<T extends RowTask>(input: {
       ? { scheduleBlockId: b.schedule_block_id, date: b.occurrence_date, acted: true }
       : null
     const kind: RowKind = isTraining(i) ? 'training' : repeat ? 'repeat' : i.taskId ? 'task' : 'slot'
+    // Missed is judged from the slot's day as it is now (a day moved forward
+    // isn't missed); `repeat.date` stays the plan's own day (what a tick acts on).
     rows.push({
       ...base, kind, task, repeat,
-      state: !i.taskId ? null : repeat ? repeatState(status, repeat.date, today) : taskState(status),
+      state: !i.taskId ? null : repeat ? repeatState(status, b?.date ?? repeat.date, today) : taskState(status),
     })
   }
 

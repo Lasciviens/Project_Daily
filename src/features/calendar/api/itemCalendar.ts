@@ -10,7 +10,7 @@ import { drainGoogleTasksOutbox } from '../../todo/api/googleTasksOutbox'
 import type { RepeatDayAnswer, SaveItemAnswer } from '../../items/itemApi'
 import { dropItemBlock } from '../../items/itemApi'
 import type { GoogleTarget } from '../../items/itemTypes'
-import { blockEventBody } from '../calendarEventRules'
+import { blockEventBody, eventPatchFor, type EventPushFields } from '../calendarEventRules'
 import { updateCalendarEvent } from './calendarApi'
 import { ensureLinkedCalendarEventRemoved, ensureValidCalendarToken } from './calendarTokenSync'
 import { linkBlockCalendarEvent } from './linkBlockCalendarEvent'
@@ -57,10 +57,12 @@ async function drainTasks(): Promise<boolean> {
 
 /**
  * Brings a slot's event up to date from the slot as it is (day, time, length,
- * Busy/Free, title with "✓ " when its task is done). A confirmed 404/410
- * forgets the link ('not_linked'); anything else unconfirmed is 'unknown'.
+ * Busy/Free, title with "✓ " when its task is done). `fields: 'title'`
+ * sends ONLY the title (a done tick, a reopen): it never pushes the slot's
+ * day back over a move made in Google Calendar. A confirmed 404/410 forgets
+ * the link ('not_linked'); anything else unconfirmed is 'unknown'.
  */
-export async function pushBlockCalendarEvent(blockId: string): Promise<TimeBlockCalendarStatus> {
+export async function pushBlockCalendarEvent(blockId: string, fields: EventPushFields = 'all'): Promise<TimeBlockCalendarStatus> {
   const block = await fetchTimeBlockWithTask(blockId)
   const eventId = block?.google_calendar_event_id
   if (!block || !eventId) return 'not_linked'
@@ -69,7 +71,7 @@ export async function pushBlockCalendarEvent(blockId: string): Promise<TimeBlock
   const body = blockEventBody(block, { done: block.task_status === 'done', timeZone: LOCAL_TZ })
   if (!body) return 'linked'
   try {
-    await updateCalendarEvent(token, 'primary', eventId, { ...body })
+    await updateCalendarEvent(token, 'primary', eventId, { ...eventPatchFor(body, fields) })
     return 'linked'
   } catch (err) {
     if (classifyCalendarPushFailure(err) === 'not_linked') {
@@ -86,13 +88,14 @@ export async function pushBlockCalendarEvent(blockId: string): Promise<TimeBlock
   }
 }
 
-/** A task ticked done or reopened: its slot's event gains or loses "✓ ". In the
- *  background (the calendar outbox's upsert is the safety net). */
+/** A task ticked done or reopened: its slot's event gains or loses "✓ " —
+ *  the title ONLY. In the background (the calendar outbox's upsert is the
+ *  safety net). */
 export function refreshTaskEventSoon(taskId: string): void {
   if (!connected()) return
   void (async () => {
     const block = await fetchTimeBlockByTaskId(taskId)
-    if (block?.google_calendar_event_id) await pushBlockCalendarEvent(block.id)
+    if (block?.google_calendar_event_id) await pushBlockCalendarEvent(block.id, 'title')
   })().catch(err => logError(`Calendar: the done mark not updated: ${message(err)}`, { taskId }))
 }
 
@@ -229,15 +232,16 @@ export function settleRepeatDayGoogle(answer: RepeatDayAnswer): void {
       return
     }
     if (!answer.blockId) return
+    // A done / reopen push is the title only ("✓ "): never the day back over a move made in Google.
     if (answer.action === 'done') {
-      if (answer.blockEventId) await pushBlockCalendarEvent(answer.blockId)
+      if (answer.blockEventId) await pushBlockCalendarEvent(answer.blockId, 'title')
       else if (answer.seriesEventId) carryOccurrenceToCalendar(planId, answer.blockId)
     } else if (answer.action === 'skip') {
       if (answer.blockEventId) takeSkippedDayOffCalendar(answer.blockId)
       else if (answer.seriesEventId && answer.created) carryOccurrenceToCalendar(planId, answer.blockId)
     } else if (answer.action === 'undo' && answer.changed) {
       if (answer.previousStatus === 'cancelled' && answer.taskId) putSkippedDayBackOnCalendar(answer.taskId)
-      else if (answer.blockEventId) await pushBlockCalendarEvent(answer.blockId)
+      else if (answer.blockEventId) await pushBlockCalendarEvent(answer.blockId, 'title')
     }
   })().catch(err => logError(`Calendar: a repeat's day not carried to Google: ${message(err)}`, { planId, date: answer.date }))
 }

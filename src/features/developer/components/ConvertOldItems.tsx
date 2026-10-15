@@ -82,6 +82,9 @@ function ConvertPreviewBody({ preview, loading, error, onRetry }: {
       ? `${preview.futureStandaloneBlocks} future ${preview.futureStandaloneBlocks === 1 ? 'slot becomes an item' : 'slots become items'} you can tick off on Daily`
       : 'No future slot without a task — nothing to convert' },
     { tone: 'neutral', text: `${preview.pastStandaloneBlocks} past ${preview.pastStandaloneBlocks === 1 ? 'slot stays' : 'slots stay'} as ${preview.pastStandaloneBlocks === 1 ? 'it is' : 'they are'} (never marked done or missed after the fact)` },
+    ...(preview.autoClearedEpisodes
+      ? [{ tone: 'neutral' as Tone, text: `${preview.autoClearedEpisodes} planned ${preview.autoClearedEpisodes === 1 ? 'episode stays a slot' : 'episodes stay slots'} (watching one removes it)` }]
+      : []),
     { tone: 'success', text: `${preview.tasksWithSlots} ${preview.tasksWithSlots === 1 ? 'task with a slot is' : 'tasks with a slot are'} already one item` },
     { tone: 'success', text: `${preview.plans} repeating ${preview.plans === 1 ? 'plan' : 'plans'}: ${preview.plans === 1 ? 'its days tick' : 'their days tick'} from Daily already` },
   ]

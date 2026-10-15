@@ -71,7 +71,8 @@ export function buildDaySchedule(input: {
       id: p.id, canonicalId: p.canonicalId, kind: 'recurring', title: p.title,
       startHour: p.startHour, endHour: p.endHour, spillover: p.spillover, allDay: false,
       planDate: p.spillover ? prevDay : date, taskId: null, closed: false,
-      busy: !!t?.start_time && !!t.end_time, template: t,
+      // A repeat with a time and no length (busy false, 155) blocks no time: never planned, never an overlap.
+      busy: !!t?.start_time && !!t.end_time && t.busy !== false, template: t,
     })
   }
 

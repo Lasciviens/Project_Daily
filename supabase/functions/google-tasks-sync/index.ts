@@ -10,9 +10,10 @@
 // deleted on the server queues its linked Calendar event there, and this run
 // deletes it with the same token; since 155 a linked slot changed on the
 // server is queued as an 'upsert' and its event brought up to date — see the
-// "Calendar outbox" section below. Last, the Google Calendar read-back (155):
-// changes the owner made in Google Calendar to events the app linked come
-// back to their items (a sync token on the primary calendar).
+// "Calendar outbox" section below. Just before it, the Google Calendar
+// read-back (155): changes the owner made in Google Calendar to events the
+// app linked come back to their items (a sync token on the primary
+// calendar) — first, so the outbox then pushes rows that already have them.
 //
 // Self-contained (no supabase/functions/_shared/ import) per this repo's
 // established Hevy-functions convention — Deno Dashboard deploys don't
@@ -1002,6 +1003,24 @@ export function blockEventBody(b: EventBlock, opts: { done: boolean; timeZone: s
   }
 }
 
+/** What a push sends: 'all' (the slot's day, time, length, Busy/Free and
+ *  title) or 'title' (a done mark, a series renamed: ONLY the summary). */
+export type EventPushFields = 'all' | 'title'
+
+/**
+ * The PATCH a push sends. A title push carries the summary and nothing else,
+ * so ticking an item done never sends its old day or time back over a move
+ * the owner made in Google Calendar. Anything but 'title' is the whole event.
+ */
+export function eventPatchFor(body: BlockEventBody, fields: EventPushFields | string | null | undefined): Partial<BlockEventBody> {
+  return fields === 'title' ? { summary: body.summary } : body
+}
+
+/** The done mark's PATCH: the title with or without "✓ " — and only that. */
+export function doneMarkPatch(title: string | null | undefined, done: boolean): { summary: string } {
+  return { summary: calendarTitle(title, done) }
+}
+
 // ── The read-back (google-tasks-sync) ───────────────────────────────────────
 
 /** The fields of a Google event the read-back reads (events.list, singleEvents=false). */
@@ -1196,7 +1215,9 @@ async function patchQueuedEvent(token: string, userId: string, row: QueuedRow): 
     done: (block as AnyRecord).task?.status === 'done', timeZone: SERVER_EVENT_TIME_ZONE,
   })
   if (!body) return null
-  return patchCalendarEventOnce(token, row.calendar_id, row.event_id, { ...body })
+  // A done mark sends the title ONLY (payload.fields 'title'): never the slot's
+  // day back over a move the owner made in Google Calendar.
+  return patchCalendarEventOnce(token, row.calendar_id, row.event_id, { ...eventPatchFor(body, row.payload?.fields) })
 }
 
 async function drainCalendarOutbox(token: string, userId: string): Promise<CalendarStepResult> {
@@ -1508,17 +1529,20 @@ Deno.serve(async (req) => {
   // Calendar outbox (migration 135) — last, so it never delays the Tasks
   // steps above. drainCalendarRows itself never rejects; a throw here is the
   // step failing as a whole (its read of the queue or of time_blocks).
-  let calendar: CalendarStepResult = emptyCalendarDrainSummary()
-  let calendarError: string | null = null
-  try { calendar = await drainCalendarOutbox(access_token, userId) }
-  catch (e) { calendarError = errorText(e) }
-
-  // Google Calendar read-back (155) — after the outbox, so the app's own
-  // pushes of this run are already on Google when their changes come back.
+  // Google Calendar read-back (155) — BEFORE the outbox: a move the owner
+  // made in Google reaches the slot first, so the drain then pushes the
+  // moved row (never the old day back over it). A change the app made after
+  // Google's wins either way (the read-back's stale rule: Google's `updated`
+  // ≤ the slot's updated_at).
   let readback: ReadbackSummary | null = null
   let readbackError: string | null = null
   try { readback = await readCalendarChanges(access_token, userId) }
   catch (e) { readbackError = errorText(e) }
+
+  let calendar: CalendarStepResult = emptyCalendarDrainSummary()
+  let calendarError: string | null = null
+  try { calendar = await drainCalendarOutbox(access_token, userId) }
+  catch (e) { calendarError = errorText(e) }
 
   const errorKeys = Object.keys(errors)
   // The watermark only advances when the TASKS steps ran clean end-to-end. A
