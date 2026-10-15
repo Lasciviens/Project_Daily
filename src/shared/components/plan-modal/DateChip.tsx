@@ -39,13 +39,13 @@ export function DateChip({ value, onChange, today, allowNone, prefix }: {
               <CalendarDays aria-hidden />{label}
             </PopoverButton>
             <PopoverPanel anchor="bottom start" modal={false} className={CHIP_PANEL_CLASS}>
-              <div className="mb-1 flex flex-wrap gap-1.5 px-1 pt-1">
+              <div className="mb-1 flex flex-wrap gap-1.5">
                 {quick(today, 'Today')}
                 {quick(tomorrow, 'Tomorrow')}
                 {allowNone && quick(null, 'No date')}
               </div>
-              <DateCalendar value={value ?? today} onPick={pick} />
-              <p className="px-1 pb-1 text-micro text-fg-muted">
+              <DateCalendar compact value={value ?? today} onPick={pick} />
+              <p className="px-1 text-meta text-fg-muted">
                 Goes to {SECTION_LABEL[sectionForItem({ date: value }, today)]}
               </p>
             </PopoverPanel>

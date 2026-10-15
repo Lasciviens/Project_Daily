@@ -10,7 +10,8 @@ type SegmentedControlProps<T extends string> = {
   value: T
   onChange: (value: T) => void
   fullWidth?: boolean
-  size?: 'sm' | 'md'
+  /** `sm`: smaller text; `xs`: a 28px pill row for a compact header (This day | All days). */
+  size?: 'xs' | 'sm' | 'md'
 }
 
 // iOS-style segmented control. Generic over a string-union value so callers get
@@ -27,6 +28,7 @@ export function SegmentedControl<T extends string>({
       role="tablist"
       className={[
         'seg',
+        size === 'xs' ? 'seg-xs' : '',
         fullWidth ? 'w-full' : '',
       ].join(' ')}
     >

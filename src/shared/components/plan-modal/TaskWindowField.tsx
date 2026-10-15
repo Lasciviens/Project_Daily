@@ -14,9 +14,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useState } from 'react'
-import { X } from 'lucide-react'
-import { FieldLabel } from './fields'
-import { choiceClass, ADD_SLOT_CLASS } from './fieldStyles'
+import { Plus, X } from 'lucide-react'
+import { choiceClass, chipClass } from './fieldStyles'
 import { DateInput } from '../DateInput'
 import { seasonWindows, windowRangeLabel } from '../windowChips'
 import { todayStr } from './planModal.config'
@@ -36,50 +35,44 @@ export function TaskWindowField({ startDate, dueDate, onChange, locked }: Props)
 
   if (!expanded) {
     return (
-      <div>
-        <FieldLabel>Window (optional)</FieldLabel>
-        <button
-          type="button" onClick={() => setOpen(true)} disabled={locked}
-          className={ADD_SLOT_CLASS}
-        >
-          + Do it between two dates
-        </button>
-      </div>
+      <button type="button" onClick={() => setOpen(true)} disabled={locked} className={chipClass('quiet', '-ml-1.5 self-start')}>
+        <Plus aria-hidden />Do it between two dates
+      </button>
     )
   }
 
   return (
-    <div>
-      <FieldLabel>Window — do it between</FieldLabel>
-      <div className="flex flex-wrap gap-2">
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-meta text-fg-muted">Window — do it between</p>
+        <button
+          type="button" disabled={locked}
+          onClick={() => { setOpen(false); onChange({ startDate: '', dueDate }) }}
+          className={chipClass('remove', '-mr-1.5')}
+        ><X aria-hidden />No window</button>
+      </div>
+      <div className="flex flex-wrap gap-1.5">
         {windows.map(w => (
           <button
             key={w.label} type="button" disabled={locked}
             onClick={() => onChange({ startDate: w.start, dueDate: w.end })}
             aria-pressed={matched?.label === w.label}
-            className={choiceClass(matched?.label === w.label)}
+            className={choiceClass(matched?.label === w.label, undefined, 'sm')}
           >{w.label}</button>
         ))}
       </div>
 
-      <div className="mt-3 flex flex-wrap items-end gap-2">
-        <label className="text-meta font-medium text-fg-muted">
-          Start from
-          <DateInput
-            value={startDate}
-            onChange={v => onChange({ startDate: v, dueDate })}
-            aria-label="Start date"
-            className="input mt-1 block max-w-[9rem] tabular-nums"
-          />
-        </label>
-        <button
-          type="button" disabled={locked}
-          onClick={() => { setOpen(false); onChange({ startDate: '', dueDate }) }}
-          className={choiceClass(false)}
-        ><X className="h-3.5 w-3.5" aria-hidden /> No window</button>
-      </div>
+      <label className="flex items-center gap-1.5 text-meta text-fg-muted">
+        Start from
+        <DateInput
+          value={startDate}
+          onChange={v => onChange({ startDate: v, dueDate })}
+          aria-label="Start date"
+          className="input input-sm w-[8.5rem] tabular-nums"
+        />
+      </label>
 
-      <p className="mt-2 text-meta text-fg-muted">
+      <p className="text-meta text-fg-muted">
         {startDate && dueDate
           ? `Open ${windowRangeLabel(startDate, dueDate)} — the due date stays the deadline.`
           : 'Pick the earliest day you can start. The due date above stays the deadline.'}

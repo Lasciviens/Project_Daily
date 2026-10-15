@@ -5,8 +5,8 @@
 //  Styling: theme tokens only (.input / .select / .field-label, tones).
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { useId } from 'react'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { useId, type ReactNode } from 'react'
+import { ChevronDown, ChevronLeft, ChevronRight, Repeat } from 'lucide-react'
 import {
   DURATION_PRESETS, CATEGORY_LABELS, RECURRENCE_OPTIONS, DAY_LABELS, DAY_NAMES, DAY_ORDER, REPEAT_UNIT_OPTIONS,
   displayDate, todayStr, dayPickerFor, litDays, toggleRepeatDay, pickRecurrence, recurrenceProblem, repeatPreview,
@@ -15,10 +15,10 @@ import {
 import { weekdayOfIso } from '../../../features/daily/recurrence'
 import { formatDurationMinutes } from '../../utils/formatDuration'
 import { formatDate } from '../../utils/dateFormat'
-import { MetaLine, ToneDot, cx, type Tone } from '../../ui'
+import { MetaLine, cx } from '../../ui'
 import { SegmentedControl } from '../SegmentedControl'
 import { DateCalendar } from '../DateCalendar'
-import { choiceClass } from './fieldStyles'
+import { choiceClass, chipClass } from './fieldStyles'
 import type { TimeBlockCategory } from '../../../features/daily/types'
 import type { CustomRepeatKind, RecurrenceMode } from './planModal.types'
 
@@ -104,14 +104,32 @@ const HOUR_OPTS   = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '
 const MINUTE_OPTS = Array.from({ length: 12 }, (_, i) => String(i * 5).padStart(2, '0'))
 
 export function Time24Field({
-  value, onChange, onShift, locked,
+  value, onChange, onShift, locked, size = 'md',
 }: {
   value: string                       // 'HH:MM'
   onChange: (v: string) => void
   onShift: (deltaMin: number) => void
   locked?: boolean
+  /** `sm`: the Add sheet's chips (its time picker, the deadline's time) — the
+   *  hour and minute as chips, −30m / +30m after them, wrapping when narrow. */
+  size?: 'md' | 'sm'
 }) {
   const [hh = '09', mm = '00'] = value.split(':')
+  const minutes = MINUTE_OPTS.includes(mm) ? MINUTE_OPTS : [mm, ...MINUTE_OPTS]
+  if (size === 'sm') {
+    const shift = choiceClass(false, undefined, 'sm')
+    return (
+      <div className="flex flex-wrap items-center gap-1.5">
+        <div className="flex items-center gap-1">
+          <ChipSelect label="Hour" value={hh} options={HOUR_OPTS.map(h => ({ value: h, label: h }))} disabled={locked} onChange={h => onChange(`${h}:${mm}`)} />
+          <span className="font-bold text-fg-faint" aria-hidden>:</span>
+          <ChipSelect label="Minute" value={mm} options={minutes.map(m => ({ value: m, label: m }))} disabled={locked} onChange={m => onChange(`${hh}:${m}`)} />
+        </div>
+        <button type="button" disabled={locked} onClick={() => onShift(-30)} className={shift}>−30m</button>
+        <button type="button" disabled={locked} onClick={() => onShift(30)} className={shift}>+30m</button>
+      </div>
+    )
+  }
   const selectCls = 'select w-auto px-2 pr-7 tabular-nums disabled:opacity-60'
   // In a narrow slot (a half-width dialog column) the selects take the first
   // row and the two shift buttons share the second, so nothing is pushed out
@@ -127,7 +145,7 @@ export function Time24Field({
         </select>
         <span className="font-bold text-fg-faint" aria-hidden>:</span>
         <select value={mm} disabled={locked} aria-label="Minute" onChange={e => onChange(`${hh}:${e.target.value}`)} className={selectCls}>
-          {(MINUTE_OPTS.includes(mm) ? MINUTE_OPTS : [mm, ...MINUTE_OPTS]).map(m => <option key={m} value={m}>{m}</option>)}
+          {minutes.map(m => <option key={m} value={m}>{m}</option>)}
         </select>
       </div>
       <button type="button" disabled={locked} onClick={() => onShift(30)} className={shiftCls}>+30m</button>
@@ -228,6 +246,34 @@ function DayCircles({ lit, onToggle, single, locked }: {
   )
 }
 
+/**
+ * A native select drawn as a sheet chip ("Weekly ▾"): the chip shows the
+ * choice at the chip's size; the select lies invisible over it and takes the
+ * tap (the phone's own picker) and the keys. A visible select would render at
+ * 16px on touch screens (the iOS zoom guard) and stand out of the chip row.
+ */
+function ChipSelect<T extends string>({ label, value, options, onChange, icon, disabled }: {
+  label: string
+  value: T
+  options: readonly { value: T; label: string }[]
+  onChange: (v: T) => void
+  icon?: ReactNode
+  disabled?: boolean
+}) {
+  return (
+    <span className={chipClass('set', 'relative pr-2 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-accent-500/50')}>
+      {icon}{options.find(o => o.value === value)?.label ?? value}
+      <ChevronDown className="text-fg-faint" aria-hidden />
+      <select
+        aria-label={label} value={value} disabled={disabled} onChange={e => onChange(e.target.value as T)}
+        className="absolute inset-0 h-full w-full cursor-pointer appearance-none rounded-full opacity-0 disabled:cursor-default"
+      >
+        {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
+    </span>
+  )
+}
+
 const CUSTOM_KINDS: { value: CustomRepeatKind; label: string }[] = [
   { value: 'every', label: 'Every…' },
   { value: 'dates', label: 'Dates' },
@@ -262,34 +308,29 @@ export function RecurrenceField({
   return (
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-2">
-        <select
-          aria-label="Repeat" value={value.recurrence} disabled={locked}
-          onChange={e => onChange(pickRecurrence(value, e.target.value as RecurrenceMode, weekdayOfIso(start)))}
-          className="select w-auto shrink-0 pr-2 disabled:opacity-60"
-        >
-          {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-        </select>
+        <ChipSelect
+          label="Repeat" icon={<Repeat aria-hidden />} value={value.recurrence} options={options} disabled={locked}
+          onChange={mode => onChange(pickRecurrence(value, mode, weekdayOfIso(start)))}
+        />
         {custom
-          ? <SegmentedControl size="sm" options={CUSTOM_KINDS} value={value.customKind} onChange={k => onChange({ customKind: k })} />
+          ? <SegmentedControl size="xs" options={CUSTOM_KINDS} value={value.customKind} onChange={k => onChange({ customKind: k })} />
           : circles}
       </div>
 
       {custom && value.customKind === 'every' && (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             <span className="text-body text-fg-2">Every</span>
             <input
               type="number" inputMode="numeric" min={1} max={99} value={value.repeatEvery} disabled={locked}
               onChange={e => onChange({ repeatEvery: e.target.value })} aria-label="Repeat every"
-              className="input w-16 text-center tabular-nums disabled:opacity-60"
+              className="input input-sm w-14 text-center tabular-nums disabled:opacity-60"
             />
-            <select
-              aria-label="Unit" value={value.repeatUnit} disabled={locked}
-              onChange={e => onChange({ repeatUnit: e.target.value as RepeatFormFields['repeatUnit'] })}
-              className="select w-auto pr-2 disabled:opacity-60"
-            >
-              {REPEAT_UNIT_OPTIONS.map(u => <option key={u.value} value={u.value}>{every === 1 ? u.one : u.many}</option>)}
-            </select>
+            <ChipSelect
+              label="Unit" value={value.repeatUnit} disabled={locked}
+              options={REPEAT_UNIT_OPTIONS.map(u => ({ value: u.value, label: every === 1 ? u.one : u.many }))}
+              onChange={repeatUnit => onChange({ repeatUnit })}
+            />
           </div>
           {circles}
         </div>
@@ -340,32 +381,6 @@ export function CheckboxRow({
       />
       <span className="text-body text-fg-2">{label}</span>
     </label>
-  )
-}
-
-// ── Pill group — single-select chips (section / priority / domain) ────────────
-
-export function PillGroup<T extends string>({
-  options, value, onChange, locked, size,
-}: {
-  options: { id: T; label: string; tone?: Tone }[]
-  value: T
-  onChange: (v: T) => void
-  locked?: boolean
-  size?: 'md' | 'sm'
-}) {
-  return (
-    <div className="flex flex-wrap gap-1.5">
-      {options.map(o => (
-        <button
-          key={o.id} type="button" disabled={locked} onClick={() => onChange(o.id)}
-          aria-pressed={value === o.id} className={choiceClass(value === o.id, undefined, size)}
-        >
-          {o.tone && <ToneDot tone={o.tone} className={value === o.id ? 'ring-2 ring-surface/60' : undefined} />}
-          {o.label}
-        </button>
-      ))}
-    </div>
   )
 }
 
