@@ -19,6 +19,13 @@
 //  └─────────────────────────────────────────────────────────────────────────────┘
 //
 //  CHANGELOG
+//  2026-10-15 · v21 · A repeat's day is a real task on its day (migration 156,
+//                    owner: "a repeated task should be created on its day"):
+//                    the Google chip offers "Google Tasks · one per day" and
+//                    Both for a repeat (itemRules.googleTargetProblem,
+//                    sheetRules.googleChoices); a day's task saved from here is
+//                    that day of its repeat ("This day"). Ticking a day no
+//                    longer splits it off the series; skip and move still do.
 //  2026-10-15 · v20.1 · Look only (owner: "more polite, not big and clunky"):
 //                    ModalShell's compact chrome, This day | All days in the
 //                    header, Cancel quiet beside a content-sized Save, the
