@@ -19,6 +19,27 @@
 //  └─────────────────────────────────────────────────────────────────────────────┘
 //
 //  CHANGELOG
+//  2026-10-15 · v20 · The data layer behind v19 (migration 155):
+//                    (a) useSaveItem is real: one RPC (app_save_item, one
+//                    transaction, one Activity Undo), then the Google side in
+//                    the background (calendar/api/itemCalendar.ts). Moving an
+//                    item between Google Tasks and Calendar makes the new
+//                    copy first, confirms it, and only then removes the old
+//                    one; an 'unknown' answer removes nothing.
+//                    (b) The deadline is the task's due_date/due_time and the
+//                    item's own day and time live on its slot (sheetRules'
+//                    reading, now itemRules.itemFromRows — the ONE copy; a
+//                    due TIME other than the slot's is a deadline too). An
+//                    item with a day and a deadline always has a slot; a
+//                    training session never gets a deadline (142).
+//                    (c) The sheet's extras are saved: category and colour,
+//                    the window's start, the slot's own source (a TV episode
+//                    with its numbers).
+//                    (d) Delete is useDeleteItem (useSheetDelete adapts the
+//                    call): "Only 15.10.2026" takes the day out of the
+//                    repeat (app_repeat_day 'remove'), no longer a skipped
+//                    day; its Undo puts it back. A day that is its own item
+//                    goes like an item (the day stays out of the repeat).
 //  2026-10-15 · v19 · One item (owner, 15.10.2026: "one thing to add, the same
 //                    sheet edits"; migration 155, the items contract):
 //                    (a) The Task / Schedule / Recurring editors are one form
