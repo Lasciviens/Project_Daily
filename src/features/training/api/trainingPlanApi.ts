@@ -85,6 +85,16 @@ async function splitRepeatDay(templateId: string, date: string): Promise<PlanRow
   return { taskId: row.task_id, blockId: row.block_id ?? null, created: row.created === true }
 }
 
+/** A split day's task keeps the routine this view read for it (when the
+ *  database found none of its own — 141 links the routine from source_id). */
+async function keepRoutine(taskId: string, routineId: string | null): Promise<void> {
+  if (!routineId || !UUID.test(routineId)) return
+  const user = await requireUser()
+  const { error } = await supabase.from('tasks').update({ source_id: routineId.toLowerCase() })
+    .eq('user_id', user.id).eq('id', taskId).is('source_id', null)
+  if (error && !isMissingColumn(error)) throw error
+}
+
 const isMissingRpc = (e: unknown) => {
   const x = e as { code?: string; message?: string }
   return x?.code === 'PGRST202' || x?.code === '42883' || /could not find the function/i.test(x?.message ?? '')
@@ -110,6 +120,7 @@ export async function ensurePlanTask(target: PlanTarget, info: PlanInfo): Promis
     const day = await fetchRepeatDayOf(target.taskId)
     if (!day) return { taskId: target.taskId, blockId: null }
     const rows = await splitRepeatDay(day.scheduleBlockId, day.date)
+    await keepRoutine(rows.taskId, info.routineId)
     if (rows.created && rows.blockId) carryOccurrenceToCalendar(day.scheduleBlockId, rows.blockId)
     return { taskId: rows.taskId, blockId: rows.blockId }
   }
@@ -126,6 +137,7 @@ export async function ensurePlanTask(target: PlanTarget, info: PlanInfo): Promis
     // 142's split in the database (156: the day's own task reused, never a second one).
     try {
       const rows = await splitRepeatDay(target.templateId, target.date)
+      await keepRoutine(rows.taskId, info.routineId)
       if (rows.created && rows.blockId) carryOccurrenceToCalendar(target.templateId, rows.blockId)
       return { taskId: rows.taskId, blockId: rows.blockId }
     } catch (err) {

@@ -19,6 +19,13 @@
 //  └─────────────────────────────────────────────────────────────────────────────┘
 //
 //  CHANGELOG
+//  2026-10-15 · v21.1 · A repeat's day opened from its task (Home's list, the
+//                    Tasks tab) opens as that day of its repeat with This day
+//                    picked (`startScope`, PlanEntityModals.useRepeatDayOf) —
+//                    as a plain task, a Repeat added there made a second
+//                    repeat (156 review). "Only <day>" deletes the day's task
+//                    when it has one (ticked, skipped, missed: useDeleteItem),
+//                    with its own Undo.
 //  2026-10-15 · v21 · A repeat's day is a real task on its day (migration 156,
 //                    owner: "a repeated task should be created on its day"):
 //                    the Google chip offers "Google Tasks · one per day" and
@@ -501,7 +508,7 @@ function resultOf(input: SheetItemInput, saved: SavedItem, item: ItemInput | nul
 }
 
 export function UnifiedPlanModal({
-  open, onClose, mode = 'task', config, defaults, source, task, timeBlock, scheduleBlock, occurrenceDate,
+  open, onClose, mode = 'task', config, defaults, source, task, timeBlock, scheduleBlock, occurrenceDate, startScope,
   onSaved, loading = false, loadError, onDeleteOverride,
 }: UnifiedPlanModalProps) {
   const editMode = !!task || !!timeBlock || !!scheduleBlock
@@ -517,13 +524,16 @@ export function UnifiedPlanModal({
     () => (task || timeBlock || scheduleBlock ? itemFromRows(task, timeBlock, scheduleBlock) : null),
     [task, timeBlock, scheduleBlock],
   )
-  const seedForm = () => buildInitialForm({
-    mode, defaults, source, item,
-    storedGoogle: storedGoogleTarget(task, timeBlock, scheduleBlock),
-    category: timeBlock?.category ?? scheduleBlock?.category ?? null,
-    startDate: task?.start_date ?? null,
-    occurrenceDate, today, nextTime: nextPlanTime(),
-  })
+  const seedForm = () => {
+    const seeded = buildInitialForm({
+      mode, defaults, source, item,
+      storedGoogle: storedGoogleTarget(task, timeBlock, scheduleBlock),
+      category: timeBlock?.category ?? scheduleBlock?.category ?? null,
+      startDate: task?.start_date ?? null,
+      occurrenceDate, today, nextTime: nextPlanTime(),
+    })
+    return startScope === 'day' ? switchScope(seeded, 'day') : seeded
+  }
 
   const [form, setForm] = useState<PlanForm>(seedForm)
   // The title field's text; with quick add it can say more than form.title.

@@ -79,7 +79,7 @@ export function googleChoices(input: Shape): GoogleChoice[] {
         : cal === 'busy' ? 'Busy for its length' : "Free — at its time, doesn't block",
     },
     input.repeat
-      ? { target: 'tasks', label: REPEAT_TASKS_LABEL, hint: "Each day's to-do in the Google Tasks widget, on its day", disabled: blocked('tasks') }
+      ? { target: 'tasks', label: REPEAT_TASKS_LABEL, hint: "Each day's to-do in the Google Tasks widget", disabled: blocked('tasks') }
       : { target: 'tasks', label: 'Google Tasks', hint: 'A to-do in the Google Tasks widget', disabled: blocked('tasks') },
     { target: 'both', label: 'Tasks and Calendar', hint: 'Shows twice in Google Calendar', disabled: blocked('both') },
     { target: 'none', label: 'Not on Google', hint: 'Only in this app' },

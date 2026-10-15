@@ -20,7 +20,8 @@ import { resolveOrCreateGoogleTaskListId } from '../todo/api/googleTaskListsApi'
 import { sectionForDay } from '../todo/taskRules'
 import { useDeleteTask } from '../todo/hooks/useTodos'
 import {
-  convertOldItems, fetchCalendarReadbackState, fetchConvertPreview, repeatDay, runRepeatDaysToday, saveItem, undoConversion,
+  convertOldItems, fetchCalendarReadbackState, fetchConvertPreview, fetchRepeatDayTaskId, repeatDay, runRepeatDaysToday, saveItem,
+  undoConversion,
   type RepeatDayAnswer,
 } from './itemApi'
 import {
@@ -122,9 +123,11 @@ export interface DeleteQuestionWords {
  * Deletes an item, with the question and Undo (useRowsDelete / confirmDelete):
  *   scope 'item' — a one-off item (its task, slot and Google copies);
  *   scope 'all'  — a repeating item, every day it repeats (its series);
- *   scope 'day'  — one day of a repeat ("Only 15.10.2026"): a day that is an
- *                  item of its own goes like an item (the day stays out of
- *                  the repeat); otherwise the day leaves the repeat.
+ *   scope 'day'  — one day of a repeat ("Only 15.10.2026"): a day that is a
+ *                  task — split off (142) or made on its day (156), open,
+ *                  ticked, skipped or missed — goes as that task, with its
+ *                  own Undo (the same row back; the day leaves the repeat and
+ *                  comes back with it); otherwise the day leaves the repeat.
  *   const del = useDeleteItem()
  *   del.run({ taskId, blockId, scheduleBlockId, date, title }, { scope: 'day' })
  */
@@ -163,11 +166,25 @@ export function useDeleteItem() {
     if (scope === 'day') {
       if (!target.scheduleBlockId || !target.date) return Promise.reject(new Error('Delete one day: which day of the repeat?'))
       const day = formatDate(target.date)
-      if (target.taskId) {
-        return delTask.run([target.taskId], { ...words(`Delete ${day} only?`, `${title} — the other days stay`), done: `${day} deleted` })
-      }
+      const asTask = (taskId: string) =>
+        delTask.run([taskId], { ...words(`Delete ${day} only?`, `${title} — the other days stay`), done: `${day} deleted` })
+      if (target.taskId) return asTask(target.taskId)
       const planId = target.scheduleBlockId
       const date = target.date
+      // The day is a task already (156: made on its day; ticked, skipped or
+      // missed too): it goes as that task — the database takes the day out
+      // of the repeat, and Undo puts back the same row and the day.
+      return fetchRepeatDayTaskId(planId, date).then(
+        taskId => (taskId ? asTask(taskId) : removeDay(planId, date, day)),
+        (err: Error) => { toast.error(`Couldn't delete ${day}: ${err.message}`); return 'failed' as const },
+      )
+    }
+    if (target.taskId) return delTask.run([target.taskId], { ...words('Delete this item?', title), done: 'Item deleted' })
+    if (target.blockId) return delBlock.run([target.blockId], { ...words('Delete this item?', title), done: 'Item deleted' })
+    return Promise.reject(new Error('Delete: which item?'))
+
+    /** A day with no task of its own leaves the repeat; Undo puts it back. */
+    function removeDay(planId: string, date: string, day: string): Promise<DeleteOutcome> {
       return confirmDelete<RepeatDayAnswer | null>({
         ...words(`Delete ${day} only?`, `${title} — the other days stay`),
         remove: async () => {
@@ -183,9 +200,6 @@ export function useDeleteItem() {
         restored: describeRepeatDay('restore', date),
       })
     }
-    if (target.taskId) return delTask.run([target.taskId], { ...words('Delete this item?', title), done: 'Item deleted' })
-    if (target.blockId) return delBlock.run([target.blockId], { ...words('Delete this item?', title), done: 'Item deleted' })
-    return Promise.reject(new Error('Delete: which item?'))
   }
 
   return { run, busy: delTask.busy || delBlock.busy || delPlan.busy || dayOff.isPending }

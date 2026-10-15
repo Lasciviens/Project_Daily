@@ -55,20 +55,29 @@
 --     docs/integrations/google-calendar.md).
 --  F. The rules, for every writer:
 --       a day's task deleted     → the day leaves the repeat (except_dates);
---                                  put back (Undo) → it is in again
---       a day's task moved       → the day leaves the repeat; moved back → in
---       a repeat deleted         → its days nobody acted on (open, no slot)
---                                  go with it; app_delete_rows holds them for
---                                  Undo
+--                                  Undo reverts that change itself
+--       a day's task moved       → the day leaves the repeat (for good: it was
+--                                  acted on)
+--       a repeat deleted         → its untouched days go with it;
+--                                  app_delete_rows holds them for Undo
 --       a repeat edited          → its untouched days from today on follow
 --                                  (title, notes, domain, priority, time,
 --                                  Google); a day it no longer has goes
+--       a repeat sent with a     → applies to that day's repeat (All days) —
+--       day's task (its sheet)     never a second repeat
+--     Untouched (repeat_day_untouched): open, on its own day, no slot, and
+--     its day still in the repeat — a day edited on its own ("This day") is
+--     never overwritten, deleted or switched by its repeat.
+--     A training day takes its routine the app's way (repeat_day_routine:
+--     the exact title, else the longest routine name inside the plan's title;
+--     the current program's of two of one name).
 --
 -- Audit: the job's writes ARE audited (trg_audit on tasks, actor 'service'):
 -- like every other automatic writer (the Google Tasks pull, Hevy closing a
 -- session), what it made or closed is in Developer → Activity. Undoing such
--- an entry deletes those days' tasks, which — like any delete of a day's
--- task — takes the days out of their repeats.
+-- an entry deletes those days' tasks but never takes a day out of its repeat
+-- (trg_repeat_day_task_deleted stands aside inside app_undo_transaction), so
+-- the next run makes them again — an undo can't lose a day for good.
 --
 -- Safety (DB scenarios: scripts/verify-db-repeat-days.mjs): this migration
 -- creates, updates and deletes NO row and queues nothing for Google (asserted
@@ -267,6 +276,67 @@ end;
 $$;
 
 /*
+ * A day's task nobody acted on: still to do, on its own day, no slot, and its
+ * day still in its repeat. A day edited on its own ("This day") was split
+ * (142) — its day is in except_dates even when its slot went (a day with no
+ * time) — so it is never untouched: no rule edit, repeat delete or Google
+ * switch overwrites or removes it.
+ */
+create or replace function public.repeat_day_untouched(p_task public.tasks)
+returns boolean
+language sql
+stable
+set search_path = ''
+as $$
+  select p_task.schedule_block_id is not null and p_task.occurrence_date is not null
+     and p_task.status in ('open', 'in_progress', 'waiting')
+     and p_task.due_date is not distinct from p_task.occurrence_date
+     and not exists (select 1 from public.time_blocks b where b.task_id = p_task.id)
+     and not exists (select 1 from public.schedule_blocks s
+                      where s.id = p_task.schedule_block_id and p_task.occurrence_date = any (s.except_dates))
+$$;
+
+/*
+ * The Hevy routine a training repeat's day trains — the app's own reading
+ * (training/plan/nextSession.matchRoutineToPlan): the routine titled exactly
+ * like the plan (normalised: case, accents and punctuation ignored), else the
+ * longest routine title inside the plan's title ("Legs — heavy" → "Legs");
+ * a current-program routine wins a tie (current_program_routines). Null when
+ * none fits (or before Hevy's tables exist).
+ */
+create or replace function public.repeat_day_routine(p_user uuid, p_title text)
+returns text
+language plpgsql
+stable
+set search_path = public
+as $$
+declare
+  v_pt  text := btrim(regexp_replace(regexp_replace(normalize(lower(coalesce(p_title, '')), NFKD), '[\u0300-\u036f]', '', 'g'), '[^a-z0-9]+', ' ', 'g'));
+  v_has_program boolean := to_regclass('public.current_program_routines') is not null;
+  v_id  text;
+begin
+  if v_pt = '' or to_regclass('public.hevy_routines') is null then return null; end if;
+  execute format($q$
+    with r as (
+      select h.id,
+             btrim(regexp_replace(regexp_replace(normalize(lower(h.title), NFKD), '[\u0300-\u036f]', '', 'g'), '[^a-z0-9]+', ' ', 'g')) as t,
+             %s as program
+        from public.hevy_routines h where h.user_id = $1
+    )
+    select id from (
+      select id, 0 as how, 0 as len, program from r where t = $2
+      union all
+      select id, 1, length(t), program from r where length(t) >= 3 and (' ' || $2 || ' ') like ('%% ' || t || ' %%')
+    ) c order by how, len desc, program, id limit 1
+  $q$, case when v_has_program
+         then 'case when exists (select 1 from public.current_program_routines c where c.user_id = h.user_id and c.routine_id = h.id) then 0 else 1 end'
+         else '1' end)
+    into v_id using p_user, v_pt;
+  return v_id;
+end;
+$$;
+
+/*
  * THE day's task of a repeat: the task the day already has — its 142 slot's
  * (a task-less slot gets one through item_occurrence), else the task made on
  * its day — or a new one when the repeat has that day. No slot is made: the
@@ -290,6 +360,7 @@ declare
   v_task   uuid;
   v_block  uuid;
   v_target text;
+  v_routine text;
 begin
   if v_user is null or p_plan is null or p_date is null then
     raise exception 'repeat_day_task: a repeating item and a day are needed' using errcode = 'IT010';
@@ -323,13 +394,18 @@ begin
   if not public.repeat_occurs_on(p, p_date) then return; end if;
 
   v_target := public.repeat_day_target(p);
+  -- A training day trains the routine the app reads for its plan (two routines
+  -- of one name: the current program's).
+  if p.category = 'training' then v_routine := public.repeat_day_routine(v_user, p.title); end if;
   insert into public.tasks (user_id, title, description, domain, section, status, priority, due_date, due_time,
-                           source_type, google_target, google_sync_enabled, schedule_block_id, occurrence_date)
+                           source_type, source_id, hevy_routine_id, google_target, google_sync_enabled, schedule_block_id, occurrence_date)
   values (v_user, p.title, p.notes,
           coalesce(p.domain, case p.category when 'work' then 'work' when 'media' then 'media' else 'personal' end),
           public.item_section_for_day(p_date, coalesce(p_today, p_date)), 'open', coalesce(p.priority, 'medium'),
           p_date, p.start_time,
           case when p.category = 'training' then 'training_session' else 'manual' end,
+          case when v_routine ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then lower(v_routine)::uuid end,
+          v_routine,
           public.repeat_day_presence(p),
           v_target in ('tasks', 'both') and coalesce(p_connected, public.repeat_google_connected(v_user)),
           p_plan, p_date)
@@ -367,6 +443,7 @@ declare
   v_day    date := p_date;
   v_time   time;
   v_target text;
+  v_routine text;
   d        record;
 begin
   if v_user is null or p_plan is null or p_date is null then
@@ -416,12 +493,15 @@ begin
   v_task := d.id;
   if v_task is null then
     v_target := public.repeat_day_target(p);
+    if p.category = 'training' then v_routine := public.repeat_day_routine(v_user, p.title); end if;
     insert into public.tasks (user_id, title, description, domain, section, status, priority, due_date, due_time,
-                             source_type, google_sync_enabled, google_target, schedule_block_id, occurrence_date)
+                             source_type, source_id, hevy_routine_id, google_sync_enabled, google_target, schedule_block_id, occurrence_date)
     values (v_user, p.title, p.notes,
             coalesce(p.domain, case p.category when 'work' then 'work' when 'media' then 'media' else 'personal' end),
             public.item_section_for_day(p_date, p_today), 'open', coalesce(p.priority, 'medium'), p_date, p.start_time,
             case when p.category = 'training' then 'training_session' else 'manual' end,
+            case when v_routine ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then lower(v_routine)::uuid end,
+            v_routine,
             v_target in ('tasks', 'both') and public.repeat_google_connected(v_user), public.repeat_day_presence(p), p_plan, p_date)
     on conflict (schedule_block_id, occurrence_date) where schedule_block_id is not null and occurrence_date is not null do nothing
     returning id into v_task;
@@ -462,9 +542,7 @@ begin
   v_on := coalesce(p_connected, public.repeat_google_connected(p.user_id));
   for t in select x.id, x.occurrence_date, x.priority, x.google_sync_enabled from public.tasks x
             where x.schedule_block_id = p_plan and x.occurrence_date >= p_today
-              and x.status in ('open', 'in_progress', 'waiting')
-              and x.due_date is not distinct from x.occurrence_date
-              and not exists (select 1 from public.time_blocks b where b.task_id = x.id)
+              and public.repeat_day_untouched(x)
             order by x.occurrence_date
             for update of x loop
     if not public.repeat_occurs_on(p, t.occurrence_date) then
@@ -573,6 +651,8 @@ declare
   v_day_task  uuid;
   v_plan_target text;
   v_day_link  record;
+  v_day_plan  uuid;
+  v_keep_start boolean := false;
 begin
   v_created := v_task_id is null and v_block_id is null and v_plan_id is null;
   if v_user is null then
@@ -599,6 +679,21 @@ begin
     raise exception 'A length is 1 minute to 24 hours' using errcode = 'IT005';
   end if;
   if v_section is not null and v_section not in ('inbox', 'today', 'backlog') then v_section := null; end if;
+
+  -- 156: a repeat sent with a day's task (its sheet opened from a list) is
+  -- that day's repeat — All days of it, never a second repeat; its start stays.
+  if v_repeat is not null and v_scope <> 'day' and v_plan_id is null and v_task_id is not null then
+    select x.schedule_block_id into v_day_plan from public.tasks x
+     where x.id = v_task_id and x.user_id = v_user and x.occurrence_date is not null
+       and exists (select 1 from public.schedule_blocks s where s.id = x.schedule_block_id);
+    if v_day_plan is not null then
+      v_plan_id := v_day_plan;
+      v_scope := 'all';
+      v_task_id := null;
+      v_block_id := null;
+      v_keep_start := true;
+    end if;
+  end if;
 
   -- ── A repeating item's rule ────────────────────────────────────────────
   if v_repeat is not null and v_scope <> 'day' then
@@ -638,6 +733,7 @@ begin
     if v_plan_id is not null then
       select * into p from public.schedule_blocks s where s.id = v_plan_id and s.user_id = v_user for update;
       if not found then raise exception 'This repeating item is not there any more' using errcode = 'IT004'; end if;
+      if v_keep_start then v_starts := least(p.effective_from, coalesce(v_dates[1], p.effective_from)); end if;
       update public.schedule_blocks set
         title = v_title, notes = v_notes, domain = v_domain, priority = v_priority,
         days_of_week = v_days, repeat_kind = v_kind, repeat_interval = v_interval, repeat_unit = v_unit, repeat_dates = v_dates,
@@ -671,6 +767,11 @@ begin
     -- 156: its untouched days from today on follow the rule, and today's task
     -- is made now when the repeat has today (the job would make it within the hour).
     v_day_task := public.repeat_days_follow_rule(v_plan_id, v_today, v_connected);
+    -- Only a day still waiting for its Google Task is worth waiting for (a
+    -- series moving to Google Tasks goes once it is there); one ticked or not
+    -- on Google Tasks: nothing to wait for.
+    select x.id into v_day_task from public.tasks x
+     where x.id = v_day_task and x.status in ('open', 'in_progress', 'waiting') and x.google_sync_enabled;
     return jsonb_build_object('taskId', null, 'blockId', null, 'scheduleBlockId', v_plan_id, 'created', v_created,
                               'replacedTaskId', v_replaced_task, 'replacedEventId', v_replaced_event, 'occurrence', false,
                               'dayTaskId', v_day_task);
@@ -880,8 +981,7 @@ begin
     -- The day's untouched task goes with the day (its delete takes the day out too).
     delete from public.tasks t
      where t.schedule_block_id = p_plan and t.occurrence_date = p_date and t.user_id = v_user
-       and t.status in ('open', 'in_progress', 'waiting')
-       and not exists (select 1 from public.time_blocks b where b.task_id = t.id);
+       and public.repeat_day_untouched(t);
     v_changed := found;
     update public.schedule_blocks set except_dates = array_append(except_dates, p_date), updated_at = now()
      where id = p_plan and not (p_date = any (except_dates));
@@ -962,10 +1062,17 @@ language plpgsql
 set search_path = public
 as $$
 declare
-  p public.schedule_blocks%rowtype;
+  p       public.schedule_blocks%rowtype;
+  v_stack text;
 begin
   if old.schedule_block_id is null or old.occurrence_date is null then return null; end if;
   if coalesce(current_setting('app.repeat_deleting', true), '') = old.schedule_block_id::text then return null; end if;
+  -- Developer → Activity's "Undo this save" (150/151) takes a save back as it
+  -- was: undoing the save that made a day's task (the job's run, a tick ahead)
+  -- deletes it and leaves its day in the repeat (the job makes it again on its
+  -- day); undoing a save that changed except_dates reverts that change itself.
+  get diagnostics v_stack = pg_context;
+  if v_stack ~ 'function (public\.)?app_undo_(transaction|steps)\(' then return null; end if;
   select * into p from public.schedule_blocks s where s.id = old.schedule_block_id;
   if not found or not public.repeat_occurs_on(p, old.occurrence_date) then return null; end if;
   update public.schedule_blocks set except_dates = array_append(except_dates, old.occurrence_date), updated_at = now()
@@ -978,34 +1085,18 @@ create trigger trg_repeat_day_task_deleted
   after delete on public.tasks
   for each row execute function public.repeat_day_task_deleted();
 
--- A day's task put back (Undo of its delete): the day is in the repeat again
--- — unless a slot holds the day (142: then it is out on purpose).
-create or replace function public.repeat_day_task_restored()
-returns trigger
-language plpgsql
-set search_path = public
-as $$
-begin
-  if new.schedule_block_id is null or new.occurrence_date is null then return null; end if;
-  if new.due_date is distinct from new.occurrence_date then return null; end if;
-  if exists (select 1 from public.time_blocks b
-              where (b.schedule_block_id = new.schedule_block_id and b.occurrence_date = new.occurrence_date) or b.task_id = new.id) then
-    return null;
-  end if;
-  update public.schedule_blocks set except_dates = array_remove(except_dates, new.occurrence_date), updated_at = now()
-   where id = new.schedule_block_id and new.occurrence_date = any (except_dates);
-  return null;
-end;
-$$;
+-- A deleted day's task put back by Undo needs no rule of its own: the delete
+-- above changed except_dates, and both Undos revert that change themselves
+-- (app_delete_rows holds the repeat as a touched row; Activity's Undo reverts
+-- the audited update) — so a day that was out before the delete stays out.
 drop trigger if exists trg_repeat_day_task_restored on public.tasks;
-create trigger trg_repeat_day_task_restored
-  after insert on public.tasks
-  for each row execute function public.repeat_day_task_restored();
+drop function if exists public.repeat_day_task_restored();
 
 -- A day's task with no slot moved to another day (Move, a Google Tasks due
 -- change, the assistant): its own day leaves the repeat, so the repeat no
--- longer shows it there and nothing makes it again; moved back, it is in
--- again. A day with a slot moves by its slot (142, 155).
+-- longer shows it there and nothing makes it again. Moved back, it stays
+-- out: the day was acted on (its task shows on its day as the repeat's day).
+-- A day with a slot moves by its slot (142, 155).
 create or replace function public.repeat_day_task_moved()
 returns trigger
 language plpgsql
@@ -1023,10 +1114,6 @@ begin
       update public.schedule_blocks set except_dates = array_append(except_dates, new.occurrence_date), updated_at = now()
        where id = p.id and not (new.occurrence_date = any (except_dates));
     end if;
-  elsif not exists (select 1 from public.time_blocks b
-                     where b.schedule_block_id = new.schedule_block_id and b.occurrence_date = new.occurrence_date) then
-    update public.schedule_blocks set except_dates = array_remove(except_dates, new.occurrence_date), updated_at = now()
-     where id = new.schedule_block_id and new.occurrence_date = any (except_dates);
   end if;
   return null;
 end;
@@ -1048,9 +1135,7 @@ as $$
 begin
   perform set_config('app.repeat_deleting', old.id::text, true);
   delete from public.tasks t
-   where t.schedule_block_id = old.id and t.occurrence_date is not null
-     and t.status in ('open', 'in_progress', 'waiting')
-     and not exists (select 1 from public.time_blocks b where b.task_id = t.id);
+   where t.schedule_block_id = old.id and public.repeat_day_untouched(t);
   perform set_config('app.repeat_deleting', '', true);
   return old;
 end;
@@ -1241,12 +1326,23 @@ begin
     -- Undo puts them back with the repeat.
     if v_name = 'schedule_blocks' and to_regclass('public.tasks') is not null then
       execute 'select coalesce(jsonb_agg(t.id::text), ''[]'') from public.tasks t
-               where t.schedule_block_id::text = any ($1) and t.occurrence_date is not null
-                 and t.status in (''open'', ''in_progress'', ''waiting'')
-                 and not exists (select 1 from public.time_blocks b where b.task_id = t.id)'
+               where t.schedule_block_id::text = any ($1) and public.repeat_day_untouched(t)'
         into v_cids using v_ids;
       if jsonb_array_length(v_cids) > 0 then
         v_todo := v_todo || jsonb_build_object('t', 'public.tasks'::regclass::oid, 'ids', v_cids);
+      end if;
+    end if;
+
+    -- 156: a deleted day's task takes its day out of its repeat
+    -- (trg_repeat_day_task_deleted); Undo puts the repeat's except_dates back.
+    if v_name = 'tasks' and to_regclass('public.schedule_blocks') is not null then
+      execute 'select coalesce(jsonb_agg(to_jsonb(s)), ''[]'') from public.schedule_blocks s
+               where s.id in (select t.schedule_block_id from public.tasks t
+                              where t.id::text = any ($1) and t.occurrence_date is not null
+                                and not (t.occurrence_date = any (s.except_dates)))'
+        into v_crows using v_ids;
+      if jsonb_array_length(v_crows) > 0 then
+        v_touched := v_touched || jsonb_build_object('table', 'schedule_blocks', 'pk', 'id', 'rows', v_crows);
       end if;
     end if;
 
@@ -1397,9 +1493,8 @@ begin
   if v_user is null then raise exception 'app_repeat_days_google_tasks: not signed in' using errcode = '28000'; end if;
   update public.tasks t set google_sync_enabled = p_on
    where t.user_id = v_user and t.schedule_block_id = p_plan and t.occurrence_date >= p_today
-     and t.status in ('open', 'in_progress', 'waiting') and t.due_date is not distinct from t.occurrence_date
      and t.google_sync_enabled is distinct from p_on
-     and not exists (select 1 from public.time_blocks b where b.task_id = t.id);
+     and public.repeat_day_untouched(t);
   get diagnostics n = row_count;
   return n;
 end;
@@ -1436,7 +1531,7 @@ begin
 
   -- 1. Missed: closed on its own day, never carried over.
   with due as (
-    select t.id, coalesce((select min(b.date) from public.time_blocks b where b.task_id = t.id), t.due_date, t.occurrence_date) as day
+    select t.id, coalesce((select min(b.date) from public.time_blocks b where b.task_id = t.id), t.due_date) as day
       from public.tasks t
      where t.user_id = p_user and t.occurrence_date is not null
        and t.status in ('open', 'in_progress', 'waiting')
@@ -1445,7 +1540,7 @@ begin
        set status = 'cancelled', closed_reason = 'missed',
            completed_at = ((due.day + 1)::timestamp at time zone 'Europe/Oslo') - interval '1 second'
       from due
-     where t.id = due.id and due.day < p_today
+     where t.id = due.id and due.day is not null and due.day < p_today
     returning t.id
   )
   select count(*) into v_missed from closed;
@@ -1546,6 +1641,8 @@ revoke all on function public.repeat_monthly_hits(date, integer, date, integer) 
 revoke all on function public.repeat_occurs_on(public.schedule_blocks, date) from public, anon;
 revoke all on function public.repeat_day_target(public.schedule_blocks) from public, anon;
 revoke all on function public.repeat_day_presence(public.schedule_blocks) from public, anon;
+revoke all on function public.repeat_day_untouched(public.tasks) from public, anon;
+revoke all on function public.repeat_day_routine(uuid, text) from public, anon;
 revoke all on function public.repeat_google_connected(uuid) from public, anon;
 revoke all on function public.repeat_day_task(uuid, date, date, uuid, boolean) from public, anon;
 revoke all on function public.repeat_days_follow_rule(uuid, date, boolean) from public, anon;
@@ -1561,6 +1658,8 @@ grant execute on function public.repeat_monthly_hits(date, integer, date, intege
 grant execute on function public.repeat_occurs_on(public.schedule_blocks, date) to authenticated;
 grant execute on function public.repeat_day_target(public.schedule_blocks) to authenticated;
 grant execute on function public.repeat_day_presence(public.schedule_blocks) to authenticated;
+grant execute on function public.repeat_day_untouched(public.tasks) to authenticated;
+grant execute on function public.repeat_day_routine(uuid, text) to authenticated;
 grant execute on function public.repeat_google_connected(uuid) to authenticated;
 grant execute on function public.repeat_day_task(uuid, date, date, uuid, boolean) to authenticated;
 grant execute on function public.repeat_days_follow_rule(uuid, date, boolean) to authenticated;

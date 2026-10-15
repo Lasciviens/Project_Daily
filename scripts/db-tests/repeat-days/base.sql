@@ -2,7 +2,7 @@
 -- scripts/db-tests/one-item/base.sql (tasks, slots, plans, the Google Tasks
 -- outbox, the audit log, row level security, the owner lock): Hevy's routines
 -- and workouts (141 links and completes a training day), 112's skips table
--- (142), the stored Google token (a connected account) and pg_cron's job
+-- (142), the current program's routines (084), the stored Google token (a connected account) and pg_cron's job
 -- table — a stand-in with the real cron.schedule / cron.unschedule shape
 -- (the throwaway Postgres has no pg_cron).
 create table public.hevy_routines (
@@ -18,6 +18,14 @@ create table public.hevy_workouts (
   start_time timestamptz,
   end_time   timestamptz
 );
+-- 084: the routines of the current program (a training day's routine prefers them)
+create table public.current_program_routines (
+  id         uuid primary key default gen_random_uuid(),
+  user_id    uuid not null references auth.users(id) on delete cascade,
+  routine_id text not null,
+  unique (user_id, routine_id)
+);
+grant select on public.current_program_routines to authenticated;
 create table public.user_calendar_tokens (
   id            uuid primary key default gen_random_uuid(),
   user_id       uuid not null unique references auth.users(id) on delete cascade,

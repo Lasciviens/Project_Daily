@@ -2,8 +2,11 @@
 -- itself did (nothing), then the job day by day — 13.10.2026 (Tue, the first
 -- run), 14.10 and 15.10 (Thu) —, the days that are never made again
 -- (skipped, deleted, moved, taken out), a training day as the row 142 makes,
--- missed days and a late Hevy workout, the Google choices, the item save,
--- deleting a repeat, and the app's own call. The job runs as its owner (no
+-- missed days and a late Hevy workout, a training day's routine (two of one
+-- name), the Google choices, the item save (a "This day" edit never
+-- overwritten or deleted by its repeat, a Repeat given to a day's task is its
+-- repeat's), deleting a repeat or one ticked day, Activity's Undo of the
+-- job's run, and the app's own call. The job runs as its owner (no
 -- user, like pg_cron); every app call runs as `authenticated` under row level
 -- security and the owner lock.
 create or replace function public.t_ok(c boolean, msg text) returns void language plpgsql as $$
@@ -208,6 +211,11 @@ select public.t_ok((select google_target = 'both' and google_sync_enabled and pr
   and exists (select 1 from public.google_tasks_outbox where operation = 'create' and task_id = public.t_id(public.t_p('read'), '2026-10-15')),
   'Google both: the day''s Google Task is queued (the series keeps the day too)');
 
+-- The day moved 14.10 → 16.10 is now taken off any day ("No date")
+set role authenticated;
+update public.tasks set due_date = null where id = public.t_id(public.t_p('water'), '2026-10-14');
+reset role;
+
 -- ═══ 4. Deleted, taken out, skipped: never made again ════════════════════════
 set role authenticated;
 do $$
@@ -273,6 +281,22 @@ insert into public.t_keep values ('run22', public.t_run('2026-10-22'));
 select public.t_ok(public.t_n(public.t_p('read'), '2026-10-22') = 1
   and (select status from public.t_day(public.t_p('read'), '2026-10-22')) = 'done',
   '…on its day the job finds it: still one task, still done');
+select public.t_ok((select status = 'open' and closed_reason is null from public.t_day(public.t_p('water'), '2026-10-14')),
+  'a day''s task moved to "no date" is never closed as missed (it has no day that could pass)');
+
+-- "Only this day" on a day already ticked: its task goes with a real Undo (the same row back, the day back in the repeat)
+set role authenticated;
+do $$
+declare s jsonb; v uuid := public.t_id(public.t_p('water'), '2026-10-13'); r jsonb;
+begin
+  s := public.app_delete_rows('tasks', array[v::text]);
+  perform public.t_ok(not exists (select 1 from public.tasks where id = v) and public.t_out(public.t_p('water'), '2026-10-13'),
+    '"Only this day" on a ticked day deletes its task and takes the day out of the repeat');
+  r := public.app_restore_rows(s);
+  perform public.t_ok((select status = 'done' from public.tasks where id = v) and not public.t_out(public.t_p('water'), '2026-10-13'),
+    '…Undo puts back the same done task and the repeat as it was');
+end $$;
+reset role;
 
 -- ═══ 5. A training day is the row 142 makes or reuses ═══════════════════════
 -- (22.10's run closed 15.10 as missed for the rest; the training scenarios
@@ -313,6 +337,25 @@ insert into public.hevy_workouts (id, user_id, title, routine_id, start_time, en
 select public.t_ok((select status = 'done' and closed_reason is null and hevy_workout_id = 'w-legs' and completed_at = '2026-10-15 17:30+00'
   from public.t_day(public.t_p('legs'), '2026-10-13')),
   'a Hevy workout logged late (15.10) completes the missed training day of 13.10 — done, the marker gone, closed at the workout''s end');
+
+-- Two routines called "Push day" (one in the current program) and a plan "Push day — heavy"
+insert into public.hevy_routines (id, user_id, title) values
+  ('7a000000-0000-4000-8000-000000000001', '00000000-0000-0000-0000-000000000001', 'Push day'),
+  ('7a000000-0000-4000-8000-000000000002', '00000000-0000-0000-0000-000000000001', 'push  DAY');
+insert into public.current_program_routines (user_id, routine_id) values
+  ('00000000-0000-0000-0000-000000000001', '7a000000-0000-4000-8000-000000000002');
+insert into public.schedule_blocks (id, user_id, title, days_of_week, start_time, end_time, category, effective_from, google_target) values
+  ('00000000-0000-4000-8000-0000000001ab', '00000000-0000-0000-0000-000000000001', 'Push day — heavy', '{3}', '18:00', '19:00', 'training',
+   '2026-09-01', 'none');
+insert into public.t_plan values ('push', '00000000-0000-4000-8000-0000000001ab');
+select count(*) from public.repeat_day_task(public.t_p('push'), '2026-10-14', '2026-10-14', '00000000-0000-0000-0000-000000000001');
+select public.t_ok((select hevy_routine_id = '7a000000-0000-4000-8000-000000000002' and source_id = '7a000000-0000-4000-8000-000000000002'
+         from public.t_day(public.t_p('push'), '2026-10-14')),
+  'a training day keeps its routine the app''s way: the name inside the plan''s title, the current program''s of two');
+insert into public.hevy_workouts (id, user_id, title, routine_id, start_time, end_time) values
+  ('w-push', '00000000-0000-0000-0000-000000000001', 'Push day', '7a000000-0000-4000-8000-000000000002', '2026-10-15 05:00+00', '2026-10-15 06:00+00');
+select public.t_ok((select status = 'done' and hevy_workout_id = 'w-push' from public.t_day(public.t_p('push'), '2026-10-14')),
+  '…so its workout logged the next day completes the day (141''s late window)');
 
 -- ═══ 6. The item save ═══════════════════════════════════════════════════════
 set role authenticated;
@@ -388,6 +431,62 @@ begin
 end $$;
 reset role;
 
+-- A day edited on its own ("This day") is never overwritten or deleted by its repeat
+set role authenticated;
+do $$
+declare r jsonb; p uuid; v uuid; s jsonb;
+begin
+  r := public.app_save_item('{"title":"Journal","domain":"personal","priority":"medium","date":"2026-10-15","time":null,"durationMinutes":null,
+    "repeat":{"kind":"weekly","daysOfWeek":[0,1,2,3,4,5,6],"startsOn":"2026-10-15"},"google":"none","today":"2026-10-15"}');
+  p := (r ->> 'scheduleBlockId')::uuid;
+  v := public.t_id(p, '2026-10-15');
+  r := public.app_save_item(jsonb_build_object('scheduleBlockId', p, 'scope', 'day', 'occurrenceDate', '2026-10-15',
+    'title', 'Journal — the long one', 'domain', 'personal', 'priority', 'medium', 'date', '2026-10-15', 'time', null,
+    'durationMinutes', null, 'google', 'none', 'today', '2026-10-15'));
+  perform public.t_ok((r ->> 'taskId')::uuid = v and not exists (select 1 from public.time_blocks where task_id = v)
+    and public.t_out(p, '2026-10-15'),
+    '"This day" (no time): the same task, renamed, its slot gone, its day out of the repeat');
+  r := public.app_save_item(jsonb_build_object('scheduleBlockId', p, 'scope', 'all', 'title', 'Journal 2', 'domain', 'personal',
+    'priority', 'high', 'date', '2026-10-15', 'time', null, 'durationMinutes', null,
+    'repeat', jsonb_build_object('kind', 'weekly', 'daysOfWeek', jsonb_build_array(1, 2), 'startsOn', '2026-10-15'),
+    'google', 'none', 'today', '2026-10-15'));
+  perform public.t_ok((select title = 'Journal — the long one' and priority = 'medium' and status = 'open' from public.tasks where id = v),
+    '…then All days (a new title, days that leave out Thursday): the edited day keeps its edit and is not deleted');
+  s := public.app_delete_rows('schedule_blocks', array[p::text]);
+  perform public.t_ok((select title = 'Journal — the long one' and schedule_block_id is null from public.tasks where id = v),
+    '…then the repeat deleted: the edited day stays');
+end $$;
+
+-- A day's task given "Weekdays" from its sheet is its repeat's All days — one repeat, one series
+do $$
+declare r jsonb; v uuid := public.t_id(public.t_p('read'), '2026-10-22'); n bigint := (select count(*) from public.schedule_blocks);
+begin
+  r := public.app_save_item(jsonb_build_object('taskId', v, 'scope', 'item', 'title', 'Read', 'domain', 'media', 'priority', 'high',
+    'date', '2026-10-22', 'time', '21:00', 'durationMinutes', 30, 'google', 'both',
+    'repeat', jsonb_build_object('kind', 'weekly', 'daysOfWeek', jsonb_build_array(1, 2, 3, 4, 5), 'startsOn', '2026-10-22'),
+    'today', '2026-10-15', 'googleConnected', true));
+  perform public.t_ok((r ->> 'scheduleBlockId')::uuid = public.t_p('read') and r ->> 'replacedTaskId' is null and r ->> 'replacedEventId' is null
+    and (select count(*) from public.schedule_blocks) = n
+    and (select days_of_week = '{1,2,3,4,5}' and google_calendar_event_id = 'evRead' and effective_from = '2026-09-01'
+           from public.schedule_blocks where id = public.t_p('read'))
+    and exists (select 1 from public.tasks where id = v),
+    'a day''s task given "Weekdays" changes ITS repeat (All days, its start kept): one repeat, one series, the day stays');
+end $$;
+
+-- Calendar → Google Tasks with today already ticked: nothing to wait for
+do $$
+declare r jsonb; p uuid := (select id from public.schedule_blocks where title = 'Floss');
+begin
+  perform public.app_repeat_day(p, '2026-10-15', 'done', '2026-10-15');
+  r := public.app_save_item(jsonb_build_object('scheduleBlockId', p, 'scope', 'all', 'title', 'Floss', 'domain', 'personal',
+    'priority', 'medium', 'date', '2026-10-15', 'time', null, 'durationMinutes', null,
+    'repeat', jsonb_build_object('kind', 'weekly', 'daysOfWeek', jsonb_build_array(0,1,2,3,4,5,6), 'startsOn', '2026-10-15'),
+    'google', 'tasks', 'today', '2026-10-15', 'googleConnected', true));
+  perform public.t_ok(r ->> 'dayTaskId' is null,
+    'Calendar → Google Tasks with today ticked: no day to wait for (dayTaskId null), so the series can go at once');
+end $$;
+reset role;
+
 -- ═══ 7. Deleting a repeat ════════════════════════════════════════════════════
 set role authenticated;
 do $$
@@ -396,7 +495,7 @@ begin
   r := public.app_save_item('{"title":"Temp","domain":"personal","priority":"medium","date":"2026-10-14","time":null,"durationMinutes":null,
     "repeat":{"kind":"weekly","daysOfWeek":[0,1,2,3,4,5,6],"startsOn":"2026-10-14"},"google":"none","today":"2026-10-15"}');
   p := (r ->> 'scheduleBlockId')::uuid;
-  v15 := (r ->> 'dayTaskId')::uuid;
+  v15 := public.t_id(p, '2026-10-15');
   v14 := (public.app_repeat_day(p, '2026-10-14', 'done', '2026-10-15') ->> 'taskId')::uuid;
   s := public.app_delete_rows('schedule_blocks', array[p::text]);
   perform public.t_ok(not exists (select 1 from public.tasks where id = v15)
@@ -442,6 +541,34 @@ select public.t_ok((select to_jsonb(s) from public.snap_blocks s where s.id = '0
   = (select to_jsonb(b) from public.time_blocks b where b.id = '00000000-0000-4000-8000-0000000001c8')
   and (select status from public.tasks where id = '00000000-0000-4000-8000-0000000001b8') = 'done',
   'a day split off before 156 (142) is untouched: its slot and its done task');
+
+-- ═══ 9b. Developer → Activity's Undo of the job's run ═══════════════════════
+create or replace function public.t_run_user(p_day date) returns jsonb language plpgsql as $$
+declare r jsonb;
+begin
+  perform set_config('test.uid', 'none', true);
+  r := public.repeat_days_for_user('00000000-0000-0000-0000-000000000001', p_day);
+  perform set_config('test.uid', '', true);
+  return r;
+end $$;
+insert into public.t_keep values ('run18', public.t_run_user('2026-10-18'));
+insert into public.t_keep values ('w18', to_jsonb(public.t_id(public.t_p('water'), '2026-10-18')));
+insert into public.t_keep values ('tx18', to_jsonb((select tx_id from public.audit_logs where table_name = 'tasks' and operation = 'INSERT'
+                                                     and row_id = (public.t_v('w18') #>> '{}'))));
+set role authenticated;
+do $$
+declare p jsonb; a jsonb; tx bigint := (public.t_v('tx18') #>> '{}')::bigint;
+begin
+  p := public.app_undo_transaction(tx);
+  a := public.app_undo_transaction(tx, true, p ->> 'confirm');
+  perform public.t_ok((a ->> 'applied')::boolean
+    and not exists (select 1 from public.tasks where id = (public.t_v('w18') #>> '{}')::uuid)
+    and not public.t_out(public.t_p('water'), '2026-10-18'),
+    'Activity''s Undo of the job''s run removes the days it made — and never takes a day out of its repeat');
+end $$;
+reset role;
+insert into public.t_keep values ('run18b', public.t_run_user('2026-10-18'));
+select public.t_ok(public.t_n(public.t_p('water'), '2026-10-18') = 1, '…so the next run makes the day again');
 
 -- ═══ 10. The app's call ═════════════════════════════════════════════════════
 set test.uid = '00000000-0000-0000-0000-000000000003';

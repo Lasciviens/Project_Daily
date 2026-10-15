@@ -125,6 +125,9 @@ export interface UnifiedPlanModalProps {
   scheduleBlock?: ScheduleBlock
   /** A repeating item opened on one of its days: offers This day | All days. */
   occurrenceDate?: string | null
+  /** Which of the two it starts on (default All days); 'day' when the sheet
+   *  opens a repeat's day from its task (156). */
+  startScope?: 'day' | 'all'
 
   /** Fires after a successful save, before close — for caller-side follow-up. */
   onSaved?: (result: PlanResult) => void

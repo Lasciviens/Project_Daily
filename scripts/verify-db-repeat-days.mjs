@@ -66,6 +66,7 @@ grant select, insert, update, delete on public.training_skips to authenticated;`
 const require = createRequire(import.meta.url)
 require('sucrase/register')
 const R = require('../src/features/daily/recurrence.ts')
+const { matchRoutineToPlan } = require('../src/features/training/plan/nextSession.ts')
 const RULES = [
   { days_of_week: [1, 3, 5], repeat_kind: 'weekly', effective_from: '2026-02-11' },
   { days_of_week: [0, 1, 2, 3, 4, 5, 6], repeat_kind: 'weekly', effective_from: '2026-01-01', except_dates: ['2026-03-29', '2026-10-25'] },
@@ -91,6 +92,27 @@ insert into public.schedule_blocks (id, user_id, title, days_of_week, start_time
   repeat_interval, repeat_unit, repeat_dates) values ${ruleRows};
 \\copy (select s.title, to_char(d, 'YYYY-MM-DD') from public.schedule_blocks s, generate_series('${FROM}'::date, '${TO}'::date, interval '1 day') d where s.user_id = '00000000-0000-0000-0000-000000000003' and s.title like 'rule %' and public.repeat_occurs_on(s, d::date) order by s.title, d) to stdout
 delete from public.schedule_blocks where user_id = '00000000-0000-0000-0000-000000000003' and title like 'rule %';
+`
+
+// The training day's routine: SQL's repeat_day_routine = nextSession.matchRoutineToPlan (no source id).
+const ROUTINES = [
+  { id: '8b000000-0000-4000-8000-000000000001', title: 'Push day' },
+  { id: '8b000000-0000-4000-8000-000000000002', title: 'push  DAY' },
+  { id: '8b000000-0000-4000-8000-000000000003', title: 'Legs' },
+  { id: '8b000000-0000-4000-8000-000000000004', title: 'Upper B' },
+  { id: '8b000000-0000-4000-8000-000000000005', title: 'Upper' },
+  { id: '8b000000-0000-4000-8000-000000000006', title: 'Øvelse på bänk' },
+  { id: '8b000000-0000-4000-8000-000000000007', title: 'Ab' },
+]
+const PROGRAM = ['8b000000-0000-4000-8000-000000000002', '8b000000-0000-4000-8000-000000000005']
+const TITLES = ['Push day', 'Push day — heavy', 'Legs', 'legs!', 'Upper B', 'Upper body', 'Upper A', 'Full body', 'Ovelse pa bank',
+  'Øvelse på bänk (light)', 'Ab wheel', 'Abs', '', 'Leg day', 'Heavy legs and push day']
+const routineSql = `
+insert into public.hevy_routines (id, user_id, title) values ${ROUTINES.map(r => `('${r.id}', '00000000-0000-0000-0000-000000000003', '${r.title}')`).join(', ')};
+insert into public.current_program_routines (user_id, routine_id) values ${PROGRAM.map(id => `('00000000-0000-0000-0000-000000000003', '${id}')`).join(', ')};
+${TITLES.map((t, i) => `select 'title ${i}', coalesce(public.repeat_day_routine('00000000-0000-0000-0000-000000000003', '${t.replace(/'/g, "''")}'), '-');`).join('\n')}
+delete from public.current_program_routines where user_id = '00000000-0000-0000-0000-000000000003';
+delete from public.hevy_routines where user_id = '00000000-0000-0000-0000-000000000003';
 `
 
 psql(url, ['-c', `create database ${db}`])
@@ -132,11 +154,21 @@ try {
       if (JSON.stringify(want) !== JSON.stringify(have)) bad.push(`rule ${i} (${r.repeat_kind}): TS ${want.length} days, SQL ${have.length} — first difference ${want.find((d, n) => d !== have[n]) ?? have[want.length]}`)
       else ruleChecks += want.length
     })
+    // 3. SQL's routine for a training day = the app's (matchRoutineToPlan).
+    const routineOut = execFileSync('psql', [target, '-v', 'ON_ERROR_STOP=1', '-q', '-At', '-F', '|'], { input: routineSql, encoding: 'utf8' })
+    const sqlRoutine = new Map(routineOut.split('\n').filter(l => /^title \d+\|/.test(l)).map(l => l.split('|')))
+    const program = new Set(PROGRAM)
+    TITLES.forEach((t, i) => {
+      const want = matchRoutineToPlan({ title: t, date: '2026-10-15', startTime: null, sourceId: null }, ROUTINES, program)?.id ?? '-'
+      const have = sqlRoutine.get(`title ${i}`)
+      if (want !== have) bad.push(`routine for "${t}": TS ${want}, SQL ${have}`)
+      else ruleChecks++
+    })
     if (bad.length) {
-      failed = `FAIL  repeat_occurs_on differs from recurrence.occursOn:\n${bad.join('\n')}`
+      failed = `FAIL  the SQL rules differ from the app's:\n${bad.join('\n')}`
       console.error(failed)
     } else {
-      console.log(`verify-db-repeat-days: migrations 141 + 142 + 155, the owner's data, 156 (applied twice), ${passed} scenarios, and the SQL repeat rule = recurrence.ts on ${ruleChecks} days of ${RULES.length} rules passed`)
+      console.log(`verify-db-repeat-days: migrations 141 + 142 + 155, the owner's data, 156 (applied twice), ${passed} scenarios, the SQL repeat rule = recurrence.ts (${RULES.length} rules, two years) and the SQL routine match = matchRoutineToPlan (${TITLES.length} titles): ${ruleChecks} checks passed`)
     }
   }
 } finally {

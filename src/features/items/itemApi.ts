@@ -105,6 +105,28 @@ export async function repeatDay(scheduleBlockId: string, date: string, action: '
 
 const count = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : Number(v) || 0)
 
+const isMissingColumn = (e: PgError | null | undefined) =>
+  !!e && (e.code === '42703' || e.code === 'PGRST204' || /column .* does not exist|could not find the .* column/i.test(e.message ?? ''))
+
+/** The task one day of a repeat already is — its split-off slot's (142), or
+ *  the one made on its day (156) — or null (the day is only the repeat's). */
+export async function fetchRepeatDayTaskId(scheduleBlockId: string, date: string): Promise<string | null> {
+  const slot = await supabase.from('time_blocks').select('task_id')
+    .eq('schedule_block_id', scheduleBlockId).eq('occurrence_date', date).maybeSingle()
+  if (slot.error) {
+    if (isMissingColumn(slot.error)) return null
+    throw rpcError(slot.error)
+  }
+  if (slot.data?.task_id) return slot.data.task_id as string
+  const day = await supabase.from('tasks').select('id')
+    .eq('schedule_block_id', scheduleBlockId).eq('occurrence_date', date).maybeSingle()
+  if (day.error) {
+    if (isMissingColumn(day.error)) return null
+    throw rpcError(day.error)
+  }
+  return (day.data?.id as string | undefined) ?? null
+}
+
 /** What the day's repeats run did (app_repeat_days_today, 156). */
 export interface RepeatDaysRun {
   /** Days that passed unticked, closed as missed. */

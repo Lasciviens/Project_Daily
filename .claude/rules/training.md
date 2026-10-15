@@ -13,7 +13,7 @@ Background: `docs/features/training.md`.
 - The coach snapshot line formats are a contract with `PT_SYSTEM_PROMPT` (`coach/coachFormat.ts`): change them together.
 - A planned session's status comes only from `plan/sessionState.ts`; `training_skips` is written only by the two training APIs (`verify-training-session`).
 - The database completes a planned session when its workout syncs (141): edge functions never close or delete training tasks.
-- A training plan's day is a task on its day (156, no block): every training action splits it the 142 way first (`ensurePlanTask` → `item_occurrence`, the same task) so the block-reading views see it; a day closed as missed (`closed_reason 'missed'`) is read as a past open plan (`taskMissed`), never a skip.
+- A training plan's day is a task on its day (156, no block): every training action splits it the 142 way first (`ensurePlanTask` → `item_occurrence`, the same task, keeping the view's routine) so the block-reading views see it; its routine is matched the app's way in SQL too (`repeat_day_routine` mirrors `matchRoutineToPlan` — change them together); a day closed as missed (`closed_reason 'missed'`) is read as a past open plan (`taskMissed`), never a skip.
 - A session is never planned twice on one day without asking (`plan/planTwins.ts`); "Plan it" goes through `openPlanRoutine`.
 - The current program is explicit (`current_program_routines`), never inferred from recency.
 - Hevy payloads match the OpenAPI schema exactly: omit `rep_range` instead of sending null; no `folder_id` on PUT; omit empty body-measurement fields and merge with the stored day before writing (a partial save once wiped a day).
