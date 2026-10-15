@@ -34,18 +34,19 @@ export function glanceInColumn(step: PageStep): boolean {
 //   1  week: the picker alone (a tap opens the day); month: calendar and the
 //      picked day / upcoming side by side once the page is 56rem wide.
 //   2  picker + one pane: the picked day, else Upcoming.
-//   3  picker + the picked day's schedule + Upcoming.
-//   4  picker + schedule + that day's tasks + Upcoming.
+//   3  picker + the picked day (its one list) + Upcoming.
+//   4  the same, the picked day two tracks wide (its list is ONE list since
+//      15.10.2026 — no separate "Tasks · day" card).
 // The picker track stops at 40rem: a month grid stretched to 56rem is all
 // empty squares. It stops at four columns (four sections).
-export const PICKER_SECTIONS = ['pair', 'picker', 'pickedOrUpcoming', 'picked', 'dayTasks', 'upcoming'] as const
+export const PICKER_SECTIONS = ['pair', 'picker', 'pickedOrUpcoming', 'picked', 'upcoming'] as const
 export type PickerSection = typeof PICKER_SECTIONS[number]
 
 const PICKER_MAIN = '40rem'
 const PICKER_WIDE = {
   2: { main: PICKER_MAIN, columns: [['picker'], ['pickedOrUpcoming']] },
   3: { main: PICKER_MAIN, columns: [['picker'], ['picked'], ['upcoming']] },
-  4: { main: PICKER_MAIN, columns: [['picker'], ['picked'], ['dayTasks'], ['upcoming']] },
+  4: { main: PICKER_MAIN, columns: [['picker'], { stack: ['picked'], span: 2 }, ['upcoming']] },
 } as const
 
 export const WEEK_BOARD: BoardLayouts<PickerSection> = { 1: ['picker'], ...PICKER_WIDE }

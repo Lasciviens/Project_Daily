@@ -183,7 +183,7 @@ check('glance board: 3 at 1469 (full width)', glanceCols(W.laptop) === 3)
 check('glance board: 4 at 1920 (full width under hero + rail)', glanceCols(W.fhd) === 4)
 check('glance board: 3 beside the schedule at 2450', glanceCols(B.columnWidthPx(W.monitor, { tracks: 4, main: '56rem' }, 1, 3)) === 3)
 check('glance heading hidden only where the board sits beside the hero (step 4)', [1, 2, 3].every(s => !D.glanceInColumn(s)) && D.glanceInColumn(4))
-// DayHero's split: 34rem agenda + ≥ 20rem Tasks from a 54rem card; stacked below.
+// DayHero's split: the day list's timed column | Anytime from a 54rem card; stacked below.
 const heroSplits = (px) => px >= 54 * 16
 check('hero: a landscape phone (804px card) stacks; a 1024 tablet (892px) splits', !heroSplits(852 - 48) && heroSplits(W.tablet1024))
 check('hero: splits wherever the board places it from step 2 (full band at 1280, two tracks at 1920, main at 2450)',

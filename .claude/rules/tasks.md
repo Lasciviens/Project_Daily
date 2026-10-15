@@ -19,4 +19,8 @@ Background: `docs/features/tasks.md`, `docs/features/daily.md`, `docs/features/w
 - `is_focused` clears when a task closes (143); reopening doesn't bring it back.
 - Daily's glance board uses explicit column counts, never auto-fill: a card never changes place with its content.
 - `useSwipeToReveal` captures the pointer only once a horizontal swipe is confirmed — capturing on pointerdown sends every tap on a nested button to the row.
-- A cancelled task keeps its record and shows in that day's Cancelled section; Delete is the one delete flow with Undo.
+- A cancelled task keeps its record and shows in that day's Cancelled part (a timed one dimmed in its slot); Delete is the one delete flow with Undo.
+- Daily's day is ONE list: rows only from `daily/dayItems.ts` (`buildDayRows`, `verify-day-items`) over the day's existing reads — never a filter of its own on them (NEVER_HIDES). Split by TIME (timed | Anytime + Done + Cancelled), never by table; a task with its slot on the day is one row.
+- A repeat's day is ticked, skipped and undone only through `useRepeatDay()` (it reports and offers Undo); a training row through the session's actions. A day that passed with no tick stays on its day as Missed — never carried over, never counted as open.
+- Week strip, week card and month count repeat days through `useRepeatDays()` (`dayItems.repeatsToDoOn`: from today on; a ticked day is its own task) — never a `days_of_week` test of their own.
+- One Add per day: the one sheet through `useEntityModal().open({ kind: 'task', defaults: { date, … } })`; a repeat's day opens with `occurrenceDate` (`dayItems.repeatDayRequest`).

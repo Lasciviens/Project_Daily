@@ -1,421 +1,183 @@
-import { useState } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { format, isToday, subDays } from 'date-fns'
 import { useQueryClient } from '@tanstack/react-query'
-import {
-  AlertTriangle, CalendarDays, CornerDownRight, Moon, MoreHorizontal, Plus, RefreshCw, Repeat, StickyNote, Trash2,
-} from 'lucide-react'
-import {
-  useScheduleBlocks, useTimeBlocks, useDeleteTimeBlock, useUpdateTimeBlock,
-  useDeleteScheduleBlock,
-} from '../hooks/useSchedule'
-import { useTasksByIds } from '../../todo/hooks/useTodos'
+import { Plus, RefreshCw } from 'lucide-react'
+import { useScheduleBlocks, useTimeBlocks } from '../hooks/useSchedule'
+import { useDayTasks, useTasksByIds } from '../../todo/hooks/useTodos'
+import { ToDoItem } from '../../todo/components/ToDoItem'
 import { useCalendarEventsForDay } from '../../calendar/hooks/useCalendar'
-import { useEntityModal } from '../../../shared/modals'
 import { EditCalendarEventModal } from '../../calendar/components/EditCalendarEventModal'
+import { useDayPlanContext } from '../../training/hooks/usePlanContext'
+import { useEntityModal } from '../../../shared/modals'
+import { useNewIds } from '../../../shared/hooks/useNewIds'
 import { useCalendarStore, toast } from '../../../app/store'
 import { qk } from '../../../shared/query'
-import { Button, IconButton, TonePill, Truncate, cx } from '../../../shared/ui'
+import { Button, IconButton, Skeleton, ToneDot, TonePill, Truncate, cx } from '../../../shared/ui'
 import { formatDurationMinutes } from '../../../shared/utils/formatDuration'
+import { todayStr } from '../../../shared/utils/dateUtils'
 import { aheadOnDay, buildDaySchedule, plannedMinutes } from '../daySchedule'
+import { buildDayRows, dayRowCounts, hourLabel, repeatDayRequest, repeatsToDoOn, untilLabel, type DayRow } from '../dayItems'
+import {
+  ContinuationRow, EventRow, LinkedTaskRow, NowMarker, RepeatRow, SlotRow, TimeGutter, TrainingRow,
+} from './DayAgendaRows'
+import { OpenWishesRow, UndatedThisWeek } from './DayAgendaExtras'
 import type { CalendarEvent } from '../../calendar/types'
-import { TrainingPlanMenu } from '../../training/components/session/TrainingPlanActions'
-import { SESSION_LABEL, SESSION_TONE, sessionStatus } from '../../training/plan/sessionState'
-import { planFacts } from '../../training/plan/planFacts'
-import { useDayPlanContext } from '../../training/hooks/usePlanContext'
-import type { TaskStatus } from '../../todo/types'
-import type { TrainingPlanRef } from '../../training/api/trainingPlanApi'
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  DayAgenda — replaces the old 24h × 52px pixel-grid DayTimeline. Design
-//  rationale (choices compared: keep-but-shrink the hour grid / pure agenda
-//  list / hybrid): real usage is SPARSE (live data: ~1 block per day), so a
-//  1248px-tall mostly-empty grid wasted the page's center column, and a long
-//  block rendered as a huge empty rectangle. An agenda shows each block as
-//  ONE information-dense row (time · duration · title · badges · actions),
-//  scales from empty to busy days, and gives night hours (<06:00) their own
-//  labelled group instead of pretending 03:00 is "morning".
+//  DayAgenda — Daily's day as ONE list (owner, 15.10.2026: "one item"). It
+//  replaced two panes side by side — Schedule (slots, repeating plans, Google
+//  events; "Add") and Tasks (the day's tasks; "Add task") — where a task with
+//  its slot showed twice and a repeat could not be ticked. The rows come from
+//  dayItems.ts (pure), built over the reads the day already had: the day list
+//  (useDayTasks — never filtered, NEVER_HIDES), the one day schedule
+//  (daySchedule.ts: slots, yesterday's tails, repeating plans, Google events
+//  the app didn't make) and the tasks of the day's slots.
 //
-//  Migration 077 click-routing (no more Task/Schedule tab dichotomy): a row
-//  tap opens the ONE modal in the mode that matches what was actually
-//  clicked — a calendar event opens EditCalendarEventModal, a
-//  recurring template opens UnifiedPlanModal in 'recurring' mode, a
-//  task-linked one-off block opens the Task itself (mode='task' — the
-//  Schedule section lives inside it now), and a standalone one-off block
-//  opens 'schedule' mode directly. Nothing here decides which tab to show;
-//  the caller (this file) decides which ENTITY was clicked. A task-linked
-//  row is opened by id through the shared entity-modal host (the adapter
-//  loads the task itself), NEVER by a lookup into a preloaded map — the map
-//  can still be loading when the tap happens, and a miss used to do nothing.
-//
-//  Cross-midnight projection (dayAgendaProjection.ts): every one-off block
-//  and recurring template is projected onto EVERY day it actually occupies,
-//  each showing only its own [0,24) portion — see that file's header
-//  comment for the full rationale.
+//  Split by TIME, never by table:
+//   - phone / narrow card: Anytime first, then the timed rows in time order
+//     with the now-marker (today), then Done and Cancelled;
+//   - from a 54rem card (laptop): the timed rows in one column, Anytime (then
+//     Done, Cancelled) in the other.
+//  A ticked timed row stays dimmed in its slot; a repeat day that passed with
+//  no tick stays on its day as Missed. ONE Add (the one sheet, this day as its
+//  date). Every editor opens through useEntityModal by id; Google events open
+//  EditCalendarEventModal (edit only, on ModalShell).
 // ─────────────────────────────────────────────────────────────────────────────
 
-const NIGHT_END = 6 // hours before this belong to the night, not the morning
-
-// time_blocks/schedule_blocks.color is a user-picked tag; each maps onto a
-// tone so both themes work. Google Calendar rows use the success edge.
-const COLOR_EDGE: Record<string, string> = {
-  blue:   'border-l-info',
-  green:  'border-l-success',
-  orange: 'border-l-warn',
-  purple: 'border-l-highlight',
-  accent: 'border-l-accent-500',
-  red:    'border-l-danger',
-}
-
-function hourToTimeStr(h: number): string {
-  const hh = Math.floor(h)
-  const mm = Math.round((h - hh) * 60)
-  return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`
-}
-
-/** A block running past midnight ends at "midnight" on this day's agenda, never "24:00". */
-const untilLabel = (h: number) => (h >= 24 ? 'midnight' : hourToTimeStr(h))
-
-interface AgendaBlock {
-  id:             string  // unique within this day's render — may be a synthetic spillover id
-  canonicalId:    string  // the REAL row id — every mutation routes through this
-  kind:           'recurring' | 'block' | 'calendar'
-  title:          string
-  startHour:      number
-  endHour:        number
-  edgeClass:      string
-  dateStr:        string
-  taskId?:        string | null
-  calendarEvent?: CalendarEvent
-  allDay:         boolean
-  spillover:      boolean
-  /** Its task is done or cancelled (daySchedule): never "next". */
-  closed:         boolean
-  /** time_blocks / schedule_blocks category — a training row opens the session popup. */
-  category?:      string
-  /** A one-off block's task state (fetchTimeBlocks) — a training row reads
-   *  Done / Skipped from it, like its popup (training/plan/sessionState). */
-  taskStatus?:    string | null
-  taskWorkoutId?: string | null
-  taskRoutineId?: string | null
-  /** The routine a training block was planned from. */
-  routineId?:     string | null
-}
-
-// `bare` — render as a chrome-less pane inside a parent surface (Daily's hero
-// panel provides the card); default keeps the own-card look (Month tab).
+// `bare` — a pane inside a parent surface (Daily's hero card, the picked-day
+// card); without it the list draws its own card.
 export function DayAgenda({ date, bare = false }: { date: Date; bare?: boolean }) {
-  const dateStr     = format(date, 'yyyy-MM-dd')
-  const prevDateStr = format(subDays(date, 1), 'yyyy-MM-dd')
+  const day = format(date, 'yyyy-MM-dd')
+  const prevDay = format(subDays(date, 1), 'yyyy-MM-dd')
+  const today = todayStr()
+  const viewingToday = isToday(date)
+  const now = new Date()
+  const nowHour = now.getHours() + now.getMinutes() / 60
 
-  const [editEvent,         setEditEvent]         = useState<CalendarEvent | null>(null)
-  const [selectedId,        setSelectedId]        = useState<string | null>(null)
-
-  const { data: schedBlocks = [] } = useScheduleBlocks()
-  const { data: timeBlocks  = [] } = useTimeBlocks(dateStr)
-  const { data: prevTimeBlocks = [] } = useTimeBlocks(prevDateStr)
-  const { data: calEvents, isFetching: calFetching } = useCalendarEventsForDay(dateStr)
-  const deleteBlock         = useDeleteTimeBlock()
-  const updateBlock         = useUpdateTimeBlock()
-  const deleteScheduleBlock = useDeleteScheduleBlock()
-  const qc                  = useQueryClient()
-  const calToken            = useCalendarStore(s => s.accessToken)
-
+  const [editEvent, setEditEvent] = useState<CalendarEvent | null>(null)
   const modal = useEntityModal()
+  const qc = useQueryClient()
+  const calToken = useCalendarStore(s => s.accessToken)
 
-  async function handleCalRefresh() {
+  // The reads the day always had.
+  const list = useDayTasks(day)
+  const { data: templates = [] } = useScheduleBlocks()
+  const { data: blocks = [] } = useTimeBlocks(day)
+  const { data: prevBlocks = [] } = useTimeBlocks(prevDay)
+  const { data: events, isFetching: calFetching } = useCalendarEventsForDay(day)
+
+  const items = useMemo(
+    () => buildDaySchedule({ date: day, blocks, prevBlocks, templates, events: events ?? [] }),
+    [day, blocks, prevBlocks, templates, events],
+  )
+  // A slot whose task is not on this day's list (its date is another day) still ticks: its task by id.
+  const onList = new Set([...list.open, ...list.done, ...list.cancelled].map(t => t.id))
+  const linkedIds = [...new Set([...blocks, ...prevBlocks].map(b => b.task_id).filter((id): id is string => !!id && !onList.has(id)))].sort()
+  const { data: linkedTasks = [] } = useTasksByIds(linkedIds)
+  const rows = buildDayRows({ day, today, tasks: list, items, linkedTasks })
+
+  const counts = dayRowCounts(list.counts, repeatsToDoOn(templates, day, today))
+  // Repeat days that passed with no tick: on their day, never carried over.
+  const missed = [...rows.timed, ...rows.anytime].filter(r => r.kind === 'repeat' && r.state === 'missed').length
+  const planned = plannedMinutes(items)
+  const next = viewingToday ? aheadOnDay(items, true, nowHour)[0] : undefined
+  const planCtx = useDayPlanContext(day, rows.timed.some(r => r.kind === 'training') || rows.anytime.some(r => r.kind === 'training'))
+  // A task added while the day is on screen rises in; the day's own rows don't.
+  const fresh = useNewIds([...onList], day, !list.isLoading)
+
+  // ONE Add: the one sheet, this day as its date (the section follows the
+  // date: taskRules.sectionForDay — Today for today, else Backlog).
+  function openAdd(time?: string) {
+    modal.open({ kind: 'task', defaults: { date: day, dueDate: day, section: list.section, ...(time ? { startTime: time, scheduled: true } : {}) } })
+  }
+
+  async function refreshCalendar() {
     const tid = toast.loading('Syncing calendar…')
     try {
-      await qc.refetchQueries({ queryKey: qk.calendar.dayAll(dateStr) })
+      await qc.refetchQueries({ queryKey: qk.calendar.dayAll(day) })
       toast.dismiss(tid); toast.success('Calendar synced')
     } catch (err) {
       toast.dismiss(tid); toast.error((err as Error).message ?? 'Sync failed')
     }
   }
 
-  // Full linked-Task rows (not just notes) — used for the 📝 preview only
-  // now; navigation no longer depends on this map being loaded (see above).
-  const linkedTaskIds = [...timeBlocks, ...prevTimeBlocks].filter(b => b.task_id).map(b => b.task_id!)
-  const { data: linkedTasksFull = [] } = useTasksByIds(linkedTaskIds)
-  const taskNotesMap = new Map(linkedTasksFull.map(t => [t.id, t.description ?? null]))
-
-  // ── The day's items: the one day schedule (daySchedule.ts), shared with
-  // Home and Daily's rail — a block's own Google event (yesterday's too, for a
-  // cross-midnight block) is that block, never a second row.
-  const items = buildDaySchedule({ date: dateStr, blocks: timeBlocks, prevBlocks: prevTimeBlocks, templates: schedBlocks, events: calEvents ?? [] })
-  const blocks: AgendaBlock[] = items.map(i => {
-    const b = i.block
-    // A one-off block's own tag defaults to the accent, a weekly plan's to blue.
-    const fallback = i.kind === 'block' ? 'accent' : 'blue'
-    return {
-      id: i.id, canonicalId: i.canonicalId, kind: i.kind, title: i.title, dateStr,
-      startHour: i.startHour, endHour: i.endHour, taskId: i.taskId, spillover: i.spillover, allDay: i.allDay,
-      closed: i.closed, calendarEvent: i.event,
-      edgeClass: i.kind === 'calendar' ? COLOR_EDGE.green : COLOR_EDGE[(b ?? i.template)?.color ?? fallback] ?? COLOR_EDGE[fallback],
-      category: b?.category ?? i.template?.category,
-      taskStatus: b?.task_status ?? null, taskWorkoutId: b?.task_workout_id ?? null, taskRoutineId: b?.task_routine_id ?? null,
-      routineId: b?.source_type === 'training_session' ? b.source_id ?? null : null,
-    }
-  })
-
-  const allDayEvents = blocks.filter(b => b.allDay)
-  const unscheduled  = blocks.filter(b => !b.allDay && b.startHour < 0)
-  const timed        = blocks.filter(b => b.startHour >= 0).sort((a, b) => a.startHour - b.startHour)
-  const night        = timed.filter(b => b.startHour < NIGHT_END)
-  const day          = timed.filter(b => b.startHour >= NIGHT_END)
-  // A training row's status is built like its popup's (plan/planFacts).
-  const planCtx = useDayPlanContext(dateStr, blocks.some(b => b.category === 'training'))
-
-  const overlappingIds = new Set<string>()
-  for (let i = 0; i < timed.length; i++) {
-    for (let j = i + 1; j < timed.length; j++) {
-      if (timed[i].startHour < timed[j].endHour && timed[i].endHour > timed[j].startHour) {
-        overlappingIds.add(timed[i].id); overlappingIds.add(timed[j].id)
-      }
-    }
+  // The editor of whatever the row is, by id (a continuation opens yesterday's thing).
+  function openRow(r: DayRow) {
+    const i = r.item
+    if (r.kind === 'event' && i?.event) return setEditEvent(i.event)
+    if (r.kind === 'training' && i) return modal.open({ kind: 'training-session', plan: { kind: i.kind === 'recurring' ? 'recurring' : 'block', id: i.canonicalId, date: i.planDate } })
+    if (i?.kind === 'recurring') return modal.open(repeatDayRequest(i.canonicalId, i.planDate))
+    if (i?.taskId) return modal.open({ kind: 'task', id: i.taskId })
+    if (i) return modal.open({ kind: 'time-block', id: i.canonicalId })
+    if (r.task) return modal.open({ kind: 'task', id: r.task.id })
   }
 
-  // The same "planned" and "next" as Home and Daily's rail (daySchedule):
-  // every row is already clipped to this day, so nothing counts twice; the
-  // next is the first row not yet over whose task isn't closed — "Now" while
-  // it is under way.
-  const totalBookedMin = plannedMinutes(blocks)
-  const now = new Date()
-  const nowHour = now.getHours() + now.getMinutes() / 60
-  const today = isToday(date)
-  const nextBlock = today ? aheadOnDay(blocks, true, nowHour)[0] : undefined
+  const isPast = (r: DayRow) => viewingToday && r.startHour !== null && (r.endHour ?? r.startHour) <= nowHour
+  const isActive = (r: DayRow) => viewingToday && r.startHour !== null && r.endHour !== null && r.startHour <= nowHour && r.endHour > nowHour
 
-  // "+ Add" — always creates a standalone one-off block (schedule mode);
-  // "Also add to Tasks" is offered inside ScheduleTab itself.
-  function openAdd(time?: string) {
-    modal.open({ kind: 'time-block', config: { heading: 'Add time block' }, defaults: { date: dateStr, startTime: time, category: 'daily' } })
-  }
-
-  // Opens the ONE editor for whichever entity this row actually is — see
-  // the file-header comment for the routing rule. Always routes through
-  // canonicalId, never the (possibly synthetic) spillover row id.
-  function openEditor(block: AgendaBlock) {
-    // A training session opens as the session — its exercises and targets,
-    // or what was lifted once logged; changing the plan (and so the task
-    // routing below) is behind that popup's ⋯. A spillover row is the tail
-    // of the session that started the day before.
-    if (block.category === 'training' && block.kind !== 'calendar') {
-      modal.open({ kind: 'training-session', plan: { kind: block.kind, id: block.canonicalId, date: block.spillover ? prevDateStr : dateStr } })
-      return
-    }
-    if (block.kind === 'recurring') {
-      modal.open({ kind: 'schedule-block', id: block.canonicalId, config: { heading: 'Edit recurring block' } })
-      return
-    }
-    // The editor loads the row by id itself (loading + not-found states in
-    // its own shell), so a tap never silently does nothing.
-    if (block.taskId) {
-      modal.open({ kind: 'task', id: block.taskId, config: { heading: 'Edit task' } })
-      return
-    }
-    modal.open({ kind: 'time-block', id: block.canonicalId, config: { heading: 'Edit block' } })
-  }
-
-  // A training row as the session it is: its task (and block), an older
-  // block with no task, or a day of a weekly plan nobody acted on yet.
-  function trainingPlanOf(block: AgendaBlock): TrainingPlanRef {
-    const date = block.spillover ? prevDateStr : dateStr
-    const target: TrainingPlanRef['target'] = block.kind === 'recurring'
-      ? { kind: 'weekly', templateId: block.canonicalId, date }
-      : block.taskId ? { kind: 'task', taskId: block.taskId, blockId: block.canonicalId } : { kind: 'block', blockId: block.canonicalId }
-    return {
-      target,
-      info: {
-        title: block.title, date,
-        startHHMM: block.startHour >= 0 && !block.spillover ? hourToTimeStr(block.startHour) : null,
-        minutes: Math.round((block.endHour - block.startHour) * 60) || null,
-        routineId: block.taskRoutineId ?? block.routineId ?? planCtx.routineOf({ title: block.title, date }),
-      },
-    }
-  }
-
-  // ── Row renderer (plain render function, not a nested component —
-  //     react-hooks/static-components: components created during render get a
-  //     new identity every render and remount their subtree) ──
-  function renderRow(block: AgendaBlock) {
-    const isSelected = selectedId === block.id
-    const isCal       = block.kind === 'calendar'
-    const isRecurring = block.kind === 'recurring'
-    const durationMins = Math.round((block.endHour - block.startHour) * 60)
-    const taskNotes  = block.taskId ? taskNotesMap.get(block.taskId) : null
-    const isPast     = today && block.endHour <= nowHour
-    const isActive   = today && block.startHour <= nowHour && block.endHour > nowHour
-    // A training session: the same status and the same actions (⋯) as its
-    // popup and its task row — Done/Skipped on the row, Move/Skip/Delete with
-    // Undo behind ⋯ (training/components/session/TrainingPlanActions).
-    const session = block.category === 'training' && !isCal ? trainingPlanOf(block) : null
-    const sessionState = session ? sessionStatus(planFacts({
-      date: session.info.date, startHHMM: session.info.startHHMM, minutes: session.info.minutes,
-      taskId: block.taskId ?? null, taskStatus: (block.taskStatus as TaskStatus | null | undefined) ?? null,
-      taskWorkoutId: block.taskWorkoutId ?? null, taskRoutineId: block.taskRoutineId ?? null,
-      routineId: session.info.routineId,
-    }, { today: format(new Date(), 'yyyy-MM-dd'), nowHHMM: hourToTimeStr(nowHour), skips: planCtx.skips, hasActivity: planCtx.hasActivity })) : null
-    const sessionMark = sessionState && (sessionState.state === 'done' || sessionState.state === 'skipped') ? sessionState.state : null
-
-    function postpone30m() {
-      updateBlock.mutate({ id: block.canonicalId, patch: { start_time: `${hourToTimeStr(Math.min(23.5, block.startHour + 0.5))}:00` } })
-    }
-    function postpone1d() {
-      const d = new Date(block.dateStr + 'T00:00:00')
-      d.setDate(d.getDate() + 1)
-      const newDate = format(d, 'yyyy-MM-dd')
-      // Moves only this block's own schedule — a task's deadline (due_date)
-      // and its schedule slot are independent facts (migration 077); postponing
-      // where a task-linked block sits on the calendar must never move when
-      // the task itself is due.
-      updateBlock.mutate({ id: block.canonicalId, patch: { date: newDate } })
-      setSelectedId(null)
-    }
-
-    // A row tap opens the right editor DIRECTLY — no select-then-✎ second
-    // step. The small ⋯ toggle (always visible, its own 44px target) is the
-    // ONLY way to reach the quick actions (postpone/delete) without leaving
-    // the agenda; it stops propagation so it never also opens the editor.
-    // A spillover row (the tail of yesterday's block) is still clickable —
-    // it edits the SAME canonical block yesterday's own row would.
-    const overlaps = overlappingIds.has(block.id)
-    const quickBtn = 'min-h-[44px] rounded-control border border-line px-2 text-meta font-medium text-fg-muted transition-colors duration-150 hover:bg-surface-hover hover:text-fg'
-    return (
-      <div
-        onClick={() => isCal ? setEditEvent(block.calendarEvent!) : openEditor(block)}
-        className={cx(
-          'group cursor-pointer rounded-control border-l-2 px-2.5 py-1.5 transition-colors duration-150',
-          block.edgeClass,
-          isActive || isSelected ? 'bg-surface-2' : 'hover:bg-surface-hover',
-          (isPast || sessionMark === 'skipped') && 'opacity-50',
-          overlaps && 'ring-1 ring-inset ring-danger/40',
-        )}
-      >
-        {/* The whole row is the tap target: py-1.5 + this 32px line = 44px.
-            On a phone the quick actions take a line of their own: inline they
-            squeezed the title to nothing and pushed "now" under +30m. */}
-        <div className="flex min-h-[32px] flex-wrap items-center gap-x-2.5 gap-y-1 sm:flex-nowrap">
-          <div className="w-[86px] shrink-0 text-meta leading-tight tabular-nums">
-            {block.allDay || block.startHour < 0 ? (
-              <span className="text-fg-muted">{block.allDay ? 'All day' : 'No time'}</span>
-            ) : (
-              <>
-                <span className="font-semibold text-fg">{hourToTimeStr(block.startHour)}</span>
-                <span className="text-fg-muted">–{hourToTimeStr(block.endHour)}</span>
-                <span className="block text-micro text-fg-muted">{formatDurationMinutes(durationMins)}</span>
-              </>
-            )}
+  function renderRow(r: DayRow): ReactNode {
+    if (r.spillover) return <ContinuationRow row={r} past={isPast(r)} onOpen={() => openRow(r)} />
+    switch (r.kind) {
+      case 'event':    return <EventRow row={r} past={isPast(r)} active={isActive(r)} onOpen={() => openRow(r)} />
+      case 'training': return <TrainingRow row={r} planCtx={planCtx} nowHour={nowHour} active={isActive(r)} />
+      case 'repeat':   return <RepeatRow row={r} active={isActive(r)} />
+      case 'slot':     return <SlotRow row={r} past={isPast(r)} active={isActive(r)} />
+      case 'task':
+        if (!r.task) return <LinkedTaskRow row={r} />
+        return (
+          <div className={cx(r.state !== 'open' && 'opacity-60')}>
+            <ToDoItem task={r.task} isNew={fresh.has(r.task.id)} />
           </div>
-          <div className="min-w-0 flex-1">
-            <p className="flex min-w-0 items-center gap-1.5 text-body font-semibold leading-snug text-fg">
-              {block.spillover && <CornerDownRight className="h-3.5 w-3.5 shrink-0 text-fg-faint" aria-label="Continued from yesterday" />}
-              {/* The row (a div) opens the editor, which shows the whole title
-                  and notes, so a tap never opens a bubble on top of it. */}
-              <Truncate lines={2} reveal="none">{block.title}</Truncate>
-              {isRecurring && <Repeat className="h-3 w-3 shrink-0 text-fg-muted" aria-label="Recurring" />}
-              {isCal && <CalendarDays data-tone="success" className="tone-text h-3 w-3 shrink-0" aria-label="Google Calendar" />}
-              {taskNotes && <StickyNote className="h-3 w-3 shrink-0 text-fg-faint" aria-label="Has notes" />}
-              {overlaps && <AlertTriangle data-tone="danger" className="tone-text h-3.5 w-3.5 shrink-0" aria-label="Overlaps another block" />}
-              {isActive && <span className="shrink-0 text-micro font-semibold text-accent-600">now</span>}
-              {sessionMark && <TonePill tone={SESSION_TONE[sessionMark]} className="shrink-0">{SESSION_LABEL[sessionMark]}</TonePill>}
-            </p>
-            {isSelected && taskNotes && (
-              <Truncate as="p" lines={2} reveal="none" className="mt-0.5 text-meta text-fg-muted">{taskNotes}</Truncate>
-            )}
+        )
+    }
+  }
+
+  // The now-line sits before the first row that starts later (or after the last).
+  const nowAt = viewingToday ? rows.timed.findIndex(r => r.startHour! > nowHour) : -2
+  const timedList = (
+    <div className="flex flex-col gap-1">
+      {rows.timed.map((r, n) => (
+        <div key={r.key} className="flex flex-col gap-1">
+          {nowAt === n && <NowMarker hour={nowHour} />}
+          <div className="flex min-w-0 items-stretch gap-1.5">
+            <TimeGutter row={r} />
+            <div className="min-w-0 flex-1">{renderRow(r)}</div>
           </div>
-          {session && sessionState && (
-            <div className="flex shrink-0 items-center" onClick={e => e.stopPropagation()}>
-              <TrainingPlanMenu plan={session} status={sessionState}
-                weekly={session.target.kind === 'weekly' ? { templateId: session.target.templateId } : null} />
-            </div>
-          )}
-          {!isCal && !session && isSelected && (
-            <div className="order-last flex w-full items-center justify-end gap-1 sm:order-none sm:w-auto sm:shrink-0" onClick={e => e.stopPropagation()}>
-              {block.kind === 'block' && !block.spillover && block.startHour >= 0 && (
-                <button type="button" onClick={postpone30m} className={quickBtn}>+30m</button>
-              )}
-              {block.kind === 'block' && !block.spillover && (
-                <button type="button" onClick={postpone1d} className={quickBtn}>+1d</button>
-              )}
-              <button
-                type="button"
-                aria-label="Delete block"
-                onClick={() => {
-                  setSelectedId(null)
-                  if (isRecurring) {
-                    void deleteScheduleBlock.run([block.canonicalId], {
-                      title: `Delete the repeating plan “${block.title}”?`,
-                      message: 'Every day it repeats on leaves the agenda. Days already planned on their own stay.',
-                      done: 'Repeating plan deleted',
-                    })
-                  } else {
-                    void deleteBlock.run([block.canonicalId], {
-                      title: `Delete “${block.title}” from the schedule?`,
-                      message: block.taskId ? 'Only the time slot goes; the task stays.' : undefined,
-                      done: 'Slot deleted',
-                    })
-                  }
-                }}
-                className={cx(quickBtn, 'hover:text-danger')}
-              ><Trash2 className="h-3.5 w-3.5" aria-hidden /></button>
-            </div>
-          )}
-          {!isCal && !session && (
-            <div className="flex shrink-0 items-center" onClick={e => e.stopPropagation()}>
-              <button
-                type="button"
-                onClick={() => setSelectedId(isSelected ? null : block.id)}
-                aria-label={isSelected ? 'Hide quick actions' : 'Quick actions'}
-                aria-expanded={isSelected}
-                className="grid min-h-[44px] w-[32px] place-items-center rounded-control text-fg-faint hover:bg-surface-hover hover:text-fg"
-              ><MoreHorizontal className="h-4 w-4" aria-hidden /></button>
-            </div>
-          )}
         </div>
-      </div>
-    )
-  }
+      ))}
+      {nowAt === -1 && rows.timed.length > 0 && <NowMarker hour={nowHour} />}
+    </div>
+  )
+  const list1 = (rs: DayRow[]) => <div className="flex flex-col gap-1">{rs.map(r => <div key={r.key}>{renderRow(r)}</div>)}</div>
 
-  // "Nh free · +" gap rows were removed per explicit request ("böyle bir şey
-  // istemiyorum herhangi bir yerde") — the agenda shows only real blocks now.
-
-  function renderNowMarker() {
-    return (
-      <div className="flex items-center gap-1.5 px-1" data-tone="danger">
-        <span className="tone-dot !h-1.5 !w-1.5" aria-hidden />
-        <span className="tone-text shrink-0 text-micro font-semibold tabular-nums">{hourToTimeStr(nowHour)}</span>
-        <div className="flex-1 border-t border-danger/40" />
-      </div>
-    )
-  }
-
-  // Where the now-marker slots into the day list
-  const nowIndex = today ? day.findIndex(b => b.startHour > nowHour) : -1
-  const groupLabel = 'flex items-center gap-1.5 px-1 pt-1 section-label'
+  const nothing = rows.timed.length + rows.anytime.length + rows.done.length + rows.cancelled.length === 0
 
   return (
-    <div className={bare ? 'p-4 sm:p-5' : 'card p-4 sm:p-5'}>
+    // The container is the whole pane (its padding included), so the columns
+    // split where the card is 54rem wide, as the two panes did.
+    <div className={cx('@container', !bare && 'card')}>
+    <div className="p-4 sm:p-5">
       <div className="mb-3 flex items-center justify-between gap-2">
         <div className="min-w-0">
-          {/* The planned total sits with the label, so "Next: …" gets the row. */}
-          <div className="flex items-baseline gap-1.5">
-            <h2 className="section-label">Schedule</h2>
-            {totalBookedMin > 0 && (
-              <span className="whitespace-nowrap text-micro tabular-nums text-fg-muted">· {formatDurationMinutes(totalBookedMin)} planned</span>
-            )}
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <h2 className="section-label">Day plan</h2>
+            {counts.open > 0 && <TonePill tone="accent">{counts.open} open</TonePill>}
+            {counts.done > 0 && <span className="text-meta tabular-nums text-fg-muted">{counts.done} done</span>}
+            {missed > 0 && <span className="text-meta tabular-nums text-fg-muted">{missed} missed</span>}
           </div>
-          {nextBlock && (nextBlock.inProgress ? (
-            <Truncate as="p" className="mt-0.5 text-meta text-fg-muted" fullText={`Now: ${nextBlock.title} until ${untilLabel(nextBlock.endHour)}`}>
-              Now: <span className="font-semibold text-fg-2">{nextBlock.title}</span> until {untilLabel(nextBlock.endHour)}
+          {next && (next.inProgress ? (
+            <Truncate as="p" className="mt-0.5 text-meta text-fg-muted" fullText={`Now: ${next.title} until ${untilLabel(next.endHour)}`}>
+              Now: <span className="font-semibold text-fg-2">{next.title}</span> until {untilLabel(next.endHour)}
             </Truncate>
           ) : (
-            <Truncate as="p" className="mt-0.5 text-meta text-fg-muted" fullText={`Next: ${nextBlock.title} at ${hourToTimeStr(nextBlock.startHour)}`}>
-              Next: <span className="font-semibold text-fg-2">{nextBlock.title}</span> at {hourToTimeStr(nextBlock.startHour)}
+            <Truncate as="p" className="mt-0.5 text-meta text-fg-muted" fullText={`Next: ${next.title} at ${hourLabel(next.startHour)}`}>
+              Next: <span className="font-semibold text-fg-2">{next.title}</span> at {hourLabel(next.startHour)}
             </Truncate>
           ))}
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
           {calToken && (
-            <IconButton label="Sync Google Calendar" onClick={handleCalRefresh} disabled={calFetching}>
+            <IconButton label="Sync Google Calendar" onClick={refreshCalendar} disabled={calFetching}>
               <RefreshCw className={cx(calFetching && 'animate-spin')} />
             </IconButton>
           )}
@@ -423,37 +185,22 @@ export function DayAgenda({ date, bare = false }: { date: Date; bare?: boolean }
         </div>
       </div>
 
-      <div className="flex flex-col gap-1.5">
-        {allDayEvents.map(b => <div key={b.id}>{renderRow(b)}</div>)}
-
-        {/* Anything before 06:00 is the night, not the morning */}
-        {night.length > 0 && (
-          <>
-            <p className={groupLabel}><Moon className="h-3 w-3" aria-hidden /> Night</p>
-            {night.map(b => <div key={b.id}>{renderRow(b)}</div>)}
-            <div className="my-0.5 border-t border-line" />
-          </>
-        )}
-
-        {day.map((b, i) => (
-          <div key={b.id} className="flex flex-col gap-1.5">
-            {today && nowIndex === i && renderNowMarker()}
-            {renderRow(b)}
-          </div>
-        ))}
-        {today && nowIndex === -1 && day.length > 0 && nowHour > day[day.length - 1].endHour && renderNowMarker()}
-
-        {unscheduled.length > 0 && (
-          <>
-            <p className={groupLabel}>No time set</p>
-            {unscheduled.map(b => <div key={b.id}>{renderRow(b)}</div>)}
-          </>
-        )}
-
-        {/* Empty day — quick-add chips instead of a giant empty grid */}
-        {timed.length === 0 && unscheduled.length === 0 && allDayEvents.length === 0 && (
-          <div className="py-5 text-center">
-            <p className="mb-2.5 text-body text-fg-muted">Nothing scheduled</p>
+      {list.isLoading ? (
+        <div className="space-y-2">
+          {[1, 2, 3].map(i => <Skeleton key={i} className="h-10" rounded="rounded-row" />)}
+        </div>
+      ) : list.isError ? (
+        // A failed read must never look like an empty day.
+        <p className="flex flex-wrap items-center gap-2 py-3 text-body text-fg-muted">
+          Couldn't load the day's tasks.
+          <Button variant="ghost" size="sm" onClick={() => void list.refetch()}>Try again</Button>
+        </p>
+      ) : nothing ? (
+        <>
+          <div className="mb-1.5 empty:hidden"><OpenWishesRow /></div>
+          {/* An empty day: quick adds at a time instead of an empty grid. */}
+          <div className="py-4 text-center">
+            <p className="mb-2.5 text-body text-fg-muted">Nothing planned</p>
             <div className="flex flex-wrap items-center justify-center gap-1.5">
               {[['Morning', '09:00'], ['Afternoon', '13:00'], ['Evening', '19:00']].map(([label, t]) => (
                 <button key={t} type="button" onClick={() => openAdd(t)} className="chip min-h-[44px]">
@@ -462,10 +209,69 @@ export function DayAgenda({ date, bare = false }: { date: Date; bare?: boolean }
               ))}
             </div>
           </div>
-        )}
-      </div>
+          <UndatedThisWeek />
+        </>
+      ) : (
+        // One list of parts, every part a direct child. Phone: a column in
+        // `order` — Anytime (the wishes row above it) · Schedule · Done ·
+        // Cancelled · this week's undated. From a 54rem card: a grid with the
+        // Schedule in column 1 across every row and the rest stacked in column
+        // 2; the last row is 1fr, so a tall Schedule grows that row and never
+        // stretches the gaps between Anytime and Done (spacing is margins, so
+        // a part that isn't there leaves no gap).
+        <div className="flex flex-col gap-3 @[54rem]:grid @[54rem]:grid-cols-2 @[54rem]:grid-rows-[auto_auto_auto_auto_auto_1fr] @[54rem]:items-start @[54rem]:gap-x-6 @[54rem]:gap-y-0 @[72rem]:grid-cols-[minmax(0,38rem)_minmax(0,34rem)]">
+          <div className={cx('order-1 empty:hidden', RIGHT, '@[54rem]:row-start-1 @[54rem]:mb-3')}><OpenWishesRow /></div>
+          <Group label="Anytime" empty="Nothing without a time" className={cx('order-1', RIGHT, '@[54rem]:row-start-2')} count={rows.anytime.length}>
+            {list1(rows.anytime)}
+          </Group>
+          <Group
+            label="Schedule"
+            note={planned > 0 ? `${formatDurationMinutes(planned)} planned` : undefined}
+            empty="Nothing at a set time"
+            className="order-2 @[54rem]:col-start-1 @[54rem]:row-start-1 @[54rem]:row-end-7"
+            count={rows.timed.length}
+          >
+            {timedList}
+          </Group>
+          {rows.done.length > 0 && (
+            <Group label="Done" className={cx('order-3', RIGHT, '@[54rem]:row-start-3 @[54rem]:mt-3')} count={rows.done.length}>
+              {list1(rows.done)}
+            </Group>
+          )}
+          {rows.cancelled.length > 0 && (
+            <Group label="Cancelled" className={cx('order-4', RIGHT, '@[54rem]:row-start-4 @[54rem]:mt-3')} count={rows.cancelled.length}>
+              <div className="opacity-60">{list1(rows.cancelled)}</div>
+            </Group>
+          )}
+          <div className={cx('order-5 empty:hidden', RIGHT, '@[54rem]:row-start-5 @[54rem]:mt-3')}><UndatedThisWeek /></div>
+        </div>
+      )}
 
       {editEvent && <EditCalendarEventModal event={editEvent} onClose={() => setEditEvent(null)} />}
     </div>
+    </div>
+  )
+}
+
+/** A part that sits in the Anytime column from a 54rem card. */
+const RIGHT = 'min-w-0 @[54rem]:col-start-2'
+
+/** One part of the list. An empty part keeps its heading (with `empty`) only
+ *  where it is a column of its own (54rem); in the one list it leaves no line. */
+function Group({ label, note, empty, count, className, children }: {
+  label: string; note?: string; empty?: string; count: number; className?: string; children: ReactNode
+}) {
+  return (
+    <section className={cx('min-w-0', count === 0 && 'hidden @[54rem]:block', className)} aria-label={label}>
+      <p className="mb-1 flex items-baseline gap-1.5 px-1">
+        <span className="section-label">{label}</span>
+        {note && <span className="text-micro tabular-nums text-fg-muted">· {note}</span>}
+      </p>
+      {count > 0 ? children : empty && (
+        <p className="hidden items-center gap-2 px-1 py-2 text-meta text-fg-muted @[54rem]:flex">
+          <ToneDot tone="neutral" /> {empty}
+        </p>
+      )}
+    </section>
   )
 }

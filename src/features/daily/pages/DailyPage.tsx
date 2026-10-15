@@ -2,7 +2,6 @@ import { useState, useEffect, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { addDays, format, startOfMonth, endOfMonth, isToday, isYesterday, isTomorrow, isSameDay, differenceInCalendarDays } from 'date-fns'
 import { formatWeekdayDate } from '../../../shared/utils/dateFormat'
-import { DayView } from '../components/DayView'
 import { DayAgenda } from '../components/DayAgenda'
 import { WeekStrip } from '../components/WeekStrip'
 import { DayQuickRail } from '../components/DayQuickRail'
@@ -164,20 +163,14 @@ function DayGlance({ date }: { date: Date }) {
   return <TodaySummary date={date} hideLabel={glanceInColumn(useBoardStep())} />
 }
 
-// Schedule and Tasks side by side once the card itself is 54rem wide (a
-// 34rem agenda + a Tasks pane of at least 20rem — a landscape phone's 50rem
-// card stacks, since 20rem was already the tightest a task row reads well);
-// stacked below that. From 72rem (a hero spanning two tracks, or a full-width
-// band) both panes are capped (40rem / 36rem), so a task row never runs past
-// ~34rem of sparse whitespace; what is left stays on the card's right.
+// The week strip over the day's ONE list (DayAgenda): Anytime, the timed rows
+// and Done in one column on a phone; from a 54rem card the timed rows and
+// Anytime side by side (split by time, never by table — owner, 15.10.2026).
 function DayHero({ date, onDayClick }: { date: Date; onDayClick: (d: Date) => void }) {
   return (
-    <Card padded={false} className="@container w-full overflow-hidden">
+    <Card padded={false} className="w-full overflow-hidden">
       <WeekStrip viewDate={date} onDayClick={onDayClick} />
-      <div className="divide-y divide-line @[54rem]:grid @[54rem]:grid-cols-[minmax(0,34rem)_minmax(20rem,1fr)] @[54rem]:divide-x @[54rem]:divide-y-0 @[72rem]:grid-cols-[minmax(0,40rem)_minmax(0,36rem)]">
-        <DayAgenda date={date} bare />
-        <DayView date={date} />
-      </div>
+      <DayAgenda date={date} bare />
     </Card>
   )
 }
@@ -209,12 +202,6 @@ function PickerSection({ kind, onDayClick, selectedDate }: { kind: 'week' | 'mon
     picker,
     pickedOrUpcoming,
     picked: <PickedDay date={focus} onOpenDay={() => onDayClick(focus)} />,
-    dayTasks: (
-      <Card padded={false} className="min-w-0 overflow-hidden">
-        <DayCardHeader title={`Tasks · ${formatWeekdayDate(focus)}`} />
-        <DayView date={focus} />
-      </Card>
-    ),
     upcoming: <UpcomingActivities onPick={setPicked} />,
   }
   return <PageBoard sections={sections} layout={kind === 'week' ? WEEK_BOARD : MONTH_BOARD} />

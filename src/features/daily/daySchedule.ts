@@ -35,6 +35,9 @@ export interface DayItem {
   taskId:      string | null
   /** Its task is done or cancelled: over, never "next" (it stays on the agenda). */
   closed:      boolean
+  /** Holds time: false for a time with no length ("at 14:00", 155) — it is
+   *  never planned time and never overlaps. */
+  busy:        boolean
   block?:      TimeBlock
   template?:   ScheduleBlock
   event?:      CalendarEvent
@@ -63,11 +66,12 @@ export function buildDaySchedule(input: {
 
   const templateById = new Map(templates.map(t => [t.id, t]))
   for (const p of projectRecurringBlocksForDay(date, templates)) {
+    const t = templateById.get(p.canonicalId)
     items.push({
       id: p.id, canonicalId: p.canonicalId, kind: 'recurring', title: p.title,
       startHour: p.startHour, endHour: p.endHour, spillover: p.spillover, allDay: false,
       planDate: p.spillover ? prevDay : date, taskId: null, closed: false,
-      template: templateById.get(p.canonicalId),
+      busy: !!t?.start_time && !!t.end_time, template: t,
     })
   }
 
@@ -78,7 +82,7 @@ export function buildDaySchedule(input: {
       id: p.id, canonicalId: p.canonicalId, kind: 'block', title: p.title,
       startHour: p.startHour, endHour: p.endHour, spillover: p.spillover, allDay: false,
       planDate: b?.date ?? date, taskId: p.taskId ?? null, closed: closedStatus(b?.task_status),
-      block: b,
+      busy: !!b?.start_time && b.busy !== false, block: b,
     })
   }
 
@@ -95,13 +99,13 @@ export function buildDaySchedule(input: {
       items.push({
         id: e.id, canonicalId: e.id, kind: 'calendar', title: e.summary || '(No title)',
         startHour: p.startHour, endHour: p.endHour, spillover: p.spillover, allDay: false,
-        planDate: p.spillover ? prevDay : date, taskId: null, closed: false, event: e,
+        planDate: p.spillover ? prevDay : date, taskId: null, closed: false, busy: true, event: e,
       })
     } else if (e.start.date) {
       items.push({
         id: e.id, canonicalId: e.id, kind: 'calendar', title: e.summary || '(No title)',
         startHour: -1, endHour: -1, spillover: false, allDay: true,
-        planDate: date, taskId: null, closed: false, event: e,
+        planDate: date, taskId: null, closed: false, busy: false, event: e,
       })
     }
   }
@@ -130,9 +134,10 @@ export function timedItems<T extends Pick<DayItem, 'startHour' | 'allDay'>>(item
   return items.filter(i => !i.allDay && i.startHour >= 0).sort((a, b) => a.startHour - b.startHour)
 }
 
-/** Minutes the day holds — every timed item, its own day's portion only. */
-export function plannedMinutes(items: readonly Pick<DayItem, 'startHour' | 'endHour' | 'allDay'>[]): number {
-  return Math.round(timedItems(items).reduce((s, i) => s + Math.max(0, (i.endHour - i.startHour) * 60), 0))
+/** Minutes the day holds — every timed item that blocks time, its own day's
+ *  portion only (a time with no length holds none). */
+export function plannedMinutes(items: readonly (Pick<DayItem, 'startHour' | 'endHour' | 'allDay'> & { busy?: boolean })[]): number {
+  return Math.round(timedItems(items).filter(i => i.busy !== false).reduce((s, i) => s + Math.max(0, (i.endHour - i.startHour) * 60), 0))
 }
 
 /**
