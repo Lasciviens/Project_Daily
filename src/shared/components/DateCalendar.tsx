@@ -19,13 +19,15 @@ const monthName = (v: MonthView) => formatMonthYear(new Date(v.year, v.month, 1,
  * taps (heading, year, month) instead of 120 arrow taps.
  * With `selected` it marks several days (the caller toggles them in onPick);
  * `value` then only picks the month it opens on.
+ * `compact`: 36px days and arrows (a chip's picker in the Add sheet).
  */
-export function DateCalendar({ value, min, max, onPick, selected }: {
+export function DateCalendar({ value, min, max, onPick, selected, compact = false }: {
   value: string
   min?: string
   max?: string
   onPick: (iso: string) => void
   selected?: readonly string[]
+  compact?: boolean
 }) {
   const today = todayStr()
   const [view, setView] = useState(() => startView(value, min, max, today))
@@ -43,24 +45,25 @@ export function DateCalendar({ value, min, max, onPick, selected }: {
     }
   }
 
+  const navCls = cx('flex items-center justify-center rounded-control text-fg-muted hover:bg-surface-hover disabled:opacity-30', compact ? 'h-9 w-9' : 'h-11 w-11')
   return (
-    <div className="w-[18.5rem] max-w-full select-none" onKeyDown={onKeyDown}>
+    <div className={cx('max-w-full select-none', compact ? 'w-[17rem]' : 'w-[18.5rem]')} onKeyDown={onKeyDown}>
       <div className="mb-1 flex items-center justify-between">
         <button type="button" onClick={() => go(-1)} disabled={!canGo(-1)} aria-label={picking ? 'Previous year' : 'Previous month'}
-          className="flex h-11 w-11 items-center justify-center rounded-control text-fg-muted hover:bg-surface-hover disabled:opacity-30">
+          className={navCls}>
           <ChevronLeft className="h-5 w-5" aria-hidden />
         </button>
         <button type="button" onClick={() => setPicking(p => !p)} aria-expanded={picking}
           aria-label={`${monthName(view)}, ${picking ? 'back to the days' : 'pick a month and year'}`}
           title={picking ? 'Back to the days' : 'Pick a month and year'}
-          className="flex h-11 min-w-0 items-center gap-1 rounded-control px-2 text-ui font-semibold text-fg hover:bg-surface-hover">
+          className={cx('flex min-w-0 items-center gap-1 rounded-control px-2 font-semibold text-fg hover:bg-surface-hover', compact ? 'h-9 text-body' : 'h-11 text-ui')}>
           {monthName(view)}
           <ChevronDown className={cx('h-4 w-4 shrink-0 text-fg-muted transition-transform', picking && 'rotate-180')} aria-hidden />
         </button>
         {/* A button's own content is not announced as it changes; this is. */}
         <span className="sr-only" aria-live="polite">{monthName(view)}</span>
         <button type="button" onClick={() => go(1)} disabled={!canGo(1)} aria-label={picking ? 'Next year' : 'Next month'}
-          className="flex h-11 w-11 items-center justify-center rounded-control text-fg-muted hover:bg-surface-hover disabled:opacity-30">
+          className={navCls}>
           <ChevronRight className="h-5 w-5" aria-hidden />
         </button>
       </div>
@@ -79,7 +82,8 @@ export function DateCalendar({ value, min, max, onPick, selected }: {
                 aria-label={`${c.date.slice(8)}.${c.date.slice(5, 7)}.${c.date.slice(0, 4)}`}
                 aria-pressed={isSelected}
                 className={cx(
-                  'mx-auto flex h-10 w-10 items-center justify-center rounded-full text-body tabular-nums transition-colors',
+                  'mx-auto flex items-center justify-center rounded-full text-body tabular-nums transition-colors',
+                  compact ? 'h-9 w-9' : 'h-10 w-10',
                   isSelected ? 'bg-accent-500 font-semibold text-on-accent'
                     : c.date === today ? 'font-semibold text-accent-600 ring-1 ring-accent-300 hover:bg-accent-50'
                     : c.inMonth ? 'text-fg hover:bg-surface-hover' : 'text-fg-faint hover:bg-surface-hover',
@@ -94,7 +98,7 @@ export function DateCalendar({ value, min, max, onPick, selected }: {
       {!selected && allowed(today) && value !== today && (
         // Picking today also brings its month into view (a host that keeps the calendar open shows it).
         <button type="button" onClick={() => { setView(startView(today, min, max, today)); setPicking(false); onPick(today) }}
-          className="mt-1 min-h-[44px] w-full rounded-control text-meta font-semibold text-accent-600 hover:bg-accent-50">
+          className={cx('mt-1 w-full rounded-control text-meta font-semibold text-accent-600 hover:bg-accent-50', compact ? 'min-h-[36px]' : 'min-h-[44px]')}>
           Today
         </button>
       )}

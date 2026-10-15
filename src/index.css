@@ -314,6 +314,14 @@
   }
   textarea.input { @apply py-2 leading-relaxed; }
   .select { @apply rounded-control font-medium pr-8; }
+  /* A small field for a compact sheet's rows (32px on every pointer, like its chips). */
+  .input-sm { @apply min-h-[32px] px-2.5 rounded-control [@media(pointer:coarse)]:min-h-[32px]; }
+  textarea.input-sm { @apply py-1.5; }
+  /* A field whose text is the content (a sheet's title): no box; focus shows as an accent underline. */
+  .input-bare {
+    @apply w-full border-0 border-b border-transparent bg-transparent p-0 pb-1 text-fg placeholder:text-fg-faint
+           transition-colors duration-100 focus:border-accent-500 focus:outline-none;
+  }
   .field-label { @apply block text-micro font-semibold uppercase tracking-[0.08em] text-fg-muted mb-1.5; }
 
   /* Eyebrow label for card and group headings. */
@@ -367,6 +375,9 @@
     @apply bg-surface text-fg;
     box-shadow: 0 1px 2px rgb(15 23 42 / 0.12), inset 0 0 0 1px rgb(var(--ink-200));
   }
+  /* Extra small (a sheet header's This day | All days): 28px, chip-round. */
+  .seg-xs { @apply gap-0.5 rounded-full p-0.5; }
+  .seg-xs .seg-btn { @apply min-h-[28px] rounded-full px-2.5 text-meta [@media(pointer:coarse)]:min-h-[28px]; }
 
   /* Floating menus (Headless UI MenuItems / ListboxOptions). */
   .menu {
@@ -676,7 +687,7 @@ select:focus-visible,
 /* Focus ring follows the shape of rounded controls. */
 .btn:focus-visible, .icon-btn:focus-visible, .icon-btn-bordered:focus-visible,
 .select:focus-visible, .menu-item:focus-visible, .seg-btn:focus-visible { border-radius: 10px; }
-.pill-tab:focus-visible, .chip:focus-visible { border-radius: 999px; }
+.pill-tab:focus-visible, .chip:focus-visible, .seg-xs .seg-btn:focus-visible { border-radius: 999px; }
 
 /* Hover styles stick on touch screens; everything above uses @media (hover). */
 @media (prefers-reduced-motion: reduce) {

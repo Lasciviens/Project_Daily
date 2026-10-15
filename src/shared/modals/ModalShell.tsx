@@ -38,8 +38,11 @@ export interface ModalShellProps {
   dismissible?: boolean
   /** Stacking layer. Confirms sit above every other modal. */
   layer?: 'modal' | 'confirm'
-  /** Extra class names on the scrolling body (padding etc.). Default `p-4 sm:p-5`. */
+  /** Extra class names on the scrolling body (padding etc.). Default `p-4 sm:p-5` (`compact`: tighter). */
   bodyClassName?: string
+  /** A lighter chrome for a form sheet (the Add sheet, THEME §8): a smaller
+   *  title with no hairline under it, a smaller close button, tighter padding. */
+  compact?: boolean
   panelClassName?: string
   /** Accessible name when there is no `title` (e.g. the command palette). */
   ariaLabel?: string
@@ -54,7 +57,7 @@ export interface ModalShellProps {
 export function ModalShell({
   open = true, onClose, title, subtitle, headerActions, hero, footer,
   size = 'md', mobile = 'sheet', dismissible = true, layer = 'modal',
-  bodyClassName = 'p-4 sm:p-5', panelClassName, ariaLabel, children,
+  bodyClassName, panelClassName, ariaLabel, compact = false, children,
 }: ModalShellProps) {
   const depth = useModalDepth()
   const close = () => { if (dismissible) onClose() }
@@ -67,8 +70,8 @@ export function ModalShell({
   const full = mobile === 'fullscreen'
 
   const closeBtn = (
-    <button type="button" onClick={close} aria-label="Close" className="icon-btn -mr-2 shrink-0">
-      <X className="h-[18px] w-[18px]" aria-hidden />
+    <button type="button" onClick={close} aria-label="Close" className={cx('icon-btn shrink-0', compact ? '-mr-1.5 h-9 w-9 text-fg-muted' : '-mr-2')}>
+      <X className={compact ? 'h-4 w-4' : 'h-[18px] w-[18px]'} aria-hidden />
     </button>
   )
 
@@ -105,11 +108,15 @@ export function ModalShell({
           ) : title != null && (
             <header
               {...(full ? {} : handleProps)}
-              className={cx('flex shrink-0 items-center gap-3 border-b border-line px-4 py-2.5 sm:px-5', full && 'pt-[calc(0.625rem+env(safe-area-inset-top))] sm:pt-2.5')}
+              className={cx(
+                'flex shrink-0 items-center gap-3 px-4 sm:px-5',
+                compact ? 'pb-1 sm:pt-3' : 'border-b border-line py-2.5',
+                full && (compact ? 'pt-[calc(0.25rem+env(safe-area-inset-top))]' : 'pt-[calc(0.625rem+env(safe-area-inset-top))] sm:pt-2.5'),
+              )}
             >
               <div className="min-w-0 flex-1">
                 {/* User data (a recipe, a game): cut at the box, the rest on tap / hover. */}
-                <DialogTitle className="min-w-0 text-title font-semibold text-fg"><Truncate>{title}</Truncate></DialogTitle>
+                <DialogTitle className={cx('min-w-0 font-semibold text-fg', compact ? 'text-lead' : 'text-title')}><Truncate>{title}</Truncate></DialogTitle>
                 {subtitle != null && <Truncate as="p" className="text-meta text-fg-muted">{subtitle}</Truncate>}
               </div>
               {headerActions}
@@ -117,10 +124,13 @@ export function ModalShell({
             </header>
           )}
 
-          <div ref={setBodyEl} className={cx('scroll-y min-h-0 flex-1 overflow-y-auto', bodyClassName)}>{children}</div>
+          <div ref={setBodyEl} className={cx('scroll-y min-h-0 flex-1 overflow-y-auto', bodyClassName ?? (compact ? 'px-4 pb-4 pt-1.5 sm:px-5' : 'p-4 sm:p-5'))}>{children}</div>
 
           {footer != null && (
-            <footer className="shrink-0 border-t border-line bg-surface px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:px-5 sm:pb-3">
+            <footer className={cx(
+              'shrink-0 border-t border-line bg-surface px-4 sm:px-5',
+              compact ? 'pt-2.5 pb-[calc(0.625rem+env(safe-area-inset-bottom))] sm:pb-2.5' : 'pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:pb-3',
+            )}>
               {footer}
             </footer>
           )}
