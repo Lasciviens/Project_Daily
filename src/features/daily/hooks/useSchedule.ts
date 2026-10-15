@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { queryOptions, useQuery } from '@tanstack/react-query'
 import {
   fetchScheduleBlocks,
@@ -18,6 +19,8 @@ import {
   SERIES_EVENT_RESET, relinkRestoredSeriesEvents, removeDeletedSeriesEvents, syncScheduleSeriesAfterSave,
 } from '../../calendar/api/scheduleSeriesCalendar'
 import { qk, STALE } from '../../../shared/query'
+import { todayStr } from '../../../shared/utils/dateUtils'
+import { repeatDaysOn, repeatsToDoBetween, repeatsToDoOn } from '../dayItems'
 import type {
   CreateTimeBlockInput, UpdateTimeBlockInput, CreateScheduleBlockInput, UpdateScheduleBlockInput, ScheduleBlock,
 } from '../types'
@@ -29,6 +32,23 @@ export function useScheduleBlocks() {
     queryFn:  fetchScheduleBlocks,
     staleTime: STALE.long,
   })
+}
+
+/**
+ * Days of repeating plans in the week strips and the month (owner, 15.10.2026:
+ * the counts and dots include repeats). A day already acted on is its own task
+ * and counts as one; a past day nobody ticked is missed — on its day, not open.
+ */
+export function useRepeatDays() {
+  const { data: templates = [] } = useScheduleBlocks()
+  const today = todayStr()
+  return useMemo(() => ({
+    /** Repeat days still to do on `day` (none before today). */
+    toDoOn: (day: string) => repeatsToDoOn(templates, day, today),
+    /** Any repeat day on `day` (a past one too: the day view lists it as missed). */
+    on: (day: string) => repeatDaysOn(templates, day),
+    toDoBetween: (from: string, to: string) => repeatsToDoBetween(templates, from, to, today),
+  }), [templates, today])
 }
 
 /** One recurring template by id — a projection of the templates list (one request for every consumer). */

@@ -27,9 +27,9 @@ function useOpenScheduleItem() {
       modal.open({ kind: 'training-session', plan: { kind: item.kind, id: item.id, date: item.planDate } })
       return
     }
-    // Same headings as Daily's agenda, so one block reads the same everywhere.
-    if (item.kind === 'block') modal.open({ kind: 'time-block', id: item.id, config: { heading: 'Edit block' } })
-    else modal.open({ kind: 'schedule-block', id: item.id, config: { heading: 'Edit recurring block' } })
+    // The one Add sheet (155); a repeat opens on its day: This day | All days.
+    if (item.kind === 'block') modal.open({ kind: 'time-block', id: item.id })
+    else modal.open({ kind: 'schedule-block', id: item.id, occurrenceDate: item.planDate })
   }
 }
 

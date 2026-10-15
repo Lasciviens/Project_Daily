@@ -45,10 +45,10 @@ Settled calls, one line each: what was decided, why, and where the full story li
 
 These have a warning comment where they live; don't "tidy" them away.
 
-- `section: 'today'` default in `planForm.ts` — server-side reads depend on it.
+- A new item's date defaults to today in `planForm.ts` (the section follows the date since 155, so it files under Today) — server-side `section.eq.today` reads depend on it.
 - `skipGoogleTasks` in `useTodos.ts` — prevents a task appearing on Google twice.
 - The deferred `setPointerCapture` in `useSwipeToReveal.ts` — capturing on pointerdown broke every row button.
 - The removed DML keyword regex in `ai-proxy`'s `run_read_query` — the database is the boundary; the regex rejected valid reads.
 - The season chips in `windowChips.tsx` — the only quick way to enter a period on a phone.
-- The open-wish link in `DayView.tsx` — the one place on a phone where it is seen.
+- The open-wish link at the top of Daily's day list (`DayAgendaExtras.tsx`, above Anytime) — the one place on a phone where it is seen.
 - The Hevy upsert copied into four functions — Dashboard deploys can't bundle shared files.

@@ -5,6 +5,7 @@ import { addDays, addWeeks, format, startOfWeek, isToday, isSameDay, getISOWeek 
 import { formatWeekdayDate } from '../../../shared/utils/dateFormat'
 import { useOpenOnDay, useTasksByWeek } from '../../todo/hooks/useTodos'
 import { useCalendarEventDatesForRange } from '../../calendar/hooks/useCalendar'
+import { useRepeatDays } from '../hooks/useSchedule'
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  WeekStrip — the hero surface's top band: 7 fixed day cells for the week
@@ -33,9 +34,11 @@ export function WeekStrip({ viewDate, onDayClick }: Props) {
   const { data: tasks = [] } = useTasksByWeek(weekStart, addDays(weekStart, 6))
   const { data: calDates }   = useCalendarEventDatesForRange(weekStart, addDays(weekStart, 6))
 
-  // The same open count as the day pane (taskRules.onDay).
+  // The same open count as the day's list: its open tasks (taskRules.onDay)
+  // plus the repeat days still to do on it.
   const openOn = useOpenOnDay(tasks)
-  const openCount = (d: Date) => openOn(format(d, 'yyyy-MM-dd'))
+  const repeats = useRepeatDays()
+  const openCount = (d: Date) => { const day = format(d, 'yyyy-MM-dd'); return openOn(day) + repeats.toDoOn(day) }
 
   const chevron = 'grid min-h-[44px] min-w-[32px] place-items-center rounded-control text-fg-faint transition-colors duration-150 hover:bg-surface-hover hover:text-fg'
 

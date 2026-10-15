@@ -28,7 +28,19 @@ const {
   blockSourceTypeForTask, taskSourceTypeForBlock, needsGoogleTaskDedupe, shouldCreateLinkedTask,
   needsGoogleTasksFallback, hasValidRecurrenceSelection, clampDurationMinutes,
 } = require('../src/shared/components/plan-modal/planModal.config')
-const { buildInitialForm } = require('../src/shared/components/plan-modal/planForm')
+const { buildInitialForm: buildSheetForm } = require('../src/shared/components/plan-modal/planForm')
+const { itemFromRows, effectiveGoogleTarget } = require('../src/features/items/sheetRules')
+// The Add sheet (one item, 155) seeds its form from the saved rows read as one item.
+const buildInitialForm = (defaults, task, timeBlock, scheduleBlock) => {
+  const item = task || timeBlock || scheduleBlock ? itemFromRows(task, timeBlock, scheduleBlock) : null
+  const mode = scheduleBlock ? 'recurring' : timeBlock ? 'schedule' : 'task'
+  return buildSheetForm({ mode, defaults, item, today: '2026-10-14', nextTime: '16:00' })
+}
+// "On Google Calendar" as the sheet will save it (the chip's target).
+const onCalendar = f => {
+  const t = effectiveGoogleTarget({ time: f.time, repeat: f.recurrence !== 'none' ? {} : null }, f.googlePick)
+  return t === 'calendar' || t === 'both'
+}
 const { shouldSkipPendingCreate } = require('../src/features/todo/api/googleTasksOutboxRules')
 const { classifyCalendarPushFailure } = require('../src/features/daily/api/scheduleSyncRules')
 const { CalendarApiError, isCalendarNotFound, blockEventId } = require('../src/features/calendar/api/calendarApi')
@@ -143,12 +155,12 @@ console.log('\n== 6. needsGoogleTaskDedupe — "one task = one Google entry" on 
     needsGoogleTaskDedupe('linked', false) === false)
 }
 
-console.log('\n== 7. buildInitialForm — gcal seeded from the REAL entity, not a blind default ==')
+console.log('\n== 7. The sheet seeds Google from the REAL rows, not a blind default ==')
 {
-  // Real bug: opening an already-calendar-linked standalone block used to
-  // seed gcal=false (only `defaults?.gcal` was consulted), so an unrelated
-  // Save silently ran the "toggle went from checked to unchecked" unlink
-  // branch against a real Google Calendar event nobody touched.
+  // Real bug (v9): opening an already-calendar-linked standalone block used to
+  // seed gcal=false, so an unrelated Save unlinked a real Google Calendar
+  // event nobody touched. Since one item (155) the sheet's Google chip seeds
+  // from where the rows are (sheetRules.itemFromRows / presentGoogleTarget).
   const linkedBlock = {
     id: 'b1', date: '2026-08-22', title: 'Gym', start_time: '18:00:00',
     duration_minutes: 60, color: 'accent', category: 'training',
@@ -157,23 +169,23 @@ console.log('\n== 7. buildInitialForm — gcal seeded from the REAL entity, not 
   }
   const unlinkedBlock = { ...linkedBlock, google_calendar_event_id: null }
 
-  check('editing a calendar-linked block seeds gcal=true',
-    buildInitialForm(undefined, undefined, linkedBlock, undefined).gcal === true)
-  check('editing a non-linked block seeds gcal=false',
-    buildInitialForm(undefined, undefined, unlinkedBlock, undefined).gcal === false)
-  check('CREATE (no timeBlock) still falls back to defaults.gcal',
-    buildInitialForm({ gcal: true }, undefined, undefined, undefined).gcal === true)
-  check('CREATE (no timeBlock), no defaults -> gcal=false',
-    buildInitialForm(undefined, undefined, undefined, undefined).gcal === false)
+  check('editing a calendar-linked block stays on Calendar',
+    onCalendar(buildInitialForm(undefined, undefined, linkedBlock, undefined)))
+  check('editing a non-linked block stays off Google',
+    buildInitialForm(undefined, undefined, unlinkedBlock, undefined).googlePick === 'none')
+  check('CREATE falls back to defaults.gcal',
+    buildInitialForm({ gcal: true }, undefined, undefined, undefined).googlePick === 'calendar')
+  check('CREATE, no defaults -> follows the default (no pick)',
+    buildInitialForm(undefined, undefined, undefined, undefined).googlePick === null)
   // A repeating plan's own series (147) seeds it the same way, so saving an
   // untouched plan never removes its event from Google Calendar.
   const plan = { id: 's1', user_id: 'u', title: 'Upper A', days_of_week: [1, 4], start_time: '17:00:00', end_time: '18:00:00',
     color: 'blue', category: 'training', effective_from: '2026-09-01', created_at: '', updated_at: '' }
-  check('editing a repeating plan on Google Calendar seeds gcal=true',
-    buildInitialForm(undefined, undefined, undefined, { ...plan, google_calendar_event_id: 'abc' }).gcal === true)
-  check('editing a repeating plan not on it (or from before 147) seeds gcal=false',
-    buildInitialForm(undefined, undefined, undefined, { ...plan, google_calendar_event_id: null }).gcal === false
-    && buildInitialForm(undefined, undefined, undefined, plan).gcal === false)
+  check('editing a repeating plan on Google Calendar stays on it',
+    onCalendar(buildInitialForm(undefined, undefined, undefined, { ...plan, google_calendar_event_id: 'abc' })))
+  check('editing a repeating plan not on it (or from before 147) stays off it',
+    buildInitialForm(undefined, undefined, undefined, { ...plan, google_calendar_event_id: null }).googlePick === 'none'
+    && buildInitialForm(undefined, undefined, undefined, plan).googlePick === 'none')
 }
 
 console.log('\n== 8. shouldSkipPendingCreate — the outbox drain half of the dedupe-ordering fix ==')

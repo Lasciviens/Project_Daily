@@ -546,6 +546,16 @@ as "+" chips (`FactChips`) instead of empty inputs; edits gather in a draft and 
 Discard / Save only when something changed (closing with changes asks first). Creating stays a small `md`
 sheet — a record is for a row that already exists.
 
+**The Add sheet** (one item, `shared/components/plan-modal/`) is the pattern for a create/edit form whose
+facts are mostly optional: a title first, then **chips** instead of labelled fields — a chip that holds a
+value (`chipClass('set')`: "Thu 15.10.2026", "17:30–18:30") opens its editor in a Headless UI `Popover`
+panel on tap (`CHIP_PANEL_CLASS`: above the sheet on `z-toast`, scrolls when the anchor leaves too little
+room), a chip that offers one is dashed (`chipClass('add')`: "+ Time"). Rarely-used facts wait behind small
+dashed "+ Notes / + Priority / …" chips and open as a row in place; a row with a value opens by itself. A
+choice with consequences (where the item goes on Google) is one chip with a `Menu` whose items say what
+each does, disabled ones with the reason. Text that fills the chips as it is typed says so on a **Read
+as** line with an undo ("Keep text", `features/items/components/ReadAsLine`).
+
 **Headless UI pieces** (`@headlessui/react` v2) — never hand-made open/close state for these. They
 handle click-outside, Escape, focus trap, portal rendering and ARIA; anything portalled uses token
 classes (and, on `/games`, the `tg-portal` class).

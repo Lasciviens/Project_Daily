@@ -41,6 +41,14 @@ Two kinds of integration sit side by side there and are labelled differently, de
   workout count differs from the app's, the two counts with one button (**Fetch missing workouts** /
   **Check workouts with Hevy**) — a sync action, not a connect — and a warning line when the last
   account read failed (`docs/integrations/hevy.md`).
+  The Google card (15.10.2026, the one-item change) also has **Convert old items** — shown
+  connected or not, since it changes only the app's data: a sheet counts what would change first
+  (future slots with no task become items Daily can tick; past slots stay as they are; tasks with a
+  slot and repeating plans are already one item) with a few examples, and only **Convert** applies
+  it (`useConvertPreview` / `useConvertOldItems`, which reports with its own Undo); nothing is
+  deleted and each slot keeps its Google Calendar event. Under the Google Tasks line, a second line
+  says when changes made in Google Calendar were last read back (`useCalendarReadbackState`;
+  `ConvertOldItems.tsx`).
 
 Load-bearing details:
 - `GOOGLE_SCOPES` (`src/features/calendar/googleScopes.ts`) is the ONE definition of the Google

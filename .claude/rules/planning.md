@@ -1,6 +1,7 @@
 ---
 paths:
   - "src/shared/components/plan-modal/**"
+  - "src/features/items/**"
   - "src/features/calendar/**"
   - "src/features/daily/api/**"
   - "src/features/todo/api/google*"
@@ -17,7 +18,10 @@ paths:
 
 Background: `docs/features/planning-calendar.md`.
 
-- `UnifiedPlanModal` is the one planner. Callers open it through `useEntityModal` (`task`, `time-block`, `schedule-block`, `plan-block`); `PlanEntityModals.tsx` holds the one routing rule (a block with a `task_id` opens as its task). Log every logic change in the CHANGELOG at the top of `UnifiedPlanModal.tsx`.
+- `UnifiedPlanModal` is the one Add sheet (one item, 155): one form (`ItemForm.tsx`), one save (`useSaveItem`), one delete (`items/useSheetDelete`, the stand-in for `useDeleteItem`) — never a table write in the sheet. `task`, `time-block`, `schedule-block`, `plan-block` are aliases that open it through `useEntityModal`; `PlanEntityModals.tsx` loads the item's rows by id and holds the one routing rule (a block with a `task_id` opens as its task). Log every logic change in the CHANGELOG at the top of `UnifiedPlanModal.tsx`.
+- The section follows the date (no date → Inbox, today → Today, another day → Backlog); a new item's date defaults to today or the caller's day — never undated by default (`.claude/rules/tasks.md`).
+- The Google chip shows the actual target, never "Auto"; its default and problems come only from `items/sheetRules.ts` (or the data layer's copy of the same rules, once it lands): a time or a repeat → Calendar, no time → Tasks, Both only when picked and with "Shows twice in Google Calendar", Tasks never for a repeat.
+- Quick add has one parser (`items/quickAdd.ts`) for the sheet's title and Home's quick add; a bare number is never read; a new reading gets its cases in `verify-quick-add`.
 - A task and its one-off slot are independent facts. `time_blocks.task_id` is the only link; `time_blocks.source_type` is never `'task'` (it names the block's real origin). TV vocabulary differs: tasks use `tv_series`, time_blocks `tv_episode`. A training task's day/time and block move together (142).
 - Calendar status is typed: `'linked' | 'not_linked' | 'unknown'` from the real HTTP status (`isCalendarNotFound` accepts 404 and 410) — never a message-string guess. `'unknown'` never deletes a Google Task copy and never creates a fallback.
 - One task = one Google entry: a task linked to a Calendar event skips Google Tasks. Don't simplify away `skipGoogleTasks` in `useTodos.ts`; apply the dedupe only after the Calendar link is confirmed.

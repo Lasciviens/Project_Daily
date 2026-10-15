@@ -84,6 +84,9 @@ export interface TimeBlock {
    *  that day (migration 142): one occurrence turned into a plan of its own. */
   schedule_block_id?: string | null
   occurrence_date?:   string | null
+  /** false: a time with no length ("at 14:00") — the slot doesn't block time
+   *  and its Google event is Free (migration 155). Missing before it = busy. */
+  busy?:            boolean | null
   /** Its linked task's status — only on the training-range read
    *  (fetchTrainingBlocksRange): a trained session (task done) is no longer "next". */
   task_status?:     'open' | 'in_progress' | 'waiting' | 'done' | 'cancelled' | null

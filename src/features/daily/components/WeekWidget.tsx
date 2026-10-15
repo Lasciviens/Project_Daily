@@ -6,6 +6,8 @@ import { useOpenOnDay, useTasksByWeek, useWeekCounts } from '../../todo/hooks/us
 import { isOpenTask } from '../../todo/taskRules'
 import { useCalendarEventDatesForRange, useCalendarList } from '../../calendar/hooks/useCalendar'
 import { useCalendarStore } from '../../../app/store'
+import { useRepeatDays } from '../hooks/useSchedule'
+import { withRepeats } from '../dayItems'
 import { DateNav } from '../../../shared/components/DateNav'
 import { Card, IconButton, ToneDot, TonePill, cx, Truncate } from '../../../shared/ui'
 import type { Task } from '../../todo/types'
@@ -45,9 +47,11 @@ export function WeekWidget({ onDayClick, highlightDate, className = 'max-w-3xl' 
 
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i))
 
-  // The same open count as the day pane (taskRules.onDay).
+  // The same open count as the day's list: open tasks (taskRules.onDay) plus
+  // the repeat days still to do.
   const openOn = useOpenOnDay(tasks)
-  const openCountForDay = (date: Date) => openOn(format(date, 'yyyy-MM-dd'))
+  const repeats = useRepeatDays()
+  const openCountForDay = (date: Date) => { const day = format(date, 'yyyy-MM-dd'); return openOn(day) + repeats.toDoOn(day) }
 
   function hasCalEventOnDay(date: Date): boolean {
     return calDates?.has(format(date, 'yyyy-MM-dd')) ?? false
@@ -69,8 +73,11 @@ export function WeekWidget({ onDayClick, highlightDate, className = 'max-w-3xl' 
   const floatingTasks = tasks.filter((t): t is Task => !t.due_date && isOpenTask(t))
 
   // Counted the day lists' way; a task finished in another week no longer
-  // counts in this one (taskRules.weekCounts).
-  const progress    = useWeekCounts(tasks, format(weekStart, 'yyyy-MM-dd'), format(weekEnd, 'yyyy-MM-dd'))
+  // counts in this one (taskRules.weekCounts). Repeat days still to do count
+  // as open (a ticked one is its own task, already counted).
+  const weekFrom    = format(weekStart, 'yyyy-MM-dd')
+  const weekTo      = format(weekEnd, 'yyyy-MM-dd')
+  const progress    = withRepeats(useWeekCounts(tasks, weekFrom, weekTo), repeats.toDoBetween(weekFrom, weekTo))
   const openTotal   = progress.open
   const totalTasks  = progress.open + progress.done
   const donePercent = progress.percent
