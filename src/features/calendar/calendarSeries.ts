@@ -41,6 +41,16 @@
 //
 //  A plan that crosses midnight (end before start, or equal = 24 h) ends on
 //  the next day — the same reading as dayAgendaProjection.ts.
+//
+//  Since 155 (one item): a repeat with no time (start_time and end_time NULL)
+//  is an ALL-DAY series — start/end are dates (the first day, the day after:
+//  Google's end is exclusive) and every RDATE / EXDATE is a date
+//  (`RDATE;VALUE=DATE:20261018,…` — Google: "must be dates (not date-times)
+//  for all-day events"). Every series says whether it blocks time
+//  (`transparency`): Busy for a time with a length, Free for a time without
+//  one (busy false) and for all-day. A day held by a moved instance of the
+//  series (the read-back, 155: that slot stores `<seriesId>_…`) gets no
+//  EXDATE (`keepDays`) — an EXDATE would cancel that instance on Google.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import {
@@ -61,8 +71,11 @@ const FIRST_DAY_SEARCH_DAYS = 9 * 366
 /** The columns of a schedule_blocks row the mapping reads. */
 export interface SeriesTemplate extends RepeatRule {
   title:        string
-  start_time:   string   // 'HH:MM' or 'HH:MM:SS'
-  end_time:     string
+  /** 'HH:MM' or 'HH:MM:SS'; null (with end_time) = a repeat with no time — an all-day series (155). */
+  start_time:   string | null
+  end_time:     string | null
+  /** false: a time with no length — Free on Google (155). Missing = busy. */
+  busy?:        boolean | null
   google_calendar_event_id?: string | null
   /** The last day the event's RDATE list covers (147); null = it lists them all. */
   google_calendar_horizon?:  string | null
@@ -73,13 +86,19 @@ export interface SeriesTemplate extends RepeatRule {
   google_calendar_from?: string | null
 }
 
-/** What events.insert / events.patch get. */
+/** What events.insert / events.patch get. A timed series: wall-clock
+ *  dateTime + zone; an all-day one (155): dates. */
 export interface SeriesEventBody {
   summary:    string
-  start:      { dateTime: string; timeZone: string }
-  end:        { dateTime: string; timeZone: string }
+  start:      { dateTime: string; timeZone: string } | { date: string }
+  end:        { dateTime: string; timeZone: string } | { date: string }
   recurrence: string[]
+  /** opaque = Busy, transparent = Free (155). */
+  transparency: 'opaque' | 'transparent'
 }
+
+/** Push options: `keepDays` — days held by a moved instance of the series (155), never EXDATEd. */
+export interface SeriesPushOptions { today: string; timeZone: string; keepDays?: readonly string[] }
 
 export interface SeriesPlan {
   body:    SeriesEventBody
@@ -188,7 +207,7 @@ export function needsSeriesFromDay(t: SeriesTemplate): boolean {
 
 /** The event a push sends today: seriesEventFor from the series' start day
  *  (seriesFromDay) — what the plan's link stores as `from`. */
-export function seriesEventForPush(row: SeriesTemplate, opts: { today: string; timeZone: string }): SeriesPlan | null {
+export function seriesEventForPush(row: SeriesTemplate, opts: SeriesPushOptions): SeriesPlan | null {
   return seriesEventFor({ ...row, google_calendar_from: seriesFromDay(row, opts.today) }, opts)
 }
 
@@ -229,17 +248,22 @@ export function addPlansResultText(r: { added: number; failed: number }): string
  * left to show (no day picked, every day taken out). `today` sets the
  * horizon of the monthly kinds; `timeZone` is the zone the times mean.
  */
-export function seriesEventFor(t: SeriesTemplate, opts: { today: string; timeZone: string }): SeriesPlan | null {
-  const startClock = clock(t.start_time)
-  const endClock = clock(t.end_time)
-  if (!startClock || !endClock || !isIsoDay(opts.today)) return null
+export function seriesEventFor(t: SeriesTemplate, opts: SeriesPushOptions): SeriesPlan | null {
+  const allDay = t.start_time == null && t.end_time == null
+  const startClock = allDay ? null : clock(t.start_time ?? '')
+  const endClock = allDay ? null : clock(t.end_time ?? '')
+  if ((!allDay && (!startClock || !endClock)) || !isIsoDay(opts.today)) return null
   const first = firstSeriesDay(t, opts.today)
   if (!first) return null
 
   const tz = seriesTimeZone(opts.timeZone)
+  const keep = new Set((opts.keepDays ?? []).filter(isIsoDay))
   const except = new Set((t.except_dates ?? []).filter(isIsoDay))
   const pattern = patternOf(t)
-  const stamps = (days: readonly string[]) => days.map(d => icalStamp(d, startClock)).join(',')
+  // All-day: dates (VALUE=DATE, no zone); timed: local date-times with TZID.
+  const stamps = (days: readonly string[]) =>
+    days.map(d => (startClock ? icalStamp(d, startClock) : d.replace(/-/g, ''))).join(',')
+  const prefix = (name: 'RDATE' | 'EXDATE') => (allDay ? `${name};VALUE=DATE:` : `${name};TZID=${tz}:`)
   const recurrence: string[] = []
   let horizon: string | null = null
   let exdates: string[]
@@ -256,22 +280,37 @@ export function seriesEventFor(t: SeriesTemplate, opts: { today: string; timeZon
     if (repeatKindOf(t) !== 'dates') horizon = last
     const days = occurrencesBetween(pattern, first, last)
     const extra = days.filter(d => d !== first && !except.has(d))
-    if (!extra.length && except.has(first)) return null // nothing left to show
-    if (extra.length) recurrence.push(`RDATE;TZID=${tz}:${stamps(extra)}`)
+    if (!extra.length && except.has(first) && !keep.has(first)) return null // nothing left to show
+    if (extra.length) recurrence.push(`${prefix('RDATE')}${stamps(extra)}`)
     exdates = except.has(first) ? [first] : []
   }
-  if (exdates.length) recurrence.push(`EXDATE;TZID=${tz}:${stamps(exdates)}`)
+  exdates = exdates.filter(d => !keep.has(d))
+  if (exdates.length) recurrence.push(`${prefix('EXDATE')}${stamps(exdates)}`)
 
+  const from = isIsoDay(t.google_calendar_from) ? t.google_calendar_from : null
+  if (!startClock || !endClock) {
+    return {
+      first, horizon, from,
+      body: {
+        summary: t.title,
+        start: { date: first },
+        end: { date: addDaysIso(first, 1) },
+        recurrence,
+        transparency: 'transparent',
+      },
+    }
+  }
   const endDay = minutesOf(endClock) <= minutesOf(startClock) ? addDaysIso(first, 1) : first
   return {
     first,
     horizon,
-    from: isIsoDay(t.google_calendar_from) ? t.google_calendar_from : null,
+    from,
     body: {
       summary: t.title,
       start: { dateTime: `${first}T${startClock}`, timeZone: tz },
       end:   { dateTime: `${endDay}T${endClock}`, timeZone: tz },
       recurrence,
+      transparency: t.busy === false ? 'transparent' : 'opaque',
     },
   }
 }

@@ -27,6 +27,7 @@ import { mapRowsInCache, putRowsInCache, restoreCache, snapshotCache } from '../
 import { useRowsDelete } from '../../../shared/hooks/useRowsDelete'
 import { rowsOf, type RowOverrides } from '../../../shared/utils/deletedRows'
 import { BLOCK_EVENT_RESET, relinkRestoredBlockEvents, removeDeletedBlockEvents } from '../../calendar/api/deletedBlockEvents'
+import { refreshTaskEventSoon } from '../../calendar/api/itemCalendar'
 import { dayTasks, openOnDay, sectionForDay, weekCounts } from '../taskRules'
 import { todayStr } from '../../../shared/utils/dateUtils'
 import { applyTaskPatch, taskUpdateMessage } from '../taskWrites'
@@ -185,6 +186,9 @@ export function useUpdateTask({ report = true }: { report?: boolean } = {}) {
       // migration 071's DB trigger (it has OLD/NEW); this only delivers what
       // it enqueued — in the background.
       syncGoogleTasksSoon({ taskId: id })
+      // Done / reopened: its slot's event gains or loses "✓ " (155). A title
+      // edit pushes the event below anyway.
+      if (patch.status !== undefined && patch.title === undefined) refreshTaskEventSoon(id)
 
       // Task title is canonical (migration 077) — a DB trigger already kept
       // the linked time_block's OWN title in sync regardless of which door
@@ -228,6 +232,8 @@ export function useToggleTask() {
     mutationFn: async ({ id, isDone }: { id: string; isDone: boolean }) => {
       const task = await toggleTaskDone(id, isDone)
       syncGoogleTasksSoon({ taskId: id })
+      // Its slot's Google Calendar event gains or loses "✓ " (155), in the background.
+      refreshTaskEventSoon(id)
       return task
     },
     onMutate: async ({ id, isDone }) => {

@@ -60,6 +60,13 @@ export interface Task {
   hevy_routine_id?:         string | null
   /** The Hevy workout that completed it; set by the database when the workout syncs. */
   hevy_workout_id?:         string | null
+
+  // ── One item (migration 155) — undefined before it runs ───────────────────
+  /** Where the item lives on Google; null = saved before 155 (its presence is google_sync_enabled + its slot's event). */
+  google_target?:           'tasks' | 'calendar' | 'both' | 'none' | null
+  /** "+ Deadline" (due by); the item's own day stays in due_date. */
+  deadline_date?:           string | null
+  deadline_time?:           string | null
 }
 
 export interface CreateTaskInput {

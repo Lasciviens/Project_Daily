@@ -12,6 +12,8 @@ export interface CalendarEvent {
   recurrence?: string[]
   /** On an instance of a repeating event: the series' id (147 de-dupes by it). */
   recurringEventId?: string
+  /** opaque = Busy (default), transparent = Free (155). */
+  transparency?: 'opaque' | 'transparent'
   htmlLink: string
   calendarId?: string  // attached client-side after fetch
 }

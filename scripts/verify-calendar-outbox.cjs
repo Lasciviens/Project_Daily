@@ -242,6 +242,28 @@ async function drainSection() {
     check('attempt 7 waits the one-hour cap', log.backedOff[0].attempts === 7 && log.backedOff[0].delaySeconds === 3600)
   })
 
+  await scenario('upserts (155)', async () => {
+    const up = (event, attempts = 0) => ({ ...row(event, attempts), operation: 'upsert', requested_at: '2026-10-15T10:00:00Z' })
+    const log = { patched: [], removed: [], backedOff: [], deleted: [] }
+    const answers = { ok: { status: 200, message: '' }, gone: { status: 404, message: 'Calendar API 404' }, busy: { status: 503, message: 'Calendar API 503' }, quota: { status: 429, message: 'Calendar API 429' } }
+    const deps = {
+      stillLinked: new Set(['ok', 'busy']),
+      deleteEvent: async (r) => { log.deleted.push(r.event_id); return { status: 204, message: '' } },
+      patchEvent: async (r) => { log.patched.push(r.event_id); return r.event_id === 'nobody' ? null : answers[r.event_id] },
+      removeRow: async (r) => { log.removed.push(r.event_id) },
+      backOff: async (r, attempts, delaySeconds, message) => { log.backedOff.push({ event: r.event_id, attempts, delaySeconds, message }) },
+    }
+    const s1 = await R.drainCalendarRows([up('ok'), up('gone'), up('nobody'), up('busy'), up('quota'), up('after')], deps)
+    check('an upsert is PATCHed, never deleted — even for an event a live slot holds (stillLinked is for deletes)',
+      log.deleted.length === 0 && log.patched.includes('ok') && s1.patched === 1)
+    check('404/410 on a PATCH: the row goes (the read-back turns the item\'s Calendar presence off)', log.removed.includes('gone') && s1.already_gone === 1)
+    check('no live slot or plan holds the event any more: the row goes, nothing is sent', log.removed.includes('nobody') && s1.untracked === 1)
+    check('503: backed off like a delete', log.backedOff.some(b => b.event === 'busy' && b.attempts === 1 && b.delaySeconds === 60))
+    check('429 stops the run before the next row', s1.stopped === 'Calendar API 429' && !log.patched.includes('after') && s1.left === 1)
+    const noPatch = await R.drainCalendarRows([up('x')], { ...deps, patchEvent: undefined })
+    check('a drain without patchEvent treats an upsert as nothing to push (never as a delete)', noPatch.untracked === 1 && !log.deleted.includes('x'))
+  })
+
   await scenario('empty batch', async () => {
     const { deps } = fakeDeps({})
     const s = await R.drainCalendarRows([], deps)
@@ -287,6 +309,22 @@ function calendarAgreementSection() {
   check('migration 147 queues each event once', /ON CONFLICT \(user_id, calendar_id, event_id\) DO NOTHING/.test(series))
 }
 
+function migration155Section() {
+  console.log('\n8b · Migration 155: the upsert, and a delete that wins over it')
+  const m = read('supabase/migrations/155_one_item.sql')
+  check('operation may be delete or upsert', /check \(operation in \('delete', 'upsert'\)\)/.test(m))
+  check('both delete triggers (135, 147) queue \'primary\' and turn a waiting upsert into the delete',
+    (m.match(/values \(old\.user_id, 'primary', old\.google_calendar_event_id, 'delete'/g) ?? []).length === 2
+    && (m.match(/set operation = 'delete'/g) ?? []).length === 2
+    && (m.match(/where public\.calendar_outbox\.operation <> 'delete'/g) ?? []).length === 2)
+  check('an upsert queues \'primary\' and never overwrites a waiting delete',
+    /values \(p_user, 'primary', p_event, 'upsert'/.test(m) && /where public\.calendar_outbox\.operation = 'upsert'/.test(m))
+  check('an upsert moves requested_at with the clock, not the transaction start', /requested_at\)\s+values[\s\S]*?clock_timestamp\(\)\)\s+on conflict \(user_id, calendar_id, event_id\) do update\s+set requested_at = excluded\.requested_at/.test(m))
+  check('the read-back\'s own writes queue nothing (app.calendar_readback)', (m.match(/current_setting\('app\.calendar_readback', true\)/g) ?? []).length === 3)
+  check('a link made or cleared (the browser\'s own Calendar call) queues nothing',
+    (m.match(/new\.google_calendar_event_id is null or new\.google_calendar_event_id is distinct from old\.google_calendar_event_id/g) ?? []).length === 2)
+}
+
 function migrationSection() {
   console.log('\n8 · Migration 135')
   const sql = migration
@@ -329,7 +367,13 @@ function wiringSection() {
   check('the request path comes from calendarEventPath', /calendarEventPath\(calendarId, eventId\)/.test(f))
   const queueRead = f.slice(f.indexOf("from('calendar_outbox')"), f.indexOf('.limit(CALENDAR_BATCH)'))
   check('it reads the queue for this user only', /\.eq\('user_id', userId\)/.test(queueRead))
-  check('it reads delete rows only (a later operation is never taken for a delete)', /\.eq\('operation', 'delete'\)/.test(queueRead))
+  check('it names the operations it reads (135\'s delete, 155\'s upsert) — a later one is never taken for either',
+    /\.in\('operation', \['delete', 'upsert'\]\)/.test(queueRead))
+  check('before 155 (no requested_at) it reads the delete rows only', /\.eq\('operation', 'delete'\)/.test(f.slice(f.indexOf('drainCalendarDeletesBefore155(token: string'))))
+  check('a row is removed only while it holds the request this run read (155: requested_at)', /if \(row\.requested_at\) removal = removal\.eq\('requested_at', row\.requested_at\)/.test(f))
+  check('an upsert PATCHes from the live row: a slot through blockEventBody (Oslo\'s wall clock), a series its title',
+    /blockEventBody\(block as unknown as EventBlock, \{\s*done: \(block as AnyRecord\)\.task\?\.status === 'done', timeZone: SERVER_EVENT_TIME_ZONE,/.test(f)
+    && /\{ summary: stripDoneMark\(plan\.title\) \}/.test(f))
   check('it reads due rows only, oldest first',
     /\.lte\('next_retry_at', new Date\(\)\.toISOString\(\)\)/.test(queueRead) && /\.order\('created_at', \{ ascending: true \}\)/.test(queueRead))
   check('writes to the queue are scoped to the user', (f.match(/\.eq\('id', row\.id\)\.eq\('user_id', userId\)/g) ?? []).length === 2)
@@ -339,6 +383,7 @@ function wiringSection() {
     /from\('schedule_blocks'\)\s*\.select\('google_calendar_event_id'\)\s*\.eq\('user_id', userId\)\s*\.in\('google_calendar_event_id'/.test(f))
   check('…both feed stillLinked', /stillLinked: new Set\(\[\.\.\.\(linked \?\? \[\]\), \.\.\.\(linkedPlans \?\? \[\]\)\]/.test(f))
   check('the response carries the calendar summary', /imported, calendar, /.test(f))
+  check('…and the read-back\'s (155)', /imported, calendar, readback, /.test(f))
   check('calendar trouble never gates the Tasks watermark', /errorKeys\.length === 0 \? \{ last_success_at: syncedAt \}/.test(f) && /const errorKeys = Object\.keys\(errors\)/.test(f))
   check('no _shared/ import (self-contained function)', !/from ['"]\.\.\/_shared/.test(fnSource))
 }
@@ -352,6 +397,7 @@ function wiringSection() {
   await drainSection()
   calendarAgreementSection()
   migrationSection()
+  migration155Section()
   wiringSection()
   console.log(`\n${passed} passed, ${failed} failed`)
   process.exit(failed ? 1 : 0)

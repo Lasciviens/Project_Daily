@@ -216,12 +216,15 @@ export async function createCalendarEvent(
     summary:     string
     description?: string
     /** A wall-clock dateTime (no offset) is read in `timeZone`; a repeating
-     *  event needs the zone — its repeat is expanded in it. */
-    start:       { dateTime: string; timeZone: string }
-    end:         { dateTime: string; timeZone: string }
+     *  event needs the zone — its repeat is expanded in it. An all-day event
+     *  (155) gives dates instead: `end` is the day after (exclusive). */
+    start:       { dateTime: string; timeZone: string } | { date: string }
+    end:         { dateTime: string; timeZone: string } | { date: string }
     /** RRULE / RDATE / EXDATE lines of a repeating event (RFC 5545; no
      *  DTSTART — `start` is it). See calendar/calendarSeries.ts. */
     recurrence?: string[]
+    /** opaque = Busy (Google's default), transparent = Free (155). */
+    transparency?: 'opaque' | 'transparent'
   }
 ): Promise<CalendarEvent> {
   return gcalRequest<CalendarEvent>(

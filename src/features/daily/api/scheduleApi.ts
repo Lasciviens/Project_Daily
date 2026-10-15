@@ -5,6 +5,7 @@ import { updateCalendarEvent, deleteCalendarEvent, isCalendarNotFound } from '..
 import { ensureValidCalendarToken } from '../../calendar/api/calendarTokenSync'
 import { logError } from '../../../shared/utils/logError'
 import { classifyCalendarPushFailure } from './scheduleSyncRules'
+import { blockEventBody } from '../../calendar/calendarEventRules'
 import type {
   ScheduleBlock, TimeBlock, CreateTimeBlockInput, UpdateTimeBlockInput,
   CreateScheduleBlockInput, UpdateScheduleBlockInput,
@@ -151,6 +152,38 @@ export async function clearScheduleBlockCalendarLink(id: string, eventId: string
     { google_calendar_event_id: null, google_calendar_horizon: null, google_calendar_from: null })
 }
 
+/** Forgets a slot's event only while it still names `eventId` (the
+ *  clear_google_task_id_if_matches rule): Google answered 404/410 for it, so
+ *  there is nothing to delete there first. Answers whether it cleared. */
+export async function clearTimeBlockCalendarLinkIfMatches(blockId: string, eventId: string): Promise<boolean> {
+  const { data, error } = await supabase.from('time_blocks')
+    .update({ google_calendar_event_id: null, updated_at: new Date().toISOString() })
+    .eq('id', blockId)
+    .eq('google_calendar_event_id', eventId)
+    .select('id')
+  if (error) throw error
+  return (data ?? []).length > 0
+}
+
+/** The days of a plan held by a moved instance of its own series: the
+ *  Calendar read-back (155) stores `<seriesId>_…` on that day's slot. The
+ *  series push leaves them out of its EXDATE list (an EXDATE would cancel
+ *  that instance on Google). */
+export async function fetchSeriesInstanceDays(planId: string, seriesId: string): Promise<string[]> {
+  const { data, error } = await supabase
+    .from('time_blocks')
+    .select('occurrence_date, google_calendar_event_id')
+    .eq('schedule_block_id', planId)
+    .not('google_calendar_event_id', 'is', null)
+  if (error) {
+    if (isMissingColumn(error)) return [] // before 142: no day of a plan has a slot of its own
+    throw error
+  }
+  return (data ?? [])
+    .filter(b => typeof b.google_calendar_event_id === 'string' && b.google_calendar_event_id.startsWith(`${seriesId}_`) && !!b.occurrence_date)
+    .map(b => b.occurrence_date as string)
+}
+
 // A block's task state rides along (not kept as an embed): a training
 // session's row shows Done / Skipped from the same facts as its popup
 // (training/plan/sessionState).
@@ -277,12 +310,15 @@ export interface UpdateTimeBlockResult {
 //     a confirmed 404 or a successful delete both proceed to clear locally
 //     and report 'not_linked'.
 export async function updateTimeBlock(id: string, patch: UpdateTimeBlockInput): Promise<UpdateTimeBlockResult> {
-  const { data: before, error: beforeError } = await supabase
+  // `*` (not a column list): `busy` exists only since 155, and its task's
+  // status decides the "✓ " in the event title.
+  const { data: beforeRow, error: beforeError } = await supabase
     .from('time_blocks')
-    .select('date, start_time, duration_minutes, title, google_calendar_event_id')
+    .select('*, task:tasks(status)')
     .eq('id', id)
     .single()
   if (beforeError) throw beforeError
+  const before = beforeRow as (TimeBlock & { task: { status: string } | null }) | null
 
   const unlinking = patch.google_calendar_event_id === null && !!before?.google_calendar_event_id
   // ensureValidCalendarToken (not calToken()) so a write that lands right
@@ -338,23 +374,22 @@ export async function updateTimeBlock(id: string, patch: UpdateTimeBlockInput): 
   if (!token) return { calendarStatus: 'unknown' }
 
   const relevant = patch.date !== undefined || patch.start_time !== undefined
-    || patch.title !== undefined || patch.duration_minutes !== undefined
+    || patch.title !== undefined || patch.duration_minutes !== undefined || patch.busy !== undefined
   if (!relevant) return { calendarStatus: 'linked' } // nothing pushed this call; no new reason to doubt it
 
-  const date         = patch.date ?? before!.date
-  const startTimeVal = patch.start_time !== undefined ? patch.start_time : before!.start_time
-  const title        = patch.title ?? before!.title
-  const durationMins = patch.duration_minutes ?? before!.duration_minutes
-  if (!startTimeVal) return { calendarStatus: 'linked' } // no time set -> nothing coherent to push; existing id stands
+  // Since 155 a slot with no time is an all-day event (it used to be left
+  // as it was), one with no length is Free, and a done task's title has "✓ ".
+  const body = blockEventBody({
+    date:             patch.date ?? before!.date,
+    start_time:       patch.start_time !== undefined ? patch.start_time : before!.start_time,
+    duration_minutes: patch.duration_minutes ?? before!.duration_minutes,
+    title:            patch.title ?? before!.title,
+    busy:             patch.busy ?? before!.busy,
+  }, { done: before?.task?.status === 'done', timeZone: LOCAL_TZ })
+  if (!body) return { calendarStatus: 'linked' } // no usable day -> nothing coherent to push; existing id stands
 
   try {
-    const start = new Date(`${date}T${startTimeVal}`)
-    const end   = new Date(start.getTime() + durationMins * 60_000)
-    await updateCalendarEvent(token, 'primary', eventId, {
-      summary: title,
-      start:   { dateTime: start.toISOString(), timeZone: LOCAL_TZ },
-      end:     { dateTime: end.toISOString(),   timeZone: LOCAL_TZ },
-    })
+    await updateCalendarEvent(token, 'primary', eventId, { ...body })
     return { calendarStatus: 'linked' }
   } catch (err) {
     const status = classifyCalendarPushFailure(err)

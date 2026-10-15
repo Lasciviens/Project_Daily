@@ -37,6 +37,17 @@ export interface ScheduleBlock {
   /** The day it was added to Google Calendar (148): the series starts on its
    *  first day on or after this, not at effective_from. Missing before 148. */
   google_calendar_from?: string | null
+  /** One item (155; missing before it): false = a time with no length —
+   *  blocks no time, Free on Google; end_time is then start + 15 min, nominal.
+   *  NOTE: since 155 start_time and end_time may BOTH be null — a repeat with
+   *  no time (an all-day series). Readers must guard (`start_time == null`). */
+  busy?:          boolean
+  /** 'calendar' | 'none' (155); null = saved before 155 (on Google when google_calendar_event_id is set). */
+  google_target?: 'calendar' | 'none' | null
+  /** What a ticked-off day of it becomes (155); null on older rows. */
+  domain?:        'personal' | 'work' | 'media' | null
+  priority?:      'low' | 'medium' | 'high' | null
+  notes?:         string | null
   created_at:   string
   updated_at:   string
 }
@@ -79,6 +90,10 @@ export interface TimeBlock {
   /** Its linked task's Hevy workout and routine (141), on the same reads. */
   task_workout_id?: string | null
   task_routine_id?: string | null
+  /** One item (155; missing before it = true): false = "do it at 14:00" —
+   *  no length, blocks no time (duration_minutes holds a nominal 15), Free on
+   *  Google. A slot with no start_time is an item's all-day presence. */
+  busy?:            boolean
   created_at:       string
   updated_at:       string
 }
@@ -107,6 +122,8 @@ export interface UpdateTimeBlockInput {
   duration_minutes?:          number
   category?:                  TimeBlockCategory
   color?:                     string
+  /** false: no length (155). */
+  busy?:                      boolean
   google_calendar_event_id?:  string | null
   /** Only ever set on an edit that links a previously-standalone block to a
    *  freshly-created Task ("Also add to Tasks" on an existing block) — see

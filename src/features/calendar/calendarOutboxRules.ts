@@ -9,7 +9,10 @@
 //  cascade, migration 043's cleanup triggers) has no Google token at hand, so
 //  its event used to stay on the calendar forever. Migration 135's trigger
 //  queues every deleted block's event in calendar_outbox; google-tasks-sync
-//  (cron, every 20 minutes) removes them with this code.
+//  (cron, every 20 minutes) removes them with this code. Since 155 a row may
+//  also be an 'upsert': a linked slot or plan changed on the server (or its
+//  task ticked done — the "✓ "), and the drain PATCHes the event from the row
+//  as it is then (calendarEventRules.blockEventBody).
 //
 //  Import-free on purpose. The block between the <calendar-outbox-rules>
 //  markers is MIRRORED BY HAND into supabase/functions/google-tasks-sync/
@@ -81,6 +84,10 @@ export interface CalendarOutboxRow {
   calendar_id: string
   event_id: string
   attempts: number
+  /** 'delete' (135) or 'upsert' (155); missing = delete. */
+  operation?: 'delete' | 'upsert'
+  /** The request this run read (155): the row is removed only while it still holds it. */
+  requested_at?: string
 }
 
 /** One run's tally — google-tasks-sync returns it as `calendar`. */
@@ -99,10 +106,14 @@ export interface CalendarDrainSummary {
   stopped: string | null
   /** Rows that reached CALENDAR_PARK_AFTER failures this run (now tried daily). */
   parked: number
+  /** Upserts (155): events brought up to date. */
+  patched: number
+  /** Upserts with nothing left to push (no live slot or plan holds the event any more). */
+  untracked: number
 }
 
 export function emptyCalendarDrainSummary(): CalendarDrainSummary {
-  return { deleted: 0, already_gone: 0, kept: 0, failed: 0, left: 0, stopped: null, parked: 0 }
+  return { deleted: 0, already_gone: 0, kept: 0, failed: 0, left: 0, stopped: null, parked: 0, patched: 0, untracked: 0 }
 }
 
 /** The I/O a run needs — google-tasks-sync wires these to Google and Supabase. */
@@ -111,6 +122,8 @@ export interface CalendarDrainDeps {
   stillLinked: ReadonlySet<string>
   /** One events.delete. Resolves (never rejects) with the HTTP status, or null with no answer. */
   deleteEvent(row: CalendarOutboxRow): Promise<{ status: number | null; message: string }>
+  /** One events.patch from the live row (155); null = no live slot or plan holds the event any more. */
+  patchEvent?(row: CalendarOutboxRow): Promise<{ status: number | null; message: string } | null>
   removeRow(row: CalendarOutboxRow): Promise<void>
   backOff(row: CalendarOutboxRow, attempts: number, delaySeconds: number, message: string): Promise<void>
   /** False once the run should start no further deletes (its time budget). */
@@ -131,6 +144,25 @@ async function settleCalendarRow(
   deps: CalendarDrainDeps,
   summary: CalendarDrainSummary,
 ): Promise<string | null> {
+  if (row.operation === 'upsert') {
+    const pushed = deps.patchEvent ? await deps.patchEvent(row) : null
+    if (pushed === null) {
+      await deps.removeRow(row)
+      summary.untracked++
+      return null
+    }
+    const result = calendarDeleteOutcome(pushed.status)
+    if (result === 'deleted' || result === 'gone') {
+      // Gone on Google: the read-back turns the item's Calendar presence off.
+      await deps.removeRow(row)
+      if (result === 'deleted') summary.patched++
+      else summary.already_gone++
+      return null
+    }
+    const why = pushed.message || `Calendar API ${pushed.status ?? 'unreachable'}`
+    if (result === 'stop') summary.stopped = why
+    return why
+  }
   if (deps.stillLinked.has(row.event_id)) {
     await deps.removeRow(row)
     summary.kept++

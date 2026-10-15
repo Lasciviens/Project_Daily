@@ -316,8 +316,27 @@ begin
     'google', 'tasks', 'repeat', null, 'today', '2026-10-15'));
   v_task := (r ->> 'taskId')::uuid;
   perform public.t_ok(r ->> 'replacedScheduleBlockId' = v_plan::text and not exists (select 1 from public.schedule_blocks where id = v_plan)
+    and r ->> 'replacedEventId' is null
     and (select due_date = '2026-10-22' and google_sync_enabled from public.tasks where id = v_task),
     'a repeat given "no repeat" becomes a one-off item (never silently: only when the save says so)');
+end $$;
+
+do $$
+declare plan uuid := (public.t_v('sunday') ->> 'scheduleBlockId')::uuid; r jsonb; k jsonb;
+begin
+  -- a day's item saved without its repeat (the sheet only had the task and slot) never deletes the rule
+  select jsonb_build_object('taskId', b.task_id, 'blockId', b.id) into k from public.time_blocks b where b.schedule_block_id = plan and b.occurrence_date = '2026-11-15';
+  r := public.app_save_item(jsonb_build_object('taskId', k ->> 'taskId', 'blockId', k ->> 'blockId', 'scheduleBlockId', plan, 'scope', 'item',
+    'title', 'Water plants (balcony)', 'domain', 'personal', 'priority', 'low', 'date', '2026-11-16', 'time', '08:30',
+    'durationMinutes', 20, 'google', 'calendar', 'today', '2026-10-15'));
+  perform public.t_ok(exists (select 1 from public.schedule_blocks where id = plan) and r ->> 'replacedScheduleBlockId' is null
+    and (select start_time from public.time_blocks where id = (k ->> 'blockId')::uuid) = '08:30',
+    'a day''s item saved with no repeat (scope item) edits that day; the rule is never deleted');
+  r := public.app_save_item(jsonb_build_object('scheduleBlockId', plan, 'scope', 'day', 'occurrenceDate', '2026-11-22',
+    'title', 'Water plants', 'domain', 'personal', 'priority', 'low', 'date', '2026-11-22', 'time', null,
+    'durationMinutes', null, 'google', 'calendar', 'today', '2026-10-15'));
+  perform public.t_ok((r ->> 'occurrence')::boolean and exists (select 1 from public.schedule_blocks where id = plan),
+    'scope day with no repeat in the save: still that day only');
 end $$;
 
 -- An old standalone slot opened in the sheet gets its task, keeping its event

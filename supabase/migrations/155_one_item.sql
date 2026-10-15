@@ -609,6 +609,7 @@ declare
   v_drop      uuid;
   v_replaced_task uuid;
   v_replaced_plan uuid;
+  v_replaced_event text;
   v_kind      text;
   v_days      integer[];
   v_interval  integer;
@@ -702,17 +703,19 @@ begin
       returning id into v_plan_id;
       if v_task_id is not null then
         -- The one-off it was: its slot goes with it (ON DELETE CASCADE), and the
-        -- outboxes queue its Google Task and event for removal.
+        -- outboxes queue its Google Task and event for removal (the browser
+        -- removes the event right away too: replacedEventId).
+        select x.google_calendar_event_id into v_replaced_event from public.time_blocks x where x.task_id = v_task_id;
         delete from public.tasks where id = v_task_id and user_id = v_user;
-        if found then v_replaced_task := v_task_id; end if;
+        if found then v_replaced_task := v_task_id; else v_replaced_event := null; end if;
       end if;
     end if;
     return jsonb_build_object('taskId', null, 'blockId', null, 'scheduleBlockId', v_plan_id, 'created', v_created,
-                              'replacedTaskId', v_replaced_task, 'occurrence', false);
+                              'replacedTaskId', v_replaced_task, 'replacedEventId', v_replaced_event, 'occurrence', false);
   end if;
 
   -- ── One day of a repeating item ─────────────────────────────────────────
-  if v_repeat is not null and v_scope = 'day' then
+  if v_scope = 'day' then
     if v_plan_id is null or v_occ is null then
       raise exception 'app_save_item: a day of a repeat needs scheduleBlockId and occurrenceDate' using errcode = '22023';
     end if;
@@ -731,11 +734,14 @@ begin
     raise exception 'Google Calendar needs a day: pick one, or choose Google Tasks' using errcode = 'IT003';
   end if;
 
-  -- A repeating item given "no repeat" becomes a one-off item: the rule goes
-  -- (its series through the calendar outbox); days already split off stay.
-  if v_repeat is null and v_plan_id is not null then
+  -- A repeating item given "no repeat" (scope 'all' only — never by
+  -- leaving the repeat out of a day's or an item's save) becomes a one-off
+  -- item: the rule goes (its series through the calendar outbox); days
+  -- already split off stay.
+  if v_repeat is null and v_plan_id is not null and v_scope = 'all' and not v_is_occ then
+    select s.google_calendar_event_id into v_replaced_event from public.schedule_blocks s where s.id = v_plan_id and s.user_id = v_user;
     delete from public.schedule_blocks where id = v_plan_id and user_id = v_user;
-    if found then v_replaced_plan := v_plan_id; end if;
+    if found then v_replaced_plan := v_plan_id; else v_replaced_event := null; end if;
     v_plan_id := null;
   end if;
 
@@ -825,7 +831,7 @@ begin
   return jsonb_build_object(
     'taskId', v_task_id, 'blockId', v_block_id, 'scheduleBlockId', case when v_is_occ then v_plan_id end,
     'created', v_created, 'occurrence', v_is_occ, 'occurrenceDate', case when v_is_occ then v_occ end,
-    'blockToDrop', v_drop, 'replacedScheduleBlockId', v_replaced_plan,
+    'blockToDrop', v_drop, 'replacedScheduleBlockId', v_replaced_plan, 'replacedEventId', v_replaced_event,
     'googleSyncWas', v_sync_was, 'googleSync', t.google_sync_enabled);
 end;
 $$;

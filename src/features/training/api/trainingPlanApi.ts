@@ -5,6 +5,7 @@ import { createTimeBlock, fetchScheduleBlocks, fetchTimeBlocks, updateTimeBlock 
 import {
   carryOccurrenceToCalendar, putSkippedDayBackOnCalendar, takeSkippedDayOffCalendar,
 } from '../../calendar/api/scheduleSeriesCalendar'
+import { refreshTaskEventSoon } from '../../calendar/api/itemCalendar'
 import { findPlanTwin, type PlanTwin } from '../plan/planTwins'
 import { sectionForDate } from '../../../shared/components/plan-modal/planModal.config'
 import { createTrainingSkip } from './trainingSkipsApi'
@@ -139,10 +140,13 @@ export async function planTaskId(target: PlanTarget, info: PlanInfo): Promise<st
 
 export async function markPlanDone(taskId: string): Promise<void> {
   await toggleTaskDone(taskId, true)
+  // Its event on Google Calendar gets "✓ " (155), in the background.
+  refreshTaskEventSoon(taskId)
 }
 
 export async function reopenPlan(taskId: string): Promise<void> {
   await toggleTaskDone(taskId, false)
+  refreshTaskEventSoon(taskId)
 }
 
 /** Moves the session: its block when it has one (that also moves the
