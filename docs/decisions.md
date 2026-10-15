@@ -45,7 +45,7 @@ Settled calls, one line each: what was decided, why, and where the full story li
 
 These have a warning comment where they live; don't "tidy" them away.
 
-- `section: 'today'` default in `planForm.ts` — server-side reads depend on it.
+- A new item's date defaults to today in `planForm.ts` (the section follows the date since 155, so it files under Today) — server-side `section.eq.today` reads depend on it.
 - `skipGoogleTasks` in `useTodos.ts` — prevents a task appearing on Google twice.
 - The deferred `setPointerCapture` in `useSwipeToReveal.ts` — capturing on pointerdown broke every row button.
 - The removed DML keyword regex in `ai-proxy`'s `run_read_query` — the database is the boundary; the regex rejected valid reads.

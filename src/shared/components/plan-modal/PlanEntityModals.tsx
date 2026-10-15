@@ -1,29 +1,30 @@
 // ─────────────────────────────────────────────────────────────────────────────
-//  Entity-modal adapters for UnifiedPlanModal (THEME.md §9).
+//  Entity-modal adapters for the Add sheet (UnifiedPlanModal, THEME.md §9).
 //
-//  Opened through useEntityModal().open({ kind: 'task' | 'time-block' |
-//  'schedule-block' | 'plan-block', … }) and rendered by the one ModalHost.
-//  Each adapter loads its row BY ID through the feature hooks (never a row
-//  handed over by a list), shows the editor's own shell as a skeleton while
-//  loading, then renders UnifiedPlanModal. A create request (no id) renders
-//  immediately.
-//
-//  THE routing rule for one-off blocks lives here, once (docs/features/planning-calendar.md, "Task and
-//  schedule model"): a block with a task_id is ALWAYS edited as its task
-//  (mode 'task'), never through `timeBlock` — opening a task-linked block as
-//  a standalone block is exactly how a second task used to get minted.
+//  One item since migration 155: useEntityModal().open({ kind: 'task' |
+//  'time-block' | 'schedule-block' | 'plan-block', … }) all open the SAME
+//  sheet — the kinds stay as aliases so every caller keeps working. Each
+//  adapter loads the item's rows BY ID through the feature hooks (never a row
+//  handed over by a list), shows the sheet's own skeleton while loading, then
+//  renders it with every part the item has:
+//    task           → the task and its slot (its one-off block, read fresh)
+//    time-block id  → the block, and its task when it has one
+//    plan-block     → the same, by blockId
+//    schedule-block → the repeat (and the day it was opened on, if any)
+//  A create request (no id) renders at once.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import type { UseQueryResult } from '@tanstack/react-query'
+import { useState } from 'react'
+import { useQuery, type UseQueryResult } from '@tanstack/react-query'
 import { UnifiedPlanModal } from './UnifiedPlanModal'
 import { useTaskById } from '../../../features/todo/hooks/useTodos'
-import { useTimeBlock, useScheduleBlock } from '../../../features/daily/hooks/useSchedule'
+import { useTimeBlock, useScheduleBlock, linkedTimeBlockQuery } from '../../../features/daily/hooks/useSchedule'
 import type { EntityModalProps } from '../../modals/types'
 import type { PlanModalConfig, PlanResult } from './planModal.types'
-import { useFirstLoaded } from '../../modals/useFirstLoaded'
+import { isFreshForMount, useFirstLoaded } from '../../modals/useFirstLoaded'
 import { isTrainingTask } from '../../../features/todo/taskRules'
 import type { Task } from '../../../features/todo/types'
-import type { ScheduleBlock } from '../../../features/daily/types'
+import type { ScheduleBlock, TimeBlock } from '../../../features/daily/types'
 import { useTrainingPlanActions } from '../../../features/training/hooks/useTrainingPlanActions'
 import { todayStr } from '../../utils/dateUtils'
 
@@ -45,15 +46,15 @@ function useTrainingDelete(task: Task | undefined, template: ScheduleBlock | und
 /**
  * A training session's task edits the same way from every entry point
  * (owner, 12.10.2026): its day and time are the session's (migration 142
- * keeps the task and its block together), so the editor shows one day — the
- * schedule's — instead of a separate deadline that would only be overwritten.
+ * keeps the task and its block together), so the sheet shows one day — the
+ * slot's — and no separate deadline that would only be overwritten.
  */
 function taskEditorConfig(task: Task | undefined, config: PlanModalConfig | undefined): PlanModalConfig | undefined {
   if (!task || !isTrainingTask(task)) return config
   return {
     ...config,
     heading: config?.heading ?? 'Edit session',
-    hideTaskFields: [...new Set([...(config?.hideTaskFields ?? []), 'startDate', 'dueDate', 'dueTime', 'section'] as const)],
+    hideTaskFields: [...new Set([...(config?.hideTaskFields ?? []), 'startDate', 'dueDate', 'dueTime'] as const)],
   }
 }
 
@@ -67,15 +68,29 @@ function loadStateOf(query: UseQueryResult<unknown>, loaded: boolean, what: stri
   return { loading: true }
 }
 
+/**
+ * A task's slot (its one-off block), read fresh when the sheet opens and then
+ * frozen: the sheet decides "update this slot" vs "make one" from it, so it
+ * must be the server's answer — null is a real answer ("no slot") here, which
+ * useFirstLoaded can't hold.
+ */
+function useTaskSlot(taskId: string | undefined) {
+  const query = useQuery({ ...linkedTimeBlockQuery(taskId ?? ''), enabled: !!taskId })
+  const [snap, setSnap] = useState<{ slot: TimeBlock | null } | undefined>(undefined)
+  if (taskId && snap === undefined && query.isSuccess && isFreshForMount(query)) setSnap({ slot: query.data ?? null })
+  return { query, slot: snap?.slot, settled: snap !== undefined }
+}
+
 export function TaskEntityModal({ request, onClose }: EntityModalProps<'task'>) {
   const { id, defaults, config, source, onSaved } = request
   const query = useTaskById(id)
   const task = useFirstLoaded(query.data, query)
-  const load = id ? loadStateOf(query, !!task, 'task') : {}
+  const slot = useTaskSlot(task?.id)
+  const load = !id ? {} : !task ? loadStateOf(query, false, 'task') : loadStateOf(slot.query, slot.settled, 'item')
   const trainingDelete = useTrainingDelete(task, undefined)
   return (
     <UnifiedPlanModal
-      open onClose={onClose} mode="task" task={task}
+      open onClose={onClose} mode="task" task={task} timeBlock={slot.slot}
       config={taskEditorConfig(task, config)} defaults={defaults} source={source} onSaved={onSaved}
       onDeleteOverride={trainingDelete}
       {...load}
@@ -84,8 +99,10 @@ export function TaskEntityModal({ request, onClose }: EntityModalProps<'task'>) 
 }
 
 /**
- * Edit a one-off block by id, routed by the rule above. `passThrough` carries
- * the caller's shaping only when the block really is edited as a block.
+ * Edit a one-off block by id: the block and, when it belongs to a task, that
+ * task — one item. `passThrough` carries the caller's shaping for a block of
+ * its own; a task's block opens as that task (the old routing rule, so a
+ * caller can never shape a task's sheet as a bare slot).
  */
 function BlockEditor({ blockId, onClose, passThrough }: {
   blockId: string
@@ -100,12 +117,12 @@ function BlockEditor({ blockId, onClose, passThrough }: {
   const trainingDelete = useTrainingDelete(task, undefined)
 
   if (!block) {
-    return <UnifiedPlanModal open onClose={onClose} mode="schedule" {...loadStateOf(blockQuery, false, 'schedule')} />
+    return <UnifiedPlanModal open onClose={onClose} mode="schedule" {...loadStateOf(blockQuery, false, 'item')} />
   }
   if (block.task_id) {
     return (
       <UnifiedPlanModal
-        open onClose={onClose} mode="task" task={task} onSaved={onSaved}
+        open onClose={onClose} mode="task" task={task} timeBlock={task ? block : undefined} onSaved={onSaved}
         config={taskEditorConfig(task, undefined)} onDeleteOverride={trainingDelete}
         {...loadStateOf(taskQuery, !!task, 'task')}
       />
@@ -135,14 +152,14 @@ export function PlanBlockEntityModal({ request, onClose }: EntityModalProps<'pla
 }
 
 export function ScheduleBlockEntityModal({ request, onClose }: EntityModalProps<'schedule-block'>) {
-  const { id, defaults, config, source, onSaved } = request
+  const { id, defaults, config, source, onSaved, occurrenceDate } = request
   const query = useScheduleBlock(id)
   const scheduleBlock = useFirstLoaded(query.data, query)
-  const load = id ? loadStateOf(query, !!scheduleBlock, 'repeating schedule') : {}
+  const load = id ? loadStateOf(query, !!scheduleBlock, 'repeating item') : {}
   const trainingDelete = useTrainingDelete(undefined, scheduleBlock)
   return (
     <UnifiedPlanModal
-      open onClose={onClose} mode="recurring" scheduleBlock={scheduleBlock}
+      open onClose={onClose} mode="recurring" scheduleBlock={scheduleBlock} occurrenceDate={occurrenceDate}
       config={config} defaults={defaults} source={source} onSaved={onSaved}
       onDeleteOverride={trainingDelete}
       {...load}
