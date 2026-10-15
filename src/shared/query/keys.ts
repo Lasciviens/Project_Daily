@@ -8,6 +8,12 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const qk = {
+  /** One item (tasks + slots + repeating plans as one concept, migration 155). */
+  items: {
+    all: ['items'] as const,
+    convertPreview: () => ['items', 'convert-preview'] as const,
+    calendarReadback: () => ['items', 'calendar-readback'] as const,
+  },
   tasks: {
     all: ['tasks'] as const,
     list: () => ['tasks', 'all'] as const,
