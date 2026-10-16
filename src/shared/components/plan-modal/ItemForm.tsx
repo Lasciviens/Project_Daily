@@ -24,7 +24,7 @@ import { TimeChip, LengthChip } from './TimeChips'
 import { GoogleChip } from './GoogleChip'
 import { GoogleListField } from './GoogleListField'
 import { TaskWindowField } from './TaskWindowField'
-import { AddFact, AreaFact, FactRow, PriorityFact } from './ItemFacts'
+import { AddFact, AreaFact, CategoryFact, FactRow, PriorityFact } from './ItemFacts'
 import { DateInput } from '../DateInput'
 import { cx } from '../../ui'
 import { ReadAsLine } from '../../../features/items/components/ReadAsLine'
@@ -90,6 +90,8 @@ export function ItemForm({
     // A repeat's days go to the default list (156 stores no list per repeat).
     return showGoogle && hasGoogleTasks(target) && !repeating && !hideTask('googleList')
   })
+  // A category belongs to a slot or a repeat: only an item with a time or a repeat has one.
+  const showCategory = (!!form.time || repeating) && !isScheduleFieldHidden('category', config)
   const open = (r: SheetRow) => form.shown.includes(r) && rows.includes(r)
   const addable = rows.filter(r => !VALUE_FACTS.includes(r) && !open(r))
 
@@ -136,10 +138,11 @@ export function ItemForm({
         />
       )}
 
-      {(rows.some(r => VALUE_FACTS.includes(r)) || addable.length > 0) && (
+      {(rows.some(r => VALUE_FACTS.includes(r)) || showCategory || addable.length > 0) && (
         <div className="-ml-1.5 flex flex-wrap items-center gap-x-0.5 gap-y-1">
           {rows.includes('priority') && <PriorityFact value={form.priority} onChange={priority => patch({ priority })} />}
           {rows.includes('area') && <AreaFact value={form.domain} onChange={domain => patch({ domain })} />}
+          {showCategory && <CategoryFact value={form.category} onChange={category => patch({ category })} />}
           {addable.map(r => <AddFact key={r} label={ROW_LABEL[r]} onClick={() => patch({ shown: [...form.shown, r] })} />)}
         </div>
       )}

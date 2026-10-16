@@ -1,24 +1,28 @@
 // ─────────────────────────────────────────────────────────────────────────────
 //  The Add sheet's facts line (THEME §8, Add sheet): the values every item has
-//  (priority, area) read as small inline values that open a menu, and the
+//  (priority, area — and a timed or repeating item's category) read as small
+//  inline values that open a menu, and the
 //  optional rows wait as "+ Notes / + Deadline / + Google list" text buttons
 //  and open in place as a FactRow (a short label beside the field).
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { ReactNode } from 'react'
 import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
-import { Check, Plus, Tag } from 'lucide-react'
+import { Check, Palette, Plus, Tag } from 'lucide-react'
 import { ToneDot, type Tone } from '../../ui'
 import { chipClass } from './fieldStyles'
 import { DOMAIN_LABEL } from '../../../features/todo/domainColors'
 import { PRIORITY_LABEL, PRIORITY_TONE } from '../../../features/todo/taskTones'
 import type { TaskDomain, TaskPriority } from '../../../features/todo/types'
+import type { TimeBlockCategory } from '../../../features/daily/types'
+import { CATEGORY_LABELS } from './planModal.config'
 
 interface Option<T extends string> { id: T; label: string; tone?: Tone }
 
 const PRIORITIES: Option<TaskPriority>[] = (['low', 'medium', 'high'] as const)
   .map(id => ({ id, label: PRIORITY_LABEL[id], tone: PRIORITY_TONE[id] }))
 const DOMAINS: Option<TaskDomain>[] = (['personal', 'work', 'media'] as const).map(id => ({ id, label: DOMAIN_LABEL[id] }))
+const CATEGORIES: Option<TimeBlockCategory>[] = (Object.keys(CATEGORY_LABELS) as TimeBlockCategory[]).map(id => ({ id, label: CATEGORY_LABELS[id] }))
 
 export function PriorityFact({ value, onChange }: { value: TaskPriority; onChange: (p: TaskPriority) => void }) {
   return (
@@ -32,6 +36,15 @@ export function AreaFact({ value, onChange }: { value: TaskDomain; onChange: (d:
   return (
     <FactMenu name="Area" value={value} options={DOMAINS} onChange={onChange}>
       <Tag aria-hidden />{DOMAIN_LABEL[value]}
+    </FactMenu>
+  )
+}
+
+/** The slot's or repeat's category (the agenda groups and colours by it). */
+export function CategoryFact({ value, onChange }: { value: TimeBlockCategory; onChange: (c: TimeBlockCategory) => void }) {
+  return (
+    <FactMenu name="Category" value={value} options={CATEGORIES} onChange={onChange}>
+      <Palette aria-hidden />{CATEGORY_LABELS[value]}
     </FactMenu>
   )
 }

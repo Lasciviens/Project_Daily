@@ -26,6 +26,10 @@
 //                    repeat (156 review). "Only <day>" deletes the day's task
 //                    when it has one (ticked, skipped, missed: useDeleteItem),
 //                    with its own Undo.
+//  2026-10-16 · v21.2 · The category is back on the facts line (it was dropped
+//                    in v19): a timed or repeating item shows it as a value
+//                    menu (`CategoryFact`); a training session hides it
+//                    (`hideScheduleFields: ['category']`).
 //  2026-10-15 · v21 · A repeat's day is a real task on its day (migration 156,
 //                    owner: "a repeated task should be created on its day"):
 //                    the Google chip offers "Google Tasks · one per day" and

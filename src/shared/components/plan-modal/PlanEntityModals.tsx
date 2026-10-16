@@ -57,6 +57,7 @@ function taskEditorConfig(task: Task | undefined, config: PlanModalConfig | unde
     ...config,
     heading: config?.heading ?? 'Edit session',
     hideTaskFields: [...new Set([...(config?.hideTaskFields ?? []), 'startDate', 'dueDate', 'dueTime'] as const)],
+    hideScheduleFields: [...new Set([...(config?.hideScheduleFields ?? []), 'category'] as const)],
   }
 }
 

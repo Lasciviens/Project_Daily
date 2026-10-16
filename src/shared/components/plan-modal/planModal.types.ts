@@ -19,7 +19,7 @@ export type PlanMode = 'task' | 'schedule' | 'recurring'
 // ── Field keys a caller may hide ─────────────────────────────────────────────
 
 /** 'recurrence': no "+ Repeat"; 'gcal': no Google chip. */
-export type ScheduleField = 'recurrence' | 'gcal'
+export type ScheduleField = 'recurrence' | 'gcal' | 'category'
 
 /** Each hides its "+" chip and row. 'startDate' is the "do it between" window
  *  under "+ Deadline"; 'dueDate' / 'dueTime' hide the deadline itself. */
