@@ -25,6 +25,8 @@ export const MODAL_REGISTRY: { [K in ModalKind]: Entry<K> } = {
   'recipe':         L('recipe', () => import('../../features/recipes/modals/RecipeEntityModal').then(m => m.RecipeEntityModal)),
   'recipe-view':    L('recipe-view', () => import('../../features/recipes/modals/RecipeViewEntityModal').then(m => m.RecipeViewEntityModal)),
   'day-targets':    L('day-targets', () => import('../../features/daily/modals/DayTargetsEntityModal').then(m => m.DayTargetsEntityModal)),
+  'supplement-schedule': L('supplement-schedule', () => import('../../features/supplements/modals/SupplementScheduleEntityModal').then(m => m.SupplementScheduleEntityModal)),
+  'supplement-dose': L('supplement-dose', () => import('../../features/supplements/modals/SupplementDoseEntityModal').then(m => m.SupplementDoseEntityModal)),
   'media':          L('media', () => import('../../features/media/modals/MediaEntityModal').then(m => m.MediaEntityModal)),
   'training-session': L('training-session', () => import('../../features/training/modals/TrainingSessionEntityModal').then(m => m.TrainingSessionEntityModal)),
   'training-plan-move': L('training-plan-move', () => import('../../features/training/modals/TrainingPlanSheets').then(m => m.TrainingPlanMoveModal)),

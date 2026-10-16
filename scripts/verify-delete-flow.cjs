@@ -212,6 +212,7 @@ const tick = () => new Promise(r => setTimeout(r, 0))
     'src/features/recipes/api/recipesApi.ts': [1, 'saving a recipe replaces its ingredient lines (fallback before 123)'],
     'src/features/recipes/api/mealPlanApi.ts': [1, 'the legacy plan table before migration 061'],
     'src/features/recipes/api/foodLogApi.ts': [1, 'a star toggled off (favourite)'],
+    'src/features/supplements/api/supplementsApi.ts': [1, 'Undo of a supplement Take (the undo itself: the lines that Take just wrote)'],
     'src/features/media/reminders/remindersApi.ts': [1, 'a reminder bell toggled off'],
     'src/features/media/api/watchedEpisodesApi.ts': [1, 'Not watched (step 5 brings its Undo)'],
     'src/features/media/api/followsApi.ts': [1, 'Follow toggled off / a list stops filling (its delete goes through useDeleteFollow)'],

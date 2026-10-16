@@ -3,7 +3,9 @@
 // scripts/db-tests/one-item/base.sql + repeat-days/base.sql, 112's skips
 // table, the real migrations 141 and 142 (training), 135, 144, 147, 150, 151
 // and 155, repeat-days/seed.sql (the owner's data before 156), then the real
-// 156 TWICE (a re-run must be a no-op), then:
+// 156 TWICE (a re-run must be a no-op), 160's repeat rule section (between
+// <repeat-rule> markers: repeat_occurs_on becomes a call of the one rule,
+// repeat_rule_occurs_on, which the supplement schedules share), then:
 //   1. repeat-days/scenarios.sql — 156 itself changed nothing, one task per
 //      day even when run twice, only today's on the first run, skipped /
 //      deleted / moved days never made again, a training day is the row 142
@@ -22,6 +24,13 @@ import { fileURLToPath } from 'node:url'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const migFile = join(root, 'supabase/migrations/156_repeat_days_as_tasks.sql')
+// 160 moved the rule into repeat_rule_occurs_on; its section runs after 156.
+const ruleSection = readFileSync(join(root, 'supabase/migrations/160_supplement_schedules.sql'), 'utf8')
+  .match(/-- <repeat-rule>\n([\s\S]*?)-- <\/repeat-rule>/)?.[1]
+if (!ruleSection) {
+  console.error('verify-db-repeat-days: migration 160 has no <repeat-rule> section')
+  process.exit(1)
+}
 
 // Static: the migration talks to nothing outside the database (no pg_net /
 // http call, no Vault secret) and its job calls a SQL function directly.
@@ -130,6 +139,7 @@ try {
   psql(target, ['-f', join(dir, 'seed.sql')])
   psql(target, ['-f', migFile])
   psql(target, ['-f', migFile])
+  psql(target, ['-c', ruleSection])
 
   // 1. The scenarios. Each passing one prints a NOTICE ("ok  …"); a failing one raises.
   const run = spawnSync('psql', [target, '-v', 'ON_ERROR_STOP=1', '-q', '-f', join(dir, 'scenarios.sql')], { encoding: 'utf8' })
@@ -168,7 +178,7 @@ try {
       failed = `FAIL  the SQL rules differ from the app's:\n${bad.join('\n')}`
       console.error(failed)
     } else {
-      console.log(`verify-db-repeat-days: migrations 141 + 142 + 155, the owner's data, 156 (applied twice), ${passed} scenarios, the SQL repeat rule = recurrence.ts (${RULES.length} rules, two years) and the SQL routine match = matchRoutineToPlan (${TITLES.length} titles): ${ruleChecks} checks passed`)
+      console.log(`verify-db-repeat-days: migrations 141 + 142 + 155, the owner's data, 156 (applied twice), 160's one repeat rule, ${passed} scenarios, the SQL repeat rule (repeat_occurs_on → repeat_rule_occurs_on) = recurrence.ts (${RULES.length} rules, two years) and the SQL routine match = matchRoutineToPlan (${TITLES.length} titles): ${ruleChecks} checks passed`)
     }
   }
 } finally {

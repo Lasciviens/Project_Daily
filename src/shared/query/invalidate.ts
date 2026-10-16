@@ -9,8 +9,9 @@ const groups = {
   // shop items: a deleted task clears shop_items.task_id (ON DELETE SET NULL).
   taskGraph: [qk.tasks.all, qk.schedule.all, qk.calendar.all, qk.shop.items()],
   schedule: [qk.schedule.all, qk.calendar.all],
-  /** Anything in the food diary / plan / targets / water. */
-  nutrition: [qk.foodLog.all, qk.mealPlan.all, qk.water.all, qk.dayTargets.all, qk.dayTargets.profiles, qk.health.cutDiaryAll],
+  /** Anything in the food diary / plan / targets / water. A supplement dose is
+   *  taken while its diary line exists (160), so its doses refresh too. */
+  nutrition: [qk.foodLog.all, qk.mealPlan.all, qk.water.all, qk.dayTargets.all, qk.dayTargets.profiles, qk.health.cutDiaryAll, qk.supplements.all],
   recipes: [qk.recipes.all, qk.ingredients.all, qk.mealPlan.all],
   /** An episode was marked (un)watched: progress, next-up, planned blocks, recents. */
   episodeWatched: [qk.media.watchedAll, qk.media.nextEpisodeAll, qk.media.tv, qk.media.recent(), qk.schedule.all],
@@ -25,7 +26,7 @@ const groups = {
   /** After an Ask-AI turn: every table the assistant can write. */
   aiWrite: [
     qk.tasks.all, qk.schedule.all, qk.calendar.all,
-    qk.recipes.all, qk.ingredients.all, qk.mealPlan.all, qk.foodLog.all, qk.water.all, qk.dayTargets.all, qk.quickGuess.all,
+    qk.recipes.all, qk.ingredients.all, qk.mealPlan.all, qk.foodLog.all, qk.water.all, qk.dayTargets.all, qk.quickGuess.all, qk.supplements.all,
     qk.shop.all, qk.projects.all, qk.media.movies, qk.media.tv, qk.media.watchedAll, qk.media.nextEpisodeAll,
     qk.wishes.all, qk.devRequests.all, qk.memory.all, qk.work.all,
     qk.athlete.profile, qk.athlete.limitations, qk.athlete.musclePrefs,

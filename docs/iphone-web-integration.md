@@ -2,7 +2,9 @@
 
 > **What shipped:** the `phone-gateway` edge function (device secret) with 12 actions plus `ai-proxy`'s matching
 > secret branch · 11 generated Apple Shortcuts (`scripts/iphone-shortcuts/`, Codex-owned) · the Scriptable food
-> logger · 4 Scriptable widgets + the quick-log runner · a Web Push morning brief.
+> logger · 4 Scriptable widgets + the quick-log runner · a Web Push morning brief · Web Push supplement reminders
+> (migration `160`, `features/supplements.md`: the server reminds, the tap opens the dose sheet — no buttons in an iOS
+> web notification).
 > **Setup + the action contract → `iphone-examples.md`** · food logger → `scriptable-food-logger.md` ·
 > widgets → `scriptable-widgets.md` · push → `web-push-setup.md` · how the feature works → `features/iphone.md`.
 > **This doc answers *why*, and it is the one home of the iOS platform limits** — other docs link here instead of
