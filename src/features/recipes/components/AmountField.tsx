@@ -3,6 +3,7 @@ import { Minus, Plus } from 'lucide-react'
 import { IconButton, cx } from '../../../shared/ui'
 import { sanitizeDecimal } from './foodLogUtils'
 import { choiceClass } from '../../../shared/components/plan-modal/fieldStyles'
+import { ChipSelect } from '../../../shared/components/plan-modal/fields'
 import {
   amountChips, amountHint, amountText, fromUnit, stepValue, toUnit, unitOf,
   type AmountModel, type AmountUnitId, type BatchState,
@@ -55,27 +56,24 @@ export function AmountField({ model, value, onChange, last, batch, label, id = '
 
   return (
     <div className="flex flex-col gap-1.5">
-      <div className="flex items-center gap-2">
-        {label && <label htmlFor={id} className="field-label mb-0 w-14 shrink-0">{label}</label>}
+      {/* One row; the "= …" hint drops under it only when the row has no room. */}
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        {label && <label htmlFor={id} className="field-label mb-0 w-14 shrink-0 max-sm:sr-only">{label}</label>}
         <div className="flex shrink-0 items-center gap-1">
-          <IconButton label={`Less (${unit.label})`} bordered className="h-9 w-9" onClick={() => step(-1)} disabled={invalid}><Minus /></IconButton>
+          <IconButton label={`Less (${unit.label})`} bordered className="h-8 w-8 [&_svg]:!h-4 [&_svg]:!w-4" onClick={() => step(-1)} disabled={invalid}><Minus /></IconButton>
           <input id={id} value={text} onChange={e => type(e.target.value)} inputMode="decimal" aria-invalid={invalid}
             aria-label={label ? undefined : `Amount in ${unit.label}`}
-            className={cx('input input-sm h-9 w-16 px-1.5 text-right tabular-nums', invalid && 'border-danger')} />
-          {model.units.length > 1 ? (
-            <select value={unit.id} onChange={e => setUnitId(e.target.value as AmountUnitId)} aria-label="Unit"
-              className="select input-sm h-9 w-auto max-w-[8.5rem] py-0 pl-2 pr-7">
-              {model.units.map(u => <option key={u.id} value={u.id}>{u.label}</option>)}
-            </select>
-          ) : (
-            <span className="px-1 text-body text-fg-muted">{unit.label}</span>
-          )}
-          <IconButton label={`More (${unit.label})`} bordered className="h-9 w-9" onClick={() => step(1)}><Plus /></IconButton>
+            className={cx('input input-sm h-8 w-16 px-1.5 text-right tabular-nums', invalid && 'border-danger')} />
+          {/* The unit as a chip over an invisible native select (THEME §8): sized to the choice, the phone's own picker. */}
+          {model.units.length > 1
+            ? <ChipSelect label="Unit" value={unit.id} options={model.units.map(u => ({ value: u.id, label: u.label }))} onChange={setUnitId} />
+            : <span className="px-1 text-body text-fg-muted">{unit.label}</span>}
+          <IconButton label={`More (${unit.label})`} bordered className="h-8 w-8 [&_svg]:!h-4 [&_svg]:!w-4" onClick={() => step(1)}><Plus /></IconButton>
         </div>
-        {hint && <span className="ml-auto min-w-0 text-right text-meta leading-tight text-fg-muted tabular-nums">{hint}</span>}
+        {hint && <span className="ml-auto whitespace-nowrap text-meta text-fg-muted tabular-nums">{hint}</span>}
       </div>
       {chips.length > 0 && (
-        <div className={cx('flex flex-wrap gap-1.5', label && 'pl-16')}>
+        <div className={cx('flex flex-wrap gap-1.5', label && 'sm:pl-16')}>
           {chips.map(c => {
             const on = Math.abs(c.base - value) < 1e-6
             return (

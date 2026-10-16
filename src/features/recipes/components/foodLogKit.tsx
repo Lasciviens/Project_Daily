@@ -2,6 +2,7 @@ import { useState, type InputHTMLAttributes } from 'react'
 import { Listbox, ListboxButton, ListboxOptions, ListboxOption } from '@headlessui/react'
 import { ChevronDown, Minus, Plus, Star, X } from 'lucide-react'
 import { IconButton, Truncate, cx } from '../../../shared/ui'
+import { chipClass } from '../../../shared/components/plan-modal/fieldStyles'
 import { SLOT_OPTIONS, foodEmoji, sanitizeDecimal } from './foodLogUtils'
 import { MacroWarningBadge } from './MacroWarningBadge'
 import { checkMacroConsistency } from '../macroSanity'
@@ -190,9 +191,9 @@ export function PortionBasketRow({ title, amount, kcal, imageUrl, onAmount, onRe
       <Truncate className="min-w-0 flex-1 text-body text-fg">{title}</Truncate>
       {amount && onAmount && (
         <button type="button" onClick={onAmount} aria-label={`${title}: ${amount} — change the amount`}
-          className="chip h-8 shrink-0 px-2.5 tabular-nums hover:bg-surface-hover">{amount}</button>
+          className={chipClass('add')}>{amount}</button>
       )}
-      <span className="w-[3.25rem] shrink-0 text-right text-meta text-fg-muted tabular-nums sm:w-14">{Math.round(kcal)} kcal</span>
+      <span className="min-w-[3.25rem] shrink-0 whitespace-nowrap text-right text-meta text-fg-muted tabular-nums sm:min-w-14">{Math.round(kcal)} kcal</span>
       <IconButton label={`Remove ${title}`} className="h-9 w-8 shrink-0 text-fg-faint hover:text-danger sm:w-9" onClick={onRemove}><X /></IconButton>
     </div>
   )

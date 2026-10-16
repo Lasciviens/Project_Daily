@@ -16,6 +16,7 @@ import type { RecipeWithIngredients, MealSlot } from '../types'
 import { slotForNow } from './foodLogUtils'
 import { DateInput } from '../../../shared/components/DateInput'
 import { AmountField } from './AmountField'
+import { ChipSelect } from '../../../shared/components/plan-modal/fields'
 import { RecipeBatchPanel } from './RecipeBatch'
 import { countLabel, portionWord, recipeAmountModel } from '../foodAmount'
 
@@ -190,7 +191,7 @@ export function RecipeDetail({ recipe, onClose, onEdit }: Props) {
         {/* "I ate this": the amount in the recipe's own units (the shared
             AmountField), what is left of the batch, then when + where it logs
             to (today + the time-of-day slot; both editable to backfill). */}
-        <section className="flex flex-col gap-2 rounded-card border border-line p-3">
+        <section className="flex flex-col gap-2 border-y border-line py-3">
           <AmountField model={ateModel} value={ate} onChange={setAte} batch={batch} label="Ate" id="recipe-ate" />
           {ate > 0 && recipe.calories != null && (
             <MetaLine className="text-meta text-fg-muted tabular-nums" items={[
@@ -201,10 +202,8 @@ export function RecipeDetail({ recipe, onClose, onEdit }: Props) {
           {batch && <RecipeBatchPanel recipe={recipe} batch={batch} thisServings={ate} />}
           <div className="flex flex-wrap items-center gap-2">
             <DateInput value={logDate} max={formatLocalDate(new Date())} onChange={v => { if (v) setLogDate(v) }}
-              aria-label="Log date" className="input w-[9.5rem] tabular-nums" />
-            <select value={logSlot} onChange={e => setLogSlot(e.target.value as MealSlot)} aria-label="Meal slot" className="select w-auto">
-              {LOG_SLOTS.map(s => <option key={s.slot} value={s.slot}>{s.label}</option>)}
-            </select>
+              aria-label="Log date" className="input input-sm h-8 w-[8.5rem] tabular-nums" />
+            <ChipSelect label="Meal slot" value={logSlot} onChange={setLogSlot} options={LOG_SLOTS.map(s => ({ value: s.slot, label: s.label }))} />
             <Button variant="primary" size="sm" icon={<UtensilsCrossed />} onClick={handleLog} loading={logFood.isPending} disabled={ate <= 0}
               className="ml-auto" title="Log what you ate to the diary">
               I ate this

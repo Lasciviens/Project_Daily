@@ -201,7 +201,7 @@ export function FoodTodayTab({ date }: { date: string }) {
       <li key={group.groupId} className={group.items.some(m => fresh.has(m.id)) ? 'motion-row-in' : undefined}>
         <div className="@[40rem]:hidden">
           <div className="flex items-center gap-1 pl-3 pr-2 text-body">{nameBtn}{menu}{delBtn}</div>
-          <MetaLine items={totals} className="-mt-1.5 pb-2 pl-9 pr-4 text-meta tabular-nums text-fg-muted" />
+          <MetaLine items={totals} className="-mt-1.5 pb-2 px-4 text-meta tabular-nums text-fg-muted" />
         </div>
         <div className={cx(MACRO_GRID, 'pl-3 pr-2 text-body')}>
           {nameBtn}

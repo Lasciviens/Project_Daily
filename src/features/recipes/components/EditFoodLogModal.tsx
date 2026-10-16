@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Star } from 'lucide-react'
+import { Pencil, Star } from 'lucide-react'
 import { ModalShell } from '../../../shared/modals/ModalShell'
 import { entityModal } from '../../../shared/modals/useEntityModal'
 import { Button, IconButton, MetaLine, Truncate, cx } from '../../../shared/ui'
 import { DateInput } from '../../../shared/components/DateInput'
 import { chipClass } from '../../../shared/components/plan-modal/fieldStyles'
+import { ChipSelect } from '../../../shared/components/plan-modal/fields'
 import { formatDate } from '../../../shared/utils/dateFormat'
 import { todayStr } from '../../../shared/utils/dateUtils'
 import { toast } from '../../../app/store'
@@ -17,7 +18,7 @@ import { useDayTargets } from '../../daily/hooks/useDayTargets'
 import { groupDayMeals } from '../../daily/api/dayNutritionApi'
 import { amountUnit, ingredientSnapshot, recipeSnapshot } from '../foodBasket'
 import { foodAmountModel, portionWord, recipeAmountModel } from '../foodAmount'
-import { macroAmounts } from '../foodIngredients'
+import { macroAmounts, splitTitleQty } from '../foodIngredients'
 import { proteinDensity } from '../foodLibraryModel'
 import { MACRO_COLOR } from '../macroColors'
 import { checkMacroConsistency } from '../macroSanity'
@@ -67,6 +68,9 @@ const TILES = [
 
 /** "none", a dish ("g:<group id>") or a single row to make a new dish with ("r:<row id>"). */
 type DishChoice = string
+
+/** A dish name short enough for the "In" chip (the native list it opens shows it the same). */
+const cut = (s: string) => (s.length > 26 ? `${s.slice(0, 25).trimEnd()}…` : s)
 
 interface Props { entry: LoggedFood; onClose: () => void }
 
@@ -124,8 +128,8 @@ export function EditFoodLogModal({ entry, onClose }: Props) {
     if (!dayNut) return null
     const inSlot = dayNut.meals.filter(m => m.source === 'log' && m.meal_slot === slot)
     return groupDayMeals(inSlot).flatMap(r => r.kind === 'group'
-      ? [{ value: `g:${r.groupId}`, label: `${r.title} (${r.items.length})`, title: r.title }]
-      : r.meal.id === entry.id ? [] : [{ value: `r:${r.meal.id}`, label: `With ${r.meal.title}`, title: r.meal.title }])
+      ? [{ value: `g:${r.groupId}`, label: `${cut(r.title)} (${r.items.length})`, title: r.title }]
+      : r.meal.id === entry.id ? [] : [{ value: `r:${r.meal.id}`, label: `With ${cut(splitTitleQty(r.meal.title).name)}`, title: r.meal.title }])
   }, [dayNut, slot, entry.id])
   // A dish that isn't in the picked meal and day can't be kept (the row moves out of it).
   const dishValue: DishChoice = !options ? dish : options.some(o => o.value === dish) ? dish : 'none'
@@ -228,14 +232,14 @@ export function EditFoodLogModal({ entry, onClose }: Props) {
             className={cx('h-9 w-9', isFavorite ? 'text-star' : 'text-fg-faint hover:text-star')}>
             <Star className={cx(isFavorite && 'fill-current')} />
           </IconButton>
-          {kind !== 'custom' && <Button size="sm" variant="ghost" onClick={editFood}>Edit food</Button>}
+          {kind !== 'custom' && <Button size="sm" variant="ghost" icon={<Pencil />} onClick={editFood} aria-label="Edit food"><span className="max-sm:hidden">Edit food</span></Button>}
         </div>
 
         {model ? (
           <AmountField model={model} value={amount} onChange={setAmount} last={last} batch={batch} label="Amount" id="efl-amount" />
         ) : (
           <div className="flex flex-col gap-1.5">
-            <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
+            <div className="grid grid-cols-3 gap-2">
               {MACRO_FIELDS.map(m => (
                 <label key={m.key} className="flex min-w-0 flex-col gap-0.5">
                   <span className="text-micro text-fg-muted">{m.label}</span>
@@ -278,23 +282,19 @@ export function EditFoodLogModal({ entry, onClose }: Props) {
         )}
 
         {/* Where it sits: the meal, the day, the dish. */}
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-line pt-3 text-meta text-fg-muted">
-          <label className="flex items-center gap-1.5">Meal
-            <select value={slot} onChange={e => setSlot(e.target.value as MealSlot)} className="select input-sm h-9 w-auto py-0 pl-2 pr-7">
-              {SLOT_OPTIONS.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
-            </select>
-          </label>
-          <span className="flex items-center gap-1.5">Day
-            <DateInput value={day} onChange={v => { if (v) setDay(v) }} aria-label="Day" className="input input-sm h-9 w-[8.5rem] tabular-nums" />
+        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-2 border-t border-line pt-3 text-meta text-fg-muted">
+          <span className="flex items-center gap-1.5">Meal
+            <ChipSelect label="Meal" value={slot} onChange={setSlot} options={SLOT_OPTIONS.map(o => ({ value: o.id, label: o.label }))} />
           </span>
-          <label className="flex min-w-0 items-center gap-1.5">In
-            <select value={dishValue} onChange={e => setDish(e.target.value)} className="select input-sm h-9 w-auto min-w-0 max-w-[15rem] py-0 pl-2 pr-7">
-              <option value="none">No meal</option>
-              {(options ?? (startDish !== 'none' ? [{ value: startDish, label: entry.meal_group_title ?? 'Its meal', title: '' }] : [])).map(o => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </select>
-          </label>
+          <span className="flex items-center gap-1.5">Day
+            <DateInput value={day} onChange={v => { if (v) setDay(v) }} aria-label="Day" className="input input-sm h-8 w-[7.5rem] tabular-nums" />
+          </span>
+          <span className="flex min-w-0 max-w-full items-center gap-1.5">In
+            <ChipSelect label="In (dish)" value={dishValue} onChange={setDish} options={[
+              { value: 'none', label: 'No meal' },
+              ...(options ?? (startDish !== 'none' ? [{ value: startDish, label: entry.meal_group_title ?? 'Its meal' }] : [])).map(o => ({ value: o.value, label: o.label })),
+            ]} />
+          </span>
         </div>
       </div>
       {guessOpen && (

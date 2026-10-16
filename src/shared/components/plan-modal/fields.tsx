@@ -252,7 +252,7 @@ function DayCircles({ lit, onToggle, single, locked }: {
  * tap (the phone's own picker) and the keys. A visible select would render at
  * 16px on touch screens (the iOS zoom guard) and stand out of the chip row.
  */
-function ChipSelect<T extends string>({ label, value, options, onChange, icon, disabled }: {
+export function ChipSelect<T extends string>({ label, value, options, onChange, icon, disabled }: {
   label: string
   value: T
   options: readonly { value: T; label: string }[]
