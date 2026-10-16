@@ -31,16 +31,15 @@ console.log('\n== 1. Google: the default, the problems, the labels ==')
   check('no time → Google Tasks', R.defaultGoogleTarget({ time: null, repeat: null }) === 'tasks')
   check('a repeat with no time → Google Calendar (an all-day series)', R.defaultGoogleTarget({ time: null, repeat: weekly }) === 'calendar')
   check('never Both by default', ['tasks', 'calendar'].includes(R.defaultGoogleTarget({ time: '9:00', repeat: weekly })))
-  check('Tasks for a repeat is blocked, with the reason',
-    same(R.googleTargetProblem({ repeat: weekly, google: 'tasks' }), { level: 'blocked', message: "Google Tasks can't repeat" }))
-  check('Both for a repeat is blocked too', R.googleTargetProblem({ repeat: weekly, google: 'both' }).level === 'blocked')
+  check('Tasks for a repeat is allowed (156: one Google Task per day)', R.googleTargetProblem({ repeat: weekly, google: 'tasks' }) === null)
+  check('Both for a repeat only warns', same(R.googleTargetProblem({ repeat: weekly, google: 'both' }), { level: 'warning', message: 'Shows twice in Google Calendar' }))
   check('Both warns "Shows twice in Google Calendar"',
     same(R.googleTargetProblem({ repeat: null, google: 'both' }), { level: 'warning', message: 'Shows twice in Google Calendar' }))
   check('Calendar / Tasks / Not on Google: no problem',
     ['calendar', 'none'].every(g => R.googleTargetProblem({ repeat: weekly, google: g }) === null)
     && R.googleTargetProblem({ repeat: null, google: 'tasks' }) === null)
   check('a picked choice wins while it fits', R.effectiveGoogleTarget({ time: '9:00', repeat: null }, 'tasks') === 'tasks')
-  check('…and falls back to the default when it doesn\'t (Tasks + a repeat)', R.effectiveGoogleTarget({ time: null, repeat: weekly }, 'tasks') === 'calendar')
+  check('…Tasks for a repeat is kept (156)', R.effectiveGoogleTarget({ time: null, repeat: weekly }, 'tasks') === 'tasks')
   check('nothing picked → the default', R.effectiveGoogleTarget({ time: null, repeat: null }, null) === 'tasks')
   check('labels say busy / free / all day — never "Auto"',
     R.googleTargetLabel({ time: '17:30', durationMinutes: 60, repeat: null }, 'calendar') === 'Google Calendar · busy'
@@ -48,10 +47,14 @@ console.log('\n== 1. Google: the default, the problems, the labels ==')
     && R.googleTargetLabel({ time: null, durationMinutes: null, repeat: null }, 'calendar') === 'Google Calendar · all day'
     && R.googleTargetLabel({ time: null, durationMinutes: null, repeat: null }, 'none') === 'Not on Google'
     && R.googleTargetLabel({ time: null, durationMinutes: null, repeat: null }, 'both') === 'Google Tasks + Calendar')
+  check('a repeat on Google Tasks reads "Google Tasks · one per day"',
+    R.googleTargetLabel({ time: null, durationMinutes: null, repeat: weekly }, 'tasks') === 'Google Tasks · one per day'
+    && R.googleTargetLabel({ time: null, durationMinutes: null, repeat: null }, 'tasks') === 'Google Tasks')
   const choices = R.googleChoices({ time: null, durationMinutes: null, repeat: weekly })
-  check('the menu: four choices, Tasks and Both disabled for a repeat with the reason',
+  check('the menu: four choices, none disabled for a repeat; Tasks is "Google Tasks · one per day"',
     same(choices.map(c => c.target), ['calendar', 'tasks', 'both', 'none'])
-    && choices[1].disabled === "Google Tasks can't repeat" && choices[2].disabled && !choices[0].disabled && !choices[3].disabled)
+    && choices.every(c => !c.disabled) && choices[1].label === 'Google Tasks · one per day'
+    && choices[2].hint === 'Shows twice in Google Calendar')
   check('…an all-day repeat says so', choices[0].hint === 'An all-day repeating event')
   check('…nothing disabled without a repeat', R.googleChoices({ time: '9:00', durationMinutes: 30, repeat: null }).every(c => !c.disabled))
 }
@@ -170,7 +173,7 @@ console.log('\n== 6. Saving: the form as ItemInput ==')
   const rep = { ...f, recurrence: 'weekly', weeklyDays: [1, 3, 5] }
   const r = F.inputFromForm(rep, ctx)
   check('a new repeat starts on the sheet\'s date', same(r.repeat, { kind: 'weekly', daysOfWeek: [1, 3, 5], startsOn: TODAY }) && r.date === TODAY)
-  check('a repeat with Tasks picked saves Calendar (Tasks can\'t repeat)', F.inputFromForm({ ...rep, googlePick: 'tasks' }, ctx).google === 'calendar')
+  check('a repeat with Tasks picked saves Google Tasks — one per day (156)', F.inputFromForm({ ...rep, googlePick: 'tasks' }, ctx).google === 'tasks')
   const savedPlan = R.itemFromRows(null, null, plan)
   const edit = F.buildInitialForm({ mode: 'recurring', item: savedPlan, occurrenceDate: TODAY, today: TODAY, nextTime: '16:00' })
   const all = F.inputFromForm({ ...edit, time: '18:00' }, { ...ctx, item: savedPlan, occurrenceDate: TODAY })

@@ -123,6 +123,7 @@ export function TrainingSessionView({ request, onClose }: { request: SessionRequ
       const status = sessionStatus(planFacts({
         date: day, startHHMM: plan.info.startHHMM, taskId: orphan.id, taskStatus: orphan.status,
         taskWorkoutId: orphan.hevy_workout_id, taskRoutineId: orphan.hevy_routine_id ?? null, routineId: plan.info.routineId,
+        taskMissed: orphan.closed_reason === 'missed',
       }, { today: todayStr, nowHHMM: now, skips: skips ?? [] }))
       return { plan, status, weekly: null, skipId: null }
     }
@@ -143,10 +144,12 @@ export function TrainingSessionView({ request, onClose }: { request: SessionRequ
       taskStatus: task?.status ?? block?.task_status ?? null,
       taskWorkoutId: task?.hevy_workout_id ?? block?.task_workout_id ?? null,
       taskRoutineId: task?.hevy_routine_id ?? block?.task_routine_id ?? null,
+      taskMissed: task?.closed_reason === 'missed',
       routineId: routine?.id ?? null,
     }, { today: todayStr, nowHHMM: now, skips: skips ?? [], hasActivity })
     const status = sessionStatus(facts)
-    return { plan, status, weekly: target.kind === 'weekly' ? { templateId: target.templateId } : null, skipId: facts.skipId }
+    // A day of a repeating plan — its day's task (156) or none yet — keeps the plan's own entries.
+    return { plan, status, weekly: template ? { templateId: template.id } : null, skipId: facts.skipId }
   })()
   const planItems = useSessionActionItems({
     plan: planCtx?.plan ?? null, status: planCtx?.status ?? null,

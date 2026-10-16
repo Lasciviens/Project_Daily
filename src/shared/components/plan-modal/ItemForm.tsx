@@ -5,31 +5,31 @@
 //  `patch`; the title's quick add runs in UnifiedPlanModal.
 //
 //    Title (quick add: "Gym 17:30 1h every Mon Wed Fri" + the Read as line)
-//    [Thu 15.10.2026] [17:30–18:30] [Blocks 1h] [+ Repeat]     ← when
-//    Repeat line (the planner's select + day circles), once repeating
-//    [Google Calendar · busy ▾]                                ← Google
-//    rows opened below …
-//    [+ Notes] [+ Priority] [+ Deadline] [+ Area] [+ Google list]
+//    [Thu 15.10.2026] [17:30–18:30] [Blocks 1h] [Repeat] [Google Calendar · busy ▾]
+//    [Weekly ▾] M T W T F S S                                  ← once repeating
+//    ● Medium priority · Personal · + Notes · + Deadline · + Google list
+//    Notes     [ … ]                                           ← rows opened
+//    Deadline  [ … ]
 //
-//  A repeating item opened on one of its days gets This day | All days on top.
+//  A repeating item opened on one of its days gets This day | All days in the
+//  sheet's header (UnifiedPlanModal).
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useId, useLayoutEffect, useRef } from 'react'
-import { Repeat, X } from 'lucide-react'
-import { FieldLabel, PillGroup, RecurrenceField, Time24Field } from './fields'
-import { chipClass, ADD_SLOT_CLASS } from './fieldStyles'
+import { Plus, Repeat, X } from 'lucide-react'
+import { RecurrenceField, Time24Field } from './fields'
+import { chipClass } from './fieldStyles'
 import { DateChip } from './DateChip'
 import { TimeChip, LengthChip } from './TimeChips'
 import { GoogleChip } from './GoogleChip'
 import { GoogleListField } from './GoogleListField'
 import { TaskWindowField } from './TaskWindowField'
+import { AddFact, AreaFact, CategoryFact, FactRow, PriorityFact } from './ItemFacts'
 import { DateInput } from '../DateInput'
-import { SegmentedControl, cx, type Tone } from '../../ui'
+import { cx } from '../../ui'
 import { ReadAsLine } from '../../../features/items/components/ReadAsLine'
 import { effectiveGoogleTarget, hasGoogleTasks } from '../../../features/items/sheetRules'
 import { weekdayOfIso } from '../../../features/daily/recurrence'
-import { DOMAIN_LABEL } from '../../../features/todo/domainColors'
-import { PRIORITY_LABEL, PRIORITY_TONE } from '../../../features/todo/taskTones'
 import {
   isScheduleFieldHidden, isTaskFieldHidden, pickRecurrence, repeatAnchorOf, shiftTime, withStartForRepeatChange,
   RECURRENCE_OPTIONS, RECURRING_EDIT_OPTIONS, type RepeatAnchor,
@@ -37,14 +37,10 @@ import {
 import { shapeOf, withDate, withTime, type PlanForm, type SheetRow } from './planForm'
 import type { PlanModalConfig } from './planModal.types'
 import type { QuickAddResult } from '../../../features/items/quickAdd'
-import type { TaskDomain, TaskPriority } from '../../../features/todo/types'
-
-const PRIORITIES: { id: TaskPriority; label: string; tone: Tone }[] = (['low', 'medium', 'high'] as const)
-  .map(id => ({ id, label: PRIORITY_LABEL[id], tone: PRIORITY_TONE[id] }))
-const DOMAINS: { id: TaskDomain; label: string }[] = (['personal', 'work', 'media'] as const).map(id => ({ id, label: DOMAIN_LABEL[id] }))
 
 const ROW_LABEL: Record<SheetRow, string> = { notes: 'Notes', priority: 'Priority', deadline: 'Deadline', area: 'Area', list: 'Google list' }
-const SCOPES: { value: 'day' | 'all'; label: string }[] = [{ value: 'day', label: 'This day' }, { value: 'all', label: 'All days' }]
+/** Priority and area always hold a value: they read as values on the facts line, never as rows. */
+const VALUE_FACTS: readonly SheetRow[] = ['priority', 'area']
 
 interface Props {
   form: PlanForm
@@ -60,9 +56,8 @@ interface Props {
   today: string
   nextTime: string
   googleConnected: boolean
-  /** A repeating item opened on one of its days: This day | All days. */
+  /** A repeating item opened on one of its days (its This day | All days is in the header). */
   occurrenceDate?: string | null
-  onScope: (scope: 'day' | 'all') => void
   /** Editing: a saved one-off doesn't turn into a repeat here, nor a saved repeat into a one-off. */
   savedKind?: 'one-off' | 'repeat'
   /** Editing a repeat: its saved start and what it counts from. */
@@ -72,9 +67,10 @@ interface Props {
 
 export function ItemForm({
   form, patch, config, typed, onTitle, parse, onKeepText, creating, today, nextTime, googleConnected,
-  occurrenceDate, onScope, savedKind, savedRepeat, exceptDates,
+  occurrenceDate, savedKind, savedRepeat, exceptDates,
 }: Props) {
   const titleId = useId()
+  const notesId = useId()
   const hideTask = (f: Parameters<typeof isTaskFieldHidden>[0]) => isTaskFieldHidden(f, config)
   const day = !!occurrenceDate && form.scope === 'day'
   const repeating = form.recurrence !== 'none' && !day
@@ -91,9 +87,13 @@ export function ItemForm({
     if (r === 'priority') return !hideTask('priority')
     if (r === 'deadline') return !(hideTask('dueDate') && hideTask('startDate'))
     if (r === 'area') return !hideTask('domain')
-    return showGoogle && hasGoogleTasks(target) && !hideTask('googleList')
+    // A repeat's days go to the default list (156 stores no list per repeat).
+    return showGoogle && hasGoogleTasks(target) && !repeating && !hideTask('googleList')
   })
+  // A category belongs to a slot or a repeat: only an item with a time or a repeat has one.
+  const showCategory = (!!form.time || repeating) && !isScheduleFieldHidden('category', config)
   const open = (r: SheetRow) => form.shown.includes(r) && rows.includes(r)
+  const addable = rows.filter(r => !VALUE_FACTS.includes(r) && !open(r))
 
   const startRepeat = () => {
     const date = form.date ?? today
@@ -104,17 +104,14 @@ export function ItemForm({
 
   return (
     <div className="flex flex-col gap-3">
-      {occurrenceDate && (
-        <SegmentedControl size="sm" options={SCOPES} value={form.scope} onChange={onScope} />
-      )}
-
-      <div className="flex flex-col gap-1.5">
+      <div className="flex flex-col gap-1">
         <label htmlFor={titleId} className="sr-only">Title</label>
         <TitleField id={titleId} value={typed} onChange={onTitle} autoFocus={creating}
           placeholder={creating ? 'e.g. Gym 17:30 1h every Mon Wed Fri' : 'Title'} />
         {parse && <ReadAsLine parse={parse} start={form.date ?? today} onKeepText={onKeepText} />}
       </div>
 
+      {/* One quiet row: date · time · length · repeat · Google — it wraps only when it must. */}
       <div className="flex flex-wrap items-center gap-1.5">
         {showDate && (
           <DateChip
@@ -131,6 +128,7 @@ export function ItemForm({
             <Repeat aria-hidden />Repeat
           </button>
         )}
+        {showGoogle && <GoogleChip shape={shape} target={target} onPick={googlePick => patch({ googlePick })} />}
       </div>
 
       {repeating && (
@@ -140,46 +138,25 @@ export function ItemForm({
         />
       )}
 
-      {showGoogle && (
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          <GoogleChip shape={shape} target={target} onPick={googlePick => patch({ googlePick })} />
+      {(rows.some(r => VALUE_FACTS.includes(r)) || showCategory || addable.length > 0) && (
+        <div className="-ml-1.5 flex flex-wrap items-center gap-x-0.5 gap-y-1">
+          {rows.includes('priority') && <PriorityFact value={form.priority} onChange={priority => patch({ priority })} />}
+          {rows.includes('area') && <AreaFact value={form.domain} onChange={domain => patch({ domain })} />}
+          {showCategory && <CategoryFact value={form.category} onChange={category => patch({ category })} />}
+          {addable.map(r => <AddFact key={r} label={ROW_LABEL[r]} onClick={() => patch({ shown: [...form.shown, r] })} />)}
         </div>
       )}
 
       {open('notes') && (
-        <div>
-          <FieldLabel>Notes</FieldLabel>
+        <FactRow label="Notes" htmlFor={notesId}>
           <textarea
-            value={form.notes} rows={2} onChange={e => patch({ notes: e.target.value })}
-            placeholder="Add details" className="input resize-none"
+            id={notesId} value={form.notes} rows={2} onChange={e => patch({ notes: e.target.value })}
+            placeholder="Add details" className="input input-sm block resize-none"
           />
-        </div>
-      )}
-      {open('priority') && (
-        <div>
-          <FieldLabel>Priority</FieldLabel>
-          <PillGroup options={PRIORITIES} value={form.priority} onChange={priority => patch({ priority })} size="sm" />
-        </div>
+        </FactRow>
       )}
       {open('deadline') && <DeadlineRow form={form} patch={patch} config={config} />}
-      {open('area') && (
-        <div>
-          <FieldLabel>Area</FieldLabel>
-          <PillGroup options={DOMAINS} value={form.domain} onChange={domain => patch({ domain })} size="sm" />
-        </div>
-      )}
       {open('list') && <GoogleListField value={form.googleListTitle} onChange={googleListTitle => patch({ googleListTitle })} />}
-
-      {rows.some(r => !open(r)) && (
-        <div className="flex flex-wrap gap-1.5">
-          {rows.filter(r => !open(r)).map(r => (
-            <button
-              key={r} type="button" onClick={() => patch({ shown: [...form.shown, r] })}
-              className={chipClass('add', 'min-h-[30px] px-2.5 text-meta [@media(pointer:coarse)]:min-h-[36px]')}
-            >+ {ROW_LABEL[r]}</button>
-          ))}
-        </div>
-      )}
     </div>
   )
 }
@@ -197,14 +174,16 @@ function TitleField({ id, value, onChange, autoFocus, placeholder }: {
     const el = ref.current
     if (!el) return
     el.style.height = 'auto'
-    el.style.height = `${el.scrollHeight + 2}px`
+    // + the border (an underline), which scrollHeight leaves out.
+    el.style.height = `${el.scrollHeight + el.offsetHeight - el.clientHeight}px`
   }, [value])
   return (
     <textarea
       ref={ref} id={id} rows={1} value={value} autoFocus={autoFocus} placeholder={placeholder}
       onChange={e => onChange(e.target.value.replace(/\s*\n+\s*/g, ' '))}
       onKeyDown={e => { if (e.key === 'Enter') e.preventDefault() }}
-      autoComplete="off" enterKeyHint="done" className="input resize-none overflow-hidden"
+      autoComplete="off" enterKeyHint="done"
+      className="input-bare resize-none overflow-hidden text-title font-semibold placeholder:font-normal"
     />
   )
 }
@@ -213,42 +192,40 @@ function TitleField({ id, value, onChange, autoFocus, placeholder }: {
 function DeadlineRow({ form, patch, config }: Pick<Props, 'form' | 'patch' | 'config'>) {
   const showDue = !isTaskFieldHidden('dueDate', config)
   const showTime = showDue && !isTaskFieldHidden('dueTime', config)
+  if (!showDue) return null
   return (
-    <div className="flex flex-col gap-2">
-      {showDue && (
-        <div>
-          <FieldLabel>Deadline</FieldLabel>
-          <div className={cx('flex flex-wrap items-center gap-2', form.deadlineTime && 'flex-col items-stretch')}>
-            <DateInput
-              value={form.deadlineDate} onChange={deadlineDate => patch({ deadlineDate, ...(deadlineDate ? {} : { deadlineTime: '' }) })}
-              aria-label="Deadline date" className="input w-[10rem] tabular-nums"
-            />
-            {showTime && form.deadlineDate && (form.deadlineTime ? (
-              <div className="flex items-center gap-1.5">
-                <div className="min-w-0 flex-1">
-                  <Time24Field
-                    value={form.deadlineTime} onChange={deadlineTime => patch({ deadlineTime })}
-                    onShift={delta => patch({ deadlineTime: shiftTime(form.deadlineTime, delta) })}
-                  />
-                </div>
-                <button type="button" onClick={() => patch({ deadlineTime: '' })} aria-label="No deadline time" className="icon-btn text-fg-faint hover:text-danger">
-                  <X className="h-4 w-4" aria-hidden />
-                </button>
+    <FactRow label="Deadline">
+      <div className="flex flex-col gap-1.5">
+        <div className={cx('flex flex-wrap items-center gap-1.5', form.deadlineTime && 'flex-col items-stretch')}>
+          <DateInput
+            value={form.deadlineDate} onChange={deadlineDate => patch({ deadlineDate, ...(deadlineDate ? {} : { deadlineTime: '' }) })}
+            aria-label="Deadline date" className="input input-sm w-[8.5rem] tabular-nums"
+          />
+          {showTime && form.deadlineDate && (form.deadlineTime ? (
+            <div className="flex items-center gap-1">
+              <div className="min-w-0 flex-1">
+                <Time24Field
+                  size="sm" value={form.deadlineTime} onChange={deadlineTime => patch({ deadlineTime })}
+                  onShift={delta => patch({ deadlineTime: shiftTime(form.deadlineTime, delta) })}
+                />
               </div>
-            ) : (
-              <button type="button" onClick={() => patch({ deadlineTime: '17:00' })} className={cx(ADD_SLOT_CLASS, 'w-auto px-3')}>
-                + Time
+              <button type="button" onClick={() => patch({ deadlineTime: '' })} aria-label="No deadline time" className={chipClass('remove')}>
+                <X aria-hidden />
               </button>
-            ))}
-          </div>
+            </div>
+          ) : (
+            <button type="button" onClick={() => patch({ deadlineTime: '17:00' })} className={chipClass('quiet')}>
+              <Plus aria-hidden />Time
+            </button>
+          ))}
         </div>
-      )}
-      {!isTaskFieldHidden('startDate', config) && showDue && (
-        <TaskWindowField
-          startDate={form.startDate} dueDate={form.deadlineDate}
-          onChange={v => patch({ startDate: v.startDate, deadlineDate: v.dueDate })}
-        />
-      )}
-    </div>
+        {!isTaskFieldHidden('startDate', config) && (
+          <TaskWindowField
+            startDate={form.startDate} dueDate={form.deadlineDate}
+            onChange={v => patch({ startDate: v.startDate, deadlineDate: v.dueDate })}
+          />
+        )}
+      </div>
+    </FactRow>
   )
 }

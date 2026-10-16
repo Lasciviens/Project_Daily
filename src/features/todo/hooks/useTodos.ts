@@ -27,7 +27,7 @@ import { mapRowsInCache, putRowsInCache, restoreCache, snapshotCache } from '../
 import { useRowsDelete } from '../../../shared/hooks/useRowsDelete'
 import { rowsOf, type RowOverrides } from '../../../shared/utils/deletedRows'
 import { BLOCK_EVENT_RESET, relinkRestoredBlockEvents, removeDeletedBlockEvents } from '../../calendar/api/deletedBlockEvents'
-import { refreshTaskEventSoon } from '../../calendar/api/itemCalendar'
+import { refreshSeriesSoon, refreshTaskEventSoon } from '../../calendar/api/itemCalendar'
 import { dayTasks, openOnDay, sectionForDay, weekCounts } from '../taskRules'
 import { todayStr } from '../../../shared/utils/dateUtils'
 import { applyTaskPatch, taskUpdateMessage } from '../taskWrites'
@@ -189,6 +189,9 @@ export function useUpdateTask({ report = true }: { report?: boolean } = {}) {
       // Done / reopened: its slot's event gains or loses "✓ " (155). A title
       // edit pushes the event below anyway.
       if (patch.status !== undefined && patch.title === undefined) refreshTaskEventSoon(id)
+      // A repeat's day moved (156): the database took its day out of the
+      // repeat (or put it back) — its Google Calendar series follows.
+      if (patch.due_date !== undefined && task.schedule_block_id) refreshSeriesSoon(task.schedule_block_id)
 
       // Task title is canonical (migration 077) — a DB trigger already kept
       // the linked time_block's OWN title in sync regardless of which door
@@ -266,12 +269,20 @@ export const TASK_GOOGLE_RESET: RowOverrides = {
   },
 }
 
+/** The repeats whose day a deleted (or restored) task was (156): the
+ *  database took the day out of the repeat (or put it back), so its Google
+ *  Calendar series is brought up to date — in the background. */
+function refreshRepeatsOf(tasks: readonly Task[]): void {
+  for (const plan of new Set(tasks.map(t => t.schedule_block_id).filter((id): id is string => !!id))) refreshSeriesSoon(plan)
+}
+
 /**
  * THE task delete: one call deletes the task and returns what went with it —
  * its schedule slot (and that slot's Google Calendar event, removed right
  * after), its training skip, and the subtasks, wish and shopping item that
  * pointed at it (migration 144). Undo puts all of it back with the same ids;
- * Google Task and Calendar copies are made again.
+ * Google Task and Calendar copies are made again. A repeat's day (156)
+ * deleted leaves its repeat — its series loses the day; Undo puts it back.
  *   del.run([task.id], { title: 'Delete this task?', done: 'Task deleted' })
  */
 export function useDeleteTask() {
@@ -283,10 +294,12 @@ export function useDeleteTask() {
     afterDelete: async snapshot => {
       await removeDeletedBlockEvents(snapshot)
       for (const t of rowsOf<Task>(snapshot, 'tasks')) syncGoogleTasksSoon({ taskId: t.id })
+      refreshRepeatsOf(rowsOf<Task>(snapshot, 'tasks'))
     },
     overrides: () => ({ ...TASK_GOOGLE_RESET, ...BLOCK_EVENT_RESET }),
     afterRestore: async snapshot => {
       for (const t of rowsOf<Task>(snapshot, 'tasks')) if (t.google_sync_enabled) syncGoogleTasksSoon({ taskId: t.id })
+      refreshRepeatsOf(rowsOf<Task>(snapshot, 'tasks'))
       return relinkRestoredBlockEvents(snapshot)
     },
   })

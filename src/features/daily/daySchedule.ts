@@ -15,6 +15,7 @@ import {
 } from './components/dayAgendaProjection'
 import type { ScheduleBlock, TimeBlock } from './types'
 import type { CalendarEvent } from '../calendar/types'
+import type { Task } from '../todo/types'
 
 export interface DayItem {
   /** Unique on this day (the tail of yesterday's block has its own). */
@@ -32,6 +33,7 @@ export interface DayItem {
   allDay:      boolean
   /** The day this occurrence starts on — a recurring occurrence's identity. */
   planDate:    string
+  /** The slot's task; for a repeat's day, its day's task (156) when it has one. */
   taskId:      string | null
   /** Its task is done or cancelled: over, never "next" (it stays on the agenda). */
   closed:      boolean
@@ -52,25 +54,33 @@ function shiftDay(date: string, n: number): string {
 const closedStatus = (s: TimeBlock['task_status']) => s === 'done' || s === 'cancelled'
 
 /** Every item on `date`: one-off blocks (and yesterday's tails), weekly plans,
- *  and Google events not already shown as their own block. */
+ *  and Google events not already shown as their own block. `dayTasks`: the
+ *  day's tasks — a repeat's day that is a task (156, made on its day) takes
+ *  its id and its state, so a ticked one is never "next". */
 export function buildDaySchedule(input: {
   date:       string
   blocks:     readonly TimeBlock[]
   prevBlocks: readonly TimeBlock[]
   templates:  readonly ScheduleBlock[]
   events:     readonly CalendarEvent[]
+  dayTasks?:  readonly Pick<Task, 'id' | 'status' | 'schedule_block_id' | 'occurrence_date'>[]
 }): DayItem[] {
   const { date, blocks, prevBlocks, templates, events } = input
   const prevDay = shiftDay(date, -1)
   const items: DayItem[] = []
 
   const templateById = new Map(templates.map(t => [t.id, t]))
+  const dayTask = new Map((input.dayTasks ?? [])
+    .filter(t => t.schedule_block_id && t.occurrence_date)
+    .map(t => [`${t.schedule_block_id}:${t.occurrence_date}`, t]))
   for (const p of projectRecurringBlocksForDay(date, templates)) {
     const t = templateById.get(p.canonicalId)
+    const planDate = p.spillover ? prevDay : date
+    const task = dayTask.get(`${p.canonicalId}:${planDate}`)
     items.push({
       id: p.id, canonicalId: p.canonicalId, kind: 'recurring', title: p.title,
       startHour: p.startHour, endHour: p.endHour, spillover: p.spillover, allDay: false,
-      planDate: p.spillover ? prevDay : date, taskId: null, closed: false,
+      planDate, taskId: task?.id ?? null, closed: closedStatus(task?.status),
       // A repeat with a time and no length (busy false, 155) blocks no time: never planned, never an overlap.
       busy: !!t?.start_time && !!t.end_time && t.busy !== false, template: t,
     })

@@ -19,6 +19,28 @@
 //  └─────────────────────────────────────────────────────────────────────────────┘
 //
 //  CHANGELOG
+//  2026-10-15 · v21.1 · A repeat's day opened from its task (Home's list, the
+//                    Tasks tab) opens as that day of its repeat with This day
+//                    picked (`startScope`, PlanEntityModals.useRepeatDayOf) —
+//                    as a plain task, a Repeat added there made a second
+//                    repeat (156 review). "Only <day>" deletes the day's task
+//                    when it has one (ticked, skipped, missed: useDeleteItem),
+//                    with its own Undo.
+//  2026-10-16 · v21.2 · The category is back on the facts line (it was dropped
+//                    in v19): a timed or repeating item shows it as a value
+//                    menu (`CategoryFact`); a training session hides it
+//                    (`hideScheduleFields: ['category']`).
+//  2026-10-15 · v21 · A repeat's day is a real task on its day (migration 156,
+//                    owner: "a repeated task should be created on its day"):
+//                    the Google chip offers "Google Tasks · one per day" and
+//                    Both for a repeat (itemRules.googleTargetProblem,
+//                    sheetRules.googleChoices); a day's task saved from here is
+//                    that day of its repeat ("This day"). Ticking a day no
+//                    longer splits it off the series; skip and move still do.
+//  2026-10-15 · v20.1 · Look only (owner: "more polite, not big and clunky"):
+//                    ModalShell's compact chrome, This day | All days in the
+//                    header, Cancel quiet beside a content-sized Save, the
+//                    skeleton follows the lighter form. No logic changed.
 //  2026-10-15 · v20 · The data layer behind v19 (migration 155):
 //                    (a) useSaveItem is real: one RPC (app_save_item, one
 //                    transaction, one Activity Undo), then the Google side in
@@ -466,7 +488,7 @@ import { effectiveGoogleTarget, hasGoogleTasks, itemFromRows, storedGoogleTarget
 import type { ItemInput, SavedItem } from '../../../features/items/itemTypes'
 import { ModalShell } from '../../modals/ModalShell'
 import { entityModal } from '../../modals/useEntityModal'
-import { Button, Skeleton } from '../../ui'
+import { Button, SegmentedControl, Skeleton } from '../../ui'
 import { todayStr } from '../../utils/dateUtils'
 import { ItemForm } from './ItemForm'
 import { RepeatDeleteChoice } from './RepeatDeleteChoice'
@@ -476,6 +498,8 @@ import {
 } from './planForm'
 import { nextPlanTime, recurrenceProblem, repeatAnchorOfRow } from './planModal.config'
 import type { PlanResult, UnifiedPlanModalProps } from './planModal.types'
+
+const SCOPES: { value: 'day' | 'all'; label: string }[] = [{ value: 'day', label: 'This day' }, { value: 'all', label: 'All days' }]
 
 /** What a caller's onSaved hears: which parts the item has, and what was made. */
 function resultOf(input: SheetItemInput, saved: SavedItem, item: ItemInput | null): PlanResult {
@@ -488,7 +512,7 @@ function resultOf(input: SheetItemInput, saved: SavedItem, item: ItemInput | nul
 }
 
 export function UnifiedPlanModal({
-  open, onClose, mode = 'task', config, defaults, source, task, timeBlock, scheduleBlock, occurrenceDate,
+  open, onClose, mode = 'task', config, defaults, source, task, timeBlock, scheduleBlock, occurrenceDate, startScope,
   onSaved, loading = false, loadError, onDeleteOverride,
 }: UnifiedPlanModalProps) {
   const editMode = !!task || !!timeBlock || !!scheduleBlock
@@ -504,13 +528,16 @@ export function UnifiedPlanModal({
     () => (task || timeBlock || scheduleBlock ? itemFromRows(task, timeBlock, scheduleBlock) : null),
     [task, timeBlock, scheduleBlock],
   )
-  const seedForm = () => buildInitialForm({
-    mode, defaults, source, item,
-    storedGoogle: storedGoogleTarget(task, timeBlock, scheduleBlock),
-    category: timeBlock?.category ?? scheduleBlock?.category ?? null,
-    startDate: task?.start_date ?? null,
-    occurrenceDate, today, nextTime: nextPlanTime(),
-  })
+  const seedForm = () => {
+    const seeded = buildInitialForm({
+      mode, defaults, source, item,
+      storedGoogle: storedGoogleTarget(task, timeBlock, scheduleBlock),
+      category: timeBlock?.category ?? scheduleBlock?.category ?? null,
+      startDate: task?.start_date ?? null,
+      occurrenceDate, today, nextTime: nextPlanTime(),
+    })
+    return startScope === 'day' ? switchScope(seeded, 'day') : seeded
+  }
 
   const [form, setForm] = useState<PlanForm>(seedForm)
   // The title field's text; with quick add it can say more than form.title.
@@ -673,31 +700,38 @@ export function UnifiedPlanModal({
   const heading = config?.heading ?? (editMode || blocked ? 'Edit' : 'Add')
 
   const footer = (
-    // One row on every width: on a phone Delete is an icon.
-    <div className="flex items-center gap-2">
+    // One row on every width: Delete (an icon on a phone) on the left, a quiet
+    // Cancel and the one primary on the right — content-sized, never full width.
+    <div className="flex items-center gap-1.5">
       {editMode && !blocked && (
         <Button
-          variant="ghost" icon={<Trash2 />} onClick={() => { void handleDelete() }} disabled={working}
-          aria-label="Delete" className="shrink-0 text-danger hover:text-danger max-sm:px-3 sm:mr-auto"
+          variant="ghost" size="sm" icon={<Trash2 />} onClick={() => { void handleDelete() }} disabled={working}
+          aria-label="Delete" className="-ml-2 shrink-0 text-danger hover:text-danger max-sm:px-2.5"
         >
           <span className="max-sm:sr-only">Delete</span>
         </Button>
       )}
-      <div className="flex min-w-0 flex-1 gap-2 sm:ml-auto sm:flex-none">
-        <Button onClick={onClose} disabled={working} className="flex-1 sm:flex-none">Cancel</Button>
-        {!loadError && (
-          <Button
-            variant="primary" onClick={() => { void handleSave() }} loading={saving}
-            disabled={blocked || !form.title.trim() || !!repeatIssue}
-            className="flex-1 sm:flex-none"
-          >{blocked ? 'Loading…' : saving ? 'Saving…' : editMode ? 'Save' : 'Add'}</Button>
-        )}
-      </div>
+      <Button variant="ghost" size="sm" onClick={onClose} disabled={working} className="ml-auto">Cancel</Button>
+      {!loadError && (
+        <Button
+          variant="primary" size="sm" onClick={() => { void handleSave() }} loading={saving}
+          disabled={blocked || !form.title.trim() || !!repeatIssue}
+          className="min-w-[5.5rem]"
+        >{blocked ? 'Loading…' : saving ? 'Saving…' : editMode ? 'Save' : 'Add'}</Button>
+      )}
     </div>
   )
 
+  // A repeating item opened on one of its days: which one the edit is for.
+  const scopeSwitch = scheduleBlock && occurrenceDate && !blocked
+    ? <SegmentedControl size="xs" options={SCOPES} value={form.scope} onChange={s => setForm(f => switchScope(f, s))} />
+    : undefined
+
   return (
-    <ModalShell open={open} onClose={onClose} title={heading} footer={footer} size="md" dismissible={!working}>
+    <ModalShell
+      open={open} onClose={onClose} title={heading} headerActions={scopeSwitch} footer={footer}
+      size="md" compact dismissible={!working}
+    >
       {loadError ? (
         <div className="flex flex-col items-center gap-3 py-6 text-center">
           <AlertCircle className="h-6 w-6 text-danger" aria-hidden />
@@ -706,20 +740,20 @@ export function UnifiedPlanModal({
         </div>
       ) : loading ? (
         <div className="flex flex-col gap-3" aria-busy="true" aria-label="Loading">
-          <Skeleton className="h-11 w-full" rounded="rounded-input" />
+          <Skeleton className="h-7 w-3/4" rounded="rounded-control" />
           <div className="flex gap-1.5">
-            <Skeleton className="h-9 w-32" rounded="rounded-full" />
-            <Skeleton className="h-9 w-20" rounded="rounded-full" />
-            <Skeleton className="h-9 w-24" rounded="rounded-full" />
+            <Skeleton className="h-8 w-32" rounded="rounded-full" />
+            <Skeleton className="h-8 w-24" rounded="rounded-full" />
+            <Skeleton className="h-8 w-40" rounded="rounded-full" />
           </div>
-          <Skeleton className="h-9 w-48" rounded="rounded-full" />
+          <Skeleton className="h-8 w-56" rounded="rounded-full" />
         </div>
       ) : (
         <ItemForm
           form={form} patch={patch} config={config}
           typed={typed} onTitle={onTitle} parse={parse} onKeepText={onKeepText}
           creating={!editMode} today={today} nextTime={nextPlanTime()} googleConnected={googleConnected}
-          occurrenceDate={scheduleBlock ? occurrenceDate : null} onScope={s => setForm(f => switchScope(f, s))}
+          occurrenceDate={scheduleBlock ? occurrenceDate : null}
           savedKind={editMode ? (scheduleBlock ? 'repeat' : 'one-off') : undefined}
           savedRepeat={scheduleBlock ? { start: scheduleBlock.effective_from ?? today, anchor: repeatAnchorOfRow(scheduleBlock) } : undefined}
           exceptDates={scheduleBlock?.except_dates}

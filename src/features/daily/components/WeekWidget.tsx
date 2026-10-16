@@ -50,7 +50,7 @@ export function WeekWidget({ onDayClick, highlightDate, className = 'max-w-3xl' 
   // The same open count as the day's list: open tasks (taskRules.onDay) plus
   // the repeat days still to do.
   const openOn = useOpenOnDay(tasks)
-  const repeats = useRepeatDays()
+  const repeats = useRepeatDays(tasks)
   const openCountForDay = (date: Date) => { const day = format(date, 'yyyy-MM-dd'); return openOn(day) + repeats.toDoOn(day) }
 
   function hasCalEventOnDay(date: Date): boolean {

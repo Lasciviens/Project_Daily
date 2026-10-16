@@ -4,6 +4,7 @@
 // one entry in Developer → Activity — and says its result. Google follows in
 // the background: a save never waits for Google and a Google failure never
 // undoes it (it is said once).
+import { useEffect } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast, useCalendarStore } from '../../app/store'
 import { useMutationWithFeedback } from '../../shared/hooks/useMutationWithFeedback'
@@ -19,7 +20,8 @@ import { resolveOrCreateGoogleTaskListId } from '../todo/api/googleTaskListsApi'
 import { sectionForDay } from '../todo/taskRules'
 import { useDeleteTask } from '../todo/hooks/useTodos'
 import {
-  convertOldItems, fetchCalendarReadbackState, fetchConvertPreview, repeatDay, saveItem, undoConversion,
+  convertOldItems, fetchCalendarReadbackState, fetchConvertPreview, fetchRepeatDayTaskId, repeatDay, runRepeatDaysToday, saveItem,
+  undoConversion,
   type RepeatDayAnswer,
 } from './itemApi'
 import {
@@ -121,9 +123,11 @@ export interface DeleteQuestionWords {
  * Deletes an item, with the question and Undo (useRowsDelete / confirmDelete):
  *   scope 'item' — a one-off item (its task, slot and Google copies);
  *   scope 'all'  — a repeating item, every day it repeats (its series);
- *   scope 'day'  — one day of a repeat ("Only 15.10.2026"): a day that is an
- *                  item of its own goes like an item (the day stays out of
- *                  the repeat); otherwise the day leaves the repeat.
+ *   scope 'day'  — one day of a repeat ("Only 15.10.2026"): a day that is a
+ *                  task — split off (142) or made on its day (156), open,
+ *                  ticked, skipped or missed — goes as that task, with its
+ *                  own Undo (the same row back; the day leaves the repeat and
+ *                  comes back with it); otherwise the day leaves the repeat.
  *   const del = useDeleteItem()
  *   del.run({ taskId, blockId, scheduleBlockId, date, title }, { scope: 'day' })
  */
@@ -162,11 +166,25 @@ export function useDeleteItem() {
     if (scope === 'day') {
       if (!target.scheduleBlockId || !target.date) return Promise.reject(new Error('Delete one day: which day of the repeat?'))
       const day = formatDate(target.date)
-      if (target.taskId) {
-        return delTask.run([target.taskId], { ...words(`Delete ${day} only?`, `${title} — the other days stay`), done: `${day} deleted` })
-      }
+      const asTask = (taskId: string) =>
+        delTask.run([taskId], { ...words(`Delete ${day} only?`, `${title} — the other days stay`), done: `${day} deleted` })
+      if (target.taskId) return asTask(target.taskId)
       const planId = target.scheduleBlockId
       const date = target.date
+      // The day is a task already (156: made on its day; ticked, skipped or
+      // missed too): it goes as that task — the database takes the day out
+      // of the repeat, and Undo puts back the same row and the day.
+      return fetchRepeatDayTaskId(planId, date).then(
+        taskId => (taskId ? asTask(taskId) : removeDay(planId, date, day)),
+        (err: Error) => { toast.error(`Couldn't delete ${day}: ${err.message}`); return 'failed' as const },
+      )
+    }
+    if (target.taskId) return delTask.run([target.taskId], { ...words('Delete this item?', title), done: 'Item deleted' })
+    if (target.blockId) return delBlock.run([target.blockId], { ...words('Delete this item?', title), done: 'Item deleted' })
+    return Promise.reject(new Error('Delete: which item?'))
+
+    /** A day with no task of its own leaves the repeat; Undo puts it back. */
+    function removeDay(planId: string, date: string, day: string): Promise<DeleteOutcome> {
       return confirmDelete<RepeatDayAnswer | null>({
         ...words(`Delete ${day} only?`, `${title} — the other days stay`),
         remove: async () => {
@@ -182,9 +200,6 @@ export function useDeleteItem() {
         restored: describeRepeatDay('restore', date),
       })
     }
-    if (target.taskId) return delTask.run([target.taskId], { ...words('Delete this item?', title), done: 'Item deleted' })
-    if (target.blockId) return delBlock.run([target.blockId], { ...words('Delete this item?', title), done: 'Item deleted' })
-    return Promise.reject(new Error('Delete: which item?'))
   }
 
   return { run, busy: delTask.busy || delBlock.busy || delPlan.busy || dayOff.isPending }
@@ -237,4 +252,44 @@ export function useCalendarReadbackState(enabled = true) {
     staleTime: STALE.default,
     enabled,
   })
+}
+
+// The last day this device ran app_repeat_days_today, and when (one run per
+// day and half hour is plenty: the hourly job does the same on the server).
+let repeatDaysRan: { day: string; at: number } | null = null
+let repeatDaysRunning: Promise<void> | null = null
+let repeatDaysLogged = false
+const REPEAT_DAYS_EVERY_MS = 30 * 60_000
+
+/**
+ * A repeat's day is a real task on its day (156): the hourly job makes today's
+ * and closes yesterday's unticked ones as missed; this is its fallback when
+ * the app opens or comes back to the front — the same call for this account,
+ * on this device's day. Quiet: it refreshes the lists when it changed
+ * something; a failure goes to Developer → Errors once (never a toast on every
+ * open). A database without 156 does nothing.
+ */
+export function useRepeatDaysOnOpen() {
+  const qc = useQueryClient()
+  useEffect(() => {
+    const run = () => {
+      if (document.visibilityState !== 'visible' || repeatDaysRunning) return
+      const day = todayStr()
+      if (repeatDaysRan && repeatDaysRan.day === day && Date.now() - repeatDaysRan.at < REPEAT_DAYS_EVERY_MS) return
+      repeatDaysRunning = runRepeatDaysToday(day)
+        .then(r => {
+          repeatDaysRan = { day, at: Date.now() }
+          if (r && (r.created > 0 || r.missed > 0)) void invalidate(qc, 'taskGraph')
+        })
+        .catch(err => {
+          if (repeatDaysLogged) return
+          repeatDaysLogged = true
+          logError(`Repeat days not made on open: ${(err as Error).message}`, { action: 'repeat_days_today' })
+        })
+        .finally(() => { repeatDaysRunning = null })
+    }
+    run()
+    document.addEventListener('visibilitychange', run)
+    return () => document.removeEventListener('visibilitychange', run)
+  }, [qc])
 }

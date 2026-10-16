@@ -22,6 +22,8 @@ export interface PlanRowFacts {
   taskStatus?: TaskStatus | null
   taskWorkoutId?: string | null
   taskRoutineId?: string | null
+  /** A repeat's day closed as missed (156: closed_reason 'missed') — not a skip. */
+  taskMissed?: boolean
   /** The routine its own row names (a block's training_session source) or a
    *  title match finds (usePlanContext.routineOf) — for a plan with no task. */
   routineId?: string | null
@@ -42,7 +44,7 @@ export interface PlanDayContext {
 export function planFacts(row: PlanRowFacts, ctx: PlanDayContext): SessionFacts & { skipId: string | null; routineId: string | null } {
   const taskStatus = row.taskId ? row.taskStatus ?? 'open' : null
   const routineId = row.taskRoutineId ?? row.routineId ?? null
-  const skip = skipForPlan(ctx.skips, { taskId: row.taskId ?? null, taskCancelled: taskStatus === 'cancelled', routineId, date: row.date })
+  const skip = skipForPlan(ctx.skips, { taskId: row.taskId ?? null, taskCancelled: taskStatus === 'cancelled' && !row.taskMissed, routineId, date: row.date })
   return {
     date: row.date,
     startHHMM: row.startHHMM ?? null,
@@ -50,6 +52,7 @@ export function planFacts(row: PlanRowFacts, ctx: PlanDayContext): SessionFacts 
     taskStatus,
     taskWorkoutId: row.taskWorkoutId ?? null,
     taskRoutineId: row.taskRoutineId ?? null,
+    taskMissed: !!row.taskMissed,
     dayWorkoutId: taskStatus === null ? ctx.dayWorkoutId ?? null : null,
     activityOnDay: !!ctx.hasActivity,
     skipReason: skip?.reason ?? null,

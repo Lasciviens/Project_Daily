@@ -41,12 +41,15 @@ function calendarKind(input: Shape): string {
   return input.durationMinutes ? 'busy' : 'free'
 }
 
+/** A repeat on Google Tasks: each day's task (made on its day, 156) is a Google Task. */
+export const REPEAT_TASKS_LABEL = 'Google Tasks · one per day'
+
 /** The chip's text — the actual target, never "Auto". */
 export function googleTargetLabel(input: Shape, target: GoogleTarget): string {
   switch (target) {
     case 'calendar': return `Google Calendar · ${calendarKind(input)}`
-    case 'tasks':    return 'Google Tasks'
-    case 'both':     return 'Google Tasks + Calendar'
+    case 'tasks':    return input.repeat ? REPEAT_TASKS_LABEL : 'Google Tasks'
+    case 'both':     return input.repeat ? 'Calendar + Google Tasks · one per day' : 'Google Tasks + Calendar'
     case 'none':     return 'Not on Google'
   }
 }
@@ -60,18 +63,25 @@ export interface GoogleChoice {
   disabled?: string
 }
 
-/** The four choices of the Google chip, each saying what it does for this item. */
+/** The four choices of the Google chip, each saying what it does for this
+ *  item. A repeat may go to Google Tasks since 156 — one task per day, made on
+ *  its day (the API can't repeat a task, so there is no series there). */
 export function googleChoices(input: Shape): GoogleChoice[] {
   const cal = calendarKind(input)
-  const repeat = input.repeat ? googleTargetProblem({ repeat: input.repeat, google: 'tasks' })?.message : undefined
+  const blocked = (target: GoogleTarget) => {
+    const problem = googleTargetProblem({ repeat: input.repeat, google: target })
+    return problem?.level === 'blocked' ? problem.message : undefined
+  }
   return [
     {
       target: 'calendar', label: 'Google Calendar',
       hint: cal === 'all day' ? (input.repeat ? 'An all-day repeating event' : 'An all-day event')
         : cal === 'busy' ? 'Busy for its length' : "Free — at its time, doesn't block",
     },
-    { target: 'tasks', label: 'Google Tasks', hint: 'A to-do in the Google Tasks widget', disabled: repeat },
-    { target: 'both', label: 'Tasks and Calendar', hint: 'Shows twice in Google Calendar', disabled: repeat },
+    input.repeat
+      ? { target: 'tasks', label: REPEAT_TASKS_LABEL, hint: "Each day's to-do in the Google Tasks widget", disabled: blocked('tasks') }
+      : { target: 'tasks', label: 'Google Tasks', hint: 'A to-do in the Google Tasks widget', disabled: blocked('tasks') },
+    { target: 'both', label: 'Tasks and Calendar', hint: 'Shows twice in Google Calendar', disabled: blocked('both') },
     { target: 'none', label: 'Not on Google', hint: 'Only in this app' },
   ]
 }

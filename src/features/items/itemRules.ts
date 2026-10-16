@@ -66,13 +66,12 @@ export function defaultGoogleTarget(input: Pick<ItemInput, 'time' | 'repeat'>): 
   return input.time || input.repeat ? 'calendar' : 'tasks'
 }
 
-/** Why a Google choice doesn't fit the item, or null: Google Tasks can't
- *  repeat through its API (blocked); Both shows the item twice in Google
- *  Calendar, which lists Google Tasks too (a warning, said in the sheet). */
+/** Why a Google choice doesn't fit the item, or null: Both shows the item
+ *  twice in Google Calendar, which lists Google Tasks too (a warning, said in
+ *  the sheet). Google Tasks can't repeat through its API, but since 156 a
+ *  repeat on Google Tasks is "one per day": each day's task (made on its
+ *  day) is a Google Task — so nothing is blocked any more. */
 export function googleTargetProblem(input: Pick<ItemInput, 'repeat' | 'google'>): GoogleTargetProblem | null {
-  if (input.repeat && (input.google === 'tasks' || input.google === 'both')) {
-    return { level: 'blocked', message: "Google Tasks can't repeat" }
-  }
   if (input.google === 'both') return { level: 'warning', message: 'Shows twice in Google Calendar' }
   return null
 }
@@ -255,6 +254,12 @@ const GOOGLE_WORDS: Record<GoogleTarget, string | null> = {
   none: null,
 }
 
+/** A repeat on Google Tasks is one Google Task per day (156). */
+const REPEAT_GOOGLE_WORDS: Partial<Record<GoogleTarget, string>> = {
+  tasks: 'on Google Tasks, one per day',
+  both: 'on Google Calendar and Google Tasks, one per day',
+}
+
 /** When the item is, as the toast says it: "15.10.2026 17:30–18:30", "Every week on Sun", "No date". */
 export function itemWhenText(input: Pick<ItemInput, 'date' | 'time' | 'durationMinutes' | 'repeat'>): string {
   const time = hhmm(input.time)
@@ -278,7 +283,7 @@ export function describeSaved(input: ItemInput, saved: SavedItem): string {
   const verb = day ? `Saved for ${formatDate(day)} only` : created ? 'Added' : 'Saved'
   const parts = [verb, itemWhenText(day ? { ...input, repeat: null } : input)]
   if (input.deadline?.date) parts.push(`due ${formatDate(input.deadline.date)}${input.deadline.time ? ` ${hhmm(input.deadline.time)}` : ''}`)
-  const google = GOOGLE_WORDS[input.google]
+  const google = (input.repeat && !day ? REPEAT_GOOGLE_WORDS[input.google] : undefined) ?? GOOGLE_WORDS[input.google]
   if (google) parts.push(google)
   return parts.join(' · ')
 }

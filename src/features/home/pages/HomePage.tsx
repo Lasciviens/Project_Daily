@@ -60,7 +60,8 @@ function GlanceRow() {
  * The week and today's tasks side by side under the brief (laptop and up),
  * equal height, stacking again when the main track is narrow. The 44rem here
  * is homeBoard.ts' PAIR_SIDE_BY_SIDE_REM (the split layout starts there too).
- * `h-full`: on the split board the pair grows to end with the weather tile.
+ * `h-full`: on the split board the pair stretches to its row (the weather
+ * tile beside it), and so do the week and the tasks.
  */
 function HeroAndTasks() {
   return (

@@ -65,6 +65,14 @@ export interface Task {
   /** Where the item lives on Google; null = saved before 155 (its presence is google_sync_enabled + its slot's event).
    *  (An item's deadline is due_date/due_time when it differs from its slot's day and time — items/itemRules.) */
   google_target?:           'tasks' | 'calendar' | 'both' | 'none' | null
+
+  // ── A repeat's day as a task (migration 156) — undefined before it runs ───
+  /** The repeating item (schedule_blocks) this task is one day of; null once that repeat is deleted. */
+  schedule_block_id?:       string | null
+  /** The repeat's day this task is (it stays when the task is moved to another day). */
+  occurrence_date?:         string | null
+  /** 'missed': a repeat's day that passed unticked, closed (cancelled) on its own day — never carried over. */
+  closed_reason?:           'missed' | null
 }
 
 export interface CreateTaskInput {

@@ -549,7 +549,7 @@ begin
   perform public.t_ok(r = 'stale' and (select date from public.time_blocks where id = '00000000-0000-4000-8000-0000000000d2') = '2026-10-23',
     'read-back: a change older than the slot''s own is skipped (the app''s save wins)');
   r := public.apply_calendar_readback('00000000-0000-0000-0000-000000000001', '{"id":"evLunch","status":"confirmed","title":"✓ Lunch with Ola",
-    "allDay":false,"date":"2026-10-23","time":"12:30:00","minutes":90,"busy":true,"updated":"2026-10-16T09:00:00Z"}');
+    "allDay":false,"date":"2026-10-23","time":"12:30:00","minutes":90,"busy":true,"updated":"2999-01-01T00:00:00Z"}');
   perform public.t_ok(r = 'renamed', 'read-back: (the caller strips "✓ " — a raw one reads as a rename, see calendarEventRules)');
   update public.tasks set title = 'Lunch with Ola' where id = '00000000-0000-4000-8000-0000000000d1';
   r := public.apply_calendar_readback('00000000-0000-0000-0000-000000000001', '{"id":"evLunch","status":"cancelled"}');

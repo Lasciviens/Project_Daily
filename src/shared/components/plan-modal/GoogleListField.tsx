@@ -12,7 +12,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useId } from 'react'
-import { FieldLabel } from './fields'
+import { FactRow } from './ItemFacts'
 import { useGoogleTaskLists } from '../../../features/todo/hooks/useGoogleTaskLists'
 
 interface Props {
@@ -27,8 +27,7 @@ export function GoogleListField({ value, onChange, locked }: Props) {
   const inputId = useId()
 
   return (
-    <div>
-      <FieldLabel htmlFor={inputId}>Google Task list</FieldLabel>
+    <FactRow label="Google list" htmlFor={inputId}>
       <input
         id={inputId}
         list={datalistId}
@@ -36,14 +35,14 @@ export function GoogleListField({ value, onChange, locked }: Props) {
         disabled={locked}
         onChange={e => onChange(e.target.value)}
         placeholder="Personal, Work, Training…"
-        className="input disabled:opacity-60"
+        className="input input-sm disabled:opacity-60"
       />
       <datalist id={datalistId}>
         {lists.map(l => <option key={l.id} value={l.title} />)}
       </datalist>
-      <p className="mt-1.5 text-meta text-fg-muted">
+      <p className="mt-1 text-meta text-fg-muted">
         Pick an existing list or type a new name — it's created on Google automatically.
       </p>
-    </div>
+    </FactRow>
   )
 }

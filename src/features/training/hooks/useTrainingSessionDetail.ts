@@ -5,7 +5,7 @@ import { useTaskById } from '../../todo/hooks/useTodos'
 import type { Task } from '../../todo/types'
 import { localDayOf } from '../../../shared/utils/dateUtils'
 import { qk, STALE } from '../../../shared/query'
-import { fetchOccurrenceBlockId } from '../api/trainingPlanApi'
+import { fetchOccurrence } from '../api/trainingPlanApi'
 import { useHevyWorkoutDetail, useHevyWorkoutsRange } from './useHevyWorkouts'
 import { useStravaActivities } from './useStravaActivities'
 import { useTodayStr } from './useTrainingSessions'
@@ -44,7 +44,8 @@ export interface SessionAnchor {
  * date (it may have been moved since the request was made — e.g. from this
  * popup's own Move); a recurring occurrence's day is the one requested (it
  * has no row of its own) — unless that day became a plan of its own (142),
- * which is then shown instead. Opened from the task or from its block, a
+ * which is then shown instead; a day that is a task (156, made on its day)
+ * stays on its day and its task is the session's truth. Opened from the task or from its block, a
  * plan reads the same task, and once a workout is linked to it (141) the
  * popup shows that workout, whatever day it was done.
  */
@@ -59,11 +60,12 @@ export function useSessionAnchor(asked: SessionRequest): SessionAnchor {
   const recurring = !asked.taskId && asked.plan?.kind === 'recurring' ? asked.plan : null
   const occurrenceQ = useQuery({
     queryKey: qk.schedule.occurrence(recurring?.id ?? '', recurring?.date ?? ''),
-    queryFn: () => fetchOccurrenceBlockId(recurring!.id, recurring!.date),
+    queryFn: () => fetchOccurrence(recurring!.id, recurring!.date),
     enabled: !!recurring,
     staleTime: STALE.default,
   })
-  const occurrenceBlockId = occurrenceQ.data ?? null
+  const occurrenceBlockId = occurrenceQ.data?.blockId ?? null
+  const dayTaskQ = useTaskById(occurrenceQ.data?.dayTaskId ?? null)
 
   const base = useMemo<SessionRequest>(() => {
     if (asked.taskId) {
@@ -78,7 +80,7 @@ export function useSessionAnchor(asked: SessionRequest): SessionAnchor {
   const blockQ = useTimeBlock(base.plan?.kind === 'block' ? base.plan.id : null)
   const block = blockQ.data
   const blockTaskQ = useTaskById(!asked.taskId ? block?.task_id ?? null : null)
-  const task = asked.taskId ? askedTask : blockTaskQ.data ?? null
+  const task = asked.taskId ? askedTask : blockTaskQ.data ?? dayTaskQ.data ?? null
   const req = useMemo<SessionRequest>(
     () => (!base.workoutId && task?.hevy_workout_id ? { workoutId: task.hevy_workout_id } : base),
     [base, task],
@@ -106,7 +108,8 @@ export function useSessionAnchor(asked: SessionRequest): SessionAnchor {
     return { ...out, date: block && !waiting ? block.date : null, planRow, query: blockQ }
   }
   if (req.plan?.kind === 'recurring') {
-    return { ...out, date: template && !occurrenceQ.isLoading ? recurringDate : null, planRow, query: templateQ as UseQueryResult<unknown> }
+    const waiting = occurrenceQ.isLoading || (!!occurrenceQ.data?.dayTaskId && dayTaskQ.isLoading)
+    return { ...out, date: template && !waiting ? recurringDate : null, planRow, query: templateQ as UseQueryResult<unknown> }
   }
   // A task still resolving: its own read until it is there, then its block's
   // (so a finished task read alone never reads as "no longer exists").

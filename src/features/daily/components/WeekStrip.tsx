@@ -37,7 +37,7 @@ export function WeekStrip({ viewDate, onDayClick }: Props) {
   // The same open count as the day's list: its open tasks (taskRules.onDay)
   // plus the repeat days still to do on it.
   const openOn = useOpenOnDay(tasks)
-  const repeats = useRepeatDays()
+  const repeats = useRepeatDays(tasks)
   const openCount = (d: Date) => { const day = format(d, 'yyyy-MM-dd'); return openOn(day) + repeats.toDoOn(day) }
 
   const chevron = 'grid min-h-[44px] min-w-[32px] place-items-center rounded-control text-fg-faint transition-colors duration-150 hover:bg-surface-hover hover:text-fg'

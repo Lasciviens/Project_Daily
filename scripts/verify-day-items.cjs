@@ -163,5 +163,46 @@ console.log('\n== 9. Week strip, week card and month: repeat days count ==')
   eq(D.dayRowCounts({ open: 3, done: 1 }, 2), { open: 5, done: 1 }, 'the day header: open tasks + repeat days to do')
 }
 
+console.log('\n== 10. A repeat\'s day is a task on its day (156): ONE row, never two ==')
+{
+  const gym = plan('gym', { start_time: '17:30:00', end_time: '18:30:00' })
+  const water = plan('water', { start_time: null, end_time: null })
+  const dayTask = (id, planId, extra = {}) => task(id, { schedule_block_id: planId, occurrence_date: TODAY, ...extra })
+  const tGym = dayTask('t-gym', 'gym', { due_time: '17:30:00' })
+  const tWater = dayTask('t-water', 'water')
+  const r = day({ templates: [gym, water], tasks: { open: [tGym, tWater] } })
+  eq([keys(r.timed), keys(r.anytime)], [['gym'], ['water']], 'the projection and its day\'s task are one row each — no task row beside them')
+  eq([r.timed[0].kind, r.timed[0].task?.id, r.timed[0].state, r.timed[0].repeat],
+    ['repeat', 't-gym', 'open', { scheduleBlockId: 'gym', date: TODAY, acted: false }],
+    'the row carries the day\'s task, keeps the repeat\'s time and opens the repeat on that day')
+  const done = day({ templates: [water], tasks: { done: [dayTask('t-water', 'water', { status: 'done' })] } })
+  eq([keys(done.done), done.done[0].state], [['water'], 'done'], 'ticked (its task done): one Done row')
+  const skipped = day({ templates: [water], tasks: { cancelled: [dayTask('t-water', 'water', { status: 'cancelled' })] } })
+  eq([keys(skipped.cancelled), skipped.cancelled[0].state], [['water'], 'skipped'], 'cancelled: Skipped')
+  const missedDay = '2026-10-14'
+  const missed = day({ day: missedDay, templates: [water], tasks: { cancelled: [task('t-w14', { schedule_block_id: 'water', occurrence_date: missedDay, due_date: missedDay, status: 'cancelled', closed_reason: 'missed' })] } })
+  eq([keys(missed.anytime), missed.anytime[0].state, missed.cancelled.length], [['water'], 'missed', 0],
+    'closed as missed (156): Missed on its day — never Skipped, never a second row')
+  const moved = day({ day: '2026-10-16', tasks: { open: [task('t-moved', { schedule_block_id: 'water', occurrence_date: TODAY, due_date: '2026-10-16' })] } })
+  eq([moved.anytime[0].kind, moved.anytime[0].repeat], ['repeat', { scheduleBlockId: 'water', date: TODAY, acted: true }],
+    'a day\'s task moved off its day is still that repeat\'s day (its tick acts on its own day)')
+  const training = day({ templates: [plan('legs', { category: 'training' })], tasks: { open: [dayTask('t-legs', 'legs', { source_type: 'training_session' })] } })
+  eq([keys(training.timed), training.timed[0].kind, training.timed[0].task?.id], [['legs'], 'training', 't-legs'],
+    'a training day: one training row holding its day\'s task')
+
+  // The day schedule: a ticked day is never "next"
+  const items = S.buildDaySchedule({ date: TODAY, blocks: [], prevBlocks: [], templates: [gym], events: [], dayTasks: [dayTask('t-gym', 'gym', { status: 'done' })] })
+  eq([items[0].taskId, items[0].closed], ['t-gym', true], 'the day schedule takes the day\'s task and its state')
+  eq(S.aheadOnDay(items, true, 9).length, 0, '…so Home\'s "Next up" never shows a ticked repeat day')
+  const open = S.buildDaySchedule({ date: TODAY, blocks: [], prevBlocks: [], templates: [gym], events: [], dayTasks: [tGym] })
+  eq(S.aheadOnDay(open, true, 9).length, 1, '…an open one still is')
+
+  // Counts: a day that is a task counts once (as a task)
+  const asTasks = D.repeatDayKeys([tGym, task('plain')])
+  eq([...asTasks], ['gym:' + TODAY], 'repeatDayKeys names the repeat days that are tasks')
+  eq(D.repeatsToDoOn([gym, water], TODAY, TODAY, asTasks), 1, 'today: gym is a task already (counted with the tasks), water still to do')
+  eq(D.repeatsToDoBetween([gym], TODAY, '2026-10-17', TODAY, asTasks), 2, 'the rest of the week: only the days that are not tasks yet')
+}
+
 console.log(`\nverify-day-items: ${passed} passed, ${failed} failed`)
 process.exit(failed ? 1 : 0)

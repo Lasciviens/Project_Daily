@@ -51,6 +51,10 @@ export interface SessionFacts {
   /** tasks.hevy_routine_id — only a plan with a routine can be completed by
    *  a LATER workout (141 pairs a late workout by its routine). */
   taskRoutineId?: string | null
+  /** The task is a repeat's day closed because it passed unticked (156:
+   *  cancelled + closed_reason 'missed') — not a skip: read as a past open
+   *  plan (a late workout still completes it). */
+  taskMissed?: boolean
   /** A workout on the planned day that the day's pairing gave a plan with
    *  NO task (a plan with a task is done only through its task: 141 links
    *  the workout and closes it). */
@@ -100,7 +104,9 @@ const status = (state: SessionState, extra: Partial<SessionStatus> = {}): Sessio
 })
 
 export function sessionStatus(f: SessionFacts): SessionStatus {
-  const task = f.taskStatus ?? null
+  // A day closed as missed (156) was never skipped: it reads as a past plan
+  // still open (Not logged yet while a late workout can complete it, then Missed).
+  const task = f.taskStatus === 'cancelled' && f.taskMissed ? 'open' : f.taskStatus ?? null
   if (task === 'done') {
     const workoutId = f.taskWorkoutId ?? f.dayWorkoutId ?? null
     return status('done', { doneBy: workoutId ? 'workout' : 'hand', workoutId })

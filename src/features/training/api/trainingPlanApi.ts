@@ -1,5 +1,6 @@
 import { supabase } from '../../../integrations/supabase/client'
 import { requireUser } from '../../../shared/utils/requireUser'
+import { todayStr } from '../../../shared/utils/dateUtils'
 import { createTask, updateTask, toggleTaskDone } from '../../todo/api/tasksApi'
 import { createTimeBlock, fetchScheduleBlocks, fetchTimeBlocks, updateTimeBlock } from '../../daily/api/scheduleApi'
 import {
@@ -19,8 +20,10 @@ import { weekStartOf } from '../plan/sessionState'
 // A plan is a task (the truth: done, cancelled = skipped, its day) and its
 // block on the calendar; since migration 142 the database keeps their day
 // and time together and a skip row cancels/reopens the task. A day of a
-// weekly plan has no row of its own: acting on it first makes it a one-off
-// plan (block + task, marked with the weekly plan and the day it replaces).
+// weekly plan is its day's task since 156 (made on its day, no block):
+// acting on it first makes it a one-off plan (142's split — block + task,
+// marked with the weekly plan and the day it replaces), REUSING that task,
+// so every training view (they read blocks) sees it and no day has two.
 
 export type PlanTarget =
   /** A planned session with its task (and, usually, its block). */
@@ -71,12 +74,40 @@ function planTaskInput(info: PlanInfo) {
   }
 }
 
+/** 142's split of one day of a repeat, in the database (155's item_occurrence,
+ *  156: it reuses the day's task) — one transaction, the repeat locked, so a
+ *  second tap or tab gets the same rows. `created`: the block was made now. */
+async function splitRepeatDay(templateId: string, date: string): Promise<PlanRows & { created: boolean }> {
+  const { data, error } = await supabase.rpc('item_occurrence', { p_plan: templateId, p_date: date, p_today: todayStr() })
+  if (error) throw error
+  const row = (Array.isArray(data) ? data[0] : data) as { block_id?: string; task_id?: string; created?: boolean } | null
+  if (!row?.task_id) throw new Error('That day of the repeating plan could not be planned on its own')
+  return { taskId: row.task_id, blockId: row.block_id ?? null, created: row.created === true }
+}
+
+/** A split day's task keeps the routine this view read for it (when the
+ *  database found none of its own — 141 links the routine from source_id). */
+async function keepRoutine(taskId: string, routineId: string | null): Promise<void> {
+  if (!routineId || !UUID.test(routineId)) return
+  const user = await requireUser()
+  const { error } = await supabase.from('tasks').update({ source_id: routineId.toLowerCase() })
+    .eq('user_id', user.id).eq('id', taskId).is('source_id', null)
+  if (error && !isMissingColumn(error)) throw error
+}
+
+const isMissingRpc = (e: unknown) => {
+  const x = e as { code?: string; message?: string }
+  return x?.code === 'PGRST202' || x?.code === '42883' || /could not find the function/i.test(x?.message ?? '')
+}
+
 /**
  * The plan's task, made first when it has none: an older block gets its
  * task; a day of a weekly plan becomes a one-off block (which takes that day
- * out of the weekly plan, migration 142) with its task. Block first, then
- * task, then the link — a failure midway leaves at worst a block with no
- * task, which the next action picks up again (the 'block' branch).
+ * out of the weekly plan, migration 142) with its task — the day's own task
+ * when it has one (156); so does a day's task with no block (the training
+ * views read blocks). Block first, then task, then the link — a failure
+ * midway leaves at worst a block with no task, which the next action picks
+ * up again (the 'block' branch).
  */
 export async function ensurePlanTask(target: PlanTarget, info: PlanInfo): Promise<PlanRows> {
   if (target.kind === 'task') {
@@ -84,7 +115,14 @@ export async function ensurePlanTask(target: PlanTarget, info: PlanInfo): Promis
     // A view that only knows the task (its row in a list): find its block.
     const { data, error } = await supabase.from('time_blocks').select('id').eq('task_id', target.taskId).maybeSingle()
     if (error) throw error
-    return { taskId: target.taskId, blockId: data?.id ?? null }
+    if (data?.id) return { taskId: target.taskId, blockId: data.id }
+    // A repeat's day made on its day (156) has no block yet: 142's split gives it one.
+    const day = await fetchRepeatDayOf(target.taskId)
+    if (!day) return { taskId: target.taskId, blockId: null }
+    const rows = await splitRepeatDay(day.scheduleBlockId, day.date)
+    await keepRoutine(rows.taskId, info.routineId)
+    if (rows.created && rows.blockId) carryOccurrenceToCalendar(day.scheduleBlockId, rows.blockId)
+    return { taskId: rows.taskId, blockId: rows.blockId }
   }
 
   let blockId: string
@@ -96,6 +134,16 @@ export async function ensurePlanTask(target: PlanTarget, info: PlanInfo): Promis
     if (data?.task_id) return { taskId: data.task_id, blockId: target.blockId }
     blockId = target.blockId
   } else {
+    // 142's split in the database (156: the day's own task reused, never a second one).
+    try {
+      const rows = await splitRepeatDay(target.templateId, target.date)
+      await keepRoutine(rows.taskId, info.routineId)
+      if (rows.created && rows.blockId) carryOccurrenceToCalendar(target.templateId, rows.blockId)
+      return { taskId: rows.taskId, blockId: rows.blockId }
+    } catch (err) {
+      if (!isMissingRpc(err)) throw err
+      // Before 155 (no item_occurrence): the browser's own split, below.
+    }
     // Already turned into a plan of its own (a second tap, another tab).
     const found = await supabase.from('time_blocks').select('id, task_id, google_calendar_event_id')
       .eq('schedule_block_id', target.templateId).eq('occurrence_date', target.date).maybeSingle()
@@ -133,9 +181,23 @@ export async function ensurePlanTask(target: PlanTarget, info: PlanInfo): Promis
   return { taskId: task.id, blockId }
 }
 
-/** The task a plan's done/reopen acts on — no block lookup for a task. */
+/** The task a plan's done/reopen acts on — a task with its block as it is; a
+ *  repeat's day made on its day (156) is split first, so the training views
+ *  (which read blocks) see it done. */
 export async function planTaskId(target: PlanTarget, info: PlanInfo): Promise<string> {
-  return target.kind === 'task' ? target.taskId : (await ensurePlanTask(target, info)).taskId
+  if (target.kind === 'task' && target.blockId) return target.taskId
+  return (await ensurePlanTask(target, info)).taskId
+}
+
+/** The repeat and day a task is (156: made on its day), or null. Before 156 there is no such column: null. */
+export async function fetchRepeatDayOf(taskId: string): Promise<{ scheduleBlockId: string; date: string } | null> {
+  const { data, error } = await supabase.from('tasks').select('schedule_block_id, occurrence_date').eq('id', taskId).maybeSingle()
+  if (error) {
+    if (isMissingColumn(error)) return null
+    throw error
+  }
+  const row = data as { schedule_block_id?: string | null; occurrence_date?: string | null } | null
+  return row?.schedule_block_id && row.occurrence_date ? { scheduleBlockId: row.schedule_block_id, date: row.occurrence_date } : null
 }
 
 export async function markPlanDone(taskId: string): Promise<void> {
@@ -185,15 +247,23 @@ export async function findTwinOn(date: string, plan: TrainingPlanRef): Promise<P
   }
 }
 
-/** The one-off block a day of a weekly plan became (142), or null. */
-export async function fetchOccurrenceBlockId(templateId: string, date: string): Promise<string | null> {
+/** A day of a weekly plan as it is now: the one-off block it became (142),
+ *  or its day's task (156 — made on its day, no block), or neither. */
+export async function fetchOccurrence(templateId: string, date: string): Promise<{ blockId: string | null; dayTaskId: string | null }> {
   const { data, error } = await supabase.from('time_blocks').select('id')
     .eq('schedule_block_id', templateId).eq('occurrence_date', date).maybeSingle()
   if (error) {
-    if (isMissingColumn(error)) return null
+    if (isMissingColumn(error)) return { blockId: null, dayTaskId: null }
     throw error
   }
-  return data?.id ?? null
+  if (data?.id) return { blockId: data.id, dayTaskId: null }
+  const day = await supabase.from('tasks').select('id')
+    .eq('schedule_block_id', templateId).eq('occurrence_date', date).maybeSingle()
+  if (day.error) {
+    if (isMissingColumn(day.error)) return { blockId: null, dayTaskId: null }
+    throw day.error
+  }
+  return { blockId: null, dayTaskId: day.data?.id ?? null }
 }
 
 /** Skips the session with its reason: its own skip row (one per session,

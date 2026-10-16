@@ -7,7 +7,9 @@
 //  adapter loads the item's rows BY ID through the feature hooks (never a row
 //  handed over by a list), shows the sheet's own skeleton while loading, then
 //  renders it with every part the item has:
-//    task           → the task and its slot (its one-off block, read fresh)
+//    task           → the task and its slot (its one-off block, read fresh);
+//                     a repeat's day still in its repeat (156: made on its
+//                     day, no slot) → that day of its repeat, This day picked
 //    time-block id  → the block, and its task when it has one
 //    plan-block     → the same, by blockId
 //    schedule-block → the repeat (and the day it was opened on, if any)
@@ -55,6 +57,7 @@ function taskEditorConfig(task: Task | undefined, config: PlanModalConfig | unde
     ...config,
     heading: config?.heading ?? 'Edit session',
     hideTaskFields: [...new Set([...(config?.hideTaskFields ?? []), 'startDate', 'dueDate', 'dueTime'] as const)],
+    hideScheduleFields: [...new Set([...(config?.hideScheduleFields ?? []), 'category'] as const)],
   }
 }
 
@@ -81,13 +84,39 @@ function useTaskSlot(taskId: string | undefined) {
   return { query, slot: snap?.slot, settled: snap !== undefined }
 }
 
+/**
+ * A repeat's day that is a task (156) and still that repeat's day — no slot,
+ * on its own day, the day not taken out — is edited as that day of its repeat
+ * (This day | All days, This day picked): opened as a plain task, a Repeat
+ * added there would make a second repeat. Null for any other task.
+ */
+function useRepeatDayOf(task: Task | undefined, slot: { slot: TimeBlock | null | undefined; settled: boolean }) {
+  const planId = task?.schedule_block_id && task.occurrence_date ? task.schedule_block_id : null
+  const planQuery = useScheduleBlock(planId)
+  const plan = useFirstLoaded(planQuery.data, planQuery)
+  const waiting = !!planId && plan === undefined && !planQuery.isError && !(planQuery.isSuccess && !planQuery.isFetching && planQuery.data == null)
+  const day = task?.occurrence_date ?? null
+  const isDay = !!plan && !!day && slot.settled && !slot.slot && task?.due_date === day && !(plan.except_dates ?? []).includes(day)
+  return { waiting, plan: isDay ? plan : undefined, day: isDay ? day : null }
+}
+
 export function TaskEntityModal({ request, onClose }: EntityModalProps<'task'>) {
   const { id, defaults, config, source, onSaved } = request
   const query = useTaskById(id)
   const task = useFirstLoaded(query.data, query)
   const slot = useTaskSlot(task?.id)
-  const load = !id ? {} : !task ? loadStateOf(query, false, 'task') : loadStateOf(slot.query, slot.settled, 'item')
+  const repeatDay = useRepeatDayOf(task, slot)
+  const load = !id ? {} : !task ? loadStateOf(query, false, 'task')
+    : repeatDay.waiting ? { loading: true } : loadStateOf(slot.query, slot.settled, 'item')
   const trainingDelete = useTrainingDelete(task, undefined)
+  if (repeatDay.plan && repeatDay.day) {
+    return (
+      <UnifiedPlanModal
+        open onClose={onClose} mode="recurring" scheduleBlock={repeatDay.plan} occurrenceDate={repeatDay.day} startScope="day"
+        config={taskEditorConfig(task, config)} onSaved={onSaved} onDeleteOverride={trainingDelete}
+      />
+    )
+  }
   return (
     <UnifiedPlanModal
       open onClose={onClose} mode="task" task={task} timeBlock={slot.slot}

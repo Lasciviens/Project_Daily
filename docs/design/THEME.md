@@ -270,10 +270,10 @@ Use the React primitive when one exists; the CSS class is for places a component
 | Empty state | `<EmptyState icon title description action bordered />` |
 | Loading | `<Skeleton>` / `<SkeletonText>` / `<SkeletonCard>` copying the real geometry |
 | List row | `<ListRow leading title subtitle meta trailing onClick />` (`.row`, `.row-interactive`) |
-| Text tabs (2–5 views) | `<SegmentedControl>` (`.seg` / `.seg-btn`) |
+| Text tabs (2–5 views) | `<SegmentedControl>` (`.seg` / `.seg-btn`); `size="xs"` is a 28px pill row for a compact popup header (This day \| All days) |
 | Sub-views of a tab | `SegmentedControl size="sm"` at the right end of the page's tab row (own row with the page actions below `lg`), value in `?view=` — Training Log / Library |
 | Filter tabs with counts | `.pill-tab` + `.count-badge`, horizontally scrollable row (`.scroll-x`) |
-| Inputs | `.input`, `.select`, `.field-label` above; focus = accent border + soft halo, no outline |
+| Inputs | `.input`, `.select`, `.field-label` above; focus = accent border + soft halo, no outline. `.input-sm` (with `.input`/`.select`): 32px on every pointer, for a compact sheet's rows. `.input-bare`: a field whose text is the content (the Add sheet's title) — no box, an accent underline only while focused |
 | Chips / tags | `.chip`; counts `.count-badge`. `.chip` / `.tone-pill` never grow past their box (put the label in `<Truncate>`) |
 | Text that may not fit | `<Truncate lines as reveal fullText>` (`lines` 1–3, `reveal` auto\|popover\|more\|none) — cuts only when needed; adds a `title` and a mouse tooltip after 400ms. Outside a tappable element a tap, click or Enter opens a bubble (one line) or an in-place More / Less (2–3 lines); inside a tappable row only the hover tooltip. Text that fits costs one render and no listeners. The bubble (`TruncateBubble`) exists only while open and renders through Headless UI's `Portal`, so inside a popup it counts as part of the dialog; Esc and a press elsewhere close only the bubble. On `h2`–`h4` the button role goes on an inner span. `useIsTruncated` / `useTruncatedElement(ref, lines, textKey, nodeKey)` share one ResizeObserver; `node scripts/audit-text-overflow.mjs --static` lists bare `truncate` / `line-clamp` sites |
 | "a · b · c" meta lines | `<MetaLine items={[…]} />` — each fact (and its dot) is unbreakable, so a phone wraps between facts ("518 kcal · 50g protein ·" / "4g fiber"), never inside one ("4g" / "fiber"). Falsy items are skipped; items are short facts, never free user text. Prefer it over `.join(' · ')` for any macro / stats / "last done" line |
@@ -363,8 +363,9 @@ actions (right) share the first row — no empty line. Don't add a tagline subti
 
 - **Pages (PageBoard):** main ≤ 56rem + fixed 24rem side tracks; steps on the page's own width
   (< 60 / 60–100 / 100–128 / ≥ 128rem → 1 / 2 / 3 / 4 tracks); per-step layout of stacks, `span` for
-  wide items, `sticky` for short side columns; `useBoardStep()` inside a section. Tiles keep fixed
-  positions because widths never depend on content. `PageContainer` is `@container/page` —
+  wide items, `sticky` for short side columns, `rows` for cards that must line up across tracks;
+  `useBoardStep()` inside a section. Tiles keep fixed positions because widths never depend on
+  content. `PageContainer` is `@container/page` —
   `@[56rem]/page:` queries the page width.
   - `lead: n` puts side tracks before main (a left rail). Optional sections go in the last track.
   - A `sticky` column pins only while it fits the scroll area (`StickyStack` in `PageBoard.tsx`
@@ -448,12 +449,13 @@ cards. Pages use `PageBoard` (`src/shared/ui/PageBoard.tsx`, rules in `pageBoard
 - **W4 · Charts: aspect-locked + capped** by role (small trend `max-w-2xl`, primary `max-w-4xl` = 896px).
 - **W5 · Detail on demand.** Secondary info lives in a hover/tap peek (desktop hover + mobile tap).
 - **W6 · Measurable.** At 402 / 1469 / 2450: no horizontal overflow; no single-line content > 640px, no auto-fill column > 384px, no text input > 512px, no chart svg > 896px; and at 1469 and 2450 the default view leaves at most one side track (24rem) empty. A page with fewer sections than columns documents where it stops. Check with `node scripts/audit-page-width.mjs --harness <dir>` (`--glance` checks Daily's glance cells full vs empty day).
-- **W7 · PageBoard.** One main track (≤ 56rem, a layout may lower it) + 0–3 fixed 24rem side tracks, 1rem gaps. The step is measured on the page's OWN width, never the viewport: < 60rem one stack (phones, tablets) · 60–100rem main + 1 side (1280/1469 laptops) · 100–128rem main + 2 (1920) · ≥ 128rem main + 3 (2450). Each step declares which section goes in which column (`{ top, columns: [[…], { stack, span, sticky }], bottom, main, lead }`); columns are stacks (no masonry, no dense packing), so positions never depend on content. A section that moves column at a step change remounts (desktop resize only). Rules:
+- **W7 · PageBoard.** One main track (≤ 56rem, a layout may lower it) + 0–3 fixed 24rem side tracks, 1rem gaps. The step is measured on the page's OWN width, never the viewport: < 60rem one stack (phones, tablets) · 60–100rem main + 1 side (1280/1469 laptops) · 100–128rem main + 2 (1920) · ≥ 128rem main + 3 (2450). Each step declares which section goes in which column (`{ top, columns: [[…], { stack, span, sticky }], bottom, main, lead }`) or row (`rows: [[[…], { stack, span }], …]` instead of `columns`); columns are stacks (no masonry, no dense packing), so positions never depend on content. A section that moves column at a step change remounts (desktop resize only). Rules:
   - `lead: n` puts side tracks before main: a rail that drives or sums up the main column (a calendar, a day's totals, an add form) reads first on the left.
   - A section that can be empty goes in the last track, so an empty track is only ever at the far right. A card whose content is bounded (≤ 2 metrics, a few short rows) never spans; the window stops early with empty trailing tracks, documented in its board file (Cardio, Coach, Goal at 2450).
   - A band (`top`/`bottom`) spans only the tracks its own step declares, so a full-width band is declared at every step. Never put a collection in a `bottom` band under a much taller column (it starts after the tallest column ends); give it a column.
   - A section that is its host card's block on a phone is **absent** from step 1; the host decides with `keysAt(layout, useBoardStep())` (Health Sleep breathing, Cardio recovery, the Goal blocks).
-  - A `sticky` column pins only while it fits the scroll area (`StickyStack` re-checks on resize). A `fill` column is as tall as the tallest column and grows its last section to the end, so `fill` columns end on one line and a band below starts flush under all of them; a band that must line up with the columns lays its own grid on `boardTemplate(tracks, main)` (Home's split laptop board: the weather tile ends where the tasks end, and the glance row sits on the same tracks). Not with `sticky`. A page header above a board that stops short caps itself to `boardWidthRem(layout, step)`; `useElementWidthRem` (`src/shared/hooks/useElementWidth.ts`) measures a component's own width in rem.
+  - A `sticky` column pins only while it fits the scroll area (`StickyStack` re-checks on resize). A page header above a board that stops short caps itself to `boardWidthRem(layout, step)`; `useElementWidthRem` (`src/shared/hooks/useElementWidth.ts`) measures a component's own width in rem.
+  - **Cards that must line up across tracks go in `rows`.** Independent column stacks line up only when their heights happen to match. A row is one grid row on the board's tracks (its cells' spans cover every track): each cell stretches to the row's tallest and grows its last section, content top-aligned, so the row's cards share one top and one bottom whatever their content — the grid does it, nothing is measured. A section that holds its own grid (Home's `pair`, the week | the tasks) passes the height on with `h-full`. A step has `columns` or `rows`, never both; a row cell is never `sticky`. A band that must line up with the tracks lays its own grid on `boardTemplate(tracks, main)` (Home's split laptop board: brief | transit, then week | tasks | weather as rows; the glance row under them on the same tracks).
   - Layouts live in `homeBoard.ts`, `dailyBoards.ts`, `foodBoards.ts`, `wishesBoard.ts`, `healthBoards.ts`, `trainingBoards.ts`, `mediaBoard.ts`, `workBoard.ts`, `projectBoard.ts`, `developerBoards.ts`, checked by `scripts/verify-page-board.cjs` (Home, Daily), `verify-life-boards.cjs` (Food, Wishes, Health, Training) and `verify-feature-boards.cjs` (Media, Work, Projects, Developer).
 - **No density setting.** A Comfortable/Compact/Dense toggle was tried and rejected — don't reintroduce it.
 
@@ -507,6 +509,10 @@ looping animation. View-transition and runtime-only selectors live **outside** `
   the header is a drag handle too); or a `hero` (image/art) with the close button floating over it;
   no title → pass `ariaLabel`. Body padding defaults to `p-4 sm:p-5` (`bodyClassName` overrides).
   Sticky footer for actions: primary on the right, full-width buttons on phones.
+- `compact` — a lighter chrome for a form sheet (the Add sheet): a `text-lead` title with no hairline
+  under it, a 36px close button, tighter body and footer padding (the footer keeps its hairline). Its
+  actions are `size="sm"` and content-sized on every width: the one primary on the right, Cancel as a
+  ghost beside it, Delete (an icon on a phone) on the left.
 - **Back closes only the top popup** (`useHistoryDismiss` is built in). Esc and backdrop close too;
   `dismissible={false}` while a save is in flight. A page that mirrors its state into the address
   writes it through `whenHistorySettled(fn)` (returns a cancel function); never replace the address
@@ -547,14 +553,34 @@ Discard / Save only when something changed (closing with changes asks first). Cr
 sheet — a record is for a row that already exists.
 
 **The Add sheet** (one item, `shared/components/plan-modal/`) is the pattern for a create/edit form whose
-facts are mostly optional: a title first, then **chips** instead of labelled fields — a chip that holds a
-value (`chipClass('set')`: "Thu 15.10.2026", "17:30–18:30") opens its editor in a Headless UI `Popover`
-panel on tap (`CHIP_PANEL_CLASS`: above the sheet on `z-toast`, scrolls when the anchor leaves too little
-room), a chip that offers one is dashed (`chipClass('add')`: "+ Time"). Rarely-used facts wait behind small
-dashed "+ Notes / + Priority / …" chips and open as a row in place; a row with a value opens by itself. A
-choice with consequences (where the item goes on Google) is one chip with a `Menu` whose items say what
-each does, disabled ones with the reason. Text that fills the chips as it is typed says so on a **Read
-as** line with an undo ("Keep text", `features/items/components/ReadAsLine`).
+facts are mostly optional. It is calm, light and compact (owner, 15.10.2026: "more polite, not big and
+clunky") and renders `ModalShell compact`. Top down:
+
+- **The title is the content**: borderless (`.input-bare`, `text-title` semibold, a normal-weight
+  placeholder), growing with a long title. Text that fills the chips as it is typed says so on a **Read
+  as** line with an undo ("Keep text", `features/items/components/ReadAsLine`).
+- **One quiet row of chips** — date · time · length · repeat · Google — that wraps only when it must
+  (a 402px phone fits three). Every chip, choice and text button of the sheet and its pickers comes from
+  `fieldStyles.ts`: one height (32px on every pointer), `rounded-full`, 14px icons, so the rows line up.
+  `chipClass('set')` holds a value ("Thu 15.10.2026", "17:30–18:30" — a soft fill) and opens its editor
+  in a Headless UI `Popover` on tap (`CHIP_PANEL_CLASS`: above the sheet on `z-toast`, scrolls when the
+  anchor leaves too little room); `chipClass('add')` offers one ("Time", "Repeat" — a hairline outline).
+  A choice with consequences (where the item goes on Google) is one chip with a `Menu` whose items say
+  what each does, disabled ones with the reason. A choice that must stay a native select (Repeat,
+  `.claude/rules/planning.md`) is drawn as a chip (`ChipSelect`): the select lies invisible over it, so a
+  phone opens its own picker and the chip keeps the chip's text size (a visible select is 16px on touch).
+- **The facts line**, small text: what every item has reads as an inline value that opens a `Menu`
+  (`chipClass('value')`: "● Medium priority", "Personal"); rarely-used facts wait as text buttons
+  (`chipClass('quiet')`: "+ Notes", "+ Deadline", "+ Google list") — never a row of empty pills, never a
+  dashed box, never an uppercase label.
+- **Opened rows** (`FactRow`): a short label beside a small field (`.input-sm`); a row with a value opens
+  by itself.
+- Pickers use the same pieces: `choiceClass(active, …, 'sm')` for Today / Tomorrow, the lengths and the
+  seasons, `Time24Field size="sm"` (hour and minute as chip selects, then −30m / +30m), `DateCalendar
+  compact` (36px days), and `chipClass('remove')` to take a value off ("No time", "Doesn't block").
+- A mode of the whole form (This day | All days) is a `SegmentedControl size="xs"` in the header; its own
+  question (delete one day or the whole repeat) is a compact confirm with its three actions in one footer
+  row (`sm`: they don't fit the 24rem `xs`).
 
 **Headless UI pieces** (`@headlessui/react` v2) — never hand-made open/close state for these. They
 handle click-outside, Escape, focus trap, portal rendering and ARIA; anything portalled uses token

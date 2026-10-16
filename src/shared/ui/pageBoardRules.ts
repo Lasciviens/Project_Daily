@@ -6,6 +6,8 @@
 // Every step has one main track (≤ 56rem by default) and 0–3 side tracks of
 // 24rem. Each column is a stack of sections; a column may span several tracks
 // (a wide item), and full-width bands can sit above or below the columns.
+// Cards that must line up across tracks go in ROWS instead: a row's cells
+// share one top and one bottom.
 
 export type PageStep = 1 | 2 | 3 | 4
 
@@ -43,32 +45,41 @@ export function pageStepForWidth(px: number, remPx = 16): PageStep {
   return 1
 }
 
-/** A column: a stack of section keys, optionally spanning several tracks. */
-export interface BoardColumn<K extends string> {
+/** A row's cell: a stack of section keys, optionally spanning several tracks. */
+export interface BoardCell<K extends string> {
   stack: readonly K[]
-  /** Tracks this column covers (default 1). */
+  /** Tracks this cell covers (default 1). */
   span?: number
+}
+
+export type BoardCellSpec<K extends string> = readonly K[] | BoardCell<K>
+
+/** A column: a cell that runs the board's full height, as tall as its own content. */
+export interface BoardColumn<K extends string> extends BoardCell<K> {
   /** Stick to the top while the page scrolls — only while the column fits the viewport (PageBoard checks; a taller one scrolls with the page). */
   sticky?: boolean
-  /**
-   * As tall as the tallest column, its last section grown to the end: the
-   * `fill` columns of a step end on one line, so a band below starts flush
-   * under all of them. Not with `sticky`.
-   */
-  fill?: boolean
 }
 
 export type BoardColumnSpec<K extends string> = readonly K[] | BoardColumn<K>
 
 /**
  * A layout for one step. A step-N layout has exactly N tracks: its columns'
- * spans add up to N (or it has no columns, only bands).
+ * spans add up to N, and so do each row's (or it has neither, only bands).
  */
 export interface BoardLayout<K extends string> {
-  /** Full-width stack above the columns. */
+  /** Full-width stack above the columns or rows. */
   top?: readonly K[]
+  /** Independent stacks side by side, each as tall as its own content. */
   columns?: readonly BoardColumnSpec<K>[]
-  /** Full-width stack below the columns. */
+  /**
+   * Rows of cells, read top to bottom, instead of `columns`. A row's cells
+   * share one top and one bottom: each stretches to the row's tallest, its
+   * last section grown to the end, content top-aligned. Cards that must line
+   * up across tracks go in one row — independent column stacks line up only
+   * when their heights happen to match.
+   */
+  rows?: readonly (readonly BoardCellSpec<K>[])[]
+  /** Full-width stack below the columns or rows. */
   bottom?: readonly K[]
   /** Main track maximum for this step (CSS length), e.g. '40rem' for a calendar. */
   main?: string
@@ -84,25 +95,32 @@ export interface BoardLayout<K extends string> {
 /** Step 1 is always one stack; wider steps are optional (a missing step uses the nearest one below). */
 export type BoardLayouts<K extends string> = { 1: readonly K[] } & Partial<Record<2 | 3 | 4, BoardLayout<K>>>
 
-export interface ResolvedColumn<K extends string> { stack: readonly K[]; span: number; sticky: boolean; fill: boolean }
+export interface ResolvedCell<K extends string> { stack: readonly K[]; span: number }
+export interface ResolvedColumn<K extends string> extends ResolvedCell<K> { sticky: boolean }
 export interface ResolvedLayout<K extends string> {
   /** The declared step this layout came from (= its track count). */
   tracks: PageStep
   top: readonly K[]
   columns: ResolvedColumn<K>[]
+  /** Empty unless the step declares rows. */
+  rows: ResolvedCell<K>[][]
   bottom: readonly K[]
   main: string
   /** Side tracks before the main track. */
   lead: number
 }
 
-function isColumn<K extends string>(c: BoardColumnSpec<K>): c is BoardColumn<K> {
+function isCell<K extends string>(c: BoardCellSpec<K>): c is BoardCell<K> {
   return !Array.isArray(c)
 }
 
+function normalizeCell<K extends string>(c: BoardCellSpec<K>): ResolvedCell<K> {
+  if (isCell(c)) return { stack: c.stack, span: Math.max(1, Math.floor(c.span ?? 1)) }
+  return { stack: c as readonly K[], span: 1 }
+}
+
 function normalizeColumn<K extends string>(c: BoardColumnSpec<K>): ResolvedColumn<K> {
-  if (isColumn(c)) return { stack: c.stack, span: Math.max(1, Math.floor(c.span ?? 1)), sticky: !!c.sticky, fill: !!c.fill }
-  return { stack: c as readonly K[], span: 1, sticky: false, fill: false }
+  return { ...normalizeCell(c), sticky: isCell(c) && !!(c as BoardColumn<K>).sticky }
 }
 
 /** The layout a step renders: the declared one, else the nearest declared step below it. */
@@ -114,13 +132,14 @@ export function resolveBoardLayout<K extends string>(layouts: BoardLayouts<K>, s
         tracks: s as PageStep,
         top: l.top ?? [],
         columns: (l.columns ?? []).map(normalizeColumn),
+        rows: (l.rows ?? []).map(r => r.map(normalizeCell)),
         bottom: l.bottom ?? [],
         main: l.main ?? `${BOARD.main}rem`,
         lead: Math.min(s - 1, Math.max(0, Math.floor(l.lead ?? 0))),
       }
     }
   }
-  return { tracks: 1, top: [], columns: [{ stack: layouts[1], span: 1, sticky: false, fill: false }], bottom: [], main: `${BOARD.main}rem`, lead: 0 }
+  return { tracks: 1, top: [], columns: [{ stack: layouts[1], span: 1, sticky: false }], rows: [], bottom: [], main: `${BOARD.main}rem`, lead: 0 }
 }
 
 /**
@@ -141,13 +160,14 @@ export function boardTemplate(tracks: number, main = `${BOARD.main}rem`, lead = 
 /** Every section key a step places, in reading order. */
 export function keysAt<K extends string>(layouts: BoardLayouts<K>, step: PageStep): K[] {
   const l = resolveBoardLayout(layouts, step)
-  return [...l.top, ...l.columns.flatMap(c => c.stack), ...l.bottom]
+  return [...l.top, ...l.columns.flatMap(c => c.stack), ...l.rows.flat().flatMap(c => c.stack), ...l.bottom]
 }
 
 /**
  * Developer checks (run by the verify script): step 1 is declared; every
- * declared step fills exactly its tracks; no section is placed twice in one
- * step; every key is a known section. Returns the problems found.
+ * declared step fills exactly its tracks (its columns, and each of its rows);
+ * columns and rows are never mixed; no section is placed twice in one step;
+ * every key is a known section. Returns the problems found.
  */
 export function validateBoardLayouts<K extends string>(layouts: BoardLayouts<K>, known?: readonly K[]): string[] {
   const problems: string[] = []
@@ -157,11 +177,13 @@ export function validateBoardLayouts<K extends string>(layouts: BoardLayouts<K>,
     if (s !== 1) {
       const l = layouts[s]!
       const cols = (l.columns ?? []).map(normalizeColumn)
-      const used = cols.reduce((a, c) => a + c.span, 0)
-      if (cols.length > 0 && used !== s) problems.push(`step ${s}: columns cover ${used} tracks, expected ${s}`)
-      if (cols.length === 0 && !(l.top?.length || l.bottom?.length)) problems.push(`step ${s}: nothing placed`)
+      const rows = (l.rows ?? []).map(r => r.map(normalizeCell))
+      const covers = (cells: ResolvedCell<K>[]) => cells.reduce((a, c) => a + c.span, 0)
+      if (cols.length > 0 && covers(cols) !== s) problems.push(`step ${s}: columns cover ${covers(cols)} tracks, expected ${s}`)
+      rows.forEach((r, i) => { if (covers(r) !== s) problems.push(`step ${s}: row ${i + 1} covers ${covers(r)} tracks, expected ${s}`) })
+      if (cols.length > 0 && rows.length > 0) problems.push(`step ${s}: columns and rows together — use one`)
+      if (cols.length === 0 && rows.length === 0 && !(l.top?.length || l.bottom?.length)) problems.push(`step ${s}: nothing placed`)
       if (l.lead != null && (!Number.isInteger(l.lead) || l.lead < 0 || l.lead > s - 1)) problems.push(`step ${s}: lead ${l.lead} must be 0–${s - 1}`)
-      if (cols.some(c => c.sticky && c.fill)) problems.push(`step ${s}: a column can't be both sticky and fill`)
     }
     const keys = keysAt(layouts, s)
     const seen = new Set<string>()

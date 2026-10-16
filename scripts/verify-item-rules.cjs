@@ -44,9 +44,10 @@ check('never both by default', ['tasks', 'calendar'].includes(R.defaultGoogleTar
 
 console.log('\n2 · Google choices that can\'t be saved, and the warning')
 const p = R.googleTargetProblem
-check('Tasks for a repeat → blocked, with its reason', eq(p(item({ google: 'tasks', repeat: { kind: 'weekly', daysOfWeek: [1], startsOn: TODAY } })),
-  { level: 'blocked', message: "Google Tasks can't repeat" }))
-check('Both for a repeat → blocked too', p(item({ google: 'both', repeat: { kind: 'weekly', daysOfWeek: [1], startsOn: TODAY } }))?.level === 'blocked')
+check('Tasks for a repeat → allowed since 156 ("one per day": each day\'s task is a Google Task)',
+  p(item({ google: 'tasks', repeat: { kind: 'weekly', daysOfWeek: [1], startsOn: TODAY } })) === null)
+check('Both for a repeat → only the warning', eq(p(item({ google: 'both', repeat: { kind: 'weekly', daysOfWeek: [1], startsOn: TODAY } })),
+  { level: 'warning', message: 'Shows twice in Google Calendar' }))
 check('Calendar with no day: not a chip problem, but the save says so', p(item({ google: 'calendar' })) === null
   && /Google Calendar needs a day/.test(R.itemInputProblem(item({ google: 'calendar' })) ?? ''))
 check('…one day of a repeat (scope day, no repeat in the save) may be on Calendar',
@@ -60,7 +61,12 @@ check('a time with no day stops the save', q(item({ time: '14:00' })) === 'A tim
 check('a weekly repeat with no day stops the save', q(item({ google: 'calendar', repeat: { kind: 'weekly', daysOfWeek: [], startsOn: TODAY } })) === 'Pick at least one day')
 check('a length over 24 h stops the save', q(item({ date: TODAY, time: '10:00', durationMinutes: 1441 })) === 'A length is 1 minute to 24 hours')
 check('one day of a repeat needs which day', q(item({ scope: 'day', scheduleBlockId: 'p' })) === 'Which day of the repeat?')
-check('a Google error is a save error too', /can't repeat/.test(q(item({ google: 'tasks', repeat: { kind: 'weekly', daysOfWeek: [1], startsOn: TODAY } })) ?? ''))
+check('a repeat on Google Tasks saves (156)', q(item({ google: 'tasks', repeat: { kind: 'weekly', daysOfWeek: [1], startsOn: TODAY } })) === null)
+check('…and says it is one per day', /on Google Tasks, one per day/.test(R.describeSaved(
+  item({ google: 'tasks', repeat: { kind: 'weekly', daysOfWeek: [1], startsOn: TODAY } }), { taskId: null, blockId: null, scheduleBlockId: 's', created: true })))
+check('…one day of it says plainly where it is', R.describeSaved(
+  item({ google: 'tasks', date: TODAY, scope: 'day', occurrenceDate: TODAY, scheduleBlockId: 's', repeat: { kind: 'weekly', daysOfWeek: [4], startsOn: TODAY } }),
+  { taskId: 't', blockId: 'b', scheduleBlockId: 's', occurrenceDate: TODAY }).endsWith('· on Google Tasks'))
 check('a good item has no problem', q(item({ date: TODAY, time: '17:30', durationMinutes: 60, google: 'calendar' })) === null)
 
 console.log('\n3 · The section follows the day')

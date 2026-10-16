@@ -20,7 +20,9 @@ import {
 } from '../../calendar/api/scheduleSeriesCalendar'
 import { qk, STALE } from '../../../shared/query'
 import { todayStr } from '../../../shared/utils/dateUtils'
-import { repeatDaysOn, repeatsToDoBetween, repeatsToDoOn } from '../dayItems'
+import { repeatDayKeys, repeatDaysOn, repeatsToDoBetween, repeatsToDoOn } from '../dayItems'
+import { TASK_GOOGLE_RESET, useDayTasks } from '../../todo/hooks/useTodos'
+import type { Task } from '../../todo/types'
 import type {
   CreateTimeBlockInput, UpdateTimeBlockInput, CreateScheduleBlockInput, UpdateScheduleBlockInput, ScheduleBlock,
 } from '../types'
@@ -37,18 +39,25 @@ export function useScheduleBlocks() {
 /**
  * Days of repeating plans in the week strips and the month (owner, 15.10.2026:
  * the counts and dots include repeats). A day already acted on is its own task
- * and counts as one; a past day nobody ticked is missed — on its day, not open.
+ * and counts as one; so is a day whose task was made on its day (156) —
+ * `tasks`: the range the caller reads (and today's list), so no day counts
+ * twice. A past day nobody ticked is missed — on its day, not open.
  */
-export function useRepeatDays() {
+export function useRepeatDays(tasks: readonly Task[] = []) {
   const { data: templates = [] } = useScheduleBlocks()
   const today = todayStr()
+  const todayList = useDayTasks(today)
+  const asTasks = useMemo(
+    () => repeatDayKeys([...tasks, ...todayList.open, ...todayList.done, ...todayList.cancelled]),
+    [tasks, todayList.open, todayList.done, todayList.cancelled],
+  )
   return useMemo(() => ({
-    /** Repeat days still to do on `day` (none before today). */
-    toDoOn: (day: string) => repeatsToDoOn(templates, day, today),
+    /** Repeat days still to do on `day` (none before today), a day that is a task not again. */
+    toDoOn: (day: string) => repeatsToDoOn(templates, day, today, asTasks),
     /** Any repeat day on `day` (a past one too: the day view lists it as missed). */
     on: (day: string) => repeatDaysOn(templates, day),
-    toDoBetween: (from: string, to: string) => repeatsToDoBetween(templates, from, to, today),
-  }), [templates, today])
+    toDoBetween: (from: string, to: string) => repeatsToDoBetween(templates, from, to, today, asTasks),
+  }), [templates, today, asTasks])
 }
 
 /** One recurring template by id — a projection of the templates list (one request for every consumer). */
@@ -127,15 +136,17 @@ export function useUpdateScheduleBlock() {
 
 /** Deletes a repeating plan with Undo; the days it became (migration 142) get
  *  their link back on Undo. Its Google Calendar series is removed right after
- *  (the calendar outbox, 147, if Google isn't reached); Undo makes a new one. */
+ *  (the calendar outbox, 147, if Google isn't reached); Undo makes a new one.
+ *  Its days nobody acted on yet (an open day's task, 156) go with it and come
+ *  back with Undo (their Google Tasks are made again). */
 export function useDeleteScheduleBlock() {
   return useRowsDelete({
     table: 'schedule_blocks',
     action: 'delete_schedule_block',
-    invalidates: ['schedule'],
+    invalidates: ['taskGraph'],
     cache: qk.schedule.all,
     afterDelete: removeDeletedSeriesEvents,
-    overrides: () => SERIES_EVENT_RESET,
+    overrides: () => ({ ...SERIES_EVENT_RESET, ...TASK_GOOGLE_RESET }),
     afterRestore: relinkRestoredSeriesEvents,
   })
 }

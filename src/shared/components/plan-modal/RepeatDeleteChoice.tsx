@@ -16,14 +16,16 @@ export function RepeatDeleteChoice({ open, title, date, onPick, onClose }: {
 }) {
   return (
     <ModalShell
-      open={open} onClose={onClose} size="xs" layer="confirm" title={`Delete “${title}”?`}
-      footer={<Button block onClick={onClose}>Cancel</Button>}
+      open={open} onClose={onClose} size="sm" layer="confirm" compact title={`Delete “${title}”?`}
+      footer={
+        <div className="flex flex-wrap items-center justify-end gap-1.5">
+          <Button variant="ghost" size="sm" onClick={onClose} className="mr-auto -ml-2">Cancel</Button>
+          <Button variant="danger" size="sm" onClick={() => onPick('day')}>Only {formatDate(date)}</Button>
+          <Button variant="danger" size="sm" onClick={() => onPick('all')}>Every day it repeats</Button>
+        </div>
+      }
     >
       <p className="text-body text-fg-muted">It repeats. Delete one day, or the whole repeat?</p>
-      <div className="mt-3 flex flex-col gap-2">
-        <Button block variant="danger" onClick={() => onPick('day')}>Only {formatDate(date)}</Button>
-        <Button block variant="danger" onClick={() => onPick('all')}>Every day it repeats</Button>
-      </div>
     </ModalShell>
   )
 }
