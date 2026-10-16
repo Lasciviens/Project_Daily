@@ -151,6 +151,14 @@ jobs:
         env:
           DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
 
+      # Migration 159's Quick guess options (the column on rows that existed,
+      # the shape check every writer meets — groups, picks, choices, limits —,
+      # the activity log, the delete with Undo keeping them).
+      - name: Quick guess options database scenarios
+        run: node scripts/verify-db-quick-guess-options.mjs
+        env:
+          DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
+
       # Migration 153's carb and fat goals (the columns on the goal row and on
       # each phase's saved targets, old rows untouched, the range guard, row
       # level security, the activity log).
