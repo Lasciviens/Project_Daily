@@ -529,6 +529,7 @@ Two ways to use it:
 |---|---|---|
 | **Entity popup** | Viewing/editing a *thing with an id* (task, block, food entry, recipe, media title, workout, wish, memory…) that can be opened from more than one place | `useEntityModal().open({ kind, id })` (§9) |
 | **Local sheet** | A UI sub-step owned by one screen: filters, a picker, a scanner, a portion chooser | `<ModalShell open={…} onClose={…}>` or the `Sheet` alias |
+| **Ask first** | A few choices before a one-tap action (a Quick guess preset's options) | a bottom sheet on a phone (`ModalShell`, `useBreakpoint() === 'phone'`), a Headless UI `Popover` under the tapped chip elsewhere; one body for both (`recipes/components/QuickGuessAsk.tsx`) |
 
 Never hand-roll a `Dialog` + backdrop + panel. Never use `window.confirm` / `alert` — use
 `await modal.confirm({ title })` (it renders `ConfirmDialog`, which also exists as a controlled

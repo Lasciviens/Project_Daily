@@ -7,9 +7,10 @@ import { mapRowsInCache, putRowsInCache, restoreCache, snapshotCache } from '../
 import { toast } from '../../../app/store'
 import { addFoodLogEntries } from '../api/foodLogApi'
 import { createQuickGuessItem, fetchQuickGuessItems, reorderQuickGuessItems, updateQuickGuessItem } from '../api/quickGuessApi'
+import { describeGuess, suggestGuessOptions, type GuessOptionsBrief } from '../../ai/api/aiApi'
 import {
-  DEFAULT_GUESSES, itemToPreset, recentGuesses,
-  type GuessMacros, type GuessPreset, type QuickGuessInput, type QuickGuessItem, type RecentGuess,
+  DEFAULT_GUESSES, itemToPreset, parseGuessOptions, readGuessEstimate, recentGuesses,
+  type GuessEstimate, type GuessMacros, type GuessOptionGroup, type GuessPreset, type QuickGuessInput, type QuickGuessItem, type RecentGuess,
 } from '../quickGuess'
 import { SLOT_OPTIONS } from '../components/foodLogUtils'
 import type { MealSlot } from '../types'
@@ -100,6 +101,41 @@ export function useMoveQuickGuess() {
     },
     onError: (_e, _v, ctx) => { if (ctx) restoreCache(qc, ctx.snapshot) },
     invalidates: [qk.quickGuess.all],
+  })
+}
+
+/**
+ * "Describe it": the AI's estimate of what was described, checked where it
+ * enters. Review-first — it only fills the sheet; Log or Save is the
+ * person's own tap.
+ */
+export function useDescribeGuess() {
+  return useMutationWithFeedback<GuessEstimate, string>({
+    action: 'describe_quick_guess',
+    silent: 'the estimate fills the sheet, marked AI estimate, for review',
+    mutationFn: async text => {
+      const estimate = readGuessEstimate(await describeGuess(text))
+      if (!estimate) throw new Error("The AI didn't send an estimate — try again")
+      return estimate
+    },
+  })
+}
+
+/**
+ * "Suggest options" (Settings → Food): the AI drafts a preset's option
+ * groups, checked like the database's own. They only fill the form; the
+ * owner edits them and taps Save.
+ */
+export function useSuggestGuessOptions() {
+  return useMutationWithFeedback<GuessOptionGroup[], GuessOptionsBrief>({
+    action: 'suggest_quick_guess_options',
+    silent: 'the suggestion fills the options form, marked AI suggestion, for review',
+    mutationFn: async brief => {
+      const raw = await suggestGuessOptions(brief)
+      const groups = parseGuessOptions(typeof raw === 'object' && raw !== null ? (raw as { groups?: unknown }).groups : null)
+      if (!groups.length) throw new Error('The AI suggested no options for this one — add them yourself')
+      return groups
+    },
   })
 }
 
