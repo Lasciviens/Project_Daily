@@ -156,7 +156,7 @@ const c = useChartColors()
   hue (series 3 was amber = `--warn` / `--star` until 2026-09-29). Series 3 (plum) is darker than the
   violet in both themes, so the two stay apart in every colour-vision type (ΔE ≥ 34 against series
   1/2/4/5 under normal, protan, deutan and tritan simulation). Use them in order. Food's macros use
-  series 1–5 together: calories 2, protein 1, carbs 3, fat 4, fiber 5.
+  all six: calories 2, protein 1, carbs 3, fat 4, fiber 5, sugar 6.
 - `c.success / c.warn / c.danger / c.info / c.neutral` — only when the series *is* a status (e.g.
   over/under a target). `c.accent` exists for a selected point, never a series.
 - Grid lines `c.grid`, axis ticks `c.axis`, tooltip surface `c.tooltipBg`.
@@ -280,7 +280,8 @@ Use the React primitive when one exists; the CSS class is for places a component
 | Counting number | `<AnimatedNumber value decimals format ready>` (tabular; counts on first appearance and on a real change) |
 | Progress ring | `<ProgressRing value size stroke color ready>` (sweeps with "More") |
 | Menus | Headless UI `Menu` with `.menu` / `.menu-item` / `.menu-sep` / `.menu-label` |
-| Explain a term | `<InfoBubble label>` (`shared/components`) — the ⓘ popover; never a hand-rolled tooltip |
+| Explain a term | `<InfoBubble label>` (`shared/components`) — the ⓘ popover; never a hand-rolled tooltip. `<HelpTip label>` is the "?" that also opens on hover |
+| Detail on demand (W5 peek) | `<HoverPeek trigger label? panelClassName>` (`shared/components`) — a button whose panel opens on hover with a mouse (and stays while the pointer moves into it), on tap, click or Enter; Esc or a press elsewhere closes. The panel renders only while open, through Headless UI's `Portal`. A value that opens one wears a dotted underline (Food's macro totals) |
 | Contain a render crash | `<ErrorBoundary label action>` around surfaces whose data shape isn't guaranteed |
 | Dates | `DateInput`, `DateNav` (prev / next / pick), `WindowChips` (season chips) in `shared/components` |
 | Scrolling strips | `.scroll-x` (no scrollbar) / `.scroll-y` (thin), `.scrollbar-none`, `.snap-x-mandatory` + `snap-start` children |
@@ -447,7 +448,7 @@ cards. Pages use `PageBoard` (`src/shared/ui/PageBoard.tsx`, rules in `pageBoard
 - **W2 · Column flow.** Collections flow into content-width columns: `grid-cols-[repeat(auto-fill,minmax(MIN,MAX))]` + `justify-start`; caps: dense rows `15–18rem`, cards `19–22rem`, large cards `24–28rem`; a single content row never exceeds **40rem**. In a wide track use `minmax(MIN,1fr)` (a fixed maximum makes auto-fill count columns by the maximum and leaves a column's worth empty). A grid that gains columns by steps declares its base track (`grid-cols-1`) — an implicit `auto` track grows to a long title's min-content and a card's `overflow-hidden` hides it from the audit. Items of varying height (phases, library groups) never use a row grid: deal them into column stacks by index (`dealByIndex` in `projectBoard.ts`, `PhaseColumns`) or wrap content-sized blocks. Alphabetical multi-column lists use CSS `columns-*` with `break-inside-avoid` rows so the order reads down each column. (Exception: `TodaySummary` uses explicit column steps — positional stability outranks column flow there.)
 - **W3 · Controls are content-sized.** Text/search inputs `≤ max-w-md`; info banners `w-fit`; a one-line control is never full-width.
 - **W4 · Charts: aspect-locked + capped** by role (small trend `max-w-2xl`, primary `max-w-4xl` = 896px).
-- **W5 · Detail on demand.** Secondary info lives in a hover/tap peek (desktop hover + mobile tap).
+- **W5 · Detail on demand.** Secondary info lives in a hover/tap peek (desktop hover + mobile tap): `HoverPeek` (§5).
 - **W6 · Measurable.** At 402 / 1469 / 2450: no horizontal overflow; no single-line content > 640px, no auto-fill column > 384px, no text input > 512px, no chart svg > 896px; and at 1469 and 2450 the default view leaves at most one side track (24rem) empty. A page with fewer sections than columns documents where it stops. Check with `node scripts/audit-page-width.mjs --harness <dir>` (`--glance` checks Daily's glance cells full vs empty day).
 - **W7 · PageBoard.** One main track (≤ 56rem, a layout may lower it) + 0–3 fixed 24rem side tracks, 1rem gaps. The step is measured on the page's OWN width, never the viewport: < 60rem one stack (phones, tablets) · 60–100rem main + 1 side (1280/1469 laptops) · 100–128rem main + 2 (1920) · ≥ 128rem main + 3 (2450). Each step declares which section goes in which column (`{ top, columns: [[…], { stack, span, sticky }], bottom, main, lead }`) or row (`rows: [[[…], { stack, span }], …]` instead of `columns`); columns are stacks (no masonry, no dense packing), so positions never depend on content. A section that moves column at a step change remounts (desktop resize only). Rules:
   - `lead: n` puts side tracks before main: a rail that drives or sums up the main column (a calendar, a day's totals, an add form) reads first on the left.

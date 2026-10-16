@@ -42,19 +42,18 @@ export const INGREDIENT_BOARD: BoardLayouts<IngredientSection> = {
 }
 
 // ── Insights ────────────────────────────────────────────────────────────────
-// The window's averages and macro split lead (main); the source lists are
-// columns beside it, so a wide screen shows calories, protein and habits at
-// once:
-//   1  phone, tablet — summary, meals, calories, protein, most logged.
-//   2  1280 / 1469 — summary + calorie sources | meals + protein + most logged.
-//   3  1920 — summary + calorie sources | protein | meals + most logged.
-//   4  2450 — summary + calorie sources | protein | most logged | meals.
-export const INSIGHT_SECTIONS = ['summary', 'slots', 'kcal', 'protein', 'most'] as const
+// The window's averages and macro split lead (main); the lists are columns
+// beside it, so a wide screen shows ingredients, protein and habits at once:
+//   1  phone, tablet — summary, meals, ingredients, protein, most logged.
+//   2  1280 / 1469 — summary + most used ingredients | meals + protein + most logged.
+//   3  1920 — summary + ingredients | protein | meals + most logged.
+//   4  2450 — summary + ingredients | protein | most logged | meals.
+export const INSIGHT_SECTIONS = ['summary', 'slots', 'ingredients', 'protein', 'most'] as const
 export type InsightSection = typeof INSIGHT_SECTIONS[number]
 
 export const INSIGHT_BOARD: BoardLayouts<InsightSection> = {
-  1: ['summary', 'slots', 'kcal', 'protein', 'most'],
-  2: { columns: [['summary', 'kcal'], ['slots', 'protein', 'most']] },
-  3: { columns: [['summary', 'kcal'], ['protein'], ['slots', 'most']] },
-  4: { columns: [['summary', 'kcal'], ['protein'], ['most'], ['slots']] },
+  1: ['summary', 'slots', 'ingredients', 'protein', 'most'],
+  2: { columns: [['summary', 'ingredients'], ['slots', 'protein', 'most']] },
+  3: { columns: [['summary', 'ingredients'], ['protein'], ['slots', 'most']] },
+  4: { columns: [['summary', 'ingredients'], ['protein'], ['most'], ['slots']] },
 }

@@ -1,6 +1,7 @@
 import { supabase } from '../../../integrations/supabase/client'
 import { WEIGHT_UNITS } from '../../recipes/api/recipesApi'
 import type { MealPlanEntry } from '../../recipes/types'
+import { macroAmounts, type MacroAmounts } from '../../recipes/foodIngredients'
 
 // A single planned meal for a day, resolved to its display title + macro
 // contribution. Macros are the TOTAL for that entry (recipe per-serving ×
@@ -17,6 +18,9 @@ export interface DayMeal {
   fat_g:     number
   fiber_g:   number
   sugar_g:   number
+  /** The same six unrounded (the figures above are whole numbers) — what the
+      Today peek's exact amounts add up. */
+  exact?:    MacroAmounts
   /** 'plan' = a status='planned' row (intent, macros computed live); 'log' = a
       status='eaten' row (what was actually eaten; totals derived from its
       source, migration 106). Both live in food_log_entries since migration 061. */
@@ -178,6 +182,7 @@ export function unifiedToMeal(row: UnifiedRow, date: string): DayMeal {
       id: row.id, meal_slot: row.meal_slot, title, servings,
       calories: Math.round(calories), protein_g: Math.round(protein_g), carbs_g: Math.round(carbs_g),
       fat_g: Math.round(fat_g), fiber_g: Math.round(fiber_g), sugar_g: Math.round(sugar_g),
+      exact: { calories, protein_g, carbs_g, fat_g, fiber_g, sugar_g },
       source: 'plan',
       planEntry: {
         id: row.id, date, meal_slot: row.meal_slot, recipe_id: row.recipe_id, custom_title: row.custom_title,
@@ -195,6 +200,7 @@ export function unifiedToMeal(row: UnifiedRow, date: string): DayMeal {
     id: row.id, meal_slot: row.meal_slot, title: `${base}${qtyLabel}`, servings: 1,
     calories: Math.round(row.calories ?? 0), protein_g: Math.round(row.protein_g ?? 0), carbs_g: Math.round(row.carbs_g ?? 0),
     fat_g: Math.round(row.fat_g ?? 0), fiber_g: Math.round(row.fiber_g ?? 0), sugar_g: Math.round(row.sugar_g ?? 0),
+    exact: macroAmounts(row),
     source: 'log',
     logEntry: {
       library_ingredient_id: row.library_ingredient_id, recipe_id: row.recipe_id,
@@ -326,6 +332,7 @@ async function legacyTwoTable(date: string): Promise<DayMeal[]> {
       fat_g:     Math.round(fat_g),
       fiber_g:   Math.round(fiber_g),
       sugar_g:   Math.round(sugar_g),
+      exact:     { calories, protein_g, carbs_g, fat_g, fiber_g, sugar_g },
       source:    'plan' as const,
       planEntry: {
         id: row.id, date, meal_slot: row.meal_slot,
@@ -351,6 +358,7 @@ async function legacyTwoTable(date: string): Promise<DayMeal[]> {
       fat_g:     Math.round(row.fat_g     ?? 0),
       fiber_g:   Math.round(row.fiber_g   ?? 0),
       sugar_g:   Math.round(row.sugar_g   ?? 0),
+      exact:     macroAmounts(row),
       source:    'log' as const,
       logEntry: {
         library_ingredient_id: row.library_ingredient_id,

@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useState } from 'react'
 import { Brain, Check, ChevronRight, Copy, Plus, X } from 'lucide-react'
 import { useDayNutrition } from '../../daily/hooks/useDayNutrition'
 import { useDayTargets } from '../../daily/hooks/useDayTargets'
@@ -16,6 +16,8 @@ import { RecentDaysCard } from './RecentDaysCard'
 import { QuickGuessCard } from './QuickGuessCard'
 import { useEatPlannedEntry } from '../hooks/useMealPlan'
 import { MacroBar } from './MacroBar'
+import { MacroFigure } from './MacroTotalPeek'
+import { splitTitleQty } from '../foodIngredients'
 import { WaterTracker } from '../../daily/components/summary/WaterTracker'
 import { AnimatedNumber, Card, CardHeader, IconButton, MetaLine, PageBoard, ProgressRing, TonePill, Truncate, cx } from '../../../shared/ui'
 import { formatLocalDate } from '../../../shared/utils/dateUtils'
@@ -28,18 +30,6 @@ import { FOOD_TODAY_BOARD } from '../foodBoards'
 // The wide meal-row grid: name · amount · kcal · protein · carbs · fat · fiber · ✓ · ✕.
 // Shared by the rows and their column-heading row so the two always line up.
 const MACRO_GRID = 'hidden items-center gap-x-2 @[40rem]:grid @[40rem]:grid-cols-[minmax(0,1fr)_3.5rem_3rem_3.25rem_3rem_3rem_3rem_2.75rem_2.75rem]'
-
-// `DayMeal.title` bakes the amount into the string ("Chicken · 150g"); the
-// desktop grid wants name and amount in separate aligned columns. Only a tail
-// that starts with a digit is a quantity — a food name that itself contains
-// " · " must not be chopped in two.
-function splitTitleQty(title: string): { name: string; qty: string | null } {
-  const idx = title.lastIndexOf(' · ')
-  if (idx === -1) return { name: title, qty: null }
-  const qty = title.slice(idx + 3)
-  if (!/^\d/.test(qty)) return { name: title, qty: null }
-  return { name: title.slice(0, idx), qty }
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Food · Today — the full nutrition surface. The day's totals, water and the
@@ -70,15 +60,6 @@ function Ring({ consumed, target, size, stroke, color, label, sizeClass, ready }
       <AnimatedNumber value={remaining} ready={ready} align="center" className={cx('font-bold leading-none text-fg', size > 100 ? 'text-title sm:text-kpi' : 'text-ui sm:text-lead')} />
       <span className={cx('mt-0.5 text-micro leading-none', over ? 'text-danger' : 'text-fg-muted')}>{over ? 'over' : label}</span>
     </ProgressRing>
-  )
-}
-
-function MacroFigure({ color, children }: { color: string; children: ReactNode }) {
-  return (
-    <span className="flex items-center gap-1">
-      <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: color }} />
-      {children}
-    </span>
   )
 }
 
@@ -248,12 +229,13 @@ export function FoodTodayTab({ date }: { date: string }) {
             <div className="mt-4 border-t border-line pt-3">
               {/* The gram figures carry the colour key, so the bar's own % legend is off. */}
               <MacroBar protein={nut.protein_g} carbs={nut.carbs_g} fat={nut.fat_g} showLegend={false} />
-              <div className="mt-2 grid grid-cols-3 gap-x-3 gap-y-1 text-meta tabular-nums text-fg-2">
-                <MacroFigure color={MACRO_COLOR.protein}>{nut.protein_g}g protein</MacroFigure>
-                <MacroFigure color={MACRO_COLOR.carbs}>{nut.carbs_g}g carbs</MacroFigure>
-                <MacroFigure color={MACRO_COLOR.fat}>{nut.fat_g}g fat</MacroFigure>
-                <MacroFigure color={MACRO_COLOR.fiber}>{nut.fiber_g}g fiber</MacroFigure>
-                {nut.sugar_g > 0 && <span className="text-fg-muted">{nut.sugar_g}g sugar</span>}
+              {/* Each total opens a peek: the exact amount and the foods it came from. */}
+              <div className="mt-2 grid grid-cols-3 justify-items-start gap-x-3 gap-y-1 text-meta tabular-nums text-fg-2">
+                <MacroFigure macro="protein_g" label="protein" value={nut.protein_g} color={MACRO_COLOR.protein} meals={nut.meals} />
+                <MacroFigure macro="carbs_g" label="carbs" value={nut.carbs_g} color={MACRO_COLOR.carbs} meals={nut.meals} />
+                <MacroFigure macro="fat_g" label="fat" value={nut.fat_g} color={MACRO_COLOR.fat} meals={nut.meals} />
+                <MacroFigure macro="fiber_g" label="fiber" value={nut.fiber_g} color={MACRO_COLOR.fiber} meals={nut.meals} />
+                {nut.sugar_g > 0 && <MacroFigure macro="sugar_g" label="sugar" value={nut.sugar_g} color={MACRO_COLOR.sugar} meals={nut.meals} />}
               </div>
             </div>
           )}

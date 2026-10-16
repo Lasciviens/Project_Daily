@@ -120,8 +120,14 @@ export function IngredientManager() {
     f.kcal === '' ? null : Number(f.kcal), f.prot === '' ? null : Number(f.prot),
     f.carb === '' ? null : Number(f.carb), f.fat === '' ? null : Number(f.fat),
   )
-  const macroField = (k: 'kcal' | 'prot' | 'carb' | 'fat' | 'fiber' | 'sugar', label: string) => (
-    <input value={f[k]} onChange={e => set(k, sanitizeDecimal(e.target.value))} inputMode="decimal" placeholder={label} aria-label={label} className="input" />
+  // The name sits above the box (small and light), so a filled-in number still
+  // says what it is — a placeholder alone vanished once typed.
+  const per = `per 100 ${f.unit === 'ml' ? 'ml' : 'g'}`
+  const macroField = (k: 'kcal' | 'prot' | 'carb' | 'fat' | 'fiber' | 'sugar', label: string, unit: string) => (
+    <label className="flex min-w-0 flex-col gap-0.5">
+      <span className="text-micro text-fg-muted">{label} ({unit})</span>
+      <input value={f[k]} onChange={e => set(k, sanitizeDecimal(e.target.value))} inputMode="decimal" aria-label={`${label} (${unit} ${per})`} className="input tabular-nums" />
+    </label>
   )
 
   return (
@@ -162,12 +168,12 @@ export function IngredientManager() {
         <div className={cx(formOpen ? 'flex' : 'hidden', 'flex-col gap-2 sm:flex')}>
           <input value={f.name} onChange={e => set('name', e.target.value)} placeholder="Name (e.g. chicken breast)" aria-label="Name" className="input" />
           <div className="grid grid-cols-2 gap-2 @[30rem]:grid-cols-3">
-            {macroField('kcal', 'Calories')}
-            {macroField('prot', 'Protein g')}
-            {macroField('carb', 'Carbs g')}
-            {macroField('fat', 'Fat g')}
-            {macroField('fiber', 'Fiber g')}
-            {macroField('sugar', 'Sugar g')}
+            {macroField('kcal', 'Calories', 'kcal')}
+            {macroField('prot', 'Protein', 'g')}
+            {macroField('carb', 'Carbs', 'g')}
+            {macroField('fat', 'Fat', 'g')}
+            {macroField('fiber', 'Fiber', 'g')}
+            {macroField('sugar', 'Sugar', 'g')}
           </div>
           {consistency?.inconsistent && (
             <div className="flex items-center gap-2 text-meta text-warn">
