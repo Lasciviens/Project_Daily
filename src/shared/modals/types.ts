@@ -29,8 +29,8 @@ export type EntityModalRequest =
   /** A one-off block by id, opened as its task's item when it has one. */
   | { kind: 'plan-block'; blockId: string }
   // Food.
-  /** Log food (basket logger). `query` prefills the search box. */
-  | { kind: 'food-log'; date: string; slot?: MealSlot; query?: string }
+  /** Log food (basket logger). `query` prefills the search box; `groupId` opens a dish (its rows) as Edit meal. */
+  | { kind: 'food-log'; date: string; slot?: MealSlot; query?: string; groupId?: string }
   /** Edit one diary row, loaded by id. */
   | { kind: 'food-log-edit'; entryId: string; date: string }
   /** Plan a meal into a slot; with `entryId`, edit that planned row. */

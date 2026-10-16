@@ -1,20 +1,23 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Check, ChefHat, Flame, Minus, Plus, ShoppingBag, UtensilsCrossed, ExternalLink } from 'lucide-react'
 import { toast } from '../../../app/store'
 import { ModalShell } from '../../../shared/modals/ModalShell'
 import { entityModal } from '../../../shared/modals/useEntityModal'
 import { Button, IconButton, MetaLine, Truncate } from '../../../shared/ui'
 import { cx } from '../../../shared/ui/cx'
-import { useDeleteRecipe, useIncrementTimesCooked } from '../hooks/useRecipes'
+import { useDeleteRecipe, useIncrementTimesCooked, useRecipeBatch } from '../hooks/useRecipes'
 import { useAddMissingIngredientsToShop } from '../hooks/useShopIntegration'
-import { useAddFoodLogEntries } from '../hooks/useFoodLog'
+import { useLogWithUndo } from '../hooks/useFoodLog'
 import { recipeSnapshot } from '../api/foodLogApi'
 import { formatLocalDate } from '../../../shared/utils/dateUtils'
 import { MacroBar } from './MacroBar'
 import { CookMode } from './CookMode'
 import type { RecipeWithIngredients, MealSlot } from '../types'
-import { sanitizeDecimal, slotForNow } from './foodLogUtils'
+import { slotForNow } from './foodLogUtils'
 import { DateInput } from '../../../shared/components/DateInput'
+import { AmountField } from './AmountField'
+import { RecipeBatchPanel } from './RecipeBatch'
+import { countLabel, portionWord, recipeAmountModel } from '../foodAmount'
 
 const LOG_SLOTS: { slot: MealSlot; label: string }[] = [
   { slot: 'breakfast',  label: 'Breakfast' },
@@ -44,10 +47,12 @@ export function RecipeDetail({ recipe, onClose, onEdit }: Props) {
   // The popup follows the live row — re-base the scaling when its yield changes.
   const [baseServings, setBaseServings] = useState(recipe.servings)
   if (recipe.servings !== baseServings) { setBaseServings(recipe.servings); setServings(recipe.servings) }
-  // Portions EATEN (≠ recipe base yield), kept as typed so "1." and "0.5" work.
-  const [ateText, setAteText] = useState('1')
-  const ate = Math.max(0, Number(ateText.replace(',', '.')) || 0)
-  const setAte = (f: (a: number) => number) => setAteText(String(f(ate)))
+  // Servings EATEN (≠ recipe base yield), typed in the recipe's own units
+  // (its portion word, % of the batch, g raw / cooked — the shared AmountField).
+  const [ate, setAte] = useState(1)
+  const batch = useRecipeBatch(recipe)
+  const ateModel = useMemo(() => recipeAmountModel(recipe, batch), [recipe, batch])
+  const word = portionWord(recipe.serving_label)
   // "I ate this" target — defaults to today + the time-of-day slot, but both are
   // editable so a past meal can be backfilled to the right day/slot.
   const [logDate, setLogDate] = useState(formatLocalDate(new Date()))
@@ -58,11 +63,13 @@ export function RecipeDetail({ recipe, onClose, onEdit }: Props) {
   const remove       = useDeleteRecipe()
   const addToShop    = useAddMissingIngredientsToShop()
   const cooked        = useIncrementTimesCooked()
-  const logFood       = useAddFoodLogEntries()
+  const logFood       = useLogWithUndo()
   const factor = recipe.servings > 0 ? servings / recipe.servings : 1
 
+  // Counts the cook and starts a batch of the servings on screen (157), so
+  // logging it later says what is left.
   function handleMadeThis() {
-    cooked.mutate({ id: recipe.id, current: recipe.times_cooked })
+    cooked.mutate({ id: recipe.id, current: recipe.times_cooked, servings })
   }
 
   // Log this recipe to the diary as ONE named line (recipe_id + a macro
@@ -70,11 +77,11 @@ export function RecipeDetail({ recipe, onClose, onEdit }: Props) {
   // recipe library to calorie tracking. Day + slot are user-editable (default
   // today + time-of-day) so a past meal can be backfilled.
   function handleLog() {
-    logFood.mutate([{
+    logFood.mutate({ what: `${recipe.title} · ${countLabel(ate, word)}`, entries: [{
       date: logDate, meal_slot: logSlot,
       recipe_id: recipe.id, quantity: ate, unit: 'serving',
       ...recipeSnapshot(recipe, ate),
-    }])
+    }] })
   }
 
   function toggleHave(id: string) {
@@ -157,67 +164,53 @@ export function RecipeDetail({ recipe, onClose, onEdit }: Props) {
       }
     >
       <div className="flex flex-col gap-4">
-        {/* Serving scaler + cook actions. Phones: the action cluster drops to
-            its own row; Cook mode is icon-only below sm. */}
-        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-          <div className="flex items-center gap-2">
-            <span className="section-label">Servings</span>
-            <div className="flex items-center gap-1">
-              <button type="button" aria-label="Fewer servings" onClick={() => setServings(s => Math.max(1, s - 1))} className={stepper}><Minus className="h-4 w-4" aria-hidden /></button>
-              <span className="w-10 text-center text-ui font-bold text-fg tabular-nums">{servings}</span>
-              <button type="button" aria-label="More servings" onClick={() => setServings(s => s + 1)} className={stepper}><Plus className="h-4 w-4" aria-hidden /></button>
-            </div>
-            {servings !== recipe.servings && (
-              <button type="button" onClick={() => setServings(recipe.servings)} className="min-h-[44px] px-1 text-meta font-semibold text-accent-600">Reset</button>
-            )}
+        {/* Serving scaler + cook actions on one row (Cook mode is icon-only below sm). */}
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="section-label">Servings</span>
+          <div className="flex items-center gap-1">
+            <button type="button" aria-label="Fewer servings" onClick={() => setServings(s => Math.max(1, s - 1))} className={stepper}><Minus className="h-4 w-4" aria-hidden /></button>
+            <span className="w-10 text-center text-ui font-bold text-fg tabular-nums">{servings}</span>
+            <button type="button" aria-label="More servings" onClick={() => setServings(s => s + 1)} className={stepper}><Plus className="h-4 w-4" aria-hidden /></button>
           </div>
-          <div className="flex flex-wrap items-center gap-1.5 sm:ml-auto sm:flex-nowrap">
-            {/* Portions EATEN — free entry (0.3, 1.5, 2…), not just ±0.5 steps. */}
-            <div className="flex items-center overflow-hidden rounded-control border border-line bg-surface-2">
-              <button type="button" onClick={() => setAte(a => Math.max(0.1, Math.round((a - 0.5) * 10) / 10))} aria-label="Fewer portions eaten"
-                className="grid min-h-[44px] min-w-[36px] place-items-center text-fg-2 hover:bg-surface-hover"><Minus className="h-4 w-4" aria-hidden /></button>
-              <input value={ateText} aria-label="Portions eaten" inputMode="decimal"
-                onChange={e => setAteText(sanitizeDecimal(e.target.value))}
-                className="min-h-[44px] w-10 bg-transparent text-center text-body font-bold text-fg tabular-nums focus:outline-none" />
-              <button type="button" onClick={() => setAte(a => Math.round((a + 0.5) * 10) / 10)} aria-label="More portions eaten"
-                className="grid min-h-[44px] min-w-[36px] place-items-center text-fg-2 hover:bg-surface-hover"><Plus className="h-4 w-4" aria-hidden /></button>
-            </div>
-            <Button variant="primary" size="sm" icon={<UtensilsCrossed />} onClick={handleLog} loading={logFood.isPending} disabled={ate <= 0}
-              title="Log the eaten portions to the diary">
-              I ate this
-            </Button>
+          {servings !== recipe.servings && (
+            <button type="button" onClick={() => setServings(recipe.servings)} className="min-h-[44px] px-1 text-meta font-semibold text-accent-600">Reset</button>
+          )}
+          <div className="ml-auto flex items-center gap-1.5">
             {steps.length > 0 && (
               <Button size="sm" icon={<ChefHat />} onClick={() => setCookMode(true)} aria-label="Cook mode">
                 <span className="hidden sm:inline">Cook mode</span>
               </Button>
             )}
-            <IconButton label="I made this (counter only)" bordered onClick={handleMadeThis} disabled={cooked.isPending}>
+            <IconButton label={`I made this (starts a batch of ${countLabel(servings, word)})`} bordered onClick={handleMadeThis} disabled={cooked.isPending}>
               <Flame />
             </IconButton>
           </div>
         </div>
 
-        {/* When + where "I ate this" logs to — defaults to today + the
-            time-of-day slot, both editable so a past meal can be backfilled. */}
-        <div className="-mt-1 flex flex-wrap items-center gap-2">
-          <span className="section-label">Log to</span>
-          <DateInput value={logDate} max={formatLocalDate(new Date())} onChange={v => { if (v) setLogDate(v) }}
-            aria-label="Log date" className="input w-[9.5rem] tabular-nums" />
-          <select value={logSlot} onChange={e => setLogSlot(e.target.value as MealSlot)} aria-label="Meal slot" className="select w-auto">
-            {LOG_SLOTS.map(s => <option key={s.slot} value={s.slot}>{s.label}</option>)}
-          </select>
-        </div>
-
-        {/* What "I ate this" will log. Divides by the currently-scaled
-            `servings` (not the recipe's base yield) — the "% of the batch"
-            used to double when the batch was scaled up. */}
-        {ate > 0 && (recipe.calories != null || servings > 1) && (
-          <MetaLine className="-mt-2 text-meta text-fg-muted tabular-nums" items={[
-            <>Eating <strong className="text-fg-2">{ate}</strong> of {servings}{servings > 0 && ` (${Math.round((ate / servings) * 100)}%)`}</>,
-            recipe.calories != null && <>logs <strong className="text-fg-2">{Math.round(recipe.calories * ate)}</strong> kcal</>,
-            recipe.protein_g != null && <><strong className="text-fg-2">{Math.round(recipe.protein_g * ate)}</strong> g protein</>,
-          ]} />
-        )}
+        {/* "I ate this": the amount in the recipe's own units (the shared
+            AmountField), what is left of the batch, then when + where it logs
+            to (today + the time-of-day slot; both editable to backfill). */}
+        <section className="flex flex-col gap-2 rounded-card border border-line p-3">
+          <AmountField model={ateModel} value={ate} onChange={setAte} batch={batch} label="Ate" id="recipe-ate" />
+          {ate > 0 && recipe.calories != null && (
+            <MetaLine className="text-meta text-fg-muted tabular-nums" items={[
+              <>logs <strong className="text-fg-2">{Math.round(recipe.calories * ate)}</strong> kcal</>,
+              recipe.protein_g != null && <><strong className="text-fg-2">{Math.round(recipe.protein_g * ate)}</strong> g protein</>,
+            ]} />
+          )}
+          {batch && <RecipeBatchPanel recipe={recipe} batch={batch} thisServings={ate} />}
+          <div className="flex flex-wrap items-center gap-2">
+            <DateInput value={logDate} max={formatLocalDate(new Date())} onChange={v => { if (v) setLogDate(v) }}
+              aria-label="Log date" className="input w-[9.5rem] tabular-nums" />
+            <select value={logSlot} onChange={e => setLogSlot(e.target.value as MealSlot)} aria-label="Meal slot" className="select w-auto">
+              {LOG_SLOTS.map(s => <option key={s.slot} value={s.slot}>{s.label}</option>)}
+            </select>
+            <Button variant="primary" size="sm" icon={<UtensilsCrossed />} onClick={handleLog} loading={logFood.isPending} disabled={ate <= 0}
+              className="ml-auto" title="Log what you ate to the diary">
+              I ate this
+            </Button>
+          </div>
+        </section>
 
         {/* Macros (scaled to selected servings) */}
         {totals.length > 0 && (

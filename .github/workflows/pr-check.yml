@@ -187,6 +187,16 @@ jobs:
         env:
           DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
 
+      # Migrations 157 and 158: a recipe's portion name and its batch (the
+      # guards, no macro or diary row touched, 106's triggers still working)
+      # and a dish's name on every row (a row joining a dish takes it, one
+      # leaving drops it, a rename, a move, an ungroup and its Undo, a copy,
+      # another account's rows never mixed in).
+      - name: Recipe batches and dish names database scenarios
+        run: node scripts/verify-db-food-dishes.mjs
+        env:
+          DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
+
       # `npm run lint` is deliberately NOT a gate yet: it is red today, and a
       # large share of the errors come from eslint linting supabase/functions
       # (Deno code checked with browser globals). Narrow the ESLint scope and

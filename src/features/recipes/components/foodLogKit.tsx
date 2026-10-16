@@ -172,6 +172,32 @@ export function BasketRow({ item, onGrams, onRemove, showProtein = false }: {
   )
 }
 
+// A saved meal's portion in the basket ("Køfte · 3 pieces": the amount opens
+// the portion sheet) or a dish's one-off line (no amount — it can only be
+// taken out). Same one-row geometry as BasketRow.
+export function PortionBasketRow({ title, amount, kcal, imageUrl, onAmount, onRemove }: {
+  title: string
+  /** "3 pieces"; omitted for a one-off line. */
+  amount?: string
+  kcal: number
+  imageUrl?: string | null
+  onAmount?: () => void
+  onRemove: () => void
+}) {
+  return (
+    <div className="flex min-h-[48px] items-center gap-1.5 sm:gap-2">
+      <span className="max-sm:hidden"><FoodThumb name={title} imageUrl={imageUrl} size={28} /></span>
+      <Truncate className="min-w-0 flex-1 text-body text-fg">{title}</Truncate>
+      {amount && onAmount && (
+        <button type="button" onClick={onAmount} aria-label={`${title}: ${amount} — change the amount`}
+          className="chip h-8 shrink-0 px-2.5 tabular-nums hover:bg-surface-hover">{amount}</button>
+      )}
+      <span className="w-[3.25rem] shrink-0 text-right text-meta text-fg-muted tabular-nums sm:w-14">{Math.round(kcal)} kcal</span>
+      <IconButton label={`Remove ${title}`} className="h-9 w-8 shrink-0 text-fg-faint hover:text-danger sm:w-9" onClick={onRemove}><X /></IconButton>
+    </div>
+  )
+}
+
 // A library food in the search results: the row adds it, the warning badge
 // sits beside it — a div, not a button, since MacroWarningBadge is itself a
 // Popover button and a <button> can't nest another one.
