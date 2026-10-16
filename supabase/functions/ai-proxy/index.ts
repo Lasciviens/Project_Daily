@@ -1181,6 +1181,8 @@ const TABLE_WORDS: Record<string, [string, string]> = {
   schedule_blocks: ['repeating block', 'repeating blocks'], food_log_entries: ['food entry', 'food entries'],
   water_log_entries: ['water entry', 'water entries'], ai_memory: ['memory', 'memories'],
   quick_guess_items: ['quick guess', 'quick guesses'],
+  supplement_schedules: ['supplement schedule', 'supplement schedules'],
+  supplement_dose_state: ['supplement dose state', 'supplement dose states'],
   recipes: ['recipe', 'recipes'], shop_items: ['shop item', 'shop items'], wish_items: ['wish', 'wishes'],
   dev_requests: ['request', 'requests'], books: ['book', 'books'],
   user_movie_entries: ['film in your library', 'films in your library'],
@@ -2600,7 +2602,7 @@ const DB_CATALOG: Record<string, CatalogEntry> = {
   food_log_entries: {
     access: 'rw',
     purpose: "The unified FOOD JOURNAL — both what the user ATE (status='eaten', macros snapshotted) and what they PLAN to eat (status='planned', macros computed live, so leave macro columns null on planned rows). The old recipe_meal_plans table was merged in here (migration 061). When the user says they ate something ('100g tavuk yedim'), insert status='eaten' with macros resolved from recipe_ingredient_library (per-100g × grams/100) as a SNAPSHOT. Multiple rows per slot are normal.",
-    columns: "id, date(date), meal_slot(breakfast|lunch|dinner|snack|supplement), status('planned'|'eaten', default 'eaten'), library_ingredient_id(uuid nullable), recipe_id(uuid nullable), custom_title(text nullable), quantity(numeric — grams for ingredients, servings for recipes), unit(text, e.g. 'g' or 'serving'), calories, protein_g, carbs_g, fat_g, fiber_g, sugar_g (numeric — a snapshot for eaten rows, null for planned), created_at",
+    columns: "id, date(date), meal_slot(breakfast|lunch|dinner|snack|supplement), status('planned'|'eaten', default 'eaten'), library_ingredient_id(uuid nullable), recipe_id(uuid nullable), custom_title(text nullable), quantity(numeric — grams for ingredients, servings for recipes), unit(text, e.g. 'g' or 'serving'), calories, protein_g, carbs_g, fat_g, fiber_g, sugar_g (numeric — a snapshot for eaten rows, null for planned), supplement_schedule_id(uuid → supplement_schedules, or null; migration 160) + dose_time(time) — set together, they make the line a scheduled supplement dose (taken), created_at",
     rules: "At least one of library_ingredient_id/recipe_id/custom_title must be set. For status='eaten' compute+store the macro snapshot at insert (never null when the ingredient has per-100g values). For status='planned' leave macros null (computed live on read). 'How much did I eat today?' → sum status='eaten' rows for the date. Water never goes here — it is water_log_entries.",
   },
   // Water (migration 067) is its own table, never a food slot: it has no macros
@@ -2620,6 +2622,20 @@ const DB_CATALOG: Record<string, CatalogEntry> = {
     purpose: "The user's Quick guess presets — the one-tap chips on Food · Today for food they can't weigh (a sweet, a soft drink, a beer). Each is a template with typical values for ONE portion; tapping it logs a one-off food_log_entries line (custom_title = the name), so a preset never holds what was eaten.",
     columns: 'id, name(text 1–60 — also the diary title it logs), icon(an emoji, nullable), portion(text, nullable — what one portion is, e.g. "0.5 L"), calories(numeric > 0, ≤ 5000), protein_g, carbs_g, fat_g, sugar_g (numeric ≥ 0, per portion; sugar is part of carbs), sort_order(int — the chip order, smallest first), options(jsonb array, default [] — migration 159: up to 3 groups the app asks about before logging, {name(1–30 chars), pick: "one"|"any"|"size", choices: 1–6 of {name(1–30), calories, protein_g, carbs_g, fat_g, sugar_g} — what it ADDS to one portion, ≥ 0 — or, in a "size" group, {name, factor(> 0, ≤ 10)} — it multiplies the portion}), created_at, updated_at',
     rules: "To log something the user ate, write food_log_entries — never insert here for that. Add or edit a preset only when the user asks to change their quick guesses; a new one goes last (sort_order = the highest + 1). Editing or deleting a preset never changes lines already logged. options is replaced as a whole: read it first and send the complete array; leave it [] unless the user asks for options. A guess with options picked is still one food_log_entries line titled with the picks, e.g. 'Pizza (chicken, cheese)'.",
+  },
+  // Supplement schedules (migration 160): Food · Today's Supplement card and
+  // its reminders. A dose is taken while its diary line exists.
+  supplement_schedules: {
+    access: 'rw',
+    purpose: "Supplements the user takes on a schedule (creatine every morning, omega-3 at 08:00 and 20:00) and how the app reminds them. Each dose time of each day is a dose; a dose is TAKEN when its food_log_entries line exists (supplement_schedule_id + dose_time), skipped / snoozed in supplement_dose_state. Doses are not tasks.",
+    columns: "id, title(text 1–80 — the card's name and a custom line's diary title), library_ingredient_id(uuid → recipe_ingredient_library, or null), recipe_id(uuid → recipes, or null; never both), dose_amount(numeric > 0), dose_unit(text: 'g' / 'ml' for a food, 'serving' for a recipe, any unit for a custom line — mg, IU, capsule, tablet, scoop…), calories, protein_g, carbs_g, fat_g (numeric ≥ 0, per dose, a custom line's own values only), times(time[] — 1–12 times of day, Europe/Oslo), days_of_week(int[] 0 = Sunday … 6), repeat_kind(weekly|monthly|interval|dates), repeat_interval(int 1–99, interval only), repeat_unit(day|week|month, interval only), repeat_dates(date[], dates only), effective_from(date — the first day), except_dates(date[]), ends_on(date or null = never), remind(off|once|until_taken), remind_every_min(int 15–720), remind_until(time), paused_from(date or null), paused_until(date or null = until resumed), notes, stock_amount(numeric in dose_unit, or null), stock_set_at(timestamptz — set by the database when stock_amount changes), refill_days(int 0–90), created_at, updated_at",
+    rules: "Every day = repeat_kind 'weekly' with days_of_week {0,1,2,3,4,5,6}; weekdays = {1,2,3,4,5}. A loading phase ('20 g a day for 7 days, then 5 g') is two schedules: the first with ends_on = start + 6 days, the second starting the day after. Pause = paused_from today (paused_until null until resumed); resume = paused_until yesterday, or both null when it was paused today. To mark a dose taken, insert its food_log_entries line: meal_slot 'supplement', status 'eaten', supplement_schedule_id, dose_time (one of times), date, and the schedule's food (library_ingredient_id + quantity grams), recipe (recipe_id + quantity portions, unit 'serving') or custom line (custom_title = title, quantity = dose_amount, unit = dose_unit and its values) — one line per dose. Deleting a schedule keeps its taken lines in the diary.",
+  },
+  supplement_dose_state: {
+    access: 'rw',
+    purpose: "One supplement dose's own state: skipped (skipped_at) or snoozed (snoozed_until), and the reminder job's bookkeeping (last_reminded_at, reminders_sent — never write those two).",
+    columns: 'id, schedule_id(uuid → supplement_schedules), dose_date(date), dose_time(time — one of the schedule\'s times), skipped_at(timestamptz or null), snoozed_until(timestamptz or null), last_reminded_at, reminders_sent, created_at, updated_at',
+    rules: "One row per (schedule_id, dose_date, dose_time). Skip a dose: set skipped_at = now (insert the row if there is none); take a skip back: skipped_at = null. Snooze: snoozed_until = now + the time asked (an hour by default).",
   },
   shop_categories: {
     access: 'rw',

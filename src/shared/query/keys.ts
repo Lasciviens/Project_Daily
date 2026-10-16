@@ -75,6 +75,16 @@ export const qk = {
   ingredients: { all: ['recipe-ingredient-library'] as const },
   /** Food · Today's Quick guess presets (quick_guess_items, migration 152). */
   quickGuess: { all: ['quick-guess-items'] as const, list: () => ['quick-guess-items', 'list'] as const },
+  /** Supplement schedules and their doses (migration 160). */
+  supplements: {
+    all: ['supplements'] as const,
+    schedules: () => ['supplements', 'schedules'] as const,
+    schedule: (id: string) => ['supplements', 'schedule', id] as const,
+    /** Taken lines and dose states from `from` to `to`. */
+    facts: (from: string, to: string) => ['supplements', 'facts', from, to] as const,
+    /** Doses taken since a stock was counted, per schedule. */
+    stock: (id: string, since: string) => ['supplements', 'stock', id, since] as const,
+  },
   shop: {
     all: ['shop'] as const,
     categories: () => ['shop', 'categories'] as const,

@@ -195,6 +195,17 @@ jobs:
         env:
           DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
 
+      # Migration 160: supplement schedules and reminders (the table rules,
+      # Take as the one write of a taken dose, the doses' states, reminders —
+      # once, until taken, a snooze, the window —, the 15-minute job calling
+      # push-send only when one is due, the phone's log_supplement match, a
+      # delete with Undo; the SQL dose rules compared with supplementDoses.ts
+      # day by day and every 5 minutes over two days).
+      - name: Supplement schedules database scenarios
+        run: node scripts/verify-db-supplement-schedules.mjs
+        env:
+          DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
+
       # `npm run lint` is deliberately NOT a gate yet: it is red today, and a
       # large share of the errors come from eslint linting supabase/functions
       # (Deno code checked with browser globals). Narrow the ESLint scope and

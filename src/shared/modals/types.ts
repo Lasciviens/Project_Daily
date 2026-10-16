@@ -40,6 +40,11 @@ export type EntityModalRequest =
   | { kind: 'recipe-view'; id: string }
   /** Nutrition goals editor; `date` feeds the coach (default today). */
   | { kind: 'day-targets'; date?: string }
+  /** A supplement schedule (migration 160): create without `id`; `defaults.title` prefills a new one. */
+  | { kind: 'supplement-schedule'; id?: string; defaults?: { title?: string } }
+  /** A day's supplement dose sheet — Taken now · Taken at… · Skip · Snooze (a reminder's tap opens it).
+   *  Without `scheduleId`: every dose of the day still open. */
+  | { kind: 'supplement-dose'; date: string; scheduleId?: string | null; time?: string | null }
   // Other features.
   /** `sequence`: the list it was opened from, in on-screen order — the popup's previous / next. */
   | { kind: 'media'; tmdbId: number; mediaType: MediaType; sequence?: MediaRef[] }

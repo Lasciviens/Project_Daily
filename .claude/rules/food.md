@@ -1,6 +1,7 @@
 ---
 paths:
   - "src/features/recipes/**"
+  - "src/features/supplements/**"
   - "src/features/daily/**/*Water*"
   - "src/features/daily/**/*Nutrition*"
   - "src/features/daily/hooks/useDayTargets.ts"
@@ -33,3 +34,6 @@ Background: `docs/features/food.md`.
 - The day's totals sum each eaten line's exact values and round once (`eatenTotals`), so a Nutrition figure is its peek's exact total rounded.
 - The logger and the recipe builder share one search and basket (`FoodSearchField`, `NewFoodForm`, `foodLogKit` rows, `foodBasket.ts`) — change it there, never fork a second copy.
 - A popup that prefills from props during render starts its seed closed (`{ open: false }`): entity modals mount already open, and a seed equal to the props skipped the prefill (Edit recipe opened empty).
+- Supplement schedules (160, `docs/features/supplements.md`): a dose is taken while its eaten diary line exists (`supplement_schedule_id` + `dose_time`) — never a stored flag; Take is `supplement_take` (web and phone), one line per dose. Doses are not tasks and never reach Google.
+- The dose rules exist twice on purpose: `supplements/supplementDoses.ts` and 160's SQL (`supplement_schedule_on`, `supplement_doses`, `supplement_doses_due`) — change them together (`verify-db-supplement-schedules` compares them). A schedule repeats through 146's columns and `recurrence.ts`, never a rule of its own.
+- A supplement's stock left is derived (count − dose × doses taken since the count), never stored.

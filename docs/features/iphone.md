@@ -8,7 +8,7 @@ See iPhone section below. `phone-gateway` (12 actions) + 11 Apple Shortcuts + a 
 
 ## Web Push (summary)
 
-See iPhone section below. Migration `068` + `push-send` + pg_cron morning brief + `public/push-sw.js`; toggle in Settings (⚙) → Notifications.
+See iPhone section below. Migration `068` + `push-send` + pg_cron morning brief + `public/push-sw.js`; toggle in Settings (⚙) → Notifications. Supplement reminders (migration `160`: a 15-minute job, one push per run until a dose is taken, the tap opens the dose sheet) — `docs/features/supplements.md`.
 
 ## iPhone surface (Shortcuts · Scriptable · Web Push)
 
