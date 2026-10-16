@@ -18,7 +18,7 @@ const library = new Map([
 const ing = (name, quantity, unit, library_ingredient_id = null) => ({ name, quantity, unit, library_ingredient_id })
 const bowl = { id: 'bowl', title: 'Chicken bowl', servings: 4, macro_mode: 'from_ingredients', ingredients: [
   ing('Chicken breast', 800, 'g', 'chk'), ing('Basmati rice', 700, 'g', 'rice'), ing('Olive oil', 30, 'ml', 'oil'),
-  ing('Banana', 1, 'pcs', 'ban'), ing('Salt', 5, 'g'),
+  ing('Banana', 1, 'pcs', 'ban'), ing('Salt', null, null), ing('Pepper', 1, 'pinch'),
 ] }
 const oats = { id: 'oats', title: 'Overnight oats', servings: 1, macro_mode: 'manual', ingredients: [ing('Banana', 118, 'g', 'ban'), ing('Oats', 60, 'g')] }
 const mix = { id: 'mix', title: 'Oil mix', servings: 1, macro_mode: 'from_ingredients', ingredients: [ing('Olive oil', 10, 'ml', 'oil')] }
@@ -39,10 +39,11 @@ ok(F.diaryLineFromMeal(meal), { title: 'Chicken breast', library_ingredient_id: 
 const parts = F.recipeParts(bowl, 1.5, library)
 ok(parts.map(p => [p.key, p.title, p.grams, p.unit]), [
   ['i:chk', 'Chicken breast', 300, 'g'], ['i:rice', 'Basmati rice', 262.5, 'g'], ['i:oil', 'Olive oil', 11.25, 'ml'],
-  ['i:ban', 'Banana', null, 'g'], ['n:salt', 'Salt', 1.875, 'g'],
-], 'grams × eaten / servings; "1 pcs" has no grams; an unlinked food is keyed by its name; olive oil is ml')
+  ['i:ban', 'Banana', null, 'g'],
+], 'grams × eaten / servings; a linked "1 pcs" has no grams; olive oil is ml; "Salt, to taste" and "Pepper, 1 pinch" (no link, no weight) are left out')
 near(parts[0].macros.calories, 318, 'chicken: 300 g × 106 / 100')
-ok([parts[3].macros, parts[4].macros], [null, null], 'no macros without a weight or a linked food')
+ok(parts[3].macros, null, 'no macros without a weight')
+ok(F.recipeParts(oats, 1, library).map(p => [p.key, p.grams, p.macros]), [['i:ban', 118, F.recipeParts(oats, 1, library)[0].macros], ['n:oats', 60, null]], 'a weighed food with no link counts by its name, with no macros')
 const twice = F.recipeParts({ ...bowl, ingredients: [ing('Chicken breast', 100, 'g', 'chk'), ing('chicken', 50, 'g', 'chk')] }, 4, library)
 ok([twice.length, twice[0].grams], [1, 150], 'the same food listed twice is one part')
 
@@ -93,15 +94,25 @@ const win = [
 ]
 const used = F.mostUsedIngredients(win, recipes, library)
 ok(used.items.map(u => [u.title, u.days, u.logs]), [
-  ['Chicken breast', 3, 4], ['Banana', 3, 3], ['Basmati rice', 2, 2], ['Olive oil', 2, 2], ['Salt', 2, 2], ['Oats', 1, 1],
-], 'by days eaten, then lines, then grams; recipe foods count (typed-macro recipes too); one-off lines and unknown recipes have none')
-ok(used.total, 6, 'distinct ingredients')
+  ['Chicken breast', 3, 4], ['Banana', 3, 3], ['Basmati rice', 2, 2], ['Olive oil', 2, 2], ['Oats', 1, 1],
+], 'by days eaten, then lines, then grams; recipe foods count (typed-macro recipes too); no salt and pepper; one-off lines and unknown recipes have none')
+ok(used.total, 5, 'distinct ingredients')
 ok(used.items[0].grams, 880, 'chicken: 180 + 300 (bowl × 1.5) + 200 + 200 (bowl × 1)')
 near(used.items[0].kcal, 932.8, 'its kcal: the logged lines + per-100 g × grams inside the bowl')
 ok([used.items[0].kcalShare, used.items[0].dayShare, used.items[2].dayShare], [31, 100, 67], "share of the window's 2,998.8 kcal; share of the 3 logged days")
 ok([used.items[1].grams, used.items[3].unit, used.items[4].kcal], [118, 'ml', 0], 'a "1 pcs" banana adds no grams; oil is ml; an unlinked food has no kcal')
 ok(F.mostUsedIngredients(win, recipes, library, 2).items.length, 2, 'top N')
 ok(F.mostUsedIngredients([], recipes, library), { items: [], total: 0 }, 'an empty window')
+
+// ── eatenTotals: the card's figures are the peeks' exact totals, rounded once ──
+const small = Array.from({ length: 6 }, () => ({ title: 'Nuts · 10g', source: 'log', ...M(9, 0, 0, 1, 0, 0), exact: M(8.6, 0.3, 0.2, 1.4, 0.3, 0.1),
+  logEntry: { library_ingredient_id: 'nuts', recipe_id: null, custom_title: null, quantity: 10, unit: 'g' } }))
+const planned = { title: 'Pizza', source: 'plan', ...M(800, 30, 90, 35, 4, 8), exact: M(800, 30, 90, 35, 4, 8) }
+const totals = F.eatenTotals([...small, planned])
+ok(totals.fat_g, 8, '6 lines at 1.4 g fat: the card shows 8 g (summing the rounded 1 g lines said 6)')
+near(F.dayMacroSources(small.map(F.diaryLineFromMeal), 'fat_g', recipes, library).total, 8.4, '…and the peek shows 8.4 g')
+ok([totals.fiber_g, totals.sugar_g, totals.calories], [2, 1, 52], 'small fibre and sugar parts add up instead of rounding away; planned rows never count')
+ok(F.eatenTotals([{ source: 'log', ...M(191, 41, 0, 3, 0, 0) }]).fat_g, 3, 'a line without exact values counts its figures')
 
 // ── formatting ───────────────────────────────────────────────────────────────
 ok([F.formatAmount(880, 'g'), F.formatAmount(5400, 'g'), F.formatAmount(18.75, 'ml'), F.formatAmount(1250, 'ml')], ['880 g', '5.4 kg', '19 ml', '1.3 l'], 'amounts')

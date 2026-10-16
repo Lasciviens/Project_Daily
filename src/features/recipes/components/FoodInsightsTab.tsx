@@ -13,9 +13,13 @@ import { formatAmount, mostUsedIngredients, type UsedIngredient } from '../foodI
 import { INSIGHT_BOARD } from '../foodBoards'
 import { MACRO_COLOR } from '../macroColors'
 import { MacroBar } from './MacroBar'
+import type { IngredientLibraryItem, RecipeWithIngredients } from '../types'
 import { SLOT_OPTIONS } from './foodLogUtils'
 
 type Window = '7' | '30' | '90'
+// Stable empty lists, so the memo below doesn't rerun on every render while a read is pending.
+const EMPTY_RECIPES: RecipeWithIngredients[] = []
+const EMPTY_FOODS: IngredientLibraryItem[] = []
 const WINDOWS: SegmentedOption<Window>[] = [
   { value: '7', label: '7 days' },
   { value: '30', label: '30 days' },
@@ -44,8 +48,10 @@ export function FoodInsightsTab() {
   const today = todayStr()
   const from = shiftDateStr(today, -(days - 1))
   const { data: rows = [], isLoading } = useFoodLogRange(from, today)
-  const { data: recipes = [], isLoading: recipesLoading } = useRecipes()
-  const { data: library = [], isLoading: libraryLoading } = useIngredientLibrary()
+  const recipesQ = useRecipes()
+  const libraryQ = useIngredientLibrary()
+  const recipes = recipesQ.data ?? EMPTY_RECIPES
+  const library = libraryQ.data ?? EMPTY_FOODS
   const { targets } = useDayTargets()
   const ins = useMemo(() => buildFoodInsights(rows, days, today), [rows, days, today])
   const used = useMemo(
@@ -90,7 +96,7 @@ export function FoodInsightsTab() {
                 'Per logged day',
                 `${ins.daysLogged} of ${days} days logged`,
                 ins.streak > 0 && `${ins.streak}-day streak`,
-                `${ins.variety} different foods`,
+                `${ins.variety} different meals and foods`,
               ]} />} />
             <div className="grid grid-cols-3 gap-x-3 gap-y-3 @[34rem]:grid-cols-6">
               {AVERAGES.map(a => (
@@ -105,7 +111,9 @@ export function FoodInsightsTab() {
           </Card>
         ),
         ingredients: (
-          <IngredientUseList items={used.items} loading={recipesLoading || libraryLoading} />
+          <IngredientUseList items={used.items} loading={recipesQ.isLoading || libraryQ.isLoading}
+            failed={recipesQ.isError || libraryQ.isError}
+            onRetry={() => { if (recipesQ.isError) void recipesQ.refetch(); if (libraryQ.isError) void libraryQ.refetch() }} />
         ),
         protein: (
           <SourceList title="Top protein sources" icon={<Beef />} items={ins.topProtein} color={MACRO_COLOR.protein} onOpen={openSource}
@@ -164,33 +172,45 @@ function AverageFigure({ label, value, unit, color, hint }: { label: string; val
 /**
  * The foods eaten most often in the window — logged by themselves or inside a
  * recipe (foodIngredients.mostUsedIngredients) — by the days they were eaten
- * on; the bar is that share of the logged days.
+ * on. The bar is that share of the logged days, full width on every row so
+ * 100 % is one length; lines, amount and share of kcal sit beside the days
+ * where the card is wide, on their own line under the bar where it isn't.
+ * Without the recipes or the foods the list would be partial, so a failed
+ * read says so instead.
  */
-function IngredientUseList({ items, loading }: { items: UsedIngredient[]; loading: boolean }) {
+function IngredientUseList({ items, loading, failed, onRetry }: { items: UsedIngredient[]; loading: boolean; failed: boolean; onRetry: () => void }) {
   return (
-    <Card>
+    <Card className="@container">
       <CardHeader title="Most used ingredients" variant="label" icon={<Carrot />} subtitle="Foods and recipe ingredients, by days eaten" />
-      {loading ? <SkeletonText lines={5} /> : items.length === 0 ? <p className="text-meta text-fg-muted">Nothing here yet — one-off lines have no ingredients.</p> : (
+      {loading ? <SkeletonText lines={5} /> : failed ? (
+        <p className="text-meta text-fg-muted">
+          Couldn't load your recipes and foods. <button type="button" onClick={onRetry} className="font-semibold text-accent-600">Try again</button>
+        </p>
+      ) : items.length === 0 ? <p className="text-meta text-fg-muted">Nothing here yet — one-off lines have no ingredients.</p> : (
         <ol className="flex flex-col gap-2">
-          {items.map((u, i) => (
-            <li key={u.key} className="py-0.5">
-              <div className="flex items-baseline gap-2 text-body">
-                <span className="w-4 shrink-0 text-right text-micro tabular-nums text-fg-faint">{i + 1}</span>
-                <Truncate className="flex-1 font-medium text-fg">{u.title}</Truncate>
-                <span className="shrink-0 tabular-nums text-fg-2">{u.days} {u.days === 1 ? 'day' : 'days'}</span>
-              </div>
-              <div className="ml-6 mt-1 flex items-center gap-2">
-                <div className="h-1.5 min-w-12 flex-1 overflow-hidden rounded-full bg-surface-2">
+          {items.map((u, i) => {
+            const meta = (className: string) => (
+              <MetaLine as="span" className={cx('text-micro tabular-nums text-fg-muted', className)} items={[
+                u.logs > u.days && `${u.logs}×`,
+                u.grams > 0 && formatAmount(u.grams, u.unit),
+                u.kcal > 0 && (u.kcalShare > 0 ? `${u.kcalShare}% of kcal` : '<1% of kcal'),
+              ]} />
+            )
+            return (
+              <li key={u.key} className="py-0.5">
+                <div className="flex items-baseline gap-2 text-body">
+                  <span className="w-4 shrink-0 text-right text-micro tabular-nums text-fg-faint">{i + 1}</span>
+                  <Truncate className="flex-1 font-medium text-fg">{u.title}</Truncate>
+                  {meta('hidden shrink-0 @[30rem]:inline')}
+                  <span className="shrink-0 tabular-nums text-fg-2">{u.days} {u.days === 1 ? 'day' : 'days'}</span>
+                </div>
+                <div className="ml-6 mt-1 h-1.5 overflow-hidden rounded-full bg-surface-2">
                   <div className="h-full rounded-full" style={{ width: `${Math.max(u.dayShare, 2)}%`, backgroundColor: MACRO_COLOR.calories }} />
                 </div>
-                <MetaLine as="span" className="shrink-0 text-micro tabular-nums text-fg-muted" items={[
-                  u.logs > u.days && `${u.logs}×`,
-                  u.grams > 0 && formatAmount(u.grams, u.unit),
-                  u.kcal > 0 && (u.kcalShare > 0 ? `${u.kcalShare}% of kcal` : '<1% of kcal'),
-                ]} />
-              </div>
-            </li>
-          ))}
+                {meta('ml-6 mt-0.5 block @[30rem]:hidden')}
+              </li>
+            )
+          })}
         </ol>
       )}
     </Card>

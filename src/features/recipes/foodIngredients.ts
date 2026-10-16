@@ -72,6 +72,21 @@ export function splitTitleQty(title: string): { name: string; qty: string | null
   return { name: title.slice(0, idx), qty }
 }
 
+/**
+ * The day's eaten totals as the Nutrition card shows them: every eaten line's
+ * exact values summed, rounded once — so a figure is the peek's exact total
+ * rounded ("8.4 g" → "8g"), and many small parts never round away to 0.
+ */
+export function eatenTotals(meals: readonly ({ source: 'plan' | 'log'; exact?: MacroAmounts } & MacroAmounts)[]): MacroAmounts {
+  const out = zero()
+  for (const m of meals) {
+    if (m.source !== 'log') continue
+    for (const k of MACRO_KEYS) out[k] += m.exact?.[k] ?? m[k]
+  }
+  for (const k of MACRO_KEYS) out[k] = Math.round(out[k])
+  return out
+}
+
 /** Today's DayMeal (eaten rows only) as a diary line; its exact values when it carries them. */
 export function diaryLineFromMeal(m: {
   title: string
@@ -101,16 +116,21 @@ export interface IngredientPart {
   macros: MacroAmounts | null
 }
 
-/** A recipe's ingredients for `servingsEaten` of its `servings`; the same food listed twice is one part. */
+/**
+ * A recipe's ingredients for `servingsEaten` of its `servings`; the same food
+ * listed twice is one part. A row with neither a library link nor a weight
+ * ("Salt, to taste", "Pepper, 1 pinch") is left out: it says nothing about
+ * what was eaten, and in every recipe it would top a "most used" list.
+ */
 export function recipeParts(recipe: RecipeSource, servingsEaten: number, library: Lookup<LibraryFood>): IngredientPart[] {
   const factor = servingsEaten / Math.max(1, n(recipe.servings))
   const parts = new Map<string, IngredientPart>()
   for (const ing of recipe.ingredients ?? []) {
     const name = (ing.name ?? '').trim()
     const libId = ing.library_ingredient_id
-    if (!name && !libId) continue
     const lib = libId ? library.get(libId) : undefined
     const g = toGrams(ing.quantity, ing.unit)
+    if (!libId && (g == null || !name)) continue
     const grams = g == null ? null : g * factor
     let macros: MacroAmounts | null = null
     if (lib && grams != null) {

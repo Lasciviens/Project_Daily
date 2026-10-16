@@ -1,7 +1,7 @@
 import { supabase } from '../../../integrations/supabase/client'
 import { WEIGHT_UNITS } from '../../recipes/api/recipesApi'
 import type { MealPlanEntry } from '../../recipes/types'
-import { macroAmounts, type MacroAmounts } from '../../recipes/foodIngredients'
+import { eatenTotals, macroAmounts, type MacroAmounts } from '../../recipes/foodIngredients'
 
 // A single planned meal for a day, resolved to its display title + macro
 // contribution. Macros are the TOTAL for that entry (recipe per-serving ×
@@ -253,18 +253,8 @@ export async function fetchDayNutrition(date: string): Promise<DayNutrition> {
 
   // CONSUMED = the DIARY only (source==='log'); planned rows are intent and
   // never feed the ring (double-counted a day that was planned AND eaten).
-  const sum = (k: keyof Pick<DayMeal, 'calories' | 'protein_g' | 'carbs_g' | 'fat_g' | 'fiber_g' | 'sugar_g'>) =>
-    allMeals.reduce((acc, m) => acc + (m.source === 'log' ? m[k] : 0), 0)
-
-  return {
-    meals: allMeals,
-    calories:  sum('calories'),
-    protein_g: sum('protein_g'),
-    carbs_g:   sum('carbs_g'),
-    fat_g:     sum('fat_g'),
-    fiber_g:   sum('fiber_g'),
-    sugar_g:   sum('sugar_g'),
-  }
+  // Exact values summed, rounded once — the same total the figures' peeks show.
+  return { meals: allMeals, ...eatenTotals(allMeals) }
 }
 
 // Pre-061 fallback: plan (recipe_meal_plans) + diary (food_log_entries) as two
