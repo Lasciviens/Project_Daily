@@ -78,6 +78,37 @@ export async function updateFoodLogEntry(id: string, patch: FoodLogPatch): Promi
   if (error) throw error
 }
 
+/** Edit entry's Save: the row's new values, and a single row to make a new dish with ("With Tortilla"). */
+export interface EntrySave { id: string; patch: FoodLogPatch; joinRowId?: string | null }
+/** What Edit entry's Undo writes back: the row's earlier values (and the joined row's). */
+export interface EntryUndo { id: string; before: FoodLogPatch; joined?: { id: string; before: FoodLogPatch } }
+
+/**
+ * Saves an edited diary row. `before` is the row as the editor loaded it; the
+ * answer is what Undo puts back. Joining a single row starts a new dish of
+ * the two (a fresh meal_group_id on both).
+ */
+export async function saveFoodEntry(s: EntrySave, before: FoodLogEntry): Promise<EntryUndo> {
+  const patch: FoodLogPatch = { ...s.patch }
+  let joined: EntryUndo['joined']
+  if (s.joinRowId) {
+    const group = crypto.randomUUID()
+    await updateFoodLogEntry(s.joinRowId, { meal_group_id: group })
+    joined = { id: s.joinRowId, before: { meal_group_id: null, meal_group_title: null } }
+    patch.meal_group_id = group
+    patch.meal_group_title = null
+  }
+  await updateFoodLogEntry(s.id, patch)
+  const was = before as unknown as Record<string, unknown>
+  const prev = Object.fromEntries(Object.keys(patch).map(k => [k, was[k] ?? null])) as FoodLogPatch
+  return { id: s.id, before: prev, joined }
+}
+
+export async function undoFoodEntrySave(u: EntryUndo): Promise<void> {
+  await updateFoodLogEntry(u.id, u.before)
+  if (u.joined) await updateFoodLogEntry(u.joined.id, u.joined.before)
+}
+
 // A diary row with its display title resolved (library/recipe/custom).
 export type LoggedFood = FoodLogEntry & { title: string }
 
