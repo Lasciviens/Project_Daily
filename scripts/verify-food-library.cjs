@@ -270,6 +270,19 @@ ok(M.portionMacros(foods[0]), null, 'no portion preset → null')
   ok([D.rowToItem(row({ library_ingredient_id: 'c', quantity: 150, unit: 'g' }), lib, recs).grams, D.rowToItem(row({ recipe_id: 'k', quantity: 3, unit: 'serving' }), lib, recs).servings,
     D.rowToItem(row({ title: 'Salsa' }), lib, recs).kind, D.rowToItem(row({ library_ingredient_id: 'c', quantity: 2, unit: 'pcs' }), lib, recs).kind, D.rowToItem(row({ library_ingredient_id: 'gone', quantity: 100, unit: 'g' }), lib, recs).kind],
   [150, 3, 'custom', 'custom', 'custom'], 'Edit meal\'s basket: a weighed food, a recipe portion, else the line as it is')
+
+  // A slot's rows as dishes (the two bugs: the title, "1 items")
+  const meal = (id, title, g, o = {}) => ({ id, title, meal_group_id: g, calories: 100, protein_g: 10, carbs_g: 5, fat_g: 2, fiber_g: 1, sugar_g: 0,
+    logEntry: { quantity: 100, unit: 'g' }, ...o })
+  const day = D.groupDishes([
+    meal('a', 'Rice · 100g', 'g1'), meal('s', 'Apple · 150g', null), meal('b', 'Chicken breast, raw · 150g', 'g1', { logEntry: { quantity: 150, unit: 'g' } }),
+    meal('c', 'Tortilla · 120g', 'g2', { meal_group_title: 'Taco plate' }), meal('d', 'Køfte · 3×', 'g2', { logEntry: { quantity: 3, unit: 'serving' }, meal_group_title: 'Taco plate' }),
+    meal('e', 'Beef · 100g', 'g3'),
+  ])
+  ok(day.map(r => r.kind === 'group' ? `${r.title} [${r.amount}] ${r.items.length}` : `single ${r.meal.id}`),
+    ['Rice + Chicken breast [250 g] 2', 'single s', 'Taco plate [2 items] 2', 'single e'],
+    'dishes: the automatic name without amounts (was "Rice · 100g +1 more"), its own name, summed grams or "N items", a group of one is a plain row (was "1 items"), order kept')
+  ok([day[0].calories, day[0].protein_g, day[0].ownTitle, day[2].ownTitle], [200, 20, null, 'Taco plate'], 'a dish sums its rows; ownTitle says whether it was renamed')
 }
 
 console.log(`verify-food-library: ${n} assertions passed`)

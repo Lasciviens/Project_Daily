@@ -14,7 +14,7 @@ import { toast } from '../../../app/store'
 
 // Copies yesterday's DIARY into today, but only into slots that are still empty
 // today (a slot with anything logged is left alone — copy never overwrites).
-// An "As meal" group stays one group (a fresh shared id per source group);
+// An "As meal" group stays one group (a fresh shared id per source group, and its own name);
 // totals of rows with a source are recalculated from it (migration 106).
 // `slots` narrows the copy to specific slots ("same lunch as yesterday").
 export function useCopyYesterdayMeals() {
@@ -49,6 +49,8 @@ export function useCopyYesterdayMeals() {
           fiber_g:               e.fiber_g,
           sugar_g:               e.sugar_g,
           meal_group_id:         group,
+          // A renamed dish keeps its name (158); dropped before 158 by addFoodLogEntries.
+          ...(group && e.meal_group_title ? { meal_group_title: e.meal_group_title } : {}),
         }
       })
       await addFoodLogEntries(entries)

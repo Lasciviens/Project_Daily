@@ -2,6 +2,7 @@ import { supabase } from '../../../integrations/supabase/client'
 import { WEIGHT_UNITS } from '../../recipes/api/recipesApi'
 import type { MealPlanEntry } from '../../recipes/types'
 import { eatenTotals, macroAmounts, type MacroAmounts } from '../../recipes/foodIngredients'
+import { groupDishes, type DishGroup, type DishSingle } from '../../recipes/foodDish'
 
 // A single planned meal for a day, resolved to its display title + macro
 // contribution. Macros are the TOTAL for that entry (recipe per-serving ×
@@ -41,51 +42,20 @@ export interface DayMeal {
       recipe log, and always null for a plan row (grouping only applies to
       what was actually eaten). Migration 087. */
   meal_group_id?: string | null
+  /** The dish's own name (158), the same on every row of the group; null = automatic. */
+  meal_group_title?: string | null
 }
 
 // A meal-slot's rows, collapsed so several entries sharing the same
-// `meal_group_id` render as ONE compact row instead of N separate lines —
-// the display half of the "As meal" feature. Order-preserving: a group's
-// position in the output is wherever its first member first appears.
-export interface MealGroupRow {
-  kind:      'group'
-  groupId:   string
-  items:     DayMeal[]
-  title:     string
-  calories:  number
-  protein_g: number
-  carbs_g:   number
-  fat_g:     number
-  fiber_g:   number
-  sugar_g:   number
-}
-export interface SingleMealRow {
-  kind: 'single'
-  meal: DayMeal
-}
+// `meal_group_id` render as ONE compact row (a dish) instead of N separate
+// lines — the display half of the "As meal" feature. The pure rule
+// (order-preserving; a "group" of one is a plain row; the dish's name and
+// amount) is foodDish.groupDishes (scripts/verify-food-library.cjs).
+export type MealGroupRow = DishGroup<DayMeal>
+export type SingleMealRow = DishSingle<DayMeal>
 export type MealDisplayRow = MealGroupRow | SingleMealRow
 
-export function groupDayMeals(meals: DayMeal[]): MealDisplayRow[] {
-  const rows: MealDisplayRow[] = []
-  const seenGroups = new Set<string>()
-  for (const m of meals) {
-    if (!m.meal_group_id) { rows.push({ kind: 'single', meal: m }); continue }
-    if (seenGroups.has(m.meal_group_id)) continue
-    seenGroups.add(m.meal_group_id)
-    const items = meals.filter(x => x.meal_group_id === m.meal_group_id)
-    const title = items.length > 1 ? `${items[0].title} +${items.length - 1} more` : items[0].title
-    rows.push({
-      kind: 'group', groupId: m.meal_group_id, items, title,
-      calories:  items.reduce((a, i) => a + i.calories, 0),
-      protein_g: items.reduce((a, i) => a + i.protein_g, 0),
-      carbs_g:   items.reduce((a, i) => a + i.carbs_g, 0),
-      fat_g:     items.reduce((a, i) => a + i.fat_g, 0),
-      fiber_g:   items.reduce((a, i) => a + i.fiber_g, 0),
-      sugar_g:   items.reduce((a, i) => a + i.sugar_g, 0),
-    })
-  }
-  return rows
-}
+export const groupDayMeals = (meals: readonly DayMeal[]): MealDisplayRow[] => groupDishes(meals)
 
 export interface DayNutrition {
   meals:     DayMeal[]
@@ -131,6 +101,11 @@ function isMissingMealGroup(e: unknown): boolean {
   return (x?.code === '42703' || x?.code === 'PGRST204') && /meal_group_id/i.test(x?.message ?? '')
 }
 
+function isMissingGroupTitle(e: unknown): boolean {
+  const x = e as { code?: string; message?: string }
+  return (x?.code === '42703' || x?.code === 'PGRST204') && /meal_group_title/i.test(x?.message ?? '')
+}
+
 // A unified food_log_entries row (post-061): 'planned' (macros live) or 'eaten'
 // (macros snapshotted). recipes.fiber_g is intentionally NOT selected (needs
 // mig 060; a missing column would error the query) → planned-recipe fiber = 0.
@@ -145,6 +120,7 @@ interface UnifiedRow {
   unit: string | null
   calories: number | null; protein_g: number | null; carbs_g: number | null; fat_g: number | null; fiber_g: number | null; sugar_g: number | null
   meal_group_id?: string | null
+  meal_group_title?: string | null
   recipe:     { title: string; calories: number | null; protein_g: number | null; carbs_g: number | null; fat_g: number | null; sugar_g: number | null } | null
   ingredient: { name: string; unit: string; calories: number | null; protein_g: number | null; carbs_g: number | null; fat_g: number | null; fiber_g: number | null; sugar_g: number | null } | null
 }
@@ -153,7 +129,8 @@ const UNIFIED_SELECT_BASE =
   'id, meal_slot, status, recipe_id, library_ingredient_id, custom_title, quantity, unit, calories, protein_g, carbs_g, fat_g, fiber_g, sugar_g, ' +
   'recipe:recipes(title, calories, protein_g, carbs_g, fat_g, sugar_g), ' +
   'ingredient:recipe_ingredient_library(name, unit, calories, protein_g, carbs_g, fat_g, fiber_g, sugar_g)'
-const UNIFIED_SELECT = `${UNIFIED_SELECT_BASE}, meal_group_id`
+const UNIFIED_SELECT_087 = `${UNIFIED_SELECT_BASE}, meal_group_id`
+const UNIFIED_SELECT = `${UNIFIED_SELECT_087}, meal_group_title`
 
 // Exported for unit-testability (the post-061 path can't be exercised against
 // an un-migrated DB) — a pure row→DayMeal mapper.
@@ -207,6 +184,7 @@ export function unifiedToMeal(row: UnifiedRow, date: string): DayMeal {
       custom_title: row.custom_title, quantity: row.quantity, unit: row.unit,
     },
     meal_group_id: row.meal_group_id ?? null,
+    meal_group_title: row.meal_group_title ?? null,
   }
 }
 
@@ -235,6 +213,10 @@ export async function fetchDayNutrition(date: string): Promise<DayNutrition> {
   // cast to UnifiedRow[] downstream regardless.
   let uni: { data: unknown; error: unknown } =
     await supabase.from('food_log_entries').select(UNIFIED_SELECT).eq('date', date).order('created_at', { ascending: true })
+  if (uni.error && isMissingGroupTitle(uni.error)) {
+    // migration 158 not applied yet — a dish keeps its automatic name.
+    uni = await supabase.from('food_log_entries').select(UNIFIED_SELECT_087).eq('date', date).order('created_at', { ascending: true })
+  }
   if (uni.error && isMissingMealGroup(uni.error)) {
     // migration 087 not applied yet — retry without meal_group_id; every
     // row then reads as ungrouped (today's behaviour), never a hard error.

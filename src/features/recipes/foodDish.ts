@@ -4,6 +4,7 @@
 // item names without their amounts); its amount is the summed grams, or
 // "3 items" when a piece count is inside. Pure (scripts/verify-food-library.cjs).
 import { amountUnit, type LogItem, type MacroSum } from './foodBasket'
+import { splitTitleQty } from './foodIngredients'
 import { gramsPerUnit } from './foodUnits'
 import type { IngredientLibraryItem, RecipeWithIngredients } from './types'
 
@@ -79,4 +80,58 @@ export function rowToItem(
     fat: row.fat_g ?? 0, fiber: row.fiber_g ?? 0, sugar: row.sugar_g ?? 0,
   }
   return { kind: 'custom', title: row.title, macros, entryId: row.id }
+}
+
+// ── A slot's rows as dishes and single rows ─────────────────────────────────
+
+/** What grouping reads from a day's row (Daily's DayMeal). */
+export interface DishMember {
+  id: string
+  /** "Chicken · 150g" — the name is what comes before the amount. */
+  title: string
+  meal_group_id?: string | null
+  meal_group_title?: string | null
+  logEntry?: AmountRow | null
+  calories: number; protein_g: number; carbs_g: number; fat_g: number; fiber_g: number; sugar_g: number
+}
+
+export interface DishGroup<T> {
+  kind: 'group'
+  groupId: string
+  items: T[]
+  /** Its own name, or the items' names ("Rice + Chicken") — never "Rice · 100g +1 more". */
+  title: string
+  ownTitle: string | null
+  /** Summed grams, or "3 items". */
+  amount: string
+  calories: number; protein_g: number; carbs_g: number; fat_g: number; fiber_g: number; sugar_g: number
+}
+export interface DishSingle<T> { kind: 'single'; meal: T }
+
+/**
+ * Rows sharing a meal_group_id become one dish, where its first row is
+ * (order-preserving); a "dish" of one row is that row (a delete or a move
+ * left it alone — it used to read "1 items").
+ */
+export function groupDishes<T extends DishMember>(meals: readonly T[]): (DishGroup<T> | DishSingle<T>)[] {
+  const rows: (DishGroup<T> | DishSingle<T>)[] = []
+  const seen = new Set<string>()
+  for (const m of meals) {
+    const gid = m.meal_group_id
+    if (!gid) { rows.push({ kind: 'single', meal: m }); continue }
+    if (seen.has(gid)) continue
+    seen.add(gid)
+    const items = meals.filter(x => x.meal_group_id === gid)
+    if (items.length === 1) { rows.push({ kind: 'single', meal: m }); continue }
+    const ownTitle = items.find(i => i.meal_group_title?.trim())?.meal_group_title ?? null
+    const sum = (k: 'calories' | 'protein_g' | 'carbs_g' | 'fat_g' | 'fiber_g' | 'sugar_g') => items.reduce((a, i) => a + i[k], 0)
+    rows.push({
+      kind: 'group', groupId: gid, items, ownTitle,
+      title: dishName(ownTitle, items.map(i => splitTitleQty(i.title).name)),
+      amount: dishAmount(items.map(i => i.logEntry ?? { quantity: null, unit: null })),
+      calories: sum('calories'), protein_g: sum('protein_g'), carbs_g: sum('carbs_g'),
+      fat_g: sum('fat_g'), fiber_g: sum('fiber_g'), sugar_g: sum('sugar_g'),
+    })
+  }
+  return rows
 }

@@ -26,6 +26,7 @@ import type { MealSlot } from '../types'
 import { groupDayMeals, type DayMeal, type MealGroupRow } from '../../daily/api/dayNutritionApi'
 import { useNewIds } from '../../../shared/hooks/useNewIds'
 import { FOOD_TODAY_BOARD } from '../foodBoards'
+import { DishItemMenu, DishMenu } from './DishActions'
 
 // The wide meal-row grid: name · amount · kcal · protein · carbs · fat · fiber · ✓ · ✕.
 // Shared by the rows and their column-heading row so the two always line up.
@@ -104,10 +105,12 @@ export function FoodTodayTab({ date }: { date: string }) {
     const arr = bySlot.get(m.meal_slot) ?? []; arr.push(m); bySlot.set(m.meal_slot, arr)
   }
 
-  // One logged/planned item, standalone or indented inside an expanded group.
+  // One logged/planned item, standalone or indented inside an expanded dish.
   // Two markups (stacked phone vs aligned desktop grid) because the column
-  // count would otherwise change under one fixed set of children.
-  function mealLine(meal: DayMeal, indent: boolean) {
+  // count would otherwise change under one fixed set of children. Inside a
+  // dish the ⋯ column offers Edit and "Move out of meal".
+  function mealLine(meal: DayMeal, dish?: MealGroupRow) {
+    const indent = !!dish
     const planned = meal.source === 'plan'
     const { name, qty } = splitTitleQty(meal.title)
     const onOpen = () => {
@@ -132,10 +135,10 @@ export function FoodTodayTab({ date }: { date: string }) {
         {planned && PLANNED_PILL}
       </button>
     )
-    const eatBtn = planned && meal.planEntry ? (
+    const actionBtn = planned && meal.planEntry ? (
       <IconButton label={`Mark ${name} eaten`} onClick={() => eatPlan.mutate(meal.planEntry!)} disabled={eatPlan.isPending}
         className="text-success disabled:opacity-50"><Check /></IconButton>
-    ) : null
+    ) : dish ? <DishItemMenu entryId={meal.id} item={name} dish={dish.title} date={date} /> : null
     const delBtn = (
       <IconButton label={`Remove ${name}`} onClick={onDelete} className="text-fg-faint hover:!text-danger"><X /></IconButton>
     )
@@ -145,7 +148,7 @@ export function FoodTodayTab({ date }: { date: string }) {
         {/* Narrow card: name + actions, macro line underneath */}
         <div className="@[40rem]:hidden">
           <div className={cx('flex items-center gap-1 text-body', indent ? 'pl-9 pr-2' : 'pl-4 pr-2')}>
-            {nameBtn}{eatBtn}{delBtn}
+            {nameBtn}{actionBtn}{delBtn}
           </div>
           <MetaLine items={macroLine} className={cx('-mt-1.5 pb-2 text-meta tabular-nums text-fg-muted', indent ? 'pl-9 pr-4' : 'px-4')} />
         </div>
@@ -159,48 +162,66 @@ export function FoodTodayTab({ date }: { date: string }) {
           <span className={num}>{meal.carbs_g > 0 ? `${meal.carbs_g}g` : ''}</span>
           <span className={num}>{meal.fat_g > 0 ? `${meal.fat_g}g` : ''}</span>
           <span className={num}>{meal.fiber_g > 0 ? `${meal.fiber_g}g` : ''}</span>
-          {eatBtn ?? <span />}
+          {actionBtn ?? <span />}
           {delBtn}
         </div>
       </li>
     )
   }
 
-  // Several individually logged items collapsed into ONE row; tap to expand.
-  function groupHeaderLine(group: MealGroupRow) {
+  // A dish (rows sharing a meal_group_id) as ONE row on the same columns as
+  // the single rows: its name and item count, the summed amount and macros,
+  // ⋯ (DishMenu) and ×; tap to expand into its items.
+  function dishLine(group: MealGroupRow, slot: MealSlot) {
     const expanded = expandedGroups.has(group.groupId)
+    const n = group.items.length
+    const num = 'text-meta tabular-nums text-right text-fg-muted'
     const totals = [
+      group.amount,
       `${group.calories} kcal`,
       group.protein_g > 0 && `${group.protein_g}g protein`,
       group.carbs_g > 0 && `${group.carbs_g}g carbs`,
       group.fat_g > 0 && `${group.fat_g}g fat`,
       group.fiber_g > 0 && `${group.fiber_g}g fiber`,
     ]
+    const nameBtn = (
+      <button type="button" onClick={() => toggleGroup(group.groupId)} aria-expanded={expanded}
+        className="flex min-h-[44px] min-w-0 flex-1 items-center gap-1.5 text-left transition-colors hover:text-accent-600">
+        <ChevronRight aria-hidden className={cx('h-4 w-4 shrink-0 text-fg-faint transition-transform', expanded && 'rotate-90')} />
+        <Truncate className="font-medium text-fg">{group.title}</Truncate>
+        <span className="count-badge shrink-0" title={`${n} items`}>{n}<span className="sr-only"> items</span></span>
+      </button>
+    )
+    const menu = <DishMenu group={group} date={date} slot={slot} />
+    const delBtn = (
+      <IconButton label={`Delete ${group.title} (${n} items)`} className="text-fg-faint hover:!text-danger"
+        onClick={() => void remove.run(group.items.map(m => m.id), { title: `Delete “${group.title}”?`, message: `The whole meal: ${n} items.`, confirmLabel: 'Delete meal', done: `Removed ${group.title}` })}><X /></IconButton>
+    )
     return (
       <li key={group.groupId} className={group.items.some(m => fresh.has(m.id)) ? 'motion-row-in' : undefined}>
-        <div className="flex items-center pr-2 transition-colors hover:bg-surface-hover">
-        <button type="button" onClick={() => toggleGroup(group.groupId)} aria-expanded={expanded}
-          className="flex min-h-[44px] min-w-0 flex-1 items-center gap-2 py-1 pl-4 text-left text-body">
-          <ChevronRight aria-hidden className={cx('h-4 w-4 shrink-0 text-fg-faint transition-transform', expanded && 'rotate-90')} />
-          <Truncate className="flex-1 text-fg">{group.title}</Truncate>
-          <span className="count-badge shrink-0">{group.items.length} items</span>
-          <MetaLine as="span" items={totals} className="hidden shrink-0 text-meta tabular-nums text-fg-muted @[40rem]:inline" />
-          {/* Collapsed, the totals line below already starts with the kcal. */}
-          {expanded && <span className="shrink-0 text-meta tabular-nums text-fg-muted @[40rem]:hidden">{group.calories} kcal</span>}
-        </button>
-        <IconButton label={`Remove the whole meal (${group.items.length} items)`} className="text-fg-faint hover:!text-danger"
-          onClick={() => void remove.run(group.items.map(m => m.id), { title: `Remove the whole meal (${group.items.length} items)?`, done: `Removed ${group.items.length} items` })}><X /></IconButton>
+        <div className="@[40rem]:hidden">
+          <div className="flex items-center gap-1 pl-3 pr-2 text-body">{nameBtn}{menu}{delBtn}</div>
+          <MetaLine items={totals} className="-mt-1.5 pb-2 pl-9 pr-4 text-meta tabular-nums text-fg-muted" />
         </div>
-        {!expanded && <MetaLine items={totals} className="-mt-1 pb-2 pl-10 pr-4 text-meta tabular-nums text-fg-muted @[40rem]:hidden" />}
+        <div className={cx(MACRO_GRID, 'pl-3 pr-2 text-body')}>
+          {nameBtn}
+          <span className={num}>{group.amount}</span>
+          <span className={cx(num, 'font-medium text-fg-2')}>{group.calories}</span>
+          <span className={num}>{group.protein_g > 0 ? `${group.protein_g}g` : ''}</span>
+          <span className={num}>{group.carbs_g > 0 ? `${group.carbs_g}g` : ''}</span>
+          <span className={num}>{group.fat_g > 0 ? `${group.fat_g}g` : ''}</span>
+          <span className={num}>{group.fiber_g > 0 ? `${group.fiber_g}g` : ''}</span>
+          <span className="grid place-items-center">{menu}</span>
+          {delBtn}
+        </div>
         {expanded && (
           <ul className="divide-y divide-line border-t border-line">
-            {group.items.map(m => mealLine(m, true))}
+            {group.items.map(m => mealLine(m, group))}
           </ul>
         )}
       </li>
     )
   }
-
 
   return (
     // Placed by PageBoard (foodBoards.ts): the totals rail on the left, the meal slots in main.
@@ -298,7 +319,7 @@ export function FoodTodayTab({ date }: { date: string }) {
                     <span className="text-right">Fiber</span>
                     <span /><span />
                   </li>
-                  {groupDayMeals(meals).map(row => row.kind === 'group' ? groupHeaderLine(row) : mealLine(row.meal, false))}
+                  {groupDayMeals(meals).map(row => row.kind === 'group' ? dishLine(row, slot) : mealLine(row.meal))}
                 </ul>
               ) : (
                 <div className="flex items-center pr-2">
