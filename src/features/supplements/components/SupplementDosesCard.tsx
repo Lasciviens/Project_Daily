@@ -10,7 +10,6 @@ import type { DayMeal } from '../../daily/api/dayNutritionApi'
 import {
   usePauseSupplement, useSkipDose, useSnoozeDose, useSupplementDoses, useSupplementStock, useTakeDoses, useUnskipDose,
 } from '../hooks/useSupplements'
-import { useDoseLink } from '../hooks/useDoseLink'
 import { dueDoses, formatAmount, isPaused, resumePause, type Dose } from '../supplementDoses'
 import { DoseLine, type DoseActions } from './DoseLine'
 
@@ -32,7 +31,7 @@ export interface SupplementDosesCardProps {
  * "Kreatin 5 g · 08:00 · due 2 h ago [Take] [Skip] ⋯" / "taken 08:12" — then
  * the slot's other diary lines, Take all due, refill warnings, paused
  * schedules and the schedules with no dose that day. Mounted in place of the
- * supplement slot; a reminder's tap (`?dose=…`) opens the dose sheet here.
+ * supplement slot; a reminder's tap (`?dose=…`) opens the dose sheet from the Food page (`useDoseLink`).
  */
 export function SupplementDosesCard({ date, meals, renderRows, emptyActions }: SupplementDosesCardProps) {
   const modal = useEntityModal()
@@ -44,7 +43,6 @@ export function SupplementDosesCard({ date, meals, renderRows, emptyActions }: S
   const snooze = useSnoozeDose()
   const pause = usePauseSupplement()
   const remove = useRemoveFoodLogEntries()
-  useDoseLink()
 
   const fromDoses = new Set(doses.map(d => d.entryId).filter(Boolean))
   const others = meals.filter(m => !fromDoses.has(m.id))
