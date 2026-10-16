@@ -11,13 +11,14 @@
 //      Once main is wide enough for the week and the tasks to sit side by
 //      side (`homeBoardFor`), main became ~600px tall against ~1,150px of
 //      transit + six tiles, and news could only start under that: a hole in
-//      the middle (owner, 08.10.2026). There the board is two rows: brief +
-//      week | tasks beside transit + a large weather tile, only the side
-//      column filling (`fill`: the weather tile ends where the tasks end; a
-//      tall transit never stretches the week and the tasks); then one glance row on the same tracks — money, watched, books
-//      and games under the week and the tasks, a large training tile under
-//      the weather (owner, 14.10.2026). A 1280px laptop stacks the week and
-//      the tasks and keeps all six tiles beside them.
+//      the middle (owner, 08.10.2026). There the board lays out in ROWS whose
+//      cards share a top and a bottom (owner, 16.10.2026: "Ends where the
+//      other ends, starts where the other one starts"): brief | transit, then
+//      week | tasks | a large weather tile; then one glance row on the same
+//      tracks — money, watched, books and games under the week and the tasks,
+//      a large training tile under the weather (owner, 14.10.2026). A 1280px
+//      laptop stacks the week and the tasks and keeps all six tiles beside
+//      them.
 //   3  1920 — full widgets: weather/transit/currency/games, then training,
 //      media and books.
 //   4  2450 — weather/transit/currency, training/media, books/games.
@@ -54,15 +55,21 @@ export const HOME_BOARD: BoardLayouts<HomeSection> = {
 }
 
 /**
- * Step 2 once the week and the tasks sit side by side: two rows. Only the side
- * column fills (the weather tile ends where the tasks end, owner 14.10.2026);
- * main keeps its own height, so the week and the tasks never stretch when
- * transit is tall. The glance row starts under both, on the same tracks.
+ * Step 2 once the week and the tasks sit side by side: board rows, so cards
+ * line up through the grid, never through their content heights. Row 1 the
+ * brief | transit, row 2 the week | the tasks (`pair`) | the large weather
+ * tile: each card stretches to its row's tallest. As two column stacks
+ * (brief → pair | transit → weather) they lined up only when transit happened
+ * to be as tall as the brief (owner, 16.10.2026). Then the glance row on the
+ * same tracks, then news.
  */
 export const HOME_BOARD_SPLIT: BoardLayouts<HomeSection> = {
   ...HOME_BOARD,
   2: {
-    columns: [WIDE_MAIN, { stack: ['transit', 'weatherTile'], fill: true }],
+    rows: [
+      [['brief'], ['transit']],
+      [['pair'], ['weatherTile']],
+    ],
     bottom: ['glanceRow', 'news'],
     main: HOME_MAIN,
   },

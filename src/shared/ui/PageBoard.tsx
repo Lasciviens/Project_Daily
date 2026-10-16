@@ -16,9 +16,11 @@ import { PageStepContext, usePageStep } from './usePageStep'
 //  content or on its neighbours' heights. `lead` puts side tracks BEFORE the
 //  main track — a rail on the left (a calendar, a day's totals, an add form)
 //  beside the collection it drives. A section that can be empty goes in the
-//  last track, so an empty track is never left between two cards. `fill`
-//  columns end on one line (their last section grows), so a band below them
-//  starts flush under all of them.
+//  last track, so an empty track is never left between two cards. Cards that
+//  must line up across tracks go in `rows` instead: one grid row each, whose
+//  cells stretch to the row's tallest (the last section grows), so they share
+//  a top and a bottom whatever their content — the grid does it, nothing is
+//  measured.
 //
 //  Moving a section to another column at a step change remounts it (it loses
 //  local state such as an open row). Phones never cross a step; on desktop
@@ -38,6 +40,13 @@ export interface PageBoardProps<K extends string> {
 }
 
 const STACK = 'flex min-w-0 flex-col'
+/** A row's cell: as tall as the row's tallest, its last section grown to the end. */
+const ROW_CELL = 'gap-4 self-stretch [&>:last-child]:grow'
+
+/** Inline so any span works without a safelist. */
+function spanStyle(span: number): CSSProperties | undefined {
+  return span > 1 ? { gridColumn: `span ${span} / span ${span}` } : undefined
+}
 
 function Stack<K extends string>({ keys, sections, className, style }: {
   keys: readonly K[]; sections: Record<K, ReactNode>; className?: string; style?: CSSProperties
@@ -91,6 +100,7 @@ function StickyStack<K extends string>({ keys, sections, className, style }: {
  *     1: ['brief', 'tasks', 'news'],
  *     2: { columns: [['brief', 'tasks'], ['news']] },
  *     3: { columns: [{ stack: ['brief'], span: 2 }, { stack: ['news'], sticky: true }], bottom: ['tasks'] },
+ *     4: { rows: [[{ stack: ['brief'], span: 3 }, ['news']], [{ stack: ['tasks'], span: 4 }]] },
  *   }}
  * />
  * ```
@@ -108,18 +118,12 @@ export function PageBoard<K extends string>({ sections, layout, stackClassName, 
         {resolved.top.length > 0 && <Stack keys={resolved.top} sections={sections} className="col-span-full gap-4" />}
         {resolved.columns.map((c, i) => {
           const Column = c.sticky ? StickyStack : Stack
-          return (
-            <Column
-              key={i}
-              keys={c.stack}
-              sections={sections}
-              // `fill`: as tall as the tallest column, the last section grown to the end.
-              className={cx('gap-4', c.fill && 'self-stretch [&>:last-child]:grow')}
-              // Inline so any span works without a safelist.
-              style={c.span > 1 ? { gridColumn: `span ${c.span} / span ${c.span}` } : undefined}
-            />
-          )
+          return <Column key={i} keys={c.stack} sections={sections} className="gap-4" style={spanStyle(c.span)} />
         })}
+        {/* Each row's spans cover every track, so auto-placement starts each row on a new grid row. */}
+        {resolved.rows.map((row, r) => row.map((c, i) => (
+          <Stack key={`${r}-${i}`} keys={c.stack} sections={sections} className={ROW_CELL} style={spanStyle(c.span)} />
+        )))}
         {resolved.bottom.length > 0 && <Stack keys={resolved.bottom} sections={sections} className="col-span-full gap-4" />}
       </div>
     )
