@@ -65,27 +65,43 @@ function toSchedule(r: Record<string, unknown>): SupplementSchedule {
     refill_days: num(r.refill_days, 7),
     created_at: String(r.created_at ?? ''),
     updated_at: String(r.updated_at ?? ''),
+    // The linked recipe's portion word (157), when the read carried it.
+    ...(r.recipe !== undefined ? { portion_label: strOrNull((r.recipe as { serving_label?: unknown } | null)?.serving_label) } : {}),
   }
+}
+
+// A schedule with its recipe's portion word (recipes.serving_label, 157).
+// Before 157 the embed fails (42703): the read and the write's answer run
+// again without it, and a recipe's dose says "portion". The fallback can go
+// once 157 has run everywhere.
+const COLUMNS = '*, recipe:recipes(serving_label)'
+function isMissingPortion(e: unknown): boolean {
+  const x = e as { code?: string; message?: string }
+  return (x?.code === '42703' || x?.code === 'PGRST204' || x?.code === 'PGRST200') && /serving_label/i.test(x?.message ?? '')
+}
+async function withPortion<R extends { error: unknown }>(run: (columns: string) => PromiseLike<R>): Promise<R> {
+  const first = await run(COLUMNS)
+  return first.error && isMissingPortion(first.error) ? run('*') : first
 }
 
 /** The account's schedules, oldest first; [] before migration 160. */
 export async function fetchSupplementSchedules(): Promise<SupplementSchedule[]> {
-  const { data, error } = await supabase.from('supplement_schedules').select('*').order('created_at', { ascending: true })
+  const { data, error } = await withPortion(cols => supabase.from('supplement_schedules').select(cols).order('created_at', { ascending: true }))
   if (error) {
     if (isMissingTable(error)) return []
     throw error
   }
-  return ((data ?? []) as Record<string, unknown>[]).map(toSchedule)
+  return ((data ?? []) as unknown as Record<string, unknown>[]).map(toSchedule)
 }
 
 /** One schedule by id (the popup's source of truth), or null. */
 export async function fetchSupplementSchedule(id: string): Promise<SupplementSchedule | null> {
-  const { data, error } = await supabase.from('supplement_schedules').select('*').eq('id', id).maybeSingle()
+  const { data, error } = await withPortion(cols => supabase.from('supplement_schedules').select(cols).eq('id', id).maybeSingle())
   if (error) {
     if (isMissingTable(error)) return null
     throw error
   }
-  return data ? toSchedule(data as Record<string, unknown>) : null
+  return data ? toSchedule(data as unknown as Record<string, unknown>) : null
 }
 
 /** What a save writes (supplement_schedules' own columns). */
@@ -120,22 +136,22 @@ export interface SupplementScheduleInput {
 /** Creates a schedule, or saves one (`id`); answers the stored row. */
 export async function saveSupplementSchedule(input: SupplementScheduleInput, id?: string): Promise<SupplementSchedule> {
   const user = await requireUser()
-  const q = id
-    ? supabase.from('supplement_schedules').update(input).eq('id', id).eq('user_id', user.id).select('*').single()
-    : supabase.from('supplement_schedules').insert({ ...input, user_id: user.id }).select('*').single()
-  const { data, error } = await q
+  // A failed answer rolls the write back too, so the retry writes once.
+  const { data, error } = await withPortion(cols => (id
+    ? supabase.from('supplement_schedules').update(input).eq('id', id).eq('user_id', user.id).select(cols).single()
+    : supabase.from('supplement_schedules').insert({ ...input, user_id: user.id }).select(cols).single()))
   if (error) throw writeError(error)
-  return toSchedule(data as Record<string, unknown>)
+  return toSchedule(data as unknown as Record<string, unknown>)
 }
 
 /** Pause from a day (until a day, or until resumed: null), or resume (both null). */
 export async function setSupplementPause(id: string, pausedFrom: string | null, pausedUntil: string | null): Promise<SupplementSchedule> {
   const user = await requireUser()
-  const { data, error } = await supabase.from('supplement_schedules')
+  const { data, error } = await withPortion(cols => supabase.from('supplement_schedules')
     .update({ paused_from: pausedFrom, paused_until: pausedUntil })
-    .eq('id', id).eq('user_id', user.id).select('*').single()
+    .eq('id', id).eq('user_id', user.id).select(cols).single())
   if (error) throw writeError(error)
-  return toSchedule(data as Record<string, unknown>)
+  return toSchedule(data as unknown as Record<string, unknown>)
 }
 
 function toTaken(r: Record<string, unknown>): TakenDose {

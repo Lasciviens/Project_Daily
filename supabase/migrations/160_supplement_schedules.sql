@@ -352,17 +352,33 @@ create trigger trg_food_log_supplement_dose_check
 
 -- ── E. The doses ────────────────────────────────────────────────────────────
 
--- "5 g", "2 capsules", "1 portion" (supplementDoses.doseLabel): a recipe's
--- portions, and a count unit (supplementDoses.COUNT_UNITS) plural unless 1.
-create or replace function public.supplement_dose_label(p_amount numeric, p_unit text)
+-- The diary's plural (foodAmount.plural): one or less stays one ("½ portion"),
+-- "glass" → "glasses", "berry" → "berries", else + s.
+create or replace function public.supplement_plural(p_word text, p_n numeric)
+returns text
+language sql
+immutable
+set search_path = ''
+as $$
+  select case when p_n > 0 and p_n <= 1 then p_word
+              when p_word ~* '(s|x|z|ch|sh)$' then p_word || 'es'
+              when p_word ~* '[^aeiou]y$' then left(p_word, -1) || 'ies'
+              else p_word || 's' end
+$$;
+
+-- "5 g", "2 capsules", "0.5 capsule", "3 pieces" (supplementDoses.doseLabel):
+-- a recipe's dose counts its portion word (157's serving_label, else
+-- "portion"); a count unit (supplementDoses.COUNT_UNITS) and a portion word
+-- are plural above one.
+create or replace function public.supplement_dose_label(p_amount numeric, p_unit text, p_portion text default null)
 returns text
 language sql
 immutable
 set search_path = ''
 as $$
   select trim_scale(round(p_amount, 2))::text || ' ' ||
-         case when p_unit = 'serving' then case when p_amount = 1 then 'portion' else 'portions' end
-              when p_unit in ('capsule', 'tablet', 'softgel', 'scoop', 'drop', 'piece', 'sachet') and p_amount <> 1 then p_unit || 's'
+         case when p_unit = 'serving' then public.supplement_plural(coalesce(nullif(btrim(p_portion), ''), 'portion'), p_amount)
+              when p_unit in ('capsule', 'tablet', 'softgel', 'scoop', 'drop', 'piece', 'sachet') then public.supplement_plural(p_unit, p_amount)
               else p_unit end
 $$;
 
@@ -388,6 +404,13 @@ $$;
 --   missed   a past day, neither
 --   upcoming later today, or a later day
 --   due      today, its time has come (snoozed or not)
+-- A line or a skip at a dose's own time is that dose's. One at a time the
+-- schedule no longer has (its times were changed after it was taken or
+-- skipped) goes to the day's doses that have neither, in time order — so
+-- moving 08:00 to 07:30 after taking it keeps the day taken (no reminders)
+-- and the history whole; one left over belongs to no dose and stays an
+-- ordinary diary line (supplementDoses.resolveDay). A snooze and the
+-- reminder bookkeeping belong to the exact time only.
 -- Security invoker: a signed-in caller sees only its own rows.
 create or replace function public.supplement_doses(p_user uuid, p_from date, p_to date, p_now timestamptz default now())
 returns table (schedule_id uuid, title text, dose_label text, dose_date date, dose_time time, status text,
@@ -402,28 +425,67 @@ as $$
       from generate_series(p_from::timestamp, least(p_to, p_from + 400)::timestamp, interval '1 day') d
   ),
   doses as (
-    select s.id, s.title, public.supplement_dose_label(s.dose_amount, s.dose_unit) as label, d.day, t.t as at
+    select s.id, s.title, public.supplement_dose_label(s.dose_amount, s.dose_unit, r.serving_label) as label, d.day, t.t as at
       from public.supplement_schedules s
+      left join public.recipes r on r.id = s.recipe_id
       cross join days d
       cross join lateral unnest(s.times) as t(t)
      where s.user_id = p_user and public.supplement_schedule_on(s, d.day)
+  ),
+  -- What was recorded: each time's first eaten line, and each time's skip.
+  lines as (
+    select distinct on (f.supplement_schedule_id, f.date, f.dose_time)
+           f.supplement_schedule_id as sid, f.date as day, f.dose_time as at, f.id, f.created_at
+      from public.food_log_entries f
+     where f.user_id = p_user and f.supplement_schedule_id is not null and f.dose_time is not null and f.status = 'eaten'
+       and f.date between p_from and least(p_to, p_from + 400)
+     order by f.supplement_schedule_id, f.date, f.dose_time, f.created_at, f.id
+  ),
+  skips as (
+    select k.schedule_id as sid, k.dose_date as day, k.dose_time as at, k.skipped_at
+      from public.supplement_dose_state k
+     where k.user_id = p_user and k.skipped_at is not null and k.dose_date between p_from and least(p_to, p_from + 400)
+  ),
+  recorded as (
+    select coalesce(l.sid, k.sid) as sid, coalesce(l.day, k.day) as day, coalesce(l.at, k.at) as at,
+           l.id as line_id, l.created_at as line_at, case when l.id is null then k.skipped_at end as skipped_at
+      from lines l
+      full join skips k on k.sid = l.sid and k.day = l.day and k.at = l.at
+  ),
+  own as (
+    select x.id, x.title, x.label, x.day, x.at, r.line_id, r.line_at, r.skipped_at
+      from doses x
+      left join recorded r on r.sid = x.id and r.day = x.day and r.at = x.at
+  ),
+  free as (
+    select o.id, o.day, o.at, row_number() over (partition by o.id, o.day order by o.at) as n
+      from own o
+     where o.line_id is null and o.skipped_at is null
+  ),
+  orphans as (
+    select r.sid, r.day, r.line_id, r.line_at, r.skipped_at, row_number() over (partition by r.sid, r.day order by r.at) as n
+      from recorded r
+     where not exists (select 1 from doses x where x.id = r.sid and x.day = r.day and x.at = r.at)
+  ),
+  resolved as (
+    select o.id, o.title, o.label, o.day, o.at,
+           coalesce(o.line_id, p.line_id) as line_id, coalesce(o.line_at, p.line_at) as line_at,
+           coalesce(o.skipped_at, p.skipped_at) as skipped_at
+      from own o
+      left join free f on f.id = o.id and f.day = o.day and f.at = o.at
+      left join orphans p on p.sid = o.id and p.day = o.day and p.n = f.n
   )
-  select x.id, x.title, x.label, x.day, x.at,
-         case when e.id is not null then 'taken'
-              when st.skipped_at is not null then 'skipped'
-              when x.day < c.local::date then 'missed'
-              when x.day > c.local::date or x.at > c.local::time then 'upcoming'
+  select z.id, z.title, z.label, z.day, z.at,
+         case when z.line_id is not null then 'taken'
+              when z.skipped_at is not null then 'skipped'
+              when z.day < c.local::date then 'missed'
+              when z.day > c.local::date or z.at > c.local::time then 'upcoming'
               else 'due' end,
-         e.id, e.created_at, st.snoozed_until, st.last_reminded_at, coalesce(st.reminders_sent, 0)
-    from doses x
+         z.line_id, z.line_at, st.snoozed_until, st.last_reminded_at, coalesce(st.reminders_sent, 0)
+    from resolved z
     cross join clock c
-    left join lateral (
-      select f.id, f.created_at from public.food_log_entries f
-       where f.supplement_schedule_id = x.id and f.date = x.day and f.dose_time = x.at and f.status = 'eaten'
-       order by f.created_at, f.id limit 1
-    ) e on true
-    left join public.supplement_dose_state st on st.schedule_id = x.id and st.dose_date = x.day and st.dose_time = x.at
-   order by x.day, x.at, x.title, x.id
+    left join public.supplement_dose_state st on st.schedule_id = z.id and st.dose_date = z.day and st.dose_time = z.at
+   order by z.day, z.at, z.title, z.id
 $$;
 
 -- The doses whose push is due at p_now, for every account the owner lock
@@ -570,12 +632,47 @@ begin
 end;
 $$;
 
--- Which dose a phone "log_supplement" takes (phone-gateway): the schedule
--- named p_schedule, or the one whose name the logged title starts with
--- (lower case, letters and digits, whole words: "Kreatin 5 g" is Kreatin's,
--- "Omega 3 2 capsules" Omega 3's — never Omega 6's, and "Vitamin" alone is
--- nobody's); then today's earliest open dose that is due, else the next one
--- today. Nothing when no dose is open (the gateway then logs a plain line).
+-- How well a logged title names a supplement (phone-gateway's log_supplement;
+-- 0 = not at all). Both are read as words (lower case, letters and digits).
+-- 1000 + n: the title starts with the whole name ("Kreatin 5 g" ↔
+-- "Kreatin"). n: the title's name part — its words before the first one that
+-- starts with a digit (the amount; the first word always counts) — begins the
+-- name ("Kreatin 5 g" ↔ "Kreatin monohydrat, Bodylab"; "Omega-3 2 capsules"
+-- shares 2 words with "Omega-3 fish oil", 1 with "Omega-6"). "Vitamin D3" is
+-- not "Vitamin D", "Protein shake" not "Protein bar".
+create or replace function public.supplement_log_rank(p_given text, p_name text)
+returns integer
+language plpgsql
+immutable
+set search_path = ''
+as $$
+declare
+  g     text[] := regexp_split_to_array(btrim(regexp_replace(lower(coalesce(p_given, '')), '[^[:alnum:]]+', ' ', 'g')), ' ');
+  n     text[] := regexp_split_to_array(btrim(regexp_replace(lower(coalesce(p_name, '')), '[^[:alnum:]]+', ' ', 'g')), ' ');
+  k     integer := 0;
+  named integer;
+begin
+  if g[1] = '' or n[1] = '' then return 0; end if;
+  while k < least(cardinality(g), cardinality(n)) and g[k + 1] = n[k + 1] loop
+    k := k + 1;
+  end loop;
+  if k = 0 then return 0; end if;
+  if k = cardinality(n) then return 1000 + k; end if;
+  named := cardinality(g);
+  for i in 2 .. cardinality(g) loop
+    if g[i] ~ '^[0-9]' then named := i - 1; exit; end if;
+  end loop;
+  return case when k >= named then k else 0 end;
+end;
+$$;
+
+-- Which dose a phone "log_supplement" takes: among the schedules with a dose
+-- still open today, the one named p_schedule, or the one the logged title
+-- names best (supplement_log_rank over its own name, its linked food's and
+-- its linked recipe's — so a schedule named after a long product name still
+-- answers to "Kreatin 5 g"); two named equally well = none. Then its earliest
+-- open dose that is due, else its next one today. Nothing (the gateway then
+-- logs a plain line as before) when no schedule matches or no dose is open.
 create or replace function public.supplement_dose_for_log(p_user uuid, p_title text, p_schedule uuid default null,
                                                           p_now timestamptz default now())
 returns table (schedule_id uuid, title text, dose_label text, dose_date date, dose_time time)
@@ -583,25 +680,31 @@ language sql
 stable
 set search_path = ''
 as $$
-  with fold as (
-    select btrim(regexp_replace(lower(coalesce(p_title, '')), '[^[:alnum:]]+', ' ', 'g')) as given
-  ), named as (
-    select s.id, btrim(regexp_replace(lower(s.title), '[^[:alnum:]]+', ' ', 'g')) as name
+  with todo as (
+    select d.* from public.supplement_doses(p_user, (p_now at time zone 'Europe/Oslo')::date, (p_now at time zone 'Europe/Oslo')::date, p_now) d
+     where d.status in ('due', 'upcoming')
+  ), ranked as (
+    select s.id,
+           case when p_schedule is not null then case when s.id = p_schedule then 1 else 0 end
+                else greatest(public.supplement_log_rank(p_title, s.title), public.supplement_log_rank(p_title, l.name),
+                              public.supplement_log_rank(p_title, r.title)) end as rank
       from public.supplement_schedules s
-     where s.user_id = p_user
-  ), picked as (
-    select n.id from named n, fold f
-     where case when p_schedule is not null then n.id = p_schedule
-                else n.name <> '' and (f.given = n.name or f.given like n.name || ' %') end
+      left join public.recipe_ingredient_library l on l.id = s.library_ingredient_id
+      left join public.recipes r on r.id = s.recipe_id
+     where s.user_id = p_user and s.id in (select t.schedule_id from todo t)
+  ), best as (
+    select r.id from ranked r where r.rank > 0 and r.rank = (select max(x.rank) from ranked x)
   )
-  select d.schedule_id, d.title, d.dose_label, d.dose_date, d.dose_time
-    from public.supplement_doses(p_user, (p_now at time zone 'Europe/Oslo')::date, (p_now at time zone 'Europe/Oslo')::date, p_now) d
-   where d.schedule_id in (select id from picked) and d.status in ('due', 'upcoming')
-   order by (d.status <> 'due'), d.dose_time, d.title, d.schedule_id
+  select t.schedule_id, t.title, t.dose_label, t.dose_date, t.dose_time
+    from todo t
+   where (select count(*) from best) = 1 and t.schedule_id = (select b.id from best b)
+   order by (t.status <> 'due'), t.dose_time, t.title, t.schedule_id
    limit 1
 $$;
 
-revoke all on function public.supplement_dose_label(numeric, text) from public, anon;
+revoke all on function public.supplement_plural(text, numeric) from public, anon;
+revoke all on function public.supplement_dose_label(numeric, text, text) from public, anon;
+revoke all on function public.supplement_log_rank(text, text) from public, anon;
 revoke all on function public.supplement_schedule_on(public.supplement_schedules, date) from public, anon;
 revoke all on function public.supplement_doses(uuid, date, date, timestamptz) from public, anon;
 revoke all on function public.supplement_doses_due(timestamptz) from public, anon, authenticated;
@@ -611,7 +714,9 @@ revoke all on function public.supplement_dose_for_log(uuid, text, uuid, timestam
 revoke all on function public.supplement_schedules_tidy() from public, anon;
 revoke all on function public.supplement_dose_state_check() from public, anon;
 revoke all on function public.food_log_supplement_dose_check() from public, anon;
-grant execute on function public.supplement_dose_label(numeric, text) to authenticated, service_role;
+grant execute on function public.supplement_plural(text, numeric) to authenticated, service_role;
+grant execute on function public.supplement_dose_label(numeric, text, text) to authenticated, service_role;
+grant execute on function public.supplement_log_rank(text, text) to authenticated, service_role;
 grant execute on function public.supplement_schedule_on(public.supplement_schedules, date) to authenticated, service_role;
 grant execute on function public.supplement_doses(uuid, date, date, timestamptz) to authenticated, service_role;
 grant execute on function public.supplement_doses_due(timestamptz) to service_role;

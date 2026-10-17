@@ -97,7 +97,7 @@ begin
 end;
 $$;
 
--- The food tables (053 / 057 / 061 / 087) with the columns the diary line touches
+-- The food tables (053 / 057 / 061 / 087 / 157) with the columns the diary line touches
 create table public.recipe_ingredient_library (
   id            uuid primary key default gen_random_uuid(),
   user_id       uuid not null default auth.uid() references auth.users(id) on delete cascade,
@@ -113,6 +113,7 @@ create table public.recipes (
   title     text not null,
   servings  integer not null default 1,
   category  text,
+  serving_label text,   -- 157: one portion's word ("piece"); null = "portion"
   calories  numeric, protein_g numeric, carbs_g numeric, fat_g numeric, fiber_g numeric, sugar_g numeric
 );
 create table public.food_log_entries (

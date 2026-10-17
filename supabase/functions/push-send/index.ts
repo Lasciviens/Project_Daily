@@ -145,7 +145,7 @@ export function doseLink(date: string, scheduleId?: string | null, time?: string
 }
 
 /** The push for the doses due now, or null when none is. */
-export function supplementReminder(doses: readonly ReminderDose[]): { title: string; body: string; url: string; tag: string } | null {
+export function supplementReminder(doses: readonly ReminderDose[]): { title: string; body: string; url: string; tag: string; renotify: true } | null {
   if (doses.length === 0) return null
   const at = (d: ReminderDose) => String(d.dose_time).slice(0, 5)
   const what = (d: ReminderDose) => `${d.title} ${d.dose_label}`
@@ -156,6 +156,7 @@ export function supplementReminder(doses: readonly ReminderDose[]): { title: str
       body: 'Tap to take it, skip it or snooze it.',
       url: doseLink(d.dose_date, d.schedule_id, at(d)),
       tag: 'supplement-reminder',
+      renotify: true,
     }
   }
   return {
@@ -163,6 +164,7 @@ export function supplementReminder(doses: readonly ReminderDose[]): { title: str
     body: doses.map(d => `${what(d)} (${at(d)})`).join(' · '),
     url: doseLink(doses[0].dose_date),
     tag: 'supplement-reminder',
+    renotify: true,
   }
 }
 // </supplement-reminders>

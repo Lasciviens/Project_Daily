@@ -17,4 +17,4 @@ Background: `docs/features/iphone.md`; the gateway contract: `docs/iphone-exampl
 - `import_body_composition` validates numbers only, refuses a conflicting re-send, and never touches `hevy_body_measurements`/`health_metrics`.
 - Every Web Push must show a visible notification (iOS forbids silent pushes).
 - Dates the gateway logs are Europe/Oslo days, never UTC.
-- Supplement reminders (160): one push per job run with the `supplement-reminder` tag; iOS shows no buttons on a web push, so its tap opens the dose sheet (`?dose=…`) — the text and link live in `supplementReminder.ts`, copied verbatim into `push-send` (`verify-supplement-doses`).
+- Supplement reminders (160): one push per job run with the `supplement-reminder` tag and `renotify` (push-sw passes both on; iOS support for renotify unconfirmed); iOS shows no buttons on a web push, so its tap opens the dose sheet (`?dose=…`) — the text and link live in `supplementReminder.ts`, copied verbatim into `push-send` (`verify-supplement-doses`).

@@ -59,6 +59,9 @@ if (!/owner_lock_apply\('public\.supplement_schedules'\)/.test(sql) || !/owner_l
     staticFail.push(`app_undo_bookkeeping keeps the earlier entries and adds supplement_schedules.stock_set_at (lost: ${lost.join('; ') || '—'})`)
   }
 }
+if (!/run: node scripts\/verify-db-supplement-schedules\.mjs\n\s+env:\n\s+DEPLOY_TEST_DB_URL: /.test(readFileSync(join(root, '.github/workflows/pr-check.yml'), 'utf8'))) {
+  staticFail.push('the PR check passes its Postgres to this script (DEPLOY_TEST_DB_URL), or 160\'s scenarios skip on every PR')
+}
 if (staticFail.length) {
   console.error(`verify-db-supplement-schedules: migration 160 — ${staticFail.join('; ')}`)
   process.exit(1)
@@ -117,6 +120,7 @@ const COMPARE = [
   { title: 'c12 3 months Wed', times: ['10:00'], days_of_week: [3], repeat_kind: 'interval', repeat_interval: 3, repeat_unit: 'month', effective_from: '2026-01-29' },
   { title: 'c13 two capsules', times: ['07:00', '12:00', '19:00'], effective_from: '2026-10-10', dose_amount: 2, dose_unit: 'capsule', remind_every_min: 30 },
   { title: 'c14 a portion', times: ['21:00'], effective_from: '2026-10-10', dose_amount: 1.5, dose_unit: 'serving', remind: 'once' },
+  { title: 'c15 half a piece', times: ['10:30'], effective_from: '2026-10-10', dose_amount: 0.5, dose_unit: 'piece' },
 ]
 const lit = v => (v == null ? 'null' : `'${v}'`)
 const arr = (a, type) => (a == null ? 'null' : `'{${a.join(',')}}'::${type}[]`)
@@ -130,11 +134,28 @@ const factsSql = `
 insert into public.supplement_schedules (id, user_id, title, dose_amount, dose_unit, times, days_of_week, repeat_kind, repeat_interval,
   repeat_unit, repeat_dates, effective_from, except_dates, ends_on, remind, remind_every_min, remind_until, paused_from, paused_until) values
 ${compareRows};
+-- c14 is a recipe with its own portion word (157): "1.5 cups".
+insert into public.recipes (id, user_id, title, servings, category, serving_label, calories, protein_g)
+  values ('21000000-0000-4000-8000-000000000001', '${U2}', 'Golden milk', 2, 'supplement', 'cup', 90, 3);
+update public.supplement_schedules set recipe_id = '21000000-0000-4000-8000-000000000001' where id = '${sid(14)}';
 insert into public.food_log_entries (user_id, date, meal_slot, custom_title, supplement_schedule_id, dose_time, created_at) values
   ('${U2}', '2026-10-16', 'supplement', 'c01', '${sid(1)}', '08:00', '2026-10-16 08:40+02'),
   ('${U2}', '2026-10-15', 'supplement', 'c02', '${sid(2)}', '07:15', '2026-10-15 07:20+02'),
   ('${U2}', '2026-10-16', 'supplement', 'c07', '${sid(7)}', '18:00', '2026-10-16 17:00+02'),
-  ('${U2}', '2026-10-25', 'supplement', 'c02', '${sid(2)}', '07:15', '2026-10-25 09:00+01');
+  ('${U2}', '2026-10-25', 'supplement', 'c02', '${sid(2)}', '07:15', '2026-10-25 09:00+01'),
+  -- lines at times the schedule no longer has (its times changed after): paired with
+  -- the day's open doses in time order, a line left over pairs with nothing
+  ('${U2}', '2026-10-16', 'supplement', 'c13', '${sid(13)}', '06:45', '2026-10-16 06:50+02'),
+  ('${U2}', '2026-10-15', 'supplement', 'c13', '${sid(13)}', '07:00', '2026-10-15 07:05+02'),
+  ('${U2}', '2026-10-15', 'supplement', 'c13', '${sid(13)}', '08:00', '2026-10-15 08:05+02'),
+  ('${U2}', '2026-10-15', 'supplement', 'c13', '${sid(13)}', '20:00', '2026-10-15 20:05+02'),
+  ('${U2}', '2026-10-14', 'supplement', 'c01', '${sid(1)}', '09:00', '2026-10-14 09:05+02'),
+  ('${U2}', '2026-10-17', 'supplement', 'c09', '${sid(9)}', '23:00', '2026-10-17 23:05+02'),
+  ('${U2}', '2026-10-12', 'supplement', 'c05', '${sid(5)}', '12:00', '2026-10-12 12:05+02'),
+  ('${U2}', '2026-10-25', 'supplement', 'c13', '${sid(13)}', '06:00', '2026-10-25 06:05+01'),
+  ('${U2}', '2026-10-25', 'supplement', 'c13', '${sid(13)}', '23:00', '2026-10-25 23:05+01'),
+  ('${U2}', '2026-10-25', 'supplement', 'c13', '${sid(13)}', '23:30', '2026-10-25 23:35+01'),
+  ('${U2}', '2026-10-25', 'supplement', 'c13', '${sid(13)}', '23:45', '2026-10-25 23:50+01');
 insert into public.supplement_dose_state (user_id, schedule_id, dose_date, dose_time, skipped_at, snoozed_until, last_reminded_at, reminders_sent) values
   ('${U2}', '${sid(1)}', '2026-10-16', '20:00', null, '2026-10-16 20:40+02', '2026-10-16 20:00+02', 1),
   ('${U2}', '${sid(2)}', '2026-10-16', '07:15', null, null, '2026-10-16 07:15+02', 1),
@@ -142,7 +163,10 @@ insert into public.supplement_dose_state (user_id, schedule_id, dose_date, dose_
   ('${U2}', '${sid(10)}', '2026-10-15', '13:00', '2026-10-15 13:05+02', null, null, 0),
   ('${U2}', '${sid(7)}', '2026-10-16', '11:00', null, null, '2026-10-16 11:00+02', 3),
   ('${U2}', '${sid(4)}', '2026-10-25', '21:30', null, '2026-10-25 22:00+01', '2026-10-25 21:30+01', 1),
-  ('${U2}', '${sid(1)}', '2026-10-14', '08:00', '2026-10-14 09:00+02', null, null, 0);
+  ('${U2}', '${sid(1)}', '2026-10-14', '08:00', '2026-10-14 09:00+02', null, null, 0),
+  -- a skip at a time c13 no longer has: it goes to the day's next open dose
+  ('${U2}', '${sid(13)}', '2026-10-16', '11:30', '2026-10-16 11:35+02', null, null, 0),
+  ('${U2}', '${sid(13)}', '2026-10-24', '18:00', '2026-10-24 18:05+02', null, null, 0);
 `
 
 psql(url, ['-c', `create database ${db}`])
@@ -168,7 +192,8 @@ try {
   } else {
     // 2. SQL = supplementDoses.ts on the same rows (a second account's).
     psql(target, ['-c', factsSql])
-    const schedules = json(target, `select json_agg(s order by s.id) from public.supplement_schedules s where user_id = '${U2}'`)
+    const schedules = json(target, `select json_agg(to_jsonb(s) || jsonb_build_object('portion_label', r.serving_label) order by s.id)
+        from public.supplement_schedules s left join public.recipes r on r.id = s.recipe_id where s.user_id = '${U2}'`)
       .map(s => ({ ...s, dose_amount: Number(s.dose_amount) }))
     const facts = {
       taken: json(target, `select coalesce(json_agg(json_build_object('id', id, 'supplement_schedule_id', supplement_schedule_id, 'date', date,

@@ -11,6 +11,10 @@ type Option = { key: string; source: ScheduleSource; name: string; meta: string 
 
 const foodMeta = (f: IngredientLibraryItem) =>
   `${f.calories != null ? Math.round(f.calories) : '–'} kcal / 100 ${f.unit === 'ml' ? 'ml' : 'g'}${f.serving_label ? ` · ${f.serving_label}` : ''}`
+/** The name a link starts with: a product name up to its first comma
+ *  ("Kreatin monohydrat, Bodylab" → "Kreatin monohydrat") — the owner can
+ *  shorten it further; the phone's log_supplement also knows the full name. */
+const shortName = (name: string) => name.split(',')[0].trim() || name.trim()
 const recipeMeta = (r: Recipe) => `Recipe · ${r.calories != null ? Math.round(r.calories) : '–'} kcal a portion`
 
 /**
@@ -47,10 +51,10 @@ export function WhatField({ title, source, foods, recipes, onChange }: {
     if (!key) return
     if (key.startsWith('food:')) {
       const food = foods.find(f => `food:${f.id}` === key)
-      if (food) onChange({ title: food.name, source: { kind: 'food', id: food.id }, food })
+      if (food) onChange({ title: shortName(food.name), source: { kind: 'food', id: food.id }, food })
     } else {
       const recipe = recipes.find(r => `recipe:${r.id}` === key)
-      if (recipe) onChange({ title: recipe.title, source: { kind: 'recipe', id: recipe.id }, recipe })
+      if (recipe) onChange({ title: shortName(recipe.title), source: { kind: 'recipe', id: recipe.id }, recipe })
     }
   }
 

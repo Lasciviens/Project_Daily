@@ -6,7 +6,10 @@
 //
 //  One notification per job run, whatever is due: one dose names itself and
 //  opens its dose sheet; several are listed and open the day's doses. The tag
-//  makes the newest replace the last, so an hourly reminder never piles up.
+//  makes the newest replace the last, so an hourly reminder never piles up,
+//  and `renotify` asks the device to sound and show it again instead of
+//  swapping it in silently (public/push-sw.js passes both on; whether iOS
+//  honours renotify is unconfirmed — docs/features/supplements.md).
 //  iOS shows no buttons on a web push: Take / Skip / Snooze are in the sheet
 //  the tap opens (docs/iphone-web-integration.md).
 // ─────────────────────────────────────────────────────────────────────────────
@@ -28,7 +31,7 @@ export function doseLink(date: string, scheduleId?: string | null, time?: string
 }
 
 /** The push for the doses due now, or null when none is. */
-export function supplementReminder(doses: readonly ReminderDose[]): { title: string; body: string; url: string; tag: string } | null {
+export function supplementReminder(doses: readonly ReminderDose[]): { title: string; body: string; url: string; tag: string; renotify: true } | null {
   if (doses.length === 0) return null
   const at = (d: ReminderDose) => String(d.dose_time).slice(0, 5)
   const what = (d: ReminderDose) => `${d.title} ${d.dose_label}`
@@ -39,6 +42,7 @@ export function supplementReminder(doses: readonly ReminderDose[]): { title: str
       body: 'Tap to take it, skip it or snooze it.',
       url: doseLink(d.dose_date, d.schedule_id, at(d)),
       tag: 'supplement-reminder',
+      renotify: true,
     }
   }
   return {
@@ -46,6 +50,7 @@ export function supplementReminder(doses: readonly ReminderDose[]): { title: str
     body: doses.map(d => `${what(d)} (${at(d)})`).join(' · '),
     url: doseLink(doses[0].dose_date),
     tag: 'supplement-reminder',
+    renotify: true,
   }
 }
 // </supplement-reminders>
