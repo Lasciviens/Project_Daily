@@ -27,6 +27,8 @@ import { groupDayMeals, type DayMeal, type MealGroupRow } from '../../daily/api/
 import { useNewIds } from '../../../shared/hooks/useNewIds'
 import { FOOD_TODAY_BOARD } from '../foodBoards'
 import { DishItemMenu, DishMenu } from './DishActions'
+import { GUESS_MARK, isGuessLine } from '../quickGuess'
+import { SupplementDosesCard } from '../../supplements/components/SupplementDosesCard'
 
 // The wide meal-row grid: name · amount · kcal · protein · carbs · fat · fiber · ✓ · ✕.
 // Shared by the rows and their column-heading row so the two always line up.
@@ -121,9 +123,10 @@ export function FoodTodayTab({ date }: { date: string }) {
       }
     }
     const onDelete = () => void remove.run([meal.id], { title: `Remove “${name}”?`, done: `Removed ${name}` })
+    const approx = isGuessLine(meal.logEntry ?? meal.planEntry, meal.calories) ? GUESS_MARK : ''
     const macroLine = [
       qty,
-      meal.calories > 0 && `${meal.calories} kcal`,
+      meal.calories > 0 && `${approx && `${approx} `}${meal.calories} kcal`,
       meal.protein_g > 0 && `${meal.protein_g}g protein`,
       meal.carbs_g > 0 && `${meal.carbs_g}g carbs`,
       meal.fat_g > 0 && `${meal.fat_g}g fat`,
@@ -156,8 +159,8 @@ export function FoodTodayTab({ date }: { date: string }) {
         {/* Wide card: every macro in its own aligned column */}
         <div className={cx(MACRO_GRID, 'text-body', indent ? 'pl-9 pr-2' : 'pl-4 pr-2')}>
           {nameBtn}
-          <span className={num}>{qty ?? ''}</span>
-          <span className={cx(num, !planned && 'font-medium text-fg-2')}>{meal.calories > 0 ? meal.calories : ''}</span>
+          {qty ? <Truncate className={num}>{qty}</Truncate> : <span />}
+          <span className={cx(num, !planned && 'font-medium text-fg-2')}>{meal.calories > 0 ? `${approx}${meal.calories}` : ''}</span>
           <span className={num}>{meal.protein_g > 0 ? `${meal.protein_g}g` : ''}</span>
           <span className={num}>{meal.carbs_g > 0 ? `${meal.carbs_g}g` : ''}</span>
           <span className={num}>{meal.fat_g > 0 ? `${meal.fat_g}g` : ''}</span>
@@ -176,9 +179,11 @@ export function FoodTodayTab({ date }: { date: string }) {
     const expanded = expandedGroups.has(group.groupId)
     const n = group.items.length
     const num = 'text-meta tabular-nums text-right text-fg-muted'
+    // A dish holding a guessed line has an estimated total.
+    const approx = group.items.some(m => isGuessLine(m.logEntry ?? m.planEntry, m.calories)) ? GUESS_MARK : ''
     const totals = [
       group.amount,
-      `${group.calories} kcal`,
+      `${approx && `${approx} `}${group.calories} kcal`,
       group.protein_g > 0 && `${group.protein_g}g protein`,
       group.carbs_g > 0 && `${group.carbs_g}g carbs`,
       group.fat_g > 0 && `${group.fat_g}g fat`,
@@ -206,7 +211,7 @@ export function FoodTodayTab({ date }: { date: string }) {
         <div className={cx(MACRO_GRID, 'pl-3 pr-2 text-body')}>
           {nameBtn}
           <span className={num}>{group.amount}</span>
-          <span className={cx(num, 'font-medium text-fg-2')}>{group.calories}</span>
+          <span className={cx(num, 'font-medium text-fg-2')}>{approx}{group.calories}</span>
           <span className={num}>{group.protein_g > 0 ? `${group.protein_g}g` : ''}</span>
           <span className={num}>{group.carbs_g > 0 ? `${group.carbs_g}g` : ''}</span>
           <span className={num}>{group.fat_g > 0 ? `${group.fat_g}g` : ''}</span>
@@ -220,6 +225,48 @@ export function FoodTodayTab({ date }: { date: string }) {
           </ul>
         )}
       </li>
+    )
+  }
+
+  // The wide layout's column headings, then the slot's dishes and single rows.
+  function slotRows(meals: DayMeal[], slot: MealSlot) {
+    return (
+      <>
+        <li aria-hidden className={cx(MACRO_GRID, 'pl-4 pr-2 py-1 text-micro font-semibold uppercase tracking-[0.06em] text-fg-faint')}>
+          <span />
+          <span className="text-right">Amount</span>
+          <span className="text-right">kcal</span>
+          <span className="text-right">Protein</span>
+          <span className="text-right">Carbs</span>
+          <span className="text-right">Fat</span>
+          <span className="text-right">Fiber</span>
+          <span /><span />
+        </li>
+        {groupDayMeals(meals).map(row => row.kind === 'group' ? dishLine(row, slot) : mealLine(row.meal))}
+      </>
+    )
+  }
+
+  // An empty slot's quick actions: Log usual, Same as yesterday.
+  function quickActions(slot: MealSlot, label: string) {
+    return (
+      <>
+        {usualForSlot(recent, slot).length > 0 && (
+          <button type="button" disabled={addEntries.isPending}
+            onClick={() => addEntries.mutate(usualForSlot(recent, slot).map(r => recentToEntry(r, date, slot)))}
+            title={usualForSlot(recent, slot).map(r => r.title).join(', ')}
+            aria-label={`Log usual (${usualForSlot(recent, slot).length})`}
+            className="btn-ghost btn-sm shrink-0 !px-2.5 text-accent-600">
+            <span className="@[26rem]:hidden">Usual ({usualForSlot(recent, slot).length})</span><span className="hidden @[26rem]:inline">Log usual ({usualForSlot(recent, slot).length})</span>
+          </button>
+        )}
+        <button type="button" disabled={copyYesterday.isPending}
+          onClick={() => copyYesterday.mutate({ date, filledSlots: new Set(bySlot.keys()), slots: [slot] })}
+          className="btn-ghost btn-sm shrink-0 gap-1 !px-2.5 text-fg-muted" title={`Log the same ${label.toLowerCase()} as the day before`}
+          aria-label={`Same ${label.toLowerCase()} as yesterday`}>
+          <Copy aria-hidden className="h-3.5 w-3.5" /><span className="@[26rem]:hidden">Yesterday</span><span className="hidden @[26rem]:inline">Same as yesterday</span>
+        </button>
+      </>
     )
   }
 
@@ -294,6 +341,13 @@ export function FoodTodayTab({ date }: { date: string }) {
       <div className="grid min-w-0 grid-cols-1 content-start gap-3 stagger-in sm:gap-4">
         {SLOTS.map(({ slot, label, icon }) => {
           const meals = bySlot.get(slot) ?? []
+          // Scheduled doses with Take / Skip / Snooze, then the slot's other lines (160).
+          if (slot === 'supplement') {
+            return (
+              <SupplementDosesCard key={slot} date={date} meals={meals}
+                renderRows={rows => slotRows(rows, slot)} emptyActions={quickActions(slot, label)} />
+            )
+          }
           const kcal = meals.filter(m => m.source === 'log').reduce((a, m) => a + m.calories, 0)
           return (
             <Card key={slot} padded={false} className="@container overflow-hidden">
@@ -308,18 +362,7 @@ export function FoodTodayTab({ date }: { date: string }) {
               </header>
               {meals.length > 0 ? (
                 <ul className="divide-y divide-line">
-                  {/* Column headings for the wide layout's aligned numbers. */}
-                  <li aria-hidden className={cx(MACRO_GRID, 'pl-4 pr-2 py-1 text-micro font-semibold uppercase tracking-[0.06em] text-fg-faint')}>
-                    <span />
-                    <span className="text-right">Amount</span>
-                    <span className="text-right">kcal</span>
-                    <span className="text-right">Protein</span>
-                    <span className="text-right">Carbs</span>
-                    <span className="text-right">Fat</span>
-                    <span className="text-right">Fiber</span>
-                    <span /><span />
-                  </li>
-                  {groupDayMeals(meals).map(row => row.kind === 'group' ? dishLine(row, slot) : mealLine(row.meal))}
+                  {slotRows(meals, slot)}
                 </ul>
               ) : (
                 <div className="flex items-center pr-2">
@@ -328,21 +371,7 @@ export function FoodTodayTab({ date }: { date: string }) {
                     {/* Short labels in a narrow card so the three actions keep one row. */}
                     Add<span className="hidden @[26rem]:inline">&nbsp;something</span>
                   </button>
-                  {usualForSlot(recent, slot).length > 0 && (
-                    <button type="button" disabled={addEntries.isPending}
-                      onClick={() => addEntries.mutate(usualForSlot(recent, slot).map(r => recentToEntry(r, date, slot)))}
-                      title={usualForSlot(recent, slot).map(r => r.title).join(', ')}
-                      aria-label={`Log usual (${usualForSlot(recent, slot).length})`}
-                      className="btn-ghost btn-sm shrink-0 !px-2.5 text-accent-600">
-                      <span className="@[26rem]:hidden">Usual ({usualForSlot(recent, slot).length})</span><span className="hidden @[26rem]:inline">Log usual ({usualForSlot(recent, slot).length})</span>
-                    </button>
-                  )}
-                  <button type="button" disabled={copyYesterday.isPending}
-                    onClick={() => copyYesterday.mutate({ date, filledSlots: new Set(bySlot.keys()), slots: [slot] })}
-                    className="btn-ghost btn-sm shrink-0 gap-1 !px-2.5 text-fg-muted" title={`Log the same ${label.toLowerCase()} as the day before`}
-                    aria-label={`Same ${label.toLowerCase()} as yesterday`}>
-                    <Copy aria-hidden className="h-3.5 w-3.5" /><span className="@[26rem]:hidden">Yesterday</span><span className="hidden @[26rem]:inline">Same as yesterday</span>
-                  </button>
+                  {quickActions(slot, label)}
                 </div>
               )}
             </Card>

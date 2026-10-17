@@ -3,6 +3,8 @@ import { WEIGHT_UNITS } from '../../recipes/api/recipesApi'
 import type { MealPlanEntry } from '../../recipes/types'
 import { eatenTotals, macroAmounts, type MacroAmounts } from '../../recipes/foodIngredients'
 import { groupDishes, type DishGroup, type DishSingle } from '../../recipes/foodDish'
+import { countLabel } from '../../recipes/foodAmount'
+import { COUNT_UNITS } from '../../supplements/supplementDoses'
 
 // A single planned meal for a day, resolved to its display title + macro
 // contribution. Macros are the TOTAL for that entry (recipe per-serving ×
@@ -101,9 +103,22 @@ function isMissingMealGroup(e: unknown): boolean {
   return (x?.code === '42703' || x?.code === 'PGRST204') && /meal_group_id/i.test(x?.message ?? '')
 }
 
+// 157 (a recipe's portion name) and 158 (a dish's own name) ship together.
 function isMissingGroupTitle(e: unknown): boolean {
   const x = e as { code?: string; message?: string }
-  return (x?.code === '42703' || x?.code === 'PGRST204') && /meal_group_title/i.test(x?.message ?? '')
+  return (x?.code === '42703' || x?.code === 'PGRST204') && /meal_group_title|serving_label/i.test(x?.message ?? '')
+}
+
+/**
+ * An eaten line's amount after its name: " · 150g", " · 2×", " · 3 pieces"
+ * (a recipe with its own portion name, 157), " · 2 capsules" (a supplement's
+ * count unit, 160 — glued, it read "2capsule").
+ */
+function eatenQtyLabel(quantity: number | null, unit: string | null, servingLabel?: string | null): string {
+  if (!quantity) return ''
+  if (unit === 'serving') return servingLabel?.trim() ? ` · ${countLabel(quantity, servingLabel.trim())}` : ` · ${quantity}×`
+  if (unit && (COUNT_UNITS as readonly string[]).includes(unit)) return ` · ${countLabel(quantity, unit)}`
+  return ` · ${quantity}${unit ?? 'g'}`
 }
 
 // A unified food_log_entries row (post-061): 'planned' (macros live) or 'eaten'
@@ -121,16 +136,17 @@ interface UnifiedRow {
   calories: number | null; protein_g: number | null; carbs_g: number | null; fat_g: number | null; fiber_g: number | null; sugar_g: number | null
   meal_group_id?: string | null
   meal_group_title?: string | null
-  recipe:     { title: string; calories: number | null; protein_g: number | null; carbs_g: number | null; fat_g: number | null; sugar_g: number | null } | null
+  recipe:     { title: string; serving_label?: string | null; calories: number | null; protein_g: number | null; carbs_g: number | null; fat_g: number | null; sugar_g: number | null } | null
   ingredient: { name: string; unit: string; calories: number | null; protein_g: number | null; carbs_g: number | null; fat_g: number | null; fiber_g: number | null; sugar_g: number | null } | null
 }
 
-const UNIFIED_SELECT_BASE =
-  'id, meal_slot, status, recipe_id, library_ingredient_id, custom_title, quantity, unit, calories, protein_g, carbs_g, fat_g, fiber_g, sugar_g, ' +
-  'recipe:recipes(title, calories, protein_g, carbs_g, fat_g, sugar_g), ' +
-  'ingredient:recipe_ingredient_library(name, unit, calories, protein_g, carbs_g, fat_g, fiber_g, sugar_g)'
+const UNIFIED_COLS =
+  'id, meal_slot, status, recipe_id, library_ingredient_id, custom_title, quantity, unit, calories, protein_g, carbs_g, fat_g, fiber_g, sugar_g, '
+const INGREDIENT_EMBED = 'ingredient:recipe_ingredient_library(name, unit, calories, protein_g, carbs_g, fat_g, fiber_g, sugar_g)'
+const UNIFIED_SELECT_BASE = `${UNIFIED_COLS}recipe:recipes(title, calories, protein_g, carbs_g, fat_g, sugar_g), ${INGREDIENT_EMBED}`
 const UNIFIED_SELECT_087 = `${UNIFIED_SELECT_BASE}, meal_group_id`
-const UNIFIED_SELECT = `${UNIFIED_SELECT_087}, meal_group_title`
+const UNIFIED_SELECT =
+  `${UNIFIED_COLS}recipe:recipes(title, serving_label, calories, protein_g, carbs_g, fat_g, sugar_g), ${INGREDIENT_EMBED}, meal_group_id, meal_group_title`
 
 // Exported for unit-testability (the post-061 path can't be exercised against
 // an un-migrated DB) — a pure row→DayMeal mapper.
@@ -172,7 +188,7 @@ export function unifiedToMeal(row: UnifiedRow, date: string): DayMeal {
   }
   // Eaten → the at-log-time snapshot (stored columns), never recomputed.
   const base = row.ingredient?.name ?? row.recipe?.title ?? row.custom_title ?? '—'
-  const qtyLabel = row.quantity ? ` · ${row.quantity}${row.unit === 'serving' ? '×' : (row.unit ?? 'g')}` : ''
+  const qtyLabel = eatenQtyLabel(row.quantity, row.unit, row.recipe?.serving_label)
   return {
     id: row.id, meal_slot: row.meal_slot, title: `${base}${qtyLabel}`, servings: 1,
     calories: Math.round(row.calories ?? 0), protein_g: Math.round(row.protein_g ?? 0), carbs_g: Math.round(row.carbs_g ?? 0),
@@ -214,7 +230,7 @@ export async function fetchDayNutrition(date: string): Promise<DayNutrition> {
   let uni: { data: unknown; error: unknown } =
     await supabase.from('food_log_entries').select(UNIFIED_SELECT).eq('date', date).order('created_at', { ascending: true })
   if (uni.error && isMissingGroupTitle(uni.error)) {
-    // migration 158 not applied yet — a dish keeps its automatic name.
+    // migrations 157/158 not applied yet — a dish keeps its automatic name, a recipe reads "2×".
     uni = await supabase.from('food_log_entries').select(UNIFIED_SELECT_087).eq('date', date).order('created_at', { ascending: true })
   }
   if (uni.error && isMissingMealGroup(uni.error)) {
@@ -318,7 +334,7 @@ async function legacyTwoTable(date: string): Promise<DayMeal[]> {
 
   const logMeals: DayMeal[] = logRows.map(row => {
     const base = row.ingredient?.name ?? row.recipe?.title ?? row.custom_title ?? '—'
-    const qtyLabel = row.quantity ? ` · ${row.quantity}${row.unit === 'serving' ? '×' : (row.unit ?? 'g')}` : ''
+    const qtyLabel = eatenQtyLabel(row.quantity, row.unit)
     return {
       id: row.id,
       meal_slot: row.meal_slot,

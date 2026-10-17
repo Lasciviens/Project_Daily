@@ -20,13 +20,14 @@ import { amountUnit, ingredientSnapshot, recipeSnapshot } from '../foodBasket'
 import { foodAmountModel, portionWord, recipeAmountModel } from '../foodAmount'
 import { macroAmounts, splitTitleQty } from '../foodIngredients'
 import { proteinDensity } from '../foodLibraryModel'
+import { lineToDraft } from '../quickGuess'
 import { MACRO_COLOR } from '../macroColors'
 import { checkMacroConsistency } from '../macroSanity'
 import { AmountField } from './AmountField'
 import { MacroBar } from './MacroBar'
 import { MacroWarningBadge } from './MacroWarningBadge'
 import { RecipeBatchPanel } from './RecipeBatch'
-import { SaveAsQuickGuess } from './saveAsQuickGuess'
+import { QuickGuessSheet } from './QuickGuessEditor'
 import { DecimalInput, FoodThumb } from './foodLogKit'
 import { SLOT_OPTIONS } from './foodLogUtils'
 import type { EntrySave, FoodLogPatch, LoggedFood } from '../api/foodLogApi'
@@ -302,7 +303,7 @@ export function EditFoodLogModal({ entry, onClose }: Props) {
         </div>
       </div>
       {guessOpen && (
-        <SaveAsQuickGuess line={{ title: title.trim() || entry.title, ...macros }} onClose={() => setGuessOpen(false)} />
+        <QuickGuessSheet item={null} initial={lineToDraft({ title: title.trim() || entry.title, ...macros })} onClose={() => setGuessOpen(false)} />
       )}
     </ModalShell>
   )

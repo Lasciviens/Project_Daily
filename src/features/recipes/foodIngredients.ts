@@ -68,7 +68,7 @@ export function splitTitleQty(title: string): { name: string; qty: string | null
   const idx = title.lastIndexOf(' · ')
   if (idx === -1) return { name: title, qty: null }
   const qty = title.slice(idx + 3)
-  if (!/^\d/.test(qty)) return { name: title, qty: null }
+  if (!/^[\d¼½¾]/.test(qty)) return { name: title, qty: null }  // "½ piece" too
   return { name: title.slice(0, idx), qty }
 }
 

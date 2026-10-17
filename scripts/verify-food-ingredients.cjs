@@ -29,6 +29,8 @@ const line = (title, o, macros) => ({ title, library_ingredient_id: null, recipe
 ok(F.splitTitleQty('Chicken · 150g'), { name: 'Chicken', qty: '150g' }, 'the amount after " · " splits off')
 ok(F.splitTitleQty('Fish · chips'), { name: 'Fish · chips', qty: null }, 'a name with " · " stays whole')
 ok(F.splitTitleQty('A · B · 2×'), { name: 'A · B', qty: '2×' }, 'only the last " · " can be an amount')
+ok(F.splitTitleQty('Køfte · ½ piece'), { name: 'Køfte', qty: '½ piece' }, 'a fraction of a portion is an amount too')
+ok(F.splitTitleQty('Omega-3 · 2 capsules'), { name: 'Omega-3', qty: '2 capsules' }, 'a count with its word is an amount')
 ok(F.macroAmounts({ calories: '12.5', protein_g: null }), M(12.5, 0, 0, 0, 0, 0), 'strings count, nulls are 0')
 const meal = { title: 'Chicken breast · 180g', source: 'log', ...M(191, 41, 0, 3, 0, 0), logEntry: { library_ingredient_id: 'chk', recipe_id: null, custom_title: null, quantity: 180, unit: 'g' } }
 ok(F.diaryLineFromMeal({ ...meal, source: 'plan' }), null, 'a planned row is no diary line')
