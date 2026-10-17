@@ -19,6 +19,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { addDaysIso, isIsoDay, occursOn, occurrencesBetween, type RepeatRule } from '../daily/recurrence'
+import { plural } from '../recipes/foodAmount'
 
 export type RemindMode = 'off' | 'once' | 'until_taken'
 export type DoseStatus = 'taken' | 'skipped' | 'due' | 'upcoming' | 'missed'
@@ -50,6 +51,9 @@ export interface SupplementSchedule extends RepeatRule {
   refill_days:           number
   created_at:            string
   updated_at:            string
+  /** A recipe's portion word (recipes.serving_label, 157), read with the
+   *  schedule — "piece" makes a dose "3 pieces". Not a column of its own. */
+  portion_label?:        string | null
 }
 
 /** A taken dose: its eaten diary line. */
@@ -130,11 +134,13 @@ export function formatAmount(n: number): string {
 /** Units counted in pieces: "1 capsule", "2 capsules" (160's supplement_dose_label has the same list). */
 export const COUNT_UNITS = ['capsule', 'tablet', 'softgel', 'scoop', 'drop', 'piece', 'sachet'] as const
 
-/** "5 g", "2 capsules", "1 portion" — 160's supplement_dose_label. */
-export function doseLabel(amount: number, unit: string): string {
-  const one = Number(amount) === 1
-  if (unit === 'serving') return `${formatAmount(amount)} ${one ? 'portion' : 'portions'}`
-  if ((COUNT_UNITS as readonly string[]).includes(unit) && !one) return `${formatAmount(amount)} ${unit}s`
+/** "5 g", "2 capsules", "0.5 capsule", "3 pieces" — 160's supplement_dose_label.
+ *  A recipe's dose counts its portion word (157's serving_label, else
+ *  "portion"); a count unit and a portion word are plural above one, the
+ *  diary's own rule (foodAmount.plural). */
+export function doseLabel(amount: number, unit: string, portionLabel?: string | null): string {
+  if (unit === 'serving') return `${formatAmount(amount)} ${plural(portionLabel?.trim() || 'portion', Number(amount))}`
+  if ((COUNT_UNITS as readonly string[]).includes(unit)) return `${formatAmount(amount)} ${plural(unit, Number(amount))}`
   return `${formatAmount(amount)} ${unit}`
 }
 
@@ -164,25 +170,57 @@ export function scheduleOn(s: SupplementSchedule, day: string): boolean {
 }
 
 const keyOf = (scheduleId: string, date: string, time: string) => `${scheduleId}|${date}|${hhmm(time)}`
+const dayOf = (scheduleId: string, date: string) => `${scheduleId}|${date}`
 
-/** The first taken line of each dose (a dose has at most one; the oldest wins). */
-function takenByKey(taken: readonly TakenDose[]): Map<string, TakenDose> {
-  const out = new Map<string, TakenDose>()
-  const sorted = [...taken].sort((a, b) => (a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : a.id < b.id ? -1 : 1))
-  for (const t of sorted) {
-    const k = keyOf(t.supplement_schedule_id, t.date, t.dose_time)
-    if (!out.has(k)) out.set(k, t)
+/** A schedule's day as it was recorded: the first taken line of each time
+ *  (the oldest wins) and each time's skip. */
+interface RecordedDay { lines: Map<string, TakenDose>; skips: Map<string, DoseState> }
+
+function recordedDays(facts: DoseFacts): Map<string, RecordedDay> {
+  const out = new Map<string, RecordedDay>()
+  const day = (sid: string, date: string) => {
+    const k = dayOf(sid, date)
+    let d = out.get(k)
+    if (!d) out.set(k, (d = { lines: new Map(), skips: new Map() }))
+    return d
   }
+  const sorted = [...facts.taken].sort((a, b) => (a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : a.id < b.id ? -1 : 1))
+  for (const t of sorted) {
+    const d = day(t.supplement_schedule_id, t.date)
+    if (!d.lines.has(hhmm(t.dose_time))) d.lines.set(hhmm(t.dose_time), t)
+  }
+  for (const s of facts.states) if (s.skipped_at) day(s.schedule_id, s.dose_date).skips.set(hhmm(s.dose_time), s)
   return out
 }
 
-function statesByKey(states: readonly DoseState[]): Map<string, DoseState> {
-  return new Map(states.map(s => [keyOf(s.schedule_id, s.dose_date, s.dose_time), s]))
+/** Which taken line or skip each of a day's doses has. A line or skip at a
+ *  dose's own time is that dose's. One at a time the schedule no longer has
+ *  (its times changed after it was taken or skipped) goes to the day's doses
+ *  that have neither, in time order — so moving 08:00 to 07:30 after taking
+ *  it keeps today taken and the past days' history. Left over: no dose (the
+ *  line stays an ordinary diary line). 160's supplement_doses does the same. */
+export function resolveDay(times: readonly string[], rec: RecordedDay | undefined): Map<string, { line?: TakenDose; skip?: DoseState }> {
+  const out = new Map<string, { line?: TakenDose; skip?: DoseState }>()
+  const free: string[] = []
+  for (const t of times) {
+    const line = rec?.lines.get(t), skip = rec?.skips.get(t)
+    if (line || skip) out.set(t, { line, skip: line ? undefined : skip })
+    else free.push(t)
+  }
+  if (!rec) return out
+  const own = new Set(times)
+  const orphans = [...new Set([...rec.lines.keys(), ...rec.skips.keys()])].filter(t => !own.has(t)).sort()
+  orphans.forEach((t, i) => {
+    if (i >= free.length) return
+    const line = rec.lines.get(t)
+    out.set(free[i], line ? { line } : { skip: rec.skips.get(t) })
+  })
+  return out
 }
 
-function statusOf(date: string, time: string, taken: TakenDose | undefined, state: DoseState | undefined, now: LocalNow): DoseStatus {
+function statusOf(date: string, time: string, taken: TakenDose | undefined, skip: DoseState | undefined, now: LocalNow): DoseStatus {
   if (taken) return 'taken'
-  if (state?.skipped_at) return 'skipped'
+  if (skip?.skipped_at) return 'skipped'
   if (date < now.date) return 'missed'
   if (date > now.date || minutesOf(time) > now.minutes) return 'upcoming'
   return 'due'
@@ -191,20 +229,23 @@ function statusOf(date: string, time: string, taken: TakenDose | undefined, stat
 /** Every dose from `from` to `to` (both included), by day, time, title, id — 160's supplement_doses. */
 export function dosesBetween(schedules: readonly SupplementSchedule[], from: string, to: string, facts: DoseFacts, now: LocalNow): Dose[] {
   if (!isIsoDay(from) || !isIsoDay(to) || to < from) return []
-  const taken = takenByKey(facts.taken)
-  const states = statesByKey(facts.states)
+  const recorded = recordedDays(facts)
+  // A snooze and the reminder bookkeeping belong to the exact time only.
+  const states = new Map(facts.states.map(s => [keyOf(s.schedule_id, s.dose_date, s.dose_time), s]))
   const out: Dose[] = []
   for (let day = from; day <= to; day = addDaysIso(day, 1)) {
     for (const s of schedules) {
       if (!scheduleOn(s, day)) continue
-      for (const t of new Set(s.times.map(hhmm))) {
+      const times = [...new Set(s.times.map(hhmm))].sort()
+      const resolved = resolveDay(times, recorded.get(dayOf(s.id, day)))
+      for (const t of times) {
         const k = keyOf(s.id, day, t)
-        const tk = taken.get(k)
+        const r = resolved.get(t)
         const st = states.get(k)
         out.push({
-          key: k, scheduleId: s.id, title: s.title, label: doseLabel(s.dose_amount, s.dose_unit), date: day, time: t,
-          status: statusOf(day, t, tk, st, now),
-          entryId: tk?.id ?? null, takenAt: tk?.created_at ?? null,
+          key: k, scheduleId: s.id, title: s.title, label: doseLabel(s.dose_amount, s.dose_unit, s.portion_label), date: day, time: t,
+          status: statusOf(day, t, r?.line, r?.skip, now),
+          entryId: r?.line?.id ?? null, takenAt: r?.line?.created_at ?? null,
           snoozedUntil: st?.snoozed_until ?? null, lastRemindedAt: st?.last_reminded_at ?? null, remindersSent: st?.reminders_sent ?? 0,
         })
       }

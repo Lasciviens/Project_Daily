@@ -20,6 +20,7 @@ import {
 } from '../scheduleForm'
 import { doseLabel, formatAmount, isPaused, resumePause, type RemindMode, type SupplementSchedule } from '../supplementDoses'
 import { WhatField } from './WhatField'
+import { plural, portionWord } from '../../recipes/foodAmount'
 import { TimeChip } from './TimeChip'
 
 const REMIND_OPTIONS: { value: RemindMode; label: string }[] = [
@@ -69,6 +70,9 @@ export function SupplementScheduleSheet({ schedule, title, onClose }: {
   const push = usePushNotifications()
 
   const food = form.source.kind === 'food' ? foods.find(f => f.id === (form.source as { id: string }).id) : undefined
+  const recipe = form.source.kind === 'recipe' ? recipes.find(r => r.id === (form.source as { id: string }).id) : undefined
+  // A recipe's dose counts its own portion word (157), like the diary.
+  const portion = recipe?.serving_label ?? null
   const problem = scheduleProblem(form)
   const amount = Number(form.amount.replace(',', '.'))
   const units = form.source.kind === 'food' ? (food?.unit === 'ml' ? ['ml', 'g'] : ['g', 'ml']) : form.source.kind === 'recipe' ? ['serving'] : CUSTOM_UNITS
@@ -131,7 +135,7 @@ export function SupplementScheduleSheet({ schedule, title, onClose }: {
               className="input input-sm w-16 text-center tabular-nums" aria-label="Dose amount" />
             {units.length > 1
               ? <ChipSelect label="Dose unit" value={form.unit} options={units.map(u => ({ value: u, label: unitLabel(u) }))} onChange={u => set({ unit: u })} />
-              : <span className="text-body text-fg-2">{Number(form.amount) === 1 ? 'portion' : 'portions'}</span>}
+              : <span className="text-body text-fg-2">{plural(portionWord(portion), amount)}</span>}
             {servingHint && <span className="text-meta text-fg-muted">{servingHint}</span>}
             {food?.serving_grams && food.serving_label && amount !== food.serving_grams && (
               <button type="button" onClick={() => set({ amount: String(food.serving_grams) })} className={chipClass('quiet')}>
@@ -233,7 +237,7 @@ export function SupplementScheduleSheet({ schedule, title, onClose }: {
               <div className="flex flex-wrap items-center gap-1.5 text-body text-fg-2">
                 <input id={ids.stock} type="text" inputMode="decimal" value={form.stock} onChange={e => set({ stock: e.target.value })}
                   className="input input-sm w-20 text-center tabular-nums" aria-label="How much is in stock" />
-                <span>{form.unit === 'serving' ? 'portions' : form.unit} · warn</span>
+                <span>{form.source.kind === 'recipe' ? plural(portionWord(portion), 2) : form.unit} · warn</span>
                 <input type="text" inputMode="numeric" value={form.refillDays} onChange={e => set({ refillDays: e.target.value })}
                   className="input input-sm w-12 text-center tabular-nums" aria-label="Warn this many days before it runs out" />
                 <span>days ahead</span>
@@ -277,7 +281,7 @@ export function SupplementScheduleSheet({ schedule, title, onClose }: {
         )}
         {!problem && amount > 0 && (
           <p className="text-meta text-fg-muted">
-            Each dose logs <span className="text-fg-2">{form.title.trim() || 'it'} {doseLabel(amount, form.source.kind === 'recipe' ? 'serving' : form.unit)}</span> in the Supplement slot.
+            Each dose logs <span className="text-fg-2">{form.title.trim() || 'it'} {doseLabel(amount, form.source.kind === 'recipe' ? 'serving' : form.unit, portion)}</span> in the Supplement slot.
           </p>
         )}
         {tried && problem && <p role="alert" className="text-meta text-danger">{problem}</p>}

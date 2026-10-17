@@ -434,8 +434,9 @@ Deno.serve(async (req) => {
     switch (action) {
       // ── Deterministic: log a supplement (default creatine) ──
       // A scheduled supplement (migration 160): the log takes today's open
-      // dose of the schedule it names (`schedule_id`) or whose name the title
-      // starts with — its own diary line, linked to the dose, so the dose
+      // dose of the schedule it names (`schedule_id`) or the one its title
+      // names best — the schedule's own name, its linked food's or recipe's
+      // (160's supplement_log_rank) — its own diary line, linked to the dose, so the dose
       // reads Taken and its reminders stop. No such dose (no schedule, all
       // taken, or before 160): the plain line as before.
       case 'log_supplement': {

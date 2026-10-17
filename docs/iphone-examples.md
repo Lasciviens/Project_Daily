@@ -156,7 +156,7 @@ bottle sticker → **Run Shortcut → Su İç** → turn **OFF "Ask Before Runni
 `POST /functions/v1/phone-gateway`, header `x-phone-secret: <secret>`, JSON body:
 | action | body | returns | AI? |
 |---|---|---|---|
-| `log_supplement` | `{title?, calories?, date?, schedule_id?}` | `{ok, logged, dose?}` — with a supplement schedule (160) whose name `title` starts with (or `schedule_id`), today's open dose is taken (`dose` = its time) instead of a plain line | no |
+| `log_supplement` | `{title?, calories?, date?, schedule_id?}` | `{ok, logged, dose?}` — with a supplement schedule (160) that `title` names — its own name, its linked food's or recipe's ("Kreatin 5 g" ↔ "Kreatin" or "Kreatin monohydrat, Bodylab"), or `schedule_id` — today's open dose is taken (`dose` = its time) instead of a plain line | no |
 | `log_food` | `{title, meal_slot?, calories?, protein_g?, carbs_g?, fat_g?, date?}` | `{ok, logged}` | no |
 | `log_water` | `{amount_ml?, date?}` (default 250 ml; 1–5000 ml, else 400) | `{ok, logged_ml}` | no |
 | `nutrition_today` | `{date?}` | `{ok, kcal, protein_g, water_ml, entries}` | no |

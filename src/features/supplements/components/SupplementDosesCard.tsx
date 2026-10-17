@@ -10,7 +10,7 @@ import type { DayMeal } from '../../daily/api/dayNutritionApi'
 import {
   usePauseSupplement, useSkipDose, useSnoozeDose, useSupplementDoses, useSupplementStock, useTakeDoses, useUnskipDose,
 } from '../hooks/useSupplements'
-import { dueDoses, formatAmount, isPaused, resumePause, type Dose } from '../supplementDoses'
+import { doseLabel, dueDoses, isPaused, resumePause, type Dose } from '../supplementDoses'
 import { DoseLine, type DoseActions } from './DoseLine'
 
 export interface SupplementDosesCardProps {
@@ -124,7 +124,7 @@ export function SupplementDosesCard({ date, meals, renderRows, emptyActions }: S
                 <TriangleAlert aria-hidden className="h-3.5 w-3.5 shrink-0" />
                 <Truncate className="font-medium">Refill {s.title}</Truncate>
                 <MetaLine as="span" className="shrink-0 tabular-nums" items={[
-                  left.left <= 0 ? 'none left' : `${formatAmount(left.left)} ${s.dose_unit === 'serving' ? 'portions' : s.dose_unit} left`,
+                  left.left <= 0 ? 'none left' : `${doseLabel(left.left, s.dose_unit, s.portion_label)} left`,
                   left.days != null && left.left > 0 && `≈ ${left.days} ${left.days === 1 ? 'day' : 'days'}`,
                 ]} />
               </button>

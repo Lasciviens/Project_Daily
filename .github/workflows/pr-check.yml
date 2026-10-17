@@ -203,6 +203,9 @@ jobs:
       # day by day and every 5 minutes over two days).
       - name: Supplement schedules database scenarios
         run: node scripts/verify-db-supplement-schedules.mjs
+        env:
+          DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
+
       # Migrations 157 and 158: a recipe's portion name and its batch (the
       # guards, a start on the server's clock through start_recipe_batch, no
       # macro or diary row touched, 106's triggers still working)

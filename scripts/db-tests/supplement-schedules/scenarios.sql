@@ -246,9 +246,16 @@ select t_ok((select string_agg(distinct to_char(dose_date, 'DD'), ',' order by t
 update public.supplement_schedules set paused_from = null, paused_until = null, ends_on = null where id = t_id('K');
 select t_ok((select dose_label from public.supplement_doses(t_id('u1'), '2026-10-15', '2026-10-15', '2026-10-16 12:00+02') where schedule_id = t_id('R')) = '1 portion'
   and public.supplement_dose_label(2, 'capsule') = '2 capsules' and public.supplement_dose_label(1, 'capsule') = '1 capsule'
+  and public.supplement_dose_label(0.5, 'tablet') = '0.5 tablet'
   and public.supplement_dose_label(2.50, 'g') = '2.5 g' and public.supplement_dose_label(2, 'serving') = '2 portions'
   and public.supplement_dose_label(1000, 'IU') = '1000 IU',
-  'S6 the dose''s label: "1 portion", "2 capsules", "1 capsule", "2.5 g", "1000 IU"');
+  'S6 the dose''s label: "1 portion", "2 capsules", "1 capsule", "0.5 tablet" (one or less stays one), "2.5 g", "1000 IU"');
+update public.recipes set serving_label = 'glass' where id = t_id('recipe');
+select t_ok((select dose_label from public.supplement_doses(t_id('u1'), '2026-10-15', '2026-10-15', '2026-10-16 12:00+02') where schedule_id = t_id('R')) = '1 glass'
+  and public.supplement_dose_label(2, 'serving', 'glass') = '2 glasses' and public.supplement_dose_label(3, 'serving', 'piece') = '3 pieces'
+  and public.supplement_dose_label(2, 'serving', 'berry') = '2 berries' and public.supplement_dose_label(2, 'serving', ' ') = '2 portions',
+  'S6 a recipe''s dose counts its own portion word (157): "1 glass", "2 glasses", "3 pieces", "2 berries" — like the diary');
+update public.recipes set serving_label = null where id = t_id('recipe');
 
 -- ═══ 7. Reminders ══════════════════════════════════════════════════════════
 -- 16.10.2026 (Fri) in Oslo: K 08:00 + 20:00, W 07:30, O 09:00 (once), F 09:00 (off), R not (16 − 1 = 15, odd).
@@ -344,6 +351,27 @@ select t_ok(t_for_log('Vitamin D 1 capsule', '2026-10-17 09:30+02') = 'Vitamin D
 select t_ok(t_for_log('anything', '2026-10-17 09:30+02', t_id('W')) = '-' and t_for_log('anything', '2026-10-14 09:30+02', t_id('O')) = '-'
   and t_for_log('anything', '2026-10-17 09:30+02', t_id('O')) = 'Vitamin D 09:00',
   'S9 a schedule named by id: its open dose; none on a day it has none (Whey on Saturday) or when it is taken');
+-- Mon 19.10.2026: Whey (07:30, weekdays) has an open dose. A schedule is named
+-- after its linked food as well as its own name.
+update public.supplement_schedules set title = 'Morning protein' where id = t_id('W');
+select t_ok(t_for_log('Whey 30 g', '2026-10-19 07:00+02') = 'Morning protein 07:30', 'S9 "Whey 30 g" finds the schedule through its linked food''s name');
+update public.recipe_ingredient_library set name = 'Whey protein isolate, vanilla' where id = t_id('food');
+update public.supplement_schedules set title = 'Whey protein isolate' where id = t_id('W');
+select t_ok(t_for_log('Whey 30 g', '2026-10-19 07:00+02') = 'Whey protein isolate 07:30',
+  'S9 … and a long product name still answers to its first word ("Whey 30 g" ↔ "Whey protein isolate, vanilla")');
+select t_ok(t_for_log('Whey shake', '2026-10-19 07:00+02') = '-', 'S9 … but "Whey shake" is not "Whey protein isolate"');
+update public.supplement_schedules set title = 'Whey' where id = t_id('W');
+update public.recipe_ingredient_library set name = 'Whey' where id = t_id('food');
+-- Two names that start alike: the one sharing more words wins; a tie is nobody's.
+insert into public.supplement_schedules (user_id, title, dose_amount, dose_unit, times, effective_from) values
+  (t_id('u1'), 'Omega-3 fish oil', 2, 'capsule', '{09:00}', '2026-10-01'),
+  (t_id('u1'), 'Omega-6', 1, 'capsule', '{09:00}', '2026-10-01');
+select t_ok(t_for_log('Omega-3 2 capsules', '2026-10-19 09:30+02') = 'Omega-3 fish oil 09:00', 'S9 "Omega-3 2 capsules" is Omega-3''s, not Omega-6''s');
+select t_ok(t_for_log('Omega 2 capsules', '2026-10-19 09:30+02') = '-', 'S9 "Omega 2 capsules" names both equally: nobody''s');
+select t_ok(public.supplement_log_rank('Kreatin 5 g', 'Kreatin') > public.supplement_log_rank('Kreatin 5 g', 'Kreatin monohydrat, Bodylab')
+  and public.supplement_log_rank('Kreatin 5 g', 'Kreatin monohydrat, Bodylab') > 0 and public.supplement_log_rank('Kreatinine', 'Kreatin') = 0,
+  'S9 the whole name beats a first word; another word never matches');
+delete from public.supplement_schedules where title in ('Omega-3 fish oil', 'Omega-6');
 set role authenticated;
 select t_ok(t_err(format($$select * from public.supplement_dose_for_log(%L, 'Kreatin')$$, t_id('u1'))) = '42501'
   and t_err($$select * from public.supplement_doses_due()$$) = '42501'
@@ -364,3 +392,41 @@ select t_ok(exists (select 1 from public.supplement_schedules where id = t_id('K
   and not exists (select 1 from public.food_log_entries where custom_title = 'Kreatin' and supplement_schedule_id is null),
   'S10 Undo brings back the schedule, its states and the links of its diary lines');
 reset role;
+
+-- ═══ 11. Times changed after a dose was taken or skipped ═══════════════════
+-- "Moved" was taken at 08:00 on 16.10 (and skipped at 08:00 on 15.10); then
+-- the owner moves it to 07:30. The day keeps its taken dose (no reminders),
+-- the history its skip; a line at a time with no dose left over stays a line.
+insert into public.supplement_schedules (id, user_id, title, dose_amount, dose_unit, times, effective_from)
+  values ('10000000-0000-4000-8000-000000000009', t_id('u1'), 'Moved', 1, 'tablet', '{08:00}', '2026-10-14');
+insert into public.food_log_entries (id, user_id, date, meal_slot, custom_title, supplement_schedule_id, dose_time, created_at) values
+  ('40000000-0000-4000-8000-000000000001', t_id('u1'), '2026-10-16', 'supplement', 'Moved', '10000000-0000-4000-8000-000000000009', '08:00', '2026-10-16 08:05+02');
+insert into public.supplement_dose_state (user_id, schedule_id, dose_date, dose_time, skipped_at)
+  values (t_id('u1'), '10000000-0000-4000-8000-000000000009', '2026-10-15', '08:00', '2026-10-15 08:30+02');
+update public.supplement_schedules set times = '{07:30}' where title = 'Moved';
+create or replace function public.t_moved(p_day date, p_now timestamptz) returns text language sql stable as $$
+  select coalesce(string_agg(to_char(d.dose_time, 'HH24:MI') || ' ' || d.status || coalesce(' ' || right(d.entry_id::text, 2), ''), ', ' order by d.dose_time), '-')
+    from public.supplement_doses(t_id('u1'), p_day, p_day, p_now) d where d.title = 'Moved'
+$$;
+select t_ok(t_moved('2026-10-16', '2026-10-16 09:00+02') = '07:30 taken 01', 'S11 moved to 07:30 after taking it at 08:00: today''s dose reads taken, by that line');
+select t_ok(position('Moved' in t_due('2026-10-16 09:00+02')) = 0 and position('Moved' in t_due('2026-10-16 21:00+02')) = 0,
+  'S11 … so no reminder comes for it');
+select t_ok(t_moved('2026-10-15', '2026-10-16 09:00+02') = '07:30 skipped' and t_moved('2026-10-14', '2026-10-16 09:00+02') = '07:30 missed',
+  'S11 the history keeps the skip (15.10) and the miss (14.10)');
+select t_ok(t_for_log('Moved', '2026-10-16 09:00+02') = '-', 'S11 the phone finds no open dose to take again');
+-- two times now, two lines at old times: paired in time order; one dose more than lines stays open
+insert into public.food_log_entries (id, user_id, date, meal_slot, custom_title, supplement_schedule_id, dose_time, created_at) values
+  ('40000000-0000-4000-8000-000000000002', t_id('u1'), '2026-10-16', 'supplement', 'Moved', '10000000-0000-4000-8000-000000000009', '21:00', '2026-10-16 21:05+02');
+update public.supplement_schedules set times = '{07:30,12:00,20:00}' where title = 'Moved';
+select t_ok(t_moved('2026-10-16', '2026-10-16 23:00+02') = '07:30 taken 01, 12:00 taken 02, 20:00 due',
+  'S11 lines at 08:00 and 21:00 go to 07:30 and 12:00 (time order); 20:00 has none');
+-- a line at a dose's own time is that dose's; the others share what is left
+insert into public.food_log_entries (id, user_id, date, meal_slot, custom_title, supplement_schedule_id, dose_time, created_at) values
+  ('40000000-0000-4000-8000-000000000003', t_id('u1'), '2026-10-16', 'supplement', 'Moved', '10000000-0000-4000-8000-000000000009', '07:30', '2026-10-16 07:40+02');
+select t_ok(t_moved('2026-10-16', '2026-10-16 23:00+02') = '07:30 taken 03, 12:00 taken 01, 20:00 taken 02',
+  'S11 the 07:30 line is 07:30''s; 08:00 and 21:00 go to 12:00 and 20:00');
+update public.supplement_schedules set times = '{07:30}' where title = 'Moved';
+select t_ok(t_moved('2026-10-16', '2026-10-16 23:00+02') = '07:30 taken 03'
+  and (select count(*) from public.food_log_entries where supplement_schedule_id = '10000000-0000-4000-8000-000000000009' and date = '2026-10-16') = 3,
+  'S11 one time left: the lines left over belong to no dose and stay in the diary');
+
