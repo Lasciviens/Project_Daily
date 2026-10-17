@@ -44,7 +44,7 @@ export function DescribeGuessSheet({ initialText = '', date, slot, onClose }: { 
       const e = await describe.mutateAsync(text)
       setDraft({ ...EMPTY_DRAFT, name: e.title || text.trim().slice(0, 60), portion: e.portion, kcal: e.kcal, protein: e.protein, carbs: e.carbs, fat: e.fat, sugar: e.sugar })
       setAssumed(e.assumptions)
-    } catch { /* the hook reports it; the sheet shows it below */ }
+    } catch { /* the hook reports it (one toast, shown over this sheet) */ }
   }
 
   function submit() {
@@ -95,7 +95,6 @@ export function DescribeGuessSheet({ initialText = '', date, slot, onClose }: { 
           <textarea id={textId} value={text} onChange={e => { setText(e.target.value); setProblem(null) }} rows={2} maxLength={500} autoFocus={!initialText}
             placeholder="e.g. two slices of pepperoni pizza and a 0.5 L cola" className="input min-h-[3.5rem] w-full resize-y py-2" />
         </div>
-        {describe.isError && !describe.isPending && <p role="alert" className="text-meta text-danger">{describe.error.message}</p>}
         {draft && (
           <>
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">

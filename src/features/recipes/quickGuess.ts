@@ -464,8 +464,12 @@ export const GUESS_MARK = '≈'
  * A guessed diary line: a one-off line (no library food, no recipe) with
  * calories — a quick guess, a Quick add, an AI estimate. The same lines
  * "your recent guesses" read; nothing is stored to say so. An unknown source
- * (null) is not a guess.
+ * (null) is not a guess, nor a scheduled supplement's dose (160: its values
+ * are the schedule's).
  */
-export function isGuessLine(src: { library_ingredient_id?: string | null; recipe_id?: string | null } | null | undefined, calories: number | null | undefined): boolean {
-  return !!src && !src.library_ingredient_id && !src.recipe_id && calories != null && calories > 0
+export function isGuessLine(
+  src: { library_ingredient_id?: string | null; recipe_id?: string | null; supplement_schedule_id?: string | null } | null | undefined,
+  calories: number | null | undefined,
+): boolean {
+  return !!src && !src.library_ingredient_id && !src.recipe_id && !src.supplement_schedule_id && calories != null && calories > 0
 }

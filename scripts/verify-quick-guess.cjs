@@ -250,14 +250,15 @@ check('not an object → no estimate', [Q.readGuessEstimate(null), Q.readGuessEs
 
 console.log('the diary\'s "≈"')
 check('the mark', Q.GUESS_MARK, '≈')
-check('a one-off line with kcal is a guess; a food, a recipe, no kcal or an unknown source is not', [
+check('a one-off line with kcal is a guess; a food, a recipe, a scheduled dose, no kcal or an unknown source is not', [
   Q.isGuessLine({ library_ingredient_id: null, recipe_id: null }, 620),
   Q.isGuessLine({ library_ingredient_id: 'lib-1', recipe_id: null }, 160),
   Q.isGuessLine({ library_ingredient_id: null, recipe_id: 'rec-1' }, 610),
   Q.isGuessLine({ library_ingredient_id: null, recipe_id: null }, 0),
   Q.isGuessLine({ library_ingredient_id: null, recipe_id: null }, null),
   Q.isGuessLine(undefined, 620),
-], [true, false, false, false, false, false])
+  Q.isGuessLine({ library_ingredient_id: null, recipe_id: null, supplement_schedule_id: 'sch-1' }, 5),
+], [true, false, false, false, false, false, false])
 
 console.log(`\n${passed} passed, ${failed} failed`)
 process.exit(failed ? 1 : 0)

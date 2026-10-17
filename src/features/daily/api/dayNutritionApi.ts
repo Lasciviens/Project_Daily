@@ -38,6 +38,8 @@ export interface DayMeal {
     custom_title:          string | null
     quantity:              number | null
     unit:                  string | null
+    /** A scheduled supplement's dose (160): its values are the schedule's, never a guess. */
+    supplement_schedule_id?: string | null
   }
   /** Ties several individually-logged rows together as one compact diary
       line ("As meal" in FoodLogModal) — null for a normal single-item or
@@ -103,10 +105,11 @@ function isMissingMealGroup(e: unknown): boolean {
   return (x?.code === '42703' || x?.code === 'PGRST204') && /meal_group_id/i.test(x?.message ?? '')
 }
 
-// 157 (a recipe's portion name) and 158 (a dish's own name) ship together.
+// 157 (a recipe's portion name), 158 (a dish's own name) and 160 (a dose's
+// schedule) ship together.
 function isMissingGroupTitle(e: unknown): boolean {
   const x = e as { code?: string; message?: string }
-  return (x?.code === '42703' || x?.code === 'PGRST204') && /meal_group_title|serving_label/i.test(x?.message ?? '')
+  return (x?.code === '42703' || x?.code === 'PGRST204') && /meal_group_title|serving_label|supplement_schedule_id/i.test(x?.message ?? '')
 }
 
 /**
@@ -136,6 +139,7 @@ interface UnifiedRow {
   calories: number | null; protein_g: number | null; carbs_g: number | null; fat_g: number | null; fiber_g: number | null; sugar_g: number | null
   meal_group_id?: string | null
   meal_group_title?: string | null
+  supplement_schedule_id?: string | null
   recipe:     { title: string; serving_label?: string | null; calories: number | null; protein_g: number | null; carbs_g: number | null; fat_g: number | null; sugar_g: number | null } | null
   ingredient: { name: string; unit: string; calories: number | null; protein_g: number | null; carbs_g: number | null; fat_g: number | null; fiber_g: number | null; sugar_g: number | null } | null
 }
@@ -146,7 +150,7 @@ const INGREDIENT_EMBED = 'ingredient:recipe_ingredient_library(name, unit, calor
 const UNIFIED_SELECT_BASE = `${UNIFIED_COLS}recipe:recipes(title, calories, protein_g, carbs_g, fat_g, sugar_g), ${INGREDIENT_EMBED}`
 const UNIFIED_SELECT_087 = `${UNIFIED_SELECT_BASE}, meal_group_id`
 const UNIFIED_SELECT =
-  `${UNIFIED_COLS}recipe:recipes(title, serving_label, calories, protein_g, carbs_g, fat_g, sugar_g), ${INGREDIENT_EMBED}, meal_group_id, meal_group_title`
+  `${UNIFIED_COLS}recipe:recipes(title, serving_label, calories, protein_g, carbs_g, fat_g, sugar_g), ${INGREDIENT_EMBED}, meal_group_id, meal_group_title, supplement_schedule_id`
 
 // Exported for unit-testability (the post-061 path can't be exercised against
 // an un-migrated DB) — a pure row→DayMeal mapper.
@@ -198,6 +202,7 @@ export function unifiedToMeal(row: UnifiedRow, date: string): DayMeal {
     logEntry: {
       library_ingredient_id: row.library_ingredient_id, recipe_id: row.recipe_id,
       custom_title: row.custom_title, quantity: row.quantity, unit: row.unit,
+      supplement_schedule_id: row.supplement_schedule_id ?? null,
     },
     meal_group_id: row.meal_group_id ?? null,
     meal_group_title: row.meal_group_title ?? null,
@@ -230,7 +235,7 @@ export async function fetchDayNutrition(date: string): Promise<DayNutrition> {
   let uni: { data: unknown; error: unknown } =
     await supabase.from('food_log_entries').select(UNIFIED_SELECT).eq('date', date).order('created_at', { ascending: true })
   if (uni.error && isMissingGroupTitle(uni.error)) {
-    // migrations 157/158 not applied yet — a dish keeps its automatic name, a recipe reads "2×".
+    // migrations 157/158/160 not applied yet — a dish keeps its automatic name, a recipe reads "2×".
     uni = await supabase.from('food_log_entries').select(UNIFIED_SELECT_087).eq('date', date).order('created_at', { ascending: true })
   }
   if (uni.error && isMissingMealGroup(uni.error)) {
