@@ -79,6 +79,9 @@ export interface FoodLogEntry {
   /** The dish's own name, the same on every row of its group; null = the
       automatic name ("Rice + Chicken"). Migration 158 (absent before it). */
   meal_group_title?:     string | null
+  /** A taken supplement dose's line (160): its schedule and time of day; absent before 160. */
+  supplement_schedule_id?: string | null
+  dose_time?:              string | null
   created_at:            string
 }
 
@@ -203,8 +206,7 @@ export interface RecipeInput {
   is_temp?:      boolean
   /** Migration 157; left out = unchanged. */
   serving_label?: string | null
-  /** A batch starts with the save (the logger's Save meal). */
-  batch_started_at?: string | null
-  batch_servings?:   number | null
+  /** The logger's Save meal starts a batch of this many servings (on the server's clock, 157). */
+  start_batch?:   number | null
   ingredients:   IngredientDraft[]
 }

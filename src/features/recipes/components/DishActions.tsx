@@ -174,7 +174,7 @@ export function DishItemMenu({ entryId, item, dish, date }: { entryId: string; i
   const moveOut = useMoveOutOfDish()
   return (
     <Menu>
-      <MenuButton aria-label={`${item}: more`} title="More" className="icon-btn h-11 w-11 text-fg-muted [&_svg]:h-[18px] [&_svg]:w-[18px]">
+      <MenuButton aria-label={`${item}: more`} title="More" className="icon-btn h-9 w-9 text-fg-muted [&_svg]:h-[18px] [&_svg]:w-[18px]">
         <MoreHorizontal aria-hidden />
       </MenuButton>
       <MenuItems anchor={{ to: 'bottom end', gap: 4, padding: 12 }} className={MENU}>

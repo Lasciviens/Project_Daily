@@ -6,8 +6,8 @@ import { qk, STALE } from '../../../shared/query'
 import { mapRowsInCache } from '../../../shared/query/cachePatch'
 import { fetchRecipes, createRecipe, updateRecipe, incrementTimesCooked, updateRecipeBatch, type RecipeBatchPatch } from '../api/recipesApi'
 import { fetchFoodLogRange, refreshEatenEntries } from '../api/foodLogApi'
-import { batchState, type BatchState } from '../foodAmount'
-import { localDayOf, shiftDateStr } from '../../../shared/utils/dateUtils'
+import { batchState, liveBatchesFrom, type BatchState } from '../foodAmount'
+import { localDayOf, shiftDateStr, todayStr } from '../../../shared/utils/dateUtils'
 import type { RecipeInput, RecipeWithIngredients } from '../types'
 
 export function useRecipes() {
@@ -86,6 +86,33 @@ export function useUpdateRecipeBatch() {
     onSuccess:      row => mapRowsInCache<RecipeWithIngredients>(qc, qk.recipes.all, new Set([row.id]), r => ({ ...r, ...row })),
     invalidates:    ['recipes'],
   })
+}
+
+/**
+ * Every listed recipe's batch (the logger's Saved meals strip): ONE diary read
+ * from the earliest batch still within its 4 days; a batch older than that is
+ * over whatever was eaten, so it needs no rows. Recipes that never had a batch
+ * are left out. A live batch is missing while its read loads.
+ */
+export function useRecipeBatches(recipes: readonly RecipeWithIngredients[]): ReadonlyMap<string, BatchState> {
+  const from = liveBatchesFrom(recipes, new Date())
+  const to = from ? shiftDateStr(todayStr(), 7) : ''
+  const q = useQuery({
+    queryKey: qk.foodLog.range(from ?? '', to),
+    queryFn: () => fetchFoodLogRange(from!, to),
+    enabled: !!from,
+    staleTime: STALE.live,
+  })
+  return useMemo(() => {
+    const now = new Date()
+    const out = new Map<string, BatchState>()
+    for (const r of recipes) {
+      if (!r.batch_started_at) continue
+      const state = batchState(r, q.data ?? [], now)
+      if (state && (state.expired || q.data)) out.set(r.id, state)
+    }
+    return out
+  }, [recipes, q.data])
 }
 
 /**

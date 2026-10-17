@@ -24,7 +24,10 @@ export function useCopyYesterdayMeals() {
     mutationFn: async ({ date, filledSlots, slots }: { date: string; filledSlots: Set<string>; slots?: string[] }) => {
       const yesterday = shiftDateStr(date, -1)
       const prev = await fetchFoodLog(yesterday)
-      const toCopy = prev.filter(e => !filledSlots.has(e.meal_slot) && (!slots || slots.includes(e.meal_slot)))
+      // A taken supplement dose's line (160) is never copied: today's dose stays
+      // due (its own Take writes today's line) and its reminders go on. fetchFoodLog
+      // reads every column, so before 160 the field is simply absent.
+      const toCopy = prev.filter(e => !e.supplement_schedule_id && !filledSlots.has(e.meal_slot) && (!slots || slots.includes(e.meal_slot)))
       // Nothing to copy is not a failure — say so without an error toast.
       if (toCopy.length === 0) { toast.warning('Nothing to copy from yesterday'); return 0 }
       const newGroup = new Map<string, string>()

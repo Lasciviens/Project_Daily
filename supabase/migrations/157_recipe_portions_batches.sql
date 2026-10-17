@@ -10,7 +10,8 @@
 --                  decision 6); the app makes the plural ("3 pieces").
 -- batch_started_at When the batch that is being eaten now was made: the
 --                  logger's Save meal, "I made this", or "New batch" in the
---                  portion sheet set it.
+--                  portion sheet set it, through start_recipe_batch() on the
+--                  server's clock (below).
 -- batch_servings   How many servings that batch made (it may be more or less
 --                  than the recipe's base `servings`: a double batch).
 -- batch_cooked_g   The cooked weight of that batch, once the pot is weighed —
@@ -55,6 +56,27 @@ DO $$ BEGIN
       ADD CONSTRAINT recipes_batch_has_start CHECK (batch_started_at IS NOT NULL OR (batch_servings IS NULL AND batch_cooked_g IS NULL));
   END IF;
 END $$;
+
+-- A batch starts on the SERVER's clock. Leftovers count the diary rows
+-- created since batch_started_at, and created_at is the server's now(): a
+-- start stamped by a phone whose clock runs fast would leave a portion logged
+-- right after "I made this" uncounted. So the app never sends the time; it
+-- calls this (New batch, "I made this" with p_count_cook, Save meal).
+-- SECURITY INVOKER: row level security and the owner lock decide, and the
+-- caller's own recipe only. now() is the transaction's start, so every diary
+-- row written after it is later.
+CREATE OR REPLACE FUNCTION public.start_recipe_batch(
+  p_recipe_id uuid, p_servings numeric, p_cooked_g numeric DEFAULT NULL, p_count_cook boolean DEFAULT false)
+RETURNS TABLE (id uuid, batch_started_at timestamptz, batch_servings numeric, batch_cooked_g numeric, times_cooked integer)
+LANGUAGE sql SECURITY INVOKER SET search_path = public AS $$
+  UPDATE public.recipes r
+     SET batch_started_at = now(), batch_servings = p_servings, batch_cooked_g = p_cooked_g,
+         times_cooked = r.times_cooked + CASE WHEN p_count_cook THEN 1 ELSE 0 END
+   WHERE r.id = p_recipe_id AND r.user_id = (SELECT auth.uid())
+  RETURNING r.id, r.batch_started_at, r.batch_servings, r.batch_cooked_g, r.times_cooked
+$$;
+REVOKE ALL ON FUNCTION public.start_recipe_batch(uuid, numeric, numeric, boolean) FROM public, anon;
+GRANT EXECUTE ON FUNCTION public.start_recipe_batch(uuid, numeric, numeric, boolean) TO authenticated;
 
 COMMENT ON COLUMN public.recipes.serving_label IS
   'What one serving is called ("piece", "slice"); NULL = "portion". The app makes the plural.';

@@ -264,6 +264,29 @@ export function batchState(recipe: RecipeLike & { id?: string }, rows: readonly 
   return { startedAt: recipe.batch_started_at, startDay, servings, cookedG: recipe.batch_cooked_g && recipe.batch_cooked_g > 0 ? recipe.batch_cooked_g : null, eaten, left, expired, active: !expired && left > 0 }
 }
 
+/**
+ * What a saved meal's tile says about its batch: "13 pieces left" while one
+ * is on, "none left" (greyed) once it is eaten up or over; nothing for a
+ * recipe that never had a batch.
+ */
+export function batchNote(b: BatchState | null | undefined, word: string): { text: string; gone: boolean } | null {
+  if (!b) return null
+  return b.active ? { text: `${countLabel(b.left, word)} left`, gone: false } : { text: 'none left', gone: true }
+}
+
+/** The earliest local day of the batches still within BATCH_DAYS (what one diary read must cover), or null. */
+export function liveBatchesFrom(recipes: readonly Pick<RecipeLike, 'batch_started_at'>[], now: Date): string | null {
+  let from: string | null = null
+  for (const r of recipes) {
+    if (!r.batch_started_at) continue
+    const start = new Date(r.batch_started_at)
+    if (Number.isNaN(start.getTime()) || now.getTime() - start.getTime() >= BATCH_DAYS * 86_400_000) continue
+    const day = localDay(start)
+    if (!from || day < from) from = day
+  }
+  return from
+}
+
 export interface BatchBar { eaten: number; this: number; left: number; over: number; total: number }
 
 /** The bar [eaten | this | left | over], in servings; `over` is what this takes beyond what was left. */

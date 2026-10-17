@@ -8,7 +8,7 @@ import { useIngredientLibrary } from '../hooks/useIngredientLibrary'
 import {
   useLogWithUndo, useRecentFoods, useFoodFavorites, useAddFoodFavorite, useRemoveFoodFavorite, useHideRecentFood,
 } from '../hooks/useFoodLog'
-import { useRecipes, useCreateRecipe } from '../hooks/useRecipes'
+import { useRecipes, useCreateRecipe, useRecipeBatches } from '../hooks/useRecipes'
 import { useSaveDishEdit } from '../hooks/useMealGroups'
 import { recentToEntry, type LoggedFood, type RecentFood } from '../api/foodLogApi'
 import { RecipePortionSheet } from './RecipePortionSheet'
@@ -22,7 +22,7 @@ import {
   basketTotals, basketToRecipeInput, isCustomItem, isRecipeItem, itemAmount, itemMacros, itemMissingAmount, itemTitle,
   itemsToEntries, lastGrams, wholePortions, type LogItem,
 } from '../foodBasket'
-import { countLabel, portionWord } from '../foodAmount'
+import { batchNote, countLabel, portionWord } from '../foodAmount'
 import { dishName, rowToItem } from '../foodDish'
 import { cleanServingLabel } from '../api/recipesApi'
 import { useDayNutrition } from '../../daily/hooks/useDayNutrition'
@@ -202,6 +202,8 @@ export function FoodLogModal({ open = true, onClose, date, defaultSlot, defaultQ
     () => (searchText.trim() ? rankMatches(recipes, searchText, r => r.title, 8) : recipes.slice(0, 8)),
     [recipes, searchText],
   )
+  // What is left of each listed saved meal's batch (one diary read).
+  const batches = useRecipeBatches(savedMeals)
   const exactLibraryHit = matches.some(i => i.name.trim().toLowerCase() === q)
   // Quick add leads when the user typed calories or nothing else matched;
   // otherwise it waits under the real matches.
@@ -263,8 +265,7 @@ export function FoodLogModal({ open = true, onClose, date, defaultSlot, defaultQ
       await createRecipe.mutateAsync(basketToRecipeInput(basket, mealName, servingsN, {
         is_temp: !saveToLibrary,
         serving_label: cleanServingLabel(mealPortionName),
-        batch_started_at: new Date().toISOString(),
-        batch_servings: servingsN,
+        start_batch: servingsN,
       }))
       setMealName(''); setMealServings('1'); setMealPortionName(''); setSaveMealOpen(false); setSaveToLibrary(false)
     } catch { return }
@@ -402,16 +403,23 @@ export function FoodLogModal({ open = true, onClose, date, defaultSlot, defaultQ
       {q ? (
         <div className="flex flex-col">
           {quickFirst && !exactLibraryHit && <QuickAddCustom query={query} busy={logFood.isPending} onLog={handleQuickAdd} />}
-          {savedMeals.map(r => (
-            <button key={r.id} type="button" onClick={() => openPortion(r)} className="row row-interactive min-h-[56px] px-1 text-left">
-              <FoodThumb name={r.title} imageUrl={r.image_url} size={40} />
-              <span className="min-w-0 flex-1">
-                <Truncate className="text-body font-medium text-fg">{r.title}</Truncate>
-                <span className="block text-meta text-fg-muted">Saved meal{r.calories != null && ` · ${Math.round(r.calories)} kcal / ${portionWord(r.serving_label)}`}</span>
-              </span>
-              <span className="shrink-0 text-meta font-semibold text-accent-600">Portion</span>
-            </button>
-          ))}
+          {savedMeals.map(r => {
+            const note = batchNote(batches.get(r.id), portionWord(r.serving_label))
+            return (
+              <button key={r.id} type="button" onClick={() => openPortion(r)} className="row row-interactive min-h-[56px] px-1 text-left">
+                <span className={cx('flex min-w-0 flex-1 items-center gap-3', note?.gone && 'opacity-60')}>
+                  <FoodThumb name={r.title} imageUrl={r.image_url} size={40} />
+                  <span className="min-w-0 flex-1">
+                    <Truncate className="text-body font-medium text-fg">{r.title}</Truncate>
+                    <Truncate className="text-meta text-fg-muted tabular-nums">
+                      {['Saved meal', r.calories != null && `${Math.round(r.calories)} kcal / ${portionWord(r.serving_label)}`, note?.text].filter(Boolean).join(' · ')}
+                    </Truncate>
+                  </span>
+                </span>
+                <span className="shrink-0 text-meta font-semibold text-accent-600">Portion</span>
+              </button>
+            )
+          })}
           {pastMatches.map(r => (
             <button key={r.key} type="button" onClick={() => addRecent(r)} className="row row-interactive min-h-[56px] px-1 text-left">
               <FoodThumb name={r.title} size={40} />
@@ -478,18 +486,26 @@ export function FoodLogModal({ open = true, onClose, date, defaultSlot, defaultQ
                   // Hover (desktop) / the ✎ editor (mobile) reveals the meal's
                   // ingredients — a temp meal is one named unit, not N loose rows.
                   const contents = r.ingredients?.map(i => i.name).filter(Boolean).join(', ') || undefined
+                  // What is left of its batch, on the tile (8.3): "13 pieces left";
+                  // a batch eaten up or over is greyed ("none left") — still tappable.
+                  const word = portionWord(r.serving_label)
+                  const note = batchNote(batches.get(r.id), word)
+                  const line = note
+                    ? [note.text, r.calories != null && `${Math.round(r.calories)} kcal`].filter(Boolean).join(' · ')
+                    : [r.calories != null && `${Math.round(r.calories)} kcal`, r.servings > 1 && countLabel(r.servings, word)].filter(Boolean).join(' · ')
                   return (
-                    <div key={r.id} className="relative w-36 shrink-0 snap-start">
+                    <div key={r.id} className="relative w-40 shrink-0 snap-start">
                       <button type="button" onClick={() => openPortion(r)} title={contents}
                         className={cx(
                           'flex h-full w-full flex-col items-start gap-1 rounded-card border p-2.5 text-left transition-colors',
                           portion?.recipe.id === r.id ? 'border-accent-500 bg-accent-50' : 'border-line bg-surface-2 hover:border-line-strong',
+                          note?.gone && 'opacity-60',
                         )}>
                         <FoodThumb name={r.title} imageUrl={r.image_url} size={36} />
                         <Truncate lines={2} className="pr-5 text-meta font-medium leading-tight text-fg">{r.title}</Truncate>
-                        <span className="text-micro normal-case tracking-normal text-fg-muted tabular-nums">
-                          {r.calories != null && `${Math.round(r.calories)} kcal`}{r.servings > 1 && ` · ${countLabel(r.servings, portionWord(r.serving_label))}`}
-                        </span>
+                        <Truncate className={cx('w-full text-micro normal-case tracking-normal tabular-nums', note && !note.gone ? 'font-semibold text-fg-2' : 'text-fg-muted')}>
+                          {line}
+                        </Truncate>
                       </button>
                       {/* A deliberate 24px secondary action on a dense strip (see FoodTile). */}
                       <button type="button" aria-label={`Edit ${r.title}`}
