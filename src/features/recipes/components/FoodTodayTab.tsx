@@ -165,7 +165,7 @@ export function FoodTodayTab({ date }: { date: string }) {
           <span className={num}>{meal.carbs_g > 0 ? `${meal.carbs_g}g` : ''}</span>
           <span className={num}>{meal.fat_g > 0 ? `${meal.fat_g}g` : ''}</span>
           <span className={num}>{meal.fiber_g > 0 ? `${meal.fiber_g}g` : ''}</span>
-          {actionBtn ?? <span />}
+          <span className="grid place-items-center">{actionBtn}</span>
           {delBtn}
         </div>
       </li>

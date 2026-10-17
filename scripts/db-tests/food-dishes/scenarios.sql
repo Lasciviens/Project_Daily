@@ -77,6 +77,34 @@ insert into public.recipes (title, servings) values ('Plain', 2);
 select t_ok((select serving_label is null and batch_started_at is null and batch_servings is null and batch_cooked_g is null
                from public.recipes where title = 'Plain'), 'P3 a recipe without a batch reads NULL everywhere ("portion", no leftovers)');
 
+-- ── 3b. A batch starts on the server's clock (start_recipe_batch) ───────────
+reset role;
+select t_ok(has_function_privilege('authenticated', 'public.start_recipe_batch(uuid,numeric,numeric,boolean)', 'execute')
+              and not has_function_privilege('anon', 'public.start_recipe_batch(uuid,numeric,numeric,boolean)', 'execute'),
+            'B1 the app (authenticated) may start a batch; anon may not');
+set role authenticated;
+do $$
+declare r record;
+begin
+  select * into r from public.start_recipe_batch('20000000-0000-0000-0000-000000000001', 20, 1800, true);
+  perform t_ok(r.batch_started_at = now(), 'B2 the start is the server''s now() — the app never sends a time');
+  perform t_ok(r.batch_servings = 20 and r.batch_cooked_g = 1800, 'B2 the batch size and the pot are stored');
+  perform t_ok(r.times_cooked = 1, 'B2 "I made this" counts the cook in the same write');
+  insert into public.food_log_entries (id, date, meal_slot, recipe_id, quantity, unit)
+  values ('30000000-0000-0000-0000-000000000009', current_date, 'dinner', '20000000-0000-0000-0000-000000000001', 2, 'serving');
+  perform t_ok((select created_at >= r.batch_started_at from public.food_log_entries where id = '30000000-0000-0000-0000-000000000009'),
+               'B2 a portion logged right after counts against the batch (its created_at is not before the start)');
+end $$;
+select t_ok((select count(*) from public.start_recipe_batch('20000000-0000-0000-0000-000000000001', 12)) = 1, 'B3 "New batch" without a pot');
+select t_ok((select batch_servings = 12 and batch_cooked_g is null and times_cooked = 1 from public.recipes where id = '20000000-0000-0000-0000-000000000001'),
+            'B3 the old pot weight is forgotten and the cook count left alone');
+select t_refused($q$select * from public.start_recipe_batch('20000000-0000-0000-0000-000000000001', 0)$q$, 'B4 a batch of 0 servings is refused');
+set test.uid = '00000000-0000-0000-0000-000000000002';
+select t_ok((select count(*) from public.start_recipe_batch('20000000-0000-0000-0000-000000000001', 5)) = 0, 'B5 another account cannot start a batch of this recipe');
+reset test.uid;
+select t_ok((select batch_servings = 12 from public.recipes where id = '20000000-0000-0000-0000-000000000001'), 'B5 … and the batch is untouched');
+delete from public.food_log_entries where id = '30000000-0000-0000-0000-000000000009';
+
 -- ── 4. 158's column, guard and trigger ──────────────────────────────────────
 reset role;
 select t_ok((select data_type || ':' || is_nullable from information_schema.columns

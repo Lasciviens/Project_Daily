@@ -231,6 +231,10 @@ ok(M.portionMacros(foods[0]), null, 'no portion preset → null')
   ok([A.stepValue(u('weight'), 150, 1), A.stepValue(u('weight'), 155, -1), A.stepValue(u('weight'), 10, -1), A.stepValue(u('percent'), 27, 1)], [160, 150, 10, 30],
     'grams by 10, % by 5, never below one step')
 
+  ok([A.batchNote(bs, 'piece'), A.batchNote({ ...bs, active: false, left: 0 }, 'piece'), A.batchNote(null, 'piece')],
+    [{ text: '14 pieces left', gone: false }, { text: 'none left', gone: true }, null], 'the Saved meals tile: "14 pieces left", a batch eaten up or over greyed "none left", nothing without a batch')
+  ok([A.liveBatchesFrom([withBatch, { batch_started_at: '2026-10-12T10:00:00' }, { batch_started_at: null }], now), A.liveBatchesFrom([{ batch_started_at: '2026-10-12T10:00:00' }], now)],
+    ['2026-10-16', null], 'one diary read from the earliest batch still within its 4 days; an older batch needs none')
   ok(A.batchBar({ servings: 20, eaten: 6 }, 3), { eaten: 6, this: 3, left: 11, over: 0, total: 20 }, 'the bar: eaten | this | left')
   ok(A.batchBar({ servings: 20, eaten: 18 }, 4), { eaten: 18, this: 2, left: 0, over: 2, total: 22 }, 'more than left: 2 over (hatched, "2 more than left")')
 

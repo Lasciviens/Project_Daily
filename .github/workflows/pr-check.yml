@@ -204,7 +204,8 @@ jobs:
       - name: Supplement schedules database scenarios
         run: node scripts/verify-db-supplement-schedules.mjs
       # Migrations 157 and 158: a recipe's portion name and its batch (the
-      # guards, no macro or diary row touched, 106's triggers still working)
+      # guards, a start on the server's clock through start_recipe_batch, no
+      # macro or diary row touched, 106's triggers still working)
       # and a dish's name on every row (a row joining a dish takes it, one
       # leaving drops it, a rename, a move, an ungroup and its Undo, a copy,
       # another account's rows never mixed in).

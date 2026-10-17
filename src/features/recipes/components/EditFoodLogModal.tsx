@@ -93,6 +93,8 @@ export function EditFoodLogModal({ entry, onClose }: Props) {
   // its stored values directly (custom-like).
   const kind: 'library' | 'recipe' | 'custom' = lib ? 'library' : recipe ? 'recipe' : 'custom'
 
+  // A taken supplement dose's line (160) keeps its day and slot (see the note below).
+  const isDose = !!entry.supplement_schedule_id
   const [slot, setSlot] = useState<MealSlot>(entry.meal_slot)
   const [day, setDay] = useState(entry.date)
   const startDish: DishChoice = entry.meal_group_id ? `g:${entry.meal_group_id}` : 'none'
@@ -158,7 +160,7 @@ export function EditFoodLogModal({ entry, onClose }: Props) {
   }
 
   async function handleSave() {
-    const patch: FoodLogPatch = { meal_slot: slot, date: day }
+    const patch: FoodLogPatch = isDose ? {} : { meal_slot: slot, date: day }
     let name: string
     if (kind === 'library' && lib) {
       if (!(amount > 0)) { toast.error('Enter an amount'); return }
@@ -179,7 +181,7 @@ export function EditFoodLogModal({ entry, onClose }: Props) {
     const s: EntrySave = { id: entry.id, patch }
     const option = options?.find(o => o.value === dishValue)
     let where = ''
-    if (dishValue !== shownStart) {
+    if (!isDose && dishValue !== shownStart) {
       if (dishValue === 'none') { patch.meal_group_id = null; patch.meal_group_title = null; if (unmoved) where = ' · out of its meal' }
       else if (dishValue.startsWith('g:')) { patch.meal_group_id = dishValue.slice(2); where = ` · in ${option?.title ?? 'the meal'}` }
       else { s.joinRowId = dishValue.slice(2); where = ` · with ${option?.title ?? 'it'}` }
@@ -280,13 +282,21 @@ export function EditFoodLogModal({ entry, onClose }: Props) {
           <span className="shrink-0 text-meta text-fg-muted tabular-nums">sugar {Math.round(nextExact.sugar_g)} g</span>
         </div>
         {recipe && batch && <RecipeBatchPanel recipe={recipe} batch={batch} thisServings={amount} />}
-        {(targets.calories > 0 || targets.protein > 0) && (
+        {/* Only once the picked day's totals are in: before that it would read the whole target as left. */}
+        {dayNut && (targets.calories > 0 || targets.protein > 0) && (
           <p className="text-meta text-fg-muted tabular-nums">
             After this: <span className={cx(kcalLeft < 0 && 'text-danger')}>{left(kcalLeft, ' kcal')}</span> and <span className={cx(protLeft < 0 && 'text-danger')}>{left(protLeft, ' g protein')}</span> {onWhen}
           </p>
         )}
 
-        {/* Where it sits: the meal, the day, the dish. */}
+        {/* Where it sits: the meal, the day, the dish. A taken supplement dose's
+            line stays on its day in Supplement: moving it would reopen that day's
+            dose (and clash with a dose already taken there). */}
+        {isDose ? (
+          <p className="border-t border-line pt-3 text-meta text-fg-muted">
+            A scheduled supplement dose — it stays in Supplement on {formatDate(entry.date)}.
+          </p>
+        ) : (
         <div className="flex flex-wrap items-center gap-x-2.5 gap-y-2 border-t border-line pt-3 text-meta text-fg-muted">
           <span className="flex items-center gap-1.5">Meal
             <ChipSelect label="Meal" value={slot} onChange={setSlot} options={SLOT_OPTIONS.map(o => ({ value: o.id, label: o.label }))} />
@@ -301,6 +311,7 @@ export function EditFoodLogModal({ entry, onClose }: Props) {
             ]} />
           </span>
         </div>
+        )}
       </div>
       {guessOpen && (
         <QuickGuessSheet item={null} initial={lineToDraft({ title: title.trim() || entry.title, ...macros })} onClose={() => setGuessOpen(false)} />
