@@ -2,6 +2,7 @@ import { useState, type InputHTMLAttributes } from 'react'
 import { Listbox, ListboxButton, ListboxOptions, ListboxOption } from '@headlessui/react'
 import { ChevronDown, Minus, Plus, Star, X } from 'lucide-react'
 import { IconButton, Truncate, cx } from '../../../shared/ui'
+import { chipClass } from '../../../shared/components/plan-modal/fieldStyles'
 import { SLOT_OPTIONS, foodEmoji, sanitizeDecimal } from './foodLogUtils'
 import { MacroWarningBadge } from './MacroWarningBadge'
 import { checkMacroConsistency } from '../macroSanity'
@@ -168,6 +169,32 @@ export function BasketRow({ item, onGrams, onRemove, showProtein = false }: {
       <span className="w-[3.25rem] shrink-0 text-right text-meta text-fg-muted tabular-nums sm:w-14">{Math.round(t.kcal)} kcal</span>
       {showProtein && <span className="hidden w-20 shrink-0 text-right text-meta text-fg-muted tabular-nums sm:block">{Math.round(t.protein)} g protein</span>}
       <IconButton label={`Remove ${f.name}`} className="h-9 w-8 shrink-0 text-fg-faint hover:text-danger sm:w-9" onClick={onRemove}><X /></IconButton>
+    </div>
+  )
+}
+
+// A saved meal's portion in the basket ("Køfte · 3 pieces": the amount opens
+// the portion sheet) or a dish's one-off line (no amount — it can only be
+// taken out). Same one-row geometry as BasketRow.
+export function PortionBasketRow({ title, amount, kcal, imageUrl, onAmount, onRemove }: {
+  title: string
+  /** "3 pieces"; omitted for a one-off line. */
+  amount?: string
+  kcal: number
+  imageUrl?: string | null
+  onAmount?: () => void
+  onRemove: () => void
+}) {
+  return (
+    <div className="flex min-h-[48px] items-center gap-1.5 sm:gap-2">
+      <span className="max-sm:hidden"><FoodThumb name={title} imageUrl={imageUrl} size={28} /></span>
+      <Truncate className="min-w-0 flex-1 text-body text-fg">{title}</Truncate>
+      {amount && onAmount && (
+        <button type="button" onClick={onAmount} aria-label={`${title}: ${amount} — change the amount`}
+          className={chipClass('add')}>{amount}</button>
+      )}
+      <span className="min-w-[3.25rem] shrink-0 whitespace-nowrap text-right text-meta text-fg-muted tabular-nums sm:min-w-14">{Math.round(kcal)} kcal</span>
+      <IconButton label={`Remove ${title}`} className="h-9 w-8 shrink-0 text-fg-faint hover:text-danger sm:w-9" onClick={onRemove}><X /></IconButton>
     </div>
   )
 }

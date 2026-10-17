@@ -65,7 +65,9 @@ the iPhone automatically via iCloud. NFC/time automations are set on the iPhone.
 **Attach to the sticker (iPhone):** Shortcuts → **Automation** → **＋** → **NFC** →
 **Scan** the sticker → **Run Shortcut → Log Creatine** → turn **OFF "Ask Before
 Running"**. Stick it on the jar.
-**Test:** tap → the app's Food → Today shows the supplement row.
+**Test:** tap → the app's Food → Today shows the supplement row. With a supplement schedule named
+"Kreatin" (Food → Today → Supplement → Schedule), the tap takes today's open Kreatin dose instead:
+the card reads "taken HH:MM" and its reminders stop (`docs/features/supplements.md`).
 
 ## Example 2 · "Hey Siri, AI'a Sor"  (voice → AI → spoken + Note)
 **Shortcut — name `AI'a Sor`:**
@@ -154,7 +156,7 @@ bottle sticker → **Run Shortcut → Su İç** → turn **OFF "Ask Before Runni
 `POST /functions/v1/phone-gateway`, header `x-phone-secret: <secret>`, JSON body:
 | action | body | returns | AI? |
 |---|---|---|---|
-| `log_supplement` | `{title?, calories?, date?}` | `{ok, logged}` | no |
+| `log_supplement` | `{title?, calories?, date?, schedule_id?}` | `{ok, logged, dose?}` — with a supplement schedule (160) that `title` names — its own name, its linked food's or recipe's ("Kreatin 5 g" ↔ "Kreatin" or "Kreatin monohydrat, Bodylab"), or `schedule_id` — today's open dose is taken (`dose` = its time) instead of a plain line | no |
 | `log_food` | `{title, meal_slot?, calories?, protein_g?, carbs_g?, fat_g?, date?}` | `{ok, logged}` | no |
 | `log_water` | `{amount_ml?, date?}` (default 250 ml; 1–5000 ml, else 400) | `{ok, logged_ml}` | no |
 | `nutrition_today` | `{date?}` | `{ok, kcal, protein_g, water_ml, entries}` | no |

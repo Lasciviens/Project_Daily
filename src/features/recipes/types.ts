@@ -76,6 +76,12 @@ export interface FoodLogEntry {
       line ("As meal" in FoodLogModal) — null for a normal single-item or
       recipe log. Migration 087. */
   meal_group_id:         string | null
+  /** The dish's own name, the same on every row of its group; null = the
+      automatic name ("Rice + Chicken"). Migration 158 (absent before it). */
+  meal_group_title?:     string | null
+  /** A taken supplement dose's line (160): its schedule and time of day; absent before 160. */
+  supplement_schedule_id?: string | null
+  dose_time?:              string | null
   created_at:            string
 }
 
@@ -94,6 +100,7 @@ export interface FoodLogEntryInput {
   fiber_g?:               number | null
   sugar_g?:               number | null
   meal_group_id?:         string | null
+  meal_group_title?:      string | null
 }
 
 export interface RecipeIngredient {
@@ -127,6 +134,13 @@ export interface Recipe {
   times_cooked: number
   category:     FoodCategory | null
   is_temp:      boolean       // saved from the logger as a one-off named meal → hidden from the Library grid
+  /** Migration 157 (absent before it): what one serving is called ("piece";
+      null = "portion"), and the batch being eaten now — leftovers are derived
+      from the diary (foodAmount.batchState), never stored. */
+  serving_label?:    string | null
+  batch_started_at?: string | null
+  batch_servings?:   number | null
+  batch_cooked_g?:   number | null
   created_at:   string
   updated_at:   string
 }
@@ -190,5 +204,9 @@ export interface RecipeInput {
   source_url?:   string | null
   category?:     FoodCategory | null
   is_temp?:      boolean
+  /** Migration 157; left out = unchanged. */
+  serving_label?: string | null
+  /** The logger's Save meal starts a batch of this many servings (on the server's clock, 157). */
+  start_batch?:   number | null
   ingredients:   IngredientDraft[]
 }

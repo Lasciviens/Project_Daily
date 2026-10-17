@@ -2,6 +2,9 @@
 // it to the phone's lock screen even while the PWA is closed. Two callers:
 //   • the pg_cron 'lascis-morning-push' job (x-cron-secret === PUSH_CRON_SECRET,
 //     acts as the single user HEVY_USER_ID) — builds a short morning summary.
+//   • the pg_cron 'lascis-supplement-reminders' job (same secret, migration
+//     160, every 15 minutes and only when one is due) — { trigger: 'supplements' }
+//     sends the supplement doses not taken yet.
 //   • a browser (user JWT) with an explicit { title, body } — ad-hoc send.
 // verify_jwt = false (config.toml): the cron path is a shared secret, not a JWT.
 // Expired/gone subscriptions (404/410) are pruned automatically.
@@ -105,7 +108,80 @@ async function buildMorning(userId: string): Promise<{ title: string; body: stri
       })
       .join('')
   } catch { /* skip */ }
-  return { title: '🌅 Günaydın', body: `${tasksLine}${trLine}${wishLine}` }
+  // Today's supplement doses not taken yet (migration 160; before it the RPC
+  // is missing and the line is left out).
+  let suppLine = ''
+  try {
+    const { data } = await supabase.rpc('supplement_doses', { p_user: userId, p_from: osloToday(), p_to: osloToday() })
+    const open = ((data ?? []) as AnyRecord[]).filter(d => d.status === 'due' || d.status === 'upcoming')
+    if (open.length) {
+      const names = open.slice(0, 3).map(d => `${d.title} ${String(d.dose_time).slice(0, 5)}`).join(', ')
+      suppLine = ` · 💊 ${names}${open.length > 3 ? ` +${open.length - 3}` : ''}`
+    }
+  } catch { /* skip */ }
+  return { title: '🌅 Günaydın', body: `${tasksLine}${trLine}${wishLine}${suppLine}` }
+}
+
+// ── Supplement reminders (migration 160) ───────────────────────────────────
+// The day is Oslo's (the doses' clock), never UTC.
+const osloToday = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Oslo' })
+
+// Hand-mirrored from src/features/supplements/supplementReminder.ts (Deno can't
+// import it; scripts/verify-supplement-doses.cjs compares the two) — change both.
+// <supplement-reminders>
+export interface ReminderDose {
+  schedule_id: string
+  title:       string
+  dose_label:  string
+  dose_date:   string
+  dose_time:   string
+}
+
+/** The address a reminder opens: Food · Today with the dose sheet (one dose, or `due` = the day's open doses). */
+export function doseLink(date: string, scheduleId?: string | null, time?: string | null): string {
+  const q = new URLSearchParams({ dose: scheduleId || 'due', day: date })
+  if (scheduleId && time) q.set('at', time.slice(0, 5))
+  return `#/recipes?${q.toString()}`
+}
+
+/** The push for the doses due now, or null when none is. */
+export function supplementReminder(doses: readonly ReminderDose[]): { title: string; body: string; url: string; tag: string; renotify: true } | null {
+  if (doses.length === 0) return null
+  const at = (d: ReminderDose) => String(d.dose_time).slice(0, 5)
+  const what = (d: ReminderDose) => `${d.title} ${d.dose_label}`
+  if (doses.length === 1) {
+    const d = doses[0]
+    return {
+      title: `💊 ${what(d)} not taken yet (${at(d)})`,
+      body: 'Tap to take it, skip it or snooze it.',
+      url: doseLink(d.dose_date, d.schedule_id, at(d)),
+      tag: 'supplement-reminder',
+      renotify: true,
+    }
+  }
+  return {
+    title: `💊 ${doses.length} supplements not taken yet`,
+    body: doses.map(d => `${what(d)} (${at(d)})`).join(' · '),
+    url: doseLink(doses[0].dose_date),
+    tag: 'supplement-reminder',
+    renotify: true,
+  }
+}
+// </supplement-reminders>
+
+/** The doses whose reminder is due, stamped as reminded by the claim (one run
+ *  at a time), as ONE notification. Missing RPC (before 160) → nothing. */
+async function sendSupplementReminders(userId: string): Promise<{ sent: number; doses: number }> {
+  const { data, error } = await supabase.rpc('supplement_reminders_claim', { p_user: userId })
+  if (error) {
+    console.error('supplement_reminders_claim failed:', error.message)
+    return { sent: 0, doses: 0 }
+  }
+  const doses = (data ?? []) as ReminderDose[]
+  const msg = supplementReminder(doses)
+  if (!msg) return { sent: 0, doses: 0 }
+  const res = await sendToAll(userId, msg)
+  return { sent: res.sent, doses: doses.length }
 }
 
 // ── Release reminders (migration 122) ──────────────────────────────────────
@@ -207,7 +283,8 @@ Deno.serve(async (req) => {
   const cronSecret = Deno.env.get('PUSH_CRON_SECRET')
   const given = req.headers.get('x-cron-secret')
   let userId: string | null = null
-  if (cronSecret && given === cronSecret) {
+  const viaCron = !!cronSecret && given === cronSecret
+  if (viaCron) {
     userId = Deno.env.get('HEVY_USER_ID') ?? null
   } else {
     const authHeader = req.headers.get('authorization')
@@ -220,6 +297,17 @@ Deno.serve(async (req) => {
   if (!userId) return json({ ok: false, error: 'Unauthorized' }, 401)
 
   const body = await req.json().catch(() => ({})) as AnyRecord
+
+  // The supplement reminder job (only the cron: a run stamps what it reminds of).
+  if (body.trigger === 'supplements') {
+    if (!viaCron) return json({ ok: false, error: 'forbidden' }, 403)
+    try {
+      return json({ ok: true, ...(await sendSupplementReminders(userId)) })
+    } catch (e) {
+      return json({ ok: false, error: (e as Error).message }, 500)
+    }
+  }
+
   // url is scope-relative — the service worker prepends registration.scope
   // (…/Project_Daily/), so the hash route resolves under the PWA base.
   const payload = body.trigger === 'morning'

@@ -15,12 +15,13 @@ import { shiftDateStr } from '../../../../shared/utils/dateUtils'
 import { useCopyYesterdayMeals } from '../../hooks/useQuickMeals'
 import { MacroBar } from '../../../recipes/components/MacroBar'
 import { MACRO_COLOR } from '../../../recipes/macroColors'
+import { GUESS_MARK, isGuessLine } from '../../../recipes/quickGuess'
 import { useRecentFoods, useAddFoodLogEntries, useRemoveFoodLogEntries } from '../../../recipes/hooks/useFoodLog'
 import { foldText, parseQuickAdd, sortForSlot, usualForSlot } from '../../../recipes/foodSearch'
 import { useIngredientLibrary } from '../../../recipes/hooks/useIngredientLibrary'
 import { ingredientSnapshot, recentToEntry, type RecentFood } from '../../../recipes/api/foodLogApi'
 import type { MealSlot } from '../../../recipes/types'
-import type { DayMeal } from '../../api/dayNutritionApi'
+import { groupDayMeals, type DayMeal, type MealGroupRow } from '../../api/dayNutritionApi'
 
 const SLOT_COL = 'w-8 @[26rem]:w-[5.75rem]'
 import { useNewIds } from '../../../../shared/hooks/useNewIds'
@@ -123,34 +124,63 @@ function SlotRow({ date, slot, label, icon, isNow, meals, fresh }: {
   )
   const iconBtn = 'grid min-h-[44px] min-w-[40px] shrink-0 place-items-center rounded-control text-fg-muted transition-colors hover:bg-surface-hover'
 
+  const lead = (first: boolean) => (first ? slotLabel : <span className={cx(SLOT_COL, 'shrink-0')} />)
+
+  function mealRow(meal: DayMeal, first: boolean) {
+    return (
+      <div key={meal.id} className={cx('flex min-h-[44px] items-center gap-2', fresh.has(meal.id) && 'motion-row-in')}>
+        {lead(first)}
+        <Truncate className={cx('flex-1', meal.source === 'plan' ? 'italic text-fg-muted' : 'text-fg-2')}>{meal.title}</Truncate>
+        {meal.calories > 0 && <span className="shrink-0 pr-1 text-meta tabular-nums text-fg-muted">{isGuessLine(meal.logEntry ?? meal.planEntry, meal.calories) && `${GUESS_MARK} `}{meal.calories} kcal</span>}
+        {meal.source === 'plan' && meal.planEntry && (
+          <button type="button" onClick={() => eatPlan.mutate(meal.planEntry!)} disabled={eatPlan.isPending}
+            aria-label="Mark eaten" title="I ate this — count it"
+            className={cx(iconBtn, 'hover:text-success disabled:opacity-50')}><Check className="h-4 w-4" aria-hidden /></button>
+        )}
+        <button type="button" onClick={() => edit(meal)} className={cx(iconBtn, 'hover:text-accent-600')}
+          aria-label={meal.source === 'plan' ? 'Edit planned meal' : 'Edit logged food'}>
+          <Pencil className="h-3.5 w-3.5" aria-hidden />
+        </button>
+        {/* Desktop-only: three 44px targets leave too little title room on
+            a 393px phone, and both editors this row opens carry Delete. */}
+        <button
+          type="button"
+          onClick={() => void remove.run([meal.id], { title: `Remove “${meal.title}”?`, done: `Removed ${meal.title}` })}
+          className={cx(iconBtn, 'hidden hover:text-danger sm:grid')}
+          aria-label={`Remove ${meal.title}`}
+        ><X className="h-4 w-4" aria-hidden /></button>
+      </div>
+    )
+  }
+
+  // A dish is one line (Food point 5): its name and item count; ✎ opens Edit meal.
+  function dishRow(row: MealGroupRow, first: boolean) {
+    const n = row.items.length
+    return (
+      <div key={row.groupId} className={cx('flex min-h-[44px] items-center gap-2', row.items.some(m => fresh.has(m.id)) && 'motion-row-in')}>
+        {lead(first)}
+        <Truncate className="flex-1 text-fg-2">{row.title}</Truncate>
+        <span className="count-badge shrink-0" title={`${n} items`}>{n}<span className="sr-only"> items</span></span>
+        {row.calories > 0 && <span className="shrink-0 pr-1 text-meta tabular-nums text-fg-muted">{row.items.some(m => isGuessLine(m.logEntry ?? m.planEntry, m.calories)) && `${GUESS_MARK} `}{row.calories} kcal</span>}
+        <button type="button" onClick={() => modal.open({ kind: 'food-log', date, slot, groupId: row.groupId })} className={cx(iconBtn, 'hover:text-accent-600')}
+          aria-label={`Edit ${row.title}`}>
+          <Pencil className="h-3.5 w-3.5" aria-hidden />
+        </button>
+        <button
+          type="button"
+          onClick={() => void remove.run(row.items.map(m => m.id), { title: `Delete “${row.title}”?`, message: `The whole meal: ${n} items.`, confirmLabel: 'Delete meal', done: `Removed ${row.title}` })}
+          className={cx(iconBtn, 'hidden hover:text-danger sm:grid')}
+          aria-label={`Delete ${row.title}`}
+        ><X className="h-4 w-4" aria-hidden /></button>
+      </div>
+    )
+  }
+
   return (
     <li className="text-body">
       {meals.length > 0 ? (
         <div className="flex flex-col">
-          {meals.map((meal, i) => (
-            <div key={meal.id} className={cx('flex min-h-[44px] items-center gap-2', fresh.has(meal.id) && 'motion-row-in')}>
-              {i === 0 ? slotLabel : <span className={cx(SLOT_COL, 'shrink-0')} />}
-              <Truncate className={cx('flex-1', meal.source === 'plan' ? 'italic text-fg-muted' : 'text-fg-2')}>{meal.title}</Truncate>
-              {meal.calories > 0 && <span className="shrink-0 pr-1 text-meta tabular-nums text-fg-muted">{meal.calories} kcal</span>}
-              {meal.source === 'plan' && meal.planEntry && (
-                <button type="button" onClick={() => eatPlan.mutate(meal.planEntry!)} disabled={eatPlan.isPending}
-                  aria-label="Mark eaten" title="I ate this — count it"
-                  className={cx(iconBtn, 'hover:text-success disabled:opacity-50')}><Check className="h-4 w-4" aria-hidden /></button>
-              )}
-              <button type="button" onClick={() => edit(meal)} className={cx(iconBtn, 'hover:text-accent-600')}
-                aria-label={meal.source === 'plan' ? 'Edit planned meal' : 'Edit logged food'}>
-                <Pencil className="h-3.5 w-3.5" aria-hidden />
-              </button>
-              {/* Desktop-only: three 44px targets leave too little title room on
-                  a 393px phone, and both editors this row opens carry Delete. */}
-              <button
-                type="button"
-                onClick={() => void remove.run([meal.id], { title: `Remove “${meal.title}”?`, done: `Removed ${meal.title}` })}
-                className={cx(iconBtn, 'hidden hover:text-danger sm:grid')}
-                aria-label={`Remove ${meal.title}`}
-              ><X className="h-4 w-4" aria-hidden /></button>
-            </div>
-          ))}
+          {groupDayMeals(meals).map((row, i) => row.kind === 'group' ? dishRow(row, i === 0) : mealRow(row.meal, i === 0))}
         </div>
       ) : null}
       {(meals.length === 0 || adding) ? (

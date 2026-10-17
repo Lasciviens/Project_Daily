@@ -6,22 +6,29 @@ import { Button, Truncate } from '../../../shared/ui'
 import { cx } from '../../../shared/ui/cx'
 import { useIngredientLibrary } from '../hooks/useIngredientLibrary'
 import {
-  useAddFoodLogEntries, useRecentFoods, useFoodFavorites, useAddFoodFavorite, useRemoveFoodFavorite, useHideRecentFood,
+  useLogWithUndo, useRecentFoods, useFoodFavorites, useAddFoodFavorite, useRemoveFoodFavorite, useHideRecentFood,
 } from '../hooks/useFoodLog'
-import { useRecipes, useCreateRecipe } from '../hooks/useRecipes'
-import { ingredientSnapshot, recipeSnapshot, recentToEntry, type RecentFood } from '../api/foodLogApi'
-import { MealPortionPicker } from './MealPortionPicker'
-import { SlotSelect, FoodThumb, FoodTile, BasketRow, FoodMatchRow } from './foodLogKit'
+import { useRecipes, useCreateRecipe, useRecipeBatches } from '../hooks/useRecipes'
+import { useSaveDishEdit } from '../hooks/useMealGroups'
+import { recentToEntry, type LoggedFood, type RecentFood } from '../api/foodLogApi'
+import { RecipePortionSheet } from './RecipePortionSheet'
+import { SlotSelect, FoodThumb, FoodTile, BasketRow, FoodMatchRow, PortionBasketRow } from './foodLogKit'
 import { sanitizeDecimal, slotForNow } from './foodLogUtils'
 import { FoodSearchField } from './FoodSearchField'
 import { NewFoodForm, type NewFoodSeed } from './NewFoodForm'
 import { QuickAddCustom, type QuickAddValues } from './QuickAddCustom'
 import { parseQuickAdd, rankMatches, sortForSlot } from '../foodSearch'
-import { amountUnit, basketTotals, basketToIngredients, lastGrams, wholePortions, type BasketItem } from '../foodBasket'
+import {
+  basketTotals, basketToRecipeInput, isCustomItem, isRecipeItem, itemAmount, itemMacros, itemMissingAmount, itemTitle,
+  itemsToEntries, lastGrams, wholePortions, type LogItem,
+} from '../foodBasket'
+import { batchNote, countLabel, portionWord } from '../foodAmount'
+import { dishName, rowToItem } from '../foodDish'
+import { cleanServingLabel } from '../api/recipesApi'
 import { useDayNutrition } from '../../daily/hooks/useDayNutrition'
 import { useDayTargets } from '../../daily/hooks/useDayTargets'
 import { toast } from '../../../app/store'
-import type { IngredientLibraryItem, FoodLogEntryInput, MealSlot, RecipeWithIngredients } from '../types'
+import type { IngredientLibraryItem, MealSlot, RecipeWithIngredients } from '../types'
 import { formatWeekdayDate } from '../../../shared/utils/dateFormat'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -39,7 +46,17 @@ import { formatWeekdayDate } from '../../../shared/utils/dateFormat'
 //  source — migration 106). A brand-new food is added to the library inline
 //  ONCE and is a 3-tap food forever after; "Quick add" logs a one-off line
 //  (title + calories) without creating an ingredient.
+//
+//  Food point 8 (16.10.2026): a saved meal opens the portion sheet (a stacked
+//  sheet with the shared AmountField and what is left of the batch) — Log logs
+//  it now, Add to meal puts "Køfte · 3 pieces" in the basket. A one-tap log
+//  (Quick add, Log again, a recent tile, the sheet's Log) keeps the logger
+//  open and says so with Undo; Done closes. Point 5: with `dish` it is Edit
+//  meal — the dish's rows in the basket, Save writes them back (with Undo).
 // ─────────────────────────────────────────────────────────────────────────────
+
+/** Edit meal: the dish (a meal_group_id) and its rows, loaded by the entity modal. */
+export interface DishToEdit { groupId: string; rows: LoggedFood[] }
 
 interface Props {
   /** Controlled callers pass it; the `food-log` entity modal omits it. */
@@ -50,32 +67,46 @@ interface Props {
   defaultQuery?: string
   /** ✎ on a saved meal. Defaults to the shared `recipe` editor popup. */
   onEditRecipe?: (r: RecipeWithIngredients) => void
+  dish?:         DishToEdit
 }
 
 const openRecipeEditor = (r: RecipeWithIngredients) => entityModal.open({ kind: 'recipe', id: r.id })
 
-export function FoodLogModal({ open = true, onClose, date, defaultSlot, defaultQuery, onEditRecipe = openRecipeEditor }: Props) {
+/** The basket a dish opens with: its rows as foods, portions and one-off lines. */
+function dishBasket(dish: DishToEdit | undefined, library: IngredientLibraryItem[], recipes: RecipeWithIngredients[]): LogItem[] {
+  if (!dish) return []
+  const libById = new Map(library.map(l => [l.id, l]))
+  const recById = new Map(recipes.map(r => [r.id, r]))
+  return dish.rows.map(r => rowToItem(r, libById, recById))
+}
+
+export function FoodLogModal({ open = true, onClose, date, defaultSlot, defaultQuery, onEditRecipe = openRecipeEditor, dish }: Props) {
   const { data: library = [] } = useIngredientLibrary()
   const { data: recents = [] } = useRecentFoods()
   const { data: favorites = [] } = useFoodFavorites()
   const { data: recipes = [] } = useRecipes()
   const createRecipe = useCreateRecipe()
-  const addEntries = useAddFoodLogEntries()
+  const logFood = useLogWithUndo()
+  const saveDish = useSaveDishEdit()
   const addFavorite = useAddFoodFavorite()
   const removeFavorite = useRemoveFoodFavorite()
   const hideRecent = useHideRecentFood()
   const { data: nut } = useDayNutrition(date)
   const { targets } = useDayTargets()
 
-  const [slot, setSlot] = useState<MealSlot>(defaultSlot ?? slotForNow())
+  const dishOwnName = dish?.rows.find(r => r.meal_group_title)?.meal_group_title ?? null
+  const startSlot = (): MealSlot => dish?.rows[0]?.meal_slot ?? defaultSlot ?? slotForNow()
+  const [slot, setSlot] = useState<MealSlot>(startSlot)
   const [query, setQuery] = useState(defaultQuery ?? '')
   const [mealName, setMealName] = useState('')
   const [mealServings, setMealServings] = useState('1')
+  const [mealPortionName, setMealPortionName] = useState('')
   const [saveMealOpen, setSaveMealOpen] = useState(false)
   // A saved meal defaults to TEMP (a one-off named meal, hidden from the recipe
   // Library) — tick "Save to library" to make it a permanent Library recipe.
   const [saveToLibrary, setSaveToLibrary] = useState(false)
-  const [portionRecipe, setPortionRecipe] = useState<RecipeWithIngredients | null>(null)
+  // The portion sheet: a saved meal to log or add, or (index) a basket portion to change.
+  const [portion, setPortion] = useState<{ recipe: RecipeWithIngredients; index?: number; last?: number | null } | null>(null)
   // "As meal" — logging several basket items together collapses them into
   // ONE compact diary line (shared meal_group_id) instead of N separate rows;
   // tapping that line later expands to each item's own details. Default on:
@@ -84,8 +115,10 @@ export function FoodLogModal({ open = true, onClose, date, defaultSlot, defaultQ
   const [asMeal, setAsMeal] = useState(true)
   const [favoritesOpen, setFavoritesOpen] = useState(true)
   const [recentOpen, setRecentOpen] = useState(true)
+  // One-tap logs since the logger opened: the footer then offers Done.
+  const [logged, setLogged] = useState(0)
 
-  const [basket, setBasket] = useState<BasketItem[]>([])
+  const [basket, setBasket] = useState<LogItem[]>(() => dishBasket(dish, library, recipes))
   // The new-food form's seed (a typed name or a scanned / online product);
   // a new seed remounts the form (`newFoodKey`).
   const [newFood, setNewFood] = useState<NewFoodSeed | null>(null)
@@ -97,25 +130,41 @@ export function FoodLogModal({ open = true, onClose, date, defaultSlot, defaultQ
   if (open !== wasOpen) {
     setWasOpen(open)
     if (open) {
-      setSlot(defaultSlot ?? slotForNow())
+      setSlot(startSlot())
       setQuery(defaultQuery ?? '')
-      setMealName(''); setMealServings('1'); setPortionRecipe(null); setSaveMealOpen(false)
-      setBasket([]); setNewFood(null); setAsMeal(true)
+      setMealName(''); setMealServings('1'); setMealPortionName(''); setPortion(null); setSaveMealOpen(false)
+      setBasket(dishBasket(dish, library, recipes)); setNewFood(null); setAsMeal(true); setLogged(0)
     }
+  }
+
+  /** A one-tap log: the logger stays open; the toast says what was logged, with Undo. */
+  function logNow(entries: Parameters<typeof logFood.mutate>[0]['entries'], what: string, after?: () => void) {
+    logFood.mutate({ entries, what }, { onSuccess: () => { setLogged(n => n + 1); after?.() } })
   }
 
   function addRecent(r: RecentFood) {
     const lib = r.library_ingredient_id ? library.find(l => l.id === r.library_ingredient_id) : null
     // Add the amount the tile shows (the last one eaten), not the default portion.
     if (lib) { addToBasket(lib, lastGrams(r)); return }
-    addEntries.mutate([recentToEntry(r, date, slot)])
+    logNow([recentToEntry(r, date, slot)], r.title)
   }
 
-  function logRecipe(rec: RecipeWithIngredients, servingsEaten: number) {
-    addEntries.mutate(
-      [{ date, meal_slot: slot, recipe_id: rec.id, quantity: servingsEaten, unit: 'serving', ...recipeSnapshot(rec, servingsEaten) }],
-      { onSuccess: onClose },
-    )
+  function openPortion(rec: RecipeWithIngredients) {
+    const last = recents.find(r => r.recipe_id === rec.id)?.quantity ?? null
+    setPortion({ recipe: rec, last })
+  }
+
+  function logPortion(rec: RecipeWithIngredients, servings: number) {
+    const entries = itemsToEntries([{ kind: 'recipe', recipe: rec, servings }], { date, slot })
+    logNow(entries, `${rec.title} · ${countLabel(servings, portionWord(rec.serving_label))}`, () => { setPortion(null); setQuery('') })
+  }
+
+  function putPortion(rec: RecipeWithIngredients, servings: number, index?: number) {
+    setBasket(b => index != null
+      ? b.map((it, i) => (i === index && isRecipeItem(it) ? { ...it, servings } : it))
+      : [...b, { kind: 'recipe', recipe: rec, servings }])
+    setPortion(null)
+    setQuery('')
   }
 
   // A trailing amount ("chicken 150g") is not part of the name: search on the
@@ -153,6 +202,8 @@ export function FoodLogModal({ open = true, onClose, date, defaultSlot, defaultQ
     () => (searchText.trim() ? rankMatches(recipes, searchText, r => r.title, 8) : recipes.slice(0, 8)),
     [recipes, searchText],
   )
+  // What is left of each listed saved meal's batch (one diary read).
+  const batches = useRecipeBatches(savedMeals)
   const exactLibraryHit = matches.some(i => i.name.trim().toLowerCase() === q)
   // Quick add leads when the user typed calories or nothing else matched;
   // otherwise it waits under the real matches.
@@ -164,34 +215,40 @@ export function FoodLogModal({ open = true, onClose, date, defaultSlot, defaultQ
   }
   function setGrams(idx: number, raw: string) {
     const n = Number(sanitizeDecimal(raw))
-    setBasket(b => b.map((it, i) => (i === idx ? { ...it, grams: Number.isFinite(n) ? n : 0 } : it)))
+    setBasket(b => b.map((it, i) => (i === idx && !('kind' in it) ? { ...it, grams: Number.isFinite(n) ? n : 0 } : it)))
   }
 
   const totals = basketTotals(basket)
 
   function handleQuickAdd(v: QuickAddValues) {
-    addEntries.mutate(
+    logNow(
       [{ date, meal_slot: slot, custom_title: v.title, calories: v.calories, protein_g: v.protein_g, carbs_g: v.carbs_g, fat_g: v.fat_g }],
-      // Close only when nothing else is waiting in the basket.
-      { onSuccess: () => { setQuery(''); if (basket.length === 0) onClose() } },
+      `${v.title} · ${Math.round(v.calories ?? 0)} kcal`,
+      () => setQuery(''),
     )
   }
 
-  const hasEmptyAmount = basket.some(it => !(it.grams > 0))
+  const hasEmptyAmount = basket.some(itemMissingAmount)
+  const dishShownName = dish ? dishName(dishOwnName, basket.map(itemTitle)) : null
 
   async function handleSave() {
     if (basket.length === 0) return
     if (hasEmptyAmount) { toast.warning('Enter an amount for every item'); return }
+    if (dish) {
+      try {
+        await saveDish.mutateAsync({ groupId: dish.groupId, groupTitle: dishOwnName, date, slot, before: dish.rows, items: basket, name: dishShownName ?? 'the meal' })
+        onClose()
+      } catch { return }   // the hook already toasted + logged
+      return
+    }
     // A group of ONE has nothing to compact — only tag a shared id when
     // there's actually more than one item to collapse together.
     const groupId = asMeal && basket.length > 1 ? crypto.randomUUID() : null
-    const entries: FoodLogEntryInput[] = basket.map(it => ({
-      date, meal_slot: slot, library_ingredient_id: it.ingredient.id,
-      quantity: it.grams, unit: amountUnit(it.ingredient.unit), ...ingredientSnapshot(it.ingredient, it.grams),
-      meal_group_id: groupId,
-    }))
+    const what = basket.length > 1
+      ? (groupId ? dishName(null, basket.map(itemTitle)) : `${basket.length} items`)
+      : `${itemTitle(basket[0])} · ${itemAmount(basket[0])}`
     try {
-      await addEntries.mutateAsync(entries)
+      await logFood.mutateAsync({ entries: itemsToEntries(basket, { date, slot, groupId }), what })
       setBasket([])
       onClose()
     } catch { return }   // the hook already toasted + logged
@@ -201,20 +258,25 @@ export function FoodLogModal({ open = true, onClose, date, defaultSlot, defaultQ
     if (basket.length === 0 || !mealName.trim()) return
     const servingsN = wholePortions(sanitizeDecimal(mealServings))
     try {
-      // 'from_ingredients': the save computes macros from the basket, and every
-      // later ingredient edit recomputes them. 'manual' froze the total forever.
-      await createRecipe.mutateAsync({
-        title: mealName.trim(), servings: servingsN, macro_mode: 'from_ingredients',
+      // From weighed foods the save is 'from_ingredients': its macros follow
+      // them on every later edit ('manual' froze the total forever). Saving
+      // also starts a batch of that many portions (what is left is counted
+      // from the diary, foodAmount.batchState).
+      await createRecipe.mutateAsync(basketToRecipeInput(basket, mealName, servingsN, {
         is_temp: !saveToLibrary,
-        ingredients: basketToIngredients(basket),
-      })
-      setMealName(''); setMealServings('1'); setSaveMealOpen(false); setSaveToLibrary(false)
+        serving_label: cleanServingLabel(mealPortionName),
+        start_batch: servingsN,
+      }))
+      setMealName(''); setMealServings('1'); setMealPortionName(''); setSaveMealOpen(false); setSaveToLibrary(false)
     } catch { return }
   }
 
   const dateLabel = formatWeekdayDate(date)
-  const protLeft = Math.round(targets.protein - (nut?.protein_g ?? 0) - totals.protein)
-  const kcalLeft = Math.round(targets.calories - (nut?.calories ?? 0) - totals.kcal)
+  // A dish being edited is already in the day's totals: count only what changes.
+  const already = dish ? basketTotals(dishBasket(dish, library, recipes)) : null
+  const protLeft = Math.round(targets.protein - (nut?.protein_g ?? 0) - totals.protein + (already?.protein ?? 0))
+  const kcalLeft = Math.round(targets.calories - (nut?.calories ?? 0) - totals.kcal + (already?.kcal ?? 0))
+  const busy = logFood.isPending || saveDish.isPending
 
   const sectionToggle = (isOpen: boolean, onToggle: () => void, label: ReactNode) => (
     <button type="button" onClick={onToggle} aria-expanded={isOpen}
@@ -224,12 +286,18 @@ export function FoodLogModal({ open = true, onClose, date, defaultSlot, defaultQ
     </button>
   )
 
+  const primary = basket.length > 0
+    ? <Button variant="primary" onClick={handleSave} loading={busy} className="shrink-0 px-6">{dish ? 'Save meal' : `Log ${basket.length}`}</Button>
+    : logged > 0
+      ? <Button variant="primary" onClick={onClose} className="shrink-0 px-6">Done</Button>
+      : <Button variant="primary" disabled className="shrink-0 px-6">Log</Button>
+
   return (
     <ModalShell
       open={open}
       onClose={onClose}
-      title="Log food"
-      subtitle={dateLabel}
+      title={dish ? 'Edit meal' : 'Log food'}
+      subtitle={dish ? `${dishShownName} · ${dateLabel}` : dateLabel}
       headerActions={<SlotSelect value={slot} onChange={setSlot} />}
       size="lg"
       mobile="fullscreen"
@@ -242,7 +310,7 @@ export function FoodLogModal({ open = true, onClose, date, defaultSlot, defaultQ
               <div className="flex min-h-[32px] items-center justify-between gap-2">
                 <p className="section-label shrink-0">This meal · {basket.length}</p>
                 <div className="flex shrink-0 items-center gap-2">
-                  {basket.length > 1 && (
+                  {!dish && basket.length > 1 && (
                     <label className="flex cursor-pointer select-none items-center gap-1.5 text-meta text-fg-muted"
                       title="Log these items as one compact line in the day view — tap it later to see each item's own details.">
                       <input type="checkbox" checked={asMeal} onChange={e => setAsMeal(e.target.checked)} className="h-4 w-4 accent-accent-500" />
@@ -254,18 +322,28 @@ export function FoodLogModal({ open = true, onClose, date, defaultSlot, defaultQ
                   </Button>
                 </div>
               </div>
-              {basket.map((it, i) => (
-                <BasketRow key={`${it.ingredient.id}-${i}`} item={it} onGrams={raw => setGrams(i, raw)}
-                  onRemove={() => setBasket(b => b.filter((_, j) => j !== i))} />
-              ))}
+              {basket.map((it, i) => {
+                const remove = () => setBasket(b => b.filter((_, j) => j !== i))
+                if (isRecipeItem(it)) {
+                  return <PortionBasketRow key={`r-${it.recipe.id}-${i}`} title={it.recipe.title} imageUrl={it.recipe.image_url}
+                    amount={itemAmount(it)} kcal={itemMacros(it).kcal} onAmount={() => setPortion({ recipe: it.recipe, index: i })} onRemove={remove} />
+                }
+                if (isCustomItem(it)) {
+                  return <PortionBasketRow key={`c-${it.entryId}`} title={it.title} kcal={it.macros.kcal} onRemove={remove} />
+                }
+                return <BasketRow key={`${it.ingredient.id}-${i}`} item={it} onGrams={raw => setGrams(i, raw)} onRemove={remove} />
+              })}
               {saveMealOpen && (
                 <div className="mt-1 flex flex-wrap items-center gap-1.5 border-t border-line pb-1 pt-2">
                   <input value={mealName} onChange={e => setMealName(e.target.value)} placeholder="Meal name…" aria-label="Meal name"
                     className="input min-w-0 flex-1" />
+                  <span className="shrink-0 text-meta text-fg-muted">makes</span>
                   <input value={mealServings} onChange={e => setMealServings(sanitizeDecimal(e.target.value))} inputMode="numeric"
                     aria-label="Portions this batch makes" title="How many portions this batch makes"
-                    className="input w-14 px-1 text-center tabular-nums" />
-                  <span className="shrink-0 text-meta text-fg-muted">portions</span>
+                    className="input w-12 px-1 text-center tabular-nums" />
+                  <input value={mealPortionName} onChange={e => setMealPortionName(e.target.value)} maxLength={30}
+                    placeholder="portion" aria-label="What one portion is called (piece, slice…)" title="What ONE portion is called — piece, slice, bowl"
+                    className="input w-24 px-2" />
                   <label className="flex shrink-0 cursor-pointer select-none items-center gap-1.5 text-meta text-fg-muted"
                     title="Add to your recipe Library. Off = a temp meal: reusable and editable, but hidden from the Library grid.">
                     <input type="checkbox" checked={saveToLibrary} onChange={e => setSaveToLibrary(e.target.checked)} className="h-4 w-4 accent-accent-500" />
@@ -295,9 +373,7 @@ export function FoodLogModal({ open = true, onClose, date, defaultSlot, defaultQ
                 </Truncate>
               )}
             </div>
-            <Button variant="primary" onClick={handleSave} loading={addEntries.isPending} disabled={basket.length === 0} className="shrink-0 px-6">
-              {basket.length > 0 ? `Log ${basket.length}` : 'Log'}
-            </Button>
+            {primary}
           </div>
         </div>
       }
@@ -305,12 +381,17 @@ export function FoodLogModal({ open = true, onClose, date, defaultSlot, defaultQ
       <FoodSearchField query={query} onQuery={setQuery} library={library}
         onExisting={food => addToBasket(food)} onProduct={product => openNewFood({ name: product.name, product })} />
 
-      {portionRecipe && (
-        <MealPortionPicker
-          recipe={portionRecipe}
-          busy={addEntries.isPending}
-          onCancel={() => setPortionRecipe(null)}
-          onLog={servingsEaten => logRecipe(portionRecipe, servingsEaten)}
+      {portion && (
+        <RecipePortionSheet
+          key={`${portion.recipe.id}-${portion.index ?? 'new'}`}
+          recipe={portion.recipe}
+          initial={portion.index != null ? (basket[portion.index] as { servings?: number } | undefined)?.servings : undefined}
+          last={portion.last}
+          busy={logFood.isPending}
+          onClose={() => setPortion(null)}
+          onLog={portion.index != null || dish ? undefined : s => logPortion(portion.recipe, s)}
+          onAdd={s => putPortion(portion.recipe, s, portion.index)}
+          addLabel={portion.index != null ? 'Save amount' : 'Add to meal'}
         />
       )}
 
@@ -321,17 +402,24 @@ export function FoodLogModal({ open = true, onClose, date, defaultSlot, defaultQ
 
       {q ? (
         <div className="flex flex-col">
-          {quickFirst && !exactLibraryHit && <QuickAddCustom query={query} busy={addEntries.isPending} onLog={handleQuickAdd} />}
-          {savedMeals.map(r => (
-            <button key={r.id} type="button" onClick={() => setPortionRecipe(r)} className="row row-interactive min-h-[56px] px-1 text-left">
-              <FoodThumb name={r.title} imageUrl={r.image_url} size={40} />
-              <span className="min-w-0 flex-1">
-                <Truncate className="text-body font-medium text-fg">{r.title}</Truncate>
-                <span className="block text-meta text-fg-muted">Saved meal{r.calories != null && ` · ${Math.round(r.calories)} kcal / portion`}</span>
-              </span>
-              <span className="shrink-0 text-meta font-semibold text-accent-600">Portion</span>
-            </button>
-          ))}
+          {quickFirst && !exactLibraryHit && <QuickAddCustom query={query} busy={logFood.isPending} onLog={handleQuickAdd} />}
+          {savedMeals.map(r => {
+            const note = batchNote(batches.get(r.id), portionWord(r.serving_label))
+            return (
+              <button key={r.id} type="button" onClick={() => openPortion(r)} className="row row-interactive min-h-[56px] px-1 text-left">
+                <span className={cx('flex min-w-0 flex-1 items-center gap-3', note?.gone && 'opacity-60')}>
+                  <FoodThumb name={r.title} imageUrl={r.image_url} size={40} />
+                  <span className="min-w-0 flex-1">
+                    <Truncate className="text-body font-medium text-fg">{r.title}</Truncate>
+                    <Truncate className="text-meta text-fg-muted tabular-nums">
+                      {['Saved meal', r.calories != null && `${Math.round(r.calories)} kcal / ${portionWord(r.serving_label)}`, note?.text].filter(Boolean).join(' · ')}
+                    </Truncate>
+                  </span>
+                </span>
+                <span className="shrink-0 text-meta font-semibold text-accent-600">Portion</span>
+              </button>
+            )
+          })}
           {pastMatches.map(r => (
             <button key={r.key} type="button" onClick={() => addRecent(r)} className="row row-interactive min-h-[56px] px-1 text-left">
               <FoodThumb name={r.title} size={40} />
@@ -347,7 +435,7 @@ export function FoodLogModal({ open = true, onClose, date, defaultSlot, defaultQ
           {matches.map(ing => (
             <FoodMatchRow key={ing.id} food={ing} onAdd={() => addToBasket(ing, quickParsed.grams ?? undefined)} />
           ))}
-          {!quickFirst && !exactLibraryHit && <QuickAddCustom query={query} busy={addEntries.isPending} onLog={handleQuickAdd} />}
+          {!quickFirst && !exactLibraryHit && <QuickAddCustom query={query} busy={logFood.isPending} onLog={handleQuickAdd} />}
           <button type="button" onClick={() => openNewFood({ name: quickParsed.title })} className="row row-interactive min-h-[52px] px-1 text-left">
             <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-dashed border-accent-500/50 text-accent-600"><Plus className="h-4 w-4" aria-hidden /></span>
             <span className="text-body text-accent-700">Save “{quickParsed.title}” as an ingredient (per 100g)…</span>
@@ -398,23 +486,31 @@ export function FoodLogModal({ open = true, onClose, date, defaultSlot, defaultQ
                   // Hover (desktop) / the ✎ editor (mobile) reveals the meal's
                   // ingredients — a temp meal is one named unit, not N loose rows.
                   const contents = r.ingredients?.map(i => i.name).filter(Boolean).join(', ') || undefined
+                  // What is left of its batch, on the tile (8.3): "13 pieces left";
+                  // a batch eaten up or over is greyed ("none left") — still tappable.
+                  const word = portionWord(r.serving_label)
+                  const note = batchNote(batches.get(r.id), word)
+                  const line = note
+                    ? [note.text, r.calories != null && `${Math.round(r.calories)} kcal`].filter(Boolean).join(' · ')
+                    : [r.calories != null && `${Math.round(r.calories)} kcal`, r.servings > 1 && countLabel(r.servings, word)].filter(Boolean).join(' · ')
                   return (
-                    <div key={r.id} className="relative w-36 shrink-0 snap-start">
-                      <button type="button" onClick={() => setPortionRecipe(r)} title={contents}
+                    <div key={r.id} className="relative w-40 shrink-0 snap-start">
+                      <button type="button" onClick={() => openPortion(r)} title={contents}
                         className={cx(
                           'flex h-full w-full flex-col items-start gap-1 rounded-card border p-2.5 text-left transition-colors',
-                          portionRecipe?.id === r.id ? 'border-accent-500 bg-accent-50' : 'border-line bg-surface-2 hover:border-line-strong',
+                          portion?.recipe.id === r.id ? 'border-accent-500 bg-accent-50' : 'border-line bg-surface-2 hover:border-line-strong',
+                          note?.gone && 'opacity-60',
                         )}>
                         <FoodThumb name={r.title} imageUrl={r.image_url} size={36} />
                         <Truncate lines={2} className="pr-5 text-meta font-medium leading-tight text-fg">{r.title}</Truncate>
-                        <span className="text-micro normal-case tracking-normal text-fg-muted tabular-nums">
-                          {r.calories != null && `${Math.round(r.calories)} kcal`}{r.servings > 1 && ` · ${r.servings} portions`}
-                        </span>
+                        <Truncate className={cx('w-full text-micro normal-case tracking-normal tabular-nums', note && !note.gone ? 'font-semibold text-fg-2' : 'text-fg-muted')}>
+                          {line}
+                        </Truncate>
                       </button>
                       {/* A deliberate 24px secondary action on a dense strip (see FoodTile). */}
                       <button type="button" aria-label={`Edit ${r.title}`}
                         // Keep a half-built basket: the editor opens on top instead.
-                        onClick={() => { onEditRecipe(r); if (basket.length === 0) onClose() }}
+                        onClick={() => { onEditRecipe(r); if (basket.length === 0 && !dish) onClose() }}
                         className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full border border-line bg-surface text-fg-muted hover:text-accent-600"><Pencil aria-hidden className="h-3 w-3" /></button>
                     </div>
                   )

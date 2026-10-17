@@ -1,6 +1,10 @@
 import { supabase } from '../../../integrations/supabase/client'
 import { WEIGHT_UNITS } from '../../recipes/api/recipesApi'
 import type { MealPlanEntry } from '../../recipes/types'
+import { eatenTotals, macroAmounts, type MacroAmounts } from '../../recipes/foodIngredients'
+import { groupDishes, type DishGroup, type DishSingle } from '../../recipes/foodDish'
+import { countLabel } from '../../recipes/foodAmount'
+import { COUNT_UNITS } from '../../supplements/supplementDoses'
 
 // A single planned meal for a day, resolved to its display title + macro
 // contribution. Macros are the TOTAL for that entry (recipe per-serving ×
@@ -17,6 +21,9 @@ export interface DayMeal {
   fat_g:     number
   fiber_g:   number
   sugar_g:   number
+  /** The same six unrounded (the figures above are whole numbers) — what the
+      Today peek's exact amounts add up. */
+  exact?:    MacroAmounts
   /** 'plan' = a status='planned' row (intent, macros computed live); 'log' = a
       status='eaten' row (what was actually eaten; totals derived from its
       source, migration 106). Both live in food_log_entries since migration 061. */
@@ -31,57 +38,28 @@ export interface DayMeal {
     custom_title:          string | null
     quantity:              number | null
     unit:                  string | null
+    /** A scheduled supplement's dose (160): its values are the schedule's, never a guess. */
+    supplement_schedule_id?: string | null
   }
   /** Ties several individually-logged rows together as one compact diary
       line ("As meal" in FoodLogModal) — null for a normal single-item or
       recipe log, and always null for a plan row (grouping only applies to
       what was actually eaten). Migration 087. */
   meal_group_id?: string | null
+  /** The dish's own name (158), the same on every row of the group; null = automatic. */
+  meal_group_title?: string | null
 }
 
 // A meal-slot's rows, collapsed so several entries sharing the same
-// `meal_group_id` render as ONE compact row instead of N separate lines —
-// the display half of the "As meal" feature. Order-preserving: a group's
-// position in the output is wherever its first member first appears.
-export interface MealGroupRow {
-  kind:      'group'
-  groupId:   string
-  items:     DayMeal[]
-  title:     string
-  calories:  number
-  protein_g: number
-  carbs_g:   number
-  fat_g:     number
-  fiber_g:   number
-  sugar_g:   number
-}
-export interface SingleMealRow {
-  kind: 'single'
-  meal: DayMeal
-}
+// `meal_group_id` render as ONE compact row (a dish) instead of N separate
+// lines — the display half of the "As meal" feature. The pure rule
+// (order-preserving; a "group" of one is a plain row; the dish's name and
+// amount) is foodDish.groupDishes (scripts/verify-food-library.cjs).
+export type MealGroupRow = DishGroup<DayMeal>
+export type SingleMealRow = DishSingle<DayMeal>
 export type MealDisplayRow = MealGroupRow | SingleMealRow
 
-export function groupDayMeals(meals: DayMeal[]): MealDisplayRow[] {
-  const rows: MealDisplayRow[] = []
-  const seenGroups = new Set<string>()
-  for (const m of meals) {
-    if (!m.meal_group_id) { rows.push({ kind: 'single', meal: m }); continue }
-    if (seenGroups.has(m.meal_group_id)) continue
-    seenGroups.add(m.meal_group_id)
-    const items = meals.filter(x => x.meal_group_id === m.meal_group_id)
-    const title = items.length > 1 ? `${items[0].title} +${items.length - 1} more` : items[0].title
-    rows.push({
-      kind: 'group', groupId: m.meal_group_id, items, title,
-      calories:  items.reduce((a, i) => a + i.calories, 0),
-      protein_g: items.reduce((a, i) => a + i.protein_g, 0),
-      carbs_g:   items.reduce((a, i) => a + i.carbs_g, 0),
-      fat_g:     items.reduce((a, i) => a + i.fat_g, 0),
-      fiber_g:   items.reduce((a, i) => a + i.fiber_g, 0),
-      sugar_g:   items.reduce((a, i) => a + i.sugar_g, 0),
-    })
-  }
-  return rows
-}
+export const groupDayMeals = (meals: readonly DayMeal[]): MealDisplayRow[] => groupDishes(meals)
 
 export interface DayNutrition {
   meals:     DayMeal[]
@@ -127,6 +105,25 @@ function isMissingMealGroup(e: unknown): boolean {
   return (x?.code === '42703' || x?.code === 'PGRST204') && /meal_group_id/i.test(x?.message ?? '')
 }
 
+// 157 (a recipe's portion name), 158 (a dish's own name) and 160 (a dose's
+// schedule) ship together.
+function isMissingGroupTitle(e: unknown): boolean {
+  const x = e as { code?: string; message?: string }
+  return (x?.code === '42703' || x?.code === 'PGRST204') && /meal_group_title|serving_label|supplement_schedule_id/i.test(x?.message ?? '')
+}
+
+/**
+ * An eaten line's amount after its name: " · 150g", " · 2×", " · 3 pieces"
+ * (a recipe with its own portion name, 157), " · 2 capsules" (a supplement's
+ * count unit, 160 — glued, it read "2capsule").
+ */
+function eatenQtyLabel(quantity: number | null, unit: string | null, servingLabel?: string | null): string {
+  if (!quantity) return ''
+  if (unit === 'serving') return servingLabel?.trim() ? ` · ${countLabel(quantity, servingLabel.trim())}` : ` · ${quantity}×`
+  if (unit && (COUNT_UNITS as readonly string[]).includes(unit)) return ` · ${countLabel(quantity, unit)}`
+  return ` · ${quantity}${unit ?? 'g'}`
+}
+
 // A unified food_log_entries row (post-061): 'planned' (macros live) or 'eaten'
 // (macros snapshotted). recipes.fiber_g is intentionally NOT selected (needs
 // mig 060; a missing column would error the query) → planned-recipe fiber = 0.
@@ -141,15 +138,19 @@ interface UnifiedRow {
   unit: string | null
   calories: number | null; protein_g: number | null; carbs_g: number | null; fat_g: number | null; fiber_g: number | null; sugar_g: number | null
   meal_group_id?: string | null
-  recipe:     { title: string; calories: number | null; protein_g: number | null; carbs_g: number | null; fat_g: number | null; sugar_g: number | null } | null
+  meal_group_title?: string | null
+  supplement_schedule_id?: string | null
+  recipe:     { title: string; serving_label?: string | null; calories: number | null; protein_g: number | null; carbs_g: number | null; fat_g: number | null; sugar_g: number | null } | null
   ingredient: { name: string; unit: string; calories: number | null; protein_g: number | null; carbs_g: number | null; fat_g: number | null; fiber_g: number | null; sugar_g: number | null } | null
 }
 
-const UNIFIED_SELECT_BASE =
-  'id, meal_slot, status, recipe_id, library_ingredient_id, custom_title, quantity, unit, calories, protein_g, carbs_g, fat_g, fiber_g, sugar_g, ' +
-  'recipe:recipes(title, calories, protein_g, carbs_g, fat_g, sugar_g), ' +
-  'ingredient:recipe_ingredient_library(name, unit, calories, protein_g, carbs_g, fat_g, fiber_g, sugar_g)'
-const UNIFIED_SELECT = `${UNIFIED_SELECT_BASE}, meal_group_id`
+const UNIFIED_COLS =
+  'id, meal_slot, status, recipe_id, library_ingredient_id, custom_title, quantity, unit, calories, protein_g, carbs_g, fat_g, fiber_g, sugar_g, '
+const INGREDIENT_EMBED = 'ingredient:recipe_ingredient_library(name, unit, calories, protein_g, carbs_g, fat_g, fiber_g, sugar_g)'
+const UNIFIED_SELECT_BASE = `${UNIFIED_COLS}recipe:recipes(title, calories, protein_g, carbs_g, fat_g, sugar_g), ${INGREDIENT_EMBED}`
+const UNIFIED_SELECT_087 = `${UNIFIED_SELECT_BASE}, meal_group_id`
+const UNIFIED_SELECT =
+  `${UNIFIED_COLS}recipe:recipes(title, serving_label, calories, protein_g, carbs_g, fat_g, sugar_g), ${INGREDIENT_EMBED}, meal_group_id, meal_group_title, supplement_schedule_id`
 
 // Exported for unit-testability (the post-061 path can't be exercised against
 // an un-migrated DB) — a pure row→DayMeal mapper.
@@ -178,6 +179,7 @@ export function unifiedToMeal(row: UnifiedRow, date: string): DayMeal {
       id: row.id, meal_slot: row.meal_slot, title, servings,
       calories: Math.round(calories), protein_g: Math.round(protein_g), carbs_g: Math.round(carbs_g),
       fat_g: Math.round(fat_g), fiber_g: Math.round(fiber_g), sugar_g: Math.round(sugar_g),
+      exact: { calories, protein_g, carbs_g, fat_g, fiber_g, sugar_g },
       source: 'plan',
       planEntry: {
         id: row.id, date, meal_slot: row.meal_slot, recipe_id: row.recipe_id, custom_title: row.custom_title,
@@ -190,17 +192,20 @@ export function unifiedToMeal(row: UnifiedRow, date: string): DayMeal {
   }
   // Eaten → the at-log-time snapshot (stored columns), never recomputed.
   const base = row.ingredient?.name ?? row.recipe?.title ?? row.custom_title ?? '—'
-  const qtyLabel = row.quantity ? ` · ${row.quantity}${row.unit === 'serving' ? '×' : (row.unit ?? 'g')}` : ''
+  const qtyLabel = eatenQtyLabel(row.quantity, row.unit, row.recipe?.serving_label)
   return {
     id: row.id, meal_slot: row.meal_slot, title: `${base}${qtyLabel}`, servings: 1,
     calories: Math.round(row.calories ?? 0), protein_g: Math.round(row.protein_g ?? 0), carbs_g: Math.round(row.carbs_g ?? 0),
     fat_g: Math.round(row.fat_g ?? 0), fiber_g: Math.round(row.fiber_g ?? 0), sugar_g: Math.round(row.sugar_g ?? 0),
+    exact: macroAmounts(row),
     source: 'log',
     logEntry: {
       library_ingredient_id: row.library_ingredient_id, recipe_id: row.recipe_id,
       custom_title: row.custom_title, quantity: row.quantity, unit: row.unit,
+      supplement_schedule_id: row.supplement_schedule_id ?? null,
     },
     meal_group_id: row.meal_group_id ?? null,
+    meal_group_title: row.meal_group_title ?? null,
   }
 }
 
@@ -229,6 +234,10 @@ export async function fetchDayNutrition(date: string): Promise<DayNutrition> {
   // cast to UnifiedRow[] downstream regardless.
   let uni: { data: unknown; error: unknown } =
     await supabase.from('food_log_entries').select(UNIFIED_SELECT).eq('date', date).order('created_at', { ascending: true })
+  if (uni.error && isMissingGroupTitle(uni.error)) {
+    // migrations 157/158/160 not applied yet — a dish keeps its automatic name, a recipe reads "2×".
+    uni = await supabase.from('food_log_entries').select(UNIFIED_SELECT_087).eq('date', date).order('created_at', { ascending: true })
+  }
   if (uni.error && isMissingMealGroup(uni.error)) {
     // migration 087 not applied yet — retry without meal_group_id; every
     // row then reads as ungrouped (today's behaviour), never a hard error.
@@ -247,18 +256,8 @@ export async function fetchDayNutrition(date: string): Promise<DayNutrition> {
 
   // CONSUMED = the DIARY only (source==='log'); planned rows are intent and
   // never feed the ring (double-counted a day that was planned AND eaten).
-  const sum = (k: keyof Pick<DayMeal, 'calories' | 'protein_g' | 'carbs_g' | 'fat_g' | 'fiber_g' | 'sugar_g'>) =>
-    allMeals.reduce((acc, m) => acc + (m.source === 'log' ? m[k] : 0), 0)
-
-  return {
-    meals: allMeals,
-    calories:  sum('calories'),
-    protein_g: sum('protein_g'),
-    carbs_g:   sum('carbs_g'),
-    fat_g:     sum('fat_g'),
-    fiber_g:   sum('fiber_g'),
-    sugar_g:   sum('sugar_g'),
-  }
+  // Exact values summed, rounded once — the same total the figures' peeks show.
+  return { meals: allMeals, ...eatenTotals(allMeals) }
 }
 
 // Pre-061 fallback: plan (recipe_meal_plans) + diary (food_log_entries) as two
@@ -326,6 +325,7 @@ async function legacyTwoTable(date: string): Promise<DayMeal[]> {
       fat_g:     Math.round(fat_g),
       fiber_g:   Math.round(fiber_g),
       sugar_g:   Math.round(sugar_g),
+      exact:     { calories, protein_g, carbs_g, fat_g, fiber_g, sugar_g },
       source:    'plan' as const,
       planEntry: {
         id: row.id, date, meal_slot: row.meal_slot,
@@ -339,7 +339,7 @@ async function legacyTwoTable(date: string): Promise<DayMeal[]> {
 
   const logMeals: DayMeal[] = logRows.map(row => {
     const base = row.ingredient?.name ?? row.recipe?.title ?? row.custom_title ?? '—'
-    const qtyLabel = row.quantity ? ` · ${row.quantity}${row.unit === 'serving' ? '×' : (row.unit ?? 'g')}` : ''
+    const qtyLabel = eatenQtyLabel(row.quantity, row.unit)
     return {
       id: row.id,
       meal_slot: row.meal_slot,
@@ -351,6 +351,7 @@ async function legacyTwoTable(date: string): Promise<DayMeal[]> {
       fat_g:     Math.round(row.fat_g     ?? 0),
       fiber_g:   Math.round(row.fiber_g   ?? 0),
       sugar_g:   Math.round(row.sugar_g   ?? 0),
+      exact:     macroAmounts(row),
       source:    'log' as const,
       logEntry: {
         library_ingredient_id: row.library_ingredient_id,

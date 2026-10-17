@@ -14,7 +14,7 @@ import { toast } from '../../../app/store'
 
 // Copies yesterday's DIARY into today, but only into slots that are still empty
 // today (a slot with anything logged is left alone — copy never overwrites).
-// An "As meal" group stays one group (a fresh shared id per source group);
+// An "As meal" group stays one group (a fresh shared id per source group, and its own name);
 // totals of rows with a source are recalculated from it (migration 106).
 // `slots` narrows the copy to specific slots ("same lunch as yesterday").
 export function useCopyYesterdayMeals() {
@@ -24,7 +24,10 @@ export function useCopyYesterdayMeals() {
     mutationFn: async ({ date, filledSlots, slots }: { date: string; filledSlots: Set<string>; slots?: string[] }) => {
       const yesterday = shiftDateStr(date, -1)
       const prev = await fetchFoodLog(yesterday)
-      const toCopy = prev.filter(e => !filledSlots.has(e.meal_slot) && (!slots || slots.includes(e.meal_slot)))
+      // A taken supplement dose's line (160) is never copied: today's dose stays
+      // due (its own Take writes today's line) and its reminders go on. fetchFoodLog
+      // reads every column, so before 160 the field is simply absent.
+      const toCopy = prev.filter(e => !e.supplement_schedule_id && !filledSlots.has(e.meal_slot) && (!slots || slots.includes(e.meal_slot)))
       // Nothing to copy is not a failure — say so without an error toast.
       if (toCopy.length === 0) { toast.warning('Nothing to copy from yesterday'); return 0 }
       const newGroup = new Map<string, string>()
@@ -49,6 +52,8 @@ export function useCopyYesterdayMeals() {
           fiber_g:               e.fiber_g,
           sugar_g:               e.sugar_g,
           meal_group_id:         group,
+          // A renamed dish keeps its name (158); dropped before 158 by addFoodLogEntries.
+          ...(group && e.meal_group_title ? { meal_group_title: e.meal_group_title } : {}),
         }
       })
       await addFoodLogEntries(entries)

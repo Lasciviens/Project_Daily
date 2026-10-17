@@ -11,6 +11,7 @@ One file per feature: what it does, how it works and why it is built that way, i
 | One delete, with Undo | — | [delete-undo.md](delete-undo.md) | `database.md`, `ui.md` |
 | Wishes | `/#/wishes` | [wishes.md](wishes.md) | `wishes.md` |
 | Food (diary, plan, recipes, foods, insights) | `/#/recipes` | [food.md](food.md) | `food.md` |
+| Supplements (schedules, doses, reminders) | `/#/recipes` (Today) | [supplements.md](supplements.md) | `food.md` |
 | Shop (wishlist, quick list, owned, money chains) | `/#/shop` | [shop.md](shop.md) | `shop.md` |
 | Media (films, TV, Trakt sync, lists) | `/#/media` | [media.md](media.md) | `media.md` |
 | Games (library, Analytics, ScreenScraper, IGDB, Steam, PlayStation) | `/#/games` | [games.md](games.md) | `games.md` |

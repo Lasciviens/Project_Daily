@@ -62,6 +62,8 @@ export const qk = {
     favorites: () => ['food-log', 'favorites'] as const,
     loggedDates: (date: string) => ['food-log', 'logged-dates', date] as const,
     entry: (id: string) => ['food-log', 'entry', id] as const,
+    /** The rows of one dish (a meal_group_id) — Edit meal's basket. */
+    group: (groupId: string) => ['food-log', 'group', groupId] as const,
   },
   mealPlan: {
     all: ['meal-plan'] as const,
@@ -75,6 +77,16 @@ export const qk = {
   ingredients: { all: ['recipe-ingredient-library'] as const },
   /** Food · Today's Quick guess presets (quick_guess_items, migration 152). */
   quickGuess: { all: ['quick-guess-items'] as const, list: () => ['quick-guess-items', 'list'] as const },
+  /** Supplement schedules and their doses (migration 160). */
+  supplements: {
+    all: ['supplements'] as const,
+    schedules: () => ['supplements', 'schedules'] as const,
+    schedule: (id: string) => ['supplements', 'schedule', id] as const,
+    /** Taken lines and dose states from `from` to `to`. */
+    facts: (from: string, to: string) => ['supplements', 'facts', from, to] as const,
+    /** Doses taken since a stock was counted, per schedule. */
+    stock: (id: string, since: string) => ['supplements', 'stock', id, since] as const,
+  },
   shop: {
     all: ['shop'] as const,
     categories: () => ['shop', 'categories'] as const,

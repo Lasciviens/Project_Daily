@@ -433,8 +433,27 @@ Deno.serve(async (req) => {
   try {
     switch (action) {
       // ── Deterministic: log a supplement (default creatine) ──
+      // A scheduled supplement (migration 160): the log takes today's open
+      // dose of the schedule it names (`schedule_id`) or the one its title
+      // names best — the schedule's own name, its linked food's or recipe's
+      // (160's supplement_log_rank) — its own diary line, linked to the dose, so the dose
+      // reads Taken and its reminders stop. No such dose (no schedule, all
+      // taken, or before 160): the plain line as before.
       case 'log_supplement': {
         const title = (typeof body.title === 'string' && body.title.trim()) || 'Kreatin 5 g'
+        if (!body.date || body.date === todayLocal()) {
+          const scheduleId = typeof body.schedule_id === 'string' && body.schedule_id ? body.schedule_id : null
+          const match = await supabase.rpc('supplement_dose_for_log', { p_user: userId, p_title: title, p_schedule: scheduleId })
+          const dose = !match.error ? (match.data as AnyRecord[] | null)?.[0] : null
+          if (dose) {
+            const took = await supabase.rpc('supplement_take', {
+              p_schedule: dose.schedule_id, p_date: dose.dose_date, p_time: dose.dose_time, p_user_id: userId,
+            })
+            if (!took.error) {
+              return json({ ok: true, logged: `${dose.title} ${dose.dose_label}`, dose: String(dose.dose_time).slice(0, 5) })
+            }
+          }
+        }
         const err = await insertFoodLog(userId, {
           date: body.date ?? todayLocal(), meal_slot: 'supplement',
           custom_title: title, calories: num(body.calories, 0),

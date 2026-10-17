@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useState } from 'react'
 import { Brain, Check, ChevronRight, Copy, Plus, X } from 'lucide-react'
 import { useDayNutrition } from '../../daily/hooks/useDayNutrition'
 import { useDayTargets } from '../../daily/hooks/useDayTargets'
@@ -16,6 +16,8 @@ import { RecentDaysCard } from './RecentDaysCard'
 import { QuickGuessCard } from './QuickGuessCard'
 import { useEatPlannedEntry } from '../hooks/useMealPlan'
 import { MacroBar } from './MacroBar'
+import { MacroFigure } from './MacroTotalPeek'
+import { splitTitleQty } from '../foodIngredients'
 import { WaterTracker } from '../../daily/components/summary/WaterTracker'
 import { AnimatedNumber, Card, CardHeader, IconButton, MetaLine, PageBoard, ProgressRing, TonePill, Truncate, cx } from '../../../shared/ui'
 import { formatLocalDate } from '../../../shared/utils/dateUtils'
@@ -24,22 +26,13 @@ import type { MealSlot } from '../types'
 import { groupDayMeals, type DayMeal, type MealGroupRow } from '../../daily/api/dayNutritionApi'
 import { useNewIds } from '../../../shared/hooks/useNewIds'
 import { FOOD_TODAY_BOARD } from '../foodBoards'
+import { DishItemMenu, DishMenu } from './DishActions'
+import { GUESS_MARK, isGuessLine } from '../quickGuess'
+import { SupplementDosesCard } from '../../supplements/components/SupplementDosesCard'
 
 // The wide meal-row grid: name · amount · kcal · protein · carbs · fat · fiber · ✓ · ✕.
 // Shared by the rows and their column-heading row so the two always line up.
 const MACRO_GRID = 'hidden items-center gap-x-2 @[40rem]:grid @[40rem]:grid-cols-[minmax(0,1fr)_3.5rem_3rem_3.25rem_3rem_3rem_3rem_2.75rem_2.75rem]'
-
-// `DayMeal.title` bakes the amount into the string ("Chicken · 150g"); the
-// desktop grid wants name and amount in separate aligned columns. Only a tail
-// that starts with a digit is a quantity — a food name that itself contains
-// " · " must not be chopped in two.
-function splitTitleQty(title: string): { name: string; qty: string | null } {
-  const idx = title.lastIndexOf(' · ')
-  if (idx === -1) return { name: title, qty: null }
-  const qty = title.slice(idx + 3)
-  if (!/^\d/.test(qty)) return { name: title, qty: null }
-  return { name: title.slice(0, idx), qty }
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Food · Today — the full nutrition surface. The day's totals, water and the
@@ -70,15 +63,6 @@ function Ring({ consumed, target, size, stroke, color, label, sizeClass, ready }
       <AnimatedNumber value={remaining} ready={ready} align="center" className={cx('font-bold leading-none text-fg', size > 100 ? 'text-title sm:text-kpi' : 'text-ui sm:text-lead')} />
       <span className={cx('mt-0.5 text-micro leading-none', over ? 'text-danger' : 'text-fg-muted')}>{over ? 'over' : label}</span>
     </ProgressRing>
-  )
-}
-
-function MacroFigure({ color, children }: { color: string; children: ReactNode }) {
-  return (
-    <span className="flex items-center gap-1">
-      <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: color }} />
-      {children}
-    </span>
   )
 }
 
@@ -123,10 +107,12 @@ export function FoodTodayTab({ date }: { date: string }) {
     const arr = bySlot.get(m.meal_slot) ?? []; arr.push(m); bySlot.set(m.meal_slot, arr)
   }
 
-  // One logged/planned item, standalone or indented inside an expanded group.
+  // One logged/planned item, standalone or indented inside an expanded dish.
   // Two markups (stacked phone vs aligned desktop grid) because the column
-  // count would otherwise change under one fixed set of children.
-  function mealLine(meal: DayMeal, indent: boolean) {
+  // count would otherwise change under one fixed set of children. Inside a
+  // dish the ⋯ column offers Edit and "Move out of meal".
+  function mealLine(meal: DayMeal, dish?: MealGroupRow) {
+    const indent = !!dish
     const planned = meal.source === 'plan'
     const { name, qty } = splitTitleQty(meal.title)
     const onOpen = () => {
@@ -137,9 +123,10 @@ export function FoodTodayTab({ date }: { date: string }) {
       }
     }
     const onDelete = () => void remove.run([meal.id], { title: `Remove “${name}”?`, done: `Removed ${name}` })
+    const approx = isGuessLine(meal.logEntry ?? meal.planEntry, meal.calories) ? GUESS_MARK : ''
     const macroLine = [
       qty,
-      meal.calories > 0 && `${meal.calories} kcal`,
+      meal.calories > 0 && `${approx && `${approx} `}${meal.calories} kcal`,
       meal.protein_g > 0 && `${meal.protein_g}g protein`,
       meal.carbs_g > 0 && `${meal.carbs_g}g carbs`,
       meal.fat_g > 0 && `${meal.fat_g}g fat`,
@@ -151,10 +138,10 @@ export function FoodTodayTab({ date }: { date: string }) {
         {planned && PLANNED_PILL}
       </button>
     )
-    const eatBtn = planned && meal.planEntry ? (
+    const actionBtn = planned && meal.planEntry ? (
       <IconButton label={`Mark ${name} eaten`} onClick={() => eatPlan.mutate(meal.planEntry!)} disabled={eatPlan.isPending}
         className="text-success disabled:opacity-50"><Check /></IconButton>
-    ) : null
+    ) : dish ? <DishItemMenu entryId={meal.id} item={name} dish={dish.title} date={date} /> : null
     const delBtn = (
       <IconButton label={`Remove ${name}`} onClick={onDelete} className="text-fg-faint hover:!text-danger"><X /></IconButton>
     )
@@ -164,7 +151,7 @@ export function FoodTodayTab({ date }: { date: string }) {
         {/* Narrow card: name + actions, macro line underneath */}
         <div className="@[40rem]:hidden">
           <div className={cx('flex items-center gap-1 text-body', indent ? 'pl-9 pr-2' : 'pl-4 pr-2')}>
-            {nameBtn}{eatBtn}{delBtn}
+            {nameBtn}{actionBtn}{delBtn}
           </div>
           <MetaLine items={macroLine} className={cx('-mt-1.5 pb-2 text-meta tabular-nums text-fg-muted', indent ? 'pl-9 pr-4' : 'px-4')} />
         </div>
@@ -172,54 +159,116 @@ export function FoodTodayTab({ date }: { date: string }) {
         {/* Wide card: every macro in its own aligned column */}
         <div className={cx(MACRO_GRID, 'text-body', indent ? 'pl-9 pr-2' : 'pl-4 pr-2')}>
           {nameBtn}
-          <span className={num}>{qty ?? ''}</span>
-          <span className={cx(num, !planned && 'font-medium text-fg-2')}>{meal.calories > 0 ? meal.calories : ''}</span>
+          {qty ? <Truncate className={num}>{qty}</Truncate> : <span />}
+          <span className={cx(num, !planned && 'font-medium text-fg-2')}>{meal.calories > 0 ? `${approx}${meal.calories}` : ''}</span>
           <span className={num}>{meal.protein_g > 0 ? `${meal.protein_g}g` : ''}</span>
           <span className={num}>{meal.carbs_g > 0 ? `${meal.carbs_g}g` : ''}</span>
           <span className={num}>{meal.fat_g > 0 ? `${meal.fat_g}g` : ''}</span>
           <span className={num}>{meal.fiber_g > 0 ? `${meal.fiber_g}g` : ''}</span>
-          {eatBtn ?? <span />}
+          <span className="grid place-items-center">{actionBtn}</span>
           {delBtn}
         </div>
       </li>
     )
   }
 
-  // Several individually logged items collapsed into ONE row; tap to expand.
-  function groupHeaderLine(group: MealGroupRow) {
+  // A dish (rows sharing a meal_group_id) as ONE row on the same columns as
+  // the single rows: its name and item count, the summed amount and macros,
+  // ⋯ (DishMenu) and ×; tap to expand into its items.
+  function dishLine(group: MealGroupRow, slot: MealSlot) {
     const expanded = expandedGroups.has(group.groupId)
+    const n = group.items.length
+    const num = 'text-meta tabular-nums text-right text-fg-muted'
+    // A dish holding a guessed line has an estimated total.
+    const approx = group.items.some(m => isGuessLine(m.logEntry ?? m.planEntry, m.calories)) ? GUESS_MARK : ''
     const totals = [
-      `${group.calories} kcal`,
+      group.amount,
+      `${approx && `${approx} `}${group.calories} kcal`,
       group.protein_g > 0 && `${group.protein_g}g protein`,
       group.carbs_g > 0 && `${group.carbs_g}g carbs`,
       group.fat_g > 0 && `${group.fat_g}g fat`,
       group.fiber_g > 0 && `${group.fiber_g}g fiber`,
     ]
+    const nameBtn = (
+      <button type="button" onClick={() => toggleGroup(group.groupId)} aria-expanded={expanded}
+        className="flex min-h-[44px] min-w-0 flex-1 items-center gap-1.5 text-left transition-colors hover:text-accent-600">
+        <ChevronRight aria-hidden className={cx('h-4 w-4 shrink-0 text-fg-faint transition-transform', expanded && 'rotate-90')} />
+        <Truncate className="font-medium text-fg">{group.title}</Truncate>
+        <span className="count-badge shrink-0" title={`${n} items`}>{n}<span className="sr-only"> items</span></span>
+      </button>
+    )
+    const menu = <DishMenu group={group} date={date} slot={slot} />
+    const delBtn = (
+      <IconButton label={`Delete ${group.title} (${n} items)`} className="text-fg-faint hover:!text-danger"
+        onClick={() => void remove.run(group.items.map(m => m.id), { title: `Delete “${group.title}”?`, message: `The whole meal: ${n} items.`, confirmLabel: 'Delete meal', done: `Removed ${group.title}` })}><X /></IconButton>
+    )
     return (
       <li key={group.groupId} className={group.items.some(m => fresh.has(m.id)) ? 'motion-row-in' : undefined}>
-        <div className="flex items-center pr-2 transition-colors hover:bg-surface-hover">
-        <button type="button" onClick={() => toggleGroup(group.groupId)} aria-expanded={expanded}
-          className="flex min-h-[44px] min-w-0 flex-1 items-center gap-2 py-1 pl-4 text-left text-body">
-          <ChevronRight aria-hidden className={cx('h-4 w-4 shrink-0 text-fg-faint transition-transform', expanded && 'rotate-90')} />
-          <Truncate className="flex-1 text-fg">{group.title}</Truncate>
-          <span className="count-badge shrink-0">{group.items.length} items</span>
-          <MetaLine as="span" items={totals} className="hidden shrink-0 text-meta tabular-nums text-fg-muted @[40rem]:inline" />
-          {/* Collapsed, the totals line below already starts with the kcal. */}
-          {expanded && <span className="shrink-0 text-meta tabular-nums text-fg-muted @[40rem]:hidden">{group.calories} kcal</span>}
-        </button>
-        <IconButton label={`Remove the whole meal (${group.items.length} items)`} className="text-fg-faint hover:!text-danger"
-          onClick={() => void remove.run(group.items.map(m => m.id), { title: `Remove the whole meal (${group.items.length} items)?`, done: `Removed ${group.items.length} items` })}><X /></IconButton>
+        <div className="@[40rem]:hidden">
+          <div className="flex items-center gap-1 pl-3 pr-2 text-body">{nameBtn}{menu}{delBtn}</div>
+          <MetaLine items={totals} className="-mt-1.5 pb-2 px-4 text-meta tabular-nums text-fg-muted" />
         </div>
-        {!expanded && <MetaLine items={totals} className="-mt-1 pb-2 pl-10 pr-4 text-meta tabular-nums text-fg-muted @[40rem]:hidden" />}
+        <div className={cx(MACRO_GRID, 'pl-3 pr-2 text-body')}>
+          {nameBtn}
+          <span className={num}>{group.amount}</span>
+          <span className={cx(num, 'font-medium text-fg-2')}>{approx}{group.calories}</span>
+          <span className={num}>{group.protein_g > 0 ? `${group.protein_g}g` : ''}</span>
+          <span className={num}>{group.carbs_g > 0 ? `${group.carbs_g}g` : ''}</span>
+          <span className={num}>{group.fat_g > 0 ? `${group.fat_g}g` : ''}</span>
+          <span className={num}>{group.fiber_g > 0 ? `${group.fiber_g}g` : ''}</span>
+          <span className="grid place-items-center">{menu}</span>
+          {delBtn}
+        </div>
         {expanded && (
           <ul className="divide-y divide-line border-t border-line">
-            {group.items.map(m => mealLine(m, true))}
+            {group.items.map(m => mealLine(m, group))}
           </ul>
         )}
       </li>
     )
   }
 
+  // The wide layout's column headings, then the slot's dishes and single rows.
+  function slotRows(meals: DayMeal[], slot: MealSlot) {
+    return (
+      <>
+        <li aria-hidden className={cx(MACRO_GRID, 'pl-4 pr-2 py-1 text-micro font-semibold uppercase tracking-[0.06em] text-fg-faint')}>
+          <span />
+          <span className="text-right">Amount</span>
+          <span className="text-right">kcal</span>
+          <span className="text-right">Protein</span>
+          <span className="text-right">Carbs</span>
+          <span className="text-right">Fat</span>
+          <span className="text-right">Fiber</span>
+          <span /><span />
+        </li>
+        {groupDayMeals(meals).map(row => row.kind === 'group' ? dishLine(row, slot) : mealLine(row.meal))}
+      </>
+    )
+  }
+
+  // An empty slot's quick actions: Log usual, Same as yesterday.
+  function quickActions(slot: MealSlot, label: string) {
+    return (
+      <>
+        {usualForSlot(recent, slot).length > 0 && (
+          <button type="button" disabled={addEntries.isPending}
+            onClick={() => addEntries.mutate(usualForSlot(recent, slot).map(r => recentToEntry(r, date, slot)))}
+            title={usualForSlot(recent, slot).map(r => r.title).join(', ')}
+            aria-label={`Log usual (${usualForSlot(recent, slot).length})`}
+            className="btn-ghost btn-sm shrink-0 !px-2.5 text-accent-600">
+            <span className="@[26rem]:hidden">Usual ({usualForSlot(recent, slot).length})</span><span className="hidden @[26rem]:inline">Log usual ({usualForSlot(recent, slot).length})</span>
+          </button>
+        )}
+        <button type="button" disabled={copyYesterday.isPending}
+          onClick={() => copyYesterday.mutate({ date, filledSlots: new Set(bySlot.keys()), slots: [slot] })}
+          className="btn-ghost btn-sm shrink-0 gap-1 !px-2.5 text-fg-muted" title={`Log the same ${label.toLowerCase()} as the day before`}
+          aria-label={`Same ${label.toLowerCase()} as yesterday`}>
+          <Copy aria-hidden className="h-3.5 w-3.5" /><span className="@[26rem]:hidden">Yesterday</span><span className="hidden @[26rem]:inline">Same as yesterday</span>
+        </button>
+      </>
+    )
+  }
 
   return (
     // Placed by PageBoard (foodBoards.ts): the totals rail on the left, the meal slots in main.
@@ -248,12 +297,13 @@ export function FoodTodayTab({ date }: { date: string }) {
             <div className="mt-4 border-t border-line pt-3">
               {/* The gram figures carry the colour key, so the bar's own % legend is off. */}
               <MacroBar protein={nut.protein_g} carbs={nut.carbs_g} fat={nut.fat_g} showLegend={false} />
-              <div className="mt-2 grid grid-cols-3 gap-x-3 gap-y-1 text-meta tabular-nums text-fg-2">
-                <MacroFigure color={MACRO_COLOR.protein}>{nut.protein_g}g protein</MacroFigure>
-                <MacroFigure color={MACRO_COLOR.carbs}>{nut.carbs_g}g carbs</MacroFigure>
-                <MacroFigure color={MACRO_COLOR.fat}>{nut.fat_g}g fat</MacroFigure>
-                <MacroFigure color={MACRO_COLOR.fiber}>{nut.fiber_g}g fiber</MacroFigure>
-                {nut.sugar_g > 0 && <span className="text-fg-muted">{nut.sugar_g}g sugar</span>}
+              {/* Each total opens a peek: the exact amount and the foods it came from. */}
+              <div className="mt-2 grid grid-cols-3 justify-items-start gap-x-3 gap-y-1 text-meta tabular-nums text-fg-2">
+                <MacroFigure macro="protein_g" label="protein" value={nut.protein_g} color={MACRO_COLOR.protein} meals={nut.meals} />
+                <MacroFigure macro="carbs_g" label="carbs" value={nut.carbs_g} color={MACRO_COLOR.carbs} meals={nut.meals} />
+                <MacroFigure macro="fat_g" label="fat" value={nut.fat_g} color={MACRO_COLOR.fat} meals={nut.meals} />
+                <MacroFigure macro="fiber_g" label="fiber" value={nut.fiber_g} color={MACRO_COLOR.fiber} meals={nut.meals} />
+                {nut.sugar_g > 0 && <MacroFigure macro="sugar_g" label="sugar" value={nut.sugar_g} color={MACRO_COLOR.sugar} meals={nut.meals} />}
               </div>
             </div>
           )}
@@ -291,6 +341,13 @@ export function FoodTodayTab({ date }: { date: string }) {
       <div className="grid min-w-0 grid-cols-1 content-start gap-3 stagger-in sm:gap-4">
         {SLOTS.map(({ slot, label, icon }) => {
           const meals = bySlot.get(slot) ?? []
+          // Scheduled doses with Take / Skip / Snooze, then the slot's other lines (160).
+          if (slot === 'supplement') {
+            return (
+              <SupplementDosesCard key={slot} date={date} meals={meals}
+                renderRows={rows => slotRows(rows, slot)} emptyActions={quickActions(slot, label)} />
+            )
+          }
           const kcal = meals.filter(m => m.source === 'log').reduce((a, m) => a + m.calories, 0)
           return (
             <Card key={slot} padded={false} className="@container overflow-hidden">
@@ -305,18 +362,7 @@ export function FoodTodayTab({ date }: { date: string }) {
               </header>
               {meals.length > 0 ? (
                 <ul className="divide-y divide-line">
-                  {/* Column headings for the wide layout's aligned numbers. */}
-                  <li aria-hidden className={cx(MACRO_GRID, 'pl-4 pr-2 py-1 text-micro font-semibold uppercase tracking-[0.06em] text-fg-faint')}>
-                    <span />
-                    <span className="text-right">Amount</span>
-                    <span className="text-right">kcal</span>
-                    <span className="text-right">Protein</span>
-                    <span className="text-right">Carbs</span>
-                    <span className="text-right">Fat</span>
-                    <span className="text-right">Fiber</span>
-                    <span /><span />
-                  </li>
-                  {groupDayMeals(meals).map(row => row.kind === 'group' ? groupHeaderLine(row) : mealLine(row.meal, false))}
+                  {slotRows(meals, slot)}
                 </ul>
               ) : (
                 <div className="flex items-center pr-2">
@@ -325,21 +371,7 @@ export function FoodTodayTab({ date }: { date: string }) {
                     {/* Short labels in a narrow card so the three actions keep one row. */}
                     Add<span className="hidden @[26rem]:inline">&nbsp;something</span>
                   </button>
-                  {usualForSlot(recent, slot).length > 0 && (
-                    <button type="button" disabled={addEntries.isPending}
-                      onClick={() => addEntries.mutate(usualForSlot(recent, slot).map(r => recentToEntry(r, date, slot)))}
-                      title={usualForSlot(recent, slot).map(r => r.title).join(', ')}
-                      aria-label={`Log usual (${usualForSlot(recent, slot).length})`}
-                      className="btn-ghost btn-sm shrink-0 !px-2.5 text-accent-600">
-                      <span className="@[26rem]:hidden">Usual ({usualForSlot(recent, slot).length})</span><span className="hidden @[26rem]:inline">Log usual ({usualForSlot(recent, slot).length})</span>
-                    </button>
-                  )}
-                  <button type="button" disabled={copyYesterday.isPending}
-                    onClick={() => copyYesterday.mutate({ date, filledSlots: new Set(bySlot.keys()), slots: [slot] })}
-                    className="btn-ghost btn-sm shrink-0 gap-1 !px-2.5 text-fg-muted" title={`Log the same ${label.toLowerCase()} as the day before`}
-                    aria-label={`Same ${label.toLowerCase()} as yesterday`}>
-                    <Copy aria-hidden className="h-3.5 w-3.5" /><span className="@[26rem]:hidden">Yesterday</span><span className="hidden @[26rem]:inline">Same as yesterday</span>
-                  </button>
+                  {quickActions(slot, label)}
                 </div>
               )}
             </Card>

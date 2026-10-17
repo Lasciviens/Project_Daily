@@ -1,5 +1,6 @@
-// Food → Insights: what your diary says over a window — where calories and
-// protein come from, how the day splits across meals, how steadily you log.
+// Food → Insights: what your diary says over a window — your average day,
+// where the protein comes from, how the day splits across meals, how steadily
+// you log. The most used ingredients are foodIngredients.ts's.
 // Pure and type-only (scripts/verify-food-insights.cjs). Eaten rows only.
 import type { MealSlot } from './types'
 
@@ -25,7 +26,7 @@ export interface FoodSource {
   count: number
   kcal: number
   protein: number
-  /** Share of the window's calories (or protein, for the protein list), 0–100. */
+  /** Share of the window's protein (the protein list) or of its diary lines (most logged), 0–100. */
   share: number
 }
 
@@ -38,7 +39,6 @@ export interface FoodInsights {
   avg: { kcal: number; protein: number; carbs: number; fat: number; fiber: number; sugar: number }
   /** Share of calories from protein / carbs / fat (4/4/9), 0–100. */
   split: { protein: number; carbs: number; fat: number }
-  topKcal: FoodSource[]
   topProtein: FoodSource[]
   mostLogged: FoodSource[]
   slots: SlotShare[]
@@ -94,7 +94,6 @@ export function buildFoodInsights(rows: readonly InsightRow[], days: number, tod
     daysLogged,
     avg: { kcal: Math.round(per(sum.kcal)), protein: per(sum.protein), carbs: per(sum.carbs), fat: per(sum.fat), fiber: per(sum.fiber), sugar: per(sum.sugar) },
     split: { protein: pct(4 * sum.protein), carbs: pct(4 * sum.carbs), fat: pct(9 * sum.fat) },
-    topKcal: ranked(s => s.kcal, sum.kcal),
     topProtein: ranked(s => s.protein, sum.protein),
     mostLogged: [...all].sort((a, b) => b.count - a.count || b.kcal - a.kcal || a.title.localeCompare(b.title)).slice(0, top)
       .map(s => ({ ...s, kcal: Math.round(s.kcal), protein: r1(s.protein), share: rows.length ? Math.round((s.count / rows.length) * 100) : 0 })),

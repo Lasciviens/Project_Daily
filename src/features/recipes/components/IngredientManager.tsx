@@ -26,7 +26,19 @@ import { FOOD_GROUPS, type IngredientLibraryItem } from '../types'
 
 const EMPTY = { name: '', unit: 'g', kcal: '', prot: '', carb: '', fat: '', fiber: '', sugar: '', servLabel: '', servGrams: '', group: '' }
 
-export function IngredientManager() {
+function formOf(ing: IngredientLibraryItem): typeof EMPTY {
+  const s = (n: number | null) => (n == null ? '' : String(n))
+  return {
+    name: ing.name, unit: ing.unit || 'g',
+    kcal: s(ing.calories), prot: s(ing.protein_g), carb: s(ing.carbs_g),
+    fat: s(ing.fat_g), fiber: s(ing.fiber_g), sugar: s(ing.sugar_g),
+    servLabel: ing.serving_label ?? '', servGrams: s(ing.serving_grams),
+    group: ing.food_group ?? '',
+  }
+}
+
+/** `focusId`: a food to open in the form (a link from Edit entry's "Edit food"). */
+export function IngredientManager({ focusId }: { focusId?: string | null } = {}) {
   const { data: library = [], isLoading } = useIngredientLibrary()
   const create = useCreateIngredientLibraryItem()
   const update = useUpdateIngredientLibraryItem()
@@ -75,16 +87,17 @@ export function IngredientManager() {
 
   function startEdit(ing: IngredientLibraryItem) {
     setEditingId(ing.id)
-    const s = (n: number | null) => (n == null ? '' : String(n))
-    setF({
-      name: ing.name, unit: ing.unit || 'g',
-      kcal: s(ing.calories), prot: s(ing.protein_g), carb: s(ing.carbs_g),
-      fat: s(ing.fat_g), fiber: s(ing.fiber_g), sugar: s(ing.sugar_g),
-      servLabel: ing.serving_label ?? '', servGrams: s(ing.serving_grams),
-      group: ing.food_group ?? '',
-    })
+    setF(formOf(ing))
     setFormOpen(true)   // ✎ must open the collapsed mobile form, not just scroll to it
     formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+
+  // Edit entry's "Edit food" lands here with the food (`?food=<id>`): its
+  // form opens once the library has it (adjust-during-render, no effect).
+  const [focused, setFocused] = useState<string | null>(null)
+  if (focusId && focusId !== focused) {
+    const ing = library.find(l => l.id === focusId)
+    if (ing) { setFocused(focusId); setEditingId(ing.id); setF(formOf(ing)); setFormOpen(true) }
   }
 
   async function handleSave() {
@@ -120,8 +133,14 @@ export function IngredientManager() {
     f.kcal === '' ? null : Number(f.kcal), f.prot === '' ? null : Number(f.prot),
     f.carb === '' ? null : Number(f.carb), f.fat === '' ? null : Number(f.fat),
   )
-  const macroField = (k: 'kcal' | 'prot' | 'carb' | 'fat' | 'fiber' | 'sugar', label: string) => (
-    <input value={f[k]} onChange={e => set(k, sanitizeDecimal(e.target.value))} inputMode="decimal" placeholder={label} aria-label={label} className="input" />
+  // The name sits above the box (small and light), so a filled-in number still
+  // says what it is — a placeholder alone vanished once typed.
+  const per = `per 100 ${f.unit === 'ml' ? 'ml' : 'g'}`
+  const macroField = (k: 'kcal' | 'prot' | 'carb' | 'fat' | 'fiber' | 'sugar', label: string, unit: string) => (
+    <label className="flex min-w-0 flex-col gap-0.5">
+      <span className="text-micro text-fg-muted">{label} ({unit})</span>
+      <input value={f[k]} onChange={e => set(k, sanitizeDecimal(e.target.value))} inputMode="decimal" aria-label={`${label} (${unit} ${per})`} className="input tabular-nums" />
+    </label>
   )
 
   return (
@@ -162,12 +181,12 @@ export function IngredientManager() {
         <div className={cx(formOpen ? 'flex' : 'hidden', 'flex-col gap-2 sm:flex')}>
           <input value={f.name} onChange={e => set('name', e.target.value)} placeholder="Name (e.g. chicken breast)" aria-label="Name" className="input" />
           <div className="grid grid-cols-2 gap-2 @[30rem]:grid-cols-3">
-            {macroField('kcal', 'Calories')}
-            {macroField('prot', 'Protein g')}
-            {macroField('carb', 'Carbs g')}
-            {macroField('fat', 'Fat g')}
-            {macroField('fiber', 'Fiber g')}
-            {macroField('sugar', 'Sugar g')}
+            {macroField('kcal', 'Calories', 'kcal')}
+            {macroField('prot', 'Protein', 'g')}
+            {macroField('carb', 'Carbs', 'g')}
+            {macroField('fat', 'Fat', 'g')}
+            {macroField('fiber', 'Fiber', 'g')}
+            {macroField('sugar', 'Sugar', 'g')}
           </div>
           {consistency?.inconsistent && (
             <div className="flex items-center gap-2 text-meta text-warn">

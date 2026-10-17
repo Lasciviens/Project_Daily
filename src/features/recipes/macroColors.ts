@@ -7,6 +7,7 @@ export const MACRO_COLOR = {
   carbs:   'rgb(var(--chart-3))',
   fat:     'rgb(var(--chart-4))',
   fiber:   'rgb(var(--chart-5))',
+  sugar:   'rgb(var(--chart-6))',
 } as const
 
 export type Macro = keyof typeof MACRO_COLOR

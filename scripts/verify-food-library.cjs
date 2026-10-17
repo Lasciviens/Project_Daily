@@ -162,4 +162,131 @@ ok(M.portionMacros(foods[0]), null, 'no portion preset → null')
   check('nothing when few calories are left', M.suggestForRemaining({ recipes, foods, usage: used, kcalLeft: 50, proteinLeft: 60 }).length === 0)
 }
 
+// Amounts in the thing's own units, batches, the logger's basket and dishes
+// (Food points 8 and 5, 16.10.2026): foodAmount.ts, foodBasket.ts, foodDish.ts.
+{
+  const A = require('../src/features/recipes/foodAmount')
+  const B = require('../src/features/recipes/foodBasket')
+  const D = require('../src/features/recipes/foodDish')
+
+  // Words and numbers
+  ok([A.plural('piece', 3), A.plural('piece', 1), A.plural('glass', 2), A.plural('berry', 2), A.plural('portion', 0.5)],
+    ['pieces', 'piece', 'glasses', 'berries', 'portion'], 'plural: s, es, ies; one or less stays one (½ portion)')
+  ok([A.formatCount(0.5), A.formatCount(1.5), A.formatCount(2.25), A.formatCount(3), A.formatCount(2.333)], ['½', '1½', '2¼', '3', '2.3'], 'counts read as people say them')
+  ok([A.countLabel(3, 'piece'), A.countLabel(0.5, 'portion'), A.portionWord(null), A.portionWord(' slice ')], ['3 pieces', '½ portion', 'portion', 'slice'],
+    'a recipe without a portion name says "portion"')
+
+  // A food: g and its preset
+  const rice = { unit: 'g', serving_label: '1 portion', serving_grams: 200 }
+  const fm = A.foodAmountModel(rice)
+  ok(fm.units.map(u => u.id + ':' + u.label + ':' + u.perUnit), ['g:g:1', 'preset:portion:200'], 'a food: grams and its preset as a unit')
+  ok(A.amountChips(fm, 'g', { last: 150 }).map(c => [c.label, c.hint ?? '', c.base]),
+    [['½ portion', '', 100], ['1 portion', '200 g', 200], ['150 g last time', '', 150]], 'grams: ½ and 1 preset, then last time (the design\'s three chips)')
+  ok(A.amountChips(fm, 'g', { last: 200 }).length, 2, 'last time equal to a chip is not offered twice')
+  ok(A.amountChips(fm, 'preset').map(c => c.label), ['½ portion', '1 portion', '1½ portions', '2 portions'], 'in the preset unit the chips count it')
+  ok([A.amountHint(fm, 'g', 100), A.amountHint(fm, 'preset', 300), A.amountHint(A.foodAmountModel({ unit: 'ml', serving_label: null, serving_grams: null }), 'ml', 330)],
+    ['= ½ portion', '= 300 g', null], '"= ½ portion" beside grams, grams beside the preset, nothing without a preset')
+  ok(A.amountChips(A.foodAmountModel({ unit: 'ml', serving_label: null, serving_grams: null }), 'ml').map(c => c.label), ['100 ml'], 'a drink without a preset: 100 ml')
+
+  // A recipe: its portion word, % of batch, g raw, g cooked
+  const kofte = { id: 'k', servings: 20, serving_label: 'piece', ingredients: [{ quantity: 1000, unit: 'g' }, { quantity: 1, unit: 'dl' }, { quantity: null, unit: null }] }
+  ok(A.rawWeight(kofte), 1100, 'raw weight: grams, a dl as 100 g, "to taste" skipped')
+  ok(A.rawWeight({ ingredients: [{ quantity: 2, unit: 'pcs' }, { quantity: 100, unit: 'g' }] }), 0, 'a piece count means no raw weight')
+  const now = new Date('2026-10-17T12:00:00')
+  const rows = [
+    { id: 'e1', recipe_id: 'k', date: '2026-10-16', created_at: '2026-10-16T19:00:00', quantity: 3 },
+    { id: 'e2', recipe_id: 'k', date: '2026-10-17', created_at: '2026-10-17T11:00:00', quantity: 3 },
+    { id: 'e0', recipe_id: 'k', date: '2026-10-16', created_at: '2026-10-16T12:00:00', quantity: 2 },
+    { id: 'e3', recipe_id: 'k', date: '2026-10-15', created_at: '2026-10-16T20:00:00', quantity: 1 },
+    { id: 'x', recipe_id: 'other', date: '2026-10-17', created_at: '2026-10-17T11:00:00', quantity: 5 },
+    { id: 'p', recipe_id: 'k', date: '2026-10-17', created_at: '2026-10-17T11:30:00', quantity: 1, status: 'planned' },
+  ]
+  const withBatch = { ...kofte, batch_started_at: '2026-10-16T18:00:00', batch_servings: 20, batch_cooked_g: 1800 }
+  const bs = A.batchState(withBatch, rows, now)
+  ok([bs.startDay, bs.servings, bs.eaten, bs.left, bs.expired, bs.active, bs.cookedG], ['2026-10-16', 20, 6, 14, false, true, 1800],
+    'leftovers: 20 − the 6 eaten since the batch started (not before it, not backfilled to an earlier day, not planned, not another recipe)')
+  ok(A.batchState(withBatch, rows, now, 'e2').left, 17, 'the entry being edited is left out')
+  ok(A.batchState(withBatch, rows, new Date('2026-10-20T18:00:00')).expired, true, 'a batch is over after 4 days')
+  ok(A.batchState(withBatch, rows, new Date('2026-10-20T17:59:00')).expired, false, '… and not a minute before')
+  ok(A.batchState({ ...withBatch, batch_servings: 6 }, rows, now).active, false, 'eaten up: no batch on the go')
+  ok(A.batchState(kofte, rows, now), null, 'no batch was ever started')
+  ok(A.batchState({ ...withBatch, batch_servings: null }, rows, now).servings, 20, 'a batch without its size counts the recipe\'s servings')
+
+  const rm = A.recipeAmountModel(withBatch, bs)
+  ok(rm.units.map(u => u.id + ':' + u.label), ['portion:piece', 'pct:% of batch', 'raw:g raw', 'cooked:g cooked'], 'a recipe: piece, % of batch, g raw, g cooked')
+  ok([A.fromUnit(rm.units[1], 50), A.fromUnit(rm.units[2], 110), A.fromUnit(rm.units[3], 270)], [10, 2, 3], '50 % = 10 pieces; 110 g raw = 2; 270 g cooked = 3')
+  ok(A.recipeAmountModel(withBatch, null).units.map(u => u.id), ['portion', 'pct', 'raw'], 'g cooked only while the batch is on and its pot weighed')
+  const doubleBatch = A.batchState({ ...withBatch, batch_servings: 40 }, [], now)
+  ok(A.fromUnit(A.recipeAmountModel(withBatch, doubleBatch).units[1], 25), 10, '% counts against the current batch (a double batch of 40)')
+  ok(A.amountChips(rm, 'portion', { batch: bs, last: 3 }).map(c => c.label + (c.hint ? ' ' + c.hint : '')),
+    ['1 piece', '2 pieces', '3 pieces', '4 pieces', 'The rest 14 pieces'], 'piece chips, "The rest" of the batch; last time already a chip')
+  ok(A.amountChips(rm, 'pct').map(c => c.base), [5, 10, 15, 20], '25–100 % of the batch')
+  ok(A.amountChips(rm, 'raw').map(c => c.label + ' ' + c.hint), ['1 piece 55 g', '2 pieces 110 g'], 'grams: one and two pieces in grams')
+  ok(A.amountChips(A.recipeAmountModel({ servings: 1, ingredients: [] }, null), 'portion').map(c => c.label), ['½ portion', '1 portion', '1½ portions', '2 portions'],
+    'a one-portion saved meal: ½ to 2')
+  ok([A.amountHint(rm, 'portion', 3), A.amountHint(rm, 'pct', 5), A.amountHint(rm, 'cooked', 1.5)], ['= 15% of batch', '= 5 pieces', '= 1½ pieces'], 'the other main unit beside the field')
+  const u = (kind) => ({ id: 'x', label: 'x', perUnit: 1, kind })
+  ok([A.stepValue(u('count'), 3, 1), A.stepValue(u('count'), 1, -1), A.stepValue(u('count'), 0.5, 1), A.stepValue(u('count'), 2.5, -1), A.stepValue(u('count'), 2.5, 1)],
+    [4, 0.5, 1, 2, 3], 'count steps: by one, ½ at the bottom, round values')
+  ok([A.stepValue(u('weight'), 150, 1), A.stepValue(u('weight'), 155, -1), A.stepValue(u('weight'), 10, -1), A.stepValue(u('percent'), 27, 1)], [160, 150, 10, 30],
+    'grams by 10, % by 5, never below one step')
+
+  ok([A.batchNote(bs, 'piece'), A.batchNote({ ...bs, active: false, left: 0 }, 'piece'), A.batchNote(null, 'piece')],
+    [{ text: '14 pieces left', gone: false }, { text: 'none left', gone: true }, null], 'the Saved meals tile: "14 pieces left", a batch eaten up or over greyed "none left", nothing without a batch')
+  ok([A.liveBatchesFrom([withBatch, { batch_started_at: '2026-10-12T10:00:00' }, { batch_started_at: null }], now), A.liveBatchesFrom([{ batch_started_at: '2026-10-12T10:00:00' }], now)],
+    ['2026-10-16', null], 'one diary read from the earliest batch still within its 4 days; an older batch needs none')
+  ok(A.batchBar({ servings: 20, eaten: 6 }, 3), { eaten: 6, this: 3, left: 11, over: 0, total: 20 }, 'the bar: eaten | this | left')
+  ok(A.batchBar({ servings: 20, eaten: 18 }, 4), { eaten: 18, this: 2, left: 0, over: 2, total: 22 }, 'more than left: 2 over (hatched, "2 more than left")')
+
+  // The logger's basket: foods, a saved meal's portion, a dish's one-off line
+  const food = (o) => ({ id: 'x', name: 'x', unit: 'g', calories: null, protein_g: null, carbs_g: null, fat_g: null, fiber_g: null, sugar_g: null, serving_label: null, serving_grams: null, ...o })
+  const chicken = food({ id: 'c', name: 'Chicken breast, raw', calories: 106, protein_g: 23, carbs_g: 0, fat_g: 1.5 })
+  const recipe = { id: 'k', title: 'Køfte', servings: 20, serving_label: 'piece', macro_mode: 'from_ingredients', calories: 100, protein_g: 10, carbs_g: 1, fat_g: 6.5, fiber_g: 0, sugar_g: 0,
+    ingredients: [{ name: 'Kjøttdeig', quantity: 1000, unit: 'g', note: null, library_ingredient_id: 'm' }] }
+  const basket = [{ ingredient: chicken, grams: 150 }, { kind: 'recipe', recipe, servings: 3 }]
+  ok(B.basketTotals(basket).kcal, 459, 'totals: 150 g chicken (159) + 3 pieces of køfte (300)')
+  ok(basket.map(B.itemAmount), ['150 g', '3 pieces'], 'the basket says "Køfte · 3 pieces"')
+  ok(B.itemsToEntries(basket, { date: '2026-10-16', slot: 'dinner', groupId: 'g1', groupTitle: 'Køfte plate' }), [
+    { date: '2026-10-16', meal_slot: 'dinner', library_ingredient_id: 'c', quantity: 150, unit: 'g', calories: 159, protein_g: 34.5, carbs_g: 0, fat_g: 2.25, fiber_g: null, sugar_g: null, meal_group_id: 'g1', meal_group_title: 'Køfte plate' },
+    { date: '2026-10-16', meal_slot: 'dinner', recipe_id: 'k', quantity: 3, unit: 'serving', calories: 300, protein_g: 30, carbs_g: 3, fat_g: 19.5, fiber_g: 0, sugar_g: 0, meal_group_id: 'g1', meal_group_title: 'Køfte plate' },
+  ], 'Log: a food by grams and a recipe by servings, both in the dish')
+  ok(B.itemsToEntries([{ kind: 'custom', title: 'Salsa', macros: { kcal: 30, protein: 1, carbs: 6, fat: 0, fiber: 1, sugar: 4 }, entryId: 'e9' }], { date: '2026-10-16', slot: 'dinner' }), [],
+    'a dish\'s one-off line is already a row — never logged twice')
+  ok([B.itemMissingAmount({ kind: 'recipe', recipe, servings: 0 }), B.itemMissingAmount({ ingredient: chicken, grams: 0 })], [true, true], 'a 0 amount is caught for every kind')
+
+  const fromFoods = B.basketToRecipeInput([{ ingredient: chicken, grams: 150 }, { kind: 'recipe', recipe, servings: 10 }], ' Lunch box ', 2)
+  ok([fromFoods.title, fromFoods.macro_mode, fromFoods.servings, fromFoods.ingredients.map(i => `${i.name} ${i.quantity}${i.unit}`)],
+    ['Lunch box', 'from_ingredients', 2, ['Chicken breast, raw 150g', 'Kjøttdeig 500g']], 'a saved meal from foods and half a batch: the batch\'s foods for that share, macros follow them')
+  const withLine = B.basketToRecipeInput([{ ingredient: chicken, grams: 100 }, { kind: 'custom', title: 'Salsa', macros: { kcal: 30, protein: 1, carbs: 6, fat: 0, fiber: 1, sugar: 4 }, entryId: 'e9' }], 'Taco', 1)
+  ok([withLine.macro_mode, withLine.calories, withLine.protein_g, withLine.ingredients[1]], ['manual', 136, 24, { name: 'Salsa', quantity: null, unit: null, note: '30 kcal', library_ingredient_id: null }],
+    'a one-off line inside: typed macros (the basket\'s own totals per portion), the line kept by name')
+
+  // Dishes
+  ok([D.shortFoodName('White rice, boiled (ris, kokt)'), D.shortFoodName('Chicken (grilled)'), D.shortFoodName('Køfte')], ['White rice', 'Chicken', 'Køfte'], 'a food\'s short name for a dish title')
+  ok([D.dishAutoName(['Rice', 'Chicken breast, raw']), D.dishAutoName(['A', 'B', 'C', 'D', 'E']), D.dishAutoName(['Rice', 'rice']), D.dishAutoName([])],
+    ['Rice + Chicken breast', 'A + B + C +2', 'Rice', 'Meal'], 'the automatic name: item names without amounts, at most three, then +N')
+  ok([D.dishName('Taco plate', ['x']), D.dishName('  ', ['Rice', 'Chicken'])], ['Taco plate', 'Rice + Chicken'], 'its own name wins; blank means automatic')
+  ok([D.dishAmount([{ quantity: 150, unit: 'g' }, { quantity: 100, unit: 'g' }]), D.dishAmount([{ quantity: 330, unit: 'ml' }]), D.dishAmount([{ quantity: 150, unit: 'g' }, { quantity: 3, unit: 'serving' }]),
+    D.dishAmount([{ quantity: 150, unit: 'g' }, { quantity: 200, unit: 'ml' }]), D.dishAmount([{ quantity: null, unit: null }, { quantity: 2, unit: 'g' }])],
+  ['250 g', '330 ml', '2 items', '2 items', '2 items'], 'Amount: summed grams, or "N items" when a piece count (or a one-off line) is inside')
+  const lib = new Map([['c', chicken]]), recs = new Map([['k', recipe]])
+  const row = (o) => ({ id: 'r', title: 't', library_ingredient_id: null, recipe_id: null, quantity: null, unit: null, calories: 30, protein_g: 1, carbs_g: 6, fat_g: 0, fiber_g: 1, sugar_g: 4, ...o })
+  ok([D.rowToItem(row({ library_ingredient_id: 'c', quantity: 150, unit: 'g' }), lib, recs).grams, D.rowToItem(row({ recipe_id: 'k', quantity: 3, unit: 'serving' }), lib, recs).servings,
+    D.rowToItem(row({ title: 'Salsa' }), lib, recs).kind, D.rowToItem(row({ library_ingredient_id: 'c', quantity: 2, unit: 'pcs' }), lib, recs).kind, D.rowToItem(row({ library_ingredient_id: 'gone', quantity: 100, unit: 'g' }), lib, recs).kind],
+  [150, 3, 'custom', 'custom', 'custom'], 'Edit meal\'s basket: a weighed food, a recipe portion, else the line as it is')
+
+  // A slot's rows as dishes (the two bugs: the title, "1 items")
+  const meal = (id, title, g, o = {}) => ({ id, title, meal_group_id: g, calories: 100, protein_g: 10, carbs_g: 5, fat_g: 2, fiber_g: 1, sugar_g: 0,
+    logEntry: { quantity: 100, unit: 'g' }, ...o })
+  const day = D.groupDishes([
+    meal('a', 'Rice · 100g', 'g1'), meal('s', 'Apple · 150g', null), meal('b', 'Chicken breast, raw · 150g', 'g1', { logEntry: { quantity: 150, unit: 'g' } }),
+    meal('c', 'Tortilla · 120g', 'g2', { meal_group_title: 'Taco plate' }), meal('d', 'Køfte · 3×', 'g2', { logEntry: { quantity: 3, unit: 'serving' }, meal_group_title: 'Taco plate' }),
+    meal('e', 'Beef · 100g', 'g3'),
+  ])
+  ok(day.map(r => r.kind === 'group' ? `${r.title} [${r.amount}] ${r.items.length}` : `single ${r.meal.id}`),
+    ['Rice + Chicken breast [250 g] 2', 'single s', 'Taco plate [2 items] 2', 'single e'],
+    'dishes: the automatic name without amounts (was "Rice · 100g +1 more"), its own name, summed grams or "N items", a group of one is a plain row (was "1 items"), order kept')
+  ok([day[0].calories, day[0].protein_g, day[0].ownTitle, day[2].ownTitle], [200, 20, null, 'Taco plate'], 'a dish sums its rows; ownTitle says whether it was renamed')
+}
+
 console.log(`verify-food-library: ${n} assertions passed`)

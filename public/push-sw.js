@@ -12,6 +12,9 @@ self.addEventListener('push', (event) => {
     badge: self.registration.scope + 'favicon.svg',
     data: { url: d.url || '#/home' },
     tag: d.tag || 'lascis',
+    // A reminder that replaces the last one with the same tag still alerts
+    // (supplement reminders, migration 160); renotify needs a tag, which is set.
+    renotify: d.renotify === true,
   }));
 });
 

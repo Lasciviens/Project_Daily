@@ -9,6 +9,7 @@ import {
 } from '../quickGuess'
 import { DecimalInput } from './foodLogKit'
 import { foodEmoji } from './foodLogUtils'
+import { QuickGuessOptionsField } from './QuickGuessOptionsField'
 
 const FORM_ID = 'quick-guess-form'
 // Before migration 152 the editor shows the built-in presets; their ids are
@@ -16,7 +17,7 @@ const FORM_ID = 'quick-guess-form'
 const BUILT_IN = 'built-in:'
 const BUILT_IN_ITEMS: QuickGuessItem[] = DEFAULT_GUESSES.map((g, i) => ({
   id: `${BUILT_IN}${g.key}`, name: g.title, icon: g.icon, portion: g.portion,
-  calories: g.kcal, protein_g: g.protein, carbs_g: g.carbs, fat_g: g.fat, sugar_g: g.sugar, sort_order: i,
+  calories: g.kcal, protein_g: g.protein, carbs_g: g.carbs, fat_g: g.fat, sugar_g: g.sugar, sort_order: i, options: [],
 }))
 
 const MACROS = [
@@ -27,11 +28,23 @@ const MACROS = [
   { key: 'sugar', label: 'Sugar' },
 ] as const
 
-/** Add or edit one preset: name, icon, portion, kcal and macros per portion. */
-function QuickGuessSheet({ item, sortOrder, onClose }: { item: QuickGuessItem | null; sortOrder: number; onClose: () => void }) {
+/**
+ * Add or edit one preset: name, icon, portion, kcal and macros per portion,
+ * and the options asked before logging. A local stacked sheet; `initial`
+ * prefills a new one ("Save as preset" from Describe it, "Save as Quick
+ * guess" from a diary line — lineToDraft). A new preset goes last.
+ */
+export function QuickGuessSheet({ item, sortOrder, initial, onClose }: {
+  item: QuickGuessItem | null
+  /** Where a new preset goes; by default after the last one. */
+  sortOrder?: number
+  initial?: GuessDraft
+  onClose: () => void
+}) {
+  const q = useQuickGuessItems()
   const save = useSaveQuickGuess()
   const remove = useDeleteQuickGuess()
-  const [draft, setDraft] = useState<GuessDraft>(() => (item ? itemToDraft(item) : EMPTY_DRAFT))
+  const [draft, setDraft] = useState<GuessDraft>(() => (item ? itemToDraft(item) : initial ?? EMPTY_DRAFT))
   const [problem, setProblem] = useState<string | null>(null)
   const set = <K extends keyof GuessDraft>(k: K, v: GuessDraft[K]) => { setDraft(d => ({ ...d, [k]: v })); setProblem(null) }
   const row = item && !item.id.startsWith(BUILT_IN) ? item : null
@@ -40,7 +53,8 @@ function QuickGuessSheet({ item, sortOrder, onClose }: { item: QuickGuessItem | 
   async function submit() {
     const p = draftProblem(draft)
     if (p) { setProblem(p); return }
-    try { await save.mutateAsync({ id: row?.id, input: draftToInput(draft, item?.sort_order ?? sortOrder) }) } catch { return }
+    const order = item?.sort_order ?? sortOrder ?? nextSortOrder(q.data ?? [])
+    try { await save.mutateAsync({ id: row?.id, input: draftToInput(draft, order) }) } catch { return }
     onClose()
   }
 
@@ -94,6 +108,7 @@ function QuickGuessSheet({ item, sortOrder, onClose }: { item: QuickGuessItem | 
             ))}
           </div>
         </div>
+        <QuickGuessOptionsField draft={draft} onChange={options => set('options', options)} />
         {problem && <p role="alert" className="text-meta text-danger">{problem}</p>}
       </form>
     </ModalShell>
@@ -146,9 +161,12 @@ export function QuickGuessEditor({ onClose }: { onClose: () => void }) {
               <span aria-hidden className="w-6 shrink-0 text-center text-base leading-none">{item.icon || foodEmoji(item.name)}</span>
               <span className="min-w-0 flex-1">
                 <Truncate className="text-body font-medium text-fg">{item.name}</Truncate>
-                {/* One line: kcal and protein (what the chip shows); carbs and fat where the popup is wider. */}
+                {/* One line: kcal and protein (what the chip shows), then its option groups, or carbs and fat where the popup is wider. */}
                 <p className="whitespace-nowrap text-meta tabular-nums text-fg-muted">
-                  {item.calories} kcal · {item.protein_g} g protein<span className="hidden sm:inline"> · {item.carbs_g} g carbs · {item.fat_g} g fat</span>
+                  {item.calories} kcal · {item.protein_g} g protein
+                  {item.options.length > 0
+                    ? <> · <span className="text-fg-2">{item.options.length === 1 ? '1 option group' : `${item.options.length} option groups`}</span></>
+                    : <span className="hidden sm:inline"> · {item.carbs_g} g carbs · {item.fat_g} g fat</span>}
                 </p>
               </span>
             </button>

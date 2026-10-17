@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { CheckCircle2, XCircle, AlertTriangle, Info, LoaderCircle, type LucideIcon } from 'lucide-react'
 import { useToastStore, type Toast } from '../../app/store'
 import { useMotion } from '../hooks/useMotion'
@@ -81,13 +82,17 @@ function useToastRows(toasts: Toast[], animateOut: boolean): Row[] {
 }
 
 /** `positionClassName` replaces the default bottom-left offsets — the app
- *  shell lifts it above the phone tab bar; full-screen pages pass their own. */
+ *  shell lifts it above the phone tab bar; full-screen pages pass their own.
+ *  Rendered straight into <body>, outside #root (THEME §8 "non-modal floating
+ *  windows"): Headless UI never makes it inert and never counts a tap on it as
+ *  a press outside the open popup, so "Logged … · Undo" works while the food
+ *  logger stays open — a toast in #root closed the popup it was tapped over. */
 export function Toaster({ positionClassName = DEFAULT_POSITION }: { positionClassName?: string } = {}) {
   const toasts = useToastStore(s => s.toasts)
   const rows = useToastRows(toasts, useMotion())
   if (!rows.length) return null
 
-  return (
+  return createPortal(
     <div aria-live="polite" className={`pointer-events-none fixed z-toast flex flex-col items-start gap-2 ${positionClassName}`}>
       {rows.map(({ toast: t, leaving }) => (
         <div
@@ -98,6 +103,7 @@ export function Toaster({ positionClassName = DEFAULT_POSITION }: { positionClas
           <ToastItem toast={t} />
         </div>
       ))}
-    </div>
+    </div>,
+    document.body,
   )
 }

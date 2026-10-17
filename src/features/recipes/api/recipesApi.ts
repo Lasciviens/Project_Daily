@@ -1,7 +1,7 @@
 import { supabase } from '../../../integrations/supabase/client'
 import { requireUser } from '../../../shared/utils/requireUser'
 import { toGrams } from '../foodUnits'
-import type { RecipeWithIngredients, RecipeInput, RecipeIngredient, IngredientLibraryItem } from '../types'
+import type { Recipe, RecipeWithIngredients, RecipeInput, RecipeIngredient, IngredientLibraryItem } from '../types'
 
 export const WEIGHT_UNITS = new Set(['g', 'gram', 'grams', 'ml', 'milliliter', 'milliliters', 'millilitre', 'millilitres'])
 
@@ -160,16 +160,28 @@ async function resolveMacros(input: RecipeInput) {
   }
 }
 
-// Some recipe columns land in later migrations (fiber_g = 060, is_temp = 066).
-// Until applied, an insert/update carrying one 400s with "column not found"
-// (PGRST204 / 42703). Detect that specific case per-column and retry without it
-// so a pre-migration browser still saves (matches the image_url degradation
-// pattern). Every other error propagates unchanged.
-const OPTIONAL_RECIPE_COLS = ['is_temp', 'fiber_g'] as const
+// Some recipe columns land in later migrations (fiber_g = 060, is_temp = 066,
+// the portion name and batch = 157). Until applied, an insert/update carrying
+// one 400s with "column not found" (PGRST204 / 42703). Detect that specific
+// case per-column and retry without it so a pre-migration browser still saves
+// (matches the image_url degradation pattern). Every other error propagates
+// unchanged. Remove the 157 names once 157 has run everywhere.
+const OPTIONAL_RECIPE_COLS = ['is_temp', 'fiber_g', 'serving_label'] as const
 function missingRecipeCol(err: unknown, col: string): boolean {
   const e = err as { code?: string; message?: string }
   const msg = (e?.message ?? '').toLowerCase()
   return (e?.code === 'PGRST204' || e?.code === '42703') && msg.includes(col)
+}
+
+/** Runs a write, dropping each optional column the database names as missing (in any order) and retrying. */
+async function writeDroppingMissing<T extends { error: unknown }>(row: Record<string, unknown>, write: () => PromiseLike<T>): Promise<T> {
+  let res = await write()
+  for (;;) {
+    const col = OPTIONAL_RECIPE_COLS.find(c => c in row && missingRecipeCol(res.error, c))
+    if (!res.error || !col) return res
+    delete row[col]
+    res = await write()
+  }
 }
 
 export async function createRecipe(input: RecipeInput): Promise<string> {
@@ -189,17 +201,17 @@ export async function createRecipe(input: RecipeInput): Promise<string> {
     category:     input.category ?? null,
     is_temp:      input.is_temp ?? false,
   }
-  let { data, error } = await supabase.from('recipes').insert(row).select('id').single()
-  for (const col of OPTIONAL_RECIPE_COLS) {
-    if (error && missingRecipeCol(error, col)) {
-      delete row[col]
-      ;({ data, error } = await supabase.from('recipes').insert(row).select('id').single())
-    }
-  }
+  if (input.serving_label !== undefined) row.serving_label = cleanServingLabel(input.serving_label)
+  const { data, error } = await writeDroppingMissing(row, () => supabase.from('recipes').insert(row).select('id').single())
   if (error) throw error
   if (!data) throw new Error('Recipe insert returned no row')
 
   await replaceIngredients(user.id, data.id, input.ingredients)
+  // The logger's Save meal: the batch it made starts on the server's clock.
+  // Before 157 there are no batches — the save itself is what counts.
+  if (input.start_batch && input.start_batch > 0) {
+    try { await startRecipeBatch(data.id, { servings: input.start_batch }) } catch (e) { if ((e as Error).message !== NOT_MIGRATED_157) throw e }
+  }
   return data.id
 }
 
@@ -220,13 +232,8 @@ export async function updateRecipe(id: string, input: RecipeInput): Promise<void
     updated_at:   new Date().toISOString(),
   }
   if (input.is_temp !== undefined) row.is_temp = input.is_temp
-  let { error } = await supabase.from('recipes').update(row).eq('id', id)
-  for (const col of OPTIONAL_RECIPE_COLS) {
-    if (error && missingRecipeCol(error, col)) {
-      delete row[col]
-      ;({ error } = await supabase.from('recipes').update(row).eq('id', id))
-    }
-  }
+  if (input.serving_label !== undefined) row.serving_label = cleanServingLabel(input.serving_label)
+  const { error } = await writeDroppingMissing(row, () => supabase.from('recipes').update(row).eq('id', id))
   if (error) throw error
 
   await replaceIngredients(user.id, id, input.ingredients)
@@ -278,7 +285,62 @@ export async function recomputeRecipesUsingIngredient(libraryId: string): Promis
   return updated
 }
 
-export async function incrementTimesCooked(id: string, current: number): Promise<void> {
+/** A portion name as stored: trimmed, at most 30 characters (157's guard), empty = null ("portion"). */
+export function cleanServingLabel(label: string | null | undefined): string | null {
+  const t = (label ?? '').trim().slice(0, 30)
+  return t === '' ? null : t
+}
+
+export const NOT_MIGRATED_157 = 'Batches need migration 157 (recipe portions and batches), which has not been applied yet.'
+
+/** A recipe's batch as stored. */
+export type RecipeBatch = Pick<Recipe, 'id' | 'batch_started_at' | 'batch_servings' | 'batch_cooked_g' | 'times_cooked'>
+
+/**
+ * Starts a batch through 157's start_recipe_batch(): the start is the
+ * server's now(), never this device's clock — leftovers count diary rows by
+ * their server-made created_at, so a phone running fast would otherwise leave
+ * a portion logged right after uncounted. `countCook` also counts "I made this".
+ */
+export async function startRecipeBatch(id: string, b: { servings: number; cookedG?: number | null; countCook?: boolean }): Promise<RecipeBatch> {
+  const { data, error } = await supabase.rpc('start_recipe_batch', {
+    p_recipe_id: id, p_servings: b.servings, p_cooked_g: b.cookedG ?? null, p_count_cook: b.countCook ?? false,
+  })
+  if (error) {
+    const code = (error as { code?: string }).code
+    throw code === 'PGRST202' || code === '42883' ? new Error(NOT_MIGRATED_157) : error
+  }
+  const row = (Array.isArray(data) ? data[0] : data) as RecipeBatch | undefined
+  if (!row) throw new Error('That recipe is no longer there')
+  return row
+}
+
+/**
+ * "I made this": counts the cook and starts a batch of `servings` (the
+ * detail's scaled yield), so the portion sheet can say what is left. Before
+ * migration 157 only the count is written.
+ */
+export async function incrementTimesCooked(id: string, current: number, servings?: number): Promise<void> {
+  if (servings != null && servings > 0) {
+    try { await startRecipeBatch(id, { servings, countCook: true }); return } catch (e) { if ((e as Error).message !== NOT_MIGRATED_157) throw e }
+  }
   const { error } = await supabase.from('recipes').update({ times_cooked: current + 1 }).eq('id', id)
   if (error) throw error
+}
+
+export interface RecipeBatchPatch {
+  /** Starts a new batch now (on the server's clock) of `batch_servings`, with a pot weight or none. */
+  start?: boolean
+  batch_servings?: number
+  /** The weighed pot, grams; null forgets it. */
+  batch_cooked_g?: number | null
+}
+
+/** "New batch" / the pot's weight in the portion sheet. Returns the stored batch columns. */
+export async function updateRecipeBatch(id: string, patch: RecipeBatchPatch): Promise<RecipeBatch> {
+  if (patch.start) return startRecipeBatch(id, { servings: patch.batch_servings ?? 1, cookedG: patch.batch_cooked_g ?? null })
+  const { data, error } = await supabase.from('recipes').update({ batch_cooked_g: patch.batch_cooked_g ?? null }).eq('id', id)
+    .select('id, batch_started_at, batch_servings, batch_cooked_g, times_cooked').single()
+  if (error) throw missingRecipeCol(error, 'batch_') ? new Error(NOT_MIGRATED_157) : error
+  return data as RecipeBatch
 }

@@ -81,6 +81,11 @@ subscription.
 
 ## Notes
 - Works only in the **home-screen-installed PWA** (not a Safari tab), iOS 16.4+.
+- Supplement reminders (migration `160`, `docs/features/supplements.md`): a second job,
+  `lascis-supplement-reminders`, runs every 15 minutes and calls `push-send` with
+  `{trigger:'supplements'}` only when a dose's reminder is due — same secret, same
+  subscriptions, nothing more to set up. To see it run (read only):
+  `select start_time, status, return_message from cron.job_run_details where jobid = (select jobid from cron.job where jobname = 'lascis-supplement-reminders') order by start_time desc limit 5;`
 - Timing: the cron is `'0 7 * * *'` = **07:00 UTC ≈ 09:00 Oslo in summer
   (CEST) / 08:00 in winter (CET)**. To change it, re-run
   `cron.schedule('lascis-morning-push', '<expr>', …)`.
