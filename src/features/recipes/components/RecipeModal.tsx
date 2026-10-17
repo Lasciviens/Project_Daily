@@ -6,7 +6,7 @@ import { Button, IconButton, SegmentedControl } from '../../../shared/ui'
 import { useCreateRecipe, useDeleteRecipe, useUpdateRecipe } from '../hooks/useRecipes'
 import { useIngredientLibrary, useCreateIngredientLibraryItem } from '../hooks/useIngredientLibrary'
 import { parseRecipeText, parseRecipeFromUrl, estimateRecipeMacros } from '../../ai/api/aiApi'
-import { canComputeFromIngredients, sumMacros } from '../api/recipesApi'
+import { canComputeFromIngredients, cleanServingLabel, sumMacros } from '../api/recipesApi'
 import { MacroWarningBadge } from './MacroWarningBadge'
 import { checkMacroConsistency } from '../macroSanity'
 import type { RecipeWithIngredients, IngredientDraft, MacroMode, IngredientLibraryItem } from '../types'
@@ -53,6 +53,7 @@ export function RecipeModal({ open = true, onClose, recipe, draft }: Props) {
 
   const [title,        setTitle]        = useState('')
   const [servings,     setServings]     = useState('1')
+  const [servingLabel, setServingLabel] = useState('')
   const [ingredients,  setIngredients]  = useState<IngredientDraft[]>([{ ...EMPTY_ROW }])
   const [instructions, setInstructions] = useState('')
   const [description,  setDescription]  = useState('')
@@ -87,6 +88,7 @@ export function RecipeModal({ open = true, onClose, recipe, draft }: Props) {
       if (recipe) {
         setTitle(recipe.title)
         setServings(String(recipe.servings))
+        setServingLabel(recipe.serving_label ?? '')
         setIngredients(recipe.ingredients.length
           ? recipe.ingredients.map(i => ({ name: i.name, quantity: i.quantity, unit: i.unit, note: i.note, library_ingredient_id: i.library_ingredient_id }))
           : [{ ...EMPTY_ROW }])
@@ -109,7 +111,7 @@ export function RecipeModal({ open = true, onClose, recipe, draft }: Props) {
         setSourceUrl(recipe.source_url ?? '')
         setImageUrl(recipe.image_url ?? '')
       } else {
-        setTitle(draft?.title ?? ''); setServings(String(draft?.servings ?? 1))
+        setTitle(draft?.title ?? ''); setServings(String(draft?.servings ?? 1)); setServingLabel('')
         setIngredients(draft?.ingredients.length ? draft.ingredients : [{ ...EMPTY_ROW }])
         setCategory(draft?.category ?? '')
         setInstructions(''); setDescription('')
@@ -211,6 +213,7 @@ export function RecipeModal({ open = true, onClose, recipe, draft }: Props) {
     if (!title.trim()) { toast.error('Title is required'); return }
     const input = {
       title, description: description.trim() || null, servings: wholePortions(servings),
+      serving_label: cleanServingLabel(servingLabel),
       instructions: instructions.trim() || null,
       macro_mode: macroMode,
       calories: numOrNull(calories), protein_g: numOrNull(protein), carbs_g: numOrNull(carbs),
@@ -322,6 +325,10 @@ export function RecipeModal({ open = true, onClose, recipe, draft }: Props) {
         <div className="flex items-center gap-3">
           <label htmlFor="rm-servings" className="field-label !mb-0">Base servings</label>
           <input id="rm-servings" type="number" min="1" step="1" value={servings} onChange={e => setServings(e.target.value)} className="input w-24 text-center tabular-nums" />
+          {/* One name per recipe (owner decision 6): what ONE serving is called. */}
+          <input value={servingLabel} onChange={e => setServingLabel(e.target.value)} maxLength={30} placeholder="portion"
+            aria-label="What one serving is called (piece, slice, bowl)" title="What ONE serving is called — piece, slice, bowl. Empty = portion."
+            className="input w-28 min-w-0" />
         </div>
 
         <section>

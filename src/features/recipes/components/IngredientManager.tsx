@@ -26,7 +26,19 @@ import { FOOD_GROUPS, type IngredientLibraryItem } from '../types'
 
 const EMPTY = { name: '', unit: 'g', kcal: '', prot: '', carb: '', fat: '', fiber: '', sugar: '', servLabel: '', servGrams: '', group: '' }
 
-export function IngredientManager() {
+function formOf(ing: IngredientLibraryItem): typeof EMPTY {
+  const s = (n: number | null) => (n == null ? '' : String(n))
+  return {
+    name: ing.name, unit: ing.unit || 'g',
+    kcal: s(ing.calories), prot: s(ing.protein_g), carb: s(ing.carbs_g),
+    fat: s(ing.fat_g), fiber: s(ing.fiber_g), sugar: s(ing.sugar_g),
+    servLabel: ing.serving_label ?? '', servGrams: s(ing.serving_grams),
+    group: ing.food_group ?? '',
+  }
+}
+
+/** `focusId`: a food to open in the form (a link from Edit entry's "Edit food"). */
+export function IngredientManager({ focusId }: { focusId?: string | null } = {}) {
   const { data: library = [], isLoading } = useIngredientLibrary()
   const create = useCreateIngredientLibraryItem()
   const update = useUpdateIngredientLibraryItem()
@@ -75,16 +87,17 @@ export function IngredientManager() {
 
   function startEdit(ing: IngredientLibraryItem) {
     setEditingId(ing.id)
-    const s = (n: number | null) => (n == null ? '' : String(n))
-    setF({
-      name: ing.name, unit: ing.unit || 'g',
-      kcal: s(ing.calories), prot: s(ing.protein_g), carb: s(ing.carbs_g),
-      fat: s(ing.fat_g), fiber: s(ing.fiber_g), sugar: s(ing.sugar_g),
-      servLabel: ing.serving_label ?? '', servGrams: s(ing.serving_grams),
-      group: ing.food_group ?? '',
-    })
+    setF(formOf(ing))
     setFormOpen(true)   // ✎ must open the collapsed mobile form, not just scroll to it
     formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+
+  // Edit entry's "Edit food" lands here with the food (`?food=<id>`): its
+  // form opens once the library has it (adjust-during-render, no effect).
+  const [focused, setFocused] = useState<string | null>(null)
+  if (focusId && focusId !== focused) {
+    const ing = library.find(l => l.id === focusId)
+    if (ing) { setFocused(focusId); setEditingId(ing.id); setF(formOf(ing)); setFormOpen(true) }
   }
 
   async function handleSave() {

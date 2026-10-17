@@ -2,6 +2,7 @@ import { supabase } from '../../../integrations/supabase/client'
 import { requireUser } from '../../../shared/utils/requireUser'
 import type { FoodLogEntry, FoodLogEntryInput, IngredientLibraryItem, MealSlot, Recipe } from '../types'
 import { WEIGHT_UNITS } from './recipesApi'
+import { ingredientSnapshot, recipeSnapshot } from '../foodBasket'
 
 // The food DIARY (food_log_entries, migration 053) — what was actually eaten.
 // Distinct from recipe_meal_plans (the plan). Macros are snapshotted here at
@@ -24,6 +25,13 @@ function isMissingMealGroup(e: unknown): boolean {
   return (x?.code === '42703' || x?.code === 'PGRST204') && /meal_group_id/i.test(x?.message ?? '')
 }
 
+// Migration 158 (a dish's own name). Before it a write drops the name — the
+// dish keeps its automatic one. Remove once 158 has run everywhere.
+export function isMissingGroupTitle(e: unknown): boolean {
+  const x = e as { code?: string; message?: string }
+  return (x?.code === '42703' || x?.code === 'PGRST204') && /meal_group_title/i.test(x?.message ?? '')
+}
+
 export async function fetchFoodLog(date: string): Promise<FoodLogEntry[]> {
   const q = () => supabase.from('food_log_entries').select('*').eq('date', date).order('created_at', { ascending: true })
   let { data, error } = await q().eq('status', 'eaten')
@@ -39,9 +47,13 @@ export async function addFoodLogEntries(entries: FoodLogEntryInput[]): Promise<s
   const base = entries.map(e => ({ ...e, user_id: user.id }))
   const insert = (rows: object[]) => supabase.from('food_log_entries').insert(rows).select('id')
   let { data, error } = await insert(base.map(r => ({ ...r, status: 'eaten' })))
+  if (error && isMissingGroupTitle(error)) {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    ;({ data, error } = await insert(base.map(({ meal_group_title, ...rest }) => ({ ...rest, status: 'eaten' }))))
+  }
   if (error && isMissingMealGroup(error)) {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const stripped = base.map(({ meal_group_id, ...rest }) => rest)
+    const stripped = base.map(({ meal_group_id, meal_group_title, ...rest }) => rest)
     ;({ data, error } = await insert(stripped.map(r => ({ ...r, status: 'eaten' }))))
   }
   if (error && isMissingStatus(error)) {
@@ -54,12 +66,47 @@ export async function addFoodLogEntries(entries: FoodLogEntryInput[]): Promise<s
 // Edit an existing diary row — a fresh snapshot at edit time (the diary
 // contract: editing THIS row re-snapshots it; other rows/history untouched).
 // Callers pass a partial patch of the columns they changed.
-export async function updateFoodLogEntry(
-  id: string,
-  patch: Partial<Pick<FoodLogEntry, 'meal_slot' | 'date' | 'custom_title' | 'quantity' | 'unit' | 'calories' | 'protein_g' | 'carbs_g' | 'fat_g' | 'fiber_g' | 'sugar_g'>>,
-): Promise<void> {
-  const { error } = await supabase.from('food_log_entries').update(patch).eq('id', id)
+export type FoodLogPatch = Partial<Pick<FoodLogEntry, 'meal_slot' | 'date' | 'custom_title' | 'quantity' | 'unit' | 'calories' | 'protein_g' | 'carbs_g' | 'fat_g' | 'fiber_g' | 'sugar_g' | 'meal_group_id' | 'meal_group_title'>>
+
+export async function updateFoodLogEntry(id: string, patch: FoodLogPatch): Promise<void> {
+  let { error } = await supabase.from('food_log_entries').update(patch).eq('id', id)
+  if (error && isMissingGroupTitle(error) && 'meal_group_title' in patch) {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { meal_group_title, ...rest } = patch
+    ;({ error } = await supabase.from('food_log_entries').update(rest).eq('id', id))
+  }
   if (error) throw error
+}
+
+/** Edit entry's Save: the row's new values, and a single row to make a new dish with ("With Tortilla"). */
+export interface EntrySave { id: string; patch: FoodLogPatch; joinRowId?: string | null }
+/** What Edit entry's Undo writes back: the row's earlier values (and the joined row's). */
+export interface EntryUndo { id: string; before: FoodLogPatch; joined?: { id: string; before: FoodLogPatch } }
+
+/**
+ * Saves an edited diary row. `before` is the row as the editor loaded it; the
+ * answer is what Undo puts back. Joining a single row starts a new dish of
+ * the two (a fresh meal_group_id on both).
+ */
+export async function saveFoodEntry(s: EntrySave, before: FoodLogEntry): Promise<EntryUndo> {
+  const patch: FoodLogPatch = { ...s.patch }
+  let joined: EntryUndo['joined']
+  if (s.joinRowId) {
+    const group = crypto.randomUUID()
+    await updateFoodLogEntry(s.joinRowId, { meal_group_id: group })
+    joined = { id: s.joinRowId, before: { meal_group_id: null, meal_group_title: null } }
+    patch.meal_group_id = group
+    patch.meal_group_title = null
+  }
+  await updateFoodLogEntry(s.id, patch)
+  const was = before as unknown as Record<string, unknown>
+  const prev = Object.fromEntries(Object.keys(patch).map(k => [k, was[k] ?? null])) as FoodLogPatch
+  return { id: s.id, before: prev, joined }
+}
+
+export async function undoFoodEntrySave(u: EntryUndo): Promise<void> {
+  await updateFoodLogEntry(u.id, u.before)
+  if (u.joined) await updateFoodLogEntry(u.joined.id, u.joined.before)
 }
 
 // A diary row with its display title resolved (library/recipe/custom).
@@ -261,32 +308,10 @@ export async function removeFoodFavorite(foodKey: string): Promise<void> {
   if (error) throw isMissingTable(error) ? new Error(NOT_MIGRATED_087) : error
 }
 
-// Snapshot builders — per-100g × grams for ingredients, per-serving ×
-// servings for recipes. Grams path only for weight/volume amounts.
-const per = (v: number | null | undefined, grams: number) => (v == null ? null : Math.round(v * grams) / 100)
-
-export function ingredientSnapshot(ing: IngredientLibraryItem, grams: number) {
-  return {
-    calories:  per(ing.calories, grams),
-    protein_g: per(ing.protein_g, grams),
-    carbs_g:   per(ing.carbs_g, grams),
-    fat_g:     per(ing.fat_g, grams),
-    fiber_g:   per(ing.fiber_g, grams),
-    sugar_g:   per(ing.sugar_g, grams),
-  }
-}
-
-export function recipeSnapshot(recipe: Recipe, servings: number) {
-  const times = (v: number | null) => (v == null ? null : Math.round(v * servings * 10) / 10)
-  return {
-    calories:  times(recipe.calories),
-    protein_g: times(recipe.protein_g),
-    carbs_g:   times(recipe.carbs_g),
-    fat_g:     times(recipe.fat_g),
-    fiber_g:   times(recipe.fiber_g),
-    sugar_g:   times(recipe.sugar_g),
-  }
-}
+// Snapshot builders (per-100g × grams, per-serving × servings) live in the
+// pure basket module so its entry builder can be verified; re-exported here
+// for the callers that always imported them from the api.
+export { ingredientSnapshot, recipeSnapshot }
 
 const MACROS = ['calories', 'protein_g', 'carbs_g', 'fat_g', 'fiber_g', 'sugar_g'] as const
 

@@ -4,8 +4,11 @@ import { useRowsDelete } from '../../../shared/hooks/useRowsDelete'
 import { qk, STALE } from '../../../shared/query'
 import {
   fetchFoodLog, addFoodLogEntries, updateFoodLogEntry, fetchRecentFoods, fetchFoodLogRange,
-  fetchFoodLogEntry, fetchFoodFavorites, addFoodFavorite, removeFoodFavorite, hideRecentFood, type LoggedFood, type RecentFood,
+  fetchFoodLogEntry, fetchFoodFavorites, addFoodFavorite, removeFoodFavorite, hideRecentFood, saveFoodEntry, undoFoodEntrySave,
+  type EntrySave, type EntryUndo, type FoodLogPatch, type LoggedFood, type RecentFood,
 } from '../api/foodLogApi'
+import { SLOT_OPTIONS } from '../components/foodLogUtils'
+import { toast } from '../../../app/store'
 import { shiftDateStr, todayStr } from '../../../shared/utils/dateUtils'
 import type { FoodLogEntry, FoodLogEntryInput } from '../types'
 
@@ -69,11 +72,51 @@ export function useRemoveFoodLogEntries() {
   return useRowsDelete({ table: 'food_log_entries', action: 'remove_food_log_entries', invalidates: ['nutrition'], cache: qk.foodLog.all })
 }
 
+/**
+ * Logs rows and says so with Undo: "Logged Køfte · 3 pieces to dinner · Undo"
+ * (the logger stays open after a one-tap log, so the Undo is the way back).
+ * Undo removes those rows without asking; that toast can put them back.
+ */
+export function useLogWithUndo() {
+  const remove = useRemoveFoodLogEntries()
+  return useMutationWithFeedback({
+    action:      'log_food',
+    silent:      'its own toast with Undo reports the result',
+    mutationFn:  ({ entries }: { entries: FoodLogEntryInput[]; what: string }) => addFoodLogEntries(entries),
+    invalidates: ['nutrition'],
+    onSuccess:   (ids, { entries, what }) => {
+      const slot = SLOT_OPTIONS.find(o => o.id === entries[0]?.meal_slot)?.label.toLowerCase() ?? 'the diary'
+      toast.undo(`Logged ${what} to ${slot}`, () => { void remove.run(ids, { ask: false, title: `Remove ${what}?`, done: `Removed ${what}` }) })
+    },
+  })
+}
+
+/**
+ * Edit entry's Save: the amount, meal, day and dish of one row — "Saved Rice
+ * · moved to lunch · Undo" (a move to another meal or day, or into or out of
+ * a dish, is undoable like the dish actions).
+ */
+export function useSaveFoodEntry() {
+  const undo = useMutationWithFeedback({
+    action: 'undo_food_entry_save',
+    successMessage: (_: void, v: { u: EntryUndo; name: string }) => `${v.name} is as it was`,
+    mutationFn: ({ u }: { u: EntryUndo; name: string }) => undoFoodEntrySave(u),
+    invalidates: ['nutrition'],
+  })
+  return useMutationWithFeedback({
+    action: 'save_food_entry',
+    silent: 'its own toast with Undo reports the result',
+    mutationFn: ({ save, before }: { save: EntrySave; before: FoodLogEntry; done: string; name: string }) => saveFoodEntry(save, before),
+    invalidates: ['nutrition'],
+    onSuccess: (u, v) => toast.undo(v.done, () => undo.mutate({ u, name: v.name })),
+  })
+}
+
 export function useUpdateFoodLogEntry() {
   return useMutationWithFeedback({
     action:         'update_food_log_entry',
-    successMessage: 'Updated',
-    mutationFn:     ({ id, patch }: { id: string; patch: Parameters<typeof updateFoodLogEntry>[1] }) => updateFoodLogEntry(id, patch),
+    successMessage: (_: void, v: { id: string; patch: FoodLogPatch; done?: string }) => v.done ?? 'Updated',
+    mutationFn:     ({ id, patch }: { id: string; patch: FoodLogPatch; done?: string }) => updateFoodLogEntry(id, patch),
     invalidates:    ['nutrition'],
   })
 }

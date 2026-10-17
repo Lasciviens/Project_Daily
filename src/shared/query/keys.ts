@@ -62,6 +62,8 @@ export const qk = {
     favorites: () => ['food-log', 'favorites'] as const,
     loggedDates: (date: string) => ['food-log', 'logged-dates', date] as const,
     entry: (id: string) => ['food-log', 'entry', id] as const,
+    /** The rows of one dish (a meal_group_id) — Edit meal's basket. */
+    group: (groupId: string) => ['food-log', 'group', groupId] as const,
   },
   mealPlan: {
     all: ['meal-plan'] as const,

@@ -571,6 +571,8 @@ clunky") and renders `ModalShell compact`. Top down:
   what each does, disabled ones with the reason. A choice that must stay a native select (Repeat,
   `.claude/rules/planning.md`) is drawn as a chip (`ChipSelect`): the select lies invisible over it, so a
   phone opens its own picker and the chip keeps the chip's text size (a visible select is 16px on touch).
+  `ChipSelect` is exported from `plan-modal/fields.tsx` for any compact sheet row (Food's amount unit,
+  Edit entry's Meal and dish): a chip is as wide as its choice, a visible select as wide as its longest option.
 - **The facts line**, small text: what every item has reads as an inline value that opens a `Menu`
   (`chipClass('value')`: "● Medium priority", "Personal"); rarely-used facts wait as text buttons
   (`chipClass('quiet')`: "+ Notes", "+ Deadline", "+ Google list") — never a row of empty pills, never a
@@ -734,7 +736,10 @@ More on results (13.10.2026, owner: "after what the user does, a message by its 
 `warning` · `info` · `loading` (stays until `toast.dismiss(id)`) · `undo(message, onUndo)` (a
 success with an Undo button). They last 3s (errors 5s, undo 6s); a plain toast with the same text
 as one on screen replaces it, render through the shell's `<Toaster>` (above the tab bar on phones,
-bottom-left of the content elsewhere) and take their colour from a tone.
+bottom-left of the content elsewhere) and take their colour from a tone. The toaster renders into
+`<body>`, outside `#root` (like the request composer, §8): a toast's Undo works over an open popup and
+a tap on it never closes that popup (in `#root` it counted as a press outside — Food's logger stays
+open after a one-tap log and offers Undo there).
 
 **Invalidation groups** (`src/shared/query/invalidate.ts`): `taskGraph`, `schedule`, `nutrition`,
 `recipes`, `episodeWatched`, `media`, `training`, `aiWrite`, `saveUndone` (every query — an undone

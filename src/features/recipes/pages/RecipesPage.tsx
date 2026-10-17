@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Plus, UtensilsCrossed } from 'lucide-react'
 import { useEntityModal } from '../../../shared/modals/useEntityModal'
 import { formatLocalDate } from '../../../shared/utils/dateUtils'
@@ -26,7 +27,12 @@ const TABS: SegmentedOption<Tab>[] = [
 
 export function RecipesPage() {
   const modal = useEntityModal()
-  const [tab,      setTab]      = useState<Tab>('today')
+  // `?food=<id>` (Edit entry's "Edit food") opens Ingredients with that food in the form.
+  const [params] = useSearchParams()
+  const focusFood = params.get('food')
+  const [tab,      setTab]      = useState<Tab>(() => (focusFood ? 'ingredients' : 'today'))
+  const [seenFood, setSeenFood] = useState(focusFood)
+  if (focusFood !== seenFood) { setSeenFood(focusFood); if (focusFood) setTab('ingredients') }
   const [foodDate, setFoodDate] = useState(() => formatLocalDate(new Date()))   // the Today tab's day
   // A supplement reminder's tap shows its day on Today, whichever tab was open.
   useDoseLink(date => { setTab('today'); setFoodDate(date) })
@@ -59,7 +65,7 @@ export function RecipesPage() {
       </PageHeader>
 
       {tab === 'today' && <FoodTodayTab date={foodDate} />}
-      {tab === 'ingredients' && <IngredientManager />}
+      {tab === 'ingredients' && <IngredientManager focusId={focusFood} />}
       {tab === 'plan' && <MealPlanWeek />}
       {tab === 'insights' && <FoodInsightsTab />}
 
