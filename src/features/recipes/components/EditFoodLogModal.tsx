@@ -133,6 +133,10 @@ export function EditFoodLogModal({ entry, onClose }: Props) {
   }, [dayNut, slot, entry.id])
   // A dish that isn't in the picked meal and day can't be kept (the row moves out of it).
   const dishValue: DishChoice = !options ? dish : options.some(o => o.value === dish) ? dish : 'none'
+  // A row left alone in its "dish" (a group of one shows as a plain row) is in
+  // no dish as far as the owner can see: leaving it there is no change.
+  const unmoved = slot === entry.meal_slot && day === entry.date
+  const shownStart: DishChoice = options && unmoved && !options.some(o => o.value === startDish) ? 'none' : startDish
 
   // ★: the same favourite key as Recent (library id, recipe id, or the one-off title).
   const favKey = entry.library_ingredient_id ?? entry.recipe_id ?? `c:${(entry.custom_title ?? entry.title).toLowerCase()}`
@@ -154,7 +158,7 @@ export function EditFoodLogModal({ entry, onClose }: Props) {
 
   async function handleSave() {
     const patch: FoodLogPatch = { meal_slot: slot, date: day }
-    let name = entry.title
+    let name: string
     if (kind === 'library' && lib) {
       if (!(amount > 0)) { toast.error('Enter an amount'); return }
       // The amount is grams/ml (the per-100g math assumes it), so only g / ml
@@ -174,12 +178,12 @@ export function EditFoodLogModal({ entry, onClose }: Props) {
     const s: EntrySave = { id: entry.id, patch }
     const option = options?.find(o => o.value === dishValue)
     let where = ''
-    if (dishValue !== startDish) {
-      if (dishValue === 'none') { patch.meal_group_id = null; patch.meal_group_title = null; where = ' · out of its meal' }
+    if (dishValue !== shownStart) {
+      if (dishValue === 'none') { patch.meal_group_id = null; patch.meal_group_title = null; if (unmoved) where = ' · out of its meal' }
       else if (dishValue.startsWith('g:')) { patch.meal_group_id = dishValue.slice(2); where = ` · in ${option?.title ?? 'the meal'}` }
       else { s.joinRowId = dishValue.slice(2); where = ` · with ${option?.title ?? 'it'}` }
     }
-    const moved = slot !== entry.meal_slot || day !== entry.date
+    const moved = !unmoved
     const slotWord = SLOT_OPTIONS.find(o => o.id === slot)?.label.toLowerCase() ?? slot
     const done = `Saved ${name}${moved ? ` · moved to ${slotWord}${sameDay ? '' : ` on ${formatDate(day)}`}` : ''}${where}`
     try {
