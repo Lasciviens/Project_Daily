@@ -17,19 +17,26 @@
 -- 2. media_rewatch_plan(kind, entry) → (round, started_at): where a new round
 --    starts. A show whose first aired episode was watched again after the
 --    latest watch of its last aired episode has begun a new pass at that
---    watch: the round starts there, so what was rewatched since counts.
---    Otherwise now. The round = one more than the fewest watches an aired
+--    watch: the round starts there, so what was rewatched since counts —
+--    unless an app watch dated before that point was added after it (149's
+--    settled placeholders: "added in the app since the start" would count
+--    them as rewatched), then now. Otherwise now. The round = one more than the fewest watches an aired
 --    regular episode had before the start (never under 2); without TMDB data,
 --    one more than the fewest watches of the regular episodes watched (the
 --    app's own rule, rewatchStartRound). A movie: now, its watches + 1.
 -- 3. media_rewatch_guard: Completed → Watching starts that round by itself,
 --    from any writer but the Trakt sync (which decides statuses itself) — a
---    show only while every aired regular episode has a watch, so a show back
---    on Watching because a new season aired is plain watching, never a
---    rewatch; without TMDB data a show never guesses.
+--    show only when TMDB listed it as ended (Ended / Canceled) and every aired
+--    regular episode has a watch. The stored TMDB data is written when a show
+--    is added and not refreshed, so a running show is never guessed at: one
+--    back on Watching because a new season aired stays plain watching (the
+--    app's own Watching pill checks TMDB's live data and starts a round only
+--    when every aired episode is watched). Without TMDB data a show never
+--    guesses.
 -- 4. app_start_rewatch(kind, entry): the app's Watch again and Daily's
---    "Start rewatch" — Watching + the planned round in one write; it answers
---    the round, where it starts and whether that was picked up from a watch.
+--    "Start rewatch" — Watching + the planned round in one write, only on a
+--    finished title or one being watched; it answers the round, where it
+--    starts and whether that was picked up from a watch.
 --
 -- No watch is written, moved or removed here: only rewatch_round and
 -- rewatch_started_at change, on rows that are audited (Undo this save puts
@@ -45,6 +52,13 @@ LANGUAGE sql STABLE SET search_path = public AS $$
        AND nullif(metadata_json -> 'last_episode_to_air' ->> 'episode_number', '') IS NOT NULL
        AND jsonb_typeof(metadata_json -> 'seasons') = 'array'
       FROM public.tv_series WHERE id = p_series), false)
+$$;
+
+-- TMDB listed the show as ended when it was stored (no more episodes coming).
+CREATE OR REPLACE FUNCTION public.media_show_ended(p_series uuid)
+RETURNS boolean
+LANGUAGE sql STABLE SET search_path = public AS $$
+  SELECT coalesce((SELECT metadata_json ->> 'status' IN ('Ended', 'Canceled') FROM public.tv_series WHERE id = p_series), false)
 $$;
 
 CREATE OR REPLACE FUNCTION public.media_aired_episodes(p_series uuid)
@@ -151,8 +165,12 @@ BEGIN
     SELECT max(w.watched_at) INTO v_last FROM public.media_watches w
      WHERE w.user_id = e.user_id AND w.tv_series_id = e.tv_series_id AND w.kind = 'episode'
        AND w.season_number = v_ls AND w.episode_number = v_le AND w.watched_at > timestamptz 'epoch';
-    -- The first episode watched again after the last one: a new pass began then.
-    IF (v_fs, v_fe) IS DISTINCT FROM (v_ls, v_le) AND v_first > v_last AND v_first <= v_now THEN
+    -- The first episode watched again after the last one: a new pass began then —
+    -- unless an app watch dated before it was added after it (it would count as rewatched).
+    IF (v_fs, v_fe) IS DISTINCT FROM (v_ls, v_le) AND v_first > v_last AND v_first <= v_now
+       AND NOT EXISTS (SELECT 1 FROM public.media_watches w
+                        WHERE w.user_id = e.user_id AND w.tv_series_id = e.tv_series_id AND w.kind = 'episode'
+                          AND w.source = 'app' AND w.created_at >= date_trunc('second', v_first) AND w.watched_at < date_trunc('second', v_first)) THEN
       started_at := date_trunc('second', v_first);
     END IF;
     SELECT 1 + min(c) INTO round FROM (
@@ -179,7 +197,9 @@ DECLARE
 BEGIN
   IF TG_OP = 'UPDATE' AND OLD.status = 'completed' AND NEW.status = 'watching' AND NEW.rewatch_round IS NULL
      AND NOT public.trakt_sync_writing()
-     AND (v_movie OR public.media_all_aired_watched(NEW.id)) THEN
+     -- (No NEW.tv_series_id here: this trigger runs on movie rows too, which have none.)
+     AND (v_movie OR (public.media_all_aired_watched(NEW.id)
+                      AND public.media_show_ended((SELECT t.tv_series_id FROM public.user_tv_entries t WHERE t.id = NEW.id)))) THEN
     SELECT * INTO v_plan FROM public.media_rewatch_plan(CASE WHEN v_movie THEN 'movie' ELSE 'tv' END, NEW.id);
     NEW.rewatch_round := v_plan.round;
     NEW.rewatch_started_at := v_plan.started_at;
@@ -212,14 +232,16 @@ BEGIN
   IF p_kind = 'movie' THEN
     UPDATE public.user_movie_entries
        SET status = 'watching', rewatch_round = v_plan.round, rewatch_started_at = v_plan.started_at
-     WHERE id = p_entry;
+     WHERE id = p_entry AND status IN ('completed', 'watching', 'paused');
   ELSE
     UPDATE public.user_tv_entries
        SET status = 'watching', rewatch_round = v_plan.round, rewatch_started_at = v_plan.started_at
-     WHERE id = p_entry;
+     WHERE id = p_entry AND status IN ('completed', 'watching', 'paused');
   END IF;
   GET DIAGNOSTICS v_n = ROW_COUNT;
-  IF v_n = 0 THEN RAISE EXCEPTION 'app_start_rewatch: no such title' USING ERRCODE = 'P0002'; END IF;
+  IF v_n = 0 THEN
+    RAISE EXCEPTION 'Only a finished title, or one you are watching, can be watched again' USING ERRCODE = 'P0002';
+  END IF;
   RETURN jsonb_build_object(
     'round', v_plan.round,
     'started_at', v_plan.started_at,
@@ -227,9 +249,17 @@ BEGIN
 END;
 $$;
 
+-- Like 149's media_rewatch_finished: not for anonymous callers (a new
+-- function is executable by PUBLIC until revoked).
+REVOKE ALL ON FUNCTION public.media_tmdb_known(uuid) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.media_show_ended(uuid) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.media_aired_episodes(uuid) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.media_all_aired_watched(uuid) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.media_rewatch_plan(text, uuid) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.app_start_rewatch(text, uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.media_tmdb_known(uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.media_show_ended(uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.media_aired_episodes(uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.media_all_aired_watched(uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.media_rewatch_plan(text, uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.app_start_rewatch(text, uuid) TO authenticated;
-REVOKE EXECUTE ON FUNCTION public.app_start_rewatch(text, uuid) FROM anon;

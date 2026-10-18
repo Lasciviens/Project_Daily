@@ -19,9 +19,9 @@ import { formatDate } from '../../../../shared/utils/dateFormat'
 
 const round = (n: number, d = 0) => { const p = 10 ** d; return Math.round(n * p) / p }
 
-function Panel({ icon, label, children }: { icon: React.ReactNode; label: string; children: React.ReactNode }) {
+function Panel({ icon, label, children, className }: { icon: React.ReactNode; label: string; children: React.ReactNode; className?: string }) {
   return (
-    <div className="flex min-w-0 flex-col gap-1 rounded-row bg-surface-2 p-3">
+    <div className={`flex min-w-0 flex-col gap-1 rounded-row bg-surface-2 p-3 ${className ?? ''}`}>
       <p className="flex items-center gap-1.5 section-label [&_svg]:h-3.5 [&_svg]:w-3.5">{icon}{label}</p>
       {children}
     </div>
@@ -75,7 +75,8 @@ export function HealthCard({ date }: { date: string }) {
             </>
           ) : <Empty loading={heart.isLoading} />}
         </Panel>
-        <Panel icon={<Scale aria-hidden />} label="Weight">
+        {/* The fifth box fills its row (2 and 3 columns leave one or two cells free). */}
+        <Panel icon={<Scale aria-hidden />} label="Weight" className="col-span-2 @[40rem]:col-span-1">
           {w ? (
             <>
               <Big>{round(w.kg, 1)}</Big>

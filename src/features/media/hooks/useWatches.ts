@@ -131,7 +131,7 @@ const rewatchFailed = (e: unknown) =>
 
 /** "Watching again · round 3", plus where a pass already under way was picked up. */
 export const rewatchStartedText = (r: RewatchStart) =>
-  `Watching again · round ${r.round}${r.pickedUp ? ` · from ${formatDate(r.startedAt.slice(0, 10))}` : ''}`
+  `Watching again · round ${r.round}${r.pickedUp ? ` · from ${formatDate(r.startedAt)}` : ''}`
 
 /**
  * Watch a title again: Watching + a rewatch round, planned by the database

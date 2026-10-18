@@ -18,7 +18,7 @@ import { useEatPlannedEntry } from '../hooks/useMealPlan'
 import { MacroBar } from './MacroBar'
 import { MacroLine } from './MacroLine'
 import { MacroFigure } from './MacroTotalPeek'
-import { splitTitleQty } from '../foodIngredients'
+import { eatenTotals, splitTitleQty } from '../foodIngredients'
 import { WaterTracker } from '../../daily/components/summary/WaterTracker'
 import { AnimatedNumber, Card, CardHeader, IconButton, MetaLine, PageBoard, ProgressRing, TonePill, Truncate, cx } from '../../../shared/ui'
 import { formatLocalDate } from '../../../shared/utils/dateUtils'
@@ -349,10 +349,9 @@ export function FoodTodayTab({ date }: { date: string }) {
                 renderRows={rows => slotRows(rows, slot)} emptyActions={quickActions(slot, label)} />
             )
           }
-          // What was eaten in the slot (planned rows are never counted), the same rounded figures its rows show.
-          const eaten = meals.filter(m => m.source === 'log')
-          const sum = (k: 'calories' | 'protein_g' | 'carbs_g' | 'fat_g') => eaten.reduce((a, m) => a + m[k], 0)
-          const kcal = sum('calories')
+          // What was eaten in the slot (planned rows never count), summed exactly and rounded once — the Nutrition total's rule.
+          const slotTotals = eatenTotals(meals)
+          const kcal = slotTotals.calories
           return (
             <Card key={slot} padded={false} className="@container overflow-hidden">
               <header className="flex items-center gap-2 border-b border-line py-1 pl-4 pr-2">
@@ -361,7 +360,7 @@ export function FoodTodayTab({ date }: { date: string }) {
                 {kcal > 0 && (
                   <span className="flex flex-wrap items-center justify-end gap-x-2 text-meta tabular-nums text-fg-muted">
                     <span>{kcal} kcal</span>
-                    <MacroLine protein={sum('protein_g')} carbs={sum('carbs_g')} fat={sum('fat_g')} className="flex-nowrap" />
+                    <MacroLine protein={slotTotals.protein_g} carbs={slotTotals.carbs_g} fat={slotTotals.fat_g} className="flex-nowrap" />
                   </span>
                 )}
                 {/* A narrow card keeps the header on one line: the macros stay, "Log" becomes its + (still read out). */}

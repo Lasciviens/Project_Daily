@@ -9,23 +9,27 @@ reset role;
 -- TMDB's data: S1 has 3 episodes, S2 2, a special in S0; S2E2 is the last aired.
 insert into public.tv_series (id, tmdb_id, title, metadata_json) values
   ('16100000-0000-0000-0000-00000000000a', 16101, 'Pass under way',
-   '{"seasons":[{"season_number":0,"episode_count":1},{"season_number":1,"episode_count":3},{"season_number":2,"episode_count":2}],"last_episode_to_air":{"season_number":2,"episode_number":2}}'),
+   '{"status":"Ended","seasons":[{"season_number":0,"episode_count":1},{"season_number":1,"episode_count":3},{"season_number":2,"episode_count":2}],"last_episode_to_air":{"season_number":2,"episode_number":2}}'),
+  -- Stored while it ran, never refreshed: a new season has aired since.
   ('16100000-0000-0000-0000-00000000000b', 16102, 'New season aired',
-   '{"seasons":[{"season_number":1,"episode_count":2},{"season_number":2,"episode_count":1}],"last_episode_to_air":{"season_number":1,"episode_number":2}}'),
+   '{"status":"Returning Series","seasons":[{"season_number":1,"episode_count":2}],"last_episode_to_air":{"season_number":1,"episode_number":2}}'),
   ('16100000-0000-0000-0000-00000000000c', 16103, 'Finished once',
-   '{"seasons":[{"season_number":1,"episode_count":2}],"last_episode_to_air":{"season_number":1,"episode_number":2}}'),
+   '{"status":"Ended","seasons":[{"season_number":1,"episode_count":2}],"last_episode_to_air":{"season_number":1,"episode_number":2}}'),
   ('16100000-0000-0000-0000-00000000000d', 16104, 'Started again before Watching',
-   '{"seasons":[{"season_number":1,"episode_count":2}],"last_episode_to_air":{"season_number":1,"episode_number":2}}'),
+   '{"status":"Canceled","seasons":[{"season_number":1,"episode_count":2}],"last_episode_to_air":{"season_number":1,"episode_number":2}}'),
   ('16100000-0000-0000-0000-00000000000e', 16105, 'No TMDB data', '{}'),
   ('16100000-0000-0000-0000-00000000000f', 16106, 'Synced from Trakt',
-   '{"seasons":[{"season_number":1,"episode_count":1}],"last_episode_to_air":{"season_number":1,"episode_number":1}}');
+   '{"status":"Ended","seasons":[{"season_number":1,"episode_count":1}],"last_episode_to_air":{"season_number":1,"episode_number":1}}'),
+  ('16100000-0000-0000-0000-000000000010', 16109, 'Pass under way, placeholders settled since',
+   '{"status":"Ended","seasons":[{"season_number":1,"episode_count":2}],"last_episode_to_air":{"season_number":1,"episode_number":2}}');
 insert into public.user_tv_entries (id, user_id, tv_series_id, status) values
   ('16110000-0000-0000-0000-00000000000a', '00000000-0000-0000-0000-000000000001', '16100000-0000-0000-0000-00000000000a', 'watching'),
   ('16110000-0000-0000-0000-00000000000b', '00000000-0000-0000-0000-000000000001', '16100000-0000-0000-0000-00000000000b', 'completed'),
   ('16110000-0000-0000-0000-00000000000c', '00000000-0000-0000-0000-000000000001', '16100000-0000-0000-0000-00000000000c', 'completed'),
   ('16110000-0000-0000-0000-00000000000d', '00000000-0000-0000-0000-000000000001', '16100000-0000-0000-0000-00000000000d', 'completed'),
   ('16110000-0000-0000-0000-00000000000e', '00000000-0000-0000-0000-000000000001', '16100000-0000-0000-0000-00000000000e', 'completed'),
-  ('16110000-0000-0000-0000-00000000000f', '00000000-0000-0000-0000-000000000001', '16100000-0000-0000-0000-00000000000f', 'completed');
+  ('16110000-0000-0000-0000-00000000000f', '00000000-0000-0000-0000-000000000001', '16100000-0000-0000-0000-00000000000f', 'completed'),
+  ('16110000-0000-0000-0000-000000000010', '00000000-0000-0000-0000-000000000001', '16100000-0000-0000-0000-000000000010', 'watching');
 insert into public.movies (id, tmdb_id, title) values
   ('16120000-0000-0000-0000-00000000000a', 16107, 'Seen once'),
   ('16120000-0000-0000-0000-00000000000b', 16108, 'Seen twice');
@@ -65,6 +69,11 @@ insert into public.media_watches (kind, tv_series_id, season_number, episode_num
 -- F · watched once.
 insert into public.media_watches (kind, tv_series_id, season_number, episode_number, watched_at) values
   ('episode', '16100000-0000-0000-0000-00000000000f', 1, 1, '2019-01-01 20:00+00');
+-- G · a pass under way (the pilot 5 days ago) — and an old pass's watch added in the app only 2 days ago.
+insert into public.media_watches (kind, tv_series_id, season_number, episode_number, watched_at) values
+  ('episode', '16100000-0000-0000-0000-000000000010', 1, 1, '2019-01-01 20:00+00'),
+  ('episode', '16100000-0000-0000-0000-000000000010', 1, 2, '2019-01-02 20:00+00'),
+  ('episode', '16100000-0000-0000-0000-000000000010', 1, 1, date_trunc('second', now()) - interval '5 days');
 -- Movies: one watch, two watches.
 insert into public.media_watches (kind, movie_entry_id, watched_at) values
   ('movie', '16130000-0000-0000-0000-00000000000a', '2019-01-01 20:00+00'),
@@ -78,6 +87,8 @@ reset role;
 set session_replication_role = replica;
 update public.media_watches set created_at = coalesce(watched_at, created_at)
  where tv_series_id::text like '16100000-%' or movie_entry_id::text like '16130000-%';
+update public.media_watches set created_at = now() - interval '2 days'
+ where tv_series_id = '16100000-0000-0000-0000-000000000010' and episode_number = 2;
 set session_replication_role = origin;
 set role authenticated;
 
@@ -139,17 +150,12 @@ do $$ begin
                          from public.user_tv_entries where id = '16110000-0000-0000-0000-00000000000d'),
     'a pass begun before Watching was picked: the round starts at that pilot watch');
 end $$;
--- A new season aired: plain watching, never a rewatch.
-update public.user_tv_entries set status = 'watching' where id = '16110000-0000-0000-0000-00000000000b';
-reset role;
-update public.tv_series set metadata_json = jsonb_set(metadata_json, '{last_episode_to_air}', '{"season_number":2,"episode_number":1}')
- where id = '16100000-0000-0000-0000-00000000000b';
-set role authenticated;
-update public.user_tv_entries set status = 'completed' where id = '16110000-0000-0000-0000-00000000000b';
+-- A running show (stored TMDB data never refreshed: it still says every aired
+-- episode is watched, though a new season aired): plain watching, no guess.
 update public.user_tv_entries set status = 'watching' where id = '16110000-0000-0000-0000-00000000000b';
 do $$ begin
   perform public.t_ok((select rewatch_round is null and rewatch_started_at is null from public.user_tv_entries where id = '16110000-0000-0000-0000-00000000000b'),
-    'a show back on Watching because a new season aired is plain watching');
+    'a show TMDB listed as running, back on Watching, stays plain watching (its new season may have aired since)');
 end $$;
 -- No TMDB data: no guess.
 update public.user_tv_entries set status = 'watching' where id = '16110000-0000-0000-0000-00000000000e';
@@ -184,6 +190,15 @@ do $$ begin
   perform public.t_ok((select rewatch_round = 5 from public.user_tv_entries where id = '16110000-0000-0000-0000-00000000000f'), 'an explicit round is kept');
 end $$;
 
+-- A pass under way, but an older watch was added in the app after it began (a
+-- settled placeholder): picking it up would count that one as rewatched — from now.
+insert into t_r select 'G', public.app_start_rewatch('tv', '16110000-0000-0000-0000-000000000010');
+do $$ begin
+  perform public.t_ok(not ((select v from t_r where k = 'G') ->> 'picked_up')::boolean
+                      and ((select v from t_r where k = 'G') ->> 'started_at')::timestamptz >= date_trunc('second', now()) - interval '1 minute',
+    'a pass under way with an old watch added since is not picked up: the round counts from now');
+end $$;
+
 -- ── 4. Movies ───────────────────────────────────────────────────────────────
 update public.user_movie_entries set status = 'watching' where id = '16130000-0000-0000-0000-00000000000a';
 do $$ begin
@@ -209,6 +224,21 @@ begin
   end;
 end $$;
 select set_config('test.uid', '', false);
+reset role;
+insert into public.movies (id, tmdb_id, title) values ('16120000-0000-0000-0000-00000000000c', 16110, 'Still wanted');
+insert into public.user_movie_entries (id, user_id, movie_id, status) values
+  ('16130000-0000-0000-0000-00000000000c', '00000000-0000-0000-0000-000000000001', '16120000-0000-0000-0000-00000000000c', 'wishlist');
+set role authenticated;
+do $$
+begin
+  begin
+    perform public.app_start_rewatch('movie', '16130000-0000-0000-0000-00000000000c');
+    perform public.t_ok(false, 'a Wishlist title is not watched again');
+  exception when sqlstate 'P0002' then
+    perform public.t_ok((select status = 'wishlist' and rewatch_round is null from public.user_movie_entries where id = '16130000-0000-0000-0000-00000000000c'),
+      'a Wishlist title is not watched again (and stays as it was)');
+  end;
+end $$;
 do $$
 begin
   begin
