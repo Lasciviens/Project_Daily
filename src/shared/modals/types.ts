@@ -78,7 +78,14 @@ export type EntityModalRequest =
   | { kind: 'shop-own'; had?: boolean }
   /** Build a money chain in one go (bought → sold → bought…); `fromId`: go on from that saved thing that left. */
   | { kind: 'shop-chain-builder'; fromId?: string }
-  | { kind: 'project-item'; projectId: string; id?: string; phaseId?: string }
+  /** A project's details by `id`, or a new project from a template (no id). */
+  | { kind: 'project'; id?: string }
+  /** Add a phase to a project, or edit one by `id`. */
+  | { kind: 'project-phase'; projectId: string; id?: string }
+  /** Add a block to a project (`blockKind` preselects its kind), or edit one by `id` (a table's columns). */
+  | { kind: 'project-block'; projectId: string; id?: string; blockKind?: 'table' | 'log' | 'decisions' | 'pages' | 'links' }
+  /** Add an entry to a block (a row, a log entry, a question, a page, a link), or open one by `id`. */
+  | { kind: 'project-entry'; projectId: string; blockId: string; id?: string }
   | { kind: 'memory'; id: string }
   /** One book in the Books library (books, migration 126). */
   | { kind: 'book'; id: string }

@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
 import { qk, STALE } from '../../../shared/query'
 import {
-  fetchErrorLogs, clearErrorLogs, fetchAuditLogs, clearAuditLogs, fetchProjectActivity,
+  fetchErrorLogs, clearErrorLogs, fetchAuditLogs, clearAuditLogs,
   type AuditLogFilter,
 } from '../api/logsApi'
 
@@ -39,15 +39,5 @@ export function useClearAuditLogs() {
     silent:         'the delete flow reports the result',
     mutationFn:     async () => { await clearAuditLogs(); return true },
     invalidates:    [qk.logs.audit()],
-  })
-}
-
-/** Recent activity for one project (its row, phases and items). */
-export function useProjectActivity(projectId: string, itemIds: string[], phaseIds: string[]) {
-  return useQuery({
-    // The id lists are part of the key so a new item/phase refetches the feed.
-    queryKey:  [...qk.logs.projectActivity(projectId), itemIds.length, phaseIds.length] as const,
-    queryFn:   () => fetchProjectActivity(projectId, itemIds, phaseIds),
-    staleTime: STALE.live,
   })
 }

@@ -73,6 +73,12 @@ export interface Task {
   occurrence_date?:         string | null
   /** 'missed': a repeat's day that passed unticked, closed (cancelled) on its own day — never carried over. */
   closed_reason?:           'missed' | null
+
+  // ── A project's task (migration 162) — undefined before it runs ───────────
+  /** The project this task belongs to (deleting the project deletes it). */
+  project_id?:              string | null
+  /** Its phase in that project; null = in no phase (deleting the phase keeps the task). */
+  project_phase_id?:        string | null
 }
 
 export interface CreateTaskInput {

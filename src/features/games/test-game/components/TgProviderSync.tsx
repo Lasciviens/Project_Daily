@@ -1,6 +1,6 @@
 import { RefreshCw } from 'lucide-react'
 import { formatDay, type TgGame } from '../testGameModel'
-import { lastSynced } from './tgProviderSync'
+import { lastSynced } from './tgProviderSyncModel'
 import { PROVIDER_NAME as NAME, useProviderSync, type SyncProvider as Provider } from '../useProviderSync'
 
 /**

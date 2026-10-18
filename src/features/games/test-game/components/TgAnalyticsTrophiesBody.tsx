@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import { Trophy } from 'lucide-react'
 import type { PsnTrophyTitle } from '../../api/psnApi'
 import { fmtInt, plural, TGA_TINT } from './tgAnalyticsFormat'
-import { TGA_TROPHY_GRADES, titlePlatform, titleProgress, trophyStats } from './tgAnalyticsTrophies'
+import { TGA_TROPHY_GRADES, titlePlatform, titleProgress, trophyStats } from './tgAnalyticsTrophiesModel'
 import { TgAnalyticsEmpty } from './TgAnalyticsCard'
 import { Truncate } from '../../../../shared/ui/Truncate'
 

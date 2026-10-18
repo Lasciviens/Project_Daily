@@ -1,145 +1,130 @@
-import { useState } from 'react'
-import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
-import { ChevronDown, MoreHorizontal, Plus, Trash2 } from 'lucide-react'
-import { StatusCycleChip } from './StatusCycleChip'
-import { InlineText } from './InlineText'
-import { ItemRow } from './ItemRow'
-import { PHASE_STATUS_TONE } from '../projectTones'
-import type { ProjectPhase, ProjectItem, PhaseStatus, ItemType } from '../types'
+import { Disclosure, DisclosureButton, DisclosurePanel, Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
+import { ArrowDown, ArrowUp, Check, ChevronDown, MoreHorizontal, Pencil, RotateCcw, Trash2 } from 'lucide-react'
+import { HoverPeek } from '../../../shared/components/HoverPeek'
+import { useEntityModal } from '../../../shared/modals'
+import { cx } from '../../../shared/ui'
+import { formatDate } from '../../../shared/utils/dateFormat'
+import type { Task } from '../../todo/types'
+import { useDeletePhase, useMovePhase, useUpdatePhase } from '../hooks/useProjects'
+import { nextSortOrder, swapWith } from '../projectModel'
+import { AddTaskInline } from './AddTaskInline'
+import { ProjectTaskRow } from './ProjectTaskRow'
+import { DOTTED } from './peekStyle'
+import type { ProjectArea, ProjectPhase } from '../types'
 
-const PHASE_STATUSES: PhaseStatus[] = ['pending', 'in_progress', 'done']
-
-interface Props {
-  phase:          ProjectPhase
-  items:          ProjectItem[]
-  typeFilter?:    ItemType | null
-  onUpdatePhase:  (patch: Partial<Pick<ProjectPhase, 'name' | 'status'>>) => void
-  onDeletePhase:  (question: { title: string; message?: string; confirmLabel: string }) => void
-  onAddItem:      () => void
-  onUpdateItem:   (itemId: string, patch: Partial<Pick<ProjectItem, 'title' | 'notes' | 'type' | 'status' | 'priority'>>) => void
-  onDeleteItem:   (itemId: string) => void
-  onEditItem:     (item: ProjectItem) => void
-}
-
-export function PhaseCard({
-  phase, items, typeFilter,
-  onUpdatePhase, onDeletePhase, onAddItem,
-  onUpdateItem, onDeleteItem, onEditItem,
-}: Props) {
-  const [open, setOpen] = useState(true)
-
-  const totalCount = items.length
-  const doneCount  = items.filter(i => i.status === 'done').length
-  const pct        = totalCount > 0 ? Math.round((doneCount / totalCount) * 100) : 0
-
-  const visible   = typeFilter ? items.filter(i => i.type === typeFilter) : items
-  const openItems = visible.filter(i => i.status !== 'done')
-  const doneItems = visible.filter(i => i.status === 'done')
-
-  function confirmDelete() {
-    onDeletePhase({
-      title: `Delete "${phase.name}"?`,
-      message: totalCount > 0 ? `Its ${totalCount} item${totalCount !== 1 ? 's go' : ' goes'} too.` : undefined,
-      confirmLabel: 'Delete phase',
-    })
-  }
-
-  const renderItem = (item: ProjectItem) => (
-    <ItemRow
-      key={item.id}
-      item={item}
-      onUpdate={patch => onUpdateItem(item.id, patch)}
-      onDelete={() => onDeleteItem(item.id)}
-      onEdit={() => onEditItem(item)}
-    />
-  )
+/**
+ * One phase: its name and how many of its tasks are done; open, its finish
+ * line ("Done when"), its tasks and "Add a task". The current phase opens by
+ * itself; the others wait for a tap (details on demand).
+ */
+export function PhaseCard({ phase, index, tasks, phases, current, area, focusAdd }: {
+  phase: ProjectPhase
+  index: number
+  tasks: Task[]
+  phases: ProjectPhase[]
+  current: boolean
+  area: ProjectArea
+  /** Opens with the add box focused (the header's "Task" button). */
+  focusAdd?: boolean
+}) {
+  const modal = useEntityModal()
+  const update = useUpdatePhase()
+  const move = useMovePhase()
+  const del = useDeletePhase()
+  const done = phase.status === 'done'
+  const counted = tasks.filter(t => t.status !== 'cancelled')
+  const doneCount = counted.filter(t => t.status === 'done').length
+  const dateText = phase.done_at ? `Done ${formatDate(phase.done_at)}` : phase.target_on ? `Target ${formatDate(phase.target_on)}` : null
+  const up = swapWith(phases, phase.id, -1)
+  const down = swapWith(phases, phase.id, 1)
 
   return (
-    <div className="card group/phase overflow-hidden">
-      <div
-        role="button"
-        tabIndex={0}
-        aria-expanded={open}
-        onClick={() => setOpen(o => !o)}
-        onKeyDown={e => { if (e.key === 'Enter') setOpen(o => !o) }}
-        className="flex min-h-[48px] cursor-pointer select-none flex-wrap items-center gap-2 px-3 py-1.5 transition-colors hover:bg-surface-hover"
-      >
-        <ChevronDown aria-hidden className={`h-4 w-4 shrink-0 text-fg-faint transition-transform ${open ? '' : '-rotate-90'}`} />
-
-        <div className="min-w-0 grow basis-[calc(100%-1.5rem)] sm:basis-0">
-          <InlineText
-            value={phase.name}
-            onSave={name => onUpdatePhase({ name })}
-            className="block truncate text-ui font-semibold text-fg"
-            inputClass="text-ui font-semibold text-fg w-full min-w-0 sm:max-w-[12rem]"
-          />
-        </div>
-
-        <StatusCycleChip
-          value={phase.status}
-          options={PHASE_STATUSES}
-          tones={PHASE_STATUS_TONE}
-          onCycle={status => onUpdatePhase({ status })}
-        />
-
-        {totalCount > 0 && <span className="text-meta text-fg-muted tabular-nums">{doneCount}/{totalCount}</span>}
-
-        {/* Desktop: inline add + a delete that appears on hover / focus. */}
-        {open && (
-          <button
-            type="button"
-            onClick={e => { e.stopPropagation(); onAddItem() }}
-            className="btn-ghost btn-sm hidden text-accent-600 lg:inline-flex"
-          >
-            <Plus aria-hidden className="h-4 w-4" /> Item
-          </button>
-        )}
-        <button
-          type="button"
-          onClick={e => { e.stopPropagation(); void confirmDelete() }}
-          className="icon-btn hidden h-8 w-8 opacity-0 transition-opacity hover:text-danger group-hover/phase:opacity-100 focus-visible:opacity-100 lg:inline-grid [@media(pointer:coarse)]:opacity-100"
-          aria-label={`Delete phase ${phase.name}`}
-          title="Delete phase"
-        >
-          <Trash2 className="h-4 w-4" aria-hidden />
-        </button>
-
-        {/* Phones: add + delete in one menu so the phase name keeps its width. */}
-        <Menu as="div" className="ml-auto shrink-0 lg:hidden" onClick={e => e.stopPropagation()}>
-          <MenuButton className="icon-btn" aria-label="Phase actions" title="Phase actions">
-            <MoreHorizontal className="h-[18px] w-[18px]" aria-hidden />
-          </MenuButton>
-          <MenuItems anchor="bottom end" transition
-            className="menu w-44 [--anchor-gap:4px] transition duration-150 data-[closed]:scale-95 data-[closed]:opacity-0">
-            <MenuItem>
-              <button type="button" onClick={onAddItem} className="menu-item"><Plus aria-hidden className="h-4 w-4" /> Add item</button>
-            </MenuItem>
-            <MenuItem>
-              <button type="button" onClick={() => { void confirmDelete() }} className="menu-item is-danger">
-                <Trash2 aria-hidden className="h-4 w-4" /> Delete phase
-              </button>
-            </MenuItem>
-          </MenuItems>
-        </Menu>
-      </div>
-
-      {totalCount > 0 && pct > 0 && (
-        <div className="h-0.5 bg-surface-2">
-          <div className="h-full bg-success transition-all duration-300" style={{ width: `${pct}%` }} />
-        </div>
+    <Disclosure as="section" defaultOpen={current || !!focusAdd}
+      className={cx('rounded-card border', current ? 'border-accent-200 bg-accent-50/40' : 'border-line bg-surface')}>
+      {({ open }) => (
+        <>
+          <div className="flex items-center gap-2 py-1.5 pl-2 pr-1">
+            <DisclosureButton className="flex min-h-[40px] min-w-0 flex-1 items-center gap-2.5 rounded-row text-left">
+              <PhaseMark done={done} current={current} />
+              <span className="min-w-0 flex-1">
+                <span className="block break-words text-ui text-fg">
+                  <span className="text-fg-muted tabular-nums">{index + 1} · </span>{phase.name}
+                </span>
+              </span>
+              {counted.length > 0 && <span className="shrink-0 text-meta tabular-nums text-fg-muted">{doneCount}/{counted.length}</span>}
+              <ChevronDown aria-hidden className={cx('h-4 w-4 shrink-0 text-fg-faint transition-transform motion-reduce:transition-none', open ? '' : '-rotate-90')} />
+            </DisclosureButton>
+            <Menu as="div" className="shrink-0">
+              <MenuButton className="icon-btn h-9 w-9" aria-label={`More for ${phase.name}`}>
+                <MoreHorizontal className="h-4 w-4" aria-hidden />
+              </MenuButton>
+              <MenuItems anchor="bottom end" transition className="menu w-48 [--anchor-gap:4px] transition duration-150 data-[closed]:opacity-0">
+                <MenuItem>
+                  <button type="button" className="menu-item" onClick={() => modal.open({ kind: 'project-phase', projectId: phase.project_id, id: phase.id })}>
+                    <Pencil aria-hidden className="h-4 w-4" /> Edit phase
+                  </button>
+                </MenuItem>
+                <MenuItem>
+                  <button type="button" className="menu-item"
+                    onClick={() => update.mutate({ id: phase.id, patch: { status: done ? 'in_progress' : 'done' } })}>
+                    {done ? <RotateCcw aria-hidden className="h-4 w-4" /> : <Check aria-hidden className="h-4 w-4" />} {done ? 'Reopen' : 'Mark done'}
+                  </button>
+                </MenuItem>
+                {up && (
+                  <MenuItem>
+                    <button type="button" className="menu-item" onClick={() => move.mutate({ a: up[0], b: up[1] })}>
+                      <ArrowUp aria-hidden className="h-4 w-4" /> Move up
+                    </button>
+                  </MenuItem>
+                )}
+                {down && (
+                  <MenuItem>
+                    <button type="button" className="menu-item" onClick={() => move.mutate({ a: down[0], b: down[1] })}>
+                      <ArrowDown aria-hidden className="h-4 w-4" /> Move down
+                    </button>
+                  </MenuItem>
+                )}
+                <div className="menu-sep" />
+                <MenuItem>
+                  <button type="button" className="menu-item is-danger" onClick={() => {
+                    void del.run([phase.id], {
+                      title: `Delete ${phase.name}?`, message: 'Its tasks stay in the project, with no phase.', done: `${phase.name} deleted`,
+                    })
+                  }}>
+                    <Trash2 aria-hidden className="h-4 w-4" /> Delete phase
+                  </button>
+                </MenuItem>
+              </MenuItems>
+            </Menu>
+          </div>
+          <DisclosurePanel className="flex flex-col gap-1 border-t border-line px-2 pb-2 pt-1.5">
+            {phase.done_when ? (
+              <HoverPeek trigger="Done when" className={cx(DOTTED, 'self-start px-1.5 pb-1 text-meta text-fg-muted')} panelClassName="w-72">
+                <p>{phase.done_when}</p>
+                {dateText && <p className="mt-1 text-fg-muted">{dateText}</p>}
+              </HoverPeek>
+            ) : dateText && <p className="px-1.5 pb-1 text-meta text-fg-muted">{dateText}</p>}
+            {tasks.length > 0 && <ul className="flex flex-col">{tasks.map(t => <ProjectTaskRow key={t.id} task={t} phases={phases} />)}</ul>}
+            <AddTaskInline projectId={phase.project_id} phaseId={phase.id} area={area} nextOrder={nextSortOrder(tasks)} autoFocus={focusAdd} />
+          </DisclosurePanel>
+        </>
       )}
+    </Disclosure>
+  )
+}
 
-      {open && (
-        <div className="divide-y divide-line border-t border-line">
-          {visible.length === 0 && (
-            <p className="px-4 py-3 text-meta text-fg-muted">
-              {typeFilter ? 'No items match the current filter' : 'Nothing here yet'}
-            </p>
-          )}
-          {openItems.map(renderItem)}
-          {doneItems.length > 0 && <div className="opacity-60">{doneItems.map(renderItem)}</div>}
-        </div>
-      )}
-    </div>
+function PhaseMark({ done, current }: { done: boolean; current: boolean }) {
+  if (done) {
+    return (
+      <span aria-label="Done" className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-success text-white">
+        <Check aria-hidden className="h-3 w-3" strokeWidth={3} />
+      </span>
+    )
+  }
+  return (
+    <span aria-label={current ? 'Now' : 'Not done'} className={cx('grid h-5 w-5 shrink-0 place-items-center rounded-full border-2',
+      current ? 'border-accent-500' : 'border-line-strong')}>
+      {current && <span aria-hidden className="h-2 w-2 rounded-full bg-accent-500" />}
+    </span>
   )
 }

@@ -7,7 +7,7 @@ import { LoginPage } from '../features/auth/pages/LoginPage'
 import { ResetPasswordPage } from '../features/auth/pages/ResetPasswordPage'
 import {
   HomePage, DailyPage, ShopPage, RecipesPage, MediaPage, WorkPage, TrainingPage, HealthPage,
-  ProjectsPage, WishesPage, BooksPage, DeveloperPage, SettingsPage,
+  ProjectsPage, ProjectPage, WishesPage, BooksPage, DeveloperPage, SettingsPage,
 } from './pages'
 import { DevRequestComposerHost } from '../features/devRequests/composer/DevRequestComposerHost'
 import { lazyWithReload } from '../shared/utils/lazyWithReload'
@@ -53,6 +53,7 @@ export function Router() {
           <Route path="/training"  element={<TrainingPage />} />
           <Route path="/health"    element={<HealthPage />} />
           <Route path="/projects"  element={<ProjectsPage />} />
+          <Route path="/projects/:projectId" element={<ProjectPage />} />
           <Route path="/wishes"    element={<WishesPage />} />
           <Route path="/books"     element={<BooksPage />} />
           {/* Games renders free-form provider and scraped records: a

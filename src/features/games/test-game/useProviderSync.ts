@@ -5,7 +5,7 @@ import { fetchSteamOwnedGames } from '../api/steamApi'
 import { fetchPsnPlayedGames } from '../api/psnApi'
 import { importProviderGames } from '../api/gamesApi'
 import { psnImportRows, steamImportRows } from '../api/providerImportRows'
-import { autoSyncDue, lastSynced } from './components/tgProviderSync'
+import { autoSyncDue, lastSynced } from './components/tgProviderSyncModel'
 import type { TgGame } from './testGameModel'
 
 export type SyncProvider = 'steam' | 'playstation'

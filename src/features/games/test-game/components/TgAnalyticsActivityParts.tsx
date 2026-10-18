@@ -1,5 +1,5 @@
 import { fmtInt, plural } from './tgAnalyticsFormat'
-import { TGA_LIB_LABEL, libFill, type TgaActivityRow } from './tgAnalyticsActivity'
+import { TGA_LIB_LABEL, libFill, type TgaActivityRow } from './tgAnalyticsActivityModel'
 import type { TgaLib } from './tgAnalyticsSeries'
 import { TgStatusIcon } from './TgStatusIcon'
 

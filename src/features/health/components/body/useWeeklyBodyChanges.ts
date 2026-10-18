@@ -6,7 +6,7 @@ import { usePhase } from '../../goal/useBodyGoals'
 import { useBodyCompositionReports } from '../../hooks/useBodyCompositionReports'
 import { useBodyweightSeries } from '../../hooks/useBodyweight'
 import { buildWeeklyChanges, shownMetrics, sinceFirstReading, weekComment, weekStartsFor, type WeeklySeries } from '../../weeklyBodyChanges'
-import { SPAN_DAYS, useRangeWindow } from '../dateNav'
+import { SPAN_DAYS, useRangeWindow } from '../dateNavModel'
 import type { HealthRange } from '../sectionTypes'
 
 const dayOf = (iso: string) => localDayOf(iso) ?? iso.slice(0, 10)

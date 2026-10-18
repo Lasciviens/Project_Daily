@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { detailSections, platformVariants, type DetailRow, type PlatformVariant } from './tgDetailFields'
+import { detailSections, platformVariants, type DetailRow, type PlatformVariant } from './tgDetailFieldsModel'
 import type { TgGame } from '../testGameModel'
 import { Truncate } from '../../../../shared/ui/Truncate'
 

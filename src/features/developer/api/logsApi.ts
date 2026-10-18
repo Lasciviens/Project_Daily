@@ -1,7 +1,7 @@
 import { supabase } from '../../../integrations/supabase/client'
 import { requireUser } from '../../../shared/utils/requireUser'
 
-// Developer → Errors / Activity and the project activity feed. The only
+// Developer → Errors / Activity. The only
 // place app_error_logs and audit_logs (migration 037, trigger-written) are read.
 
 export interface ErrorLog {
@@ -68,22 +68,4 @@ export async function clearAuditLogs(): Promise<void> {
   const user = await requireUser()
   const { error } = await supabase.from('audit_logs').delete().eq('user_id', user.id)
   if (error) throw error
-}
-
-/** The last 30 audit rows touching one project, its phases or its items. */
-export async function fetchProjectActivity(projectId: string, itemIds: string[], phaseIds: string[]): Promise<AuditLog[]> {
-  const [itemsRes, phasesRes, projectRes] = await Promise.all([
-    itemIds.length
-      ? supabase.from('audit_logs').select('*').eq('table_name', 'project_items').in('row_id', itemIds)
-      : Promise.resolve({ data: [], error: null }),
-    phaseIds.length
-      ? supabase.from('audit_logs').select('*').eq('table_name', 'project_phases').in('row_id', phaseIds)
-      : Promise.resolve({ data: [], error: null }),
-    supabase.from('audit_logs').select('*').eq('table_name', 'projects').eq('row_id', projectId),
-  ])
-  if (itemsRes.error) throw itemsRes.error
-  if (phasesRes.error) throw phasesRes.error
-  if (projectRes.error) throw projectRes.error
-  const all = [...(itemsRes.data ?? []), ...(phasesRes.data ?? []), ...(projectRes.data ?? [])] as AuditLog[]
-  return all.sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 30)
 }

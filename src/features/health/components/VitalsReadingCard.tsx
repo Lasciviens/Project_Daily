@@ -6,7 +6,7 @@ import { BASELINE_DAYS } from '../vitalsReading'
 import { useVitalsReading } from '../hooks/useVitalsReading'
 import { SourceList } from './overview/MetricExplainer'
 import type { HealthRange } from './sectionTypes'
-import { useRangeWindow } from './dateNav'
+import { useRangeWindow } from './dateNavModel'
 import { VitalsReadingRows } from './VitalsReadingRows'
 
 // "What your numbers say" — the top of the Heart & vitals window. The charts

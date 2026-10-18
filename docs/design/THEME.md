@@ -328,7 +328,7 @@ differs.
 
 **Navigation** is defined once in `src/app/navigation.ts` — sidebar, shell titles, phone tab bar,
 More sheet and the command bar all read that registry. Adding a page = one entry there (label, path,
-icon, group, `tab` slot or `more`; optional `parent` for a sub-page with no row of its own, `match`,
+icon, group, `tab` slot or `more`; optional `parent` for a sub-page with no row of its own, `match` (`/projects/*` lights the entry on every path under it — a detail page's own address),
 `fullHeight`, `collapseSidebar`, `moreFirst`, `keywords`) plus its route in `router.tsx`. Never hand-write a nav list in a component.
 
 **The document never scrolls.** `<main>` is the one scroll container (pull-to-refresh, scroll

@@ -146,7 +146,11 @@ do $$ begin
 end $$;
 update public.user_tv_entries set status = 'watching' where id = '16110000-0000-0000-0000-00000000000d';
 do $$ begin
-  perform public.t_ok((select rewatch_round = 2 and rewatch_started_at = date_trunc('second', now()) - interval '3 days'
+  -- Compared with the pilot rewatch row itself: "now() − 3 days" read again here
+  -- can be a second later than when the fixture was written (each statement has its own now()).
+  perform public.t_ok((select rewatch_round = 2 and rewatch_started_at = (
+                           select max(w.watched_at) from public.media_watches w
+                            where w.tv_series_id = '16100000-0000-0000-0000-00000000000d' and w.season_number = 1 and w.episode_number = 1)
                          from public.user_tv_entries where id = '16110000-0000-0000-0000-00000000000d'),
     'a pass begun before Watching was picked: the round starts at that pilot watch');
 end $$;

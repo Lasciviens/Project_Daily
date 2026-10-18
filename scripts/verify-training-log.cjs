@@ -12,7 +12,7 @@
  *   sessionRef.ts                           — what the training-session popup opens
  *   sessionLinks.ts                         — which workout a session popup shows (Health back-links)
  *   components/calendar/calendarPlans.ts    — plans per day (blocks + projected templates)
- *   components/calendar/monthGrid.ts        — month weeks, one mark per day, week totals
+ *   components/calendar/monthGridModel.ts        — month weeks, one mark per day, week totals
  *   pages/trainingTabs.ts                   — ?view= for Log / Library, the moved Body view
  *
  *   Run:  node scripts/verify-training-log.cjs
@@ -26,7 +26,7 @@ const { matchHealthWorkout, overlapSeconds } = require('../src/features/training
 const raw = require('../src/features/health/workoutRaw')
 const sr = require('../src/features/training/sessionRef')
 const { buildPlansByDate } = require('../src/features/training/components/calendar/calendarPlans')
-const mg = require('../src/features/training/components/calendar/monthGrid')
+const mg = require('../src/features/training/components/calendar/monthGridModel')
 const tabs = require('../src/features/training/pages/trainingTabs')
 const links = require('../src/features/training/sessionLinks')
 

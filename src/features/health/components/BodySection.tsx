@@ -4,7 +4,7 @@ import { scaleOnly } from '../bodyweight'
 import { useBodyweightSeries } from '../hooks/useBodyweight'
 import { BodyCompositionPanel } from './BodyCompositionPanel'
 import { BodyweightCharts } from './BodyweightCharts'
-import { useRangeWindow } from './dateNav'
+import { useRangeWindow } from './dateNavModel'
 import type { HealthRange } from './sectionTypes'
 import { SectionCard } from './sectionKit'
 

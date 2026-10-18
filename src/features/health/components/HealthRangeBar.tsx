@@ -1,7 +1,7 @@
 import type { SetStateAction } from 'react'
 import { DateNav } from './DateNav'
 import { PeriodToggle, type Period } from './PeriodToggle'
-import { labelForAnchor, stepAnchor } from './dateNav'
+import { labelForAnchor, stepAnchor } from './dateNavModel'
 
 /** The page's one period + date control, directly under the section tabs:
  *  the period first, then the window's dates ("21.09 – 27.09"). The toggle's

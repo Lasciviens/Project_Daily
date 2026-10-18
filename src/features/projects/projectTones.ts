@@ -1,8 +1,6 @@
 import type { Tone } from '../../shared/ui'
 import { stageTones } from '../../shared/theme/stage'
-import type { ItemStatus, ItemType, PhaseStatus, ProjectColor, ProjectStatus } from './types'
-
-export { PRIORITY_TONE as ITEM_PRIORITY_TONE } from '../todo/taskTones'
+import type { PhaseStatus, ProjectColor, ProjectStatus } from './types'
 
 // The one enum → tone map per project enum (THEME.md §2.4).
 
@@ -15,37 +13,11 @@ export const PROJECT_STATUS_TONE: Record<ProjectStatus, Tone> = stageTones({
   archived:  'idle',
 })
 
-export const PROJECT_STATUS_LABEL: Record<ProjectStatus, string> = {
-  active: 'Active', on_hold: 'On hold', completed: 'Completed', archived: 'Archived',
-}
-
 export const PHASE_STATUS_TONE: Record<PhaseStatus, Tone> = stageTones({
   pending:     'idle',
   in_progress: 'active',
   done:        'done',
 })
-
-export const ITEM_STATUS_TONE: Record<ItemStatus, Tone> = stageTones({
-  open:        'idle',
-  in_progress: 'active',
-  done:        'done',
-  cancelled:   'dropped',
-})
-
-// Item type is a category, not a status; tones only keep the five apart.
-export const ITEM_TYPE_TONE: Record<ItemType, Tone> = {
-  update:      'info',
-  improvement: 'success',
-  ui_request:  'highlight',
-  bug:         'danger',
-  wishlist:    'star',
-}
-
-export const ITEM_TYPE_LABEL: Record<ItemType, string> = {
-  update: 'update', improvement: 'improve', ui_request: 'UI', bug: 'bug', wishlist: 'wish',
-}
-
-export const ITEM_TYPE_ORDER: ItemType[] = ['update', 'improvement', 'ui_request', 'bug', 'wishlist']
 
 /**
  * A project's own colour is identity the user picked, not a status. It maps
