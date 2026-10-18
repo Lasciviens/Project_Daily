@@ -117,8 +117,11 @@ function ProjectDetailsSheet({ project, onClose }: { project: Project; onClose: 
     if (!name.trim() || linkBad) return
     try {
       await update.mutateAsync({ id: project.id, patch: {
-        name: name.trim(), description: description.trim() || null, notes: notes.trim() || null, status, kind, area,
+        name: name.trim(), description: description.trim() || null, notes: notes.trim() || null, kind,
         started_on: startedOn || null, target_on: targetOn || null, link_url: link.trim() || null,
+        // Only what changed, so the result says what happened ("Kitchen scale: On hold", "Project saved").
+        ...(status !== project.status ? { status } : {}),
+        ...(area !== (project.area ?? 'personal') ? { area } : {}),
       } })
       onClose()
     } catch { /* the hook said what failed */ }
@@ -235,7 +238,7 @@ function PhaseSheet({ projectId, phase, siblings, onClose }: {
     if (!name.trim()) return
     const fields = { name: name.trim(), done_when: doneWhen.trim() || null, target_on: targetOn || null }
     try {
-      if (phase) await update.mutateAsync({ id: phase.id, patch: { ...fields, status } })
+      if (phase) await update.mutateAsync({ id: phase.id, patch: { ...fields, ...(status !== phase.status ? { status } : {}) } })
       else await create.mutateAsync({ input: { project_id: projectId, ...fields }, sortOrder: nextSortOrder(siblings) })
       onClose()
     } catch { /* the hook said what failed */ }

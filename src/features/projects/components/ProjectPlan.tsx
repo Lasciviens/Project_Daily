@@ -25,7 +25,8 @@ export function ProjectPlan({ project, phases, tasks, currentId, focusAdd }: {
   const modal = useEntityModal()
   const area = project.area ?? 'personal'
   const loose = phaseTasks(tasks, null)
-  const addTarget = currentId ?? (phases.length ? null : 'loose')
+  // "Task" adds to the current phase; with every phase done (or none), to "Other tasks".
+  const addTarget = currentId ?? 'loose'
   const addPhase = () => modal.open({ kind: 'project-phase', projectId: project.id })
 
   const items = phases.map((p, i) => ({
@@ -44,7 +45,7 @@ export function ProjectPlan({ project, phases, tasks, currentId, focusAdd }: {
         action={<Button variant="ghost" size="sm" icon={<Plus />} onClick={addPhase}>Phase</Button>}
       />
       {phases.length > 0 && <PhaseColumns items={items} />}
-      {(loose.length > 0 || phases.length === 0) && (
+      {(loose.length > 0 || addTarget === 'loose') && (
         <section className={phases.length ? 'mt-3 border-t border-line pt-2' : ''} aria-label="Other tasks">
           {phases.length > 0 && <h3 className="section-label px-1.5 pb-1">Other tasks</h3>}
           {loose.length > 0 && <ul className="flex flex-col">{loose.map(t => <ProjectTaskRow key={t.id} task={t} phases={phases} />)}</ul>}

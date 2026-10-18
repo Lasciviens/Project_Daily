@@ -26,6 +26,19 @@ export const PROJECT_BOARD: BoardLayouts<ProjectSection> = {
   4: { top: ['back'], columns: [{ stack: ['header', 'main'], span: 3 }, ['side']] },
 }
 
+/** The same page when no block goes to the side track (a project of text pages
+ *  and wide tables, or none yet): main takes every track, so no column stands empty. */
+export const PROJECT_BOARD_WIDE: BoardLayouts<ProjectSection> = {
+  1: ['back', 'header', 'main'],
+  2: { top: ['back'], columns: [{ stack: ['header', 'main'], span: 2 }] },
+  3: { top: ['back'], columns: [{ stack: ['header', 'main'], span: 3 }] },
+  4: { top: ['back'], columns: [{ stack: ['header', 'main'], span: 4 }] },
+}
+
+export function projectLayout(hasSideBlocks: boolean): BoardLayouts<ProjectSection> {
+  return hasSideBlocks ? PROJECT_BOARD : PROJECT_BOARD_WIDE
+}
+
 /** Where a block sits from step 2: text pages and tables of more than three
  *  columns beside the plan; the log, questions, links and narrow tables in
  *  the side track. On a phone every block follows the plan in its own order. */

@@ -3,6 +3,9 @@ import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFe
 import { useRowsDelete } from '../../../shared/hooks/useRowsDelete'
 import { putRowsInCache } from '../../../shared/query/cachePatch'
 import { BLOCK_EVENT_RESET, relinkRestoredBlockEvents, removeDeletedBlockEvents } from '../../calendar/api/deletedBlockEvents'
+import { rowsOf } from '../../../shared/utils/deletedRows'
+import { TASK_GOOGLE_RESET, syncGoogleTasksSoon } from '../../todo/hooks/useTodos'
+import type { Task } from '../../todo/types'
 import { qk, STALE } from '../../../shared/query'
 import {
   fetchProjects, createProject, updateProject,
@@ -61,12 +64,16 @@ export function useOpenQuestions() {
 
 // ─── Projects ────────────────────────────────────────────────────────────────
 
+/** The popup opens the new project's page next, so the lists are read again before it resolves. */
 export function useCreateProject() {
+  const qc = useQueryClient()
   return useMutationWithFeedback({
     action: 'create_project',
     successMessage: p => `${p.name} created`,
     mutationFn: (input: NewProjectInput) => createProject(input),
+    onSuccess: p => appendToList(qc, qk.projects.list(), p),
     invalidates: [qk.projects.all],
+    refresh: 'wait',
   })
 }
 
@@ -77,7 +84,8 @@ export function useUpdateProject({ report = true }: { report?: boolean } = {}) {
     action: 'update_project',
     successMessage: (p, { patch }) => {
       if (!report) return undefined
-      if (patch.status) return `${p.name}: ${STATUS_LABEL[patch.status]}`
+      if (patch.status && Object.keys(patch).length === 1) return `${p.name}: ${STATUS_LABEL[patch.status]}`
+      if (patch.status) return `Project saved · ${STATUS_LABEL[patch.status]}`
       if ('status_line' in patch && Object.keys(patch).length === 1) return patch.status_line ? 'Status updated' : 'Status cleared'
       return 'Project saved'
     },
@@ -88,11 +96,21 @@ export function useUpdateProject({ report = true }: { report?: boolean } = {}) {
   })
 }
 
-/** Deletes a project with its phases, tasks, blocks and entries — Undo puts all of it back (162's keys). */
+/** Deletes a project with its phases, tasks, blocks and entries — Undo puts all of it back (162's keys).
+ *  Its tasks go the way a deleted task goes (useDeleteTask): their slots' Calendar events and Google
+ *  Tasks copies are removed, and Undo makes them again. */
 export function useDeleteProject() {
   return useRowsDelete({
     table: 'projects', action: 'delete_project', invalidates: [qk.projects.all, 'taskGraph'], cache: qk.projects.all,
-    afterDelete: removeDeletedBlockEvents, overrides: () => BLOCK_EVENT_RESET, afterRestore: relinkRestoredBlockEvents,
+    afterDelete: async snapshot => {
+      await removeDeletedBlockEvents(snapshot)
+      for (const t of rowsOf<Task>(snapshot, 'tasks')) syncGoogleTasksSoon({ taskId: t.id })
+    },
+    overrides: () => ({ ...TASK_GOOGLE_RESET, ...BLOCK_EVENT_RESET }),
+    afterRestore: async snapshot => {
+      for (const t of rowsOf<Task>(snapshot, 'tasks')) if (t.google_sync_enabled) syncGoogleTasksSoon({ taskId: t.id })
+      return relinkRestoredBlockEvents(snapshot)
+    },
   })
 }
 
@@ -116,9 +134,9 @@ export function useUpdatePhase({ report = true }: { report?: boolean } = {}) {
     action: 'update_phase',
     successMessage: (p, { patch }) => {
       if (!report) return undefined
-      if (patch.status === 'done') return `${p.name} done`
-      if (patch.status) return `${p.name} reopened`
-      return 'Phase saved'
+      if (!patch.status) return 'Phase saved'
+      const word = patch.status === 'done' ? 'done' : patch.status === 'in_progress' ? 'in progress' : 'not started'
+      return Object.keys(patch).length === 1 ? `${p.name} ${word}` : `Phase saved · ${word}`
     },
     mutationFn: ({ id, patch }: { id: string; patch: PhasePatch }) => updatePhase(id, patch),
     onSuccess: p => putRowsInCache(qc, qk.projects.phases(), [p]),
@@ -230,7 +248,7 @@ export function useCreateEntry() {
   return useMutationWithFeedback({
     action: 'create_entry',
     successMessage: (_e, { message }) => message,
-    mutationFn: ({ blockId, fields }: { blockId: string; fields: EntryFields; message: string }) => createEntry(blockId, fields),
+    mutationFn: ({ block, fields }: { block: Pick<ProjectBlock, 'id' | 'project_id'>; fields: EntryFields; message: string }) => createEntry(block, fields),
     onSuccess: e => appendToList(qc, qk.projects.entries(e.project_id), e),
     invalidates: e => (e ? [qk.projects.entries(e.project_id), qk.projects.openQuestions()] : [qk.projects.all]),
   })

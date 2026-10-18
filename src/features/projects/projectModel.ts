@@ -220,7 +220,7 @@ export function parseCell(column: TableColumn, input: string | boolean): CellRes
   switch (column.type) {
     case 'number':
     case 'money': {
-      const n = Number(s.replace(/[\s ]/g, '').replace(',', '.'))
+      const n = Number(s.replace(/\s/g, '').replace(',', '.'))
       if (!Number.isFinite(n) || Math.abs(n) > 1e12) return { ok: false, error: `${column.label} must be a number` }
       return { ok: true, value: Math.round(n * 100) / 100 }
     }
@@ -413,11 +413,6 @@ export function progressLine(s: ProjectSummary): string {
 export function progressValue(s: ProjectSummary): number {
   if (s.phasesTotal > 0) return s.phasesDone / s.phasesTotal
   return s.tasksTotal > 0 ? s.tasksDone / s.tasksTotal : 0
-}
-
-/** A phase's status from its tasks' progress, when the owner hasn't set one: done stays done. */
-export function phaseStatusLabel(status: ProjectPhase['status']): string {
-  return status === 'done' ? 'Done' : status === 'in_progress' ? 'In progress' : 'Not started'
 }
 
 // ── The projects list ──────────────────────────────────────────────────────

@@ -41,6 +41,7 @@ for (const [name, layout, known] of [
   ['Work board, rail hidden', Wk.WORK_BOARD_RAIL_HIDDEN, Wk.WORK_SECTIONS],
   ['Work list', Wk.WORK_LIST, Wk.WORK_SECTIONS],
   ['Project detail', P.PROJECT_BOARD, P.PROJECT_SECTIONS],
+  ['Project detail, no side blocks', P.PROJECT_BOARD_WIDE, P.PROJECT_SECTIONS],
   ['Developer list + detail', D.LIST_DETAIL_BOARD, D.LIST_DETAIL_SECTIONS],
   ['Connections', D.CONNECTIONS_BOARD, D.CONNECTION_SECTIONS],
 ]) {
@@ -106,6 +107,10 @@ check('from the laptop: back above, the header over the plan in main, the side b
   return eq(l.top, ['back']) && eq(l.columns[0].stack, ['header', 'main']) && eq(l.columns.at(-1).stack, ['side']) && l.columns.at(-1).span === 1
 }))
 check('main spans 1, 2, 3 tracks at 1469, 1920, 2450', [2, 3, 4].map(s => B.resolveBoardLayout(P.PROJECT_BOARD, s).columns[0].span ?? 1).join() === '1,2,3')
+check('no side blocks: main takes every track (no empty side column)', [2, 3, 4].every(s => {
+  const l = B.resolveBoardLayout(P.PROJECT_BOARD_WIDE, s)
+  return l.columns.length === 1 && l.columns[0].span === l.tracks
+}) && P.projectLayout(true) === P.PROJECT_BOARD && P.projectLayout(false) === P.PROJECT_BOARD_WIDE)
 {
   const spanRem = (px, s) => { const l = B.resolveBoardLayout(P.PROJECT_BOARD, s); return B.columnWidthPx(px, l, 0, l.columns[0].span) / 16 }
   const cardRem = (w) => (w - (P.phaseColumnCount(w) - 1) * 0.75) / P.phaseColumnCount(w)
@@ -177,7 +182,7 @@ check('header caps: 106rem over the list + detail tabs at 2450, 117rem over Conn
   B.boardWidthRem(D.LIST_DETAIL_BOARD, 4) === 106 && B.boardWidthRem(D.CONNECTIONS_BOARD, 4) === 117 && B.boardWidthRem(D.LIST_DETAIL_BOARD, 1) === null)
 
 console.log('the default views fill the width (W6)')
-for (const [name, layout] of [['Media', M.MEDIA_BOARD], ['Work', Wk.WORK_BOARD], ['Project detail', P.PROJECT_BOARD], ['Connections', D.CONNECTIONS_BOARD]]) {
+for (const [name, layout] of [['Media', M.MEDIA_BOARD], ['Work', Wk.WORK_BOARD], ['Project detail', P.PROJECT_BOARD], ['Project detail, no side blocks', P.PROJECT_BOARD_WIDE], ['Connections', D.CONNECTIONS_BOARD]]) {
   check(`${name}: nothing empty at 1469, at most one track at 2450`, emptyAt(layout, W.laptop) === 0 && emptyAt(layout, W.monitor) <= ONE_TRACK,
     `${emptyAt(layout, W.laptop)} / ${emptyAt(layout, W.monitor)}px`)
 }

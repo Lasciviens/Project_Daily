@@ -1,5 +1,6 @@
 import { Disclosure, DisclosureButton, DisclosurePanel, Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
 import { ArrowDown, ArrowUp, Check, ChevronDown, MoreHorizontal, Pencil, RotateCcw, Trash2 } from 'lucide-react'
+import { HoverPeek } from '../../../shared/components/HoverPeek'
 import { useEntityModal } from '../../../shared/modals'
 import { cx } from '../../../shared/ui'
 import { formatDate } from '../../../shared/utils/dateFormat'
@@ -8,6 +9,7 @@ import { useDeletePhase, useMovePhase, useUpdatePhase } from '../hooks/useProjec
 import { nextSortOrder, swapWith } from '../projectModel'
 import { AddTaskInline } from './AddTaskInline'
 import { ProjectTaskRow } from './ProjectTaskRow'
+import { DOTTED } from './peekStyle'
 import type { ProjectArea, ProjectPhase } from '../types'
 
 /**
@@ -32,6 +34,7 @@ export function PhaseCard({ phase, index, tasks, phases, current, area, focusAdd
   const done = phase.status === 'done'
   const counted = tasks.filter(t => t.status !== 'cancelled')
   const doneCount = counted.filter(t => t.status === 'done').length
+  const dateText = phase.done_at ? `Done ${formatDate(phase.done_at)}` : phase.target_on ? `Target ${formatDate(phase.target_on)}` : null
   const up = swapWith(phases, phase.id, -1)
   const down = swapWith(phases, phase.id, 1)
 
@@ -95,13 +98,12 @@ export function PhaseCard({ phase, index, tasks, phases, current, area, focusAdd
             </Menu>
           </div>
           <DisclosurePanel className="flex flex-col gap-1 border-t border-line px-2 pb-2 pt-1.5">
-            {(phase.done_when || phase.target_on || phase.done_at) && (
-              <p className="px-1.5 pb-1 text-meta text-fg-muted">
-                {phase.done_when && <><span className="font-semibold text-fg-2">Done when:</span> {phase.done_when}</>}
-                {phase.done_when && (phase.target_on || phase.done_at) && ' · '}
-                {phase.done_at ? `Done ${formatDate(phase.done_at)}` : phase.target_on ? `Target ${formatDate(phase.target_on)}` : null}
-              </p>
-            )}
+            {phase.done_when ? (
+              <HoverPeek trigger="Done when" className={cx(DOTTED, 'self-start px-1.5 pb-1 text-meta text-fg-muted')} panelClassName="w-72">
+                <p>{phase.done_when}</p>
+                {dateText && <p className="mt-1 text-fg-muted">{dateText}</p>}
+              </HoverPeek>
+            ) : dateText && <p className="px-1.5 pb-1 text-meta text-fg-muted">{dateText}</p>}
             {tasks.length > 0 && <ul className="flex flex-col">{tasks.map(t => <ProjectTaskRow key={t.id} task={t} phases={phases} />)}</ul>}
             <AddTaskInline projectId={phase.project_id} phaseId={phase.id} area={area} nextOrder={nextSortOrder(tasks)} autoFocus={focusAdd} />
           </DisclosurePanel>

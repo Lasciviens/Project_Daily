@@ -2,10 +2,11 @@ import { useMemo, useState, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { ChevronLeft, FolderKanban } from 'lucide-react'
 import { Button, EmptyState, PageBoard, PageContainer, PageHeader, Skeleton, useBoardStep } from '../../../shared/ui'
+import { ErrorNotice } from '../../../shared/components/ErrorNotice'
 import type { Task } from '../../todo/types'
 import { useAllPhases, useBlocks, useEntries, useProjectTasks, useProjects } from '../hooks/useProjects'
 import { isOpenQuestion, orderPhases, projectSummary, tableSettings } from '../projectModel'
-import { PROJECT_BOARD, blockTrack, type ProjectSection } from '../projectBoard'
+import { blockTrack, projectLayout, type ProjectSection } from '../projectBoard'
 import { BlockCard } from '../components/BlockCard'
 import { ProjectHeaderCard } from '../components/ProjectHeaderCard'
 import { ProjectPlan } from '../components/ProjectPlan'
@@ -22,7 +23,8 @@ export function ProjectPage() {
   const entriesQ = useEntries(projectId)
   const project = projectsQ.data?.find(p => p.id === projectId)
 
-  if (projectsQ.isLoading) {
+  // A project just made (or a stale list) is waited for, never called gone.
+  if (projectsQ.isLoading || (!project && projectsQ.isFetching)) {
     return (
       <PageContainer>
         <PageHeader title="Project" />
@@ -49,6 +51,8 @@ export function ProjectPage() {
     )
   }
 
+  const queries = [phasesQ, tasksQ, blocksQ, entriesQ]
+  const failed = queries.find(q => q.isError)
   return (
     <ProjectBoardView
       project={project}
@@ -56,13 +60,18 @@ export function ProjectPage() {
       tasks={(tasksQ.data ?? []).filter(t => t.project_id === project.id)}
       blocks={[...(blocksQ.data ?? [])].sort((a, b) => a.sort_order - b.sort_order || a.created_at.localeCompare(b.created_at))}
       entries={entriesQ.data ?? []}
-      loadingBlocks={blocksQ.isLoading}
+      loading={queries.some(q => q.isLoading)}
+      error={failed ? { error: failed.error, retry: () => { for (const q of queries) if (q.isError) void q.refetch() } } : null}
     />
   )
 }
 
-function ProjectBoardView({ project, phases, tasks, blocks, entries, loadingBlocks }: {
-  project: Project; phases: ProjectPhase[]; tasks: Task[]; blocks: ProjectBlock[]; entries: ProjectEntry[]; loadingBlocks: boolean
+const blockColumns = (b: ProjectBlock) => (b.kind === 'table' ? tableSettings(b.settings).columns.length : 0)
+const isSide = (b: ProjectBlock) => blockTrack(b.kind, blockColumns(b)) === 'side'
+
+function ProjectBoardView({ project, phases, tasks, blocks, entries, loading, error }: {
+  project: Project; phases: ProjectPhase[]; tasks: Task[]; blocks: ProjectBlock[]; entries: ProjectEntry[]
+  loading: boolean; error: { error: unknown; retry: () => void } | null
 }) {
   const [focusAdd, setFocusAdd] = useState(0)
   const ordered = useMemo(() => orderPhases(phases), [phases])
@@ -87,8 +96,13 @@ function ProjectBoardView({ project, phases, tasks, blocks, entries, loadingBloc
     ),
     header: <ProjectHeaderCard project={project} summary={summary} current={current} logBlock={logBlock} onNewTask={onNewTask} />,
     main: (
-      <MainTrack project={project} phases={ordered} tasks={tasks} blocks={blocks} entriesOf={entriesOf}
-        currentId={current?.id ?? null} focusAdd={focusAdd} loadingBlocks={loadingBlocks} />
+      <div className="flex min-w-0 flex-col gap-3 sm:gap-4">
+        {error && <ErrorNotice where="project page" error={error.error} onRetry={error.retry} title="Part of this project didn’t load." />}
+        {loading ? <Skeleton rounded="rounded-card" className="h-72" /> : (
+          <MainTrack project={project} phases={ordered} tasks={tasks} blocks={blocks} entriesOf={entriesOf}
+            currentId={current?.id ?? null} focusAdd={focusAdd} />
+        )}
+      </div>
     ),
     side: <SideTrack blocks={blocks} entriesOf={entriesOf} />,
   }
@@ -96,38 +110,34 @@ function ProjectBoardView({ project, phases, tasks, blocks, entries, loadingBloc
   return (
     // The header card's name is the page's heading (h1): the project's name is content, not the route's.
     <PageContainer>
-      <PageBoard sections={sections} layout={PROJECT_BOARD} />
+      <PageBoard sections={sections} layout={projectLayout(blocks.some(isSide))} />
     </PageContainer>
   )
 }
 
-const blockColumns = (b: ProjectBlock) => (b.kind === 'table' ? tableSettings(b.settings).columns.length : 0)
-
 /** Main: the plan, then (on a phone) every block in order — or (wider) the text pages and wide tables. */
-function MainTrack({ project, phases, tasks, blocks, entriesOf, currentId, focusAdd, loadingBlocks }: {
+function MainTrack({ project, phases, tasks, blocks, entriesOf, currentId, focusAdd }: {
   project: Project; phases: ProjectPhase[]; tasks: Task[]; blocks: ProjectBlock[]
-  entriesOf: (b: ProjectBlock) => ProjectEntry[]; currentId: string | null; focusAdd: number; loadingBlocks: boolean
+  entriesOf: (b: ProjectBlock) => ProjectEntry[]; currentId: string | null; focusAdd: number
 }) {
   const step = useBoardStep()
-  const here = step === 1 ? blocks : blocks.filter(b => blockTrack(b.kind, blockColumns(b)) === 'main')
+  const here = step === 1 ? blocks : blocks.filter(b => !isSide(b))
   return (
-    <div className="flex min-w-0 flex-col gap-3 sm:gap-4">
+    <>
       {step === 1 && blocks.length > 0 && (
         <SectionChips sections={[{ id: 'plan', label: 'Plan' }, ...blocks.map(b => ({ id: `block-${b.id}`, label: b.title }))]} />
       )}
       <ProjectPlan project={project} phases={phases} tasks={tasks} currentId={currentId} focusAdd={focusAdd} />
-      {loadingBlocks && <Skeleton rounded="rounded-card" className="h-32" />}
       {here.map(b => <BlockCard key={b.id} block={b} entries={entriesOf(b)} blocks={blocks} />)}
-    </div>
+    </>
   )
 }
 
 /** Side (from the laptop up): the log, questions, links and narrow tables. */
 function SideTrack({ blocks, entriesOf }: { blocks: ProjectBlock[]; entriesOf: (b: ProjectBlock) => ProjectEntry[] }) {
   const step = useBoardStep()
-  if (step === 1) return null
-  const here = blocks.filter(b => blockTrack(b.kind, blockColumns(b)) === 'side')
-  if (here.length === 0) return null
+  const here = blocks.filter(isSide)
+  if (step === 1 || here.length === 0) return null
   return (
     <div className="flex min-w-0 flex-col gap-4">
       {here.map(b => <BlockCard key={b.id} block={b} entries={entriesOf(b)} blocks={blocks} />)}

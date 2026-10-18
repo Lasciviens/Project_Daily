@@ -63,7 +63,7 @@ export function ProjectHeaderCard({ project, summary, current, logBlock, onNewTa
   ]
 
   return (
-    <Card className="flex flex-col gap-3">
+    <Card className="flex max-w-[56rem] flex-col gap-3">
       <div className="flex items-start gap-3">
         <span aria-hidden className="grid h-10 w-10 shrink-0 place-items-center rounded-control bg-accent-50 text-accent-600 [&_svg]:h-5 [&_svg]:w-5">
           <Icon />
@@ -86,6 +86,12 @@ export function ProjectHeaderCard({ project, summary, current, logBlock, onNewTa
             </MenuItems>
           </Menu>
         </div>
+        {project.link_url && (
+          <a href={project.link_url} target="_blank" rel="noreferrer noopener" className="icon-btn shrink-0"
+            aria-label={`Open ${linkLabel(project.link_url).split('/')[0]}`} title={linkLabel(project.link_url)}>
+            <ExternalLink aria-hidden className="h-[18px] w-[18px]" />
+          </a>
+        )}
         <Menu as="div" className="shrink-0">
           <MenuButton className="icon-btn" aria-label="More for this project" title="More for this project">
             <MoreHorizontal className="h-[18px] w-[18px]" aria-hidden />
@@ -182,12 +188,6 @@ export function ProjectHeaderCard({ project, summary, current, logBlock, onNewTa
           </Button>
         )}
         <Button size="sm" icon={<LayoutGrid />} onClick={() => modal.open({ kind: 'project-block', projectId: project.id })}>Block</Button>
-        {project.link_url && (
-          <a href={project.link_url} target="_blank" rel="noreferrer noopener" className="btn-ghost btn-sm max-w-full">
-            <ExternalLink aria-hidden className="h-4 w-4 shrink-0" />
-            <span className="truncate">{linkLabel(project.link_url).split('/')[0]}</span>
-          </a>
-        )}
       </div>
     </Card>
   )

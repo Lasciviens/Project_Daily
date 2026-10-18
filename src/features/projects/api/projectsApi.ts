@@ -86,7 +86,8 @@ export async function fetchProjectTasks(): Promise<Task[]> {
       supabase.from('tasks').select('*').not('project_id', 'is', null)
         .order('sort_order').order('created_at').order('id').range(from, to))
   } catch (e) {
-    if (isMissingColumn(e as PgError)) return []
+    // Before 162 the old items still live in project_items: say so rather than show an empty plan.
+    if (isMissingColumn(e as PgError)) throw new Error(MISSING_162, { cause: e })
     throw e
   }
 }
@@ -163,11 +164,11 @@ export async function fetchOpenQuestions(): Promise<Array<Pick<ProjectEntry, 'id
   }
 }
 
-export async function createEntry(blockId: string, fields: EntryFields): Promise<ProjectEntry> {
+export async function createEntry(block: Pick<ProjectBlock, 'id' | 'project_id'>, fields: EntryFields): Promise<ProjectEntry> {
   const user = await requireUser()
-  // project_id is filled from the block by the database (162's trigger).
+  // The database sets project_id from the block whatever is sent (162's trigger).
   const { data, error } = await supabase.from('project_entries')
-    .insert({ ...fields, block_id: blockId, user_id: user.id }).select().single()
+    .insert({ ...fields, block_id: block.id, project_id: block.project_id, user_id: user.id }).select().single()
   if (error) throw isMissingTable(error) ? new Error(MISSING_162) : error
   return data as ProjectEntry
 }

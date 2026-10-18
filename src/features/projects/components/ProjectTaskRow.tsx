@@ -21,7 +21,9 @@ export function ProjectTaskRow({ task, phases }: { task: Task; phases: ProjectPh
   const move = useMoveProjectTask()
   const done = task.status === 'done'
   const closed = isClosedTask(task)
+  // Today's and late ones say so in the row; a later day opens with the task.
   const due = isOpenTask(task) ? dueLabel(task) : null
+  const urgentDue = due?.urgent ? due : null
   const others = phases.filter(p => p.id !== task.project_phase_id)
 
   return (
@@ -51,7 +53,7 @@ export function ProjectTaskRow({ task, phases }: { task: Task; phases: ProjectPh
             <Truncate lines={2}>{task.title}</Truncate>
           </button>
         )}
-        {due && <span className={cx('shrink-0 text-meta tabular-nums', due.urgent ? 'text-danger' : 'text-fg-muted')}>{due.text}</span>}
+        {urgentDue && <span className="shrink-0 text-meta tabular-nums text-danger">{urgentDue.text}</span>}
       </div>
       <Menu as="div" className="shrink-0">
         <MenuButton className="icon-btn h-8 w-8 opacity-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover/row:opacity-100 [@media(hover:hover)]:focus-visible:opacity-100 data-[open]:opacity-100"
@@ -67,7 +69,7 @@ export function ProjectTaskRow({ task, phases }: { task: Task; phases: ProjectPh
           {others.map(p => (
             <MenuItem key={p.id}>
               <button type="button" className="menu-item" onClick={() => move.mutate({ id: task.id, phaseId: p.id, phaseName: p.name })}>
-                <ArrowRightLeft aria-hidden className="h-4 w-4" /> <span className="truncate">{p.name}</span>
+                <ArrowRightLeft aria-hidden className="h-4 w-4 shrink-0" /> <Truncate className="min-w-0">{p.name}</Truncate>
               </button>
             </MenuItem>
           ))}

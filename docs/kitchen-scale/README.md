@@ -2,7 +2,7 @@
 
 A home-made Wi-Fi kitchen scale with its own touchscreen. You pick a food (or scan it on the phone), put it on the scale, and it shows the weight and the calories and macros from the food library. Save puts it into Food → Today.
 
-This file is the project's one place for the parts in hand, the checked hardware facts, the design, the plan and the progress log. Update it in the same PR as any work on the scale.
+This file is the project's one place for the parts in hand, the checked hardware facts, the design, the plan and the progress log. Update it in the same PR as any work on the scale. The app's Projects page holds a working copy (tasks, parts, log, decisions), loaded once from this file by `load-into-app.sql` (18.10.2026); this file stays the source of truth.
 
 **Status (14.10.2026):** stage 0 is done on the owner's display board: chip, 16 MB flash, 8 MB PSRAM, screen and touch all work, and the back of the board is recorded (no relay back plate, board version V1.2). The only thing left open is the optional pin finder test. Stage 1 code (the weighing logic and the bench program) is ready and waits for the soldering iron. Nothing has been wired or built yet. Nothing in the app, the database or the edge functions has changed for the scale.
 

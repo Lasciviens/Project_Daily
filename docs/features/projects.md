@@ -8,7 +8,7 @@ A project is a **header**, a **plan** and a few general **blocks**. A template o
 
 - **Header** (`projects`): name, kind (the template: hardware, software, home, learning, trip, blank), area (personal | work), status (Active, On hold, Done, Archived), a **status line** — where it stands, one line — with the time it last changed (`status_line_at`, set by the database), start and target days, one main link, a description and notes.
 - **Plan** (`project_phases`): phases in order, each with **Done when** (its finish line), a target day and its done time (`done_at`, set when it is marked done, cleared on reopen). The current phase is the first one not done.
-- **Tasks are tasks.** A project's tasks are rows of the one `tasks` table with `project_id` and `project_phase_id` — not a table of their own. A new one is undated, in Backlog, not on Google, with the project's area as its domain; it reaches Daily the day the owner gives it a date (its editor is the normal task sheet). Ticking it in Daily, Work or the Tasks tab ticks it here, and the other way round. Deleting a project deletes its tasks (Undo brings them back); deleting a phase keeps its tasks in the project, under "Other tasks". Moving a project between Personal and Work moves its tasks' domain (a trigger).
+- **Tasks are tasks.** A project's tasks are rows of the one `tasks` table with `project_id` and `project_phase_id` — not a table of their own. A new one is undated, in Backlog, not on Google, with the project's area as its domain (a trigger sets it for every writer, the assistant too); it is on no day until the owner gives it one (its editor is the normal task sheet), and like every undated open task it shows in the Tasks tab's "No date" group. Ticking it in Daily, Work or the Tasks tab ticks it here, and the other way round. Deleting a project deletes its tasks (Undo brings them back); deleting a phase keeps its tasks in the project, under "Other tasks". Moving a project between Personal and Work moves its tasks' domain (a trigger).
 - **Blocks** (`project_blocks`) hold **entries** (`project_entries`):
 
   | Block | An entry is | Shown |
@@ -32,11 +32,17 @@ Every write says its result ("Task added", "Row added", "Decided", "Kitchen scal
 
 ## The old items (migration 162)
 
-Before 162 a project's work lived in `project_items` (title, notes, a software type, status, priority), reaching Daily only once scheduled. 162 copied every item into `tasks`: an item that had been planned already had a task (`source_type project_item`), and the newest open one (else the newest) became the project task; every other item became an undated Backlog task with its status, priority, notes, order and phase, its own close time for a closed one (never "closed today"), Google sync off, and `source_type project_item` + the item's id. Existing projects became Personal, so their tasks stay off the Work board until a project is moved to Work. `project_items` is left as it was, as the record; the app no longer reads it and the assistant may only read it.
+Before 162 a project's work lived in `project_items` (title, notes, a software type, status, priority), reaching Daily only once scheduled. 162 copied every item into `tasks` (owner, 18.10.2026: closed items too, so progress stays right):
+
+- An item that had been planned already had a task (`source_type project_item`); the newest open one (else the newest) became the project task, kept as it was — its day, slot, Google copy and domain (the old "Plan item" made it a Work task, so it stays on the Work board). Its item's notes come along only when it had none and isn't on Google.
+- Every other item became an undated Backlog task with its status, priority, notes, order and phase, Google sync off, and `source_type project_item` + the item's id. An open one shows in the Tasks tab's "No date" group. A closed one's close time is the item's last change (`updated_at`, the nearest the old table kept — never "closed today"), so it shows among that day's closed tasks.
+- The item's type (update, improvement, UI request, bug, wishlist) is not carried over; it stays in `project_items`.
+- Existing projects became Personal (owner, 18.10.2026), so their new tasks stay off the Work board until a project is moved to Work (its tasks follow).
+- `project_items` is left as the record; the app no longer reads it, the assistant may only read it, and 043's rule that a deleted item takes its slots and closes their tasks is switched off — an item now goes only with its phase or project, and a deleted phase keeps its tasks.
 
 ## The kitchen scale
 
-Its technical document stays in git (`docs/kitchen-scale/README.md`) — sessions read the repo, not live data. The app holds the working copy: tasks, parts, log, decisions. Loading it is a one-off SQL the owner runs in the Supabase SQL editor (never a migration).
+Its technical document stays in git (`docs/kitchen-scale/README.md`) — sessions read the repo, not live data. The app holds the working copy: tasks, parts, log, decisions. Loading it is a one-off SQL the owner runs in the Supabase SQL editor after 162 is deployed (never a migration): `docs/kitchen-scale/load-into-app.sql` (`docs/deploy-checklist.md`). It loads the README as it was on 18.10.2026 (7 phases, 31 tasks, parts, log, questions and decisions, guides, links) and refuses to run twice.
 
 ## Not yet
 

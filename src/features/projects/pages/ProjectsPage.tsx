@@ -30,7 +30,7 @@ export function ProjectsPage() {
   const set = (key: 'status' | 'area', value: string, fallback: string) =>
     setParams(p => { const n = new URLSearchParams(p); if (value === fallback) n.delete(key); else n.set(key, value); return n }, { replace: true })
 
-  const projects = projectsQ.data ?? []
+  const projects = useMemo(() => projectsQ.data ?? [], [projectsQ.data])
   const shown = filterProjects(projects, status, area)
   const tally = statusTally(projects, area)
   // The area switch shows once both areas have a project (or one is picked).

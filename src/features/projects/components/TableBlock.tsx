@@ -3,6 +3,7 @@ import { Check } from 'lucide-react'
 import { useEntityModal } from '../../../shared/modals'
 import { Button, TonePill, Truncate, cx } from '../../../shared/ui'
 import { formatMoney } from '../../settings/subscriptionRules'
+import { useUpdateEntry } from '../hooks/useProjects'
 import {
   cellText, groupRows, moneyTotals, orderEntries, rowTitle, statusColumn, statusCounts, tableSettings, titleColumn, type RowGroup,
 } from '../projectModel'
@@ -80,8 +81,30 @@ type Groups = RowGroup<ProjectEntry>[]
 /** The columns a table shows: all but the group column (its value heads the rows). */
 const visibleColumns = (s: TableSettings) => s.columns.filter(c => c.key !== s.groupBy)
 
+/** A tick box column is ticked in place (Packed, Paid) — no need to open the row. */
+function CheckToggle({ row, column, title, labelled }: { row: ProjectEntry; column: TableColumn; title: string; labelled?: boolean }) {
+  const update = useUpdateEntry()
+  const on = row.data[column.key] === true
+  function toggle() {
+    const data = { ...row.data }
+    if (on) delete data[column.key]
+    else data[column.key] = true
+    const word = column.label.toLowerCase()
+    update.mutate({ id: row.id, fields: { data }, message: `${title}: ${on ? `not ${word}` : word}` })
+  }
+  return (
+    <button type="button" role="checkbox" aria-checked={on} aria-label={`${column.label}: ${title}`} onClick={toggle}
+      className={cx('flex shrink-0 items-center gap-1.5 rounded-row text-meta text-fg-muted', labelled ? 'px-1.5 py-1' : 'icon-btn h-8 w-8')}>
+      <span aria-hidden className={cx('grid h-[18px] w-[18px] place-items-center rounded-md border-2 transition-colors',
+        on ? 'border-success bg-success text-white' : 'border-line-strong')}>
+        {on && <Check className="h-3 w-3" strokeWidth={3} />}
+      </span>
+      {labelled && column.label}
+    </button>
+  )
+}
+
 function Cell({ column, value, currency }: { column: TableColumn; value: unknown; currency?: string }) {
-  if (column.type === 'check') return value === true ? <Check aria-label="Yes" className="h-4 w-4 text-success" /> : null
   const text = cellText(column, value, currency)
   if (column.type === 'link' && typeof value === 'string' && text) {
     return <a href={value} target="_blank" rel="noreferrer noopener" onClick={e => e.stopPropagation()} className="text-accent-600 hover:underline"><Truncate>{text}</Truncate></a>
@@ -114,7 +137,9 @@ function WideTable({ settings, groups, onOpen }: { settings: TableSettings; grou
                   <td key={c.key} className={cx('max-w-[18rem] px-2 py-1.5 align-top text-fg-2', right(c) && 'text-right tabular-nums')}>
                     {c.key === title?.key
                       ? <button type="button" onClick={() => onOpen(r)} className="text-left font-medium text-fg hover:underline">{rowTitle(settings, r.data)}</button>
-                      : <Cell column={c} value={r.data[c.key]} currency={settings.currency} />}
+                      : c.type === 'check'
+                        ? <CheckToggle row={r} column={c} title={rowTitle(settings, r.data)} />
+                        : <Cell column={c} value={r.data[c.key]} currency={settings.currency} />}
                   </td>
                 ))}
               </tr>
@@ -129,6 +154,7 @@ function WideTable({ settings, groups, onOpen }: { settings: TableSettings; grou
 function NarrowRows({ settings, status, groups, onOpen }: {
   settings: TableSettings; status: TableColumn | null; groups: Groups; onOpen: (r: ProjectEntry) => void
 }) {
+  const checks = settings.columns.filter(c => c.type === 'check')
   return (
     <div className="flex flex-col gap-2 @[32rem]:hidden">
       {groups.map(g => (
@@ -137,13 +163,14 @@ function NarrowRows({ settings, status, groups, onOpen }: {
           <ul className="flex flex-col">
             {g.rows.map(r => {
               const state = status ? r.data[status.key] : null
+              const name = rowTitle(settings, r.data)
               return (
-                <li key={r.id}>
-                  <button type="button" onClick={() => onOpen(r)}
-                    className="flex min-h-[40px] w-full items-center gap-2 rounded-row px-1.5 text-left hover:bg-surface-hover">
-                    <Truncate className="min-w-0 flex-1 text-body text-fg">{rowTitle(settings, r.data)}</Truncate>
+                <li key={r.id} className="flex min-h-[40px] items-center gap-1 rounded-row hover:bg-surface-hover">
+                  <button type="button" onClick={() => onOpen(r)} className="flex min-h-[40px] min-w-0 flex-1 items-center gap-2 px-1.5 text-left">
+                    <Truncate className="min-w-0 flex-1 text-body text-fg">{name}</Truncate>
                     {typeof state === 'string' && state && <TonePill tone="neutral" className="shrink-0">{state}</TonePill>}
                   </button>
+                  {checks.map(c => <CheckToggle key={c.key} row={r} column={c} title={name} labelled />)}
                 </li>
               )
             })}

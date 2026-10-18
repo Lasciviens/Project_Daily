@@ -88,6 +88,10 @@ insert into public.tasks (id, user_id, title, description, section, status, due_
    '2026-08-10', 'project_item', 'c0000000-0000-0000-0000-000000000001', false, null, '2026-08-05 09:00+00', '2026-08-10 18:00+00'),
   ('d0000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000001', 'Dark mode', null, 'backlog', 'open',
    '2026-10-25', 'project_item', 'c0000000-0000-0000-0000-000000000001', true, 'g-dark', '2026-09-01 09:00+00', null);
+-- The open task's slot, as the old "Plan item" made it (source project_item, on Google Calendar).
+insert into public.time_blocks (id, user_id, date, title, start_time, category, task_id, source_type, source_id, google_calendar_event_id) values
+  ('d1000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000001', '2026-10-25', 'Dark mode', '18:00', 'projects',
+   'd0000000-0000-0000-0000-000000000002', 'project_item', 'c0000000-0000-0000-0000-000000000001', 'gcal-1');
 -- An ordinary task that has nothing to do with projects.
 insert into public.tasks (id, user_id, title, section, status, domain) values
   ('d0000000-0000-0000-0000-000000000009', '00000000-0000-0000-0000-000000000001', 'Buy milk', 'today', 'open', 'personal');
@@ -95,3 +99,4 @@ insert into public.tasks (id, user_id, title, section, status, domain) values
 -- What the owner had before 162, to compare with after.
 create table public.snap_tasks as select * from public.tasks;
 create table public.snap_items as select * from public.project_items;
+create table public.snap_blocks as select * from public.time_blocks;

@@ -10,7 +10,7 @@ const TABLE_LABEL: Record<string, string> = {
   recipes: 'Recipe', recipe_ingredients: 'Recipe ingredient',
   recipe_ingredient_library: 'Ingredient', recipe_meal_plans: 'Meal plan',
   shop_categories: 'Shop category', shop_items: 'Shop item', shop_item_costs: 'Shop cost', shop_item_links: 'Shop link',
-  projects: 'Project', project_phases: 'Project phase', project_items: 'Project item',
+  projects: 'Project', project_phases: 'Project phase', project_items: 'Project item', project_blocks: 'Project block', project_entries: 'Project entry',
   user_movie_entries: 'Movie', user_tv_entries: 'TV series', user_tv_episodes: 'TV episode', media_watches: 'Watch',
   movie_cinema_visits: 'Cinema visit', media_release_reminders: 'Release reminder',
   user_transit_stops: 'Transit stop', user_transit_routes: 'Transit route',

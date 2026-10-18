@@ -190,7 +190,11 @@ function BlockSheet({ projectId, block, siblings, initialKind, onClose }: {
               </div>
             ))}
             <Button variant="ghost" size="sm" icon={<Plus />} onClick={addColumn} className="self-start">Column</Button>
-            {block && <p className="text-meta text-fg-muted">A removed column's values stay in the rows; add it back with the same name to see them.</p>}
+            {block && (
+              <p className="text-meta text-fg-muted">
+                A removed column's values stay in the rows, unseen. A column changed to another kind hides values that don't fit it (text in a number column) — they come back if you change it back.
+              </p>
+            )}
             {columnProblem && <p className="text-meta text-danger">{columnProblem}</p>}
             <div className="grid grid-cols-1 gap-3 min-[26rem]:grid-cols-2">
               <div>

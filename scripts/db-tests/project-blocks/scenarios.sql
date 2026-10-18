@@ -48,7 +48,12 @@ select public.t_ok((select count(*) from public.tasks t join public.snap_items i
   '162: a new task carries its item''s title, notes, status, priority, order, phase, owner and creation time');
 select public.t_ok(not exists (select 1 from public.tasks t where t.id not in (select id from public.snap_tasks)
                                 and (t.section <> 'backlog' or t.due_date is not null or t.google_sync_enabled or t.domain <> 'personal')),
-  '162: new tasks are undated Backlog tasks, personal, Google sync off (never on Daily or the Today lists)');
+  '162: new tasks are undated Backlog tasks, personal, Google sync off (on no day and in none of the Today lists)');
+select public.t_ok(not exists (select 1 from public.snap_blocks s full join public.time_blocks b on b.id = s.id
+                                where (s.id, s.task_id, s.date, s.google_calendar_event_id) is distinct from (b.id, b.task_id, b.date, b.google_calendar_event_id)),
+  '162: no slot changed or went');
+select public.t_ok((select enabled from public.link_rules where rule_name = 'project_item_delete_cleans_block') = false,
+  '162: 043''s "a deleted item takes its slots and closes their tasks" is switched off');
 select public.t_ok((select completed_at from public.tasks where source_id = 'c0000000-0000-0000-0000-000000000002') = '2026-07-01 10:30+00'
   and (select completed_at from public.tasks where source_id = 'c0000000-0000-0000-0000-000000000004') = '2026-08-20 09:00+00',
   '162: a closed item keeps its own close time, never "closed today"');
@@ -159,6 +164,14 @@ select public.t_ok(public.t_err($$insert into public.project_entries (block_id, 
 select public.t_ok(public.t_err($$insert into public.project_entries (block_id, data) values ((select id from public.project_blocks where title = 'Parts'), '[1]')$$) = '23514',
   'a row''s data is an object');
 
+-- A new task in a Work project is work, whoever writes it (a media one stays media)
+update public.projects set area = 'work' where name = 'Kitchen scale';
+insert into public.tasks (id, title, project_id) values ('e0000000-0000-0000-0000-000000000003', 'Order a load cell', (select id from public.projects where name = 'Kitchen scale'));
+select public.t_ok((select domain from public.tasks where id = 'e0000000-0000-0000-0000-000000000003') = 'work',
+  'a new task in a Work project is a work task (the assistant inserts with the default domain)');
+delete from public.tasks where id = 'e0000000-0000-0000-0000-000000000003';
+update public.projects set area = 'personal' where name = 'Kitchen scale';
+
 -- Area moves the project's tasks
 insert into public.tasks (id, title, domain, project_id) values
   ('e0000000-0000-0000-0000-000000000002', 'A film to watch for it', 'media', (select id from public.projects where name = 'Kitchen scale'));
@@ -197,16 +210,23 @@ begin
     'Undo puts back the project, its phase, tasks, blocks and entries');
 end $$;
 
--- A deleted phase's Undo puts its tasks back in it
+-- A deleted phase keeps its tasks — a planned one stays open with its slot
+-- (its old item goes with the phase; 043's rule is off) — and Undo puts them back in it
 do $$
 declare s jsonb; v_phase uuid := 'b0000000-0000-0000-0000-000000000002';
 begin
+  update public.tasks set status = 'open' where id = 'd0000000-0000-0000-0000-000000000002';
   s := public.app_delete_rows('project_phases', array[v_phase::text]);
   perform public.t_ok((select project_phase_id from public.tasks where id = 'd0000000-0000-0000-0000-000000000002') is null,
     'a deleted phase''s tasks stay, with no phase');
+  perform public.t_ok((select status from public.tasks where id = 'd0000000-0000-0000-0000-000000000002') = 'open'
+                      and exists (select 1 from public.time_blocks where id = 'd1000000-0000-0000-0000-000000000002' and google_calendar_event_id = 'gcal-1'),
+    'a planned task stays open, with its slot and Calendar event (its old item went with the phase)');
+  perform public.t_ok(not exists (select 1 from public.project_items where phase_id = v_phase), 'the phase''s old items went with it');
   perform public.app_restore_rows(s);
-  perform public.t_ok((select project_phase_id from public.tasks where id = 'd0000000-0000-0000-0000-000000000002') = v_phase,
-    'its Undo puts them back in the phase');
+  perform public.t_ok((select project_phase_id from public.tasks where id = 'd0000000-0000-0000-0000-000000000002') = v_phase
+                      and exists (select 1 from public.project_items where phase_id = v_phase),
+    'its Undo puts them back in the phase, with its old items');
 end $$;
 
 -- ═══ 2. Other accounts ══════════════════════════════════════════════════════

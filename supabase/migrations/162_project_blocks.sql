@@ -23,7 +23,9 @@
 --     app_delete_rows follows the key, so Undo brings them back) and
 --     tasks.project_phase_id (ON DELETE SET NULL — deleting a phase keeps
 --     its tasks in the project). A trigger keeps the pair honest: a phase
---     sets its own project, and a project must be the task owner's.
+--     sets its own project, a project must be the task owner's, and a new
+--     task in a project takes the project's area as its domain (a media
+--     task stays media), whoever writes it.
 --  D. project_blocks — the blocks a project is built from: table (columns in
 --     settings), log, decisions (questions and decisions), pages (text
 --     pages) and links.
@@ -32,15 +34,21 @@
 --     (state open | decided, entry_date = the day it was decided), a text
 --     page (title, body) or a link (title, url, body as a note). project_id
 --     is filled from the block.
---  F. The old items move into tasks, nothing lost: an item that was planned
---     already has a task (source project_item) — the newest open one, else
---     the newest, becomes the project task. Every other item becomes a new
---     undated task in Backlog (never on Daily or the Today lists), with its
---     status, priority, notes and order, Google sync off, and source
---     project_item + the item's id, so a re-run finds it. A closed item keeps
---     its own close time (129's trigger keeps a sent one), never "closed
---     today". project_items stays, untouched, as the record of the old items;
---     the app no longer reads it.
+--  F. The old items move into tasks: an item that was planned already has a
+--     task (source project_item) — the newest open one, else the newest,
+--     becomes the project task. Every other item becomes a new undated task
+--     in Backlog with its status, priority, notes and order, Google sync off,
+--     and source project_item + the item's id, so a re-run finds it. Undated
+--     and in Backlog, an open one is on no day and in none of the Today lists;
+--     it shows in the Tasks tab's "No date" group like every undated task. A
+--     closed item's close time is its last change (updated_at) — the closest
+--     the old table kept (129's trigger keeps a sent one), never "closed
+--     today" — so it shows among that day's closed tasks. The item's type
+--     (update / bug / …) is not carried over. project_items stays as the
+--     record of the old items; the app no longer reads it, and 043's rule
+--     that a deleted item takes its slots and closes their tasks is switched
+--     off (link_rules): an item now goes only with its phase or project, and
+--     a deleted phase must keep the tasks 162 made of its items.
 --  G. app_create_project(project, phases, blocks) — a new project with its
 --     template's phases and blocks in one transaction.
 --
@@ -194,6 +202,7 @@ set search_path = ''
 as $$
 declare
   v_project uuid;
+  v_area    text;
 begin
   -- Only what this write changes is checked: a phase's ON DELETE SET NULL
   -- runs while its project is being deleted too, and must pass.
@@ -212,10 +221,16 @@ begin
     -- Moved to another project (or out of one): the old phase stays behind.
     new.project_phase_id := null;
   end if;
-  if new.project_id is not null
-     and (tg_op = 'INSERT' or new.project_id is distinct from old.project_id)
-     and not exists (select 1 from public.projects p where p.id = new.project_id and p.user_id = new.user_id) then
-    raise exception 'That project is not yours.' using errcode = '23503';
+  if new.project_id is not null and (tg_op = 'INSERT' or new.project_id is distinct from old.project_id) then
+    select p.area into v_area from public.projects p where p.id = new.project_id and p.user_id = new.user_id;
+    if v_area is null then
+      raise exception 'That project is not yours.' using errcode = '23503';
+    end if;
+    -- A new task in a project takes its area (a media task stays media). An
+    -- existing task linked later (F1 below) keeps its domain.
+    if tg_op = 'INSERT' and new.domain in ('personal', 'work') then
+      new.domain := v_area;
+    end if;
   end if;
   return new;
 end;
@@ -350,6 +365,17 @@ create trigger trg_audit
   for each row execute function public.log_audit();
 
 -- ── F. The old items become tasks ───────────────────────────────────────────
+-- 043's cleanup of a deleted item (its slots go, their open tasks close) is
+-- switched off: the items are now only a record, deleted with their phase or
+-- project — and the tasks made of them below are the project's tasks, which a
+-- deleted phase keeps. app_delete_rows reads the same switch, so its Undo
+-- stays consistent.
+do $$ begin
+  if to_regclass('public.link_rules') is not null then
+    update public.link_rules set enabled = false where rule_name = 'project_item_delete_cleans_block';
+  end if;
+end $$;
+
 -- F1. A planned item already has a task: the newest open one, else the
 -- newest, becomes the project task. Its notes come along only when the task
 -- has none and isn't on Google (a copy there would be a change on Google).

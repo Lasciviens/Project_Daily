@@ -96,7 +96,7 @@ function EntrySheet({ block, entry, siblings, onClose }: {
     if (problem) return
     try {
       if (entry) await update.mutateAsync({ id: entry.id, fields: fields(), message: message() })
-      else await create.mutateAsync({ blockId: block.id, fields: { ...fields(), sort_order: nextSortOrder(siblings) }, message: message() })
+      else await create.mutateAsync({ block, fields: { ...fields(), sort_order: nextSortOrder(siblings) }, message: message() })
       onClose()
     } catch { /* the hook said what failed */ }
   }
