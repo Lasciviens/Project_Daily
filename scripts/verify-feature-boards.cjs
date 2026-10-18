@@ -41,7 +41,6 @@ for (const [name, layout, known] of [
   ['Work board, rail hidden', Wk.WORK_BOARD_RAIL_HIDDEN, Wk.WORK_SECTIONS],
   ['Work list', Wk.WORK_LIST, Wk.WORK_SECTIONS],
   ['Project detail', P.PROJECT_BOARD, P.PROJECT_SECTIONS],
-  ['Project detail, Board view', P.PROJECT_KANBAN_BOARD, P.PROJECT_SECTIONS],
   ['Developer list + detail', D.LIST_DETAIL_BOARD, D.LIST_DETAIL_SECTIONS],
   ['Connections', D.CONNECTIONS_BOARD, D.CONNECTION_SECTIONS],
 ]) {
@@ -101,13 +100,12 @@ check('header cap: none on one track, 106rem for the list at 2450 (it stops at t
   && Wk.workHeaderCapRem('board', true, 4) === 131 && Wk.workHeaderCapRem('board', false, 4) === 131)
 
 console.log('Project detail')
-check('step 1 keeps the phone order', eq(P.PROJECT_BOARD[1], ['back', 'header', 'controls', 'items', 'notes', 'activity']))
-check('every step shows all six sections', STEPS.every(s => P.PROJECT_SECTIONS.every(k => keys(P.PROJECT_BOARD, s).includes(k))))
-check('header → controls → items stay one stack in that order', STEPS.slice(1).every(s => eq(B.resolveBoardLayout(P.PROJECT_BOARD, s).columns[0].stack, ['header', 'controls', 'items'])))
-check('notes and activity keep the last track from the laptop up', [2, 3, 4].every(s => {
+check('step 1: back, the header, then the plan and every block in one stack (no side track on a phone)', eq(P.PROJECT_BOARD[1], ['back', 'header', 'main']))
+check('from the laptop: back above, the header over the plan in main, the side blocks in the last track', [2, 3, 4].every(s => {
   const l = B.resolveBoardLayout(P.PROJECT_BOARD, s)
-  return eq(l.columns.at(-1).stack, ['notes', 'activity']) && l.columns.at(-1).span === 1
+  return eq(l.top, ['back']) && eq(l.columns[0].stack, ['header', 'main']) && eq(l.columns.at(-1).stack, ['side']) && l.columns.at(-1).span === 1
 }))
+check('main spans 1, 2, 3 tracks at 1469, 1920, 2450', [2, 3, 4].map(s => B.resolveBoardLayout(P.PROJECT_BOARD, s).columns[0].span ?? 1).join() === '1,2,3')
 {
   const spanRem = (px, s) => { const l = B.resolveBoardLayout(P.PROJECT_BOARD, s); return B.columnWidthPx(px, l, 0, l.columns[0].span) / 16 }
   const cardRem = (w) => (w - (P.phaseColumnCount(w) - 1) * 0.75) / P.phaseColumnCount(w)
@@ -124,17 +122,6 @@ check('notes and activity keep the last track from the laptop up', [2, 3, 4].eve
     P.dealByIndex(['p1', 'p2', 'p3', 'p4', 'add'], 3)[4 % 3].at(-1) === 'add')
   check('dealByIndex: more columns than items leaves the extra columns empty; 0/NaN columns → one',
     eq(P.dealByIndex(['a'], 3), [['a'], [], []]) && eq(P.dealByIndex(['a', 'b'], 0), [['a', 'b']]) && eq(P.dealByIndex(['a'], NaN), [['a']]))
-}
-
-{
-  // Board view: three status columns of at most 28rem (+ 0.75rem gaps) must fill the work's span.
-  const kanbanMax = 3 * 28 + 1.5
-  const span = (layout, px, s) => { const l = B.resolveBoardLayout(layout, s); return B.columnWidthPx(px, l, 0, l.columns[0].span) / 16 }
-  check('Board view at 2450: the work spans two tracks, so the three 28rem status columns fill it (three tracks left a 20rem hole)',
-    span(P.PROJECT_KANBAN_BOARD, W.monitor, 4) <= kanbanMax && span(P.PROJECT_BOARD, W.monitor, 4) > kanbanMax, `${span(P.PROJECT_KANBAN_BOARD, W.monitor, 4)}rem`)
-  check('Board view at 2450: notes and activity get a track each', eq(B.resolveBoardLayout(P.PROJECT_KANBAN_BOARD, 4).columns.slice(1).map(c => c.stack), [['notes'], ['activity']]))
-  check('Board view below 2450 is the Phases layout', [1, 2, 3].every(s => P.PROJECT_KANBAN_BOARD[s] === P.PROJECT_BOARD[s]))
-  check('projectLayout picks by view', P.projectLayout('phases') === P.PROJECT_BOARD && P.projectLayout('board') === P.PROJECT_KANBAN_BOARD)
 }
 
 console.log('Project list header')
@@ -190,7 +177,7 @@ check('header caps: 106rem over the list + detail tabs at 2450, 117rem over Conn
   B.boardWidthRem(D.LIST_DETAIL_BOARD, 4) === 106 && B.boardWidthRem(D.CONNECTIONS_BOARD, 4) === 117 && B.boardWidthRem(D.LIST_DETAIL_BOARD, 1) === null)
 
 console.log('the default views fill the width (W6)')
-for (const [name, layout] of [['Media', M.MEDIA_BOARD], ['Work', Wk.WORK_BOARD], ['Project detail', P.PROJECT_BOARD], ['Project detail, Board view', P.PROJECT_KANBAN_BOARD], ['Connections', D.CONNECTIONS_BOARD]]) {
+for (const [name, layout] of [['Media', M.MEDIA_BOARD], ['Work', Wk.WORK_BOARD], ['Project detail', P.PROJECT_BOARD], ['Connections', D.CONNECTIONS_BOARD]]) {
   check(`${name}: nothing empty at 1469, at most one track at 2450`, emptyAt(layout, W.laptop) === 0 && emptyAt(layout, W.monitor) <= ONE_TRACK,
     `${emptyAt(layout, W.laptop)} / ${emptyAt(layout, W.monitor)}px`)
 }

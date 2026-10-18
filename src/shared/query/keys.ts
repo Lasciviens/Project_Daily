@@ -27,6 +27,8 @@ export const qk = {
     byId: (id: string) => ['tasks', 'by-id', id] as const,
     byIds: (ids: readonly string[]) => ['tasks', 'by-ids', [...ids].sort().join(',')] as const,
     subtasks: (parentId: string) => ['tasks', 'subtasks', parentId] as const,
+    /** Every project's tasks (migration 162) — under tasks, so every task action refreshes them. */
+    projects: () => ['tasks', 'projects'] as const,
   },
   googleTaskLists: { all: ['google-task-lists'] as const },
   googleTasks: {
@@ -149,10 +151,13 @@ export const qk = {
   devRequests: { all: ['dev-requests'] as const },
   projects: {
     all: ['projects'] as const,
-    list: () => ['projects'] as const,
-    stats: () => ['projects', 'stats'] as const,
-    phases: (projectId: string) => ['projects', 'phases', projectId] as const,
-    items: (projectId: string) => ['projects', 'items', projectId] as const,
+    list: () => ['projects', 'list'] as const,
+    /** Every project's phases (the list counts them; a project page takes its own). */
+    phases: () => ['projects', 'phases'] as const,
+    blocks: (projectId: string) => ['projects', 'blocks', projectId] as const,
+    entries: (projectId: string) => ['projects', 'entries', projectId] as const,
+    /** Every project's open questions, for the list. */
+    openQuestions: () => ['projects', 'open-questions'] as const,
   },
   work: {
     all: ['work'] as const,
@@ -240,7 +245,6 @@ export const qk = {
     audit: (filter?: object) => (filter ? ['audit-logs', filter] as const : ['audit-logs'] as const),
     /** What undoing one save (an audit transaction) would do — migration 150. */
     undoPlan: (txId: number) => ['audit-logs', 'undo-plan', txId] as const,
-    projectActivity: (projectId: string) => ['project-activity', projectId] as const,
   },
   external: {
     weather: (lat: number, lon: number) => ['weather', lat.toFixed(2), lon.toFixed(2)] as const,

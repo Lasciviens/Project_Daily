@@ -18,7 +18,7 @@ export interface NavEntry {
   path: string
   icon: LucideIcon
   group: NavGroupId
-  /** Paths that light this entry up (default: its own path). */
+  /** Paths that light this entry up (default: its own path); `/x/*` takes every path under /x/. */
   match?: string[]
   /** Phone bottom-bar slot (0-based). At most 5 entries carry one. */
   tab?: number
@@ -65,13 +65,14 @@ export const NAV: NavEntry[] = [
   { id: 'books', label: 'Books', path: '/books', icon: BookOpen, group: 'play', more: true, keywords: ['kobo', 'ebook', 'epub', 'send to kobo', 'reading', 'koreader'] },
   { id: 'games', label: 'Games', path: '/games', icon: Gamepad2, group: 'play', more: true, fullHeight: true, collapseSidebar: true, keywords: ['library', 'steam', 'playstation', 'retro', 'queue', 'backlog', 'scrape'] },
   { id: 'work', label: 'Work', path: '/work', icon: Briefcase, group: 'work', more: true, keywords: ['board', 'kanban'] },
-  { id: 'projects', label: 'Projects', path: '/projects', icon: FolderKanban, group: 'work', more: true, keywords: ['phases'] },
+  { id: 'projects', label: 'Projects', path: '/projects', icon: FolderKanban, group: 'work', more: true, match: ['/projects', '/projects/*'], keywords: ['phases', 'plan', 'parts', 'log'] },
   // Reached from the avatar menu, the More sheet and the sidebar footer (not a nav group).
   { id: 'settings', label: 'Settings', path: '/settings', icon: Settings, group: 'system', keywords: ['places', 'home', 'work', 'appearance', 'theme', 'display size', 'zoom', 'integrations', 'connections', 'subscriptions'] },
   { id: 'developer', label: 'Developer', path: '/developer', icon: Code2, group: 'system', more: true, keywords: ['activity', 'errors', 'memory', 'audit'] },
 ]
 
-const matches = (e: NavEntry, pathname: string) => (e.match ?? [e.path]).includes(pathname)
+const matches = (e: NavEntry, pathname: string) =>
+  (e.match ?? [e.path]).some(m => (m.endsWith('/*') ? pathname.startsWith(m.slice(0, -1)) : m === pathname))
 
 /** Entries that get a row of their own in the sidebar (sub-pages excluded). */
 export const SIDEBAR_ENTRIES = NAV.filter(e => !e.parent)
