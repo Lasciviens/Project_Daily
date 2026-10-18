@@ -358,7 +358,7 @@ The shell (top bar from 768px, phone header below) is the ONLY visible page name
 `title` is a screen-reader-only h1 at every width; pass `showTitle` only when the title is content
 rather than the route name (Daily's date nav). With no visible title or subtitle, children (left) and
 actions (right) share the first row — no empty line. Don't add a tagline subtitle; it costs a line.
-`cx` is a plain join (not tailwind-merge): override `mb-4 sm:mb-6` with both prefixes or `!mb-*`.
+`cx` is a plain join (not tailwind-merge): override `mb-3 sm:mb-4` with both prefixes or `!mb-*`.
 
 ### 6.3 Grids
 
@@ -409,7 +409,7 @@ Every page except Games has a **still, drawn picture of its subject** behind its
 app's own colours, never a photo. One shared way, so every page behaves the same:
 
 - **Where.** `<PageHeader art={<XHeroArt />}>` puts the header's visible content in one card band
-  (`PageHeroBand`, `src/shared/ui/PageHeroArt.tsx`) with the art behind it — at every width, phones
+  (`PageHeroBand`, `src/shared/ui/PageHeroArt.tsx`; thin — `py-1.5`, at least 3.25rem / 3.5rem from `sm`, close under the shell: owner, 16.10.2026, "moved a bit up and thinner") with the art behind it — at every width, phones
   included; with nothing visible the band shows the art alone. A page with no header controls puts
   `<PageHeroArt>` in its first card instead (`relative isolate` card, content `relative z-10`,
   placed with `useHeroArt`) — only Home's brief, measured against its greeting.

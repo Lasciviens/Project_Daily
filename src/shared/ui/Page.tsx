@@ -17,7 +17,8 @@ export function PageContainer({
   children, width = 'wide', className,
 }: { children: ReactNode; width?: 'narrow' | 'wide' | 'full'; className?: string }) {
   const cap = width === 'narrow' ? 'max-w-3xl' : width === 'wide' ? 'max-w-[135rem]' : ''
-  return <div className={cx('@container/page w-full px-4 py-4 sm:px-6 sm:py-6 lg:px-8', cap, className)}>{children}</div>
+  // A short top gap so the header band sits close under the shell (owner, 16.10.2026: "moved a bit up").
+  return <div className={cx('@container/page w-full px-4 pb-4 pt-2 sm:px-6 sm:pb-6 sm:pt-3 lg:px-8', cap, className)}>{children}</div>
 }
 
 interface PageHeaderProps {
@@ -67,9 +68,9 @@ export function PageHeader({ title, subtitle, actions, children, className, show
   )
   const band = (content: ReactNode) => (art ? <PageHeroBand art={art}>{content}</PageHeroBand> : content)
   if (!showTitle && !hasSubtitle) {
-    if (!hasChildren && !hasActions) return art ? <header className={cx('mb-4 sm:mb-6', className)}>{heading}{band(null)}</header> : <header>{heading}</header>
+    if (!hasChildren && !hasActions) return art ? <header className={cx('mb-3 sm:mb-4', className)}>{heading}{band(null)}</header> : <header>{heading}</header>
     return (
-      <header className={cx('mb-4 sm:mb-6', className)}>
+      <header className={cx('mb-3 sm:mb-4', className)}>
         {heading}
         {band(
           <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
@@ -90,7 +91,7 @@ export function PageHeader({ title, subtitle, actions, children, className, show
   }
 
   return (
-    <header className={cx('mb-4 sm:mb-6', className)}>
+    <header className={cx('mb-3 sm:mb-4', className)}>
       {band(
         <>
           <div className={cx('flex flex-wrap justify-between gap-x-4 gap-y-3', showTitle ? 'items-end' : 'items-center')}>
