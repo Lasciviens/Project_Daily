@@ -244,16 +244,14 @@ export function MediaLibraryControls({ detail, isMovie, userEntry, onRemoved }: 
     if (todo.length) await markWatched.mutateAsync({ tvEntryId, episodes: todo })
   }
 
-  // Watch it again: Watching, round N — one more than its fewest watches
-  // (a movie: its watches + 1; a show: its least-watched regular episode + 1).
+  // Watch it again: Watching + a round the database plans (161; the hook says
+  // "Watching again · round N"). `round` is only the pre-161 fallback: one more
+  // than its fewest watches (a movie: its watches + 1).
   async function handleWatchAgain() {
     const round = movieEntry
       ? (movieEntry.watches ?? cacheWatches(movieEntry)).length + 1
       : rewatchStartRound([...watchCounts(watchedRows.filter(w => w.season_number > 0)).values()])
-    await withProgress(
-      () => startRewatch.mutateAsync({ kind: movieEntry ? 'movie' : 'tv', id: entryId!, round }).then(() => true),
-      { loading: 'Starting a rewatch…', success: `Watching again · round ${round}` },
-    )
+    await startRewatch.mutateAsync({ kind: movieEntry ? 'movie' : 'tv', id: entryId!, round }).catch(() => { /* the hook reports it */ })
   }
 
   // A movie watched again: one more watch at its time (the database ends the round).

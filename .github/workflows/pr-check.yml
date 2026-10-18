@@ -143,6 +143,14 @@ jobs:
         env:
           DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
 
+      # Migration 161: Watching = rewatching (Completed → Watching starts the
+      # round; Start rewatch picks up a pass under way; a new season, the Trakt
+      # sync and a show without TMDB data start none; 149's checks on top).
+      - name: Rewatch start database scenarios
+        run: node scripts/verify-db-rewatch-start.mjs
+        env:
+          DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
+
       # Migration 152's Quick guess presets (the table rules, the seed for the
       # allowed accounts, row level security, the owner lock, the delete with
       # Undo).

@@ -1,11 +1,12 @@
 import { useState, useMemo } from 'react'
 import { Link } from 'react-router-dom'
-import { CalendarPlus, Check, Clapperboard, Pause, Tv } from 'lucide-react'
+import { CalendarPlus, Check, Clapperboard, Pause, RotateCcw, Tv } from 'lucide-react'
 import { Cell, CellHeader, CellLink } from './cellKit'
 import { useMovies } from '../../../media/hooks/useMovies'
 import { useTVSeries } from '../../../media/hooks/useTVSeries'
 import { useNextEpisode } from '../../../media/hooks/useNextEpisode'
 import { useMarkEpisodeWatched } from '../../../media/hooks/useWatchedEpisodes'
+import { useStartRewatch } from '../../../media/hooks/useWatches'
 import { useEntityModal } from '../../../../shared/modals'
 import { Button, TonePill, Truncate } from '../../../../shared/ui'
 import { posterUrl } from '../../../../integrations/tmdb/client'
@@ -21,6 +22,8 @@ import { AiringThisWeek } from '../../../media/components/AiringThisWeek'
 // ─────────────────────────────────────────────────────────────────────────────
 
 const pad = (n: number) => String(n).padStart(2, '0')
+/** TMDB's statuses of a show with no more episodes coming (caught up on one of these = watching it again). */
+const ENDED = new Set(['Ended', 'Canceled'])
 
 export function WatchNextCard({ date }: { date: string }) {
   const { data: movies = [] } = useMovies()
@@ -42,6 +45,7 @@ export function WatchNextCard({ date }: { date: string }) {
   const modal = useEntityModal()
 
   const markEpisode = useMarkEpisodeWatched({ successMessage: 'Marked watched' })
+  const startRewatch = useStartRewatch()
   function markNextWatched() {
     const n = next.data
     // Guard a refetch race: never claim success for a no-op write.
@@ -118,7 +122,17 @@ export function WatchNextCard({ date }: { date: string }) {
             {next.isLoading ? (
               <p className="mt-0.5 text-meta text-fg-muted">Finding next episode…</p>
             ) : n?.caughtUp ? (
-              <p data-tone="success" className="tone-text mt-0.5 text-meta">All caught up ({n.watchedCount} watched)</p>
+              <>
+                <p data-tone="success" className="tone-text mt-0.5 text-meta">All caught up ({n.watchedCount} watched)</p>
+                {/* A finished show on Watching is being watched again (161): start its round here. The
+                    database picks it up from where the new pass began (the latest rewatch of S01E01). */}
+                {!n.rewatch && ENDED.has(series.status ?? '') && (
+                  <Button size="sm" variant="ghost" icon={<RotateCcw />} className="mt-2" loading={startRewatch.isPending}
+                    onClick={() => startRewatch.mutate({ kind: 'tv', id: entry.id })}>
+                    Start rewatch
+                  </Button>
+                )}
+              </>
             ) : n ? (
               <>
                 <p className="mt-0.5 text-body text-fg-2">

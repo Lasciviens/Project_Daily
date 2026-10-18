@@ -53,8 +53,9 @@ export function HealthCard({ date }: { date: string }) {
     <Cell>
       <CellHeader icon={<HeartPulse />} title="Health" action={<CellLink to={`/health?date=${date}&period=day`}>Details</CellLink>} />
 
-      {/* Boxes flow into as many columns as the cell's width holds (THEME W2). */}
-      <div className="grid grid-cols-[repeat(auto-fill,minmax(7.5rem,1fr))] gap-2">
+      {/* Explicit column counts by the cell's own width (Daily's board never auto-fills): 2 · 3 · 5. */}
+      <div className="@container">
+      <div className="grid grid-cols-2 gap-2 @[25rem]:grid-cols-3 @[40rem]:grid-cols-5">
         <Panel icon={<Moon aria-hidden />} label="Sleep">
           {night != null
             ? (<><Big>{fmtHrs(night)}</Big><Sub>{nightNoun(date, today)}</Sub></>)
@@ -83,6 +84,7 @@ export function HealthCard({ date }: { date: string }) {
             </>
           ) : <Empty loading={weight.isLoading} />}
         </Panel>
+      </div>
       </div>
     </Cell>
   )
