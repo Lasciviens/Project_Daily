@@ -99,7 +99,6 @@ export function DailyPage() {
       <div style={headerRem ? { maxWidth: `${headerRem}rem` } : undefined}>
       <PageHeader
         showTitle
-        className="!mb-4"
         art={<DailyHeroArt />}
         title={
           <DateNav

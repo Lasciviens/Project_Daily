@@ -16,7 +16,7 @@ import { useAddTV, useDeleteTV, useUpdateTV } from '../hooks/useTVSeries'
 import { useNextEpisode } from '../hooks/useNextEpisode'
 import { useAddMovieWatch, useMovieNotWatched, useStartRewatch, WAITS_FOR_TRAKT } from '../hooks/useWatches'
 import { useWatchesWaitForTrakt } from '../trakt/useTrakt'
-import { cacheWatches, isPlaceholder, rewatchStartRound, watchCounts } from '../watches'
+import { airedRegularEpisodes, cacheWatches, isPlaceholder, rewatchStartRound, watchCounts } from '../watches'
 import { PlanThisButton } from './PlanThisButton'
 import { StarRating } from './StarRating'
 import { MovieWatchedControls } from './MovieWatchedControls'
@@ -244,16 +244,14 @@ export function MediaLibraryControls({ detail, isMovie, userEntry, onRemoved }: 
     if (todo.length) await markWatched.mutateAsync({ tvEntryId, episodes: todo })
   }
 
-  // Watch it again: Watching, round N — one more than its fewest watches
-  // (a movie: its watches + 1; a show: its least-watched regular episode + 1).
+  // Watch it again: Watching + a round the database plans (161; the hook says
+  // "Watching again · round N"). `round` is only the pre-161 fallback: one more
+  // than its fewest watches (a movie: its watches + 1).
   async function handleWatchAgain() {
     const round = movieEntry
       ? (movieEntry.watches ?? cacheWatches(movieEntry)).length + 1
       : rewatchStartRound([...watchCounts(watchedRows.filter(w => w.season_number > 0)).values()])
-    await withProgress(
-      () => startRewatch.mutateAsync({ kind: movieEntry ? 'movie' : 'tv', id: entryId!, round }).then(() => true),
-      { loading: 'Starting a rewatch…', success: `Watching again · round ${round}` },
-    )
+    await startRewatch.mutateAsync({ kind: movieEntry ? 'movie' : 'tv', id: entryId!, round }).catch(() => { /* the hook reports it */ })
   }
 
   // A movie watched again: one more watch at its time (the database ends the round).
@@ -265,6 +263,13 @@ export function MediaLibraryControls({ detail, isMovie, userEntry, onRemoved }: 
     await withProgress(() => addMovieWatch.mutateAsync({ entry: movieEntry, at }).then(() => true), { loading: 'Adding a watch…', success: 'Watched again · Completed' })
   }
 
+  /** Every aired regular episode of the show has a watch, by TMDB's live data on this page. */
+  function allAiredWatched(): boolean {
+    const aired = tv ? airedRegularEpisodes(tv) : []
+    const have = new Set(watchedRows.map(w => `${w.season_number}x${w.episode_number}`))
+    return aired.length > 0 && aired.every(e => have.has(`${e.season}x${e.episode}`))
+  }
+
   async function handleStatusChange(status: MediaStatus) {
     if (status === 'completed' && rewatchRound != null) {
       // Ending a rewatch: a movie gets its new watch; a show simply goes back to Completed.
@@ -272,6 +277,10 @@ export function MediaLibraryControls({ detail, isMovie, userEntry, onRemoved }: 
       void withProgress(() => patchEntry({ status: 'completed' }), { loading: 'Updating status…', success: 'Rewatch ended · Completed' })
       return
     }
+    // Watching on a finished title is watching it again (161): the round starts in one write and
+    // says which ("Watching again · round 3"). A show only when every aired episode is watched by
+    // TMDB's live data here — one back on Watching for a new season is plain watching.
+    if (status === 'watching' && userEntry?.status === 'completed' && (movieEntry || (tv && allAiredWatched()))) return handleWatchAgain()
     // Wishlist on a watched movie removes every watch: the Not watched question and its Undo.
     if (movieEntry && (status === 'wishlist' || status === 'upcoming') && (movieEntry.watches ?? cacheWatches(movieEntry)).length > 0
         && (movieEntry.watches || movieEntry.status === 'completed')) {
@@ -367,7 +376,7 @@ export function MediaLibraryControls({ detail, isMovie, userEntry, onRemoved }: 
       <div className="space-y-2">
         <StatusPills statuses={statuses} value={userEntry.status} disabled={updating} onPick={s => { void (s === 'unwatched' ? handleRemove() : handleStatusChange(s)) }}
           extra={movieEntry?.status === 'completed' ? (
-            // Watching = plain Watching; this starts a rewatch round (migration 149).
+            // The labelled shortcut for a rewatch (Watching on a finished film does the same since 161).
             <button type="button" disabled={updating} data-tone={STAGE_TONE.active} onClick={() => { haptic('light'); void handleWatchAgain() }} className="stage-option press-feedback">
               <Repeat aria-hidden className="h-3.5 w-3.5 shrink-0" />
               <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">Watch again</span>

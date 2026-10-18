@@ -56,7 +56,8 @@ export function PageHeroArt({ children, place, behind = false, layerRef }: {
 export function PageHeroBand({ art, children, className }: { art: ReactNode; children?: ReactNode; className?: string }) {
   const { layerRef, contentRef, place, behind } = useHeroArt()
   return (
-    <div className={cx('card relative isolate flex min-h-[4.5rem] flex-col justify-center p-3 sm:min-h-[5.5rem]', className)}>
+    // Thin on purpose (owner, 16.10.2026: "moved a bit up and thinner, to save some space"): the art scales to the band's height.
+    <div className={cx('card relative isolate flex min-h-[3.25rem] flex-col justify-center px-3 py-1.5 sm:min-h-[3.5rem]', className)}>
       <PageHeroArt layerRef={layerRef} place={place} behind={behind}>{art}</PageHeroArt>
       <div ref={contentRef} className="relative z-10 min-w-0">{children}</div>
     </div>

@@ -65,3 +65,28 @@ export async function setWatchDates(items: { id: string; target: WatchTarget; at
   }
   return rows.length
 }
+
+/** What starting a rewatch did (migration 161's app_start_rewatch). */
+export interface RewatchStart {
+  round: number
+  /** Where the round counts from (ISO). */
+  startedAt: string
+  /** The round began at an earlier watch of the first episode (a pass already under way), not now. */
+  pickedUp: boolean
+}
+
+/** Before migration 161 the function is missing. */
+export const isBefore161 = (e: { code?: string } | null | undefined) => ['PGRST202', '42883'].includes(String(e?.code ?? ''))
+
+/**
+ * Watch a title again: Watching + the round the database plans — one more than
+ * its fewest watches, counted from now, or from an earlier rewatch of the
+ * first episode when a new pass is already under way. No watch changes.
+ */
+export async function startRewatch(kind: 'movie' | 'tv', entryId: string): Promise<RewatchStart> {
+  const { data, error } = await supabase.rpc('app_start_rewatch', { p_kind: kind, p_entry: entryId })
+  if (error) throw error
+  const row = data as { round?: unknown; started_at?: unknown; picked_up?: unknown } | null
+  if (typeof row?.round !== 'number' || typeof row.started_at !== 'string') throw new Error('Starting a rewatch gave no round back')
+  return { round: row.round, startedAt: row.started_at, pickedUp: row.picked_up === true }
+}

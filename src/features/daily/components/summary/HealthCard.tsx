@@ -8,21 +8,20 @@ import { useLatestBodyweight } from '../../../health/hooks/useBodyweight'
 import { BODYWEIGHT_SOURCE_LABEL } from '../../../health/bodyweight'
 import { nightEndingOn, nightMissingText, nightNoun } from '../../../health/healthDateLabels'
 import { todayStr } from '../../../../shared/utils/dateUtils'
-import { useDragScroll } from '../../../../shared/hooks/useDragScroll'
 import { formatDate } from '../../../../shared/utils/dateFormat'
 
-// A SCROLLABLE health glance: one horizontal snap-strip — Sleep, Steps,
-// Energy, Heart, Weight — for the day Daily is showing. Every number comes
+// A health glance: one box each — Sleep, Steps, Energy, Heart, Weight — in a
+// grid that wraps to the cell's width (owner, 16.10.2026: "Not horizontal.
+// Make them in a box"; it was a sideways snap strip), for the day Daily is showing. Every number comes
 // from the same window hooks as the Health page's Day view (one day, same
 // rules, same cache), so the two can't disagree; the weight is the one merged
 // bodyweight series (smart scale + Hevy + Apple Health).
 
 const round = (n: number, d = 0) => { const p = 10 ** d; return Math.round(n * p) / p }
 
-function Panel({ icon, label, children }: { icon: React.ReactNode; label: string; children: React.ReactNode }) {
+function Panel({ icon, label, children, className }: { icon: React.ReactNode; label: string; children: React.ReactNode; className?: string }) {
   return (
-    // Fixed-width snap panels — the strip scrolls; each panel is content-sized.
-    <div className="flex w-[150px] shrink-0 snap-start flex-col gap-1 rounded-row bg-surface-2 p-3">
+    <div className={`flex min-w-0 flex-col gap-1 rounded-row bg-surface-2 p-3 ${className ?? ''}`}>
       <p className="flex items-center gap-1.5 section-label [&_svg]:h-3.5 [&_svg]:w-3.5">{icon}{label}</p>
       {children}
     </div>
@@ -33,7 +32,6 @@ const Sub = ({ children }: { children: React.ReactNode }) => <p className="text-
 const Empty = ({ loading, text = 'No data' }: { loading: boolean; text?: string }) => <p className="py-1 text-meta text-fg-muted">{loading ? '…' : text}</p>
 
 export function HealthCard({ date }: { date: string }) {
-  const drag = useDragScroll<HTMLDivElement>()
   const today = todayStr()
   const win = useMemo(() => makeWindow(date, date, today), [date, today])
   const isToday = date === today
@@ -55,8 +53,9 @@ export function HealthCard({ date }: { date: string }) {
     <Cell>
       <CellHeader icon={<HeartPulse />} title="Health" action={<CellLink to={`/health?date=${date}&period=day`}>Details</CellLink>} />
 
-      {/* Swipeable strip — snap + edge fade signals there's more to the side */}
-      <div {...drag} className={`-mx-1 flex gap-2 overflow-x-auto scrollbar-none scroll-fade-x snap-x-mandatory px-1 pb-1 ${drag.className}`}>
+      {/* Explicit column counts by the cell's own width (Daily's board never auto-fills): 2 · 3 · 5. */}
+      <div className="@container">
+      <div className="grid grid-cols-2 gap-2 @[25rem]:grid-cols-3 @[40rem]:grid-cols-5">
         <Panel icon={<Moon aria-hidden />} label="Sleep">
           {night != null
             ? (<><Big>{fmtHrs(night)}</Big><Sub>{nightNoun(date, today)}</Sub></>)
@@ -76,7 +75,8 @@ export function HealthCard({ date }: { date: string }) {
             </>
           ) : <Empty loading={heart.isLoading} />}
         </Panel>
-        <Panel icon={<Scale aria-hidden />} label="Weight">
+        {/* The fifth box fills its row (2 and 3 columns leave one or two cells free). */}
+        <Panel icon={<Scale aria-hidden />} label="Weight" className="col-span-2 @[40rem]:col-span-1">
           {w ? (
             <>
               <Big>{round(w.kg, 1)}</Big>
@@ -85,6 +85,7 @@ export function HealthCard({ date }: { date: string }) {
             </>
           ) : <Empty loading={weight.isLoading} />}
         </Panel>
+      </div>
       </div>
     </Cell>
   )

@@ -9,3 +9,4 @@ The rules above are shared with Codex; this part is for Claude only. If the impo
 - A change that spans several features or adds a migration gets an `owner-critic` review (`.claude/agents/owner-critic.md`) before it is reported done.
 - Don't narrate routine PR housekeeping (subscriptions, "checking CI", "no comments yet"); speak up when the owner must decide something or something notable happened (merged, a real CI failure, a review comment needing a decision).
 - Runs on Claude Code on the web: each session is a fresh container, so anything worth keeping is committed and pushed.
+- `.claude/skills/` holds third-party skills (`swiftui-pro`, `apple-design`; sources in `.claude/skills/README.md`). Where one disagrees with `AGENTS.md` or `docs/design/THEME.md` — a 44 pt minimum control, Title Case labels, no in-app theme switch — this repo's rules win.

@@ -16,8 +16,9 @@ import { RecentDaysCard } from './RecentDaysCard'
 import { QuickGuessCard } from './QuickGuessCard'
 import { useEatPlannedEntry } from '../hooks/useMealPlan'
 import { MacroBar } from './MacroBar'
+import { MacroLine } from './MacroLine'
 import { MacroFigure } from './MacroTotalPeek'
-import { splitTitleQty } from '../foodIngredients'
+import { eatenTotals, splitTitleQty } from '../foodIngredients'
 import { WaterTracker } from '../../daily/components/summary/WaterTracker'
 import { AnimatedNumber, Card, CardHeader, IconButton, MetaLine, PageBoard, ProgressRing, TonePill, Truncate, cx } from '../../../shared/ui'
 import { formatLocalDate } from '../../../shared/utils/dateUtils'
@@ -348,16 +349,24 @@ export function FoodTodayTab({ date }: { date: string }) {
                 renderRows={rows => slotRows(rows, slot)} emptyActions={quickActions(slot, label)} />
             )
           }
-          const kcal = meals.filter(m => m.source === 'log').reduce((a, m) => a + m.calories, 0)
+          // What was eaten in the slot (planned rows never count), summed exactly and rounded once — the Nutrition total's rule.
+          const slotTotals = eatenTotals(meals)
+          const kcal = slotTotals.calories
           return (
             <Card key={slot} padded={false} className="@container overflow-hidden">
               <header className="flex items-center gap-2 border-b border-line py-1 pl-4 pr-2">
                 <span aria-hidden className="text-base leading-none">{icon}</span>
                 <h3 className="flex-1 text-ui font-semibold text-fg">{label}</h3>
-                {kcal > 0 && <span className="text-meta tabular-nums text-fg-muted">{kcal} kcal</span>}
+                {kcal > 0 && (
+                  <span className="flex flex-wrap items-center justify-end gap-x-2 text-meta tabular-nums text-fg-muted">
+                    <span>{kcal} kcal</span>
+                    <MacroLine protein={slotTotals.protein_g} carbs={slotTotals.carbs_g} fat={slotTotals.fat_g} className="flex-nowrap" />
+                  </span>
+                )}
+                {/* A narrow card keeps the header on one line: the macros stay, "Log" becomes its + (still read out). */}
                 <button type="button" onClick={() => openLog(slot)}
                   className="btn-ghost btn-sm gap-1 !px-2.5 text-accent-600">
-                  <Plus aria-hidden className="h-4 w-4" />Log
+                  <Plus aria-hidden className="h-4 w-4" /><span className="sr-only @[26rem]:not-sr-only">Log</span>
                 </button>
               </header>
               {meals.length > 0 ? (

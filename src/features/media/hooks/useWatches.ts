@@ -3,7 +3,8 @@ import { toast } from '../../../app/store'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
 import { useRowsDelete } from '../../../shared/hooks/useRowsDelete'
 import { scheduleTraktSync } from '../trakt/traktAutoSync'
-import { addWatches, NEEDS_149, NEEDS_149_DATES, setWatchDates } from '../api/watchesApi'
+import { addWatches, isBefore161, NEEDS_149, NEEDS_149_DATES, setWatchDates, startRewatch, type RewatchStart } from '../api/watchesApi'
+import { formatDate } from '../../../shared/utils/dateFormat'
 import { confirmDelete } from '../../../shared/modals/deleteFlow'
 import { updateMovieEntry } from '../api/moviesApi'
 import { updateTVEntry } from '../api/tvApi'
@@ -128,22 +129,36 @@ export function useMovieNotWatched() {
 const rewatchFailed = (e: unknown) =>
   ['42703', 'PGRST204'].includes(String((e as { code?: string })?.code ?? '')) ? new Error('Watching again needs migration 149 (rewatch rounds) — it is not applied yet') : e
 
+/** "Watching again · round 3", plus where a pass already under way was picked up. */
+export const rewatchStartedText = (r: RewatchStart) =>
+  `Watching again · round ${r.round}${r.pickedUp ? ` · from ${formatDate(r.startedAt)}` : ''}`
+
 /**
- * Watch a finished title again: Watching, rewatch round N (one more than its
- * fewest watches). Progress then follows the round; the watch that finishes
- * it makes the title Completed again (the database does that, migration 149).
+ * Watch a title again: Watching + a rewatch round, planned by the database
+ * (migration 161, app_start_rewatch — one rule for the app, the assistant and
+ * the status pills). Progress then follows the round; the watch that finishes
+ * it makes the title Completed again (149). Before 161, the old write with
+ * the round the caller worked out (`round`), when it has one.
  */
 export function useStartRewatch() {
   const qc = useQueryClient()
   return useMutationWithFeedback({
     action: 'start_rewatch',
-    silent: 'the status picker reports the result ("Watching again · round 2")',
-    mutationFn: async ({ kind, id, round }: { kind: 'movie' | 'tv'; id: string; round: number }) => {
+    successMessage: (r: RewatchStart) => rewatchStartedText(r),
+    mutationFn: async ({ kind, id, round }: { kind: 'movie' | 'tv'; id: string; round?: number }): Promise<RewatchStart> => {
+      try {
+        return await startRewatch(kind, id)
+      } catch (e) {
+        if (!isBefore161(e as { code?: string }) || round == null) {
+          throw isBefore161(e as { code?: string }) ? new Error('Starting a rewatch here needs migration 161 — it is not applied yet') : e
+        }
+      }
       const patch = { status: 'watching' as const, rewatch_round: round }
       try {
         if (kind === 'movie') await updateMovieEntry(id, patch)
         else await updateTVEntry(id, patch)
       } catch (e) { throw rewatchFailed(e) }
+      return { round, startedAt: new Date().toISOString(), pickedUp: false }
     },
     invalidates: ['media'],
     onSuccess: () => scheduleTraktSync(qc),

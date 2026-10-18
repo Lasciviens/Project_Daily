@@ -2748,7 +2748,7 @@ const DB_CATALOG: Record<string, CatalogEntry> = {
     rules: [
       '"Coming soon" is never a status: it is a wishlist (or legacy upcoming) film whose release_date is still ahead — derive it from the date. Never write status="upcoming"; use wishlist.',
       'Watched = status "completed" plus watched_at: now when they just watched it, a day they name at midday (e.g. 2026-09-12T12:00:00Z), or NULL = date unknown — ask once when it is unclear, never guess a date (the database gives it its first watch). Watched again = one more media_watches row (kind "movie", movie_entry_id = this row\'s id, watched_at) — every other watch keeps its date; one row per film here, never a second one.',
-      'Watching it again: status "watching" + rewatch_round = its number of watches + 1; the watch that reaches the round makes it completed again by itself.',
+      'Watching it again: set status "watching" on the completed film — the database starts the rewatch round itself (never set rewatch_round yourself); the watch that reaches the round makes it completed again by itself.',
       'Changes to status, watched_at, repeat_count, rating, is_favorite and personal_note reach Trakt by themselves — never tell the user to change Trakt by hand. Dropped, priority and planned_date are app-only.',
       'A film that is not in the library yet can only be added in the app (Media → search, which fetches it from TMDB) — never invent a movie_id.',
     ].join(' '),
@@ -2762,7 +2762,7 @@ const DB_CATALOG: Record<string, CatalogEntry> = {
       '"Coming soon" is never a status: a wishlist show whose first_air_date is still ahead.',
       'Changes to status (wishlist, dropped), rating, is_favorite and personal_note reach Trakt by themselves; paused, priority, planned_date, started_at and finished_at are app-only.',
       'A show\'s completed/watching follows its watched episodes on the next Trakt sync (completed = every aired episode watched), so status="completed" alone may not stick: mark the episodes, or point the user to Completed on the show\'s page in the app, which marks every aired episode.',
-      'Watching a finished show again: status "watching" + rewatch_round = (fewest watches of its regular episodes) + 1 — it then stays Watching, its next episode is the first one watched fewer times than the round, and the watch that brings every watched episode up to the round makes it completed again by itself (watch = a media_watches row).',
+      'Watching a finished show again: set status "watching" on the completed show — the database starts the rewatch round itself (its number = fewest watches of an aired regular episode + 1, picking up a pass already under way from the latest rewatch of the first episode; never set rewatch_round yourself) — it then stays Watching, its next episode is the first one watched fewer times than the round, and the watch that brings every watched episode up to the round makes it completed again by itself (watch = a media_watches row).',
       'A show that is not in the library yet can only be added in the app — never invent a tv_series_id.',
     ].join(' '),
   },
