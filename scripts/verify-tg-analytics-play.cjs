@@ -1,10 +1,10 @@
 // Throwaway verification for the Analytics Play tab's pure helpers
-// (src/features/games/test-game/components/tgAnalyticsTrophies.ts and
+// (src/features/games/test-game/components/tgAnalyticsTrophiesModel.ts and
 // tgAnalyticsPlay.ts). No unit test framework here (AGENTS.md).
 //   node scripts/verify-tg-analytics-play.cjs
 require('sucrase/register')
 const assert = require('assert')
-const T = require('../src/features/games/test-game/components/tgAnalyticsTrophies.ts')
+const T = require('../src/features/games/test-game/components/tgAnalyticsTrophiesModel.ts')
 const P = require('../src/features/games/test-game/components/tgAnalyticsPlay.ts')
 const M = require('../src/features/games/test-game/components/tgAnalyticsMore.ts')
 const { formatPlaytime } = require('../src/features/games/api/playtimeFormat.ts')

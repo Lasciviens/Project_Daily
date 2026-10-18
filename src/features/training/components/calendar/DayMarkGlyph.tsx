@@ -1,6 +1,6 @@
 import { cx } from '../../../../shared/ui'
 import { STRAVA_ORANGE } from '../../stravaMeta'
-import type { DayMark } from './monthGrid'
+import type { DayMark } from './monthGridModel'
 
 // One mark per calendar day, told apart by SHAPE as well as colour (a solid
 // bar, a ring, an outline): done = solid success bar · a plan still open

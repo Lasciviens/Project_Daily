@@ -2,7 +2,7 @@ import { cx } from '../../../../shared/ui'
 import { formatWeekdayDate } from '../../../../shared/utils/dateFormat'
 import type { DayData } from './calendarModel'
 import { DayMarkGlyph, StravaBar } from './DayMarkGlyph'
-import { DAY_MARK_LABEL, dayMarkOf, weekSessionCount, type MonthWeek } from './monthGrid'
+import { DAY_MARK_LABEL, dayMarkOf, weekSessionCount, type MonthWeek } from './monthGridModel'
 
 const WEEKDAYS = ['M', 'T', 'W', 'T', 'F', 'S', 'S']
 // The week-total column only from a 22rem-wide calendar (container query):

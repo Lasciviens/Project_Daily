@@ -8,7 +8,7 @@ import {
 import { fillDays, mean } from '../healthWindowStats'
 import { useSleepWindow } from '../hooks/useHealthWindow'
 import type { HealthRange } from './sectionTypes'
-import { useRangeWindow } from './dateNav'
+import { useRangeWindow } from './dateNavModel'
 import { MetricMiniGrid } from './MetricMiniGrid'
 import { SLEEP_EXTRA_METRICS } from './miniMetrics'
 import { HealthTrendChart } from './HealthTrendChart'

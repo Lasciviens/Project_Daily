@@ -29,7 +29,6 @@ Codex reads this file by itself; `CLAUDE.md` imports it, so Claude and Codex fol
 - **A new external API** gets `docs/integrations/<service>.md` before its code ships: how we authenticate, the endpoints called, the fields read and written, the fields deliberately unused and why, traps, and the date it was checked. Confirm a field's real shape (one live sample or the provider's own example) before code reads it — never a guessed field.
 - The backlog is the in-app Dev Requests drawer (`dev_requests`), not a markdown list.
 - **Raise at the start of every session until settled:**
-  - **Urgent (owner, 14.10.2026): file names that differ only in letter case break `npx tsc` and `npm run build` on the Mac** (its disk ignores case; CI on Linux passes). An import such as `./TgDetailFields` can resolve to the lower-case file. Six pairs: `TgDetailFields.tsx`/`tgDetailFields.ts`, `TgProviderSync.tsx`/`tgProviderSync.ts`, `TgAnalyticsTrophies.tsx`/`tgAnalyticsTrophies.ts`, `TgAnalyticsActivity.tsx`/`tgAnalyticsActivity.ts` (Games), `DateNav.tsx`/`dateNav.ts` (Health), `MonthGrid.tsx`/`monthGrid.ts` (Training). Fix: rename the lower-case files, update their imports, and add a verify script that fails on such pairs.
   - The RP6 widgets were renovated on the device (13.10.2026) and the repo copies (`scripts/*esde*`, `scripts/setup-esde-widgets.sh`) may be out of date. Ask the owner to bring the current versions into the repo.
   - Settings: split "Subscriptions" into Connections (integrations) and Subscriptions (what the owner pays for)? The owner wants to decide this in a later session — ask, using the open questions in `docs/features/settings.md`.
 - App: https://lasciviens.github.io/Project_Daily/#/login · Repo: https://github.com/Lasciviens/Project_Daily
@@ -81,6 +80,7 @@ React 19 + TypeScript 6 + Vite 8 · react-router v7 with HashRouter (GitHub Page
 - The document never scrolls; `<main data-app-scroller>` is the scroll container. Never `overflow-x: hidden` on html/body (`#root` uses `overflow-x: clip`).
 - A new page is an entry in `src/app/navigation.ts` and `src/app/pages.ts`, never a static import in the router. The shell's title is the only visible page name.
 - CSS for class names created only at runtime (chart library, view transitions) lives outside every `@layer` — Tailwind deletes unknown selectors inside one.
+- Two files in one folder never have names that differ only in letter case (a TgDetailFields.tsx beside a tgDetailFields.ts): the Mac's disk ignores case, so an import picks the wrong one and the build breaks there while CI passes (`verify-file-case`).
 - iOS text-field zoom is disabled app-wide (16px text on touch screens): never fix it per field.
 - Back closes only the top popup: `ModalShell` and `SideDrawer` have it built in, anything else uses `useHistoryDismiss`.
 - A new version never reloads the page mid-work: it waits for the background or 10 idle minutes (`src/app/swUpdateRules.ts`).

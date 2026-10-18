@@ -1,5 +1,5 @@
 // Throwaway verification for the Analytics Overview tab's own pure pieces:
-// the Activity chart rows and words (tgAnalyticsActivity.ts) and the KPI /
+// the Activity chart rows and words (tgAnalyticsActivityModel.ts) and the KPI /
 // idle / hidden copy (tgAnalyticsDrillCopy.ts). No unit test framework here
 // (AGENTS.md).
 //   node scripts/verify-tg-analytics-overview.cjs
@@ -8,7 +8,7 @@ const assert = require('assert')
 const dir = '../src/features/games/test-game/components/'
 const A = require(dir + 'tgAnalyticsModel.ts')
 const S = require(dir + 'tgAnalyticsSeries.ts')
-const V = require(dir + 'tgAnalyticsActivity.ts')
+const V = require(dir + 'tgAnalyticsActivityModel.ts')
 const C = require(dir + 'tgAnalyticsDrillCopy.ts')
 
 let n = 0

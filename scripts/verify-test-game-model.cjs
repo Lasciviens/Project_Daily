@@ -514,7 +514,7 @@ ok(D.normalizeTitle('Pokémon Red & Blue'), 'pokemon red and blue', 'accents and
 
 // ── Once-a-day provider sync on opening Games ───────────────────────────────
 {
-  const P = require('../src/features/games/test-game/components/tgProviderSync.ts')
+  const P = require('../src/features/games/test-game/components/tgProviderSyncModel.ts')
   const now = Date.parse('2026-10-05T12:00:00Z')
   ok(P.autoSyncDue('2026-10-03T08:00:00Z', null, now), true, 'synced two days ago, never tried: due')
   ok(P.autoSyncDue('2026-10-05T01:00:00Z', null, now), false, 'synced this morning: not due')

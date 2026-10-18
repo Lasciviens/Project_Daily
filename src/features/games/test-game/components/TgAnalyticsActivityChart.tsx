@@ -3,7 +3,7 @@ import { Bar, BarChart, CartesianGrid, Rectangle, ResponsiveContainer, Tooltip, 
 import { axisTicks, type TgaActivity } from './tgAnalyticsSeries'
 import { useReducedMotion } from './tgAnalyticsClock'
 import { fmtInt } from './tgAnalyticsFormat'
-import { TGA_LIB_LABEL, activityRows, libFill, markerFits, type TgaActivityRow } from './tgAnalyticsActivity'
+import { TGA_LIB_LABEL, activityRows, libFill, markerFits, type TgaActivityRow } from './tgAnalyticsActivityModel'
 import { TgActivityAxisTick, TgActivityMarker, TgActivityTip } from './TgAnalyticsActivityParts'
 
 const AXIS_TICK = { fontSize: 11, fill: 'var(--tg-muted)' }

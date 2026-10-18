@@ -267,7 +267,7 @@ ok(H.hiddenCounts([game({ hidden: true, play_status: 'hidden' }), game({ hidden:
   ok(facts.find(f => f.key === 'genre')?.value, 'RPG · 15h', 'a game counts once per genre, however it is spelled')
 
   const S2 = require('../src/features/games/test-game/components/tgAnalyticsSeries.ts')
-  const AC = require('../src/features/games/test-game/components/tgAnalyticsActivity.ts')
+  const AC = require('../src/features/games/test-game/components/tgAnalyticsActivityModel.ts')
   const done = [
     game({ play_status: 'completed', finished_at: '2026-06-01T10:00:00Z' }),
     game({ play_status: 'completed' }),
