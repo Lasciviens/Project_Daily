@@ -1,0 +1,19 @@
+---
+paths:
+  - "src/features/football/**"
+  - "supabase/migrations/*football*"
+  - "scripts/db-tests/football/**"
+  - "scripts/fixtures/espn/**"
+---
+# Football rules
+
+Background: `docs/features/football.md`; ESPN's endpoints, fields and traps: `docs/integrations/espn.md`.
+
+- ESPN is called only from `api/espnApi.ts` (verify-football-model checks it), never through an edge function, and its data is never stored — only `football_follows` and `football_plans` are.
+- Every ESPN answer goes through `footballModel.ts`'s parsers (take `unknown`, return "nothing" on anything odd); a new field gets a real sample in `scripts/fixtures/espn/` and a check before code reads it. Surfaces render inside `ErrorBoundary`.
+- An id or slug goes into an ESPN URL only after `isTeamId` / `isLeagueSlug` (163 checks the same on the stored refs).
+- Kick-offs are UTC from ESPN, shown and planned in Norway's time through `osloParts`; dates through `dateFormat` (DD.MM.YYYY).
+- A match goes into the day only through the item save: Plan it opens the Add sheet (`usePlanIt`), the subscription calls `app_football_plan` (item + record in one transaction) via `saveItemVia` — never a task insert of its own.
+- What the subscription adds or moves is `footballModel.syncPlan`'s alone (checked in verify-football-model); a match whose item was deleted (`task_id` null) is never added again.
+- Unsubscribe and Unfollow never touch matches already in the day.
+- Zone colours are THEME tones (`footballView.noteTones`), never ESPN's hex.

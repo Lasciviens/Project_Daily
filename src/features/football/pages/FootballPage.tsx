@@ -70,7 +70,7 @@ export function FootballPage() {
       <PageHeader
         title="Football"
         art={<FootballHeroArt />}
-        actions={follows.length > 0 ? <Button variant="primary" icon={<Plus />} onClick={openFollow}>Follow</Button> : undefined}
+        actions={<Button variant="primary" icon={<Plus />} onClick={openFollow}>Follow</Button>}
       >
         {follows.length > 1 && (
           <div className="scroll-x -mx-1 flex gap-1 px-1" role="group" aria-label="Show">
@@ -164,7 +164,7 @@ function FirstFollow({ onSearch }: { onSearch: () => void }) {
               {s.name}
             </Button>
           ))}
-          <Button size="sm" variant="ghost" icon={<Search />} onClick={onSearch}>Search</Button>
+          <Button size="sm" variant="ghost" icon={<Search />} onClick={onSearch}>Search others</Button>
         </div>
       )}
     />

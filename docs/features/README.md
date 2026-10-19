@@ -14,6 +14,7 @@ One file per feature: what it does, how it works and why it is built that way, i
 | Supplements (schedules, doses, reminders) | `/#/recipes` (Today) | [supplements.md](supplements.md) | `food.md` |
 | Shop (wishlist, quick list, owned, money chains) | `/#/shop` | [shop.md](shop.md) | `shop.md` |
 | Media (films, TV, Trakt sync, lists) | `/#/media` | [media.md](media.md) | `media.md` |
+| Football (ESPN fixtures, results, tables, clubs; subscribe and Plan it) | `/#/football` | [football.md](football.md) | `football.md` |
 | Games (library, Analytics, ScreenScraper, IGDB, Steam, PlayStation) | `/#/games` | [games.md](games.md) | `games.md` |
 | Books and Kobo | `/#/books` | [books.md](books.md) | `books.md` |
 | Training (Hevy, Strava, progress engine, coach) | `/#/training` | [training.md](training.md) | `training.md` |

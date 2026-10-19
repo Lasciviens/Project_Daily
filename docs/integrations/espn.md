@@ -27,8 +27,8 @@ Base `https://site.api.espn.com`; search on `https://site.web.api.espn.com`.
 | `GET /apis/site/v2/sports/soccer/all/teams/{teamId}/schedule` | `espnApi.fetchTeamResults` | a followed team's results this season | newest first |
 | `GET /apis/site/v2/sports/soccer/{league}/scoreboard?dates=YYYYMM` | `espnApi.fetchLeagueMonth` | a followed tournament's matches: this month and next | **a day range (`YYYYMMDD-YYYYMMDD`) answers 400 for the Champions League** — a month (`YYYYMM`) or one day works |
 | `GET /apis/v2/sports/soccer/{league}/standings` | `espnApi.fetchStandings` | tables | one table per group (`children[]`) |
-| `GET /apis/site/v2/sports/soccer/{league}/teams/{teamId}` | `espnApi.fetchTeam` | the club popup | |
-| `GET /apis/site/v2/sports/soccer/{league}/teams/{teamId}/roster` | `espnApi.fetchRoster` | the club popup's squad, the player popup | |
+| `GET /apis/site/v2/sports/soccer/{league}/teams/{teamId}` | `espnApi.fetchTeam` | the club popup | `all` as the league works and gives the club's own (`defaultLeague`) |
+| `GET /apis/site/v2/sports/soccer/{league}/teams/{teamId}/roster` | `espnApi.fetchRoster` | the club popup's squad, the player popup | needs a real league: under `all` it answers an empty squad |
 | `GET /apis/site/v2/sports/soccer/{league}/summary?event={eventId}` | `espnApi.fetchMatch` | the match popup; a planned match outside the subscription is re-checked by it | ~200 KB; we read `header`, `gameInfo`, `rosters` |
 | `GET /apis/search/v2?query=…&limit=10` (site.web.api) | `espnApi.search` | "+ Follow": teams and tournaments | mixed sports — only `sport: "soccer"` kept |
 
@@ -49,7 +49,7 @@ while one is live).
 | `competitions[0].venue.fullName`, `.address.city` | text | stadium |
 | `seasonType.name` | `"League Phase"` | the round |
 | `competitions[0].details[]` (scoreboard): `type.text`, `clock.displayValue`, `athletesInvolved[0].displayName`, `team.id` | `"Goal"`, `"22'"` | goals in a match row |
-| standings `children[].name`, `.standings.entries[]`: `team`, `note.{color,description}`, `stats[]` by `name` | `rank`, `gamesPlayed`, `wins`, `ties`, `losses`, `pointsFor`, `pointsAgainst`, `pointDifferential`, `points` | tables; the note's colour marks qualification places |
+| standings `name` (the tournament), `children[].name`, `.standings.entries[]`: `team`, `note.{color,description}`, `stats[]` by `name` | `rank`, `gamesPlayed`, `wins`, `ties`, `losses`, `pointsFor`, `pointsAgainst`, `pointDifferential`, `points` | tables; the note's colour marks qualification places |
 | roster `athletes[]`: `displayName`, `jersey`, `position.name`, `age`, `dateOfBirth`, `citizenship`, `flag.href`, `height` (inches), `weight` (lbs) | **imperial** — shown as cm / kg | squad, player popup |
 | team: `logos[0].href`, `color`, `standingSummary`, `record.items[0].summary`, `nextEvent[0]`, `defaultLeague.slug` | `"1st in Turkish Super Lig"`, `"6-1-1"` (W-D-L) | club popup |
 | summary `rosters[]`: `homeAway`, `formation`, `roster[]`: `starter`, `jersey`, `athlete.displayName`, `position.abbreviation` | `"4-4-2"` | line-ups |
@@ -66,6 +66,9 @@ while one is live).
 ## Traps
 
 - **Score shape differs** between endpoints (object vs string) — `footballModel.scoreOf` reads both.
+- **A scoreboard says `"0"` before kick-off** — a score is read only once a match is live or over.
+- **A squad needs a real league**: `all/teams/{id}/roster` answers an empty list; the club's own league comes from `all/teams/{id}` (`defaultLeague.slug`).
+- **A scoreboard's events have no `seasonType`** (no round name); a summary's `header` has no venue — it is in `gameInfo.venue`; `attendance` is `0` when unknown.
 - **A day range fails** on some leagues' scoreboard (400 "Failed to get events endpoint."); a month works.
 - **`timeValid: false`**: far-ahead fixtures carry a placeholder time. They show as "time not set" and are never put
   in your day with a time until ESPN fixes it (the subscription waits for it).
@@ -76,8 +79,9 @@ while one is live).
 - **Results are newest first**, fixtures oldest first.
 - **Mixed sports in search** (golf, rugby…); filter `sport === 'soccer'`.
 - **Compressed answers**: some scoreboard answers come gzip-encoded (browsers handle it; `curl` needs `--compressed`).
-- The World Cup 2026 has ended and the Euro's last edition is 2024: following them shows their next edition when
-  ESPN lists it; the qualifiers (`fifa.worldq.uefa`, `uefa.euroq`) are tournaments of their own.
+- The World Cup 2026 has ended and the Euro's last edition is 2024: following them (`fifa.world`, `uefa.euro` — both checked
+  live 19.10.2026) shows their next edition when ESPN lists it; the qualifiers (`fifa.worldq.uefa`, `uefa.euroq`) are
+  tournaments of their own.
 
 ## Log
 

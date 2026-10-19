@@ -32,13 +32,13 @@ async function getJson(url: string): Promise<unknown> {
   try {
     res = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT_MS) })
   } catch (err) {
-    throw new Error(`${FOOTBALL_UNAVAILABLE} (${(err as Error).name === 'TimeoutError' ? 'ESPN took too long' : 'no connection to ESPN'})`)
+    throw new Error(`${FOOTBALL_UNAVAILABLE} (${(err as Error).name === 'TimeoutError' ? 'ESPN took too long' : 'no connection to ESPN'})`, { cause: err })
   }
   if (!res.ok) throw new Error(`${FOOTBALL_UNAVAILABLE} (ESPN answered ${res.status})`)
   try {
     return await res.json()
-  } catch {
-    throw new Error(`${FOOTBALL_UNAVAILABLE} (ESPN's answer couldn't be read)`)
+  } catch (err) {
+    throw new Error(`${FOOTBALL_UNAVAILABLE} (ESPN's answer couldn't be read)`, { cause: err })
   }
 }
 

@@ -2834,6 +2834,17 @@ const DB_CATALOG: Record<string, CatalogEntry> = {
     columns: 'id, block_id(uuid FK project_blocks), project_id(uuid — filled from the block by the database), title, body, url(http(s)), entry_date(date), state(open|decided or null), data(jsonb object), sort_order, created_at, updated_at',
     rules: 'Read the block first (its kind, and a table\'s settings.columns) and write the fields its kind uses: a table row\'s data keys are its column keys, a money or number value is a number, a date is YYYY-MM-DD, a choice is one of the column\'s options. Answering a question = update it to state decided with the decision in title/body and entry_date today.',
   },
+  football_follows: {
+    access: 'ro',
+    purpose: 'Football (migration 163): the teams and tournaments the user follows on the Football page. Match data comes from ESPN in the browser and is not stored — the assistant can\'t read fixtures or results. Following, subscribing and unfollowing happen in the app.',
+    columns: 'id, kind(team|league), ref(ESPN team id, or the tournament\'s slug like uefa.champions), name, logo, league(a team\'s own league slug), subscribed(bool — a team\'s coming matches go into the day by themselves), sort_order, created_at, updated_at',
+  },
+  football_plans: {
+    access: 'ro',
+    purpose: 'Football matches put in the user\'s day (migration 163): each is a task (task_id) — by the subscription or "Plan it". task_id null = the user deleted that item, so the match is never added again.',
+    columns: 'id, event_id(ESPN match id), league(slug), task_id(uuid FK tasks, null once deleted), kickoff_at(timestamptz — the kick-off ESPN gave when planned), time_valid(bool — ESPN had fixed the time), origin(subscription|manual), created_at, updated_at',
+    rules: 'To change a planned match, change its task (tasks / time_blocks), never this table.',
+  },
   // athlete_profile is rw because the user directs their own training settings
   // in chat ("hedefim güç" / "ekipmanım sadece ev"). It is a SINGLETON keyed by
   // user_id (no separate id column) — see the rules below for the db_update

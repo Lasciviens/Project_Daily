@@ -16,7 +16,7 @@ export function MatchList({ matches, planned, limit = 8 }: {
   const shown = all ? matches : matches.slice(0, limit)
   const today = todayStr()
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex max-w-[40rem] flex-col gap-3">
       {byDayAndLeague(shown).map(day => (
         <section key={day.date} className="flex flex-col gap-1">
           <h3 className="text-meta font-semibold text-fg-muted tabular-nums">{dayLabel(day.date, today)}</h3>
