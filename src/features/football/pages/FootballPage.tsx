@@ -47,14 +47,18 @@ export function FootballPage() {
     return n
   }, { replace: true })
 
-  // A visit runs the subscription too (the app's own run waits 30 minutes between runs).
-  useEffect(() => { void runFootballSync(qc, { force: true }) }, [qc])
+  // A visit runs the subscription too, unless it ran in the last 5 minutes (the app's own run waits 30).
+  useEffect(() => { void runFootballSync(qc, { within: 5 * 60_000 }) }, [qc])
 
   const followed = useMemo(() => new Set(follows.filter(f => f.kind === 'team').map(f => f.ref)), [follows])
   const live = filterMatches(agenda.live, filter)
   const coming = filterMatches(agenda.upcoming.flatMap(d => d.matches), filter)
   const results = filterMatches(agenda.results, filter)
-  const leagues = tableLeagues(follows, filter)
+  // A tournament's table only while it has matches on the page (a finished World Cup shows its old groups otherwise).
+  const active = useMemo(() => new Set([...agenda.live, ...agenda.upcoming.flatMap(d => d.matches), ...agenda.results].map(m => m.league?.slug ?? '')), [agenda])
+  const leagues = tableLeagues(follows, filter, active)
+  // A tournament picked in the filter shows all its matches; otherwise a busy night folds.
+  const keep = filter?.kind === 'league' ? Infinity : 3
   const openFollow = () => modal.open({ kind: 'football-follow' })
 
   const problem = failed.length > 0 && (
@@ -104,7 +108,7 @@ export function FootballPage() {
               live: live.length > 0 && (
                 <Card>
                   <CardHeader title={<span className="flex items-center gap-2"><ToneDot tone="success" className="motion-safe:animate-pulse" />Live</span>} variant="label" />
-                  <MatchList matches={live} planned={planned} />
+                  <MatchList matches={live} planned={planned} featured={followed} keep={keep} />
                 </Card>
               ),
               next: (
@@ -112,7 +116,7 @@ export function FootballPage() {
                   <CardHeader title="Coming up" variant="label" />
                   <div className="flex flex-col gap-2">
                     {loading && !coming.length ? rows(4)
-                      : coming.length ? <MatchList matches={coming} planned={planned} />
+                      : coming.length ? <MatchList matches={coming} planned={planned} featured={followed} keep={keep} />
                       : <p className="text-body text-fg-muted">No matches in the next 30 days.</p>}
                     {problem}
                   </div>
@@ -122,7 +126,7 @@ export function FootballPage() {
                 <Card>
                   <CardHeader title="Results" subtitle="Last 10 days" variant="label" />
                   {loading && !results.length ? rows(3)
-                    : results.length ? <MatchList matches={results} planned={planned} limit={6} />
+                    : results.length ? <MatchList matches={results} planned={planned} featured={followed} keep={keep} days={4} />
                     : <p className="text-body text-fg-muted">No results in the last 10 days.</p>}
                 </Card>
               ),

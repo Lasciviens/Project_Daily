@@ -293,7 +293,7 @@ export function FootballMatchModal({ request, onClose }: EntityModalProps<'footb
                 return l ? <Lineup key={s} lineup={l} /> : <div key={s} />
               })}
             </div>
-          ) : m.state === 'pre' && <p className="text-meta text-fg-muted">Line-ups come about an hour before kick-off.</p>}
+          ) : null}
         </div>
       </ErrorBoundary>
     </ModalShell>

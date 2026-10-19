@@ -8,16 +8,12 @@ import { useEntityModal } from '../../../shared/modals'
 import { useRowsDelete } from '../../../shared/hooks/useRowsDelete'
 import { putRowsInCache } from '../../../shared/query/cachePatch'
 import { qk, STALE } from '../../../shared/query'
-import {
-  fetchLeagueMonth, fetchMatch, fetchRoster, fetchStandings, fetchTeam, fetchTeamFixtures, fetchTeamResults, searchFootball,
-} from '../api/espnApi'
+import { fetchRoster, fetchStandings, fetchTeam, searchFootball } from '../api/espnApi'
 import { createFollow, fetchFollows, fetchPlans, recordPlan, setSubscribed } from '../api/footballApi'
 import { buildAgenda, leagueMonths, matchItem, type FbMatch } from '../footballModel'
 import type { FootballFollow, NewFollowInput } from '../types'
+import { ESPN, LIVE_EVERY, leagueMonthQuery, matchQuery, needsLive, teamFixturesQuery, teamResultsQuery } from './espnQueries'
 import { runFootballSync } from './footballSync'
-
-// ESPN answers: one retry (a slow answer isn't worth three), kept while the page is away.
-const ESPN = { retry: 1, gcTime: 30 * 60_000 } as const
 
 // ─── The owner's rows ────────────────────────────────────────────────────────
 
@@ -36,19 +32,6 @@ export function usePlannedTasks(): Map<string, string> {
 }
 
 // ─── ESPN ────────────────────────────────────────────────────────────────────
-
-export const teamFixturesQuery = (teamId: string) => ({
-  queryKey: qk.football.fixtures(teamId), queryFn: () => fetchTeamFixtures(teamId), staleTime: STALE.default, ...ESPN,
-})
-const teamResultsQuery = (teamId: string) => ({
-  queryKey: qk.football.results(teamId), queryFn: () => fetchTeamResults(teamId), staleTime: STALE.default, ...ESPN,
-})
-const leagueMonthQuery = (league: string, month: string) => ({
-  queryKey: qk.football.month(league, month), queryFn: () => fetchLeagueMonth(league, month), staleTime: STALE.default, ...ESPN,
-})
-export const matchQuery = (league: string, eventId: string) => ({
-  queryKey: qk.football.match(league, eventId), queryFn: () => fetchMatch(league, eventId), staleTime: STALE.live, ...ESPN,
-})
 
 export function useTeamResults(teamId: string | null) {
   return useQuery({ ...teamResultsQuery(teamId ?? ''), enabled: !!teamId })
@@ -83,7 +66,7 @@ export function useRoster(league: string | null, teamId: string | null) {
 export function useMatchDetail(league: string | null, eventId: string | null) {
   return useQuery({
     ...matchQuery(league ?? '', eventId ?? ''), enabled: !!league && !!eventId,
-    refetchInterval: q => (q.state.data?.match.state === 'in' ? 60_000 : false),
+    refetchInterval: q => (q.state.data && needsLive(q.state.data.match) ? LIVE_EVERY : false),
   })
 }
 
@@ -112,7 +95,7 @@ export function useFootballAgenda(follows: readonly FootballFollow[], now: strin
   const results = useQueries({
     queries: sources.map(s => ({
       ...s.q,
-      refetchInterval: (q: { state: { data?: FbMatch[] } }) => (q.state.data?.some(m => m.state === 'in') ? 60_000 : false),
+      refetchInterval: (q: { state: { data?: FbMatch[] } }) => (q.state.data?.some(m => needsLive(m)) ? LIVE_EVERY : false),
     })),
   })
   const stamp = results.map(r => r.dataUpdatedAt).join(',')
@@ -165,13 +148,12 @@ export function useSetSubscribed() {
   const qc = useQueryClient()
   return useMutationWithFeedback({
     action: 'football_subscribe',
-    successMessage: f => (f.subscribed
-      ? `${f.name}: coming matches go into your day`
-      : `${f.name}: no new matches into your day — the ones there stay`),
+    // The subscription's own run follows at once and says what it added.
+    successMessage: f => (f.subscribed ? `Subscribed to ${f.name}` : `Unsubscribed from ${f.name} · matches already in your day stay`),
     mutationFn: ({ follow, on }: { follow: FootballFollow; on: boolean }) => setSubscribed(follow.id, on),
     onSuccess: f => {
       putRowsInCache(qc, qk.football.follows(), [f])
-      if (f.subscribed) void runFootballSync(qc, { force: true })
+      if (f.subscribed) void runFootballSync(qc, { within: 0, sayNothing: true })
     },
     invalidates: [qk.football.follows()],
   })

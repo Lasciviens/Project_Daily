@@ -20,11 +20,25 @@ export function dayLabel(date: string, today: string): string {
   return formatWeekdayDate(date)
 }
 
-export interface LeagueGroup { league: string; name: string; matches: FbMatch[] }
+export interface LeagueGroup {
+  league: string
+  name: string
+  /** Shown at once: all of them up to `keep`; past that every match of a followed team, else the first `keep`. */
+  matches: FbMatch[]
+  /** The rest of that day's competition, folded into one "8 more" line. */
+  more: FbMatch[]
+}
 export interface DayMatches { date: string; leagues: LeagueGroup[] }
 
-/** Matches (in the order given) by Norwegian day, and inside a day by competition in order of first kick-off. */
-export function byDayAndLeague(matches: readonly FbMatch[]): DayMatches[] {
+/**
+ * Matches (in the order given) by Norwegian day, and inside a day by
+ * competition in order of first kick-off. A followed team's match is never
+ * folded away: a Champions League night has nine matches, and Galatasaray's
+ * must not sit behind "Show all" (owner-critic, 19.10.2026). The others of a
+ * competition fold behind one line once `keep` are shown — none are when a
+ * followed team plays in it.
+ */
+export function byDayAndLeague(matches: readonly FbMatch[], featured: ReadonlySet<string> = new Set(), keep = 3): DayMatches[] {
   const days: DayMatches[] = []
   for (const m of matches) {
     const date = osloParts(m.kickoff).date
@@ -32,8 +46,16 @@ export function byDayAndLeague(matches: readonly FbMatch[]): DayMatches[] {
     if (!day) days.push(day = { date, leagues: [] })
     const slug = m.league?.slug ?? ''
     let group = day.leagues.find(g => g.league === slug)
-    if (!group) day.leagues.push(group = { league: slug, name: m.league?.name ?? 'Other', matches: [] })
+    if (!group) day.leagues.push(group = { league: slug, name: m.league?.name ?? 'Other', matches: [], more: [] })
     group.matches.push(m)
+  }
+  for (const day of days) {
+    for (const g of day.leagues) {
+      const all = g.matches
+      const mine = all.filter(m => featured.has(m.home.team.id) || featured.has(m.away.team.id))
+      g.matches = all.length <= keep ? all : mine.length ? mine : all.slice(0, keep)
+      g.more = all.filter(m => !g.matches.includes(m))
+    }
   }
   return days
 }
@@ -48,11 +70,15 @@ export function filterMatches(matches: readonly FbMatch[], filter: FollowFilter)
     : m.league?.slug === filter.ref))
 }
 
-/** The tables the page reads: each followed tournament's, then each followed team's own league — once each. */
-export function tableLeagues(follows: readonly FootballFollow[], filter: FollowFilter): string[] {
+/**
+ * The tables the page reads: each followed team's league first, then each
+ * followed tournament that has a match in the page's window (`active`) — a
+ * finished World Cup or Euro shows its old groups otherwise. Once each.
+ */
+export function tableLeagues(follows: readonly FootballFollow[], filter: FollowFilter, active: ReadonlySet<string>): string[] {
   const shown = filter ? follows.filter(f => f.kind === filter.kind && f.ref === filter.ref) : follows
   const out: string[] = []
-  for (const f of [...shown.filter(f => f.kind === 'league'), ...shown.filter(f => f.kind === 'team')]) {
+  for (const f of [...shown.filter(f => f.kind === 'team'), ...shown.filter(f => f.kind === 'league' && active.has(f.ref))]) {
     if (f.league && !out.includes(f.league)) out.push(f.league)
   }
   return out

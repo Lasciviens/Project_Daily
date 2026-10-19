@@ -21,9 +21,10 @@
 --     and its origin (the subscription, or "Plan it" by hand).
 --  C. app_football_plan(plan, item) — the subscription's door: the item is
 --     saved through app_save_item (155: task, slot, Google target) and the
---     plan row written in the SAME transaction, so a match can't be added
---     twice or added without its record. A match already planned is never
---     added again; a move edits only the plan's own task.
+--     plan row written in the SAME transaction, under a lock per account and
+--     match, so a match can't be added twice (two devices at once included)
+--     or added without its record. A match already planned is never added
+--     again; a move edits only the plan's own task.
 --
 -- Audit: both tables get trg_audit (the owner's choices and the
 -- subscription's writes are undoable from Developer → Activity).
@@ -169,6 +170,11 @@ begin
     raise exception 'That task id is not valid.' using errcode = '22023';
   end;
 
+  -- One match at a time per account: two devices running the subscription at
+  -- once would otherwise both find no row and both save an item (FOR UPDATE
+  -- locks nothing that doesn't exist yet). The second waits here, then finds
+  -- the first one's row.
+  perform pg_advisory_xact_lock(hashtextextended('football_plan:' || v_user::text || ':' || v_event, 0));
   select * into v_plan from public.football_plans
    where user_id = v_user and event_id = v_event
    for update;
@@ -183,19 +189,24 @@ begin
 
   v_answer := public.app_save_item(p_item);
 
-  insert into public.football_plans (user_id, event_id, league, task_id, kickoff_at, time_valid, origin)
-  values (
-    v_user, v_event, p_plan->>'league', nullif(v_answer->>'taskId', '')::uuid,
-    (p_plan->>'kickoffAt')::timestamptz, coalesce((p_plan->>'timeValid')::boolean, true),
-    coalesce(p_plan->>'origin', 'manual')
-  )
-  on conflict (user_id, event_id) do update
-    set task_id = excluded.task_id, league = excluded.league,
-        kickoff_at = excluded.kickoff_at, time_valid = excluded.time_valid;
+  if v_plan.id is null then
+    insert into public.football_plans (user_id, event_id, league, task_id, kickoff_at, time_valid, origin)
+    values (
+      v_user, v_event, p_plan->>'league', nullif(v_answer->>'taskId', '')::uuid,
+      (p_plan->>'kickoffAt')::timestamptz, coalesce((p_plan->>'timeValid')::boolean, true),
+      coalesce(p_plan->>'origin', 'manual')
+    );
+  else
+    update public.football_plans
+       set kickoff_at = (p_plan->>'kickoffAt')::timestamptz,
+           time_valid = coalesce((p_plan->>'timeValid')::boolean, true)
+     where id = v_plan.id;
+  end if;
 
   return v_answer || jsonb_build_object('planned', true);
 end;
 $$;
+revoke all on function public.app_football_plan(jsonb, jsonb) from public, anon;
 grant execute on function public.app_football_plan(jsonb, jsonb) to authenticated;
 
 select public.owner_lock_apply('public.football_follows');

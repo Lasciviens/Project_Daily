@@ -204,7 +204,13 @@ eq(M.osloParts('2026-10-21T22:30Z'), { date: '2026-10-22', time: '00:30' }, 'aft
   eq(M.movedMatchItem(mine, { ...lille, kickoff: '2026-10-22T19:00Z' }), {
     ...mine, section: null, date: '2026-10-22', time: '21:00',
   }, 'a moved kick-off moves day and time; the owner\'s title, notes, priority, length and Google choice stay')
-  eq(M.movedMatchItem({ ...mine, durationMinutes: null }, lille).durationMinutes, 120, 'no length yet: two hours')
+  eq(M.movedMatchItem({ ...mine, durationMinutes: null }, lille).durationMinutes, null, 'an item that blocks no time keeps blocking none')
+  eq(M.movedMatchItem({ ...mine, time: null, durationMinutes: null }, lille).durationMinutes, 120, 'an item with no time yet gets two hours with its kick-off')
+  const plan = { kickoff_at: '2026-10-21T16:45Z', time_valid: true }
+  eq(M.itemAtKickoff({ date: '2026-10-21', time: '18:45' }, plan), true, 'still at its kick-off: ESPN may move it')
+  eq(M.itemAtKickoff({ date: '2026-10-21', time: '22:00' }, plan), false, 'moved by the owner (a replay at 22:00): left alone')
+  eq(M.itemAtKickoff({ date: '2026-10-22', time: '18:45' }, plan), false, 'moved to another day: left alone')
+  eq(M.itemAtKickoff({ date: '2026-10-21', time: '20:00' }, { ...plan, time_valid: false }), true, 'no fixed time when planned: the day decides')
   eq([M.movedMatchItem(mine, { ...lille, timeValid: false }).time, M.movedMatchItem(mine, { ...lille, timeValid: false }).durationMinutes], [null, null],
   'ESPN un-fixed the time: no time, no length')
 }
@@ -245,7 +251,23 @@ eq(V.dayLabel('2027-01-01', '2026-12-31'), 'Tomorrow', 'tomorrow across the year
 {
   const days = V.byDayAndLeague([...fixtures, ...month.filter(m => m.state === 'pre')].sort((a, b) => a.kickoff.localeCompare(b.kickoff)))
   eq(days.map(d => d.date).slice(0, 2), ['2026-10-20', '2026-10-21'], 'by Norwegian day')
-  eq(days[0].leagues.map(g => [g.name, g.matches.length]), [['UEFA Champions League', 2]], 'a day\'s matches under their competition')
+  eq(days[0].leagues.map(g => [g.name, g.matches.length, g.more.length]), [['UEFA Champions League', 2, 0]], 'a day\'s matches under their competition (three or fewer: none folded)')
+}
+{
+  // A real Champions League month: nine matches a night (scoreboard-cl-month.json, 19.10.2026).
+  const full = M.parseMatches(fx('scoreboard-cl-month'))
+  eq(full.length, 36, 'the whole month: 36 matches')
+  const gs = new Set(['432'])
+  const days = V.byDayAndLeague(full, gs)
+  const night = d => days.find(x => x.date === d).leagues[0]
+  eq(night('2026-10-21').matches.map(m => m.home.team.short + ' – ' + m.away.team.short), ['Lille – Galatasaray'],
+    'a night with Galatasaray: its match shows, never behind a fold')
+  eq(night('2026-10-21').more.length, 8, '…the other eight fold into "8 more"')
+  eq(night('2026-10-14').matches.length, 3, 'a night without a followed team: the first three')
+  eq(night('2026-10-14').more.length, 6, '…and "6 more"')
+  eq(V.byDayAndLeague(full, gs, Infinity).every(d => d.leagues.every(g => g.more.length === 0)), true, 'the tournament picked in the filter: nothing folded')
+  eq(days.every(d => d.leagues.every(g => [...g.matches, ...g.more].length === full.filter(m => M.osloParts(m.kickoff).date === d.date).length)), true,
+    'folding hides nothing: every match is in a group')
   const team = { kind: 'team', ref: '432' }
   eq(V.filterMatches([...fixtures, ...month], team).every(m => m.home.team.id === '432' || m.away.team.id === '432'), true, 'a team filter keeps its matches')
   eq(V.filterMatches(fixtures, { kind: 'league', ref: 'tur.1' }).map(m => m.id), ['401888265', '401888259', '401888371'], 'a tournament filter keeps its matches')
@@ -254,8 +276,11 @@ eq(V.dayLabel('2027-01-01', '2026-12-31'), 'Tomorrow', 'tomorrow across the year
 {
   const f = (kind, ref, league) => ({ kind, ref, league, name: ref })
   const follows = [f('team', '432', 'tur.1'), f('league', 'uefa.champions', 'uefa.champions'), f('team', '436', 'tur.1')]
-  eq(V.tableLeagues(follows, null), ['uefa.champions', 'tur.1'], 'tournaments\' tables, then the teams\' leagues, once each')
-  eq(V.tableLeagues(follows, { kind: 'team', ref: '432' }), ['tur.1'], 'a filter shows its own table')
+  const active = new Set(['uefa.champions', 'tur.1'])
+  eq(V.tableLeagues(follows, null, active), ['tur.1', 'uefa.champions'], 'the teams\' leagues first, then the tournaments, once each')
+  eq(V.tableLeagues(follows, { kind: 'team', ref: '432' }, active), ['tur.1'], 'a filter shows its own table')
+  eq(V.tableLeagues([...follows, f('league', 'fifa.world', 'fifa.world')], null, active), ['tur.1', 'uefa.champions'],
+    'a tournament with no match on the page (a finished World Cup) shows no old table')
   const t = (name, ids) => ({ name, rows: ids.map((id, i) => ({ rank: i + 1, team: { id } })) })
   eq(V.tablesToShow([t('A', ['1', '2']), t('B', ['432', '3']), t('C', ['4'])], new Set(['432'])), { shown: [t('B', ['432', '3'])], hidden: 2 },
     'a group stage: the group with a followed team')

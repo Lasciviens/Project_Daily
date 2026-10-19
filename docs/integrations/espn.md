@@ -2,7 +2,8 @@
 
 Checked: 19.10.2026 against live answers, saved trimmed as test samples in `scripts/fixtures/espn/`
 (Galatasaray's fixtures and results, the Champions League and Süper Lig tables, a month of the Champions
-League, Galatasaray's squad and club, one match summary, team and league search). `verify-football-model`
+League — four matches, and the whole of October 2026 trimmed to the fields we read in `scoreboard-cl-month.json` —
+Galatasaray's squad and club, one match summary, team and league search). `verify-football-model`
 reads them through the real parsers.
 
 **Not an official API.** ESPN closed its public developer API in 2014. These are the undocumented endpoints
@@ -45,7 +46,7 @@ while one is live).
 | `competitions[0].competitors[]`: `homeAway`, `team.id`, `.displayName`, `.shortDisplayName`, `.abbreviation`, logo | logo is `team.logos[0].href` in a schedule, `team.logo` (string) in a scoreboard | the two sides |
 | `competitors[].score` | **an object `{ value, displayValue }` in a schedule, a string `"2"` in a scoreboard**, absent before kick-off | the score |
 | `competitors[].winner` | boolean | W / D / L |
-| `status.type.state` / `.name` / `.shortDetail`, `status.displayClock` | `pre` / `in` / `post`; `STATUS_POSTPONED`, `STATUS_CANCELED`; `"FT"`; `"67'"` | live, done, postponed |
+| `status.type.state` / `.name` / `.shortDetail`, `status.displayClock` | seen: `pre` / `post`, `STATUS_SCHEDULED`, `STATUS_FULL_TIME`, `"FT"`, `"Scheduled"`. **Not seen yet** (assumed from ESPN's own naming, unchecked): `in`, `"67'"`, `"HT"`, `STATUS_POSTPONED` / `_CANCELED` / `_SUSPENDED` / `_ABANDONED` — save a live and a postponed sample when one comes | live, done, postponed |
 | `competitions[0].venue.fullName`, `.address.city` | text | stadium |
 | `seasonType.name` | `"League Phase"` | the round |
 | `competitions[0].details[]` (scoreboard): `type.text`, `clock.displayValue`, `athletesInvolved[0].displayName`, `team.id` | `"Goal"`, `"22'"` | goals in a match row |

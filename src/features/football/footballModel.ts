@@ -544,13 +544,24 @@ export function newMatchItem(m: FbMatch): ItemInput {
   }
 }
 
-/** A planned match's item at ESPN's new kick-off: its title, notes, Google choice and length are the owner's and stay. */
+/**
+ * Whether a planned item still sits where its match was planned — its day,
+ * and its time when the kick-off was fixed. Only then does a new kick-off
+ * move it: an item the owner moved (a replay at 22:00) stays theirs.
+ */
+export function itemAtKickoff(item: Pick<ItemInput, 'date' | 'time'>, plan: Pick<PlanRow, 'kickoff_at' | 'time_valid'>): boolean {
+  const { date, time } = osloParts(plan.kickoff_at)
+  return item.date === date && (!plan.time_valid || item.time === time)
+}
+
+/** A planned match's item at ESPN's new kick-off: its title, notes, Google choice and length are the owner's and stay
+ *  (an item that blocks no time keeps blocking none; one that had no time yet gets two hours). */
 export function movedMatchItem(item: ItemInput, m: FbMatch): ItemInput {
   const mi = matchItem(m)
   return {
     ...item, scope: 'item', section: null, deadline: null,
     date: mi.date, time: mi.time,
-    durationMinutes: mi.time ? (item.durationMinutes ?? MATCH_MINUTES) : null,
+    durationMinutes: !mi.time ? null : item.time ? item.durationMinutes : MATCH_MINUTES,
   }
 }
 

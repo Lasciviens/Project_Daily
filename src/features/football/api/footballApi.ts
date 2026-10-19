@@ -69,6 +69,14 @@ export async function recordPlan(match: FbMatch, taskId: string): Promise<Footba
   return data as FootballPlan
 }
 
+/** A new kick-off noted without moving the item (the owner moved it themselves). */
+export async function updatePlanKickoff(id: string, kickoffAt: string, timeValid: boolean): Promise<void> {
+  const user = await requireUser()
+  const { error } = await supabase.from('football_plans')
+    .update({ kickoff_at: kickoffAt, time_valid: timeValid }).eq('id', id).eq('user_id', user.id)
+  if (error) throw fail(error)
+}
+
 export interface PlanAnswer extends SaveItemAnswer { planned: boolean; reason: string | null }
 
 /**
