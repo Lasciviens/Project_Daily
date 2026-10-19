@@ -79,7 +79,7 @@ const root = path.join(__dirname, '..', 'src', 'features')
 const read = f => fs.readFileSync(path.join(root, f), 'utf8')
 const PAGES = {
   'daily/pages/DailyPage.tsx': 'DailyHeroArt', 'recipes/pages/RecipesPage.tsx': 'FoodHeroArt', 'shop/pages/ShopPage.tsx': 'ShopHeroArt',
-  'media/pages/MediaPage.tsx': 'MediaHeroArt', 'training/pages/TrainingPage.tsx': 'TrainingHeroArt', 'health/pages/HealthPage.tsx': 'HealthHeroArt',
+  'media/pages/MediaPage.tsx': 'MediaHeroArt', 'football/pages/FootballPage.tsx': 'FootballHeroArt', 'training/pages/TrainingPage.tsx': 'TrainingHeroArt', 'health/pages/HealthPage.tsx': 'HealthHeroArt',
   'wishes/pages/WishesPage.tsx': 'WishesHeroArt', 'books/pages/BooksPage.tsx': 'BooksHeroArt', 'work/pages/WorkPage.tsx': 'WorkHeroArt',
   'projects/pages/ProjectsPage.tsx': 'ProjectsHeroArt', 'developer/pages/DeveloperPage.tsx': 'DeveloperHeroArt', 'settings/pages/SettingsPage.tsx': 'SettingsHeroArt',
 }
@@ -97,7 +97,7 @@ const motifs = fs.readdirSync(root).flatMap(d => {
   const dir = path.join(root, d, 'components')
   return fs.existsSync(dir) ? fs.readdirSync(dir).filter(f => /HeroArt\.tsx$/.test(f)).map(f => path.join(dir, f)) : []
 })
-check('13 motifs', motifs.length === 13, `found ${motifs.length}`)
+check('14 motifs', motifs.length === 14, `found ${motifs.length}`)
 for (const f of motifs) {
   const src = fs.readFileSync(f, 'utf8')
   const name = path.basename(f, '.tsx')

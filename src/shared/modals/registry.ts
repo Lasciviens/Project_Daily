@@ -14,6 +14,7 @@ const L = <K extends ModalKind>(kind: K, load: () => Promise<ComponentType<Entit
 const plan = () => import('../components/plan-modal/PlanEntityModals')
 const shop = () => import('../../features/shop/modals/ShopEntityModals')
 const projects = () => import('../../features/projects/modals/ProjectEntityModals')
+const football = () => import('../../features/football/modals/FootballEntityModals')
 
 export const MODAL_REGISTRY: { [K in ModalKind]: Entry<K> } = {
   'task':           L('task', () => plan().then(m => m.TaskEntityModal)),
@@ -47,6 +48,10 @@ export const MODAL_REGISTRY: { [K in ModalKind]: Entry<K> } = {
   'project-phase':  L('project-phase', () => projects().then(m => m.ProjectPhaseEntityModal)),
   'project-block':  L('project-block', () => import('../../features/projects/modals/ProjectBlockEntityModal').then(m => m.ProjectBlockEntityModal)),
   'project-entry':  L('project-entry', () => import('../../features/projects/modals/ProjectEntryEntityModal').then(m => m.ProjectEntryEntityModal)),
+  'football-follow': L('football-follow', () => football().then(m => m.FootballFollowModal)),
+  'football-team':  L('football-team', () => football().then(m => m.FootballTeamModal)),
+  'football-player': L('football-player', () => football().then(m => m.FootballPlayerModal)),
+  'football-match': L('football-match', () => football().then(m => m.FootballMatchModal)),
   'memory':         L('memory', () => import('../../features/ai/modals/MemoryEntityModal').then(m => m.MemoryEntityModal)),
   'book':           L('book', () => import('../../features/books/modals/BookEntityModal').then(m => m.BookEntityModal)),
   'undo-save':      L('undo-save', () => import('../../features/developer/modals/UndoSaveEntityModal').then(m => m.UndoSaveEntityModal)),

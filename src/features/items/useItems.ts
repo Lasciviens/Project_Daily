@@ -5,7 +5,7 @@
 // the background: a save never waits for Google and a Google failure never
 // undoes it (it is said once).
 import { useEffect } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { toast, useCalendarStore } from '../../app/store'
 import { useMutationWithFeedback } from '../../shared/hooks/useMutationWithFeedback'
 import { confirmDelete } from '../../shared/modals/deleteFlow'
@@ -22,7 +22,7 @@ import { useDeleteTask } from '../todo/hooks/useTodos'
 import {
   convertOldItems, fetchCalendarReadbackState, fetchConvertPreview, fetchRepeatDayTaskId, repeatDay, runRepeatDaysToday, saveItem,
   undoConversion,
-  type RepeatDayAnswer,
+  type RepeatDayAnswer, type SaveItemAnswer, type SaveItemContext,
 } from './itemApi'
 import {
   describeConverted, describeConvertUndone, describeRepeatDay, describeSaved, itemInputProblem,
@@ -51,6 +51,27 @@ async function resolveTaskList(input: ItemInput): Promise<string | null> {
 }
 
 /**
+ * The item save's steps around its one RPC: the checks, the section and the
+ * Google Tasks list before, Google after (in the background). `send` is
+ * app_save_item (useSaveItem) or a save that wraps it in its own transaction
+ * (163's app_football_plan) — null when that save changed nothing. Quiet: the
+ * caller says the result.
+ */
+export async function saveItemVia<A extends SaveItemAnswer>(
+  qc: QueryClient, input: ItemInput, send: (input: ItemInput, ctx: SaveItemContext) => Promise<A | null>,
+): Promise<A | null> {
+  const problem = itemInputProblem(input)
+  if (problem) throw new Error(problem)
+  const today = todayStr()
+  // The section follows the day; an edit with no day keeps its own (the database does).
+  const section = input.section ?? (input.date ? sectionForDay(input.date, today) : input.taskId ? null : 'inbox')
+  const googleTaskList = await resolveTaskList(input)
+  const answer = await send({ ...input, googleTaskList }, { section, today, googleConnected: googleConnected() })
+  if (answer) void settleItemGoogle(answer, input.google).then(() => invalidate(qc, 'taskGraph'))
+  return answer
+}
+
+/**
  * THE item save — Add and edit, one-off or repeating, one day of a repeat
  * (scope 'day') or every day of it ('all'). "Added · 15.10.2026 17:30–18:30 ·
  * on Google Calendar".
@@ -60,14 +81,7 @@ export function useSaveItem() {
   return useMutationWithFeedback<SavedItem, ItemInput>({
     action: 'save_item',
     mutationFn: async input => {
-      const problem = itemInputProblem(input)
-      if (problem) throw new Error(problem)
-      const today = todayStr()
-      // The section follows the day; an edit with no day keeps its own (the database does).
-      const section = input.section ?? (input.date ? sectionForDay(input.date, today) : input.taskId ? null : 'inbox')
-      const googleTaskList = await resolveTaskList(input)
-      const answer = await saveItem({ ...input, googleTaskList }, { section, today, googleConnected: googleConnected() })
-      void settleItemGoogle(answer, input.google).then(() => invalidate(qc, 'taskGraph'))
+      const answer = (await saveItemVia(qc, input, saveItem))!
       return {
         taskId: answer.taskId, blockId: answer.blockId, scheduleBlockId: answer.scheduleBlockId,
         created: answer.created, occurrenceDate: answer.occurrence ? answer.occurrenceDate : null,

@@ -6,8 +6,8 @@ import { qk } from './keys'
 // group lists roots, so every query under them matches by prefix.
 const groups = {
   /** A task, its schedule slot or its calendar event changed. */
-  // shop items: a deleted task clears shop_items.task_id (ON DELETE SET NULL).
-  taskGraph: [qk.tasks.all, qk.schedule.all, qk.calendar.all, qk.shop.items()],
+  // shop items and football plans: a deleted task clears their task_id (ON DELETE SET NULL).
+  taskGraph: [qk.tasks.all, qk.schedule.all, qk.calendar.all, qk.shop.items(), qk.football.plans()],
   schedule: [qk.schedule.all, qk.calendar.all],
   /** Anything in the food diary / plan / targets / water. A supplement dose is
    *  taken while its diary line exists (160), so its doses refresh too. */

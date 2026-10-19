@@ -6,7 +6,7 @@ import { AppShell } from './shell/AppShell'
 import { LoginPage } from '../features/auth/pages/LoginPage'
 import { ResetPasswordPage } from '../features/auth/pages/ResetPasswordPage'
 import {
-  HomePage, DailyPage, ShopPage, RecipesPage, MediaPage, WorkPage, TrainingPage, HealthPage,
+  HomePage, DailyPage, ShopPage, RecipesPage, MediaPage, FootballPage, WorkPage, TrainingPage, HealthPage,
   ProjectsPage, ProjectPage, WishesPage, BooksPage, DeveloperPage, SettingsPage,
 } from './pages'
 import { DevRequestComposerHost } from '../features/devRequests/composer/DevRequestComposerHost'
@@ -49,6 +49,7 @@ export function Router() {
           <Route path="/recipes"  element={<RecipesPage />} />
 
           <Route path="/media" element={<MediaPage />} />
+          <Route path="/football" element={<FootballPage />} />
           <Route path="/work"     element={<WorkPage />} />
           <Route path="/training"  element={<TrainingPage />} />
           <Route path="/health"    element={<HealthPage />} />

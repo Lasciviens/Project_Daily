@@ -3,6 +3,7 @@ import { useAutoRefreshCalendarToken } from '../../features/calendar/hooks/useCa
 import { useCalendarSeriesTopUp } from '../../features/calendar/hooks/useCalendarSeriesTopUp'
 import { useGoogleTasksBackgroundSync } from '../../features/todo/hooks/useGoogleTasksSync'
 import { useRepeatDaysOnOpen } from '../../features/items/useItems'
+import { useFootballSyncOnOpen } from '../../features/football/hooks/footballSync'
 import { refreshThisDevicePush } from '../../security/accountState'
 
 /**
@@ -19,6 +20,8 @@ export function useAppBootstrap() {
   useCalendarSeriesTopUp()
   // A repeat's day is a task on its day (156): the hourly job's fallback when the app opens.
   useRepeatDaysOnOpen()
+  // Football (163): a subscribed team's coming matches into the day; a moved kick-off moves its item.
+  useFootballSyncOnOpen()
   // Keeps this device's morning brief tied to the current login (security audit).
   useEffect(() => { void refreshThisDevicePush() }, [])
 }
