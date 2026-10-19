@@ -9,6 +9,7 @@ const M = require('../src/features/media/mediaBoard')
 const Wk = require('../src/features/work/workBoard')
 const P = require('../src/features/projects/projectBoard')
 const D = require('../src/features/developer/developerBoards')
+const F = require('../src/features/football/footballBoard')
 
 let passed = 0, failed = 0
 function check(name, cond, detail) {
@@ -44,6 +45,7 @@ for (const [name, layout, known] of [
   ['Project detail, no side blocks', P.PROJECT_BOARD_WIDE, P.PROJECT_SECTIONS],
   ['Developer list + detail', D.LIST_DETAIL_BOARD, D.LIST_DETAIL_SECTIONS],
   ['Connections', D.CONNECTIONS_BOARD, D.CONNECTION_SECTIONS],
+  ['Football', F.FOOTBALL_BOARD, F.FOOTBALL_SECTIONS],
 ]) {
   const problems = B.validateBoardLayouts(layout, known)
   check(`${name}: no problems`, problems.length === 0, problems.join('; '))
@@ -59,6 +61,19 @@ check('library sits above Discover in one column at every step', STEPS.every(s =
 check('from the laptop the one column spans every track (no right-hand column any more)', [2, 3, 4].every(s => {
   const l = B.resolveBoardLayout(M.MEDIA_BOARD, s)
   return l.columns.length === 1 && l.columns[0].span === l.tracks
+}))
+
+console.log('Football')
+check('every section at every step', STEPS.every(s => F.FOOTBALL_SECTIONS.every(k => keys(F.FOOTBALL_BOARD, s).includes(k))))
+check('live (often empty) heads the main stack, above coming up, at every step', STEPS.every(s => {
+  const st = B.resolveBoardLayout(F.FOOTBALL_BOARD, s).columns[0].stack
+  return st[0] === 'live' && st[1] === 'next'
+}))
+check('from the laptop the tables sit beside the matches', [2, 3, 4].every(s => columnOf(F.FOOTBALL_BOARD, s, 'tables') > 0))
+check('Following is the last card in the last track from step 2', [2, 3, 4].every(s => {
+  const l = B.resolveBoardLayout(F.FOOTBALL_BOARD, s)
+  const last = l.columns[l.columns.length - 1].stack
+  return last[last.length - 1] === 'following'
 }))
 
 console.log('Work')

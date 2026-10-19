@@ -61,11 +61,16 @@ export function saveAnswerOf(raw: unknown): SaveItemAnswer {
   }
 }
 
+export interface SaveItemContext { section: string | null; today: string; googleConnected: boolean }
+
+/** What app_save_item receives — also what a save that wraps it passes on (163's app_football_plan). */
+export function itemPayload(input: ItemInput, ctx: SaveItemContext): Record<string, unknown> {
+  return { ...input, section: ctx.section, today: ctx.today, googleConnected: ctx.googleConnected }
+}
+
 /** THE item save (app_save_item). `section`: itemRules.sectionForItem; `today`: the device's day. */
-export async function saveItem(input: ItemInput, ctx: { section: string | null; today: string; googleConnected: boolean }): Promise<SaveItemAnswer> {
-  const { data, error } = await supabase.rpc('app_save_item', {
-    p_item: { ...input, section: ctx.section, today: ctx.today, googleConnected: ctx.googleConnected },
-  })
+export async function saveItem(input: ItemInput, ctx: SaveItemContext): Promise<SaveItemAnswer> {
+  const { data, error } = await supabase.rpc('app_save_item', { p_item: itemPayload(input, ctx) })
   if (error) throw rpcError(error)
   return saveAnswerOf(data)
 }

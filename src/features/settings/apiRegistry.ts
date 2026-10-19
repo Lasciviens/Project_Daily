@@ -400,6 +400,21 @@ export const API_REGISTRY: readonly ApiEntry[] = [
     cost: 'free-tier',
     since: '30.09.2026', sinceFrom: 'supabase/functions/trakt-api/index.ts',
   },
+  {
+    id: 'espn', name: 'ESPN (football)', provider: 'ESPN', category: 'Media', official: false,
+    docsUrl: 'https://github.com/Lasciviens/Project_Daily/blob/main/docs/integrations/espn.md',
+    purpose: 'Football fixtures, results, tables, clubs, squads and match line-ups for the teams and tournaments you follow.',
+    transports: ['browser'],
+    connection: 'Browser direct: the undocumented endpoints espn.com\'s own pages use (no key, open CORS). Followed teams and planned matches are stored in the app.',
+    endpoints: ['site.api.espn.com/apis/site/v2/sports/soccer', 'site.api.espn.com/apis/v2/sports/soccer', 'site.web.api.espn.com/apis/search/v2'],
+    auth: 'none',
+    direction: 'read', cadence: 'On open of Football; a live match every minute; the subscription on app open',
+    usedIn: [{ label: 'Football', path: '/football' }],
+    tables: ['football_follows', 'football_plans'], migrations: ['163'],
+    cost: 'free',
+    caveats: ['Unofficial: a field or an endpoint can change without warning — the page then says the data isn\'t available.', 'Private, low-volume use only.', 'Times are UTC and shown in Norway\'s time; far-ahead fixtures have no fixed kick-off yet.'],
+    since: '19.10.2026', sinceFrom: 'src/features/football/api/espnApi.ts',
+  },
 
   // ── Games ──────────────────────────────────────────────────────────────
   {

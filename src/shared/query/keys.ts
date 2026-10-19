@@ -159,6 +159,21 @@ export const qk = {
     /** Every project's open questions, for the list. */
     openQuestions: () => ['projects', 'open-questions'] as const,
   },
+  /** Football (163): the owner's follows and plans, and ESPN's answers (never stored). */
+  football: {
+    all: ['football'] as const,
+    follows: () => ['football', 'follows'] as const,
+    plans: () => ['football', 'plans'] as const,
+    espn: ['football', 'espn'] as const,
+    fixtures: (teamId: string) => ['football', 'espn', 'fixtures', teamId] as const,
+    results: (teamId: string) => ['football', 'espn', 'results', teamId] as const,
+    month: (league: string, month: string) => ['football', 'espn', 'month', league, month] as const,
+    standings: (league: string) => ['football', 'espn', 'standings', league] as const,
+    team: (league: string, teamId: string) => ['football', 'espn', 'team', league, teamId] as const,
+    roster: (league: string, teamId: string) => ['football', 'espn', 'roster', league, teamId] as const,
+    match: (league: string, eventId: string) => ['football', 'espn', 'match', league, eventId] as const,
+    search: (q: string) => ['football', 'espn', 'search', q] as const,
+  },
   work: {
     all: ['work'] as const,
     note: () => ['work', 'note'] as const,

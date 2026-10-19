@@ -6,6 +6,9 @@
 // ESPN's endpoints are unofficial: every parser takes `unknown` and turns
 // anything odd into "nothing" (an empty list, a null field) — never a throw.
 
+import { defaultGoogleTarget } from '../items/itemRules'
+import type { ItemInput } from '../items/itemTypes'
+
 // ── Our shapes ──────────────────────────────────────────────────────────────
 
 export interface FbTeamRef {
@@ -253,6 +256,13 @@ export function parseStandings(raw: unknown): FbTable[] {
   return out
 }
 
+export interface FbStandings { name: string; tables: FbTable[] }
+
+/** A tournament's name ("UEFA Champions League") with its tables ("League Phase"). */
+export function parseLeagueStandings(raw: unknown): FbStandings {
+  return { name: str(obj(raw)?.name) ?? '', tables: parseStandings(raw) }
+}
+
 const GROUPS: Record<string, PositionGroup> = { G: 'Goalkeepers', D: 'Defenders', M: 'Midfielders', F: 'Forwards' }
 export const GROUP_ORDER: readonly PositionGroup[] = ['Goalkeepers', 'Defenders', 'Midfielders', 'Forwards', 'Others']
 
@@ -489,11 +499,11 @@ export interface PlanRow {
   time_valid: boolean
 }
 
-export interface SyncPlan {
+export interface SyncPlan<P extends PlanRow = PlanRow> {
   /** Subscribed matches not in your day yet. */
   add:  FbMatch[]
   /** Planned matches whose kick-off ESPN moved (or fixed): the item follows. */
-  move: Array<{ match: FbMatch; plan: PlanRow }>
+  move: Array<{ match: FbMatch; plan: P }>
 }
 
 /**
@@ -503,13 +513,13 @@ export interface SyncPlan {
  * hand — whose kick-off moved follows it. A finished, cancelled or postponed
  * match is left as it is.
  */
-export function syncPlan(matches: readonly FbMatch[], subscribedTeamIds: ReadonlySet<string>, plans: readonly PlanRow[], nowIso: string): SyncPlan {
+export function syncPlan<P extends PlanRow>(matches: readonly FbMatch[], subscribedTeamIds: ReadonlySet<string>, plans: readonly P[], nowIso: string): SyncPlan<P> {
   const now = Date.parse(nowIso)
   const until = now + PLAN_AHEAD_DAYS * 86_400_000
   const planOf = new Map(plans.map(p => [p.event_id, p]))
   const seen = new Set<string>()
   const add: FbMatch[] = []
-  const move: SyncPlan['move'] = []
+  const move: SyncPlan<P>['move'] = []
   for (const m of [...matches].sort(byKickoff)) {
     if (seen.has(m.id) || m.state !== 'pre') continue
     seen.add(m.id)
@@ -522,4 +532,36 @@ export function syncPlan(matches: readonly FbMatch[], subscribedTeamIds: Readonl
     if (m.timeValid && at > now && at <= until && involves(m, subscribedTeamIds)) add.push(m)
   }
   return { add, move }
+}
+
+/** A subscribed match as a new item: personal, Google as for any item (a time → Calendar). */
+export function newMatchItem(m: FbMatch): ItemInput {
+  const mi = matchItem(m)
+  return {
+    title: mi.title, notes: mi.notes, domain: 'personal', priority: 'medium',
+    date: mi.date, time: mi.time, durationMinutes: mi.durationMinutes,
+    google: defaultGoogleTarget({ time: mi.time, repeat: null }),
+  }
+}
+
+/** A planned match's item at ESPN's new kick-off: its title, notes, Google choice and length are the owner's and stay. */
+export function movedMatchItem(item: ItemInput, m: FbMatch): ItemInput {
+  const mi = matchItem(m)
+  return {
+    ...item, scope: 'item', section: null, deadline: null,
+    date: mi.date, time: mi.time,
+    durationMinutes: mi.time ? (item.durationMinutes ?? MATCH_MINUTES) : null,
+  }
+}
+
+/** The months of a tournament's matches the page reads (`YYYYMM`, Norway's calendar): this one and
+ *  the next, and the last one while the last `resultDays` reach into it. */
+export function leagueMonths(nowIso: string, resultDays = 10): string[] {
+  const ym = (iso: string) => osloParts(iso).date.slice(0, 7).replace('-', '')
+  const now = ym(nowIso)
+  const y = Number(now.slice(0, 4))
+  const m = Number(now.slice(4))
+  const next = m === 12 ? `${y + 1}01` : `${y}${String(m + 1).padStart(2, '0')}`
+  const back = ym(new Date(Date.parse(nowIso) - resultDays * 86_400_000).toISOString())
+  return back !== now ? [back, now, next] : [now, next]
 }

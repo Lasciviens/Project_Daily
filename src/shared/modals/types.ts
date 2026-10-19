@@ -86,6 +86,14 @@ export type EntityModalRequest =
   | { kind: 'project-block'; projectId: string; id?: string; blockKind?: 'table' | 'log' | 'decisions' | 'pages' | 'links' }
   /** Add an entry to a block (a row, a log entry, a question, a page, a link), or open one by `id`. */
   | { kind: 'project-entry'; projectId: string; blockId: string; id?: string }
+  /** Football (163): "+ Follow" — find a team or tournament on ESPN. */
+  | { kind: 'football-follow' }
+  /** A club: standing, form, next match, squad. `league` is where ESPN reads it (its own league when left out). */
+  | { kind: 'football-team'; teamId: string; league?: string }
+  /** One player of a club's squad (`league`: the squad's). */
+  | { kind: 'football-player'; teamId: string; league: string; playerId: string }
+  /** A match: score or kick-off, goals, line-ups, venue, Plan it. */
+  | { kind: 'football-match'; eventId: string; league: string }
   | { kind: 'memory'; id: string }
   /** One book in the Books library (books, migration 126). */
   | { kind: 'book'; id: string }

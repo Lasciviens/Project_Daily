@@ -7,6 +7,7 @@ const assert = require('assert')
 const fs = require('fs')
 const path = require('path')
 const M = require('../src/features/football/footballModel.ts')
+const V = require('../src/features/football/footballView.ts')
 
 let n = 0
 const eq = (a, b, msg) => { assert.deepStrictEqual(a, b, msg); n++ }
@@ -90,6 +91,8 @@ eq(M.scoreOf(undefined), null, 'no score')
   eq([tur[0].rows[0].team.id, tur[0].rows[0].points], ['432', 19], 'Süper Lig: Galatasaray top with 19')
   eq(M.parseStandings({ children: [{ name: 'X', standings: { entries: [{ team: null }] } }] }), [], 'a table with no readable row is dropped')
   eq(M.parseStandings('x'), [], 'junk')
+  eq(M.parseLeagueStandings(fx('standings-cl')).name, 'UEFA Champions League', 'the tournament\'s name above its tables')
+  eq(M.parseLeagueStandings(null), { name: '', tables: [] }, 'junk: no name, no tables')
 }
 
 // ── tableSlice: the top, then around the teams you follow ──
@@ -188,6 +191,31 @@ eq(M.osloParts('2026-10-21T22:30Z'), { date: '2026-10-22', time: '00:30' }, 'aft
   eq(M.matchItem({ ...lille, timeValid: false }).time, null, 'no fixed kick-off: no time, no block')
 }
 
+// ── The items the subscription writes ──
+{
+  const lille = fixtures.find(m => m.id === '401915396')
+  eq(M.newMatchItem(lille), {
+    title: '⚽ Lille – Galatasaray', notes: 'UEFA Champions League · League Phase · Decathlon Arena - Stade Pierre-Mauroy, Lille',
+    domain: 'personal', priority: 'medium', date: '2026-10-21', time: '18:45', durationMinutes: 120, google: 'calendar',
+  }, 'a new match item: personal, on Google Calendar like any timed item')
+  eq(M.newMatchItem({ ...lille, timeValid: false }).google, 'tasks', 'no kick-off yet: Google Tasks, like any item without a time')
+  const mine = { taskId: 't1', blockId: 'b1', scope: 'item', title: 'Galatasaray away 🔥', notes: 'with Ali', domain: 'personal', priority: 'high',
+    date: '2026-10-21', time: '18:45', durationMinutes: 150, deadline: null, repeat: null, google: 'both', googleTaskList: null, source: null }
+  eq(M.movedMatchItem(mine, { ...lille, kickoff: '2026-10-22T19:00Z' }), {
+    ...mine, section: null, date: '2026-10-22', time: '21:00',
+  }, 'a moved kick-off moves day and time; the owner\'s title, notes, priority, length and Google choice stay')
+  eq(M.movedMatchItem({ ...mine, durationMinutes: null }, lille).durationMinutes, 120, 'no length yet: two hours')
+  eq([M.movedMatchItem(mine, { ...lille, timeValid: false }).time, M.movedMatchItem(mine, { ...lille, timeValid: false }).durationMinutes], [null, null],
+  'ESPN un-fixed the time: no time, no length')
+}
+
+// ── The months a tournament is read for ──
+eq(M.leagueMonths('2026-10-19T12:00:00Z'), ['202610', '202611'], 'this month and the next')
+eq(M.leagueMonths('2026-10-05T12:00:00Z'), ['202609', '202610', '202611'], 'early in a month: the last one too (results)')
+eq(M.leagueMonths('2026-12-28T12:00:00Z'), ['202612', '202701'], 'the year turns')
+eq(M.leagueMonths('2026-10-31T23:30:00Z'), ['202610', '202611', '202612'], '00:30 on 01.11 in Norway is November (UTC still says October)')
+eq(M.leagueMonths('2026-10-20T12:00:00Z', 30), ['202609', '202610', '202611'], 'the reach follows resultDays')
+
 // ── The subscription ──
 {
   const NOW = '2026-10-19T12:00:00Z'
@@ -209,6 +237,38 @@ eq(M.osloParts('2026-10-21T22:30Z'), { date: '2026-10-22', time: '00:30' }, 'aft
   eq(ids(M.syncPlan([{ ...derby, state: 'postponed' }], gs, [], NOW)).add, [], 'postponed: left alone')
   eq(ids(M.syncPlan([lille, lille], gs, [], NOW)).add, ['401915396'], 'the same match from two sources: once')
 }
+
+// ── The page's view ──
+eq([V.dayLabel('2026-10-19', '2026-10-19'), V.dayLabel('2026-10-20', '2026-10-19'), V.dayLabel('2026-10-18', '2026-10-19'), V.dayLabel('2026-10-21', '2026-10-19')],
+  ['Today', 'Tomorrow', 'Yesterday', 'Wed 21.10.2026'], 'day headings: relative words, else weekday and DD.MM.YYYY')
+eq(V.dayLabel('2027-01-01', '2026-12-31'), 'Tomorrow', 'tomorrow across the year')
+{
+  const days = V.byDayAndLeague([...fixtures, ...month.filter(m => m.state === 'pre')].sort((a, b) => a.kickoff.localeCompare(b.kickoff)))
+  eq(days.map(d => d.date).slice(0, 2), ['2026-10-20', '2026-10-21'], 'by Norwegian day')
+  eq(days[0].leagues.map(g => [g.name, g.matches.length]), [['UEFA Champions League', 2]], 'a day\'s matches under their competition')
+  const team = { kind: 'team', ref: '432' }
+  eq(V.filterMatches([...fixtures, ...month], team).every(m => m.home.team.id === '432' || m.away.team.id === '432'), true, 'a team filter keeps its matches')
+  eq(V.filterMatches(fixtures, { kind: 'league', ref: 'tur.1' }).map(m => m.id), ['401888265', '401888259', '401888371'], 'a tournament filter keeps its matches')
+  eq(V.filterMatches(fixtures, null).length, fixtures.length, 'no filter: everything')
+}
+{
+  const f = (kind, ref, league) => ({ kind, ref, league, name: ref })
+  const follows = [f('team', '432', 'tur.1'), f('league', 'uefa.champions', 'uefa.champions'), f('team', '436', 'tur.1')]
+  eq(V.tableLeagues(follows, null), ['uefa.champions', 'tur.1'], 'tournaments\' tables, then the teams\' leagues, once each')
+  eq(V.tableLeagues(follows, { kind: 'team', ref: '432' }), ['tur.1'], 'a filter shows its own table')
+  const t = (name, ids) => ({ name, rows: ids.map((id, i) => ({ rank: i + 1, team: { id } })) })
+  eq(V.tablesToShow([t('A', ['1', '2']), t('B', ['432', '3']), t('C', ['4'])], new Set(['432'])), { shown: [t('B', ['432', '3'])], hidden: 2 },
+    'a group stage: the group with a followed team')
+  eq(V.tablesToShow([t('A', ['1']), t('B', ['2'])], new Set(['432'])).shown.map(x => x.name), ['A'], 'no followed team: the first table')
+  const tur = M.parseStandings(fx('standings-tur'))[0].rows
+  const tones = V.noteTones([...tur, { ...tur[0], note: { color: '#ff0000', text: 'Relegation' } }])
+  eq([...tones.values()][0], 'success', 'the top zone is success')
+  eq(tones.get('Relegation'), 'danger', 'relegation is danger')
+  eq([...tones.values()].every(x => ['success', 'info', 'highlight', 'upcoming', 'danger'].includes(x)), true, 'zones are THEME tones, never ESPN\'s colours')
+}
+eq(V.SUGGESTIONS.map(s => s.ref), ['432', 'uefa.champions', 'fifa.world', 'uefa.euro'], 'suggestions: Galatasaray, Champions League, World Cup, Euro (owner, 19.10.2026)')
+eq(V.SUGGESTIONS.every(s => /^[a-z0-9][a-z0-9._-]{0,59}$/.test(s.ref) && (s.kind !== 'team' || /^\d+$/.test(s.ref))), true, 'suggestions pass 163\'s ref checks')
+eq([V.scoreText(results[0]), V.scoreText(fixtures[0])], ['0–1', null], 'score text: home first; none before kick-off')
 
 // ── Guards: no surface parses ESPN on its own ──
 {
