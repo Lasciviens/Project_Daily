@@ -73,7 +73,7 @@ export function splitTitleQty(title: string): { name: string; qty: string | null
 }
 
 /**
- * The day's eaten totals as the Nutrition card shows them: every eaten line's
+ * The day's eaten totals as Food · Today shows them: every eaten line's
  * exact values summed, rounded once — so a figure is the peek's exact total
  * rounded ("8.4 g" → "8g"), and many small parts never round away to 0.
  */

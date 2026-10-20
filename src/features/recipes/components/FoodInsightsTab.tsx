@@ -27,7 +27,7 @@ const WINDOWS: SegmentedOption<Window>[] = [
 ]
 
 // Every nutrient a diary line stores (food_log_entries), in the order the
-// Nutrition card shows them.
+// day's totals on Food · Today show them.
 const AVERAGES: { key: keyof FoodInsights['avg']; label: string; unit: string; color: string }[] = [
   { key: 'kcal', label: 'Calories', unit: 'kcal', color: MACRO_COLOR.calories },
   { key: 'protein', label: 'Protein', unit: 'g', color: MACRO_COLOR.protein },

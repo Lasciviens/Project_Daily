@@ -10,7 +10,7 @@ export type { DayTargets, NutritionGoal, DayTargetProfiles }
 
 // The goal — phase + start date, daily targets and body targets — one DB row
 // per user (day_targets, migrations 086 + 113). Every screen reads it here:
-// NutritionCard, FoodTodayTab, WaterTracker, useNutritionCoach, the goal
+// FoodTodayTab, WaterTracker, useNutritionCoach, the goal
 // editor, Health's Goal progress and Overview.
 //
 // `placeholderData` (NOT `initialData`) renders the defaults instantly

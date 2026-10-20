@@ -189,14 +189,18 @@ check('Day step 4: the glance board sits beside the schedule (owner\'s call)', (
   const l = B.resolveBoardLayout(D.DAY_BOARD, 4)
   return l.columns.length === 2 && l.columns[0].stack.includes('hero') && eq(l.columns[1].stack, ['glance']) && l.columns[1].span === 3
 })())
-// TodaySummary's own columns (36 / 55 / 90rem) at the width the board gives it.
-const glanceCols = (px) => px >= 90 * 16 ? 4 : px >= 55 * 16 ? 3 : px >= 36 * 16 ? 2 : 1
+// TodaySummary's own columns (36 / 55rem) at the width the board gives it — six cards, so never a fourth.
+const glanceCols = (px) => px >= 55 * 16 ? 3 : px >= 36 * 16 ? 2 : 1
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '../src/features/daily/components/TodaySummary.tsx'), 'utf8')
+  check('glance board: no Nutrition card on Personal (owner, 16.10.2026) and no fourth column', !/NutritionCard/.test(src) && !/grid-cols-4/.test(src))
+}
 check('glance board: 1 column on a phone', glanceCols(W.phone) === 1)
 check('glance board: 2 on a 768 tablet and a landscape phone', glanceCols(W.tablet) === 2 && glanceCols(852 - 48) === 2)
-check('glance board: 3 on a 1024 tablet (as before the board; Nutrition spans two rows, so it is not one 892px card)', glanceCols(W.tablet1024) === 3)
+check('glance board: 3 on a 1024 tablet', glanceCols(W.tablet1024) === 3)
 check('glance board: 3 on a 1280 laptop', glanceCols(W.laptop1280) === 3)
 check('glance board: 3 at 1469 (full width)', glanceCols(W.laptop) === 3)
-check('glance board: 4 at 1920 (full width under hero + rail)', glanceCols(W.fhd) === 4)
+check('glance board: 3 at 1920 (full width under hero + rail: six cards in two full rows)', glanceCols(W.fhd) === 3)
 check('glance board: 3 beside the schedule at 2450', glanceCols(B.columnWidthPx(W.monitor, { tracks: 4, main: '56rem' }, 1, 3)) === 3)
 check('glance heading hidden only where the board sits beside the hero (step 4)', [1, 2, 3].every(s => !D.glanceInColumn(s)) && D.glanceInColumn(4))
 // DayHero's split: the day list's timed column | Anytime from a 54rem card; stacked below.
