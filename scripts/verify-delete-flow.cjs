@@ -199,6 +199,7 @@ const tick = () => new Promise(r => setTimeout(r, 0))
   // none is a user delete with Undo. A new one (also in a listed file) fails
   // here until it goes through the flow or is counted with its reason.
   const ALLOWED_RAW_DELETES = {
+    'src/features/health/api/sleepConfirmApi.ts': [1, 'Undo of "It\'s complete" (164): takes the confirmation back from the toast\'s Undo — the undo itself, nothing to ask'],
     'src/shared/utils/logError.ts': [1, 'trims old error logs'],
     'src/shared/utils/deletedRows.ts': [1, 'the shared delete itself (fallback before migration 144)'],
     'src/shared/hooks/usePushNotifications.ts': [1, 'turning notifications off on this device'],
