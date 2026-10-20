@@ -4,7 +4,7 @@ import { useTimeBlocks, useTrainingBlocks, useScheduleBlocks } from '../../daily
 import { useCalendarEventsForDay } from '../../calendar/hooks/useCalendar'
 import { aheadOnDay, buildDaySchedule, plannedMinutes } from '../../daily/daySchedule'
 import type { TaskCounts } from '../../todo/taskRules'
-import { shiftDateStr, todayStr } from '../../../shared/utils/dateUtils'
+import { mondayOfStr, shiftDateStr, todayStr } from '../../../shared/utils/dateUtils'
 import { useNow } from './useNow'
 import { pickNextTrainingSession, type NextTrainingSession } from '../../training/trainingPlanModel'
 import { NEXT_SESSION_LOOKAHEAD_DAYS } from '../../training/hooks/useTrainingSessions'
@@ -71,16 +71,29 @@ function minuteAfter(hhmm: string): string {
   return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`
 }
 
+/**
+ * The training read behind a day's "next session": today's runs from today
+ * (the same read as Training's banner and plan), any other day's covers its
+ * whole week and the lookahead after it, so picking days in a week reads it
+ * once (owner, 16.10.2026: "why is it so slow to change date?").
+ * pickNextTrainingSession ignores the rows before the day.
+ */
+export function trainingRangeFor(date: string, today: string): { from: string; to: string } {
+  if (date === today) return { from: date, to: shiftDateStr(date, NEXT_SESSION_LOOKAHEAD_DAYS) }
+  const monday = mondayOfStr(date)
+  return { from: monday, to: shiftDateStr(monday, 6 + NEXT_SESSION_LOOKAHEAD_DAYS) }
+}
+
 export function useTodayOverview(date: string = todayStr()): TodayOverview {
   const prevDay = shiftDateStr(date, -1)
-  const trainingTo = shiftDateStr(date, NEXT_SESSION_LOOKAHEAD_DAYS)
+  const training = trainingRangeFor(date, todayStr())
 
   const dayTasks = useDayTasks(date)
   const blocksQ = useTimeBlocks(date)
   const prevBlocksQ = useTimeBlocks(prevDay)
   const templatesQ = useScheduleBlocks()
   const calendarQ = useCalendarEventsForDay(date)
-  const trainingQ = useTrainingBlocks(date, trainingTo)
+  const trainingQ = useTrainingBlocks(training.from, training.to)
   // The clock ticks on today, so "Now" / "Next up" move on without a refetch.
   const nowMs = useNow(date === todayStr(), 60_000)
 
@@ -129,7 +142,10 @@ export function useTodayOverview(date: string = todayStr()): TodayOverview {
       plannedMinutes: plannedMinutes(items),
       nextTraining,
       trainingAfterNext,
-      isLoading: dayTasks.isLoading || blocksQ.isLoading || templatesQ.isLoading,
+      // Every read the tiles show waits here, so a picked day appears once, complete (a disabled
+      // read — no Google token — is never loading).
+      isLoading: dayTasks.isLoading || blocksQ.isLoading || templatesQ.isLoading
+        || prevBlocksQ.isLoading || calendarQ.isLoading || trainingQ.isLoading,
     }
-  }, [date, nowMs, dayTasks.open, dayTasks.done, dayTasks.cancelled, dayTasks.counts, dayTasks.isLoading, blocksQ.data, blocksQ.isLoading, prevBlocksQ.data, templatesQ.data, templatesQ.isLoading, calendarQ.data, trainingQ.data])
+  }, [date, nowMs, dayTasks.open, dayTasks.done, dayTasks.cancelled, dayTasks.counts, dayTasks.isLoading, blocksQ.data, blocksQ.isLoading, prevBlocksQ.data, prevBlocksQ.isLoading, templatesQ.data, templatesQ.isLoading, calendarQ.data, calendarQ.isLoading, trainingQ.data, trainingQ.isLoading])
 }

@@ -1,5 +1,5 @@
 import { useCallback, useMemo } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { queryOptions, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import {
   fetchAllTasks,
@@ -65,13 +65,15 @@ export function useOpenTrainingSessionTasks() {
  * brief, the week strip's today count): one read, split by taskRules.dayTasks
  * — open (overdue first), done and cancelled on that day, and their counts.
  */
+export const dayTasksQuery = (day: string, today: string) => queryOptions({
+  queryKey: qk.tasks.day(day, today),
+  queryFn: () => fetchTasksForDay(day, today),
+  staleTime: STALE.live,
+})
+
 export function useDayTasks(day: string) {
   const today = todayStr()
-  const query = useQuery({
-    queryKey: qk.tasks.day(day, today),
-    queryFn: () => fetchTasksForDay(day, today),
-    staleTime: STALE.live,
-  })
+  const query = useQuery(dayTasksQuery(day, today))
   const split = useMemo(() => dayTasks(query.data ?? [], day, today), [query.data, day, today])
   return { ...split, section: sectionForDay(day, today), isLoading: query.isLoading, ready: query.data !== undefined, isError: query.isError && query.data === undefined, refetch: query.refetch }
 }

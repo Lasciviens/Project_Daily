@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { useCalendarStore } from '../../../app/store'
 import { supabase } from '../../../integrations/supabase/client'
@@ -127,22 +127,37 @@ function useSelectedCalendarIds(): string[] {
 // in the week/month grid's dot indicators, which already looped
 // `selectedCalendarIds` via useCalendarEventDatesForRange below. Mirrors
 // that same loop-and-merge shape.
-export function useCalendarEventsForDay(dateStr: string) {
-  const token = useValidToken()
-  const { setAccessToken } = useCalendarStore()
-  const calIds = useSelectedCalendarIds()
-
-  return useQuery({
+function calendarDayQuery(dateStr: string, calIds: string[], token: string | null, setAccessToken: (t: string, e: number) => void) {
+  return {
     queryKey: qk.calendar.day(dateStr, calIds.join(',')),
     queryFn:  async () => {
       const activeToken = await ensureToken(token, setAccessToken)
       const results = await Promise.all(calIds.map(id => fetchEventsForDay(activeToken, dateStr, id)))
       return sortEvents(results.flat())
     },
-    enabled:   !!token,
     staleTime: STALE.default,
     retry:     false,
-  })
+  } as const
+}
+
+export function useCalendarEventsForDay(dateStr: string) {
+  const token = useValidToken()
+  const { setAccessToken } = useCalendarStore()
+  const calIds = useSelectedCalendarIds()
+  return useQuery({ ...calendarDayQuery(dateStr, calIds, token, setAccessToken), enabled: !!token })
+}
+
+/** Reads days' calendar events ahead (Home's week strip), into the same cache entries the day view reads. */
+export function useCalendarDaysPrefetch(): (dates: readonly string[]) => void {
+  const qc = useQueryClient()
+  const token = useValidToken()
+  const { setAccessToken } = useCalendarStore()
+  // The ids as one string: the list is a new array on every render.
+  const ids = useSelectedCalendarIds().join(',')
+  return useCallback((dates: readonly string[]) => {
+    if (!token) return
+    for (const d of dates) void qc.prefetchQuery(calendarDayQuery(d, ids.split(','), token, setAccessToken))
+  }, [qc, token, setAccessToken, ids])
 }
 
 export function useCalendarList() {
