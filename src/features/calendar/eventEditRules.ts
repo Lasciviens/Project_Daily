@@ -17,6 +17,8 @@ export interface EditableEvent {
   organizer?: { email?: string; self?: boolean }
   guestsCanModify?: boolean
   locked?: boolean
+  /** On one instance of a repeating event: its series. */
+  recurringEventId?: string
 }
 
 /** The form: an all-day event's first and LAST day (inclusive — Google's end is the day after), or a start and end. */
@@ -80,8 +82,11 @@ export function eventTimesChanged(before: EventEditDraft, after: EventEditDraft)
 export interface EventAccess {
   /** The title, description and times can be changed here. */
   canEdit: boolean
-  /** Some event types can't be all-day (Google: out-of-office and focus time). */
+  /** Some event types can't be all-day (Google: out-of-office and focus time); one day of a
+   *  repeating event keeps its own form (Google's guide doesn't cover switching an instance). */
   allDayAllowed: boolean
+  /** It can be deleted from your calendar (a calendar you can write; not a birthday or a Gmail event). */
+  canDelete: boolean
   /** Why it can't be changed here (it can be in Google Calendar, where allowed). */
   reason: string | null
 }
@@ -95,12 +100,18 @@ export interface EventAccess {
  * of their own — those open in Google Calendar instead.
  */
 export function eventEditAccess(e: EditableEvent, accessRole: string | null | undefined): EventAccess {
-  const none = (reason: string): EventAccess => ({ canEdit: false, allDayAllowed: false, reason })
-  if (accessRole === 'reader' || accessRole === 'freeBusyReader') return none('It is on a calendar you can only view.')
+  const viewOnly = accessRole === 'reader' || accessRole === 'freeBusyReader'
+  const special = e.eventType === 'birthday' || e.eventType === 'fromGmail'
+  const none = (reason: string): EventAccess => ({ canEdit: false, allDayAllowed: false, canDelete: !viewOnly && !special, reason })
+  if (viewOnly) return none('It is on a calendar you can only view.')
   if (e.eventType === 'birthday') return none('A birthday comes from your contacts.')
   if (e.eventType === 'fromGmail') return none('It was added from Gmail.')
   if (e.eventType === 'workingLocation') return none('It is a working location.')
   if (e.locked) return none('Its organizer has locked it.')
-  if (e.organizer && e.organizer.self === false && !e.guestsCanModify) return none('You are a guest: only its organizer can change it.')
-  return { canEdit: true, allDayAllowed: e.eventType !== 'outOfOffice' && e.eventType !== 'focusTime', reason: null }
+  // "organizer.self … Read-only. The default is False": Google leaves a false out, so only `true` is yours.
+  if (e.organizer && e.organizer.self !== true && !e.guestsCanModify) return none('You are a guest: only its organizer can change it.')
+  return {
+    canEdit: true, canDelete: true, reason: null,
+    allDayAllowed: e.eventType !== 'outOfOffice' && e.eventType !== 'focusTime' && !e.recurringEventId,
+  }
 }

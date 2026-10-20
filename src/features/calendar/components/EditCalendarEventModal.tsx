@@ -42,7 +42,9 @@ export function EditCalendarEventModal({ event, onClose }: Props) {
   const calendarId = event.calendarId ?? 'primary'
   const { data: calendars } = useCalendarList()
   const access = eventEditAccess(event, calendars?.find(c => c.id === calendarId)?.accessRole)
-  const [initial] = useState(() => eventEditDraft(event, LOCAL_TZ))
+  // The event's own zone (it may have been made elsewhere); the device's when it names none.
+  const zone = event.start.timeZone ?? LOCAL_TZ
+  const [initial] = useState(() => eventEditDraft(event, zone))
   const [draft, setDraft] = useState<EventEditDraft>(initial)
   const [title, setTitle] = useState(event.summary ?? '')
   const [desc, setDesc] = useState(event.description ?? '')
@@ -59,7 +61,7 @@ export function EditCalendarEventModal({ event, onClose }: Props) {
     if (!title.trim() || problem) return
     const patch: Record<string, unknown> = { summary: title.trim() }
     if (desc !== (event.description ?? '')) patch.description = desc
-    if (eventTimesChanged(initial, draft)) Object.assign(patch, eventEditTimes(draft, LOCAL_TZ))
+    if (eventTimesChanged(initial, draft)) Object.assign(patch, eventEditTimes(draft, zone))
     try {
       await update.mutateAsync({ calendarId, eventId: event.id, patch })
       onClose()
@@ -79,10 +81,18 @@ export function EditCalendarEventModal({ event, onClose }: Props) {
   if (!access.canEdit) {
     const when = initial.allDay
       ? initial.endDate === initial.startDate ? `${formatWeekdayDate(initial.startDate)} · all day` : `${formatWeekdayDate(initial.startDate)} – ${formatWeekdayDate(initial.endDate)} · all day`
-      : `${formatWeekdayDate(initial.startDate)} ${initial.startTime}–${initial.endTime}`
+      : initial.endDate === initial.startDate ? `${formatWeekdayDate(initial.startDate)} ${initial.startTime}–${initial.endTime}`
+      : `${formatWeekdayDate(initial.startDate)} ${initial.startTime} – ${formatWeekdayDate(initial.endDate)} ${initial.endTime}`
     return (
       <ModalShell onClose={onClose} title={event.summary || 'Event'} subtitle="Google Calendar" size="sm"
-        footer={<div className="flex justify-end"><Button onClick={onClose}>Close</Button></div>}>
+        footer={
+          <div className="flex items-center gap-2">
+            {access.canDelete && (
+              <Button variant="ghost" className="text-danger" onClick={handleDelete} disabled={isPending} loading={remove.isPending}>Delete</Button>
+            )}
+            <Button className="ml-auto" onClick={onClose}>Close</Button>
+          </div>
+        }>
         <div className="flex flex-col gap-3">
           <p className="text-body tabular-nums text-fg">{when}</p>
           {event.description && <p className="whitespace-pre-wrap text-body text-fg-2">{event.description}</p>}
@@ -138,34 +148,40 @@ export function EditCalendarEventModal({ event, onClose }: Props) {
           <div className="grid grid-cols-1 gap-3 min-[26rem]:grid-cols-2">
             <div>
               <span className="field-label">First day</span>
-              <DateInput aria-label="First day" value={draft.startDate}
+              <DateInput aria-label="First day" value={draft.startDate} className="input w-full tabular-nums"
                 onChange={v => set({ startDate: v, endDate: draft.endDate < v ? v : draft.endDate })} />
             </div>
             <div>
               <span className="field-label">Last day</span>
-              <DateInput aria-label="Last day" value={draft.endDate} min={draft.startDate} onChange={v => set({ endDate: v })} />
+              <DateInput aria-label="Last day" value={draft.endDate} min={draft.startDate} className="input w-full tabular-nums" onChange={v => set({ endDate: v })} />
             </div>
           </div>
         ) : (
           <div className="flex flex-col gap-3">
+            {/* The day beside its time from 26rem, stacked on a phone; the time picker gets the room it needs (it sizes on its own width). */}
             <div>
               <span className="field-label">Starts</span>
-              <div className="flex flex-wrap items-center gap-2">
-                <DateInput aria-label="Start day" value={draft.startDate}
+              <div className="flex flex-col gap-2 min-[26rem]:flex-row min-[26rem]:items-center">
+                <DateInput aria-label="Start day" value={draft.startDate} className="input w-[10rem] tabular-nums"
                   onChange={v => set({ startDate: v, endDate: draft.endDate < v ? v : draft.endDate })} />
-                <Time24Field value={draft.startTime} onChange={v => set({ startTime: v })} onShift={m => set({ startTime: shiftTime(draft.startTime, m) })} />
+                <div className="min-w-0 flex-1">
+                  <Time24Field value={draft.startTime} onChange={v => set({ startTime: v })} onShift={m => set({ startTime: shiftTime(draft.startTime, m) })} />
+                </div>
               </div>
             </div>
             <div>
               <span className="field-label">Ends</span>
-              <div className="flex flex-wrap items-center gap-2">
-                <DateInput aria-label="End day" value={draft.endDate} min={draft.startDate} onChange={v => set({ endDate: v })} />
-                <Time24Field value={draft.endTime} onChange={v => set({ endTime: v })} onShift={m => set({ endTime: shiftTime(draft.endTime, m) })} />
+              <div className="flex flex-col gap-2 min-[26rem]:flex-row min-[26rem]:items-center">
+                <DateInput aria-label="End day" value={draft.endDate} min={draft.startDate} className="input w-[10rem] tabular-nums" onChange={v => set({ endDate: v })} />
+                <div className="min-w-0 flex-1">
+                  <Time24Field value={draft.endTime} onChange={v => set({ endTime: v })} onShift={m => set({ endTime: shiftTime(draft.endTime, m) })} />
+                </div>
               </div>
             </div>
           </div>
         )}
         {problem && <p data-tone="danger" className="tone-text -mt-2 text-meta">{problem}</p>}
+        {/* Google's recurring-events guide: an instance changed by its own id is an exception — that day only. */}
         {event.recurringEventId && <p className="-mt-2 text-meta text-fg-muted">A repeating event: this changes this day only.</p>}
 
         <div>

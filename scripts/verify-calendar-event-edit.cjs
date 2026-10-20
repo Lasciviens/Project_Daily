@@ -45,15 +45,18 @@ eq(E.eventTimesChanged({ ...d, allDay: true }, { ...d, allDay: true, startTime: 
 
 // ── Who may change it ──
 const own = { start: {}, end: {}, organizer: { self: true } }
-eq(E.eventEditAccess(own, 'owner'), { canEdit: true, allDayAllowed: true, reason: null }, 'your own event')
+eq(E.eventEditAccess(own, 'owner'), { canEdit: true, canDelete: true, allDayAllowed: true, reason: null }, 'your own event')
 eq(E.eventEditAccess({ start: {}, end: {} }, undefined).canEdit, true, 'no organizer or role known: editable (Google says no when it isn\'t)')
-eq(E.eventEditAccess(own, 'reader').canEdit, false, 'a calendar you can only view (holidays)')
+eq([E.eventEditAccess(own, 'reader').canEdit, E.eventEditAccess(own, 'reader').canDelete], [false, false], 'a calendar you can only view (holidays): no edit, no delete')
 eq(E.eventEditAccess(own, 'freeBusyReader').canEdit, false, 'free/busy only')
 eq(E.eventEditAccess({ ...own, eventType: 'birthday' }, 'owner').canEdit, false, 'a birthday')
 eq(E.eventEditAccess({ ...own, eventType: 'fromGmail' }, 'owner').canEdit, false, 'from Gmail')
 eq(E.eventEditAccess({ ...own, locked: true }, 'owner').canEdit, false, 'a locked copy')
-eq(E.eventEditAccess({ start: {}, end: {}, organizer: { self: false } }, 'owner').canEdit, false, 'an invitation: only the organizer changes it')
-eq(E.eventEditAccess({ start: {}, end: {}, organizer: { self: false }, guestsCanModify: true }, 'owner').canEdit, true, '…unless guests may')
-eq(E.eventEditAccess({ ...own, eventType: 'outOfOffice' }, 'owner'), { canEdit: true, allDayAllowed: false, reason: null }, 'out of office: editable, never all-day')
+eq([E.eventEditAccess({ start: {}, end: {}, organizer: { email: 'boss@example.com' } }, 'owner').canEdit, E.eventEditAccess({ start: {}, end: {}, organizer: { email: 'boss@example.com' } }, 'owner').canDelete], [false, true],
+  'an invitation as Google sends it (organizer.self left out — "The default is False"): only the organizer changes it; you can still remove it')
+eq(E.eventEditAccess({ start: {}, end: {}, organizer: { email: 'boss@example.com' }, guestsCanModify: true }, 'owner').canEdit, true, '…unless guests may')
+eq(E.eventEditAccess({ ...own, eventType: 'outOfOffice' }, 'owner'), { canEdit: true, canDelete: true, allDayAllowed: false, reason: null }, 'out of office: editable, never all-day')
+eq(E.eventEditAccess({ ...own, recurringEventId: 'series1' }, 'owner').allDayAllowed, false, 'one day of a repeating event keeps its own form (an instance switch is not in Google\'s guide)')
+eq(E.eventEditAccess({ ...own, eventType: 'birthday' }, 'owner').canDelete, false, 'a birthday is not deleted from here')
 
 console.log(`verify-calendar-event-edit: ${n} checks passed`)

@@ -56,6 +56,9 @@ export interface TodayOverview {
    *  shown twice side by side. */
   trainingAfterNext: NextTrainingItem | null
   isLoading: boolean
+  /** Google Calendar's events for the day are still being read (kept out of isLoading: a token refresh
+   *  or a slow Google must never put the brief back into a skeleton). */
+  calendarLoading: boolean
 }
 
 const hourLabel = (h: number) => {
@@ -142,10 +145,11 @@ export function useTodayOverview(date: string = todayStr()): TodayOverview {
       plannedMinutes: plannedMinutes(items),
       nextTraining,
       trainingAfterNext,
-      // Every read the tiles show waits here, so a picked day appears once, complete (a disabled
-      // read — no Google token — is never loading).
+      // Every read of the app's own the tiles show waits here, so a picked day appears once and
+      // complete; Google's is apart (calendarLoading) — Home's picked day waits for it too.
       isLoading: dayTasks.isLoading || blocksQ.isLoading || templatesQ.isLoading
-        || prevBlocksQ.isLoading || calendarQ.isLoading || trainingQ.isLoading,
+        || prevBlocksQ.isLoading || trainingQ.isLoading,
+      calendarLoading: calendarQ.isLoading,
     }
   }, [date, nowMs, dayTasks.open, dayTasks.done, dayTasks.cancelled, dayTasks.counts, dayTasks.isLoading, blocksQ.data, blocksQ.isLoading, prevBlocksQ.data, prevBlocksQ.isLoading, templatesQ.data, templatesQ.isLoading, calendarQ.data, calendarQ.isLoading, trainingQ.data, trainingQ.isLoading])
 }

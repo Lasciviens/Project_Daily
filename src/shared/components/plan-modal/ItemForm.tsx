@@ -81,6 +81,7 @@ export function ItemForm({
   const shape = shapeOf(form)
   const target = effectiveGoogleTarget(shape, form.googlePick)
   const showGoogle = googleConnected && !day && !isScheduleFieldHidden('gcal', config)
+  const allDay = showGoogle && !form.time && hasGoogleCalendar(target)
 
   const rows: SheetRow[] = (['notes', 'priority', 'deadline', 'area', 'list'] as const).filter(r => {
     if (r === 'notes') return !hideTask('notes')
@@ -121,8 +122,10 @@ export function ItemForm({
         )}
         {(form.date || repeating) && (
           <TimeChip
-            time={form.time} duration={form.duration} nextTime={nextTime} onChange={t => patch(withTime(t))}
-            allDay={showGoogle && !form.time && hasGoogleCalendar(target)}
+            time={form.time} duration={form.duration} nextTime={nextTime}
+            // "No time" on an all-day item takes All day off too: Google goes back to its default (Tasks).
+            onChange={t => patch(t ? withTime(t) : { ...withTime(null), ...(allDay ? { googlePick: null } : {}) })}
+            allDay={allDay}
             onAllDay={showGoogle ? () => patch(withAllDay(form)) : undefined}
           />
         )}

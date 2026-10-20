@@ -171,7 +171,8 @@ export function HomeHero() {
       <WeekStrip monday={monday} selected={selected} onSelect={pick} onWeek={changeWeek} />
 
       <div className="mt-3 grid grid-cols-2 gap-2">
-        {overview.isLoading ? (
+        {/* A picked day also waits for its Google events (today's tiles never do: the brief shares them). */}
+        {overview.isLoading || (!isToday && overview.calendarLoading) ? (
           <>
             <Skeleton className="h-[72px] w-full" rounded="rounded-row" />
             <Skeleton className="h-[72px] w-full" rounded="rounded-row" />

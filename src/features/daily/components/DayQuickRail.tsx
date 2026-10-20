@@ -41,8 +41,8 @@ export function DayQuickRail({ date, onOpenTasks }: { date: Date; onOpenTasks?: 
     <aside aria-label="Day overview" className="@container rounded-card border border-line bg-surface-2 p-4">
       <div className="flex flex-col gap-5 @[40rem]:grid @[40rem]:grid-cols-[minmax(0,15rem)_minmax(0,1fr)_minmax(0,15rem)] @[40rem]:items-start @[40rem]:gap-5">
         <div>
-          <SectionLabel className="mb-2">Quick actions</SectionLabel>
-          {/* No Log food: nutrition lives on the Food page (owner, 16.10.2026). */}
+          {/* One action left (Log food went with nutrition, owner 16.10.2026): it needs no heading of its own. */}
+          <SectionLabel className="mb-2">Find</SectionLabel>
           <Button size="sm" icon={<Search />} onClick={openCommandBar}>Search</Button>
         </div>
 

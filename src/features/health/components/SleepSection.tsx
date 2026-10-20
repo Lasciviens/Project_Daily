@@ -41,7 +41,8 @@ export function SleepSection({ range, extras = true }: { range: HealthRange; ext
   // Nights in view whose start never arrived from Health Auto Export (the whole
   // fetched range is the baseline, so pass all of it).
   // Nights the owner confirmed complete (migration 164) never get the note.
-  const confirmed = useSleepConfirmations().data
+  const confirmations = useSleepConfirmations()
+  const confirmed = confirmations.data
   const incomplete = useMemo(
     () => findIncompleteNights(sleep.points, sleep.nights, win.from, win.to, undefined, confirmed),
     [sleep.points, sleep.nights, win.from, win.to, confirmed],
@@ -115,7 +116,8 @@ export function SleepSection({ range, extras = true }: { range: HealthRange; ext
         )}
       </div>
 
-      {!sleep.isLoading && <SleepIncompleteNote nights={incomplete} today={win.today} />}
+      {/* Not before the confirmations are in (a confirmed night would flash the note); a failed read shows it. */}
+      {!sleep.isLoading && !confirmations.isPending && <SleepIncompleteNote nights={incomplete} today={win.today} />}
       {sessions.length > 0 && <SleepNightChart sessions={sessions} />}
       {replaced && (
         <p className="text-meta text-fg-muted">The Watch's data for this night is replaced by your manual entry.</p>

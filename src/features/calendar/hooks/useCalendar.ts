@@ -152,12 +152,15 @@ export function useCalendarDaysPrefetch(): (dates: readonly string[]) => void {
   const qc = useQueryClient()
   const token = useValidToken()
   const { setAccessToken } = useCalendarStore()
-  // The ids as one string: the list is a new array on every render.
+  // The ids as one string: the list is a new array on every render. Until the calendar list is in,
+  // "every calendar" would read primary only and then again — wait for it.
+  const { selectedCalendarIds } = useCalendarStore()
+  const listReady = useCalendarList().isSuccess
   const ids = useSelectedCalendarIds().join(',')
   return useCallback((dates: readonly string[]) => {
-    if (!token) return
+    if (!token || !ids || (!selectedCalendarIds && !listReady)) return
     for (const d of dates) void qc.prefetchQuery(calendarDayQuery(d, ids.split(','), token, setAccessToken))
-  }, [qc, token, setAccessToken, ids])
+  }, [qc, token, setAccessToken, ids, selectedCalendarIds, listReady])
 }
 
 export function useCalendarList() {
