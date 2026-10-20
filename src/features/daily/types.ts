@@ -52,7 +52,7 @@ export interface ScheduleBlock {
   updated_at:   string
 }
 
-export type TimeBlockCategory = 'daily' | 'training' | 'media' | 'games' | 'work' | 'projects' | 'other'
+export type TimeBlockCategory = 'daily' | 'training' | 'media' | 'games' | 'work' | 'projects' | 'football' | 'other'
 
 export interface TimeBlock {
   id:               string

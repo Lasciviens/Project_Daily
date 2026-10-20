@@ -534,11 +534,14 @@ export function syncPlan<P extends PlanRow>(matches: readonly FbMatch[], subscri
   return { add, move }
 }
 
-/** A subscribed match as a new item: personal, Google as for any item (a time → Calendar). */
+/** A match's slot category (165; owner, 16.10.2026: "should mark as football not personal" — the area stays Personal). */
+export const MATCH_CATEGORY = 'football'
+
+/** A subscribed match as a new item: personal, its slot a Football one, Google as for any item (a time → Calendar). */
 export function newMatchItem(m: FbMatch): ItemInput {
   const mi = matchItem(m)
   return {
-    title: mi.title, notes: mi.notes, domain: 'personal', priority: 'medium',
+    title: mi.title, notes: mi.notes, domain: 'personal', priority: 'medium', category: MATCH_CATEGORY,
     date: mi.date, time: mi.time, durationMinutes: mi.durationMinutes,
     google: defaultGoogleTarget({ time: mi.time, repeat: null }),
   }

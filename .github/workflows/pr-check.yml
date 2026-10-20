@@ -234,9 +234,10 @@ jobs:
         env:
           DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
 
-      # Migration 163: football (follows, a match into the day through
+      # Migrations 163 and 165: football (follows, a match into the day through
       # app_football_plan with app_save_item, never twice, a deleted item never
-      # added again, a moved kick-off, delete with Undo, the owner lock).
+      # added again, a moved kick-off, delete with Undo, the owner lock; the
+      # Football slot category and 165's one-line change to the item save).
       - name: Football database scenarios
         run: node scripts/verify-db-football.mjs
         env:
