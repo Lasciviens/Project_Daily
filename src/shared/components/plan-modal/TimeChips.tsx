@@ -7,6 +7,7 @@
 //    presets; "Doesn't block" takes the length off again.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { useState } from 'react'
 import { Popover, PopoverButton, PopoverPanel } from '@headlessui/react'
 import { Clock, Hourglass, X } from 'lucide-react'
 import { Time24Field } from './fields'
@@ -82,14 +83,7 @@ export function LengthChip({ duration, onChange }: {
                 ))}
               </div>
               <div className="flex items-center justify-between gap-2">
-                <label className="flex items-center gap-1.5 text-meta text-fg-muted">
-                  Minutes
-                  <input
-                    type="number" inputMode="numeric" min={1} max={1440} value={duration ?? ''}
-                    onChange={e => { const n = Number(e.target.value); if (n > 0) onChange(clampDurationMinutes(n)) }}
-                    aria-label="Length in minutes" className="input input-sm w-[4.5rem] tabular-nums"
-                  />
-                </label>
+                <MinutesField duration={duration} onChange={onChange} />
                 <button type="button" onClick={() => { onChange(null); close() }} className={removeClass}>
                   <X aria-hidden />Doesn't block
                 </button>
@@ -99,5 +93,31 @@ export function LengthChip({ duration, onChange }: {
         </>
       )}
     </Popover>
+  )
+}
+
+/**
+ * The length typed in minutes. The field keeps what is typed — an empty field
+ * included, so "120" can be cleared and "300" typed (owner, 16.10.2026: it
+ * snapped back to 120) — and saves each whole number from 1 to 1440 as it
+ * comes; leaving it empty or invalid shows the saved length again.
+ */
+function MinutesField({ duration, onChange }: { duration: number | null; onChange: (minutes: number) => void }) {
+  const [draft, setDraft] = useState<string | null>(null)
+  return (
+    <label className="flex items-center gap-1.5 text-meta text-fg-muted">
+      Minutes
+      <input
+        type="number" inputMode="numeric" min={1} max={1440}
+        value={draft ?? (duration ?? '')}
+        onChange={e => {
+          setDraft(e.target.value)
+          const n = Number(e.target.value)
+          if (e.target.value !== '' && Number.isInteger(n) && n > 0) onChange(clampDurationMinutes(n))
+        }}
+        onBlur={() => setDraft(null)}
+        aria-label="Length in minutes" className="input input-sm w-[4.5rem] tabular-nums"
+      />
+    </label>
   )
 }
