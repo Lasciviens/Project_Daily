@@ -172,15 +172,19 @@ export function useCalendarList() {
 }
 
 export function useUpdateCalendarEvent() {
-  const { accessToken } = useCalendarStore()
   return useMutationWithFeedback({
     action: 'update_calendar_event',
     successMessage: 'Event updated',
-    mutationFn: ({ calendarId, eventId, patch }: {
+    mutationFn: async ({ calendarId, eventId, patch }: {
       calendarId: string
       eventId:    string
       patch:      Record<string, unknown>
-    }) => updateCalendarEvent(accessToken!, calendarId, eventId, patch),
+    }) => {
+      // Never the stored token as is (planning rules): refreshed when it is about to run out.
+      const token = await ensureValidCalendarToken()
+      if (!token) throw new Error('Google Calendar is not connected on this device')
+      return updateCalendarEvent(token, calendarId, eventId, patch)
+    },
     invalidates: [qk.calendar.all],
   })
 }

@@ -28,13 +28,13 @@ import { AddFact, AreaFact, CategoryFact, FactRow, PriorityFact } from './ItemFa
 import { DateInput } from '../DateInput'
 import { cx } from '../../ui'
 import { ReadAsLine } from '../../../features/items/components/ReadAsLine'
-import { effectiveGoogleTarget, hasGoogleTasks } from '../../../features/items/sheetRules'
+import { effectiveGoogleTarget, hasGoogleCalendar, hasGoogleTasks } from '../../../features/items/sheetRules'
 import { weekdayOfIso } from '../../../features/daily/recurrence'
 import {
   isScheduleFieldHidden, isTaskFieldHidden, pickRecurrence, repeatAnchorOf, shiftTime, withStartForRepeatChange,
   RECURRENCE_OPTIONS, RECURRING_EDIT_OPTIONS, type RepeatAnchor,
 } from './planModal.config'
-import { shapeOf, withDate, withTime, type PlanForm, type SheetRow } from './planForm'
+import { shapeOf, withAllDay, withDate, withTime, type PlanForm, type SheetRow } from './planForm'
 import type { PlanModalConfig } from './planModal.types'
 import type { QuickAddResult } from '../../../features/items/quickAdd'
 
@@ -120,7 +120,11 @@ export function ItemForm({
           />
         )}
         {(form.date || repeating) && (
-          <TimeChip time={form.time} duration={form.duration} nextTime={nextTime} onChange={t => patch(withTime(t))} />
+          <TimeChip
+            time={form.time} duration={form.duration} nextTime={nextTime} onChange={t => patch(withTime(t))}
+            allDay={showGoogle && !form.time && hasGoogleCalendar(target)}
+            onAllDay={showGoogle ? () => patch(withAllDay(form)) : undefined}
+          />
         )}
         {form.time && <LengthChip duration={form.duration} onChange={duration => patch({ duration })} />}
         {canAddRepeat && (

@@ -1,49 +1,65 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
+import { ExternalLink } from 'lucide-react'
 import { ModalShell, confirmDelete } from '../../../shared/modals'
-import { Button } from '../../../shared/ui'
-import { useUpdateCalendarEvent, useDeleteCalendarEvent } from '../hooks/useCalendar'
+import { Button, SegmentedControl } from '../../../shared/ui'
+import { DateInput } from '../../../shared/components/DateInput'
+import { Time24Field } from '../../../shared/components/plan-modal/fields'
+import { LOCAL_TZ, shiftTime } from '../../../shared/components/plan-modal/planModal.config'
+import { formatWeekdayDate } from '../../../shared/utils/dateFormat'
+import { CalendarApiError } from '../api/calendarApi'
+import { useCalendarList, useDeleteCalendarEvent, useUpdateCalendarEvent } from '../hooks/useCalendar'
+import {
+  eventEditAccess, eventEditDraft, eventEditProblem, eventEditTimes, eventTimesChanged, type EventEditDraft,
+} from '../eventEditRules'
 import type { CalendarEvent } from '../types'
-
-// User's local IANA timezone — the fallback when the event carries none.
-const LOCAL_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone
-
-function toLocalDatetimeInput(iso: string): string {
-  const d = new Date(iso)
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
-}
 
 interface Props {
   event:   CalendarEvent
   onClose: () => void
 }
 
-/** Edit or delete one Google Calendar event. The hooks toast the result. */
+const KINDS: { value: 'timed' | 'allDay'; label: string }[] = [
+  { value: 'timed', label: 'At a time' },
+  { value: 'allDay', label: 'All day' },
+]
+
+/** A missing write permission (the scope), as Google's 403 names it — never a guess from the message alone. */
+function needsWriteScope(err: unknown): boolean {
+  return err instanceof CalendarApiError && err.status === 403
+    && /insufficient(Permissions|Scope)|ACCESS_TOKEN_SCOPE_INSUFFICIENT/i.test(JSON.stringify(err.body ?? {}))
+}
+
+/**
+ * Edit or delete one event made in Google Calendar itself (owner, 16.10.2026:
+ * an all-day one "can't be edited and there are no options to mark as all
+ * day"). All day or at a time, its days and times (eventEditRules), title and
+ * description; a PATCH clears the date form it doesn't use. An event the app
+ * may not change (a calendar you only view, an invitation, a birthday, a
+ * locked copy) says why and opens in Google Calendar. The hooks toast the result.
+ */
 export function EditCalendarEventModal({ event, onClose }: Props) {
-  const [title,   setTitle]   = useState(event.summary ?? '')
-  const [desc,    setDesc]    = useState(event.description ?? '')
-  const [startDT, setStartDT] = useState(event.start.dateTime ? toLocalDatetimeInput(event.start.dateTime) : '')
-  const [endDT,   setEndDT]   = useState(event.end.dateTime ? toLocalDatetimeInput(event.end.dateTime) : '')
+  const calendarId = event.calendarId ?? 'primary'
+  const { data: calendars } = useCalendarList()
+  const access = eventEditAccess(event, calendars?.find(c => c.id === calendarId)?.accessRole)
+  const [initial] = useState(() => eventEditDraft(event, LOCAL_TZ))
+  const [draft, setDraft] = useState<EventEditDraft>(initial)
+  const [title, setTitle] = useState(event.summary ?? '')
+  const [desc, setDesc] = useState(event.description ?? '')
+  const set = (patch: Partial<EventEditDraft>) => setDraft(d => ({ ...d, ...patch }))
 
   const update = useUpdateCalendarEvent()
   const remove = useDeleteCalendarEvent()
-
-  const isPending  = update.isPending || remove.isPending
-  const calendarId = event.calendarId ?? 'primary'
-
-  // The hook already toasts the message; a missing write scope additionally
-  // needs a way out, so it gets an inline pointer to Connections.
-  const error = ((update.error || remove.error) as Error | null)?.message ?? ''
-  const needsReconnect = /403|insufficientPermissions|forbidden/i.test(error)
+  const isPending = update.isPending || remove.isPending
+  const problem = eventEditProblem(draft)
+  const reconnect = needsWriteScope(update.error) || needsWriteScope(remove.error)
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault()
-    if (!title.trim()) return
+    if (!title.trim() || problem) return
     const patch: Record<string, unknown> = { summary: title.trim() }
     if (desc !== (event.description ?? '')) patch.description = desc
-    if (startDT) patch.start = { dateTime: new Date(startDT).toISOString(), timeZone: event.start.timeZone ?? LOCAL_TZ }
-    if (endDT)   patch.end   = { dateTime: new Date(endDT).toISOString(),   timeZone: event.end.timeZone ?? LOCAL_TZ }
+    if (eventTimesChanged(initial, draft)) Object.assign(patch, eventEditTimes(draft, LOCAL_TZ))
     try {
       await update.mutateAsync({ calendarId, eventId: event.id, patch })
       onClose()
@@ -53,11 +69,32 @@ export function EditCalendarEventModal({ event, onClose }: Props) {
   async function handleDelete() {
     const result = await confirmDelete({
       title: 'Delete this event?',
-      message: 'It is removed from Google Calendar.',
+      message: 'It is removed from Google Calendar. This can\'t be undone.',
       remove: () => remove.mutateAsync({ calendarId, eventId: event.id }),
       done: 'Event deleted',
     })
     if (result === 'deleted') onClose()
+  }
+
+  if (!access.canEdit) {
+    const when = initial.allDay
+      ? initial.endDate === initial.startDate ? `${formatWeekdayDate(initial.startDate)} · all day` : `${formatWeekdayDate(initial.startDate)} – ${formatWeekdayDate(initial.endDate)} · all day`
+      : `${formatWeekdayDate(initial.startDate)} ${initial.startTime}–${initial.endTime}`
+    return (
+      <ModalShell onClose={onClose} title={event.summary || 'Event'} subtitle="Google Calendar" size="sm"
+        footer={<div className="flex justify-end"><Button onClick={onClose}>Close</Button></div>}>
+        <div className="flex flex-col gap-3">
+          <p className="text-body tabular-nums text-fg">{when}</p>
+          {event.description && <p className="whitespace-pre-wrap text-body text-fg-2">{event.description}</p>}
+          <p className="text-meta text-fg-muted">{access.reason} It can't be changed here.</p>
+          {event.htmlLink && (
+            <a href={event.htmlLink} target="_blank" rel="noreferrer noopener" className="btn-secondary btn-sm inline-flex gap-1 self-start">
+              <ExternalLink aria-hidden className="h-4 w-4" />Open in Google Calendar
+            </a>
+          )}
+        </div>
+      </ModalShell>
+    )
   }
 
   return (
@@ -74,7 +111,7 @@ export function EditCalendarEventModal({ event, onClose }: Props) {
           </Button>
           <div className="ml-auto flex gap-2">
             <Button onClick={onClose} disabled={isPending}>Cancel</Button>
-            <Button variant="primary" type="submit" form="edit-calendar-event" loading={update.isPending} disabled={isPending || !title.trim()}>
+            <Button variant="primary" type="submit" form="edit-calendar-event" loading={update.isPending} disabled={isPending || !title.trim() || !!problem}>
               Save
             </Button>
           </div>
@@ -85,40 +122,61 @@ export function EditCalendarEventModal({ event, onClose }: Props) {
         <div>
           <label htmlFor="cal-event-title" className="field-label">Title</label>
           <input
-            id="cal-event-title"
-            autoFocus
-            type="text"
-            value={title}
-            onChange={e => setTitle(e.target.value)}
-            placeholder="Event title"
-            className="input w-full"
+            id="cal-event-title" autoFocus type="text" value={title}
+            onChange={e => setTitle(e.target.value)} placeholder="Event title" className="input w-full"
           />
         </div>
 
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <div>
-            <label htmlFor="cal-event-start" className="field-label">Start</label>
-            <input id="cal-event-start" type="datetime-local" value={startDT} onChange={e => setStartDT(e.target.value)} className="input w-full" />
+        {access.allDayAllowed && (
+          <SegmentedControl
+            size="sm" value={draft.allDay ? 'allDay' : 'timed'} options={KINDS}
+            onChange={v => set({ allDay: v === 'allDay' })}
+          />
+        )}
+
+        {draft.allDay ? (
+          <div className="grid grid-cols-1 gap-3 min-[26rem]:grid-cols-2">
+            <div>
+              <span className="field-label">First day</span>
+              <DateInput aria-label="First day" value={draft.startDate}
+                onChange={v => set({ startDate: v, endDate: draft.endDate < v ? v : draft.endDate })} />
+            </div>
+            <div>
+              <span className="field-label">Last day</span>
+              <DateInput aria-label="Last day" value={draft.endDate} min={draft.startDate} onChange={v => set({ endDate: v })} />
+            </div>
           </div>
-          <div>
-            <label htmlFor="cal-event-end" className="field-label">End</label>
-            <input id="cal-event-end" type="datetime-local" value={endDT} onChange={e => setEndDT(e.target.value)} className="input w-full" />
+        ) : (
+          <div className="flex flex-col gap-3">
+            <div>
+              <span className="field-label">Starts</span>
+              <div className="flex flex-wrap items-center gap-2">
+                <DateInput aria-label="Start day" value={draft.startDate}
+                  onChange={v => set({ startDate: v, endDate: draft.endDate < v ? v : draft.endDate })} />
+                <Time24Field value={draft.startTime} onChange={v => set({ startTime: v })} onShift={m => set({ startTime: shiftTime(draft.startTime, m) })} />
+              </div>
+            </div>
+            <div>
+              <span className="field-label">Ends</span>
+              <div className="flex flex-wrap items-center gap-2">
+                <DateInput aria-label="End day" value={draft.endDate} min={draft.startDate} onChange={v => set({ endDate: v })} />
+                <Time24Field value={draft.endTime} onChange={v => set({ endTime: v })} onShift={m => set({ endTime: shiftTime(draft.endTime, m) })} />
+              </div>
+            </div>
           </div>
-        </div>
+        )}
+        {problem && <p data-tone="danger" className="tone-text -mt-2 text-meta">{problem}</p>}
+        {event.recurringEventId && <p className="-mt-2 text-meta text-fg-muted">A repeating event: this changes this day only.</p>}
 
         <div>
           <label htmlFor="cal-event-desc" className="field-label">Description</label>
           <textarea
-            id="cal-event-desc"
-            value={desc}
-            onChange={e => setDesc(e.target.value)}
-            placeholder="Optional notes"
-            rows={3}
-            className="input w-full resize-none"
+            id="cal-event-desc" value={desc} onChange={e => setDesc(e.target.value)}
+            placeholder="Optional notes" rows={3} className="input w-full resize-none"
           />
         </div>
 
-        {needsReconnect && (
+        {reconnect && (
           <p data-tone="danger" className="tone-text text-meta">
             Google Calendar needs edit permission. Reconnect it in{' '}
             <Link to="/settings?tab=subscriptions" onClick={onClose} className="font-semibold underline">Settings → Subscriptions</Link>.

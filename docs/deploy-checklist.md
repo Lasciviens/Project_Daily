@@ -4,6 +4,7 @@ A merge deploys migrations (above 140), every edge function and the website by i
 
 | Status | Step | Needed for |
 |---|---|---|
+| ? | After the merge: in the Add sheet give an item a day, open its time chip → **All day**, save — Google Calendar shows an all-day event; open it again, give it a time, save — the event in Google becomes timed (and back). Then in Personal tap an all-day event you made in Google Calendar: edit it, switch it to a time and back | 20.10.2026 (owner: an all-day event "can't be edited"). Every PATCH now clears the unused date form (`dateTime: null` / `date: null`), as Google's docs describe for deleting a field in a patch — never tried on a real account (`docs/integrations/google-calendar.md`). |
 | ? | Google Cloud → APIs & Services → **Google Tasks API** enabled in the project of `GOOGLE_CLIENT_ID` | Any Google Tasks call; without it the sync line on Settings → Subscriptions says "The Google Tasks API is turned off". |
 | ? | After the merge (the app syncs by itself when it opens): open Settings → Subscriptions and read the Google Tasks line under the buttons | It names what is wrong, if anything (expired sign-in, Tasks not allowed, the API turned off); a new failure also shows as a warning when the app opens. |
 | ? | After the merge: Add → a Monthly plan, tick **Add to Google Calendar**, Plan it — then check Google Calendar shows it on its days (and nowhere else) | Migration 147. A monthly plan goes to Google as a list of dates (`RDATE;TZID=…`, no repeat rule); Google's docs allow it, but it was never tried on a real account. |

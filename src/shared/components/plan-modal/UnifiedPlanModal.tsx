@@ -19,6 +19,13 @@
 //  └─────────────────────────────────────────────────────────────────────────────┘
 //
 //  CHANGELOG
+//  2026-10-20 · v21.3 · "All day" in the time chip's picker (owner, 16.10.2026:
+//                    "there are no options to mark as all day on website"):
+//                    no time, no length, on Google Calendar (Both stays Both —
+//                    planForm.withAllDay); the chip then reads "All day".
+//                    Offered only while Google Calendar is connected here. The
+//                    length's Minutes field keeps what is typed, so "120" can be
+//                    cleared and "300" typed (it snapped back to 120).
 //  2026-10-15 · v21.1 · A repeat's day opened from its task (Home's list, the
 //                    Tasks tab) opens as that day of its repeat with This day
 //                    picked (`startScope`, PlanEntityModals.useRepeatDayOf) —

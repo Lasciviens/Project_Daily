@@ -5,7 +5,7 @@ import { updateCalendarEvent, deleteCalendarEvent, isCalendarNotFound } from '..
 import { ensureValidCalendarToken } from '../../calendar/api/calendarTokenSync'
 import { logError } from '../../../shared/utils/logError'
 import { classifyCalendarPushFailure } from './scheduleSyncRules'
-import { blockEventBody } from '../../calendar/calendarEventRules'
+import { blockEventBody, eventPatchFor } from '../../calendar/calendarEventRules'
 import type {
   ScheduleBlock, TimeBlock, CreateTimeBlockInput, UpdateTimeBlockInput,
   CreateScheduleBlockInput, UpdateScheduleBlockInput,
@@ -389,7 +389,7 @@ export async function updateTimeBlock(id: string, patch: UpdateTimeBlockInput): 
   if (!body) return { calendarStatus: 'linked' } // no usable day -> nothing coherent to push; existing id stands
 
   try {
-    await updateCalendarEvent(token, 'primary', eventId, { ...body })
+    await updateCalendarEvent(token, 'primary', eventId, { ...eventPatchFor(body, 'all') })
     return { calendarStatus: 'linked' }
   } catch (err) {
     const status = classifyCalendarPushFailure(err)

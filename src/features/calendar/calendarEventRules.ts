@@ -110,13 +110,36 @@ export function blockEventBody(b: EventBlock, opts: { done: boolean; timeZone: s
  *  title) or 'title' (a done mark, a series renamed: ONLY the summary). */
 export type EventPushFields = 'all' | 'title'
 
+/** A start or end in a PATCH: the form not used is sent as null. */
+export type EventTimePatch =
+  | { date: string; dateTime: null; timeZone: null }
+  | { dateTime: string; timeZone: string; date: null }
+
+/**
+ * PATCH merges objects field by field (Google: "To delete a field, specify the
+ * field and set it to null"), and start and end "must both be timed or both
+ * be all-day": an item turned all-day kept its old dateTime, and a timed one
+ * its old date, so the change never reached Google (owner, 16.10.2026). Every
+ * PATCH of a start/end sends the other form as null; an insert keeps the plain
+ * body.
+ */
+export function timePatch(t: EventTime): EventTimePatch {
+  return 'date' in t ? { date: t.date, dateTime: null, timeZone: null } : { dateTime: t.dateTime, timeZone: t.timeZone, date: null }
+}
+
+/** A body for PATCH: its start and end through timePatch. */
+export function withTimePatch<B extends { start: EventTime; end: EventTime }>(body: B): Omit<B, 'start' | 'end'> & { start: EventTimePatch; end: EventTimePatch } {
+  return { ...body, start: timePatch(body.start), end: timePatch(body.end) }
+}
+
 /**
  * The PATCH a push sends. A title push carries the summary and nothing else,
  * so ticking an item done never sends its old day or time back over a move
- * the owner made in Google Calendar. Anything but 'title' is the whole event.
+ * the owner made in Google Calendar. Anything but 'title' is the whole event,
+ * its start and end through timePatch.
  */
-export function eventPatchFor(body: BlockEventBody, fields: EventPushFields | string | null | undefined): Partial<BlockEventBody> {
-  return fields === 'title' ? { summary: body.summary } : body
+export function eventPatchFor(body: BlockEventBody, fields: EventPushFields | string | null | undefined): { summary: string } | ReturnType<typeof withTimePatch<BlockEventBody>> {
+  return fields === 'title' ? { summary: body.summary } : withTimePatch(body)
 }
 
 /** The done mark's PATCH: the title with or without "✓ " — and only that. */

@@ -88,6 +88,7 @@ export function googleChoices(input: Shape): GoogleChoice[] {
 
 /** Lists a Google Tasks list may be picked for. */
 export const hasGoogleTasks = (target: GoogleTarget) => target === 'tasks' || target === 'both'
+export const hasGoogleCalendar = (target: GoogleTarget) => target === 'calendar' || target === 'both'
 
 // ── Repeat: the sheet's RepeatInput → schedule_blocks' columns ────────────────
 

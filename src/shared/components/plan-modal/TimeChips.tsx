@@ -9,7 +9,7 @@
 
 import { useState } from 'react'
 import { Popover, PopoverButton, PopoverPanel } from '@headlessui/react'
-import { Clock, Hourglass, X } from 'lucide-react'
+import { CalendarDays, Clock, Hourglass, X } from 'lucide-react'
 import { Time24Field } from './fields'
 import { chipClass, choiceClass, CHIP_PANEL_CLASS } from './fieldStyles'
 import { shiftTime, clampDurationMinutes } from './planModal.config'
@@ -20,23 +20,27 @@ const LENGTHS = [15, 30, 45, 60, 90, 120, 180] as const
 
 const removeClass = chipClass('remove')
 
-export function TimeChip({ time, duration, nextTime, onChange }: {
+export function TimeChip({ time, duration, nextTime, onChange, allDay = false, onAllDay }: {
   time: string | null
   duration: number | null
   /** What "+ Time" starts with. */
   nextTime: string
   onChange: (time: string | null) => void
+  /** No time and on Google Calendar: an all-day event there — the chip says so. */
+  allDay?: boolean
+  /** Offered while Google Calendar is connected on this device (planForm.withAllDay). */
+  onAllDay?: () => void
 }) {
   return (
     <Popover className="contents">
       {({ close }) => (
         <>
           <PopoverButton
-            onClick={() => { if (!time) onChange(nextTime) }}
-            className={chipClass(time ? 'set' : 'add')}
-            aria-label={time ? `Time: ${slotLabel(time, duration)}` : 'Add a time'}
+            onClick={() => { if (!time && !allDay) onChange(nextTime) }}
+            className={chipClass(time || allDay ? 'set' : 'add')}
+            aria-label={time ? `Time: ${slotLabel(time, duration)}` : allDay ? 'All day — change' : 'Add a time'}
           >
-            <Clock aria-hidden />{time ? slotLabel(time, duration) : 'Time'}
+            <Clock aria-hidden />{time ? slotLabel(time, duration) : allDay ? 'All day' : 'Time'}
           </PopoverButton>
           {/* As wide as one row of the hour, the minute, −30m and +30m. */}
           <PopoverPanel anchor="bottom start" modal={false} className={`${CHIP_PANEL_CLASS} w-max max-w-[calc(100vw-24px)]`}>
@@ -45,9 +49,16 @@ export function TimeChip({ time, duration, nextTime, onChange }: {
                 size="sm" value={time ?? nextTime} onChange={v => onChange(v)}
                 onShift={delta => onChange(shiftTime(time ?? nextTime, delta))}
               />
-              <button type="button" onClick={() => { onChange(null); close() }} className={`${removeClass} self-start`}>
-                <X aria-hidden />No time
-              </button>
+              <div className="flex flex-wrap gap-1.5">
+                {onAllDay && (
+                  <button type="button" aria-pressed={allDay} onClick={() => { onAllDay(); close() }} className={chipClass(allDay ? 'set' : 'add')}>
+                    <CalendarDays aria-hidden />All day
+                  </button>
+                )}
+                <button type="button" onClick={() => { onChange(null); close() }} className={removeClass}>
+                  <X aria-hidden />No time
+                </button>
+              </div>
             </div>
           </PopoverPanel>
         </>
