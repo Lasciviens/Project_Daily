@@ -129,6 +129,11 @@ const seed = (o = {}) => F.buildInitialForm({ mode: 'task', today: TODAY, nextTi
   check('"No date" takes the time and length with it; a date alone changes nothing else',
     same(F.withDate(null), { date: null, time: null, duration: null }) && same(F.withDate(TODAY), { date: TODAY }))
   check('removing the time removes its length', same(F.withTime(null), { time: null, duration: null }) && same(F.withTime('09:00'), { time: '09:00' }))
+  // "All day" (owner, 16.10.2026): no time, no length, on Google Calendar — Both stays Both.
+  check('All day: no time, no length, Google Calendar', same(F.withAllDay({ googlePick: null }), { time: null, duration: null, googlePick: 'calendar' })
+    && same(F.withAllDay({ googlePick: 'tasks' }), { time: null, duration: null, googlePick: 'calendar' }))
+  check('All day keeps Both', F.withAllDay({ googlePick: 'both' }).googlePick === 'both')
+  check('…and an item with no time on Calendar reads as an all-day event', R.effectiveGoogleTarget({ time: null, repeat: null }, 'calendar') === 'calendar' && R.hasGoogleCalendar('calendar') && R.hasGoogleCalendar('both') && !R.hasGoogleCalendar('tasks'))
   check('a day from the caller (Daily\'s day, a purchase\'s date)',
     seed({ defaults: { date: '2026-10-20' } }).date === '2026-10-20' && seed({ defaults: { dueDate: '2026-10-21' } }).date === '2026-10-21')
   check('section Inbox from the caller: no date', seed({ defaults: { section: 'inbox' } }).date === null)

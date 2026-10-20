@@ -28,13 +28,13 @@ import { AddFact, AreaFact, CategoryFact, FactRow, PriorityFact } from './ItemFa
 import { DateInput } from '../DateInput'
 import { cx } from '../../ui'
 import { ReadAsLine } from '../../../features/items/components/ReadAsLine'
-import { effectiveGoogleTarget, hasGoogleTasks } from '../../../features/items/sheetRules'
+import { effectiveGoogleTarget, hasGoogleCalendar, hasGoogleTasks } from '../../../features/items/sheetRules'
 import { weekdayOfIso } from '../../../features/daily/recurrence'
 import {
   isScheduleFieldHidden, isTaskFieldHidden, pickRecurrence, repeatAnchorOf, shiftTime, withStartForRepeatChange,
   RECURRENCE_OPTIONS, RECURRING_EDIT_OPTIONS, type RepeatAnchor,
 } from './planModal.config'
-import { shapeOf, withDate, withTime, type PlanForm, type SheetRow } from './planForm'
+import { shapeOf, withAllDay, withDate, withTime, type PlanForm, type SheetRow } from './planForm'
 import type { PlanModalConfig } from './planModal.types'
 import type { QuickAddResult } from '../../../features/items/quickAdd'
 
@@ -81,6 +81,7 @@ export function ItemForm({
   const shape = shapeOf(form)
   const target = effectiveGoogleTarget(shape, form.googlePick)
   const showGoogle = googleConnected && !day && !isScheduleFieldHidden('gcal', config)
+  const allDay = showGoogle && !form.time && hasGoogleCalendar(target)
 
   const rows: SheetRow[] = (['notes', 'priority', 'deadline', 'area', 'list'] as const).filter(r => {
     if (r === 'notes') return !hideTask('notes')
@@ -120,7 +121,13 @@ export function ItemForm({
           />
         )}
         {(form.date || repeating) && (
-          <TimeChip time={form.time} duration={form.duration} nextTime={nextTime} onChange={t => patch(withTime(t))} />
+          <TimeChip
+            time={form.time} duration={form.duration} nextTime={nextTime}
+            // "No time" on an all-day item takes All day off too: Google goes back to its default (Tasks).
+            onChange={t => patch(t ? withTime(t) : { ...withTime(null), ...(allDay ? { googlePick: null } : {}) })}
+            allDay={allDay}
+            onAllDay={showGoogle ? () => patch(withAllDay(form)) : undefined}
+          />
         )}
         {form.time && <LengthChip duration={form.duration} onChange={duration => patch({ duration })} />}
         {canAddRepeat && (

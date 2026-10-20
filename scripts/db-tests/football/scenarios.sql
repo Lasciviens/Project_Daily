@@ -192,6 +192,26 @@ delete from public.football_follows where ref = '432';
 select public.t_ok((select count(*) from public.football_plans where task_id is not null) = 2,
   'unfollowing a team leaves its planned matches in the day');
 
+-- ═══ 2b. The Football category (165) ═══════════════════════════════════════
+do $$
+declare r jsonb;
+begin
+  r := public.app_football_plan(
+    '{"eventId": "401888259", "league": "tur.1", "kickoffAt": "2026-10-30T17:00Z", "timeValid": true, "origin": "subscription"}',
+    '{"title": "⚽ Konyaspor – Galatasaray", "domain": "personal", "priority": "medium", "category": "football", "date": "2026-10-30",
+      "time": "18:00", "durationMinutes": 120, "google": "none", "today": "2026-10-19"}');
+  perform public.t_ok((select category from public.time_blocks where id = (r ->> 'blockId')::uuid) = 'football'
+                      and (select domain from public.tasks where id = (r ->> 'taskId')::uuid) = 'personal',
+    '165: a match''s slot is a Football one; its area stays Personal');
+  r := public.app_save_item('{"title": "Kitchen", "domain": "personal", "priority": "medium", "category": "nonsense", "date": "2026-10-30",
+    "time": "10:00", "durationMinutes": 30, "google": "none", "today": "2026-10-19"}');
+  perform public.t_ok((select category from public.time_blocks where id = (r ->> 'blockId')::uuid) <> 'nonsense',
+    '165: an unknown category still falls back to the default');
+end $$;
+select public.t_ok(public.t_err($$insert into public.schedule_blocks (title, days_of_week, start_time, end_time, category, effective_from)
+  values ('Weekly match', '{6}', '18:00', '20:00', 'football', '2026-10-19')$$) is null,
+  '165: a repeat can be a Football one too');
+
 -- ═══ 3. Other accounts ══════════════════════════════════════════════════════
 select set_config('test.uid', '00000000-0000-0000-0000-000000000002', false);
 select public.t_ok((select count(*) from public.football_follows) = 0 and (select count(*) from public.football_plans) = 0,

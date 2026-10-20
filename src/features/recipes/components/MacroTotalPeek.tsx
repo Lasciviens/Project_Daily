@@ -7,7 +7,7 @@ import { dayMacroSources, diaryLineFromMeal, oneDecimal, type DiaryLine, type Ma
 import type { DayMeal } from '../../daily/api/dayNutritionApi'
 
 /**
- * One of the Nutrition card's totals ("71g fat"): hover with a mouse or tap
+ * One of Food · Today's totals ("71g fat"): hover with a mouse or tap
  * for the exact amount, the kcal it carries and the foods it came from.
  */
 export function MacroFigure({ macro, label, value, color, meals }: {

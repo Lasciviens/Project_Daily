@@ -16,7 +16,8 @@ import { Button, Card, CardHeader, PageBoard, PageContainer, PageHeader, Segment
 import { boardWidthRem } from '../../../shared/ui/pageBoardRules'
 import { useTasksByMonth } from '../../todo/hooks/useTodos'
 import { isOpenTask } from '../../todo/taskRules'
-import { formatLocalDate } from '../../../shared/utils/dateUtils'
+import { formatLocalDate, mondayOfStr } from '../../../shared/utils/dateUtils'
+import { usePrefetchWeek } from '../../home/hooks/usePrefetchWeek'
 import { DAY_BOARD, MONTH_BOARD, TASKS_BOARD, WEEK_BOARD, glanceInColumn, type DaySection, type PickerSection } from '../dailyBoards'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -166,6 +167,8 @@ function DayGlance({ date }: { date: Date }) {
 // and Done in one column on a phone; from a 54rem card the timed rows and
 // Anytime side by side (split by time, never by table — owner, 15.10.2026).
 function DayHero({ date, onDayClick }: { date: Date; onDayClick: (d: Date) => void }) {
+  // The strip's week is read ahead, so a picked day shows at once (owner, 16.10.2026: "why is it so slow to change date?").
+  usePrefetchWeek(mondayOfStr(formatLocalDate(date)))
   return (
     <Card padded={false} className="w-full overflow-hidden">
       <WeekStrip viewDate={date} onDayClick={onDayClick} />

@@ -108,12 +108,16 @@ function quantile(xs: number[], q: number): number {
   return s[lo] + (s[hi] - s[lo]) * (pos - lo)
 }
 
+const NO_NIGHTS: ReadonlySet<string> = new Set()
+
 /** Nights in [from, to] (wake days, inclusive) that look cut at the start.
  *  `nights` is computeSleepSummary's output over the same points; nights before
- *  `from` in it serve as the baseline, so pass the whole fetched range. */
+ *  `from` in it serve as the baseline, so pass the whole fetched range.
+ *  `confirmed`: wake days the owner said are complete (migration 164) — never
+ *  flagged, and counted in the baseline like any complete night. */
 export function findIncompleteNights(
   points: HealthMetric[], nights: SleepSummary[], from: string, to: string,
-  R: IncompleteNightRule = INCOMPLETE_NIGHT_RULE,
+  R: IncompleteNightRule = INCOMPLETE_NIGHT_RULE, confirmed: ReadonlySet<string> = NO_NIGHTS,
 ): IncompleteNight[] {
   const manual = manualNightKeys(points)
   const byNight = new Map<string, HealthMetric[]>()
@@ -142,7 +146,7 @@ export function findIncompleteNights(
   const flagged = new Set<string>()
   const out: IncompleteNight[] = []
   sorted.forEach((night, i) => {
-    if (manual.has(night.date)) return
+    if (manual.has(night.date) || confirmed.has(night.date)) return
     const start = startOf(night.date)
     if (start == null) return
     const ref: { start: number; total: number }[] = []

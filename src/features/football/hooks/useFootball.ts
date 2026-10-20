@@ -10,7 +10,7 @@ import { putRowsInCache } from '../../../shared/query/cachePatch'
 import { qk, STALE } from '../../../shared/query'
 import { fetchRoster, fetchStandings, fetchTeam, searchFootball } from '../api/espnApi'
 import { createFollow, fetchFollows, fetchPlans, recordPlan, setSubscribed } from '../api/footballApi'
-import { buildAgenda, leagueMonths, matchItem, type FbMatch } from '../footballModel'
+import { buildAgenda, leagueMonths, MATCH_CATEGORY, matchItem, type FbMatch } from '../footballModel'
 import type { FootballFollow, NewFollowInput } from '../types'
 import { ESPN, LIVE_EVERY, leagueMonthQuery, matchQuery, needsLive, teamFixturesQuery, teamResultsQuery } from './espnQueries'
 import { runFootballSync } from './footballSync'
@@ -183,7 +183,7 @@ export function usePlanIt() {
     modal.open({
       kind: 'task',
       defaults: {
-        title: mi.title, notes: mi.notes ?? undefined, date: mi.date, dueDate: mi.date, domain: 'personal',
+        title: mi.title, notes: mi.notes ?? undefined, date: mi.date, dueDate: mi.date, domain: 'personal', category: MATCH_CATEGORY,
         ...(mi.time ? { startTime: mi.time, duration: mi.durationMinutes ?? undefined, scheduled: true } : {}),
       },
       onSaved: r => { if (r.taskId) record.mutate({ match: m, taskId: r.taskId }) },

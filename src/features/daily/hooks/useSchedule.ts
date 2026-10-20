@@ -151,20 +151,24 @@ export function useDeleteScheduleBlock() {
   })
 }
 
+export const timeBlocksQuery = (dateStr: string) => queryOptions({
+  queryKey: qk.schedule.day(dateStr),
+  queryFn:  () => fetchTimeBlocks(dateStr),
+  staleTime: STALE.default,
+})
+
 export function useTimeBlocks(dateStr: string) {
-  return useQuery({
-    queryKey: qk.schedule.day(dateStr),
-    queryFn:  () => fetchTimeBlocks(dateStr),
-    staleTime: STALE.default,
-  })
+  return useQuery(timeBlocksQuery(dateStr))
 }
 
+export const trainingBlocksQuery = (from: string, to: string) => queryOptions({
+  queryKey: qk.schedule.trainingRange(from, to),
+  queryFn:  () => fetchTrainingBlocksRange(from, to),
+  staleTime: STALE.default,
+})
+
 export function useTrainingBlocks(from: string, to: string) {
-  return useQuery({
-    queryKey: qk.schedule.trainingRange(from, to),
-    queryFn:  () => fetchTrainingBlocksRange(from, to),
-    staleTime: STALE.default,
-  })
+  return useQuery(trainingBlocksQuery(from, to))
 }
 
 // Every one-off block write refreshes the whole task graph: consumers read

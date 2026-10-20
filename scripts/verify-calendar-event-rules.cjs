@@ -76,7 +76,26 @@ console.log('\n3b · A done / reopen push is the title ONLY (never the day back 
 check('eventPatchFor(body, \'title\') carries the summary and nothing else', eq(Object.keys(R.eventPatchFor(busy, 'title')), ['summary'])
   && R.eventPatchFor(busy, 'title').summary === '✓ Gym')
 check('…no start, end or transparency in it', !('start' in R.eventPatchFor(busy, 'title')) && !('end' in R.eventPatchFor(busy, 'title')) && !('transparency' in R.eventPatchFor(busy, 'title')))
-check('\'all\' (and a missing or unknown value — older queue rows) is the whole event', eq(R.eventPatchFor(busy, 'all'), busy) && eq(R.eventPatchFor(busy, undefined), busy) && eq(R.eventPatchFor(busy, 'x'), busy))
+const busyPatch = { ...busy, start: { ...busy.start, date: null }, end: { ...busy.end, date: null } }
+check('\'all\' (and a missing or unknown value — older queue rows) is the whole event', eq(R.eventPatchFor(busy, 'all'), busyPatch) && eq(R.eventPatchFor(busy, undefined), busyPatch) && eq(R.eventPatchFor(busy, 'x'), busyPatch))
+
+console.log('\n3c · A PATCH clears the date form it does not use (Google merges objects; start and end must both be timed or both all-day)')
+{
+  const day = R.blockEventBody({ date: '2026-10-21', start_time: null, duration_minutes: 60, title: 'Trip' }, { done: false, timeZone: 'Europe/Oslo' })
+  const timed = R.blockEventBody({ date: '2026-10-21', start_time: '18:45', duration_minutes: 120, title: 'Match' }, { done: false, timeZone: 'Europe/Oslo' })
+  check('all-day → its date, with dateTime and timeZone null (a timed event turned all-day)',
+    eq(R.eventPatchFor(day, 'all').start, { date: '2026-10-21', dateTime: null, timeZone: null }) && eq(R.eventPatchFor(day, 'all').end, { date: '2026-10-22', dateTime: null, timeZone: null }))
+  check('timed → its dateTime and zone, with date null (an all-day event given a time)',
+    eq(R.eventPatchFor(timed, 'all').start, { dateTime: '2026-10-21T18:45:00', timeZone: 'Europe/Oslo', date: null }))
+  check('an insert keeps the plain body (no nulls)', eq(day.start, { date: '2026-10-21' }) && !('date' in timed.start) && !('dateTime' in day.start))
+  check('withTimePatch keeps every other field (a series body)', eq(R.withTimePatch({ summary: 'S', recurrence: ['RRULE:FREQ=WEEKLY'], start: { date: '2026-10-21' }, end: { date: '2026-10-22' } }).recurrence, ['RRULE:FREQ=WEEKLY']))
+  const sched = read('src/features/daily/api/scheduleApi.ts')
+  const series = read('src/features/calendar/api/scheduleSeriesCalendar.ts')
+  check('every browser PATCH of a slot or series goes through the patch form (scheduleApi, itemCalendar, the series push)',
+    /updateCalendarEvent\(token, 'primary', eventId, \{ \.\.\.eventPatchFor\(body, 'all'\) \}\)/.test(sched)
+    && /eventPatchFor\(body, fields\)/.test(read('src/features/calendar/api/itemCalendar.ts'))
+    && !/updateCalendarEvent\([^)]*\{ \.\.\.plan\.body \}/.test(series))
+}
 check('doneMarkPatch: only the summary, with or without "✓ "', eq(R.doneMarkPatch('Gym', true), { summary: '✓ Gym' }) && eq(R.doneMarkPatch('✓ Gym', false), { summary: 'Gym' }))
 const itemCal = read('src/features/calendar/api/itemCalendar.ts')
 check('the browser\'s done / reopen push sends the title only (refreshTaskEventSoon, a repeat\'s day done / undone)',

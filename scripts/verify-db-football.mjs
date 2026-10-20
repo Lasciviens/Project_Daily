@@ -19,6 +19,20 @@ import { fileURLToPath } from 'node:url'
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const mig = f => join(root, 'supabase/migrations', f)
 const migFile = mig('163_football.sql')
+const mig165 = mig('165_football_category.sql')
+
+// 165 is 156's app_save_item with ONE line changed (the category whitelist takes 'football'):
+// a later change to the item save must be made to the newest copy, so the two never drift.
+{
+  const fn = f => readFileSync(f, 'utf8').match(/create or replace function public\.app_save_item\(p_item jsonb\)[\s\S]*?\n\$\$;/)?.[0] ?? ''
+  const a = fn(mig('156_repeat_days_as_tasks.sql')).split('\n')
+  const b = fn(mig165).split('\n')
+  const diff = a.map((l, i) => (l === b[i] ? null : i)).filter(i => i !== null)
+  if (!a.length || a.length !== b.length || diff.length !== 1 || !/'projects', 'football', 'other'/.test(b[diff[0]])) {
+    console.error(`verify-db-football: 165's app_save_item must be 156's with only the category whitelist line changed (${diff.length} lines differ)`)
+    process.exit(1)
+  }
+}
 
 // Static: one transaction, nothing outside the database, every new table locked and audited.
 const sql = readFileSync(migFile, 'utf8').replace(/--.*$/gm, '')
@@ -83,6 +97,8 @@ try {
   psql(target, ['-c', ruleSection])
   psql(target, ['-f', migFile])
   psql(target, ['-f', migFile])
+  psql(target, ['-f', mig165])
+  psql(target, ['-f', mig165])
   // Each passing scenario prints a NOTICE ("ok  …") on stderr; a failing one raises.
   const run = spawnSync('psql', [target, '-v', 'ON_ERROR_STOP=1', '-q', '-f', join(dir, 'scenarios.sql')], { encoding: 'utf8' })
   const passed = (run.stderr.match(/NOTICE: {2}ok {2}/g) || []).length
@@ -99,7 +115,7 @@ try {
       failed = `two sessions adding one match: first ${JSON.stringify(one.out.trim())}, second ${JSON.stringify(second.out.trim())}, tasks,plans = ${counts} (want true, false, 1,1)`
       console.error(`verify-db-football: ${failed}`)
     } else {
-      console.log(`verify-db-football: the live item save (141–156, 160's rule), 163 (applied twice), ${passed} scenarios and two sessions adding one match (one item) passed`)
+      console.log(`verify-db-football: the live item save (141–156, 160's rule), 163 and 165 (each applied twice), ${passed} scenarios and two sessions adding one match (one item) passed`)
     }
   }
 } finally {

@@ -49,6 +49,7 @@ export const CATEGORY_LABELS: Record<TimeBlockCategory, string> = {
   games:    'Games',
   work:     'Work',
   projects: 'Projects',
+  football: 'Football',
   other:    'Other',
 }
 

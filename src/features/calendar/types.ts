@@ -16,6 +16,14 @@ export interface CalendarEvent {
   transparency?: 'opaque' | 'transparent'
   htmlLink: string
   calendarId?: string  // attached client-side after fetch
+  /** "cannot be modified after the event is created": default, birthday, focusTime, fromGmail, outOfOffice, workingLocation. */
+  eventType?: string
+  /** `self`: "Whether the organizer corresponds to the calendar on which this copy of the event appears". */
+  organizer?: { email?: string; self?: boolean }
+  /** "Whether attendees other than the organizer can modify the event" (default false). */
+  guestsCanModify?: boolean
+  /** "a locked event copy where no changes can be made to the main event fields". */
+  locked?: boolean
 }
 
 export interface CalendarListEntry {
@@ -23,4 +31,6 @@ export interface CalendarListEntry {
   summary: string
   primary?: boolean
   backgroundColor?: string
+  /** "The effective access role that the authenticated user has on the calendar": freeBusyReader, reader, writerWithoutPrivateAccess, writer, owner. */
+  accessRole?: string
 }

@@ -7,8 +7,9 @@
 //    presets; "Doesn't block" takes the length off again.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { useState } from 'react'
 import { Popover, PopoverButton, PopoverPanel } from '@headlessui/react'
-import { Clock, Hourglass, X } from 'lucide-react'
+import { CalendarDays, Clock, Hourglass, X } from 'lucide-react'
 import { Time24Field } from './fields'
 import { chipClass, choiceClass, CHIP_PANEL_CLASS } from './fieldStyles'
 import { shiftTime, clampDurationMinutes } from './planModal.config'
@@ -19,23 +20,27 @@ const LENGTHS = [15, 30, 45, 60, 90, 120, 180] as const
 
 const removeClass = chipClass('remove')
 
-export function TimeChip({ time, duration, nextTime, onChange }: {
+export function TimeChip({ time, duration, nextTime, onChange, allDay = false, onAllDay }: {
   time: string | null
   duration: number | null
   /** What "+ Time" starts with. */
   nextTime: string
   onChange: (time: string | null) => void
+  /** No time and on Google Calendar: an all-day event there — the chip says so. */
+  allDay?: boolean
+  /** Offered while Google Calendar is connected on this device (planForm.withAllDay). */
+  onAllDay?: () => void
 }) {
   return (
     <Popover className="contents">
       {({ close }) => (
         <>
           <PopoverButton
-            onClick={() => { if (!time) onChange(nextTime) }}
-            className={chipClass(time ? 'set' : 'add')}
-            aria-label={time ? `Time: ${slotLabel(time, duration)}` : 'Add a time'}
+            onClick={() => { if (!time && !allDay) onChange(nextTime) }}
+            className={chipClass(time || allDay ? 'set' : 'add')}
+            aria-label={time ? `Time: ${slotLabel(time, duration)}` : allDay ? 'All day — change' : 'Add a time'}
           >
-            <Clock aria-hidden />{time ? slotLabel(time, duration) : 'Time'}
+            <Clock aria-hidden />{time ? slotLabel(time, duration) : allDay ? 'All day' : 'Time'}
           </PopoverButton>
           {/* As wide as one row of the hour, the minute, −30m and +30m. */}
           <PopoverPanel anchor="bottom start" modal={false} className={`${CHIP_PANEL_CLASS} w-max max-w-[calc(100vw-24px)]`}>
@@ -44,9 +49,16 @@ export function TimeChip({ time, duration, nextTime, onChange }: {
                 size="sm" value={time ?? nextTime} onChange={v => onChange(v)}
                 onShift={delta => onChange(shiftTime(time ?? nextTime, delta))}
               />
-              <button type="button" onClick={() => { onChange(null); close() }} className={`${removeClass} self-start`}>
-                <X aria-hidden />No time
-              </button>
+              <div className="flex flex-wrap gap-1.5">
+                {onAllDay && (
+                  <button type="button" aria-pressed={allDay} onClick={() => { onAllDay(); close() }} className={chipClass(allDay ? 'set' : 'add')}>
+                    <CalendarDays aria-hidden />All day
+                  </button>
+                )}
+                <button type="button" onClick={() => { onChange(null); close() }} className={removeClass}>
+                  <X aria-hidden />No time
+                </button>
+              </div>
             </div>
           </PopoverPanel>
         </>
@@ -82,14 +94,7 @@ export function LengthChip({ duration, onChange }: {
                 ))}
               </div>
               <div className="flex items-center justify-between gap-2">
-                <label className="flex items-center gap-1.5 text-meta text-fg-muted">
-                  Minutes
-                  <input
-                    type="number" inputMode="numeric" min={1} max={1440} value={duration ?? ''}
-                    onChange={e => { const n = Number(e.target.value); if (n > 0) onChange(clampDurationMinutes(n)) }}
-                    aria-label="Length in minutes" className="input input-sm w-[4.5rem] tabular-nums"
-                  />
-                </label>
+                <MinutesField duration={duration} onChange={onChange} />
                 <button type="button" onClick={() => { onChange(null); close() }} className={removeClass}>
                   <X aria-hidden />Doesn't block
                 </button>
@@ -99,5 +104,31 @@ export function LengthChip({ duration, onChange }: {
         </>
       )}
     </Popover>
+  )
+}
+
+/**
+ * The length typed in minutes. The field keeps what is typed — an empty field
+ * included, so "120" can be cleared and "300" typed (owner, 16.10.2026: it
+ * snapped back to 120) — and saves each whole number from 1 to 1440 as it
+ * comes; leaving it empty or invalid shows the saved length again.
+ */
+function MinutesField({ duration, onChange }: { duration: number | null; onChange: (minutes: number) => void }) {
+  const [draft, setDraft] = useState<string | null>(null)
+  return (
+    <label className="flex items-center gap-1.5 text-meta text-fg-muted">
+      Minutes
+      <input
+        type="number" inputMode="numeric" min={1} max={1440}
+        value={draft ?? (duration ?? '')}
+        onChange={e => {
+          setDraft(e.target.value)
+          const n = Number(e.target.value)
+          if (e.target.value !== '' && Number.isInteger(n) && n > 0) onChange(clampDurationMinutes(n))
+        }}
+        onBlur={() => setDraft(null)}
+        aria-label="Length in minutes" className="input input-sm w-[4.5rem] tabular-nums"
+      />
+    </label>
   )
 }

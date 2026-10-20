@@ -6,8 +6,9 @@ import { useDayTargets } from '../../hooks/useDayTargets'
 
 // Water tracker — daily ml total vs a goal (default 2 L). Quick +250/+500 ml
 // taps + undo-last. Logs to water_log_entries (own table, never in the calorie
-// ring). Shared by the Daily NutritionCard and Food · Today, so a tap on one
-// updates the other (same ['water', date] query key).
+// ring). Used by Food · Today (Daily's Nutrition card had it too until it
+// left the Personal page, 16.10.2026); Home's brief reads the same
+// ['water', date] query key, so a tap shows there at once.
 
 // Whole litres show with no decimals (2 L), partials with two (1.25 L).
 function litres(ml: number): string {

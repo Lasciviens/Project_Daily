@@ -1,7 +1,6 @@
-import { ChevronRight, Search, UtensilsCrossed } from 'lucide-react'
+import { ChevronRight, Search } from 'lucide-react'
 import { isToday } from 'date-fns'
 import { useUIStore } from '../../../app/store'
-import { useEntityModal } from '../../../shared/modals'
 import { Button, SectionLabel, Truncate } from '../../../shared/ui'
 import { formatLocalDate } from '../../../shared/utils/dateUtils'
 import { formatDurationMinutes } from '../../../shared/utils/formatDuration'
@@ -31,7 +30,6 @@ function RailStat({ value, label }: { value: number | string; label: string }) {
 export function DayQuickRail({ date, onOpenTasks }: { date: Date; onOpenTasks?: () => void }) {
   const dateStr = formatLocalDate(date)
   const openCommandBar = useUIStore(s => s.openCommandBar)
-  const modal = useEntityModal()
   // The day's counts, "next" and planned time are the same ones Home and the
   // agenda show (useTodayOverview → taskRules + daySchedule).
   const overview = useTodayOverview(dateStr)
@@ -43,11 +41,9 @@ export function DayQuickRail({ date, onOpenTasks }: { date: Date; onOpenTasks?: 
     <aside aria-label="Day overview" className="@container rounded-card border border-line bg-surface-2 p-4">
       <div className="flex flex-col gap-5 @[40rem]:grid @[40rem]:grid-cols-[minmax(0,15rem)_minmax(0,1fr)_minmax(0,15rem)] @[40rem]:items-start @[40rem]:gap-5">
         <div>
-          <SectionLabel className="mb-2">Quick actions</SectionLabel>
-          <div className="grid grid-cols-2 gap-2">
-            <Button size="sm" icon={<UtensilsCrossed />} onClick={() => modal.open({ kind: 'food-log', date: dateStr })}>Log food</Button>
-            <Button size="sm" icon={<Search />} onClick={openCommandBar}>Search</Button>
-          </div>
+          {/* One action left (Log food went with nutrition, owner 16.10.2026): it needs no heading of its own. */}
+          <SectionLabel className="mb-2">Find</SectionLabel>
+          <Button size="sm" icon={<Search />} onClick={openCommandBar}>Search</Button>
         </div>
 
         <div>

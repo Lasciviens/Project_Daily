@@ -10,6 +10,7 @@ import {
 import { classifyCalendarPushFailure, type TimeBlockCalendarStatus } from '../../daily/api/scheduleSyncRules'
 import type { ScheduleBlock } from '../../daily/types'
 import type { CalendarEvent } from '../types'
+import { withTimePatch } from '../calendarEventRules'
 import {
   addPendingSeries, isBeforeSeriesStart, needsHorizonTopUp, needsSeriesFromDay, parsePendingSeries, plansToAddToCalendar,
   seriesEventForPush, seriesPushZone, SERIES_PENDING_KEY, type PendingSeries, type SeriesPlan,
@@ -104,7 +105,7 @@ async function createSeriesEvent(token: string, planId: string, plan: SeriesPlan
       if (!isCalendarConflict(createErr)) throw createErr
       try {
         const existing = await getCalendarEvent(token, 'primary', id)
-        if (existing.status !== 'cancelled') return await updateCalendarEvent(token, 'primary', id, { ...plan.body })
+        if (existing.status !== 'cancelled') return await updateCalendarEvent(token, 'primary', id, withTimePatch(plan.body))
       } catch (getErr) {
         if (!isCalendarNotFound(getErr)) throw getErr
       }
@@ -151,7 +152,7 @@ async function pushSeries(row: SeriesRow, token: string, mode: PushMode): Promis
   const plan = planFor(row, zone, keepDays)
   if (!plan) return removeSeries(row, token, mode)
   try {
-    await updateCalendarEvent(token, 'primary', eventId, { ...plan.body })
+    await updateCalendarEvent(token, 'primary', eventId, withTimePatch(plan.body))
   } catch (err) {
     if (classifyCalendarPushFailure(err) === 'not_linked') {
       try {

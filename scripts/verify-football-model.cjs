@@ -196,8 +196,8 @@ eq(M.osloParts('2026-10-21T22:30Z'), { date: '2026-10-22', time: '00:30' }, 'aft
   const lille = fixtures.find(m => m.id === '401915396')
   eq(M.newMatchItem(lille), {
     title: '⚽ Lille – Galatasaray', notes: 'UEFA Champions League · League Phase · Decathlon Arena - Stade Pierre-Mauroy, Lille',
-    domain: 'personal', priority: 'medium', date: '2026-10-21', time: '18:45', durationMinutes: 120, google: 'calendar',
-  }, 'a new match item: personal, on Google Calendar like any timed item')
+    domain: 'personal', priority: 'medium', category: 'football', date: '2026-10-21', time: '18:45', durationMinutes: 120, google: 'calendar',
+  }, 'a new match item: personal, a Football slot (165), on Google Calendar like any timed item')
   eq(M.newMatchItem({ ...lille, timeValid: false }).google, 'tasks', 'no kick-off yet: Google Tasks, like any item without a time')
   const mine = { taskId: 't1', blockId: 'b1', scope: 'item', title: 'Galatasaray away 🔥', notes: 'with Ali', domain: 'personal', priority: 'high',
     date: '2026-10-21', time: '18:45', durationMinutes: 150, deadline: null, repeat: null, google: 'both', googleTaskList: null, source: null }

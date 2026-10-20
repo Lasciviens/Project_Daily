@@ -134,7 +134,7 @@ Script.complete();
 Refresh is on iOS's widget budget (~every 15–60 min; not real-time).
 
 ## Example 5 · Log 1 L water — NFC bottle tap OR manual  (deterministic, instant, free)
-**Does:** logs **1 L** into today's water total (shows on Daily, Food, and the
+**Does:** logs **1 L** into today's water total (shows on Home, Food, and the
 widget). Runs by NFC tap on your bottle, by hand, or by voice.
 
 **Shortcut — name `Su İç`:**

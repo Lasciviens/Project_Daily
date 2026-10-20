@@ -79,6 +79,9 @@ check('§1.8 minutes-after-noon back to a clock', [clockFromNoonMinutes(660), cl
   check('§3.4 fewer than 5 reference nights → no verdict', run([...few, cut], nextDay, nextDay), [])
   const manual = { id: 'm1', metric_name: 'sleep_analysis', date: nextDay, source: 'manual', recorded_at: `${nextDay}T06:00:00Z`, value: { value: 'Core', qty: 6 } }
   check('§3.5 a night with a manual entry is never flagged (the entry is the correction)', run([...base, cut, manual], nextDay, nextDay), [])
+  const confirmedRun = (points, from, to, confirmed) => findIncompleteNights(points, computeSleepSummary(points), from, to, INCOMPLETE_NIGHT_RULE, confirmed)
+  check('§3.5b a night the owner confirmed complete (migration 164) is never flagged', confirmedRun([...base, cut], nextDay, nextDay, new Set([nextDay])), [])
+  check('§3.5c confirming another night changes nothing for this one', confirmedRun([...base, cut], nextDay, nextDay, new Set([shift(nextDay, -1)])).length, 1)
   const naive = { ...cut, id: 'naive', value: { ...cut.value, sleepStart: `${nextDay}T05:00:00`, sleepEnd: `${nextDay}T08:00:00` } }
   check('§3.6 a row without a local offset gets no verdict (its start clock is unknown)', run([...base, naive], nextDay, nextDay), [])
   // Reference nights must be recent: the same baseline 40 days earlier is ignored.
@@ -97,6 +100,17 @@ check('§1.8 minutes-after-noon back to a clock', [clockFromNoonMinutes(660), cl
   // Nights under 3 h asleep never enter the baseline either.
   const nap = session('2026-07-14', '14:00', '15:00', 1)
   check('§4.2 a sub-3h night is not part of the baseline', run([...base, nap, cut1], nextDay, nextDay).map(n => n.typicalStartClock), ['01:00'])
+  // A confirmed night is a complete night: it joins the baseline the next
+  // night is judged by (a flagged one stays out of it).
+  const five = base.slice(-5)
+  const late = session(nextDay, '04:50', '09:30', 4.5)
+  const pts = [...five, late, cut2]
+  const plain = run(pts, nextDay, d2)
+  const withConfirm = findIncompleteNights(pts, computeSleepSummary(pts), nextDay, d2, INCOMPLETE_NIGHT_RULE, new Set([nextDay]))
+  check('§4.3 unconfirmed, the late night is flagged and the next night is judged without it',
+    plain.map(n => n.date), [nextDay, d2])
+  check('§4.3b confirmed, the late night is not flagged and counts as a usual start (the next night is less late)',
+    [withConfirm.map(n => n.date).includes(nextDay), withConfirm.find(n => n.date === d2)?.lateByMin < plain.find(n => n.date === d2)?.lateByMin], [false, true])
 }
 
 // ─── §4b A spread-out baseline never reports a lateness ≤ 0 ─────────────────

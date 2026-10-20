@@ -315,6 +315,16 @@ export function keepQuickText(form: PlanForm, base: QuickBase, typed: string): P
   return { ...f, title: typed }
 }
 
+/**
+ * "All day" (owner, 16.10.2026: "there are no options to mark as all day"):
+ * no time and no length, on Google Calendar — an item with a day and no time
+ * is an all-day event there (155). Both stays Both; anything else becomes
+ * Calendar.
+ */
+export function withAllDay(f: Pick<PlanForm, 'googlePick'>): Partial<PlanForm> {
+  return { time: null, duration: null, googlePick: f.googlePick === 'both' ? 'both' : 'calendar' }
+}
+
 /** A time added by hand gets no length (it doesn't block); a removed time takes its length with it. */
 export function withTime(time: string | null): Partial<PlanForm> {
   return time ? { time } : { time: null, duration: null }

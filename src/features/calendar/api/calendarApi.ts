@@ -64,6 +64,8 @@ export function isCalendarConflict(error: unknown): boolean {
 
 async function gcalRequest<T>(path: string, token: string, init: RequestInit = {}): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
+    // A stalled Google answer must never hold a screen (or a save) forever.
+    signal: AbortSignal.timeout(15_000),
     ...init,
     headers: {
       Authorization: `Bearer ${token}`,

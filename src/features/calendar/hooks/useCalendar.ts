@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { useCalendarStore } from '../../../app/store'
 import { supabase } from '../../../integrations/supabase/client'
@@ -127,22 +127,40 @@ function useSelectedCalendarIds(): string[] {
 // in the week/month grid's dot indicators, which already looped
 // `selectedCalendarIds` via useCalendarEventDatesForRange below. Mirrors
 // that same loop-and-merge shape.
-export function useCalendarEventsForDay(dateStr: string) {
-  const token = useValidToken()
-  const { setAccessToken } = useCalendarStore()
-  const calIds = useSelectedCalendarIds()
-
-  return useQuery({
+function calendarDayQuery(dateStr: string, calIds: string[], token: string | null, setAccessToken: (t: string, e: number) => void) {
+  return {
     queryKey: qk.calendar.day(dateStr, calIds.join(',')),
     queryFn:  async () => {
       const activeToken = await ensureToken(token, setAccessToken)
       const results = await Promise.all(calIds.map(id => fetchEventsForDay(activeToken, dateStr, id)))
       return sortEvents(results.flat())
     },
-    enabled:   !!token,
     staleTime: STALE.default,
     retry:     false,
-  })
+  } as const
+}
+
+export function useCalendarEventsForDay(dateStr: string) {
+  const token = useValidToken()
+  const { setAccessToken } = useCalendarStore()
+  const calIds = useSelectedCalendarIds()
+  return useQuery({ ...calendarDayQuery(dateStr, calIds, token, setAccessToken), enabled: !!token })
+}
+
+/** Reads days' calendar events ahead (Home's week strip), into the same cache entries the day view reads. */
+export function useCalendarDaysPrefetch(): (dates: readonly string[]) => void {
+  const qc = useQueryClient()
+  const token = useValidToken()
+  const { setAccessToken } = useCalendarStore()
+  // The ids as one string: the list is a new array on every render. Until the calendar list is in,
+  // "every calendar" would read primary only and then again — wait for it.
+  const { selectedCalendarIds } = useCalendarStore()
+  const listReady = useCalendarList().isSuccess
+  const ids = useSelectedCalendarIds().join(',')
+  return useCallback((dates: readonly string[]) => {
+    if (!token || !ids || (!selectedCalendarIds && !listReady)) return
+    for (const d of dates) void qc.prefetchQuery(calendarDayQuery(d, ids.split(','), token, setAccessToken))
+  }, [qc, token, setAccessToken, ids, selectedCalendarIds, listReady])
 }
 
 export function useCalendarList() {
@@ -157,15 +175,19 @@ export function useCalendarList() {
 }
 
 export function useUpdateCalendarEvent() {
-  const { accessToken } = useCalendarStore()
   return useMutationWithFeedback({
     action: 'update_calendar_event',
     successMessage: 'Event updated',
-    mutationFn: ({ calendarId, eventId, patch }: {
+    mutationFn: async ({ calendarId, eventId, patch }: {
       calendarId: string
       eventId:    string
       patch:      Record<string, unknown>
-    }) => updateCalendarEvent(accessToken!, calendarId, eventId, patch),
+    }) => {
+      // Never the stored token as is (planning rules): refreshed when it is about to run out.
+      const token = await ensureValidCalendarToken()
+      if (!token) throw new Error('Google Calendar is not connected on this device')
+      return updateCalendarEvent(token, calendarId, eventId, patch)
+    },
     invalidates: [qk.calendar.all],
   })
 }

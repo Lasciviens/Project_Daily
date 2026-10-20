@@ -2574,7 +2574,7 @@ const DB_CATALOG: Record<string, CatalogEntry> = {
   time_blocks: {
     access: 'rw',
     purpose: 'One-off day schedule / timeline blocks for a specific date.',
-    columns: 'id, date(date), title, start_time(time HH:MM:SS; null = the item\'s day with no time), duration_minutes(int), busy(bool, migration 155: false = "do it at 14:00" — no length, blocks no time, duration_minutes then holds a nominal 15), color(blue|green|orange|purple|accent|red), category(daily|training|media|games|work|projects|other), task_id(uuid; the ONLY representation of "linked to a Task" — never source_type), source_type(training_session|movie|tv_episode|project_item|calendar|manual; the REAL originating entity, independent of task_id, never "task"), source_id(uuid), notes, created_at, updated_at',
+    columns: 'id, date(date), title, start_time(time HH:MM:SS; null = the item\'s day with no time), duration_minutes(int), busy(bool, migration 155: false = "do it at 14:00" — no length, blocks no time, duration_minutes then holds a nominal 15), color(blue|green|orange|purple|accent|red), category(daily|training|media|games|work|projects|football|other), task_id(uuid; the ONLY representation of "linked to a Task" — never source_type), source_type(training_session|movie|tv_episode|project_item|calendar|manual; the REAL originating entity, independent of task_id, never "task"), source_id(uuid), notes, created_at, updated_at',
     rules: 'Set category to match the block type (e.g. "training" for a planned workout) — training/media/work calendar views filter by it. To move an item (a block linked to a task) to another day or time, move this row (date / start_time) — the database keeps the task\'s day with it (its due follows unless the due is a deadline on another day); never move it by changing the task\'s due_date. To link a block to a task, set task_id — never set source_type to "task".',
   },
   training_skips: {
@@ -2833,6 +2833,12 @@ const DB_CATALOG: Record<string, CatalogEntry> = {
     purpose: 'What a block holds. A table row: data (one key per column of its block). A log entry: entry_date + title + body. A question: state open + title + body; a decision: state decided + title + body (why) + entry_date (the day decided). A text page: title + body (headings with #, lists with -, code with ```). A link: title + url + body (a note).',
     columns: 'id, block_id(uuid FK project_blocks), project_id(uuid — filled from the block by the database), title, body, url(http(s)), entry_date(date), state(open|decided or null), data(jsonb object), sort_order, created_at, updated_at',
     rules: 'Read the block first (its kind, and a table\'s settings.columns) and write the fields its kind uses: a table row\'s data keys are its column keys, a money or number value is a number, a date is YYYY-MM-DD, a choice is one of the column\'s options. Answering a question = update it to state decided with the decision in title/body and entry_date today.',
+  },
+  sleep_night_confirmations: {
+    access: 'rw',
+    purpose: 'Sleep nights the user confirmed are complete (migration 164): Health → Sleep stops saying "may be incomplete" for them, and they count as normal nights. One row per night.',
+    columns: 'id, night_date(date — the wake day the night is filed under), created_at',
+    rules: 'Add a row only when the user says a night\'s data is right; deleting it brings the note back.',
   },
   football_follows: {
     access: 'ro',

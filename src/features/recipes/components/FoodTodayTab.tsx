@@ -32,8 +32,11 @@ import { GUESS_MARK, isGuessLine } from '../quickGuess'
 import { SupplementDosesCard } from '../../supplements/components/SupplementDosesCard'
 
 // The wide meal-row grid: name · amount · kcal · protein · carbs · fat · fiber · ✓ · ✕.
-// Shared by the rows and their column-heading row so the two always line up.
-const MACRO_GRID = 'hidden items-center gap-x-2 @[40rem]:grid @[40rem]:grid-cols-[minmax(0,1fr)_3.5rem_3rem_3.25rem_3rem_3rem_3rem_2.75rem_2.75rem]'
+// Shared by the rows, their column-heading row and the meal's header totals,
+// so all three always line up (owner, 16.10.2026: "should be aligned with below").
+const MACRO_COLS = '@[40rem]:grid-cols-[minmax(0,1fr)_3.5rem_3rem_3.25rem_3rem_3rem_3rem_2.75rem_2.75rem]'
+const MACRO_GRID = cx('hidden items-center gap-x-2 @[40rem]:grid', MACRO_COLS)
+const HEAD_NUM = 'hidden text-meta tabular-nums text-right @[40rem]:block'
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Food · Today — the full nutrition surface. The day's totals, water and the
@@ -354,18 +357,26 @@ export function FoodTodayTab({ date }: { date: string }) {
           const kcal = slotTotals.calories
           return (
             <Card key={slot} padded={false} className="@container overflow-hidden">
-              <header className="flex items-center gap-2 border-b border-line py-1 pl-4 pr-2">
-                <span aria-hidden className="text-base leading-none">{icon}</span>
-                <h3 className="flex-1 text-ui font-semibold text-fg">{label}</h3>
+              {/* A wide card puts the meal's totals in the rows' own columns (kcal · protein · carbs · fat · fiber);
+                  a narrow one keeps them on one line beside the name, and "Log" becomes its + (still read out). */}
+              <header className={cx('flex items-center gap-2 border-b border-line py-1 pl-4 pr-2 @[40rem]:grid @[40rem]:gap-x-2', MACRO_COLS)}>
+                <h3 className="flex min-w-0 flex-1 items-center gap-2 text-ui font-semibold text-fg">
+                  <span aria-hidden className="text-base leading-none">{icon}</span>{label}
+                </h3>
                 {kcal > 0 && (
-                  <span className="flex flex-wrap items-center justify-end gap-x-2 text-meta tabular-nums text-fg-muted">
+                  <span className="flex flex-wrap items-center justify-end gap-x-2 text-meta tabular-nums text-fg-muted @[40rem]:hidden">
                     <span>{kcal} kcal</span>
                     <MacroLine protein={slotTotals.protein_g} carbs={slotTotals.carbs_g} fat={slotTotals.fat_g} className="flex-nowrap" />
                   </span>
                 )}
-                {/* A narrow card keeps the header on one line: the macros stay, "Log" becomes its + (still read out). */}
+                <span aria-hidden className="hidden @[40rem]:block" />
+                <span className={cx(HEAD_NUM, 'font-semibold text-fg')}>{kcal > 0 ? kcal : ''}</span>
+                <span className={cx(HEAD_NUM, 'font-medium text-fg-2')}>{kcal > 0 ? `${slotTotals.protein_g}g` : ''}</span>
+                <span className={cx(HEAD_NUM, 'font-medium text-fg-2')}>{kcal > 0 ? `${slotTotals.carbs_g}g` : ''}</span>
+                <span className={cx(HEAD_NUM, 'font-medium text-fg-2')}>{kcal > 0 ? `${slotTotals.fat_g}g` : ''}</span>
+                <span className={cx(HEAD_NUM, 'font-medium text-fg-2')}>{kcal > 0 ? `${slotTotals.fiber_g}g` : ''}</span>
                 <button type="button" onClick={() => openLog(slot)}
-                  className="btn-ghost btn-sm gap-1 !px-2.5 text-accent-600">
+                  className="btn-ghost btn-sm gap-1 !px-2.5 text-accent-600 @[40rem]:col-span-2 @[40rem]:justify-self-end">
                   <Plus aria-hidden className="h-4 w-4" /><span className="sr-only @[26rem]:not-sr-only">Log</span>
                 </button>
               </header>

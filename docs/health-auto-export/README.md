@@ -114,7 +114,9 @@ separate, riskier change for no sleep benefit. Keep the weekly reconciliation
 
 Until the catch-up has run, the Health page's Sleep window flags a night that
 still looks cut ("may be incomplete", `sleepCompleteness.ts`): it starts at
-least 2 hours after your early-side bedtime and is shorter than usual.
+least 2 hours after your early-side bedtime and is shorter than usual. If the
+night really started that late, **It's complete** on the note says so for good
+(stored per night, migration 164).
 
 ### Setup (once, on the iPhone)
 
