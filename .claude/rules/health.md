@@ -11,6 +11,7 @@ Background: `docs/features/health.md`.
 - Summed metrics (steps, energy, exercise time) collapse to one reading per hour before summing — the export re-reports the same hour. Any new consumer of `health_metrics` sums needs the same collapse (the client's `healthAggregate.ts` and `ai-proxy` each have one).
 - The three sleep merges (client, `ai-proxy`, `phone-gateway`) follow one contract — change them together.
 - "Last night" is only the night filed under the selected day; never show an older night as last night.
+- A night the owner confirmed complete (`sleep_night_confirmations`, 164) is never flagged as incomplete and counts in the baseline — pass the confirmations to every `findIncompleteNights` caller.
 - One bodyweight series, scale first (`bodyweight.ts`); body fat and lean mass come only from the scale in use.
 - A body change smaller than its measurement noise reads "steady" and gets no colour (`weeklyBodyChanges.ts`, `bodyGoal.GOAL_NOISE`); the scale's body score is shown, never judged.
 - No composite health score and no invented derived metric. Aims agree with their band (`aimGuidance.ts`).

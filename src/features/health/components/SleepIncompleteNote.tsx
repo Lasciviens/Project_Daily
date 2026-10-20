@@ -1,5 +1,7 @@
-import { AlertTriangle } from 'lucide-react'
+import { AlertTriangle, Check } from 'lucide-react'
 import { InfoBubble } from '../../../shared/components/InfoBubble'
+import { Button } from '../../../shared/ui'
+import { useConfirmSleepNight } from '../hooks/useSleepConfirmations'
 import { shiftDateStr } from '../../../shared/utils/dateUtils'
 import { formatSleepHours as fmtHrs } from '../healthAggregate'
 import type { IncompleteNight } from '../sleepCompleteness'
@@ -7,8 +9,11 @@ import { fmtDayMonth } from './healthFormat'
 
 // Says when a night on screen looks cut at the start (sleepCompleteness.ts) and
 // why, so a short night from a late Health Auto Export delivery is never read
-// as a bad night. `nights` are the flagged nights in view, oldest first.
+// as a bad night. `nights` are the flagged nights in view, oldest first. When
+// the data is right after all, "It's complete" stores that for the night
+// (migration 164) and the note never comes back for it.
 export function SleepIncompleteNote({ nights, today }: { nights: IncompleteNight[]; today: string }) {
+  const confirm = useConfirmSleepNight()
   const night = nights[nights.length - 1]
   if (!night) return null
   const others = nights.length - 1
@@ -36,9 +41,18 @@ export function SleepIncompleteNote({ nights, today }: { nights: IncompleteNight
               whole night lands the same day; the weekly “Previous 7 Days” run also repairs it. Setup:
               docs/health-auto-export in the repository.
             </span>
-            <span className="mt-2 block">If you really fell asleep at {night.startClock}, ignore this.</span>
+            <span className="mt-2 block">
+              If you really fell asleep at {night.startClock}, tap “It's complete”: the note won't show for this night again.
+            </span>
           </InfoBubble>
         </div>
+        <Button
+          size="sm" variant="ghost" icon={<Check />} className="-ml-2 mt-0.5"
+          loading={confirm.isPending}
+          onClick={() => confirm.mutate({ date: night.date, label })}
+        >
+          It's complete
+        </Button>
         {others > 0 && (
           <p className="mt-0.5 text-fg-muted">
             {others} more {others === 1 ? 'night' : 'nights'} in this window look the same.

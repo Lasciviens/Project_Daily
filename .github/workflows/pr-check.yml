@@ -242,6 +242,13 @@ jobs:
         env:
           DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
 
+      # Migration 164: a sleep night confirmed complete (one row per night,
+      # undone by a delete, audited, row level security, the owner lock).
+      - name: Sleep night confirmation database scenarios
+        run: node scripts/verify-db-sleep-confirmations.mjs
+        env:
+          DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
+
       # `npm run lint` is deliberately NOT a gate yet: it is red today, and a
       # large share of the errors come from eslint linting supabase/functions
       # (Deno code checked with browser globals). Narrow the ESLint scope and

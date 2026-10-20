@@ -2834,6 +2834,12 @@ const DB_CATALOG: Record<string, CatalogEntry> = {
     columns: 'id, block_id(uuid FK project_blocks), project_id(uuid — filled from the block by the database), title, body, url(http(s)), entry_date(date), state(open|decided or null), data(jsonb object), sort_order, created_at, updated_at',
     rules: 'Read the block first (its kind, and a table\'s settings.columns) and write the fields its kind uses: a table row\'s data keys are its column keys, a money or number value is a number, a date is YYYY-MM-DD, a choice is one of the column\'s options. Answering a question = update it to state decided with the decision in title/body and entry_date today.',
   },
+  sleep_night_confirmations: {
+    access: 'rw',
+    purpose: 'Sleep nights the user confirmed are complete (migration 164): Health → Sleep stops saying "may be incomplete" for them, and they count as normal nights. One row per night.',
+    columns: 'id, night_date(date — the wake day the night is filed under), created_at',
+    rules: 'Add a row only when the user says a night\'s data is right; deleting it brings the note back.',
+  },
   football_follows: {
     access: 'ro',
     purpose: 'Football (migration 163): the teams and tournaments the user follows on the Football page. Match data comes from ESPN in the browser and is not stored — the assistant can\'t read fixtures or results. Following, subscribing and unfollowing happen in the app.',

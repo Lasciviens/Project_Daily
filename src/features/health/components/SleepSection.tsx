@@ -21,6 +21,7 @@ import { SleepRawRows } from './SleepRawRows'
 import { fmtAxisFor, fmtDayLong, fmtDayMonth, windowCaption } from './healthFormat'
 import { nightEndingOn, nightMissingText } from '../healthDateLabels'
 import { findIncompleteNights } from '../sleepCompleteness'
+import { useSleepConfirmations } from '../hooks/useSleepConfirmations'
 import { SleepIncompleteNote } from './SleepIncompleteNote'
 
 // Nights are filed under the day you WOKE UP, so "today" in Day mode is last
@@ -39,9 +40,11 @@ export function SleepSection({ range, extras = true }: { range: HealthRange; ext
   const sources = sleepSourcesByNight(sleep.points)
   // Nights in view whose start never arrived from Health Auto Export (the whole
   // fetched range is the baseline, so pass all of it).
+  // Nights the owner confirmed complete (migration 164) never get the note.
+  const confirmed = useSleepConfirmations().data
   const incomplete = useMemo(
-    () => findIncompleteNights(sleep.points, sleep.nights, win.from, win.to),
-    [sleep.points, sleep.nights, win.from, win.to],
+    () => findIncompleteNights(sleep.points, sleep.nights, win.from, win.to, undefined, confirmed),
+    [sleep.points, sleep.nights, win.from, win.to, confirmed],
   )
 
   // The night that ENDED on the selected day — never the newest night on record.
