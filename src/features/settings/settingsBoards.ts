@@ -24,6 +24,14 @@ export const APPEARANCE_BOARD: BoardLayouts<AppearanceSection> = {
   2: { main: '42rem', columns: [['look'], ['notifications']] },
 }
 
+// ── Profile ──────────────────────────────────────────────────────────────
+// One bounded card (birth year, sex, height), so the page stops after it: a
+// 42rem-capped list at every width.
+export type ProfileSection = 'body'
+export const PROFILE_BOARD: BoardLayouts<ProfileSection> = {
+  1: ['body'],
+}
+
 // ── Food ─────────────────────────────────────────────────────────────────
 // One bounded card (the Food settings rows: Quick guess), so the page stops
 // after it: a 42rem-capped list at every width, the other tracks left empty.

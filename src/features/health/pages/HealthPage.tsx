@@ -30,7 +30,6 @@ import { useHealthSection } from '../components/overview/useHealthSection'
 import { useHealthHero } from '../components/overview/useHealthHero'
 import { HealthHero } from '../components/overview/HealthHero'
 import { HealthInsightsCard } from '../components/overview/HealthInsightsCard'
-import { ProfileChip } from '../components/overview/ProfileChip'
 import { HealthSectionTabs, SectionPanel } from '../components/overview/SectionPanel'
 import { SleepTimingCard } from '../components/overview/SleepTimingCard'
 import { ExerciseWeekCard } from '../components/overview/ExerciseWeekCard'
@@ -74,7 +73,7 @@ export function HealthPage() {
           (hidden on Goal progress, which reads its own 14/28/56-day window and
           shows those dates itself). Each window below is a PageBoard
           (healthBoards.ts), so a wide screen adds columns instead of length. */}
-      <PageHeader title="Health" actions={<ProfileChip today={today} />} className="!mb-3" art={<HealthHeroArt />}>
+      <PageHeader title="Health" className="!mb-3" art={<HealthHeroArt />}>
         <HealthSectionTabs value={section} onChange={setSection} />
       </PageHeader>
 
