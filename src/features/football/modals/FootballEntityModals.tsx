@@ -17,11 +17,11 @@ import {
 } from '../footballModel'
 import { isFollowed, scoreText, SUGGESTIONS } from '../footballView'
 import {
-  useFollow, useFollows, useFootballSearch, useMatchDetail, usePlanIt, usePlannedTasks, useRoster, useTeamFixtures,
+  useFollow, useFollows, useFootballSearch, useMatchDetail, usePlanIt, usePlannedTasks, useRoster,
   useTeamInfo, useTeamResults,
 } from '../hooks/useFootball'
 import type { NewFollowInput } from '../types'
-import { MatchRow } from '../components/MatchRow'
+import { TeamFixtures } from '../components/TeamFixtures'
 import { SubscribeToggle } from '../components/SubscribeToggle'
 import { TeamLogo } from '../components/TeamLogo'
 
@@ -32,8 +32,9 @@ const followOf = (h: FbSearchHit): NewFollowInput | null => {
   return isLeagueSlug(h.ref) ? { kind: 'league', ref: h.ref, name: h.name, logo: h.logo, league: h.ref } : null
 }
 
-/** "+ Follow": search ESPN for a team or a tournament; before anything is typed, the four the owner named. */
+/** "+ Follow": search ESPN for a team or a tournament (a team opens its club); before anything is typed, the suggestions. */
 export function FootballFollowModal({ onClose }: EntityModalProps<'football-follow'>) {
+  const modal = useEntityModal()
   const [text, setText] = useState('')
   const query = useDebouncedValue(text.trim(), 300)
   const search = useFootballSearch(query)
@@ -62,13 +63,24 @@ export function FootballFollowModal({ onClose }: EntityModalProps<'football-foll
             <ul className="-mx-1 flex flex-col">
               {hits.map(h => {
                 const already = isFollowed(follows, h.kind, h.ref)
-                return (
-                  <li key={`${h.kind}:${h.ref}`} className="row gap-2.5">
+                const label = (
+                  <>
                     <TeamLogo src={h.logo} kind={h.kind} size={24} />
                     <span className="min-w-0 flex-1">
                       <Truncate className="text-body font-medium text-fg">{h.name}</Truncate>
                       <Truncate className="text-meta text-fg-muted">{subtitle(h)}</Truncate>
                     </span>
+                  </>
+                )
+                return (
+                  <li key={`${h.kind}:${h.ref}`} className="flex items-center gap-2">
+                    {/* A team opens its club — its fixtures, Plan it — followed or not (owner, 25.10.2026). */}
+                    {h.kind === 'team' ? (
+                      <button type="button" className="row row-interactive min-w-0 flex-1 gap-2.5 text-left"
+                        onClick={() => modal.open({ kind: 'football-team', teamId: h.ref, league: h.league ?? undefined })}>
+                        {label}
+                      </button>
+                    ) : <span className="row min-w-0 flex-1 gap-2.5">{label}</span>}
                     {already ? <span className="shrink-0 text-meta text-fg-muted">Following</span> : (
                       <Button
                         size="sm" loading={follow.isPending && follow.variables?.input.ref === h.ref}
@@ -92,7 +104,7 @@ export function FootballFollowModal({ onClose }: EntityModalProps<'football-foll
 
 const OUTCOME_TONE: Record<'W' | 'D' | 'L', Tone> = { W: 'success', D: 'neutral', L: 'danger' }
 
-/** A club: where it stands, its form, its next match and its squad by position. */
+/** A club: where it stands, its form, its coming matches (each with Plan it) and its squad by position. */
 export function FootballTeamModal({ request, onClose }: EntityModalProps<'football-team'>) {
   const { teamId } = request
   // ESPN reads a club under any league ("all" gives its own); a squad only under a real one.
@@ -123,11 +135,8 @@ function TeamBody({ teamId, name, logo, squadLeague, espnUrl }: { teamId: string
   const mine = follows.find(f => f.kind === 'team' && f.ref === teamId)
   const follow = useFollow()
   const results = useTeamResults(teamId)
-  const fixtures = useTeamFixtures(teamId)
   const roster = useRoster(squadLeague, teamId)
-  const planned = usePlannedTasks()
   const form = (results.data ?? []).filter(m => outcomeFor(m, teamId)).slice(0, 5)
-  const next = (fixtures.data ?? []).find(m => m.state === 'pre' || m.state === 'in')
 
   return (
     <div className="flex flex-col gap-4">
@@ -161,12 +170,7 @@ function TeamBody({ teamId, name, logo, squadLeague, espnUrl }: { teamId: string
         </section>
       )}
 
-      {next && (
-        <section className="flex flex-col gap-1">
-          <SectionLabel>Next · {formatWeekdayDate(osloParts(next.kickoff).date)}</SectionLabel>
-          <div className="-mx-1"><MatchRow match={next} planned={planned.has(next.id)} /></div>
-        </section>
-      )}
+      <TeamFixtures teamId={teamId} />
 
       <section className="flex flex-col gap-2">
         <SectionLabel>Squad</SectionLabel>
@@ -250,7 +254,7 @@ export function FootballMatchModal({ request, onClose }: EntityModalProps<'footb
   const footer = taskId ? (
     <Button icon={<CalendarCheck />} onClick={() => modal.open({ kind: 'task', id: taskId })}>In your day</Button>
   ) : m.state === 'pre' && m.league ? (
-    <Button variant="primary" icon={<CalendarPlus />} onClick={() => planIt(m)}>Plan it</Button>
+    <Button variant="primary" icon={<CalendarPlus />} onClick={() => { void planIt(m) }}>Plan it</Button>
   ) : undefined
   return (
     <ModalShell

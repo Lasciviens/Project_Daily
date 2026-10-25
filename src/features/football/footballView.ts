@@ -114,6 +114,12 @@ export const SUGGESTIONS: readonly NewFollowInput[] = [
   { kind: 'league', ref: 'uefa.champions', name: 'UEFA Champions League', logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/2.png', league: 'uefa.champions' },
   { kind: 'league', ref: 'fifa.world', name: 'FIFA World Cup', logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/4.png', league: 'fifa.world' },
   { kind: 'league', ref: 'uefa.euro', name: 'UEFA European Championship', logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/74.png', league: 'uefa.euro' },
+  // The five big leagues (owner, 25.10.2026: "Add 5 top league"); names and logos as ESPN's scoreboard gave them that day.
+  { kind: 'league', ref: 'eng.1', name: 'English Premier League', logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/23.png', league: 'eng.1' },
+  { kind: 'league', ref: 'esp.1', name: 'Spanish LALIGA', logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/15.png', league: 'esp.1' },
+  { kind: 'league', ref: 'ger.1', name: 'German Bundesliga', logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/10.png', league: 'ger.1' },
+  { kind: 'league', ref: 'ita.1', name: 'Italian Serie A', logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/12.png', league: 'ita.1' },
+  { kind: 'league', ref: 'fra.1', name: 'French Ligue 1', logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/9.png', league: 'fra.1' },
 ]
 
 export const isFollowed = (follows: readonly FootballFollow[], kind: 'team' | 'league', ref: string) =>
