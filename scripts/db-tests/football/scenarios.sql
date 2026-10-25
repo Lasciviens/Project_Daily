@@ -173,6 +173,22 @@ begin
     'Undo puts the task back and links its record again');
 end $$;
 
+-- Unsubscribe (25.10.2026, useStopSubscription): the item, then its record go, so subscribing again adds
+-- the match again; Undo puts the record back first, then the item, which links it again (144)
+do $$
+declare st jsonb; sp jsonb; derby jsonb := (select v from public.t_keep where k = 'derby');
+begin
+  st := public.app_delete_rows('tasks', array[derby ->> 'taskId']);
+  sp := public.app_delete_rows('football_plans', array[(select id::text from public.football_plans where event_id = '401888265')]);
+  perform public.t_ok(not exists (select 1 from public.football_plans where event_id = '401888265'),
+    'unsubscribe: the record goes with its item');
+  perform public.app_restore_rows(sp);
+  perform public.app_restore_rows(st);
+  perform public.t_ok((select task_id from public.football_plans where event_id = '401888265') = (derby ->> 'taskId')::uuid
+                      and exists (select 1 from public.tasks where id = (derby ->> 'taskId')::uuid),
+    'unsubscribe''s Undo: the record, then the item — linked again');
+end $$;
+
 -- Planned again by hand after a delete: the record takes the new task
 do $$
 declare r jsonb; derby jsonb := (select v from public.t_keep where k = 'derby');
@@ -187,10 +203,10 @@ begin
     'planning it again by hand links the new task');
 end $$;
 
--- Unfollowing a team leaves the matches already in the day
+-- A follow deleted in the database leaves the planned matches (the app takes a subscription's out first)
 delete from public.football_follows where ref = '432';
 select public.t_ok((select count(*) from public.football_plans where task_id is not null) = 2,
-  'unfollowing a team leaves its planned matches in the day');
+  'a follow''s row deleted leaves its planned matches in the day');
 
 -- ═══ 2b. The Football category (165) ═══════════════════════════════════════
 do $$

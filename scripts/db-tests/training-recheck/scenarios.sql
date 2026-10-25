@@ -1,8 +1,9 @@
 -- Migration 166 (a moved training session is moved): a session completed by
 -- another workout and then postponed, a move inside the workout's six days, a
--- session moved onto the day it was done, a missed day moved, a skip moved, a
--- session ticked by hand, a repeat's day moved without its slot (Google
--- Tasks, the assistant), and the one-off repair. Days are relative to today
+-- session moved onto the day it was done, never completed by another
+-- routine's workout on a move, a session ticked by hand, a missed day moved
+-- (forward, and back into the past), a skip moved, a repeat's day moved
+-- without its slot (Google Tasks, the assistant), and the one-off repair. Days are relative to today
 -- (Europe/Oslo), as the rule reads them. Setup and checks run as the
 -- superuser; moves run as `authenticated`, like the app.
 create or replace function public.t_ok(c boolean, msg text) returns void language plpgsql as $$
@@ -116,6 +117,33 @@ reset role;
 select public.t_ok((select status = 'done' and hevy_workout_id is null from public.tasks where id = '00000000-0000-4000-8000-00000000c005'),
   'a session ticked by hand (no workout) stays done when moved');
 
+-- ═══ 5b. Only its own routine's workout completes a moved session ═════════
+-- An Upper B workout on a day with no plan (141 found nothing for it) …
+insert into public.hevy_workouts (id, user_id, title, routine_id, start_time, end_time) values
+  ('w-upper-20', '00000000-0000-0000-0000-000000000001', 'Upper B', 'r-upper', public.t_at(-20, '18:00'), public.t_at(-20, '18:50'));
+select public.t_session('00000000-0000-4000-8000-00000000c009', 'Lower B', 'r-lower', 5, '18:00');
+set role authenticated;
+update public.time_blocks set date = public.t_d(-20) where task_id = '00000000-0000-4000-8000-00000000c009';
+reset role;
+select public.t_ok((select status = 'open' and hevy_workout_id is null from public.tasks where id = '00000000-0000-4000-8000-00000000c009')
+                   and not exists (select 1 from public.tasks where hevy_workout_id = 'w-upper-20'),
+  'moved onto a day with only another routine''s workout: still to do (no stand-in on a move)');
+
+-- Ticked by hand, then that day's workout linked to it (141 keeps the tick), then moved away.
+select public.t_session('00000000-0000-4000-8000-00000000c010', 'Upper B', 'r-upper', -12, '18:00');
+update public.tasks set status = 'done', completed_at = public.t_at(-12, '09:00') where id = '00000000-0000-4000-8000-00000000c010';
+insert into public.hevy_workouts (id, user_id, title, routine_id, start_time, end_time) values
+  ('w-upper-12', '00000000-0000-0000-0000-000000000001', 'Upper B', 'r-upper', public.t_at(-12, '18:00'), public.t_at(-12, '18:50'));
+select public.t_ok((select status = 'done' and hevy_workout_id = 'w-upper-12' and completed_at = public.t_at(-12, '09:00')
+                      from public.tasks where id = '00000000-0000-4000-8000-00000000c010'),
+  'before: ticked by hand, then linked to its day''s workout (the tick''s time kept)');
+set role authenticated;
+update public.time_blocks set date = public.t_d(-19) where task_id = '00000000-0000-4000-8000-00000000c010';
+reset role;
+select public.t_ok((select status = 'done' and hevy_workout_id is null and completed_at = public.t_at(-12, '09:00')
+                      from public.tasks where id = '00000000-0000-4000-8000-00000000c010'),
+  'a hand tick moved away from its workout stays done; only the link goes');
+
 -- ═══ 6. A repeat's day: missed, skipped, moved without its slot ══════════
 insert into public.schedule_blocks (id, user_id, title, days_of_week, start_time, end_time, category, effective_from)
 values ('00000000-0000-4000-8000-0000000000e1', '00000000-0000-0000-0000-000000000001', 'Lower B', '{0,1,2,3,4,5,6}', '17:00', '18:00',
@@ -128,7 +156,9 @@ insert into public.tasks (id, user_id, title, domain, section, status, priority,
   ('00000000-0000-4000-8000-00000000c062', '00000000-0000-0000-0000-000000000001', 'Lower B', 'personal', 'backlog', 'open', 'medium',
    public.t_d(-11), '17:00', 'training_session', 'r-lower', '00000000-0000-4000-8000-0000000000e1', public.t_d(-11), null, null),
   ('00000000-0000-4000-8000-00000000c063', '00000000-0000-0000-0000-000000000001', 'Lower B', 'personal', 'today', 'open', 'medium',
-   public.t_d(1), '17:00', 'training_session', 'r-lower', '00000000-0000-4000-8000-0000000000e1', public.t_d(1), null, null);
+   public.t_d(1), '17:00', 'training_session', 'r-lower', '00000000-0000-4000-8000-0000000000e1', public.t_d(1), null, null),
+  ('00000000-0000-4000-8000-00000000c064', '00000000-0000-0000-0000-000000000001', 'Lower B', 'personal', 'backlog', 'cancelled', 'medium',
+   public.t_d(-13), '17:00', 'training_session', 'r-lower', '00000000-0000-4000-8000-0000000000e1', public.t_d(-13), 'missed', public.t_at(-13, '23:59'));
 insert into public.training_skips (user_id, routine_id, week_start, reason, task_id, plan_date)
 values ('00000000-0000-0000-0000-000000000001', 'r-lower', date_trunc('week', public.t_d(-11))::date, 'Sick', '00000000-0000-4000-8000-00000000c062', public.t_d(-11));
 select public.t_ok((select status = 'cancelled' and closed_reason is null from public.tasks where id = '00000000-0000-4000-8000-00000000c062'),
@@ -138,7 +168,10 @@ set role authenticated;
 update public.tasks set due_date = public.t_d(2) where id = '00000000-0000-4000-8000-00000000c061';
 update public.tasks set due_date = public.t_d(3) where id = '00000000-0000-4000-8000-00000000c062';
 update public.tasks set due_date = public.t_d(4), due_time = '19:00' where id = '00000000-0000-4000-8000-00000000c063';
+update public.tasks set due_date = public.t_d(-15) where id = '00000000-0000-4000-8000-00000000c064';
 reset role;
+select public.t_ok((select status = 'cancelled' and closed_reason = 'missed' from public.tasks where id = '00000000-0000-4000-8000-00000000c064'),
+  'a missed day moved to another past day stays missed');
 
 select public.t_ok((select status = 'open' and closed_reason is null and completed_at is null from public.tasks where id = '00000000-0000-4000-8000-00000000c061'),
   'a missed day moved is to do on its new day (moved, not missed)');
@@ -155,7 +188,7 @@ select public.t_ok((select public.t_d(-10) = any (except_dates) and public.t_d(1
 select public.t_ok((select occurrence_date = public.t_d(1) and schedule_block_id = '00000000-0000-4000-8000-0000000000e1'
                       from public.time_blocks where task_id = '00000000-0000-4000-8000-00000000c063'),
   'the slot is that day of the repeat (one task, one slot — never a second task)');
-select public.t_ok((select count(*) from public.tasks where schedule_block_id = '00000000-0000-4000-8000-0000000000e1') = 3,
+select public.t_ok((select count(*) from public.tasks where schedule_block_id = '00000000-0000-4000-8000-0000000000e1') = 4,
   'no task made by the split');
 
 -- ═══ 7. Not training: untouched ══════════════════════════════════════════
