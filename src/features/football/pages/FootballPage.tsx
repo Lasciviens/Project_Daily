@@ -148,7 +148,7 @@ export function FootballPage() {
   )
 }
 
-/** No follows yet: the four the owner named, one tap each, or a search. */
+/** No follows yet: the suggestions (the four the owner named and the five big leagues), one tap each, or a search. */
 function FirstFollow({ onSearch }: { onSearch: () => void }) {
   const follow = useFollow()
   return (

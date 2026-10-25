@@ -10,7 +10,7 @@ import { useRowsDelete } from '../../../shared/hooks/useRowsDelete'
 import { putRowsInCache } from '../../../shared/query/cachePatch'
 import { qk, STALE } from '../../../shared/query'
 import { logError } from '../../../shared/utils/logError'
-import type { DeletedRows } from '../../../shared/utils/deletedRows'
+import { rowsOf, type DeletedRows } from '../../../shared/utils/deletedRows'
 import { fetchTasksByIds } from '../../todo/api/tasksApi'
 import { useDeleteTask } from '../../todo/hooks/useTodos'
 import { isClosedTask } from '../../todo/taskRules'
@@ -19,7 +19,7 @@ import { createFollow, fetchFollows, fetchPlans, recordPlan, setSubscribed } fro
 import { buildAgenda, leagueMonths, MATCH_CATEGORY, matchItem, subscriptionLeavers, type FbMatch } from '../footballModel'
 import type { FootballFollow, FootballPlan, NewFollowInput } from '../types'
 import { ESPN, LIVE_EVERY, leagueMonthQuery, matchQuery, needsLive, teamFixturesQuery, teamResultsQuery } from './espnQueries'
-import { runFootballSync } from './footballSync'
+import { footballSyncSettled, runFootballSync } from './footballSync'
 
 // ─── The owner's rows ────────────────────────────────────────────────────────
 
@@ -153,10 +153,13 @@ export function useSetSubscribed() {
 
 const matchCount = (n: number) => `${n} ${n === 1 ? 'match' : 'matches'}`
 
+/** ESPN didn't give the team's fixtures (as opposed to the app's own rows failing to load). */
+class FixturesUnread extends Error {}
+
 /** The coming matches a team's subscription put in the day that are still to do. */
 async function leavingMatches(qc: QueryClient, f: FootballFollow): Promise<FootballPlan[]> {
   const [fixtures, plans, follows] = await Promise.all([
-    qc.fetchQuery(teamFixturesQuery(f.ref)),
+    qc.fetchQuery(teamFixturesQuery(f.ref)).catch((err: Error) => { throw new FixturesUnread(err.message) }),
     qc.fetchQuery({ queryKey: qk.football.plans(), queryFn: fetchPlans, staleTime: 0 }),
     qc.fetchQuery({ queryKey: qk.football.follows(), queryFn: fetchFollows, staleTime: 0 }),
   ])
@@ -199,10 +202,14 @@ export function useStopSubscription() {
     if (f.subscribed) {
       setReading(true)
       try {
+        // A run of the subscription still saving (Subscribe a moment ago) finishes first, so its matches are counted too.
+        await footballSyncSettled()
         leaving = await leavingMatches(qc, f)
       } catch (err) {
         logError(`Football: ${f.name}'s matches couldn't be read to stop the subscription: ${(err as Error).message}`, { action: 'football_unsubscribe' })
-        toast.warning(`${f.name}'s matches couldn't be read from ESPN, so nothing changed — try again`)
+        toast.warning(err instanceof FixturesUnread
+          ? `${f.name}'s fixtures couldn't be read from ESPN, so nothing changed — try again`
+          : `Your football matches couldn't be read, so nothing changed — try again`)
         return
       } finally {
         setReading(false)
@@ -224,21 +231,37 @@ export function useStopSubscription() {
       remove: async () => {
         // Off first, so no run of the subscription adds them back meanwhile.
         await toggle.mutateAsync({ id: f.id, on: false })
-        const t = await tasks.remove.mutateAsync(leaving.map(p => p.task_id!))
-        // A record left (its delete failed, and said so) only means that match isn't added again.
+        let t: DeletedRows | null
+        try {
+          t = await tasks.remove.mutateAsync(leaving.map(p => p.task_id!))
+        } catch (err) {
+          // Nothing left the day (the delete said why): the subscription goes back on.
+          await toggle.mutateAsync({ id: f.id, on: true }).catch(() => undefined)
+          throw err
+        }
+        // From here the matches are out: a step that fails says so, and Undo is still offered.
+        // A record left only means that match isn't added again.
         const p = await plans.remove.mutateAsync(leaving.map(x => x.id)).catch(() => null)
-        const fl = unfollow ? await follows.remove.mutateAsync([f.id]) : null
+        const fl = unfollow ? await follows.remove.mutateAsync([f.id]).catch(() => null) : null
         return { tasks: t, plans: p, follow: fl }
       },
       isEmpty: () => false,
       restore: async s => {
         if (s.follow) await follows.restore.mutateAsync(s.follow)
+        // The records first: the items put back link them again (144).
         if (s.plans) await plans.restore.mutateAsync(s.plans)
-        const answer = s.tasks ? await tasks.restore.mutateAsync(s.tasks) : undefined
+        let answer
+        try {
+          answer = s.tasks ? await tasks.restore.mutateAsync(s.tasks) : undefined
+        } catch (err) {
+          // Records without their items would keep the subscription from ever adding those matches again.
+          if (s.plans) await plans.remove.mutateAsync(rowsOf<FootballPlan>(s.plans, 'football_plans').map(x => x.id)).catch(() => null)
+          throw err
+        }
         await toggle.mutateAsync({ id: f.id, on: true })
         return answer
       },
-      done: unfollow ? `${f.name} unfollowed · ${removed}` : `Unsubscribed from ${f.name} · ${removed}`,
+      done: s => (unfollow && s.follow ? `${f.name} unfollowed · ${removed}` : `Unsubscribed from ${f.name} · ${removed}`),
     })
   }
 

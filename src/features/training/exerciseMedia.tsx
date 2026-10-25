@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Dumbbell, Pencil, Play } from 'lucide-react'
+import { Pencil, Play } from 'lucide-react'
 import { ModalShell, useEntityModal } from '../../shared/modals'
 import { Button, Truncate } from '../../shared/ui'
 import { useExerciseGifOverrides, useUpsertExerciseGifOverride, useDeleteExerciseGifOverride } from './hooks/useExerciseGifOverrides'
@@ -77,7 +77,7 @@ const POPUP_PICTURE = 'mx-auto h-36 w-full max-w-xs rounded-row border border-li
 
 /** The popup's top picture (`chooseExercisePopupPictures` picks it): the
  *  animated demo with where it comes from and the dataset's instructions;
- *  under Reduce Motion a still (or a placeholder) with "Play animation". */
+ *  under Reduce Motion a still (or, with none, just the caption) with "Play animation". */
 export function ExerciseTopPicture({ pictures, demo, title, onFail, onPlay }: {
   pictures: ExercisePopupPictures
   demo: ExerciseMediaChoice['demo']
@@ -90,13 +90,10 @@ export function ExerciseTopPicture({ pictures, demo, title, onFail, onPlay }: {
   const gifHere = demo != null && (top?.kind === 'gif' || play != null)
   return (
     <figure className="flex flex-col gap-1.5">
-      {top ? (
+      {/* Reduce Motion with no still to show: just the caption row with "Play animation". */}
+      {top && (
         <img key={top.url} src={top.url} alt={top.kind === 'gif' ? `${title} — animated demo` : title}
           onError={() => onFail(top.url)} className={`${POPUP_PICTURE} object-contain`} />
-      ) : (
-        <div aria-hidden className={`${POPUP_PICTURE} flex items-center justify-center text-fg-muted`}>
-          <Dumbbell className="h-8 w-8" />
-        </div>
       )}
       {gifHere && <ExerciseDemoCaption demo={demo} title={title} onPlay={play ? onPlay : undefined} />}
     </figure>

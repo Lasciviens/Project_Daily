@@ -259,14 +259,14 @@ console.log('\n== chooseExercisePopupPictures: GIF on top, Hevy below ==')
   check('a Fix GIF override is the top picture', same(chooseExercisePopupPictures(chooseExerciseMedia('T1', 'Bench Press (Barbell)', hevy, new Map([['T1', fixed]]), db), moving), { url: fixed, kind: 'gif' }, null, hevy))
 
   check('Reduce Motion: Hevy\'s still on top, the GIF only on "Play animation", nothing below', same(chooseExercisePopupPictures(both, still), { url: hevy, kind: 'hevy' }, gifUrl, null))
-  check('Reduce Motion without a Hevy picture: a placeholder (no top) with "Play animation"', same(chooseExercisePopupPictures(gifOnly, still), null, gifUrl, null))
+  check('Reduce Motion without a Hevy picture: no picture on top, only "Play animation"', same(chooseExercisePopupPictures(gifOnly, still), null, gifUrl, null))
   check('Reduce Motion, after the tap: the GIF on top, Hevy\'s still below', same(chooseExercisePopupPictures(both, { ...still, played: true }), { url: gifUrl, kind: 'gif' }, null, hevy))
   check('Reduce Motion with no GIF: Hevy\'s still as usual, nothing to play', same(chooseExercisePopupPictures(hevyOnly, still), { url: hevy, kind: 'hevy' }, null, null))
 
   check('a broken GIF gives the top back to Hevy\'s still', same(chooseExercisePopupPictures(both, { ...moving, failed: [gifUrl] }), { url: hevy, kind: 'hevy' }, null, null))
   check('a broken Hevy picture just leaves (below)', same(chooseExercisePopupPictures(both, { ...moving, failed: [hevy] }), { url: gifUrl, kind: 'gif' }, null, null))
   check('a broken Hevy picture just leaves (on top)', same(chooseExercisePopupPictures(hevyOnly, { ...moving, failed: [hevy] }), null, null, null))
-  check('Reduce Motion with a broken Hevy picture: the placeholder', same(chooseExercisePopupPictures(both, { ...still, failed: [hevy] }), null, gifUrl, null))
+  check('Reduce Motion with a broken Hevy picture: no picture on top, only "Play animation"', same(chooseExercisePopupPictures(both, { ...still, failed: [hevy] }), null, gifUrl, null))
   const animated = 'https://hevy.example/x/79D0BB3A.GIF?v=2'
   check('Hevy\'s own GIF and no pick → Hevy\'s picture on top alone (no second animation)', same(chooseExercisePopupPictures(chooseExerciseMedia('T1', 'Bench Press (Barbell)', animated, none, db), moving), { url: animated, kind: 'hevy' }, null, null))
 }

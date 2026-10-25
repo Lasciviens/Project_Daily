@@ -132,7 +132,7 @@ export function chooseExerciseMedia(
 }
 
 export interface ExercisePopupPictures {
-  /** The big picture on top. Null with `play` set: a neutral placeholder;
+  /** The big picture on top. Null with `play` set: no picture, only the caption with "Play animation";
    *  null without it: no picture at all. */
   top: { url: string; kind: 'gif' | 'hevy' } | null
   /** Reduce Motion: the GIF a "Play animation" tap swaps in (nothing autoplays). */
@@ -145,8 +145,8 @@ export interface ExercisePopupPictures {
  * The exercise popup (owner, 25.10.2026: "Hevy picture below, and GIF above"):
  * - a GIF → the GIF big on top, Hevy's still small below;
  * - no GIF → Hevy's still on top, nothing below; neither → no picture;
- * - Reduce Motion, until the GIF is played → Hevy's still (else a
- *   placeholder) on top with "Play animation", not repeated below;
+ * - Reduce Motion, until the GIF is played → Hevy's still on top (else
+ *   only the caption) with "Play animation", not repeated below;
  * - a picture that failed to load is left out (a broken GIF gives the top
  *   back to Hevy's still).
  */

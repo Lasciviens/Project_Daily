@@ -43,7 +43,8 @@ export function TeamFixtures({ teamId }: { teamId: string }) {
                 <li key={m.id} className="flex flex-col">
                   <MetaLine className="px-3 pt-1 text-micro tabular-nums text-fg-muted" items={[formatWeekdayDate(osloParts(m.kickoff).date), m.league?.name]} />
                   <div className="flex items-center gap-1">
-                    <div className="min-w-0 flex-1"><MatchRow match={m} planned={!!taskId} /></div>
+                    {/* The button beside it says "in your day": no second mark under the time. */}
+                    <div className="min-w-0 flex-1"><MatchRow match={m} planned={false} /></div>
                     {taskId ? (
                       <button type="button" className="icon-btn shrink-0 text-info" aria-label="In your day — open it" title="In your day"
                         onClick={() => modal.open({ kind: 'task', id: taskId })}>

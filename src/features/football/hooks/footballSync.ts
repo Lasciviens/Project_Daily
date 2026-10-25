@@ -21,7 +21,8 @@ import { saveItemVia } from '../../items/useItems'
 import { fetchTaskById } from '../../todo/api/tasksApi'
 import { isClosedTask } from '../../todo/taskRules'
 import { fetchFollows, fetchPlans, planMatch, updatePlanKickoff } from '../api/footballApi'
-import { itemAtKickoff, movedMatchItem, newMatchItem, syncPlan, type FbMatch } from '../footballModel'
+import { involves, itemAtKickoff, movedMatchItem, newMatchItem, syncPlan, type FbMatch } from '../footballModel'
+import type { FootballFollow } from '../types'
 import { matchQuery, teamFixturesQuery } from './espnQueries'
 
 const EVERY_MS = 30 * 60_000
@@ -77,8 +78,11 @@ async function syncOnce(qc: QueryClient): Promise<SyncResult> {
   }
 
   const { add, move } = syncPlan(found, subscribed, plans, new Date().toISOString())
+  // Subscribed now (the cache Unsubscribe updates): a team unsubscribed while this run goes gets nothing more.
+  const stillSubscribed = () => new Set((qc.getQueryData<FootballFollow[]>(qk.football.follows()) ?? follows)
+    .filter(f => f.kind === 'team' && f.subscribed).map(f => f.ref))
   for (const m of add) {
-    if (!m.league) continue
+    if (!m.league || !involves(m, stillSubscribed())) continue
     try {
       if (await saveItemVia(qc, newMatchItem(m), (input, ctx) => planMatch(m, 'subscription', input, ctx))) result.added++
     } catch (err) {
@@ -137,6 +141,11 @@ export function runFootballSync(qc: QueryClient, opts: SyncOptions = {}): Promis
     })
     .finally(() => { lastRun = Date.now(); running = null })
   return running
+}
+
+/** Resolves once a run going now has finished (nothing to wait for: at once). */
+export function footballSyncSettled(): Promise<void> {
+  return running ? running.then(() => undefined) : Promise.resolve()
 }
 
 /** The subscription when the app opens or comes back to the front (useAppBootstrap). */
