@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react'
-import { Pencil } from 'lucide-react'
+import { Dumbbell, Pencil, Play } from 'lucide-react'
 import { ModalShell, useEntityModal } from '../../shared/modals'
 import { Button, Truncate } from '../../shared/ui'
 import { useExerciseGifOverrides, useUpsertExerciseGifOverride, useDeleteExerciseGifOverride } from './hooks/useExerciseGifOverrides'
-import type { ExerciseMediaChoice } from './exerciseGifResolver'
+import type { ExerciseMediaChoice, ExercisePopupPictures } from './exerciseGifResolver'
 import { useExerciseImageDb } from './hooks/useExerciseImageDb'
 import { useExerciseMedia } from './hooks/useExerciseMedia'
 
@@ -11,9 +11,9 @@ import { useExerciseMedia } from './hooks/useExerciseMedia'
 //  Exercise pictures and demo GIFs.
 //  HEVY FIRST (migration 154, 14.10.2026 — owner: "change that as primarily
 //  to Hevy"): Hevy's exercise templates carry `thumbnail_url`, stored by both
-//  syncs. The small thumbnail and the popup's main picture are Hevy's; the
-//  popup adds a small labelled "Animated demo" below (chooseExerciseMedia in
-//  exerciseGifResolver.ts has the order).
+//  syncs. The small thumbnail is Hevy's. The popup puts the animated GIF big
+//  on top and Hevy's still small below (owner, 25.10.2026: "Hevy picture
+//  below, and GIF above"); exerciseGifResolver.ts has the order.
 //
 //  FALLBACK / ANIMATED DEMO: JahelCuadrado/ExerciseGymGifsDB — 1323 animated
 //  exercise GIFs with a clean JSON manifest, served CORS-open from jsDelivr (no
@@ -37,8 +37,8 @@ import { useExerciseMedia } from './hooks/useExerciseMedia'
 //  short of a code change. `resolveExerciseGif` checks a per-user override
 //  table FIRST, keyed on the exercise's stable `exercise_template_id` (never
 //  its title, which the user can rename inside Hevy itself) before falling
-//  back to the fuzzy matcher. An override picks the animated DEMO; Hevy's
-//  picture stays the thumbnail. `ExerciseGifPicker` is the editor UI — it
+//  back to the fuzzy matcher. An override picks the animated DEMO (the
+//  popup's top picture); Hevy's picture stays the thumbnail. `ExerciseGifPicker` is the editor UI — it
 //  reuses the SAME already-fetched dataset (useExerciseImageDb) for
 //  searching a better match, or accepts any pasted URL for an exercise the
 //  dataset has no entry for at all.
@@ -73,29 +73,70 @@ export function ExerciseThumb({ title, templateId, size = 48 }: { title: string;
   )
 }
 
-/** The popup's "Animated demo": a small GIF beside where it comes from and
- *  the dataset's instructions (Hevy's own picture is the popup's main one). */
-export function ExerciseDemo({ demo, title }: { demo: NonNullable<ExerciseMediaChoice['demo']>; title: string }) {
-  const [broken, setBroken] = useState<string | null>(null)
+const POPUP_PICTURE = 'mx-auto h-36 w-full max-w-xs rounded-row border border-line bg-surface-2'
+
+/** The popup's top picture (`chooseExercisePopupPictures` picks it): the
+ *  animated demo with where it comes from and the dataset's instructions;
+ *  under Reduce Motion a still (or a placeholder) with "Play animation". */
+export function ExerciseTopPicture({ pictures, demo, title, onFail, onPlay }: {
+  pictures: ExercisePopupPictures
+  demo: ExerciseMediaChoice['demo']
+  title: string
+  onFail: (url: string) => void
+  onPlay: () => void
+}) {
+  const { top, play } = pictures
+  if (!top && !play) return null
+  const gifHere = demo != null && (top?.kind === 'gif' || play != null)
+  return (
+    <figure className="flex flex-col gap-1.5">
+      {top ? (
+        <img key={top.url} src={top.url} alt={top.kind === 'gif' ? `${title} — animated demo` : title}
+          onError={() => onFail(top.url)} className={`${POPUP_PICTURE} object-contain`} />
+      ) : (
+        <div aria-hidden className={`${POPUP_PICTURE} flex items-center justify-center text-fg-muted`}>
+          <Dumbbell className="h-8 w-8" />
+        </div>
+      )}
+      {gifHere && <ExerciseDemoCaption demo={demo} title={title} onPlay={play ? onPlay : undefined} />}
+    </figure>
+  )
+}
+
+/** Where the animated demo comes from (with "Play animation" while it is
+ *  held back for Reduce Motion) and the dataset's instructions. */
+function ExerciseDemoCaption({ demo, title, onPlay }: {
+  demo: NonNullable<ExerciseMediaChoice['demo']>
+  title: string
+  onPlay?: () => void
+}) {
   const source = demo.source === 'override' ? 'set with Fix GIF'
     : demo.name.toLowerCase() !== title.toLowerCase() ? `${demo.name} · ExerciseGymGifsDB` : 'ExerciseGymGifsDB'
   return (
-    <section className="flex items-start gap-3 border-t border-line pt-3" aria-label="Animated demo">
-      {broken !== demo.gifUrl && (
-        <img src={demo.gifUrl} alt={`${title} — animated demo`} onError={() => setBroken(demo.gifUrl)}
-          className="h-24 w-24 shrink-0 rounded-lg border border-line bg-surface-2 object-cover" />
-      )}
-      <div className="flex min-w-0 flex-1 flex-col gap-1">
-        <p className="text-meta font-semibold text-fg">Animated demo <span className="font-normal text-fg-muted">· {source}</span></p>
-        {demo.instructions.length > 0 && (
-          <ol className="flex list-inside list-decimal flex-col gap-0.5">
-            {demo.instructions.map((step, i) => (
-              <li key={i} className="text-meta leading-snug text-fg-2">{step}</li>
-            ))}
-          </ol>
-        )}
+    <figcaption className="flex flex-col gap-1">
+      <div className="flex items-center gap-2">
+        <p className="min-w-0 flex-1 text-meta font-semibold text-fg">Animated demo <span className="font-normal text-fg-muted">· {source}</span></p>
+        {onPlay && <Button size="sm" variant="secondary" icon={<Play />} onClick={onPlay} className="shrink-0">Play animation</Button>}
       </div>
-    </section>
+      {demo.instructions.length > 0 && (
+        <ol className="flex list-inside list-decimal flex-col gap-0.5">
+          {demo.instructions.map((step, i) => (
+            <li key={i} className="text-meta leading-snug text-fg-2">{step}</li>
+          ))}
+        </ol>
+      )}
+    </figcaption>
+  )
+}
+
+/** Hevy's still, small at the bottom of the popup while the GIF is on top. */
+export function ExerciseHevyStill({ url, title, onFail }: { url: string; title: string; onFail: (url: string) => void }) {
+  return (
+    <figure className="flex items-center gap-3 border-t border-line pt-3">
+      <img src={url} alt={title} onError={() => onFail(url)}
+        className="h-20 w-20 shrink-0 rounded-lg border border-line bg-surface-2 object-contain" />
+      <figcaption className="text-meta text-fg-muted">Picture from Hevy</figcaption>
+    </figure>
   )
 }
 
@@ -143,7 +184,7 @@ export function ExerciseGifPicker({ templateId, title }: { templateId: string; t
       <ModalShell open={open} onClose={() => setOpen(false)} title={`Fix GIF — ${title}`} size="sm">
         <div className="flex flex-col gap-4">
           <p className="text-meta text-fg-muted">
-            This sets the <strong className="font-semibold text-fg-2">animated demo</strong> in the exercise&apos;s popup.
+            This sets the <strong className="font-semibold text-fg-2">animated demo</strong>, the big picture on top of the exercise&apos;s popup.
             The card picture stays Hevy&apos;s own whenever Hevy has one.
           </p>
           {existing && (

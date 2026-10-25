@@ -173,6 +173,12 @@ Not called, deliberately:
 
 ## Log
 
+### 25.10.2026 — no animation in the spec
+
+- Checked against the published swagger (https://api.hevyapp.com/docs/): an exercise template has no
+  animation or video field — only the still `thumbnail_url`. The exercise popup's animation comes from the
+  ExerciseGymGifsDB GIF (on top since 25.10.2026); Hevy's still sits small below it.
+
 ### 14.10.2026 — review fixes (migration 154, before its merge)
 
 - Body measurements: the seven circumferences are read under the spec's names (`waist`, …) or ours, and sent to

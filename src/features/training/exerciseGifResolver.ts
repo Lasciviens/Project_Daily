@@ -82,9 +82,11 @@ export function resolveExerciseGif(
 // ── Hevy's own picture first (migration 154, 14.10.2026) ────────────────────
 // Owner: "change that as primarily to Hevy". Hevy's exercise templates carry
 // `thumbnail_url` (its OpenAPI; no live sample was read, so nothing assumes it
-// is animated). Hevy's picture is the card thumbnail AND the popup's main
-// picture; the ExerciseGymGifsDB GIF is the fallback thumbnail when Hevy has
-// none, and the small labelled "Animated demo" below it in the popup.
+// is animated). Hevy's picture is the card thumbnail; the ExerciseGymGifsDB
+// GIF is the fallback thumbnail when Hevy has none.
+// The popup swaps them (owner, 25.10.2026: "Hevy picture below, and GIF
+// above"): the GIF is the big picture on top, Hevy's still a small one below
+// — `chooseExercisePopupPictures`.
 
 /** True for a URL whose file is a GIF (the extension, before any query). */
 export function isAnimatedImageUrl(url: string | null | undefined): boolean {
@@ -97,7 +99,7 @@ export type ExerciseMediaSource = 'hevy' | 'override' | 'gifdb'
 export interface ExerciseMediaChoice {
   /** Pictures for the small thumbnail, best first: the next one is tried when one fails to load. */
   thumbs: { url: string; source: ExerciseMediaSource }[]
-  /** Hevy's picture — the popup's main picture when Hevy has one. */
+  /** Hevy's picture. */
   hevyUrl: string | null
   /** The popup's "Animated demo" (a Fix GIF pick or the name-matched GIF);
    *  null when there is none, or when Hevy's own picture already moves. */
@@ -106,9 +108,9 @@ export interface ExerciseMediaChoice {
 
 /**
  * - Thumbnail: Hevy's picture → a GIF you set with Fix GIF → the name-matched GIF.
- * - Popup: Hevy's picture on top; below it the animated demo — the GIF you
- *   set (Fix GIF picks it on purpose), else the name-matched GIF — unless
- *   Hevy's picture is itself a GIF and nothing was set.
+ * - Popup's animated demo: the GIF you set (Fix GIF picks it on purpose), else
+ *   the name-matched GIF — unless Hevy's picture is itself a GIF and nothing
+ *   was set. Where each goes in the popup: `chooseExercisePopupPictures`.
  */
 export function chooseExerciseMedia(
   templateId: string | undefined,
@@ -127,4 +129,35 @@ export function chooseExerciseMedia(
 
   const demo = !gif || gif.gifUrl === hevyUrl || (!gif.overridden && isAnimatedImageUrl(hevyUrl)) ? null : { ...gif, source: gifSource }
   return { thumbs, hevyUrl, demo }
+}
+
+export interface ExercisePopupPictures {
+  /** The big picture on top. Null with `play` set: a neutral placeholder;
+   *  null without it: no picture at all. */
+  top: { url: string; kind: 'gif' | 'hevy' } | null
+  /** Reduce Motion: the GIF a "Play animation" tap swaps in (nothing autoplays). */
+  play: string | null
+  /** Hevy's still, small below ("Picture from Hevy") — only while the GIF is on top. */
+  below: string | null
+}
+
+/**
+ * The exercise popup (owner, 25.10.2026: "Hevy picture below, and GIF above"):
+ * - a GIF → the GIF big on top, Hevy's still small below;
+ * - no GIF → Hevy's still on top, nothing below; neither → no picture;
+ * - Reduce Motion, until the GIF is played → Hevy's still (else a
+ *   placeholder) on top with "Play animation", not repeated below;
+ * - a picture that failed to load is left out (a broken GIF gives the top
+ *   back to Hevy's still).
+ */
+export function chooseExercisePopupPictures(
+  media: Pick<ExerciseMediaChoice, 'hevyUrl' | 'demo'>,
+  { reduceMotion, played, failed }: { reduceMotion: boolean; played: boolean; failed: readonly string[] },
+): ExercisePopupPictures {
+  const hevy = media.hevyUrl && !failed.includes(media.hevyUrl) ? media.hevyUrl : null
+  const gif = media.demo && !failed.includes(media.demo.gifUrl) ? media.demo.gifUrl : null
+  const still = hevy ? { url: hevy, kind: 'hevy' as const } : null
+  if (!gif) return { top: still, play: null, below: null }
+  if (reduceMotion && !played) return { top: still, play: gif, below: null }
+  return { top: { url: gif, kind: 'gif' }, play: null, below: hevy }
 }
