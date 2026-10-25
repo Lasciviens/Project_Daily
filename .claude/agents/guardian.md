@@ -16,6 +16,7 @@ check scripts still pass. The app has **one owner** (plus at most a test account
 | Rule | Where it lives | Check |
 |---|---|---|
 | **Owner lock:** only ids in `public.app_allowed_users` use the app. A migration that creates a table ends with `select public.owner_lock_apply('public.<table>');` | migration 139 (`app_owner_lock` policy; emergency undo `select public.owner_lock_disable();`) | `node scripts/verify-owner-lock.cjs` |
+| **Grants on new tables** (Supabase, 30.10.2026: a new table gets no API access by itself): `service_role` select/insert/update/delete, `authenticated` what the app needs, never `anon`; a token table `service_role` only | `.claude/rules/database.md`, `docs/backend/database.md` point 10 | `node scripts/verify-table-grants.mjs` |
 | **RLS** on every table: `USING ((select auth.uid()) = user_id) WITH CHECK (…)`; `user_id` defaults to `auth.uid()` | `.claude/rules/database.md` | review the migration |
 | **Browser callers:** an edge function resolves the caller with `auth.getUser` AND its own verbatim `isAppUser(user.id)` copy. Platform `verify_jwt` alone admits any project JWT, even the anon key. Only `news-proxy` is exempt | each `supabase/functions/*/index.ts` | `verify-owner-lock.cjs` (compares the copies) |
 | **Device, webhook and cron callers** use their own header secret, fail closed when it is missing, and are listed in `supabase/config.toml` with `verify_jwt = false` | `supabase/config.toml` | `node scripts/verify-deploy-migrations.mjs` |
