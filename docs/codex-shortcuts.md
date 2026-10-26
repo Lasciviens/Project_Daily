@@ -60,6 +60,7 @@
 | Files | Claimed by | Task | Since |
 |---|---|---|---|
 | `docs/kitchen-scale/` (and the planned `firmware/kitchen-scale/`) | Claude | Kitchen scale project | 14.10.2026 |
+| `package*.json`, `supabase/functions/*` (pins and security fixes), health/home/media files touched for privacy, `apiRegistry.ts`, `docs/deploy-checklist.md` | Claude | Service updates + leak check (PR on `claude/charming-newton-yhk8i`) | 26.10.2026 |
 
 ## Tasks
 > Status: `todo` / `in progress` / `blocked` / `done`. Claude edits these. Every
