@@ -1,19 +1,19 @@
 import { useMemo, useState, type ReactNode } from 'react'
-import { ChevronRight, Pencil, Plus, Save, Star } from 'lucide-react'
+import { ChevronRight, Pencil, PenLine, Plus, Save, Star } from 'lucide-react'
 import { ModalShell } from '../../../shared/modals/ModalShell'
 import { entityModal } from '../../../shared/modals/useEntityModal'
 import { Button, Truncate } from '../../../shared/ui'
 import { cx } from '../../../shared/ui/cx'
 import { useIngredientLibrary } from '../hooks/useIngredientLibrary'
 import {
-  useLogWithUndo, useRecentFoods, useFoodFavorites, useAddFoodFavorite, useRemoveFoodFavorite, useHideRecentFood,
+  useLogWithUndo, usePlanWithUndo, useRecentFoods, useFoodFavorites, useAddFoodFavorite, useRemoveFoodFavorite, useHideRecentFood,
 } from '../hooks/useFoodLog'
 import { useRecipes, useCreateRecipe, useRecipeBatches } from '../hooks/useRecipes'
 import { useSaveDishEdit } from '../hooks/useMealGroups'
 import { recentToEntry, type LoggedFood, type RecentFood } from '../api/foodLogApi'
 import { RecipePortionSheet } from './RecipePortionSheet'
 import { SlotSelect, FoodThumb, FoodTile, BasketRow, FoodMatchRow, PortionBasketRow } from './foodLogKit'
-import { sanitizeDecimal, slotForNow } from './foodLogUtils'
+import { SLOT_OPTIONS, sanitizeDecimal, slotForNow } from './foodLogUtils'
 import { FoodSearchField } from './FoodSearchField'
 import { NewFoodForm, type NewFoodSeed } from './NewFoodForm'
 import { QuickAddCustom, type QuickAddValues } from './QuickAddCustom'
@@ -53,6 +53,9 @@ import { formatWeekdayDate } from '../../../shared/utils/dateFormat'
 //  (Quick add, Log again, a recent tile, the sheet's Log) keeps the logger
 //  open and says so with Undo; Done closes. Point 5: with `dish` it is Edit
 //  meal — the dish's rows in the basket, Save writes them back (with Undo).
+//  With `plan` it is Plan lunch (Meal plan's + / Add, 26.10.2026): the same
+//  picker, saving planned rows (`usePlanWithUndo`) — Plan instead of Log, no
+//  "As meal" and no "After: … left" (planned rows count only once ticked).
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** Edit meal: the dish (a meal_group_id) and its rows, loaded by the entity modal. */
@@ -68,6 +71,8 @@ interface Props {
   /** ✎ on a saved meal. Defaults to the shared `recipe` editor popup. */
   onEditRecipe?: (r: RecipeWithIngredients) => void
   dish?:         DishToEdit
+  /** Plan mode: the picked foods become planned rows of `date` (the `meal-plan` popup without an entry). */
+  plan?:         boolean
 }
 
 const openRecipeEditor = (r: RecipeWithIngredients) => entityModal.open({ kind: 'recipe', id: r.id })
@@ -80,13 +85,16 @@ function dishBasket(dish: DishToEdit | undefined, library: IngredientLibraryItem
   return dish.rows.map(r => rowToItem(r, libById, recById))
 }
 
-export function FoodLogModal({ open = true, onClose, date, defaultSlot, defaultQuery, onEditRecipe = openRecipeEditor, dish }: Props) {
+export function FoodLogModal({ open = true, onClose, date, defaultSlot, defaultQuery, onEditRecipe = openRecipeEditor, dish, plan = false }: Props) {
   const { data: library = [] } = useIngredientLibrary()
   const { data: recents = [] } = useRecentFoods()
   const { data: favorites = [] } = useFoodFavorites()
   const { data: recipes = [] } = useRecipes()
   const createRecipe = useCreateRecipe()
   const logFood = useLogWithUndo()
+  const planFood = usePlanWithUndo()
+  // Both say what they did with Undo and take the same rows; plan mode plans them.
+  const write = plan ? planFood : logFood
   const saveDish = useSaveDishEdit()
   const addFavorite = useAddFoodFavorite()
   const removeFavorite = useRemoveFoodFavorite()
@@ -137,9 +145,9 @@ export function FoodLogModal({ open = true, onClose, date, defaultSlot, defaultQ
     }
   }
 
-  /** A one-tap log: the logger stays open; the toast says what was logged, with Undo. */
+  /** A one-tap log (or plan): the logger stays open; the toast says what was done, with Undo. */
   function logNow(entries: Parameters<typeof logFood.mutate>[0]['entries'], what: string, after?: () => void) {
-    logFood.mutate({ entries, what }, { onSuccess: () => { setLogged(n => n + 1); after?.() } })
+    write.mutate({ entries, what }, { onSuccess: () => { setLogged(n => n + 1); after?.() } })
   }
 
   function addRecent(r: RecentFood) {
@@ -220,6 +228,14 @@ export function FoodLogModal({ open = true, onClose, date, defaultSlot, defaultQ
 
   const totals = basketTotals(basket)
 
+  // Plan mode's one-off line: the typed name (and kcal, "kebab 700 kcal") as it is.
+  function handlePlanTyped() {
+    const title = quickParsed.title.trim()
+    if (!title) return
+    const kcal = quickParsed.kcal
+    logNow([{ date, meal_slot: slot, custom_title: title, calories: kcal }], kcal != null ? `${title} · ${kcal} kcal` : title, () => setQuery(''))
+  }
+
   function handleQuickAdd(v: QuickAddValues) {
     logNow(
       [{ date, meal_slot: slot, custom_title: v.title, calories: v.calories, protein_g: v.protein_g, carbs_g: v.carbs_g, fat_g: v.fat_g }],
@@ -242,13 +258,14 @@ export function FoodLogModal({ open = true, onClose, date, defaultSlot, defaultQ
       return
     }
     // A group of ONE has nothing to compact — only tag a shared id when
-    // there's actually more than one item to collapse together.
-    const groupId = asMeal && basket.length > 1 ? crypto.randomUUID() : null
+    // there's actually more than one item to collapse together. Planned rows
+    // are never a dish.
+    const groupId = !plan && asMeal && basket.length > 1 ? crypto.randomUUID() : null
     const what = basket.length > 1
       ? (groupId ? dishName(null, basket.map(itemTitle)) : `${basket.length} items`)
       : `${itemTitle(basket[0])} · ${itemAmount(basket[0])}`
     try {
-      await logFood.mutateAsync({ entries: itemsToEntries(basket, { date, slot, groupId }), what })
+      await write.mutateAsync({ entries: itemsToEntries(basket, { date, slot, groupId }), what })
       setBasket([])
       onClose()
     } catch { return }   // the hook already toasted + logged
@@ -276,7 +293,9 @@ export function FoodLogModal({ open = true, onClose, date, defaultSlot, defaultQ
   const already = dish ? basketTotals(dishBasket(dish, library, recipes)) : null
   const protLeft = Math.round(targets.protein - (nut?.protein_g ?? 0) - totals.protein + (already?.protein ?? 0))
   const kcalLeft = Math.round(targets.calories - (nut?.calories ?? 0) - totals.kcal + (already?.kcal ?? 0))
-  const busy = logFood.isPending || saveDish.isPending
+  const busy = write.isPending || saveDish.isPending
+  const slotWord = SLOT_OPTIONS.find(o => o.id === slot)?.label.toLowerCase() ?? slot
+  const verb = plan ? 'Plan' : 'Log'
 
   const sectionToggle = (isOpen: boolean, onToggle: () => void, label: ReactNode) => (
     <button type="button" onClick={onToggle} aria-expanded={isOpen}
@@ -287,16 +306,31 @@ export function FoodLogModal({ open = true, onClose, date, defaultSlot, defaultQ
   )
 
   const primary = basket.length > 0
-    ? <Button variant="primary" onClick={handleSave} loading={busy} className="shrink-0 px-6">{dish ? 'Save meal' : `Log ${basket.length}`}</Button>
+    ? <Button variant="primary" onClick={handleSave} loading={busy} className="shrink-0 px-6">{dish ? 'Save meal' : `${verb} ${basket.length}`}</Button>
     : logged > 0
       ? <Button variant="primary" onClick={onClose} className="shrink-0 px-6">Done</Button>
-      : <Button variant="primary" disabled className="shrink-0 px-6">Log</Button>
+      : <Button variant="primary" disabled className="shrink-0 px-6">{verb}</Button>
+
+  // A one-off line: Quick add logs one with its macros; plan mode plans the typed name.
+  const customEntry = plan
+    ? (
+      <button type="button" onClick={handlePlanTyped} disabled={write.isPending} className="row row-interactive min-h-[52px] px-1 text-left">
+        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-accent-50 text-accent-600"><PenLine className="h-4 w-4" aria-hidden /></span>
+        <span className="min-w-0 flex-1">
+          <Truncate className="text-body font-medium text-accent-700">{`Plan “${quickParsed.title}” as typed`}</Truncate>
+          <span className="block text-meta text-fg-muted tabular-nums">
+            {quickParsed.kcal != null ? `A one-off line · ${quickParsed.kcal} kcal` : 'A one-off line — no ingredient saved'}
+          </span>
+        </span>
+      </button>
+    )
+    : <QuickAddCustom query={query} busy={logFood.isPending} onLog={handleQuickAdd} />
 
   return (
     <ModalShell
       open={open}
       onClose={onClose}
-      title={dish ? 'Edit meal' : 'Log food'}
+      title={plan ? `Plan ${slotWord}` : dish ? 'Edit meal' : 'Log food'}
       subtitle={dish ? `${dishShownName} · ${dateLabel}` : dateLabel}
       headerActions={<SlotSelect value={slot} onChange={setSlot} />}
       size="lg"
@@ -310,7 +344,7 @@ export function FoodLogModal({ open = true, onClose, date, defaultSlot, defaultQ
               <div className="flex min-h-[32px] items-center justify-between gap-2">
                 <p className="section-label shrink-0">This meal · {basket.length}</p>
                 <div className="flex shrink-0 items-center gap-2">
-                  {!dish && basket.length > 1 && (
+                  {!dish && !plan && basket.length > 1 && (
                     <label className="flex cursor-pointer select-none items-center gap-1.5 text-meta text-fg-muted"
                       title="Log these items as one compact line in the day view — tap it later to see each item's own details.">
                       <input type="checkbox" checked={asMeal} onChange={e => setAsMeal(e.target.checked)} className="h-4 w-4 accent-accent-500" />
@@ -360,14 +394,16 @@ export function FoodLogModal({ open = true, onClose, date, defaultSlot, defaultQ
               <p className="text-ui font-bold text-fg tabular-nums">
                 {Math.round(totals.kcal)} <span className="font-normal text-fg-muted">kcal</span>
                 <span className="font-normal text-fg-faint"> · </span>
-                {Math.round(totals.protein)}<span className="font-normal text-fg-muted">g protein</span>
+                {Math.round(totals.protein)} <span className="font-normal text-fg-muted">g protein</span>
                 {basket.length > 0 && (
-                  <span className="hidden font-normal text-fg-muted sm:inline"> · {Math.round(totals.carbs)}g carbs · {Math.round(totals.fat)}g fat</span>
+                  <span className="hidden font-normal text-fg-muted sm:inline"> · {Math.round(totals.carbs)} g carbs · {Math.round(totals.fat)} g fat</span>
                 )}
               </p>
-              {(targets.protein > 0 || targets.calories > 0) && (
+              {/* Planned rows count only once ticked as eaten: nothing is "left" by planning. */}
+              {!plan && (targets.protein > 0 || targets.calories > 0) && (
                 <Truncate as="p" className="text-meta text-fg-muted tabular-nums">
-                  After: <span className={cx(protLeft < 0 && 'text-danger')}>{protLeft >= 0 ? `${protLeft}g protein left` : `${-protLeft}g protein over`}</span>
+                  {/* Over the protein target is good news (success), over the calories a warning. */}
+                  After: <span className={cx(protLeft < 0 && 'text-success')}>{protLeft >= 0 ? `${protLeft} g protein left` : `${-protLeft} g protein over`}</span>
                   {' · '}
                   <span className={cx(kcalLeft < 0 && 'text-danger')}>{kcalLeft >= 0 ? `${kcalLeft} kcal left` : `${-kcalLeft} kcal over`}</span>
                 </Truncate>
@@ -387,11 +423,11 @@ export function FoodLogModal({ open = true, onClose, date, defaultSlot, defaultQ
           recipe={portion.recipe}
           initial={portion.index != null ? (basket[portion.index] as { servings?: number } | undefined)?.servings : undefined}
           last={portion.last}
-          busy={logFood.isPending}
+          busy={write.isPending}
           onClose={() => setPortion(null)}
-          onLog={portion.index != null || dish ? undefined : s => logPortion(portion.recipe, s)}
+          onLog={portion.index != null || dish || plan ? undefined : s => logPortion(portion.recipe, s)}
           onAdd={s => putPortion(portion.recipe, s, portion.index)}
-          addLabel={portion.index != null ? 'Save amount' : 'Add to meal'}
+          addLabel={portion.index != null ? 'Save amount' : plan ? 'Add to plan' : 'Add to meal'}
         />
       )}
 
@@ -402,7 +438,7 @@ export function FoodLogModal({ open = true, onClose, date, defaultSlot, defaultQ
 
       {q ? (
         <div className="flex flex-col">
-          {quickFirst && !exactLibraryHit && <QuickAddCustom query={query} busy={logFood.isPending} onLog={handleQuickAdd} />}
+          {quickFirst && !exactLibraryHit && customEntry}
           {savedMeals.map(r => {
             const note = batchNote(batches.get(r.id), portionWord(r.serving_label))
             return (
@@ -426,16 +462,16 @@ export function FoodLogModal({ open = true, onClose, date, defaultSlot, defaultQ
               <span className="min-w-0 flex-1">
                 <Truncate className="text-body font-medium text-fg">{r.title}</Truncate>
                 <span className="block text-meta text-fg-muted">
-                  Logged before{r.calories != null && ` · ${Math.round(r.calories)} kcal`}{r.protein_g != null && ` · ${Math.round(r.protein_g)}g protein`}
+                  Logged before{r.calories != null && ` · ${Math.round(r.calories)} kcal`}{r.protein_g != null && ` · ${Math.round(r.protein_g)} g protein`}
                 </span>
               </span>
-              <span className="shrink-0 text-meta font-semibold text-accent-600">Log again</span>
+              <span className="shrink-0 text-meta font-semibold text-accent-600">{plan ? 'Plan' : 'Log again'}</span>
             </button>
           ))}
           {matches.map(ing => (
             <FoodMatchRow key={ing.id} food={ing} onAdd={() => addToBasket(ing, quickParsed.grams ?? undefined)} />
           ))}
-          {!quickFirst && !exactLibraryHit && <QuickAddCustom query={query} busy={logFood.isPending} onLog={handleQuickAdd} />}
+          {!quickFirst && !exactLibraryHit && customEntry}
           <button type="button" onClick={() => openNewFood({ name: quickParsed.title })} className="row row-interactive min-h-[52px] px-1 text-left">
             <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-dashed border-accent-500/50 text-accent-600"><Plus className="h-4 w-4" aria-hidden /></span>
             <span className="text-body text-accent-700">Save “{quickParsed.title}” as an ingredient (per 100g)…</span>

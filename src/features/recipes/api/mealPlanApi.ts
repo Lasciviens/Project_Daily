@@ -2,31 +2,39 @@ import { supabase } from '../../../integrations/supabase/client'
 import { requireUser } from '../../../shared/utils/requireUser'
 import { ingredientSnapshot, recipeSnapshot } from './foodLogApi'
 import { WEIGHT_UNITS } from './recipesApi'
-import type { MealPlanEntry, CreateMealPlanEntryInput, Recipe, IngredientLibraryItem } from '../types'
+import { plannedKcal, plannedRow, type PlanMacros } from '../mealPlanRows'
+import type { MealPlanEntry, CreateMealPlanEntryInput, FoodLogEntryInput, Recipe, IngredientLibraryItem } from '../types'
 
 // The PLAN now lives in `food_log_entries` as status='planned' rows (migration
 // 061 merged the old `recipe_meal_plans` table in). This module is the adapter
-// between that one table and the MealPlanEntry view-model the UI still uses, so
-// AssignMealModal / MealPlanWeek didn't have to change. A plan row carries NO
-// macro snapshot (computed live on read); its amount lives in quantity/unit
-// (recipe → servings·'serving'; library → grams·unit). Pre-061 (the `status`
+// between that one table and the MealPlanEntry view-model the plan grid and the
+// edit popup use. A food or recipe plan row carries NO macro snapshot
+// (computed live on read — `kcal` below); its amount lives in quantity/unit
+// (recipe → servings·'serving'; library → grams·unit); a one-off line keeps
+// its typed values. Planning from the logger writes the same shapes
+// (`addPlannedEntries`, `mealPlanRows.plannedRow`). Pre-061 (the `status`
 // column absent) every path falls back to the original recipe_meal_plans table.
+
+/** A planned row for the plan grid: its kcal worked out live (null when it can't be counted). */
+export type PlannedMeal = MealPlanEntry & { kcal: number | null }
 
 function isMissingStatus(e: unknown): boolean {
   const x = e as { code?: string; message?: string }
   return (x?.code === '42703' || x?.code === 'PGRST204') && /status/i.test(x?.message ?? '')
 }
 
-interface PlanRow {
+type IngredientEmbed = { id: string; name: string; calories: number | null } | null
+
+interface PlanRow extends PlanMacros {
   id: string; user_id: string; date: string; meal_slot: MealPlanEntry['meal_slot']
   recipe_id: string | null; library_ingredient_id: string | null; custom_title: string | null
   quantity: number | null; unit: string | null; created_at: string
-  recipe: MealPlanEntry['recipe']; ingredient: MealPlanEntry['ingredient']
+  recipe: MealPlanEntry['recipe']; ingredient: IngredientEmbed
 }
 
 // food_log_entries planned row → the plan view-model.
-function rowToEntry(r: PlanRow): MealPlanEntry {
-  return {
+function rowToEntry(r: PlanRow): PlannedMeal {
+  const entry: MealPlanEntry = {
     id: r.id, user_id: r.user_id, date: r.date, meal_slot: r.meal_slot,
     recipe_id: r.recipe_id, custom_title: r.custom_title, library_ingredient_id: r.library_ingredient_id,
     ingredient_quantity: r.library_ingredient_id ? r.quantity : null,
@@ -37,11 +45,16 @@ function rowToEntry(r: PlanRow): MealPlanEntry {
     recipe:              r.recipe,
     ingredient:          r.ingredient,
   }
+  return { ...entry, kcal: plannedKcal({ ...entry, ingredient: r.ingredient, calories: r.calories }) }
 }
 
-const PLAN_SELECT = '*, recipe:recipes(id, title, calories), ingredient:recipe_ingredient_library(id, name)'
+// Pre-061 rows are already in the view-model's shape; they never had a one-off kcal.
+type LegacyPlanRow = Omit<MealPlanEntry, 'ingredient'> & { ingredient?: IngredientEmbed }
+const legacyToMeal = (e: LegacyPlanRow): PlannedMeal => ({ ...e, kcal: plannedKcal(e) })
 
-export async function fetchMealPlan(weekStart: string, weekEnd: string): Promise<MealPlanEntry[]> {
+const PLAN_SELECT = '*, recipe:recipes(id, title, calories), ingredient:recipe_ingredient_library(id, name, calories)'
+
+export async function fetchMealPlan(weekStart: string, weekEnd: string): Promise<PlannedMeal[]> {
   const q = () => supabase.from('food_log_entries').select(PLAN_SELECT).gte('date', weekStart).lte('date', weekEnd)
   const { data, error } = await q().eq('status', 'planned')
   if (!error) return ((data ?? []) as unknown as PlanRow[]).map(rowToEntry)
@@ -49,25 +62,29 @@ export async function fetchMealPlan(weekStart: string, weekEnd: string): Promise
   // pre-061: read the original table (already in the MealPlanEntry shape).
   const legacy = await supabase
     .from('recipe_meal_plans')
-    .select('*, recipe:recipes(id, title, calories), ingredient:recipe_ingredient_library(id, name)')
+    .select(PLAN_SELECT)
     .gte('date', weekStart).lte('date', weekEnd)
   if (legacy.error) throw legacy.error
-  return legacy.data ?? []
+  return ((legacy.data ?? []) as LegacyPlanRow[]).map(legacyToMeal)
 }
 
 /** One planned row by id. Pre-061 the id belongs to recipe_meal_plans instead. */
-export async function fetchMealPlanEntry(id: string): Promise<MealPlanEntry | null> {
+export async function fetchMealPlanEntry(id: string): Promise<PlannedMeal | null> {
   const { data, error } = await supabase.from('food_log_entries').select(PLAN_SELECT).eq('id', id).maybeSingle()
   if (error) throw error
   if (data) return rowToEntry(data as unknown as PlanRow)
   // Post-061 the legacy table is gone; its error just means "not found".
   const legacy = await supabase.from('recipe_meal_plans').select(PLAN_SELECT).eq('id', id).maybeSingle()
-  return legacy.error ? null : ((legacy.data as MealPlanEntry | null) ?? null)
+  return legacy.error || !legacy.data ? null : legacyToMeal(legacy.data as LegacyPlanRow)
 }
 
-// Map a plan-input to a food_log_entries 'planned' row: the amount goes into
-// quantity/unit; macros stay null (live on read).
-function plannedRow(input: CreateMealPlanEntryInput) {
+type Snap = { calories: number | null; protein_g: number | null; carbs_g: number | null; fat_g: number | null; fiber_g: number | null; sugar_g: number | null }
+const EMPTY_SNAP: Snap = { calories: null, protein_g: null, carbs_g: null, fat_g: null, fiber_g: null, sugar_g: null }
+
+// Map the edit popup's plan-input to a food_log_entries 'planned' row: the
+// amount goes into quantity/unit. A food or recipe stores no totals (live on
+// read); a one-off line's typed values are left as they are.
+function planInputRow(input: CreateMealPlanEntryInput) {
   const isRecipe = !!input.recipe_id
   const isLib = !!input.library_ingredient_id
   return {
@@ -77,6 +94,7 @@ function plannedRow(input: CreateMealPlanEntryInput) {
     custom_title: input.custom_title ?? null,
     quantity: isRecipe ? (input.servings ?? 1) : isLib ? (input.ingredient_quantity ?? null) : null,
     unit:     isRecipe ? 'serving' : isLib ? (input.ingredient_unit ?? 'g') : null,
+    ...(isRecipe || isLib ? EMPTY_SNAP : {}),
   }
 }
 
@@ -91,9 +109,39 @@ function legacyRow(input: CreateMealPlanEntryInput) {
   }
 }
 
+/** The legacy plan-input for a logger row (pre-061 fallback only). */
+function legacyInput(e: FoodLogEntryInput): CreateMealPlanEntryInput {
+  const at = { date: e.date, meal_slot: e.meal_slot }
+  if (e.recipe_id) return { ...at, recipe_id: e.recipe_id, servings: e.quantity ?? 1 }
+  if (e.library_ingredient_id) return { ...at, library_ingredient_id: e.library_ingredient_id, ingredient_quantity: e.quantity ?? null, ingredient_unit: e.unit ?? 'g' }
+  return { ...at, custom_title: e.custom_title ?? null }
+}
+
+/**
+ * Plans the logger's rows (its plan mode): the same row shapes as a log, as
+ * status 'planned' (`mealPlanRows.plannedRow`). Returns the new ids (what an
+ * Undo removes).
+ */
+export async function addPlannedEntries(entries: FoodLogEntryInput[]): Promise<string[]> {
+  if (entries.length === 0) return []
+  const user = await requireUser()
+  const ins = await supabase.from('food_log_entries')
+    .insert(entries.map(e => ({ ...plannedRow(e), user_id: user.id })))
+    .select('id')
+  if (!ins.error) return (ins.data ?? []).map(r => String((r as { id: string }).id))
+  if (!isMissingStatus(ins.error)) throw ins.error
+  // pre-061: the plan is the original table.
+  const legacy = await supabase.from('recipe_meal_plans')
+    .insert(entries.map(e => ({ ...legacyRow(legacyInput(e)), user_id: user.id })))
+    .select('id')
+  if (legacy.error) throw legacy.error
+  return (legacy.data ?? []).map(r => String((r as { id: string }).id))
+}
+
+/** Edits one planned row in place (the edit popup); a one-off line's typed values stay as they are. */
 export async function setMealPlanEntry(input: CreateMealPlanEntryInput): Promise<void> {
   const user = await requireUser()
-  const row = plannedRow(input)
+  const row = planInputRow(input)
   const { error } = input.id
     ? await supabase.from('food_log_entries').update(row).eq('id', input.id)
     : await supabase.from('food_log_entries').insert({ ...row, user_id: user.id })
@@ -107,14 +155,18 @@ export async function setMealPlanEntry(input: CreateMealPlanEntryInput): Promise
   if (legacy.error) throw legacy.error
 }
 
-type Snap = { calories: number | null; protein_g: number | null; carbs_g: number | null; fat_g: number | null; fiber_g: number | null; sugar_g: number | null }
-const EMPTY_SNAP: Snap = { calories: null, protein_g: null, carbs_g: null, fat_g: null, fiber_g: null, sugar_g: null }
-
 // Confirm a PLANNED entry as EATEN — the "nasıl onaylıcam?" flip. Computes a
 // fresh macro snapshot from the source (recipe/ingredient) so it now counts in
 // the day's ring, then post-061 flips the SAME row's status; pre-061 it moves
 // the row from recipe_meal_plans into food_log_entries.
 export async function eatPlannedEntry(entry: MealPlanEntry): Promise<void> {
+  // A one-off line has no source to count from: it keeps what was typed
+  // (writing the empty snapshot over it turned a planned "Kebab 700 kcal" into 0 kcal).
+  if (!entry.recipe_id && !entry.library_ingredient_id) {
+    const own = await supabase.from('food_log_entries').update({ status: 'eaten' }).eq('id', entry.id)
+    if (!own.error) return
+    if (!isMissingStatus(own.error)) throw own.error
+  }
   let snap: Snap = EMPTY_SNAP
   let quantity: number | null = null
   let unit: string | null = null

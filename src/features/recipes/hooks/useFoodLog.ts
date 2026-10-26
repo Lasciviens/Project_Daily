@@ -7,6 +7,7 @@ import {
   fetchFoodLogEntry, fetchFoodFavorites, addFoodFavorite, removeFoodFavorite, hideRecentFood, saveFoodEntry, undoFoodEntrySave,
   type EntrySave, type EntryUndo, type FoodLogPatch, type LoggedFood, type RecentFood,
 } from '../api/foodLogApi'
+import { addPlannedEntries } from '../api/mealPlanApi'
 import { SLOT_OPTIONS } from '../components/foodLogUtils'
 import { toast } from '../../../app/store'
 import { shiftDateStr, todayStr } from '../../../shared/utils/dateUtils'
@@ -87,6 +88,25 @@ export function useLogWithUndo() {
     onSuccess:   (ids, { entries, what }) => {
       const slot = SLOT_OPTIONS.find(o => o.id === entries[0]?.meal_slot)?.label.toLowerCase() ?? 'the diary'
       toast.undo(`Logged ${what} to ${slot}`, () => { void remove.run(ids, { ask: false, title: `Remove ${what}?`, done: `Removed ${what}` }) })
+    },
+  })
+}
+
+/**
+ * The logger's plan mode (Meal plan's + / Add): plans rows and says so with
+ * Undo — "Planned Karnıyarık · 1 portion for lunch · Undo". Planned rows are
+ * the same shapes as logged ones and never count until ticked as eaten.
+ */
+export function usePlanWithUndo() {
+  const remove = useRemoveFoodLogEntries()
+  return useMutationWithFeedback({
+    action:      'plan_food',
+    silent:      'its own toast with Undo reports the result',
+    mutationFn:  ({ entries }: { entries: FoodLogEntryInput[]; what: string }) => addPlannedEntries(entries),
+    invalidates: ['nutrition'],
+    onSuccess:   (ids, { entries, what }) => {
+      const slot = SLOT_OPTIONS.find(o => o.id === entries[0]?.meal_slot)?.label.toLowerCase() ?? 'the plan'
+      toast.undo(`Planned ${what} for ${slot}`, () => { void remove.run(ids, { ask: false, title: `Remove ${what}?`, done: `Removed ${what}` }) })
     },
   })
 }

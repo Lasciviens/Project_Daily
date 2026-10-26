@@ -34,8 +34,9 @@ function LeftFigure({ m, ready, judgedOver }: { m: MacroLeft; ready: boolean; ju
         <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: COLOR[m.key] }} />
         {LABEL[m.key]}
       </p>
-      <p className="whitespace-nowrap tabular-nums">
-        <span className={cx('text-ui font-semibold', toned ? OVER_TEXT[m.key] : 'text-fg')}>
+      {/* On a narrow phone "over" / "left" drops under the number instead of running into the next column. */}
+      <p className="tabular-nums">
+        <span className={cx('whitespace-nowrap text-ui font-semibold', toned ? OVER_TEXT[m.key] : 'text-fg')}>
           {over && '+'}<AnimatedNumber value={Math.abs(m.left)} ready={ready} />{unit === 'g' && ' g'}
         </span>
         <span className="text-meta text-fg-muted"> {over ? 'over' : 'left'}</span>

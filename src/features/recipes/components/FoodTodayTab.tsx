@@ -30,6 +30,7 @@ import { FOOD_TODAY_BOARD } from '../foodBoards'
 import { DishItemMenu, DishMenu } from './DishActions'
 import { GUESS_MARK, isGuessLine } from '../quickGuess'
 import { SupplementDosesCard } from '../../supplements/components/SupplementDosesCard'
+import { SLOT_OPTIONS } from './foodLogUtils'
 
 // The wide meal-row grid: name · amount · kcal · protein · carbs · fat · fiber · ✓ · ✕.
 // Shared by the rows, their column-heading row and the meal's header totals,
@@ -48,13 +49,8 @@ const grams = (v: number) => (v > 0 ? `${v} g` : '–')
 //  EATEN so it starts counting toward the day.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const SLOTS: { slot: MealSlot; label: string; icon: string }[] = [
-  { slot: 'breakfast',  label: 'Breakfast',  icon: '🌅' },
-  { slot: 'lunch',      label: 'Lunch',      icon: '☀️' },
-  { slot: 'dinner',     label: 'Dinner',     icon: '🌙' },
-  { slot: 'snack',      label: 'Snack',      icon: '🍎' },
-  { slot: 'supplement', label: 'Supplement', icon: '💊' },
-]
+// The one list of meal slots (Meal plan and the logger read it too).
+const SLOTS = SLOT_OPTIONS.map(o => ({ slot: o.id, label: o.label, icon: o.icon }))
 
 // `size` is the SVG geometry basis; `sizeClass` sets the displayed box so the
 // ring can shrink on a phone (the viewBox scales the stroke with it).
@@ -122,17 +118,18 @@ export function FoodTodayTab({ date }: { date: string }) {
   // them on one line beside the name, and "Log" becomes its + (still read out).
   function slotHeader(slot: MealSlot, label: string, icon: string, totals: ReturnType<typeof eatenTotals>, extra?: ReactNode) {
     const kcal = totals.calories
-    const head = (v: number) => (kcal > 0 ? `${v} g` : '')
+    const head = (v: number) => (kcal > 0 ? grams(v) : '')
     return (
       <header className={cx('flex items-center gap-2 border-b border-line py-1 pl-4 pr-2 @[40rem]:grid @[40rem]:gap-x-2', MACRO_COLS)}>
-        <div className="flex min-w-0 flex-1 items-center gap-1">
-          <h3 className="flex min-w-0 items-center gap-2 text-ui font-semibold text-fg">
+        <div className="flex min-w-0 flex-auto shrink-0 items-center gap-1">
+          {/* The title (and Supplement's Schedule) never shrinks; the totals beside it wrap instead. */}
+          <h3 className="flex shrink-0 items-center gap-2 text-ui font-semibold text-fg">
             <span aria-hidden className="text-base leading-none">{icon}</span>{label}
           </h3>
           {extra}
         </div>
         {kcal > 0 && (
-          <span className="flex flex-wrap items-center justify-end gap-x-2 text-meta tabular-nums text-fg-muted @[40rem]:hidden">
+          <span className="flex min-w-0 flex-wrap items-center justify-end gap-x-2 text-meta tabular-nums text-fg-muted @[40rem]:hidden">
             <span>{kcal} kcal</span>
             <MacroLine protein={totals.protein_g} carbs={totals.carbs_g} fat={totals.fat_g} className="flex-nowrap" />
           </span>
