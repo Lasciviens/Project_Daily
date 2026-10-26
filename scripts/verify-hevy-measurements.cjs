@@ -19,11 +19,11 @@ function check(name, cond, detail) {
 }
 
 const rows = [
-  { date: '2026-08-20', weight_kg: 84.4, fat_percent: 24.1, waist_cm: 91 },
-  { date: '2026-08-27', weight_kg: 83.1, fat_percent: 23.8, lean_mass_kg: 63.3 },
-  { date: '2026-08-10', weight_kg: 85, chest_cm: 104 },
+  { date: '2026-08-20', weight_kg: 78.4, fat_percent: 21.1, waist_cm: 88 },
+  { date: '2026-08-27', weight_kg: 77.1, fat_percent: 20.8, lean_mass_kg: 61.1 },
+  { date: '2026-08-10', weight_kg: 79, chest_cm: 101 },
   { date: '2026-08-01', weight_kg: null, fat_percent: null },
-  { date: '2026-08-24', weight_kg: 83.8, waist_cm: 90.2 },
+  { date: '2026-08-24', weight_kg: 77.8, waist_cm: 87.2 },
 ]
 const sorted = M.sortedEntries(rows, ALL_FIELDS)
 check('newest first, whatever order the rows came in', sorted.map(r => r.date).join() === '2026-08-27,2026-08-24,2026-08-20,2026-08-10', sorted.map(r => r.date))
@@ -32,7 +32,7 @@ check('an entry with no values at all is left out', !sorted.some(r => r.date ===
 const latest = M.entryLines(sorted, 0, ALL_FIELDS)
 check('latest entry lists every recorded value in field order', latest.map(l => l.key).join() === 'weight_kg,fat_percent,lean_mass_kg', latest.map(l => l.key))
 const w = latest.find(l => l.key === 'weight_kg')
-check('weight change vs the previous entry (83.8 → 83.1 = −0.7, one decimal)', w.delta === -0.7 && w.prev.date === '2026-08-24', w)
+check('weight change vs the previous entry (77.8 → 77.1 = −0.7, one decimal)', w.delta === -0.7 && w.prev.date === '2026-08-24', w)
 const f = latest.find(l => l.key === 'fat_percent')
 check('body fat compares with the last entry that HAD body fat (skips 24 Aug)', f.prev.date === '2026-08-20' && f.delta === -0.3, f)
 check('a first-ever value has no change', latest.find(l => l.key === 'lean_mass_kg').prev === null && latest.find(l => l.key === 'lean_mass_kg').delta === null)

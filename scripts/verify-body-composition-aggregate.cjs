@@ -118,14 +118,14 @@ console.log('\n6 · computeTrend — direction + rate from a real least-squares 
   const sameInstant = [report('2026-01-01T00:00:00.000Z', { weight_kg: 80 }), report('2026-01-01T00:00:00.000Z', { weight_kg: 82 })]
   check('two scans with no real time spread → null, not a divide-by-zero slope', computeTrend(sameInstant, 'weight_kg') === null)
 
-  // Real (noisy, non-monotonic) data from the actual reports shouldn't throw
-  // or produce a NaN even though it isn't a clean line.
-  const real = computeTrend([
+  // Noisy, non-monotonic readings like a scale's (values made up) shouldn't
+  // throw or produce a NaN even though they aren't a clean line.
+  const noisy = computeTrend([
     report('2026-08-31T08:00:00.000Z', { weight_kg: 78.4 }),
     report('2026-09-01T07:57:00.000Z', { weight_kg: 77.8 }),
     report('2026-09-06T08:23:00.000Z', { weight_kg: 78.0 }),
   ], 'weight_kg')
-  check('real noisy data produces a finite result, never NaN', real !== null && Number.isFinite(real.perWeek))
+  check('noisy readings produce a finite result, never NaN', noisy !== null && Number.isFinite(noisy.perWeek))
 }
 
 console.log('\n7 · dailySeries — one value per local day, for a time-scaled line')

@@ -407,13 +407,13 @@ for (let h = 150; h <= 205; h += 0.5) {
 }
 check('healthyWeightRange edges are exactly the last healthy one-decimal weights, 150–205 cm', edgesOk, edgesBad)
 check('healthyWeightRange without a sane height → null', A.healthyWeightRange(null) === null && A.healthyWeightRange(50) === null)
-const wOver = A.weightAim({ kg: 83.0, heightCm: 180, goalWeightKg: null, phase: 'cut', whtr: null })
-check('weight 83.0 at 180 cm, no goal: improve to 80.8, 2.2 kg above, set-a-goal hint; sheet adds the waist check (90 cm) and cut pace',
-  wOver.status === 'improve' && /80\.8 kg or less/.test(wOver.text) && /2\.2 kg above/.test(wOver.text) && /set one in Goal progress/.test(wOver.text)
+const wOver = A.weightAim({ kg: 84.4, heightCm: 180, goalWeightKg: null, phase: 'cut', whtr: null })
+check('weight 84.4 at 180 cm, no goal: improve to 80.8, 3.6 kg above, set-a-goal hint; sheet adds the waist check (90 cm) and cut pace',
+  wOver.status === 'improve' && /80\.8 kg or less/.test(wOver.text) && /3\.6 kg above/.test(wOver.text) && /set one in Goal progress/.test(wOver.text)
   && /90 cm/.test(wOver.more) && /0\.4–0\.8 kg a week/.test(wOver.more), wOver)
-const wGoal = A.weightAim({ kg: 82.5, heightCm: 180, goalWeightKg: 78, phase: 'cut' })
-check('weight with a goal: aims at the goal, 4.5 kg to lose; sheet still gives the range', wGoal.status === 'improve' && /^78 kg, your goal/.test(wGoal.text) && /4\.5 kg to lose/.test(wGoal.text) && /59\.8–80\.8 kg/.test(wGoal.more), wGoal)
-check('weight at goal (±0.5): keep', A.weightAim({ kg: 78.3, heightCm: 180, goalWeightKg: 78 }).status === 'keep')
+const wGoal = A.weightAim({ kg: 84.5, heightCm: 180, goalWeightKg: 80, phase: 'cut' })
+check('weight with a goal: aims at the goal, 4.5 kg to lose; sheet still gives the range', wGoal.status === 'improve' && /^80 kg, your goal/.test(wGoal.text) && /4\.5 kg to lose/.test(wGoal.text) && /59\.8–80\.8 kg/.test(wGoal.more), wGoal)
+check('weight at goal (±0.5): keep', A.weightAim({ kg: 80.3, heightCm: 180, goalWeightKg: 80 }).status === 'keep')
 check('weight in range, no goal: keep', A.weightAim({ kg: 75, heightCm: 180 }).status === 'keep')
 check('weight over BMI 25 with a healthy waist: keep (likely muscle)', A.weightAim({ kg: 84, heightCm: 180, whtr: 0.46 }).status === 'keep'
   && /likely muscle/.test(A.weightAim({ kg: 84, heightCm: 180, whtr: 0.46 }).text))

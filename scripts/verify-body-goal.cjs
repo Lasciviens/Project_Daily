@@ -106,12 +106,12 @@ function energyStub({ kgPerWeek, meanKg = 90, meanKcal = 2400, loggedDays = 28, 
 
 // ── §2b The coach reads the report's pace rule ────────────────────────────
 {
-  // Live case: −0.284 kg/wk at 82.7 kg = −0.34 %/wk. The old coach counted a
+  // Example: −0.26 kg/wk at 76.5 kg = −0.34 %/wk. The old coach counted a
   // cut on track from −0.2 %/wk; the report's range starts at −0.5.
-  const live = BG.coachPace('cut', -0.284, 82.7)
+  const live = BG.coachPace('cut', -0.26, 76.5)
   check('§2b.1 −0.34 %/wk on a cut is too slow, not on track', [live.status, live.pct], ['too_slow', -0.34])
   ok('§2b.2 …so the coach offers a calorie cut', live.adjust && live.adjust.kcal < 0, live.adjust)
-  const report = BG.buildRateVerdict('cut', energyStub({ kgPerWeek: -0.284, meanKg: 82.7 }), { intakeReliable: true })
+  const report = BG.buildRateVerdict('cut', energyStub({ kgPerWeek: -0.26, meanKg: 76.5 }), { intakeReliable: true })
   check('§2b.3 …the same status and kcal as the report over the same weigh-ins', [live.status, live.adjust.kcal], [report.status, report.adjust.kcal])
   const cases = [['cut', -0.15, 90], ['cut', -0.45, 80], ['cut', -0.6, 80], ['cut', -1.2, 80], ['cut', 0.2, 80],
     ['maintain', 0.28, 80], ['maintain', -0.16, 80], ['gain', 0.16, 80], ['gain', 0.3, 80], ['gain', 0.62, 80], ['gain', -0.2, 80]]
@@ -242,15 +242,15 @@ const TO = addDays(FROM, 28)
   check('§6.13 within tolerance counts as reached', BG.goalProgress('bodyFat', 20.3, { points: [{ date: FROM, value: 20 }], trend: null }, null).status, 'reached')
   const up = BG.goalProgress('muscle', 60, { points: [{ date: FROM, value: 55 }], trend: { slopePerDay: 0.02, current: 56, lastDate: addDays(FROM, 30), significant: true } }, FROM)
   check('§6.14 a muscle goal above the current value moves up', [up.status, up.eta.days], ['moving_toward', 200])
-  // Why a flat goal has no date (the owner's numbers: muscle 58.9 → 58.1 kg toward 67, body fat 24.7 → 24.6 % toward a lower goal).
-  const own = (kind, goal, start, current) => BG.noDateReason({ kind, goal, current, currentDate: '2026-09-28', start, startDate: '2026-08-13', remaining: goal - current, progress: null, perWeek: null, status: 'flat', eta: null })
-  const mus = own('muscle', 67, 58.9, 58.1)
-  check('§6.16 muscle: −0.8 kg, past the ±0.5 noise, moving away from a higher goal', [Math.round(mus.change * 10) / 10, mus.withinNoise, mus.direction, mus.startDate], [-0.8, false, 'away', '2026-08-13'])
-  const bf = own('bodyFat', 18, 24.7, 24.6)
+  // Why a flat goal has no date (an example: muscle 55.6 → 54.8 kg toward 63, body fat 20.4 → 20.3 % toward a lower goal).
+  const own = (kind, goal, start, current) => BG.noDateReason({ kind, goal, current, currentDate: '2026-09-28', start, startDate: '2026-08-20', remaining: goal - current, progress: null, perWeek: null, status: 'flat', eta: null })
+  const mus = own('muscle', 63, 55.6, 54.8)
+  check('§6.16 muscle: −0.8 kg, past the ±0.5 noise, moving away from a higher goal', [Math.round(mus.change * 10) / 10, mus.withinNoise, mus.direction, mus.startDate], [-0.8, false, 'away', '2026-08-20'])
+  const bf = own('bodyFat', 15, 20.4, 20.3)
   check('§6.17 body fat: −0.1 % is inside the ±0.6 % noise, toward the goal', [bf.withinNoise, bf.noise, bf.direction], [true, 0.6, 'toward'])
-  check('§6.18 weight noise is 0.3 kg', own('weight', 80, 84.1, 83.9).withinNoise, true)
-  check('§6.19 no start → no reason', BG.noDateReason({ kind: 'muscle', goal: 67, current: 58, start: null, startDate: null }), null)
-  check('§6.20 no change → no direction', own('muscle', 67, 58, 58).direction, 'none')
+  check('§6.18 weight noise is 0.3 kg', own('weight', 74, 78.4, 78.2).withinNoise, true)
+  check('§6.19 no start → no reason', BG.noDateReason({ kind: 'muscle', goal: 63, current: 54, start: null, startDate: null }), null)
+  check('§6.20 no change → no direction', own('muscle', 63, 55, 55).direction, 'none')
   check('§6.15 no start before the phase start date', BG.startValue(pts, addDays(FROM, 40)), null)
 }
 
@@ -342,9 +342,9 @@ const TO = addDays(FROM, 28)
   const local = GS.parseLocalGoals(legacy)
   const pre = GS.resolveGoalSettings(null, local)
   check('§9.4 no account values → device values, flagged', [pre.settings.goalWeightKg, pre.fromDevice], [80, true])
-  const acct = { goal_weight_kg: 78, goal_body_fat_pct: 14, goal_muscle_mass_kg: null, phase_start_date: null }
+  const acct = { goal_weight_kg: 72, goal_body_fat_pct: 16, goal_muscle_mass_kg: null, phase_start_date: null }
   const mix = GS.resolveGoalSettings(acct, local)
-  check('§9.5 the account wins, the device fills the gap', [mix.settings.goalWeightKg, mix.settings.goalBodyFatPct, mix.settings.phaseStartDate, mix.fromDevice], [78, 14, '2026-08-01', true])
+  check('§9.5 the account wins, the device fills the gap', [mix.settings.goalWeightKg, mix.settings.goalBodyFatPct, mix.settings.phaseStartDate, mix.fromDevice], [72, 16, '2026-08-01', true])
   check('§9.6 nothing on the device → not flagged', GS.resolveGoalSettings(acct, GS.EMPTY_GOAL_SETTINGS).fromDevice, false)
   check('§9.7 patch uses the column names', Object.keys(GS.toProfilePatch(mix.settings)), ['goal_weight_kg', 'goal_body_fat_pct', 'goal_muscle_mass_kg', 'phase_start_date'])
   check('§9.8 ranges match the migration CHECKs', [GS.validGoal('goalBodyFatPct', '2.5'), GS.validGoal('goalBodyFatPct', '12,34'), GS.validGoal('goalMuscleMassKg', 151)], [null, 12.3, null])
@@ -412,21 +412,21 @@ async function verifyProfileApi() {
 
 // ── §11 The one goal: pure helpers ─────────────────────────────────────────
 {
-  const row113 = { user_id: 'u', calories: 1950, protein_g: 180, water_ml: 2500, goal: 'cut', last_calorie_adjust: null, phase_start_date: '2026-09-01T00:00:00', goal_weight_kg: '78.0', goal_body_fat_pct: 14, goal_muscle_mass_kg: null }
+  const row113 = { user_id: 'u', calories: 2100, protein_g: 165, water_ml: 2500, goal: 'cut', last_calorie_adjust: null, phase_start_date: '2026-09-07T00:00:00', goal_weight_kg: '72.0', goal_body_fat_pct: 16, goal_muscle_mass_kg: null }
   check('§11.1 a 113 row carries the goal columns', GS.rowHasGoalColumns(row113), true)
   check('§11.2 a pre-113 row does not', GS.rowHasGoalColumns({ user_id: 'u', calories: 2000 }), false)
   check('§11.3 no row → no columns', GS.rowHasGoalColumns(null), false)
-  check('§11.4 goal fields are cleaned', GS.goalFieldsOf(row113), { goal_weight_kg: 78, goal_body_fat_pct: 14, goal_muscle_mass_kg: null, phase_start_date: '2026-09-01' })
-  check('§11.5 phase start: same phase keeps the saved date', GS.phaseStartFor('cut', 'cut', '2026-09-01', '2026-09-28'), '2026-09-01')
-  check('§11.6 phase start: a new phase starts today', GS.phaseStartFor('maintain', 'cut', '2026-09-01', '2026-09-28'), '2026-09-28')
+  check('§11.4 goal fields are cleaned', GS.goalFieldsOf(row113), { goal_weight_kg: 72, goal_body_fat_pct: 16, goal_muscle_mass_kg: null, phase_start_date: '2026-09-07' })
+  check('§11.5 phase start: same phase keeps the saved date', GS.phaseStartFor('cut', 'cut', '2026-09-07', '2026-09-28'), '2026-09-07')
+  check('§11.6 phase start: a new phase starts today', GS.phaseStartFor('maintain', 'cut', '2026-09-07', '2026-09-28'), '2026-09-28')
   check('§11.7 phase start: back to the saved phase restores its date', GS.phaseStartFor('cut', 'cut', null, '2026-09-28'), null)
-  const p = GS.parseBodyTargets({ goalWeightKg: '78,5', goalBodyFatPct: '', goalMuscleMassKg: '200' })
-  check('§11.8 body targets: comma decimals, empty clears', [p.values.goalWeightKg, p.values.goalBodyFatPct], [78.5, null])
+  const p = GS.parseBodyTargets({ goalWeightKg: '72,5', goalBodyFatPct: '', goalMuscleMassKg: '200' })
+  check('§11.8 body targets: comma decimals, empty clears', [p.values.goalWeightKg, p.values.goalBodyFatPct], [72.5, null])
   check('§11.9 body targets: out of range is an error naming the range', p.errors, { goalMuscleMassKg: 'Between 10 and 150 kg' })
-  check('§11.10 body target text', [GS.bodyTargetText(78), GS.bodyTargetText(null)], ['78', ''])
-  const t = { goal: 'cut', phaseStartDate: '2026-09-01', calories: 1950, protein: 180, goalWeightKg: 78, goalBodyFatPct: 14, goalMuscleMassKg: null }
-  check('§11.11 summary line', GSUM.goalSummaryParts(t, '2026-09-28'), ['Cut since 01.09.2026', '1,950 kcal', '180 g protein', '→ 78 kg · 14 % body fat'])
-  check('§11.12 summary without start date or body targets', GSUM.goalSummaryParts({ ...t, phaseStartDate: null, goalWeightKg: null, goalBodyFatPct: null }, '2026-09-28'), ['Cut', '1,950 kcal', '180 g protein'])
+  check('§11.10 body target text', [GS.bodyTargetText(72), GS.bodyTargetText(null)], ['72', ''])
+  const t = { goal: 'cut', phaseStartDate: '2026-09-07', calories: 2100, protein: 165, goalWeightKg: 72, goalBodyFatPct: 16, goalMuscleMassKg: null }
+  check('§11.11 summary line', GSUM.goalSummaryParts(t, '2026-09-28'), ['Cut since 07.09.2026', '2,100 kcal', '165 g protein', '→ 72 kg · 16 % body fat'])
+  check('§11.12 summary without start date or body targets', GSUM.goalSummaryParts({ ...t, phaseStartDate: null, goalWeightKg: null, goalBodyFatPct: null }, '2026-09-28'), ['Cut', '2,100 kcal', '165 g protein'])
   check('§11.13 summary: a start in another year carries the year', GSUM.sinceLabel('2025-12-30', '2026-01-05'), '30.12.2025')
 }
 
@@ -468,19 +468,19 @@ async function verifyDayTargetsApi() {
   Module._resolveFilename = origResolve
 
   const GOAL = ['phase_start_date', 'goal_weight_kg', 'goal_body_fat_pct', 'goal_muscle_mass_kg']
-  const daily = { user_id: 'u', calories: 1950, protein_g: 180, water_ml: 2500, goal: 'cut', last_calorie_adjust: null, updated_at: 'now' }
+  const daily = { user_id: 'u', calories: 2100, protein_g: 165, water_ml: 2500, goal: 'cut', last_calorie_adjust: null, updated_at: 'now' }
   const ok200 = data => ({ data, error: null })
   const legacyProfile = { user_id: 'u', goal: 'fat_loss', goal_weight_kg: 80, goal_body_fat_pct: null, goal_muscle_mass_kg: null, phase_start_date: '2026-08-01' }
 
   // Post-113: the row is the goal; athlete_profile is never read.
   tables = {
-    day_targets: st => ok200({ ...daily, phase_start_date: '2026-09-01', goal_weight_kg: 78, goal_body_fat_pct: null, goal_muscle_mass_kg: null, ...(st.row ?? {}) }),
+    day_targets: st => ok200({ ...daily, phase_start_date: '2026-09-07', goal_weight_kg: 72, goal_body_fat_pct: null, goal_muscle_mass_kg: null, ...(st.row ?? {}) }),
     athlete_profile: () => ok200(legacyProfile),
     day_target_profiles: () => ok200(null),
   }
   calls = []
   const post = await DT.fetchDayTargets()
-  check('§12.1 post-113 read: body goals from day_targets', [post.targets.goalWeightKg, post.targets.phaseStartDate, post.targets.calories, post.fromDevice], [78, '2026-09-01', 1950, false])
+  check('§12.1 post-113 read: body goals from day_targets', [post.targets.goalWeightKg, post.targets.phaseStartDate, post.targets.calories, post.fromDevice], [72, '2026-09-07', 2100, false])
   check('§12.2 …athlete_profile is not read', calls.some(c => c.table === 'athlete_profile'), false)
 
   // Pre-113: the row lacks the columns → athlete_profile's goals.
@@ -516,7 +516,7 @@ async function verifyDayTargetsApi() {
   // Pre-113 read whose athlete_profile read fails: the daily targets still load.
   tables.athlete_profile = () => ({ data: null, error: { code: '500', message: 'network down' } })
   const soft = await DT.fetchDayTargets()
-  check('§12.6e a failed legacy read only blanks the body targets', [soft.targets.calories, soft.targets.goal, soft.targets.goalWeightKg], [1950, 'cut', null])
+  check('§12.6e a failed legacy read only blanks the body targets', [soft.targets.calories, soft.targets.goal, soft.targets.goalWeightKg], [2100, 'cut', null])
   tables.athlete_profile = st => ok200({ ...legacyProfile, ...(st.row ?? {}) })
 
   // Post-113 write: one upsert carrying every goal column.

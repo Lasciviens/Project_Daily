@@ -6,7 +6,7 @@ import { PROFILE_BOARD, type ProfileSection } from '../settingsBoards'
 
 // Settings → Profile: birth year, sex and height (athlete_profile, migration
 // 110) — moved here from the Health page's header chip (owner, 16.10.2026:
-// "Male · 27 · 180 cm … this should be under settings"). The fields save as you
+// the profile chip "should be under settings"). The fields save as you
 // go (HealthProfileForm); Health reads them for its reference ranges.
 export function ProfileTab() {
   const sections: Record<ProfileSection, ReactNode> = {
