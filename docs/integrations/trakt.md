@@ -101,6 +101,11 @@ accounts) and it only changes Trakt's progress view (`reset_at`); rewatch rounds
 
 ## Log
 
+- 26.10.2026 (later) — `auth.trakt.tv` answers a refresh token it no longer knows with HTTP 400
+  `{"error":"invalid_grant","error_description":"session not found"}` (seen live with a made-up token), not 401.
+  The refresh now reads that as a dead sign-in: `trakt_sync_state.last_error` gets the "connect again" text
+  (also from a cron run), `status` returns `needsReconnect`, and the card shows **Connect again**, which
+  re-runs the sign-in and keeps `trakt_outbox` (Disconnect would empty it).
 - 26.10.2026 — sign-in host, limits and token life checked against Trakt's developer portal: the OpenAPI
   spec (https://developer.trakt.tv/openapi.json — every `/oauth/*` path has the server
   `https://auth.trakt.tv`), the PKCE guide (authorize at `https://auth.trakt.tv/oauth/authorize`), the

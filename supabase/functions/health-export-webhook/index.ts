@@ -66,7 +66,7 @@ function numOrQty(v: unknown): number | null {
 // key as a NEW row instead of upserting over the existing one. Every 'sum'
 // metric (steps, active/basal energy — anything computeDailySeries adds up)
 // then double/triple-counted that hour. Also seen with a genuine second
-// device: "Owner's iPhone|Owner's Apple Watch" vs "...|Owner's Apple
+// device: "Owner iPhone|Owner's Apple Watch" vs "...|Owner's Apple
 // Watch|Owner's Apple Watch" for the identical value. Canonicalizing before
 // it ever reaches the `source` column (and the upsert's conflict key) makes
 // these collapse onto the SAME row — an upsert, not a duplicate. Also folds

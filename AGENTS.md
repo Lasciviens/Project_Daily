@@ -69,7 +69,8 @@ React 19 + TypeScript 6 + Vite 8 · react-router v7 with HashRouter (GitHub Page
 - An edge function with browser callers checks `auth.getUser` **and** its own `isAppUser(user.id)` copy; platform `verify_jwt` alone admits any project JWT. Only `news-proxy` is exempt.
 - Keys never travel in a URL when the API takes a header; otherwise fetch through `fetchHidingUrl`. `ai-proxy` scrubs outgoing errors with `hideSecrets` (`verify-secret-errors`).
 - Never log a secret: a mutation whose input is a secret sets `logPayload: false`; `logError` redacts secret-looking keys.
-- A device, cron or webhook secret is checked with the function's `sameSecret` copy (hash, then compare), never `===` (`verify-secret-compare`).
+- A device, cron or webhook secret is checked in constant time (`sameSecret`: hash, then compare), never `===` (`verify-secret-compare`).
+- **The repo is public: no personal data in it** — no real email address, phone number, street address, name or real health numbers in code, tests, docs, commit messages or PR texts. Use made-up data (Ola Nordmann, example.com, Jernbanetorget). The account email a session sees is for commit credit only, never a contact field (`verify-no-personal-data`).
 - A server-side fetch of a URL someone supplied goes through `isPrivateHost` and re-checks every redirect (`verify-ssrf-guard`).
 - The assistant acts only on what the user typed: a new destructive tool goes into `NEEDS_CONFIRM`, a new column that links a row to an outside account goes into `AI_NO_WRITE` (`verify-ai-confirm`).
 - Token tables are service-role only (`REVOKE ALL … FROM anon, authenticated`); the browser reads only derived status.

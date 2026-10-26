@@ -74,7 +74,10 @@ export function TraktCard() {
           <div className="flex flex-wrap gap-2">
             {s?.connected ? (
               <>
-                <Button variant="primary" onClick={() => sync.mutate({ full: true })} loading={sync.isPending} disabled={s.syncing}>Sync now</Button>
+                {s.needsReconnect && (
+                  <Button variant="primary" onClick={() => start.mutate()} disabled={start.isPending || finish.isPending}>Connect again</Button>
+                )}
+                <Button variant={s.needsReconnect ? 'secondary' : 'primary'} onClick={() => sync.mutate({ full: true })} loading={sync.isPending} disabled={s.syncing}>Sync now</Button>
                 <Button variant="secondary" onClick={() => setPreviewOpen(true)}>Preview import</Button>
                 <Button variant="secondary" onClick={() => disconnect.mutate()} disabled={disconnect.isPending}>Disconnect</Button>
               </>

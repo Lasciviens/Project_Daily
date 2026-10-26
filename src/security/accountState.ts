@@ -1,7 +1,6 @@
 import { supabase } from '../integrations/supabase/client'
 import { useCalendarStore } from '../app/store'
 import { SERIES_PENDING_KEY } from '../features/calendar/calendarSeries'
-import { LOCAL_GOALS_KEY } from '../features/health/goal/goalSettings'
 
 // What signing out must leave behind (security audit 10.10.2026). Before this,
 // sign-out only ended the Supabase session: the Google token, the AI chat, the
@@ -55,8 +54,9 @@ export async function clearAccountState(): Promise<void> {
   try { localStorage.removeItem('lasci.googleTasks.warnedError') } catch { /* */ }
   // Repeating-plan Calendar pushes waiting for a retry (they name this account's plans).
   try { localStorage.removeItem(SERIES_PENDING_KEY) } catch { /* */ }
-  // The old fallback copy of the goal weight / body fat goal.
-  try { localStorage.removeItem(LOCAL_GOALS_KEY) } catch { /* */ }
+  // The device copy of the body goals stays: it can be the only copy until
+  // they are saved to the account (DayTargetsEditor), and a session that just
+  // expired also lands here.
   // The service worker's runtime caches (vite.config.ts): weather URLs carry
   // the location, transit URLs the stop searches. 'supabase-api' is gone from
   // the config but may linger on an older install.
