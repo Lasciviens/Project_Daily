@@ -28,7 +28,24 @@
 // external_games, external_game_sources); `category` and `collection` are
 // deprecated there and are not used.
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.118.0'
+import { createClient } from 'npm:@supabase/supabase-js@2.118.0'
+
+// <supabase-keys>
+// Supabase's new API keys (sb_secret_… / sb_publishable_…) arrive as JSON
+// dictionaries keyed by name; the legacy JWT keys are the fallback until the
+// owner switches them off (docs/backend/environment.md). Same in every
+// function (scripts/verify-supabase-keys.cjs).
+function supabaseKey(newVar: string, legacyVar: string): string {
+  try {
+    const keys = JSON.parse(Deno.env.get(newVar) ?? '{}') as Record<string, unknown>
+    const key = keys.default ?? Object.values(keys)[0]
+    if (typeof key === 'string' && key) return key
+  } catch { /* not set or not JSON: the legacy key */ }
+  return Deno.env.get(legacyVar) ?? ''
+}
+const serviceKey = () => supabaseKey('SUPABASE_SECRET_KEYS', 'SUPABASE_SERVICE_ROLE_KEY')
+const publishableKey = () => supabaseKey('SUPABASE_PUBLISHABLE_KEYS', 'SUPABASE_ANON_KEY')
+// </supabase-keys>
 
 // Owner lock (security audit 10.10.2026, migration 139): this function serves
 // only the owner (HEVY_USER_ID) and accounts listed in app_allowed_users (for
@@ -36,7 +53,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.118.0'
 // works before migration 139 is applied.
 async function isAppUser(userId: string): Promise<boolean> {
   if (userId === Deno.env.get('HEVY_USER_ID')) return true
-  const admin = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
+  const admin = createClient(Deno.env.get('SUPABASE_URL')!, serviceKey())
   const { data, error } = await admin.from('app_allowed_users').select('user_id').eq('user_id', userId).maybeSingle()
   return !error && !!data
 }
@@ -250,7 +267,7 @@ Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS })
   const auth = req.headers.get('authorization')
   if (!auth) return json({ error: 'Missing authorization header' }, 401)
-  const db = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
+  const db = createClient(Deno.env.get('SUPABASE_URL')!, serviceKey())
   const { data: { user }, error: authError } = await db.auth.getUser(auth.replace('Bearer ', ''))
   if (authError || !user) return json({ error: 'Invalid token' }, 401)
   if (!(await isAppUser(user.id))) return json({ error: 'forbidden' }, 403)

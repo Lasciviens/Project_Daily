@@ -8,7 +8,24 @@
 // rate-limited per IP). Only EMPTY fields are filled — never a value the
 // owner set. Covers are linked, never copied into Storage (the 1 GB wall).
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.118.0'
+import { createClient } from 'npm:@supabase/supabase-js@2.118.0'
+
+// <supabase-keys>
+// Supabase's new API keys (sb_secret_… / sb_publishable_…) arrive as JSON
+// dictionaries keyed by name; the legacy JWT keys are the fallback until the
+// owner switches them off (docs/backend/environment.md). Same in every
+// function (scripts/verify-supabase-keys.cjs).
+function supabaseKey(newVar: string, legacyVar: string): string {
+  try {
+    const keys = JSON.parse(Deno.env.get(newVar) ?? '{}') as Record<string, unknown>
+    const key = keys.default ?? Object.values(keys)[0]
+    if (typeof key === 'string' && key) return key
+  } catch { /* not set or not JSON: the legacy key */ }
+  return Deno.env.get(legacyVar) ?? ''
+}
+const serviceKey = () => supabaseKey('SUPABASE_SECRET_KEYS', 'SUPABASE_SERVICE_ROLE_KEY')
+const publishableKey = () => supabaseKey('SUPABASE_PUBLISHABLE_KEYS', 'SUPABASE_ANON_KEY')
+// </supabase-keys>
 
 // Owner lock (security audit 10.10.2026, migration 139): this function serves
 // only the owner (HEVY_USER_ID) and accounts listed in app_allowed_users (for
@@ -16,7 +33,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.118.0'
 // works before migration 139 is applied.
 async function isAppUser(userId: string): Promise<boolean> {
   if (userId === Deno.env.get('HEVY_USER_ID')) return true
-  const admin = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
+  const admin = createClient(Deno.env.get('SUPABASE_URL')!, serviceKey())
   const { data, error } = await admin.from('app_allowed_users').select('user_id').eq('user_id', userId).maybeSingle()
   return !error && !!data
 }
@@ -100,7 +117,7 @@ Deno.serve(async req => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
   if (req.method !== 'POST') return json({ error: 'method' }, 405)
   const auth = req.headers.get('Authorization') ?? ''
-  const db = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!, {
+  const db = createClient(Deno.env.get('SUPABASE_URL')!, publishableKey(), {
     global: { headers: { Authorization: auth } }, auth: { persistSession: false },
   })
   const { data: { user } } = await db.auth.getUser()

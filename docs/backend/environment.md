@@ -9,7 +9,7 @@ Client vars are baked at build time by `.github/workflows/deploy.yml`; everythin
 | Variable | Where |
 |---|---|
 | `SUPABASE_ACCESS_TOKEN` / `SUPABASE_DB_URL` | GitHub **environment `production`** secrets (main only; not Vault, never repository secrets) — the automatic deploy: a personal access token (`sbp_…`) for `supabase functions deploy`, and the Session pooler connection string for the migrations. `docs/deploy-setup.md`. |
-| `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` | Client build — main Supabase |
+| `VITE_SUPABASE_URL` / `VITE_SUPABASE_PUBLISHABLE_KEY` | Client build — main Supabase. The publishable key (`sb_publishable_…`, public by design) replaces the legacy `VITE_SUPABASE_ANON_KEY`, which stays the fallback until the legacy keys are switched off (see Supabase API keys below). A repository secret or variable; the deploy accepts either. |
 | `VITE_TMDB_API_KEY` | Client build — TMDB (client-safe) |
 | `VITE_GOOGLE_CLIENT_ID` | Client build — Google OAuth (Calendar + Tasks + Health consent) |
 | `VITE_STRAVA_CLIENT_ID` | Client build — Strava OAuth start |
@@ -37,4 +37,16 @@ Client vars are baked at build time by `.github/workflows/deploy.yml`; everythin
 | `SHOP_PRICE_CRON_SECRET` | Edge Function secrets **and** Vault — the daily Shop price/rates sweep's auth (`x-cron-secret` → `shop-price`); the cron reads it from Vault (migration 137), the function from its env. |
 | `STEAM_API_KEY` / `STEAM_ID64` | Vault — personal Steam Web API key (steamcommunity.com/dev/apikey) + your own SteamID64, read by `steam-api`. No OAuth — single-user, same posture as `HEVY_USER_ID`. |
 
-`SUPABASE_URL` / `SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY` are **injected into every edge function by the platform** — don't add them to Vault and never expose the service-role key to a client or a device.
+`SUPABASE_URL`, `SUPABASE_SECRET_KEYS` / `SUPABASE_PUBLISHABLE_KEYS` (the new keys, JSON keyed by name) and the legacy `SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY` are **injected into every edge function by the platform**; functions read keys only through their `<supabase-keys>` block (`serviceKey()` / `publishableKey()`, `verify-supabase-keys`) — don't add them to Vault and never expose the service-role key to a client or a device.
+
+## Supabase API keys (from 26.10.2026)
+
+Supabase is retiring the legacy JWT keys (`anon`, `service_role`) "by the end of 2026". Checked 26.10.2026 against supabase.com/docs/guides/getting-started/api-keys ("injects it as a JSON dictionary keyed by key name") and supabase.com/docs/guides/functions/secrets ("Default secrets": the secret keys JSON dictionary, `SUPABASE_SECRET_KEYS['default']`). Their replacements are the **publishable** key (`sb_publishable_…`, the browser's) and the **secret** key (`sb_secret_…`, the server's; it bypasses RLS, and Supabase refuses it from a browser). Both kinds work side by side, and switching the legacy keys off is reversible in the dashboard.
+
+- **Website:** `src/integrations/supabase/client.ts` uses `VITE_SUPABASE_PUBLISHABLE_KEY`, else `VITE_SUPABASE_ANON_KEY`. The deploy requires one of them.
+- **Edge functions:** every function that talks to the database carries the same `<supabase-keys>` block: `serviceKey()` reads `SUPABASE_SECRET_KEYS` (the key named `default`, else the first), else the legacy `SUPABASE_SERVICE_ROLE_KEY`; `publishableKey()` the same with `SUPABASE_PUBLISHABLE_KEYS` / `SUPABASE_ANON_KEY`. So the functions move to the new keys by themselves once the project has them.
+- **Unchanged:** user sign-in tokens (a separate, later migration — JWT signing keys) and `verify_jwt` (our browser calls send the user's own token). Cron jobs and devices send their own header secrets, never a Supabase key, so their callers don't change — but the functions behind them talk to the database with the new secret key once it exists.
+- **Changes at the switch, harmlessly:** `screenscraper-media`'s signing key, unless `SCREENSCRAPER_MEDIA_KEY` is set (it then follows the secret key). Links are made per search and never stored, so a new search re-signs them; previews in a search that is open at that moment stop loading.
+- **The functions switch as soon as the new secret key exists** (the moment the next deploy runs with it), not when the legacy keys are switched off — so re-enabling the legacy keys does not undo it; reverting the PR does.
+- **The switch** is the owner's (`docs/deploy-checklist.md`): create the keys, add `VITE_SUPABASE_PUBLISHABLE_KEY`, deploy, test, then disable the legacy keys and test again. Afterwards a small PR removes the fallbacks.
+

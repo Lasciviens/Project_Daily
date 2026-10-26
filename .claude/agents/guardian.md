@@ -28,7 +28,7 @@ check scripts still pass. The app has **one owner** (plus at most a test account
 | **Token tables are service-role only:** `REVOKE ALL … FROM anon, authenticated`, no browser policy, never in `DB_CATALOG`; the browser reads only derived status | migrations 044, 140 | review |
 | **Sign-out clears the account's state:** a new account-bound localStorage key or cache goes into `src/security/accountState.ts` | `accountState.ts` | review |
 | **OAuth callbacks check `state`** (stored in sessionStorage, fails closed) — a new provider does the same | `media/trakt/traktCallback.ts`, `training/stravaMeta.ts` | review |
-| **Exact version pins** for every import (`supabase-js@2.118.0`, `psn-api@2.18.1`, `web-push@3.6.7`), never `@2` or `^2` | `supabase/functions/*` | `grep -rnE "@\^?[0-9]+(\.[0-9]+)?['\"/]" supabase/functions` finds none |
+| **Exact version pins** for every import (`npm:@supabase/supabase-js@2.118.0`, `npm:psn-api@2.18.1`, `npm:web-push@3.6.7`), from npm — never esm.sh, never `@2` or `^2` | `supabase/functions/*` | `grep -rnE "@\^?[0-9]+(\.[0-9]+)?['\"/]" supabase/functions` finds none |
 | **Devices:** the Kobo plugin checks the server certificate and name; the Scriptable `HizliLog` runner only obeys links carrying its Keychain token | `scripts/kobo/`, `docs/scriptable-widgets.md` | `scripts/kobo/test-tls.sh` |
 
 Also: no key in client code (only `VITE_*` values, which are public by nature); the only AI key is

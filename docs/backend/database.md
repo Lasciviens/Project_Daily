@@ -10,7 +10,7 @@
 | Auth | Supabase Auth — every user row references `auth.users(id)`; single-user app in practice |
 | ORM | None — raw `supabase-js` client everywhere |
 | Client env vars | See `docs/backend/environment.md`. Ground truth: `grep -rhoE 'VITE_[A-Z0-9_]+' src/ index.html vite.config.ts \| sort -u` |
-| Server secrets | Edge Function secrets (read with `Deno.env.get`) and, for cron jobs, Supabase Vault — never in client code or function source. Ground truth: `grep -rhoE "Deno.env.get\(['\"][A-Z0-9_]+" supabase/functions/ \| sort -u`. `SUPABASE_URL` / `SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY` are **injected by the platform** — do not add those to Vault. |
+| Server secrets | Edge Function secrets (read with `Deno.env.get`) and, for cron jobs, Supabase Vault — never in client code or function source. Ground truth: `grep -rhoE "Deno.env.get\(['\"][A-Z0-9_]+" supabase/functions/ \| sort -u`. `SUPABASE_URL` and the Supabase keys (`SUPABASE_SECRET_KEYS` / `SUPABASE_PUBLISHABLE_KEYS`, legacy `SUPABASE_SERVICE_ROLE_KEY` / `SUPABASE_ANON_KEY`) are **injected by the platform** — do not add those to Vault; functions read them through `serviceKey()` / `publishableKey()`. |
 | Migration numbering | Sequential, zero-padded three digits (`NNN_description.sql`). A new file is numbered **above 140** and unique — run `ls supabase/migrations \| sort \| tail -1` and increment. `scripts/deploy/run-migrations.mjs --check` (PR check) refuses anything else. |
 | Deploy | **Automatic on merge to main** (`.github/workflows/deploy.yml`, since 11.10.2026): new migrations (numbered above 140, each run once, recorded in `deploy.applied_migrations`), then every edge function (`supabase functions deploy`, JWT settings from `supabase/config.toml`), then the website. A failing migration stops the run. Needs the secrets `SUPABASE_ACCESS_TOKEN` + `SUPABASE_DB_URL` in the GitHub environment `production` (main only — never as repository secrets; `docs/deploy-setup.md`); without them only the website deploys. Never run a migration numbered above 140 by hand — the workflow would run it again. Migrations up to 140 were applied by hand and are never run by the workflow. |
 
@@ -442,8 +442,9 @@ which door the write came through.
   change it in four files by hand. Do not "fix" this by re-introducing a shared
   module.
 - Secrets: `Deno.env.get('SECRET_NAME')`, set as Edge Function secrets (a cron job reads its copy from Vault). Never in
-  function source. `SUPABASE_URL` / `SUPABASE_ANON_KEY` /
-  `SUPABASE_SERVICE_ROLE_KEY` are injected by the platform, not Vault entries.
+  function source. `SUPABASE_URL` and the Supabase keys
+  (`SUPABASE_SECRET_KEYS` / `SUPABASE_PUBLISHABLE_KEYS`, legacy `SUPABASE_SERVICE_ROLE_KEY` / `SUPABASE_ANON_KEY`)
+  are injected by the platform, not Vault entries; functions read them only through `serviceKey()` / `publishableKey()`.
 - CORS: include `Access-Control-Allow-Origin`, list every custom header the
   function accepts in `Access-Control-Allow-Headers`, and handle the OPTIONS
   preflight.
