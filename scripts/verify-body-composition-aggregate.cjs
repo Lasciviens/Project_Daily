@@ -23,10 +23,10 @@ function check(name, cond, detail) {
 function report(measuredAt, overrides = {}) {
   return {
     id: measuredAt, measured_at: measuredAt,
-    weight_kg: 83.6, body_fat_percent: 24.4, body_fat_mass_kg: 20.4, lean_body_mass_kg: 63.2,
-    body_water_percent: 55.4, protein_percent: 15.0, muscle_percent: 70.4,
-    skeletal_muscle_percent: 42.9, skeletal_muscle_index: 8.2, bmi: 25.8,
-    visceral_fat_index: 8, subcutaneous_fat_kg: 18.0, bmr_kcal: 1735, body_score: 79,
+    weight_kg: 78.0, body_fat_percent: 20.0, body_fat_mass_kg: 15.6, lean_body_mass_kg: 62.4,
+    body_water_percent: 57.0, protein_percent: 16.0, muscle_percent: 74.0,
+    skeletal_muscle_percent: 45.0, skeletal_muscle_index: 8.5, bmi: 24.1,
+    visceral_fat_index: 7, subcutaneous_fat_kg: 13.8, bmr_kcal: 1680, body_score: 83,
     source: 'movinglife_report', created_at: measuredAt,
     ...overrides,
   }
@@ -78,11 +78,11 @@ console.log('\n3 · latestAndPrevious — empty / one / many scans')
 console.log('\n4 · deltaFor — null-safe, real percentage, no fabricated "0 change"')
 {
   check('null when previous is missing', deltaFor(report('2026-09-06T08:23:00.000Z'), null, 'weight_kg') === null)
-  const latest = report('2026-09-06T08:23:00.000Z', { weight_kg: 83.6 })
-  const previous = report('2026-08-31T08:00:00.000Z', { weight_kg: 83.55 })
+  const latest = report('2026-09-06T08:23:00.000Z', { weight_kg: 78.0 })
+  const previous = report('2026-08-31T08:00:00.000Z', { weight_kg: 78.4 })
   const d = deltaFor(latest, previous, 'weight_kg')
-  check('delta is latest − previous', Math.abs(d.delta - 0.05) < 1e-9, String(d.delta))
-  check('deltaPercent is a real percentage', Math.abs(d.deltaPercent - (0.05 / 83.55) * 100) < 1e-6)
+  check('delta is latest − previous', Math.abs(d.delta - -0.4) < 1e-9, String(d.delta))
+  check('deltaPercent is a real percentage', Math.abs(d.deltaPercent - (-0.4 / 78.4) * 100) < 1e-6)
   const zeroPrev = deltaFor(report('x', { visceral_fat_index: 3 }), report('y', { visceral_fat_index: 0 }), 'visceral_fat_index')
   check('deltaPercent is null (not Infinity/NaN) when previous value is 0', zeroPrev.deltaPercent === null && zeroPrev.delta === 3)
 }
@@ -111,7 +111,7 @@ console.log('\n6 · computeTrend — direction + rate from a real least-squares 
   check('monotonically decreasing → direction down', falling.direction === 'down')
 
   const flatSeries = ['2026-01-01T00:00:00.000Z', '2026-01-08T00:00:00.000Z', '2026-01-15T00:00:00.000Z']
-    .map(d => report(d, { bmi: 25.8 }))
+    .map(d => report(d, { bmi: 24.1 }))
   const flat = computeTrend(flatSeries, 'bmi')
   check('an unchanging series → direction flat', flat.direction === 'flat' && flat.perWeek === 0)
 
@@ -121,9 +121,9 @@ console.log('\n6 · computeTrend — direction + rate from a real least-squares 
   // Real (noisy, non-monotonic) data from the actual reports shouldn't throw
   // or produce a NaN even though it isn't a clean line.
   const real = computeTrend([
-    report('2026-08-31T08:00:00.000Z', { weight_kg: 83.55 }),
-    report('2026-09-01T07:57:00.000Z', { weight_kg: 83.20 }),
-    report('2026-09-06T08:23:00.000Z', { weight_kg: 83.60 }),
+    report('2026-08-31T08:00:00.000Z', { weight_kg: 78.4 }),
+    report('2026-09-01T07:57:00.000Z', { weight_kg: 77.8 }),
+    report('2026-09-06T08:23:00.000Z', { weight_kg: 78.0 }),
   ], 'weight_kg')
   check('real noisy data produces a finite result, never NaN', real !== null && Number.isFinite(real.perWeek))
 }

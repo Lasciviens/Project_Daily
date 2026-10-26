@@ -138,44 +138,44 @@ function validateBodyComposition(body) {
   return { ok: true, values, measuredAtIso }
 }
 
-// ── fixtures: the user's own real report (2026-09-06 08:23, Europe/Oslo) ──
-const REAL_REPORT = {
+// ── fixtures: a made-up report, internally consistent (fat mass = weight × body fat %, lean = weight − fat) ──
+const SAMPLE_REPORT = {
   action: 'import_body_composition',
   measured_at: '2026-09-06T08:23:00',
   measurement_timezone: 'Europe/Oslo',
-  weight_kg: 83.6,
-  body_fat_percent: 24.4,
-  body_fat_mass_kg: 20.4,
-  lean_body_mass_kg: 63.2,
-  body_water_percent: 55.4,
-  protein_percent: 15.0,
-  muscle_percent: 70.4,
-  skeletal_muscle_percent: 42.9,
-  skeletal_muscle_index: 8.2,
-  bmi: 25.8,
-  visceral_fat_index: 8,
-  subcutaneous_fat_kg: 18.0,
-  bmr_kcal: 1735,
-  body_score: 79,
+  weight_kg: 78.0,
+  body_fat_percent: 20.0,
+  body_fat_mass_kg: 15.6,
+  lean_body_mass_kg: 62.4,
+  body_water_percent: 57.0,
+  protein_percent: 16.0,
+  muscle_percent: 74.0,
+  skeletal_muscle_percent: 45.0,
+  skeletal_muscle_index: 8.5,
+  bmi: 24.1,
+  visceral_fat_index: 7,
+  subcutaneous_fat_kg: 13.8,
+  bmr_kcal: 1680,
+  body_score: 83,
 }
 
-console.log('\n1 · Valid report (the real 2026-09-06 08:23 scan) is accepted')
+console.log('\n1 · Valid report (a sample 2026-09-06 08:23 scan) is accepted')
 {
-  const r = validateBodyComposition(REAL_REPORT)
+  const r = validateBodyComposition(SAMPLE_REPORT)
   check('accepted (no errors)', r.ok === true, r.ok ? '' : JSON.stringify(r.errors))
   if (r.ok) {
     check('measured_at resolves to a real UTC instant', r.measuredAtIso === '2026-09-06T06:23:00.000Z',
       `got ${r.measuredAtIso} (Oslo is UTC+2 on 6 Sep — CEST)`)
-    check('weight_kg carried through unchanged', r.values.weight_kg === 83.6)
-    check('body_score carried through unchanged', r.values.body_score === 79)
+    check('weight_kg carried through unchanged', r.values.weight_kg === 78)
+    check('body_score carried through unchanged', r.values.body_score === 83)
   }
 }
 
-console.log('\n2 · The other three real reports from the same device also pass validation')
+console.log('\n2 · Two more sample reports also pass validation')
 {
   const reports = [
-    { measured_at: '2026-08-31T08:00:00', weight_kg: 83.55, body_fat_percent: 23.7, body_fat_mass_kg: 19.8, lean_body_mass_kg: 63.7, body_water_percent: 55.9, protein_percent: 15.1, muscle_percent: 71.0, skeletal_muscle_percent: 43.3, skeletal_muscle_index: 8.3, bmi: 25.8, visceral_fat_index: 8, subcutaneous_fat_kg: 17.5, bmr_kcal: 1746, body_score: 81 },
-    { measured_at: '2026-09-01T07:57:00', weight_kg: 83.20, body_fat_percent: 24.5, body_fat_mass_kg: 20.4, lean_body_mass_kg: 62.8, body_water_percent: 55.3, protein_percent: 15.0, muscle_percent: 70.3, skeletal_muscle_percent: 42.8, skeletal_muscle_index: 8.1, bmi: 25.7, visceral_fat_index: 8, subcutaneous_fat_kg: 18.0, bmr_kcal: 1727, body_score: 79 },
+    { measured_at: '2026-08-31T08:00:00', weight_kg: 78.4, body_fat_percent: 20.6, body_fat_mass_kg: 16.2, lean_body_mass_kg: 62.2, body_water_percent: 56.6, protein_percent: 15.8, muscle_percent: 73.4, skeletal_muscle_percent: 44.6, skeletal_muscle_index: 8.4, bmi: 24.2, visceral_fat_index: 7, subcutaneous_fat_kg: 14.3, bmr_kcal: 1688, body_score: 82 },
+    { measured_at: '2026-09-01T07:57:00', weight_kg: 77.8, body_fat_percent: 19.7, body_fat_mass_kg: 15.3, lean_body_mass_kg: 62.5, body_water_percent: 57.2, protein_percent: 16.1, muscle_percent: 74.3, skeletal_muscle_percent: 45.2, skeletal_muscle_index: 8.5, bmi: 24.0, visceral_fat_index: 7, subcutaneous_fat_kg: 13.6, bmr_kcal: 1676, body_score: 84 },
   ]
   for (const r of reports) {
     const res = validateBodyComposition({ ...r, measurement_timezone: 'Europe/Oslo' })
@@ -185,7 +185,7 @@ console.log('\n2 · The other three real reports from the same device also pass 
 
 console.log('\n3 · Missing OCR field → validation_error, never a substituted 0')
 {
-  const { body_score, ...withoutScore } = REAL_REPORT
+  const { body_score, ...withoutScore } = SAMPLE_REPORT
   const r = validateBodyComposition(withoutScore)
   check('rejected', r.ok === false)
   check('names the missing field', r.ok === false && r.errors.body_score === 'required')
@@ -193,19 +193,19 @@ console.log('\n3 · Missing OCR field → validation_error, never a substituted 
 
 console.log('\n4 · Non-numeric / infinite / NaN-ish OCR read → validation_error')
 {
-  const bad = { ...REAL_REPORT, weight_kg: 'ochenta y tres' }
+  const bad = { ...SAMPLE_REPORT, weight_kg: 'ochenta y tres' }
   const r = validateBodyComposition(bad)
   check('rejected', r.ok === false)
   check('names weight_kg', r.ok === false && r.errors.weight_kg === 'must be a finite number')
 
-  const bad2 = { ...REAL_REPORT, bmr_kcal: Infinity }
+  const bad2 = { ...SAMPLE_REPORT, bmr_kcal: Infinity }
   const r2 = validateBodyComposition(bad2)
   check('Infinity rejected', r2.ok === false && r2.errors.bmr_kcal === 'must be a finite number')
 }
 
 console.log('\n5 · Out-of-range OCR misread (e.g. a mis-scanned decimal point) → validation_error')
 {
-  const bad = { ...REAL_REPORT, body_fat_percent: 2440 } // "24.4" misread as "2440"
+  const bad = { ...SAMPLE_REPORT, body_fat_percent: 2000 } // "20.0" misread as "2000"
   const r = validateBodyComposition(bad)
   check('rejected', r.ok === false)
   check('names body_fat_percent', r.ok === false && /out of expected range/.test(r.errors.body_fat_percent || ''))
@@ -213,17 +213,17 @@ console.log('\n5 · Out-of-range OCR misread (e.g. a mis-scanned decimal point) 
 
 console.log('\n6 · Inconsistent numbers (a real-looking but wrong field) → validation_error')
 {
-  // body_fat_mass_kg should be ≈20.4 (83.6 × 24.4%) — 25 is a plausible OCR
+  // body_fat_mass_kg should be ≈15.6 (78.0 × 20.0%) — 25 is a plausible OCR
   // misread but breaks the cross-check.
-  const bad = { ...REAL_REPORT, body_fat_mass_kg: 25 }
+  const bad = { ...SAMPLE_REPORT, body_fat_mass_kg: 25 }
   const r = validateBodyComposition(bad)
   check('rejected', r.ok === false)
-  check('names body_fat_mass_kg with the expected value', r.ok === false && /expected ≈20\.4/.test(r.errors.body_fat_mass_kg || ''),
+  check('names body_fat_mass_kg with the expected value', r.ok === false && /expected ≈15\.6/.test(r.errors.body_fat_mass_kg || ''),
     r.ok ? '' : JSON.stringify(r.errors))
 }
 {
-  // lean_body_mass_kg should be ≈63.2 (83.6 − 20.4)
-  const bad = { ...REAL_REPORT, lean_body_mass_kg: 50 }
+  // lean_body_mass_kg should be ≈62.4 (78.0 − 15.6)
+  const bad = { ...SAMPLE_REPORT, lean_body_mass_kg: 50 }
   const r = validateBodyComposition(bad)
   check('rejected', r.ok === false)
   check('names lean_body_mass_kg', r.ok === false && !!r.errors.lean_body_mass_kg, r.ok ? '' : JSON.stringify(r.errors))
@@ -234,7 +234,7 @@ console.log('\n7 · A rejected report writes nothing and consistency checks neve
   // weight_kg itself out of range AND the consistency checks would also fail
   // off of it — the field-range pass must return before ever computing a
   // "consistent with an already-invalid weight" cross-check.
-  const bad = { ...REAL_REPORT, weight_kg: -5 }
+  const bad = { ...SAMPLE_REPORT, weight_kg: -5 }
   const r = validateBodyComposition(bad)
   check('rejected on weight_kg range, not a confusing consistency message', r.ok === false && /range/.test(r.errors.weight_kg || ''))
 }
@@ -249,7 +249,7 @@ console.log('\n8 · An offset/Z suffix on measured_at is rejected (ambiguous, ne
 
 console.log('\n9 · An unrecognized timezone name → validation_error, not a silent Oslo fallback')
 {
-  const bad = { ...REAL_REPORT, measurement_timezone: 'Mars/Olympus_Mons' }
+  const bad = { ...SAMPLE_REPORT, measurement_timezone: 'Mars/Olympus_Mons' }
   const r = validateBodyComposition(bad)
   check('rejected', r.ok === false)
   check('names measurement_timezone', r.ok === false && /not a recognized IANA timezone/.test(r.errors.measurement_timezone || ''))
@@ -257,7 +257,7 @@ console.log('\n9 · An unrecognized timezone name → validation_error, not a si
 
 console.log('\n10 · Omitting measurement_timezone defaults to Europe/Oslo, not UTC')
 {
-  const { measurement_timezone, ...withoutTz } = REAL_REPORT
+  const { measurement_timezone, ...withoutTz } = SAMPLE_REPORT
   const r = validateBodyComposition(withoutTz)
   check('accepted', r.ok === true, r.ok ? '' : JSON.stringify(r.errors))
   check('resolved as Oslo local time (CEST, UTC+2), not literal UTC', r.ok === true && r.measuredAtIso === '2026-09-06T06:23:00.000Z')
@@ -288,9 +288,9 @@ console.log('\n11 · DST transitions resolve correctly — never a hardcoded +02
 
 console.log('\n12 · Re-send comparison: sameValue distinguishes an identical resend from a real edit')
 {
-  check('identical values match', sameValue(83.6, 83.6))
-  check('tiny float noise still matches', sameValue(83.6, 83.60000001))
-  check('a real different reading does not match', !sameValue(83.6, 85.0))
+  check('identical values match', sameValue(78.0, 78.0))
+  check('tiny float noise still matches', sameValue(78.0, 78.00000001))
+  check('a real different reading does not match', !sameValue(78.0, 85.0))
   check('resend tolerance is tighter than the consistency tolerance', RESEND_TOL < CONSISTENCY_TOL_ABS_KG)
 }
 
@@ -299,7 +299,7 @@ console.log('\n13 · already_exists vs conflict decision (mirrors the gateway\'s
   function sameReport(existing, values) {
     return BODY_COMP_FIELDS.every(f => sameValue(Number(existing[f.key]), values[f.key]))
   }
-  const r = validateBodyComposition(REAL_REPORT)
+  const r = validateBodyComposition(SAMPLE_REPORT)
   check('fixture parses', r.ok === true)
   const identicalRow = { ...r.values }
   check('an identical re-send → already_exists (sameReport true)', sameReport(identicalRow, r.values))

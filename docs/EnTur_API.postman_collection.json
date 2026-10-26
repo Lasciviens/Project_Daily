@@ -21,13 +21,13 @@
       "type": "string"
     },
     {
-      "key": "STOP_VISPERUD",
-      "value": "NSR:StopPlace:5492",
+      "key": "STOP_A",
+      "value": "NSR:StopPlace:58366",
       "type": "string"
     },
     {
-      "key": "STOP_SINSENVEIEN",
-      "value": "NSR:StopPlace:58221",
+      "key": "STOP_B",
+      "value": "NSR:StopPlace:58404",
       "type": "string"
     }
   ],
@@ -36,45 +36,45 @@
       "name": "1 — Stop Search (Geocoder)",
       "item": [
         {
-          "name": "Search: Visperud",
+          "name": "Search: Jernbanetorget",
           "request": {
             "method": "GET",
             "header": [
               { "key": "ET-Client-Name", "value": "{{CLIENT_NAME}}" }
             ],
             "url": {
-              "raw": "{{GEOCODER_URL}}?text=Visperud&lang=no&size=8&layers=venue&sources=nsr",
+              "raw": "{{GEOCODER_URL}}?text=Jernbanetorget&lang=no&size=8&layers=venue&sources=nsr",
               "host": ["{{GEOCODER_URL}}"],
               "query": [
-                { "key": "text",    "value": "Visperud" },
+                { "key": "text",    "value": "Jernbanetorget" },
                 { "key": "lang",    "value": "no" },
                 { "key": "size",    "value": "8" },
                 { "key": "layers",  "value": "venue" },
                 { "key": "sources", "value": "nsr" }
               ]
             },
-            "description": "Search for Visperud stop.\nExpect: features[].properties.id starting with NSR:StopPlace:\nIf sources=nsr is removed, you'll get addresses and POIs with non-NSR IDs."
+            "description": "Search for Jernbanetorget stop.\nExpect: features[].properties.id starting with NSR:StopPlace:\nIf sources=nsr is removed, you'll get addresses and POIs with non-NSR IDs."
           }
         },
         {
-          "name": "Search: Sinsenveien",
+          "name": "Search: Nationaltheatret",
           "request": {
             "method": "GET",
             "header": [
               { "key": "ET-Client-Name", "value": "{{CLIENT_NAME}}" }
             ],
             "url": {
-              "raw": "{{GEOCODER_URL}}?text=Sinsenveien&lang=no&size=8&layers=venue&sources=nsr",
+              "raw": "{{GEOCODER_URL}}?text=Nationaltheatret&lang=no&size=8&layers=venue&sources=nsr",
               "host": ["{{GEOCODER_URL}}"],
               "query": [
-                { "key": "text",    "value": "Sinsenveien" },
+                { "key": "text",    "value": "Nationaltheatret" },
                 { "key": "lang",    "value": "no" },
                 { "key": "size",    "value": "8" },
                 { "key": "layers",  "value": "venue" },
                 { "key": "sources", "value": "nsr" }
               ]
             },
-            "description": "Search for Sinsenveien.\nLook at features[].properties.id — note ALL returned IDs.\nThere may be multiple stops (one per direction/quay group).\nThis helps identify which NSR:StopPlace ID is the correct one for your commute."
+            "description": "Search for Nationaltheatret.\nLook at features[].properties.id — note ALL returned IDs.\nThere may be multiple stops (one per direction/quay group).\nThis helps identify which NSR:StopPlace ID is the right one."
           }
         },
         {
@@ -85,10 +85,10 @@
               { "key": "ET-Client-Name", "value": "{{CLIENT_NAME}}" }
             ],
             "url": {
-              "raw": "{{GEOCODER_URL}}?text=Sinsenveien&lang=no&size=8&layers=venue",
+              "raw": "{{GEOCODER_URL}}?text=Nationaltheatret&lang=no&size=8&layers=venue",
               "host": ["{{GEOCODER_URL}}"],
               "query": [
-                { "key": "text",   "value": "Sinsenveien" },
+                { "key": "text",   "value": "Nationaltheatret" },
                 { "key": "lang",   "value": "no" },
                 { "key": "size",   "value": "8" },
                 { "key": "layers", "value": "venue" }
@@ -103,7 +103,7 @@
       "name": "2 — Departures",
       "item": [
         {
-          "name": "Departures: Visperud (journeyPattern path — new)",
+          "name": "Departures: Jernbanetorget (journeyPattern path — new)",
           "request": {
             "method": "POST",
             "header": [
@@ -112,7 +112,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"query\": \"{\\n    stopPlace(id: \\\"{{STOP_VISPERUD}}\\\") {\\n      name\\n      estimatedCalls(timeRange: 72100, numberOfDepartures: 10) {\\n        realtime\\n        aimedDepartureTime\\n        expectedDepartureTime\\n        quay { publicCode description name }\\n        serviceJourney { journeyPattern { line { publicCode transportMode } } }\\n        destinationDisplay { frontText }\\n      }\\n    }\\n  }\"\n}"
+              "raw": "{\n  \"query\": \"{\\n    stopPlace(id: \\\"{{STOP_A}}\\\") {\\n      name\\n      estimatedCalls(timeRange: 72100, numberOfDepartures: 10) {\\n        realtime\\n        aimedDepartureTime\\n        expectedDepartureTime\\n        quay { publicCode description name }\\n        serviceJourney { journeyPattern { line { publicCode transportMode } } }\\n        destinationDisplay { frontText }\\n      }\\n    }\\n  }\"\n}"
             },
             "url": {
               "raw": "{{JOURNEY_URL}}",
@@ -122,7 +122,7 @@
           }
         },
         {
-          "name": "Departures: Visperud (direct line path — old, may fail)",
+          "name": "Departures: Jernbanetorget (direct line path — old, may fail)",
           "request": {
             "method": "POST",
             "header": [
@@ -131,7 +131,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"query\": \"{\\n    stopPlace(id: \\\"{{STOP_VISPERUD}}\\\") {\\n      name\\n      estimatedCalls(timeRange: 72100, numberOfDepartures: 10) {\\n        realtime\\n        aimedDepartureTime\\n        expectedDepartureTime\\n        quay { publicCode description name }\\n        serviceJourney { line { publicCode transportMode } }\\n        destinationDisplay { frontText }\\n      }\\n    }\\n  }\"\n}"
+              "raw": "{\n  \"query\": \"{\\n    stopPlace(id: \\\"{{STOP_A}}\\\") {\\n      name\\n      estimatedCalls(timeRange: 72100, numberOfDepartures: 10) {\\n        realtime\\n        aimedDepartureTime\\n        expectedDepartureTime\\n        quay { publicCode description name }\\n        serviceJourney { line { publicCode transportMode } }\\n        destinationDisplay { frontText }\\n      }\\n    }\\n  }\"\n}"
             },
             "url": {
               "raw": "{{JOURNEY_URL}}",
@@ -141,7 +141,7 @@
           }
         },
         {
-          "name": "Departures: Sinsenveien",
+          "name": "Departures: Nationaltheatret",
           "request": {
             "method": "POST",
             "header": [
@@ -150,13 +150,13 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"query\": \"{\\n    stopPlace(id: \\\"{{STOP_SINSENVEIEN}}\\\") {\\n      name\\n      estimatedCalls(timeRange: 72100, numberOfDepartures: 10) {\\n        realtime\\n        aimedDepartureTime\\n        expectedDepartureTime\\n        quay { publicCode description name }\\n        serviceJourney { journeyPattern { line { publicCode transportMode } } }\\n        destinationDisplay { frontText }\\n      }\\n    }\\n  }\"\n}"
+              "raw": "{\n  \"query\": \"{\\n    stopPlace(id: \\\"{{STOP_B}}\\\") {\\n      name\\n      estimatedCalls(timeRange: 72100, numberOfDepartures: 10) {\\n        realtime\\n        aimedDepartureTime\\n        expectedDepartureTime\\n        quay { publicCode description name }\\n        serviceJourney { journeyPattern { line { publicCode transportMode } } }\\n        destinationDisplay { frontText }\\n      }\\n    }\\n  }\"\n}"
             },
             "url": {
               "raw": "{{JOURNEY_URL}}",
               "host": ["{{JOURNEY_URL}}"]
             },
-            "description": "Departures from Sinsenveien (NSR:StopPlace:58221).\n\nCheck quay.name and quay.description — this tells you which direction each departure is going.\nIf you see departures going BOTH directions from the same stop, then the stop ID covers both quays."
+            "description": "Departures from Nationaltheatret (NSR:StopPlace:58404).\n\nCheck quay.name and quay.description — this tells you which direction each departure is going.\nIf you see departures going BOTH directions from the same stop, then the stop ID covers both quays."
           }
         },
         {
@@ -169,7 +169,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"query\": \"{\\n    stopPlace(id: \\\"{{STOP_VISPERUD}}\\\") {\\n      name\\n      quays {\\n        id\\n        publicCode\\n        name\\n        description\\n        compassBearing\\n      }\\n    }\\n  }\"\n}"
+              "raw": "{\n  \"query\": \"{\\n    stopPlace(id: \\\"{{STOP_A}}\\\") {\\n      name\\n      quays {\\n        id\\n        publicCode\\n        name\\n        description\\n        compassBearing\\n      }\\n    }\\n  }\"\n}"
             },
             "url": {
               "raw": "{{JOURNEY_URL}}",
@@ -184,7 +184,7 @@
       "name": "3 — Trip Planner",
       "item": [
         {
-          "name": "Trip: Sinsenveien → Visperud (Home preset)",
+          "name": "Trip: Nationaltheatret → Jernbanetorget",
           "request": {
             "method": "POST",
             "header": [
@@ -193,17 +193,17 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"query\": \"{\\n    trip(\\n      from: { place: \\\"{{STOP_SINSENVEIEN}}\\\" }\\n      to:   { place: \\\"{{STOP_VISPERUD}}\\\" }\\n      numTripPatterns: 5\\n    ) {\\n      tripPatterns {\\n        duration\\n        expectedStartTime\\n        expectedEndTime\\n        legs {\\n          mode\\n          fromPlace { name }\\n          toPlace   { name }\\n          fromEstimatedCall {\\n            aimedDepartureTime\\n            expectedDepartureTime\\n          }\\n          line { publicCode }\\n        }\\n      }\\n    }\\n  }\"\n}"
+              "raw": "{\n  \"query\": \"{\\n    trip(\\n      from: { place: \\\"{{STOP_B}}\\\" }\\n      to:   { place: \\\"{{STOP_A}}\\\" }\\n      numTripPatterns: 5\\n    ) {\\n      tripPatterns {\\n        duration\\n        expectedStartTime\\n        expectedEndTime\\n        legs {\\n          mode\\n          fromPlace { name }\\n          toPlace   { name }\\n          fromEstimatedCall {\\n            aimedDepartureTime\\n            expectedDepartureTime\\n          }\\n          line { publicCode }\\n        }\\n      }\\n    }\\n  }\"\n}"
             },
             "url": {
               "raw": "{{JOURNEY_URL}}",
               "host": ["{{JOURNEY_URL}}"]
             },
-            "description": "Trip from Sinsenveien to Visperud (the Home preset).\n\nCheck:\n- How many tripPatterns are returned?\n- Do ALL legs use bus 100? If yes, that IS the only transit link.\n- What are the leg modes? (foot, bus, metro, etc.)\n- Does expectedStartTime differ across patterns?\n\nIf you only see bus 100: the stop IDs might be correct but your commute goes through bus 100.\nIf you see errors in json.errors: the query schema is wrong."
+            "description": "Trip from Nationaltheatret to Jernbanetorget.\n\nCheck:\n- How many tripPatterns are returned?\n- What are the leg modes? (foot, bus, metro, etc.)\n- Does expectedStartTime differ across patterns?\n\nIf you see errors in json.errors: the query schema is wrong."
           }
         },
         {
-          "name": "Trip: Visperud → Sinsenveien (Work preset)",
+          "name": "Trip: Jernbanetorget → Nationaltheatret",
           "request": {
             "method": "POST",
             "header": [
@@ -212,17 +212,17 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"query\": \"{\\n    trip(\\n      from: { place: \\\"{{STOP_VISPERUD}}\\\" }\\n      to:   { place: \\\"{{STOP_SINSENVEIEN}}\\\" }\\n      numTripPatterns: 5\\n    ) {\\n      tripPatterns {\\n        duration\\n        expectedStartTime\\n        expectedEndTime\\n        legs {\\n          mode\\n          fromPlace { name }\\n          toPlace   { name }\\n          fromEstimatedCall {\\n            aimedDepartureTime\\n            expectedDepartureTime\\n          }\\n          line { publicCode }\\n        }\\n      }\\n    }\\n  }\"\n}"
+              "raw": "{\n  \"query\": \"{\\n    trip(\\n      from: { place: \\\"{{STOP_A}}\\\" }\\n      to:   { place: \\\"{{STOP_B}}\\\" }\\n      numTripPatterns: 5\\n    ) {\\n      tripPatterns {\\n        duration\\n        expectedStartTime\\n        expectedEndTime\\n        legs {\\n          mode\\n          fromPlace { name }\\n          toPlace   { name }\\n          fromEstimatedCall {\\n            aimedDepartureTime\\n            expectedDepartureTime\\n          }\\n          line { publicCode }\\n        }\\n      }\\n    }\\n  }\"\n}"
             },
             "url": {
               "raw": "{{JOURNEY_URL}}",
               "host": ["{{JOURNEY_URL}}"]
             },
-            "description": "Trip from Visperud to Sinsenveien (the Work preset)."
+            "description": "Trip from Jernbanetorget to Nationaltheatret."
           }
         },
         {
-          "name": "Trip: Visperud → Oslo S (broad city center test)",
+          "name": "Trip: Jernbanetorget → Oslo S (broad city center test)",
           "request": {
             "method": "POST",
             "header": [
@@ -231,13 +231,13 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"query\": \"{\\n    trip(\\n      from: { place: \\\"NSR:StopPlace:5492\\\" }\\n      to:   { place: \\\"NSR:StopPlace:59872\\\" }\\n      numTripPatterns: 5\\n    ) {\\n      tripPatterns {\\n        duration\\n        expectedStartTime\\n        expectedEndTime\\n        legs {\\n          mode\\n          fromPlace { name }\\n          toPlace   { name }\\n          fromEstimatedCall {\\n            aimedDepartureTime\\n            expectedDepartureTime\\n          }\\n          line { publicCode }\\n        }\\n      }\\n    }\\n  }\"\n}"
+              "raw": "{\n  \"query\": \"{\\n    trip(\\n      from: { place: \\\"NSR:StopPlace:58366\\\" }\\n      to:   { place: \\\"NSR:StopPlace:59872\\\" }\\n      numTripPatterns: 5\\n    ) {\\n      tripPatterns {\\n        duration\\n        expectedStartTime\\n        expectedEndTime\\n        legs {\\n          mode\\n          fromPlace { name }\\n          toPlace   { name }\\n          fromEstimatedCall {\\n            aimedDepartureTime\\n            expectedDepartureTime\\n          }\\n          line { publicCode }\\n        }\\n      }\\n    }\\n  }\"\n}"
             },
             "url": {
               "raw": "{{JOURNEY_URL}}",
               "host": ["{{JOURNEY_URL}}"]
             },
-            "description": "Trip from Visperud to Oslo S (NSR:StopPlace:59872 = Oslo Sentralstasjon).\nUseful to see if different lines appear when the destination is a known major hub.\nIf this shows multiple different lines → the preset stop IDs might be too close together."
+            "description": "Trip from Jernbanetorget to Oslo S (NSR:StopPlace:59872 = Oslo Sentralstasjon).\nUseful to see if different lines appear when the destination is a known major hub.\nIf this shows multiple different lines → the two test stops might be too close together."
           }
         },
         {

@@ -113,7 +113,7 @@ function aiNights(rows) {
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
 const at = (day, clock) => `2026-07-${day} ${clock} +0200`
-const row = (start, end, total, source = "Furkan's Apple Watch") => ({
+const row = (start, end, total, source = "Owner's Apple Watch") => ({
   id: `${start}-${source}`, metric_name: 'sleep_analysis', date: '2026-07-20', source,
   recorded_at: start,
   value: { sleepStart: start, sleepEnd: end, totalSleep: total,
@@ -177,8 +177,8 @@ const cases = [
   // The same session under two source spellings (a curly apostrophe vs a
   // no-break space — HAE sent both before the webhook canonicalised them).
   ['one session under two source spellings', [
-    row(at('20', '00:40:00'), at('20', '08:00:00'), 7.1, 'Furkan’s Apple Watch'),
-    row(at('20', '00:40:00'), at('20', '08:00:00'), 7.1, 'Furkan’s Apple\u00a0Watch'),
+    row(at('20', '00:40:00'), at('20', '08:00:00'), 7.1, 'Owner’s Apple Watch'),
+    row(at('20', '00:40:00'), at('20', '08:00:00'), 7.1, 'Owner’s Apple\u00a0Watch'),
   ], 7.1],
 ]
 

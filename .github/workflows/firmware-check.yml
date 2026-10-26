@@ -28,7 +28,7 @@ jobs:
 
       # The platform, the Arduino core and the toolchain are about 1 GB; keyed on
       # platformio.ini so a version change downloads fresh.
-      - uses: actions/cache@v4
+      - uses: actions/cache@v5
         with:
           path: ~/.platformio
           key: platformio-${{ hashFiles('firmware/kitchen-scale/platformio.ini') }}

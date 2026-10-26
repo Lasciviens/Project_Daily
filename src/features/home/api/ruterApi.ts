@@ -128,7 +128,7 @@ async function gql(query: string): Promise<unknown> {
 // ─── Stop search ──────────────────────────────────────────────────────────────
 
 // venue+address layers without sources filter gives broader results.
-// sources=nsr was too strict — partial queries like "sinsen" returned nothing.
+// sources=nsr was too strict — partial stop names returned nothing.
 export async function searchStops(query: string): Promise<StopResult[]> {
   const params = new URLSearchParams({
     text:             query,
@@ -364,7 +364,7 @@ export async function fetchDepartures(
       realtime:          c.realtime,
       quayId:            c.quay?.id,
       // `|| undefined`: EnTur returns publicCode as an EMPTY STRING (not null)
-      // at plain roadside stops (verified live at Visperud) — let that leak
+      // at plain roadside stops (verified live at a roadside stop) — let that leak
       // through and every "is there a code?" check downstream misbehaves.
       quayCode:          c.quay?.publicCode || undefined,
       quayName:          c.quay?.name || undefined,

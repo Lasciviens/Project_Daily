@@ -38,7 +38,7 @@ const at = (day, clock) => `2026-07-${day} ${clock} +0200`
 
 function session(opts) {
   const { day = '17', start, end, total, core = 0, rem = 0, deep = 0, awake = 0,
-          source = "Furkan's Apple Watch", date = `2026-07-${day}` } = opts
+          source = "Owner's Apple Watch", date = `2026-07-${day}` } = opts
   return {
     id: `${start}-${source}`, metric_name: 'sleep_analysis', date, source,
     recorded_at: start,
@@ -47,7 +47,7 @@ function session(opts) {
 }
 
 // A raw per-segment row — the shape HAE sends with "Summarize" OFF.
-function segment(stage, qty, { date = '2026-07-17', source = "Furkan's Apple Watch" } = {}) {
+function segment(stage, qty, { date = '2026-07-17', source = "Owner's Apple Watch" } = {}) {
   return { id: `${stage}-${qty}-${source}`, metric_name: 'sleep_analysis', date, source,
            recorded_at: `${date}T00:00:00Z`, value: { value: stage, qty } }
 }
@@ -62,8 +62,8 @@ function segment(stage, qty, { date = '2026-07-17', source = "Furkan's Apple Wat
 // lets a same-start pair coexist whenever `source` differs — which is exactly
 // what the pre-canonicalizeSource rows still in the table look like.
 {
-  const partial  = session({ start: at('17', '02:00:51'), end: at('17', '05:00:00'), total: 3.00, core: 1.8, rem: 0.6, deep: 0.6, source: "Furkan's Apple Watch" })
-  const complete = session({ start: at('17', '02:00:51'), end: at('17', '07:27:08'), total: 4.94, core: 3.0, rem: 1.0, deep: 0.94, source: "Furkan's Apple Watch|Furkan's Apple Watch" })
+  const partial  = session({ start: at('17', '02:00:51'), end: at('17', '05:00:00'), total: 3.00, core: 1.8, rem: 0.6, deep: 0.6, source: "Owner's Apple Watch" })
+  const complete = session({ start: at('17', '02:00:51'), end: at('17', '07:27:08'), total: 4.94, core: 3.0, rem: 1.0, deep: 0.94, source: "Owner's Apple Watch|Owner's Apple Watch" })
 
   check('§1.1 same start, partial listed first → keeps the longer session',
     round(computeSleepSummary([partial, complete])[0].total), 4.94)
@@ -78,8 +78,8 @@ function segment(stage, qty, { date = '2026-07-17', source = "Furkan's Apple Wat
 // A genuinely identical session delivered under two row keys must still
 // collapse — that is what the dedup is FOR, and the §1 fix must not lose it.
 {
-  const a = session({ start: at('17', '02:00:51'), end: at('17', '07:27:08'), total: 4.94, core: 3.0, source: "Furkan's Apple Watch" })
-  const b = session({ start: at('17', '02:00:51'), end: at('17', '07:27:08'), total: 4.94, core: 3.0, source: "Furkan's Apple Watch|Furkan's Apple Watch" })
+  const a = session({ start: at('17', '02:00:51'), end: at('17', '07:27:08'), total: 4.94, core: 3.0, source: "Owner's Apple Watch" })
+  const b = session({ start: at('17', '02:00:51'), end: at('17', '07:27:08'), total: 4.94, core: 3.0, source: "Owner's Apple Watch|Owner's Apple Watch" })
   check('§1.5 byte-identical session under two sources counts once',
     round(computeSleepSummary([a, b])[0].total), 4.94)
   check('§1.6 …and its stages are not doubled either',

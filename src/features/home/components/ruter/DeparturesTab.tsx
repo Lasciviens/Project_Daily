@@ -116,7 +116,7 @@ export function DeparturesTab({ active, now }: DeparturesTabProps) {
   const { data, isLoading, error, refetch, isFetching, dataUpdatedAt } = useDepartures(queryStop?.id, { enabled: active && !isAddressQuery })
 
   // Scope to the saved favorite's quay at the DEPARTURE level, before any
-  // grouping. Real bug this fixes (verified live at Visperud): scoping used to
+  // grouping. Real bug this fixes (verified live at a roadside stop): scoping used to
   // happen on the built groups, but the grouping key was quayCode/description —
   // at ordinary roadside stops BOTH are empty ("" / null), so every direction
   // merged into one group whose quayId was whichever departure happened to come
@@ -138,7 +138,7 @@ export function DeparturesTab({ active, now }: DeparturesTabProps) {
     for (const dep of scopedDepartures) {
       // Group by the quay's real NSR id — it's the only identifier that is
       // ALWAYS present. publicCode/description are both commonly empty at
-      // roadside stops (verified live: Visperud's quays have publicCode ""
+      // roadside stops (verified live: a roadside stop's quays have publicCode ""
       // and description null), which previously merged distinct directions
       // into a single bucket.
       const key = dep.quayId ?? dep.quayCode ?? dep.quayDescription ?? '__default__'
@@ -352,7 +352,7 @@ export function DeparturesTab({ active, now }: DeparturesTabProps) {
             <div key={i} className={quayGroups.length >= 2 ? 'rounded-control border border-line bg-surface-2 p-2' : ''}>
               {quayGroups.length >= 2 && (() => {
                 // Roadside stops often have NO platform code (verified live:
-                // Visperud) — a bare bold "Platform" on every box says nothing,
+                // a roadside stop) — a bare bold "Platform" on every box says nothing,
                 // so in that case the direction itself becomes the headline.
                 const towards = group.destinations.length > 0
                   ? `Toward ${group.destinations.slice(0, 2).join(', ')}${group.destinations.length > 2 ? '…' : ''}`
