@@ -38,7 +38,7 @@
 // report X-Pagination-Page-Count. Every sign-in request (authorize, token,
 // refresh, revoke) goes to auth.trakt.tv, never the API host.
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.118.0'
+import { createClient } from 'npm:@supabase/supabase-js@2.118.0'
 
 // <supabase-keys>
 // Supabase's new API keys (sb_secret_… / sb_publishable_…) arrive as JSON

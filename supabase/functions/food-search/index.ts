@@ -30,7 +30,7 @@
 //     (`stores[].current_price` / `last_checked`, docs example). Kassalapp has
 //     no REMA 1000 prices (REMA publishes none online).
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.118.0'
+import { createClient } from 'npm:@supabase/supabase-js@2.118.0'
 
 // <supabase-keys>
 // Supabase's new API keys (sb_secret_… / sb_publishable_…) arrive as JSON

@@ -46,13 +46,13 @@ the file one transaction). Migration rules: `AGENTS.md` and `.claude/rules/datab
 
 Copy the shape of an existing small function (`supabase/functions/book-meta/index.ts`). Imports are
 pinned to exact versions in the forms the repo already uses —
-`https://esm.sh/@supabase/supabase-js@2.118.0`, `npm:web-push@3.6.7`, `npm:psn-api@2.18.1` —
+`npm:@supabase/supabase-js@2.118.0`, `npm:web-push@3.6.7`, `npm:psn-api@2.18.1` —
 never a floating `@2` or `^2`, never `deno.land/std` (`Deno.serve` is built in). Functions are
 self-contained: no `_shared/` imports (a Dashboard deploy does not bundle them). Pick the auth
 model from `.claude/rules/edge-functions.md`.
 
 ```typescript
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.118.0'
+import { createClient } from 'npm:@supabase/supabase-js@2.118.0'
 
 // <supabase-keys> … </supabase-keys>: copy the block verbatim from another function (verify-supabase-keys).
 // isAppUser: copy it verbatim from another function (scripts/verify-owner-lock.cjs checks the copies).

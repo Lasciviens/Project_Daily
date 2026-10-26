@@ -50,6 +50,8 @@ for (const f of users) {
   check(`${f}: nothing uses a key before the block defines it`, sources[f].includes('// <supabase-keys>') && !/serviceKey\(\)|publishableKey\(\)/.test(before))
 }
 check('every function that creates a client is covered (≥ 29)', users.length >= 29, users.length)
+const fromEsm = fns.filter(f => /from ['"]https:\/\/esm\.sh\//.test(sources[f]))
+check('no function imports from esm.sh (npm: only — an esm.sh outage stopped the 26.10.2026 deploy)', fromEsm.length === 0, fromEsm)
 
 console.log('\n2 · the block picks the right key')
 {

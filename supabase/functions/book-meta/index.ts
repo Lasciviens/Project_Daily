@@ -8,7 +8,7 @@
 // rate-limited per IP). Only EMPTY fields are filled — never a value the
 // owner set. Covers are linked, never copied into Storage (the 1 GB wall).
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.118.0'
+import { createClient } from 'npm:@supabase/supabase-js@2.118.0'
 
 // <supabase-keys>
 // Supabase's new API keys (sb_secret_… / sb_publishable_…) arrive as JSON

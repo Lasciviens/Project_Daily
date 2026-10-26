@@ -51,7 +51,7 @@
 // all). Every RPC call below passes p_user_id explicitly; the RPC honors it
 // only when auth.role() = 'service_role' (a claim only the platform's own
 // service key can present) — see migration 072's header comment.
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.118.0'
+import { createClient } from 'npm:@supabase/supabase-js@2.118.0'
 
 // <supabase-keys>
 // Supabase's new API keys (sb_secret_… / sb_publishable_…) arrive as JSON

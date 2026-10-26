@@ -1,7 +1,7 @@
 // Original images + complete parsed game XML. Requires migration 100.
 // JWT off: authenticate the device secret before every read/write. Owner is
 // always server-configured; service credentials never leave this function.
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.118.0'
+import { createClient } from 'npm:@supabase/supabase-js@2.118.0'
 
 // <supabase-keys>
 // Supabase's new API keys (sb_secret_… / sb_publishable_…) arrive as JSON

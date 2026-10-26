@@ -8,7 +8,7 @@
 //   • a browser (user JWT) with an explicit { title, body } — ad-hoc send.
 // verify_jwt = false (config.toml): the cron path is a shared secret, not a JWT.
 // Expired/gone subscriptions (404/410) are pruned automatically.
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.118.0'
+import { createClient } from 'npm:@supabase/supabase-js@2.118.0'
 import webpush from 'npm:web-push@3.6.7'
 
 // <supabase-keys>
