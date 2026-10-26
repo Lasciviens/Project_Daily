@@ -242,6 +242,16 @@ eq(M.leagueMonths('2026-10-20T12:00:00Z', 30), ['202609', '202610', '202611'], '
   eq(ids(M.syncPlan([{ ...derby, kickoff: '2027-01-30T17:00Z' }], gs, [], NOW)).add, [], 'beyond 45 days: later')
   eq(ids(M.syncPlan([{ ...derby, state: 'postponed' }], gs, [], NOW)).add, [], 'postponed: left alone')
   eq(ids(M.syncPlan([lille, lille], gs, [], NOW)).add, ['401915396'], 'the same match from two sources: once')
+
+  // Unsubscribe / Unfollow (owner, 25.10.2026): what leaves the day
+  const sub = (m, f = {}) => ({ ...plan(m), id: 'p-' + m.id, origin: 'subscription', ...f })
+  const leave = (ps, others = new Set()) => M.subscriptionLeavers('432', fixtures, ps, others, NOW).map(p => p.event_id)
+  eq(leave(fixtures.map(m => sub(m))), fixtures.map(m => m.id), 'unsubscribe: every coming match the subscription added leaves')
+  eq(leave([sub(lille, { origin: 'manual' })]), [], 'unsubscribe: a match you planned yourself (Plan it) stays')
+  eq(leave([sub(lille, { task_id: null })]), [], 'unsubscribe: an item already deleted is nothing to remove')
+  eq(leave([sub(lille, { kickoff_at: '2026-10-19T11:00:00Z' })]), [], 'unsubscribe: a match already kicked off stays')
+  eq(leave([sub(lille)], new Set([lille.home.team.id])), [], 'unsubscribe: a match another subscribed team plays in stays')
+  eq(M.subscriptionLeavers('999999', fixtures, fixtures.map(m => sub(m)), new Set(), NOW), [], 'unsubscribe: only that team\'s matches')
 }
 
 // ── The page's view ──
@@ -291,7 +301,9 @@ eq(V.dayLabel('2027-01-01', '2026-12-31'), 'Tomorrow', 'tomorrow across the year
   eq(tones.get('Relegation'), 'danger', 'relegation is danger')
   eq([...tones.values()].every(x => ['success', 'info', 'highlight', 'upcoming', 'danger'].includes(x)), true, 'zones are THEME tones, never ESPN\'s colours')
 }
-eq(V.SUGGESTIONS.map(s => s.ref), ['432', 'uefa.champions', 'fifa.world', 'uefa.euro'], 'suggestions: Galatasaray, Champions League, World Cup, Euro (owner, 19.10.2026)')
+eq(V.SUGGESTIONS.map(s => s.ref), ['432', 'uefa.champions', 'fifa.world', 'uefa.euro', 'eng.1', 'esp.1', 'ger.1', 'ita.1', 'fra.1'],
+  'suggestions: Galatasaray, Champions League, World Cup, Euro (owner, 19.10.2026), then the five big leagues (25.10.2026)')
+eq(V.SUGGESTIONS.every(s => s.kind !== 'league' || s.league === s.ref), true, 'a suggested tournament is its own league (163)')
 eq(V.SUGGESTIONS.every(s => /^[a-z0-9][a-z0-9._-]{0,59}$/.test(s.ref) && (s.kind !== 'team' || /^\d+$/.test(s.ref))), true, 'suggestions pass 163\'s ref checks')
 eq([V.scoreText(results[0]), V.scoreText(fixtures[0])], ['0–1', null], 'score text: home first; none before kick-off')
 

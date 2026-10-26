@@ -57,7 +57,8 @@ export function RecipesPage() {
           <div className={cx('flex min-w-0 flex-1 items-center gap-2', phoneRowless && 'max-sm:hidden')}>
             {tab === 'today' && <FoodDateNav value={foodDate} onChange={setFoodDate} />}
             <div className="ml-auto flex shrink-0 items-center gap-2">
-              {tab === 'library' && <Button icon={<Plus />} onClick={addRecipe} aria-label="Add recipe" title="Add recipe"><span className="max-sm:hidden">Add recipe</span></Button>}
+              {/* Never a bare "+" beside Log food on a phone: it says what it adds. */}
+              {tab === 'library' && <Button icon={<Plus />} onClick={addRecipe} aria-label="Add recipe" title="Add recipe"><span className="sm:hidden">Recipe</span><span className="max-sm:hidden">Add recipe</span></Button>}
               <Button variant="primary" icon={<UtensilsCrossed />} onClick={logFood}>Log food</Button>
             </div>
           </div>

@@ -121,7 +121,7 @@ function eatenQtyLabel(quantity: number | null, unit: string | null, servingLabe
   if (!quantity) return ''
   if (unit === 'serving') return servingLabel?.trim() ? ` · ${countLabel(quantity, servingLabel.trim())}` : ` · ${quantity}×`
   if (unit && (COUNT_UNITS as readonly string[]).includes(unit)) return ` · ${countLabel(quantity, unit)}`
-  return ` · ${quantity}${unit ?? 'g'}`
+  return ` · ${quantity} ${unit ?? 'g'}`
 }
 
 // A unified food_log_entries row (post-061): 'planned' (macros live) or 'eaten'
@@ -157,7 +157,8 @@ const UNIFIED_SELECT =
 export function unifiedToMeal(row: UnifiedRow, date: string): DayMeal {
   if (row.status === 'planned') {
     // Intent → macros computed LIVE (recipe per-serving × servings, or library
-    // per-100g × grams/100 for a weight unit). Custom = no macros.
+    // per-100g × grams/100 for a weight unit). A one-off line keeps what was
+    // typed (planning "kebab 700 kcal" in the logger's plan mode, 26.10.2026).
     const servings = row.quantity ?? 1
     let title = row.custom_title ?? '—'
     let calories = 0, protein_g = 0, carbs_g = 0, fat_g = 0, fiber_g = 0, sugar_g = 0
@@ -169,11 +170,14 @@ export function unifiedToMeal(row: UnifiedRow, date: string): DayMeal {
     } else if (row.ingredient) {
       const qty = row.quantity ?? 0
       const factor = SCALABLE_UNITS.has((row.unit ?? '').toLowerCase()) ? qty / 100 : 0
-      const qtyLabel = qty ? `${qty}${row.unit ?? ''}` : ''
+      const qtyLabel = qty ? `${qty}${row.unit ? ` ${row.unit}` : ''}` : ''
       title = qtyLabel ? `${row.ingredient.name} · ${qtyLabel}` : row.ingredient.name
       calories = (row.ingredient.calories ?? 0) * factor; protein_g = (row.ingredient.protein_g ?? 0) * factor
       carbs_g = (row.ingredient.carbs_g ?? 0) * factor; fat_g = (row.ingredient.fat_g ?? 0) * factor
       fiber_g = (row.ingredient.fiber_g ?? 0) * factor; sugar_g = (row.ingredient.sugar_g ?? 0) * factor
+    } else {
+      calories = row.calories ?? 0; protein_g = row.protein_g ?? 0; carbs_g = row.carbs_g ?? 0
+      fat_g = row.fat_g ?? 0; fiber_g = row.fiber_g ?? 0; sugar_g = row.sugar_g ?? 0
     }
     return {
       id: row.id, meal_slot: row.meal_slot, title, servings,
@@ -304,7 +308,7 @@ async function legacyTwoTable(date: string): Promise<DayMeal[]> {
       const qty  = row.ingredient_quantity ?? 0
       const unit = (row.ingredient_unit ?? '').toLowerCase()
       const factor = SCALABLE_UNITS.has(unit) ? qty / 100 : 0
-      const qtyLabel = qty ? `${qty}${row.ingredient_unit ?? ''}` : ''
+      const qtyLabel = qty ? `${qty}${row.ingredient_unit ? ` ${row.ingredient_unit}` : ''}` : ''
       title = qtyLabel ? `${row.ingredient.name} · ${qtyLabel}` : row.ingredient.name
       calories  = (row.ingredient.calories  ?? 0) * factor
       protein_g = (row.ingredient.protein_g ?? 0) * factor

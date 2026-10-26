@@ -22,7 +22,7 @@ export function MacroWarningBadge({ result }: { result: MacroConsistency | null 
       >
         <p className="mb-1 font-semibold text-warn">Nutrition data looks inconsistent</p>
         <p>
-          Declared <strong className="text-fg">{result.calories} kcal</strong>, but {result.proteinG}g protein × 4 + {result.carbsG}g carbs × 4 + {result.fatG}g fat × 9
+          Declared <strong className="text-fg">{result.calories} kcal</strong>, but {result.proteinG} g protein × 4 + {result.carbsG} g carbs × 4 + {result.fatG} g fat × 9
           {' ≈ '}<strong className="text-fg">{result.atwaterKcal} kcal</strong> — {result.deltaPct}% {direction} what the macros imply.
         </p>
         <p className="mt-1.5 text-fg-muted">

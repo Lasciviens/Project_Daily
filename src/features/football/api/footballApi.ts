@@ -56,17 +56,31 @@ export async function fetchPlans(): Promise<FootballPlan[]> {
   return (data ?? []) as FootballPlan[]
 }
 
-/** The record of a match planned through the Add sheet ("Plan it"): its new task takes the match. */
+export const ALREADY_PLANNED = 'This match was already in your day, so it is there twice now — delete one of the two'
+
+/**
+ * The record of a match planned through the Add sheet ("Plan it"): its new
+ * task takes the match — when the match has no record yet, or its item was
+ * deleted. A record whose item is still there is never taken over: that left
+ * the first item outside every record (it stayed when Unsubscribe removed the
+ * subscription's), one way to the duplicates of 25.10.2026.
+ */
 export async function recordPlan(match: FbMatch, taskId: string): Promise<FootballPlan> {
   const user = await requireUser()
-  const { data, error } = await supabase.from('football_plans')
-    .upsert({
-      user_id: user.id, event_id: match.id, league: match.league?.slug ?? '', task_id: taskId,
-      kickoff_at: match.kickoff, time_valid: match.timeValid, origin: 'manual',
-    }, { onConflict: 'user_id,event_id' })
-    .select().single()
-  if (error) throw fail(error)
-  return data as FootballPlan
+  const row = {
+    user_id: user.id, event_id: match.id, league: match.league?.slug ?? '', task_id: taskId,
+    kickoff_at: match.kickoff, time_valid: match.timeValid, origin: 'manual' as const,
+  }
+  const { data, error } = await supabase.from('football_plans').insert(row).select().single()
+  if (!error) return data as FootballPlan
+  if (error.code !== '23505') throw fail(error)
+  const { data: taken, error: takeError } = await supabase.from('football_plans')
+    .update({ task_id: taskId, kickoff_at: row.kickoff_at, time_valid: row.time_valid, origin: 'manual' })
+    .eq('user_id', user.id).eq('event_id', match.id).is('task_id', null)
+    .select()
+  if (takeError) throw fail(takeError)
+  if (!taken?.length) throw new Error(ALREADY_PLANNED)
+  return taken[0] as FootballPlan
 }
 
 /** A new kick-off noted without moving the item (the owner moved it themselves). */

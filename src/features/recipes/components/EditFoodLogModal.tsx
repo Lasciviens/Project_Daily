@@ -285,7 +285,7 @@ export function EditFoodLogModal({ entry, onClose }: Props) {
         {/* Only once the picked day's totals are in: before that it would read the whole target as left. */}
         {dayNut && (targets.calories > 0 || targets.protein > 0) && (
           <p className="text-meta text-fg-muted tabular-nums">
-            After this: <span className={cx(kcalLeft < 0 && 'text-danger')}>{left(kcalLeft, ' kcal')}</span> and <span className={cx(protLeft < 0 && 'text-danger')}>{left(protLeft, ' g protein')}</span> {onWhen}
+            After this: <span className={cx(kcalLeft < 0 && 'text-danger')}>{left(kcalLeft, ' kcal')}</span> and <span className={cx(protLeft < 0 && 'text-success')}>{left(protLeft, ' g protein')}</span> {onWhen}
           </p>
         )}
 

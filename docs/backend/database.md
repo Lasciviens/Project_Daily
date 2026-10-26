@@ -89,12 +89,35 @@ that number would collide with a deleted one in history.
    belongs in `app_undo_outbox`, a sync clock or outside-copy state column in
    `app_undo_bookkeeping`, and a link to an outside copy in `app_undo_links`
    (`docs/features/developer.md`).
-10. **Grants:** table CRUD for the `authenticated` role is already covered by
-    Supabase's public-schema default privileges — the explicit `GRANT SELECT,
-    INSERT, UPDATE, DELETE ... TO authenticated` lines in migrations up to `051`
-    are belt-and-braces, not a requirement for a new table (`066`/`067`/`068`
-    ship none and work in production). **`GRANT EXECUTE` on a new function IS
-    required** (see `065`'s `ai_semantic_search`).
+10. **Grants: a new table grants its roles itself (from 30.10.2026).** Until
+    then Supabase's default privileges gave every new table in `public`
+    select, insert, update and delete for `anon`, `authenticated` and
+    `service_role`, so a migration's own grants were belt-and-braces
+    (`066`/`067`/`068` ship none and work). On 30.10.2026 Supabase drops those
+    defaults for existing projects
+    ([changelog](https://supabase.com/changelog/45329-breaking-change-tables-not-exposed-to-data-and-graphql-api-automatically)).
+    Tables that exist keep their grants; a new one without a grant answers
+    "permission denied" through the Data API (supabase-js, PostgREST) even
+    with the right RLS — RLS decides which rows, a grant whether a role
+    reaches the table at all. Direct database connections are not affected
+    (the deploy runner, pg_cron, a `security definer` function owned by
+    `postgres`). So every migration after `165` that creates a table grants:
+    - `service_role`: `select, insert, update, delete` — edge functions and
+      the device gateways use the server key;
+    - `authenticated`: what the app does with it — including a trigger that
+      writes the table on the app's behalf, unless that trigger is
+      `security definer`;
+    - `anon`: nothing — only the owner's account uses the app (point 12);
+    - a token table: `service_role` only, with the revoke of point 13;
+    - a `serial` column's sequence: `grant usage` to the roles that insert (a
+      `uuid` id or an identity column needs none).
+
+    `scripts/verify-table-grants.mjs` fails a migration that misses one. Two
+    scenario bases (`hevy-full-api`, `day-targets-macros`) still set the old
+    default privileges for the migrations they replay; a new base doesn't, so
+    its scenarios meet what production does.
+    **`GRANT EXECUTE` on a new function IS required** (see `065`'s
+    `ai_semantic_search`).
     Deliberate exception, do not undo: `044` **revokes** `authenticated` access
     to `user_calendar_tokens` entirely and narrows `strava_tokens` to three
     non-secret columns. RLS limits rows; only grants limit **columns** — that is
@@ -173,6 +196,7 @@ CREATE POLICY "owner_delete" ON public.my_table FOR DELETE USING ((select auth.u
 - [ ] At least one policy covers every intended access pattern, wrapped in the `pg_policies` guard?
 - [ ] Every policy uses `(select auth.uid())`, scoped to `user_id`, no cross-user leak?
 - [ ] `GRANT EXECUTE` on any new function?
+- [ ] Grants on every new table: `service_role` select/insert/update/delete, `authenticated` what the app needs, never `anon` (`verify-table-grants`)?
 - [ ] `trg_audit` attached, or a stated reason why not?
 - [ ] Re-runnable end to end (`IF NOT EXISTS` / `DROP … IF EXISTS` everywhere)?
 - [ ] Does `ai-proxy`'s `DB_CATALOG` need the new table (and a redeploy)? See below.

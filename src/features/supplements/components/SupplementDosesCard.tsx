@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { CalendarClock, Check, PauseCircle, Plus, TriangleAlert } from 'lucide-react'
+import { CalendarClock, Check, PauseCircle, TriangleAlert } from 'lucide-react'
 import { Button, Card, MetaLine, SkeletonText, Truncate, cx } from '../../../shared/ui'
 import { useEntityModal } from '../../../shared/modals/useEntityModal'
 import { formatDate } from '../../../shared/utils/dateFormat'
@@ -22,6 +22,9 @@ export interface SupplementDosesCardProps {
   /** Renders the slot's other rows (an ad-hoc scoop, a planned line) the way
    *  the meal cards do — FoodTodayTab's group / single rows. */
   renderRows: (meals: DayMeal[]) => ReactNode
+  /** The meal cards' own header (title, totals in the rows' columns, + Log),
+   *  given this card's Schedule button to show beside the title. */
+  renderHeader: (extra: ReactNode) => ReactNode
   /** The empty slot's own quick actions (Log usual, Same as yesterday). */
   emptyActions?: ReactNode
 }
@@ -33,7 +36,7 @@ export interface SupplementDosesCardProps {
  * schedules and the schedules with no dose that day. Mounted in place of the
  * supplement slot; a reminder's tap (`?dose=…`) opens the dose sheet from the Food page (`useDoseLink`).
  */
-export function SupplementDosesCard({ date, meals, renderRows, emptyActions }: SupplementDosesCardProps) {
+export function SupplementDosesCard({ date, meals, renderRows, renderHeader, emptyActions }: SupplementDosesCardProps) {
   const modal = useEntityModal()
   const { doses, schedules, now, isLoading, isError, refetch } = useSupplementDoses(date)
   const stock = useSupplementStock(schedules)
@@ -47,7 +50,6 @@ export function SupplementDosesCard({ date, meals, renderRows, emptyActions }: S
   const fromDoses = new Set(doses.map(d => d.entryId).filter(Boolean))
   const others = meals.filter(m => !fromDoses.has(m.id))
   const kcalOf = new Map(meals.map(m => [m.id, m.calories]))
-  const kcal = meals.filter(m => m.source === 'log').reduce((a, m) => a + m.calories, 0)
   const due = dueDoses(doses)
   const paused = schedules.filter(s => isPaused(s, now.date))
   const refill = schedules.filter(s => stock.get(s.id)?.refill)
@@ -71,17 +73,12 @@ export function SupplementDosesCard({ date, meals, renderRows, emptyActions }: S
 
   return (
     <Card padded={false} className="@container overflow-hidden">
-      <header className="flex items-center gap-2 border-b border-line py-1 pl-4 pr-2">
-        <span aria-hidden className="text-base leading-none">💊</span>
-        <h3 className="flex-1 text-ui font-semibold text-fg">Supplement</h3>
-        {kcal > 0 && <span className="text-meta tabular-nums text-fg-muted">{kcal} kcal</span>}
-        <button type="button" onClick={() => openSchedule()} className="btn-ghost btn-sm gap-1 !px-2.5 text-fg-muted" aria-label="Schedule a supplement">
+      {renderHeader(
+        <button type="button" onClick={() => openSchedule()} className="btn-ghost btn-sm shrink-0 gap-1 !px-2 text-fg-muted"
+          aria-label="Schedule a supplement" title="Schedule a supplement">
           <CalendarClock aria-hidden className="h-4 w-4" /><span className="hidden @[26rem]:inline">Schedule</span>
-        </button>
-        <button type="button" onClick={() => modal.open({ kind: 'food-log', date, slot: 'supplement' })} className="btn-ghost btn-sm gap-1 !px-2.5 text-accent-600">
-          <Plus aria-hidden className="h-4 w-4" />Log
-        </button>
-      </header>
+        </button>,
+      )}
 
       {isLoading && doses.length === 0 && <div className="px-4 py-3"><SkeletonText lines={1} /></div>}
       {isError && (

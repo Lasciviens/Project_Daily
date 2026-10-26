@@ -5,6 +5,9 @@ Checked: 19.10.2026 against live answers, saved trimmed as test samples in `scri
 League — four matches, and the whole of October 2026 trimmed to the fields we read in `scoreboard-cl-month.json` —
 Galatasaray's squad and club, one match summary, team and league search). `verify-football-model`
 reads them through the real parsers.
+25.10.2026: the five big leagues' slugs, names and logos read from their live scoreboards for the suggestions —
+`eng.1` English Premier League, `esp.1` Spanish LALIGA, `ger.1` German Bundesliga, `ita.1` Italian Serie A,
+`fra.1` French Ligue 1 (`leaguelogos/soccer/500/{23,15,10,12,9}.png`).
 
 **Not an official API.** ESPN closed its public developer API in 2014. These are the undocumented endpoints
 espn.com's own pages use: free, no key, current data — and unsupported: a field or a whole endpoint can change

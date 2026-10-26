@@ -15,6 +15,7 @@ Background: `docs/features/football.md`; ESPN's endpoints, fields and traps: `do
 - Kick-offs are UTC from ESPN, shown and planned in Norway's time through `osloParts`; dates through `dateFormat` (DD.MM.YYYY).
 - A match goes into the day only through the item save: Plan it opens the Add sheet (`usePlanIt`), the subscription calls `app_football_plan` (item + record in one transaction) via `saveItemVia` — never a task insert of its own.
 - What the subscription adds or moves is `footballModel.syncPlan`'s alone (checked in verify-football-model); a match whose item was deleted (`task_id` null) is never added again.
-- Unsubscribe and Unfollow never touch matches already in the day; a kick-off move never moves an item the owner moved (`itemAtKickoff`).
+- Unsubscribe and Unfollow of a subscribed team take out only what `footballModel.subscriptionLeavers` names (the subscription's coming, still-to-do matches of that team — never Plan it's, a done one, or another subscribed team's), through THE task delete with their records, asking first and with Undo (`useStopSubscription`); a kick-off move never moves an item the owner moved (`itemAtKickoff`).
+- Plan it opens a match already in the day instead of a second item, and `recordPlan` never moves a record whose item still exists.
 - A followed team's match is never folded or cut away on the page (`footballView.byDayAndLeague`; checked on a real Champions League month).
 - Zone colours are THEME tones (`footballView.noteTones`), never ESPN's hex.

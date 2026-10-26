@@ -3,12 +3,13 @@ import { HoverPeek } from '../../../shared/components/HoverPeek'
 import { Truncate } from '../../../shared/ui'
 import { useRecipes } from '../hooks/useRecipes'
 import { useIngredientLibrary } from '../hooks/useIngredientLibrary'
-import { dayMacroSources, diaryLineFromMeal, oneDecimal, type DiaryLine, type MacroKey } from '../foodIngredients'
+import { dayMacroSources, diaryLineFromMeal, oneDecimal, peekGrams, type DiaryLine, type MacroKey } from '../foodIngredients'
 import type { DayMeal } from '../../daily/api/dayNutritionApi'
 
 /**
  * One of Food · Today's totals ("71g fat"): hover with a mouse or tap
- * for the exact amount, the kcal it carries and the foods it came from.
+ * for the exact amount, the kcal it carries and the foods it came from
+ * (traces fold into "+N smaller").
  */
 export function MacroFigure({ macro, label, value, color, meals }: {
   macro: MacroKey
@@ -24,7 +25,7 @@ export function MacroFigure({ macro, label, value, color, meals }: {
       className="flex min-w-0 items-center gap-1 rounded-sm text-left underline decoration-line-strong decoration-dotted underline-offset-2 transition-colors hover:decoration-fg-faint"
       trigger={<>
         <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: color }} />
-        {value}g {label}
+        {value} g {label}
       </>}
     >
       <MacroSourcesPanel macro={macro} label={label} meals={meals} />
@@ -56,13 +57,13 @@ function MacroSourcesPanel({ macro, label, meals }: { macro: MacroKey; label: st
           {s.items.map(i => (
             <li key={i.key} className="flex items-baseline gap-3">
               <Truncate className="flex-1 text-fg-2">{i.title}</Truncate>
-              <span className="shrink-0 text-fg">{oneDecimal(i.amount)} g</span>
+              <span className="shrink-0 text-fg">{peekGrams(i.amount)}</span>
             </li>
           ))}
           {s.more > 0 && (
             <li className="flex items-baseline gap-3 text-fg-muted">
-              <span className="flex-1">+{s.more} more</span>
-              <span className="shrink-0">{oneDecimal(s.moreAmount)} g</span>
+              <span className="flex-1">+{s.more} smaller</span>
+              <span className="shrink-0">{peekGrams(s.moreAmount)}</span>
             </li>
           )}
         </ul>

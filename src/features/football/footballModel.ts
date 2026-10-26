@@ -534,6 +534,23 @@ export function syncPlan<P extends PlanRow>(matches: readonly FbMatch[], subscri
   return { add, move }
 }
 
+/**
+ * What leaves your day when a team's subscription stops (Unsubscribe, or
+ * Unfollow of a subscribed team — owner, 25.10.2026: "When unsubscribed from a
+ * team it does not remove the events"): the plans the subscription added for
+ * that team's coming fixtures, still in the day, not kicked off. A match you
+ * planned yourself (Plan it) stays, and so does one another subscribed team
+ * plays in. The caller also keeps done items (they are yours).
+ */
+export function subscriptionLeavers<P extends PlanRow & { origin: string }>(
+  teamId: string, fixtures: readonly FbMatch[], plans: readonly P[], otherSubscribed: ReadonlySet<string>, nowIso: string,
+): P[] {
+  const now = Date.parse(nowIso)
+  const team = new Set([teamId])
+  const theirs = new Set(fixtures.filter(m => involves(m, team) && !involves(m, otherSubscribed)).map(m => m.id))
+  return plans.filter(p => p.origin === 'subscription' && !!p.task_id && theirs.has(p.event_id) && Date.parse(p.kickoff_at) > now)
+}
+
 /** A match's slot category (165; owner, 16.10.2026: "should mark as football not personal" — the area stays Personal). */
 export const MATCH_CATEGORY = 'football'
 

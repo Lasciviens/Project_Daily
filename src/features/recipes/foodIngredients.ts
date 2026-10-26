@@ -187,14 +187,21 @@ export interface MacroSources {
   kcal: number | null
   /** That kcal as a share of the day's calories, 0–100. */
   kcalShare: number | null
-  /** Largest first; the same food from several lines is one row. */
+  /** Largest first, at most `top`; the same food from several lines is one row. Only real contributors (`MIN_SHARE`). */
   items: { key: string; title: string; amount: number }[]
-  /** Rows past `top`, and what they add up to. */
+  /** Every other row (the smaller ones and those past `top`), and what they add up to. */
   more: number
   moreAmount: number
 }
 
-/** The day's contributors to one macro (Today → the peek on each total). */
+/** A row is listed only when it reads at least 0.1 g and is at least 2 % of the total; traces go into "+N smaller". */
+const MIN_SHARE = 0.02
+const readsAtLeastATenth = (v: number) => Math.round(v * 10) >= 1
+
+/**
+ * The day's contributors to one macro (Today → the peek on each total). The
+ * largest is always listed, so a day made only of tiny parts still names one.
+ */
 export function dayMacroSources(
   lines: readonly DiaryLine[], macro: MacroKey, recipes: Lookup<RecipeSource>, library: Lookup<LibraryFood>, top = 8,
 ): MacroSources {
@@ -211,14 +218,16 @@ export function dayMacroSources(
   const ranked = [...merged.values()]
     .filter(x => x.amount > 0)
     .sort((a, b) => b.amount - a.amount || a.title.localeCompare(b.title))
-  const rest = ranked.slice(top)
+  let shown = Math.min(1, top, ranked.length)
+  while (shown < Math.min(top, ranked.length) && readsAtLeastATenth(ranked[shown].amount) && ranked[shown].amount >= total * MIN_SHARE) shown++
+  const rest = ranked.slice(shown)
   const per = KCAL_PER_GRAM[macro]
   const kcal = per != null ? total * per : null
   return {
     total,
     kcal,
     kcalShare: kcal != null && dayKcal > 0 ? Math.round((kcal / dayKcal) * 100) : null,
-    items: ranked.slice(0, top),
+    items: ranked.slice(0, shown),
     more: rest.length,
     moreAmount: rest.reduce((a, x) => a + x.amount, 0),
   }
@@ -299,3 +308,6 @@ export function formatAmount(grams: number, unit: 'g' | 'ml'): string {
 
 /** One decimal, the way the peek shows an exact amount ("70.6"). */
 export const oneDecimal = (v: number): string => (Math.round(v * 10) / 10).toLocaleString('en-GB', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+
+/** A peek row's amount: "3.4 g", and "< 0.1 g" for a trace — never "0.0 g". */
+export const peekGrams = (v: number): string => (v > 0 && !readsAtLeastATenth(v) ? '< 0.1 g' : `${oneDecimal(v)} g`)

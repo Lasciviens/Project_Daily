@@ -27,7 +27,7 @@ export function useMealPlanEntry(id: string | null | undefined) {
 export function useSetMealPlanEntry() {
   return useMutationWithFeedback({
     action:         'set_meal_plan_entry',
-    successMessage: 'Saved',
+    successMessage: 'Planned meal saved',
     mutationFn:     (input: CreateMealPlanEntryInput) => setMealPlanEntry(input),
     invalidates:    ['nutrition'],
   })

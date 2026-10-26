@@ -2,8 +2,10 @@ import { useState } from 'react'
 import { ModalShell } from '../../../shared/modals'
 import type { EntityModalProps } from '../../../shared/modals/types'
 import { SkeletonText } from '../../../shared/ui'
+import { useMotion } from '../../../shared/hooks/useMotion'
 import { useHevyExerciseTemplate } from '../hooks/useHevyExerciseTemplates'
-import { ExerciseDemo } from '../exerciseMedia'
+import { ExerciseHevyStill, ExerciseTopPicture } from '../exerciseMedia'
+import { chooseExercisePopupPictures } from '../exerciseGifResolver'
 import { useExerciseMedia } from '../hooks/useExerciseMedia'
 import { ExerciseHevyHistory } from '../components/ExerciseHevyHistory'
 import { exerciseTypeLabel, muscleLabel } from '../hevyEnums'
@@ -11,10 +13,12 @@ import { exerciseTypeLabel, muscleLabel } from '../hevyEnums'
 /**
  * `exercise`: one exercise, opened from any of its pictures (Exercises,
  * Routines, Next, the session popup, Muscles, Progress) or its name on the
- * Exercises tab. Hevy's picture on top (owner: "primarily Hevy") with the
- * type and muscle chips, "History from Hevy" open (3 months), then the small
- * labelled animated demo. Loads the template by id; one the library here
- * doesn't have yet still opens with the title it was opened with.
+ * Exercises tab. The animated demo on top with its source and instructions
+ * (under Reduce Motion a still with "Play animation"), the type and muscle
+ * chips, "History from Hevy" open (3 months), then Hevy's still, small
+ * (owner, 25.10.2026: "Hevy picture below, and GIF above"). Loads the
+ * template by id; one the library here doesn't have yet still opens with
+ * the title it was opened with.
  */
 export function ExerciseEntityModal({ request, onClose }: EntityModalProps<'exercise'>) {
   const { templateId } = request
@@ -22,17 +26,18 @@ export function ExerciseEntityModal({ request, onClose }: EntityModalProps<'exer
   const t = template.data ?? null
   const title = t?.title ?? request.title ?? 'Exercise'
   const media = useExerciseMedia(templateId, title)
-  const [brokenPicture, setBrokenPicture] = useState<string | null>(null)
-  const picture = media.hevyUrl && media.hevyUrl !== brokenPicture ? media.hevyUrl : null
+  const motion = useMotion()
+  // The URLs that failed to load: each one leaves, the rest stay.
+  const [failed, setFailed] = useState<string[]>([])
+  const [played, setPlayed] = useState(false)
+  const pictures = chooseExercisePopupPictures(media, { reduceMotion: !motion, played, failed })
+  const fail = (url: string) => setFailed(f => (f.includes(url) ? f : [...f, url]))
   const secondary = t?.secondary_muscle_groups ?? []
 
   return (
     <ModalShell onClose={onClose} title={title} size="md">
       <div className="flex flex-col gap-3">
-        {picture && (
-          <img src={picture} alt={title} onError={() => setBrokenPicture(picture)}
-            className="mx-auto h-36 w-full max-w-xs rounded-row border border-line bg-surface-2 object-contain" />
-        )}
+        <ExerciseTopPicture pictures={pictures} demo={media.demo} title={title} onFail={fail} onPlay={() => setPlayed(true)} />
         {template.isPending ? (
           <SkeletonText lines={1} />
         ) : t ? (
@@ -50,7 +55,7 @@ export function ExerciseEntityModal({ request, onClose }: EntityModalProps<'exer
           </p>
         )}
         <ExerciseHevyHistory templateId={templateId} exerciseType={t?.type} />
-        {media.demo && <ExerciseDemo demo={media.demo} title={title} />}
+        {pictures.below && <ExerciseHevyStill url={pictures.below} title={title} onFail={fail} />}
       </div>
     </ModalShell>
   )

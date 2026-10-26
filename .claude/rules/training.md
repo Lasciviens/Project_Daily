@@ -14,12 +14,13 @@ Background: `docs/features/training.md`.
 - A planned session's status comes only from `plan/sessionState.ts`; `training_skips` is written only by the two training APIs (`verify-training-session`).
 - The database completes a planned session when its workout syncs (141): edge functions never close or delete training tasks.
 - A training plan's day is a task on its day (156, no block): every training action splits it the 142 way first (`ensurePlanTask` → `item_occurrence`, the same task, keeping the view's routine) so the block-reading views see it; its routine is matched the app's way in SQL too (`repeat_day_routine` mirrors `matchRoutineToPlan` — change them together); a day closed as missed (`closed_reason 'missed'`) is read as a past open plan (`taskMissed`), never a skip.
+- A moved session is moved (166): a training task whose day changes is checked again in the database (`trg_training_task_recheck` → `training_task_recheck`: a workout that no longer fits is unlinked — the session it closed is to do again, a hand tick stays done; a workout of its OWN routine on its new day completes it — never 141's "one plan that day" stand-in on a move; a missed day moved to today or later is to do; a repeat's day moved without its slot is split) — never a client-side relink; a skip stays a skip.
 - A session is never planned twice on one day without asking (`plan/planTwins.ts`); "Plan it" goes through `openPlanRoutine`.
 - The current program is explicit (`current_program_routines`), never inferred from recency.
 - Hevy payloads match the OpenAPI schema exactly: omit `rep_range` instead of sending null; no `folder_id` on PUT; omit empty body-measurement fields and merge with the stored day before writing (a partial save once wiped a day).
 - A free-text limitation resolves through `muscleMap.resolveMovementPattern`; a `monitor` limitation never paints a muscle.
 - The body map uses the fixed `BODY_MAP_COLORS` palette (it sits on a dark stage), not theme tokens.
 - An exercise GIF override is keyed by `exercise_template_id`, never by title.
-- Exercise pictures: Hevy's `thumbnail_url` first, the GIF as fallback and animated demo — one chooser, `chooseExerciseMedia` (owner, 14.10.2026).
+- Exercise pictures: thumbnails show Hevy's `thumbnail_url` first, the GIF as fallback — one chooser, `chooseExerciseMedia` (owner, 14.10.2026). The exercise popup puts the GIF big on top and Hevy's still small below ("Picture from Hevy"); no GIF → Hevy's still on top. Reduce Motion: no autoplay — Hevy's still (or only the caption) on top with "Play animation", not repeated below. One chooser, `chooseExercisePopupPictures` (owner, 25.10.2026).
 - Every Hevy endpoint, field and trap is in `docs/integrations/hevy.md`: a Hevy change adds a dated entry to its Log. Hevy's create enums live in `hevyEnums.ts`, mirrored in `hevy-api` (`verify-hevy-api`).
 - Personal records stay off every screen (owner's call); the engine may still use them as evidence.

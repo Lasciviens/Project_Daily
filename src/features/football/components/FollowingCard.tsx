@@ -2,7 +2,7 @@ import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
 import { MoreHorizontal } from 'lucide-react'
 import { Card, CardHeader, Truncate } from '../../../shared/ui'
 import { useEntityModal } from '../../../shared/modals'
-import { useUnfollow } from '../hooks/useFootball'
+import { useStopSubscription } from '../hooks/useFootball'
 import type { FootballFollow } from '../types'
 import { SubscribeToggle } from './SubscribeToggle'
 import { TeamLogo } from './TeamLogo'
@@ -11,11 +11,12 @@ import { TeamLogo } from './TeamLogo'
  * What is followed. A team can be subscribed — its coming matches go into
  * your day by themselves (the owner's word, 19.10.2026: "Subscribe"); a
  * tournament can't (a whole Champions League in the day is never wanted).
- * A team opens its club popup; Unfollow asks and offers Undo.
+ * A team opens its club popup; Unfollow asks and offers Undo (a subscribed
+ * team's coming matches leave your day with it — useStopSubscription).
  */
 export function FollowingCard({ follows, onPick }: { follows: readonly FootballFollow[]; onPick: (f: FootballFollow) => void }) {
   const modal = useEntityModal()
-  const unfollow = useUnfollow()
+  const stop = useStopSubscription()
   return (
     <Card>
       <CardHeader title="Following" variant="label" />
@@ -37,7 +38,7 @@ export function FollowingCard({ follows, onPick }: { follows: readonly FootballF
               </MenuButton>
               <MenuItems anchor="bottom end" transition className="menu w-40 [--anchor-gap:4px] transition duration-150 data-[closed]:opacity-0">
                 <MenuItem>
-                  <button type="button" className="menu-item text-danger" onClick={() => unfollow.run(f)}>Unfollow</button>
+                  <button type="button" className="menu-item text-danger" disabled={stop.busy} onClick={() => { void stop.unfollow(f) }}>Unfollow</button>
                 </MenuItem>
               </MenuItems>
             </Menu>

@@ -1,173 +1,199 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
+import { Combobox, ComboboxInput, ComboboxOption, ComboboxOptions } from '@headlessui/react'
 import { ModalShell } from '../../../shared/modals/ModalShell'
-import { Button, SegmentedControl } from '../../../shared/ui'
+import { Button, MetaLine, Truncate } from '../../../shared/ui'
+import { DateInput } from '../../../shared/components/DateInput'
+import { ChipSelect } from '../../../shared/components/plan-modal/fields'
+import { formatWeekdayDate } from '../../../shared/utils/dateFormat'
 import { toast } from '../../../app/store'
 import { SLOT_OPTIONS } from './foodLogUtils'
+import { FoodThumb } from './foodLogKit'
+import { AmountField } from './AmountField'
 import { useRecipes } from '../hooks/useRecipes'
 import { useIngredientLibrary } from '../hooks/useIngredientLibrary'
 import { useSetMealPlanEntry, useDeleteMealPlanEntry } from '../hooks/useMealPlan'
-import type { MealSlot, MealPlanEntry } from '../types'
+import { rankMatches } from '../foodSearch'
+import { amountUnit } from '../foodBasket'
+import { foodAmountModel, portionWord, recipeAmountModel } from '../foodAmount'
+import { toGrams } from '../foodUnits'
+import { plannedKcal } from '../mealPlanRows'
+import type { PlannedMeal } from '../api/mealPlanApi'
+import type { IngredientLibraryItem, MealSlot, MealPlanEntry, Recipe } from '../types'
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Edit a PLANNED row (opened by id from a plan cell or Today's planned row).
+//  A new plan is the logger's plan mode (FoodLogModal `plan`); Edit entry
+//  can't take a planned row (it stores totals and says "After this: … left").
+//  Laid out like Edit entry: what it is (a search over recipes and foods, or
+//  a one-off line), the one amount control, its live kcal, then Meal and Day;
+//  Remove · Cancel · Save. Planned rows count only once ticked as eaten.
+// ─────────────────────────────────────────────────────────────────────────────
+
+type Source = { kind: 'recipe'; id: string } | { kind: 'food'; id: string } | { kind: 'custom'; title: string }
 
 interface Props {
-  open: boolean
-  onClose: () => void
-  date:      string
-  mealSlot:  MealSlot
-  existing?: MealPlanEntry | null
+  onClose:  () => void
+  date:     string
+  existing: PlannedMeal
 }
 
-type Mode = 'recipe' | 'custom' | 'ingredient'
+/** A food's planned amount in its g / ml: "2 pcs" counts by its portion preset (as ticking it eaten does), none = its portion. */
+function startGrams(e: MealPlanEntry, lib: IngredientLibraryItem | undefined): number {
+  const grams = toGrams(e.ingredient_quantity, e.ingredient_unit ?? 'g')
+  if (grams != null && grams > 0) return grams
+  if (e.ingredient_quantity != null && lib?.serving_grams) return e.ingredient_quantity * lib.serving_grams
+  return lib?.serving_grams ?? 100
+}
 
-export function AssignMealModal({ open, onClose, date, mealSlot, existing }: Props) {
-  const { data: recipes = [] }  = useRecipes()
-  const { data: library = [] }  = useIngredientLibrary()
+function startSource(e: MealPlanEntry): Source {
+  if (e.recipe_id) return { kind: 'recipe', id: e.recipe_id }
+  if (e.library_ingredient_id) return { kind: 'food', id: e.library_ingredient_id }
+  return { kind: 'custom', title: e.custom_title ?? '' }
+}
+
+export function AssignMealModal({ onClose, date, existing }: Props) {
+  const { data: recipes = [] } = useRecipes()
+  const { data: library = [] } = useIngredientLibrary()
   const setEntry = useSetMealPlanEntry()
   const remove   = useDeleteMealPlanEntry()
 
-  const [mode,        setMode]        = useState<Mode>('recipe')
-  const [recipeId,    setRecipeId]    = useState('')
-  const [customTitle, setCustomTitle] = useState('')
-  const [ingredientId, setIngredientId] = useState('')
-  const [ingredientQty, setIngredientQty] = useState('')
-  const [ingredientUnit, setIngredientUnit] = useState('g')
-  const [servings,    setServings]    = useState('1')
+  const [source, setSource] = useState<Source>(() => startSource(existing))
+  const [slot, setSlot] = useState<MealSlot>(existing.meal_slot)
+  const [day, setDay] = useState(date)
+  const [amount, setAmount] = useState(() => (existing.recipe_id
+    ? existing.servings || 1
+    : startGrams(existing, library.find(l => l.id === existing.library_ingredient_id))))
 
-  // Prefill when the modal opens (or the edited entry changes). Adjusting
-  // state during render on a prop change is React's recommended pattern over
-  // a setState-in-effect (matches FoodLogModal).
-  const [seed, setSeed] = useState<{ open: boolean; existing: MealPlanEntry | null }>({ open: false, existing: null })
-  if (open !== seed.open || existing !== seed.existing) {
-    setSeed({ open, existing: existing ?? null })
-    if (open) {
-      if (existing?.library_ingredient_id) {
-        setMode('ingredient')
-        setIngredientId(existing.library_ingredient_id)
-        setIngredientQty(existing.ingredient_quantity != null ? String(existing.ingredient_quantity) : '')
-        setIngredientUnit(existing.ingredient_unit ?? 'g')
-      } else if (existing?.recipe_id) {
-        setMode('recipe'); setRecipeId(existing.recipe_id)
-      } else if (existing?.custom_title) {
-        setMode('custom'); setCustomTitle(existing.custom_title)
-      } else {
-        setMode('recipe'); setRecipeId(''); setCustomTitle('')
-        setIngredientId(''); setIngredientQty(''); setIngredientUnit('g')
-      }
-      setServings(String(existing?.servings ?? 1))
-    }
+  const recipe = source.kind === 'recipe' ? recipes.find(r => r.id === source.id) : undefined
+  const lib = source.kind === 'food' ? library.find(l => l.id === source.id) : undefined
+  const model = useMemo(() => (lib ? foodAmountModel(lib) : recipe ? recipeAmountModel(recipe, null) : null), [lib, recipe])
+  const name = recipe?.title ?? lib?.name ?? (source.kind === 'custom' ? source.title : existing.recipe?.title ?? existing.ingredient?.name ?? '')
+  const ownLine = source.kind === 'custom' && source.title === existing.custom_title
+  const kcal = plannedKcal({
+    recipe_id: recipe?.id ?? null, servings: amount, recipe,
+    library_ingredient_id: lib?.id ?? null, ingredient_quantity: amount, ingredient_unit: 'g', ingredient: lib,
+    calories: ownLine ? existing.kcal : null,
+  })
+  const sub = recipe
+    ? [recipe.is_temp ? 'Saved meal' : 'Recipe', recipe.calories != null && `${Math.round(recipe.calories)} kcal / ${portionWord(recipe.serving_label)}`]
+    : lib ? ['Food', lib.calories != null && `${Math.round(lib.calories)} kcal / 100 ${amountUnit(lib.unit)}`]
+    : ['One-off line']
+
+  function pick(next: Source) {
+    setSource(next)
+    if (next.kind === 'recipe') setAmount(1)
+    if (next.kind === 'food') setAmount(library.find(l => l.id === next.id)?.serving_grams ?? 100)
   }
 
   async function handleSave() {
-    if (mode === 'recipe' && !recipeId)           { toast.error('Pick a recipe'); return }
-    if (mode === 'custom' && !customTitle.trim()) { toast.error('Type a title'); return }
-    if (mode === 'ingredient' && !ingredientId)   { toast.error('Pick an ingredient'); return }
-    if (mode === 'ingredient' && !(Number(ingredientQty) > 0)) { toast.error('Type how much — in grams'); return }
+    if (source.kind === 'custom' && !source.title.trim()) { toast.error('Type what you plan to eat'); return }
+    if (source.kind !== 'custom' && !(amount > 0)) { toast.error('Enter an amount'); return }
     try {
       await setEntry.mutateAsync({
-        id: existing?.id,   // edit-in-place when present (was a broken upsert → 42P10)
-        date, meal_slot: mealSlot,
-        recipe_id:             mode === 'recipe'     ? recipeId : null,
-        custom_title:          mode === 'custom'     ? customTitle.trim() : null,
-        library_ingredient_id: mode === 'ingredient' ? ingredientId : null,
-        ingredient_quantity:   mode === 'ingredient' ? Number(ingredientQty) || null : null,
-        ingredient_unit:       mode === 'ingredient' ? (ingredientUnit.trim() || null) : null,
-        servings:              Math.max(0.5, Number(servings) || 1),
+        id: existing.id, date: day, meal_slot: slot,
+        recipe_id:             source.kind === 'recipe' ? source.id : null,
+        custom_title:          source.kind === 'custom' ? source.title.trim() : null,
+        library_ingredient_id: source.kind === 'food' ? source.id : null,
+        ingredient_quantity:   source.kind === 'food' ? amount : null,
+        ingredient_unit:       source.kind === 'food' ? amountUnit(lib?.unit) : null,
+        servings:              source.kind === 'recipe' ? amount : 1,
       })
       onClose()
     } catch { return }   // the hook already toasted + logged
   }
 
   async function handleRemove() {
-    if (!existing) return
-    const result = await remove.run([existing.id], { title: 'Remove this planned meal?', done: 'Planned meal removed' })
+    const what = name || 'this planned meal'
+    const result = await remove.run([existing.id], { title: `Remove “${what}” from the plan?`, done: `Removed ${what}` })
     if (result === 'deleted' || result === 'gone') onClose()
   }
 
   const busy = setEntry.isPending || remove.busy
-  const slotLabel = SLOT_OPTIONS.find(o => o.id === mealSlot)?.label ?? mealSlot
 
   return (
     <ModalShell
-      open={open}
       onClose={onClose}
-      title={existing ? `Edit planned ${slotLabel.toLowerCase()}` : `Plan ${slotLabel.toLowerCase()}`}
-      size="sm"
+      title="Edit planned meal"
+      subtitle={formatWeekdayDate(day)}
+      size="md"
       dismissible={!busy}
       footer={
-        <div className="flex gap-2">
-          {existing && (
-            <Button variant="ghost" className="text-danger" onClick={handleRemove} loading={remove.busy} disabled={setEntry.isPending}>Remove</Button>
-          )}
-          <Button variant="primary" block onClick={handleSave} loading={setEntry.isPending} disabled={remove.busy}>Save</Button>
+        <div className="flex items-center gap-2">
+          <Button variant="ghost" className="mr-auto text-danger" onClick={handleRemove} loading={remove.busy} disabled={setEntry.isPending}>Remove</Button>
+          <Button variant="ghost" onClick={onClose} disabled={busy}>Cancel</Button>
+          <Button variant="primary" onClick={() => { void handleSave() }} loading={setEntry.isPending} disabled={remove.busy}>Save</Button>
         </div>
       }
     >
       <div className="flex flex-col gap-3">
-        <SegmentedControl<Mode>
-          fullWidth size="sm" value={mode} onChange={setMode}
-          options={[
-            { value: 'recipe', label: 'Recipe' },
-            { value: 'ingredient', label: 'Ingredient' },
-            { value: 'custom', label: 'Type it' },
-          ]}
-        />
-
-        {mode === 'recipe' && (
-          <>
-            <select value={recipeId} onChange={e => setRecipeId(e.target.value)} className="select" aria-label="Recipe">
-              <option value="">Pick a recipe…</option>
-              {recipes.map(r => <option key={r.id} value={r.id}>{r.title}</option>)}
-            </select>
-            <p className="text-meta text-fg-muted">
-              Not in the list? Use{' '}
-              <button type="button" onClick={() => setMode('custom')} className="font-semibold text-accent-600">Type it</button>
-              {' '}for a quick one-off, or build it in Food → Library.
-            </p>
-          </>
-        )}
-
-        {mode === 'custom' && (
-          <>
-            <input autoFocus value={customTitle} onChange={e => setCustomTitle(e.target.value)} aria-label="Meal"
-              placeholder="Type any meal — e.g. Restaurant, mom's köfte…" className="input" />
-            <p className="text-meta text-fg-muted">Free text — plan anything, even if it's not a saved recipe. Confirm it as eaten later with ✓.</p>
-          </>
-        )}
-
-        {mode === 'ingredient' && (
-          <div className="flex flex-col gap-2">
-            <select value={ingredientId} aria-label="Ingredient" onChange={e => {
-              setIngredientId(e.target.value)
-              const lib = library.find(l => l.id === e.target.value)
-              // Start from the food's own portion, in g/ml (its macros are per 100 g/ml):
-              // a plan with no amount was confirmed as 0 kcal.
-              if (lib) {
-                setIngredientUnit(lib.unit?.trim().toLowerCase() === 'ml' ? 'ml' : 'g')
-                if (!ingredientQty) setIngredientQty(String(lib.serving_grams ?? 100))
-              }
-            }} className="select">
-              <option value="">Pick from ingredient library…</option>
-              {library.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-            </select>
-            {library.length === 0 && (
-              <p className="text-meta text-fg-muted">No library foods yet — add one in the Food → Ingredients tab, or scan a barcode from "Log food".</p>
-            )}
-            <div className="flex gap-2">
-              <input type="number" min="0" step="any" value={ingredientQty} onChange={e => setIngredientQty(e.target.value)}
-                placeholder="Qty" aria-label="Quantity" className="input flex-1 text-center tabular-nums" />
-              <input value={ingredientUnit} onChange={e => setIngredientUnit(e.target.value)}
-                placeholder="Unit" aria-label="Unit" className="input w-20 text-center" />
-            </div>
+        <div className="flex items-start gap-3">
+          <FoodThumb name={name || '?'} group={lib?.food_group} imageUrl={lib?.image_url ?? recipe?.image_url} size={44} />
+          <div className="min-w-0 max-w-md flex-1">
+            <WhatSearch name={name} recipes={recipes} foods={library} onPick={pick} />
+            <MetaLine className="mt-0.5 text-meta text-fg-muted tabular-nums" items={sub} />
           </div>
-        )}
+        </div>
 
-        {mode !== 'ingredient' && (
-          <div>
-            <label htmlFor="amm-servings" className="field-label">Servings</label>
-            <input id="amm-servings" type="number" min="0.5" step="0.5" value={servings} onChange={e => setServings(e.target.value)}
-              className="input w-24 text-center tabular-nums" />
-          </div>
-        )}
+        {model && <AmountField key={`${source.kind}-${recipe?.id ?? lib?.id}`} model={model} value={amount} onChange={setAmount} label="Amount" id="plan-amount" />}
+
+        <p className="text-meta text-fg-muted tabular-nums">
+          {kcal != null && <><span className="font-semibold text-fg-2">{Math.round(kcal)} kcal</span> planned · </>}
+          Counts once you tick it eaten
+        </p>
+
+        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-2 border-t border-line pt-3 text-meta text-fg-muted">
+          <span className="flex items-center gap-1.5">Meal
+            <ChipSelect label="Meal" value={slot} onChange={setSlot} options={SLOT_OPTIONS.map(o => ({ value: o.id, label: o.label }))} />
+          </span>
+          <span className="flex items-center gap-1.5">Day
+            <DateInput value={day} onChange={v => { if (v) setDay(v) }} aria-label="Day" className="input input-sm h-8 w-[7.5rem] tabular-nums" />
+          </span>
+        </div>
       </div>
     </ModalShell>
+  )
+}
+
+type Option = { key: string; source: Source; label: string; meta: string }
+
+/** What is planned: typing searches recipes and foods; any text can also be a one-off line. */
+function WhatSearch({ name, recipes, foods, onPick }: {
+  name: string
+  recipes: readonly Recipe[]
+  foods: readonly IngredientLibraryItem[]
+  onPick: (s: Source) => void
+}) {
+  const [query, setQuery] = useState('')
+  const options = useMemo<Option[]>(() => {
+    const q = query.trim()
+    if (!q) return []
+    const r = rankMatches([...recipes], q, x => x.title, 6).map(x => ({
+      key: `r:${x.id}`, source: { kind: 'recipe', id: x.id } as Source, label: x.title,
+      meta: [x.is_temp ? 'Saved meal' : 'Recipe', x.calories != null && `${Math.round(x.calories)} kcal / ${portionWord(x.serving_label)}`].filter(Boolean).join(' · '),
+    }))
+    const f = rankMatches([...foods], q, x => x.name, 8).map(x => ({
+      key: `f:${x.id}`, source: { kind: 'food', id: x.id } as Source, label: x.name,
+      meta: ['Food', x.calories != null && `${Math.round(x.calories)} kcal / 100 ${amountUnit(x.unit)}`].filter(Boolean).join(' · '),
+    }))
+    return [...r, ...f, { key: 'c', source: { kind: 'custom', title: q }, label: `“${q}”`, meta: 'As a one-off line — no ingredient saved' }]
+  }, [recipes, foods, query])
+
+  return (
+    <Combobox value={null as Option | null} by="key" onChange={o => { if (o) onPick(o.source) }} onClose={() => setQuery('')}>
+      <ComboboxInput
+        aria-label="What is planned" placeholder="Search a recipe or food, or type a meal…" autoComplete="off"
+        displayValue={() => name}
+        onChange={e => setQuery(e.target.value)}
+        className="input w-full font-semibold"
+      />
+      <ComboboxOptions anchor="bottom start" className="menu z-toast max-h-72 w-[var(--input-width)] min-w-[16rem] overflow-y-auto [--anchor-gap:4px] empty:invisible">
+        {options.map(o => (
+          <ComboboxOption key={o.key} value={o} className="menu-item min-h-[40px] flex-col !items-start !gap-0 py-1">
+            <Truncate className="w-full text-body text-fg">{o.label}</Truncate>
+            <span className="text-micro tabular-nums text-fg-muted">{o.meta}</span>
+          </ComboboxOption>
+        ))}
+      </ComboboxOptions>
+    </Combobox>
   )
 }
