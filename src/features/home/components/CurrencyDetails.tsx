@@ -1,14 +1,11 @@
 import { useState } from 'react'
-import { ArrowUpDown } from 'lucide-react'
-import { SegmentedControl, Truncate, cx } from '../../../shared/ui'
+import { SegmentedControl, cx } from '../../../shared/ui'
 import type { CurrencyData } from '../api/currencyApi'
+import { CURRENCY_FLAG as FLAG } from '../api/currencyConvert'
 import { formatDate } from '../../../shared/utils/dateFormat'
+import { CurrencyConverter } from './CurrencyConverter'
 
 type Mode = 'rates' | 'convert' | 'change'
-
-// Currency flags are content (they name the currency), not UI chrome.
-const FLAG: Record<string, string> = { NOK: '🇳🇴', TRY: '🇹🇷', EUR: '🇪🇺', USD: '🇺🇸', XAU: '🥇' }
-const CURRENCIES = ['NOK', 'TRY', 'EUR', 'USD']
 
 export function ChangeBadge({ pct, className }: { pct: number; className?: string }) {
   const flat = Math.abs(pct) < 0.01
@@ -19,64 +16,6 @@ export function ChangeBadge({ pct, className }: { pct: number; className?: strin
       <span>{flat ? '0.00%' : `${Math.abs(pct).toFixed(2)}%`}</span>
       <span className="sr-only">{flat ? 'unchanged' : pct > 0 ? 'up' : 'down'} since yesterday</span>
     </span>
-  )
-}
-
-function Converter({ rawRates }: { rawRates: Record<string, number> }) {
-  const [amount, setAmount] = useState('1')
-  const [from, setFrom] = useState('NOK')
-  const [to, setTo] = useState('TRY')
-
-  // OXR is USD-based: rawRates[X] = units of X per 1 USD, so X → Y = rawRates[Y] / rawRates[X].
-  const fromRate = from === 'USD' ? 1 : (rawRates[from] ?? 1)
-  const toRate = to === 'USD' ? 1 : (rawRates[to] ?? 1)
-  const parsed = parseFloat(amount.replace(',', '.'))
-  const result = isNaN(parsed) ? null : parsed * (toRate / fromRate)
-  const formatted = result === null ? '—'
-    : result >= 1000 ? result.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-    : result.toFixed(4).replace(/\.?0+$/, '') || '0'
-
-  const picker = (value: string, onChange: (v: string) => void, label: string) => (
-    <div className="flex shrink-0 items-center gap-1.5">
-      <span aria-hidden className="text-base">{FLAG[value] ?? ''}</span>
-      <select aria-label={label} value={value} onChange={e => onChange(e.target.value)} className="select w-[5.5rem]">
-        {CURRENCIES.map(c => <option key={c} value={c}>{c}</option>)}
-      </select>
-    </div>
-  )
-
-  return (
-    <div className="overflow-hidden rounded-row border border-line">
-      <div className="flex items-center gap-3 px-3 py-3">
-        <input
-          type="text"
-          inputMode="decimal"
-          aria-label="Amount"
-          value={amount}
-          onChange={e => setAmount(e.target.value)}
-          className="min-w-0 flex-1 bg-transparent text-kpi font-semibold tabular-nums text-fg outline-none placeholder:text-fg-faint"
-          placeholder="0"
-        />
-        {picker(from, setFrom, 'From currency')}
-      </div>
-      <div className="relative h-px bg-line">
-        <button
-          type="button"
-          onClick={() => { setFrom(to); setTo(from) }}
-          aria-label="Swap currencies"
-          className="absolute left-3 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-line bg-surface text-fg-muted shadow-float transition-colors duration-150 hover:text-accent-600"
-        >
-          <ArrowUpDown aria-hidden className="h-4 w-4" />
-        </button>
-      </div>
-      <div className="flex items-center gap-3 px-3 py-3">
-        <output className="block min-w-0 flex-1"><Truncate className="text-kpi font-semibold tabular-nums text-fg">{formatted}</Truncate></output>
-        {picker(to, setTo, 'To currency')}
-      </div>
-      {result !== null && parsed !== 0 && (
-        <p className="px-3 pb-2 text-meta tabular-nums text-fg-muted">1 {from} = {(toRate / fromRate).toFixed(4)} {to}</p>
-      )}
-    </div>
   )
 }
 
@@ -142,7 +81,7 @@ export function CurrencyDetails({ data }: { data: CurrencyData }) {
         <span className="text-micro tabular-nums text-fg-muted">Updated {/^\d{4}-\d{2}-\d{2}$/.test(data.date) ? formatDate(data.date) : data.date}</span>
       </div>
       {mode === 'rates' && <Rates data={data} />}
-      {mode === 'convert' && <Converter rawRates={data.rawRates} />}
+      {mode === 'convert' && <CurrencyConverter rawRates={data.rawRates} size="full" />}
       {mode === 'change' && <Changes data={data} />}
     </div>
   )
