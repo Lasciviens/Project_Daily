@@ -2913,8 +2913,8 @@ const DB_CATALOG: Record<string, CatalogEntry> = {
   },
   football_follows: {
     access: 'ro',
-    purpose: 'Football (migration 163): the teams and tournaments the user follows on the Football page. Match data comes from ESPN in the browser and is not stored — the assistant can\'t read fixtures or results. Following, subscribing and unfollowing happen in the app.',
-    columns: 'id, kind(team|league), ref(ESPN team id, or the tournament\'s slug like uefa.champions), name, logo, league(a team\'s own league slug), subscribed(bool — a team\'s coming matches go into the day by themselves), sort_order, created_at, updated_at',
+    purpose: 'Football (migrations 163, 168): the teams and tournaments the user follows on the Football page. Match data comes from ESPN in the browser and is not stored — the assistant can\'t read fixtures or results. Following, subscribing, starring a favourite and unfollowing happen in the app.',
+    columns: 'id, kind(team|league), ref(ESPN team id, or the tournament\'s slug like uefa.champions), name, logo, league(a team\'s own league slug), subscribed(bool — a team\'s coming matches go into the day by themselves), favourite(bool — a team the user starred; the Personal page\'s Football card shows its table place, form and next match; never a tournament), sort_order, created_at, updated_at',
   },
   football_plans: {
     access: 'ro',

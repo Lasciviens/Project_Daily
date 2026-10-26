@@ -1,6 +1,7 @@
 // Checks THE football rules (src/features/football/footballModel.ts) against real
 // ESPN answers saved in scripts/fixtures/espn/ (docs/integrations/espn.md): the
-// parsers, the page's agenda and tables, and what the subscription puts in your day.
+// parsers, the page's agenda and tables, what the subscription puts in your day,
+// and the favourites' glance for the Personal page (footballGlance.ts).
 //   node scripts/verify-football-model.cjs
 require('sucrase/register')
 const assert = require('assert')
@@ -8,6 +9,7 @@ const fs = require('fs')
 const path = require('path')
 const M = require('../src/features/football/footballModel.ts')
 const V = require('../src/features/football/footballView.ts')
+const G = require('../src/features/football/footballGlance.ts')
 
 let n = 0
 const eq = (a, b, msg) => { assert.deepStrictEqual(a, b, msg); n++ }
@@ -306,6 +308,71 @@ eq(V.SUGGESTIONS.map(s => s.ref), ['432', 'uefa.champions', 'fifa.world', 'uefa.
 eq(V.SUGGESTIONS.every(s => s.kind !== 'league' || s.league === s.ref), true, 'a suggested tournament is its own league (163)')
 eq(V.SUGGESTIONS.every(s => /^[a-z0-9][a-z0-9._-]{0,59}$/.test(s.ref) && (s.kind !== 'team' || /^\d+$/.test(s.ref))), true, 'suggestions pass 163\'s ref checks')
 eq([V.scoreText(results[0]), V.scoreText(fixtures[0])], ['0–1', null], 'score text: home first; none before kick-off')
+
+// ── The favourites' glance (168): the Personal page's Football card ──
+{
+  const NOW = '2026-10-19T12:00:00Z'
+  const plain = x => JSON.parse(JSON.stringify(x)) // drops the fields a glance leaves out
+  const gs = { id: 'f1', ref: '432', name: 'Galatasaray', logo: 'https://a.espncdn.com/i/teamlogos/soccer/500/432.png' }
+  const tur = M.parseLeagueStandings(fx('standings-tur'))
+  const lille = fixtures.find(m => m.id === '401915396')
+  const derby = fixtures.find(m => m.id === '401888265')
+  const glance = (matches, now = NOW, more = {}) => G.teamGlance(gs, { league: 'tur.1', standings: tur, matches, ...more }, now)
+
+  eq(G.favouritesOf([
+    { id: 'a', kind: 'team', favourite: false }, { id: 'b', kind: 'team', favourite: true },
+    { id: 'c', kind: 'league', favourite: true }, { id: 'd', kind: 'team', favourite: true }, { id: 'e', kind: 'team' },
+  ]).map(f => f.id), ['b', 'd'], 'favourites: starred teams only, in the Following list\'s order (a row without the column is none)')
+
+  eq(plain(glance([...fixtures, ...results])), {
+    id: 'f1', ref: '432', name: 'Galatasaray', logo: 'https://a.espncdn.com/i/teamlogos/soccer/500/432.png',
+    league: 'tur.1', leagueName: 'Turkish Super Lig', position: 1, points: 19, played: 8,
+    form: ['D', 'W', 'L', 'W'],
+    next: {
+      eventId: '401915396', league: 'uefa.champions', kickoffISO: '2026-10-21T16:45Z', day: '2026-10-21', time: '18:45',
+      opponent: 'Lille', opponentLogo: 'https://a.espncdn.com/i/teamlogos/soccer/500/166.png', home: false, competition: 'UEFA Champions League',
+    },
+  }, 'glance: 1st in the Süper Lig table with 19 points from 8, the form oldest first, next away at Lille 21.10.2026 18:45 (Oslo), nothing live')
+  const popup = [...results.filter(m => M.outcomeFor(m, '432')).slice(0, 5)].reverse().map(m => M.outcomeFor(m, '432'))
+  eq(glance([...fixtures, ...results]).form, popup, 'glance: the form is the club popup\'s, the newest last')
+  eq(glance([...results, ...results, ...fixtures]).form, popup, 'glance: a result from two sources counts once')
+  const many = Array.from({ length: 7 }, (_, i) => ({ ...results[i % 2], id: `r${i}`, kickoff: `2026-10-0${i + 1}T12:00Z` }))
+  eq(glance(many).form, ['W', 'L', 'W', 'L', 'W'], 'glance: only the last five results')
+
+  // A match being played: live from the favourite's side; the next is the one after it.
+  const playing = { ...lille, state: 'in', clock: '67\'', home: { ...lille.home, score: 1 }, away: { ...lille.away, score: 0 } }
+  const during = glance([playing, ...fixtures.filter(m => m !== lille), ...results], '2026-10-21T17:52:00Z')
+  eq(plain(during.live), {
+    eventId: '401915396', league: 'uefa.champions', kickoffISO: '2026-10-21T16:45Z', day: '2026-10-21', time: '18:45',
+    opponent: 'Lille', opponentLogo: 'https://a.espncdn.com/i/teamlogos/soccer/500/166.png', home: false, competition: 'UEFA Champions League',
+    score: '1–0', minute: '67\'',
+  }, 'glance: live — the score home first as the page writes it, the minute, the opponent')
+  eq([during.next.eventId, during.next.opponent, during.next.home, during.next.day, during.next.time], ['401888265', 'Fenerbahce', true, '2026-10-26', '19:30'],
+    'glance: next is the derby at home, 26.10.2026 19:30 (winter time in Oslo)')
+  eq(plain(glance([{ ...playing, clock: '', home: { ...playing.home, score: null } }]).live).score, '–', 'glance: live without a score from ESPN says "–", never a made-up 0–0')
+  eq('minute' in plain(glance([{ ...playing, clock: '' }]).live), false, 'glance: live without ESPN\'s clock has no minute (the page says "Live")')
+
+  // What "next" is: the page's Coming up, from the favourite's side.
+  eq(glance([{ ...lille, timeValid: false }]).next.time, null, 'glance: a kick-off ESPN hasn\'t fixed has no time (never ESPN\'s placeholder)')
+  eq(glance([{ ...lille, state: 'postponed' }, derby]).next.eventId, '401888265', 'glance: a postponed match isn\'t the next one')
+  eq(glance([lille, derby], '2026-10-21T17:30:00Z').next.eventId, '401915396', 'glance: kicked off but ESPN not live yet: still next, as on the page')
+  eq(glance([lille, derby], '2026-10-21T20:00:00Z').next.eventId, '401888265', 'glance: over three hours past kick-off with no word from ESPN: the next one')
+  eq(glance([lille], '2026-12-01T12:00:00Z').next, undefined, 'glance: nothing coming: no next')
+  const barca = G.teamGlance({ ...gs, ref: '83', name: 'Barcelona' }, { league: 'esp.1', standings: tur, matches: [...fixtures, ...results] }, NOW)
+  eq([barca.form, barca.next, barca.position], [['W'], undefined, undefined],
+    'glance: only the favourite\'s own matches and table row count (Barcelona: its 4–1 at Galatasaray, nothing else)')
+
+  // Missing data is "nothing", never a crash.
+  eq(plain(G.teamGlance({ ...gs, logo: null }, { league: null, standings: null, matches: [] }, NOW)),
+    { id: 'f1', ref: '432', name: 'Galatasaray', logo: null, league: null, form: [] }, 'glance: nothing read yet — no table, no form, no match')
+  eq(G.teamGlance({ ...gs, logo: null }, { league: 'tur.1', standings: tur, matches: [] }, NOW).logo,
+    'https://a.espncdn.com/i/teamlogos/soccer/500/432.png', 'glance: a follow without a logo takes the table\'s')
+  eq(plain(glance([], NOW, { standings: { name: '', tables: [] } })).position, undefined, 'glance: a table without the team: no place')
+  const t = (name, ids) => ({ name, rows: ids.map((id, i) => ({ rank: i + 1, team: { id, logo: null }, played: 2, points: 6 - i * 3 })) })
+  eq([glance([], NOW, { standings: { name: 'UEFA Champions League', tables: [t('Group A', ['1', '2']), t('Group B', ['3', '432'])] } }).position],
+    [2], 'glance: a group stage: its place in its own group')
+  eq(glance([{ ...lille, league: null }]).next.competition, undefined, 'glance: a match without its competition still shows')
+}
 
 // ── Guards: no surface parses ESPN on its own ──
 {
