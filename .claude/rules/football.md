@@ -10,6 +10,7 @@ paths:
 Background: `docs/features/football.md`; ESPN's endpoints, fields and traps: `docs/integrations/espn.md`.
 
 - ESPN is called only from `api/espnApi.ts` (verify-football-model checks it), never through an edge function, and its data is never stored — only `football_follows` and `football_plans` are.
+- A favourite is a team only (168 checks it, as for `subscribed`); several may be. The Personal page's card reads only `useFavouriteTeamsGlance` — the page's own queries (`espnQueries`), never a read of its own — and shows what `footballGlance.teamGlance` gives (verify-football-model).
 - Every ESPN answer goes through `footballModel.ts`'s parsers (take `unknown`, return "nothing" on anything odd); a new field gets a real sample in `scripts/fixtures/espn/` and a check before code reads it. Surfaces render inside `ErrorBoundary`.
 - An id or slug goes into an ESPN URL only after `isTeamId` / `isLeagueSlug` (163 checks the same on the stored refs).
 - Kick-offs are UTC from ESPN, shown and planned in Norway's time through `osloParts`; dates through `dateFormat` (DD.MM.YYYY).

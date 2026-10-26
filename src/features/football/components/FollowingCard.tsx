@@ -4,13 +4,16 @@ import { Card, CardHeader, Truncate } from '../../../shared/ui'
 import { useEntityModal } from '../../../shared/modals'
 import { useStopSubscription } from '../hooks/useFootball'
 import type { FootballFollow } from '../types'
+import { FavouriteToggle } from './FavouriteToggle'
 import { SubscribeToggle } from './SubscribeToggle'
 import { TeamLogo } from './TeamLogo'
 
 /**
- * What is followed. A team can be subscribed — its coming matches go into
- * your day by themselves (the owner's word, 19.10.2026: "Subscribe"); a
- * tournament can't (a whole Champions League in the day is never wanted).
+ * What is followed. A team can be starred as a favourite — the Personal page's
+ * Football card shows it (owner, 26.10.2026) — and subscribed: its coming
+ * matches go into your day by themselves (the owner's word, 19.10.2026:
+ * "Subscribe"); a tournament can be neither (a whole Champions League in the
+ * day is never wanted). The list keeps its order: a star never moves a row.
  * A team opens its club popup; Unfollow asks and offers Undo (a subscribed
  * team's coming matches leave your day with it — useStopSubscription).
  */
@@ -31,6 +34,7 @@ export function FollowingCard({ follows, onPick }: { follows: readonly FootballF
               <TeamLogo src={f.logo} kind={f.kind} size={20} />
               <Truncate className="text-body font-medium text-fg">{f.name}</Truncate>
             </button>
+            {f.kind === 'team' && <FavouriteToggle follow={f} />}
             {f.kind === 'team' && <SubscribeToggle follow={f} />}
             <Menu as="div">
               <MenuButton className="icon-btn shrink-0" aria-label={`More for ${f.name}`}>

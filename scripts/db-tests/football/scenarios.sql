@@ -2,8 +2,10 @@
 -- through app_football_plan (one transaction with app_save_item), never
 -- twice, a deleted item never added again, a moved kick-off moving the item,
 -- delete with Undo across football_plans.task_id (144), row level security
--- and the owner lock. Setup and checks run as the superuser; writes run as
--- `authenticated`, like the app.
+-- and the owner lock; 165's Football category; 168's favourite teams (a team
+-- only, several at once, audited, gone with an unfollow and back with Undo).
+-- Setup and checks run as the superuser; writes run as `authenticated`, like
+-- the app.
 create or replace function public.t_ok(c boolean, msg text) returns void language plpgsql as $$
 begin
   if not coalesce(c, false) then raise exception 'FAIL  %', msg; end if;
@@ -30,6 +32,13 @@ select public.t_ok((select count(*) from pg_trigger where tgname = 'trg_audit'
   '163: both tables are audited (undoable from Developer → Activity)');
 select public.t_ok((select relrowsecurity from pg_class where oid = 'public.football_plans'::regclass),
   '163: row level security is on');
+select public.t_ok((select a.atttypid = 'boolean'::regtype and a.attnotnull and pg_get_expr(d.adbin, d.adrelid) = 'false'
+                      from pg_attribute a join pg_attrdef d on d.adrelid = a.attrelid and d.adnum = a.attnum
+                     where a.attrelid = 'public.football_follows'::regclass and a.attname = 'favourite' and not a.attisdropped),
+  '168: favourite is a boolean, never null, false unless starred');
+select public.t_ok((select count(*) from pg_constraint where conrelid = 'public.football_follows'::regclass
+                     and conname = 'football_follows_favourite_team') = 1,
+  '168: its check is there once after two runs');
 
 -- ═══ 1. Following, as the owner ════════════════════════════════════════════
 set role authenticated;
@@ -228,6 +237,43 @@ select public.t_ok(public.t_err($$insert into public.schedule_blocks (title, day
   values ('Weekly match', '{6}', '18:00', '20:00', 'football', '2026-10-19')$$) is null,
   '165: a repeat can be a Football one too');
 
+-- ═══ 2c. Favourite teams (168) ═════════════════════════════════════════════
+insert into public.football_follows (kind, ref, name, league)
+values ('team', '432', 'Galatasaray', 'tur.1'), ('team', '359', 'Arsenal', 'eng.1');
+select public.t_ok((select bool_and(not favourite) from public.football_follows),
+  '168: a new follow is not a favourite');
+update public.football_follows set favourite = true where ref = '432';
+select public.t_ok((select favourite from public.football_follows where ref = '432')
+                   and not (select favourite from public.football_follows where ref = '359'),
+  '168: a team can be starred; the others stay as they are');
+update public.football_follows set favourite = true where ref = '359';
+select public.t_ok((select count(*) from public.football_follows where favourite) = 2,
+  '168: several teams can be favourites at once');
+update public.football_follows set favourite = false where ref = '359';
+select public.t_ok(not (select favourite from public.football_follows where ref = '359')
+                   and (select favourite from public.football_follows where ref = '432'),
+  '168: a favourite can be unstarred');
+select public.t_ok(public.t_err($$update public.football_follows set favourite = true where ref = 'uefa.champions'$$) = '23514',
+  '168: a tournament can''t be a favourite');
+select public.t_ok(public.t_err($$insert into public.football_follows (kind, ref, name, favourite)
+                                  values ('league', 'uefa.euro', 'UEFA European Championship', true)$$) = '23514',
+  '168: …not even as it is followed');
+select public.t_ok(exists (select 1 from public.audit_logs where table_name = 'football_follows' and operation = 'UPDATE'
+                            and old_data = '{"favourite": false}'::jsonb and new_data = '{"favourite": true}'::jsonb),
+  '168: a star is audited (undoable from Developer → Activity)');
+
+-- Unfollow (useRowsDelete → 144): the row goes and its star with it; Undo puts both back
+do $$
+declare s jsonb;
+begin
+  s := public.app_delete_rows('football_follows', array[(select id::text from public.football_follows where ref = '432')]);
+  perform public.t_ok(not exists (select 1 from public.football_follows where ref = '432'),
+    '168: unfollowing a favourite takes its row, and its star, away');
+  perform public.app_restore_rows(s);
+  perform public.t_ok((select favourite from public.football_follows where ref = '432'),
+    '168: Undo follows it again, still a favourite');
+end $$;
+
 -- ═══ 3. Other accounts ══════════════════════════════════════════════════════
 select set_config('test.uid', '00000000-0000-0000-0000-000000000002', false);
 select public.t_ok((select count(*) from public.football_follows) = 0 and (select count(*) from public.football_plans) = 0,
@@ -240,6 +286,8 @@ select public.t_ok((select r ->> 'reason' from (select public.app_football_plan(
     jsonb_build_object('taskId', (select v ->> 'taskId' from public.t_keep where k = 'lille'), 'title', 'Mine now', 'domain', 'personal',
       'priority', 'medium', 'date', '2026-10-23', 'time', null, 'durationMinutes', null, 'google', 'none', 'today', '2026-10-19')) r) x) = 'not-this-match',
   'nor move the owner''s match');
+-- Checked below, as the superuser: the owner's star is still there.
+update public.football_follows set favourite = false where ref = '432';
 select set_config('test.uid', '00000000-0000-0000-0000-000000000003', false);
 select public.t_ok(public.t_err($$insert into public.football_follows (kind, ref, name) values ('team', '432', 'Galatasaray')$$) = '42501',
   'an account the owner lock doesn''t let in can''t follow');
@@ -250,3 +298,5 @@ select set_config('test.uid', '', false);
 reset role;
 select public.t_ok((select title from public.tasks where id = (select (v ->> 'taskId')::uuid from public.t_keep where k = 'lille')) = '⚽ Lille – Galatasaray',
   'the owner''s match is untouched by the others');
+select public.t_ok((select favourite from public.football_follows where ref = '432' and user_id = '00000000-0000-0000-0000-000000000001'),
+  '168: another account can''t unstar the owner''s favourite');

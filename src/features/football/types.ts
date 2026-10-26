@@ -1,5 +1,5 @@
-// The owner's football rows (migration 163). ESPN's own data is never stored:
-// its shapes are footballModel's Fb* types.
+// The owner's football rows (migrations 163, 168). ESPN's own data is never
+// stored: its shapes are footballModel's Fb* types.
 
 export type FollowKind = 'team' | 'league'
 
@@ -15,6 +15,8 @@ export interface FootballFollow {
   league: string | null
   /** A team's coming matches go into the day by themselves. */
   subscribed: boolean
+  /** A team starred on the Football page (168): the Personal page's Football card shows it. Never a tournament. */
+  favourite: boolean
   sort_order: number
   created_at: string
   updated_at: string
