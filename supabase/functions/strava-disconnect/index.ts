@@ -1,4 +1,4 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.107.0'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.118.0'
 
 // Owner lock (security audit 10.10.2026, migration 139): this function serves
 // only the owner (HEVY_USER_ID) and accounts listed in app_allowed_users (for
@@ -12,6 +12,37 @@ async function isAppUser(userId: string): Promise<boolean> {
 }
 
 const ALLOWED_ORIGINS = ['https://lasciviens.github.io', 'http://localhost:5173']
+
+// Strava's revoke (developers.strava.com/docs/authentication, checked
+// 26.10.2026): POST /oauth/revoke since 01.06.2026, the only way from
+// 01.06.2027 when /oauth/deauthorize ends. HTTP Basic auth with the app's
+// client id and secret, `token` (+ `token_type_hint`) in a form body; revoking
+// a refresh token revokes its access tokens too, and a stored access token
+// may already have expired, so the refresh token goes first. 200 also when
+// the token was unknown. Returns null when Strava took it, else a short
+// reason that names no token.
+async function revokeOnStrava(refreshToken: string | null, accessToken: string | null): Promise<string | null> {
+  const clientId = Deno.env.get('STRAVA_CLIENT_ID')
+  const clientSecret = Deno.env.get('STRAVA_CLIENT_SECRET')
+  if (!clientId || !clientSecret) return 'STRAVA_CLIENT_ID / STRAVA_CLIENT_SECRET not set'
+  const form = refreshToken
+    ? new URLSearchParams({ token: refreshToken, token_type_hint: 'refresh_token' })
+    : new URLSearchParams({ token: accessToken ?? '', token_type_hint: 'access_token' })
+  try {
+    const res = await fetch('https://www.strava.com/oauth/revoke', {
+      method: 'POST',
+      headers: {
+        Authorization: `Basic ${btoa(`${clientId}:${clientSecret}`)}`,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: form.toString(),
+    })
+    await res.body?.cancel()
+    return res.ok ? null : `HTTP ${res.status}`
+  } catch {
+    return 'Strava could not be reached'
+  }
+}
 
 function corsHeaders(origin: string | null): Record<string, string> {
   const allowed = origin && ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0]
@@ -60,19 +91,17 @@ Deno.serve(async (req) => {
       })
     }
 
-    // Revoke token on Strava side before deleting locally
+    // Revoke the app's access on Strava's side before deleting locally. A failed
+    // revoke never blocks the local disconnect; it is logged without the token.
     const { data: token } = await supabase
       .from('strava_tokens')
-      .select('access_token')
+      .select('access_token, refresh_token')
       .eq('user_id', user.id)
       .single()
 
-    if (token?.access_token) {
-      await fetch('https://www.strava.com/oauth/deauthorize', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ access_token: token.access_token }),
-      }).catch(() => {})
+    if (token?.refresh_token || token?.access_token) {
+      const problem = await revokeOnStrava(token.refresh_token ?? null, token.access_token ?? null)
+      if (problem) console.error(`strava-disconnect: Strava revoke failed (${problem}); the local connection is removed anyway`)
     }
 
     await supabase.from('strava_tokens').delete().eq('user_id', user.id)

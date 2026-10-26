@@ -8,7 +8,7 @@
 //   • a browser (user JWT) with an explicit { title, body } — ad-hoc send.
 // verify_jwt = false (config.toml): the cron path is a shared secret, not a JWT.
 // Expired/gone subscriptions (404/410) are pruned automatically.
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.107.0'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.118.0'
 import webpush from 'npm:web-push@3.6.7'
 
 // Owner lock (security audit 10.10.2026, migration 139): this function serves
@@ -50,7 +50,9 @@ const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPAB
 
 const VAPID_PUBLIC  = Deno.env.get('VAPID_PUBLIC_KEY')  ?? ''
 const VAPID_PRIVATE = Deno.env.get('VAPID_PRIVATE_KEY') ?? ''
-const VAPID_SUBJECT = Deno.env.get('VAPID_SUBJECT') ?? 'mailto:furkan.hamdemir@power.no'
+// RFC 8292 takes an https: URL as the subject too (web-push 3.6.7 accepts
+// https: and mailto:) — the public site, never a personal address in the repo.
+const VAPID_SUBJECT = Deno.env.get('VAPID_SUBJECT') ?? 'https://lasciviens.github.io/Project_Daily/'
 if (VAPID_PUBLIC && VAPID_PRIVATE) webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC, VAPID_PRIVATE)
 
 // Short, notification-sized morning summary (title + body). Deterministic — no
@@ -274,6 +276,17 @@ async function sendToAll(userId: string, payload: AnyRecord): Promise<{ sent: nu
   return { sent, pruned }
 }
 
+// Constant-time secret check (security review 26.10.2026): both sides are
+// hashed to the same length first, so the answer time shows neither the
+// secret's length nor how much of it matched. Never log either value.
+async function sameSecret(given: string, expected: string): Promise<boolean> {
+  const hash = async (s: string) => new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)))
+  const [a, b] = await Promise.all([hash(given), hash(expected)])
+  let diff = 0
+  for (let i = 0; i < a.length; i++) diff |= a[i] ^ b[i]
+  return diff === 0
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS })
   if (req.method !== 'POST') return json({ error: 'Method Not Allowed' }, 405)
@@ -283,7 +296,7 @@ Deno.serve(async (req) => {
   const cronSecret = Deno.env.get('PUSH_CRON_SECRET')
   const given = req.headers.get('x-cron-secret')
   let userId: string | null = null
-  const viaCron = !!cronSecret && given === cronSecret
+  const viaCron = !!cronSecret && await sameSecret(given ?? '', cronSecret)
   if (viaCron) {
     userId = Deno.env.get('HEVY_USER_ID') ?? null
   } else {

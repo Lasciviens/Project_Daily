@@ -1,7 +1,7 @@
 // Original images + complete parsed game XML. Requires migration 100.
 // JWT off: authenticate the device secret before every read/write. Owner is
 // always server-configured; service credentials never leave this function.
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.107.0'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.118.0'
 const base = Deno.env.get('SUPABASE_URL')!
 const db = createClient(base, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'content-type,x-esde-secret,x-esde-asset', 'Access-Control-Allow-Methods': 'POST,OPTIONS' }

@@ -1,4 +1,4 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.107.0'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.118.0'
 
 // Owner lock (security audit 10.10.2026, migration 139): this function serves
 // only the owner (HEVY_USER_ID) and accounts listed in app_allowed_users (for
@@ -749,6 +749,17 @@ async function semanticSearch(args: AnyRecord, authHeader?: string, supabase?: A
   } catch (e) { return { success: false, error: hideSecrets((e as Error).message) } }
 }
 
+// Constant-time secret check (security review 26.10.2026): both sides are
+// hashed to the same length first, so the answer time shows neither the
+// secret's length nor how much of it matched. Never log either value.
+async function sameSecret(given: string, expected: string): Promise<boolean> {
+  const hash = async (s: string) => new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)))
+  const [a, b] = await Promise.all([hash(given), hash(expected)])
+  let diff = 0
+  for (let i = 0; i < a.length; i++) diff |= a[i] ^ b[i]
+  return diff === 0
+}
+
 Deno.serve(async (req) => {
   const origin  = req.headers.get('origin')
   const headers = corsHeaders(origin)
@@ -769,7 +780,7 @@ Deno.serve(async (req) => {
   const phoneSecret  = Deno.env.get('PHONE_GATEWAY_SECRET')
   const givenSecret  = req.headers.get('x-phone-secret')
   let user: { id: string } | null = null
-  const viaPhone = !!phoneSecret && givenSecret === phoneSecret
+  const viaPhone = !!phoneSecret && await sameSecret(givenSecret ?? '', phoneSecret)
   if (viaPhone) {
     const uid = Deno.env.get('HEVY_USER_ID')          // single-user app, same id everywhere
     if (uid) user = { id: uid }
@@ -1773,12 +1784,12 @@ async function computeSleepNights(supabase: AnyRecord, userId: string, since: st
 // ai-proxy is a self-contained Deno function). REAL BUG, round 1 (2026-09-06,
 // live-confirmed): Health Auto Export's `source` field is a "|"-joined list
 // of contributing devices, neither deduped nor consistently ordered between
-// exports -- the same hour arrived as both "Furkan's Apple Watch" and
-// "Furkan's Apple Watch|Furkan's Apple Watch". ROUND 2 (same day, round 1
+// exports -- the same hour arrived as both "Owner's Apple Watch" and
+// "Owner's Apple Watch|Owner's Apple Watch". ROUND 2 (same day, round 1
 // wasn't enough): live data showed EVERY hour carries not two but often
 // THREE rows -- two exact duplicates (round 1) plus a THIRD at a DIFFERENT
 // minute with a DIFFERENT device combination in `source` (e.g. "06:00:00"
-// qty=83.7 "Watch|Lasci 17 Pro" and "06:39:34" qty=64.2 "Watch" alone) that a
+// qty=83.7 "Watch|Owner's iPhone" and "06:39:34" qty=64.2 "Watch" alone) that a
 // per-minute-per-source key still missed and summed on top -- confirmed
 // against real numbers: naive-summing one partial day of basal energy came
 // to 3309 kcal (physiologically implausible; BMR is ~1600-2400/day),

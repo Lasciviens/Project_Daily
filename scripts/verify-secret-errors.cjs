@@ -95,6 +95,39 @@ const leaks = (text) => Object.values(SECRETS).concat(env.SUPABASE_SERVICE_ROLE_
     const l = leaks(text)
     check(`${fn}: a network failure answers ${res.status} without any key`, l.length === 0, `leaked ${l.join(', ')} in ${text.slice(0, 200)}`)
   }
+
+  // Keys travel in a header or a body, never in a URL (security review
+  // 26.10.2026): Steam takes `x-webapi-key`, Twitch's token request a form body.
+  const recorded = []
+  const answering = async (url, init = {}) => {
+    recorded.push({ url: String(url), init })
+    const u = String(url)
+    const body = u.includes('id.twitch.tv') ? { access_token: 'app-token', expires_in: 3600 }
+      : u.includes('api.igdb.com') ? []
+      : u.includes('GetPlayerAchievements') ? { playerstats: { success: true, achievements: [] } }
+      : { response: { players: [{}], games: [] } }
+    return new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } })
+  }
+  // STEAM_ID64 is the public account id Valve's calls take as `steamid`, not a key.
+  const inUrl = () => recorded.flatMap(r => leaks(decodeURIComponent(r.url)).filter(k => k !== SECRETS.STEAM_ID64).map(k => `${k} in ${r.url.split('?')[0]}`))
+  const ask = async (fn, body) => {
+    const handler = load(fn, { env, tables: { app_allowed_users: [] }, users: { 'owner-jwt': 'owner' }, log: [], fetchImpl: answering })
+    return handler(new Request('http://x', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer owner-jwt' }, body: JSON.stringify(body) }))
+  }
+  for (const action of ['profile', 'owned_games', 'achievements', 'level_badges']) await ask('steam-api', { action, appid: 440 })
+  const steamCalls = recorded.filter(r => r.url.includes('api.steampowered.com'))
+  const keyed = steamCalls.filter(r => !/GetGlobalAchievementPercentagesForApp/.test(r.url))
+  check(`steam-api: ${steamCalls.length} Steam calls, no key in any URL`, steamCalls.length >= 6 && inUrl().length === 0, inUrl().join('; '))
+  check('steam-api: every keyed call sends x-webapi-key', keyed.length >= 5 && keyed.every(r => r.init?.headers?.['x-webapi-key'] === SECRETS.STEAM_API_KEY))
+  recorded.length = 0
+  await ask('igdb-api', { action: 'search', query: 'Zelda' })
+  const twitch = recorded.find(r => r.url.includes('id.twitch.tv'))
+  check('igdb-api: no key in any URL', recorded.length >= 2 && inUrl().length === 0, inUrl().join('; ') || `${recorded.length} calls`)
+  check('igdb-api: the Twitch token request is a POST with a form body',
+    twitch?.url === 'https://id.twitch.tv/oauth2/token' && twitch.init.method === 'POST'
+      && twitch.init.headers?.['Content-Type'] === 'application/x-www-form-urlencoded'
+      && new URLSearchParams(twitch.init.body).get('client_secret') === SECRETS.IGDB_CLIENT_SECRET
+      && new URLSearchParams(twitch.init.body).get('grant_type') === 'client_credentials')
   console.log(`\n${ok} passed, ${bad} failed`)
   process.exit(bad ? 1 : 0)
 })()

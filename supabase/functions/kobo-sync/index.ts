@@ -29,7 +29,7 @@
 // are deleted through the Storage API (never by deleting storage.objects
 // rows, which leaves the file behind) and their rows set to `expired`.
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.107.0'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.118.0'
 
 const BUCKET = 'kobo-inbox'
 const COVER_BUCKET = 'book-covers'
@@ -1585,10 +1585,14 @@ function admin() {
   })
 }
 
-function sameToken(a: string, b: string): boolean {
-  if (!a || !b || a.length !== b.length) return false
+// Constant-time secret check (security review 26.10.2026): both sides are
+// hashed to the same length first, so the answer time shows neither the
+// secret's length nor how much of it matched. Never log either value.
+async function sameSecret(given: string, expected: string): Promise<boolean> {
+  const hash = async (s: string) => new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)))
+  const [a, b] = await Promise.all([hash(given), hash(expected)])
   let diff = 0
-  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i)
+  for (let i = 0; i < a.length; i++) diff |= a[i] ^ b[i]
   return diff === 0
 }
 
@@ -1992,7 +1996,7 @@ Deno.serve(async req => {
   if (route.kind === 'sync' || route.kind === 'inbox' || route.kind === 'ack' || route.kind === 'applied' || route.kind === 'cover' || route.kind === 'capture' || route.kind === 'ask') {
     const deviceSecret = Deno.env.get('KOBO_SYNC_SECRET') ?? ''
     if (!deviceSecret || !userId) return json({ error: 'not_configured', message: 'KOBO_SYNC_SECRET / HEVY_USER_ID are not set.' }, 503)
-    if (!sameToken(req.headers.get('x-kobo-secret') ?? '', deviceSecret)) return json({ error: 'forbidden' }, 403)
+    if (!(await sameSecret(req.headers.get('x-kobo-secret') ?? '', deviceSecret))) return json({ error: 'forbidden' }, 403)
     const db = admin()
     try {
       if (route.kind === 'inbox') {
@@ -2033,12 +2037,12 @@ Deno.serve(async req => {
 
   try {
     if (route.kind === 'sweep') {
-      if (req.method !== 'POST' || !sameToken(req.headers.get('x-kobo-token') ?? '', secret)) return text('Forbidden', 403)
+      if (req.method !== 'POST' || !(await sameSecret(req.headers.get('x-kobo-token') ?? '', secret))) return text('Forbidden', 403)
       const removed = await sweep(db, userId)
       return json({ removed })
     }
 
-    if (!sameToken(route.token, secret)) return text('Forbidden', 403)
+    if (!(await sameSecret(route.token, secret))) return text('Forbidden', 403)
     if (req.method !== 'GET' && req.method !== 'HEAD') return text('Method not allowed', 405)
     const base = `${Deno.env.get('SUPABASE_URL')}/functions/v1/kobo-sync`
 

@@ -24,7 +24,7 @@
 // library cannot be enriched live on every page load. The service-role
 // client below exists ONLY for that cache — no user data is ever written.
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.107.0'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.118.0'
 
 // Owner lock (security audit 10.10.2026, migration 139): this function serves
 // only the owner (HEVY_USER_ID) and accounts listed in app_allowed_users (for
@@ -63,14 +63,20 @@ type Action =
 // deno-lint-ignore no-explicit-any
 type AnyRec = Record<string, any>
 
-// A network failure's message quotes the request URL, and this URL carries a
-// key; the caller sees only which service failed (security audit 10.10.2026).
+// A network failure's message quotes the request URL; the caller sees only
+// which service failed (security audit 10.10.2026). The key left the URL on
+// 26.10.2026 (steamGet), but the guard stays.
 async function fetchHidingUrl(url: string, init: RequestInit | undefined, what: string): Promise<Response> {
   try { return await fetch(url, init) } catch { throw new Error(`${what} could not be reached (network error)`) }
 }
 
-async function steamGet(path: string, params: Record<string, string>) {
-  const r = await fetchHidingUrl(`${STEAM}${path}?${new URLSearchParams(params).toString()}`, undefined, 'Steam')
+// The key travels in Valve's `x-webapi-key` header, never in the URL —
+// partner.steamgames.com/doc/webapi_overview/auth (checked 26.10.2026): "In
+// cases where an API key is required, it can be provided either as a standard
+// parameter or by setting the 'x-webapi-key' request header value."
+async function steamGet(path: string, params: Record<string, string>, key?: string) {
+  const init = key ? { headers: { 'x-webapi-key': key } } : undefined
+  const r = await fetchHidingUrl(`${STEAM}${path}?${new URLSearchParams(params).toString()}`, init, 'Steam')
   if (!r.ok) throw new Error(`steam ${r.status}`)
   return r.json()
 }
@@ -141,7 +147,7 @@ Deno.serve(async (req: Request) => {
   try {
     switch (action) {
       case 'profile': {
-        const r = await steamGet('/ISteamUser/GetPlayerSummaries/v2/', { key: apiKey!, steamids: steamId! })
+        const r = await steamGet('/ISteamUser/GetPlayerSummaries/v2/', { steamids: steamId! }, apiKey!)
         return json({ player: r?.response?.players?.[0] ?? null })
       }
 
@@ -149,9 +155,9 @@ Deno.serve(async (req: Request) => {
         // include_extended_appinfo adds has_dlc/has_workshop/sort_as/
         // content_descriptorids — free, same request.
         const r = await steamGet('/IPlayerService/GetOwnedGames/v1/', {
-          key: apiKey!, steamid: steamId!,
+          steamid: steamId!,
           include_appinfo: '1', include_played_free_games: '1', include_extended_appinfo: '1',
-        })
+        }, apiKey!)
         const games = r?.response?.games ?? []
         return json({ games, count: r?.response?.game_count ?? games.length })
       }
@@ -169,11 +175,11 @@ Deno.serve(async (req: Request) => {
         // supplies rarity. All three join on the achievement's own key.
         const [achRes, schemaRes, globalRes] = await Promise.all([
           steamGet('/ISteamUserStats/GetPlayerAchievements/v1/', {
-            key: apiKey!, steamid: steamId!, appid: String(appid), l: 'english',
-          }).catch(() => null),
+            steamid: steamId!, appid: String(appid), l: 'english',
+          }, apiKey!).catch(() => null),
           steamGet('/ISteamUserStats/GetSchemaForGame/v2/', {
-            key: apiKey!, appid: String(appid), l: 'english',
-          }).catch(() => null),
+            appid: String(appid), l: 'english',
+          }, apiKey!).catch(() => null),
           steamGet('/ISteamUserStats/GetGlobalAchievementPercentagesForApp/v2/', {
             gameid: String(appid),
           }).catch(() => null),
@@ -212,8 +218,8 @@ Deno.serve(async (req: Request) => {
 
       case 'level_badges': {
         const [levelRes, badgesRes] = await Promise.all([
-          steamGet('/IPlayerService/GetSteamLevel/v1/', { key: apiKey!, steamid: steamId! }).catch(() => null),
-          steamGet('/IPlayerService/GetBadges/v1/', { key: apiKey!, steamid: steamId! }).catch(() => null),
+          steamGet('/IPlayerService/GetSteamLevel/v1/', { steamid: steamId! }, apiKey!).catch(() => null),
+          steamGet('/IPlayerService/GetBadges/v1/', { steamid: steamId! }, apiKey!).catch(() => null),
         ])
         return json({
           level: levelRes?.response?.player_level ?? null,

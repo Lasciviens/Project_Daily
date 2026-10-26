@@ -259,7 +259,7 @@ export const API_REGISTRY: readonly ApiEntry[] = [
     docsUrl: 'https://developers.strava.com/docs/reference/',
     purpose: 'Runs, rides and walks shown next to strength training.',
     transports: ['browser', 'edge'],
-    connection: 'OAuth starts in the browser; strava-auth exchanges the code, strava-activities fetches, strava-disconnect deauthorizes.',
+    connection: 'OAuth starts in the browser; strava-auth exchanges the code, strava-activities fetches, strava-disconnect revokes the app\'s access (/oauth/revoke).',
     edgeFunctions: ['strava-auth', 'strava-activities', 'strava-disconnect'], endpoints: ['www.strava.com/api/v3'],
     auth: 'oauth', secrets: ['VITE_STRAVA_CLIENT_ID', 'STRAVA_CLIENT_ID', 'STRAVA_CLIENT_SECRET'],
     direction: 'read', cadence: 'Manual sync',

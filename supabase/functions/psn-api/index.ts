@@ -32,7 +32,7 @@
 // ONE game lazily when its detail modal opens rather than mapping a whole
 // library up front.
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.107.0'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.118.0'
 import {
   exchangeNpssoForAccessCode,
   exchangeAccessCodeForAuthTokens,

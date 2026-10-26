@@ -1,4 +1,4 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.107.0'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.118.0'
 
 const jsonHeaders = { 'Content-Type': 'application/json' }
 
@@ -58,16 +58,16 @@ function numOrQty(v: unknown): number | null {
 // REAL BUG (2026-09-06, live-confirmed): Health Auto Export's `source` field
 // is a "|"-joined list of every device that contributed to that aggregated
 // interval — but the list is NOT deduped and NOT ordered consistently between
-// exports. Confirmed live: the regular sync wrote `source: "Furkan's Apple
+// exports. Confirmed live: the regular sync wrote `source: "Owner's Apple
 // Watch"` for an hour, and a later "Since Last Sync"/reconciliation export
-// wrote THE SAME hour's THE SAME value as `source: "Furkan's Apple
-// Watch|Furkan's Apple Watch"` (the same device listed twice) — a different
+// wrote THE SAME hour's THE SAME value as `source: "Owner's Apple
+// Watch|Owner's Apple Watch"` (the same device listed twice) — a different
 // string, so it passed the `(user_id,metric_name,recorded_at,source)` unique
 // key as a NEW row instead of upserting over the existing one. Every 'sum'
 // metric (steps, active/basal energy — anything computeDailySeries adds up)
 // then double/triple-counted that hour. Also seen with a genuine second
-// device: "Lasci 17 Pro|Furkan's Apple Watch" vs "...|Furkan's Apple
-// Watch|Furkan's Apple Watch" for the identical value. Canonicalizing before
+// device: "Owner's iPhone|Owner's Apple Watch" vs "...|Owner's Apple
+// Watch|Owner's Apple Watch" for the identical value. Canonicalizing before
 // it ever reaches the `source` column (and the upsert's conflict key) makes
 // these collapse onto the SAME row — an upsert, not a duplicate. Also folds
 // a stray NBSP Apple sometimes writes inside "Apple Watch" to a normal space,
@@ -78,6 +78,17 @@ function canonicalizeSource(raw: string): string {
     .map(p => p.trim().replace(/\u00a0/g, ' '))
     .filter(Boolean)
   return [...new Set(parts)].sort().join('|')
+}
+
+// Constant-time secret check (security review 26.10.2026): both sides are
+// hashed to the same length first, so the answer time shows neither the
+// secret's length nor how much of it matched. Never log either value.
+async function sameSecret(given: string, expected: string): Promise<boolean> {
+  const hash = async (s: string) => new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)))
+  const [a, b] = await Promise.all([hash(given), hash(expected)])
+  let diff = 0
+  for (let i = 0; i < a.length; i++) diff |= a[i] ^ b[i]
+  return diff === 0
 }
 
 Deno.serve(async (req) => {
@@ -93,7 +104,7 @@ Deno.serve(async (req) => {
   // dashboard, and auth is this shared secret instead (same pattern as hevy-sync).
   const secret = Deno.env.get('HEALTH_EXPORT_WEBHOOK_SECRET')
   const authHeader = req.headers.get('authorization') ?? ''
-  if (!secret || authHeader !== `Bearer ${secret}`) {
+  if (!secret || !(await sameSecret(authHeader, `Bearer ${secret}`))) {
     return new Response('Unauthorized', { status: 401 })
   }
 
