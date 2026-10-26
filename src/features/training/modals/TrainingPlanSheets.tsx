@@ -88,7 +88,7 @@ export function TrainingPlanMoveModal({ request, onClose }: EntityModalProps<'tr
         </div>
         {pastWeek && firstDay
           ? <p data-tone="warn" className="tone-text text-meta">
-              7 or more days after its first day ({formatWeekdayDate(firstDay)}): this one counts as skipped there, and that week's {plan.info.title} moves to {formatWeekdayDate(date)} instead.
+              7+ days after its first day: skipped on {formatWeekdayDate(firstDay)}, and that week's session moves here instead.
             </p>
           : <p className="text-meta text-fg-muted">The task and the calendar move together.</p>}
       </div>

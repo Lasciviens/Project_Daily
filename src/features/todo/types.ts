@@ -73,6 +73,8 @@ export interface Task {
   occurrence_date?:         string | null
   /** 'missed': a repeat's day that passed unticked, closed (cancelled) on its own day — never carried over. */
   closed_reason?:           'missed' | null
+  /** A training session's first day (167): its week is that day and the next six. */
+  first_plan_date?: string | null
 
   // ── A project's task (migration 162) — undefined before it runs ───────────
   /** The project this task belongs to (deleting the project deletes it). */

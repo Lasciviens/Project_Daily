@@ -2,7 +2,7 @@ import { supabase } from '../../../integrations/supabase/client'
 import { requireUser } from '../../../shared/utils/requireUser'
 import { todayStr } from '../../../shared/utils/dateUtils'
 import { createTask, updateTask, toggleTaskDone } from '../../todo/api/tasksApi'
-import { createTimeBlock, fetchScheduleBlocks, fetchTimeBlocks, updateTimeBlock } from '../../daily/api/scheduleApi'
+import { createTimeBlock, fetchScheduleBlocks, fetchTimeBlocks, fetchTrainingBlocksRange, updateTimeBlock } from '../../daily/api/scheduleApi'
 import {
   carryOccurrenceToCalendar, putSkippedDayBackOnCalendar, takeSkippedDayOffCalendar,
 } from '../../calendar/api/scheduleSeriesCalendar'
@@ -238,6 +238,24 @@ export async function movePlan(rows: PlanRows, info: PlanInfo, to: { date: strin
     category: 'training', color: 'accent', task_id: rows.taskId,
     source_type: 'training_session', ...(routine ? { source_id: routine } : {}),
   })
+}
+
+/** After a move 7 or more days past the session's first day (167): the
+ *  database skipped the session on its first day and moved that week's
+ *  session of the same plan onto `date` (splitting a repeat's day). Google
+ *  follows as for a skip and a split made here: the skipped day comes off the
+ *  calendar, the day moved onto `date` gets its own event (the series its
+ *  EXDATE). Background — the move is done and reported first. */
+export function carryPastWeekMoveToCalendar(rows: PlanRows, date: string): void {
+  if (rows.blockId) takeSkippedDayOffCalendar(rows.blockId)
+  void (async () => {
+    const blocks = await fetchTrainingBlocksRange(date, date)
+    for (const b of blocks) {
+      if (b.id !== rows.blockId && b.schedule_block_id && b.occurrence_date && b.occurrence_date !== date && !b.google_calendar_event_id) {
+        carryOccurrenceToCalendar(b.schedule_block_id, b.id)
+      }
+    }
+  })().catch(() => { /* a failed read leaves Google as it was; the next app open pushes what is pending */ })
 }
 
 /** The same session already planned on `date` (planTwins — the plan editor's

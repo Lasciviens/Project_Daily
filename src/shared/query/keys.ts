@@ -260,7 +260,9 @@ export const qk = {
     cutDiary: (from: string, to: string) => ['health', 'cut-diary', from, to] as const,
   },
   games: { all: ['games'] as const, // Settings live outside ['games'] so a status edit never refetches them.
-    prefs: ['games-prefs'] as const },
+    prefs: ['games-prefs'] as const,
+    /** The game played last up to a day (Personal's Play next card). */
+    lastPlayed: (day: string) => ['games', 'last-played', day] as const },
   logs: {
     errors: () => ['error-logs'] as const,
     audit: (filter?: object) => (filter ? ['audit-logs', filter] as const : ['audit-logs'] as const),

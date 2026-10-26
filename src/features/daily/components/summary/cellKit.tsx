@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { ChevronRight } from 'lucide-react'
-import { CardHeader, cx, type Tone } from '../../../../shared/ui'
+import { CardHeader, Truncate, cx, type Tone } from '../../../../shared/ui'
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Shared anatomy for the glance-board cells. Every module is one card in a
@@ -49,7 +49,7 @@ export function StatBox({ icon, label, children, className, onClick, ariaLabel }
 }) {
   const body = (
     <>
-      <p className="flex min-w-0 items-center gap-1.5 section-label [&_svg]:h-3.5 [&_svg]:w-3.5 [&_svg]:shrink-0">{icon}<span className="truncate">{label}</span></p>
+      <p className="flex min-w-0 items-center gap-1.5 section-label [&_svg]:h-3.5 [&_svg]:w-3.5 [&_svg]:shrink-0">{icon}<Truncate as="span" className="min-w-0">{label}</Truncate></p>
       {children}
     </>
   )
@@ -59,13 +59,14 @@ export function StatBox({ icon, label, children, className, onClick, ariaLabel }
     : <div className={cls}>{body}</div>
 }
 
-/** The box's one big number or word. */
-export function StatValue({ children, tone, className }: { children: ReactNode; tone?: Tone; className?: string }) {
-  return (
-    <p data-tone={tone} className={cx('min-w-0 truncate text-title font-bold leading-tight tabular-nums', tone ? 'tone-text' : 'text-fg', className)}>
-      {children}
-    </p>
-  )
+/** The box's one big number or word. `text`: a name from the owner's data
+ *  (a session, an opponent) — up to two lines, the rest on tap (<Truncate>);
+ *  a number stays one line, as on the Health card. */
+export function StatValue({ children, tone, className, text = false }: { children: ReactNode; tone?: Tone; className?: string; text?: boolean }) {
+  const cls = cx('min-w-0 text-title font-bold tabular-nums', tone ? 'tone-text' : 'text-fg', className)
+  return text
+    ? <Truncate as="p" lines={2} className={cx(cls, 'leading-tight')}><span data-tone={tone}>{children}</span></Truncate>
+    : <p data-tone={tone} className={cx(cls, 'truncate leading-none')}>{children}</p>
 }
 
 /** A short line under the value. */

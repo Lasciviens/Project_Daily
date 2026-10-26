@@ -27,8 +27,9 @@ export interface FavouriteTeamsGlance {
 
 const liveEvery = (q: { state: { data?: FbMatch[] } }) => (q.state.data?.some(m => needsLive(m)) ? LIVE_EVERY : false)
 
-/** `enabled: false` (the card collapsed or hidden) reads nothing from ESPN. */
-export function useFavouriteTeamsGlance({ enabled = true }: { enabled?: boolean } = {}): FavouriteTeamsGlance {
+/** `enabled: false` (the card collapsed or hidden) reads nothing from ESPN.
+ *  `day`: the day Personal shows — each team's match that day comes as `onDay`. */
+export function useFavouriteTeamsGlance({ enabled = true, day }: { enabled?: boolean; day?: string } = {}): FavouriteTeamsGlance {
   const followsQ = useFollows()
   const now = useMinute()
   const favourites = useMemo(() => favouritesOf(followsQ.data ?? []), [followsQ.data])
@@ -49,9 +50,9 @@ export function useFavouriteTeamsGlance({ enabled = true }: { enabled?: boolean 
       league: leagues[i],
       standings: tablesQ[i]?.data ?? null,
       matches: [...(fixturesQ[i]?.data ?? []), ...(resultsQ[i]?.data ?? [])],
-    }, now)),
+    }, now, day)),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the answers' times say when anything changed
-    [favourites, stamp, now],
+    [favourites, stamp, now, day],
   )
   const failed = favourites
     .filter((_, i) => infosQ[i]?.isError || fixturesQ[i]?.isError || resultsQ[i]?.isError || tablesQ[i]?.isError)

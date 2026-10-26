@@ -26,7 +26,7 @@ export function WatchHistoryButton({ counter, of, onOpen, disabled, className }:
       disabled={disabled}
       aria-label={label}
       title={label}
-      className={cx('grid min-h-[44px] min-w-[44px] shrink-0 place-items-center rounded-row text-fg-faint transition-colors hover:bg-surface-hover hover:text-fg-2 disabled:opacity-40', className)}
+      className={cx('icon-btn grid shrink-0 place-items-center rounded-row text-fg-faint transition-colors hover:bg-surface-hover hover:text-fg-2 disabled:opacity-40', className)}
     >
       {counter != null
         ? <span aria-hidden className="count-badge">×{counter}</span>

@@ -27,7 +27,7 @@ function useReadingGlance(enabled: boolean) {
   const { data: settings } = useReadingSettings()
   const { data: sync } = useKoboFeedState(enabled)
   const library = useLibrary(enabled)
-  const books = library.data ?? []
+  const books = useMemo(() => library.data ?? [], [library.data])
   const today = localDay(new Date())
   const perDay = secondsByDay(events.data ?? [])
   const minutes = Math.floor((perDay.get(today) ?? 0) / 60)

@@ -54,7 +54,6 @@ Owner: "When re-watching, don't show everything green. Show a counter instead (m
 - **The show's pill** "7 episodes rewatched · 9 extra watches" is `rewatchTotals` over `watchCounts` — the watch lists, no longer the `repeat_count` cache; its label truncates in the md+ rail (`Truncate`, the rest on hover or tap).
 - **Start rewatch on the title page:** a show on Watching or Paused with no round whose every aired regular episode has a watch (TMDB's live data on the page, `allAiredWatched`) offers **Start rewatch** beside its progress. It goes through `app_start_rewatch` (`useStartRewatch` — Paused becomes Watching; its toast names the round, "· from 12.10.2026" when it picked up a pass already under way). Not Daily's Ended/Canceled condition: this is the door for a show added while it was still running. Hidden while a round runs.
 - Covers, lists and the other "watched" marks are unchanged. Stats' footnote now says every watch is a play on its own date (149), not "one date per title".
-- `watchTally(watches, from, to)` counts the watches in a range with the episode/film split (unknown dates in no range; `to` is the first moment after it) — for the Personal page's "this week: 5 episodes · 1 film".
 
 ## TMDB images
 

@@ -42,19 +42,16 @@ const unit = (text: string) => <span className="text-meta font-medium text-fg-mu
 
 /**
  * NOK ⇄ TRY both ways: "1 NOK = 5.325 TRY" over "1,000 TRY = 188 NOK". The
- * day's change joins the second line only where it fits on it (a tile at least
- * 12.5rem wide inside); on a phone or laptop tile it stays in the popup.
+ * day's change sits in the tile's bottom row beside the screen's name
+ * (`nameExtra`), so it shows at every width without a line of its own.
  */
-function NokTryScreen({ rate, changePct }: { rate: number; changePct: number }) {
+function NokTryScreen({ rate }: { rate: number }) {
   return (
-    <div className="@container min-w-0">
+    <div className="min-w-0">
       <Truncate className="text-title font-bold tabular-nums text-fg">
         <span className="flex items-baseline gap-1">{unit('1 NOK =')}<AnimatedNumber value={rate} decimals={3} />{unit('TRY')}</span>
       </Truncate>
-      <span className="mt-0.5 flex min-w-0 items-center gap-1.5">
-        <Truncate className="text-meta tabular-nums text-fg-muted">{`1,000 TRY = ${fmt(1000 / rate, 0)} NOK`}</Truncate>
-        <span className="hidden shrink-0 @[12.5rem]:inline-flex"><ChangeBadge pct={changePct} /></span>
-      </span>
+      <Truncate className="mt-0.5 text-meta tabular-nums text-fg-muted">{`1,000 TRY = ${fmt(1000 / rate, 0)} NOK`}</Truncate>
     </div>
   )
 }
@@ -63,7 +60,7 @@ function NokTryScreen({ rate, changePct }: { rate: number; changePct: number }) 
 function currencyScreens(data: CurrencyData): GlanceScreen[] {
   const p = data.primary
   return [
-    { key: 'nok-try', name: 'NOK ⇄ TRY', body: <NokTryScreen rate={p.rate} changePct={p.changePct} /> },
+    { key: 'nok-try', name: 'NOK ⇄ TRY', nameExtra: <ChangeBadge pct={p.changePct} className="!text-micro" />, body: <NokTryScreen rate={p.rate} /> },
     { key: 'convert', name: 'Convert', body: <CurrencyConverter rawRates={data.rawRates} size="tile" /> },
     { key: 'eur-usd', name: 'EUR → USD', value: fmt(data.secondary.rate, 4), hint: <ChangeBadge pct={data.secondary.changePct} /> },
     { key: 'gold', name: 'Gold', value: <span className="flex items-baseline gap-1">{fmt(data.gold.nokPerGram, 0)}<span className="text-meta font-medium text-fg-muted">NOK/g</span></span>, hint: <span className="flex items-center gap-1.5"><span className="tabular-nums">${fmt(data.gold.usdPerOz, 0)}/oz</span><ChangeBadge pct={data.gold.changePct} /></span> },

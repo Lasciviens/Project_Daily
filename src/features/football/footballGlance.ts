@@ -61,6 +61,8 @@ export interface FavouriteTeamGlance {
   next?: GlanceMatch
   /** Its match being played now. */
   live?: GlanceLive
+  /** Its match on the day Personal shows (any state), with the score and the result once it has them. */
+  onDay?: GlanceMatch & { state: FbMatch['state']; score?: string; outcome?: Outcome }
 }
 
 /** One favourite's share of the Football page's reads. */
@@ -81,8 +83,9 @@ export function favouritesOf<F extends Pick<FootballFollow, 'kind' | 'favourite'
   return follows.filter(f => f.kind === 'team' && f.favourite === true)
 }
 
-export function teamGlance(follow: Pick<FootballFollow, 'id' | 'ref' | 'name' | 'logo'>, src: GlanceSources, nowIso: string): FavouriteTeamGlance {
+export function teamGlance(follow: Pick<FootballFollow, 'id' | 'ref' | 'name' | 'logo'>, src: GlanceSources, nowIso: string, day?: string): FavouriteTeamGlance {
   const own = new Set([follow.ref])
+  const dayMatch = day ? src.matches.find(m => involves(m, own) && osloParts(m.kickoff).date === day) : undefined
   const agenda = buildAgenda(src.matches.filter(m => involves(m, own)), nowIso, { aheadDays: REACH_DAYS, resultDays: REACH_DAYS })
   const row = standingOf(src.standings, follow.ref)
   const next = agenda.upcoming.flatMap(d => d.matches).find(m => m.state === 'pre')
@@ -101,6 +104,10 @@ export function teamGlance(follow: Pick<FootballFollow, 'id' | 'ref' | 'name' | 
     form: agenda.results.map(m => outcomeFor(m, follow.ref)).filter((o): o is Outcome => o !== null).slice(0, FORM_LENGTH).reverse(),
     next: next ? glanceMatch(next, follow.ref) : undefined,
     live: live ? { ...glanceMatch(live, follow.ref), score: scoreText(live) ?? '–', minute: live.clock || undefined } : undefined,
+    onDay: dayMatch ? {
+      ...glanceMatch(dayMatch, follow.ref), state: dayMatch.state,
+      score: scoreText(dayMatch) ?? undefined, outcome: outcomeFor(dayMatch, follow.ref) ?? undefined,
+    } : undefined,
   }
 }
 

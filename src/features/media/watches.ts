@@ -2,7 +2,7 @@
 // the watches of one episode or movie as the screens show and pick them, and
 // rewatch rounds. Pure (scripts/verify-media-watches.cjs).
 
-import { formatDate, toLocalDate, type DateValue } from '../../shared/utils/dateFormat'
+import { formatDate } from '../../shared/utils/dateFormat'
 import { isUnknownWatchedAt } from './trakt/traktDates'
 
 export interface Watch {
@@ -77,32 +77,6 @@ export function watchMark(watches: readonly Watch[], roundStartedAt?: string | n
     line: n === 1 ? watchedOnce(watches[0]) : '',
     lineDone: n === 1 && !roundStartedAt,
   }
-}
-
-/**
- * Watches in a time range, split by what was watched — "this week: 5 episodes
- * · 1 film". Every watch counts on its own date; one on an unknown date (NULL,
- * or the epoch) is in no range. `from` is in the range, `to` is the first
- * moment after it (this week = Monday to next Monday); a bare 'yyyy-MM-dd' is
- * local midnight.
- */
-export function watchTally(
-  watches: readonly { kind: 'episode' | 'movie'; watched_at: string | null }[],
-  from: DateValue,
-  to: DateValue,
-): { total: number; episodes: number; movies: number } {
-  const start = toLocalDate(from)?.getTime() ?? NaN
-  const end = toLocalDate(to)?.getTime() ?? NaN
-  const out = { total: 0, episodes: 0, movies: 0 }
-  for (const w of watches) {
-    if (!w.watched_at || isUnknownWatchedAt(w.watched_at)) continue
-    const t = Date.parse(w.watched_at)
-    if (!(t >= start && t < end)) continue
-    out.total++
-    if (w.kind === 'movie') out.movies++
-    else out.episodes++
-  }
-  return out
 }
 
 export type WatchPick = 'latest' | 'first'

@@ -358,6 +358,17 @@ eq([V.scoreText(results[0]), V.scoreText(fixtures[0])], ['0–1', null], 'score 
   eq(glance([lille, derby], '2026-10-21T17:30:00Z').next.eventId, '401915396', 'glance: kicked off but ESPN not live yet: still next, as on the page')
   eq(glance([lille, derby], '2026-10-21T20:00:00Z').next.eventId, '401888265', 'glance: over three hours past kick-off with no word from ESPN: the next one')
   eq(glance([lille], '2026-12-01T12:00:00Z').next, undefined, 'glance: nothing coming: no next')
+
+  // The day Personal shows: the favourite's match that day, in any state.
+  const onDay = (matches, day) => G.teamGlance(gs, { league: 'tur.1', standings: tur, matches }, NOW, day).onDay
+  eq([onDay([...fixtures, ...results], '2026-10-26')?.opponent, onDay([...fixtures, ...results], '2026-10-26')?.state, onDay([...fixtures, ...results], '2026-10-26')?.time],
+    ['Fenerbahce', 'pre', '19:30'], 'glance: the day with the derby shows it (Oslo day, kick-off time)')
+  const played = results.find(m => M.outcomeFor(m, '432'))
+  const playedDay = M.osloParts(played.kickoff).date
+  eq([onDay(results, playedDay)?.state, onDay(results, playedDay)?.outcome, typeof onDay(results, playedDay)?.score],
+    ['post', M.outcomeFor(played, '432'), 'string'], 'glance: a day with a played match shows its result and score')
+  eq(onDay([...fixtures, ...results], '2026-10-27'), undefined, 'glance: a day with no match: none')
+  eq(G.teamGlance(gs, { league: 'tur.1', standings: tur, matches: fixtures }, NOW).onDay, undefined, 'glance: no day asked: none')
   const barca = G.teamGlance({ ...gs, ref: '83', name: 'Barcelona' }, { league: 'esp.1', standings: tur, matches: [...fixtures, ...results] }, NOW)
   eq([barca.form, barca.next, barca.position], [['W'], undefined, undefined],
     'glance: only the favourite\'s own matches and table row count (Barcelona: its 4–1 at Galatasaray, nothing else)')

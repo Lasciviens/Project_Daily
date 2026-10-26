@@ -104,6 +104,7 @@ export function TrainingBand({ date }: { date: string }) {
   return (
     <Cell>
       <CellHeader icon={<Dumbbell />} title="Training" action={<CellLink to="/training">Open</CellLink>} />
+      {(workouts.isError || plans.isError) && <p className="text-meta text-fg-muted">Couldn't load all of your training — some numbers below may be missing.</p>}
       <div className="@container">
         <div className="grid grid-cols-2 gap-2 @[34rem]:grid-cols-3 @[62rem]:grid-cols-6">
           {/* 1. The day's session: done, still planned, or a rest day. */}
@@ -111,14 +112,14 @@ export function TrainingBand({ date }: { date: string }) {
             <StatBox icon={<Dumbbell aria-hidden />} label={date === today ? 'Today' : formatWeekdayDate(date)}
               ariaLabel={`${session.workout.title || 'Workout'}, done — open the session`}
               onClick={() => modal.open({ kind: 'training-session', workoutId: session.workout.id })}>
-              <StatValue>{session.workout.title || 'Workout'}</StatValue>
+              <StatValue text>{session.workout.title || 'Workout'}</StatValue>
               <StatNote tone="success">Done{getWorkoutDuration(session.workout) ? ` · ${getWorkoutDuration(session.workout)} min` : ''}{more > 0 ? ` · +${more} more` : ''}</StatNote>
             </StatBox>
           ) : open ? (
             <StatBox icon={<Dumbbell aria-hidden />} label={date === today ? 'Today' : formatWeekdayDate(date)}
               ariaLabel={`${open.plan.title}, ${SESSION_LABEL[open.status]} — open the session`}
               onClick={() => { const ref = planRefOf(open.plan, date); if (ref) modal.open({ kind: 'training-session', plan: ref }) }}>
-              <StatValue>{open.plan.title}</StatValue>
+              <StatValue text>{open.plan.title}</StatValue>
               <StatNote tone={SESSION_TONE[open.status]}>
                 {[planStartHHMM(open.plan), SESSION_LABEL[open.status]].filter(Boolean).join(' · ')}{more > 0 ? ` · +${more} more` : ''}
               </StatNote>

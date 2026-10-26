@@ -1,8 +1,9 @@
-import { useMemo } from 'react'
-import { cx } from '../../../../shared/ui'
-import { formatWeekdayDate } from '../../../../shared/utils/dateFormat'
+import { useMemo, type ReactNode } from 'react'
+import { MetaLine } from '../../../../shared/ui'
 import { todayStr } from '../../../../shared/utils/dateUtils'
 import { useDayTasks } from '../../../todo/hooks/useTodos'
+import { useScheduleBlocks } from '../../hooks/useSchedule'
+import { dayRowCounts, repeatDayKeys, repeatsToDoOn } from '../../dayItems'
 import { useHevyWorkoutsRange } from '../../../training/hooks/useHevyWorkouts'
 import { getWorkoutDuration } from '../../../training/components/calendar/calendarModel'
 import { makeWindow } from '../../../health/healthWindowStats'
@@ -15,17 +16,18 @@ import { useSubscriptions } from '../../../settings/hooks/useSubscriptions'
 import { dayFoodTotals } from '../../foodGlance'
 import { dayLineItems } from '../../personalGlance'
 
-// The day in one line, above Personal's cards (owner, 26.10.2026: "I should
-// see basically a daily summary for anything I plan or do"): tasks done of
-// the day's, training, steps, food, what was watched and read, and a
-// subscription renewing that day — only what the day has. Every figure is
-// the one its card (or the Tasks list) shows; this line only puts them side
-// by side. Beside the schedule (a wide board) it is visually hidden, as the
-// heading it replaces was.
+// The day in one line, under the date in Personal's header (owner,
+// 26.10.2026: "I should see basically a daily summary for anything I plan or
+// do"): tasks done of the day's, training, steps, food, what was watched and
+// read, and a subscription renewing that day — only what the day has. Every
+// figure is the one its card (or the Day plan) shows; this line only puts
+// them side by side. In the header it shows at every width (beside the
+// schedule too) and never moves the cards.
 
-export function DayLine({ date, hidden = false }: { date: string; hidden?: boolean }) {
+export function DayLine({ date, lead }: { date: string; lead?: ReactNode }) {
   const today = todayStr()
   const tasks = useDayTasks(date)
+  const { data: templates = [] } = useScheduleBlocks()
   const workouts = useHevyWorkoutsRange(date, date)
   const win = useMemo(() => makeWindow(date, date, today), [date, today])
   const steps = useMetricWindow('step_count', win)
@@ -37,8 +39,10 @@ export function DayLine({ date, hidden = false }: { date: string; hidden?: boole
   const items = useMemo(() => {
     const watched = watching.last30.filter(w => w.day === date)
     const minutes = (workouts.data ?? []).reduce((a, w) => a + (getWorkoutDuration(w) ?? 0), 0)
+    // The Day plan's own counts (a repeat's day still to do counts as open there too).
+    const counts = dayRowCounts(tasks.counts, repeatsToDoOn(templates, date, today, repeatDayKeys([...tasks.open, ...tasks.done, ...tasks.cancelled])))
     return dayLineItems({
-      tasks: { done: tasks.counts.done, total: tasks.counts.done + tasks.counts.open },
+      tasks: { done: counts.done, total: counts.done + counts.open },
       trainedMinutes: minutes,
       steps: steps.summary.value,
       kcal: date <= today ? dayFoodTotals(nut.data?.meals ?? [], date, today).calories : null,
@@ -46,15 +50,7 @@ export function DayLine({ date, hidden = false }: { date: string; hidden?: boole
       readMinutes: Math.floor((secondsByDay(reading.data ?? []).get(date) ?? 0) / 60),
       renewals: subs.filter(s => s.active && s.renews_on === date).map(s => s.name || s.service),
     })
-  }, [tasks.counts, workouts.data, steps.summary.value, nut.data, watching.last30, reading.data, subs, date, today])
+  }, [tasks.counts, tasks.open, tasks.done, tasks.cancelled, templates, workouts.data, steps.summary.value, nut.data, watching.last30, reading.data, subs, date, today])
 
-  const when = date === today ? 'Today' : formatWeekdayDate(date)
-  return (
-    <h2 className={cx(hidden ? 'sr-only' : 'mb-2', 'flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-meta text-fg-muted')}>
-      <span className="section-label !text-fg">{when}</span>
-      {items.length === 0
-        ? <span>· nothing logged yet</span>
-        : items.map(item => <span key={item} className="whitespace-nowrap tabular-nums"><span aria-hidden>· </span>{item}</span>)}
-    </h2>
-  )
+  return <MetaLine as="span" items={[lead, ...items]} className="tabular-nums" />
 }

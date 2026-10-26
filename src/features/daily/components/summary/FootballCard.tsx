@@ -6,6 +6,7 @@ import { TonePill, Truncate, cx, type Tone } from '../../../../shared/ui'
 import { useEntityModal } from '../../../../shared/modals'
 import { ErrorBoundary } from '../../../../shared/components/ErrorBoundary'
 import { formatWeekdayDate } from '../../../../shared/utils/dateFormat'
+import { todayStr } from '../../../../shared/utils/dateUtils'
 import { useFavouriteTeamsGlance } from '../../../football/hooks/useFavouriteTeamsGlance'
 import type { FavouriteTeamGlance } from '../../../football/footballGlance'
 
@@ -21,9 +22,19 @@ const ordinal = (n: number) => {
   return `${n}${s}`
 }
 
-function TeamGlance({ team }: { team: FavouriteTeamGlance }) {
+function TeamGlance({ team, date, today }: { team: FavouriteTeamGlance; date: string; today: string }) {
   const modal = useEntityModal()
-  const match = team.live ?? team.next
+  // The shown day's own match (its result once played), else what is live, else the next one.
+  const day = team.onDay && (date !== today || team.onDay.state === 'post' || !team.next) ? team.onDay : null
+  const match = team.live ?? day ?? team.next
+  const vs = match ? `${match.home ? 'v' : 'at'} ${match.opponent}` : ''
+  const label = team.live ? 'Live' : day ? (date === today ? 'Today' : formatWeekdayDate(date)) : 'Next match'
+  const value = team.live ? `${team.live.score}${team.live.minute ? ` · ${team.live.minute}` : ''}`
+    : day?.state === 'post' && day.score ? `${day.outcome ? `${day.outcome} ` : ''}${day.score}` : vs
+  const note = team.live ? vs
+    : day?.state === 'post' ? [vs, day.competition].filter(Boolean).join(' · ')
+    : match ? [day ? null : formatWeekdayDate(match.day), match.time, match.competition].filter(Boolean).join(' · ') : ''
+  const tone = team.live ? 'danger' as const : day?.state === 'post' && day.outcome ? OUTCOME_TONE[day.outcome] : undefined
   return (
     <div className="flex flex-col gap-2">
       <div className="grid grid-cols-2 gap-2">
@@ -48,15 +59,11 @@ function TeamGlance({ team }: { team: FavouriteTeamGlance }) {
         </StatBox>
       </div>
       {match ? (
-        <StatBox icon={team.live ? <Radio aria-hidden /> : <CalendarClock aria-hidden />} label={team.live ? 'Live' : 'Next match'}
-          ariaLabel={`${team.live ? 'Live' : 'Next'}: ${team.name} ${match.home ? 'v' : 'at'} ${match.opponent} — open the match`}
+        <StatBox icon={team.live ? <Radio aria-hidden /> : <CalendarClock aria-hidden />} label={label}
+          ariaLabel={`${label}: ${team.name} ${vs} — open the match`}
           onClick={() => match.league && modal.open({ kind: 'football-match', eventId: match.eventId, league: match.league })}>
-          <StatValue tone={team.live ? 'danger' : undefined}>
-            {team.live ? `${team.live.score}${team.live.minute ? ` · ${team.live.minute}` : ''}` : `${match.home ? 'v' : 'at'} ${match.opponent}`}
-          </StatValue>
-          <StatNote>
-            {team.live ? `${match.home ? 'v' : 'at'} ${match.opponent}` : [formatWeekdayDate(match.day), match.time, match.competition].filter(Boolean).join(' · ')}
-          </StatNote>
+          <StatValue text tone={tone}>{value}</StatValue>
+          {note && <StatNote>{note}</StatNote>}
         </StatBox>
       ) : (
         <p className="text-meta text-fg-muted">No match coming up.</p>
@@ -65,8 +72,9 @@ function TeamGlance({ team }: { team: FavouriteTeamGlance }) {
   )
 }
 
-export function FootballCard() {
-  const g = useFavouriteTeamsGlance()
+export function FootballCard({ date }: { date: string }) {
+  const g = useFavouriteTeamsGlance({ day: date })
+  const today = todayStr()
   const [pick, setPick] = useState<string | null>(null)
   const team = g.teams.find(t => t.id === pick) ?? g.teams[0] ?? null
 
@@ -93,7 +101,7 @@ export function FootballCard() {
             {team.logo && <img src={team.logo} alt="" className="h-6 w-6 shrink-0 object-contain" />}
             <Truncate className="text-body font-semibold text-fg">{team.name}</Truncate>
           </div>
-          <TeamGlance team={team} />
+          <TeamGlance team={team} date={date} today={today} />
           {g.failed.includes(team.name) && <p className="text-meta text-fg-muted">ESPN didn't answer for {team.name} just now.</p>}
         </ErrorBoundary>
       )}

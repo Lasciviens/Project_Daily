@@ -12,7 +12,7 @@ require('sucrase/register')
 process.env.TZ = 'Europe/Oslo'
 const assert = require('node:assert/strict')
 const {
-  sortWatches, watchDate, watchDates, watchedOnce, watchMark, watchTally, pickWatch, watchFor, cacheWatches,
+  sortWatches, watchDate, watchDates, watchedOnce, watchMark, pickWatch, watchFor, cacheWatches,
   isPlaceholder, editableWatches, inRound, watchedInRound, doneInRound,
   rewatchStartRound, nextInRound, roundProgress, airedRegularEpisodes, watchCounts, rewatchTotals,
 } = require('../src/features/media/watches')
@@ -158,10 +158,6 @@ ok(rewatchTotals([]), { episodes: 0, extraWatches: 0 }, 'nothing rewatched')
     kw('movie', null),                          // a film on an unknown date
     kw('episode', '1970-01-01T00:00:00.000Z'),  // an episode on an unknown date
   ]
-  ok(watchTally(week, '2026-10-26', '2026-11-02'), { total: 4, episodes: 3, movies: 1 }, 'Monday to next Monday, local days: from in, to out')
-  ok(watchTally(week, new Date('2026-10-25T23:00:00.000Z'), '2026-11-01T23:00:00.000Z'), { total: 4, episodes: 3, movies: 1 }, 'the same bounds as instants')
-  ok(watchTally(week, '1969-12-31', '1970-01-02'), { total: 0, episodes: 0, movies: 0 }, 'an unknown date is in no range')
-  ok(watchTally([], '2026-10-26', '2026-11-02'), { total: 0, episodes: 0, movies: 0 }, 'no watches')
 }
 
 console.log(`verify-media-watches: ${n} assertions passed`)

@@ -11,10 +11,10 @@ const names = (g: { name: string }[] | null | undefined) => (g ?? []).map(x => x
 
 /** The library and every watched episode row, as the year review reads them. */
 function useReviewInputs() {
-  const { data: movieEntries = [], isLoading: ml } = useMovies()
-  const { data: tvEntries = [], isLoading: tl } = useTVSeries()
+  const { data: movieEntries = [], isLoading: ml, isError: me } = useMovies()
+  const { data: tvEntries = [], isLoading: tl, isError: te } = useTVSeries()
   const rows = useQuery({ queryKey: qk.media.episodeRows(), queryFn: fetchAllWatchedEpisodeRows, staleTime: STALE.long })
-  return { movieEntries, tvEntries, rows, ml, tl }
+  return { movieEntries, tvEntries, rows, ml, tl, failed: me || te || rows.isError }
 }
 
 /** One period's stats (a year, or `'all'`), from the library plus every watched episode row. */
@@ -65,16 +65,17 @@ function reviewData(movieEntries: UserMovieEntry[], tvEntries: UserTVEntry[], ro
  *  watch on its own day, lengths by the year review's runtime rule), the
  *  latest titles watched up to the day, and the library — for the picks. */
 export function useWatchingGlance(day: string) {
-  const { movieEntries, tvEntries, rows, ml, tl } = useReviewInputs()
+  const { movieEntries, tvEntries, rows, ml, tl, failed } = useReviewInputs()
   return useMemo(() => {
     const { movies, episodes, shows } = reviewData(movieEntries, tvEntries, rows.data ?? [])
     const shift = (n: number) => { const d = new Date(`${day}T12:00:00`); d.setDate(d.getDate() + n); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }
     return {
       loading: ml || tl || rows.isLoading,
+      failed,
       last30: watchesBetween(shift(-29), day, movies, episodes, shows),
       lately: watchesBetween(shift(-180), day, movies, episodes, shows),
       movieEntries,
       tvEntries,
     }
-  }, [movieEntries, tvEntries, rows.data, rows.isLoading, ml, tl, day])
+  }, [movieEntries, tvEntries, rows.data, rows.isLoading, ml, tl, failed, day])
 }

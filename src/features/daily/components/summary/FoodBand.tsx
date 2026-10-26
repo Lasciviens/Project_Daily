@@ -10,6 +10,7 @@ import { useNutritionCoach } from '../../hooks/useNutritionCoach'
 import { useWaterDay } from '../../hooks/useWater'
 import { dayMacroTargets } from '../../../health/goal/cutDecision'
 import { dayFoodTotals, litres } from '../../foodGlance'
+import { MACRO_COLOR } from '../../../recipes/macroColors'
 
 // Personal's food summary (owner, 26.10.2026: "Just a clear summary of food,
 // which opens a bigger popup with details. Calories, macros.. Water.."):
@@ -18,11 +19,13 @@ import { dayFoodTotals, litres } from '../../foodGlance'
 // carb and fat goals). A tap opens the day's details; logging food stays on
 // the Food page. A day still to come shows what is planned for it.
 
-function Bar({ value, tone }: { value: number; tone?: Tone }) {
+// Food's colours (food rules): a macro's own colour only on that macro
+// (MACRO_COLOR), calories over the goal danger, protein reached success.
+function Bar({ value, tone, color }: { value: number; tone?: Tone; color?: string }) {
   return (
     <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-line" aria-hidden>
-      <div data-tone={tone} className={cx('h-full rounded-full transition-[width] duration-300', tone ? 'tone-solid' : 'bg-accent-500')}
-        style={{ width: `${Math.round(Math.min(1, Math.max(0, value)) * 100)}%` }} />
+      <div data-tone={tone} className={cx('h-full rounded-full transition-[width] duration-300', tone ? 'tone-solid' : !color && 'bg-fg-faint')}
+        style={{ width: `${Math.round(Math.min(1, Math.max(0, value)) * 100)}%`, ...(!tone && color ? { background: color } : {}) }} />
     </div>
   )
 }
@@ -50,6 +53,7 @@ export function FoodBand({ date }: { date: string }) {
           Details
         </button>
       } />
+      {nut.isError && <p className="text-meta text-fg-muted">Couldn't load the day's food — the numbers below may be missing some of it.</p>}
       <div className="@container">
         <div className="grid grid-cols-2 gap-2 @[25rem]:grid-cols-3 @[40rem]:grid-cols-5">
           <StatBox icon={<Flame aria-hidden />} label={totals.planned ? 'Calories · planned' : 'Calories'} onClick={show} ariaLabel={name('Calories')}>
@@ -57,7 +61,7 @@ export function FoodBand({ date }: { date: string }) {
               <>
                 <StatValue tone={kcalLeft < 0 ? 'danger' : undefined}>{totals.calories.toLocaleString('en-GB')}</StatValue>
                 <StatNote>of {goal.kcal.toLocaleString('en-GB')} kcal</StatNote>
-                <Bar value={goal.kcal ? totals.calories / goal.kcal : 0} tone={kcalLeft < 0 ? 'danger' : undefined} />
+                <Bar value={goal.kcal ? totals.calories / goal.kcal : 0} tone={kcalLeft < 0 ? 'danger' : undefined} color={MACRO_COLOR.calories} />
               </>
             )}
           </StatBox>
@@ -66,7 +70,7 @@ export function FoodBand({ date }: { date: string }) {
               <>
                 <StatValue tone={goal.protein > 0 && totals.protein_g >= goal.protein ? 'success' : undefined}>{totals.protein_g} g</StatValue>
                 <StatNote>of {goal.protein} g</StatNote>
-                <Bar value={goal.protein ? totals.protein_g / goal.protein : 0} tone={goal.protein > 0 && totals.protein_g >= goal.protein ? 'success' : undefined} />
+                <Bar value={goal.protein ? totals.protein_g / goal.protein : 0} tone={goal.protein > 0 && totals.protein_g >= goal.protein ? 'success' : undefined} color={MACRO_COLOR.protein} />
               </>
             )}
           </StatBox>
@@ -75,7 +79,7 @@ export function FoodBand({ date }: { date: string }) {
               <>
                 <StatValue>{totals.carbs_g} g</StatValue>
                 <StatNote>of {goal.carbs} g</StatNote>
-                <Bar value={goal.carbs ? totals.carbs_g / goal.carbs : 0} />
+                <Bar value={goal.carbs ? totals.carbs_g / goal.carbs : 0} color={MACRO_COLOR.carbs} />
               </>
             )}
           </StatBox>
@@ -84,7 +88,7 @@ export function FoodBand({ date }: { date: string }) {
               <>
                 <StatValue>{totals.fat_g} g</StatValue>
                 <StatNote>of {goal.fat} g</StatNote>
-                <Bar value={goal.fat ? totals.fat_g / goal.fat : 0} />
+                <Bar value={goal.fat ? totals.fat_g / goal.fat : 0} color={MACRO_COLOR.fat} />
               </>
             )}
           </StatBox>
@@ -94,7 +98,7 @@ export function FoodBand({ date }: { date: string }) {
               <>
                 <StatValue tone={ml >= waterGoal ? 'success' : undefined}>{litres(ml)} L</StatValue>
                 <StatNote>of {litres(waterGoal)} L</StatNote>
-                <Bar value={ml / waterGoal} tone={ml >= waterGoal ? 'success' : undefined} />
+                <Bar value={ml / waterGoal} tone={ml >= waterGoal ? 'success' : 'info'} />
               </>
             )}
           </StatBox>

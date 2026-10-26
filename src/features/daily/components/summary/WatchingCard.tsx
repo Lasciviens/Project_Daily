@@ -87,6 +87,9 @@ export function WatchingCard({ date }: { date: string }) {
   return (
     <Cell>
       <CellHeader icon={<Clapperboard />} title="Watching" action={<CellLink to="/media">Media</CellLink>} />
+      {g.failed && !g.loading && g.last30.length === 0 && (
+        <p className="text-meta text-fg-muted">Couldn't load what you watched — it shows again once the library loads.</p>
+      )}
       <div className="grid grid-cols-2 gap-2">
         <StatBox icon={<CalendarDays aria-hidden />} label="Last 7 days">
           {g.loading ? <StatEmpty loading /> : week.minutes === 0 ? <StatEmpty loading={false} text="Nothing watched" /> : (
@@ -132,7 +135,7 @@ export function WatchingCard({ date }: { date: string }) {
           </ul>
         </div>
       )}
-      {!g.loading && lately.length === 0 && !picks.film && !picks.series && (
+      {!g.loading && !g.failed && lately.length === 0 && !picks.film && !picks.series && (
         <p className="flex items-center gap-1.5 text-body text-fg-muted"><Tv className="h-4 w-4" aria-hidden />Nothing watched yet, and the watchlist is empty.</p>
       )}
     </Cell>

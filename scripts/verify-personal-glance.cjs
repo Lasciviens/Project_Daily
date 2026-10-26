@@ -111,7 +111,9 @@ eq(G.pickBySeed(['a', 'b', 'c'], '2026-10-26:0:film'), G.pickBySeed(['a', 'b', '
   const cards = (src.match(/<div className="min-w-0"><[A-Z]\w+Card\b/g) || []).length
   eq(cards, 6, 'six cards in fixed slots')
   eq(/@\[36rem\]:grid-cols-2 @\[55rem\]:grid-cols-3/.test(src) && !/grid-cols-4|auto-fill/.test(src), true, 'explicit 1 / 2 / 3 columns, never a fourth or auto-fill')
-  eq(/<TrainingBand\b/.test(src) && /<FoodBand\b/.test(src) && /<DayLine\b/.test(src), true, 'the day line, then the Training and Food bands')
+  eq(/<TrainingBand\b/.test(src) && /<FoodBand\b/.test(src), true, 'the Training and Food bands above the cards')
+  const page = fs.readFileSync(path.join(__dirname, '../src/features/daily/pages/DailyPage.tsx'), 'utf8')
+  eq(/subtitle=\{[\s\S]{0,200}<DayLine\b/.test(page), true, 'the day line sits under the date in the page header (shown at every width)')
   const kit = fs.readFileSync(path.join(__dirname, '../src/features/daily/components/summary/cellKit.tsx'), 'utf8')
   const cardsDir = path.join(__dirname, '../src/features/daily/components/summary')
   const users = fs.readdirSync(cardsDir).filter(f => /\.tsx$/.test(f) && f !== 'cellKit.tsx' && /StatBox/.test(fs.readFileSync(path.join(cardsDir, f), 'utf8')))

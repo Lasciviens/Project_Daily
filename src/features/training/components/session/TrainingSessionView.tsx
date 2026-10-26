@@ -123,7 +123,7 @@ export function TrainingSessionView({ request, onClose }: { request: SessionRequ
       const status = sessionStatus(planFacts({
         date: day, startHHMM: plan.info.startHHMM, taskId: orphan.id, taskStatus: orphan.status,
         taskWorkoutId: orphan.hevy_workout_id, taskRoutineId: orphan.hevy_routine_id ?? null, routineId: plan.info.routineId,
-        taskMissed: orphan.closed_reason === 'missed',
+        taskMissed: orphan.closed_reason === 'missed', firstDate: orphan.first_plan_date ?? null,
       }, { today: todayStr, nowHHMM: now, skips: skips ?? [] }))
       return { plan, status, weekly: null, skipId: null }
     }
@@ -144,7 +144,8 @@ export function TrainingSessionView({ request, onClose }: { request: SessionRequ
       taskStatus: task?.status ?? block?.task_status ?? null,
       taskWorkoutId: task?.hevy_workout_id ?? block?.task_workout_id ?? null,
       taskRoutineId: task?.hevy_routine_id ?? block?.task_routine_id ?? null,
-      taskMissed: task?.closed_reason === 'missed',
+      taskMissed: task ? task.closed_reason === 'missed' : block?.task_status === 'cancelled' && block.task_closed_reason === 'missed',
+      firstDate: task?.first_plan_date ?? block?.task_first_plan_date ?? null,
       routineId: routine?.id ?? null,
     }, { today: todayStr, nowHHMM: now, skips: skips ?? [], hasActivity })
     const status = sessionStatus(facts)

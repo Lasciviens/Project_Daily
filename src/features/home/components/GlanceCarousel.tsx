@@ -11,6 +11,8 @@ export interface GlanceScreen {
   key: string
   /** What this screen shows, next to the tile's label ("Next hours"). */
   name: string
+  /** A short fact shown in the bottom row in the name's place (the Money tile's day change). */
+  nameExtra?: ReactNode
   value?: ReactNode
   hint?: ReactNode
   /** Instead of value/hint: a compact body (a strip of hours, three days…). */
@@ -200,7 +202,10 @@ export function GlanceCarousel({ id, label, icon, art, screens, loading, to, onC
 
       {count > 1 && !loading && (
         <div aria-hidden className="mt-1.5 flex min-w-0 items-center gap-2">
-          <Truncate className="min-w-0 flex-1 text-micro font-medium text-fg-faint">{screen?.name}</Truncate>
+          {/* A screen with its own fact here (the Money tile's day change) shows it in the name's place; the name stays in the tile's label for a screen reader. */}
+          {screen?.nameExtra != null
+            ? <span className="min-w-0 flex-1">{screen.nameExtra}</span>
+            : <Truncate className="min-w-0 flex-1 text-micro font-medium text-fg-faint">{screen?.name}</Truncate>}
           <span className="flex shrink-0 gap-1">
             {screens.map((s, i) => (
               <span key={s.key} className={cx('h-1.5 rounded-full transition-[width,background-color] duration-200', i === current ? 'w-3.5 bg-accent-500' : 'w-1.5 bg-line-strong')} />

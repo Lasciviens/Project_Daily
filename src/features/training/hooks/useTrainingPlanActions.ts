@@ -6,7 +6,7 @@ import { syncGoogleTasksSoon, useDeleteTask } from '../../todo/hooks/useTodos'
 import { useDeleteScheduleBlock, useDeleteTimeBlock } from '../../daily/hooks/useSchedule'
 import {
   ensurePlanTask, markPlanDone, planTaskId, movePlan, reopenPlan,
-  skipPlan, undoPlanSkip,
+  skipPlan, undoPlanSkip, carryPastWeekMoveToCalendar,
   type PlanTarget, type TrainingPlanRef,
 } from '../api/trainingPlanApi'
 
@@ -64,10 +64,11 @@ export function useTrainingPlanActions() {
     successMessage: (_: void, v: { plan: TrainingPlanRef; date: string; pastWeek?: boolean }) => v.pastWeek
       ? `Skipped in its week · that week's ${v.plan.info.title} moved to ${formatWeekdayDate(v.date)}`
       : `Moved to ${formatWeekdayDate(v.date)}`,
-    mutationFn: async ({ plan, date, startHHMM }: { plan: TrainingPlanRef; date: string; startHHMM: string | null; pastWeek?: boolean }) => {
+    mutationFn: async ({ plan, date, startHHMM, pastWeek }: { plan: TrainingPlanRef; date: string; startHHMM: string | null; pastWeek?: boolean }) => {
       const rows = await ensurePlanTask(plan.target, plan.info)
       await movePlan(rows, plan.info, { date, startHHMM })
       deliverGoogleTasks(rows.taskId)
+      if (pastWeek) carryPastWeekMoveToCalendar(rows, date)
     },
     invalidates: [...INVALIDATES],
   })
