@@ -59,8 +59,9 @@ select public.t_ok(not has_function_privilege('authenticated', 'public.training_
 select public.t_ok((select count(*) = 0 from public.tasks
                      where (hevy_routine_id is not null or source_type = 'training_session') and first_plan_date is null),
   '167: every training session made before it has its first day (backfill)');
-select public.t_ok((select first_plan_date = public.t_d(-10) from public.tasks where id = '00000000-0000-4000-8000-00000000c061'),
-  '167: a repeat''s day moved before 167 keeps its own day as its first day');
+select public.t_ok((select first_plan_date = public.t_d(2) from public.tasks where id = '00000000-0000-4000-8000-00000000c061')
+                   and (select first_plan_date = public.t_d(1) from public.tasks where id = '00000000-0000-4000-8000-00000000c063'),
+  '167: a repeat''s day moved out of its week before 167 starts its week where it is planned now; one moved inside it keeps its own day');
 
 -- ═══ 1. A session's first day ════════════════════════════════════════════
 select public.t2_session('00000000-0000-4000-8000-0000000d0101', 'Lower B', 'r2-lower', 3, '17:00');
@@ -164,8 +165,11 @@ set role authenticated;
 update public.tasks set due_date = public.t_d(19), due_time = '19:00' where id = '00000000-0000-4000-8000-0000000d0501';
 reset role;
 select public.t_ok((select status = 'cancelled' and due_date = public.t_d(10) and due_time = '17:00' from public.tasks where id = '00000000-0000-4000-8000-0000000d0501')
-                   and public.t_skip_of('00000000-0000-4000-8000-0000000d0501') = 'Moved more than 7 days, to ' || to_char(public.t_d(19), 'DD.MM.YYYY'),
-  'moved 9 days: back on its first day at its old time, skipped there ("Moved more than 7 days, to …")');
+                   and public.t_skip_of('00000000-0000-4000-8000-0000000d0501') = 'Moved 7 or more days, to ' || to_char(public.t_d(19), 'DD.MM.YYYY'),
+  'moved 9 days: back on its first day at its old time, skipped there ("Moved 7 or more days, to …")');
+select public.t_ok((select completed_at = ((public.t_d(10) + 1)::timestamp at time zone 'Europe/Oslo') - interval '1 second'
+                      from public.tasks where id = '00000000-0000-4000-8000-0000000d0501'),
+  'its skip is closed on its own first day — never on the day of the move');
 select public.t_ok((select count(*) = 1 from public.tasks t
                      where t.schedule_block_id = '00000000-0000-4000-8000-0000000d05e1' and t.occurrence_date = public.t_d(17)
                        and t.status = 'open' and t.due_date = public.t_d(19) and t.due_time = '19:00' and t.first_plan_date = public.t_d(17))
@@ -231,6 +235,46 @@ select public.t_ok((select status = 'done' and hevy_workout_id = 'w2-upper-40' f
                    and public.t_skip_of('00000000-0000-4000-8000-0000000d0506') is null,
   'a session done, moved 9 days: stays done on its own day (never skipped)');
 
+-- ═══ 5b. A session moved out of its week before 167 (the backfill) ═══════
+insert into public.hevy_routines (id, user_id, title) values ('r2-push', '00000000-0000-0000-0000-000000000002', 'Push A');
+insert into public.schedule_blocks (id, user_id, title, days_of_week, start_time, end_time, category, effective_from)
+values ('00000000-0000-4000-8000-0000000d05e2', '00000000-0000-0000-0000-000000000002', 'Push A',
+        array[extract(dow from public.t_d(-9))::int], '17:00', '18:00', 'training', public.t_d(-60));
+alter table public.tasks disable trigger trg_training_first_plan_date;
+insert into public.tasks (id, user_id, title, domain, section, status, priority, due_date, due_time, source_type, hevy_routine_id,
+                          schedule_block_id, occurrence_date)
+values ('00000000-0000-4000-8000-0000000d0551', '00000000-0000-0000-0000-000000000002', 'Push A', 'personal', 'backlog', 'open', 'medium',
+        public.t_d(-1), '17:00', 'training_session', 'r2-push', '00000000-0000-4000-8000-0000000d05e2', public.t_d(-9));
+alter table public.tasks enable trigger trg_training_first_plan_date;
+select public.training_first_plan_backfill();
+select public.t_ok((select first_plan_date = public.t_d(-1) from public.tasks where id = '00000000-0000-4000-8000-0000000d0551'),
+  'backfill: a repeat''s day moved 8 days before 167 starts its week on the day it is planned for');
+select public.t2_workout('w2-push-1', 'r2-push', -1, '17:05');
+select public.t_ok((select status = 'done' and hevy_workout_id = 'w2-push-1' from public.tasks where id = '00000000-0000-4000-8000-0000000d0551'),
+  'its own workout on that day completes it (never skipped back onto its old day)');
+
+-- ═══ 5c. A repeat whose session that week is already done: no extra session ═
+insert into public.hevy_routines (id, user_id, title) values ('r2-pull', '00000000-0000-0000-0000-000000000002', 'Pull B');
+insert into public.schedule_blocks (id, user_id, title, days_of_week, start_time, end_time, category, effective_from)
+values ('00000000-0000-4000-8000-0000000d05e3', '00000000-0000-0000-0000-000000000002', 'Pull B',
+        array[extract(dow from public.t_d(-16))::int], '18:00', '19:00', 'training', public.t_d(-60));
+insert into public.tasks (id, user_id, title, domain, section, status, priority, due_date, due_time, source_type, hevy_routine_id,
+                          schedule_block_id, occurrence_date) values
+  ('00000000-0000-4000-8000-0000000d0561', '00000000-0000-0000-0000-000000000002', 'Pull B', 'personal', 'backlog', 'open', 'medium',
+   public.t_d(-16), '18:00', 'training_session', 'r2-pull', '00000000-0000-4000-8000-0000000d05e3', public.t_d(-16)),
+  ('00000000-0000-4000-8000-0000000d0562', '00000000-0000-0000-0000-000000000002', 'Pull B', 'personal', 'backlog', 'open', 'medium',
+   public.t_d(-9), '18:00', 'training_session', 'r2-pull', '00000000-0000-4000-8000-0000000d05e3', public.t_d(-9));
+select public.t2_workout('w2-pull-9', 'r2-pull', -9, '18:05');
+select public.t_ok((select status = 'done' from public.tasks where id = '00000000-0000-4000-8000-0000000d0562'), 'before: the next week''s Pull B is done');
+set role authenticated;
+update public.tasks set due_date = public.t_d(-8) where id = '00000000-0000-4000-8000-0000000d0561';
+reset role;
+select public.t_ok((select status = 'cancelled' from public.tasks where id = '00000000-0000-4000-8000-0000000d0561')
+                   and public.t_day_of('00000000-0000-4000-8000-0000000d0561') = public.t_d(-16)
+                   and not exists (select 1 from public.tasks where user_id = '00000000-0000-0000-0000-000000000002' and hevy_routine_id = 'r2-pull'
+                                     and status = 'open'),
+  'moved 8 days onto a week whose Pull B is done: skipped in its own week, and no extra Pull B is made');
+
 -- ═══ 6. The end of a session's week ══════════════════════════════════════
 -- a. a one-off never done, its week over
 select public.t2_session('00000000-0000-4000-8000-0000000d0601', 'Lower B', 'r2-lower', -50, '17:00');
@@ -258,12 +302,23 @@ update public.tasks set status = 'open', hevy_workout_id = null, completed_at = 
 update public.time_blocks set date = public.t_d(-76) where task_id = '00000000-0000-4000-8000-0000000d0605';
 alter table public.tasks enable trigger trg_training_task_recheck;
 
+-- f. a session whose date was cleared by hand: no day to skip it on
+insert into public.tasks (id, user_id, title, domain, section, status, priority, due_date, source_type, hevy_routine_id, first_plan_date)
+values ('00000000-0000-4000-8000-0000000d0606', '00000000-0000-0000-0000-000000000002', 'Upper B', 'personal', 'backlog', 'open', 'medium',
+        null, 'training_session', 'r2-upper', public.t_d(-30));
+
 create temp table t_run as select public.repeat_days_for_user('00000000-0000-0000-0000-000000000002', public.t_d(0)) as r;
 select public.t_ok((select (r ->> 'skipped')::int >= 3 from t_run),
   'the account''s run says how many sessions it skipped');
 select public.t_ok((select status = 'cancelled' from public.tasks where id = '00000000-0000-4000-8000-0000000d0601')
                    and public.t_skip_of('00000000-0000-4000-8000-0000000d0601') = 'Not done within 7 days',
   'a: not done in its week — skipped ("Not done within 7 days")');
+select public.t_ok((select completed_at = ((public.t_d(-50) + 1)::timestamp at time zone 'Europe/Oslo') - interval '1 second'
+                      from public.tasks where id = '00000000-0000-4000-8000-0000000d0601'),
+  'a: closed on its own first day (the day lists file it there), not on the day the job ran');
+select public.t_ok((select status = 'open' and due_date is null from public.tasks where id = '00000000-0000-4000-8000-0000000d0606')
+                   and public.t_skip_of('00000000-0000-4000-8000-0000000d0606') is null,
+  'f: a session with no date is left as it is');
 select public.t_ok((select status = 'cancelled' from public.tasks where id = '00000000-0000-4000-8000-0000000d0602')
                    and public.t_day_of('00000000-0000-4000-8000-0000000d0602') = public.t_d(-60)
                    and public.t_skip_of('00000000-0000-4000-8000-0000000d0602') = 'Not done within 7 days',

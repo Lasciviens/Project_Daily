@@ -24,15 +24,15 @@
 --  C. Skipped, then done inside its week: done (the skip goes, 142). Skipped
 --     and moved to today or later inside its week: to do again.
 --  D. Moved 7 or more days after its first day: it stays in its own week —
---     back on its first day, skipped ("Moved more than 7 days, to …"; a
+--     back on its first day, skipped ("Moved 7 or more days, to …"; a
 --     session done stays done) — and the same plan's session of the week the
 --     new day falls in moves to that day instead (the next week's, made from
 --     the repeat if nobody acted on it yet); a one-off plan with none gets a
---     new session there.
+--     new session there. A skip is closed on its first day (156's rule).
 --  E. Not done by the end of its week: skipped on its first day ("Not done
 --     within 7 days") — the hourly job (156) and the app's call when it
---     opens. A session planned for today or later (moved there before 167)
---     is left as planned.
+--     opens. A session planned for today or later, or with no date, is left
+--     as it is.
 --  F. 166's recheck unlinks a workout of another routine (it never fits).
 --     Links like that made before 167 are fixed by the one-off repair in
 --     docs/deploy-checklist.md (the owner runs it once).
@@ -40,7 +40,8 @@
 -- hand, 142's skip ⇄ cancel, 156's missed days inside their week.
 --
 -- Re-runnable: ADD COLUMN IF NOT EXISTS, CREATE OR REPLACE, DROP TRIGGER IF
--- EXISTS; the backfill only fills what is empty.
+-- EXISTS; the backfill only fills what is empty. A repeat's day moved out of
+-- its week before 167 starts its week where it is planned now (the backfill).
 -- ═══════════════════════════════════════════════════════════════════════════
 
 -- ── A. A session's first day ───────────────────────────────────────────────
@@ -75,13 +76,37 @@ create trigger trg_training_first_plan_date
   for each row execute function public.training_first_plan_date();
 
 -- Existing sessions: a repeat's day is its first day; any other session's
--- first day is the day it is planned for now (a move before 167 left no trace).
-update public.tasks t
-   set first_plan_date = coalesce(t.occurrence_date,
-                                  (select min(b.date) from public.time_blocks b where b.task_id = t.id),
-                                  t.due_date)
- where t.first_plan_date is null
-   and (t.hevy_routine_id is not null or t.source_type = 'training_session');
+-- first day is the day it is planned for now (a move before 167 left no
+-- trace). A repeat's day moved out of its week before 167 starts its week
+-- where it is planned now — the move was made under the old rules, so its
+-- own workout on that day still completes it.
+create or replace function public.training_first_plan_backfill()
+returns integer
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  n integer;
+begin
+  with t as (
+    select x.id, x.occurrence_date,
+           coalesce((select min(b.date) from time_blocks b where b.task_id = x.id), x.due_date) as plan_day
+      from tasks x
+     where x.first_plan_date is null
+       and (x.hevy_routine_id is not null or x.source_type = 'training_session')
+  )
+  update tasks u
+     set first_plan_date = case when t.occurrence_date is not null and t.plan_day > t.occurrence_date + 6 then t.plan_day
+                                else coalesce(t.occurrence_date, t.plan_day) end
+    from t
+   where u.id = t.id;
+  get diagnostics n = row_count;
+  return n;
+end;
+$$;
+revoke all on function public.training_first_plan_backfill() from public, anon, authenticated;
+select public.training_first_plan_backfill();
 
 -- ── B, C. The sessions a workout on day p_day can complete ─────────────────
 -- 141/156's candidates (not linked yet; open — or ticked by hand that day —
@@ -293,13 +318,16 @@ begin
   -- 1. Back on its first day (its slot follows, 142; 166 looks at its workout again).
   update tasks set due_date = t.first_plan_date, due_time = coalesce(p_back_time, due_time) where id = p_task;
 
-  -- 2. Skipped there.
+  -- 2. Skipped there, closed on that day (156's rule for a day that passed),
+  --    so every list files it on its own day, never on the day of the move.
   select * into t from tasks where id = p_task;
   if t.status in ('open', 'in_progress', 'waiting') or (t.status = 'cancelled' and t.closed_reason = 'missed') then
     insert into training_skips (user_id, routine_id, week_start, reason, task_id, plan_date)
     values (t.user_id, t.hevy_routine_id, date_trunc('week', t.first_plan_date)::date,
-            'Moved more than 7 days, to ' || to_char(p_to, 'DD.MM.YYYY'), t.id, t.first_plan_date)
+            'Moved 7 or more days, to ' || to_char(p_to, 'DD.MM.YYYY'), t.id, t.first_plan_date)
     on conflict do nothing;
+    update tasks set completed_at = ((t.first_plan_date + 1)::timestamp at time zone 'Europe/Oslo') - interval '1 second'
+     where id = p_task and status = 'cancelled';
   end if;
 
   -- 3a. That week's session of the same plan, still to do.
@@ -341,7 +369,9 @@ begin
     return;
   end if;
 
-  -- 3c. A one-off plan: a new session on p_to, as the planner makes one.
+  -- 3c. A one-off plan: a new session on p_to, as the planner makes one. A
+  --     repeat whose session that week is already done or skipped gets none.
+  if t.schedule_block_id is not null then return; end if;
   insert into tasks (user_id, title, description, domain, section, status, priority, due_date, due_time,
                      source_type, source_id, hevy_routine_id)
   values (t.user_id, t.title, t.description, t.domain, item_section_for_day(p_to, v_today), 'open', t.priority,
@@ -438,7 +468,8 @@ begin
        and (t.status in ('open', 'in_progress', 'waiting') or (t.status = 'cancelled' and t.closed_reason = 'missed'))
      order by t.first_plan_date, t.id
   loop
-    continue when r.plan_day is not null and r.plan_day >= p_today;
+    -- No date (cleared by hand) or planned for today or later: left as it is.
+    continue when r.plan_day is null or r.plan_day >= p_today;
     if r.plan_day is distinct from r.first_plan_date then
       update public.tasks set due_date = r.first_plan_date where id = r.id;
     end if;
@@ -448,7 +479,12 @@ begin
      where t.id = r.id
        and (t.status in ('open', 'in_progress', 'waiting') or (t.status = 'cancelled' and t.closed_reason = 'missed'))
     on conflict do nothing;
-    if found then n := n + 1; end if;
+    if found then
+      n := n + 1;
+      -- Closed on its own first day (156's rule), never on the day the job ran.
+      update public.tasks set completed_at = ((r.first_plan_date + 1)::timestamp at time zone 'Europe/Oslo') - interval '1 second'
+       where id = r.id and status = 'cancelled';
+    end if;
   end loop;
   return n;
 end;
