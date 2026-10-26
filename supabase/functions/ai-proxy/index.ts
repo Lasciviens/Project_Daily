@@ -2223,7 +2223,65 @@ async function getNextTransit(supabase: AnyRecord, userId: string, args: AnyReco
 
 const ENTUR_CLIENT  = 'lasciviens-project-daily'
 const JOURNEY_URL   = 'https://api.entur.io/journey-planner/v3/graphql'
-const GEOCODER_URL  = 'https://api.entur.io/geocoder/v1/autocomplete'
+// EnTur's place search, v3 — a verbatim copy of src/features/home/api/enturGeocoder.ts
+// (scripts/verify-entur-geocoder.cjs compares them; docs/integrations/entur.md).
+// <entur-geocoder>
+const GEOCODER_V3 = 'https://api.entur.io/geocoder/v3/autocomplete'
+
+/** A place from the search: a transit stop, or somewhere else with coordinates. */
+interface GeoPlace {
+  id: string
+  name: string
+  locality?: string
+  /** A stop's NeTEx types, e.g. "onstreetBus, metroStation". */
+  category?: string
+  /** 'venue' = a transit stop; 'address' / 'street' = anywhere else (the app's names since v1). */
+  layer: 'venue' | 'address' | 'street'
+  lat?: number
+  lon?: number
+}
+
+/** The query for up to `limit` stops and places in Norway. `countries` takes lowercase alpha-2: "NOR" matches nothing. */
+function geocoderQuery(text: string, limit: number): string {
+  return new URLSearchParams({
+    q: text, lang: 'no', limit: String(limit), layers: 'stopPlace,address,street,poi,place', countries: 'no',
+  }).toString()
+}
+
+const PLACE_LAYER: Record<string, GeoPlace['layer']> = {
+  street: 'street', address: 'address', poi: 'address', place: 'address', groupOfStopPlaces: 'address',
+}
+
+/** The answer's places: every stop, other places only with coordinates; anything odd is skipped. */
+function parseGeocoderPlaces(json: unknown): GeoPlace[] {
+  const features = (json as { features?: unknown } | null)?.features
+  if (!Array.isArray(features)) return []
+  const out: GeoPlace[] = []
+  for (const f of features) {
+    const p = (f as { properties?: Record<string, unknown> } | null)?.properties
+    if (!p || typeof p.id !== 'string') continue
+    const names = (p.names ?? {}) as { default?: unknown; display?: unknown }
+    const name = typeof names.default === 'string' ? names.default : typeof names.display === 'string' ? names.display : ''
+    if (!name) continue
+    const address = (p.address ?? {}) as { locality?: unknown; county?: unknown }
+    const locality = typeof address.locality === 'string' ? address.locality
+      : typeof address.county === 'string' ? address.county : undefined
+    const coords = (f as { geometry?: { coordinates?: unknown } }).geometry?.coordinates
+    const point = Array.isArray(coords) && coords.length === 2 && coords.every(n => typeof n === 'number')
+      ? coords as [number, number] : null
+    const isStop = /^NSR:StopPlace:\d+$/.test(p.id)
+    const layer = isStop ? 'venue' : PLACE_LAYER[String(p.layer)]
+    if (!layer || (!isStop && !point)) continue
+    const types = Array.isArray(p.stopPlaceTypes) ? p.stopPlaceTypes.filter((t): t is string => typeof t === 'string') : []
+    out.push({
+      id: p.id, name, locality, layer,
+      category: isStop && types.length ? types.join(', ') : undefined,
+      lat: point?.[1], lon: point?.[0],
+    })
+  }
+  return out
+}
+// </entur-geocoder>
 
 type ResolvedPlace =
   | { kind: 'stop';   id: string; name: string }
@@ -2244,21 +2302,15 @@ function placeSynonyms(q: string): string[] {
 // AI a short list to ask the user about (so it clarifies in ONE follow-up turn
 // instead of firing more search tool calls).
 async function geocodeCandidates(query: string, size: number): Promise<ResolvedPlace[]> {
-  const params = new URLSearchParams({
-    text: query, lang: 'no', size: String(size), layers: 'venue,address', 'boundary.country': 'NOR',
-  })
-  const res = await fetch(`${GEOCODER_URL}?${params.toString()}`, {
+  const res = await fetch(`${GEOCODER_V3}?${geocoderQuery(query, size)}`, {
     headers: { 'ET-Client-Name': ENTUR_CLIENT },
   })
   if (!res.ok) return []
-  const json = await res.json()
   const out: ResolvedPlace[] = []
-  for (const f of json.features ?? []) {
-    const [lon, lat] = f.geometry?.coordinates ?? []
-    const id   = f.properties?.id
-    const name = [f.properties?.name ?? f.properties?.label, f.properties?.locality].filter(Boolean).join(', ') || query
-    if (typeof id === 'string' && /^NSR:StopPlace:\d+$/.test(id)) out.push({ kind: 'stop', id, name })
-    else if (typeof lat === 'number' && typeof lon === 'number')  out.push({ kind: 'coords', lat, lon, name })
+  for (const p of parseGeocoderPlaces(await res.json())) {
+    const name = [p.name, p.locality].filter(Boolean).join(', ') || query
+    if (p.layer === 'venue') out.push({ kind: 'stop', id: p.id, name })
+    else if (p.lat !== undefined && p.lon !== undefined) out.push({ kind: 'coords', lat: p.lat, lon: p.lon, name })
   }
   return out
 }
@@ -2467,21 +2519,13 @@ async function searchTransitStops(args: AnyRecord): Promise<AnyRecord> {
   const query = (args.query ?? '').trim()
   if (!query) return { success: false, error: 'query is required' }
 
-  const params = new URLSearchParams({
-    text: query, lang: 'no', size: '8', layers: 'venue,address', 'boundary.country': 'NOR',
-  })
-  const res = await fetch(`${GEOCODER_URL}?${params.toString()}`, {
+  const res = await fetch(`${GEOCODER_V3}?${geocoderQuery(query, 8)}`, {
     headers: { 'ET-Client-Name': ENTUR_CLIENT },
   })
   if (!res.ok) return { success: false, error: `Geocoder error: ${res.status}` }
 
-  const json = await res.json()
-  const results = (json.features ?? []).map((f: AnyRecord) => ({
-    id:       f.properties?.id ?? null,
-    name:     f.properties?.name ?? f.properties?.label ?? null,
-    locality: f.properties?.locality ?? f.properties?.county ?? null,
-    layer:    f.properties?.layer ?? null,
-  })).filter((r: AnyRecord) => r.id && r.name)
+  const results = parseGeocoderPlaces(await res.json())
+    .map(p => ({ id: p.id, name: p.name, locality: p.locality ?? null, layer: p.layer }))
 
   if (results.length === 0) return { success: false, error: `No matches for "${query}"` }
   return { success: true, results }

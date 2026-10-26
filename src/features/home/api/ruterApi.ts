@@ -1,8 +1,9 @@
-// EnTur JourneyPlanner v3 GraphQL + Pelias geocoder
-// Docs: https://developer.entur.org/pages-journeyplanner-journeyplanner/
+// EnTur JourneyPlanner v3 GraphQL + the geocoder v3 (enturGeocoder.ts)
+// Docs: docs/integrations/entur.md
 // ET-Client-Name is required — anonymous clients get aggressive rate limits.
+import { GEOCODER_V3, geocoderQuery, parseGeocoderPlaces } from './enturGeocoder'
+
 const JOURNEY  = 'https://api.entur.io/journey-planner/v3/graphql'
-const GEOCODER = 'https://api.entur.io/geocoder/v1/autocomplete'
 const CLIENT   = 'lasciviens-project-daily'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -127,60 +128,15 @@ async function gql(query: string): Promise<unknown> {
 
 // ─── Stop search ──────────────────────────────────────────────────────────────
 
-// venue+address layers without sources filter gives broader results.
-// sources=nsr was too strict — partial stop names returned nothing.
+// Stops and places in Norway; a place that isn't a stop is kept only with
+// coordinates (a trip can start or end there).
 export async function searchStops(query: string): Promise<StopResult[]> {
-  const params = new URLSearchParams({
-    text:             query,
-    lang:             'no',
-    size:             '15',
-    layers:           'venue,address',
-    'boundary.country': 'NOR',
-  })
-  const url = `${GEOCODER}?${params.toString()}`
-  const res = await fetch(url, { headers: { 'ET-Client-Name': CLIENT } })
+  const res = await fetch(`${GEOCODER_V3}?${geocoderQuery(query, 15)}`, { headers: { 'ET-Client-Name': CLIENT } })
 
   if (res.status === 429) throw new Error('Rate limited — wait a moment and try again')
   if (!res.ok) throw new Error(`Geocoder ${res.status}`)
 
-  const json = await res.json() as {
-    features?: {
-      properties: {
-        id?:       string
-        name?:     string
-        label?:    string
-        locality?: string
-        county?:   string
-        category?: string
-        layer?:    string
-      }
-      geometry?: { coordinates?: [number, number] }
-    }[]
-  }
-
-  if (import.meta.env.DEV) {
-    console.debug('[Entur geocoder]', query, (json.features ?? []).map(f => ({
-      id: f.properties.id, name: f.properties.name, layer: f.properties.layer,
-    })))
-  }
-
-  return (json.features ?? [])
-    .filter(f => {
-      // Keep transit stops (NSR:StopPlace) and address/street results that have coordinates
-      const isStop    = f.properties.id?.startsWith('NSR:StopPlace:')
-      const isAddress = f.properties.layer === 'address' || f.properties.layer === 'street'
-      const hasCoords = f.geometry?.coordinates?.length === 2
-      return isStop || (isAddress && hasCoords)
-    })
-    .map(f => ({
-      id:       f.properties.id ?? '',
-      name:     f.properties.name ?? f.properties.label ?? '',
-      locality: f.properties.locality ?? f.properties.county,
-      category: f.properties.category,
-      layer:    f.properties.layer,
-      lat:      f.geometry?.coordinates?.[1],
-      lon:      f.geometry?.coordinates?.[0],
-    }))
+  return parseGeocoderPlaces(await res.json())
 }
 
 // ─── Nearby stops (geolocation) ───────────────────────────────────────────────

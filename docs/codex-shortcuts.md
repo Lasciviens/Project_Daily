@@ -60,7 +60,7 @@
 | Files | Claimed by | Task | Since |
 |---|---|---|---|
 | `docs/kitchen-scale/` (and the planned `firmware/kitchen-scale/`) | Claude | Kitchen scale project | 14.10.2026 |
-| `trakt-api`, `TraktCard`, `accountState.ts`, health/body test fixtures, `AGENTS.md`, `CLAUDE.md`, `docs/deploy-checklist.md`, `scripts/verify-no-personal-data.cjs` | Claude | Follow-up to #577: review fixes + personal-data guard | 26.10.2026 |
+| `src/features/home/api/enturGeocoder.ts`, `ruterApi.ts`, `supabase/functions/ai-proxy` (place search), `docs/integrations/entur.md` | Claude | EnTur geocoder v3 (PR #579) | 26.10.2026 |
 
 ## Tasks
 > Status: `todo` / `in progress` / `blocked` / `done`. Claude edits these. Every

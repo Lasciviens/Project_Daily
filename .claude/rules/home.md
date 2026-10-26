@@ -13,5 +13,6 @@ Background: `docs/features/home.md`.
 - A glance tile's corner art (`GlanceArt`) stays in the band above the tile's first line, so it never sits under text and adds no height (`verify-glance-art`).
 - Line cards up through the board, never through content heights: the split laptop board is PageBoard `rows` — brief | transit, then week | tasks | weather, each card stretched to its row's tallest, content top-aligned — and the glance row lies on the board's own tracks (`GLANCE_ROW_TEMPLATE`). Independent column stacks only line up by luck (`verify-page-board`).
 - Geolocation falls back to Oslo, and the fallback counts as a success — never treat it as the user's real position.
+- Place search is EnTur's geocoder v3 through the one `<entur-geocoder>` block (`enturGeocoder.ts`, a verbatim copy in `ai-proxy` — `verify-entur-geocoder`); `countries=no` is lowercase. EnTur facts: `docs/integrations/entur.md`.
 - Transit (EnTur): only GraphQL fields verified live; quays are grouped by their raw NSR id (a roadside stop's `publicCode` is an empty string); filter departures, not groups.
 - `articleExtract.ts` is hand-mirrored into `news-article` (`verify-article-extract`).
