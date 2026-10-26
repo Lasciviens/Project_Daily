@@ -12,10 +12,9 @@
  *      URL is not one) — placeholders pass: example.com/.org/.net, the
  *      .example/.test/.invalid/.localhost names, GitHub's noreply addresses
  *      and noreply@anthropic.com;
- *    - an international phone number (+47 912 34 567, 0047…);
- *    - a street address: a Norwegian street name with a house number
- *      (Storgata 12B, …veien 4), an English/Turkish one, or an Oslo postcode
- *      with the city (0123 Oslo).
+ *    - an international phone number (+47 or 0047 and the digits, grouped or not);
+ *    - a street address: a Norwegian street name (…gata, …veien) with a
+ *      house number, an English/Turkish one, or an Oslo postcode with the city.
  * 2. The patterns themselves are checked on made-up samples, so a pattern
  *    that silently stopped matching fails here too.
  *
@@ -39,7 +38,7 @@ const SKIP = [/^package-lock\.json$/, /^deno\.lock$/, /^\.claude\/skills\//, /^\
 const URL_RE = /[a-z][a-z0-9+.-]*:\/\/\S+/gi
 const EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g
 const PLACEHOLDER_EMAIL = /@(?:example\.(?:com|org|net)|(?:[A-Za-z0-9-]+\.)*(?:example|test|invalid|localhost)|users\.noreply\.github\.com|noreply\.github\.com)$|^noreply@anthropic\.com$/i
-// Grouped (+47 912 34 567, 0047 912 34 567) or a bare +4791234567; a bare 00… is a barcode.
+// Grouped after +CC or 00CC, or a bare + and 8–14 digits; a bare 00… with no groups is a barcode.
 const PHONE_RE = /(?<![\w.+-])(?:(?:\+|00(?=[1-9]))\d{1,3}[ -]\d{2,4}(?:[ -]\d{2,4}){2,4}|\+\d{8,14})(?![\w.-])/g
 const STREET_RE = /\b[A-ZÆØÅ][a-zæøå]+(?:veien|vegen|vei|veg|gata|gaten|gate|allé|alle|plass|bakken|stien|ringen|svingen)\s+\d{1,4}[A-Za-z]?\b|\b[A-Z][a-z]+ (?:Street|Road|Avenue|Lane|Sokak|Sokağı|Caddesi) \d{1,4}\b|\b\d{1,5} [A-Z][a-z]+ (?:Street|St\.|Road|Rd\.|Avenue|Ave\.)|\b0\d{3} Oslo\b/g
 
@@ -60,9 +59,9 @@ const samples = {
   catches: [
     ['email', `ola.nordmann${at}firma.no`],
     ['email', `kari${at}mail.example-company.co.uk`],
-    ['phone', '+47 912 34 567'],
-    ['phone', '0047 912 34 567'],
-    ['phone', '+4791234567'],
+    ['phone', '+' + '47 912 34 567'],
+    ['phone', '00' + '47 912 34 567'],
+    ['phone', '+' + '4791234567'],
     ['address', 'Stor' + 'gata 12B'],
     ['address', 'Eksempel' + 'veien 4'],
     ['address', '01' + '23 Oslo'],
