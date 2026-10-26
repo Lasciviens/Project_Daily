@@ -249,7 +249,7 @@ jobs:
         if: steps.fresh.outputs.go == 'true'
         env:
           VITE_SUPABASE_URL:          ${{ secrets.VITE_SUPABASE_URL }}
-          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY || vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
           VITE_SUPABASE_ANON_KEY:     ${{ secrets.VITE_SUPABASE_ANON_KEY }}
           VITE_TMDB_API_KEY:          ${{ secrets.VITE_TMDB_API_KEY }}
           VITE_GOOGLE_CLIENT_ID:      ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
@@ -261,6 +261,13 @@ jobs:
           [ -n "$VITE_SUPABASE_URL" ] || fatal="$fatal VITE_SUPABASE_URL"
           # The publishable key (sb_publishable_…) or, until it is set, the legacy anon key.
           [ -n "$VITE_SUPABASE_PUBLISHABLE_KEY$VITE_SUPABASE_ANON_KEY" ] || fatal="$fatal VITE_SUPABASE_PUBLISHABLE_KEY"
+          # The website is public: a secret key pasted into this secret would be published.
+          case "$VITE_SUPABASE_PUBLISHABLE_KEY" in
+            ''|sb_publishable_*) ;;
+            *) fatal="$fatal VITE_SUPABASE_PUBLISHABLE_KEY(not an sb_publishable_ key — never put the secret key here)" ;;
+          esac
+          if [ -n "$VITE_SUPABASE_PUBLISHABLE_KEY" ]; then echo "::notice::The website uses the publishable key."
+          else echo "::warning::The website still uses the legacy anon key."; fi
           for v in VITE_TMDB_API_KEY VITE_GOOGLE_CLIENT_ID VITE_STRAVA_CLIENT_ID \
                    VITE_OXR_APP_ID VITE_VAPID_PUBLIC_KEY; do
             [ -n "${!v}" ] || echo "::warning::$v is empty — the feature that uses it will be dead in this deploy."
@@ -277,7 +284,7 @@ jobs:
         run: npm run build
         env:
           VITE_SUPABASE_URL:          ${{ secrets.VITE_SUPABASE_URL }}
-          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY || vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
           VITE_SUPABASE_ANON_KEY:     ${{ secrets.VITE_SUPABASE_ANON_KEY }}
           VITE_TMDB_API_KEY:          ${{ secrets.VITE_TMDB_API_KEY }}
           VITE_GOOGLE_CLIENT_ID:      ${{ secrets.VITE_GOOGLE_CLIENT_ID }}

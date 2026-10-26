@@ -61,6 +61,7 @@
 |---|---|---|---|
 | `docs/kitchen-scale/` (and the planned `firmware/kitchen-scale/`) | Claude | Kitchen scale project | 14.10.2026 |
 | `src/features/home/api/enturGeocoder.ts`, `ruterApi.ts`, `supabase/functions/ai-proxy` (place search), `docs/integrations/entur.md` | Claude | EnTur geocoder v3 (PR #579) | 26.10.2026 |
+| `supabase/functions/*` (key block), `src/integrations/supabase/client.ts`, `.github/workflows/deploy.yml`, `scripts/verify-supabase-keys.cjs`, key docs | Claude | Supabase new API keys, step 1 | 26.10.2026 |
 
 ## Tasks
 > Status: `todo` / `in progress` / `blocked` / `done`. Claude edits these. Every

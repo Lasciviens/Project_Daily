@@ -46,6 +46,8 @@ for (const f of users) {
   const outside = code(sources[f].replace(b ?? '', '')).split('\n')
     .filter(l => /SUPABASE_SERVICE_ROLE_KEY|SUPABASE_ANON_KEY/.test(l) && !l.includes("['GEMINI_API_KEY', 'SUPABASE_SERVICE_ROLE_KEY', 'PHONE_GATEWAY_SECRET']"))
   check(`${f}: no legacy key read outside it`, outside.length === 0, outside.map(l => l.trim()))
+  const before = code(sources[f].slice(0, Math.max(0, sources[f].indexOf('// <supabase-keys>'))))
+  check(`${f}: nothing uses a key before the block defines it`, sources[f].includes('// <supabase-keys>') && !/serviceKey\(\)|publishableKey\(\)/.test(before))
 }
 check('every function that creates a client is covered (≥ 29)', users.length >= 29, users.length)
 
@@ -76,6 +78,8 @@ console.log('\n3 · the website and the deploy')
   const deploy = fs.readFileSync(path.join(ROOT, '.github/workflows/deploy.yml'), 'utf8')
   check('the deploy passes the publishable key to both the check and the build', (deploy.match(/VITE_SUPABASE_PUBLISHABLE_KEY: \$\{\{ secrets\.VITE_SUPABASE_PUBLISHABLE_KEY/g) ?? []).length === 2)
   check('the deploy requires one of the two keys', deploy.includes('[ -n "$VITE_SUPABASE_PUBLISHABLE_KEY$VITE_SUPABASE_ANON_KEY" ]'))
+  check('the deploy refuses anything but an sb_publishable_ key there (the site is public)', /''\|sb_publishable_\*\) ;;/.test(deploy) && deploy.includes('never put the secret key here'))
+  check('the deploy reads the key from a secret only', !/vars\.VITE_SUPABASE_PUBLISHABLE_KEY/.test(deploy))
 }
 
 console.log(`\n${passed} passed, ${failed} failed`)

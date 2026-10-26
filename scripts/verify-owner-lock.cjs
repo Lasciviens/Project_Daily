@@ -71,8 +71,8 @@ if (helper) {
       } }) }) }),
     })
     const Deno = { env: { get: k => ({ HEVY_USER_ID: 'owner', SUPABASE_URL: 'u', SUPABASE_SERVICE_ROLE_KEY: 'k' })[k] } }
-    // eslint-disable-next-line no-new-func
     // serviceKey() lives in each function's <supabase-keys> block (verify-supabase-keys).
+    // eslint-disable-next-line no-new-func
     const isAppUser = new Function('createClient', 'Deno', 'serviceKey', `${js}; return isAppUser`)(createClient, Deno, () => 'k')
     return { isAppUser, calls }
   }
