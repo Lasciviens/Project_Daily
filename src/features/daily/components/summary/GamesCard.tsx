@@ -2,7 +2,9 @@ import { Link } from 'react-router-dom'
 import { CalendarPlus, Gamepad2 } from 'lucide-react'
 import { Cell, CellHeader, CellLink } from './cellKit'
 import { Truncate } from '../../../../shared/ui'
-import { usePlayQueue } from '../../../games/hooks/useGames'
+import { useAllGames, usePlayQueue } from '../../../games/hooks/useGames'
+import { formatDate } from '../../../../shared/utils/dateFormat'
+import { formatLocalDate } from '../../../../shared/utils/dateUtils'
 import { useEntityModal } from '../../../../shared/modals'
 import type { QueueGame } from '../../../games/types'
 
@@ -10,8 +12,15 @@ import type { QueueGame } from '../../../games/types'
 // without leaving Daily. Queue order itself is managed on /games.
 export function GamesCard({ date }: { date: string }) {
   const { data: queue = [], isError } = usePlayQueue()
+  const { data: games = [] } = useAllGames()
   const modal = useEntityModal()
   const top = queue.slice(0, 3)
+  // The game played last, up to the shown day (whichever provider reported it).
+  const last = games.reduce<{ title: string; at: string } | null>((best, g) => {
+    const at = g.last_played_at
+    if (!at || formatLocalDate(new Date(at)) > date) return best
+    return !best || at > best.at ? { title: g.title, at } : best
+  }, null)
 
   const plan = (g: QueueGame) => modal.open({
     kind: 'time-block',
@@ -22,6 +31,7 @@ export function GamesCard({ date }: { date: string }) {
   return (
     <Cell>
       <CellHeader icon={<Gamepad2 />} title="Play next" action={<CellLink to="/games">Queue</CellLink>} />
+      {last && <Truncate as="p" className="-mt-1 text-meta text-fg-muted">Last played {last.title} · {formatDate(last.at)}</Truncate>}
 
       {isError || top.length === 0 ? (
         <Link to="/games" className="flex min-h-[44px] items-center text-body text-fg-muted hover:text-accent-600">

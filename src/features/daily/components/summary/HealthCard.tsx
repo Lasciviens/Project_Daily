@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { Flame, Footprints, Heart, HeartPulse, Moon, Scale } from 'lucide-react'
-import { Cell, CellHeader, CellLink } from './cellKit'
+import { Cell, CellHeader, CellLink, StatBox as Panel, StatEmpty as Empty, StatNote as Sub, StatValue as Big } from './cellKit'
 import { formatSleepHours as fmtHrs } from '../../../health/healthAggregate'
 import { makeWindow } from '../../../health/healthWindowStats'
 import { useEnergyWindow, useHeartWindow, useMetricWindow, useSleepWindow } from '../../../health/hooks/useHealthWindow'
@@ -19,17 +19,6 @@ import { formatDate } from '../../../../shared/utils/dateFormat'
 
 const round = (n: number, d = 0) => { const p = 10 ** d; return Math.round(n * p) / p }
 
-function Panel({ icon, label, children, className }: { icon: React.ReactNode; label: string; children: React.ReactNode; className?: string }) {
-  return (
-    <div className={`flex min-w-0 flex-col gap-1 rounded-row bg-surface-2 p-3 ${className ?? ''}`}>
-      <p className="flex items-center gap-1.5 section-label [&_svg]:h-3.5 [&_svg]:w-3.5">{icon}{label}</p>
-      {children}
-    </div>
-  )
-}
-const Big = ({ children }: { children: React.ReactNode }) => <p className="text-title font-bold leading-none tabular-nums text-fg">{children}</p>
-const Sub = ({ children }: { children: React.ReactNode }) => <p className="text-meta text-fg-muted">{children}</p>
-const Empty = ({ loading, text = 'No data' }: { loading: boolean; text?: string }) => <p className="py-1 text-meta text-fg-muted">{loading ? '…' : text}</p>
 
 export function HealthCard({ date }: { date: string }) {
   const today = todayStr()

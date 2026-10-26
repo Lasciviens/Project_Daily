@@ -7,6 +7,7 @@ import { useKoboFeedState } from '../../../books/hooks/useBooks'
 import { useLibrary, useReadingEvents, useReadingSettings } from '../../../books/hooks/useLibrary'
 import { computeStreak, localDay, secondsByDay, sortForLibrary } from '../../../books/readingAggregate'
 import { BookCover } from '../../../books/components/BookCover'
+import { formatDateTime } from '../../../../shared/utils/dateFormat'
 
 // Reading on the glance board: minutes on the viewed day against the goal, the
 // streak, and the book in hand. A day the Kobo has not reported yet says so
@@ -26,6 +27,11 @@ export function ReadingCard({ date }: { date: string }) {
   const streak = computeStreak(perDay, today, lastSeenDay, settings?.streak_min_minutes ?? 1, first)
   const current = sortForLibrary(books.filter(b => b.read_status === 'reading'), 'recent')[0]
   const unknown = minutes === 0 && date !== today && (!lastSeenDay || date >= lastSeenDay)
+  // The last reading up to the shown day (owner, 26.10.2026: "show the last time read").
+  const lastRead = (events.data ?? []).reduce<string | null>((best, e) => {
+    if (localDay(new Date(e.started_at)) > date) return best
+    return !best || e.started_at > best ? e.started_at : best
+  }, null)
 
   return (
     <Cell>
@@ -44,6 +50,7 @@ export function ReadingCard({ date }: { date: string }) {
             <p className="text-meta text-fg-muted">
               {unknown ? 'Not synced yet for this day' : `${minutes} of ${goal} min`}
             </p>
+            {lastRead && <p className="text-meta tabular-nums text-fg-muted">Last read {formatDateTime(lastRead)}</p>}
             {streak.current > 0 && (
               <p className="flex items-center gap-1 text-meta font-semibold text-fg">
                 <Flame className="h-3.5 w-3.5 text-accent-600" aria-hidden />{streak.current}-day streak{streak.atRisk ? ' · read today to keep it' : ''}

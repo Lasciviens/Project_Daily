@@ -33,7 +33,11 @@ export function RecipesPage() {
   const [tab,      setTab]      = useState<Tab>(() => (focusFood ? 'ingredients' : 'today'))
   const [seenFood, setSeenFood] = useState(focusFood)
   if (focusFood !== seenFood) { setSeenFood(focusFood); if (focusFood) setTab('ingredients') }
-  const [foodDate, setFoodDate] = useState(() => formatLocalDate(new Date()))   // the Today tab's day
+  // The Today tab's day — `?date=` from Personal's food popup ("Open the Food page"), else today.
+  const [foodDate, setFoodDate] = useState(() => {
+    const asked = params.get('date')
+    return asked && /^\d{4}-\d{2}-\d{2}$/.test(asked) ? asked : formatLocalDate(new Date())
+  })
   // A supplement reminder's tap shows its day on Today, whichever tab was open.
   useDoseLink(date => { setTab('today'); setFoodDate(date) })
 
