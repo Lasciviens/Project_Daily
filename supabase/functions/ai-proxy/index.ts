@@ -602,7 +602,7 @@ const TOOLS = [
         parameters: {
           type: 'OBJECT',
           properties: {
-            query: { type: 'STRING', description: 'Place name or address to search for, in Norwegian if possible (e.g. "Sinsen", "Karl Johans gate")' },
+            query: { type: 'STRING', description: 'Place name or address to search for, in Norwegian if possible (e.g. "Jernbanetorget", "Karl Johans gate")' },
           },
           required: ['query'],
         },
@@ -1789,7 +1789,7 @@ async function computeSleepNights(supabase: AnyRecord, userId: string, since: st
 // wasn't enough): live data showed EVERY hour carries not two but often
 // THREE rows -- two exact duplicates (round 1) plus a THIRD at a DIFFERENT
 // minute with a DIFFERENT device combination in `source` (e.g. "06:00:00"
-// qty=83.7 "Watch|Owner's iPhone" and "06:39:34" qty=64.2 "Watch" alone) that a
+// qty=83.7 "Watch|Owner iPhone" and "06:39:34" qty=64.2 "Watch" alone) that a
 // per-minute-per-source key still missed and summed on top -- confirmed
 // against real numbers: naive-summing one partial day of basal energy came
 // to 3309 kcal (physiologically implausible; BMR is ~1600-2400/day),

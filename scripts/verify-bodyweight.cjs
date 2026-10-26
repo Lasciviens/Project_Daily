@@ -131,18 +131,18 @@ const EMPTY = { scale: [], report: [], hevy: [] }
     ['Old Scale', 'New Scale', 'New Scale', null, 'Hevy'])
   const row = (metric, date, qty, source) => ({ metric, date, at: `${date}T07:00:00Z`, source, qty })
   const split = splitAppleBodyRows([
-    row('weight_body_mass', '2026-08-10', 84.3, 'Old Scale'), row('body_fat_percentage', '2026-08-10', 27.0, 'Old Scale'),
-    row('weight_body_mass', '2026-08-12', 84.4, 'Old Scale'), row('body_fat_percentage', '2026-08-12', 27.1, 'Old Scale'),
-    row('weight_body_mass', '2026-08-13', 84.5, 'New Scale'), row('body_fat_percentage', '2026-08-13', 25.0, 'New Scale'),
-    row('lean_body_mass', '2026-08-13', 63.4, 'New Scale'),
-    row('weight_body_mass', '2026-08-15', 84.2, 'New Scale'), row('body_fat_percentage', '2026-08-15', 24.8, 'Hevy|New Scale'),
+    row('weight_body_mass', '2026-08-17', 78.3, 'Old Scale'), row('body_fat_percentage', '2026-08-17', 24.0, 'Old Scale'),
+    row('weight_body_mass', '2026-08-19', 78.4, 'Old Scale'), row('body_fat_percentage', '2026-08-19', 24.1, 'Old Scale'),
+    row('weight_body_mass', '2026-08-20', 78.5, 'New Scale'), row('body_fat_percentage', '2026-08-20', 22.0, 'New Scale'),
+    row('lean_body_mass', '2026-08-20', 61.2, 'New Scale'),
+    row('weight_body_mass', '2026-08-22', 78.2, 'New Scale'), row('body_fat_percentage', '2026-08-22', 21.8, 'Hevy|New Scale'),
   ])
-  const report = [R('2026-08-16', 84.0, 24.6)]
+  const report = [R('2026-08-23', 78.0, 21.6)]
   const days = scaleOnly(mergeBodyweight({ scale: split.scale, report, hevy: [] }))
-  check('§8.2 weight keeps every day from both scales', days.filter(d => d.kg != null).map(d => d.date), ['2026-08-10', '2026-08-12', '2026-08-13', '2026-08-15', '2026-08-16'])
+  check('§8.2 weight keeps every day from both scales', days.filter(d => d.kg != null).map(d => d.date), ['2026-08-17', '2026-08-19', '2026-08-20', '2026-08-22', '2026-08-23'])
   const fat = currentDeviceSeries(days, 'fatPct')
-  check('§8.3 body fat only from the scale in use (plus its photo report)', fat.readings.map(r => r.date), ['2026-08-13', '2026-08-15', '2026-08-16'])
-  check('§8.4 …which scale, since when, and how many readings were left out', [fat.device, fat.since, fat.dropped], ['New Scale', '2026-08-13', 2])
+  check('§8.3 body fat only from the scale in use (plus its photo report)', fat.readings.map(r => r.date), ['2026-08-20', '2026-08-22', '2026-08-23'])
+  check('§8.4 …which scale, since when, and how many readings were left out', [fat.device, fat.since, fat.dropped], ['New Scale', '2026-08-20', 2])
   const lean = currentDeviceSeries(days, 'leanKg')
   check('§8.5 nothing left out when one scale reported it', [lean.readings.length, lean.dropped], [1, 0])
   check('§8.6 no readings → empty', currentDeviceSeries([], 'fatPct'), { readings: [], device: null, since: null, dropped: 0 })

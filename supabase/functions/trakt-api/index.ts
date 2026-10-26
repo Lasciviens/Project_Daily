@@ -77,6 +77,9 @@ const REDIRECTS = ['https://lasciviens.github.io/Project_Daily/', 'http://localh
 /** What Trakt answered, kept for the error report the app can copy (never a token). */
 interface TraktDetail { path: string; status: number; body: string; at: string }
 
+/** The last error a dead sign-in leaves on the card; `status` turns it into a Connect again button. */
+const REAUTH_MESSAGE = 'Trakt needs to be connected again — tap Connect again (changes waiting to be sent are kept).'
+
 class TraktError extends Error {
   constructor(public status: number, message: string, public detail?: TraktDetail) { super(message) }
 }
@@ -394,6 +397,8 @@ interface TraktStatus {
   connectedAt: string | null
   lastSyncAt: string | null
   lastError?: string | null
+  /** Trakt no longer takes the stored sign-in: Connect again keeps the outbox (Disconnect would empty it). */
+  needsReconnect?: boolean
   /** The last sync/import result (trakt_sync_state.last_result). */
   lastResult?: {
     kind: 'import' | 'sync'; at: string; heldBack?: number; drained?: { left: number; notFound: number }
@@ -3510,6 +3515,8 @@ Deno.serve(async (req: Request) => {
         expires_at: expiresAt, username, connected_at: new Date().toISOString(), updated_at: new Date().toISOString(),
       })
       if (error) throw error
+      // A reconnect over a dead sign-in: the card's "connect again" note goes.
+      await supabase.from('trakt_sync_state').update({ last_error: null }).eq('user_id', userId).eq('last_error', REAUTH_MESSAGE)
       return json({ connected: true, username })
     }
 
@@ -3527,6 +3534,7 @@ Deno.serve(async (req: Request) => {
         connectedAt: tok?.connected_at ?? null,
         lastSyncAt: st.last_sync_at ?? null,
         lastError: st.last_error ?? null,
+        needsReconnect: st.last_error === REAUTH_MESSAGE,
         lastResult: st.last_result ?? null,
         // The first import has finished (sync runs only after it); before migration 124, last_full_at.
         imported: 'imported_at' in st ? !!st.imported_at : !!st.last_full_at,
@@ -3573,6 +3581,14 @@ Deno.serve(async (req: Request) => {
       const t = await oauth('/oauth/token', {
         refresh_token: tok.refresh_token, client_id: CLIENT_ID(), client_secret: CLIENT_SECRET(),
         redirect_uri: REDIRECTS[0], grant_type: 'refresh_token',
+      }).catch((e: unknown) => {
+        // auth.trakt.tv answers a refresh token it no longer knows with 400
+        // invalid_grant ("session not found"): the grant is gone, the same as
+        // a 401 — the app must be connected again.
+        if (e instanceof TraktError && e.status === 400 && /invalid_grant/.test(e.detail?.body ?? '')) {
+          throw new TraktError(401, REAUTH_MESSAGE, e.detail)
+        }
+        throw e
       })
       accessToken = String(t.access_token)
       const { error } = await supabase.from('trakt_tokens').update({
@@ -3680,8 +3696,12 @@ Deno.serve(async (req: Request) => {
     return json({ error: `Unknown action: ${action}` }, 400)
   } catch (err) {
     const status = err instanceof TraktError ? err.status : 500
-    // A revoked/expired grant: the user must reconnect.
-    if (status === 401) return json({ error: 'reauth_required' }, 200)
+    // A revoked/expired grant: the user must reconnect. The card shows the
+    // last error, so a cron run that hits this says so there too.
+    if (status === 401) {
+      await stamp(supabase, userId, { last_error: REAUTH_MESSAGE }).catch(() => null)
+      return json({ error: 'reauth_required' }, 200)
+    }
     const message = err instanceof Error ? err.message : String(err)
     // `detail` is what the app's "Copy details" puts in the report: the Trakt
     // path, its status and the first 300 characters it answered (never a token).

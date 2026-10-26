@@ -266,7 +266,7 @@ export const API_REGISTRY: readonly ApiEntry[] = [
     usedIn: [{ label: 'Training — Log (Strava)', path: '/training?tab=log&view=strava' }],
     tables: ['strava_activities'],
     cost: 'free', limits: 'Rate limited per 15 minutes and per day.',
-    caveats: ['Strava\'s developer program changed on 01.06.2026: an API app needs a Strava subscription (existing apps from 30.06.2026).'],
+    caveats: ['Strava\'s developer program changed on 01.06.2026: an API app needs a Strava subscription (existing apps from 30.06.2026). The owner has one and sync works (26.10.2026).', 'The API host moves to api-v3.strava.com from 04.01.2027 (no end date for the old one yet).'],
     since: H0, sinceFrom: 'supabase/functions/strava-auth/index.ts', sinceIsHistoryStart: true, hasIntegrationCard: true,
   },
   {

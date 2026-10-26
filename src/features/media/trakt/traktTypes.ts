@@ -45,6 +45,8 @@ export interface TraktStatus {
   connectedAt: string | null
   lastSyncAt: string | null
   lastError?: string | null
+  /** Trakt no longer takes the stored sign-in: Connect again keeps the outbox (Disconnect would empty it). */
+  needsReconnect?: boolean
   /** The last sync/import result (trakt_sync_state.last_result). */
   lastResult?: {
     kind: 'import' | 'sync'; at: string; heldBack?: number; drained?: { left: number; notFound: number }

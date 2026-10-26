@@ -23,7 +23,7 @@ export function sinceLabel(date: string): string {
 const n0 = (v: number) => Math.round(v).toLocaleString('en-GB')
 const n1 = (v: number) => (Math.round(v * 10) / 10).toString()
 
-/** ["Cut since 01.09.2026", "1,950 kcal", "180 g protein", "→ 78 kg · 14 % body fat"]. */
+/** ["Cut since 07.09.2026", "2,100 kcal", "165 g protein", "→ 72 kg · 16 % body fat"]. */
 export function goalSummaryParts(t: GoalSummaryInput): string[] {
   const phase = PHASE[t.goal] ?? t.goal
   const body = [

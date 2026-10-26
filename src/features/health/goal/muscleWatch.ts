@@ -26,7 +26,7 @@
 //   PROTEIN (evidence) — the logged average over the goal report's window
 //     (only with enough fully logged days) under 1.6 g/kg bodyweight
 //     (Morton 2018). The aim quoted is ~2.2 g/kg bodyweight, or 2.3–3.1 g per
-//     kg of lean mass on a cut (Helms 2014) — for 83 kg about 180 g a day.
+//     kg of lean mass on a cut (Helms 2014) — for 77 kg about 170 g a day.
 //   TRAINING (measured, context only) — sessions and working sets a week over
 //     the last 4 weeks vs the 4 before; never changes the level.
 //

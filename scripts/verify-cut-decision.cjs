@@ -13,38 +13,38 @@ function check(name, got, want) {
 }
 const ok = (name, cond, detail) => check(name + (cond || detail == null ? '' : ` (${JSON.stringify(detail)})`), !!cond, true)
 
-// The owner's case: 83 kg, 24.6 % body fat, −0.29 kg/wk on a cut, target 1,950.
-const OWNER = {
-  phase: 'cut', today: '2026-09-29', weightKg: 83, bodyFatPct: 24.6,
-  pctPerWeek: (-0.29 / 83) * 100, kgPerWeek: -0.29, weighIns: 22, weighInSpanDays: 27, loggedDays7: 6,
-  targetKcal: 1950, targetProteinG: 200, loggedIntakeKcal: 1950, appleBurnKcal: 2450,
-  scaleBurnKcal: 1950 + Math.round(0.29 * 7700 / 7), muscleWatch: 'ok',
-  phaseStartDate: '2026-08-15', lastCalorieAdjust: null, steps7: 7500,
+// A made-up example: 77 kg, 23 % body fat, −0.27 kg/wk on a cut, target 1,900.
+const BASE = {
+  phase: 'cut', today: '2026-09-29', weightKg: 77, bodyFatPct: 23,
+  pctPerWeek: (-0.27 / 77) * 100, kgPerWeek: -0.27, weighIns: 22, weighInSpanDays: 27, loggedDays7: 6,
+  targetKcal: 1900, targetProteinG: 210, loggedIntakeKcal: 1900, appleBurnKcal: 2400,
+  scaleBurnKcal: 1900 + Math.round(0.27 * 7700 / 7), muscleWatch: 'ok',
+  phaseStartDate: '2026-08-20', lastCalorieAdjust: null, steps7: 7500,
 }
-const I = (p = {}) => ({ ...OWNER, ...p })
+const I = (p = {}) => ({ ...BASE, ...p })
 
 console.log('\n§1 Protein (A)')
 {
-  const p = D.proteinAdvice('cut', 83, 24.6, 200)
-  check('§1.1 owner: target 175 g from 2.8 g/kg lean mass', p.targetG, 175)
-  check('§1.2 owner: range 145–195', [p.lowG, p.highG], [145, 195])
-  check('§1.3 owner: lean mass 62.6 kg', p.ffmKg, 62.6)
-  check('§1.4 owner: 200 g sits outside the range', p.inRange, false)
-  check('§1.5 wording', p.text, 'Aim ~175 g (145–195) — more costs calories without clear extra benefit.')
-  check('§1.6 no body fat, cut: 2.0 g/kg', D.proteinAdvice('cut', 83, null).targetG, 165)
-  check('§1.7 no body fat, maintain: 1.8 g/kg', D.proteinAdvice('maintain', 83, null).targetG, 150)
+  const p = D.proteinAdvice('cut', 77, 23, 210)
+  check('§1.1 example: target 165 g from 2.8 g/kg lean mass', p.targetG, 165)
+  check('§1.2 example: range 135–185', [p.lowG, p.highG], [135, 185])
+  check('§1.3 example: lean mass 59.3 kg', p.ffmKg, 59.3)
+  check('§1.4 example: 210 g sits outside the range', p.inRange, false)
+  check('§1.5 wording', p.text, 'Aim ~165 g (135–185) — more costs calories without clear extra benefit.')
+  check('§1.6 no body fat, cut: 2.0 g/kg', D.proteinAdvice('cut', 77, null).targetG, 155)
+  check('§1.7 no body fat, maintain: 1.8 g/kg', D.proteinAdvice('maintain', 77, null).targetG, 140)
   check('§1.8 very lean: clamped to 2.2 g/kg bodyweight', D.proteinAdvice('cut', 80, 8).targetG, 175)
   check('§1.9 high body fat: floored at 1.6 g/kg bodyweight', D.proteinAdvice('cut', 120, 45).targetG, 190)
-  check('§1.10 inRange when the target is inside', D.proteinAdvice('cut', 83, 24.6, 170).inRange, true)
-  check('§1.11 ~0.4 g/kg per meal', D.proteinAdvice('cut', 83, 24.6).perMealG, 35)
+  check('§1.10 inRange when the target is inside', D.proteinAdvice('cut', 77, 23, 170).inRange, true)
+  check('§1.11 ~0.4 g/kg per meal', D.proteinAdvice('cut', 77, 23).perMealG, 30)
 }
 
 console.log('\n§2 Calorie floor (B)')
 {
-  const f = D.calorieFloor(83, 24.6, 2269)
-  check('§2.1 owner: Cunningham resting burn sets it (500 + 22 × 62.6)', [f.kcal, f.basis], [1880, 'resting'])
-  check('§2.2 no body fat: 24 kcal/kg', D.calorieFloor(83, null, null).kcal, 1990)
-  check('§2.3 75 % of the scale burn when higher', [D.calorieFloor(83, 24.6, 2800).kcal, D.calorieFloor(83, 24.6, 2800).basis], [2100, 'scale'])
+  const f = D.calorieFloor(77, 23, 2197)
+  check('§2.1 example: Cunningham resting burn sets it (500 + 22 × 59.3)', [f.kcal, f.basis], [1800, 'resting'])
+  check('§2.2 no body fat: 24 kcal/kg', D.calorieFloor(77, null, null).kcal, 1850)
+  check('§2.3 75 % of the scale burn when higher', [D.calorieFloor(77, 23, 2800).kcal, D.calorieFloor(77, 23, 2800).basis], [2100, 'scale'])
   check('§2.4 never below 1,500', D.calorieFloor(50, 30, 1600).kcal, 1500)
   ok('§2.5 labelled a heuristic that only limits cutting', /heuristic that only limits cutting/.test(f.text), f.text)
 }
@@ -58,7 +58,7 @@ check('§3.5 cut −1.6 → much too fast (danger)', D.paceLabel('cut', -1.6).to
 check('§3.6 maintain +0.3 → drifting up', D.paceLabel('maintain', 0.3).label, 'Drifting up')
 check('§3.7 gain +0.3 → on track', D.paceLabel('gain', 0.3).label, 'On track')
 
-console.log('\n§4 Gate 3 — the owner\'s case')
+console.log('\n§4 Gate 3 — the example case')
 {
   const d = D.buildGoalDecision(I())
   check('§4.1 gate', d.gate, 'near_floor')
@@ -67,12 +67,12 @@ console.log('\n§4 Gate 3 — the owner\'s case')
   check('§4.4 tone neutral (slow but fine)', d.tone, 'neutral')
   check('§4.5 no diet break under 12 weeks', d.dietBreak, false)
   ok('§4.6 "diet break" appears nowhere', !/diet break/i.test(JSON.stringify(d)), d)
-  check('§4.7 the same decision carries protein 175', d.protein.targetG, 175)
-  check('§4.8 the floor it used', d.floor.kcal, 1880)
+  check('§4.7 the same decision carries protein 165', d.protein.targetG, 165)
+  check('§4.8 the floor it used', d.floor.kcal, 1800)
   check('§4.9 at most two supporting lines', d.lines.length <= 2, true)
   check('§4.10 already at 10k steps: no step nudge', D.buildGoalDecision(I({ steps7: 11000 })).lines[0], 'Check logging for a week (oils, drinks, weekends) before eating less.')
   check('§4.12 collapsed header line', D.coachShort(d), 'Check logging first')
-  check('§4.11 no step data: default +2,500', D.stepNudge(null, 83), { steps: 2500, kcal: 120 })
+  check('§4.11 no step data: default +2,500', D.stepNudge(null, 77), { steps: 2500, kcal: 120 })
 }
 
 console.log('\n§5 Gate 3 — likely under-logging with room above the floor')
@@ -88,12 +88,12 @@ console.log('\n§6 Gate 4 — slow with room: the smallest DAILY cut')
 {
   const d = D.buildGoalDecision(I({ targetKcal: 2300 }))
   check('§6.1 gate', d.gate, 'cut_more')
-  check('§6.2 daily delta (0.15 %/wk × 83 kg × 7,700 ÷ 7 ≈ 137 → 150)', d.calorieDelta, -150)
+  check('§6.2 daily delta (0.15 %/wk × 77 kg × 7,700 ÷ 7 ≈ 127 → 150)', d.calorieDelta, -150)
   check('§6.3 suggested', d.suggestedCalories, 2150)
   ok('§6.4 labelled per day, never a weekly figure', /150 kcal\/day less/.test(d.headline) && !/1,0\d\d|1\.\dk/.test(d.text), d.text)
-  const c = D.buildGoalDecision(I({ targetKcal: 2020 }))
+  const c = D.buildGoalDecision(I({ targetKcal: 1940 }))
   check('§6.5 clamped so the target stays above the floor', [c.gate, c.calorieDelta], ['cut_more', -100])
-  check('§6.5b a cut that would cross the floor → gate 3 instead', D.buildGoalDecision(I({ targetKcal: 1990 })).gate, 'near_floor')
+  check('§6.5b a cut that would cross the floor → gate 3 instead', D.buildGoalDecision(I({ targetKcal: 1920 })).gate, 'near_floor')
   const cool = D.buildGoalDecision(I({ targetKcal: 2300, lastCalorieAdjust: '2026-09-24' }))
   check('§6.6 14-day cooldown holds', [cool.gate, cool.calorieDelta, cool.cooldownDaysLeft], ['hold', null, 9])
   ok('§6.7 cooldown date in DD.MM.YYYY', /24\.09\.2026/.test(cool.text), cool.text)
@@ -104,24 +104,24 @@ console.log('\n§7 Gates 1, 2, 5')
   const n = D.buildGoalDecision(I({ loggedDays7: 2, weighIns: 6 }))
   check('§7.1 not enough data wins first', n.gate, 'no_data')
   check('§7.2 says exactly what is missing', n.headline, 'Not enough data yet — log 2 more days (2 of the last 7) and weigh in 4 more times.')
-  const f = D.buildGoalDecision(I({ pctPerWeek: -1.2, kgPerWeek: -1 }))
+  const f = D.buildGoalDecision(I({ pctPerWeek: -1.2, kgPerWeek: -0.92 }))
   check('§7.3 losing > 1 %/wk → eat more', [f.gate, f.calorieDelta > 0], ['eat_more', true])
-  check('§7.4 …back to the middle of the range (0.45 %/wk × 83 × 7,700 ÷ 7 → 400)', f.calorieDelta, 400)
+  check('§7.4 …back to the middle of the range (0.45 %/wk × 77 × 7,700 ÷ 7 ≈ 381 → 400)', f.calorieDelta, 400)
   const m = D.buildGoalDecision(I({ muscleWatch: 'likely_loss' }))
   check('§7.5 muscle likely_loss beats the slow-loss gate', m.gate, 'eat_more')
   check('§7.6 …and is the one case a diet break is named before 12 weeks', m.dietBreak, true)
-  const on = D.buildGoalDecision(I({ pctPerWeek: -0.75, kgPerWeek: -0.62 }))
+  const on = D.buildGoalDecision(I({ pctPerWeek: -0.75, kgPerWeek: -0.58 }))
   check('§7.7 0.5–1 %/wk → on track', [on.gate, on.tone, on.calorieDelta], ['on_track', 'success', null])
   const long = D.buildGoalDecision(I({ pctPerWeek: -0.75, phaseStartDate: '2026-06-01' }))
   check('§7.8 12+ weeks in the cut → diet break mentioned', long.dietBreak, true)
-  ok('§7.9 …with the maintenance figure', /diet break at maintenance \(~2,270 kcal\)/.test(long.text), long.text)
+  ok('§7.9 …with the maintenance figure', /diet break at maintenance \(~2,200 kcal\)/.test(long.text), long.text)
   const below = D.buildGoalDecision(I({ pctPerWeek: -0.75, targetKcal: 1700 }))
   check('§7.10 below the floor but on track: no nagging to eat less, no diet break', [below.gate, below.dietBreak], ['on_track', false])
 }
 
 console.log('\n§8 Maintain / gain')
 {
-  const up = D.buildGoalDecision(I({ phase: 'maintain', pctPerWeek: 0.4, kgPerWeek: 0.33 }))
+  const up = D.buildGoalDecision(I({ phase: 'maintain', pctPerWeek: 0.4, kgPerWeek: 0.31 }))
   check('§8.1 maintain drifting up → eat less to hold', [up.gate, up.calorieDelta < 0], ['adjust', true])
   const g = D.buildGoalDecision(I({ phase: 'gain', pctPerWeek: 0.1, kgPerWeek: 0.08 }))
   check('§8.2 gain too slow → eat more', [g.gate, g.calorieDelta > 0], ['adjust', true])
@@ -140,7 +140,7 @@ console.log('\n§9 Goal progress path reads the same decision')
   const out = GP.applyDecision(path, d, 150)
   check('§9.1 headline = the decision', out.title, d.headline)
   ok('§9.2 no "speed up" left anywhere', !/speed up/i.test(JSON.stringify(out)), out)
-  check('§9.3 protein step = the decision range', out.steps.find(s => s.key === 'protein').text, 'Aim for ~175 g protein a day (145–195 g); you average 150 g.')
+  check('§9.3 protein step = the decision range', out.steps.find(s => s.key === 'protein').text, 'Aim for ~165 g protein a day (135–185 g); you average 150 g.')
   check('§9.4 training step kept', out.steps.some(s => s.key === 'training'), true)
 }
 
@@ -160,7 +160,7 @@ console.log('\n§10 The day\'s four targets (Food → Today\'s "What\'s left")')
   check('§10.8 a carb goal alone: fat still 30 % of the kcal', [carbsOnly.carbs, carbsOnly.fat, carbsOnly.carbsSet, carbsOnly.fatSet], [300, 73, true, false])
   check('§10.9 fatFromFloor says when the floor set the worked-out fat', [D.dayMacroTargets({ calories: 1500, protein: 180 }, 60).fatFromFloor, D.dayMacroTargets({ calories: 2200, protein: 160 }, 50).fatFromFloor], [true, false])
   check('§10.10 a zero goal is a goal, not "worked out"', [D.dayMacroTargets({ calories: 2000, protein: 150, carbs: 0 }).carbs, D.dayMacroTargets({ calories: 2000, protein: 150, carbs: 0 }).carbsSet], [0, true])
-  check('§10.11 the floor is the decision\'s own (cut, 0.6 g/kg)', D.buildGoalDecision(I()).fatFloorG, Math.round(83 * D.FAT_FLOOR_PER_KG))
+  check('§10.11 the floor is the decision\'s own (cut, 0.6 g/kg)', D.buildGoalDecision(I()).fatFloorG, Math.round(77 * D.FAT_FLOOR_PER_KG))
 }
 
 console.log(`\n${passed} passed, ${failed} failed`)
