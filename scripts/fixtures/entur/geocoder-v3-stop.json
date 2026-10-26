@@ -1,0 +1,181 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          10.75038,
+          59.911898
+        ]
+      },
+      "properties": {
+        "id": "NSR:StopPlace:58366",
+        "names": {
+          "default": "Jernbanetorget",
+          "display": "Jernbanetorget, Oslo"
+        },
+        "layer": "stopPlace",
+        "source": "nsr",
+        "address": {
+          "locality": "Oslo",
+          "localityId": "KVE:TopographicPlace:0301",
+          "county": "Oslo",
+          "countyId": "KVE:TopographicPlace:03",
+          "countryCode": "no"
+        },
+        "stopPlaceTypes": [
+          "onstreetBus",
+          "onstreetTram",
+          "metroStation"
+        ],
+        "stopPlaceRole": "parent",
+        "transportModes": [
+          {
+            "mode": "bus"
+          },
+          {
+            "mode": "tram"
+          },
+          {
+            "mode": "metro"
+          },
+          {
+            "mode": "bus",
+            "subMode": "localBus"
+          }
+        ],
+        "categories": []
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          11.384653,
+          59.120265
+        ]
+      },
+      "properties": {
+        "id": "KVE:TopographicPlace:3101-Jernbanetorget",
+        "names": {
+          "default": "Jernbanetorget",
+          "display": "Jernbanetorget, Halden"
+        },
+        "layer": "address",
+        "source": "kartverket-matrikkelenadresse",
+        "address": {
+          "streetName": "Jernbanetorget",
+          "locality": "Halden",
+          "localityId": "KVE:TopographicPlace:3101",
+          "borough": "Sydsiden",
+          "boroughId": "KVE:Borough:31010301",
+          "county": "Østfold",
+          "countyId": "KVE:TopographicPlace:31",
+          "countryCode": "no"
+        },
+        "categories": [
+          "street"
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          10.750409,
+          59.911274
+        ]
+      },
+      "properties": {
+        "id": "KVE:TopographicPlace:0301-Jernbanetorget",
+        "names": {
+          "default": "Jernbanetorget",
+          "display": "Jernbanetorget, Oslo"
+        },
+        "layer": "address",
+        "source": "kartverket-matrikkelenadresse",
+        "address": {
+          "streetName": "Jernbanetorget",
+          "locality": "Oslo",
+          "localityId": "KVE:TopographicPlace:0301",
+          "borough": "Sentrum 1 - Rode 4",
+          "boroughId": "KVE:Borough:03010104",
+          "county": "Oslo",
+          "countyId": "KVE:TopographicPlace:03",
+          "countryCode": "no"
+        },
+        "categories": [
+          "street"
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          10.462058,
+          61.114055
+        ]
+      },
+      "properties": {
+        "id": "KVE:TopographicPlace:3405-Jernbanetorget",
+        "names": {
+          "default": "Jernbanetorget",
+          "display": "Jernbanetorget, Lillehammer"
+        },
+        "layer": "address",
+        "source": "kartverket-matrikkelenadresse",
+        "address": {
+          "streetName": "Jernbanetorget",
+          "locality": "Lillehammer",
+          "localityId": "KVE:TopographicPlace:3405",
+          "borough": "Hammartun",
+          "boroughId": "KVE:Borough:34050605",
+          "county": "Innlandet",
+          "countyId": "KVE:TopographicPlace:34",
+          "countryCode": "no"
+        },
+        "categories": [
+          "street"
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          10.749894,
+          59.911798
+        ]
+      },
+      "properties": {
+        "id": "OSM:TopographicPlace:288229556",
+        "names": {
+          "default": "Vitusapotek Jernbanetorget (utenfor Oslo S)",
+          "display": "Vitusapotek Jernbanetorget (utenfor Oslo S), Oslo"
+        },
+        "layer": "poi",
+        "source": "openstreetmap",
+        "address": {
+          "streetName": "Jernbanetorget",
+          "houseNumber": "4",
+          "locality": "Oslo",
+          "localityId": "KVE:TopographicPlace:0301",
+          "county": "Oslo",
+          "countyId": "KVE:TopographicPlace:03",
+          "countryCode": "no"
+        },
+        "categories": [
+          "poi",
+          "pharmacy"
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,139 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          10.749404,
+          59.911378
+        ]
+      },
+      "properties": {
+        "id": "KVE:PostalAddress:285717643",
+        "names": {
+          "default": "Karl Johans gate 1",
+          "display": "Karl Johans gate 1, Oslo"
+        },
+        "layer": "address",
+        "source": "kartverket-matrikkelenadresse",
+        "address": {
+          "streetName": "Karl Johans gate",
+          "houseNumber": "1",
+          "postalCode": "0154",
+          "locality": "Oslo",
+          "localityId": "KVE:TopographicPlace:0301",
+          "borough": "Sentrum 1 - Rode 4",
+          "boroughId": "KVE:Borough:03010104",
+          "county": "Oslo",
+          "countyId": "KVE:TopographicPlace:03",
+          "countryCode": "no"
+        },
+        "categories": [
+          "vegadresse"
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          11.111054,
+          59.285047
+        ]
+      },
+      "properties": {
+        "id": "KVE:PostalAddress:26635165",
+        "names": {
+          "default": "Karl Johans gate 1",
+          "display": "Karl Johans gate 1, Sarpsborg"
+        },
+        "layer": "address",
+        "source": "kartverket-matrikkelenadresse",
+        "address": {
+          "streetName": "Karl Johans gate",
+          "houseNumber": "1",
+          "postalCode": "1706",
+          "locality": "Sarpsborg",
+          "localityId": "KVE:TopographicPlace:3105",
+          "borough": "Gleng",
+          "boroughId": "KVE:Borough:31050205",
+          "county": "Østfold",
+          "countyId": "KVE:TopographicPlace:31",
+          "countryCode": "no"
+        },
+        "categories": [
+          "vegadresse"
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          11.382504,
+          59.123572
+        ]
+      },
+      "properties": {
+        "id": "KVE:PostalAddress:237726885",
+        "names": {
+          "default": "Karl Johans gate 1",
+          "display": "Karl Johans gate 1, Halden"
+        },
+        "layer": "address",
+        "source": "kartverket-matrikkelenadresse",
+        "address": {
+          "streetName": "Karl Johans gate",
+          "houseNumber": "1",
+          "postalCode": "1776",
+          "locality": "Halden",
+          "localityId": "KVE:TopographicPlace:3101",
+          "borough": "Refne - Banken",
+          "boroughId": "KVE:Borough:31010105",
+          "county": "Østfold",
+          "countyId": "KVE:TopographicPlace:31",
+          "countryCode": "no"
+        },
+        "categories": [
+          "vegadresse"
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          10.749599,
+          59.911476
+        ]
+      },
+      "properties": {
+        "id": "OSM:TopographicPlace:12656859101",
+        "names": {
+          "default": "Hakone Coffee",
+          "display": "Hakone Coffee, Oslo"
+        },
+        "layer": "poi",
+        "source": "openstreetmap",
+        "address": {
+          "streetName": "Karl Johans gate",
+          "houseNumber": "1",
+          "locality": "Oslo",
+          "localityId": "KVE:TopographicPlace:0301",
+          "county": "Oslo",
+          "countyId": "KVE:TopographicPlace:03",
+          "countryCode": "no"
+        },
+        "categories": [
+          "poi",
+          "cafe"
+        ]
+      }
+    }
+  ]
+}
