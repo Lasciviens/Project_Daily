@@ -8,11 +8,14 @@ export interface RecentlyWatchedItem {
   title:      string
   poster:     string | null
   watched_at: string
+  /** An episode's season and number (null for a film). */
+  season:     number | null
+  episode:    number | null
 }
 
 interface MovieRow { id: string; watched_at: string; movie: { title: string; poster_path: string | null; tmdb_id: number } | null }
 interface EpisodeRow {
-  id: string; watched_at: string; tv_entry_id: string
+  id: string; watched_at: string; tv_entry_id: string; season_number: number; episode_number: number
   tv_entry: { tv_series: { title: string; poster_path: string | null; tmdb_id: number } | null } | null
 }
 
@@ -27,9 +30,13 @@ export async function fetchRecentlyWatched(limit = 6): Promise<RecentlyWatchedIt
       .limit(4),
     supabase
       .from('user_tv_episodes')
-      .select('id, watched_at, tv_entry_id, tv_entry:user_tv_entries(tv_series(title, poster_path, tmdb_id))')
+      .select('id, watched_at, tv_entry_id, season_number, episode_number, tv_entry:user_tv_entries(tv_series(title, poster_path, tmdb_id))')
       .not('watched_at', 'is', null)
       .order('watched_at', { ascending: false })
+      // Episodes marked at the same moment (a whole season at once): the higher one is the latest —
+      // so the limit and the one-per-series pick below keep it (the stable sort at the end keeps this order).
+      .order('season_number', { ascending: false })
+      .order('episode_number', { ascending: false })
       .limit(12),
   ])
   if (movies.error) throw movies.error
@@ -42,6 +49,8 @@ export async function fetchRecentlyWatched(limit = 6): Promise<RecentlyWatchedIt
     title:      m.movie?.title ?? 'Unknown',
     poster:     m.movie?.poster_path ?? null,
     watched_at: m.watched_at,
+    season:     null,
+    episode:    null,
   }))
 
   // One row per series — keep only the most recently watched episode of each.
@@ -58,6 +67,8 @@ export async function fetchRecentlyWatched(limit = 6): Promise<RecentlyWatchedIt
       title:      series?.title ?? 'Unknown',
       poster:     series?.poster_path ?? null,
       watched_at: e.watched_at,
+      season:     e.season_number,
+      episode:    e.episode_number,
     })
   }
 
